@@ -124,6 +124,25 @@ pub enum StrategyAttemptResolution<S, E> {
     HardError(E),
 }
 
+/// Resolution for a full strategy-attempt sequence.
+#[derive(Debug, Clone, PartialEq)]
+pub enum StrategyAttemptSequenceResolution<S, E> {
+    /// Sequence produced a solved result.
+    Solved {
+        solution_set: SolutionSet,
+        steps: Vec<S>,
+    },
+    /// Sequence produced discrete candidates that require caller-side verification.
+    NeedsDiscreteVerification {
+        solutions: Vec<ExprId>,
+        steps: Vec<S>,
+    },
+    /// Sequence produced a hard error and should abort solve.
+    HardError(E),
+    /// Sequence exhausted without a solved result.
+    Exhausted { last_soft_error: Option<E> },
+}
+
 /// Classify one strategy attempt into skip/solved/discrete-verify/soft/hard.
 ///
 /// This keeps strategy-loop control flow in `cas_solver_core` while leaving
@@ -153,6 +172,52 @@ where
             }
         }
     }
+}
+
+/// Execute a full ordered sequence of strategy attempts.
+///
+/// Each item is `(attempt, should_verify_discrete)` where `attempt` is the raw
+/// strategy result (`None` when the strategy did not apply).
+pub fn run_strategy_attempt_sequence<S, E, I, FSoft>(
+    attempts: I,
+    mut is_soft_error: FSoft,
+) -> StrategyAttemptSequenceResolution<S, E>
+where
+    I: IntoIterator<Item = (Option<Result<(SolutionSet, Vec<S>), E>>, bool)>,
+    FSoft: FnMut(&E) -> bool,
+{
+    let mut last_soft_error: Option<E> = None;
+
+    for (attempt, should_verify_discrete) in attempts {
+        match classify_strategy_attempt_result(attempt, should_verify_discrete, |err| {
+            is_soft_error(err)
+        }) {
+            StrategyAttemptResolution::Skip => continue,
+            StrategyAttemptResolution::Solved {
+                solution_set,
+                steps,
+            } => {
+                return StrategyAttemptSequenceResolution::Solved {
+                    solution_set,
+                    steps,
+                };
+            }
+            StrategyAttemptResolution::NeedsDiscreteVerification { solutions, steps } => {
+                return StrategyAttemptSequenceResolution::NeedsDiscreteVerification {
+                    solutions,
+                    steps,
+                };
+            }
+            StrategyAttemptResolution::SoftError(error) => {
+                last_soft_error = Some(error);
+            }
+            StrategyAttemptResolution::HardError(error) => {
+                return StrategyAttemptSequenceResolution::HardError(error);
+            }
+        }
+    }
+
+    StrategyAttemptSequenceResolution::Exhausted { last_soft_error }
 }
 
 /// Decide whether a rewritten residual should replace the current one.
@@ -719,6 +784,86 @@ mod tests {
             *error == "soft"
         });
         assert_eq!(hard, StrategyAttemptResolution::HardError("hard"));
+    }
+
+    #[test]
+    fn run_strategy_attempt_sequence_returns_first_solved() {
+        let attempts = vec![
+            (None, true),
+            (Some(Ok((SolutionSet::AllReals, vec!["done"]))), true),
+            (Some(Err("later")), true),
+        ];
+
+        let out =
+            run_strategy_attempt_sequence::<&str, &str, _, _>(attempts, |error| *error == "soft");
+        assert_eq!(
+            out,
+            StrategyAttemptSequenceResolution::Solved {
+                solution_set: SolutionSet::AllReals,
+                steps: vec!["done"],
+            }
+        );
+    }
+
+    #[test]
+    fn run_strategy_attempt_sequence_returns_discrete_verification_when_needed() {
+        let attempts = vec![(
+            Some(Ok((
+                SolutionSet::Discrete(vec![ExprId::from_raw(9)]),
+                vec!["verify"],
+            ))),
+            true,
+        )];
+
+        let out =
+            run_strategy_attempt_sequence::<&str, &str, _, _>(attempts, |error| *error == "soft");
+        assert_eq!(
+            out,
+            StrategyAttemptSequenceResolution::NeedsDiscreteVerification {
+                solutions: vec![ExprId::from_raw(9)],
+                steps: vec!["verify"],
+            }
+        );
+    }
+
+    #[test]
+    fn run_strategy_attempt_sequence_returns_hard_error_immediately() {
+        let attempts = vec![
+            (Some(Err("hard")), true),
+            (Some(Ok((SolutionSet::AllReals, vec!["never"]))), true),
+        ];
+        let out = run_strategy_attempt_sequence(attempts, |error| *error == "soft");
+        assert_eq!(out, StrategyAttemptSequenceResolution::HardError("hard"));
+    }
+
+    #[test]
+    fn run_strategy_attempt_sequence_exhausted_keeps_last_soft_error() {
+        let attempts = vec![
+            (Some(Err("soft-1")), true),
+            (None, true),
+            (Some(Err("soft-2")), true),
+        ];
+        let out = run_strategy_attempt_sequence::<(), &str, _, _>(attempts, |error| {
+            error.starts_with("soft")
+        });
+        assert_eq!(
+            out,
+            StrategyAttemptSequenceResolution::Exhausted {
+                last_soft_error: Some("soft-2")
+            }
+        );
+    }
+
+    #[test]
+    fn run_strategy_attempt_sequence_exhausted_without_soft_error() {
+        let attempts = vec![(None, true), (None, false)];
+        let out = run_strategy_attempt_sequence::<(), &str, _, _>(attempts, |_| false);
+        assert_eq!(
+            out,
+            StrategyAttemptSequenceResolution::Exhausted {
+                last_soft_error: None
+            }
+        );
     }
 
     #[test]

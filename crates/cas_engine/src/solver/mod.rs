@@ -78,6 +78,44 @@ impl SolveCtx {
     }
 }
 
+/// Convert one solver-core log-domain assumption to an engine assumption event.
+pub(crate) fn assumption_event_from_log_assumption_targets(
+    ctx: &cas_ast::Context,
+    assumption: cas_solver_core::log_domain::LogAssumption,
+    base: ExprId,
+    rhs: ExprId,
+) -> crate::assumptions::AssumptionEvent {
+    let target = cas_solver_core::log_domain::assumption_target_expr(assumption, base, rhs);
+    crate::assumptions::AssumptionEvent::positive(ctx, target)
+}
+
+/// Convert one solver-core blocked-hint record to an engine assumption event.
+pub(crate) fn assumption_event_from_log_blocked_hint(
+    ctx: &cas_ast::Context,
+    hint: cas_solver_core::solve_outcome::LogBlockedHintRecord,
+) -> crate::assumptions::AssumptionEvent {
+    match hint.assumption {
+        cas_solver_core::log_domain::LogAssumption::PositiveBase
+        | cas_solver_core::log_domain::LogAssumption::PositiveRhs => {
+            crate::assumptions::AssumptionEvent::positive(ctx, hint.expr_id)
+        }
+    }
+}
+
+/// Convert one solver-core blocked-hint record to a domain blocked hint.
+pub(crate) fn domain_blocked_hint_from_log_blocked_hint(
+    ctx: &cas_ast::Context,
+    hint: cas_solver_core::solve_outcome::LogBlockedHintRecord,
+) -> crate::domain::BlockedHint {
+    let event = assumption_event_from_log_blocked_hint(ctx, hint);
+    crate::domain::BlockedHint {
+        key: event.key,
+        expr_id: hint.expr_id,
+        rule: hint.rule.to_string(),
+        suggestion: hint.suggestion,
+    }
+}
+
 /// Options for solver operations, containing semantic context.
 ///
 /// This struct passes value domain and domain mode information to the solver,
@@ -711,5 +749,84 @@ mod tests {
             "Expected EmptySet for Neg(5), got {:?}",
             decision
         );
+    }
+
+    #[test]
+    fn test_assumption_event_from_log_assumption_targets_maps_base_and_rhs() {
+        let mut ctx = Context::new();
+        let base = ctx.var("b");
+        let rhs = ctx.var("r");
+
+        let base_event = assumption_event_from_log_assumption_targets(
+            &ctx,
+            cas_solver_core::log_domain::LogAssumption::PositiveBase,
+            base,
+            rhs,
+        );
+        let rhs_event = assumption_event_from_log_assumption_targets(
+            &ctx,
+            cas_solver_core::log_domain::LogAssumption::PositiveRhs,
+            base,
+            rhs,
+        );
+
+        assert_eq!(
+            base_event.expr_id,
+            Some(base),
+            "PositiveBase must target base expression",
+        );
+        assert_eq!(
+            rhs_event.expr_id,
+            Some(rhs),
+            "PositiveRhs must target rhs expression",
+        );
+    }
+
+    #[test]
+    fn test_assumption_event_from_log_blocked_hint_uses_hint_expression() {
+        let mut ctx = Context::new();
+        let base = ctx.var("b");
+        let other = ctx.var("o");
+        let hint = cas_solver_core::solve_outcome::LogBlockedHintRecord {
+            assumption: cas_solver_core::log_domain::LogAssumption::PositiveBase,
+            expr_id: base,
+            rule: "Take log of both sides",
+            suggestion: "use `semantics set domain assume`",
+        };
+
+        let event = assumption_event_from_log_blocked_hint(&ctx, hint);
+        let expected = crate::assumptions::AssumptionEvent::positive(&ctx, base);
+
+        assert_eq!(event.expr_id, Some(base));
+        assert_eq!(event.key, expected.key);
+
+        let rhs_hint = cas_solver_core::solve_outcome::LogBlockedHintRecord {
+            assumption: cas_solver_core::log_domain::LogAssumption::PositiveRhs,
+            expr_id: other,
+            rule: "Take log of both sides",
+            suggestion: "use `semantics set domain assume`",
+        };
+        let rhs_event = assumption_event_from_log_blocked_hint(&ctx, rhs_hint);
+        assert_eq!(rhs_event.expr_id, Some(other));
+    }
+
+    #[test]
+    fn test_domain_blocked_hint_from_log_blocked_hint_maps_payload() {
+        let mut ctx = Context::new();
+        let base = ctx.var("b");
+        let hint = cas_solver_core::solve_outcome::LogBlockedHintRecord {
+            assumption: cas_solver_core::log_domain::LogAssumption::PositiveBase,
+            expr_id: base,
+            rule: "Take log of both sides",
+            suggestion: "use `semantics set domain assume`",
+        };
+
+        let blocked = domain_blocked_hint_from_log_blocked_hint(&ctx, hint);
+        let expected_key = crate::assumptions::AssumptionEvent::positive(&ctx, base).key;
+
+        assert_eq!(blocked.key, expected_key);
+        assert_eq!(blocked.expr_id, base);
+        assert_eq!(blocked.rule, "Take log of both sides");
+        assert_eq!(blocked.suggestion, "use `semantics set domain assume`");
     }
 }

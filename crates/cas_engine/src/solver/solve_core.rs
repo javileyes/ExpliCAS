@@ -6,26 +6,18 @@
 use super::SolveDiagnostics;
 use crate::engine::Simplifier;
 use crate::error::CasError;
-use crate::solver::strategies::isolation_strategy::{
-    CollectTermsStrategy, IsolationStrategy, RationalExponentStrategy, UnwrapStrategy,
-};
-use crate::solver::strategies::quadratic::QuadraticStrategy;
-use crate::solver::strategies::rational_roots::RationalRootsStrategy;
-use crate::solver::strategies::substitution::SubstitutionStrategy;
-use crate::solver::strategy::SolverStrategy;
 use cas_ast::SolutionSet;
 use cas_solver_core::isolation_utils::contains_var;
 use cas_solver_core::solve_analysis::{
     apply_nonzero_exclusion_guards_if_any, classify_equation_var_presence,
-    classify_strategy_attempt_result, guard_solved_result_with_exclusions,
-    normalize_variable_residual_with, resolve_discrete_strategy_solutions_with,
-    simplify_equation_sides_for_var_with, EquationVarPresence, StrategyAttemptResolution,
+    guard_solved_result_with_exclusions, normalize_variable_residual_with,
+    resolve_discrete_strategy_solutions_with, run_strategy_attempt_sequence,
+    simplify_equation_sides_for_var_with, EquationVarPresence, StrategyAttemptSequenceResolution,
 };
 use cas_solver_core::solve_outcome::{
     solve_var_eliminated_outcome_pipeline_with, VarEliminatedOutcomePipelineSolved,
 };
 use cas_solver_core::step_cleanup::{cleanup_steps_by, CleanupStep};
-use cas_solver_core::strategy_kernels::execute_rational_exponent_kernel_result_pipeline_with_item_with;
 
 use super::{
     medium_step, render_expr, DepthGuard, DisplaySolveSteps, SolveDomainEnv, SolveStep,
@@ -239,10 +231,10 @@ fn solve_inner(
 
     // EARLY CHECK: Handle rational exponent equations BEFORE simplification
     // This prevents x^(3/2) from being simplified to |x|*sqrt(x) which causes loops
-    if eq.op == cas_ast::RelOp::Eq {
-        if let Some(result) = try_solve_rational_exponent(eq, var, simplifier, opts, &ctx) {
-            return guard_solved_result_with_exclusions(result, &domain_exclusions);
-        }
+    if let Some(result) =
+        super::strategies::try_rational_exponent_precheck(eq, var, simplifier, &opts, &ctx)
+    {
+        return guard_solved_result_with_exclusions(result, &domain_exclusions);
     }
 
     // 2. Simplify both sides BEFORE applying strategies
@@ -425,111 +417,51 @@ fn solve_inner(
     })?;
 
     // 3. Define strategies
-    // In a real app, these might be configured in Simplifier or passed in.
-    let strategies: Vec<Box<dyn SolverStrategy>> = vec![
-        Box::new(RationalExponentStrategy), // Must run BEFORE UnwrapStrategy to avoid loops
-        Box::new(SubstitutionStrategy),
-        Box::new(UnwrapStrategy),
-        Box::new(QuadraticStrategy),
-        Box::new(RationalRootsStrategy), // Degree ≥ 3 with numeric coefficients
-        Box::new(CollectTermsStrategy),  // Must run before IsolationStrategy
-        Box::new(IsolationStrategy),
-    ];
+    let strategies = super::strategies::default_strategies();
 
     // 4. Try strategies on the simplified equation
-    let mut last_soft_error: Option<CasError> = None;
-    for strategy in strategies {
+    let strategy_attempts = strategies.into_iter().map(|strategy| {
         let _strategy_name = strategy.name();
-        match classify_strategy_attempt_result(
+        (
             strategy.apply(&simplified_eq, var, simplifier, &opts, &ctx),
             strategy.should_verify(),
-            is_soft_strategy_error,
-        ) {
-            StrategyAttemptResolution::Skip => continue,
-            StrategyAttemptResolution::Solved {
-                solution_set,
-                steps,
-            } => {
-                return Ok((solution_set, steps));
-            }
-            StrategyAttemptResolution::NeedsDiscreteVerification { solutions, steps } => {
-                let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
-                let valid_sols = resolve_discrete_strategy_solutions_with(
-                    solutions,
-                    |solution| {
-                        let simplifier_ref = runtime_cell.borrow();
-                        cas_solver_core::solve_analysis::is_symbolic_expr(
-                            &simplifier_ref.context,
-                            solution,
-                        )
-                    },
-                    |solution| {
-                        // Verify against ORIGINAL equation, not simplified form, so
-                        // domain-invalid roots (e.g. division by zero) are rejected.
-                        let mut simplifier_ref = runtime_cell.borrow_mut();
-                        super::check::verify_solution_by_equivalence(
-                            *simplifier_ref,
-                            eq,
-                            var,
-                            solution,
-                        )
-                    },
-                );
-                return Ok((SolutionSet::Discrete(valid_sols), steps));
-            }
-            StrategyAttemptResolution::SoftError(error) => {
-                last_soft_error = Some(error);
-                continue;
-            }
-            StrategyAttemptResolution::HardError(error) => {
-                return Err(error);
+        )
+    });
+
+    match run_strategy_attempt_sequence(strategy_attempts, is_soft_strategy_error) {
+        StrategyAttemptSequenceResolution::Solved {
+            solution_set,
+            steps,
+        } => Ok((solution_set, steps)),
+        StrategyAttemptSequenceResolution::NeedsDiscreteVerification { solutions, steps } => {
+            let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
+            let valid_sols = resolve_discrete_strategy_solutions_with(
+                solutions,
+                |solution| {
+                    let simplifier_ref = runtime_cell.borrow();
+                    cas_solver_core::solve_analysis::is_symbolic_expr(
+                        &simplifier_ref.context,
+                        solution,
+                    )
+                },
+                |solution| {
+                    // Verify against ORIGINAL equation, not simplified form, so
+                    // domain-invalid roots (e.g. division by zero) are rejected.
+                    let mut simplifier_ref = runtime_cell.borrow_mut();
+                    super::check::verify_solution_by_equivalence(*simplifier_ref, eq, var, solution)
+                },
+            );
+            Ok((SolutionSet::Discrete(valid_sols), steps))
+        }
+        StrategyAttemptSequenceResolution::HardError(error) => Err(error),
+        StrategyAttemptSequenceResolution::Exhausted { last_soft_error } => {
+            if let Some(error) = last_soft_error {
+                Err(error)
+            } else {
+                Err(CasError::SolverError(
+                    "No strategy could solve this equation.".to_string(),
+                ))
             }
         }
     }
-
-    if let Some(e) = last_soft_error {
-        return Err(e);
-    }
-
-    Err(CasError::SolverError(
-        "No strategy could solve this equation.".to_string(),
-    ))
-}
-
-/// Try to solve equations with rational exponents like x^(3/2) = 8
-/// by converting to x^3 = 64 (raising both sides to power q)
-fn try_solve_rational_exponent(
-    eq: &cas_ast::Equation,
-    var: &str,
-    simplifier: &mut Simplifier,
-    opts: SolverOptions,
-    ctx: &super::SolveCtx,
-) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
-    let include_item = simplifier.collect_steps();
-    let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
-    execute_rational_exponent_kernel_result_pipeline_with_item_with(
-        || {
-            let mut simplifier_ref = runtime_cell.borrow_mut();
-            cas_solver_core::strategy_kernels::derive_rational_exponent_kernel_for_var(
-                &mut simplifier_ref.context,
-                eq,
-                var,
-            )
-        },
-        var,
-        include_item,
-        |expr| {
-            let mut simplifier_ref = runtime_cell.borrow_mut();
-            simplifier_ref.simplify(expr).0
-        },
-        |equation, solve_var| {
-            let mut simplifier_ref = runtime_cell.borrow_mut();
-            solve_with_ctx_and_options(equation, solve_var, *simplifier_ref, opts, ctx)
-        },
-        |item| medium_step(item.description, item.equation),
-        |solution| {
-            let mut simplifier_ref = runtime_cell.borrow_mut();
-            super::check::verify_solution_by_equivalence(*simplifier_ref, eq, var, solution)
-        },
-    )
 }

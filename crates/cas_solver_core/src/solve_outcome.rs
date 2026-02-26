@@ -309,12 +309,42 @@ pub enum SubIsolationRoute {
     Subtrahend,
 }
 
+/// Selected terms for subtractive isolation `(l - r) = rhs`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SubIsolationOperands {
+    pub route: SubIsolationRoute,
+    pub isolated_term: ExprId,
+    pub moved_term: ExprId,
+}
+
 /// Derive which term of `(l - r)` contains the solve variable.
 pub fn derive_sub_isolation_route(ctx: &Context, minuend: ExprId, var: &str) -> SubIsolationRoute {
     if contains_var(ctx, minuend, var) {
         SubIsolationRoute::Minuend
     } else {
         SubIsolationRoute::Subtrahend
+    }
+}
+
+/// Derive the isolated and moved terms for `(l - r) = rhs`.
+pub fn derive_sub_isolation_operands(
+    ctx: &Context,
+    left: ExprId,
+    right: ExprId,
+    var: &str,
+) -> SubIsolationOperands {
+    let route = derive_sub_isolation_route(ctx, left, var);
+    match route {
+        SubIsolationRoute::Minuend => SubIsolationOperands {
+            route,
+            isolated_term: left,
+            moved_term: right,
+        },
+        SubIsolationRoute::Subtrahend => SubIsolationOperands {
+            route,
+            isolated_term: right,
+            moved_term: left,
+        },
     }
 }
 
@@ -688,6 +718,70 @@ where
     )
 }
 
+/// Execute exponent-shortcut planning + solve pipeline and finalize against
+/// caller-owned mutable step buffer.
+///
+/// Returns `Ok(None)` when shortcut resolution is `Continue`.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_pow_exponent_shortcut_pipeline_with_item_and_finalize_with_existing_steps_with<
+    E,
+    S,
+    FReadExpr,
+    FPlanAction,
+    FBasesEquivalent,
+    FRenderExpr,
+    FSolve,
+    FStep,
+>(
+    exponent_lhs: ExprId,
+    base: ExprId,
+    rhs: ExprId,
+    original_op: RelOp,
+    var: &str,
+    base_is_zero: bool,
+    base_is_numeric: bool,
+    can_branch: bool,
+    include_item: bool,
+    existing_steps: &mut Vec<S>,
+    read_expr: FReadExpr,
+    plan_action_from_inputs: FPlanAction,
+    bases_equivalent: FBasesEquivalent,
+    render_expr: FRenderExpr,
+    solve_isolate: FSolve,
+    map_item_to_step: FStep,
+) -> Result<Option<(SolutionSet, Vec<S>)>, E>
+where
+    FReadExpr: FnMut(ExprId) -> Expr,
+    FPlanAction:
+        FnMut(ExprId, RelOp, bool, Option<ExprId>, bool, bool, bool) -> PowExponentShortcutAction,
+    FBasesEquivalent: FnMut(ExprId, ExprId) -> bool,
+    FRenderExpr: FnMut(ExprId) -> String,
+    FSolve: FnMut(ExprId, RelOp) -> Result<(SolutionSet, Vec<S>), E>,
+    FStep: FnMut(PowExponentShortcutExecutionItem) -> S,
+{
+    let solved = execute_pow_exponent_shortcut_pipeline_with_item_with(
+        exponent_lhs,
+        base,
+        rhs,
+        original_op,
+        var,
+        base_is_zero,
+        base_is_numeric,
+        can_branch,
+        include_item,
+        read_expr,
+        plan_action_from_inputs,
+        bases_equivalent,
+        render_expr,
+        solve_isolate,
+        map_item_to_step,
+    )?;
+    Ok(finalize_pow_exponent_shortcut_pipeline_with_existing_steps(
+        solved,
+        existing_steps,
+    ))
+}
+
 /// Merge a shortcut pipeline outcome with caller-owned pre-existing steps.
 ///
 /// Returns `None` when shortcut pipeline indicates `Continue`.
@@ -872,6 +966,46 @@ where
     Some(merge_solved_with_existing_steps_append(
         (solved.solution_set, solved.steps),
         existing_steps,
+    ))
+}
+
+/// Resolve and execute base-one shortcut pipeline, then finalize against
+/// caller-owned mutable step buffer.
+///
+/// Returns `None` when the base-one shortcut does not apply.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_power_base_one_shortcut_pipeline_with_item_for_pow_and_finalize_with_existing_steps_with<
+    S,
+    FRender,
+    FStep,
+>(
+    ctx: &Context,
+    base: ExprId,
+    lhs: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    include_item: bool,
+    existing_steps: &mut Vec<S>,
+    render_expr: FRender,
+    map_item_to_step: FStep,
+) -> Option<(SolutionSet, Vec<S>)>
+where
+    FRender: FnMut(&Context, ExprId) -> String,
+    FStep: FnMut(PowerBaseOneShortcutExecutionItem) -> S,
+{
+    let solved = execute_power_base_one_shortcut_pipeline_with_item_for_pow_with(
+        ctx,
+        base,
+        lhs,
+        rhs,
+        op,
+        include_item,
+        render_expr,
+        map_item_to_step,
+    )?;
+    Some(merge_solved_with_existing_steps_append(
+        (solved.solution_set, solved.steps),
+        std::mem::take(existing_steps),
     ))
 }
 
@@ -2710,6 +2844,21 @@ pub fn merge_optional_solved_with_existing_steps_append<S>(
     solved.map(|solved| merge_solved_with_existing_steps_append(solved, existing_steps))
 }
 
+/// Merge an optional solved payload by appending solved steps after
+/// caller-owned existing steps stored in-place.
+///
+/// Returns `None` without modifying `existing_steps` when `solved` is `None`.
+pub fn merge_optional_solved_with_existing_steps_append_mut<S>(
+    solved: Option<(SolutionSet, Vec<S>)>,
+    existing_steps: &mut Vec<S>,
+) -> Option<(SolutionSet, Vec<S>)> {
+    solved.map(|(solution_set, solved_steps)| {
+        let mut merged = std::mem::take(existing_steps);
+        merged.extend(solved_steps);
+        (solution_set, merged)
+    })
+}
+
 /// Execute log-isolation pipeline and prepend solved steps before caller-owned
 /// existing steps.
 #[allow(clippy::type_complexity)]
@@ -3497,6 +3646,383 @@ where
         (solved.solution_set, solved.steps),
         existing_steps,
     ))
+}
+
+/// Gated outcome after evaluating terminal log cases and post-terminal decision state.
+#[derive(Debug, Clone, PartialEq)]
+pub enum LogDecisionTerminalGate<S> {
+    Terminal {
+        solution_set: SolutionSet,
+        steps: Vec<S>,
+    },
+    NeedsComplex {
+        message: &'static str,
+        assumptions: Vec<LogAssumption>,
+    },
+    Continue {
+        assumptions: Vec<LogAssumption>,
+    },
+}
+
+/// Simplified terminal gate outcome after optional assumption side-effects have
+/// been emitted by the caller-provided visitor.
+#[derive(Debug, Clone, PartialEq)]
+pub enum LogDecisionTerminalResult<S> {
+    Terminal {
+        solution_set: SolutionSet,
+        steps: Vec<S>,
+    },
+    NeedsComplex {
+        message: &'static str,
+    },
+    Continue,
+}
+
+/// Unified decision outcome for exponent-log isolation routing:
+/// - terminal solve handled,
+/// - explicit real-domain rejection,
+/// - unsupported route solved via guarded/residual pipeline,
+/// - or continue with regular log isolation.
+#[derive(Debug, Clone, PartialEq)]
+pub enum PowExponentLogDecisionPipelineResult<S> {
+    Terminal {
+        solution_set: SolutionSet,
+        steps: Vec<S>,
+    },
+    NeedsComplex {
+        message: &'static str,
+    },
+    UnsupportedSolved {
+        solution_set: SolutionSet,
+        steps: Vec<S>,
+    },
+    Continue,
+}
+
+/// Resolve terminal log outcomes first; if not terminal, emit implied assumptions
+/// and classify whether solving can continue in the current value domain.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_log_terminal_outcome_and_assumptions_gate_with<S, FStep>(
+    ctx: &mut Context,
+    decision: &LogSolveDecision,
+    mode: DomainModeKind,
+    wildcard_scope: bool,
+    lhs: ExprId,
+    rhs: ExprId,
+    var: &str,
+    equation_after: Equation,
+    residual_suffix: &str,
+    include_item: bool,
+    existing_steps: Vec<S>,
+    map_item_to_step: FStep,
+) -> LogDecisionTerminalGate<S>
+where
+    FStep: FnMut(TermIsolationExecutionItem) -> S,
+{
+    if let Some((solution_set, steps)) =
+        execute_log_terminal_outcome_pipeline_with_item_and_merge_with_existing_steps_with(
+            ctx,
+            decision,
+            mode,
+            wildcard_scope,
+            lhs,
+            rhs,
+            var,
+            equation_after,
+            residual_suffix,
+            include_item,
+            existing_steps,
+            map_item_to_step,
+        )
+    {
+        return LogDecisionTerminalGate::Terminal {
+            solution_set,
+            steps,
+        };
+    }
+
+    let assumptions = decision_assumptions(decision).to_vec();
+
+    if let Some(msg) = log_decision_needs_complex_message(decision) {
+        return LogDecisionTerminalGate::NeedsComplex {
+            message: msg,
+            assumptions,
+        };
+    }
+    debug_assert!(
+        !log_decision_is_empty_set(decision),
+        "empty-set decision should be terminal and handled above"
+    );
+
+    LogDecisionTerminalGate::Continue { assumptions }
+}
+
+/// Mutable-step variant of terminal/assumption gate: terminal paths consume and
+/// merge caller-owned steps, while non-terminal paths preserve them untouched.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_log_terminal_outcome_and_assumptions_gate_with_existing_steps_mut<S, FStep>(
+    ctx: &mut Context,
+    decision: &LogSolveDecision,
+    mode: DomainModeKind,
+    wildcard_scope: bool,
+    lhs: ExprId,
+    rhs: ExprId,
+    var: &str,
+    equation_after: Equation,
+    residual_suffix: &str,
+    include_item: bool,
+    existing_steps: &mut Vec<S>,
+    mut map_item_to_step: FStep,
+) -> LogDecisionTerminalGate<S>
+where
+    FStep: FnMut(TermIsolationExecutionItem) -> S,
+{
+    if let Some(solved) = execute_log_terminal_outcome_pipeline_with_item(
+        ctx,
+        decision,
+        mode,
+        wildcard_scope,
+        lhs,
+        rhs,
+        var,
+        equation_after,
+        residual_suffix,
+        include_item,
+        &mut map_item_to_step,
+    ) {
+        let (solution_set, steps) = merge_solved_with_existing_steps_append(
+            (solved.solution_set, solved.steps),
+            std::mem::take(existing_steps),
+        );
+        return LogDecisionTerminalGate::Terminal {
+            solution_set,
+            steps,
+        };
+    }
+
+    let assumptions = decision_assumptions(decision).to_vec();
+    if let Some(msg) = log_decision_needs_complex_message(decision) {
+        return LogDecisionTerminalGate::NeedsComplex {
+            message: msg,
+            assumptions,
+        };
+    }
+    debug_assert!(
+        !log_decision_is_empty_set(decision),
+        "empty-set decision should be terminal and handled above"
+    );
+    LogDecisionTerminalGate::Continue { assumptions }
+}
+
+/// Mutable-step terminal/assumption gate that emits each inferred assumption
+/// through `visit_assumption` and returns a simplified terminal result enum.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_log_terminal_outcome_and_assumptions_gate_with_existing_steps_mut_and_each_assumption<
+    S,
+    FStep,
+    FAssumption,
+>(
+    ctx: &mut Context,
+    decision: &LogSolveDecision,
+    mode: DomainModeKind,
+    wildcard_scope: bool,
+    lhs: ExprId,
+    rhs: ExprId,
+    var: &str,
+    equation_after: Equation,
+    residual_suffix: &str,
+    include_item: bool,
+    existing_steps: &mut Vec<S>,
+    map_item_to_step: FStep,
+    mut visit_assumption: FAssumption,
+) -> LogDecisionTerminalResult<S>
+where
+    FStep: FnMut(TermIsolationExecutionItem) -> S,
+    FAssumption: FnMut(&Context, LogAssumption),
+{
+    match execute_log_terminal_outcome_and_assumptions_gate_with_existing_steps_mut(
+        ctx,
+        decision,
+        mode,
+        wildcard_scope,
+        lhs,
+        rhs,
+        var,
+        equation_after,
+        residual_suffix,
+        include_item,
+        existing_steps,
+        map_item_to_step,
+    ) {
+        LogDecisionTerminalGate::Terminal {
+            solution_set,
+            steps,
+        } => LogDecisionTerminalResult::Terminal {
+            solution_set,
+            steps,
+        },
+        LogDecisionTerminalGate::NeedsComplex {
+            message,
+            assumptions,
+        } => {
+            for assumption in assumptions {
+                visit_assumption(ctx, assumption);
+            }
+            LogDecisionTerminalResult::NeedsComplex { message }
+        }
+        LogDecisionTerminalGate::Continue { assumptions } => {
+            for assumption in assumptions {
+                visit_assumption(ctx, assumption);
+            }
+            LogDecisionTerminalResult::Continue
+        }
+    }
+}
+
+/// Execute exponent-log decision routing in one helper:
+/// 1) terminal/assumption gate,
+/// 2) optional unsupported guarded/residual pipeline,
+/// 3) continue flag for regular logarithmic isolation.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_pow_exponent_log_decision_pipeline_with_existing_steps_mut<
+    S,
+    FStep,
+    FAssumption,
+    FPlan,
+    FGuarded,
+    FHint,
+>(
+    ctx: &mut Context,
+    decision: &LogSolveDecision,
+    mode: DomainModeKind,
+    wildcard_scope: bool,
+    lhs: ExprId,
+    rhs: ExprId,
+    var: &str,
+    equation_after: Equation,
+    residual_suffix: &str,
+    include_terminal_item: bool,
+    existing_steps: &mut Vec<S>,
+    mut map_item_to_step: FStep,
+    mut visit_assumption: FAssumption,
+    include_unsupported_items: bool,
+    plan_unsupported_execution: FPlan,
+    try_guarded_solve: FGuarded,
+    register_blocked_hint: FHint,
+) -> PowExponentLogDecisionPipelineResult<S>
+where
+    FStep: FnMut(TermIsolationExecutionItem) -> S,
+    FAssumption: FnMut(&Context, LogAssumption),
+    FPlan: FnOnce() -> Option<PowExponentLogUnsupportedExecution>,
+    FGuarded: FnMut(&Equation) -> Option<SolutionSet>,
+    FHint: FnMut(LogBlockedHintRecord),
+{
+    match execute_log_terminal_outcome_and_assumptions_gate_with_existing_steps_mut_and_each_assumption(
+        ctx,
+        decision,
+        mode,
+        wildcard_scope,
+        lhs,
+        rhs,
+        var,
+        equation_after,
+        residual_suffix,
+        include_terminal_item,
+        existing_steps,
+        &mut map_item_to_step,
+        &mut visit_assumption,
+    ) {
+        LogDecisionTerminalResult::Terminal {
+            solution_set,
+            steps,
+        } => {
+            return PowExponentLogDecisionPipelineResult::Terminal {
+                solution_set,
+                steps,
+            };
+        }
+        LogDecisionTerminalResult::NeedsComplex { message } => {
+            return PowExponentLogDecisionPipelineResult::NeedsComplex { message };
+        }
+        LogDecisionTerminalResult::Continue => {}
+    }
+
+    if let Some((solution_set, steps)) =
+        execute_pow_exponent_log_unsupported_pipeline_from_decision_and_finalize_with_existing_steps_with(
+            include_unsupported_items,
+            existing_steps,
+            plan_unsupported_execution,
+            try_guarded_solve,
+            &mut map_item_to_step,
+            register_blocked_hint,
+        )
+    {
+        return PowExponentLogDecisionPipelineResult::UnsupportedSolved {
+            solution_set,
+            steps,
+        };
+    }
+
+    PowExponentLogDecisionPipelineResult::Continue
+}
+
+/// Execute post-terminal exponent-log routing:
+/// - map terminal gate results,
+/// - optionally run unsupported guarded/residual pipeline when continuing.
+pub fn execute_pow_exponent_log_post_terminal_pipeline_with_existing_steps_mut<
+    S,
+    FPlan,
+    FGuarded,
+    FStep,
+    FHint,
+>(
+    terminal_result: LogDecisionTerminalResult<S>,
+    include_unsupported_items: bool,
+    existing_steps: &mut Vec<S>,
+    plan_unsupported_execution: FPlan,
+    try_guarded_solve: FGuarded,
+    map_item_to_step: FStep,
+    register_blocked_hint: FHint,
+) -> PowExponentLogDecisionPipelineResult<S>
+where
+    FPlan: FnOnce() -> Option<PowExponentLogUnsupportedExecution>,
+    FGuarded: FnMut(&Equation) -> Option<SolutionSet>,
+    FStep: FnMut(TermIsolationExecutionItem) -> S,
+    FHint: FnMut(LogBlockedHintRecord),
+{
+    match terminal_result {
+        LogDecisionTerminalResult::Terminal {
+            solution_set,
+            steps,
+        } => {
+            return PowExponentLogDecisionPipelineResult::Terminal {
+                solution_set,
+                steps,
+            };
+        }
+        LogDecisionTerminalResult::NeedsComplex { message } => {
+            return PowExponentLogDecisionPipelineResult::NeedsComplex { message };
+        }
+        LogDecisionTerminalResult::Continue => {}
+    }
+
+    if let Some((solution_set, steps)) =
+        execute_pow_exponent_log_unsupported_pipeline_from_decision_and_finalize_with_existing_steps_with(
+            include_unsupported_items,
+            existing_steps,
+            plan_unsupported_execution,
+            try_guarded_solve,
+            map_item_to_step,
+            register_blocked_hint,
+        )
+    {
+        return PowExponentLogDecisionPipelineResult::UnsupportedSolved {
+            solution_set,
+            steps,
+        };
+    }
+
+    PowExponentLogDecisionPipelineResult::Continue
 }
 
 /// Build didactic payload for conditional-solution messaging.
@@ -6998,6 +7524,64 @@ mod tests {
     }
 
     #[test]
+    fn execute_power_base_one_shortcut_pipeline_with_item_for_pow_and_finalize_with_existing_steps_with_appends_existing(
+    ) {
+        let mut ctx = Context::new();
+        let one = ctx.num(1);
+        let x = ctx.var("x");
+        let lhs = ctx.add(Expr::Pow(one, x));
+        let rhs = ctx.num(2);
+        let mut existing = vec!["existing".to_string()];
+
+        let solved =
+            execute_power_base_one_shortcut_pipeline_with_item_for_pow_and_finalize_with_existing_steps_with(
+                &ctx,
+                one,
+                lhs,
+                rhs,
+                RelOp::Eq,
+                true,
+                &mut existing,
+                |_, _| "2".to_string(),
+                |item| item.description,
+            )
+            .expect("shortcut should apply");
+
+        assert!(matches!(solved.0, SolutionSet::Empty));
+        assert_eq!(solved.1.len(), 2);
+        assert_eq!(solved.1[0], "existing".to_string());
+        assert!(solved.1[1].contains("no solution"));
+        assert!(existing.is_empty());
+    }
+
+    #[test]
+    fn execute_power_base_one_shortcut_pipeline_with_item_for_pow_and_finalize_with_existing_steps_with_preserves_existing_when_not_applicable(
+    ) {
+        let mut ctx = Context::new();
+        let two = ctx.num(2);
+        let x = ctx.var("x");
+        let lhs = ctx.add(Expr::Pow(two, x));
+        let rhs = ctx.num(2);
+        let mut existing = vec!["existing".to_string()];
+
+        let solved =
+            execute_power_base_one_shortcut_pipeline_with_item_for_pow_and_finalize_with_existing_steps_with(
+                &ctx,
+                two,
+                lhs,
+                rhs,
+                RelOp::Eq,
+                true,
+                &mut existing,
+                |_, _| "2".to_string(),
+                |item| item.description,
+            );
+
+        assert!(solved.is_none());
+        assert_eq!(existing, vec!["existing".to_string()]);
+    }
+
+    #[test]
     fn abs_equality_precheck_negative_is_empty() {
         assert_eq!(
             abs_equality_precheck(NumericSign::Negative),
@@ -8291,6 +8875,515 @@ mod tests {
             solved.1,
             vec!["existing".to_string(), "no real solutions".to_string()]
         );
+    }
+
+    #[test]
+    fn execute_log_terminal_outcome_and_assumptions_gate_with_returns_terminal_when_applicable() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+
+        let gated = execute_log_terminal_outcome_and_assumptions_gate_with(
+            &mut ctx,
+            &LogSolveDecision::EmptySet("no real solutions"),
+            DomainModeKind::Generic,
+            false,
+            x,
+            y,
+            "x",
+            Equation {
+                lhs: x,
+                rhs: y,
+                op: RelOp::Eq,
+            },
+            " (residual)",
+            true,
+            vec!["existing".to_string()],
+            |item| item.description,
+        );
+
+        match gated {
+            LogDecisionTerminalGate::Terminal {
+                solution_set,
+                steps,
+            } => {
+                assert!(matches!(solution_set, SolutionSet::Empty));
+                assert_eq!(
+                    steps,
+                    vec!["existing".to_string(), "no real solutions".to_string()]
+                );
+            }
+            other => panic!("expected terminal gate, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn execute_log_terminal_outcome_and_assumptions_gate_with_continues_and_emits_assumptions() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let decision = LogSolveDecision::OkWithAssumptions(vec![
+            LogAssumption::PositiveBase,
+            LogAssumption::PositiveRhs,
+        ]);
+
+        let gated = execute_log_terminal_outcome_and_assumptions_gate_with(
+            &mut ctx,
+            &decision,
+            DomainModeKind::Generic,
+            false,
+            x,
+            y,
+            "x",
+            Equation {
+                lhs: x,
+                rhs: y,
+                op: RelOp::Eq,
+            },
+            " (residual)",
+            true,
+            vec!["existing".to_string()],
+            |item| item.description,
+        );
+
+        match gated {
+            LogDecisionTerminalGate::Continue { assumptions } => assert_eq!(
+                assumptions,
+                vec![LogAssumption::PositiveBase, LogAssumption::PositiveRhs]
+            ),
+            other => panic!("expected continue gate, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn execute_log_terminal_outcome_and_assumptions_gate_with_reports_needs_complex() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+
+        let gated = execute_log_terminal_outcome_and_assumptions_gate_with(
+            &mut ctx,
+            &LogSolveDecision::NeedsComplex("need complex"),
+            DomainModeKind::Generic,
+            false,
+            x,
+            y,
+            "x",
+            Equation {
+                lhs: x,
+                rhs: y,
+                op: RelOp::Eq,
+            },
+            " (residual)",
+            true,
+            vec!["existing".to_string()],
+            |item| item.description,
+        );
+
+        match gated {
+            LogDecisionTerminalGate::NeedsComplex {
+                message,
+                assumptions,
+            } => {
+                assert_eq!(message, "need complex");
+                assert!(assumptions.is_empty());
+            }
+            other => panic!("expected needs-complex gate, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn execute_log_terminal_outcome_and_assumptions_gate_with_existing_steps_mut_merges_terminal_and_clears_existing(
+    ) {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let mut existing = vec!["existing".to_string()];
+
+        let gated = execute_log_terminal_outcome_and_assumptions_gate_with_existing_steps_mut(
+            &mut ctx,
+            &LogSolveDecision::EmptySet("no real solutions"),
+            DomainModeKind::Generic,
+            false,
+            x,
+            y,
+            "x",
+            Equation {
+                lhs: x,
+                rhs: y,
+                op: RelOp::Eq,
+            },
+            " (residual)",
+            true,
+            &mut existing,
+            |item| item.description,
+        );
+
+        match gated {
+            LogDecisionTerminalGate::Terminal {
+                solution_set,
+                steps,
+            } => {
+                assert!(matches!(solution_set, SolutionSet::Empty));
+                assert_eq!(
+                    steps,
+                    vec!["existing".to_string(), "no real solutions".to_string()]
+                );
+            }
+            other => panic!("expected terminal gate, got {:?}", other),
+        }
+        assert!(existing.is_empty());
+    }
+
+    #[test]
+    fn execute_log_terminal_outcome_and_assumptions_gate_with_existing_steps_mut_preserves_existing_on_continue(
+    ) {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let decision = LogSolveDecision::OkWithAssumptions(vec![LogAssumption::PositiveRhs]);
+        let mut existing = vec!["existing".to_string()];
+
+        let gated = execute_log_terminal_outcome_and_assumptions_gate_with_existing_steps_mut(
+            &mut ctx,
+            &decision,
+            DomainModeKind::Generic,
+            false,
+            x,
+            y,
+            "x",
+            Equation {
+                lhs: x,
+                rhs: y,
+                op: RelOp::Eq,
+            },
+            " (residual)",
+            true,
+            &mut existing,
+            |item| item.description,
+        );
+
+        match gated {
+            LogDecisionTerminalGate::Continue { assumptions } => {
+                assert_eq!(assumptions, vec![LogAssumption::PositiveRhs]);
+            }
+            other => panic!("expected continue gate, got {:?}", other),
+        }
+        assert_eq!(existing, vec!["existing".to_string()]);
+    }
+
+    #[test]
+    fn execute_log_terminal_outcome_and_assumptions_gate_with_existing_steps_mut_and_each_assumption_emits_continue_assumptions(
+    ) {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let mut existing = vec!["existing".to_string()];
+        let mut emitted = Vec::new();
+
+        let outcome =
+            execute_log_terminal_outcome_and_assumptions_gate_with_existing_steps_mut_and_each_assumption(
+                &mut ctx,
+                &LogSolveDecision::OkWithAssumptions(vec![LogAssumption::PositiveRhs]),
+                DomainModeKind::Generic,
+                false,
+                x,
+                y,
+                "x",
+                Equation {
+                    lhs: x,
+                    rhs: y,
+                    op: RelOp::Eq,
+                },
+                " (residual)",
+                true,
+                &mut existing,
+                |item| item.description,
+                |_ctx, assumption| emitted.push(assumption),
+            );
+
+        assert!(matches!(outcome, LogDecisionTerminalResult::Continue));
+        assert_eq!(emitted, vec![LogAssumption::PositiveRhs]);
+        assert_eq!(existing, vec!["existing".to_string()]);
+    }
+
+    #[test]
+    fn execute_log_terminal_outcome_and_assumptions_gate_with_existing_steps_mut_and_each_assumption_for_terminal_skips_emission(
+    ) {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let mut existing = vec!["existing".to_string()];
+        let mut emitted = Vec::new();
+
+        let outcome =
+            execute_log_terminal_outcome_and_assumptions_gate_with_existing_steps_mut_and_each_assumption(
+                &mut ctx,
+                &LogSolveDecision::EmptySet("no real solutions"),
+                DomainModeKind::Generic,
+                false,
+                x,
+                y,
+                "x",
+                Equation {
+                    lhs: x,
+                    rhs: y,
+                    op: RelOp::Eq,
+                },
+                " (residual)",
+                true,
+                &mut existing,
+                |item| item.description,
+                |_ctx, assumption| emitted.push(assumption),
+            );
+
+        match outcome {
+            LogDecisionTerminalResult::Terminal {
+                solution_set,
+                steps,
+            } => {
+                assert!(matches!(solution_set, SolutionSet::Empty));
+                assert_eq!(
+                    steps,
+                    vec!["existing".to_string(), "no real solutions".to_string()]
+                );
+            }
+            other => panic!("expected terminal outcome, got {:?}", other),
+        }
+        assert!(emitted.is_empty());
+        assert!(existing.is_empty());
+    }
+
+    #[test]
+    fn execute_pow_exponent_log_decision_pipeline_with_existing_steps_mut_returns_terminal() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let mut existing = vec!["existing".to_string()];
+
+        let out = execute_pow_exponent_log_decision_pipeline_with_existing_steps_mut(
+            &mut ctx,
+            &LogSolveDecision::EmptySet("no real solutions"),
+            DomainModeKind::Generic,
+            false,
+            x,
+            y,
+            "x",
+            Equation {
+                lhs: x,
+                rhs: y,
+                op: RelOp::Eq,
+            },
+            " (residual)",
+            true,
+            &mut existing,
+            |item| item.description,
+            |_ctx, _assumption| panic!("assumptions should not emit on terminal empty-set"),
+            true,
+            || panic!("unsupported planning must not run on terminal route"),
+            |_equation| panic!("guarded solve must not run on terminal route"),
+            |_hint| panic!("blocked-hint registration must not run on terminal route"),
+        );
+
+        match out {
+            PowExponentLogDecisionPipelineResult::Terminal {
+                solution_set,
+                steps,
+            } => {
+                assert!(matches!(solution_set, SolutionSet::Empty));
+                assert_eq!(
+                    steps,
+                    vec!["existing".to_string(), "no real solutions".to_string()]
+                );
+            }
+            other => panic!("expected terminal result, got {:?}", other),
+        }
+        assert!(existing.is_empty());
+    }
+
+    #[test]
+    fn execute_pow_exponent_log_decision_pipeline_with_existing_steps_mut_reports_needs_complex() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let mut existing = vec!["existing".to_string()];
+        let mut seen = Vec::new();
+
+        let out = execute_pow_exponent_log_decision_pipeline_with_existing_steps_mut(
+            &mut ctx,
+            &LogSolveDecision::NeedsComplex("need complex"),
+            DomainModeKind::Generic,
+            false,
+            x,
+            y,
+            "x",
+            Equation {
+                lhs: x,
+                rhs: y,
+                op: RelOp::Eq,
+            },
+            " (residual)",
+            true,
+            &mut existing,
+            |item| item.description,
+            |_ctx, assumption| seen.push(assumption),
+            true,
+            || panic!("unsupported planning must not run for needs-complex"),
+            |_equation| panic!("guarded solve must not run for needs-complex"),
+            |_hint| panic!("blocked-hint registration must not run for needs-complex"),
+        );
+
+        match out {
+            PowExponentLogDecisionPipelineResult::NeedsComplex { message } => {
+                assert_eq!(message, "need complex");
+            }
+            other => panic!("expected needs-complex result, got {:?}", other),
+        }
+        assert!(seen.is_empty());
+        assert_eq!(existing, vec!["existing".to_string()]);
+    }
+
+    #[test]
+    fn execute_pow_exponent_log_decision_pipeline_with_existing_steps_mut_solves_unsupported() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let residual = ctx.add(Expr::Sub(x, y));
+        let mut existing = vec!["existing".to_string()];
+
+        let out = execute_pow_exponent_log_decision_pipeline_with_existing_steps_mut(
+            &mut ctx,
+            &LogSolveDecision::Unsupported(
+                "Cannot prove RHS > 0 for logarithm",
+                vec![LogAssumption::PositiveRhs],
+            ),
+            DomainModeKind::Generic,
+            false,
+            x,
+            y,
+            "x",
+            Equation {
+                lhs: x,
+                rhs: y,
+                op: RelOp::Eq,
+            },
+            " (residual)",
+            true,
+            &mut existing,
+            |item| item.description,
+            |_ctx, _assumption| {},
+            true,
+            || {
+                Some(PowExponentLogUnsupportedExecution::Residual {
+                    item: TermIsolationExecutionItem {
+                        description: "unsupported residual".to_string(),
+                        equation: Equation {
+                            lhs: x,
+                            rhs: y,
+                            op: RelOp::Eq,
+                        },
+                    },
+                    solutions: SolutionSet::Residual(residual),
+                })
+            },
+            |_equation| panic!("guarded solve must not run for residual unsupported plan"),
+            |_hint| panic!("blocked hints should be empty for residual unsupported plan"),
+        );
+
+        match out {
+            PowExponentLogDecisionPipelineResult::UnsupportedSolved {
+                solution_set,
+                steps,
+            } => {
+                assert!(matches!(solution_set, SolutionSet::Residual(_)));
+                assert_eq!(
+                    steps,
+                    vec!["existing".to_string(), "unsupported residual".to_string()]
+                );
+            }
+            other => panic!("expected unsupported-solved result, got {:?}", other),
+        }
+        assert!(existing.is_empty());
+    }
+
+    #[test]
+    fn execute_pow_exponent_log_post_terminal_pipeline_with_existing_steps_mut_forwards_terminal() {
+        let out = execute_pow_exponent_log_post_terminal_pipeline_with_existing_steps_mut::<
+            String,
+            _,
+            _,
+            _,
+            _,
+        >(
+            LogDecisionTerminalResult::Terminal {
+                solution_set: SolutionSet::Empty,
+                steps: vec!["existing".to_string(), "terminal".to_string()],
+            },
+            true,
+            &mut Vec::new(),
+            || panic!("unsupported planning must not run for terminal result"),
+            |_equation| panic!("guarded solve must not run for terminal result"),
+            |_item| panic!("step mapper must not run for terminal result"),
+            |_hint| panic!("hint registration must not run for terminal result"),
+        );
+
+        match out {
+            PowExponentLogDecisionPipelineResult::Terminal {
+                solution_set,
+                steps,
+            } => {
+                assert!(matches!(solution_set, SolutionSet::Empty));
+                assert_eq!(steps, vec!["existing".to_string(), "terminal".to_string()]);
+            }
+            other => panic!("expected terminal result, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn execute_pow_exponent_log_post_terminal_pipeline_with_existing_steps_mut_solves_unsupported()
+    {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let residual = ctx.add(Expr::Sub(x, y));
+        let mut existing = vec!["existing".to_string()];
+
+        let out = execute_pow_exponent_log_post_terminal_pipeline_with_existing_steps_mut(
+            LogDecisionTerminalResult::Continue,
+            true,
+            &mut existing,
+            || {
+                Some(PowExponentLogUnsupportedExecution::Residual {
+                    item: TermIsolationExecutionItem {
+                        description: "unsupported residual".to_string(),
+                        equation: Equation {
+                            lhs: x,
+                            rhs: y,
+                            op: RelOp::Eq,
+                        },
+                    },
+                    solutions: SolutionSet::Residual(residual),
+                })
+            },
+            |_equation| panic!("guarded solve must not run for residual unsupported plan"),
+            |item| item.description,
+            |_hint| panic!("blocked hints should be empty for residual unsupported plan"),
+        );
+
+        match out {
+            PowExponentLogDecisionPipelineResult::UnsupportedSolved {
+                solution_set,
+                steps,
+            } => {
+                assert!(matches!(solution_set, SolutionSet::Residual(_)));
+                assert_eq!(
+                    steps,
+                    vec!["existing".to_string(), "unsupported residual".to_string()]
+                );
+            }
+            other => panic!("expected unsupported-solved result, got {:?}", other),
+        }
+        assert!(existing.is_empty());
     }
 
     #[test]
@@ -10097,6 +11190,105 @@ mod tests {
     }
 
     #[test]
+    fn execute_pow_exponent_shortcut_pipeline_with_item_and_finalize_with_existing_steps_with_merges_isolated(
+    ) {
+        let mut ctx = Context::new();
+        let base = ctx.var("a");
+        let exponent_lhs = ctx.var("x");
+        let rhs = ctx.var("n");
+        let rhs_exp = ctx.var("k");
+        let mut existing = vec!["existing".to_string()];
+
+        let solved =
+            execute_pow_exponent_shortcut_pipeline_with_item_and_finalize_with_existing_steps_with(
+                exponent_lhs,
+                base,
+                rhs,
+                RelOp::Eq,
+                "x",
+                false,
+                false,
+                true,
+                true,
+                &mut existing,
+                |expr| ctx.get(expr).clone(),
+                |_base,
+                 _op,
+                 _bases_equal,
+                 _rhs_pow_base_equal,
+                 _is_zero,
+                 _is_numeric,
+                 _can_branch| {
+                    PowExponentShortcutAction::IsolateExponent {
+                        shortcut: PowExponentShortcut::EqualPowBases { rhs_exp },
+                        rhs,
+                        op: RelOp::Eq,
+                    }
+                },
+                |_lhs, _rhs| true,
+                |_expr| "render".to_string(),
+                |target_rhs, _target_op| {
+                    Ok::<_, ()>((
+                        SolutionSet::Discrete(vec![target_rhs]),
+                        vec!["substep".to_string()],
+                    ))
+                },
+                |item| item.description,
+            )
+            .expect("pipeline should solve")
+            .expect("isolated shortcut should merge");
+
+        assert!(matches!(solved.0, SolutionSet::Discrete(_)));
+        assert_eq!(solved.1.len(), 3);
+        assert!(solved.1[0].contains("equal bases imply equal exponents"));
+        assert_eq!(solved.1[1], "substep");
+        assert_eq!(solved.1[2], "existing");
+        assert!(existing.is_empty());
+    }
+
+    #[test]
+    fn execute_pow_exponent_shortcut_pipeline_with_item_and_finalize_with_existing_steps_with_preserves_steps_on_continue(
+    ) {
+        let mut ctx = Context::new();
+        let base = ctx.var("a");
+        let exponent_lhs = ctx.var("x");
+        let rhs = ctx.var("n");
+        let mut existing = vec!["existing".to_string()];
+
+        let solved =
+            execute_pow_exponent_shortcut_pipeline_with_item_and_finalize_with_existing_steps_with(
+                exponent_lhs,
+                base,
+                rhs,
+                RelOp::Eq,
+                "x",
+                false,
+                false,
+                true,
+                true,
+                &mut existing,
+                |expr| ctx.get(expr).clone(),
+                |_base,
+                 _op,
+                 _bases_equal,
+                 _rhs_pow_base_equal,
+                 _is_zero,
+                 _is_numeric,
+                 _can_branch| { PowExponentShortcutAction::Continue },
+                |_lhs, _rhs| false,
+                |_expr| "render".to_string(),
+                |_target_rhs, _target_op| {
+                    Ok::<_, ()>((SolutionSet::Empty, vec!["unexpected".to_string()]))
+                },
+                |item| item.description,
+            )
+            .expect("pipeline should solve");
+
+        assert!(solved.is_none());
+        assert_eq!(existing, vec!["existing".to_string()]);
+    }
+
+    #[test]
     fn solve_pow_base_isolation_action_with_invokes_isolate_once() {
         let mut ctx = Context::new();
         let lhs = ctx.var("x");
@@ -11169,6 +12361,27 @@ mod tests {
             vec!["old".to_string()],
         );
         assert!(none_merged.is_none());
+    }
+
+    #[test]
+    fn merge_optional_solved_with_existing_steps_append_mut_handles_some_and_none() {
+        let mut some_existing = vec!["old".to_string()];
+        let some_merged = merge_optional_solved_with_existing_steps_append_mut(
+            Some((SolutionSet::AllReals, vec!["new".to_string()])),
+            &mut some_existing,
+        )
+        .expect("some branch should merge");
+        assert_eq!(some_merged.0, SolutionSet::AllReals);
+        assert_eq!(some_merged.1, vec!["old".to_string(), "new".to_string()]);
+        assert!(some_existing.is_empty());
+
+        let mut none_existing = vec!["old".to_string()];
+        let none_merged = merge_optional_solved_with_existing_steps_append_mut(
+            None::<(SolutionSet, Vec<String>)>,
+            &mut none_existing,
+        );
+        assert!(none_merged.is_none());
+        assert_eq!(none_existing, vec!["old".to_string()]);
     }
 
     #[test]
@@ -14029,6 +15242,28 @@ mod tests {
             derive_sub_isolation_route(&ctx, one, "x"),
             SubIsolationRoute::Subtrahend
         );
+    }
+
+    #[test]
+    fn derive_sub_isolation_operands_maps_minuend_route() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let operands = derive_sub_isolation_operands(&ctx, x, one, "x");
+        assert_eq!(operands.route, SubIsolationRoute::Minuend);
+        assert_eq!(operands.isolated_term, x);
+        assert_eq!(operands.moved_term, one);
+    }
+
+    #[test]
+    fn derive_sub_isolation_operands_maps_subtrahend_route() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let operands = derive_sub_isolation_operands(&ctx, one, x, "x");
+        assert_eq!(operands.route, SubIsolationRoute::Subtrahend);
+        assert_eq!(operands.isolated_term, x);
+        assert_eq!(operands.moved_term, one);
     }
 
     #[test]

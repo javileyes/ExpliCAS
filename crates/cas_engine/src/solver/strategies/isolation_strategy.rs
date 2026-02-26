@@ -6,7 +6,7 @@ use crate::solver::strategy::SolverStrategy;
 use crate::solver::{
     medium_step, render_expr as solver_render_expr, SolveCtx, SolveStep, SolverOptions,
 };
-use cas_ast::{Equation, ExprId, SolutionSet};
+use cas_ast::{Equation, SolutionSet};
 use cas_solver_core::solve_outcome::{
     TermIsolationExecutionItem, TermIsolationRewriteExecutionItem,
 };
@@ -17,8 +17,8 @@ use cas_solver_core::strategy_kernels::{
     solve_isolation_strategy_routing_with,
 };
 use cas_solver_core::unwrap_plan::{
-    route_unwrap_entry_with_item, solve_unwrap_execution_result_pipeline_with_item,
-    LogLinearAssumptionRecord, UnwrapEntryRouting, UnwrapExecutionItem, UnwrapExecutionPlan,
+    route_unwrap_entry_with_item,
+    solve_unwrap_entry_routing_option_with_execution_pipeline_with_item,
 };
 
 pub struct IsolationStrategy;
@@ -65,39 +65,6 @@ impl SolverStrategy for IsolationStrategy {
 
 pub struct UnwrapStrategy;
 
-fn run_unwrap_execution(
-    execution: UnwrapExecutionPlan,
-    other_side: ExprId,
-    var: &str,
-    simplifier: &mut Simplifier,
-    opts: SolverOptions,
-    ctx: &SolveCtx,
-) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-    let include_item = simplifier.collect_steps();
-    let runtime_cell = std::cell::RefCell::new(simplifier);
-    solve_unwrap_execution_result_pipeline_with_item(
-        execution,
-        other_side,
-        var,
-        include_item,
-        |record: LogLinearAssumptionRecord| {
-            let simplifier_ref = runtime_cell.borrow();
-            let event = crate::assumptions::AssumptionEvent::from_log_assumption(
-                record.assumption,
-                &simplifier_ref.context,
-                record.base,
-                record.other_side,
-            );
-            ctx.note_assumption(event);
-        },
-        |equation: &Equation, solve_var: &str| {
-            let mut simplifier_ref = runtime_cell.borrow_mut();
-            solve_with_ctx_and_options(equation, solve_var, *simplifier_ref, opts, ctx)
-        },
-        |item: UnwrapExecutionItem| medium_step(item.description, item.equation),
-    )
-}
-
 impl SolverStrategy for UnwrapStrategy {
     fn name(&self) -> &str {
         "Unwrap"
@@ -129,20 +96,27 @@ impl SolverStrategy for UnwrapStrategy {
             solver_render_expr,
             |item: TermIsolationExecutionItem| medium_step(item.description, item.equation),
         );
-        let routed = routed?;
-        Some(match routed {
-            UnwrapEntryRouting::Terminal(solved_terminal) => {
-                Ok((solved_terminal.solution_set, solved_terminal.steps))
-            }
-            UnwrapEntryRouting::Execution(selected) => run_unwrap_execution(
-                selected.execution,
-                selected.other_side,
-                var,
-                simplifier,
-                *opts,
-                ctx,
-            ),
-        })
+        let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
+        solve_unwrap_entry_routing_option_with_execution_pipeline_with_item(
+            routed,
+            var,
+            include_item,
+            |record| {
+                let simplifier_ref = runtime_cell.borrow();
+                let event = crate::solver::assumption_event_from_log_assumption_targets(
+                    &simplifier_ref.context,
+                    record.assumption,
+                    record.base,
+                    record.other_side,
+                );
+                ctx.note_assumption(event);
+            },
+            |equation, solve_var| {
+                let mut simplifier_ref = runtime_cell.borrow_mut();
+                solve_with_ctx_and_options(equation, solve_var, *simplifier_ref, *opts, ctx)
+            },
+            |item| medium_step(item.description, item.equation),
+        )
     }
 
     // Note: We use the default should_verify() = true here.

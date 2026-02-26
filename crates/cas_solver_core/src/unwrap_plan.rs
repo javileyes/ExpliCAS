@@ -308,6 +308,35 @@ where
     Some(UnwrapEntryRouting::Execution(selected))
 }
 
+/// Resolve one unwrap entry routing into either:
+/// - terminal `(solution_set, steps)`, or
+/// - delegated execution solve result.
+pub fn solve_unwrap_entry_routing_with<E, S, FExecutionSolve>(
+    routing: UnwrapEntryRouting<S>,
+    mut solve_execution: FExecutionSolve,
+) -> Result<(SolutionSet, Vec<S>), E>
+where
+    FExecutionSolve: FnMut(UnwrapEquationExecution) -> Result<(SolutionSet, Vec<S>), E>,
+{
+    match routing {
+        UnwrapEntryRouting::Terminal(terminal) => Ok((terminal.solution_set, terminal.steps)),
+        UnwrapEntryRouting::Execution(execution) => solve_execution(execution),
+    }
+}
+
+/// Optional variant of `solve_unwrap_entry_routing_with` that preserves
+/// `None` when no unwrap route is available.
+pub fn solve_unwrap_entry_routing_option_with<E, S, FExecutionSolve>(
+    routing: Option<UnwrapEntryRouting<S>>,
+    solve_execution: FExecutionSolve,
+) -> Option<Result<(SolutionSet, Vec<S>), E>>
+where
+    FExecutionSolve: FnMut(UnwrapEquationExecution) -> Result<(SolutionSet, Vec<S>), E>,
+{
+    let routing = routing?;
+    Some(solve_unwrap_entry_routing_with(routing, solve_execution))
+}
+
 /// Collect didactic steps emitted by an unwrap execution in display order.
 pub fn collect_unwrap_execution_didactic_steps(
     execution: &UnwrapExecutionPlan,
@@ -494,6 +523,102 @@ where
         map_item_to_step,
     )?;
     Ok((solved.solution_set, solved.steps))
+}
+
+/// Route-aware wrapper that:
+/// 1) preserves `None` when no unwrap route exists,
+/// 2) returns terminal route payload directly,
+/// 3) executes planned unwrap route through the execution pipeline.
+pub fn solve_unwrap_entry_routing_option_with_execution_pipeline_with_item<
+    E,
+    S,
+    FAssume,
+    FSolve,
+    FStep,
+>(
+    routing: Option<UnwrapEntryRouting<S>>,
+    var: &str,
+    include_item: bool,
+    mut note_assumption: FAssume,
+    mut solve_equation: FSolve,
+    mut map_item_to_step: FStep,
+) -> Option<Result<(SolutionSet, Vec<S>), E>>
+where
+    FAssume: FnMut(LogLinearAssumptionRecord),
+    FSolve: FnMut(&Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
+    FStep: FnMut(UnwrapExecutionItem) -> S,
+{
+    solve_unwrap_entry_routing_option_with(routing, |selected| {
+        solve_unwrap_execution_result_pipeline_with_item(
+            selected.execution,
+            selected.other_side,
+            var,
+            include_item,
+            &mut note_assumption,
+            &mut solve_equation,
+            &mut map_item_to_step,
+        )
+    })
+}
+
+/// Plan/route unwrap entry and execute the selected pipeline in one helper.
+///
+/// This wraps:
+/// 1) `route_unwrap_entry_with_item`, then
+/// 2) `solve_unwrap_entry_routing_option_with_execution_pipeline_with_item`.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_unwrap_entry_pipeline_with_item<
+    E,
+    S,
+    FClassify,
+    FRender,
+    FTerminalStep,
+    FAssume,
+    FSolve,
+    FExecStep,
+>(
+    ctx: &mut Context,
+    equation: &Equation,
+    var: &str,
+    mode: DomainModeKind,
+    wildcard_scope: bool,
+    residual_suffix: &str,
+    include_item: bool,
+    mut classify_log_solve: FClassify,
+    mut render_expr: FRender,
+    map_terminal_item_to_step: FTerminalStep,
+    note_assumption: FAssume,
+    solve_equation: FSolve,
+    map_execution_item_to_step: FExecStep,
+) -> Option<Result<(SolutionSet, Vec<S>), E>>
+where
+    FClassify: FnMut(&Context, ExprId, ExprId) -> LogSolveDecision,
+    FRender: FnMut(&Context, ExprId) -> String,
+    FTerminalStep: FnMut(TermIsolationExecutionItem) -> S,
+    FAssume: FnMut(LogLinearAssumptionRecord),
+    FSolve: FnMut(&Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
+    FExecStep: FnMut(UnwrapExecutionItem) -> S,
+{
+    let routing = route_unwrap_entry_with_item(
+        ctx,
+        equation,
+        var,
+        mode,
+        wildcard_scope,
+        residual_suffix,
+        include_item,
+        |core_ctx, base, other_side| classify_log_solve(core_ctx, base, other_side),
+        |core_ctx, expr| render_expr(core_ctx, expr),
+        map_terminal_item_to_step,
+    );
+    solve_unwrap_entry_routing_option_with_execution_pipeline_with_item(
+        routing,
+        var,
+        include_item,
+        note_assumption,
+        solve_equation,
+        map_execution_item_to_step,
+    )
 }
 
 /// Plan unwrap rewrite for a target expression (`Function`/`Pow`).
@@ -914,6 +1039,216 @@ mod tests {
             }
             other => panic!("expected execution route, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn solve_unwrap_entry_routing_with_returns_terminal_payload() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let routing = UnwrapEntryRouting::Terminal(SingleSideExponentialTerminalSolved {
+            solution_set: SolutionSet::Discrete(vec![x]),
+            steps: vec!["terminal".to_string()],
+        });
+
+        let solved = solve_unwrap_entry_routing_with(
+            routing,
+            |_execution| -> Result<(SolutionSet, Vec<String>), ()> {
+                unreachable!("execution solver must not run for terminal routing")
+            },
+        )
+        .expect("terminal routing should resolve");
+
+        assert!(matches!(solved.0, SolutionSet::Discrete(_)));
+        assert_eq!(solved.1, vec!["terminal".to_string()]);
+    }
+
+    #[test]
+    fn solve_unwrap_entry_routing_option_with_runs_execution_solver() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let execution = UnwrapExecutionPlan {
+            equation: Equation {
+                lhs: x,
+                rhs: y,
+                op: RelOp::Eq,
+            },
+            description: "unwrap".to_string(),
+            assumptions: vec![],
+            log_linear_base: None,
+            items: vec![],
+        };
+
+        let routed = Some(UnwrapEntryRouting::Execution(UnwrapEquationExecution {
+            execution,
+            other_side: y,
+        }));
+
+        let solved = solve_unwrap_entry_routing_option_with(routed, |selected| {
+            Ok::<_, ()>((
+                SolutionSet::Discrete(vec![selected.other_side]),
+                vec!["exec".to_string()],
+            ))
+        })
+        .expect("routing should exist")
+        .expect("execution solve should succeed");
+
+        assert!(matches!(solved.0, SolutionSet::Discrete(_)));
+        assert_eq!(solved.1, vec!["exec".to_string()]);
+
+        let none_result =
+            solve_unwrap_entry_routing_option_with::<(), String, _>(None, |_selected| {
+                Ok((SolutionSet::Empty, vec![]))
+            });
+        assert!(none_result.is_none());
+    }
+
+    #[test]
+    fn solve_unwrap_entry_routing_option_with_execution_pipeline_with_item_returns_terminal_directly(
+    ) {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let routed = Some(UnwrapEntryRouting::Terminal(
+            SingleSideExponentialTerminalSolved {
+                solution_set: SolutionSet::Discrete(vec![x]),
+                steps: vec!["terminal".to_string()],
+            },
+        ));
+
+        let solved = solve_unwrap_entry_routing_option_with_execution_pipeline_with_item(
+            routed,
+            "x",
+            true,
+            |_record| panic!("assumption callback must not run for terminal routing"),
+            |_equation, _var| -> Result<(SolutionSet, Vec<String>), ()> {
+                panic!("equation solver must not run for terminal routing")
+            },
+            |_item| -> String { panic!("item mapper must not run for terminal routing") },
+        )
+        .expect("routing should exist")
+        .expect("terminal route should resolve");
+
+        assert!(matches!(solved.0, SolutionSet::Discrete(_)));
+        assert_eq!(solved.1, vec!["terminal".to_string()]);
+    }
+
+    #[test]
+    fn solve_unwrap_entry_routing_option_with_execution_pipeline_with_item_runs_execution_path() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let execution = UnwrapExecutionPlan {
+            equation: Equation {
+                lhs: x,
+                rhs: y,
+                op: RelOp::Eq,
+            },
+            description: "unwrap".to_string(),
+            assumptions: vec![LogAssumption::PositiveBase],
+            log_linear_base: Some(x),
+            items: vec![UnwrapExecutionItem {
+                equation: Equation {
+                    lhs: x,
+                    rhs: y,
+                    op: RelOp::Eq,
+                },
+                description: "unwrap-step".to_string(),
+            }],
+        };
+        let routed = Some(UnwrapEntryRouting::Execution(UnwrapEquationExecution {
+            execution,
+            other_side: y,
+        }));
+
+        let mut noted = Vec::new();
+        let solved = solve_unwrap_entry_routing_option_with_execution_pipeline_with_item(
+            routed,
+            "x",
+            true,
+            |record| noted.push(record),
+            |_equation, _var| {
+                Ok::<_, ()>((SolutionSet::Discrete(vec![x]), vec!["sub".to_string()]))
+            },
+            |item| item.description,
+        )
+        .expect("routing should exist")
+        .expect("execution route should solve");
+
+        assert!(matches!(solved.0, SolutionSet::Discrete(_)));
+        assert_eq!(solved.1, vec!["unwrap-step".to_string(), "sub".to_string()]);
+        assert_eq!(noted.len(), 1);
+        assert_eq!(noted[0].assumption, LogAssumption::PositiveBase);
+    }
+
+    #[test]
+    fn execute_unwrap_entry_pipeline_with_item_returns_none_without_variable_presence() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let equation = Equation {
+            lhs: x,
+            rhs: y,
+            op: RelOp::Eq,
+        };
+
+        let solved = execute_unwrap_entry_pipeline_with_item(
+            &mut ctx,
+            &equation,
+            "z",
+            DomainModeKind::Generic,
+            false,
+            " (residual)",
+            true,
+            |_, _, _| LogSolveDecision::Ok,
+            |_, _| "render".to_string(),
+            |item| item.description,
+            |_record| panic!("assumption callback must not run when routing is None"),
+            |_equation, _var| -> Result<(SolutionSet, Vec<String>), ()> {
+                panic!("solver callback must not run when routing is None")
+            },
+            |item| item.description,
+        );
+
+        assert!(solved.is_none());
+    }
+
+    #[test]
+    fn execute_unwrap_entry_pipeline_with_item_runs_execution_path() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let lhs = ctx.call("ln", vec![x]);
+        let equation = Equation {
+            lhs,
+            rhs: y,
+            op: RelOp::Eq,
+        };
+
+        let mut noted = Vec::new();
+        let solved = execute_unwrap_entry_pipeline_with_item(
+            &mut ctx,
+            &equation,
+            "x",
+            DomainModeKind::Generic,
+            false,
+            " (residual)",
+            true,
+            |_, _, _| LogSolveDecision::Ok,
+            |_, _| "render".to_string(),
+            |item| item.description,
+            |record| noted.push(record),
+            |_equation, _var| {
+                Ok::<_, ()>((SolutionSet::Discrete(vec![x]), vec!["sub".to_string()]))
+            },
+            |item| item.description,
+        )
+        .expect("routing should exist")
+        .expect("execution should solve");
+
+        assert!(matches!(solved.0, SolutionSet::Discrete(_)));
+        assert!(solved.1.len() >= 2);
+        assert_eq!(solved.1.last().cloned(), Some("sub".to_string()));
+        assert!(noted.is_empty());
     }
 
     #[test]

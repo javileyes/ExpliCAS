@@ -6,7 +6,7 @@ use cas_ast::{ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::{is_known_negative, should_try_reciprocal_solve};
 use cas_solver_core::solve_outcome::{
     derive_add_isolation_operands, derive_div_isolation_route, derive_mul_isolation_operands,
-    derive_sub_isolation_route,
+    derive_sub_isolation_operands,
     execute_division_denominator_plan_with_optional_items_and_merge_with_existing_steps_with,
     execute_division_denominator_sign_split_pipeline_with_optional_items,
     execute_isolated_denominator_sign_split_pipeline_with_optional_items,
@@ -14,13 +14,14 @@ use cas_solver_core::solve_outcome::{
     execute_term_isolation_plan_with_and_merge_with_existing_steps_with,
     finalize_division_denominator_sign_split_solved_sets,
     finalize_isolated_denominator_sign_split_solved_sets,
-    finalize_product_zero_inequality_solved_sets, merge_optional_solved_with_existing_steps_append,
-    mul_rhs_contains_variable, plan_add_operand_isolation_step_with,
-    plan_div_denominator_isolation_with_zero_rhs_guard, plan_div_numerator_isolation_step_with,
-    plan_division_denominator, plan_division_denominator_sign_split_if_applicable,
+    finalize_product_zero_inequality_solved_sets,
+    merge_optional_solved_with_existing_steps_append_mut, mul_rhs_contains_variable,
+    plan_add_operand_isolation_step_with, plan_div_denominator_isolation_with_zero_rhs_guard,
+    plan_div_numerator_isolation_step_with, plan_division_denominator,
+    plan_division_denominator_sign_split_if_applicable,
     plan_isolated_denominator_sign_split_if_applicable, plan_mul_factor_isolation_step_with,
     plan_product_zero_inequality_split_if_applicable, plan_sub_isolation_step_with,
-    AddIsolationRoute, DivDenominatorIsolationRoute, DivIsolationRoute, SubIsolationRoute,
+    AddIsolationRoute, DivDenominatorIsolationRoute, DivIsolationRoute,
 };
 
 use super::isolate;
@@ -36,7 +37,7 @@ pub(super) fn isolate_add(
     var: &str,
     simplifier: &mut Simplifier,
     opts: SolverOptions,
-    steps: Vec<SolveStep>,
+    mut steps: Vec<SolveStep>,
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     // PEDAGOGICAL IMPROVEMENT: If BOTH addends contain the variable,
@@ -44,9 +45,9 @@ pub(super) fn isolate_add(
     let add_operands = derive_add_isolation_operands(&simplifier.context, l, r, var);
 
     if matches!(add_operands.route, AddIsolationRoute::BothOperands) {
-        if let Some(merged) = merge_optional_solved_with_existing_steps_append(
+        if let Some(merged) = merge_optional_solved_with_existing_steps_append_mut(
             crate::solver::linear_collect::try_linear_collect(lhs, rhs, var, simplifier),
-            steps.clone(),
+            &mut steps,
         ) {
             return Ok(merged);
         }
@@ -103,14 +104,8 @@ pub(super) fn isolate_sub(
     steps: Vec<SolveStep>,
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-    let sub_moved = if matches!(
-        derive_sub_isolation_route(&simplifier.context, l, var),
-        SubIsolationRoute::Minuend
-    ) {
-        r
-    } else {
-        l
-    };
+    let sub_operands = derive_sub_isolation_operands(&simplifier.context, l, r, var);
+    let sub_moved = sub_operands.moved_term;
     let sub_moved_desc = solver_render_expr(&simplifier.context, sub_moved);
     let include_item = simplifier.collect_steps();
     let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
@@ -161,7 +156,7 @@ pub(super) fn isolate_mul(
     var: &str,
     simplifier: &mut Simplifier,
     opts: SolverOptions,
-    steps: Vec<SolveStep>,
+    mut steps: Vec<SolveStep>,
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     // CRITICAL: For inequalities with products, need sign analysis
@@ -191,9 +186,9 @@ pub(super) fn isolate_mul(
 
     // Default behavior: divide by one factor
     if mul_rhs_contains_variable(&simplifier.context, rhs, var) {
-        if let Some(merged) = merge_optional_solved_with_existing_steps_append(
+        if let Some(merged) = merge_optional_solved_with_existing_steps_append_mut(
             crate::solver::linear_collect::try_linear_collect_v2(lhs, rhs, var, simplifier),
-            steps.clone(),
+            &mut steps,
         ) {
             return Ok(merged);
         }
@@ -251,7 +246,7 @@ pub(super) fn isolate_div(
     var: &str,
     simplifier: &mut Simplifier,
     opts: SolverOptions,
-    steps: Vec<SolveStep>,
+    mut steps: Vec<SolveStep>,
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     let div_route = derive_div_isolation_route(&simplifier.context, l, var);
@@ -356,9 +351,9 @@ pub(super) fn isolate_div(
 
         // PEDAGOGICAL IMPROVEMENT: If LHS is 1/var, use reciprocal solve
         if should_try_reciprocal_solve(&simplifier.context, lhs, &op, var) {
-            if let Some(merged) = merge_optional_solved_with_existing_steps_append(
+            if let Some(merged) = merge_optional_solved_with_existing_steps_append_mut(
                 crate::solver::reciprocal_solve::try_reciprocal_solve(lhs, rhs, var, simplifier),
-                steps.clone(),
+                &mut steps,
             ) {
                 return Ok(merged);
             }

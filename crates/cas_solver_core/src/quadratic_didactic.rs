@@ -398,6 +398,42 @@ where
     })
 }
 
+/// Solve and finalize factorized zero-product execution, returning a plain
+/// `(SolutionSet, steps)` tuple for engine strategy callers.
+pub fn solve_factorized_zero_product_execution_result_pipeline_with_items<
+    E,
+    TStep,
+    FSolveFactor,
+    FEntryStep,
+    FFactorStep,
+    FFinalize,
+>(
+    execution: &FactorizedZeroProductExecutionPlan,
+    include_items: bool,
+    solve_factor: FSolveFactor,
+    map_entry_item_to_step: FEntryStep,
+    map_factor_item_to_step: FFactorStep,
+    finalize: FFinalize,
+) -> Result<(SolutionSet, Vec<TStep>), E>
+where
+    FSolveFactor: FnMut(&Equation) -> Result<(SolutionSet, Vec<TStep>), E>,
+    FEntryStep: FnMut(QuadraticExecutionItem) -> TStep,
+    FFactorStep: FnMut(ZeroProductFactorExecutionItem) -> TStep,
+    FFinalize: FnOnce(
+        FactorizedZeroProductExecutionSolved<(SolutionSet, Vec<TStep>), TStep>,
+    ) -> FactorizedZeroProductStrategySolved<TStep>,
+{
+    let solved = solve_factorized_zero_product_execution_pipeline_with_items(
+        execution,
+        include_items,
+        solve_factor,
+        map_entry_item_to_step,
+        map_factor_item_to_step,
+    )?;
+    let finalized = finalize(solved);
+    Ok((finalized.solution_set, finalized.steps))
+}
+
 /// Build and solve factorized zero-product execution with optional didactic
 /// payload enabled by `include_items`.
 #[allow(clippy::too_many_arguments)]
@@ -1063,6 +1099,53 @@ where
     )
 }
 
+/// Execute quadratic main/substep pipeline while temporarily overriding caller
+/// step-collection mode during substep simplification.
+///
+/// This preserves engine behavior where quadratic substep simplifications do
+/// not pollute the outer timeline when didactic items are enabled.
+pub fn execute_quadratic_main_with_substeps_pipeline_with_optional_items_and_collection_guard<
+    S,
+    SS,
+    FSimplify,
+    FMain,
+    FSub,
+    FGetCollect,
+    FSetCollect,
+>(
+    execution: &mut QuadraticMainWithSubstepsExecution,
+    include_items: bool,
+    mut get_collecting: FGetCollect,
+    mut set_collecting: FSetCollect,
+    simplify_expr: FSimplify,
+    map_main_item_to_step: FMain,
+    map_substep_item_to_step: FSub,
+) -> Vec<S>
+where
+    SS: Clone,
+    FSimplify: FnMut(ExprId) -> ExprId,
+    FMain: FnMut(QuadraticExecutionItem, Vec<SS>) -> S,
+    FSub: FnMut(QuadraticSubstepExecutionItem) -> SS,
+    FGetCollect: FnMut() -> bool,
+    FSetCollect: FnMut(bool),
+{
+    if !include_items {
+        return Vec::new();
+    }
+
+    let was_collecting = get_collecting();
+    set_collecting(false);
+    let steps = solve_quadratic_main_with_substeps_execution_pipeline_with_optional_items_and_simplification(
+        execution,
+        true,
+        simplify_expr,
+        map_main_item_to_step,
+        map_substep_item_to_step,
+    );
+    set_collecting(was_collecting);
+    steps
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1362,6 +1445,81 @@ mod tests {
                 |_substep| -> () { panic!("sub mapper must not run when disabled") },
             );
 
+        assert!(mapped.is_empty());
+    }
+
+    #[test]
+    fn execute_quadratic_main_with_substeps_pipeline_with_optional_items_and_collection_guard_restores_collection_mode(
+    ) {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let eq = Equation {
+            lhs: x,
+            rhs: ctx.num(0),
+            op: RelOp::Eq,
+        };
+        let mut execution = build_quadratic_main_with_substeps_execution_with_optional_items(
+            &mut ctx,
+            "x",
+            one,
+            one,
+            one,
+            true,
+            eq,
+            true,
+            |_, id| format!("{:?}", id),
+        );
+        let collecting = std::cell::Cell::new(true);
+        let transitions = std::cell::RefCell::new(Vec::new());
+
+        let mapped =
+            execute_quadratic_main_with_substeps_pipeline_with_optional_items_and_collection_guard(
+                &mut execution,
+                true,
+                || {
+                    transitions.borrow_mut().push("get".to_string());
+                    collecting.get()
+                },
+                |enabled| {
+                    transitions.borrow_mut().push(format!("set:{enabled}"));
+                    collecting.set(enabled);
+                },
+                |id| id,
+                |main, substeps: Vec<String>| (main.description, substeps.len()),
+                |substep| substep.description,
+            );
+
+        assert_eq!(mapped.len(), 1);
+        assert_eq!(mapped[0].0, QUADRATIC_FORMULA_MAIN_STEP_DESCRIPTION);
+        assert!(mapped[0].1 > 0);
+        assert_eq!(
+            transitions.into_inner(),
+            vec![
+                "get".to_string(),
+                "set:false".to_string(),
+                "set:true".to_string()
+            ]
+        );
+        assert!(collecting.get());
+    }
+
+    #[test]
+    fn execute_quadratic_main_with_substeps_pipeline_with_optional_items_and_collection_guard_omits_when_disabled(
+    ) {
+        let mut execution = materialize_quadratic_main_with_substeps_execution();
+        let mapped =
+            execute_quadratic_main_with_substeps_pipeline_with_optional_items_and_collection_guard(
+                &mut execution,
+                false,
+                || -> bool { panic!("get_collecting must not run when disabled") },
+                |_enabled| panic!("set_collecting must not run when disabled"),
+                |_id| -> ExprId { panic!("simplifier must not run when disabled") },
+                |_main, _substeps: Vec<()>| -> () {
+                    panic!("main mapper must not run when disabled")
+                },
+                |_substep| -> () { panic!("sub mapper must not run when disabled") },
+            );
         assert!(mapped.is_empty());
     }
 
@@ -1997,6 +2155,71 @@ mod tests {
 
         assert!(matches!(solved.solution_set, SolutionSet::AllReals));
         assert!(solved.steps.is_empty());
+    }
+
+    #[test]
+    fn solve_factorized_zero_product_execution_result_pipeline_with_items_returns_plain_tuple() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let x_minus_one = ctx.add(Expr::Sub(x, one));
+        let factored_expr = ctx.add(Expr::Mul(x, x_minus_one));
+        let zero = ctx.num(0);
+        let execution = build_factorized_zero_product_execution_with(
+            &ctx,
+            factored_expr,
+            &[x, x_minus_one],
+            "x",
+            zero,
+            |_| "f".to_string(),
+        );
+
+        let solved = solve_factorized_zero_product_execution_result_pipeline_with_items(
+            &execution,
+            true,
+            |factor_equation| {
+                Ok::<_, ()>((
+                    SolutionSet::Discrete(vec![factor_equation.lhs]),
+                    vec![format!("substep {}", factor_equation.lhs)],
+                ))
+            },
+            |item| item.description,
+            |item| item.description,
+            |solved| {
+                finalize_factorized_zero_product_strategy_solved(&ctx, solved, factored_expr, zero)
+            },
+        )
+        .expect("result pipeline should solve");
+
+        assert!(matches!(solved.0, SolutionSet::Discrete(_)));
+        assert_eq!(solved.1.len(), 5);
+        assert_eq!(solved.1[0], "Factorized equation: f = 0");
+        assert_eq!(solved.1[1], "Solve factor: f = 0");
+        assert_eq!(solved.1[2], "Solve factor: f = 0");
+        assert!(solved.1[3].starts_with("substep "));
+        assert!(solved.1[4].starts_with("substep "));
+    }
+
+    #[test]
+    fn solve_factorized_zero_product_execution_result_pipeline_with_items_omits_items_when_disabled(
+    ) {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let zero = ctx.num(0);
+        let execution = materialize_factorized_zero_product_execution(&ctx, x, &[x], "x", zero);
+
+        let solved = solve_factorized_zero_product_execution_result_pipeline_with_items(
+            &execution,
+            false,
+            |_factor_equation| Ok::<_, ()>((SolutionSet::Discrete(vec![x]), vec![])),
+            |_item| -> u8 { panic!("entry mapper must not run when items are disabled") },
+            |_item| -> u8 { panic!("factor mapper must not run when items are disabled") },
+            |solved| finalize_factorized_zero_product_strategy_solved(&ctx, solved, x, zero),
+        )
+        .expect("result pipeline should solve");
+
+        assert!(matches!(solved.0, SolutionSet::Discrete(_)));
+        assert!(solved.1.is_empty());
     }
 
     #[test]

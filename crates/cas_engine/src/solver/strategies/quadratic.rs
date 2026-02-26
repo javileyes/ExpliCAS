@@ -5,19 +5,19 @@ use crate::solver::strategy::SolverStrategy;
 use crate::solver::{medium_step, render_expr, SolveCtx, SolveStep, SolveSubStep, SolverOptions};
 use cas_ast::{Equation, Expr, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::{is_numeric_zero, split_zero_product_factors};
+use cas_solver_core::quadratic_coeffs::extract_simplified_nonzero_quadratic_coefficients_with;
 use cas_solver_core::quadratic_didactic::{
     build_factorized_zero_product_execution_with_optional_items,
     build_quadratic_main_with_substeps_execution_with_optional_items,
+    execute_quadratic_main_with_substeps_pipeline_with_optional_items_and_collection_guard,
     finalize_factorized_zero_product_strategy_solved,
-    solve_factorized_zero_product_execution_pipeline_with_items,
-    solve_quadratic_main_with_substeps_execution_pipeline_with_optional_items_and_simplification,
+    solve_factorized_zero_product_execution_result_pipeline_with_items,
 };
 use cas_solver_core::quadratic_formula::{
-    discriminant, discriminant_expr, roots_from_a_b_and_sqrt, roots_from_a_b_delta, sqrt_expr,
+    build_quadratic_coefficient_solve_plan, roots_from_a_b_and_simplified_delta,
+    solve_quadratic_coefficient_solve_plan_with, QuadraticCoefficientSolvePlanError,
 };
-use cas_solver_core::solution_set::{get_number, order_pair_by_value, quadratic_numeric_solution};
-use num_rational::BigRational;
-use num_traits::Zero;
+use cas_solver_core::solution_set::{order_pair_by_value, quadratic_numeric_solution};
 
 pub struct QuadraticStrategy;
 
@@ -54,37 +54,43 @@ impl SolverStrategy for QuadraticStrategy {
             if eq.op == RelOp::Eq {
                 let include_items = simplifier.collect_steps();
                 let residual_expr = sim_poly_expr;
-                let factorized_execution =
+                let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
+                let factorized_execution = {
+                    let simplifier_ref = runtime_cell.borrow();
                     build_factorized_zero_product_execution_with_optional_items(
-                        &simplifier.context,
+                        &simplifier_ref.context,
                         sim_poly_expr,
                         &factors,
                         var,
                         zero,
                         include_items,
-                        |expr| render_expr(&simplifier.context, expr),
-                    );
-                let solved_factorized =
-                    match solve_factorized_zero_product_execution_pipeline_with_items(
+                        |expr| render_expr(&simplifier_ref.context, expr),
+                    )
+                };
+                let solved =
+                    match solve_factorized_zero_product_execution_result_pipeline_with_items(
                         &factorized_execution,
                         include_items,
                         |equation| {
-                            solve_with_ctx_and_options(equation, var, simplifier, *opts, ctx)
+                            let mut simplifier_ref = runtime_cell.borrow_mut();
+                            solve_with_ctx_and_options(equation, var, *simplifier_ref, *opts, ctx)
                         },
                         |item| medium_step(item.description().to_string(), item.equation),
                         |item| medium_step(item.description, item.equation),
+                        |solved_factorized| {
+                            let simplifier_ref = runtime_cell.borrow();
+                            finalize_factorized_zero_product_strategy_solved(
+                                &simplifier_ref.context,
+                                solved_factorized,
+                                residual_expr,
+                                zero,
+                            )
+                        },
                     ) {
                         Ok(solved) => solved,
                         Err(e) => return Some(Err(e)),
                     };
-                let finalized = finalize_factorized_zero_product_strategy_solved(
-                    &simplifier.context,
-                    solved_factorized,
-                    residual_expr,
-                    zero,
-                );
-                steps.extend(finalized.steps);
-                return Some(Ok((finalized.solution_set, steps)));
+                return Some(Ok(solved));
             }
         }
 
@@ -92,24 +98,31 @@ impl SolverStrategy for QuadraticStrategy {
         // QuadraticStrategy relies on A*x^2 + B*x + C structure (Add/Sub chain)
         let expanded_expr = crate::expand::expand(&mut simplifier.context, sim_poly_expr);
 
-        if let Some((a, b, c)) = cas_solver_core::quadratic_coeffs::extract_quadratic_coefficients(
-            &mut simplifier.context,
-            expanded_expr,
-            var,
-        ) {
-            // Check if it is actually quadratic (a != 0)
-            // We need to simplify 'a' to check if it's zero.
-            let (sim_a, _) = simplifier.simplify(a);
-            let (sim_b, _) = simplifier.simplify(b);
-            let (sim_c, _) = simplifier.simplify(c);
+        let coeffs = {
+            let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
+            extract_simplified_nonzero_quadratic_coefficients_with(
+                expanded_expr,
+                var,
+                |poly, name| {
+                    let mut simplifier_ref = runtime_cell.borrow_mut();
+                    cas_solver_core::quadratic_coeffs::extract_quadratic_coefficients(
+                        &mut simplifier_ref.context,
+                        poly,
+                        name,
+                    )
+                },
+                |expr| {
+                    let mut simplifier_ref = runtime_cell.borrow_mut();
+                    simplifier_ref.simplify(expr).0
+                },
+                |expr| {
+                    let simplifier_ref = runtime_cell.borrow();
+                    is_numeric_zero(&simplifier_ref.context, expr)
+                },
+            )
+        };
 
-            // If a is zero, it's linear, not quadratic.
-            // But if 'a' is symbolic, we might assume it's non-zero or return a conditional solution?
-            // For now, if 'a' simplifies to explicit 0, we reject.
-            if is_numeric_zero(&simplifier.context, sim_a) {
-                return None;
-            }
-
+        if let Some((sim_a, sim_b, sim_c)) = coeffs {
             let include_items = simplifier.collect_steps();
             let is_real_only = matches!(opts.value_domain, crate::semantics::ValueDomain::RealOnly);
             let main_equation = Equation {
@@ -128,122 +141,91 @@ impl SolverStrategy for QuadraticStrategy {
                 include_items,
                 render_expr,
             );
-            let was_collecting = simplifier.collect_steps();
-            if include_items {
-                // Simplify substep equations with step collection disabled to avoid polluting timeline.
-                simplifier.set_collect_steps(false);
-            }
-            let didactic_steps =
-                solve_quadratic_main_with_substeps_execution_pipeline_with_optional_items_and_simplification(
-                    &mut execution,
-                    include_items,
-                    |expr| simplifier.simplify(expr).0,
-                    |item, substeps| {
-                        medium_step(item.description().to_string(), item.equation)
-                            .with_substeps(substeps)
-                    },
-                    |item| SolveSubStep {
-                        description: item.description,
-                        equation_after: item.equation,
-                        importance: crate::step::ImportanceLevel::Low,
-                    },
-                );
-            if include_items {
-                simplifier.set_collect_steps(was_collecting);
-            }
+            let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
+            let didactic_steps = execute_quadratic_main_with_substeps_pipeline_with_optional_items_and_collection_guard(
+                &mut execution,
+                include_items,
+                || {
+                    let simplifier_ref = runtime_cell.borrow();
+                    simplifier_ref.collect_steps()
+                },
+                |enabled| {
+                    let mut simplifier_ref = runtime_cell.borrow_mut();
+                    simplifier_ref.set_collect_steps(enabled);
+                },
+                |expr| {
+                    let mut simplifier_ref = runtime_cell.borrow_mut();
+                    simplifier_ref.simplify(expr).0
+                },
+                |item, substeps| {
+                    medium_step(item.description().to_string(), item.equation).with_substeps(substeps)
+                },
+                |item| SolveSubStep {
+                    description: item.description,
+                    equation_after: item.equation,
+                    importance: crate::step::ImportanceLevel::Low,
+                },
+            );
             steps.extend(didactic_steps);
 
-            // Check if coefficients are all numeric to support inequalities
-            let a_num = get_number(&simplifier.context, sim_a);
-            let b_num = get_number(&simplifier.context, sim_b);
-            let c_num = get_number(&simplifier.context, sim_c);
-
-            if let (Some(a_val), Some(b_val), Some(c_val)) = (a_num, b_num, c_num) {
-                // Use numeric logic for better inequality support
-                // delta = b^2 - 4ac
-                let delta = discriminant(&a_val, &b_val, &c_val);
-
-                // We need to return solutions in terms of Expr
-                // x = (-b +/- sqrt(delta)) / 2a
-
-                let delta_expr = simplifier.context.add(Expr::Number(delta.clone()));
-                let (sol1, sol2) =
-                    roots_from_a_b_delta(&mut simplifier.context, sim_a, sim_b, delta_expr);
-
-                let (sim_sol1, _) = simplifier.simplify(sol1);
-                let (sim_sol2, _) = simplifier.simplify(sol2);
-
-                // Ensure r1 <= r2
-                let (r1, r2) = order_pair_by_value(&simplifier.context, sim_sol1, sim_sol2);
-
-                // Determine parabola direction
-                let opens_up = a_val > BigRational::zero();
-
-                let result = quadratic_numeric_solution(
-                    &mut simplifier.context,
-                    eq.op.clone(),
-                    &delta,
-                    opens_up,
-                    r1,
-                    r2,
-                );
-
-                // Emit scope for display transforms (sqrt display in quadratic context)
-                ctx.emit_scope(cas_formatter::display_transforms::ScopeTag::Rule(
-                    "QuadraticFormula",
-                ));
-
-                return Some(Ok((result, steps)));
-            }
-
-            // Symbolic coefficients
-
-            // delta = b^2 - 4ac
-            let delta_raw = discriminant_expr(&mut simplifier.context, sim_a, sim_b, sim_c);
-
-            // POST-SIMPLIFY: Expand then simplify discriminant for cleaner form
-            // This converts "16 + 4*(y - 4)" → "4*y"
-            let delta_expanded = crate::expand::expand(&mut simplifier.context, delta_raw);
-            let (sim_delta, _) = simplifier.simplify(delta_expanded);
-
-            // x = (-b +/- sqrt(delta)) / 2a
-
-            let sqrt_delta_raw = sqrt_expr(&mut simplifier.context, sim_delta);
-
-            // POST-SIMPLIFY: Pull perfect square numeric factors from sqrt
-            // This converts sqrt(4*y) → 2*sqrt(y)
-            let sqrt_delta = cas_solver_core::quadratic_sqrt::pull_square_from_sqrt(
+            let plan = match build_quadratic_coefficient_solve_plan(
                 &mut simplifier.context,
-                sqrt_delta_raw,
+                eq.op.clone(),
+                sim_a,
+                sim_b,
+                sim_c,
+            ) {
+                Ok(plan) => plan,
+                Err(QuadraticCoefficientSolvePlanError::UnsupportedSymbolicInequality) => {
+                    return Some(Err(CasError::SolverError(
+                        "Inequalities with symbolic coefficients not yet supported".to_string(),
+                    )));
+                }
+            };
+
+            let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
+            let solution_set = solve_quadratic_coefficient_solve_plan_with(
+                eq.op.clone(),
+                sim_a,
+                sim_b,
+                plan,
+                |expr| {
+                    let mut simplifier_ref = runtime_cell.borrow_mut();
+                    crate::expand::expand(&mut simplifier_ref.context, expr)
+                },
+                |expr| {
+                    let mut simplifier_ref = runtime_cell.borrow_mut();
+                    simplifier_ref.simplify(expr).0
+                },
+                |op, delta, (sol1, sol2), opens_up| {
+                    let mut simplifier_ref = runtime_cell.borrow_mut();
+                    let (r1, r2) = order_pair_by_value(&simplifier_ref.context, sol1, sol2);
+                    quadratic_numeric_solution(
+                        &mut simplifier_ref.context,
+                        op,
+                        &delta,
+                        opens_up,
+                        r1,
+                        r2,
+                    )
+                },
+                |a_coef, b_coef, sim_delta| {
+                    let mut simplifier_ref = runtime_cell.borrow_mut();
+                    roots_from_a_b_and_simplified_delta(
+                        &mut simplifier_ref.context,
+                        a_coef,
+                        b_coef,
+                        sim_delta,
+                    )
+                },
             );
-
-            let (sol1_raw, sol2_raw) =
-                roots_from_a_b_and_sqrt(&mut simplifier.context, sim_a, sim_b, sqrt_delta);
-
-            // POST-SIMPLIFY: Expand and simplify solutions for cleaner form
-            // This converts "(4 ± 2*sqrt(y)) / 2" → "2 ± sqrt(y)"
-            let sol1_expanded = crate::expand::expand(&mut simplifier.context, sol1_raw);
-            let (sim_sol1, _) = simplifier.simplify(sol1_expanded);
-
-            let sol2_expanded = crate::expand::expand(&mut simplifier.context, sol2_raw);
-            let (sim_sol2, _) = simplifier.simplify(sol2_expanded);
-
-            // For symbolic solutions, we can't easily order them or determine intervals.
-            // We just return them as a discrete set.
-            // TODO: Handle inequalities with symbolic coefficients (requires assumptions/cases).
-            // For now, only support Eq.
-            if eq.op != RelOp::Eq {
-                return Some(Err(CasError::SolverError(
-                    "Inequalities with symbolic coefficients not yet supported".to_string(),
-                )));
-            }
 
             // Emit scope for display transforms (sqrt display in quadratic context)
             ctx.emit_scope(cas_formatter::display_transforms::ScopeTag::Rule(
                 "QuadraticFormula",
             ));
 
-            return Some(Ok((SolutionSet::Discrete(vec![sim_sol1, sim_sol2]), steps)));
+            return Some(Ok((solution_set, steps)));
         }
 
         None

@@ -50,6 +50,35 @@ pub fn extract_quadratic_coefficients(
     Some((a, b, c))
 }
 
+/// Extract and simplify `(a, b, c)` from a quadratic expression and reject
+/// degenerate cases where simplified `a == 0`.
+///
+/// This keeps strategy orchestration in core while callers inject context-bound
+/// extraction/simplification/zero-check operations.
+pub fn extract_simplified_nonzero_quadratic_coefficients_with<FExtract, FSimplify, FIsZero>(
+    expr: ExprId,
+    var: &str,
+    mut extract_coeffs: FExtract,
+    mut simplify_expr: FSimplify,
+    mut is_zero_expr: FIsZero,
+) -> Option<(ExprId, ExprId, ExprId)>
+where
+    FExtract: FnMut(ExprId, &str) -> Option<(ExprId, ExprId, ExprId)>,
+    FSimplify: FnMut(ExprId) -> ExprId,
+    FIsZero: FnMut(ExprId) -> bool,
+{
+    let (a, b, c) = extract_coeffs(expr, var)?;
+    let sim_a = simplify_expr(a);
+    let sim_b = simplify_expr(b);
+    let sim_c = simplify_expr(c);
+
+    if is_zero_expr(sim_a) {
+        return None;
+    }
+
+    Some((sim_a, sim_b, sim_c))
+}
+
 fn analyze_term(ctx: &mut Context, term: ExprId, var: &str) -> Option<(ExprId, i32)> {
     if !contains_var(ctx, term, var) {
         return Some((term, 0));
@@ -147,5 +176,62 @@ mod tests {
         let one = ctx.num(1);
         let expr = ctx.add(Expr::Div(one, x));
         assert!(extract_quadratic_coefficients(&mut ctx, expr, "x").is_none());
+    }
+
+    #[test]
+    fn extract_simplified_nonzero_quadratic_coefficients_with_rejects_zero_a() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        // 3*x + 1 (no x^2 term, so a = 0)
+        let three = ctx.num(3);
+        let one = ctx.num(1);
+        let three_x = ctx.add(Expr::Mul(three, x));
+        let poly = ctx.add(Expr::Add(three_x, one));
+        let runtime_cell = std::cell::RefCell::new(ctx);
+
+        let result = extract_simplified_nonzero_quadratic_coefficients_with(
+            poly,
+            "x",
+            |expr, var| {
+                let mut ctx_ref = runtime_cell.borrow_mut();
+                extract_quadratic_coefficients(&mut ctx_ref, expr, var)
+            },
+            |id| id,
+            |id| {
+                let ctx_ref = runtime_cell.borrow();
+                crate::isolation_utils::is_numeric_zero(&ctx_ref, id)
+            },
+        );
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn extract_simplified_nonzero_quadratic_coefficients_with_accepts_nonzero_a() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let two = ctx.num(2);
+        let x2 = ctx.add(Expr::Pow(x, two));
+        let two_x2 = ctx.add(Expr::Mul(two, x2));
+        let three = ctx.num(3);
+        let one = ctx.num(1);
+        let three_x = ctx.add(Expr::Mul(three, x));
+        let poly = ctx.add(Expr::Add(two_x2, three_x));
+        let poly = ctx.add(Expr::Add(poly, one));
+        let runtime_cell = std::cell::RefCell::new(ctx);
+
+        let result = extract_simplified_nonzero_quadratic_coefficients_with(
+            poly,
+            "x",
+            |expr, var| {
+                let mut ctx_ref = runtime_cell.borrow_mut();
+                extract_quadratic_coefficients(&mut ctx_ref, expr, var)
+            },
+            |id| id,
+            |id| {
+                let ctx_ref = runtime_cell.borrow();
+                crate::isolation_utils::is_numeric_zero(&ctx_ref, id)
+            },
+        );
+        assert!(result.is_some());
     }
 }
