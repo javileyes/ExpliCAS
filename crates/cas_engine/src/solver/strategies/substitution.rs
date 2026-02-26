@@ -5,11 +5,10 @@ use crate::solver::strategy::SolverStrategy;
 use crate::solver::{medium_step, render_expr, SolveCtx, SolveStep, SolverOptions};
 use cas_ast::{Equation, SolutionSet};
 use cas_solver_core::substitution::{
-    aggregate_back_substitution_solutions, build_back_substitution_solve_plan_with,
-    build_exponential_substitution_execution_with, plan_exponential_substitution_rewrite,
-    solve_back_substitution_plan_execution_pipeline_with_items,
-    solve_exponential_substitution_execution_pipeline_with_items,
+    execute_exponential_substitution_strategy_result_pipeline_with_items_and_plan_with,
+    plan_exponential_substitution_rewrite,
 };
+use std::cell::RefCell;
 
 pub struct SubstitutionStrategy;
 
@@ -30,56 +29,24 @@ impl SolverStrategy for SubstitutionStrategy {
         let include_didactic_items = simplifier.collect_steps();
         let rewrite_plan =
             plan_exponential_substitution_rewrite(&mut simplifier.context, eq, var, SUB_VAR_NAME);
-        let rewrite_plan = rewrite_plan?;
-
-        let intro_execution =
-            build_exponential_substitution_execution_with(eq.clone(), rewrite_plan, |id| {
-                render_expr(&simplifier.context, id)
-            });
-        let solved_intro = match solve_exponential_substitution_execution_pipeline_with_items(
-            intro_execution,
-            include_didactic_items,
+        let render_ctx = RefCell::new(simplifier.context.clone());
+        execute_exponential_substitution_strategy_result_pipeline_with_items_and_plan_with(
+            eq,
+            rewrite_plan,
+            var,
             SUB_VAR_NAME,
-            |equation, solve_var| {
-                solve_with_ctx_and_options(equation, solve_var, simplifier, *opts, ctx)
+            include_didactic_items,
+            |id| {
+                let snapshot = render_ctx.borrow();
+                render_expr(&snapshot, id)
             },
-            |item| medium_step(item.description, item.equation),
-        ) {
-            Ok(solved) => solved,
-            Err(err) => return Some(Err(err)),
-        };
-
-        let u_solutions = solved_intro.solution_set;
-        let mut steps = solved_intro.steps;
-        match u_solutions {
-            SolutionSet::Discrete(vals) => {
-                let back_plan = build_back_substitution_solve_plan_with(
-                    solved_intro.substitution_expr,
-                    &vals,
-                    include_didactic_items,
-                    |id| render_expr(&simplifier.context, id),
-                );
-                let solved_back = match solve_back_substitution_plan_execution_pipeline_with_items(
-                    back_plan,
-                    include_didactic_items,
-                    var,
-                    |equation, solve_var| {
-                        solve_with_ctx_and_options(equation, solve_var, simplifier, *opts, ctx)
-                    },
-                    |item| medium_step(item.description, item.equation),
-                ) {
-                    Ok(solved) => solved,
-                    Err(err) => return Some(Err(err)),
-                };
-
-                let solution_set =
-                    match aggregate_back_substitution_solutions(solved_back, &mut steps) {
-                        Ok(final_solutions) => SolutionSet::Discrete(final_solutions),
-                        Err(solution_set) => solution_set,
-                    };
-                Some(Ok((solution_set, steps)))
-            }
-            solution_set => Some(Ok((solution_set, steps))),
-        }
+            |equation, solve_var| {
+                let solved =
+                    solve_with_ctx_and_options(equation, solve_var, simplifier, *opts, ctx);
+                *render_ctx.borrow_mut() = simplifier.context.clone();
+                solved
+            },
+            medium_step,
+        )
     }
 }
