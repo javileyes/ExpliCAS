@@ -6,15 +6,14 @@ use cas_ast::symbol::SymbolId;
 use cas_ast::{ExprId, RelOp, SolutionSet};
 use cas_solver_core::function_inverse::{
     derive_function_isolation_route, execute_unary_inverse_with, plan_unary_inverse_isolation_step,
-    solve_unary_inverse_execution_pipeline_with_items, FunctionIsolationRoute,
-    FunctionIsolationRouteError,
+    FunctionIsolationRoute, FunctionIsolationRouteError,
 };
 use cas_solver_core::log_isolation::plan_log_isolation_step_with;
 use cas_solver_core::solve_outcome::{
     execute_abs_isolation_plan_pipeline_with_optional_items_and_solver,
     execute_log_isolation_result_pipeline_with_plan_and_error_and_merge_with_existing_steps,
-    finalize_abs_split_solution_set_for_rhs, merge_solved_with_existing_steps_prepend,
-    plan_abs_isolation_with_rhs_sign,
+    execute_unary_inverse_execution_pipeline_with_items_and_merge_with_existing_steps_with,
+    finalize_abs_split_solution_set_for_rhs, plan_abs_isolation_with_rhs_sign,
 };
 use std::cell::RefCell;
 
@@ -201,15 +200,11 @@ fn isolate_unary_function(
     )
     .ok_or_else(|| CasError::UnknownFunction(fn_name.clone()))?;
 
-    let solved = solve_unary_inverse_execution_pipeline_with_items(
+    execute_unary_inverse_execution_pipeline_with_items_and_merge_with_existing_steps_with(
         execution,
         include_items,
+        steps,
         |lhs, rhs_expr, inner_op| isolate(lhs, rhs_expr, inner_op, var, simplifier, opts, ctx),
         |item| medium_step(item.description().to_string(), item.equation),
-    )?;
-
-    Ok(merge_solved_with_existing_steps_prepend(
-        (solved.solution_set, solved.steps),
-        steps,
-    ))
+    )
 }
