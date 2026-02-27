@@ -4,7 +4,7 @@ use crate::solver::{medium_step, render_expr as solver_render_expr, SolveStep, S
 use crate::SimplifyOptions;
 use cas_ast::{Expr, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_power::{
-    execute_pow_base_isolation_pipeline_with_state,
+    execute_pow_base_isolation_with_default_action_with_state,
     execute_pow_exponent_shortcuts_and_guards_with_state,
     execute_pow_exponent_tactic_then_log_pipeline_with_state,
     execute_pow_isolation_route_with_state,
@@ -85,7 +85,7 @@ fn isolate_pow_base(
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     let include_item = simplifier.collect_steps();
-    execute_pow_base_isolation_pipeline_with_state(
+    execute_pow_base_isolation_with_default_action_with_state(
         simplifier,
         b,
         e,
@@ -93,16 +93,8 @@ fn isolate_pow_base(
         op,
         include_item,
         steps,
-        |simplifier, base, exp, local_rhs, local_op| {
-            cas_solver_core::solve_outcome::build_pow_base_isolation_action_with(
-                &mut simplifier.context,
-                base,
-                exp,
-                local_rhs,
-                local_op,
-                solver_render_expr,
-            )
-        },
+        |simplifier| &mut simplifier.context,
+        solver_render_expr,
         |simplifier, iso_lhs, iso_rhs, iso_op| {
             isolate(iso_lhs, iso_rhs, iso_op, var, simplifier, opts, ctx)
         },

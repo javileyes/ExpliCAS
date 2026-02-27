@@ -38,6 +38,61 @@ where
     }
 }
 
+/// Execute base-side power isolation (`b^e = rhs`) using default core action
+/// planning (`build_pow_base_isolation_action_with`) and caller solve hooks.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_pow_base_isolation_with_default_action_with_state<
+    T,
+    S,
+    E,
+    FContextMut,
+    FRenderExpr,
+    FSolveIsolate,
+    FMapStep,
+>(
+    state: &mut T,
+    base: ExprId,
+    exponent: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    include_item: bool,
+    existing_steps: Vec<S>,
+    context_mut: FContextMut,
+    render_expr: FRenderExpr,
+    solve_isolate: FSolveIsolate,
+    map_item_to_step: FMapStep,
+) -> Result<(SolutionSet, Vec<S>), E>
+where
+    FContextMut: FnMut(&mut T) -> &mut Context,
+    FRenderExpr: FnMut(&Context, ExprId) -> String,
+    FSolveIsolate: FnMut(&mut T, ExprId, ExprId, RelOp) -> Result<(SolutionSet, Vec<S>), E>,
+    FMapStep: FnMut(crate::solve_outcome::PowBaseIsolationExecutionItem) -> S,
+{
+    let mut context_mut = context_mut;
+    let mut render_expr = render_expr;
+    execute_pow_base_isolation_pipeline_with_state(
+        state,
+        base,
+        exponent,
+        rhs,
+        op,
+        include_item,
+        existing_steps,
+        |state, base, exp, local_rhs, local_op| {
+            crate::solve_outcome::build_pow_base_isolation_action_with(
+                context_mut(state),
+                base,
+                exp,
+                local_rhs,
+                local_op,
+                |core_ctx, expr| render_expr(core_ctx, expr),
+            )
+        },
+        solve_isolate,
+        map_item_to_step,
+    )
+}
+
 /// Execute base-side power isolation (`b^e = rhs`) with caller-provided stateful hooks.
 #[allow(clippy::too_many_arguments)]
 pub fn execute_pow_base_isolation_pipeline_with_state<
@@ -494,6 +549,7 @@ where
 mod tests {
     use super::{
         execute_pow_base_isolation_pipeline_with_state,
+        execute_pow_base_isolation_with_default_action_with_state,
         execute_pow_exponent_log_decision_then_rewrite_with_state,
         execute_pow_exponent_shortcuts_and_guards_with_state,
         execute_pow_exponent_tactic_and_classify_decision_with_state,
@@ -583,6 +639,48 @@ mod tests {
 
         assert!(matches!(solved.0, SolutionSet::Empty));
         assert_eq!(solved.1, vec![format!("solve:{x}"), "existing".to_string()]);
+    }
+
+    #[test]
+    fn execute_pow_base_isolation_with_default_action_with_state_executes_solver_path() {
+        #[derive(Default)]
+        struct BaseHarness {
+            context: cas_ast::Context,
+            solve_calls: usize,
+        }
+
+        let mut state = BaseHarness::default();
+        let x = state.context.var("x");
+        let two = state.context.num(2);
+        let rhs = state.context.num(8);
+
+        let solved = execute_pow_base_isolation_with_default_action_with_state(
+            &mut state,
+            x,
+            two,
+            rhs,
+            RelOp::Eq,
+            false,
+            vec!["existing".to_string()],
+            |state| &mut state.context,
+            |_, expr| format!("#{expr}"),
+            |state, lhs, _rhs, _op| {
+                state.solve_calls += 1;
+                Ok::<(SolutionSet, Vec<String>), &'static str>((
+                    SolutionSet::Discrete(vec![lhs]),
+                    vec!["subsolve".to_string()],
+                ))
+            },
+            |_item| "unused".to_string(),
+        )
+        .expect("default base action should solve");
+
+        assert_eq!(state.solve_calls, 1);
+        assert!(matches!(solved.0, SolutionSet::Discrete(_)));
+        assert_eq!(
+            solved.1,
+            vec!["subsolve".to_string(), "existing".to_string()]
+        );
     }
 
     #[derive(Default)]
