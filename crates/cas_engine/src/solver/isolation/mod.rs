@@ -7,10 +7,9 @@ use crate::solver::{medium_step, SolveStep, SolverOptions, MAX_SOLVE_DEPTH, SOLV
 use cas_ast::{Expr, ExprId, RelOp, SolutionSet};
 use cas_solver_core::solve_outcome::{
     plan_negated_lhs_isolation_step, residual_solution_set, resolve_isolated_variable_outcome,
-    solve_isolated_variable_lhs_with_resolver,
+    solve_isolated_variable_lhs_with_resolver_with_state,
     solve_negated_lhs_isolation_plan_with_and_merge_with_existing_steps,
 };
-use std::cell::RefCell;
 
 use crate::error::CasError;
 
@@ -37,14 +36,13 @@ pub(crate) fn isolate(
 
     match lhs_expr {
         Expr::Variable(sym_id) if simplifier.context.sym_name(sym_id) == var => {
-            let simplifier_ref = RefCell::new(simplifier);
-            let solved = solve_isolated_variable_lhs_with_resolver(
+            let solved = solve_isolated_variable_lhs_with_resolver_with_state(
+                simplifier,
                 lhs,
                 rhs,
                 op,
                 var,
-                |sim_rhs, rel_op, solve_var| {
-                    let mut simplifier = simplifier_ref.borrow_mut();
+                |simplifier, sim_rhs, rel_op, solve_var| {
                     resolve_isolated_variable_outcome(
                         &mut simplifier.context,
                         sim_rhs,
@@ -52,27 +50,18 @@ pub(crate) fn isolate(
                         solve_var,
                     )
                 },
-                |expr| simplifier_ref.borrow_mut().simplify(expr).0,
-                |solve_lhs, solve_rhs, solve_var| {
-                    let mut simplifier = simplifier_ref.borrow_mut();
+                |simplifier, expr| simplifier.simplify(expr).0,
+                |simplifier, solve_lhs, solve_rhs, solve_var| {
                     crate::solver::linear_collect::try_linear_collect(
-                        solve_lhs,
-                        solve_rhs,
-                        solve_var,
-                        &mut simplifier,
+                        solve_lhs, solve_rhs, solve_var, simplifier,
                     )
                 },
-                |solve_lhs, solve_rhs, solve_var| {
-                    let mut simplifier = simplifier_ref.borrow_mut();
+                |simplifier, solve_lhs, solve_rhs, solve_var| {
                     crate::solver::linear_collect::try_linear_collect_v2(
-                        solve_lhs,
-                        solve_rhs,
-                        solve_var,
-                        &mut simplifier,
+                        solve_lhs, solve_rhs, solve_var, simplifier,
                     )
                 },
-                |solve_lhs, solve_rhs, solve_var| {
-                    let mut simplifier = simplifier_ref.borrow_mut();
+                |simplifier, solve_lhs, solve_rhs, solve_var| {
                     residual_solution_set(&mut simplifier.context, solve_lhs, solve_rhs, solve_var)
                 },
             );

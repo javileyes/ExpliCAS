@@ -322,6 +322,43 @@ where
     simplified_eq
 }
 
+/// Stateful variant of [`simplify_equation_sides_for_presence_with`].
+///
+/// This form lets callers avoid interior mutability when both simplify and
+/// recompose hooks need shared mutable state.
+pub fn simplify_equation_sides_for_presence_with_state<S, FSimplify, FRecompose>(
+    state: &mut S,
+    eq: &Equation,
+    lhs_has_var: bool,
+    rhs_has_var: bool,
+    mut simplify_for_solve: FSimplify,
+    mut try_recompose_pow_quotient: FRecompose,
+) -> Equation
+where
+    FSimplify: FnMut(&mut S, ExprId) -> ExprId,
+    FRecompose: FnMut(&mut S, ExprId) -> Option<ExprId>,
+{
+    let mut simplified_eq = eq.clone();
+
+    if lhs_has_var {
+        let sim_lhs = simplify_for_solve(state, eq.lhs);
+        simplified_eq.lhs = sim_lhs;
+        if let Some(recomposed) = try_recompose_pow_quotient(state, sim_lhs) {
+            simplified_eq.lhs = recomposed;
+        }
+    }
+
+    if rhs_has_var {
+        let sim_rhs = simplify_for_solve(state, eq.rhs);
+        simplified_eq.rhs = sim_rhs;
+        if let Some(recomposed) = try_recompose_pow_quotient(state, sim_rhs) {
+            simplified_eq.rhs = recomposed;
+        }
+    }
+
+    simplified_eq
+}
+
 /// Simplify only equation sides that contain `var` and recompose `a^x / b^x` when possible
 /// using caller-provided hooks.
 pub fn simplify_equation_sides_for_var_with<FContains, FSimplify, FRecompose>(
@@ -378,6 +415,36 @@ where
     if let Some((new_lhs, new_rhs)) = semantic_rewrite(current_lhs, current_rhs) {
         current_lhs = simplify_for_solve(new_lhs);
         current_rhs = simplify_for_solve(new_rhs);
+    }
+
+    (current_lhs, current_rhs)
+}
+
+/// Stateful variant of [`apply_equation_pair_rewrite_sequence_with`].
+pub fn apply_equation_pair_rewrite_sequence_with_state<S, FStructural, FSemantic, FSimplify>(
+    state: &mut S,
+    lhs: ExprId,
+    rhs: ExprId,
+    mut structural_rewrite: FStructural,
+    mut semantic_rewrite: FSemantic,
+    mut simplify_for_solve: FSimplify,
+) -> (ExprId, ExprId)
+where
+    FStructural: FnMut(&mut S, ExprId, ExprId) -> Option<(ExprId, ExprId)>,
+    FSemantic: FnMut(&mut S, ExprId, ExprId) -> Option<(ExprId, ExprId)>,
+    FSimplify: FnMut(&mut S, ExprId) -> ExprId,
+{
+    let mut current_lhs = lhs;
+    let mut current_rhs = rhs;
+
+    if let Some((new_lhs, new_rhs)) = structural_rewrite(state, current_lhs, current_rhs) {
+        current_lhs = simplify_for_solve(state, new_lhs);
+        current_rhs = simplify_for_solve(state, new_rhs);
+    }
+
+    if let Some((new_lhs, new_rhs)) = semantic_rewrite(state, current_lhs, current_rhs) {
+        current_lhs = simplify_for_solve(state, new_lhs);
+        current_rhs = simplify_for_solve(state, new_rhs);
     }
 
     (current_lhs, current_rhs)
@@ -440,6 +507,52 @@ where
     if contains_var(current, var) {
         let trig_expanded = expand_trig(current);
         if let Some(accepted) = accept_candidate(current, trig_expanded, var) {
+            current = accepted;
+        }
+    }
+
+    current
+}
+
+/// Stateful variant of [`normalize_variable_residual_with`].
+#[allow(clippy::too_many_arguments)]
+pub fn normalize_variable_residual_with_state<
+    S,
+    FContains,
+    FExpandAlgebraic,
+    FSimplifyForSolve,
+    FExpandTrig,
+    FAcceptCandidate,
+>(
+    state: &mut S,
+    residual: ExprId,
+    var: &str,
+    mut contains_var: FContains,
+    mut expand_algebraic: FExpandAlgebraic,
+    mut simplify_for_solve: FSimplifyForSolve,
+    mut expand_trig: FExpandTrig,
+    mut accept_candidate: FAcceptCandidate,
+) -> ExprId
+where
+    FContains: FnMut(&mut S, ExprId, &str) -> bool,
+    FExpandAlgebraic: FnMut(&mut S, ExprId) -> ExprId,
+    FSimplifyForSolve: FnMut(&mut S, ExprId) -> ExprId,
+    FExpandTrig: FnMut(&mut S, ExprId) -> ExprId,
+    FAcceptCandidate: FnMut(&mut S, ExprId, ExprId, &str) -> Option<ExprId>,
+{
+    let mut current = residual;
+
+    if contains_var(state, current, var) {
+        let expanded = expand_algebraic(state, current);
+        let re_simplified = simplify_for_solve(state, expanded);
+        if let Some(accepted) = accept_candidate(state, current, re_simplified, var) {
+            current = accepted;
+        }
+    }
+
+    if contains_var(state, current, var) {
+        let trig_expanded = expand_trig(state, current);
+        if let Some(accepted) = accept_candidate(state, current, trig_expanded, var) {
             current = accepted;
         }
     }
@@ -1075,6 +1188,36 @@ mod tests {
     }
 
     #[test]
+    fn simplify_equation_sides_for_presence_with_state_uses_precomputed_presence() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        let lhs = ctx.add(Expr::Add(x, one));
+        let eq = Equation {
+            lhs,
+            rhs: two,
+            op: RelOp::Eq,
+        };
+        let mut simplified_calls = Vec::new();
+
+        let simplified = simplify_equation_sides_for_presence_with_state(
+            &mut simplified_calls,
+            &eq,
+            true,
+            false,
+            |calls, expr| {
+                calls.push(expr);
+                expr
+            },
+            |_calls, _expr| None,
+        );
+        assert_eq!(simplified.lhs, lhs);
+        assert_eq!(simplified.rhs, two);
+        assert_eq!(simplified_calls, vec![lhs]);
+    }
+
+    #[test]
     fn apply_equation_pair_rewrite_sequence_runs_structural_then_semantic() {
         let mut ctx = Context::new();
         let lhs0 = ctx.num(1);
@@ -1150,6 +1293,66 @@ mod tests {
         assert_eq!(lhs_out, lhs);
         assert_eq!(rhs_out, rhs);
         assert_eq!(simplify_calls.get(), 0);
+    }
+
+    #[test]
+    fn apply_equation_pair_rewrite_sequence_with_state_runs_structural_then_semantic() {
+        let mut ctx = Context::new();
+        let lhs0 = ctx.num(1);
+        let rhs0 = ctx.num(2);
+        let lhs1 = ctx.num(3);
+        let rhs1 = ctx.num(4);
+        let lhs1_sim = ctx.num(5);
+        let rhs1_sim = ctx.num(6);
+        let lhs2 = ctx.num(7);
+        let rhs2 = ctx.num(8);
+
+        #[derive(Default)]
+        struct RewriteState {
+            seen_semantic: Option<(ExprId, ExprId)>,
+            simplify_calls: Vec<ExprId>,
+        }
+
+        let mut state = RewriteState::default();
+        let (lhs_out, rhs_out) = apply_equation_pair_rewrite_sequence_with_state(
+            &mut state,
+            lhs0,
+            rhs0,
+            |_state, lhs, rhs| {
+                if lhs == lhs0 && rhs == rhs0 {
+                    Some((lhs1, rhs1))
+                } else {
+                    None
+                }
+            },
+            |state, lhs, rhs| {
+                state.seen_semantic = Some((lhs, rhs));
+                if lhs == lhs1_sim && rhs == rhs1_sim {
+                    Some((lhs2, rhs2))
+                } else {
+                    None
+                }
+            },
+            |state, expr| {
+                state.simplify_calls.push(expr);
+                if expr == lhs1 {
+                    lhs1_sim
+                } else if expr == rhs1 {
+                    rhs1_sim
+                } else {
+                    expr
+                }
+            },
+        );
+
+        assert_eq!(state.seen_semantic.as_ref(), Some(&(lhs1_sim, rhs1_sim)));
+        assert_eq!(lhs_out, lhs2);
+        assert_eq!(rhs_out, rhs2);
+        assert_eq!(
+            state.simplify_calls,
+            vec![lhs1, rhs1, lhs2, rhs2],
+            "each accepted rewrite should simplify both sides"
+        );
     }
 
     #[test]
@@ -1248,5 +1451,49 @@ mod tests {
         assert_eq!(algebraic_calls.get(), 1);
         assert_eq!(simplify_calls.get(), 1);
         assert_eq!(trig_calls.get(), 1);
+    }
+
+    #[test]
+    fn normalize_variable_residual_with_state_uses_trig_fallback_when_algebraic_is_not_better() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let residual = ctx.add(Expr::Add(x, one));
+        let algebraic_cosmetic = residual;
+        let trig_eliminated = one;
+
+        #[derive(Default)]
+        struct ResidualState {
+            algebraic_calls: usize,
+            simplify_calls: usize,
+            trig_calls: usize,
+        }
+
+        let mut state = ResidualState::default();
+        let normalized = normalize_variable_residual_with_state(
+            &mut state,
+            residual,
+            "x",
+            |_state, expr, _| expr == residual,
+            |state, _expr| {
+                state.algebraic_calls += 1;
+                algebraic_cosmetic
+            },
+            |state, expr| {
+                state.simplify_calls += 1;
+                expr
+            },
+            |state, _expr| {
+                state.trig_calls += 1;
+                trig_eliminated
+            },
+            |_state, current, candidate, var| {
+                accept_residual_rewrite_candidate(&ctx, current, candidate, var)
+            },
+        );
+        assert_eq!(normalized, trig_eliminated);
+        assert_eq!(state.algebraic_calls, 1);
+        assert_eq!(state.simplify_calls, 1);
+        assert_eq!(state.trig_calls, 1);
     }
 }

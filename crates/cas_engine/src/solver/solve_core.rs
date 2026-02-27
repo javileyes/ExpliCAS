@@ -9,17 +9,16 @@ use crate::error::CasError;
 use cas_ast::SolutionSet;
 use cas_solver_core::isolation_utils::contains_var;
 use cas_solver_core::solve_analysis::{
-    apply_equation_pair_rewrite_sequence_with, apply_nonzero_exclusion_guards_if_any,
+    apply_equation_pair_rewrite_sequence_with_state, apply_nonzero_exclusion_guards_if_any,
     classify_equation_var_presence, finalize_strategy_attempt_sequence_with,
-    guard_solved_result_with_exclusions, normalize_variable_residual_with,
+    guard_solved_result_with_exclusions, normalize_variable_residual_with_state,
     resolve_discrete_strategy_solutions_for_context_with, run_strategy_attempt_sequence,
-    simplify_equation_sides_for_presence_with, EquationVarPresence,
+    simplify_equation_sides_for_presence_with_state, EquationVarPresence,
 };
 use cas_solver_core::solve_outcome::{
     solve_var_eliminated_outcome_pipeline_with, VarEliminatedOutcomePipelineSolved,
 };
 use cas_solver_core::step_cleanup::{cleanup_steps_by, CleanupStep};
-use std::cell::RefCell;
 
 use super::{
     medium_step, render_expr, DepthGuard, DisplaySolveSteps, SolveDomainEnv, SolveStep,
@@ -244,23 +243,19 @@ fn solve_inner(
     // which need to be simplified to "5/6*x = 5" before isolation
     let lhs_has_var = contains_var(&simplifier.context, eq.lhs, var);
     let rhs_has_var = contains_var(&simplifier.context, eq.rhs, var);
-    let (mut simplified_eq, simplifier) = {
-        let simplifier_ref = RefCell::new(simplifier);
-        let simplified_eq = simplify_equation_sides_for_presence_with(
-            eq,
-            lhs_has_var,
-            rhs_has_var,
-            |expr| simplifier_ref.borrow_mut().simplify_for_solve(expr),
-            |expr| {
-                let mut simplifier = simplifier_ref.borrow_mut();
-                cas_solver_core::isolation_utils::try_recompose_pow_quotient(
-                    &mut simplifier.context,
-                    expr,
-                )
-            },
-        );
-        (simplified_eq, simplifier_ref.into_inner())
-    };
+    let mut simplified_eq = simplify_equation_sides_for_presence_with_state(
+        simplifier,
+        eq,
+        lhs_has_var,
+        rhs_has_var,
+        |simplifier, expr| simplifier.simplify_for_solve(expr),
+        |simplifier, expr| {
+            cas_solver_core::isolation_utils::try_recompose_pow_quotient(
+                &mut simplifier.context,
+                expr,
+            )
+        },
+    );
 
     // NOTE: Pre-solve exponent normalization (Div(p,q) → Number(p/q)) and
     // nested-pow folding are handled by global simplifier rules:
@@ -295,35 +290,26 @@ fn solve_inner(
     // terms that don't converge to the same AST under structural comparison.
     // Examples: sin(arccos(x)) vs sqrt(1-x²), abs(x^n) vs abs(x)^n.
     // Runs AFTER structural cancel to avoid redundant simplifications.
-    let (mut simplified_eq, simplifier) = {
-        let simplifier_ref = RefCell::new(simplifier);
-        let (lhs, rhs) = apply_equation_pair_rewrite_sequence_with(
-            simplified_eq.lhs,
-            simplified_eq.rhs,
-            |lhs, rhs| {
-                let mut simplifier = simplifier_ref.borrow_mut();
-                crate::rules::cancel_common_terms::cancel_common_additive_terms(
-                    &mut simplifier.context,
-                    lhs,
-                    rhs,
-                )
+    let (lhs, rhs) = apply_equation_pair_rewrite_sequence_with_state(
+        simplifier,
+        simplified_eq.lhs,
+        simplified_eq.rhs,
+        |simplifier, lhs, rhs| {
+            crate::rules::cancel_common_terms::cancel_common_additive_terms(
+                &mut simplifier.context,
+                lhs,
+                rhs,
+            )
+            .map(|rewrite| (rewrite.new_lhs, rewrite.new_rhs))
+        },
+        |simplifier, lhs, rhs| {
+            crate::rules::cancel_common_terms::cancel_additive_terms_semantic(simplifier, lhs, rhs)
                 .map(|rewrite| (rewrite.new_lhs, rewrite.new_rhs))
-            },
-            |lhs, rhs| {
-                let mut simplifier = simplifier_ref.borrow_mut();
-                crate::rules::cancel_common_terms::cancel_additive_terms_semantic(
-                    &mut simplifier,
-                    lhs,
-                    rhs,
-                )
-                .map(|rewrite| (rewrite.new_lhs, rewrite.new_rhs))
-            },
-            |expr| simplifier_ref.borrow_mut().simplify_for_solve(expr),
-        );
-        simplified_eq.lhs = lhs;
-        simplified_eq.rhs = rhs;
-        (simplified_eq, simplifier_ref.into_inner())
-    };
+        },
+        |simplifier, expr| simplifier.simplify_for_solve(expr),
+    );
+    simplified_eq.lhs = lhs;
+    simplified_eq.rhs = rhs;
 
     // CRITICAL: After simplification, check for identities and contradictions
     // Do this by moving everything to one side: LHS - RHS
@@ -337,33 +323,23 @@ fn solve_inner(
     // expand + simplify and a trig expand fallback (Ticket 6c). Accept
     // rewrites only when they eliminate the variable or significantly
     // reduce expression size.
-    let (normalized_diff, simplifier) = {
-        let simplifier_ref = RefCell::new(simplifier);
-        let normalized_diff = normalize_variable_residual_with(
-            diff_simplified,
-            var,
-            |expr, var_name| {
-                let simplifier = simplifier_ref.borrow();
-                contains_var(&simplifier.context, expr, var_name)
-            },
-            |expr| {
-                let mut simplifier = simplifier_ref.borrow_mut();
-                crate::expand::expand(&mut simplifier.context, expr)
-            },
-            |expr| simplifier_ref.borrow_mut().simplify_for_solve(expr),
-            |expr| simplifier_ref.borrow_mut().expand(expr).0,
-            |current, candidate, var_name| {
-                let simplifier = simplifier_ref.borrow();
-                cas_solver_core::solve_analysis::accept_residual_rewrite_candidate(
-                    &simplifier.context,
-                    current,
-                    candidate,
-                    var_name,
-                )
-            },
-        );
-        (normalized_diff, simplifier_ref.into_inner())
-    };
+    let normalized_diff = normalize_variable_residual_with_state(
+        simplifier,
+        diff_simplified,
+        var,
+        |simplifier, expr, var_name| contains_var(&simplifier.context, expr, var_name),
+        |simplifier, expr| crate::expand::expand(&mut simplifier.context, expr),
+        |simplifier, expr| simplifier.simplify_for_solve(expr),
+        |simplifier, expr| simplifier.expand(expr).0,
+        |simplifier, current, candidate, var_name| {
+            cas_solver_core::solve_analysis::accept_residual_rewrite_candidate(
+                &simplifier.context,
+                current,
+                candidate,
+                var_name,
+            )
+        },
+    );
     if normalized_diff != diff_simplified {
         diff_simplified = normalized_diff;
         let zero = simplifier.context.num(0);

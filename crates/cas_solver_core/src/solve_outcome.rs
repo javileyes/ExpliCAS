@@ -148,6 +148,53 @@ where
     }
 }
 
+/// Stateful variant of [`solve_isolated_variable_lhs_with_resolver`].
+///
+/// This form lets callers pass one mutable state object across all hooks
+/// without interior mutability wrappers.
+#[allow(clippy::too_many_arguments)]
+pub fn solve_isolated_variable_lhs_with_resolver_with_state<
+    T,
+    S,
+    FResolve,
+    FSimplify,
+    FTry1,
+    FTry2,
+    FResidual,
+>(
+    state: &mut T,
+    lhs: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    var: &str,
+    mut resolve_isolated_outcome: FResolve,
+    mut simplify_rhs: FSimplify,
+    mut try_linear_collect: FTry1,
+    mut try_linear_collect_v2: FTry2,
+    mut residual_solution: FResidual,
+) -> (SolutionSet, Vec<S>)
+where
+    FResolve: FnMut(&mut T, ExprId, RelOp, &str) -> IsolatedVariableOutcome,
+    FSimplify: FnMut(&mut T, ExprId) -> ExprId,
+    FTry1: FnMut(&mut T, ExprId, ExprId, &str) -> Option<(SolutionSet, Vec<S>)>,
+    FTry2: FnMut(&mut T, ExprId, ExprId, &str) -> Option<(SolutionSet, Vec<S>)>,
+    FResidual: FnMut(&mut T, ExprId, ExprId, &str) -> SolutionSet,
+{
+    let sim_rhs = simplify_rhs(state, rhs);
+    match resolve_isolated_outcome(state, sim_rhs, op, var) {
+        IsolatedVariableOutcome::Solved(set) => (set, Vec::new()),
+        IsolatedVariableOutcome::ContainsTargetVariable => {
+            if let Some((solution_set, steps)) = try_linear_collect(state, lhs, rhs, var) {
+                return (solution_set, steps);
+            }
+            if let Some((solution_set, steps)) = try_linear_collect_v2(state, lhs, rhs, var) {
+                return (solution_set, steps);
+            }
+            (residual_solution(state, lhs, rhs, var), Vec::new())
+        }
+    }
+}
+
 /// Solve a branch where `lhs` is already the target variable (`x op rhs`).
 ///
 /// Returned steps are non-empty only when circular fallback resolves via
@@ -18493,6 +18540,43 @@ mod tests {
         );
 
         assert_eq!(simplify_calls, 1);
+        assert!(steps.is_empty());
+        assert_eq!(set, SolutionSet::Discrete(vec![three]));
+    }
+
+    #[test]
+    fn solve_isolated_variable_lhs_with_resolver_with_state_returns_direct_solution_for_var_free_rhs(
+    ) {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let three = ctx.num(3);
+
+        #[derive(Default)]
+        struct IsolatedState {
+            simplify_calls: usize,
+        }
+
+        let mut state = IsolatedState::default();
+        let (set, steps) = solve_isolated_variable_lhs_with_resolver_with_state(
+            &mut state,
+            x,
+            three,
+            RelOp::Eq,
+            "x",
+            |state, sim_rhs, rel_op, solve_var| {
+                state.simplify_calls += 1000; // marker to prove shared state updates
+                resolve_isolated_variable_outcome(&mut ctx, sim_rhs, rel_op, solve_var)
+            },
+            |state, rhs| {
+                state.simplify_calls += 1;
+                rhs
+            },
+            |_state, _, _, _| None::<(SolutionSet, Vec<&'static str>)>,
+            |_state, _, _, _| None::<(SolutionSet, Vec<&'static str>)>,
+            |_state, _, _, _| SolutionSet::Empty,
+        );
+
+        assert_eq!(state.simplify_calls, 1001);
         assert!(steps.is_empty());
         assert_eq!(set, SolutionSet::Discrete(vec![three]));
     }
