@@ -26,8 +26,7 @@ use cas_ast::{Equation, ExprId, SolutionSet};
 use cas_math::expr_predicates::contains_variable;
 use cas_solver_core::isolation_utils::is_numeric_zero;
 use cas_solver_core::verification::{
-    verify_solution_set_with,
-    verify_substituted_residual_with_strict_fold_and_generic_fallback_with_state,
+    verify_solution_set_with, verify_solution_with_strict_fold_and_generic_fallback_with_state,
 };
 use cas_solver_core::verify_substitution::{substitute_equation_diff, verify_solution_with_state};
 
@@ -53,7 +52,6 @@ pub fn verify_solution(
     var: &str,
     solution: ExprId,
 ) -> VerifyStatus {
-    let diff = substitute_equation_diff(&mut simplifier.context, equation, var, solution);
     let strict_opts = crate::SimplifyOptions {
         shared: crate::phase::SharedSemanticConfig {
             semantics: crate::semantics::EvalConfig {
@@ -75,32 +73,26 @@ pub fn verify_solution(
         ..Default::default()
     };
 
-    let (verified, strict_result) =
-        verify_substituted_residual_with_strict_fold_and_generic_fallback_with_state(
-            simplifier,
-            diff,
-            |simplifier, expr| simplifier.simplify_with_stats(expr, strict_opts.clone()).0,
-            |simplifier, expr| simplifier.simplify_with_stats(expr, generic_opts.clone()).0,
-            |simplifier, expr| contains_variable(&simplifier.context, expr),
-            |simplifier, expr| {
-                super::numeric_islands::fold_numeric_islands(&mut simplifier.context, expr)
-            },
-            |simplifier, expr| is_numeric_zero(&simplifier.context, expr),
-            |_simplifier| cas_solver_core::verify_stats::record_attempted(),
-            |_simplifier| cas_solver_core::verify_stats::record_changed(),
-            |_simplifier| cas_solver_core::verify_stats::record_verified(),
-        );
-    if verified {
-        return VerifyStatus::Verified;
-    }
-
-    VerifyStatus::Unverifiable {
-        residual: strict_result,
-        reason: format!(
-            "residual: {}",
-            solver_render_expr(&simplifier.context, strict_result)
-        ),
-    }
+    verify_solution_with_strict_fold_and_generic_fallback_with_state(
+        simplifier,
+        equation,
+        var,
+        solution,
+        |simplifier, eq, solve_var, candidate| {
+            substitute_equation_diff(&mut simplifier.context, eq, solve_var, candidate)
+        },
+        |simplifier, expr| simplifier.simplify_with_stats(expr, strict_opts.clone()).0,
+        |simplifier, expr| simplifier.simplify_with_stats(expr, generic_opts.clone()).0,
+        |simplifier, expr| contains_variable(&simplifier.context, expr),
+        |simplifier, expr| {
+            super::numeric_islands::fold_numeric_islands(&mut simplifier.context, expr)
+        },
+        |simplifier, expr| is_numeric_zero(&simplifier.context, expr),
+        |_simplifier| cas_solver_core::verify_stats::record_attempted(),
+        |_simplifier| cas_solver_core::verify_stats::record_changed(),
+        |_simplifier| cas_solver_core::verify_stats::record_verified(),
+        |simplifier, expr| solver_render_expr(&simplifier.context, expr),
+    )
 }
 
 /// Fast equivalence-based verifier used by solve strategy filtering.

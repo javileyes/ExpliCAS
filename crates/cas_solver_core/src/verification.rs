@@ -1,4 +1,4 @@
-use cas_ast::{ExprId, SolutionSet};
+use cas_ast::{Equation, ExprId, SolutionSet};
 
 /// Result of verifying a single solution.
 #[derive(Debug, Clone)]
@@ -265,6 +265,76 @@ where
     (false, strict_result)
 }
 
+/// Verify one candidate solution from `(equation, var, solution)` by:
+/// 1) substituting into `lhs - rhs`,
+/// 2) running strict/fold/generic residual verification,
+/// 3) materializing `VerifyStatus` with rendered residual on failure.
+#[allow(clippy::too_many_arguments)]
+pub fn verify_solution_with_strict_fold_and_generic_fallback_with_state<
+    T,
+    FSubstituteDiff,
+    FSimplifyStrict,
+    FSimplifyGeneric,
+    FContainsVariable,
+    FFoldNumericIslands,
+    FIsZero,
+    FRecordAttempted,
+    FRecordChanged,
+    FRecordVerified,
+    FRenderExpr,
+>(
+    state: &mut T,
+    equation: &Equation,
+    var: &str,
+    solution: ExprId,
+    mut substitute_diff: FSubstituteDiff,
+    simplify_strict: FSimplifyStrict,
+    simplify_generic: FSimplifyGeneric,
+    contains_variable: FContainsVariable,
+    fold_numeric_islands: FFoldNumericIslands,
+    is_zero: FIsZero,
+    record_attempted: FRecordAttempted,
+    record_changed: FRecordChanged,
+    record_verified: FRecordVerified,
+    mut render_expr: FRenderExpr,
+) -> VerifyStatus
+where
+    FSubstituteDiff: FnMut(&mut T, &Equation, &str, ExprId) -> ExprId,
+    FSimplifyStrict: FnMut(&mut T, ExprId) -> ExprId,
+    FSimplifyGeneric: FnMut(&mut T, ExprId) -> ExprId,
+    FContainsVariable: FnMut(&mut T, ExprId) -> bool,
+    FFoldNumericIslands: FnMut(&mut T, ExprId) -> ExprId,
+    FIsZero: FnMut(&mut T, ExprId) -> bool,
+    FRecordAttempted: FnMut(&mut T),
+    FRecordChanged: FnMut(&mut T),
+    FRecordVerified: FnMut(&mut T),
+    FRenderExpr: FnMut(&mut T, ExprId) -> String,
+{
+    let diff = substitute_diff(state, equation, var, solution);
+    let (verified, strict_result) =
+        verify_substituted_residual_with_strict_fold_and_generic_fallback_with_state(
+            state,
+            diff,
+            simplify_strict,
+            simplify_generic,
+            contains_variable,
+            fold_numeric_islands,
+            is_zero,
+            record_attempted,
+            record_changed,
+            record_verified,
+        );
+
+    if verified {
+        VerifyStatus::Verified
+    } else {
+        VerifyStatus::Unverifiable {
+            residual: strict_result,
+            reason: format!("residual: {}", render_expr(state, strict_result)),
+        }
+    }
+}
+
 /// Compute summary for discrete verification outcomes.
 pub fn discrete_summary(total: usize, verified_count: usize) -> VerifySummary {
     if total == 0 {
@@ -295,6 +365,7 @@ pub fn conditional_summary(has_verified: bool, has_not_checkable: bool) -> Verif
 mod tests {
     use super::*;
     use cas_ast::Context;
+    use cas_ast::RelOp;
     use std::cell::Cell;
 
     #[test]
@@ -512,5 +583,74 @@ mod tests {
         assert_eq!(state.attempted_calls, 1);
         assert_eq!(state.changed_calls, 1);
         assert_eq!(state.verified_calls, 1);
+    }
+
+    #[test]
+    fn verify_solution_with_strict_fold_and_generic_fallback_with_state_returns_verified() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let equation = Equation {
+            lhs: x,
+            rhs: one,
+            op: RelOp::Eq,
+        };
+
+        let status = verify_solution_with_strict_fold_and_generic_fallback_with_state(
+            &mut ctx,
+            &equation,
+            "x",
+            one,
+            |_ctx, _equation, _var, _solution| one,
+            |_ctx, expr| expr,
+            |_ctx, expr| expr,
+            |_ctx, _expr| false,
+            |_ctx, expr| expr,
+            |_ctx, expr| expr == one,
+            |_ctx| {},
+            |_ctx| {},
+            |_ctx| {},
+            |_ctx, expr| format!("expr#{expr:?}"),
+        );
+
+        assert!(matches!(status, VerifyStatus::Verified));
+    }
+
+    #[test]
+    fn verify_solution_with_strict_fold_and_generic_fallback_with_state_returns_unverifiable() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        let equation = Equation {
+            lhs: x,
+            rhs: one,
+            op: RelOp::Eq,
+        };
+
+        let status = verify_solution_with_strict_fold_and_generic_fallback_with_state(
+            &mut ctx,
+            &equation,
+            "x",
+            one,
+            |_ctx, _equation, _var, _solution| two,
+            |_ctx, expr| expr,
+            |_ctx, expr| expr,
+            |_ctx, _expr| false,
+            |_ctx, expr| expr,
+            |_ctx, _expr| false,
+            |_ctx| {},
+            |_ctx| {},
+            |_ctx| {},
+            |_ctx, expr| format!("expr#{expr:?}"),
+        );
+
+        match status {
+            VerifyStatus::Unverifiable { residual, reason } => {
+                assert_eq!(residual, two);
+                assert!(reason.contains("residual: expr#"));
+            }
+            other => panic!("expected unverifiable, got {other:?}"),
+        }
     }
 }
