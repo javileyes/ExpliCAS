@@ -6,7 +6,7 @@
 use cas_ast::{ExprId, RelOp, SolutionSet};
 
 use crate::function_inverse::{FunctionIsolationRoute, FunctionIsolationRouteError};
-use crate::log_isolation::LogIsolationRewritePlan;
+use crate::log_isolation::{plan_log_isolation_step_with, LogIsolationRewritePlan};
 use crate::solve_outcome::{
     execute_abs_isolation_plan_with_rhs_sign_pipeline_with_optional_items_and_solver_with_state,
     execute_log_isolation_result_pipeline_with_plan_and_error_and_merge_with_existing_steps,
@@ -224,6 +224,63 @@ where
     )
 }
 
+/// Execute logarithmic function isolation (`log(base, arg) op rhs`) using the
+/// default core planning routine `plan_log_isolation_step_with`.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_log_function_isolation_with_default_plan_with_state<
+    T,
+    S,
+    E,
+    FContextMut,
+    FRenderExpr,
+    FSolveEquation,
+    FMapStep,
+    FError,
+>(
+    state: &mut T,
+    base: ExprId,
+    arg: ExprId,
+    rhs: ExprId,
+    var: &str,
+    op: RelOp,
+    include_item: bool,
+    existing_steps: Vec<S>,
+    context_mut: FContextMut,
+    render_expr: FRenderExpr,
+    solve_equation: FSolveEquation,
+    map_item_to_step: FMapStep,
+    unsupported_error: FError,
+) -> Result<(SolutionSet, Vec<S>), E>
+where
+    FContextMut: FnMut(&mut T) -> &mut cas_ast::Context,
+    FRenderExpr: FnMut(&cas_ast::Context, ExprId) -> String,
+    FSolveEquation: FnMut(&mut T, &cas_ast::Equation) -> Result<(SolutionSet, Vec<S>), E>,
+    FMapStep: FnMut(crate::log_isolation::LogIsolationExecutionItem) -> S,
+    FError: FnMut(&mut T) -> E,
+{
+    let mut context_mut = context_mut;
+    let mut render_expr = render_expr;
+    execute_log_function_isolation_with_state(
+        state,
+        include_item,
+        existing_steps,
+        |state| {
+            plan_log_isolation_step_with(
+                context_mut(state),
+                base,
+                arg,
+                rhs,
+                var,
+                op.clone(),
+                |core_ctx, expr| render_expr(core_ctx, expr),
+            )
+        },
+        solve_equation,
+        map_item_to_step,
+        unsupported_error,
+    )
+}
+
 /// Execute unary invertible-function isolation (`f(arg) op rhs`).
 #[allow(clippy::too_many_arguments)]
 pub fn execute_unary_function_isolation_with_state<
@@ -285,8 +342,12 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::execute_function_isolation_route_with_state;
+    use super::{
+        execute_function_isolation_route_with_state,
+        execute_log_function_isolation_with_default_plan_with_state,
+    };
     use crate::function_inverse::{FunctionIsolationRoute, FunctionIsolationRouteError};
+    use cas_ast::RelOp;
 
     #[test]
     fn execute_function_isolation_route_with_state_dispatches_log_branch() {
@@ -331,5 +392,37 @@ mod tests {
 
         assert_eq!(err, "missing");
         assert!(state);
+    }
+
+    #[test]
+    fn execute_log_function_isolation_with_default_plan_with_state_maps_error_when_no_plan() {
+        let mut ctx = cas_ast::Context::new();
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        let mut state = ctx;
+
+        let err = execute_log_function_isolation_with_default_plan_with_state(
+            &mut state,
+            one,
+            two,
+            one,
+            "x",
+            RelOp::Eq,
+            false,
+            vec![],
+            |state| state,
+            |_, _| "render".to_string(),
+            |_state, _equation| {
+                Ok::<(cas_ast::SolutionSet, Vec<String>), &'static str>((
+                    cas_ast::SolutionSet::AllReals,
+                    vec![],
+                ))
+            },
+            |item| item.description,
+            |_state| "no-plan",
+        )
+        .expect_err("missing log-plan should map to provided error");
+
+        assert_eq!(err, "no-plan");
     }
 }

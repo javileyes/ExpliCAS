@@ -9,10 +9,10 @@ use cas_solver_core::function_inverse::{
 };
 use cas_solver_core::isolation_functions::{
     execute_abs_function_isolation_with_default_plan_and_finalizer_with_state,
-    execute_function_isolation_route_with_state, execute_log_function_isolation_with_state,
+    execute_function_isolation_route_with_state,
+    execute_log_function_isolation_with_default_plan_with_state,
     execute_unary_function_isolation_with_state,
 };
-use cas_solver_core::log_isolation::plan_log_isolation_step_with;
 use cas_solver_core::solve_outcome::AbsSplitExecutionItem;
 
 /// Handle isolation for `Function(fn_id, args)`: abs, log, ln, exp, sqrt, trig
@@ -142,21 +142,17 @@ fn isolate_log(
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     let include_item = simplifier.collect_steps();
-    execute_log_function_isolation_with_state(
+    execute_log_function_isolation_with_default_plan_with_state(
         simplifier,
+        base,
+        arg,
+        rhs,
+        var,
+        op,
         include_item,
         steps,
-        |simplifier| {
-            plan_log_isolation_step_with(
-                &mut simplifier.context,
-                base,
-                arg,
-                rhs,
-                var,
-                op.clone(),
-                solver_render_expr,
-            )
-        },
+        |simplifier| &mut simplifier.context,
+        solver_render_expr,
         |simplifier, equation| {
             isolate(
                 equation.lhs,
