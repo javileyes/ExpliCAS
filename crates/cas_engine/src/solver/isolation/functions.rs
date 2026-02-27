@@ -10,12 +10,11 @@ use cas_solver_core::function_inverse::{
 };
 use cas_solver_core::log_isolation::plan_log_isolation_step_with;
 use cas_solver_core::solve_outcome::{
-    execute_abs_isolation_plan_with_rhs_sign_pipeline_with_optional_items_and_solver,
+    execute_abs_isolation_plan_with_rhs_sign_pipeline_with_optional_items_and_solver_with_state,
     execute_log_isolation_result_pipeline_with_plan_and_error_and_merge_with_existing_steps,
-    execute_unary_inverse_result_pipeline_or_else_with_and_merge_with_existing_steps_with,
+    execute_unary_inverse_result_pipeline_or_else_with_and_merge_with_existing_steps_with_state,
     finalize_abs_split_solution_set_for_rhs, plan_abs_isolation_with_rhs_sign,
 };
-use std::cell::RefCell;
 
 /// Handle isolation for `Function(fn_id, args)`: abs, log, ln, exp, sqrt, trig
 #[allow(clippy::too_many_arguments)]
@@ -73,34 +72,28 @@ fn isolate_abs(
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     let include_items = simplifier.collect_steps();
     let finalize_op = op.clone();
-    let simplifier_ref = RefCell::new(simplifier);
-    execute_abs_isolation_plan_with_rhs_sign_pipeline_with_optional_items_and_solver(
-        || {
-            let mut simplifier = simplifier_ref.borrow_mut();
+    execute_abs_isolation_plan_with_rhs_sign_pipeline_with_optional_items_and_solver_with_state(
+        simplifier,
+        |simplifier| {
             plan_abs_isolation_with_rhs_sign(&mut simplifier.context, arg, rhs, op.clone())
         },
         arg,
         include_items,
         steps,
-        |expr| {
-            let simplifier = simplifier_ref.borrow();
-            solver_render_expr(&simplifier.context, expr)
-        },
-        |equation| {
-            let mut simplifier = simplifier_ref.borrow_mut();
+        |simplifier, expr| solver_render_expr(&simplifier.context, expr),
+        |simplifier, equation| {
             isolate(
                 equation.lhs,
                 equation.rhs,
                 equation.op.clone(),
                 var,
-                &mut simplifier,
+                simplifier,
                 opts,
                 ctx,
             )
         },
         |item| medium_step(item.description().to_string(), item.equation),
-        |positive_set, negative_set| {
-            let simplifier = simplifier_ref.borrow();
+        |simplifier, positive_set, negative_set| {
             finalize_abs_split_solution_set_for_rhs(
                 &simplifier.context,
                 finalize_op.clone(),
@@ -174,8 +167,8 @@ fn isolate_unary_function(
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     let fn_name = simplifier.context.sym_name(fn_id).to_string();
     let include_items = simplifier.collect_steps();
-    let simplifier_ref = RefCell::new(simplifier);
-    execute_unary_inverse_result_pipeline_or_else_with_and_merge_with_existing_steps_with(
+    execute_unary_inverse_result_pipeline_or_else_with_and_merge_with_existing_steps_with_state(
+        simplifier,
         &fn_name,
         arg,
         rhs,
@@ -183,8 +176,7 @@ fn isolate_unary_function(
         true,
         include_items,
         steps,
-        |name, lhs_expr, rhs_expr, rel_op, is_lhs| {
-            let mut simplifier = simplifier_ref.borrow_mut();
+        |simplifier, name, lhs_expr, rhs_expr, rel_op, is_lhs| {
             plan_unary_inverse_isolation_step(
                 &mut simplifier.context,
                 name,
@@ -194,8 +186,7 @@ fn isolate_unary_function(
                 is_lhs,
             )
         },
-        |rhs_expr| {
-            let mut simplifier = simplifier_ref.borrow_mut();
+        |simplifier, rhs_expr| {
             let (simplified_rhs, sim_steps) = simplifier.simplify(rhs_expr);
             let entries = sim_steps
                 .into_iter()
@@ -203,11 +194,10 @@ fn isolate_unary_function(
                 .collect::<Vec<_>>();
             (simplified_rhs, entries)
         },
-        |lhs, rhs_expr, inner_op| {
-            let mut simplifier = simplifier_ref.borrow_mut();
-            isolate(lhs, rhs_expr, inner_op, var, &mut simplifier, opts, ctx)
+        |simplifier, lhs, rhs_expr, inner_op| {
+            isolate(lhs, rhs_expr, inner_op, var, simplifier, opts, ctx)
         },
         |item| medium_step(item.description().to_string(), item.equation),
-        || CasError::UnknownFunction(fn_name.clone()),
+        |_simplifier| CasError::UnknownFunction(fn_name.clone()),
     )
 }

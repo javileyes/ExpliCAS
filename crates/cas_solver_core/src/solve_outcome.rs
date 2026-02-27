@@ -2368,6 +2368,71 @@ where
     })
 }
 
+/// Stateful variant of [`execute_pow_exponent_shortcut_with`].
+///
+/// This form lets callers pass one mutable state object across all hooks
+/// without interior mutability wrappers.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_pow_exponent_shortcut_with_state<
+    T,
+    FReadExpr,
+    FPlanAction,
+    FBasesEquivalent,
+    FRenderExpr,
+>(
+    state: &mut T,
+    exponent_lhs: ExprId,
+    base: ExprId,
+    rhs: ExprId,
+    original_op: RelOp,
+    var: &str,
+    base_is_zero: bool,
+    base_is_numeric: bool,
+    can_branch: bool,
+    mut read_expr: FReadExpr,
+    mut plan_action_from_inputs: FPlanAction,
+    mut bases_equivalent: FBasesEquivalent,
+    mut render_expr: FRenderExpr,
+) -> PowExponentShortcutEngineAction
+where
+    FReadExpr: FnMut(&mut T, ExprId) -> Expr,
+    FPlanAction: FnMut(
+        &mut T,
+        ExprId,
+        RelOp,
+        bool,
+        Option<ExprId>,
+        bool,
+        bool,
+        bool,
+    ) -> PowExponentShortcutAction,
+    FBasesEquivalent: FnMut(&mut T, ExprId, ExprId) -> bool,
+    FRenderExpr: FnMut(&mut T, ExprId) -> String,
+{
+    let rhs_expr = read_expr(state, rhs);
+    let bases_equal = bases_equivalent(state, base, rhs);
+    let rhs_pow_base_equal = match rhs_expr {
+        Expr::Pow(rhs_base, rhs_exp) if bases_equivalent(state, base, rhs_base) => Some(rhs_exp),
+        _ => None,
+    };
+
+    let action = plan_action_from_inputs(
+        state,
+        base,
+        original_op.clone(),
+        bases_equal,
+        rhs_pow_base_equal,
+        base_is_zero,
+        base_is_numeric,
+        can_branch,
+    );
+    let plan = build_pow_exponent_shortcut_execution_plan(action);
+
+    map_pow_exponent_shortcut_with(plan, exponent_lhs, base, rhs, original_op, var, |id| {
+        render_expr(state, id)
+    })
+}
+
 /// Classify route for base-isolation in a power equation.
 pub fn classify_pow_base_isolation_route(
     exponent_is_even: bool,
@@ -2712,6 +2777,51 @@ where
 
     let steps = if sim_base != base || sim_rhs != rhs {
         build_steps(sim_base, exponent, sim_rhs, op)
+    } else {
+        Vec::new()
+    };
+
+    (sim_base, sim_rhs, steps)
+}
+
+/// Stateful variant of [`execute_pow_exponent_solve_tactic_normalization_with`].
+///
+/// This form lets callers pass one mutable state object across all hooks
+/// without interior mutability wrappers.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_pow_exponent_solve_tactic_normalization_with_state<
+    T,
+    S,
+    FClear,
+    FSimplify,
+    FBuildSteps,
+>(
+    state: &mut T,
+    base: ExprId,
+    exponent: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    enabled: bool,
+    mut clear_blocked_hints: FClear,
+    mut simplify_with_tactic: FSimplify,
+    mut build_steps: FBuildSteps,
+) -> (ExprId, ExprId, Vec<S>)
+where
+    FClear: FnMut(&mut T),
+    FSimplify: FnMut(&mut T, ExprId) -> ExprId,
+    FBuildSteps: FnMut(&mut T, ExprId, ExprId, ExprId, RelOp) -> Vec<S>,
+{
+    if !enabled {
+        return (base, rhs, Vec::new());
+    }
+
+    clear_blocked_hints(state);
+    let sim_base = simplify_with_tactic(state, base);
+    let sim_rhs = simplify_with_tactic(state, rhs);
+    clear_blocked_hints(state);
+
+    let steps = if sim_base != base || sim_rhs != rhs {
+        build_steps(state, sim_base, exponent, sim_rhs, op)
     } else {
         Vec::new()
     };
@@ -3270,6 +3380,88 @@ where
     )?;
     Ok(merge_solved_with_existing_steps_prepend(
         solved,
+        existing_steps,
+    ))
+}
+
+/// Stateful variant of
+/// [`execute_unary_inverse_result_pipeline_or_else_with_and_merge_with_existing_steps_with`].
+///
+/// This form lets callers thread one mutable state object across all hooks
+/// without interior mutability wrappers.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_unary_inverse_result_pipeline_or_else_with_and_merge_with_existing_steps_with_state<
+    T,
+    E,
+    S,
+    FPlan,
+    FSimplifyRhs,
+    FSolve,
+    FStep,
+    FError,
+>(
+    state: &mut T,
+    fn_name: &str,
+    arg: ExprId,
+    other: ExprId,
+    op: RelOp,
+    is_lhs: bool,
+    include_items: bool,
+    existing_steps: Vec<S>,
+    mut plan_unary_inverse_step: FPlan,
+    mut simplify_rhs_with_entries: FSimplifyRhs,
+    mut solve: FSolve,
+    map_item_to_step: FStep,
+    mut unsupported_error: FError,
+) -> Result<(SolutionSet, Vec<S>), E>
+where
+    FPlan: FnMut(
+        &mut T,
+        &str,
+        ExprId,
+        ExprId,
+        RelOp,
+        bool,
+    ) -> Option<crate::function_inverse::UnaryInverseIsolationStepPlan>,
+    FSimplifyRhs: FnMut(&mut T, ExprId) -> (ExprId, Vec<(String, ExprId)>),
+    FSolve: FnMut(&mut T, ExprId, ExprId, RelOp) -> Result<(SolutionSet, Vec<S>), E>,
+    FStep: FnMut(crate::function_inverse::UnaryInverseSolveExecutionItem) -> S,
+    FError: FnMut(&mut T) -> E,
+{
+    let plan = match plan_unary_inverse_step(state, fn_name, arg, other, op.clone(), is_lhs) {
+        Some(plan) => plan,
+        None => return Err(unsupported_error(state)),
+    };
+
+    let rewritten_equation = plan.equation.clone();
+    let mut rhs_cleanup_items = Vec::new();
+    let mut target_rhs = rewritten_equation.rhs;
+
+    if plan.needs_rhs_cleanup {
+        let (simplified_rhs, entries) = simplify_rhs_with_entries(state, target_rhs);
+        target_rhs = simplified_rhs;
+        rhs_cleanup_items = crate::function_inverse::build_rhs_simplification_execution_items(
+            rewritten_equation.lhs,
+            rewritten_equation.op.clone(),
+            entries,
+        );
+    }
+
+    let execution = crate::function_inverse::UnaryInverseSolveExecution {
+        rewrite_items: plan.items,
+        rhs_cleanup_items,
+        rewritten_equation,
+        target_rhs,
+    };
+
+    let solved = crate::function_inverse::solve_unary_inverse_execution_pipeline_with_items(
+        execution,
+        include_items,
+        |solve_lhs, solve_rhs, solve_op| solve(state, solve_lhs, solve_rhs, solve_op),
+        map_item_to_step,
+    )?;
+    Ok(merge_solved_with_existing_steps_prepend(
+        (solved.solution_set, solved.steps),
         existing_steps,
     ))
 }
@@ -6089,6 +6281,69 @@ where
         map_item_to_step,
         finalize_solved_sets,
     )
+}
+
+/// Stateful variant of
+/// [`execute_abs_isolation_plan_with_rhs_sign_pipeline_with_optional_items_and_solver`].
+///
+/// This form lets callers thread one mutable state object across all hooks
+/// without interior mutability wrappers.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_abs_isolation_plan_with_rhs_sign_pipeline_with_optional_items_and_solver_with_state<
+    T,
+    E,
+    S,
+    FPlan,
+    FSolveEquation,
+    FRenderExpr,
+    FMapStep,
+    FFinalize,
+>(
+    state: &mut T,
+    plan_with_rhs_sign: FPlan,
+    lhs_expr: ExprId,
+    include_items: bool,
+    existing_steps: Vec<S>,
+    mut render_expr: FRenderExpr,
+    mut solve_equation: FSolveEquation,
+    map_item_to_step: FMapStep,
+    mut finalize_solved_sets: FFinalize,
+) -> Result<(SolutionSet, Vec<S>), E>
+where
+    S: Clone,
+    FPlan: FnOnce(&mut T) -> AbsIsolationPlan,
+    FSolveEquation: FnMut(&mut T, &Equation) -> Result<(SolutionSet, Vec<S>), E>,
+    FRenderExpr: FnMut(&mut T, ExprId) -> String,
+    FMapStep: FnMut(AbsSplitExecutionItem) -> S,
+    FFinalize: FnMut(&mut T, SolutionSet, SolutionSet) -> SolutionSet,
+{
+    match plan_with_rhs_sign(state) {
+        AbsIsolationPlan::ReturnEmptySet => Ok((SolutionSet::Empty, existing_steps)),
+        AbsIsolationPlan::IsolateSingleEquation { equation } => {
+            Ok(merge_solved_with_existing_steps_prepend(
+                solve_equation(state, &equation)?,
+                existing_steps,
+            ))
+        }
+        AbsIsolationPlan::SplitBranches { positive, negative } => {
+            let execution = if include_items {
+                build_abs_split_execution_with(positive, negative, lhs_expr, |id| {
+                    render_expr(state, id)
+                })
+            } else {
+                materialize_abs_split_execution(positive, negative)
+            };
+            let solved = solve_abs_split_execution_pipeline_with_items(
+                &execution,
+                include_items,
+                &existing_steps,
+                |equation| solve_equation(state, equation),
+                map_item_to_step,
+            )?;
+            let final_set = finalize_solved_sets(state, solved.positive_set, solved.negative_set);
+            Ok((final_set, solved.steps))
+        }
+    }
 }
 
 /// Pre-built sign-split equations for inequalities of the form `A*B op 0`.
@@ -10232,6 +10487,52 @@ mod tests {
     }
 
     #[test]
+    fn execute_abs_isolation_plan_with_rhs_sign_pipeline_with_optional_items_and_solver_with_state_runs_plan(
+    ) {
+        let mut ctx = Context::new();
+        let lhs = ctx.var("lhs");
+        let rhs = ctx.var("rhs");
+        let x = ctx.var("x");
+        let equation = Equation {
+            lhs,
+            rhs,
+            op: RelOp::Eq,
+        };
+
+        #[derive(Default)]
+        struct AbsState {
+            plan_calls: usize,
+            solve_calls: usize,
+        }
+        let mut state = AbsState::default();
+
+        let solved =
+            execute_abs_isolation_plan_with_rhs_sign_pipeline_with_optional_items_and_solver_with_state(
+                &mut state,
+                |hooks| {
+                    hooks.plan_calls += 1;
+                    AbsIsolationPlan::IsolateSingleEquation { equation }
+                },
+                x,
+                true,
+                vec![9u8],
+                |_hooks, _id| String::new(),
+                |hooks, _equation| {
+                    hooks.solve_calls += 1;
+                    Ok::<_, ()>((SolutionSet::AllReals, vec![1u8]))
+                },
+                |_item| 0u8,
+                |_hooks, _positive, _negative| SolutionSet::AllReals,
+            )
+            .expect("single-equation pipeline must succeed");
+
+        assert_eq!(state.plan_calls, 1);
+        assert_eq!(state.solve_calls, 1);
+        assert!(matches!(solved.0, SolutionSet::AllReals));
+        assert_eq!(solved.1, vec![1u8, 9u8]);
+    }
+
+    #[test]
     fn abs_guard_wraps_solution_when_rhs_contains_var() {
         let mut ctx = Context::new();
         let rhs = ctx.var("x");
@@ -12807,6 +13108,89 @@ mod tests {
     }
 
     #[test]
+    fn execute_pow_exponent_shortcut_with_state_maps_equal_pow_bases() {
+        let mut context = Context::new();
+        let base = context.var("b");
+        let exponent = context.var("x");
+        let rhs_exp = context.var("n");
+        let rhs = context.add(Expr::Pow(base, rhs_exp));
+
+        struct ShortcutState {
+            context: Context,
+            plan_calls: usize,
+            equivalent_calls: usize,
+            read_calls: usize,
+            render_calls: usize,
+        }
+
+        let mut state = ShortcutState {
+            context,
+            plan_calls: 0,
+            equivalent_calls: 0,
+            read_calls: 0,
+            render_calls: 0,
+        };
+
+        let action = execute_pow_exponent_shortcut_with_state(
+            &mut state,
+            exponent,
+            base,
+            rhs,
+            RelOp::Eq,
+            "x",
+            false,
+            false,
+            false,
+            |hooks, id| {
+                hooks.read_calls += 1;
+                hooks.context.get(id).clone()
+            },
+            |hooks,
+             inner_base,
+             inner_op,
+             bases_equal,
+             rhs_pow_base_equal,
+             inner_base_is_zero,
+             inner_base_is_numeric,
+             inner_can_branch| {
+                hooks.plan_calls += 1;
+                plan_pow_exponent_shortcut_action_from_inputs(
+                    &mut hooks.context,
+                    inner_base,
+                    inner_op,
+                    bases_equal,
+                    rhs_pow_base_equal,
+                    inner_base_is_zero,
+                    inner_base_is_numeric,
+                    inner_can_branch,
+                )
+            },
+            |hooks, left, right| {
+                hooks.equivalent_calls += 1;
+                left == right
+            },
+            |hooks, id| {
+                hooks.render_calls += 1;
+                format!("{id}")
+            },
+        );
+
+        match action {
+            PowExponentShortcutEngineAction::IsolateExponent { rhs, op, items } => {
+                assert_eq!(rhs, rhs_exp);
+                assert_eq!(op, RelOp::Eq);
+                assert_eq!(items.len(), 1);
+                assert!(items[0].description.contains("equal exponents"));
+            }
+            other => panic!("expected isolate-exponent shortcut, got {:?}", other),
+        }
+        assert_eq!(state.read_calls, 1);
+        assert_eq!(state.plan_calls, 1);
+        assert_eq!(state.equivalent_calls, 2);
+        assert_eq!(state.render_calls, 3);
+    }
+
+    #[test]
     fn build_pow_exponent_shortcut_execution_plan_maps_equal_pow_bases() {
         let mut ctx = Context::new();
         let rhs_exp = ctx.var("n");
@@ -14230,6 +14614,61 @@ mod tests {
         assert_eq!(steps, vec!["tactic-step".to_string()]);
         assert_eq!(
             observed_args,
+            Some((rewritten_base, exponent, rewritten_rhs, RelOp::Eq))
+        );
+    }
+
+    #[test]
+    fn execute_pow_exponent_solve_tactic_normalization_with_state_builds_steps_when_rewrite_happens(
+    ) {
+        let mut ctx = Context::new();
+        let base = ctx.var("a");
+        let exponent = ctx.var("x");
+        let rhs = ctx.var("b");
+        let rewritten_base = ctx.var("ra");
+        let rewritten_rhs = ctx.var("rb");
+
+        #[derive(Default)]
+        struct TacticState {
+            cleared: usize,
+            simplify_calls: usize,
+            observed_args: Option<(ExprId, ExprId, ExprId, RelOp)>,
+        }
+
+        let mut state = TacticState::default();
+        let (out_base, out_rhs, steps) = execute_pow_exponent_solve_tactic_normalization_with_state(
+            &mut state,
+            base,
+            exponent,
+            rhs,
+            RelOp::Eq,
+            true,
+            |hooks| {
+                hooks.cleared += 1;
+            },
+            |hooks, expr| {
+                hooks.simplify_calls += 1;
+                if expr == base {
+                    rewritten_base
+                } else if expr == rhs {
+                    rewritten_rhs
+                } else {
+                    expr
+                }
+            },
+            |hooks, sim_base, sim_exp, sim_rhs, rel_op| {
+                hooks.observed_args = Some((sim_base, sim_exp, sim_rhs, rel_op.clone()));
+                vec!["tactic-step".to_string()]
+            },
+        );
+
+        assert_eq!(state.cleared, 2);
+        assert_eq!(state.simplify_calls, 2);
+        assert_eq!(out_base, rewritten_base);
+        assert_eq!(out_rhs, rewritten_rhs);
+        assert_eq!(steps, vec!["tactic-step".to_string()]);
+        assert_eq!(
+            state.observed_args,
             Some((rewritten_base, exponent, rewritten_rhs, RelOp::Eq))
         );
     }
@@ -18796,6 +19235,73 @@ mod tests {
             )
             .expect("unary merge wrapper should solve");
 
+        assert_eq!(
+            merged.1,
+            vec![
+                "Square both sides".to_string(),
+                "sub".to_string(),
+                "existing".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn execute_unary_inverse_result_pipeline_or_else_with_and_merge_with_existing_steps_with_state_prepends(
+    ) {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let rhs = ctx.var("rhs");
+
+        struct UnaryState {
+            context: Context,
+            plan_calls: usize,
+            solve_calls: usize,
+        }
+
+        let mut state = UnaryState {
+            context: ctx,
+            plan_calls: 0,
+            solve_calls: 0,
+        };
+
+        let merged =
+            execute_unary_inverse_result_pipeline_or_else_with_and_merge_with_existing_steps_with_state(
+                &mut state,
+                "sqrt",
+                x,
+                rhs,
+                RelOp::Eq,
+                true,
+                true,
+                vec!["existing".to_string()],
+                |hooks, fn_name, arg, other, op, is_lhs| {
+                    hooks.plan_calls += 1;
+                    crate::function_inverse::plan_unary_inverse_isolation_step(
+                        &mut hooks.context,
+                        fn_name,
+                        arg,
+                        other,
+                        op,
+                        is_lhs,
+                    )
+                },
+                |_hooks, rhs_expr| (rhs_expr, Vec::<(String, ExprId)>::new()),
+                |hooks, solve_lhs, solve_rhs, solve_op| {
+                    hooks.solve_calls += 1;
+                    assert_eq!(solve_lhs, x);
+                    assert_eq!(solve_op, RelOp::Eq);
+                    Ok::<_, String>((
+                        SolutionSet::Discrete(vec![solve_rhs]),
+                        vec!["sub".to_string()],
+                    ))
+                },
+                |item| item.description().to_string(),
+                |_hooks| "unsupported".to_string(),
+            )
+            .expect("unary merge wrapper should solve");
+
+        assert_eq!(state.plan_calls, 1);
+        assert_eq!(state.solve_calls, 1);
         assert_eq!(
             merged.1,
             vec![
