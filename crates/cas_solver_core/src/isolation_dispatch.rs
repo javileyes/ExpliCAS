@@ -4,7 +4,13 @@
 //! callers provide stateful handlers for each isolation branch.
 
 use cas_ast::symbol::SymbolId;
-use cas_ast::{Context, Expr, ExprId};
+use cas_ast::{Context, Equation, Expr, ExprId, RelOp, SolutionSet};
+
+use crate::solve_outcome::{
+    plan_negated_lhs_isolation_step, residual_solution_set, resolve_isolated_variable_outcome,
+    solve_isolated_variable_lhs_with_resolver_with_state,
+    solve_negated_lhs_isolation_plan_with_and_merge_with_existing_steps,
+};
 
 /// Routed LHS shape for equation isolation.
 #[derive(Debug, Clone, PartialEq)]
@@ -93,13 +99,109 @@ where
     }
 }
 
+/// Execute an isolated-variable entry (`x op rhs`) with default core
+/// outcome resolution and residual fallback.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_isolated_variable_entry_with_default_resolution_with_state<
+    T,
+    S,
+    FContextForResolve,
+    FContextForResidual,
+    FSimplify,
+    FTry1,
+    FTry2,
+>(
+    state: &mut T,
+    lhs: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    var: &str,
+    context_for_resolve: FContextForResolve,
+    context_for_residual: FContextForResidual,
+    simplify_rhs: FSimplify,
+    try_linear_collect: FTry1,
+    try_linear_collect_v2: FTry2,
+) -> (SolutionSet, Vec<S>)
+where
+    FContextForResolve: FnMut(&mut T) -> &mut Context,
+    FContextForResidual: FnMut(&mut T) -> &mut Context,
+    FSimplify: FnMut(&mut T, ExprId) -> ExprId,
+    FTry1: FnMut(&mut T, ExprId, ExprId, &str) -> Option<(SolutionSet, Vec<S>)>,
+    FTry2: FnMut(&mut T, ExprId, ExprId, &str) -> Option<(SolutionSet, Vec<S>)>,
+{
+    let mut context_for_resolve = context_for_resolve;
+    let mut context_for_residual = context_for_residual;
+    solve_isolated_variable_lhs_with_resolver_with_state(
+        state,
+        lhs,
+        rhs,
+        op,
+        var,
+        |state, sim_rhs, rel_op, solve_var| {
+            resolve_isolated_variable_outcome(
+                context_for_resolve(state),
+                sim_rhs,
+                rel_op,
+                solve_var,
+            )
+        },
+        simplify_rhs,
+        try_linear_collect,
+        try_linear_collect_v2,
+        |state, solve_lhs, solve_rhs, solve_var| {
+            residual_solution_set(context_for_residual(state), solve_lhs, solve_rhs, solve_var)
+        },
+    )
+}
+
+/// Execute a negated-LHS entry (`-A op rhs`) with default core negation rewrite
+/// planning, then delegate solving of rewritten equation via callback.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_negated_lhs_entry_with_default_plan_and_merge_with_existing_steps_with_state<
+    T,
+    E,
+    S,
+    FContextMut,
+    FSolveRewritten,
+    FStep,
+>(
+    state: &mut T,
+    inner: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    var: &str,
+    include_item: bool,
+    existing_steps: Vec<S>,
+    mut context_mut: FContextMut,
+    mut solve_rewritten: FSolveRewritten,
+    map_item_to_step: FStep,
+) -> Result<(SolutionSet, Vec<S>), E>
+where
+    FContextMut: FnMut(&mut T) -> &mut Context,
+    FSolveRewritten: FnMut(&mut T, Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
+    FStep: FnMut(crate::solve_outcome::TermIsolationRewriteExecutionItem) -> S,
+{
+    let rewrite = plan_negated_lhs_isolation_step(context_mut(state), inner, rhs, op);
+    solve_negated_lhs_isolation_plan_with_and_merge_with_existing_steps(
+        rewrite,
+        var,
+        include_item,
+        existing_steps,
+        |equation, solve_var| solve_rewritten(state, equation, solve_var),
+        map_item_to_step,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        derive_isolation_dispatch_route, execute_isolation_dispatch_route_with_state,
+        derive_isolation_dispatch_route,
+        execute_isolated_variable_entry_with_default_resolution_with_state,
+        execute_isolation_dispatch_route_with_state,
+        execute_negated_lhs_entry_with_default_plan_and_merge_with_existing_steps_with_state,
         IsolationDispatchRoute,
     };
-    use cas_ast::{Context, Expr};
+    use cas_ast::{Context, Expr, RelOp, SolutionSet};
 
     #[test]
     fn derive_isolation_dispatch_route_detects_isolated_variable() {
@@ -151,5 +253,68 @@ mod tests {
             }
             other => panic!("expected unsupported route, got {other:?}"),
         }
+    }
+
+    #[derive(Default)]
+    struct IsolatedState {
+        context: Context,
+    }
+
+    #[test]
+    fn execute_isolated_variable_entry_with_default_resolution_with_state_solves_eq() {
+        let mut state = IsolatedState::default();
+        let x = state.context.var("x");
+        let two = state.context.num(2);
+
+        let (set, steps) = execute_isolated_variable_entry_with_default_resolution_with_state(
+            &mut state,
+            x,
+            two,
+            RelOp::Eq,
+            "x",
+            |state| &mut state.context,
+            |state| &mut state.context,
+            |_state, expr| expr,
+            |_state, _lhs, _rhs, _var| None::<(SolutionSet, Vec<String>)>,
+            |_state, _lhs, _rhs, _var| None::<(SolutionSet, Vec<String>)>,
+        );
+
+        assert!(steps.is_empty());
+        match set {
+            SolutionSet::Discrete(solutions) => assert_eq!(solutions, vec![two]),
+            other => panic!("expected discrete solution set, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn execute_negated_lhs_entry_with_default_plan_and_merge_with_existing_steps_with_state_merges_steps(
+    ) {
+        let mut state = IsolatedState::default();
+        let x = state.context.var("x");
+        let y = state.context.num(2);
+
+        let solved =
+            execute_negated_lhs_entry_with_default_plan_and_merge_with_existing_steps_with_state(
+                &mut state,
+                x,
+                y,
+                RelOp::Eq,
+                "x",
+                true,
+                vec!["existing".to_string()],
+                |state| &mut state.context,
+                |_state, _equation, _var| {
+                    Ok::<(SolutionSet, Vec<String>), &'static str>((
+                        SolutionSet::AllReals,
+                        vec!["subsolve".to_string()],
+                    ))
+                },
+                |item| item.description,
+            )
+            .expect("negated entry should solve");
+
+        assert!(matches!(solved.0, SolutionSet::AllReals));
+        assert!(solved.1.contains(&"subsolve".to_string()));
+        assert_eq!(solved.1.last(), Some(&"existing".to_string()));
     }
 }

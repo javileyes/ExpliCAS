@@ -6,12 +6,10 @@ use crate::engine::Simplifier;
 use crate::solver::{medium_step, SolveStep, SolverOptions, MAX_SOLVE_DEPTH};
 use cas_ast::{ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_dispatch::{
-    derive_isolation_dispatch_route, execute_isolation_dispatch_route_with_state,
-};
-use cas_solver_core::solve_outcome::{
-    plan_negated_lhs_isolation_step, residual_solution_set, resolve_isolated_variable_outcome,
-    solve_isolated_variable_lhs_with_resolver_with_state,
-    solve_negated_lhs_isolation_plan_with_and_merge_with_existing_steps,
+    derive_isolation_dispatch_route,
+    execute_isolated_variable_entry_with_default_resolution_with_state,
+    execute_isolation_dispatch_route_with_state,
+    execute_negated_lhs_entry_with_default_plan_and_merge_with_existing_steps_with_state,
 };
 
 use crate::error::CasError;
@@ -37,20 +35,14 @@ pub(crate) fn isolate(
         simplifier,
         route,
         |simplifier| {
-            let solved = solve_isolated_variable_lhs_with_resolver_with_state(
+            let solved = execute_isolated_variable_entry_with_default_resolution_with_state(
                 simplifier,
                 lhs,
                 rhs,
                 op.clone(),
                 var,
-                |simplifier, sim_rhs, rel_op, solve_var| {
-                    resolve_isolated_variable_outcome(
-                        &mut simplifier.context,
-                        sim_rhs,
-                        rel_op,
-                        solve_var,
-                    )
-                },
+                |simplifier| &mut simplifier.context,
+                |simplifier| &mut simplifier.context,
                 |simplifier, expr| simplifier.simplify(expr).0,
                 |simplifier, solve_lhs, solve_rhs, solve_var| {
                     crate::solver::linear_collect::try_linear_collect(
@@ -61,9 +53,6 @@ pub(crate) fn isolate(
                     crate::solver::linear_collect::try_linear_collect_v2(
                         solve_lhs, solve_rhs, solve_var, simplifier,
                     )
-                },
-                |simplifier, solve_lhs, solve_rhs, solve_var| {
-                    residual_solution_set(&mut simplifier.context, solve_lhs, solve_rhs, solve_var)
                 },
             );
             Ok(solved)
@@ -151,15 +140,17 @@ pub(crate) fn isolate(
             )
         },
         |simplifier, inner| {
-            let rewrite =
-                plan_negated_lhs_isolation_step(&mut simplifier.context, inner, rhs, op.clone());
             let include_item = simplifier.collect_steps();
-            solve_negated_lhs_isolation_plan_with_and_merge_with_existing_steps(
-                rewrite,
+            execute_negated_lhs_entry_with_default_plan_and_merge_with_existing_steps_with_state(
+                simplifier,
+                inner,
+                rhs,
+                op.clone(),
                 var,
                 include_item,
                 Vec::new(),
-                |equation, solve_var| {
+                |simplifier| &mut simplifier.context,
+                |simplifier, equation, solve_var| {
                     isolate(
                         equation.lhs,
                         equation.rhs,
