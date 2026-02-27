@@ -3,7 +3,7 @@
 //! These wrappers keep strategy routing orchestration in `cas_solver_core`
 //! while callers provide stateful hooks for recursive solving.
 
-use cas_ast::{Equation, SolutionSet};
+use cas_ast::{Context, Equation, SolutionSet};
 
 use crate::strategy_kernels::{
     execute_collect_terms_kernel_result_pipeline_for_equation_with_item_with_state,
@@ -183,10 +183,106 @@ where
     )
 }
 
+/// Execute collect-terms strategy using default core kernel derivation:
+/// `derive_collect_terms_kernel(ctx, equation, var)`.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_collect_terms_strategy_with_default_kernel_with_state<
+    T,
+    S,
+    E,
+    FContextMut,
+    FSimplifyExpr,
+    FRenderExpr,
+    FSolveEquation,
+    FMapStep,
+>(
+    state: &mut T,
+    equation: &Equation,
+    var: &str,
+    include_item: bool,
+    mut context_mut: FContextMut,
+    simplify_expr: FSimplifyExpr,
+    render_expr: FRenderExpr,
+    solve_equation: FSolveEquation,
+    map_item_to_step: FMapStep,
+) -> Option<Result<(SolutionSet, Vec<S>), E>>
+where
+    FContextMut: FnMut(&mut T) -> &mut Context,
+    FSimplifyExpr: FnMut(&mut T, cas_ast::ExprId) -> cas_ast::ExprId,
+    FRenderExpr: FnMut(&mut T, cas_ast::ExprId) -> String,
+    FSolveEquation: FnMut(&mut T, &Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
+    FMapStep: FnMut(StrategyExecutionItem) -> S,
+{
+    execute_collect_terms_strategy_with_state(
+        state,
+        equation,
+        var,
+        include_item,
+        |state, equation, var| {
+            crate::strategy_kernels::derive_collect_terms_kernel(context_mut(state), equation, var)
+        },
+        simplify_expr,
+        render_expr,
+        solve_equation,
+        map_item_to_step,
+    )
+}
+
+/// Execute rational-exponent strategy using default core kernel derivation:
+/// `derive_rational_exponent_kernel_for_var(ctx, equation, var)`.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_rational_exponent_strategy_with_default_kernel_with_state<
+    T,
+    S,
+    E,
+    FContextMut,
+    FSimplifyExpr,
+    FSolveEquation,
+    FMapStep,
+    FVerifySolution,
+>(
+    state: &mut T,
+    equation: &Equation,
+    var: &str,
+    include_item: bool,
+    mut context_mut: FContextMut,
+    simplify_expr: FSimplifyExpr,
+    solve_equation: FSolveEquation,
+    map_item_to_step: FMapStep,
+    verify_solution: FVerifySolution,
+) -> Option<Result<(SolutionSet, Vec<S>), E>>
+where
+    FContextMut: FnMut(&mut T) -> &mut Context,
+    FSimplifyExpr: FnMut(&mut T, cas_ast::ExprId) -> cas_ast::ExprId,
+    FSolveEquation: FnMut(&mut T, &Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
+    FMapStep: FnMut(StrategyExecutionItem) -> S,
+    FVerifySolution: FnMut(&mut T, cas_ast::ExprId) -> bool,
+{
+    execute_rational_exponent_strategy_with_state(
+        state,
+        equation,
+        var,
+        include_item,
+        |state, equation, var| {
+            crate::strategy_kernels::derive_rational_exponent_kernel_for_var(
+                context_mut(state),
+                equation,
+                var,
+            )
+        },
+        simplify_expr,
+        solve_equation,
+        map_item_to_step,
+        verify_solution,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
+        execute_collect_terms_strategy_with_default_kernel_with_state,
         execute_collect_terms_strategy_with_state, execute_isolation_strategy_with_state,
+        execute_rational_exponent_strategy_with_default_kernel_with_state,
         execute_rational_exponent_strategy_with_state, execute_unwrap_strategy_with_state,
     };
     use crate::unwrap_plan::{
@@ -388,6 +484,62 @@ mod tests {
             |_state, _expr| true,
         );
 
+        assert!(out.is_none());
+    }
+
+    #[test]
+    fn execute_collect_terms_strategy_with_default_kernel_with_state_returns_none() {
+        let mut ctx = cas_ast::Context::new();
+        let lhs = ctx.var("x");
+        let rhs = ctx.num(2);
+        let mut state = ctx;
+        let eq = Equation {
+            lhs,
+            rhs,
+            op: RelOp::Eq,
+        };
+
+        let out = execute_collect_terms_strategy_with_default_kernel_with_state(
+            &mut state,
+            &eq,
+            "x",
+            true,
+            |state| state,
+            |_state, expr| expr,
+            |_state, _expr| "rhs".to_string(),
+            |_state, _equation, _var| {
+                Ok::<(SolutionSet, Vec<String>), &'static str>((SolutionSet::AllReals, vec![]))
+            },
+            |_item| "item".to_string(),
+        );
+        assert!(out.is_none());
+    }
+
+    #[test]
+    fn execute_rational_exponent_strategy_with_default_kernel_with_state_returns_none() {
+        let mut ctx = cas_ast::Context::new();
+        let lhs = ctx.var("x");
+        let rhs = ctx.num(2);
+        let mut state = ctx;
+        let eq = Equation {
+            lhs,
+            rhs,
+            op: RelOp::Eq,
+        };
+
+        let out = execute_rational_exponent_strategy_with_default_kernel_with_state(
+            &mut state,
+            &eq,
+            "x",
+            true,
+            |state| state,
+            |_state, expr| expr,
+            |_state, _equation, _var| {
+                Ok::<(SolutionSet, Vec<String>), &'static str>((SolutionSet::AllReals, vec![]))
+            },
+            |_item| "item".to_string(),
+            |_state, _expr| true,
+        );
         assert!(out.is_none());
     }
 }
