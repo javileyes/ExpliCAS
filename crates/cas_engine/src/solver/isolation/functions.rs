@@ -9,7 +9,8 @@ use cas_solver_core::function_inverse::{
 };
 use cas_solver_core::isolation_functions::{
     execute_abs_function_isolation_with_default_plan_and_finalizer_with_state,
-    execute_log_function_isolation_with_state, execute_unary_function_isolation_with_state,
+    execute_function_isolation_route_with_state, execute_log_function_isolation_with_state,
+    execute_unary_function_isolation_with_state,
 };
 use cas_solver_core::log_isolation::plan_log_isolation_step_with;
 use cas_solver_core::solve_outcome::AbsSplitExecutionItem;
@@ -27,30 +28,60 @@ pub(super) fn isolate_function(
     steps: Vec<SolveStep>,
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-    match derive_function_isolation_route(&simplifier.context, fn_id, &args, var) {
-        Ok(cas_solver_core::function_inverse::FunctionIsolationRoute::AbsUnary { arg }) => {
-            isolate_abs(arg, rhs, op, var, simplifier, opts, steps, ctx)
-        }
-        Ok(cas_solver_core::function_inverse::FunctionIsolationRoute::LogBinary { base, arg }) => {
-            isolate_log(base, arg, rhs, op, var, simplifier, opts, steps, ctx)
-        }
-        Ok(cas_solver_core::function_inverse::FunctionIsolationRoute::UnaryInvertible { arg }) => {
-            isolate_unary_function(fn_id, arg, rhs, op, var, simplifier, opts, steps, ctx)
-        }
-        Err(cas_solver_core::function_inverse::FunctionIsolationRouteError::VariableNotFoundInUnaryArg) => {
-            Err(CasError::VariableNotFound(var.to_string()))
-        }
-        Err(cas_solver_core::function_inverse::FunctionIsolationRouteError::UnsupportedArity) => {
-            Err(CasError::IsolationError(
+    let routing = derive_function_isolation_route(&simplifier.context, fn_id, &args, var);
+    execute_function_isolation_route_with_state(
+        simplifier,
+        routing,
+        |simplifier, arg| {
+            isolate_abs(
+                arg,
+                rhs,
+                op.clone(),
+                var,
+                simplifier,
+                opts,
+                steps.clone(),
+                ctx,
+            )
+        },
+        |simplifier, base, arg| {
+            isolate_log(
+                base,
+                arg,
+                rhs,
+                op.clone(),
+                var,
+                simplifier,
+                opts,
+                steps.clone(),
+                ctx,
+            )
+        },
+        |simplifier, arg| {
+            isolate_unary_function(
+                fn_id,
+                arg,
+                rhs,
+                op.clone(),
+                var,
+                simplifier,
+                opts,
+                steps.clone(),
+                ctx,
+            )
+        },
+        |_simplifier| CasError::VariableNotFound(var.to_string()),
+        |simplifier| {
+            CasError::IsolationError(
                 var.to_string(),
                 format!(
                     "Cannot invert function '{}' with {} arguments",
                     simplifier.context.sym_name(fn_id),
                     args.len()
                 ),
-            ))
-        }
-    }
+            )
+        },
+    )
 }
 
 /// Handle `|A| = RHS` (absolute value isolation)

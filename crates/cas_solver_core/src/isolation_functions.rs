@@ -40,6 +40,46 @@ where
     }
 }
 
+/// Stateful variant of [`execute_function_isolation_route_with`].
+///
+/// This form lets callers dispatch function-isolation route branches while
+/// threading one mutable state object across branch handlers.
+pub fn execute_function_isolation_route_with_state<
+    T,
+    R,
+    E,
+    FAbs,
+    FLog,
+    FUnary,
+    FVarMissing,
+    FUnsupported,
+>(
+    state: &mut T,
+    routing: Result<FunctionIsolationRoute, FunctionIsolationRouteError>,
+    on_abs_unary: FAbs,
+    on_log_binary: FLog,
+    on_unary_invertible: FUnary,
+    on_variable_missing: FVarMissing,
+    on_unsupported_arity: FUnsupported,
+) -> Result<R, E>
+where
+    FAbs: FnOnce(&mut T, ExprId) -> Result<R, E>,
+    FLog: FnOnce(&mut T, ExprId, ExprId) -> Result<R, E>,
+    FUnary: FnOnce(&mut T, ExprId) -> Result<R, E>,
+    FVarMissing: FnOnce(&mut T) -> E,
+    FUnsupported: FnOnce(&mut T) -> E,
+{
+    match routing {
+        Ok(FunctionIsolationRoute::AbsUnary { arg }) => on_abs_unary(state, arg),
+        Ok(FunctionIsolationRoute::LogBinary { base, arg }) => on_log_binary(state, base, arg),
+        Ok(FunctionIsolationRoute::UnaryInvertible { arg }) => on_unary_invertible(state, arg),
+        Err(FunctionIsolationRouteError::VariableNotFoundInUnaryArg) => {
+            Err(on_variable_missing(state))
+        }
+        Err(FunctionIsolationRouteError::UnsupportedArity) => Err(on_unsupported_arity(state)),
+    }
+}
+
 /// Execute absolute-value function isolation (`|arg| op rhs`).
 #[allow(clippy::too_many_arguments)]
 pub fn execute_abs_function_isolation_with_state<
@@ -241,4 +281,55 @@ where
         map_item_to_step,
         |state| unknown_function_error(state),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::execute_function_isolation_route_with_state;
+    use crate::function_inverse::{FunctionIsolationRoute, FunctionIsolationRouteError};
+
+    #[test]
+    fn execute_function_isolation_route_with_state_dispatches_log_branch() {
+        let mut ctx = cas_ast::Context::new();
+        let base = ctx.num(3);
+        let arg = ctx.num(5);
+        let mut state = 0usize;
+        let out = execute_function_isolation_route_with_state(
+            &mut state,
+            Ok(FunctionIsolationRoute::LogBinary { base, arg }),
+            |_state, _arg| Ok::<&'static str, &'static str>("abs"),
+            |state, _base, _arg| {
+                *state += 1;
+                Ok("log")
+            },
+            |_state, _arg| Ok("unary"),
+            |_state| "missing",
+            |_state| "unsupported",
+        )
+        .expect("log branch should succeed");
+
+        assert_eq!(out, "log");
+        assert_eq!(state, 1);
+    }
+
+    #[test]
+    fn execute_function_isolation_route_with_state_maps_missing_variable_error() {
+        let mut state = false;
+        let err = execute_function_isolation_route_with_state(
+            &mut state,
+            Err(FunctionIsolationRouteError::VariableNotFoundInUnaryArg),
+            |_state, _arg| Ok::<&'static str, &'static str>("abs"),
+            |_state, _base, _arg| Ok("log"),
+            |_state, _arg| Ok("unary"),
+            |state| {
+                *state = true;
+                "missing"
+            },
+            |_state| "unsupported",
+        )
+        .expect_err("missing-variable route must map to error");
+
+        assert_eq!(err, "missing");
+        assert!(state);
+    }
 }
