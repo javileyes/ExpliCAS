@@ -12,15 +12,14 @@ use cas_solver_core::solve_outcome::{
 };
 use cas_solver_core::strategy_kernels::{
     derive_isolation_strategy_routing,
-    execute_collect_terms_kernel_result_pipeline_for_equation_with_item,
-    execute_rational_exponent_kernel_result_pipeline_with_item_with,
+    execute_collect_terms_kernel_result_pipeline_for_equation_with_item_with_state,
+    execute_rational_exponent_kernel_result_pipeline_with_item_with_state,
     solve_isolation_strategy_routing_with,
 };
 use cas_solver_core::unwrap_plan::{
     route_unwrap_entry_with_item,
     solve_unwrap_entry_routing_option_with_execution_pipeline_with_item_with_state,
 };
-use std::cell::RefCell;
 
 pub struct IsolationStrategy;
 
@@ -142,10 +141,9 @@ impl SolverStrategy for CollectTermsStrategy {
     ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
         let include_item = simplifier.collect_steps();
         let rhs_desc = solver_render_expr(&simplifier.context, eq.rhs);
-        let simplifier_ref = RefCell::new(simplifier);
-        execute_collect_terms_kernel_result_pipeline_for_equation_with_item(
-            || {
-                let mut simplifier = simplifier_ref.borrow_mut();
+        execute_collect_terms_kernel_result_pipeline_for_equation_with_item_with_state(
+            simplifier,
+            |simplifier| {
                 cas_solver_core::strategy_kernels::derive_collect_terms_kernel(
                     &mut simplifier.context,
                     eq,
@@ -155,11 +153,10 @@ impl SolverStrategy for CollectTermsStrategy {
             eq,
             var,
             include_item,
-            |expr| simplifier_ref.borrow_mut().simplify(expr).0,
-            move |_| rhs_desc.clone(),
-            |equation, solve_var| {
-                let mut simplifier = simplifier_ref.borrow_mut();
-                solve_with_ctx_and_options(equation, solve_var, &mut simplifier, *opts, ctx)
+            |simplifier, expr| simplifier.simplify(expr).0,
+            move |_simplifier, _rhs| rhs_desc.clone(),
+            |simplifier, equation, solve_var| {
+                solve_with_ctx_and_options(equation, solve_var, simplifier, *opts, ctx)
             },
             |item| medium_step(item.description, item.equation),
         )
@@ -185,10 +182,9 @@ impl SolverStrategy for RationalExponentStrategy {
         ctx: &SolveCtx,
     ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
         let include_item = simplifier.collect_steps();
-        let simplifier_ref = RefCell::new(simplifier);
-        execute_rational_exponent_kernel_result_pipeline_with_item_with(
-            || {
-                let mut simplifier = simplifier_ref.borrow_mut();
+        execute_rational_exponent_kernel_result_pipeline_with_item_with_state(
+            simplifier,
+            |simplifier| {
                 cas_solver_core::strategy_kernels::derive_rational_exponent_kernel_for_var(
                     &mut simplifier.context,
                     eq,
@@ -197,13 +193,12 @@ impl SolverStrategy for RationalExponentStrategy {
             },
             var,
             include_item,
-            |expr| simplifier_ref.borrow_mut().simplify(expr).0,
-            |equation, solve_var| {
-                let mut simplifier = simplifier_ref.borrow_mut();
-                solve_with_ctx_and_options(equation, solve_var, &mut simplifier, *opts, ctx)
+            |simplifier, expr| simplifier.simplify(expr).0,
+            |simplifier, equation, solve_var| {
+                solve_with_ctx_and_options(equation, solve_var, simplifier, *opts, ctx)
             },
             |item| medium_step(item.description, item.equation),
-            |_solution| true,
+            |_simplifier, _solution| true,
         )
     }
 }

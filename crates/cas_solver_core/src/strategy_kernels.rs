@@ -557,6 +557,67 @@ where
     )
 }
 
+/// Stateful variant of
+/// [`execute_collect_terms_kernel_result_pipeline_for_equation_with_item`].
+///
+/// This form lets callers reuse one mutable state value across derive, simplify,
+/// render and solve callbacks without interior mutability.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_collect_terms_kernel_result_pipeline_for_equation_with_item_with_state<
+    T,
+    E,
+    S,
+    FDerive,
+    FSimplify,
+    FRender,
+    FSolve,
+    FStep,
+>(
+    state: &mut T,
+    mut derive_kernel: FDerive,
+    equation: &Equation,
+    var: &str,
+    include_item: bool,
+    mut simplify_expr: FSimplify,
+    mut render_expr: FRender,
+    mut solve_rewritten: FSolve,
+    map_item_to_step: FStep,
+) -> Option<Result<(SolutionSet, Vec<S>), E>>
+where
+    FDerive: FnMut(&mut T) -> Option<CollectTermsKernel>,
+    FSimplify: FnMut(&mut T, ExprId) -> ExprId,
+    FRender: FnMut(&mut T, ExprId) -> String,
+    FSolve: FnMut(&mut T, &Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
+    FStep: FnMut(StrategyExecutionItem) -> S,
+{
+    let kernel = derive_kernel(state)?;
+    let lhs_after = simplify_expr(state, kernel.rewritten.lhs);
+    let rhs_after = simplify_expr(state, kernel.rewritten.rhs);
+    let rhs_desc = render_expr(state, equation.rhs);
+    let rewritten_equation = Equation {
+        lhs: lhs_after,
+        rhs: rhs_after,
+        op: equation.op.clone(),
+    };
+    let rewrite = CollectTermsSolvedRewrite {
+        equation: rewritten_equation.clone(),
+        items: vec![StrategyExecutionItem {
+            equation: rewritten_equation,
+            description: collect_terms_message(&rhs_desc),
+        }],
+    };
+    Some(
+        solve_collect_terms_rewrite_pipeline_with_item(
+            rewrite,
+            var,
+            include_item,
+            |equation, solve_var| solve_rewritten(state, equation, solve_var),
+            map_item_to_step,
+        )
+        .map(|payload| (payload.solution_set, payload.steps)),
+    )
+}
+
 /// Derive and solve one collect-terms kernel for a concrete equation/variable
 /// returning plain strategy output.
 ///
@@ -983,6 +1044,68 @@ where
         verify_discrete_solution,
     )?;
     Some(solved.map(|payload| (payload.solution_set, payload.steps)))
+}
+
+/// Stateful variant of
+/// [`execute_rational_exponent_kernel_result_pipeline_with_item_with`].
+///
+/// This form lets callers reuse one mutable state value across derive,
+/// simplify, solve and verification callbacks without interior mutability.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_rational_exponent_kernel_result_pipeline_with_item_with_state<
+    T,
+    E,
+    S,
+    FDerive,
+    FSimplify,
+    FSolve,
+    FStep,
+    FVerify,
+>(
+    state: &mut T,
+    mut derive_kernel: FDerive,
+    var: &str,
+    include_item: bool,
+    mut simplify_expr: FSimplify,
+    mut solve_rewritten: FSolve,
+    mut map_item_to_step: FStep,
+    mut verify_discrete_solution: FVerify,
+) -> Option<Result<(SolutionSet, Vec<S>), E>>
+where
+    FDerive: FnMut(&mut T) -> Option<RationalExponentKernel>,
+    FSimplify: FnMut(&mut T, ExprId) -> ExprId,
+    FSolve: FnMut(&mut T, &Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
+    FStep: FnMut(StrategyExecutionItem) -> S,
+    FVerify: FnMut(&mut T, ExprId) -> bool,
+{
+    let kernel = derive_kernel(state)?;
+    let lhs_after = simplify_expr(state, kernel.rewritten.lhs);
+    let rhs_after = simplify_expr(state, kernel.rewritten.rhs);
+    let rewrite = materialize_rational_exponent_rewrite(kernel.q, lhs_after, rhs_after);
+
+    let mut steps = Vec::new();
+    if include_item {
+        if let Some(item) = rewrite.items.first().cloned() {
+            steps.push(map_item_to_step(item));
+        }
+    }
+
+    let (set, mut sub_steps) = match solve_rewritten(state, &rewrite.equation, var) {
+        Ok(solved) => solved,
+        Err(e) => return Some(Err(e)),
+    };
+    steps.append(&mut sub_steps);
+
+    let solution_set = match set {
+        SolutionSet::Discrete(solutions) => SolutionSet::Discrete(
+            crate::solve_analysis::retain_verified_discrete(solutions, |solution| {
+                verify_discrete_solution(state, solution)
+            }),
+        ),
+        other => other,
+    };
+
+    Some(Ok((solution_set, steps)))
 }
 
 /// Derive and solve one rational-exponent kernel for a concrete equation/variable
@@ -2034,6 +2157,65 @@ mod tests {
     }
 
     #[test]
+    fn execute_collect_terms_kernel_result_pipeline_for_equation_with_item_with_state_returns_plain_tuple(
+    ) {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        let lhs = ctx.add(Expr::Add(x, one));
+        let rhs = ctx.add(Expr::Add(x, two));
+        let eq = Equation {
+            lhs,
+            rhs,
+            op: RelOp::Eq,
+        };
+
+        #[derive(Default)]
+        struct HookState {
+            derive_calls: usize,
+            simplify_calls: usize,
+            render_calls: usize,
+            solve_calls: usize,
+        }
+        let mut state = HookState::default();
+
+        let solved =
+            execute_collect_terms_kernel_result_pipeline_for_equation_with_item_with_state(
+                &mut state,
+                |state| {
+                    state.derive_calls += 1;
+                    derive_collect_terms_kernel(&mut ctx, &eq, "x")
+                },
+                &eq,
+                "x",
+                true,
+                |state, id| {
+                    state.simplify_calls += 1;
+                    id
+                },
+                |state, _rhs| {
+                    state.render_calls += 1;
+                    "rhs".to_string()
+                },
+                |state, _equation, _var| {
+                    state.solve_calls += 1;
+                    Ok::<_, ()>((SolutionSet::Discrete(vec![x]), vec!["sub".to_string()]))
+                },
+                |item| item.description,
+            )
+            .expect("kernel should be derived")
+            .expect("collect kernel pipeline should succeed");
+
+        assert_eq!(state.derive_calls, 1);
+        assert_eq!(state.simplify_calls, 2);
+        assert_eq!(state.render_calls, 1);
+        assert_eq!(state.solve_calls, 1);
+        assert_eq!(solved.0, SolutionSet::Discrete(vec![x]));
+        assert_eq!(solved.1.len(), 2);
+    }
+
+    #[test]
     fn solve_rational_exponent_rewrite_with_runs_solver_on_rewritten_equation() {
         let mut ctx = Context::new();
         let lhs = ctx.var("lhs");
@@ -2355,5 +2537,62 @@ mod tests {
 
         assert!(out.is_none());
         assert_eq!(solve_calls, 0);
+    }
+
+    #[test]
+    fn execute_rational_exponent_kernel_result_pipeline_with_item_with_state_returns_plain_tuple() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let two = ctx.num(2);
+        let three = ctx.num(3);
+        let exponent = ctx.add(Expr::Div(three, two));
+        let lhs = ctx.add(Expr::Pow(x, exponent));
+        let rhs = ctx.num(8);
+        let eq = Equation {
+            lhs,
+            rhs,
+            op: RelOp::Eq,
+        };
+
+        #[derive(Default)]
+        struct HookState {
+            derive_calls: usize,
+            simplify_calls: usize,
+            solve_calls: usize,
+            verify_calls: usize,
+        }
+        let mut state = HookState::default();
+
+        let solved = execute_rational_exponent_kernel_result_pipeline_with_item_with_state(
+            &mut state,
+            |state| {
+                state.derive_calls += 1;
+                derive_rational_exponent_kernel_for_var(&mut ctx, &eq, "x")
+            },
+            "x",
+            true,
+            |state, id| {
+                state.simplify_calls += 1;
+                id
+            },
+            |state, _equation, _solve_var| {
+                state.solve_calls += 1;
+                Ok::<_, ()>((SolutionSet::Discrete(vec![x, rhs]), vec!["sub".to_string()]))
+            },
+            |item| item.description,
+            |state, solution| {
+                state.verify_calls += 1;
+                solution == x
+            },
+        )
+        .expect("kernel should be derived")
+        .expect("pipeline should solve");
+
+        assert_eq!(state.derive_calls, 1);
+        assert_eq!(state.simplify_calls, 2);
+        assert_eq!(state.solve_calls, 1);
+        assert_eq!(state.verify_calls, 2);
+        assert_eq!(solved.0, SolutionSet::Discrete(vec![x]));
+        assert_eq!(solved.1.len(), 2);
     }
 }
