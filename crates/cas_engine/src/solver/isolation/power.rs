@@ -3,11 +3,7 @@ use crate::error::CasError;
 use crate::solver::{medium_step, render_expr as solver_render_expr, SolveStep, SolverOptions};
 use crate::SimplifyOptions;
 use cas_ast::{ExprId, RelOp, SolutionSet};
-use cas_solver_core::isolation_power::{
-    execute_pow_base_isolation_with_default_action_with_state,
-    execute_pow_exponent_isolation_with_default_kernels_with_state,
-    execute_pow_isolation_route_for_var_with_state,
-};
+use cas_solver_core::isolation_power::execute_pow_isolation_with_default_kernels_for_var_with_state;
 
 use super::isolate;
 
@@ -25,90 +21,7 @@ pub(super) fn isolate_pow(
     steps: Vec<SolveStep>,
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-    execute_pow_isolation_route_for_var_with_state(
-        simplifier,
-        |simplifier| &simplifier.context,
-        b,
-        var,
-        |simplifier| {
-            // Variable in base: B^E = RHS
-            isolate_pow_base(
-                lhs,
-                b,
-                e,
-                rhs,
-                op.clone(),
-                var,
-                simplifier,
-                opts,
-                steps.clone(),
-                ctx,
-            )
-        },
-        |simplifier| {
-            // Variable in exponent: B^E = RHS → E = log_B(RHS)
-            isolate_pow_exponent(
-                lhs,
-                b,
-                e,
-                rhs,
-                op.clone(),
-                var,
-                simplifier,
-                opts,
-                steps.clone(),
-                ctx,
-            )
-        },
-    )
-}
-
-/// Handle `B^E = RHS` when variable is in `B` (the base)
-#[allow(clippy::too_many_arguments)]
-fn isolate_pow_base(
-    _lhs: ExprId,
-    b: ExprId,
-    e: ExprId,
-    rhs: ExprId,
-    op: RelOp,
-    var: &str,
-    simplifier: &mut Simplifier,
-    opts: SolverOptions,
-    steps: Vec<SolveStep>,
-    ctx: &super::super::SolveCtx,
-) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-    let include_item = simplifier.collect_steps();
-    execute_pow_base_isolation_with_default_action_with_state(
-        simplifier,
-        b,
-        e,
-        rhs,
-        op,
-        include_item,
-        steps,
-        |simplifier| &mut simplifier.context,
-        solver_render_expr,
-        |simplifier, iso_lhs, iso_rhs, iso_op| {
-            isolate(iso_lhs, iso_rhs, iso_op, var, simplifier, opts, ctx)
-        },
-        |item| medium_step(item.description().to_string(), item.equation),
-    )
-}
-
-/// Handle `B^E = RHS` when variable is in `E` (the exponent) — logarithmic isolation
-#[allow(clippy::too_many_arguments)]
-fn isolate_pow_exponent(
-    lhs: ExprId,
-    b: ExprId,
-    e: ExprId,
-    rhs: ExprId,
-    op: RelOp,
-    var: &str,
-    simplifier: &mut Simplifier,
-    opts: SolverOptions,
-    steps: Vec<SolveStep>,
-    ctx: &super::super::SolveCtx,
-) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
+    let include_base_item = simplifier.collect_steps();
     let include_shortcut_item = simplifier.collect_steps();
     let include_base_one_item = simplifier.collect_steps();
     let solve_tactic_enabled = opts.domain_mode == crate::domain::DomainMode::Assume
@@ -119,7 +32,8 @@ fn isolate_pow_exponent(
     let include_terminal_items = simplifier.collect_steps();
     let include_unsupported_items = simplifier.collect_steps();
     let include_log_item = simplifier.collect_steps();
-    execute_pow_exponent_isolation_with_default_kernels_with_state(
+
+    execute_pow_isolation_with_default_kernels_for_var_with_state(
         simplifier,
         lhs,
         b,
@@ -127,6 +41,7 @@ fn isolate_pow_exponent(
         rhs,
         op,
         var,
+        include_base_item,
         opts.budget.max_branches >= 2,
         opts.budget.can_branch(),
         solve_tactic_enabled,
@@ -140,6 +55,11 @@ fn isolate_pow_exponent(
         steps,
         |simplifier| &simplifier.context,
         |simplifier| &mut simplifier.context,
+        solver_render_expr,
+        |simplifier, iso_lhs, iso_rhs, iso_op| {
+            isolate(iso_lhs, iso_rhs, iso_op, var, simplifier, opts, ctx)
+        },
+        |item| medium_step(item.description().to_string(), item.equation),
         |simplifier, expr| simplifier.simplify(expr).0,
         |_simplifier| crate::domain::clear_blocked_hints(),
         |simplifier, expr| {
@@ -157,7 +77,6 @@ fn isolate_pow_exponent(
                 &ctx.domain_env,
             )
         },
-        solver_render_expr,
         |simplifier, shortcut_rhs, shortcut_op| {
             isolate(e, shortcut_rhs, shortcut_op, var, simplifier, opts, ctx)
         },

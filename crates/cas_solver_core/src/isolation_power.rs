@@ -71,6 +71,180 @@ where
     )
 }
 
+/// Execute full power isolation (`base^exponent op rhs`) using:
+/// - default route derivation (`derive_pow_isolation_route`)
+/// - default base-isolation kernel
+/// - default exponent-isolation kernels.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_pow_isolation_with_default_kernels_for_var_with_state<
+    T,
+    S,
+    E,
+    FContextRef,
+    FContextMut,
+    FRenderExpr,
+    FSolveBaseIsolate,
+    FMapBaseStep,
+    FSimplifyShortcut,
+    FClearBlockedHints,
+    FSimplifyWithTactic,
+    FCollectItem,
+    FClassifyDecision,
+    FSolveShortcut,
+    FMapShortcutStep,
+    FMapBaseOneStep,
+    FMapEnsureError,
+    FMapTacticStep,
+    FMapTermStep,
+    FVisitAssumption,
+    FTryGuardedSolve,
+    FRegisterBlockedHint,
+    FMapUnsupportedErr,
+    FSolveRewrite,
+    FMapLogStep,
+>(
+    state: &mut T,
+    lhs: ExprId,
+    base: ExprId,
+    exponent: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    var: &str,
+    include_base_item: bool,
+    shortcut_can_branch: bool,
+    log_can_branch: bool,
+    solve_tactic_enabled: bool,
+    mode: DomainModeKind,
+    wildcard_scope: bool,
+    include_shortcut_item: bool,
+    include_base_one_item: bool,
+    include_terminal_items: bool,
+    include_unsupported_items: bool,
+    include_log_item: bool,
+    existing_steps: Vec<S>,
+    context_ref: FContextRef,
+    context_mut: FContextMut,
+    render_expr: FRenderExpr,
+    solve_base_isolate: FSolveBaseIsolate,
+    map_base_item_to_step: FMapBaseStep,
+    simplify_shortcut: FSimplifyShortcut,
+    clear_blocked_hints: FClearBlockedHints,
+    simplify_with_tactic: FSimplifyWithTactic,
+    collect_item: FCollectItem,
+    classify_decision: FClassifyDecision,
+    solve_shortcut: FSolveShortcut,
+    map_shortcut_step: FMapShortcutStep,
+    map_base_one_step: FMapBaseOneStep,
+    map_ensure_error: FMapEnsureError,
+    map_tactic_item_to_step: FMapTacticStep,
+    map_term_item_to_step: FMapTermStep,
+    visit_assumption: FVisitAssumption,
+    try_guarded_solve: FTryGuardedSolve,
+    register_blocked_hint: FRegisterBlockedHint,
+    map_unsupported_err: FMapUnsupportedErr,
+    solve_rewrite: FSolveRewrite,
+    map_log_item_to_step: FMapLogStep,
+) -> Result<(SolutionSet, Vec<S>), E>
+where
+    S: Clone,
+    FContextRef: Fn(&mut T) -> &Context,
+    FContextMut: Fn(&mut T) -> &mut Context,
+    FRenderExpr: Fn(&Context, ExprId) -> String,
+    FSolveBaseIsolate: FnMut(&mut T, ExprId, ExprId, RelOp) -> Result<(SolutionSet, Vec<S>), E>,
+    FMapBaseStep: FnMut(crate::solve_outcome::PowBaseIsolationExecutionItem) -> S,
+    FSimplifyShortcut: FnMut(&mut T, ExprId) -> ExprId,
+    FClearBlockedHints: FnMut(&mut T),
+    FSimplifyWithTactic: FnMut(&mut T, ExprId) -> ExprId,
+    FCollectItem: FnMut(&mut T) -> bool,
+    FClassifyDecision: FnMut(&mut T, ExprId, ExprId) -> LogSolveDecision,
+    FSolveShortcut: FnMut(&mut T, ExprId, RelOp) -> Result<(SolutionSet, Vec<S>), E>,
+    FMapShortcutStep: FnMut(PowExponentShortcutExecutionItem) -> S,
+    FMapBaseOneStep: FnMut(crate::solve_outcome::PowerBaseOneShortcutExecutionItem) -> S,
+    FMapEnsureError: FnMut(&str, &'static str) -> E,
+    FMapTacticStep: FnMut(crate::solve_outcome::TermIsolationRewriteExecutionItem) -> S,
+    FMapTermStep: FnMut(TermIsolationExecutionItem) -> S,
+    FVisitAssumption: FnMut(&Context, LogAssumption),
+    FTryGuardedSolve: FnMut(&mut T, &Equation) -> Option<SolutionSet>,
+    FRegisterBlockedHint: FnMut(&Context, LogBlockedHintRecord),
+    FMapUnsupportedErr: FnMut(&'static str) -> E,
+    FSolveRewrite: FnMut(&mut T, &Equation) -> Result<(SolutionSet, Vec<S>), E>,
+    FMapLogStep: FnMut(PowExponentLogIsolationExecutionItem) -> S,
+{
+    let mut solve_base_isolate = solve_base_isolate;
+    let mut map_base_item_to_step = map_base_item_to_step;
+    let context_ref = &context_ref;
+    let context_mut = &context_mut;
+    let render_expr = &render_expr;
+    let existing_steps_for_base = existing_steps.clone();
+    let existing_steps_for_exponent = existing_steps;
+
+    execute_pow_isolation_route_for_var_with_state(
+        state,
+        |state| context_ref(state),
+        base,
+        var,
+        |state| {
+            execute_pow_base_isolation_with_default_action_with_state(
+                state,
+                base,
+                exponent,
+                rhs,
+                op.clone(),
+                include_base_item,
+                existing_steps_for_base,
+                |state| context_mut(state),
+                |core_ctx, expr| render_expr(core_ctx, expr),
+                |state, isolate_lhs, isolate_rhs, isolate_op| {
+                    solve_base_isolate(state, isolate_lhs, isolate_rhs, isolate_op)
+                },
+                &mut map_base_item_to_step,
+            )
+        },
+        |state| {
+            execute_pow_exponent_isolation_with_default_kernels_with_state(
+                state,
+                lhs,
+                base,
+                exponent,
+                rhs,
+                op.clone(),
+                var,
+                shortcut_can_branch,
+                log_can_branch,
+                solve_tactic_enabled,
+                mode,
+                wildcard_scope,
+                include_shortcut_item,
+                include_base_one_item,
+                include_terminal_items,
+                include_unsupported_items,
+                include_log_item,
+                existing_steps_for_exponent,
+                |state| context_ref(state),
+                |state| context_mut(state),
+                simplify_shortcut,
+                clear_blocked_hints,
+                simplify_with_tactic,
+                collect_item,
+                classify_decision,
+                |core_ctx, expr| render_expr(core_ctx, expr),
+                solve_shortcut,
+                map_shortcut_step,
+                map_base_one_step,
+                map_ensure_error,
+                map_tactic_item_to_step,
+                map_term_item_to_step,
+                visit_assumption,
+                try_guarded_solve,
+                register_blocked_hint,
+                map_unsupported_err,
+                solve_rewrite,
+                map_log_item_to_step,
+            )
+        },
+    )
+}
+
 /// Execute base-side power isolation (`b^e = rhs`) using default core action
 /// planning (`build_pow_base_isolation_action_with`) and caller solve hooks.
 #[allow(clippy::too_many_arguments)]
