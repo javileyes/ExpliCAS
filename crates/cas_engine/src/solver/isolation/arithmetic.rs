@@ -5,6 +5,7 @@ use crate::solver::{medium_step, render_expr as solver_render_expr, SolveStep, S
 use cas_ast::{ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_arithmetic::{
     execute_add_isolation_pipeline_with_linear_collect_fallback_with_state,
+    execute_div_numerator_isolation_pipeline_with_state,
     execute_mul_isolation_pipeline_with_product_split_and_linear_collect_with_state,
     execute_sub_isolation_pipeline_with_state,
 };
@@ -12,7 +13,6 @@ use cas_solver_core::isolation_utils::{is_known_negative, should_try_reciprocal_
 use cas_solver_core::solve_outcome::{
     derive_add_isolation_operands, derive_div_isolation_route, derive_mul_isolation_operands,
     derive_sub_isolation_operands,
-    execute_division_denominator_sign_split_or_term_isolation_plan_with_optional_items_and_merge_with_existing_steps_with_single_solver_with_state,
     execute_isolated_denominator_sign_split_or_division_denominator_plan_with_optional_items_and_merge_with_existing_steps_with_state,
     finalize_product_zero_inequality_solved_sets,
     merge_optional_solved_with_existing_steps_append_mut, mul_rhs_contains_variable,
@@ -231,38 +231,39 @@ pub(super) fn isolate_div(
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     let div_route = derive_div_isolation_route(&simplifier.context, l, var);
     if matches!(div_route, DivIsolationRoute::VariableInNumerator) {
-        let denominator_is_negative = is_known_negative(&simplifier.context, r);
-        let denominator_desc = solver_render_expr(&simplifier.context, r);
         let include_item = simplifier.collect_steps();
-        let (split_plan, term_plan) =
-            plan_division_denominator_sign_split_or_div_numerator_isolation_with(
-                &mut simplifier.context,
-                l,
-                r,
-                rhs,
-                op.clone(),
-                var,
-                denominator_is_negative,
-                |_| denominator_desc.clone(),
-            );
-        execute_division_denominator_sign_split_or_term_isolation_plan_with_optional_items_and_merge_with_existing_steps_with_single_solver_with_state(
+        execute_div_numerator_isolation_pipeline_with_state(
             simplifier,
-            split_plan,
-            r,
-            op.clone(),
             l,
+            r,
+            rhs,
+            op,
+            var,
             include_item,
-            term_plan,
-            false,
             steps,
-            |simplifier, expr| simplifier.simplify(expr).0,
-            move |_, expr| {
-                if expr == r {
-                    denominator_desc.clone()
-                } else {
-                    format!("#{expr}")
-                }
+            |simplifier, expr| is_known_negative(&simplifier.context, expr),
+            |simplifier, expr| solver_render_expr(&simplifier.context, expr),
+            |simplifier,
+             numerator,
+             denominator,
+             local_rhs,
+             local_op,
+             var_name,
+             denominator_is_negative,
+             denominator_desc| {
+                plan_division_denominator_sign_split_or_div_numerator_isolation_with(
+                    &mut simplifier.context,
+                    numerator,
+                    denominator,
+                    local_rhs,
+                    local_op,
+                    var_name,
+                    denominator_is_negative,
+                    |_| denominator_desc.clone(),
+                )
             },
+            |simplifier, expr| simplifier.simplify(expr).0,
+            |_, expr| format!("#{expr}"),
             |simplifier, equation| {
                 isolate(
                     equation.lhs,

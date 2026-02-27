@@ -6,12 +6,14 @@
 use cas_ast::{Context, Equation, ExprId, RelOp, SolutionSet};
 
 use crate::solve_outcome::{
+    execute_division_denominator_sign_split_or_term_isolation_plan_with_optional_items_and_merge_with_existing_steps_with_single_solver_with_state,
     execute_product_zero_inequality_split_pipeline_with_existing_steps_with_context_snapshot,
     execute_term_isolation_plan_and_merge_with_existing_steps_with,
     execute_term_isolation_plan_with_rewritten_rhs_and_merge_with_existing_steps_with,
     merge_optional_solved_with_existing_steps_append_mut, AddIsolationOperands, AddIsolationRoute,
-    MulIsolationOperands, ProductZeroInequalityPlan, ProductZeroInequalitySolvedSets,
-    TermIsolationRewriteExecutionItem, TermIsolationRewritePlan,
+    DivisionDenominatorSignSplitPlan, DivisionDenominatorSignSplitSolvedCases,
+    DivisionDidacticExecutionItem, MulIsolationOperands, ProductZeroInequalityPlan,
+    ProductZeroInequalitySolvedSets, TermIsolationRewriteExecutionItem, TermIsolationRewritePlan,
 };
 
 /// Execute additive isolation `(l + r) = rhs` with an optional
@@ -230,10 +232,112 @@ where
     )
 }
 
+/// Execute numerator-side division isolation:
+/// 1) optional denominator-sign split for inequalities,
+/// 2) fallback term-isolation rewrite when no split applies.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_div_numerator_isolation_pipeline_with_state<
+    S,
+    TStep,
+    E,
+    FIsKnownNegative,
+    FRenderExpr,
+    FPlanNumeratorRoute,
+    FSimplifyExpr,
+    FRenderFallbackExpr,
+    FSolveEquation,
+    FMapDivisionStep,
+    FMapTermStep,
+    FFinalize,
+>(
+    state: &mut S,
+    numerator: ExprId,
+    denominator: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    var: &str,
+    include_items: bool,
+    existing_steps: Vec<TStep>,
+    mut is_known_negative: FIsKnownNegative,
+    mut render_expr: FRenderExpr,
+    mut plan_numerator_route: FPlanNumeratorRoute,
+    simplify_expr: FSimplifyExpr,
+    mut render_fallback_expr: FRenderFallbackExpr,
+    solve_equation: FSolveEquation,
+    map_division_item_to_step: FMapDivisionStep,
+    map_term_item_to_step: FMapTermStep,
+    finalize_solved_sets: FFinalize,
+) -> Result<(SolutionSet, Vec<TStep>), E>
+where
+    TStep: Clone,
+    FIsKnownNegative: FnMut(&mut S, ExprId) -> bool,
+    FRenderExpr: FnMut(&mut S, ExprId) -> String,
+    FPlanNumeratorRoute: FnMut(
+        &mut S,
+        ExprId,
+        ExprId,
+        ExprId,
+        RelOp,
+        &str,
+        bool,
+        String,
+    ) -> (
+        Option<DivisionDenominatorSignSplitPlan>,
+        TermIsolationRewritePlan,
+    ),
+    FSimplifyExpr: FnMut(&mut S, ExprId) -> ExprId,
+    FRenderFallbackExpr: FnMut(&mut S, ExprId) -> String,
+    FSolveEquation: FnMut(&mut S, &Equation) -> Result<(SolutionSet, Vec<TStep>), E>,
+    FMapDivisionStep: FnMut(DivisionDidacticExecutionItem) -> TStep,
+    FMapTermStep: FnMut(TermIsolationRewriteExecutionItem) -> TStep,
+    FFinalize: FnMut(
+        &mut S,
+        DivisionDenominatorSignSplitSolvedCases<SolutionSet, SolutionSet>,
+    ) -> SolutionSet,
+{
+    let denominator_is_negative = is_known_negative(state, denominator);
+    let denominator_desc = render_expr(state, denominator);
+    let (split_plan, term_plan) = plan_numerator_route(
+        state,
+        numerator,
+        denominator,
+        rhs,
+        op.clone(),
+        var,
+        denominator_is_negative,
+        denominator_desc.clone(),
+    );
+
+    execute_division_denominator_sign_split_or_term_isolation_plan_with_optional_items_and_merge_with_existing_steps_with_single_solver_with_state(
+        state,
+        split_plan,
+        denominator,
+        op,
+        numerator,
+        include_items,
+        term_plan,
+        false,
+        existing_steps,
+        simplify_expr,
+        move |state, expr| {
+            if expr == denominator {
+                denominator_desc.clone()
+            } else {
+                render_fallback_expr(state, expr)
+            }
+        },
+        solve_equation,
+        map_division_item_to_step,
+        map_term_item_to_step,
+        finalize_solved_sets,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         execute_add_isolation_pipeline_with_linear_collect_fallback_with_state,
+        execute_div_numerator_isolation_pipeline_with_state,
         execute_mul_isolation_pipeline_with_product_split_and_linear_collect_with_state,
         execute_sub_isolation_pipeline_with_state,
     };
@@ -251,6 +355,12 @@ mod tests {
         split_solve_count: usize,
         isolate_count: usize,
         linear_collect_count: usize,
+    }
+
+    #[derive(Default)]
+    struct DivHarness {
+        context: cas_ast::Context,
+        seen_lhs: Option<ExprId>,
     }
 
     #[test]
@@ -478,6 +588,65 @@ mod tests {
         assert_eq!(
             solved.1,
             vec!["existing".to_string(), "fallback".to_string()]
+        );
+    }
+
+    #[test]
+    fn execute_div_numerator_isolation_pipeline_with_state_uses_term_fallback_when_no_split() {
+        let mut state = DivHarness::default();
+        let x = state.context.var("x");
+        let y = state.context.var("y");
+        let two = state.context.num(2);
+
+        let solved = execute_div_numerator_isolation_pipeline_with_state(
+            &mut state,
+            x,
+            y,
+            two,
+            RelOp::Eq,
+            "x",
+            false,
+            vec!["existing".to_string()],
+            |_state, _expr| false,
+            |_state, expr| format!("#{expr}"),
+            |state,
+             numerator,
+             denominator,
+             rhs,
+             op,
+             _var,
+             denominator_is_negative,
+             denominator_desc| {
+                let term_plan = crate::solve_outcome::plan_div_numerator_isolation_step_with(
+                    &mut state.context,
+                    numerator,
+                    denominator,
+                    rhs,
+                    op,
+                    denominator_is_negative,
+                    |_| denominator_desc.clone(),
+                );
+                (None, term_plan)
+            },
+            |_state, expr| expr,
+            |_state, expr| format!("#{expr}"),
+            |state, equation| -> Result<(SolutionSet, Vec<String>), &'static str> {
+                state.seen_lhs = Some(equation.lhs);
+                Ok((SolutionSet::AllReals, vec!["recursive".to_string()]))
+            },
+            |_item| "unused-division-step".to_string(),
+            |_item| "unused-term-step".to_string(),
+            |_state, _solved| -> SolutionSet {
+                panic!("finalizer must not run without split plan")
+            },
+        )
+        .expect("fallback term path should solve");
+
+        assert_eq!(state.seen_lhs, Some(x));
+        assert!(matches!(solved.0, SolutionSet::AllReals));
+        assert_eq!(
+            solved.1,
+            vec!["recursive".to_string(), "existing".to_string()]
         );
     }
 }
