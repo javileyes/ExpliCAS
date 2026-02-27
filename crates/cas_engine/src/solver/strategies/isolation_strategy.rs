@@ -8,14 +8,11 @@ use crate::solver::{
 };
 use cas_ast::{Equation, SolutionSet};
 use cas_solver_core::isolation_strategy::{
-    execute_isolation_strategy_with_state, execute_unwrap_strategy_with_state,
+    execute_collect_terms_strategy_with_state, execute_isolation_strategy_with_state,
+    execute_rational_exponent_strategy_with_state, execute_unwrap_strategy_with_state,
 };
 use cas_solver_core::solve_outcome::{
     TermIsolationExecutionItem, TermIsolationRewriteExecutionItem,
-};
-use cas_solver_core::strategy_kernels::{
-    execute_collect_terms_kernel_result_pipeline_for_equation_with_item_with_state,
-    execute_rational_exponent_kernel_result_pipeline_with_item_with_state,
 };
 use cas_solver_core::unwrap_plan::route_unwrap_entry_with_item;
 
@@ -153,18 +150,18 @@ impl SolverStrategy for CollectTermsStrategy {
     ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
         let include_item = simplifier.collect_steps();
         let rhs_desc = solver_render_expr(&simplifier.context, eq.rhs);
-        execute_collect_terms_kernel_result_pipeline_for_equation_with_item_with_state(
+        execute_collect_terms_strategy_with_state(
             simplifier,
-            |simplifier| {
-                cas_solver_core::strategy_kernels::derive_collect_terms_kernel(
-                    &mut simplifier.context,
-                    eq,
-                    var,
-                )
-            },
             eq,
             var,
             include_item,
+            |simplifier, equation, solve_var| {
+                cas_solver_core::strategy_kernels::derive_collect_terms_kernel(
+                    &mut simplifier.context,
+                    equation,
+                    solve_var,
+                )
+            },
             |simplifier, expr| simplifier.simplify(expr).0,
             move |_simplifier, _rhs| rhs_desc.clone(),
             |simplifier, equation, solve_var| {
@@ -194,17 +191,18 @@ impl SolverStrategy for RationalExponentStrategy {
         ctx: &SolveCtx,
     ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
         let include_item = simplifier.collect_steps();
-        execute_rational_exponent_kernel_result_pipeline_with_item_with_state(
+        execute_rational_exponent_strategy_with_state(
             simplifier,
-            |simplifier| {
-                cas_solver_core::strategy_kernels::derive_rational_exponent_kernel_for_var(
-                    &mut simplifier.context,
-                    eq,
-                    var,
-                )
-            },
+            eq,
             var,
             include_item,
+            |simplifier, equation, solve_var| {
+                cas_solver_core::strategy_kernels::derive_rational_exponent_kernel_for_var(
+                    &mut simplifier.context,
+                    equation,
+                    solve_var,
+                )
+            },
             |simplifier, expr| simplifier.simplify(expr).0,
             |simplifier, equation, solve_var| {
                 solve_with_ctx_and_options(equation, solve_var, simplifier, *opts, ctx)
