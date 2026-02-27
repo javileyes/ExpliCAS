@@ -4,9 +4,8 @@ use crate::solver::{medium_step, render_expr as solver_render_expr, SolveStep, S
 use crate::SimplifyOptions;
 use cas_ast::{ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_power::{
+    execute_pow_exponent_isolation_with_default_kernels_with_state,
     execute_pow_base_isolation_with_default_action_with_state,
-    execute_pow_exponent_shortcuts_and_guards_with_default_kernel_with_state,
-    execute_pow_exponent_tactic_then_log_pipeline_with_default_kernel_with_state,
     execute_pow_isolation_route_for_var_with_state,
 };
 
@@ -107,44 +106,11 @@ fn isolate_pow_exponent(
     var: &str,
     simplifier: &mut Simplifier,
     opts: SolverOptions,
-    mut steps: Vec<SolveStep>,
+    steps: Vec<SolveStep>,
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     let include_shortcut_item = simplifier.collect_steps();
     let include_base_one_item = simplifier.collect_steps();
-    if let Some((solution_set, merged_steps)) =
-        execute_pow_exponent_shortcuts_and_guards_with_default_kernel_with_state(
-            simplifier,
-            lhs,
-            b,
-            e,
-            rhs,
-            op.clone(),
-            var,
-            opts.budget.max_branches >= 2,
-            include_shortcut_item,
-            include_base_one_item,
-            &mut steps,
-            |simplifier| &simplifier.context,
-            |simplifier| &mut simplifier.context,
-            |simplifier, expr| simplifier.simplify(expr).0,
-            solver_render_expr,
-            |simplifier, shortcut_rhs, shortcut_op| {
-                isolate(e, shortcut_rhs, shortcut_op, var, simplifier, opts, ctx)
-            },
-            |item| medium_step(item.description().to_string(), item.equation),
-            |item| medium_step(item.description().to_string(), item.equation),
-            |local_var, message| {
-                CasError::IsolationError(local_var.to_string(), message.to_string())
-            },
-        )?
-    {
-        return Ok((solution_set, merged_steps));
-    }
-
-    // ================================================================
-    // SOLVE TACTIC: Pre-simplify base/rhs with Analytic rules in Assume mode
-    // ================================================================
     let solve_tactic_enabled = opts.domain_mode == crate::domain::DomainMode::Assume
         && opts.value_domain == crate::semantics::ValueDomain::RealOnly;
     let tactic_opts = SimplifyOptions::for_solve_tactic(opts.domain_mode);
@@ -153,7 +119,7 @@ fn isolate_pow_exponent(
     let include_terminal_items = simplifier.collect_steps();
     let include_unsupported_items = simplifier.collect_steps();
     let include_log_item = simplifier.collect_steps();
-    execute_pow_exponent_tactic_then_log_pipeline_with_default_kernel_with_state(
+    execute_pow_exponent_isolation_with_default_kernels_with_state(
         simplifier,
         lhs,
         b,
@@ -161,16 +127,20 @@ fn isolate_pow_exponent(
         rhs,
         op,
         var,
+        opts.budget.max_branches >= 2,
+        opts.budget.can_branch(),
         solve_tactic_enabled,
         mode,
         wildcard_scope,
-        opts.budget.can_branch(),
+        include_shortcut_item,
+        include_base_one_item,
         include_terminal_items,
         include_unsupported_items,
         include_log_item,
         steps,
         |simplifier| &simplifier.context,
         |simplifier| &mut simplifier.context,
+        |simplifier, expr| simplifier.simplify(expr).0,
         |_simplifier| crate::domain::clear_blocked_hints(),
         |simplifier, expr| {
             simplifier
@@ -188,6 +158,12 @@ fn isolate_pow_exponent(
             )
         },
         solver_render_expr,
+        |simplifier, shortcut_rhs, shortcut_op| {
+            isolate(e, shortcut_rhs, shortcut_op, var, simplifier, opts, ctx)
+        },
+        |item| medium_step(item.description().to_string(), item.equation),
+        |item| medium_step(item.description().to_string(), item.equation),
+        |local_var, message| CasError::IsolationError(local_var.to_string(), message.to_string()),
         |item| medium_step(item.description().to_string(), item.equation),
         |item| medium_step(item.description().to_string(), item.equation),
         |core_ctx, assumption| {
