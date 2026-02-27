@@ -5,16 +5,14 @@ use crate::solver::{medium_step, render_expr as solver_render_expr, SolveStep, S
 use cas_ast::symbol::SymbolId;
 use cas_ast::{ExprId, RelOp, SolutionSet};
 use cas_solver_core::function_inverse::{
-    derive_function_isolation_route, plan_unary_inverse_isolation_step, FunctionIsolationRoute,
-    FunctionIsolationRouteError,
+    derive_function_isolation_route, plan_unary_inverse_isolation_step,
+};
+use cas_solver_core::isolation_functions::{
+    execute_abs_function_isolation_with_default_plan_and_finalizer_with_state,
+    execute_log_function_isolation_with_state, execute_unary_function_isolation_with_state,
 };
 use cas_solver_core::log_isolation::plan_log_isolation_step_with;
-use cas_solver_core::solve_outcome::{
-    execute_abs_isolation_plan_with_rhs_sign_pipeline_with_optional_items_and_solver_with_state,
-    execute_log_isolation_result_pipeline_with_plan_and_error_and_merge_with_existing_steps,
-    execute_unary_inverse_result_pipeline_or_else_with_and_merge_with_existing_steps_with_state,
-    finalize_abs_split_solution_set_for_rhs, plan_abs_isolation_with_rhs_sign,
-};
+use cas_solver_core::solve_outcome::AbsSplitExecutionItem;
 
 /// Handle isolation for `Function(fn_id, args)`: abs, log, ln, exp, sqrt, trig
 #[allow(clippy::too_many_arguments)]
@@ -30,26 +28,28 @@ pub(super) fn isolate_function(
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     match derive_function_isolation_route(&simplifier.context, fn_id, &args, var) {
-        Ok(FunctionIsolationRoute::AbsUnary { arg }) => {
+        Ok(cas_solver_core::function_inverse::FunctionIsolationRoute::AbsUnary { arg }) => {
             isolate_abs(arg, rhs, op, var, simplifier, opts, steps, ctx)
         }
-        Ok(FunctionIsolationRoute::LogBinary { base, arg }) => {
+        Ok(cas_solver_core::function_inverse::FunctionIsolationRoute::LogBinary { base, arg }) => {
             isolate_log(base, arg, rhs, op, var, simplifier, opts, steps, ctx)
         }
-        Ok(FunctionIsolationRoute::UnaryInvertible { arg }) => {
+        Ok(cas_solver_core::function_inverse::FunctionIsolationRoute::UnaryInvertible { arg }) => {
             isolate_unary_function(fn_id, arg, rhs, op, var, simplifier, opts, steps, ctx)
         }
-        Err(FunctionIsolationRouteError::VariableNotFoundInUnaryArg) => {
+        Err(cas_solver_core::function_inverse::FunctionIsolationRouteError::VariableNotFoundInUnaryArg) => {
             Err(CasError::VariableNotFound(var.to_string()))
         }
-        Err(FunctionIsolationRouteError::UnsupportedArity) => Err(CasError::IsolationError(
-            var.to_string(),
-            format!(
-                "Cannot invert function '{}' with {} arguments",
-                simplifier.context.sym_name(fn_id),
-                args.len()
-            ),
-        )),
+        Err(cas_solver_core::function_inverse::FunctionIsolationRouteError::UnsupportedArity) => {
+            Err(CasError::IsolationError(
+                var.to_string(),
+                format!(
+                    "Cannot invert function '{}' with {} arguments",
+                    simplifier.context.sym_name(fn_id),
+                    args.len()
+                ),
+            ))
+        }
     }
 }
 
@@ -71,13 +71,12 @@ fn isolate_abs(
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     let include_items = simplifier.collect_steps();
-    let finalize_op = op.clone();
-    execute_abs_isolation_plan_with_rhs_sign_pipeline_with_optional_items_and_solver_with_state(
+    execute_abs_function_isolation_with_default_plan_and_finalizer_with_state(
         simplifier,
-        |simplifier| {
-            plan_abs_isolation_with_rhs_sign(&mut simplifier.context, arg, rhs, op.clone())
-        },
         arg,
+        rhs,
+        op,
+        var,
         include_items,
         steps,
         |simplifier, expr| solver_render_expr(&simplifier.context, expr),
@@ -92,17 +91,9 @@ fn isolate_abs(
                 ctx,
             )
         },
-        |item| medium_step(item.description().to_string(), item.equation),
-        |simplifier, positive_set, negative_set| {
-            finalize_abs_split_solution_set_for_rhs(
-                &simplifier.context,
-                finalize_op.clone(),
-                rhs,
-                var,
-                positive_set,
-                negative_set,
-            )
-        },
+        |item: AbsSplitExecutionItem| medium_step(item.description().to_string(), item.equation),
+        |simplifier| &mut simplifier.context,
+        |simplifier| &simplifier.context,
     )
 }
 
@@ -119,21 +110,23 @@ fn isolate_log(
     steps: Vec<SolveStep>,
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-    let rewrite = plan_log_isolation_step_with(
-        &mut simplifier.context,
-        base,
-        arg,
-        rhs,
-        var,
-        op.clone(),
-        solver_render_expr,
-    );
     let include_item = simplifier.collect_steps();
-    execute_log_isolation_result_pipeline_with_plan_and_error_and_merge_with_existing_steps(
+    execute_log_function_isolation_with_state(
+        simplifier,
         include_item,
         steps,
-        rewrite,
-        |equation| {
+        |simplifier| {
+            plan_log_isolation_step_with(
+                &mut simplifier.context,
+                base,
+                arg,
+                rhs,
+                var,
+                op.clone(),
+                solver_render_expr,
+            )
+        },
+        |simplifier, equation| {
             isolate(
                 equation.lhs,
                 equation.rhs,
@@ -145,10 +138,12 @@ fn isolate_log(
             )
         },
         |item| medium_step(item.description().to_string(), item.equation),
-        CasError::IsolationError(
-            var.to_string(),
-            "Cannot isolate from log function".to_string(),
-        ),
+        |_simplifier| {
+            CasError::IsolationError(
+                var.to_string(),
+                "Cannot isolate from log function".to_string(),
+            )
+        },
     )
 }
 
@@ -167,12 +162,12 @@ fn isolate_unary_function(
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     let fn_name = simplifier.context.sym_name(fn_id).to_string();
     let include_items = simplifier.collect_steps();
-    execute_unary_inverse_result_pipeline_or_else_with_and_merge_with_existing_steps_with_state(
+    execute_unary_function_isolation_with_state(
         simplifier,
         &fn_name,
         arg,
         rhs,
-        op.clone(),
+        op,
         true,
         include_items,
         steps,
@@ -194,10 +189,12 @@ fn isolate_unary_function(
                 .collect::<Vec<_>>();
             (simplified_rhs, entries)
         },
-        |simplifier, lhs, rhs_expr, inner_op| {
-            isolate(lhs, rhs_expr, inner_op, var, simplifier, opts, ctx)
+        |simplifier, lhs_expr, rhs_expr, inner_op| {
+            isolate(lhs_expr, rhs_expr, inner_op, var, simplifier, opts, ctx)
         },
-        |item| medium_step(item.description().to_string(), item.equation),
+        |item: cas_solver_core::function_inverse::UnaryInverseSolveExecutionItem| {
+            medium_step(item.description().to_string(), item.equation)
+        },
         |_simplifier| CasError::UnknownFunction(fn_name.clone()),
     )
 }
