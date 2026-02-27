@@ -1,16 +1,15 @@
 use crate::engine::Simplifier;
 use crate::error::CasError;
 use crate::solver::{medium_step, render_expr as solver_render_expr, SolveStep, SolverOptions};
-use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
+use cas_ast::{Expr, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_power::{
     execute_pow_base_isolation_pipeline_with_state,
+    execute_pow_exponent_log_decision_then_rewrite_with_state,
     execute_pow_exponent_shortcuts_and_guards_with_state,
 };
 use cas_solver_core::solve_outcome::{
     classify_pow_exponent_base_flags, derive_pow_isolation_route,
     ensure_pow_exponent_rhs_without_variable,
-    execute_and_resolve_pow_exponent_log_decision_pipeline_with_existing_steps_mut_with_unsupported_execution,
-    execute_pow_exponent_log_isolation_pipeline_with_plan_and_merge_with_existing_steps_with,
     execute_pow_exponent_solve_tactic_normalization_with_state,
     plan_pow_exponent_log_isolation_step_with,
     plan_pow_exponent_log_unsupported_execution_from_decision_with,
@@ -220,93 +219,90 @@ fn isolate_pow_exponent(
     let mode = opts.core_domain_mode();
     let wildcard_scope = opts.wildcard_scope();
 
-    let source_equation = Equation {
-        lhs,
-        rhs,
-        op: op.clone(),
-    };
-    let unsupported_execution = plan_pow_exponent_log_unsupported_execution_from_decision_with(
-        &mut simplifier.context,
-        &decision,
-        opts.budget.can_branch(),
-        lhs,
-        rhs,
-        var,
-        e,
-        b,
-        rhs,
-        op.clone(),
-        source_equation.clone(),
-        solver_render_expr,
-    );
     let include_terminal_items = simplifier.collect_steps();
     let include_unsupported_items = simplifier.collect_steps();
-    let mut decision_ctx = simplifier.context.clone();
-    let resolved_decision =
-        execute_and_resolve_pow_exponent_log_decision_pipeline_with_existing_steps_mut_with_unsupported_execution(
-            &mut decision_ctx,
-            &decision,
-            mode,
-            wildcard_scope,
-            lhs,
-            rhs,
-            var,
-            source_equation.clone(),
-            " (residual)",
-            include_terminal_items,
-            &mut steps,
-            |item| medium_step(item.description().to_string(), item.equation),
-            |core_ctx, assumption| {
-                let event = crate::solver::assumption_event_from_log_assumption_targets(
-                    core_ctx, assumption, b, rhs,
-                );
-                ctx.note_assumption(event);
-            },
-            include_unsupported_items,
-            unsupported_execution,
-            |equation| {
-                isolate(
-                    equation.lhs,
-                    equation.rhs,
-                    equation.op.clone(),
-                    var,
-                    simplifier,
-                    opts,
-                    ctx,
-                )
-                .ok()
-                .map(|(solutions, _)| solutions)
-            },
-            |core_ctx, hint| {
-                let blocked_hint =
-                    crate::solver::domain_blocked_hint_from_log_blocked_hint(core_ctx, hint);
-                crate::domain::register_blocked_hint(blocked_hint);
-            },
-        );
-    match resolved_decision {
-        Ok(Some((solution_set, merged_steps))) => return Ok((solution_set, merged_steps)),
-        Ok(None) => {}
-        Err(message) => return Err(CasError::UnsupportedInRealDomain(message.to_string())),
-    }
-    // ================================================================
-    // End of domain guards
-    // ================================================================
-
-    let rewrite = plan_pow_exponent_log_isolation_step_with(
-        &mut simplifier.context,
-        e,
+    let include_log_item = simplifier.collect_steps();
+    execute_pow_exponent_log_decision_then_rewrite_with_state(
+        simplifier,
+        lhs,
         b,
+        e,
         rhs,
         op,
-        None,
-        solver_render_expr,
-    );
-    let include_item = simplifier.collect_steps();
-    execute_pow_exponent_log_isolation_pipeline_with_plan_and_merge_with_existing_steps_with(
-        include_item,
+        var,
+        &decision,
+        mode,
+        wildcard_scope,
+        opts.budget.can_branch(),
+        include_terminal_items,
+        include_unsupported_items,
+        include_log_item,
         steps,
-        rewrite,
-        |equation| {
+        |simplifier,
+         decision,
+         can_branch,
+         local_lhs,
+         local_rhs,
+         var_name,
+         local_exp,
+         local_base,
+         raw_rhs,
+         local_op,
+         source_equation| {
+            plan_pow_exponent_log_unsupported_execution_from_decision_with(
+                &mut simplifier.context,
+                decision,
+                can_branch,
+                local_lhs,
+                local_rhs,
+                var_name,
+                local_exp,
+                local_base,
+                raw_rhs,
+                local_op,
+                source_equation,
+                solver_render_expr,
+            )
+        },
+        |simplifier| simplifier.context.clone(),
+        |item| medium_step(item.description().to_string(), item.equation),
+        |core_ctx, assumption| {
+            let event = crate::solver::assumption_event_from_log_assumption_targets(
+                core_ctx, assumption, b, rhs,
+            );
+            ctx.note_assumption(event);
+        },
+        |simplifier, equation| {
+            isolate(
+                equation.lhs,
+                equation.rhs,
+                equation.op.clone(),
+                var,
+                simplifier,
+                opts,
+                ctx,
+            )
+            .ok()
+            .map(|(solutions, _)| solutions)
+        },
+        |core_ctx, hint| {
+            let blocked_hint =
+                crate::solver::domain_blocked_hint_from_log_blocked_hint(core_ctx, hint);
+            crate::domain::register_blocked_hint(blocked_hint);
+        },
+        |message| CasError::UnsupportedInRealDomain(message.to_string()),
+        |simplifier, local_exp, local_base, local_rhs, local_op| {
+            plan_pow_exponent_log_isolation_step_with(
+                &mut simplifier.context,
+                local_exp,
+                local_base,
+                local_rhs,
+                local_op,
+                None,
+                solver_render_expr,
+            )
+        },
+        |simplifier, equation| {
             isolate(
                 equation.lhs,
                 equation.rhs,
