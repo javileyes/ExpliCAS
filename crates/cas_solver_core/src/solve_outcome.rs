@@ -8033,6 +8033,103 @@ where
     ))
 }
 
+/// Stateful variant of
+/// [`execute_division_denominator_sign_split_or_term_isolation_plan_with_optional_items_and_merge_with_existing_steps_with_single_solver`].
+///
+/// This form lets callers thread one mutable state object across all hooks
+/// without interior mutability wrappers.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_division_denominator_sign_split_or_term_isolation_plan_with_optional_items_and_merge_with_existing_steps_with_single_solver_with_state<
+    T,
+    E,
+    S,
+    FSimplifyExpr,
+    FRenderExpr,
+    FSolveEquation,
+    FMapDivisionStep,
+    FMapTermStep,
+    FFinalize,
+>(
+    state: &mut T,
+    split_plan: Option<DivisionDenominatorSignSplitPlan>,
+    denominator: ExprId,
+    case_boundary_op: RelOp,
+    case_boundary_lhs: ExprId,
+    include_items: bool,
+    term_plan: TermIsolationRewritePlan,
+    simplify_term_rhs_before_solve: bool,
+    existing_steps: Vec<S>,
+    mut simplify_expr: FSimplifyExpr,
+    mut render_expr: FRenderExpr,
+    mut solve_equation: FSolveEquation,
+    map_division_item_to_step: FMapDivisionStep,
+    map_term_item_to_step: FMapTermStep,
+    mut finalize_solved_sets: FFinalize,
+) -> Result<(SolutionSet, Vec<S>), E>
+where
+    S: Clone,
+    FSimplifyExpr: FnMut(&mut T, ExprId) -> ExprId,
+    FRenderExpr: FnMut(&mut T, ExprId) -> String,
+    FSolveEquation: FnMut(&mut T, &Equation) -> Result<(SolutionSet, Vec<S>), E>,
+    FMapDivisionStep: FnMut(DivisionDidacticExecutionItem) -> S,
+    FMapTermStep: FnMut(TermIsolationRewriteExecutionItem) -> S,
+    FFinalize: FnMut(
+        &mut T,
+        DivisionDenominatorSignSplitSolvedCases<SolutionSet, SolutionSet>,
+    ) -> SolutionSet,
+{
+    if let Some(split_plan) = split_plan {
+        let simplified_rhs = simplify_expr(state, split_plan.positive_equation.rhs);
+        let execution = if include_items {
+            build_division_denominator_sign_split_execution_with(
+                split_plan,
+                denominator,
+                case_boundary_lhs,
+                case_boundary_op,
+                simplified_rhs,
+                |id| render_expr(state, id),
+            )
+        } else {
+            materialize_division_denominator_sign_split_execution(split_plan, simplified_rhs)
+        };
+        let solved =
+            solve_division_denominator_sign_split_execution_pipeline_with_single_solver_with_items(
+                &execution,
+                include_items,
+                &existing_steps,
+                |equation| solve_equation(state, equation),
+                map_division_item_to_step,
+            )?;
+        let final_set = finalize_solved_sets(
+            state,
+            DivisionDenominatorSignSplitSolvedCases {
+                positive_branch: solved.positive_set,
+                negative_branch: solved.negative_set,
+                positive_domain: solved.positive_domain_set,
+                negative_domain: solved.negative_domain_set,
+            },
+        );
+        return Ok((final_set, solved.steps));
+    }
+
+    let solved = solve_term_isolation_rewrite_pipeline_with_item(
+        term_plan,
+        include_items,
+        |equation| {
+            let mut rewritten = equation;
+            if simplify_term_rhs_before_solve {
+                rewritten.rhs = simplify_expr(state, rewritten.rhs);
+            }
+            solve_equation(state, &rewritten)
+        },
+        map_term_item_to_step,
+    )?;
+    Ok(merge_solved_with_existing_steps_prepend(
+        (solved.solution_set, solved.steps),
+        existing_steps,
+    ))
+}
+
 /// Execute division denominator-sign split when applicable, otherwise execute
 /// fallback term-isolation plan and merge with existing steps.
 #[allow(clippy::too_many_arguments)]
@@ -8385,6 +8482,100 @@ where
         solve_branch,
         map_item_to_step,
     )
+}
+
+/// Stateful variant of
+/// [`execute_isolated_denominator_sign_split_or_division_denominator_plan_with_optional_items_and_merge_with_existing_steps_with`].
+///
+/// This form lets callers thread one mutable state object across all hooks
+/// without interior mutability wrappers.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_isolated_denominator_sign_split_or_division_denominator_plan_with_optional_items_and_merge_with_existing_steps_with_state<
+    T,
+    E,
+    S,
+    FSimplifyExpr,
+    FRenderExpr,
+    FSolveBranch,
+    FMapStep,
+    FFinalize,
+>(
+    state: &mut T,
+    split_plan: Option<IsolatedDenominatorSignSplitPlan>,
+    denominator: ExprId,
+    case_boundary_op: RelOp,
+    include_items: bool,
+    didactic_plan: DivisionDenominatorDidacticPlan,
+    existing_steps: Vec<S>,
+    mut simplify_expr: FSimplifyExpr,
+    mut render_expr: FRenderExpr,
+    mut solve_branch: FSolveBranch,
+    map_item_to_step: FMapStep,
+    mut finalize_solved_sets: FFinalize,
+) -> Result<(SolutionSet, Vec<S>), E>
+where
+    S: Clone,
+    FSimplifyExpr: FnMut(&mut T, ExprId) -> ExprId,
+    FRenderExpr: FnMut(&mut T, ExprId) -> String,
+    FSolveBranch: FnMut(&mut T, &Equation) -> Result<(SolutionSet, Vec<S>), E>,
+    FMapStep: FnMut(DivisionDidacticExecutionItem) -> S,
+    FFinalize: FnMut(&mut T, IsolatedDenominatorSignSplitSolvedCases<SolutionSet>) -> SolutionSet,
+{
+    if let Some(split_plan) = split_plan {
+        let execution = if include_items {
+            build_isolated_denominator_sign_split_execution_with(
+                split_plan,
+                denominator,
+                case_boundary_op,
+                |id| render_expr(state, id),
+            )
+        } else {
+            materialize_isolated_denominator_sign_split_execution(split_plan)
+        };
+        let solved = solve_isolated_denominator_sign_split_execution_pipeline_with_items(
+            &execution,
+            include_items,
+            &existing_steps,
+            |equation| solve_branch(state, equation),
+            map_item_to_step,
+        )?;
+        let final_set = finalize_solved_sets(
+            state,
+            IsolatedDenominatorSignSplitSolvedCases {
+                positive_branch: solved.positive_set,
+                negative_branch: solved.negative_set,
+            },
+        );
+        return Ok((final_set, solved.steps));
+    }
+
+    let simplified_multiply_rhs = if include_items {
+        simplify_expr(state, didactic_plan.multiply_equation.rhs)
+    } else {
+        didactic_plan.multiply_equation.rhs
+    };
+
+    if include_items {
+        let execution = build_division_denominator_execution_with(
+            didactic_plan,
+            simplified_multiply_rhs,
+            |id| render_expr(state, id),
+        );
+        let solved = solve_division_denominator_execution_pipeline_with_items(
+            execution,
+            |equation| solve_branch(state, equation),
+            map_item_to_step,
+        )?;
+        return Ok(merge_solved_with_existing_steps_prepend(
+            (solved.solution_set, solved.steps),
+            existing_steps,
+        ));
+    }
+
+    Ok(merge_solved_with_existing_steps_prepend(
+        solve_branch(state, &didactic_plan.divide_equation)?,
+        existing_steps,
+    ))
 }
 
 /// Build runtime execution plan for denominator-sign split using a precomputed
@@ -17421,6 +17612,69 @@ mod tests {
     }
 
     #[test]
+    fn execute_division_denominator_sign_split_or_term_plan_single_solver_with_state_prefers_split_path(
+    ) {
+        struct TestState {
+            simplify_calls: usize,
+            finalize_calls: usize,
+        }
+
+        let mut ctx = Context::new();
+        let num = ctx.var("n");
+        let den = ctx.var("d");
+        let rhs = ctx.var("r");
+        let split =
+            plan_division_denominator_sign_split(&mut ctx, num, den, rhs, RelOp::Lt).unwrap();
+        let term_equation = Equation {
+            lhs: den,
+            rhs,
+            op: RelOp::Lt,
+        };
+        let term_plan = build_term_isolation_rewrite_plan_from_item(
+            term_equation.clone(),
+            TermIsolationExecutionItem {
+                description: "fallback".to_string(),
+                equation: term_equation,
+            },
+        );
+        let mut state = TestState {
+            simplify_calls: 0,
+            finalize_calls: 0,
+        };
+
+        let (solution_set, steps) =
+            execute_division_denominator_sign_split_or_term_isolation_plan_with_optional_items_and_merge_with_existing_steps_with_single_solver_with_state(
+                &mut state,
+                Some(split),
+                den,
+                RelOp::Lt,
+                num,
+                false,
+                term_plan,
+                false,
+                vec![7u8],
+                |state, rhs_expr| {
+                    state.simplify_calls += 1;
+                    rhs_expr
+                },
+                |_state, _id| "d".to_string(),
+                |_state, _equation| Ok::<_, ()>((SolutionSet::Discrete(vec![rhs]), vec![1u8])),
+                |_item| 9u8,
+                |_item| -> u8 { panic!("fallback mapper must not run on split path") },
+                |state, solved_cases| {
+                    state.finalize_calls += 1;
+                    solved_cases.positive_branch
+                },
+            )
+            .expect("split path should execute");
+
+        assert_eq!(state.simplify_calls, 1);
+        assert_eq!(state.finalize_calls, 1);
+        assert_eq!(solution_set, SolutionSet::Discrete(vec![rhs]));
+        assert_eq!(steps, vec![7u8, 1u8, 7u8, 1u8]);
+    }
+
+    #[test]
     fn execute_division_denominator_sign_split_or_term_plan_single_solver_uses_fallback_without_split(
     ) {
         let mut ctx = Context::new();
@@ -18365,6 +18619,56 @@ mod tests {
         assert!(!finalize_called.get());
         assert_eq!(solution_set, SolutionSet::Discrete(vec![solved_rhs]));
         assert_eq!(steps, vec![3u8, 3u8, 2u8, 7u8]);
+    }
+
+    #[test]
+    fn execute_isolated_denominator_sign_split_or_division_denominator_plan_with_state_uses_split_when_present(
+    ) {
+        struct TestState {
+            simplify_calls: usize,
+            finalize_calls: usize,
+        }
+
+        let mut ctx = Context::new();
+        let num = ctx.var("n");
+        let den = ctx.var("x");
+        let rhs = ctx.var("r");
+        let isolated_rhs = ctx.var("q");
+        let split = plan_isolated_denominator_sign_split(den, rhs, RelOp::Leq).unwrap();
+        let didactic_plan =
+            plan_division_denominator(&mut ctx, num, den, rhs, isolated_rhs, RelOp::Leq);
+        let mut state = TestState {
+            simplify_calls: 0,
+            finalize_calls: 0,
+        };
+
+        let (solution_set, steps) =
+            execute_isolated_denominator_sign_split_or_division_denominator_plan_with_optional_items_and_merge_with_existing_steps_with_state(
+                &mut state,
+                Some(split),
+                den,
+                RelOp::Leq,
+                false,
+                didactic_plan,
+                vec![7u8],
+                |state, _| {
+                    state.simplify_calls += 1;
+                    rhs
+                },
+                |_state, _id| "x".to_string(),
+                |_state, _equation| Ok::<_, ()>((SolutionSet::Discrete(vec![rhs]), vec![1u8])),
+                |_item| 9u8,
+                |state, solved_cases| {
+                    state.finalize_calls += 1;
+                    solved_cases.positive_branch
+                },
+            )
+            .expect("split path should execute");
+
+        assert_eq!(state.simplify_calls, 0);
+        assert_eq!(state.finalize_calls, 1);
+        assert_eq!(solution_set, SolutionSet::Discrete(vec![rhs]));
+        assert_eq!(steps, vec![7u8, 1u8, 7u8, 1u8]);
     }
 
     #[test]

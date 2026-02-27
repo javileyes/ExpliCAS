@@ -557,6 +557,77 @@ where
     })
 }
 
+/// Stateful variant of
+/// [`solve_exponential_substitution_strategy_result_with_items_with`].
+///
+/// This form lets callers thread one mutable state object across render and
+/// solve hooks without interior mutability wrappers.
+#[allow(clippy::too_many_arguments)]
+pub fn solve_exponential_substitution_strategy_result_with_items_with_state<
+    T,
+    E,
+    S,
+    FRender,
+    FSolve,
+    FMap,
+>(
+    state: &mut T,
+    equation_before: Equation,
+    rewrite_plan: ExponentialSubstitutionRewritePlan,
+    target_var: &str,
+    substitution_var: &str,
+    include_didactic_items: bool,
+    mut render_expr: FRender,
+    mut solve_equation: FSolve,
+    mut map_step: FMap,
+) -> Result<(SolutionSet, Vec<S>), E>
+where
+    FRender: FnMut(&mut T, ExprId) -> String,
+    FSolve: FnMut(&mut T, &Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
+    FMap: FnMut(String, Equation) -> S,
+{
+    let intro_execution =
+        build_exponential_substitution_execution_with(equation_before, rewrite_plan, |id| {
+            render_expr(state, id)
+        });
+    let solved_intro = solve_exponential_substitution_execution_pipeline_with_items(
+        intro_execution,
+        include_didactic_items,
+        substitution_var,
+        |equation, solve_var| solve_equation(state, equation, solve_var),
+        |item| map_step(item.description, item.equation),
+    )?;
+    let u_solutions = solved_intro.solution_set;
+    let mut steps = solved_intro.steps;
+
+    let final_set = match u_solutions {
+        SolutionSet::Discrete(vals) => {
+            let back_plan = build_back_substitution_solve_plan_with(
+                solved_intro.substitution_expr,
+                &vals,
+                include_didactic_items,
+                |id| render_expr(state, id),
+            );
+
+            let solved_back = solve_back_substitution_plan_execution_pipeline_with_items(
+                back_plan,
+                include_didactic_items,
+                target_var,
+                |equation, solve_var| solve_equation(state, equation, solve_var),
+                |item| map_step(item.description, item.equation),
+            )?;
+
+            match aggregate_back_substitution_solutions(solved_back, &mut steps) {
+                Ok(final_solutions) => SolutionSet::Discrete(final_solutions),
+                Err(solution_set) => solution_set,
+            }
+        }
+        solution_set => solution_set,
+    };
+
+    Ok((final_set, steps))
+}
+
 /// Solve exponential substitution strategy from an optional pre-derived rewrite
 /// plan, returning plain strategy output.
 ///
@@ -586,6 +657,50 @@ where
     let rewrite_plan = rewrite_plan?;
     Some(
         solve_exponential_substitution_strategy_result_with_items_with(
+            equation_before.clone(),
+            rewrite_plan,
+            target_var,
+            substitution_var,
+            include_didactic_items,
+            render_expr,
+            solve_equation,
+            map_step,
+        ),
+    )
+}
+
+/// Stateful variant of
+/// [`execute_exponential_substitution_strategy_result_pipeline_with_items_and_plan_with`].
+///
+/// Returns `None` when substitution rewrite derivation does not apply.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_exponential_substitution_strategy_result_pipeline_with_items_and_plan_with_state<
+    T,
+    E,
+    S,
+    FRender,
+    FSolve,
+    FMap,
+>(
+    state: &mut T,
+    equation_before: &Equation,
+    rewrite_plan: Option<ExponentialSubstitutionRewritePlan>,
+    target_var: &str,
+    substitution_var: &str,
+    include_didactic_items: bool,
+    render_expr: FRender,
+    solve_equation: FSolve,
+    map_step: FMap,
+) -> Option<Result<(SolutionSet, Vec<S>), E>>
+where
+    FRender: FnMut(&mut T, ExprId) -> String,
+    FSolve: FnMut(&mut T, &Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
+    FMap: FnMut(String, Equation) -> S,
+{
+    let rewrite_plan = rewrite_plan?;
+    Some(
+        solve_exponential_substitution_strategy_result_with_items_with_state(
+            state,
             equation_before.clone(),
             rewrite_plan,
             target_var,
@@ -1794,6 +1909,72 @@ mod tests {
     }
 
     #[test]
+    fn execute_exponential_substitution_strategy_result_pipeline_with_items_and_plan_with_state_returns_plain_discrete_set(
+    ) {
+        struct TestState {
+            render_calls: usize,
+            solve_calls: usize,
+        }
+
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let u = ctx.var("u");
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        let equation_before = Equation {
+            lhs: x,
+            rhs: one,
+            op: cas_ast::RelOp::Eq,
+        };
+        let rewrite_plan = ExponentialSubstitutionRewritePlan {
+            substitution_expr: x,
+            equation: Equation {
+                lhs: u,
+                rhs: two,
+                op: cas_ast::RelOp::Eq,
+            },
+        };
+        let mut state = TestState {
+            render_calls: 0,
+            solve_calls: 0,
+        };
+
+        let solved = execute_exponential_substitution_strategy_result_pipeline_with_items_and_plan_with_state(
+            &mut state,
+            &equation_before,
+            Some(rewrite_plan),
+            "x",
+            "u",
+            true,
+            |state, _expr| {
+                state.render_calls += 1;
+                "u".to_string()
+            },
+            |state, _equation, var| {
+                state.solve_calls += 1;
+                if var == "u" {
+                    return Ok::<_, ()>((
+                        SolutionSet::Discrete(vec![two]),
+                        vec!["solve-u".to_string()],
+                    ));
+                }
+                Ok((
+                    SolutionSet::Discrete(vec![one]),
+                    vec!["solve-x".to_string()],
+                ))
+            },
+            |description, _equation_after| description,
+        )
+        .expect("substitution rewrite should be present")
+        .expect("stateful substitution pipeline should succeed");
+
+        assert_eq!(solved.0, SolutionSet::Discrete(vec![one]));
+        assert!(solved.1.len() >= 4);
+        assert!(state.render_calls >= 2);
+        assert_eq!(state.solve_calls, 2);
+    }
+
+    #[test]
     fn execute_exponential_substitution_strategy_result_pipeline_with_items_and_plan_with_returns_none_without_rewrite(
     ) {
         let mut ctx = Context::new();
@@ -1823,6 +2004,43 @@ mod tests {
 
         assert!(out.is_none());
         assert_eq!(solve_calls, 0);
+    }
+
+    #[test]
+    fn execute_exponential_substitution_strategy_result_pipeline_with_items_and_plan_with_state_returns_none_without_rewrite(
+    ) {
+        struct TestState {
+            solve_calls: usize,
+        }
+
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let equation_before = Equation {
+            lhs: x,
+            rhs: one,
+            op: cas_ast::RelOp::Eq,
+        };
+        let mut state = TestState { solve_calls: 0 };
+
+        let out =
+            execute_exponential_substitution_strategy_result_pipeline_with_items_and_plan_with_state(
+                &mut state,
+                &equation_before,
+                None,
+                "x",
+                "u",
+                true,
+                |_state, _expr| "u".to_string(),
+                |state, _equation, _var| {
+                    state.solve_calls += 1;
+                    Ok::<_, ()>((SolutionSet::AllReals, vec!["unexpected".to_string()]))
+                },
+                |description, _equation_after| description,
+            );
+
+        assert!(out.is_none());
+        assert_eq!(state.solve_calls, 0);
     }
 
     #[test]

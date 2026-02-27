@@ -7,8 +7,8 @@ use cas_solver_core::isolation_utils::{is_known_negative, should_try_reciprocal_
 use cas_solver_core::solve_outcome::{
     derive_add_isolation_operands, derive_div_isolation_route, derive_mul_isolation_operands,
     derive_sub_isolation_operands,
-    execute_division_denominator_sign_split_or_term_isolation_plan_with_optional_items_and_merge_with_existing_steps_with_single_solver,
-    execute_isolated_denominator_sign_split_or_division_denominator_plan_with_optional_items_and_merge_with_existing_steps_with,
+    execute_division_denominator_sign_split_or_term_isolation_plan_with_optional_items_and_merge_with_existing_steps_with_single_solver_with_state,
+    execute_isolated_denominator_sign_split_or_division_denominator_plan_with_optional_items_and_merge_with_existing_steps_with_state,
     execute_product_zero_inequality_split_pipeline_with_existing_steps_with_context_snapshot,
     execute_term_isolation_plan_and_merge_with_existing_steps_with,
     execute_term_isolation_plan_with_rewritten_rhs_and_merge_with_existing_steps_with,
@@ -21,7 +21,6 @@ use cas_solver_core::solve_outcome::{
     plan_sub_isolation_step_with, resolve_div_denominator_isolation_rhs_with, AddIsolationRoute,
     DivIsolationRoute,
 };
-use std::cell::RefCell;
 
 use super::isolate;
 
@@ -242,8 +241,8 @@ pub(super) fn isolate_div(
                 denominator_is_negative,
                 |_| denominator_desc.clone(),
             );
-        let simplifier_ref = RefCell::new(simplifier);
-        execute_division_denominator_sign_split_or_term_isolation_plan_with_optional_items_and_merge_with_existing_steps_with_single_solver(
+        execute_division_denominator_sign_split_or_term_isolation_plan_with_optional_items_and_merge_with_existing_steps_with_single_solver_with_state(
+            simplifier,
             split_plan,
             r,
             op.clone(),
@@ -252,30 +251,28 @@ pub(super) fn isolate_div(
             term_plan,
             false,
             steps,
-            |expr| simplifier_ref.borrow_mut().simplify(expr).0,
-            move |expr| {
+            |simplifier, expr| simplifier.simplify(expr).0,
+            move |_, expr| {
                 if expr == r {
                     denominator_desc.clone()
                 } else {
                     format!("#{expr}")
                 }
             },
-            |equation| {
-                let mut simplifier = simplifier_ref.borrow_mut();
+            |simplifier, equation| {
                 isolate(
                     equation.lhs,
                     equation.rhs,
                     equation.op.clone(),
                     var,
-                    &mut simplifier,
+                    simplifier,
                     opts,
                     ctx,
                 )
             },
             |item| medium_step(item.description, item.equation),
             |item| medium_step(item.description, item.equation),
-            |solved_sets| {
-                let simplifier = simplifier_ref.borrow();
+            |simplifier, solved_sets| {
                 cas_solver_core::solve_outcome::finalize_division_denominator_sign_split_solved_sets(
                     &simplifier.context,
                     solved_sets,
@@ -323,16 +320,16 @@ pub(super) fn isolate_div(
         let denominator_desc = solver_render_expr(&simplifier.context, r);
         let multiply_by_desc = solver_render_expr(&simplifier.context, multiply_by);
         let divide_by_desc = solver_render_expr(&simplifier.context, divide_by);
-        let simplifier_ref = RefCell::new(simplifier);
-        execute_isolated_denominator_sign_split_or_division_denominator_plan_with_optional_items_and_merge_with_existing_steps_with(
+        execute_isolated_denominator_sign_split_or_division_denominator_plan_with_optional_items_and_merge_with_existing_steps_with_state(
+            simplifier,
             split_plan,
             r,
             op.clone(),
             include_items,
             didactic_plan,
             steps,
-            |expr| simplifier_ref.borrow_mut().simplify(expr).0,
-            move |expr| {
+            |simplifier, expr| simplifier.simplify(expr).0,
+            move |_, expr| {
                 if expr == r {
                     denominator_desc.clone()
                 } else if expr == multiply_by {
@@ -343,21 +340,19 @@ pub(super) fn isolate_div(
                     format!("#{expr}")
                 }
             },
-            |equation| {
-                let mut simplifier = simplifier_ref.borrow_mut();
+            |simplifier, equation| {
                 isolate(
                     equation.lhs,
                     equation.rhs,
                     equation.op.clone(),
                     var,
-                    &mut simplifier,
+                    simplifier,
                     opts,
                     ctx,
                 )
             },
             |item| medium_step(item.description, item.equation),
-            |solved_sets| {
-                let mut simplifier = simplifier_ref.borrow_mut();
+            |simplifier, solved_sets| {
                 cas_solver_core::solve_outcome::finalize_isolated_denominator_sign_split_solved_sets(
                     &mut simplifier.context,
                     solved_sets,

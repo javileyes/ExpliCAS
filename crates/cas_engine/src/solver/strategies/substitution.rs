@@ -5,10 +5,9 @@ use crate::solver::strategy::SolverStrategy;
 use crate::solver::{medium_step, render_expr, SolveCtx, SolveStep, SolverOptions};
 use cas_ast::{Equation, SolutionSet};
 use cas_solver_core::substitution::{
-    execute_exponential_substitution_strategy_result_pipeline_with_items_and_plan_with,
+    execute_exponential_substitution_strategy_result_pipeline_with_items_and_plan_with_state,
     plan_exponential_substitution_rewrite,
 };
-use std::cell::RefCell;
 
 pub struct SubstitutionStrategy;
 
@@ -29,20 +28,16 @@ impl SolverStrategy for SubstitutionStrategy {
         let include_didactic_items = simplifier.collect_steps();
         let rewrite_plan =
             plan_exponential_substitution_rewrite(&mut simplifier.context, eq, var, SUB_VAR_NAME);
-        let simplifier_ref = RefCell::new(simplifier);
-        execute_exponential_substitution_strategy_result_pipeline_with_items_and_plan_with(
+        execute_exponential_substitution_strategy_result_pipeline_with_items_and_plan_with_state(
+            simplifier,
             eq,
             rewrite_plan,
             var,
             SUB_VAR_NAME,
             include_didactic_items,
-            |id| {
-                let simplifier = simplifier_ref.borrow();
-                render_expr(&simplifier.context, id)
-            },
-            |equation, solve_var| {
-                let mut simplifier = simplifier_ref.borrow_mut();
-                solve_with_ctx_and_options(equation, solve_var, &mut simplifier, *opts, ctx)
+            |simplifier, id| render_expr(&simplifier.context, id),
+            |simplifier, equation, solve_var| {
+                solve_with_ctx_and_options(equation, solve_var, simplifier, *opts, ctx)
             },
             medium_step,
         )
