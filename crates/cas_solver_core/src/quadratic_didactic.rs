@@ -1309,6 +1309,68 @@ where
     steps
 }
 
+/// Build and execute quadratic main/substep didactic pipeline in one call
+/// using default execution construction + collection-state guard.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_quadratic_main_didactic_pipeline_with_default_execution_with_state<
+    T,
+    S,
+    SS,
+    FContextMut,
+    FSetCollect,
+    FSimplify,
+    FRender,
+    FMain,
+    FSub,
+>(
+    state: &mut T,
+    var: &str,
+    a: ExprId,
+    b: ExprId,
+    c: ExprId,
+    is_real_only: bool,
+    main_equation_after: Equation,
+    include_items: bool,
+    was_collecting: bool,
+    context_mut: FContextMut,
+    set_collecting: FSetCollect,
+    simplify_expr: FSimplify,
+    render_expr: FRender,
+    map_main_item_to_step: FMain,
+    map_substep_item_to_step: FSub,
+) -> Vec<S>
+where
+    SS: Clone,
+    FContextMut: Fn(&mut T) -> &mut Context,
+    FSetCollect: FnMut(&mut T, bool),
+    FSimplify: FnMut(&mut T, ExprId) -> ExprId,
+    FRender: Fn(&Context, ExprId) -> String,
+    FMain: FnMut(QuadraticExecutionItem, Vec<SS>) -> S,
+    FSub: FnMut(QuadraticSubstepExecutionItem) -> SS,
+{
+    let mut execution = build_quadratic_main_with_substeps_execution_with_optional_items(
+        context_mut(state),
+        var,
+        a,
+        b,
+        c,
+        is_real_only,
+        main_equation_after,
+        include_items,
+        |ctx, id| render_expr(ctx, id),
+    );
+    execute_quadratic_main_with_substeps_pipeline_with_optional_items_and_collection_state_with_state(
+        state,
+        &mut execution,
+        include_items,
+        was_collecting,
+        set_collecting,
+        simplify_expr,
+        map_main_item_to_step,
+        map_substep_item_to_step,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

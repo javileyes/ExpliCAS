@@ -7,9 +7,8 @@ use cas_ast::{Equation, Expr, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::is_numeric_zero;
 use cas_solver_core::quadratic_coeffs::extract_quadratic_coefficients;
 use cas_solver_core::quadratic_didactic::{
-    build_quadratic_main_with_substeps_execution_with_optional_items,
+    execute_quadratic_main_didactic_pipeline_with_default_execution_with_state,
     execute_factorized_zero_product_strategy_if_applicable_with_state,
-    execute_quadratic_main_with_substeps_pipeline_with_optional_items_and_collection_state_with_state,
 };
 use cas_solver_core::quadratic_formula::{
     build_quadratic_coefficient_solve_plan, roots_from_a_b_and_simplified_delta,
@@ -90,33 +89,31 @@ impl SolverStrategy for QuadraticStrategy {
                 rhs: simplifier.context.num(0),
                 op: RelOp::Eq,
             };
-            let mut execution = build_quadratic_main_with_substeps_execution_with_optional_items(
-                &mut simplifier.context,
-                var,
-                sim_a,
-                sim_b,
-                sim_c,
-                is_real_only,
-                main_equation,
-                include_items,
-                render_expr,
-            );
-            let didactic_steps = execute_quadratic_main_with_substeps_pipeline_with_optional_items_and_collection_state_with_state(
-                simplifier,
-                &mut execution,
-                include_items,
-                include_items,
-                |simplifier, collecting| simplifier.set_collect_steps(collecting),
-                |simplifier, expr| simplifier.simplify(expr).0,
-                |item, substeps| {
-                    medium_step(item.description().to_string(), item.equation).with_substeps(substeps)
-                },
-                |item| SolveSubStep {
-                    description: item.description,
-                    equation_after: item.equation,
-                    importance: crate::step::ImportanceLevel::Low,
-                },
-            );
+            let didactic_steps =
+                execute_quadratic_main_didactic_pipeline_with_default_execution_with_state(
+                    simplifier,
+                    var,
+                    sim_a,
+                    sim_b,
+                    sim_c,
+                    is_real_only,
+                    main_equation,
+                    include_items,
+                    include_items,
+                    |simplifier| &mut simplifier.context,
+                    |simplifier, collecting| simplifier.set_collect_steps(collecting),
+                    |simplifier, expr| simplifier.simplify(expr).0,
+                    render_expr,
+                    |item, substeps| {
+                        medium_step(item.description().to_string(), item.equation)
+                            .with_substeps(substeps)
+                    },
+                    |item| SolveSubStep {
+                        description: item.description,
+                        equation_after: item.equation,
+                        importance: crate::step::ImportanceLevel::Low,
+                    },
+                );
             steps.extend(didactic_steps);
 
             let plan = match build_quadratic_coefficient_solve_plan(
