@@ -15,9 +15,8 @@ use crate::engine::Simplifier;
 #[cfg(test)]
 use cas_ast::SolutionSet;
 use cas_ast::{Equation, ExprId};
-use std::cell::RefCell;
+use cas_solver_core::shared_sink::SharedSink;
 use std::collections::HashSet;
-use std::rc::Rc;
 
 pub use self::solve_core::{solve, solve_with_display_steps};
 
@@ -26,8 +25,8 @@ pub use self::solve_core::{solve, solve_with_display_steps};
 /// Holds per-invocation state that was formerly stored in TLS,
 /// enabling clean reentrancy for recursive/nested solves.
 ///
-/// The `required_sink` is a shared accumulator (`Rc<RefCell<…>>`)
-/// so that recursive sub-solves contribute conditions to the same set.
+/// The `required_sink` is a shared accumulator so recursive sub-solves
+/// contribute conditions to the same set.
 /// `solve_with_display_steps` creates one, and every recursive
 /// `solve_with_ctx_and_options` / `solve_with_options` pushes into it.
 #[derive(Debug, Clone)]
@@ -35,46 +34,75 @@ pub struct SolveCtx {
     /// Domain environment inferred from equation structure (per-level).
     pub domain_env: SolveDomainEnv,
     /// Shared accumulator for required conditions across all recursive levels.
-    pub(crate) required_sink: Rc<RefCell<HashSet<crate::implicit_domain::ImplicitCondition>>>,
+    required_sink: SharedSink<HashSet<crate::implicit_domain::ImplicitCondition>>,
     /// Shared accumulator for solver assumption events across recursive levels.
-    pub(crate) assumptions_sink: Rc<RefCell<Vec<crate::assumptions::AssumptionEvent>>>,
+    assumptions_sink: SharedSink<Vec<crate::assumptions::AssumptionEvent>>,
     /// Shared collector for output scope tags across recursive levels.
-    pub(crate) output_scopes_sink: Rc<RefCell<Vec<cas_formatter::display_transforms::ScopeTag>>>,
+    output_scopes_sink: SharedSink<Vec<cas_formatter::display_transforms::ScopeTag>>,
 }
 
 impl Default for SolveCtx {
     fn default() -> Self {
         Self {
             domain_env: SolveDomainEnv::default(),
-            required_sink: Rc::new(RefCell::new(HashSet::new())),
-            assumptions_sink: Rc::new(RefCell::new(Vec::new())),
-            output_scopes_sink: Rc::new(RefCell::new(Vec::new())),
+            required_sink: SharedSink::new(HashSet::new()),
+            assumptions_sink: SharedSink::new(Vec::new()),
+            output_scopes_sink: SharedSink::new(Vec::new()),
         }
     }
 }
 
 impl SolveCtx {
+    /// Build a child context that shares all accumulators and overrides domain env.
+    pub(crate) fn fork_with_domain_env(&self, domain_env: SolveDomainEnv) -> Self {
+        Self {
+            domain_env,
+            required_sink: self.required_sink.clone(),
+            assumptions_sink: self.assumptions_sink.clone(),
+            output_scopes_sink: self.output_scopes_sink.clone(),
+        }
+    }
+
+    /// Record one required domain condition in the shared accumulator.
+    pub(crate) fn note_required_condition(
+        &self,
+        condition: crate::implicit_domain::ImplicitCondition,
+    ) {
+        self.required_sink.with_mut(|required| {
+            required.insert(condition);
+        });
+    }
+
+    /// Snapshot all required conditions accumulated by this solve tree.
+    pub(crate) fn required_conditions(&self) -> Vec<crate::implicit_domain::ImplicitCondition> {
+        self.required_sink
+            .with(|required| required.iter().cloned().collect())
+    }
+
     /// Record an assumption emitted during solve.
     pub(crate) fn note_assumption(&self, event: crate::assumptions::AssumptionEvent) {
-        self.assumptions_sink.borrow_mut().push(event);
+        self.assumptions_sink
+            .with_mut(|assumptions| assumptions.push(event));
     }
 
     /// Snapshot collected solver assumptions.
     pub(crate) fn assumptions(&self) -> Vec<crate::assumptions::AssumptionEvent> {
-        self.assumptions_sink.borrow().clone()
+        self.assumptions_sink
+            .with(|assumptions| assumptions.clone())
     }
 
     /// Emit a scope tag used by output display transforms.
     pub(crate) fn emit_scope(&self, scope: cas_formatter::display_transforms::ScopeTag) {
-        let mut scopes = self.output_scopes_sink.borrow_mut();
-        if !scopes.contains(&scope) {
-            scopes.push(scope);
-        }
+        self.output_scopes_sink.with_mut(|scopes| {
+            if !scopes.contains(&scope) {
+                scopes.push(scope);
+            }
+        });
     }
 
     /// Snapshot collected output scopes.
     pub(crate) fn output_scopes(&self) -> Vec<cas_formatter::display_transforms::ScopeTag> {
-        self.output_scopes_sink.borrow().clone()
+        self.output_scopes_sink.with(|scopes| scopes.clone())
     }
 }
 
@@ -468,6 +496,37 @@ mod tests {
             rhs: parse(rhs, ctx).unwrap(),
             op: RelOp::Eq,
         }
+    }
+
+    #[test]
+    fn test_solve_ctx_fork_shares_required_conditions() {
+        let mut context = Context::new();
+        let x = parse("x", &mut context).unwrap();
+
+        let parent = SolveCtx::default();
+        parent.note_required_condition(crate::implicit_domain::ImplicitCondition::NonZero(x));
+
+        let child = parent.fork_with_domain_env(SolveDomainEnv::default());
+        child.note_required_condition(crate::implicit_domain::ImplicitCondition::Positive(x));
+
+        let required = parent.required_conditions();
+        assert_eq!(required.len(), 2);
+    }
+
+    #[test]
+    fn test_solve_ctx_fork_shares_assumptions_and_scopes() {
+        let mut context = Context::new();
+        let x = parse("x", &mut context).unwrap();
+
+        let parent = SolveCtx::default();
+        let child = parent.fork_with_domain_env(SolveDomainEnv::default());
+        child.note_assumption(crate::assumptions::AssumptionEvent::positive(&context, x));
+        child.emit_scope(cas_formatter::display_transforms::ScopeTag::Rule(
+            "QuadraticFormula",
+        ));
+
+        assert_eq!(parent.assumptions().len(), 1);
+        assert_eq!(parent.output_scopes().len(), 1);
     }
 
     #[test]

@@ -21,6 +21,7 @@ pub mod quadratic_sqrt;
 pub mod rational_power;
 pub mod rational_roots;
 pub mod reciprocal;
+pub mod shared_sink;
 pub mod sign_normalize;
 pub mod solution_check;
 pub mod solution_set;

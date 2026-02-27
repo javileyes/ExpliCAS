@@ -81,7 +81,7 @@ pub fn solve_with_display_steps(
     let result = solve_inner(eq, var, simplifier, opts, &ctx);
 
     // Read accumulated conditions from the shared sink (zero TLS)
-    let required: Vec<_> = ctx.required_sink.borrow().iter().cloned().collect();
+    let required = ctx.required_conditions();
     let assumed = ctx.assumptions();
     let assumed_records = {
         let mut collector = crate::assumptions::AssumptionCollector::new();
@@ -219,16 +219,11 @@ fn solve_inner(
 
     // Push this level's conditions into the shared accumulator
     for cond in domain_env.required.conditions().iter().cloned() {
-        parent_ctx.required_sink.borrow_mut().insert(cond);
+        parent_ctx.note_required_condition(cond);
     }
 
-    // Build a level-specific SolveCtx: fresh domain_env, same shared sink
-    let ctx = super::SolveCtx {
-        domain_env,
-        required_sink: parent_ctx.required_sink.clone(),
-        assumptions_sink: parent_ctx.assumptions_sink.clone(),
-        output_scopes_sink: parent_ctx.output_scopes_sink.clone(),
-    };
+    // Build a level-specific SolveCtx: fresh domain_env, same shared sinks.
+    let ctx = parent_ctx.fork_with_domain_env(domain_env);
 
     // EARLY CHECK: Handle rational exponent equations BEFORE simplification
     // This prevents x^(3/2) from being simplified to |x|*sqrt(x) which causes loops
