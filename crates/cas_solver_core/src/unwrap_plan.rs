@@ -525,6 +525,82 @@ where
     Ok((solved.solution_set, solved.steps))
 }
 
+/// Stateful variant of [`solve_unwrap_execution_pipeline_with_item`].
+///
+/// This form lets callers thread one mutable state object across assumption and
+/// solve hooks without interior mutability wrappers.
+#[allow(clippy::too_many_arguments)]
+pub fn solve_unwrap_execution_pipeline_with_item_with_state<T, E, S, FAssume, FSolve, FStep>(
+    state: &mut T,
+    execution: UnwrapExecutionPlan,
+    other_side: ExprId,
+    var: &str,
+    include_item: bool,
+    mut note_assumption: FAssume,
+    mut solve_equation: FSolve,
+    mut map_item_to_step: FStep,
+) -> Result<UnwrapExecutionPipelineSolved<S>, E>
+where
+    FAssume: FnMut(&mut T, LogLinearAssumptionRecord),
+    FSolve: FnMut(&mut T, &Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
+    FStep: FnMut(UnwrapExecutionItem) -> S,
+{
+    let assumption_records = collect_log_linear_assumption_records(&execution, other_side);
+    for record in assumption_records.iter().copied() {
+        note_assumption(state, record);
+    }
+    let rewritten_equation = unwrap_rewritten_equation(&execution);
+    let mut steps = Vec::new();
+    if include_item {
+        if let Some(item) = first_unwrap_execution_item(&execution) {
+            steps.push(map_item_to_step(item));
+        }
+    }
+    let (solution_set, mut sub_steps) = solve_equation(state, &rewritten_equation, var)?;
+    steps.append(&mut sub_steps);
+    Ok(UnwrapExecutionPipelineSolved {
+        solution_set,
+        steps,
+    })
+}
+
+/// Stateful variant of [`solve_unwrap_execution_result_pipeline_with_item`].
+#[allow(clippy::too_many_arguments)]
+pub fn solve_unwrap_execution_result_pipeline_with_item_with_state<
+    T,
+    E,
+    S,
+    FAssume,
+    FSolve,
+    FStep,
+>(
+    state: &mut T,
+    execution: UnwrapExecutionPlan,
+    other_side: ExprId,
+    var: &str,
+    include_item: bool,
+    note_assumption: FAssume,
+    solve_equation: FSolve,
+    map_item_to_step: FStep,
+) -> Result<(SolutionSet, Vec<S>), E>
+where
+    FAssume: FnMut(&mut T, LogLinearAssumptionRecord),
+    FSolve: FnMut(&mut T, &Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
+    FStep: FnMut(UnwrapExecutionItem) -> S,
+{
+    let solved = solve_unwrap_execution_pipeline_with_item_with_state(
+        state,
+        execution,
+        other_side,
+        var,
+        include_item,
+        note_assumption,
+        solve_equation,
+        map_item_to_step,
+    )?;
+    Ok((solved.solution_set, solved.steps))
+}
+
 /// Route-aware wrapper that:
 /// 1) preserves `None` when no unwrap route exists,
 /// 2) returns terminal route payload directly,
@@ -550,6 +626,43 @@ where
 {
     solve_unwrap_entry_routing_option_with(routing, |selected| {
         solve_unwrap_execution_result_pipeline_with_item(
+            selected.execution,
+            selected.other_side,
+            var,
+            include_item,
+            &mut note_assumption,
+            &mut solve_equation,
+            &mut map_item_to_step,
+        )
+    })
+}
+
+/// Stateful variant of
+/// [`solve_unwrap_entry_routing_option_with_execution_pipeline_with_item`].
+pub fn solve_unwrap_entry_routing_option_with_execution_pipeline_with_item_with_state<
+    T,
+    E,
+    S,
+    FAssume,
+    FSolve,
+    FStep,
+>(
+    state: &mut T,
+    routing: Option<UnwrapEntryRouting<S>>,
+    var: &str,
+    include_item: bool,
+    mut note_assumption: FAssume,
+    mut solve_equation: FSolve,
+    mut map_item_to_step: FStep,
+) -> Option<Result<(SolutionSet, Vec<S>), E>>
+where
+    FAssume: FnMut(&mut T, LogLinearAssumptionRecord),
+    FSolve: FnMut(&mut T, &Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
+    FStep: FnMut(UnwrapExecutionItem) -> S,
+{
+    solve_unwrap_entry_routing_option_with(routing, |selected| {
+        solve_unwrap_execution_result_pipeline_with_item_with_state(
+            state,
             selected.execution,
             selected.other_side,
             var,
@@ -1133,6 +1246,49 @@ mod tests {
     }
 
     #[test]
+    fn solve_unwrap_entry_routing_option_with_execution_pipeline_with_item_with_state_returns_terminal_directly(
+    ) {
+        struct TestState {
+            assumption_calls: usize,
+            solve_calls: usize,
+        }
+
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let routed = Some(UnwrapEntryRouting::Terminal(
+            SingleSideExponentialTerminalSolved {
+                solution_set: SolutionSet::Discrete(vec![x]),
+                steps: vec!["terminal".to_string()],
+            },
+        ));
+        let mut state = TestState {
+            assumption_calls: 0,
+            solve_calls: 0,
+        };
+
+        let solved =
+            solve_unwrap_entry_routing_option_with_execution_pipeline_with_item_with_state(
+                &mut state,
+                routed,
+                "x",
+                true,
+                |state, _record| state.assumption_calls += 1,
+                |state, _equation, _var| {
+                    state.solve_calls += 1;
+                    Ok::<_, ()>((SolutionSet::AllReals, vec!["unexpected".to_string()]))
+                },
+                |_item| -> String { panic!("item mapper must not run for terminal routing") },
+            )
+            .expect("routing should exist")
+            .expect("terminal route should resolve");
+
+        assert!(matches!(solved.0, SolutionSet::Discrete(_)));
+        assert_eq!(solved.1, vec!["terminal".to_string()]);
+        assert_eq!(state.assumption_calls, 0);
+        assert_eq!(state.solve_calls, 0);
+    }
+
+    #[test]
     fn solve_unwrap_entry_routing_option_with_execution_pipeline_with_item_runs_execution_path() {
         let mut ctx = Context::new();
         let x = ctx.var("x");
@@ -1178,6 +1334,67 @@ mod tests {
         assert_eq!(solved.1, vec!["unwrap-step".to_string(), "sub".to_string()]);
         assert_eq!(noted.len(), 1);
         assert_eq!(noted[0].assumption, LogAssumption::PositiveBase);
+    }
+
+    #[test]
+    fn solve_unwrap_entry_routing_option_with_execution_pipeline_with_item_with_state_runs_execution_path(
+    ) {
+        struct TestState {
+            noted: Vec<LogLinearAssumptionRecord>,
+            solve_calls: usize,
+        }
+
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let execution = UnwrapExecutionPlan {
+            equation: Equation {
+                lhs: x,
+                rhs: y,
+                op: RelOp::Eq,
+            },
+            description: "unwrap".to_string(),
+            assumptions: vec![LogAssumption::PositiveBase],
+            log_linear_base: Some(x),
+            items: vec![UnwrapExecutionItem {
+                equation: Equation {
+                    lhs: x,
+                    rhs: y,
+                    op: RelOp::Eq,
+                },
+                description: "unwrap-step".to_string(),
+            }],
+        };
+        let routed = Some(UnwrapEntryRouting::Execution(UnwrapEquationExecution {
+            execution,
+            other_side: y,
+        }));
+        let mut state = TestState {
+            noted: Vec::new(),
+            solve_calls: 0,
+        };
+
+        let solved =
+            solve_unwrap_entry_routing_option_with_execution_pipeline_with_item_with_state(
+                &mut state,
+                routed,
+                "x",
+                true,
+                |state, record| state.noted.push(record),
+                |state, _equation, _var| {
+                    state.solve_calls += 1;
+                    Ok::<_, ()>((SolutionSet::Discrete(vec![x]), vec!["sub".to_string()]))
+                },
+                |item| item.description,
+            )
+            .expect("routing should exist")
+            .expect("execution route should solve");
+
+        assert!(matches!(solved.0, SolutionSet::Discrete(_)));
+        assert_eq!(solved.1, vec!["unwrap-step".to_string(), "sub".to_string()]);
+        assert_eq!(state.noted.len(), 1);
+        assert_eq!(state.noted[0].assumption, LogAssumption::PositiveBase);
+        assert_eq!(state.solve_calls, 1);
     }
 
     #[test]

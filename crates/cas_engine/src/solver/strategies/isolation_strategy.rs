@@ -18,7 +18,7 @@ use cas_solver_core::strategy_kernels::{
 };
 use cas_solver_core::unwrap_plan::{
     route_unwrap_entry_with_item,
-    solve_unwrap_entry_routing_option_with_execution_pipeline_with_item,
+    solve_unwrap_entry_routing_option_with_execution_pipeline_with_item_with_state,
 };
 use std::cell::RefCell;
 
@@ -97,13 +97,12 @@ impl SolverStrategy for UnwrapStrategy {
             solver_render_expr,
             |item: TermIsolationExecutionItem| medium_step(item.description, item.equation),
         );
-        let simplifier_ref = RefCell::new(simplifier);
-        let solved = solve_unwrap_entry_routing_option_with_execution_pipeline_with_item(
+        solve_unwrap_entry_routing_option_with_execution_pipeline_with_item_with_state(
+            simplifier,
             routed,
             var,
             include_item,
-            |record| {
-                let simplifier = simplifier_ref.borrow();
+            |simplifier, record| {
                 let event = crate::solver::assumption_event_from_log_assumption_targets(
                     &simplifier.context,
                     record.assumption,
@@ -112,13 +111,11 @@ impl SolverStrategy for UnwrapStrategy {
                 );
                 ctx.note_assumption(event);
             },
-            |equation, solve_var| {
-                let mut simplifier = simplifier_ref.borrow_mut();
-                solve_with_ctx_and_options(equation, solve_var, &mut simplifier, *opts, ctx)
+            |simplifier, equation, solve_var| {
+                solve_with_ctx_and_options(equation, solve_var, simplifier, *opts, ctx)
             },
             |item| medium_step(item.description, item.equation),
-        );
-        solved
+        )
     }
 
     // Note: We use the default should_verify() = true here.
