@@ -1,12 +1,12 @@
 use crate::engine::Simplifier;
 use crate::error::CasError;
 use crate::solver::{medium_step, render_expr as solver_render_expr, SolveStep, SolverOptions};
+use crate::SimplifyOptions;
 use cas_ast::{Expr, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_power::{
     execute_pow_base_isolation_pipeline_with_state,
-    execute_pow_exponent_log_decision_then_rewrite_with_state,
     execute_pow_exponent_shortcuts_and_guards_with_state,
-    execute_pow_exponent_tactic_and_classify_decision_with_state,
+    execute_pow_exponent_tactic_then_log_pipeline_with_state,
 };
 use cas_solver_core::solve_outcome::{
     classify_pow_exponent_base_flags, derive_pow_isolation_route,
@@ -169,23 +169,32 @@ fn isolate_pow_exponent(
     }
 
     // ================================================================
-    use crate::solver::classify_log_solve;
-
-    // ================================================================
     // SOLVE TACTIC: Pre-simplify base/rhs with Analytic rules in Assume mode
     // ================================================================
-    use crate::SimplifyOptions;
     let solve_tactic_enabled = opts.domain_mode == crate::domain::DomainMode::Assume
         && opts.value_domain == crate::semantics::ValueDomain::RealOnly;
     let tactic_opts = SimplifyOptions::for_solve_tactic(opts.domain_mode);
-    let decision = execute_pow_exponent_tactic_and_classify_decision_with_state(
+    let mode = opts.core_domain_mode();
+    let wildcard_scope = opts.wildcard_scope();
+    let include_terminal_items = simplifier.collect_steps();
+    let include_unsupported_items = simplifier.collect_steps();
+    let include_log_item = simplifier.collect_steps();
+    execute_pow_exponent_tactic_then_log_pipeline_with_state(
         simplifier,
+        lhs,
         b,
         e,
         rhs,
-        op.clone(),
+        op,
+        var,
         solve_tactic_enabled,
-        &mut steps,
+        mode,
+        wildcard_scope,
+        opts.budget.can_branch(),
+        include_terminal_items,
+        include_unsupported_items,
+        include_log_item,
+        steps,
         |_simplifier| crate::domain::clear_blocked_hints(),
         |simplifier, expr| {
             simplifier
@@ -205,7 +214,7 @@ fn isolate_pow_exponent(
             )
         },
         |simplifier, tactic_base, tactic_rhs| {
-            classify_log_solve(
+            crate::solver::classify_log_solve(
                 &simplifier.context,
                 tactic_base,
                 tactic_rhs,
@@ -213,30 +222,6 @@ fn isolate_pow_exponent(
                 &ctx.domain_env,
             )
         },
-    );
-
-    let mode = opts.core_domain_mode();
-    let wildcard_scope = opts.wildcard_scope();
-
-    let include_terminal_items = simplifier.collect_steps();
-    let include_unsupported_items = simplifier.collect_steps();
-    let include_log_item = simplifier.collect_steps();
-    execute_pow_exponent_log_decision_then_rewrite_with_state(
-        simplifier,
-        lhs,
-        b,
-        e,
-        rhs,
-        op,
-        var,
-        &decision,
-        mode,
-        wildcard_scope,
-        opts.budget.can_branch(),
-        include_terminal_items,
-        include_unsupported_items,
-        include_log_item,
-        steps,
         |simplifier,
          decision,
          can_branch,

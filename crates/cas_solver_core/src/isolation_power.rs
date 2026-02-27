@@ -222,6 +222,131 @@ where
     classify_decision(state, tactic_base, tactic_rhs)
 }
 
+/// Execute the full exponent-side power isolation pipeline:
+/// 1) solve-tactic normalization + log decision classification,
+/// 2) log decision resolution and fallback rewrite solve.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_pow_exponent_tactic_then_log_pipeline_with_state<
+    T,
+    S,
+    E,
+    FClearBlockedHints,
+    FSimplifyWithTactic,
+    FBuildTacticSteps,
+    FClassifyDecision,
+    FPlanUnsupported,
+    FCloneContext,
+    FMapTermStep,
+    FVisitAssumption,
+    FTryGuardedSolve,
+    FRegisterBlockedHint,
+    FMapUnsupportedErr,
+    FPlanRewrite,
+    FSolveRewrite,
+    FMapLogStep,
+>(
+    state: &mut T,
+    lhs: ExprId,
+    base: ExprId,
+    exponent: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    var: &str,
+    solve_tactic_enabled: bool,
+    mode: DomainModeKind,
+    wildcard_scope: bool,
+    can_branch: bool,
+    include_terminal_items: bool,
+    include_unsupported_items: bool,
+    include_log_item: bool,
+    mut existing_steps: Vec<S>,
+    clear_blocked_hints: FClearBlockedHints,
+    simplify_with_tactic: FSimplifyWithTactic,
+    build_tactic_steps: FBuildTacticSteps,
+    classify_decision: FClassifyDecision,
+    plan_unsupported_execution: FPlanUnsupported,
+    clone_context: FCloneContext,
+    map_term_item_to_step: FMapTermStep,
+    visit_assumption: FVisitAssumption,
+    try_guarded_solve: FTryGuardedSolve,
+    register_blocked_hint: FRegisterBlockedHint,
+    map_unsupported_err: FMapUnsupportedErr,
+    plan_log_rewrite: FPlanRewrite,
+    solve_rewrite: FSolveRewrite,
+    map_log_item_to_step: FMapLogStep,
+) -> Result<(SolutionSet, Vec<S>), E>
+where
+    FClearBlockedHints: FnMut(&mut T),
+    FSimplifyWithTactic: FnMut(&mut T, ExprId) -> ExprId,
+    FBuildTacticSteps: FnMut(&mut T, ExprId, ExprId, ExprId, RelOp) -> Vec<S>,
+    FClassifyDecision: FnMut(&mut T, ExprId, ExprId) -> LogSolveDecision,
+    FPlanUnsupported: FnMut(
+        &mut T,
+        &LogSolveDecision,
+        bool,
+        ExprId,
+        ExprId,
+        &str,
+        ExprId,
+        ExprId,
+        ExprId,
+        RelOp,
+        Equation,
+    ) -> Option<PowExponentLogUnsupportedExecution>,
+    FCloneContext: FnMut(&mut T) -> Context,
+    FMapTermStep: FnMut(TermIsolationExecutionItem) -> S,
+    FVisitAssumption: FnMut(&Context, LogAssumption),
+    FTryGuardedSolve: FnMut(&mut T, &Equation) -> Option<SolutionSet>,
+    FRegisterBlockedHint: FnMut(&Context, LogBlockedHintRecord),
+    FMapUnsupportedErr: FnMut(&'static str) -> E,
+    FPlanRewrite:
+        FnMut(&mut T, ExprId, ExprId, ExprId, RelOp) -> PowExponentLogIsolationRewritePlan,
+    FSolveRewrite: FnMut(&mut T, &Equation) -> Result<(SolutionSet, Vec<S>), E>,
+    FMapLogStep: FnMut(PowExponentLogIsolationExecutionItem) -> S,
+{
+    let decision = execute_pow_exponent_tactic_and_classify_decision_with_state(
+        state,
+        base,
+        exponent,
+        rhs,
+        op.clone(),
+        solve_tactic_enabled,
+        &mut existing_steps,
+        clear_blocked_hints,
+        simplify_with_tactic,
+        build_tactic_steps,
+        classify_decision,
+    );
+
+    execute_pow_exponent_log_decision_then_rewrite_with_state(
+        state,
+        lhs,
+        base,
+        exponent,
+        rhs,
+        op,
+        var,
+        &decision,
+        mode,
+        wildcard_scope,
+        can_branch,
+        include_terminal_items,
+        include_unsupported_items,
+        include_log_item,
+        existing_steps,
+        plan_unsupported_execution,
+        clone_context,
+        map_term_item_to_step,
+        visit_assumption,
+        try_guarded_solve,
+        register_blocked_hint,
+        map_unsupported_err,
+        plan_log_rewrite,
+        solve_rewrite,
+        map_log_item_to_step,
+    )
+}
+
 /// Execute exponent-side logarithmic decision resolution and, when needed,
 /// continue with logarithmic rewrite isolation.
 #[allow(clippy::too_many_arguments)]
@@ -354,6 +479,7 @@ mod tests {
         execute_pow_exponent_log_decision_then_rewrite_with_state,
         execute_pow_exponent_shortcuts_and_guards_with_state,
         execute_pow_exponent_tactic_and_classify_decision_with_state,
+        execute_pow_exponent_tactic_then_log_pipeline_with_state,
     };
     use crate::log_domain::{DomainModeKind, LogSolveDecision};
     use crate::solve_outcome::{
@@ -666,6 +792,108 @@ mod tests {
             steps,
             vec!["existing".to_string(), "tactic-step".to_string()]
         );
+    }
+
+    #[derive(Default)]
+    struct TacticLogHarness {
+        context: cas_ast::Context,
+        clear_blocked_hints_count: usize,
+        rewrite_solve_count: usize,
+    }
+
+    #[test]
+    fn execute_pow_exponent_tactic_then_log_pipeline_with_state_runs_both_phases() {
+        let mut state = TacticLogHarness::default();
+        let base = state.context.var("b");
+        let exponent = state.context.var("x");
+        let rhs = state.context.num(8);
+        let lhs = state.context.add(Expr::Pow(base, exponent));
+        let simplified_base = state.context.num(2);
+        let simplified_rhs = state.context.num(4);
+        let mut blocked_hint_count = 0usize;
+        let mut assumption_count = 0usize;
+
+        let solved = execute_pow_exponent_tactic_then_log_pipeline_with_state(
+            &mut state,
+            lhs,
+            base,
+            exponent,
+            rhs,
+            RelOp::Eq,
+            "x",
+            true,
+            DomainModeKind::Assume,
+            false,
+            true,
+            false,
+            false,
+            false,
+            vec!["existing".to_string()],
+            |state| state.clear_blocked_hints_count += 1,
+            |_state, expr| {
+                if expr == base {
+                    simplified_base
+                } else if expr == rhs {
+                    simplified_rhs
+                } else {
+                    expr
+                }
+            },
+            |_state, _sim_base, _sim_exp, _sim_rhs, _sim_op| vec!["tactic-step".to_string()],
+            |_state, tactic_base, tactic_rhs| {
+                assert_eq!(tactic_base, simplified_base);
+                assert_eq!(tactic_rhs, simplified_rhs);
+                LogSolveDecision::Ok
+            },
+            |_state,
+             _decision,
+             _can_branch,
+             _lhs,
+             _rhs,
+             _var,
+             _exponent,
+             _base,
+             _raw_rhs,
+             _op,
+             _equation| None,
+            |state| state.context.clone(),
+            |_term_item| "unused-term-step".to_string(),
+            |_ctx, _assumption| assumption_count += 1,
+            |_state, _equation| None,
+            |_ctx, _hint| blocked_hint_count += 1,
+            |_message| "unexpected-needs-complex",
+            |_state, exp, base, _rhs, op| PowExponentLogIsolationRewritePlan {
+                equation: Equation {
+                    lhs: exp,
+                    rhs: base,
+                    op,
+                },
+                items: vec![],
+            },
+            |state, _equation| {
+                state.rewrite_solve_count += 1;
+                Ok::<(SolutionSet, Vec<String>), &'static str>((
+                    SolutionSet::AllReals,
+                    vec!["rewrite-solved".to_string()],
+                ))
+            },
+            |_log_item| "unused-log-step".to_string(),
+        )
+        .expect("pipeline should solve via rewrite after classification");
+
+        assert!(matches!(solved.0, SolutionSet::AllReals));
+        assert_eq!(
+            solved.1,
+            vec![
+                "rewrite-solved".to_string(),
+                "existing".to_string(),
+                "tactic-step".to_string()
+            ]
+        );
+        assert!(state.clear_blocked_hints_count >= 1);
+        assert_eq!(state.rewrite_solve_count, 1);
+        assert_eq!(blocked_hint_count, 0);
+        assert_eq!(assumption_count, 0);
     }
 
     #[derive(Default)]
