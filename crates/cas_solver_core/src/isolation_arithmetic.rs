@@ -7,13 +7,16 @@ use cas_ast::{Context, Equation, ExprId, RelOp, SolutionSet};
 
 use crate::solve_outcome::{
     execute_division_denominator_sign_split_or_term_isolation_plan_with_optional_items_and_merge_with_existing_steps_with_single_solver_with_state,
+    execute_isolated_denominator_sign_split_or_division_denominator_plan_with_optional_items_and_merge_with_existing_steps_with_state,
     execute_product_zero_inequality_split_pipeline_with_existing_steps_with_context_snapshot,
     execute_term_isolation_plan_and_merge_with_existing_steps_with,
     execute_term_isolation_plan_with_rewritten_rhs_and_merge_with_existing_steps_with,
     merge_optional_solved_with_existing_steps_append_mut, AddIsolationOperands, AddIsolationRoute,
-    DivisionDenominatorSignSplitPlan, DivisionDenominatorSignSplitSolvedCases,
-    DivisionDidacticExecutionItem, MulIsolationOperands, ProductZeroInequalityPlan,
-    ProductZeroInequalitySolvedSets, TermIsolationRewriteExecutionItem, TermIsolationRewritePlan,
+    DivisionDenominatorDidacticPlan, DivisionDenominatorSignSplitPlan,
+    DivisionDenominatorSignSplitSolvedCases, DivisionDidacticExecutionItem,
+    IsolatedDenominatorSignSplitPlan, IsolatedDenominatorSignSplitSolvedCases,
+    MulIsolationOperands, ProductZeroInequalityPlan, ProductZeroInequalitySolvedSets,
+    TermIsolationRewriteExecutionItem, TermIsolationRewritePlan,
 };
 
 /// Execute additive isolation `(l + r) = rhs` with an optional
@@ -333,10 +336,110 @@ where
     )
 }
 
+/// Execute denominator-side division isolation:
+/// 1) optional reciprocal-solve fast path,
+/// 2) isolated-denominator sign split or denominator didactic fallback.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_div_denominator_isolation_pipeline_with_reciprocal_fallback_and_state<
+    S,
+    TStep,
+    E,
+    FShouldTryReciprocal,
+    FTryReciprocal,
+    FPlanSplitOrDidactic,
+    FRenderExpr,
+    FSimplifyExpr,
+    FSolveBranch,
+    FMapStep,
+    FFinalize,
+>(
+    state: &mut S,
+    lhs: ExprId,
+    numerator: ExprId,
+    denominator: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    var: &str,
+    include_items: bool,
+    mut existing_steps: Vec<TStep>,
+    mut should_try_reciprocal: FShouldTryReciprocal,
+    mut try_reciprocal_solve: FTryReciprocal,
+    mut plan_split_or_didactic: FPlanSplitOrDidactic,
+    mut render_expr: FRenderExpr,
+    simplify_expr: FSimplifyExpr,
+    solve_branch: FSolveBranch,
+    map_item_to_step: FMapStep,
+    finalize_solved_sets: FFinalize,
+) -> Result<(SolutionSet, Vec<TStep>), E>
+where
+    TStep: Clone,
+    FShouldTryReciprocal: FnMut(&mut S, ExprId, &RelOp, &str) -> bool,
+    FTryReciprocal: FnMut(&mut S, ExprId, ExprId, &str) -> Option<(SolutionSet, Vec<TStep>)>,
+    FPlanSplitOrDidactic: FnMut(
+        &mut S,
+        ExprId,
+        ExprId,
+        ExprId,
+        RelOp,
+        &str,
+    ) -> (
+        Option<IsolatedDenominatorSignSplitPlan>,
+        DivisionDenominatorDidacticPlan,
+    ),
+    FRenderExpr: FnMut(&mut S, ExprId) -> String,
+    FSimplifyExpr: FnMut(&mut S, ExprId) -> ExprId,
+    FSolveBranch: FnMut(&mut S, &Equation) -> Result<(SolutionSet, Vec<TStep>), E>,
+    FMapStep: FnMut(DivisionDidacticExecutionItem) -> TStep,
+    FFinalize: FnMut(&mut S, IsolatedDenominatorSignSplitSolvedCases<SolutionSet>) -> SolutionSet,
+{
+    if should_try_reciprocal(state, lhs, &op, var) {
+        if let Some(merged) = merge_optional_solved_with_existing_steps_append_mut(
+            try_reciprocal_solve(state, lhs, rhs, var),
+            &mut existing_steps,
+        ) {
+            return Ok(merged);
+        }
+    }
+
+    let (split_plan, didactic_plan) =
+        plan_split_or_didactic(state, numerator, denominator, rhs, op.clone(), var);
+    let multiply_by = didactic_plan.multiply_by;
+    let divide_by = didactic_plan.divide_by;
+    let denominator_desc = render_expr(state, denominator);
+    let multiply_by_desc = render_expr(state, multiply_by);
+    let divide_by_desc = render_expr(state, divide_by);
+
+    execute_isolated_denominator_sign_split_or_division_denominator_plan_with_optional_items_and_merge_with_existing_steps_with_state(
+        state,
+        split_plan,
+        denominator,
+        op,
+        include_items,
+        didactic_plan,
+        existing_steps,
+        simplify_expr,
+        move |_, expr| {
+            if expr == denominator {
+                denominator_desc.clone()
+            } else if expr == multiply_by {
+                multiply_by_desc.clone()
+            } else if expr == divide_by {
+                divide_by_desc.clone()
+            } else {
+                format!("#{expr}")
+            }
+        },
+        solve_branch,
+        map_item_to_step,
+        finalize_solved_sets,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         execute_add_isolation_pipeline_with_linear_collect_fallback_with_state,
+        execute_div_denominator_isolation_pipeline_with_reciprocal_fallback_and_state,
         execute_div_numerator_isolation_pipeline_with_state,
         execute_mul_isolation_pipeline_with_product_split_and_linear_collect_with_state,
         execute_sub_isolation_pipeline_with_state,
@@ -647,6 +750,52 @@ mod tests {
         assert_eq!(
             solved.1,
             vec!["recursive".to_string(), "existing".to_string()]
+        );
+    }
+
+    #[test]
+    fn execute_div_denominator_isolation_pipeline_with_reciprocal_fallback_and_state_returns_reciprocal_result_when_available(
+    ) {
+        let mut ctx = cas_ast::Context::new();
+        let lhs = ctx.var("x");
+        let numerator = ctx.num(1);
+        let denominator = ctx.var("y");
+        let rhs = ctx.num(2);
+        let mut state = ();
+
+        let solved = execute_div_denominator_isolation_pipeline_with_reciprocal_fallback_and_state(
+            &mut state,
+            lhs,
+            numerator,
+            denominator,
+            rhs,
+            RelOp::Eq,
+            "x",
+            false,
+            vec!["existing".to_string()],
+            |_state, _lhs, _op, _var| true,
+            |_state, _lhs, _rhs, _var| {
+                Some((SolutionSet::AllReals, vec!["reciprocal".to_string()]))
+            },
+            |_state, _num, _den, _rhs, _op, _var| {
+                panic!("planning must not run when reciprocal fallback solves")
+            },
+            |_state, _expr| "unused".to_string(),
+            |_state, expr| expr,
+            |_state, _equation| -> Result<(SolutionSet, Vec<String>), &'static str> {
+                Err("recursive solve should not run")
+            },
+            |_item| "unused-step".to_string(),
+            |_state, _solved| -> SolutionSet {
+                panic!("finalizer must not run when reciprocal fallback solves")
+            },
+        )
+        .expect("reciprocal fallback should solve");
+
+        assert!(matches!(solved.0, SolutionSet::AllReals));
+        assert_eq!(
+            solved.1,
+            vec!["existing".to_string(), "reciprocal".to_string()]
         );
     }
 }

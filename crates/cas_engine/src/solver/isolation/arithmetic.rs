@@ -5,6 +5,7 @@ use crate::solver::{medium_step, render_expr as solver_render_expr, SolveStep, S
 use cas_ast::{ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_arithmetic::{
     execute_add_isolation_pipeline_with_linear_collect_fallback_with_state,
+    execute_div_denominator_isolation_pipeline_with_reciprocal_fallback_and_state,
     execute_div_numerator_isolation_pipeline_with_state,
     execute_mul_isolation_pipeline_with_product_split_and_linear_collect_with_state,
     execute_sub_isolation_pipeline_with_state,
@@ -13,9 +14,7 @@ use cas_solver_core::isolation_utils::{is_known_negative, should_try_reciprocal_
 use cas_solver_core::solve_outcome::{
     derive_add_isolation_operands, derive_div_isolation_route, derive_mul_isolation_operands,
     derive_sub_isolation_operands,
-    execute_isolated_denominator_sign_split_or_division_denominator_plan_with_optional_items_and_merge_with_existing_steps_with_state,
-    finalize_product_zero_inequality_solved_sets,
-    merge_optional_solved_with_existing_steps_append_mut, mul_rhs_contains_variable,
+    finalize_product_zero_inequality_solved_sets, mul_rhs_contains_variable,
     plan_add_operand_isolation_step_with, plan_div_denominator_isolation_with_zero_rhs_guard,
     plan_division_denominator_sign_split_or_div_numerator_isolation_with,
     plan_isolated_denominator_sign_split_or_division_denominator,
@@ -226,7 +225,7 @@ pub(super) fn isolate_div(
     var: &str,
     simplifier: &mut Simplifier,
     opts: SolverOptions,
-    mut steps: Vec<SolveStep>,
+    steps: Vec<SolveStep>,
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     let div_route = derive_div_isolation_route(&simplifier.context, l, var);
@@ -285,66 +284,49 @@ pub(super) fn isolate_div(
             },
         )
     } else {
-        // B = A / RHS (variable in denominator)
-
-        // PEDAGOGICAL IMPROVEMENT: If LHS is 1/var, use reciprocal solve
-        if should_try_reciprocal_solve(&simplifier.context, lhs, &op, var) {
-            if let Some(merged) = merge_optional_solved_with_existing_steps_append_mut(
-                crate::solver::reciprocal_solve::try_reciprocal_solve(lhs, rhs, var, simplifier),
-                &mut steps,
-            ) {
-                return Ok(merged);
-            }
-        }
-
-        let isolation_plan = plan_div_denominator_isolation_with_zero_rhs_guard(
-            &mut simplifier.context,
-            r,
-            l,
-            rhs,
-            op.clone(),
-        );
-        let (_isolated_eq, sim_rhs) =
-            resolve_div_denominator_isolation_rhs_with(isolation_plan, |expr| {
-                simplifier.simplify(expr).0
-            });
-
         let include_items = simplifier.collect_steps();
-        let (split_plan, didactic_plan) =
-            plan_isolated_denominator_sign_split_or_division_denominator(
-                &mut simplifier.context,
-                l,
-                r,
-                rhs,
-                sim_rhs,
-                op.clone(),
-                var,
-            );
-        let multiply_by = didactic_plan.multiply_by;
-        let divide_by = didactic_plan.divide_by;
-        let denominator_desc = solver_render_expr(&simplifier.context, r);
-        let multiply_by_desc = solver_render_expr(&simplifier.context, multiply_by);
-        let divide_by_desc = solver_render_expr(&simplifier.context, divide_by);
-        execute_isolated_denominator_sign_split_or_division_denominator_plan_with_optional_items_and_merge_with_existing_steps_with_state(
+        execute_div_denominator_isolation_pipeline_with_reciprocal_fallback_and_state(
             simplifier,
-            split_plan,
+            lhs,
+            l,
             r,
-            op.clone(),
+            rhs,
+            op,
+            var,
             include_items,
-            didactic_plan,
             steps,
-            |simplifier, expr| simplifier.simplify(expr).0,
-            move |_, expr| {
-                if expr == r {
-                    denominator_desc.clone()
-                } else if expr == multiply_by {
-                    multiply_by_desc.clone()
-                } else if expr == divide_by {
-                    divide_by_desc.clone()
-                } else {
-                    format!("#{expr}")
-                }
+            |simplifier, lhs_expr, local_op, var_name| {
+                should_try_reciprocal_solve(&simplifier.context, lhs_expr, local_op, var_name)
             },
+            |simplifier, lhs_expr, local_rhs, var_name| {
+                crate::solver::reciprocal_solve::try_reciprocal_solve(
+                    lhs_expr, local_rhs, var_name, simplifier,
+                )
+            },
+            |simplifier, numerator, denominator, local_rhs, local_op, var_name| {
+                let isolation_plan = plan_div_denominator_isolation_with_zero_rhs_guard(
+                    &mut simplifier.context,
+                    denominator,
+                    numerator,
+                    local_rhs,
+                    local_op.clone(),
+                );
+                let (_isolated_eq, simplified_rhs) =
+                    resolve_div_denominator_isolation_rhs_with(isolation_plan, |expr| {
+                        simplifier.simplify(expr).0
+                    });
+                plan_isolated_denominator_sign_split_or_division_denominator(
+                    &mut simplifier.context,
+                    numerator,
+                    denominator,
+                    local_rhs,
+                    simplified_rhs,
+                    local_op,
+                    var_name,
+                )
+            },
+            |simplifier, expr| solver_render_expr(&simplifier.context, expr),
+            |simplifier, expr| simplifier.simplify(expr).0,
             |simplifier, equation| {
                 isolate(
                     equation.lhs,
