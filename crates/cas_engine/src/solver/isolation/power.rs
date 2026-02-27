@@ -4,8 +4,8 @@ use crate::solver::{medium_step, render_expr as solver_render_expr, SolveStep, S
 use crate::SimplifyOptions;
 use cas_ast::{ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_power::{
-    execute_pow_exponent_isolation_with_default_kernels_with_state,
     execute_pow_base_isolation_with_default_action_with_state,
+    execute_pow_exponent_isolation_with_default_kernels_with_state,
     execute_pow_isolation_route_for_var_with_state,
 };
 
