@@ -4,9 +4,7 @@ use crate::error::CasError;
 use crate::solver::{medium_step, render_expr as solver_render_expr, SolveStep, SolverOptions};
 use cas_ast::symbol::SymbolId;
 use cas_ast::{ExprId, RelOp, SolutionSet};
-use cas_solver_core::isolation_functions::{
-    execute_function_isolation_with_default_kernels_for_var_with_state,
-};
+use cas_solver_core::isolation_functions::execute_function_isolation_with_default_kernels_for_var_with_state;
 
 /// Handle isolation for `Function(fn_id, args)`: abs, log, ln, exp, sqrt, trig
 #[allow(clippy::too_many_arguments)]

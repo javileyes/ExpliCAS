@@ -237,14 +237,7 @@ where
                     solve_isolate(state, equation.lhs, equation.rhs, equation.op.clone())
                 },
                 map_log_item_to_step,
-                |state| {
-                    unsupported_arity_error(
-                        state,
-                        fn_id,
-                        args.len(),
-                        var,
-                    )
-                },
+                |state| unsupported_arity_error(state, fn_id, args.len(), var),
             )
         }
         Ok(FunctionIsolationRoute::UnaryInvertible { arg }) => {

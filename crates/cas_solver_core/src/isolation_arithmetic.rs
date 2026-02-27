@@ -6,8 +6,8 @@
 use cas_ast::{Context, Equation, ExprId, RelOp, SolutionSet};
 
 use crate::solve_outcome::{
-    derive_add_isolation_operands, derive_mul_isolation_operands, derive_sub_isolation_operands,
-    derive_div_isolation_route,
+    derive_add_isolation_operands, derive_div_isolation_route, derive_mul_isolation_operands,
+    derive_sub_isolation_operands,
     execute_division_denominator_sign_split_or_term_isolation_plan_with_optional_items_and_merge_with_existing_steps_with_single_solver_with_state,
     execute_isolated_denominator_sign_split_or_division_denominator_plan_with_optional_items_and_merge_with_existing_steps_with_state,
     execute_product_zero_inequality_split_pipeline_with_existing_steps_with_context_snapshot,
@@ -19,11 +19,11 @@ use crate::solve_outcome::{
     plan_isolated_denominator_sign_split_or_division_denominator,
     plan_mul_factor_isolation_step_with, plan_product_zero_inequality_split_if_applicable,
     plan_sub_isolation_step_with, resolve_div_denominator_isolation_rhs_with, AddIsolationOperands,
-    AddIsolationRoute, DivIsolationRoute, DivisionDenominatorDidacticPlan, DivisionDenominatorSignSplitPlan,
-    DivisionDenominatorSignSplitSolvedCases, DivisionDidacticExecutionItem,
-    IsolatedDenominatorSignSplitPlan, IsolatedDenominatorSignSplitSolvedCases,
-    MulIsolationOperands, ProductZeroInequalityPlan, ProductZeroInequalitySolvedSets,
-    TermIsolationRewriteExecutionItem, TermIsolationRewritePlan,
+    AddIsolationRoute, DivIsolationRoute, DivisionDenominatorDidacticPlan,
+    DivisionDenominatorSignSplitPlan, DivisionDenominatorSignSplitSolvedCases,
+    DivisionDidacticExecutionItem, IsolatedDenominatorSignSplitPlan,
+    IsolatedDenominatorSignSplitSolvedCases, MulIsolationOperands, ProductZeroInequalityPlan,
+    ProductZeroInequalitySolvedSets, TermIsolationRewriteExecutionItem, TermIsolationRewritePlan,
 };
 
 /// Execute additive isolation `(l + r) = rhs` with an optional
@@ -609,14 +609,7 @@ where
 }
 
 /// Derive and dispatch division-isolation route from `(ctx, numerator, var)`.
-pub fn execute_div_isolation_route_for_var_with_state<
-    T,
-    R,
-    E,
-    FContext,
-    FNumerator,
-    FDenominator,
->(
+pub fn execute_div_isolation_route_for_var_with_state<T, R, E, FContext, FNumerator, FDenominator>(
     state: &mut T,
     context: FContext,
     numerator: ExprId,
@@ -1059,8 +1052,7 @@ mod tests {
     use super::{
         execute_add_isolation_pipeline_with_linear_collect_fallback_with_state,
         execute_div_denominator_isolation_pipeline_with_reciprocal_fallback_and_state,
-        execute_div_isolation_route_for_var_with_state,
-        execute_div_isolation_route_with_state,
+        execute_div_isolation_route_for_var_with_state, execute_div_isolation_route_with_state,
         execute_div_numerator_isolation_pipeline_with_state,
         execute_mul_isolation_pipeline_with_product_split_and_linear_collect_with_state,
         execute_sub_isolation_pipeline_with_state,
