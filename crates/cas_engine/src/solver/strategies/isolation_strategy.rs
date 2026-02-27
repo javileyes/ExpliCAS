@@ -7,14 +7,13 @@ use crate::solver::{
     medium_step, render_expr as solver_render_expr, SolveCtx, SolveStep, SolverOptions,
 };
 use cas_ast::{Equation, SolutionSet};
+use cas_solver_core::isolation_strategy::execute_isolation_strategy_with_state;
 use cas_solver_core::solve_outcome::{
     TermIsolationExecutionItem, TermIsolationRewriteExecutionItem,
 };
 use cas_solver_core::strategy_kernels::{
-    derive_isolation_strategy_routing,
     execute_collect_terms_kernel_result_pipeline_for_equation_with_item_with_state,
     execute_rational_exponent_kernel_result_pipeline_with_item_with_state,
-    solve_isolation_strategy_routing_with,
 };
 use cas_solver_core::unwrap_plan::{
     route_unwrap_entry_with_item,
@@ -36,14 +35,20 @@ impl SolverStrategy for IsolationStrategy {
         opts: &SolverOptions,
         ctx: &SolveCtx,
     ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
-        let routing = derive_isolation_strategy_routing(&simplifier.context, eq, var);
         let include_item = simplifier.collect_steps();
-        solve_isolation_strategy_routing_with(
-            routing,
+        execute_isolation_strategy_with_state(
+            simplifier,
             eq,
             var,
             include_item,
-            |equation, solve_var| {
+            |simplifier, equation, solve_var| {
+                cas_solver_core::strategy_kernels::derive_isolation_strategy_routing(
+                    &simplifier.context,
+                    equation,
+                    solve_var,
+                )
+            },
+            |simplifier, equation, solve_var| {
                 isolate(
                     equation.lhs,
                     equation.rhs,

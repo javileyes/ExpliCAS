@@ -5,6 +5,7 @@ pub mod function_inverse;
 pub mod isolation_arithmetic;
 pub mod isolation_functions;
 pub mod isolation_power;
+pub mod isolation_strategy;
 pub mod isolation_utils;
 pub mod linear_collect;
 pub mod linear_didactic;
