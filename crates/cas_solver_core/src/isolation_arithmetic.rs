@@ -6,13 +6,19 @@
 use cas_ast::{Context, Equation, ExprId, RelOp, SolutionSet};
 
 use crate::solve_outcome::{
+    derive_add_isolation_operands, derive_mul_isolation_operands, derive_sub_isolation_operands,
     execute_division_denominator_sign_split_or_term_isolation_plan_with_optional_items_and_merge_with_existing_steps_with_single_solver_with_state,
     execute_isolated_denominator_sign_split_or_division_denominator_plan_with_optional_items_and_merge_with_existing_steps_with_state,
     execute_product_zero_inequality_split_pipeline_with_existing_steps_with_context_snapshot,
     execute_term_isolation_plan_and_merge_with_existing_steps_with,
     execute_term_isolation_plan_with_rewritten_rhs_and_merge_with_existing_steps_with,
-    merge_optional_solved_with_existing_steps_append_mut, AddIsolationOperands, AddIsolationRoute,
-    DivisionDenominatorDidacticPlan, DivisionDenominatorSignSplitPlan,
+    merge_optional_solved_with_existing_steps_append_mut, mul_rhs_contains_variable,
+    plan_add_operand_isolation_step_with, plan_div_denominator_isolation_with_zero_rhs_guard,
+    plan_division_denominator_sign_split_or_div_numerator_isolation_with,
+    plan_isolated_denominator_sign_split_or_division_denominator,
+    plan_mul_factor_isolation_step_with, plan_product_zero_inequality_split_if_applicable,
+    plan_sub_isolation_step_with, resolve_div_denominator_isolation_rhs_with, AddIsolationOperands,
+    AddIsolationRoute, DivisionDenominatorDidacticPlan, DivisionDenominatorSignSplitPlan,
     DivisionDenominatorSignSplitSolvedCases, DivisionDidacticExecutionItem,
     IsolatedDenominatorSignSplitPlan, IsolatedDenominatorSignSplitSolvedCases,
     MulIsolationOperands, ProductZeroInequalityPlan, ProductZeroInequalitySolvedSets,
@@ -87,6 +93,78 @@ where
     )
 }
 
+/// Execute additive isolation `(l + r) = rhs` using default operand derivation
+/// and rewrite planning from `solve_outcome`.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_add_isolation_pipeline_with_default_operands_and_plan_with_state<
+    S,
+    T,
+    E,
+    FContextRef,
+    FContextMut,
+    FRenderExpr,
+    FLinearCollect,
+    FSimplifyExpr,
+    FIsolate,
+    FMapStep,
+>(
+    state: &mut S,
+    lhs: ExprId,
+    left: ExprId,
+    right: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    var: &str,
+    include_item: bool,
+    existing_steps: Vec<T>,
+    context_ref: FContextRef,
+    context_mut: FContextMut,
+    render_expr: FRenderExpr,
+    try_linear_collect: FLinearCollect,
+    simplify_expr: FSimplifyExpr,
+    solve_rewritten: FIsolate,
+    map_item_to_step: FMapStep,
+) -> Result<(SolutionSet, Vec<T>), E>
+where
+    FContextRef: Fn(&mut S) -> &Context,
+    FContextMut: Fn(&mut S) -> &mut Context,
+    FRenderExpr: Fn(&Context, ExprId) -> String,
+    FLinearCollect: FnMut(&mut S, ExprId, ExprId, &str) -> Option<(SolutionSet, Vec<T>)>,
+    FSimplifyExpr: FnMut(&mut S, ExprId) -> ExprId,
+    FIsolate: FnMut(&mut S, Equation) -> Result<(SolutionSet, Vec<T>), E>,
+    FMapStep: FnMut(TermIsolationRewriteExecutionItem) -> T,
+{
+    execute_add_isolation_pipeline_with_linear_collect_fallback_with_state(
+        state,
+        lhs,
+        left,
+        right,
+        rhs,
+        op,
+        var,
+        include_item,
+        existing_steps,
+        |state, local_left, local_right, var_name| {
+            derive_add_isolation_operands(context_ref(state), local_left, local_right, var_name)
+        },
+        try_linear_collect,
+        |state, kept, moved, local_rhs, local_op| {
+            let moved_desc = render_expr(context_ref(state), moved);
+            plan_add_operand_isolation_step_with(
+                context_mut(state),
+                kept,
+                moved,
+                local_rhs,
+                local_op,
+                |_| moved_desc.clone(),
+            )
+        },
+        simplify_expr,
+        solve_rewritten,
+        map_item_to_step,
+    )
+}
+
 /// Execute subtractive isolation `(l - r) = rhs`.
 #[allow(clippy::too_many_arguments)]
 pub fn execute_sub_isolation_pipeline_with_state<
@@ -127,6 +205,76 @@ where
         existing_steps,
         |expr| expr,
         |equation| solve_rewritten(state, equation),
+        map_item_to_step,
+    )
+}
+
+/// Execute subtractive isolation `(l - r) = rhs` using default route derivation
+/// and rewrite planning from `solve_outcome`.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_sub_isolation_pipeline_with_default_plan_with_state<
+    S,
+    T,
+    E,
+    FContextRef,
+    FContextMut,
+    FRenderExpr,
+    FSimplifyExpr,
+    FIsolate,
+    FMapStep,
+>(
+    state: &mut S,
+    left: ExprId,
+    right: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    var: &str,
+    include_item: bool,
+    existing_steps: Vec<T>,
+    context_ref: FContextRef,
+    context_mut: FContextMut,
+    render_expr: FRenderExpr,
+    simplify_expr: FSimplifyExpr,
+    solve_rewritten: FIsolate,
+    map_item_to_step: FMapStep,
+) -> Result<(SolutionSet, Vec<T>), E>
+where
+    FContextRef: Fn(&mut S) -> &Context,
+    FContextMut: Fn(&mut S) -> &mut Context,
+    FRenderExpr: Fn(&Context, ExprId) -> String,
+    FSimplifyExpr: FnMut(&mut S, ExprId) -> ExprId,
+    FIsolate: FnMut(&mut S, Equation) -> Result<(SolutionSet, Vec<T>), E>,
+    FMapStep: FnMut(TermIsolationRewriteExecutionItem) -> T,
+{
+    execute_sub_isolation_pipeline_with_state(
+        state,
+        left,
+        right,
+        rhs,
+        op,
+        var,
+        include_item,
+        existing_steps,
+        |state, local_left, local_right, local_rhs, local_op, var_name| {
+            let sub_operands = derive_sub_isolation_operands(
+                context_ref(state),
+                local_left,
+                local_right,
+                var_name,
+            );
+            let moved_desc = render_expr(context_ref(state), sub_operands.moved_term);
+            plan_sub_isolation_step_with(
+                context_mut(state),
+                local_left,
+                local_right,
+                local_rhs,
+                local_op,
+                var_name,
+                |_| moved_desc.clone(),
+            )
+        },
+        simplify_expr,
+        solve_rewritten,
         map_item_to_step,
     )
 }
@@ -235,6 +383,112 @@ where
     )
 }
 
+/// Execute multiplicative isolation `(l * r) = rhs` using default split/route
+/// planning from `solve_outcome`.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_mul_isolation_pipeline_with_default_operands_and_plan_with_state<
+    S,
+    T,
+    E,
+    FContextRef,
+    FContextMut,
+    FSolveSplitCase,
+    FContextSnapshot,
+    FFinalizeSplit,
+    FTryLinearCollect,
+    FIsKnownNegative,
+    FRenderExpr,
+    FIsolate,
+    FMapStep,
+>(
+    state: &mut S,
+    lhs: ExprId,
+    left: ExprId,
+    right: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    var: &str,
+    include_item: bool,
+    existing_steps: Vec<T>,
+    context_ref: FContextRef,
+    context_mut: FContextMut,
+    solve_split_case: FSolveSplitCase,
+    context_snapshot: FContextSnapshot,
+    finalize_split_with_context: FFinalizeSplit,
+    try_linear_collect: FTryLinearCollect,
+    is_known_negative: FIsKnownNegative,
+    render_expr: FRenderExpr,
+    isolate_rewritten: FIsolate,
+    map_item_to_step: FMapStep,
+) -> Result<(SolutionSet, Vec<T>), E>
+where
+    FContextRef: Fn(&mut S) -> &Context,
+    FContextMut: Fn(&mut S) -> &mut Context,
+    FSolveSplitCase: FnMut(&mut S, &Equation) -> Result<(SolutionSet, Vec<T>), E>,
+    FContextSnapshot: FnMut(&mut S) -> Context,
+    FFinalizeSplit: FnMut(&Context, ProductZeroInequalitySolvedSets) -> SolutionSet,
+    FTryLinearCollect: FnMut(&mut S, ExprId, ExprId, &str) -> Option<(SolutionSet, Vec<T>)>,
+    FIsKnownNegative: FnMut(&mut S, ExprId) -> bool,
+    FRenderExpr: Fn(&Context, ExprId) -> String,
+    FIsolate: FnMut(&mut S, Equation) -> Result<(SolutionSet, Vec<T>), E>,
+    FMapStep: FnMut(TermIsolationRewriteExecutionItem) -> T,
+{
+    let mut solve_split_case = solve_split_case;
+    let mut context_snapshot = context_snapshot;
+    let mut finalize_split_with_context = finalize_split_with_context;
+    let mut try_linear_collect = try_linear_collect;
+    let mut is_known_negative = is_known_negative;
+    let mut isolate_rewritten = isolate_rewritten;
+    execute_mul_isolation_pipeline_with_product_split_and_linear_collect_with_state(
+        state,
+        lhs,
+        left,
+        right,
+        rhs,
+        op,
+        var,
+        include_item,
+        existing_steps,
+        |state, local_left, local_right, local_rhs, local_op, var_name| {
+            plan_product_zero_inequality_split_if_applicable(
+                context_mut(state),
+                local_left,
+                local_right,
+                local_rhs,
+                local_op,
+                var_name,
+            )
+        },
+        |state, equation| solve_split_case(state, equation),
+        |state| context_snapshot(state),
+        |ctx, solved_sets| finalize_split_with_context(ctx, solved_sets),
+        |state, local_rhs, var_name| {
+            mul_rhs_contains_variable(context_ref(state), local_rhs, var_name)
+        },
+        |state, local_lhs, local_rhs, var_name| {
+            try_linear_collect(state, local_lhs, local_rhs, var_name)
+        },
+        |state, local_left, local_right, var_name| {
+            derive_mul_isolation_operands(context_ref(state), local_left, local_right, var_name)
+        },
+        |state, expr| is_known_negative(state, expr),
+        |state, expr| render_expr(context_ref(state), expr),
+        |state, kept, moved, local_rhs, local_op, moved_is_negative, moved_desc| {
+            plan_mul_factor_isolation_step_with(
+                context_mut(state),
+                kept,
+                moved,
+                local_rhs,
+                local_op,
+                moved_is_negative,
+                |_| moved_desc.clone(),
+            )
+        },
+        |state, equation| isolate_rewritten(state, equation),
+        map_item_to_step,
+    )
+}
+
 /// Execute numerator-side division isolation:
 /// 1) optional denominator-sign split for inequalities,
 /// 2) fallback term-isolation rewrite when no split applies.
@@ -336,6 +590,93 @@ where
     )
 }
 
+/// Execute numerator-side division isolation with default route planning from
+/// `solve_outcome`.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_div_numerator_isolation_pipeline_with_default_plan_with_state<
+    S,
+    TStep,
+    E,
+    FContextMut,
+    FIsKnownNegative,
+    FRenderExpr,
+    FSimplifyExpr,
+    FSolveEquation,
+    FMapDivisionStep,
+    FMapTermStep,
+    FFinalize,
+>(
+    state: &mut S,
+    numerator: ExprId,
+    denominator: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    var: &str,
+    include_items: bool,
+    existing_steps: Vec<TStep>,
+    context_mut: FContextMut,
+    is_known_negative: FIsKnownNegative,
+    render_expr: FRenderExpr,
+    simplify_expr: FSimplifyExpr,
+    solve_equation: FSolveEquation,
+    map_division_item_to_step: FMapDivisionStep,
+    map_term_item_to_step: FMapTermStep,
+    finalize_solved_sets: FFinalize,
+) -> Result<(SolutionSet, Vec<TStep>), E>
+where
+    TStep: Clone,
+    FContextMut: FnMut(&mut S) -> &mut Context,
+    FIsKnownNegative: FnMut(&mut S, ExprId) -> bool,
+    FRenderExpr: FnMut(&mut S, ExprId) -> String,
+    FSimplifyExpr: FnMut(&mut S, ExprId) -> ExprId,
+    FSolveEquation: FnMut(&mut S, &Equation) -> Result<(SolutionSet, Vec<TStep>), E>,
+    FMapDivisionStep: FnMut(DivisionDidacticExecutionItem) -> TStep,
+    FMapTermStep: FnMut(TermIsolationRewriteExecutionItem) -> TStep,
+    FFinalize: FnMut(
+        &mut S,
+        DivisionDenominatorSignSplitSolvedCases<SolutionSet, SolutionSet>,
+    ) -> SolutionSet,
+{
+    let mut context_mut = context_mut;
+    execute_div_numerator_isolation_pipeline_with_state(
+        state,
+        numerator,
+        denominator,
+        rhs,
+        op,
+        var,
+        include_items,
+        existing_steps,
+        is_known_negative,
+        render_expr,
+        |state,
+         local_numerator,
+         local_denominator,
+         local_rhs,
+         local_op,
+         var_name,
+         denominator_is_negative,
+         denominator_desc| {
+            plan_division_denominator_sign_split_or_div_numerator_isolation_with(
+                context_mut(state),
+                local_numerator,
+                local_denominator,
+                local_rhs,
+                local_op,
+                var_name,
+                denominator_is_negative,
+                |_| denominator_desc.clone(),
+            )
+        },
+        simplify_expr,
+        |_, expr| format!("#{expr}"),
+        solve_equation,
+        map_division_item_to_step,
+        map_term_item_to_step,
+        finalize_solved_sets,
+    )
+}
+
 /// Execute denominator-side division isolation:
 /// 1) optional reciprocal-solve fast path,
 /// 2) isolated-denominator sign split or denominator didactic fallback.
@@ -429,6 +770,98 @@ where
                 format!("#{expr}")
             }
         },
+        solve_branch,
+        map_item_to_step,
+        finalize_solved_sets,
+    )
+}
+
+/// Execute denominator-side division isolation with default split/didactic plan
+/// resolution from `solve_outcome`.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_div_denominator_isolation_pipeline_with_default_plan_with_state<
+    S,
+    TStep,
+    E,
+    FContextMut,
+    FShouldTryReciprocal,
+    FTryReciprocal,
+    FRenderExpr,
+    FSimplifyForRhs,
+    FSimplifyExpr,
+    FSolveBranch,
+    FMapStep,
+    FFinalize,
+>(
+    state: &mut S,
+    lhs: ExprId,
+    numerator: ExprId,
+    denominator: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    var: &str,
+    include_items: bool,
+    existing_steps: Vec<TStep>,
+    context_mut: FContextMut,
+    should_try_reciprocal: FShouldTryReciprocal,
+    try_reciprocal_solve: FTryReciprocal,
+    render_expr: FRenderExpr,
+    simplify_for_rhs: FSimplifyForRhs,
+    simplify_expr: FSimplifyExpr,
+    solve_branch: FSolveBranch,
+    map_item_to_step: FMapStep,
+    finalize_solved_sets: FFinalize,
+) -> Result<(SolutionSet, Vec<TStep>), E>
+where
+    TStep: Clone,
+    FContextMut: FnMut(&mut S) -> &mut Context,
+    FShouldTryReciprocal: FnMut(&mut S, ExprId, &RelOp, &str) -> bool,
+    FTryReciprocal: FnMut(&mut S, ExprId, ExprId, &str) -> Option<(SolutionSet, Vec<TStep>)>,
+    FRenderExpr: FnMut(&mut S, ExprId) -> String,
+    FSimplifyForRhs: FnMut(&mut S, ExprId) -> ExprId,
+    FSimplifyExpr: FnMut(&mut S, ExprId) -> ExprId,
+    FSolveBranch: FnMut(&mut S, &Equation) -> Result<(SolutionSet, Vec<TStep>), E>,
+    FMapStep: FnMut(DivisionDidacticExecutionItem) -> TStep,
+    FFinalize: FnMut(&mut S, IsolatedDenominatorSignSplitSolvedCases<SolutionSet>) -> SolutionSet,
+{
+    let mut context_mut = context_mut;
+    let mut simplify_for_rhs = simplify_for_rhs;
+    execute_div_denominator_isolation_pipeline_with_reciprocal_fallback_and_state(
+        state,
+        lhs,
+        numerator,
+        denominator,
+        rhs,
+        op,
+        var,
+        include_items,
+        existing_steps,
+        should_try_reciprocal,
+        try_reciprocal_solve,
+        |state, local_numerator, local_denominator, local_rhs, local_op, var_name| {
+            let isolation_plan = plan_div_denominator_isolation_with_zero_rhs_guard(
+                context_mut(state),
+                local_denominator,
+                local_numerator,
+                local_rhs,
+                local_op.clone(),
+            );
+            let (_, simplified_rhs) =
+                resolve_div_denominator_isolation_rhs_with(isolation_plan, |expr| {
+                    simplify_for_rhs(state, expr)
+                });
+            plan_isolated_denominator_sign_split_or_division_denominator(
+                context_mut(state),
+                local_numerator,
+                local_denominator,
+                local_rhs,
+                simplified_rhs,
+                local_op,
+                var_name,
+            )
+        },
+        render_expr,
+        simplify_expr,
         solve_branch,
         map_item_to_step,
         finalize_solved_sets,
