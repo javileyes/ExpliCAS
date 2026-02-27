@@ -10,9 +10,8 @@ use cas_ast::{ExprId, SolutionSet};
 use cas_solver_core::reciprocal::{
     build_reciprocal_execution_from_kernel_prepared, build_reciprocal_solve_plan,
     derive_reciprocal_solve_kernel,
-    execute_reciprocal_solve_pipeline_with_items_via_kernel_execution_pipeline,
+    execute_reciprocal_solve_pipeline_with_items_via_kernel_execution_pipeline_with_state,
 };
-use std::cell::RefCell;
 
 use crate::engine::Simplifier;
 use crate::solver::{medium_step, SolveStep};
@@ -28,18 +27,16 @@ pub(crate) fn try_reciprocal_solve(
     simplifier: &mut Simplifier,
 ) -> Option<(SolutionSet, Vec<SolveStep>)> {
     let include_items = simplifier.collect_steps();
-    let simplifier_ref = RefCell::new(simplifier);
-    execute_reciprocal_solve_pipeline_with_items_via_kernel_execution_pipeline(
+    execute_reciprocal_solve_pipeline_with_items_via_kernel_execution_pipeline_with_state(
+        simplifier,
         lhs,
         rhs,
         var,
         include_items,
-        |left, right, var_name| {
-            let mut simplifier = simplifier_ref.borrow_mut();
+        |simplifier, left, right, var_name| {
             derive_reciprocal_solve_kernel(&mut simplifier.context, left, right, var_name)
         },
-        |var_name, reciprocal_kernel| {
-            let mut simplifier = simplifier_ref.borrow_mut();
+        |simplifier, var_name, reciprocal_kernel| {
             build_reciprocal_solve_plan(
                 &mut simplifier.context,
                 var_name,
@@ -47,13 +44,9 @@ pub(crate) fn try_reciprocal_solve(
                 reciprocal_kernel.denominator,
             )
         },
-        |expr| simplifier_ref.borrow_mut().simplify(expr).0,
-        |expr| {
-            let simplifier = simplifier_ref.borrow();
-            crate::solver::prove_nonzero_status(&simplifier.context, expr)
-        },
-        |var_name, reciprocal_kernel, prepared| {
-            let mut simplifier = simplifier_ref.borrow_mut();
+        |simplifier, expr| simplifier.simplify(expr).0,
+        |simplifier, expr| crate::solver::prove_nonzero_status(&simplifier.context, expr),
+        |simplifier, var_name, reciprocal_kernel, prepared| {
             build_reciprocal_execution_from_kernel_prepared(
                 &mut simplifier.context,
                 var_name,

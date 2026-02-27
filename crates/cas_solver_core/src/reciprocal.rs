@@ -558,6 +558,65 @@ where
     )
 }
 
+/// Stateful variant of
+/// [`execute_reciprocal_solve_pipeline_with_items_via_kernel_execution_pipeline`].
+///
+/// This form lets callers thread one mutable state object across all hooks
+/// without interior mutability wrappers.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_reciprocal_solve_pipeline_with_items_via_kernel_execution_pipeline_with_state<
+    T,
+    S,
+    FDeriveKernel,
+    FPlan,
+    FSimplify,
+    FProof,
+    FBuildPrepared,
+    FStep,
+>(
+    state: &mut T,
+    lhs: ExprId,
+    rhs: ExprId,
+    var: &str,
+    include_items: bool,
+    mut derive_kernel: FDeriveKernel,
+    mut plan_from_kernel: FPlan,
+    mut simplify_expr: FSimplify,
+    mut prove_nonzero_status: FProof,
+    mut build_execution_from_prepared: FBuildPrepared,
+    map_item_to_step: FStep,
+) -> Option<(SolutionSet, Vec<S>)>
+where
+    FDeriveKernel: FnMut(&mut T, ExprId, ExprId, &str) -> Option<ReciprocalSolveKernel>,
+    FPlan: FnMut(&mut T, &str, ReciprocalSolveKernel) -> ReciprocalSolvePlan,
+    FSimplify: FnMut(&mut T, ExprId) -> ExprId,
+    FProof: FnMut(&mut T, ExprId) -> NonZeroStatus,
+    FBuildPrepared: FnMut(
+        &mut T,
+        &str,
+        ReciprocalSolveKernel,
+        ReciprocalPreparedExecution,
+    ) -> ReciprocalSolveExecution,
+    FStep: FnMut(ReciprocalExecutionItem) -> S,
+{
+    let kernel = derive_kernel(state, lhs, rhs, var)?;
+    let raw_plan = plan_from_kernel(state, var, kernel);
+    let combined_rhs_display = simplify_expr(state, raw_plan.combined_rhs);
+    let solution_rhs_display = simplify_expr(state, raw_plan.solution_rhs);
+    let guard_numerator = simplify_expr(state, kernel.numerator);
+    let numerator_status = prove_nonzero_status(state, guard_numerator);
+    let prepared = ReciprocalPreparedExecution {
+        combined_rhs_display,
+        solution_rhs_display,
+        guard_numerator,
+        numerator_status,
+    };
+    let execution = build_execution_from_prepared(state, var, kernel, prepared);
+    let solved_execution =
+        solve_reciprocal_execution_pipeline_with_items(execution, include_items, map_item_to_step);
+    Some(solved_execution.solved)
+}
+
 /// High-level reciprocal solve pipeline using an optional pre-derived kernel:
 /// build execution payload and optionally map didactic items.
 pub fn execute_reciprocal_solve_pipeline_with_items_and_kernel<S, FBuildExecution, FStep>(
@@ -1026,6 +1085,86 @@ mod tests {
         assert!(matches!(solved.0, SolutionSet::Conditional(_)));
         assert_eq!(solved.1.len(), 2);
         assert_eq!(map_calls.get(), 2);
+    }
+
+    #[test]
+    fn execute_reciprocal_solve_pipeline_with_items_via_kernel_execution_pipeline_with_state_maps_steps_when_enabled(
+    ) {
+        let mut context = Context::new();
+        let x = context.var("x");
+        let r = context.var("r");
+        let one = context.num(1);
+        let lhs = context.add(Expr::Div(one, x));
+        let rhs = context.add(Expr::Div(one, r));
+        let context_cell = std::cell::RefCell::new(context);
+
+        #[derive(Default)]
+        struct HooksState {
+            derive_calls: usize,
+            simplify_calls: usize,
+            proof_calls: usize,
+            build_calls: usize,
+            map_calls: usize,
+        }
+
+        let mut state = HooksState::default();
+        let solved =
+            execute_reciprocal_solve_pipeline_with_items_via_kernel_execution_pipeline_with_state(
+                &mut state,
+                lhs,
+                rhs,
+                "x",
+                true,
+                |hooks, inner_lhs, inner_rhs, inner_var| {
+                    hooks.derive_calls += 1;
+                    let mut context_ref = context_cell.borrow_mut();
+                    derive_reciprocal_solve_kernel(
+                        &mut context_ref,
+                        inner_lhs,
+                        inner_rhs,
+                        inner_var,
+                    )
+                },
+                |hooks, inner_var, kernel| {
+                    hooks.simplify_calls += 100;
+                    let mut context_ref = context_cell.borrow_mut();
+                    build_reciprocal_solve_plan(
+                        &mut context_ref,
+                        inner_var,
+                        kernel.numerator,
+                        kernel.denominator,
+                    )
+                },
+                |hooks, expr| {
+                    hooks.simplify_calls += 1;
+                    expr
+                },
+                |hooks, _expr| {
+                    hooks.proof_calls += 1;
+                    NonZeroStatus::Unknown
+                },
+                |hooks, inner_var, kernel, prepared| {
+                    hooks.build_calls += 1;
+                    let mut context_ref = context_cell.borrow_mut();
+                    build_reciprocal_execution_from_kernel_prepared(
+                        &mut context_ref,
+                        inner_var,
+                        kernel,
+                        prepared,
+                    )
+                },
+                |item| item.description,
+            )
+            .expect("reciprocal pipeline should execute");
+
+        assert!(matches!(solved.0, SolutionSet::Conditional(_)));
+        assert_eq!(solved.1.len(), 2);
+        state.map_calls += solved.1.len();
+        assert_eq!(state.derive_calls, 1);
+        assert_eq!(state.simplify_calls, 103);
+        assert_eq!(state.proof_calls, 1);
+        assert_eq!(state.build_calls, 1);
+        assert_eq!(state.map_calls, 2);
     }
 
     #[test]
