@@ -5,7 +5,9 @@
 
 use cas_ast::{ExprId, RelOp, SolutionSet};
 
-use crate::function_inverse::{FunctionIsolationRoute, FunctionIsolationRouteError};
+use crate::function_inverse::{
+    plan_unary_inverse_isolation_step, FunctionIsolationRoute, FunctionIsolationRouteError,
+};
 use crate::log_isolation::{plan_log_isolation_step_with, LogIsolationRewritePlan};
 use crate::solve_outcome::{
     execute_abs_isolation_plan_with_rhs_sign_pipeline_with_optional_items_and_solver_with_state,
@@ -340,11 +342,73 @@ where
     )
 }
 
+/// Execute unary invertible-function isolation (`f(arg) op rhs`) using the
+/// default core planning routine `plan_unary_inverse_isolation_step`.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_unary_function_isolation_with_default_plan_with_state<
+    T,
+    S,
+    E,
+    FContextMut,
+    FSimplifyRhs,
+    FSolveIsolate,
+    FMapStep,
+    FUnknownFunction,
+>(
+    state: &mut T,
+    fn_name: &str,
+    arg: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    is_lhs: bool,
+    include_items: bool,
+    existing_steps: Vec<S>,
+    context_mut: FContextMut,
+    simplify_rhs: FSimplifyRhs,
+    solve_isolate: FSolveIsolate,
+    map_item_to_step: FMapStep,
+    unknown_function_error: FUnknownFunction,
+) -> Result<(SolutionSet, Vec<S>), E>
+where
+    FContextMut: FnMut(&mut T) -> &mut cas_ast::Context,
+    FSimplifyRhs: FnMut(&mut T, ExprId) -> (ExprId, Vec<(String, ExprId)>),
+    FSolveIsolate: FnMut(&mut T, ExprId, ExprId, RelOp) -> Result<(SolutionSet, Vec<S>), E>,
+    FMapStep: FnMut(crate::function_inverse::UnaryInverseSolveExecutionItem) -> S,
+    FUnknownFunction: FnMut(&mut T) -> E,
+{
+    let mut context_mut = context_mut;
+    execute_unary_function_isolation_with_state(
+        state,
+        fn_name,
+        arg,
+        rhs,
+        op,
+        is_lhs,
+        include_items,
+        existing_steps,
+        |state, name, lhs_expr, rhs_expr, rel_op, lhs_side| {
+            plan_unary_inverse_isolation_step(
+                context_mut(state),
+                name,
+                lhs_expr,
+                rhs_expr,
+                rel_op,
+                lhs_side,
+            )
+        },
+        simplify_rhs,
+        solve_isolate,
+        map_item_to_step,
+        unknown_function_error,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         execute_function_isolation_route_with_state,
         execute_log_function_isolation_with_default_plan_with_state,
+        execute_unary_function_isolation_with_default_plan_with_state,
     };
     use crate::function_inverse::{FunctionIsolationRoute, FunctionIsolationRouteError};
     use cas_ast::RelOp;
@@ -424,5 +488,37 @@ mod tests {
         .expect_err("missing log-plan should map to provided error");
 
         assert_eq!(err, "no-plan");
+    }
+
+    #[test]
+    fn execute_unary_function_isolation_with_default_plan_with_state_maps_unknown_fn_error() {
+        let mut ctx = cas_ast::Context::new();
+        let x = ctx.var("x");
+        let y = ctx.num(2);
+        let mut state = ctx;
+
+        let err = execute_unary_function_isolation_with_default_plan_with_state(
+            &mut state,
+            "unknown_fn",
+            x,
+            y,
+            RelOp::Eq,
+            true,
+            false,
+            vec![],
+            |state| state,
+            |_state, rhs_expr| (rhs_expr, vec![]),
+            |_state, _lhs, _rhs, _op| {
+                Ok::<(cas_ast::SolutionSet, Vec<String>), &'static str>((
+                    cas_ast::SolutionSet::AllReals,
+                    vec![],
+                ))
+            },
+            |item| item.description,
+            |_state| "unknown-fn",
+        )
+        .expect_err("unknown unary function should map to provided error");
+
+        assert_eq!(err, "unknown-fn");
     }
 }

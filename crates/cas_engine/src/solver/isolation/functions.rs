@@ -4,14 +4,12 @@ use crate::error::CasError;
 use crate::solver::{medium_step, render_expr as solver_render_expr, SolveStep, SolverOptions};
 use cas_ast::symbol::SymbolId;
 use cas_ast::{ExprId, RelOp, SolutionSet};
-use cas_solver_core::function_inverse::{
-    derive_function_isolation_route, plan_unary_inverse_isolation_step,
-};
+use cas_solver_core::function_inverse::derive_function_isolation_route;
 use cas_solver_core::isolation_functions::{
     execute_abs_function_isolation_with_default_plan_and_finalizer_with_state,
     execute_function_isolation_route_with_state,
     execute_log_function_isolation_with_default_plan_with_state,
-    execute_unary_function_isolation_with_state,
+    execute_unary_function_isolation_with_default_plan_with_state,
 };
 use cas_solver_core::solve_outcome::AbsSplitExecutionItem;
 
@@ -189,7 +187,7 @@ fn isolate_unary_function(
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     let fn_name = simplifier.context.sym_name(fn_id).to_string();
     let include_items = simplifier.collect_steps();
-    execute_unary_function_isolation_with_state(
+    execute_unary_function_isolation_with_default_plan_with_state(
         simplifier,
         &fn_name,
         arg,
@@ -198,16 +196,7 @@ fn isolate_unary_function(
         true,
         include_items,
         steps,
-        |simplifier, name, lhs_expr, rhs_expr, rel_op, is_lhs| {
-            plan_unary_inverse_isolation_step(
-                &mut simplifier.context,
-                name,
-                lhs_expr,
-                rhs_expr,
-                rel_op,
-                is_lhs,
-            )
-        },
+        |simplifier| &mut simplifier.context,
         |simplifier, rhs_expr| {
             let (simplified_rhs, sim_steps) = simplifier.simplify(rhs_expr);
             let entries = sim_steps
