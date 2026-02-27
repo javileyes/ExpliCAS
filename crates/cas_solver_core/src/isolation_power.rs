@@ -8,12 +8,18 @@ use cas_ast::{Context, Equation, Expr, ExprId, RelOp, SolutionSet};
 use crate::log_domain::{DomainModeKind, LogAssumption, LogSolveDecision};
 
 use crate::solve_outcome::{
+    classify_pow_exponent_base_flags, ensure_pow_exponent_rhs_without_variable,
     execute_and_resolve_pow_exponent_log_decision_pipeline_with_existing_steps_mut_with_unsupported_execution,
     execute_pow_base_isolation_pipeline_with_item_and_merge_with_existing_steps,
     execute_pow_exponent_log_isolation_pipeline_with_plan_and_merge_with_existing_steps_with,
     execute_pow_exponent_shortcut_action_pipeline_with_item_and_finalize_with_existing_steps_with,
     execute_pow_exponent_shortcut_with_state,
-    execute_pow_exponent_solve_tactic_normalization_with_state, LogBlockedHintRecord,
+    execute_pow_exponent_solve_tactic_normalization_with_state,
+    execute_power_base_one_shortcut_pipeline_with_item_for_pow_and_finalize_with_existing_steps_with,
+    plan_pow_exponent_log_isolation_step_with,
+    plan_pow_exponent_log_unsupported_execution_from_decision_with,
+    plan_pow_exponent_shortcut_action_from_inputs,
+    solve_solve_tactic_normalization_pipeline_with_item, LogBlockedHintRecord,
     PowBaseIsolationEngineAction, PowExponentLogIsolationExecutionItem,
     PowExponentLogIsolationRewritePlan, PowExponentLogUnsupportedExecution,
     PowExponentShortcutAction, PowExponentShortcutEngineAction, PowExponentShortcutExecutionItem,
@@ -276,6 +282,115 @@ where
     Ok(None)
 }
 
+/// Execute exponent-side prelude for power isolation (`b^e = rhs`) using
+/// default shortcut planning/equivalence/guard hooks from `solve_outcome`.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_pow_exponent_shortcuts_and_guards_with_default_kernel_with_state<
+    T,
+    S,
+    E,
+    FContextRef,
+    FContextMut,
+    FSimplifyExpr,
+    FRenderExpr,
+    FSolveShortcut,
+    FMapShortcutStep,
+    FMapBaseOneStep,
+    FMapEnsureError,
+>(
+    state: &mut T,
+    lhs: ExprId,
+    base: ExprId,
+    exponent: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    var: &str,
+    can_branch: bool,
+    include_shortcut_item: bool,
+    include_base_one_item: bool,
+    existing_steps: &mut Vec<S>,
+    context_ref: FContextRef,
+    context_mut: FContextMut,
+    simplify_expr: FSimplifyExpr,
+    render_expr: FRenderExpr,
+    solve_shortcut: FSolveShortcut,
+    map_shortcut_step: FMapShortcutStep,
+    mut map_base_one_step: FMapBaseOneStep,
+    map_ensure_error: FMapEnsureError,
+) -> Result<Option<(SolutionSet, Vec<S>)>, E>
+where
+    FContextRef: Fn(&mut T) -> &Context,
+    FContextMut: Fn(&mut T) -> &mut Context,
+    FSimplifyExpr: FnMut(&mut T, ExprId) -> ExprId,
+    FRenderExpr: Fn(&Context, ExprId) -> String,
+    FSolveShortcut: FnMut(&mut T, ExprId, RelOp) -> Result<(SolutionSet, Vec<S>), E>,
+    FMapShortcutStep: FnMut(PowExponentShortcutExecutionItem) -> S,
+    FMapBaseOneStep: FnMut(crate::solve_outcome::PowerBaseOneShortcutExecutionItem) -> S,
+    FMapEnsureError: FnMut(&str, &'static str) -> E,
+{
+    let mut simplify_expr = simplify_expr;
+    let mut map_ensure_error = map_ensure_error;
+    execute_pow_exponent_shortcuts_and_guards_with_state(
+        state,
+        lhs,
+        base,
+        exponent,
+        rhs,
+        op,
+        var,
+        can_branch,
+        include_shortcut_item,
+        include_base_one_item,
+        existing_steps,
+        |state, local_base| classify_pow_exponent_base_flags(context_ref(state), local_base),
+        |state, id| context_ref(state).get(id).clone(),
+        |state,
+         base_id,
+         rel_op,
+         bases_equal,
+         rhs_pow_base_equal,
+         base_is_zero,
+         base_is_numeric,
+         local_can_branch| {
+            plan_pow_exponent_shortcut_action_from_inputs(
+                context_mut(state),
+                base_id,
+                rel_op,
+                bases_equal,
+                rhs_pow_base_equal,
+                base_is_zero,
+                base_is_numeric,
+                local_can_branch,
+            )
+        },
+        |state, left, right| {
+            let diff = context_mut(state).add(Expr::Sub(left, right));
+            let reduced = simplify_expr(state, diff);
+            crate::isolation_utils::is_numeric_zero(context_ref(state), reduced)
+        },
+        |state, expr| render_expr(context_ref(state), expr),
+        solve_shortcut,
+        map_shortcut_step,
+        |state, local_rhs, local_var| {
+            ensure_pow_exponent_rhs_without_variable(context_ref(state), local_rhs, local_var)
+                .map_err(|message| map_ensure_error(local_var, message))
+        },
+        |state, local_base, local_lhs, local_rhs, local_op, include_item, local_steps| {
+            execute_power_base_one_shortcut_pipeline_with_item_for_pow_and_finalize_with_existing_steps_with(
+                context_ref(state),
+                local_base,
+                local_lhs,
+                local_rhs,
+                local_op,
+                include_item,
+                local_steps,
+                |core_ctx, expr| render_expr(core_ctx, expr),
+                &mut map_base_one_step,
+            )
+        },
+    )
+}
+
 /// Execute solve-tactic normalization for exponent-side power isolation and
 /// classify logarithmic solve decision from normalized `(base, rhs)`.
 #[allow(clippy::too_many_arguments)]
@@ -442,6 +557,158 @@ where
         register_blocked_hint,
         map_unsupported_err,
         plan_log_rewrite,
+        solve_rewrite,
+        map_log_item_to_step,
+    )
+}
+
+/// Execute the exponent-side tactic+log pipeline using default kernel helpers
+/// for tactic-step construction, unsupported-plan construction, and log rewrite.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_pow_exponent_tactic_then_log_pipeline_with_default_kernel_with_state<
+    T,
+    S,
+    E,
+    FContextRef,
+    FContextMut,
+    FClearBlockedHints,
+    FSimplifyWithTactic,
+    FCollectItem,
+    FClassifyDecision,
+    FRenderExpr,
+    FMapTacticStep,
+    FMapTermStep,
+    FVisitAssumption,
+    FTryGuardedSolve,
+    FRegisterBlockedHint,
+    FMapUnsupportedErr,
+    FSolveRewrite,
+    FMapLogStep,
+>(
+    state: &mut T,
+    lhs: ExprId,
+    base: ExprId,
+    exponent: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    var: &str,
+    solve_tactic_enabled: bool,
+    mode: DomainModeKind,
+    wildcard_scope: bool,
+    can_branch: bool,
+    include_terminal_items: bool,
+    include_unsupported_items: bool,
+    include_log_item: bool,
+    existing_steps: Vec<S>,
+    context_ref: FContextRef,
+    context_mut: FContextMut,
+    clear_blocked_hints: FClearBlockedHints,
+    simplify_with_tactic: FSimplifyWithTactic,
+    collect_item: FCollectItem,
+    classify_decision: FClassifyDecision,
+    render_expr: FRenderExpr,
+    map_tactic_item_to_step: FMapTacticStep,
+    map_term_item_to_step: FMapTermStep,
+    visit_assumption: FVisitAssumption,
+    try_guarded_solve: FTryGuardedSolve,
+    register_blocked_hint: FRegisterBlockedHint,
+    map_unsupported_err: FMapUnsupportedErr,
+    solve_rewrite: FSolveRewrite,
+    map_log_item_to_step: FMapLogStep,
+) -> Result<(SolutionSet, Vec<S>), E>
+where
+    FContextRef: Fn(&mut T) -> &Context,
+    FContextMut: Fn(&mut T) -> &mut Context,
+    FClearBlockedHints: FnMut(&mut T),
+    FSimplifyWithTactic: FnMut(&mut T, ExprId) -> ExprId,
+    FCollectItem: FnMut(&mut T) -> bool,
+    FClassifyDecision: FnMut(&mut T, ExprId, ExprId) -> LogSolveDecision,
+    FRenderExpr: Fn(&Context, ExprId) -> String,
+    FMapTacticStep: FnMut(crate::solve_outcome::TermIsolationRewriteExecutionItem) -> S,
+    FMapTermStep: FnMut(TermIsolationExecutionItem) -> S,
+    FVisitAssumption: FnMut(&Context, LogAssumption),
+    FTryGuardedSolve: FnMut(&mut T, &Equation) -> Option<SolutionSet>,
+    FRegisterBlockedHint: FnMut(&Context, LogBlockedHintRecord),
+    FMapUnsupportedErr: FnMut(&'static str) -> E,
+    FSolveRewrite: FnMut(&mut T, &Equation) -> Result<(SolutionSet, Vec<S>), E>,
+    FMapLogStep: FnMut(PowExponentLogIsolationExecutionItem) -> S,
+{
+    let mut collect_item = collect_item;
+    let mut map_tactic_item_to_step = map_tactic_item_to_step;
+    execute_pow_exponent_tactic_then_log_pipeline_with_state(
+        state,
+        lhs,
+        base,
+        exponent,
+        rhs,
+        op,
+        var,
+        solve_tactic_enabled,
+        mode,
+        wildcard_scope,
+        can_branch,
+        include_terminal_items,
+        include_unsupported_items,
+        include_log_item,
+        existing_steps,
+        clear_blocked_hints,
+        simplify_with_tactic,
+        |state, sim_base, sim_exp, sim_rhs, sim_op| {
+            let include_item = collect_item(state);
+            solve_solve_tactic_normalization_pipeline_with_item(
+                context_mut(state),
+                sim_base,
+                sim_exp,
+                sim_rhs,
+                sim_op,
+                include_item,
+                &mut map_tactic_item_to_step,
+            )
+        },
+        classify_decision,
+        |state,
+         decision,
+         local_can_branch,
+         local_lhs,
+         local_rhs,
+         var_name,
+         local_exp,
+         local_base,
+         raw_rhs,
+         local_op,
+         source_equation| {
+            plan_pow_exponent_log_unsupported_execution_from_decision_with(
+                context_mut(state),
+                decision,
+                local_can_branch,
+                local_lhs,
+                local_rhs,
+                var_name,
+                local_exp,
+                local_base,
+                raw_rhs,
+                local_op,
+                source_equation,
+                |core_ctx, expr| render_expr(core_ctx, expr),
+            )
+        },
+        |state| context_ref(state).clone(),
+        map_term_item_to_step,
+        visit_assumption,
+        try_guarded_solve,
+        register_blocked_hint,
+        map_unsupported_err,
+        |state, local_exp, local_base, local_rhs, local_op| {
+            plan_pow_exponent_log_isolation_step_with(
+                context_mut(state),
+                local_exp,
+                local_base,
+                local_rhs,
+                local_op,
+                None,
+                |core_ctx, expr| render_expr(core_ctx, expr),
+            )
+        },
         solve_rewrite,
         map_log_item_to_step,
     )

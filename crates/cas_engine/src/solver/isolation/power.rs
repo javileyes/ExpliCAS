@@ -2,19 +2,12 @@ use crate::engine::Simplifier;
 use crate::error::CasError;
 use crate::solver::{medium_step, render_expr as solver_render_expr, SolveStep, SolverOptions};
 use crate::SimplifyOptions;
-use cas_ast::{Expr, ExprId, RelOp, SolutionSet};
+use cas_ast::{ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_power::{
     execute_pow_base_isolation_with_default_action_with_state,
-    execute_pow_exponent_shortcuts_and_guards_with_state,
-    execute_pow_exponent_tactic_then_log_pipeline_with_state,
+    execute_pow_exponent_shortcuts_and_guards_with_default_kernel_with_state,
+    execute_pow_exponent_tactic_then_log_pipeline_with_default_kernel_with_state,
     execute_pow_isolation_route_for_var_with_state,
-};
-use cas_solver_core::solve_outcome::{
-    classify_pow_exponent_base_flags, ensure_pow_exponent_rhs_without_variable,
-    plan_pow_exponent_log_isolation_step_with,
-    plan_pow_exponent_log_unsupported_execution_from_decision_with,
-    plan_pow_exponent_shortcut_action_from_inputs,
-    solve_solve_tactic_normalization_pipeline_with_item,
 };
 
 use super::isolate;
@@ -120,7 +113,7 @@ fn isolate_pow_exponent(
     let include_shortcut_item = simplifier.collect_steps();
     let include_base_one_item = simplifier.collect_steps();
     if let Some((solution_set, merged_steps)) =
-        execute_pow_exponent_shortcuts_and_guards_with_state(
+        execute_pow_exponent_shortcuts_and_guards_with_default_kernel_with_state(
             simplifier,
             lhs,
             b,
@@ -132,55 +125,17 @@ fn isolate_pow_exponent(
             include_shortcut_item,
             include_base_one_item,
             &mut steps,
-            |simplifier, base| classify_pow_exponent_base_flags(&simplifier.context, base),
-            |simplifier, id| simplifier.context.get(id).clone(),
-            |simplifier,
-             base_id,
-             rel_op,
-             bases_equal,
-             rhs_pow_base_equal,
-             base_is_zero,
-             base_is_numeric,
-             can_branch| {
-                plan_pow_exponent_shortcut_action_from_inputs(
-                    &mut simplifier.context,
-                    base_id,
-                    rel_op,
-                    bases_equal,
-                    rhs_pow_base_equal,
-                    base_is_zero,
-                    base_is_numeric,
-                    can_branch,
-                )
-            },
-            |simplifier, left, right| {
-                let diff = simplifier.context.add(Expr::Sub(left, right));
-                let reduced = simplifier.simplify(diff).0;
-                cas_solver_core::isolation_utils::is_numeric_zero(&simplifier.context, reduced)
-            },
-            |simplifier, expr| solver_render_expr(&simplifier.context, expr),
+            |simplifier| &simplifier.context,
+            |simplifier| &mut simplifier.context,
+            |simplifier, expr| simplifier.simplify(expr).0,
+            solver_render_expr,
             |simplifier, shortcut_rhs, shortcut_op| {
                 isolate(e, shortcut_rhs, shortcut_op, var, simplifier, opts, ctx)
             },
             |item| medium_step(item.description().to_string(), item.equation),
-            |simplifier, local_rhs, local_var| {
-                ensure_pow_exponent_rhs_without_variable(&simplifier.context, local_rhs, local_var)
-                    .map_err(|message| {
-                        CasError::IsolationError(local_var.to_string(), message.to_string())
-                    })
-            },
-            |simplifier, base, local_lhs, local_rhs, local_op, include_item, existing_steps| {
-                cas_solver_core::solve_outcome::execute_power_base_one_shortcut_pipeline_with_item_for_pow_and_finalize_with_existing_steps_with(
-                &simplifier.context,
-                base,
-                local_lhs,
-                local_rhs,
-                local_op,
-                include_item,
-                existing_steps,
-                solver_render_expr,
-                |item| medium_step(item.description().to_string(), item.equation),
-            )
+            |item| medium_step(item.description().to_string(), item.equation),
+            |local_var, message| {
+                CasError::IsolationError(local_var.to_string(), message.to_string())
             },
         )?
     {
@@ -198,7 +153,7 @@ fn isolate_pow_exponent(
     let include_terminal_items = simplifier.collect_steps();
     let include_unsupported_items = simplifier.collect_steps();
     let include_log_item = simplifier.collect_steps();
-    execute_pow_exponent_tactic_then_log_pipeline_with_state(
+    execute_pow_exponent_tactic_then_log_pipeline_with_default_kernel_with_state(
         simplifier,
         lhs,
         b,
@@ -214,24 +169,15 @@ fn isolate_pow_exponent(
         include_unsupported_items,
         include_log_item,
         steps,
+        |simplifier| &simplifier.context,
+        |simplifier| &mut simplifier.context,
         |_simplifier| crate::domain::clear_blocked_hints(),
         |simplifier, expr| {
             simplifier
                 .simplify_with_options(expr, tactic_opts.clone())
                 .0
         },
-        |simplifier, sim_base, sim_exp, sim_rhs, sim_op| {
-            let include_item = simplifier.collect_steps();
-            solve_solve_tactic_normalization_pipeline_with_item(
-                &mut simplifier.context,
-                sim_base,
-                sim_exp,
-                sim_rhs,
-                sim_op,
-                include_item,
-                |item| medium_step(item.description().to_string(), item.equation),
-            )
-        },
+        |simplifier| simplifier.collect_steps(),
         |simplifier, tactic_base, tactic_rhs| {
             crate::solver::classify_log_solve(
                 &simplifier.context,
@@ -241,33 +187,8 @@ fn isolate_pow_exponent(
                 &ctx.domain_env,
             )
         },
-        |simplifier,
-         decision,
-         can_branch,
-         local_lhs,
-         local_rhs,
-         var_name,
-         local_exp,
-         local_base,
-         raw_rhs,
-         local_op,
-         source_equation| {
-            plan_pow_exponent_log_unsupported_execution_from_decision_with(
-                &mut simplifier.context,
-                decision,
-                can_branch,
-                local_lhs,
-                local_rhs,
-                var_name,
-                local_exp,
-                local_base,
-                raw_rhs,
-                local_op,
-                source_equation,
-                solver_render_expr,
-            )
-        },
-        |simplifier| simplifier.context.clone(),
+        solver_render_expr,
+        |item| medium_step(item.description().to_string(), item.equation),
         |item| medium_step(item.description().to_string(), item.equation),
         |core_ctx, assumption| {
             let event = crate::solver::assumption_event_from_log_assumption_targets(
@@ -294,17 +215,6 @@ fn isolate_pow_exponent(
             crate::domain::register_blocked_hint(blocked_hint);
         },
         |message| CasError::UnsupportedInRealDomain(message.to_string()),
-        |simplifier, local_exp, local_base, local_rhs, local_op| {
-            plan_pow_exponent_log_isolation_step_with(
-                &mut simplifier.context,
-                local_exp,
-                local_base,
-                local_rhs,
-                local_op,
-                None,
-                solver_render_expr,
-            )
-        },
         |simplifier, equation| {
             isolate(
                 equation.lhs,
