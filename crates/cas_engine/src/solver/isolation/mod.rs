@@ -7,7 +7,7 @@ use crate::solver::{medium_step, SolveStep, SolverOptions, MAX_SOLVE_DEPTH};
 use cas_ast::{ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_dispatch::{
     derive_isolation_dispatch_route,
-    execute_isolated_variable_entry_with_default_resolution_with_state,
+    execute_isolated_variable_entry_with_default_resolution_single_context_with_state,
     execute_isolation_dispatch_route_with_state,
     execute_negated_lhs_entry_with_default_plan_and_merge_with_existing_steps_with_state,
 };
@@ -35,26 +35,26 @@ pub(crate) fn isolate(
         simplifier,
         route,
         |simplifier| {
-            let solved = execute_isolated_variable_entry_with_default_resolution_with_state(
-                simplifier,
-                lhs,
-                rhs,
-                op.clone(),
-                var,
-                |simplifier| &mut simplifier.context,
-                |simplifier| &mut simplifier.context,
-                |simplifier, expr| simplifier.simplify(expr).0,
-                |simplifier, solve_lhs, solve_rhs, solve_var| {
-                    crate::solver::linear_collect::try_linear_collect(
-                        solve_lhs, solve_rhs, solve_var, simplifier,
-                    )
-                },
-                |simplifier, solve_lhs, solve_rhs, solve_var| {
-                    crate::solver::linear_collect::try_linear_collect_v2(
-                        solve_lhs, solve_rhs, solve_var, simplifier,
-                    )
-                },
-            );
+            let solved =
+                execute_isolated_variable_entry_with_default_resolution_single_context_with_state(
+                    simplifier,
+                    lhs,
+                    rhs,
+                    op.clone(),
+                    var,
+                    |simplifier| &mut simplifier.context,
+                    |simplifier, expr| simplifier.simplify(expr).0,
+                    |simplifier, solve_lhs, solve_rhs, solve_var| {
+                        crate::solver::linear_collect::try_linear_collect(
+                            solve_lhs, solve_rhs, solve_var, simplifier,
+                        )
+                    },
+                    |simplifier, solve_lhs, solve_rhs, solve_var| {
+                        crate::solver::linear_collect::try_linear_collect_v2(
+                            solve_lhs, solve_rhs, solve_var, simplifier,
+                        )
+                    },
+                );
             Ok(solved)
         },
         |simplifier, left, right| {

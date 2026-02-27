@@ -154,6 +154,47 @@ where
     )
 }
 
+/// Convenience variant for isolated-variable entry when the same mutable
+/// context accessor is used both for outcome resolution and residual fallback.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_isolated_variable_entry_with_default_resolution_single_context_with_state<
+    T,
+    S,
+    FContextMut,
+    FSimplify,
+    FTry1,
+    FTry2,
+>(
+    state: &mut T,
+    lhs: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    var: &str,
+    context_mut: FContextMut,
+    simplify_rhs: FSimplify,
+    try_linear_collect: FTry1,
+    try_linear_collect_v2: FTry2,
+) -> (SolutionSet, Vec<S>)
+where
+    FContextMut: Fn(&mut T) -> &mut Context,
+    FSimplify: FnMut(&mut T, ExprId) -> ExprId,
+    FTry1: FnMut(&mut T, ExprId, ExprId, &str) -> Option<(SolutionSet, Vec<S>)>,
+    FTry2: FnMut(&mut T, ExprId, ExprId, &str) -> Option<(SolutionSet, Vec<S>)>,
+{
+    execute_isolated_variable_entry_with_default_resolution_with_state(
+        state,
+        lhs,
+        rhs,
+        op,
+        var,
+        |state| context_mut(state),
+        |state| context_mut(state),
+        simplify_rhs,
+        try_linear_collect,
+        try_linear_collect_v2,
+    )
+}
+
 /// Execute a negated-LHS entry (`-A op rhs`) with default core negation rewrite
 /// planning, then delegate solving of rewritten equation via callback.
 #[allow(clippy::too_many_arguments)]
