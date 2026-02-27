@@ -38,6 +38,33 @@ where
     }
 }
 
+/// Derive and dispatch power-isolation route from `(ctx, base, var)`.
+///
+/// This combines `derive_pow_isolation_route` with
+/// `execute_pow_isolation_route_with_state`.
+pub fn execute_pow_isolation_route_for_var_with_state<T, R, E, FContext, FBase, FExponent>(
+    state: &mut T,
+    context: FContext,
+    base: ExprId,
+    var: &str,
+    on_variable_in_base: FBase,
+    on_variable_in_exponent: FExponent,
+) -> Result<R, E>
+where
+    FContext: FnMut(&mut T) -> &Context,
+    FBase: FnOnce(&mut T) -> Result<R, E>,
+    FExponent: FnOnce(&mut T) -> Result<R, E>,
+{
+    let mut context = context;
+    let route = crate::solve_outcome::derive_pow_isolation_route(context(state), base, var);
+    execute_pow_isolation_route_with_state(
+        state,
+        route,
+        on_variable_in_base,
+        on_variable_in_exponent,
+    )
+}
+
 /// Execute base-side power isolation (`b^e = rhs`) using default core action
 /// planning (`build_pow_base_isolation_action_with`) and caller solve hooks.
 #[allow(clippy::too_many_arguments)]
@@ -554,7 +581,7 @@ mod tests {
         execute_pow_exponent_shortcuts_and_guards_with_state,
         execute_pow_exponent_tactic_and_classify_decision_with_state,
         execute_pow_exponent_tactic_then_log_pipeline_with_state,
-        execute_pow_isolation_route_with_state,
+        execute_pow_isolation_route_for_var_with_state, execute_pow_isolation_route_with_state,
     };
     use crate::log_domain::{DomainModeKind, LogSolveDecision};
     use crate::solve_outcome::{
@@ -602,6 +629,36 @@ mod tests {
 
         assert_eq!(out, "exp");
         assert!(state);
+    }
+
+    #[test]
+    fn execute_pow_isolation_route_for_var_with_state_derives_and_dispatches() {
+        struct RouteState {
+            context: cas_ast::Context,
+            hit: bool,
+        }
+
+        let mut state = RouteState {
+            context: cas_ast::Context::new(),
+            hit: false,
+        };
+        let x = state.context.var("x");
+
+        let out = execute_pow_isolation_route_for_var_with_state(
+            &mut state,
+            |state| &state.context,
+            x,
+            "x",
+            |state| {
+                state.hit = true;
+                Ok::<_, &'static str>("base")
+            },
+            |_state| Ok("exp"),
+        )
+        .expect("derived route should dispatch");
+
+        assert_eq!(out, "base");
+        assert!(state.hit);
     }
 
     #[test]

@@ -7,11 +7,11 @@ use cas_solver_core::isolation_power::{
     execute_pow_base_isolation_with_default_action_with_state,
     execute_pow_exponent_shortcuts_and_guards_with_state,
     execute_pow_exponent_tactic_then_log_pipeline_with_state,
-    execute_pow_isolation_route_with_state,
+    execute_pow_isolation_route_for_var_with_state,
 };
 use cas_solver_core::solve_outcome::{
-    classify_pow_exponent_base_flags, derive_pow_isolation_route,
-    ensure_pow_exponent_rhs_without_variable, plan_pow_exponent_log_isolation_step_with,
+    classify_pow_exponent_base_flags, ensure_pow_exponent_rhs_without_variable,
+    plan_pow_exponent_log_isolation_step_with,
     plan_pow_exponent_log_unsupported_execution_from_decision_with,
     plan_pow_exponent_shortcut_action_from_inputs,
     solve_solve_tactic_normalization_pipeline_with_item,
@@ -33,10 +33,11 @@ pub(super) fn isolate_pow(
     steps: Vec<SolveStep>,
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-    let route = derive_pow_isolation_route(&simplifier.context, b, var);
-    execute_pow_isolation_route_with_state(
+    execute_pow_isolation_route_for_var_with_state(
         simplifier,
-        route,
+        |simplifier| &simplifier.context,
+        b,
+        var,
         |simplifier| {
             // Variable in base: B^E = RHS
             isolate_pow_base(

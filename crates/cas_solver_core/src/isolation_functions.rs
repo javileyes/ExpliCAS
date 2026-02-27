@@ -3,7 +3,8 @@
 //! These wrappers keep equation-rewrite orchestration in `cas_solver_core`
 //! while callers provide stateful hooks for simplification and recursion.
 
-use cas_ast::{ExprId, RelOp, SolutionSet};
+use cas_ast::symbol::SymbolId;
+use cas_ast::{Context, ExprId, RelOp, SolutionSet};
 
 use crate::function_inverse::{
     plan_unary_inverse_isolation_step, FunctionIsolationRoute, FunctionIsolationRouteError,
@@ -80,6 +81,55 @@ where
         }
         Err(FunctionIsolationRouteError::UnsupportedArity) => Err(on_unsupported_arity(state)),
     }
+}
+
+/// Derive and dispatch function-isolation routing from `(ctx, fn_id, args, var)`.
+///
+/// This combines `derive_function_isolation_route` with
+/// `execute_function_isolation_route_with_state`.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_function_isolation_route_for_var_with_state<
+    T,
+    R,
+    E,
+    FContext,
+    FAbs,
+    FLog,
+    FUnary,
+    FVarMissing,
+    FUnsupported,
+>(
+    state: &mut T,
+    context: FContext,
+    fn_id: SymbolId,
+    args: &[ExprId],
+    var: &str,
+    on_abs_unary: FAbs,
+    on_log_binary: FLog,
+    on_unary_invertible: FUnary,
+    on_variable_missing: FVarMissing,
+    on_unsupported_arity: FUnsupported,
+) -> Result<R, E>
+where
+    FContext: FnMut(&mut T) -> &Context,
+    FAbs: FnOnce(&mut T, ExprId) -> Result<R, E>,
+    FLog: FnOnce(&mut T, ExprId, ExprId) -> Result<R, E>,
+    FUnary: FnOnce(&mut T, ExprId) -> Result<R, E>,
+    FVarMissing: FnOnce(&mut T) -> E,
+    FUnsupported: FnOnce(&mut T) -> E,
+{
+    let mut context = context;
+    let routing =
+        crate::function_inverse::derive_function_isolation_route(context(state), fn_id, args, var);
+    execute_function_isolation_route_with_state(
+        state,
+        routing,
+        on_abs_unary,
+        on_log_binary,
+        on_unary_invertible,
+        on_variable_missing,
+        on_unsupported_arity,
+    )
 }
 
 /// Execute absolute-value function isolation (`|arg| op rhs`).
@@ -406,6 +456,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::{
+        execute_function_isolation_route_for_var_with_state,
         execute_function_isolation_route_with_state,
         execute_log_function_isolation_with_default_plan_with_state,
         execute_unary_function_isolation_with_default_plan_with_state,
@@ -520,5 +571,44 @@ mod tests {
         .expect_err("unknown unary function should map to provided error");
 
         assert_eq!(err, "unknown-fn");
+    }
+
+    #[test]
+    fn execute_function_isolation_route_for_var_with_state_derives_and_dispatches_abs() {
+        struct RouteState {
+            context: cas_ast::Context,
+            hits: usize,
+        }
+
+        let mut state = RouteState {
+            context: cas_ast::Context::new(),
+            hits: 0,
+        };
+        let x = state.context.var("x");
+        let abs = state.context.call("abs", vec![x]);
+        let (fn_id, args) = match state.context.get(abs) {
+            cas_ast::Expr::Function(fn_id, args) => (*fn_id, args.clone()),
+            other => panic!("expected abs function node, got {other:?}"),
+        };
+
+        let out = execute_function_isolation_route_for_var_with_state(
+            &mut state,
+            |state| &state.context,
+            fn_id,
+            &args,
+            "x",
+            |state, _arg| {
+                state.hits += 1;
+                Ok::<&'static str, &'static str>("abs")
+            },
+            |_state, _base, _arg| Ok("log"),
+            |_state, _arg| Ok("unary"),
+            |_state| "missing",
+            |_state| "unsupported",
+        )
+        .expect("abs route should dispatch");
+
+        assert_eq!(out, "abs");
+        assert_eq!(state.hits, 1);
     }
 }

@@ -4,10 +4,9 @@ use crate::error::CasError;
 use crate::solver::{medium_step, render_expr as solver_render_expr, SolveStep, SolverOptions};
 use cas_ast::symbol::SymbolId;
 use cas_ast::{ExprId, RelOp, SolutionSet};
-use cas_solver_core::function_inverse::derive_function_isolation_route;
 use cas_solver_core::isolation_functions::{
     execute_abs_function_isolation_with_default_plan_and_finalizer_with_state,
-    execute_function_isolation_route_with_state,
+    execute_function_isolation_route_for_var_with_state,
     execute_log_function_isolation_with_default_plan_with_state,
     execute_unary_function_isolation_with_default_plan_with_state,
 };
@@ -26,10 +25,12 @@ pub(super) fn isolate_function(
     steps: Vec<SolveStep>,
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-    let routing = derive_function_isolation_route(&simplifier.context, fn_id, &args, var);
-    execute_function_isolation_route_with_state(
+    execute_function_isolation_route_for_var_with_state(
         simplifier,
-        routing,
+        |simplifier| &simplifier.context,
+        fn_id,
+        &args,
+        var,
         |simplifier, arg| {
             isolate_abs(
                 arg,
