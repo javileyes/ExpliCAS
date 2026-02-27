@@ -155,18 +155,14 @@ pub(super) fn isolate_mul(
             var,
         );
         if let Some(split_plan) = split_plan {
-            let simplifier_ref = RefCell::new(simplifier);
+            let context_snapshot = simplifier.context.clone();
             return execute_product_zero_inequality_split_pipeline_with_existing_steps_with_context_snapshot(
                 &split_plan,
                 steps,
                 |equation| {
-                    let mut simplifier = simplifier_ref.borrow_mut();
-                    solve_with_ctx_and_options(equation, var, &mut simplifier, opts, ctx)
+                    solve_with_ctx_and_options(equation, var, simplifier, opts, ctx)
                 },
-                || {
-                    let simplifier = simplifier_ref.borrow();
-                    simplifier.context.clone()
-                },
+                || context_snapshot.clone(),
                 finalize_product_zero_inequality_solved_sets,
             );
         }
