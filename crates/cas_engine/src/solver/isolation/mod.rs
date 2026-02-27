@@ -5,11 +5,7 @@ mod power;
 use crate::engine::Simplifier;
 use crate::solver::{medium_step, SolveStep, SolverOptions, MAX_SOLVE_DEPTH};
 use cas_ast::{ExprId, RelOp, SolutionSet};
-use cas_solver_core::isolation_dispatch::{
-    execute_isolated_variable_entry_with_default_resolution_single_context_with_state,
-    execute_isolation_dispatch_route_for_var_with_state,
-    execute_negated_lhs_entry_with_default_plan_and_merge_with_existing_steps_with_state,
-};
+use cas_solver_core::isolation_dispatch::execute_isolation_dispatch_with_default_isolated_and_negated_entries_for_var_with_state;
 
 use crate::error::CasError;
 
@@ -29,33 +25,24 @@ pub(crate) fn isolate(
         ));
     }
 
-    execute_isolation_dispatch_route_for_var_with_state(
+    execute_isolation_dispatch_with_default_isolated_and_negated_entries_for_var_with_state(
         simplifier,
-        |simplifier| &simplifier.context,
         lhs,
+        rhs,
+        op.clone(),
         var,
-        |simplifier| {
-            let solved =
-                execute_isolated_variable_entry_with_default_resolution_single_context_with_state(
-                    simplifier,
-                    lhs,
-                    rhs,
-                    op.clone(),
-                    var,
-                    |simplifier| &mut simplifier.context,
-                    |simplifier, expr| simplifier.simplify(expr).0,
-                    |simplifier, solve_lhs, solve_rhs, solve_var| {
-                        crate::solver::linear_collect::try_linear_collect(
-                            solve_lhs, solve_rhs, solve_var, simplifier,
-                        )
-                    },
-                    |simplifier, solve_lhs, solve_rhs, solve_var| {
-                        crate::solver::linear_collect::try_linear_collect_v2(
-                            solve_lhs, solve_rhs, solve_var, simplifier,
-                        )
-                    },
-                );
-            Ok(solved)
+        |simplifier| &simplifier.context,
+        |simplifier| &mut simplifier.context,
+        |simplifier, expr| simplifier.simplify(expr).0,
+        |simplifier, solve_lhs, solve_rhs, solve_var| {
+            crate::solver::linear_collect::try_linear_collect(
+                solve_lhs, solve_rhs, solve_var, simplifier,
+            )
+        },
+        |simplifier, solve_lhs, solve_rhs, solve_var| {
+            crate::solver::linear_collect::try_linear_collect_v2(
+                solve_lhs, solve_rhs, solve_var, simplifier,
+            )
         },
         |simplifier, left, right| {
             arithmetic::isolate_add(
@@ -139,36 +126,24 @@ pub(crate) fn isolate(
                 ctx,
             )
         },
-        |simplifier, inner| {
-            let include_item = simplifier.collect_steps();
-            execute_negated_lhs_entry_with_default_plan_and_merge_with_existing_steps_with_state(
+        |simplifier| simplifier.collect_steps(),
+        |simplifier, equation, solve_var| {
+            isolate(
+                equation.lhs,
+                equation.rhs,
+                equation.op,
+                solve_var,
                 simplifier,
-                inner,
-                rhs,
-                op.clone(),
-                var,
-                include_item,
-                Vec::new(),
-                |simplifier| &mut simplifier.context,
-                |simplifier, equation, solve_var| {
-                    isolate(
-                        equation.lhs,
-                        equation.rhs,
-                        equation.op,
-                        solve_var,
-                        simplifier,
-                        opts,
-                        ctx,
-                    )
-                },
-                |item| medium_step(item.description, item.equation),
+                opts,
+                ctx,
             )
         },
+        |item| medium_step(item.description, item.equation),
         |_simplifier, lhs_expr| {
-            Err(CasError::IsolationError(
+            CasError::IsolationError(
                 var.to_string(),
                 format!("Cannot isolate from {:?}", lhs_expr),
-            ))
+            )
         },
     )
 }
