@@ -917,6 +917,143 @@ where
     )
 }
 
+/// Execute full division isolation pipeline (`numerator / denominator = rhs`)
+/// using default route derivation and default numerator/denominator kernels.
+///
+/// Route behavior:
+/// - `VariableInNumerator`  -> numerator-side pipeline
+/// - `VariableInDenominator` -> denominator-side pipeline
+#[allow(clippy::too_many_arguments)]
+pub fn execute_div_isolation_pipeline_with_default_route_and_kernels_with_state<
+    S,
+    TStep,
+    E,
+    FContextRef,
+    FContextMut,
+    FIsKnownNegative,
+    FRenderExpr,
+    FSimplifyExpr,
+    FSimplifyForRhs,
+    FSolveIsolate,
+    FMapNumeratorDivisionStep,
+    FMapNumeratorTermStep,
+    FFinalizeNumerator,
+    FShouldTryReciprocal,
+    FTryReciprocal,
+    FMapDenominatorStep,
+    FFinalizeDenominator,
+>(
+    state: &mut S,
+    lhs: ExprId,
+    numerator: ExprId,
+    denominator: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    var: &str,
+    include_numerator_items: bool,
+    include_denominator_items: bool,
+    existing_steps: Vec<TStep>,
+    context_ref: FContextRef,
+    context_mut: FContextMut,
+    is_known_negative: FIsKnownNegative,
+    render_expr: FRenderExpr,
+    simplify_expr: FSimplifyExpr,
+    simplify_for_rhs: FSimplifyForRhs,
+    solve_isolate: FSolveIsolate,
+    map_numerator_division_item_to_step: FMapNumeratorDivisionStep,
+    map_numerator_term_item_to_step: FMapNumeratorTermStep,
+    finalize_numerator_solved_sets: FFinalizeNumerator,
+    should_try_reciprocal: FShouldTryReciprocal,
+    try_reciprocal_solve: FTryReciprocal,
+    map_denominator_item_to_step: FMapDenominatorStep,
+    finalize_denominator_solved_sets: FFinalizeDenominator,
+) -> Result<(SolutionSet, Vec<TStep>), E>
+where
+    TStep: Clone,
+    FContextRef: Fn(&mut S) -> &Context,
+    FContextMut: FnMut(&mut S) -> &mut Context,
+    FIsKnownNegative: FnMut(&mut S, ExprId) -> bool,
+    FRenderExpr: FnMut(&mut S, ExprId) -> String,
+    FSimplifyExpr: FnMut(&mut S, ExprId) -> ExprId,
+    FSimplifyForRhs: FnMut(&mut S, ExprId) -> ExprId,
+    FSolveIsolate: FnMut(&mut S, &Equation) -> Result<(SolutionSet, Vec<TStep>), E>,
+    FMapNumeratorDivisionStep: FnMut(DivisionDidacticExecutionItem) -> TStep,
+    FMapNumeratorTermStep: FnMut(TermIsolationRewriteExecutionItem) -> TStep,
+    FFinalizeNumerator: FnMut(
+        &mut S,
+        DivisionDenominatorSignSplitSolvedCases<SolutionSet, SolutionSet>,
+    ) -> SolutionSet,
+    FShouldTryReciprocal: FnMut(&mut S, ExprId, &RelOp, &str) -> bool,
+    FTryReciprocal: FnMut(&mut S, ExprId, ExprId, &str) -> Option<(SolutionSet, Vec<TStep>)>,
+    FMapDenominatorStep: FnMut(DivisionDidacticExecutionItem) -> TStep,
+    FFinalizeDenominator:
+        FnMut(&mut S, IsolatedDenominatorSignSplitSolvedCases<SolutionSet>) -> SolutionSet,
+{
+    let mut context_mut = context_mut;
+    let mut is_known_negative = is_known_negative;
+    let mut render_expr = render_expr;
+    let mut simplify_expr = simplify_expr;
+    let mut simplify_for_rhs = simplify_for_rhs;
+    let mut solve_isolate = solve_isolate;
+    let map_numerator_division_item_to_step = map_numerator_division_item_to_step;
+    let map_numerator_term_item_to_step = map_numerator_term_item_to_step;
+    let mut finalize_numerator_solved_sets = finalize_numerator_solved_sets;
+    let mut should_try_reciprocal = should_try_reciprocal;
+    let mut try_reciprocal_solve = try_reciprocal_solve;
+    let map_denominator_item_to_step = map_denominator_item_to_step;
+    let mut finalize_denominator_solved_sets = finalize_denominator_solved_sets;
+    let route = derive_div_isolation_route(context_ref(state), numerator, var);
+
+    match route {
+        DivIsolationRoute::VariableInNumerator => {
+            execute_div_numerator_isolation_pipeline_with_default_plan_with_state(
+                state,
+                numerator,
+                denominator,
+                rhs,
+                op.clone(),
+                var,
+                include_numerator_items,
+                existing_steps,
+                |state| context_mut(state),
+                |state, expr| is_known_negative(state, expr),
+                |state, expr| render_expr(state, expr),
+                |state, expr| simplify_expr(state, expr),
+                |state, equation| solve_isolate(state, equation),
+                map_numerator_division_item_to_step,
+                map_numerator_term_item_to_step,
+                |state, solved_sets| finalize_numerator_solved_sets(state, solved_sets),
+            )
+        }
+        DivIsolationRoute::VariableInDenominator => {
+            execute_div_denominator_isolation_pipeline_with_default_plan_with_state(
+                state,
+                lhs,
+                numerator,
+                denominator,
+                rhs,
+                op,
+                var,
+                include_denominator_items,
+                existing_steps,
+                |state| context_mut(state),
+                |state, lhs_expr, local_op, var_name| {
+                    should_try_reciprocal(state, lhs_expr, local_op, var_name)
+                },
+                |state, lhs_expr, local_rhs, var_name| {
+                    try_reciprocal_solve(state, lhs_expr, local_rhs, var_name)
+                },
+                |state, expr| render_expr(state, expr),
+                |state, expr| simplify_for_rhs(state, expr),
+                |state, expr| simplify_expr(state, expr),
+                |state, equation| solve_isolate(state, equation),
+                map_denominator_item_to_step,
+                |state, solved_sets| finalize_denominator_solved_sets(state, solved_sets),
+            )
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
