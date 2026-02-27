@@ -649,6 +649,84 @@ where
     )
 }
 
+/// Stateful variant of
+/// [`solve_rational_roots_strategy_result_for_equation_with_and_item`].
+///
+/// This form lets callers pass one mutable state object across all hooks
+/// without interior mutability wrappers.
+#[allow(clippy::too_many_arguments)]
+pub fn solve_rational_roots_strategy_result_for_equation_with_and_item_with_state<
+    T,
+    S,
+    FBuildDiff,
+    FSimplifyExpr,
+    FExpandExpr,
+    FExtractCoefficients,
+    FSolveNumericPolynomial,
+    FSortAndDedupRoots,
+    FPlanStep,
+    FStep,
+>(
+    state: &mut T,
+    equation: &Equation,
+    var: &str,
+    min_degree: usize,
+    max_degree: usize,
+    max_candidates: usize,
+    include_item: bool,
+    mut build_diff: FBuildDiff,
+    mut simplify_expr: FSimplifyExpr,
+    mut expand_expr: FExpandExpr,
+    mut extract_coefficients: FExtractCoefficients,
+    mut solve_numeric_polynomial: FSolveNumericPolynomial,
+    mut sort_and_dedup_roots: FSortAndDedupRoots,
+    mut plan_step: FPlanStep,
+    map_item_to_step: FStep,
+) -> Option<(SolutionSet, Vec<S>)>
+where
+    FBuildDiff: FnMut(&mut T, ExprId, ExprId) -> ExprId,
+    FSimplifyExpr: FnMut(&mut T, ExprId) -> ExprId,
+    FExpandExpr: FnMut(&mut T, ExprId) -> ExprId,
+    FExtractCoefficients: FnMut(&mut T, ExprId, &str, usize) -> Option<Vec<ExprId>>,
+    FSolveNumericPolynomial:
+        FnMut(&mut T, &[ExprId], usize, usize, usize) -> Option<NumericPolynomialSolveOutcome>,
+    FSortAndDedupRoots: FnMut(&mut T, &mut Vec<ExprId>),
+    FPlanStep: FnMut(&mut T, ExprId, usize) -> RationalRootsDidacticStep,
+    FStep: FnMut(RationalRootsExecutionItem) -> S,
+{
+    if equation.op != RelOp::Eq {
+        return None;
+    }
+
+    let diff = build_diff(state, equation.lhs, equation.rhs);
+    let diff = simplify_expr(state, diff);
+    let expanded = expand_expr(state, diff);
+    let coeffs = extract_coefficients(state, expanded, var, max_degree)?;
+    let outcome = solve_numeric_polynomial(state, &coeffs, min_degree, max_degree, max_candidates)?;
+
+    let (degree, mut roots) = match outcome {
+        NumericPolynomialSolveOutcome::AllReals => {
+            return Some((SolutionSet::AllReals, vec![]));
+        }
+        NumericPolynomialSolveOutcome::CandidateRoots { degree, roots } => (
+            degree,
+            roots
+                .into_iter()
+                .map(|root| simplify_expr(state, root))
+                .collect::<Vec<_>>(),
+        ),
+    };
+
+    if roots.is_empty() {
+        return None;
+    }
+
+    sort_and_dedup_roots(state, &mut roots);
+    let step = plan_step(state, expanded, degree);
+    let steps = solve_rational_roots_step_pipeline_with_item(step, include_item, map_item_to_step);
+    Some((SolutionSet::Discrete(roots), steps))
+}
+
 /// Plan Rational Root strategy didactic step for equation `expanded_expr = 0`.
 pub fn plan_rational_roots_strategy_step(
     ctx: &mut Context,
@@ -976,6 +1054,94 @@ mod tests {
 
         assert!(matches!(solved.0, SolutionSet::Discrete(_)));
         assert_eq!(solved.1.len(), 1);
+    }
+
+    #[test]
+    fn solve_rational_roots_strategy_result_for_equation_with_and_item_with_state_returns_plain_tuple(
+    ) {
+        let mut context = Context::new();
+        let x = context.var("x");
+        let two = context.num(2);
+        let x2 = context.add(Expr::Pow(x, two));
+        let x3 = context.add(Expr::Mul(x2, x));
+        let lhs = context.add(Expr::Sub(x3, x)); // x^3 - x
+        let zero = context.num(0);
+        let equation = Equation {
+            lhs,
+            rhs: zero,
+            op: RelOp::Eq,
+        };
+
+        struct RootsState {
+            context: Context,
+            simplify_calls: usize,
+            expand_calls: usize,
+            extract_calls: usize,
+            solve_numeric_calls: usize,
+            sort_calls: usize,
+            plan_calls: usize,
+        }
+        let mut state = RootsState {
+            context,
+            simplify_calls: 0,
+            expand_calls: 0,
+            extract_calls: 0,
+            solve_numeric_calls: 0,
+            sort_calls: 0,
+            plan_calls: 0,
+        };
+
+        let solved = solve_rational_roots_strategy_result_for_equation_with_and_item_with_state(
+            &mut state,
+            &equation,
+            "x",
+            3,
+            10,
+            200,
+            true,
+            |hooks, left, right| hooks.context.add(Expr::Sub(left, right)),
+            |hooks, expr| {
+                hooks.simplify_calls += 1;
+                expr
+            },
+            |hooks, expr| {
+                hooks.expand_calls += 1;
+                expr
+            },
+            |hooks, expanded, var_name, max_degree| {
+                hooks.extract_calls += 1;
+                extract_poly_coefficients(&mut hooks.context, expanded, var_name, max_degree)
+            },
+            |hooks, coeffs, min_degree, max_degree, max_candidates| {
+                hooks.solve_numeric_calls += 1;
+                solve_numeric_coeff_polynomial(
+                    &mut hooks.context,
+                    coeffs,
+                    min_degree,
+                    max_degree,
+                    max_candidates,
+                )
+            },
+            |hooks, roots| {
+                hooks.sort_calls += 1;
+                crate::solution_set::sort_and_dedup_exprs(&hooks.context, roots);
+            },
+            |hooks, expanded, degree| {
+                hooks.plan_calls += 1;
+                plan_rational_roots_strategy_step_with_zero_rhs(expanded, degree, zero)
+            },
+            |item| item.description,
+        )
+        .expect("strategy should solve cubic");
+
+        assert!(matches!(solved.0, SolutionSet::Discrete(_)));
+        assert_eq!(solved.1.len(), 1);
+        assert_eq!(state.simplify_calls, 4);
+        assert_eq!(state.expand_calls, 1);
+        assert_eq!(state.extract_calls, 1);
+        assert_eq!(state.solve_numeric_calls, 1);
+        assert_eq!(state.sort_calls, 1);
+        assert_eq!(state.plan_calls, 1);
     }
 
     #[test]

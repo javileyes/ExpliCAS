@@ -18,10 +18,9 @@ use cas_ast::{Equation, Expr, SolutionSet};
 use cas_solver_core::rational_roots::{
     extract_poly_coefficients, plan_rational_roots_strategy_step_with_zero_rhs,
     solve_numeric_coeff_polynomial,
-    solve_rational_roots_strategy_result_for_equation_with_and_item,
+    solve_rational_roots_strategy_result_for_equation_with_and_item_with_state,
 };
 use cas_solver_core::solution_set::sort_and_dedup_exprs;
-use std::cell::RefCell;
 
 /// Maximum number of candidate rational roots to try before bailing.
 /// Prevents combinatorial blowup on polynomials with large leading/constant coefficients.
@@ -47,29 +46,21 @@ impl SolverStrategy for RationalRootsStrategy {
     ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
         let include_item = simplifier.collect_steps();
         let zero_rhs = simplifier.context.num(0);
-        let simplifier_ref = RefCell::new(simplifier);
-        let solved = solve_rational_roots_strategy_result_for_equation_with_and_item(
+        let solved = solve_rational_roots_strategy_result_for_equation_with_and_item_with_state(
+            simplifier,
             eq,
             var,
             3,
             MAX_DEGREE,
             MAX_CANDIDATES,
             include_item,
-            |lhs, rhs| {
-                let mut simplifier = simplifier_ref.borrow_mut();
-                simplifier.context.add(Expr::Sub(lhs, rhs))
-            },
-            |expr| simplifier_ref.borrow_mut().simplify(expr).0,
-            |expr| {
-                let mut simplifier = simplifier_ref.borrow_mut();
-                crate::expand::expand(&mut simplifier.context, expr)
-            },
-            |expanded, var_name, max_degree| {
-                let mut simplifier = simplifier_ref.borrow_mut();
+            |simplifier, lhs, rhs| simplifier.context.add(Expr::Sub(lhs, rhs)),
+            |simplifier, expr| simplifier.simplify(expr).0,
+            |simplifier, expr| crate::expand::expand(&mut simplifier.context, expr),
+            |simplifier, expanded, var_name, max_degree| {
                 extract_poly_coefficients(&mut simplifier.context, expanded, var_name, max_degree)
             },
-            |coeffs, min_degree, max_degree, max_candidates| {
-                let mut simplifier = simplifier_ref.borrow_mut();
+            |simplifier, coeffs, min_degree, max_degree, max_candidates| {
                 solve_numeric_coeff_polynomial(
                     &mut simplifier.context,
                     coeffs,
@@ -78,11 +69,10 @@ impl SolverStrategy for RationalRootsStrategy {
                     max_candidates,
                 )
             },
-            |roots| {
-                let simplifier = simplifier_ref.borrow();
+            |simplifier, roots| {
                 sort_and_dedup_exprs(&simplifier.context, roots);
             },
-            |expanded, degree| {
+            |_simplifier, expanded, degree| {
                 plan_rational_roots_strategy_step_with_zero_rhs(expanded, degree, zero_rhs)
             },
             |item| medium_step(item.description().to_string(), item.equation),
