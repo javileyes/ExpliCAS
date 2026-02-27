@@ -47,6 +47,67 @@ pub fn derive_isolation_dispatch_route(
     }
 }
 
+/// Derive and execute one isolation dispatch route from `(ctx, lhs, var)`
+/// with stateful branch handlers.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_isolation_dispatch_route_for_var_with_state<
+    T,
+    R,
+    E,
+    FContext,
+    FIsolatedVariable,
+    FAdd,
+    FSub,
+    FMul,
+    FDiv,
+    FPow,
+    FFunction,
+    FNeg,
+    FUnsupported,
+>(
+    state: &mut T,
+    context: FContext,
+    lhs: ExprId,
+    var: &str,
+    on_isolated_variable: FIsolatedVariable,
+    on_add: FAdd,
+    on_sub: FSub,
+    on_mul: FMul,
+    on_div: FDiv,
+    on_pow: FPow,
+    on_function: FFunction,
+    on_neg: FNeg,
+    on_unsupported: FUnsupported,
+) -> Result<R, E>
+where
+    FContext: FnMut(&mut T) -> &Context,
+    FIsolatedVariable: FnOnce(&mut T) -> Result<R, E>,
+    FAdd: FnOnce(&mut T, ExprId, ExprId) -> Result<R, E>,
+    FSub: FnOnce(&mut T, ExprId, ExprId) -> Result<R, E>,
+    FMul: FnOnce(&mut T, ExprId, ExprId) -> Result<R, E>,
+    FDiv: FnOnce(&mut T, ExprId, ExprId) -> Result<R, E>,
+    FPow: FnOnce(&mut T, ExprId, ExprId) -> Result<R, E>,
+    FFunction: FnOnce(&mut T, SymbolId, Vec<ExprId>) -> Result<R, E>,
+    FNeg: FnOnce(&mut T, ExprId) -> Result<R, E>,
+    FUnsupported: FnOnce(&mut T, Expr) -> Result<R, E>,
+{
+    let mut context = context;
+    let route = derive_isolation_dispatch_route(context(state), lhs, var);
+    execute_isolation_dispatch_route_with_state(
+        state,
+        route,
+        on_isolated_variable,
+        on_add,
+        on_sub,
+        on_mul,
+        on_div,
+        on_pow,
+        on_function,
+        on_neg,
+        on_unsupported,
+    )
+}
+
 /// Execute one isolation dispatch route with stateful branch handlers.
 #[allow(clippy::too_many_arguments)]
 pub fn execute_isolation_dispatch_route_with_state<
@@ -238,6 +299,7 @@ mod tests {
     use super::{
         derive_isolation_dispatch_route,
         execute_isolated_variable_entry_with_default_resolution_with_state,
+        execute_isolation_dispatch_route_for_var_with_state,
         execute_isolation_dispatch_route_with_state,
         execute_negated_lhs_entry_with_default_plan_and_merge_with_existing_steps_with_state,
         IsolationDispatchRoute,
@@ -276,6 +338,38 @@ mod tests {
         .expect("route should resolve");
         assert_eq!(out, "neg");
         assert_eq!(state, 1);
+    }
+
+    #[test]
+    fn execute_isolation_dispatch_route_for_var_with_state_derives_and_dispatches() {
+        let mut state = Context::new();
+        let x = state.var("x");
+        let one = state.num(1);
+        let add = state.add(Expr::Add(x, one));
+        let mut hits = 0usize;
+
+        let out = execute_isolation_dispatch_route_for_var_with_state(
+            &mut state,
+            |ctx| ctx,
+            add,
+            "x",
+            |_ctx| Ok::<_, &'static str>("iso"),
+            |_, _, _| Ok("add"),
+            |_, _, _| Ok("sub"),
+            |_, _, _| Ok("mul"),
+            |_, _, _| Ok("div"),
+            |_, _, _| Ok("pow"),
+            |_, _, _| Ok("fn"),
+            |_, _| Ok("neg"),
+            |_, _| {
+                hits += 1;
+                Ok("unsupported")
+            },
+        )
+        .expect("derived route should dispatch");
+
+        assert_eq!(out, "add");
+        assert_eq!(hits, 0);
     }
 
     #[test]

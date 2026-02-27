@@ -6,9 +6,8 @@ use crate::engine::Simplifier;
 use crate::solver::{medium_step, SolveStep, SolverOptions, MAX_SOLVE_DEPTH};
 use cas_ast::{ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_dispatch::{
-    derive_isolation_dispatch_route,
     execute_isolated_variable_entry_with_default_resolution_single_context_with_state,
-    execute_isolation_dispatch_route_with_state,
+    execute_isolation_dispatch_route_for_var_with_state,
     execute_negated_lhs_entry_with_default_plan_and_merge_with_existing_steps_with_state,
 };
 
@@ -30,10 +29,11 @@ pub(crate) fn isolate(
         ));
     }
 
-    let route = derive_isolation_dispatch_route(&simplifier.context, lhs, var);
-    execute_isolation_dispatch_route_with_state(
+    execute_isolation_dispatch_route_for_var_with_state(
         simplifier,
-        route,
+        |simplifier| &simplifier.context,
+        lhs,
+        var,
         |simplifier| {
             let solved =
                 execute_isolated_variable_entry_with_default_resolution_single_context_with_state(
