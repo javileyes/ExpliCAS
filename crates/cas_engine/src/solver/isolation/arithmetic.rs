@@ -3,6 +3,10 @@ use crate::error::CasError;
 use crate::solver::solve_core::solve_with_ctx_and_options;
 use crate::solver::{medium_step, render_expr as solver_render_expr, SolveStep, SolverOptions};
 use cas_ast::{ExprId, RelOp, SolutionSet};
+use cas_solver_core::isolation_arithmetic::{
+    execute_add_isolation_pipeline_with_linear_collect_fallback_with_state,
+    execute_sub_isolation_pipeline_with_state,
+};
 use cas_solver_core::isolation_utils::{is_known_negative, should_try_reciprocal_solve};
 use cas_solver_core::solve_outcome::{
     derive_add_isolation_operands, derive_div_isolation_route, derive_mul_isolation_operands,
@@ -11,15 +15,13 @@ use cas_solver_core::solve_outcome::{
     execute_isolated_denominator_sign_split_or_division_denominator_plan_with_optional_items_and_merge_with_existing_steps_with_state,
     execute_product_zero_inequality_split_pipeline_with_existing_steps_with_context_snapshot,
     execute_term_isolation_plan_and_merge_with_existing_steps_with,
-    execute_term_isolation_plan_with_rewritten_rhs_and_merge_with_existing_steps_with,
     finalize_product_zero_inequality_solved_sets,
     merge_optional_solved_with_existing_steps_append_mut, mul_rhs_contains_variable,
     plan_add_operand_isolation_step_with, plan_div_denominator_isolation_with_zero_rhs_guard,
     plan_division_denominator_sign_split_or_div_numerator_isolation_with,
     plan_isolated_denominator_sign_split_or_division_denominator,
     plan_mul_factor_isolation_step_with, plan_product_zero_inequality_split_if_applicable,
-    plan_sub_isolation_step_with, resolve_div_denominator_isolation_rhs_with, AddIsolationRoute,
-    DivIsolationRoute,
+    plan_sub_isolation_step_with, resolve_div_denominator_isolation_rhs_with, DivIsolationRoute,
 };
 
 use super::isolate;
@@ -35,41 +37,41 @@ pub(super) fn isolate_add(
     var: &str,
     simplifier: &mut Simplifier,
     opts: SolverOptions,
-    mut steps: Vec<SolveStep>,
+    steps: Vec<SolveStep>,
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-    // PEDAGOGICAL IMPROVEMENT: If BOTH addends contain the variable,
-    // try linear_collect directly to avoid circular "subtract" steps.
-    let add_operands = derive_add_isolation_operands(&simplifier.context, l, r, var);
-
-    if matches!(add_operands.route, AddIsolationRoute::BothOperands) {
-        if let Some(merged) = merge_optional_solved_with_existing_steps_append_mut(
-            crate::solver::linear_collect::try_linear_collect(lhs, rhs, var, simplifier),
-            &mut steps,
-        ) {
-            return Ok(merged);
-        }
-    }
-
-    let add_moved_desc = solver_render_expr(&simplifier.context, add_operands.moved_addend);
-    let add_plan = plan_add_operand_isolation_step_with(
-        &mut simplifier.context,
-        add_operands.isolated_addend,
-        add_operands.moved_addend,
-        rhs,
-        op.clone(),
-        |_| add_moved_desc.clone(),
-    );
-    let add_rewritten_rhs = simplifier.simplify(add_plan.equation.rhs).0;
     let include_item = simplifier.collect_steps();
-    execute_term_isolation_plan_with_rewritten_rhs_and_merge_with_existing_steps_with(
-        add_plan,
-        add_rewritten_rhs,
+    execute_add_isolation_pipeline_with_linear_collect_fallback_with_state(
+        simplifier,
+        lhs,
+        l,
+        r,
+        rhs,
+        op,
+        var,
         include_item,
-        false,
         steps,
-        |expr| expr,
-        |equation| {
+        |simplifier, left, right, var_name| {
+            derive_add_isolation_operands(&simplifier.context, left, right, var_name)
+        },
+        |simplifier, local_lhs, local_rhs, var_name| {
+            crate::solver::linear_collect::try_linear_collect(
+                local_lhs, local_rhs, var_name, simplifier,
+            )
+        },
+        |simplifier, kept, moved, local_rhs, local_op| {
+            let moved_desc = solver_render_expr(&simplifier.context, moved);
+            plan_add_operand_isolation_step_with(
+                &mut simplifier.context,
+                kept,
+                moved,
+                local_rhs,
+                local_op,
+                |_| moved_desc.clone(),
+            )
+        },
+        |simplifier, expr| simplifier.simplify(expr).0,
+        |simplifier, equation| {
             isolate(
                 equation.lhs,
                 equation.rhs,
@@ -97,23 +99,32 @@ pub(super) fn isolate_sub(
     steps: Vec<SolveStep>,
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-    let sub_operands = derive_sub_isolation_operands(&simplifier.context, l, r, var);
-    let sub_moved = sub_operands.moved_term;
-    let sub_moved_desc = solver_render_expr(&simplifier.context, sub_moved);
-    let sub_plan =
-        plan_sub_isolation_step_with(&mut simplifier.context, l, r, rhs, op.clone(), var, |_| {
-            sub_moved_desc.clone()
-        });
-    let sub_rewritten_rhs = simplifier.simplify(sub_plan.equation.rhs).0;
     let include_item = simplifier.collect_steps();
-    execute_term_isolation_plan_with_rewritten_rhs_and_merge_with_existing_steps_with(
-        sub_plan,
-        sub_rewritten_rhs,
+    execute_sub_isolation_pipeline_with_state(
+        simplifier,
+        l,
+        r,
+        rhs,
+        op,
+        var,
         include_item,
-        false,
         steps,
-        |expr| expr,
-        |equation| {
+        |simplifier, left, right, local_rhs, local_op, var_name| {
+            let sub_operands =
+                derive_sub_isolation_operands(&simplifier.context, left, right, var_name);
+            let moved_desc = solver_render_expr(&simplifier.context, sub_operands.moved_term);
+            plan_sub_isolation_step_with(
+                &mut simplifier.context,
+                left,
+                right,
+                local_rhs,
+                local_op,
+                var_name,
+                |_| moved_desc.clone(),
+            )
+        },
+        |simplifier, expr| simplifier.simplify(expr).0,
+        |simplifier, equation| {
             isolate(
                 equation.lhs,
                 equation.rhs,

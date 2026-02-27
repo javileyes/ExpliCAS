@@ -2,6 +2,7 @@ pub mod cycle_guard;
 pub mod equation_rewrite;
 pub mod fingerprint;
 pub mod function_inverse;
+pub mod isolation_arithmetic;
 pub mod isolation_utils;
 pub mod linear_collect;
 pub mod linear_didactic;
