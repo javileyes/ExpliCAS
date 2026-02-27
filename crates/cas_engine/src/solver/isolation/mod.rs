@@ -3,7 +3,7 @@ mod functions;
 mod power;
 
 use crate::engine::Simplifier;
-use crate::solver::{medium_step, SolveStep, SolverOptions, MAX_SOLVE_DEPTH, SOLVE_DEPTH};
+use crate::solver::{medium_step, SolveStep, SolverOptions, MAX_SOLVE_DEPTH};
 use cas_ast::{Expr, ExprId, RelOp, SolutionSet};
 use cas_solver_core::solve_outcome::{
     plan_negated_lhs_isolation_step, residual_solution_set, resolve_isolated_variable_outcome,
@@ -22,9 +22,8 @@ pub(crate) fn isolate(
     opts: SolverOptions,
     ctx: &super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-    // Check recursion depth
-    let current_depth = SOLVE_DEPTH.with(|d| d.get());
-    if current_depth > MAX_SOLVE_DEPTH {
+    // Check solve recursion depth tracked in SolveCtx.
+    if ctx.depth() > MAX_SOLVE_DEPTH {
         return Err(CasError::SolverError(
             "Maximum solver recursion depth exceeded in isolation.".to_string(),
         ));

@@ -21,8 +21,8 @@ use cas_solver_core::solve_outcome::{
 use cas_solver_core::step_cleanup::{cleanup_steps_by, CleanupStep};
 
 use super::{
-    medium_step, render_expr, DepthGuard, DisplaySolveSteps, SolveDomainEnv, SolveStep,
-    SolverOptions, MAX_SOLVE_DEPTH, SOLVE_DEPTH,
+    medium_step, render_expr, DisplaySolveSteps, SolveDomainEnv, SolveStep, SolverOptions,
+    MAX_SOLVE_DEPTH,
 };
 
 // NOTE: Pre-solve exponent normalization (Div(p,q) → Number(p/q)) and
@@ -158,15 +158,7 @@ fn solve_inner(
     opts: SolverOptions,
     parent_ctx: &super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-    // Check and increment recursion depth
-    let current_depth = SOLVE_DEPTH.with(|d| {
-        let depth = d.get() + 1;
-        d.set(depth);
-        depth
-    });
-
-    // Create guard to decrement on exit
-    let _guard = DepthGuard;
+    let current_depth = parent_ctx.depth().saturating_add(1);
 
     if current_depth > MAX_SOLVE_DEPTH {
         return Err(CasError::SolverError(
@@ -223,7 +215,7 @@ fn solve_inner(
     }
 
     // Build a level-specific SolveCtx: fresh domain_env, same shared sinks.
-    let ctx = parent_ctx.fork_with_domain_env(domain_env);
+    let ctx = parent_ctx.fork_with_domain_env_next_depth(domain_env);
 
     // EARLY CHECK: Handle rational exponent equations BEFORE simplification
     // This prevents x^(3/2) from being simplified to |x|*sqrt(x) which causes loops

@@ -33,6 +33,8 @@ pub use self::solve_core::{solve, solve_with_display_steps};
 pub struct SolveCtx {
     /// Domain environment inferred from equation structure (per-level).
     pub domain_env: SolveDomainEnv,
+    /// Solve recursion depth for this context branch.
+    depth: usize,
     /// Shared accumulator for required conditions across all recursive levels.
     required_sink: SharedSink<HashSet<crate::implicit_domain::ImplicitCondition>>,
     /// Shared accumulator for solver assumption events across recursive levels.
@@ -45,6 +47,7 @@ impl Default for SolveCtx {
     fn default() -> Self {
         Self {
             domain_env: SolveDomainEnv::default(),
+            depth: 0,
             required_sink: SharedSink::new(HashSet::new()),
             assumptions_sink: SharedSink::new(Vec::new()),
             output_scopes_sink: SharedSink::new(Vec::new()),
@@ -53,14 +56,20 @@ impl Default for SolveCtx {
 }
 
 impl SolveCtx {
-    /// Build a child context that shares all accumulators and overrides domain env.
-    pub(crate) fn fork_with_domain_env(&self, domain_env: SolveDomainEnv) -> Self {
+    /// Build a child context that shares accumulators and bumps solve depth.
+    pub(crate) fn fork_with_domain_env_next_depth(&self, domain_env: SolveDomainEnv) -> Self {
         Self {
             domain_env,
+            depth: self.depth.saturating_add(1),
             required_sink: self.required_sink.clone(),
             assumptions_sink: self.assumptions_sink.clone(),
             output_scopes_sink: self.output_scopes_sink.clone(),
         }
+    }
+
+    /// Current solve recursion depth.
+    pub(crate) fn depth(&self) -> usize {
+        self.depth
     }
 
     /// Record one required domain condition in the shared accumulator.
@@ -458,29 +467,6 @@ pub(crate) fn render_expr(ctx: &cas_ast::Context, expr: ExprId) -> String {
 /// Maximum recursion depth for solver to prevent stack overflow
 pub(crate) const MAX_SOLVE_DEPTH: usize = 50;
 
-// ---------------------------------------------------------------------------
-// Legacy thread-local state: recursion guard ONLY
-// ---------------------------------------------------------------------------
-// Solver-semantic data (required conditions, assumptions, scopes) is fully
-// SolveCtx-threaded and returned in SolveDiagnostics.
-//
-// Allowlisted cells:
-//   SOLVE_DEPTH        – recursion depth guard (prevents stack overflow)
-thread_local! {
-    pub(crate) static SOLVE_DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
-}
-
-/// Guard that decrements depth on drop
-pub(crate) struct DepthGuard;
-
-impl Drop for DepthGuard {
-    fn drop(&mut self) {
-        SOLVE_DEPTH.with(|d| {
-            d.set(d.get().saturating_sub(1));
-        });
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -506,7 +492,7 @@ mod tests {
         let parent = SolveCtx::default();
         parent.note_required_condition(crate::implicit_domain::ImplicitCondition::NonZero(x));
 
-        let child = parent.fork_with_domain_env(SolveDomainEnv::default());
+        let child = parent.fork_with_domain_env_next_depth(SolveDomainEnv::default());
         child.note_required_condition(crate::implicit_domain::ImplicitCondition::Positive(x));
 
         let required = parent.required_conditions();
@@ -519,7 +505,7 @@ mod tests {
         let x = parse("x", &mut context).unwrap();
 
         let parent = SolveCtx::default();
-        let child = parent.fork_with_domain_env(SolveDomainEnv::default());
+        let child = parent.fork_with_domain_env_next_depth(SolveDomainEnv::default());
         child.note_assumption(crate::assumptions::AssumptionEvent::positive(&context, x));
         child.emit_scope(cas_formatter::display_transforms::ScopeTag::Rule(
             "QuadraticFormula",
@@ -527,6 +513,18 @@ mod tests {
 
         assert_eq!(parent.assumptions().len(), 1);
         assert_eq!(parent.output_scopes().len(), 1);
+    }
+
+    #[test]
+    fn test_solve_ctx_fork_increments_depth() {
+        let parent = SolveCtx::default();
+        assert_eq!(parent.depth(), 0);
+
+        let child = parent.fork_with_domain_env_next_depth(SolveDomainEnv::default());
+        let grandchild = child.fork_with_domain_env_next_depth(SolveDomainEnv::default());
+
+        assert_eq!(child.depth(), 1);
+        assert_eq!(grandchild.depth(), 2);
     }
 
     #[test]
