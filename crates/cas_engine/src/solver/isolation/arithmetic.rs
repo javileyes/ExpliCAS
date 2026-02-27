@@ -5,6 +5,7 @@ use crate::solver::{medium_step, render_expr as solver_render_expr, SolveStep, S
 use cas_ast::{ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_arithmetic::{
     execute_add_isolation_pipeline_with_linear_collect_fallback_with_state,
+    execute_mul_isolation_pipeline_with_product_split_and_linear_collect_with_state,
     execute_sub_isolation_pipeline_with_state,
 };
 use cas_solver_core::isolation_utils::{is_known_negative, should_try_reciprocal_solve};
@@ -13,8 +14,6 @@ use cas_solver_core::solve_outcome::{
     derive_sub_isolation_operands,
     execute_division_denominator_sign_split_or_term_isolation_plan_with_optional_items_and_merge_with_existing_steps_with_single_solver_with_state,
     execute_isolated_denominator_sign_split_or_division_denominator_plan_with_optional_items_and_merge_with_existing_steps_with_state,
-    execute_product_zero_inequality_split_pipeline_with_existing_steps_with_context_snapshot,
-    execute_term_isolation_plan_and_merge_with_existing_steps_with,
     finalize_product_zero_inequality_solved_sets,
     merge_optional_solved_with_existing_steps_append_mut, mul_rhs_contains_variable,
     plan_add_operand_isolation_step_with, plan_div_denominator_isolation_with_zero_rhs_guard,
@@ -150,64 +149,58 @@ pub(super) fn isolate_mul(
     var: &str,
     simplifier: &mut Simplifier,
     opts: SolverOptions,
-    mut steps: Vec<SolveStep>,
+    steps: Vec<SolveStep>,
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-    // CRITICAL: For inequalities with products, need sign analysis
-    // Product inequality split: A * B op 0
-    {
-        let split_plan = plan_product_zero_inequality_split_if_applicable(
-            &mut simplifier.context,
-            l,
-            r,
-            rhs,
-            op.clone(),
-            var,
-        );
-        if let Some(split_plan) = split_plan {
-            let context_snapshot = simplifier.context.clone();
-            return execute_product_zero_inequality_split_pipeline_with_existing_steps_with_context_snapshot(
-                &split_plan,
-                steps,
-                |equation| {
-                    solve_with_ctx_and_options(equation, var, simplifier, opts, ctx)
-                },
-                || context_snapshot.clone(),
-                finalize_product_zero_inequality_solved_sets,
-            );
-        }
-    }
-
-    // Default behavior: divide by one factor
-    if mul_rhs_contains_variable(&simplifier.context, rhs, var) {
-        if let Some(merged) = merge_optional_solved_with_existing_steps_append_mut(
-            crate::solver::linear_collect::try_linear_collect_v2(lhs, rhs, var, simplifier),
-            &mut steps,
-        ) {
-            return Ok(merged);
-        }
-    }
-
-    let mul_operands = derive_mul_isolation_operands(&simplifier.context, l, r, var);
-    let moved_is_negative = is_known_negative(&simplifier.context, mul_operands.moved_factor);
-    let mul_moved_desc = solver_render_expr(&simplifier.context, mul_operands.moved_factor);
-    let mul_plan = plan_mul_factor_isolation_step_with(
-        &mut simplifier.context,
-        mul_operands.isolated_factor,
-        mul_operands.moved_factor,
-        rhs,
-        op.clone(),
-        moved_is_negative,
-        |_| mul_moved_desc.clone(),
-    );
     let include_item = simplifier.collect_steps();
-    execute_term_isolation_plan_and_merge_with_existing_steps_with(
-        mul_plan,
+    execute_mul_isolation_pipeline_with_product_split_and_linear_collect_with_state(
+        simplifier,
+        lhs,
+        l,
+        r,
+        rhs,
+        op,
+        var,
         include_item,
-        false,
         steps,
-        |expr| expr,
-        |equation| {
+        |simplifier, left, right, local_rhs, local_op, var_name| {
+            plan_product_zero_inequality_split_if_applicable(
+                &mut simplifier.context,
+                left,
+                right,
+                local_rhs,
+                local_op,
+                var_name,
+            )
+        },
+        |simplifier, equation| solve_with_ctx_and_options(equation, var, simplifier, opts, ctx),
+        |simplifier| simplifier.context.clone(),
+        finalize_product_zero_inequality_solved_sets,
+        |simplifier, local_rhs, var_name| {
+            mul_rhs_contains_variable(&simplifier.context, local_rhs, var_name)
+        },
+        |simplifier, local_lhs, local_rhs, var_name| {
+            crate::solver::linear_collect::try_linear_collect_v2(
+                local_lhs, local_rhs, var_name, simplifier,
+            )
+        },
+        |simplifier, left, right, var_name| {
+            derive_mul_isolation_operands(&simplifier.context, left, right, var_name)
+        },
+        |simplifier, expr| is_known_negative(&simplifier.context, expr),
+        |simplifier, expr| solver_render_expr(&simplifier.context, expr),
+        |simplifier, kept, moved, local_rhs, local_op, moved_is_negative, moved_desc| {
+            plan_mul_factor_isolation_step_with(
+                &mut simplifier.context,
+                kept,
+                moved,
+                local_rhs,
+                local_op,
+                moved_is_negative,
+                |_| moved_desc.clone(),
+            )
+        },
+        |simplifier, equation| {
             isolate(
                 equation.lhs,
                 equation.rhs,
