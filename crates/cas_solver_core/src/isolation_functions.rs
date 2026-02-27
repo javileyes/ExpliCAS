@@ -132,6 +132,150 @@ where
     )
 }
 
+/// Execute full function-isolation pipeline for `f(args) op rhs` using:
+/// - default route derivation (`derive_function_isolation_route`)
+/// - default abs/log/unary rewrite planners from core helpers.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_function_isolation_with_default_kernels_for_var_with_state<
+    T,
+    S,
+    E,
+    FContextRef,
+    FContextMut,
+    FRenderExpr,
+    FSolveIsolate,
+    FSimplifyRhs,
+    FMapAbsStep,
+    FMapLogStep,
+    FMapUnaryStep,
+    FVariableMissingError,
+    FUnsupportedArityError,
+    FUnknownFunctionError,
+>(
+    state: &mut T,
+    fn_id: SymbolId,
+    args: &[ExprId],
+    rhs: ExprId,
+    op: RelOp,
+    var: &str,
+    include_items: bool,
+    existing_steps: Vec<S>,
+    context_ref: FContextRef,
+    context_mut: FContextMut,
+    render_expr: FRenderExpr,
+    solve_isolate: FSolveIsolate,
+    simplify_rhs_with_steps: FSimplifyRhs,
+    map_abs_item_to_step: FMapAbsStep,
+    map_log_item_to_step: FMapLogStep,
+    map_unary_item_to_step: FMapUnaryStep,
+    variable_missing_error: FVariableMissingError,
+    unsupported_arity_error: FUnsupportedArityError,
+    unknown_function_error: FUnknownFunctionError,
+) -> Result<(SolutionSet, Vec<S>), E>
+where
+    S: Clone,
+    FContextRef: Fn(&mut T) -> &Context,
+    FContextMut: FnMut(&mut T) -> &mut Context,
+    FRenderExpr: Fn(&Context, ExprId) -> String,
+    FSolveIsolate: FnMut(&mut T, ExprId, ExprId, RelOp) -> Result<(SolutionSet, Vec<S>), E>,
+    FSimplifyRhs: FnMut(&mut T, ExprId) -> (ExprId, Vec<(String, ExprId)>),
+    FMapAbsStep: FnMut(AbsSplitExecutionItem) -> S,
+    FMapLogStep: FnMut(crate::log_isolation::LogIsolationExecutionItem) -> S,
+    FMapUnaryStep: FnMut(crate::function_inverse::UnaryInverseSolveExecutionItem) -> S,
+    FVariableMissingError: FnMut(&mut T, &str) -> E,
+    FUnsupportedArityError: FnMut(&mut T, SymbolId, usize, &str) -> E,
+    FUnknownFunctionError: FnMut(&mut T, &str) -> E,
+{
+    let mut context_mut = context_mut;
+    let mut solve_isolate = solve_isolate;
+    let mut simplify_rhs_with_steps = simplify_rhs_with_steps;
+    let map_abs_item_to_step = map_abs_item_to_step;
+    let map_log_item_to_step = map_log_item_to_step;
+    let map_unary_item_to_step = map_unary_item_to_step;
+    let mut variable_missing_error = variable_missing_error;
+    let mut unsupported_arity_error = unsupported_arity_error;
+    let mut unknown_function_error = unknown_function_error;
+    let route = crate::function_inverse::derive_function_isolation_route(
+        context_ref(state),
+        fn_id,
+        args,
+        var,
+    );
+
+    match route {
+        Ok(FunctionIsolationRoute::AbsUnary { arg }) => {
+            execute_abs_function_isolation_with_default_plan_and_finalizer_with_state(
+                state,
+                arg,
+                rhs,
+                op,
+                var,
+                include_items,
+                existing_steps,
+                |state, expr| render_expr(context_ref(state), expr),
+                |state, equation| {
+                    solve_isolate(state, equation.lhs, equation.rhs, equation.op.clone())
+                },
+                map_abs_item_to_step,
+                |state| context_mut(state),
+                |state| context_ref(state),
+            )
+        }
+        Ok(FunctionIsolationRoute::LogBinary { base, arg }) => {
+            execute_log_function_isolation_with_default_plan_with_state(
+                state,
+                base,
+                arg,
+                rhs,
+                var,
+                op,
+                include_items,
+                existing_steps,
+                |state| context_mut(state),
+                |core_ctx, expr| render_expr(core_ctx, expr),
+                |state, equation| {
+                    solve_isolate(state, equation.lhs, equation.rhs, equation.op.clone())
+                },
+                map_log_item_to_step,
+                |state| {
+                    unsupported_arity_error(
+                        state,
+                        fn_id,
+                        args.len(),
+                        var,
+                    )
+                },
+            )
+        }
+        Ok(FunctionIsolationRoute::UnaryInvertible { arg }) => {
+            let fn_name = context_ref(state).sym_name(fn_id).to_string();
+            execute_unary_function_isolation_with_default_plan_with_state(
+                state,
+                &fn_name,
+                arg,
+                rhs,
+                op,
+                true,
+                include_items,
+                existing_steps,
+                |state| context_mut(state),
+                |state, rhs_expr| simplify_rhs_with_steps(state, rhs_expr),
+                |state, lhs_expr, rhs_expr, inner_op| {
+                    solve_isolate(state, lhs_expr, rhs_expr, inner_op)
+                },
+                map_unary_item_to_step,
+                |state| unknown_function_error(state, &fn_name),
+            )
+        }
+        Err(FunctionIsolationRouteError::VariableNotFoundInUnaryArg) => {
+            Err(variable_missing_error(state, var))
+        }
+        Err(FunctionIsolationRouteError::UnsupportedArity) => {
+            Err(unsupported_arity_error(state, fn_id, args.len(), var))
+        }
+    }
+}
+
 /// Execute absolute-value function isolation (`|arg| op rhs`).
 #[allow(clippy::too_many_arguments)]
 pub fn execute_abs_function_isolation_with_state<
