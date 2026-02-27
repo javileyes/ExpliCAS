@@ -4,7 +4,10 @@ mod power;
 
 use crate::engine::Simplifier;
 use crate::solver::{medium_step, SolveStep, SolverOptions, MAX_SOLVE_DEPTH};
-use cas_ast::{Expr, ExprId, RelOp, SolutionSet};
+use cas_ast::{ExprId, RelOp, SolutionSet};
+use cas_solver_core::isolation_dispatch::{
+    derive_isolation_dispatch_route, execute_isolation_dispatch_route_with_state,
+};
 use cas_solver_core::solve_outcome::{
     plan_negated_lhs_isolation_step, residual_solution_set, resolve_isolated_variable_outcome,
     solve_isolated_variable_lhs_with_resolver_with_state,
@@ -29,17 +32,16 @@ pub(crate) fn isolate(
         ));
     }
 
-    let steps = Vec::new();
-
-    let lhs_expr = simplifier.context.get(lhs).clone();
-
-    match lhs_expr {
-        Expr::Variable(sym_id) if simplifier.context.sym_name(sym_id) == var => {
+    let route = derive_isolation_dispatch_route(&simplifier.context, lhs, var);
+    execute_isolation_dispatch_route_with_state(
+        simplifier,
+        route,
+        |simplifier| {
             let solved = solve_isolated_variable_lhs_with_resolver_with_state(
                 simplifier,
                 lhs,
                 rhs,
-                op,
+                op.clone(),
                 var,
                 |simplifier, sim_rhs, rel_op, solve_var| {
                     resolve_isolated_variable_outcome(
@@ -65,26 +67,90 @@ pub(crate) fn isolate(
                 },
             );
             Ok(solved)
-        }
-        Expr::Add(l, r) => {
-            arithmetic::isolate_add(lhs, l, r, rhs, op, var, simplifier, opts, steps, ctx)
-        }
-        Expr::Sub(l, r) => {
-            arithmetic::isolate_sub(l, r, rhs, op, var, simplifier, opts, steps, ctx)
-        }
-        Expr::Mul(l, r) => {
-            arithmetic::isolate_mul(lhs, l, r, rhs, op, var, simplifier, opts, steps, ctx)
-        }
-        Expr::Div(l, r) => {
-            arithmetic::isolate_div(lhs, l, r, rhs, op, var, simplifier, opts, steps, ctx)
-        }
-        Expr::Pow(b, e) => {
-            power::isolate_pow(lhs, b, e, rhs, op, var, simplifier, opts, steps, ctx)
-        }
-        Expr::Function(fn_id, args) => {
-            functions::isolate_function(fn_id, args, rhs, op, var, simplifier, opts, steps, ctx)
-        }
-        Expr::Neg(inner) => {
+        },
+        |simplifier, left, right| {
+            arithmetic::isolate_add(
+                lhs,
+                left,
+                right,
+                rhs,
+                op.clone(),
+                var,
+                simplifier,
+                opts,
+                Vec::new(),
+                ctx,
+            )
+        },
+        |simplifier, left, right| {
+            arithmetic::isolate_sub(
+                left,
+                right,
+                rhs,
+                op.clone(),
+                var,
+                simplifier,
+                opts,
+                Vec::new(),
+                ctx,
+            )
+        },
+        |simplifier, left, right| {
+            arithmetic::isolate_mul(
+                lhs,
+                left,
+                right,
+                rhs,
+                op.clone(),
+                var,
+                simplifier,
+                opts,
+                Vec::new(),
+                ctx,
+            )
+        },
+        |simplifier, left, right| {
+            arithmetic::isolate_div(
+                lhs,
+                left,
+                right,
+                rhs,
+                op.clone(),
+                var,
+                simplifier,
+                opts,
+                Vec::new(),
+                ctx,
+            )
+        },
+        |simplifier, base, exponent| {
+            power::isolate_pow(
+                lhs,
+                base,
+                exponent,
+                rhs,
+                op.clone(),
+                var,
+                simplifier,
+                opts,
+                Vec::new(),
+                ctx,
+            )
+        },
+        |simplifier, fn_id, args| {
+            functions::isolate_function(
+                fn_id,
+                args,
+                rhs,
+                op.clone(),
+                var,
+                simplifier,
+                opts,
+                Vec::new(),
+                ctx,
+            )
+        },
+        |simplifier, inner| {
             let rewrite =
                 plan_negated_lhs_isolation_step(&mut simplifier.context, inner, rhs, op.clone());
             let include_item = simplifier.collect_steps();
@@ -92,7 +158,7 @@ pub(crate) fn isolate(
                 rewrite,
                 var,
                 include_item,
-                steps,
+                Vec::new(),
                 |equation, solve_var| {
                     isolate(
                         equation.lhs,
@@ -106,10 +172,12 @@ pub(crate) fn isolate(
                 },
                 |item| medium_step(item.description, item.equation),
             )
-        }
-        _ => Err(CasError::IsolationError(
-            var.to_string(),
-            format!("Cannot isolate from {:?}", lhs_expr),
-        )),
-    }
+        },
+        |_simplifier, lhs_expr| {
+            Err(CasError::IsolationError(
+                var.to_string(),
+                format!("Cannot isolate from {:?}", lhs_expr),
+            ))
+        },
+    )
 }

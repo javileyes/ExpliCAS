@@ -3,6 +3,7 @@ pub mod equation_rewrite;
 pub mod fingerprint;
 pub mod function_inverse;
 pub mod isolation_arithmetic;
+pub mod isolation_dispatch;
 pub mod isolation_functions;
 pub mod isolation_power;
 pub mod isolation_strategy;
