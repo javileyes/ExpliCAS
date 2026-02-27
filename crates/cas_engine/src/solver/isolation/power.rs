@@ -7,13 +7,14 @@ use cas_solver_core::isolation_power::{
     execute_pow_base_isolation_pipeline_with_state,
     execute_pow_exponent_shortcuts_and_guards_with_state,
     execute_pow_exponent_tactic_then_log_pipeline_with_state,
+    execute_pow_isolation_route_with_state,
 };
 use cas_solver_core::solve_outcome::{
     classify_pow_exponent_base_flags, derive_pow_isolation_route,
     ensure_pow_exponent_rhs_without_variable, plan_pow_exponent_log_isolation_step_with,
     plan_pow_exponent_log_unsupported_execution_from_decision_with,
     plan_pow_exponent_shortcut_action_from_inputs,
-    solve_solve_tactic_normalization_pipeline_with_item, PowIsolationRoute,
+    solve_solve_tactic_normalization_pipeline_with_item,
 };
 
 use super::isolate;
@@ -32,16 +33,41 @@ pub(super) fn isolate_pow(
     steps: Vec<SolveStep>,
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-    match derive_pow_isolation_route(&simplifier.context, b, var) {
-        PowIsolationRoute::VariableInBase => {
+    let route = derive_pow_isolation_route(&simplifier.context, b, var);
+    execute_pow_isolation_route_with_state(
+        simplifier,
+        route,
+        |simplifier| {
             // Variable in base: B^E = RHS
-            isolate_pow_base(lhs, b, e, rhs, op, var, simplifier, opts, steps, ctx)
-        }
-        PowIsolationRoute::VariableInExponent => {
+            isolate_pow_base(
+                lhs,
+                b,
+                e,
+                rhs,
+                op.clone(),
+                var,
+                simplifier,
+                opts,
+                steps.clone(),
+                ctx,
+            )
+        },
+        |simplifier| {
             // Variable in exponent: B^E = RHS → E = log_B(RHS)
-            isolate_pow_exponent(lhs, b, e, rhs, op, var, simplifier, opts, steps, ctx)
-        }
-    }
+            isolate_pow_exponent(
+                lhs,
+                b,
+                e,
+                rhs,
+                op.clone(),
+                var,
+                simplifier,
+                opts,
+                steps.clone(),
+                ctx,
+            )
+        },
+    )
 }
 
 /// Handle `B^E = RHS` when variable is in `B` (the base)

@@ -17,8 +17,26 @@ use crate::solve_outcome::{
     PowBaseIsolationEngineAction, PowExponentLogIsolationExecutionItem,
     PowExponentLogIsolationRewritePlan, PowExponentLogUnsupportedExecution,
     PowExponentShortcutAction, PowExponentShortcutEngineAction, PowExponentShortcutExecutionItem,
-    TermIsolationExecutionItem,
+    PowIsolationRoute, TermIsolationExecutionItem,
 };
+
+/// Dispatch power-isolation route (`variable in base` vs `variable in exponent`)
+/// from a stateful caller.
+pub fn execute_pow_isolation_route_with_state<T, R, E, FBase, FExponent>(
+    state: &mut T,
+    route: PowIsolationRoute,
+    on_variable_in_base: FBase,
+    on_variable_in_exponent: FExponent,
+) -> Result<R, E>
+where
+    FBase: FnOnce(&mut T) -> Result<R, E>,
+    FExponent: FnOnce(&mut T) -> Result<R, E>,
+{
+    match route {
+        PowIsolationRoute::VariableInBase => on_variable_in_base(state),
+        PowIsolationRoute::VariableInExponent => on_variable_in_exponent(state),
+    }
+}
 
 /// Execute base-side power isolation (`b^e = rhs`) with caller-provided stateful hooks.
 #[allow(clippy::too_many_arguments)]
@@ -480,12 +498,55 @@ mod tests {
         execute_pow_exponent_shortcuts_and_guards_with_state,
         execute_pow_exponent_tactic_and_classify_decision_with_state,
         execute_pow_exponent_tactic_then_log_pipeline_with_state,
+        execute_pow_isolation_route_with_state,
     };
     use crate::log_domain::{DomainModeKind, LogSolveDecision};
     use crate::solve_outcome::{
         PowExponentLogIsolationRewritePlan, PowExponentShortcut, PowExponentShortcutAction,
     };
     use cas_ast::{Equation, Expr, RelOp, SolutionSet};
+
+    #[test]
+    fn execute_pow_isolation_route_with_state_dispatches_base_branch() {
+        let mut ctx = cas_ast::Context::new();
+        let x = ctx.var("x");
+        let mut state = false;
+
+        let out = execute_pow_isolation_route_with_state(
+            &mut state,
+            crate::solve_outcome::derive_pow_isolation_route(&ctx, x, "x"),
+            |state| {
+                *state = true;
+                Ok::<_, &'static str>("base")
+            },
+            |_state| Ok("exp"),
+        )
+        .expect("base route should resolve");
+
+        assert_eq!(out, "base");
+        assert!(state);
+    }
+
+    #[test]
+    fn execute_pow_isolation_route_with_state_dispatches_exponent_branch() {
+        let mut ctx = cas_ast::Context::new();
+        let two = ctx.num(2);
+        let mut state = false;
+
+        let out = execute_pow_isolation_route_with_state(
+            &mut state,
+            crate::solve_outcome::derive_pow_isolation_route(&ctx, two, "x"),
+            |_state| Ok::<_, &'static str>("base"),
+            |state| {
+                *state = true;
+                Ok("exp")
+            },
+        )
+        .expect("exponent route should resolve");
+
+        assert_eq!(out, "exp");
+        assert!(state);
+    }
 
     #[test]
     fn execute_pow_base_isolation_pipeline_with_state_merges_isolated_steps() {
