@@ -56,6 +56,51 @@ where
     )
 }
 
+/// Execute isolation strategy using default routing derivation:
+/// `derive_isolation_strategy_routing(ctx, equation, var)`.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_isolation_strategy_with_default_routing_with_state<
+    T,
+    S,
+    E,
+    FContextRef,
+    FSolveEquation,
+    FMapSwapStep,
+    FVariableNotFoundError,
+>(
+    state: &mut T,
+    eq: &Equation,
+    var: &str,
+    include_item: bool,
+    context_ref: FContextRef,
+    solve_equation: FSolveEquation,
+    map_swap_item_to_step: FMapSwapStep,
+    variable_not_found_error: FVariableNotFoundError,
+) -> Option<Result<(SolutionSet, Vec<S>), E>>
+where
+    FContextRef: Fn(&mut T) -> &Context,
+    FSolveEquation: FnMut(&mut T, &Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
+    FMapSwapStep: FnMut(crate::solve_outcome::TermIsolationRewriteExecutionItem) -> S,
+    FVariableNotFoundError: FnMut(&str) -> E,
+{
+    execute_isolation_strategy_with_state(
+        state,
+        eq,
+        var,
+        include_item,
+        |state, equation, solve_var| {
+            crate::strategy_kernels::derive_isolation_strategy_routing(
+                context_ref(state),
+                equation,
+                solve_var,
+            )
+        },
+        solve_equation,
+        map_swap_item_to_step,
+        variable_not_found_error,
+    )
+}
+
 /// Execute unwrap strategy orchestration from stateful callbacks:
 /// 1) derive unwrap routing (terminal or execution),
 /// 2) resolve terminal immediately or execute recursive solve pipeline.

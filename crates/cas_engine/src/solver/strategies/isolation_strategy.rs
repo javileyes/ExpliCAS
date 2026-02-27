@@ -9,7 +9,7 @@ use crate::solver::{
 use cas_ast::{Equation, SolutionSet};
 use cas_solver_core::isolation_strategy::{
     execute_collect_terms_strategy_with_default_kernel_with_state,
-    execute_isolation_strategy_with_state,
+    execute_isolation_strategy_with_default_routing_with_state,
     execute_rational_exponent_strategy_with_default_kernel_with_state,
     execute_unwrap_strategy_with_state,
 };
@@ -34,18 +34,12 @@ impl SolverStrategy for IsolationStrategy {
         ctx: &SolveCtx,
     ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
         let include_item = simplifier.collect_steps();
-        execute_isolation_strategy_with_state(
+        execute_isolation_strategy_with_default_routing_with_state(
             simplifier,
             eq,
             var,
             include_item,
-            |simplifier, equation, solve_var| {
-                cas_solver_core::strategy_kernels::derive_isolation_strategy_routing(
-                    &simplifier.context,
-                    equation,
-                    solve_var,
-                )
-            },
+            |simplifier| &simplifier.context,
             |simplifier, equation, solve_var| {
                 isolate(
                     equation.lhs,

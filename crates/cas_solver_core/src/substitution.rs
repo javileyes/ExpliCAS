@@ -713,6 +713,53 @@ where
     )
 }
 
+/// Stateful substitution pipeline using default rewrite-plan derivation:
+/// `plan_exponential_substitution_rewrite(ctx, equation_before, target_var, substitution_var)`.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_exponential_substitution_strategy_result_pipeline_with_default_plan_with_state<
+    T,
+    E,
+    S,
+    FContextMut,
+    FRender,
+    FSolve,
+    FMap,
+>(
+    state: &mut T,
+    equation_before: &Equation,
+    target_var: &str,
+    substitution_var: &str,
+    include_didactic_items: bool,
+    context_mut: FContextMut,
+    render_expr: FRender,
+    solve_equation: FSolve,
+    map_step: FMap,
+) -> Option<Result<(SolutionSet, Vec<S>), E>>
+where
+    FContextMut: Fn(&mut T) -> &mut Context,
+    FRender: FnMut(&mut T, ExprId) -> String,
+    FSolve: FnMut(&mut T, &Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
+    FMap: FnMut(String, Equation) -> S,
+{
+    let rewrite_plan = plan_exponential_substitution_rewrite(
+        context_mut(state),
+        equation_before,
+        target_var,
+        substitution_var,
+    );
+    execute_exponential_substitution_strategy_result_pipeline_with_items_and_plan_with_state(
+        state,
+        equation_before,
+        rewrite_plan,
+        target_var,
+        substitution_var,
+        include_didactic_items,
+        render_expr,
+        solve_equation,
+        map_step,
+    )
+}
+
 /// Derive and solve exponential substitution strategy returning plain strategy output.
 ///
 /// Returns `None` when substitution rewrite derivation does not apply.

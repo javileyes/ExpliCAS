@@ -727,6 +727,73 @@ where
     Some((SolutionSet::Discrete(roots), steps))
 }
 
+/// Stateful rational-roots strategy pipeline with default kernel hooks:
+/// - `lhs - rhs` construction,
+/// - coefficient extraction,
+/// - numeric polynomial solve,
+/// - didactic step planning for `expanded_expr = zero_rhs`.
+#[allow(clippy::too_many_arguments)]
+pub fn solve_rational_roots_strategy_result_for_equation_with_default_kernel_with_state<
+    T,
+    S,
+    FContextMut,
+    FSimplifyExpr,
+    FExpandExpr,
+    FSortAndDedupRoots,
+    FStep,
+>(
+    state: &mut T,
+    equation: &Equation,
+    var: &str,
+    min_degree: usize,
+    max_degree: usize,
+    max_candidates: usize,
+    include_item: bool,
+    context_mut: FContextMut,
+    simplify_expr: FSimplifyExpr,
+    expand_expr: FExpandExpr,
+    sort_and_dedup_roots: FSortAndDedupRoots,
+    zero_rhs: ExprId,
+    map_item_to_step: FStep,
+) -> Option<(SolutionSet, Vec<S>)>
+where
+    FContextMut: Fn(&mut T) -> &mut Context,
+    FSimplifyExpr: FnMut(&mut T, ExprId) -> ExprId,
+    FExpandExpr: FnMut(&mut T, ExprId) -> ExprId,
+    FSortAndDedupRoots: FnMut(&mut T, &mut Vec<ExprId>),
+    FStep: FnMut(RationalRootsExecutionItem) -> S,
+{
+    solve_rational_roots_strategy_result_for_equation_with_and_item_with_state(
+        state,
+        equation,
+        var,
+        min_degree,
+        max_degree,
+        max_candidates,
+        include_item,
+        |state, left, right| context_mut(state).add(Expr::Sub(left, right)),
+        simplify_expr,
+        expand_expr,
+        |state, expanded, var_name, local_max_degree| {
+            extract_poly_coefficients(context_mut(state), expanded, var_name, local_max_degree)
+        },
+        |state, coeffs, local_min_degree, local_max_degree, local_max_candidates| {
+            solve_numeric_coeff_polynomial(
+                context_mut(state),
+                coeffs,
+                local_min_degree,
+                local_max_degree,
+                local_max_candidates,
+            )
+        },
+        sort_and_dedup_roots,
+        |_state, expanded, degree| {
+            plan_rational_roots_strategy_step_with_zero_rhs(expanded, degree, zero_rhs)
+        },
+        map_item_to_step,
+    )
+}
+
 /// Plan Rational Root strategy didactic step for equation `expanded_expr = 0`.
 pub fn plan_rational_roots_strategy_step(
     ctx: &mut Context,
