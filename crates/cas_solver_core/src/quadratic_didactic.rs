@@ -3,7 +3,7 @@
 //! This module builds the symbolic derivation steps (completing the square)
 //! independent of engine-specific step types/renderers.
 
-use crate::isolation_utils::contains_var;
+use crate::isolation_utils::{contains_var, split_zero_product_factors};
 use crate::solution_set::sort_and_dedup_exprs;
 use cas_ast::{Context, Equation, Expr, ExprId, RelOp, SolutionSet};
 
@@ -571,6 +571,76 @@ where
         residual_expr_for_non_discrete,
         zero,
     ))
+}
+
+/// Execute factorized zero-product strategy when applicable:
+/// 1) detect `A*B*... = 0` factors in `sim_poly_expr`,
+/// 2) solve each factor branch,
+/// 3) finalize merged solution set and didactic steps.
+///
+/// Returns:
+/// - `Some(Ok(...))` when strategy applied and solved.
+/// - `Some(Err(...))` when strategy applied but branch solve failed.
+/// - `None` when not applicable.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_factorized_zero_product_strategy_if_applicable_with_state<
+    T,
+    E,
+    S,
+    FContextRef,
+    FRenderExpr,
+    FSolveFactor,
+    FEntryStep,
+    FFactorStep,
+>(
+    state: &mut T,
+    equation_op: RelOp,
+    sim_poly_expr: ExprId,
+    var: &str,
+    zero: ExprId,
+    include_items: bool,
+    context_ref: FContextRef,
+    render_expr: FRenderExpr,
+    mut solve_factor: FSolveFactor,
+    map_entry_item_to_step: FEntryStep,
+    map_factor_item_to_step: FFactorStep,
+) -> Option<Result<(SolutionSet, Vec<S>), E>>
+where
+    FContextRef: Fn(&mut T) -> &Context,
+    FRenderExpr: Fn(&Context, ExprId) -> String,
+    FSolveFactor: FnMut(&mut T, &Equation) -> Result<(SolutionSet, Vec<S>), E>,
+    FEntryStep: FnMut(QuadraticExecutionItem) -> S,
+    FFactorStep: FnMut(ZeroProductFactorExecutionItem) -> S,
+{
+    let factors = split_zero_product_factors(context_ref(state), sim_poly_expr)?;
+    if equation_op != RelOp::Eq {
+        return None;
+    }
+
+    let residual_expr = sim_poly_expr;
+    let execution_ctx = context_ref(state).clone();
+    let solved = match solve_factorized_zero_product_pipeline_with_optional_items(
+        &execution_ctx,
+        sim_poly_expr,
+        &factors,
+        var,
+        zero,
+        include_items,
+        |expr| render_expr(&execution_ctx, expr),
+        |equation| solve_factor(state, equation),
+        map_entry_item_to_step,
+        map_factor_item_to_step,
+    ) {
+        Ok(solved) => solved,
+        Err(e) => return Some(Err(e)),
+    };
+    let finalized = finalize_factorized_zero_product_strategy_solved(
+        context_ref(state),
+        solved,
+        residual_expr,
+        zero,
+    );
+    Some(Ok((finalized.solution_set, finalized.steps)))
 }
 
 /// Build the top-level "quadratic formula" strategy step payload.

@@ -4,13 +4,12 @@ use crate::solver::solve_core::solve_with_ctx_and_options;
 use crate::solver::strategy::SolverStrategy;
 use crate::solver::{medium_step, render_expr, SolveCtx, SolveStep, SolveSubStep, SolverOptions};
 use cas_ast::{Equation, Expr, RelOp, SolutionSet};
-use cas_solver_core::isolation_utils::{is_numeric_zero, split_zero_product_factors};
+use cas_solver_core::isolation_utils::is_numeric_zero;
 use cas_solver_core::quadratic_coeffs::extract_quadratic_coefficients;
 use cas_solver_core::quadratic_didactic::{
     build_quadratic_main_with_substeps_execution_with_optional_items,
+    execute_factorized_zero_product_strategy_if_applicable_with_state,
     execute_quadratic_main_with_substeps_pipeline_with_optional_items_and_collection_state_with_state,
-    finalize_factorized_zero_product_strategy_solved,
-    solve_factorized_zero_product_pipeline_with_optional_items,
 };
 use cas_solver_core::quadratic_formula::{
     build_quadratic_coefficient_solve_plan, roots_from_a_b_and_simplified_delta,
@@ -47,36 +46,23 @@ impl SolverStrategy for QuadraticStrategy {
 
         let zero = simplifier.context.num(0);
 
-        if let Some(factors) = split_zero_product_factors(&simplifier.context, sim_poly_expr) {
-            // For inequalities, splitting is complex (sign analysis).
-            // For Eq, it's simple union.
-            if eq.op == RelOp::Eq {
-                let include_items = simplifier.collect_steps();
-                let residual_expr = sim_poly_expr;
-                let execution_ctx = simplifier.context.clone();
-                let solved = match solve_factorized_zero_product_pipeline_with_optional_items(
-                    &execution_ctx,
-                    sim_poly_expr,
-                    &factors,
-                    var,
-                    zero,
-                    include_items,
-                    |expr| render_expr(&execution_ctx, expr),
-                    |equation| solve_with_ctx_and_options(equation, var, simplifier, *opts, ctx),
-                    |item| medium_step(item.description().to_string(), item.equation),
-                    |item| medium_step(item.description, item.equation),
-                ) {
-                    Ok(solved) => solved,
-                    Err(e) => return Some(Err(e)),
-                };
-                let finalized = finalize_factorized_zero_product_strategy_solved(
-                    &simplifier.context,
-                    solved,
-                    residual_expr,
-                    zero,
-                );
-                return Some(Ok((finalized.solution_set, finalized.steps)));
-            }
+        let include_items = simplifier.collect_steps();
+        if let Some(outcome) = execute_factorized_zero_product_strategy_if_applicable_with_state(
+            simplifier,
+            eq.op.clone(),
+            sim_poly_expr,
+            var,
+            zero,
+            include_items,
+            |simplifier| &simplifier.context,
+            render_expr,
+            |simplifier, equation| {
+                solve_with_ctx_and_options(equation, var, simplifier, *opts, ctx)
+            },
+            |item| medium_step(item.description().to_string(), item.equation),
+            |item| medium_step(item.description, item.equation),
+        ) {
+            return Some(outcome);
         }
 
         // Ensure expanded form for coefficient extraction
