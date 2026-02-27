@@ -26,10 +26,10 @@ use cas_ast::{Equation, ExprId, SolutionSet};
 use cas_math::expr_predicates::contains_variable;
 use cas_solver_core::isolation_utils::is_numeric_zero;
 use cas_solver_core::verification::{
-    verify_solution_set_with, verify_substituted_residual_with_strict_fold_and_generic_fallback,
+    verify_solution_set_with,
+    verify_substituted_residual_with_strict_fold_and_generic_fallback_with_state,
 };
-use cas_solver_core::verify_substitution::{substitute_equation_diff, verify_solution_with};
-use std::cell::RefCell;
+use cas_solver_core::verify_substitution::{substitute_equation_diff, verify_solution_with_state};
 
 use crate::engine::Simplifier;
 use crate::solver::render_expr as solver_render_expr;
@@ -75,39 +75,25 @@ pub fn verify_solution(
         ..Default::default()
     };
 
-    let simplifier_ref = RefCell::new(simplifier);
     let (verified, strict_result) =
-        verify_substituted_residual_with_strict_fold_and_generic_fallback(
+        verify_substituted_residual_with_strict_fold_and_generic_fallback_with_state(
+            simplifier,
             diff,
-            |expr| {
-                simplifier_ref
-                    .borrow_mut()
-                    .simplify_with_stats(expr, strict_opts.clone())
-                    .0
+            |simplifier, expr| simplifier.simplify_with_stats(expr, strict_opts.clone()).0,
+            |simplifier, expr| simplifier.simplify_with_stats(expr, generic_opts.clone()).0,
+            |simplifier, expr| contains_variable(&simplifier.context, expr),
+            |simplifier, expr| {
+                super::numeric_islands::fold_numeric_islands(&mut simplifier.context, expr)
             },
-            |expr| {
-                simplifier_ref
-                    .borrow_mut()
-                    .simplify_with_stats(expr, generic_opts.clone())
-                    .0
-            },
-            |expr| contains_variable(&simplifier_ref.borrow().context, expr),
-            |expr| {
-                super::numeric_islands::fold_numeric_islands(
-                    &mut simplifier_ref.borrow_mut().context,
-                    expr,
-                )
-            },
-            |expr| is_numeric_zero(&simplifier_ref.borrow().context, expr),
-            cas_solver_core::verify_stats::record_attempted,
-            cas_solver_core::verify_stats::record_changed,
-            cas_solver_core::verify_stats::record_verified,
+            |simplifier, expr| is_numeric_zero(&simplifier.context, expr),
+            |_simplifier| cas_solver_core::verify_stats::record_attempted(),
+            |_simplifier| cas_solver_core::verify_stats::record_changed(),
+            |_simplifier| cas_solver_core::verify_stats::record_verified(),
         );
     if verified {
         return VerifyStatus::Verified;
     }
 
-    let simplifier = simplifier_ref.into_inner();
     VerifyStatus::Unverifiable {
         residual: strict_result,
         reason: format!(
@@ -127,13 +113,12 @@ pub(crate) fn verify_solution_by_equivalence(
     var: &str,
     solution: ExprId,
 ) -> bool {
-    let simplifier_ref = RefCell::new(simplifier);
-    verify_solution_with(
+    verify_solution_with_state(
+        simplifier,
         equation,
         var,
         solution,
-        |eq, var_name, candidate| {
-            let mut simplifier = simplifier_ref.borrow_mut();
+        |simplifier, eq, var_name, candidate| {
             cas_solver_core::verify_substitution::substitute_equation_sides(
                 &mut simplifier.context,
                 eq,
@@ -141,8 +126,8 @@ pub(crate) fn verify_solution_by_equivalence(
                 candidate,
             )
         },
-        |expr| simplifier_ref.borrow_mut().simplify(expr).0,
-        |lhs, rhs| simplifier_ref.borrow_mut().are_equivalent(lhs, rhs),
+        |simplifier, expr| simplifier.simplify(expr).0,
+        |simplifier, lhs, rhs| simplifier.are_equivalent(lhs, rhs),
     )
 }
 

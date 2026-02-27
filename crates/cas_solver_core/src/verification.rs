@@ -199,6 +199,72 @@ where
     (false, strict_result)
 }
 
+/// Stateful variant of
+/// [`verify_substituted_residual_with_strict_fold_and_generic_fallback`].
+///
+/// This form lets callers thread one mutable state object across all hooks
+/// without interior mutability wrappers.
+#[allow(clippy::too_many_arguments)]
+pub fn verify_substituted_residual_with_strict_fold_and_generic_fallback_with_state<
+    T,
+    FSimplifyStrict,
+    FSimplifyGeneric,
+    FContainsVariable,
+    FFoldNumericIslands,
+    FIsZero,
+    FRecordAttempted,
+    FRecordChanged,
+    FRecordVerified,
+>(
+    state: &mut T,
+    diff: ExprId,
+    mut simplify_strict: FSimplifyStrict,
+    mut simplify_generic: FSimplifyGeneric,
+    mut contains_variable: FContainsVariable,
+    mut fold_numeric_islands: FFoldNumericIslands,
+    mut is_zero: FIsZero,
+    mut record_attempted: FRecordAttempted,
+    mut record_changed: FRecordChanged,
+    mut record_verified: FRecordVerified,
+) -> (bool, ExprId)
+where
+    FSimplifyStrict: FnMut(&mut T, ExprId) -> ExprId,
+    FSimplifyGeneric: FnMut(&mut T, ExprId) -> ExprId,
+    FContainsVariable: FnMut(&mut T, ExprId) -> bool,
+    FFoldNumericIslands: FnMut(&mut T, ExprId) -> ExprId,
+    FIsZero: FnMut(&mut T, ExprId) -> bool,
+    FRecordAttempted: FnMut(&mut T),
+    FRecordChanged: FnMut(&mut T),
+    FRecordVerified: FnMut(&mut T),
+{
+    let strict_result = simplify_strict(state, diff);
+    if is_zero(state, strict_result) {
+        return (true, strict_result);
+    }
+
+    if contains_variable(state, strict_result) {
+        record_attempted(state);
+        let folded = fold_numeric_islands(state, strict_result);
+        if folded != strict_result {
+            record_changed(state);
+            let folded_result = simplify_strict(state, folded);
+            if is_zero(state, folded_result) {
+                record_verified(state);
+                return (true, strict_result);
+            }
+        }
+    }
+
+    if !contains_variable(state, strict_result) {
+        let generic_result = simplify_generic(state, diff);
+        if is_zero(state, generic_result) {
+            return (true, strict_result);
+        }
+    }
+
+    (false, strict_result)
+}
+
 /// Compute summary for discrete verification outcomes.
 pub fn discrete_summary(total: usize, verified_count: usize) -> VerifySummary {
     if total == 0 {
@@ -392,5 +458,59 @@ mod tests {
         assert_eq!(attempted.get(), 1);
         assert_eq!(changed.get(), 0);
         assert_eq!(verified_counter.get(), 0);
+    }
+
+    #[test]
+    fn verify_substituted_residual_with_strict_fold_and_generic_fallback_with_state_verifies_after_fold(
+    ) {
+        let mut ctx = Context::new();
+        let diff = ctx.num(103);
+        let strict = ctx.var("x");
+        let folded = ctx.num(8);
+        let zero = ctx.num(0);
+
+        #[derive(Default)]
+        struct VerifyState {
+            strict_calls: usize,
+            generic_calls: usize,
+            attempted_calls: usize,
+            changed_calls: usize,
+            verified_calls: usize,
+        }
+        let mut state = VerifyState::default();
+
+        let (verified, strict_residual) =
+            verify_substituted_residual_with_strict_fold_and_generic_fallback_with_state(
+                &mut state,
+                diff,
+                |hooks, expr| {
+                    hooks.strict_calls += 1;
+                    if expr == diff {
+                        strict
+                    } else if expr == folded {
+                        zero
+                    } else {
+                        expr
+                    }
+                },
+                |hooks, expr| {
+                    hooks.generic_calls += 1;
+                    expr
+                },
+                |_hooks, expr| expr == strict,
+                |_hooks, expr| if expr == strict { folded } else { expr },
+                |_hooks, expr| expr == zero,
+                |hooks| hooks.attempted_calls += 1,
+                |hooks| hooks.changed_calls += 1,
+                |hooks| hooks.verified_calls += 1,
+            );
+
+        assert!(verified);
+        assert_eq!(strict_residual, strict);
+        assert_eq!(state.strict_calls, 2);
+        assert_eq!(state.generic_calls, 0);
+        assert_eq!(state.attempted_calls, 1);
+        assert_eq!(state.changed_calls, 1);
+        assert_eq!(state.verified_calls, 1);
     }
 }

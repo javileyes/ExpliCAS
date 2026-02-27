@@ -44,6 +44,30 @@ where
     are_equivalent(lhs_sim, rhs_sim)
 }
 
+/// Stateful variant of [`verify_solution_with`].
+///
+/// This form lets callers pass one mutable state object across hooks
+/// without interior mutability wrappers.
+pub fn verify_solution_with_state<T, FSubstitute, FSimplify, FEquivalent>(
+    state: &mut T,
+    equation: &Equation,
+    var: &str,
+    solution: ExprId,
+    mut substitute_sides: FSubstitute,
+    mut simplify_expr: FSimplify,
+    mut are_equivalent: FEquivalent,
+) -> bool
+where
+    FSubstitute: FnMut(&mut T, &Equation, &str, ExprId) -> (ExprId, ExprId),
+    FSimplify: FnMut(&mut T, ExprId) -> ExprId,
+    FEquivalent: FnMut(&mut T, ExprId, ExprId) -> bool,
+{
+    let (lhs_sub, rhs_sub) = substitute_sides(state, equation, var, solution);
+    let lhs_sim = simplify_expr(state, lhs_sub);
+    let rhs_sim = simplify_expr(state, rhs_sub);
+    are_equivalent(state, lhs_sim, rhs_sim)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -171,5 +195,49 @@ mod tests {
         assert!(!ok);
         assert_eq!(simplify_calls.get(), 2);
         assert_eq!(compare_calls.get(), 1);
+    }
+
+    #[test]
+    fn verify_solution_with_state_runs_substitute_simplify_and_compare() {
+        let mut context = Context::new();
+        let x = context.var("x");
+        let one = context.num(1);
+        let equation = Equation {
+            lhs: x,
+            rhs: one,
+            op: cas_ast::RelOp::Eq,
+        };
+
+        struct HooksState {
+            context: Context,
+            simplify_calls: usize,
+            compare_calls: usize,
+        }
+
+        let mut state = HooksState {
+            context,
+            simplify_calls: 0,
+            compare_calls: 0,
+        };
+        let ok = verify_solution_with_state(
+            &mut state,
+            &equation,
+            "x",
+            one,
+            |hooks, eq, name, solution| {
+                substitute_equation_sides(&mut hooks.context, eq, name, solution)
+            },
+            |hooks, expr| {
+                hooks.simplify_calls += 1;
+                expr
+            },
+            |hooks, _lhs, _rhs| {
+                hooks.compare_calls += 1;
+                true
+            },
+        );
+        assert!(ok);
+        assert_eq!(state.simplify_calls, 2);
+        assert_eq!(state.compare_calls, 1);
     }
 }
