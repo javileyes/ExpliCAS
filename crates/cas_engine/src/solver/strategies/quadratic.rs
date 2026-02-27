@@ -8,16 +8,15 @@ use cas_solver_core::isolation_utils::{is_numeric_zero, split_zero_product_facto
 use cas_solver_core::quadratic_coeffs::extract_quadratic_coefficients;
 use cas_solver_core::quadratic_didactic::{
     build_quadratic_main_with_substeps_execution_with_optional_items,
-    execute_quadratic_main_with_substeps_pipeline_with_optional_items_and_collection_guard,
+    execute_quadratic_main_with_substeps_pipeline_with_optional_items_and_collection_state_with_state,
     finalize_factorized_zero_product_strategy_solved,
     solve_factorized_zero_product_pipeline_with_optional_items,
 };
 use cas_solver_core::quadratic_formula::{
     build_quadratic_coefficient_solve_plan, roots_from_a_b_and_simplified_delta,
-    solve_quadratic_coefficient_solve_plan_with, QuadraticCoefficientSolvePlanError,
+    solve_quadratic_coefficient_solve_plan_with_state, QuadraticCoefficientSolvePlanError,
 };
 use cas_solver_core::solution_set::{order_pair_by_value, quadratic_numeric_solution};
-use std::cell::RefCell;
 
 pub struct QuadraticStrategy;
 
@@ -116,25 +115,22 @@ impl SolverStrategy for QuadraticStrategy {
                 include_items,
                 render_expr,
             );
-            let simplifier_ref = RefCell::new(simplifier);
-            let didactic_steps =
-                execute_quadratic_main_with_substeps_pipeline_with_optional_items_and_collection_guard(
-                    &mut execution,
-                    include_items,
-                    || simplifier_ref.borrow().collect_steps(),
-                    |collecting| simplifier_ref.borrow_mut().set_collect_steps(collecting),
-                    |expr| simplifier_ref.borrow_mut().simplify(expr).0,
-                    |item, substeps| {
-                        medium_step(item.description().to_string(), item.equation)
-                            .with_substeps(substeps)
-                    },
-                    |item| SolveSubStep {
-                        description: item.description,
-                        equation_after: item.equation,
-                        importance: crate::step::ImportanceLevel::Low,
-                    },
-                );
-            let simplifier = simplifier_ref.into_inner();
+            let didactic_steps = execute_quadratic_main_with_substeps_pipeline_with_optional_items_and_collection_state_with_state(
+                simplifier,
+                &mut execution,
+                include_items,
+                include_items,
+                |simplifier, collecting| simplifier.set_collect_steps(collecting),
+                |simplifier, expr| simplifier.simplify(expr).0,
+                |item, substeps| {
+                    medium_step(item.description().to_string(), item.equation).with_substeps(substeps)
+                },
+                |item| SolveSubStep {
+                    description: item.description,
+                    equation_after: item.equation,
+                    importance: crate::step::ImportanceLevel::Low,
+                },
+            );
             steps.extend(didactic_steps);
 
             let plan = match build_quadratic_coefficient_solve_plan(
@@ -152,19 +148,15 @@ impl SolverStrategy for QuadraticStrategy {
                 }
             };
 
-            let simplifier_ref = RefCell::new(simplifier);
-            let solution_set = solve_quadratic_coefficient_solve_plan_with(
+            let solution_set = solve_quadratic_coefficient_solve_plan_with_state(
+                simplifier,
                 eq.op.clone(),
                 sim_a,
                 sim_b,
                 plan,
-                |expr| {
-                    let mut simplifier = simplifier_ref.borrow_mut();
-                    crate::expand::expand(&mut simplifier.context, expr)
-                },
-                |expr| simplifier_ref.borrow_mut().simplify(expr).0,
-                |eq_op, delta, (sol1, sol2), opens_up| {
-                    let mut simplifier = simplifier_ref.borrow_mut();
+                |simplifier, expr| crate::expand::expand(&mut simplifier.context, expr),
+                |simplifier, expr| simplifier.simplify(expr).0,
+                |simplifier, eq_op, delta, (sol1, sol2), opens_up| {
                     let (r1, r2) = order_pair_by_value(&simplifier.context, sol1, sol2);
                     quadratic_numeric_solution(
                         &mut simplifier.context,
@@ -175,12 +167,10 @@ impl SolverStrategy for QuadraticStrategy {
                         r2,
                     )
                 },
-                |a, b, sim_delta| {
-                    let mut simplifier = simplifier_ref.borrow_mut();
+                |simplifier, a, b, sim_delta| {
                     roots_from_a_b_and_simplified_delta(&mut simplifier.context, a, b, sim_delta)
                 },
             );
-            let _ = simplifier_ref.into_inner();
 
             // Emit scope for display transforms (sqrt display in quadratic context)
             ctx.emit_scope(cas_formatter::display_transforms::ScopeTag::Rule(

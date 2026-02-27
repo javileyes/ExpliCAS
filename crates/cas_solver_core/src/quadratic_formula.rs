@@ -173,6 +173,53 @@ where
     }
 }
 
+/// Stateful variant of [`solve_quadratic_coefficient_solve_plan_with`].
+///
+/// This allows callers to reuse one mutable state object across expansion,
+/// simplification, numeric solving, and symbolic root construction callbacks.
+#[allow(clippy::too_many_arguments)]
+pub fn solve_quadratic_coefficient_solve_plan_with_state<T, FExpand, FSimplify, FNumeric, FRoots>(
+    state: &mut T,
+    op: RelOp,
+    a: ExprId,
+    b: ExprId,
+    plan: QuadraticCoefficientSolvePlan,
+    mut expand_expr: FExpand,
+    mut simplify_expr: FSimplify,
+    mut solve_numeric: FNumeric,
+    mut roots_from_simplified_delta: FRoots,
+) -> SolutionSet
+where
+    FExpand: FnMut(&mut T, ExprId) -> ExprId,
+    FSimplify: FnMut(&mut T, ExprId) -> ExprId,
+    FNumeric: FnMut(&mut T, RelOp, BigRational, (ExprId, ExprId), bool) -> SolutionSet,
+    FRoots: FnMut(&mut T, ExprId, ExprId, ExprId) -> (ExprId, ExprId),
+{
+    match plan {
+        QuadraticCoefficientSolvePlan::Numeric {
+            delta,
+            roots: (sol1, sol2),
+            opens_up,
+        } => {
+            let sim_sol1 = simplify_expr(state, sol1);
+            let sim_sol2 = simplify_expr(state, sol2);
+            solve_numeric(state, op, delta, (sim_sol1, sim_sol2), opens_up)
+        }
+        QuadraticCoefficientSolvePlan::SymbolicEq { delta_expr } => {
+            let delta_expanded = expand_expr(state, delta_expr);
+            let sim_delta = simplify_expr(state, delta_expanded);
+
+            let (sol1_raw, sol2_raw) = roots_from_simplified_delta(state, a, b, sim_delta);
+            let sol1_expanded = expand_expr(state, sol1_raw);
+            let sim_sol1 = simplify_expr(state, sol1_expanded);
+            let sol2_expanded = expand_expr(state, sol2_raw);
+            let sim_sol2 = simplify_expr(state, sol2_expanded);
+
+            SolutionSet::Discrete(vec![sim_sol1, sim_sol2])
+        }
+    }
+}
+
 /// Solve a precomputed quadratic coefficient plan using the default numeric
 /// ordering/inequality solver from `solution_set`.
 ///
@@ -380,6 +427,45 @@ mod tests {
             SolutionSet::Discrete(solutions) => assert_eq!(solutions.len(), 2),
             _ => panic!("expected discrete symbolic solutions"),
         }
+    }
+
+    #[test]
+    fn solve_quadratic_coefficient_solve_plan_with_state_numeric_returns_discrete_roots() {
+        let mut ctx = Context::new();
+        let a = ctx.num(1);
+        let b = ctx.num(-3);
+        let c = ctx.num(2);
+        let plan = build_quadratic_coefficient_solve_plan(&mut ctx, RelOp::Eq, a, b, c)
+            .expect("numeric coefficients should build numeric plan");
+
+        #[derive(Default)]
+        struct HookState {
+            simplify_calls: usize,
+            numeric_calls: usize,
+        }
+        let mut state = HookState::default();
+
+        let solved = solve_quadratic_coefficient_solve_plan_with_state(
+            &mut state,
+            RelOp::Eq,
+            a,
+            b,
+            plan,
+            |_state, id| id,
+            |state, id| {
+                state.simplify_calls += 1;
+                id
+            },
+            |state, _op, _delta, (r1, r2), _opens_up| {
+                state.numeric_calls += 1;
+                SolutionSet::Discrete(vec![r1, r2])
+            },
+            |_, aa, bb, delta| roots_from_a_b_and_simplified_delta(&mut ctx, aa, bb, delta),
+        );
+
+        assert!(matches!(solved, SolutionSet::Discrete(_)));
+        assert_eq!(state.simplify_calls, 2);
+        assert_eq!(state.numeric_calls, 1);
     }
 
     #[test]

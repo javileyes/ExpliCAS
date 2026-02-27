@@ -1190,6 +1190,55 @@ where
     steps
 }
 
+/// Stateful variant of
+/// [`execute_quadratic_main_with_substeps_pipeline_with_optional_items_and_collection_state`].
+///
+/// This allows callers to run collection toggling and simplification with one
+/// mutable state object instead of interior mutability wrappers.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_quadratic_main_with_substeps_pipeline_with_optional_items_and_collection_state_with_state<
+    T,
+    S,
+    SS,
+    FSimplify,
+    FMain,
+    FSub,
+    FSetCollect,
+>(
+    state: &mut T,
+    execution: &mut QuadraticMainWithSubstepsExecution,
+    include_items: bool,
+    was_collecting: bool,
+    mut set_collecting: FSetCollect,
+    mut simplify_expr: FSimplify,
+    map_main_item_to_step: FMain,
+    map_substep_item_to_step: FSub,
+) -> Vec<S>
+where
+    SS: Clone,
+    FSimplify: FnMut(&mut T, ExprId) -> ExprId,
+    FMain: FnMut(QuadraticExecutionItem, Vec<SS>) -> S,
+    FSub: FnMut(QuadraticSubstepExecutionItem) -> SS,
+    FSetCollect: FnMut(&mut T, bool),
+{
+    if !include_items {
+        return Vec::new();
+    }
+
+    set_collecting(state, false);
+    simplify_quadratic_substep_execution_items_with(&mut execution.substep_items, |id| {
+        simplify_expr(state, id)
+    });
+    let steps = solve_quadratic_main_with_substeps_execution_pipeline_with_items(
+        execution,
+        true,
+        map_main_item_to_step,
+        map_substep_item_to_step,
+    );
+    set_collecting(state, was_collecting);
+    steps
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1614,6 +1663,68 @@ mod tests {
                 |_substep| -> () { panic!("sub mapper must not run when disabled") },
             );
         assert!(mapped.is_empty());
+    }
+
+    #[test]
+    fn execute_quadratic_main_with_substeps_pipeline_with_optional_items_and_collection_state_with_state_restores_collection_mode(
+    ) {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let eq = Equation {
+            lhs: x,
+            rhs: ctx.num(0),
+            op: RelOp::Eq,
+        };
+        let mut execution = build_quadratic_main_with_substeps_execution_with_optional_items(
+            &mut ctx,
+            "x",
+            one,
+            one,
+            one,
+            true,
+            eq,
+            true,
+            |_, id| format!("{:?}", id),
+        );
+
+        #[derive(Default)]
+        struct HookState {
+            collecting: bool,
+            transitions: Vec<String>,
+            simplify_calls: usize,
+        }
+        let mut state = HookState {
+            collecting: true,
+            ..HookState::default()
+        };
+
+        let mapped = execute_quadratic_main_with_substeps_pipeline_with_optional_items_and_collection_state_with_state(
+            &mut state,
+            &mut execution,
+            true,
+            true,
+            |state, enabled| {
+                state.transitions.push(format!("set:{enabled}"));
+                state.collecting = enabled;
+            },
+            |state, id| {
+                state.simplify_calls += 1;
+                id
+            },
+            |main, substeps: Vec<String>| (main.description, substeps.len()),
+            |substep| substep.description,
+        );
+
+        assert_eq!(mapped.len(), 1);
+        assert_eq!(mapped[0].0, QUADRATIC_FORMULA_MAIN_STEP_DESCRIPTION);
+        assert!(mapped[0].1 > 0);
+        assert_eq!(
+            state.transitions,
+            vec!["set:false".to_string(), "set:true".to_string()]
+        );
+        assert!(state.collecting);
+        assert!(state.simplify_calls > 0);
     }
 
     #[test]
