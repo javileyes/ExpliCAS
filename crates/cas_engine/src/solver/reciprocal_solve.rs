@@ -7,11 +7,7 @@
 //! Example: `1/R = 1/R1 + 1/R2` → `R = R1·R2/(R1+R2)`
 
 use cas_ast::{ExprId, SolutionSet};
-use cas_solver_core::reciprocal::{
-    build_reciprocal_execution_from_kernel_prepared, build_reciprocal_solve_plan,
-    derive_reciprocal_solve_kernel,
-    execute_reciprocal_solve_pipeline_with_items_via_kernel_execution_pipeline_with_state,
-};
+use cas_solver_core::reciprocal::execute_reciprocal_solve_pipeline_with_default_kernel_with_state;
 
 use crate::engine::Simplifier;
 use crate::solver::{medium_step, SolveStep};
@@ -27,33 +23,15 @@ pub(crate) fn try_reciprocal_solve(
     simplifier: &mut Simplifier,
 ) -> Option<(SolutionSet, Vec<SolveStep>)> {
     let include_items = simplifier.collect_steps();
-    execute_reciprocal_solve_pipeline_with_items_via_kernel_execution_pipeline_with_state(
+    execute_reciprocal_solve_pipeline_with_default_kernel_with_state(
         simplifier,
         lhs,
         rhs,
         var,
         include_items,
-        |simplifier, left, right, var_name| {
-            derive_reciprocal_solve_kernel(&mut simplifier.context, left, right, var_name)
-        },
-        |simplifier, var_name, reciprocal_kernel| {
-            build_reciprocal_solve_plan(
-                &mut simplifier.context,
-                var_name,
-                reciprocal_kernel.numerator,
-                reciprocal_kernel.denominator,
-            )
-        },
+        |simplifier| &mut simplifier.context,
         |simplifier, expr| simplifier.simplify(expr).0,
         |simplifier, expr| crate::solver::prove_nonzero_status(&simplifier.context, expr),
-        |simplifier, var_name, reciprocal_kernel, prepared| {
-            build_reciprocal_execution_from_kernel_prepared(
-                &mut simplifier.context,
-                var_name,
-                reciprocal_kernel,
-                prepared,
-            )
-        },
         |item| medium_step(item.description().to_string(), item.equation),
     )
 }

@@ -617,6 +617,64 @@ where
     Some(solved_execution.solved)
 }
 
+/// Stateful reciprocal solve pipeline with default kernel derivation, plan
+/// construction, and execution construction.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_reciprocal_solve_pipeline_with_default_kernel_with_state<
+    T,
+    S,
+    FContextMut,
+    FSimplify,
+    FProof,
+    FStep,
+>(
+    state: &mut T,
+    lhs: ExprId,
+    rhs: ExprId,
+    var: &str,
+    include_items: bool,
+    context_mut: FContextMut,
+    simplify_expr: FSimplify,
+    prove_nonzero_status: FProof,
+    map_item_to_step: FStep,
+) -> Option<(SolutionSet, Vec<S>)>
+where
+    FContextMut: Fn(&mut T) -> &mut Context,
+    FSimplify: FnMut(&mut T, ExprId) -> ExprId,
+    FProof: FnMut(&mut T, ExprId) -> NonZeroStatus,
+    FStep: FnMut(ReciprocalExecutionItem) -> S,
+{
+    execute_reciprocal_solve_pipeline_with_items_via_kernel_execution_pipeline_with_state(
+        state,
+        lhs,
+        rhs,
+        var,
+        include_items,
+        |state, left, right, var_name| {
+            derive_reciprocal_solve_kernel(context_mut(state), left, right, var_name)
+        },
+        |state, var_name, reciprocal_kernel| {
+            build_reciprocal_solve_plan(
+                context_mut(state),
+                var_name,
+                reciprocal_kernel.numerator,
+                reciprocal_kernel.denominator,
+            )
+        },
+        simplify_expr,
+        prove_nonzero_status,
+        |state, var_name, reciprocal_kernel, prepared| {
+            build_reciprocal_execution_from_kernel_prepared(
+                context_mut(state),
+                var_name,
+                reciprocal_kernel,
+                prepared,
+            )
+        },
+        map_item_to_step,
+    )
+}
+
 /// High-level reciprocal solve pipeline using an optional pre-derived kernel:
 /// build execution payload and optionally map didactic items.
 pub fn execute_reciprocal_solve_pipeline_with_items_and_kernel<S, FBuildExecution, FStep>(
