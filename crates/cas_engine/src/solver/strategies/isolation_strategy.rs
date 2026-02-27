@@ -11,12 +11,11 @@ use cas_solver_core::isolation_strategy::{
     execute_collect_terms_strategy_with_default_kernel_with_state,
     execute_isolation_strategy_with_default_routing_with_state,
     execute_rational_exponent_strategy_with_default_kernel_with_state,
-    execute_unwrap_strategy_with_state,
+    execute_unwrap_strategy_with_default_route_with_state,
 };
 use cas_solver_core::solve_outcome::{
     TermIsolationExecutionItem, TermIsolationRewriteExecutionItem,
 };
-use cas_solver_core::unwrap_plan::route_unwrap_entry_with_item;
 
 pub struct IsolationStrategy;
 
@@ -79,33 +78,20 @@ impl SolverStrategy for UnwrapStrategy {
         let wildcard_scope = opts.wildcard_scope();
 
         let include_item = simplifier.collect_steps();
-        execute_unwrap_strategy_with_state(
+        execute_unwrap_strategy_with_default_route_with_state(
             simplifier,
             eq,
             var,
             include_item,
-            |simplifier, equation, solve_var, include_item| {
-                route_unwrap_entry_with_item(
-                    &mut simplifier.context,
-                    equation,
-                    solve_var,
-                    mode,
-                    wildcard_scope,
-                    " - use 'semantics preset complex'",
-                    include_item,
-                    |core_ctx, base, other_side| {
-                        crate::solver::classify_log_solve(
-                            core_ctx,
-                            base,
-                            other_side,
-                            opts,
-                            &ctx.domain_env,
-                        )
-                    },
-                    solver_render_expr,
-                    |item: TermIsolationExecutionItem| medium_step(item.description, item.equation),
-                )
+            |simplifier| &mut simplifier.context,
+            mode,
+            wildcard_scope,
+            " - use 'semantics preset complex'",
+            |core_ctx, base, other_side| {
+                crate::solver::classify_log_solve(core_ctx, base, other_side, opts, &ctx.domain_env)
             },
+            solver_render_expr,
+            |item: TermIsolationExecutionItem| medium_step(item.description, item.equation),
             |simplifier, record| {
                 let event = crate::solver::assumption_event_from_log_assumption_targets(
                     &simplifier.context,

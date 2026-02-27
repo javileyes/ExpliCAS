@@ -12,6 +12,7 @@ use crate::strategy_kernels::{
     RationalExponentKernel, StrategyExecutionItem,
 };
 use crate::unwrap_plan::{
+    route_unwrap_entry_with_item,
     solve_unwrap_entry_routing_option_with_execution_pipeline_with_item_with_state,
     LogLinearAssumptionRecord, UnwrapEntryRouting, UnwrapExecutionItem,
 };
@@ -130,6 +131,69 @@ where
     FMapExecutionStep: FnMut(UnwrapExecutionItem) -> S,
 {
     let routing = route_unwrap_entry(state, eq, var, include_item);
+    solve_unwrap_entry_routing_option_with_execution_pipeline_with_item_with_state(
+        state,
+        routing,
+        var,
+        include_item,
+        note_assumption,
+        solve_equation,
+        map_execution_item_to_step,
+    )
+}
+
+/// Execute unwrap strategy using default entry routing:
+/// `route_unwrap_entry_with_item(ctx, equation, var, mode, wildcard_scope, residual_suffix, ...)`.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_unwrap_strategy_with_default_route_with_state<
+    T,
+    S,
+    E,
+    FContextMut,
+    FClassifyLogSolve,
+    FRenderExpr,
+    FMapTerminalStep,
+    FNoteAssumption,
+    FSolveEquation,
+    FMapExecutionStep,
+>(
+    state: &mut T,
+    eq: &Equation,
+    var: &str,
+    include_item: bool,
+    context_mut: FContextMut,
+    mode: crate::log_domain::DomainModeKind,
+    wildcard_scope: bool,
+    residual_suffix: &str,
+    classify_log_solve: FClassifyLogSolve,
+    render_expr: FRenderExpr,
+    map_terminal_item_to_step: FMapTerminalStep,
+    note_assumption: FNoteAssumption,
+    solve_equation: FSolveEquation,
+    map_execution_item_to_step: FMapExecutionStep,
+) -> Option<Result<(SolutionSet, Vec<S>), E>>
+where
+    FContextMut: Fn(&mut T) -> &mut Context,
+    FClassifyLogSolve:
+        FnMut(&Context, cas_ast::ExprId, cas_ast::ExprId) -> crate::log_domain::LogSolveDecision,
+    FRenderExpr: FnMut(&Context, cas_ast::ExprId) -> String,
+    FMapTerminalStep: FnMut(crate::solve_outcome::TermIsolationExecutionItem) -> S,
+    FNoteAssumption: FnMut(&mut T, LogLinearAssumptionRecord),
+    FSolveEquation: FnMut(&mut T, &Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
+    FMapExecutionStep: FnMut(UnwrapExecutionItem) -> S,
+{
+    let routing = route_unwrap_entry_with_item(
+        context_mut(state),
+        eq,
+        var,
+        mode,
+        wildcard_scope,
+        residual_suffix,
+        include_item,
+        classify_log_solve,
+        render_expr,
+        map_terminal_item_to_step,
+    );
     solve_unwrap_entry_routing_option_with_execution_pipeline_with_item_with_state(
         state,
         routing,
