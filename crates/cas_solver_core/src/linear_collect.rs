@@ -689,6 +689,68 @@ where
     Some((solution_set, Vec::new()))
 }
 
+/// Stateful factored linear-collect pipeline with default kernel derivation,
+/// solution building, and didactic execution planning.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_linear_collect_factored_pipeline_with_default_kernel_with_state<
+    T,
+    S,
+    FContextMut,
+    FSimplifyExpr,
+    FProveNonzeroStatus,
+    FRenderExpr,
+    FStep,
+>(
+    state: &mut T,
+    lhs: ExprId,
+    rhs: ExprId,
+    var: &str,
+    include_items: bool,
+    context_mut: FContextMut,
+    simplify_expr: FSimplifyExpr,
+    prove_nonzero_status: FProveNonzeroStatus,
+    render_expr: FRenderExpr,
+    map_item_to_step: FStep,
+) -> Option<(SolutionSet, Vec<S>)>
+where
+    FContextMut: Fn(&mut T) -> &mut Context,
+    FSimplifyExpr: FnMut(&mut T, ExprId) -> ExprId,
+    FProveNonzeroStatus: FnMut(&mut T, ExprId) -> NonZeroStatus,
+    FRenderExpr: Fn(&Context, ExprId) -> String,
+    FStep: FnMut(LinearCollectExecutionItem) -> S,
+{
+    execute_linear_collect_factored_pipeline_with_and_items_with_state(
+        state,
+        lhs,
+        rhs,
+        var,
+        include_items,
+        |state, left, right| context_mut(state).add(Expr::Sub(left, right)),
+        simplify_expr,
+        |state, equation_diff, var_name| {
+            derive_linear_collect_factored_kernel(context_mut(state), equation_diff, var_name)
+        },
+        |state, rhs_term, coeff| {
+            build_linear_collect_solution_expr(context_mut(state), rhs_term, coeff)
+        },
+        |state, expr, var_name| contains_var(context_mut(state), expr, var_name),
+        prove_nonzero_status,
+        |state, name, solved| {
+            build_linear_collect_factored_execution_with(
+                context_mut(state),
+                name,
+                solved.coeff,
+                solved.rhs_term,
+                solved.solution,
+                solved.coeff_status,
+                solved.rhs_status,
+                |core_ctx, expr| render_expr(core_ctx, expr),
+            )
+        },
+        map_item_to_step,
+    )
+}
+
 /// High-level factored linear-collect pipeline from an optional pre-derived
 /// kernel, with injected hooks for simplification/proof and optional didactic
 /// mapping.
@@ -884,6 +946,68 @@ where
         solved.constant_status,
     );
     Some((solution_set, Vec::new()))
+}
+
+/// Stateful additive linear-collect pipeline with default kernel derivation,
+/// solution building, and didactic execution planning.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_linear_collect_additive_pipeline_with_default_kernel_with_state<
+    T,
+    S,
+    FContextMut,
+    FSimplifyExpr,
+    FProveNonzeroStatus,
+    FRenderExpr,
+    FStep,
+>(
+    state: &mut T,
+    lhs: ExprId,
+    rhs: ExprId,
+    var: &str,
+    include_items: bool,
+    context_mut: FContextMut,
+    simplify_expr: FSimplifyExpr,
+    prove_nonzero_status: FProveNonzeroStatus,
+    render_expr: FRenderExpr,
+    map_item_to_step: FStep,
+) -> Option<(SolutionSet, Vec<S>)>
+where
+    FContextMut: Fn(&mut T) -> &mut Context,
+    FSimplifyExpr: FnMut(&mut T, ExprId) -> ExprId,
+    FProveNonzeroStatus: FnMut(&mut T, ExprId) -> NonZeroStatus,
+    FRenderExpr: Fn(&Context, ExprId) -> String,
+    FStep: FnMut(LinearCollectExecutionItem) -> S,
+{
+    execute_linear_collect_additive_pipeline_with_and_items_with_state(
+        state,
+        lhs,
+        rhs,
+        var,
+        include_items,
+        |state, left, right, var_name| {
+            derive_linear_collect_additive_kernel(context_mut(state), left, right, var_name)
+        },
+        simplify_expr,
+        |state, constant, coeff| {
+            let neg_constant = context_mut(state).add(Expr::Neg(constant));
+            build_linear_collect_solution_expr(context_mut(state), neg_constant, coeff)
+        },
+        |state, expr, var_name| contains_var(context_mut(state), expr, var_name),
+        prove_nonzero_status,
+        |state, name, solved| {
+            build_linear_collect_additive_execution_with(
+                context_mut(state),
+                name,
+                solved.coeff,
+                solved.constant,
+                solved.solution,
+                solved.coeff_status,
+                solved.constant_status,
+                |core_ctx, expr| render_expr(core_ctx, expr),
+            )
+        },
+        map_item_to_step,
+    )
 }
 
 /// High-level additive linear-collect pipeline from an optional pre-derived

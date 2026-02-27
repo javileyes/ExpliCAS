@@ -9,14 +9,10 @@
 //! 2. Factor: P*(1 + r*t) - A = 0
 //! 3. Solve: P = A / (1 + r*t)  [guard: 1 + r*t ≠ 0]
 
-use cas_ast::{Expr, ExprId, SolutionSet};
-use cas_solver_core::isolation_utils::contains_var;
+use cas_ast::{ExprId, SolutionSet};
 use cas_solver_core::linear_collect::{
-    build_linear_collect_additive_execution_with, build_linear_collect_factored_execution_with,
-    build_linear_collect_solution_expr, derive_linear_collect_additive_kernel,
-    derive_linear_collect_factored_kernel,
-    execute_linear_collect_additive_pipeline_with_and_items_with_state,
-    execute_linear_collect_factored_pipeline_with_and_items_with_state,
+    execute_linear_collect_additive_pipeline_with_default_kernel_with_state,
+    execute_linear_collect_factored_pipeline_with_default_kernel_with_state,
 };
 
 use crate::engine::Simplifier;
@@ -34,34 +30,16 @@ pub(crate) fn try_linear_collect(
     simplifier: &mut Simplifier,
 ) -> Option<(SolutionSet, Vec<SolveStep>)> {
     let include_items = simplifier.collect_steps();
-    execute_linear_collect_factored_pipeline_with_and_items_with_state(
+    execute_linear_collect_factored_pipeline_with_default_kernel_with_state(
         simplifier,
         lhs,
         rhs,
         var,
         include_items,
-        |simplifier, left, right| simplifier.context.add(Expr::Sub(left, right)),
+        |simplifier| &mut simplifier.context,
         |simplifier, expr| simplifier.simplify(expr).0,
-        |simplifier, equation_diff, var_name| {
-            derive_linear_collect_factored_kernel(&mut simplifier.context, equation_diff, var_name)
-        },
-        |simplifier, rhs_term, coeff| {
-            build_linear_collect_solution_expr(&mut simplifier.context, rhs_term, coeff)
-        },
-        |simplifier, expr, var_name| contains_var(&simplifier.context, expr, var_name),
         |simplifier, expr| crate::solver::prove_nonzero_status(&simplifier.context, expr),
-        |simplifier, name, solved| {
-            build_linear_collect_factored_execution_with(
-                &mut simplifier.context,
-                name,
-                solved.coeff,
-                solved.rhs_term,
-                solved.solution,
-                solved.coeff_status,
-                solved.rhs_status,
-                render_expr,
-            )
-        },
+        render_expr,
         |item| medium_step(item.description().to_string(), item.equation),
     )
 }
@@ -78,34 +56,16 @@ pub(crate) fn try_linear_collect_v2(
     simplifier: &mut Simplifier,
 ) -> Option<(SolutionSet, Vec<SolveStep>)> {
     let include_items = simplifier.collect_steps();
-    execute_linear_collect_additive_pipeline_with_and_items_with_state(
+    execute_linear_collect_additive_pipeline_with_default_kernel_with_state(
         simplifier,
         lhs,
         rhs,
         var,
         include_items,
-        |simplifier, left, right, var_name| {
-            derive_linear_collect_additive_kernel(&mut simplifier.context, left, right, var_name)
-        },
+        |simplifier| &mut simplifier.context,
         |simplifier, expr| simplifier.simplify(expr).0,
-        |simplifier, constant, coeff| {
-            let neg_constant = simplifier.context.add(Expr::Neg(constant));
-            build_linear_collect_solution_expr(&mut simplifier.context, neg_constant, coeff)
-        },
-        |simplifier, expr, var_name| contains_var(&simplifier.context, expr, var_name),
         |simplifier, expr| crate::solver::prove_nonzero_status(&simplifier.context, expr),
-        |simplifier, name, solved| {
-            build_linear_collect_additive_execution_with(
-                &mut simplifier.context,
-                name,
-                solved.coeff,
-                solved.constant,
-                solved.solution,
-                solved.coeff_status,
-                solved.constant_status,
-                render_expr,
-            )
-        },
+        render_expr,
         |item| medium_step(item.description().to_string(), item.equation),
     )
 }
