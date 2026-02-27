@@ -2,16 +2,16 @@ use crate::engine::Simplifier;
 use crate::error::CasError;
 use crate::solver::{medium_step, render_expr as solver_render_expr, SolveStep, SolverOptions};
 use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
+use cas_solver_core::isolation_power::{
+    execute_pow_base_isolation_pipeline_with_state,
+    execute_pow_exponent_shortcuts_and_guards_with_state,
+};
 use cas_solver_core::solve_outcome::{
     classify_pow_exponent_base_flags, derive_pow_isolation_route,
     ensure_pow_exponent_rhs_without_variable,
     execute_and_resolve_pow_exponent_log_decision_pipeline_with_existing_steps_mut_with_unsupported_execution,
-    execute_pow_base_isolation_pipeline_with_item_and_merge_with_existing_steps,
     execute_pow_exponent_log_isolation_pipeline_with_plan_and_merge_with_existing_steps_with,
-    execute_pow_exponent_shortcut_action_pipeline_with_item_and_finalize_with_existing_steps_with,
-    execute_pow_exponent_shortcut_with_state,
     execute_pow_exponent_solve_tactic_normalization_with_state,
-    execute_power_base_one_shortcut_pipeline_with_item_for_pow_and_finalize_with_existing_steps_with,
     plan_pow_exponent_log_isolation_step_with,
     plan_pow_exponent_log_unsupported_execution_from_decision_with,
     plan_pow_exponent_shortcut_action_from_inputs,
@@ -60,20 +60,28 @@ fn isolate_pow_base(
     steps: Vec<SolveStep>,
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-    let action = cas_solver_core::solve_outcome::build_pow_base_isolation_action_with(
-        &mut simplifier.context,
+    let include_item = simplifier.collect_steps();
+    execute_pow_base_isolation_pipeline_with_state(
+        simplifier,
         b,
         e,
         rhs,
         op,
-        solver_render_expr,
-    );
-    let include_item = simplifier.collect_steps();
-    execute_pow_base_isolation_pipeline_with_item_and_merge_with_existing_steps(
         include_item,
         steps,
-        action,
-        |iso_lhs, iso_rhs, iso_op| isolate(iso_lhs, iso_rhs, iso_op, var, simplifier, opts, ctx),
+        |simplifier, base, exp, local_rhs, local_op| {
+            cas_solver_core::solve_outcome::build_pow_base_isolation_action_with(
+                &mut simplifier.context,
+                base,
+                exp,
+                local_rhs,
+                local_op,
+                solver_render_expr,
+            )
+        },
+        |simplifier, iso_lhs, iso_rhs, iso_op| {
+            isolate(iso_lhs, iso_rhs, iso_op, var, simplifier, opts, ctx)
+        },
         |item| medium_step(item.description().to_string(), item.equation),
     )
 }
@@ -92,85 +100,74 @@ fn isolate_pow_exponent(
     mut steps: Vec<SolveStep>,
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-    // ================================================================
-    // POWER EQUALS BASE SHORTCUT: base^x = base
-    // ================================================================
-    let (base_is_zero, base_is_numeric) = classify_pow_exponent_base_flags(&simplifier.context, b);
-    let include_item = simplifier.collect_steps();
-    let shortcut_execution = execute_pow_exponent_shortcut_with_state(
-        simplifier,
-        e,
-        b,
-        rhs,
-        op.clone(),
-        var,
-        base_is_zero,
-        base_is_numeric,
-        opts.budget.max_branches >= 2,
-        |simplifier, id| simplifier.context.get(id).clone(),
-        |simplifier,
-         base_id,
-         rel_op,
-         bases_equal,
-         rhs_pow_base_equal,
-         base_is_zero,
-         base_is_numeric,
-         can_branch| {
-            plan_pow_exponent_shortcut_action_from_inputs(
-                &mut simplifier.context,
-                base_id,
-                rel_op,
-                bases_equal,
-                rhs_pow_base_equal,
-                base_is_zero,
-                base_is_numeric,
-                can_branch,
-            )
-        },
-        |simplifier, left, right| {
-            let diff = simplifier.context.add(Expr::Sub(left, right));
-            let reduced = simplifier.simplify(diff).0;
-            cas_solver_core::isolation_utils::is_numeric_zero(&simplifier.context, reduced)
-        },
-        |simplifier, expr| solver_render_expr(&simplifier.context, expr),
-    );
+    let include_shortcut_item = simplifier.collect_steps();
+    let include_base_one_item = simplifier.collect_steps();
     if let Some((solution_set, merged_steps)) =
-        execute_pow_exponent_shortcut_action_pipeline_with_item_and_finalize_with_existing_steps_with(
-            shortcut_execution,
-            include_item,
+        execute_pow_exponent_shortcuts_and_guards_with_state(
+            simplifier,
+            lhs,
+            b,
+            e,
+            rhs,
+            op.clone(),
+            var,
+            opts.budget.max_branches >= 2,
+            include_shortcut_item,
+            include_base_one_item,
             &mut steps,
-            |shortcut_rhs, shortcut_op| {
+            |simplifier, base| classify_pow_exponent_base_flags(&simplifier.context, base),
+            |simplifier, id| simplifier.context.get(id).clone(),
+            |simplifier,
+             base_id,
+             rel_op,
+             bases_equal,
+             rhs_pow_base_equal,
+             base_is_zero,
+             base_is_numeric,
+             can_branch| {
+                plan_pow_exponent_shortcut_action_from_inputs(
+                    &mut simplifier.context,
+                    base_id,
+                    rel_op,
+                    bases_equal,
+                    rhs_pow_base_equal,
+                    base_is_zero,
+                    base_is_numeric,
+                    can_branch,
+                )
+            },
+            |simplifier, left, right| {
+                let diff = simplifier.context.add(Expr::Sub(left, right));
+                let reduced = simplifier.simplify(diff).0;
+                cas_solver_core::isolation_utils::is_numeric_zero(&simplifier.context, reduced)
+            },
+            |simplifier, expr| solver_render_expr(&simplifier.context, expr),
+            |simplifier, shortcut_rhs, shortcut_op| {
                 isolate(e, shortcut_rhs, shortcut_op, var, simplifier, opts, ctx)
             },
             |item| medium_step(item.description().to_string(), item.equation),
+            |simplifier, local_rhs, local_var| {
+                ensure_pow_exponent_rhs_without_variable(&simplifier.context, local_rhs, local_var)
+                    .map_err(|message| {
+                        CasError::IsolationError(local_var.to_string(), message.to_string())
+                    })
+            },
+            |simplifier, base, local_lhs, local_rhs, local_op, include_item, existing_steps| {
+                cas_solver_core::solve_outcome::execute_power_base_one_shortcut_pipeline_with_item_for_pow_and_finalize_with_existing_steps_with(
+                &simplifier.context,
+                base,
+                local_lhs,
+                local_rhs,
+                local_op,
+                include_item,
+                existing_steps,
+                solver_render_expr,
+                |item| medium_step(item.description().to_string(), item.equation),
+            )
+            },
         )?
     {
         return Ok((solution_set, merged_steps));
-    }
-
-    // SAFETY GUARD: If RHS contains the variable, we cannot invert with log.
-    ensure_pow_exponent_rhs_without_variable(&simplifier.context, rhs, var)
-        .map_err(|message| CasError::IsolationError(var.to_string(), message.to_string()))?;
-
-    // ================================================================
-    // DOMAIN GUARDS for log operation (RealOnly mode)
-    // ================================================================
-    // GUARD 1: Handle base = 1 special case
-    let include_item = simplifier.collect_steps();
-    if let Some(solved_shortcut) =
-        execute_power_base_one_shortcut_pipeline_with_item_for_pow_and_finalize_with_existing_steps_with(
-            &simplifier.context,
-            b,
-            lhs,
-            rhs,
-            op.clone(),
-            include_item,
-            &mut steps,
-            solver_render_expr,
-            |item| medium_step(item.description().to_string(), item.equation),
-        )
-    {
-        return Ok(solved_shortcut);
     }
 
     // ================================================================
