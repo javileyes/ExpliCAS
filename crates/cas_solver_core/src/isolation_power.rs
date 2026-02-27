@@ -12,10 +12,12 @@ use crate::solve_outcome::{
     execute_pow_base_isolation_pipeline_with_item_and_merge_with_existing_steps,
     execute_pow_exponent_log_isolation_pipeline_with_plan_and_merge_with_existing_steps_with,
     execute_pow_exponent_shortcut_action_pipeline_with_item_and_finalize_with_existing_steps_with,
-    execute_pow_exponent_shortcut_with_state, LogBlockedHintRecord, PowBaseIsolationEngineAction,
-    PowExponentLogIsolationExecutionItem, PowExponentLogIsolationRewritePlan,
-    PowExponentLogUnsupportedExecution, PowExponentShortcutAction, PowExponentShortcutEngineAction,
-    PowExponentShortcutExecutionItem, TermIsolationExecutionItem,
+    execute_pow_exponent_shortcut_with_state,
+    execute_pow_exponent_solve_tactic_normalization_with_state, LogBlockedHintRecord,
+    PowBaseIsolationEngineAction, PowExponentLogIsolationExecutionItem,
+    PowExponentLogIsolationRewritePlan, PowExponentLogUnsupportedExecution,
+    PowExponentShortcutAction, PowExponentShortcutEngineAction, PowExponentShortcutExecutionItem,
+    TermIsolationExecutionItem,
 };
 
 /// Execute base-side power isolation (`b^e = rhs`) with caller-provided stateful hooks.
@@ -174,6 +176,52 @@ where
     Ok(None)
 }
 
+/// Execute solve-tactic normalization for exponent-side power isolation and
+/// classify logarithmic solve decision from normalized `(base, rhs)`.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_pow_exponent_tactic_and_classify_decision_with_state<
+    T,
+    S,
+    D,
+    FClearBlockedHints,
+    FSimplifyWithTactic,
+    FBuildTacticSteps,
+    FClassifyDecision,
+>(
+    state: &mut T,
+    base: ExprId,
+    exponent: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    solve_tactic_enabled: bool,
+    existing_steps: &mut Vec<S>,
+    clear_blocked_hints: FClearBlockedHints,
+    simplify_with_tactic: FSimplifyWithTactic,
+    build_tactic_steps: FBuildTacticSteps,
+    mut classify_decision: FClassifyDecision,
+) -> D
+where
+    FClearBlockedHints: FnMut(&mut T),
+    FSimplifyWithTactic: FnMut(&mut T, ExprId) -> ExprId,
+    FBuildTacticSteps: FnMut(&mut T, ExprId, ExprId, ExprId, RelOp) -> Vec<S>,
+    FClassifyDecision: FnMut(&mut T, ExprId, ExprId) -> D,
+{
+    let (tactic_base, tactic_rhs, tactic_steps) =
+        execute_pow_exponent_solve_tactic_normalization_with_state(
+            state,
+            base,
+            exponent,
+            rhs,
+            op,
+            solve_tactic_enabled,
+            clear_blocked_hints,
+            simplify_with_tactic,
+            build_tactic_steps,
+        );
+    existing_steps.extend(tactic_steps);
+    classify_decision(state, tactic_base, tactic_rhs)
+}
+
 /// Execute exponent-side logarithmic decision resolution and, when needed,
 /// continue with logarithmic rewrite isolation.
 #[allow(clippy::too_many_arguments)]
@@ -305,6 +353,7 @@ mod tests {
         execute_pow_base_isolation_pipeline_with_state,
         execute_pow_exponent_log_decision_then_rewrite_with_state,
         execute_pow_exponent_shortcuts_and_guards_with_state,
+        execute_pow_exponent_tactic_and_classify_decision_with_state,
     };
     use crate::log_domain::{DomainModeKind, LogSolveDecision};
     use crate::solve_outcome::{
@@ -540,6 +589,83 @@ mod tests {
         assert_eq!(state.base_one_count, 1);
         assert!(solved.is_none());
         assert_eq!(steps, vec!["existing".to_string()]);
+    }
+
+    #[test]
+    fn execute_pow_exponent_tactic_and_classify_decision_with_state_skips_tactic_when_disabled() {
+        let mut ctx = cas_ast::Context::new();
+        let base = ctx.var("b");
+        let exponent = ctx.var("x");
+        let rhs = ctx.num(4);
+        let mut state = ();
+        let mut steps = vec!["existing".to_string()];
+        let mut seen_base = None;
+        let mut seen_rhs = None;
+
+        let out = execute_pow_exponent_tactic_and_classify_decision_with_state(
+            &mut state,
+            base,
+            exponent,
+            rhs,
+            RelOp::Eq,
+            false,
+            &mut steps,
+            |_state| panic!("clear hints should not run when tactic is disabled"),
+            |_state, _expr| panic!("simplify should not run when tactic is disabled"),
+            |_state, _sim_base, _sim_exp, _sim_rhs, _sim_op| {
+                panic!("didactic tactic steps should not run when tactic is disabled")
+            },
+            |_state, tactic_base, tactic_rhs| {
+                seen_base = Some(tactic_base);
+                seen_rhs = Some(tactic_rhs);
+                "classified"
+            },
+        );
+
+        assert_eq!(out, "classified");
+        assert_eq!(seen_base, Some(base));
+        assert_eq!(seen_rhs, Some(rhs));
+        assert_eq!(steps, vec!["existing".to_string()]);
+    }
+
+    #[test]
+    fn execute_pow_exponent_tactic_and_classify_decision_with_state_appends_tactic_steps() {
+        let mut ctx = cas_ast::Context::new();
+        let base = ctx.var("b");
+        let exponent = ctx.var("x");
+        let rhs = ctx.num(4);
+        let simplified_base = ctx.num(2);
+        let simplified_rhs = ctx.num(8);
+        let mut state = ();
+        let mut steps = vec!["existing".to_string()];
+
+        let out = execute_pow_exponent_tactic_and_classify_decision_with_state(
+            &mut state,
+            base,
+            exponent,
+            rhs,
+            RelOp::Eq,
+            true,
+            &mut steps,
+            |_state| {},
+            |_state, expr| {
+                if expr == base {
+                    simplified_base
+                } else if expr == rhs {
+                    simplified_rhs
+                } else {
+                    expr
+                }
+            },
+            |_state, _sim_base, _sim_exp, _sim_rhs, _sim_op| vec!["tactic-step".to_string()],
+            |_state, tactic_base, tactic_rhs| (tactic_base, tactic_rhs),
+        );
+
+        assert_eq!(out, (simplified_base, simplified_rhs));
+        assert_eq!(
+            steps,
+            vec!["existing".to_string(), "tactic-step".to_string()]
+        );
     }
 
     #[derive(Default)]

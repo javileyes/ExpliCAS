@@ -6,12 +6,11 @@ use cas_solver_core::isolation_power::{
     execute_pow_base_isolation_pipeline_with_state,
     execute_pow_exponent_log_decision_then_rewrite_with_state,
     execute_pow_exponent_shortcuts_and_guards_with_state,
+    execute_pow_exponent_tactic_and_classify_decision_with_state,
 };
 use cas_solver_core::solve_outcome::{
     classify_pow_exponent_base_flags, derive_pow_isolation_route,
-    ensure_pow_exponent_rhs_without_variable,
-    execute_pow_exponent_solve_tactic_normalization_with_state,
-    plan_pow_exponent_log_isolation_step_with,
+    ensure_pow_exponent_rhs_without_variable, plan_pow_exponent_log_isolation_step_with,
     plan_pow_exponent_log_unsupported_execution_from_decision_with,
     plan_pow_exponent_shortcut_action_from_inputs,
     solve_solve_tactic_normalization_pipeline_with_item, PowIsolationRoute,
@@ -179,41 +178,41 @@ fn isolate_pow_exponent(
     let solve_tactic_enabled = opts.domain_mode == crate::domain::DomainMode::Assume
         && opts.value_domain == crate::semantics::ValueDomain::RealOnly;
     let tactic_opts = SimplifyOptions::for_solve_tactic(opts.domain_mode);
-    let (tactic_base, tactic_rhs, tactic_steps) =
-        execute_pow_exponent_solve_tactic_normalization_with_state(
-            simplifier,
-            b,
-            e,
-            rhs,
-            op.clone(),
-            solve_tactic_enabled,
-            |_simplifier| crate::domain::clear_blocked_hints(),
-            |simplifier, expr| {
-                simplifier
-                    .simplify_with_options(expr, tactic_opts.clone())
-                    .0
-            },
-            |simplifier, sim_base, sim_exp, sim_rhs, sim_op| {
-                let include_item = simplifier.collect_steps();
-                solve_solve_tactic_normalization_pipeline_with_item(
-                    &mut simplifier.context,
-                    sim_base,
-                    sim_exp,
-                    sim_rhs,
-                    sim_op,
-                    include_item,
-                    |item| medium_step(item.description().to_string(), item.equation),
-                )
-            },
-        );
-    steps.extend(tactic_steps);
-
-    let decision = classify_log_solve(
-        &simplifier.context,
-        tactic_base,
-        tactic_rhs,
-        &opts,
-        &ctx.domain_env,
+    let decision = execute_pow_exponent_tactic_and_classify_decision_with_state(
+        simplifier,
+        b,
+        e,
+        rhs,
+        op.clone(),
+        solve_tactic_enabled,
+        &mut steps,
+        |_simplifier| crate::domain::clear_blocked_hints(),
+        |simplifier, expr| {
+            simplifier
+                .simplify_with_options(expr, tactic_opts.clone())
+                .0
+        },
+        |simplifier, sim_base, sim_exp, sim_rhs, sim_op| {
+            let include_item = simplifier.collect_steps();
+            solve_solve_tactic_normalization_pipeline_with_item(
+                &mut simplifier.context,
+                sim_base,
+                sim_exp,
+                sim_rhs,
+                sim_op,
+                include_item,
+                |item| medium_step(item.description().to_string(), item.equation),
+            )
+        },
+        |simplifier, tactic_base, tactic_rhs| {
+            classify_log_solve(
+                &simplifier.context,
+                tactic_base,
+                tactic_rhs,
+                &opts,
+                &ctx.domain_env,
+            )
+        },
     );
 
     let mode = opts.core_domain_mode();
