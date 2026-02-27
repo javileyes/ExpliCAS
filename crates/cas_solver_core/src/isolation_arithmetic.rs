@@ -7,6 +7,7 @@ use cas_ast::{Context, Equation, ExprId, RelOp, SolutionSet};
 
 use crate::solve_outcome::{
     derive_add_isolation_operands, derive_mul_isolation_operands, derive_sub_isolation_operands,
+    derive_div_isolation_route,
     execute_division_denominator_sign_split_or_term_isolation_plan_with_optional_items_and_merge_with_existing_steps_with_single_solver_with_state,
     execute_isolated_denominator_sign_split_or_division_denominator_plan_with_optional_items_and_merge_with_existing_steps_with_state,
     execute_product_zero_inequality_split_pipeline_with_existing_steps_with_context_snapshot,
@@ -18,7 +19,7 @@ use crate::solve_outcome::{
     plan_isolated_denominator_sign_split_or_division_denominator,
     plan_mul_factor_isolation_step_with, plan_product_zero_inequality_split_if_applicable,
     plan_sub_isolation_step_with, resolve_div_denominator_isolation_rhs_with, AddIsolationOperands,
-    AddIsolationRoute, DivisionDenominatorDidacticPlan, DivisionDenominatorSignSplitPlan,
+    AddIsolationRoute, DivIsolationRoute, DivisionDenominatorDidacticPlan, DivisionDenominatorSignSplitPlan,
     DivisionDenominatorSignSplitSolvedCases, DivisionDidacticExecutionItem,
     IsolatedDenominatorSignSplitPlan, IsolatedDenominatorSignSplitSolvedCases,
     MulIsolationOperands, ProductZeroInequalityPlan, ProductZeroInequalitySolvedSets,
@@ -590,6 +591,54 @@ where
     )
 }
 
+/// Dispatch division-isolation route to the corresponding branch handler.
+pub fn execute_div_isolation_route_with_state<T, R, E, FNumerator, FDenominator>(
+    state: &mut T,
+    route: DivIsolationRoute,
+    on_variable_in_numerator: FNumerator,
+    on_variable_in_denominator: FDenominator,
+) -> Result<R, E>
+where
+    FNumerator: FnOnce(&mut T) -> Result<R, E>,
+    FDenominator: FnOnce(&mut T) -> Result<R, E>,
+{
+    match route {
+        DivIsolationRoute::VariableInNumerator => on_variable_in_numerator(state),
+        DivIsolationRoute::VariableInDenominator => on_variable_in_denominator(state),
+    }
+}
+
+/// Derive and dispatch division-isolation route from `(ctx, numerator, var)`.
+pub fn execute_div_isolation_route_for_var_with_state<
+    T,
+    R,
+    E,
+    FContext,
+    FNumerator,
+    FDenominator,
+>(
+    state: &mut T,
+    context: FContext,
+    numerator: ExprId,
+    var: &str,
+    on_variable_in_numerator: FNumerator,
+    on_variable_in_denominator: FDenominator,
+) -> Result<R, E>
+where
+    FContext: FnMut(&mut T) -> &Context,
+    FNumerator: FnOnce(&mut T) -> Result<R, E>,
+    FDenominator: FnOnce(&mut T) -> Result<R, E>,
+{
+    let mut context = context;
+    let route = derive_div_isolation_route(context(state), numerator, var);
+    execute_div_isolation_route_with_state(
+        state,
+        route,
+        on_variable_in_numerator,
+        on_variable_in_denominator,
+    )
+}
+
 /// Execute numerator-side division isolation with default route planning from
 /// `solve_outcome`.
 #[allow(clippy::too_many_arguments)]
@@ -873,6 +922,8 @@ mod tests {
     use super::{
         execute_add_isolation_pipeline_with_linear_collect_fallback_with_state,
         execute_div_denominator_isolation_pipeline_with_reciprocal_fallback_and_state,
+        execute_div_isolation_route_for_var_with_state,
+        execute_div_isolation_route_with_state,
         execute_div_numerator_isolation_pipeline_with_state,
         execute_mul_isolation_pipeline_with_product_split_and_linear_collect_with_state,
         execute_sub_isolation_pipeline_with_state,
@@ -897,6 +948,49 @@ mod tests {
     struct DivHarness {
         context: cas_ast::Context,
         seen_lhs: Option<ExprId>,
+    }
+
+    #[test]
+    fn execute_div_isolation_route_with_state_dispatches_numerator_branch() {
+        let mut hit = 0usize;
+        let out = execute_div_isolation_route_with_state(
+            &mut hit,
+            crate::solve_outcome::DivIsolationRoute::VariableInNumerator,
+            |state| {
+                *state += 1;
+                Ok::<_, &'static str>("num")
+            },
+            |_state| Ok("den"),
+        )
+        .expect("numerator route should dispatch");
+
+        assert_eq!(out, "num");
+        assert_eq!(hit, 1);
+    }
+
+    #[test]
+    fn execute_div_isolation_route_for_var_with_state_derives_denominator_branch() {
+        let mut context = cas_ast::Context::new();
+        let two = context.num(2);
+        let x = context.var("x");
+        let lhs = context.add(Expr::Div(two, x));
+        let numerator = match context.get(lhs) {
+            Expr::Div(num, _den) => *num,
+            other => panic!("expected division expression, got {other:?}"),
+        };
+
+        let mut state = context;
+        let out = execute_div_isolation_route_for_var_with_state(
+            &mut state,
+            |state| state,
+            numerator,
+            "x",
+            |_state| Ok::<_, &'static str>("num"),
+            |_state| Ok("den"),
+        )
+        .expect("route should derive denominator branch");
+
+        assert_eq!(out, "den");
     }
 
     #[test]

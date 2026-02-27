@@ -6,14 +6,13 @@ use cas_ast::{ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_arithmetic::{
     execute_add_isolation_pipeline_with_default_operands_and_plan_with_state,
     execute_div_denominator_isolation_pipeline_with_default_plan_with_state,
+    execute_div_isolation_route_for_var_with_state,
     execute_div_numerator_isolation_pipeline_with_default_plan_with_state,
     execute_mul_isolation_pipeline_with_default_operands_and_plan_with_state,
     execute_sub_isolation_pipeline_with_default_plan_with_state,
 };
 use cas_solver_core::isolation_utils::{is_known_negative, should_try_reciprocal_solve};
-use cas_solver_core::solve_outcome::{
-    derive_div_isolation_route, finalize_product_zero_inequality_solved_sets, DivIsolationRoute,
-};
+use cas_solver_core::solve_outcome::finalize_product_zero_inequality_solved_sets;
 
 use super::isolate;
 
@@ -174,84 +173,94 @@ pub(super) fn isolate_div(
     steps: Vec<SolveStep>,
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-    let div_route = derive_div_isolation_route(&simplifier.context, l, var);
-    if matches!(div_route, DivIsolationRoute::VariableInNumerator) {
-        let include_item = simplifier.collect_steps();
-        execute_div_numerator_isolation_pipeline_with_default_plan_with_state(
-            simplifier,
-            l,
-            r,
-            rhs,
-            op,
-            var,
-            include_item,
-            steps,
-            |simplifier| &mut simplifier.context,
-            |simplifier, expr| is_known_negative(&simplifier.context, expr),
-            |simplifier, expr| solver_render_expr(&simplifier.context, expr),
-            |simplifier, expr| simplifier.simplify(expr).0,
-            |simplifier, equation| {
-                isolate(
-                    equation.lhs,
-                    equation.rhs,
-                    equation.op.clone(),
-                    var,
-                    simplifier,
-                    opts,
-                    ctx,
-                )
-            },
-            |item| medium_step(item.description, item.equation),
-            |item| medium_step(item.description, item.equation),
-            |simplifier, solved_sets| {
-                cas_solver_core::solve_outcome::finalize_division_denominator_sign_split_solved_sets(
-                    &simplifier.context,
-                    solved_sets,
-                )
-            },
-        )
-    } else {
-        let include_items = simplifier.collect_steps();
-        execute_div_denominator_isolation_pipeline_with_default_plan_with_state(
-            simplifier,
-            lhs,
-            l,
-            r,
-            rhs,
-            op,
-            var,
-            include_items,
-            steps,
-            |simplifier| &mut simplifier.context,
-            |simplifier, lhs_expr, local_op, var_name| {
-                should_try_reciprocal_solve(&simplifier.context, lhs_expr, local_op, var_name)
-            },
-            |simplifier, lhs_expr, local_rhs, var_name| {
-                crate::solver::reciprocal_solve::try_reciprocal_solve(
-                    lhs_expr, local_rhs, var_name, simplifier,
-                )
-            },
-            |simplifier, expr| solver_render_expr(&simplifier.context, expr),
-            |simplifier, expr| simplifier.simplify(expr).0,
-            |simplifier, expr| simplifier.simplify(expr).0,
-            |simplifier, equation| {
-                isolate(
-                    equation.lhs,
-                    equation.rhs,
-                    equation.op.clone(),
-                    var,
-                    simplifier,
-                    opts,
-                    ctx,
-                )
-            },
-            |item| medium_step(item.description, item.equation),
-            |simplifier, solved_sets| {
-                cas_solver_core::solve_outcome::finalize_isolated_denominator_sign_split_solved_sets(
-                    &mut simplifier.context,
-                    solved_sets,
-                )
-            },
-        )
-    }
+    let op_for_numerator = op.clone();
+    let op_for_denominator = op;
+    let steps_for_numerator = steps.clone();
+    let steps_for_denominator = steps;
+    execute_div_isolation_route_for_var_with_state(
+        simplifier,
+        |simplifier| &simplifier.context,
+        l,
+        var,
+        |simplifier| {
+            let include_item = simplifier.collect_steps();
+            execute_div_numerator_isolation_pipeline_with_default_plan_with_state(
+                simplifier,
+                l,
+                r,
+                rhs,
+                op_for_numerator,
+                var,
+                include_item,
+                steps_for_numerator,
+                |simplifier| &mut simplifier.context,
+                |simplifier, expr| is_known_negative(&simplifier.context, expr),
+                |simplifier, expr| solver_render_expr(&simplifier.context, expr),
+                |simplifier, expr| simplifier.simplify(expr).0,
+                |simplifier, equation| {
+                    isolate(
+                        equation.lhs,
+                        equation.rhs,
+                        equation.op.clone(),
+                        var,
+                        simplifier,
+                        opts,
+                        ctx,
+                    )
+                },
+                |item| medium_step(item.description, item.equation),
+                |item| medium_step(item.description, item.equation),
+                |simplifier, solved_sets| {
+                    cas_solver_core::solve_outcome::finalize_division_denominator_sign_split_solved_sets(
+                        &simplifier.context,
+                        solved_sets,
+                    )
+                },
+            )
+        },
+        |simplifier| {
+            let include_items = simplifier.collect_steps();
+            execute_div_denominator_isolation_pipeline_with_default_plan_with_state(
+                simplifier,
+                lhs,
+                l,
+                r,
+                rhs,
+                op_for_denominator,
+                var,
+                include_items,
+                steps_for_denominator,
+                |simplifier| &mut simplifier.context,
+                |simplifier, lhs_expr, local_op, var_name| {
+                    should_try_reciprocal_solve(&simplifier.context, lhs_expr, local_op, var_name)
+                },
+                |simplifier, lhs_expr, local_rhs, var_name| {
+                    crate::solver::reciprocal_solve::try_reciprocal_solve(
+                        lhs_expr, local_rhs, var_name, simplifier,
+                    )
+                },
+                |simplifier, expr| solver_render_expr(&simplifier.context, expr),
+                |simplifier, expr| simplifier.simplify(expr).0,
+                |simplifier, expr| simplifier.simplify(expr).0,
+                |simplifier, equation| {
+                    isolate(
+                        equation.lhs,
+                        equation.rhs,
+                        equation.op.clone(),
+                        var,
+                        simplifier,
+                        opts,
+                        ctx,
+                    )
+                },
+                |item| medium_step(item.description, item.equation),
+                |simplifier, solved_sets| {
+                    cas_solver_core::solve_outcome::finalize_isolated_denominator_sign_split_solved_sets(
+                        &mut simplifier.context,
+                        solved_sets,
+                    )
+                },
+            )
+        },
+    )
 }
