@@ -1,9 +1,10 @@
 use crate::rule::{Rewrite, SimpleRule};
 use cas_ast::{Context, ExprId};
 use cas_math::matrix_rule_support::{
-    try_eval_matrix_add_expr, try_eval_matrix_function_expr, try_eval_matrix_mul_expr,
-    try_eval_matrix_sub_expr, try_eval_scalar_matrix_mul_expr, try_rewrite_transpose_product_expr,
-    MatrixFunctionEval, ScalarMatrixSide,
+    format_matrix_add_desc, format_matrix_mul_desc, format_matrix_sub_desc,
+    format_scalar_matrix_mul_desc, try_eval_matrix_add_expr, try_eval_matrix_mul_expr,
+    try_eval_matrix_sub_expr, try_eval_scalar_matrix_mul_expr,
+    try_rewrite_matrix_function_rule_expr, try_rewrite_transpose_product_expr,
 };
 
 /// Rule to add two matrices
@@ -20,12 +21,7 @@ impl SimpleRule for MatrixAddRule {
 
     fn apply_simple(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
         let eval = try_eval_matrix_add_expr(ctx, expr)?;
-        Some(Rewrite::new(eval.result.to_expr(ctx)).desc_lazy(|| {
-            format!(
-                "Matrix addition: {}×{} + {}×{}",
-                eval.left.rows, eval.left.cols, eval.right.rows, eval.right.cols
-            )
-        }))
+        Some(Rewrite::new(eval.result.to_expr(ctx)).desc(format_matrix_add_desc(&eval)))
     }
 }
 
@@ -43,12 +39,7 @@ impl SimpleRule for MatrixSubRule {
 
     fn apply_simple(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
         let eval = try_eval_matrix_sub_expr(ctx, expr)?;
-        Some(Rewrite::new(eval.result.to_expr(ctx)).desc_lazy(|| {
-            format!(
-                "Matrix subtraction: {}×{} - {}×{}",
-                eval.left.rows, eval.left.cols, eval.right.rows, eval.right.cols
-            )
-        }))
+        Some(Rewrite::new(eval.result.to_expr(ctx)).desc(format_matrix_sub_desc(&eval)))
     }
 }
 
@@ -66,18 +57,7 @@ impl SimpleRule for ScalarMatrixRule {
 
     fn apply_simple(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
         let eval = try_eval_scalar_matrix_mul_expr(ctx, expr)?;
-        Some(
-            Rewrite::new(eval.result.to_expr(ctx)).desc_lazy(|| match eval.side {
-                ScalarMatrixSide::ScalarLeft => format!(
-                    "Scalar multiplication: scalar × {}×{} matrix",
-                    eval.matrix.rows, eval.matrix.cols
-                ),
-                ScalarMatrixSide::ScalarRight => format!(
-                    "Scalar multiplication: {}×{} matrix × scalar",
-                    eval.matrix.rows, eval.matrix.cols
-                ),
-            }),
-        )
+        Some(Rewrite::new(eval.result.to_expr(ctx)).desc(format_scalar_matrix_mul_desc(&eval)))
     }
 }
 
@@ -95,19 +75,7 @@ impl SimpleRule for MatrixMultiplyRule {
 
     fn apply_simple(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
         let eval = try_eval_matrix_mul_expr(ctx, expr)?;
-        let result_rows = eval.result.rows;
-        let result_cols = eval.result.cols;
-        Some(Rewrite::new(eval.result.to_expr(ctx)).desc_lazy(|| {
-            format!(
-                "Matrix multiplication: {}×{} × {}×{} = {}×{}",
-                eval.left.rows,
-                eval.left.cols,
-                eval.right.rows,
-                eval.right.cols,
-                result_rows,
-                result_cols
-            )
-        }))
+        Some(Rewrite::new(eval.result.to_expr(ctx)).desc(format_matrix_mul_desc(&eval)))
     }
 }
 
@@ -124,24 +92,8 @@ impl SimpleRule for MatrixFunctionRule {
     }
 
     fn apply_simple(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
-        match try_eval_matrix_function_expr(ctx, expr)? {
-            MatrixFunctionEval::Determinant { shape, value } => Some(
-                Rewrite::new(value)
-                    .desc_lazy(|| format!("det({}×{} matrix)", shape.rows, shape.cols)),
-            ),
-            MatrixFunctionEval::Transpose { from, to, matrix } => {
-                Some(Rewrite::new(matrix.to_expr(ctx)).desc_lazy(|| {
-                    format!(
-                        "transpose({}×{}) = {}×{}",
-                        from.rows, from.cols, to.rows, to.cols
-                    )
-                }))
-            }
-            MatrixFunctionEval::Trace { shape, value } => Some(
-                Rewrite::new(value)
-                    .desc_lazy(|| format!("trace({}×{} matrix)", shape.rows, shape.cols)),
-            ),
-        }
+        let rewrite = try_rewrite_matrix_function_rule_expr(ctx, expr)?;
+        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
     }
 }
 

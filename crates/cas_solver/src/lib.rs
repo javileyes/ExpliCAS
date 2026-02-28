@@ -15,7 +15,10 @@ pub use cas_engine::canonical_forms;
 pub use cas_engine::normalize_and_dedupe_conditions;
 pub use cas_engine::rules;
 pub use cas_engine::rules::logarithms::LogExpansionRule;
-pub use cas_engine::solver::*;
+pub use cas_engine::solver::{
+    contains_var, solve, solve_with_display_steps, verify_stats, DisplaySolveSteps, SolveBudget,
+    SolveCtx, SolveDiagnostics, SolveStep, SolveSubStep, SolverOptions,
+};
 pub use cas_engine::visualizer;
 pub use cas_engine::ConstFoldMode;
 pub use cas_engine::ParentContext;
@@ -28,15 +31,22 @@ pub use cas_engine::{
     EquivalenceResult, EvalAction, EvalOptions, EvalOutput, EvalRequest, EvalResult, HeuristicPoly,
     ImplicitCondition, PipelineStats, RequiresDisplayLevel, Simplifier, SimplifyOptions, StepsMode,
 };
+pub use cas_engine::{AssumptionRecord, DomainWarning};
 pub use cas_engine::{AutoRationalizeLevel, RationalizeOutcome};
 pub use cas_engine::{BranchPolicy, InverseTrigPolicy, ValueDomain};
 pub use cas_engine::{ExpandPolicy, SimplifyPhase};
 pub use cas_engine::{RequirementDescriptor, SimplifyPurpose, SolveSafety};
+pub use cas_math::number_theory_support::GcdResult;
 pub use cas_math::poly_store::{try_get_poly_result_term_count, try_render_poly_result};
 pub use json::{
     eval_str_to_json, eval_str_to_output_envelope, substitute_str_to_json, EnvelopeEvalOptions,
 };
 pub use substitute::{substitute_power_aware, substitute_with_steps, SubstituteOptions};
+
+/// Number-theory helpers exposed by the solver facade without pulling engine rule modules.
+pub mod number_theory {
+    pub use cas_math::number_theory_support::{compute_gcd, explain_gcd, GcdResult};
+}
 
 /// Backward-compatible facade for former `cas_engine::expand::*` imports.
 pub mod expand {

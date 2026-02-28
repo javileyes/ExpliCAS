@@ -324,6 +324,35 @@ where
     warnings
 }
 
+/// Collect per-step items with deduplication by display key.
+///
+/// The first item for each display string is retained.
+pub fn collect_step_items_with_display_dedup<StepT, ItemT, OutT, FItems, FDisplay, FBuild>(
+    steps: &[StepT],
+    mut items_of: FItems,
+    mut display_of: FDisplay,
+    mut build_out: FBuild,
+) -> Vec<OutT>
+where
+    FItems: FnMut(&StepT) -> Vec<ItemT>,
+    FDisplay: FnMut(&ItemT) -> String,
+    FBuild: FnMut(ItemT) -> OutT,
+{
+    use std::collections::HashSet;
+
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut out = Vec::new();
+    for step in steps {
+        for item in items_of(step) {
+            let key = display_of(&item);
+            if seen.insert(key) {
+                out.push(build_out(item));
+            }
+        }
+    }
+    out
+}
+
 /// Build canonical error used when stateless eval sees a `#N` reference.
 pub fn stateless_session_ref_error(entry_id: crate::types::EntryId) -> anyhow::Error {
     anyhow::anyhow!(
@@ -494,10 +523,10 @@ pub fn apply_post_dispatch_store_updates<StoreT: EvalStore>(
 mod tests {
     use super::{
         apply_post_dispatch_store_updates, apply_pre_dispatch_store_updates,
-        build_cache_hit_step_with, collect_warnings_with, format_cache_hit_summary,
-        map_resolve_error_to_anyhow, resolve_and_prepare_dispatch, resolve_eval_input,
-        store_raw_input, touch_cache_hits, EvalSession, EvalStore, ResolvePrepareConfig,
-        SimplifiedUpdate,
+        build_cache_hit_step_with, collect_step_items_with_display_dedup, collect_warnings_with,
+        format_cache_hit_summary, map_resolve_error_to_anyhow, resolve_and_prepare_dispatch,
+        resolve_eval_input, store_raw_input, touch_cache_hits, EvalSession, EvalStore,
+        ResolvePrepareConfig, SimplifiedUpdate,
     };
     use cas_ast::{Context, ExprId};
     use std::sync::Arc;
@@ -789,6 +818,32 @@ mod tests {
         );
 
         assert_eq!(out, vec![("b".to_string(), "r1".to_string())]);
+    }
+
+    #[test]
+    fn collect_step_items_with_display_dedup_keeps_first_item_per_key() {
+        #[derive(Clone)]
+        struct Step {
+            items: Vec<&'static str>,
+        }
+
+        let steps = vec![
+            Step {
+                items: vec!["a", "b"],
+            },
+            Step {
+                items: vec!["b", "c"],
+            },
+        ];
+
+        let out = collect_step_items_with_display_dedup(
+            &steps,
+            |s| s.items.clone(),
+            |item| item.to_string(),
+            |item| item.to_string(),
+        );
+
+        assert_eq!(out, vec!["a".to_string(), "b".to_string(), "c".to_string()]);
     }
 
     #[test]

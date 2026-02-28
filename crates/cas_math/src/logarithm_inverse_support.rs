@@ -1,5 +1,15 @@
-use cas_ast::{BuiltinFn, Context, Expr, ExprId};
-use num_traits::One;
+use crate::expr_destructure::{as_add, as_div, as_mul, as_pow};
+use crate::expr_extract::{
+    extract_log_base_argument, extract_log_base_argument_relaxed_view,
+    extract_log_base_argument_view,
+};
+use crate::expr_nary::MulView;
+use crate::expr_predicates::is_e_constant_expr;
+use crate::expr_rewrite::smart_mul;
+use cas_ast::{BuiltinFn, Constant, Context, Expr, ExprId};
+use num_traits::{One, Zero};
+use std::cmp::Ordering;
+use std::collections::HashMap;
 
 /// Simplify `base^(log(base, x))` subterms when splitting exponent sums.
 pub fn simplify_exp_log(context: &mut Context, base: ExprId, exp: ExprId) -> ExprId {
@@ -13,6 +23,29 @@ pub fn simplify_exp_log(context: &mut Context, base: ExprId, exp: ExprId) -> Exp
         }
     }
     context.add(Expr::Pow(base, exp))
+}
+
+/// Rewrite `e^(a+b)` into product form when at least one side is logarithmic:
+/// - `e^(a+b) -> e^a * e^b`
+/// - matching `e^(log(e,x)+k)` style terms will simplify to `x*e^k`.
+pub fn try_rewrite_split_log_exponents_expr(ctx: &mut Context, expr: ExprId) -> Option<LogRewrite> {
+    let (base, exp) = as_pow(ctx, expr)?;
+    if !is_e_constant_expr(ctx, base) {
+        return None;
+    }
+
+    let (lhs, rhs) = as_add(ctx, exp)?;
+    if !(is_log(ctx, lhs) || is_log(ctx, rhs)) {
+        return None;
+    }
+
+    let term1 = simplify_exp_log(ctx, base, lhs);
+    let term2 = simplify_exp_log(ctx, base, rhs);
+    let rewritten = smart_mul(ctx, term1, term2);
+    Some(LogRewrite {
+        rewritten,
+        desc: "e^(a+b) -> e^a * e^b (log cancellation)",
+    })
 }
 
 /// Detect whether expression is a log/ln call (possibly nested in a product).
@@ -108,6 +141,849 @@ pub fn estimate_log_terms(ctx: &Context, arg: ExprId) -> Option<(u32, u32, Optio
     }
 }
 
+/// Evaluate `log_base(val)` as a rational number using prime factorization.
+///
+/// Returns `Some(ratio)` when both `base` and `val` are powers of the same
+/// underlying prime support.
+pub fn eval_log_rational(
+    base: &num_bigint::BigInt,
+    val: &num_bigint::BigInt,
+) -> Option<num_rational::BigRational> {
+    use num_bigint::BigInt;
+    use num_rational::BigRational;
+    use num_traits::{One, Signed, Zero};
+
+    // Guard: base > 1, val > 0
+    let one = BigInt::one();
+    if base <= &one || val.is_zero() || val.is_negative() || base.is_negative() {
+        return None;
+    }
+
+    // Special case: val = 1 => log_b(1) = 0
+    if val.is_one() {
+        return Some(BigRational::zero());
+    }
+
+    // Special case: base == val => log_b(b) = 1
+    if base == val {
+        return Some(BigRational::one());
+    }
+
+    let fb = prime_exponent_map(base);
+    let fv = prime_exponent_map(val);
+
+    if fb.keys().collect::<std::collections::HashSet<_>>()
+        != fv.keys().collect::<std::collections::HashSet<_>>()
+    {
+        return None;
+    }
+
+    let mut ratio: Option<BigRational> = None;
+    for (prime, exp_base) in &fb {
+        let exp_val = fv.get(prime)?;
+        if *exp_base == 0 {
+            return None;
+        }
+        let r = BigRational::new(BigInt::from(*exp_val), BigInt::from(*exp_base));
+        match &ratio {
+            None => ratio = Some(r),
+            Some(prev) if *prev == r => {}
+            _ => return None,
+        }
+    }
+
+    ratio
+}
+
+/// Compute prime factorization map `prime -> exponent`.
+pub fn prime_exponent_map(n: &num_bigint::BigInt) -> HashMap<num_bigint::BigInt, u32> {
+    use num_bigint::BigInt;
+    use num_integer::Integer;
+    use num_traits::{One, Signed, Zero};
+
+    let mut result = HashMap::new();
+    let mut n = n.abs();
+    let one = BigInt::one();
+
+    if n <= one {
+        return result;
+    }
+
+    let mut count_2 = 0u32;
+    while n.is_even() {
+        count_2 += 1;
+        n /= 2;
+    }
+    if count_2 > 0 {
+        result.insert(BigInt::from(2), count_2);
+    }
+
+    let mut d = BigInt::from(3);
+    while &d * &d <= n {
+        let mut count = 0u32;
+        while (&n % &d).is_zero() {
+            count += 1;
+            n /= &d;
+        }
+        if count > 0 {
+            result.insert(d.clone(), count);
+        }
+        d += 2;
+    }
+
+    if n > one {
+        result.insert(n, 1);
+    }
+
+    result
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LogRewrite {
+    pub rewritten: ExprId,
+    pub desc: &'static str,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LogContractionRewrite {
+    pub rewritten: ExprId,
+    pub desc: &'static str,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LogChainProductRewrite {
+    pub rewritten: ExprId,
+    pub desc: &'static str,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExponentialLogInverseRewrite {
+    pub rewritten: ExprId,
+    pub positive_subject: ExprId,
+    pub desc: &'static str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LogPowerBaseNumericRewrite {
+    pub rewritten: ExprId,
+    pub base_core: ExprId,
+    pub base_expr: ExprId,
+    pub desc: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LogAutoExpandMode {
+    Strict,
+    Generic,
+    Assume,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LogAutoExpandPositivityPlan {
+    AllowNoAssumptions,
+    AllowWithAssumptions(Vec<ExprId>),
+    Blocked { factor: ExprId },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LogExpInversePolicyMode {
+    Strict,
+    Generic,
+    Assume,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LogExpInversePolicyPlan {
+    Block,
+    Rewrite { assume_positive_base: bool },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExponentialLogInversePolicyPlan {
+    Block,
+    Rewrite { require_positive_subject: bool },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LogExpInverseMatch {
+    Numeric {
+        rewritten: ExprId,
+        desc: &'static str,
+    },
+    Symbolic {
+        base: ExprId,
+        exponent: ExprId,
+    },
+}
+
+/// Plan positivity handling for auto-expanding logarithms.
+///
+/// The caller provides positivity predicates:
+/// - `is_proven_positive`: algebraic proof oracle
+/// - `is_implied_positive`: inherited-domain implication oracle
+///
+/// Behavior by mode:
+/// - Strict: every factor must be proven positive
+/// - Generic: every factor must be proven OR implied positive
+/// - Assume: expansion is allowed, returning factors that need assumptions
+pub fn plan_log_auto_expand_positivity(
+    ctx: &Context,
+    arg: ExprId,
+    mode: LogAutoExpandMode,
+    mut is_proven_positive: impl FnMut(ExprId) -> bool,
+    mut is_implied_positive: impl FnMut(ExprId) -> bool,
+) -> LogAutoExpandPositivityPlan {
+    let factors = collect_mul_factors(ctx, arg);
+
+    match mode {
+        LogAutoExpandMode::Strict => {
+            for factor in factors {
+                if !is_proven_positive(factor) {
+                    return LogAutoExpandPositivityPlan::Blocked { factor };
+                }
+            }
+            LogAutoExpandPositivityPlan::AllowNoAssumptions
+        }
+        LogAutoExpandMode::Generic => {
+            for factor in factors {
+                if is_proven_positive(factor) || is_implied_positive(factor) {
+                    continue;
+                }
+                return LogAutoExpandPositivityPlan::Blocked { factor };
+            }
+            LogAutoExpandPositivityPlan::AllowNoAssumptions
+        }
+        LogAutoExpandMode::Assume => {
+            let mut assumptions = Vec::new();
+            for factor in factors {
+                if !is_proven_positive(factor) {
+                    assumptions.push(factor);
+                }
+            }
+            if assumptions.is_empty() {
+                LogAutoExpandPositivityPlan::AllowNoAssumptions
+            } else {
+                LogAutoExpandPositivityPlan::AllowWithAssumptions(assumptions)
+            }
+        }
+    }
+}
+
+/// Plan domain policy for symbolic `log(b, b^x) -> x` rewrites.
+///
+/// Inputs are fully-decided booleans from the engine side so this function stays
+/// domain-agnostic and reusable.
+pub fn plan_log_exp_inverse_symbolic_policy(
+    mode: LogExpInversePolicyMode,
+    complex_enabled: bool,
+    is_e_base: bool,
+    base_positive_proven: bool,
+    base_is_one: bool,
+) -> LogExpInversePolicyPlan {
+    if complex_enabled {
+        return LogExpInversePolicyPlan::Block;
+    }
+
+    if is_e_base {
+        return LogExpInversePolicyPlan::Rewrite {
+            assume_positive_base: false,
+        };
+    }
+
+    if !base_positive_proven {
+        return match mode {
+            LogExpInversePolicyMode::Strict | LogExpInversePolicyMode::Generic => {
+                LogExpInversePolicyPlan::Block
+            }
+            LogExpInversePolicyMode::Assume => LogExpInversePolicyPlan::Rewrite {
+                assume_positive_base: true,
+            },
+        };
+    }
+
+    if base_is_one {
+        return LogExpInversePolicyPlan::Block;
+    }
+
+    LogExpInversePolicyPlan::Rewrite {
+        assume_positive_base: false,
+    }
+}
+
+/// Plan domain policy for `b^log(b, x)` family rewrites.
+pub fn plan_exponential_log_inverse_policy(
+    mode: LogExpInversePolicyMode,
+    positive_subject_proven: bool,
+) -> ExponentialLogInversePolicyPlan {
+    match mode {
+        LogExpInversePolicyMode::Strict if !positive_subject_proven => {
+            ExponentialLogInversePolicyPlan::Block
+        }
+        _ => ExponentialLogInversePolicyPlan::Rewrite {
+            require_positive_subject: !positive_subject_proven,
+        },
+    }
+}
+
+/// Build canonical log expression:
+/// - `base == sentinel_log10` => `log(arg)`
+/// - `base == e` => `ln(arg)`
+/// - otherwise => `log(base, arg)`
+pub fn make_log_expr(ctx: &mut Context, base: ExprId, arg: ExprId) -> ExprId {
+    // Sentinel reserved by engine layer for base-10 log.
+    let sentinel_log10 = ExprId::from_raw(u32::MAX - 1);
+    if base == sentinel_log10 {
+        return ctx.call_builtin(BuiltinFn::Log, vec![arg]);
+    }
+    if is_e_constant_expr(ctx, base) {
+        ctx.call_builtin(BuiltinFn::Ln, vec![arg])
+    } else {
+        ctx.call_builtin(BuiltinFn::Log, vec![base, arg])
+    }
+}
+
+/// Sentinel used by legacy engine log rules to represent the `ln` base.
+#[inline]
+pub fn ln_base_sentinel() -> ExprId {
+    ExprId::from_raw(u32::MAX)
+}
+
+/// Extract `(base, argument)` from a log expression.
+///
+/// Returns:
+/// - `(ln_base_sentinel(), arg)` for `ln(arg)`
+/// - `(base, arg)` for `log(base, arg)`
+pub fn try_extract_log_parts(ctx: &Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return None;
+    };
+
+    match ctx.builtin_of(*fn_id) {
+        Some(BuiltinFn::Ln) if args.len() == 1 => Some((ln_base_sentinel(), args[0])),
+        Some(BuiltinFn::Log) if args.len() == 2 => Some((args[0], args[1])),
+        _ => None,
+    }
+}
+
+/// Compare two expressions for logarithm-base matching semantics.
+///
+/// Special handling:
+/// - `ExprId::from_raw(u32::MAX)` is treated as ln-base sentinel and matches `e`.
+pub fn exprs_match_for_logs(ctx: &Context, e1: ExprId, e2: ExprId) -> bool {
+    let sentinel = ln_base_sentinel();
+
+    if e1 == sentinel {
+        return is_e_constant_expr(ctx, e2);
+    }
+    if e2 == sentinel {
+        return is_e_constant_expr(ctx, e1);
+    }
+
+    if e1 == e2 {
+        return true;
+    }
+
+    cas_ast::ordering::compare_expr(ctx, e1, e2) == Ordering::Equal
+}
+
+/// Compare log bases with ln-sentinel compatibility.
+pub fn bases_equal_for_logs(ctx: &Context, base_l: ExprId, base_r: ExprId) -> bool {
+    let sentinel = ln_base_sentinel();
+
+    if base_l == sentinel && base_r == sentinel {
+        return true;
+    }
+    if base_l == sentinel {
+        return is_e_constant_expr(ctx, base_r);
+    }
+    if base_r == sentinel {
+        return is_e_constant_expr(ctx, base_l);
+    }
+
+    if base_l == base_r {
+        return true;
+    }
+
+    cas_ast::ordering::compare_expr(ctx, base_l, base_r) == Ordering::Equal
+}
+
+/// Rewrite `ln(e*x)` or `ln(x*e)` to `1 + ln(x)`.
+pub fn try_rewrite_ln_e_product_expr(ctx: &mut Context, expr: ExprId) -> Option<LogRewrite> {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return None;
+    };
+    let fn_id = *fn_id;
+    let args = args.clone();
+    if ctx.builtin_of(fn_id) != Some(BuiltinFn::Ln) || args.len() != 1 {
+        return None;
+    }
+    let arg = args[0];
+
+    let Expr::Mul(l, r) = ctx.get(arg) else {
+        return None;
+    };
+    let (l, r) = (*l, *r);
+    let l_is_e = is_e_constant_expr(ctx, l);
+    let r_is_e = is_e_constant_expr(ctx, r);
+
+    let x = if l_is_e {
+        Some(r)
+    } else if r_is_e {
+        Some(l)
+    } else {
+        None
+    }?;
+
+    let one = ctx.num(1);
+    let ln_x = ctx.call_builtin(BuiltinFn::Ln, vec![x]);
+    let rewritten = ctx.add(Expr::Add(one, ln_x));
+    Some(LogRewrite {
+        rewritten,
+        desc: "ln(e*x) = 1 + ln(x)",
+    })
+}
+
+/// Rewrite:
+/// - `ln(x/e)` -> `ln(x) - 1`
+/// - `ln(e/x)` -> `1 - ln(x)`
+pub fn try_rewrite_ln_e_div_expr(ctx: &mut Context, expr: ExprId) -> Option<LogRewrite> {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return None;
+    };
+    let fn_id = *fn_id;
+    let args = args.clone();
+    if ctx.builtin_of(fn_id) != Some(BuiltinFn::Ln) || args.len() != 1 {
+        return None;
+    }
+    let arg = args[0];
+
+    let Expr::Div(num, den) = ctx.get(arg) else {
+        return None;
+    };
+    let (num, den) = (*num, *den);
+    let num_is_e = is_e_constant_expr(ctx, num);
+    let den_is_e = is_e_constant_expr(ctx, den);
+
+    if den_is_e && !num_is_e {
+        let ln_x = ctx.call_builtin(BuiltinFn::Ln, vec![num]);
+        let one = ctx.num(1);
+        let rewritten = ctx.add(Expr::Sub(ln_x, one));
+        return Some(LogRewrite {
+            rewritten,
+            desc: "ln(x/e) = ln(x) - 1",
+        });
+    }
+
+    if num_is_e && !den_is_e {
+        let one = ctx.num(1);
+        let ln_x = ctx.call_builtin(BuiltinFn::Ln, vec![den]);
+        let rewritten = ctx.add(Expr::Sub(one, ln_x));
+        return Some(LogRewrite {
+            rewritten,
+            desc: "ln(e/x) = 1 - ln(x)",
+        });
+    }
+
+    None
+}
+
+/// Contract pairwise logarithm additions/subtractions:
+/// - `ln(a) + ln(b) -> ln(a*b)`
+/// - `ln(a) - ln(b) -> ln(a/b)`
+/// - `log(b, x) + log(b, y) -> log(b, x*y)` for equal bases
+/// - `log(b, x) - log(b, y) -> log(b, x/y)` for equal bases
+pub fn try_rewrite_log_contraction_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<LogContractionRewrite> {
+    match ctx.get(expr) {
+        Expr::Add(lhs, rhs) => {
+            let (lhs, rhs) = (*lhs, *rhs);
+            let (base_l, arg_l) = try_extract_log_parts(ctx, lhs)?;
+            let (base_r, arg_r) = try_extract_log_parts(ctx, rhs)?;
+            if !bases_equal_for_logs(ctx, base_l, base_r) {
+                return None;
+            }
+
+            let product = ctx.add(Expr::Mul(arg_l, arg_r));
+            let rewritten = if base_l == ln_base_sentinel() {
+                ctx.call_builtin(BuiltinFn::Ln, vec![product])
+            } else {
+                make_log_expr(ctx, base_l, product)
+            };
+            Some(LogContractionRewrite {
+                rewritten,
+                desc: "ln(a) + ln(b) = ln(a*b)",
+            })
+        }
+        Expr::Sub(lhs, rhs) => {
+            let (lhs, rhs) = (*lhs, *rhs);
+            let (base_l, arg_l) = try_extract_log_parts(ctx, lhs)?;
+            let (base_r, arg_r) = try_extract_log_parts(ctx, rhs)?;
+            if !bases_equal_for_logs(ctx, base_l, base_r) {
+                return None;
+            }
+
+            let quotient = ctx.add(Expr::Div(arg_l, arg_r));
+            let rewritten = if base_l == ln_base_sentinel() {
+                ctx.call_builtin(BuiltinFn::Ln, vec![quotient])
+            } else {
+                make_log_expr(ctx, base_l, quotient)
+            };
+            Some(LogContractionRewrite {
+                rewritten,
+                desc: "ln(a) - ln(b) = ln(a/b)",
+            })
+        }
+        _ => None,
+    }
+}
+
+/// Contract chain products of logarithms:
+/// - `log(b, a) * log(a, c) -> log(b, c)`
+pub fn try_rewrite_log_chain_product_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<LogChainProductRewrite> {
+    if !matches!(ctx.get(expr), Expr::Mul(_, _)) {
+        return None;
+    }
+
+    let factors: Vec<ExprId> = MulView::from_expr(ctx, expr).factors.into_iter().collect();
+    let log_parts: Vec<Option<(ExprId, ExprId)>> = factors
+        .iter()
+        .map(|&factor| try_extract_log_parts(ctx, factor))
+        .collect();
+
+    for (i, log_i_opt) in log_parts.iter().enumerate() {
+        let Some((base_i, arg_i)) = log_i_opt else {
+            continue;
+        };
+
+        for (j, log_j_opt) in log_parts.iter().enumerate() {
+            if i == j {
+                continue;
+            }
+            let Some((base_j, arg_j)) = log_j_opt else {
+                continue;
+            };
+
+            if !exprs_match_for_logs(ctx, *arg_i, *base_j) {
+                continue;
+            }
+
+            let new_log = make_log_expr(ctx, *base_i, *arg_j);
+            let mut product = new_log;
+            let mut had_remaining = false;
+            for (idx, &factor) in factors.iter().enumerate() {
+                if idx == i || idx == j {
+                    continue;
+                }
+                had_remaining = true;
+                product = smart_mul(ctx, product, factor);
+            }
+
+            let rewritten = if had_remaining { product } else { new_log };
+            return Some(LogChainProductRewrite {
+                rewritten,
+                desc: "log(b, a) * log(a, c) = log(b, c)",
+            });
+        }
+    }
+
+    None
+}
+
+/// Rewrite exponential-log inverse compositions:
+/// - `b^log(b, x) -> x`
+/// - `b^(-log(b, x)) -> x^(-1)`
+/// - `b^(c*log(b, x)) -> x^c`
+///
+/// Returns the rewritten expression plus the subject that must be positive for
+/// domain-safe application (`x` above).
+pub fn try_rewrite_exponential_log_inverse_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ExponentialLogInverseRewrite> {
+    let (base, exp) = as_pow(ctx, expr)?;
+
+    let matches_base = |ctx: &Context, log_base: ExprId, target_base: ExprId| {
+        cas_ast::ordering::compare_expr(ctx, log_base, target_base) == Ordering::Equal
+    };
+
+    if let Some((log_base, log_arg)) = extract_log_base_argument(ctx, exp) {
+        if matches_base(ctx, log_base, base) {
+            return Some(ExponentialLogInverseRewrite {
+                rewritten: log_arg,
+                positive_subject: log_arg,
+                desc: "b^log(b, x) = x",
+            });
+        }
+    }
+
+    if let Expr::Neg(neg_inner) = ctx.get(exp) {
+        let neg_inner = *neg_inner;
+        if let Some((log_base, log_arg)) = extract_log_base_argument(ctx, neg_inner) {
+            if matches_base(ctx, log_base, base) {
+                let neg_one = ctx.num(-1);
+                let rewritten = ctx.add(Expr::Pow(log_arg, neg_one));
+                return Some(ExponentialLogInverseRewrite {
+                    rewritten,
+                    positive_subject: log_arg,
+                    desc: "b^(-log(b, x)) = 1/x",
+                });
+            }
+        }
+    }
+
+    let (lhs, rhs) = as_mul(ctx, exp)?;
+    let try_side = |ctx: &mut Context,
+                    target: ExprId,
+                    coeff: ExprId,
+                    target_base: ExprId|
+     -> Option<ExponentialLogInverseRewrite> {
+        let (log_base, log_arg) = extract_log_base_argument(ctx, target)?;
+        if cas_ast::ordering::compare_expr(ctx, log_base, target_base) != Ordering::Equal {
+            return None;
+        }
+        let rewritten = ctx.add(Expr::Pow(log_arg, coeff));
+        Some(ExponentialLogInverseRewrite {
+            rewritten,
+            positive_subject: log_arg,
+            desc: "b^(c*log(b, x)) = x^c",
+        })
+    };
+
+    try_side(ctx, lhs, rhs, base).or_else(|| try_side(ctx, rhs, lhs, base))
+}
+
+/// Match `log(b, b^x)` / `ln(e^x)` inverse compositions.
+///
+/// Returns:
+/// - `Numeric` when exponent is numeric (`log(b, b^n) -> n` always safe)
+/// - `Symbolic` when exponent is symbolic and engine policy must decide.
+pub fn try_match_log_exp_inverse_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<LogExpInverseMatch> {
+    let (base, arg) = extract_log_base_argument(ctx, expr)?;
+    let (pow_base, pow_exp) = as_pow(ctx, arg)?;
+
+    if cas_ast::ordering::compare_expr(ctx, pow_base, base) != Ordering::Equal {
+        return None;
+    }
+
+    if matches!(ctx.get(pow_exp), Expr::Number(_)) {
+        Some(LogExpInverseMatch::Numeric {
+            rewritten: pow_exp,
+            desc: "log(b, b^n) = n",
+        })
+    } else {
+        Some(LogExpInverseMatch::Symbolic {
+            base,
+            exponent: pow_exp,
+        })
+    }
+}
+
+/// Rewrite numeric `log(a^m, a^n) -> n/m`.
+///
+/// This only performs structural/numeric normalization and ratio computation.
+/// Domain gating (`a>0`, `a!=1`, real/complex mode) remains engine policy.
+pub fn try_rewrite_log_power_base_numeric_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<LogPowerBaseNumericRewrite> {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return None;
+    };
+    let fn_id = *fn_id;
+    let args = args.clone();
+
+    if ctx.builtin_of(fn_id) != Some(BuiltinFn::Log) || args.len() != 2 {
+        return None;
+    }
+    let base = args[0];
+    let arg = args[1];
+
+    let (base_core, base_exp) = normalize_to_power(ctx, base);
+    let (arg_core, arg_exp) = normalize_to_power(ctx, arg);
+
+    if cas_ast::ordering::compare_expr(ctx, base_core, arg_core) != Ordering::Equal {
+        return None;
+    }
+
+    let base_exp_is_one = matches!(ctx.get(base_exp), Expr::Number(n) if n.is_one());
+    if base_exp_is_one {
+        return None;
+    }
+
+    let Expr::Number(m) = ctx.get(base_exp) else {
+        return None;
+    };
+    let Expr::Number(n) = ctx.get(arg_exp) else {
+        return None;
+    };
+
+    let m = m.clone();
+    let n = n.clone();
+    if m.is_zero() {
+        return None;
+    }
+
+    let result_ratio = n.clone() / m.clone();
+    let rewritten = ctx.add(Expr::Number(result_ratio.clone()));
+    let m_disp = m.clone();
+    let n_disp = n.clone();
+    let desc = format!(
+        "log(a^{}, a^{}) = {}/{} = {}",
+        m_disp, n_disp, n_disp, m_disp, result_ratio
+    );
+
+    Some(LogPowerBaseNumericRewrite {
+        rewritten,
+        base_core,
+        base_expr: base,
+        desc,
+    })
+}
+
+/// Rewrite `x^(c/log(b, x))` patterns:
+/// - `x^(c / log(b, x)) -> b^c`
+/// - `x^(c / ln(x)) -> e^c`
+/// - `x^(c * log(b, x)^-1) -> b^c`
+pub fn try_rewrite_log_inverse_power_expr(ctx: &mut Context, expr: ExprId) -> Option<LogRewrite> {
+    fn is_minus_one_power(ctx: &Context, expr: ExprId) -> bool {
+        matches!(
+            ctx.get(expr),
+            Expr::Number(n)
+                if n.is_integer()
+                    && *n == num_rational::BigRational::from_integer((-1).into())
+        )
+    }
+
+    let (base, exp) = as_pow(ctx, expr)?;
+
+    let check_log_denom = |ctx: &Context, denom: ExprId| -> Option<Option<ExprId>> {
+        let (log_base_opt, log_arg) = extract_log_base_argument_view(ctx, denom)?;
+        if cas_ast::ordering::compare_expr(ctx, log_arg, base) == Ordering::Equal {
+            Some(log_base_opt)
+        } else {
+            None
+        }
+    };
+
+    let mut target_base_opt: Option<Option<ExprId>> = None;
+    let mut coeff: Option<ExprId> = None;
+
+    if let Some((num, den)) = as_div(ctx, exp) {
+        if let Some(base_opt) = check_log_denom(ctx, den) {
+            target_base_opt = Some(base_opt);
+            coeff = Some(num);
+        }
+    } else if let Some((lhs, rhs)) = as_mul(ctx, exp) {
+        if let Some((den, den_exp)) = as_pow(ctx, rhs) {
+            if is_minus_one_power(ctx, den_exp) {
+                if let Some(base_opt) = check_log_denom(ctx, den) {
+                    target_base_opt = Some(base_opt);
+                    coeff = Some(lhs);
+                }
+            }
+        }
+
+        if target_base_opt.is_none() {
+            if let Some((den, den_exp)) = as_pow(ctx, lhs) {
+                if is_minus_one_power(ctx, den_exp) {
+                    if let Some(base_opt) = check_log_denom(ctx, den) {
+                        target_base_opt = Some(base_opt);
+                        coeff = Some(rhs);
+                    }
+                }
+            }
+        }
+    } else if let Some((den, den_exp)) = as_pow(ctx, exp) {
+        if is_minus_one_power(ctx, den_exp) {
+            if let Some(base_opt) = check_log_denom(ctx, den) {
+                target_base_opt = Some(base_opt);
+                coeff = Some(ctx.num(1));
+            }
+        }
+    }
+
+    let (base_opt, c) = (target_base_opt?, coeff?);
+    let target_base = base_opt.unwrap_or_else(|| ctx.add(Expr::Constant(Constant::E)));
+    let rewritten = ctx.add(Expr::Pow(target_base, c));
+    Some(LogRewrite {
+        rewritten,
+        desc: "x^(c/log(b, x)) = b^c",
+    })
+}
+
+/// Expand logarithm arguments for auto-expand workflows:
+/// - `log(b, a*b*c) -> log(b,a) + log(b,b) + log(b,c)`
+/// - `log(b, a/b) -> log(b,a) - log(b,b)`
+/// - `log(b, u^n) -> n*log(b,u)`
+pub fn try_expand_log_auto_rule_expr(
+    ctx: &mut Context,
+    original: ExprId,
+    arg: ExprId,
+) -> Option<LogRewrite> {
+    let (base_opt, _) = extract_log_base_argument_relaxed_view(ctx, original)?;
+    let base = match base_opt {
+        Some(base) => base,
+        None => match ctx.get(original) {
+            Expr::Function(fn_id, _) if ctx.is_builtin(*fn_id, BuiltinFn::Ln) => {
+                ctx.add(Expr::Constant(Constant::E))
+            }
+            Expr::Function(fn_id, _) if ctx.is_builtin(*fn_id, BuiltinFn::Log) => {
+                // `log(x)` base-10 sentinel used by engine/parser bridge.
+                ExprId::from_raw(u32::MAX - 1)
+            }
+            _ => return None,
+        },
+    };
+
+    match ctx.get(arg) {
+        Expr::Mul(_, _) => {
+            let factors = collect_mul_factors(ctx, arg);
+            if factors.len() <= 1 {
+                return None;
+            }
+
+            let mut sum = make_log_expr(ctx, base, factors[0]);
+            for &factor in &factors[1..] {
+                let log_factor = make_log_expr(ctx, base, factor);
+                sum = ctx.add(Expr::Add(sum, log_factor));
+            }
+
+            Some(LogRewrite {
+                rewritten: sum,
+                desc: "Auto-expand log product",
+            })
+        }
+        Expr::Div(num, den) => {
+            let (num, den) = (*num, *den);
+            let log_num = make_log_expr(ctx, base, num);
+            let log_den = make_log_expr(ctx, base, den);
+            let rewritten = ctx.add(Expr::Sub(log_num, log_den));
+            Some(LogRewrite {
+                rewritten,
+                desc: "Auto-expand log quotient",
+            })
+        }
+        Expr::Pow(pow_base, exp) => {
+            let (pow_base, exp) = (*pow_base, *exp);
+            let log_base = make_log_expr(ctx, base, pow_base);
+            let rewritten = smart_mul(ctx, exp, log_base);
+            Some(LogRewrite {
+                rewritten,
+                desc: "Auto-expand log power",
+            })
+        }
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -128,6 +1004,21 @@ mod tests {
         let out = simplify_exp_log(&mut ctx, base, exp);
         let x = parse("x", &mut ctx).expect("x");
         assert_eq!(out, x);
+    }
+
+    #[test]
+    fn rewrites_split_log_exponents_when_add_contains_log() {
+        let mut ctx = Context::new();
+        let expr = parse("e^(log(e,x)+k)", &mut ctx).expect("expr");
+        let rw = try_rewrite_split_log_exponents_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(rw.desc, "e^(a+b) -> e^a * e^b (log cancellation)");
+    }
+
+    #[test]
+    fn does_not_rewrite_split_log_exponents_without_log_term() {
+        let mut ctx = Context::new();
+        let expr = parse("e^(a+b)", &mut ctx).expect("expr");
+        assert!(try_rewrite_split_log_exponents_expr(&mut ctx, expr).is_none());
     }
 
     #[test]
@@ -158,5 +1049,417 @@ mod tests {
         assert_eq!(estimate_log_terms(&ctx, mul), Some((3, 3, None)));
         assert_eq!(estimate_log_terms(&ctx, div), Some((3, 3, None)));
         assert_eq!(estimate_log_terms(&ctx, pow), Some((1, 1, Some(4))));
+    }
+
+    #[test]
+    fn eval_log_rational_handles_same_prime_support() {
+        let base = num_bigint::BigInt::from(16);
+        let val = num_bigint::BigInt::from(8);
+        let ratio = eval_log_rational(&base, &val).expect("ratio");
+        assert_eq!(ratio, num_rational::BigRational::new(3.into(), 4.into()));
+    }
+
+    #[test]
+    fn eval_log_rational_rejects_incompatible_support() {
+        let base = num_bigint::BigInt::from(6);
+        let val = num_bigint::BigInt::from(8);
+        assert!(eval_log_rational(&base, &val).is_none());
+    }
+
+    #[test]
+    fn make_log_expr_uses_ln_for_e_base() {
+        let mut ctx = Context::new();
+        let e = ctx.add(Expr::Constant(cas_ast::Constant::E));
+        let x = ctx.var("x");
+        let out = make_log_expr(&mut ctx, e, x);
+        let rendered = format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: &ctx,
+                id: out
+            }
+        );
+        assert_eq!(rendered, "ln(x)");
+    }
+
+    #[test]
+    fn rewrites_ln_e_product_and_division_patterns() {
+        let mut ctx = Context::new();
+
+        let prod = parse("ln(e*x)", &mut ctx).expect("prod");
+        let div1 = parse("ln(x/e)", &mut ctx).expect("div1");
+        let div2 = parse("ln(e/x)", &mut ctx).expect("div2");
+
+        assert_eq!(
+            try_rewrite_ln_e_product_expr(&mut ctx, prod)
+                .expect("prod rewrite")
+                .desc,
+            "ln(e*x) = 1 + ln(x)"
+        );
+        assert_eq!(
+            try_rewrite_ln_e_div_expr(&mut ctx, div1)
+                .expect("div1 rewrite")
+                .desc,
+            "ln(x/e) = ln(x) - 1"
+        );
+        assert_eq!(
+            try_rewrite_ln_e_div_expr(&mut ctx, div2)
+                .expect("div2 rewrite")
+                .desc,
+            "ln(e/x) = 1 - ln(x)"
+        );
+    }
+
+    #[test]
+    fn log_base_and_expr_matching_respects_ln_sentinel() {
+        let mut ctx = Context::new();
+        let e = ctx.add(Expr::Constant(cas_ast::Constant::E));
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let sentinel = ln_base_sentinel();
+
+        assert!(exprs_match_for_logs(&ctx, sentinel, e));
+        assert!(bases_equal_for_logs(&ctx, sentinel, e));
+        assert!(!bases_equal_for_logs(&ctx, x, y));
+    }
+
+    #[test]
+    fn extract_log_parts_handles_ln_and_log() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let b = ctx.var("b");
+        let ln_x = ctx.call_builtin(BuiltinFn::Ln, vec![x]);
+        let log_bx = ctx.call_builtin(BuiltinFn::Log, vec![b, x]);
+
+        let (ln_base, ln_arg) = try_extract_log_parts(&ctx, ln_x).expect("ln parts");
+        assert_eq!(ln_base, ln_base_sentinel());
+        assert_eq!(ln_arg, x);
+
+        let (log_base, log_arg) = try_extract_log_parts(&ctx, log_bx).expect("log parts");
+        assert_eq!(log_base, b);
+        assert_eq!(log_arg, x);
+    }
+
+    #[test]
+    fn contracts_log_add_and_sub_pairwise() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let b = ctx.var("b");
+        let log_bx = ctx.call_builtin(BuiltinFn::Log, vec![b, x]);
+        let log_by = ctx.call_builtin(BuiltinFn::Log, vec![b, y]);
+
+        let add_expr = ctx.add(Expr::Add(log_bx, log_by));
+        let sub_expr = ctx.add(Expr::Sub(log_bx, log_by));
+
+        let add_rw = try_rewrite_log_contraction_expr(&mut ctx, add_expr).expect("add rw");
+        let sub_rw = try_rewrite_log_contraction_expr(&mut ctx, sub_expr).expect("sub rw");
+
+        assert_eq!(add_rw.desc, "ln(a) + ln(b) = ln(a*b)");
+        assert_eq!(sub_rw.desc, "ln(a) - ln(b) = ln(a/b)");
+    }
+
+    #[test]
+    fn contracts_log_chain_product_pair() {
+        let mut ctx = Context::new();
+        let expr = parse("log(b,a)*log(a,c)", &mut ctx).expect("expr");
+        let expected = parse("log(b,c)", &mut ctx).expect("expected");
+
+        let rw = try_rewrite_log_chain_product_expr(&mut ctx, expr).expect("chain rw");
+        assert_eq!(rw.desc, "log(b, a) * log(a, c) = log(b, c)");
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, rw.rewritten, expected),
+            Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn contracts_log_chain_product_with_remaining_factor() {
+        let mut ctx = Context::new();
+        let expr = parse("k*log(b,a)*log(a,c)", &mut ctx).expect("expr");
+        let k = parse("k", &mut ctx).expect("k");
+        let expected_log = parse("log(b,c)", &mut ctx).expect("expected_log");
+
+        let rw = try_rewrite_log_chain_product_expr(&mut ctx, expr).expect("chain rw");
+        let factors = MulView::from_expr(&ctx, rw.rewritten).factors;
+        assert_eq!(factors.len(), 2);
+        assert!(factors.contains(&k));
+        assert!(factors.contains(&expected_log));
+    }
+
+    #[test]
+    fn does_not_contract_non_telescope_log_chain() {
+        let mut ctx = Context::new();
+        let expr = parse("log(b,a)*log(d,c)", &mut ctx).expect("expr");
+        assert!(try_rewrite_log_chain_product_expr(&mut ctx, expr).is_none());
+    }
+
+    #[test]
+    fn rewrites_log_inverse_power_div_form() {
+        let mut ctx = Context::new();
+        let expr = parse("x^(2/log(3,x))", &mut ctx).expect("expr");
+        let expected = parse("3^2", &mut ctx).expect("expected");
+
+        let rw = try_rewrite_log_inverse_power_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, rw.rewritten, expected),
+            Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn rewrites_log_inverse_power_ln_form() {
+        let mut ctx = Context::new();
+        let expr = parse("x^(1/ln(x))", &mut ctx).expect("expr");
+        let rw = try_rewrite_log_inverse_power_expr(&mut ctx, expr).expect("rewrite");
+        match ctx.get(rw.rewritten) {
+            Expr::Constant(Constant::E) => {}
+            Expr::Pow(base, exp) => {
+                assert!(is_e_constant_expr(&ctx, *base));
+                assert!(matches!(ctx.get(*exp), Expr::Number(n) if n.is_one()));
+            }
+            other => panic!("expected e or e^1, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn does_not_rewrite_log_inverse_power_when_log_arg_differs() {
+        let mut ctx = Context::new();
+        let expr = parse("x^(2/log(3,y))", &mut ctx).expect("expr");
+        assert!(try_rewrite_log_inverse_power_expr(&mut ctx, expr).is_none());
+    }
+
+    #[test]
+    fn rewrites_exponential_log_inverse_direct_and_mul_forms() {
+        let mut ctx = Context::new();
+        let direct = parse("b^log(b,x)", &mut ctx).expect("direct");
+        let mul = parse("b^(c*log(b,x))", &mut ctx).expect("mul");
+        let x = parse("x", &mut ctx).expect("x");
+        let x_pow_c = parse("x^c", &mut ctx).expect("x_pow_c");
+
+        let rw_direct = try_rewrite_exponential_log_inverse_expr(&mut ctx, direct).expect("direct");
+        let rw_mul = try_rewrite_exponential_log_inverse_expr(&mut ctx, mul).expect("mul");
+
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, rw_direct.rewritten, x),
+            Ordering::Equal
+        );
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, rw_mul.rewritten, x_pow_c),
+            Ordering::Equal
+        );
+        assert_eq!(rw_direct.positive_subject, x);
+    }
+
+    #[test]
+    fn does_not_rewrite_exponential_log_inverse_when_base_mismatch() {
+        let mut ctx = Context::new();
+        let expr = parse("b^log(a,x)", &mut ctx).expect("expr");
+        assert!(try_rewrite_exponential_log_inverse_expr(&mut ctx, expr).is_none());
+    }
+
+    #[test]
+    fn matches_log_exp_inverse_numeric_and_symbolic() {
+        let mut ctx = Context::new();
+        let numeric = parse("log(b, b^2)", &mut ctx).expect("numeric");
+        let symbolic = parse("log(b, b^x)", &mut ctx).expect("symbolic");
+
+        let numeric_match = try_match_log_exp_inverse_expr(&mut ctx, numeric).expect("numeric");
+        let symbolic_match = try_match_log_exp_inverse_expr(&mut ctx, symbolic).expect("symbolic");
+
+        assert!(matches!(numeric_match, LogExpInverseMatch::Numeric { .. }));
+        assert!(matches!(
+            symbolic_match,
+            LogExpInverseMatch::Symbolic { .. }
+        ));
+    }
+
+    #[test]
+    fn rewrites_log_power_base_numeric_ratio() {
+        let mut ctx = Context::new();
+        let expr = parse("log(x^2, x^6)", &mut ctx).expect("expr");
+        let expected = parse("3", &mut ctx).expect("expected");
+
+        let rw = try_rewrite_log_power_base_numeric_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, rw.rewritten, expected),
+            Ordering::Equal
+        );
+        assert_eq!(rw.desc, "log(a^2, a^6) = 6/2 = 3");
+    }
+
+    #[test]
+    fn does_not_rewrite_log_power_base_when_base_exp_is_one() {
+        let mut ctx = Context::new();
+        let expr = parse("log(x, x^2)", &mut ctx).expect("expr");
+        assert!(try_rewrite_log_power_base_numeric_expr(&mut ctx, expr).is_none());
+    }
+
+    #[test]
+    fn auto_expand_positivity_plan_strict_blocks_unproven() {
+        let mut ctx = Context::new();
+        let expr = parse("x*y", &mut ctx).expect("expr");
+        let x = parse("x", &mut ctx).expect("x");
+        let y = parse("y", &mut ctx).expect("y");
+
+        let plan = plan_log_auto_expand_positivity(
+            &ctx,
+            expr,
+            LogAutoExpandMode::Strict,
+            |factor| factor == x,
+            |_| false,
+        );
+
+        assert_eq!(plan, LogAutoExpandPositivityPlan::Blocked { factor: y });
+    }
+
+    #[test]
+    fn auto_expand_positivity_plan_generic_accepts_implied() {
+        let mut ctx = Context::new();
+        let expr = parse("x*y", &mut ctx).expect("expr");
+
+        let plan = plan_log_auto_expand_positivity(
+            &ctx,
+            expr,
+            LogAutoExpandMode::Generic,
+            |_| false,
+            |_| true,
+        );
+
+        assert_eq!(plan, LogAutoExpandPositivityPlan::AllowNoAssumptions);
+    }
+
+    #[test]
+    fn auto_expand_positivity_plan_assume_collects_unproven() {
+        let mut ctx = Context::new();
+        let expr = parse("x*y", &mut ctx).expect("expr");
+        let x = parse("x", &mut ctx).expect("x");
+        let y = parse("y", &mut ctx).expect("y");
+
+        let plan = plan_log_auto_expand_positivity(
+            &ctx,
+            expr,
+            LogAutoExpandMode::Assume,
+            |factor| factor == x,
+            |_| false,
+        );
+
+        assert_eq!(
+            plan,
+            LogAutoExpandPositivityPlan::AllowWithAssumptions(vec![y])
+        );
+    }
+
+    #[test]
+    fn log_exp_inverse_policy_blocks_in_complex() {
+        let plan = plan_log_exp_inverse_symbolic_policy(
+            LogExpInversePolicyMode::Strict,
+            true,
+            false,
+            true,
+            false,
+        );
+        assert_eq!(plan, LogExpInversePolicyPlan::Block);
+    }
+
+    #[test]
+    fn log_exp_inverse_policy_requires_assume_for_unproven_non_e_base() {
+        let strict = plan_log_exp_inverse_symbolic_policy(
+            LogExpInversePolicyMode::Strict,
+            false,
+            false,
+            false,
+            false,
+        );
+        let assume = plan_log_exp_inverse_symbolic_policy(
+            LogExpInversePolicyMode::Assume,
+            false,
+            false,
+            false,
+            false,
+        );
+        assert_eq!(strict, LogExpInversePolicyPlan::Block);
+        assert_eq!(
+            assume,
+            LogExpInversePolicyPlan::Rewrite {
+                assume_positive_base: true
+            }
+        );
+    }
+
+    #[test]
+    fn log_exp_inverse_policy_blocks_base_one_and_allows_e_base() {
+        let base_one = plan_log_exp_inverse_symbolic_policy(
+            LogExpInversePolicyMode::Generic,
+            false,
+            false,
+            true,
+            true,
+        );
+        let e_base = plan_log_exp_inverse_symbolic_policy(
+            LogExpInversePolicyMode::Strict,
+            false,
+            true,
+            false,
+            false,
+        );
+        assert_eq!(base_one, LogExpInversePolicyPlan::Block);
+        assert_eq!(
+            e_base,
+            LogExpInversePolicyPlan::Rewrite {
+                assume_positive_base: false
+            }
+        );
+    }
+
+    #[test]
+    fn exponential_log_inverse_policy_strict_vs_generic() {
+        let strict_unproven =
+            plan_exponential_log_inverse_policy(LogExpInversePolicyMode::Strict, false);
+        let generic_unproven =
+            plan_exponential_log_inverse_policy(LogExpInversePolicyMode::Generic, false);
+        let strict_proven =
+            plan_exponential_log_inverse_policy(LogExpInversePolicyMode::Strict, true);
+
+        assert_eq!(strict_unproven, ExponentialLogInversePolicyPlan::Block);
+        assert_eq!(
+            generic_unproven,
+            ExponentialLogInversePolicyPlan::Rewrite {
+                require_positive_subject: true
+            }
+        );
+        assert_eq!(
+            strict_proven,
+            ExponentialLogInversePolicyPlan::Rewrite {
+                require_positive_subject: false
+            }
+        );
+    }
+
+    #[test]
+    fn auto_expand_log_product_rewrite() {
+        let mut ctx = Context::new();
+        let expr = parse("log(b, x*y)", &mut ctx).expect("expr");
+        let (_, arg) = extract_log_base_argument_view(&ctx, expr).expect("parts");
+        let rw = try_expand_log_auto_rule_expr(&mut ctx, expr, arg).expect("rewrite");
+        assert_eq!(rw.desc, "Auto-expand log product");
+    }
+
+    #[test]
+    fn auto_expand_log_quotient_rewrite() {
+        let mut ctx = Context::new();
+        let expr = parse("ln(x/y)", &mut ctx).expect("expr");
+        let (_, arg) = extract_log_base_argument_view(&ctx, expr).expect("parts");
+        let rw = try_expand_log_auto_rule_expr(&mut ctx, expr, arg).expect("rewrite");
+        assert_eq!(rw.desc, "Auto-expand log quotient");
+    }
+
+    #[test]
+    fn auto_expand_log_power_rewrite() {
+        let mut ctx = Context::new();
+        let expr = parse("log(b, x^n)", &mut ctx).expect("expr");
+        let (_, arg) = extract_log_base_argument_view(&ctx, expr).expect("parts");
+        let rw = try_expand_log_auto_rule_expr(&mut ctx, expr, arg).expect("rewrite");
+        assert_eq!(rw.desc, "Auto-expand log power");
     }
 }

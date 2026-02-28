@@ -1,8 +1,8 @@
+use crate::{AssumptionRecord, BlockedHint, DomainWarning, ImplicitCondition};
 use cas_api_models::{
     AssumptionDto, AssumptionRecord as ApiAssumptionRecord, BlockedHintDto, ConditionDto,
     EngineJsonWarning,
 };
-use cas_engine::{AssumptionRecord, BlockedHint, DomainWarning, ImplicitCondition};
 use cas_formatter::DisplayExpr;
 
 pub(super) fn map_domain_warnings_to_engine_warnings(

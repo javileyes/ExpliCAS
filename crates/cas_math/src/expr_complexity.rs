@@ -1,6 +1,7 @@
 //! Expression complexity helpers for rewrite guards.
 
-use cas_ast::{Context, ExprId};
+use cas_ast::{Context, Expr, ExprId};
+use std::collections::HashSet;
 
 /// Count nodes by tree expansion (no DAG deduplication).
 #[inline]
@@ -31,6 +32,40 @@ pub fn rewrite_worsens_too_much(
     growth_abs > max_growth_abs && growth_ratio > max_growth_ratio
 }
 
+/// Return `true` when deduplicated DAG node count is within `max_nodes`.
+///
+/// Unlike `node_count_tree`, this counts unique `ExprId`s and short-circuits
+/// as soon as the limit is exceeded.
+pub fn dedup_node_count_within(ctx: &Context, root: ExprId, max_nodes: usize) -> bool {
+    let mut seen: HashSet<ExprId> = HashSet::new();
+    let mut stack = vec![root];
+
+    while let Some(id) = stack.pop() {
+        if !seen.insert(id) {
+            continue;
+        }
+        if seen.len() > max_nodes {
+            return false;
+        }
+        match ctx.get(id) {
+            Expr::Add(l, r)
+            | Expr::Sub(l, r)
+            | Expr::Mul(l, r)
+            | Expr::Div(l, r)
+            | Expr::Pow(l, r) => {
+                stack.push(*l);
+                stack.push(*r);
+            }
+            Expr::Neg(e) | Expr::Hold(e) => stack.push(*e),
+            Expr::Function(_, args) => stack.extend(args),
+            Expr::Matrix { data, .. } => stack.extend(data),
+            Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
+        }
+    }
+
+    true
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -52,5 +87,16 @@ mod tests {
         assert!(rewrite_worsens_too_much(&ctx, before, after, 3, 1.5));
         assert!(!rewrite_worsens_too_much(&ctx, before, after, 30, 1.5));
         assert!(!rewrite_worsens_too_much(&ctx, before, after, 3, 100.0));
+    }
+
+    #[test]
+    fn dedup_node_count_within_short_circuits() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let x_plus_x = ctx.add(Expr::Add(x, x));
+        let expr = ctx.add(Expr::Mul(x_plus_x, x_plus_x)); // DAG reuse of x_plus_x
+
+        assert!(dedup_node_count_within(&ctx, expr, 3));
+        assert!(!dedup_node_count_within(&ctx, expr, 2));
     }
 }

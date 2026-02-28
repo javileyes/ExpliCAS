@@ -18,141 +18,14 @@ pub use properties::{
 };
 
 use crate::define_rule;
-use crate::ordering::compare_expr;
 use crate::rule::Rewrite;
 use cas_ast::{Context, Expr, ExprId};
 use cas_math::expr_extract::extract_log_base_argument;
-use cas_math::expr_predicates::is_e_constant_expr;
 use cas_math::expr_rewrite::smart_mul;
+use cas_math::logarithm_inverse_support::{
+    eval_log_rational, make_log_expr, try_rewrite_ln_e_div_expr, try_rewrite_ln_e_product_expr,
+};
 use num_traits::{One, Zero};
-use std::cmp::Ordering;
-
-/// Helper: create log(base, arg) or ln(arg) depending on base.
-/// If base is Constant::E, returns ln(arg) to preserve natural log notation.
-/// If base is the sentinel for log10 (u32::MAX - 1), returns log(arg) with 1 arg.
-pub(super) fn make_log(ctx: &mut Context, base: ExprId, arg: ExprId) -> ExprId {
-    // Check for log10 sentinel first (before accessing ctx.get which would panic)
-    let sentinel_log10 = ExprId::from_raw(u32::MAX - 1);
-    if base == sentinel_log10 {
-        return ctx.call_builtin(cas_ast::BuiltinFn::Log, vec![arg]);
-    }
-    if is_e_constant_expr(ctx, base) {
-        ctx.call_builtin(cas_ast::BuiltinFn::Ln, vec![arg])
-    } else {
-        ctx.call_builtin(cas_ast::BuiltinFn::Log, vec![base, arg])
-    }
-}
-
-/// Evaluate log_base(val) as a rational number using prime factorization.
-///
-/// Returns Some(ratio) if both base and val are powers of a common prime base:
-/// - log(2, 8) = 3     because 2 = 2^1, 8 = 2^3 → ratio = 3/1
-/// - log(8, 2) = 1/3   because 8 = 2^3, 2 = 2^1 → ratio = 1/3
-/// - log(16, 8) = 3/4  because 16 = 2^4, 8 = 2^3 → ratio = 3/4
-///
-/// Returns None if the log cannot be expressed as a rational number.
-fn eval_log_rational(
-    base: &num_bigint::BigInt,
-    val: &num_bigint::BigInt,
-) -> Option<num_rational::BigRational> {
-    use num_bigint::BigInt;
-    use num_rational::BigRational;
-    use num_traits::{One, Signed, Zero};
-
-    // Guard: base > 1, val > 0
-    let one = BigInt::one();
-    if base <= &one || val.is_zero() || val.is_negative() || base.is_negative() {
-        return None;
-    }
-
-    // Special case: val = 1 → log_b(1) = 0
-    if val.is_one() {
-        return Some(BigRational::zero());
-    }
-
-    // Special case: base == val → log_b(b) = 1
-    if base == val {
-        return Some(BigRational::one());
-    }
-
-    // Factorize both into prime -> exponent maps
-    let fb = prime_exponent_map(base);
-    let fv = prime_exponent_map(val);
-
-    // Both must have the same set of primes
-    if fb.keys().collect::<std::collections::HashSet<_>>()
-        != fv.keys().collect::<std::collections::HashSet<_>>()
-    {
-        return None;
-    }
-
-    // The ratio exp_val / exp_base must be identical for all primes
-    // log_base(val) = log(val) / log(base) = (sum of exp_val[p] * log(p)) / (sum of exp_base[p] * log(p))
-    // This only works if exp_val[p] / exp_base[p] is constant for all p
-    let mut ratio: Option<BigRational> = None;
-    for (prime, exp_base) in &fb {
-        let exp_val = fv.get(prime)?;
-        if exp_base.is_zero() {
-            return None; // Shouldn't happen, but guard
-        }
-        let r = BigRational::new(BigInt::from(*exp_val), BigInt::from(*exp_base));
-        match &ratio {
-            None => ratio = Some(r),
-            Some(prev) if *prev == r => {}
-            _ => return None, // Different ratios for different primes
-        }
-    }
-
-    ratio
-}
-
-/// Compute prime factorization as a map of prime -> exponent
-fn prime_exponent_map(n: &num_bigint::BigInt) -> HashMap<num_bigint::BigInt, u32> {
-    use num_bigint::BigInt;
-    use num_integer::Integer;
-    use num_traits::{One, Signed, Zero};
-
-    let mut result = HashMap::new();
-    let mut n = n.abs();
-    let one = BigInt::one();
-
-    if n <= one {
-        return result;
-    }
-
-    // Factor out 2s
-    let mut count_2 = 0u32;
-    while n.is_even() {
-        count_2 += 1;
-        n /= 2;
-    }
-    if count_2 > 0 {
-        result.insert(BigInt::from(2), count_2);
-    }
-
-    // Factor out odd primes
-    let mut d = BigInt::from(3);
-    while &d * &d <= n {
-        let mut count = 0u32;
-        while (&n % &d).is_zero() {
-            count += 1;
-            n /= &d;
-        }
-        if count > 0 {
-            result.insert(d.clone(), count);
-        }
-        d += 2;
-    }
-
-    // If n > 1 at this point, it's a prime
-    if n > one {
-        result.insert(n, 1);
-    }
-
-    result
-}
-
-use std::collections::HashMap;
 
 define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
     let (base, arg) = extract_log_base_argument(ctx, expr)?;
@@ -255,7 +128,7 @@ define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
             } else {
                 // Odd or non-integer exponent: requires x > 0
                 // Only allow in Generic/Assume modes, block in Strict
-                let log_inner = make_log(ctx, base, p_base);
+                let log_inner = make_log_expr(ctx, base, p_base);
                 let new_expr = smart_mul(ctx, p_exp, log_inner);
                 return Some(
                     Rewrite::new(new_expr)
@@ -285,38 +158,8 @@ define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
 // → 2*(1 + ln(u)) - 2 - 2*ln(u) → 2 + 2*ln(u) - 2 - 2*ln(u) → 0
 // =============================================================================
 define_rule!(LnEProductRule, "Factor e from ln Product", |ctx, expr| {
-    // Match ln(arg)
-    if let Expr::Function(fn_id, args) = ctx.get(expr) {
-        let (fn_id, args) = (*fn_id, args.clone());
-        if ctx.builtin_of(fn_id) != Some(cas_ast::BuiltinFn::Ln) || args.len() != 1 {
-            return None;
-        }
-        let arg = args[0];
-
-        // Match Mul(e, x) or Mul(x, e) in the argument
-        if let Expr::Mul(l, r) = ctx.get(arg) {
-            let (l, r) = (*l, *r);
-            let l_is_e = is_e_constant_expr(ctx, l);
-            let r_is_e = is_e_constant_expr(ctx, r);
-
-            // ln(e*x) → 1 + ln(x) or ln(x*e) → 1 + ln(x)
-            let other = if l_is_e {
-                Some(r)
-            } else if r_is_e {
-                Some(l)
-            } else {
-                None
-            };
-
-            if let Some(x) = other {
-                let one = ctx.num(1);
-                let ln_x = ctx.call_builtin(cas_ast::BuiltinFn::Ln, vec![x]);
-                let result = ctx.add(Expr::Add(one, ln_x));
-                return Some(Rewrite::new(result).desc("ln(e*x) = 1 + ln(x)"));
-            }
-        }
-    }
-    None
+    let rewrite = try_rewrite_ln_e_product_expr(ctx, expr)?;
+    Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
 });
 
 // =============================================================================
@@ -326,59 +169,9 @@ define_rule!(LnEProductRule, "Factor e from ln Product", |ctx, expr| {
 // This enables residuals like `2*ln(u/e) - 2*(ln(u)-1)` to simplify to 0.
 // =============================================================================
 define_rule!(LnEDivRule, "Factor e from ln Quotient", |ctx, expr| {
-    // Match ln(arg)
-    if let Expr::Function(fn_id, args) = ctx.get(expr) {
-        let (fn_id, args) = (*fn_id, args.clone());
-        if ctx.builtin_of(fn_id) != Some(cas_ast::BuiltinFn::Ln) || args.len() != 1 {
-            return None;
-        }
-        let arg = args[0];
-
-        // Match Div(x, e) or Div(e, x) in the argument
-        if let Expr::Div(num, den) = ctx.get(arg) {
-            let (num, den) = (*num, *den);
-            let num_is_e = is_e_constant_expr(ctx, num);
-            let den_is_e = is_e_constant_expr(ctx, den);
-
-            if den_is_e && !num_is_e {
-                // ln(x/e) → ln(x) - 1
-                let ln_x = ctx.call_builtin(cas_ast::BuiltinFn::Ln, vec![num]);
-                let one = ctx.num(1);
-                let result = ctx.add(Expr::Sub(ln_x, one));
-                return Some(Rewrite::new(result).desc("ln(x/e) = ln(x) - 1"));
-            } else if num_is_e && !den_is_e {
-                // ln(e/x) → 1 - ln(x)
-                let one = ctx.num(1);
-                let ln_x = ctx.call_builtin(cas_ast::BuiltinFn::Ln, vec![den]);
-                let result = ctx.add(Expr::Sub(one, ln_x));
-                return Some(Rewrite::new(result).desc("ln(e/x) = 1 - ln(x)"));
-            }
-        }
-    }
-    None
+    let rewrite = try_rewrite_ln_e_div_expr(ctx, expr)?;
+    Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
 });
-
-/// Check if two expressions match (for telescoping condition)
-/// Handles ln sentinel and structural equality
-pub(super) fn exprs_match(ctx: &Context, e1: ExprId, e2: ExprId) -> bool {
-    let sentinel = ExprId::from_raw(u32::MAX);
-
-    // ln sentinel matches Constant::E
-    if e1 == sentinel {
-        return is_e_constant_expr(ctx, e2);
-    }
-    if e2 == sentinel {
-        return is_e_constant_expr(ctx, e1);
-    }
-
-    // Direct ID match
-    if e1 == e2 {
-        return true;
-    }
-
-    // Structural comparison for same expression
-    compare_expr(ctx, e1, e2) == Ordering::Equal
-}
 
 /// LogContractionRule: Contracts sums/differences of logs into single logs.
 /// - ln(a) + ln(b) → ln(a*b)
@@ -415,125 +208,14 @@ impl crate::rule::Rule for LogContractionRule {
             return None;
         }
 
-        let (lhs_opt, rhs_opt) = match ctx.get(expr) {
-            Expr::Add(l, r) => (Some((*l, *r, true)), None),
-            Expr::Sub(l, r) => (None, Some((*l, *r))),
-            _ => (None, None),
-        };
-
-        // Case 1: ln(a) + ln(b) → ln(a*b) or log(b,x) + log(b,y) → log(b, x*y)
-        if let Some((lhs, rhs, _is_add)) = lhs_opt {
-            if let (Some((base_l, arg_l)), Some((base_r, arg_r))) =
-                (extract_log_parts(ctx, lhs), extract_log_parts(ctx, rhs))
-            {
-                // Check bases are equal
-                if bases_equal(ctx, base_l, base_r) {
-                    let product = ctx.add(Expr::Mul(arg_l, arg_r));
-                    // If base is sentinel (ln case), create ln(), otherwise log()
-                    let sentinel = cas_ast::ExprId::from_raw(u32::MAX);
-                    let new_expr = if base_l == sentinel {
-                        ctx.call_builtin(cas_ast::BuiltinFn::Ln, vec![product])
-                    } else {
-                        make_log(ctx, base_l, product)
-                    };
-                    return Some(
-                        crate::rule::Rewrite::new(new_expr).desc("ln(a) + ln(b) = ln(a*b)"),
-                    );
-                }
-            }
-        }
-
-        // Case 2: ln(a) - ln(b) → ln(a/b) or log(b,x) - log(b,y) → log(b, x/y)
-        if let Some((lhs, rhs)) = rhs_opt {
-            if let (Some((base_l, arg_l)), Some((base_r, arg_r))) =
-                (extract_log_parts(ctx, lhs), extract_log_parts(ctx, rhs))
-            {
-                // Check bases are equal
-                if bases_equal(ctx, base_l, base_r) {
-                    let quotient = ctx.add(Expr::Div(arg_l, arg_r));
-                    // If base is sentinel (ln case), create ln(), otherwise log()
-                    let sentinel = cas_ast::ExprId::from_raw(u32::MAX);
-                    let new_expr = if base_l == sentinel {
-                        ctx.call_builtin(cas_ast::BuiltinFn::Ln, vec![quotient])
-                    } else {
-                        make_log(ctx, base_l, quotient)
-                    };
-                    return Some(
-                        crate::rule::Rewrite::new(new_expr).desc("ln(a) - ln(b) = ln(a/b)"),
-                    );
-                }
-            }
-        }
-
-        None
+        let rewrite =
+            cas_math::logarithm_inverse_support::try_rewrite_log_contraction_expr(ctx, expr)?;
+        Some(crate::rule::Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
     }
 
     fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
         Some(crate::target_kind::TargetKindSet::ADD_SUB)
     }
-}
-
-/// Extract (base, argument) from a log expression.
-/// Returns (E, arg) for ln(arg), (base, arg) for log(base, arg), None otherwise.
-pub(super) fn extract_log_parts(
-    ctx: &cas_ast::Context,
-    expr: cas_ast::ExprId,
-) -> Option<(cas_ast::ExprId, cas_ast::ExprId)> {
-    if let Expr::Function(fn_id, args) = ctx.get(expr) {
-        use cas_ast::BuiltinFn;
-        match ctx.builtin_of(*fn_id) {
-            Some(BuiltinFn::Ln) if args.len() == 1 => {
-                return Some((cas_ast::ExprId::from_raw(u32::MAX), args[0]));
-            }
-            Some(BuiltinFn::Log) if args.len() == 2 => {
-                return Some((args[0], args[1]));
-            }
-            _ => {}
-        }
-    }
-    None
-}
-
-/// Check if two log bases are equal.
-/// Handles ln (sentinel u32::MAX) specially.
-pub(super) fn bases_equal(
-    ctx: &cas_ast::Context,
-    base_l: cas_ast::ExprId,
-    base_r: cas_ast::ExprId,
-) -> bool {
-    let sentinel = cas_ast::ExprId::from_raw(u32::MAX);
-
-    // Both are ln (sentinel)
-    if base_l == sentinel && base_r == sentinel {
-        return true;
-    }
-
-    // One is ln, other is explicit log(e, ...)
-    if base_l == sentinel {
-        if is_e_constant_expr(ctx, base_r) {
-            return true;
-        }
-        return false;
-    }
-    if base_r == sentinel {
-        if is_e_constant_expr(ctx, base_l) {
-            return true;
-        }
-        return false;
-    }
-
-    // Both are explicit bases - check if equal by expression equality
-    // For simplicity, only match if they're the same ExprId or both are Constant::E
-    if base_l == base_r {
-        return true;
-    }
-
-    // Check if both are e constant
-    if is_e_constant_expr(ctx, base_l) && is_e_constant_expr(ctx, base_r) {
-        return true;
-    }
-
-    false
 }
 
 // =============================================================================
@@ -575,7 +257,7 @@ define_rule!(
                             desc: &'static str|
          -> Option<Rewrite> {
             let abs_factor = ctx.call_builtin(BuiltinFn::Abs, vec![factor]);
-            let log_inner = make_log(ctx, log_base, abs_factor);
+            let log_inner = make_log_expr(ctx, log_base, abs_factor);
             let two = ctx.num(2);
             let result = ctx.add(Expr::Mul(two, log_inner));
             Some(Rewrite::new(result).desc(desc))

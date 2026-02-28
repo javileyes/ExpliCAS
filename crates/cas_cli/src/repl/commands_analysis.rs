@@ -427,8 +427,8 @@ impl Repl {
                     match name.as_str() {
                         "gcd" => {
                             if args.len() == 2 {
-                                // Call the explain_gcd function
-                                let result = cas_solver::rules::number_theory::explain_gcd(
+                                // Use solver facade (decoupled from engine rule modules).
+                                let result = cas_solver::number_theory::explain_gcd(
                                     &mut self.core.engine.simplifier.context,
                                     args[0],
                                     args[1],

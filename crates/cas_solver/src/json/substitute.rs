@@ -5,7 +5,7 @@ pub use cas_api_models::{
     SubstituteJsonOptions, SubstituteJsonResponse, SubstituteOptionsInner, SubstituteOptionsJson,
     SubstituteRequestEcho,
 };
-use cas_engine::strip_all_holds;
+use cas_ast::hold::strip_all_holds;
 
 /// Substitute an expression and return JSON response.
 ///

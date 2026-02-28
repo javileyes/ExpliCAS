@@ -31,6 +31,30 @@ pub fn has_numeric_factor(ctx: &Context, expr: ExprId) -> bool {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExpToEPowRewrite {
+    pub rewritten: ExprId,
+    pub desc: &'static str,
+}
+
+/// Rewrite `exp(x)` to `e^x`.
+pub fn try_rewrite_exp_to_epow_expr(ctx: &mut Context, expr: ExprId) -> Option<ExpToEPowRewrite> {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return None;
+    };
+    if ctx.builtin_of(*fn_id) != Some(cas_ast::BuiltinFn::Exp) || args.len() != 1 {
+        return None;
+    }
+
+    let arg = args[0];
+    let e = ctx.add(Expr::Constant(cas_ast::Constant::E));
+    let rewritten = ctx.add(Expr::Pow(e, arg));
+    Some(ExpToEPowRewrite {
+        rewritten,
+        desc: "exp(x) = e^x",
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -62,5 +86,21 @@ mod tests {
 
         assert!(has_numeric_factor(&ctx, with_num));
         assert!(!has_numeric_factor(&ctx, without_num));
+    }
+
+    #[test]
+    fn rewrites_exp_to_epow() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let exp_x = ctx.call_builtin(cas_ast::BuiltinFn::Exp, vec![x]);
+
+        let rewrite = try_rewrite_exp_to_epow_expr(&mut ctx, exp_x).expect("rewrite");
+        let e = ctx.add(Expr::Constant(cas_ast::Constant::E));
+        let expected = ctx.add(Expr::Pow(e, x));
+
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, rewrite.rewritten, expected),
+            std::cmp::Ordering::Equal
+        );
     }
 }

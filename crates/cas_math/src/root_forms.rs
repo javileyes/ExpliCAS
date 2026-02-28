@@ -6,6 +6,139 @@ use num_integer::Integer;
 use num_rational::BigRational;
 use num_traits::{One, Signed, ToPrimitive, Zero};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CanonicalRootRewrite {
+    pub rewritten: ExprId,
+    pub desc: &'static str,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OddHalfPowerRewrite {
+    pub rewritten: ExprId,
+    pub numerator: i64,
+    pub abs_power: i64,
+}
+
+/// Rewrite root syntax into canonical power syntax.
+///
+/// Supported rewrites:
+/// - `sqrt(x^2k)` -> `|x|^k`
+/// - `sqrt(x)` -> `x^(1/2)`
+/// - `sqrt(x, n)` -> `x^(1/n)` (numeric index only)
+/// - `root(x, n)` -> `x^(1/n)` (numeric index only)
+pub fn try_rewrite_canonical_root_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<CanonicalRootRewrite> {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return None;
+    };
+    let fn_id = *fn_id;
+    let args = args.clone();
+
+    if ctx.is_builtin(fn_id, BuiltinFn::Sqrt) {
+        if args.len() == 1 {
+            let arg = args[0];
+
+            if let Expr::Pow(base, exp) = ctx.get(arg) {
+                let (base, exp) = (*base, *exp);
+                if let Expr::Number(n) = ctx.get(exp) {
+                    if n.is_integer() && n.to_integer().is_even() {
+                        let two = ctx.num(2);
+                        let k = ctx.add(Expr::Div(exp, two));
+                        let abs_base = ctx.call_builtin(BuiltinFn::Abs, vec![base]);
+                        let rewritten = ctx.add(Expr::Pow(abs_base, k));
+                        return Some(CanonicalRootRewrite {
+                            rewritten,
+                            desc: "sqrt(x^2k) -> |x|^k",
+                        });
+                    }
+                }
+            }
+
+            let half = ctx.rational(1, 2);
+            let rewritten = ctx.add(Expr::Pow(arg, half));
+            return Some(CanonicalRootRewrite {
+                rewritten,
+                desc: "sqrt(x) = x^(1/2)",
+            });
+        }
+
+        if args.len() == 2 {
+            let (base_arg, index) = (args[0], args[1]);
+            if !matches!(ctx.get(index), Expr::Number(_)) {
+                return None;
+            }
+            let one = ctx.num(1);
+            let exp = ctx.add(Expr::Div(one, index));
+            let rewritten = ctx.add(Expr::Pow(base_arg, exp));
+            return Some(CanonicalRootRewrite {
+                rewritten,
+                desc: "sqrt(x, n) = x^(1/n)",
+            });
+        }
+    }
+
+    if ctx.is_builtin(fn_id, BuiltinFn::Root) && args.len() == 2 {
+        let (base_arg, index) = (args[0], args[1]);
+        if !matches!(ctx.get(index), Expr::Number(_)) {
+            return None;
+        }
+        let one = ctx.num(1);
+        let exp = ctx.add(Expr::Div(one, index));
+        let rewritten = ctx.add(Expr::Pow(base_arg, exp));
+        return Some(CanonicalRootRewrite {
+            rewritten,
+            desc: "root(x, n) = x^(1/n)",
+        });
+    }
+
+    None
+}
+
+/// Rewrite odd half-integer powers into absolute-value times square-root form.
+///
+/// Pattern:
+/// - `x^(n/2)` with odd integer `n >= 3`
+///
+/// Result:
+/// - `|x|^k * sqrt(x)` where `k = (n-1)/2`
+pub fn try_rewrite_odd_half_power_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<OddHalfPowerRewrite> {
+    let (base, exp) = match ctx.get(expr) {
+        Expr::Pow(base, exp) => (*base, *exp),
+        _ => return None,
+    };
+
+    let Expr::Number(exp_num) = ctx.get(exp) else {
+        return None;
+    };
+    let numer = exp_num.numer().to_i64()?;
+    let denom = exp_num.denom().to_i64()?;
+    if denom != 2 || numer < 3 || numer % 2 == 0 {
+        return None;
+    }
+
+    let k = (numer - 1) / 2;
+    let abs_base = ctx.call_builtin(BuiltinFn::Abs, vec![base]);
+    let sqrt_base = ctx.call_builtin(BuiltinFn::Sqrt, vec![base]);
+    let rewritten = if k == 1 {
+        ctx.add(Expr::Mul(abs_base, sqrt_base))
+    } else {
+        let k_expr = ctx.num(k);
+        let abs_pow_k = ctx.add(Expr::Pow(abs_base, k_expr));
+        ctx.add(Expr::Mul(abs_pow_k, sqrt_base))
+    };
+
+    Some(OddHalfPowerRewrite {
+        rewritten,
+        numerator: numer,
+        abs_power: k,
+    })
+}
+
 /// Extract `(radicand, index)` when `expr` is a root-like form.
 ///
 /// Recognizes:
@@ -485,6 +618,21 @@ mod tests {
     use crate::poly_compare::poly_eq;
     use cas_parser::parse;
 
+    fn eval_small_rat(ctx: &Context, id: ExprId) -> Option<BigRational> {
+        match ctx.get(id) {
+            Expr::Number(n) => Some(n.clone()),
+            Expr::Div(l, r) => {
+                let den = eval_small_rat(ctx, *r)?;
+                if den == BigRational::from_integer(0.into()) {
+                    None
+                } else {
+                    Some(eval_small_rat(ctx, *l)? / den)
+                }
+            }
+            _ => None,
+        }
+    }
+
     #[test]
     fn extract_from_sqrt_function() {
         let mut ctx = Context::new();
@@ -611,5 +759,86 @@ mod tests {
 
         assert!(can_distribute_root_safely(&ctx, safe, &2.into()));
         assert!(!can_distribute_root_safely(&ctx, unsafe_expr, &2.into()));
+    }
+
+    #[test]
+    fn canonical_root_rewrite_handles_sqrt_and_root_forms() {
+        let mut ctx = Context::new();
+
+        let sqrt_expr = parse("sqrt(x)", &mut ctx).expect("sqrt");
+        let sqrt_rewrite =
+            try_rewrite_canonical_root_expr(&mut ctx, sqrt_expr).expect("rewrite sqrt");
+        let x = parse("x", &mut ctx).expect("x");
+        let Expr::Pow(sqrt_base, sqrt_exp) = ctx.get(sqrt_rewrite.rewritten) else {
+            panic!("sqrt rewrite should be Pow");
+        };
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, *sqrt_base, x),
+            std::cmp::Ordering::Equal
+        );
+        assert_eq!(
+            eval_small_rat(&ctx, *sqrt_exp),
+            Some(BigRational::new(1.into(), 2.into()))
+        );
+
+        let root_expr = parse("root(x, 3)", &mut ctx).expect("root");
+        let root_rewrite =
+            try_rewrite_canonical_root_expr(&mut ctx, root_expr).expect("rewrite root");
+        let Expr::Pow(root_base, root_exp) = ctx.get(root_rewrite.rewritten) else {
+            panic!("root rewrite should be Pow");
+        };
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, *root_base, x),
+            std::cmp::Ordering::Equal
+        );
+        assert_eq!(
+            eval_small_rat(&ctx, *root_exp),
+            Some(BigRational::new(1.into(), 3.into()))
+        );
+    }
+
+    #[test]
+    fn canonical_root_rewrite_even_power_maps_to_abs_power() {
+        let mut ctx = Context::new();
+        let expr = parse("sqrt(x^4)", &mut ctx).expect("expr");
+        let rewrite = try_rewrite_canonical_root_expr(&mut ctx, expr).expect("rewrite");
+        let x = parse("x", &mut ctx).expect("x");
+        let Expr::Pow(base, exp) = ctx.get(rewrite.rewritten) else {
+            panic!("expected Pow");
+        };
+        let Expr::Function(fn_id, args) = ctx.get(*base) else {
+            panic!("expected abs(base)");
+        };
+        assert!(ctx.is_builtin(*fn_id, BuiltinFn::Abs));
+        assert_eq!(args.len(), 1);
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, args[0], x),
+            std::cmp::Ordering::Equal
+        );
+        assert_eq!(
+            eval_small_rat(&ctx, *exp),
+            Some(BigRational::from_integer(2.into()))
+        );
+    }
+
+    #[test]
+    fn odd_half_power_rewrite_builds_abs_times_sqrt() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let exp = ctx.rational(5, 2);
+        let expr = ctx.add(Expr::Pow(x, exp));
+        let rewrite = try_rewrite_odd_half_power_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(rewrite.numerator, 5);
+        assert_eq!(rewrite.abs_power, 2);
+
+        let rendered = format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: &ctx,
+                id: rewrite.rewritten
+            }
+        );
+        assert!(rendered.contains("|x|^2"));
+        assert!(rendered.contains("sqrt(x)") || rendered.contains("√x"));
     }
 }

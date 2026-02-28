@@ -552,6 +552,116 @@ pub fn mul_leaves(ctx: &Context, root: ExprId) -> SmallVec<[ExprId; 8]> {
     factors
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CanonicalizeAddRewrite {
+    pub rewritten: ExprId,
+    pub desc: &'static str,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CanonicalizeMulRewrite {
+    pub rewritten: ExprId,
+    pub desc: &'static str,
+}
+
+fn build_right_assoc_add(ctx: &mut Context, terms: &[ExprId]) -> Option<ExprId> {
+    let mut out = *terms.last()?;
+    for term in terms.iter().rev().skip(1) {
+        out = ctx.add(Expr::Add(*term, out));
+    }
+    Some(out)
+}
+
+fn build_right_assoc_mul(ctx: &mut Context, factors: &[ExprId]) -> Option<ExprId> {
+    let mut out = *factors.last()?;
+    for factor in factors.iter().rev().skip(1) {
+        out = crate::build::mul2_raw(ctx, *factor, out);
+    }
+    Some(out)
+}
+
+/// Canonicalize top-level Add shape/order:
+/// - Sort terms when out of order.
+/// - Fix top-level left-associative shape to right-associative.
+pub fn try_rewrite_canonicalize_add_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<CanonicalizeAddRewrite> {
+    let Expr::Add(_, _) = ctx.get(expr) else {
+        return None;
+    };
+
+    let mut terms = add_leaves(ctx, expr);
+    let is_sorted = !terms
+        .windows(2)
+        .any(|w| cas_ast::ordering::compare_expr(ctx, w[0], w[1]) == std::cmp::Ordering::Greater);
+
+    if !is_sorted {
+        terms.sort_by(|a, b| cas_ast::ordering::compare_expr(ctx, *a, *b));
+        let rewritten = build_right_assoc_add(ctx, &terms)?;
+        return Some(CanonicalizeAddRewrite {
+            rewritten,
+            desc: "Sort addition terms",
+        });
+    }
+
+    let Expr::Add(lhs, _) = ctx.get(expr) else {
+        return None;
+    };
+    if matches!(ctx.get(*lhs), Expr::Add(_, _)) {
+        let rewritten = build_right_assoc_add(ctx, &terms)?;
+        return Some(CanonicalizeAddRewrite {
+            rewritten,
+            desc: "Fix associativity (a+b)+c -> a+(b+c)",
+        });
+    }
+
+    None
+}
+
+/// Canonicalize top-level Mul shape/order for commutative factors:
+/// - Sort factors when out of order.
+/// - Fix top-level left-associative shape to right-associative.
+pub fn try_rewrite_canonicalize_mul_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<CanonicalizeMulRewrite> {
+    let Expr::Mul(_, _) = ctx.get(expr) else {
+        return None;
+    };
+
+    let mut factors = mul_leaves(ctx, expr);
+    if factors.iter().any(|f| !ctx.is_mul_commutative(*f)) {
+        return None;
+    }
+
+    let is_sorted = !factors
+        .windows(2)
+        .any(|w| cas_ast::ordering::compare_expr(ctx, w[0], w[1]) == std::cmp::Ordering::Greater);
+
+    if !is_sorted {
+        factors.sort_by(|a, b| cas_ast::ordering::compare_expr(ctx, *a, *b));
+        let rewritten = build_right_assoc_mul(ctx, &factors)?;
+        return Some(CanonicalizeMulRewrite {
+            rewritten,
+            desc: "Sort multiplication factors",
+        });
+    }
+
+    let Expr::Mul(lhs, _) = ctx.get(expr) else {
+        return None;
+    };
+    if matches!(ctx.get(*lhs), Expr::Mul(_, _)) {
+        let rewritten = build_right_assoc_mul(ctx, &factors)?;
+        return Some(CanonicalizeMulRewrite {
+            rewritten,
+            desc: "Fix associativity (a*b)*c -> a*(b*c)",
+        });
+    }
+
+    None
+}
+
 // ============================================================================
 // Tests
 // ============================================================================

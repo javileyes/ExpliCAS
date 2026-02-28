@@ -1,10 +1,11 @@
 use super::mappers::{
     map_domain_warnings_to_engine_warnings, map_solver_assumptions_to_api_records,
 };
+use crate::{Engine, EvalAction, EvalOptions, EvalRequest, EvalResult};
 use cas_api_models::{
     BudgetJsonInfo, EngineJsonError, EngineJsonResponse, EngineJsonStep, JsonRunOptions, SpanJson,
 };
-use cas_engine::{strip_all_holds, Engine, EvalAction, EvalOptions, EvalRequest, EvalResult};
+use cas_ast::hold::strip_all_holds;
 
 fn map_eval_error_message(message: String) -> EngineJsonError {
     if message.contains("requires stateful eval") {

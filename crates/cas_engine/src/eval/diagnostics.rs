@@ -16,19 +16,13 @@ fn push_step_requires_with_display_dedup(
     steps: &[crate::Step],
     diagnostics: &mut crate::diagnostics::Diagnostics,
 ) {
-    use std::collections::HashSet;
-
-    let mut seen: HashSet<String> = HashSet::new();
-    for step in steps {
-        for cond in step.required_conditions() {
-            let display = cond.display(ctx);
-            if seen.insert(display) {
-                diagnostics.push_required(
-                    cond.clone(),
-                    crate::diagnostics::RequireOrigin::RewriteAirbag,
-                );
-            }
-        }
+    for cond in cas_session_core::eval::collect_step_items_with_display_dedup(
+        steps,
+        |step| step.required_conditions().to_vec(),
+        |cond| cond.display(ctx),
+        |cond| cond,
+    ) {
+        diagnostics.push_required(cond, crate::diagnostics::RequireOrigin::RewriteAirbag);
     }
 }
 

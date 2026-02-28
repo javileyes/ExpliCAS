@@ -1,9 +1,9 @@
 use super::mappers::{map_assumptions_used, map_blocked_hints, map_required_conditions};
+use crate::{
+    DomainMode, Engine, EvalAction, EvalOptions, EvalOutput, EvalRequest, EvalResult, ValueDomain,
+};
 use cas_api_models::{
     EnvelopeEvalOptions, ExprDto, OutputEnvelope, RequestInfo, RequestOptions, TransparencyDto,
-};
-use cas_engine::{
-    DomainMode, Engine, EvalAction, EvalOptions, EvalOutput, EvalRequest, EvalResult, ValueDomain,
 };
 use cas_formatter::DisplayExpr;
 

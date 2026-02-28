@@ -4,9 +4,7 @@ use cas_math::expr_destructure::{as_div, as_mul};
 use cas_math::expr_extract::{extract_log_base_argument, extract_log_base_argument_view};
 use cas_math::expr_predicates::is_e_constant_expr;
 use cas_math::expr_rewrite::smart_mul;
-
-// Re-use helpers from parent module
-use super::{extract_log_parts, make_log};
+use cas_math::logarithm_inverse_support::{make_log_expr, try_rewrite_log_chain_product_expr};
 
 /// Domain-aware expansion rule for log products/quotients.
 ///
@@ -68,8 +66,8 @@ impl crate::rule::Rule for LogExpansionRule {
                     return None; // Strict/Generic block if not proven
                 }
 
-                let log_lhs = make_log(ctx, base, lhs);
-                let log_rhs = make_log(ctx, base, rhs);
+                let log_lhs = make_log_expr(ctx, base, lhs);
+                let log_rhs = make_log_expr(ctx, base, rhs);
                 let new_expr = ctx.add(Expr::Add(log_lhs, log_rhs));
 
                 // Build assumption events for unproven factors
@@ -113,8 +111,8 @@ impl crate::rule::Rule for LogExpansionRule {
                     return None; // Strict/Generic block if not proven
                 }
 
-                let log_num = make_log(ctx, base, num);
-                let log_den = make_log(ctx, base, den);
+                let log_num = make_log_expr(ctx, base, num);
+                let log_den = make_log_expr(ctx, base, den);
                 let new_expr = ctx.add(Expr::Sub(log_num, log_den));
 
                 // Build assumption events for unproven factors
@@ -221,15 +219,15 @@ pub(crate) fn expand_logs_with_assumptions(
                 events.push(crate::assumptions::AssumptionEvent::positive(ctx, num));
                 events.push(crate::assumptions::AssumptionEvent::positive(ctx, den));
 
-                let log_num = make_log(ctx, base, num);
-                let log_den = make_log(ctx, base, den);
+                let log_num = make_log_expr(ctx, base, num);
+                let log_den = make_log_expr(ctx, base, den);
                 let diff = ctx.add(Expr::Sub(log_num, log_den));
                 let (final_result, more_events) = expand_logs_with_assumptions(ctx, diff);
                 events.extend(more_events);
                 return (final_result, events);
             } else {
                 // No expansion possible, return with expanded arg
-                return (make_log(ctx, base, expanded_arg), events);
+                return (make_log_expr(ctx, base, expanded_arg), events);
             };
 
             // log(x*y) → log(x) + log(y)
@@ -237,8 +235,8 @@ pub(crate) fn expand_logs_with_assumptions(
             events.push(crate::assumptions::AssumptionEvent::positive(ctx, rhs));
 
             // Create the expanded form
-            let log_lhs = make_log(ctx, base, lhs);
-            let log_rhs = make_log(ctx, base, rhs);
+            let log_lhs = make_log_expr(ctx, base, lhs);
+            let log_rhs = make_log_expr(ctx, base, rhs);
             let sum = ctx.add(Expr::Add(log_lhs, log_rhs));
             // Recursively expand the result
             let (final_result, more_events) = expand_logs_with_assumptions(ctx, sum);
@@ -382,7 +380,7 @@ impl crate::rule::Rule for LogEvenPowerWithChainedAbsRule {
 
         // Even exponent: ln(x^(2k)) = 2k·ln(|x|)
         let abs_base = ctx.call_builtin(cas_ast::BuiltinFn::Abs, vec![p_base]);
-        let log_abs = make_log(ctx, base, abs_base);
+        let log_abs = make_log_expr(ctx, base, abs_base);
         let mid_expr = smart_mul(ctx, p_exp, log_abs);
 
         // Check if we can simplify |x| → x
@@ -414,7 +412,7 @@ impl crate::rule::Rule for LogEvenPowerWithChainedAbsRule {
 
         if can_chain {
             // Build the simplified version: even·ln(x) (without abs)
-            let log_base = make_log(ctx, base, p_base);
+            let log_base = make_log_expr(ctx, base, p_base);
             let final_expr = smart_mul(ctx, p_exp, log_base);
 
             // V2.14.20: Main rewrite produces mid_expr (with |x|)
@@ -540,7 +538,7 @@ impl crate::rule::Rule for LogAbsPowerRule {
 
         // Build n·ln(|u|)
         // Keep the abs - don't remove it
-        let log_abs = make_log(ctx, base, p_base); // log(base, |u|)
+        let log_abs = make_log_expr(ctx, base, p_base); // log(base, |u|)
         let result = smart_mul(ctx, p_exp, log_abs); // n · log(base, |u|)
 
         // Register hint that u ≠ 0 is required (for ln(|u|) to be defined)
@@ -690,71 +688,8 @@ impl crate::rule::Rule for LogChainProductRule {
         expr: cas_ast::ExprId,
         _parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<crate::rule::Rewrite> {
-        // Only match Mul nodes
-        if !matches!(ctx.get(expr), Expr::Mul(_, _)) {
-            return None;
-        }
-
-        // Flatten the multiplication chain
-        let factors = crate::nary::mul_leaves(ctx, expr);
-
-        // Extract log parts from all factors
-        // log_parts[i] = Some((base, arg)) if factor[i] is log(base, arg)
-        let log_parts: Vec<Option<(ExprId, ExprId)>> =
-            factors.iter().map(|&f| extract_log_parts(ctx, f)).collect();
-
-        // Find a pair (i, j) where log_i.arg == log_j.base
-        // i.e., log(b1, a) * log(a, c) → log(b1, c)
-        for (i, log_i_opt) in log_parts.iter().enumerate() {
-            let Some((base_i, arg_i)) = log_i_opt else {
-                continue;
-            };
-
-            for (j, log_j_opt) in log_parts.iter().enumerate() {
-                if i == j {
-                    continue;
-                }
-                let Some((base_j, arg_j)) = log_j_opt else {
-                    continue;
-                };
-
-                // Check if arg_i == base_j (telescoping condition)
-                // arg_i is the "middle" value that cancels
-                if !super::exprs_match(ctx, *arg_i, *base_j) {
-                    continue;
-                }
-
-                // Found a match! log(base_i, arg_i) * log(arg_i, arg_j) → log(base_i, arg_j)
-                // Build the new log
-                let new_log = make_log(ctx, *base_i, *arg_j);
-
-                // Build the remaining product (all factors except i and j)
-                let remaining: Vec<ExprId> = factors
-                    .iter()
-                    .enumerate()
-                    .filter(|&(idx, _)| idx != i && idx != j)
-                    .map(|(_, &f)| f)
-                    .collect();
-
-                let result = if remaining.is_empty() {
-                    new_log
-                } else {
-                    // Multiply new_log with remaining factors
-                    let mut product = new_log;
-                    for r in remaining {
-                        product = smart_mul(ctx, product, r);
-                    }
-                    product
-                };
-
-                // Build description showing what was telescoped
-                let desc = "log(b, a) * log(a, c) = log(b, c)";
-
-                return Some(crate::rule::Rewrite::new(result).desc(desc));
-            }
-        }
-
-        None
+        let rewrite = try_rewrite_log_chain_product_expr(ctx, expr)?;
+        Some(crate::rule::Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
     }
 
     fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {

@@ -58,6 +58,73 @@ pub enum MatrixFunctionEval {
     },
 }
 
+#[derive(Debug, Clone)]
+pub struct MatrixFunctionRewrite {
+    pub rewritten: ExprId,
+    pub desc: String,
+}
+
+/// Human-readable description for matrix addition rewrite.
+pub fn format_matrix_add_desc(eval: &MatrixBinaryEval) -> String {
+    format!(
+        "Matrix addition: {}×{} + {}×{}",
+        eval.left.rows, eval.left.cols, eval.right.rows, eval.right.cols
+    )
+}
+
+/// Human-readable description for matrix subtraction rewrite.
+pub fn format_matrix_sub_desc(eval: &MatrixBinaryEval) -> String {
+    format!(
+        "Matrix subtraction: {}×{} - {}×{}",
+        eval.left.rows, eval.left.cols, eval.right.rows, eval.right.cols
+    )
+}
+
+/// Human-readable description for scalar-matrix multiplication rewrite.
+pub fn format_scalar_matrix_mul_desc(eval: &ScalarMatrixEval) -> String {
+    match eval.side {
+        ScalarMatrixSide::ScalarLeft => format!(
+            "Scalar multiplication: scalar × {}×{} matrix",
+            eval.matrix.rows, eval.matrix.cols
+        ),
+        ScalarMatrixSide::ScalarRight => format!(
+            "Scalar multiplication: {}×{} matrix × scalar",
+            eval.matrix.rows, eval.matrix.cols
+        ),
+    }
+}
+
+/// Human-readable description for matrix-matrix multiplication rewrite.
+pub fn format_matrix_mul_desc(eval: &MatrixBinaryEval) -> String {
+    format!(
+        "Matrix multiplication: {}×{} × {}×{} = {}×{}",
+        eval.left.rows,
+        eval.left.cols,
+        eval.right.rows,
+        eval.right.cols,
+        eval.result.rows,
+        eval.result.cols
+    )
+}
+
+/// Human-readable description for matrix function rewrites.
+pub fn format_matrix_function_desc(eval: &MatrixFunctionEval) -> String {
+    match eval {
+        MatrixFunctionEval::Determinant { shape, .. } => {
+            format!("det({}×{} matrix)", shape.rows, shape.cols)
+        }
+        MatrixFunctionEval::Transpose { from, to, .. } => {
+            format!(
+                "transpose({}×{}) = {}×{}",
+                from.rows, from.cols, to.rows, to.cols
+            )
+        }
+        MatrixFunctionEval::Trace { shape, .. } => {
+            format!("trace({}×{} matrix)", shape.rows, shape.cols)
+        }
+    }
+}
+
 pub fn try_eval_matrix_add_expr(ctx: &mut Context, expr: ExprId) -> Option<MatrixBinaryEval> {
     let Expr::Add(left, right) = ctx.get(expr) else {
         return None;
@@ -176,6 +243,41 @@ pub fn try_eval_matrix_function_expr(
     }
 }
 
+/// Evaluate matrix function calls and materialize a direct rewrite payload.
+pub fn try_rewrite_matrix_function_rule_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<MatrixFunctionRewrite> {
+    match try_eval_matrix_function_expr(ctx, expr)? {
+        MatrixFunctionEval::Determinant { shape, value } => {
+            let desc =
+                format_matrix_function_desc(&MatrixFunctionEval::Determinant { shape, value });
+            Some(MatrixFunctionRewrite {
+                rewritten: value,
+                desc,
+            })
+        }
+        MatrixFunctionEval::Transpose { from, to, matrix } => {
+            let desc = format_matrix_function_desc(&MatrixFunctionEval::Transpose {
+                from,
+                to,
+                matrix: matrix.clone(),
+            });
+            Some(MatrixFunctionRewrite {
+                rewritten: matrix.to_expr(ctx),
+                desc,
+            })
+        }
+        MatrixFunctionEval::Trace { shape, value } => {
+            let desc = format_matrix_function_desc(&MatrixFunctionEval::Trace { shape, value });
+            Some(MatrixFunctionRewrite {
+                rewritten: value,
+                desc,
+            })
+        }
+    }
+}
+
 /// Rewrite helper for transpose-of-product identity:
 /// `transpose(matmul(A, B)) -> matmul(transpose(B), transpose(A))`.
 pub fn try_rewrite_transpose_product_expr(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
@@ -208,9 +310,11 @@ pub fn try_rewrite_transpose_product_expr(ctx: &mut Context, expr: ExprId) -> Op
 #[cfg(test)]
 mod tests {
     use super::{
-        try_eval_matrix_add_expr, try_eval_matrix_function_expr, try_eval_matrix_mul_expr,
-        try_eval_scalar_matrix_mul_expr, try_rewrite_transpose_product_expr, MatrixFunctionEval,
-        ScalarMatrixSide,
+        format_matrix_add_desc, format_matrix_function_desc, format_matrix_mul_desc,
+        format_scalar_matrix_mul_desc, try_eval_matrix_add_expr, try_eval_matrix_function_expr,
+        try_eval_matrix_mul_expr, try_eval_scalar_matrix_mul_expr,
+        try_rewrite_matrix_function_rule_expr, try_rewrite_transpose_product_expr,
+        MatrixFunctionEval, ScalarMatrixSide,
     };
     use cas_ast::Expr;
 
@@ -303,5 +407,55 @@ mod tests {
         };
         assert_eq!(ctx.sym_name(*fn_id), "matmul");
         assert_eq!(args.len(), 2);
+    }
+
+    #[test]
+    fn matrix_function_rule_rewrite_materializes_transpose_matrix() {
+        let mut ctx = cas_ast::Context::new();
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        let three = ctx.num(3);
+        let four = ctx.num(4);
+        let matrix = ctx
+            .matrix(2, 2, vec![one, two, three, four])
+            .expect("matrix");
+        let expr = ctx.call("transpose", vec![matrix]);
+
+        let rewrite = try_rewrite_matrix_function_rule_expr(&mut ctx, expr).expect("rewrite");
+        let materialized =
+            crate::matrix::Matrix::from_expr(&ctx, rewrite.rewritten).expect("matrix");
+        assert_eq!(materialized.rows, 2);
+        assert_eq!(materialized.cols, 2);
+        assert!(rewrite.desc.contains("transpose"));
+    }
+
+    #[test]
+    fn description_builders_include_shapes() {
+        let mut ctx = cas_ast::Context::new();
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        let three = ctx.num(3);
+        let four = ctx.num(4);
+        let matrix = ctx
+            .matrix(2, 2, vec![one, two, three, four])
+            .expect("matrix");
+        let scalar = ctx.num(2);
+        let expr_mul = ctx.add(Expr::Mul(scalar, matrix));
+        let scalar_eval = try_eval_scalar_matrix_mul_expr(&mut ctx, expr_mul).expect("eval");
+        assert!(format_scalar_matrix_mul_desc(&scalar_eval).contains("2×2 matrix"));
+
+        let m1 = ctx.matrix(2, 2, vec![one, two, three, four]).expect("m1");
+        let m2 = ctx.matrix(2, 2, vec![one, two, three, four]).expect("m2");
+        let add_expr = ctx.add(Expr::Add(m1, m2));
+        let add_eval = try_eval_matrix_add_expr(&mut ctx, add_expr).expect("matrix add");
+        assert!(format_matrix_add_desc(&add_eval).contains("2×2 + 2×2"));
+
+        let mul_expr = ctx.add(Expr::Mul(m1, m2));
+        let mul_eval = try_eval_matrix_mul_expr(&mut ctx, mul_expr).expect("matrix mul");
+        assert!(format_matrix_mul_desc(&mul_eval).contains("= 2×2"));
+
+        let transposed = ctx.call("transpose", vec![m1]);
+        let function_eval = try_eval_matrix_function_expr(&mut ctx, transposed).expect("transpose");
+        assert!(format_matrix_function_desc(&function_eval).contains("transpose(2×2)"));
     }
 }
