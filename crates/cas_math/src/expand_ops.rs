@@ -10,6 +10,58 @@ use cas_ast::{Context, Expr, ExprId};
 use num_integer::Integer;
 use num_traits::{Signed, ToPrimitive};
 
+/// Build expanded form of `(a + b)^n`.
+///
+/// Returns:
+/// - `1` for `n = 0`
+/// - `a + b` for `n = 1`
+/// - binomial expansion for `n >= 2`
+pub fn build_binomial_power_expansion(ctx: &mut Context, a: ExprId, b: ExprId, n: u32) -> ExprId {
+    if n == 0 {
+        return ctx.num(1);
+    }
+    if n == 1 {
+        return ctx.add(Expr::Add(a, b));
+    }
+
+    let mut terms = Vec::with_capacity((n + 1) as usize);
+    for k in 0..=n {
+        let coeff = binomial_coeff(n, k);
+        let exp_a = n - k;
+        let exp_b = k;
+
+        let term_a = if exp_a == 0 {
+            ctx.num(1)
+        } else if exp_a == 1 {
+            a
+        } else {
+            let e = ctx.num(exp_a as i64);
+            ctx.add(Expr::Pow(a, e))
+        };
+        let term_b = if exp_b == 0 {
+            ctx.num(1)
+        } else if exp_b == 1 {
+            b
+        } else {
+            let e = ctx.num(exp_b as i64);
+            ctx.add(Expr::Pow(b, e))
+        };
+
+        let mut term = mul2_raw(ctx, term_a, term_b);
+        if coeff > 1 {
+            let c = ctx.num(coeff as i64);
+            term = mul2_raw(ctx, c, term);
+        }
+        terms.push(term);
+    }
+
+    let mut expanded = terms[0];
+    for &term in terms.iter().skip(1) {
+        expanded = ctx.add(Expr::Add(expanded, term));
+    }
+    expanded
+}
+
 /// Expand an expression recursively.
 ///
 /// This is the pure symbolic expansion implementation:
@@ -139,41 +191,7 @@ pub fn expand_pow(ctx: &mut Context, base: ExprId, exp: ExprId) -> ExprId {
             if n.is_integer() && !n.is_negative() {
                 if let Some(n_val) = n.to_integer().to_u32() {
                     if (2..=10).contains(&n_val) {
-                        let mut terms = Vec::new();
-                        for k in 0..=n_val {
-                            let coeff = binomial_coeff(n_val, k);
-                            let exp_a = n_val - k;
-                            let exp_b = k;
-
-                            let term_a = if exp_a == 0 {
-                                ctx.num(1)
-                            } else if exp_a == 1 {
-                                a
-                            } else {
-                                let e = ctx.num(exp_a as i64);
-                                ctx.add(Expr::Pow(a, e))
-                            };
-                            let term_b = if exp_b == 0 {
-                                ctx.num(1)
-                            } else if exp_b == 1 {
-                                b
-                            } else {
-                                let e = ctx.num(exp_b as i64);
-                                ctx.add(Expr::Pow(b, e))
-                            };
-
-                            let mut term = mul2_raw(ctx, term_a, term_b);
-                            if coeff > 1 {
-                                let c = ctx.num(coeff as i64);
-                                term = mul2_raw(ctx, c, term);
-                            }
-                            terms.push(term);
-                        }
-
-                        let mut expanded = terms[0];
-                        for &term in terms.iter().skip(1) {
-                            expanded = ctx.add(Expr::Add(expanded, term));
-                        }
+                        let expanded = build_binomial_power_expansion(ctx, a, b, n_val);
                         return expand(ctx, expanded);
                     }
                 }

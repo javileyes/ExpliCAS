@@ -4,8 +4,8 @@
 //! size of `transform_expr_recursive`.
 
 use super::*;
-use cas_math::expr_predicates::{is_half_expr, is_two_expr};
-use cas_math::expr_relations::is_negation;
+use cas_math::factoring_support::try_rewrite_difference_of_squares_product_expr;
+use cas_math::pow_preorder_support::try_plan_sqrt_square_pow_rewrite;
 
 impl<'a> LocalSimplificationTransformer<'a> {
     /// Transform binary expression (Add/Sub/Mul) by simplifying children.
@@ -69,87 +69,9 @@ impl<'a> LocalSimplificationTransformer<'a> {
     /// Returns None if no conjugate pair is found.
     #[inline(never)]
     fn try_conjugate_pair_contraction(&mut self, id: ExprId) -> Option<ExprId> {
-        use crate::rules::polynomial::polynomial_helpers::is_conjugate;
-
-        // Flatten Mul chain into a list of factors (canonical utility)
-        let factors = crate::nary::mul_factors(self.context, id);
-        if factors.len() < 2 {
-            return None;
-        }
-
-        // Scan all pairs for conjugate match (O(n²), but n is small — typically 2-4)
-        for i in 0..factors.len() {
-            for j in (i + 1)..factors.len() {
-                let fi = factors[i];
-                let fj = factors[j];
-
-                if is_conjugate(self.context, fi, fj) {
-                    // Extract the a and b from the conjugate pair
-                    let (a, b) = self.extract_conjugate_terms(fi, fj)?;
-
-                    // Build a² - b²
-                    let two = self.context.num(2);
-                    let a_sq = self.context.add(Expr::Pow(a, two));
-                    let b_sq = self.context.add(Expr::Pow(b, two));
-                    let dos = self.context.add(Expr::Sub(a_sq, b_sq));
-
-                    // Rebuild product with remaining factors
-                    let mut result = dos;
-                    for (k, &fk) in factors.iter().enumerate() {
-                        if k != i && k != j {
-                            result = self.context.add(Expr::Mul(result, fk));
-                        }
-                    }
-
-                    // Record step
-                    self.record_step("(a+b)(a-b) = a²-b²", "Difference of Squares", id, result);
-
-                    // Re-enter simplification on the contracted product
-                    return Some(self.transform_expr_recursive(result));
-                }
-            }
-        }
-
-        None
-    }
-
-    /// Extract (a, b) from a conjugate pair: one is (a+b), the other is (a-b).
-    /// Returns the terms in canonical order so a²-b² is correct.
-    fn extract_conjugate_terms(&self, x: ExprId, y: ExprId) -> Option<(ExprId, ExprId)> {
-        let x_expr = self.context.get(x);
-        let y_expr = self.context.get(y);
-
-        match (x_expr, y_expr) {
-            (Expr::Add(a1, a2), Expr::Sub(b1, _b2)) => {
-                // (a+b) and (a-b) — check which order
-                use crate::ordering::compare_expr;
-                use std::cmp::Ordering;
-                if compare_expr(self.context, *a1, *b1) == Ordering::Equal {
-                    Some((*a1, *a2))
-                } else {
-                    // Commutative: (b+a) and (a-b)
-                    Some((*a2, *a1))
-                }
-            }
-            (Expr::Sub(b1, b2), Expr::Add(_, _)) => {
-                // Reverse: (a-b) and (a+b)
-                Some((*b1, *b2))
-            }
-            (Expr::Add(a1, a2), Expr::Add(b1, b2)) => {
-                // (A+B) and (A+(-B)) — where negation can be on either B term
-                // Cases where B is negated: a2 vs b2 or a2 vs b1
-                if is_negation(self.context, *a2, *b2) || is_negation(self.context, *a2, *b1) {
-                    Some((*a1, *a2))
-                } else if is_negation(self.context, *a1, *b2) || is_negation(self.context, *a1, *b1)
-                {
-                    // A is negated, so the shared term is B
-                    Some((*a2, *a1))
-                } else {
-                    None
-                }
-            }
-            _ => None,
-        }
+        let rewrite = try_rewrite_difference_of_squares_product_expr(self.context, id)?;
+        self.record_step(rewrite.desc, "Difference of Squares", id, rewrite.rewritten);
+        Some(self.transform_expr_recursive(rewrite.rewritten))
     }
 
     /// Transform Pow expression with early detection for sqrt-of-square patterns.
@@ -158,15 +80,9 @@ impl<'a> LocalSimplificationTransformer<'a> {
     pub(super) fn transform_pow(&mut self, id: ExprId, base: ExprId, exp: ExprId) -> ExprId {
         // EARLY DETECTION: sqrt-of-square pattern (u^2)^(1/2) -> |u|
         // Must check BEFORE recursing into children to prevent binomial expansion
-        if is_half_expr(self.context, exp) {
-            // Try (something^2)^(1/2) -> |something|
-            if let Some(result) = self.try_sqrt_of_square(id, base) {
-                return result;
-            }
-            // Try (u * u)^(1/2) -> |u|
-            if let Some(result) = self.try_sqrt_of_product(id, base) {
-                return result;
-            }
+        if let Some(plan) = try_plan_sqrt_square_pow_rewrite(self.context, base, exp) {
+            self.record_step(plan.identity_desc, plan.rule_name, id, plan.rewritten);
+            return self.transform_expr_recursive(plan.rewritten);
         }
 
         // Check if this Pow is canonical before recursing into children
@@ -204,44 +120,6 @@ impl<'a> LocalSimplificationTransformer<'a> {
         } else {
             id
         }
-    }
-
-    /// Try to simplify (u^2)^(1/2) -> |u|
-    #[inline(never)]
-    fn try_sqrt_of_square(&mut self, id: ExprId, base: ExprId) -> Option<ExprId> {
-        if let Expr::Pow(inner_base, inner_exp) = self.context.get(base) {
-            if is_two_expr(self.context, *inner_exp) {
-                let abs_expr = self.context.call("abs", vec![*inner_base]);
-                self.record_step(
-                    "sqrt(u^2) = |u|",
-                    "Simplify Square Root of Square",
-                    id,
-                    abs_expr,
-                );
-                return Some(self.transform_expr_recursive(abs_expr));
-            }
-        }
-        None
-    }
-
-    /// Try to simplify (u * u)^(1/2) -> |u|
-    #[inline(never)]
-    fn try_sqrt_of_product(&mut self, id: ExprId, base: ExprId) -> Option<ExprId> {
-        if let Expr::Mul(left, right) = self.context.get(base) {
-            if crate::ordering::compare_expr(self.context, *left, *right)
-                == std::cmp::Ordering::Equal
-            {
-                let abs_expr = self.context.call("abs", vec![*left]);
-                self.record_step(
-                    "sqrt(u * u) = |u|",
-                    "Simplify Square Root of Product",
-                    id,
-                    abs_expr,
-                );
-                return Some(self.transform_expr_recursive(abs_expr));
-            }
-        }
-        None
     }
 
     /// Transform Function expression by simplifying children.

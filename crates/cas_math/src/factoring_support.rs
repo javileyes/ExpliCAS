@@ -4,7 +4,7 @@ use crate::expr_nary::{add_leaves, mul_leaves};
 use crate::expr_predicates::contains_variable;
 use crate::expr_relations::{
     conjugate_add_sub_pair as is_conjugate_pair,
-    conjugate_nary_add_sub_pair as is_nary_conjugate_pair, is_structurally_zero,
+    conjugate_nary_add_sub_pair as is_nary_conjugate_pair, is_structurally_zero, poly_equal,
 };
 use crate::expr_rewrite::smart_mul;
 use crate::numeric::gcd_rational;
@@ -59,6 +59,23 @@ pub fn try_rewrite_difference_of_squares_product_expr(
     ctx: &mut Context,
     expr: ExprId,
 ) -> Option<DifferenceOfSquaresProductRewrite> {
+    fn nary_candidate_matches_factor_pair(
+        ctx: &mut Context,
+        left: ExprId,
+        right: ExprId,
+        u: ExprId,
+        v: ExprId,
+    ) -> bool {
+        let u_plus_v = ctx.add(Expr::Add(u, v));
+        let u_minus_v = ctx.add(Expr::Sub(u, v));
+
+        // Require each original factor to be polynomially equivalent to one of
+        // the reconstructed conjugates, in opposite sign arrangement.
+        let plus_minus = poly_equal(ctx, left, u_plus_v) && poly_equal(ctx, right, u_minus_v);
+        let minus_plus = poly_equal(ctx, left, u_minus_v) && poly_equal(ctx, right, u_plus_v);
+        plus_minus || minus_plus
+    }
+
     let (left, right) = match ctx.get(expr) {
         Expr::Mul(l, r) => (*l, *r),
         _ => return None,
@@ -76,14 +93,16 @@ pub fn try_rewrite_difference_of_squares_product_expr(
     }
 
     if let Some((u, v)) = is_nary_conjugate_pair(ctx, left, right) {
-        let two = ctx.num(2);
-        let u_squared = ctx.add(Expr::Pow(u, two));
-        let v_squared = ctx.add(Expr::Pow(v, two));
-        let rewritten = ctx.add(Expr::Sub(u_squared, v_squared));
-        return Some(DifferenceOfSquaresProductRewrite {
-            rewritten,
-            desc: "(U+V)(U-V) = U² - V² (conjugate product)",
-        });
+        if nary_candidate_matches_factor_pair(ctx, left, right, u, v) {
+            let two = ctx.num(2);
+            let u_squared = ctx.add(Expr::Pow(u, two));
+            let v_squared = ctx.add(Expr::Pow(v, two));
+            let rewritten = ctx.add(Expr::Sub(u_squared, v_squared));
+            return Some(DifferenceOfSquaresProductRewrite {
+                rewritten,
+                desc: "(U+V)(U-V) = U² - V² (conjugate product)",
+            });
+        }
     }
 
     let factors = mul_leaves(ctx, expr);
@@ -96,9 +115,17 @@ pub fn try_rewrite_difference_of_squares_product_expr(
             let fi = factors[i];
             let fj = factors[j];
 
-            let conjugate =
-                is_conjugate_pair(ctx, fi, fj).or_else(|| is_nary_conjugate_pair(ctx, fi, fj));
-            if let Some((a, b)) = conjugate {
+            let conjugate = if let Some(pair) = is_conjugate_pair(ctx, fi, fj) {
+                Some((pair, false))
+            } else {
+                is_nary_conjugate_pair(ctx, fi, fj).map(|pair| (pair, true))
+            };
+
+            if let Some(((a, b), from_nary)) = conjugate {
+                if from_nary && !nary_candidate_matches_factor_pair(ctx, fi, fj, a, b) {
+                    continue;
+                }
+
                 let two = ctx.num(2);
                 let a_squared = ctx.add(Expr::Pow(a, two));
                 let b_squared = ctx.add(Expr::Pow(b, two));
@@ -427,6 +454,16 @@ mod tests {
         let rewrite =
             try_rewrite_difference_of_squares_product_expr(&mut ctx, expr).expect("rewrite");
         assert!(matches!(ctx.get(rewrite.rewritten), Expr::Sub(_, _)));
+    }
+
+    #[test]
+    fn difference_of_squares_support_rejects_false_positive_nary_pair() {
+        let mut ctx = Context::new();
+        // Not a true conjugate pair around the same center:
+        // ((u^2+1)-1) * ((u^2+1)+1) == u^2 * (u^2+2), not u^4-1.
+        let expr = parse("((u^2+1)-1)*((u^2+1)+1)", &mut ctx).expect("parse");
+        let rewrite = try_rewrite_difference_of_squares_product_expr(&mut ctx, expr);
+        assert!(rewrite.is_none(), "must not contract to U^2-V^2");
     }
 
     #[test]

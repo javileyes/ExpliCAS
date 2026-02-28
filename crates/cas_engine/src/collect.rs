@@ -1,20 +1,14 @@
 use crate::parent_context::ParentContext;
 use crate::DomainMode;
-use cas_ast::{Context, Expr, ExprId};
-use cas_math::collect_terms::{CancelledGroup, CombinedGroup};
+use cas_ast::{Context, ExprId};
+use cas_math::collect_rule_support::CollectRulePlan;
+use cas_math::collect_semantics_support::{
+    collect_with_semantics_mode, CollectSemanticsMode, CollectSemanticsResult,
+};
 
 /// Result of a semantics-aware collection operation.
 /// Contains the new expression and tracking of what was cancelled/combined.
-#[derive(Debug, Clone)]
-pub(crate) struct CollectResult {
-    pub(crate) new_expr: ExprId,
-    #[allow(dead_code)] // Set for future Assume-mode reporting
-    pub(crate) assumption: Option<String>,
-    /// Groups of terms that cancelled to zero
-    pub(crate) cancelled: Vec<CancelledGroup>,
-    /// Groups of terms that were combined
-    pub(crate) combined: Vec<CombinedGroup>,
-}
+pub(crate) type CollectResult = CollectSemanticsResult;
 
 /// Check if an expression contains any Div with a denominator that is not proven non-zero.
 /// This indicates "undefined risk" - the expression could be undefined at some points.
@@ -22,39 +16,9 @@ pub(crate) fn has_undefined_risk(ctx: &Context, expr: ExprId) -> bool {
     use crate::domain::Proof;
     use crate::helpers::prove_nonzero;
 
-    let mut stack = vec![expr];
-    while let Some(e) = stack.pop() {
-        match ctx.get(e) {
-            Expr::Div(num, den) => {
-                if prove_nonzero(ctx, *den) != Proof::Proven {
-                    return true;
-                }
-                // Still need to check num for nested issues
-                stack.push(*num);
-                stack.push(*den);
-            }
-            Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Pow(l, r) => {
-                stack.push(*l);
-                stack.push(*r);
-            }
-            Expr::Neg(inner) | Expr::Hold(inner) => {
-                stack.push(*inner);
-            }
-            Expr::Function(_, args) => {
-                for arg in args {
-                    stack.push(*arg);
-                }
-            }
-            Expr::Matrix { data, .. } => {
-                for elem in data {
-                    stack.push(*elem);
-                }
-            }
-            // Leaves — no children to push
-            Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) | Expr::SessionRef(_) => {}
-        }
-    }
-    false
+    cas_math::undefined_risk_support::has_undefined_risk_with(ctx, expr, |core_ctx, den| {
+        prove_nonzero(core_ctx, den) == Proof::Proven
+    })
 }
 
 /// Collects like terms with domain_mode awareness.
@@ -68,58 +32,19 @@ pub(crate) fn collect_with_semantics(
     expr: ExprId,
     parent_ctx: &ParentContext,
 ) -> Option<CollectResult> {
-    // CRITICAL: Do NOT collect non-commutative expressions (e.g., matrices)
-    if !ctx.is_mul_commutative(expr) {
-        return None;
-    }
+    let (mode, risk) = resolve_mode_and_risk(ctx, expr, parent_ctx);
 
-    // Check for undefined risk in the entire expression
-    let risk = has_undefined_risk(ctx, expr);
-    let domain_mode = parent_ctx.domain_mode();
+    collect_with_semantics_mode(ctx, expr, mode, risk)
+}
 
-    // Determine if we should proceed based on domain_mode
-    let (allowed, assumption) = match domain_mode {
-        DomainMode::Strict => {
-            if risk {
-                // In Strict mode, don't cancel terms with undefined risk
-                (false, None)
-            } else {
-                (true, None)
-            }
-        }
-        DomainMode::Assume => {
-            // In Assume mode, allow with warning if there's risk
-            let assumption = if risk {
-                Some("Assuming expression is defined (denominators ≠ 0)".to_string())
-            } else {
-                None
-            };
-            (true, assumption)
-        }
-        DomainMode::Generic => {
-            // In Generic mode, always allow without warning
-            (true, None)
-        }
-    };
-
-    if !allowed {
-        return None;
-    }
-
-    // Run the actual collection logic
-    let impl_result = collect_impl(ctx, expr);
-
-    // Only return if something changed
-    if impl_result.new_expr == expr {
-        return None;
-    }
-
-    Some(CollectResult {
-        new_expr: impl_result.new_expr,
-        assumption,
-        cancelled: impl_result.cancelled,
-        combined: impl_result.combined,
-    })
+/// Build a didactic rewrite plan for CombineLikeTerms rule.
+pub(crate) fn plan_collect_rule_rewrite(
+    ctx: &mut Context,
+    expr: ExprId,
+    parent_ctx: &ParentContext,
+) -> Option<CollectRulePlan> {
+    let (mode, risk) = resolve_mode_and_risk(ctx, expr, parent_ctx);
+    cas_math::collect_rule_support::try_plan_collect_rule_expr(ctx, expr, mode, risk)
 }
 
 /// Collects like terms in an expression using Generic mode semantics.
@@ -128,20 +53,27 @@ pub(crate) fn collect_with_semantics(
 ///      x^2 + 2*x^2 -> 3*x^2
 pub(crate) fn collect(ctx: &mut Context, expr: ExprId) -> ExprId {
     // Generic mode keeps legacy behavior (no blocking, no warnings).
-    let fake_parent = ParentContext::root();
-    match collect_with_semantics(ctx, expr, &fake_parent) {
+    match collect_with_semantics_mode(ctx, expr, CollectSemanticsMode::Generic, false) {
         Some(result) => result.new_expr,
         None => expr, // No change or blocked
     }
 }
 
-/// Internal result from collect_impl with tracking info
-type CollectImplResult = cas_math::collect_terms::CollectCoreResult;
-
-/// Internal implementation of collect logic (no semantics checking)
-/// Now tracks original terms per group for didactic focus display
-fn collect_impl(ctx: &mut Context, expr: ExprId) -> CollectImplResult {
-    cas_math::collect_terms::collect_impl(ctx, expr)
+fn resolve_mode_and_risk(
+    ctx: &Context,
+    expr: ExprId,
+    parent_ctx: &ParentContext,
+) -> (CollectSemanticsMode, bool) {
+    let mode = match parent_ctx.domain_mode() {
+        DomainMode::Strict => CollectSemanticsMode::Strict,
+        DomainMode::Assume => CollectSemanticsMode::Assume,
+        DomainMode::Generic => CollectSemanticsMode::Generic,
+    };
+    let risk = match mode {
+        CollectSemanticsMode::Generic => false,
+        _ => has_undefined_risk(ctx, expr),
+    };
+    (mode, risk)
 }
 
 /// Simplify numeric sums in exponents throughout an expression tree.

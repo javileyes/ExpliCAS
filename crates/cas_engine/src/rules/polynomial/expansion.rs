@@ -1,16 +1,14 @@
 //! Polynomial expansion rules: binomial expansion, auto-expand, identity detection,
 //! and heuristic polynomial normalization.
 
-use crate::build::mul2_raw;
 use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
 use cas_ast::{Context, Expr, ExprId};
-use cas_math::combinatorics::binomial_coeff;
-use cas_math::expr_destructure::{as_add, as_pow};
-use cas_math::multipoly::PolyBudget;
-use num_traits::{Signed, ToPrimitive};
-
-use super::count_additive_terms;
+use cas_math::expansion_rule_support::{
+    is_auto_sub_cancel_zero, try_auto_expand_pow_sum_expr, try_expand_binomial_pow_expr,
+    try_expand_small_multinomial_expr, AutoExpandPowSumPolicy, AutoSubCancelPolicy,
+    SmallMultinomialPolicy,
+};
 
 // =============================================================================
 // BinomialExpansionRule
@@ -48,93 +46,17 @@ impl crate::rule::Rule for BinomialExpansionRule {
             }
         }
 
-        // (a + b)^n - ONLY true binomials (exactly 2 terms)
-        // Extract Pow fields via ref-and-copy
-        let pow_fields = match ctx.get(expr) {
-            Expr::Pow(b, e) => Some((*b, *e)),
-            _ => None,
-        };
-        if let Some((base, exp)) = pow_fields {
-            // CRITICAL GUARD: Only expand if base has exactly 2 terms
-            // This prevents multinomial expansion like (1 + x1 + x2 + ... + x7)^7
-            // which would produce thousands of terms
-            let term_count = count_additive_terms(ctx, base);
-            if term_count != 2 {
-                return None; // Not a binomial, skip expansion
-            }
-
-            let (a, b) = match ctx.get(base) {
-                Expr::Add(a, b) => (*a, *b),
-                Expr::Sub(a, b) => {
-                    let b = *b;
-                    let a = *a;
-                    let neg_b = ctx.add(Expr::Neg(b));
-                    (a, neg_b)
-                }
-                _ => return None,
-            };
-
-            // CLONE_OK: Exponent inspection for Neg/Number patterns
-            if let Expr::Number(n) = ctx.get(exp) {
-                if n.is_integer() && !n.is_negative() {
-                    if let Some(n_val) = n.to_integer().to_u32() {
-                        // Only expand binomials in explicit expand mode
-                        // In Standard mode, preserve structure like (x+1)^3
-                        // This prevents unwanted expansion when doing poly_gcd(a*g, b*g) - g
-                        if !parent_ctx.is_expand_mode() {
-                            return None;
-                        }
-
-                        // Limit expansion to reasonable exponents even in expand mode
-                        if (2..=20).contains(&n_val) {
-                            // Expand: sum(k=0 to n) (n choose k) * a^(n-k) * b^k
-                            let mut terms = Vec::new();
-                            for k in 0..=n_val {
-                                let coeff = binomial_coeff(n_val, k);
-                                let exp_a = n_val - k;
-                                let exp_b = k;
-
-                                let term_a = if exp_a == 0 {
-                                    ctx.num(1)
-                                } else if exp_a == 1 {
-                                    a
-                                } else {
-                                    let e = ctx.num(exp_a as i64);
-                                    ctx.add(Expr::Pow(a, e))
-                                };
-                                let term_b = if exp_b == 0 {
-                                    ctx.num(1)
-                                } else if exp_b == 1 {
-                                    b
-                                } else {
-                                    let e = ctx.num(exp_b as i64);
-                                    ctx.add(Expr::Pow(b, e))
-                                };
-
-                                let mut term = mul2_raw(ctx, term_a, term_b);
-                                if coeff > 1 {
-                                    let c = ctx.num(coeff as i64);
-                                    term = mul2_raw(ctx, c, term);
-                                }
-                                terms.push(term);
-                            }
-
-                            // Sum up terms
-                            let mut expanded = terms[0];
-                            for &term in terms.iter().skip(1) {
-                                expanded = ctx.add(Expr::Add(expanded, term));
-                            }
-
-                            return Some(
-                                Rewrite::new(expanded)
-                                    .desc_lazy(|| format!("Expand binomial power ^{}", n_val)),
-                            );
-                        }
-                    }
-                }
-            }
+        // Only expand binomials in explicit expand mode.
+        // In Standard mode, preserve structures like `(x+1)^3`.
+        if !parent_ctx.is_expand_mode() {
+            return None;
         }
-        None
+
+        let plan = try_expand_binomial_pow_expr(ctx, expr, 2, 20)?;
+        Some(
+            Rewrite::new(plan.expanded)
+                .desc_lazy(|| format!("Expand binomial power ^{}", plan.exponent)),
+        )
     }
 
     fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
@@ -152,69 +74,6 @@ impl crate::rule::Rule for BinomialExpansionRule {
 /// Only triggers when `parent_ctx.is_auto_expand()` is true.
 /// Respects budget limits: max_pow_exp, max_base_terms, max_generated_terms, max_vars.
 pub struct AutoExpandPowSumRule;
-
-impl AutoExpandPowSumRule {
-    /// Count additive terms in an expression
-    fn count_add_terms(ctx: &Context, expr: ExprId) -> u32 {
-        match ctx.get(expr) {
-            Expr::Add(l, r) => Self::count_add_terms(ctx, *l) + Self::count_add_terms(ctx, *r),
-            _ => 1,
-        }
-    }
-
-    /// Count unique variables in an expression
-    fn count_variables(
-        ctx: &Context,
-        expr: ExprId,
-        visited: &mut std::collections::HashSet<String>,
-    ) {
-        match ctx.get(expr) {
-            Expr::Variable(sym_id) => {
-                let name = ctx.sym_name(*sym_id).to_string();
-                visited.insert(name);
-            }
-            Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
-                Self::count_variables(ctx, *l, visited);
-                Self::count_variables(ctx, *r, visited);
-            }
-            Expr::Pow(b, e) => {
-                Self::count_variables(ctx, *b, visited);
-                Self::count_variables(ctx, *e, visited);
-            }
-            Expr::Neg(e) | Expr::Hold(e) => {
-                Self::count_variables(ctx, *e, visited);
-            }
-            Expr::Function(_, args) => {
-                for arg in args {
-                    Self::count_variables(ctx, *arg, visited);
-                }
-            }
-            Expr::Matrix { data, .. } => {
-                for elem in data {
-                    Self::count_variables(ctx, *elem, visited);
-                }
-            }
-            // Leaves
-            Expr::Number(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
-        }
-    }
-
-    /// Estimate number of terms generated by multinomial expansion: C(n+k-1, k-1)
-    /// For binomial (k=2): C(n+1, 1) = n+1
-    fn estimate_terms(k: u32, n: u32) -> u32 {
-        // Multinomial: number of terms = C(n+k-1, k-1)
-        // For binomial: C(n+1, 1) = n+1
-        // For trinomial: C(n+2, 2) = (n+1)(n+2)/2
-        // etc.
-        if k <= 1 {
-            return 1;
-        }
-        // Compute C(n+k-1, k-1) = C(n+k-1, n)
-        let top = n + k - 1;
-        let bottom = k - 1;
-        binomial_coeff(top, bottom)
-    }
-}
 
 impl crate::rule::Rule for AutoExpandPowSumRule {
     fn name(&self) -> &str {
@@ -243,111 +102,26 @@ impl crate::rule::Rule for AutoExpandPowSumRule {
             return None;
         }
 
-        // Pattern: Pow(Add(...), n) - use zero-clone destructuring
-        let (base, exp) = as_pow(ctx, expr)?;
-
-        // Check exponent is a small positive integer
-        let n_val = {
-            let exp_expr = ctx.get(exp);
-            match exp_expr {
-                Expr::Number(n) if n.is_integer() && !n.is_negative() => n.to_integer().to_u32()?,
-                _ => return None,
-            }
+        let policy = AutoExpandPowSumPolicy {
+            max_pow_exp: budget.max_pow_exp,
+            max_base_terms: budget.max_base_terms,
+            max_generated_terms: budget.max_generated_terms,
+            max_vars: budget.max_vars,
         };
+        let plan = try_auto_expand_pow_sum_expr(ctx, expr, policy)?;
 
-        // Budget check 1: max_pow_exp
-        if n_val > budget.max_pow_exp {
-            return None;
-        }
-        // At least square to be useful
-        if n_val < 2 {
-            return None;
-        }
-
-        // Check base is an Add and extract terms
-        let (a, b) = match as_add(ctx, base) {
-            Some((a, b)) => (a, b),
-            None => return None,
-        };
-
-        // Budget check 2: max_base_terms
-        let num_terms = Self::count_add_terms(ctx, base);
-        if num_terms > budget.max_base_terms {
-            return None;
-        }
-
-        // Budget check 3: max_generated_terms
-        let estimated_result_terms = Self::estimate_terms(num_terms, n_val);
-        if estimated_result_terms > budget.max_generated_terms {
-            return None;
-        }
-
-        // Budget check 4: max_vars
-        let mut vars = std::collections::HashSet::new();
-        Self::count_variables(ctx, base, &mut vars);
-        if vars.len() as u32 > budget.max_vars {
-            return None;
-        }
-
-        // All budget checks passed!
-        // For binomials (2 terms), use binomial expansion
-        if num_terms == 2 {
-            // Use a and b extracted above
-            let mut terms = Vec::new();
-            for k in 0..=n_val {
-                let coeff = binomial_coeff(n_val, k);
-                let exp_a = n_val - k;
-                let exp_b = k;
-
-                let term_a = if exp_a == 0 {
-                    ctx.num(1)
-                } else if exp_a == 1 {
-                    a
-                } else {
-                    let exp_a_id = ctx.num(exp_a as i64);
-                    ctx.add(Expr::Pow(a, exp_a_id))
-                };
-
-                let term_b = if exp_b == 0 {
-                    ctx.num(1)
-                } else if exp_b == 1 {
-                    b
-                } else {
-                    let exp_b_id = ctx.num(exp_b as i64);
-                    ctx.add(Expr::Pow(b, exp_b_id))
-                };
-
-                let mut term = mul2_raw(ctx, term_a, term_b);
-                if coeff > 1 {
-                    let c = ctx.num(coeff as i64);
-                    term = mul2_raw(ctx, c, term);
-                }
-                terms.push(term);
-            }
-
-            // Sum up terms
-            let mut expanded = terms[0];
-            for &term in terms.iter().skip(1) {
-                expanded = ctx.add(Expr::Add(expanded, term));
-            }
-
-            return Some(
-                Rewrite::new(expanded).desc_lazy(|| format!("Auto-expand (a+b)^{}", n_val)),
-            );
-        }
-
-        // For trinomials and higher, use the general expand() infrastructure.
-        // expand() handles Pow(Add(Add(a,b),c), n) via recursive binomial
-        // expansion, which is equivalent to multinomial expansion.
-        // All budget checks above already guarantee this is within limits.
-        let expanded = crate::expand::expand(ctx, expr);
-        if expanded != expr {
+        if plan.num_terms == 2 {
             Some(
-                Rewrite::new(expanded)
-                    .desc_lazy(|| format!("Auto-expand ({}-term sum)^{}", num_terms, n_val)),
+                Rewrite::new(plan.expanded)
+                    .desc_lazy(|| format!("Auto-expand (a+b)^{}", plan.exponent)),
             )
         } else {
-            None
+            Some(Rewrite::new(plan.expanded).desc_lazy(|| {
+                format!(
+                    "Auto-expand ({}-term sum)^{}",
+                    plan.num_terms, plan.exponent
+                )
+            }))
         }
     }
 
@@ -394,18 +168,6 @@ impl crate::rule::Rule for AutoExpandPowSumRule {
 /// output_nodes) are stricter than the global anti-worsen budget.
 pub struct SmallMultinomialExpansionRule;
 
-/// Maximum exponent for default-simplify multinomial expansion.
-const SMALL_MULTI_MAX_N: u32 = 4;
-/// Maximum number of base additive terms.
-const SMALL_MULTI_MAX_TERMS: usize = 6;
-/// Maximum predicted output terms (the primary gate).
-const SMALL_MULTI_MAX_OUTPUT_TERMS: usize = 35;
-/// Maximum node count (deduplicated) for the base expression.
-const SMALL_MULTI_MAX_BASE_NODES: usize = 25;
-/// Maximum total node count in the expanded output (post-expansion guard).
-/// Measured: (a+b+c+d)^4 (35 terms, boundary) → 302 nodes.
-const SMALL_MULTI_MAX_OUTPUT_NODES: usize = 350;
-
 impl crate::rule::Rule for SmallMultinomialExpansionRule {
     fn name(&self) -> &str {
         "Small Multinomial Expansion"
@@ -417,78 +179,10 @@ impl crate::rule::Rule for SmallMultinomialExpansionRule {
         expr: ExprId,
         _parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<Rewrite> {
-        // Pattern: Pow(base, exp)
-        let (base, exp) = match ctx.get(expr) {
-            Expr::Pow(b, e) => (*b, *e),
-            _ => return None,
-        };
-
-        // Exponent must be a small positive integer in [2, MAX_N]
-        let n = match ctx.get(exp) {
-            Expr::Number(num) => {
-                if !num.is_integer() || num.is_negative() {
-                    return None;
-                }
-                num.to_integer().to_u32()?
-            }
-            _ => return None,
-        };
-        if !(2..=SMALL_MULTI_MAX_N).contains(&n) {
-            return None;
-        }
-
-        // Count additive terms in base — need ≥3 (binomials handled elsewhere)
-        let k = count_additive_terms(ctx, base);
-        if !(3..=SMALL_MULTI_MAX_TERMS).contains(&k) {
-            return None;
-        }
-
-        // PRIMARY GATE: predicted output terms = C(n+k-1, k-1) ≤ MAX_OUTPUT_TERMS
-        let pred_terms = cas_math::multinomial_expand::multinomial_term_count(
-            n,
-            k,
-            SMALL_MULTI_MAX_OUTPUT_TERMS + 1, // +1 so we can check ≤
-        )?;
-        if pred_terms > SMALL_MULTI_MAX_OUTPUT_TERMS {
-            return None;
-        }
-
-        // Base complexity cap (deduplicated node count)
-        let base_nodes = cas_ast::count_all_nodes(ctx, base);
-        if base_nodes > SMALL_MULTI_MAX_BASE_NODES {
-            return None;
-        }
-
-        // All guards passed — delegate to fast multinomial expansion
-        let budget = cas_math::multinomial_expand::MultinomialExpandBudget {
-            max_exp: SMALL_MULTI_MAX_N,
-            max_base_terms: SMALL_MULTI_MAX_TERMS,
-            max_vars: 8,
-            max_output_terms: SMALL_MULTI_MAX_OUTPUT_TERMS,
-        };
-
-        let expanded =
-            cas_math::multinomial_expand::try_expand_multinomial_direct(ctx, base, exp, &budget)?;
-
-        // POST-EXPANSION guard: reject if output is too large in total nodes.
-        // pred_terms caps #terms but not per-term complexity; opaque atoms
-        // like sin(x+y+z)^4 can replicate many nodes per term.
-        let output_nodes = cas_ast::count_all_nodes(ctx, expanded);
-        if output_nodes > SMALL_MULTI_MAX_OUTPUT_NODES {
-            tracing::debug!(
-                target: "multinomial",
-                k, n, pred_terms, output_nodes,
-                cap = SMALL_MULTI_MAX_OUTPUT_NODES,
-                "SmallMultinomialExpansionRule REJECTED: output_nodes exceeds cap"
-            );
-            return None;
-        }
-
-        tracing::debug!(
-            target: "multinomial",
-            k, n, pred_terms, output_nodes,
-            "SmallMultinomialExpansionRule ACCEPTED"
-        );
+        let plan = try_expand_small_multinomial_expr(ctx, expr, SmallMultinomialPolicy::default())?;
+        let k = plan.term_count;
+        let n = plan.exponent;
+        let expanded = plan.expanded;
 
         let k_copy = k;
         let n_copy = n;
@@ -543,22 +237,7 @@ impl crate::rule::Rule for AutoExpandSubCancelRule {
             return None;
         }
 
-        // Budget for polynomial conversion
-        let budget = PolyBudget {
-            max_terms: 100,
-            max_total_degree: 8,
-            max_pow_exp: 4, // Small limit for cancellation checks
-        };
-
-        // Convert entire expression to MultiPoly
-        // For Sub(a,b) this computes a-b
-        // For Add(a, Neg(b), Neg(c), ...) this computes a + (-b) + (-c) + ...
-        // If the result is 0, we have cancellation
-        let poly =
-            cas_math::poly_convert::try_multipoly_from_expr_with_var_limit(ctx, expr, &budget, 4)?;
-
-        // If the result is zero, we have proved cancellation!
-        if poly.is_zero() {
+        if is_auto_sub_cancel_zero(ctx, expr, AutoSubCancelPolicy::default()) {
             let zero = ctx.num(0);
             return Some(Rewrite::new(zero).desc("Polynomial equality: expressions cancel to 0"));
         }

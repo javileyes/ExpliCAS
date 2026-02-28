@@ -6,10 +6,13 @@
 use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
 use cas_ast::{Context, Expr, ExprId};
-use cas_math::expr_destructure::as_pow;
-use cas_math::multinomial_expand::{try_expand_multinomial_direct, MultinomialExpandBudget};
-use cas_math::multipoly::{MultiPoly, PolyBudget};
-use num_traits::Signed;
+use cas_math::expansion_rule_support::{
+    try_expand_small_pow_sum_expr, try_heuristic_poly_normalize_add_expr,
+    HeuristicPolyNormalizePolicy, SmallPowExpandPolicy,
+};
+use cas_math::polynomial_identity_support::{
+    try_prove_polynomial_identity_zero_expr, PolynomialIdentityProofKind,
+};
 
 // =============================================================================
 // PolynomialIdentityZeroRule
@@ -19,194 +22,6 @@ use num_traits::Signed;
 /// Converts expressions to MultiPoly form and checks if result is 0.
 /// Priority 90 (lower than AutoExpandSubCancelRule at 95 to avoid duplicate work)
 pub struct PolynomialIdentityZeroRule;
-
-impl PolynomialIdentityZeroRule {
-    /// Budget limits for polynomial conversion
-    /// V2.15.8: Increased max_pow_exp to 6 for binomial identities like (x+1)^5 - expansion = 0
-    fn poly_budget() -> PolyBudget {
-        PolyBudget {
-            max_terms: 50,       // Max monomials in result
-            max_total_degree: 6, // Max total degree (covers up to n=6)
-            max_pow_exp: 6,      // Max exponent in Pow nodes
-        }
-    }
-
-    /// Quick check: does expression look polynomial-like and worth checking?
-    /// Avoids expensive conversion for obviously non-polynomial expressions.
-    fn is_polynomial_candidate(ctx: &Context, expr: ExprId) -> bool {
-        cas_math::opaque_atoms::is_polynomial_candidate(ctx, expr, 30, 6)
-    }
-
-    /// Convert expression to MultiPoly (reusing AutoExpandSubCancelRule's method)
-    fn expr_to_multipoly(
-        ctx: &Context,
-        id: ExprId,
-        vars: &mut Vec<String>,
-        budget: &PolyBudget,
-    ) -> Option<MultiPoly> {
-        let poly =
-            cas_math::poly_convert::try_multipoly_from_expr_with_var_limit(ctx, id, budget, 4)?;
-        *vars = poly.vars.clone();
-        Some(poly)
-    }
-
-    /// Try to prove the expression is zero by substituting opaque function calls
-    /// with temporary variables. Returns `Some(PolynomialProofData)` with the
-    /// substitution mapping and LHS/RHS normal forms if the identity is confirmed.
-    ///
-    /// Also handles exponential polynomials: expressions of the form
-    /// `e^(k·u)` are treated as `t^k` where `t = e^u`.
-    ///
-    /// Display expressions are built in the main `ctx` using human-readable
-    /// variable names (`t₀`, `t₁`, …) so the didactic renderer can show
-    /// the actual expanded polynomial forms.
-    fn try_opaque_zero(
-        ctx: &mut Context,
-        expr: ExprId,
-    ) -> Option<cas_math::multipoly_display::PolynomialProofData> {
-        // ── Phase 1: collect opaque atoms ──────────────────────────────
-        let calls = cas_math::opaque_atoms::collect_function_calls(ctx, expr, 4);
-        let unique_calls = cas_math::opaque_atoms::dedup_expr_ids(ctx, &calls);
-
-        // Also check for exponential atoms: e^(k·base)
-        let exp_exponents = cas_math::opaque_atoms::collect_exp_exponents(ctx, expr, 30);
-        let exp_base = cas_math::opaque_atoms::find_exp_base(ctx, &exp_exponents, 6);
-
-        let total_atoms = unique_calls.len() + if exp_base.is_some() { 1 } else { 0 };
-        if total_atoms == 0 || total_atoms > 4 {
-            return None;
-        }
-
-        // ── Phase 2: build display name generator ──────────────────────
-        const SUBSCRIPTS: [char; 10] = ['₀', '₁', '₂', '₃', '₄', '₅', '₆', '₇', '₈', '₉'];
-        let display_name = |i: usize| -> String {
-            if total_atoms == 1 {
-                "t".to_string()
-            } else if i < 10 {
-                format!("t{}", SUBSCRIPTS[i])
-            } else {
-                format!("t{}", i)
-            }
-        };
-
-        // ── Phase 3: substitute in tmp context ─────────────────────────
-        let mut tmp_ctx = ctx.clone();
-        let mut sub_expr = expr;
-        let mut substitutions: Vec<(String, ExprId)> = Vec::new();
-        let mut atom_idx = 0;
-
-        // 3a: Substitute exponential atoms first (e^(k·base) → t^k)
-        if let Some(base) = exp_base {
-            let temp_name = format!("__opq{}", atom_idx);
-            let temp_var = tmp_ctx.var(&temp_name);
-            sub_expr = cas_math::opaque_atoms::substitute_exp_atoms(
-                &mut tmp_ctx,
-                sub_expr,
-                base,
-                temp_var,
-                30,
-                6,
-            );
-            // Build the display e^base expression for the proof data
-            let e_const = ctx.add(Expr::Constant(cas_ast::Constant::E));
-            let exp_display = ctx.add(Expr::Pow(e_const, base));
-            substitutions.push((display_name(atom_idx), exp_display));
-            atom_idx += 1;
-        }
-
-        // 3b: Substitute function calls (sin(u) → t, etc.)
-        for &call_id in &unique_calls {
-            let temp_name = format!("__opq{}", atom_idx);
-            let temp_var = tmp_ctx.var(&temp_name);
-            let opts = cas_math::substitute::SubstituteOptions {
-                power_aware: true,
-                ..Default::default()
-            };
-            sub_expr = cas_math::substitute::substitute_power_aware(
-                &mut tmp_ctx,
-                sub_expr,
-                call_id,
-                temp_var,
-                opts,
-            );
-            substitutions.push((display_name(atom_idx), call_id));
-            atom_idx += 1;
-        }
-
-        // ── Phase 4: convert to multipoly and check if zero ────────────
-        let budget = Self::poly_budget();
-        let mut vars = Vec::new();
-        let poly = Self::expr_to_multipoly(&tmp_ctx, sub_expr, &mut vars, &budget)?;
-        if !poly.is_zero() {
-            return None;
-        }
-
-        // ── Phase 5: build display expression in main context ──────────
-        let mut display_expr = expr;
-        let mut disp_idx = 0;
-
-        // 5a: Substitute exponential atoms for display
-        if let Some(base) = exp_base {
-            let disp_var = ctx.var(&display_name(disp_idx));
-            display_expr = cas_math::opaque_atoms::substitute_exp_atoms(
-                ctx,
-                display_expr,
-                base,
-                disp_var,
-                30,
-                6,
-            );
-            disp_idx += 1;
-        }
-
-        // 5b: Substitute function calls for display
-        for &call_id in &unique_calls {
-            let disp_var = ctx.var(&display_name(disp_idx));
-            let opts = cas_math::substitute::SubstituteOptions {
-                power_aware: true,
-                ..Default::default()
-            };
-            display_expr = cas_math::substitute::substitute_power_aware(
-                ctx,
-                display_expr,
-                call_id,
-                disp_var,
-                opts,
-            );
-            disp_idx += 1;
-        }
-
-        let display_vars: Vec<String> = vars
-            .iter()
-            .map(|v| {
-                if let Some(idx_str) = v.strip_prefix("__opq") {
-                    if let Ok(idx) = idx_str.parse::<usize>() {
-                        return display_name(idx);
-                    }
-                }
-                v.clone()
-            })
-            .collect();
-
-        // Compute the expanded form (each product expanded, but not cancelled)
-        let expanded_form_expr =
-            cas_math::multipoly_display::expand_additive_terms(ctx, display_expr, &display_vars);
-
-        let mut proof = cas_math::multipoly_display::PolynomialProofData {
-            monomials: 0,
-            degree: 0,
-            vars: display_vars,
-            normal_form_expr: Some(display_expr),
-            expanded_form_expr,
-            lhs_stats: None,
-            rhs_stats: None,
-            opaque_substitutions: Vec::new(),
-        };
-
-        proof.opaque_substitutions = substitutions;
-        Some(proof)
-    }
-}
 
 impl crate::rule::Rule for PolynomialIdentityZeroRule {
     fn name(&self) -> &str {
@@ -236,155 +51,15 @@ impl crate::rule::Rule for PolynomialIdentityZeroRule {
             return None;
         }
 
-        // Must be Add or Sub to be a cancellation candidate
-        let is_sub_or_add = matches!(ctx.get(expr), Expr::Sub(_, _) | Expr::Add(_, _));
-        if !is_sub_or_add {
-            return None;
-        }
-
-        // Quick node count check (avoid expensive conversion for huge expressions)
-        let node_count = cas_ast::count_nodes(ctx, expr);
-        if node_count > 100 {
-            return None; // Too big, skip
-        }
-
-        // Quick polynomial-like check
-        if !Self::is_polynomial_candidate(ctx, expr) {
-            return None;
-        }
-
-        // Try to convert to MultiPoly
-        let budget = Self::poly_budget();
-        let mut vars = Vec::new();
-        let poly_opt = Self::expr_to_multipoly(ctx, expr, &mut vars, &budget);
-
-        // If direct multipoly conversion failed, try opaque substitution fallback
-        let poly = match poly_opt {
-            Some(p) => p,
-            None => {
-                // Expression contains function calls that multipoly can't handle.
-                // Try substituting opaque calls with temp vars and check if zero.
-                if let Some(proof_data) = Self::try_opaque_zero(ctx, expr) {
-                    let zero = ctx.num(0);
-                    return Some(
-                        Rewrite::new(zero)
-                            .desc("Polynomial identity (opaque substitution): cancel to 0")
-                            .poly_proof(proof_data),
-                    );
-                }
-                return None;
+        let plan = try_prove_polynomial_identity_zero_expr(ctx, expr)?;
+        let zero = ctx.num(0);
+        let desc = match plan.kind {
+            PolynomialIdentityProofKind::Direct => "Polynomial identity: normalize and cancel to 0",
+            PolynomialIdentityProofKind::OpaqueSubstitution => {
+                "Polynomial identity (opaque substitution): cancel to 0"
             }
         };
-
-        // Check variable count
-        if vars.len() > 4 {
-            return None; // Too many variables
-        }
-
-        // If the result is zero, we have a polynomial identity!
-        if poly.is_zero() {
-            let zero = ctx.num(0);
-
-            // Split terms into positive and negative to show LHS/RHS normal forms
-            // For an expression like A + B - C - D, we show:
-            //   LHS (positive): A + B expanded
-            //   RHS (negative): C + D expanded
-            let (positive_terms, negative_terms) = {
-                let mut pos = Vec::new();
-                let mut neg = Vec::new();
-
-                // Collect all additive terms
-                fn collect_terms(
-                    ctx: &Context,
-                    e: ExprId,
-                    pos: &mut Vec<ExprId>,
-                    neg: &mut Vec<ExprId>,
-                ) {
-                    match ctx.get(e) {
-                        Expr::Add(a, b) => {
-                            collect_terms(ctx, *a, pos, neg);
-                            collect_terms(ctx, *b, pos, neg);
-                        }
-                        Expr::Sub(a, b) => {
-                            collect_terms(ctx, *a, pos, neg);
-                            // b is subtracted, so it goes to negative
-                            neg.push(*b);
-                        }
-                        Expr::Neg(inner) => {
-                            neg.push(*inner);
-                        }
-                        _ => {
-                            pos.push(e);
-                        }
-                    }
-                }
-                collect_terms(ctx, expr, &mut pos, &mut neg);
-                (pos, neg)
-            };
-
-            // Build proof data with LHS/RHS if we have both positive and negative terms
-            let proof_data = if !positive_terms.is_empty() && !negative_terms.is_empty() {
-                // Build polys for positive sum (LHS) and negative sum (RHS)
-                let mut lhs_poly = cas_math::multipoly::MultiPoly::zero(vars.clone());
-                let mut rhs_poly = cas_math::multipoly::MultiPoly::zero(vars.clone());
-
-                // Sum positive terms - use the same vars we already collected
-                for &term in &positive_terms {
-                    let mut _term_vars = vars.clone();
-                    if let Some(term_poly) =
-                        Self::expr_to_multipoly(ctx, term, &mut _term_vars, &budget)
-                    {
-                        // If same vars, can add directly
-                        if term_poly.vars == lhs_poly.vars {
-                            if let Ok(sum) = lhs_poly.add(&term_poly) {
-                                lhs_poly = sum;
-                            }
-                        }
-                    }
-                }
-
-                // Sum negative terms (these are the RHS that was subtracted)
-                for &term in &negative_terms {
-                    let mut _term_vars = vars.clone();
-                    if let Some(term_poly) =
-                        Self::expr_to_multipoly(ctx, term, &mut _term_vars, &budget)
-                    {
-                        if term_poly.vars == rhs_poly.vars {
-                            if let Ok(sum) = rhs_poly.add(&term_poly) {
-                                rhs_poly = sum;
-                            }
-                        }
-                    }
-                }
-
-                cas_math::multipoly_display::PolynomialProofData::from_identity(
-                    ctx,
-                    &lhs_poly,
-                    &rhs_poly,
-                    vars.clone(),
-                )
-            } else {
-                // No clear LHS/RHS split
-                cas_math::multipoly_display::PolynomialProofData {
-                    monomials: 0,
-                    degree: 0,
-                    vars: vars.clone(),
-                    normal_form_expr: Some(zero),
-                    expanded_form_expr: None,
-                    lhs_stats: None,
-                    rhs_stats: None,
-                    opaque_substitutions: Vec::new(),
-                }
-            };
-
-            return Some(
-                Rewrite::new(zero)
-                    .desc("Polynomial identity: normalize and cancel to 0")
-                    .poly_proof(proof_data),
-            );
-        }
-
-        None
+        Some(Rewrite::new(zero).desc(desc).poly_proof(plan.proof_data))
     }
 }
 
@@ -395,59 +70,6 @@ impl crate::rule::Rule for PolynomialIdentityZeroRule {
 /// HeuristicPolyNormalizeAddRule: Poly-normalize sums with binomial powers
 /// Priority 42 (after ExpandSmallBinomialPowRule at 40, before others)
 pub struct HeuristicPolyNormalizeAddRule;
-
-impl HeuristicPolyNormalizeAddRule {
-    /// Check if expression contains Pow(Add, n) with 2 ≤ n ≤ 6
-    fn contains_pow_add(ctx: &Context, expr: ExprId) -> bool {
-        Self::contains_pow_add_inner(ctx, expr, 0)
-    }
-
-    fn contains_pow_add_inner(ctx: &Context, expr: ExprId, depth: usize) -> bool {
-        if depth > 20 {
-            return false;
-        }
-        match ctx.get(expr) {
-            Expr::Pow(base, exp) => {
-                // Check if this is Pow(Add, n) with 2 ≤ n ≤ 6 AND base is polynomial-like
-                if matches!(ctx.get(*base), Expr::Add(_, _)) {
-                    if let Expr::Number(n) = ctx.get(*exp) {
-                        if n.is_integer() && !n.is_negative() {
-                            use num_traits::ToPrimitive;
-                            if let Some(e) = n.to_integer().to_u32() {
-                                // Must be polynomial-like base (no functions like sqrt, sin)
-                                if (2..=6).contains(&e)
-                                    && cas_math::auto_expand_scan::looks_polynomial_like(ctx, *base)
-                                {
-                                    return true;
-                                }
-                            }
-                        }
-                    }
-                }
-                Self::contains_pow_add_inner(ctx, *base, depth + 1)
-            }
-            Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) => {
-                Self::contains_pow_add_inner(ctx, *l, depth + 1)
-                    || Self::contains_pow_add_inner(ctx, *r, depth + 1)
-            }
-            Expr::Neg(inner) | Expr::Hold(inner) => {
-                Self::contains_pow_add_inner(ctx, *inner, depth + 1)
-            }
-            Expr::Div(l, r) => {
-                Self::contains_pow_add_inner(ctx, *l, depth + 1)
-                    || Self::contains_pow_add_inner(ctx, *r, depth + 1)
-            }
-            Expr::Function(_, args) => args
-                .iter()
-                .any(|a| Self::contains_pow_add_inner(ctx, *a, depth + 1)),
-            Expr::Matrix { data, .. } => data
-                .iter()
-                .any(|e| Self::contains_pow_add_inner(ctx, *e, depth + 1)),
-            // Leaves
-            Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => false,
-        }
-    }
-}
 
 impl crate::rule::Rule for HeuristicPolyNormalizeAddRule {
     fn name(&self) -> &str {
@@ -488,45 +110,11 @@ impl crate::rule::Rule for HeuristicPolyNormalizeAddRule {
             return None;
         }
 
-        // Must contain at least one Pow(Add, n) with 2 ≤ n ≤ 6
-        // We process the ORIGINAL Add before children are expanded by ExpandSmallBinomialPowRule
-        if !Self::contains_pow_add(ctx, expr) {
-            return None;
-        }
-
-        // Quick size check
-        let node_count = cas_ast::count_nodes(ctx, expr);
-        if node_count > 80 {
-            return None;
-        }
-
-        // Try to convert to MultiPoly (this expands and combines terms)
-        let budget = PolyBudget {
-            max_terms: 40,
-            max_total_degree: 6,
-            max_pow_exp: 6,
-        };
-
-        let poly =
-            cas_math::poly_convert::try_multipoly_from_expr_with_var_limit(ctx, expr, &budget, 4)?;
-
-        // Check if result is reasonable
-        if poly.terms.len() > 30 || poly.vars.len() > 3 {
-            return None;
-        }
-
-        // If polynomial is zero, let PolynomialIdentityZeroRule handle it
-        if poly.is_zero() {
-            return None;
-        }
-
-        // Convert back to expression using multipoly_to_expr (produces flattened Add)
-        let new_expr = cas_math::multipoly::multipoly_to_expr(&poly, ctx);
-
-        // Don't rewrite to same expression
-        if new_expr == expr {
-            return None;
-        }
+        let new_expr = try_heuristic_poly_normalize_add_expr(
+            ctx,
+            expr,
+            HeuristicPolyNormalizePolicy::default(),
+        )?;
 
         Some(
             Rewrite::new(new_expr)
@@ -588,27 +176,12 @@ impl crate::rule::Rule for ExpandSmallBinomialPowRule {
             return None;
         }
 
-        // Pattern: Pow(base, exp)
-        let (base, exp) = as_pow(ctx, expr)?;
-
-        // Very restrictive budget for automatic expansion in generic mode
+        // Very restrictive budget for automatic expansion in generic mode:
         // - max_exp: 6 (binomial (x+1)^6 = 7 terms, trinomial (a+b+c)^4 = 15 terms)
         // - max_base_terms: 3 (binomial or trinomial only)
         // - max_vars: 2 (keeps output manageable)
         // - max_output_terms: 20 (strict limit to prevent bloat)
-        let budget = MultinomialExpandBudget {
-            max_exp: 6,
-            max_base_terms: 3,
-            max_vars: 2,
-            max_output_terms: 20,
-        };
-
-        // try_expand_multinomial_direct already:
-        // 1. Checks exponent is small positive integer
-        // 2. Extracts linear terms (fails if base has functions/div)
-        // 3. Estimates output terms and checks budget
-        // 4. Wraps result in __hold() for anti-cycle protection
-        let expanded = try_expand_multinomial_direct(ctx, base, exp, &budget)?;
+        let expanded = try_expand_small_pow_sum_expr(ctx, expr, SmallPowExpandPolicy::default())?;
 
         Some(
             Rewrite::new(expanded)

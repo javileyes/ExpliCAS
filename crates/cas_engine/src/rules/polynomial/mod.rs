@@ -8,7 +8,6 @@
 mod expansion;
 mod expansion_normalize;
 mod factoring;
-pub(crate) mod polynomial_helpers;
 
 pub use expansion::{
     AutoExpandPowSumRule, AutoExpandSubCancelRule, BinomialExpansionRule,
@@ -19,31 +18,18 @@ pub use expansion_normalize::{
 };
 pub use factoring::{ExtractCommonMulFactorRule, HeuristicExtractCommonFactorAddRule};
 
-// Re-export helpers used within this module
-use polynomial_helpers::{
-    flatten_additive_terms, is_conjugate, poly_equal, select_best_focus, unwrap_hold,
-};
-
 use crate::define_rule;
 use crate::nary::{build_balanced_add, AddView, Sign};
 use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
-use cas_ast::{Context, Expr, ExprId};
-use cas_math::cube_identity_support::{
-    is_cube_identity_product, try_rewrite_sum_diff_cubes_product_expr,
+use cas_ast::{Expr, ExprId};
+use cas_math::annihilation_support::{
+    should_rewrite_annihilation_to_zero_with, AnnihilationRewriteKind,
 };
-use cas_math::distribution_guard_support::{
-    estimate_division_distribution_simplification_reduction, is_binomial_expr,
-    should_block_fractional_coeff_over_binomial, should_distribute_factor_over_additive,
-    should_skip_distribution_for_factor,
-};
-use cas_math::expr_destructure::{as_add, as_div, as_mul, as_sub};
-use cas_math::expr_rewrite::smart_mul;
-use std::cmp::Ordering;
-
-fn count_additive_terms(ctx: &Context, expr: ExprId) -> usize {
-    polynomial_helpers::count_additive_terms(ctx, expr)
-}
+use cas_math::cube_identity_support::try_rewrite_sum_diff_cubes_product_expr;
+use cas_math::distribution_guard_support::estimate_division_distribution_simplification_reduction;
+use cas_math::distribution_rule_support::try_rewrite_mul_distribution_legacy_expr;
+use cas_math::expr_destructure::{as_div, as_mul};
 
 // ── Sum/Difference of Cubes Contraction Rule ────────────────────────────
 //
@@ -96,27 +82,6 @@ define_rule!(
     }
 );
 
-/// computationally expensive and should be skipped.
-///
-/// Returns true (skip distribution) when ALL of:
-///   - The additive side contains variables (pure-constant sums always OK)
-///   - The factor matches one of these expensive patterns:
-///
-/// | Case | Pattern | Example | Why expensive |
-/// |------|---------|---------|---------------|
-/// | 1 | Var-free complex constant | `(√6+√2)/4` (≥5 nodes) | Nested radical × polynomial |
-/// | 2 | Fractional exponents | `(1-x^(1/3)+x^(2/3))/(1+x)` | Cube-root rationalization residual |
-/// | 3 | Multi-variable fraction | `(-b+√(b²-4ac))/(2a)` | Quadratic formula × polynomial |
-/// | 4 | Non-Number × ≥4 terms | `√2 * (x⁴+4x³+6x²+4x+1)` | Distribute↔Factor oscillation |
-///
-/// Harmless factors are always allowed through:
-///   - Simple numbers: `3`, `-1/2` (always distribute, even across many terms)
-///   - Simple surds vs short sums: `√2 * (a+b)` (< 4 terms OK)
-///   - Single variables: `x` (already blocked by should_distribute)
-fn is_expensive_factor(ctx: &Context, factor: ExprId, additive: ExprId) -> bool {
-    should_skip_distribution_for_factor(ctx, factor, additive)
-}
-
 // DistributeRule: Runs in CORE, TRANSFORM, RATIONALIZE but NOT in POST
 // This prevents Factor↔Distribute infinite loops (FactorCommonIntegerFromAdd runs in POST)
 define_rule!(
@@ -160,213 +125,21 @@ define_rule!(
             return None;
         }
 
-        // a * (b + c) -> a*b + a*c
-        if let Some((b, c)) = as_add(ctx, r) {
-            // PERFORMANCE: Don't distribute expensive factors (complex irrationals,
-            // fractional exponents, multi-variable fractions) across polynomials.
-            if is_expensive_factor(ctx, l, r) {
-                return None;
-            }
-
-            // Distribute if 'l' is a Number, Function, Add/Sub, Pow, Mul, or Div.
-            // We exclude Var to keep x(x+1) factored, but allow x^2(x+1) to expand.
-            // Exception: always allow if the additive side is variable-free (pure constants/surds)
-            // so that x*(√3-2) -> √3·x - 2·x for like-term collection.
-            if !should_distribute_factor_over_additive(ctx, l, r, expr) {
-                return None;
-            }
-
-            // CRITICAL: Avoid undoing FactorDifferenceSquaresRule
-            // If we have (A+B)(A-B), do NOT distribute.
-            if is_conjugate(ctx, l, r) {
-                return None;
-            }
-
-            // N-ary conjugate protection (secondary defense).
-            // Primary defense is the pre-order conjugate pair contraction in
-            // transform_binary. This guards against cases where the parent
-            // references are still in the same form.
-            if let Some(parent_id) = parent_ctx.immediate_parent() {
-                if let Expr::Mul(pl, pr) = ctx.get(parent_id) {
-                    if is_conjugate(ctx, r, *pl) || is_conjugate(ctx, r, *pr) {
-                        return None;
-                    }
-                }
-            }
-
-            // CRITICAL: Don't expand binomial*binomial products like (a-b)*(a-c)
-            // This preserves factored form for opposite denominator detection
-            // EXCEPTION: Allow sum/difference of cubes identity products
-            if is_binomial_expr(ctx, l)
-                && is_binomial_expr(ctx, r)
-                && !is_cube_identity_product(ctx, l, r)
-            {
-                return None;
-            }
-
-            // EDUCATIONAL: Don't distribute fractional coefficient over binomial
-            // Preserves clean form like 1/2*(√2-1) instead of √2/2 - 1/2
-            if should_block_fractional_coeff_over_binomial(ctx, l, r) {
-                return None;
-            }
-
-            let ab = smart_mul(ctx, l, b);
-            let ac = smart_mul(ctx, l, c);
-            let new_expr = ctx.add(Expr::Add(ab, ac));
+        // Multiplicative distribution uses cas_math helper that preserves
+        // historical guard ordering and semantics.
+        let parent_mul_terms =
+            parent_ctx
+                .immediate_parent()
+                .and_then(|parent_id| match ctx.get(parent_id) {
+                    Expr::Mul(pl, pr) => Some((*pl, *pr)),
+                    _ => None,
+                });
+        if let Some(rewrite) = try_rewrite_mul_distribution_legacy_expr(ctx, expr, parent_mul_terms)
+        {
             return Some(
-                Rewrite::new(new_expr)
-                    .desc("Distribute")
-                    .local(expr, new_expr),
-            );
-        }
-
-        // a * (b - c) -> a*b - a*c
-        if let Some((b, c)) = as_sub(ctx, r) {
-            // PERFORMANCE: Same expensive-factor guard as Add branch
-            if is_expensive_factor(ctx, l, r) {
-                return None;
-            }
-
-            if !should_distribute_factor_over_additive(ctx, l, r, expr) {
-                return None;
-            }
-
-            // CRITICAL: Avoid undoing FactorDifferenceSquaresRule
-            if is_conjugate(ctx, l, r) {
-                return None;
-            }
-
-            // N-ary conjugate protection
-            if let Some(parent_id) = parent_ctx.immediate_parent() {
-                if let Expr::Mul(pl, pr) = ctx.get(parent_id) {
-                    if is_conjugate(ctx, r, *pl) || is_conjugate(ctx, r, *pr) {
-                        return None;
-                    }
-                }
-            }
-
-            // Don't expand binomial*binomial products
-            // EXCEPTION: Allow sum/difference of cubes identity products
-            if is_binomial_expr(ctx, l)
-                && is_binomial_expr(ctx, r)
-                && !is_cube_identity_product(ctx, l, r)
-            {
-                return None;
-            }
-
-            // EDUCATIONAL: Don't distribute fractional coefficient over binomial
-            if should_block_fractional_coeff_over_binomial(ctx, l, r) {
-                return None;
-            }
-
-            let ab = smart_mul(ctx, l, b);
-            let ac = smart_mul(ctx, l, c);
-            let new_expr = ctx.add(Expr::Sub(ab, ac));
-            return Some(
-                Rewrite::new(new_expr)
-                    .desc("Distribute")
-                    .local(expr, new_expr),
-            );
-        }
-
-        // (b + c) * a -> b*a + c*a
-        if let Some((b, c)) = as_add(ctx, l) {
-            // PERFORMANCE: Same expensive-factor guard (mirror of a*(b+c))
-            if is_expensive_factor(ctx, r, l) {
-                return None;
-            }
-
-            // Same logic for 'r', with variable-free bypass for constant sums
-            if !should_distribute_factor_over_additive(ctx, r, l, expr) {
-                return None;
-            }
-
-            // CRITICAL: Avoid undoing FactorDifferenceSquaresRule
-            if is_conjugate(ctx, l, r) {
-                return None;
-            }
-
-            // N-ary conjugate protection (mirror of RHS case above)
-            if let Some(parent_id) = parent_ctx.immediate_parent() {
-                if let Expr::Mul(pl, pr) = ctx.get(parent_id) {
-                    if is_conjugate(ctx, l, *pl) || is_conjugate(ctx, l, *pr) {
-                        return None;
-                    }
-                }
-            }
-
-            // CRITICAL: Don't expand binomial*binomial products (Policy A+)
-            // This preserves factored form like (a+b)*(c+d)
-            // EXCEPTION: Allow sum/difference of cubes identity products
-            if is_binomial_expr(ctx, l)
-                && is_binomial_expr(ctx, r)
-                && !is_cube_identity_product(ctx, l, r)
-            {
-                return None;
-            }
-
-            // EDUCATIONAL: Don't distribute fractional coefficient over binomial
-            // Preserves clean form like (√2-1)/2 instead of √2/2 - 1/2
-            if should_block_fractional_coeff_over_binomial(ctx, r, l) {
-                return None;
-            }
-
-            let ba = smart_mul(ctx, b, r);
-            let ca = smart_mul(ctx, c, r);
-            let new_expr = ctx.add(Expr::Add(ba, ca));
-            return Some(
-                Rewrite::new(new_expr)
-                    .desc("Distribute")
-                    .local(expr, new_expr),
-            );
-        }
-
-        // (b - c) * a -> b*a - c*a
-        if let Some((b, c)) = as_sub(ctx, l) {
-            // PERFORMANCE: Same expensive-factor guard (mirror of a*(b-c))
-            if is_expensive_factor(ctx, r, l) {
-                return None;
-            }
-
-            if !should_distribute_factor_over_additive(ctx, r, l, expr) {
-                return None;
-            }
-
-            // CRITICAL: Avoid undoing FactorDifferenceSquaresRule
-            if is_conjugate(ctx, l, r) {
-                return None;
-            }
-
-            // N-ary conjugate protection
-            if let Some(parent_id) = parent_ctx.immediate_parent() {
-                if let Expr::Mul(pl, pr) = ctx.get(parent_id) {
-                    if is_conjugate(ctx, l, *pl) || is_conjugate(ctx, l, *pr) {
-                        return None;
-                    }
-                }
-            }
-
-            // Don't expand binomial*binomial products
-            // EXCEPTION: Allow sum/difference of cubes identity products
-            if is_binomial_expr(ctx, l)
-                && is_binomial_expr(ctx, r)
-                && !is_cube_identity_product(ctx, l, r)
-            {
-                return None;
-            }
-
-            // EDUCATIONAL: Don't distribute fractional coefficient over binomial
-            if should_block_fractional_coeff_over_binomial(ctx, r, l) {
-                return None;
-            }
-
-            let ba = smart_mul(ctx, b, r);
-            let ca = smart_mul(ctx, c, r);
-            let new_expr = ctx.add(Expr::Sub(ba, ca));
-            return Some(
-                Rewrite::new(new_expr)
-                    .desc("Distribute")
-                    .local(expr, new_expr),
+                Rewrite::new(rewrite.rewritten)
+                    .desc(rewrite.desc)
+                    .local(expr, rewrite.rewritten),
             );
         }
 
@@ -437,142 +210,19 @@ define_rule!(
 // - Assume: always apply (educational mode assumption: all expressions are defined)
 // - Generic: same as Assume
 define_rule!(AnnihilationRule, "Annihilation", |ctx, expr, parent_ctx| {
-    // Helper: check if expression contains any Div with non-literal denominator
-    // Delegates to canonical implementation that handles Hold/Matrix
-    fn has_undefined_risk(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> bool {
-        crate::collect::has_undefined_risk(ctx, expr)
+    let strict_domain = parent_ctx.domain_mode() == crate::DomainMode::Strict;
+    if let Some(kind) =
+        should_rewrite_annihilation_to_zero_with(ctx, expr, strict_domain, |core_ctx, term| {
+            crate::collect::has_undefined_risk(core_ctx, term)
+        })
+    {
+        let zero = ctx.num(0);
+        let desc = match kind {
+            AnnihilationRewriteKind::TwoTerm => "x - x = 0",
+            AnnihilationRewriteKind::HoldSum => "__hold(sum) - sum = 0",
+        };
+        return Some(Rewrite::new(zero).desc(desc));
     }
-
-    // Only process Add/Sub expressions
-    if !matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Sub(_, _)) {
-        return None;
-    }
-
-    // Flatten all terms
-    let mut terms: Vec<(ExprId, bool)> = Vec::new();
-    flatten_additive_terms(ctx, expr, false, &mut terms);
-
-    if terms.len() < 2 {
-        return None;
-    }
-
-    // CASE 1: Look for simple pairs that cancel (term and its negation)
-    for i in 0..terms.len() {
-        for j in (i + 1)..terms.len() {
-            let (term_i, neg_i) = &terms[i];
-            let (term_j, neg_j) = &terms[j];
-
-            // Only if opposite signs
-            if neg_i == neg_j {
-                continue;
-            }
-
-            // Unwrap __hold for comparison
-            let unwrapped_i = unwrap_hold(ctx, *term_i);
-            let unwrapped_j = unwrap_hold(ctx, *term_j);
-
-            // Check structural or polynomial equality
-            if poly_equal(ctx, unwrapped_i, unwrapped_j) {
-                // These terms cancel. If they're the only 2 terms, result is 0
-                if terms.len() == 2 {
-                    // DOMAIN MODE GATE: Check for undefined risk
-                    let domain_mode = parent_ctx.domain_mode();
-                    let either_has_risk =
-                        has_undefined_risk(ctx, *term_i) || has_undefined_risk(ctx, *term_j);
-
-                    if domain_mode == crate::DomainMode::Strict && either_has_risk {
-                        return None;
-                    }
-
-                    // Note: domain assumption would be emitted here if Assume mode and either_has_risk
-                    // but assumption_events are not emitted for this case yet
-
-                    let zero = ctx.num(0);
-                    return Some(Rewrite::new(zero).desc("x - x = 0"));
-                }
-            }
-        }
-    }
-
-    // CASE 2: Handle __hold(A+B+...) with distributed -(A) -(B) -(...)
-    // Find __hold terms and check if remaining negated terms sum to their content
-    for (idx, (term, is_neg)) in terms.iter().enumerate() {
-        if *is_neg {
-            continue; // Only check positive __hold terms
-        }
-
-        // Check if this is a __hold using canonical helper
-        if cas_ast::hold::is_hold(ctx, *term) {
-            // Unwrap the held content
-            let held_content = cas_ast::hold::unwrap_hold(ctx, *term);
-
-            // Flatten the held content to get its terms
-            let mut held_terms: Vec<(ExprId, bool)> = Vec::new();
-            flatten_additive_terms(ctx, held_content, false, &mut held_terms);
-
-            // Get all other terms (excluding this __hold)
-            let other_terms: Vec<(ExprId, bool)> = terms
-                .iter()
-                .enumerate()
-                .filter(|(i, _)| *i != idx)
-                .map(|(_, t)| *t)
-                .collect();
-
-            // Check if held_terms and other_terms cancel out
-            // They cancel if for each held term there's an opposite signed other term
-            if held_terms.len() == other_terms.len() {
-                let mut all_cancel = true;
-                let mut used = vec![false; other_terms.len()];
-
-                for (held_term, held_neg) in &held_terms {
-                    let mut found = false;
-
-                    for (j, (other_term, other_neg)) in other_terms.iter().enumerate() {
-                        if used[j] {
-                            continue;
-                        }
-
-                        // Check if terms cancel (one positive, one negative equivalently)
-                        // Case 1: Same term with opposite flags
-                        if *other_neg != *held_neg {
-                            // Use poly_equal for more robust comparison
-                            // This handles cases where expressions are semantically equal
-                            // but structurally different (e.g., Mul(15,x) vs Mul(x,15))
-                            if poly_equal(ctx, *held_term, *other_term) {
-                                used[j] = true;
-                                found = true;
-                                break;
-                            }
-                        }
-
-                        // Case 2: Number with same flag but opposite value (e.g., 1 vs -1)
-                        if *other_neg == *held_neg {
-                            if let (Expr::Number(n1), Expr::Number(n2)) =
-                                (ctx.get(*held_term), ctx.get(*other_term))
-                            {
-                                if n1 == &-n2.clone() {
-                                    used[j] = true;
-                                    found = true;
-                                    break;
-                                }
-                            }
-                        }
-                    }
-
-                    if !found {
-                        all_cancel = false;
-                        break;
-                    }
-                }
-
-                if all_cancel && used.iter().all(|&u| u) {
-                    let zero = ctx.num(0);
-                    return Some(Rewrite::new(zero).desc("__hold(sum) - sum = 0"));
-                }
-            }
-        }
-    }
-
     None
 });
 
@@ -586,41 +236,16 @@ define_rule!(
     "Combine Like Terms",
     |ctx, expr, parent_ctx| {
         // Only try to collect if it's an Add or Mul
-        let is_add_or_mul = matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Mul(_, _));
-
-        if is_add_or_mul {
-            // CRITICAL: Do NOT apply to non-commutative expressions (e.g., matrices)
-            if !ctx.is_mul_commutative(expr) {
-                return None;
-            }
-
-            // Use semantics-aware collect that respects domain_mode
-            let result = crate::collect::collect_with_semantics(ctx, expr, parent_ctx)?;
-
-            // Check if structurally different to avoid infinite loops with ID regeneration
-            if crate::ordering::compare_expr(ctx, result.new_expr, expr) == Ordering::Equal {
-                return None;
-            }
-
-            // V2.14.26: Skip trivial changes that only normalize -1 coefficients
-            // without actually combining or cancelling any terms.
-            // This avoids noisy steps like "-1·x → -x" that don't add didactic value.
-            if result.cancelled.is_empty() && result.combined.is_empty() {
-                return None;
-            }
-
-            // V2.9.18: Restore granular focus using CollectResult's cancelled/combined groups
-            // This provides specific focus like "5 - 5 → 0" for didactic clarity
-            // Timeline highlighting uses step.path separately for broader context
-            let (before_local, after_local, description) = select_best_focus(ctx, &result);
-
-            let mut rewrite = Rewrite::new(result.new_expr).desc(description);
-            if let (Some(before), Some(after)) = (before_local, after_local) {
+        if matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Mul(_, _)) {
+            let plan = crate::collect::plan_collect_rule_rewrite(ctx, expr, parent_ctx)?;
+            let mut rewrite = Rewrite::new(plan.new_expr).desc(plan.description);
+            if let (Some(before), Some(after)) = (plan.local_before, plan.local_after) {
                 rewrite = rewrite.local(before, after);
             }
-            return Some(rewrite);
+            Some(rewrite)
+        } else {
+            None
         }
-        None
     }
 );
 
@@ -707,6 +332,39 @@ mod tests {
                 &crate::parent_context::ParentContext::root(),
             )
             .unwrap();
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "0"
+        );
+    }
+
+    #[test]
+    fn test_annihilation_hold_sum_pattern() {
+        let mut ctx = Context::new();
+        let rule = AnnihilationRule;
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let sum = ctx.add(Expr::Add(x, y));
+        let held = cas_ast::hold::wrap_hold(&mut ctx, sum);
+        let neg_x = ctx.add(Expr::Neg(x));
+        let neg_y = ctx.add(Expr::Neg(y));
+        let rhs = ctx.add(Expr::Add(neg_x, neg_y));
+        let expr = ctx.add(Expr::Add(held, rhs));
+
+        let rewrite = rule
+            .apply(
+                &mut ctx,
+                expr,
+                &crate::parent_context::ParentContext::root(),
+            )
+            .unwrap();
+
         assert_eq!(
             format!(
                 "{}",
