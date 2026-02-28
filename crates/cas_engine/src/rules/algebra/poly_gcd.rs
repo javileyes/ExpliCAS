@@ -18,7 +18,9 @@ use crate::rule::{Rewrite, Rule};
 use cas_ast::{Context, Expr, ExprId};
 use cas_formatter::DisplayExpr;
 use cas_math::gcd_zippel_modp::ZippelPreset;
-use cas_math::poly_gcd_dispatch::compute_poly_gcd_unified_with;
+use cas_math::poly_gcd_dispatch::{
+    classify_pre_evaluate_for_gcd, compute_poly_gcd_unified_with, GcdPreEvalDirective,
+};
 use cas_math::poly_gcd_mode::parse_modp_options;
 
 use cas_math::poly_gcd_mode::{parse_gcd_mode, GcdGoal, GcdMode};
@@ -34,13 +36,8 @@ fn pre_evaluate_for_gcd(ctx: &mut Context, expr: ExprId) -> ExprId {
     use crate::options::StepsMode;
     use crate::phase::ExpandPolicy;
 
-    // Only process specific wrappers that need evaluation
-    if let Expr::Function(fn_id, args) = ctx.get(expr) {
-        let fn_id = *fn_id;
-        let args = args.clone();
-
-        // Check for expand() via builtin
-        if matches!(ctx.builtin_of(fn_id), Some(cas_ast::BuiltinFn::Expand)) {
+    match classify_pre_evaluate_for_gcd(ctx, expr) {
+        GcdPreEvalDirective::EvaluateExpand { expand_call } => {
             // expand() is explicitly requested by user - evaluate it
             let opts = EvalOptions {
                 steps_mode: StepsMode::Off,
@@ -53,29 +50,14 @@ fn pre_evaluate_for_gcd(ctx: &mut Context, expr: ExprId) -> ExprId {
             let mut simplifier = Simplifier::with_profile(&opts);
             simplifier.set_steps_mode(StepsMode::Off);
 
-            // Transfer context
             std::mem::swap(&mut simplifier.context, ctx);
-            let (result, _) = simplifier.expand(expr); // Use expand() specifically
-                                                       // Transfer back
+            let (result, _) = simplifier.expand(expand_call);
             std::mem::swap(&mut simplifier.context, ctx);
-            return result;
+            result
         }
-
-        // __hold is an internal wrapper - unwrap it using canonical helper
-        if ctx.is_builtin(fn_id, cas_ast::BuiltinFn::Hold) && !args.is_empty() {
-            return args[0]; // Just unwrap, don't recurse
-        }
-
-        // factor() and simplify() are TOO EXPENSIVE for GCD path
-        // Leave them as-is and let the converter handle or fail gracefully
-        let name = ctx.sym_name(fn_id);
-        if name == "factor" || name == "simplify" {
-            // Don't pre-evaluate these - they could be O(expensive)
-            // The GCD will fall back to structural if conversion fails
-            return expr;
-        }
+        GcdPreEvalDirective::UnwrapHold { inner } => inner,
+        GcdPreEvalDirective::Keep => expr,
     }
-    expr
 }
 
 /// Fraction-cancellation helper forwarded to `cas_math`.

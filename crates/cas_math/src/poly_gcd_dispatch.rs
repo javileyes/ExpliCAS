@@ -11,6 +11,44 @@ use crate::poly_modp_conv::{compute_gcd_modp_expr_with_options, DEFAULT_PRIME};
 use cas_ast::{Context, Expr, ExprId};
 use num_traits::One;
 
+/// Classification of runtime pre-evaluation action for one GCD argument.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GcdPreEvalDirective {
+    /// Evaluate `expand(expr)` eagerly.
+    EvaluateExpand { expand_call: ExprId },
+    /// Unwrap internal hold wrapper.
+    UnwrapHold { inner: ExprId },
+    /// Keep expression as-is.
+    Keep,
+}
+
+/// Classify whether an expression needs runtime pre-evaluation before GCD paths.
+///
+/// Rules:
+/// - `expand(...)` (builtin) -> [`GcdPreEvalDirective::EvaluateExpand`]
+/// - `__hold(x)` -> [`GcdPreEvalDirective::UnwrapHold`]
+/// - `factor(...)` / `simplify(...)` -> [`GcdPreEvalDirective::Keep`]
+pub fn classify_pre_evaluate_for_gcd(ctx: &Context, expr: ExprId) -> GcdPreEvalDirective {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return GcdPreEvalDirective::Keep;
+    };
+
+    if matches!(ctx.builtin_of(*fn_id), Some(cas_ast::BuiltinFn::Expand)) {
+        return GcdPreEvalDirective::EvaluateExpand { expand_call: expr };
+    }
+
+    if ctx.is_builtin(*fn_id, cas_ast::BuiltinFn::Hold) && !args.is_empty() {
+        return GcdPreEvalDirective::UnwrapHold { inner: args[0] };
+    }
+
+    let name = ctx.sym_name(*fn_id);
+    if name == "factor" || name == "simplify" {
+        return GcdPreEvalDirective::Keep;
+    }
+
+    GcdPreEvalDirective::Keep
+}
+
 /// Compute polynomial GCD using the selected mode.
 ///
 /// `pre_evaluate` lets runtime crates unwrap/evaluate wrappers before exact/modp paths.
@@ -153,10 +191,12 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::compute_poly_gcd_unified_with;
+    use super::{
+        classify_pre_evaluate_for_gcd, compute_poly_gcd_unified_with, GcdPreEvalDirective,
+    };
     use crate::gcd_zippel_modp::ZippelPreset;
     use crate::poly_gcd_mode::{GcdGoal, GcdMode};
-    use cas_ast::Expr;
+    use cas_ast::{BuiltinFn, Expr};
     use cas_parser::parse;
 
     #[test]
@@ -197,5 +237,37 @@ mod tests {
         );
         assert!(matches!(ctx.get(gcd), Expr::Number(_)));
         assert!(desc.contains("blocked for soundness"));
+    }
+
+    #[test]
+    fn classify_pre_eval_marks_expand_and_hold() {
+        let mut ctx = cas_ast::Context::new();
+        let inner = parse("x+1", &mut ctx).expect("parse");
+        let expand_call = ctx.call_builtin(BuiltinFn::Expand, vec![inner]);
+        let hold = ctx.call_builtin(BuiltinFn::Hold, vec![inner]);
+
+        assert!(matches!(
+            classify_pre_evaluate_for_gcd(&ctx, expand_call),
+            GcdPreEvalDirective::EvaluateExpand { .. }
+        ));
+        assert_eq!(
+            classify_pre_evaluate_for_gcd(&ctx, hold),
+            GcdPreEvalDirective::UnwrapHold { inner }
+        );
+    }
+
+    #[test]
+    fn classify_pre_eval_keeps_factor_and_plain() {
+        let mut ctx = cas_ast::Context::new();
+        let x = parse("x", &mut ctx).expect("parse");
+        let factor = ctx.call("factor", vec![x]);
+        assert_eq!(
+            classify_pre_evaluate_for_gcd(&ctx, factor),
+            GcdPreEvalDirective::Keep
+        );
+        assert_eq!(
+            classify_pre_evaluate_for_gcd(&ctx, x),
+            GcdPreEvalDirective::Keep
+        );
     }
 }

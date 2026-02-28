@@ -20,6 +20,7 @@ pub mod expr_path_rewrite;
 pub mod expr_predicates;
 pub mod expr_relations;
 pub mod expr_rewrite;
+pub mod expr_semantic_hash;
 pub mod expr_terms;
 pub mod expr_witness;
 pub mod factor;
