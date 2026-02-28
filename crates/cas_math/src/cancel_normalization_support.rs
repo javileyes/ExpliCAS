@@ -238,6 +238,50 @@ pub fn normalize_for_cancel(ctx: &mut Context, id: ExprId, depth: usize) -> (Exp
     }
 }
 
+/// Re-normalize already collected signed terms.
+///
+/// Each term is normalized with `normalize_for_cancel`, safety flags are merged,
+/// and if normalization expands into additive structure the term is re-split.
+pub fn renormalize_signed_terms_for_cancel(
+    ctx: &mut Context,
+    terms: &[(ExprId, bool, OriginSafety)],
+) -> Vec<(ExprId, bool, OriginSafety)> {
+    let mut out = Vec::new();
+    for &(t, p, s) in terms {
+        let (n, ns) = normalize_for_cancel(ctx, t, 0);
+        let merged = s.merge(ns);
+        if n == t {
+            out.push((t, p, merged));
+        } else {
+            let mut raw = Vec::new();
+            collect_additive_terms(ctx, n, p, &mut raw);
+            for (rt, rp) in raw {
+                out.push((rt, rp, merged));
+            }
+        }
+    }
+    out
+}
+
+/// Re-flatten signed terms after local simplification.
+///
+/// If a term became additive (e.g. `a + b`) it is split into multiple signed
+/// terms while preserving outer sign and safety metadata.
+pub fn reflatten_signed_terms_for_cancel(
+    ctx: &Context,
+    terms: Vec<(ExprId, bool, OriginSafety)>,
+) -> Vec<(ExprId, bool, OriginSafety)> {
+    let mut out = Vec::new();
+    for (t, p, s) in terms {
+        let mut raw = Vec::new();
+        collect_additive_terms(ctx, t, p, &mut raw);
+        for (rt, rp) in raw {
+            out.push((rt, rp, s));
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -263,5 +307,29 @@ mod tests {
         let expected = parse("ln(a) + ln(b)", &mut ctx).expect("parse expected");
         assert_eq!(safety, OriginSafety::NeedsAnalyticConditions);
         assert_eq!(compare_expr(&ctx, normalized, expected), Ordering::Equal);
+    }
+
+    #[test]
+    fn renormalize_splits_additive_result() {
+        let mut ctx = Context::new();
+        let term = parse("(a+b)/d", &mut ctx).expect("parse");
+        let terms = vec![(term, true, OriginSafety::DefinabilityPreserving)];
+        let out = renormalize_signed_terms_for_cancel(&mut ctx, &terms);
+        assert_eq!(out.len(), 2);
+        assert!(out
+            .iter()
+            .all(|(_, _, s)| *s == OriginSafety::DefinabilityPreserving));
+    }
+
+    #[test]
+    fn reflatten_preserves_safety() {
+        let mut ctx = Context::new();
+        let term = parse("a+b", &mut ctx).expect("parse");
+        let terms = vec![(term, true, OriginSafety::NeedsAnalyticConditions)];
+        let out = reflatten_signed_terms_for_cancel(&ctx, terms);
+        assert_eq!(out.len(), 2);
+        assert!(out
+            .iter()
+            .all(|(_, _, s)| *s == OriginSafety::NeedsAnalyticConditions));
     }
 }

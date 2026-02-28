@@ -151,6 +151,76 @@ pub fn mul_preview(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
     ctx.add(Expr::Mul(a, b))
 }
 
+/// Result for structural cancellation between two additive expressions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CancelCommonAdditivePlan {
+    pub new_lhs: ExprId,
+    pub new_rhs: ExprId,
+    pub cancelled_count: usize,
+}
+
+/// Cancel common additive terms between two expressions using structural
+/// equality and sign-aware matching.
+///
+/// This performs a pure AST transformation:
+/// - flatten both sides as signed additive terms,
+/// - match equal-sign/equal-structure pairs,
+/// - rebuild each side with unmatched terms.
+pub fn try_cancel_common_additive_terms_expr(
+    ctx: &mut Context,
+    lhs: ExprId,
+    rhs: ExprId,
+) -> Option<CancelCommonAdditivePlan> {
+    let mut lhs_terms = Vec::new();
+    let mut rhs_terms = Vec::new();
+    collect_additive_terms_signed(ctx, lhs, true, &mut lhs_terms);
+    collect_additive_terms_signed(ctx, rhs, true, &mut rhs_terms);
+
+    let mut lhs_used = vec![false; lhs_terms.len()];
+    let mut rhs_used = vec![false; rhs_terms.len()];
+    let mut cancelled = 0;
+
+    for (ri, (rt, rp)) in rhs_terms.iter().enumerate() {
+        if rhs_used[ri] {
+            continue;
+        }
+        for (li, (lt, lp)) in lhs_terms.iter().enumerate() {
+            if lhs_used[li] {
+                continue;
+            }
+            if lp == rp && compare_expr(ctx, *lt, *rt) == Ordering::Equal {
+                lhs_used[li] = true;
+                rhs_used[ri] = true;
+                cancelled += 1;
+                break;
+            }
+        }
+    }
+
+    if cancelled == 0 {
+        return None;
+    }
+
+    let new_lhs_terms: Vec<_> = lhs_terms
+        .into_iter()
+        .enumerate()
+        .filter(|(i, _)| !lhs_used[*i])
+        .map(|(_, t)| t)
+        .collect();
+    let new_rhs_terms: Vec<_> = rhs_terms
+        .into_iter()
+        .enumerate()
+        .filter(|(i, _)| !rhs_used[*i])
+        .map(|(_, t)| t)
+        .collect();
+
+    Some(CancelCommonAdditivePlan {
+        new_lhs: rebuild_from_signed_terms(ctx, &new_lhs_terms),
+        new_rhs: rebuild_from_signed_terms(ctx, &new_rhs_terms),
+        cancelled_count: cancelled,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -188,5 +258,24 @@ mod tests {
         let merged = mul_preview(&mut ctx, a, b);
         let expected = parse("x^5", &mut ctx).expect("parse");
         assert_eq!(compare_expr(&ctx, merged, expected), Ordering::Equal);
+    }
+
+    #[test]
+    fn structural_cancel_common_additive_terms_basic() {
+        let mut ctx = Context::new();
+        let lhs = parse("x^2 + y", &mut ctx).expect("parse");
+        let rhs = parse("y", &mut ctx).expect("parse");
+        let plan = try_cancel_common_additive_terms_expr(&mut ctx, lhs, rhs).expect("plan");
+        assert_eq!(plan.cancelled_count, 1);
+        let expected_lhs = parse("x^2", &mut ctx).expect("parse");
+        let expected_rhs = parse("0", &mut ctx).expect("parse");
+        assert_eq!(
+            compare_expr(&ctx, plan.new_lhs, expected_lhs),
+            Ordering::Equal
+        );
+        assert_eq!(
+            compare_expr(&ctx, plan.new_rhs, expected_rhs),
+            Ordering::Equal
+        );
     }
 }

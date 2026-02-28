@@ -1,12 +1,11 @@
 //! Light rationalization rules for simple surd denominators.
 
-use crate::build::mul2_raw;
 use crate::define_rule;
 use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
-use cas_ast::{count_nodes, Context, Expr, ExprId};
 use cas_formatter::DisplayExpr;
-use cas_math::root_forms::extract_numeric_sqrt_radicand;
+use cas_math::div_scalar_into_add_support::try_rewrite_div_scalar_into_add_expr;
+use cas_math::rationalize_single_surd_support::try_rewrite_rationalize_single_surd_expr;
 
 // ========== Light Rationalization for Single Numeric Surd Denominators ==========
 // Transforms: num / (k * √n) → (num * √n) / (k * n)
@@ -21,62 +20,13 @@ define_rule!(
     None,
     PhaseMask::RATIONALIZE,
     |ctx, expr| {
-        // Only match Div expressions - use zero-clone helper
-        let (num, den) = cas_math::expr_destructure::as_div(ctx, expr)?;
+        let rewrite = try_rewrite_rationalize_single_surd_expr(ctx, expr)?;
+        let num = rewrite.num;
+        let den = rewrite.den;
+        let new_num = rewrite.new_num;
+        let new_den = rewrite.new_den;
 
-        // Check denominator for Pow(Number(n), 1/2) patterns
-        // We need to find exactly one surd in the denominator factors
-
-        // Try different denominator patterns
-        let (sqrt_n_value, other_den_factors): (i64, Vec<ExprId>) = match ctx.get(den) {
-            // Case 1: Denominator is k * √n or √n * k (one level of Mul)
-            Expr::Mul(l, r) => {
-                let (l, r) = (*l, *r);
-                if let Some(n) = extract_numeric_sqrt_radicand(ctx, l) {
-                    // √n * k form
-                    (n, vec![r])
-                } else if let Some(n) = extract_numeric_sqrt_radicand(ctx, r) {
-                    // k * √n form
-                    (n, vec![l])
-                } else {
-                    // Check if either side is a Mul containing √n (two levels)
-                    // For simplicity, we only handle shallow cases
-                    return None;
-                }
-            }
-
-            // Case 2: Denominator is directly √n (function or power form)
-            _ => (extract_numeric_sqrt_radicand(ctx, den)?, vec![]),
-        };
-
-        // Build the rationalized form: (num * √n) / (other_den * n)
-        let n_expr = ctx.num(sqrt_n_value);
-        let half = ctx.rational(1, 2);
-        let sqrt_n = ctx.add(Expr::Pow(n_expr, half));
-
-        // New numerator: num * √n
-        let new_num = mul2_raw(ctx, num, sqrt_n);
-
-        // New denominator: other_den_factors * n
-        let n_in_den = ctx.num(sqrt_n_value);
-        let new_den = if other_den_factors.is_empty() {
-            n_in_den
-        } else {
-            let mut den_product = other_den_factors[0];
-            for &f in &other_den_factors[1..] {
-                den_product = mul2_raw(ctx, den_product, f);
-            }
-            mul2_raw(ctx, den_product, n_in_den)
-        };
-
-        let new_expr = ctx.add(Expr::Div(new_num, new_den));
-
-        // Optional: Check node count didn't explode (shouldn't for this simple transform)
-        if count_nodes(ctx, new_expr) > count_nodes(ctx, expr) + 10 {
-            return None;
-        }
-
-        Some(Rewrite::new(new_expr).desc_lazy(|| {
+        Some(Rewrite::new(rewrite.rewritten).desc_lazy(|| {
             format!(
                 "{} / {} -> {} / {}",
                 DisplayExpr {
@@ -122,170 +72,7 @@ define_rule!(
     "Distribute Division Into Sum",
     importance: crate::step::ImportanceLevel::Medium,
     |ctx, expr| {
-        use num_rational::BigRational;
-        use num_traits::{One, Signed, Zero};
-
-        // Match Mul(Number(frac), Add(...)) or Mul(Add(...), Number(frac))
-        let (frac_val, add_id) = match ctx.get(expr) {
-            Expr::Mul(l, r) => {
-                let (l, r) = (*l, *r);
-                match (ctx.get(l), ctx.get(r)) {
-                    (Expr::Number(n), Expr::Add(_, _)) => (n.clone(), r),
-                    (Expr::Add(_, _), Expr::Number(n)) => (n.clone(), l),
-                    _ => return None,
-                }
-            }
-            _ => return None,
-        };
-
-        // Only handle non-integer fractions (p/q where q > 1)
-        // Integer multipliers (like 2 * (x+y)) don't need this rule
-        if frac_val.is_integer() || frac_val.is_zero() {
-            return None;
-        }
-
-        // Collect all additive terms (flatten)
-        fn collect_add_terms(ctx: &Context, expr: ExprId, terms: &mut Vec<ExprId>) {
-            match ctx.get(expr) {
-                Expr::Add(l, r) => {
-                    collect_add_terms(ctx, *l, terms);
-                    collect_add_terms(ctx, *r, terms);
-                }
-                _ => terms.push(expr),
-            }
-        }
-
-        let mut terms = Vec::new();
-        collect_add_terms(ctx, add_id, &mut terms);
-
-        if terms.len() < 2 {
-            return None;
-        }
-
-        // Extract the rational coefficient of each term.
-        fn extract_rational_coeff(ctx: &Context, term: ExprId, one_id: ExprId) -> (BigRational, ExprId) {
-            match ctx.get(term) {
-                Expr::Number(n) => {
-                    return (n.clone(), one_id);
-                }
-                Expr::Neg(inner) => {
-                    let (c, rest) = extract_rational_coeff(ctx, *inner, one_id);
-                    return (-c, rest);
-                }
-                Expr::Mul(l, r) => {
-                    if let Expr::Number(n) = ctx.get(*l) {
-                        return (n.clone(), *r);
-                    }
-                    if let Expr::Number(n) = ctx.get(*r) {
-                        return (n.clone(), *l);
-                    }
-                }
-                _ => {}
-            }
-            (BigRational::from_integer(1.into()), term)
-        }
-
-        let one_id = ctx.num(1);
-
-        let mut coeffs: Vec<BigRational> = Vec::with_capacity(terms.len());
-        let mut rests: Vec<ExprId> = Vec::with_capacity(terms.len());
-        for &t in &terms {
-            let (c, r) = extract_rational_coeff(ctx, t, one_id);
-            coeffs.push(c);
-            rests.push(r);
-        }
-
-        // ── GCD-based simplification ──
-        // Instead of naively multiplying each coefficient by frac_val (which would
-        // cause oscillation with AddFractionsRule when not all results are integers),
-        // we compute g = gcd(|c₁|, |c₂|, ...) of the NUMERATOR coefficients.
-        //
-        // If g > 1, we can factor it out:
-        //   (p/q) * (c₁·A + c₂·B)  →  (p·g/q) * ((c₁/g)·A + (c₂/g)·B)
-        //
-        // This approach:
-        //   - Handles partial cancellation: (4x+2y)/6 → (2x+y)/3  [g=2]
-        //   - Avoids oscillation: (-2·(-1)^π - a)/2 → skip [g=gcd(2,1)=1]
-        //   - Fully cancels when possible: (2x+4y)/2 → x+2y  [g=2, new_frac=1]
-
-
-        // Extract integer numerators for GCD computation.
-        // Each coefficient is a BigRational(p, q). We need the integer GCD across
-        // all coefficients, treating them as fractions.
-        // rational gcd: gcd(a/b, c/d) = gcd(a,c) / lcm(b,d)
-        fn rational_gcd(a: &BigRational, b: &BigRational) -> BigRational {
-            use num_integer::Integer;
-            if a.is_zero() { return b.abs(); }
-            if b.is_zero() { return a.abs(); }
-            let num_gcd = a.numer().gcd(b.numer());
-            let den_lcm = a.denom().lcm(b.denom());
-            BigRational::new(num_gcd, den_lcm)
-        }
-
-        let mut g = coeffs[0].abs();
-        for c in &coeffs[1..] {
-            g = rational_gcd(&g, c);
-            if g.is_one() {
-                return None; // GCD is 1 → no common factor → skip
-            }
-        }
-
-        if g <= BigRational::one() {
-            return None;
-        }
-
-        // Divide each coefficient by g
-        let reduced_coeffs: Vec<BigRational> = coeffs.iter().map(|c| c / &g).collect();
-
-        // New outer fraction = frac_val * g = (p/q) * g
-        let new_frac = &frac_val * &g;
-
-        // Build new terms with the reduced coefficients
-        let mut new_terms: Vec<ExprId> = Vec::with_capacity(terms.len());
-        for (rc, rest) in reduced_coeffs.iter().zip(rests.iter()) {
-            let new_term = if rc == &BigRational::from_integer(1.into()) {
-                *rest
-            } else if rc == &BigRational::from_integer((-1).into()) {
-                ctx.add(Expr::Neg(*rest))
-            } else if rc.is_zero() {
-                continue;
-            } else {
-                let c_expr = ctx.add(Expr::Number(rc.clone()));
-                if matches!(ctx.get(*rest), Expr::Number(n) if n.is_one()) {
-                    c_expr
-                } else {
-                    crate::build::mul2_raw(ctx, c_expr, *rest)
-                }
-            };
-            new_terms.push(new_term);
-        }
-
-        if new_terms.is_empty() {
-            return Some(Rewrite::new(ctx.num(0)).desc("All terms cancel"));
-        }
-
-        // Build new sum
-        let mut new_sum = new_terms[0];
-        for &t in &new_terms[1..] {
-            new_sum = ctx.add(Expr::Add(new_sum, t));
-        }
-
-        // Build result based on the new outer fraction
-        let result = if new_frac == BigRational::from_integer(1.into()) {
-            // Fraction fully absorbed → just the sum
-            new_sum
-        } else if new_frac == BigRational::from_integer((-1).into()) {
-            ctx.add(Expr::Neg(new_sum))
-        } else if new_frac.is_integer() {
-            // Integer multiplier: Mul(n, sum)
-            let n_expr = ctx.add(Expr::Number(new_frac.clone()));
-            crate::build::mul2_raw(ctx, n_expr, new_sum)
-        } else {
-            // Still fractional but with smaller denominator: Mul(p/q, sum)
-            let frac_expr = ctx.add(Expr::Number(new_frac.clone()));
-            crate::build::mul2_raw(ctx, frac_expr, new_sum)
-        };
-
-        Some(Rewrite::new(result).desc("Factor common coefficient from sum"))
+        let rewrite = try_rewrite_div_scalar_into_add_expr(ctx, expr)?;
+        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
     }
 );

@@ -19,17 +19,16 @@ pub use expansion_normalize::{
 pub use factoring::{ExtractCommonMulFactorRule, HeuristicExtractCommonFactorAddRule};
 
 use crate::define_rule;
-use crate::nary::{build_balanced_add, AddView, Sign};
 use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
-use cas_ast::{Expr, ExprId};
+use cas_ast::Expr;
 use cas_math::annihilation_support::{
     should_rewrite_annihilation_to_zero_with, AnnihilationRewriteKind,
 };
 use cas_math::cube_identity_support::try_rewrite_sum_diff_cubes_product_expr;
-use cas_math::distribution_guard_support::estimate_division_distribution_simplification_reduction;
+use cas_math::distribution_division_support::try_rewrite_div_distribution_simplifying_expr;
 use cas_math::distribution_rule_support::try_rewrite_mul_distribution_legacy_expr;
-use cas_math::expr_destructure::{as_div, as_mul};
+use cas_math::expr_destructure::as_mul;
 
 // ── Sum/Difference of Cubes Contraction Rule ────────────────────────────
 //
@@ -143,60 +142,12 @@ define_rule!(
             );
         }
 
-        // Handle Division Distribution: (a + b) / c -> a/c + b/c
-        // Using AddView for shape-independent n-ary handling
-        if let Some((numer, denom)) = as_div(ctx, expr) {
-            // N-ARY: Use AddView for shape-independent handling of sums
-            // This correctly handles ((a+b)+c), (a+(b+c)), and balanced trees
-            let num_view = AddView::from_expr(ctx, numer);
-
-            // Check if it's actually a sum (more than 1 term)
-            if num_view.terms.len() > 1 {
-                // Calculate total reduction potential
-                let mut total_reduction: usize = 0;
-                let mut any_simplifies = false;
-
-                for &(term, _sign) in &num_view.terms {
-                    let red =
-                        estimate_division_distribution_simplification_reduction(ctx, term, denom);
-                    if red > 0 {
-                        any_simplifies = true;
-                        total_reduction += red;
-                    }
-                }
-
-                // Only distribute if at least one term simplifies
-                if any_simplifies {
-                    // Build new terms: each term divided by denominator
-                    let new_terms: Vec<ExprId> = num_view
-                        .terms
-                        .iter()
-                        .map(|&(term, sign)| {
-                            let div_term = ctx.add(Expr::Div(term, denom));
-                            match sign {
-                                Sign::Pos => div_term,
-                                Sign::Neg => ctx.add(Expr::Neg(div_term)),
-                            }
-                        })
-                        .collect();
-
-                    // Rebuild as balanced sum
-                    let new_expr = build_balanced_add(ctx, &new_terms);
-
-                    // Check complexity to prevent cycles with AddFractionsRule
-                    let old_complexity = cas_ast::count_nodes(ctx, expr);
-                    let new_complexity = cas_ast::count_nodes(ctx, new_expr);
-
-                    // Allow if predicted complexity (after simplification) is not worse
-                    if new_complexity <= old_complexity + total_reduction {
-                        return Some(
-                            Rewrite::new(new_expr)
-                                .desc("Distribute division (simplifying)")
-                                .local(expr, new_expr),
-                        );
-                    }
-                }
-            }
+        if let Some(rewrite) = try_rewrite_div_distribution_simplifying_expr(ctx, expr) {
+            return Some(
+                Rewrite::new(rewrite.rewritten)
+                    .desc(rewrite.desc)
+                    .local(expr, rewrite.rewritten),
+            );
         }
         None
     }
