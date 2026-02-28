@@ -487,11 +487,15 @@ fn build_pow_isolation_config(
     simplifier: &mut Simplifier,
     opts: SolverOptions,
 ) -> PowIsolationConfig {
+    let pow_inputs = cas_solver_core::strategy_options::pow_kernel_inputs(
+        opts.core_domain_mode(),
+        opts.wildcard_scope(),
+        opts.value_domain == crate::semantics::ValueDomain::RealOnly,
+        opts.budget,
+    );
+
     PowIsolationConfig {
-        kernel: build_pow_isolation_kernel_config_with(
-            || simplifier.collect_steps(),
-            opts.pow_kernel_inputs(),
-        ),
+        kernel: build_pow_isolation_kernel_config_with(|| simplifier.collect_steps(), pow_inputs),
         tactic_opts: crate::SimplifyOptions::for_solve_tactic(opts.domain_mode),
     }
 }

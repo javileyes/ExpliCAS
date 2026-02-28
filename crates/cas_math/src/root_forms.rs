@@ -1,5 +1,6 @@
 //! Root-shape helpers over AST expressions.
 
+use crate::perfect_square_support::rational_sqrt;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use num_bigint::BigInt;
 use num_integer::Integer;
@@ -17,6 +18,681 @@ pub struct OddHalfPowerRewrite {
     pub rewritten: ExprId,
     pub numerator: i64,
     pub abs_power: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DenestSqrtAddSqrtRewrite {
+    pub rewritten: ExprId,
+    pub desc: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RootDenestingRewrite {
+    pub rewritten: ExprId,
+    pub desc: &'static str,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExtractPerfectPowerFromRadicandRewrite {
+    pub rewritten: ExprId,
+    pub desc: &'static str,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SimplifySquareRootRewrite {
+    pub rewritten: ExprId,
+    pub desc: &'static str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DenestCubeQuadraticRewrite {
+    pub rewritten: ExprId,
+    pub desc: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CubicConjugateTrapRewrite {
+    pub rewritten: ExprId,
+    pub desc: String,
+}
+
+fn as_sqrt_like(ctx: &Context, e: ExprId) -> Option<ExprId> {
+    match ctx.get(e) {
+        Expr::Function(fn_id, args)
+            if ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) && args.len() == 1 =>
+        {
+            Some(args[0])
+        }
+        Expr::Pow(base, exp) => {
+            if let Expr::Number(n) = ctx.get(*exp) {
+                if *n.numer() == 1.into() && *n.denom() == 2.into() {
+                    return Some(*base);
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+/// Rewrite nested square roots of the form `sqrt(a + sqrt(b))` into
+/// `sqrt(m) + sqrt(n)` when `m,n` are non-negative rationals:
+/// `m = (a + sqrt(a^2-b))/2`, `n = (a - sqrt(a^2-b))/2`.
+pub fn try_rewrite_denest_sqrt_add_sqrt_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<DenestSqrtAddSqrtRewrite> {
+    let inner = as_sqrt_like(ctx, expr)?;
+    let (left, right, is_add) = match ctx.get(inner) {
+        Expr::Add(l, r) => (*l, *r, true),
+        Expr::Sub(l, r) => (*l, *r, false),
+        _ => return None,
+    };
+
+    if !is_add {
+        return None;
+    }
+
+    let extract_ab =
+        |ctx: &Context, a_term: ExprId, surd_term: ExprId| -> Option<(BigRational, BigRational)> {
+            let Expr::Number(a) = ctx.get(a_term) else {
+                return None;
+            };
+            let b_inner = as_sqrt_like(ctx, surd_term)?;
+            let Expr::Number(b) = ctx.get(b_inner) else {
+                return None;
+            };
+            Some((a.clone(), b.clone()))
+        };
+
+    let (a_val, b_val) = extract_ab(ctx, left, right).or_else(|| extract_ab(ctx, right, left))?;
+    let disc = &a_val * &a_val - &b_val;
+    let disc_sqrt = rational_sqrt(&disc)?;
+
+    let two = BigRational::from_integer(2.into());
+    let m = (&a_val + &disc_sqrt) / &two;
+    let n = (&a_val - &disc_sqrt) / &two;
+
+    if m.is_negative() || n.is_negative() {
+        return None;
+    }
+
+    let m_expr = ctx.add(Expr::Number(m.clone()));
+    let n_expr = ctx.add(Expr::Number(n.clone()));
+    let half_m = ctx.add(Expr::Number(BigRational::new(1.into(), 2.into())));
+    let half_n = ctx.add(Expr::Number(BigRational::new(1.into(), 2.into())));
+    let sqrt_m = ctx.add(Expr::Pow(m_expr, half_m));
+    let sqrt_n = ctx.add(Expr::Pow(n_expr, half_n));
+    let rewritten = ctx.add(Expr::Add(sqrt_m, sqrt_n));
+
+    Some(DenestSqrtAddSqrtRewrite {
+        rewritten,
+        desc: format!("Denest nested square root: √(a+√b) = √({}) + √({})", m, n),
+    })
+}
+
+/// Rewrite `sqrt(A ± C*sqrt(D))` / `(A ± C*sqrt(D))^(1/2)` by denesting when
+/// `A^2 - C^2*D` is a non-negative perfect square.
+pub fn try_rewrite_root_denesting_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<RootDenestingRewrite> {
+    enum RootShape {
+        Sqrt(ExprId),
+        HalfPow(ExprId),
+        Other,
+    }
+    let shape = match ctx.get(expr) {
+        Expr::Function(fn_id, args)
+            if ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) && args.len() == 1 =>
+        {
+            RootShape::Sqrt(args[0])
+        }
+        Expr::Pow(b, e) => {
+            if let Expr::Number(n) = ctx.get(*e) {
+                if *n.numer() == 1.into() && *n.denom() == 2.into() {
+                    RootShape::HalfPow(*b)
+                } else {
+                    RootShape::Other
+                }
+            } else {
+                RootShape::Other
+            }
+        }
+        _ => RootShape::Other,
+    };
+
+    let inner = match shape {
+        RootShape::Sqrt(i) | RootShape::HalfPow(i) => i,
+        RootShape::Other => return None,
+    };
+
+    let (a, b, is_add) = match ctx.get(inner) {
+        Expr::Add(l, r) => (*l, *r, true),
+        Expr::Sub(l, r) => (*l, *r, false),
+        _ => return None,
+    };
+
+    fn analyze_sqrt_term(ctx: &Context, e: ExprId) -> Option<(Option<ExprId>, ExprId)> {
+        match ctx.get(e) {
+            Expr::Function(fname, fargs)
+                if ctx.is_builtin(*fname, BuiltinFn::Sqrt) && fargs.len() == 1 =>
+            {
+                Some((None, fargs[0]))
+            }
+            Expr::Pow(b, exp) => {
+                if let Expr::Number(n) = ctx.get(*exp) {
+                    if *n.numer() == 3.into() && *n.denom() == 2.into() {
+                        return Some((Some(*b), *b));
+                    }
+                }
+                None
+            }
+            Expr::Mul(l, r) => {
+                if let Some(inner) = as_sqrt_like(ctx, *r) {
+                    return Some((Some(*l), inner));
+                }
+                if let Some(inner) = as_sqrt_like(ctx, *l) {
+                    return Some((Some(*r), inner));
+                }
+                None
+            }
+            _ => None,
+        }
+    }
+
+    let check_permutation = |ctx: &mut Context, term_a: ExprId, term_b: ExprId| -> Option<ExprId> {
+        let (c_opt, d) = analyze_sqrt_term(ctx, term_b)?;
+        let c = c_opt.unwrap_or_else(|| ctx.num(1));
+
+        let (Expr::Number(val_a), Expr::Number(val_c), Expr::Number(val_d)) =
+            (ctx.get(term_a), ctx.get(c), ctx.get(d))
+        else {
+            return None;
+        };
+        let val_a = val_a.clone();
+        let val_c = val_c.clone();
+        let val_d = val_d.clone();
+
+        let val_beff = &val_c * &val_c * &val_d;
+        let val_delta = &val_a * &val_a - &val_beff;
+        if val_delta < BigRational::zero() || !val_delta.is_integer() {
+            return None;
+        }
+        let int_delta = val_delta.to_integer();
+        let sqrt_delta = int_delta.sqrt();
+        if sqrt_delta.clone() * sqrt_delta.clone() != int_delta {
+            return None;
+        }
+
+        let z_val = ctx.add(Expr::Number(BigRational::from_integer(sqrt_delta)));
+        let two = ctx.num(2);
+        let term1_num = ctx.add(Expr::Add(term_a, z_val));
+        let term2_num = ctx.add(Expr::Sub(term_a, z_val));
+        let term1_frac = ctx.add(Expr::Div(term1_num, two));
+        let term2_frac = ctx.add(Expr::Div(term2_num, two));
+        let term1 = ctx.call_builtin(BuiltinFn::Sqrt, vec![term1_frac]);
+        let term2 = ctx.call_builtin(BuiltinFn::Sqrt, vec![term2_frac]);
+
+        let c_is_negative = val_c < BigRational::zero();
+        let effective_sub = if is_add {
+            c_is_negative
+        } else {
+            !c_is_negative
+        };
+        Some(if effective_sub {
+            ctx.add(Expr::Sub(term1, term2))
+        } else {
+            ctx.add(Expr::Add(term1, term2))
+        })
+    };
+
+    let rewritten = check_permutation(ctx, a, b).or_else(|| check_permutation(ctx, b, a))?;
+    Some(RootDenestingRewrite {
+        rewritten,
+        desc: "Denest square root",
+    })
+}
+
+/// Extract largest perfect `n`-th-power factor from radicand in `(c*rest)^(1/n)`.
+///
+/// Examples:
+/// - `(4*x)^(1/2) -> 2*x^(1/2)`
+/// - `(8*x)^(1/2) -> 2*(2*x)^(1/2)`
+/// - `(16*x)^(1/4) -> 2*x^(1/4)`
+pub fn try_rewrite_extract_perfect_power_from_radicand_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ExtractPerfectPowerFromRadicandRewrite> {
+    let (base, exp_id) = match ctx.get(expr) {
+        Expr::Pow(b, e) => (*b, *e),
+        _ => return None,
+    };
+
+    let root_index: u32 = match ctx.get(exp_id) {
+        Expr::Number(n) if n.numer() == &1.into() => {
+            let d = n.denom();
+            let d_u32 = d.to_u32_digits().1.first().copied()?;
+            if d_u32 >= 2 && d.sign() == num_bigint::Sign::Plus && d.bits() <= 32 {
+                d_u32
+            } else {
+                return None;
+            }
+        }
+        Expr::Div(num, den) => {
+            let Expr::Number(num_n) = ctx.get(*num) else {
+                return None;
+            };
+            let Expr::Number(den_n) = ctx.get(*den) else {
+                return None;
+            };
+            if !num_n.is_one() || !den_n.is_integer() || den_n <= &BigRational::zero() {
+                return None;
+            }
+            let d = den_n.to_integer();
+            let d_u32 = d.to_u32_digits().1.first().copied()?;
+            if d_u32 >= 2 && d.sign() == num_bigint::Sign::Plus && d.bits() <= 32 {
+                d_u32
+            } else {
+                return None;
+            }
+        }
+        _ => return None,
+    };
+
+    let (num_val, rest) = match ctx.get(base) {
+        Expr::Mul(l, r) => {
+            let (l, r) = (*l, *r);
+            if let Expr::Number(n) = ctx.get(l) {
+                (n.clone(), r)
+            } else if let Expr::Number(n) = ctx.get(r) {
+                (n.clone(), l)
+            } else {
+                return None;
+            }
+        }
+        _ => return None,
+    };
+
+    if !num_val.is_positive() || !num_val.is_integer() {
+        return None;
+    }
+
+    let int_val = num_val.to_integer();
+    let mut k = num_bigint::BigInt::from(1);
+    let mut remaining = int_val.clone();
+    let mut trial: num_bigint::BigInt = 2.into();
+    loop {
+        if &trial * &trial > remaining {
+            break;
+        }
+        let mut count: u32 = 0;
+        while (&remaining % &trial).is_zero() {
+            remaining /= &trial;
+            count += 1;
+        }
+        let extracted = count / root_index;
+        if extracted > 0 {
+            for _ in 0..extracted {
+                k *= &trial;
+            }
+        }
+        trial += 1;
+    }
+    if k == num_bigint::BigInt::from(1) {
+        return None;
+    }
+
+    let mut k_power = num_bigint::BigInt::from(1);
+    for _ in 0..root_index {
+        k_power *= &k;
+    }
+    let new_coeff = &int_val / &k_power;
+
+    let k_expr = ctx.add(Expr::Number(BigRational::from_integer(k)));
+    let new_radicand = if new_coeff == num_bigint::BigInt::from(1) {
+        rest
+    } else {
+        let new_coeff_expr = ctx.add(Expr::Number(BigRational::from_integer(new_coeff)));
+        ctx.add(Expr::Mul(new_coeff_expr, rest))
+    };
+    let new_root = ctx.add(Expr::Pow(new_radicand, exp_id));
+    let rewritten = ctx.add(Expr::Mul(k_expr, new_root));
+
+    Some(ExtractPerfectPowerFromRadicandRewrite {
+        rewritten,
+        desc: "Extract perfect square from under radical",
+    })
+}
+
+/// Simplify square roots of perfect-square polynomials.
+///
+/// Main rewrite:
+/// - `sqrt((dx+e)^2) -> abs(dx+e)`
+///
+/// Fallback for repeated linear factors:
+/// - `sqrt((f)^(2k)) -> abs(f)^k`
+/// - `sqrt((f)^(2k+1)) -> abs(f)^k * sqrt(f)`
+pub fn try_rewrite_simplify_square_root_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<SimplifySquareRootRewrite> {
+    use crate::expr_rewrite::smart_mul;
+    use crate::polynomial::Polynomial;
+
+    let arg = match ctx.get(expr) {
+        Expr::Function(fn_id, args)
+            if ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) && args.len() == 1 =>
+        {
+            Some(args[0])
+        }
+        Expr::Pow(b, e) => match ctx.get(*e) {
+            Expr::Number(n) if *n.numer() == 1.into() && *n.denom() == 2.into() => Some(*b),
+            _ => None,
+        },
+        _ => None,
+    }?;
+
+    match ctx.get(arg) {
+        Expr::Add(_, _) | Expr::Sub(_, _) => {}
+        _ => return None,
+    }
+
+    let vars = cas_ast::collect_variables(ctx, arg);
+    if vars.len() != 1 {
+        return None;
+    }
+    let var = vars.iter().next()?;
+    let poly = Polynomial::from_expr(ctx, arg, var).ok()?;
+
+    if poly.degree() == 2 && poly.coeffs.len() >= 3 {
+        let a = poly.coeffs.get(2).cloned();
+        let b = poly.coeffs.get(1).cloned();
+        let c = poly.coeffs.first().cloned();
+        if let (Some(a), Some(b), Some(c)) = (a, b, c) {
+            let four = BigRational::from_integer(4.into());
+            let discriminant = b.clone() * b.clone() - four * a.clone() * c.clone();
+            if discriminant.is_zero() {
+                if let (Some(d), Some(_)) = (rational_sqrt(&a), rational_sqrt(&c)) {
+                    let two = BigRational::from_integer(2.into());
+                    let e = if d.is_zero() {
+                        rational_sqrt(&c).unwrap_or_else(BigRational::zero)
+                    } else {
+                        b.clone() / (two * d.clone())
+                    };
+
+                    let var_expr = ctx.var(var);
+                    let d_expr = ctx.add(Expr::Number(d.clone()));
+                    let e_expr = ctx.add(Expr::Number(e.clone()));
+                    let one = BigRational::from_integer(1.into());
+                    let dx = if d == one {
+                        var_expr
+                    } else {
+                        smart_mul(ctx, d_expr, var_expr)
+                    };
+                    let linear = if e.is_zero() {
+                        dx
+                    } else {
+                        ctx.add(Expr::Add(dx, e_expr))
+                    };
+                    let rewritten = ctx.call_builtin(BuiltinFn::Abs, vec![linear]);
+                    return Some(SimplifySquareRootRewrite {
+                        rewritten,
+                        desc: "Simplify perfect square root",
+                    });
+                }
+            }
+        }
+    }
+
+    let factors = poly.factor_rational_roots();
+    if factors.is_empty() {
+        return None;
+    }
+    let first = &factors[0];
+    if !factors.iter().all(|f| f == first) {
+        return None;
+    }
+    let count = factors.len() as u32;
+    if count < 2 {
+        return None;
+    }
+
+    let base = first.to_expr(ctx);
+    let k = count / 2;
+    let rem = count % 2;
+    let abs_base = ctx.call_builtin(BuiltinFn::Abs, vec![base]);
+    let term1 = if k == 1 {
+        abs_base
+    } else {
+        let k_expr = ctx.num(k as i64);
+        ctx.add(Expr::Pow(abs_base, k_expr))
+    };
+    if rem == 0 {
+        return Some(SimplifySquareRootRewrite {
+            rewritten: term1,
+            desc: "Simplify perfect square root",
+        });
+    }
+
+    let sqrt_base = ctx.call_builtin(BuiltinFn::Sqrt, vec![base]);
+    let rewritten = smart_mul(ctx, term1, sqrt_base);
+    Some(SimplifySquareRootRewrite {
+        rewritten,
+        desc: "Simplify square root factors",
+    })
+}
+
+fn split_linear_surd(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<(BigRational, BigRational, BigRational)> {
+    fn extract_coef_surd(ctx: &Context, term: ExprId) -> Option<(BigRational, BigRational)> {
+        if let Some(radicand) = as_sqrt_like(ctx, term) {
+            if let Expr::Number(n) = ctx.get(radicand) {
+                return Some((BigRational::from_integer(1.into()), n.clone()));
+            }
+        }
+
+        if let Expr::Mul(l, r) = ctx.get(term) {
+            if let Expr::Number(b) = ctx.get(*l) {
+                if let Some(radicand) = as_sqrt_like(ctx, *r) {
+                    if let Expr::Number(n) = ctx.get(radicand) {
+                        return Some((b.clone(), n.clone()));
+                    }
+                }
+            }
+            if let Expr::Number(b) = ctx.get(*r) {
+                if let Some(radicand) = as_sqrt_like(ctx, *l) {
+                    if let Expr::Number(n) = ctx.get(radicand) {
+                        return Some((b.clone(), n.clone()));
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    match ctx.get(expr) {
+        Expr::Add(l, r) => {
+            if let Expr::Number(a) = ctx.get(*l) {
+                if let Some((b, n)) = extract_coef_surd(ctx, *r) {
+                    return Some((a.clone(), b, n));
+                }
+            }
+            if let Expr::Number(a) = ctx.get(*r) {
+                if let Some((b, n)) = extract_coef_surd(ctx, *l) {
+                    return Some((a.clone(), b, n));
+                }
+            }
+            if let Expr::Neg(neg_inner) = ctx.get(*r) {
+                if let Expr::Number(a) = ctx.get(*l) {
+                    if let Some((b, n)) = extract_coef_surd(ctx, *neg_inner) {
+                        return Some((a.clone(), -b, n));
+                    }
+                }
+            }
+            None
+        }
+        Expr::Sub(l, r) => {
+            if let Expr::Number(a) = ctx.get(*l) {
+                if let Some((b, n)) = extract_coef_surd(ctx, *r) {
+                    return Some((a.clone(), -b, n));
+                }
+            }
+            if let Expr::Number(a) = ctx.get(*r) {
+                if let Some((b, n)) = extract_coef_surd(ctx, *l) {
+                    return Some((-a.clone(), b, n));
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+fn solve_cube_in_quadratic_field(
+    a: &BigRational,
+    b: &BigRational,
+    n: &BigRational,
+) -> Option<(BigRational, BigRational)> {
+    use num_bigint::BigInt;
+    use num_traits::Zero;
+
+    if n <= &BigRational::zero() {
+        return None;
+    }
+
+    let a_approx: f64 = a.numer().to_string().parse().unwrap_or(f64::MAX);
+    let b_approx: f64 = b.numer().to_string().parse().unwrap_or(f64::MAX);
+    if a_approx.abs() > 1e12 || b_approx.abs() > 1e12 {
+        return None;
+    }
+
+    let denoms: [i64; 7] = [1, 2, 3, 4, 6, 8, 12];
+    let max_num: i64 = 10;
+    let three = BigRational::from_integer(3.into());
+
+    for &denom in &denoms {
+        let denom_big = BigInt::from(denom);
+        for num in -max_num..=max_num {
+            if num == 0 {
+                continue;
+            }
+
+            let y = BigRational::new(BigInt::from(num), denom_big.clone());
+            let y_squared = &y * &y;
+            let y_cubed = &y_squared * &y;
+
+            let b_over_y = b / &y;
+            let n_y_sq = n * &y_squared;
+            let x_squared = (&b_over_y - &n_y_sq) / &three;
+            if x_squared.is_negative() {
+                continue;
+            }
+
+            if let Some(x_pos) = rational_sqrt(&x_squared) {
+                for x in [x_pos.clone(), -x_pos.clone()] {
+                    let x_cubed = &x * &x * &x;
+                    let term_3xy2n = &three * &x * &y_squared * n;
+                    let lhs_a = &x_cubed + &term_3xy2n;
+
+                    let x_sq = &x * &x;
+                    let term_3x2y = &three * &x_sq * &y;
+                    let term_y3n = &y_cubed * n;
+                    let lhs_b = &term_3x2y + &term_y3n;
+
+                    if &lhs_a == a && &lhs_b == b {
+                        return Some((x, y));
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Rewrite perfect cube roots in quadratic fields:
+/// - `(A + B*sqrt(n))^(1/3) -> x + y*sqrt(n)` when rational `x,y` satisfy
+///   `(x + y*sqrt(n))^3 = A + B*sqrt(n)`.
+pub fn try_rewrite_denest_cube_quadratic_field_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<DenestCubeQuadraticRewrite> {
+    use num_traits::Zero;
+
+    let base = extract_cube_root_base(ctx, expr)?;
+
+    let (a, b, n) = split_linear_surd(ctx, base)?;
+    if b.is_zero() {
+        return None;
+    }
+
+    let (x, y) = solve_cube_in_quadratic_field(&a, &b, &n)?;
+
+    let x_expr = ctx.add(Expr::Number(x.clone()));
+    let y_expr = ctx.add(Expr::Number(y.clone()));
+    let n_expr = ctx.add(Expr::Number(n.clone()));
+    let half = ctx.add(Expr::Number(BigRational::new(1.into(), 2.into())));
+    let sqrt_n = ctx.add(Expr::Pow(n_expr, half));
+
+    let rewritten = if y.is_zero() {
+        x_expr
+    } else if x.is_zero() {
+        ctx.add(Expr::Mul(y_expr, sqrt_n))
+    } else {
+        let y_sqrt_n = ctx.add(Expr::Mul(y_expr, sqrt_n));
+        ctx.add(Expr::Add(x_expr, y_sqrt_n))
+    };
+
+    Some(DenestCubeQuadraticRewrite {
+        rewritten,
+        desc: format!(
+            "Denest cube root in quadratic field: ∛(A+B√n) = {} + {}√{}",
+            x, y, n
+        ),
+    })
+}
+
+/// Rewrite `∛(m+t) + ∛(m-t)` when it evaluates to a rational root.
+pub fn try_rewrite_cubic_conjugate_identity_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<CubicConjugateTrapRewrite> {
+    let (left, right) = match ctx.get(expr) {
+        Expr::Add(l, r) => (*l, *r),
+        _ => return None,
+    };
+
+    let base_a = extract_cube_root_base(ctx, left)?;
+    let base_b = extract_cube_root_base(ctx, right)?;
+    let (m, t) = conjugate_numeric_surd_pair(ctx, base_a, base_b)?;
+
+    let two = BigRational::from_integer(2.into());
+    let m_value = match ctx.get(m) {
+        Expr::Number(n) => n.clone(),
+        _ => return None,
+    };
+    let s_value = &two * &m_value;
+
+    let t_squared_value = surd_square_rational(ctx, t)?;
+    let ab_value = &m_value * &m_value - &t_squared_value;
+    let p_value = rational_cbrt_exact(&ab_value)?;
+
+    let three = BigRational::from_integer(3.into());
+    let p_coef = -&three * &p_value;
+    let q_coef = -&s_value;
+
+    if p_coef <= BigRational::zero() {
+        return None;
+    }
+
+    let root = find_rational_root_depressed_cubic(&p_coef, &q_coef)?;
+    let rewritten = ctx.add(Expr::Number(root.clone()));
+    Some(CubicConjugateTrapRewrite {
+        rewritten,
+        desc: format!("Cubic conjugate identity: ∛(m+t) + ∛(m-t) = {}", root),
+    })
 }
 
 /// Rewrite root syntax into canonical power syntax.
@@ -737,6 +1413,25 @@ mod tests {
     }
 
     #[test]
+    fn cubic_conjugate_identity_rewrite_matches_known_case() {
+        let mut ctx = Context::new();
+        let expr = parse("(2 + sqrt(5))^(1/3) + (2 - sqrt(5))^(1/3)", &mut ctx).expect("expr");
+        let rewrite = try_rewrite_cubic_conjugate_identity_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(
+            eval_small_rat(&ctx, rewrite.rewritten),
+            Some(BigRational::from_integer(1.into()))
+        );
+        assert!(rewrite.desc.contains("Cubic conjugate identity"));
+    }
+
+    #[test]
+    fn cubic_conjugate_identity_rewrite_rejects_non_conjugate_pair() {
+        let mut ctx = Context::new();
+        let expr = parse("(2 + sqrt(5))^(1/3) + (2 + sqrt(5))^(1/3)", &mut ctx).expect("expr");
+        assert!(try_rewrite_cubic_conjugate_identity_expr(&mut ctx, expr).is_none());
+    }
+
+    #[test]
     fn extract_root_factor_preserves_sign_by_parity() {
         use num_bigint::BigInt;
 
@@ -840,5 +1535,167 @@ mod tests {
         );
         assert!(rendered.contains("|x|^2"));
         assert!(rendered.contains("sqrt(x)") || rendered.contains("√x"));
+    }
+
+    #[test]
+    fn denest_sqrt_add_sqrt_rewrite_matches_known_case() {
+        let mut ctx = Context::new();
+        let expr = parse("sqrt(3 + sqrt(5))", &mut ctx).expect("expr");
+        let rewrite = try_rewrite_denest_sqrt_add_sqrt_expr(&mut ctx, expr).expect("rewrite");
+
+        let Expr::Add(l, r) = ctx.get(rewrite.rewritten) else {
+            panic!("denest rewrite should build sum of two roots");
+        };
+        let mut roots = Vec::new();
+        for term in [*l, *r] {
+            let Expr::Pow(base, exp) = ctx.get(term) else {
+                panic!("term should be a power");
+            };
+            assert_eq!(
+                eval_small_rat(&ctx, *exp),
+                Some(BigRational::new(1.into(), 2.into()))
+            );
+            let Expr::Number(n) = ctx.get(*base) else {
+                panic!("root base should be numeric");
+            };
+            roots.push(n.clone());
+        }
+        assert!(roots.contains(&BigRational::new(1.into(), 2.into())));
+        assert!(roots.contains(&BigRational::new(5.into(), 2.into())));
+    }
+
+    #[test]
+    fn denest_sqrt_add_sqrt_rewrite_rejects_subtraction_shape() {
+        let mut ctx = Context::new();
+        let expr = parse("sqrt(3 - 2*sqrt(2))", &mut ctx).expect("expr");
+        assert!(try_rewrite_denest_sqrt_add_sqrt_expr(&mut ctx, expr).is_none());
+    }
+
+    #[test]
+    fn denest_cube_quadratic_rewrite_matches_known_case() {
+        let mut ctx = Context::new();
+        let expr = parse("(26 + 15*sqrt(3))^(1/3)", &mut ctx).expect("expr");
+        let rewrite =
+            try_rewrite_denest_cube_quadratic_field_expr(&mut ctx, expr).expect("rewrite");
+
+        fn is_one(ctx: &Context, id: ExprId) -> bool {
+            matches!(
+                ctx.get(id),
+                Expr::Number(n) if *n == BigRational::from_integer(1.into())
+            )
+        }
+        fn is_two(ctx: &Context, id: ExprId) -> bool {
+            matches!(
+                ctx.get(id),
+                Expr::Number(n) if *n == BigRational::from_integer(2.into())
+            )
+        }
+        fn is_sqrt_three(ctx: &Context, id: ExprId) -> bool {
+            match ctx.get(id) {
+                Expr::Pow(base, exp) => {
+                    matches!(
+                        (ctx.get(*base), ctx.get(*exp)),
+                        (Expr::Number(n), Expr::Number(e))
+                            if *n == BigRational::from_integer(3.into())
+                                && *e == BigRational::new(1.into(), 2.into())
+                    )
+                }
+                Expr::Mul(l, r) => {
+                    (is_one(ctx, *l) && is_sqrt_three(ctx, *r))
+                        || (is_one(ctx, *r) && is_sqrt_three(ctx, *l))
+                }
+                _ => false,
+            }
+        }
+
+        let Expr::Add(l, r) = ctx.get(rewrite.rewritten) else {
+            panic!("cube denest rewrite should build an additive form");
+        };
+        assert!(
+            (is_two(&ctx, *l) && is_sqrt_three(&ctx, *r))
+                || (is_two(&ctx, *r) && is_sqrt_three(&ctx, *l))
+        );
+    }
+
+    #[test]
+    fn denest_cube_quadratic_rewrite_rejects_nonmatching_input() {
+        let mut ctx = Context::new();
+        let expr = parse("(5 + sqrt(6))^(1/3)", &mut ctx).expect("expr");
+        assert!(try_rewrite_denest_cube_quadratic_field_expr(&mut ctx, expr).is_none());
+    }
+
+    #[test]
+    fn root_denesting_rewrite_matches_nested_surd_form() {
+        let mut ctx = Context::new();
+        let expr = parse("sqrt(4 + sqrt(7))", &mut ctx).expect("expr");
+        let rewrite = try_rewrite_root_denesting_expr(&mut ctx, expr).expect("rewrite");
+        let rendered = format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: &ctx,
+                id: rewrite.rewritten
+            }
+        );
+        assert!(rendered.contains("/ 2"), "rendered={rendered}");
+        assert_eq!(rendered.matches("sqrt(").count(), 2, "rendered={rendered}");
+    }
+
+    #[test]
+    fn root_denesting_rewrite_rejects_non_perfect_delta() {
+        let mut ctx = Context::new();
+        let expr = parse("sqrt(4 + sqrt(10))", &mut ctx).expect("expr");
+        assert!(try_rewrite_root_denesting_expr(&mut ctx, expr).is_none());
+    }
+
+    #[test]
+    fn extract_perfect_power_from_radicand_rewrite_sqrt_case() {
+        let mut ctx = Context::new();
+        let expr = parse("(8*x)^(1/2)", &mut ctx).expect("expr");
+        let expected = parse("2*(2*x)^(1/2)", &mut ctx).expect("expected");
+        let rewrite =
+            try_rewrite_extract_perfect_power_from_radicand_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, rewrite.rewritten, expected),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn extract_perfect_power_from_radicand_rewrite_fourth_root_case() {
+        let mut ctx = Context::new();
+        let expr = parse("(16*x)^(1/4)", &mut ctx).expect("expr");
+        let expected = parse("2*x^(1/4)", &mut ctx).expect("expected");
+        let rewrite =
+            try_rewrite_extract_perfect_power_from_radicand_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, rewrite.rewritten, expected),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn extract_perfect_power_from_radicand_rewrite_rejects_without_factor() {
+        let mut ctx = Context::new();
+        let expr = parse("(2*x)^(1/2)", &mut ctx).expect("expr");
+        assert!(try_rewrite_extract_perfect_power_from_radicand_expr(&mut ctx, expr).is_none());
+    }
+
+    #[test]
+    fn simplify_square_root_rewrite_trinomial_to_abs_linear() {
+        let mut ctx = Context::new();
+        let expr = parse("sqrt(x^2 + 2*x + 1)", &mut ctx).expect("expr");
+        let expected = parse("abs(x + 1)", &mut ctx).expect("expected");
+        let rewrite = try_rewrite_simplify_square_root_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, rewrite.rewritten, expected),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn simplify_square_root_rewrite_rejects_non_perfect_square_poly() {
+        let mut ctx = Context::new();
+        let expr = parse("sqrt(x^2 + 1)", &mut ctx).expect("expr");
+        assert!(try_rewrite_simplify_square_root_expr(&mut ctx, expr).is_none());
     }
 }

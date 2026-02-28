@@ -4,7 +4,6 @@
 
 use crate::define_rule;
 use crate::rule::Rewrite;
-use cas_ast::Expr;
 
 // =============================================================================
 // CUBIC CONJUGATE TRAP RULE
@@ -17,67 +16,8 @@ define_rule!(
     None,
     crate::phase::PhaseMask::TRANSFORM,
     |ctx, expr| {
-        use num_traits::Zero;
-
-        // Match Add(Pow(A, 1/3), Pow(B, 1/3))
-        let (left, right) = match ctx.get(expr) {
-            Expr::Add(l, r) => (*l, *r),
-            _ => return None,
-        };
-
-        // Extract cube root bases
-        let base_a = cas_math::root_forms::extract_cube_root_base(ctx, left)?;
-        let base_b = cas_math::root_forms::extract_cube_root_base(ctx, right)?;
-
-        // Check if A and B are conjugates (m + t) and (m - t)
-        let (m, t) = cas_math::root_forms::conjugate_numeric_surd_pair(ctx, base_a, base_b)?;
-
-        // Compute S = A + B = 2m (directly, without simplify)
-        // Since A = m + t and B = m - t, A + B = 2m
-        let two = num_rational::BigRational::from_integer(2.into());
-
-        // m must be a rational number for this to work
-        let m_val = if let Expr::Number(n) = ctx.get(m) {
-            n.clone()
-        } else {
-            return None; // m is not numeric, can't apply
-        };
-
-        let s_val = &two * &m_val; // S = 2m
-
-        // Compute AB = m² - t² (directly)
-        // t must also allow us to compute t² as rational
-        // For t = sqrt(d) or k*sqrt(d), t² is rational
-        let t_squared_val = cas_math::root_forms::surd_square_rational(ctx, t)?;
-
-        let ab_val = &m_val * &m_val - &t_squared_val; // AB = m² - t²
-
-        // P = ∛(AB) must be rational (perfect cube)
-        let p_val = cas_math::root_forms::rational_cbrt_exact(&ab_val)?;
-
-        // Form depressed cubic: x³ + px + q = 0
-        // where p_coef = -3P and q_coef = -S
-        // x³ - 3Px - S = 0  =>  x³ + (-3P)x + (-S) = 0
-        let three = num_rational::BigRational::from_integer(3.into());
-        let p_coef = -&three * &p_val; // coefficient of x
-        let q_coef = -&s_val; // constant term
-
-        // Guard: if p_coef > 0, cubic is strictly increasing => unique real root
-        // This ensures we can trust the RRT result
-        if p_coef <= num_rational::BigRational::zero() {
-            return None; // Multiple real roots possible, skip
-        }
-
-        // Find rational root via RRT
-        let root = cas_math::root_forms::find_rational_root_depressed_cubic(&p_coef, &q_coef)?;
-
-        // Success! Return the root as the result
-        let result = ctx.add(Expr::Number(root.clone()));
-
-        Some(
-            Rewrite::new(result)
-                .desc_lazy(|| format!("Cubic conjugate identity: ∛(m+t) + ∛(m-t) = {}", root)),
-        )
+        let rewrite = cas_math::root_forms::try_rewrite_cubic_conjugate_identity_expr(ctx, expr)?;
+        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
     }
 );
 

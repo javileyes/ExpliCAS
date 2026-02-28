@@ -6,11 +6,46 @@ use cas_math::expr_extract::extract_log_base_argument_relaxed_view;
 use cas_math::expr_predicates::is_e_constant_expr;
 use cas_math::logarithm_inverse_support::{
     estimate_log_terms, plan_exponential_log_inverse_policy, plan_log_auto_expand_positivity,
-    plan_log_exp_inverse_symbolic_policy, try_match_log_exp_inverse_expr,
-    try_rewrite_exponential_log_inverse_expr, try_rewrite_log_inverse_power_expr,
-    try_rewrite_log_power_base_numeric_expr, try_rewrite_split_log_exponents_expr,
+    plan_log_exp_inverse_symbolic_policy, plan_log_power_base_numeric_policy,
+    try_match_log_exp_inverse_expr, try_rewrite_exponential_log_inverse_expr,
+    try_rewrite_log_inverse_power_expr, try_rewrite_log_power_base_numeric_expr,
+    try_rewrite_split_log_exponents_expr,
 };
 use std::cmp::Ordering;
+
+#[inline]
+fn to_policy_mode(
+    mode: crate::domain::DomainMode,
+) -> cas_math::logarithm_inverse_support::LogExpInversePolicyMode {
+    match mode {
+        crate::domain::DomainMode::Strict => {
+            cas_math::logarithm_inverse_support::LogExpInversePolicyMode::Strict
+        }
+        crate::domain::DomainMode::Generic => {
+            cas_math::logarithm_inverse_support::LogExpInversePolicyMode::Generic
+        }
+        crate::domain::DomainMode::Assume => {
+            cas_math::logarithm_inverse_support::LogExpInversePolicyMode::Assume
+        }
+    }
+}
+
+#[inline]
+fn to_auto_expand_mode(
+    mode: crate::domain::DomainMode,
+) -> cas_math::logarithm_inverse_support::LogAutoExpandMode {
+    match mode {
+        crate::domain::DomainMode::Strict => {
+            cas_math::logarithm_inverse_support::LogAutoExpandMode::Strict
+        }
+        crate::domain::DomainMode::Generic => {
+            cas_math::logarithm_inverse_support::LogAutoExpandMode::Generic
+        }
+        crate::domain::DomainMode::Assume => {
+            cas_math::logarithm_inverse_support::LogAutoExpandMode::Assume
+        }
+    }
+}
 
 /// Domain-aware rule for b^log(b, x) → x.
 /// Requires x > 0 (domain of log). Respects domain_mode.
@@ -34,17 +69,7 @@ impl crate::rule::Rule for ExponentialLogRule {
         let planned = try_rewrite_exponential_log_inverse_expr(ctx, expr)?;
         let vd = parent_ctx.value_domain();
         let positive = prove_positive(ctx, planned.positive_subject, vd);
-        let mode = match parent_ctx.domain_mode() {
-            crate::domain::DomainMode::Strict => {
-                cas_math::logarithm_inverse_support::LogExpInversePolicyMode::Strict
-            }
-            crate::domain::DomainMode::Generic => {
-                cas_math::logarithm_inverse_support::LogExpInversePolicyMode::Generic
-            }
-            crate::domain::DomainMode::Assume => {
-                cas_math::logarithm_inverse_support::LogExpInversePolicyMode::Assume
-            }
-        };
+        let mode = to_policy_mode(parent_ctx.domain_mode());
         let policy = plan_exponential_log_inverse_policy(mode, positive == Proof::Proven);
 
         match policy {
@@ -130,17 +155,7 @@ impl crate::rule::Rule for LogExpInverseRule {
                 exponent,
             } => {
                 let vd = parent_ctx.value_domain();
-                let mode = match parent_ctx.domain_mode() {
-                    crate::domain::DomainMode::Strict => {
-                        cas_math::logarithm_inverse_support::LogExpInversePolicyMode::Strict
-                    }
-                    crate::domain::DomainMode::Generic => {
-                        cas_math::logarithm_inverse_support::LogExpInversePolicyMode::Generic
-                    }
-                    crate::domain::DomainMode::Assume => {
-                        cas_math::logarithm_inverse_support::LogExpInversePolicyMode::Assume
-                    }
-                };
+                let mode = to_policy_mode(parent_ctx.domain_mode());
                 let plan = plan_log_exp_inverse_symbolic_policy(
                     mode,
                     vd == ValueDomain::ComplexEnabled,
@@ -205,7 +220,7 @@ impl crate::rule::Rule for LogPowerBaseRule {
         expr: cas_ast::ExprId,
         parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<crate::rule::Rewrite> {
-        use crate::domain::{DomainMode, Proof};
+        use crate::domain::Proof;
         use crate::helpers::prove_positive;
         use crate::implicit_domain::ImplicitCondition;
         use crate::semantics::ValueDomain;
@@ -213,32 +228,32 @@ impl crate::rule::Rule for LogPowerBaseRule {
         let planned = try_rewrite_log_power_base_numeric_expr(ctx, expr)?;
 
         let vd = parent_ctx.value_domain();
-        if vd == ValueDomain::ComplexEnabled {
-            return None;
-        }
-
-        let dm = parent_ctx.domain_mode();
+        let mode = to_policy_mode(parent_ctx.domain_mode());
         let one = ctx.num(1);
-        let base_positive = prove_positive(ctx, planned.base_core, vd);
-        match dm {
-            DomainMode::Strict => {
-                if base_positive != Proof::Proven {
-                    return None;
-                }
-                if compare_expr(ctx, planned.base_core, one) == Ordering::Equal {
-                    return None;
-                }
-            }
-            DomainMode::Generic | DomainMode::Assume => {}
-        }
+        let policy = plan_log_power_base_numeric_policy(
+            mode,
+            vd == ValueDomain::ComplexEnabled,
+            prove_positive(ctx, planned.base_core, vd) == Proof::Proven,
+            compare_expr(ctx, planned.base_core, one) == Ordering::Equal,
+        );
 
-        let mut rewrite = crate::rule::Rewrite::new(planned.rewritten).desc(planned.desc);
-        if dm == DomainMode::Assume && base_positive != Proof::Proven {
-            rewrite = rewrite.requires(ImplicitCondition::Positive(planned.base_core));
+        match policy {
+            cas_math::logarithm_inverse_support::LogPowerBasePolicyPlan::Block => None,
+            cas_math::logarithm_inverse_support::LogPowerBasePolicyPlan::Rewrite {
+                require_positive_base,
+                require_nonzero_base_minus_one,
+            } => {
+                let mut rewrite = crate::rule::Rewrite::new(planned.rewritten).desc(planned.desc);
+                if require_positive_base {
+                    rewrite = rewrite.requires(ImplicitCondition::Positive(planned.base_core));
+                }
+                if require_nonzero_base_minus_one {
+                    let base_minus_1 = ctx.add(Expr::Sub(planned.base_expr, one));
+                    rewrite = rewrite.requires(ImplicitCondition::NonZero(base_minus_1));
+                }
+                Some(rewrite)
+            }
         }
-        let base_minus_1 = ctx.add(Expr::Sub(planned.base_expr, one));
-        rewrite = rewrite.requires(ImplicitCondition::NonZero(base_minus_1));
-        Some(rewrite)
     }
 
     fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
@@ -316,17 +331,7 @@ impl crate::rule::Rule for AutoExpandLogRule {
 
         // Get domain mode from parent context
         let domain_mode = parent_ctx.domain_mode();
-        let mode = match domain_mode {
-            crate::domain::DomainMode::Strict => {
-                cas_math::logarithm_inverse_support::LogAutoExpandMode::Strict
-            }
-            crate::domain::DomainMode::Generic => {
-                cas_math::logarithm_inverse_support::LogAutoExpandMode::Generic
-            }
-            crate::domain::DomainMode::Assume => {
-                cas_math::logarithm_inverse_support::LogAutoExpandMode::Assume
-            }
-        };
+        let mode = to_auto_expand_mode(domain_mode);
 
         // V2.15: Use cached implicit_domain if available, fallback to computation
         let vd = parent_ctx.value_domain();

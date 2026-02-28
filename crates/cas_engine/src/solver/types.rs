@@ -62,37 +62,6 @@ impl SolverOptions {
     pub(crate) fn wildcard_scope(&self) -> bool {
         self.assume_scope == crate::semantics::AssumeScope::Wildcard
     }
-
-    /// Returns true when exponent-shortcut branching can explore both signs.
-    pub(crate) fn shortcut_can_branch(&self) -> bool {
-        cas_solver_core::strategy_options::shortcut_can_branch(self.budget)
-    }
-
-    /// Returns true when log-isolation may branch under current budget.
-    pub(crate) fn log_can_branch(&self) -> bool {
-        cas_solver_core::strategy_options::log_can_branch(self.budget)
-    }
-
-    /// Returns true when solve-tactic normalization is allowed.
-    pub(crate) fn solve_tactic_enabled(&self) -> bool {
-        cas_solver_core::strategy_options::solve_tactic_enabled(
-            self.core_domain_mode(),
-            self.value_domain == crate::semantics::ValueDomain::RealOnly,
-        )
-    }
-
-    /// Build power-isolation kernel inputs for core solver orchestration.
-    pub(crate) fn pow_kernel_inputs(
-        &self,
-    ) -> cas_solver_core::isolation_power::PowIsolationKernelInputs {
-        cas_solver_core::isolation_power::PowIsolationKernelInputs {
-            shortcut_can_branch: self.shortcut_can_branch(),
-            log_can_branch: self.log_can_branch(),
-            solve_tactic_enabled: self.solve_tactic_enabled(),
-            mode: self.core_domain_mode(),
-            wildcard_scope: self.wildcard_scope(),
-        }
-    }
 }
 
 /// Domain environment for solver operations.
@@ -237,11 +206,17 @@ mod tests {
             ..Default::default()
         };
 
-        assert!(opts.shortcut_can_branch());
-        assert!(opts.log_can_branch());
-        assert!(opts.solve_tactic_enabled());
+        let inputs = cas_solver_core::strategy_options::pow_kernel_inputs(
+            opts.core_domain_mode(),
+            opts.wildcard_scope(),
+            opts.value_domain == crate::semantics::ValueDomain::RealOnly,
+            opts.budget,
+        );
+        assert!(inputs.shortcut_can_branch);
+        assert!(inputs.log_can_branch);
+        assert!(inputs.solve_tactic_enabled);
         assert_eq!(
-            opts.pow_kernel_inputs().mode,
+            inputs.mode,
             cas_solver_core::log_domain::DomainModeKind::Assume
         );
     }

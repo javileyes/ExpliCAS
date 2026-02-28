@@ -6,6 +6,9 @@ use crate::expr_extract::{
 use crate::expr_nary::MulView;
 use crate::expr_predicates::is_e_constant_expr;
 use crate::expr_rewrite::smart_mul;
+use crate::perfect_square_support::{
+    extract_square_root_of_term, rational_sqrt, try_match_perfect_square_trinomial,
+};
 use cas_ast::{BuiltinFn, Constant, Context, Expr, ExprId};
 use num_traits::{One, Zero};
 use std::cmp::Ordering;
@@ -195,6 +198,114 @@ pub fn eval_log_rational(
     ratio
 }
 
+/// Rewrite/evaluate simple logarithm identities:
+/// - `log(b, 1) -> 0`, `log(b, 0) -> -infinity`, `log(b, neg) -> undefined`
+/// - numeric ratio evaluation when both base/arg are compatible integer powers
+/// - `log(b, b) -> 1`
+/// - `log(b, b^n) -> n` (numeric exponent)
+/// - `log(b, x^y) -> y*log(b, x)` (non-inverse case; may require positivity assumption)
+///
+/// This function is purely structural/numeric and does not apply domain policy.
+/// The caller is responsible for attaching assumption/require events.
+pub fn try_rewrite_evaluate_log_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<EvaluateLogRewrite> {
+    let (base, arg) = extract_log_base_argument(ctx, expr)?;
+
+    if let Expr::Number(n) = ctx.get(arg) {
+        let n = n.clone();
+        if n.is_one() {
+            let rewritten = ctx.num(0);
+            return Some(EvaluateLogRewrite {
+                rewritten,
+                desc: "log(b, 1) = 0".to_string(),
+                assume_positive_base: None,
+            });
+        }
+        if n.is_zero() {
+            let inf = ctx.add(Expr::Constant(Constant::Infinity));
+            let rewritten = ctx.add(Expr::Neg(inf));
+            return Some(EvaluateLogRewrite {
+                rewritten,
+                desc: "log(b, 0) = -infinity".to_string(),
+                assume_positive_base: None,
+            });
+        }
+        if n < num_rational::BigRational::zero() {
+            let rewritten = ctx.add(Expr::Constant(Constant::Undefined));
+            return Some(EvaluateLogRewrite {
+                rewritten,
+                desc: "log(b, neg) = undefined".to_string(),
+                assume_positive_base: None,
+            });
+        }
+
+        if let Expr::Number(b) = ctx.get(base) {
+            let b = b.clone();
+            if b.is_integer() && n.is_integer() {
+                let b_int = b.to_integer();
+                let n_int = n.to_integer();
+                if let Some(ratio) = eval_log_rational(&b_int, &n_int) {
+                    let rewritten = ctx.add(Expr::Number(ratio.clone()));
+                    return Some(EvaluateLogRewrite {
+                        rewritten,
+                        desc: format!("log({}, {}) = {}", b, n, ratio),
+                        assume_positive_base: None,
+                    });
+                }
+            }
+        }
+    }
+
+    if base == arg || ctx.get(base) == ctx.get(arg) {
+        let rewritten = ctx.num(1);
+        return Some(EvaluateLogRewrite {
+            rewritten,
+            desc: "log(b, b) = 1".to_string(),
+            assume_positive_base: None,
+        });
+    }
+
+    let Expr::Pow(p_base, p_exp) = ctx.get(arg) else {
+        return None;
+    };
+    let (p_base, p_exp) = (*p_base, *p_exp);
+    let is_inverse_composition =
+        p_base == base || cas_ast::ordering::compare_expr(ctx, p_base, base) == Ordering::Equal;
+
+    if is_inverse_composition {
+        if matches!(ctx.get(p_exp), Expr::Number(_)) {
+            return Some(EvaluateLogRewrite {
+                rewritten: p_exp,
+                desc: "log(b, b^n) = n".to_string(),
+                assume_positive_base: None,
+            });
+        }
+        return None;
+    }
+
+    let is_even_integer = match ctx.get(p_exp) {
+        Expr::Number(n) if n.is_integer() => {
+            let int_val = n.to_integer();
+            let two: num_bigint::BigInt = 2.into();
+            (&int_val % &two) == 0.into() && int_val != 0.into()
+        }
+        _ => false,
+    };
+    if is_even_integer {
+        return None;
+    }
+
+    let log_inner = make_log_expr(ctx, base, p_base);
+    let rewritten = smart_mul(ctx, p_exp, log_inner);
+    Some(EvaluateLogRewrite {
+        rewritten,
+        desc: "log(b, x^y) = y * log(b, x)".to_string(),
+        assume_positive_base: Some(p_base),
+    })
+}
+
 /// Compute prime factorization map `prime -> exponent`.
 pub fn prime_exponent_map(n: &num_bigint::BigInt) -> HashMap<num_bigint::BigInt, u32> {
     use num_bigint::BigInt;
@@ -305,6 +416,15 @@ pub enum ExponentialLogInversePolicyPlan {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LogPowerBasePolicyPlan {
+    Block,
+    Rewrite {
+        require_positive_base: bool,
+        require_nonzero_base_minus_one: bool,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LogExpInverseMatch {
     Numeric {
         rewritten: ExprId,
@@ -313,6 +433,64 @@ pub enum LogExpInverseMatch {
     Symbolic {
         base: ExprId,
         exponent: ExprId,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EvaluateLogRewrite {
+    pub rewritten: ExprId,
+    pub desc: String,
+    pub assume_positive_base: Option<ExprId>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExpandedLogAssumptionPlan {
+    pub rewritten: ExprId,
+    pub assumed_positive: Vec<ExprId>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LogMulDivExpansionRewrite {
+    pub rewritten: ExprId,
+    pub positive_lhs: ExprId,
+    pub positive_rhs: ExprId,
+    pub desc: &'static str,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LogPerfectSquareRewrite {
+    pub rewritten: ExprId,
+    pub desc: &'static str,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LogEvenPowerAbsPlan {
+    pub inner_base: ExprId,
+    pub exponent: ExprId,
+    pub abs_inner_base: ExprId,
+    pub with_abs_rewrite: ExprId,
+    pub without_abs_rewrite: ExprId,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LogAbsPowerRewrite {
+    pub rewritten: ExprId,
+    pub inner_subject: ExprId,
+    pub desc: &'static str,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LogAbsSimplifyRewrite {
+    pub rewritten: ExprId,
+    pub inner_subject: ExprId,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LogAbsSimplifyPolicyPlan {
+    Block,
+    Rewrite {
+        assume_positive_subject: bool,
+        desc: &'static str,
     },
 }
 
@@ -421,6 +599,39 @@ pub fn plan_exponential_log_inverse_policy(
         }
         _ => ExponentialLogInversePolicyPlan::Rewrite {
             require_positive_subject: !positive_subject_proven,
+        },
+    }
+}
+
+/// Plan domain policy for numeric `log(a^m, a^n) -> n/m` rewrites.
+pub fn plan_log_power_base_numeric_policy(
+    mode: LogExpInversePolicyMode,
+    complex_enabled: bool,
+    base_positive_proven: bool,
+    base_is_one: bool,
+) -> LogPowerBasePolicyPlan {
+    if complex_enabled {
+        return LogPowerBasePolicyPlan::Block;
+    }
+
+    match mode {
+        LogExpInversePolicyMode::Strict => {
+            if !base_positive_proven || base_is_one {
+                LogPowerBasePolicyPlan::Block
+            } else {
+                LogPowerBasePolicyPlan::Rewrite {
+                    require_positive_base: false,
+                    require_nonzero_base_minus_one: true,
+                }
+            }
+        }
+        LogExpInversePolicyMode::Generic => LogPowerBasePolicyPlan::Rewrite {
+            require_positive_base: false,
+            require_nonzero_base_minus_one: true,
+        },
+        LogExpInversePolicyMode::Assume => LogPowerBasePolicyPlan::Rewrite {
+            require_positive_base: !base_positive_proven,
+            require_nonzero_base_minus_one: true,
         },
     }
 }
@@ -636,6 +847,402 @@ pub fn try_rewrite_log_contraction_expr(
             })
         }
         _ => None,
+    }
+}
+
+/// Expand one-step logarithm product/quotient:
+/// - `log(b, x*y) -> log(b, x) + log(b, y)`
+/// - `log(b, x/y) -> log(b, x) - log(b, y)`
+///
+/// Returns both factors that require positivity checks (`x`, `y`) so caller
+/// can apply domain-policy/assumption handling outside this helper.
+pub fn try_rewrite_log_mul_div_expansion_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<LogMulDivExpansionRewrite> {
+    let (base, arg) = extract_log_base_argument(ctx, expr)?;
+
+    if let Some((lhs, rhs)) = as_mul(ctx, arg) {
+        let log_lhs = make_log_expr(ctx, base, lhs);
+        let log_rhs = make_log_expr(ctx, base, rhs);
+        let rewritten = ctx.add(Expr::Add(log_lhs, log_rhs));
+        return Some(LogMulDivExpansionRewrite {
+            rewritten,
+            positive_lhs: lhs,
+            positive_rhs: rhs,
+            desc: "log(b, x*y) = log(b, x) + log(b, y)",
+        });
+    }
+
+    if let Some((num, den)) = as_div(ctx, arg) {
+        let log_num = make_log_expr(ctx, base, num);
+        let log_den = make_log_expr(ctx, base, den);
+        let rewritten = ctx.add(Expr::Sub(log_num, log_den));
+        return Some(LogMulDivExpansionRewrite {
+            rewritten,
+            positive_lhs: num,
+            positive_rhs: den,
+            desc: "log(b, x/y) = log(b, x) - log(b, y)",
+        });
+    }
+
+    None
+}
+
+/// Rewrite perfect-square logarithm arguments:
+/// - `ln((A ± B)^2) -> 2*ln(|A ± B|)`
+/// - `log(base, (A ± B)^2) -> 2*log(base, |A ± B|)`
+///
+/// Includes detectors for:
+/// - coefficient-bearing quadratic trinomials with discriminant 0
+/// - AST-level perfect-square trinomial matching
+/// - even powers, monomial squares, and quotient of squares
+pub fn try_rewrite_log_perfect_square_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<LogPerfectSquareRewrite> {
+    let fn_id = match ctx.get(expr) {
+        Expr::Function(fn_id, _) => *fn_id,
+        _ => return None,
+    };
+
+    let (log_base, arg) = match ctx.builtin_of(fn_id) {
+        Some(BuiltinFn::Ln) | Some(BuiltinFn::Log) => extract_log_base_argument(ctx, expr)?,
+        _ => return None,
+    };
+
+    let build_result = |ctx: &mut Context,
+                        factor: ExprId,
+                        log_base: ExprId,
+                        desc: &'static str|
+     -> Option<LogPerfectSquareRewrite> {
+        let abs_factor = ctx.call_builtin(BuiltinFn::Abs, vec![factor]);
+        let log_inner = make_log_expr(ctx, log_base, abs_factor);
+        let two = ctx.num(2);
+        let rewritten = ctx.add(Expr::Mul(two, log_inner));
+        Some(LogPerfectSquareRewrite { rewritten, desc })
+    };
+
+    if matches!(ctx.get(arg), Expr::Add(_, _) | Expr::Sub(_, _)) {
+        let vars = cas_ast::collect_variables(ctx, arg);
+        if vars.len() == 1 {
+            let var = vars.iter().next()?;
+            if let Ok(poly) = crate::polynomial::Polynomial::from_expr(ctx, arg, var) {
+                if poly.degree() == 2 && poly.coeffs.len() >= 3 {
+                    let pa = poly.coeffs.get(2).cloned();
+                    let pb = poly.coeffs.get(1).cloned();
+                    let pc = poly.coeffs.first().cloned();
+
+                    if let (Some(pa), Some(pb), Some(pc)) = (pa, pb, pc) {
+                        let four = num_rational::BigRational::from_integer(4.into());
+                        let discriminant = pb.clone() * pb.clone() - four * pa.clone() * pc.clone();
+
+                        if discriminant.is_zero() {
+                            if let Some(d) = rational_sqrt(&pa) {
+                                let two_r = num_rational::BigRational::from_integer(2.into());
+                                let e = if d.is_zero() {
+                                    rational_sqrt(&pc)
+                                        .unwrap_or_else(num_rational::BigRational::zero)
+                                } else {
+                                    pb / (two_r * d.clone())
+                                };
+
+                                let var_expr = ctx.var(var);
+                                let d_expr = ctx.add(Expr::Number(d.clone()));
+                                let e_expr = ctx.add(Expr::Number(e.clone()));
+                                let one = num_rational::BigRational::from_integer(1.into());
+
+                                let dx = if d == one {
+                                    var_expr
+                                } else {
+                                    smart_mul(ctx, d_expr, var_expr)
+                                };
+
+                                let linear = if e.is_zero() {
+                                    dx
+                                } else {
+                                    ctx.add(Expr::Add(dx, e_expr))
+                                };
+
+                                return build_result(
+                                    ctx,
+                                    linear,
+                                    log_base,
+                                    "ln((A+B)^2) = 2·ln(|A+B|)",
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if let Some((a, b, is_sub)) = try_match_perfect_square_trinomial(ctx, arg) {
+            let factor = if is_sub {
+                ctx.add(Expr::Sub(a, b))
+            } else {
+                ctx.add(Expr::Add(a, b))
+            };
+            let desc = if is_sub {
+                "ln((A-B)^2) = 2·ln(|A-B|)"
+            } else {
+                "ln((A+B)^2) = 2·ln(|A+B|)"
+            };
+            return build_result(ctx, factor, log_base, desc);
+        }
+    }
+
+    if let Expr::Pow(p_base, p_exp) = ctx.get(arg) {
+        let (p_base, p_exp) = (*p_base, *p_exp);
+        if cas_ast::ordering::compare_expr(ctx, p_base, log_base) == Ordering::Equal {
+            return None;
+        }
+
+        if let Expr::Number(n) = ctx.get(p_exp) {
+            let n = n.clone();
+            if n.is_integer() {
+                let int_val = n.to_integer();
+                let two_bi: num_bigint::BigInt = 2.into();
+                if &int_val % &two_bi == 0.into() && int_val > 0.into() {
+                    let half = &int_val / &two_bi;
+                    let half_rat = num_rational::BigRational::from_integer(half.clone());
+                    let factor = if half == 1.into() {
+                        p_base
+                    } else {
+                        let half_id = ctx.add(Expr::Number(half_rat));
+                        ctx.add(Expr::Pow(p_base, half_id))
+                    };
+                    return build_result(ctx, factor, log_base, "ln(x^(2k)) = 2·ln(|x^k|)");
+                }
+            }
+        }
+    }
+
+    if let Expr::Mul(_, _) = ctx.get(arg) {
+        if let Some(factor) = extract_square_root_of_term(ctx, arg) {
+            return build_result(ctx, factor, log_base, "ln((c*x)^2) = 2·ln(|c*x|)");
+        }
+    }
+
+    if let Expr::Div(num, den) = ctx.get(arg) {
+        let (num, den) = (*num, *den);
+        if let (Some(num_root), Some(den_root)) = (
+            extract_square_root_of_term(ctx, num),
+            extract_square_root_of_term(ctx, den),
+        ) {
+            let factor = ctx.add(Expr::Div(num_root, den_root));
+            return build_result(ctx, factor, log_base, "ln(a^2/b^2) = 2·ln(|a/b|)");
+        }
+    }
+
+    None
+}
+
+/// Plan `log(base, x^(even))` rewrite candidates:
+/// - with absolute value: `even * log(base, |x|)`
+/// - without absolute value: `even * log(base, x)`
+///
+/// Structural gates:
+/// - argument must be a power with even integer exponent
+/// - skip inverse compositions (`log(b, b^x)`)
+/// - skip `ln(exp(...)^n)` to let inverse-exp rules fire first
+pub fn try_plan_log_even_power_abs_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<LogEvenPowerAbsPlan> {
+    let (base, arg) = extract_log_base_argument(ctx, expr)?;
+    let (inner_base, exponent) = as_pow(ctx, arg)?;
+
+    if cas_ast::ordering::compare_expr(ctx, inner_base, base) == Ordering::Equal {
+        return None;
+    }
+
+    if is_e_constant_expr(ctx, base)
+        && matches!(ctx.get(inner_base), Expr::Function(fname, _) if ctx.is_builtin(*fname, BuiltinFn::Exp))
+    {
+        return None;
+    }
+
+    let is_even_integer = match ctx.get(exponent) {
+        Expr::Number(n) if n.is_integer() => {
+            let int_val = n.to_integer();
+            let two: num_bigint::BigInt = 2.into();
+            (&int_val % &two) == 0.into() && int_val != 0.into()
+        }
+        _ => false,
+    };
+    if !is_even_integer {
+        return None;
+    }
+
+    let abs_inner_base = ctx.call_builtin(BuiltinFn::Abs, vec![inner_base]);
+    let with_abs_log = make_log_expr(ctx, base, abs_inner_base);
+    let without_abs_log = make_log_expr(ctx, base, inner_base);
+
+    Some(LogEvenPowerAbsPlan {
+        inner_base,
+        exponent,
+        abs_inner_base,
+        with_abs_rewrite: smart_mul(ctx, exponent, with_abs_log),
+        without_abs_rewrite: smart_mul(ctx, exponent, without_abs_log),
+    })
+}
+
+/// Rewrite `log(base, |u|^n)` with positive integer `n`:
+/// - `log(base, |u|^n) -> n * log(base, |u|)`
+///
+/// Returns the inner subject `u` so caller can attach non-zero hints/requirements.
+pub fn try_rewrite_log_abs_power_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<LogAbsPowerRewrite> {
+    let (base, arg) = extract_log_base_argument(ctx, expr)?;
+    let (pow_base, pow_exp) = as_pow(ctx, arg)?;
+
+    let Expr::Function(abs_name, abs_args) = ctx.get(pow_base) else {
+        return None;
+    };
+    if !ctx.is_builtin(*abs_name, BuiltinFn::Abs) || abs_args.len() != 1 {
+        return None;
+    }
+    let inner_subject = abs_args[0];
+
+    let is_positive_integer = match ctx.get(pow_exp) {
+        Expr::Number(n) if n.is_integer() => {
+            let int_val = n.to_integer();
+            int_val > 0.into()
+        }
+        _ => false,
+    };
+    if !is_positive_integer {
+        return None;
+    }
+
+    let log_abs = make_log_expr(ctx, base, pow_base);
+    Some(LogAbsPowerRewrite {
+        rewritten: smart_mul(ctx, pow_exp, log_abs),
+        inner_subject,
+        desc: "ln(|u|^n) = n·ln(|u|)",
+    })
+}
+
+/// Rewrite `log(base, |x|)` / `ln(|x|)` into `log(base, x)` / `ln(x)`.
+///
+/// This is structural-only and does not enforce domain policy.
+/// Callers should apply `plan_log_abs_simplify_policy` before committing rewrite.
+pub fn try_rewrite_log_abs_simplify_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<LogAbsSimplifyRewrite> {
+    let (base_opt, arg) = extract_log_base_argument_view(ctx, expr)?;
+
+    let inner_subject = match ctx.get(arg) {
+        Expr::Function(fn_id, args)
+            if ctx.is_builtin(*fn_id, BuiltinFn::Abs) && args.len() == 1 =>
+        {
+            args[0]
+        }
+        _ => return None,
+    };
+
+    let rewritten = match base_opt {
+        Some(base) => ctx.call_builtin(BuiltinFn::Log, vec![base, inner_subject]),
+        None => ctx.call_builtin(BuiltinFn::Ln, vec![inner_subject]),
+    };
+
+    Some(LogAbsSimplifyRewrite {
+        rewritten,
+        inner_subject,
+    })
+}
+
+/// Plan domain policy for simplifying `log(base, |x|)` / `ln(|x|)` to `log(base, x)` / `ln(x)`.
+///
+/// `complex_enabled`: true when value-domain is complex.
+/// `positive_subject_proven`: true when positivity of `x` is proven.
+pub fn plan_log_abs_simplify_policy(
+    mode: LogExpInversePolicyMode,
+    complex_enabled: bool,
+    positive_subject_proven: bool,
+) -> LogAbsSimplifyPolicyPlan {
+    if complex_enabled {
+        return if positive_subject_proven {
+            LogAbsSimplifyPolicyPlan::Rewrite {
+                assume_positive_subject: false,
+                desc: "ln(|x|) = ln(x) for x > 0",
+            }
+        } else {
+            LogAbsSimplifyPolicyPlan::Block
+        };
+    }
+
+    match mode {
+        LogExpInversePolicyMode::Assume => LogAbsSimplifyPolicyPlan::Rewrite {
+            assume_positive_subject: true,
+            desc: "ln(|x|) = ln(x) (assuming x > 0)",
+        },
+        LogExpInversePolicyMode::Strict | LogExpInversePolicyMode::Generic => {
+            if positive_subject_proven {
+                LogAbsSimplifyPolicyPlan::Rewrite {
+                    assume_positive_subject: false,
+                    desc: "ln(|x|) = ln(x) for x > 0",
+                }
+            } else {
+                LogAbsSimplifyPolicyPlan::Block
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LogEvenPowerPolicyPlan {
+    Block,
+    RewriteWithChain {
+        chain_desc: &'static str,
+        assume_positive_subject: bool,
+    },
+    RewriteWithAbsAssume {
+        assume_positive_subject: bool,
+    },
+}
+
+/// Plan policy for rewriting `log(base, x^(even))` through an absolute-value step:
+/// - with chain: `even*log(base, |x|)` then `|x| -> x`
+/// - without chain in Assume mode: keep `even*log(base, |x|)` with assumption
+pub fn plan_log_even_power_policy(
+    mode: LogExpInversePolicyMode,
+    positive_subject_proven: bool,
+    positive_subject_disproven: bool,
+    in_requires: bool,
+) -> LogEvenPowerPolicyPlan {
+    let can_chain = match mode {
+        LogExpInversePolicyMode::Strict | LogExpInversePolicyMode::Generic => {
+            positive_subject_proven || in_requires
+        }
+        LogExpInversePolicyMode::Assume => !positive_subject_disproven,
+    };
+
+    if can_chain {
+        let assume_positive_subject =
+            !positive_subject_proven && !in_requires && mode == LogExpInversePolicyMode::Assume;
+        let chain_desc = if positive_subject_proven || in_requires {
+            "|x| = x for x > 0"
+        } else {
+            "|x| = x (assuming x > 0)"
+        };
+        return LogEvenPowerPolicyPlan::RewriteWithChain {
+            chain_desc,
+            assume_positive_subject,
+        };
+    }
+
+    match mode {
+        LogExpInversePolicyMode::Strict | LogExpInversePolicyMode::Generic => {
+            LogEvenPowerPolicyPlan::Block
+        }
+        LogExpInversePolicyMode::Assume => LogEvenPowerPolicyPlan::RewriteWithAbsAssume {
+            assume_positive_subject: true,
+        },
     }
 }
 
@@ -984,6 +1591,157 @@ pub fn try_expand_log_auto_rule_expr(
     }
 }
 
+/// Recursively expand logarithms and collect positivity assumptions as raw expressions.
+///
+/// Expansion rules:
+/// - `log(b, x*y) -> log(b, x) + log(b, y)`
+/// - `log(b, x/y) -> log(b, x) - log(b, y)`
+///
+/// Every expanded multiplicative/division factor is returned in `assumed_positive`.
+/// The caller can map those expressions to domain-assumption events in its own layer.
+pub fn expand_logs_collect_positive_assumptions(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> ExpandedLogAssumptionPlan {
+    fn expand(ctx: &mut Context, expr: ExprId) -> (ExprId, Vec<ExprId>) {
+        enum LogKind {
+            LogFn(usize, Vec<ExprId>),
+            Add(ExprId, ExprId),
+            Sub(ExprId, ExprId),
+            Mul(ExprId, ExprId),
+            Div(ExprId, ExprId),
+            Neg(ExprId),
+            Pow(ExprId, ExprId),
+            Other,
+        }
+
+        let kind = match ctx.get(expr) {
+            Expr::Function(name, args) => LogKind::LogFn(*name, args.clone()),
+            Expr::Add(l, r) => LogKind::Add(*l, *r),
+            Expr::Sub(l, r) => LogKind::Sub(*l, *r),
+            Expr::Mul(l, r) => LogKind::Mul(*l, *r),
+            Expr::Div(l, r) => LogKind::Div(*l, *r),
+            Expr::Neg(e) => LogKind::Neg(*e),
+            Expr::Pow(b, e) => LogKind::Pow(*b, *e),
+            _ => LogKind::Other,
+        };
+        let mut assumed_positive = Vec::new();
+
+        let result = match kind {
+            LogKind::LogFn(name, ref args)
+                if matches!(
+                    ctx.builtin_of(name),
+                    Some(BuiltinFn::Ln) | Some(BuiltinFn::Log)
+                ) =>
+            {
+                // Sentinel reserved by engine/parser bridge for base-10 `log(x)`.
+                let sentinel_log10 = ExprId::from_raw(u32::MAX - 1);
+                let builtin = ctx.builtin_of(name);
+                let (base, arg) = if builtin == Some(BuiltinFn::Log) && args.len() == 1 {
+                    (sentinel_log10, args[0])
+                } else if let Some((base, arg)) = extract_log_base_argument(ctx, expr) {
+                    (base, arg)
+                } else {
+                    let mut new_args = Vec::with_capacity(args.len());
+                    for a in args {
+                        let (expanded, sub_assumed_positive) = expand(ctx, *a);
+                        new_args.push(expanded);
+                        assumed_positive.extend(sub_assumed_positive);
+                    }
+                    return (ctx.add(Expr::Function(name, new_args)), assumed_positive);
+                };
+
+                let (expanded_arg, sub_assumed_positive) = expand(ctx, arg);
+                assumed_positive.extend(sub_assumed_positive);
+                let (lhs, rhs) = if let Expr::Mul(lhs, rhs) = ctx.get(expanded_arg) {
+                    (*lhs, *rhs)
+                } else if let Expr::Div(num, den) = ctx.get(expanded_arg) {
+                    let (num, den) = (*num, *den);
+                    assumed_positive.push(num);
+                    assumed_positive.push(den);
+
+                    let log_num = make_log_expr(ctx, base, num);
+                    let log_den = make_log_expr(ctx, base, den);
+                    let diff = ctx.add(Expr::Sub(log_num, log_den));
+                    let (final_result, more_assumed_positive) = expand(ctx, diff);
+                    assumed_positive.extend(more_assumed_positive);
+                    return (final_result, assumed_positive);
+                } else {
+                    return (make_log_expr(ctx, base, expanded_arg), assumed_positive);
+                };
+
+                assumed_positive.push(lhs);
+                assumed_positive.push(rhs);
+
+                let log_lhs = make_log_expr(ctx, base, lhs);
+                let log_rhs = make_log_expr(ctx, base, rhs);
+                let sum = ctx.add(Expr::Add(log_lhs, log_rhs));
+                let (final_result, more_assumed_positive) = expand(ctx, sum);
+                assumed_positive.extend(more_assumed_positive);
+                return (final_result, assumed_positive);
+            }
+            LogKind::Add(l, r) => {
+                let (el, le) = expand(ctx, l);
+                let (er, re) = expand(ctx, r);
+                assumed_positive.extend(le);
+                assumed_positive.extend(re);
+                ctx.add(Expr::Add(el, er))
+            }
+            LogKind::Sub(l, r) => {
+                let (el, le) = expand(ctx, l);
+                let (er, re) = expand(ctx, r);
+                assumed_positive.extend(le);
+                assumed_positive.extend(re);
+                ctx.add(Expr::Sub(el, er))
+            }
+            LogKind::Mul(l, r) => {
+                let (el, le) = expand(ctx, l);
+                let (er, re) = expand(ctx, r);
+                assumed_positive.extend(le);
+                assumed_positive.extend(re);
+                ctx.add(Expr::Mul(el, er))
+            }
+            LogKind::Div(l, r) => {
+                let (el, le) = expand(ctx, l);
+                let (er, re) = expand(ctx, r);
+                assumed_positive.extend(le);
+                assumed_positive.extend(re);
+                ctx.add(Expr::Div(el, er))
+            }
+            LogKind::Pow(b, e) => {
+                let (eb, be) = expand(ctx, b);
+                let (ee, exp_e) = expand(ctx, e);
+                assumed_positive.extend(be);
+                assumed_positive.extend(exp_e);
+                ctx.add(Expr::Pow(eb, ee))
+            }
+            LogKind::Neg(e) => {
+                let (ee, sub_e) = expand(ctx, e);
+                assumed_positive.extend(sub_e);
+                ctx.add(Expr::Neg(ee))
+            }
+            LogKind::LogFn(name, args) => {
+                let mut new_args = Vec::with_capacity(args.len());
+                for a in args {
+                    let (expanded, sub_assumed_positive) = expand(ctx, a);
+                    new_args.push(expanded);
+                    assumed_positive.extend(sub_assumed_positive);
+                }
+                ctx.add(Expr::Function(name, new_args))
+            }
+            LogKind::Other => expr,
+        };
+
+        (result, assumed_positive)
+    }
+
+    let (rewritten, assumed_positive) = expand(ctx, expr);
+    ExpandedLogAssumptionPlan {
+        rewritten,
+        assumed_positive,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1064,6 +1822,238 @@ mod tests {
         let base = num_bigint::BigInt::from(6);
         let val = num_bigint::BigInt::from(8);
         assert!(eval_log_rational(&base, &val).is_none());
+    }
+
+    #[test]
+    fn evaluate_log_rewrite_handles_integer_power_ratio() {
+        let mut ctx = Context::new();
+        let expr = parse("log(16, 8)", &mut ctx).expect("expr");
+
+        let rw = try_rewrite_evaluate_log_expr(&mut ctx, expr).expect("rewrite");
+        assert!(
+            matches!(
+                ctx.get(rw.rewritten),
+                Expr::Number(n)
+                    if *n == num_rational::BigRational::new(3.into(), 4.into())
+            ),
+            "expected numeric 3/4, got {:?}",
+            ctx.get(rw.rewritten)
+        );
+        assert_eq!(rw.desc, "log(16, 8) = 3/4");
+        assert_eq!(rw.assume_positive_base, None);
+    }
+
+    #[test]
+    fn evaluate_log_rewrite_handles_inverse_numeric_exponent() {
+        let mut ctx = Context::new();
+        let expr = parse("log(x, x^2)", &mut ctx).expect("expr");
+        let expected = parse("2", &mut ctx).expect("expected");
+
+        let rw = try_rewrite_evaluate_log_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, rw.rewritten, expected),
+            Ordering::Equal
+        );
+        assert_eq!(rw.assume_positive_base, None);
+    }
+
+    #[test]
+    fn evaluate_log_rewrite_power_expansion_requests_assumption_subject() {
+        let mut ctx = Context::new();
+        let expr = parse("log(2, x^3)", &mut ctx).expect("expr");
+        let expected = parse("3 * log(2, x)", &mut ctx).expect("expected");
+        let x = parse("x", &mut ctx).expect("x");
+
+        let rw = try_rewrite_evaluate_log_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, rw.rewritten, expected),
+            Ordering::Equal
+        );
+        assert_eq!(rw.assume_positive_base, Some(x));
+    }
+
+    #[test]
+    fn evaluate_log_rewrite_skips_even_power_for_specialized_rule() {
+        let mut ctx = Context::new();
+        let expr = parse("log(2, x^2)", &mut ctx).expect("expr");
+        assert!(try_rewrite_evaluate_log_expr(&mut ctx, expr).is_none());
+    }
+
+    #[test]
+    fn expand_logs_collect_positive_assumptions_expands_product() {
+        let mut ctx = Context::new();
+        let expr = parse("log(2, x*y)", &mut ctx).expect("expr");
+        let expected = parse("log(2, x) + log(2, y)", &mut ctx).expect("expected");
+        let x = parse("x", &mut ctx).expect("x");
+        let y = parse("y", &mut ctx).expect("y");
+
+        let plan = expand_logs_collect_positive_assumptions(&mut ctx, expr);
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, plan.rewritten, expected),
+            Ordering::Equal
+        );
+        assert_eq!(plan.assumed_positive.len(), 2);
+        assert!(plan.assumed_positive.contains(&x));
+        assert!(plan.assumed_positive.contains(&y));
+    }
+
+    #[test]
+    fn expand_logs_collect_positive_assumptions_expands_quotient() {
+        let mut ctx = Context::new();
+        let expr = parse("log(2, x/y)", &mut ctx).expect("expr");
+        let expected = parse("log(2, x) - log(2, y)", &mut ctx).expect("expected");
+        let x = parse("x", &mut ctx).expect("x");
+        let y = parse("y", &mut ctx).expect("y");
+
+        let plan = expand_logs_collect_positive_assumptions(&mut ctx, expr);
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, plan.rewritten, expected),
+            Ordering::Equal
+        );
+        assert_eq!(plan.assumed_positive.len(), 2);
+        assert_eq!(plan.assumed_positive[0], x);
+        assert_eq!(plan.assumed_positive[1], y);
+    }
+
+    #[test]
+    fn rewrite_log_mul_div_expansion_rewrites_product() {
+        let mut ctx = Context::new();
+        let expr = parse("log(2, x*y)", &mut ctx).expect("expr");
+        let expected = parse("log(2, x) + log(2, y)", &mut ctx).expect("expected");
+        let x = parse("x", &mut ctx).expect("x");
+        let y = parse("y", &mut ctx).expect("y");
+
+        let rw = try_rewrite_log_mul_div_expansion_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, rw.rewritten, expected),
+            Ordering::Equal
+        );
+        assert_eq!(rw.positive_lhs, x);
+        assert_eq!(rw.positive_rhs, y);
+        assert_eq!(rw.desc, "log(b, x*y) = log(b, x) + log(b, y)");
+    }
+
+    #[test]
+    fn rewrite_log_mul_div_expansion_rewrites_quotient() {
+        let mut ctx = Context::new();
+        let expr = parse("log(2, x/y)", &mut ctx).expect("expr");
+        let expected = parse("log(2, x) - log(2, y)", &mut ctx).expect("expected");
+        let x = parse("x", &mut ctx).expect("x");
+        let y = parse("y", &mut ctx).expect("y");
+
+        let rw = try_rewrite_log_mul_div_expansion_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, rw.rewritten, expected),
+            Ordering::Equal
+        );
+        assert_eq!(rw.positive_lhs, x);
+        assert_eq!(rw.positive_rhs, y);
+        assert_eq!(rw.desc, "log(b, x/y) = log(b, x) - log(b, y)");
+    }
+
+    #[test]
+    fn rewrite_log_mul_div_expansion_rejects_non_mul_div_arg() {
+        let mut ctx = Context::new();
+        let expr = parse("log(2, x+1)", &mut ctx).expect("expr");
+        assert!(try_rewrite_log_mul_div_expansion_expr(&mut ctx, expr).is_none());
+    }
+
+    #[test]
+    fn rewrite_log_perfect_square_expr_rewrites_even_power() {
+        let mut ctx = Context::new();
+        let expr = parse("ln(x^4)", &mut ctx).expect("expr");
+        let expected = parse("2 * ln(abs(x^2))", &mut ctx).expect("expected");
+
+        let rw = try_rewrite_log_perfect_square_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, rw.rewritten, expected),
+            Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn rewrite_log_perfect_square_expr_rewrites_symbolic_trinomial() {
+        let mut ctx = Context::new();
+        let expr = parse("ln(x^2 + 2*x*y + y^2)", &mut ctx).expect("expr");
+        let expected = parse("2 * ln(abs(x + y))", &mut ctx).expect("expected");
+
+        let rw = try_rewrite_log_perfect_square_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, rw.rewritten, expected),
+            Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn plan_log_even_power_abs_expr_accepts_even_power() {
+        let mut ctx = Context::new();
+        let expr = parse("log(2, x^4)", &mut ctx).expect("expr");
+        let expected_with_abs = parse("4 * log(2, abs(x))", &mut ctx).expect("with_abs");
+        let expected_without_abs = parse("4 * log(2, x)", &mut ctx).expect("without_abs");
+        let x = parse("x", &mut ctx).expect("x");
+        let abs_x = parse("abs(x)", &mut ctx).expect("abs_x");
+
+        let plan = try_plan_log_even_power_abs_expr(&mut ctx, expr).expect("plan");
+        assert_eq!(plan.inner_base, x);
+        assert_eq!(plan.abs_inner_base, abs_x);
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, plan.with_abs_rewrite, expected_with_abs),
+            Ordering::Equal
+        );
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, plan.without_abs_rewrite, expected_without_abs),
+            Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn plan_log_even_power_abs_expr_rejects_inverse_composition() {
+        let mut ctx = Context::new();
+        let expr = parse("log(x, x^4)", &mut ctx).expect("expr");
+        assert!(try_plan_log_even_power_abs_expr(&mut ctx, expr).is_none());
+    }
+
+    #[test]
+    fn plan_log_even_power_abs_expr_rejects_ln_exp_power() {
+        let mut ctx = Context::new();
+        let x = parse("x", &mut ctx).expect("x");
+        let exp_x = ctx.call_builtin(BuiltinFn::Exp, vec![x]);
+        let four = ctx.num(4);
+        let arg = ctx.add(Expr::Pow(exp_x, four));
+        let expr = ctx.call_builtin(BuiltinFn::Ln, vec![arg]);
+        assert!(try_plan_log_even_power_abs_expr(&mut ctx, expr).is_none());
+    }
+
+    #[test]
+    fn rewrite_log_abs_power_expr_rewrites_positive_integer_power() {
+        let mut ctx = Context::new();
+        let expr = parse("log(2, abs(x)^3)", &mut ctx).expect("expr");
+        let expected = parse("3 * log(2, abs(x))", &mut ctx).expect("expected");
+        let x = parse("x", &mut ctx).expect("x");
+
+        let rw = try_rewrite_log_abs_power_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, rw.rewritten, expected),
+            Ordering::Equal
+        );
+        assert_eq!(rw.inner_subject, x);
+        assert_eq!(rw.desc, "ln(|u|^n) = n·ln(|u|)");
+    }
+
+    #[test]
+    fn rewrite_log_abs_power_expr_rejects_non_abs_base() {
+        let mut ctx = Context::new();
+        let expr = parse("log(2, x^3)", &mut ctx).expect("expr");
+        assert!(try_rewrite_log_abs_power_expr(&mut ctx, expr).is_none());
+    }
+
+    #[test]
+    fn rewrite_log_abs_power_expr_rejects_non_positive_integer_exponent() {
+        let mut ctx = Context::new();
+        let zero = parse("log(2, abs(x)^0)", &mut ctx).expect("zero");
+        let frac = parse("log(2, abs(x)^(1/2))", &mut ctx).expect("frac");
+        assert!(try_rewrite_log_abs_power_expr(&mut ctx, zero).is_none());
+        assert!(try_rewrite_log_abs_power_expr(&mut ctx, frac).is_none());
     }
 
     #[test]
@@ -1432,6 +2422,116 @@ mod tests {
             strict_proven,
             ExponentialLogInversePolicyPlan::Rewrite {
                 require_positive_subject: false
+            }
+        );
+    }
+
+    #[test]
+    fn log_power_base_policy_blocks_complex_and_strict_invalid() {
+        let complex =
+            plan_log_power_base_numeric_policy(LogExpInversePolicyMode::Generic, true, true, false);
+        let strict_unproven = plan_log_power_base_numeric_policy(
+            LogExpInversePolicyMode::Strict,
+            false,
+            false,
+            false,
+        );
+        let strict_base_one =
+            plan_log_power_base_numeric_policy(LogExpInversePolicyMode::Strict, false, true, true);
+        assert_eq!(complex, LogPowerBasePolicyPlan::Block);
+        assert_eq!(strict_unproven, LogPowerBasePolicyPlan::Block);
+        assert_eq!(strict_base_one, LogPowerBasePolicyPlan::Block);
+    }
+
+    #[test]
+    fn log_power_base_policy_rewrite_flags_match_mode() {
+        let generic = plan_log_power_base_numeric_policy(
+            LogExpInversePolicyMode::Generic,
+            false,
+            false,
+            false,
+        );
+        let assume_unproven = plan_log_power_base_numeric_policy(
+            LogExpInversePolicyMode::Assume,
+            false,
+            false,
+            false,
+        );
+        let assume_proven =
+            plan_log_power_base_numeric_policy(LogExpInversePolicyMode::Assume, false, true, false);
+
+        assert_eq!(
+            generic,
+            LogPowerBasePolicyPlan::Rewrite {
+                require_positive_base: false,
+                require_nonzero_base_minus_one: true
+            }
+        );
+        assert_eq!(
+            assume_unproven,
+            LogPowerBasePolicyPlan::Rewrite {
+                require_positive_base: true,
+                require_nonzero_base_minus_one: true
+            }
+        );
+        assert_eq!(
+            assume_proven,
+            LogPowerBasePolicyPlan::Rewrite {
+                require_positive_base: false,
+                require_nonzero_base_minus_one: true
+            }
+        );
+    }
+
+    #[test]
+    fn log_even_power_policy_blocks_without_positive_or_requires() {
+        let strict_block =
+            plan_log_even_power_policy(LogExpInversePolicyMode::Strict, false, false, false);
+        let generic_block =
+            plan_log_even_power_policy(LogExpInversePolicyMode::Generic, false, false, false);
+        assert_eq!(strict_block, LogEvenPowerPolicyPlan::Block);
+        assert_eq!(generic_block, LogEvenPowerPolicyPlan::Block);
+    }
+
+    #[test]
+    fn log_even_power_policy_chains_when_proven_or_requires() {
+        let strict_proven =
+            plan_log_even_power_policy(LogExpInversePolicyMode::Strict, true, false, false);
+        let strict_requires =
+            plan_log_even_power_policy(LogExpInversePolicyMode::Strict, false, true, true);
+        assert_eq!(
+            strict_proven,
+            LogEvenPowerPolicyPlan::RewriteWithChain {
+                chain_desc: "|x| = x for x > 0",
+                assume_positive_subject: false
+            }
+        );
+        assert_eq!(
+            strict_requires,
+            LogEvenPowerPolicyPlan::RewriteWithChain {
+                chain_desc: "|x| = x for x > 0",
+                assume_positive_subject: false
+            }
+        );
+    }
+
+    #[test]
+    fn log_even_power_policy_assume_mode_matches_existing_behavior() {
+        let assume_unknown =
+            plan_log_even_power_policy(LogExpInversePolicyMode::Assume, false, false, false);
+        let assume_disproven =
+            plan_log_even_power_policy(LogExpInversePolicyMode::Assume, false, true, false);
+        assert_eq!(
+            assume_unknown,
+            LogEvenPowerPolicyPlan::RewriteWithChain {
+                chain_desc: "|x| = x (assuming x > 0)",
+                assume_positive_subject: true
+            }
+        );
+        assert_eq!(
+            assume_disproven,
+            LogEvenPowerPolicyPlan::RewriteWithAbsAssume {
+                assume_positive_subject: true
             }
         );
     }
