@@ -74,6 +74,26 @@ run() {
   ok "$name"
 }
 
+enable_darwin_linker_workaround() {
+  # macOS ld can assert on very long Rust symbols in large test binaries.
+  # Use v0 mangling unless user already configured a mangling mode.
+  if [[ "$(uname -s)" != "Darwin" ]]; then
+    return 0
+  fi
+  case " ${RUSTFLAGS:-} " in
+    *" symbol-mangling-version="*)
+      return 0
+      ;;
+  esac
+
+  if [[ -n "${RUSTFLAGS:-}" ]]; then
+    export RUSTFLAGS="${RUSTFLAGS} -Csymbol-mangling-version=v0"
+  else
+    export RUSTFLAGS="-Csymbol-mangling-version=v0"
+  fi
+  warn "Darwin linker workaround enabled: RUSTFLAGS='${RUSTFLAGS}'"
+}
+
 # -----------------------------
 # defaults / flags
 # -----------------------------
@@ -144,6 +164,7 @@ if [[ -z "$MSRV" ]]; then
 fi
 
 ensure_toolchain_installed "$TOOLCHAIN"
+enable_darwin_linker_workaround
 
 echo "${BLU}Local CI Runner${RST}"
 echo "  Repo:           $ROOT_DIR"

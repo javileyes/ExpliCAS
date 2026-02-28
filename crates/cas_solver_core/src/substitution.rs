@@ -3,6 +3,9 @@ use cas_ast::{ordering::compare_expr, Context, Equation, Expr, ExprId, SolutionS
 use cas_math::build::mul2_raw;
 use std::cmp::Ordering;
 
+/// Default temporary variable name used by exponential substitution strategy.
+pub const DEFAULT_EXPONENTIAL_SUBSTITUTION_VAR: &str = "u";
+
 /// Build narration when a substitution variable is introduced.
 pub fn detected_substitution_message(sub_expr_debug: &str) -> String {
     format!("Detected substitution: u = {}", sub_expr_debug)
@@ -754,6 +757,47 @@ where
         target_var,
         substitution_var,
         include_didactic_items,
+        render_expr,
+        solve_equation,
+        map_step,
+    )
+}
+
+/// Stateful substitution pipeline using:
+/// - default rewrite-plan derivation, and
+/// - default temporary variable name (`u`).
+#[allow(clippy::too_many_arguments)]
+pub fn execute_exponential_substitution_strategy_result_pipeline_with_default_substitution_var_and_plan_with_state<
+    T,
+    E,
+    S,
+    FContextMut,
+    FRender,
+    FSolve,
+    FMap,
+>(
+    state: &mut T,
+    equation_before: &Equation,
+    target_var: &str,
+    include_didactic_items: bool,
+    context_mut: FContextMut,
+    render_expr: FRender,
+    solve_equation: FSolve,
+    map_step: FMap,
+) -> Option<Result<(SolutionSet, Vec<S>), E>>
+where
+    FContextMut: Fn(&mut T) -> &mut Context,
+    FRender: FnMut(&mut T, ExprId) -> String,
+    FSolve: FnMut(&mut T, &Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
+    FMap: FnMut(String, Equation) -> S,
+{
+    execute_exponential_substitution_strategy_result_pipeline_with_default_plan_with_state(
+        state,
+        equation_before,
+        target_var,
+        DEFAULT_EXPONENTIAL_SUBSTITUTION_VAR,
+        include_didactic_items,
+        context_mut,
         render_expr,
         solve_equation,
         map_step,

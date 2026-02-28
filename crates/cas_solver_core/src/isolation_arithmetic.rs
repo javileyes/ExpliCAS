@@ -5,6 +5,13 @@
 
 use cas_ast::{Context, Equation, ExprId, RelOp, SolutionSet};
 
+use crate::isolation_utils::should_try_reciprocal_solve;
+use crate::linear_collect::{
+    execute_linear_collect_additive_pipeline_with_default_kernel_and_unified_step_mapper_with_state,
+    execute_linear_collect_factored_pipeline_with_default_kernel_and_unified_step_mapper_with_state,
+};
+use crate::linear_solution::NonZeroStatus;
+use crate::reciprocal::execute_reciprocal_solve_pipeline_with_default_kernel_and_unified_step_mapper_with_state;
 use crate::solve_outcome::{
     derive_add_isolation_operands, derive_div_isolation_route, derive_mul_isolation_operands,
     derive_sub_isolation_operands,
@@ -166,6 +173,151 @@ where
     )
 }
 
+/// Execute additive isolation `(l + r) = rhs` using default operand derivation
+/// and rewrite planning with a unified step-mapper callback.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_add_isolation_pipeline_with_default_operands_and_plan_and_unified_step_mapper_with_state<
+    S,
+    T,
+    E,
+    FContextRef,
+    FContextMut,
+    FRenderExpr,
+    FLinearCollect,
+    FSimplifyExpr,
+    FIsolate,
+    FMapStep,
+>(
+    state: &mut S,
+    lhs: ExprId,
+    left: ExprId,
+    right: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    var: &str,
+    include_item: bool,
+    existing_steps: Vec<T>,
+    context_ref: FContextRef,
+    context_mut: FContextMut,
+    render_expr: FRenderExpr,
+    try_linear_collect: FLinearCollect,
+    simplify_expr: FSimplifyExpr,
+    solve_rewritten: FIsolate,
+    map_step: FMapStep,
+) -> Result<(SolutionSet, Vec<T>), E>
+where
+    FContextRef: Fn(&mut S) -> &Context,
+    FContextMut: Fn(&mut S) -> &mut Context,
+    FRenderExpr: Fn(&Context, ExprId) -> String,
+    FLinearCollect: FnMut(&mut S, ExprId, ExprId, &str) -> Option<(SolutionSet, Vec<T>)>,
+    FSimplifyExpr: FnMut(&mut S, ExprId) -> ExprId,
+    FIsolate: FnMut(&mut S, Equation) -> Result<(SolutionSet, Vec<T>), E>,
+    FMapStep: FnMut(String, Equation) -> T,
+{
+    let map_step = std::cell::RefCell::new(map_step);
+    execute_add_isolation_pipeline_with_default_operands_and_plan_with_state(
+        state,
+        lhs,
+        left,
+        right,
+        rhs,
+        op,
+        var,
+        include_item,
+        existing_steps,
+        context_ref,
+        context_mut,
+        render_expr,
+        try_linear_collect,
+        simplify_expr,
+        solve_rewritten,
+        |item| (map_step.borrow_mut())(item.description, item.equation),
+    )
+}
+
+/// Execute additive isolation `(l + r) = rhs` with:
+/// - default operand/plan kernels,
+/// - default factored linear-collect fallback kernel,
+/// - unified step mapping.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_add_isolation_pipeline_with_default_factored_linear_collect_and_unified_step_mapper_with_state<
+    S,
+    T,
+    E,
+    FContextRef,
+    FContextMut,
+    FRenderExpr,
+    FSimplifyExpr,
+    FProveNonzeroStatus,
+    FIsolate,
+    FMapStep,
+>(
+    state: &mut S,
+    lhs: ExprId,
+    left: ExprId,
+    right: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    var: &str,
+    include_item: bool,
+    existing_steps: Vec<T>,
+    context_ref: FContextRef,
+    context_mut: FContextMut,
+    render_expr: FRenderExpr,
+    simplify_expr: FSimplifyExpr,
+    prove_nonzero_status: FProveNonzeroStatus,
+    solve_rewritten: FIsolate,
+    map_step: FMapStep,
+) -> Result<(SolutionSet, Vec<T>), E>
+where
+    FContextRef: Fn(&mut S) -> &Context,
+    FContextMut: Fn(&mut S) -> &mut Context,
+    FRenderExpr: Fn(&Context, ExprId) -> String,
+    FSimplifyExpr: FnMut(&mut S, ExprId) -> ExprId,
+    FProveNonzeroStatus: FnMut(&mut S, ExprId) -> NonZeroStatus,
+    FIsolate: FnMut(&mut S, Equation) -> Result<(SolutionSet, Vec<T>), E>,
+    FMapStep: FnMut(String, Equation) -> T,
+{
+    let context_ref = &context_ref;
+    let context_mut = &context_mut;
+    let render_expr = &render_expr;
+    let map_step = std::cell::RefCell::new(map_step);
+    let simplify_expr = std::cell::RefCell::new(simplify_expr);
+    let prove_nonzero_status = std::cell::RefCell::new(prove_nonzero_status);
+
+    execute_add_isolation_pipeline_with_default_operands_and_plan_and_unified_step_mapper_with_state(
+        state,
+        lhs,
+        left,
+        right,
+        rhs,
+        op,
+        var,
+        include_item,
+        existing_steps,
+        context_ref,
+        context_mut,
+        render_expr,
+        |state, local_lhs, local_rhs, var_name| {
+            execute_linear_collect_factored_pipeline_with_default_kernel_and_unified_step_mapper_with_state(
+                state,
+                local_lhs,
+                local_rhs,
+                var_name,
+                include_item,
+                context_mut,
+                |state, expr| (simplify_expr.borrow_mut())(state, expr),
+                |state, expr| (prove_nonzero_status.borrow_mut())(state, expr),
+                |core_ctx, expr| render_expr(core_ctx, expr),
+                |description, equation| (map_step.borrow_mut())(description, equation),
+            )
+        },
+        |state, expr| (simplify_expr.borrow_mut())(state, expr),
+        solve_rewritten,
+        |description, equation| (map_step.borrow_mut())(description, equation),
+    )
+}
+
 /// Execute subtractive isolation `(l - r) = rhs`.
 #[allow(clippy::too_many_arguments)]
 pub fn execute_sub_isolation_pipeline_with_state<
@@ -277,6 +429,62 @@ where
         simplify_expr,
         solve_rewritten,
         map_item_to_step,
+    )
+}
+
+/// Execute subtractive isolation `(l - r) = rhs` using default route derivation
+/// and rewrite planning with a unified step-mapper callback.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_sub_isolation_pipeline_with_default_plan_and_unified_step_mapper_with_state<
+    S,
+    T,
+    E,
+    FContextRef,
+    FContextMut,
+    FRenderExpr,
+    FSimplifyExpr,
+    FIsolate,
+    FMapStep,
+>(
+    state: &mut S,
+    left: ExprId,
+    right: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    var: &str,
+    include_item: bool,
+    existing_steps: Vec<T>,
+    context_ref: FContextRef,
+    context_mut: FContextMut,
+    render_expr: FRenderExpr,
+    simplify_expr: FSimplifyExpr,
+    solve_rewritten: FIsolate,
+    map_step: FMapStep,
+) -> Result<(SolutionSet, Vec<T>), E>
+where
+    FContextRef: Fn(&mut S) -> &Context,
+    FContextMut: Fn(&mut S) -> &mut Context,
+    FRenderExpr: Fn(&Context, ExprId) -> String,
+    FSimplifyExpr: FnMut(&mut S, ExprId) -> ExprId,
+    FIsolate: FnMut(&mut S, Equation) -> Result<(SolutionSet, Vec<T>), E>,
+    FMapStep: FnMut(String, Equation) -> T,
+{
+    let map_step = std::cell::RefCell::new(map_step);
+    execute_sub_isolation_pipeline_with_default_plan_with_state(
+        state,
+        left,
+        right,
+        rhs,
+        op,
+        var,
+        include_item,
+        existing_steps,
+        context_ref,
+        context_mut,
+        render_expr,
+        simplify_expr,
+        solve_rewritten,
+        |item| (map_step.borrow_mut())(item.description, item.equation),
     )
 }
 
@@ -487,6 +695,173 @@ where
         },
         |state, equation| isolate_rewritten(state, equation),
         map_item_to_step,
+    )
+}
+
+/// Execute multiplicative isolation `(l * r) = rhs` using default split/route
+/// planning from `solve_outcome` with a unified step-mapper callback.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_mul_isolation_pipeline_with_default_operands_and_plan_and_unified_step_mapper_with_state<
+    S,
+    T,
+    E,
+    FContextRef,
+    FContextMut,
+    FSolveSplitCase,
+    FContextSnapshot,
+    FFinalizeSplit,
+    FTryLinearCollect,
+    FIsKnownNegative,
+    FRenderExpr,
+    FIsolate,
+    FMapStep,
+>(
+    state: &mut S,
+    lhs: ExprId,
+    left: ExprId,
+    right: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    var: &str,
+    include_item: bool,
+    existing_steps: Vec<T>,
+    context_ref: FContextRef,
+    context_mut: FContextMut,
+    solve_split_case: FSolveSplitCase,
+    context_snapshot: FContextSnapshot,
+    finalize_split_with_context: FFinalizeSplit,
+    try_linear_collect: FTryLinearCollect,
+    is_known_negative: FIsKnownNegative,
+    render_expr: FRenderExpr,
+    isolate_rewritten: FIsolate,
+    map_step: FMapStep,
+) -> Result<(SolutionSet, Vec<T>), E>
+where
+    FContextRef: Fn(&mut S) -> &Context,
+    FContextMut: Fn(&mut S) -> &mut Context,
+    FSolveSplitCase: FnMut(&mut S, &Equation) -> Result<(SolutionSet, Vec<T>), E>,
+    FContextSnapshot: FnMut(&mut S) -> Context,
+    FFinalizeSplit: FnMut(&Context, ProductZeroInequalitySolvedSets) -> SolutionSet,
+    FTryLinearCollect: FnMut(&mut S, ExprId, ExprId, &str) -> Option<(SolutionSet, Vec<T>)>,
+    FIsKnownNegative: FnMut(&mut S, ExprId) -> bool,
+    FRenderExpr: Fn(&Context, ExprId) -> String,
+    FIsolate: FnMut(&mut S, Equation) -> Result<(SolutionSet, Vec<T>), E>,
+    FMapStep: FnMut(String, Equation) -> T,
+{
+    let map_step = std::cell::RefCell::new(map_step);
+    execute_mul_isolation_pipeline_with_default_operands_and_plan_with_state(
+        state,
+        lhs,
+        left,
+        right,
+        rhs,
+        op,
+        var,
+        include_item,
+        existing_steps,
+        context_ref,
+        context_mut,
+        solve_split_case,
+        context_snapshot,
+        finalize_split_with_context,
+        try_linear_collect,
+        is_known_negative,
+        render_expr,
+        isolate_rewritten,
+        |item| (map_step.borrow_mut())(item.description, item.equation),
+    )
+}
+
+/// Execute multiplicative isolation `(l * r) = rhs` with:
+/// - default split/route kernels,
+/// - default product-split finalizer,
+/// - default additive linear-collect fallback kernel,
+/// - unified step mapping.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_mul_isolation_pipeline_with_default_additive_linear_collect_and_unified_step_mapper_with_state<
+    S,
+    T,
+    E,
+    FContextRef,
+    FContextMut,
+    FSolveSplitCase,
+    FSimplifyExpr,
+    FProveNonzeroStatus,
+    FIsKnownNegative,
+    FRenderExpr,
+    FIsolate,
+    FMapStep,
+>(
+    state: &mut S,
+    lhs: ExprId,
+    left: ExprId,
+    right: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    var: &str,
+    include_item: bool,
+    existing_steps: Vec<T>,
+    context_ref: FContextRef,
+    context_mut: FContextMut,
+    solve_split_case: FSolveSplitCase,
+    simplify_expr: FSimplifyExpr,
+    prove_nonzero_status: FProveNonzeroStatus,
+    is_known_negative: FIsKnownNegative,
+    render_expr: FRenderExpr,
+    isolate_rewritten: FIsolate,
+    map_step: FMapStep,
+) -> Result<(SolutionSet, Vec<T>), E>
+where
+    FContextRef: Fn(&mut S) -> &Context,
+    FContextMut: Fn(&mut S) -> &mut Context,
+    FSolveSplitCase: FnMut(&mut S, &Equation) -> Result<(SolutionSet, Vec<T>), E>,
+    FSimplifyExpr: FnMut(&mut S, ExprId) -> ExprId,
+    FProveNonzeroStatus: FnMut(&mut S, ExprId) -> NonZeroStatus,
+    FIsKnownNegative: FnMut(&mut S, ExprId) -> bool,
+    FRenderExpr: Fn(&Context, ExprId) -> String,
+    FIsolate: FnMut(&mut S, Equation) -> Result<(SolutionSet, Vec<T>), E>,
+    FMapStep: FnMut(String, Equation) -> T,
+{
+    let context_ref = &context_ref;
+    let context_mut = &context_mut;
+    let render_expr = &render_expr;
+    let map_step = std::cell::RefCell::new(map_step);
+    let simplify_expr = std::cell::RefCell::new(simplify_expr);
+    let prove_nonzero_status = std::cell::RefCell::new(prove_nonzero_status);
+
+    execute_mul_isolation_pipeline_with_default_operands_and_plan_and_unified_step_mapper_with_state(
+        state,
+        lhs,
+        left,
+        right,
+        rhs,
+        op,
+        var,
+        include_item,
+        existing_steps,
+        context_ref,
+        context_mut,
+        solve_split_case,
+        |state| context_ref(state).clone(),
+        crate::solve_outcome::finalize_product_zero_inequality_solved_sets,
+        |state, local_lhs, local_rhs, var_name| {
+            execute_linear_collect_additive_pipeline_with_default_kernel_and_unified_step_mapper_with_state(
+                state,
+                local_lhs,
+                local_rhs,
+                var_name,
+                include_item,
+                context_mut,
+                |state, expr| (simplify_expr.borrow_mut())(state, expr),
+                |state, expr| (prove_nonzero_status.borrow_mut())(state, expr),
+                |core_ctx, expr| render_expr(core_ctx, expr),
+                |description, equation| (map_step.borrow_mut())(description, equation),
+            )
+        },
+        is_known_negative,
+        render_expr,
+        isolate_rewritten,
+        |description, equation| (map_step.borrow_mut())(description, equation),
     )
 }
 
@@ -1045,6 +1420,203 @@ where
             )
         }
     }
+}
+
+/// Execute full division isolation pipeline with default route/numerator/
+/// denominator kernels and a unified step-mapper callback.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_div_isolation_pipeline_with_default_route_and_kernels_and_unified_step_mapper_with_state<
+    S,
+    TStep,
+    E,
+    FContextRef,
+    FContextMut,
+    FIsKnownNegative,
+    FRenderExpr,
+    FSimplifyExpr,
+    FSimplifyForRhs,
+    FSolveIsolate,
+    FFinalizeNumerator,
+    FShouldTryReciprocal,
+    FTryReciprocal,
+    FFinalizeDenominator,
+    FMapStep,
+>(
+    state: &mut S,
+    lhs: ExprId,
+    numerator: ExprId,
+    denominator: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    var: &str,
+    include_numerator_items: bool,
+    include_denominator_items: bool,
+    existing_steps: Vec<TStep>,
+    context_ref: FContextRef,
+    context_mut: FContextMut,
+    is_known_negative: FIsKnownNegative,
+    render_expr: FRenderExpr,
+    simplify_expr: FSimplifyExpr,
+    simplify_for_rhs: FSimplifyForRhs,
+    solve_isolate: FSolveIsolate,
+    finalize_numerator_solved_sets: FFinalizeNumerator,
+    should_try_reciprocal: FShouldTryReciprocal,
+    try_reciprocal_solve: FTryReciprocal,
+    finalize_denominator_solved_sets: FFinalizeDenominator,
+    map_step: FMapStep,
+) -> Result<(SolutionSet, Vec<TStep>), E>
+where
+    TStep: Clone,
+    FContextRef: Fn(&mut S) -> &Context,
+    FContextMut: FnMut(&mut S) -> &mut Context,
+    FIsKnownNegative: FnMut(&mut S, ExprId) -> bool,
+    FRenderExpr: FnMut(&mut S, ExprId) -> String,
+    FSimplifyExpr: FnMut(&mut S, ExprId) -> ExprId,
+    FSimplifyForRhs: FnMut(&mut S, ExprId) -> ExprId,
+    FSolveIsolate: FnMut(&mut S, &Equation) -> Result<(SolutionSet, Vec<TStep>), E>,
+    FFinalizeNumerator: FnMut(
+        &mut S,
+        DivisionDenominatorSignSplitSolvedCases<SolutionSet, SolutionSet>,
+    ) -> SolutionSet,
+    FShouldTryReciprocal: FnMut(&mut S, ExprId, &RelOp, &str) -> bool,
+    FTryReciprocal: FnMut(&mut S, ExprId, ExprId, &str) -> Option<(SolutionSet, Vec<TStep>)>,
+    FFinalizeDenominator:
+        FnMut(&mut S, IsolatedDenominatorSignSplitSolvedCases<SolutionSet>) -> SolutionSet,
+    FMapStep: FnMut(String, Equation) -> TStep,
+{
+    let map_step = std::cell::RefCell::new(map_step);
+    execute_div_isolation_pipeline_with_default_route_and_kernels_with_state(
+        state,
+        lhs,
+        numerator,
+        denominator,
+        rhs,
+        op,
+        var,
+        include_numerator_items,
+        include_denominator_items,
+        existing_steps,
+        context_ref,
+        context_mut,
+        is_known_negative,
+        render_expr,
+        simplify_expr,
+        simplify_for_rhs,
+        solve_isolate,
+        |item| (map_step.borrow_mut())(item.description, item.equation),
+        |item| (map_step.borrow_mut())(item.description, item.equation),
+        finalize_numerator_solved_sets,
+        should_try_reciprocal,
+        try_reciprocal_solve,
+        |item| (map_step.borrow_mut())(item.description, item.equation),
+        finalize_denominator_solved_sets,
+    )
+}
+
+/// Execute full division isolation pipeline (`numerator / denominator = rhs`) with:
+/// - default route/numerator/denominator kernels,
+/// - default reciprocal fallback policy and kernel,
+/// - default solved-set finalizers,
+/// - unified step mapping.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_div_isolation_pipeline_with_default_reciprocal_fallback_and_unified_step_mapper_with_state<
+    S,
+    TStep,
+    E,
+    FContextRef,
+    FContextMut,
+    FIsKnownNegative,
+    FRenderExpr,
+    FSimplifyExpr,
+    FSolveIsolate,
+    FProveNonzeroStatus,
+    FMapStep,
+>(
+    state: &mut S,
+    lhs: ExprId,
+    numerator: ExprId,
+    denominator: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    var: &str,
+    include_numerator_items: bool,
+    include_denominator_items: bool,
+    existing_steps: Vec<TStep>,
+    context_ref: FContextRef,
+    context_mut: FContextMut,
+    is_known_negative: FIsKnownNegative,
+    render_expr: FRenderExpr,
+    simplify_expr: FSimplifyExpr,
+    solve_isolate: FSolveIsolate,
+    prove_nonzero_status: FProveNonzeroStatus,
+    map_step: FMapStep,
+) -> Result<(SolutionSet, Vec<TStep>), E>
+where
+    TStep: Clone,
+    FContextRef: Fn(&mut S) -> &Context,
+    FContextMut: Fn(&mut S) -> &mut Context,
+    FIsKnownNegative: FnMut(&mut S, ExprId) -> bool,
+    FRenderExpr: Fn(&Context, ExprId) -> String,
+    FSimplifyExpr: FnMut(&mut S, ExprId) -> ExprId,
+    FSolveIsolate: FnMut(&mut S, &Equation) -> Result<(SolutionSet, Vec<TStep>), E>,
+    FProveNonzeroStatus: FnMut(&mut S, ExprId) -> NonZeroStatus,
+    FMapStep: FnMut(String, Equation) -> TStep,
+{
+    let context_ref = &context_ref;
+    let context_mut = &context_mut;
+    let render_expr = &render_expr;
+    let map_step = std::cell::RefCell::new(map_step);
+    let simplify_expr = std::cell::RefCell::new(simplify_expr);
+    let prove_nonzero_status = std::cell::RefCell::new(prove_nonzero_status);
+
+    execute_div_isolation_pipeline_with_default_route_and_kernels_and_unified_step_mapper_with_state(
+        state,
+        lhs,
+        numerator,
+        denominator,
+        rhs,
+        op,
+        var,
+        include_numerator_items,
+        include_denominator_items,
+        existing_steps,
+        context_ref,
+        context_mut,
+        is_known_negative,
+        |state, expr| render_expr(context_ref(state), expr),
+        |state, expr| (simplify_expr.borrow_mut())(state, expr),
+        |state, expr| (simplify_expr.borrow_mut())(state, expr),
+        solve_isolate,
+        |state, solved_sets| {
+            crate::solve_outcome::finalize_division_denominator_sign_split_solved_sets(
+                context_ref(state),
+                solved_sets,
+            )
+        },
+        |state, lhs_expr, local_op, var_name| {
+            should_try_reciprocal_solve(context_ref(state), lhs_expr, local_op, var_name)
+        },
+        |state, lhs_expr, local_rhs, var_name| {
+            execute_reciprocal_solve_pipeline_with_default_kernel_and_unified_step_mapper_with_state(
+                state,
+                lhs_expr,
+                local_rhs,
+                var_name,
+                include_denominator_items,
+                context_mut,
+                |state, expr| (simplify_expr.borrow_mut())(state, expr),
+                |state, expr| (prove_nonzero_status.borrow_mut())(state, expr),
+                |description, equation| (map_step.borrow_mut())(description, equation),
+            )
+        },
+        |state, solved_sets| {
+            crate::solve_outcome::finalize_isolated_denominator_sign_split_solved_sets(
+                context_mut(state),
+                solved_sets,
+            )
+        },
+        |description, equation| (map_step.borrow_mut())(description, equation),
+    )
 }
 
 #[cfg(test)]

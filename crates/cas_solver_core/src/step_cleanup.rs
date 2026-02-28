@@ -178,6 +178,28 @@ where
         .collect()
 }
 
+/// End-to-end cleanup + display-wrapper construction over arbitrary step payloads.
+///
+/// This helper is convenient for frontends that want to enforce display-step
+/// consumption via [`crate::display_steps::DisplaySteps`].
+pub fn cleanup_into_display_steps_by<T, FExtract, FRebuild>(
+    ctx: &mut Context,
+    steps: Vec<T>,
+    detailed: bool,
+    var: &str,
+    extract: FExtract,
+    rebuild: FRebuild,
+) -> crate::display_steps::DisplaySteps<T>
+where
+    T: Clone,
+    FExtract: FnMut(&T) -> CleanupStep,
+    FRebuild: FnMut(T, CleanupStep) -> T,
+{
+    crate::display_steps::DisplaySteps(cleanup_steps_by(
+        ctx, steps, detailed, var, extract, rebuild,
+    ))
+}
+
 /// End-to-end cleanup for plain `CleanupStep` payloads.
 pub fn cleanup_steps(
     ctx: &mut Context,
@@ -396,5 +418,63 @@ mod tests {
         let out = cleanup_steps(&mut ctx, vec![step], false, "x");
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].description, "Move terms to one side");
+    }
+
+    #[test]
+    fn cleanup_into_display_steps_wraps_cleaned_result() {
+        #[derive(Clone)]
+        struct RichStep {
+            payload: CleanupStep,
+            marker: usize,
+        }
+
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let zero = ctx.num(0);
+        let one = ctx.num(1);
+        let eq1 = Equation {
+            lhs: x,
+            rhs: zero,
+            op: RelOp::Eq,
+        };
+        let eq2 = Equation {
+            lhs: x,
+            rhs: one,
+            op: RelOp::Eq,
+        };
+
+        let steps = vec![
+            RichStep {
+                payload: CleanupStep {
+                    description: "step 1".to_string(),
+                    equation_after: eq1.clone(),
+                },
+                marker: 5,
+            },
+            RichStep {
+                payload: CleanupStep {
+                    description: "step 2".to_string(),
+                    equation_after: eq2.clone(),
+                },
+                marker: 6,
+            },
+        ];
+
+        let display = cleanup_into_display_steps_by(
+            &mut ctx,
+            steps,
+            true,
+            "x",
+            |s| s.payload.clone(),
+            |template, payload| RichStep {
+                payload,
+                marker: template.marker,
+            },
+        );
+
+        assert_eq!(display.len(), 2);
+        let cleaned = display.into_inner();
+        assert_eq!(cleaned[0].marker, 5);
+        assert_eq!(cleaned[1].marker, 6);
     }
 }

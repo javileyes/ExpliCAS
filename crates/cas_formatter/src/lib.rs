@@ -48,3 +48,21 @@ pub use path::{
 };
 pub use root_style::{detect_root_style, ParseStyleSignals, RootStyle, StylePreferences};
 pub use visualizer::AstVisualizer;
+
+/// Render one expression id to display text.
+pub fn render_expr(context: &Context, id: ExprId) -> String {
+    format!("{}", DisplayExpr { context, id })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::render_expr;
+    use cas_ast::Context;
+
+    #[test]
+    fn render_expr_renders_basic_expression() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        assert_eq!(render_expr(&ctx, x), "x");
+    }
+}

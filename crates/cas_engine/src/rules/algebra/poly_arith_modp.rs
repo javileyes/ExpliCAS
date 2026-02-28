@@ -12,8 +12,8 @@
 use crate::define_rule;
 use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
-use cas_ast::Expr;
-use cas_math::poly_modp_conv::{check_poly_equal_modp_expr, strip_hold, DEFAULT_PRIME};
+use cas_math::poly_modp_calls::try_rewrite_hold_poly_sub_to_zero;
+use cas_math::poly_modp_conv::DEFAULT_PRIME;
 
 // PolySubModpRule: handle __hold(P) - __hold(Q) in polynomial domain
 define_rule!(
@@ -22,38 +22,11 @@ define_rule!(
     Some(crate::target_kind::TargetKindSet::SUB),
     PhaseMask::CORE | PhaseMask::POST,
     |ctx, expr| {
-        let (a, b) = match ctx.get(expr) {
-            Expr::Sub(a, b) => (*a, *b),
-            _ => return None,
-        };
-
-        // Only activate if at least one operand is __hold
-        // This avoids contaminating standard arithmetic
-        let a_is_hold = cas_ast::hold::is_hold(ctx, a);
-        let b_is_hold = cas_ast::hold::is_hold(ctx, b);
-
-        if !(a_is_hold || b_is_hold) {
-            return None;
-        }
-
-        let p = DEFAULT_PRIME;
-
-        // Strip __hold wrappers before conversion
-        let a_inner = strip_hold(ctx, a);
-        let b_inner = strip_hold(ctx, b);
-
-        // Compare both sides in mod-p polynomial space (monic-normalized comparison).
-        if check_poly_equal_modp_expr(ctx, a_inner, b_inner, p).ok()? {
-            // P - P = 0 (up to scalar multiple)
-            let zero = ctx.num(0);
-            return Some(
-                Rewrite::new(zero)
-                    .desc("__hold(P) - __hold(Q) = 0 (equal polynomials mod p, up to scalar)"),
-            );
-        }
-
-        // If not equal, skip (conservative behavior)
-        None
+        let zero = try_rewrite_hold_poly_sub_to_zero(ctx, expr, DEFAULT_PRIME)?;
+        Some(
+            Rewrite::new(zero)
+                .desc("__hold(P) - __hold(Q) = 0 (equal polynomials mod p, up to scalar)"),
+        )
     }
 );
 
@@ -67,7 +40,7 @@ mod tests {
     use super::*;
     use crate::parent_context::ParentContext;
     use crate::rule::Rule;
-    use cas_ast::Context;
+    use cas_ast::{Context, Expr};
     use num_traits::Zero;
 
     #[test]

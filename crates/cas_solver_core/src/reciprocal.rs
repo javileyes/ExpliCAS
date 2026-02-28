@@ -675,6 +675,47 @@ where
     )
 }
 
+/// Stateful reciprocal solve pipeline with default kernel derivation
+/// and a unified step-mapper callback.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_reciprocal_solve_pipeline_with_default_kernel_and_unified_step_mapper_with_state<
+    T,
+    S,
+    FContextMut,
+    FSimplify,
+    FProof,
+    FMapStep,
+>(
+    state: &mut T,
+    lhs: ExprId,
+    rhs: ExprId,
+    var: &str,
+    include_items: bool,
+    context_mut: FContextMut,
+    simplify_expr: FSimplify,
+    prove_nonzero_status: FProof,
+    map_step: FMapStep,
+) -> Option<(SolutionSet, Vec<S>)>
+where
+    FContextMut: Fn(&mut T) -> &mut Context,
+    FSimplify: FnMut(&mut T, ExprId) -> ExprId,
+    FProof: FnMut(&mut T, ExprId) -> NonZeroStatus,
+    FMapStep: FnMut(String, Equation) -> S,
+{
+    let map_step = std::cell::RefCell::new(map_step);
+    execute_reciprocal_solve_pipeline_with_default_kernel_with_state(
+        state,
+        lhs,
+        rhs,
+        var,
+        include_items,
+        context_mut,
+        simplify_expr,
+        prove_nonzero_status,
+        |item| (map_step.borrow_mut())(item.description().to_string(), item.equation),
+    )
+}
+
 /// High-level reciprocal solve pipeline using an optional pre-derived kernel:
 /// build execution payload and optionally map didactic items.
 pub fn execute_reciprocal_solve_pipeline_with_items_and_kernel<S, FBuildExecution, FStep>(

@@ -1,10 +1,18 @@
 use crate::isolation_utils::contains_var;
 use crate::quadratic_formula::{discriminant, roots_from_a_b_delta};
+use crate::solution_set::sort_and_dedup_exprs;
 use cas_ast::{Context, Equation, Expr, ExprId, RelOp, SolutionSet};
 use num_bigint::BigInt;
 use num_integer::Integer;
 use num_rational::BigRational;
 use num_traits::{One, Signed, Zero};
+
+/// Default minimum degree for rational-roots strategy.
+pub const DEFAULT_RATIONAL_ROOTS_MIN_DEGREE: usize = 3;
+/// Default maximum supported degree for rational-roots strategy.
+pub const DEFAULT_RATIONAL_ROOTS_MAX_DEGREE: usize = 10;
+/// Default cap on candidate rational roots to avoid combinatorial blowups.
+pub const DEFAULT_RATIONAL_ROOTS_MAX_CANDIDATES: usize = 200;
 
 /// Extract polynomial coefficients from an expression in `var`.
 ///
@@ -794,6 +802,140 @@ where
     )
 }
 
+/// Execute rational-roots strategy with default limits and default kernel hooks:
+/// - degree range `3..=10`,
+/// - max candidates `200`,
+/// - `lhs - rhs` construction + coefficient extraction + numeric solve,
+/// - didactic step planning for `expanded_expr = 0`.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_rational_roots_strategy_with_default_limits_and_kernel_with_state<
+    T,
+    S,
+    FContextMut,
+    FSimplifyExpr,
+    FExpandExpr,
+    FSortAndDedupRoots,
+    FStep,
+>(
+    state: &mut T,
+    equation: &Equation,
+    var: &str,
+    include_item: bool,
+    context_mut: FContextMut,
+    simplify_expr: FSimplifyExpr,
+    expand_expr: FExpandExpr,
+    sort_and_dedup_roots: FSortAndDedupRoots,
+    map_item_to_step: FStep,
+) -> Option<(SolutionSet, Vec<S>)>
+where
+    FContextMut: Fn(&mut T) -> &mut Context,
+    FSimplifyExpr: FnMut(&mut T, ExprId) -> ExprId,
+    FExpandExpr: FnMut(&mut T, ExprId) -> ExprId,
+    FSortAndDedupRoots: FnMut(&mut T, &mut Vec<ExprId>),
+    FStep: FnMut(RationalRootsExecutionItem) -> S,
+{
+    let context_mut = &context_mut;
+    let zero_rhs = context_mut(state).num(0);
+    solve_rational_roots_strategy_result_for_equation_with_default_kernel_with_state(
+        state,
+        equation,
+        var,
+        DEFAULT_RATIONAL_ROOTS_MIN_DEGREE,
+        DEFAULT_RATIONAL_ROOTS_MAX_DEGREE,
+        DEFAULT_RATIONAL_ROOTS_MAX_CANDIDATES,
+        include_item,
+        |state| context_mut(state),
+        simplify_expr,
+        expand_expr,
+        sort_and_dedup_roots,
+        zero_rhs,
+        map_item_to_step,
+    )
+}
+
+/// Execute rational-roots strategy with default limits/default kernel hooks
+/// and a unified step-mapper callback.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_rational_roots_strategy_with_default_limits_and_kernel_and_unified_step_mapper_with_state<
+    T,
+    S,
+    FContextMut,
+    FSimplifyExpr,
+    FExpandExpr,
+    FSortAndDedupRoots,
+    FMapStep,
+>(
+    state: &mut T,
+    equation: &Equation,
+    var: &str,
+    include_item: bool,
+    context_mut: FContextMut,
+    simplify_expr: FSimplifyExpr,
+    expand_expr: FExpandExpr,
+    sort_and_dedup_roots: FSortAndDedupRoots,
+    map_step: FMapStep,
+) -> Option<(SolutionSet, Vec<S>)>
+where
+    FContextMut: Fn(&mut T) -> &mut Context,
+    FSimplifyExpr: FnMut(&mut T, ExprId) -> ExprId,
+    FExpandExpr: FnMut(&mut T, ExprId) -> ExprId,
+    FSortAndDedupRoots: FnMut(&mut T, &mut Vec<ExprId>),
+    FMapStep: FnMut(String, Equation) -> S,
+{
+    let map_step = std::cell::RefCell::new(map_step);
+    execute_rational_roots_strategy_with_default_limits_and_kernel_with_state(
+        state,
+        equation,
+        var,
+        include_item,
+        context_mut,
+        simplify_expr,
+        expand_expr,
+        sort_and_dedup_roots,
+        |item| (map_step.borrow_mut())(item.description().to_string(), item.equation),
+    )
+}
+
+/// Execute rational-roots strategy with default limits/default kernel hooks,
+/// default root sorting/deduplication, and unified step mapping.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_rational_roots_strategy_with_default_limits_and_default_root_sorting_and_unified_step_mapper_with_state<
+    T,
+    S,
+    FContextMut,
+    FSimplifyExpr,
+    FExpandExpr,
+    FMapStep,
+>(
+    state: &mut T,
+    equation: &Equation,
+    var: &str,
+    include_item: bool,
+    context_mut: FContextMut,
+    simplify_expr: FSimplifyExpr,
+    expand_expr: FExpandExpr,
+    map_step: FMapStep,
+) -> Option<(SolutionSet, Vec<S>)>
+where
+    FContextMut: Fn(&mut T) -> &mut Context,
+    FSimplifyExpr: FnMut(&mut T, ExprId) -> ExprId,
+    FExpandExpr: FnMut(&mut T, ExprId) -> ExprId,
+    FMapStep: FnMut(String, Equation) -> S,
+{
+    let context_mut = &context_mut;
+    execute_rational_roots_strategy_with_default_limits_and_kernel_and_unified_step_mapper_with_state(
+        state,
+        equation,
+        var,
+        include_item,
+        context_mut,
+        simplify_expr,
+        expand_expr,
+        |state, roots| sort_and_dedup_exprs(context_mut(state), roots),
+        map_step,
+    )
+}
+
 /// Plan Rational Root strategy didactic step for equation `expanded_expr = 0`.
 pub fn plan_rational_roots_strategy_step(
     ctx: &mut Context,
@@ -1249,6 +1391,68 @@ mod tests {
 
         assert!(out.is_none());
         assert_eq!(extract_calls, 0);
+    }
+
+    #[test]
+    fn execute_rational_roots_strategy_with_default_limits_and_kernel_with_state_returns_none_for_inequality(
+    ) {
+        let mut context = Context::new();
+        let x = context.var("x");
+        let one = context.num(1);
+        let equation = Equation {
+            lhs: x,
+            rhs: one,
+            op: RelOp::Gt,
+        };
+
+        let out = execute_rational_roots_strategy_with_default_limits_and_kernel_with_state(
+            &mut context,
+            &equation,
+            "x",
+            true,
+            |ctx| ctx,
+            |_ctx, id| id,
+            |_ctx, id| id,
+            |ctx, roots| crate::solution_set::sort_and_dedup_exprs(ctx, roots),
+            |item| item.description,
+        );
+
+        assert!(out.is_none());
+    }
+
+    #[test]
+    fn execute_rational_roots_strategy_with_default_limits_and_kernel_with_state_solves_cubic() {
+        let mut context = Context::new();
+        let x = context.var("x");
+        let two = context.num(2);
+        let x2 = context.add(Expr::Pow(x, two));
+        let x3 = context.add(Expr::Mul(x2, x));
+        let lhs = context.add(Expr::Sub(x3, x)); // x^3 - x
+        let zero = context.num(0);
+        let equation = Equation {
+            lhs,
+            rhs: zero,
+            op: RelOp::Eq,
+        };
+
+        let solved = execute_rational_roots_strategy_with_default_limits_and_kernel_with_state(
+            &mut context,
+            &equation,
+            "x",
+            true,
+            |ctx| ctx,
+            |_ctx, id| id,
+            |_ctx, id| id,
+            |ctx, roots| crate::solution_set::sort_and_dedup_exprs(ctx, roots),
+            |item| item.description,
+        )
+        .expect("default rational-roots strategy should solve cubic");
+
+        match solved.0 {
+            SolutionSet::Discrete(roots) => assert_eq!(roots.len(), 3),
+            _ => panic!("expected discrete roots"),
+        }
+        assert_eq!(solved.1.len(), 1);
     }
 
     #[test]

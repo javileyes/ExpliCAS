@@ -3,6 +3,11 @@ use std::collections::{HashMap, HashSet};
 use cas_ast::{Context, Expr, ExprId};
 use cas_math::expr_predicates::contains_variable;
 
+/// Default max dedup node count for eligible numeric islands.
+pub const DEFAULT_MAX_ISLAND_NODES: usize = 80;
+/// Default max depth for eligible numeric islands.
+pub const DEFAULT_MAX_ISLAND_DEPTH: usize = 4;
+
 /// Pre-check classification for numeric-island folding.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IslandFoldPrecheck {
@@ -409,6 +414,67 @@ where
     )
 }
 
+/// Fold numeric islands by delegating each eligible candidate to an external evaluator.
+///
+/// The evaluator returns a temporary `(Context, ExprId)` pair representing the folded result.
+/// This helper accepts the candidate only when it is benign (numeric leaf or strictly smaller
+/// ground expression without `Div(_, 0)`), then transplants the result back into `ctx`.
+pub fn fold_numeric_islands_with_candidate_evaluator<OnOverLimit, EvaluateCandidate>(
+    ctx: &mut Context,
+    root: ExprId,
+    max_nodes: usize,
+    max_depth: usize,
+    on_over_limit: OnOverLimit,
+    mut evaluate_candidate: EvaluateCandidate,
+) -> ExprId
+where
+    OnOverLimit: FnMut(),
+    EvaluateCandidate: FnMut(&Context, ExprId) -> Option<(Context, ExprId)>,
+{
+    fold_numeric_islands_with(
+        ctx,
+        root,
+        max_nodes,
+        max_depth,
+        on_over_limit,
+        |ctx, id, node_count| {
+            let Some((folded_ctx, folded_id)) = evaluate_candidate(ctx, id) else {
+                return id;
+            };
+            if is_benign_fold_result(&folded_ctx, folded_id, node_count) {
+                transplant_expr(&folded_ctx, folded_id, ctx)
+            } else {
+                id
+            }
+        },
+    )
+}
+
+/// Convenience wrapper around [`fold_numeric_islands_with_candidate_evaluator`]
+/// using the crate default island size/depth limits.
+pub fn fold_numeric_islands_with_default_limits_and_candidate_evaluator<
+    OnOverLimit,
+    EvaluateCandidate,
+>(
+    ctx: &mut Context,
+    root: ExprId,
+    on_over_limit: OnOverLimit,
+    evaluate_candidate: EvaluateCandidate,
+) -> ExprId
+where
+    OnOverLimit: FnMut(),
+    EvaluateCandidate: FnMut(&Context, ExprId) -> Option<(Context, ExprId)>,
+{
+    fold_numeric_islands_with_candidate_evaluator(
+        ctx,
+        root,
+        DEFAULT_MAX_ISLAND_NODES,
+        DEFAULT_MAX_ISLAND_DEPTH,
+        on_over_limit,
+        evaluate_candidate,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -556,5 +622,61 @@ mod tests {
 
         assert_eq!(out, three);
         assert!(calls >= 1);
+    }
+
+    #[test]
+    fn candidate_evaluator_accepts_benign_fold() {
+        let mut ctx = Context::new();
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        let expr = ctx.add(Expr::Add(one, two));
+
+        let out = fold_numeric_islands_with_candidate_evaluator(
+            &mut ctx,
+            expr,
+            80,
+            4,
+            || {},
+            |_, id| {
+                if id != expr {
+                    return None;
+                }
+                let mut tmp = Context::new();
+                let three = tmp.num(3);
+                Some((tmp, three))
+            },
+        );
+
+        match ctx.get(out) {
+            Expr::Number(n) => assert_eq!(*n.numer(), 3.into()),
+            other => panic!("expected Number(3), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn default_limits_candidate_evaluator_accepts_benign_fold() {
+        let mut ctx = Context::new();
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        let expr = ctx.add(Expr::Add(one, two));
+
+        let out = fold_numeric_islands_with_default_limits_and_candidate_evaluator(
+            &mut ctx,
+            expr,
+            || {},
+            |_, id| {
+                if id != expr {
+                    return None;
+                }
+                let mut tmp = Context::new();
+                let three = tmp.num(3);
+                Some((tmp, three))
+            },
+        );
+
+        match ctx.get(out) {
+            Expr::Number(n) => assert_eq!(*n.numer(), 3.into()),
+            other => panic!("expected Number(3), got {:?}", other),
+        }
     }
 }

@@ -1,12 +1,13 @@
 use cas_ast::ExprId;
-use cas_engine::{Diagnostics, EvalOptions, EvalSession, EvalStore};
+use cas_engine::{Diagnostics, EvalOptions};
+use cas_session_core::eval::{EvalSession, EvalStore};
 
 use crate::{
     snapshot::SessionSnapshot, Environment, ResolveError, SessionStore, SimplifyCacheKey,
     SnapshotError,
 };
 
-/// Local adapter that bridges `cas_session::SessionStore` to `cas_engine::EvalStore`.
+/// Local adapter that bridges `cas_session::SessionStore` to `cas_session_core::EvalStore`.
 #[derive(Debug, Default)]
 pub struct SessionEvalStore(pub SessionStore);
 
@@ -37,6 +38,11 @@ impl std::ops::DerefMut for SessionEvalStore {
 }
 
 impl EvalStore for SessionEvalStore {
+    type DomainMode = cas_engine::DomainMode;
+    type RequiredItem = cas_engine::RequiredItem;
+    type Step = cas_engine::Step;
+    type Diagnostics = Diagnostics;
+
     fn push_raw_expr(&mut self, expr: ExprId, raw_input: String) -> u64 {
         self.0.push(crate::EntryKind::Expr(expr), raw_input)
     }
@@ -76,7 +82,7 @@ impl EvalStore for SessionEvalStore {
 /// Bundled session state for portability (CLI/Web/FFI).
 ///
 /// This crate-local type is the migration target for Phase 3.
-/// `cas_engine` remains stateless and consumes it via the `EvalSession` trait.
+/// `cas_engine` remains stateless and consumes it via the shared `EvalSession` trait.
 #[derive(Default, Debug)]
 pub struct SessionState {
     store: SessionEvalStore,
@@ -162,7 +168,7 @@ impl SessionState {
         ctx: &mut cas_ast::Context,
         expr: ExprId,
     ) -> Result<ExprId, ResolveError> {
-        crate::resolve_all(ctx, expr, &self.store, &self.env)
+        crate::resolve_session_refs_with_env(ctx, expr, &self.store, &self.env)
     }
 
     /// Resolve refs with inherited diagnostics and cache hit traces.
@@ -171,12 +177,14 @@ impl SessionState {
         ctx: &mut cas_ast::Context,
         expr: ExprId,
     ) -> Result<(ExprId, Diagnostics, Vec<u64>), ResolveError> {
-        crate::resolve_all_with_diagnostics(
+        let cache_key = SimplifyCacheKey::from_context(self.options.shared.semantics.domain_mode);
+        crate::resolve_session_refs_with_mode_and_diagnostics(
             ctx,
             expr,
             &self.store,
+            cas_session_core::types::RefMode::PreferSimplified,
+            &cache_key,
             &self.env,
-            self.options.shared.semantics.domain_mode,
         )
     }
 
@@ -233,6 +241,8 @@ impl SessionState {
 
 impl EvalSession for SessionState {
     type Store = SessionEvalStore;
+    type Options = EvalOptions;
+    type Diagnostics = Diagnostics;
 
     fn store_mut(&mut self) -> &mut Self::Store {
         &mut self.store
@@ -248,13 +258,6 @@ impl EvalSession for SessionState {
         expr: ExprId,
     ) -> anyhow::Result<(ExprId, Diagnostics, Vec<u64>)> {
         self.resolve_state_refs_with_diagnostics(ctx, expr)
-            .map_err(|err| match err {
-                ResolveError::NotFound(id) => {
-                    anyhow::anyhow!("Session reference #{} not found", id)
-                }
-                ResolveError::CircularReference(id) => {
-                    anyhow::anyhow!("Circular reference detected involving #{}", id)
-                }
-            })
+            .map_err(cas_session_core::eval::map_resolve_error_to_anyhow)
     }
 }

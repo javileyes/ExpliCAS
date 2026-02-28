@@ -2,6 +2,8 @@
 ///
 /// Controls how many conditional branches the solver can create,
 /// preventing combinatorial explosion in complex equations.
+pub const MAX_SOLVE_RECURSION_DEPTH: usize = 50;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SolveBudget {
     /// Maximum number of branches that can be created (0 = no branching allowed)

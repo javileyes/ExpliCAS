@@ -230,6 +230,7 @@ dependencies = [
  "cas_math",
  "cas_parser",
  "cas_session",
+ "cas_session_core",
  "cas_solver_core",
  "criterion",
  "insta",
@@ -242,8 +243,6 @@ dependencies = [
  "rayon",
  "regex",
  "rustc-hash",
- "serde",
- "serde_json",
  "smallvec",
  "tempfile",
  "thiserror",
@@ -310,10 +309,15 @@ dependencies = [
 name = "cas_session_core"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "bincode",
  "cas_ast",
  "cas_parser",
+ "num-bigint",
+ "num-rational",
  "serde",
  "smallvec",
+ "tempfile",
 ]
 
 [[package]]
@@ -326,6 +330,7 @@ dependencies = [
  "cas_formatter",
  "cas_math",
  "cas_parser",
+ "cas_solver_core",
  "serde_json",
 ]
 

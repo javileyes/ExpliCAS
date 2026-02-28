@@ -5,6 +5,29 @@ use cas_ast::{Context, Expr, ExprId};
 use crate::cache::{CacheHitTrace, ResolvedExpr};
 use crate::types::{EntryId, EntryKind, ResolveError};
 
+/// Return the first encountered `Expr::SessionRef` id in a tree.
+pub fn first_session_ref(ctx: &Context, root: ExprId) -> Option<EntryId> {
+    let mut stack = vec![root];
+    while let Some(id) = stack.pop() {
+        match ctx.get(id) {
+            Expr::SessionRef(ref_id) => return Some(*ref_id),
+            Expr::Add(a, b)
+            | Expr::Sub(a, b)
+            | Expr::Mul(a, b)
+            | Expr::Div(a, b)
+            | Expr::Pow(a, b) => {
+                stack.push(*a);
+                stack.push(*b);
+            }
+            Expr::Neg(inner) | Expr::Hold(inner) => stack.push(*inner),
+            Expr::Function(_, args) => stack.extend(args.iter().copied()),
+            Expr::Matrix { data, .. } => stack.extend(data.iter().copied()),
+            Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) => {}
+        }
+    }
+    None
+}
+
 /// Parse legacy session reference names like `#123`.
 pub fn parse_legacy_session_ref(name: &str) -> Option<EntryId> {
     if !name.starts_with('#') || name.len() <= 1 {
@@ -123,6 +146,26 @@ where
     resolve_session_refs_with_lookup_on_visit(ctx, expr, lookup, &mut on_visit)
 }
 
+/// Resolve refs with lookup and fold visit-side metadata into an accumulator.
+///
+/// This keeps "what to accumulate on each visited entry id" outside of the
+/// resolver recursion plumbing.
+pub fn resolve_session_refs_with_lookup_accumulator<F, Acc, OnVisit>(
+    ctx: &mut Context,
+    expr: ExprId,
+    lookup: &mut F,
+    mut acc: Acc,
+    mut on_visit_acc: OnVisit,
+) -> Result<(ExprId, Acc), ResolveError>
+where
+    F: FnMut(EntryId) -> Option<EntryKind>,
+    OnVisit: FnMut(&mut Acc, EntryId),
+{
+    let mut on_visit = |id: EntryId| on_visit_acc(&mut acc, id);
+    let resolved = resolve_session_refs_with_lookup_on_visit(ctx, expr, lookup, &mut on_visit)?;
+    Ok((resolved, acc))
+}
+
 /// Resolve all session references and then apply environment substitution.
 pub fn resolve_all_with_lookup_and_env<F>(
     ctx: &mut Context,
@@ -135,6 +178,26 @@ where
 {
     let expr_with_refs = resolve_session_refs_with_lookup(ctx, expr, lookup)?;
     Ok(crate::env::substitute(ctx, env, expr_with_refs))
+}
+
+/// Return only entry ids from cache-hit traces, preserving traversal order.
+pub fn cache_hit_entry_ids<RequiredItem>(hits: &[CacheHitTrace<RequiredItem>]) -> Vec<EntryId> {
+    hits.iter().map(|h| h.entry_id).collect()
+}
+
+/// Build inherited diagnostics from resolved requirement items.
+pub fn inherited_diagnostics_from_requires<RequiredItem, Diagnostics, FPushRequired>(
+    requires: Vec<RequiredItem>,
+    mut diagnostics: Diagnostics,
+    mut push_required: FPushRequired,
+) -> Diagnostics
+where
+    FPushRequired: FnMut(&mut Diagnostics, RequiredItem),
+{
+    for item in requires {
+        push_required(&mut diagnostics, item);
+    }
+    diagnostics
 }
 
 /// Resolve all session references with an additional visit hook.
@@ -170,6 +233,14 @@ pub struct ModeEntry<CacheKey, RequiredItem> {
     pub kind: EntryKind,
     pub requires: Vec<RequiredItem>,
     pub cache: Option<ModeCacheEntry<CacheKey, RequiredItem>>,
+}
+
+/// Config for mode-based resolution + env substitution.
+#[derive(Debug, Clone, Copy)]
+pub struct ModeResolveConfig<'a, CacheKey> {
+    pub mode: crate::types::RefMode,
+    pub cache_key: &'a CacheKey,
+    pub env: &'a crate::env::Environment,
 }
 
 /// Resolve session refs with mode selection (prefer cache vs raw entry).
@@ -224,6 +295,81 @@ where
         ref_chain,
         cache_hits,
     })
+}
+
+/// Resolve session refs with mode selection and then apply environment substitution.
+pub fn resolve_all_with_mode_lookup_and_env<CacheKey, RequiredItem, Lookup, SameReq, MarkReq>(
+    ctx: &mut Context,
+    expr: ExprId,
+    config: ModeResolveConfig<'_, CacheKey>,
+    lookup: &mut Lookup,
+    same_requirement: &mut SameReq,
+    mark_session_propagated: &mut MarkReq,
+) -> Result<ResolvedExpr<RequiredItem>, ResolveError>
+where
+    CacheKey: PartialEq,
+    RequiredItem: Clone,
+    Lookup: FnMut(EntryId) -> Option<ModeEntry<CacheKey, RequiredItem>>,
+    SameReq: FnMut(&RequiredItem, &RequiredItem) -> bool,
+    MarkReq: FnMut(&mut RequiredItem),
+{
+    let mut resolved = resolve_session_refs_with_mode_lookup(
+        ctx,
+        expr,
+        config.mode,
+        config.cache_key,
+        lookup,
+        same_requirement,
+        mark_session_propagated,
+    )?;
+    resolved.expr = crate::env::substitute(ctx, config.env, resolved.expr);
+    Ok(resolved)
+}
+
+/// Resolve refs with mode + env and immediately build inherited diagnostics
+/// and cache-hit entry ids.
+#[allow(clippy::too_many_arguments)]
+pub fn resolve_mode_with_env_and_diagnostics<
+    CacheKey,
+    RequiredItem,
+    Diagnostics,
+    Lookup,
+    SameReq,
+    MarkReq,
+    FPushRequired,
+>(
+    ctx: &mut Context,
+    expr: ExprId,
+    config: ModeResolveConfig<'_, CacheKey>,
+    lookup: &mut Lookup,
+    same_requirement: &mut SameReq,
+    mark_session_propagated: &mut MarkReq,
+    diagnostics: Diagnostics,
+    push_required: FPushRequired,
+) -> Result<(ExprId, Diagnostics, Vec<EntryId>), ResolveError>
+where
+    CacheKey: PartialEq,
+    RequiredItem: Clone,
+    Lookup: FnMut(EntryId) -> Option<ModeEntry<CacheKey, RequiredItem>>,
+    SameReq: FnMut(&RequiredItem, &RequiredItem) -> bool,
+    MarkReq: FnMut(&mut RequiredItem),
+    FPushRequired: FnMut(&mut Diagnostics, RequiredItem),
+{
+    let resolved = resolve_all_with_mode_lookup_and_env(
+        ctx,
+        expr,
+        config,
+        lookup,
+        same_requirement,
+        mark_session_propagated,
+    )?;
+    let diagnostics =
+        inherited_diagnostics_from_requires(resolved.requires, diagnostics, push_required);
+    Ok((
+        resolved.expr,
+        diagnostics,
+        cache_hit_entry_ids(&resolved.cache_hits),
+    ))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -507,6 +653,25 @@ mod tests {
     }
 
     #[test]
+    fn first_session_ref_finds_nested_reference() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let ref7 = ctx.add(Expr::SessionRef(7));
+        let nested = ctx.add(Expr::Mul(ref7, x));
+        let expr = ctx.add(Expr::Add(x, nested));
+        assert_eq!(first_session_ref(&ctx, expr), Some(7));
+    }
+
+    #[test]
+    fn first_session_ref_returns_none_without_references() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let expr = ctx.add(Expr::Add(x, one));
+        assert_eq!(first_session_ref(&ctx, expr), None);
+    }
+
+    #[test]
     fn parse_legacy_session_ref_invalid() {
         assert_eq!(parse_legacy_session_ref("x"), None);
         assert_eq!(parse_legacy_session_ref("#"), None);
@@ -616,5 +781,167 @@ mod tests {
 
         let err = resolve_session_refs_with_lookup(&mut ctx, input, &mut lookup).unwrap_err();
         assert_eq!(err, ResolveError::CircularReference(1));
+    }
+
+    #[test]
+    fn resolve_with_lookup_accumulator_collects_visit_order_metadata() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let ref1 = ctx.add(Expr::SessionRef(1));
+        let input = ctx.add(Expr::Add(ref1, one));
+
+        let mut lookup = |id: EntryId| match id {
+            1 => Some(EntryKind::Expr(x)),
+            _ => None,
+        };
+
+        let (resolved, visits) = resolve_session_refs_with_lookup_accumulator(
+            &mut ctx,
+            input,
+            &mut lookup,
+            Vec::<EntryId>::new(),
+            |acc, id| acc.push(id),
+        )
+        .unwrap();
+
+        assert_eq!(visits, vec![1]);
+        assert!(!has_session_ref(&ctx, resolved));
+    }
+
+    #[test]
+    fn resolve_all_with_mode_lookup_and_env_applies_bindings() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let five = ctx.num(5);
+        let x_plus_one = ctx.add(Expr::Add(x, one));
+        let ref1 = ctx.add(Expr::SessionRef(1));
+        let input = ctx.add(Expr::Mul(ref1, x));
+
+        let mut lookup = |id: EntryId| match id {
+            1 => Some(ModeEntry {
+                kind: EntryKind::Expr(x_plus_one),
+                requires: vec![],
+                cache: None,
+            }),
+            _ => None,
+        };
+        let mut same_requirement = |_lhs: &(), _rhs: &()| true;
+        let mut mark_session_propagated = |_item: &mut ()| {};
+        let mut env = crate::env::Environment::new();
+        env.set("x".to_string(), five);
+
+        let resolved = resolve_all_with_mode_lookup_and_env(
+            &mut ctx,
+            input,
+            ModeResolveConfig {
+                mode: crate::types::RefMode::Raw,
+                cache_key: &0u8,
+                env: &env,
+            },
+            &mut lookup,
+            &mut same_requirement,
+            &mut mark_session_propagated,
+        )
+        .unwrap();
+
+        let vars = cas_ast::traversal::collect_variables(&ctx, resolved.expr);
+        assert!(vars.is_empty());
+        assert!(resolved.cache_hits.is_empty());
+    }
+
+    #[test]
+    fn cache_hit_entry_ids_preserves_order() {
+        let mut ctx = Context::new();
+        let r1 = ctx.add(Expr::SessionRef(1));
+        let r2 = ctx.add(Expr::SessionRef(2));
+        let a = ctx.num(10);
+        let b = ctx.num(20);
+
+        let hits = vec![
+            CacheHitTrace {
+                entry_id: 7,
+                before_ref_expr: r1,
+                after_expr: a,
+                requires: vec![()],
+            },
+            CacheHitTrace {
+                entry_id: 2,
+                before_ref_expr: r2,
+                after_expr: b,
+                requires: vec![()],
+            },
+        ];
+
+        assert_eq!(cache_hit_entry_ids(&hits), vec![7, 2]);
+    }
+
+    #[test]
+    fn inherited_diagnostics_from_requires_applies_all_items() {
+        #[derive(Default)]
+        struct Diag {
+            values: Vec<i32>,
+        }
+
+        let out =
+            inherited_diagnostics_from_requires(vec![1, 2, 3], Diag::default(), |diag, item| {
+                diag.values.push(item * 2);
+            });
+
+        assert_eq!(out.values, vec![2, 4, 6]);
+    }
+
+    #[test]
+    fn resolve_mode_with_env_and_diagnostics_collects_requires_and_cache_hits() {
+        #[derive(Default)]
+        struct Diag {
+            requires: Vec<i32>,
+        }
+
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let five = ctx.num(5);
+        let x_plus_one = ctx.add(Expr::Add(x, one));
+        let ref1 = ctx.add(Expr::SessionRef(1));
+
+        let mut lookup = |id: EntryId| match id {
+            1 => Some(ModeEntry {
+                kind: EntryKind::Expr(x),
+                requires: vec![10],
+                cache: Some(ModeCacheEntry {
+                    key: 42u8,
+                    expr: x_plus_one,
+                    requires: vec![20],
+                }),
+            }),
+            _ => None,
+        };
+        let mut same_requirement = |lhs: &i32, rhs: &i32| lhs == rhs;
+        let mut mark_session_propagated = |_item: &mut i32| {};
+        let mut env = crate::env::Environment::new();
+        env.set("x".to_string(), five);
+
+        let (resolved_expr, diagnostics, cache_hits) = resolve_mode_with_env_and_diagnostics(
+            &mut ctx,
+            ref1,
+            ModeResolveConfig {
+                mode: crate::types::RefMode::PreferSimplified,
+                cache_key: &42u8,
+                env: &env,
+            },
+            &mut lookup,
+            &mut same_requirement,
+            &mut mark_session_propagated,
+            Diag::default(),
+            |diag, item| diag.requires.push(item),
+        )
+        .unwrap();
+
+        let vars = cas_ast::traversal::collect_variables(&ctx, resolved_expr);
+        assert!(vars.is_empty());
+        assert_eq!(diagnostics.requires, vec![20]);
+        assert_eq!(cache_hits, vec![1]);
     }
 }

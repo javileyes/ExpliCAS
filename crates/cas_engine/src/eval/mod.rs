@@ -5,8 +5,10 @@
 //! (simplify, solve, expand, equiv, limit), assembles diagnostics, and
 //! returns the final `EvalOutput`.
 
+mod actions;
 mod diagnostics;
 mod dispatch;
+mod simplify_action;
 
 /// Result type for individual action handlers in `Engine.eval()`.
 ///
@@ -22,7 +24,7 @@ pub(crate) type ActionResult = (
 );
 
 use crate::Simplifier;
-use cas_ast::{BuiltinFn, Equation, Expr, ExprId, RelOp};
+use cas_ast::{Expr, ExprId};
 
 /// The central Engine struct that wraps the core Simplifier and potentially other components.
 ///
@@ -46,35 +48,9 @@ pub struct Engine {
     profile_cache: crate::profile_cache::ProfileCache,
 }
 
-/// Session abstraction for `Engine::eval`, allowing callers to provide any
-/// state container that exposes the required eval components.
-pub trait EvalStore {
-    fn push_raw_expr(&mut self, expr: ExprId, raw_input: String) -> u64;
-    fn push_raw_equation(&mut self, lhs: ExprId, rhs: ExprId, raw_input: String) -> u64;
-    fn touch_cached(&mut self, entry_id: u64);
-    fn update_diagnostics(&mut self, id: u64, diagnostics: crate::diagnostics::Diagnostics);
-    fn update_simplified(
-        &mut self,
-        id: u64,
-        domain: crate::domain::DomainMode,
-        expr: ExprId,
-        requires: Vec<crate::diagnostics::RequiredItem>,
-        steps: Option<std::sync::Arc<Vec<crate::step::Step>>>,
-    );
-}
-
-pub trait EvalSession {
-    type Store: EvalStore;
-
-    fn store_mut(&mut self) -> &mut Self::Store;
-    fn options(&self) -> &crate::options::EvalOptions;
-
-    fn resolve_all_with_diagnostics(
-        &self,
-        ctx: &mut cas_ast::Context,
-        expr: ExprId,
-    ) -> anyhow::Result<(ExprId, crate::diagnostics::Diagnostics, Vec<u64>)>;
-}
+/// Session contracts are shared from `cas_session_core` so session state
+/// can evolve outside `cas_engine` while preserving the eval API surface.
+pub use cas_session_core::eval::{EvalSession, EvalStore};
 
 impl Engine {
     /// Create an Engine from a configured `Simplifier`.
@@ -236,80 +212,18 @@ pub struct EvalOutput {
 /// Note: Only events that are NOT RequiresIntroduced become DomainWarnings (⚠️).
 /// RequiresIntroduced events are displayed in steps with ℹ️ icon instead.
 pub(crate) fn collect_domain_warnings(steps: &[crate::Step]) -> Vec<DomainWarning> {
-    use std::collections::HashSet;
-
-    let mut seen: HashSet<String> = HashSet::new();
-    let mut warnings = Vec::new();
-
-    for step in steps {
-        // Collect structured assumption_events
-        for event in step.assumption_events() {
-            // Skip RequiresIntroduced - these show in steps with ℹ️ icon, not as ⚠️ warnings
-            // Skip DerivedFromRequires - these are implied by existing requires, don't show
-            if matches!(
+    cas_session_core::eval::collect_warnings_with(
+        steps,
+        |step| step.assumption_events().to_vec(),
+        |event| {
+            matches!(
                 event.kind,
                 crate::assumptions::AssumptionKind::RequiresIntroduced
                     | crate::assumptions::AssumptionKind::DerivedFromRequires
-            ) {
-                continue;
-            }
-            let msg_str = event.message.clone();
-            if !seen.contains(&msg_str) {
-                seen.insert(msg_str.clone());
-                warnings.push(DomainWarning {
-                    message: msg_str,
-                    rule_name: step.rule_name.clone(),
-                });
-            }
-        }
-    }
-
-    warnings
-}
-
-/// V2.15.36: Build a synthetic timeline step showing cache hits.
-///
-/// Creates a single aggregated step when `#N` references were resolved
-/// from cache. This provides traceability ("Used cached result from #1, #3")
-/// without repeating the full derivation steps.
-pub(crate) fn build_cache_hit_step(
-    ctx: &cas_ast::Context,
-    original_expr: cas_ast::ExprId,
-    resolved_expr: cas_ast::ExprId,
-    cache_hits: &[u64],
-) -> Option<crate::Step> {
-    if cache_hits.is_empty() {
-        return None;
-    }
-
-    // Collect and sort entry IDs for deterministic output
-    let mut ids: Vec<u64> = cache_hits.to_vec();
-    ids.sort();
-
-    // Format the description with truncation for readability
-    let shown: Vec<String> = ids.iter().take(6).map(|id| format!("#{}", id)).collect();
-    let suffix = if ids.len() > 6 {
-        format!(" (+{})", ids.len() - 6)
-    } else {
-        String::new()
-    };
-
-    let description = format!(
-        "Used cached simplified result from {}{}",
-        shown.join(", "),
-        suffix
-    );
-
-    let mut step = crate::Step::new(
-        &description,        // label
-        "Use cached result", // rule_name
-        original_expr,       // before: the original parsed expression with #N
-        resolved_expr,       // after: with #N replaced by cached simplified result
-        Vec::new(),          // child_steps
-        Some(ctx),           // context for display
-    );
-    // V2.15.36: Set to Medium so it appears in the timeline
-    step.importance = crate::step::ImportanceLevel::Medium;
-    step.category = crate::step::StepCategory::Substitute;
-    Some(step)
+            )
+        },
+        |event| event.message.clone(),
+        |step| step.rule_name.clone(),
+        |message, rule_name| DomainWarning { message, rule_name },
+    )
 }

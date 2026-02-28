@@ -55,27 +55,26 @@ fn strict_mode_no_assumptions_for_unsimplified() {
     assert!(records.is_empty());
 }
 
-/// Test 4: Assumption reporting affects JSON output
+/// Test 4: Assumption reporting string contract
 #[test]
-fn reporting_levels_serialize_correctly() {
-    // Off should serialize to "off"
+fn reporting_levels_string_contract() {
+    // Display should produce stable lowercase strings
     let off = AssumptionReporting::Off;
-    let serialized = serde_json::to_string(&off).unwrap();
-    assert_eq!(serialized, "\"off\"");
+    assert_eq!(off.to_string(), "off");
 
-    // Summary should serialize to "summary"
+    // Summary should display as "summary"
     let summary = AssumptionReporting::Summary;
-    let serialized = serde_json::to_string(&summary).unwrap();
-    assert_eq!(serialized, "\"summary\"");
+    assert_eq!(summary.to_string(), "summary");
 
-    // Trace should serialize to "trace"
+    // Trace should display as "trace"
     let trace = AssumptionReporting::Trace;
-    let serialized = serde_json::to_string(&trace).unwrap();
-    assert_eq!(serialized, "\"trace\"");
+    assert_eq!(trace.to_string(), "trace");
 
-    // Deserialize should work
-    let parsed: AssumptionReporting = serde_json::from_str("\"summary\"").unwrap();
-    assert_eq!(parsed, AssumptionReporting::Summary);
+    // parse should accept canonical strings
+    assert_eq!(
+        AssumptionReporting::parse("summary"),
+        Some(AssumptionReporting::Summary)
+    );
 }
 
 /// Test 5: Semantics set affects assumption reporting level

@@ -320,6 +320,37 @@ where
     )
 }
 
+/// Classify a log-solve step with an external prover type mapped into `ProofStatus`.
+///
+/// Useful for runtime crates where prover APIs return crate-specific proof enums.
+#[allow(clippy::too_many_arguments)]
+pub fn classify_log_solve_with_external_prover<P, FProve, FMap>(
+    ctx: &Context,
+    base: ExprId,
+    rhs: ExprId,
+    value_domain_is_real_only: bool,
+    mode: DomainModeKind,
+    base_in_env: bool,
+    rhs_in_env: bool,
+    mut prove_positive: FProve,
+    mut map_proof_status: FMap,
+) -> LogSolveDecision
+where
+    FProve: FnMut(&Context, ExprId) -> P,
+    FMap: FnMut(P) -> ProofStatus,
+{
+    classify_log_solve_with_prover(
+        ctx,
+        base,
+        rhs,
+        value_domain_is_real_only,
+        mode,
+        base_in_env,
+        rhs_in_env,
+        |core_ctx, expr| map_proof_status(prove_positive(core_ctx, expr)),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -608,5 +639,44 @@ mod tests {
 
         assert_eq!(calls, 0);
         assert_eq!(out, LogSolveDecision::Ok);
+    }
+
+    #[test]
+    fn classify_log_solve_with_external_prover_maps_external_type() {
+        #[derive(Clone, Copy)]
+        enum ExternalProof {
+            Yes,
+            Maybe,
+        }
+
+        let mut ctx = cas_ast::Context::new();
+        let base = ctx.var("b");
+        let rhs = ctx.var("r");
+
+        let out = classify_log_solve_with_external_prover(
+            &ctx,
+            base,
+            rhs,
+            true,
+            DomainModeKind::Assume,
+            false,
+            false,
+            |_core_ctx, expr| {
+                if expr == base {
+                    ExternalProof::Yes
+                } else {
+                    ExternalProof::Maybe
+                }
+            },
+            |proof| match proof {
+                ExternalProof::Yes => ProofStatus::Proven,
+                ExternalProof::Maybe => ProofStatus::Unknown,
+            },
+        );
+
+        assert_eq!(
+            out,
+            LogSolveDecision::OkWithAssumptions(vec![LogAssumption::PositiveRhs])
+        );
     }
 }

@@ -5,33 +5,15 @@
 use crate::define_rule;
 use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
-use cas_ast::{Context, Expr, ExprId};
+use cas_ast::{Context, ExprId};
 use cas_formatter::DisplayExpr;
-use cas_math::expr_extract::extract_u64_integer;
-use cas_math::poly_gcd_mode::parse_modp_options;
-use cas_math::poly_modp_calls::{compute_gcd_modp_held_expr, compute_poly_eq_modp_indicator};
+use cas_math::poly_modp_calls::{
+    eager_eval_poly_gcd_calls_with, format_poly_eq_modp_desc_with, format_poly_gcd_modp_desc_with,
+    try_eval_poly_eq_modp_call_with_error_policy, try_eval_poly_gcd_modp_call_with_error_policy,
+};
 use cas_math::poly_modp_conv::DEFAULT_PRIME as INTERNAL_DEFAULT_PRIME;
 
 const DEFAULT_PRIME: u64 = INTERNAL_DEFAULT_PRIME;
-
-// =============================================================================
-// Eager Eval Infrastructure: Strip expand + Common Factor Extraction
-// =============================================================================
-
-/// Eager evaluation of poly_gcd_modp with factor extraction optimization.
-///
-/// This function:
-/// 1. Strips expand() wrappers from arguments
-/// 2. Extracts common multiplicative factors (gcd(a*g, b*g) = g * gcd(a,b))
-/// 3. Computes GCD on reduced polynomials (much smaller)
-/// 4. Returns common * gcd_result
-fn compute_gcd_modp_with_factor_extraction(
-    ctx: &mut Context,
-    a: ExprId,
-    b: ExprId,
-) -> Option<ExprId> {
-    compute_gcd_modp_held_expr(ctx, a, b, DEFAULT_PRIME, None, None).ok()
-}
 
 /// Eager evaluation pass for poly_gcd_modp calls.
 ///
@@ -45,100 +27,16 @@ pub(crate) fn eager_eval_poly_gcd_calls(
     expr: ExprId,
     collect_steps: bool,
 ) -> (ExprId, Vec<crate::Step>) {
-    let mut steps = Vec::new();
-    let result = eager_eval_recursive(ctx, expr, &mut steps, collect_steps);
-    (result, steps)
-}
-
-fn eager_eval_recursive(
-    ctx: &mut Context,
-    expr: ExprId,
-    steps: &mut Vec<crate::Step>,
-    collect_steps: bool,
-) -> ExprId {
-    // Check if this is poly_gcd_modp - if so, evaluate and STOP descent
-    if let Expr::Function(fn_id, args) = ctx.get(expr) {
-        let (fn_id, args) = (*fn_id, args.clone());
-        let name = ctx.sym_name(fn_id);
-        if (name == "poly_gcd_modp" || name == "pgcdp") && args.len() >= 2 {
-            if let Some(result) = compute_gcd_modp_with_factor_extraction(ctx, args[0], args[1]) {
-                // Create step for the evaluation
-                if collect_steps {
-                    steps.push(crate::Step::new(
-                        "Eager eval poly_gcd_modp (bypass simplifier)",
-                        "Polynomial GCD mod p",
-                        expr,
-                        result,
-                        Vec::new(),
-                        Some(ctx),
-                    ));
-                }
-                return result;
-            }
-        }
-
-        // For other functions, recurse into children
-        let new_args: Vec<ExprId> = args
-            .iter()
-            .map(|&arg| eager_eval_recursive(ctx, arg, steps, collect_steps))
-            .collect();
-
-        // Check if any arg changed
-        if new_args
-            .iter()
-            .zip(args.iter())
-            .any(|(new, old)| new != old)
-        {
-            return ctx.add(Expr::Function(fn_id, new_args));
-        }
-        return expr;
-    }
-
-    // Recurse into children for other expression types
-    enum Recurse {
-        Binary(ExprId, ExprId, u8), // 0=Add, 1=Sub, 2=Mul, 3=Div, 4=Pow
-        Unary(ExprId, u8),          // 0=Neg, 1=Hold
-        Leaf,
-    }
-    let recurse = match ctx.get(expr) {
-        Expr::Add(l, r) => Recurse::Binary(*l, *r, 0),
-        Expr::Sub(l, r) => Recurse::Binary(*l, *r, 1),
-        Expr::Mul(l, r) => Recurse::Binary(*l, *r, 2),
-        Expr::Div(l, r) => Recurse::Binary(*l, *r, 3),
-        Expr::Pow(b, e) => Recurse::Binary(*b, *e, 4),
-        Expr::Neg(e) => Recurse::Unary(*e, 0),
-        Expr::Hold(inner) => Recurse::Unary(*inner, 1),
-        _ => Recurse::Leaf,
-    };
-    match recurse {
-        Recurse::Binary(l, r, op) => {
-            let nl = eager_eval_recursive(ctx, l, steps, collect_steps);
-            let nr = eager_eval_recursive(ctx, r, steps, collect_steps);
-            if nl != l || nr != r {
-                match op {
-                    0 => ctx.add(Expr::Add(nl, nr)),
-                    1 => ctx.add(Expr::Sub(nl, nr)),
-                    2 => ctx.add(Expr::Mul(nl, nr)),
-                    3 => ctx.add(Expr::Div(nl, nr)),
-                    _ => ctx.add(Expr::Pow(nl, nr)),
-                }
-            } else {
-                expr
-            }
-        }
-        Recurse::Unary(inner, op) => {
-            let ni = eager_eval_recursive(ctx, inner, steps, collect_steps);
-            if ni != inner {
-                match op {
-                    0 => ctx.add(Expr::Neg(ni)),
-                    _ => ctx.add(Expr::Hold(ni)),
-                }
-            } else {
-                expr
-            }
-        }
-        Recurse::Leaf => expr,
-    }
+    eager_eval_poly_gcd_calls_with(ctx, expr, collect_steps, |core_ctx, before, after| {
+        crate::Step::new(
+            "Eager eval poly_gcd_modp (bypass simplifier)",
+            "Polynomial GCD mod p",
+            before,
+            after,
+            Vec::new(),
+            Some(core_ctx),
+        )
+    })
 }
 
 // Rule for poly_gcd_modp(a, b [, p]) function.
@@ -150,72 +48,13 @@ define_rule!(
     PhaseMask::CORE | PhaseMask::TRANSFORM,
     priority: 200, // High priority to evaluate early
     |ctx, expr| {
-        let (fn_id, args) = if let Expr::Function(fn_id, args) = ctx.get(expr) {
-            (*fn_id, args.clone())
-        } else {
-            return None;
-        };
-        {
-            let name = ctx.sym_name(fn_id).to_string();
-            let is_gcd_modp = name == "poly_gcd_modp" || name == "pgcdp";
-
-            if is_gcd_modp && args.len() >= 2 && args.len() <= 4 {
-                // Use eager eval with factor extraction
-                if let Some(result) = compute_gcd_modp_with_factor_extraction(ctx, args[0], args[1])
-                {
-                    return Some(Rewrite::simple(
-                        result,
-                        format!(
-                            "poly_gcd_modp({}, {}) [eager eval + factor extraction]",
-                            DisplayExpr {
-                                context: ctx,
-                                id: args[0]
-                            },
-                            DisplayExpr {
-                                context: ctx,
-                                id: args[1]
-                            }
-                        ),
-                    ));
-                }
-
-                // Fallback: try with explicit args (for extra options)
-                // Parse remaining args: preset and/or main_var.
-                let (preset, main_var) = parse_modp_options(ctx, &args[2..]);
-                match compute_gcd_modp_held_expr(
-                    ctx,
-                    args[0],
-                    args[1],
-                    DEFAULT_PRIME,
-                    main_var,
-                    preset,
-                ) {
-                    Ok(held) => {
-                        return Some(Rewrite::simple(
-                            held,
-                            format!(
-                                "poly_gcd_modp({}, {})",
-                                DisplayExpr {
-                                    context: ctx,
-                                    id: args[0]
-                                },
-                                DisplayExpr {
-                                    context: ctx,
-                                    id: args[1]
-                                }
-                            ),
-                        ));
-                    }
-                    Err(e) => {
-                        // Return error as message (don't crash)
-                        eprintln!("poly_gcd_modp error: {}", e);
-                        return None;
-                    }
-                }
-            }
-        }
-
-        None
+        let call = try_eval_poly_gcd_modp_call_with_error_policy(ctx, expr, DEFAULT_PRIME, |e| {
+                eprintln!("poly_gcd_modp error: {}", e);
+            })?;
+        let desc = format_poly_gcd_modp_desc_with(call.a_expr, call.b_expr, call.path, |id| {
+            format!("{}", DisplayExpr { context: ctx, id })
+        });
+        Some(Rewrite::simple(call.held_expr, desc))
     }
 );
 
@@ -228,51 +67,15 @@ define_rule!(
     PhaseMask::CORE | PhaseMask::TRANSFORM,
     priority: 200,
     |ctx, expr| {
-        let (fn_id, args) = if let Expr::Function(fn_id, args) = ctx.get(expr) {
-            (*fn_id, args.clone())
-        } else {
-            return None;
-        };
-        {
-            let name = ctx.sym_name(fn_id).to_string();
-            let is_eq_modp = name == "poly_eq_modp" || name == "peqp";
-
-            if is_eq_modp && (args.len() == 2 || args.len() == 3) {
-                let a = args[0];
-                let b = args[1];
-                let p = if args.len() == 3 {
-                    extract_u64_integer(ctx, args[2]).unwrap_or(DEFAULT_PRIME)
-                } else {
-                    DEFAULT_PRIME
-                };
-
-                match compute_poly_eq_modp_indicator(ctx, a, b, p) {
-                    Ok((result, equal)) => {
-                        return Some(Rewrite::simple(
-                            result,
-                            format!(
-                                "poly_eq_modp({}, {}) = {}",
-                                DisplayExpr {
-                                    context: ctx,
-                                    id: a
-                                },
-                                DisplayExpr {
-                                    context: ctx,
-                                    id: b
-                                },
-                                if equal { "true" } else { "false" }
-                            ),
-                        ));
-                    }
-                    Err(e) => {
-                        eprintln!("poly_eq_modp error: {}", e);
-                        return None;
-                    }
-                }
-            }
-        }
-
-        None
+        let call = try_eval_poly_eq_modp_call_with_error_policy(ctx, expr, DEFAULT_PRIME, |e| {
+                eprintln!("poly_eq_modp error: {}", e);
+            })?;
+        Some(Rewrite::simple(
+            call.indicator_expr,
+            format_poly_eq_modp_desc_with(call.a_expr, call.b_expr, call.equal, |id| {
+                format!("{}", DisplayExpr { context: ctx, id })
+            }),
+        ))
     }
 );
 

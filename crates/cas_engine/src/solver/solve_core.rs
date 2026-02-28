@@ -1,36 +1,90 @@
 //! Core solve dispatch pipeline.
 //!
-//! Contains the main `solve`, `solve_with_options`, and `solve_with_display_steps`
-//! entry points, plus the rational-exponent pre-check.
+//! Contains the internal solve pipeline (`solve_inner`) and recursive
+//! context-aware entrypoint used by strategy/isolation recursion.
 
-use super::SolveDiagnostics;
 use crate::engine::Simplifier;
 use crate::error::CasError;
-use cas_ast::SolutionSet;
+use crate::solver::isolation::isolate;
+use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
+use cas_solver_core::isolation_strategy::{
+    execute_collect_terms_strategy_with_default_kernel_and_unified_step_mapper_with_state,
+    execute_isolation_strategy_with_default_routing_and_unified_step_mapper_with_state,
+    execute_rational_exponent_strategy_with_default_kernel_and_accept_all_solutions_and_unified_step_mapper_with_state,
+    execute_unwrap_strategy_with_default_route_and_residual_hint_and_unified_step_mapper_with_state,
+};
 use cas_solver_core::isolation_utils::contains_var;
+use cas_solver_core::quadratic_strategy::execute_quadratic_strategy_with_default_factorized_and_candidate_pipelines_and_unified_step_mappers_with_state;
+use cas_solver_core::rational_roots::execute_rational_roots_strategy_with_default_limits_and_default_root_sorting_and_unified_step_mapper_with_state;
 use cas_solver_core::solve_analysis::{
-    apply_equation_pair_rewrite_sequence_with_state, apply_nonzero_exclusion_guards_if_any,
-    classify_equation_var_presence, finalize_strategy_attempt_sequence_with,
-    guard_solved_result_with_exclusions, normalize_variable_residual_with_state,
-    resolve_discrete_strategy_solutions_for_context_with, run_strategy_attempt_sequence,
-    simplify_equation_sides_for_presence_with_state, EquationVarPresence,
+    analyze_equation_preflight_and_fork_context_with,
+    derive_equation_conditions_from_existing_with, ensure_solve_entry_for_equation_or_error,
+    execute_prepared_equation_strategy_pipeline_with_state, guard_solved_result_with_exclusions,
+    is_soft_strategy_error_with, is_symbolic_expr, prepare_equation_for_strategy_with_state,
+    resolve_discrete_strategy_result_against_equation_with_state,
+    resolve_var_eliminated_residual_with_exclusions, try_enter_equation_cycle_guard_with_error,
+    PreflightContext, PreparedEquationResidual,
 };
-use cas_solver_core::solve_outcome::{
-    solve_var_eliminated_outcome_pipeline_with, VarEliminatedOutcomePipelineSolved,
+use cas_solver_core::solve_budget::MAX_SOLVE_RECURSION_DEPTH;
+use cas_solver_core::solve_types::cleanup_display_solve_steps;
+use cas_solver_core::strategy_order::{
+    default_solve_strategy_order, dispatch_solve_strategy_kind_with_state, strategy_should_verify,
+    SolveStrategyKind,
 };
-use cas_solver_core::step_cleanup::{cleanup_steps_by, CleanupStep};
+use cas_solver_core::substitution::execute_exponential_substitution_strategy_result_pipeline_with_default_substitution_var_and_plan_with_state;
 
 use super::{
-    medium_step, render_expr, DisplaySolveSteps, SolveDomainEnv, SolveStep, SolverOptions,
-    MAX_SOLVE_DEPTH,
+    medium_step, DisplaySolveSteps, SolveCtx, SolveDiagnostics, SolveDomainEnv, SolveStep,
+    SolveSubStep, SolverOptions,
 };
 
-// NOTE: Pre-solve exponent normalization (Div(p,q) → Number(p/q)) and
-// common additive term cancellation (Sub(Add(A,B), B) → A) were moved
-// from solver-only code to global simplifier rules:
-//   - rules/rational_canonicalization.rs (CanonicalizeRationalDivRule, CanonicalizeNestedPowRule)
-//   - rules/cancel_common_terms.rs (CancelCommonAdditiveTermsRule)
-// These are now applied automatically by simplify_for_solve().
+type SolvePreflightState = PreflightContext<SolveCtx>;
+
+fn simplifier_context(simplifier: &mut Simplifier) -> &cas_ast::Context {
+    &simplifier.context
+}
+
+fn simplifier_context_mut(simplifier: &mut Simplifier) -> &mut cas_ast::Context {
+    &mut simplifier.context
+}
+
+fn simplifier_contains_var(simplifier: &mut Simplifier, expr: ExprId, var: &str) -> bool {
+    contains_var(&simplifier.context, expr, var)
+}
+
+fn simplifier_simplify_expr(simplifier: &mut Simplifier, expr: ExprId) -> ExprId {
+    simplifier.simplify(expr).0
+}
+
+fn simplifier_expand_expr(simplifier: &mut Simplifier, expr: ExprId) -> ExprId {
+    crate::expand::expand(&mut simplifier.context, expr)
+}
+
+fn simplifier_render_expr(simplifier: &mut Simplifier, expr: ExprId) -> String {
+    cas_formatter::render_expr(&simplifier.context, expr)
+}
+
+fn simplifier_zero_expr(simplifier: &mut Simplifier) -> ExprId {
+    simplifier.context.num(0)
+}
+
+fn isolation_error_detail(err: &CasError) -> Option<&str> {
+    match err {
+        CasError::IsolationError(_, detail) => Some(detail.as_str()),
+        _ => None,
+    }
+}
+
+fn solver_error_detail(err: &CasError) -> Option<&str> {
+    match err {
+        CasError::SolverError(detail) => Some(detail.as_str()),
+        _ => None,
+    }
+}
+
+fn is_soft_strategy_error(err: &CasError) -> bool {
+    is_soft_strategy_error_with(err, isolation_error_detail, solver_error_detail)
+}
 
 /// Solve with default options (for backward compatibility with tests).
 /// Uses RealOnly domain and Generic mode.
@@ -46,20 +100,6 @@ pub fn solve(
     solve_with_options(eq, var, simplifier, SolverOptions::default())
 }
 
-/// Solve with a shared `SolveCtx` and explicit options.
-///
-/// This should be used by recursive strategy/isolation paths so nested solves
-/// preserve semantic/domain options from the top-level invocation.
-pub(crate) fn solve_with_ctx_and_options(
-    eq: &cas_ast::Equation,
-    var: &str,
-    simplifier: &mut Simplifier,
-    opts: SolverOptions,
-    ctx: &super::SolveCtx,
-) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-    solve_inner(eq, var, simplifier, opts, ctx)
-}
-
 /// V2.9.8: Solve with type-enforced display-ready steps.
 ///
 /// This is the PREFERRED entry point for display-facing code (REPL, timeline, JSON API).
@@ -67,8 +107,8 @@ pub(crate) fn solve_with_ctx_and_options(
 /// steps, eliminating bifurcation between text/timeline outputs at compile time.
 ///
 /// The cleanup is applied automatically based on `opts.detailed_steps`:
-/// - `true` → 5 atomic sub-steps for Normal/Verbose verbosity
-/// - `false` → 3 compact steps for Succinct verbosity
+/// - `true` -> 5 atomic sub-steps for Normal/Verbose verbosity
+/// - `false` -> 3 compact steps for Succinct verbosity
 pub fn solve_with_display_steps(
     eq: &cas_ast::Equation,
     var: &str,
@@ -80,45 +120,15 @@ pub fn solve_with_display_steps(
     let ctx = super::SolveCtx::default();
     let result = solve_inner(eq, var, simplifier, opts, &ctx);
 
-    // Read accumulated conditions from the shared sink (zero TLS)
-    let required = ctx.required_conditions();
-    let assumed = ctx.assumptions();
-    let assumed_records = {
-        let mut collector = crate::assumptions::AssumptionCollector::new();
-        for event in assumed.iter().cloned() {
-            collector.note(event);
-        }
-        collector.finish()
-    };
-
-    let diagnostics = SolveDiagnostics {
-        required,
-        assumed,
-        assumed_records,
-        output_scopes: ctx.output_scopes(),
-    };
+    let diagnostics = ctx.diagnostics_with_records(crate::assumptions::collect_assumption_records);
 
     let (solution_set, raw_steps) = result?;
 
-    // Apply didactic cleanup using opts.detailed_steps
-    let cleaned = cleanup_steps_by(
-        &mut simplifier.context,
-        raw_steps,
-        opts.detailed_steps,
-        var,
-        |step: &SolveStep| CleanupStep {
-            description: step.description.clone(),
-            equation_after: step.equation_after.clone(),
-        },
-        |template: SolveStep, payload: CleanupStep| SolveStep {
-            description: payload.description,
-            equation_after: payload.equation_after,
-            importance: template.importance,
-            substeps: template.substeps,
-        },
-    );
+    // Apply didactic cleanup using opts.detailed_steps and enforce DisplaySteps output.
+    let cleaned =
+        cleanup_display_solve_steps(&mut simplifier.context, raw_steps, opts.detailed_steps, var);
 
-    Ok((solution_set, DisplaySolveSteps(cleaned), diagnostics))
+    Ok((solution_set, cleaned, diagnostics))
 }
 
 /// Solve with options but no shared context.
@@ -136,14 +146,25 @@ pub(crate) fn solve_with_options(
     solve_inner(eq, var, simplifier, opts, &ctx)
 }
 
-/// Errors that represent a dead-end for one strategy but should not abort
-/// the whole strategy pipeline. This lets later strategies attempt recovery.
-fn is_soft_strategy_error(err: &CasError) -> bool {
-    match err {
-        CasError::IsolationError(_, detail) => detail.contains("variable appears on both sides"),
-        CasError::SolverError(detail) => detail.contains("Cycle detected"),
-        _ => false,
-    }
+// NOTE: Pre-solve exponent normalization (Div(p,q) → Number(p/q)) and
+// common additive term cancellation (Sub(Add(A,B), B) → A) were moved
+// from solver-only code to global simplifier rules:
+//   - rules/rational_canonicalization.rs (CanonicalizeRationalDivRule, CanonicalizeNestedPowRule)
+//   - rules/cancel_common_terms.rs (CancelCommonAdditiveTermsRule)
+// These are now applied automatically by simplify_for_solve().
+
+/// Solve with a shared `SolveCtx` and explicit options.
+///
+/// This should be used by recursive strategy/isolation paths so nested solves
+/// preserve semantic/domain options from the top-level invocation.
+pub(crate) fn solve_with_ctx_and_options(
+    eq: &cas_ast::Equation,
+    var: &str,
+    simplifier: &mut Simplifier,
+    opts: SolverOptions,
+    ctx: &super::SolveCtx,
+) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
+    solve_inner(eq, var, simplifier, opts, ctx)
 }
 
 /// Core solver implementation.
@@ -151,7 +172,7 @@ fn is_soft_strategy_error(err: &CasError) -> bool {
 /// All public entry points delegate here. `parent_ctx` carries the shared
 /// accumulator so that conditions from recursive calls are visible to the
 /// top-level caller.
-fn solve_inner(
+pub(super) fn solve_inner(
     eq: &cas_ast::Equation,
     var: &str,
     simplifier: &mut Simplifier,
@@ -159,258 +180,542 @@ fn solve_inner(
     parent_ctx: &super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     let current_depth = parent_ctx.depth().saturating_add(1);
-
-    if current_depth > MAX_SOLVE_DEPTH {
-        return Err(CasError::SolverError(
-            "Maximum solver recursion depth exceeded. The equation may be too complex.".to_string(),
-        ));
-    }
-
-    // 1. Check if variable exists in equation
-    if matches!(
-        classify_equation_var_presence(&simplifier.context, eq, var),
-        EquationVarPresence::None
-    ) {
-        return Err(CasError::VariableNotFound(var.to_string()));
-    }
-
-    // V2.1 Issue #10: Extract denominators containing the variable BEFORE simplification
-    // These will be used to create NonZero guards in the final result
-    let domain_exclusions = cas_solver_core::solve_analysis::collect_unique_denominators_with_var(
+    ensure_solve_entry_for_equation_or_error(
         &simplifier.context,
-        eq.lhs,
-        eq.rhs,
+        eq,
         var,
-    );
+        current_depth,
+        MAX_SOLVE_RECURSION_DEPTH,
+        || {
+            CasError::SolverError(
+                "Maximum solver recursion depth exceeded. The equation may be too complex."
+                    .to_string(),
+            )
+        },
+        || CasError::VariableNotFound(var.to_string()),
+    )?;
 
-    // V2.2+: Build SolveDomainEnv with global required conditions
-    // This is the "semantic ground" for all solver decisions
-    let mut domain_env = SolveDomainEnv::new();
-    {
-        use crate::implicit_domain::{derive_requires_from_equation, infer_implicit_domain};
-
-        // 1. Infer implicit domain from both sides
-        let lhs_domain = infer_implicit_domain(&simplifier.context, eq.lhs, opts.value_domain);
-        let rhs_domain = infer_implicit_domain(&simplifier.context, eq.rhs, opts.value_domain);
-        domain_env.required.extend(&lhs_domain);
-        domain_env.required.extend(&rhs_domain);
-
-        // 2. Derive additional requires from equation equality
-        // e.g., 2^x = sqrt(y) → since 2^x > 0, we have sqrt(y) > 0, so y > 0
-        let derived = derive_requires_from_equation(
-            &simplifier.context,
-            eq.lhs,
-            eq.rhs,
-            &domain_env.required,
-            opts.value_domain,
-        );
-        for cond in derived {
-            domain_env.required.conditions_mut().insert(cond);
-        }
-    }
-
-    // Push this level's conditions into the shared accumulator
-    for cond in domain_env.required.conditions().iter().cloned() {
-        parent_ctx.note_required_condition(cond);
-    }
-
-    // Build a level-specific SolveCtx: fresh domain_env, same shared sinks.
-    let ctx = parent_ctx.fork_with_domain_env_next_depth(domain_env);
+    let preflight = build_solve_preflight_state(simplifier, eq, var, opts.value_domain, parent_ctx);
+    let domain_exclusions = preflight.domain_exclusions;
+    let ctx = preflight.ctx;
 
     // EARLY CHECK: Handle rational exponent equations BEFORE simplification
     // This prevents x^(3/2) from being simplified to |x|*sqrt(x) which causes loops
-    if let Some(result) =
-        super::strategies::try_rational_exponent_precheck(eq, var, simplifier, &opts, &ctx)
-    {
+    if let Some(result) = try_rational_exponent_precheck(eq, var, simplifier, &opts, &ctx) {
         return guard_solved_result_with_exclusions(result, &domain_exclusions);
     }
 
-    // 2. Simplify both sides BEFORE applying strategies
-    // This is crucial for equations like "1/3*x + 1/2*x = 5"
-    // which need to be simplified to "5/6*x = 5" before isolation
-    let lhs_has_var = contains_var(&simplifier.context, eq.lhs, var);
-    let rhs_has_var = contains_var(&simplifier.context, eq.rhs, var);
-    let mut simplified_eq = simplify_equation_sides_for_presence_with_state(
+    // 2) Pre-strategy equation normalization:
+    // simplify var-containing sides, cancel common additive terms, and
+    // normalize residual fallbacks before running strategy dispatch.
+    let prepared = prepare_equation_for_strategy(simplifier, eq, var);
+    let simplified_eq = prepared.equation;
+    let diff_simplified = prepared.residual;
+
+    // NOTE: Pre-solve exponent normalization (Div(p,q) → Number(p/q)),
+    // nested-pow folding, and additive cancellation are applied above.
+    debug_assert_no_top_level_sub(simplifier, &simplified_eq);
+
+    // 3) Resolve var-eliminated residuals early, otherwise guard cycle + run strategies.
+    execute_strategy_pipeline(
         simplifier,
         eq,
-        lhs_has_var,
-        rhs_has_var,
-        |simplifier, expr| simplifier.simplify_for_solve(expr),
-        |simplifier, expr| {
-            cas_solver_core::isolation_utils::try_recompose_pow_quotient(
-                &mut simplifier.context,
-                expr,
+        &simplified_eq,
+        diff_simplified,
+        var,
+        opts,
+        &ctx,
+        &domain_exclusions,
+    )
+}
+
+/// Build per-level preflight state:
+/// - domain exclusions from equation structure
+/// - required conditions applied to domain env and shared sink
+/// - child solve context with incremented depth
+fn build_solve_preflight_state(
+    simplifier: &Simplifier,
+    eq: &Equation,
+    var: &str,
+    value_domain: crate::semantics::ValueDomain,
+    parent_ctx: &SolveCtx,
+) -> SolvePreflightState {
+    analyze_equation_preflight_and_fork_context_with(
+        &simplifier.context,
+        eq,
+        var,
+        value_domain,
+        parent_ctx,
+        |expr, eval_domain| {
+            crate::implicit_domain::infer_implicit_domain(&simplifier.context, expr, eval_domain)
+                .conditions()
+                .iter()
+                .cloned()
+                .collect::<Vec<_>>()
+        },
+        |lhs, rhs, existing, eval_domain| {
+            derive_equation_conditions_from_existing_with(
+                lhs,
+                rhs,
+                existing,
+                eval_domain,
+                crate::implicit_domain::ImplicitDomain::empty,
+                |domain, cond| {
+                    domain.conditions_mut().insert(cond);
+                },
+                |lhs, rhs, domain, eval_domain| {
+                    crate::implicit_domain::derive_requires_from_equation(
+                        &simplifier.context,
+                        lhs,
+                        rhs,
+                        domain,
+                        eval_domain,
+                    )
+                },
             )
         },
-    );
+        SolveDomainEnv::new(),
+        |domain_env, cond| {
+            domain_env.required.conditions_mut().insert(cond.clone());
+        },
+    )
+}
 
-    // NOTE: Pre-solve exponent normalization (Div(p,q) → Number(p/q)) and
-    // nested-pow folding are handled by global simplifier rules:
-    //   - CanonicalizeRationalDivRule: Div(p,q) → Number(p/q)
-    //   - CanonicalizeNestedPowRule: Pow(Pow(b,k),r) → Pow(b,k*r) [domain-safe]
-    // These fire within simplify_for_solve() on both equation sides above.
+fn prepare_equation_for_strategy(
+    simplifier: &mut Simplifier,
+    equation: &Equation,
+    var: &str,
+) -> PreparedEquationResidual {
+    prepare_equation_for_strategy_with_state(
+        simplifier,
+        equation,
+        var,
+        simplifier_contains_var,
+        |state, expr| state.simplify_for_solve(expr),
+        |state, expr| {
+            cas_solver_core::isolation_utils::try_recompose_pow_quotient(&mut state.context, expr)
+        },
+        |state, lhs, rhs| {
+            crate::rules::cancel_common_terms::cancel_common_additive_terms(
+                &mut state.context,
+                lhs,
+                rhs,
+            )
+            .map(|rewrite| (rewrite.new_lhs, rewrite.new_rhs))
+        },
+        |state, lhs, rhs| {
+            crate::rules::cancel_common_terms::cancel_additive_terms_semantic(state, lhs, rhs)
+                .map(|rewrite| (rewrite.new_lhs, rewrite.new_rhs))
+        },
+        |state, lhs, rhs| state.context.add(Expr::Sub(lhs, rhs)),
+        simplifier_expand_expr,
+        |state, expr| state.expand(expr).0,
+        |state, current, candidate, var_name| {
+            cas_solver_core::solve_analysis::accept_residual_rewrite_candidate(
+                &state.context,
+                current,
+                candidate,
+                var_name,
+            )
+        },
+        simplifier_zero_expr,
+    )
+}
 
-    // CANCEL COMMON ADDITIVE TERMS: equation-level cancellation that compares
-    // terms from LHS and RHS as a *pair*. This is a relational operation
-    // between two expression trees — cannot be a local simplifier rule because
-    // CanonicalizeNegationRule converts Sub→Add(Neg) before any Sub-targeting
-    // rule fires. See rules/cancel_common_terms.rs for full rationale.
-    //
-    // PRECONDITION: both sides must already be simplified (canonical form).
-    // The simplify_for_solve() calls above guarantee this.
+fn debug_assert_no_top_level_sub(simplifier: &Simplifier, equation: &Equation) {
     debug_assert!(
         !matches!(
-            simplifier.context.get(simplified_eq.lhs),
+            simplifier.context.get(equation.lhs),
             cas_ast::Expr::Sub(_, _)
         ),
         "cancel_common_terms precondition: LHS top-level is Sub (not canonical)"
     );
     debug_assert!(
         !matches!(
-            simplifier.context.get(simplified_eq.rhs),
+            simplifier.context.get(equation.rhs),
             cas_ast::Expr::Sub(_, _)
         ),
         "cancel_common_terms precondition: RHS top-level is Sub (not canonical)"
     );
-    // SEMANTIC CANCEL FALLBACK: for remaining unmatched terms, try
-    // simplify(term_L - term_R) == 0 to catch semantically equivalent
-    // terms that don't converge to the same AST under structural comparison.
-    // Examples: sin(arccos(x)) vs sqrt(1-x²), abs(x^n) vs abs(x)^n.
-    // Runs AFTER structural cancel to avoid redundant simplifications.
-    let (lhs, rhs) = apply_equation_pair_rewrite_sequence_with_state(
-        simplifier,
-        simplified_eq.lhs,
-        simplified_eq.rhs,
-        |simplifier, lhs, rhs| {
-            crate::rules::cancel_common_terms::cancel_common_additive_terms(
-                &mut simplifier.context,
-                lhs,
-                rhs,
-            )
-            .map(|rewrite| (rewrite.new_lhs, rewrite.new_rhs))
-        },
-        |simplifier, lhs, rhs| {
-            crate::rules::cancel_common_terms::cancel_additive_terms_semantic(simplifier, lhs, rhs)
-                .map(|rewrite| (rewrite.new_lhs, rewrite.new_rhs))
-        },
-        |simplifier, expr| simplifier.simplify_for_solve(expr),
-    );
-    simplified_eq.lhs = lhs;
-    simplified_eq.rhs = rhs;
+}
 
-    // CRITICAL: After simplification, check for identities and contradictions
-    // Do this by moving everything to one side: LHS - RHS
-    let difference = simplifier
-        .context
-        .add(cas_ast::Expr::Sub(simplified_eq.lhs, simplified_eq.rhs));
-    // SolveSafety: use prepass for identity/contradiction check
-    let mut diff_simplified = simplifier.simplify_for_solve(difference);
-
-    // PRE-SOLVE CANCELLATION: if diff still contains the variable, try
-    // expand + simplify and a trig expand fallback (Ticket 6c). Accept
-    // rewrites only when they eliminate the variable or significantly
-    // reduce expression size.
-    let normalized_diff = normalize_variable_residual_with_state(
+#[allow(clippy::too_many_arguments)]
+fn execute_strategy_pipeline(
+    simplifier: &mut Simplifier,
+    original_eq: &Equation,
+    simplified_eq: &Equation,
+    diff_simplified: ExprId,
+    var: &str,
+    opts: SolverOptions,
+    ctx: &SolveCtx,
+    domain_exclusions: &[ExprId],
+) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
+    let strategies = default_solve_strategy_order();
+    execute_prepared_equation_strategy_pipeline_with_state(
         simplifier,
+        simplified_eq,
         diff_simplified,
         var,
-        |simplifier, expr, var_name| contains_var(&simplifier.context, expr, var_name),
-        |simplifier, expr| crate::expand::expand(&mut simplifier.context, expr),
-        |simplifier, expr| simplifier.simplify_for_solve(expr),
-        |simplifier, expr| simplifier.expand(expr).0,
-        |simplifier, current, candidate, var_name| {
-            cas_solver_core::solve_analysis::accept_residual_rewrite_candidate(
-                &simplifier.context,
-                current,
-                candidate,
+        strategies,
+        simplifier_contains_var,
+        |simplifier, residual, var_name| {
+            let include_item = simplifier.collect_steps();
+            Ok(resolve_var_eliminated_residual_with_exclusions(
+                &mut simplifier.context,
+                residual,
                 var_name,
+                include_item,
+                domain_exclusions,
+                cas_formatter::render_expr,
+                super::medium_step,
+            ))
+        },
+        |simplifier, equation, var_name| {
+            try_enter_equation_cycle_guard_with_error(
+                &simplifier.context,
+                equation,
+                var_name,
+                || {
+                    CasError::SolverError(
+                        "Cycle detected: equation revisited after rewriting (equivalent form loop)"
+                            .to_string(),
+                    )
+                },
             )
         },
-    );
-    if normalized_diff != diff_simplified {
-        diff_simplified = normalized_diff;
-        let zero = simplifier.context.num(0);
-        simplified_eq.lhs = diff_simplified;
-        simplified_eq.rhs = zero;
-    }
-
-    // Check if the difference has NO variable
-    if !contains_var(&simplifier.context, diff_simplified, var) {
-        let include_item = simplifier.collect_steps();
-        let reduced_outcome = solve_var_eliminated_outcome_pipeline_with(
-            &mut simplifier.context,
-            diff_simplified,
-            var,
-            include_item,
-            render_expr,
-            medium_step,
-        );
-        match reduced_outcome {
-            VarEliminatedOutcomePipelineSolved::IdentityAllReals => {
-                return Ok((SolutionSet::AllReals, vec![]));
-            }
-            VarEliminatedOutcomePipelineSolved::ContradictionEmpty => {
-                return Ok((SolutionSet::Empty, vec![]));
-            }
-            VarEliminatedOutcomePipelineSolved::ConstraintAllReals { steps } => {
-                // Variable was eliminated during simplification (e.g., x/x = 1)
-                // The equation is now a constraint on OTHER variables.
-                // Example: (x*y)/x = 0 simplifies to y = 0
-                // Solution: x can be any value (AllReals) when the constraint holds,
-                // EXCEPT values that make denominators zero.
-                // V2.1 Issue #10: Apply domain guards if denominators contained the variable
-                let guarded = apply_nonzero_exclusion_guards_if_any(
-                    SolutionSet::AllReals,
-                    &domain_exclusions,
-                );
-                return Ok((guarded, steps));
-            }
-        }
-    }
-
-    // CYCLE DETECTION: compute fingerprint from the simplified equation and check for repetition.
-    // This catches loops where strategies rewrite equations into equivalent forms.
-    // We fingerprint (var, simplified_lhs, simplified_rhs) — not the diff — to avoid
-    // false positives when CollectTermsStrategy moves terms between sides.
-    let fp = cas_solver_core::fingerprint::equation_fingerprint(
-        &simplifier.context,
-        simplified_eq.lhs,
-        simplified_eq.rhs,
-        var,
-    );
-    let _cycle_guard = cas_solver_core::cycle_guard::try_enter(fp).ok_or_else(|| {
-        CasError::SolverError(
-            "Cycle detected: equation revisited after rewriting (equivalent form loop)".to_string(),
-        )
-    })?;
-
-    // 3. Define strategies
-    let strategies = super::strategies::default_strategies();
-
-    // 4. Try strategies on the simplified equation
-    let strategy_attempts = strategies.into_iter().map(|strategy| {
-        let _strategy_name = strategy.name();
-        (
-            strategy.apply(&simplified_eq, var, simplifier, &opts, &ctx),
-            strategy.should_verify(),
-        )
-    });
-
-    finalize_strategy_attempt_sequence_with(
-        run_strategy_attempt_sequence(strategy_attempts, is_soft_strategy_error),
-        |solutions, steps| {
-            let classify_ctx = simplifier.context.clone();
-            let valid_sols = resolve_discrete_strategy_solutions_for_context_with(
-                &classify_ctx,
+        |simplifier, strategy_kind| {
+            let should_verify = strategy_should_verify(*strategy_kind);
+            let attempt =
+                apply_strategy(*strategy_kind, simplified_eq, var, simplifier, &opts, ctx);
+            (attempt, should_verify)
+        },
+        is_soft_strategy_error,
+        |simplifier, solutions, steps| {
+            resolve_discrete_strategy_result_against_equation_with_state(
+                simplifier,
+                original_eq,
+                var,
                 solutions,
-                |solution| {
+                steps,
+                |state, solution| is_symbolic_expr(&state.context, solution),
+                |state, equation, var_name, solution| {
                     // Verify against ORIGINAL equation, not simplified form, so
                     // domain-invalid roots (e.g. division by zero) are rejected.
-                    super::check::verify_solution_by_equivalence(simplifier, eq, var, solution)
+                    cas_solver_core::verify_substitution::verify_solution_with_state(
+                        state,
+                        equation,
+                        var_name,
+                        solution,
+                        |state, equation, var_name, candidate| {
+                            cas_solver_core::verify_substitution::substitute_equation_sides(
+                                &mut state.context,
+                                equation,
+                                var_name,
+                                candidate,
+                            )
+                        },
+                        |state, expr| state.simplify(expr).0,
+                        |state, lhs, rhs| state.are_equivalent(lhs, rhs),
+                    )
                 },
-            );
-            (SolutionSet::Discrete(valid_sols), steps)
+            )
         },
         CasError::SolverError("No strategy could solve this equation.".to_string()),
     )
+}
+
+/// Apply one strategy selected by kind.
+fn apply_strategy(
+    kind: SolveStrategyKind,
+    equation: &Equation,
+    var: &str,
+    simplifier: &mut Simplifier,
+    opts: &SolverOptions,
+    ctx: &SolveCtx,
+) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
+    dispatch_solve_strategy_kind_with_state(
+        simplifier,
+        kind,
+        |simplifier| apply_rational_exponent_strategy(equation, var, simplifier, opts, ctx),
+        |simplifier| apply_substitution_strategy(equation, var, simplifier, opts, ctx),
+        |simplifier| apply_unwrap_strategy(equation, var, simplifier, opts, ctx),
+        |simplifier| apply_quadratic_strategy(equation, var, simplifier, opts, ctx),
+        |simplifier| apply_rational_roots_strategy(equation, var, simplifier),
+        |simplifier| apply_collect_terms_strategy(equation, var, simplifier, opts, ctx),
+        |simplifier| apply_isolation_strategy(equation, var, simplifier, opts, ctx),
+    )
+}
+
+fn apply_isolation_strategy(
+    equation: &Equation,
+    var: &str,
+    simplifier: &mut Simplifier,
+    opts: &SolverOptions,
+    ctx: &SolveCtx,
+) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
+    let include_item = simplifier.collect_steps();
+    execute_isolation_strategy_with_default_routing_and_unified_step_mapper_with_state(
+        simplifier,
+        equation,
+        var,
+        include_item,
+        simplifier_context,
+        |simplifier, next_eq, solve_var| {
+            isolate(
+                next_eq.lhs,
+                next_eq.rhs,
+                next_eq.op.clone(),
+                solve_var,
+                simplifier,
+                *opts,
+                ctx,
+            )
+        },
+        medium_step,
+        |missing_var| CasError::VariableNotFound(missing_var.to_string()),
+    )
+}
+
+fn apply_collect_terms_strategy(
+    equation: &Equation,
+    var: &str,
+    simplifier: &mut Simplifier,
+    opts: &SolverOptions,
+    ctx: &SolveCtx,
+) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
+    let include_item = simplifier.collect_steps();
+    execute_collect_terms_strategy_with_default_kernel_and_unified_step_mapper_with_state(
+        simplifier,
+        equation,
+        var,
+        include_item,
+        simplifier_context_mut,
+        simplifier_simplify_expr,
+        simplifier_render_expr,
+        |simplifier, next_eq, solve_var| {
+            solve_with_ctx_and_options(next_eq, solve_var, simplifier, *opts, ctx)
+        },
+        medium_step,
+    )
+}
+
+fn apply_unwrap_strategy(
+    equation: &Equation,
+    var: &str,
+    simplifier: &mut Simplifier,
+    opts: &SolverOptions,
+    ctx: &SolveCtx,
+) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
+    let mode = opts.core_domain_mode();
+    let wildcard_scope = opts.wildcard_scope();
+
+    let include_item = simplifier.collect_steps();
+    execute_unwrap_strategy_with_default_route_and_residual_hint_and_unified_step_mapper_with_state(
+        simplifier,
+        equation,
+        var,
+        include_item,
+        simplifier_context_mut,
+        mode,
+        wildcard_scope,
+        |core_ctx, base, other_side| {
+            crate::solver::classify_log_solve(core_ctx, base, other_side, opts, &ctx.domain_env)
+        },
+        cas_formatter::render_expr,
+        |simplifier, record| {
+            ctx.note_assumption(crate::assumptions::assumption_event_from_log_assumption(
+                &simplifier.context,
+                record.assumption,
+                record.base,
+                record.other_side,
+            ));
+        },
+        |simplifier, next_eq, solve_var| {
+            solve_with_ctx_and_options(next_eq, solve_var, simplifier, *opts, ctx)
+        },
+        medium_step,
+    )
+}
+
+fn apply_rational_exponent_strategy(
+    equation: &Equation,
+    var: &str,
+    simplifier: &mut Simplifier,
+    opts: &SolverOptions,
+    ctx: &SolveCtx,
+) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
+    let include_item = simplifier.collect_steps();
+    execute_rational_exponent_strategy_with_default_kernel_and_accept_all_solutions_and_unified_step_mapper_with_state(
+        simplifier,
+        equation,
+        var,
+        include_item,
+        simplifier_context_mut,
+        simplifier_simplify_expr,
+        |simplifier, equation, solve_var| {
+            solve_with_ctx_and_options(equation, solve_var, simplifier, *opts, ctx)
+        },
+        medium_step,
+    )
+}
+
+/// Run the early rational-exponent precheck (`x^(p/q) = rhs`) before generic
+/// simplification to avoid fractional-power rewrite loops.
+fn try_rational_exponent_precheck(
+    equation: &Equation,
+    var: &str,
+    simplifier: &mut Simplifier,
+    opts: &SolverOptions,
+    ctx: &SolveCtx,
+) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
+    if equation.op != RelOp::Eq {
+        return None;
+    }
+
+    apply_rational_exponent_strategy(equation, var, simplifier, opts, ctx)
+}
+
+fn apply_substitution_strategy(
+    equation: &Equation,
+    var: &str,
+    simplifier: &mut Simplifier,
+    opts: &SolverOptions,
+    ctx: &SolveCtx,
+) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
+    let include_didactic_items = simplifier.collect_steps();
+    execute_exponential_substitution_strategy_result_pipeline_with_default_substitution_var_and_plan_with_state(
+        simplifier,
+        equation,
+        var,
+        include_didactic_items,
+        simplifier_context_mut,
+        simplifier_render_expr,
+        |simplifier, next_eq, solve_var| {
+            solve_with_ctx_and_options(next_eq, solve_var, simplifier, *opts, ctx)
+        },
+        medium_step,
+    )
+}
+
+fn apply_quadratic_strategy(
+    equation: &Equation,
+    var: &str,
+    simplifier: &mut Simplifier,
+    opts: &SolverOptions,
+    ctx: &SolveCtx,
+) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
+    let include_items = simplifier.collect_steps();
+    let is_real_only = matches!(opts.value_domain, crate::semantics::ValueDomain::RealOnly);
+    execute_quadratic_strategy_with_default_factorized_and_candidate_pipelines_and_unified_step_mappers_with_state(
+        simplifier,
+        equation,
+        var,
+        include_items,
+        is_real_only,
+        simplifier_context,
+        simplifier_context_mut,
+        |simplifier, collecting| simplifier.set_collect_steps(collecting),
+        simplifier_simplify_expr,
+        simplifier_expand_expr,
+        cas_formatter::render_expr,
+        |simplifier, next_eq| solve_with_ctx_and_options(next_eq, var, simplifier, *opts, ctx),
+        |description, next_eq, substeps: Option<Vec<SolveSubStep>>| {
+            let step = medium_step(description, next_eq);
+            if let Some(substeps) = substeps {
+                step.with_substeps(substeps)
+            } else {
+                step
+            }
+        },
+        |description, next_eq| SolveSubStep {
+            description,
+            equation_after: next_eq,
+            importance: crate::step::ImportanceLevel::Low,
+        },
+        |_| {
+            CasError::SolverError(
+                "Inequalities with symbolic coefficients not yet supported".to_string(),
+            )
+        },
+        |_| {
+            ctx.emit_scope(cas_formatter::display_transforms::ScopeTag::Rule(
+                "QuadraticFormula",
+            ));
+        },
+    )
+}
+
+fn apply_rational_roots_strategy(
+    equation: &Equation,
+    var: &str,
+    simplifier: &mut Simplifier,
+) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
+    let include_item = simplifier.collect_steps();
+    let solved = execute_rational_roots_strategy_with_default_limits_and_default_root_sorting_and_unified_step_mapper_with_state(
+        simplifier,
+        equation,
+        var,
+        include_item,
+        simplifier_context_mut,
+        simplifier_simplify_expr,
+        simplifier_expand_expr,
+        medium_step,
+    )?;
+    Some(Ok(solved))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::build_solve_preflight_state;
+    use crate::engine::Simplifier;
+    use crate::solver::SolveCtx;
+    use cas_ast::{Equation, RelOp};
+    use cas_parser::parse;
+
+    #[test]
+    fn build_solve_preflight_state_forks_ctx_with_next_depth() {
+        let mut simplifier = Simplifier::new();
+        let eq = Equation {
+            lhs: parse("x", &mut simplifier.context).unwrap(),
+            rhs: parse("0", &mut simplifier.context).unwrap(),
+            op: RelOp::Eq,
+        };
+
+        let parent = SolveCtx::default();
+        let out = build_solve_preflight_state(
+            &simplifier,
+            &eq,
+            "x",
+            crate::semantics::ValueDomain::RealOnly,
+            &parent,
+        );
+        assert_eq!(out.ctx.depth(), 1);
+    }
+
+    #[test]
+    fn build_solve_preflight_state_notes_required_conditions_to_parent_sink() {
+        let mut simplifier = Simplifier::new();
+        let eq = Equation {
+            lhs: parse("sqrt(x)", &mut simplifier.context).unwrap(),
+            rhs: parse("0", &mut simplifier.context).unwrap(),
+            op: RelOp::Eq,
+        };
+
+        let parent = SolveCtx::default();
+        let _out = build_solve_preflight_state(
+            &simplifier,
+            &eq,
+            "x",
+            crate::semantics::ValueDomain::RealOnly,
+            &parent,
+        );
+
+        // sqrt(x) imposes x >= 0 in real domain; ensure at least one
+        // required condition is propagated into the shared sink.
+        let snapshot = parent.snapshot();
+        assert!(
+            !snapshot.required.is_empty(),
+            "expected required conditions from sqrt(x) preflight",
+        );
+    }
 }

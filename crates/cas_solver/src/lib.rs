@@ -2,6 +2,7 @@
 //!
 //! During migration this crate re-exports the solver API from `cas_engine`.
 
+pub mod check;
 pub mod json;
 pub mod substitute;
 

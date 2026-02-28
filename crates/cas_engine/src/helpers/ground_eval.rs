@@ -12,40 +12,10 @@
 //! non-zero, the fallback returns `None` immediately.
 
 use cas_ast::{Context, Expr, ExprId};
+#[cfg(test)]
+use cas_math::ground_eval_guard::GroundEvalGuard;
 
 use crate::domain::Proof;
-
-// Thread-local re-entrancy guard.
-//
-// Incremented on entry to `try_ground_nonzero`, decremented on exit.
-// If > 0 when entering, the fallback is skipped.
-thread_local! {
-    static IN_GROUND_EVAL: std::cell::Cell<u8> = const { std::cell::Cell::new(0) };
-}
-
-/// RAII guard that decrements the counter on drop, even on panic.
-pub(crate) struct GroundEvalGuard;
-
-impl GroundEvalGuard {
-    pub(crate) fn enter() -> Option<Self> {
-        IN_GROUND_EVAL.with(|c| {
-            let current = c.get();
-            if current > 0 {
-                return None; // Already inside a ground eval — prevent re-entrancy
-            }
-            c.set(current + 1);
-            Some(GroundEvalGuard)
-        })
-    }
-}
-
-impl Drop for GroundEvalGuard {
-    fn drop(&mut self) {
-        IN_GROUND_EVAL.with(|c| {
-            c.set(c.get().saturating_sub(1));
-        });
-    }
-}
 
 /// Attempt to prove non-zero by simplifying a ground expression.
 ///
@@ -57,54 +27,50 @@ impl Drop for GroundEvalGuard {
 /// - Caller MUST ensure `!contains_variable(ctx, expr)`.
 /// - Re-entrancy guard prevents `prove_nonzero → simplify → prove_nonzero` cycles.
 pub(crate) fn try_ground_nonzero(ctx: &Context, expr: ExprId) -> Option<Proof> {
-    // Re-entrancy guard: if already inside a ground eval, bail
-    let _guard = GroundEvalGuard::enter()?;
+    cas_math::ground_nonzero::try_ground_nonzero_with(
+        ctx,
+        expr,
+        |source_ctx, source_expr| {
+            let mut simplifier = crate::engine::Simplifier::with_context(source_ctx.clone());
+            simplifier.set_collect_steps(false);
 
-    // Clone context into a temporary simplifier with minimal options
-    let mut simplifier = crate::engine::Simplifier::with_context(ctx.clone());
-    simplifier.set_collect_steps(false);
-
-    // Use Generic mode (allows cancellations without domain assumptions on constants)
-    // with tight budgets to keep this cheap
-    let opts = crate::phase::SimplifyOptions {
-        collect_steps: false,
-        expand_mode: false,
-        shared: crate::phase::SharedSemanticConfig {
-            semantics: crate::semantics::EvalConfig {
-                domain_mode: crate::domain::DomainMode::Generic,
+            let opts = crate::phase::SimplifyOptions {
+                collect_steps: false,
+                expand_mode: false,
+                shared: crate::phase::SharedSemanticConfig {
+                    semantics: crate::semantics::EvalConfig {
+                        domain_mode: crate::domain::DomainMode::Generic,
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                },
+                budgets: crate::phase::PhaseBudgets {
+                    core_iters: 4,
+                    transform_iters: 2,
+                    rationalize_iters: 0,
+                    post_iters: 2,
+                    max_total_rewrites: 50,
+                },
                 ..Default::default()
-            },
-            ..Default::default()
-        },
-        budgets: crate::phase::PhaseBudgets {
-            core_iters: 4,
-            transform_iters: 2,
-            rationalize_iters: 0,
-            post_iters: 2,
-            max_total_rewrites: 50,
-        },
-        ..Default::default()
-    };
+            };
 
-    let (result, _, _) = simplifier.simplify_with_stats(expr, opts);
-
-    match simplifier.context.get(result) {
-        Expr::Number(n) => {
-            if num_traits::Zero::is_zero(n) {
-                Some(Proof::Disproven) // expression = 0
-            } else {
-                Some(Proof::Proven) // expression ≠ 0
+            let (result, _, _) = simplifier.simplify_with_stats(source_expr, opts);
+            Some((simplifier.context, result))
+        },
+        |evaluated_ctx, evaluated_expr| match evaluated_ctx.get(evaluated_expr) {
+            Expr::Number(n) => {
+                if num_traits::Zero::is_zero(n) {
+                    Some(Proof::Disproven)
+                } else {
+                    Some(Proof::Proven)
+                }
             }
-        }
-        _ => {
-            // Didn't reduce to a number — try structural analysis on the
-            // simplified form.  E.g. sqrt(2) → Pow(2, 1/2) which the
-            // Pow arm in prove_nonzero_depth can handle (positive base).
-            // The re-entrancy guard is still held, so any ground eval
-            // attempt inside this call will short-circuit to None.
+            _ => None,
+        },
+        |evaluated_ctx, evaluated_expr| {
             let proof = super::predicates::prove_nonzero_depth(
-                &simplifier.context,
-                result,
+                evaluated_ctx,
+                evaluated_expr,
                 8, // shallow depth budget
             );
             if proof == Proof::Proven || proof == Proof::Disproven {
@@ -112,8 +78,8 @@ pub(crate) fn try_ground_nonzero(ctx: &Context, expr: ExprId) -> Option<Proof> {
             } else {
                 None
             }
-        }
-    }
+        },
+    )
 }
 
 #[cfg(test)]

@@ -269,6 +269,77 @@ where
     }
 }
 
+/// Execute full function isolation with default kernels and a single
+/// step-mapper callback shared across abs/log/unary branches.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_function_isolation_with_default_kernels_and_unified_step_mapper_for_var_with_state<
+    T,
+    S,
+    E,
+    FContextRef,
+    FContextMut,
+    FRenderExpr,
+    FSolveIsolate,
+    FSimplifyRhs,
+    FMapStep,
+    FVariableMissingError,
+    FUnsupportedArityError,
+    FUnknownFunctionError,
+>(
+    state: &mut T,
+    fn_id: SymbolId,
+    args: &[ExprId],
+    rhs: ExprId,
+    op: RelOp,
+    var: &str,
+    include_items: bool,
+    existing_steps: Vec<S>,
+    context_ref: FContextRef,
+    context_mut: FContextMut,
+    render_expr: FRenderExpr,
+    solve_isolate: FSolveIsolate,
+    simplify_rhs_with_steps: FSimplifyRhs,
+    map_step: FMapStep,
+    variable_missing_error: FVariableMissingError,
+    unsupported_arity_error: FUnsupportedArityError,
+    unknown_function_error: FUnknownFunctionError,
+) -> Result<(SolutionSet, Vec<S>), E>
+where
+    S: Clone,
+    FContextRef: Fn(&mut T) -> &Context,
+    FContextMut: FnMut(&mut T) -> &mut Context,
+    FRenderExpr: Fn(&Context, ExprId) -> String,
+    FSolveIsolate: FnMut(&mut T, ExprId, ExprId, RelOp) -> Result<(SolutionSet, Vec<S>), E>,
+    FSimplifyRhs: FnMut(&mut T, ExprId) -> (ExprId, Vec<(String, ExprId)>),
+    FMapStep: FnMut(String, cas_ast::Equation) -> S,
+    FVariableMissingError: FnMut(&mut T, &str) -> E,
+    FUnsupportedArityError: FnMut(&mut T, SymbolId, usize, &str) -> E,
+    FUnknownFunctionError: FnMut(&mut T, &str) -> E,
+{
+    let map_step = std::cell::RefCell::new(map_step);
+    execute_function_isolation_with_default_kernels_for_var_with_state(
+        state,
+        fn_id,
+        args,
+        rhs,
+        op,
+        var,
+        include_items,
+        existing_steps,
+        context_ref,
+        context_mut,
+        render_expr,
+        solve_isolate,
+        simplify_rhs_with_steps,
+        |item| (map_step.borrow_mut())(item.description().to_string(), item.equation),
+        |item| (map_step.borrow_mut())(item.description().to_string(), item.equation),
+        |item| (map_step.borrow_mut())(item.description().to_string(), item.equation),
+        variable_missing_error,
+        unsupported_arity_error,
+        unknown_function_error,
+    )
+}
+
 /// Execute absolute-value function isolation (`|arg| op rhs`).
 #[allow(clippy::too_many_arguments)]
 pub fn execute_abs_function_isolation_with_state<

@@ -31,103 +31,11 @@ impl<'a> LocalSimplificationTransformer<'a> {
 
     /// Reconstruct the global expression by substituting `replacement` at the given path
     pub(super) fn reconstruct_at_path(&mut self, replacement: ExprId) -> ExprId {
-        use crate::step::PathStep;
-
-        fn reconstruct_recursive(
-            context: &mut Context,
-            root: ExprId,
-            path: &[PathStep],
-            replacement: ExprId,
-        ) -> ExprId {
-            if path.is_empty() {
-                return replacement;
-            }
-
-            let current_step = &path[0];
-            let remaining_path = &path[1..];
-            let expr = context.get(root).clone();
-
-            match (expr, current_step) {
-                (Expr::Add(l, r), PathStep::Left) => {
-                    let new_l = reconstruct_recursive(context, l, remaining_path, replacement);
-                    context.add_raw(Expr::Add(new_l, r)) // Use add_raw to preserve structure
-                }
-                (Expr::Add(l, r), PathStep::Right) => {
-                    // Follow AST literally - don't do magic Neg unwrapping.
-                    // If we need to modify inside a Neg, the path should include PathStep::Inner.
-                    let new_r = reconstruct_recursive(context, r, remaining_path, replacement);
-                    context.add_raw(Expr::Add(l, new_r)) // Use add_raw to preserve structure
-                }
-                (Expr::Sub(l, r), PathStep::Left) => {
-                    let new_l = reconstruct_recursive(context, l, remaining_path, replacement);
-                    context.add_raw(Expr::Sub(new_l, r)) // Use add_raw to preserve structure
-                }
-                (Expr::Sub(l, r), PathStep::Right) => {
-                    let new_r = reconstruct_recursive(context, r, remaining_path, replacement);
-                    context.add_raw(Expr::Sub(l, new_r)) // Use add_raw to preserve structure
-                }
-                (Expr::Mul(l, r), PathStep::Left) => {
-                    let new_l = reconstruct_recursive(context, l, remaining_path, replacement);
-                    context.add_raw(Expr::Mul(new_l, r)) // Use add_raw to preserve structure
-                }
-                (Expr::Mul(l, r), PathStep::Right) => {
-                    let new_r = reconstruct_recursive(context, r, remaining_path, replacement);
-                    context.add_raw(Expr::Mul(l, new_r)) // Use add_raw to preserve structure
-                }
-                (Expr::Div(l, r), PathStep::Left) => {
-                    let new_l = reconstruct_recursive(context, l, remaining_path, replacement);
-                    context.add_raw(Expr::Div(new_l, r)) // Use add_raw to preserve structure
-                }
-                (Expr::Div(l, r), PathStep::Right) => {
-                    let new_r = reconstruct_recursive(context, r, remaining_path, replacement);
-                    context.add_raw(Expr::Div(l, new_r)) // Use add_raw to preserve structure
-                }
-                (Expr::Pow(b, e), PathStep::Base) => {
-                    let new_b = reconstruct_recursive(context, b, remaining_path, replacement);
-                    context.add_raw(Expr::Pow(new_b, e)) // Use add_raw to preserve structure
-                }
-                (Expr::Pow(b, e), PathStep::Exponent) => {
-                    let new_e = reconstruct_recursive(context, e, remaining_path, replacement);
-                    context.add_raw(Expr::Pow(b, new_e)) // Use add_raw to preserve structure
-                }
-                (Expr::Neg(e), PathStep::Inner) => {
-                    let new_e = reconstruct_recursive(context, e, remaining_path, replacement);
-                    context.add_raw(Expr::Neg(new_e)) // Use add_raw to preserve structure
-                }
-                (Expr::Function(name, args), PathStep::Arg(idx)) => {
-                    let mut new_args = args;
-                    if *idx < new_args.len() {
-                        new_args[*idx] = reconstruct_recursive(
-                            context,
-                            new_args[*idx],
-                            remaining_path,
-                            replacement,
-                        );
-                        context.add_raw(Expr::Function(name, new_args)) // Use add_raw to preserve structure
-                    } else {
-                        root
-                    }
-                }
-                (Expr::Hold(inner), PathStep::Inner) => {
-                    let new_inner =
-                        reconstruct_recursive(context, inner, remaining_path, replacement);
-                    context.add_raw(Expr::Hold(new_inner))
-                }
-                // Leaves — no children, path cannot descend further
-                (Expr::Number(_), _)
-                | (Expr::Constant(_), _)
-                | (Expr::Variable(_), _)
-                | (Expr::SessionRef(_), _)
-                | (Expr::Matrix { .. }, _) => root,
-                // Path mismatch: valid expr but wrong PathStep direction
-                _ => root,
-            }
-        }
-
-        let new_root = reconstruct_recursive(
+        let path = crate::step::pathsteps_to_expr_path(&self.current_path);
+        let new_root = cas_math::expr_path_rewrite::rewrite_at_expr_path_raw(
             self.context,
             self.root_expr,
-            &self.current_path,
+            &path,
             replacement,
         );
         self.root_expr = new_root; // Update root for next step

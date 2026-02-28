@@ -79,6 +79,41 @@ where
     Some((sim_a, sim_b, sim_c))
 }
 
+/// Stateful variant of
+/// [`extract_simplified_nonzero_quadratic_coefficients_with`].
+///
+/// This form lets callers thread one mutable state object across extraction,
+/// simplification, and zero-check callbacks.
+pub fn extract_simplified_nonzero_quadratic_coefficients_with_state<
+    T,
+    FExtract,
+    FSimplify,
+    FIsZero,
+>(
+    state: &mut T,
+    expr: ExprId,
+    var: &str,
+    mut extract_coeffs: FExtract,
+    mut simplify_expr: FSimplify,
+    mut is_zero_expr: FIsZero,
+) -> Option<(ExprId, ExprId, ExprId)>
+where
+    FExtract: FnMut(&mut T, ExprId, &str) -> Option<(ExprId, ExprId, ExprId)>,
+    FSimplify: FnMut(&mut T, ExprId) -> ExprId,
+    FIsZero: FnMut(&mut T, ExprId) -> bool,
+{
+    let (a, b, c) = extract_coeffs(state, expr, var)?;
+    let sim_a = simplify_expr(state, a);
+    let sim_b = simplify_expr(state, b);
+    let sim_c = simplify_expr(state, c);
+
+    if is_zero_expr(state, sim_a) {
+        return None;
+    }
+
+    Some((sim_a, sim_b, sim_c))
+}
+
 fn analyze_term(ctx: &mut Context, term: ExprId, var: &str) -> Option<(ExprId, i32)> {
     if !contains_var(ctx, term, var) {
         return Some((term, 0));
@@ -233,5 +268,71 @@ mod tests {
             },
         );
         assert!(result.is_some());
+    }
+
+    #[test]
+    fn extract_simplified_nonzero_quadratic_coefficients_with_state_accepts_nonzero_a() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let two = ctx.num(2);
+        let x2 = ctx.add(Expr::Pow(x, two));
+        let two_x2 = ctx.add(Expr::Mul(two, x2));
+        let three = ctx.num(3);
+        let one = ctx.num(1);
+        let three_x = ctx.add(Expr::Mul(three, x));
+        let poly = ctx.add(Expr::Add(two_x2, three_x));
+        let poly = ctx.add(Expr::Add(poly, one));
+
+        struct HookState {
+            ctx: Context,
+            simplify_calls: usize,
+        }
+
+        let mut state = HookState {
+            ctx,
+            simplify_calls: 0,
+        };
+
+        let result = extract_simplified_nonzero_quadratic_coefficients_with_state(
+            &mut state,
+            poly,
+            "x",
+            |state, expr, var| extract_quadratic_coefficients(&mut state.ctx, expr, var),
+            |state, id| {
+                state.simplify_calls += 1;
+                id
+            },
+            |state, id| crate::isolation_utils::is_numeric_zero(&state.ctx, id),
+        );
+
+        assert!(result.is_some());
+        assert_eq!(state.simplify_calls, 3);
+    }
+
+    #[test]
+    fn extract_simplified_nonzero_quadratic_coefficients_with_state_rejects_zero_a() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let three = ctx.num(3);
+        let one = ctx.num(1);
+        let three_x = ctx.add(Expr::Mul(three, x));
+        let poly = ctx.add(Expr::Add(three_x, one));
+
+        struct HookState {
+            ctx: Context,
+        }
+
+        let mut state = HookState { ctx };
+
+        let result = extract_simplified_nonzero_quadratic_coefficients_with_state(
+            &mut state,
+            poly,
+            "x",
+            |state, expr, var| extract_quadratic_coefficients(&mut state.ctx, expr, var),
+            |_state, id| id,
+            |state, id| crate::isolation_utils::is_numeric_zero(&state.ctx, id),
+        );
+
+        assert!(result.is_none());
     }
 }

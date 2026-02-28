@@ -17,11 +17,9 @@ use crate::phase::PhaseMask;
 use crate::rule::{Rewrite, Rule};
 use cas_ast::{Context, Expr, ExprId};
 use cas_formatter::DisplayExpr;
-use cas_math::gcd_exact::{gcd_exact, GcdExactBudget, GcdExactLayer};
 use cas_math::gcd_zippel_modp::ZippelPreset;
+use cas_math::poly_gcd_dispatch::compute_poly_gcd_unified_with;
 use cas_math::poly_gcd_mode::parse_modp_options;
-use cas_math::poly_gcd_structural::poly_gcd_structural;
-use num_traits::One;
 
 use cas_math::poly_gcd_mode::{parse_gcd_mode, GcdGoal, GcdMode};
 
@@ -103,182 +101,25 @@ pub fn compute_poly_gcd_unified(
     modp_preset: Option<ZippelPreset>,
     modp_main_var: Option<usize>,
 ) -> (ExprId, String) {
-    match mode {
-        GcdMode::Structural => {
-            let gcd = poly_gcd_structural(ctx, a, b);
-            let desc = format!(
-                "poly_gcd({}, {})",
+    compute_poly_gcd_unified_with(
+        ctx,
+        a,
+        b,
+        goal,
+        mode,
+        modp_preset,
+        modp_main_var,
+        pre_evaluate_for_gcd,
+        |render_ctx, id| {
+            format!(
+                "{}",
                 DisplayExpr {
-                    context: ctx,
-                    id: a
-                },
-                DisplayExpr {
-                    context: ctx,
-                    id: b
+                    context: render_ctx,
+                    id
                 }
-            );
-            (gcd, desc)
-        }
-
-        GcdMode::Exact => {
-            // Pre-evaluate arguments to handle expand(), factor(), etc.
-            let eval_a = pre_evaluate_for_gcd(ctx, a);
-            let eval_b = pre_evaluate_for_gcd(ctx, b);
-            let budget = GcdExactBudget::default();
-            let result = gcd_exact(ctx, eval_a, eval_b, &budget);
-            let desc = format!(
-                "poly_gcd({}, {}, exact) [{}]",
-                DisplayExpr {
-                    context: ctx,
-                    id: a
-                },
-                DisplayExpr {
-                    context: ctx,
-                    id: b
-                },
-                format!("{:?}", result.layer_used).to_lowercase()
-            );
-            (result.gcd, desc)
-        }
-
-        GcdMode::Modp => {
-            // V2.14.35: Block modp for CancelFraction goal (soundness)
-            if goal == GcdGoal::CancelFraction {
-                // Return gcd=1 (no cancellation) - this is safe
-                let one = ctx.num(1);
-                return (
-                    one,
-                    "poly_gcd(..., modp) [blocked for soundness]".to_string(),
-                );
-            }
-
-            // Pre-evaluate arguments to handle expand(), factor(), etc.
-            let eval_a = pre_evaluate_for_gcd(ctx, a);
-            let eval_b = pre_evaluate_for_gcd(ctx, b);
-            // Call modp through gcd_modp module
-            use cas_math::poly_modp_conv::{compute_gcd_modp_expr_with_options, DEFAULT_PRIME};
-            let preset = modp_preset.unwrap_or(ZippelPreset::Aggressive);
-            match compute_gcd_modp_expr_with_options(
-                ctx,
-                eval_a,
-                eval_b,
-                DEFAULT_PRIME,
-                modp_main_var,
-                Some(preset),
-            ) {
-                Ok(result) => {
-                    let desc = format!(
-                        "poly_gcd({}, {}, modp) [{:?}]",
-                        DisplayExpr {
-                            context: ctx,
-                            id: a
-                        },
-                        DisplayExpr {
-                            context: ctx,
-                            id: b
-                        },
-                        preset
-                    );
-                    (result, desc)
-                }
-                Err(_e) => {
-                    // V2.14.35: Remove eprintln - just return gcd=1 on error
-                    let one = ctx.num(1);
-                    (one, "poly_gcd(..., modp) [error]".to_string())
-                }
-            }
-        }
-
-        GcdMode::Auto => {
-            // Try structural first
-            let structural_gcd = poly_gcd_structural(ctx, a, b);
-
-            // Check if structural found something (not just 1)
-            let is_one = matches!(ctx.get(structural_gcd), Expr::Number(n) if n.is_one());
-
-            if !is_one {
-                // Structural found a non-trivial GCD
-                let desc = format!(
-                    "poly_gcd({}, {}, auto) [structural]",
-                    DisplayExpr {
-                        context: ctx,
-                        id: a
-                    },
-                    DisplayExpr {
-                        context: ctx,
-                        id: b
-                    }
-                );
-                return (structural_gcd, desc);
-            }
-
-            // Try exact if within budget - pre-evaluate arguments first
-            let eval_a = pre_evaluate_for_gcd(ctx, a);
-            let eval_b = pre_evaluate_for_gcd(ctx, b);
-            let budget = GcdExactBudget::default();
-            let exact_result = gcd_exact(ctx, eval_a, eval_b, &budget);
-
-            if exact_result.layer_used != GcdExactLayer::BudgetExceeded {
-                let desc = format!(
-                    "poly_gcd({}, {}, auto) [exact:{:?}]",
-                    DisplayExpr {
-                        context: ctx,
-                        id: a
-                    },
-                    DisplayExpr {
-                        context: ctx,
-                        id: b
-                    },
-                    exact_result.layer_used
-                );
-                return (exact_result.gcd, desc);
-            }
-
-            // V2.14.35: Block modp fallback for CancelFraction goal (soundness)
-            if goal == GcdGoal::CancelFraction {
-                // Return gcd=1 (no cancellation) - safe, may miss some simplifications
-                let one = ctx.num(1);
-                return (
-                    one,
-                    "poly_gcd(..., auto) [exact exceeded budget, modp blocked for soundness]"
-                        .to_string(),
-                );
-            }
-
-            // Fallback to modp (already have eval_a, eval_b)
-            use cas_math::poly_modp_conv::{compute_gcd_modp_expr_with_options, DEFAULT_PRIME};
-            let preset = modp_preset.unwrap_or(ZippelPreset::Aggressive);
-            match compute_gcd_modp_expr_with_options(
-                ctx,
-                eval_a,
-                eval_b,
-                DEFAULT_PRIME,
-                modp_main_var,
-                Some(preset),
-            ) {
-                Ok(result) => {
-                    let desc = format!(
-                        "poly_gcd({}, {}, auto) [modp:{:?} - probabilistic]",
-                        DisplayExpr {
-                            context: ctx,
-                            id: a
-                        },
-                        DisplayExpr {
-                            context: ctx,
-                            id: b
-                        },
-                        preset
-                    );
-                    (result, desc)
-                }
-                Err(_e) => {
-                    // V2.14.35: Remove eprintln - just return gcd=1 on error
-                    let one = ctx.num(1);
-                    (one, "poly_gcd(..., auto) [modp error]".to_string())
-                }
-            }
-        }
-    }
+            )
+        },
+    )
 }
 
 // =============================================================================
@@ -371,6 +212,7 @@ impl Rule for PolyGcdRule {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cas_math::poly_gcd_structural::poly_gcd_structural;
     use num_bigint::BigInt;
 
     fn setup_ctx() -> Context {

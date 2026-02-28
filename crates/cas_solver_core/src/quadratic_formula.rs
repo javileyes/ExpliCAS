@@ -220,6 +220,59 @@ where
     }
 }
 
+/// Build and solve quadratic coefficient plan in one call using the default
+/// numeric ordering/inequality kernel from `solution_set`.
+///
+/// Expansion/simplification are still injected by caller so strategy policy
+/// remains outside solver-core.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_quadratic_coefficient_solve_plan_with_default_numeric_solution_with_state<
+    T,
+    E,
+    FContextMut,
+    FExpand,
+    FSimplify,
+    FMapPlanError,
+>(
+    state: &mut T,
+    op: RelOp,
+    a: ExprId,
+    b: ExprId,
+    c: ExprId,
+    context_mut: FContextMut,
+    mut expand_expr: FExpand,
+    mut simplify_expr: FSimplify,
+    map_plan_error: FMapPlanError,
+) -> Result<SolutionSet, E>
+where
+    FContextMut: Fn(&mut T) -> &mut Context,
+    FExpand: FnMut(&mut T, ExprId) -> ExprId,
+    FSimplify: FnMut(&mut T, ExprId) -> ExprId,
+    FMapPlanError: FnOnce(QuadraticCoefficientSolvePlanError) -> E,
+{
+    let context_mut = &context_mut;
+    let plan = build_quadratic_coefficient_solve_plan(context_mut(state), op.clone(), a, b, c)
+        .map_err(map_plan_error)?;
+
+    Ok(solve_quadratic_coefficient_solve_plan_with_state(
+        state,
+        op,
+        a,
+        b,
+        plan,
+        |state, expr| expand_expr(state, expr),
+        |state, expr| simplify_expr(state, expr),
+        |state, eq_op, delta, (sol1, sol2), opens_up| {
+            let ctx = context_mut(state);
+            let (r1, r2) = crate::solution_set::order_pair_by_value(ctx, sol1, sol2);
+            crate::solution_set::quadratic_numeric_solution(ctx, eq_op, &delta, opens_up, r1, r2)
+        },
+        |state, solve_a, solve_b, sim_delta| {
+            roots_from_a_b_and_simplified_delta(context_mut(state), solve_a, solve_b, sim_delta)
+        },
+    ))
+}
+
 /// Solve a precomputed quadratic coefficient plan using the default numeric
 /// ordering/inequality solver from `solution_set`.
 ///
@@ -513,5 +566,58 @@ mod tests {
             SolutionSet::Discrete(solutions) => assert_eq!(solutions.len(), 2),
             _ => panic!("expected discrete symbolic solutions"),
         }
+    }
+
+    #[test]
+    fn execute_quadratic_coefficient_solve_plan_with_default_numeric_solution_with_state_numeric_plan(
+    ) {
+        let mut ctx = Context::new();
+        let a = ctx.num(1);
+        let b = ctx.num(-3);
+        let c = ctx.num(2);
+
+        let solved =
+            execute_quadratic_coefficient_solve_plan_with_default_numeric_solution_with_state(
+                &mut ctx,
+                RelOp::Eq,
+                a,
+                b,
+                c,
+                |ctx| ctx,
+                |_ctx, id| id,
+                |_ctx, id| id,
+                |_err| "plan error".to_string(),
+            )
+            .expect("numeric plan should solve");
+
+        assert!(matches!(solved, SolutionSet::Discrete(_)));
+    }
+
+    #[test]
+    fn execute_quadratic_coefficient_solve_plan_with_default_numeric_solution_with_state_maps_plan_error(
+    ) {
+        let mut ctx = Context::new();
+        let a = ctx.var("a");
+        let b = ctx.var("b");
+        let c = ctx.var("c");
+
+        let err =
+            execute_quadratic_coefficient_solve_plan_with_default_numeric_solution_with_state(
+                &mut ctx,
+                RelOp::Lt,
+                a,
+                b,
+                c,
+                |ctx| ctx,
+                |_ctx, id| id,
+                |_ctx, id| id,
+                |err| err,
+            )
+            .expect_err("symbolic inequality should map plan error");
+
+        assert_eq!(
+            err,
+            QuadraticCoefficientSolvePlanError::UnsupportedSymbolicInequality
+        );
     }
 }

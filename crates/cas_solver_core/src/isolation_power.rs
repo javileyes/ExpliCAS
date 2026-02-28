@@ -26,6 +26,57 @@ use crate::solve_outcome::{
     PowIsolationRoute, TermIsolationExecutionItem,
 };
 
+/// Grouped kernel flags/options for power-isolation orchestration.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PowIsolationKernelConfig {
+    pub include_base_item: bool,
+    pub shortcut_can_branch: bool,
+    pub log_can_branch: bool,
+    pub solve_tactic_enabled: bool,
+    pub mode: DomainModeKind,
+    pub wildcard_scope: bool,
+    pub include_shortcut_item: bool,
+    pub include_base_one_item: bool,
+    pub include_terminal_items: bool,
+    pub include_unsupported_items: bool,
+    pub include_log_item: bool,
+}
+
+/// Input flags used to build [`PowIsolationKernelConfig`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PowIsolationKernelInputs {
+    pub shortcut_can_branch: bool,
+    pub log_can_branch: bool,
+    pub solve_tactic_enabled: bool,
+    pub mode: DomainModeKind,
+    pub wildcard_scope: bool,
+}
+
+/// Build power-isolation kernel config using one caller-provided include-item hook.
+///
+/// This keeps call-sites thin by centralizing the include-item fanout.
+pub fn build_pow_isolation_kernel_config_with<FCollectItem>(
+    mut collect_item: FCollectItem,
+    inputs: PowIsolationKernelInputs,
+) -> PowIsolationKernelConfig
+where
+    FCollectItem: FnMut() -> bool,
+{
+    PowIsolationKernelConfig {
+        include_base_item: collect_item(),
+        shortcut_can_branch: inputs.shortcut_can_branch,
+        log_can_branch: inputs.log_can_branch,
+        solve_tactic_enabled: inputs.solve_tactic_enabled,
+        mode: inputs.mode,
+        wildcard_scope: inputs.wildcard_scope,
+        include_shortcut_item: collect_item(),
+        include_base_one_item: collect_item(),
+        include_terminal_items: collect_item(),
+        include_unsupported_items: collect_item(),
+        include_log_item: collect_item(),
+    }
+}
+
 /// Dispatch power-isolation route (`variable in base` vs `variable in exponent`)
 /// from a stateful caller.
 pub fn execute_pow_isolation_route_with_state<T, R, E, FBase, FExponent>(
@@ -242,6 +293,134 @@ where
                 map_log_item_to_step,
             )
         },
+    )
+}
+
+/// Execute full power isolation with default kernels and a unified step
+/// mapper shared by all emitted execution-item types.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_pow_isolation_with_default_kernels_and_unified_step_mapper_for_var_with_state<
+    T,
+    S,
+    E,
+    FContextRef,
+    FContextMut,
+    FRenderExpr,
+    FSolveBaseIsolate,
+    FSimplifyShortcut,
+    FClearBlockedHints,
+    FSimplifyWithTactic,
+    FCollectItem,
+    FClassifyDecision,
+    FSolveShortcut,
+    FMapStep,
+    FMapEnsureError,
+    FVisitAssumption,
+    FTryGuardedSolve,
+    FRegisterBlockedHint,
+    FMapUnsupportedErr,
+    FSolveRewrite,
+>(
+    state: &mut T,
+    lhs: ExprId,
+    base: ExprId,
+    exponent: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    var: &str,
+    include_base_item: bool,
+    shortcut_can_branch: bool,
+    log_can_branch: bool,
+    solve_tactic_enabled: bool,
+    mode: DomainModeKind,
+    wildcard_scope: bool,
+    include_shortcut_item: bool,
+    include_base_one_item: bool,
+    include_terminal_items: bool,
+    include_unsupported_items: bool,
+    include_log_item: bool,
+    existing_steps: Vec<S>,
+    context_ref: FContextRef,
+    context_mut: FContextMut,
+    render_expr: FRenderExpr,
+    solve_base_isolate: FSolveBaseIsolate,
+    simplify_shortcut: FSimplifyShortcut,
+    clear_blocked_hints: FClearBlockedHints,
+    simplify_with_tactic: FSimplifyWithTactic,
+    collect_item: FCollectItem,
+    classify_decision: FClassifyDecision,
+    solve_shortcut: FSolveShortcut,
+    map_step: FMapStep,
+    map_ensure_error: FMapEnsureError,
+    visit_assumption: FVisitAssumption,
+    try_guarded_solve: FTryGuardedSolve,
+    register_blocked_hint: FRegisterBlockedHint,
+    map_unsupported_err: FMapUnsupportedErr,
+    solve_rewrite: FSolveRewrite,
+) -> Result<(SolutionSet, Vec<S>), E>
+where
+    S: Clone,
+    FContextRef: Fn(&mut T) -> &Context,
+    FContextMut: Fn(&mut T) -> &mut Context,
+    FRenderExpr: Fn(&Context, ExprId) -> String,
+    FSolveBaseIsolate: FnMut(&mut T, ExprId, ExprId, RelOp) -> Result<(SolutionSet, Vec<S>), E>,
+    FSimplifyShortcut: FnMut(&mut T, ExprId) -> ExprId,
+    FClearBlockedHints: FnMut(&mut T),
+    FSimplifyWithTactic: FnMut(&mut T, ExprId) -> ExprId,
+    FCollectItem: FnMut(&mut T) -> bool,
+    FClassifyDecision: FnMut(&mut T, ExprId, ExprId) -> LogSolveDecision,
+    FSolveShortcut: FnMut(&mut T, ExprId, RelOp) -> Result<(SolutionSet, Vec<S>), E>,
+    FMapStep: FnMut(String, Equation) -> S,
+    FMapEnsureError: FnMut(&str, &'static str) -> E,
+    FVisitAssumption: FnMut(&Context, LogAssumption),
+    FTryGuardedSolve: FnMut(&mut T, &Equation) -> Option<SolutionSet>,
+    FRegisterBlockedHint: FnMut(&Context, LogBlockedHintRecord),
+    FMapUnsupportedErr: FnMut(&'static str) -> E,
+    FSolveRewrite: FnMut(&mut T, &Equation) -> Result<(SolutionSet, Vec<S>), E>,
+{
+    let map_step = std::cell::RefCell::new(map_step);
+    execute_pow_isolation_with_default_kernels_for_var_with_state(
+        state,
+        lhs,
+        base,
+        exponent,
+        rhs,
+        op,
+        var,
+        include_base_item,
+        shortcut_can_branch,
+        log_can_branch,
+        solve_tactic_enabled,
+        mode,
+        wildcard_scope,
+        include_shortcut_item,
+        include_base_one_item,
+        include_terminal_items,
+        include_unsupported_items,
+        include_log_item,
+        existing_steps,
+        context_ref,
+        context_mut,
+        render_expr,
+        solve_base_isolate,
+        |item| (map_step.borrow_mut())(item.description().to_string(), item.equation),
+        simplify_shortcut,
+        clear_blocked_hints,
+        simplify_with_tactic,
+        collect_item,
+        classify_decision,
+        solve_shortcut,
+        |item| (map_step.borrow_mut())(item.description().to_string(), item.equation),
+        |item| (map_step.borrow_mut())(item.description().to_string(), item.equation),
+        map_ensure_error,
+        |item| (map_step.borrow_mut())(item.description().to_string(), item.equation),
+        |item| (map_step.borrow_mut())(item.description().to_string(), item.equation),
+        visit_assumption,
+        try_guarded_solve,
+        register_blocked_hint,
+        map_unsupported_err,
+        solve_rewrite,
+        |item| (map_step.borrow_mut())(item.description().to_string(), item.equation),
     )
 }
 
@@ -1171,19 +1350,51 @@ where
 #[cfg(test)]
 mod tests {
     use super::{
-        execute_pow_base_isolation_pipeline_with_state,
+        build_pow_isolation_kernel_config_with, execute_pow_base_isolation_pipeline_with_state,
         execute_pow_base_isolation_with_default_action_with_state,
         execute_pow_exponent_log_decision_then_rewrite_with_state,
         execute_pow_exponent_shortcuts_and_guards_with_state,
         execute_pow_exponent_tactic_and_classify_decision_with_state,
         execute_pow_exponent_tactic_then_log_pipeline_with_state,
         execute_pow_isolation_route_for_var_with_state, execute_pow_isolation_route_with_state,
+        PowIsolationKernelInputs,
     };
     use crate::log_domain::{DomainModeKind, LogSolveDecision};
     use crate::solve_outcome::{
         PowExponentLogIsolationRewritePlan, PowExponentShortcut, PowExponentShortcutAction,
     };
     use cas_ast::{Equation, Expr, RelOp, SolutionSet};
+
+    #[test]
+    fn build_pow_isolation_kernel_config_with_uses_collect_hook_for_all_item_flags() {
+        let mut calls = 0usize;
+        let config = build_pow_isolation_kernel_config_with(
+            || {
+                calls += 1;
+                (calls & 1) == 0
+            },
+            PowIsolationKernelInputs {
+                shortcut_can_branch: true,
+                log_can_branch: false,
+                solve_tactic_enabled: true,
+                mode: DomainModeKind::Assume,
+                wildcard_scope: true,
+            },
+        );
+
+        assert_eq!(calls, 6);
+        assert!(config.shortcut_can_branch);
+        assert!(!config.log_can_branch);
+        assert!(config.solve_tactic_enabled);
+        assert_eq!(config.mode, DomainModeKind::Assume);
+        assert!(config.wildcard_scope);
+        assert!(!config.include_base_item);
+        assert!(config.include_shortcut_item);
+        assert!(!config.include_base_one_item);
+        assert!(config.include_terminal_items);
+        assert!(!config.include_unsupported_items);
+        assert!(config.include_log_item);
+    }
 
     #[test]
     fn execute_pow_isolation_route_with_state_dispatches_base_branch() {

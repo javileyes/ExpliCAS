@@ -4,8 +4,7 @@ use crate::phase::{SimplifyOptions, SimplifyPhase};
 use crate::rules::algebra::gcd_modp::eager_eval_poly_gcd_calls;
 use crate::{Simplifier, Step};
 use cas_ast::{BuiltinFn, Context, ExprId};
-use cas_math::poly_lowering::{self, PolyLowerStepKind};
-use cas_math::poly_lowering_ops::PolyBinaryOp;
+use cas_math::poly_lowering;
 use cas_math::poly_store::clear_thread_local_store;
 use cas_math::rationalize_policy::AutoRationalizeLevel;
 use std::collections::HashSet;
@@ -21,43 +20,23 @@ fn to_math_auto_expand_budget(
     }
 }
 
-fn poly_step_message(kind: PolyLowerStepKind) -> &'static str {
-    match kind {
-        PolyLowerStepKind::Direct { op } => match op {
-            PolyBinaryOp::Add => "Poly lowering: combined poly_result + poly_result",
-            PolyBinaryOp::Sub => "Poly lowering: combined poly_result - poly_result",
-            PolyBinaryOp::Mul => "Poly lowering: combined poly_result * poly_result",
-        },
-        PolyLowerStepKind::Promoted => "Poly lowering: promoted and combined expressions",
-    }
-}
-
 fn run_poly_lower_pass(
     ctx: &mut Context,
     expr: ExprId,
     collect_steps: bool,
 ) -> (ExprId, Vec<Step>) {
-    let result = poly_lowering::poly_lower_pass(ctx, expr, collect_steps);
-    let steps = if collect_steps {
-        result
-            .steps
-            .into_iter()
-            .map(|step| {
-                Step::new(
-                    poly_step_message(step.kind),
-                    "Polynomial Combination",
-                    step.before,
-                    step.after,
-                    Vec::new(),
-                    Some(ctx),
-                )
-            })
-            .collect()
-    } else {
-        Vec::new()
-    };
-
-    (result.expr, steps)
+    let out =
+        poly_lowering::poly_lower_pass_with_items(ctx, expr, collect_steps, |core_ctx, step| {
+            Step::new(
+                poly_lowering::poly_lower_step_message(step.kind),
+                "Polynomial Combination",
+                step.before,
+                step.after,
+                Vec::new(),
+                Some(core_ctx),
+            )
+        });
+    (out.expr, out.items)
 }
 
 pub struct Orchestrator {
@@ -480,14 +459,11 @@ impl Orchestrator {
         // Priority: 1) structured assumption_events, 2) legacy domain_assumption string parsing
         if self.options.shared.assumption_reporting != crate::assumptions::AssumptionReporting::Off
         {
-            let mut collector = crate::assumptions::AssumptionCollector::new();
-            for step in &optimized_steps {
-                // Collect structured assumption_events
-                for event in step.assumption_events() {
-                    collector.note(event.clone());
-                }
-            }
-            pipeline_stats.assumptions = collector.finish();
+            pipeline_stats.assumptions = crate::assumptions::collect_assumption_records_from_iter(
+                optimized_steps
+                    .iter()
+                    .flat_map(|step| step.assumption_events().iter().cloned()),
+            );
         }
 
         // Collect cycle events detected during this pipeline run

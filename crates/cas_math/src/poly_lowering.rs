@@ -57,11 +57,30 @@ pub struct PolyLowerResult {
     pub combined_any: bool,
 }
 
+/// Result of poly lowering pass with caller-mapped items.
+pub struct PolyLowerItemsResult<Item> {
+    pub expr: ExprId,
+    pub items: Vec<Item>,
+    pub combined_any: bool,
+}
+
 /// Metadata about a binary lowering step.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PolyLowerStepKind {
     Direct { op: PolyBinaryOp },
     Promoted,
+}
+
+/// Default didactic message for one poly-lowering step kind.
+pub fn poly_lower_step_message(kind: PolyLowerStepKind) -> &'static str {
+    match kind {
+        PolyLowerStepKind::Direct { op } => match op {
+            PolyBinaryOp::Add => "Poly lowering: combined poly_result + poly_result",
+            PolyBinaryOp::Sub => "Poly lowering: combined poly_result - poly_result",
+            PolyBinaryOp::Mul => "Poly lowering: combined poly_result * poly_result",
+        },
+        PolyLowerStepKind::Promoted => "Poly lowering: promoted and combined expressions",
+    }
 }
 
 /// One lowering rewrite performed in polynomial space.
@@ -84,6 +103,34 @@ pub fn poly_lower_pass(ctx: &mut Context, expr: ExprId, collect_steps: bool) -> 
         expr: result,
         steps,
         combined_any,
+    }
+}
+
+/// Run poly lowering and map internal steps to caller-defined items.
+pub fn poly_lower_pass_with_items<Item, FBuildItem>(
+    ctx: &mut Context,
+    expr: ExprId,
+    include_items: bool,
+    mut build_item: FBuildItem,
+) -> PolyLowerItemsResult<Item>
+where
+    FBuildItem: FnMut(&Context, &PolyLowerStep) -> Item,
+{
+    let result = poly_lower_pass(ctx, expr, include_items);
+    let items = if include_items {
+        result
+            .steps
+            .iter()
+            .map(|step| build_item(ctx, step))
+            .collect()
+    } else {
+        Vec::new()
+    };
+
+    PolyLowerItemsResult {
+        expr: result.expr,
+        items,
+        combined_any: result.combined_any,
     }
 }
 
@@ -296,5 +343,42 @@ fn extract_int(ctx: &Context, expr: ExprId) -> Option<i64> {
 
 #[cfg(test)]
 mod tests {
-    // TODO: Add tests for poly_lowering
+    use super::{poly_lower_pass_with_items, poly_lower_step_message, PolyLowerStepKind};
+    use crate::poly_lowering_ops::PolyBinaryOp;
+    use cas_ast::{BuiltinFn, Context, Expr};
+
+    #[test]
+    fn poly_lower_step_message_covers_all_kinds() {
+        assert!(poly_lower_step_message(PolyLowerStepKind::Direct {
+            op: PolyBinaryOp::Add
+        })
+        .contains("+"));
+        assert!(poly_lower_step_message(PolyLowerStepKind::Direct {
+            op: PolyBinaryOp::Sub
+        })
+        .contains("-"));
+        assert!(poly_lower_step_message(PolyLowerStepKind::Direct {
+            op: PolyBinaryOp::Mul
+        })
+        .contains("*"));
+        assert!(poly_lower_step_message(PolyLowerStepKind::Promoted).contains("promoted"));
+    }
+
+    #[test]
+    fn poly_lower_pass_with_items_maps_steps_when_requested() {
+        let mut ctx = Context::new();
+        let one = ctx.num(1);
+        let poly = ctx.call_builtin(BuiltinFn::PolyResult, vec![one, one, one, one]);
+        let expr = ctx.add(Expr::Add(poly, poly));
+
+        let out = poly_lower_pass_with_items(&mut ctx, expr, true, |_ctx, step| {
+            poly_lower_step_message(step.kind).to_string()
+        });
+
+        // Mapping contract: when lowering combines anything, at least one
+        // mapped item must be produced.
+        if out.combined_any {
+            assert!(!out.items.is_empty());
+        }
+    }
 }

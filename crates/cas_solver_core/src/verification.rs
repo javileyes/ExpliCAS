@@ -53,6 +53,23 @@ pub fn verify_solution_set_with<F>(solutions: &SolutionSet, verify_discrete: &mu
 where
     F: FnMut(ExprId) -> VerifyStatus,
 {
+    let mut unit = ();
+    let mut verify_stateful = |_: &mut (), candidate: ExprId| verify_discrete(candidate);
+    verify_solution_set_with_state(&mut unit, solutions, &mut verify_stateful)
+}
+
+/// Stateful variant of [`verify_solution_set_with`].
+///
+/// Useful for call-sites where per-candidate verification shares mutable state
+/// (e.g., one simplifier instance).
+pub fn verify_solution_set_with_state<T, F>(
+    state: &mut T,
+    solutions: &SolutionSet,
+    verify_discrete: &mut F,
+) -> VerifyResult
+where
+    F: FnMut(&mut T, ExprId) -> VerifyStatus,
+{
     match solutions {
         SolutionSet::Empty => VerifyResult {
             solutions: vec![],
@@ -65,7 +82,7 @@ where
             let mut verified_count = 0;
 
             for &sol in sols {
-                let status = verify_discrete(sol);
+                let status = verify_discrete(state, sol);
                 if matches!(status, VerifyStatus::Verified) {
                     verified_count += 1;
                 }
@@ -109,7 +126,8 @@ where
             let mut has_not_checkable = false;
 
             for case in cases {
-                let case_result = verify_solution_set_with(&case.then.solutions, verify_discrete);
+                let case_result =
+                    verify_solution_set_with_state(state, &case.then.solutions, verify_discrete);
 
                 match case_result.summary {
                     VerifySummary::AllVerified | VerifySummary::PartiallyVerified => {
@@ -335,6 +353,58 @@ where
     }
 }
 
+/// Same as [`verify_solution_with_strict_fold_and_generic_fallback_with_state`],
+/// but wires verification telemetry to `verify_stats` by default.
+#[allow(clippy::too_many_arguments)]
+pub fn verify_solution_with_strict_fold_and_generic_fallback_with_default_stats_and_state<
+    T,
+    FSubstituteDiff,
+    FSimplifyStrict,
+    FSimplifyGeneric,
+    FContainsVariable,
+    FFoldNumericIslands,
+    FIsZero,
+    FRenderExpr,
+>(
+    state: &mut T,
+    equation: &Equation,
+    var: &str,
+    solution: ExprId,
+    substitute_diff: FSubstituteDiff,
+    simplify_strict: FSimplifyStrict,
+    simplify_generic: FSimplifyGeneric,
+    contains_variable: FContainsVariable,
+    fold_numeric_islands: FFoldNumericIslands,
+    is_zero: FIsZero,
+    render_expr: FRenderExpr,
+) -> VerifyStatus
+where
+    FSubstituteDiff: FnMut(&mut T, &Equation, &str, ExprId) -> ExprId,
+    FSimplifyStrict: FnMut(&mut T, ExprId) -> ExprId,
+    FSimplifyGeneric: FnMut(&mut T, ExprId) -> ExprId,
+    FContainsVariable: FnMut(&mut T, ExprId) -> bool,
+    FFoldNumericIslands: FnMut(&mut T, ExprId) -> ExprId,
+    FIsZero: FnMut(&mut T, ExprId) -> bool,
+    FRenderExpr: FnMut(&mut T, ExprId) -> String,
+{
+    verify_solution_with_strict_fold_and_generic_fallback_with_state(
+        state,
+        equation,
+        var,
+        solution,
+        substitute_diff,
+        simplify_strict,
+        simplify_generic,
+        contains_variable,
+        fold_numeric_islands,
+        is_zero,
+        |_state| crate::verify_stats::record_attempted(),
+        |_state| crate::verify_stats::record_changed(),
+        |_state| crate::verify_stats::record_verified(),
+        render_expr,
+    )
+}
+
 /// Compute summary for discrete verification outcomes.
 pub fn discrete_summary(total: usize, verified_count: usize) -> VerifySummary {
     if total == 0 {
@@ -409,6 +479,102 @@ mod tests {
         assert_eq!(calls, 2);
         assert_eq!(result.summary, VerifySummary::AllVerified);
         assert_eq!(result.solutions.len(), 2);
+    }
+
+    #[test]
+    fn test_verify_solution_set_with_state_discrete() {
+        let mut ctx = Context::new();
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        let set = SolutionSet::Discrete(vec![one, two]);
+
+        let mut calls = 0usize;
+        let mut verify = |counter: &mut usize, _id: ExprId| {
+            *counter += 1;
+            VerifyStatus::Verified
+        };
+
+        let result = verify_solution_set_with_state(&mut calls, &set, &mut verify);
+        assert_eq!(calls, 2);
+        assert_eq!(result.summary, VerifySummary::AllVerified);
+        assert_eq!(result.solutions.len(), 2);
+    }
+
+    #[test]
+    fn verify_solution_with_default_stats_with_state_reports_verified() {
+        let mut ctx = Context::new();
+        let lhs = ctx.var("x");
+        let rhs = ctx.num(0);
+        let eq = Equation {
+            lhs,
+            rhs,
+            op: RelOp::Eq,
+        };
+        let zero = ctx.num(0);
+        let mut substitute_calls = 0usize;
+
+        let status =
+            verify_solution_with_strict_fold_and_generic_fallback_with_default_stats_and_state(
+                &mut substitute_calls,
+                &eq,
+                "x",
+                lhs,
+                |calls, _eq, _var, _solution| {
+                    *calls += 1;
+                    zero
+                },
+                |_calls, expr| expr,
+                |_calls, expr| expr,
+                |_calls, _expr| false,
+                |_calls, expr| expr,
+                |_calls, expr| expr == zero,
+                |_calls, _expr| "0".to_string(),
+            );
+
+        assert!(matches!(status, VerifyStatus::Verified));
+        assert_eq!(substitute_calls, 1);
+    }
+
+    #[test]
+    fn verify_solution_with_default_stats_with_state_reports_unverifiable() {
+        let mut ctx = Context::new();
+        let lhs = ctx.var("x");
+        let rhs = ctx.num(0);
+        let eq = Equation {
+            lhs,
+            rhs,
+            op: RelOp::Eq,
+        };
+        let one = ctx.num(1);
+        let zero = ctx.num(0);
+        let mut substitute_calls = 0usize;
+
+        let status =
+            verify_solution_with_strict_fold_and_generic_fallback_with_default_stats_and_state(
+                &mut substitute_calls,
+                &eq,
+                "x",
+                lhs,
+                |calls, _eq, _var, _solution| {
+                    *calls += 1;
+                    one
+                },
+                |_calls, expr| expr,
+                |_calls, expr| expr,
+                |_calls, _expr| false,
+                |_calls, expr| expr,
+                |_calls, expr| expr == zero,
+                |_calls, expr| format!("expr:{expr:?}"),
+            );
+
+        assert!(matches!(
+            status,
+            VerifyStatus::Unverifiable {
+                residual,
+                reason
+            } if residual == one && reason.starts_with("residual: expr:")
+        ));
+        assert_eq!(substitute_calls, 1);
     }
 
     #[test]

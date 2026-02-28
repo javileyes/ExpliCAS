@@ -17,7 +17,6 @@
 //! a single AssumptionRecord with count=3, not 3 separate warnings.
 
 use cas_ast::{Context, ExprId};
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 
@@ -26,8 +25,7 @@ use std::hash::{Hash, Hasher};
 // =============================================================================
 
 /// Controls how assumptions are reported to the user.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum AssumptionReporting {
     /// No assumptions shown (hard off - not in JSON)
     #[default]
@@ -77,8 +75,7 @@ impl std::fmt::Display for AssumptionReporting {
 /// - Log rules (log(ab) → log(a)+log(b)) use **RequiresIntroduced** (narrows domain)
 /// - sqrt(x)^2 → x uses **DerivedFromRequires** (sqrt already implies x≥0)
 /// - sqrt(x²) → x uses **BranchChoice** (choosing x over |x|)
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum AssumptionKind {
     /// Redundant with requires from input - NOT displayed
     /// Example: "x ≠ 0" when input expression was 1/x
@@ -282,13 +279,7 @@ impl AssumptionKey {
 pub fn expr_fingerprint(ctx: &Context, expr: ExprId) -> u64 {
     use std::collections::hash_map::DefaultHasher;
 
-    let display = format!(
-        "{}",
-        cas_formatter::DisplayExpr {
-            context: ctx,
-            id: expr
-        }
-    );
+    let display = cas_formatter::render_expr(ctx, expr);
     let mut hasher = DefaultHasher::new();
     display.hash(&mut hasher);
     hasher.finish()
@@ -621,6 +612,68 @@ impl AssumptionCollector {
     }
 }
 
+/// Aggregate assumption events into sorted assumption records.
+///
+/// Convenience adapter for call-sites that already have a flat event list and
+/// only need canonical deduped record output.
+pub fn collect_assumption_records(events: &[AssumptionEvent]) -> Vec<AssumptionRecord> {
+    collect_assumption_records_from_iter(events.iter().cloned())
+}
+
+/// Aggregate assumption events from any iterator into sorted assumption records.
+pub fn collect_assumption_records_from_iter<I>(events: I) -> Vec<AssumptionRecord>
+where
+    I: IntoIterator<Item = AssumptionEvent>,
+{
+    let mut collector = AssumptionCollector::new();
+    for event in events {
+        collector.note(event);
+    }
+    collector.finish()
+}
+
+/// Map a solver-core logarithmic assumption record into an engine event.
+pub fn assumption_event_from_log_assumption(
+    ctx: &Context,
+    assumption: cas_solver_core::log_domain::LogAssumption,
+    base: ExprId,
+    rhs: ExprId,
+) -> AssumptionEvent {
+    cas_solver_core::log_assumptions::map_log_assumption_target_with(
+        ctx,
+        assumption,
+        base,
+        rhs,
+        AssumptionEvent::positive,
+    )
+}
+
+/// Map a solver-core blocked log hint into engine blocked-hint payload.
+pub fn map_log_blocked_hint_to_domain_hint(
+    ctx: &Context,
+    hint: cas_solver_core::solve_outcome::LogBlockedHintRecord,
+) -> crate::domain::BlockedHint {
+    let mapped = cas_solver_core::log_assumptions::map_log_blocked_hint_with(
+        ctx,
+        hint,
+        AssumptionEvent::positive,
+    );
+    crate::domain::BlockedHint {
+        key: mapped.event.key,
+        expr_id: mapped.expr_id,
+        rule: mapped.rule.to_string(),
+        suggestion: mapped.suggestion,
+    }
+}
+
+/// Convert and register one blocked log hint in the global hint registry.
+pub fn register_log_blocked_hint(
+    ctx: &Context,
+    hint: cas_solver_core::solve_outcome::LogBlockedHintRecord,
+) {
+    crate::domain::register_blocked_hint(map_log_blocked_hint_to_domain_hint(ctx, hint));
+}
+
 // =============================================================================
 // Tests
 // =============================================================================
@@ -733,6 +786,82 @@ mod tests {
 
         let records = collector.finish();
         assert!(records.is_empty());
+    }
+
+    #[test]
+    fn test_collect_assumption_records_dedups_events() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let events = vec![
+            AssumptionEvent::nonzero(&ctx, x),
+            AssumptionEvent::nonzero(&ctx, x),
+            AssumptionEvent::positive(&ctx, y),
+        ];
+
+        let records = collect_assumption_records(&events);
+        assert_eq!(records.len(), 2);
+        assert!(records.iter().any(|r| r.kind == "nonzero" && r.count == 2));
+        assert!(records.iter().any(|r| r.kind == "positive" && r.count == 1));
+    }
+
+    #[test]
+    fn test_collect_assumption_records_from_iter_dedups_events() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+
+        let records = collect_assumption_records_from_iter([
+            AssumptionEvent::nonzero(&ctx, x),
+            AssumptionEvent::positive(&ctx, y),
+            AssumptionEvent::nonzero(&ctx, x),
+        ]);
+        assert_eq!(records.len(), 2);
+        assert!(records.iter().any(|r| r.kind == "nonzero" && r.count == 2));
+        assert!(records.iter().any(|r| r.kind == "positive" && r.count == 1));
+    }
+
+    #[test]
+    fn test_assumption_event_from_log_assumption_targets_base_and_rhs() {
+        let mut ctx = Context::new();
+        let base = ctx.var("b");
+        let rhs = ctx.var("r");
+
+        let base_event = assumption_event_from_log_assumption(
+            &ctx,
+            cas_solver_core::log_domain::LogAssumption::PositiveBase,
+            base,
+            rhs,
+        );
+        let rhs_event = assumption_event_from_log_assumption(
+            &ctx,
+            cas_solver_core::log_domain::LogAssumption::PositiveRhs,
+            base,
+            rhs,
+        );
+
+        assert_eq!(base_event.expr_id, Some(base));
+        assert_eq!(rhs_event.expr_id, Some(rhs));
+    }
+
+    #[test]
+    fn test_map_log_blocked_hint_to_domain_hint_preserves_payload() {
+        let mut ctx = Context::new();
+        let base = ctx.var("b");
+        let hint = cas_solver_core::solve_outcome::LogBlockedHintRecord {
+            assumption: cas_solver_core::log_domain::LogAssumption::PositiveBase,
+            expr_id: base,
+            rule: "Take log of both sides",
+            suggestion: "use `semantics set domain assume`",
+        };
+
+        let blocked = map_log_blocked_hint_to_domain_hint(&ctx, hint);
+        let expected = AssumptionEvent::positive(&ctx, base);
+
+        assert_eq!(blocked.key, expected.key);
+        assert_eq!(blocked.expr_id, base);
+        assert_eq!(blocked.rule, "Take log of both sides");
+        assert_eq!(blocked.suggestion, "use `semantics set domain assume`");
     }
 
     #[test]

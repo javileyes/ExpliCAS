@@ -1,0 +1,3 @@
+[target.'cfg(target_os = "macos")']
+# Work around Apple ld assertion on very long Rust symbol names in large test binaries.
+rustflags = ["-Csymbol-mangling-version=v0"]

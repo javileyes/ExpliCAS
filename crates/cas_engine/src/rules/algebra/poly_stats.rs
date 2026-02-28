@@ -4,10 +4,19 @@
 //! without materializing the full AST.
 
 use crate::rule::{Rewrite, SimpleRule};
-use cas_ast::{Context, Expr, ExprId};
+use cas_ast::{Context, ExprId};
+use cas_math::poly_result_calls::{
+    build_poly_info_expr, format_materialization_note, try_parse_poly_latex_call,
+    try_parse_poly_print_call, try_parse_poly_stats_call, try_parse_poly_to_expr_call,
+};
 use cas_math::poly_store::{
     materialize_poly_result_expr, render_poly_result, render_poly_result_latex, thread_local_meta,
 };
+
+const POLY_STATS_MATERIALIZE_LIMIT: usize = 50_000;
+const POLY_TO_EXPR_DEFAULT_MAX_TERMS: usize = 50_000;
+const POLY_PRINT_DEFAULT_MAX_TERMS: usize = 1000;
+const POLY_LATEX_DEFAULT_MAX_TERMS: usize = 100;
 
 /// Rule: poly_stats(poly_result(id)) → metadata display
 pub struct PolyStatsRule;
@@ -18,50 +27,17 @@ impl SimpleRule for PolyStatsRule {
     }
 
     fn apply_simple(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
-        // Match: poly_stats(poly_result(id))
-        if let Expr::Function(fn_id, args) = ctx.get(expr) {
-            let name = ctx.sym_name(*fn_id);
-            if name != "poly_stats" || args.len() != 1 {
-                return None;
-            }
-
-            let arg = args[0];
-
-            // Extract poly_result(id) using canonical helper
-            let id = cas_math::poly_result::parse_poly_result_id(ctx, arg)?;
-
-            // Get metadata from thread-local store
-            if let Some(meta) = thread_local_meta(id) {
-                // Build human-friendly result with clear labeling
-                // Format: poly_info(id, terms, vars, repr)
-                // where repr = "modp" indicates modular arithmetic
-                let poly_id = ctx.num(id as i64);
-                let terms = ctx.num(meta.n_terms as i64);
-                let nvars = ctx.num(meta.n_vars as i64);
-
-                // repr indicator: "modp" for modular, "exact" for exact
-                let repr = ctx.var("modp");
-
-                let result = ctx.call("poly_info", vec![poly_id, terms, nvars, repr]);
-
-                // Materialization threshold based on EXPAND_MATERIALIZE_LIMIT
-                let can_materialize = meta.n_terms <= 50_000;
-                let materialize_note = if can_materialize {
-                    format!("materializable via poly_to_expr(poly_result({}))", id)
-                } else {
-                    "too large to materialize".to_string()
-                };
-
-                return Some(Rewrite::new(result).desc_lazy(|| {
-                    format!(
-                        "Poly #{}: {} terms, {} vars, repr=modp, {}",
-                        id, meta.n_terms, meta.n_vars, materialize_note
-                    )
-                }));
-            }
-        }
-
-        None
+        let call = try_parse_poly_stats_call(ctx, expr)?;
+        let meta = thread_local_meta(call.poly_id)?;
+        let result = build_poly_info_expr(ctx, call.poly_id, meta.n_terms, meta.n_vars);
+        let materialize_note =
+            format_materialization_note(call.poly_id, meta.n_terms, POLY_STATS_MATERIALIZE_LIMIT);
+        Some(Rewrite::new(result).desc_lazy(|| {
+            format!(
+                "Poly #{}: {} terms, {} vars, repr=modp, {}",
+                call.poly_id, meta.n_terms, meta.n_vars, materialize_note
+            )
+        }))
     }
 }
 
@@ -74,51 +50,26 @@ impl SimpleRule for PolyToExprRule {
     }
 
     fn apply_simple(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
-        // Match: poly_to_expr(poly_result(id)) or poly_to_expr(poly_result(id), max_terms)
-        if let Expr::Function(fn_id, args) = ctx.get(expr) {
-            let (fn_id, args) = (*fn_id, args.clone());
-            let name = ctx.sym_name(fn_id);
-            if name != "poly_to_expr" || args.is_empty() || args.len() > 2 {
-                return None;
-            }
-
-            let arg = args[0];
-            let max_terms: usize = if args.len() == 2 {
-                if let Expr::Number(n) = ctx.get(args[1]) {
-                    n.to_integer().try_into().unwrap_or(50_000)
-                } else {
-                    50_000
-                }
-            } else {
-                50_000 // Default limit
-            };
-
-            // Extract poly_result(id) using canonical helper
-            let id = cas_math::poly_result::parse_poly_result_id(ctx, arg)?;
-
-            if let Some(meta) = thread_local_meta(id) {
-                // Check limit
-                if meta.n_terms > max_terms {
-                    // Return error message
-                    let msg = ctx.var(&format!(
-                        "Error: {} terms exceeds limit {}",
-                        meta.n_terms, max_terms
-                    ));
-                    return Some(Rewrite::new(msg).desc_lazy(|| {
-                        format!("poly_to_expr: {} terms > limit {}", meta.n_terms, max_terms)
-                    }));
-                }
-
-                let materialized = materialize_poly_result_expr(ctx, id)?;
-
-                return Some(
-                    Rewrite::new(materialized)
-                        .desc_lazy(|| format!("Materialized polynomial: {} terms", meta.n_terms)),
-                );
-            }
+        let call = try_parse_poly_to_expr_call(ctx, expr, POLY_TO_EXPR_DEFAULT_MAX_TERMS)?;
+        let meta = thread_local_meta(call.poly_id)?;
+        if meta.n_terms > call.max_terms {
+            let msg = ctx.var(&format!(
+                "Error: {} terms exceeds limit {}",
+                meta.n_terms, call.max_terms
+            ));
+            return Some(Rewrite::new(msg).desc_lazy(|| {
+                format!(
+                    "poly_to_expr: {} terms > limit {}",
+                    meta.n_terms, call.max_terms
+                )
+            }));
         }
 
-        None
+        let materialized = materialize_poly_result_expr(ctx, call.poly_id)?;
+        Some(
+            Rewrite::new(materialized)
+                .desc_lazy(|| format!("Materialized polynomial: {} terms", meta.n_terms)),
+        )
     }
 }
 
@@ -136,48 +87,21 @@ impl SimpleRule for PolyPrintRule {
     }
 
     fn apply_simple(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
-        // Match: poly_print(poly_result(id)) or poly_print(poly_result(id), max_terms)
-        if let Expr::Function(fn_id, args) = ctx.get(expr) {
-            let (fn_id, args) = (*fn_id, args.clone());
-            let name = ctx.sym_name(fn_id);
-            if name != "poly_print" || args.is_empty() || args.len() > 2 {
-                return None;
-            }
+        let call = try_parse_poly_print_call(ctx, expr, POLY_PRINT_DEFAULT_MAX_TERMS)?;
+        let meta = thread_local_meta(call.poly_id)?;
+        let formatted = render_poly_result(call.poly_id, call.max_terms)?;
 
-            let arg = args[0];
-            let max_terms: usize = if args.len() == 2 {
-                if let Expr::Number(n) = ctx.get(args[1]) {
-                    n.to_integer().try_into().unwrap_or(1000)
-                } else {
-                    1000
-                }
-            } else {
-                1000 // Default limit for printing
-            };
+        let result = ctx.var(&formatted);
+        let desc = if meta.n_terms > call.max_terms {
+            format!(
+                "Formatted polynomial: {} of {} terms shown (no AST)",
+                call.max_terms, meta.n_terms
+            )
+        } else {
+            format!("Formatted polynomial: {} terms (no AST)", meta.n_terms)
+        };
 
-            // Extract poly_result(id) using canonical helper
-            let id = cas_math::poly_result::parse_poly_result_id(ctx, arg)?;
-
-            if let Some(meta) = thread_local_meta(id) {
-                let formatted = render_poly_result(id, max_terms)?;
-
-                // Return as a variable (string representation)
-                let result = ctx.var(&formatted);
-
-                let desc = if meta.n_terms > max_terms {
-                    format!(
-                        "Formatted polynomial: {} of {} terms shown (no AST)",
-                        max_terms, meta.n_terms
-                    )
-                } else {
-                    format!("Formatted polynomial: {} terms (no AST)", meta.n_terms)
-                };
-
-                return Some(Rewrite::new(result).desc(desc));
-            }
-        }
-
-        None
+        Some(Rewrite::new(result).desc(desc))
     }
 }
 
@@ -190,36 +114,16 @@ impl SimpleRule for PolyLatexRule {
     }
 
     fn apply_simple(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
-        if let Expr::Function(fn_id, args) = ctx.get(expr) {
-            let (fn_id, args) = (*fn_id, args.clone());
-            let name = ctx.sym_name(fn_id);
-            if name != "poly_latex" || args.is_empty() || args.len() > 2 {
-                return None;
-            }
-
-            let arg = args[0];
-            let max_terms: usize = if args.len() == 2 {
-                if let Expr::Number(n) = ctx.get(args[1]) {
-                    n.to_integer().try_into().unwrap_or(100)
-                } else {
-                    100
-                }
-            } else {
-                100 // LaTeX default is smaller
-            };
-
-            // Extract poly_result(id) using canonical helper
-            let id = cas_math::poly_result::parse_poly_result_id(ctx, arg)?;
-
-            if let Some(meta) = thread_local_meta(id) {
-                let formatted = render_poly_result_latex(id, max_terms)?;
-                let result = ctx.var(&formatted);
-                return Some(Rewrite::new(result).desc_lazy(|| {
-                    format!("LaTeX polynomial: {} terms", meta.n_terms.min(max_terms))
-                }));
-            }
-        }
-        None
+        let call = try_parse_poly_latex_call(ctx, expr, POLY_LATEX_DEFAULT_MAX_TERMS)?;
+        let meta = thread_local_meta(call.poly_id)?;
+        let formatted = render_poly_result_latex(call.poly_id, call.max_terms)?;
+        let result = ctx.var(&formatted);
+        Some(Rewrite::new(result).desc_lazy(|| {
+            format!(
+                "LaTeX polynomial: {} terms",
+                meta.n_terms.min(call.max_terms)
+            )
+        }))
     }
 }
 

@@ -8,6 +8,7 @@ rust-version.workspace = true
 cas_ast = { path = "../cas_ast" }
 cas_formatter = { path = "../cas_formatter" }
 cas_math = { path = "../cas_math", default-features = false }
+cas_session_core = { path = "../cas_session_core" }
 cas_solver_core = { path = "../cas_solver_core" }
 num-rational = "0.4"
 num-bigint = "0.4"
@@ -20,7 +21,6 @@ bitflags = "2"
 anyhow = "1.0.100"
 rustc-hash = "1.1"
 smallvec = "1"
-serde = { version = "1.0", features = ["derive"] }
 rayon = { version = "1.10", optional = true }
 
 [features]
@@ -30,7 +30,6 @@ parallel = ["rayon", "cas_math/parallel"]
 [dev-dependencies]
 cas_session = { path = "../cas_session", default-features = false }
 cas_parser = { path = "../cas_parser" }
-serde_json = "1.0"
 proptest = "1.9.0"
 criterion = "0.7.0"
 lazy_static = "1.4"

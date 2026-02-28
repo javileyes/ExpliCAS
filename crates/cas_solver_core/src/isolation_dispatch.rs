@@ -6,6 +6,11 @@
 use cas_ast::symbol::SymbolId;
 use cas_ast::{Context, Equation, Expr, ExprId, RelOp, SolutionSet};
 
+use crate::linear_collect::{
+    execute_linear_collect_additive_pipeline_with_default_kernel_and_unified_step_mapper_with_state,
+    execute_linear_collect_factored_pipeline_with_default_kernel_and_unified_step_mapper_with_state,
+};
+use crate::linear_solution::NonZeroStatus;
 use crate::solve_outcome::{
     plan_negated_lhs_isolation_step, residual_solution_set, resolve_isolated_variable_outcome,
     solve_isolated_variable_lhs_with_resolver_with_state,
@@ -381,6 +386,222 @@ where
     )
 }
 
+/// Execute one full isolation-dispatch step with default isolated/negated
+/// kernels and a unified negated-step mapper callback.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_isolation_dispatch_with_default_isolated_and_negated_entries_for_var_and_unified_negated_step_mapper_with_state<
+    T,
+    S,
+    E,
+    FContextRef,
+    FContextMut,
+    FSimplifyRhs,
+    FTryLinearCollect,
+    FTryLinearCollectV2,
+    FOnAdd,
+    FOnSub,
+    FOnMul,
+    FOnDiv,
+    FOnPow,
+    FOnFunction,
+    FCollectNegatedItem,
+    FSolveNegatedRewritten,
+    FMapStep,
+    FMapUnsupportedError,
+>(
+    state: &mut T,
+    lhs: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    var: &str,
+    context_ref: FContextRef,
+    context_mut: FContextMut,
+    simplify_rhs: FSimplifyRhs,
+    try_linear_collect: FTryLinearCollect,
+    try_linear_collect_v2: FTryLinearCollectV2,
+    on_add: FOnAdd,
+    on_sub: FOnSub,
+    on_mul: FOnMul,
+    on_div: FOnDiv,
+    on_pow: FOnPow,
+    on_function: FOnFunction,
+    collect_negated_item: FCollectNegatedItem,
+    solve_negated_rewritten: FSolveNegatedRewritten,
+    map_step: FMapStep,
+    map_unsupported_error: FMapUnsupportedError,
+) -> Result<(SolutionSet, Vec<S>), E>
+where
+    FContextRef: Fn(&mut T) -> &Context,
+    FContextMut: Fn(&mut T) -> &mut Context,
+    FSimplifyRhs: FnMut(&mut T, ExprId) -> ExprId,
+    FTryLinearCollect: FnMut(&mut T, ExprId, ExprId, &str) -> Option<(SolutionSet, Vec<S>)>,
+    FTryLinearCollectV2: FnMut(&mut T, ExprId, ExprId, &str) -> Option<(SolutionSet, Vec<S>)>,
+    FOnAdd: FnMut(&mut T, ExprId, ExprId) -> Result<(SolutionSet, Vec<S>), E>,
+    FOnSub: FnMut(&mut T, ExprId, ExprId) -> Result<(SolutionSet, Vec<S>), E>,
+    FOnMul: FnMut(&mut T, ExprId, ExprId) -> Result<(SolutionSet, Vec<S>), E>,
+    FOnDiv: FnMut(&mut T, ExprId, ExprId) -> Result<(SolutionSet, Vec<S>), E>,
+    FOnPow: FnMut(&mut T, ExprId, ExprId) -> Result<(SolutionSet, Vec<S>), E>,
+    FOnFunction: FnMut(&mut T, SymbolId, Vec<ExprId>) -> Result<(SolutionSet, Vec<S>), E>,
+    FCollectNegatedItem: FnMut(&mut T) -> bool,
+    FSolveNegatedRewritten: FnMut(&mut T, Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
+    FMapStep: FnMut(String, Equation) -> S,
+    FMapUnsupportedError: FnMut(&mut T, Expr) -> E,
+{
+    let map_step = std::cell::RefCell::new(map_step);
+    execute_isolation_dispatch_with_default_isolated_and_negated_entries_for_var_with_state(
+        state,
+        lhs,
+        rhs,
+        op,
+        var,
+        context_ref,
+        context_mut,
+        simplify_rhs,
+        try_linear_collect,
+        try_linear_collect_v2,
+        on_add,
+        on_sub,
+        on_mul,
+        on_div,
+        on_pow,
+        on_function,
+        collect_negated_item,
+        solve_negated_rewritten,
+        |item| (map_step.borrow_mut())(item.description, item.equation),
+        map_unsupported_error,
+    )
+}
+
+/// Execute one full isolation-dispatch step with:
+/// - default isolated-variable resolution kernels
+/// - default negated-LHS rewrite planning and step merge
+/// - default factored/additive linear-collect kernels
+///
+/// This keeps engine adapters thin by removing per-call linear-collect wiring.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_isolation_dispatch_with_default_isolated_and_negated_entries_and_default_linear_collect_kernels_for_var_and_unified_step_mapper_with_state<
+    T,
+    S,
+    E,
+    FContextRef,
+    FContextMut,
+    FSimplifyRhs,
+    FCollectLinearItem,
+    FSimplifyLinearExpr,
+    FProveNonzeroStatus,
+    FRenderExpr,
+    FOnAdd,
+    FOnSub,
+    FOnMul,
+    FOnDiv,
+    FOnPow,
+    FOnFunction,
+    FCollectNegatedItem,
+    FSolveNegatedRewritten,
+    FMapStep,
+    FMapUnsupportedError,
+>(
+    state: &mut T,
+    lhs: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    var: &str,
+    context_ref: FContextRef,
+    context_mut: FContextMut,
+    simplify_rhs: FSimplifyRhs,
+    collect_linear_item: FCollectLinearItem,
+    simplify_linear_expr: FSimplifyLinearExpr,
+    prove_nonzero_status: FProveNonzeroStatus,
+    render_expr: FRenderExpr,
+    on_add: FOnAdd,
+    on_sub: FOnSub,
+    on_mul: FOnMul,
+    on_div: FOnDiv,
+    on_pow: FOnPow,
+    on_function: FOnFunction,
+    collect_negated_item: FCollectNegatedItem,
+    solve_negated_rewritten: FSolveNegatedRewritten,
+    map_step: FMapStep,
+    map_unsupported_error: FMapUnsupportedError,
+) -> Result<(SolutionSet, Vec<S>), E>
+where
+    FContextRef: Fn(&mut T) -> &Context,
+    FContextMut: Fn(&mut T) -> &mut Context,
+    FSimplifyRhs: FnMut(&mut T, ExprId) -> ExprId,
+    FCollectLinearItem: FnMut(&mut T) -> bool,
+    FSimplifyLinearExpr: FnMut(&mut T, ExprId) -> ExprId,
+    FProveNonzeroStatus: FnMut(&mut T, ExprId) -> NonZeroStatus,
+    FRenderExpr: Fn(&Context, ExprId) -> String,
+    FOnAdd: FnMut(&mut T, ExprId, ExprId) -> Result<(SolutionSet, Vec<S>), E>,
+    FOnSub: FnMut(&mut T, ExprId, ExprId) -> Result<(SolutionSet, Vec<S>), E>,
+    FOnMul: FnMut(&mut T, ExprId, ExprId) -> Result<(SolutionSet, Vec<S>), E>,
+    FOnDiv: FnMut(&mut T, ExprId, ExprId) -> Result<(SolutionSet, Vec<S>), E>,
+    FOnPow: FnMut(&mut T, ExprId, ExprId) -> Result<(SolutionSet, Vec<S>), E>,
+    FOnFunction: FnMut(&mut T, SymbolId, Vec<ExprId>) -> Result<(SolutionSet, Vec<S>), E>,
+    FCollectNegatedItem: FnMut(&mut T) -> bool,
+    FSolveNegatedRewritten: FnMut(&mut T, Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
+    FMapStep: FnMut(String, Equation) -> S,
+    FMapUnsupportedError: FnMut(&mut T, Expr) -> E,
+{
+    let map_step = std::cell::RefCell::new(map_step);
+    let collect_linear_item = std::cell::RefCell::new(collect_linear_item);
+    let simplify_linear_expr = std::cell::RefCell::new(simplify_linear_expr);
+    let prove_nonzero_status = std::cell::RefCell::new(prove_nonzero_status);
+    let context_mut = &context_mut;
+    let render_expr = &render_expr;
+
+    execute_isolation_dispatch_with_default_isolated_and_negated_entries_for_var_and_unified_negated_step_mapper_with_state(
+        state,
+        lhs,
+        rhs,
+        op,
+        var,
+        context_ref,
+        context_mut,
+        simplify_rhs,
+        |state, solve_lhs, solve_rhs, solve_var| {
+            let include_items = (collect_linear_item.borrow_mut())(state);
+            execute_linear_collect_factored_pipeline_with_default_kernel_and_unified_step_mapper_with_state(
+                state,
+                solve_lhs,
+                solve_rhs,
+                solve_var,
+                include_items,
+                context_mut,
+                |state, expr| (simplify_linear_expr.borrow_mut())(state, expr),
+                |state, expr| (prove_nonzero_status.borrow_mut())(state, expr),
+                |core_ctx, expr| render_expr(core_ctx, expr),
+                |description, equation| (map_step.borrow_mut())(description, equation),
+            )
+        },
+        |state, solve_lhs, solve_rhs, solve_var| {
+            let include_items = (collect_linear_item.borrow_mut())(state);
+            execute_linear_collect_additive_pipeline_with_default_kernel_and_unified_step_mapper_with_state(
+                state,
+                solve_lhs,
+                solve_rhs,
+                solve_var,
+                include_items,
+                context_mut,
+                |state, expr| (simplify_linear_expr.borrow_mut())(state, expr),
+                |state, expr| (prove_nonzero_status.borrow_mut())(state, expr),
+                |core_ctx, expr| render_expr(core_ctx, expr),
+                |description, equation| (map_step.borrow_mut())(description, equation),
+            )
+        },
+        on_add,
+        on_sub,
+        on_mul,
+        on_div,
+        on_pow,
+        on_function,
+        collect_negated_item,
+        solve_negated_rewritten,
+        |description, equation| (map_step.borrow_mut())(description, equation),
+        map_unsupported_error,
+    )
+}
+
 /// Execute a negated-LHS entry (`-A op rhs`) with default core negation rewrite
 /// planning, then delegate solving of rewritten equation via callback.
 #[allow(clippy::too_many_arguments)]
@@ -426,6 +647,7 @@ mod tests {
         execute_isolated_variable_entry_with_default_resolution_with_state,
         execute_isolation_dispatch_route_for_var_with_state,
         execute_isolation_dispatch_route_with_state,
+        execute_isolation_dispatch_with_default_isolated_and_negated_entries_and_default_linear_collect_kernels_for_var_and_unified_step_mapper_with_state,
         execute_isolation_dispatch_with_default_isolated_and_negated_entries_for_var_with_state,
         execute_negated_lhs_entry_with_default_plan_and_merge_with_existing_steps_with_state,
         IsolationDispatchRoute,
@@ -538,6 +760,50 @@ mod tests {
 
         let (solutions, steps) = solved;
         assert_eq!(steps, vec!["add".to_string()]);
+        assert!(matches!(solutions, SolutionSet::Discrete(_)));
+    }
+
+    #[test]
+    fn execute_isolation_dispatch_with_default_linear_collect_wrapper_routes_add_branch() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        let add = ctx.add(Expr::Add(x, one));
+
+        let solved = execute_isolation_dispatch_with_default_isolated_and_negated_entries_and_default_linear_collect_kernels_for_var_and_unified_step_mapper_with_state(
+            &mut ctx,
+            add,
+            two,
+            RelOp::Eq,
+            "x",
+            |ctx| ctx,
+            |ctx| ctx,
+            |_ctx, expr| expr,
+            |_ctx| true,
+            |_ctx, expr| expr,
+            |_ctx, _expr| crate::linear_solution::NonZeroStatus::Unknown,
+            |_core_ctx, _expr| "expr".to_string(),
+            |_ctx, left, right| {
+                Ok::<(SolutionSet, Vec<String>), &'static str>((
+                    SolutionSet::Discrete(vec![left, right]),
+                    vec!["add-default-linear".to_string()],
+                ))
+            },
+            |_ctx, _left, _right| Err("unexpected-sub"),
+            |_ctx, _left, _right| Err("unexpected-mul"),
+            |_ctx, _left, _right| Err("unexpected-div"),
+            |_ctx, _base, _exp| Err("unexpected-pow"),
+            |_ctx, _fn_id, _args| Err("unexpected-fn"),
+            |_ctx| true,
+            |_ctx, _eq, _var| Err("unexpected-neg"),
+            |description, _equation| description,
+            |_ctx, _lhs_expr| "unexpected-unsupported",
+        )
+        .expect("add branch should resolve");
+
+        let (solutions, steps) = solved;
+        assert_eq!(steps, vec!["add-default-linear".to_string()]);
         assert!(matches!(solutions, SolutionSet::Discrete(_)));
     }
 

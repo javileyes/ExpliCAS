@@ -17,6 +17,9 @@ use crate::unwrap_plan::{
     LogLinearAssumptionRecord, UnwrapEntryRouting, UnwrapExecutionItem,
 };
 
+/// Default unwrap residual hint used when log isolation is blocked in real mode.
+pub const DEFAULT_UNWRAP_RESIDUAL_SUFFIX: &str = " - use 'semantics preset complex'";
+
 /// Execute isolation strategy from stateful callbacks:
 /// 1) derive side-routing for variable placement,
 /// 2) solve or defer according to routing policy.
@@ -98,6 +101,46 @@ where
         },
         solve_equation,
         map_swap_item_to_step,
+        variable_not_found_error,
+    )
+}
+
+/// Execute isolation strategy using default routing derivation
+/// and a unified step-mapper callback.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_isolation_strategy_with_default_routing_and_unified_step_mapper_with_state<
+    T,
+    S,
+    E,
+    FContextRef,
+    FSolveEquation,
+    FMapStep,
+    FVariableNotFoundError,
+>(
+    state: &mut T,
+    eq: &Equation,
+    var: &str,
+    include_item: bool,
+    context_ref: FContextRef,
+    solve_equation: FSolveEquation,
+    map_step: FMapStep,
+    variable_not_found_error: FVariableNotFoundError,
+) -> Option<Result<(SolutionSet, Vec<S>), E>>
+where
+    FContextRef: Fn(&mut T) -> &Context,
+    FSolveEquation: FnMut(&mut T, &Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
+    FMapStep: FnMut(String, Equation) -> S,
+    FVariableNotFoundError: FnMut(&str) -> E,
+{
+    let map_step = std::cell::RefCell::new(map_step);
+    execute_isolation_strategy_with_default_routing_with_state(
+        state,
+        eq,
+        var,
+        include_item,
+        context_ref,
+        solve_equation,
+        |item| (map_step.borrow_mut())(item.description, item.equation),
         variable_not_found_error,
     )
 }
@@ -202,6 +245,116 @@ where
         note_assumption,
         solve_equation,
         map_execution_item_to_step,
+    )
+}
+
+/// Execute unwrap strategy with default entry route and default residual suffix.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_unwrap_strategy_with_default_route_and_residual_hint_with_state<
+    T,
+    S,
+    E,
+    FContextMut,
+    FClassifyLogSolve,
+    FRenderExpr,
+    FMapTerminalStep,
+    FNoteAssumption,
+    FSolveEquation,
+    FMapExecutionStep,
+>(
+    state: &mut T,
+    eq: &Equation,
+    var: &str,
+    include_item: bool,
+    context_mut: FContextMut,
+    mode: crate::log_domain::DomainModeKind,
+    wildcard_scope: bool,
+    classify_log_solve: FClassifyLogSolve,
+    render_expr: FRenderExpr,
+    map_terminal_item_to_step: FMapTerminalStep,
+    note_assumption: FNoteAssumption,
+    solve_equation: FSolveEquation,
+    map_execution_item_to_step: FMapExecutionStep,
+) -> Option<Result<(SolutionSet, Vec<S>), E>>
+where
+    FContextMut: Fn(&mut T) -> &mut Context,
+    FClassifyLogSolve:
+        FnMut(&Context, cas_ast::ExprId, cas_ast::ExprId) -> crate::log_domain::LogSolveDecision,
+    FRenderExpr: FnMut(&Context, cas_ast::ExprId) -> String,
+    FMapTerminalStep: FnMut(crate::solve_outcome::TermIsolationExecutionItem) -> S,
+    FNoteAssumption: FnMut(&mut T, LogLinearAssumptionRecord),
+    FSolveEquation: FnMut(&mut T, &Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
+    FMapExecutionStep: FnMut(UnwrapExecutionItem) -> S,
+{
+    execute_unwrap_strategy_with_default_route_with_state(
+        state,
+        eq,
+        var,
+        include_item,
+        context_mut,
+        mode,
+        wildcard_scope,
+        DEFAULT_UNWRAP_RESIDUAL_SUFFIX,
+        classify_log_solve,
+        render_expr,
+        map_terminal_item_to_step,
+        note_assumption,
+        solve_equation,
+        map_execution_item_to_step,
+    )
+}
+
+/// Execute unwrap strategy with default route, default residual hint,
+/// and a unified step-mapper callback.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_unwrap_strategy_with_default_route_and_residual_hint_and_unified_step_mapper_with_state<
+    T,
+    S,
+    E,
+    FContextMut,
+    FClassifyLogSolve,
+    FRenderExpr,
+    FNoteAssumption,
+    FSolveEquation,
+    FMapStep,
+>(
+    state: &mut T,
+    eq: &Equation,
+    var: &str,
+    include_item: bool,
+    context_mut: FContextMut,
+    mode: crate::log_domain::DomainModeKind,
+    wildcard_scope: bool,
+    classify_log_solve: FClassifyLogSolve,
+    render_expr: FRenderExpr,
+    note_assumption: FNoteAssumption,
+    solve_equation: FSolveEquation,
+    map_step: FMapStep,
+) -> Option<Result<(SolutionSet, Vec<S>), E>>
+where
+    FContextMut: Fn(&mut T) -> &mut Context,
+    FClassifyLogSolve:
+        FnMut(&Context, cas_ast::ExprId, cas_ast::ExprId) -> crate::log_domain::LogSolveDecision,
+    FRenderExpr: FnMut(&Context, cas_ast::ExprId) -> String,
+    FNoteAssumption: FnMut(&mut T, LogLinearAssumptionRecord),
+    FSolveEquation: FnMut(&mut T, &Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
+    FMapStep: FnMut(String, Equation) -> S,
+{
+    let map_step = std::cell::RefCell::new(map_step);
+    execute_unwrap_strategy_with_default_route_and_residual_hint_with_state(
+        state,
+        eq,
+        var,
+        include_item,
+        context_mut,
+        mode,
+        wildcard_scope,
+        classify_log_solve,
+        render_expr,
+        |item| (map_step.borrow_mut())(item.description, item.equation),
+        note_assumption,
+        solve_equation,
+        |item| (map_step.borrow_mut())(item.description, item.equation),
     )
 }
 
@@ -337,6 +490,50 @@ where
     )
 }
 
+/// Execute collect-terms strategy using default kernel derivation
+/// and a unified step-mapper callback.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_collect_terms_strategy_with_default_kernel_and_unified_step_mapper_with_state<
+    T,
+    S,
+    E,
+    FContextMut,
+    FSimplifyExpr,
+    FRenderExpr,
+    FSolveEquation,
+    FMapStep,
+>(
+    state: &mut T,
+    equation: &Equation,
+    var: &str,
+    include_item: bool,
+    context_mut: FContextMut,
+    simplify_expr: FSimplifyExpr,
+    render_expr: FRenderExpr,
+    solve_equation: FSolveEquation,
+    map_step: FMapStep,
+) -> Option<Result<(SolutionSet, Vec<S>), E>>
+where
+    FContextMut: FnMut(&mut T) -> &mut Context,
+    FSimplifyExpr: FnMut(&mut T, cas_ast::ExprId) -> cas_ast::ExprId,
+    FRenderExpr: FnMut(&mut T, cas_ast::ExprId) -> String,
+    FSolveEquation: FnMut(&mut T, &Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
+    FMapStep: FnMut(String, Equation) -> S,
+{
+    let map_step = std::cell::RefCell::new(map_step);
+    execute_collect_terms_strategy_with_default_kernel_with_state(
+        state,
+        equation,
+        var,
+        include_item,
+        context_mut,
+        simplify_expr,
+        render_expr,
+        solve_equation,
+        |item| (map_step.borrow_mut())(item.description, item.equation),
+    )
+}
+
 /// Execute rational-exponent strategy using default core kernel derivation:
 /// `derive_rational_exponent_kernel_for_var(ctx, equation, var)`.
 #[allow(clippy::too_many_arguments)]
@@ -383,6 +580,86 @@ where
         solve_equation,
         map_item_to_step,
         verify_solution,
+    )
+}
+
+/// Execute rational-exponent strategy using default core kernel derivation
+/// and an unconditional acceptance policy for candidate solutions.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_rational_exponent_strategy_with_default_kernel_and_accept_all_solutions_with_state<
+    T,
+    S,
+    E,
+    FContextMut,
+    FSimplifyExpr,
+    FSolveEquation,
+    FMapStep,
+>(
+    state: &mut T,
+    equation: &Equation,
+    var: &str,
+    include_item: bool,
+    context_mut: FContextMut,
+    simplify_expr: FSimplifyExpr,
+    solve_equation: FSolveEquation,
+    map_item_to_step: FMapStep,
+) -> Option<Result<(SolutionSet, Vec<S>), E>>
+where
+    FContextMut: FnMut(&mut T) -> &mut Context,
+    FSimplifyExpr: FnMut(&mut T, cas_ast::ExprId) -> cas_ast::ExprId,
+    FSolveEquation: FnMut(&mut T, &Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
+    FMapStep: FnMut(StrategyExecutionItem) -> S,
+{
+    execute_rational_exponent_strategy_with_default_kernel_with_state(
+        state,
+        equation,
+        var,
+        include_item,
+        context_mut,
+        simplify_expr,
+        solve_equation,
+        map_item_to_step,
+        |_state, _solution| true,
+    )
+}
+
+/// Execute rational-exponent strategy using default kernel derivation,
+/// unconditional candidate acceptance, and a unified step-mapper callback.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_rational_exponent_strategy_with_default_kernel_and_accept_all_solutions_and_unified_step_mapper_with_state<
+    T,
+    S,
+    E,
+    FContextMut,
+    FSimplifyExpr,
+    FSolveEquation,
+    FMapStep,
+>(
+    state: &mut T,
+    equation: &Equation,
+    var: &str,
+    include_item: bool,
+    context_mut: FContextMut,
+    simplify_expr: FSimplifyExpr,
+    solve_equation: FSolveEquation,
+    map_step: FMapStep,
+) -> Option<Result<(SolutionSet, Vec<S>), E>>
+where
+    FContextMut: FnMut(&mut T) -> &mut Context,
+    FSimplifyExpr: FnMut(&mut T, cas_ast::ExprId) -> cas_ast::ExprId,
+    FSolveEquation: FnMut(&mut T, &Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
+    FMapStep: FnMut(String, Equation) -> S,
+{
+    let map_step = std::cell::RefCell::new(map_step);
+    execute_rational_exponent_strategy_with_default_kernel_and_accept_all_solutions_with_state(
+        state,
+        equation,
+        var,
+        include_item,
+        context_mut,
+        simplify_expr,
+        solve_equation,
+        |item| (map_step.borrow_mut())(item.description, item.equation),
     )
 }
 

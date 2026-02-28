@@ -9,7 +9,7 @@ use crate::linear_solution::{
     build_linear_solution_set, derive_linear_nonzero_statuses, NonZeroStatus,
 };
 use crate::linear_terms::{build_sum, decompose_linear_collect_terms};
-use cas_ast::{Context, Expr, ExprId, SolutionSet};
+use cas_ast::{Context, Equation, Expr, ExprId, SolutionSet};
 
 /// Normalized linear-collect kernel for factored equations:
 /// `coeff * var = rhs_term`.
@@ -751,6 +751,51 @@ where
     )
 }
 
+/// Stateful factored linear-collect pipeline with default kernel derivation
+/// and a unified step-mapper callback.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_linear_collect_factored_pipeline_with_default_kernel_and_unified_step_mapper_with_state<
+    T,
+    S,
+    FContextMut,
+    FSimplifyExpr,
+    FProveNonzeroStatus,
+    FRenderExpr,
+    FMapStep,
+>(
+    state: &mut T,
+    lhs: ExprId,
+    rhs: ExprId,
+    var: &str,
+    include_items: bool,
+    context_mut: FContextMut,
+    simplify_expr: FSimplifyExpr,
+    prove_nonzero_status: FProveNonzeroStatus,
+    render_expr: FRenderExpr,
+    map_step: FMapStep,
+) -> Option<(SolutionSet, Vec<S>)>
+where
+    FContextMut: Fn(&mut T) -> &mut Context,
+    FSimplifyExpr: FnMut(&mut T, ExprId) -> ExprId,
+    FProveNonzeroStatus: FnMut(&mut T, ExprId) -> NonZeroStatus,
+    FRenderExpr: Fn(&Context, ExprId) -> String,
+    FMapStep: FnMut(String, Equation) -> S,
+{
+    let map_step = std::cell::RefCell::new(map_step);
+    execute_linear_collect_factored_pipeline_with_default_kernel_with_state(
+        state,
+        lhs,
+        rhs,
+        var,
+        include_items,
+        context_mut,
+        simplify_expr,
+        prove_nonzero_status,
+        render_expr,
+        |item| (map_step.borrow_mut())(item.description().to_string(), item.equation),
+    )
+}
+
 /// High-level factored linear-collect pipeline from an optional pre-derived
 /// kernel, with injected hooks for simplification/proof and optional didactic
 /// mapping.
@@ -1007,6 +1052,51 @@ where
             )
         },
         map_item_to_step,
+    )
+}
+
+/// Stateful additive linear-collect pipeline with default kernel derivation
+/// and a unified step-mapper callback.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_linear_collect_additive_pipeline_with_default_kernel_and_unified_step_mapper_with_state<
+    T,
+    S,
+    FContextMut,
+    FSimplifyExpr,
+    FProveNonzeroStatus,
+    FRenderExpr,
+    FMapStep,
+>(
+    state: &mut T,
+    lhs: ExprId,
+    rhs: ExprId,
+    var: &str,
+    include_items: bool,
+    context_mut: FContextMut,
+    simplify_expr: FSimplifyExpr,
+    prove_nonzero_status: FProveNonzeroStatus,
+    render_expr: FRenderExpr,
+    map_step: FMapStep,
+) -> Option<(SolutionSet, Vec<S>)>
+where
+    FContextMut: Fn(&mut T) -> &mut Context,
+    FSimplifyExpr: FnMut(&mut T, ExprId) -> ExprId,
+    FProveNonzeroStatus: FnMut(&mut T, ExprId) -> NonZeroStatus,
+    FRenderExpr: Fn(&Context, ExprId) -> String,
+    FMapStep: FnMut(String, Equation) -> S,
+{
+    let map_step = std::cell::RefCell::new(map_step);
+    execute_linear_collect_additive_pipeline_with_default_kernel_with_state(
+        state,
+        lhs,
+        rhs,
+        var,
+        include_items,
+        context_mut,
+        simplify_expr,
+        prove_nonzero_status,
+        render_expr,
+        |item| (map_step.borrow_mut())(item.description().to_string(), item.equation),
     )
 }
 
