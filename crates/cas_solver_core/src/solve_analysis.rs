@@ -525,6 +525,36 @@ where
     is_soft_strategy_error_from_message_parts(isolation_detail(error), solver_detail(error))
 }
 
+/// Error contract exposing message fragments used for soft-strategy
+/// classification.
+pub trait StrategyErrorMessageParts {
+    fn isolation_detail(&self) -> Option<&str>;
+    fn solver_detail(&self) -> Option<&str>;
+}
+
+/// Classify whether an error is soft using [`StrategyErrorMessageParts`].
+pub fn is_soft_strategy_error_by_parts<E>(error: &E) -> bool
+where
+    E: StrategyErrorMessageParts,
+{
+    is_soft_strategy_error_from_message_parts(error.isolation_detail(), error.solver_detail())
+}
+
+/// Debug-only canonical-form assertion used by solver pipelines.
+///
+/// The equation pre-normalization flow should not leave top-level `Sub` on
+/// either side before strategy dispatch.
+pub fn debug_assert_equation_no_top_level_sub(ctx: &Context, equation: &Equation) {
+    debug_assert!(
+        !matches!(ctx.get(equation.lhs), Expr::Sub(_, _)),
+        "cancel_common_terms precondition: LHS top-level is Sub (not canonical)"
+    );
+    debug_assert!(
+        !matches!(ctx.get(equation.rhs), Expr::Sub(_, _)),
+        "cancel_common_terms precondition: RHS top-level is Sub (not canonical)"
+    );
+}
+
 /// Decide whether a rewritten residual should replace the current one.
 ///
 /// Accept when:
@@ -2365,6 +2395,15 @@ mod tests {
         solver_detail: Option<&'static str>,
     }
 
+    impl StrategyErrorMessageParts for SoftErrorFixture {
+        fn isolation_detail(&self) -> Option<&str> {
+            self.isolation_detail
+        }
+        fn solver_detail(&self) -> Option<&str> {
+            self.solver_detail
+        }
+    }
+
     #[test]
     fn is_soft_strategy_error_with_uses_extractors() {
         let soft_isolation = SoftErrorFixture {
@@ -2396,6 +2435,21 @@ mod tests {
             |err| err.isolation_detail,
             |err| err.solver_detail,
         ));
+    }
+
+    #[test]
+    fn is_soft_strategy_error_by_parts_uses_trait_contract() {
+        let soft_isolation = SoftErrorFixture {
+            isolation_detail: Some("variable appears on both sides during rewrite"),
+            solver_detail: None,
+        };
+        assert!(is_soft_strategy_error_by_parts(&soft_isolation));
+
+        let hard = SoftErrorFixture {
+            isolation_detail: Some("incompatible branch"),
+            solver_detail: Some("hard failure"),
+        };
+        assert!(!is_soft_strategy_error_by_parts(&hard));
     }
 
     #[test]

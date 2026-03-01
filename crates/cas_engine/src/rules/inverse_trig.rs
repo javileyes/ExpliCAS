@@ -1,44 +1,16 @@
 use crate::define_rule;
-use crate::nary::build_balanced_add;
 use crate::rule::Rewrite;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use cas_math::expr_relations::extract_negated_inner;
+use cas_math::inverse_trig_composition_support::{
+    build_sum_without, combine_with_term, is_number_in_unit_interval,
+    plan_inverse_trig_composition_with_mode_flags, InverseTrigCompositionKind,
+};
 use cas_math::numeric_eval::as_rational_const;
 use cas_math::trig_reciprocal_support::{are_reciprocals, has_reciprocal_atan_pair};
 use cas_math::trig_roots_flatten::flatten_add_sub_chain;
-use num_traits::One;
 
 // ==================== Helper Functions for Pattern Matching ====================
-
-/// Build sum of all terms except indices i and j
-/// Returns None if no terms remain, Some(expr) otherwise
-/// Uses build_balanced_add for consistent balanced tree construction.
-fn build_sum_without(
-    ctx: &mut Context,
-    terms: &[ExprId],
-    skip_i: usize,
-    skip_j: usize,
-) -> Option<ExprId> {
-    let remaining: Vec<ExprId> = terms
-        .iter()
-        .enumerate()
-        .filter(|(idx, _)| *idx != skip_i && *idx != skip_j)
-        .map(|(_, &term)| term)
-        .collect();
-
-    match remaining.len() {
-        0 => None,
-        _ => Some(build_balanced_add(ctx, &remaining)),
-    }
-}
-
-/// Combine optional base with new term
-fn combine_with_term(ctx: &mut Context, base: Option<ExprId>, new_term: ExprId) -> ExprId {
-    match base {
-        None => new_term,
-        Some(b) => ctx.add(Expr::Add(b, new_term)),
-    }
-}
 
 /// Check if both expressions match a pattern, handling negation automatically
 ///
@@ -186,36 +158,19 @@ impl crate::rule::Rule for InverseTrigCompositionRule {
                             && (ctx.is_builtin(*inner_name, BuiltinFn::Arcsin)
                                 || ctx.is_builtin(*inner_name, BuiltinFn::Asin))
                         {
-                            // Check domain_mode: sin(arcsin(x)) requires x ∈ [-1,1]
                             let mode = parent_ctx.domain_mode();
-                            match mode {
-                                crate::domain::DomainMode::Strict => {
-                                    // Check if x is a literal number in [-1, 1]
-                                    if let Expr::Number(n) = ctx.get(x) {
-                                        let one = num_rational::BigRational::one();
-                                        let neg_one = -one.clone();
-                                        if *n >= neg_one && *n <= one {
-                                            return Some(
-                                                Rewrite::new(x).desc("sin(arcsin(x)) = x"),
-                                            );
-                                        }
-                                    }
-                                    // Variable: don't simplify in strict mode
-                                    return None;
-                                }
-                                crate::domain::DomainMode::Generic => {
-                                    return Some(Rewrite::new(x).desc("sin(arcsin(x)) = x"));
-                                }
-                                crate::domain::DomainMode::Assume => {
-                                    return Some(
-                                        Rewrite::new(x)
-                                            .desc("sin(arcsin(x)) = x (assuming x ∈ [-1, 1])")
-                                            .assume(crate::assumptions::AssumptionEvent::defined(
-                                                ctx, x,
-                                            )),
-                                    );
-                                }
+                            let plan = plan_inverse_trig_composition_with_mode_flags(
+                                InverseTrigCompositionKind::SinArcsin,
+                                is_number_in_unit_interval(ctx, x),
+                                matches!(mode, crate::domain::DomainMode::Assume),
+                                matches!(mode, crate::domain::DomainMode::Strict),
+                            )?;
+                            let mut rewrite = Rewrite::new(x).desc(plan.desc);
+                            if plan.assume_defined {
+                                rewrite = rewrite
+                                    .assume(crate::assumptions::AssumptionEvent::defined(ctx, x));
                             }
+                            return Some(rewrite);
                         }
 
                         // cos(arccos(x)) = x (requires x ∈ [-1, 1])
@@ -224,32 +179,18 @@ impl crate::rule::Rule for InverseTrigCompositionRule {
                                 || ctx.is_builtin(*inner_name, BuiltinFn::Acos))
                         {
                             let mode = parent_ctx.domain_mode();
-                            match mode {
-                                crate::domain::DomainMode::Strict => {
-                                    if let Expr::Number(n) = ctx.get(x) {
-                                        let one = num_rational::BigRational::one();
-                                        let neg_one = -one.clone();
-                                        if *n >= neg_one && *n <= one {
-                                            return Some(
-                                                Rewrite::new(x).desc("cos(arccos(x)) = x"),
-                                            );
-                                        }
-                                    }
-                                    return None;
-                                }
-                                crate::domain::DomainMode::Generic => {
-                                    return Some(Rewrite::new(x).desc("cos(arccos(x)) = x"));
-                                }
-                                crate::domain::DomainMode::Assume => {
-                                    return Some(
-                                        Rewrite::new(x)
-                                            .desc("cos(arccos(x)) = x (assuming x ∈ [-1, 1])")
-                                            .assume(crate::assumptions::AssumptionEvent::defined(
-                                                ctx, x,
-                                            )),
-                                    );
-                                }
+                            let plan = plan_inverse_trig_composition_with_mode_flags(
+                                InverseTrigCompositionKind::CosArccos,
+                                is_number_in_unit_interval(ctx, x),
+                                matches!(mode, crate::domain::DomainMode::Assume),
+                                matches!(mode, crate::domain::DomainMode::Strict),
+                            )?;
+                            let mut rewrite = Rewrite::new(x).desc(plan.desc);
+                            if plan.assume_defined {
+                                rewrite = rewrite
+                                    .assume(crate::assumptions::AssumptionEvent::defined(ctx, x));
                             }
+                            return Some(rewrite);
                         }
 
                         // tan(arctan(x)) = x (always safe - arctan has domain R)

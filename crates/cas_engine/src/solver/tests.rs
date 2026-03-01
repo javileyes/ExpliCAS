@@ -227,7 +227,15 @@ fn classify_for_test(
         domain_mode: mode,
         ..Default::default()
     };
-    classify_log_solve(ctx, base, rhs, &opts, &SolveDomainEnv::default())
+    cas_solver_core::log_domain::classify_log_solve_with_env_and_tri_prover(
+        ctx,
+        base,
+        rhs,
+        opts.value_domain == crate::semantics::ValueDomain::RealOnly,
+        opts.core_domain_mode(),
+        &SolveDomainEnv::default(),
+        |core_ctx, expr| crate::helpers::prove_positive_core(core_ctx, expr, opts.value_domain),
+    )
 }
 
 #[test]

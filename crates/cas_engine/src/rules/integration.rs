@@ -10,6 +10,7 @@ use crate::engine::Simplifier;
 use crate::parent_context::ParentContext;
 use crate::rule::{Rewrite, Rule};
 use cas_ast::{Context, Expr, ExprId};
+use cas_math::expr_extract::extract_i64_multiplier_and_base;
 use cas_math::trig_roots_flatten::flatten_mul_chain;
 
 /// Product-to-sum identity for trigonometric products (Werner formulas).
@@ -142,7 +143,7 @@ impl Rule for CosProductTelescopingRule {
                 if ctx.builtin_of(*fn_id) == Some(cas_ast::BuiltinFn::Cos) && args.len() == 1 {
                     let arg = args[0];
                     // Try to extract k and u from: k*u or just u (k=1)
-                    let (k, u) = extract_multiplier_and_base(ctx, arg);
+                    let (k, u) = extract_i64_multiplier_and_base(ctx, arg);
                     cos_info.push((i, k, u));
                 }
             }
@@ -225,30 +226,6 @@ impl Rule for CosProductTelescopingRule {
             n - 1, n, n
         )).assume(crate::assumptions::AssumptionEvent::nonzero(ctx, sin_den)))
     }
-}
-
-/// Extract multiplier k and base expression u from k*u or just u (k=1).
-fn extract_multiplier_and_base(ctx: &Context, expr: ExprId) -> (i64, ExprId) {
-    if let Expr::Mul(l, r) = ctx.get(expr) {
-        // Check if left is a number
-        if let Expr::Number(n) = ctx.get(*l) {
-            if n.is_integer() {
-                if let Ok(k) = n.to_integer().try_into() {
-                    return (k, *r);
-                }
-            }
-        }
-        // Check if right is a number (canonical form puts numbers first, but be safe)
-        if let Expr::Number(n) = ctx.get(*r) {
-            if n.is_integer() {
-                if let Ok(k) = n.to_integer().try_into() {
-                    return (k, *l);
-                }
-            }
-        }
-    }
-    // No multiplier: k=1, u=expr
-    (1, expr)
 }
 
 /// Register integration preparation rules.

@@ -11,24 +11,13 @@
 
 use crate::rule::Rewrite;
 use cas_ast::{Context, Expr, ExprId};
+use cas_math::expr_predicates::is_zero_expr;
 #[cfg(test)]
 use cas_math::infinity_support::{classify_finiteness, Finiteness};
 use cas_math::infinity_support::{
     collect_add_terms_with_sign, inf_sign, is_finite_literal, is_negative_literal, mk_infinity,
     mk_undefined, InfSign,
 };
-use num_bigint::BigInt;
-use num_rational::BigRational;
-
-/// Check if expression is zero - uses the canonical helper.
-fn expr_is_zero(ctx: &Context, id: ExprId) -> bool {
-    cas_math::expr_predicates::is_zero_expr(ctx, id)
-}
-
-/// Create zero as ExprId.
-fn mk_zero(ctx: &mut Context) -> ExprId {
-    ctx.add(Expr::Number(BigRational::from_integer(BigInt::from(0))))
-}
 
 // ============================================================
 // RULES
@@ -97,7 +86,7 @@ pub fn div_by_infinity(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
     };
 
     if inf_sign(ctx, den).is_some() && is_finite_literal(ctx, num) {
-        return Some(Rewrite::new(mk_zero(ctx)).desc("finite / ∞ → 0"));
+        return Some(Rewrite::new(ctx.num(0)).desc("finite / ∞ → 0"));
     }
     None
 }
@@ -116,8 +105,8 @@ pub fn mul_zero_infinity(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
     let a_inf = inf_sign(ctx, a).is_some();
     let b_inf = inf_sign(ctx, b).is_some();
 
-    let a_zero = expr_is_zero(ctx, a);
-    let b_zero = expr_is_zero(ctx, b);
+    let a_zero = is_zero_expr(ctx, a);
+    let b_zero = is_zero_expr(ctx, b);
 
     if (a_zero && b_inf) || (b_zero && a_inf) {
         return Some(Rewrite::new(mk_undefined(ctx)).desc("0 · ∞ is indeterminate"));
@@ -140,7 +129,7 @@ pub fn mul_finite_infinity(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
 
     // Case 1: a is inf, b is finite non-zero literal
     if let Some(inf_s) = inf_sign(ctx, a) {
-        if is_finite_literal(ctx, b) && !expr_is_zero(ctx, b) {
+        if is_finite_literal(ctx, b) && !is_zero_expr(ctx, b) {
             let b_negative = is_negative_literal(ctx, b);
             let result_sign = if b_negative {
                 match inf_s {
@@ -159,7 +148,7 @@ pub fn mul_finite_infinity(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
 
     // Case 2: b is inf, a is finite non-zero literal
     if let Some(inf_s) = inf_sign(ctx, b) {
-        if is_finite_literal(ctx, a) && !expr_is_zero(ctx, a) {
+        if is_finite_literal(ctx, a) && !is_zero_expr(ctx, a) {
             let a_negative = is_negative_literal(ctx, a);
             let result_sign = if a_negative {
                 match inf_s {
@@ -195,7 +184,7 @@ pub fn inf_div_finite(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
     let inf_s = inf_sign(ctx, num)?;
 
     // Denominator must be finite non-zero literal
-    if !is_finite_literal(ctx, den) || expr_is_zero(ctx, den) {
+    if !is_finite_literal(ctx, den) || is_zero_expr(ctx, den) {
         return None;
     }
 

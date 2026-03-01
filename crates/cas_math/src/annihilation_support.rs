@@ -100,6 +100,20 @@ pub fn should_rewrite_annihilation_to_zero_with(
     None
 }
 
+/// Mode-flags adapter for [`should_rewrite_annihilation_to_zero_with`].
+///
+/// `assume_mode` takes precedence over `strict_mode` when both are set.
+pub fn should_rewrite_annihilation_to_zero_with_mode_flags(
+    ctx: &Context,
+    expr: ExprId,
+    assume_mode: bool,
+    strict_mode: bool,
+    has_undefined_risk: impl Fn(&Context, ExprId) -> bool,
+) -> Option<AnnihilationRewriteKind> {
+    let strict_domain = if assume_mode { false } else { strict_mode };
+    should_rewrite_annihilation_to_zero_with(ctx, expr, strict_domain, has_undefined_risk)
+}
+
 fn terms_cancel(
     ctx: &Context,
     held_term: ExprId,
@@ -181,7 +195,8 @@ pub fn is_hold_sum_annihilation(ctx: &Context, expr: ExprId) -> bool {
 mod tests {
     use super::{
         find_two_term_annihilation_match, is_hold_sum_annihilation,
-        should_rewrite_annihilation_to_zero_with, AnnihilationRewriteKind,
+        should_rewrite_annihilation_to_zero_with,
+        should_rewrite_annihilation_to_zero_with_mode_flags, AnnihilationRewriteKind,
     };
     use cas_ast::{Context, Expr};
     use cas_parser::parse;
@@ -268,5 +283,20 @@ mod tests {
 
         let kind = should_rewrite_annihilation_to_zero_with(&ctx, expr, true, |_ctx, _| true);
         assert_eq!(kind, Some(AnnihilationRewriteKind::HoldSum));
+    }
+
+    #[test]
+    fn mode_flags_prioritize_assume_over_strict() {
+        let mut ctx = Context::new();
+        let expr = parse("x - x", &mut ctx).expect("parse");
+
+        let out = should_rewrite_annihilation_to_zero_with_mode_flags(
+            &ctx,
+            expr,
+            true,
+            true,
+            |_core_ctx, _term| true,
+        );
+        assert_eq!(out, Some(AnnihilationRewriteKind::TwoTerm));
     }
 }

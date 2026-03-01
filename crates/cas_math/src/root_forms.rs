@@ -64,15 +64,36 @@ fn as_sqrt_like(ctx: &Context, e: ExprId) -> Option<ExprId> {
             Some(args[0])
         }
         Expr::Pow(base, exp) => {
-            if let Expr::Number(n) = ctx.get(*exp) {
-                if *n.numer() == 1.into() && *n.denom() == 2.into() {
-                    return Some(*base);
+            match ctx.get(*exp) {
+                Expr::Number(n) => {
+                    if *n.numer() == 1.into() && *n.denom() == 2.into() {
+                        return Some(*base);
+                    }
                 }
+                Expr::Div(num, den) => {
+                    if let (Expr::Number(n_num), Expr::Number(n_den)) =
+                        (ctx.get(*num), ctx.get(*den))
+                    {
+                        if n_num.is_one() && n_den.is_integer() && *n_den.numer() == 2.into() {
+                            return Some(*base);
+                        }
+                    }
+                }
+                _ => {}
             }
             None
         }
         _ => None,
     }
+}
+
+/// Extract base/radicand from square-root-like forms.
+///
+/// Recognizes:
+/// - `sqrt(x)` -> `x`
+/// - `x^(1/2)` -> `x`
+pub fn extract_square_root_base(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    as_sqrt_like(ctx, expr)
 }
 
 /// Rewrite nested square roots of the form `sqrt(a + sqrt(b))` into
@@ -1350,6 +1371,15 @@ mod tests {
         assert_eq!(extract_numeric_sqrt_radicand(&ctx, sqrt_fn), Some(7));
         assert_eq!(extract_numeric_sqrt_radicand(&ctx, sqrt_pow), Some(7));
         assert_eq!(extract_numeric_sqrt_radicand(&ctx, symbolic), None);
+    }
+
+    #[test]
+    fn extract_square_root_base_detects_builtin_and_pow_forms() {
+        let mut ctx = Context::new();
+        let sqrt_fn = parse("sqrt(x+1)", &mut ctx).expect("parse sqrt");
+        let sqrt_pow = parse("(x+1)^(1/2)", &mut ctx).expect("parse pow");
+        assert!(extract_square_root_base(&ctx, sqrt_fn).is_some());
+        assert!(extract_square_root_base(&ctx, sqrt_pow).is_some());
     }
 
     #[test]

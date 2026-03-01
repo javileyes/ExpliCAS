@@ -40,6 +40,7 @@ pub mod solve_budget;
 pub mod solve_context;
 pub mod solve_entry;
 pub mod solve_outcome;
+pub mod solve_safety_policy;
 pub mod solve_types;
 pub mod step_cleanup;
 pub mod strategy_kernels;

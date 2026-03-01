@@ -1,4 +1,6 @@
+use crate::domain_env::{RequiredDomainSet, SolveDomainEnv};
 use cas_ast::{ConditionPredicate, ConditionSet, Context, ExprId};
+use cas_math::tri_proof::TriProof;
 
 /// Domain mode used by the pure logarithmic decision table.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -6,6 +8,17 @@ pub enum DomainModeKind {
     Strict,
     Generic,
     Assume,
+}
+
+/// Derive [`DomainModeKind`] from generic mode flags.
+pub fn domain_mode_kind_from_flags(assume_mode: bool, strict_mode: bool) -> DomainModeKind {
+    if assume_mode {
+        DomainModeKind::Assume
+    } else if strict_mode {
+        DomainModeKind::Strict
+    } else {
+        DomainModeKind::Generic
+    }
 }
 
 /// Trivalent proof status used by the pure logarithmic decision table.
@@ -351,9 +364,70 @@ where
     )
 }
 
+/// Classify a log-solve step with a prover returning [`TriProof`].
+#[allow(clippy::too_many_arguments)]
+pub fn classify_log_solve_with_tri_prover<FProve>(
+    ctx: &Context,
+    base: ExprId,
+    rhs: ExprId,
+    value_domain_is_real_only: bool,
+    mode: DomainModeKind,
+    base_in_env: bool,
+    rhs_in_env: bool,
+    mut prove_positive: FProve,
+) -> LogSolveDecision
+where
+    FProve: FnMut(&Context, ExprId) -> TriProof,
+{
+    classify_log_solve_with_prover(
+        ctx,
+        base,
+        rhs,
+        value_domain_is_real_only,
+        mode,
+        base_in_env,
+        rhs_in_env,
+        |core_ctx, expr| {
+            crate::external_proof::map_tri_proof_status(prove_positive(core_ctx, expr))
+        },
+    )
+}
+
+/// Classify a log-solve step with:
+/// - required-domain environment flags (`base > 0`, `rhs > 0`)
+/// - a prover returning [`TriProof`].
+#[allow(clippy::too_many_arguments)]
+pub fn classify_log_solve_with_env_and_tri_prover<R, FProve>(
+    ctx: &Context,
+    base: ExprId,
+    rhs: ExprId,
+    value_domain_is_real_only: bool,
+    mode: DomainModeKind,
+    env: &SolveDomainEnv<R>,
+    prove_positive: FProve,
+) -> LogSolveDecision
+where
+    R: RequiredDomainSet,
+    FProve: FnMut(&Context, ExprId) -> TriProof,
+{
+    classify_log_solve_with_tri_prover(
+        ctx,
+        base,
+        rhs,
+        value_domain_is_real_only,
+        mode,
+        env.has_positive(base),
+        env.has_positive(rhs),
+        prove_positive,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain_env::RequiredDomainSet;
+    use crate::domain_env::SolveDomainEnv;
+    use std::collections::HashSet;
 
     #[test]
     fn both_proven_is_ok() {
@@ -677,6 +751,100 @@ mod tests {
         assert_eq!(
             out,
             LogSolveDecision::OkWithAssumptions(vec![LogAssumption::PositiveRhs])
+        );
+    }
+
+    #[test]
+    fn classify_log_solve_with_tri_prover_maps_tri_status() {
+        let mut ctx = cas_ast::Context::new();
+        let base = ctx.var("b");
+        let rhs = ctx.var("r");
+
+        let out = classify_log_solve_with_tri_prover(
+            &ctx,
+            base,
+            rhs,
+            true,
+            DomainModeKind::Assume,
+            false,
+            false,
+            |_core_ctx, expr| {
+                if expr == base {
+                    TriProof::Proven
+                } else {
+                    TriProof::Unknown
+                }
+            },
+        );
+
+        assert_eq!(
+            out,
+            LogSolveDecision::OkWithAssumptions(vec![LogAssumption::PositiveRhs])
+        );
+    }
+
+    #[derive(Debug, Clone, Default)]
+    struct DummyRequiredSet {
+        positive: HashSet<ExprId>,
+    }
+
+    impl RequiredDomainSet for DummyRequiredSet {
+        fn contains_positive(&self, expr: ExprId) -> bool {
+            self.positive.contains(&expr)
+        }
+
+        fn contains_nonnegative(&self, _expr: ExprId) -> bool {
+            false
+        }
+
+        fn contains_nonzero(&self, _expr: ExprId) -> bool {
+            false
+        }
+
+        fn to_condition_set(&self) -> ConditionSet {
+            ConditionSet::empty()
+        }
+    }
+
+    #[test]
+    fn classify_log_solve_with_env_and_tri_prover_uses_required_flags() {
+        let mut ctx = cas_ast::Context::new();
+        let base = ctx.var("b");
+        let rhs = ctx.var("r");
+
+        let mut required = DummyRequiredSet::default();
+        required.positive.insert(base);
+        let env = SolveDomainEnv { required };
+
+        let out = classify_log_solve_with_env_and_tri_prover(
+            &ctx,
+            base,
+            rhs,
+            true,
+            DomainModeKind::Assume,
+            &env,
+            |_core_ctx, _expr| TriProof::Unknown,
+        );
+
+        assert_eq!(
+            out,
+            LogSolveDecision::OkWithAssumptions(vec![LogAssumption::PositiveRhs])
+        );
+    }
+
+    #[test]
+    fn domain_mode_kind_from_flags_prioritizes_assume_then_strict() {
+        assert_eq!(
+            domain_mode_kind_from_flags(true, true),
+            DomainModeKind::Assume
+        );
+        assert_eq!(
+            domain_mode_kind_from_flags(false, true),
+            DomainModeKind::Strict
+        );
+        assert_eq!(
+            domain_mode_kind_from_flags(false, false),
+            DomainModeKind::Generic
         );
     }
 }

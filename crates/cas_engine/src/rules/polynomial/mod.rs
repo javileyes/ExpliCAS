@@ -23,7 +23,7 @@ use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
 use cas_ast::Expr;
 use cas_math::annihilation_support::{
-    should_rewrite_annihilation_to_zero_with, AnnihilationRewriteKind,
+    should_rewrite_annihilation_to_zero_with_mode_flags, AnnihilationRewriteKind,
 };
 use cas_math::cube_identity_support::try_rewrite_sum_diff_cubes_product_expr;
 use cas_math::distribution_division_support::try_rewrite_div_distribution_simplifying_expr;
@@ -161,12 +161,13 @@ define_rule!(
 // - Assume: always apply (educational mode assumption: all expressions are defined)
 // - Generic: same as Assume
 define_rule!(AnnihilationRule, "Annihilation", |ctx, expr, parent_ctx| {
-    let strict_domain = parent_ctx.domain_mode() == crate::DomainMode::Strict;
-    if let Some(kind) =
-        should_rewrite_annihilation_to_zero_with(ctx, expr, strict_domain, |core_ctx, term| {
-            crate::collect::has_undefined_risk(core_ctx, term)
-        })
-    {
+    if let Some(kind) = should_rewrite_annihilation_to_zero_with_mode_flags(
+        ctx,
+        expr,
+        matches!(parent_ctx.domain_mode(), crate::DomainMode::Assume),
+        matches!(parent_ctx.domain_mode(), crate::DomainMode::Strict),
+        crate::collect::has_undefined_risk,
+    ) {
         let zero = ctx.num(0);
         let desc = match kind {
             AnnihilationRewriteKind::TwoTerm => "x - x = 0",

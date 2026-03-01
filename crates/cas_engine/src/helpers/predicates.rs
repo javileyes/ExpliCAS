@@ -9,7 +9,7 @@ pub fn prove_nonzero(ctx: &Context, expr: ExprId) -> crate::domain::Proof {
     prove_nonzero_depth(ctx, expr, 50)
 }
 
-fn core_to_engine_proof(proof: cas_math::tri_proof::TriProof) -> crate::domain::Proof {
+pub(crate) fn core_to_engine_proof(proof: cas_math::tri_proof::TriProof) -> crate::domain::Proof {
     match proof {
         cas_math::tri_proof::TriProof::Proven => crate::domain::Proof::Proven,
         cas_math::tri_proof::TriProof::Disproven => crate::domain::Proof::Disproven,
@@ -17,7 +17,7 @@ fn core_to_engine_proof(proof: cas_math::tri_proof::TriProof) -> crate::domain::
     }
 }
 
-fn engine_to_core_proof(proof: crate::domain::Proof) -> cas_math::tri_proof::TriProof {
+pub(crate) fn engine_to_core_proof(proof: crate::domain::Proof) -> cas_math::tri_proof::TriProof {
     match proof {
         crate::domain::Proof::Proven | crate::domain::Proof::ProvenImplicit => {
             cas_math::tri_proof::TriProof::Proven
@@ -25,6 +25,29 @@ fn engine_to_core_proof(proof: crate::domain::Proof) -> cas_math::tri_proof::Tri
         crate::domain::Proof::Disproven => cas_math::tri_proof::TriProof::Disproven,
         crate::domain::Proof::Unknown => cas_math::tri_proof::TriProof::Unknown,
     }
+}
+
+/// Bridge `prove_nonzero` to a core [`TriProof`].
+pub(crate) fn prove_nonzero_core(ctx: &Context, expr: ExprId) -> cas_math::tri_proof::TriProof {
+    engine_to_core_proof(prove_nonzero(ctx, expr))
+}
+
+/// Bridge `prove_positive` to a core [`TriProof`].
+pub(crate) fn prove_positive_core(
+    ctx: &Context,
+    expr: ExprId,
+    value_domain: crate::semantics::ValueDomain,
+) -> cas_math::tri_proof::TriProof {
+    engine_to_core_proof(prove_positive(ctx, expr, value_domain))
+}
+
+/// Bridge `prove_nonnegative` to a core [`TriProof`].
+pub(crate) fn prove_nonnegative_core(
+    ctx: &Context,
+    expr: ExprId,
+    value_domain: crate::semantics::ValueDomain,
+) -> cas_math::tri_proof::TriProof {
+    engine_to_core_proof(prove_nonnegative(ctx, expr, value_domain))
 }
 
 /// Internal prove_nonzero with explicit depth limit.

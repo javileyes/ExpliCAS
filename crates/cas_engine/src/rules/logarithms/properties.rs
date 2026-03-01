@@ -1,28 +1,12 @@
 use crate::rule::Rewrite;
 use cas_ast::ExprId;
 use cas_math::logarithm_inverse_support::{
-    expand_logs_collect_positive_assumptions, plan_log_abs_simplify_policy,
+    expand_logs_collect_positive_assumptions, log_even_power_needs_requires_lookup,
+    log_exp_inverse_policy_mode_from_flags, plan_log_abs_simplify_policy,
     plan_log_even_power_policy, try_plan_log_even_power_abs_expr, try_rewrite_log_abs_power_expr,
     try_rewrite_log_abs_simplify_expr, try_rewrite_log_chain_product_expr,
     try_rewrite_log_mul_div_expansion_expr,
 };
-
-#[inline]
-fn to_policy_mode(
-    mode: crate::domain::DomainMode,
-) -> cas_math::logarithm_inverse_support::LogExpInversePolicyMode {
-    match mode {
-        crate::domain::DomainMode::Strict => {
-            cas_math::logarithm_inverse_support::LogExpInversePolicyMode::Strict
-        }
-        crate::domain::DomainMode::Generic => {
-            cas_math::logarithm_inverse_support::LogExpInversePolicyMode::Generic
-        }
-        crate::domain::DomainMode::Assume => {
-            cas_math::logarithm_inverse_support::LogExpInversePolicyMode::Assume
-        }
-    }
-}
 
 /// Domain-aware expansion rule for log products/quotients.
 ///
@@ -174,26 +158,38 @@ impl crate::rule::Rule for LogEvenPowerWithChainedAbsRule {
         let vd = parent_ctx.value_domain();
         let dm = parent_ctx.domain_mode();
         let pos = prove_positive(ctx, planned.inner_base, vd);
+        let mode = log_exp_inverse_policy_mode_from_flags(
+            matches!(dm, crate::domain::DomainMode::Assume),
+            matches!(dm, crate::domain::DomainMode::Strict),
+        );
 
-        // V2.14.21: Check if x > 0 is in global requires using implicit_domain
-        // V2.15: Use cached implicit_domain if available, fallback to computation with root_expr
-        let implicit_domain: Option<crate::implicit_domain::ImplicitDomain> =
-            parent_ctx.implicit_domain().cloned().or_else(|| {
-                parent_ctx
-                    .root_expr()
-                    .map(|root| crate::implicit_domain::infer_implicit_domain(ctx, root, vd))
-            });
+        let in_requires = if log_even_power_needs_requires_lookup(
+            mode,
+            pos == Proof::Proven,
+            pos == Proof::Disproven,
+        ) {
+            // V2.14.21: Check if x > 0 is in global requires using implicit_domain
+            // V2.15: Use cached implicit_domain if available, fallback to computation with root_expr
+            let implicit_domain: Option<crate::implicit_domain::ImplicitDomain> =
+                parent_ctx.implicit_domain().cloned().or_else(|| {
+                    parent_ctx
+                        .root_expr()
+                        .map(|root| crate::implicit_domain::infer_implicit_domain(ctx, root, vd))
+                });
 
-        let in_requires = implicit_domain.as_ref().is_some_and(|id| {
-            let dc = crate::implicit_domain::DomainContext::new(
-                id.conditions().iter().cloned().collect(),
-            );
-            let cond = crate::implicit_domain::ImplicitCondition::Positive(planned.inner_base);
-            dc.is_condition_implied(ctx, &cond)
-        });
+            implicit_domain.as_ref().is_some_and(|id| {
+                let dc = crate::implicit_domain::DomainContext::new(
+                    id.conditions().iter().cloned().collect(),
+                );
+                let cond = crate::implicit_domain::ImplicitCondition::Positive(planned.inner_base);
+                dc.is_condition_implied(ctx, &cond)
+            })
+        } else {
+            false
+        };
 
         let policy = plan_log_even_power_policy(
-            to_policy_mode(dm),
+            mode,
             pos == Proof::Proven,
             pos == Proof::Disproven,
             in_requires,
@@ -316,7 +312,10 @@ impl crate::rule::Rule for LogAbsSimplifyRule {
         let planned = try_rewrite_log_abs_simplify_expr(ctx, expr)?;
         let vd = parent_ctx.value_domain();
         let policy = plan_log_abs_simplify_policy(
-            to_policy_mode(parent_ctx.domain_mode()),
+            log_exp_inverse_policy_mode_from_flags(
+                matches!(parent_ctx.domain_mode(), crate::domain::DomainMode::Assume),
+                matches!(parent_ctx.domain_mode(), crate::domain::DomainMode::Strict),
+            ),
             vd == crate::semantics::ValueDomain::ComplexEnabled,
             prove_positive(ctx, planned.inner_subject, vd).is_proven(),
         );

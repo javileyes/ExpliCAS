@@ -85,6 +85,22 @@ impl From<cas_math::multipoly::PolyError> for CasError {
     }
 }
 
+impl cas_solver_core::solve_analysis::StrategyErrorMessageParts for CasError {
+    fn isolation_detail(&self) -> Option<&str> {
+        match self {
+            CasError::IsolationError(_, detail) => Some(detail.as_str()),
+            _ => None,
+        }
+    }
+
+    fn solver_detail(&self) -> Option<&str> {
+        match self {
+            CasError::SolverError(detail) => Some(detail.as_str()),
+            _ => None,
+        }
+    }
+}
+
 impl CasError {
     /// Create a BudgetExceeded error from operation and metric with default usage info.
     /// Convenience for migration from old code.

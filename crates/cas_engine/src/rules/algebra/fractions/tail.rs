@@ -2,8 +2,9 @@
 
 use crate::define_rule;
 use crate::rule::Rewrite;
-use cas_ast::{count_nodes, Context, Expr, ExprId};
+use cas_ast::{count_nodes, Expr, ExprId};
 use cas_math::expr_rewrite::count_div_nodes;
+use cas_math::fraction_combine_policy_support::group_fraction_terms_by_denominator;
 use std::cmp::Ordering;
 
 // =============================================================================
@@ -25,7 +26,6 @@ define_rule!(
         use crate::domain::Proof;
         use crate::helpers::prove_nonzero;
         use cas_math::trig_roots_flatten::flatten_add_sub_chain;
-        use std::collections::HashMap;
 
         // Only handle Add or Sub at root
         if !matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Sub(_, _)) {
@@ -38,52 +38,8 @@ define_rule!(
             return None;
         }
 
-        // Helper to get (num, den, is_negated) from a Div term - does NOT modify ctx
-        let get_fraction = |ctx: &Context, term: ExprId| -> Option<(ExprId, ExprId, bool)> {
-            match ctx.get(term) {
-                Expr::Div(num, den) => Some((*num, *den, false)),
-                Expr::Neg(inner) => {
-                    if let Expr::Div(num, den) = ctx.get(*inner) {
-                        // Neg(Div(n, d)) → mark as negated
-                        Some((*num, *den, true))
-                    } else {
-                        None
-                    }
-                }
-                _ => None,
-            }
-        };
-
-        // Group terms by denominator
-        // Key: ExprId of denominator, Value: list of (term_index, numerator, is_negated)
-        let mut denom_groups: HashMap<ExprId, Vec<(usize, ExprId, bool)>> = HashMap::new();
-        let mut non_fraction_indices: Vec<usize> = Vec::new();
-
-        for (idx, &term) in terms.iter().enumerate() {
-            if let Some((num, den, is_neg)) = get_fraction(ctx, term) {
-                // Check if we already have this denominator (by structural equality)
-                let mut found_key = None;
-                for existing_den in denom_groups.keys() {
-                    if crate::ordering::compare_expr(ctx, *existing_den, den) == Ordering::Equal {
-                        found_key = Some(*existing_den);
-                        break;
-                    }
-                }
-
-                if let Some(key) = found_key {
-                    if let Some(v) = denom_groups.get_mut(&key) {
-                        v.push((idx, num, is_neg));
-                    } else {
-                        // Should be unreachable because `key` comes from the map's keys.
-                        denom_groups.insert(key, vec![(idx, num, is_neg)]);
-                    }
-                } else {
-                    denom_groups.insert(den, vec![(idx, num, is_neg)]);
-                }
-            } else {
-                non_fraction_indices.push(idx);
-            }
-        }
+        // Group terms by structurally equivalent denominators.
+        let (denom_groups, non_fraction_indices) = group_fraction_terms_by_denominator(ctx, &terms);
 
         // Find groups with more than one fraction (those can be combined)
         #[allow(clippy::type_complexity)]
@@ -104,30 +60,23 @@ define_rule!(
 
         // DOMAIN MODE GATE: Check if denominator is provably non-zero
         let den_nonzero = prove_nonzero(ctx, *common_den);
-        let domain_mode = parent_ctx.domain_mode();
-
-        // Determine if we should proceed and what warning to emit
-        // Note: assumption_events not yet emitted for this rule
-        let _domain_assumption: Option<&str> = match domain_mode {
-            crate::DomainMode::Strict => {
-                // Only combine if denominator is provably non-zero
-                if den_nonzero != Proof::Proven {
-                    return None;
-                }
-                None
+        let policy =
+            cas_math::fraction_combine_policy_support::decide_combine_same_denominator_policy(
+                matches!(parent_ctx.domain_mode(), crate::DomainMode::Assume),
+                matches!(parent_ctx.domain_mode(), crate::DomainMode::Strict),
+                den_nonzero == Proof::Proven,
+            );
+        // Note: assumption_events not yet emitted for this rule.
+        let _domain_assumption: Option<&str> = match policy {
+            cas_math::fraction_combine_policy_support::CombineSameDenominatorPolicy::Block => {
+                return None;
             }
-            crate::DomainMode::Assume => {
-                // Combine with warning if not proven
-                if den_nonzero != Proof::Proven {
-                    Some("Assuming denominator ≠ 0")
-                } else {
-                    None
-                }
-            }
-            crate::DomainMode::Generic => {
-                // Educational mode: combine unconditionally
-                None
-            }
+            cas_math::fraction_combine_policy_support::CombineSameDenominatorPolicy::Apply {
+                assume_denominator_nonzero: true,
+            } => Some("Assuming denominator ≠ 0"),
+            cas_math::fraction_combine_policy_support::CombineSameDenominatorPolicy::Apply {
+                assume_denominator_nonzero: false,
+            } => None,
         };
 
         // Combine numerators: n1 + n2 + ... (handle negation)

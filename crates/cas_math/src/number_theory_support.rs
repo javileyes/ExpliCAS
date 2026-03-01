@@ -241,6 +241,26 @@ pub fn has_large_unexpanded_power(ctx: &Context, expr: ExprId) -> bool {
     }
 }
 
+/// Check whether an expression is `sqrt(n)` for an exact integer `n`.
+///
+/// Accepted forms:
+/// - `n^(1/2)`
+/// - `sqrt(n)`
+pub fn is_sqrt_of_integer_expr(ctx: &Context, id: ExprId, n: i64) -> bool {
+    let target = BigRational::from_integer(BigInt::from(n));
+    let half = BigRational::new(1.into(), 2.into());
+
+    match ctx.get(id) {
+        Expr::Pow(base, exp) => {
+            matches!((ctx.get(*base), ctx.get(*exp)), (Expr::Number(b), Expr::Number(e)) if *b == target && *e == half)
+        }
+        Expr::Function(name, args) if ctx.is_builtin(*name, BuiltinFn::Sqrt) && args.len() == 1 => {
+            matches!(ctx.get(args[0]), Expr::Number(v) if *v == target)
+        }
+        _ => false,
+    }
+}
+
 /// Select effective polynomial GCD mode, honoring explicit mode when provided.
 ///
 /// Auto-mode heuristic:
@@ -794,6 +814,22 @@ mod tests {
         assert!(has_large_unexpanded_power(&ctx, large_compound));
         assert!(!has_large_unexpanded_power(&ctx, large_atomic));
         assert!(has_large_unexpanded_power(&ctx, poly_power));
+    }
+
+    #[test]
+    fn detects_sqrt_of_integer_in_pow_and_builtin_forms() {
+        let mut ctx = Context::new();
+        let five = ctx.num(5);
+        let half = ctx.rational(1, 2);
+        let pow_form = ctx.add(Expr::Pow(five, half));
+        let sqrt_form = parse("sqrt(5)", &mut ctx).expect("sqrt");
+        let wrong_value = parse("sqrt(3)", &mut ctx).expect("sqrt(3)");
+        let symbolic = parse("sqrt(x)", &mut ctx).expect("sqrt(x)");
+
+        assert!(is_sqrt_of_integer_expr(&ctx, pow_form, 5));
+        assert!(is_sqrt_of_integer_expr(&ctx, sqrt_form, 5));
+        assert!(!is_sqrt_of_integer_expr(&ctx, wrong_value, 5));
+        assert!(!is_sqrt_of_integer_expr(&ctx, symbolic, 5));
     }
 
     #[test]

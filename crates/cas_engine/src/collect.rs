@@ -1,8 +1,8 @@
 use crate::parent_context::ParentContext;
-use crate::DomainMode;
 use cas_ast::{Context, ExprId};
 use cas_math::collect_rule_support::CollectRulePlan;
 use cas_math::collect_semantics_support::{
+    collect_semantics_mode_from_flags, collect_semantics_needs_undefined_risk_scan,
     collect_with_semantics_mode, CollectSemanticsMode, CollectSemanticsResult,
 };
 
@@ -64,14 +64,15 @@ fn resolve_mode_and_risk(
     expr: ExprId,
     parent_ctx: &ParentContext,
 ) -> (CollectSemanticsMode, bool) {
-    let mode = match parent_ctx.domain_mode() {
-        DomainMode::Strict => CollectSemanticsMode::Strict,
-        DomainMode::Assume => CollectSemanticsMode::Assume,
-        DomainMode::Generic => CollectSemanticsMode::Generic,
-    };
-    let risk = match mode {
-        CollectSemanticsMode::Generic => false,
-        _ => has_undefined_risk(ctx, expr),
+    let domain_mode = parent_ctx.domain_mode();
+    let mode = collect_semantics_mode_from_flags(
+        matches!(domain_mode, crate::DomainMode::Assume),
+        matches!(domain_mode, crate::DomainMode::Strict),
+    );
+    let risk = if collect_semantics_needs_undefined_risk_scan(mode) {
+        has_undefined_risk(ctx, expr)
+    } else {
+        false
     };
     (mode, risk)
 }

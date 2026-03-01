@@ -10,6 +10,7 @@ use crate::define_rule;
 use crate::rule::Rewrite;
 use cas_ast::{Constant, Expr};
 use cas_math::expr_predicates::is_half_expr;
+use cas_math::number_theory_support::is_sqrt_of_integer_expr;
 
 // Rule 1: Recognize (1 + √5)/2 as φ
 // Matches both:
@@ -33,9 +34,13 @@ define_rule!(
 
             // Check numerator is Add(1, sqrt(5)) or Add(sqrt(5), 1)
             if let Expr::Add(l, r) = ctx.get(*num) {
-                let (one_id, sqrt5_id) = if cas_math::expr_predicates::is_one_expr(ctx, *l) && is_sqrt5(ctx, *r) {
+                let (one_id, sqrt5_id) = if cas_math::expr_predicates::is_one_expr(ctx, *l)
+                    && is_sqrt_of_integer_expr(ctx, *r, 5)
+                {
                     (*l, *r)
-                } else if is_sqrt5(ctx, *l) && cas_math::expr_predicates::is_one_expr(ctx, *r) {
+                } else if is_sqrt_of_integer_expr(ctx, *l, 5)
+                    && cas_math::expr_predicates::is_one_expr(ctx, *r)
+                {
                     (*r, *l)
                 } else {
                     return None;
@@ -59,7 +64,10 @@ define_rule!(
             let _ = half_id; // suppress unused warning
 
             if let Expr::Add(a, b) = ctx.get(sum_id) {
-                if (cas_math::expr_predicates::is_one_expr(ctx, *a) && is_sqrt5(ctx, *b)) || (is_sqrt5(ctx, *a) && cas_math::expr_predicates::is_one_expr(ctx, *b))
+                if (cas_math::expr_predicates::is_one_expr(ctx, *a)
+                    && is_sqrt_of_integer_expr(ctx, *b, 5))
+                    || (is_sqrt_of_integer_expr(ctx, *a, 5)
+                        && cas_math::expr_predicates::is_one_expr(ctx, *b))
                 {
                     let phi = ctx.add(Expr::Constant(Constant::Phi));
                     return Some(Rewrite::new(phi).desc("(1 + √5)/2 = φ"));
@@ -127,33 +135,6 @@ define_rule!(
 );
 
 // Note: is_one checks now route directly to cas_math::expr_predicates::is_one_expr.
-
-// Helper: check if expression is √5 (Pow(5, 1/2) or Function("sqrt", [5]))
-fn is_sqrt5(ctx: &cas_ast::Context, id: cas_ast::ExprId) -> bool {
-    let five = num_rational::BigRational::from_integer(5.into());
-    let half = num_rational::BigRational::new(1.into(), 2.into());
-
-    match ctx.get(id) {
-        // Pow(5, 1/2)
-        Expr::Pow(base, exp) => {
-            if let Expr::Number(b) = ctx.get(*base) {
-                if let Expr::Number(e) = ctx.get(*exp) {
-                    return b == &five && e == &half;
-                }
-            }
-            false
-        }
-        Expr::Function(name, args) => {
-            if ctx.is_builtin(*name, cas_ast::BuiltinFn::Sqrt) && args.len() == 1 {
-                if let Expr::Number(n) = ctx.get(args[0]) {
-                    return n == &five;
-                }
-            }
-            false
-        }
-        _ => false,
-    }
-}
 
 pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(RecognizePhiRule));

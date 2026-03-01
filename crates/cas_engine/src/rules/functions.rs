@@ -2,25 +2,17 @@ use crate::define_rule;
 use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
 use cas_math::abs_support::{
-    is_ln_or_log_call, try_extract_abs_exp_like_arg, try_extract_abs_sqrt_like_arg,
-    try_plan_abs_nonnegative_rewrite, try_plan_abs_positive_rewrite,
-    try_plan_symbolic_root_cancel_rewrite, try_rewrite_abs_even_power_expr,
-    try_rewrite_abs_idempotent_expr, try_rewrite_abs_numeric_factor_expr,
-    try_rewrite_abs_odd_power_expr, try_rewrite_abs_power_even_expr, try_rewrite_abs_product_expr,
-    try_rewrite_abs_quotient_expr, try_rewrite_abs_sub_normalize_expr,
-    try_rewrite_abs_sum_nonnegative_expr, try_rewrite_evaluate_abs_expr,
-    try_rewrite_sqrt_square_expr, try_unwrap_abs_arg, AbsAssumptionKind, AbsDomainMode,
-    ValueDomainMode,
+    abs_domain_mode_from_flags, abs_needs_implicit_domain_check, is_ln_or_log_call,
+    try_extract_abs_exp_like_arg, try_extract_abs_sqrt_like_arg, try_plan_abs_nonnegative_rewrite,
+    try_plan_abs_positive_rewrite, try_plan_symbolic_root_cancel_rewrite,
+    try_rewrite_abs_even_power_expr, try_rewrite_abs_idempotent_expr,
+    try_rewrite_abs_numeric_factor_expr, try_rewrite_abs_odd_power_expr,
+    try_rewrite_abs_power_even_expr, try_rewrite_abs_product_expr, try_rewrite_abs_quotient_expr,
+    try_rewrite_abs_sub_normalize_expr, try_rewrite_abs_sum_nonnegative_expr,
+    try_rewrite_evaluate_abs_expr, try_rewrite_sqrt_square_expr, try_unwrap_abs_arg,
+    value_domain_mode_from_flag, AbsAssumptionKind,
 };
 use cas_math::root_forms::try_rewrite_odd_half_power_expr;
-
-fn abs_domain_mode(mode: crate::domain::DomainMode) -> AbsDomainMode {
-    match mode {
-        crate::domain::DomainMode::Strict => AbsDomainMode::Strict,
-        crate::domain::DomainMode::Generic => AbsDomainMode::Generic,
-        crate::domain::DomainMode::Assume => AbsDomainMode::Assume,
-    }
-}
 
 define_rule!(EvaluateAbsRule, "Evaluate Absolute Value", |ctx, expr| {
     let rewrite = try_rewrite_evaluate_abs_expr(ctx, expr)?;
@@ -50,10 +42,13 @@ impl crate::rule::Rule for AbsPositiveSimplifyRule {
         let inner = try_unwrap_abs_arg(ctx, expr)?;
         let pos = prove_positive(ctx, inner, vd);
         let proven = pos == Proof::Proven;
-        let mode = abs_domain_mode(dm);
+        let mode = abs_domain_mode_from_flags(
+            matches!(dm, DomainMode::Assume),
+            matches!(dm, DomainMode::Strict),
+        );
 
         // Only needed in Strict/Generic to accept inherited positivity from sticky implicit domain.
-        let implied = if matches!(dm, DomainMode::Strict | DomainMode::Generic) && !proven {
+        let implied = if abs_needs_implicit_domain_check(mode, proven) {
             if let Some(id) = parent_ctx.implicit_domain() {
                 let dc = crate::implicit_domain::DomainContext::new(
                     id.conditions().iter().cloned().collect(),
@@ -119,10 +114,13 @@ impl crate::rule::Rule for AbsNonNegativeSimplifyRule {
         let inner = try_unwrap_abs_arg(ctx, expr)?;
         let nonneg = prove_nonnegative(ctx, inner, vd);
         let proven = nonneg == Proof::Proven;
-        let mode = abs_domain_mode(dm);
+        let mode = abs_domain_mode_from_flags(
+            matches!(dm, DomainMode::Assume),
+            matches!(dm, DomainMode::Strict),
+        );
 
         // Only needed in Strict/Generic to accept inherited non-negativity from sticky implicit domain.
-        let implied = if matches!(dm, DomainMode::Strict | DomainMode::Generic) && !proven {
+        let implied = if abs_needs_implicit_domain_check(mode, proven) {
             if let Some(id) = parent_ctx.implicit_domain() {
                 let dc = crate::implicit_domain::DomainContext::new(
                     id.conditions().iter().cloned().collect(),
@@ -263,11 +261,15 @@ impl crate::rule::Rule for SymbolicRootCancelRule {
         expr: cas_ast::ExprId,
         parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<crate::rule::Rewrite> {
-        let mode = abs_domain_mode(parent_ctx.domain_mode());
-        let value_domain = match parent_ctx.value_domain() {
-            crate::semantics::ValueDomain::RealOnly => ValueDomainMode::RealOnly,
-            crate::semantics::ValueDomain::ComplexEnabled => ValueDomainMode::ComplexEnabled,
-        };
+        let domain_mode = parent_ctx.domain_mode();
+        let mode = abs_domain_mode_from_flags(
+            matches!(domain_mode, crate::domain::DomainMode::Assume),
+            matches!(domain_mode, crate::domain::DomainMode::Strict),
+        );
+        let value_domain = value_domain_mode_from_flag(matches!(
+            parent_ctx.value_domain(),
+            crate::semantics::ValueDomain::RealOnly
+        ));
 
         let plan = try_plan_symbolic_root_cancel_rewrite(ctx, expr, mode, value_domain)?;
 

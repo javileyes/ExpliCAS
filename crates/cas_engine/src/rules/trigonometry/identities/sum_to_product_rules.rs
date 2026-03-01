@@ -119,25 +119,25 @@ impl crate::rule::Rule for DyadicCosProductToSinRule {
         let theta = theta?;
 
         // Domain check: sin(θ) ≠ 0
-        let domain_mode = parent_ctx.domain_mode();
-
-        if !is_provably_sin_nonzero(ctx, theta) {
-            match domain_mode {
-                crate::domain::DomainMode::Generic | crate::domain::DomainMode::Strict => {
-                    // Block with hint
-                    let sin_theta = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![theta]);
-                    crate::domain::register_blocked_hint(crate::domain::BlockedHint {
-                        rule: "Dyadic Cos Product".to_string(),
-                        expr_id: sin_theta,
-                        key: crate::assumptions::AssumptionKey::nonzero_key(ctx, sin_theta),
-                        suggestion: "use `domain assume` to allow this transformation",
-                    });
-                    return None;
-                }
-                crate::domain::DomainMode::Assume => {
-                    // Allow but will record assumption in result
-                }
-            }
+        let sin_nonzero_proven = is_provably_sin_nonzero(ctx, theta);
+        let policy = cas_math::trig_dyadic_policy_support::decide_dyadic_sin_nonzero_policy(
+            matches!(parent_ctx.domain_mode(), crate::domain::DomainMode::Assume),
+            matches!(parent_ctx.domain_mode(), crate::domain::DomainMode::Strict),
+            sin_nonzero_proven,
+        );
+        if matches!(
+            policy,
+            cas_math::trig_dyadic_policy_support::DyadicSinNonzeroPolicyDecision::Block
+        ) {
+            // Block with hint
+            let sin_theta = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![theta]);
+            crate::domain::register_blocked_hint(crate::domain::BlockedHint {
+                rule: "Dyadic Cos Product".to_string(),
+                expr_id: sin_theta,
+                key: crate::assumptions::AssumptionKey::nonzero_key(ctx, sin_theta),
+                suggestion: "use `domain assume` to allow this transformation",
+            });
+            return None;
         }
 
         // Build result: sin(2^n · θ) / sin(θ)
@@ -153,8 +153,12 @@ impl crate::rule::Rule for DyadicCosProductToSinRule {
         let mut rewrite = Rewrite::new(result).desc(desc).local(expr, result);
 
         // Add assumption if in Assume mode and sin(θ)≠0 not proven
-        if domain_mode == crate::domain::DomainMode::Assume && !is_provably_sin_nonzero(ctx, theta)
-        {
+        if matches!(
+            policy,
+            cas_math::trig_dyadic_policy_support::DyadicSinNonzeroPolicyDecision::Apply {
+                assume_sin_nonzero: true
+            }
+        ) {
             // Create NonZero assumption with HeuristicAssumption kind
             let mut event = crate::assumptions::AssumptionEvent::nonzero(ctx, sin_theta);
             event.kind = crate::assumptions::AssumptionKind::HeuristicAssumption;

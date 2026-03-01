@@ -45,17 +45,10 @@ impl SolverOptions {
 
     /// Convert engine domain mode into core solver domain mode kind.
     pub(crate) fn core_domain_mode(&self) -> cas_solver_core::log_domain::DomainModeKind {
-        match self.domain_mode {
-            crate::domain::DomainMode::Strict => {
-                cas_solver_core::log_domain::DomainModeKind::Strict
-            }
-            crate::domain::DomainMode::Generic => {
-                cas_solver_core::log_domain::DomainModeKind::Generic
-            }
-            crate::domain::DomainMode::Assume => {
-                cas_solver_core::log_domain::DomainModeKind::Assume
-            }
-        }
+        cas_solver_core::log_domain::domain_mode_kind_from_flags(
+            matches!(self.domain_mode, crate::domain::DomainMode::Assume),
+            matches!(self.domain_mode, crate::domain::DomainMode::Strict),
+        )
     }
 
     /// Returns true when assume-scope allows wildcard assumptions.

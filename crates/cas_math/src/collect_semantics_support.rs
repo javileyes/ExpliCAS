@@ -11,6 +11,26 @@ pub enum CollectSemanticsMode {
     Generic,
 }
 
+/// Derive [`CollectSemanticsMode`] from generic mode flags.
+pub fn collect_semantics_mode_from_flags(
+    assume_mode: bool,
+    strict_mode: bool,
+) -> CollectSemanticsMode {
+    if assume_mode {
+        CollectSemanticsMode::Assume
+    } else if strict_mode {
+        CollectSemanticsMode::Strict
+    } else {
+        CollectSemanticsMode::Generic
+    }
+}
+
+/// Whether this mode requires scanning expression for undefined-risk
+/// before applying collect semantics.
+pub fn collect_semantics_needs_undefined_risk_scan(mode: CollectSemanticsMode) -> bool {
+    !matches!(mode, CollectSemanticsMode::Generic)
+}
+
 #[derive(Debug, Clone)]
 pub struct CollectSemanticsResult {
     pub new_expr: ExprId,
@@ -72,7 +92,10 @@ pub fn collect_with_semantics_mode(
 
 #[cfg(test)]
 mod tests {
-    use super::{collect_with_semantics_mode, CollectSemanticsMode};
+    use super::{
+        collect_semantics_mode_from_flags, collect_semantics_needs_undefined_risk_scan,
+        collect_with_semantics_mode, CollectSemanticsMode,
+    };
     use cas_ast::Context;
     use cas_parser::parse;
 
@@ -100,5 +123,34 @@ mod tests {
         let out = collect_with_semantics_mode(&mut ctx, expr, CollectSemanticsMode::Generic, true)
             .expect("out");
         assert!(out.assumption.is_none());
+    }
+
+    #[test]
+    fn mode_from_flags_prioritizes_assume_then_strict() {
+        assert_eq!(
+            collect_semantics_mode_from_flags(true, true),
+            CollectSemanticsMode::Assume
+        );
+        assert_eq!(
+            collect_semantics_mode_from_flags(false, true),
+            CollectSemanticsMode::Strict
+        );
+        assert_eq!(
+            collect_semantics_mode_from_flags(false, false),
+            CollectSemanticsMode::Generic
+        );
+    }
+
+    #[test]
+    fn needs_risk_scan_only_outside_generic() {
+        assert!(collect_semantics_needs_undefined_risk_scan(
+            CollectSemanticsMode::Strict
+        ));
+        assert!(collect_semantics_needs_undefined_risk_scan(
+            CollectSemanticsMode::Assume
+        ));
+        assert!(!collect_semantics_needs_undefined_risk_scan(
+            CollectSemanticsMode::Generic
+        ));
     }
 }

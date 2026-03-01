@@ -12,6 +12,7 @@
 
 use crate::assumptions::ConditionClass;
 use crate::domain_facts::Provenance;
+use cas_solver_core::solve_safety_policy as core_safety;
 
 /// Safety classification for rules when used during equation solving.
 ///
@@ -81,7 +82,7 @@ impl SolveSafety {
     /// Only `Always` rules are allowed in pre-pass.
     #[inline]
     pub fn safe_for_prepass(&self) -> bool {
-        matches!(self, SolveSafety::Always)
+        core_safety::safe_for_prepass(to_core_solve_safety(*self))
     }
 
     /// Returns true if this rule is safe for solver tactic given domain mode.
@@ -90,16 +91,10 @@ impl SolveSafety {
     /// - `Never`: never safe
     #[inline]
     pub fn safe_for_tactic(&self, domain_mode: crate::domain::DomainMode) -> bool {
-        match self {
-            SolveSafety::Always => true,
-            SolveSafety::IntrinsicCondition(_class) => {
-                // Intrinsic conditions are inherited from the input AST, not introduced.
-                // Allowed in Generic and Assume; blocked in Strict (requires formal proof).
-                domain_mode != crate::domain::DomainMode::Strict
-            }
-            SolveSafety::NeedsCondition(class) => domain_mode.allows_unproven(*class),
-            SolveSafety::Never => false,
-        }
+        core_safety::safe_for_tactic(
+            to_core_solve_safety(*self),
+            to_core_domain_mode(domain_mode),
+        )
     }
 
     /// Bridge to domain vocabulary: maps this safety classification to a
@@ -109,19 +104,56 @@ impl SolveSafety {
     /// (unconditionally blocked — no meaningful condition to describe).
     #[inline]
     pub fn requirement_descriptor(&self) -> Option<RequirementDescriptor> {
-        match self {
-            SolveSafety::Always => None,
-            SolveSafety::IntrinsicCondition(class) => Some(RequirementDescriptor {
-                class: *class,
-                provenance: Provenance::Intrinsic,
-            }),
-            SolveSafety::NeedsCondition(class) => Some(RequirementDescriptor {
-                class: *class,
-                provenance: Provenance::Introduced,
-            }),
-            SolveSafety::Never => None,
-        }
+        core_safety::requirement_descriptor(to_core_solve_safety(*self)).map(|desc| {
+            RequirementDescriptor {
+                class: from_core_condition_class(desc.class),
+                provenance: from_core_provenance(desc.provenance),
+            }
+        })
     }
+}
+
+fn to_core_condition_class(class: ConditionClass) -> core_safety::ConditionClassKind {
+    match class {
+        ConditionClass::Definability => core_safety::ConditionClassKind::Definability,
+        ConditionClass::Analytic => core_safety::ConditionClassKind::Analytic,
+    }
+}
+
+fn from_core_condition_class(class: core_safety::ConditionClassKind) -> ConditionClass {
+    match class {
+        core_safety::ConditionClassKind::Definability => ConditionClass::Definability,
+        core_safety::ConditionClassKind::Analytic => ConditionClass::Analytic,
+    }
+}
+
+fn from_core_provenance(provenance: core_safety::ProvenanceKind) -> Provenance {
+    match provenance {
+        core_safety::ProvenanceKind::Intrinsic => Provenance::Intrinsic,
+        core_safety::ProvenanceKind::Introduced => Provenance::Introduced,
+    }
+}
+
+fn to_core_solve_safety(safety: SolveSafety) -> core_safety::SolveSafetyKind {
+    match safety {
+        SolveSafety::Always => core_safety::SolveSafetyKind::Always,
+        SolveSafety::IntrinsicCondition(class) => {
+            core_safety::SolveSafetyKind::IntrinsicCondition(to_core_condition_class(class))
+        }
+        SolveSafety::NeedsCondition(class) => {
+            core_safety::SolveSafetyKind::NeedsCondition(to_core_condition_class(class))
+        }
+        SolveSafety::Never => core_safety::SolveSafetyKind::Never,
+    }
+}
+
+fn to_core_domain_mode(
+    domain_mode: crate::domain::DomainMode,
+) -> cas_solver_core::log_domain::DomainModeKind {
+    cas_solver_core::log_domain::domain_mode_kind_from_flags(
+        matches!(domain_mode, crate::domain::DomainMode::Assume),
+        matches!(domain_mode, crate::domain::DomainMode::Strict),
+    )
 }
 
 /// Purpose of simplification, controls which rules are applied.

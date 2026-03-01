@@ -389,6 +389,28 @@ pub enum LogAutoExpandMode {
     Assume,
 }
 
+/// Derive [`LogAutoExpandMode`] from generic mode flags.
+pub fn log_auto_expand_mode_from_flags(assume_mode: bool, strict_mode: bool) -> LogAutoExpandMode {
+    if assume_mode {
+        LogAutoExpandMode::Assume
+    } else if strict_mode {
+        LogAutoExpandMode::Strict
+    } else {
+        LogAutoExpandMode::Generic
+    }
+}
+
+/// Generic mode is the only mode that consults implicit-domain inheritance
+/// during auto log expansion.
+pub fn log_auto_expand_needs_implicit_domain(mode: LogAutoExpandMode) -> bool {
+    matches!(mode, LogAutoExpandMode::Generic)
+}
+
+/// Generic mode is the only mode that emits blocked hints for auto log expansion.
+pub fn log_auto_expand_emits_blocked_hint(mode: LogAutoExpandMode) -> bool {
+    matches!(mode, LogAutoExpandMode::Generic)
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LogAutoExpandPositivityPlan {
     AllowNoAssumptions,
@@ -401,6 +423,20 @@ pub enum LogExpInversePolicyMode {
     Strict,
     Generic,
     Assume,
+}
+
+/// Derive [`LogExpInversePolicyMode`] from generic mode flags.
+pub fn log_exp_inverse_policy_mode_from_flags(
+    assume_mode: bool,
+    strict_mode: bool,
+) -> LogExpInversePolicyMode {
+    if assume_mode {
+        LogExpInversePolicyMode::Assume
+    } else if strict_mode {
+        LogExpInversePolicyMode::Strict
+    } else {
+        LogExpInversePolicyMode::Generic
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1243,6 +1279,24 @@ pub fn plan_log_even_power_policy(
         LogExpInversePolicyMode::Assume => LogEvenPowerPolicyPlan::RewriteWithAbsAssume {
             assume_positive_subject: true,
         },
+    }
+}
+
+/// Whether looking up inherited positivity (`in_requires`) can change the
+/// `log(x^(even))` policy outcome.
+///
+/// This allows callers to skip expensive implicit-domain inference when it
+/// cannot affect the decision.
+pub fn log_even_power_needs_requires_lookup(
+    mode: LogExpInversePolicyMode,
+    positive_subject_proven: bool,
+    positive_subject_disproven: bool,
+) -> bool {
+    match mode {
+        LogExpInversePolicyMode::Strict | LogExpInversePolicyMode::Generic => {
+            !positive_subject_proven
+        }
+        LogExpInversePolicyMode::Assume => !positive_subject_proven && !positive_subject_disproven,
     }
 }
 
@@ -2341,6 +2395,51 @@ mod tests {
     }
 
     #[test]
+    fn mode_from_flags_prioritizes_assume_then_strict() {
+        assert_eq!(
+            log_auto_expand_mode_from_flags(true, true),
+            LogAutoExpandMode::Assume
+        );
+        assert_eq!(
+            log_auto_expand_mode_from_flags(false, true),
+            LogAutoExpandMode::Strict
+        );
+        assert_eq!(
+            log_auto_expand_mode_from_flags(false, false),
+            LogAutoExpandMode::Generic
+        );
+
+        assert_eq!(
+            log_exp_inverse_policy_mode_from_flags(true, true),
+            LogExpInversePolicyMode::Assume
+        );
+        assert_eq!(
+            log_exp_inverse_policy_mode_from_flags(false, true),
+            LogExpInversePolicyMode::Strict
+        );
+        assert_eq!(
+            log_exp_inverse_policy_mode_from_flags(false, false),
+            LogExpInversePolicyMode::Generic
+        );
+    }
+
+    #[test]
+    fn auto_expand_mode_helpers_only_enable_generic_paths() {
+        assert!(log_auto_expand_needs_implicit_domain(
+            LogAutoExpandMode::Generic
+        ));
+        assert!(!log_auto_expand_needs_implicit_domain(
+            LogAutoExpandMode::Strict
+        ));
+        assert!(log_auto_expand_emits_blocked_hint(
+            LogAutoExpandMode::Generic
+        ));
+        assert!(!log_auto_expand_emits_blocked_hint(
+            LogAutoExpandMode::Assume
+        ));
+    }
+
+    #[test]
     fn log_exp_inverse_policy_blocks_in_complex() {
         let plan = plan_log_exp_inverse_symbolic_policy(
             LogExpInversePolicyMode::Strict,
@@ -2534,6 +2633,31 @@ mod tests {
                 assume_positive_subject: true
             }
         );
+    }
+
+    #[test]
+    fn log_even_power_requires_lookup_gate_matches_policy_sensitivity() {
+        assert!(log_even_power_needs_requires_lookup(
+            LogExpInversePolicyMode::Strict,
+            false,
+            false
+        ));
+        assert!(!log_even_power_needs_requires_lookup(
+            LogExpInversePolicyMode::Strict,
+            true,
+            false
+        ));
+
+        assert!(log_even_power_needs_requires_lookup(
+            LogExpInversePolicyMode::Assume,
+            false,
+            false
+        ));
+        assert!(!log_even_power_needs_requires_lookup(
+            LogExpInversePolicyMode::Assume,
+            false,
+            true
+        ));
     }
 
     #[test]

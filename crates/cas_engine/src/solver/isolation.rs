@@ -12,11 +12,7 @@ use cas_solver_core::isolation_arithmetic::{
 };
 use cas_solver_core::isolation_dispatch::execute_isolation_dispatch_with_default_isolated_and_negated_entries_and_default_linear_collect_kernels_for_var_and_unified_step_mapper_with_state;
 use cas_solver_core::isolation_functions::execute_function_isolation_with_default_kernels_and_unified_step_mapper_for_var_with_state;
-use cas_solver_core::isolation_power::{
-    build_pow_isolation_kernel_config_with,
-    execute_pow_isolation_with_default_kernels_and_unified_step_mapper_for_var_with_state,
-    PowIsolationKernelConfig,
-};
+use cas_solver_core::isolation_power::execute_pow_isolation_with_kernel_config_and_unified_step_mapper_for_var_with_state;
 use cas_solver_core::isolation_utils::is_known_negative;
 use cas_solver_core::solve_analysis::ensure_recursion_depth_within_limit_or_error;
 use cas_solver_core::solve_budget::MAX_SOLVE_RECURSION_DEPTH;
@@ -88,7 +84,11 @@ fn simplifier_prove_nonzero_status(
     simplifier: &mut Simplifier,
     expr: ExprId,
 ) -> cas_solver_core::linear_solution::NonZeroStatus {
-    crate::solver::prove_nonzero_status(&simplifier.context, expr)
+    cas_solver_core::external_proof::classify_nonzero_status_with_tri_prover(
+        &simplifier.context,
+        expr,
+        crate::helpers::prove_nonzero_core,
+    )
 }
 
 fn simplifier_is_known_negative(simplifier: &mut Simplifier, expr: ExprId) -> bool {
@@ -457,11 +457,8 @@ fn isolate_function(
     )
 }
 
-#[derive(Clone)]
-struct PowIsolationConfig {
-    kernel: PowIsolationKernelConfig,
-    tactic_opts: crate::SimplifyOptions,
-}
+type PowIsolationConfig =
+    cas_solver_core::strategy_options::PowIsolationRuntimeConfig<crate::SimplifyOptions>;
 
 /// Handle isolation for `Pow(b, e)`: `B^E = RHS`
 #[allow(clippy::too_many_arguments)]
@@ -487,17 +484,14 @@ fn build_pow_isolation_config(
     simplifier: &mut Simplifier,
     opts: SolverOptions,
 ) -> PowIsolationConfig {
-    let pow_inputs = cas_solver_core::strategy_options::pow_kernel_inputs(
+    cas_solver_core::strategy_options::pow_runtime_config_with(
         opts.core_domain_mode(),
         opts.wildcard_scope(),
         opts.value_domain == crate::semantics::ValueDomain::RealOnly,
         opts.budget,
-    );
-
-    PowIsolationConfig {
-        kernel: build_pow_isolation_kernel_config_with(|| simplifier.collect_steps(), pow_inputs),
-        tactic_opts: crate::SimplifyOptions::for_solve_tactic(opts.domain_mode),
-    }
+        || simplifier.collect_steps(),
+        || crate::SimplifyOptions::for_solve_tactic(opts.domain_mode),
+    )
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -514,7 +508,7 @@ fn execute_isolation_pow(
     ctx: &SolveCtx,
     config: PowIsolationConfig,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-    execute_pow_isolation_with_default_kernels_and_unified_step_mapper_for_var_with_state(
+    execute_pow_isolation_with_kernel_config_and_unified_step_mapper_for_var_with_state(
         simplifier,
         lhs,
         b,
@@ -522,17 +516,7 @@ fn execute_isolation_pow(
         rhs,
         op,
         var,
-        config.kernel.include_base_item,
-        config.kernel.shortcut_can_branch,
-        config.kernel.log_can_branch,
-        config.kernel.solve_tactic_enabled,
-        config.kernel.mode,
-        config.kernel.wildcard_scope,
-        config.kernel.include_shortcut_item,
-        config.kernel.include_base_one_item,
-        config.kernel.include_terminal_items,
-        config.kernel.include_unsupported_items,
-        config.kernel.include_log_item,
+        config.kernel,
         steps,
         simplifier_context,
         simplifier_context_mut,
@@ -549,12 +533,16 @@ fn execute_isolation_pow(
         },
         simplifier_collect_steps,
         |simplifier, tactic_base, tactic_rhs| {
-            crate::solver::classify_log_solve(
+            cas_solver_core::log_domain::classify_log_solve_with_env_and_tri_prover(
                 &simplifier.context,
                 tactic_base,
                 tactic_rhs,
-                &opts,
+                opts.value_domain == crate::semantics::ValueDomain::RealOnly,
+                opts.core_domain_mode(),
                 &ctx.domain_env,
+                |core_ctx, expr| {
+                    crate::helpers::prove_positive_core(core_ctx, expr, opts.value_domain)
+                },
             )
         },
         |simplifier, shortcut_rhs, shortcut_op| {

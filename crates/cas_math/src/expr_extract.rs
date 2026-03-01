@@ -16,6 +16,21 @@ pub fn extract_i64_integer(ctx: &Context, expr: ExprId) -> Option<i64> {
     None
 }
 
+/// Extract an integer multiplier and base from `k*base`, `base*k`, or plain `base`.
+///
+/// Returns `(1, expr)` when no integer `i64` multiplier is found.
+pub fn extract_i64_multiplier_and_base(ctx: &Context, expr: ExprId) -> (i64, ExprId) {
+    if let Expr::Mul(l, r) = ctx.get(expr) {
+        if let Some(k) = extract_i64_integer(ctx, *l) {
+            return (k, *r);
+        }
+        if let Some(k) = extract_i64_integer(ctx, *r) {
+            return (k, *l);
+        }
+    }
+    (1, expr)
+}
+
 /// Extract an integer as an exact `BigInt` from an expression.
 ///
 /// Also accepts unary negation wrappers, e.g. `-(5)` -> `-5`.
@@ -242,6 +257,36 @@ mod tests {
         let half = parse("1/2", &mut ctx).expect("parse 1/2");
         assert_eq!(extract_i64_integer(&ctx, five), Some(5));
         assert_eq!(extract_i64_integer(&ctx, half), None);
+    }
+
+    #[test]
+    fn extracts_i64_multiplier_and_base_from_mul_or_plain() {
+        let mut ctx = Context::new();
+        let three_x = parse("3*x", &mut ctx).expect("parse 3*x");
+        let x_four = parse("x*4", &mut ctx).expect("parse x*4");
+        let half_x = parse("(1/2)*x", &mut ctx).expect("parse (1/2)*x");
+        let plain = parse("x+y", &mut ctx).expect("parse x+y");
+        let x = parse("x", &mut ctx).expect("parse x");
+
+        let (k1, b1) = extract_i64_multiplier_and_base(&ctx, three_x);
+        let (k2, b2) = extract_i64_multiplier_and_base(&ctx, x_four);
+        let (k3, b3) = extract_i64_multiplier_and_base(&ctx, half_x);
+        let (k4, b4) = extract_i64_multiplier_and_base(&ctx, plain);
+
+        assert_eq!(k1, 3);
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, b1, x),
+            std::cmp::Ordering::Equal
+        );
+        assert_eq!(k2, 4);
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, b2, x),
+            std::cmp::Ordering::Equal
+        );
+        assert_eq!(k3, 1);
+        assert_eq!(b3, half_x);
+        assert_eq!(k4, 1);
+        assert_eq!(b4, plain);
     }
 
     #[test]

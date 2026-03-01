@@ -20,7 +20,7 @@ use cas_solver_core::solve_analysis::{
     analyze_equation_preflight_and_fork_context_with,
     derive_equation_conditions_from_existing_with, ensure_solve_entry_for_equation_or_error,
     execute_prepared_equation_strategy_pipeline_with_state, guard_solved_result_with_exclusions,
-    is_soft_strategy_error_with, is_symbolic_expr, prepare_equation_for_strategy_with_state,
+    is_symbolic_expr, prepare_equation_for_strategy_with_state,
     resolve_discrete_strategy_result_against_equation_with_state,
     resolve_var_eliminated_residual_with_exclusions, try_enter_equation_cycle_guard_with_error,
     PreflightContext, PreparedEquationResidual,
@@ -66,24 +66,6 @@ fn simplifier_render_expr(simplifier: &mut Simplifier, expr: ExprId) -> String {
 
 fn simplifier_zero_expr(simplifier: &mut Simplifier) -> ExprId {
     simplifier.context.num(0)
-}
-
-fn isolation_error_detail(err: &CasError) -> Option<&str> {
-    match err {
-        CasError::IsolationError(_, detail) => Some(detail.as_str()),
-        _ => None,
-    }
-}
-
-fn solver_error_detail(err: &CasError) -> Option<&str> {
-    match err {
-        CasError::SolverError(detail) => Some(detail.as_str()),
-        _ => None,
-    }
-}
-
-fn is_soft_strategy_error(err: &CasError) -> bool {
-    is_soft_strategy_error_with(err, isolation_error_detail, solver_error_detail)
 }
 
 /// Solve with default options (for backward compatibility with tests).
@@ -214,7 +196,10 @@ pub(super) fn solve_inner(
 
     // NOTE: Pre-solve exponent normalization (Div(p,q) → Number(p/q)),
     // nested-pow folding, and additive cancellation are applied above.
-    debug_assert_no_top_level_sub(simplifier, &simplified_eq);
+    cas_solver_core::solve_analysis::debug_assert_equation_no_top_level_sub(
+        &simplifier.context,
+        &simplified_eq,
+    );
 
     // 3) Resolve var-eliminated residuals early, otherwise guard cycle + run strategies.
     execute_strategy_pipeline(
@@ -322,23 +307,6 @@ fn prepare_equation_for_strategy(
     )
 }
 
-fn debug_assert_no_top_level_sub(simplifier: &Simplifier, equation: &Equation) {
-    debug_assert!(
-        !matches!(
-            simplifier.context.get(equation.lhs),
-            cas_ast::Expr::Sub(_, _)
-        ),
-        "cancel_common_terms precondition: LHS top-level is Sub (not canonical)"
-    );
-    debug_assert!(
-        !matches!(
-            simplifier.context.get(equation.rhs),
-            cas_ast::Expr::Sub(_, _)
-        ),
-        "cancel_common_terms precondition: RHS top-level is Sub (not canonical)"
-    );
-}
-
 #[allow(clippy::too_many_arguments)]
 fn execute_strategy_pipeline(
     simplifier: &mut Simplifier,
@@ -389,7 +357,7 @@ fn execute_strategy_pipeline(
                 apply_strategy(*strategy_kind, simplified_eq, var, simplifier, &opts, ctx);
             (attempt, should_verify)
         },
-        is_soft_strategy_error,
+        cas_solver_core::solve_analysis::is_soft_strategy_error_by_parts::<CasError>,
         |simplifier, solutions, steps| {
             resolve_discrete_strategy_result_against_equation_with_state(
                 simplifier,
@@ -519,7 +487,17 @@ fn apply_unwrap_strategy(
         mode,
         wildcard_scope,
         |core_ctx, base, other_side| {
-            crate::solver::classify_log_solve(core_ctx, base, other_side, opts, &ctx.domain_env)
+            cas_solver_core::log_domain::classify_log_solve_with_env_and_tri_prover(
+                core_ctx,
+                base,
+                other_side,
+                opts.value_domain == crate::semantics::ValueDomain::RealOnly,
+                opts.core_domain_mode(),
+                &ctx.domain_env,
+                |inner_ctx, expr| {
+                    crate::helpers::prove_positive_core(inner_ctx, expr, opts.value_domain)
+                },
+            )
         },
         cas_formatter::render_expr,
         |simplifier, record| {

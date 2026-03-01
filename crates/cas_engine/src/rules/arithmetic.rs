@@ -1,6 +1,8 @@
 use crate::define_rule;
 use crate::rule::Rewrite;
 use cas_ast::Expr;
+use cas_math::arithmetic_cancel_support::{match_add_inverse_expr, match_sub_self_semantic_expr};
+use cas_math::arithmetic_zero_support::{match_div_zero_numerator_pattern, match_mul_zero_pattern};
 use cas_math::expr_destructure::{as_add, as_div, as_mul, as_sub};
 use cas_math::expr_rewrite::smart_mul;
 use num_traits::{One, Zero};
@@ -58,59 +60,35 @@ define_rule!(
         crate::assumptions::ConditionClass::Definability
     ),
     |ctx, expr, parent_ctx| {
-        use crate::assumptions::ConditionClass;
+        let pattern = match_mul_zero_pattern(ctx, expr)?;
+        let other = pattern.other;
+        let has_risk = crate::collect::has_undefined_risk(ctx, other);
+        let allowed = cas_math::undefined_risk_policy_support::allow_cancellation_with_undefined_risk_mode_flags(
+            matches!(parent_ctx.domain_mode(), crate::DomainMode::Assume),
+            matches!(parent_ctx.domain_mode(), crate::DomainMode::Strict),
+            has_risk,
+        );
 
-        // Helper: check if expression contains any Div with non-literal denominator
-        // Delegates to canonical implementation that handles Hold/Matrix
-        let has_undefined_risk = |ctx: &cas_ast::Context, expr: cas_ast::ExprId| -> bool {
-            crate::collect::has_undefined_risk(ctx, expr)
+        if !allowed {
+            return None; // Strict mode: don't simplify if has risk
+        }
+
+        // Build assumption events if has risk and allowed
+        let assumption_events: smallvec::SmallVec<[crate::assumptions::AssumptionEvent; 1]> = if has_risk {
+            smallvec::smallvec![crate::assumptions::AssumptionEvent::defined(ctx, other)]
+        } else {
+            smallvec::SmallVec::new()
         };
 
-        let (lhs, rhs) = match ctx.get(expr) {
-            Expr::Mul(l, r) => (*l, *r),
-            _ => return None,
+        let description = if pattern.zero_on_lhs {
+            "0 * x = 0".to_string()
+        } else {
+            "x * 0 = 0".to_string()
         };
-            // Check if either side is zero literal
-            let lhs_is_zero = matches!(ctx.get(lhs), Expr::Number(n) if n.is_zero());
-            let rhs_is_zero = matches!(ctx.get(rhs), Expr::Number(n) if n.is_zero());
-
-            if !(lhs_is_zero || rhs_is_zero) {
-                return None;
-            }
-
-            // The "other" side: 0 * other
-            let other = if lhs_is_zero { rhs } else { lhs };
-            let has_risk = has_undefined_risk(ctx, other);
-
-            // Use ConditionClass gate: Defined is Definability class
-            let allowed = if has_risk {
-                parent_ctx
-                    .domain_mode()
-                    .allows_unproven(ConditionClass::Definability)
-            } else {
-                true // No risk = always allowed
-            };
-
-            if !allowed {
-                return None; // Strict mode: don't simplify if has risk
-            }
-
-            // Build assumption events if has risk and allowed
-            let assumption_events: smallvec::SmallVec<[crate::assumptions::AssumptionEvent; 1]> = if has_risk {
-                smallvec::smallvec![crate::assumptions::AssumptionEvent::defined(ctx, other)]
-            } else {
-                smallvec::SmallVec::new()
-            };
-
-            let description = if lhs_is_zero {
-                "0 * x = 0".to_string()
-            } else {
-                "x * 0 = 0".to_string()
-            };
 
 
-            let zero = ctx.num(0);
-            Some(Rewrite::new(zero).desc(description).assume_all(assumption_events))
+        let zero = ctx.num(0);
+        Some(Rewrite::new(zero).desc(description).assume_all(assumption_events))
     }
 );
 
@@ -130,20 +108,13 @@ define_rule!(
         use crate::domain::Proof;
         use crate::domain_facts::Predicate;
 
-        let (num, den) = as_div(ctx, expr)?;
-
-        // Check if numerator is 0
-        let num_is_zero = matches!(ctx.get(num), Expr::Number(n) if n.is_zero());
-        if !num_is_zero {
-            return None;
-        }
+        let pattern = match_div_zero_numerator_pattern(ctx, expr)?;
+        let den = pattern.denominator;
 
         // Special case: 0/0 → undefined (all modes)
-        if let Expr::Number(d) = ctx.get(den) {
-            if d.is_zero() {
-                let undef = ctx.add(Expr::Constant(cas_ast::Constant::Undefined));
-                return Some(Rewrite::new(undef).desc("0/0 is undefined"));
-            }
+        if pattern.denominator_is_literal_zero {
+            let undef = ctx.add(Expr::Constant(cas_ast::Constant::Undefined));
+            return Some(Rewrite::new(undef).desc("0/0 is undefined"));
         }
 
         // Use unified oracle for NonZero condition (Definability class)
@@ -472,33 +443,18 @@ define_rule!(
     "Subtraction Self-Cancel",
     priority: 500, // High priority: before any expansion rules
     |ctx, expr, parent_ctx| {
-        use cas_math::semantic_equality::SemanticEqualityChecker;
-
-        // Helper: check if expression contains any Div with non-literal denominator
-        // Delegates to canonical implementation that handles Hold/Matrix
-        let has_undefined_risk = |ctx: &cas_ast::Context, expr: cas_ast::ExprId| -> bool {
-            crate::collect::has_undefined_risk(ctx, expr)
-        };
-
-        // Match: Sub(lhs, rhs)
-        if let Expr::Sub(lhs, rhs) = ctx.get(expr) {
-            let lhs = *lhs;
-            let rhs = *rhs;
-
-            // Use semantic equality (handles structural equivalence like tan(3x) vs tan(3·x))
-            let checker = SemanticEqualityChecker::new(ctx);
-            if checker.are_equal(lhs, rhs) {
-                let domain_mode = parent_ctx.domain_mode();
-
-                // In Strict mode, check for undefined risk
-                if domain_mode == crate::DomainMode::Strict && has_undefined_risk(ctx, lhs) {
-                    return None;
-                }
-
-                return Some(Rewrite::new(ctx.num(0)).desc("a - a = 0"));
-            }
+        let inner = match_sub_self_semantic_expr(ctx, expr)?;
+        let allow =
+            cas_math::undefined_risk_policy_support::allow_cancellation_with_undefined_risk_mode_flags(
+                matches!(parent_ctx.domain_mode(), crate::DomainMode::Assume),
+                matches!(parent_ctx.domain_mode(), crate::DomainMode::Strict),
+                crate::collect::has_undefined_risk(ctx, inner),
+            );
+        if !allow {
+            return None;
         }
-        None
+
+        Some(Rewrite::new(ctx.num(0)).desc("a - a = 0"))
     }
 );
 
@@ -514,44 +470,21 @@ define_rule!(
 // The individual Div operations already emit NonZero(denominator) as Requires.
 // Showing "a is defined" here is redundant and confusing.
 define_rule!(AddInverseRule, "Add Inverse", |ctx, expr, parent_ctx| {
-    // Helper: check if expression contains any Div with non-literal denominator
-    fn has_undefined_risk(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> bool {
-        crate::collect::has_undefined_risk(ctx, expr)
+    let inner = match_add_inverse_expr(ctx, expr)?;
+    let allow =
+        cas_math::undefined_risk_policy_support::allow_cancellation_with_undefined_risk_mode_flags(
+            matches!(parent_ctx.domain_mode(), crate::DomainMode::Assume),
+            matches!(parent_ctx.domain_mode(), crate::DomainMode::Strict),
+            crate::collect::has_undefined_risk(ctx, inner),
+        );
+    if !allow {
+        return None;
     }
 
-    // Pattern: a + (-a) = 0 or (-a) + a = 0
-    if let Expr::Add(l, r) = ctx.get(expr) {
-        let mut matched_inner: Option<cas_ast::ExprId> = None;
-
-        // Check if r = -l or l = -r
-        if let Expr::Neg(neg_inner) = ctx.get(*r) {
-            if *neg_inner == *l {
-                matched_inner = Some(*l);
-            }
-        }
-        if matched_inner.is_none() {
-            if let Expr::Neg(neg_inner) = ctx.get(*l) {
-                if *neg_inner == *r {
-                    matched_inner = Some(*r);
-                }
-            }
-        }
-
-        if let Some(inner) = matched_inner {
-            let domain_mode = parent_ctx.domain_mode();
-
-            // In Strict mode, check for undefined risk
-            if domain_mode == crate::DomainMode::Strict && has_undefined_risk(ctx, inner) {
-                return None;
-            }
-
-            // V2.12.13: No assumption events - the division conditions are already
-            // tracked as Requires from the original Div operations.
-            // Adding "a is defined" here is redundant and clutters the output.
-            return Some(Rewrite::new(ctx.num(0)).desc("a + (-a) = 0"));
-        }
-    }
-    None
+    // V2.12.13: No assumption events - the division conditions are already
+    // tracked as Requires from the original Div operations.
+    // Adding "a is defined" here is redundant and clutters the output.
+    Some(Rewrite::new(ctx.num(0)).desc("a + (-a) = 0"))
 });
 
 // Simplify sums of fractions in exponents: x^(1/2 + 1/3) → x^(5/6)

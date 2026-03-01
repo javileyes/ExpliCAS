@@ -3,6 +3,8 @@
 use crate::linear_solution::NonZeroStatus;
 use crate::log_domain::ProofStatus;
 use crate::proof_status::proof_status_to_nonzero_status;
+use cas_ast::{Context, ExprId};
+use cas_math::tri_proof::TriProof;
 
 /// Map an external proof value to [`ProofStatus`].
 pub fn map_external_proof_status_with<P, FIsProven, FIsDisproven>(
@@ -37,11 +39,42 @@ where
     proof_status_to_nonzero_status(status)
 }
 
+/// Map [`TriProof`] to [`ProofStatus`].
+pub fn map_tri_proof_status(proof: TriProof) -> ProofStatus {
+    match proof {
+        TriProof::Proven => ProofStatus::Proven,
+        TriProof::Disproven => ProofStatus::Disproven,
+        TriProof::Unknown => ProofStatus::Unknown,
+    }
+}
+
+/// Map [`TriProof`] to [`NonZeroStatus`].
+pub fn map_tri_nonzero_status(proof: TriProof) -> NonZeroStatus {
+    proof_status_to_nonzero_status(map_tri_proof_status(proof))
+}
+
+/// Evaluate one expression with a tri-valued non-zero prover and map to
+/// [`NonZeroStatus`].
+pub fn classify_nonzero_status_with_tri_prover<FProve>(
+    ctx: &Context,
+    expr: ExprId,
+    mut prove_nonzero: FProve,
+) -> NonZeroStatus
+where
+    FProve: FnMut(&Context, ExprId) -> TriProof,
+{
+    map_tri_nonzero_status(prove_nonzero(ctx, expr))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{map_external_nonzero_status_with, map_external_proof_status_with};
+    use super::{
+        classify_nonzero_status_with_tri_prover, map_external_nonzero_status_with,
+        map_external_proof_status_with, map_tri_nonzero_status, map_tri_proof_status,
+    };
     use crate::linear_solution::NonZeroStatus;
     use crate::log_domain::ProofStatus;
+    use cas_math::tri_proof::TriProof;
 
     #[derive(Debug, Clone, Copy)]
     enum ExternalProof {
@@ -81,5 +114,56 @@ mod tests {
             |p| matches!(p, ExternalProof::No),
         );
         assert_eq!(out, NonZeroStatus::NonZero);
+    }
+
+    #[test]
+    fn map_tri_status_helpers_cover_all_variants() {
+        assert_eq!(map_tri_proof_status(TriProof::Proven), ProofStatus::Proven);
+        assert_eq!(
+            map_tri_proof_status(TriProof::Disproven),
+            ProofStatus::Disproven
+        );
+        assert_eq!(
+            map_tri_proof_status(TriProof::Unknown),
+            ProofStatus::Unknown
+        );
+
+        assert_eq!(
+            map_tri_nonzero_status(TriProof::Proven),
+            NonZeroStatus::NonZero
+        );
+        assert_eq!(
+            map_tri_nonzero_status(TriProof::Disproven),
+            NonZeroStatus::Zero
+        );
+        assert_eq!(
+            map_tri_nonzero_status(TriProof::Unknown),
+            NonZeroStatus::Unknown
+        );
+    }
+
+    #[test]
+    fn classify_nonzero_status_with_tri_prover_maps_callback_result() {
+        let mut ctx = cas_ast::Context::new();
+        let x = ctx.var("x");
+        let zero = ctx.num(0);
+
+        let status_x = classify_nonzero_status_with_tri_prover(&ctx, x, |_core_ctx, expr| {
+            if expr == x {
+                TriProof::Proven
+            } else {
+                TriProof::Unknown
+            }
+        });
+        assert_eq!(status_x, NonZeroStatus::NonZero);
+
+        let status_zero = classify_nonzero_status_with_tri_prover(&ctx, zero, |_core_ctx, expr| {
+            if expr == zero {
+                TriProof::Disproven
+            } else {
+                TriProof::Unknown
+            }
+        });
+        assert_eq!(status_zero, NonZeroStatus::Zero);
     }
 }

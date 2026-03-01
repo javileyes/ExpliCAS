@@ -27,6 +27,22 @@ pub enum AbsDomainMode {
     Assume,
 }
 
+/// Derive [`AbsDomainMode`] from generic mode flags.
+pub fn abs_domain_mode_from_flags(assume_mode: bool, strict_mode: bool) -> AbsDomainMode {
+    if assume_mode {
+        AbsDomainMode::Assume
+    } else if strict_mode {
+        AbsDomainMode::Strict
+    } else {
+        AbsDomainMode::Generic
+    }
+}
+
+/// In `Strict/Generic`, implicit-domain scans are only needed when direct proof is missing.
+pub fn abs_needs_implicit_domain_check(mode: AbsDomainMode, proven: bool) -> bool {
+    matches!(mode, AbsDomainMode::Strict | AbsDomainMode::Generic) && !proven
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AbsAssumptionKind {
     Positive,
@@ -37,6 +53,15 @@ pub enum AbsAssumptionKind {
 pub enum ValueDomainMode {
     RealOnly,
     ComplexEnabled,
+}
+
+/// Derive [`ValueDomainMode`] from a simple `real_only` flag.
+pub fn value_domain_mode_from_flag(real_only: bool) -> ValueDomainMode {
+    if real_only {
+        ValueDomainMode::RealOnly
+    } else {
+        ValueDomainMode::ComplexEnabled
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -557,14 +582,15 @@ pub fn is_sum_of_nonnegative(ctx: &Context, expr: ExprId) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        is_ln_or_log_call, is_sum_of_nonnegative, try_extract_abs_exp_like_arg,
-        try_extract_abs_sqrt_like_arg, try_extract_symbolic_root_cancel_base,
-        try_plan_symbolic_root_cancel_rewrite, try_rewrite_abs_even_power_expr,
-        try_rewrite_abs_idempotent_expr, try_rewrite_abs_numeric_factor_expr,
-        try_rewrite_abs_odd_power_expr, try_rewrite_abs_power_even_expr,
-        try_rewrite_abs_product_expr, try_rewrite_abs_quotient_expr,
-        try_rewrite_abs_sub_normalize_expr, try_rewrite_abs_sum_nonnegative_expr,
-        try_rewrite_evaluate_abs_expr, try_rewrite_sqrt_square_expr, try_unwrap_abs_arg,
+        abs_domain_mode_from_flags, abs_needs_implicit_domain_check, is_ln_or_log_call,
+        is_sum_of_nonnegative, try_extract_abs_exp_like_arg, try_extract_abs_sqrt_like_arg,
+        try_extract_symbolic_root_cancel_base, try_plan_symbolic_root_cancel_rewrite,
+        try_rewrite_abs_even_power_expr, try_rewrite_abs_idempotent_expr,
+        try_rewrite_abs_numeric_factor_expr, try_rewrite_abs_odd_power_expr,
+        try_rewrite_abs_power_even_expr, try_rewrite_abs_product_expr,
+        try_rewrite_abs_quotient_expr, try_rewrite_abs_sub_normalize_expr,
+        try_rewrite_abs_sum_nonnegative_expr, try_rewrite_evaluate_abs_expr,
+        try_rewrite_sqrt_square_expr, try_unwrap_abs_arg, value_domain_mode_from_flag,
         AbsDomainMode, ValueDomainMode,
     };
     use cas_ast::{BuiltinFn, Context, Expr};
@@ -921,5 +947,50 @@ mod tests {
             ValueDomainMode::ComplexEnabled
         )
         .is_none());
+    }
+
+    #[test]
+    fn abs_domain_mode_from_flags_prioritizes_assume_then_strict() {
+        assert_eq!(
+            abs_domain_mode_from_flags(true, true),
+            AbsDomainMode::Assume
+        );
+        assert_eq!(
+            abs_domain_mode_from_flags(false, true),
+            AbsDomainMode::Strict
+        );
+        assert_eq!(
+            abs_domain_mode_from_flags(false, false),
+            AbsDomainMode::Generic
+        );
+    }
+
+    #[test]
+    fn abs_needs_implicit_domain_check_matches_policy() {
+        assert!(abs_needs_implicit_domain_check(
+            AbsDomainMode::Strict,
+            false
+        ));
+        assert!(abs_needs_implicit_domain_check(
+            AbsDomainMode::Generic,
+            false
+        ));
+        assert!(!abs_needs_implicit_domain_check(
+            AbsDomainMode::Assume,
+            false
+        ));
+        assert!(!abs_needs_implicit_domain_check(
+            AbsDomainMode::Strict,
+            true
+        ));
+    }
+
+    #[test]
+    fn value_domain_mode_from_flag_maps_expected_modes() {
+        assert_eq!(value_domain_mode_from_flag(true), ValueDomainMode::RealOnly);
+        assert_eq!(
+            value_domain_mode_from_flag(false),
+            ValueDomainMode::ComplexEnabled
+        );
     }
 }
