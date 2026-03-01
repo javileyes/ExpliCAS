@@ -129,14 +129,6 @@ pub type SolveSubStep =
 pub type SolveStep =
     cas_solver_core::solve_types::SolveStep<Equation, crate::step::ImportanceLevel, SolveSubStep>;
 
-pub(crate) fn medium_step(description: String, equation_after: Equation) -> SolveStep {
-    cas_solver_core::solve_types::SolveStep::new(
-        description,
-        equation_after,
-        crate::step::ImportanceLevel::Medium,
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::{SolveCtx, SolverOptions};

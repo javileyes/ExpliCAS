@@ -107,6 +107,17 @@ pub use crate::solver::solve_with_display_steps;
 /// Wrapper type that enforces step processing has been applied.
 pub use crate::solver::DisplaySolveSteps;
 
+/// Verify a single candidate solution by substitution.
+pub use crate::solver::check::verify_solution;
+/// Verify an entire solution set by substitution.
+pub use crate::solver::check::verify_solution_set;
+/// Verification result for a complete solution set.
+pub use crate::solver::check::VerifyResult;
+/// Solver verification status for one candidate solution.
+pub use crate::solver::check::VerifyStatus;
+/// Solver verification result summary.
+pub use crate::solver::check::VerifySummary;
+
 // =============================================================================
 // Display Traits (Human-readable output)
 // =============================================================================

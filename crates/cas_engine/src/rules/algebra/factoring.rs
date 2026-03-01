@@ -8,8 +8,8 @@ use cas_math::expr_relations::{
     conjugate_nary_add_sub_pair as is_nary_conjugate_pair,
 };
 use cas_math::factoring_support::{
-    try_rewrite_automatic_factor_expr, try_rewrite_difference_of_squares_product_expr,
-    try_rewrite_factor_common_integer_from_add_expr,
+    rewrite_factor_common_integer_from_add_expr, try_rewrite_automatic_factor_expr,
+    try_rewrite_difference_of_squares_product_expr,
     try_rewrite_factor_difference_squares_nary_expr, try_rewrite_factor_function_expr,
     try_rewrite_sum_three_cubes_zero_expr,
 };
@@ -68,11 +68,12 @@ define_rule!(
     None,
     PhaseMask::POST,
     |ctx, expr| {
-        let rewrite = try_rewrite_factor_common_integer_from_add_expr(ctx, expr)?;
+        let rewrite = rewrite_factor_common_integer_from_add_expr(ctx, expr)?;
+        let rewritten = rewrite.0;
         Some(
-            Rewrite::new(rewrite.rewritten)
-                .desc_lazy(|| format!("Factor out {}", rewrite.gcd_int))
-                .local(expr, rewrite.rewritten),
+            Rewrite::new(rewritten)
+                .desc(rewrite.1)
+                .local(expr, rewritten),
         )
     }
 );

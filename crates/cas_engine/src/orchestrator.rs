@@ -1,7 +1,6 @@
 use crate::best_so_far::{BestSoFar, BestSoFarBudget};
 use crate::expand::eager_eval_expand_calls;
 use crate::phase::{SimplifyOptions, SimplifyPhase};
-use crate::rules::algebra::gcd_modp::eager_eval_poly_gcd_calls;
 use crate::{Simplifier, Step};
 use cas_ast::{BuiltinFn, Context, ExprId};
 use cas_math::poly_lowering;
@@ -37,6 +36,28 @@ fn run_poly_lower_pass(
             )
         });
     (out.expr, out.items)
+}
+
+fn run_poly_gcd_modp_eager_pass(
+    ctx: &mut Context,
+    expr: ExprId,
+    collect_steps: bool,
+) -> (ExprId, Vec<Step>) {
+    cas_math::poly_modp_calls::eager_eval_poly_gcd_calls_with(
+        ctx,
+        expr,
+        collect_steps,
+        |core_ctx, before, after| {
+            Step::new(
+                "Eager eval poly_gcd_modp (bypass simplifier)",
+                "Polynomial GCD mod p",
+                before,
+                after,
+                Vec::new(),
+                Some(core_ctx),
+            )
+        },
+    )
 }
 
 pub struct Orchestrator {
@@ -274,7 +295,7 @@ impl Orchestrator {
 
         // PRE-PASS 2: Eager eval for special functions (poly_gcd_modp)
         let (current, eager_steps) =
-            eager_eval_poly_gcd_calls(&mut simplifier.context, current, collect_steps);
+            run_poly_gcd_modp_eager_pass(&mut simplifier.context, current, collect_steps);
         all_steps.extend(eager_steps);
 
         // PRE-PASS 3: Poly lowering - combine poly_result operations before simplification

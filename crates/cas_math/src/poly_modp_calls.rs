@@ -10,8 +10,10 @@ use crate::poly_modp_conv::{
     check_poly_equal_modp_expr, compute_gcd_modp_expr_with_factor_extraction, strip_hold,
     PolyConvError, DEFAULT_PRIME,
 };
-use crate::poly_store::{compute_poly_mul_modp_meta, PolyMeta, PolyMulMetaError};
-use cas_ast::{hold, BuiltinFn, Context, Expr, ExprId};
+use crate::poly_store::{
+    compute_poly_mul_modp_meta, PolyMeta, PolyMulMetaError, POLY_MAX_STORE_TERMS,
+};
+use cas_ast::{hold, Context, Expr, ExprId};
 
 /// Compute `poly_gcd_modp` with structural factor extraction and wrap in `__hold(...)`.
 pub fn compute_gcd_modp_held_expr(
@@ -88,6 +90,15 @@ pub fn try_rewrite_hold_poly_sub_to_zero(
         return Some(ctx.num(0));
     }
     None
+}
+
+/// Rewrite helper for held polynomial subtraction using crate defaults:
+/// `__hold(P) - __hold(Q) -> 0` when equal in mod-p space.
+pub fn try_rewrite_hold_poly_sub_to_zero_default(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ExprId> {
+    try_rewrite_hold_poly_sub_to_zero(ctx, expr, DEFAULT_PRIME)
 }
 
 /// Parsed and evaluated payload for one `poly_mul_modp(...)` function call.
@@ -272,6 +283,58 @@ where
     }
 }
 
+/// Rewrite `poly_gcd_modp(...)` call into `(held_result_expr, description)`.
+///
+/// Returns `None` when:
+/// - expression does not match `poly_gcd_modp`/`pgcdp`, or
+/// - evaluation fails (error forwarded to `on_error`).
+pub fn rewrite_poly_gcd_modp_call_with<FOnError, FRender>(
+    ctx: &mut Context,
+    expr: ExprId,
+    default_prime: u64,
+    on_error: FOnError,
+    mut render_expr: FRender,
+) -> Option<(ExprId, String)>
+where
+    FOnError: FnMut(&PolyConvError),
+    FRender: FnMut(&Context, ExprId) -> String,
+{
+    let call = try_eval_poly_gcd_modp_call_with_error_policy(ctx, expr, default_prime, on_error)?;
+    let desc = format_poly_gcd_modp_desc_with(call.a_expr, call.b_expr, call.path, |id| {
+        render_expr(ctx, id)
+    });
+    Some((call.held_expr, desc))
+}
+
+/// Rewrite `poly_gcd_modp(...)` while silently ignoring conversion errors.
+///
+/// This is useful for rule engines where non-firing behavior is preferred over
+/// surfacing conversion diagnostics for normal rewrite passes.
+pub fn rewrite_poly_gcd_modp_call_silent_with<FRender>(
+    ctx: &mut Context,
+    expr: ExprId,
+    default_prime: u64,
+    render_expr: FRender,
+) -> Option<(ExprId, String)>
+where
+    FRender: FnMut(&Context, ExprId) -> String,
+{
+    rewrite_poly_gcd_modp_call_with(ctx, expr, default_prime, |_err| {}, render_expr)
+}
+
+/// Rewrite `poly_gcd_modp(...)` with crate default modulus while silently
+/// ignoring conversion/evaluation errors.
+pub fn rewrite_poly_gcd_modp_call_default_silent_with<FRender>(
+    ctx: &mut Context,
+    expr: ExprId,
+    render_expr: FRender,
+) -> Option<(ExprId, String)>
+where
+    FRender: FnMut(&Context, ExprId) -> String,
+{
+    rewrite_poly_gcd_modp_call_silent_with(ctx, expr, DEFAULT_PRIME, render_expr)
+}
+
 /// Try to parse and evaluate `poly_eq_modp(a, b [, p])`.
 ///
 /// Returns:
@@ -337,6 +400,101 @@ where
     }
 }
 
+/// Rewrite `poly_eq_modp(...)` call into `(indicator_expr, description)`.
+///
+/// Returns `None` when:
+/// - expression does not match `poly_eq_modp`/`peqp`, or
+/// - evaluation fails (error forwarded to `on_error`).
+pub fn rewrite_poly_eq_modp_call_with<FOnError, FRender>(
+    ctx: &mut Context,
+    expr: ExprId,
+    default_prime: u64,
+    on_error: FOnError,
+    mut render_expr: FRender,
+) -> Option<(ExprId, String)>
+where
+    FOnError: FnMut(&PolyConvError),
+    FRender: FnMut(&Context, ExprId) -> String,
+{
+    let call = try_eval_poly_eq_modp_call_with_error_policy(ctx, expr, default_prime, on_error)?;
+    let desc = format_poly_eq_modp_desc_with(call.a_expr, call.b_expr, call.equal, |id| {
+        render_expr(ctx, id)
+    });
+    Some((call.indicator_expr, desc))
+}
+
+/// Rewrite `poly_eq_modp(...)` while silently ignoring conversion errors.
+///
+/// This is useful for rewrite rules where malformed/non-convertible inputs should
+/// simply skip the rewrite without logging.
+pub fn rewrite_poly_eq_modp_call_silent_with<FRender>(
+    ctx: &mut Context,
+    expr: ExprId,
+    default_prime: u64,
+    render_expr: FRender,
+) -> Option<(ExprId, String)>
+where
+    FRender: FnMut(&Context, ExprId) -> String,
+{
+    rewrite_poly_eq_modp_call_with(ctx, expr, default_prime, |_err| {}, render_expr)
+}
+
+/// Rewrite `poly_eq_modp(...)` with crate default modulus while silently
+/// ignoring conversion/evaluation errors.
+pub fn rewrite_poly_eq_modp_call_default_silent_with<FRender>(
+    ctx: &mut Context,
+    expr: ExprId,
+    render_expr: FRender,
+) -> Option<(ExprId, String)>
+where
+    FRender: FnMut(&Context, ExprId) -> String,
+{
+    rewrite_poly_eq_modp_call_silent_with(ctx, expr, DEFAULT_PRIME, render_expr)
+}
+
+/// Rewrite `poly_mul_modp(...)` call into `(stats_expr, description)`.
+///
+/// Returns `None` when expression is non-matching or conversion fails.
+/// If estimated size exceeds `max_store_terms`, callback is invoked and `None` is returned.
+pub fn rewrite_poly_mul_modp_stats_call_with_limit_policy<FOnEstimatedTooLarge>(
+    ctx: &mut Context,
+    expr: ExprId,
+    default_prime: u64,
+    max_store_terms: usize,
+    on_estimated_too_large: FOnEstimatedTooLarge,
+) -> Option<(ExprId, String)>
+where
+    FOnEstimatedTooLarge: FnMut(u128, usize),
+{
+    let call = try_eval_poly_mul_modp_stats_call_with_limit_policy(
+        ctx,
+        expr,
+        default_prime,
+        max_store_terms,
+        on_estimated_too_large,
+    )?;
+    let desc = format_poly_mul_modp_stats_desc(&call.meta, call.modulus);
+    Some((call.stats_expr, desc))
+}
+
+/// Rewrite `poly_mul_modp(...)` using crate default modulus and store limits.
+pub fn rewrite_poly_mul_modp_stats_call_with_defaults<FOnEstimatedTooLarge>(
+    ctx: &mut Context,
+    expr: ExprId,
+    on_estimated_too_large: FOnEstimatedTooLarge,
+) -> Option<(ExprId, String)>
+where
+    FOnEstimatedTooLarge: FnMut(u128, usize),
+{
+    rewrite_poly_mul_modp_stats_call_with_limit_policy(
+        ctx,
+        expr,
+        DEFAULT_PRIME,
+        POLY_MAX_STORE_TERMS,
+        on_estimated_too_large,
+    )
+}
+
 /// Build `poly_mul_stats(terms, degree, vars, modulus)` expression from metadata.
 pub fn build_poly_mul_stats_expr(ctx: &mut Context, meta: &PolyMeta) -> ExprId {
     let terms = ctx.num(meta.n_terms as i64);
@@ -392,30 +550,6 @@ where
         render(b_expr),
         if equal { "true" } else { "false" }
     )
-}
-
-/// Rewrite helper for `poly_stats(poly_result(...))`.
-///
-/// Returns the original `poly_result(...)` argument when:
-/// - expression is `poly_stats(arg)`, and
-/// - `arg` is builtin `PolyResult` with arity 4.
-pub fn try_rewrite_poly_stats_poly_result_arg(ctx: &Context, expr: ExprId) -> Option<ExprId> {
-    let Expr::Function(fn_id, args) = ctx.get(expr) else {
-        return None;
-    };
-    if ctx.sym_name(*fn_id) != "poly_stats" || args.len() != 1 {
-        return None;
-    }
-
-    let arg = args[0];
-    let Expr::Function(inner_fn_id, inner_args) = ctx.get(arg) else {
-        return None;
-    };
-    if ctx.is_builtin(*inner_fn_id, BuiltinFn::PolyResult) && inner_args.len() == 4 {
-        Some(arg)
-    } else {
-        None
-    }
 }
 
 /// Eagerly evaluate `poly_gcd_modp` calls in an expression tree.
@@ -537,7 +671,7 @@ fn try_eval_poly_gcd_call(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cas_ast::{BuiltinFn, Expr};
+    use cas_ast::Expr;
     use cas_parser::parse;
 
     #[test]
@@ -661,6 +795,19 @@ mod tests {
     }
 
     #[test]
+    fn try_rewrite_hold_poly_sub_to_zero_default_matches_explicit_default_prime() {
+        let mut ctx = Context::new();
+        let poly = parse("x + 1", &mut ctx).expect("parse poly");
+        let hold_a = hold::wrap_hold(&mut ctx, poly);
+        let hold_b = hold::wrap_hold(&mut ctx, poly);
+        let sub_expr = ctx.add(Expr::Sub(hold_a, hold_b));
+
+        let explicit = try_rewrite_hold_poly_sub_to_zero(&mut ctx, sub_expr, DEFAULT_PRIME);
+        let defaulted = try_rewrite_hold_poly_sub_to_zero_default(&mut ctx, sub_expr);
+        assert_eq!(explicit, defaulted);
+    }
+
+    #[test]
     fn try_eval_poly_mul_modp_stats_call_parses_and_computes() {
         let mut ctx = Context::new();
         let expr = parse("poly_mul_modp((x+1)^2, (x-1)^2)", &mut ctx).expect("parse call");
@@ -719,26 +866,6 @@ mod tests {
     }
 
     #[test]
-    fn try_rewrite_poly_stats_poly_result_arg_matches_supported_shape() {
-        let mut ctx = Context::new();
-        let expr = parse("poly_stats(poly_result(4, 3, 1, 101))", &mut ctx).expect("parse call");
-        let out = try_rewrite_poly_stats_poly_result_arg(&ctx, expr).expect("should match");
-        if let Expr::Function(fn_id, args) = ctx.get(out) {
-            assert!(ctx.is_builtin(*fn_id, BuiltinFn::PolyResult));
-            assert_eq!(args.len(), 4);
-        } else {
-            panic!("expected poly_result");
-        }
-    }
-
-    #[test]
-    fn try_rewrite_poly_stats_poly_result_arg_rejects_non_poly_result_arg() {
-        let mut ctx = Context::new();
-        let expr = parse("poly_stats(x)", &mut ctx).expect("parse call");
-        assert!(try_rewrite_poly_stats_poly_result_arg(&ctx, expr).is_none());
-    }
-
-    #[test]
     fn try_eval_poly_gcd_modp_call_matches_alias_and_returns_hold() {
         let mut ctx = Context::new();
         let expr = parse("pgcdp(x^2 + 2*x + 1, x + 1)", &mut ctx).expect("parse call");
@@ -755,6 +882,101 @@ mod tests {
         let call = try_eval_poly_gcd_modp_call(&mut ctx, expr, DEFAULT_PRIME)
             .expect("eval should not error");
         assert!(call.is_none());
+    }
+
+    #[test]
+    fn rewrite_poly_gcd_modp_call_with_returns_desc_and_hold() {
+        let mut ctx = Context::new();
+        let expr = parse("poly_gcd_modp(x^2+2*x+1, x+1)", &mut ctx).expect("parse");
+        let rewritten = rewrite_poly_gcd_modp_call_with(
+            &mut ctx,
+            expr,
+            DEFAULT_PRIME,
+            |_e| {},
+            |core_ctx, id| format!("{:?}", core_ctx.get(id)),
+        )
+        .expect("rewrite");
+        assert!(hold::is_hold(&ctx, rewritten.0));
+        assert!(rewritten.1.contains("poly_gcd_modp("));
+    }
+
+    #[test]
+    fn rewrite_poly_eq_modp_call_with_returns_indicator_and_desc() {
+        let mut ctx = Context::new();
+        let expr = parse("poly_eq_modp(x+1, 1+x)", &mut ctx).expect("parse");
+        let rewritten = rewrite_poly_eq_modp_call_with(
+            &mut ctx,
+            expr,
+            DEFAULT_PRIME,
+            |_e| {},
+            |core_ctx, id| format!("{:?}", core_ctx.get(id)),
+        )
+        .expect("rewrite");
+        assert!(matches!(ctx.get(rewritten.0), Expr::Number(_)));
+        assert!(rewritten.1.contains("poly_eq_modp("));
+    }
+
+    #[test]
+    fn rewrite_poly_gcd_modp_call_silent_with_returns_desc_and_hold() {
+        let mut ctx = Context::new();
+        let expr = parse("poly_gcd_modp(x^2+2*x+1, x+1)", &mut ctx).expect("parse");
+        let rewritten = rewrite_poly_gcd_modp_call_silent_with(
+            &mut ctx,
+            expr,
+            DEFAULT_PRIME,
+            |core_ctx, id| format!("{:?}", core_ctx.get(id)),
+        )
+        .expect("rewrite");
+        assert!(hold::is_hold(&ctx, rewritten.0));
+        assert!(rewritten.1.contains("poly_gcd_modp("));
+    }
+
+    #[test]
+    fn rewrite_poly_eq_modp_call_silent_with_returns_indicator_and_desc() {
+        let mut ctx = Context::new();
+        let expr = parse("poly_eq_modp(x+1, 1+x)", &mut ctx).expect("parse");
+        let rewritten =
+            rewrite_poly_eq_modp_call_silent_with(&mut ctx, expr, DEFAULT_PRIME, |core_ctx, id| {
+                format!("{:?}", core_ctx.get(id))
+            })
+            .expect("rewrite");
+        assert!(matches!(ctx.get(rewritten.0), Expr::Number(_)));
+        assert!(rewritten.1.contains("poly_eq_modp("));
+    }
+
+    #[test]
+    fn rewrite_poly_mul_modp_stats_call_with_limit_policy_returns_stats_and_desc() {
+        let mut ctx = Context::new();
+        let expr = parse("poly_mul_modp((x+1)^2, (x-1)^2)", &mut ctx).expect("parse");
+        let rewritten = rewrite_poly_mul_modp_stats_call_with_limit_policy(
+            &mut ctx,
+            expr,
+            DEFAULT_PRIME,
+            100_000,
+            |_estimated, _limit| {},
+        )
+        .expect("rewrite");
+        if let Expr::Function(fn_id, _args) = ctx.get(rewritten.0) {
+            assert_eq!(ctx.sym_name(*fn_id), "poly_mul_stats");
+        } else {
+            panic!("expected poly_mul_stats");
+        }
+        assert!(rewritten.1.contains("poly_mul_modp:"));
+    }
+
+    #[test]
+    fn rewrite_poly_mul_modp_stats_call_with_defaults_returns_stats_and_desc() {
+        let mut ctx = Context::new();
+        let expr = parse("poly_mul_modp((x+1)^2, (x-1)^2)", &mut ctx).expect("parse");
+        let rewritten =
+            rewrite_poly_mul_modp_stats_call_with_defaults(&mut ctx, expr, |_estimated, _limit| {})
+                .expect("rewrite");
+        if let Expr::Function(fn_id, _args) = ctx.get(rewritten.0) {
+            assert_eq!(ctx.sym_name(*fn_id), "poly_mul_stats");
+        } else {
+            panic!("expected poly_mul_stats");
+        }
+        assert!(rewritten.1.contains("poly_mul_modp:"));
     }
 
     #[test]

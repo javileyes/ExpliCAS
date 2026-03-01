@@ -3,8 +3,7 @@
 use crate::define_rule;
 use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
-use cas_formatter::DisplayExpr;
-use cas_math::gcd_exact::{try_rewrite_poly_gcd_exact_function_expr, GcdExactBudget};
+use cas_math::gcd_exact::rewrite_poly_gcd_exact_function_expr_default_with;
 
 // Rule for poly_gcd_exact(a, b) function.
 // Computes algebraic GCD of two polynomial expressions over ℚ.
@@ -15,22 +14,11 @@ define_rule!(
     PhaseMask::CORE | PhaseMask::TRANSFORM,
     priority: 200, // High priority to evaluate early
     |ctx, expr| {
-        let rewrite =
-            try_rewrite_poly_gcd_exact_function_expr(ctx, expr, &GcdExactBudget::default())?;
-        Some(Rewrite::simple(
-            rewrite.gcd,
-            format!(
-                "poly_gcd_exact({}, {}) [{:?}]",
-                DisplayExpr {
-                    context: ctx,
-                    id: rewrite.lhs
-                },
-                DisplayExpr {
-                    context: ctx,
-                    id: rewrite.rhs
-                },
-                rewrite.layer_used
-            ),
-        ))
+        let rewritten = rewrite_poly_gcd_exact_function_expr_default_with(
+            ctx,
+            expr,
+            cas_formatter::render_expr,
+        )?;
+        Some(Rewrite::simple(rewritten.0, rewritten.1))
     }
 );

@@ -5,9 +5,10 @@
 
 use crate::define_rule;
 use crate::rule::{ChainedRewrite, Rewrite};
-use cas_formatter::DisplayExpr;
 use cas_math::fraction_didactic_factor_support::try_plan_fraction_didactic_cancel;
-use cas_math::fraction_gcd_plan_support::try_plan_fraction_gcd_rewrite;
+use cas_math::fraction_gcd_plan_support::{
+    format_factor_by_gcd_desc_with, try_plan_fraction_gcd_rewrite,
+};
 use cas_math::fraction_mul_div_support::try_rewrite_simplify_mul_div_expr;
 use cas_math::fraction_power_cancel_support::{
     try_rewrite_cancel_identical_fraction_expr, try_rewrite_cancel_power_fraction_expr,
@@ -220,9 +221,10 @@ define_rule!(
         // Step 1 (main): Factor - show the factored form
         // Use requires (not assume) to avoid duplicate Requires/Assumed display
         use crate::implicit_domain::ImplicitCondition;
-        let gcd_display = format!("{}", DisplayExpr { context: ctx, id: plan.gcd_expr });
+        let factor_desc =
+            format_factor_by_gcd_desc_with(plan.gcd_expr, |id| cas_formatter::render_expr(ctx, id));
         let factor_rw = Rewrite::new(plan.forms.factored_form_norm)
-            .desc_lazy(|| format!("Factor by GCD: {}", gcd_display))
+            .desc(factor_desc)
             .local(expr, plan.forms.factored_form_norm)
             .requires(ImplicitCondition::NonZero(den));
 

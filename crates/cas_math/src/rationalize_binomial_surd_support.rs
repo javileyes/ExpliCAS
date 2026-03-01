@@ -106,6 +106,40 @@ pub fn try_rewrite_rationalize_binomial_surd_expr(
     })
 }
 
+/// Build a user-facing description for binomial-surd rationalization.
+///
+/// Caller provides expression rendering to keep this module independent from
+/// formatter crates.
+pub fn format_rationalize_binomial_surd_desc_with<FRender>(
+    rewrite: RationalizeBinomialSurdRewrite,
+    mut render_expr: FRender,
+) -> String
+where
+    FRender: FnMut(ExprId) -> String,
+{
+    format!(
+        "{} / {} -> {} / {}",
+        render_expr(rewrite.num),
+        render_expr(rewrite.den),
+        render_expr(rewrite.new_num),
+        render_expr(rewrite.new_den)
+    )
+}
+
+/// Rewrite helper returning `(rewritten_expr, description)`.
+pub fn rewrite_rationalize_binomial_surd_expr_with<FRender>(
+    ctx: &mut Context,
+    expr: ExprId,
+    mut render_expr: FRender,
+) -> Option<(ExprId, String)>
+where
+    FRender: FnMut(&Context, ExprId) -> String,
+{
+    let rewrite = try_rewrite_rationalize_binomial_surd_expr(ctx, expr)?;
+    let desc = format_rationalize_binomial_surd_desc_with(rewrite, |id| render_expr(ctx, id));
+    Some((rewrite.rewritten, desc))
+}
+
 fn parse_binomial_surd(ctx: &Context, den: ExprId) -> Option<BinomialSurd> {
     fn parse_surd_term(ctx: &Context, id: ExprId) -> Option<(BigRational, i64)> {
         if let Expr::Neg(inner) = ctx.get(id) {
@@ -242,7 +276,10 @@ fn multiply_factors(ctx: &mut Context, factors: &[ExprId]) -> Option<ExprId> {
 
 #[cfg(test)]
 mod tests {
-    use super::try_rewrite_rationalize_binomial_surd_expr;
+    use super::{
+        format_rationalize_binomial_surd_desc_with, rewrite_rationalize_binomial_surd_expr_with,
+        try_rewrite_rationalize_binomial_surd_expr,
+    };
     use cas_ast::views::{count_distinct_numeric_surds, is_surd_free};
     use cas_ast::{Context, Expr};
     use cas_parser::parse;
@@ -266,5 +303,26 @@ mod tests {
         let expr = parse("x/(sqrt(2)+sqrt(3))", &mut ctx).expect("parse");
         let rewrite = try_rewrite_rationalize_binomial_surd_expr(&mut ctx, expr);
         assert!(rewrite.is_none());
+    }
+
+    #[test]
+    fn format_desc_includes_arrow() {
+        let mut ctx = Context::new();
+        let expr = parse("x/(3+sqrt(2))", &mut ctx).expect("parse");
+        let rewrite = try_rewrite_rationalize_binomial_surd_expr(&mut ctx, expr).expect("rewrite");
+        let desc = format_rationalize_binomial_surd_desc_with(rewrite, |id| format!("{:?}", id));
+        assert!(desc.contains("->"));
+    }
+
+    #[test]
+    fn rewrite_with_returns_expr_and_desc() {
+        let mut ctx = Context::new();
+        let expr = parse("x/(3+sqrt(2))", &mut ctx).expect("parse");
+        let out = rewrite_rationalize_binomial_surd_expr_with(&mut ctx, expr, |_core_ctx, id| {
+            format!("{:?}", id)
+        })
+        .expect("rewrite");
+        assert!(out.1.contains("->"));
+        assert_ne!(out.0, expr);
     }
 }

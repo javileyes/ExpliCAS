@@ -8,6 +8,11 @@ use cas_ast::ordering::compare_expr;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use std::cmp::Ordering;
 
+/// Default limit for materializing expanded AST terms.
+pub const DEFAULT_EXPAND_MAX_MATERIALIZE_TERMS: u64 = 200_000;
+/// Default threshold for switching to mod-p expansion.
+pub const DEFAULT_EXPAND_MODP_THRESHOLD: u64 = 1_000;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ExpandCallPolicy {
     pub max_materialize_terms: u64,
@@ -17,8 +22,8 @@ pub struct ExpandCallPolicy {
 impl Default for ExpandCallPolicy {
     fn default() -> Self {
         Self {
-            max_materialize_terms: 200_000,
-            modp_threshold: 1_000,
+            max_materialize_terms: DEFAULT_EXPAND_MAX_MATERIALIZE_TERMS,
+            modp_threshold: DEFAULT_EXPAND_MODP_THRESHOLD,
         }
     }
 }
@@ -116,11 +121,38 @@ pub fn decide_expand_call_rewrite_with_policy(
     }
 }
 
+/// Decide rewrite for `expand(arg)` using crate default policy.
+pub fn decide_expand_call_rewrite_default(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ExpandCallDecision> {
+    decide_expand_call_rewrite_with_policy(ctx, expr, ExpandCallPolicy::default())
+}
+
+/// Decide rewrite for `expand(arg)` using conservative "never too-large" policy.
+///
+/// This keeps eager expansion in AST space by disabling mod-p and size cutoffs.
+pub fn decide_expand_call_rewrite_conservative(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ExpandCallDecision> {
+    decide_expand_call_rewrite_with_policy(
+        ctx,
+        expr,
+        ExpandCallPolicy {
+            max_materialize_terms: u64::MAX,
+            modp_threshold: u64::MAX,
+        },
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
+        decide_expand_call_rewrite_conservative, decide_expand_call_rewrite_default,
         decide_expand_call_rewrite_with_policy, try_plan_conservative_implicit_expand_expr,
-        ExpandCallDecision, ExpandCallPolicy,
+        ExpandCallDecision, ExpandCallPolicy, DEFAULT_EXPAND_MAX_MATERIALIZE_TERMS,
+        DEFAULT_EXPAND_MODP_THRESHOLD,
     };
     use cas_ast::Context;
     use cas_parser::parse;
@@ -173,5 +205,26 @@ mod tests {
         let expr = cas_ast::hold::wrap_hold(&mut ctx, x);
         let rewritten = try_plan_conservative_implicit_expand_expr(&mut ctx, expr).expect("plan");
         assert_eq!(cas_formatter::render_expr(&ctx, rewritten), "x");
+    }
+
+    #[test]
+    fn default_policy_constants_match_default_impl() {
+        let default = ExpandCallPolicy::default();
+        assert_eq!(
+            default.max_materialize_terms,
+            DEFAULT_EXPAND_MAX_MATERIALIZE_TERMS
+        );
+        assert_eq!(default.modp_threshold, DEFAULT_EXPAND_MODP_THRESHOLD);
+    }
+
+    #[test]
+    fn default_and_conservative_wrappers_forward_to_policy() {
+        let mut ctx = Context::new();
+        let expr = parse("expand((x+1)^8)", &mut ctx).expect("parse");
+        let defaulted = decide_expand_call_rewrite_default(&mut ctx, expr).expect("default");
+        let conservative =
+            decide_expand_call_rewrite_conservative(&mut ctx, expr).expect("conservative");
+        assert!(matches!(defaulted, ExpandCallDecision::Rewrite(_)));
+        assert!(matches!(conservative, ExpandCallDecision::Rewrite(_)));
     }
 }

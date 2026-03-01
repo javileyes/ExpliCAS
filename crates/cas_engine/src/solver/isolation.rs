@@ -1,5 +1,9 @@
 use crate::engine::Simplifier;
 use crate::error::CasError;
+use crate::solver::runtime_adapters::{
+    context_render_expr, simplifier_collect_steps, simplifier_context, simplifier_context_mut,
+    simplifier_is_known_negative, simplifier_prove_nonzero_status, simplifier_simplify_expr,
+};
 use crate::solver::solve_core::solve_with_ctx_and_options;
 use crate::solver::{medium_step, SolveCtx, SolveStep, SolverOptions};
 use cas_ast::symbol::SymbolId;
@@ -13,7 +17,6 @@ use cas_solver_core::isolation_arithmetic::{
 use cas_solver_core::isolation_dispatch::execute_isolation_dispatch_with_default_isolated_and_negated_entries_and_default_linear_collect_kernels_for_var_and_unified_step_mapper_with_state;
 use cas_solver_core::isolation_functions::execute_function_isolation_with_default_kernels_and_unified_step_mapper_for_var_with_state;
 use cas_solver_core::isolation_power::execute_pow_isolation_with_kernel_config_and_unified_step_mapper_for_var_with_state;
-use cas_solver_core::isolation_utils::is_known_negative;
 use cas_solver_core::solve_analysis::ensure_recursion_depth_within_limit_or_error;
 use cas_solver_core::solve_budget::MAX_SOLVE_RECURSION_DEPTH;
 
@@ -64,37 +67,6 @@ fn isolate_equation_solutions(
         .map(|(solutions, _)| solutions)
 }
 
-fn simplifier_context(simplifier: &mut Simplifier) -> &cas_ast::Context {
-    &simplifier.context
-}
-
-fn simplifier_context_mut(simplifier: &mut Simplifier) -> &mut cas_ast::Context {
-    &mut simplifier.context
-}
-
-fn simplifier_simplify(simplifier: &mut Simplifier, expr: ExprId) -> ExprId {
-    simplifier.simplify(expr).0
-}
-
-fn simplifier_collect_steps(simplifier: &mut Simplifier) -> bool {
-    simplifier.collect_steps()
-}
-
-fn simplifier_prove_nonzero_status(
-    simplifier: &mut Simplifier,
-    expr: ExprId,
-) -> cas_solver_core::linear_solution::NonZeroStatus {
-    cas_solver_core::external_proof::classify_nonzero_status_with_tri_prover(
-        &simplifier.context,
-        expr,
-        crate::helpers::prove_nonzero_core,
-    )
-}
-
-fn simplifier_is_known_negative(simplifier: &mut Simplifier, expr: ExprId) -> bool {
-    is_known_negative(&simplifier.context, expr)
-}
-
 #[allow(clippy::too_many_arguments)]
 fn dispatch_isolation(
     lhs: ExprId,
@@ -113,11 +85,11 @@ fn dispatch_isolation(
         var,
         simplifier_context,
         simplifier_context_mut,
-        simplifier_simplify,
+        simplifier_simplify_expr,
         simplifier_collect_steps,
-        simplifier_simplify,
+        simplifier_simplify_expr,
         simplifier_prove_nonzero_status,
-        cas_formatter::render_expr,
+        context_render_expr,
         |simplifier, left, right| {
             isolate_add(
                 lhs,
@@ -249,8 +221,8 @@ fn isolate_add(
         steps,
         simplifier_context,
         simplifier_context_mut,
-        cas_formatter::render_expr,
-        simplifier_simplify,
+        context_render_expr,
+        simplifier_simplify_expr,
         simplifier_prove_nonzero_status,
         |simplifier, equation| {
             isolate(
@@ -292,8 +264,8 @@ fn isolate_sub(
         steps,
         simplifier_context,
         simplifier_context_mut,
-        cas_formatter::render_expr,
-        simplifier_simplify,
+        context_render_expr,
+        simplifier_simplify_expr,
         |simplifier, equation| {
             isolate(
                 equation.lhs,
@@ -337,10 +309,10 @@ fn isolate_mul(
         simplifier_context,
         simplifier_context_mut,
         |simplifier, equation| solve_with_ctx_and_options(equation, var, simplifier, opts, ctx),
-        simplifier_simplify,
+        simplifier_simplify_expr,
         simplifier_prove_nonzero_status,
         simplifier_is_known_negative,
-        cas_formatter::render_expr,
+        context_render_expr,
         |simplifier, equation| {
             isolate(
                 equation.lhs,
@@ -386,8 +358,8 @@ fn isolate_div(
         simplifier_context,
         simplifier_context_mut,
         simplifier_is_known_negative,
-        cas_formatter::render_expr,
-        simplifier_simplify,
+        context_render_expr,
+        simplifier_simplify_expr,
         |simplifier, equation| {
             isolate(
                 equation.lhs,
@@ -429,7 +401,7 @@ fn isolate_function(
         steps,
         simplifier_context,
         simplifier_context_mut,
-        cas_formatter::render_expr,
+        context_render_expr,
         |simplifier, lhs_expr, rhs_expr, inner_op| {
             isolate(lhs_expr, rhs_expr, inner_op, var, simplifier, opts, ctx)
         },
@@ -520,11 +492,11 @@ fn execute_isolation_pow(
         steps,
         simplifier_context,
         simplifier_context_mut,
-        cas_formatter::render_expr,
+        context_render_expr,
         |simplifier, iso_lhs, iso_rhs, iso_op| {
             isolate(iso_lhs, iso_rhs, iso_op, var, simplifier, opts, ctx)
         },
-        simplifier_simplify,
+        simplifier_simplify_expr,
         |_simplifier| crate::domain::clear_blocked_hints(),
         |simplifier, expr| {
             simplifier

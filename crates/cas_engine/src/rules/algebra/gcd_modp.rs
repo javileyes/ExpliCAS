@@ -5,39 +5,9 @@
 use crate::define_rule;
 use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
-use cas_ast::{Context, ExprId};
-use cas_formatter::DisplayExpr;
 use cas_math::poly_modp_calls::{
-    eager_eval_poly_gcd_calls_with, format_poly_eq_modp_desc_with, format_poly_gcd_modp_desc_with,
-    try_eval_poly_eq_modp_call_with_error_policy, try_eval_poly_gcd_modp_call_with_error_policy,
+    rewrite_poly_eq_modp_call_default_silent_with, rewrite_poly_gcd_modp_call_default_silent_with,
 };
-use cas_math::poly_modp_conv::DEFAULT_PRIME as INTERNAL_DEFAULT_PRIME;
-
-const DEFAULT_PRIME: u64 = INTERNAL_DEFAULT_PRIME;
-
-/// Eager evaluation pass for poly_gcd_modp calls.
-///
-/// This function traverses the expression tree TOP-DOWN and evaluates
-/// poly_gcd_modp calls BEFORE the normal simplification pipeline.
-///
-/// CRITICAL: When we find poly_gcd_modp, we do NOT descend into its children.
-/// This prevents the expensive symbolic expansion of huge arguments.
-pub(crate) fn eager_eval_poly_gcd_calls(
-    ctx: &mut Context,
-    expr: ExprId,
-    collect_steps: bool,
-) -> (ExprId, Vec<crate::Step>) {
-    eager_eval_poly_gcd_calls_with(ctx, expr, collect_steps, |core_ctx, before, after| {
-        crate::Step::new(
-            "Eager eval poly_gcd_modp (bypass simplifier)",
-            "Polynomial GCD mod p",
-            before,
-            after,
-            Vec::new(),
-            Some(core_ctx),
-        )
-    })
-}
 
 // Rule for poly_gcd_modp(a, b [, p]) function.
 // Computes Zippel GCD of two polynomial expressions mod p.
@@ -48,13 +18,9 @@ define_rule!(
     PhaseMask::CORE | PhaseMask::TRANSFORM,
     priority: 200, // High priority to evaluate early
     |ctx, expr| {
-        let call = try_eval_poly_gcd_modp_call_with_error_policy(ctx, expr, DEFAULT_PRIME, |e| {
-                eprintln!("poly_gcd_modp error: {}", e);
-            })?;
-        let desc = format_poly_gcd_modp_desc_with(call.a_expr, call.b_expr, call.path, |id| {
-            format!("{}", DisplayExpr { context: ctx, id })
-        });
-        Some(Rewrite::simple(call.held_expr, desc))
+        let rewritten =
+            rewrite_poly_gcd_modp_call_default_silent_with(ctx, expr, cas_formatter::render_expr)?;
+        Some(Rewrite::simple(rewritten.0, rewritten.1))
     }
 );
 
@@ -67,22 +33,16 @@ define_rule!(
     PhaseMask::CORE | PhaseMask::TRANSFORM,
     priority: 200,
     |ctx, expr| {
-        let call = try_eval_poly_eq_modp_call_with_error_policy(ctx, expr, DEFAULT_PRIME, |e| {
-                eprintln!("poly_eq_modp error: {}", e);
-            })?;
-        Some(Rewrite::simple(
-            call.indicator_expr,
-            format_poly_eq_modp_desc_with(call.a_expr, call.b_expr, call.equal, |id| {
-                format!("{}", DisplayExpr { context: ctx, id })
-            }),
-        ))
+        let rewritten =
+            rewrite_poly_eq_modp_call_default_silent_with(ctx, expr, cas_formatter::render_expr)?;
+        Some(Rewrite::simple(rewritten.0, rewritten.1))
     }
 );
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use cas_math::poly_modp_conv::check_poly_equal_modp_expr;
+    use cas_ast::Context;
+    use cas_math::poly_modp_conv::{check_poly_equal_modp_expr, DEFAULT_PRIME};
     use cas_parser::parse;
 
     #[test]

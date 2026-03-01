@@ -3,18 +3,9 @@ use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
 use cas_math::distribution_simple_support::try_rewrite_simple_mul_distribution_expr;
 use cas_math::expand_call_support::{
-    decide_expand_call_rewrite_with_policy, try_plan_conservative_implicit_expand_expr,
-    ExpandCallDecision, ExpandCallPolicy,
+    decide_expand_call_rewrite_conservative, decide_expand_call_rewrite_default,
+    try_plan_conservative_implicit_expand_expr, ExpandCallDecision,
 };
-
-/// Maximum terms to materialize in expand().
-/// Above this, expand() is left unevaluated with a warning.
-/// Use poly_mul_modp() for large polynomial operations.
-pub const EXPAND_MAX_MATERIALIZE_TERMS: u64 = 200_000;
-
-/// Threshold for using fast mod-p expansion instead of symbolic.
-/// Above this many terms, use materialized mod-p expansion which is much faster.
-pub const EXPAND_MODP_THRESHOLD: u64 = 1_000;
 
 // ExpandRule: only runs in Transform phase
 define_rule!(
@@ -23,14 +14,7 @@ define_rule!(
     None,
     PhaseMask::TRANSFORM,
     |ctx, expr| {
-        if let Some(decision) = decide_expand_call_rewrite_with_policy(
-            ctx,
-            expr,
-            ExpandCallPolicy {
-                max_materialize_terms: EXPAND_MAX_MATERIALIZE_TERMS,
-                modp_threshold: EXPAND_MODP_THRESHOLD,
-            },
-        ) {
+        if let Some(decision) = decide_expand_call_rewrite_default(ctx, expr) {
             match decision {
                 ExpandCallDecision::Rewrite(rewrite) => {
                     return Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc));
@@ -63,14 +47,9 @@ define_rule!(
     None,
     PhaseMask::TRANSFORM,
     |ctx, expr| {
-        if let Some(ExpandCallDecision::Rewrite(rewrite)) = decide_expand_call_rewrite_with_policy(
-            ctx,
-            expr,
-            ExpandCallPolicy {
-                max_materialize_terms: u64::MAX,
-                modp_threshold: u64::MAX,
-            },
-        ) {
+        if let Some(ExpandCallDecision::Rewrite(rewrite)) =
+            decide_expand_call_rewrite_conservative(ctx, expr)
+        {
             return Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc));
         }
 

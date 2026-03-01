@@ -11,99 +11,16 @@
 //!
 //! This allows Mathematica/Symbolica-style polynomial GCD without expanding.
 
-use crate::engine::Simplifier;
-use crate::options::EvalOptions;
 use crate::phase::PhaseMask;
 use crate::rule::{Rewrite, Rule};
 use cas_ast::{Context, ExprId};
+use cas_math::poly_gcd_dispatch::rewrite_user_poly_gcd_call_held_with_expand_eval;
+
+#[cfg(test)]
 use cas_formatter::DisplayExpr;
-use cas_math::gcd_zippel_modp::ZippelPreset;
-use cas_math::poly_gcd_dispatch::{
-    classify_pre_evaluate_for_gcd, compute_poly_gcd_unified_with, GcdPreEvalDirective,
-};
-use cas_math::poly_gcd_mode::{try_parse_poly_gcd_call, GcdGoal, GcdMode};
 
 #[cfg(test)]
 use cas_ast::Expr;
-
-/// Pre-evaluate an expression to resolve specific function wrappers.
-///
-/// SAFETY:
-/// - Only evaluates `expand()` (explicit user intent) and `__hold` (internal wrapper)
-/// - Uses StepsMode::Off and ExpandPolicy::Never to avoid recursive work
-/// - Does NOT evaluate `factor()` or `simplify()` (too expensive for GCD path)
-/// - Avoids recursion: won't trigger poly_gcd from within poly_gcd
-fn pre_evaluate_for_gcd(ctx: &mut Context, expr: ExprId) -> ExprId {
-    use crate::options::StepsMode;
-    use crate::phase::ExpandPolicy;
-
-    match classify_pre_evaluate_for_gcd(ctx, expr) {
-        GcdPreEvalDirective::EvaluateExpand { expand_call } => {
-            // expand() is explicitly requested by user - evaluate it
-            let opts = EvalOptions {
-                steps_mode: StepsMode::Off,
-                shared: crate::phase::SharedSemanticConfig {
-                    expand_policy: ExpandPolicy::Off,
-                    ..Default::default()
-                },
-                ..Default::default()
-            };
-            let mut simplifier = Simplifier::with_profile(&opts);
-            simplifier.set_steps_mode(StepsMode::Off);
-
-            std::mem::swap(&mut simplifier.context, ctx);
-            let (result, _) = simplifier.expand(expand_call);
-            std::mem::swap(&mut simplifier.context, ctx);
-            result
-        }
-        GcdPreEvalDirective::UnwrapHold { inner } => inner,
-        GcdPreEvalDirective::Keep => expr,
-    }
-}
-
-/// Fraction-cancellation helper forwarded to `cas_math`.
-pub fn gcd_shallow_for_fraction(ctx: &mut Context, num: ExprId, den: ExprId) -> (ExprId, String) {
-    cas_math::poly_gcd_structural::gcd_shallow_for_fraction(ctx, num, den)
-}
-
-// =============================================================================
-// Unified GCD dispatcher
-// =============================================================================
-
-/// Compute GCD using specified mode, returning (result, description).
-///
-/// The `goal` parameter determines allowed methods:
-/// - `UserPolyGcd`: Full pipeline (Structural → Exact → Modp)
-/// - `CancelFraction`: Safe methods only (Structural → Exact), modp BLOCKED
-pub fn compute_poly_gcd_unified(
-    ctx: &mut Context,
-    a: ExprId,
-    b: ExprId,
-    goal: GcdGoal,
-    mode: GcdMode,
-    modp_preset: Option<ZippelPreset>,
-    modp_main_var: Option<usize>,
-) -> (ExprId, String) {
-    compute_poly_gcd_unified_with(
-        ctx,
-        a,
-        b,
-        goal,
-        mode,
-        modp_preset,
-        modp_main_var,
-        pre_evaluate_for_gcd,
-        |render_ctx, id| {
-            format!(
-                "{}",
-                DisplayExpr {
-                    context: render_ctx,
-                    id
-                }
-            )
-        },
-    )
-}
 
 // =============================================================================
 // REPL function rule
@@ -136,19 +53,13 @@ impl Rule for PolyGcdRule {
         expr: ExprId,
         _parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<Rewrite> {
-        let parsed = try_parse_poly_gcd_call(ctx, expr)?;
-        let (result, description) = compute_poly_gcd_unified(
+        let (held_gcd, description) = rewrite_user_poly_gcd_call_held_with_expand_eval(
             ctx,
-            parsed.lhs,
-            parsed.rhs,
-            GcdGoal::UserPolyGcd,
-            parsed.mode,
-            parsed.modp_preset,
-            parsed.modp_main_var,
-        );
+            expr,
+            super::poly_runtime::eval_expand_off,
+            cas_formatter::render_expr,
+        )?;
 
-        // Wrap result in __hold() to prevent further simplification
-        let held_gcd = cas_ast::hold::wrap_hold(ctx, result);
         Some(Rewrite::simple(held_gcd, description))
     }
 }

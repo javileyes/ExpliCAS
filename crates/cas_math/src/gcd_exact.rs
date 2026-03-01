@@ -94,6 +94,57 @@ pub fn try_rewrite_poly_gcd_exact_function_expr(
     })
 }
 
+/// Build human-readable `poly_gcd_exact` call description.
+///
+/// Caller provides expression rendering to keep this crate independent from
+/// formatter crates.
+pub fn format_poly_gcd_exact_desc_with<FRender>(
+    lhs: ExprId,
+    rhs: ExprId,
+    layer_used: GcdExactLayer,
+    mut render_expr: FRender,
+) -> String
+where
+    FRender: FnMut(ExprId) -> String,
+{
+    format!(
+        "poly_gcd_exact({}, {}) [{:?}]",
+        render_expr(lhs),
+        render_expr(rhs),
+        layer_used
+    )
+}
+
+/// Rewrite `poly_gcd_exact(a, b)` / `pgcdx(a, b)` into `(gcd_expr, description)`.
+pub fn rewrite_poly_gcd_exact_function_expr_with<FRender>(
+    ctx: &mut Context,
+    expr: ExprId,
+    budget: &GcdExactBudget,
+    mut render_expr: FRender,
+) -> Option<(ExprId, String)>
+where
+    FRender: FnMut(&Context, ExprId) -> String,
+{
+    let rewrite = try_rewrite_poly_gcd_exact_function_expr(ctx, expr, budget)?;
+    let desc =
+        format_poly_gcd_exact_desc_with(rewrite.lhs, rewrite.rhs, rewrite.layer_used, |id| {
+            render_expr(ctx, id)
+        });
+    Some((rewrite.gcd, desc))
+}
+
+/// Rewrite `poly_gcd_exact` with default budget.
+pub fn rewrite_poly_gcd_exact_function_expr_default_with<FRender>(
+    ctx: &mut Context,
+    expr: ExprId,
+    render_expr: FRender,
+) -> Option<(ExprId, String)>
+where
+    FRender: FnMut(&Context, ExprId) -> String,
+{
+    rewrite_poly_gcd_exact_function_expr_with(ctx, expr, &GcdExactBudget::default(), render_expr)
+}
+
 /// Strip __hold() wrapper(s) from an expression. __hold is an internal barrier
 /// that should be transparent for algebraic operations like poly_gcd_exact.
 /// Uses canonical implementation from cas_ast::hold
@@ -523,5 +574,29 @@ mod tests {
         );
         assert!(result_str.contains("x"));
         assert!(result_str.contains("1"));
+    }
+
+    #[test]
+    fn test_format_poly_gcd_exact_desc_with() {
+        let lhs = ExprId::from_raw(10);
+        let rhs = ExprId::from_raw(11);
+        let desc = format_poly_gcd_exact_desc_with(lhs, rhs, GcdExactLayer::Univariate, |id| {
+            format!("{:?}", id)
+        });
+        assert!(desc.contains("poly_gcd_exact("));
+        assert!(desc.contains("Univariate"));
+    }
+
+    #[test]
+    fn test_rewrite_poly_gcd_exact_function_expr_default_with() {
+        let mut ctx = Context::new();
+        let expr = parse("poly_gcd_exact(x^2 - 1, x - 1)", &mut ctx).expect("parse");
+        let rewritten =
+            rewrite_poly_gcd_exact_function_expr_default_with(&mut ctx, expr, |_core_ctx, id| {
+                format!("{:?}", id)
+            })
+            .expect("rewrite");
+        assert!(rewritten.1.contains("poly_gcd_exact("));
+        assert_ne!(rewritten.0, expr);
     }
 }

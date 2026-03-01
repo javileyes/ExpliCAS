@@ -13,7 +13,6 @@ use cas_solver_core::isolation_strategy::{
     execute_rational_exponent_strategy_with_default_kernel_and_accept_all_solutions_and_unified_step_mapper_with_state,
     execute_unwrap_strategy_with_default_route_and_residual_hint_and_unified_step_mapper_with_state,
 };
-use cas_solver_core::isolation_utils::contains_var;
 use cas_solver_core::quadratic_strategy::execute_quadratic_strategy_with_default_factorized_and_candidate_pipelines_and_unified_step_mappers_with_state;
 use cas_solver_core::rational_roots::execute_rational_roots_strategy_with_default_limits_and_default_root_sorting_and_unified_step_mapper_with_state;
 use cas_solver_core::solve_analysis::{
@@ -33,40 +32,16 @@ use cas_solver_core::strategy_order::{
 };
 use cas_solver_core::substitution::execute_exponential_substitution_strategy_result_pipeline_with_default_substitution_var_and_plan_with_state;
 
+use super::runtime_adapters::{
+    context_render_expr, simplifier_contains_var, simplifier_context, simplifier_context_mut,
+    simplifier_expand_expr, simplifier_render_expr, simplifier_simplify_expr, simplifier_zero_expr,
+};
 use super::{
     medium_step, DisplaySolveSteps, SolveCtx, SolveDiagnostics, SolveDomainEnv, SolveStep,
     SolveSubStep, SolverOptions,
 };
 
 type SolvePreflightState = PreflightContext<SolveCtx>;
-
-fn simplifier_context(simplifier: &mut Simplifier) -> &cas_ast::Context {
-    &simplifier.context
-}
-
-fn simplifier_context_mut(simplifier: &mut Simplifier) -> &mut cas_ast::Context {
-    &mut simplifier.context
-}
-
-fn simplifier_contains_var(simplifier: &mut Simplifier, expr: ExprId, var: &str) -> bool {
-    contains_var(&simplifier.context, expr, var)
-}
-
-fn simplifier_simplify_expr(simplifier: &mut Simplifier, expr: ExprId) -> ExprId {
-    simplifier.simplify(expr).0
-}
-
-fn simplifier_expand_expr(simplifier: &mut Simplifier, expr: ExprId) -> ExprId {
-    crate::expand::expand(&mut simplifier.context, expr)
-}
-
-fn simplifier_render_expr(simplifier: &mut Simplifier, expr: ExprId) -> String {
-    cas_formatter::render_expr(&simplifier.context, expr)
-}
-
-fn simplifier_zero_expr(simplifier: &mut Simplifier) -> ExprId {
-    simplifier.context.num(0)
-}
 
 /// Solve with default options (for backward compatibility with tests).
 /// Uses RealOnly domain and Generic mode.
@@ -334,7 +309,7 @@ fn execute_strategy_pipeline(
                 var_name,
                 include_item,
                 domain_exclusions,
-                cas_formatter::render_expr,
+                context_render_expr,
                 super::medium_step,
             ))
         },
@@ -499,7 +474,7 @@ fn apply_unwrap_strategy(
                 },
             )
         },
-        cas_formatter::render_expr,
+        context_render_expr,
         |simplifier, record| {
             ctx.note_assumption(crate::assumptions::assumption_event_from_log_assumption(
                 &simplifier.context,
@@ -595,7 +570,7 @@ fn apply_quadratic_strategy(
         |simplifier, collecting| simplifier.set_collect_steps(collecting),
         simplifier_simplify_expr,
         simplifier_expand_expr,
-        cas_formatter::render_expr,
+        context_render_expr,
         |simplifier, next_eq| solve_with_ctx_and_options(next_eq, var, simplifier, *opts, ctx),
         |description, next_eq, substeps: Option<Vec<SolveSubStep>>| {
             let step = medium_step(description, next_eq);

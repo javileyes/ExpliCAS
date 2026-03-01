@@ -3,20 +3,15 @@
 //! Provides `poly_stats(poly_result(id))` to show polynomial metadata
 //! without materializing the full AST.
 
+use crate::phase::PhaseMask;
 use crate::rule::{Rewrite, SimpleRule};
 use cas_ast::{Context, ExprId};
 use cas_math::poly_result_calls::{
-    build_poly_info_expr, format_materialization_note, try_parse_poly_latex_call,
-    try_parse_poly_print_call, try_parse_poly_stats_call, try_parse_poly_to_expr_call,
+    rewrite_poly_latex_call_with_default_limit, rewrite_poly_print_call_with_default_limit,
+    rewrite_poly_stats_call_with_materialize_limit, rewrite_poly_to_expr_call_with_default_limit,
+    DEFAULT_POLY_LATEX_MAX_TERMS, DEFAULT_POLY_PRINT_MAX_TERMS,
+    DEFAULT_POLY_STATS_MATERIALIZE_LIMIT, DEFAULT_POLY_TO_EXPR_MAX_TERMS,
 };
-use cas_math::poly_store::{
-    materialize_poly_result_expr, render_poly_result, render_poly_result_latex, thread_local_meta,
-};
-
-const POLY_STATS_MATERIALIZE_LIMIT: usize = 50_000;
-const POLY_TO_EXPR_DEFAULT_MAX_TERMS: usize = 50_000;
-const POLY_PRINT_DEFAULT_MAX_TERMS: usize = 1000;
-const POLY_LATEX_DEFAULT_MAX_TERMS: usize = 100;
 
 /// Rule: poly_stats(poly_result(id)) → metadata display
 pub struct PolyStatsRule;
@@ -27,17 +22,16 @@ impl SimpleRule for PolyStatsRule {
     }
 
     fn apply_simple(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
-        let call = try_parse_poly_stats_call(ctx, expr)?;
-        let meta = thread_local_meta(call.poly_id)?;
-        let result = build_poly_info_expr(ctx, call.poly_id, meta.n_terms, meta.n_vars);
-        let materialize_note =
-            format_materialization_note(call.poly_id, meta.n_terms, POLY_STATS_MATERIALIZE_LIMIT);
-        Some(Rewrite::new(result).desc_lazy(|| {
-            format!(
-                "Poly #{}: {} terms, {} vars, repr=modp, {}",
-                call.poly_id, meta.n_terms, meta.n_vars, materialize_note
-            )
-        }))
+        let rewritten = rewrite_poly_stats_call_with_materialize_limit(
+            ctx,
+            expr,
+            DEFAULT_POLY_STATS_MATERIALIZE_LIMIT,
+        )?;
+        Some(Rewrite::new(rewritten.0).desc(rewritten.1))
+    }
+
+    fn allowed_phases(&self) -> PhaseMask {
+        PhaseMask::TRANSFORM
     }
 }
 
@@ -50,26 +44,16 @@ impl SimpleRule for PolyToExprRule {
     }
 
     fn apply_simple(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
-        let call = try_parse_poly_to_expr_call(ctx, expr, POLY_TO_EXPR_DEFAULT_MAX_TERMS)?;
-        let meta = thread_local_meta(call.poly_id)?;
-        if meta.n_terms > call.max_terms {
-            let msg = ctx.var(&format!(
-                "Error: {} terms exceeds limit {}",
-                meta.n_terms, call.max_terms
-            ));
-            return Some(Rewrite::new(msg).desc_lazy(|| {
-                format!(
-                    "poly_to_expr: {} terms > limit {}",
-                    meta.n_terms, call.max_terms
-                )
-            }));
-        }
+        let rewritten = rewrite_poly_to_expr_call_with_default_limit(
+            ctx,
+            expr,
+            DEFAULT_POLY_TO_EXPR_MAX_TERMS,
+        )?;
+        Some(Rewrite::new(rewritten.0).desc(rewritten.1))
+    }
 
-        let materialized = materialize_poly_result_expr(ctx, call.poly_id)?;
-        Some(
-            Rewrite::new(materialized)
-                .desc_lazy(|| format!("Materialized polynomial: {} terms", meta.n_terms)),
-        )
+    fn allowed_phases(&self) -> PhaseMask {
+        PhaseMask::TRANSFORM
     }
 }
 
@@ -87,21 +71,13 @@ impl SimpleRule for PolyPrintRule {
     }
 
     fn apply_simple(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
-        let call = try_parse_poly_print_call(ctx, expr, POLY_PRINT_DEFAULT_MAX_TERMS)?;
-        let meta = thread_local_meta(call.poly_id)?;
-        let formatted = render_poly_result(call.poly_id, call.max_terms)?;
+        let rewritten =
+            rewrite_poly_print_call_with_default_limit(ctx, expr, DEFAULT_POLY_PRINT_MAX_TERMS)?;
+        Some(Rewrite::new(rewritten.0).desc(rewritten.1))
+    }
 
-        let result = ctx.var(&formatted);
-        let desc = if meta.n_terms > call.max_terms {
-            format!(
-                "Formatted polynomial: {} of {} terms shown (no AST)",
-                call.max_terms, meta.n_terms
-            )
-        } else {
-            format!("Formatted polynomial: {} terms (no AST)", meta.n_terms)
-        };
-
-        Some(Rewrite::new(result).desc(desc))
+    fn allowed_phases(&self) -> PhaseMask {
+        PhaseMask::TRANSFORM
     }
 }
 
@@ -114,16 +90,13 @@ impl SimpleRule for PolyLatexRule {
     }
 
     fn apply_simple(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
-        let call = try_parse_poly_latex_call(ctx, expr, POLY_LATEX_DEFAULT_MAX_TERMS)?;
-        let meta = thread_local_meta(call.poly_id)?;
-        let formatted = render_poly_result_latex(call.poly_id, call.max_terms)?;
-        let result = ctx.var(&formatted);
-        Some(Rewrite::new(result).desc_lazy(|| {
-            format!(
-                "LaTeX polynomial: {} terms",
-                meta.n_terms.min(call.max_terms)
-            )
-        }))
+        let rewritten =
+            rewrite_poly_latex_call_with_default_limit(ctx, expr, DEFAULT_POLY_LATEX_MAX_TERMS)?;
+        Some(Rewrite::new(rewritten.0).desc(rewritten.1))
+    }
+
+    fn allowed_phases(&self) -> PhaseMask {
+        PhaseMask::TRANSFORM
     }
 }
 

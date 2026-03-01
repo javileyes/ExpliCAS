@@ -19,6 +19,7 @@ use cas_solver_core::verification::{
 use cas_solver_core::verify_substitution::substitute_equation_diff;
 
 use crate::engine::Simplifier;
+use crate::solver::runtime_adapters::simplifier_render_expr;
 
 pub use cas_solver_core::verification::{VerifyResult, VerifyStatus, VerifySummary};
 
@@ -45,7 +46,7 @@ pub fn verify_solution(
         |simplifier, expr| contains_variable(&simplifier.context, expr),
         |simplifier, expr| fold_numeric_islands(&mut simplifier.context, expr),
         |simplifier, expr| is_numeric_zero(&simplifier.context, expr),
-        |simplifier, expr| cas_formatter::render_expr(&simplifier.context, expr),
+        simplifier_render_expr,
     )
 }
 

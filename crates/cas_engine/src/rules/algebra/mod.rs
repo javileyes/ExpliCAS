@@ -20,15 +20,17 @@ pub mod root_denesting_advanced;
 pub use root_denesting_advanced::*;
 
 pub mod poly_gcd;
-pub use poly_gcd::*;
+pub use poly_gcd::PolyGcdRule;
 
 pub mod gcd_exact;
-pub use gcd_exact::*;
+pub use gcd_exact::PolyGcdExactRule;
 
 pub mod gcd_modp;
 
 pub mod poly_arith_modp;
-pub use poly_arith_modp::*;
+pub use poly_arith_modp::PolySubModpRule;
+
+pub(crate) mod poly_runtime;
 
 pub mod difference_of_cubes;
 pub use difference_of_cubes::*;

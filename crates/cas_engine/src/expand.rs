@@ -1,13 +1,16 @@
 use crate::Step;
 use cas_ast::{Context, ExprId};
-use cas_math::expand_eager::eager_eval_expand_calls_with;
+use cas_math::expand_eager::{
+    eager_eval_expand_calls_with, DEFAULT_EAGER_EXPAND_MATERIALIZE_LIMIT,
+    DEFAULT_EAGER_EXPAND_MODP_THRESHOLD,
+};
 use cas_math::expand_ops;
 /// Threshold for using fast mod-p expansion in eager eval.
 /// Above this many estimated terms, use poly_ref instead of AST.
-pub const EAGER_EXPAND_MODP_THRESHOLD: u64 = 500;
+pub const EAGER_EXPAND_MODP_THRESHOLD: u64 = DEFAULT_EAGER_EXPAND_MODP_THRESHOLD;
 /// Threshold for returning poly_ref instead of materializing AST.
 /// Below this, we materialize the full AST for display.
-pub const EXPAND_MATERIALIZE_LIMIT: usize = 1_000;
+pub const EXPAND_MATERIALIZE_LIMIT: usize = DEFAULT_EAGER_EXPAND_MATERIALIZE_LIMIT;
 
 /// Eager evaluation pass for expand() calls.
 ///

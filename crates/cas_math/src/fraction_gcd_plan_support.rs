@@ -75,9 +75,20 @@ pub fn try_plan_fraction_gcd_rewrite(
     })
 }
 
+/// Build description text for a factorization step by GCD.
+///
+/// Caller provides expression rendering to keep this module independent from
+/// formatter crates.
+pub fn format_factor_by_gcd_desc_with<FRender>(gcd_expr: ExprId, mut render_expr: FRender) -> String
+where
+    FRender: FnMut(ExprId) -> String,
+{
+    format!("Factor by GCD: {}", render_expr(gcd_expr))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{try_plan_fraction_gcd_rewrite, FractionGcdRoute};
+    use super::{format_factor_by_gcd_desc_with, try_plan_fraction_gcd_rewrite, FractionGcdRoute};
     use crate::multipoly::GcdLayer;
     use crate::poly_compare::poly_eq;
     use cas_ast::Context;
@@ -119,5 +130,12 @@ mod tests {
         let num = parse("x+1", &mut ctx).expect("parse");
         let den = parse("x+2", &mut ctx).expect("parse");
         assert!(try_plan_fraction_gcd_rewrite(&mut ctx, expr, num, den).is_none());
+    }
+
+    #[test]
+    fn factor_desc_contains_prefix() {
+        let desc =
+            format_factor_by_gcd_desc_with(cas_ast::ExprId::from_raw(42), |id| format!("{:?}", id));
+        assert!(desc.starts_with("Factor by GCD:"));
     }
 }

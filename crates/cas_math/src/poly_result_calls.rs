@@ -5,6 +5,15 @@
 use crate::poly_result::{parse_poly_result_id, PolyResultId};
 use cas_ast::{Context, Expr, ExprId};
 
+/// Default limit for showing poly materialization hint in `poly_stats`.
+pub const DEFAULT_POLY_STATS_MATERIALIZE_LIMIT: usize = 50_000;
+/// Default max terms for `poly_to_expr(poly_result(id))`.
+pub const DEFAULT_POLY_TO_EXPR_MAX_TERMS: usize = 50_000;
+/// Default max terms for `poly_print(poly_result(id))`.
+pub const DEFAULT_POLY_PRINT_MAX_TERMS: usize = 1000;
+/// Default max terms for `poly_latex(poly_result(id))`.
+pub const DEFAULT_POLY_LATEX_MAX_TERMS: usize = 100;
+
 /// Parsed `poly_stats(poly_result(id))` call.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PolyStatsCall {
@@ -85,6 +94,98 @@ pub fn format_materialization_note(
     }
 }
 
+/// Rewrite helper for `poly_stats(poly_result(id)) -> poly_info(...)`.
+///
+/// Returns rewritten expression and human-readable description.
+pub fn rewrite_poly_stats_call_with_materialize_limit(
+    ctx: &mut Context,
+    expr: ExprId,
+    materialize_limit: usize,
+) -> Option<(ExprId, String)> {
+    let call = try_parse_poly_stats_call(ctx, expr)?;
+    let meta = crate::poly_store::thread_local_meta(call.poly_id)?;
+    let rewritten = build_poly_info_expr(ctx, call.poly_id, meta.n_terms, meta.n_vars);
+    let materialize_note =
+        format_materialization_note(call.poly_id, meta.n_terms, materialize_limit);
+    let desc = format!(
+        "Poly #{}: {} terms, {} vars, repr=modp, {}",
+        call.poly_id, meta.n_terms, meta.n_vars, materialize_note
+    );
+    Some((rewritten, desc))
+}
+
+/// Rewrite helper for `poly_to_expr(poly_result(id), max_terms?)`.
+///
+/// Returns rewritten expression and human-readable description.
+///
+/// If stored polynomial exceeds `max_terms`, returns an inline error symbol
+/// expression to preserve previous user-facing behavior.
+pub fn rewrite_poly_to_expr_call_with_default_limit(
+    ctx: &mut Context,
+    expr: ExprId,
+    default_max_terms: usize,
+) -> Option<(ExprId, String)> {
+    let call = try_parse_poly_to_expr_call(ctx, expr, default_max_terms)?;
+    let meta = crate::poly_store::thread_local_meta(call.poly_id)?;
+    if meta.n_terms > call.max_terms {
+        let message_expr = ctx.var(&format!(
+            "Error: {} terms exceeds limit {}",
+            meta.n_terms, call.max_terms
+        ));
+        let desc = format!(
+            "poly_to_expr: {} terms > limit {}",
+            meta.n_terms, call.max_terms
+        );
+        return Some((message_expr, desc));
+    }
+
+    let materialized = crate::poly_store::materialize_poly_result_expr(ctx, call.poly_id)?;
+    let desc = format!("Materialized polynomial: {} terms", meta.n_terms);
+    Some((materialized, desc))
+}
+
+/// Rewrite helper for `poly_print(poly_result(id), max_terms?)`.
+///
+/// Returns rewritten expression and human-readable description.
+pub fn rewrite_poly_print_call_with_default_limit(
+    ctx: &mut Context,
+    expr: ExprId,
+    default_max_terms: usize,
+) -> Option<(ExprId, String)> {
+    let call = try_parse_poly_print_call(ctx, expr, default_max_terms)?;
+    let meta = crate::poly_store::thread_local_meta(call.poly_id)?;
+    let formatted = crate::poly_store::render_poly_result(call.poly_id, call.max_terms)?;
+    let rewritten = ctx.var(&formatted);
+    let desc = if meta.n_terms > call.max_terms {
+        format!(
+            "Formatted polynomial: {} of {} terms shown (no AST)",
+            call.max_terms, meta.n_terms
+        )
+    } else {
+        format!("Formatted polynomial: {} terms (no AST)", meta.n_terms)
+    };
+    Some((rewritten, desc))
+}
+
+/// Rewrite helper for `poly_latex(poly_result(id), max_terms?)`.
+///
+/// Returns rewritten expression and human-readable description.
+pub fn rewrite_poly_latex_call_with_default_limit(
+    ctx: &mut Context,
+    expr: ExprId,
+    default_max_terms: usize,
+) -> Option<(ExprId, String)> {
+    let call = try_parse_poly_latex_call(ctx, expr, default_max_terms)?;
+    let meta = crate::poly_store::thread_local_meta(call.poly_id)?;
+    let formatted = crate::poly_store::render_poly_result_latex(call.poly_id, call.max_terms)?;
+    let rewritten = ctx.var(&formatted);
+    let desc = format!(
+        "LaTeX polynomial: {} terms",
+        meta.n_terms.min(call.max_terms)
+    );
+    Some((rewritten, desc))
+}
+
 fn try_parse_poly_result_call_with_optional_limit(
     ctx: &Context,
     expr: ExprId,
@@ -119,11 +220,26 @@ fn parse_max_terms_arg(ctx: &Context, expr: ExprId) -> Option<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::multipoly_modp::MultiPolyModP;
+    use crate::poly_store::{clear_thread_local_store, thread_local_insert, PolyMeta};
     use cas_ast::{BuiltinFn, Expr};
 
     fn poly_result_expr(ctx: &mut Context, id: i64) -> ExprId {
         let id_expr = ctx.num(id);
         ctx.call_builtin(BuiltinFn::PolyResult, vec![id_expr])
+    }
+
+    fn insert_test_poly() -> PolyResultId {
+        clear_thread_local_store();
+        let meta = PolyMeta {
+            modulus: 101,
+            n_terms: 1,
+            n_vars: 1,
+            max_total_degree: 0,
+            var_names: vec!["x".to_string()],
+        };
+        let poly = MultiPolyModP::constant(1, 101, 1);
+        thread_local_insert(meta, poly)
     }
 
     #[test]
@@ -187,5 +303,69 @@ mod tests {
         let large = format_materialization_note(2, 2_000, 1_000);
         assert!(small.contains("poly_to_expr(poly_result(2))"));
         assert_eq!(large, "too large to materialize");
+    }
+
+    #[test]
+    fn rewrite_poly_stats_call_with_materialize_limit_builds_poly_info() {
+        let mut ctx = Context::new();
+        let id = insert_test_poly();
+        let poly = poly_result_expr(&mut ctx, id as i64);
+        let expr = ctx.call("poly_stats", vec![poly]);
+
+        let rewritten = rewrite_poly_stats_call_with_materialize_limit(&mut ctx, expr, 50_000)
+            .expect("rewrite");
+        if let Expr::Function(fn_id, args) = ctx.get(rewritten.0) {
+            assert_eq!(ctx.sym_name(*fn_id), "poly_info");
+            assert_eq!(args.len(), 4);
+        } else {
+            panic!("expected poly_info call");
+        }
+        assert!(rewritten.1.contains("Poly #"));
+    }
+
+    #[test]
+    fn rewrite_poly_to_expr_call_with_default_limit_materializes_poly() {
+        let mut ctx = Context::new();
+        let id = insert_test_poly();
+        let poly = poly_result_expr(&mut ctx, id as i64);
+        let expr = ctx.call("poly_to_expr", vec![poly]);
+
+        let rewritten =
+            rewrite_poly_to_expr_call_with_default_limit(&mut ctx, expr, 50_000).expect("rewrite");
+        assert!(rewritten.1.contains("Materialized polynomial"));
+    }
+
+    #[test]
+    fn rewrite_poly_print_call_with_default_limit_formats_without_ast() {
+        let mut ctx = Context::new();
+        let id = insert_test_poly();
+        let poly = poly_result_expr(&mut ctx, id as i64);
+        let expr = ctx.call("poly_print", vec![poly]);
+
+        let rewritten =
+            rewrite_poly_print_call_with_default_limit(&mut ctx, expr, 1000).expect("rewrite");
+        if let Expr::Variable(sym_id) = ctx.get(rewritten.0) {
+            assert!(!ctx.sym_name(*sym_id).is_empty());
+        } else {
+            panic!("expected variable symbol carrying rendered text");
+        }
+        assert!(rewritten.1.contains("Formatted polynomial"));
+    }
+
+    #[test]
+    fn rewrite_poly_latex_call_with_default_limit_formats_latex() {
+        let mut ctx = Context::new();
+        let id = insert_test_poly();
+        let poly = poly_result_expr(&mut ctx, id as i64);
+        let expr = ctx.call("poly_latex", vec![poly]);
+
+        let rewritten =
+            rewrite_poly_latex_call_with_default_limit(&mut ctx, expr, 100).expect("rewrite");
+        if let Expr::Variable(sym_id) = ctx.get(rewritten.0) {
+            assert!(!ctx.sym_name(*sym_id).is_empty());
+        } else {
+            panic!("expected variable symbol carrying rendered LaTeX");
+        }
+        assert!(rewritten.1.contains("LaTeX polynomial"));
     }
 }
