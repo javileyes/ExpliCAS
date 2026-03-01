@@ -1,7 +1,14 @@
 use crate::trig_half_angle_support::{extract_tan_half_angle, is_half_angle};
+use crate::trig_identity_zero_support::IdentityZeroRewrite;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use num_traits::One;
 use std::cmp::Ordering;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WeierstrassContractionRewrite {
+    pub rewritten: ExprId,
+    pub desc: &'static str,
+}
 
 /// Extract the full angle `x` from either `tan(x/2)` or `sin(x/2)/cos(x/2)`.
 pub fn extract_tan_half_angle_like(ctx: &Context, expr: ExprId) -> Option<ExprId> {
@@ -151,6 +158,154 @@ pub fn build_weierstrass_tan(ctx: &mut Context, t: ExprId) -> ExprId {
     ctx.add(Expr::Div(numerator, denominator))
 }
 
+/// Detect and contract classic Weierstrass half-angle tangent forms:
+/// - `2*tan(x/2) / (1 + tan(x/2)^2) -> sin(x)`
+/// - `(1 - tan(x/2)^2) / (1 + tan(x/2)^2) -> cos(x)`
+pub fn try_rewrite_weierstrass_contraction_div_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<WeierstrassContractionRewrite> {
+    let Expr::Div(num_id, den_id) = ctx.get(expr) else {
+        return None;
+    };
+    let (num_id, den_id) = (*num_id, *den_id);
+
+    if let Some((full_angle, _tan_half)) = match_one_plus_tan_half_squared(ctx, den_id) {
+        if let Some(num_angle) = match_two_tan_half(ctx, num_id) {
+            if cas_ast::ordering::compare_expr(ctx, full_angle, num_angle) == Ordering::Equal {
+                let sin_x = ctx.call_builtin(BuiltinFn::Sin, vec![full_angle]);
+                return Some(WeierstrassContractionRewrite {
+                    rewritten: sin_x,
+                    desc: "2·tan(x/2)/(1 + tan²(x/2)) = sin(x)",
+                });
+            }
+        }
+    }
+
+    if let Some((num_angle, _)) = match_one_minus_tan_half_squared(ctx, num_id) {
+        if let Some((den_angle, _)) = match_one_plus_tan_half_squared(ctx, den_id) {
+            if cas_ast::ordering::compare_expr(ctx, num_angle, den_angle) == Ordering::Equal {
+                let cos_x = ctx.call_builtin(BuiltinFn::Cos, vec![num_angle]);
+                return Some(WeierstrassContractionRewrite {
+                    rewritten: cos_x,
+                    desc: "(1 - tan²(x/2))/(1 + tan²(x/2)) = cos(x)",
+                });
+            }
+        }
+    }
+
+    None
+}
+
+fn extract_sub_like_operands(ctx: &Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
+    if let Expr::Sub(l, r) = ctx.get(expr) {
+        return Some((*l, *r));
+    }
+    if let Expr::Add(l, r) = ctx.get(expr) {
+        if let Expr::Neg(inner) = ctx.get(*r) {
+            return Some((*l, *inner));
+        }
+        if let Expr::Neg(inner) = ctx.get(*l) {
+            return Some((*r, *inner));
+        }
+    }
+    None
+}
+
+fn match_weierstrass_sin_identity_zero_pair(ctx: &Context, sin_side: ExprId, rhs: ExprId) -> bool {
+    let Expr::Function(fn_id, args) = ctx.get(sin_side) else {
+        return false;
+    };
+    if !matches!(ctx.builtin_of(*fn_id), Some(BuiltinFn::Sin)) || args.len() != 1 {
+        return false;
+    }
+    let full_angle = args[0];
+
+    let Expr::Div(num, den) = ctx.get(rhs) else {
+        return false;
+    };
+    let Some(num_angle) = match_two_tan_half(ctx, *num) else {
+        return false;
+    };
+    let Some((den_angle, _)) = match_one_plus_tan_half_squared(ctx, *den) else {
+        return false;
+    };
+
+    cas_ast::ordering::compare_expr(ctx, full_angle, num_angle) == Ordering::Equal
+        && cas_ast::ordering::compare_expr(ctx, full_angle, den_angle) == Ordering::Equal
+}
+
+fn match_weierstrass_cos_identity_zero_pair(ctx: &Context, cos_side: ExprId, rhs: ExprId) -> bool {
+    let Expr::Function(fn_id, args) = ctx.get(cos_side) else {
+        return false;
+    };
+    if !matches!(ctx.builtin_of(*fn_id), Some(BuiltinFn::Cos)) || args.len() != 1 {
+        return false;
+    }
+    let full_angle = args[0];
+
+    let Expr::Div(num, den) = ctx.get(rhs) else {
+        return false;
+    };
+    let Some((num_angle, _)) = match_one_minus_tan_half_squared(ctx, *num) else {
+        return false;
+    };
+    let Some((den_angle, _)) = match_one_plus_tan_half_squared(ctx, *den) else {
+        return false;
+    };
+
+    cas_ast::ordering::compare_expr(ctx, full_angle, num_angle) == Ordering::Equal
+        && cas_ast::ordering::compare_expr(ctx, full_angle, den_angle) == Ordering::Equal
+}
+
+/// Match:
+/// `sin(x) - 2*tan(x/2)/(1+tan(x/2)^2)` (or swapped sides) for identity-zero cancellation.
+pub fn match_weierstrass_sin_identity_zero_expr(ctx: &Context, expr: ExprId) -> bool {
+    let Some((left, right)) = extract_sub_like_operands(ctx, expr) else {
+        return false;
+    };
+    match_weierstrass_sin_identity_zero_pair(ctx, left, right)
+        || match_weierstrass_sin_identity_zero_pair(ctx, right, left)
+}
+
+/// Match:
+/// `cos(x) - (1-tan(x/2)^2)/(1+tan(x/2)^2)` (or swapped sides) for identity-zero cancellation.
+pub fn match_weierstrass_cos_identity_zero_expr(ctx: &Context, expr: ExprId) -> bool {
+    let Some((left, right)) = extract_sub_like_operands(ctx, expr) else {
+        return false;
+    };
+    match_weierstrass_cos_identity_zero_pair(ctx, left, right)
+        || match_weierstrass_cos_identity_zero_pair(ctx, right, left)
+}
+
+/// Rewrite plan for
+/// `sin(x) - 2*tan(x/2)/(1+tan(x/2)^2) -> 0`.
+pub fn try_rewrite_weierstrass_sin_identity_zero_expr(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<IdentityZeroRewrite> {
+    if !match_weierstrass_sin_identity_zero_expr(ctx, expr) {
+        return None;
+    }
+    Some(IdentityZeroRewrite {
+        desc: "sin(x) = 2·tan(x/2)/(1 + tan²(x/2)) [Weierstrass]",
+    })
+}
+
+/// Rewrite plan for
+/// `cos(x) - (1-tan(x/2)^2)/(1+tan(x/2)^2) -> 0`.
+pub fn try_rewrite_weierstrass_cos_identity_zero_expr(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<IdentityZeroRewrite> {
+    if !match_weierstrass_cos_identity_zero_expr(ctx, expr) {
+        return None;
+    }
+    Some(IdentityZeroRewrite {
+        desc: "cos(x) = (1 - tan²(x/2))/(1 + tan²(x/2)) [Weierstrass]",
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -219,6 +374,58 @@ mod tests {
         assert_eq!(
             cas_ast::ordering::compare_expr(&ctx, tan_form, expected_tan),
             Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn rewrites_weierstrass_contraction_to_sin_and_cos() {
+        let mut ctx = Context::new();
+        let sin_form = parse("2*tan(x/2)/(1+tan(x/2)^2)", &mut ctx).expect("sin form");
+        let cos_form = parse("(1-tan(x/2)^2)/(1+tan(x/2)^2)", &mut ctx).expect("cos form");
+
+        let sin_rw = try_rewrite_weierstrass_contraction_div_expr(&mut ctx, sin_form)
+            .expect("sin contraction");
+        let cos_rw = try_rewrite_weierstrass_contraction_div_expr(&mut ctx, cos_form)
+            .expect("cos contraction");
+
+        let expected_sin = parse("sin(x)", &mut ctx).expect("expected sin");
+        let expected_cos = parse("cos(x)", &mut ctx).expect("expected cos");
+
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, sin_rw.rewritten, expected_sin),
+            Ordering::Equal
+        );
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, cos_rw.rewritten, expected_cos),
+            Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn matches_weierstrass_identity_zero_sin_and_cos_forms() {
+        let mut ctx = Context::new();
+        let sin_expr = parse("sin(x) - 2*tan(x/2)/(1+tan(x/2)^2)", &mut ctx).expect("sin expr");
+        let cos_expr = parse("cos(x) - (1-tan(x/2)^2)/(1+tan(x/2)^2)", &mut ctx).expect("cos expr");
+
+        assert!(match_weierstrass_sin_identity_zero_expr(&ctx, sin_expr));
+        assert!(match_weierstrass_cos_identity_zero_expr(&ctx, cos_expr));
+    }
+
+    #[test]
+    fn weierstrass_identity_zero_rewrite_plans_match() {
+        let mut ctx = Context::new();
+        let sin_expr = parse("sin(x) - 2*tan(x/2)/(1+tan(x/2)^2)", &mut ctx).expect("sin expr");
+        let cos_expr = parse("cos(x) - (1-tan(x/2)^2)/(1+tan(x/2)^2)", &mut ctx).expect("cos expr");
+
+        let sin_rw = try_rewrite_weierstrass_sin_identity_zero_expr(&ctx, sin_expr).expect("sin");
+        let cos_rw = try_rewrite_weierstrass_cos_identity_zero_expr(&ctx, cos_expr).expect("cos");
+        assert_eq!(
+            sin_rw.desc,
+            "sin(x) = 2·tan(x/2)/(1 + tan²(x/2)) [Weierstrass]"
+        );
+        assert_eq!(
+            cos_rw.desc,
+            "cos(x) = (1 - tan²(x/2))/(1 + tan²(x/2)) [Weierstrass]"
         );
     }
 }

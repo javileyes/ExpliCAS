@@ -2,15 +2,10 @@
 
 use crate::define_rule;
 use crate::rule::Rewrite;
-use cas_ast::{BuiltinFn, Expr, ExprId};
-use cas_math::expr_rewrite::smart_mul;
-use cas_math::pi_helpers::extract_rational_pi_multiple;
-use cas_math::trig_multi_angle_support::is_multiple_angle;
-use cas_math::trig_roots_flatten::extract_double_angle_arg;
-use cas_math::trig_sum_product_support::{
-    build_avg_with_simplifier, build_half_diff_with_simplifier, extract_trig_two_term_diff,
-    extract_trig_two_term_sum, normalize_for_even_fn,
+use cas_math::trig_multi_angle_support::{
+    should_block_double_angle_expr_with_context, try_rewrite_double_angle_function_expr,
 };
+use cas_math::trig_sum_product_support::try_rewrite_trig_sum_to_product_expr;
 
 // =============================================================================
 // STANDALONE SUM-TO-PRODUCT RULE
@@ -32,90 +27,8 @@ define_rule!(
     TrigSumToProductRule,
     "Sum-to-Product Identity",
     |ctx, expr| {
-        // Try all four patterns
-        enum Pattern {
-            SinSum { arg1: ExprId, arg2: ExprId },
-            SinDiff { a: ExprId, b: ExprId }, // ordered!
-            CosSum { arg1: ExprId, arg2: ExprId },
-            CosDiff { a: ExprId, b: ExprId }, // ordered!
-        }
-
-        let pattern = if let Some((arg1, arg2)) = extract_trig_two_term_sum(ctx, expr, "sin") {
-            Pattern::SinSum { arg1, arg2 }
-        } else if let Some((a, b)) = extract_trig_two_term_diff(ctx, expr, "sin") {
-            Pattern::SinDiff { a, b }
-        } else if let Some((arg1, arg2)) = extract_trig_two_term_sum(ctx, expr, "cos") {
-            Pattern::CosSum { arg1, arg2 }
-        } else if let Some((a, b)) = extract_trig_two_term_diff(ctx, expr, "cos") {
-            Pattern::CosDiff { a, b }
-        } else {
-            return None;
-        };
-
-        // Extract (A, B) and the function name
-        let (arg_a, arg_b, is_diff, fn_name) = match pattern {
-            Pattern::SinSum { arg1, arg2 } => (arg1, arg2, false, "sin"),
-            Pattern::SinDiff { a, b } => (a, b, true, "sin"),
-            Pattern::CosSum { arg1, arg2 } => (arg1, arg2, false, "cos"),
-            Pattern::CosDiff { a, b } => (a, b, true, "cos"),
-        };
-
-        // GATING: Only apply when BOTH arguments are rational multiples of π
-        // This ensures the result can be simplified via trig table lookup
-        let pi_a = extract_rational_pi_multiple(ctx, arg_a);
-        let pi_b = extract_rational_pi_multiple(ctx, arg_b);
-        if pi_a.is_none() || pi_b.is_none() {
-            return None; // Don't expand symbolic sums
-        }
-
-        // Build avg = (A+B)/2 and half_diff = (A-B)/2
-        let avg = build_avg_with_simplifier(ctx, arg_a, arg_b, crate::collect::collect);
-        let half_diff =
-            build_half_diff_with_simplifier(ctx, arg_a, arg_b, false, crate::collect::collect);
-        let two = ctx.num(2);
-
-        let (result, desc) = match (fn_name, is_diff) {
-            // sin(A) + sin(B) → 2·sin(avg)·cos(half_diff)
-            ("sin", false) => {
-                let sin_avg = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![avg]);
-                let cos_half = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![half_diff]);
-                let product = smart_mul(ctx, sin_avg, cos_half);
-                let result = smart_mul(ctx, two, product);
-                (result, "sin(A)+sin(B) = 2·sin((A+B)/2)·cos((A-B)/2)")
-            }
-            // sin(A) - sin(B) → 2·cos(avg)·sin(half_diff)
-            // Note: half_diff preserves order (A-B)/2 for correct sign
-            ("sin", true) => {
-                let cos_avg = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![avg]);
-                let sin_half = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![half_diff]);
-                let product = smart_mul(ctx, cos_avg, sin_half);
-                let result = smart_mul(ctx, two, product);
-                (result, "sin(A)-sin(B) = 2·cos((A+B)/2)·sin((A-B)/2)")
-            }
-            // cos(A) + cos(B) → 2·cos(avg)·cos(half_diff)
-            ("cos", false) => {
-                // For cos, half_diff sign doesn't matter (even function)
-                let half_diff_normalized = normalize_for_even_fn(ctx, half_diff);
-                let cos_avg = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![avg]);
-                let cos_half =
-                    ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![half_diff_normalized]);
-                let product = smart_mul(ctx, cos_avg, cos_half);
-                let result = smart_mul(ctx, two, product);
-                (result, "cos(A)+cos(B) = 2·cos((A+B)/2)·cos((A-B)/2)")
-            }
-            // cos(A) - cos(B) → -2·sin(avg)·sin(half_diff)
-            ("cos", true) => {
-                let sin_avg = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![avg]);
-                let sin_half = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![half_diff]);
-                let product = smart_mul(ctx, sin_avg, sin_half);
-                let two_product = smart_mul(ctx, two, product);
-                let result = ctx.add(Expr::Neg(two_product));
-                (result, "cos(A)-cos(B) = -2·sin((A+B)/2)·sin((A-B)/2)")
-            }
-            _ => return None,
-        };
-
-        Some(Rewrite::new(result).desc(desc))
+        let rewrite = try_rewrite_trig_sum_to_product_expr(ctx, expr, crate::collect::collect)?;
+        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
     }
 );
 
@@ -123,74 +36,17 @@ define_rule!(
     DoubleAngleRule,
     "Double Angle Identity",
     |ctx, expr, parent_ctx| {
-        // GUARD: Only expand double angles in expand mode.
-        // In default simplification, we prefer the contracted form (cos(2t), sin(2t))
-        // to avoid oscillation with DoubleAngleContractionRule/Cos2xAdditiveContractionRule.
-        // The contracted form is the canonical NF for double-angle trig expressions.
-        if !parent_ctx.is_expand_mode() {
+        if should_block_double_angle_expr_with_context(
+            ctx,
+            parent_ctx.is_expand_mode(),
+            parent_ctx.pattern_marks(),
+            parent_ctx.all_ancestors(),
+        ) {
             return None;
         }
 
-        // GUARD: Don't expand double angle inside a Div context
-        // This prevents sin(2x)/cos(2x) from being "polinomized" to a worse form.
-        // Expansion should only happen when it helps simplification, not in canonical quotients.
-        if parent_ctx
-            .has_ancestor_matching(ctx, |c, id| matches!(c.get(id), cas_ast::Expr::Div(_, _)))
-        {
-            return None;
-        }
-
-        // GUARD: Don't expand when sin(4x) identity pattern is detected
-        // This allows Sin4xIdentityZeroRule to see 4*sin*cos*cos(2t) intact
-        if let Some(marks) = parent_ctx.pattern_marks() {
-            if marks.has_sin4x_identity_pattern {
-                return None;
-            }
-        }
-
-        if let Expr::Function(fn_id, args) = ctx.get(expr) {
-            if args.len() == 1 {
-                // Check if arg is 2*x or x*2
-                // We need to match "2 * x"
-                if let Some(inner_var) = extract_double_angle_arg(ctx, args[0]) {
-                    // GUARD: Anti-worsen for multiple angles.
-                    // Don't expand sin(2*(8x)) = sin(16x) because the inner argument
-                    // is already a multiple (8x). This would cause exponential recursion:
-                    // sin(16x) → 2sin(8x)cos(8x) → 2·2sin(4x)cos(4x)·... = explosion
-                    if is_multiple_angle(ctx, inner_var) {
-                        return None;
-                    }
-
-                    match ctx.builtin_of(*fn_id) {
-                        Some(BuiltinFn::Sin) => {
-                            // sin(2x) -> 2sin(x)cos(x)
-                            let two = ctx.num(2);
-                            let sin_x = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![inner_var]);
-                            let cos_x = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![inner_var]);
-                            let sin_cos = smart_mul(ctx, sin_x, cos_x);
-                            let new_expr = smart_mul(ctx, two, sin_cos);
-                            return Some(Rewrite::new(new_expr).desc("sin(2x) -> 2sin(x)cos(x)"));
-                        }
-                        Some(BuiltinFn::Cos) => {
-                            // cos(2x) -> cos^2(x) - sin^2(x)
-                            let two = ctx.num(2);
-                            let cos_x = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![inner_var]);
-                            let cos2 = ctx.add(Expr::Pow(cos_x, two));
-
-                            let sin_x = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![inner_var]);
-                            let sin2 = ctx.add(Expr::Pow(sin_x, two));
-
-                            let new_expr = ctx.add(Expr::Sub(cos2, sin2));
-                            return Some(
-                                Rewrite::new(new_expr).desc("cos(2x) -> cos^2(x) - sin^2(x)"),
-                            );
-                        }
-                        _ => {}
-                    }
-                }
-            }
-        }
-        None
+        let rewrite = try_rewrite_double_angle_function_expr(ctx, expr)?;
+        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
     }
 );
 

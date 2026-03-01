@@ -3,13 +3,11 @@
 use crate::define_rule;
 use crate::rule::Rewrite;
 use crate::rules::trigonometry::{evaluation, pythagorean, pythagorean_secondary};
-use cas_ast::{BuiltinFn, Expr, ExprId};
-use cas_math::expr_rewrite::smart_mul;
+use cas_ast::ExprId;
 use cas_math::trig_multi_angle_support::{
-    collect_trig_args_recursive, expand_trig_angle, is_double_angle_relation,
-    verify_dyadic_pi_sequence,
+    format_dyadic_cos_product_desc, try_plan_dyadic_cos_product_with_policy,
+    try_rewrite_angle_consistency_expr,
 };
-use num_traits::One;
 
 // Import rules from parent module (still defined in include!() files)
 use super::{
@@ -61,76 +59,20 @@ impl crate::rule::Rule for DyadicCosProductToSinRule {
         parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<crate::rule::Rewrite> {
         use crate::rule::Rewrite;
-        use cas_math::numeric::as_number;
-        use cas_math::pi_helpers::is_provably_sin_nonzero;
-        use num_bigint::BigInt;
-        use num_rational::BigRational;
-
-        // Only match Mul expressions
-        if !matches!(ctx.get(expr), Expr::Mul(_, _)) {
-            return None;
-        }
-
-        // Flatten the multiplication
-        let factors = crate::nary::mul_leaves(ctx, expr);
-
-        // Separate numeric coefficient from cos factors
-        let mut numeric_coeff = BigRational::one();
-        let mut cos_args: Vec<ExprId> = Vec::new();
-        let mut other_factors: Vec<ExprId> = Vec::new();
-
-        for &factor in &factors {
-            if let Some(n) = as_number(ctx, factor) {
-                numeric_coeff *= n.clone();
-            } else if let Expr::Function(fn_id, args) = ctx.get(factor) {
-                if matches!(ctx.builtin_of(*fn_id), Some(BuiltinFn::Cos)) && args.len() == 1 {
-                    cos_args.push(args[0]);
-                } else {
-                    other_factors.push(factor);
-                }
-            } else {
-                other_factors.push(factor);
-            }
-        }
-
-        // Must have no other factors and at least 1 cos
-        if !other_factors.is_empty() || cos_args.is_empty() {
-            return None;
-        }
-
-        let n = cos_args.len() as u32;
-
-        // Numeric coefficient must be exactly 2^n
-        let expected_coeff = BigRational::from_integer(BigInt::from(1u64 << n));
-        if numeric_coeff != expected_coeff {
-            return None;
-        }
-
-        // Find θ by trying each cos_arg as base and verifying dyadic sequence
-        let mut theta: Option<ExprId> = None;
-
-        for candidate in &cos_args {
-            if verify_dyadic_pi_sequence(ctx, *candidate, &cos_args) {
-                theta = Some(*candidate);
-                break;
-            }
-        }
-
-        let theta = theta?;
-
-        // Domain check: sin(θ) ≠ 0
-        let sin_nonzero_proven = is_provably_sin_nonzero(ctx, theta);
-        let policy = cas_math::trig_dyadic_policy_support::decide_dyadic_sin_nonzero_policy(
+        let plan = try_plan_dyadic_cos_product_with_policy(
+            ctx,
+            expr,
             matches!(parent_ctx.domain_mode(), crate::domain::DomainMode::Assume),
             matches!(parent_ctx.domain_mode(), crate::domain::DomainMode::Strict),
-            sin_nonzero_proven,
         );
+        let plan = plan?;
+        let sin_theta = plan.sin_theta;
+        let policy = plan.policy;
         if matches!(
             policy,
             cas_math::trig_dyadic_policy_support::DyadicSinNonzeroPolicyDecision::Block
         ) {
             // Block with hint
-            let sin_theta = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![theta]);
             crate::domain::register_blocked_hint(crate::domain::BlockedHint {
                 rule: "Dyadic Cos Product".to_string(),
                 expr_id: sin_theta,
@@ -140,17 +82,9 @@ impl crate::rule::Rule for DyadicCosProductToSinRule {
             return None;
         }
 
-        // Build result: sin(2^n · θ) / sin(θ)
-        let two_pow_n = ctx.num((1u64 << n) as i64);
-        let scaled_theta = smart_mul(ctx, two_pow_n, theta);
-        let sin_scaled = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![scaled_theta]);
-        let sin_theta = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![theta]);
-        let result = ctx.add(Expr::Div(sin_scaled, sin_theta));
-
-        // Build description
-        let desc = format!("2^{n}·∏cos(2^k·θ) = sin(2^{n}·θ)/sin(θ)", n = n);
-
-        let mut rewrite = Rewrite::new(result).desc(desc).local(expr, result);
+        let mut rewrite = Rewrite::new(plan.rewritten)
+            .desc(format_dyadic_cos_product_desc(plan.n))
+            .local(expr, plan.rewritten);
 
         // Add assumption if in Assume mode and sin(θ)≠0 not proven
         if matches!(
@@ -321,53 +255,7 @@ define_rule!(
     AngleConsistencyRule,
     "Angle Consistency (Half-Angle)",
     |ctx, expr| {
-        // Only run on Add/Sub/Mul/Div to capture context
-        match ctx.get(expr) {
-            Expr::Add(_, _) | Expr::Sub(_, _) | Expr::Mul(_, _) | Expr::Div(_, _) => {}
-            _ => return None,
-        }
-
-        // 1. Collect all trig arguments
-        let mut trig_args = Vec::new();
-        collect_trig_args_recursive(ctx, expr, &mut trig_args);
-
-        if trig_args.is_empty() {
-            return None;
-        }
-
-        // 2. Check for half-angle relationship
-        // We look for pair (A, B) such that A = 2*B.
-        // Then we expand trig(A) into trig(B).
-
-        let mut target_expansion: Option<(ExprId, ExprId)> = None; // (A, B) where A=2B
-
-        for i in 0..trig_args.len() {
-            for j in 0..trig_args.len() {
-                if i == j {
-                    continue;
-                }
-                let a = trig_args[i];
-                let b = trig_args[j];
-
-                if is_double_angle_relation(ctx, a, b) {
-                    target_expansion = Some((a, b));
-                    break;
-                }
-            }
-            if target_expansion.is_some() {
-                break;
-            }
-        }
-
-        if let Some((large_angle, small_angle)) = target_expansion {
-            // Expand all occurrences of trig(large_angle) in expr
-            // We need a recursive replacement helper
-            let new_expr = expand_trig_angle(ctx, expr, large_angle, small_angle);
-            if new_expr != expr {
-                return Some(Rewrite::new(new_expr).desc("Half-Angle Expansion"));
-            }
-        }
-
-        None
+        let rewrite = try_rewrite_angle_consistency_expr(ctx, expr)?;
+        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
     }
 );

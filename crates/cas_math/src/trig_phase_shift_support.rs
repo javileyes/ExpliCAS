@@ -1,7 +1,9 @@
 use crate::expr_destructure::{as_add, as_mul};
 use crate::expr_nary::{AddView, Sign};
-use crate::pi_helpers::{is_pi, is_pi_over_n};
+use crate::pi_helpers::{extract_rational_pi_multiple, is_pi, is_pi_over_n};
 use cas_ast::{Context, Expr, ExprId};
+use num_bigint::BigInt;
+use num_rational::BigRational;
 use num_traits::One;
 
 /// Extract the coefficient of π from an expression.
@@ -227,6 +229,153 @@ pub fn extract_phase_shift(ctx: &mut Context, expr: ExprId) -> Option<(ExprId, i
     None
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TrigPhaseShiftRewriteOwned {
+    pub rewritten: ExprId,
+    pub desc: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TrigSupplementaryAngleRewriteOwned {
+    pub rewritten: ExprId,
+    pub desc: String,
+}
+
+/// Rewrites phase-shifted sin/cos forms:
+/// - `sin(x + k*pi/2)` (or equivalent canonical forms)
+/// - `cos(x + k*pi/2)`
+pub fn try_rewrite_trig_phase_shift_function_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<TrigPhaseShiftRewriteOwned> {
+    let (fn_id, arg) = match ctx.get(expr) {
+        Expr::Function(fn_id, args) if args.len() == 1 => (*fn_id, args[0]),
+        _ => return None,
+    };
+
+    let builtin = ctx.builtin_of(fn_id)?;
+    let is_sin = matches!(builtin, cas_ast::BuiltinFn::Sin);
+    let is_cos = matches!(builtin, cas_ast::BuiltinFn::Cos);
+    if !is_sin && !is_cos {
+        return None;
+    }
+
+    let (base_term, pi_multiple) = extract_phase_shift(ctx, arg)?;
+    if pi_multiple == 0 {
+        return None;
+    }
+
+    let k = ((pi_multiple % 4) + 4) % 4;
+    let (new_builtin, negate) = if is_sin {
+        match k {
+            0 => (cas_ast::BuiltinFn::Sin, false),
+            1 => (cas_ast::BuiltinFn::Cos, false),
+            2 => (cas_ast::BuiltinFn::Sin, true),
+            3 => (cas_ast::BuiltinFn::Cos, true),
+            _ => return None,
+        }
+    } else {
+        match k {
+            0 => (cas_ast::BuiltinFn::Cos, false),
+            1 => (cas_ast::BuiltinFn::Sin, true),
+            2 => (cas_ast::BuiltinFn::Cos, true),
+            3 => (cas_ast::BuiltinFn::Sin, false),
+            _ => return None,
+        }
+    };
+
+    let new_trig = ctx.call_builtin(new_builtin, vec![base_term]);
+    let rewritten = if negate {
+        ctx.add(Expr::Neg(new_trig))
+    } else {
+        new_trig
+    };
+
+    let shift_desc = match pi_multiple {
+        1 => "π/2",
+        -1 => "-π/2",
+        2 => "π",
+        -2 => "-π",
+        3 => "3π/2",
+        -3 => "-3π/2",
+        _ => "kπ/2",
+    };
+    let desc = format!("{}(x + {}) phase shift", builtin.name(), shift_desc);
+    Some(TrigPhaseShiftRewriteOwned { rewritten, desc })
+}
+
+/// Rewrites supplementary-angle forms:
+/// - `sin(k*pi - x)` style rational-π cases to a simpler angle
+/// - `cos(k*pi - x)` analogously
+pub fn try_rewrite_supplementary_angle_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<TrigSupplementaryAngleRewriteOwned> {
+    let (fn_id, args) = match ctx.get(expr) {
+        Expr::Function(fn_id, args) => (*fn_id, args.clone()),
+        _ => return None,
+    };
+    if args.len() != 1 {
+        return None;
+    }
+
+    let builtin = ctx.builtin_of(fn_id);
+    let is_sin = matches!(builtin, Some(cas_ast::BuiltinFn::Sin));
+    let is_cos = matches!(builtin, Some(cas_ast::BuiltinFn::Cos));
+    if !is_sin && !is_cos {
+        return None;
+    }
+    let arg = args[0];
+
+    let k = extract_rational_pi_multiple(ctx, arg)?;
+    let p = k.numer();
+    let q = k.denom();
+    if p <= &BigInt::from(0) {
+        return None;
+    }
+
+    let one = BigInt::from(1);
+    let n_candidate = (p + q - &one) / q;
+    let remainder = &n_candidate * q - p;
+    if remainder <= BigInt::from(0) || &remainder >= p {
+        return None;
+    }
+
+    let new_coeff = BigRational::new(remainder.clone(), q.clone());
+    let new_angle = if new_coeff == BigRational::from_integer(1.into()) {
+        ctx.add(Expr::Constant(cas_ast::Constant::Pi))
+    } else {
+        let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
+        let coeff_expr = ctx.add(Expr::Number(new_coeff));
+        ctx.add(Expr::Mul(coeff_expr, pi))
+    };
+
+    let n_parity_odd = &n_candidate % 2 == one;
+    let (rewritten, desc) = if is_sin {
+        let new_trig = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![new_angle]);
+        if n_parity_odd {
+            (new_trig, format!("sin({}π - x) = sin(x)", n_candidate))
+        } else {
+            (
+                ctx.add(Expr::Neg(new_trig)),
+                format!("sin({}π - x) = -sin(x)", n_candidate),
+            )
+        }
+    } else {
+        let new_trig = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![new_angle]);
+        if n_parity_odd {
+            (
+                ctx.add(Expr::Neg(new_trig)),
+                format!("cos({}π - x) = -cos(x)", n_candidate),
+            )
+        } else {
+            (new_trig, format!("cos({}π - x) = cos(x)", n_candidate))
+        }
+    };
+
+    Some(TrigSupplementaryAngleRewriteOwned { rewritten, desc })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -291,5 +440,32 @@ mod tests {
         let (base, k) = extract_phase_shift(&mut ctx, expr).expect("phase shift");
         assert_eq!(base, expected_base);
         assert_eq!(k, 1);
+    }
+
+    #[test]
+    fn rewrites_trig_phase_shift_function_expr() {
+        let mut ctx = Context::new();
+        let expr = parse("sin(x + pi/2)", &mut ctx).expect("expr");
+        let rewrite = try_rewrite_trig_phase_shift_function_expr(&mut ctx, expr).expect("rewrite");
+        let expected = parse("cos(x)", &mut ctx).expect("expected");
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, rewrite.rewritten, expected),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn rewrites_supplementary_angle_expr() {
+        let mut ctx = Context::new();
+        let expr = parse("sin(8*pi/9)", &mut ctx).expect("expr");
+        let rewrite = try_rewrite_supplementary_angle_expr(&mut ctx, expr).expect("rewrite");
+        let rewritten_str = format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: &ctx,
+                id: rewrite.rewritten
+            }
+        );
+        assert_eq!(rewritten_str, "sin(1/9 * pi)");
     }
 }

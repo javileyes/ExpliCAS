@@ -3,6 +3,7 @@ use crate::expr_nary::{add_leaves, mul_leaves};
 use crate::expr_predicates::contains_variable;
 use crate::expr_relations::extract_negated_inner;
 use crate::expr_rewrite::smart_mul;
+use crate::pattern_marks::PatternMarks;
 use crate::pi_helpers::extract_rational_pi_multiple;
 use crate::pi_helpers::{is_pi, is_pi_over_n};
 use crate::trig_multi_angle_support::{has_large_coefficient, is_multiple_angle};
@@ -468,11 +469,7 @@ fn extract_pythagorean_trig_parts(
                         Some(cas_ast::BuiltinFn::Sin | cas_ast::BuiltinFn::Cos)
                     ) && args.len() == 1
                     {
-                        if let Some(b) = builtin {
-                            Some((b.name().to_string(), args[0]))
-                        } else {
-                            None
-                        }
+                        builtin.map(|b| (b.name().to_string(), args[0]))
                     } else {
                         None
                     }
@@ -703,6 +700,31 @@ pub fn should_block_angle_identity_multiple_angle(ctx: &Context, expr: ExprId) -
     false
 }
 
+/// Unified policy gate for angle-sum/-diff expansion (`sin/cos` over `Add/Sub`).
+///
+/// Returns `true` when expansion should be blocked for the current context.
+pub fn should_block_angle_identity_expr(
+    ctx: &Context,
+    expr: ExprId,
+    is_expand_mode: bool,
+    marks: Option<&PatternMarks>,
+    trig_large_coeff_protected: bool,
+) -> bool {
+    if !is_expand_mode && should_block_angle_identity_non_expand_mode(ctx, expr) {
+        return true;
+    }
+    if should_block_angle_identity_large_coeff(ctx, expr) {
+        return true;
+    }
+    if marks.is_some_and(|m| m.is_trig_square_protected(expr)) {
+        return true;
+    }
+    if trig_large_coeff_protected {
+        return true;
+    }
+    should_block_angle_identity_multiple_angle(ctx, expr)
+}
+
 /// Rewrite angle-sum/-difference identities for `sin`/`cos`.
 ///
 /// This covers:
@@ -903,6 +925,33 @@ mod tests {
         let mut ctx = Context::new();
         let expr = parse("sin(16*x)", &mut ctx).expect("parse");
         assert!(should_block_angle_identity_large_coeff(&ctx, expr));
+    }
+
+    #[test]
+    fn unified_angle_identity_gate_blocks_non_expand_constant_summand() {
+        let mut ctx = Context::new();
+        let expr = parse("sin(x+1)", &mut ctx).expect("parse");
+        assert!(should_block_angle_identity_expr(
+            &ctx, expr, false, None, false
+        ));
+    }
+
+    #[test]
+    fn unified_angle_identity_gate_allows_expand_variable_sum() {
+        let mut ctx = Context::new();
+        let expr = parse("sin(x+y)", &mut ctx).expect("parse");
+        assert!(!should_block_angle_identity_expr(
+            &ctx, expr, true, None, false
+        ));
+    }
+
+    #[test]
+    fn unified_angle_identity_gate_blocks_parent_large_coeff_protection() {
+        let mut ctx = Context::new();
+        let expr = parse("sin(x+y)", &mut ctx).expect("parse");
+        assert!(should_block_angle_identity_expr(
+            &ctx, expr, true, None, true
+        ));
     }
 
     #[test]

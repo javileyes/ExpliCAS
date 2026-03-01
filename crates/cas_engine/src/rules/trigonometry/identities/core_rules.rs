@@ -3,8 +3,7 @@
 use crate::define_rule;
 use crate::rule::Rewrite;
 use cas_math::trig_core_identity_support::{
-    should_block_angle_identity_large_coeff, should_block_angle_identity_multiple_angle,
-    should_block_angle_identity_non_expand_mode, try_rewrite_angle_sum_diff_identity_expr,
+    should_block_angle_identity_expr, try_rewrite_angle_sum_diff_identity_expr,
     try_rewrite_legacy_evaluate_trig_expr, try_rewrite_pythagorean_identity_add_expr,
     try_rewrite_sin_cos_integer_pi_expr, try_rewrite_trig_odd_even_parity_expr,
 };
@@ -92,48 +91,14 @@ impl crate::rule::Rule for AngleIdentityRule {
         expr: cas_ast::ExprId,
         parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<Rewrite> {
-        // SURGICAL GATE: in normal simplify mode, only expand sin(a±b) / cos(a±b)
-        // when BOTH summands contain at least one variable.
-        // This allows canonical expansions like:
-        //   sin(x+y) → sin(x)cos(y) + cos(x)sin(y)  ✅ (NF convergence)
-        // But blocks non-canonical expansions that create cos/sin(constant) leaves:
-        //   sin(u²+1) → cos(1)·sin(u²) + sin(1)·cos(u²)  ❌
-        //   sin(x+π/4) → ...  ❌  (handled by EvaluateTrigTableRule instead)
-        // In expand_mode, all expansions are allowed (with existing size guards).
-        if !parent_ctx.is_expand_mode() && should_block_angle_identity_non_expand_mode(ctx, expr) {
+        if should_block_angle_identity_expr(
+            ctx,
+            expr,
+            parent_ctx.is_expand_mode(),
+            parent_ctx.pattern_marks(),
+            parent_ctx.is_trig_large_coeff_protected(),
+        ) {
             return None;
-        }
-
-        // --- Expand-mode anti-catastrophe guards (defense-in-depth) ---
-
-        // GUARD 1: Don't expand sin/cos if the argument has a large coefficient.
-        // sin(n*x) with |n| > 2 should NOT be expanded because it leads to
-        // exponential explosion: sin(16x) → sin(13x+3x) → ... huge tree.
-        if should_block_angle_identity_large_coeff(ctx, expr) {
-            return None;
-        }
-
-        // GUARD 2: Don't expand sin(a+b)/cos(a+b) if part of sin²+cos²=1 pattern
-        // The pattern marks are set by pre-scan before simplification
-        if let Some(marks) = parent_ctx.pattern_marks() {
-            if marks.is_trig_square_protected(expr) {
-                return None; // Skip expansion to preserve Pythagorean identity
-            }
-        }
-
-        // GUARD 3: Centralized anti-worsen for large trig coefficients.
-        // If we're inside sin(n*x) with |n| > 2, block all trig expansions.
-        // This prevents exponential explosion from recursive angle decomposition.
-        if parent_ctx.is_trig_large_coeff_protected() {
-            return None;
-        }
-
-        // GUARD 4: Anti-worsen for multiple angles.
-        // Don't expand sin(a+b) or cos(a+b) if:
-        // - Either a or b is already a multiple angle (n*x where |n| > 1)
-        // - This would cause exponential expansion: sin(12x + 4x) → huge tree
-        if should_block_angle_identity_multiple_angle(ctx, expr) {
-            return None; // Block expansion - would cause exponential growth
         }
 
         let rewrite = try_rewrite_angle_sum_diff_identity_expr(ctx, expr)?;

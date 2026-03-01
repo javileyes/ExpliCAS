@@ -4,10 +4,8 @@
 //! - TrigSumToProductContractionRule: sin(a)+sin(b) → product form
 
 use crate::rule::Rewrite;
-use cas_ast::{Expr, ExprId};
-use cas_math::trig_linear_support::{
-    build_coef_times_base, extract_linear_coefficients, extract_sin_cos_fn_arg,
-};
+use cas_ast::ExprId;
+use cas_math::trig_sum_product_support::try_rewrite_sum_to_product_contraction_expr;
 
 // =============================================================================
 // TrigSumToProductContractionRule: sin(a)+sin(b) → 2*sin((a+b)/2)*cos((a-b)/2)
@@ -39,75 +37,8 @@ impl crate::rule::Rule for TrigSumToProductContractionRule {
         expr: ExprId,
         _parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<Rewrite> {
-        // Match Add or Sub of two trig functions
-        let (left, right, is_add) = match ctx.get(expr) {
-            Expr::Add(l, r) => (*l, *r, true),
-            Expr::Sub(l, r) => (*l, *r, false),
-            _ => return None,
-        };
-
-        // Both must be sin or cos functions
-        let (l_name, l_arg) = extract_sin_cos_fn_arg(ctx, left)?;
-        let (r_name, r_arg) = extract_sin_cos_fn_arg(ctx, right)?;
-
-        // Must be same function type (sin+sin or cos+cos)
-        if l_name != r_name {
-            return None;
-        }
-
-        // Guard: Check if both args are linear multiples of the same base
-        // Returns (base, coef_a, coef_b) if a = coef_a * base, b = coef_b * base
-        let (base, coef_a, coef_b) = extract_linear_coefficients(ctx, l_arg, r_arg)?;
-
-        // Compute (a+b)/2 and (a-b)/2 using coefficients
-        // (coef_a + coef_b) / 2 and (coef_a - coef_b) / 2
-        let sum_coef = &coef_a + &coef_b;
-        let diff_coef = &coef_a - &coef_b;
-
-        let two = num_rational::BigRational::from_integer(2.into());
-        let half_sum = sum_coef / (&two);
-        let half_diff = diff_coef / &two;
-
-        // Build half_sum * base and half_diff * base
-        let half_sum_arg = build_coef_times_base(ctx, &half_sum, base);
-        let half_diff_arg = build_coef_times_base(ctx, &half_diff, base);
-
-        // Build the product form based on function name and operation
-        let two_id = ctx.num(2);
-        let result = match (l_name, is_add) {
-            ("sin", true) => {
-                // sin(a) + sin(b) → 2*sin((a+b)/2)*cos((a-b)/2)
-                let sin_half_sum = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![half_sum_arg]);
-                let cos_half_diff = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![half_diff_arg]);
-                let product = ctx.add(Expr::Mul(sin_half_sum, cos_half_diff));
-                ctx.add(Expr::Mul(two_id, product))
-            }
-            ("sin", false) => {
-                // sin(a) - sin(b) → 2*cos((a+b)/2)*sin((a-b)/2)
-                let cos_half_sum = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![half_sum_arg]);
-                let sin_half_diff = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![half_diff_arg]);
-                let product = ctx.add(Expr::Mul(cos_half_sum, sin_half_diff));
-                ctx.add(Expr::Mul(two_id, product))
-            }
-            ("cos", true) => {
-                // cos(a) + cos(b) → 2*cos((a+b)/2)*cos((a-b)/2)
-                let cos_half_sum = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![half_sum_arg]);
-                let cos_half_diff = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![half_diff_arg]);
-                let product = ctx.add(Expr::Mul(cos_half_sum, cos_half_diff));
-                ctx.add(Expr::Mul(two_id, product))
-            }
-            ("cos", false) => {
-                // cos(a) - cos(b) → -2*sin((a+b)/2)*sin((a-b)/2)
-                let sin_half_sum = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![half_sum_arg]);
-                let sin_half_diff = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![half_diff_arg]);
-                let product = ctx.add(Expr::Mul(sin_half_sum, sin_half_diff));
-                let two_times = ctx.add(Expr::Mul(two_id, product));
-                ctx.add(Expr::Neg(two_times))
-            }
-            _ => return None,
-        };
-
-        Some(Rewrite::new(result).desc("Sum-to-product: sin/cos sum → product form"))
+        let rewrite = try_rewrite_sum_to_product_contraction_expr(ctx, expr)?;
+        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
     }
 
     fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {

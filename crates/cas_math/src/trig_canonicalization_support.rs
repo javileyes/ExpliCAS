@@ -35,6 +35,12 @@ pub struct TrigCanonicalRewritePlan {
     pub desc: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TrigCanonicalIdentityRewrite {
+    pub rewritten: ExprId,
+    pub desc: &'static str,
+}
+
 /// Check if expression is a composition like `tan(arctan(x))`.
 pub fn is_trig_of_inverse_trig(ctx: &Context, expr: ExprId) -> bool {
     match ctx.get(expr) {
@@ -54,6 +60,14 @@ pub fn is_trig_of_inverse_trig(ctx: &Context, expr: ExprId) -> bool {
                 _ => false,
             }
         }
+        _ => false,
+    }
+}
+
+/// Check whether `expr` is an inverse-trig function call (asin/acos/atan/etc.).
+pub fn is_inverse_trig_function_call(ctx: &Context, expr: ExprId) -> bool {
+    match ctx.get(expr) {
+        Expr::Function(fn_id, _args) => ctx.builtin_of(*fn_id).is_some_and(is_inverse_trig_builtin),
         _ => false,
     }
 }
@@ -317,6 +331,118 @@ pub fn try_rewrite_trig_function_name_canonicalization_expr(
     })
 }
 
+/// Rewrite `tan(x)` to `sin(x)/cos(x)`.
+pub fn try_rewrite_tan_to_sin_cos_function_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<TrigCanonicalRewritePlan> {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return None;
+    };
+    if !matches!(ctx.builtin_of(*fn_id), Some(BuiltinFn::Tan)) || args.len() != 1 {
+        return None;
+    }
+    let arg = args[0];
+
+    let sin_x = ctx.call_builtin(BuiltinFn::Sin, vec![arg]);
+    let cos_x = ctx.call_builtin(BuiltinFn::Cos, vec![arg]);
+    let rewritten = ctx.add(Expr::Div(sin_x, cos_x));
+    Some(TrigCanonicalRewritePlan {
+        rewritten,
+        desc: "tan(x) -> sin(x)/cos(x)".to_string(),
+    })
+}
+
+/// Convert trig quotients to canonical reciprocal forms:
+/// - `sin(x)/cos(x) -> tan(x)`
+/// - `cos(x)/sin(x) -> cot(x)`
+/// - `1/sin(x) -> csc(x)`
+/// - `1/cos(x) -> sec(x)`
+/// - `1/tan(x) -> cot(x)`
+pub fn try_rewrite_trig_quotient_div_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<TrigCanonicalRewritePlan> {
+    let Expr::Div(num, den) = ctx.get(expr) else {
+        return None;
+    };
+
+    let num_fn_info = if let Expr::Function(fn_id, args) = ctx.get(*num) {
+        Some((*fn_id, args.clone()))
+    } else {
+        None
+    };
+    let den_fn_info = if let Expr::Function(fn_id, args) = ctx.get(*den) {
+        Some((*fn_id, args.clone()))
+    } else {
+        None
+    };
+
+    if let (Some((num_fn_id, ref num_args)), Some((den_fn_id, ref den_args))) =
+        (&num_fn_info, &den_fn_info)
+    {
+        let num_builtin = ctx.builtin_of(*num_fn_id);
+        let den_builtin = ctx.builtin_of(*den_fn_id);
+
+        if matches!(num_builtin, Some(BuiltinFn::Sin))
+            && matches!(den_builtin, Some(BuiltinFn::Cos))
+            && num_args.len() == 1
+            && den_args.len() == 1
+            && cas_ast::ordering::compare_expr(ctx, num_args[0], den_args[0])
+                == std::cmp::Ordering::Equal
+        {
+            let rewritten = ctx.call_builtin(BuiltinFn::Tan, vec![num_args[0]]);
+            return Some(TrigCanonicalRewritePlan {
+                rewritten,
+                desc: "sin(x)/cos(x) → tan(x)".to_string(),
+            });
+        }
+
+        if matches!(num_builtin, Some(BuiltinFn::Cos))
+            && matches!(den_builtin, Some(BuiltinFn::Sin))
+            && num_args.len() == 1
+            && den_args.len() == 1
+            && cas_ast::ordering::compare_expr(ctx, num_args[0], den_args[0])
+                == std::cmp::Ordering::Equal
+        {
+            let rewritten = ctx.call_builtin(BuiltinFn::Cot, vec![num_args[0]]);
+            return Some(TrigCanonicalRewritePlan {
+                rewritten,
+                desc: "cos(x)/sin(x) → cot(x)".to_string(),
+            });
+        }
+    }
+
+    if is_one_expr(ctx, *num) {
+        if let Some((den_fn_id, ref den_args)) = den_fn_info {
+            let den_builtin = ctx.builtin_of(den_fn_id);
+            if matches!(den_builtin, Some(BuiltinFn::Sin)) && den_args.len() == 1 {
+                let rewritten = ctx.call_builtin(BuiltinFn::Csc, vec![den_args[0]]);
+                return Some(TrigCanonicalRewritePlan {
+                    rewritten,
+                    desc: "1/sin(x) → csc(x)".to_string(),
+                });
+            }
+            if matches!(den_builtin, Some(BuiltinFn::Cos)) && den_args.len() == 1 {
+                let rewritten = ctx.call_builtin(BuiltinFn::Sec, vec![den_args[0]]);
+                return Some(TrigCanonicalRewritePlan {
+                    rewritten,
+                    desc: "1/cos(x) → sec(x)".to_string(),
+                });
+            }
+            if matches!(den_builtin, Some(BuiltinFn::Tan)) && den_args.len() == 1 {
+                let rewritten = ctx.call_builtin(BuiltinFn::Cot, vec![den_args[0]]);
+                return Some(TrigCanonicalRewritePlan {
+                    rewritten,
+                    desc: "1/tan(x) → cot(x)".to_string(),
+                });
+            }
+        }
+    }
+
+    None
+}
+
 pub fn try_rewrite_sec_tan_pythagorean_expr(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
     let Expr::Sub(l, r) = ctx.get(expr) else {
         return None;
@@ -334,6 +460,17 @@ pub fn try_rewrite_sec_tan_pythagorean_expr(ctx: &mut Context, expr: ExprId) -> 
     } else {
         None
     }
+}
+
+pub fn try_rewrite_sec_tan_pythagorean_identity_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<TrigCanonicalIdentityRewrite> {
+    let rewritten = try_rewrite_sec_tan_pythagorean_expr(ctx, expr)?;
+    Some(TrigCanonicalIdentityRewrite {
+        rewritten,
+        desc: "sec²(x) - tan²(x) = 1",
+    })
 }
 
 pub fn try_rewrite_csc_cot_pythagorean_expr(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
@@ -355,6 +492,17 @@ pub fn try_rewrite_csc_cot_pythagorean_expr(ctx: &mut Context, expr: ExprId) -> 
     }
 }
 
+pub fn try_rewrite_csc_cot_pythagorean_identity_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<TrigCanonicalIdentityRewrite> {
+    let rewritten = try_rewrite_csc_cot_pythagorean_expr(ctx, expr)?;
+    Some(TrigCanonicalIdentityRewrite {
+        rewritten,
+        desc: "csc²(x) - cot²(x) = 1",
+    })
+}
+
 pub fn try_rewrite_tan_to_sec_pythagorean_expr(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
     let Expr::Add(l, r) = ctx.get(expr) else {
         return None;
@@ -373,6 +521,17 @@ pub fn try_rewrite_tan_to_sec_pythagorean_expr(ctx: &mut Context, expr: ExprId) 
     Some(ctx.add(Expr::Pow(sec_expr, two)))
 }
 
+pub fn try_rewrite_tan_to_sec_pythagorean_identity_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<TrigCanonicalIdentityRewrite> {
+    let rewritten = try_rewrite_tan_to_sec_pythagorean_expr(ctx, expr)?;
+    Some(TrigCanonicalIdentityRewrite {
+        rewritten,
+        desc: "1 + tan²(x) = sec²(x)",
+    })
+}
+
 pub fn try_rewrite_cot_to_csc_pythagorean_expr(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
     let Expr::Add(l, r) = ctx.get(expr) else {
         return None;
@@ -389,6 +548,17 @@ pub fn try_rewrite_cot_to_csc_pythagorean_expr(ctx: &mut Context, expr: ExprId) 
     let csc_expr = ctx.call_builtin(BuiltinFn::Csc, vec![cot_arg]);
     let two = ctx.num(2);
     Some(ctx.add(Expr::Pow(csc_expr, two)))
+}
+
+pub fn try_rewrite_cot_to_csc_pythagorean_identity_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<TrigCanonicalIdentityRewrite> {
+    let rewritten = try_rewrite_cot_to_csc_pythagorean_expr(ctx, expr)?;
+    Some(TrigCanonicalIdentityRewrite {
+        rewritten,
+        desc: "1 + cot²(x) = csc²(x)",
+    })
 }
 
 pub fn try_rewrite_sec_tan_minus_one_identity_expr(
@@ -420,6 +590,17 @@ pub fn try_rewrite_sec_tan_minus_one_identity_expr(
     }
 }
 
+pub fn try_rewrite_sec_tan_minus_one_identity_zero_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<TrigCanonicalIdentityRewrite> {
+    let rewritten = try_rewrite_sec_tan_minus_one_identity_expr(ctx, expr)?;
+    Some(TrigCanonicalIdentityRewrite {
+        rewritten,
+        desc: "sec²(x) - tan²(x) - 1 = 0",
+    })
+}
+
 pub fn try_rewrite_csc_cot_minus_one_identity_expr(
     ctx: &mut Context,
     expr: ExprId,
@@ -449,6 +630,17 @@ pub fn try_rewrite_csc_cot_minus_one_identity_expr(
     }
 }
 
+pub fn try_rewrite_csc_cot_minus_one_identity_zero_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<TrigCanonicalIdentityRewrite> {
+    let rewritten = try_rewrite_csc_cot_minus_one_identity_expr(ctx, expr)?;
+    Some(TrigCanonicalIdentityRewrite {
+        rewritten,
+        desc: "csc²(x) - cot²(x) - 1 = 0",
+    })
+}
+
 pub fn try_rewrite_reciprocal_product_expr(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
     let Expr::Mul(l, r) = ctx.get(expr) else {
         return None;
@@ -459,6 +651,17 @@ pub fn try_rewrite_reciprocal_product_expr(ctx: &mut Context, expr: ExprId) -> O
     } else {
         None
     }
+}
+
+pub fn try_rewrite_reciprocal_product_identity_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<TrigCanonicalIdentityRewrite> {
+    let rewritten = try_rewrite_reciprocal_product_expr(ctx, expr)?;
+    Some(TrigCanonicalIdentityRewrite {
+        rewritten,
+        desc: "Reciprocal trig product = 1",
+    })
 }
 
 pub fn try_rewrite_mixed_fraction_to_sincos_expr(
@@ -478,6 +681,17 @@ pub fn try_rewrite_mixed_fraction_to_sincos_expr(
     let new_num = convert_trig_to_sincos(ctx, num);
     let new_den = convert_trig_to_sincos(ctx, den);
     Some(ctx.add(Expr::Div(new_num, new_den)))
+}
+
+pub fn try_rewrite_mixed_fraction_to_sincos_plan_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<TrigCanonicalIdentityRewrite> {
+    let rewritten = try_rewrite_mixed_fraction_to_sincos_expr(ctx, expr)?;
+    Some(TrigCanonicalIdentityRewrite {
+        rewritten,
+        desc: "Convert mixed trig fraction to sin/cos",
+    })
 }
 
 #[cfg(test)]
@@ -516,6 +730,15 @@ mod tests {
         let mut ctx = Context::new();
         let expr = parse("tan(arctan(x))", &mut ctx).expect("expr");
         assert!(is_trig_of_inverse_trig(&ctx, expr));
+    }
+
+    #[test]
+    fn detects_inverse_trig_function_call() {
+        let mut ctx = Context::new();
+        let inv = parse("arctan(x)", &mut ctx).expect("inv");
+        let non_inv = parse("tan(x)", &mut ctx).expect("non_inv");
+        assert!(is_inverse_trig_function_call(&ctx, inv));
+        assert!(!is_inverse_trig_function_call(&ctx, non_inv));
     }
 
     #[test]
@@ -566,11 +789,28 @@ mod tests {
     }
 
     #[test]
+    fn rewrites_cot_to_csc_identity_plan_with_desc() {
+        let mut ctx = Context::new();
+        let expr = parse("1 + cot(x)^2", &mut ctx).expect("parse");
+        let rewrite =
+            try_rewrite_cot_to_csc_pythagorean_identity_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(rewrite.desc, "1 + cot²(x) = csc²(x)");
+    }
+
+    #[test]
     fn rewrites_reciprocal_product_to_one() {
         let mut ctx = Context::new();
         let expr = parse("tan(x) * cot(x)", &mut ctx).expect("parse");
         let rewritten = try_rewrite_reciprocal_product_expr(&mut ctx, expr).expect("rewrite");
         assert!(is_one_expr(&ctx, rewritten));
+    }
+
+    #[test]
+    fn rewrites_reciprocal_product_plan_with_desc() {
+        let mut ctx = Context::new();
+        let expr = parse("tan(x) * cot(x)", &mut ctx).expect("parse");
+        let rewrite = try_rewrite_reciprocal_product_identity_expr(&mut ctx, expr).expect("plan");
+        assert_eq!(rewrite.desc, "Reciprocal trig product = 1");
     }
 
     #[test]
@@ -591,5 +831,29 @@ mod tests {
             .expect("canonicalization");
         assert!(plan.desc.contains("acos"));
         assert!(contains_named_call(&ctx, plan.rewritten, "arccos"));
+    }
+
+    #[test]
+    fn rewrites_tan_to_sin_cos_function() {
+        let mut ctx = Context::new();
+        let expr = parse("tan(x)", &mut ctx).expect("parse");
+        let plan = try_rewrite_tan_to_sin_cos_function_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(plan.desc, "tan(x) -> sin(x)/cos(x)");
+        assert!(contains_named_call(&ctx, plan.rewritten, "sin"));
+        assert!(contains_named_call(&ctx, plan.rewritten, "cos"));
+        assert!(!contains_named_call(&ctx, plan.rewritten, "tan"));
+    }
+
+    #[test]
+    fn rewrites_trig_quotient_to_canonical_form() {
+        let mut ctx = Context::new();
+        let expr1 = parse("sin(x)/cos(x)", &mut ctx).expect("expr1");
+        let expr2 = parse("1/tan(x)", &mut ctx).expect("expr2");
+
+        let plan1 = try_rewrite_trig_quotient_div_expr(&mut ctx, expr1).expect("plan1");
+        let plan2 = try_rewrite_trig_quotient_div_expr(&mut ctx, expr2).expect("plan2");
+
+        assert!(contains_named_call(&ctx, plan1.rewritten, "tan"));
+        assert!(contains_named_call(&ctx, plan2.rewritten, "cot"));
     }
 }

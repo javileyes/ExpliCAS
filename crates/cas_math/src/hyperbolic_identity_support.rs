@@ -1,4 +1,4 @@
-use crate::expr_predicates::is_two_expr;
+use crate::expr_predicates::{is_one_expr, is_two_expr};
 use crate::trig_roots_flatten::{extract_double_angle_arg, extract_triple_angle_arg};
 use cas_ast::ordering::compare_expr;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
@@ -18,6 +18,12 @@ pub struct SinhCoshToExpRewrite {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HyperbolicDoubleAngleRewrite {
+    pub rewritten: ExprId,
+    pub desc: &'static str,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HyperbolicTanhPythagoreanRewrite {
     pub rewritten: ExprId,
     pub desc: &'static str,
 }
@@ -289,6 +295,75 @@ pub fn try_rewrite_hyperbolic_double_angle_sub_chain(
     Some(HyperbolicDoubleAngleRewrite {
         rewritten,
         desc: "cosh(2x) - cosh²(x) - sinh²(x) = 0",
+    })
+}
+
+/// Detect and rewrite additive-chain form of:
+/// `1 - tanh(x)^2 -> 1/cosh(x)^2`.
+///
+/// Works on flattened additive forms such as `1 + (-tanh(x)^2) + rest`.
+pub fn try_rewrite_tanh_pythagorean_add_chain(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<HyperbolicTanhPythagoreanRewrite> {
+    let terms = crate::expr_nary::add_leaves(ctx, expr);
+    if terms.len() < 2 {
+        return None;
+    }
+
+    let mut one_idx: Option<usize> = None;
+    let mut tanh2_idx: Option<usize> = None;
+    let mut tanh_arg: Option<ExprId> = None;
+
+    for (i, &term) in terms.iter().enumerate() {
+        if is_one_expr(ctx, term) {
+            one_idx = Some(i);
+            continue;
+        }
+
+        if let Expr::Neg(inner) = ctx.get(term) {
+            if let Expr::Pow(base, exp) = ctx.get(*inner) {
+                if is_two_expr(ctx, *exp) {
+                    if let Expr::Function(fn_id, args) = ctx.get(*base) {
+                        if ctx.is_builtin(*fn_id, BuiltinFn::Tanh) && args.len() == 1 {
+                            tanh2_idx = Some(i);
+                            tanh_arg = Some(args[0]);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let (one_i, tanh_i, arg) = (one_idx?, tanh2_idx?, tanh_arg?);
+
+    let cosh = ctx.call_builtin(BuiltinFn::Cosh, vec![arg]);
+    let two = ctx.num(2);
+    let cosh_squared = ctx.add(Expr::Pow(cosh, two));
+    let one = ctx.num(1);
+    let sech_squared = ctx.add(Expr::Div(one, cosh_squared));
+
+    let mut new_terms: Vec<ExprId> = Vec::new();
+    for (i, &term) in terms.iter().enumerate() {
+        if i != one_i && i != tanh_i {
+            new_terms.push(term);
+        }
+    }
+    new_terms.push(sech_squared);
+
+    let rewritten = if new_terms.len() == 1 {
+        new_terms[0]
+    } else {
+        let mut acc = new_terms[0];
+        for &term in new_terms.iter().skip(1) {
+            acc = ctx.add(Expr::Add(acc, term));
+        }
+        acc
+    };
+
+    Some(HyperbolicTanhPythagoreanRewrite {
+        rewritten,
+        desc: "1 - tanh²(x) = 1/cosh²(x)",
     })
 }
 
@@ -566,7 +641,8 @@ mod tests {
         try_rewrite_hyperbolic_double_angle_sum, try_rewrite_hyperbolic_triple_angle,
         try_rewrite_recognize_hyperbolic_from_exp, try_rewrite_sinh_cosh_to_exp,
         try_rewrite_sinh_cosh_to_tanh, try_rewrite_sinh_double_angle_expansion,
-        try_rewrite_tanh_to_sinh_cosh, HyperbolicPythagoreanValue,
+        try_rewrite_tanh_pythagorean_add_chain, try_rewrite_tanh_to_sinh_cosh,
+        HyperbolicPythagoreanValue,
     };
     use cas_ast::{BuiltinFn, Context, Expr};
 
@@ -679,6 +755,21 @@ mod tests {
         assert_eq!(rewrite.desc, "cosh(2x) - cosh²(x) - sinh²(x) = 0");
         let zero = num_rational::BigRational::from_integer(0.into());
         assert!(matches!(ctx.get(rewrite.rewritten), Expr::Number(n) if n == &zero));
+    }
+
+    #[test]
+    fn rewrites_tanh_pythagorean_add_chain() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        let tanh_x = ctx.call_builtin(BuiltinFn::Tanh, vec![x]);
+        let tanh_sq = ctx.add(Expr::Pow(tanh_x, two));
+        let neg_tanh_sq = ctx.add(Expr::Neg(tanh_sq));
+        let expr = ctx.add(Expr::Add(one, neg_tanh_sq));
+
+        let rewrite = try_rewrite_tanh_pythagorean_add_chain(&mut ctx, expr).expect("rewrite");
+        assert_eq!(rewrite.desc, "1 - tanh²(x) = 1/cosh²(x)");
     }
 
     #[test]

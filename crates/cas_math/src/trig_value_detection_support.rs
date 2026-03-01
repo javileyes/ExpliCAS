@@ -1,5 +1,13 @@
+use crate::expr_destructure::as_fn1;
+use crate::pattern_marks::PatternMarks;
 use crate::pi_helpers::{extract_rational_pi_multiple, is_pi, is_pi_over_n};
 use crate::root_forms::extract_numeric_sqrt_radicand;
+use crate::trig_canonicalization_support::{
+    is_inverse_trig_function_call, try_rewrite_tan_to_sin_cos_function_expr,
+    TrigCanonicalRewritePlan,
+};
+use crate::trig_multi_angle_support::is_multiple_angle;
+use crate::trig_tan_triple_support::is_part_of_tan_triple_product_with_ancestors;
 use cas_ast::{Context, Expr, ExprId};
 use num_rational::BigRational;
 use num_traits::{One, Zero};
@@ -197,6 +205,61 @@ pub fn detect_inverse_trig_input(ctx: &Context, expr: ExprId) -> Option<InverseT
     }
 }
 
+/// Whether `tan(arg)` should be preserved (not expanded to sin/cos) due to
+/// anti-worsen policy:
+/// - multiple-angle argument `n*x` with `|n| > 1`
+/// - special-angle argument where table evaluation is preferred
+pub fn should_block_tan_to_sin_cos_for_arg(ctx: &Context, arg: ExprId) -> bool {
+    is_multiple_angle(ctx, arg) || detect_special_angle(ctx, arg).is_some()
+}
+
+/// Whether `tan(expr)` should be preserved due to pre-scanned structural marks.
+pub fn should_block_tan_to_sin_cos_for_marks(marks: &PatternMarks, expr: ExprId) -> bool {
+    marks.is_pythagorean_protected(expr)
+        || marks.is_inverse_trig_protected(expr)
+        || marks.is_tan_triple_product_protected(expr)
+        || marks.is_tan_double_angle_protected(expr)
+        || marks.is_identity_cancellation_protected(expr)
+        || marks.has_tan_identity_pattern
+}
+
+/// Unified anti-expansion gate for `tan(expr) -> sin(expr)/cos(expr)`.
+pub fn should_block_tan_to_sin_cos_expr(
+    ctx: &Context,
+    expr: ExprId,
+    marks: Option<&PatternMarks>,
+    immediate_parent: Option<ExprId>,
+    ancestors: &[ExprId],
+) -> bool {
+    if marks.is_some_and(|m| should_block_tan_to_sin_cos_for_marks(m, expr)) {
+        return true;
+    }
+    if immediate_parent.is_some_and(|parent_id| is_inverse_trig_function_call(ctx, parent_id)) {
+        return true;
+    }
+    if is_part_of_tan_triple_product_with_ancestors(ctx, expr, ancestors) {
+        return true;
+    }
+    if let Some(tan_arg) = as_fn1(ctx, expr, "tan") {
+        return should_block_tan_to_sin_cos_for_arg(ctx, tan_arg);
+    }
+    false
+}
+
+/// Plan `tan(x) -> sin(x)/cos(x)` only when unified anti-expansion policy allows it.
+pub fn try_plan_tan_to_sin_cos_with_policy(
+    ctx: &mut Context,
+    expr: ExprId,
+    marks: Option<&PatternMarks>,
+    immediate_parent: Option<ExprId>,
+    ancestors: &[ExprId],
+) -> Option<TrigCanonicalRewritePlan> {
+    if should_block_tan_to_sin_cos_expr(ctx, expr, marks, immediate_parent, ancestors) {
+        return None;
+    }
+    try_rewrite_tan_to_sin_cos_function_expr(ctx, expr)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -252,5 +315,92 @@ mod tests {
             detect_inverse_trig_input(&ctx, rationalized),
             Some(InverseTrigInput::Sqrt2Over2)
         );
+    }
+
+    #[test]
+    fn tan_to_sin_cos_block_policy_matches_expected_args() {
+        let mut ctx = Context::new();
+        let blocked1 = cas_parser::parse("3*x", &mut ctx).expect("3*x");
+        let blocked2 = cas_parser::parse("pi/6", &mut ctx).expect("pi/6");
+        let allowed = cas_parser::parse("x+y", &mut ctx).expect("x+y");
+
+        assert!(should_block_tan_to_sin_cos_for_arg(&ctx, blocked1));
+        assert!(should_block_tan_to_sin_cos_for_arg(&ctx, blocked2));
+        assert!(!should_block_tan_to_sin_cos_for_arg(&ctx, allowed));
+    }
+
+    #[test]
+    fn tan_to_sin_cos_block_policy_matches_marks() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let mut marks = PatternMarks::new();
+        assert!(!should_block_tan_to_sin_cos_for_marks(&marks, x));
+
+        marks.mark_pythagorean(x);
+        assert!(should_block_tan_to_sin_cos_for_marks(&marks, x));
+
+        let y = ctx.var("y");
+        let mut marks = PatternMarks::new();
+        marks.mark_inverse_trig(y);
+        assert!(should_block_tan_to_sin_cos_for_marks(&marks, y));
+
+        let z = ctx.var("z");
+        let mut marks = PatternMarks::new();
+        marks.mark_tan_triple_product(z);
+        assert!(should_block_tan_to_sin_cos_for_marks(&marks, z));
+
+        let w = ctx.var("w");
+        let mut marks = PatternMarks::new();
+        marks.mark_tan_double_angle(w);
+        assert!(should_block_tan_to_sin_cos_for_marks(&marks, w));
+
+        let q = ctx.var("q");
+        let mut marks = PatternMarks::new();
+        marks.mark_identity_cancellation(q);
+        assert!(should_block_tan_to_sin_cos_for_marks(&marks, q));
+
+        let k = ctx.var("k");
+        let mut marks = PatternMarks::new();
+        marks.has_tan_identity_pattern = true;
+        assert!(should_block_tan_to_sin_cos_for_marks(&marks, k));
+    }
+
+    #[test]
+    fn tan_to_sin_cos_unified_block_policy_covers_fallbacks() {
+        let mut ctx = Context::new();
+        let tan_3x = cas_parser::parse("tan(3*x)", &mut ctx).expect("tan(3*x)");
+        assert!(should_block_tan_to_sin_cos_expr(
+            &ctx,
+            tan_3x,
+            None,
+            None,
+            &[]
+        ));
+
+        let tan_x = cas_parser::parse("tan(x)", &mut ctx).expect("tan(x)");
+        let parent = cas_parser::parse("arctan(tan(x))", &mut ctx).expect("arctan(tan(x))");
+        assert!(should_block_tan_to_sin_cos_expr(
+            &ctx,
+            tan_x,
+            None,
+            Some(parent),
+            &[]
+        ));
+    }
+
+    #[test]
+    fn tan_to_sin_cos_policy_plan_applies_for_regular_argument() {
+        let mut ctx = Context::new();
+        let tan_x = cas_parser::parse("tan(x)", &mut ctx).expect("tan(x)");
+        let plan = try_plan_tan_to_sin_cos_with_policy(&mut ctx, tan_x, None, None, &[])
+            .expect("rewrite plan");
+        let rendered = format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: &ctx,
+                id: plan.rewritten
+            }
+        );
+        assert_eq!(rendered, "sin(x) / cos(x)");
     }
 }

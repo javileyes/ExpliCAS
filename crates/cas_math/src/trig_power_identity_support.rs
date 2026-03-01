@@ -702,6 +702,173 @@ pub fn coeff_is_three(ctx: &mut Context, coeff: ExprId) -> bool {
     false
 }
 
+/// Rewrite:
+/// `sin^6(t) + cos^6(t) + 3*sin^2(t)*cos^2(t)` -> `(sin^2(t) + cos^2(t))^3`.
+pub fn try_rewrite_hidden_cubic_identity_add_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<TrigPowerRewrite> {
+    if !matches!(ctx.get(expr), Expr::Add(_, _)) {
+        return None;
+    }
+
+    let terms = add_leaves(ctx, expr);
+    if terms.len() != 3 {
+        return None;
+    }
+
+    let mut sin6_arg: Option<ExprId> = None;
+    let mut cos6_arg: Option<ExprId> = None;
+    let mut sin2cos2_info: Option<(ExprId, ExprId)> = None;
+    let mut sin6_idx: Option<usize> = None;
+    let mut cos6_idx: Option<usize> = None;
+    let mut sin2cos2_idx: Option<usize> = None;
+
+    for (i, &term) in terms.iter().enumerate() {
+        if let Some((arg, name)) = extract_trig_pow6(ctx, term) {
+            match name {
+                "sin" if sin6_arg.is_none() => {
+                    sin6_arg = Some(arg);
+                    sin6_idx = Some(i);
+                }
+                "cos" if cos6_arg.is_none() => {
+                    cos6_arg = Some(arg);
+                    cos6_idx = Some(i);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    for (i, &term) in terms.iter().enumerate() {
+        if Some(i) == sin6_idx || Some(i) == cos6_idx {
+            continue;
+        }
+
+        if let Some((coeff, arg)) = extract_sin2_cos2_product(ctx, term) {
+            sin2cos2_info = Some((coeff, arg));
+            sin2cos2_idx = Some(i);
+            break;
+        }
+    }
+
+    let sin6_a = sin6_arg?;
+    let cos6_a = cos6_arg?;
+    let (coeff, sin2cos2_a) = sin2cos2_info?;
+
+    if sin6_idx.is_none() || cos6_idx.is_none() || sin2cos2_idx.is_none() {
+        return None;
+    }
+
+    if cas_ast::ordering::compare_expr(ctx, sin6_a, cos6_a) != Ordering::Equal {
+        return None;
+    }
+    if cas_ast::ordering::compare_expr(ctx, sin6_a, sin2cos2_a) != Ordering::Equal {
+        return None;
+    }
+    if !coeff_is_three(ctx, coeff) {
+        return None;
+    }
+
+    let arg = sin6_a;
+    let sin_arg = ctx.call_builtin(BuiltinFn::Sin, vec![arg]);
+    let cos_arg = ctx.call_builtin(BuiltinFn::Cos, vec![arg]);
+    let two = ctx.num(2);
+    let sin2 = ctx.add(Expr::Pow(sin_arg, two));
+    let two = ctx.num(2);
+    let cos2 = ctx.add(Expr::Pow(cos_arg, two));
+    let sum = ctx.add(Expr::Add(sin2, cos2));
+    let three = ctx.num(3);
+    let rewritten = ctx.add(Expr::Pow(sum, three));
+
+    Some(TrigPowerRewrite {
+        rewritten,
+        desc: "sin⁶(x) + cos⁶(x) + 3sin²(x)cos²(x) = (sin²(x) + cos²(x))³".to_string(),
+    })
+}
+
+/// Rewrite:
+/// `sin^4(t) + cos^4(t)` -> `1 - 2*sin^2(t)*cos^2(t)`.
+///
+/// If the additive chain has extra terms, only the matched pair is replaced.
+pub fn try_rewrite_sin_cos_quartic_sum_add_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<TrigPowerRewrite> {
+    if !matches!(ctx.get(expr), Expr::Add(_, _)) {
+        return None;
+    }
+
+    let terms = add_leaves(ctx, expr);
+    if terms.len() < 2 {
+        return None;
+    }
+
+    let mut sin4_arg: Option<ExprId> = None;
+    let mut cos4_arg: Option<ExprId> = None;
+    let mut sin4_idx: Option<usize> = None;
+    let mut cos4_idx: Option<usize> = None;
+
+    for (i, &term) in terms.iter().enumerate() {
+        if let Some((arg, name)) = extract_trig_pow4(ctx, term) {
+            match name {
+                "sin" if sin4_arg.is_none() => {
+                    sin4_arg = Some(arg);
+                    sin4_idx = Some(i);
+                }
+                "cos" if cos4_arg.is_none() => {
+                    cos4_arg = Some(arg);
+                    cos4_idx = Some(i);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    let sin4_a = sin4_arg?;
+    let cos4_a = cos4_arg?;
+    let sin_i = sin4_idx?;
+    let cos_i = cos4_idx?;
+
+    if cas_ast::ordering::compare_expr(ctx, sin4_a, cos4_a) != Ordering::Equal {
+        return None;
+    }
+
+    let arg = sin4_a;
+    let one = ctx.num(1);
+    let sin_a = ctx.call_builtin(BuiltinFn::Sin, vec![arg]);
+    let cos_a = ctx.call_builtin(BuiltinFn::Cos, vec![arg]);
+    let two = ctx.num(2);
+    let sin2 = ctx.add(Expr::Pow(sin_a, two));
+    let two = ctx.num(2);
+    let cos2 = ctx.add(Expr::Pow(cos_a, two));
+    let product = ctx.add(Expr::Mul(sin2, cos2));
+    let two_product = ctx.add(Expr::Mul(two, product));
+    let replacement = ctx.add(Expr::Sub(one, two_product));
+
+    let remaining: Vec<ExprId> = terms
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| *i != sin_i && *i != cos_i)
+        .map(|(_, &t)| t)
+        .collect();
+
+    let rewritten = if remaining.is_empty() {
+        replacement
+    } else {
+        let mut acc = replacement;
+        for &term in &remaining {
+            acc = ctx.add(Expr::Add(acc, term));
+        }
+        acc
+    };
+
+    Some(TrigPowerRewrite {
+        rewritten,
+        desc: "sin⁴(x) + cos⁴(x) = 1 − 2·sin²(x)·cos²(x)".to_string(),
+    })
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TrigPowerRewrite {
     pub rewritten: ExprId,
@@ -1554,6 +1721,30 @@ mod tests {
             Ordering::Equal
         );
         assert!(coeff_is_three(&mut ctx, coeff));
+    }
+
+    #[test]
+    fn rewrites_hidden_cubic_identity() {
+        let mut ctx = Context::new();
+        let expr = parse("sin(x)^6 + cos(x)^6 + 3*sin(x)^2*cos(x)^2", &mut ctx).expect("parse");
+        let rewrite = try_rewrite_hidden_cubic_identity_add_expr(&mut ctx, expr).expect("rewrite");
+        let expected = parse("(sin(x)^2 + cos(x)^2)^3", &mut ctx).expect("expected");
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, rewrite.rewritten, expected),
+            Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn rewrites_sin_cos_quartic_sum_with_tail_terms() {
+        let mut ctx = Context::new();
+        let expr = parse("sin(u)^4 + cos(u)^4 + z", &mut ctx).expect("parse");
+        let rewrite = try_rewrite_sin_cos_quartic_sum_add_expr(&mut ctx, expr).expect("rewrite");
+        let expected = parse("1 - 2*sin(u)^2*cos(u)^2 + z", &mut ctx).expect("expected");
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, rewrite.rewritten, expected),
+            Ordering::Equal
+        );
     }
 
     #[test]
