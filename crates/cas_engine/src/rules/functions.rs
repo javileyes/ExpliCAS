@@ -3,11 +3,12 @@ use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
 use cas_math::abs_support::{
     abs_domain_mode_from_flags, abs_needs_implicit_domain_check, is_ln_or_log_call,
-    try_extract_abs_exp_like_arg, try_extract_abs_sqrt_like_arg, try_plan_abs_nonnegative_rewrite,
-    try_plan_abs_positive_rewrite, try_plan_symbolic_root_cancel_rewrite,
-    try_rewrite_abs_even_power_expr, try_rewrite_abs_idempotent_expr,
+    try_plan_abs_nonnegative_rewrite, try_plan_abs_positive_rewrite,
+    try_plan_symbolic_root_cancel_rewrite, try_rewrite_abs_even_power_expr,
+    try_rewrite_abs_exp_identity_expr, try_rewrite_abs_idempotent_expr,
     try_rewrite_abs_numeric_factor_expr, try_rewrite_abs_odd_power_expr,
-    try_rewrite_abs_power_even_expr, try_rewrite_abs_product_expr, try_rewrite_abs_quotient_expr,
+    try_rewrite_abs_power_even_expr, try_rewrite_abs_product_identity_expr,
+    try_rewrite_abs_quotient_identity_expr, try_rewrite_abs_sqrt_identity_expr,
     try_rewrite_abs_sub_normalize_expr, try_rewrite_abs_sum_nonnegative_expr,
     try_rewrite_evaluate_abs_expr, try_rewrite_sqrt_square_expr, try_unwrap_abs_arg,
     value_domain_mode_from_flag, AbsAssumptionKind,
@@ -432,8 +433,8 @@ define_rule!(
     Some(crate::target_kind::TargetKindSet::MUL),
     PhaseMask::CORE | PhaseMask::TRANSFORM,
     |ctx, expr| {
-        let rewritten = try_rewrite_abs_product_expr(ctx, expr)?;
-        Some(Rewrite::new(rewritten).desc("|x|·|y| = |x·y|"))
+        let rewrite = try_rewrite_abs_product_identity_expr(ctx, expr)?;
+        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
     }
 );
 
@@ -447,8 +448,8 @@ define_rule!(
     Some(crate::target_kind::TargetKindSet::DIV),
     PhaseMask::CORE | PhaseMask::TRANSFORM,
     |ctx, expr| {
-        let rewritten = try_rewrite_abs_quotient_expr(ctx, expr)?;
-        Some(Rewrite::new(rewritten).desc("|x| / |y| = |x / y|"))
+        let rewrite = try_rewrite_abs_quotient_identity_expr(ctx, expr)?;
+        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
     }
 );
 
@@ -457,8 +458,8 @@ define_rule!(
 // Square root is always non-negative (when it exists in reals)
 // =============================================================================
 define_rule!(AbsSqrtRule, "Abs Of Sqrt", |ctx, expr| {
-    let arg = try_extract_abs_sqrt_like_arg(ctx, expr)?;
-    Some(Rewrite::new(arg).desc("|√x| = √x"))
+    let rewrite = try_rewrite_abs_sqrt_identity_expr(ctx, expr)?;
+    Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
 });
 
 // =============================================================================
@@ -466,8 +467,8 @@ define_rule!(AbsSqrtRule, "Abs Of Sqrt", |ctx, expr| {
 // Exponential is always positive
 // =============================================================================
 define_rule!(AbsExpRule, "Abs Of Exp", |ctx, expr| {
-    let arg = try_extract_abs_exp_like_arg(ctx, expr)?;
-    Some(Rewrite::new(arg).desc("|e^x| = e^x"))
+    let rewrite = try_rewrite_abs_exp_identity_expr(ctx, expr)?;
+    Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
 });
 
 // =============================================================================

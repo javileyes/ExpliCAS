@@ -13,6 +13,13 @@ pub struct CollectByVarRewrite {
     pub rewritten: ExprId,
 }
 
+impl CollectByVarRewrite {
+    /// Canonical didactic description used by the engine rule wrapper.
+    pub fn desc(&self) -> String {
+        format!("collect({}, {})", self.target_expr, self.var_name)
+    }
+}
+
 /// Try rewriting a `collect(target, var)` call into grouped polynomial form.
 pub fn try_rewrite_collect_by_var_expr(
     ctx: &mut Context,

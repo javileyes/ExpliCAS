@@ -27,6 +27,16 @@ pub enum GcdGoal {
     CancelFraction,
 }
 
+/// Parsed `poly_gcd`/`pgcd` function call payload.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ParsedPolyGcdCall {
+    pub lhs: ExprId,
+    pub rhs: ExprId,
+    pub mode: GcdMode,
+    pub modp_preset: Option<ZippelPreset>,
+    pub modp_main_var: Option<usize>,
+}
+
 /// Parse `GcdMode` from expression (variable token).
 pub fn parse_gcd_mode(ctx: &Context, expr: ExprId) -> GcdMode {
     if let Expr::Variable(sym_id) = ctx.get(expr) {
@@ -63,4 +73,78 @@ pub fn parse_modp_options(ctx: &Context, args: &[ExprId]) -> (Option<ZippelPrese
     }
 
     (preset, main_var)
+}
+
+/// Try parsing `poly_gcd(a, b [, mode [, modp_options...]])` / `pgcd(...)`.
+///
+/// Returns `None` when expression is not a matching call shape.
+pub fn try_parse_poly_gcd_call(ctx: &Context, expr: ExprId) -> Option<ParsedPolyGcdCall> {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return None;
+    };
+    let fn_id = *fn_id;
+    let args = args.clone();
+    let name = ctx.sym_name(fn_id);
+
+    if name != "poly_gcd" && name != "pgcd" {
+        return None;
+    }
+    if !(2..=4).contains(&args.len()) {
+        return None;
+    }
+
+    let lhs = args[0];
+    let rhs = args[1];
+    let mode = if args.len() >= 3 {
+        parse_gcd_mode(ctx, args[2])
+    } else {
+        GcdMode::Structural
+    };
+
+    let (modp_preset, modp_main_var) = if args.len() >= 4 {
+        parse_modp_options(ctx, &args[3..])
+    } else {
+        (None, None)
+    };
+
+    Some(ParsedPolyGcdCall {
+        lhs,
+        rhs,
+        mode,
+        modp_preset,
+        modp_main_var,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{try_parse_poly_gcd_call, GcdMode};
+    use cas_ast::Context;
+    use cas_parser::parse;
+
+    #[test]
+    fn parses_basic_poly_gcd_call() {
+        let mut ctx = Context::new();
+        let expr = parse("poly_gcd(a, b)", &mut ctx).expect("parse");
+        let parsed = try_parse_poly_gcd_call(&ctx, expr).expect("parsed");
+        assert_eq!(parsed.mode, GcdMode::Structural);
+        assert!(parsed.modp_preset.is_none());
+        assert!(parsed.modp_main_var.is_none());
+    }
+
+    #[test]
+    fn parses_alias_with_mode_and_modp_main_var() {
+        let mut ctx = Context::new();
+        let expr = parse("pgcd(a, b, modp, 2)", &mut ctx).expect("parse");
+        let parsed = try_parse_poly_gcd_call(&ctx, expr).expect("parsed");
+        assert_eq!(parsed.mode, GcdMode::Modp);
+        assert_eq!(parsed.modp_main_var, Some(2));
+    }
+
+    #[test]
+    fn rejects_non_poly_gcd_calls() {
+        let mut ctx = Context::new();
+        let expr = parse("foo(a, b)", &mut ctx).expect("parse");
+        assert!(try_parse_poly_gcd_call(&ctx, expr).is_none());
+    }
 }

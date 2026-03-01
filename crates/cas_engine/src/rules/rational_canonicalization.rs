@@ -1,9 +1,8 @@
 use crate::define_rule;
 use crate::rule::Rewrite;
-use cas_ast::Expr;
-use cas_math::expr_destructure::{as_div, as_pow};
-use num_integer::Integer;
-use num_traits::Zero;
+use cas_math::rational_canonicalization_support::{
+    try_rewrite_nested_pow_canonical_expr, try_rewrite_rational_div_canonical_expr,
+};
 
 // ──────────────────────────────────────────────────────────────────────
 // CanonicalizeRationalDivRule: Div(Number(p), Number(q)) → Number(p/q)
@@ -24,25 +23,8 @@ define_rule!(
     "Canonicalize Rational Division",
     importance: crate::step::ImportanceLevel::Low,
     |ctx, expr| {
-        let (num, den) = as_div(ctx, expr)?;
-
-        let (p, q) = match (ctx.get(num), ctx.get(den)) {
-            (Expr::Number(p), Expr::Number(q)) => (p.clone(), q.clone()),
-            _ => return None,
-        };
-
-        // Don't divide by zero
-        if q.is_zero() {
-            return None;
-        }
-
-        // BigRational::new already normalises gcd and sign
-        let rational = &p / &q;
-
-        Some(
-            Rewrite::new(ctx.add(Expr::Number(rational)))
-                .desc("p / q = p/q (exact rational)"),
-        )
+        let rewrite = try_rewrite_rational_div_canonical_expr(ctx, expr)?;
+        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
     }
 );
 
@@ -66,45 +48,8 @@ define_rule!(
     "Canonicalize Nested Power",
     importance: crate::step::ImportanceLevel::Low,
     |ctx, expr| {
-        let (outer_base, outer_exp) = as_pow(ctx, expr)?;
-        let (inner_base, inner_exp) = as_pow(ctx, outer_base)?;
-
-        // Both exponents must be rational numbers
-        let k = match ctx.get(inner_exp) {
-            Expr::Number(n) => n.clone(),
-            _ => return None,
-        };
-        let r = match ctx.get(outer_exp) {
-            Expr::Number(n) => n.clone(),
-            _ => return None,
-        };
-
-        // Domain safety check: (x^k)^(p/q) is safe iff NOT (k even AND q even)
-        let q_denom = r.denom();
-        let k_is_integer = k.is_integer();
-        let q_is_even = q_denom.is_even();
-
-        if q_is_even {
-            // Even root index — only safe if k is odd
-            if !k_is_integer {
-                return None; // Non-integer k with even root: skip
-            }
-            let k_int = k.to_integer();
-            if k_int.is_even() {
-                return None; // k even + q even → NOT SAFE (e.g. (x^2)^(1/2))
-            }
-            // k odd + q even → safe (e.g. (x^3)^(1/2))
-        }
-
-        // Safe to fold: Pow(base, k*r)
-        let product = &k * &r;
-        let new_exp = ctx.add(Expr::Number(product));
-        let new_expr = ctx.add(Expr::Pow(inner_base, new_exp));
-
-        Some(
-            Rewrite::new(new_expr)
-                .desc("(x^k)^r = x^(k·r)"),
-        )
+        let rewrite = try_rewrite_nested_pow_canonical_expr(ctx, expr)?;
+        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
     }
 );
 

@@ -15,15 +15,16 @@ use crate::engine::Simplifier;
 use crate::options::EvalOptions;
 use crate::phase::PhaseMask;
 use crate::rule::{Rewrite, Rule};
-use cas_ast::{Context, Expr, ExprId};
+use cas_ast::{Context, ExprId};
 use cas_formatter::DisplayExpr;
 use cas_math::gcd_zippel_modp::ZippelPreset;
 use cas_math::poly_gcd_dispatch::{
     classify_pre_evaluate_for_gcd, compute_poly_gcd_unified_with, GcdPreEvalDirective,
 };
-use cas_math::poly_gcd_mode::parse_modp_options;
+use cas_math::poly_gcd_mode::{try_parse_poly_gcd_call, GcdGoal, GcdMode};
 
-use cas_math::poly_gcd_mode::{parse_gcd_mode, GcdGoal, GcdMode};
+#[cfg(test)]
+use cas_ast::Expr;
 
 /// Pre-evaluate an expression to resolve specific function wrappers.
 ///
@@ -135,55 +136,20 @@ impl Rule for PolyGcdRule {
         expr: ExprId,
         _parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<Rewrite> {
-        let (fn_id, args) = if let Expr::Function(fn_id, args) = ctx.get(expr) {
-            (*fn_id, args.clone())
-        } else {
-            return None;
-        };
-        {
-            let name = ctx.sym_name(fn_id);
-            // Match poly_gcd, pgcd with 2-4 arguments
-            let is_poly_gcd = name == "poly_gcd" || name == "pgcd";
+        let parsed = try_parse_poly_gcd_call(ctx, expr)?;
+        let (result, description) = compute_poly_gcd_unified(
+            ctx,
+            parsed.lhs,
+            parsed.rhs,
+            GcdGoal::UserPolyGcd,
+            parsed.mode,
+            parsed.modp_preset,
+            parsed.modp_main_var,
+        );
 
-            if is_poly_gcd && args.len() >= 2 && args.len() <= 4 {
-                let a = args[0];
-                let b = args[1];
-
-                // Parse mode from 3rd argument (or default to Structural)
-                let mode = if args.len() >= 3 {
-                    parse_gcd_mode(ctx, args[2])
-                } else {
-                    GcdMode::Structural
-                };
-
-                // Parse modp options from remaining args
-                let (modp_preset, modp_main_var) = if args.len() >= 4 {
-                    parse_modp_options(ctx, &args[3..])
-                } else if args.len() == 3 && mode == GcdMode::Modp {
-                    // No extra args for modp, use defaults
-                    (None, None)
-                } else {
-                    (None, None)
-                };
-
-                let (result, description) = compute_poly_gcd_unified(
-                    ctx,
-                    a,
-                    b,
-                    GcdGoal::UserPolyGcd,
-                    mode,
-                    modp_preset,
-                    modp_main_var,
-                );
-
-                // Wrap result in __hold() to prevent further simplification
-                let held_gcd = cas_ast::hold::wrap_hold(ctx, result);
-
-                return Some(Rewrite::simple(held_gcd, description));
-            }
-        }
-
-        None
+        // Wrap result in __hold() to prevent further simplification
+        let held_gcd = cas_ast::hold::wrap_hold(ctx, result);
+        Some(Rewrite::simple(held_gcd, description))
     }
 }
 

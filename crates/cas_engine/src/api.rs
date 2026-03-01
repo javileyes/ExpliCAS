@@ -74,7 +74,7 @@ pub use cas_ast::BoundType;
 
 /// Budget for conditional branching in solver.
 /// Controls how many branches can be created (anti-explosion).
-pub use crate::solver::SolveBudget;
+pub use cas_solver_core::solve_budget::SolveBudget;
 
 /// Options for solver operations including domain and budget.
 pub use crate::solver::SolverOptions;

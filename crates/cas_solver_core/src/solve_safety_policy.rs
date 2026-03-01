@@ -26,6 +26,26 @@ pub struct RequirementDescriptorKind {
     pub provenance: ProvenanceKind,
 }
 
+/// Purpose of simplification, controls which rule classes are allowed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SimplifyPurpose {
+    /// Standard evaluation - all rules allowed (default).
+    #[default]
+    Eval,
+    /// Solver pre-pass - only `SolveSafetyKind::Always` rules.
+    SolvePrepass,
+    /// Solver tactic phase - conditional rules can run by domain policy.
+    SolveTactic,
+}
+
+impl SimplifyPurpose {
+    /// Returns true when this phase must suppress assumption generation.
+    #[inline]
+    pub fn blocks_assumptions(self) -> bool {
+        matches!(self, SimplifyPurpose::SolvePrepass)
+    }
+}
+
 pub fn domain_mode_allows_unproven(mode: DomainModeKind, class: ConditionClassKind) -> bool {
     match mode {
         DomainModeKind::Strict => false,
@@ -66,7 +86,7 @@ pub fn requirement_descriptor(safety: SolveSafetyKind) -> Option<RequirementDesc
 mod tests {
     use super::{
         requirement_descriptor, safe_for_prepass, safe_for_tactic, ConditionClassKind,
-        ProvenanceKind, RequirementDescriptorKind, SolveSafetyKind,
+        ProvenanceKind, RequirementDescriptorKind, SimplifyPurpose, SolveSafetyKind,
     };
     use crate::log_domain::DomainModeKind;
 
@@ -133,5 +153,12 @@ mod tests {
     fn always_and_never_have_no_descriptor() {
         assert_eq!(requirement_descriptor(SolveSafetyKind::Always), None);
         assert_eq!(requirement_descriptor(SolveSafetyKind::Never), None);
+    }
+
+    #[test]
+    fn simplify_purpose_blocks_assumptions_only_for_prepass() {
+        assert!(!SimplifyPurpose::Eval.blocks_assumptions());
+        assert!(SimplifyPurpose::SolvePrepass.blocks_assumptions());
+        assert!(!SimplifyPurpose::SolveTactic.blocks_assumptions());
     }
 }

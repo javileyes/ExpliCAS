@@ -15,6 +15,12 @@ pub struct CollectRulePlan {
     pub assumption: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CollectLikeTermsRewrite {
+    pub rewritten: ExprId,
+    pub desc: &'static str,
+}
+
 /// Build a combine-like-terms rewrite plan with semantics and didactic focus.
 ///
 /// Returns `None` when:
@@ -69,9 +75,24 @@ pub fn try_rewrite_collect_like_terms_expr(ctx: &mut Context, expr: ExprId) -> O
     }
 }
 
+/// Generic rewrite planner for collect-like-terms with canonical description.
+pub fn try_rewrite_collect_like_terms_identity_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<CollectLikeTermsRewrite> {
+    let rewritten = try_rewrite_collect_like_terms_expr(ctx, expr)?;
+    Some(CollectLikeTermsRewrite {
+        rewritten,
+        desc: "Collect like terms",
+    })
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{try_plan_collect_rule_expr, try_rewrite_collect_like_terms_expr};
+    use super::{
+        try_plan_collect_rule_expr, try_rewrite_collect_like_terms_expr,
+        try_rewrite_collect_like_terms_identity_expr,
+    };
     use crate::collect_semantics_support::CollectSemanticsMode;
     use cas_ast::Context;
     use cas_formatter::DisplayExpr;
@@ -112,5 +133,14 @@ mod tests {
             ),
             "2 * x"
         );
+    }
+
+    #[test]
+    fn rewrite_collect_like_terms_identity_has_desc() {
+        let mut ctx = Context::new();
+        let expr = parse("x + x", &mut ctx).expect("parse");
+        let rewrite =
+            try_rewrite_collect_like_terms_identity_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(rewrite.desc, "Collect like terms");
     }
 }

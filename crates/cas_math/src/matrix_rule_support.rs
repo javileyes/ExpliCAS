@@ -28,6 +28,34 @@ pub struct MatrixBinaryEval {
     pub result: Matrix,
 }
 
+impl MatrixBinaryEval {
+    pub fn add_desc(&self) -> String {
+        format!(
+            "Matrix addition: {}×{} + {}×{}",
+            self.left.rows, self.left.cols, self.right.rows, self.right.cols
+        )
+    }
+
+    pub fn sub_desc(&self) -> String {
+        format!(
+            "Matrix subtraction: {}×{} - {}×{}",
+            self.left.rows, self.left.cols, self.right.rows, self.right.cols
+        )
+    }
+
+    pub fn mul_desc(&self) -> String {
+        format!(
+            "Matrix multiplication: {}×{} × {}×{} = {}×{}",
+            self.left.rows,
+            self.left.cols,
+            self.right.rows,
+            self.right.cols,
+            self.result.rows,
+            self.result.cols
+        )
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ScalarMatrixSide {
     ScalarLeft,
@@ -39,6 +67,21 @@ pub struct ScalarMatrixEval {
     pub side: ScalarMatrixSide,
     pub matrix: MatrixShape,
     pub result: Matrix,
+}
+
+impl ScalarMatrixEval {
+    pub fn desc(&self) -> String {
+        match self.side {
+            ScalarMatrixSide::ScalarLeft => format!(
+                "Scalar multiplication: scalar × {}×{} matrix",
+                self.matrix.rows, self.matrix.cols
+            ),
+            ScalarMatrixSide::ScalarRight => format!(
+                "Scalar multiplication: {}×{} matrix × scalar",
+                self.matrix.rows, self.matrix.cols
+            ),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -66,45 +109,22 @@ pub struct MatrixFunctionRewrite {
 
 /// Human-readable description for matrix addition rewrite.
 pub fn format_matrix_add_desc(eval: &MatrixBinaryEval) -> String {
-    format!(
-        "Matrix addition: {}×{} + {}×{}",
-        eval.left.rows, eval.left.cols, eval.right.rows, eval.right.cols
-    )
+    eval.add_desc()
 }
 
 /// Human-readable description for matrix subtraction rewrite.
 pub fn format_matrix_sub_desc(eval: &MatrixBinaryEval) -> String {
-    format!(
-        "Matrix subtraction: {}×{} - {}×{}",
-        eval.left.rows, eval.left.cols, eval.right.rows, eval.right.cols
-    )
+    eval.sub_desc()
 }
 
 /// Human-readable description for scalar-matrix multiplication rewrite.
 pub fn format_scalar_matrix_mul_desc(eval: &ScalarMatrixEval) -> String {
-    match eval.side {
-        ScalarMatrixSide::ScalarLeft => format!(
-            "Scalar multiplication: scalar × {}×{} matrix",
-            eval.matrix.rows, eval.matrix.cols
-        ),
-        ScalarMatrixSide::ScalarRight => format!(
-            "Scalar multiplication: {}×{} matrix × scalar",
-            eval.matrix.rows, eval.matrix.cols
-        ),
-    }
+    eval.desc()
 }
 
 /// Human-readable description for matrix-matrix multiplication rewrite.
 pub fn format_matrix_mul_desc(eval: &MatrixBinaryEval) -> String {
-    format!(
-        "Matrix multiplication: {}×{} × {}×{} = {}×{}",
-        eval.left.rows,
-        eval.left.cols,
-        eval.right.rows,
-        eval.right.cols,
-        eval.result.rows,
-        eval.result.cols
-    )
+    eval.mul_desc()
 }
 
 /// Human-readable description for matrix function rewrites.
@@ -307,6 +327,18 @@ pub fn try_rewrite_transpose_product_expr(ctx: &mut Context, expr: ExprId) -> Op
     Some(ctx.call("matmul", vec![transposed_b, transposed_a]))
 }
 
+/// Rewrite helper for transpose-of-product identity with canonical description.
+pub fn try_rewrite_transpose_product_identity_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<MatrixFunctionRewrite> {
+    let rewritten = try_rewrite_transpose_product_expr(ctx, expr)?;
+    Some(MatrixFunctionRewrite {
+        rewritten,
+        desc: "(AB)^T = B^T·A^T".to_string(),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -314,7 +346,7 @@ mod tests {
         format_scalar_matrix_mul_desc, try_eval_matrix_add_expr, try_eval_matrix_function_expr,
         try_eval_matrix_mul_expr, try_eval_scalar_matrix_mul_expr,
         try_rewrite_matrix_function_rule_expr, try_rewrite_transpose_product_expr,
-        MatrixFunctionEval, ScalarMatrixSide,
+        try_rewrite_transpose_product_identity_expr, MatrixFunctionEval, ScalarMatrixSide,
     };
     use cas_ast::Expr;
 
@@ -407,6 +439,17 @@ mod tests {
         };
         assert_eq!(ctx.sym_name(*fn_id), "matmul");
         assert_eq!(args.len(), 2);
+    }
+
+    #[test]
+    fn transpose_product_identity_rewrite_has_desc() {
+        let mut ctx = cas_ast::Context::new();
+        let a = ctx.var("A");
+        let b = ctx.var("B");
+        let matmul = ctx.call("matmul", vec![a, b]);
+        let expr = ctx.call("transpose", vec![matmul]);
+        let rewrite = try_rewrite_transpose_product_identity_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(rewrite.desc, "(AB)^T = B^T·A^T");
     }
 
     #[test]

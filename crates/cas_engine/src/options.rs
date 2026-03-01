@@ -127,7 +127,7 @@ pub struct EvalOptions {
     /// Explain mode: show assumption summary after each evaluation (default: false)
     pub explain_mode: bool,
     /// V2.0: Budget for Conditional branching in solve
-    pub budget: crate::solver::SolveBudget,
+    pub budget: cas_solver_core::solve_budget::SolveBudget,
     /// Issue #5: Verify solutions by substitution (default: false)
     pub check_solutions: bool,
     /// Display level for required conditions (Essential hides witness-surviving requires)
@@ -209,7 +209,7 @@ impl Default for EvalOptions {
             const_fold: crate::const_fold::ConstFoldMode::default(),
             hints_enabled: true,
             explain_mode: false,
-            budget: crate::solver::SolveBudget::default(),
+            budget: cas_solver_core::solve_budget::SolveBudget::default(),
             check_solutions: false,
             requires_display: crate::implicit_domain::RequiresDisplayLevel::Essential,
             shared: crate::phase::SharedSemanticConfig::default(),

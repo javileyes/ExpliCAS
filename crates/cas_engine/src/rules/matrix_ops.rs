@@ -1,10 +1,9 @@
 use crate::rule::{Rewrite, SimpleRule};
 use cas_ast::{Context, ExprId};
 use cas_math::matrix_rule_support::{
-    format_matrix_add_desc, format_matrix_mul_desc, format_matrix_sub_desc,
-    format_scalar_matrix_mul_desc, try_eval_matrix_add_expr, try_eval_matrix_mul_expr,
-    try_eval_matrix_sub_expr, try_eval_scalar_matrix_mul_expr,
-    try_rewrite_matrix_function_rule_expr, try_rewrite_transpose_product_expr,
+    try_eval_matrix_add_expr, try_eval_matrix_mul_expr, try_eval_matrix_sub_expr,
+    try_eval_scalar_matrix_mul_expr, try_rewrite_matrix_function_rule_expr,
+    try_rewrite_transpose_product_identity_expr,
 };
 
 /// Rule to add two matrices
@@ -21,7 +20,7 @@ impl SimpleRule for MatrixAddRule {
 
     fn apply_simple(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
         let eval = try_eval_matrix_add_expr(ctx, expr)?;
-        Some(Rewrite::new(eval.result.to_expr(ctx)).desc(format_matrix_add_desc(&eval)))
+        Some(Rewrite::new(eval.result.to_expr(ctx)).desc(eval.add_desc()))
     }
 }
 
@@ -39,7 +38,7 @@ impl SimpleRule for MatrixSubRule {
 
     fn apply_simple(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
         let eval = try_eval_matrix_sub_expr(ctx, expr)?;
-        Some(Rewrite::new(eval.result.to_expr(ctx)).desc(format_matrix_sub_desc(&eval)))
+        Some(Rewrite::new(eval.result.to_expr(ctx)).desc(eval.sub_desc()))
     }
 }
 
@@ -57,7 +56,7 @@ impl SimpleRule for ScalarMatrixRule {
 
     fn apply_simple(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
         let eval = try_eval_scalar_matrix_mul_expr(ctx, expr)?;
-        Some(Rewrite::new(eval.result.to_expr(ctx)).desc(format_scalar_matrix_mul_desc(&eval)))
+        Some(Rewrite::new(eval.result.to_expr(ctx)).desc(eval.desc()))
     }
 }
 
@@ -75,7 +74,7 @@ impl SimpleRule for MatrixMultiplyRule {
 
     fn apply_simple(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
         let eval = try_eval_matrix_mul_expr(ctx, expr)?;
-        Some(Rewrite::new(eval.result.to_expr(ctx)).desc(format_matrix_mul_desc(&eval)))
+        Some(Rewrite::new(eval.result.to_expr(ctx)).desc(eval.mul_desc()))
     }
 }
 
@@ -111,8 +110,8 @@ impl SimpleRule for TransposeProductRule {
     }
 
     fn apply_simple(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
-        let result = try_rewrite_transpose_product_expr(ctx, expr)?;
-        Some(Rewrite::new(result).desc("(AB)^T = B^T·A^T"))
+        let rewrite = try_rewrite_transpose_product_identity_expr(ctx, expr)?;
+        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
     }
 }
 

@@ -7,7 +7,7 @@ use crate::multipoly::{
     gcd_multivar_layer2, gcd_multivar_layer25, multipoly_from_expr, multipoly_to_expr, GcdBudget,
     Layer25Budget, MultiPoly, PolyBudget,
 };
-use cas_ast::{Context, ExprId};
+use cas_ast::{Context, Expr, ExprId};
 use num_rational::BigRational;
 use num_traits::{One, Signed, Zero};
 
@@ -52,6 +52,46 @@ pub enum GcdExactLayer {
     Layer25TensorGrid,
     /// Budget exceeded, returned 1
     BudgetExceeded,
+}
+
+/// Structured rewrite payload for `poly_gcd_exact(a, b)` style calls.
+#[derive(Clone, Debug)]
+pub struct PolyGcdExactCallRewrite {
+    pub lhs: ExprId,
+    pub rhs: ExprId,
+    pub gcd: ExprId,
+    pub layer_used: GcdExactLayer,
+}
+
+/// Match `poly_gcd_exact(a, b)` / `pgcdx(a, b)` and compute exact polynomial GCD.
+pub fn try_rewrite_poly_gcd_exact_function_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+    budget: &GcdExactBudget,
+) -> Option<PolyGcdExactCallRewrite> {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return None;
+    };
+    let fn_id = *fn_id;
+    let args = args.clone();
+    if args.len() != 2 {
+        return None;
+    }
+
+    let name = ctx.sym_name(fn_id);
+    if name != "poly_gcd_exact" && name != "pgcdx" {
+        return None;
+    }
+
+    let lhs = args[0];
+    let rhs = args[1];
+    let result = gcd_exact(ctx, lhs, rhs, budget);
+    Some(PolyGcdExactCallRewrite {
+        lhs,
+        rhs,
+        gcd: result.gcd,
+        layer_used: result.layer_used,
+    })
 }
 
 /// Strip __hold() wrapper(s) from an expression. __hold is an internal barrier
@@ -465,5 +505,23 @@ mod tests {
             result_str,
             result.layer_used
         );
+    }
+
+    #[test]
+    fn test_rewrite_poly_gcd_exact_function_expr() {
+        let mut ctx = Context::new();
+        let expr = parse("poly_gcd_exact(x^2 - 1, x - 1)", &mut ctx).expect("parse");
+        let rewrite =
+            try_rewrite_poly_gcd_exact_function_expr(&mut ctx, expr, &GcdExactBudget::default())
+                .expect("rewrite");
+        let result_str = format!(
+            "{}",
+            DisplayExpr {
+                context: &ctx,
+                id: rewrite.gcd
+            }
+        );
+        assert!(result_str.contains("x"));
+        assert!(result_str.contains("1"));
     }
 }

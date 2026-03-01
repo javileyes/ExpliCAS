@@ -353,6 +353,69 @@ pub fn try_rewrite_tan_to_sin_cos_function_expr(
     })
 }
 
+/// Expand `sec(x)` into reciprocal cosine form: `1/cos(x)`.
+pub fn try_rewrite_sec_to_recip_cos_function_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<TrigCanonicalIdentityRewrite> {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return None;
+    };
+    if !matches!(ctx.builtin_of(*fn_id), Some(BuiltinFn::Sec)) || args.len() != 1 {
+        return None;
+    }
+
+    let arg = args[0];
+    let one = ctx.num(1);
+    let cos_arg = ctx.call_builtin(BuiltinFn::Cos, vec![arg]);
+    Some(TrigCanonicalIdentityRewrite {
+        rewritten: ctx.add(Expr::Div(one, cos_arg)),
+        desc: "sec(x) = 1/cos(x)",
+    })
+}
+
+/// Expand `csc(x)` into reciprocal sine form: `1/sin(x)`.
+pub fn try_rewrite_csc_to_recip_sin_function_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<TrigCanonicalIdentityRewrite> {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return None;
+    };
+    if !matches!(ctx.builtin_of(*fn_id), Some(BuiltinFn::Csc)) || args.len() != 1 {
+        return None;
+    }
+
+    let arg = args[0];
+    let one = ctx.num(1);
+    let sin_arg = ctx.call_builtin(BuiltinFn::Sin, vec![arg]);
+    Some(TrigCanonicalIdentityRewrite {
+        rewritten: ctx.add(Expr::Div(one, sin_arg)),
+        desc: "csc(x) = 1/sin(x)",
+    })
+}
+
+/// Expand `cot(x)` into cosine-over-sine form: `cos(x)/sin(x)`.
+pub fn try_rewrite_cot_to_cos_sin_function_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<TrigCanonicalIdentityRewrite> {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return None;
+    };
+    if !matches!(ctx.builtin_of(*fn_id), Some(BuiltinFn::Cot)) || args.len() != 1 {
+        return None;
+    }
+
+    let arg = args[0];
+    let cos_arg = ctx.call_builtin(BuiltinFn::Cos, vec![arg]);
+    let sin_arg = ctx.call_builtin(BuiltinFn::Sin, vec![arg]);
+    Some(TrigCanonicalIdentityRewrite {
+        rewritten: ctx.add(Expr::Div(cos_arg, sin_arg)),
+        desc: "cot(x) = cos(x)/sin(x)",
+    })
+}
+
 /// Convert trig quotients to canonical reciprocal forms:
 /// - `sin(x)/cos(x) -> tan(x)`
 /// - `cos(x)/sin(x) -> cot(x)`
@@ -855,5 +918,21 @@ mod tests {
 
         assert!(contains_named_call(&ctx, plan1.rewritten, "tan"));
         assert!(contains_named_call(&ctx, plan2.rewritten, "cot"));
+    }
+
+    #[test]
+    fn rewrites_sec_csc_cot_functions_to_reciprocal_forms() {
+        let mut ctx = Context::new();
+        let sec = parse("sec(x)", &mut ctx).expect("sec");
+        let csc = parse("csc(x)", &mut ctx).expect("csc");
+        let cot = parse("cot(x)", &mut ctx).expect("cot");
+
+        let sec_rw = try_rewrite_sec_to_recip_cos_function_expr(&mut ctx, sec).expect("sec_rw");
+        let csc_rw = try_rewrite_csc_to_recip_sin_function_expr(&mut ctx, csc).expect("csc_rw");
+        let cot_rw = try_rewrite_cot_to_cos_sin_function_expr(&mut ctx, cot).expect("cot_rw");
+
+        assert_eq!(sec_rw.desc, "sec(x) = 1/cos(x)");
+        assert_eq!(csc_rw.desc, "csc(x) = 1/sin(x)");
+        assert_eq!(cot_rw.desc, "cot(x) = cos(x)/sin(x)");
     }
 }

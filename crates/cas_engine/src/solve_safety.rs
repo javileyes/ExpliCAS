@@ -13,6 +13,7 @@
 use crate::assumptions::ConditionClass;
 use crate::domain_facts::Provenance;
 use cas_solver_core::solve_safety_policy as core_safety;
+pub use cas_solver_core::solve_safety_policy::SimplifyPurpose;
 
 /// Safety classification for rules when used during equation solving.
 ///
@@ -154,30 +155,6 @@ fn to_core_domain_mode(
         matches!(domain_mode, crate::domain::DomainMode::Assume),
         matches!(domain_mode, crate::domain::DomainMode::Strict),
     )
-}
-
-/// Purpose of simplification, controls which rules are applied.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum SimplifyPurpose {
-    /// Standard evaluation - all rules allowed (default)
-    #[default]
-    Eval,
-
-    /// Solver pre-pass - only SolveSafety::Always rules.
-    /// No assumptions or hints should be generated.
-    SolvePrepass,
-
-    /// Solver tactic - conditional rules allowed with assumptions.
-    /// Must respect DomainMode.allows_unproven(class).
-    SolveTactic,
-}
-
-impl SimplifyPurpose {
-    /// Returns true if this purpose should block assumption generation.
-    #[inline]
-    pub fn blocks_assumptions(&self) -> bool {
-        matches!(self, SimplifyPurpose::SolvePrepass)
-    }
 }
 
 #[cfg(test)]

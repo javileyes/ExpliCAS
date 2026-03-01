@@ -4,11 +4,11 @@ use cas_math::hyperbolic_core_support::{
     try_eval_hyperbolic_special_value, try_rewrite_hyperbolic_composition,
 };
 use cas_math::hyperbolic_identity_support::{
-    detect_hyperbolic_pythagorean_sub, try_rewrite_hyperbolic_double_angle_sub_chain,
-    try_rewrite_hyperbolic_double_angle_sum, try_rewrite_hyperbolic_triple_angle,
-    try_rewrite_sinh_cosh_to_exp, try_rewrite_sinh_cosh_to_tanh,
-    try_rewrite_sinh_double_angle_expansion, try_rewrite_tanh_to_sinh_cosh,
-    HyperbolicPythagoreanValue,
+    try_rewrite_hyperbolic_double_angle_sub_chain, try_rewrite_hyperbolic_double_angle_sum,
+    try_rewrite_hyperbolic_pythagorean_sub_expr, try_rewrite_hyperbolic_triple_angle,
+    try_rewrite_sinh_cosh_to_exp, try_rewrite_sinh_cosh_to_tanh_identity_expr,
+    try_rewrite_sinh_double_angle_expansion_identity_expr,
+    try_rewrite_tanh_to_sinh_cosh_identity_expr,
 };
 use cas_math::hyperbolic_negative_support::try_rewrite_hyperbolic_negative_expr;
 
@@ -64,14 +64,8 @@ define_rule!(
     "Hyperbolic Pythagorean Identity",
     Some(crate::target_kind::TargetKindSet::SUB),
     |ctx, expr| {
-        match detect_hyperbolic_pythagorean_sub(ctx, expr)? {
-            HyperbolicPythagoreanValue::One => {
-                Some(Rewrite::new(ctx.num(1)).desc("cosh²(x) - sinh²(x) = 1"))
-            }
-            HyperbolicPythagoreanValue::NegativeOne => {
-                Some(Rewrite::new(ctx.num(-1)).desc("sinh²(x) - cosh²(x) = -1"))
-            }
-        }
+        let rewrite = try_rewrite_hyperbolic_pythagorean_sub_expr(ctx, expr)?;
+        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
     }
 );
 
@@ -108,8 +102,8 @@ define_rule!(
     "tanh(x) = sinh(x)/cosh(x)",
     Some(crate::target_kind::TargetKindSet::FUNCTION),
     |ctx, expr| {
-        let rewritten = try_rewrite_tanh_to_sinh_cosh(ctx, expr)?;
-        Some(Rewrite::new(rewritten).desc("tanh(x) = sinh(x)/cosh(x)"))
+        let rewrite = try_rewrite_tanh_to_sinh_cosh_identity_expr(ctx, expr)?;
+        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
     }
 );
 
@@ -120,8 +114,8 @@ define_rule!(
     "sinh(2x) = 2·sinh(x)·cosh(x)",
     Some(crate::target_kind::TargetKindSet::FUNCTION),
     |ctx, expr| {
-        let rewritten = try_rewrite_sinh_double_angle_expansion(ctx, expr)?;
-        Some(Rewrite::new(rewritten).desc("sinh(2x) = 2·sinh(x)·cosh(x)"))
+        let rewrite = try_rewrite_sinh_double_angle_expansion_identity_expr(ctx, expr)?;
+        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
     }
 );
 
@@ -146,8 +140,8 @@ define_rule!(
     "sinh(x)/cosh(x) = tanh(x)",
     Some(crate::target_kind::TargetKindSet::DIV),
     |ctx, expr| {
-        let rewritten = try_rewrite_sinh_cosh_to_tanh(ctx, expr)?;
-        Some(Rewrite::new(rewritten).desc("sinh(x)/cosh(x) = tanh(x)"))
+        let rewrite = try_rewrite_sinh_cosh_to_tanh_identity_expr(ctx, expr)?;
+        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
     }
 );
 

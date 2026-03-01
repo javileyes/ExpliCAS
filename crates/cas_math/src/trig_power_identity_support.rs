@@ -2,7 +2,7 @@ use crate::expr_nary::{add_leaves, mul_leaves};
 use crate::numeric_eval::as_rational_const;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use num_rational::BigRational;
-use num_traits::One;
+use num_traits::{One, Zero};
 use std::cmp::Ordering;
 
 const SIN_COS_BUILTINS: [BuiltinFn; 2] = [BuiltinFn::Sin, BuiltinFn::Cos];
@@ -867,6 +867,170 @@ pub fn try_rewrite_sin_cos_quartic_sum_add_expr(
         rewritten,
         desc: "sin⁴(x) + cos⁴(x) = 1 − 2·sin²(x)·cos²(x)".to_string(),
     })
+}
+
+fn apply_numeric_coefficient(ctx: &mut Context, coeff: &BigRational, body: ExprId) -> ExprId {
+    if *coeff == BigRational::from_integer(1.into()) {
+        return body;
+    }
+    if *coeff == BigRational::from_integer((-1).into()) {
+        return ctx.add(Expr::Neg(body));
+    }
+    let coeff_expr = ctx.add(Expr::Number(coeff.clone()));
+    ctx.add(Expr::Mul(coeff_expr, body))
+}
+
+/// Rewrite additive quartic trig differences:
+/// `k*sin(u)^4 + (-k)*cos(u)^4` -> `k*(sin(u)^2 - cos(u)^2)`.
+///
+/// If the additive chain has extra terms, only the matched pair is replaced.
+pub fn try_rewrite_trig_fourth_power_difference_add_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<TrigPowerRewrite> {
+    let terms = add_leaves(ctx, expr);
+    if terms.len() < 2 {
+        return None;
+    }
+
+    let mut sin4_terms: Vec<(BigRational, ExprId, usize)> = Vec::new();
+    let mut cos4_terms: Vec<(BigRational, ExprId, usize)> = Vec::new();
+
+    for (i, &term) in terms.iter().enumerate() {
+        if let Some((coeff, trig_name, arg)) = extract_coeff_trig_pow4(ctx, term) {
+            match trig_name {
+                "sin" => sin4_terms.push((coeff, arg, i)),
+                "cos" => cos4_terms.push((coeff, arg, i)),
+                _ => {}
+            }
+        }
+    }
+
+    for (sin_coeff, sin_arg, sin_idx) in &sin4_terms {
+        for (cos_coeff, cos_arg, cos_idx) in &cos4_terms {
+            if cas_ast::ordering::compare_expr(ctx, *sin_arg, *cos_arg) != Ordering::Equal {
+                continue;
+            }
+
+            let coeff_sum = sin_coeff.clone() + cos_coeff.clone();
+            if !coeff_sum.is_zero() {
+                continue;
+            }
+
+            let sin_call = ctx.call_builtin(BuiltinFn::Sin, vec![*sin_arg]);
+            let cos_call = ctx.call_builtin(BuiltinFn::Cos, vec![*sin_arg]);
+            let two = ctx.num(2);
+            let sin_sq = ctx.add(Expr::Pow(sin_call, two));
+            let two = ctx.num(2);
+            let cos_sq = ctx.add(Expr::Pow(cos_call, two));
+            let diff_body = ctx.add(Expr::Sub(sin_sq, cos_sq));
+            let replacement = apply_numeric_coefficient(ctx, sin_coeff, diff_body);
+
+            let mut new_terms = Vec::new();
+            for (idx, &term_id) in terms.iter().enumerate() {
+                if idx != *sin_idx && idx != *cos_idx {
+                    new_terms.push(term_id);
+                }
+            }
+            new_terms.push(replacement);
+
+            let rewritten = if new_terms.len() == 1 {
+                new_terms[0]
+            } else {
+                let mut acc = new_terms[0];
+                for &term in new_terms.iter().skip(1) {
+                    acc = ctx.add(Expr::Add(acc, term));
+                }
+                acc
+            };
+
+            return Some(TrigPowerRewrite {
+                rewritten,
+                desc: "sin⁴(x) - cos⁴(x) = sin²(x) - cos²(x)".to_string(),
+            });
+        }
+    }
+
+    None
+}
+
+/// Rewrite additive quartic trig sums:
+/// `k*sin(u)^4 + k*cos(u)^4` -> `k*(1 - 2*sin(u)^2*cos(u)^2)`.
+///
+/// If the additive chain has extra terms, only the matched pair is replaced.
+pub fn try_rewrite_trig_fourth_power_sum_add_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<TrigPowerRewrite> {
+    let terms = add_leaves(ctx, expr);
+    if terms.len() < 2 {
+        return None;
+    }
+
+    let mut sin4_terms: Vec<(BigRational, ExprId, usize)> = Vec::new();
+    let mut cos4_terms: Vec<(BigRational, ExprId, usize)> = Vec::new();
+
+    for (i, &term) in terms.iter().enumerate() {
+        if let Some((coeff, trig_name, arg)) = extract_coeff_trig_pow4(ctx, term) {
+            match trig_name {
+                "sin" => sin4_terms.push((coeff, arg, i)),
+                "cos" => cos4_terms.push((coeff, arg, i)),
+                _ => {}
+            }
+        }
+    }
+
+    for (sin_coeff, sin_arg, sin_idx) in &sin4_terms {
+        for (cos_coeff, cos_arg, cos_idx) in &cos4_terms {
+            if sin_idx == cos_idx {
+                continue;
+            }
+            if cas_ast::ordering::compare_expr(ctx, *sin_arg, *cos_arg) != Ordering::Equal {
+                continue;
+            }
+            if sin_coeff != cos_coeff {
+                continue;
+            }
+
+            let sin_call = ctx.call_builtin(BuiltinFn::Sin, vec![*sin_arg]);
+            let cos_call = ctx.call_builtin(BuiltinFn::Cos, vec![*sin_arg]);
+            let two = ctx.num(2);
+            let sin_sq = ctx.add(Expr::Pow(sin_call, two));
+            let two = ctx.num(2);
+            let cos_sq = ctx.add(Expr::Pow(cos_call, two));
+            let sin2_cos2 = ctx.add(Expr::Mul(sin_sq, cos_sq));
+            let two = ctx.num(2);
+            let two_sin2_cos2 = ctx.add(Expr::Mul(two, sin2_cos2));
+            let one = ctx.num(1);
+            let body = ctx.add(Expr::Sub(one, two_sin2_cos2));
+            let replacement = apply_numeric_coefficient(ctx, sin_coeff, body);
+
+            let mut new_terms = Vec::new();
+            for (idx, &term_id) in terms.iter().enumerate() {
+                if idx != *sin_idx && idx != *cos_idx {
+                    new_terms.push(term_id);
+                }
+            }
+            new_terms.push(replacement);
+
+            let rewritten = if new_terms.len() == 1 {
+                new_terms[0]
+            } else {
+                let mut acc = new_terms[0];
+                for &term in new_terms.iter().skip(1) {
+                    acc = ctx.add(Expr::Add(acc, term));
+                }
+                acc
+            };
+
+            return Some(TrigPowerRewrite {
+                rewritten,
+                desc: "k·sin⁴(x) + k·cos⁴(x) = k·(1 - 2·sin²(x)·cos²(x))".to_string(),
+            });
+        }
+    }
+
+    None
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1741,6 +1905,31 @@ mod tests {
         let expr = parse("sin(u)^4 + cos(u)^4 + z", &mut ctx).expect("parse");
         let rewrite = try_rewrite_sin_cos_quartic_sum_add_expr(&mut ctx, expr).expect("rewrite");
         let expected = parse("1 - 2*sin(u)^2*cos(u)^2 + z", &mut ctx).expect("expected");
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, rewrite.rewritten, expected),
+            Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn rewrites_trig_fourth_power_difference_with_numeric_coefficients() {
+        let mut ctx = Context::new();
+        let expr = parse("3*sin(u)^4 + (-3)*cos(u)^4 + z", &mut ctx).expect("parse");
+        let rewrite =
+            try_rewrite_trig_fourth_power_difference_add_expr(&mut ctx, expr).expect("rewrite");
+        let expected = parse("3*(sin(u)^2 - cos(u)^2) + z", &mut ctx).expect("expected");
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, rewrite.rewritten, expected),
+            Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn rewrites_trig_fourth_power_sum_with_numeric_coefficients() {
+        let mut ctx = Context::new();
+        let expr = parse("-2*sin(t)^4 + (-2)*cos(t)^4 + q", &mut ctx).expect("parse");
+        let rewrite = try_rewrite_trig_fourth_power_sum_add_expr(&mut ctx, expr).expect("rewrite");
+        let expected = parse("-2*(1 - 2*sin(t)^2*cos(t)^2) + q", &mut ctx).expect("expected");
         assert_eq!(
             cas_ast::ordering::compare_expr(&ctx, rewrite.rewritten, expected),
             Ordering::Equal

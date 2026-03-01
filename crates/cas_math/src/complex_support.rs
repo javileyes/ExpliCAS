@@ -207,6 +207,18 @@ pub fn try_rewrite_i_squared_mul_expr(ctx: &mut Context, expr: ExprId) -> Option
     }
 }
 
+/// Rewrite `i * i` into `-1` with canonical rule description.
+pub fn try_rewrite_i_squared_mul_identity_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ComplexRewrite> {
+    let rewritten = try_rewrite_i_squared_mul_expr(ctx, expr)?;
+    Some(ComplexRewrite {
+        rewritten,
+        desc: "i · i = -1".to_string(),
+    })
+}
+
 /// Rewrite `(a+bi)(c+di)` into `(ac-bd) + (ad+bc)i`.
 pub fn try_rewrite_gaussian_mul_expr(ctx: &mut Context, expr: ExprId) -> Option<ComplexRewrite> {
     let Expr::Mul(l, r) = ctx.get(expr) else {
@@ -368,7 +380,8 @@ pub fn try_rewrite_sqrt_negative_expr(ctx: &mut Context, expr: ExprId) -> Option
 mod tests {
     use super::{
         extract_gaussian, try_rewrite_gaussian_div_expr, try_rewrite_gaussian_mul_expr,
-        try_rewrite_imaginary_power_expr, try_rewrite_sqrt_negative_expr, GaussianRational,
+        try_rewrite_i_squared_mul_identity_expr, try_rewrite_imaginary_power_expr,
+        try_rewrite_sqrt_negative_expr, GaussianRational,
     };
     use cas_ast::{Constant, Context, Expr};
     use cas_formatter::DisplayExpr;
@@ -464,6 +477,26 @@ mod tests {
                 }
             ),
             "3 + 2 * i"
+        );
+    }
+
+    #[test]
+    fn rewrites_i_squared_identity_with_desc() {
+        let mut ctx = Context::new();
+        let i1 = ctx.add(Expr::Constant(Constant::I));
+        let i2 = ctx.add(Expr::Constant(Constant::I));
+        let expr = ctx.add(Expr::Mul(i1, i2));
+        let rewrite = try_rewrite_i_squared_mul_identity_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(rewrite.desc, "i · i = -1");
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.rewritten
+                }
+            ),
+            "-1"
         );
     }
 }

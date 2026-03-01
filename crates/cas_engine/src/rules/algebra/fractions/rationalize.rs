@@ -178,54 +178,25 @@ define_rule!(
     DivExpandToCancelRule,
     "Expand to Cancel Fraction",
     |ctx, expr| {
-        use std::cell::Cell;
-        thread_local! {
-            static OPAQUE_SUB_DEPTH: Cell<u32> = const { Cell::new(0) };
-        }
-        thread_local! {
-            static EXPAND_CANCEL_DEPTH: Cell<u32> = const { Cell::new(0) };
-        }
+        let rewrite = cas_math::div_expand_cancel_support::try_rewrite_div_expand_to_cancel_expr_with_thread_guards(
+            ctx,
+            expr,
+            |base_ctx, sub_frac| {
+                let mut simplifier = crate::Simplifier::with_default_rules();
+                simplifier.context = base_ctx.clone();
+                let (simplified, _) = simplifier.simplify(sub_frac);
+                Some((simplifier.context, simplified))
+            },
+            crate::expand::expand,
+            |expanded_ctx, expanded_num, expanded_den| {
+                let mut simplifier = crate::Simplifier::with_default_rules();
+                simplifier.context = expanded_ctx;
+                let (simplified_num, _) = simplifier.simplify(expanded_num);
+                let (simplified_den, _) = simplifier.simplify(expanded_den);
+                Some((simplifier.context, simplified_num, simplified_den))
+            },
+        )?;
 
-        let rewrite =
-            cas_math::div_expand_cancel_support::try_rewrite_div_expand_to_cancel_expr_with(
-                ctx,
-                expr,
-                |base_ctx, sub_frac| {
-                    let depth = OPAQUE_SUB_DEPTH.with(|c| c.get());
-                    if depth > 0 {
-                        return None;
-                    }
-                    OPAQUE_SUB_DEPTH.with(|c| c.set(depth + 1));
-                    let mut simplifier = crate::Simplifier::with_default_rules();
-                    simplifier.context = base_ctx.clone();
-                    let (simplified, _) = simplifier.simplify(sub_frac);
-                    OPAQUE_SUB_DEPTH.with(|c| c.set(depth));
-                    Some((simplifier.context, simplified))
-                },
-                crate::expand::expand,
-                |expanded_ctx, expanded_num, expanded_den| {
-                    let depth = EXPAND_CANCEL_DEPTH.with(|c| c.get());
-                    if depth > 0 {
-                        return None;
-                    }
-                    EXPAND_CANCEL_DEPTH.with(|c| c.set(depth + 1));
-                    let mut simplifier = crate::Simplifier::with_default_rules();
-                    simplifier.context = expanded_ctx;
-                    let (simplified_num, _) = simplifier.simplify(expanded_num);
-                    let (simplified_den, _) = simplifier.simplify(expanded_den);
-                    EXPAND_CANCEL_DEPTH.with(|c| c.set(depth));
-                    Some((simplifier.context, simplified_num, simplified_den))
-                },
-            )?;
-
-        let desc = match rewrite.kind {
-            cas_math::div_expand_cancel_support::DivExpandToCancelKind::OpaqueSubstitution => {
-                "Polynomial division with opaque substitution"
-            }
-            cas_math::div_expand_cancel_support::DivExpandToCancelKind::ExpandedEquality => {
-                "Expanded numerator equals denominator"
-            }
-        };
-        Some(Rewrite::new(rewrite.rewritten).desc(desc))
+        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.kind.desc()))
     }
 );

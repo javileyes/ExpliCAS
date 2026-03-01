@@ -10,6 +10,26 @@ pub struct WeierstrassContractionRewrite {
     pub desc: &'static str,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WeierstrassSubstitutionKind {
+    Sin,
+    Cos,
+    Tan,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WeierstrassSubstitutionRewrite {
+    pub rewritten: ExprId,
+    pub arg: ExprId,
+    pub kind: WeierstrassSubstitutionKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ReverseWeierstrassSinRewrite {
+    pub rewritten: ExprId,
+    pub arg: ExprId,
+}
+
 /// Extract the full angle `x` from either `tan(x/2)` or `sin(x/2)/cos(x/2)`.
 pub fn extract_tan_half_angle_like(ctx: &Context, expr: ExprId) -> Option<ExprId> {
     if let Some(full_angle) = extract_tan_half_angle(ctx, expr) {
@@ -156,6 +176,71 @@ pub fn build_weierstrass_tan(ctx: &mut Context, t: ExprId) -> ExprId {
     let numerator = crate::expr_rewrite::smart_mul(ctx, two, t);
     let denominator = ctx.add(Expr::Sub(one, t_squared));
     ctx.add(Expr::Div(numerator, denominator))
+}
+
+/// Rewrite `sin(x)`, `cos(x)`, `tan(x)` via Weierstrass substitution
+/// with `t = tan(x/2)` represented as `sin(x/2)/cos(x/2)`.
+pub fn try_rewrite_weierstrass_substitution_function_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<WeierstrassSubstitutionRewrite> {
+    // Extract data first to avoid borrow conflicts.
+    let (fn_id, arg) = match ctx.get(expr) {
+        Expr::Function(fn_id, args) if args.len() == 1 => (*fn_id, args[0]),
+        _ => return None,
+    };
+
+    let kind = match ctx.builtin_of(fn_id) {
+        Some(BuiltinFn::Sin) => WeierstrassSubstitutionKind::Sin,
+        Some(BuiltinFn::Cos) => WeierstrassSubstitutionKind::Cos,
+        Some(BuiltinFn::Tan) => WeierstrassSubstitutionKind::Tan,
+        _ => return None,
+    };
+
+    // Build t = tan(x/2) as sin(x/2)/cos(x/2).
+    let half = ctx.add(Expr::Number(num_rational::BigRational::new(
+        1.into(),
+        2.into(),
+    )));
+    let half_arg = crate::expr_rewrite::smart_mul(ctx, half, arg);
+    let sin_half = ctx.call_builtin(BuiltinFn::Sin, vec![half_arg]);
+    let cos_half = ctx.call_builtin(BuiltinFn::Cos, vec![half_arg]);
+    let t = ctx.add(Expr::Div(sin_half, cos_half));
+
+    let rewritten = match kind {
+        WeierstrassSubstitutionKind::Sin => build_weierstrass_sin(ctx, t),
+        WeierstrassSubstitutionKind::Cos => build_weierstrass_cos(ctx, t),
+        WeierstrassSubstitutionKind::Tan => build_weierstrass_tan(ctx, t),
+    };
+
+    Some(WeierstrassSubstitutionRewrite {
+        rewritten,
+        arg,
+        kind,
+    })
+}
+
+/// Rewrite `2*tan(x/2)/(1+tan(x/2)^2)` (including `sin/cos` ratio form for `tan(x/2)`)
+/// back to `sin(x)`.
+pub fn try_rewrite_reverse_weierstrass_sin_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ReverseWeierstrassSinRewrite> {
+    let Expr::Div(num, den) = ctx.get(expr) else {
+        return None;
+    };
+
+    let num_angle = match_two_tan_half(ctx, *num)?;
+    let (den_angle, _) = match_one_plus_tan_half_squared(ctx, *den)?;
+    if cas_ast::ordering::compare_expr(ctx, num_angle, den_angle) != Ordering::Equal {
+        return None;
+    }
+
+    let rewritten = ctx.call_builtin(BuiltinFn::Sin, vec![num_angle]);
+    Some(ReverseWeierstrassSinRewrite {
+        rewritten,
+        arg: num_angle,
+    })
 }
 
 /// Detect and contract classic Weierstrass half-angle tangent forms:
@@ -397,6 +482,38 @@ mod tests {
         );
         assert_eq!(
             cas_ast::ordering::compare_expr(&ctx, cos_rw.rewritten, expected_cos),
+            Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn rewrite_weierstrass_substitution_function_expr_handles_all_three_trig_functions() {
+        let mut ctx = Context::new();
+        let sin_expr = parse("sin(x)", &mut ctx).expect("sin");
+        let cos_expr = parse("cos(x)", &mut ctx).expect("cos");
+        let tan_expr = parse("tan(x)", &mut ctx).expect("tan");
+
+        let sin_rw =
+            try_rewrite_weierstrass_substitution_function_expr(&mut ctx, sin_expr).expect("sin rw");
+        let cos_rw =
+            try_rewrite_weierstrass_substitution_function_expr(&mut ctx, cos_expr).expect("cos rw");
+        let tan_rw =
+            try_rewrite_weierstrass_substitution_function_expr(&mut ctx, tan_expr).expect("tan rw");
+
+        assert_eq!(sin_rw.kind, WeierstrassSubstitutionKind::Sin);
+        assert_eq!(cos_rw.kind, WeierstrassSubstitutionKind::Cos);
+        assert_eq!(tan_rw.kind, WeierstrassSubstitutionKind::Tan);
+    }
+
+    #[test]
+    fn rewrite_reverse_weierstrass_sin_expr_matches_canonical_form() {
+        let mut ctx = Context::new();
+        let expr = parse("2*tan(x/2)/(1+tan(x/2)^2)", &mut ctx).expect("expr");
+        let expected = parse("sin(x)", &mut ctx).expect("expected");
+
+        let rw = try_rewrite_reverse_weierstrass_sin_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, rw.rewritten, expected),
             Ordering::Equal
         );
     }

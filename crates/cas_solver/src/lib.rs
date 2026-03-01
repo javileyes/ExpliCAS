@@ -35,11 +35,12 @@ pub use cas_engine::{AssumptionRecord, DomainWarning};
 pub use cas_engine::{AutoRationalizeLevel, RationalizeOutcome};
 pub use cas_engine::{BranchPolicy, InverseTrigPolicy, ValueDomain};
 pub use cas_engine::{ExpandPolicy, SimplifyPhase};
-pub use cas_engine::{RequirementDescriptor, SimplifyPurpose, SolveSafety};
+pub use cas_engine::{RequirementDescriptor, SolveSafety};
 pub use cas_math::number_theory_support::GcdResult;
 pub use cas_math::poly_store::{try_get_poly_result_term_count, try_render_poly_result};
 pub use cas_solver_core::isolation_utils::contains_var;
 pub use cas_solver_core::solve_budget::SolveBudget;
+pub use cas_solver_core::solve_safety_policy::SimplifyPurpose;
 pub use cas_solver_core::verify_stats;
 pub use json::{
     eval_str_to_json, eval_str_to_output_envelope, substitute_str_to_json, EnvelopeEvalOptions,

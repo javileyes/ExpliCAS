@@ -13,6 +13,7 @@ use crate::opaque_function_calls_support::{
 use crate::substitute::{substitute_power_aware, SubstituteOptions};
 use cas_ast::ordering::compare_expr;
 use cas_ast::{Context, Expr, ExprId};
+use std::cell::Cell;
 use std::cmp::Ordering;
 
 /// Intermediate state after replacing shared opaque calls with temporary vars.
@@ -35,6 +36,17 @@ pub struct ExpandedPair {
 pub enum DivExpandToCancelKind {
     OpaqueSubstitution,
     ExpandedEquality,
+}
+
+impl DivExpandToCancelKind {
+    pub fn desc(self) -> &'static str {
+        match self {
+            DivExpandToCancelKind::OpaqueSubstitution => {
+                "Polynomial division with opaque substitution"
+            }
+            DivExpandToCancelKind::ExpandedEquality => "Expanded numerator equals denominator",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -332,6 +344,64 @@ where
     }
 
     None
+}
+
+/// End-to-end orchestration equivalent to
+/// [`try_rewrite_div_expand_to_cancel_expr_with`] with built-in recursion guards
+/// for strategy callbacks.
+///
+/// This prevents accidental recursive re-entry of the expensive strategy hooks
+/// when callers route the callbacks through a full simplifier pipeline.
+#[allow(clippy::too_many_arguments)]
+pub fn try_rewrite_div_expand_to_cancel_expr_with_thread_guards<FStrategy0, FExpand, FStrategy2>(
+    ctx: &mut Context,
+    expr: ExprId,
+    mut strategy0_simplify_sub_fraction: FStrategy0,
+    expand: FExpand,
+    mut strategy2_simplify_expanded: FStrategy2,
+) -> Option<DivExpandToCancelRewrite>
+where
+    FStrategy0: FnMut(&Context, ExprId) -> Option<(Context, ExprId)>,
+    FExpand: FnMut(&mut Context, ExprId) -> ExprId,
+    FStrategy2: FnMut(Context, ExprId, ExprId) -> Option<(Context, ExprId, ExprId)>,
+{
+    thread_local! {
+        static OPAQUE_SUB_DEPTH: Cell<u32> = const { Cell::new(0) };
+    }
+    thread_local! {
+        static EXPAND_CANCEL_DEPTH: Cell<u32> = const { Cell::new(0) };
+    }
+
+    let mut guarded_strategy0 = |base_ctx: &Context, sub_frac: ExprId| {
+        let depth = OPAQUE_SUB_DEPTH.with(|c| c.get());
+        if depth > 0 {
+            return None;
+        }
+        OPAQUE_SUB_DEPTH.with(|c| c.set(depth + 1));
+        let out = strategy0_simplify_sub_fraction(base_ctx, sub_frac);
+        OPAQUE_SUB_DEPTH.with(|c| c.set(depth));
+        out
+    };
+
+    let mut guarded_strategy2 =
+        |expanded_ctx: Context, expanded_num: ExprId, expanded_den: ExprId| {
+            let depth = EXPAND_CANCEL_DEPTH.with(|c| c.get());
+            if depth > 0 {
+                return None;
+            }
+            EXPAND_CANCEL_DEPTH.with(|c| c.set(depth + 1));
+            let out = strategy2_simplify_expanded(expanded_ctx, expanded_num, expanded_den);
+            EXPAND_CANCEL_DEPTH.with(|c| c.set(depth));
+            out
+        };
+
+    try_rewrite_div_expand_to_cancel_expr_with(
+        ctx,
+        expr,
+        &mut guarded_strategy0,
+        expand,
+        &mut guarded_strategy2,
+    )
 }
 
 #[cfg(test)]

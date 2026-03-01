@@ -426,6 +426,18 @@ pub fn try_rewrite_abs_product_expr(ctx: &mut Context, expr: ExprId) -> Option<E
     Some(ctx.call_builtin(BuiltinFn::Abs, vec![product]))
 }
 
+/// Rewrite `|a| * |b|` into `|a * b|` with canonical description.
+pub fn try_rewrite_abs_product_identity_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<AbsRewrite> {
+    let rewritten = try_rewrite_abs_product_expr(ctx, expr)?;
+    Some(AbsRewrite {
+        rewritten,
+        desc: "|x|·|y| = |x·y|".to_string(),
+    })
+}
+
 /// Rewrite `|a| / |b|` into `|a / b|` when the input expression matches.
 pub fn try_rewrite_abs_quotient_expr(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
     let Expr::Div(lhs, rhs) = ctx.get(expr) else {
@@ -437,6 +449,18 @@ pub fn try_rewrite_abs_quotient_expr(ctx: &mut Context, expr: ExprId) -> Option<
     let (a, b) = (try_unwrap_abs_arg(ctx, lhs)?, try_unwrap_abs_arg(ctx, rhs)?);
     let quotient = ctx.add(Expr::Div(a, b));
     Some(ctx.call_builtin(BuiltinFn::Abs, vec![quotient]))
+}
+
+/// Rewrite `|a| / |b|` into `|a / b|` with canonical description.
+pub fn try_rewrite_abs_quotient_identity_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<AbsRewrite> {
+    let rewritten = try_rewrite_abs_quotient_expr(ctx, expr)?;
+    Some(AbsRewrite {
+        rewritten,
+        desc: "|x| / |y| = |x / y|".to_string(),
+    })
 }
 
 /// Returns the argument when expression matches `abs(sqrt_like(arg))`.
@@ -464,6 +488,15 @@ pub fn try_extract_abs_sqrt_like_arg(ctx: &Context, expr: ExprId) -> Option<Expr
     None
 }
 
+/// Rewrite `|sqrt_like(x)| -> sqrt_like(x)` with canonical description.
+pub fn try_rewrite_abs_sqrt_identity_expr(ctx: &Context, expr: ExprId) -> Option<AbsRewrite> {
+    let rewritten = try_extract_abs_sqrt_like_arg(ctx, expr)?;
+    Some(AbsRewrite {
+        rewritten,
+        desc: "|√x| = √x".to_string(),
+    })
+}
+
 /// Returns the argument when expression matches `abs(exp_like(arg))`.
 ///
 /// `exp_like` includes:
@@ -487,6 +520,15 @@ pub fn try_extract_abs_exp_like_arg(ctx: &Context, expr: ExprId) -> Option<ExprI
     }
 
     None
+}
+
+/// Rewrite `|exp_like(x)| -> exp_like(x)` with canonical description.
+pub fn try_rewrite_abs_exp_identity_expr(ctx: &Context, expr: ExprId) -> Option<AbsRewrite> {
+    let rewritten = try_extract_abs_exp_like_arg(ctx, expr)?;
+    Some(AbsRewrite {
+        rewritten,
+        desc: "|e^x| = e^x".to_string(),
+    })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -585,10 +627,12 @@ mod tests {
         abs_domain_mode_from_flags, abs_needs_implicit_domain_check, is_ln_or_log_call,
         is_sum_of_nonnegative, try_extract_abs_exp_like_arg, try_extract_abs_sqrt_like_arg,
         try_extract_symbolic_root_cancel_base, try_plan_symbolic_root_cancel_rewrite,
-        try_rewrite_abs_even_power_expr, try_rewrite_abs_idempotent_expr,
-        try_rewrite_abs_numeric_factor_expr, try_rewrite_abs_odd_power_expr,
-        try_rewrite_abs_power_even_expr, try_rewrite_abs_product_expr,
-        try_rewrite_abs_quotient_expr, try_rewrite_abs_sub_normalize_expr,
+        try_rewrite_abs_even_power_expr, try_rewrite_abs_exp_identity_expr,
+        try_rewrite_abs_idempotent_expr, try_rewrite_abs_numeric_factor_expr,
+        try_rewrite_abs_odd_power_expr, try_rewrite_abs_power_even_expr,
+        try_rewrite_abs_product_expr, try_rewrite_abs_product_identity_expr,
+        try_rewrite_abs_quotient_expr, try_rewrite_abs_quotient_identity_expr,
+        try_rewrite_abs_sqrt_identity_expr, try_rewrite_abs_sub_normalize_expr,
         try_rewrite_abs_sum_nonnegative_expr, try_rewrite_evaluate_abs_expr,
         try_rewrite_sqrt_square_expr, try_unwrap_abs_arg, value_domain_mode_from_flag,
         AbsDomainMode, ValueDomainMode,
@@ -685,6 +729,30 @@ mod tests {
     }
 
     #[test]
+    fn rewrites_abs_product_identity_with_desc() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let abs_x = ctx.call_builtin(BuiltinFn::Abs, vec![x]);
+        let abs_y = ctx.call_builtin(BuiltinFn::Abs, vec![y]);
+        let expr = ctx.add(Expr::Mul(abs_x, abs_y));
+        let rewrite = try_rewrite_abs_product_identity_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(rewrite.desc, "|x|·|y| = |x·y|");
+    }
+
+    #[test]
+    fn rewrites_abs_quotient_identity_with_desc() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let abs_x = ctx.call_builtin(BuiltinFn::Abs, vec![x]);
+        let abs_y = ctx.call_builtin(BuiltinFn::Abs, vec![y]);
+        let expr = ctx.add(Expr::Div(abs_x, abs_y));
+        let rewrite = try_rewrite_abs_quotient_identity_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(rewrite.desc, "|x| / |y| = |x / y|");
+    }
+
+    #[test]
     fn extracts_abs_sqrt_like_for_sqrt_and_pow_half() {
         let mut ctx = Context::new();
         let x = ctx.var("x");
@@ -705,6 +773,17 @@ mod tests {
     }
 
     #[test]
+    fn rewrites_abs_sqrt_identity_with_desc() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let sqrt_x = ctx.call_builtin(BuiltinFn::Sqrt, vec![x]);
+        let abs_sqrt = ctx.call_builtin(BuiltinFn::Abs, vec![sqrt_x]);
+        let rewrite = try_rewrite_abs_sqrt_identity_expr(&ctx, abs_sqrt).expect("rewrite");
+        assert_eq!(rewrite.desc, "|√x| = √x");
+        assert_eq!(rewrite.rewritten, sqrt_x);
+    }
+
+    #[test]
     fn extracts_abs_exp_like_for_exp_and_e_pow() {
         let mut ctx = Context::new();
         let x = ctx.var("x");
@@ -716,6 +795,17 @@ mod tests {
 
         assert_eq!(try_extract_abs_exp_like_arg(&ctx, abs_exp), Some(exp_x));
         assert_eq!(try_extract_abs_exp_like_arg(&ctx, abs_e_pow), Some(e_pow_x));
+    }
+
+    #[test]
+    fn rewrites_abs_exp_identity_with_desc() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let exp_x = ctx.call_builtin(BuiltinFn::Exp, vec![x]);
+        let abs_exp = ctx.call_builtin(BuiltinFn::Abs, vec![exp_x]);
+        let rewrite = try_rewrite_abs_exp_identity_expr(&ctx, abs_exp).expect("rewrite");
+        assert_eq!(rewrite.desc, "|e^x| = e^x");
+        assert_eq!(rewrite.rewritten, exp_x);
     }
 
     #[test]

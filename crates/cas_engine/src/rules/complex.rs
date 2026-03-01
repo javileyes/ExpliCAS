@@ -7,7 +7,7 @@ use crate::rule::Rewrite;
 pub use cas_math::complex_support::{extract_gaussian, GaussianRational};
 use cas_math::complex_support::{
     try_rewrite_gaussian_add_expr, try_rewrite_gaussian_div_expr, try_rewrite_gaussian_mul_expr,
-    try_rewrite_i_squared_mul_expr, try_rewrite_imaginary_power_expr,
+    try_rewrite_i_squared_mul_identity_expr, try_rewrite_imaginary_power_expr,
     try_rewrite_sqrt_negative_expr,
 };
 
@@ -29,8 +29,8 @@ define_rule!(ISquaredMulRule, "i * i = -1", |ctx, expr, parent_ctx| {
         return None;
     }
 
-    let rewritten = try_rewrite_i_squared_mul_expr(ctx, expr)?;
-    Some(Rewrite::new(rewritten).desc("i · i = -1"))
+    let rewrite = try_rewrite_i_squared_mul_identity_expr(ctx, expr)?;
+    Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
 });
 
 define_rule!(
