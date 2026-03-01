@@ -102,7 +102,7 @@ fn corpus_solve_commands_no_panic() {
                 if let Ok(cas_parser::Statement::Equation(eq)) =
                     cas_parser::parse_statement(eq_str.trim(), &mut engine.simplifier.context)
                 {
-                    let _ = cas_engine::solver::solve(&eq, var, &mut engine.simplifier);
+                    let _ = cas_engine::api::solve(&eq, var, &mut engine.simplifier);
                 }
             }
         });

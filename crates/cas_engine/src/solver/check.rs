@@ -19,7 +19,7 @@ use cas_solver_core::verification::{
 use cas_solver_core::verify_substitution::substitute_equation_diff;
 
 use crate::engine::Simplifier;
-use crate::solver::runtime_adapters::simplifier_render_expr;
+use crate::solver::simplifier_render_expr;
 
 pub use cas_solver_core::verification::{VerifyResult, VerifyStatus, VerifySummary};
 

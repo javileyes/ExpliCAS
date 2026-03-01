@@ -39,9 +39,9 @@ impl Engine {
             resolved,
         );
 
-        let solver_opts = crate::solver::SolverOptions::from_eval_options(options);
+        let solver_opts = crate::api::SolverOptions::from_eval_options(options);
 
-        let sol_result = crate::solver::solve_with_display_steps(
+        let sol_result = crate::api::solve_with_display_steps(
             &eq_to_solve,
             var,
             &mut self.simplifier,

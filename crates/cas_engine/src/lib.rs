@@ -10,7 +10,6 @@ pub(crate) mod const_fold;
 pub(crate) mod cycle_detector;
 pub(crate) mod cycle_events;
 pub(crate) mod diagnostics;
-pub(crate) mod didactic;
 pub(crate) mod domain;
 pub(crate) mod domain_facts;
 pub(crate) mod domain_oracle;
@@ -32,12 +31,11 @@ pub(crate) mod rule;
 pub mod rules;
 pub(crate) mod semantics;
 pub(crate) mod solve_safety;
-pub mod solver;
+pub(crate) mod solver;
 pub(crate) mod step;
 pub(crate) mod step_optimization;
 pub(crate) mod strategies;
 pub(crate) mod telescoping;
-pub(crate) mod timeline;
 
 // Property-based numeric tests for rewrite correctness
 #[cfg(test)]
@@ -84,7 +82,6 @@ pub use cas_math::substitute::{
 pub use const_fold::{fold_constants, ConstFoldMode, ConstFoldResult};
 pub use cycle_events::{CycleEvent, CycleLevel};
 pub use diagnostics::{Diagnostics, RequireOrigin, RequiredItem};
-pub use didactic::{enrich_steps, get_standalone_substeps, EnrichedStep, SubStep};
 pub use domain::{
     can_apply_analytic, can_cancel_factor, take_blocked_hints, BlockedHint, CancelDecision,
     DomainMode, Proof,
@@ -139,7 +136,6 @@ pub use step::{
 pub use telescoping::{
     telescope, try_dirichlet_kernel_identity_pub, TelescopingResult, TelescopingStep,
 };
-pub use timeline::{html_escape, latex_escape, SolveTimelineHtml, TimelineHtml, VerbosityLevel};
 pub use visitors::{DepthVisitor, VariableCollector};
 
 // Equation-level primitives (not simplifier rules — used by solver pipeline)

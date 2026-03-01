@@ -103,20 +103,30 @@ pub use crate::solver::solve;
 /// display-facing code.
 pub use crate::solver::solve_with_display_steps;
 
+/// Solver helper: check whether an expression contains the target variable.
+pub use crate::solver::contains_var;
+/// Solver verification instrumentation counters.
+pub use crate::solver::verify_stats;
 /// Display-ready solve steps (post-cleanup).
 /// Wrapper type that enforces step processing has been applied.
 pub use crate::solver::DisplaySolveSteps;
+/// Diagnostics collected during solve operation.
+pub use crate::solver::SolveDiagnostics;
+/// Raw solve step entry (pre-display wrapper).
+pub use crate::solver::SolveStep;
+/// Raw solve sub-step entry.
+pub use crate::solver::SolveSubStep;
 
 /// Verify a single candidate solution by substitution.
-pub use crate::solver::check::verify_solution;
+pub use crate::solver::verify_solution;
 /// Verify an entire solution set by substitution.
-pub use crate::solver::check::verify_solution_set;
+pub use crate::solver::verify_solution_set;
 /// Verification result for a complete solution set.
-pub use crate::solver::check::VerifyResult;
+pub use crate::solver::VerifyResult;
 /// Solver verification status for one candidate solution.
-pub use crate::solver::check::VerifyStatus;
+pub use crate::solver::VerifyStatus;
 /// Solver verification result summary.
-pub use crate::solver::check::VerifySummary;
+pub use crate::solver::VerifySummary;
 
 // =============================================================================
 // Display Traits (Human-readable output)

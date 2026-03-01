@@ -838,7 +838,9 @@ impl Repl {
                         if check_enabled {
                             if let EvalResult::SolutionSet(ref solution_set) = output.result {
                                 if let Some(ref eq) = original_equation {
-                                    use cas_solver::check::{verify_solution_set, VerifySummary};
+                                    use cas_solver::{
+                                        verify_solution_set, VerifyStatus, VerifySummary,
+                                    };
 
                                     let verify_result = verify_solution_set(
                                         &mut self.core.engine.simplifier,
@@ -861,14 +863,25 @@ impl Repl {
                                                 }
                                                 .to_string();
                                                 match status {
-                                                    cas_solver::check::VerifyStatus::Verified => {
-                                                        lines.push(format!("  ✓ {} = {} verified", var, sol_str));
+                                                    VerifyStatus::Verified => {
+                                                        lines.push(format!(
+                                                            "  ✓ {} = {} verified",
+                                                            var, sol_str
+                                                        ));
                                                     }
-                                                    cas_solver::check::VerifyStatus::Unverifiable { reason, .. } => {
-                                                        lines.push(format!("  ⚠ {} = {}: {}", var, sol_str, reason));
+                                                    VerifyStatus::Unverifiable {
+                                                        reason, ..
+                                                    } => {
+                                                        lines.push(format!(
+                                                            "  ⚠ {} = {}: {}",
+                                                            var, sol_str, reason
+                                                        ));
                                                     }
-                                                    cas_solver::check::VerifyStatus::NotCheckable { reason } => {
-                                                        lines.push(format!("  ℹ {} = {}: {}", var, sol_str, reason));
+                                                    VerifyStatus::NotCheckable { reason } => {
+                                                        lines.push(format!(
+                                                            "  ℹ {} = {}: {}",
+                                                            var, sol_str, reason
+                                                        ));
                                                     }
                                                 }
                                             }

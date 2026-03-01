@@ -5,8 +5,7 @@ use cas_ast::Context;
 use cas_engine::Simplifier;
 use cas_engine::{BranchMode, ComplexMode, ContextMode, EvalOptions, StepsMode};
 use cas_parser::parse;
-mod support;
-use support::SessionState;
+use cas_session::SessionState;
 
 /// Helper: simplify expression and return result string
 fn simplify(input: &str) -> String {

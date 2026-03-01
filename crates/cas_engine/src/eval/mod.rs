@@ -17,7 +17,7 @@ pub(crate) type ActionResult = (
     EvalResult,
     Vec<DomainWarning>,
     Vec<crate::Step>,
-    Vec<crate::solver::SolveStep>,
+    Vec<crate::api::SolveStep>,
     Vec<crate::assumptions::AssumptionRecord>,
     Vec<cas_formatter::display_transforms::ScopeTag>,
     Vec<crate::implicit_domain::ImplicitCondition>,
@@ -190,7 +190,7 @@ pub struct EvalOutput {
     /// Domain warnings with deduplication and rule source.
     pub domain_warnings: Vec<DomainWarning>,
     pub steps: crate::step::DisplayEvalSteps,
-    pub solve_steps: Vec<crate::solver::SolveStep>,
+    pub solve_steps: Vec<crate::api::SolveStep>,
     /// Assumptions made during solver operations (for Assume mode).
     pub solver_assumptions: Vec<crate::assumptions::AssumptionRecord>,
     /// Scopes for context-aware display (e.g., QuadraticFormula -> sqrt display).

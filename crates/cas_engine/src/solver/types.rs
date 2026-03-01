@@ -33,7 +33,7 @@ impl Default for SolverOptions {
 
 impl SolverOptions {
     /// Build solver options from engine eval options.
-    pub(crate) fn from_eval_options(options: &crate::options::EvalOptions) -> Self {
+    pub fn from_eval_options(options: &crate::options::EvalOptions) -> Self {
         Self {
             value_domain: options.shared.semantics.value_domain,
             domain_mode: options.shared.semantics.domain_mode,
@@ -44,7 +44,7 @@ impl SolverOptions {
     }
 
     /// Convert engine domain mode into core solver domain mode kind.
-    pub(crate) fn core_domain_mode(&self) -> cas_solver_core::log_domain::DomainModeKind {
+    pub fn core_domain_mode(&self) -> cas_solver_core::log_domain::DomainModeKind {
         cas_solver_core::log_domain::domain_mode_kind_from_flags(
             matches!(self.domain_mode, crate::domain::DomainMode::Assume),
             matches!(self.domain_mode, crate::domain::DomainMode::Strict),
@@ -52,7 +52,7 @@ impl SolverOptions {
     }
 
     /// Returns true when assume-scope allows wildcard assumptions.
-    pub(crate) fn wildcard_scope(&self) -> bool {
+    pub fn wildcard_scope(&self) -> bool {
         self.assume_scope == crate::semantics::AssumeScope::Wildcard
     }
 }
@@ -128,103 +128,3 @@ pub type SolveSubStep =
 
 pub type SolveStep =
     cas_solver_core::solve_types::SolveStep<Equation, crate::step::ImportanceLevel, SolveSubStep>;
-
-#[cfg(test)]
-mod tests {
-    use super::{SolveCtx, SolverOptions};
-    use crate::solver::SolveDomainEnv;
-    use cas_ast::Context;
-
-    #[test]
-    fn test_solve_ctx_fork_shares_required_conditions() {
-        let mut context = Context::new();
-        let x = context.var("x");
-
-        let parent = SolveCtx::default();
-        parent.note_required_condition(crate::implicit_domain::ImplicitCondition::NonZero(x));
-
-        let child = parent.fork_with_domain_env_next_depth(SolveDomainEnv::default());
-        child.note_required_condition(crate::implicit_domain::ImplicitCondition::Positive(x));
-
-        let snapshot = parent.snapshot();
-        assert_eq!(snapshot.required.len(), 2);
-    }
-
-    #[test]
-    fn test_solve_ctx_fork_shares_assumptions_and_scopes() {
-        let mut context = Context::new();
-        let x = context.var("x");
-
-        let parent = SolveCtx::default();
-        let child = parent.fork_with_domain_env_next_depth(SolveDomainEnv::default());
-        child.note_assumption(crate::assumptions::AssumptionEvent::positive(&context, x));
-        child.emit_scope(cas_formatter::display_transforms::ScopeTag::Rule(
-            "QuadraticFormula",
-        ));
-
-        let snapshot = parent.snapshot();
-        assert_eq!(snapshot.assumed.len(), 1);
-        assert_eq!(snapshot.output_scopes.len(), 1);
-    }
-
-    #[test]
-    fn test_solve_ctx_fork_increments_depth() {
-        let parent = SolveCtx::default();
-        assert_eq!(parent.depth(), 0);
-
-        let child = parent.fork_with_domain_env_next_depth(SolveDomainEnv::default());
-        let grandchild = child.fork_with_domain_env_next_depth(SolveDomainEnv::default());
-
-        assert_eq!(child.depth(), 1);
-        assert_eq!(grandchild.depth(), 2);
-    }
-
-    #[test]
-    fn test_solver_option_branch_and_tactic_flags() {
-        let opts = SolverOptions {
-            domain_mode: crate::domain::DomainMode::Assume,
-            value_domain: crate::semantics::ValueDomain::RealOnly,
-            budget: cas_solver_core::solve_budget::SolveBudget {
-                max_branches: 3,
-                ..Default::default()
-            },
-            ..Default::default()
-        };
-
-        let inputs = cas_solver_core::strategy_options::pow_kernel_inputs(
-            opts.core_domain_mode(),
-            opts.wildcard_scope(),
-            opts.value_domain == crate::semantics::ValueDomain::RealOnly,
-            opts.budget,
-        );
-        assert!(inputs.shortcut_can_branch);
-        assert!(inputs.log_can_branch);
-        assert!(inputs.solve_tactic_enabled);
-        assert_eq!(
-            inputs.mode,
-            cas_solver_core::log_domain::DomainModeKind::Assume
-        );
-    }
-
-    #[test]
-    fn test_solver_options_from_eval_options_maps_semantics_and_budget() {
-        let mut eval_opts = crate::options::EvalOptions::default();
-        eval_opts.shared.semantics.value_domain = crate::semantics::ValueDomain::ComplexEnabled;
-        eval_opts.shared.semantics.domain_mode = crate::domain::DomainMode::Assume;
-        eval_opts.shared.semantics.assume_scope = crate::semantics::AssumeScope::Wildcard;
-        eval_opts.budget = cas_solver_core::solve_budget::SolveBudget {
-            max_branches: 5,
-            max_depth: 4,
-        };
-
-        let opts = SolverOptions::from_eval_options(&eval_opts);
-        assert_eq!(
-            opts.value_domain,
-            crate::semantics::ValueDomain::ComplexEnabled
-        );
-        assert_eq!(opts.domain_mode, crate::domain::DomainMode::Assume);
-        assert_eq!(opts.assume_scope, crate::semantics::AssumeScope::Wildcard);
-        assert_eq!(opts.budget.max_branches, 5);
-        assert_eq!(opts.budget.max_depth, 4);
-    }
-}

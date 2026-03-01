@@ -8,8 +8,7 @@
 use cas_engine::{DomainMode, Engine, EvalAction, EvalRequest, EvalResult, InverseTrigPolicy};
 use cas_formatter::DisplayExpr;
 use cas_parser::parse;
-mod support;
-use support::SessionState;
+use cas_session::SessionState;
 
 /// Helper: simplify with given InverseTrigPolicy using Engine API
 fn simplify_with_inv_trig(input: &str, policy: InverseTrigPolicy) -> (String, Vec<String>) {

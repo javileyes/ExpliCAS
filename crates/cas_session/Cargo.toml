@@ -18,4 +18,5 @@ anyhow = "1.0.100"
 
 [dev-dependencies]
 cas_formatter = { path = "../cas_formatter" }
+cas_parser = { path = "../cas_parser" }
 tempfile = "3"

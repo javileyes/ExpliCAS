@@ -38,30 +38,3 @@ define_rule!(
         Some(Rewrite::simple(rewritten.0, rewritten.1))
     }
 );
-
-#[cfg(test)]
-mod tests {
-    use cas_ast::Context;
-    use cas_math::poly_modp_conv::{check_poly_equal_modp_expr, DEFAULT_PRIME};
-    use cas_parser::parse;
-
-    #[test]
-    fn test_poly_eq_modp_same() {
-        let mut ctx = Context::new();
-        let a = parse("x + 1", &mut ctx).unwrap();
-        let b = parse("1 + x", &mut ctx).unwrap();
-
-        let result = check_poly_equal_modp_expr(&ctx, a, b, DEFAULT_PRIME).unwrap();
-        assert!(result);
-    }
-
-    #[test]
-    fn test_poly_eq_modp_different() {
-        let mut ctx = Context::new();
-        let a = parse("x + 1", &mut ctx).unwrap();
-        let b = parse("x + 2", &mut ctx).unwrap();
-
-        let result = check_poly_equal_modp_expr(&ctx, a, b, DEFAULT_PRIME).unwrap();
-        assert!(!result);
-    }
-}

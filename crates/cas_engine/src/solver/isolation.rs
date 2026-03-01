@@ -1,11 +1,11 @@
 use crate::engine::Simplifier;
 use crate::error::CasError;
-use crate::solver::runtime_adapters::{
-    context_render_expr, simplifier_collect_steps, simplifier_context, simplifier_context_mut,
-    simplifier_is_known_negative, simplifier_prove_nonzero_status, simplifier_simplify_expr,
-};
 use crate::solver::solve_core::solve_with_ctx_and_options;
-use crate::solver::{medium_step, SolveCtx, SolveStep, SolverOptions};
+use crate::solver::{
+    context_render_expr, medium_step, simplifier_collect_steps, simplifier_context,
+    simplifier_context_mut, simplifier_is_known_negative, simplifier_prove_nonzero_status,
+    simplifier_simplify_expr, SolveCtx, SolveStep, SolverOptions,
+};
 use cas_ast::symbol::SymbolId;
 use cas_ast::{ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_arithmetic::{

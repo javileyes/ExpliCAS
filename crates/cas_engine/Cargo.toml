@@ -33,7 +33,6 @@ cas_parser = { path = "../cas_parser" }
 proptest = "1.9.0"
 criterion = "0.7.0"
 lazy_static = "1.4"
-insta = "1.40"
 tempfile = "3"
 
 [[bench]]

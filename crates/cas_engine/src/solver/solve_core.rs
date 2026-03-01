@@ -32,13 +32,11 @@ use cas_solver_core::strategy_order::{
 };
 use cas_solver_core::substitution::execute_exponential_substitution_strategy_result_pipeline_with_default_substitution_var_and_plan_with_state;
 
-use super::runtime_adapters::{
-    context_render_expr, simplifier_contains_var, simplifier_context, simplifier_context_mut,
-    simplifier_expand_expr, simplifier_render_expr, simplifier_simplify_expr, simplifier_zero_expr,
-};
 use super::{
-    medium_step, DisplaySolveSteps, SolveCtx, SolveDiagnostics, SolveDomainEnv, SolveStep,
-    SolveSubStep, SolverOptions,
+    context_render_expr, medium_step, simplifier_contains_var, simplifier_context,
+    simplifier_context_mut, simplifier_expand_expr, simplifier_render_expr,
+    simplifier_simplify_expr, simplifier_zero_expr, DisplaySolveSteps, SolveCtx, SolveDiagnostics,
+    SolveDomainEnv, SolveStep, SolveSubStep, SolverOptions,
 };
 
 type SolvePreflightState = PreflightContext<SolveCtx>;
@@ -615,60 +613,4 @@ fn apply_rational_roots_strategy(
         medium_step,
     )?;
     Some(Ok(solved))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::build_solve_preflight_state;
-    use crate::engine::Simplifier;
-    use crate::solver::SolveCtx;
-    use cas_ast::{Equation, RelOp};
-    use cas_parser::parse;
-
-    #[test]
-    fn build_solve_preflight_state_forks_ctx_with_next_depth() {
-        let mut simplifier = Simplifier::new();
-        let eq = Equation {
-            lhs: parse("x", &mut simplifier.context).unwrap(),
-            rhs: parse("0", &mut simplifier.context).unwrap(),
-            op: RelOp::Eq,
-        };
-
-        let parent = SolveCtx::default();
-        let out = build_solve_preflight_state(
-            &simplifier,
-            &eq,
-            "x",
-            crate::semantics::ValueDomain::RealOnly,
-            &parent,
-        );
-        assert_eq!(out.ctx.depth(), 1);
-    }
-
-    #[test]
-    fn build_solve_preflight_state_notes_required_conditions_to_parent_sink() {
-        let mut simplifier = Simplifier::new();
-        let eq = Equation {
-            lhs: parse("sqrt(x)", &mut simplifier.context).unwrap(),
-            rhs: parse("0", &mut simplifier.context).unwrap(),
-            op: RelOp::Eq,
-        };
-
-        let parent = SolveCtx::default();
-        let _out = build_solve_preflight_state(
-            &simplifier,
-            &eq,
-            "x",
-            crate::semantics::ValueDomain::RealOnly,
-            &parent,
-        );
-
-        // sqrt(x) imposes x >= 0 in real domain; ensure at least one
-        // required condition is propagated into the shared sink.
-        let snapshot = parent.snapshot();
-        assert!(
-            !snapshot.required.is_empty(),
-            "expected required conditions from sqrt(x) preflight",
-        );
-    }
 }

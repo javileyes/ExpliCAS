@@ -37,33 +37,3 @@ define_rule!(
 pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(PolyMulModpRule));
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::parent_context::ParentContext;
-    use crate::rule::Rule;
-    use cas_ast::{Context, Expr};
-    use cas_parser::parse;
-
-    #[test]
-    fn test_poly_mul_modp_basic() {
-        let mut ctx = Context::new();
-        let expr = parse("poly_mul_modp((x+1)^2, (x-1)^2)", &mut ctx).unwrap();
-
-        let parent = ParentContext::root();
-        let result = PolyMulModpRule.apply(&mut ctx, expr, &parent);
-
-        assert!(result.is_some(), "Rule should fire for poly_mul_modp");
-        let rewrite = result.unwrap();
-
-        // Should be poly_mul_stats(terms, degree, vars, modulus)
-        if let Expr::Function(fn_id, args) = ctx.get(rewrite.new_expr) {
-            let name = ctx.sym_name(*fn_id);
-            assert_eq!(name, "poly_mul_stats");
-            assert_eq!(args.len(), 4);
-        } else {
-            panic!("Expected poly_result function");
-        }
-    }
-}

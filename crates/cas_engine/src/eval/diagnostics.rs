@@ -163,7 +163,7 @@ impl Engine {
         result: EvalResult,
         domain_warnings: Vec<DomainWarning>,
         steps: Vec<crate::Step>,
-        solve_steps: Vec<crate::solver::SolveStep>,
+        solve_steps: Vec<crate::api::SolveStep>,
         solver_assumptions: Vec<crate::assumptions::AssumptionRecord>,
         output_scopes: Vec<cas_formatter::display_transforms::ScopeTag>,
         solver_required: Vec<crate::implicit_domain::ImplicitCondition>,

@@ -30,8 +30,6 @@ pub mod gcd_modp;
 pub mod poly_arith_modp;
 pub use poly_arith_modp::PolySubModpRule;
 
-pub(crate) mod poly_runtime;
-
 pub mod difference_of_cubes;
 pub use difference_of_cubes::*;
 

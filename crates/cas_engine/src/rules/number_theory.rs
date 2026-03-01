@@ -7,7 +7,7 @@ define_rule!(NumberTheoryRule, "Number Theory Operations", |ctx, expr| {
         ctx,
         expr,
         cas_formatter::render_expr,
-        crate::rules::algebra::poly_runtime::eval_expand_off,
+        crate::expand::eval_expand_off,
     )?;
 
     Some(Rewrite::new(result).desc(desc))

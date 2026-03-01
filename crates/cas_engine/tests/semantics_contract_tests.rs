@@ -13,7 +13,7 @@
 use cas_engine::{
     BranchPolicy, DomainMode, EvalConfig, InverseTrigPolicy, SimplifyOptions, ValueDomain,
 };
-mod support;
+use cas_session::SessionState;
 
 // =============================================================================
 // Default Configuration Tests
@@ -46,7 +46,6 @@ fn simplify_options_includes_new_axes() {
 
 #[test]
 fn x_div_x_simplifies_with_default_config() {
-    use crate::support::SessionState;
     use cas_engine::{Engine, EvalAction, EvalRequest, EvalResult};
     use cas_formatter::DisplayExpr;
     use cas_parser::parse;

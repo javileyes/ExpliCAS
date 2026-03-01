@@ -21,9 +21,8 @@
 #![allow(unused_imports)]
 
 use cas_ast::{Context, Equation, Expr, ExprId, RelOp, SolutionSet};
+use cas_engine::api::{solve, verify_solution_set, VerifyResult, VerifyStatus, VerifySummary};
 use cas_engine::eval_f64;
-use cas_engine::solver::check::{verify_solution_set, VerifyResult, VerifyStatus, VerifySummary};
-use cas_engine::solver::solve;
 use cas_engine::ValueDomain;
 use cas_engine::{
     derive_requires_from_equation, domain_delta_check, infer_implicit_domain, DomainDelta,
@@ -1032,7 +1031,7 @@ fn metatest_equation_pair_equivalence() {
 #[ignore] // Run with: cargo test --release -p cas_engine --test metamorphic_equation_tests metatest_equation_benchmark -- --ignored --nocapture
 fn metatest_equation_benchmark() {
     // Reset Phase 1.5 instrumentation counters (env‐gated by VERIFY_STATS=1).
-    cas_engine::solver::verify_stats::reset_stats();
+    cas_engine::api::verify_stats::reset_stats();
 
     eprintln!();
     eprintln!("╔══════════════════════════════════════════════════════════════╗");
@@ -1124,7 +1123,7 @@ fn metatest_equation_benchmark() {
     eprintln!("Total time: {:.2}s", total_elapsed.as_secs_f64());
 
     // Print Phase 1.5 instrumentation summary (only when VERIFY_STATS=1).
-    cas_engine::solver::verify_stats::dump_stats();
+    cas_engine::api::verify_stats::dump_stats();
 
     assert_eq!(
         s1_failed, 0,

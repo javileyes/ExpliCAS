@@ -95,6 +95,31 @@ pub fn expand_div(ctx: &mut Context, num: ExprId, den: ExprId) -> ExprId {
     expand_ops::expand_div(ctx, num, den)
 }
 
+/// Evaluate one `expand(...)` call in an isolated, steps-off simplifier context.
+///
+/// Used by rule-level wrappers that need expansion behavior without polluting
+/// the caller's simplifier state.
+pub(crate) fn eval_expand_off(core_ctx: &mut Context, expand_call: ExprId) -> ExprId {
+    use crate::options::StepsMode;
+    use crate::phase::ExpandPolicy;
+
+    let opts = crate::options::EvalOptions {
+        steps_mode: StepsMode::Off,
+        shared: crate::phase::SharedSemanticConfig {
+            expand_policy: ExpandPolicy::Off,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let mut simplifier = crate::engine::Simplifier::with_profile(&opts);
+    simplifier.set_steps_mode(StepsMode::Off);
+
+    std::mem::swap(&mut simplifier.context, core_ctx);
+    let (result, _) = simplifier.expand(expand_call);
+    std::mem::swap(&mut simplifier.context, core_ctx);
+    result
+}
+
 /// Expands power: (a + b)^n
 /// Note: Fast multinomial expansion is handled in expand() BEFORE children are processed.
 pub fn expand_pow(ctx: &mut Context, base: ExprId, exp: ExprId) -> ExprId {
