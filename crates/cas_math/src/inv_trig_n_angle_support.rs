@@ -1,4 +1,5 @@
-use cas_ast::{Context, Expr, ExprId};
+use crate::trig_roots_flatten::extract_int_multiple;
+use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use num_bigint::BigInt;
 use num_rational::BigRational;
 
@@ -131,6 +132,250 @@ pub fn arcsin_recurrence(
     }
 
     (s, c)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NAngleInverseTrigPlan {
+    pub rewritten: ExprId,
+    pub assume_nonzero_expr: ExprId,
+    pub desc: String,
+}
+
+fn match_outer_trig_call(ctx: &Context, expr: ExprId) -> Option<(BuiltinFn, ExprId)> {
+    let (fn_id, arg0) = match ctx.get(expr) {
+        Expr::Function(fn_id, args) if args.len() == 1 => (*fn_id, args[0]),
+        _ => return None,
+    };
+
+    match ctx.builtin_of(fn_id) {
+        Some(b @ (BuiltinFn::Sin | BuiltinFn::Cos | BuiltinFn::Tan)) => Some((b, arg0)),
+        _ => None,
+    }
+}
+
+fn match_n_multiple(arg0: ExprId, ctx: &Context, max_n: i64) -> Option<(bool, i64, ExprId)> {
+    if let Expr::Function(_, _) = ctx.get(arg0) {
+        return Some((true, 1, arg0));
+    }
+
+    for k in 2..=max_n {
+        if let Some((sign, inner)) = extract_int_multiple(ctx, arg0, k) {
+            return Some((sign, k, inner));
+        }
+    }
+    None
+}
+
+/// Plan `sin/cos/tan(n*atan(t))` via Weierstrass recurrence.
+pub fn try_plan_n_angle_atan_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+    max_n: i64,
+    max_inner_nodes: usize,
+    max_output_nodes: usize,
+) -> Option<NAngleInverseTrigPlan> {
+    let (trig, arg0) = match_outer_trig_call(ctx, expr)?;
+    let (is_positive, n, inner) = match_n_multiple(arg0, ctx, max_n)?;
+
+    let t = match ctx.get(inner) {
+        Expr::Function(inv_id, inv_args) if inv_args.len() == 1 => match ctx.builtin_of(*inv_id) {
+            Some(BuiltinFn::Atan | BuiltinFn::Arctan) => inv_args[0],
+            _ => return None,
+        },
+        _ => return None,
+    };
+
+    if count_nodes_dedup(ctx, t) > max_inner_nodes {
+        return None;
+    }
+
+    let (a_n, b_n) = weierstrass_recurrence(ctx, t, n as usize);
+    let (result, assume_nonzero_expr, desc) = match trig {
+        BuiltinFn::Tan => {
+            let result = ctx.add(Expr::Div(b_n, a_n));
+            (result, a_n, format!("tan({n}·atan(t)) = Bₙ/Aₙ"))
+        }
+        BuiltinFn::Sin | BuiltinFn::Cos => {
+            let one_plus_t_sq = build_one_plus_t_sq(ctx, t);
+            let exp = ctx.add(Expr::Number(BigRational::new(
+                BigInt::from(n),
+                BigInt::from(2),
+            )));
+            let denom = ctx.add(Expr::Pow(one_plus_t_sq, exp));
+
+            let (numerator, desc) = match trig {
+                BuiltinFn::Sin => (b_n, format!("sin({n}·atan(t)) = Bₙ/(1+t²)^({n}/2)")),
+                _ => (a_n, format!("cos({n}·atan(t)) = Aₙ/(1+t²)^({n}/2)")),
+            };
+            (ctx.add(Expr::Div(numerator, denom)), denom, desc)
+        }
+        _ => return None,
+    };
+
+    let rewritten = if !is_positive {
+        match trig {
+            BuiltinFn::Cos => result,
+            _ => ctx.add(Expr::Neg(result)),
+        }
+    } else {
+        result
+    };
+
+    if count_nodes_dedup(ctx, rewritten) > max_output_nodes {
+        return None;
+    }
+
+    Some(NAngleInverseTrigPlan {
+        rewritten,
+        assume_nonzero_expr,
+        desc,
+    })
+}
+
+/// Plan `sin/cos/tan(n*acos(t))` via Chebyshev recurrence.
+pub fn try_plan_n_angle_acos_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+    max_n: i64,
+    max_inner_nodes: usize,
+    max_output_nodes: usize,
+) -> Option<NAngleInverseTrigPlan> {
+    let (trig, arg0) = match_outer_trig_call(ctx, expr)?;
+    let (is_positive, n, inner) = match_n_multiple(arg0, ctx, max_n)?;
+
+    let t = match ctx.get(inner) {
+        Expr::Function(inv_id, inv_args) if inv_args.len() == 1 => match ctx.builtin_of(*inv_id) {
+            Some(BuiltinFn::Acos | BuiltinFn::Arccos) => inv_args[0],
+            _ => return None,
+        },
+        _ => return None,
+    };
+
+    if count_nodes_dedup(ctx, t) > max_inner_nodes {
+        return None;
+    }
+
+    let n_usize = n as usize;
+    let (result, assume_nonzero_expr, desc) = match trig {
+        BuiltinFn::Cos => {
+            let tn = chebyshev_t(ctx, t, n_usize);
+            (tn, ctx.num(1), format!("cos({n}·arccos(t)) = T_{n}(t)"))
+        }
+        BuiltinFn::Sin => {
+            if n_usize == 0 {
+                return None;
+            }
+            let one_minus = build_one_minus_t_sq(ctx, t);
+            let sqrt_part = build_sqrt(ctx, one_minus);
+            let u = chebyshev_u_nm1(ctx, t, n_usize);
+            (
+                ctx.add(Expr::Mul(sqrt_part, u)),
+                ctx.num(1),
+                format!("sin({n}·arccos(t)) = √(1-t²)·U_{{{n}-1}}(t)"),
+            )
+        }
+        BuiltinFn::Tan => {
+            if n_usize == 0 {
+                return None;
+            }
+            let tn = chebyshev_t(ctx, t, n_usize);
+            let one_minus = build_one_minus_t_sq(ctx, t);
+            let sqrt_part = build_sqrt(ctx, one_minus);
+            let u = chebyshev_u_nm1(ctx, t, n_usize);
+            let numerator = ctx.add(Expr::Mul(sqrt_part, u));
+            (
+                ctx.add(Expr::Div(numerator, tn)),
+                tn,
+                format!("tan({n}·arccos(t)) = √(1-t²)·U_{{{n}-1}}(t)/T_{n}(t)"),
+            )
+        }
+        _ => return None,
+    };
+
+    let rewritten = if !is_positive {
+        match trig {
+            BuiltinFn::Cos => result,
+            _ => ctx.add(Expr::Neg(result)),
+        }
+    } else {
+        result
+    };
+
+    if count_nodes_dedup(ctx, rewritten) > max_output_nodes {
+        return None;
+    }
+
+    Some(NAngleInverseTrigPlan {
+        rewritten,
+        assume_nonzero_expr,
+        desc,
+    })
+}
+
+/// Plan `sin/cos/tan(n*asin(t))` via sin/cos recurrence.
+pub fn try_plan_n_angle_asin_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+    max_n: i64,
+    max_inner_nodes: usize,
+    max_output_nodes: usize,
+) -> Option<NAngleInverseTrigPlan> {
+    let (trig, arg0) = match_outer_trig_call(ctx, expr)?;
+    let (is_positive, n, inner) = match_n_multiple(arg0, ctx, max_n)?;
+
+    let t = match ctx.get(inner) {
+        Expr::Function(inv_id, inv_args) if inv_args.len() == 1 => match ctx.builtin_of(*inv_id) {
+            Some(BuiltinFn::Asin | BuiltinFn::Arcsin) => inv_args[0],
+            _ => return None,
+        },
+        _ => return None,
+    };
+
+    if count_nodes_dedup(ctx, t) > max_inner_nodes {
+        return None;
+    }
+
+    let one_minus = build_one_minus_t_sq(ctx, t);
+    let cos_theta = build_sqrt(ctx, one_minus);
+    let (s_n, c_n) = arcsin_recurrence(ctx, t, cos_theta, n as usize);
+
+    let (result, assume_nonzero_expr, desc) = match trig {
+        BuiltinFn::Sin => (
+            s_n,
+            ctx.num(1),
+            format!("sin({n}·arcsin(t)) via recurrence"),
+        ),
+        BuiltinFn::Cos => (
+            c_n,
+            ctx.num(1),
+            format!("cos({n}·arcsin(t)) via recurrence"),
+        ),
+        BuiltinFn::Tan => (
+            ctx.add(Expr::Div(s_n, c_n)),
+            c_n,
+            format!("tan({n}·arcsin(t)) = Sₙ/Cₙ"),
+        ),
+        _ => return None,
+    };
+
+    let rewritten = if !is_positive {
+        match trig {
+            BuiltinFn::Cos => result,
+            _ => ctx.add(Expr::Neg(result)),
+        }
+    } else {
+        result
+    };
+
+    if count_nodes_dedup(ctx, rewritten) > max_output_nodes {
+        return None;
+    }
+
+    Some(NAngleInverseTrigPlan {
+        rewritten,
+        assume_nonzero_expr,
+        desc,
+    })
 }
 
 #[cfg(test)]

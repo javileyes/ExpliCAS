@@ -9,8 +9,8 @@ use crate::define_rule;
 use crate::rule::Rewrite;
 use cas_ast::{Context, ExprId};
 use cas_math::summation_support::{
-    try_plan_finite_product_evaluation, try_plan_finite_sum_evaluation, ProductEvaluationKind,
-    SumEvaluationKind,
+    render_product_evaluation_desc_with, render_sum_evaluation_desc_with,
+    try_plan_finite_product_evaluation, try_plan_finite_sum_evaluation,
 };
 
 // =============================================================================
@@ -23,46 +23,10 @@ use cas_math::summation_support::{
 define_rule!(SumRule, "Finite Summation", |ctx, expr| {
     let plan = try_plan_finite_sum_evaluation(ctx, expr, 1000)?;
     let result = simplify_with_engine_rules(ctx, plan.candidate);
-    let call = plan.call;
-    let term = call.term;
-    let var_name = call.var_name;
-    let start_expr = call.start_expr;
-    let end_expr = call.end_expr;
-
-    match plan.kind {
-        SumEvaluationKind::Telescoping => Some(Rewrite::new(result).desc_lazy(|| {
-            format!(
-                "Telescoping sum: Σ({}, {}) from {} to {}",
-                cas_formatter::DisplayExpr {
-                    context: ctx,
-                    id: term
-                },
-                var_name,
-                cas_formatter::DisplayExpr {
-                    context: ctx,
-                    id: start_expr
-                },
-                cas_formatter::DisplayExpr {
-                    context: ctx,
-                    id: end_expr
-                }
-            )
-        })),
-        SumEvaluationKind::FiniteDirect { start, end } => {
-            Some(Rewrite::new(result).desc_lazy(|| {
-                format!(
-                    "sum({}, {}, {}, {})",
-                    cas_formatter::DisplayExpr {
-                        context: ctx,
-                        id: term
-                    },
-                    var_name,
-                    start,
-                    end
-                )
-            }))
-        }
-    }
+    let desc = render_sum_evaluation_desc_with(&plan.kind, &plan.call, |id| {
+        format!("{}", cas_formatter::DisplayExpr { context: ctx, id })
+    });
+    Some(Rewrite::new(result).desc(desc))
 });
 
 // =============================================================================
@@ -75,66 +39,10 @@ define_rule!(SumRule, "Finite Summation", |ctx, expr| {
 define_rule!(ProductRule, "Finite Product", |ctx, expr| {
     let plan = try_plan_finite_product_evaluation(ctx, expr, 1000)?;
     let result = simplify_with_engine_rules(ctx, plan.candidate);
-    let call = plan.call;
-    let term = call.term;
-    let var_name = call.var_name;
-    let start_expr = call.start_expr;
-    let end_expr = call.end_expr;
-
-    match plan.kind {
-        ProductEvaluationKind::Telescoping => Some(Rewrite::new(result).desc_lazy(|| {
-            format!(
-                "Telescoping product: Π({}, {}) from {} to {}",
-                cas_formatter::DisplayExpr {
-                    context: ctx,
-                    id: term
-                },
-                var_name,
-                cas_formatter::DisplayExpr {
-                    context: ctx,
-                    id: start_expr
-                },
-                cas_formatter::DisplayExpr {
-                    context: ctx,
-                    id: end_expr
-                }
-            )
-        })),
-        ProductEvaluationKind::FactorizedTelescoping => {
-            Some(Rewrite::new(result).desc_lazy(|| {
-                format!(
-                    "Factorized telescoping product: Π({}, {}) from {} to {}",
-                    cas_formatter::DisplayExpr {
-                        context: ctx,
-                        id: term
-                    },
-                    var_name,
-                    cas_formatter::DisplayExpr {
-                        context: ctx,
-                        id: start_expr
-                    },
-                    cas_formatter::DisplayExpr {
-                        context: ctx,
-                        id: end_expr
-                    }
-                )
-            }))
-        }
-        ProductEvaluationKind::FiniteDirect { start, end } => {
-            Some(Rewrite::new(result).desc_lazy(|| {
-                format!(
-                    "product({}, {}, {}, {})",
-                    cas_formatter::DisplayExpr {
-                        context: ctx,
-                        id: term
-                    },
-                    var_name,
-                    start,
-                    end
-                )
-            }))
-        }
-    }
+    let desc = render_product_evaluation_desc_with(&plan.kind, &plan.call, |id| {
+        format!("{}", cas_formatter::DisplayExpr { context: ctx, id })
+    });
+    Some(Rewrite::new(result).desc(desc))
 });
 
 fn simplify_with_engine_rules(ctx: &mut Context, expr: ExprId) -> ExprId {

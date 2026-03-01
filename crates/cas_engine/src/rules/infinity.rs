@@ -10,13 +10,17 @@
 //! - `0 · ∞ → Undefined` (indeterminate)
 
 use crate::rule::Rewrite;
-use cas_ast::{Context, Expr, ExprId};
-use cas_math::expr_predicates::is_zero_expr;
+#[cfg(test)]
+use cas_ast::Expr;
+use cas_ast::{Context, ExprId};
+#[cfg(test)]
+use cas_math::infinity_support::InfSign;
 #[cfg(test)]
 use cas_math::infinity_support::{classify_finiteness, Finiteness};
 use cas_math::infinity_support::{
-    collect_add_terms_with_sign, inf_sign, is_finite_literal, is_negative_literal, mk_infinity,
-    mk_undefined, InfSign,
+    try_rewrite_add_infinity_absorption_expr, try_rewrite_div_by_infinity_expr,
+    try_rewrite_inf_div_finite_expr, try_rewrite_mul_finite_infinity_expr,
+    try_rewrite_mul_zero_infinity_expr,
 };
 
 // ============================================================
@@ -31,45 +35,8 @@ use cas_math::infinity_support::{
 ///
 /// Only applies when ALL non-infinity terms are finite literals (conservative).
 pub fn add_infinity_absorption(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
-    // Collect all additive terms
-    let mut terms = Vec::new();
-    collect_add_terms_with_sign(ctx, expr, true, &mut terms);
-
-    let mut has_pos_inf = false;
-    let mut has_neg_inf = false;
-
-    for &(term, is_positive) in &terms {
-        if let Some(s) = inf_sign(ctx, term) {
-            // Combine term sign with infinity sign
-            let total = match (is_positive, s) {
-                (true, InfSign::Pos) => InfSign::Pos,
-                (false, InfSign::Pos) => InfSign::Neg,
-                (true, InfSign::Neg) => InfSign::Neg,
-                (false, InfSign::Neg) => InfSign::Pos,
-            };
-            match total {
-                InfSign::Pos => has_pos_inf = true,
-                InfSign::Neg => has_neg_inf = true,
-            }
-        } else {
-            // Conservative: only absorb if all other terms are finite literals
-            if !is_finite_literal(ctx, term) {
-                return None;
-            }
-        }
-    }
-
-    let (new_expr, description) = match (has_pos_inf, has_neg_inf) {
-        (true, true) => (mk_undefined(ctx), "∞ + (-∞) is indeterminate".to_string()),
-        (true, false) => (mk_infinity(ctx, InfSign::Pos), "finite + ∞ → ∞".to_string()),
-        (false, true) => (
-            mk_infinity(ctx, InfSign::Neg),
-            "finite + (-∞) → -∞".to_string(),
-        ),
-        (false, false) => return None,
-    };
-
-    Some(Rewrite::new(new_expr).desc(description))
+    let plan = try_rewrite_add_infinity_absorption_expr(ctx, expr)?;
+    Some(Rewrite::new(plan.rewritten).desc(plan.description))
 }
 
 /// Rule: Division by infinity.
@@ -79,16 +46,8 @@ pub fn add_infinity_absorption(ctx: &mut Context, expr: ExprId) -> Option<Rewrit
 ///
 /// Only applies when numerator is a finite literal.
 pub fn div_by_infinity(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
-    let (num, den) = if let Expr::Div(num, den) = ctx.get(expr) {
-        (*num, *den)
-    } else {
-        return None;
-    };
-
-    if inf_sign(ctx, den).is_some() && is_finite_literal(ctx, num) {
-        return Some(Rewrite::new(ctx.num(0)).desc("finite / ∞ → 0"));
-    }
-    None
+    let plan = try_rewrite_div_by_infinity_expr(ctx, expr)?;
+    Some(Rewrite::new(plan.rewritten).desc(plan.description))
 }
 
 /// Rule: Zero times infinity is indeterminate.
@@ -96,22 +55,8 @@ pub fn div_by_infinity(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
 /// `0 · ∞ → Undefined`
 /// `∞ · 0 → Undefined`
 pub fn mul_zero_infinity(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
-    let (a, b) = if let Expr::Mul(a, b) = ctx.get(expr) {
-        (*a, *b)
-    } else {
-        return None;
-    };
-
-    let a_inf = inf_sign(ctx, a).is_some();
-    let b_inf = inf_sign(ctx, b).is_some();
-
-    let a_zero = is_zero_expr(ctx, a);
-    let b_zero = is_zero_expr(ctx, b);
-
-    if (a_zero && b_inf) || (b_zero && a_inf) {
-        return Some(Rewrite::new(mk_undefined(ctx)).desc("0 · ∞ is indeterminate"));
-    }
-    None
+    let plan = try_rewrite_mul_zero_infinity_expr(ctx, expr)?;
+    Some(Rewrite::new(plan.rewritten).desc(plan.description))
 }
 
 /// Rule: Finite (non-zero) times infinity.
@@ -121,51 +66,8 @@ pub fn mul_zero_infinity(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
 /// - `(-2) * infinity → -infinity`
 /// - `x * infinity → no simplification` (conservative)
 pub fn mul_finite_infinity(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
-    let (a, b) = if let Expr::Mul(a, b) = ctx.get(expr) {
-        (*a, *b)
-    } else {
-        return None;
-    };
-
-    // Case 1: a is inf, b is finite non-zero literal
-    if let Some(inf_s) = inf_sign(ctx, a) {
-        if is_finite_literal(ctx, b) && !is_zero_expr(ctx, b) {
-            let b_negative = is_negative_literal(ctx, b);
-            let result_sign = if b_negative {
-                match inf_s {
-                    InfSign::Pos => InfSign::Neg,
-                    InfSign::Neg => InfSign::Pos,
-                }
-            } else {
-                inf_s
-            };
-            return Some(
-                Rewrite::new(mk_infinity(ctx, result_sign))
-                    .desc_lazy(|| format!("finite * ∞ → {:?}∞", result_sign)),
-            );
-        }
-    }
-
-    // Case 2: b is inf, a is finite non-zero literal
-    if let Some(inf_s) = inf_sign(ctx, b) {
-        if is_finite_literal(ctx, a) && !is_zero_expr(ctx, a) {
-            let a_negative = is_negative_literal(ctx, a);
-            let result_sign = if a_negative {
-                match inf_s {
-                    InfSign::Pos => InfSign::Neg,
-                    InfSign::Neg => InfSign::Pos,
-                }
-            } else {
-                inf_s
-            };
-            return Some(
-                Rewrite::new(mk_infinity(ctx, result_sign))
-                    .desc_lazy(|| format!("finite * ∞ → {:?}∞", result_sign)),
-            );
-        }
-    }
-
-    None
+    let plan = try_rewrite_mul_finite_infinity_expr(ctx, expr)?;
+    Some(Rewrite::new(plan.rewritten).desc(plan.description))
 }
 
 /// Rule: Infinity divided by finite (non-zero).
@@ -175,33 +77,8 @@ pub fn mul_finite_infinity(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
 /// - `infinity / (-3) → -infinity`
 /// - `-infinity / 2 → -infinity`
 pub fn inf_div_finite(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
-    let (num, den) = if let Expr::Div(num, den) = ctx.get(expr) {
-        (*num, *den)
-    } else {
-        return None;
-    };
-
-    let inf_s = inf_sign(ctx, num)?;
-
-    // Denominator must be finite non-zero literal
-    if !is_finite_literal(ctx, den) || is_zero_expr(ctx, den) {
-        return None;
-    }
-
-    let den_negative = is_negative_literal(ctx, den);
-    let result_sign = if den_negative {
-        match inf_s {
-            InfSign::Pos => InfSign::Neg,
-            InfSign::Neg => InfSign::Pos,
-        }
-    } else {
-        inf_s
-    };
-
-    Some(
-        Rewrite::new(mk_infinity(ctx, result_sign))
-            .desc_lazy(|| format!("∞ / finite → {:?}∞", result_sign)),
-    )
+    let plan = try_rewrite_inf_div_finite_expr(ctx, expr)?;
+    Some(Rewrite::new(plan.rewritten).desc(plan.description))
 }
 
 // ============================================================

@@ -9,9 +9,9 @@
 use crate::engine::Simplifier;
 use crate::parent_context::ParentContext;
 use crate::rule::{Rewrite, Rule};
-use cas_ast::{Context, Expr, ExprId};
-use cas_math::expr_extract::extract_i64_multiplier_and_base;
-use cas_math::trig_roots_flatten::flatten_mul_chain;
+use cas_ast::{Context, ExprId};
+use cas_math::integration_prep_support::try_rewrite_cos_product_telescoping_expr;
+use cas_math::trig_sum_product_support::try_rewrite_product_to_sum_werner_expr;
 
 /// Product-to-sum identity for trigonometric products (Werner formulas).
 ///
@@ -35,62 +35,8 @@ impl Rule for ProductToSumRule {
         expr: ExprId,
         _parent_ctx: &ParentContext,
     ) -> Option<Rewrite> {
-        // Look for: 2 * sin(A) * cos(B) or similar patterns
-        // First, flatten the multiplication and check for coefficient 2
-
-        let factors = flatten_mul_chain(ctx, expr);
-
-        // Check if we have at least 3 factors (coeff, sin, cos)
-        if factors.len() < 2 {
-            return None;
-        }
-
-        // Find numeric coefficient
-        let mut coeff_idx = None;
-        let mut sin_idx = None;
-        let mut cos_idx = None;
-        let mut sin_arg = None;
-        let mut cos_arg = None;
-
-        for (i, &f) in factors.iter().enumerate() {
-            match ctx.get(f) {
-                Expr::Number(n) => {
-                    if n.to_integer() == 2.into() && coeff_idx.is_none() {
-                        coeff_idx = Some(i);
-                    }
-                }
-                Expr::Function(fn_id, args) if args.len() == 1 => match ctx.builtin_of(*fn_id) {
-                    Some(cas_ast::BuiltinFn::Sin) if sin_idx.is_none() => {
-                        sin_idx = Some(i);
-                        sin_arg = Some(args[0]);
-                    }
-                    Some(cas_ast::BuiltinFn::Cos) if cos_idx.is_none() => {
-                        cos_idx = Some(i);
-                        cos_arg = Some(args[0]);
-                    }
-                    _ => {}
-                },
-                _ => {}
-            }
-        }
-
-        // Pattern: 2 * sin(A) * cos(B) → sin(A+B) + sin(A-B)
-        if let (Some(_), Some(_), Some(_), Some(a), Some(b)) =
-            (coeff_idx, sin_idx, cos_idx, sin_arg, cos_arg)
-        {
-            // Build sin(A+B) + sin(A-B)
-            let a_plus_b = ctx.add(Expr::Add(a, b));
-            let a_minus_b = ctx.add(Expr::Sub(a, b));
-            let sin_sum = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![a_plus_b]);
-            let sin_diff = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![a_minus_b]);
-            let result = ctx.add(Expr::Add(sin_sum, sin_diff));
-
-            return Some(
-                Rewrite::new(result).desc("2·sin(A)·cos(B) → sin(A+B) + sin(A-B) (Werner)"),
-            );
-        }
-
-        None
+        let rewrite = try_rewrite_product_to_sum_werner_expr(ctx, expr)?;
+        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
     }
 }
 
@@ -123,108 +69,10 @@ impl Rule for CosProductTelescopingRule {
         expr: ExprId,
         _parent_ctx: &ParentContext,
     ) -> Option<Rewrite> {
-        use num_bigint::BigInt;
-        use num_rational::BigRational;
-
-        // Flatten the product
-        let factors = flatten_mul_chain(ctx, expr);
-
-        // We need at least 2 cosine factors
-        if factors.len() < 2 {
-            return None;
-        }
-
-        // Extract cosine arguments: look for cos(k*u) pattern
-        // Collect (factor_idx, multiplier_k, base_arg_u)
-        let mut cos_info: Vec<(usize, i64, ExprId)> = Vec::new();
-
-        for (i, &f) in factors.iter().enumerate() {
-            if let Expr::Function(fn_id, args) = ctx.get(f) {
-                if ctx.builtin_of(*fn_id) == Some(cas_ast::BuiltinFn::Cos) && args.len() == 1 {
-                    let arg = args[0];
-                    // Try to extract k and u from: k*u or just u (k=1)
-                    let (k, u) = extract_i64_multiplier_and_base(ctx, arg);
-                    cos_info.push((i, k, u));
-                }
-            }
-        }
-
-        // Need at least 2 cosines
-        if cos_info.len() < 2 {
-            return None;
-        }
-
-        // Check if the multipliers form a geometric sequence with ratio 2
-        // i.e., {1, 2, 4, ...} or {a, 2a, 4a, ...}
-        // First, group by base expression
-        // For simplicity, check if all have the same base u
-        let base_u = cos_info[0].2;
-        let mut multipliers: Vec<i64> = Vec::new();
-
-        for (_, k, u) in &cos_info {
-            // Check same base (structural equality)
-            if *u != base_u {
-                return None; // Different bases
-            }
-            multipliers.push(*k);
-        }
-
-        // Sort multipliers
-        multipliers.sort();
-
-        // Check for {1, 2, 4, ...} pattern (powers of 2 starting from 1)
-        // or more generally {a, 2a, 4a, ...} (powers of 2 times a)
-        let base_mult = multipliers[0];
-        if base_mult <= 0 {
-            return None;
-        }
-
-        let n = multipliers.len();
-        for (i, &m) in multipliers.iter().enumerate() {
-            let expected = base_mult * (1i64 << i); // base * 2^i
-            if m != expected {
-                return None; // Not a power-of-2 sequence
-            }
-        }
-
-        // Pattern matches! Apply Morrie's law
-        // Result: sin(2^n * base_mult * u) / (2^n * sin(base_mult * u))
-        let power_of_2 = 1i64 << n; // 2^n
-        let final_mult = base_mult * power_of_2; // 2^n * base_mult
-
-        // Build final_mult * u
-        let final_mult_num = ctx.add(Expr::Number(BigRational::from_integer(BigInt::from(
-            final_mult,
-        ))));
-        let final_arg = ctx.add(Expr::Mul(final_mult_num, base_u));
-
-        // Build base_mult * u (argument for sin in denominator)
-        let base_mult_num = ctx.add(Expr::Number(BigRational::from_integer(BigInt::from(
-            base_mult,
-        ))));
-        let base_arg = if base_mult == 1 {
-            base_u
-        } else {
-            ctx.add(Expr::Mul(base_mult_num, base_u))
-        };
-
-        // Build sin(final_arg) and sin(base_arg)
-        let sin_num = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![final_arg]);
-        let sin_den = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![base_arg]);
-
-        // Build 2^n * sin(base_arg)
-        let power_of_2_num = ctx.add(Expr::Number(BigRational::from_integer(BigInt::from(
-            power_of_2,
-        ))));
-        let denominator = ctx.add(Expr::Mul(power_of_2_num, sin_den));
-
-        // Build sin(final_arg) / (2^n * sin(base_arg))
-        let result = ctx.add(Expr::Div(sin_num, denominator));
-
-        Some(Rewrite::new(result).desc_lazy(|| format!(
-            "cos telescoping (Morrie's law): cos(u)·cos(2u)·...·cos(2^{}u) → sin(2^{}u)/(2^{}·sin(u))",
-            n - 1, n, n
-        )).assume(crate::assumptions::AssumptionEvent::nonzero(ctx, sin_den)))
+        let rewrite = try_rewrite_cos_product_telescoping_expr(ctx, expr)?;
+        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc).assume(
+            crate::assumptions::AssumptionEvent::nonzero(ctx, rewrite.assume_nonzero_expr),
+        ))
     }
 }
 

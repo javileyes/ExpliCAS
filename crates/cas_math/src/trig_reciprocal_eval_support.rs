@@ -3,6 +3,12 @@ use crate::expr_relations::extract_negated_inner;
 use crate::pi_helpers::{build_pi_over_n, is_pi_over_n};
 use cas_ast::{Context, Expr, ExprId};
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReciprocalTrigRewrite {
+    pub rewritten: ExprId,
+    pub desc: String,
+}
+
 type EvalCheck = fn(&Context, ExprId) -> bool;
 type ResultBuilder = fn(&mut Context) -> ExprId;
 
@@ -87,6 +93,25 @@ pub fn eval_reciprocal_trig_value(
     None
 }
 
+/// Match and rewrite known table values for reciprocal trig calls.
+pub fn try_rewrite_eval_reciprocal_trig_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ReciprocalTrigRewrite> {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return None;
+    };
+    if args.len() != 1 {
+        return None;
+    }
+    let fn_name = ctx.builtin_of(*fn_id)?.name();
+    let (rewritten, desc) = eval_reciprocal_trig_value(ctx, fn_name, args[0])?;
+    Some(ReciprocalTrigRewrite {
+        rewritten,
+        desc: desc.to_string(),
+    })
+}
+
 const COMPOSITION_PAIRS: &[(&str, &str)] = &[
     ("cot", "arccot"),
     ("sec", "arcsec"),
@@ -101,6 +126,37 @@ pub fn is_reciprocal_trig_composition(outer_name: &str, inner_name: &str) -> boo
     COMPOSITION_PAIRS
         .iter()
         .any(|(outer, inner)| outer_name == *outer && inner_name == *inner)
+}
+
+/// Match and rewrite reciprocal-trig compositions of form `f(g(x))`.
+pub fn try_rewrite_reciprocal_trig_composition_expr(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<ReciprocalTrigRewrite> {
+    let Expr::Function(outer_fn_id, outer_args) = ctx.get(expr) else {
+        return None;
+    };
+    if outer_args.len() != 1 {
+        return None;
+    }
+    let inner_expr = outer_args[0];
+    let Expr::Function(inner_fn_id, inner_args) = ctx.get(inner_expr) else {
+        return None;
+    };
+    if inner_args.len() != 1 {
+        return None;
+    }
+
+    let outer_name = ctx.builtin_of(*outer_fn_id)?.name();
+    let inner_name = ctx.builtin_of(*inner_fn_id)?.name();
+    if !is_reciprocal_trig_composition(outer_name, inner_name) {
+        return None;
+    }
+
+    Some(ReciprocalTrigRewrite {
+        rewritten: inner_args[0],
+        desc: format!("{}({}(x)) = x", outer_name, inner_name),
+    })
 }
 
 #[derive(Clone, Copy)]
@@ -165,6 +221,25 @@ pub fn rewrite_negative_reciprocal_trig_argument(
     None
 }
 
+/// Match and rewrite reciprocal trig negative-argument identities.
+pub fn try_rewrite_negative_reciprocal_trig_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ReciprocalTrigRewrite> {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return None;
+    };
+    if args.len() != 1 {
+        return None;
+    }
+    let fn_name = ctx.builtin_of(*fn_id)?.name();
+    let (rewritten, desc) = rewrite_negative_reciprocal_trig_argument(ctx, fn_name, args[0])?;
+    Some(ReciprocalTrigRewrite {
+        rewritten,
+        desc: desc.to_string(),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -206,5 +281,32 @@ mod tests {
             }
             _ => panic!("expected subtraction expression"),
         }
+    }
+
+    #[test]
+    fn rewrites_eval_expression_shape() {
+        let mut ctx = Context::new();
+        let expr = parse("cot(pi/4)", &mut ctx).expect("expr");
+        let rewrite = try_rewrite_eval_reciprocal_trig_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(rewrite.desc, "cot(π/4) = 1");
+        assert!(
+            matches!(ctx.get(rewrite.rewritten), Expr::Number(n) if *n == num_rational::BigRational::from_integer(1.into()))
+        );
+    }
+
+    #[test]
+    fn rewrites_composition_expression_shape() {
+        let mut ctx = Context::new();
+        let expr = parse("sec(arcsec(x))", &mut ctx).expect("expr");
+        let rewrite = try_rewrite_reciprocal_trig_composition_expr(&ctx, expr).expect("rewrite");
+        assert_eq!(rewrite.rewritten, parse("x", &mut ctx).expect("x"));
+    }
+
+    #[test]
+    fn rewrites_negative_expression_shape() {
+        let mut ctx = Context::new();
+        let expr = parse("arcsec(-x)", &mut ctx).expect("expr");
+        let rewrite = try_rewrite_negative_reciprocal_trig_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(rewrite.desc, "arcsec(-x) = π - arcsec(x)");
     }
 }

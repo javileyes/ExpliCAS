@@ -2,6 +2,12 @@ use cas_ast::{Context, Expr, ExprId};
 use num_bigint::BigInt;
 use num_rational::Ratio;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TrigInverseExpansionRewrite {
+    pub rewritten: ExprId,
+    pub desc: &'static str,
+}
+
 /// Try to expand compositions like `sin(arctan(x))`.
 ///
 /// Returns `(expanded_expr, description)` when a known identity matches.
@@ -18,6 +24,32 @@ pub fn expand_trig_inverse_composition(
         }
     }
     None
+}
+
+/// Match expression form `trig(invtrig(x))` and expand using known identities.
+pub fn try_rewrite_trig_inverse_composition_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<TrigInverseExpansionRewrite> {
+    let Expr::Function(outer_fn, outer_args) = ctx.get(expr) else {
+        return None;
+    };
+    if outer_args.len() != 1 {
+        return None;
+    }
+    let inner = outer_args[0];
+    let Expr::Function(inner_fn, inner_args) = ctx.get(inner) else {
+        return None;
+    };
+    if inner_args.len() != 1 {
+        return None;
+    }
+
+    let outer_name = ctx.builtin_of(*outer_fn)?.name();
+    let inner_name = ctx.builtin_of(*inner_fn)?.name();
+    let (rewritten, desc) =
+        expand_trig_inverse_composition(ctx, outer_name, inner_name, inner_args[0])?;
+    Some(TrigInverseExpansionRewrite { rewritten, desc })
 }
 
 /// Build sqrt(expr) = expr^(1/2)
@@ -247,5 +279,13 @@ mod tests {
         let x = parse("x", &mut ctx).expect("x");
         let expanded = expand_trig_inverse_composition(&mut ctx, "sin", "arcsin", x);
         assert!(expanded.is_none());
+    }
+
+    #[test]
+    fn rewrites_from_expression_shape() {
+        let mut ctx = Context::new();
+        let expr = parse("cos(arctan(x))", &mut ctx).expect("expr");
+        let rewrite = try_rewrite_trig_inverse_composition_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(rewrite.desc, "cos(arctan(x)) → 1/√(1+x²)");
     }
 }

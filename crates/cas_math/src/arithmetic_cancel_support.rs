@@ -3,6 +3,13 @@
 use crate::semantic_equality::SemanticEqualityChecker;
 use cas_ast::{Context, Expr, ExprId};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ArithmeticCancelRewrite {
+    pub rewritten: ExprId,
+    pub inner: ExprId,
+    pub desc: &'static str,
+}
+
 /// Match `a - a` using semantic equality.
 ///
 /// Returns the representative inner term when both sides are semantically equal.
@@ -43,10 +50,40 @@ pub fn match_add_inverse_expr(ctx: &Context, expr: ExprId) -> Option<ExprId> {
     None
 }
 
+/// Rewrite `a - a` to `0`, returning the cancelled inner expression.
+pub fn try_rewrite_sub_self_zero_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ArithmeticCancelRewrite> {
+    let inner = match_sub_self_semantic_expr(ctx, expr)?;
+    Some(ArithmeticCancelRewrite {
+        rewritten: ctx.num(0),
+        inner,
+        desc: "a - a = 0",
+    })
+}
+
+/// Rewrite `a + (-a)` (or `(-a) + a`) to `0`, returning `a`.
+pub fn try_rewrite_add_inverse_zero_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ArithmeticCancelRewrite> {
+    let inner = match_add_inverse_expr(ctx, expr)?;
+    Some(ArithmeticCancelRewrite {
+        rewritten: ctx.num(0),
+        inner,
+        desc: "a + (-a) = 0",
+    })
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{match_add_inverse_expr, match_sub_self_semantic_expr};
+    use super::{
+        match_add_inverse_expr, match_sub_self_semantic_expr, try_rewrite_add_inverse_zero_expr,
+        try_rewrite_sub_self_zero_expr,
+    };
     use cas_ast::Context;
+    use cas_formatter::DisplayExpr;
     use cas_parser::parse;
 
     #[test]
@@ -64,5 +101,39 @@ mod tests {
 
         let expr2 = parse("(-a)+a", &mut ctx).expect("parse");
         assert!(match_add_inverse_expr(&ctx, expr2).is_some());
+    }
+
+    #[test]
+    fn rewrites_sub_self_to_zero() {
+        let mut ctx = Context::new();
+        let expr = parse("x-x", &mut ctx).expect("parse");
+        let rewrite = try_rewrite_sub_self_zero_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.rewritten
+                }
+            ),
+            "0"
+        );
+    }
+
+    #[test]
+    fn rewrites_add_inverse_to_zero() {
+        let mut ctx = Context::new();
+        let expr = parse("x+(-x)", &mut ctx).expect("parse");
+        let rewrite = try_rewrite_add_inverse_zero_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.rewritten
+                }
+            ),
+            "0"
+        );
     }
 }

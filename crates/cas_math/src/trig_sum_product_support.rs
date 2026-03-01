@@ -1,5 +1,6 @@
 use crate::expr_nary::add_leaves;
 use crate::numeric::as_i64;
+use crate::trig_roots_flatten::flatten_mul_chain;
 use cas_ast::{Context, Expr, ExprId};
 use num_bigint::BigInt;
 use num_rational::BigRational;
@@ -191,6 +192,62 @@ pub fn build_avg_with_simplifier(
     simplify_numeric_div(ctx, result)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TrigSumProductRewrite {
+    pub rewritten: ExprId,
+    pub desc: &'static str,
+}
+
+/// Try the Werner product-to-sum identity:
+/// `2 * sin(A) * cos(B) -> sin(A+B) + sin(A-B)`.
+///
+/// This intentionally matches the current engine behavior only (sin-cos form).
+pub fn try_rewrite_product_to_sum_werner_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<TrigSumProductRewrite> {
+    let factors = flatten_mul_chain(ctx, expr);
+    if factors.len() < 2 {
+        return None;
+    }
+
+    let mut saw_coeff_two = false;
+    let mut sin_arg: Option<ExprId> = None;
+    let mut cos_arg: Option<ExprId> = None;
+
+    for &factor in &factors {
+        match ctx.get(factor) {
+            Expr::Number(n) => {
+                if n.to_integer() == 2.into() && !saw_coeff_two {
+                    saw_coeff_two = true;
+                }
+            }
+            Expr::Function(fn_id, args) if args.len() == 1 => match ctx.builtin_of(*fn_id) {
+                Some(cas_ast::BuiltinFn::Sin) if sin_arg.is_none() => sin_arg = Some(args[0]),
+                Some(cas_ast::BuiltinFn::Cos) if cos_arg.is_none() => cos_arg = Some(args[0]),
+                _ => {}
+            },
+            _ => {}
+        }
+    }
+
+    let (a, b) = match (saw_coeff_two, sin_arg, cos_arg) {
+        (true, Some(a), Some(b)) => (a, b),
+        _ => return None,
+    };
+
+    let a_plus_b = ctx.add(Expr::Add(a, b));
+    let a_minus_b = ctx.add(Expr::Sub(a, b));
+    let sin_sum = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![a_plus_b]);
+    let sin_diff = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![a_minus_b]);
+    let rewritten = ctx.add(Expr::Add(sin_sum, sin_diff));
+
+    Some(TrigSumProductRewrite {
+        rewritten,
+        desc: "2·sin(A)·cos(B) → sin(A+B) + sin(A-B) (Werner)",
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -295,5 +352,24 @@ mod tests {
             cas_ast::ordering::compare_expr(&ctx, avg, expected),
             Ordering::Equal
         );
+    }
+
+    #[test]
+    fn rewrites_werner_sin_cos_product() {
+        let mut ctx = Context::new();
+        let expr = parse("2*sin(x)*cos(y)", &mut ctx).expect("parse");
+        let rewrite = try_rewrite_product_to_sum_werner_expr(&mut ctx, expr).expect("rewrite");
+        let expected = parse("sin(x+y)+sin(x-y)", &mut ctx).expect("expected");
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, rewrite.rewritten, expected),
+            Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn does_not_rewrite_without_required_shape() {
+        let mut ctx = Context::new();
+        let expr = parse("sin(x)*cos(y)", &mut ctx).expect("parse");
+        assert!(try_rewrite_product_to_sum_werner_expr(&mut ctx, expr).is_none());
     }
 }

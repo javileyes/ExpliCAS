@@ -5,44 +5,14 @@
 
 use crate::define_rule;
 use crate::rule::Rewrite;
-use cas_ast::Expr;
-use cas_math::trig_eval_table_support::{lookup_trig_or_inverse, rewrite_negative_trig_argument};
+use cas_math::trig_eval_table_support::try_rewrite_trig_eval_table_expr;
 
 define_rule!(
     EvaluateTrigTableRule,
     "Evaluate Trigonometric Functions (Table)",
     |ctx, expr| {
-        let (fn_id, args) = if let Expr::Function(fn_id, args) = ctx.get(expr) {
-            (*fn_id, args.clone())
-        } else {
-            return None;
-        };
-        {
-            let builtin = ctx.builtin_of(fn_id);
-            // Only process known trig/inverse trig functions
-            let name = match builtin {
-                Some(b) => b.name().to_string(),
-                None => return None,
-            };
-            if args.len() == 1 {
-                let arg = args[0];
-
-                if let Some(hit) = lookup_trig_or_inverse(ctx, &name, arg) {
-                    let new_expr = hit.value.to_expr(ctx);
-                    let key_display = hit.key_display;
-                    let value_display = hit.value.display();
-                    return Some(
-                        Rewrite::new(new_expr)
-                            .desc_lazy(|| format!("{}({}) = {}", name, key_display, value_display)),
-                    );
-                }
-
-                if let Some((new_expr, desc)) = rewrite_negative_trig_argument(ctx, &name, arg) {
-                    return Some(Rewrite::new(new_expr).desc(desc));
-                }
-            }
-        }
-        None
+        let rewrite = try_rewrite_trig_eval_table_expr(ctx, expr)?;
+        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
     }
 );
 
@@ -51,7 +21,7 @@ mod tests {
     use super::*;
     use crate::parent_context::ParentContext;
     use crate::rule::Rule;
-    use cas_ast::Context;
+    use cas_ast::{Context, Expr};
     use num_traits::Zero;
 
     #[test]

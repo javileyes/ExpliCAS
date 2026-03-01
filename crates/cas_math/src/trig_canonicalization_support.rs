@@ -29,6 +29,12 @@ fn is_inverse_trig_builtin(b: BuiltinFn) -> bool {
     )
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TrigCanonicalRewritePlan {
+    pub rewritten: ExprId,
+    pub desc: String,
+}
+
 /// Check if expression is a composition like `tan(arctan(x))`.
 pub fn is_trig_of_inverse_trig(ctx: &Context, expr: ExprId) -> bool {
     match ctx.get(expr) {
@@ -285,6 +291,195 @@ pub fn check_reciprocal_pair(
     }
 }
 
+pub fn try_rewrite_trig_function_name_canonicalization_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<TrigCanonicalRewritePlan> {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return None;
+    };
+
+    let canonical_name = match ctx.builtin_of(*fn_id) {
+        Some(BuiltinFn::Asin) => Some("arcsin"),
+        Some(BuiltinFn::Acos) => Some("arccos"),
+        Some(BuiltinFn::Atan) => Some("arctan"),
+        Some(BuiltinFn::Asec) => Some("arcsec"),
+        Some(BuiltinFn::Acsc) => Some("arccsc"),
+        Some(BuiltinFn::Acot) => Some("arccot"),
+        _ => None,
+    }?;
+
+    let old_name = ctx.builtin_of(*fn_id)?.name();
+    let rewritten = ctx.call(canonical_name, args.clone());
+    Some(TrigCanonicalRewritePlan {
+        rewritten,
+        desc: format!("{} -> {}", old_name, canonical_name),
+    })
+}
+
+pub fn try_rewrite_sec_tan_pythagorean_expr(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    let Expr::Sub(l, r) = ctx.get(expr) else {
+        return None;
+    };
+
+    let (Some(sec_arg), Some(tan_arg)) = (
+        is_function_squared(ctx, *l, "sec"),
+        is_function_squared(ctx, *r, "tan"),
+    ) else {
+        return None;
+    };
+
+    if sec_arg == tan_arg {
+        Some(ctx.num(1))
+    } else {
+        None
+    }
+}
+
+pub fn try_rewrite_csc_cot_pythagorean_expr(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    let Expr::Sub(l, r) = ctx.get(expr) else {
+        return None;
+    };
+
+    let (Some(csc_arg), Some(cot_arg)) = (
+        is_function_squared(ctx, *l, "csc"),
+        is_function_squared(ctx, *r, "cot"),
+    ) else {
+        return None;
+    };
+
+    if csc_arg == cot_arg {
+        Some(ctx.num(1))
+    } else {
+        None
+    }
+}
+
+pub fn try_rewrite_tan_to_sec_pythagorean_expr(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    let Expr::Add(l, r) = ctx.get(expr) else {
+        return None;
+    };
+
+    let tan_arg = if is_one_expr(ctx, *l) {
+        is_function_squared(ctx, *r, "tan")
+    } else if is_one_expr(ctx, *r) {
+        is_function_squared(ctx, *l, "tan")
+    } else {
+        None
+    }?;
+
+    let sec_expr = ctx.call_builtin(BuiltinFn::Sec, vec![tan_arg]);
+    let two = ctx.num(2);
+    Some(ctx.add(Expr::Pow(sec_expr, two)))
+}
+
+pub fn try_rewrite_cot_to_csc_pythagorean_expr(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    let Expr::Add(l, r) = ctx.get(expr) else {
+        return None;
+    };
+
+    let cot_arg = if is_one_expr(ctx, *l) {
+        is_function_squared(ctx, *r, "cot")
+    } else if is_one_expr(ctx, *r) {
+        is_function_squared(ctx, *l, "cot")
+    } else {
+        None
+    }?;
+
+    let csc_expr = ctx.call_builtin(BuiltinFn::Csc, vec![cot_arg]);
+    let two = ctx.num(2);
+    Some(ctx.add(Expr::Pow(csc_expr, two)))
+}
+
+pub fn try_rewrite_sec_tan_minus_one_identity_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ExprId> {
+    let Expr::Sub(left, right) = ctx.get(expr) else {
+        return None;
+    };
+    if !is_one_expr(ctx, *right) {
+        return None;
+    }
+
+    let Expr::Sub(ll, lr) = ctx.get(*left) else {
+        return None;
+    };
+
+    let (Some(sec_arg), Some(tan_arg)) = (
+        is_function_squared(ctx, *ll, "sec"),
+        is_function_squared(ctx, *lr, "tan"),
+    ) else {
+        return None;
+    };
+
+    if sec_arg == tan_arg {
+        Some(ctx.num(0))
+    } else {
+        None
+    }
+}
+
+pub fn try_rewrite_csc_cot_minus_one_identity_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ExprId> {
+    let Expr::Sub(left, right) = ctx.get(expr) else {
+        return None;
+    };
+    if !is_one_expr(ctx, *right) {
+        return None;
+    }
+
+    let Expr::Sub(ll, lr) = ctx.get(*left) else {
+        return None;
+    };
+
+    let (Some(csc_arg), Some(cot_arg)) = (
+        is_function_squared(ctx, *ll, "csc"),
+        is_function_squared(ctx, *lr, "cot"),
+    ) else {
+        return None;
+    };
+
+    if csc_arg == cot_arg {
+        Some(ctx.num(0))
+    } else {
+        None
+    }
+}
+
+pub fn try_rewrite_reciprocal_product_expr(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    let Expr::Mul(l, r) = ctx.get(expr) else {
+        return None;
+    };
+    let (is_reciprocal_pair, _) = check_reciprocal_pair(ctx, *l, *r);
+    if is_reciprocal_pair {
+        Some(ctx.num(1))
+    } else {
+        None
+    }
+}
+
+pub fn try_rewrite_mixed_fraction_to_sincos_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ExprId> {
+    let Expr::Div(num, den) = ctx.get(expr) else {
+        return None;
+    };
+    let num = *num;
+    let den = *den;
+
+    if !is_mixed_trig_fraction(ctx, num, den) {
+        return None;
+    }
+
+    let new_num = convert_trig_to_sincos(ctx, num);
+    let new_den = convert_trig_to_sincos(ctx, den);
+    Some(ctx.add(Expr::Div(new_num, new_den)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -360,5 +555,41 @@ mod tests {
 
         assert!(is_mixed_trig_fraction(&ctx, mixed_num, mixed_den));
         assert!(!is_mixed_trig_fraction(&ctx, plain_num, plain_den));
+    }
+
+    #[test]
+    fn rewrites_sec_tan_identity_to_one() {
+        let mut ctx = Context::new();
+        let expr = parse("sec(x)^2 - tan(x)^2", &mut ctx).expect("parse");
+        let rewritten = try_rewrite_sec_tan_pythagorean_expr(&mut ctx, expr).expect("rewrite");
+        assert!(is_one_expr(&ctx, rewritten));
+    }
+
+    #[test]
+    fn rewrites_reciprocal_product_to_one() {
+        let mut ctx = Context::new();
+        let expr = parse("tan(x) * cot(x)", &mut ctx).expect("parse");
+        let rewritten = try_rewrite_reciprocal_product_expr(&mut ctx, expr).expect("rewrite");
+        assert!(is_one_expr(&ctx, rewritten));
+    }
+
+    #[test]
+    fn rewrites_mixed_fraction_to_sincos_form() {
+        let mut ctx = Context::new();
+        let expr = parse("(sin(x)+cos(x))/tan(x)", &mut ctx).expect("parse");
+        let rewritten = try_rewrite_mixed_fraction_to_sincos_expr(&mut ctx, expr).expect("rewrite");
+        assert!(!contains_named_call(&ctx, rewritten, "tan"));
+        assert!(contains_named_call(&ctx, rewritten, "sin"));
+        assert!(contains_named_call(&ctx, rewritten, "cos"));
+    }
+
+    #[test]
+    fn canonicalizes_short_inverse_trig_name() {
+        let mut ctx = Context::new();
+        let expr = parse("acos(x)", &mut ctx).expect("parse");
+        let plan = try_rewrite_trig_function_name_canonicalization_expr(&mut ctx, expr)
+            .expect("canonicalization");
+        assert!(plan.desc.contains("acos"));
+        assert!(contains_named_call(&ctx, plan.rewritten, "arccos"));
     }
 }

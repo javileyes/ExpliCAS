@@ -8,9 +8,12 @@
 
 use crate::define_rule;
 use crate::rule::Rewrite;
+use cas_math::constants_support::{
+    try_rewrite_phi_reciprocal_expr, try_rewrite_phi_squared_expr, try_rewrite_recognize_phi_expr,
+};
+
+#[cfg(test)]
 use cas_ast::{Constant, Expr};
-use cas_math::expr_predicates::is_half_expr;
-use cas_math::number_theory_support::is_sqrt_of_integer_expr;
 
 // Rule 1: Recognize (1 + √5)/2 as φ
 // Matches both:
@@ -21,61 +24,8 @@ define_rule!(
     "Recognize Phi",
     importance: crate::step::ImportanceLevel::Low,
     |ctx, expr| {
-        // Pattern 1: Div(Add(1, Pow(5, 1/2)), 2)
-        if let Expr::Div(num, den) = ctx.get(expr) {
-            // Check denominator is 2
-            if let Expr::Number(d) = ctx.get(*den) {
-                if d != &num_rational::BigRational::from_integer(2.into()) {
-                    return None;
-                }
-            } else {
-                return None;
-            }
-
-            // Check numerator is Add(1, sqrt(5)) or Add(sqrt(5), 1)
-            if let Expr::Add(l, r) = ctx.get(*num) {
-                let (one_id, sqrt5_id) = if cas_math::expr_predicates::is_one_expr(ctx, *l)
-                    && is_sqrt_of_integer_expr(ctx, *r, 5)
-                {
-                    (*l, *r)
-                } else if is_sqrt_of_integer_expr(ctx, *l, 5)
-                    && cas_math::expr_predicates::is_one_expr(ctx, *r)
-                {
-                    (*r, *l)
-                } else {
-                    return None;
-                };
-                let _ = (one_id, sqrt5_id); // suppress unused warning
-
-                let phi = ctx.add(Expr::Constant(Constant::Phi));
-                return Some(Rewrite::new(phi).desc("(1 + √5)/2 = φ"));
-            }
-        }
-
-        // Pattern 2: Mul(1/2, Add(1, sqrt(5))) or Mul(Add(1, sqrt(5)), 1/2)
-        if let Expr::Mul(l, r) = ctx.get(expr) {
-            let (half_id, sum_id) = if is_half_expr(ctx, *l) {
-                (*l, *r)
-            } else if is_half_expr(ctx, *r) {
-                (*r, *l)
-            } else {
-                return None;
-            };
-            let _ = half_id; // suppress unused warning
-
-            if let Expr::Add(a, b) = ctx.get(sum_id) {
-                if (cas_math::expr_predicates::is_one_expr(ctx, *a)
-                    && is_sqrt_of_integer_expr(ctx, *b, 5))
-                    || (is_sqrt_of_integer_expr(ctx, *a, 5)
-                        && cas_math::expr_predicates::is_one_expr(ctx, *b))
-                {
-                    let phi = ctx.add(Expr::Constant(Constant::Phi));
-                    return Some(Rewrite::new(phi).desc("(1 + √5)/2 = φ"));
-                }
-            }
-        }
-
-        None
+        let rewrite = try_rewrite_recognize_phi_expr(ctx, expr)?;
+        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
     }
 );
 
@@ -85,24 +35,8 @@ define_rule!(
     "Phi Squared",
     importance: crate::step::ImportanceLevel::Medium,
     |ctx, expr| {
-        if let Expr::Pow(base, exp) = ctx.get(expr) {
-            // Check base is φ
-            if !matches!(ctx.get(*base), Expr::Constant(Constant::Phi)) {
-                return None;
-            }
-
-            // Check exponent is 2
-            if let Expr::Number(n) = ctx.get(*exp) {
-                if n == &num_rational::BigRational::from_integer(2.into()) {
-                    // φ² = φ + 1
-                    let phi = ctx.add(Expr::Constant(Constant::Phi));
-                    let one = ctx.num(1);
-                    let result = ctx.add(Expr::Add(phi, one));
-                    return Some(Rewrite::new(result).desc("φ² = φ + 1"));
-                }
-            }
-        }
-        None
+        let rewrite = try_rewrite_phi_squared_expr(ctx, expr)?;
+        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
     }
 );
 
@@ -112,25 +46,8 @@ define_rule!(
     "Phi Reciprocal",
     importance: crate::step::ImportanceLevel::Medium,
     |ctx, expr| {
-        if let Expr::Div(num, den) = ctx.get(expr) {
-            // Check numerator is 1
-            if !cas_math::expr_predicates::is_one_expr(ctx, *num) {
-                return None;
-            }
-
-            // Check denominator is φ
-            if !matches!(ctx.get(*den), Expr::Constant(Constant::Phi)) {
-                return None;
-            }
-
-            // 1/φ = φ - 1
-            let phi = ctx.add(Expr::Constant(Constant::Phi));
-            let one = ctx.num(1);
-            let neg_one = ctx.add(Expr::Neg(one));
-            let result = ctx.add(Expr::Add(phi, neg_one));
-            return Some(Rewrite::new(result).desc("1/φ = φ - 1"));
-        }
-        None
+        let rewrite = try_rewrite_phi_reciprocal_expr(ctx, expr)?;
+        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
     }
 );
 

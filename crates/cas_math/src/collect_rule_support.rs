@@ -3,7 +3,7 @@
 use crate::collect_focus_support::select_collect_didactic_focus;
 use crate::collect_semantics_support::{collect_with_semantics_mode, CollectSemanticsMode};
 use cas_ast::ordering::compare_expr;
-use cas_ast::{Context, ExprId};
+use cas_ast::{Context, Expr, ExprId};
 use std::cmp::Ordering;
 
 #[derive(Debug, Clone)]
@@ -48,11 +48,33 @@ pub fn try_plan_collect_rule_expr(
     })
 }
 
+/// Generic rewrite planner for collect-like-terms on Add/Sub expressions.
+///
+/// Returns a rewritten expression only when the result is structurally different.
+pub fn try_rewrite_collect_like_terms_expr(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    match ctx.get(expr) {
+        Expr::Add(_, _) | Expr::Sub(_, _) => {}
+        _ => return None,
+    }
+
+    if !ctx.is_mul_commutative(expr) {
+        return None;
+    }
+
+    let result = collect_with_semantics_mode(ctx, expr, CollectSemanticsMode::Generic, false)?;
+    if result.new_expr != expr && compare_expr(ctx, result.new_expr, expr) != Ordering::Equal {
+        Some(result.new_expr)
+    } else {
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::try_plan_collect_rule_expr;
+    use super::{try_plan_collect_rule_expr, try_rewrite_collect_like_terms_expr};
     use crate::collect_semantics_support::CollectSemanticsMode;
     use cas_ast::Context;
+    use cas_formatter::DisplayExpr;
     use cas_parser::parse;
 
     #[test]
@@ -73,5 +95,22 @@ mod tests {
         let expr = parse("x/(x+1) - x/(x+1)", &mut ctx).expect("parse");
         let plan = try_plan_collect_rule_expr(&mut ctx, expr, CollectSemanticsMode::Strict, true);
         assert!(plan.is_none());
+    }
+
+    #[test]
+    fn rewrite_collect_like_terms_add() {
+        let mut ctx = Context::new();
+        let expr = parse("x + x", &mut ctx).expect("parse");
+        let rewritten = try_rewrite_collect_like_terms_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewritten
+                }
+            ),
+            "2 * x"
+        );
     }
 }

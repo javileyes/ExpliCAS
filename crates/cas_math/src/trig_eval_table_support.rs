@@ -5,6 +5,12 @@ use crate::trig_values::{
 };
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TrigEvalRewrite {
+    pub rewritten: ExprId,
+    pub desc: String,
+}
+
 /// Lookup result for trig/inverse-trig exact-value tables.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TrigLookupResult {
@@ -64,6 +70,34 @@ pub fn rewrite_negative_trig_argument(
         }
         _ => None,
     }
+}
+
+/// Match and rewrite trig/inverse-trig evaluation table hits and parity-on-negative forms.
+pub fn try_rewrite_trig_eval_table_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<TrigEvalRewrite> {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return None;
+    };
+    if args.len() != 1 {
+        return None;
+    }
+    let fn_name = ctx.builtin_of(*fn_id)?.name().to_string();
+    let arg = args[0];
+
+    if let Some(hit) = lookup_trig_or_inverse(ctx, &fn_name, arg) {
+        return Some(TrigEvalRewrite {
+            rewritten: hit.value.to_expr(ctx),
+            desc: format!("{}({}) = {}", fn_name, hit.key_display, hit.value.display()),
+        });
+    }
+
+    let (rewritten, desc) = rewrite_negative_trig_argument(ctx, &fn_name, arg)?;
+    Some(TrigEvalRewrite {
+        rewritten,
+        desc: desc.to_string(),
+    })
 }
 
 #[cfg(test)]
@@ -134,6 +168,26 @@ mod tests {
                 assert_eq!(args.as_slice(), &[x]);
             }
             _ => panic!("expected cos(x)"),
+        }
+    }
+
+    #[test]
+    fn rewrite_expr_table_hit() {
+        let mut ctx = Context::new();
+        let expr = cas_parser::parse("sin(pi/6)", &mut ctx).expect("parse");
+        let rewrite = try_rewrite_trig_eval_table_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(rewrite.desc, "sin(π/6) = 1/2");
+    }
+
+    #[test]
+    fn rewrite_expr_negative_parity() {
+        let mut ctx = Context::new();
+        let expr = cas_parser::parse("cos(-x)", &mut ctx).expect("parse");
+        let rewrite = try_rewrite_trig_eval_table_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(rewrite.desc, "cos(-x) = cos(x)");
+        match ctx.get(rewrite.rewritten) {
+            Expr::Function(fn_id, _) => assert_eq!(ctx.builtin_of(*fn_id), Some(BuiltinFn::Cos)),
+            _ => panic!("expected cosine call"),
         }
     }
 }

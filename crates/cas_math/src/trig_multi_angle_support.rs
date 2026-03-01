@@ -1,10 +1,17 @@
 use crate::expr_rewrite::smart_mul;
 use crate::pi_helpers::extract_rational_pi_multiple;
+use crate::trig_roots_flatten::{extract_quintuple_angle_arg, extract_triple_angle_arg};
 use crate::trig_sum_product_support::extract_trig_arg;
 use cas_ast::ordering::compare_expr;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use num_rational::BigRational;
 use std::cmp::Ordering;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TrigMultiAngleRewrite {
+    pub rewritten: ExprId,
+    pub desc: &'static str,
+}
 
 /// Check if a trig argument is "trivial": variable, constant, number,
 /// or a simple numeric multiple of one of those.
@@ -24,6 +31,133 @@ pub fn is_trivial_angle(ctx: &Context, arg: ExprId) -> bool {
         }
         Expr::Neg(inner) => is_trivial_angle(ctx, *inner),
         _ => false,
+    }
+}
+
+/// Rewrite shortcut for `sin(3x)`, `cos(3x)`, `tan(3x)`.
+pub fn try_rewrite_triple_angle_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<TrigMultiAngleRewrite> {
+    let (fn_id, arg) = match ctx.get(expr) {
+        Expr::Function(fn_id, args) if args.len() == 1 => (*fn_id, args[0]),
+        _ => return None,
+    };
+
+    let inner_var = extract_triple_angle_arg(ctx, arg)?;
+    if !is_trivial_angle(ctx, inner_var) {
+        return None;
+    }
+
+    match ctx.builtin_of(fn_id) {
+        Some(BuiltinFn::Sin) => {
+            let three = ctx.num(3);
+            let four = ctx.num(4);
+            let exp_three = ctx.num(3);
+            let sin_x = ctx.call_builtin(BuiltinFn::Sin, vec![inner_var]);
+
+            let term1 = smart_mul(ctx, three, sin_x);
+            let sin_cubed = ctx.add(Expr::Pow(sin_x, exp_three));
+            let term2 = smart_mul(ctx, four, sin_cubed);
+            let rewritten = ctx.add(Expr::Sub(term1, term2));
+            Some(TrigMultiAngleRewrite {
+                rewritten,
+                desc: "sin(3x) → 3sin(x) - 4sin³(x)",
+            })
+        }
+        Some(BuiltinFn::Cos) => {
+            let three = ctx.num(3);
+            let four = ctx.num(4);
+            let exp_three = ctx.num(3);
+            let cos_x = ctx.call_builtin(BuiltinFn::Cos, vec![inner_var]);
+
+            let cos_cubed = ctx.add(Expr::Pow(cos_x, exp_three));
+            let term1 = smart_mul(ctx, four, cos_cubed);
+            let term2 = smart_mul(ctx, three, cos_x);
+            let rewritten = ctx.add(Expr::Sub(term1, term2));
+            Some(TrigMultiAngleRewrite {
+                rewritten,
+                desc: "cos(3x) → 4cos³(x) - 3cos(x)",
+            })
+        }
+        Some(BuiltinFn::Tan) => {
+            let one = ctx.num(1);
+            let three = ctx.num(3);
+            let exp_two = ctx.num(2);
+            let exp_three = ctx.num(3);
+            let tan_x = ctx.call_builtin(BuiltinFn::Tan, vec![inner_var]);
+
+            let three_tan = smart_mul(ctx, three, tan_x);
+            let tan_cubed = ctx.add(Expr::Pow(tan_x, exp_three));
+            let numer = ctx.add(Expr::Sub(three_tan, tan_cubed));
+
+            let tan_squared = ctx.add(Expr::Pow(tan_x, exp_two));
+            let three_tan_squared = smart_mul(ctx, three, tan_squared);
+            let denom = ctx.add(Expr::Sub(one, three_tan_squared));
+
+            let rewritten = ctx.add(Expr::Div(numer, denom));
+            Some(TrigMultiAngleRewrite {
+                rewritten,
+                desc: "tan(3x) → (3tan(x) - tan³(x))/(1 - 3tan²(x))",
+            })
+        }
+        _ => None,
+    }
+}
+
+/// Rewrite shortcut for `sin(5x)` and `cos(5x)`.
+pub fn try_rewrite_quintuple_angle_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<TrigMultiAngleRewrite> {
+    let (fn_id, arg) = match ctx.get(expr) {
+        Expr::Function(fn_id, args) if args.len() == 1 => (*fn_id, args[0]),
+        _ => return None,
+    };
+
+    let inner_var = extract_quintuple_angle_arg(ctx, arg)?;
+    match ctx.builtin_of(fn_id) {
+        Some(BuiltinFn::Sin) => {
+            let five = ctx.num(5);
+            let sixteen = ctx.num(16);
+            let twenty = ctx.num(20);
+            let exp_three = ctx.num(3);
+            let exp_five = ctx.num(5);
+            let sin_x = ctx.call_builtin(BuiltinFn::Sin, vec![inner_var]);
+
+            let sin_5 = ctx.add(Expr::Pow(sin_x, exp_five));
+            let term1 = smart_mul(ctx, sixteen, sin_5);
+            let sin_3 = ctx.add(Expr::Pow(sin_x, exp_three));
+            let term2 = smart_mul(ctx, twenty, sin_3);
+            let term3 = smart_mul(ctx, five, sin_x);
+            let sub1 = ctx.add(Expr::Sub(term1, term2));
+            let rewritten = ctx.add(Expr::Add(sub1, term3));
+            Some(TrigMultiAngleRewrite {
+                rewritten,
+                desc: "sin(5x) → 16sin⁵(x) - 20sin³(x) + 5sin(x)",
+            })
+        }
+        Some(BuiltinFn::Cos) => {
+            let five = ctx.num(5);
+            let sixteen = ctx.num(16);
+            let twenty = ctx.num(20);
+            let exp_three = ctx.num(3);
+            let exp_five = ctx.num(5);
+            let cos_x = ctx.call_builtin(BuiltinFn::Cos, vec![inner_var]);
+
+            let cos_5 = ctx.add(Expr::Pow(cos_x, exp_five));
+            let term1 = smart_mul(ctx, sixteen, cos_5);
+            let cos_3 = ctx.add(Expr::Pow(cos_x, exp_three));
+            let term2 = smart_mul(ctx, twenty, cos_3);
+            let term3 = smart_mul(ctx, five, cos_x);
+            let sub1 = ctx.add(Expr::Sub(term1, term2));
+            let rewritten = ctx.add(Expr::Add(sub1, term3));
+            Some(TrigMultiAngleRewrite {
+                rewritten,
+                desc: "cos(5x) → 16cos⁵(x) - 20cos³(x) + 5cos(x)",
+            })
+        }
+        _ => None,
     }
 }
 
@@ -423,6 +557,37 @@ mod tests {
         assert!(is_trivial_angle(&ctx, mul));
         assert!(is_trivial_angle(&ctx, neg));
         assert!(!is_trivial_angle(&ctx, complex));
+    }
+
+    #[test]
+    fn triple_angle_rewrite_matches_sin_shortcut() {
+        let mut ctx = Context::new();
+        let expr = parse("sin(3*x)", &mut ctx).expect("expr");
+        let expected = parse("3*sin(x) - 4*sin(x)^3", &mut ctx).expect("expected");
+        let rewrite = try_rewrite_triple_angle_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(
+            compare_expr(&ctx, rewrite.rewritten, expected),
+            Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn triple_angle_rewrite_blocks_non_trivial_argument() {
+        let mut ctx = Context::new();
+        let expr = parse("sin(3*(x+y))", &mut ctx).expect("expr");
+        assert!(try_rewrite_triple_angle_expr(&mut ctx, expr).is_none());
+    }
+
+    #[test]
+    fn quintuple_angle_rewrite_matches_cos_shortcut() {
+        let mut ctx = Context::new();
+        let expr = parse("cos(5*x)", &mut ctx).expect("expr");
+        let expected = parse("16*cos(x)^5 - 20*cos(x)^3 + 5*cos(x)", &mut ctx).expect("expected");
+        let rewrite = try_rewrite_quintuple_angle_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(
+            compare_expr(&ctx, rewrite.rewritten, expected),
+            Ordering::Equal
+        );
     }
 
     #[test]

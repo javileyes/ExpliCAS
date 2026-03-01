@@ -8,9 +8,9 @@ use cas_ast::{BuiltinFn, Expr, ExprId};
 use cas_math::expr_destructure::{as_mul, as_pow};
 use cas_math::expr_rewrite::smart_mul;
 use cas_math::trig_multi_angle_support::{
-    is_inside_trig_sum_quotient_with_ancestors, is_trivial_angle,
+    is_inside_trig_sum_quotient_with_ancestors, is_trivial_angle, try_rewrite_quintuple_angle_expr,
+    try_rewrite_triple_angle_expr,
 };
-use cas_math::trig_roots_flatten::{extract_quintuple_angle_arg, extract_triple_angle_arg};
 use num_traits::{One, Zero};
 
 // Triple Angle Shortcut Rule: sin(3x) → 3sin(x) - 4sin³(x), cos(3x) → 4cos³(x) - 3cos(x)
@@ -32,90 +32,8 @@ define_rule!(
             return None;
         }
 
-        if let Expr::Function(fn_id, args) = ctx.get(expr) {
-            if args.len() == 1 {
-                // Check if arg is 3*x or x*3
-                if let Some(inner_var) = extract_triple_angle_arg(ctx, args[0]) {
-                    // GUARD 3: Only expand when inner arg is trivial (Var, Const,
-                    // Mul(num,Var)). For compound args like sqrt(u²+1), expansion
-                    // creates complexity without enabling further simplification,
-                    // and would cycle with TripleAngleContractionRule.
-                    if !is_trivial_angle(ctx, inner_var) {
-                        return None;
-                    }
-                    match ctx.builtin_of(*fn_id) {
-                        Some(BuiltinFn::Sin) => {
-                            // sin(3x) → 3sin(x) - 4sin³(x)
-                            let three = ctx.num(3);
-                            let four = ctx.num(4);
-                            let exp_three = ctx.num(3); // Separate for Pow exponent
-                            let sin_x = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![inner_var]);
-
-                            // 3*sin(x)
-                            let term1 = smart_mul(ctx, three, sin_x);
-
-                            // sin³(x) = sin(x)^3
-                            let sin_cubed = ctx.add(Expr::Pow(sin_x, exp_three));
-                            // 4*sin³(x)
-                            let term2 = smart_mul(ctx, four, sin_cubed);
-
-                            // 3sin(x) - 4sin³(x)
-                            let new_expr = ctx.add(Expr::Sub(term1, term2));
-                            return Some(
-                                Rewrite::new(new_expr).desc("sin(3x) → 3sin(x) - 4sin³(x)"),
-                            );
-                        }
-                        Some(BuiltinFn::Cos) => {
-                            // cos(3x) → 4cos³(x) - 3cos(x)
-                            let three = ctx.num(3);
-                            let four = ctx.num(4);
-                            let exp_three = ctx.num(3); // Separate for Pow exponent
-                            let cos_x = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![inner_var]);
-
-                            // cos³(x) = cos(x)^3
-                            let cos_cubed = ctx.add(Expr::Pow(cos_x, exp_three));
-                            // 4*cos³(x)
-                            let term1 = smart_mul(ctx, four, cos_cubed);
-
-                            // 3*cos(x)
-                            let term2 = smart_mul(ctx, three, cos_x);
-
-                            // 4cos³(x) - 3cos(x)
-                            let new_expr = ctx.add(Expr::Sub(term1, term2));
-                            return Some(
-                                Rewrite::new(new_expr).desc("cos(3x) → 4cos³(x) - 3cos(x)"),
-                            );
-                        }
-                        Some(BuiltinFn::Tan) => {
-                            // tan(3x) → (3tan(x) - tan³(x)) / (1 - 3tan²(x))
-                            let one = ctx.num(1);
-                            let three = ctx.num(3);
-                            let exp_two = ctx.num(2);
-                            let exp_three = ctx.num(3);
-                            let tan_x = ctx.call_builtin(cas_ast::BuiltinFn::Tan, vec![inner_var]);
-
-                            // Numerator: 3tan(x) - tan³(x)
-                            let three_tan = smart_mul(ctx, three, tan_x);
-                            let tan_cubed = ctx.add(Expr::Pow(tan_x, exp_three));
-                            let numer = ctx.add(Expr::Sub(three_tan, tan_cubed));
-
-                            // Denominator: 1 - 3tan²(x)
-                            let tan_squared = ctx.add(Expr::Pow(tan_x, exp_two));
-                            let three_tan_squared = smart_mul(ctx, three, tan_squared);
-                            let denom = ctx.add(Expr::Sub(one, three_tan_squared));
-
-                            let new_expr = ctx.add(Expr::Div(numer, denom));
-                            return Some(
-                                Rewrite::new(new_expr)
-                                    .desc("tan(3x) → (3tan(x) - tan³(x))/(1 - 3tan²(x))"),
-                            );
-                        }
-                        _ => {}
-                    }
-                }
-            }
-        }
-        None
+        let rewrite = try_rewrite_triple_angle_expr(ctx, expr)?;
+        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
     }
 );
 
@@ -137,73 +55,8 @@ define_rule!(
             return None;
         }
 
-        if let Expr::Function(fn_id, args) = ctx.get(expr) {
-            if args.len() == 1 {
-                // Check if arg is 5*x or x*5
-                if let Some(inner_var) = extract_quintuple_angle_arg(ctx, args[0]) {
-                    match ctx.builtin_of(*fn_id) {
-                        Some(BuiltinFn::Sin) => {
-                            // sin(5x) → 16sin⁵(x) - 20sin³(x) + 5sin(x)
-                            let five = ctx.num(5);
-                            let sixteen = ctx.num(16);
-                            let twenty = ctx.num(20);
-                            let exp_three = ctx.num(3);
-                            let exp_five = ctx.num(5);
-                            let sin_x = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![inner_var]);
-
-                            // 16sin⁵(x)
-                            let sin_5 = ctx.add(Expr::Pow(sin_x, exp_five));
-                            let term1 = smart_mul(ctx, sixteen, sin_5);
-
-                            // 20sin³(x)
-                            let sin_3 = ctx.add(Expr::Pow(sin_x, exp_three));
-                            let term2 = smart_mul(ctx, twenty, sin_3);
-
-                            // 5sin(x)
-                            let term3 = smart_mul(ctx, five, sin_x);
-
-                            // 16sin⁵(x) - 20sin³(x) + 5sin(x)
-                            let sub1 = ctx.add(Expr::Sub(term1, term2));
-                            let new_expr = ctx.add(Expr::Add(sub1, term3));
-                            return Some(
-                                Rewrite::new(new_expr)
-                                    .desc("sin(5x) → 16sin⁵(x) - 20sin³(x) + 5sin(x)"),
-                            );
-                        }
-                        Some(BuiltinFn::Cos) => {
-                            // cos(5x) → 16cos⁵(x) - 20cos³(x) + 5cos(x)
-                            let five = ctx.num(5);
-                            let sixteen = ctx.num(16);
-                            let twenty = ctx.num(20);
-                            let exp_three = ctx.num(3);
-                            let exp_five = ctx.num(5);
-                            let cos_x = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![inner_var]);
-
-                            // 16cos⁵(x)
-                            let cos_5 = ctx.add(Expr::Pow(cos_x, exp_five));
-                            let term1 = smart_mul(ctx, sixteen, cos_5);
-
-                            // 20cos³(x)
-                            let cos_3 = ctx.add(Expr::Pow(cos_x, exp_three));
-                            let term2 = smart_mul(ctx, twenty, cos_3);
-
-                            // 5cos(x)
-                            let term3 = smart_mul(ctx, five, cos_x);
-
-                            // 16cos⁵(x) - 20cos³(x) + 5cos(x)
-                            let sub1 = ctx.add(Expr::Sub(term1, term2));
-                            let new_expr = ctx.add(Expr::Add(sub1, term3));
-                            return Some(
-                                Rewrite::new(new_expr)
-                                    .desc("cos(5x) → 16cos⁵(x) - 20cos³(x) + 5cos(x)"),
-                            );
-                        }
-                        _ => {}
-                    }
-                }
-            }
-        }
-        None
+        let rewrite = try_rewrite_quintuple_angle_expr(ctx, expr)?;
+        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
     }
 );
 
