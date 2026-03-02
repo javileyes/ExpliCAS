@@ -9,7 +9,7 @@ impl Repl {
     fn handle_full_simplify_core(&mut self, line: &str, verbosity: Verbosity) -> ReplReply {
         // simplify <expr>
         // Uses a temporary simplifier with ALL default rules (including aggressive distribution)
-        let expr_str = line[9..].trim();
+        let expr_str = cas_solver::extract_simplify_command_tail(line);
         let mut lines: Vec<String> = Vec::new();
         let output = match cas_solver::evaluate_full_simplify_input(
             &mut self.core.engine,

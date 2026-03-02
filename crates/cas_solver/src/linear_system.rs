@@ -1,4 +1,5 @@
 use cas_ast::{Context, Expr, ExprId, RelOp};
+use cas_formatter::DisplayExpr;
 use cas_math::multipoly::{multipoly_from_expr, PolyBudget, PolyError};
 use num_rational::BigRational;
 use num_traits::Zero;
@@ -52,6 +53,19 @@ pub struct LinearSystemSpec {
     pub vars: Vec<String>,
 }
 
+/// End-to-end evaluation output for `solve_system(...)` command inputs.
+#[derive(Debug)]
+pub struct LinearSystemCommandEvalOutput {
+    pub vars: Vec<String>,
+    pub result: LinSolveResult,
+}
+
+/// Parsed invocation for `solve_system` command-style input.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LinearSystemInvocationInput {
+    pub spec: String,
+}
+
 /// Input parse/validation errors for linear system commands.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LinearSystemSpecError {
@@ -89,6 +103,120 @@ impl std::fmt::Display for LinearSystemSpecError {
                 relation, position
             ),
         }
+    }
+}
+
+/// Errors while evaluating a `solve_system` command input.
+#[derive(Debug)]
+pub enum LinearSystemCommandEvalError {
+    Parse(LinearSystemSpecError),
+    Solve(LinearSystemError),
+}
+
+fn format_not_linear_reply(message: &str) -> String {
+    let with_prefix = |detail: &str| {
+        if detail.contains("non-linear") {
+            detail.to_string()
+        } else {
+            format!("non-linear term: {}", detail)
+        }
+    };
+
+    if let Some((eq, detail)) = message
+        .strip_prefix("equation ")
+        .and_then(|rest| rest.split_once(": "))
+    {
+        format!(
+            "Error in equation {}: {}\nsolve_system() only handles linear equations.",
+            eq,
+            with_prefix(detail)
+        )
+    } else {
+        format!(
+            "Error: {}\nsolve_system() only handles linear equations.",
+            with_prefix(message)
+        )
+    }
+}
+
+/// Format a user-facing success message for solved linear-system output.
+pub fn format_linear_system_result_message(
+    ctx: &mut Context,
+    output: &LinearSystemCommandEvalOutput,
+) -> String {
+    match &output.result {
+        LinSolveResult::Unique(solution) => {
+            display_linear_system_solution(ctx, &output.vars, solution)
+        }
+        LinSolveResult::Infinite => "System has infinitely many solutions.\n\
+                 The equations are dependent."
+            .to_string(),
+        LinSolveResult::Inconsistent => "System has no solution.\n\
+                 The equations are inconsistent."
+            .to_string(),
+    }
+}
+
+/// Format a user-facing error message for `solve_system(...)` command errors.
+pub fn format_linear_system_command_error_message(error: &LinearSystemCommandEvalError) -> String {
+    match error {
+        LinearSystemCommandEvalError::Parse(LinearSystemSpecError::InvalidPartCount) => {
+            "Usage:\n  \
+                         2×2: solve_system(eq1; eq2; x; y)\n  \
+                         3×3: solve_system(eq1; eq2; eq3; x; y; z)\n  \
+                         n×n: solve_system(eq1; ...; eqn; x1; ...; xn)\n\n\
+                         Examples:\n  \
+                         solve_system(x+y=3; x-y=1; x; y)\n  \
+                         solve_system(x+y+z=6; x-y=0; y+z=4; x; y; z)"
+                .to_string()
+        }
+        LinearSystemCommandEvalError::Parse(LinearSystemSpecError::InvalidVariableName {
+            name,
+            ..
+        }) => format!(
+            "Invalid variable name: '{}'\n\
+                         Variables must be simple identifiers.",
+            name
+        ),
+        LinearSystemCommandEvalError::Parse(LinearSystemSpecError::ParseEquation {
+            position,
+            message,
+        }) => format!("Error parsing equation {}: {}", position, message),
+        LinearSystemCommandEvalError::Parse(LinearSystemSpecError::ExpectedEquation {
+            position,
+            input,
+        }) => format!(
+            "Expected equation, got expression in position {}: '{}'\n\
+                         Use '=' to create an equation.",
+            position, input
+        ),
+        LinearSystemCommandEvalError::Parse(LinearSystemSpecError::UnsupportedRelation {
+            ..
+        }) => "solve_system(): only '=' equations supported\n\
+                         Inequalities (<, >, <=, >=, !=) are not supported."
+            .to_string(),
+        LinearSystemCommandEvalError::Solve(LinearSystemError::NotLinear(message)) => {
+            format_not_linear_reply(message)
+        }
+        LinearSystemCommandEvalError::Solve(e) => format!("Error solving system: {}", e),
+    }
+}
+
+/// Parse full `solve_system` command-style input into normalized spec payload.
+///
+/// Accepts:
+/// - `solve_system(eq1; eq2; x; y)`
+/// - `solve_system eq1; eq2; x; y`
+/// - raw `eq1; eq2; x; y`
+pub fn parse_linear_system_invocation_input(line: &str) -> LinearSystemInvocationInput {
+    let rest = line.strip_prefix("solve_system").unwrap_or(line).trim();
+    let inner = if rest.starts_with('(') && rest.ends_with(')') && rest.len() >= 2 {
+        &rest[1..rest.len() - 1]
+    } else {
+        rest
+    };
+    LinearSystemInvocationInput {
+        spec: inner.trim().to_string(),
     }
 }
 
@@ -232,6 +360,42 @@ pub fn solve_linear_system_spec(
             solve_nxn_linear_system(ctx, &spec.exprs, &var_refs)
         }
     }
+}
+
+/// Evaluate textual `solve_system` input:
+/// parse/validate the specification and solve it in one step.
+pub fn evaluate_linear_system_command_input(
+    ctx: &mut Context,
+    input: &str,
+) -> Result<LinearSystemCommandEvalOutput, LinearSystemCommandEvalError> {
+    let spec = parse_linear_system_spec(ctx, input).map_err(LinearSystemCommandEvalError::Parse)?;
+    let result =
+        solve_linear_system_spec(ctx, &spec).map_err(LinearSystemCommandEvalError::Solve)?;
+    Ok(LinearSystemCommandEvalOutput {
+        vars: spec.vars,
+        result,
+    })
+}
+
+/// Display a linear-system unique solution in `{ x = a, y = b }` form.
+pub fn display_linear_system_solution(
+    ctx: &mut Context,
+    vars: &[String],
+    values: &[BigRational],
+) -> String {
+    let mut pairs = Vec::with_capacity(vars.len().min(values.len()));
+    for (var, val) in vars.iter().zip(values.iter()) {
+        let expr = ctx.add(Expr::Number(val.clone()));
+        let shown = format!(
+            "{}",
+            DisplayExpr {
+                context: ctx,
+                id: expr
+            }
+        );
+        pairs.push(format!("{} = {}", var, shown));
+    }
+    format!("{{ {} }}", pairs.join(", "))
 }
 
 /// Solve 2x2 linear system from normalized equations `lhs - rhs = 0`.
@@ -735,9 +899,13 @@ fn solve_nxn_gauss(
 #[cfg(test)]
 mod tests {
     use super::{
-        is_valid_linear_system_var, parse_linear_system_spec, solve_2x2_linear_system,
-        solve_linear_system_spec, solve_nxn_linear_system, split_semicolon_top_level,
-        LinSolveResult, LinearSystemSpecError,
+        display_linear_system_solution, evaluate_linear_system_command_input,
+        format_linear_system_command_error_message, format_linear_system_result_message,
+        is_valid_linear_system_var, parse_linear_system_invocation_input, parse_linear_system_spec,
+        solve_2x2_linear_system, solve_linear_system_spec, solve_nxn_linear_system,
+        split_semicolon_top_level, LinSolveResult, LinearSystemCommandEvalError,
+        LinearSystemCommandEvalOutput, LinearSystemError, LinearSystemInvocationInput,
+        LinearSystemSpecError,
     };
     use cas_ast::Expr;
     use num_rational::BigRational;
@@ -746,6 +914,28 @@ mod tests {
     fn split_semicolon_top_level_respects_parentheses() {
         let parts = split_semicolon_top_level("x+y=3; solve(a;b); x; y");
         assert_eq!(parts, vec!["x+y=3", " solve(a;b)", " x", " y"]);
+    }
+
+    #[test]
+    fn parse_linear_system_invocation_input_accepts_parenthesized_form() {
+        let parsed = parse_linear_system_invocation_input("solve_system(x+y=3; x-y=1; x; y)");
+        assert_eq!(
+            parsed,
+            LinearSystemInvocationInput {
+                spec: "x+y=3; x-y=1; x; y".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn parse_linear_system_invocation_input_accepts_space_form() {
+        let parsed = parse_linear_system_invocation_input("solve_system x+y=3; x-y=1; x; y");
+        assert_eq!(
+            parsed,
+            LinearSystemInvocationInput {
+                spec: "x+y=3; x-y=1; x; y".to_string(),
+            }
+        );
     }
 
     #[test]
@@ -835,5 +1025,71 @@ mod tests {
             }
             _ => panic!("expected unique solution"),
         }
+    }
+
+    #[test]
+    fn evaluate_linear_system_command_input_runs() {
+        let mut ctx = cas_ast::Context::new();
+        let out =
+            evaluate_linear_system_command_input(&mut ctx, "x+y=3; x-y=1; x; y").expect("eval");
+        assert_eq!(out.vars, vec!["x".to_string(), "y".to_string()]);
+        match out.result {
+            LinSolveResult::Unique(values) => {
+                assert_eq!(values[0], BigRational::from_integer(2.into()));
+                assert_eq!(values[1], BigRational::from_integer(1.into()));
+            }
+            _ => panic!("expected unique result"),
+        }
+    }
+
+    #[test]
+    fn evaluate_linear_system_command_input_parse_error() {
+        let mut ctx = cas_ast::Context::new();
+        let err =
+            evaluate_linear_system_command_input(&mut ctx, "x+y=3; x-y=1; x").expect_err("parse");
+        assert!(matches!(
+            err,
+            LinearSystemCommandEvalError::Parse(LinearSystemSpecError::InvalidPartCount)
+        ));
+    }
+
+    #[test]
+    fn display_linear_system_solution_formats_pairs() {
+        let mut ctx = cas_ast::Context::new();
+        let vars = vec!["x".to_string(), "y".to_string()];
+        let values = vec![
+            BigRational::from_integer(2.into()),
+            BigRational::from_integer(1.into()),
+        ];
+        let shown = display_linear_system_solution(&mut ctx, &vars, &values);
+        assert_eq!(shown, "{ x = 2, y = 1 }");
+    }
+
+    #[test]
+    fn format_linear_system_result_message_for_infinite_system() {
+        let mut ctx = cas_ast::Context::new();
+        let output = LinearSystemCommandEvalOutput {
+            vars: vec!["x".to_string()],
+            result: LinSolveResult::Infinite,
+        };
+        let shown = format_linear_system_result_message(&mut ctx, &output);
+        assert!(shown.contains("infinitely many solutions"));
+    }
+
+    #[test]
+    fn format_linear_system_command_error_message_for_invalid_parts() {
+        let shown = format_linear_system_command_error_message(
+            &LinearSystemCommandEvalError::Parse(LinearSystemSpecError::InvalidPartCount),
+        );
+        assert!(shown.contains("2×2: solve_system"));
+    }
+
+    #[test]
+    fn format_linear_system_command_error_message_for_not_linear() {
+        let shown =
+            format_linear_system_command_error_message(&LinearSystemCommandEvalError::Solve(
+                LinearSystemError::NotLinear("equation 2: x^2".to_string()),
+            ));
+        assert!(shown.contains("solve_system() only handles linear equations"));
     }
 }

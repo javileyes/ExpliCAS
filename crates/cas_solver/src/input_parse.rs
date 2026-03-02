@@ -12,6 +12,21 @@ pub fn parse_statement_or_session_ref(
     }
 }
 
+/// Split a REPL line into executable statements.
+///
+/// Keeps `solve_system ...` as a single statement because semicolons are part
+/// of that command syntax.
+pub fn split_repl_statements(line: &str) -> Vec<&str> {
+    if line.starts_with("solve_system") {
+        return vec![line];
+    }
+
+    line.split(';')
+        .map(str::trim)
+        .filter(|stmt| !stmt.is_empty())
+        .collect()
+}
+
 /// Parse an input as expression; equations are converted to `Equal(lhs, rhs)`.
 pub fn parse_expr_or_equation_as_expr(ctx: &mut Context, input: &str) -> Result<ExprId, String> {
     let stmt = parse_statement_or_session_ref(ctx, input)?;
@@ -72,6 +87,14 @@ pub enum TimelineCommandInput {
     Simplify { expr: String, aggressive: bool },
 }
 
+/// Parsed shape of a `cache ...` command.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CacheCommandInput {
+    Status,
+    Clear,
+    Unknown(String),
+}
+
 /// Parse the tail of a `timeline` command.
 pub fn parse_timeline_command_input(rest: &str) -> TimelineCommandInput {
     if let Some(solve_rest) = rest.strip_prefix("solve ") {
@@ -98,6 +121,16 @@ pub fn parse_timeline_command_input(rest: &str) -> TimelineCommandInput {
     TimelineCommandInput::Simplify {
         expr: rest.trim().to_string(),
         aggressive: false,
+    }
+}
+
+/// Parse a `cache` command line.
+pub fn parse_cache_command_input(line: &str) -> CacheCommandInput {
+    let args: Vec<&str> = line.split_whitespace().collect();
+    match args.get(1).copied() {
+        None | Some("status") => CacheCommandInput::Status,
+        Some("clear") => CacheCommandInput::Clear,
+        Some(other) => CacheCommandInput::Unknown(other.to_string()),
     }
 }
 
@@ -202,10 +235,11 @@ pub fn parse_substitute_args(
 #[cfg(test)]
 mod tests {
     use super::{
-        parse_expr_or_equation_as_expr, parse_expr_pair, parse_limit_command_input,
-        parse_statement_or_session_ref, parse_substitute_args, parse_timeline_command_input,
-        rsplit_ignoring_parens, split_by_comma_ignoring_parens, LimitCommandInput,
-        ParseExprPairError, ParseSubstituteArgsError, TimelineCommandInput,
+        parse_cache_command_input, parse_expr_or_equation_as_expr, parse_expr_pair,
+        parse_limit_command_input, parse_statement_or_session_ref, parse_substitute_args,
+        parse_timeline_command_input, rsplit_ignoring_parens, split_by_comma_ignoring_parens,
+        split_repl_statements, CacheCommandInput, LimitCommandInput, ParseExprPairError,
+        ParseSubstituteArgsError, TimelineCommandInput,
     };
 
     #[test]
@@ -226,6 +260,18 @@ mod tests {
             cas_ast::Expr::Function(_, args) => assert_eq!(args.len(), 2),
             _ => panic!("expected function-wrapped equation"),
         }
+    }
+
+    #[test]
+    fn split_repl_statements_preserves_solve_system_line() {
+        let parts = split_repl_statements("solve_system x+y=3; x-y=1; x; y");
+        assert_eq!(parts, vec!["solve_system x+y=3; x-y=1; x; y"]);
+    }
+
+    #[test]
+    fn split_repl_statements_splits_regular_semicolons() {
+        let parts = split_repl_statements("let a = 1; let b = 2; a + b");
+        assert_eq!(parts, vec!["let a = 1", "let b = 2", "a + b"]);
     }
 
     #[test]
@@ -325,5 +371,33 @@ mod tests {
         assert_eq!(parsed.var, "x");
         assert_eq!(parsed.approach, crate::Approach::NegInfinity);
         assert_eq!(parsed.presimplify, crate::PreSimplifyMode::Safe);
+    }
+
+    #[test]
+    fn parse_cache_command_input_defaults_to_status() {
+        assert_eq!(
+            parse_cache_command_input("cache"),
+            CacheCommandInput::Status
+        );
+        assert_eq!(
+            parse_cache_command_input("cache status"),
+            CacheCommandInput::Status
+        );
+    }
+
+    #[test]
+    fn parse_cache_command_input_supports_clear() {
+        assert_eq!(
+            parse_cache_command_input("cache clear"),
+            CacheCommandInput::Clear
+        );
+    }
+
+    #[test]
+    fn parse_cache_command_input_captures_unknown_subcommand() {
+        assert_eq!(
+            parse_cache_command_input("cache nope"),
+            CacheCommandInput::Unknown("nope".to_string())
+        );
     }
 }

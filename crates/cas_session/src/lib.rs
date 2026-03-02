@@ -3,16 +3,41 @@
 use cas_engine::{Diagnostics, RequireOrigin, RequiredItem};
 
 mod assignment;
+mod bindings;
 mod cache;
 pub mod env;
+mod history;
+mod inspect;
+mod options;
 mod snapshot;
 mod state;
 
 pub use assignment::{
-    apply_assignment, parse_let_assignment_input, AssignmentError, LetAssignmentParseError,
-    ParsedLetAssignment,
+    apply_assignment, format_assignment_error_message, format_assignment_success_message,
+    format_let_assignment_parse_error_message, let_assignment_usage_message,
+    parse_let_assignment_input, AssignmentError, LetAssignmentParseError, ParsedLetAssignment,
+};
+pub use bindings::{
+    binding_overview_entries, clear_bindings_command, format_binding_overview_lines,
+    format_clear_bindings_result_lines, vars_empty_message, BindingOverviewEntry,
+    ClearBindingsResult,
 };
 pub use cache::{CacheDomainMode, SimplifiedCache, SimplifyCacheKey};
+pub use history::{
+    delete_history_entries, format_delete_history_error_message,
+    format_delete_history_result_message, format_history_overview_lines, history_empty_message,
+    history_overview_entries, parse_history_ids, DeleteHistoryError, DeleteHistoryResult,
+    HistoryOverviewEntry, HistoryOverviewKind,
+};
+pub use inspect::{
+    format_history_entry_inspection_lines, format_inspect_history_entry_error_message,
+    inspect_history_entry, inspect_history_entry_input, parse_history_entry_id,
+    HistoryEntryDetails, HistoryEntryInspection, HistoryExprInspection,
+    InspectHistoryEntryInputError, ParseHistoryEntryIdError,
+};
+pub use options::{
+    apply_solve_budget_command, format_solve_budget_command_message, SolveBudgetCommandResult,
+};
 pub type CacheHitEntryId = u64;
 
 pub type ResolvedExpr = cas_session_core::cache::ResolvedExpr<RequiredItem>;

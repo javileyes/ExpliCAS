@@ -3,32 +3,28 @@ use super::*;
 impl Repl {
     // ========== SESSION ENVIRONMENT HANDLERS ==========
 
-    /// Handle "let <name> = <expr>" (eager) or "let <name> := <expr>" (lazy) command
-    pub(crate) fn handle_let_command(&mut self, rest: &str) {
-        let reply = self.handle_let_command_core(rest);
-        self.print_reply(reply);
+    pub(crate) fn handle_budget_command_core(&mut self, line: &str) -> ReplReply {
+        let result = cas_session::apply_solve_budget_command(&mut self.core.state, line);
+        reply_output(cas_session::format_solve_budget_command_message(&result))
     }
 
-    fn handle_let_command_core(&mut self, rest: &str) -> ReplReply {
+    /// Handle "let <name> = <expr>" (eager) or "let <name> := <expr>" (lazy) command
+    pub(crate) fn handle_let_command_core(&mut self, rest: &str) -> ReplReply {
         match cas_session::parse_let_assignment_input(rest) {
             Ok(parsed) => self.handle_assignment_core(parsed.name, parsed.expr, parsed.lazy),
-            Err(cas_session::LetAssignmentParseError::MissingAssignmentOperator) => reply_output(
-                "Usage: let <name> = <expr>   (eager - evaluates)\n\
-                        let <name> := <expr>  (lazy - stores formula)\n\
-                 Example: let a = expand((1+x)^3)",
-            ),
+            Err(e) => reply_output(cas_session::format_let_assignment_parse_error_message(&e)),
         }
     }
 
     /// Handle variable assignment (from "let" or ":=")
     /// - eager=false (=): evaluate then store (unwrap __hold)
     /// - eager=true (:=): store formula without evaluating
-    pub(crate) fn handle_assignment(&mut self, name: &str, expr_str: &str, lazy: bool) {
-        let reply = self.handle_assignment_core(name, expr_str, lazy);
-        self.print_reply(reply);
-    }
-
-    fn handle_assignment_core(&mut self, name: &str, expr_str: &str, lazy: bool) -> ReplReply {
+    pub(crate) fn handle_assignment_core(
+        &mut self,
+        name: &str,
+        expr_str: &str,
+        lazy: bool,
+    ) -> ReplReply {
         match cas_session::apply_assignment(
             &mut self.core.state,
             &mut self.core.engine.simplifier,
@@ -41,156 +37,115 @@ impl Repl {
                     context: &self.core.engine.simplifier.context,
                     id: result,
                 };
-                if lazy {
-                    reply_output(format!("{} := {}", name, display))
-                } else {
-                    reply_output(format!("{} = {}", name, display))
-                }
+                reply_output(cas_session::format_assignment_success_message(
+                    name,
+                    &display.to_string(),
+                    lazy,
+                ))
             }
-            Err(cas_session::AssignmentError::EmptyName) => {
-                reply_output("Error: Variable name cannot be empty")
-            }
-            Err(cas_session::AssignmentError::InvalidNameStart) => {
-                reply_output("Error: Variable name must start with a letter or underscore")
-            }
-            Err(cas_session::AssignmentError::ReservedName(name)) => reply_output(format!(
-                "Error: '{}' is a reserved name and cannot be assigned",
-                name
-            )),
-            Err(cas_session::AssignmentError::Parse(e)) => {
-                reply_output(format!("Parse error: {}", e))
-            }
+            Err(e) => reply_output(cas_session::format_assignment_error_message(&e)),
         }
     }
 
     /// Handle "vars" command - list all variable bindings
-    pub(crate) fn handle_vars_command(&self) {
-        let reply = self.handle_vars_command_core();
-        self.print_reply(reply);
-    }
-
     /// Core logic for "vars" command
-    fn handle_vars_command_core(&self) -> ReplReply {
-        let bindings = self.core.state.bindings();
+    pub(crate) fn handle_vars_command_core(&self) -> ReplReply {
+        let bindings = cas_session::binding_overview_entries(&self.core.state);
         if bindings.is_empty() {
-            reply_output("No variables defined.")
+            reply_output(cas_session::vars_empty_message())
         } else {
-            let mut lines = vec!["Variables:".to_string()];
-            for (name, expr_id) in bindings {
-                let display = cas_formatter::DisplayExpr {
-                    context: &self.core.engine.simplifier.context,
-                    id: expr_id,
-                };
-                lines.push(format!("  {} = {}", name, display));
-            }
+            let lines = cas_session::format_binding_overview_lines(&bindings, |id| {
+                format!(
+                    "{}",
+                    cas_formatter::DisplayExpr {
+                        context: &self.core.engine.simplifier.context,
+                        id
+                    }
+                )
+            });
             reply_output(lines.join("\n"))
         }
     }
 
-    /// Handle "clear" or "clear <names>" command
-    pub(crate) fn handle_clear_command(&mut self, line: &str) {
-        let reply = self.handle_clear_command_core(line);
-        self.print_reply(reply);
+    /// Handle "history" or "list" command - show session history
+    pub(crate) fn handle_history_command_core(&self) -> ReplReply {
+        let entries = cas_session::history_overview_entries(&self.core.state);
+        if entries.is_empty() {
+            return reply_output(cas_session::history_empty_message());
+        }
+
+        let lines = cas_session::format_history_overview_lines(&entries, |id| {
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &self.core.engine.simplifier.context,
+                    id
+                }
+            )
+        });
+        reply_output(lines.join("\n"))
     }
 
-    /// Core logic for "clear" command
-    fn handle_clear_command_core(&mut self, line: &str) -> ReplReply {
-        let mut reply = ReplReply::new();
-        if line == "clear" {
-            // Clear all
-            let count = self.core.state.binding_count();
-            self.core.state.clear_bindings();
-            if count == 0 {
-                reply.push(ReplMsg::output("No variables to clear."));
-            } else {
-                reply.push(ReplMsg::output(format!("Cleared {} variable(s).", count)));
-            }
-        } else {
-            // Clear specific variables
-            let names: Vec<&str> = line[6..].split_whitespace().collect();
-            let mut cleared = 0;
-            for name in names {
-                if self.core.state.unset_binding(name) {
-                    cleared += 1;
-                } else {
-                    reply.push(ReplMsg::output(format!(
-                        "Warning: '{}' was not defined",
-                        name
-                    )));
+    /// Handle "show #id" command - show details of a specific entry
+    pub(crate) fn handle_show_command_core(&mut self, line: &str) -> ReplReply {
+        match cas_session::inspect_history_entry_input(
+            &mut self.core.state,
+            &mut self.core.engine,
+            line,
+        ) {
+            Ok(inspection) => {
+                let mut lines =
+                    cas_session::format_history_entry_inspection_lines(&inspection, |id| {
+                        format!(
+                            "{}",
+                            DisplayExpr {
+                                context: &self.core.engine.simplifier.context,
+                                id
+                            }
+                        )
+                    });
+                if let cas_session::HistoryEntryDetails::Expr(expr_info) = &inspection.details {
+                    lines.extend(cas_solver::format_eval_metadata_sections(
+                        &self.core.engine.simplifier.context,
+                        &expr_info.required_conditions,
+                        &expr_info.domain_warnings,
+                        &expr_info.blocked_hints,
+                        cas_solver::history_eval_metadata_section_labels(),
+                    ));
                 }
+                reply_output(lines.join("\n"))
             }
-            if cleared > 0 {
-                reply.push(ReplMsg::output(format!("Cleared {} variable(s).", cleared)));
-            }
+            Err(e) => reply_output(cas_session::format_inspect_history_entry_error_message(&e)),
+        }
+    }
+
+    /// Handle "del #id [#id...]" command - delete session entries
+    pub(crate) fn handle_del_command_core(&mut self, line: &str) -> ReplReply {
+        match cas_session::delete_history_entries(&mut self.core.state, line) {
+            Ok(result) => reply_output(cas_session::format_delete_history_result_message(&result)),
+            Err(e) => reply_output(cas_session::format_delete_history_error_message(&e)),
+        }
+    }
+
+    /// Handle "clear" or "clear <names>" command
+    /// Core logic for "clear" command
+    pub(crate) fn handle_clear_command_core(&mut self, line: &str) -> ReplReply {
+        let result = cas_session::clear_bindings_command(&mut self.core.state, line);
+        let mut reply = ReplReply::new();
+        for line in cas_session::format_clear_bindings_result_lines(&result) {
+            reply.push(ReplMsg::output(line));
         }
         reply
     }
 
     /// Handle "reset" command - reset entire session
-    pub(crate) fn handle_reset_command(&mut self) {
-        let reply = self.handle_reset_command_impl();
-        self.print_reply(reply);
-    }
-
-    /// Implementation of reset - keeps access to both core and config
-    fn handle_reset_command_impl(&mut self) -> ReplReply {
+    /// Keeps access to both core and config.
+    pub(crate) fn handle_reset_command_core(&mut self) -> ReplReply {
         // Clear session state (history + env)
         self.core.state.clear();
 
-        // Reset simplifier with new context
-        self.core.engine.simplifier = Simplifier::with_default_rules();
-
-        // Re-register custom rules (same as in new())
-        self.core
-            .engine
-            .simplifier
-            .add_rule(Box::new(cas_solver::rules::functions::AbsSquaredRule));
-        self.core
-            .engine
-            .simplifier
-            .add_rule(Box::new(EvaluateTrigRule));
-        self.core
-            .engine
-            .simplifier
-            .add_rule(Box::new(PythagoreanIdentityRule));
-        if self.config.trig_angle_sum {
-            self.core
-                .engine
-                .simplifier
-                .add_rule(Box::new(AngleIdentityRule));
-        }
-        self.core
-            .engine
-            .simplifier
-            .add_rule(Box::new(TanToSinCosRule));
-        if self.config.trig_double_angle {
-            self.core
-                .engine
-                .simplifier
-                .add_rule(Box::new(DoubleAngleRule));
-        }
-        if self.config.canonicalize_trig_square {
-            self.core.engine.simplifier.add_rule(Box::new(
-                cas_solver::rules::trigonometry::CanonicalizeTrigSquareRule,
-            ));
-        }
-        self.core
-            .engine
-            .simplifier
-            .add_rule(Box::new(EvaluateLogRule));
-        self.core
-            .engine
-            .simplifier
-            .add_rule(Box::new(ExponentialLogRule));
-        self.core
-            .engine
-            .simplifier
-            .add_rule(Box::new(SimplifyFractionRule));
-        self.core.engine.simplifier.add_rule(Box::new(ExpandRule));
-        self.core
-            .engine
-            .simplifier
-            .add_rule(Box::new(cas_solver::rules::algebra::ConservativeExpandRule));
+        // Rebuild full configured simplifier portfolio (same source as Repl::new()).
+        self.rebuild_engine_simplifier_from_config();
 
         // Sync config
         self.sync_config_to_simplifier();
@@ -205,52 +160,24 @@ impl Repl {
     }
 
     /// Handle "reset full" command - reset session AND clear profile cache
-    pub(crate) fn handle_reset_full_command(&mut self) {
-        // First do normal reset (which prints its message)
-        let reset_reply = self.handle_reset_command_impl();
-        self.print_reply(reset_reply);
-
-        // Also clear profile cache
+    pub(crate) fn handle_reset_full_command_core(&mut self) -> ReplReply {
+        let mut reply = self.handle_reset_command_core();
         self.core.engine.clear_profile_cache();
-
-        self.print_reply(reply_output(
+        reply.push(ReplMsg::output(
             "Profile cache cleared (will rebuild on next eval).",
         ));
+        reply
     }
 
     /// Handle "cache" command - show status or clear cache
-    pub(crate) fn handle_cache_command(&mut self, line: &str) {
-        let reply = self.handle_cache_command_core(line);
-        self.print_reply(reply);
-    }
-
     /// Core logic for "cache" command
-    fn handle_cache_command_core(&mut self, line: &str) -> ReplReply {
-        let args: Vec<&str> = line.split_whitespace().collect();
-
-        match args.get(1).copied() {
-            None | Some("status") => {
-                // Show cache status
-                let count = self.core.engine.profile_cache_len();
-                let mut lines = vec![format!("Profile Cache: {} profiles cached", count)];
-                if count == 0 {
-                    lines.push("  (empty - profiles will be built on first eval)".to_string());
-                } else {
-                    lines.push("  (profiles are reused across evaluations)".to_string());
-                }
-                reply_output(lines.join("\n"))
-            }
-            Some("clear") => {
-                self.core.engine.clear_profile_cache();
-                reply_output("Profile cache cleared.")
-            }
-            Some(cmd) => {
-                let mut reply = ReplReply::new();
-                reply.push(ReplMsg::output(format!("Unknown cache command: {}", cmd)));
-                reply.push(ReplMsg::output("Usage: cache [status|clear]"));
-                reply
-            }
+    pub(crate) fn handle_cache_command_core(&mut self, line: &str) -> ReplReply {
+        let result = cas_solver::apply_profile_cache_command(&mut self.core.engine, line);
+        let mut reply = ReplReply::new();
+        for line in cas_solver::format_profile_cache_command_lines(&result) {
+            reply.push(ReplMsg::output(line));
         }
+        reply
     }
 }
 

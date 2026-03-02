@@ -6,17 +6,37 @@
 mod analysis;
 mod assumption_model;
 mod assumption_types;
+mod autoexpand_command;
+mod cache_command;
 pub mod check;
+mod command_routing;
+mod config_command;
+mod context_command;
 mod domain_types;
+mod general_help;
+mod health_command;
+mod help_command;
+mod help_topics;
 mod input_parse;
 mod isolation;
 pub mod json;
 mod linear_system;
+mod panic_guard;
+mod pipeline_display;
+mod profile_command;
+mod prompt_display;
+mod semantics_command;
+mod semantics_display;
+mod semantics_presets;
+mod semantics_set;
+mod set_command;
+mod simplifier_setup;
 mod solution_display;
 mod solve;
 mod solve_core;
 mod solve_display;
 mod solve_safety;
+mod steps_command;
 pub mod substitute;
 mod symbolic_transforms;
 mod types;
@@ -43,15 +63,37 @@ pub mod api {
 
 pub use analysis::{
     evaluate_equiv_input, evaluate_expand_log_input, evaluate_explain_gcd_input,
-    evaluate_full_simplify_input, evaluate_rationalize_input,
+    evaluate_full_simplify_input, evaluate_limit_command_input, evaluate_rationalize_input,
     evaluate_substitute_and_simplify_input, evaluate_substitute_input, evaluate_telescope_input,
-    evaluate_timeline_simplify_aggressive_input, evaluate_timeline_simplify_input,
-    evaluate_unary_function_input, evaluate_visualize_input, evaluate_weierstrass_input,
-    ExpandLogEvalOutput, ExplainEvalError, ExplainGcdEvalOutput, FullSimplifyEvalError,
-    FullSimplifyEvalOutput, RationalizeEvalError, RationalizeEvalOutcome, RationalizeEvalOutput,
-    SubstituteEvalOutput, TelescopeEvalOutput, TimelineEvalError, TimelineSimplifyEvalOutput,
-    TransformEvalError, UnaryFunctionEvalError, UnaryFunctionEvalOutput, VisualizeEvalOutput,
-    WeierstrassEvalOutput,
+    evaluate_timeline_command_input, evaluate_timeline_simplify_aggressive_input,
+    evaluate_timeline_simplify_input, evaluate_unary_function_input, evaluate_visualize_input,
+    evaluate_weierstrass_input, expand_log_usage_message, expand_usage_message,
+    extract_equiv_command_tail, extract_explain_command_tail, extract_limit_command_tail,
+    extract_simplify_command_tail, extract_solve_command_tail, extract_substitute_command_tail,
+    extract_timeline_command_tail, extract_unary_command_tail, extract_visualize_command_tail,
+    format_equivalence_result_lines, format_expand_log_eval_lines, format_explain_error_message,
+    format_explain_gcd_eval_lines, format_expr_pair_parse_error_message,
+    format_limit_command_error_message, format_limit_command_eval_lines,
+    format_rationalize_eval_error_message, format_rationalize_eval_lines,
+    format_substitute_eval_lines, format_substitute_parse_error_message,
+    format_telescope_eval_lines, format_timeline_command_error_message,
+    format_timeline_eval_error_message, format_timeline_simplify_info_lines,
+    format_transform_eval_error_message, format_unary_function_eval_error_message,
+    format_unary_function_eval_lines, format_weierstrass_eval_lines,
+    history_eval_metadata_section_labels, limit_usage_message, parse_expand_command_input,
+    parse_expand_log_command_input, parse_rationalize_command_input, parse_telescope_command_input,
+    parse_weierstrass_command_input, rationalize_usage_message,
+    substitute_render_mode_from_display_mode, substitute_usage_message, telescope_usage_message,
+    timeline_no_steps_message, timeline_open_hint_message, unary_render_config_for_display_mode,
+    visualize_output_hint_lines, weierstrass_usage_message, wrap_expand_eval_expression,
+    ExpandCommandInput, ExpandLogCommandInput, ExpandLogEvalOutput, ExplainEvalError,
+    ExplainGcdEvalOutput, FullSimplifyEvalError, FullSimplifyEvalOutput, LimitCommandEvalError,
+    LimitCommandEvalOutput, RationalizeCommandInput, RationalizeEvalError, RationalizeEvalOutcome,
+    RationalizeEvalOutput, SubstituteEvalOutput, SubstituteRenderMode, TelescopeCommandInput,
+    TelescopeEvalOutput, TimelineCommandEvalError, TimelineCommandEvalOutput, TimelineEvalError,
+    TimelineSimplifyCommandEvalOutput, TimelineSimplifyEvalOutput, TransformEvalError,
+    UnaryFunctionEvalError, UnaryFunctionEvalOutput, UnaryFunctionRenderConfig,
+    VisualizeEvalOutput, WeierstrassCommandInput, WeierstrassEvalOutput,
 };
 pub use assumption_model::{
     assumption_records_from_engine, blocked_hint_suggestion, classify_assumption,
@@ -63,11 +105,22 @@ pub use assumption_model::{
     format_blocked_simplifications_section_lines, format_diagnostics_requires_lines,
     format_displayable_assumption_lines, format_domain_warning_lines,
     format_eval_blocked_hints_lines, format_eval_metadata_sections,
-    format_normalized_condition_lines, format_required_condition_lines, format_text_requires_lines,
+    format_normalized_condition_lines, format_required_condition_lines,
+    format_solve_assumption_and_blocked_sections, format_text_requires_lines,
     group_assumed_conditions_by_rule, group_blocked_hint_conditions_by_rule, AssumptionCollector,
     AssumptionEvent, AssumptionKey, AssumptionKind, EvalMetadataSectionLabels,
+    SolveAssumptionSectionConfig,
 };
 pub use assumption_types::AssumptionRecord;
+pub use autoexpand_command::{
+    autoexpand_budget_view_from_options, evaluate_autoexpand_command_input,
+    format_autoexpand_current_message, format_autoexpand_set_message,
+    format_autoexpand_unknown_mode_message, parse_autoexpand_command_input, AutoexpandBudgetView,
+    AutoexpandCommandInput, AutoexpandCommandResult, AutoexpandCommandState,
+};
+pub use cache_command::{
+    apply_profile_cache_command, format_profile_cache_command_lines, ProfileCacheCommandResult,
+};
 pub use cas_engine::error;
 pub use cas_engine::expand;
 pub use cas_engine::normalize_and_dedupe_conditions;
@@ -120,11 +173,34 @@ pub use check::{
     format_verify_summary_lines, verify_solution, verify_solution_set, VerifyResult, VerifyStatus,
     VerifySummary,
 };
+pub use command_routing::{
+    parse_repl_command_input, preprocess_repl_function_syntax, ReplCommandInput,
+};
+pub use config_command::{
+    config_rule_usage_message, config_unknown_subcommand_message, config_usage_message,
+    parse_config_command_input, ConfigCommandInput,
+};
+pub use context_command::{
+    evaluate_context_command_input, format_context_current_message, format_context_set_message,
+    format_context_unknown_message, parse_context_command_input, ContextCommandInput,
+    ContextCommandResult,
+};
 pub use domain_types::{ConditionClass, Provenance};
+pub use general_help::general_help_text;
+pub use health_command::{
+    format_health_invalid_category_message, format_health_missing_category_arg_message,
+    format_health_report_lines, format_health_status_running_message, format_health_usage_message,
+    health_clear_message, health_disable_message, health_enable_message,
+    parse_health_command_input, resolve_health_category_filter, HealthCommandInput,
+    HealthStatusInput,
+};
+pub use help_command::{parse_help_command_input, HelpCommandInput};
+pub use help_topics::help_topic_text;
 pub use input_parse::{
-    parse_expr_or_equation_as_expr, parse_expr_pair, parse_limit_command_input,
-    parse_statement_or_session_ref, parse_substitute_args, parse_timeline_command_input,
-    rsplit_ignoring_parens, split_by_comma_ignoring_parens, LimitCommandInput, ParseExprPairError,
+    parse_cache_command_input, parse_expr_or_equation_as_expr, parse_expr_pair,
+    parse_limit_command_input, parse_statement_or_session_ref, parse_substitute_args,
+    parse_timeline_command_input, rsplit_ignoring_parens, split_by_comma_ignoring_parens,
+    split_repl_statements, CacheCommandInput, LimitCommandInput, ParseExprPairError,
     ParseSubstituteArgsError, TimelineCommandInput,
 };
 pub use json::{
@@ -132,20 +208,76 @@ pub use json::{
     substitute_str_to_json_with_options, EnvelopeEvalOptions,
 };
 pub use linear_system::{
-    is_valid_linear_system_var, parse_linear_system_spec, solve_2x2_linear_system,
-    solve_3x3_linear_system, solve_linear_system_spec, solve_nxn_linear_system,
-    split_semicolon_top_level, LinSolveResult, LinearSystemError, LinearSystemSpec,
-    LinearSystemSpecError,
+    display_linear_system_solution, evaluate_linear_system_command_input,
+    format_linear_system_command_error_message, format_linear_system_result_message,
+    is_valid_linear_system_var, parse_linear_system_invocation_input, parse_linear_system_spec,
+    solve_2x2_linear_system, solve_3x3_linear_system, solve_linear_system_spec,
+    solve_nxn_linear_system, split_semicolon_top_level, LinSolveResult,
+    LinearSystemCommandEvalError, LinearSystemCommandEvalOutput, LinearSystemError,
+    LinearSystemInvocationInput, LinearSystemSpec, LinearSystemSpecError,
+};
+pub use panic_guard::{
+    format_panic_report_message, format_user_panic_message, generate_short_error_id,
+    panic_payload_to_message,
+};
+pub use pipeline_display::format_pipeline_stats;
+pub use profile_command::{
+    apply_profile_command, evaluate_profile_command_input, parse_profile_command_input,
+    ProfileCommandInput, ProfileCommandResult,
+};
+pub use prompt_display::build_prompt_from_eval_options;
+pub use semantics_command::{parse_semantics_command_input, SemanticsCommandInput};
+pub use semantics_display::{
+    format_semantics_axis_lines, format_semantics_overview_lines,
+    format_semantics_unknown_subcommand_message, semantics_help_message,
+    semantics_view_state_from_options, SemanticsViewState,
+};
+pub use semantics_presets::{
+    apply_semantics_preset_by_name, apply_semantics_preset_state_to_options, find_semantics_preset,
+    format_semantics_preset_application_lines, format_semantics_preset_help_lines,
+    format_semantics_preset_list_lines, semantics_preset_state_from_options, semantics_presets,
+    SemanticsPreset, SemanticsPresetApplication, SemanticsPresetApplyError, SemanticsPresetState,
+};
+pub use semantics_set::{
+    apply_semantics_set_state_to_options, evaluate_semantics_set_args,
+    semantics_set_state_from_options, SemanticsSetState,
+};
+pub use set_command::{
+    evaluate_set_command_input, format_set_help_text, format_set_option_value,
+    parse_set_command_input, SetCommandInput, SetCommandPlan, SetCommandResult, SetCommandState,
+    SetDisplayMode,
+};
+pub use simplifier_setup::{
+    apply_simplifier_toggle_config, build_simplifier_with_rule_config,
+    format_simplifier_toggle_config, set_simplifier_toggle_rule, SimplifierRuleConfig,
+    SimplifierToggleConfig,
 };
 pub use solution_display::{display_interval, display_solution_set, is_pure_residual_otherwise};
 pub use solve::{
-    contains_var, infer_solve_variable, parse_solve_command_input, prepare_solve_eval_request,
+    contains_var, evaluate_parsed_solve_command_input, evaluate_solve_command_input,
+    evaluate_solve_invocation_input, evaluate_timeline_solve_command_input,
+    evaluate_timeline_solve_with_eval_options, format_solve_command_error_message,
+    format_solve_prepare_error_message, format_timeline_solve_error_message, infer_solve_variable,
+    parse_solve_command_input, parse_solve_invocation_input, prepare_solve_eval_request,
     prepare_timeline_solve_input, solve, solve_with_display_steps, verify_stats, DisplaySolveSteps,
-    PreparedSolveRequest, PreparedTimelineSolve, SolveCommandInput, SolveDiagnostics,
-    SolvePrepareError, SolveStep, SolveSubStep, SolverOptions,
+    PreparedSolveRequest, PreparedTimelineSolve, SolveCommandEvalError, SolveCommandEvalOutput,
+    SolveCommandInput, SolveDiagnostics, SolveInvocationEvalOutput, SolveInvocationInput,
+    SolvePrepareError, SolveStep, SolveSubStep, SolverOptions, TimelineSolveEvalError,
+    TimelineSolveEvalOutput,
 };
-pub use solve_display::format_solve_steps_lines;
+pub use solve_display::{
+    format_solve_command_eval_lines, format_solve_result_line, format_solve_steps_lines,
+    format_timeline_solve_no_steps_message, format_timeline_solve_result_line,
+    requires_result_expr_anchor, solve_step_verbosity_from_display_mode, SolveCommandRenderConfig,
+    SolveStepVerbosity,
+};
 pub use solve_safety::{RequirementDescriptor, RuleSolveSafetyExt, SolveSafety};
+pub use steps_command::{
+    evaluate_steps_command_input, format_steps_collection_set_message,
+    format_steps_current_message, format_steps_display_set_message,
+    format_steps_unknown_mode_message, parse_steps_command_input, StepsCommandInput,
+    StepsCommandResult, StepsCommandState, StepsDisplayMode,
+};
 pub use substitute::{
     detect_substitute_strategy, substitute_auto, substitute_auto_with_strategy,
     substitute_power_aware, substitute_with_steps, SubstituteOptions, SubstituteStrategy,

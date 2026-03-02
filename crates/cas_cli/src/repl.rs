@@ -1,22 +1,6 @@
-use cas_solver::rules::arithmetic::{AddZeroRule, CombineConstantsRule, MulOneRule, MulZeroRule};
-use cas_solver::rules::exponents::{
-    EvaluatePowerRule, IdentityPowerRule, PowerPowerRule, PowerProductRule, PowerQuotientRule,
-    ProductPowerRule,
-};
-use cas_solver::rules::polynomial::{AnnihilationRule, CombineLikeTermsRule};
-use cas_solver::Simplifier;
-
 use cas_ast::{Context, Expr, ExprId};
 use cas_didactic::PathStep;
 use cas_formatter::{DisplayExpr, DisplayExprStyled, ParseStyleSignals, StylePreferences};
-use cas_solver::rules::algebra::{ExpandRule, FactorRule, SimplifyFractionRule};
-use cas_solver::rules::calculus::{DiffRule, IntegrateRule};
-use cas_solver::rules::grouping::CollectRule;
-use cas_solver::rules::logarithms::{EvaluateLogRule, ExponentialLogRule};
-use cas_solver::rules::number_theory::NumberTheoryRule;
-use cas_solver::rules::trigonometry::{
-    AngleIdentityRule, DoubleAngleRule, EvaluateTrigRule, PythagoreanIdentityRule, TanToSinCosRule,
-};
 use rustyline::error::ReadlineError;
 
 use crate::completer::CasHelper;
@@ -191,6 +175,16 @@ fn clean_sign_patterns(s: String) -> String {
         .to_string();
 
     result
+}
+
+fn clean_result_line(lines: &mut [String]) {
+    let Some(last) = lines.last_mut() else {
+        return;
+    };
+    let Some(raw_value) = last.strip_prefix("Result: ") else {
+        return;
+    };
+    *last = format!("Result: {}", clean_display_string(raw_value));
 }
 
 /// Display an expression, automatically rendering poly_result as formatted polynomial.

@@ -915,6 +915,56 @@ pub fn format_assumption_records_section_lines(
     lines
 }
 
+/// Rendering config for solve assumption/blocked sections.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SolveAssumptionSectionConfig {
+    pub debug_mode: bool,
+    pub hints_enabled: bool,
+    pub domain_mode: crate::DomainMode,
+}
+
+/// Render optional solve assumption/blocked sections according to CLI flags.
+pub fn format_solve_assumption_and_blocked_sections(
+    ctx: &Context,
+    assumption_records: &[crate::AssumptionRecord],
+    blocked_hints: &[crate::BlockedHint],
+    config: SolveAssumptionSectionConfig,
+) -> Vec<String> {
+    let has_assumptions = !assumption_records.is_empty();
+    let has_blocked = !blocked_hints.is_empty();
+
+    if config.debug_mode && (has_assumptions || has_blocked) {
+        let mut lines = vec![String::new()];
+        if has_assumptions {
+            lines.extend(format_assumption_records_section_lines(
+                assumption_records,
+                "ℹ️ Assumptions used:",
+                "  - ",
+            ));
+        }
+        if has_blocked {
+            lines.extend(format_blocked_simplifications_section_lines(
+                ctx,
+                blocked_hints,
+                config.domain_mode,
+            ));
+        }
+        return lines;
+    }
+
+    if has_blocked && config.hints_enabled {
+        let mut lines = vec![String::new()];
+        lines.extend(format_blocked_simplifications_section_lines(
+            ctx,
+            blocked_hints,
+            config.domain_mode,
+        ));
+        return lines;
+    }
+
+    Vec::new()
+}
+
 /// Format a simple requires section from textual conditions.
 pub fn format_text_requires_lines(requires: &[String]) -> Vec<String> {
     if requires.is_empty() {
@@ -1056,5 +1106,49 @@ fn assumption_to_condition(event: &AssumptionEvent) -> Option<crate::ImplicitCon
         AssumptionKey::Defined { .. } => None,
         AssumptionKey::InvTrigPrincipalRange { .. } => None,
         AssumptionKey::ComplexPrincipalBranch { .. } => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{format_solve_assumption_and_blocked_sections, SolveAssumptionSectionConfig};
+
+    #[test]
+    fn format_solve_assumption_and_blocked_sections_empty_when_no_data() {
+        let ctx = cas_ast::Context::new();
+        let lines = format_solve_assumption_and_blocked_sections(
+            &ctx,
+            &[],
+            &[],
+            SolveAssumptionSectionConfig {
+                debug_mode: false,
+                hints_enabled: false,
+                domain_mode: crate::DomainMode::Generic,
+            },
+        );
+        assert!(lines.is_empty());
+    }
+
+    #[test]
+    fn format_solve_assumption_and_blocked_sections_includes_assumptions_in_debug_mode() {
+        let ctx = cas_ast::Context::new();
+        let assumptions = vec![crate::AssumptionRecord {
+            kind: "nonzero".to_string(),
+            expr: "x".to_string(),
+            message: "x != 0".to_string(),
+            count: 1,
+        }];
+        let lines = format_solve_assumption_and_blocked_sections(
+            &ctx,
+            &assumptions,
+            &[],
+            SolveAssumptionSectionConfig {
+                debug_mode: true,
+                hints_enabled: false,
+                domain_mode: crate::DomainMode::Generic,
+            },
+        );
+        assert!(lines.iter().any(|line| line.contains("Assumptions used")));
+        assert!(lines.iter().any(|line| line.contains("x ≠ 0")));
     }
 }

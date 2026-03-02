@@ -144,3 +144,20 @@ impl From<ReplReply> for CoreResult {
         Self::reply_only(reply)
     }
 }
+
+use super::Repl;
+
+impl Repl {
+    /// Apply UI delta mutations (e.g. verbosity) emitted by core handlers.
+    pub(crate) fn apply_ui_delta(&mut self, ui_delta: UiDelta) {
+        if let Some(verbosity) = ui_delta.verbosity {
+            self.verbosity = verbosity;
+        }
+    }
+
+    /// Apply UI delta and return the reply payload for printing.
+    pub(crate) fn finalize_core_result(&mut self, result: CoreResult) -> ReplReply {
+        self.apply_ui_delta(result.ui_delta);
+        result.reply
+    }
+}

@@ -1,101 +1,62 @@
 use super::*;
 
+fn solver_rule_config_from_cli(config: &CasConfig) -> cas_solver::SimplifierRuleConfig {
+    cas_solver::SimplifierRuleConfig {
+        distribute: config.distribute,
+        expand_binomials: config.expand_binomials,
+        factor_difference_squares: config.factor_difference_squares,
+        root_denesting: config.root_denesting,
+        trig_double_angle: config.trig_double_angle,
+        trig_angle_sum: config.trig_angle_sum,
+        log_split_exponents: config.log_split_exponents,
+        rationalize_denominator: config.rationalize_denominator,
+        canonicalize_trig_square: config.canonicalize_trig_square,
+        auto_factor: config.auto_factor,
+    }
+}
+
+fn solver_toggle_config_from_cli(config: &CasConfig) -> cas_solver::SimplifierToggleConfig {
+    cas_solver::SimplifierToggleConfig {
+        distribute: config.distribute,
+        expand_binomials: config.expand_binomials,
+        distribute_constants: config.distribute_constants,
+        factor_difference_squares: config.factor_difference_squares,
+        root_denesting: config.root_denesting,
+        trig_double_angle: config.trig_double_angle,
+        trig_angle_sum: config.trig_angle_sum,
+        log_split_exponents: config.log_split_exponents,
+        rationalize_denominator: config.rationalize_denominator,
+        canonicalize_trig_square: config.canonicalize_trig_square,
+        auto_factor: config.auto_factor,
+    }
+}
+
 impl Repl {
+    pub(crate) fn config_as_solver_toggle(&self) -> cas_solver::SimplifierToggleConfig {
+        solver_toggle_config_from_cli(&self.config)
+    }
+
+    pub(crate) fn set_config_from_solver_toggle(
+        &mut self,
+        toggles: cas_solver::SimplifierToggleConfig,
+    ) {
+        self.config.distribute = toggles.distribute;
+        self.config.expand_binomials = toggles.expand_binomials;
+        self.config.distribute_constants = toggles.distribute_constants;
+        self.config.factor_difference_squares = toggles.factor_difference_squares;
+        self.config.root_denesting = toggles.root_denesting;
+        self.config.trig_double_angle = toggles.trig_double_angle;
+        self.config.trig_angle_sum = toggles.trig_angle_sum;
+        self.config.log_split_exponents = toggles.log_split_exponents;
+        self.config.rationalize_denominator = toggles.rationalize_denominator;
+        self.config.canonicalize_trig_square = toggles.canonicalize_trig_square;
+        self.config.auto_factor = toggles.auto_factor;
+    }
+
     pub fn new() -> Self {
         let config = CasConfig::load();
-        let mut simplifier = Simplifier::with_default_rules();
-
-        // Always enabled core rules
-        simplifier.add_rule(Box::new(cas_solver::rules::functions::AbsSquaredRule));
-        simplifier.add_rule(Box::new(EvaluateTrigRule));
-        simplifier.add_rule(Box::new(PythagoreanIdentityRule));
-        if config.trig_angle_sum {
-            simplifier.add_rule(Box::new(AngleIdentityRule));
-        }
-        simplifier.add_rule(Box::new(TanToSinCosRule));
-        if config.trig_double_angle {
-            simplifier.add_rule(Box::new(DoubleAngleRule));
-        }
-        if config.canonicalize_trig_square {
-            simplifier.add_rule(Box::new(
-                cas_solver::rules::trigonometry::CanonicalizeTrigSquareRule,
-            ));
-        }
-        simplifier.add_rule(Box::new(EvaluateLogRule));
-        simplifier.add_rule(Box::new(ExponentialLogRule));
-        simplifier.add_rule(Box::new(SimplifyFractionRule));
-        simplifier.add_rule(Box::new(ExpandRule));
-        simplifier.add_rule(Box::new(cas_solver::rules::algebra::ConservativeExpandRule));
-        simplifier.add_rule(Box::new(FactorRule));
-        simplifier.add_rule(Box::new(CollectRule));
-        simplifier.add_rule(Box::new(EvaluatePowerRule));
-        simplifier.add_rule(Box::new(EvaluatePowerRule));
-        if config.log_split_exponents {
-            simplifier.add_rule(Box::new(
-                cas_solver::rules::logarithms::SplitLogExponentsRule,
-            ));
-        }
-
-        // Advanced Algebra Rules (Critical for Solver)
-        simplifier.add_rule(Box::new(cas_solver::rules::algebra::NestedFractionRule));
-        simplifier.add_rule(Box::new(cas_solver::rules::algebra::AddFractionsRule));
-        simplifier.add_rule(Box::new(cas_solver::rules::algebra::SimplifyMulDivRule));
-        if config.rationalize_denominator {
-            simplifier.add_rule(Box::new(
-                cas_solver::rules::algebra::RationalizeDenominatorRule,
-            ));
-        }
-        simplifier.add_rule(Box::new(
-            cas_solver::rules::algebra::CancelCommonFactorsRule,
-        ));
-
-        // Configurable rules
-        if config.distribute {
-            simplifier.add_rule(Box::new(cas_solver::rules::polynomial::DistributeRule));
-        }
-
-        if config.expand_binomials {
-            simplifier.add_rule(Box::new(
-                cas_solver::rules::polynomial::BinomialExpansionRule,
-            ));
-        }
-
-        if config.factor_difference_squares {
-            simplifier.add_rule(Box::new(
-                cas_solver::rules::algebra::FactorDifferenceSquaresRule,
-            ));
-        }
-
-        if config.root_denesting {
-            simplifier.add_rule(Box::new(cas_solver::rules::algebra::RootDenestingRule));
-        }
-
-        if config.auto_factor {
-            simplifier.add_rule(Box::new(cas_solver::rules::algebra::AutomaticFactorRule));
-        }
-
-        simplifier.add_rule(Box::new(
-            cas_solver::rules::trigonometry::AngleConsistencyRule,
-        ));
-        simplifier.add_rule(Box::new(CombineLikeTermsRule));
-        simplifier.add_rule(Box::new(CombineLikeTermsRule));
-        simplifier.add_rule(Box::new(AnnihilationRule));
-        simplifier.add_rule(Box::new(ProductPowerRule));
-        simplifier.add_rule(Box::new(PowerPowerRule));
-        simplifier.add_rule(Box::new(PowerProductRule));
-        simplifier.add_rule(Box::new(PowerQuotientRule));
-        simplifier.add_rule(Box::new(IdentityPowerRule));
-        simplifier.add_rule(Box::new(
-            cas_solver::rules::exponents::NegativeBasePowerRule,
-        ));
-        simplifier.add_rule(Box::new(AddZeroRule));
-        simplifier.add_rule(Box::new(MulOneRule));
-        simplifier.add_rule(Box::new(MulZeroRule));
-        simplifier.add_rule(Box::new(cas_solver::rules::arithmetic::DivZeroRule));
-        simplifier.add_rule(Box::new(CombineConstantsRule));
-        simplifier.add_rule(Box::new(IntegrateRule));
-        simplifier.add_rule(Box::new(DiffRule));
-        simplifier.add_rule(Box::new(NumberTheoryRule));
+        let simplifier =
+            cas_solver::build_simplifier_with_rule_config(solver_rule_config_from_cli(&config));
 
         let mut repl = Self {
             core: ReplCore::with_simplifier(simplifier),
@@ -104,6 +65,12 @@ impl Repl {
         };
         repl.sync_config_to_simplifier();
         repl
+    }
+
+    pub(crate) fn rebuild_engine_simplifier_from_config(&mut self) {
+        self.core.engine.simplifier = cas_solver::build_simplifier_with_rule_config(
+            solver_rule_config_from_cli(&self.config),
+        );
     }
 
     /// Print a ReplReply to stdout/stderr.
@@ -177,7 +144,10 @@ impl Repl {
         // Show debug output if enabled
         if self.core.debug_mode {
             let mut lines: Vec<String> = Vec::new();
-            lines.push(self.format_pipeline_stats(&stats));
+            lines.push(cas_solver::format_pipeline_stats(
+                &self.core.engine.simplifier,
+                &stats,
+            ));
 
             // Policy A+ hint: when simplify makes minimal changes to a Mul expression
             if stats.total_rewrites <= 1
@@ -221,236 +191,15 @@ impl Repl {
         (result, steps)
     }
 
-    /// Format pipeline statistics for diagnostics (returns String, no I/O)
-    #[allow(dead_code)]
-    pub(crate) fn format_pipeline_stats(&self, stats: &cas_solver::PipelineStats) -> String {
-        let mut lines: Vec<String> = Vec::new();
-
-        lines.push(String::new());
-        lines.push("──── Pipeline Diagnostics ────".to_string());
-        lines.push(format!(
-            "  Core:       {} iters, {} rewrites",
-            stats.core.iters_used, stats.core.rewrites_used
-        ));
-        if let Some(ref cycle) = stats.core.cycle {
-            lines.push(format!(
-                "              ⚠ Cycle detected: period={} at rewrite={} (stopped early)",
-                cycle.period, cycle.at_step
-            ));
-            let top = self
-                .core
-                .engine
-                .simplifier
-                .profiler
-                .top_applied_for_phase(cas_solver::SimplifyPhase::Core, 2);
-            if !top.is_empty() {
-                let hints: Vec<_> = top.iter().map(|(r, c)| format!("{}={}", r, c)).collect();
-                lines.push(format!(
-                    "              Likely contributors: {}",
-                    hints.join(", ")
-                ));
-            }
-        }
-        lines.push(format!(
-            "  Transform:  {} iters, {} rewrites, changed={}",
-            stats.transform.iters_used, stats.transform.rewrites_used, stats.transform.changed
-        ));
-        if let Some(ref cycle) = stats.transform.cycle {
-            lines.push(format!(
-                "              ⚠ Cycle detected: period={} at rewrite={} (stopped early)",
-                cycle.period, cycle.at_step
-            ));
-            let top = self
-                .core
-                .engine
-                .simplifier
-                .profiler
-                .top_applied_for_phase(cas_solver::SimplifyPhase::Transform, 2);
-            if !top.is_empty() {
-                let hints: Vec<_> = top.iter().map(|(r, c)| format!("{}={}", r, c)).collect();
-                lines.push(format!(
-                    "              Likely contributors: {}",
-                    hints.join(", ")
-                ));
-            }
-        }
-        lines.push(format!(
-            "  Rationalize: {:?}",
-            stats
-                .rationalize_level
-                .unwrap_or(cas_solver::AutoRationalizeLevel::Off)
-        ));
-
-        if let Some(ref outcome) = stats.rationalize_outcome {
-            match outcome {
-                cas_solver::RationalizeOutcome::Applied => {
-                    lines.push("              → Applied ✓".to_string());
-                }
-                cas_solver::RationalizeOutcome::NotApplied(reason) => {
-                    lines.push(format!("              → NotApplied: {:?}", reason));
-                }
-            }
-        }
-        if let Some(ref cycle) = stats.rationalize.cycle {
-            lines.push(format!(
-                "              ⚠ Cycle detected: period={} at rewrite={} (stopped early)",
-                cycle.period, cycle.at_step
-            ));
-            let top = self
-                .core
-                .engine
-                .simplifier
-                .profiler
-                .top_applied_for_phase(cas_solver::SimplifyPhase::Rationalize, 2);
-            if !top.is_empty() {
-                let hints: Vec<_> = top.iter().map(|(r, c)| format!("{}={}", r, c)).collect();
-                lines.push(format!(
-                    "              Likely contributors: {}",
-                    hints.join(", ")
-                ));
-            }
-        }
-
-        lines.push(format!(
-            "  PostCleanup: {} iters, {} rewrites",
-            stats.post_cleanup.iters_used, stats.post_cleanup.rewrites_used
-        ));
-        if let Some(ref cycle) = stats.post_cleanup.cycle {
-            lines.push(format!(
-                "              ⚠ Cycle detected: period={} at rewrite={} (stopped early)",
-                cycle.period, cycle.at_step
-            ));
-            let top = self
-                .core
-                .engine
-                .simplifier
-                .profiler
-                .top_applied_for_phase(cas_solver::SimplifyPhase::PostCleanup, 2);
-            if !top.is_empty() {
-                let hints: Vec<_> = top.iter().map(|(r, c)| format!("{}={}", r, c)).collect();
-                lines.push(format!(
-                    "              Likely contributors: {}",
-                    hints.join(", ")
-                ));
-            }
-        }
-        lines.push(format!("  Total rewrites: {}", stats.total_rewrites));
-        lines.push("───────────────────────────────".to_string());
-
-        lines.join("\n")
-    }
-
     pub(crate) fn sync_config_to_simplifier(&mut self) {
-        let config = &self.config;
-
-        // Helper to toggle rule
-        let mut toggle = |name: &str, enabled: bool| {
-            if enabled {
-                self.core.engine.simplifier.enable_rule(name);
-            } else {
-                self.core.engine.simplifier.disable_rule(name);
-            }
-        };
-
-        toggle("Distributive Property", config.distribute);
-        toggle("Binomial Expansion", config.expand_binomials);
-        toggle("Distribute Constant", config.distribute_constants);
-        toggle(
-            "Factor Difference of Squares",
-            config.factor_difference_squares,
-        );
-        toggle("Root Denesting", config.root_denesting);
-        toggle("Double Angle Identity", config.trig_double_angle);
-        toggle("Angle Sum/Diff Identity", config.trig_angle_sum);
-        toggle("Split Log Exponents", config.log_split_exponents);
-        toggle("Rationalize Denominator", config.rationalize_denominator);
-        toggle("Canonicalize Trig Square", config.canonicalize_trig_square);
-
-        // Auto Factor Logic:
-        // If auto_factor is on, we enable AutomaticFactorRule AND ConservativeExpandRule.
-        // We DISABLE the aggressive ExpandRule to prevent loops.
-        if config.auto_factor {
-            self.core
-                .engine
-                .simplifier
-                .enable_rule("Automatic Factorization");
-            self.core
-                .engine
-                .simplifier
-                .enable_rule("Conservative Expand");
-            self.core
-                .engine
-                .simplifier
-                .disable_rule("Expand Polynomial");
-            self.core
-                .engine
-                .simplifier
-                .disable_rule("Binomial Expansion");
-        } else {
-            self.core
-                .engine
-                .simplifier
-                .disable_rule("Automatic Factorization");
-            self.core
-                .engine
-                .simplifier
-                .disable_rule("Conservative Expand");
-            self.core.engine.simplifier.enable_rule("Expand Polynomial");
-            // Re-enable Binomial Expansion if config says so
-            if config.expand_binomials {
-                self.core
-                    .engine
-                    .simplifier
-                    .enable_rule("Binomial Expansion");
-            }
-        }
+        let toggles = self.config_as_solver_toggle();
+        cas_solver::apply_simplifier_toggle_config(&mut self.core.engine.simplifier, toggles);
     }
 
     /// Build the REPL prompt with mode indicators.
     /// Only shows indicators for non-default modes to keep prompt clean.
     pub(crate) fn build_prompt(&self) -> String {
-        use cas_solver::{BranchMode, ComplexMode, ContextMode, ExpandPolicy, StepsMode};
-
-        let mut indicators = Vec::new();
-
-        // Show steps mode if not On (default)
-        match self.core.state.options().steps_mode {
-            StepsMode::Off => indicators.push("[steps:off]"),
-            StepsMode::Compact => indicators.push("[steps:compact]"),
-            StepsMode::On => {} // Default, no indicator
-        }
-
-        // Show context mode if not Auto (default)
-        match self.core.state.options().shared.context_mode {
-            ContextMode::IntegratePrep => indicators.push("[ctx:integrate]"),
-            ContextMode::Solve => indicators.push("[ctx:solve]"),
-            ContextMode::Standard => indicators.push("[ctx:standard]"),
-            ContextMode::Auto => {} // Default, no indicator
-        }
-
-        // Show branch mode if not Strict (default)
-        match self.core.state.options().branch_mode {
-            BranchMode::PrincipalBranch => indicators.push("[branch:principal]"),
-            BranchMode::Strict => {} // Default, no indicator
-        }
-
-        // Show complex mode if not Auto (default)
-        match self.core.state.options().complex_mode {
-            ComplexMode::On => indicators.push("[cx:on]"),
-            ComplexMode::Off => indicators.push("[cx:off]"),
-            ComplexMode::Auto => {} // Default, no indicator
-        }
-
-        // Show expand_policy if Auto (not default Off)
-        if self.core.state.options().shared.expand_policy == ExpandPolicy::Auto {
-            indicators.push("[autoexp:on]");
-        }
-
-        if indicators.is_empty() {
-            "> ".to_string()
-        } else {
-            format!("{} > ", indicators.join(""))
-        }
+        cas_solver::build_prompt_from_eval_options(self.core.state.options())
     }
 
     /// Generate startup banner messages (no I/O here)
@@ -507,20 +256,10 @@ impl Repl {
                         break;
                     }
 
-                    // Special case: solve_system uses ; as internal separator
-                    // Handle it directly without splitting
-                    if line.starts_with("solve_system") {
-                        self.handle_command(line);
-                    } else {
-                        // Split by semicolon to allow multiple statements on one line
-                        // e.g., "let a = 3*x; let b = 4*x; a + b"
-                        for statement in line.split(';') {
-                            let statement = statement.trim();
-                            if statement.is_empty() {
-                                continue;
-                            }
-                            self.handle_command(statement);
-                        }
+                    // Split using solver-owned parsing rules. This keeps command
+                    // syntax details (like solve_system semicolons) out of CLI.
+                    for statement in cas_solver::split_repl_statements(line) {
+                        self.handle_command(statement);
                     }
                 }
                 Err(ReadlineError::Interrupted) => {
@@ -549,21 +288,6 @@ impl Repl {
     ///   simplify(...) -> simplify x^2 + 1
     ///   solve(...) -> solve x + 2 = 5, x
     pub(crate) fn preprocess_function_syntax(&self, line: &str) -> String {
-        let line = line.trim();
-
-        // Check for simplify(...)
-        if line.starts_with("simplify(") && line.ends_with(")") {
-            let content = &line["simplify(".len()..line.len() - 1];
-            return format!("simplify {}", content);
-        }
-
-        // Check for solve(...)
-        if line.starts_with("solve(") && line.ends_with(")") {
-            let content = &line["solve(".len()..line.len() - 1];
-            return format!("solve {}", content);
-        }
-
-        // Return unchanged
-        line.to_string()
+        cas_solver::preprocess_repl_function_syntax(line)
     }
 }

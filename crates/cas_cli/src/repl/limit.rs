@@ -7,45 +7,16 @@ impl Repl {
     }
 
     fn handle_limit_core(&mut self, line: &str) -> ReplReply {
-        use cas_solver::Approach;
-
-        let rest = line.strip_prefix("limit").unwrap_or(line).trim();
+        let rest = cas_solver::extract_limit_command_tail(line);
         if rest.is_empty() {
-            return reply_output(
-                "Usage: limit <expr> [, <var> [, <direction> [, safe]]]\n\
-                 Examples:\n\
-                   limit x^2                      → infinity (default: x → +∞)\n\
-                   limit (x^2+1)/(2*x^2-3), x     → 1/2\n\
-                   limit x^3/x^2, x, -infinity    → -infinity\n\
-                   limit (x-x)/x, x, infinity, safe → 0 (with pre-simplify)",
-            );
+            return reply_output(cas_solver::limit_usage_message());
         }
 
-        let parsed = cas_solver::parse_limit_command_input(rest);
-        let expr_str = parsed.expr;
-        let var_str = parsed.var;
-        let approach = parsed.approach;
-        let presimplify = parsed.presimplify;
-
-        match cas_solver::json::eval_limit_from_str(expr_str, var_str, approach, presimplify) {
+        match cas_solver::evaluate_limit_command_input(rest) {
             Ok(limit_result) => {
-                let dir_disp = match approach {
-                    Approach::PosInfinity => "+∞",
-                    Approach::NegInfinity => "-∞",
-                };
-                let mut lines = vec![format!(
-                    "lim_{{{}→{}}} = {}",
-                    var_str, dir_disp, limit_result.result
-                )];
-                if let Some(warning) = limit_result.warning {
-                    lines.push(format!("Warning: {}", warning));
-                }
-                reply_output(lines.join("\n"))
+                reply_output(cas_solver::format_limit_command_eval_lines(&limit_result).join("\n"))
             }
-            Err(cas_solver::json::LimitEvalError::Parse(message)) => reply_output(message),
-            Err(cas_solver::json::LimitEvalError::Limit(message)) => {
-                reply_output(format!("Error computing limit: {}", message))
-            }
+            Err(e) => reply_output(cas_solver::format_limit_command_error_message(&e)),
         }
     }
 }

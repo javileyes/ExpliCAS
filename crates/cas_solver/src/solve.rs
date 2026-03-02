@@ -25,6 +25,13 @@ pub struct SolveCommandInput {
     pub variable: Option<String>,
 }
 
+/// Parsed REPL `solve` invocation, including one-shot flags.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SolveInvocationInput {
+    pub check_enabled: bool,
+    pub solve_input: SolveCommandInput,
+}
+
 /// Result of preparing a REPL `solve` request.
 #[derive(Debug)]
 pub struct PreparedSolveRequest {
@@ -40,6 +47,31 @@ pub struct PreparedTimelineSolve {
     pub var: String,
 }
 
+/// Result of evaluating a REPL `solve` command end-to-end.
+#[derive(Debug)]
+pub struct SolveCommandEvalOutput {
+    pub var: String,
+    pub original_equation: Option<Equation>,
+    pub output: crate::EvalOutput,
+}
+
+/// Result of evaluating a full REPL `solve` invocation, including one-shot flags.
+#[derive(Debug)]
+pub struct SolveInvocationEvalOutput {
+    pub check_enabled: bool,
+    pub eval_output: SolveCommandEvalOutput,
+}
+
+/// Result of evaluating a REPL `timeline solve` command end-to-end.
+#[derive(Debug)]
+pub struct TimelineSolveEvalOutput {
+    pub equation: Equation,
+    pub var: String,
+    pub solution_set: SolutionSet,
+    pub display_steps: DisplaySolveSteps,
+    pub diagnostics: SolveDiagnostics,
+}
+
 /// Errors while preparing REPL solve/timeline inputs.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SolvePrepareError {
@@ -47,6 +79,95 @@ pub enum SolvePrepareError {
     ExpectedEquation,
     NoVariable,
     AmbiguousVariables(Vec<String>),
+}
+
+/// Errors while evaluating REPL `solve`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SolveCommandEvalError {
+    Prepare(SolvePrepareError),
+    Eval(String),
+}
+
+/// Errors while evaluating REPL `timeline solve`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TimelineSolveEvalError {
+    Prepare(SolvePrepareError),
+    Solve(String),
+}
+
+/// Render a user-facing message for a `solve` prepare error.
+pub fn format_solve_prepare_error_message(error: &SolvePrepareError) -> String {
+    match error {
+        SolvePrepareError::ParseError(e) => format!("Parse error: {}", e),
+        SolvePrepareError::NoVariable => "Error: solve() found no variable to solve for.\n\
+                     Use solve(expr, x) to specify the variable."
+            .to_string(),
+        SolvePrepareError::AmbiguousVariables(vars) => format!(
+            "Error: solve() found ambiguous variables {{{}}}.\n\
+                     Use solve(expr, {}) or solve(expr, {{{}}}).",
+            vars.join(", "),
+            vars.first().unwrap_or(&"x".to_string()),
+            vars.join(", ")
+        ),
+        SolvePrepareError::ExpectedEquation => "Parse error: expected equation".to_string(),
+    }
+}
+
+/// Render a user-facing message for a `solve` command error.
+pub fn format_solve_command_error_message(error: &SolveCommandEvalError) -> String {
+    match error {
+        SolveCommandEvalError::Prepare(prepare) => format_solve_prepare_error_message(prepare),
+        SolveCommandEvalError::Eval(e) => format!("Error: {}", e),
+    }
+}
+
+/// Render a user-facing message for a `timeline solve` command error.
+pub fn format_timeline_solve_error_message(error: &TimelineSolveEvalError) -> String {
+    match error {
+        TimelineSolveEvalError::Prepare(SolvePrepareError::ExpectedEquation) => {
+            "Error: Expected an equation for solve timeline, got an expression.\n\
+                     Usage: timeline solve <equation>, <variable>\n\
+                     Example: timeline solve x + 2 = 5, x"
+                .to_string()
+        }
+        TimelineSolveEvalError::Prepare(SolvePrepareError::ParseError(e)) => {
+            format!("Error parsing equation: {}", e)
+        }
+        TimelineSolveEvalError::Prepare(SolvePrepareError::NoVariable) => {
+            "Error: timeline solve found no variable.\n\
+                 Use timeline solve <equation>, <variable>"
+                .to_string()
+        }
+        TimelineSolveEvalError::Prepare(SolvePrepareError::AmbiguousVariables(vars)) => format!(
+            "Error: timeline solve found ambiguous variables {{{}}}.\n\
+                 Use timeline solve <equation>, {}",
+            vars.join(", "),
+            vars.first().unwrap_or(&"x".to_string())
+        ),
+        TimelineSolveEvalError::Solve(e) => format!("Error solving: {}", e),
+    }
+}
+
+/// Parse REPL `solve` invocation flags + arguments.
+///
+/// Supported shape:
+/// - `--check <equation>, <var>`
+/// - `<equation>, <var>`
+pub fn parse_solve_invocation_input(
+    input: &str,
+    default_check_enabled: bool,
+) -> SolveInvocationInput {
+    let trimmed = input.trim();
+    let (check_enabled, solve_tail) = if let Some(rest) = trimmed.strip_prefix("--check") {
+        (true, rest.trim_start())
+    } else {
+        (default_check_enabled, trimmed)
+    };
+
+    SolveInvocationInput {
+        check_enabled,
+        solve_input: parse_solve_command_input(solve_tail),
+    }
 }
 
 /// Parse REPL `solve`/`timeline solve` argument shape:
@@ -188,6 +309,143 @@ pub fn prepare_timeline_solve_input(
     Ok(PreparedTimelineSolve { equation, var })
 }
 
+/// Evaluate a REPL `solve` command:
+/// parse command input, build eval request, and run `Engine::eval`.
+pub fn evaluate_solve_command_input<S>(
+    engine: &mut crate::Engine,
+    session: &mut S,
+    input: &str,
+    auto_store: bool,
+) -> Result<SolveCommandEvalOutput, SolveCommandEvalError>
+where
+    S: cas_engine::EvalSession<
+        Options = cas_engine::EvalOptions,
+        Diagnostics = cas_engine::Diagnostics,
+    >,
+    S::Store: cas_engine::EvalStore<
+        DomainMode = cas_engine::DomainMode,
+        RequiredItem = cas_engine::RequiredItem,
+        Step = cas_engine::Step,
+        Diagnostics = cas_engine::Diagnostics,
+    >,
+{
+    evaluate_parsed_solve_command_input(
+        engine,
+        session,
+        parse_solve_command_input(input),
+        auto_store,
+    )
+}
+
+/// Evaluate a full REPL `solve` invocation:
+/// - parse one-shot flags (`--check`)
+/// - parse solve command input
+/// - evaluate via engine/session
+pub fn evaluate_solve_invocation_input<S>(
+    engine: &mut crate::Engine,
+    session: &mut S,
+    input: &str,
+    default_check_enabled: bool,
+    auto_store: bool,
+) -> Result<SolveInvocationEvalOutput, SolveCommandEvalError>
+where
+    S: cas_engine::EvalSession<
+        Options = cas_engine::EvalOptions,
+        Diagnostics = cas_engine::Diagnostics,
+    >,
+    S::Store: cas_engine::EvalStore<
+        DomainMode = cas_engine::DomainMode,
+        RequiredItem = cas_engine::RequiredItem,
+        Step = cas_engine::Step,
+        Diagnostics = cas_engine::Diagnostics,
+    >,
+{
+    let parsed = parse_solve_invocation_input(input, default_check_enabled);
+    let eval_output =
+        evaluate_parsed_solve_command_input(engine, session, parsed.solve_input, auto_store)?;
+    Ok(SolveInvocationEvalOutput {
+        check_enabled: parsed.check_enabled,
+        eval_output,
+    })
+}
+
+/// Evaluate a parsed REPL `solve` command.
+pub fn evaluate_parsed_solve_command_input<S>(
+    engine: &mut crate::Engine,
+    session: &mut S,
+    parsed_input: SolveCommandInput,
+    auto_store: bool,
+) -> Result<SolveCommandEvalOutput, SolveCommandEvalError>
+where
+    S: cas_engine::EvalSession<
+        Options = cas_engine::EvalOptions,
+        Diagnostics = cas_engine::Diagnostics,
+    >,
+    S::Store: cas_engine::EvalStore<
+        DomainMode = cas_engine::DomainMode,
+        RequiredItem = cas_engine::RequiredItem,
+        Step = cas_engine::Step,
+        Diagnostics = cas_engine::Diagnostics,
+    >,
+{
+    let prepared = prepare_solve_eval_request(
+        &mut engine.simplifier.context,
+        parsed_input.equation.trim(),
+        parsed_input.variable,
+        auto_store,
+    )
+    .map_err(SolveCommandEvalError::Prepare)?;
+
+    let output = engine
+        .eval(session, prepared.request)
+        .map_err(|e| SolveCommandEvalError::Eval(e.to_string()))?;
+
+    Ok(SolveCommandEvalOutput {
+        var: prepared.var,
+        original_equation: prepared.original_equation,
+        output,
+    })
+}
+
+/// Evaluate a REPL `timeline solve` command:
+/// parse command input, prepare equation/variable, and solve with display steps.
+pub fn evaluate_timeline_solve_command_input(
+    simplifier: &mut Simplifier,
+    input: &str,
+    opts: SolverOptions,
+) -> Result<TimelineSolveEvalOutput, TimelineSolveEvalError> {
+    let parsed_input = parse_solve_command_input(input);
+    let prepared = prepare_timeline_solve_input(
+        &mut simplifier.context,
+        parsed_input.equation.trim(),
+        parsed_input.variable,
+    )
+    .map_err(TimelineSolveEvalError::Prepare)?;
+
+    let (solution_set, display_steps, diagnostics) =
+        solve_with_display_steps(&prepared.equation, &prepared.var, simplifier, opts)
+            .map_err(|e| TimelineSolveEvalError::Solve(e.to_string()))?;
+
+    Ok(TimelineSolveEvalOutput {
+        equation: prepared.equation,
+        var: prepared.var,
+        solution_set,
+        display_steps,
+        diagnostics,
+    })
+}
+
+/// Evaluate `timeline solve` using engine `EvalOptions` as semantic source.
+pub fn evaluate_timeline_solve_with_eval_options(
+    simplifier: &mut Simplifier,
+    input: &str,
+    eval_options: &crate::EvalOptions,
+) -> Result<TimelineSolveEvalOutput, TimelineSolveEvalError> {
+    simplifier.set_collect_steps(true);
+    let opts = crate::SolverOptions::from_eval_options(eval_options);
+    evaluate_timeline_solve_command_input(simplifier, input, opts)
+}
+
 /// Solve an equation for a variable.
 pub fn solve(
     eq: &Equation,
@@ -299,9 +557,15 @@ fn resolve_solve_var(
 #[cfg(test)]
 mod tests {
     use super::{
-        parse_solve_command_input, prepare_solve_eval_request, prepare_timeline_solve_input,
-        SolveCommandInput, SolvePrepareError,
+        evaluate_parsed_solve_command_input, evaluate_solve_command_input,
+        evaluate_solve_invocation_input, evaluate_timeline_solve_command_input,
+        evaluate_timeline_solve_with_eval_options, format_solve_command_error_message,
+        format_solve_prepare_error_message, format_timeline_solve_error_message,
+        parse_solve_command_input, parse_solve_invocation_input, prepare_solve_eval_request,
+        prepare_timeline_solve_input, SolveCommandEvalError, SolveCommandInput,
+        SolveInvocationInput, SolvePrepareError, TimelineSolveEvalError,
     };
+    use cas_session::SessionState;
 
     #[test]
     fn parse_solve_input_with_comma_var() {
@@ -340,6 +604,36 @@ mod tests {
     }
 
     #[test]
+    fn parse_solve_invocation_input_defaults_check_when_flag_missing() {
+        let parsed = parse_solve_invocation_input("x + 2 = 5, x", false);
+        assert_eq!(
+            parsed,
+            SolveInvocationInput {
+                check_enabled: false,
+                solve_input: SolveCommandInput {
+                    equation: "x + 2 = 5".to_string(),
+                    variable: Some("x".to_string()),
+                },
+            }
+        );
+    }
+
+    #[test]
+    fn parse_solve_invocation_input_enables_check_with_flag() {
+        let parsed = parse_solve_invocation_input("--check x + 2 = 5, x", false);
+        assert_eq!(
+            parsed,
+            SolveInvocationInput {
+                check_enabled: true,
+                solve_input: SolveCommandInput {
+                    equation: "x + 2 = 5".to_string(),
+                    variable: Some("x".to_string()),
+                },
+            }
+        );
+    }
+
+    #[test]
     fn prepare_solve_eval_request_infers_variable() {
         let mut ctx = cas_ast::Context::new();
         let prepared = prepare_solve_eval_request(&mut ctx, "x+2=5", None, true).expect("prepare");
@@ -372,5 +666,123 @@ mod tests {
         let mut ctx = cas_ast::Context::new();
         let prepared = prepare_timeline_solve_input(&mut ctx, "x+2=5", None).expect("prepare");
         assert_eq!(prepared.var, "x");
+    }
+
+    #[test]
+    fn evaluate_solve_command_input_runs() {
+        let mut engine = crate::Engine::new();
+        let mut session = SessionState::new();
+        let out = evaluate_solve_command_input(&mut engine, &mut session, "x + 2 = 5, x", true)
+            .expect("solve");
+        assert_eq!(out.var, "x");
+        assert!(out.original_equation.is_some());
+    }
+
+    #[test]
+    fn evaluate_parsed_solve_command_input_runs() {
+        let mut engine = crate::Engine::new();
+        let mut session = SessionState::new();
+        let out = evaluate_parsed_solve_command_input(
+            &mut engine,
+            &mut session,
+            SolveCommandInput {
+                equation: "x + 2 = 5".to_string(),
+                variable: Some("x".to_string()),
+            },
+            true,
+        )
+        .expect("solve");
+        assert_eq!(out.var, "x");
+        assert!(out.original_equation.is_some());
+    }
+
+    #[test]
+    fn evaluate_solve_command_input_prepare_error() {
+        let mut engine = crate::Engine::new();
+        let mut session = SessionState::new();
+        let err = evaluate_solve_command_input(&mut engine, &mut session, "x +", true)
+            .expect_err("prepare error");
+        assert!(matches!(
+            err,
+            SolveCommandEvalError::Prepare(SolvePrepareError::ParseError(_))
+        ));
+    }
+
+    #[test]
+    fn evaluate_solve_invocation_input_applies_check_flag() {
+        let mut engine = crate::Engine::new();
+        let mut session = SessionState::new();
+        let out = evaluate_solve_invocation_input(
+            &mut engine,
+            &mut session,
+            "--check x + 2 = 5, x",
+            false,
+            true,
+        )
+        .expect("solve invocation");
+        assert!(out.check_enabled);
+    }
+
+    #[test]
+    fn evaluate_timeline_solve_command_input_runs() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let out = evaluate_timeline_solve_command_input(
+            &mut simplifier,
+            "x + 2 = 5, x",
+            crate::SolverOptions::default(),
+        )
+        .expect("timeline solve");
+        assert_eq!(out.var, "x");
+        assert!(!matches!(out.solution_set, cas_ast::SolutionSet::Empty));
+    }
+
+    #[test]
+    fn evaluate_timeline_solve_command_input_requires_equation() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let err = evaluate_timeline_solve_command_input(
+            &mut simplifier,
+            "x + 2",
+            crate::SolverOptions::default(),
+        )
+        .expect_err("expected equation error");
+        assert_eq!(
+            err,
+            TimelineSolveEvalError::Prepare(SolvePrepareError::ExpectedEquation)
+        );
+    }
+
+    #[test]
+    fn evaluate_timeline_solve_with_eval_options_runs() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let eval_opts = crate::EvalOptions::default();
+        let out =
+            evaluate_timeline_solve_with_eval_options(&mut simplifier, "x + 2 = 5, x", &eval_opts)
+                .expect("timeline solve");
+        assert_eq!(out.var, "x");
+    }
+
+    #[test]
+    fn format_solve_prepare_error_message_reports_ambiguous_variables() {
+        let msg = format_solve_prepare_error_message(&SolvePrepareError::AmbiguousVariables(vec![
+            "x".to_string(),
+            "y".to_string(),
+        ]));
+        assert!(msg.contains("ambiguous variables {x, y}"));
+    }
+
+    #[test]
+    fn format_solve_command_error_message_wraps_eval_errors() {
+        let msg = format_solve_command_error_message(&SolveCommandEvalError::Eval(
+            "solver failed".to_string(),
+        ));
+        assert_eq!(msg, "Error: solver failed");
+    }
+
+    #[test]
+    fn format_timeline_solve_error_message_reports_expected_equation() {
+        let msg = format_timeline_solve_error_message(&TimelineSolveEvalError::Prepare(
+            SolvePrepareError::ExpectedEquation,
+        ));
+        assert!(msg.contains("Expected an equation for solve timeline"));
     }
 }

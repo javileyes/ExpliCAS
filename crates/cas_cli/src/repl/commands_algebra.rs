@@ -1,328 +1,36 @@
 use super::*;
 
 impl Repl {
-    pub(crate) fn handle_budget_command(&mut self, line: &str) {
-        let reply = self.handle_budget_command_core(line);
-        self.print_reply(reply);
-    }
-
-    fn handle_budget_command_core(&mut self, line: &str) -> ReplReply {
-        let args: Vec<&str> = line.split_whitespace().collect();
-
-        match args.get(1) {
-            None => {
-                // Just "budget" - show current setting
-                let budget = self.core.state.options().budget;
-                reply_output(format!(
-                    "Solve budget: max_branches={}\n\
-                      Controls how many case splits the solver can create.\n\
-                      0: No splits (fallback to simple solutions)\n\
-                      1: Conservative (default)\n\
-                      2+: Allow case splits for symbolic bases (a^x=a, etc)\n\
-                      (use 'budget N' to change, e.g. 'budget 2')",
-                    budget.max_branches
-                ))
-            }
-            Some(n_str) => {
-                if let Ok(n) = n_str.parse::<usize>() {
-                    self.core.state.options_mut().budget.max_branches = n;
-                    let mode_msg = if n == 0 {
-                        "  ⚠️ No case splits allowed (fallback to simple solutions)"
-                    } else if n == 1 {
-                        "  Conservative mode (default)"
-                    } else {
-                        "  ✓ Case splits enabled for symbolic bases\n  Try: solve a^x = a"
-                    };
-                    reply_output(format!("Solve budget: max_branches = {}\n{}", n, mode_msg))
-                } else {
-                    reply_output(format!(
-                        "Invalid budget value: '{}' (expected a number)\n\
-                         Usage: budget N\n\
-                           budget 0  - No case splits\n\
-                           budget 1  - Conservative (default)\n\
-                           budget 2  - Allow case splits for a^x=a patterns",
-                        n_str
-                    ))
-                }
-            }
-        }
-    }
-
-    /// Handle "history" or "list" command - show session history
-    pub(crate) fn handle_history_command(&self) {
-        let reply = self.handle_history_command_core();
-        self.print_reply(reply);
-    }
-
-    fn handle_history_command_core(&self) -> ReplReply {
-        let entries = self.core.state.history_entries();
-        if entries.is_empty() {
-            return reply_output("No entries in session history.");
-        }
-
-        let mut lines = vec![format!("Session history ({} entries):", entries.len())];
-        for entry in entries {
-            let type_indicator = match &entry.kind {
-                cas_session::EntryKind::Expr(_) => "Expr",
-                cas_session::EntryKind::Eq { .. } => "Eq  ",
-            };
-            // Show simplified form if possible
-            let display = match &entry.kind {
-                cas_session::EntryKind::Expr(expr_id) => {
-                    format!(
-                        "{}",
-                        cas_formatter::DisplayExpr {
-                            context: &self.core.engine.simplifier.context,
-                            id: *expr_id
-                        }
-                    )
-                }
-                cas_session::EntryKind::Eq { lhs, rhs } => {
-                    format!(
-                        "{} = {}",
-                        cas_formatter::DisplayExpr {
-                            context: &self.core.engine.simplifier.context,
-                            id: *lhs
-                        },
-                        cas_formatter::DisplayExpr {
-                            context: &self.core.engine.simplifier.context,
-                            id: *rhs
-                        }
-                    )
-                }
-            };
-            lines.push(format!(
-                "  #{:<3} [{}] {}",
-                entry.id, type_indicator, display
-            ));
-        }
-        reply_output(lines.join("\n"))
-    }
-
-    /// Handle "show #id" command - show details of a specific entry
-    pub(crate) fn handle_show_command(&mut self, line: &str) {
-        let reply = self.handle_show_command_core(line);
-        self.print_reply(reply);
-    }
-
-    fn handle_show_command_core(&mut self, line: &str) -> ReplReply {
-        let input = line.trim().trim_start_matches('#');
-        match input.parse::<u64>() {
-            Ok(id) => {
-                // Clone entry data to avoid borrow conflicts
-                let entry_data = self
-                    .core
-                    .state
-                    .history_get(id)
-                    .map(|e| (e.type_str().to_string(), e.raw_text.clone(), e.kind.clone()));
-
-                if let Some((type_str, raw_text, kind)) = entry_data {
-                    let mut lines = vec![
-                        format!("Entry #{}:", id),
-                        format!("  Type:       {}", type_str),
-                        format!("  Raw:        {}", raw_text),
-                    ];
-
-                    match &kind {
-                        cas_session::EntryKind::Expr(expr_id) => {
-                            // Show parsed expression
-                            lines.push(format!(
-                                "  Parsed:     {}",
-                                DisplayExpr {
-                                    context: &self.core.engine.simplifier.context,
-                                    id: *expr_id
-                                }
-                            ));
-
-                            // Show resolved (after #id and env substitution)
-                            let resolved = match self.core.state.resolve_state_refs(
-                                &mut self.core.engine.simplifier.context,
-                                *expr_id,
-                            ) {
-                                Ok(r) => r,
-                                Err(_) => *expr_id,
-                            };
-                            if resolved != *expr_id {
-                                lines.push(format!(
-                                    "  Resolved:   {}",
-                                    DisplayExpr {
-                                        context: &self.core.engine.simplifier.context,
-                                        id: resolved
-                                    }
-                                ));
-                            }
-
-                            // Perform full eval to get requires/assumed metadata
-                            let req = cas_solver::EvalRequest {
-                                raw_input: raw_text.clone(),
-                                parsed: *expr_id,
-                                action: cas_solver::EvalAction::Simplify,
-                                auto_store: false,
-                            };
-
-                            if let Ok(output) = self.core.engine.eval(&mut self.core.state, req) {
-                                // Show simplified result
-                                if let cas_solver::EvalResult::Expr(simplified) = &output.result {
-                                    if *simplified != *expr_id {
-                                        lines.push(format!(
-                                            "  Simplified: {}",
-                                            DisplayExpr {
-                                                context: &self.core.engine.simplifier.context,
-                                                id: *simplified
-                                            }
-                                        ));
-                                    }
-                                }
-
-                                lines.extend(cas_solver::format_eval_metadata_sections(
-                                    &self.core.engine.simplifier.context,
-                                    &output.required_conditions,
-                                    &output.domain_warnings,
-                                    &output.blocked_hints,
-                                    cas_solver::EvalMetadataSectionLabels {
-                                        required_header: "  ℹ️ Requires:",
-                                        assumed_header: "  ⚠ Assumed:",
-                                        blocked_header: "  🚫 Blocked:",
-                                        line_prefix: "    - ",
-                                    },
-                                ));
-                            } else {
-                                // Fallback: just simplify without metadata
-                                let (simplified, _) =
-                                    self.core.engine.simplifier.simplify(resolved);
-                                if simplified != resolved {
-                                    lines.push(format!(
-                                        "  Simplified: {}",
-                                        DisplayExpr {
-                                            context: &self.core.engine.simplifier.context,
-                                            id: simplified
-                                        }
-                                    ));
-                                }
-                            }
-                        }
-                        cas_session::EntryKind::Eq { lhs, rhs } => {
-                            // Show LHS and RHS
-                            lines.push(format!(
-                                "  LHS:        {}",
-                                DisplayExpr {
-                                    context: &self.core.engine.simplifier.context,
-                                    id: *lhs
-                                }
-                            ));
-                            lines.push(format!(
-                                "  RHS:        {}",
-                                DisplayExpr {
-                                    context: &self.core.engine.simplifier.context,
-                                    id: *rhs
-                                }
-                            ));
-
-                            // Note about equation-as-expression
-                            lines.push(String::new());
-                            lines.push(
-                                "  Note: When used as expression, this becomes (LHS - RHS)."
-                                    .to_string(),
-                            );
-                        }
-                    }
-                    reply_output(lines.join("\n"))
-                } else {
-                    // Check if this ID was ever assigned (it's above next_id means never existed)
-                    // Entry not found — could be deleted or never existed
-                    reply_output(format!(
-                        "Error: Entry #{} not found.\nHint: Use 'history' to see available entries.",
-                        id
-                    ))
-                }
-            }
-            Err(_) => reply_output("Error: Invalid entry ID. Use 'show #N' or 'show N'."),
-        }
-    }
-
-    /// Handle "del #id [#id...]" command - delete session entries
-    pub(crate) fn handle_del_command(&mut self, line: &str) {
-        let reply = self.handle_del_command_core(line);
-        self.print_reply(reply);
-    }
-
-    fn handle_del_command_core(&mut self, line: &str) -> ReplReply {
-        let ids: Vec<u64> = line
-            .split_whitespace()
-            .filter_map(|s| s.trim_start_matches('#').parse::<u64>().ok())
-            .collect();
-
-        if ids.is_empty() {
-            return reply_output("Error: No valid IDs specified. Use 'del #1 #2' or 'del 1 2'.");
-        }
-
-        let before_len = self.core.state.history_len();
-        self.core.state.history_remove(&ids);
-        let removed = before_len - self.core.state.history_len();
-
-        if removed > 0 {
-            let id_str: Vec<String> = ids.iter().map(|id| format!("#{}", id)).collect();
-            reply_output(format!(
-                "Deleted {} entry/entries: {}",
-                removed,
-                id_str.join(", ")
-            ))
-        } else {
-            reply_output("No entries found with the specified IDs.")
-        }
-    }
-
-    // ========== END SESSION ENVIRONMENT HANDLERS ==========
-
     pub(crate) fn handle_det(&mut self, line: &str) {
         let reply = self.handle_det_core(line, self.verbosity);
         self.print_reply(reply);
     }
 
     fn handle_det_core(&mut self, line: &str, verbosity: Verbosity) -> ReplReply {
-        let rest = line[4..].trim(); // Remove "det "
+        let rest = cas_solver::extract_unary_command_tail(line, "det");
 
-        match cas_solver::evaluate_unary_function_input(
+        let result = cas_solver::evaluate_unary_function_input(
             &mut self.core.engine.simplifier,
             "det",
             rest,
-        ) {
+        );
+        match result {
             Ok(out) => {
-                let mut lines = vec![format!("Parsed: det({})", rest)];
-
-                // Print steps if verbosity is not None
-                if verbosity != Verbosity::None && !out.steps.is_empty() {
-                    lines.push("Steps:".to_string());
-                    for (i, step) in out.steps.iter().enumerate() {
-                        lines.push(format!(
-                            "{}. {}  [{}]",
-                            i + 1,
-                            step.description,
-                            step.rule_name
-                        ));
-                        for assumption_line in cas_solver::format_displayable_assumption_lines(
-                            step.assumption_events(),
-                        ) {
-                            lines.push(format!("   {}", assumption_line));
-                        }
-                    }
-                }
-
-                lines.push(format!(
-                    "Result: {}",
-                    clean_display_string(&format!(
-                        "{}",
-                        DisplayExpr {
-                            context: &self.core.engine.simplifier.context,
-                            id: out.result_expr
-                        }
-                    ))
-                ));
+                let render_config = cas_solver::unary_render_config_for_display_mode(
+                    "det",
+                    Self::set_display_mode_from_verbosity(verbosity),
+                    true,
+                );
+                let mut lines = cas_solver::format_unary_function_eval_lines(
+                    &self.core.engine.simplifier.context,
+                    rest,
+                    &out,
+                    render_config,
+                );
+                clean_result_line(&mut lines);
                 reply_output(lines.join("\n"))
             }
-            Err(cas_solver::UnaryFunctionEvalError::Parse(e)) => {
-                reply_output(format!("Parse error: {}", e))
-            }
+            Err(e) => reply_output(cas_solver::format_unary_function_eval_error_message(&e)),
         }
     }
 
@@ -332,41 +40,29 @@ impl Repl {
     }
 
     fn handle_transpose_core(&mut self, line: &str, verbosity: Verbosity) -> ReplReply {
-        let rest = line[10..].trim(); // Remove "transpose "
+        let rest = cas_solver::extract_unary_command_tail(line, "transpose");
 
-        match cas_solver::evaluate_unary_function_input(
+        let result = cas_solver::evaluate_unary_function_input(
             &mut self.core.engine.simplifier,
             "transpose",
             rest,
-        ) {
+        );
+        match result {
             Ok(out) => {
-                let mut lines = vec![format!("Parsed: transpose({})", rest)];
-
-                // Print steps if verbosity is not None
-                if verbosity != Verbosity::None && !out.steps.is_empty() {
-                    lines.push("Steps:".to_string());
-                    for (i, step) in out.steps.iter().enumerate() {
-                        lines.push(format!(
-                            "{}. {}  [{}]",
-                            i + 1,
-                            step.description,
-                            step.rule_name
-                        ));
-                    }
-                }
-
-                lines.push(format!(
-                    "Result: {}",
-                    DisplayExpr {
-                        context: &self.core.engine.simplifier.context,
-                        id: out.result_expr
-                    }
-                ));
+                let render_config = cas_solver::unary_render_config_for_display_mode(
+                    "transpose",
+                    Self::set_display_mode_from_verbosity(verbosity),
+                    false,
+                );
+                let lines = cas_solver::format_unary_function_eval_lines(
+                    &self.core.engine.simplifier.context,
+                    rest,
+                    &out,
+                    render_config,
+                );
                 reply_output(lines.join("\n"))
             }
-            Err(cas_solver::UnaryFunctionEvalError::Parse(e)) => {
-                reply_output(format!("Parse error: {}", e))
-            }
+            Err(e) => reply_output(cas_solver::format_unary_function_eval_error_message(&e)),
         }
     }
 
@@ -376,44 +72,30 @@ impl Repl {
     }
 
     fn handle_trace_core(&mut self, line: &str, verbosity: Verbosity) -> ReplReply {
-        let rest = line[6..].trim(); // Remove "trace "
+        let rest = cas_solver::extract_unary_command_tail(line, "trace");
 
-        match cas_solver::evaluate_unary_function_input(
+        let result = cas_solver::evaluate_unary_function_input(
             &mut self.core.engine.simplifier,
             "trace",
             rest,
-        ) {
+        );
+        match result {
             Ok(out) => {
-                let mut lines = vec![format!("Parsed: trace({})", rest)];
-
-                // Print steps if verbosity is not None
-                if verbosity != Verbosity::None && !out.steps.is_empty() {
-                    lines.push("Steps:".to_string());
-                    for (i, step) in out.steps.iter().enumerate() {
-                        lines.push(format!(
-                            "{}. {}  [{}]",
-                            i + 1,
-                            step.description,
-                            step.rule_name
-                        ));
-                    }
-                }
-
-                lines.push(format!(
-                    "Result: {}",
-                    clean_display_string(&format!(
-                        "{}",
-                        DisplayExpr {
-                            context: &self.core.engine.simplifier.context,
-                            id: out.result_expr
-                        }
-                    ))
-                ));
+                let render_config = cas_solver::unary_render_config_for_display_mode(
+                    "trace",
+                    Self::set_display_mode_from_verbosity(verbosity),
+                    false,
+                );
+                let mut lines = cas_solver::format_unary_function_eval_lines(
+                    &self.core.engine.simplifier.context,
+                    rest,
+                    &out,
+                    render_config,
+                );
+                clean_result_line(&mut lines);
                 reply_output(lines.join("\n"))
             }
-            Err(cas_solver::UnaryFunctionEvalError::Parse(e)) => {
-                reply_output(format!("Parse error: {}", e))
-            }
+            Err(e) => reply_output(cas_solver::format_unary_function_eval_error_message(&e)),
         }
     }
 
@@ -424,39 +106,33 @@ impl Repl {
     }
 
     fn handle_telescope_core(&mut self, line: &str) -> ReplReply {
-        let rest = line[10..].trim(); // Remove "telescope "
-
-        if rest.is_empty() {
-            return reply_output(
-                "Usage: telescope <expression>\n\
-                 Example: telescope 1 + 2*cos(x) + 2*cos(2*x) - sin(5*x/2)/sin(x/2)",
-            );
-        }
+        let rest = match cas_solver::parse_telescope_command_input(line) {
+            cas_solver::TelescopeCommandInput::MissingInput => {
+                return reply_output(cas_solver::telescope_usage_message());
+            }
+            cas_solver::TelescopeCommandInput::Expr(rest) => rest,
+        };
 
         match cas_solver::evaluate_telescope_input(&mut self.core.engine.simplifier, rest) {
-            Ok(out) => reply_output(format!("Parsed: {}\n\n{}", rest, out.formatted_result)),
-            Err(cas_solver::TransformEvalError::Parse(e)) => {
-                reply_output(format!("Parse error: {}", e))
-            }
+            Ok(out) => reply_output(cas_solver::format_telescope_eval_lines(rest, &out).join("\n")),
+            Err(e) => reply_output(cas_solver::format_transform_eval_error_message(&e)),
         }
     }
 
     /// Handle the 'expand' command for aggressive polynomial expansion
     /// Uses the engine `expand()` path which distributes without educational guards
     pub(crate) fn handle_expand(&mut self, line: &str) {
-        let rest = line.strip_prefix("expand").unwrap_or(line).trim();
-        if rest.is_empty() {
-            self.print_reply(reply_output(
-                "Usage: expand <expr>\n\
-                 Description: Aggressively expands and distributes polynomials.\n\
-                 Example: expand 1/2 * (sqrt(2) - 1) → sqrt(2)/2 - 1/2",
-            ));
-            return;
-        }
+        let rest = match cas_solver::parse_expand_command_input(line) {
+            cas_solver::ExpandCommandInput::MissingInput => {
+                self.print_reply(reply_output(cas_solver::expand_usage_message()));
+                return;
+            }
+            cas_solver::ExpandCommandInput::Expr(rest) => rest,
+        };
 
         // V2.14.34: Delegate to normal line processing with expand() function wrapper
         // This ensures steps are shown, consistent with using expand() as a function
-        let wrapped = format!("expand({})", rest);
+        let wrapped = cas_solver::wrap_expand_eval_expression(rest);
         self.handle_eval(&wrapped);
     }
 
@@ -468,45 +144,23 @@ impl Repl {
     }
 
     fn handle_expand_log_core(&mut self, line: &str) -> ReplReply {
-        use cas_formatter::DisplayExpr;
-
-        let rest = line.strip_prefix("expand_log").unwrap_or(line).trim();
-        if rest.is_empty() {
-            return reply_output(
-                "Usage: expand_log <expr>\n\
-                 Description: Expand logarithms using log properties.\n\
-                 Transformations:\n\
-                   ln(x*y)   → ln(x) + ln(y)\n\
-                   ln(x/y)   → ln(x) - ln(y)\n\
-                   ln(x^n)   → n * ln(x)\n\
-                 Example: expand_log ln(x^2 * y) → 2*ln(x) + ln(y)",
-            );
-        }
+        let rest = match cas_solver::parse_expand_log_command_input(line) {
+            cas_solver::ExpandLogCommandInput::MissingInput => {
+                return reply_output(cas_solver::expand_log_usage_message());
+            }
+            cas_solver::ExpandLogCommandInput::Expr(rest) => rest,
+        };
 
         match cas_solver::evaluate_expand_log_input(&mut self.core.engine.simplifier, rest) {
             Ok(out) => {
-                let parsed_str = format!(
-                    "Parsed: {}",
-                    DisplayExpr {
-                        context: &self.core.engine.simplifier.context,
-                        id: out.parsed_expr
-                    }
+                let mut lines = cas_solver::format_expand_log_eval_lines(
+                    &self.core.engine.simplifier.context,
+                    &out,
                 );
-                let result_str = format!(
-                    "Result: {}",
-                    clean_display_string(&format!(
-                        "{}",
-                        DisplayExpr {
-                            context: &self.core.engine.simplifier.context,
-                            id: out.expanded_expr
-                        }
-                    ))
-                );
-                reply_output(format!("{}\n{}", parsed_str, result_str))
+                clean_result_line(&mut lines);
+                reply_output(lines.join("\n"))
             }
-            Err(cas_solver::TransformEvalError::Parse(e)) => {
-                reply_output(format!("Parse error: {}", e))
-            }
+            Err(e) => reply_output(cas_solver::format_transform_eval_error_message(&e)),
         }
     }
 }

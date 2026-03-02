@@ -1,0 +1,392 @@
+/// Immutable semantics preset definition used by frontends.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SemanticsPreset {
+    pub name: &'static str,
+    pub description: &'static str,
+    pub domain: crate::DomainMode,
+    pub value: crate::ValueDomain,
+    pub branch: crate::BranchPolicy,
+    pub inv_trig: crate::InverseTrigPolicy,
+    pub const_fold: crate::ConstFoldMode,
+}
+
+/// Runtime semantics state affected by preset application.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SemanticsPresetState {
+    pub domain: crate::DomainMode,
+    pub value: crate::ValueDomain,
+    pub branch: crate::BranchPolicy,
+    pub inv_trig: crate::InverseTrigPolicy,
+    pub const_fold: crate::ConstFoldMode,
+}
+
+/// Build a preset-state snapshot from simplifier + eval options.
+pub fn semantics_preset_state_from_options(
+    simplify_options: &crate::SimplifyOptions,
+    eval_options: &crate::EvalOptions,
+) -> SemanticsPresetState {
+    SemanticsPresetState {
+        domain: simplify_options.shared.semantics.domain_mode,
+        value: simplify_options.shared.semantics.value_domain,
+        branch: simplify_options.shared.semantics.branch,
+        inv_trig: simplify_options.shared.semantics.inv_trig,
+        const_fold: eval_options.const_fold,
+    }
+}
+
+/// Result of applying a semantics preset.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SemanticsPresetApplication {
+    pub preset: SemanticsPreset,
+    pub next: SemanticsPresetState,
+}
+
+/// Error returned when preset application cannot proceed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SemanticsPresetApplyError {
+    UnknownPreset { name: String },
+}
+
+/// Apply preset state to both simplifier options and runtime eval options.
+pub fn apply_semantics_preset_state_to_options(
+    next: SemanticsPresetState,
+    simplify_options: &mut crate::SimplifyOptions,
+    eval_options: &mut crate::EvalOptions,
+) {
+    simplify_options.shared.semantics.domain_mode = next.domain;
+    simplify_options.shared.semantics.value_domain = next.value;
+    simplify_options.shared.semantics.branch = next.branch;
+    simplify_options.shared.semantics.inv_trig = next.inv_trig;
+
+    eval_options.shared.semantics.domain_mode = next.domain;
+    eval_options.shared.semantics.value_domain = next.value;
+    eval_options.shared.semantics.branch = next.branch;
+    eval_options.shared.semantics.inv_trig = next.inv_trig;
+
+    eval_options.const_fold = next.const_fold;
+}
+
+fn domain_mode_label(value: crate::DomainMode) -> &'static str {
+    match value {
+        crate::DomainMode::Strict => "strict",
+        crate::DomainMode::Generic => "generic",
+        crate::DomainMode::Assume => "assume",
+    }
+}
+
+fn value_domain_label(value: crate::ValueDomain) -> &'static str {
+    match value {
+        crate::ValueDomain::RealOnly => "real",
+        crate::ValueDomain::ComplexEnabled => "complex",
+    }
+}
+
+fn branch_policy_label(value: crate::BranchPolicy) -> &'static str {
+    match value {
+        crate::BranchPolicy::Principal => "principal",
+    }
+}
+
+fn inverse_trig_policy_label(value: crate::InverseTrigPolicy) -> &'static str {
+    match value {
+        crate::InverseTrigPolicy::Strict => "strict",
+        crate::InverseTrigPolicy::PrincipalValue => "principal",
+    }
+}
+
+fn const_fold_mode_label(value: crate::ConstFoldMode) -> &'static str {
+    match value {
+        crate::ConstFoldMode::Off => "off",
+        crate::ConstFoldMode::Safe => "safe",
+    }
+}
+
+fn state_from_preset(preset: SemanticsPreset) -> SemanticsPresetState {
+    SemanticsPresetState {
+        domain: preset.domain,
+        value: preset.value,
+        branch: preset.branch,
+        inv_trig: preset.inv_trig,
+        const_fold: preset.const_fold,
+    }
+}
+
+const SEMANTICS_PRESETS: [SemanticsPreset; 4] = [
+    SemanticsPreset {
+        name: "default",
+        description: "Reset to engine defaults",
+        domain: crate::DomainMode::Generic,
+        value: crate::ValueDomain::RealOnly,
+        branch: crate::BranchPolicy::Principal,
+        inv_trig: crate::InverseTrigPolicy::Strict,
+        const_fold: crate::ConstFoldMode::Off,
+    },
+    SemanticsPreset {
+        name: "strict",
+        description: "Conservative real + strict domain",
+        domain: crate::DomainMode::Strict,
+        value: crate::ValueDomain::RealOnly,
+        branch: crate::BranchPolicy::Principal,
+        inv_trig: crate::InverseTrigPolicy::Strict,
+        const_fold: crate::ConstFoldMode::Off,
+    },
+    SemanticsPreset {
+        name: "complex",
+        description: "Enable ℂ + safe const_fold (sqrt(-1) → i)",
+        domain: crate::DomainMode::Generic,
+        value: crate::ValueDomain::ComplexEnabled,
+        branch: crate::BranchPolicy::Principal,
+        inv_trig: crate::InverseTrigPolicy::Strict,
+        const_fold: crate::ConstFoldMode::Safe,
+    },
+    SemanticsPreset {
+        name: "school",
+        description: "Real + principal inverse trig (arctan(tan(x)) → x)",
+        domain: crate::DomainMode::Generic,
+        value: crate::ValueDomain::RealOnly,
+        branch: crate::BranchPolicy::Principal,
+        inv_trig: crate::InverseTrigPolicy::PrincipalValue,
+        const_fold: crate::ConstFoldMode::Off,
+    },
+];
+
+pub fn semantics_presets() -> &'static [SemanticsPreset] {
+    &SEMANTICS_PRESETS
+}
+
+pub fn find_semantics_preset(name: &str) -> Option<SemanticsPreset> {
+    SEMANTICS_PRESETS
+        .iter()
+        .copied()
+        .find(|preset| preset.name == name)
+}
+
+pub fn format_semantics_preset_list_lines() -> Vec<String> {
+    let mut lines = Vec::new();
+    lines.push("Available presets:".to_string());
+    for preset in semantics_presets() {
+        lines.push(format!("  {:10} {}", preset.name, preset.description));
+    }
+    lines.push(String::new());
+    lines.push("Usage:".to_string());
+    lines.push("  semantics preset <name>       Apply preset".to_string());
+    lines.push("  semantics preset help <name>  Show preset axes".to_string());
+    lines
+}
+
+pub fn format_semantics_preset_help_lines(name: Option<&str>) -> Vec<String> {
+    let mut lines = Vec::new();
+    let Some(name) = name else {
+        lines.push("Usage: semantics preset help <name>".to_string());
+        lines.push("Presets: default, strict, complex, school".to_string());
+        return lines;
+    };
+
+    if let Some(preset) = find_semantics_preset(name) {
+        lines.push(format!("{}:", preset.name));
+        lines.push(format!(
+            "  domain_mode  = {}",
+            domain_mode_label(preset.domain)
+        ));
+        lines.push(format!(
+            "  value_domain = {}",
+            value_domain_label(preset.value)
+        ));
+        lines.push("  branch       = principal".to_string());
+        lines.push(format!(
+            "  inv_trig     = {}",
+            inverse_trig_policy_label(preset.inv_trig)
+        ));
+        lines.push(format!(
+            "  const_fold   = {}",
+            const_fold_mode_label(preset.const_fold)
+        ));
+        lines.push(String::new());
+        lines.push(format!("Purpose: {}", preset.description));
+    } else {
+        lines.push(format!("Unknown preset: '{}'", name));
+        lines.push("Available: default, strict, complex, school".to_string());
+    }
+
+    lines
+}
+
+pub fn apply_semantics_preset_by_name(
+    name: &str,
+) -> Result<SemanticsPresetApplication, SemanticsPresetApplyError> {
+    let Some(preset) = find_semantics_preset(name) else {
+        return Err(SemanticsPresetApplyError::UnknownPreset {
+            name: name.to_string(),
+        });
+    };
+    Ok(SemanticsPresetApplication {
+        preset,
+        next: state_from_preset(preset),
+    })
+}
+
+pub fn format_semantics_preset_application_lines(
+    current: SemanticsPresetState,
+    application: &SemanticsPresetApplication,
+) -> Vec<String> {
+    let next = application.next;
+    let mut lines = Vec::new();
+    lines.push(format!("Applied preset: {}", application.preset.name));
+    lines.push("Changes:".to_string());
+
+    let mut changes = 0;
+
+    if current.domain != next.domain {
+        lines.push(format!(
+            "  domain_mode:  {} → {}",
+            domain_mode_label(current.domain),
+            domain_mode_label(next.domain)
+        ));
+        changes += 1;
+    }
+
+    if current.value != next.value {
+        lines.push(format!(
+            "  value_domain: {} → {}",
+            value_domain_label(current.value),
+            value_domain_label(next.value)
+        ));
+        changes += 1;
+    }
+
+    if current.branch != next.branch {
+        lines.push(format!(
+            "  branch:       {} → {}",
+            branch_policy_label(current.branch),
+            branch_policy_label(next.branch)
+        ));
+        changes += 1;
+    }
+
+    if current.inv_trig != next.inv_trig {
+        lines.push(format!(
+            "  inv_trig:     {} → {}",
+            inverse_trig_policy_label(current.inv_trig),
+            inverse_trig_policy_label(next.inv_trig)
+        ));
+        changes += 1;
+    }
+
+    if current.const_fold != next.const_fold {
+        lines.push(format!(
+            "  const_fold:   {} → {}",
+            const_fold_mode_label(current.const_fold),
+            const_fold_mode_label(next.const_fold)
+        ));
+        changes += 1;
+    }
+
+    if changes == 0 {
+        lines.push("  (no changes - already at this preset)".to_string());
+    }
+
+    lines
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        apply_semantics_preset_by_name, apply_semantics_preset_state_to_options,
+        find_semantics_preset, format_semantics_preset_application_lines,
+        format_semantics_preset_help_lines, format_semantics_preset_list_lines,
+        semantics_preset_state_from_options, SemanticsPresetApplyError, SemanticsPresetState,
+    };
+
+    #[test]
+    fn find_semantics_preset_returns_complex() {
+        let preset = find_semantics_preset("complex").expect("preset exists");
+        assert_eq!(preset.name, "complex");
+    }
+
+    #[test]
+    fn format_semantics_preset_list_lines_contains_default() {
+        let lines = format_semantics_preset_list_lines();
+        assert!(lines.iter().any(|line| line.contains("default")));
+    }
+
+    #[test]
+    fn format_semantics_preset_help_lines_unknown_includes_available_hint() {
+        let lines = format_semantics_preset_help_lines(Some("missing"));
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("Available: default, strict, complex, school")));
+    }
+
+    #[test]
+    fn apply_semantics_preset_by_name_unknown_returns_error() {
+        let error = apply_semantics_preset_by_name("missing").expect_err("should fail");
+        assert_eq!(
+            error,
+            SemanticsPresetApplyError::UnknownPreset {
+                name: "missing".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn format_semantics_preset_application_lines_no_changes_reports_hint() {
+        let application = apply_semantics_preset_by_name("default").expect("preset");
+        let lines = format_semantics_preset_application_lines(application.next, &application);
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("(no changes - already at this preset)")));
+    }
+
+    #[test]
+    fn format_semantics_preset_application_lines_reports_changed_axes() {
+        let application = apply_semantics_preset_by_name("complex").expect("preset");
+        let current = SemanticsPresetState {
+            domain: crate::DomainMode::Generic,
+            value: crate::ValueDomain::RealOnly,
+            branch: crate::BranchPolicy::Principal,
+            inv_trig: crate::InverseTrigPolicy::Strict,
+            const_fold: crate::ConstFoldMode::Off,
+        };
+        let lines = format_semantics_preset_application_lines(current, &application);
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("value_domain: real → complex")));
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("const_fold:   off → safe")));
+    }
+
+    #[test]
+    fn apply_semantics_preset_state_to_options_updates_modes() {
+        let mut simplify_options = crate::SimplifyOptions::default();
+        let mut eval_options = crate::EvalOptions::default();
+        let next = SemanticsPresetState {
+            domain: crate::DomainMode::Strict,
+            value: crate::ValueDomain::ComplexEnabled,
+            branch: crate::BranchPolicy::Principal,
+            inv_trig: crate::InverseTrigPolicy::PrincipalValue,
+            const_fold: crate::ConstFoldMode::Safe,
+        };
+        apply_semantics_preset_state_to_options(next, &mut simplify_options, &mut eval_options);
+        assert_eq!(
+            simplify_options.shared.semantics.domain_mode,
+            crate::DomainMode::Strict
+        );
+        assert_eq!(
+            eval_options.shared.semantics.value_domain,
+            crate::ValueDomain::ComplexEnabled
+        );
+        assert_eq!(eval_options.const_fold, crate::ConstFoldMode::Safe);
+    }
+
+    #[test]
+    fn semantics_preset_state_from_options_reads_const_fold() {
+        let simplify_options = crate::SimplifyOptions::default();
+        let eval_options = crate::EvalOptions {
+            const_fold: crate::ConstFoldMode::Safe,
+            ..crate::EvalOptions::default()
+        };
+        let state = semantics_preset_state_from_options(&simplify_options, &eval_options);
+        assert_eq!(state.const_fold, crate::ConstFoldMode::Safe);
+    }
+}
