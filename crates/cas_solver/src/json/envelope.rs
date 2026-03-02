@@ -75,7 +75,7 @@ fn build_transparency(output: &EvalOutput, ctx: &cas_ast::Context) -> Transparen
     let required_conditions = map_required_conditions(&output.required_conditions, ctx);
     let solver_assumptions = crate::assumption_records_from_engine(&output.solver_assumptions);
     let assumptions_used = map_assumptions_used(&solver_assumptions, &output.domain_warnings);
-    let blocked_hints = map_blocked_hints(&output.blocked_hints);
+    let blocked_hints = map_blocked_hints(&crate::blocked_hints_from_engine(&output.blocked_hints));
 
     TransparencyDto {
         required_conditions,

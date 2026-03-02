@@ -10,32 +10,19 @@ pub struct AssumptionRecord {
     pub count: u32,
 }
 
-impl AssumptionRecord {
-    /// Converts to the engine representation.
-    #[inline]
-    pub fn into_engine(self) -> cas_engine::AssumptionRecord {
-        self.into()
+pub(crate) fn assumption_record_from_engine(
+    value: cas_engine::AssumptionRecord,
+) -> AssumptionRecord {
+    AssumptionRecord {
+        kind: value.kind,
+        expr: value.expr,
+        message: value.message,
+        count: value.count,
     }
 }
 
 impl From<cas_engine::AssumptionRecord> for AssumptionRecord {
     fn from(value: cas_engine::AssumptionRecord) -> Self {
-        Self {
-            kind: value.kind,
-            expr: value.expr,
-            message: value.message,
-            count: value.count,
-        }
-    }
-}
-
-impl From<AssumptionRecord> for cas_engine::AssumptionRecord {
-    fn from(value: AssumptionRecord) -> Self {
-        Self {
-            kind: value.kind,
-            expr: value.expr,
-            message: value.message,
-            count: value.count,
-        }
+        assumption_record_from_engine(value)
     }
 }

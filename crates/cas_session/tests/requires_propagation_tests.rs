@@ -6,9 +6,9 @@
 //! 3. Combined expressions inherit requires from all sub-expressions
 
 use cas_ast::Expr;
-use cas_engine::Engine;
-use cas_engine::{EvalAction, EvalRequest};
 use cas_session::SessionState;
+use cas_solver::Engine;
+use cas_solver::{EvalAction, EvalRequest};
 
 /// Helper to create eval request for expression
 fn make_simplify_request(engine: &mut Engine, expr_str: &str) -> EvalRequest {
@@ -25,7 +25,7 @@ fn make_simplify_request(engine: &mut Engine, expr_str: &str) -> EvalRequest {
 /// Test: sqrt(x) produces x ≥ 0, and this propagates when reused
 #[test]
 fn requires_propagate_on_sqrt_reuse() {
-    use cas_engine::ImplicitCondition;
+    use cas_solver::ImplicitCondition;
 
     let mut engine = Engine::new();
     let mut state = SessionState::default();
@@ -70,7 +70,7 @@ fn requires_propagate_on_sqrt_reuse() {
 /// Test: ln(y) produces y > 0, and this propagates when reused
 #[test]
 fn requires_propagate_on_ln_reuse() {
-    use cas_engine::ImplicitCondition;
+    use cas_solver::ImplicitCondition;
 
     let mut engine = Engine::new();
     let mut state = SessionState::default();
@@ -109,7 +109,7 @@ fn requires_propagate_on_ln_reuse() {
 /// Test: Combined expressions inherit requires from all sub-expressions
 #[test]
 fn requires_combine_from_multiple_sources() {
-    use cas_engine::ImplicitCondition;
+    use cas_solver::ImplicitCondition;
 
     let mut engine = Engine::new();
     let mut state = SessionState::default();
@@ -145,7 +145,7 @@ fn requires_combine_from_multiple_sources() {
 /// Test: Division by variable produces x ≠ 0 requirement
 #[test]
 fn requires_nonzero_from_division() {
-    use cas_engine::ImplicitCondition;
+    use cas_solver::ImplicitCondition;
 
     let mut engine = Engine::new();
     let mut state = SessionState::default();
@@ -177,7 +177,7 @@ fn requires_nonzero_from_division() {
 /// inherited with SessionPropagated added to their origins.
 #[test]
 fn session_propagated_origin_appears_on_reuse() {
-    use cas_engine::RequireOrigin;
+    use cas_solver::RequireOrigin;
 
     let mut engine = Engine::new();
     let mut state = SessionState::default();
@@ -241,7 +241,7 @@ fn session_propagated_no_assumed_blocked_contamination() {
     let mut state = SessionState::default();
 
     // Use Assume mode to generate assumed events
-    state.options_mut().shared.semantics.domain_mode = cas_engine::DomainMode::Assume;
+    state.options_mut().shared.semantics.domain_mode = cas_solver::DomainMode::Assume;
 
     // Step 1: Evaluate exp(ln(x)) in Assume mode
     // This should simplify to x and record Positive(x) as assumed
@@ -250,7 +250,7 @@ fn session_propagated_no_assumed_blocked_contamination() {
 
     // Verify we got an assumed event (or at least the simplification happened)
     let result1 = match &output1.result {
-        cas_engine::EvalResult::Expr(e) => cas_formatter::DisplayExpr {
+        cas_solver::EvalResult::Expr(e) => cas_formatter::DisplayExpr {
             context: &engine.simplifier.context,
             id: *e,
         }
@@ -278,7 +278,7 @@ fn session_propagated_no_assumed_blocked_contamination() {
 
     // For now, we verify that the result is correct
     let result2 = match &output2.result {
-        cas_engine::EvalResult::Expr(e) => cas_formatter::DisplayExpr {
+        cas_solver::EvalResult::Expr(e) => cas_formatter::DisplayExpr {
             context: &engine.simplifier.context,
             id: *e,
         }

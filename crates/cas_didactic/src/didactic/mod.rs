@@ -39,7 +39,7 @@ mod fraction_steps;
 mod nested_fractions;
 
 use cas_ast::{Context, Expr, ExprId};
-use cas_engine::{AssumptionEvent, PathStep, Step};
+use cas_solver::{AssumptionEvent, ImportanceLevel, PathStep, Step};
 use num_bigint::BigInt;
 use num_rational::BigRational;
 use num_traits::{Signed, Zero};
@@ -367,7 +367,7 @@ fn should_show_simplify_step(step: &Step, mode: StepDisplayMode) -> bool {
         StepDisplayMode::None => false,
         StepDisplayMode::Verbose => true,
         StepDisplayMode::Succinct | StepDisplayMode::Normal => {
-            if step.get_importance() < cas_engine::ImportanceLevel::Medium {
+            if step.get_importance() < ImportanceLevel::Medium {
                 return false;
             }
             if let (Some(before), Some(after)) = (step.global_before, step.global_after) {
@@ -564,7 +564,9 @@ pub fn format_cli_simplification_steps(
                 ))
             ));
 
-            for assumption_line in format_displayable_assumption_lines(step.assumption_events()) {
+            let assumption_events =
+                cas_solver::assumption_events_from_engine(step.assumption_events());
+            for assumption_line in format_displayable_assumption_lines(&assumption_events) {
                 lines.push(format!("   {}", assumption_line));
             }
         } else if let Some(global_after) = step.global_after {

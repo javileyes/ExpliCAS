@@ -1,4 +1,6 @@
 use super::*;
+use crate::assumption_format;
+use crate::result_format;
 use cas_ast::{Context, Equation, ExprId};
 use cas_formatter::display_transforms::{DisplayTransformRegistry, ScopeTag, ScopedRenderer};
 
@@ -438,7 +440,7 @@ fn format_solve_result_line(
         cas_solver::EvalResult::SolutionSet(solution_set) => {
             format!(
                 "Result: {}",
-                cas_solver::display_solution_set(ctx, solution_set)
+                result_format::display_solution_set(ctx, solution_set)
             )
         }
         cas_solver::EvalResult::Set(solutions) => {
@@ -480,7 +482,7 @@ fn format_solve_command_eval_lines(
         .unwrap_or_default();
     lines.push(format!("{}Solving for {}...", id_prefix, eval_out.var));
 
-    lines.extend(cas_solver::format_domain_warning_lines(
+    lines.extend(assumption_format::format_domain_warning_lines(
         &output.domain_warnings,
         true,
         "⚠ ",
@@ -488,7 +490,8 @@ fn format_solve_command_eval_lines(
 
     let solver_assumption_records =
         cas_solver::assumption_records_from_engine(&output.solver_assumptions);
-    if let Some(summary) = cas_solver::format_assumption_records_summary(&solver_assumption_records)
+    if let Some(summary) =
+        assumption_format::format_assumption_records_summary(&solver_assumption_records)
     {
         lines.push(format!("⚠ Assumptions: {summary}"));
     }
@@ -510,7 +513,7 @@ fn format_solve_command_eval_lines(
     ));
 
     let result_expr_id = requires_result_expr_anchor(&output.result, output.resolved);
-    let requires_lines = cas_solver::format_diagnostics_requires_lines(
+    let requires_lines = assumption_format::format_diagnostics_requires_lines(
         &mut simplifier.context,
         &output.diagnostics,
         Some(result_expr_id),
@@ -538,16 +541,18 @@ fn format_solve_command_eval_lines(
     }
 
     let hints = cas_solver::take_blocked_hints();
-    lines.extend(cas_solver::format_solve_assumption_and_blocked_sections(
-        &simplifier.context,
-        &solver_assumption_records,
-        &hints,
-        cas_solver::SolveAssumptionSectionConfig {
-            debug_mode: config.debug_mode,
-            hints_enabled: config.hints_enabled,
-            domain_mode: config.domain_mode,
-        },
-    ));
+    lines.extend(
+        assumption_format::format_solve_assumption_and_blocked_sections(
+            &simplifier.context,
+            &solver_assumption_records,
+            &hints,
+            assumption_format::SolveAssumptionSectionConfig {
+                debug_mode: config.debug_mode,
+                hints_enabled: config.hints_enabled,
+                domain_mode: config.domain_mode,
+            },
+        ),
+    );
 
     lines
 }
@@ -574,7 +579,7 @@ impl Repl {
             substituted_expr,
             simplified_expr,
         );
-        cas_solver::clean_result_output_line(&mut lines);
+        result_format::clean_result_output_line(&mut lines);
         reply_output(lines.join("\n"))
     }
 

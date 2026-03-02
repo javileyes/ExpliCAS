@@ -8,9 +8,10 @@ mod simplify;
 mod solve;
 
 // Re-export the public API
-use cas_ast::{Context, Equation, ExprId, SolutionSet};
-use cas_engine::{DisplayEvalSteps, SolveStep, Step};
+use cas_ast::{BoundType, Case, Context, Equation, ExprId, Interval, SolutionSet};
+use cas_formatter::{condition_set_to_display, DisplayExpr};
 pub use cas_formatter::{html_escape, latex_escape};
+use cas_solver::{DisplayEvalSteps, DisplaySolveSteps, SolveStep, Step};
 pub use simplify::{TimelineHtml, VerbosityLevel};
 pub use solve::SolveTimelineHtml;
 
@@ -29,10 +30,19 @@ pub struct TimelineSimplifyCommandOutput {
     pub steps: DisplayEvalSteps,
 }
 
+/// Solve branch payload for CLI `timeline` rendering.
+#[derive(Debug, Clone)]
+pub struct TimelineSolveCommandOutput {
+    pub equation: Equation,
+    pub var: String,
+    pub solution_set: SolutionSet,
+    pub display_steps: DisplaySolveSteps,
+}
+
 /// End-to-end output for CLI `timeline` rendering.
 #[derive(Debug)]
 pub enum TimelineCommandOutput {
-    Solve(cas_solver::TimelineSolveEvalOutput),
+    Solve(TimelineSolveCommandOutput),
     Simplify(TimelineSimplifyCommandOutput),
 }
 
@@ -58,11 +68,79 @@ fn timeline_simplify_info_lines(use_aggressive: bool) -> Vec<String> {
     lines
 }
 
-fn format_timeline_solve_result_line(context: &Context, solution_set: &SolutionSet) -> String {
+fn is_pure_residual_otherwise(case: &Case) -> bool {
+    case.when.is_empty() && matches!(&case.then.solutions, SolutionSet::Residual(_))
+}
+
+fn display_interval(context: &Context, interval: &Interval) -> String {
+    let min_bracket = match interval.min_type {
+        BoundType::Open => "(",
+        BoundType::Closed => "[",
+    };
+    let max_bracket = match interval.max_type {
+        BoundType::Open => ")",
+        BoundType::Closed => "]",
+    };
     format!(
-        "Result: {}",
-        cas_solver::display_solution_set(context, solution_set)
+        "{}{}, {}{}",
+        min_bracket,
+        DisplayExpr {
+            context,
+            id: interval.min
+        },
+        DisplayExpr {
+            context,
+            id: interval.max
+        },
+        max_bracket
     )
+}
+
+fn display_solution_set(context: &Context, set: &SolutionSet) -> String {
+    match set {
+        SolutionSet::Empty => "Empty Set".to_string(),
+        SolutionSet::AllReals => "All Real Numbers".to_string(),
+        SolutionSet::Discrete(exprs) => {
+            let rendered: Vec<String> = exprs
+                .iter()
+                .map(|e| format!("{}", DisplayExpr { context, id: *e }))
+                .collect();
+            format!("{{ {} }}", rendered.join(", "))
+        }
+        SolutionSet::Continuous(interval) => display_interval(context, interval),
+        SolutionSet::Union(intervals) => intervals
+            .iter()
+            .map(|i| display_interval(context, i))
+            .collect::<Vec<_>>()
+            .join(" U "),
+        SolutionSet::Residual(expr) => format!("{}", DisplayExpr { context, id: *expr }),
+        SolutionSet::Conditional(cases) => {
+            let case_strs: Vec<String> = cases
+                .iter()
+                .filter_map(|case| {
+                    if is_pure_residual_otherwise(case) {
+                        return None;
+                    }
+                    let sol_str = display_solution_set(context, &case.then.solutions);
+                    if case.when.is_otherwise() {
+                        Some(format!("  otherwise: {}", sol_str))
+                    } else {
+                        let cond_str = condition_set_to_display(&case.when, context);
+                        Some(format!("  if {}: {}", cond_str, sol_str))
+                    }
+                })
+                .collect();
+            if case_strs.len() == 1 {
+                case_strs[0].trim().to_string()
+            } else {
+                format!("Conditional:\n{}", case_strs.join("\n"))
+            }
+        }
+    }
+}
+
+fn format_timeline_solve_result_line(context: &Context, solution_set: &SolutionSet) -> String {
+    format!("Result: {}", display_solution_set(context, solution_set))
 }
 
 fn format_timeline_solve_no_steps_message(context: &Context, solution_set: &SolutionSet) -> String {
@@ -136,7 +214,7 @@ pub fn render_simplify_timeline_cli_output(
 /// Build CLI render output for solve timeline command.
 pub fn render_solve_timeline_cli_output(
     context: &mut Context,
-    out: &cas_solver::TimelineSolveEvalOutput,
+    out: &TimelineSolveCommandOutput,
 ) -> TimelineCliRender {
     if out.display_steps.0.is_empty() {
         return TimelineCliRender::NoSteps {
@@ -186,7 +264,7 @@ pub fn render_timeline_command_cli_output(
 mod tests {
     use super::*;
     use cas_ast::{Context, Expr};
-    use cas_engine::{to_display_steps, Step};
+    use cas_solver::{to_display_steps, Step};
 
     #[test]
     fn test_html_generation() {

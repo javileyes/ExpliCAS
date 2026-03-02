@@ -19,7 +19,7 @@ fn test_rationalize_with_autoexpand_expands_subexpressions() {
 
     // Setup: enable auto-expand
     let opts = EvalOptions {
-        shared: cas_solver::phase::SharedSemanticConfig {
+        shared: cas_solver::SharedSemanticConfig {
             expand_policy: ExpandPolicy::Auto,
             ..Default::default()
         },
@@ -103,7 +103,7 @@ fn test_rationalize_respects_autoexpand_budget() {
 
     // Setup: auto-expand with restrictive budget
     let mut opts = EvalOptions {
-        shared: cas_solver::phase::SharedSemanticConfig {
+        shared: cas_solver::SharedSemanticConfig {
             expand_policy: ExpandPolicy::Auto,
             ..Default::default()
         },

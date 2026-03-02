@@ -1,6 +1,6 @@
 use cas_api_models::{StepJson, SubStepJson};
 use cas_ast::Context;
-use cas_engine::{pathsteps_to_expr_path, EvalOutput, ImportanceLevel};
+use cas_solver::{pathsteps_to_expr_path, EvalOutput, ImportanceLevel};
 
 /// Convert engine steps to eval-json step payloads.
 ///

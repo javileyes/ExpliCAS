@@ -1,16 +1,16 @@
-use cas_engine::rules::arithmetic::{AddZeroRule, CombineConstantsRule, MulOneRule, MulZeroRule};
-use cas_engine::rules::calculus::{DiffRule, IntegrateRule};
-use cas_engine::rules::exponents::{
+use cas_solver::rules::arithmetic::{AddZeroRule, CombineConstantsRule, MulOneRule, MulZeroRule};
+use cas_solver::rules::calculus::{DiffRule, IntegrateRule};
+use cas_solver::rules::exponents::{
     EvaluatePowerRule, IdentityPowerRule, PowerPowerRule, PowerProductRule, PowerQuotientRule,
     ProductPowerRule,
 };
-use cas_engine::rules::grouping::CollectRule;
-use cas_engine::rules::logarithms::{EvaluateLogRule, ExponentialLogRule, SplitLogExponentsRule};
-use cas_engine::rules::number_theory::NumberTheoryRule;
-use cas_engine::rules::polynomial::{
+use cas_solver::rules::grouping::CollectRule;
+use cas_solver::rules::logarithms::{EvaluateLogRule, ExponentialLogRule, SplitLogExponentsRule};
+use cas_solver::rules::number_theory::NumberTheoryRule;
+use cas_solver::rules::polynomial::{
     AnnihilationRule, BinomialExpansionRule, CombineLikeTermsRule, DistributeRule,
 };
-use cas_engine::rules::trigonometry::{
+use cas_solver::rules::trigonometry::{
     AngleConsistencyRule, AngleIdentityRule, DoubleAngleRule, EvaluateTrigRule,
     PythagoreanIdentityRule, TanToSinCosRule,
 };
@@ -129,11 +129,11 @@ pub fn set_simplifier_toggle_rule(
 ///
 /// This centralizes rule wiring outside frontends, so REPL/FFI/web can share
 /// a consistent initialization path.
-pub fn build_simplifier_with_rule_config(config: SimplifierRuleConfig) -> cas_engine::Simplifier {
-    let mut simplifier = cas_engine::Simplifier::with_default_rules();
+pub fn build_simplifier_with_rule_config(config: SimplifierRuleConfig) -> cas_solver::Simplifier {
+    let mut simplifier = cas_solver::Simplifier::with_default_rules();
 
     // Always enabled core rules.
-    simplifier.add_rule(Box::new(cas_engine::rules::functions::AbsSquaredRule));
+    simplifier.add_rule(Box::new(cas_solver::rules::functions::AbsSquaredRule));
     simplifier.add_rule(Box::new(EvaluateTrigRule));
     simplifier.add_rule(Box::new(PythagoreanIdentityRule));
     if config.trig_angle_sum {
@@ -145,15 +145,15 @@ pub fn build_simplifier_with_rule_config(config: SimplifierRuleConfig) -> cas_en
     }
     if config.canonicalize_trig_square {
         simplifier.add_rule(Box::new(
-            cas_engine::rules::trigonometry::CanonicalizeTrigSquareRule,
+            cas_solver::rules::trigonometry::CanonicalizeTrigSquareRule,
         ));
     }
     simplifier.add_rule(Box::new(EvaluateLogRule));
     simplifier.add_rule(Box::new(ExponentialLogRule));
-    simplifier.add_rule(Box::new(cas_engine::rules::algebra::SimplifyFractionRule));
-    simplifier.add_rule(Box::new(cas_engine::rules::algebra::ExpandRule));
-    simplifier.add_rule(Box::new(cas_engine::rules::algebra::ConservativeExpandRule));
-    simplifier.add_rule(Box::new(cas_engine::rules::algebra::FactorRule));
+    simplifier.add_rule(Box::new(cas_solver::rules::algebra::SimplifyFractionRule));
+    simplifier.add_rule(Box::new(cas_solver::rules::algebra::ExpandRule));
+    simplifier.add_rule(Box::new(cas_solver::rules::algebra::ConservativeExpandRule));
+    simplifier.add_rule(Box::new(cas_solver::rules::algebra::FactorRule));
     simplifier.add_rule(Box::new(CollectRule));
     // Kept duplicated intentionally to preserve current behavior.
     simplifier.add_rule(Box::new(EvaluatePowerRule));
@@ -163,16 +163,16 @@ pub fn build_simplifier_with_rule_config(config: SimplifierRuleConfig) -> cas_en
     }
 
     // Advanced algebra rules (critical for solver).
-    simplifier.add_rule(Box::new(cas_engine::rules::algebra::NestedFractionRule));
-    simplifier.add_rule(Box::new(cas_engine::rules::algebra::AddFractionsRule));
-    simplifier.add_rule(Box::new(cas_engine::rules::algebra::SimplifyMulDivRule));
+    simplifier.add_rule(Box::new(cas_solver::rules::algebra::NestedFractionRule));
+    simplifier.add_rule(Box::new(cas_solver::rules::algebra::AddFractionsRule));
+    simplifier.add_rule(Box::new(cas_solver::rules::algebra::SimplifyMulDivRule));
     if config.rationalize_denominator {
         simplifier.add_rule(Box::new(
-            cas_engine::rules::algebra::RationalizeDenominatorRule,
+            cas_solver::rules::algebra::RationalizeDenominatorRule,
         ));
     }
     simplifier.add_rule(Box::new(
-        cas_engine::rules::algebra::CancelCommonFactorsRule,
+        cas_solver::rules::algebra::CancelCommonFactorsRule,
     ));
 
     if config.distribute {
@@ -183,14 +183,14 @@ pub fn build_simplifier_with_rule_config(config: SimplifierRuleConfig) -> cas_en
     }
     if config.factor_difference_squares {
         simplifier.add_rule(Box::new(
-            cas_engine::rules::algebra::FactorDifferenceSquaresRule,
+            cas_solver::rules::algebra::FactorDifferenceSquaresRule,
         ));
     }
     if config.root_denesting {
-        simplifier.add_rule(Box::new(cas_engine::rules::algebra::RootDenestingRule));
+        simplifier.add_rule(Box::new(cas_solver::rules::algebra::RootDenestingRule));
     }
     if config.auto_factor {
-        simplifier.add_rule(Box::new(cas_engine::rules::algebra::AutomaticFactorRule));
+        simplifier.add_rule(Box::new(cas_solver::rules::algebra::AutomaticFactorRule));
     }
 
     simplifier.add_rule(Box::new(AngleConsistencyRule));
@@ -204,12 +204,12 @@ pub fn build_simplifier_with_rule_config(config: SimplifierRuleConfig) -> cas_en
     simplifier.add_rule(Box::new(PowerQuotientRule));
     simplifier.add_rule(Box::new(IdentityPowerRule));
     simplifier.add_rule(Box::new(
-        cas_engine::rules::exponents::NegativeBasePowerRule,
+        cas_solver::rules::exponents::NegativeBasePowerRule,
     ));
     simplifier.add_rule(Box::new(AddZeroRule));
     simplifier.add_rule(Box::new(MulOneRule));
     simplifier.add_rule(Box::new(MulZeroRule));
-    simplifier.add_rule(Box::new(cas_engine::rules::arithmetic::DivZeroRule));
+    simplifier.add_rule(Box::new(cas_solver::rules::arithmetic::DivZeroRule));
     simplifier.add_rule(Box::new(CombineConstantsRule));
     simplifier.add_rule(Box::new(IntegrateRule));
     simplifier.add_rule(Box::new(DiffRule));
@@ -220,7 +220,7 @@ pub fn build_simplifier_with_rule_config(config: SimplifierRuleConfig) -> cas_en
 
 /// Apply runtime rule toggles to an existing simplifier instance.
 pub fn apply_simplifier_toggle_config(
-    simplifier: &mut cas_engine::Simplifier,
+    simplifier: &mut cas_solver::Simplifier,
     config: SimplifierToggleConfig,
 ) {
     let mut toggle = |name: &str, enabled: bool| {

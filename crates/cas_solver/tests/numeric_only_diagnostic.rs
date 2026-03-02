@@ -14,7 +14,7 @@
 use cas_ast::{Context, Expr, ExprId};
 use cas_formatter::DisplayExpr;
 use cas_parser::parse;
-use cas_solver::ordering::compare_expr;
+use cas_solver::compare_expr;
 use cas_solver::Simplifier;
 use std::cmp::Ordering;
 use std::collections::HashMap;

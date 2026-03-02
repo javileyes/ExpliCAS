@@ -3,27 +3,27 @@
 pub struct SemanticsPreset {
     pub name: &'static str,
     pub description: &'static str,
-    pub domain: cas_engine::DomainMode,
-    pub value: cas_engine::ValueDomain,
-    pub branch: cas_engine::BranchPolicy,
-    pub inv_trig: cas_engine::InverseTrigPolicy,
-    pub const_fold: cas_engine::ConstFoldMode,
+    pub domain: cas_solver::DomainMode,
+    pub value: cas_solver::ValueDomain,
+    pub branch: cas_solver::BranchPolicy,
+    pub inv_trig: cas_solver::InverseTrigPolicy,
+    pub const_fold: cas_solver::ConstFoldMode,
 }
 
 /// Runtime semantics state affected by preset application.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SemanticsPresetState {
-    pub domain: cas_engine::DomainMode,
-    pub value: cas_engine::ValueDomain,
-    pub branch: cas_engine::BranchPolicy,
-    pub inv_trig: cas_engine::InverseTrigPolicy,
-    pub const_fold: cas_engine::ConstFoldMode,
+    pub domain: cas_solver::DomainMode,
+    pub value: cas_solver::ValueDomain,
+    pub branch: cas_solver::BranchPolicy,
+    pub inv_trig: cas_solver::InverseTrigPolicy,
+    pub const_fold: cas_solver::ConstFoldMode,
 }
 
 /// Build a preset-state snapshot from simplifier + eval options.
 pub fn semantics_preset_state_from_options(
-    simplify_options: &cas_engine::SimplifyOptions,
-    eval_options: &cas_engine::EvalOptions,
+    simplify_options: &cas_solver::SimplifyOptions,
+    eval_options: &cas_solver::EvalOptions,
 ) -> SemanticsPresetState {
     SemanticsPresetState {
         domain: simplify_options.shared.semantics.domain_mode,
@@ -57,8 +57,8 @@ pub enum SemanticsPresetApplyError {
 /// Apply preset state to both simplifier options and runtime eval options.
 pub fn apply_semantics_preset_state_to_options(
     next: SemanticsPresetState,
-    simplify_options: &mut cas_engine::SimplifyOptions,
-    eval_options: &mut cas_engine::EvalOptions,
+    simplify_options: &mut cas_solver::SimplifyOptions,
+    eval_options: &mut cas_solver::EvalOptions,
 ) {
     simplify_options.shared.semantics.domain_mode = next.domain;
     simplify_options.shared.semantics.value_domain = next.value;
@@ -73,38 +73,38 @@ pub fn apply_semantics_preset_state_to_options(
     eval_options.const_fold = next.const_fold;
 }
 
-fn domain_mode_label(value: cas_engine::DomainMode) -> &'static str {
+fn domain_mode_label(value: cas_solver::DomainMode) -> &'static str {
     match value {
-        cas_engine::DomainMode::Strict => "strict",
-        cas_engine::DomainMode::Generic => "generic",
-        cas_engine::DomainMode::Assume => "assume",
+        cas_solver::DomainMode::Strict => "strict",
+        cas_solver::DomainMode::Generic => "generic",
+        cas_solver::DomainMode::Assume => "assume",
     }
 }
 
-fn value_domain_label(value: cas_engine::ValueDomain) -> &'static str {
+fn value_domain_label(value: cas_solver::ValueDomain) -> &'static str {
     match value {
-        cas_engine::ValueDomain::RealOnly => "real",
-        cas_engine::ValueDomain::ComplexEnabled => "complex",
+        cas_solver::ValueDomain::RealOnly => "real",
+        cas_solver::ValueDomain::ComplexEnabled => "complex",
     }
 }
 
-fn branch_policy_label(value: cas_engine::BranchPolicy) -> &'static str {
+fn branch_policy_label(value: cas_solver::BranchPolicy) -> &'static str {
     match value {
-        cas_engine::BranchPolicy::Principal => "principal",
+        cas_solver::BranchPolicy::Principal => "principal",
     }
 }
 
-fn inverse_trig_policy_label(value: cas_engine::InverseTrigPolicy) -> &'static str {
+fn inverse_trig_policy_label(value: cas_solver::InverseTrigPolicy) -> &'static str {
     match value {
-        cas_engine::InverseTrigPolicy::Strict => "strict",
-        cas_engine::InverseTrigPolicy::PrincipalValue => "principal",
+        cas_solver::InverseTrigPolicy::Strict => "strict",
+        cas_solver::InverseTrigPolicy::PrincipalValue => "principal",
     }
 }
 
-fn const_fold_mode_label(value: cas_engine::ConstFoldMode) -> &'static str {
+fn const_fold_mode_label(value: cas_solver::ConstFoldMode) -> &'static str {
     match value {
-        cas_engine::ConstFoldMode::Off => "off",
-        cas_engine::ConstFoldMode::Safe => "safe",
+        cas_solver::ConstFoldMode::Off => "off",
+        cas_solver::ConstFoldMode::Safe => "safe",
     }
 }
 
@@ -122,38 +122,38 @@ const SEMANTICS_PRESETS: [SemanticsPreset; 4] = [
     SemanticsPreset {
         name: "default",
         description: "Reset to engine defaults",
-        domain: cas_engine::DomainMode::Generic,
-        value: cas_engine::ValueDomain::RealOnly,
-        branch: cas_engine::BranchPolicy::Principal,
-        inv_trig: cas_engine::InverseTrigPolicy::Strict,
-        const_fold: cas_engine::ConstFoldMode::Off,
+        domain: cas_solver::DomainMode::Generic,
+        value: cas_solver::ValueDomain::RealOnly,
+        branch: cas_solver::BranchPolicy::Principal,
+        inv_trig: cas_solver::InverseTrigPolicy::Strict,
+        const_fold: cas_solver::ConstFoldMode::Off,
     },
     SemanticsPreset {
         name: "strict",
         description: "Conservative real + strict domain",
-        domain: cas_engine::DomainMode::Strict,
-        value: cas_engine::ValueDomain::RealOnly,
-        branch: cas_engine::BranchPolicy::Principal,
-        inv_trig: cas_engine::InverseTrigPolicy::Strict,
-        const_fold: cas_engine::ConstFoldMode::Off,
+        domain: cas_solver::DomainMode::Strict,
+        value: cas_solver::ValueDomain::RealOnly,
+        branch: cas_solver::BranchPolicy::Principal,
+        inv_trig: cas_solver::InverseTrigPolicy::Strict,
+        const_fold: cas_solver::ConstFoldMode::Off,
     },
     SemanticsPreset {
         name: "complex",
         description: "Enable ℂ + safe const_fold (sqrt(-1) → i)",
-        domain: cas_engine::DomainMode::Generic,
-        value: cas_engine::ValueDomain::ComplexEnabled,
-        branch: cas_engine::BranchPolicy::Principal,
-        inv_trig: cas_engine::InverseTrigPolicy::Strict,
-        const_fold: cas_engine::ConstFoldMode::Safe,
+        domain: cas_solver::DomainMode::Generic,
+        value: cas_solver::ValueDomain::ComplexEnabled,
+        branch: cas_solver::BranchPolicy::Principal,
+        inv_trig: cas_solver::InverseTrigPolicy::Strict,
+        const_fold: cas_solver::ConstFoldMode::Safe,
     },
     SemanticsPreset {
         name: "school",
         description: "Real + principal inverse trig (arctan(tan(x)) → x)",
-        domain: cas_engine::DomainMode::Generic,
-        value: cas_engine::ValueDomain::RealOnly,
-        branch: cas_engine::BranchPolicy::Principal,
-        inv_trig: cas_engine::InverseTrigPolicy::PrincipalValue,
-        const_fold: cas_engine::ConstFoldMode::Off,
+        domain: cas_solver::DomainMode::Generic,
+        value: cas_solver::ValueDomain::RealOnly,
+        branch: cas_solver::BranchPolicy::Principal,
+        inv_trig: cas_solver::InverseTrigPolicy::PrincipalValue,
+        const_fold: cas_solver::ConstFoldMode::Off,
     },
 ];
 
@@ -235,8 +235,8 @@ pub fn apply_semantics_preset_by_name(
 /// Resolve and apply a semantics preset by name to runtime options.
 pub fn apply_semantics_preset_by_name_to_options(
     name: &str,
-    simplify_options: &mut cas_engine::SimplifyOptions,
-    eval_options: &mut cas_engine::EvalOptions,
+    simplify_options: &mut cas_solver::SimplifyOptions,
+    eval_options: &mut cas_solver::EvalOptions,
 ) -> Result<SemanticsPresetApplication, SemanticsPresetApplyError> {
     let application = apply_semantics_preset_by_name(name)?;
     apply_semantics_preset_state_to_options(application.next, simplify_options, eval_options);
@@ -246,8 +246,8 @@ pub fn apply_semantics_preset_by_name_to_options(
 /// Evaluate `semantics preset ...` args, mutating options on successful apply.
 pub fn evaluate_semantics_preset_args_to_options(
     args: &[&str],
-    simplify_options: &mut cas_engine::SimplifyOptions,
-    eval_options: &mut cas_engine::EvalOptions,
+    simplify_options: &mut cas_solver::SimplifyOptions,
+    eval_options: &mut cas_solver::EvalOptions,
 ) -> SemanticsPresetCommandOutput {
     match args.first().copied() {
         None => SemanticsPresetCommandOutput {
@@ -394,11 +394,11 @@ mod tests {
     fn format_semantics_preset_application_lines_reports_changed_axes() {
         let application = apply_semantics_preset_by_name("complex").expect("preset");
         let current = SemanticsPresetState {
-            domain: cas_engine::DomainMode::Generic,
-            value: cas_engine::ValueDomain::RealOnly,
-            branch: cas_engine::BranchPolicy::Principal,
-            inv_trig: cas_engine::InverseTrigPolicy::Strict,
-            const_fold: cas_engine::ConstFoldMode::Off,
+            domain: cas_solver::DomainMode::Generic,
+            value: cas_solver::ValueDomain::RealOnly,
+            branch: cas_solver::BranchPolicy::Principal,
+            inv_trig: cas_solver::InverseTrigPolicy::Strict,
+            const_fold: cas_solver::ConstFoldMode::Off,
         };
         let lines = format_semantics_preset_application_lines(current, &application);
         assert!(lines
@@ -411,42 +411,42 @@ mod tests {
 
     #[test]
     fn apply_semantics_preset_state_to_options_updates_modes() {
-        let mut simplify_options = cas_engine::SimplifyOptions::default();
-        let mut eval_options = cas_engine::EvalOptions::default();
+        let mut simplify_options = cas_solver::SimplifyOptions::default();
+        let mut eval_options = cas_solver::EvalOptions::default();
         let next = SemanticsPresetState {
-            domain: cas_engine::DomainMode::Strict,
-            value: cas_engine::ValueDomain::ComplexEnabled,
-            branch: cas_engine::BranchPolicy::Principal,
-            inv_trig: cas_engine::InverseTrigPolicy::PrincipalValue,
-            const_fold: cas_engine::ConstFoldMode::Safe,
+            domain: cas_solver::DomainMode::Strict,
+            value: cas_solver::ValueDomain::ComplexEnabled,
+            branch: cas_solver::BranchPolicy::Principal,
+            inv_trig: cas_solver::InverseTrigPolicy::PrincipalValue,
+            const_fold: cas_solver::ConstFoldMode::Safe,
         };
         apply_semantics_preset_state_to_options(next, &mut simplify_options, &mut eval_options);
         assert_eq!(
             simplify_options.shared.semantics.domain_mode,
-            cas_engine::DomainMode::Strict
+            cas_solver::DomainMode::Strict
         );
         assert_eq!(
             eval_options.shared.semantics.value_domain,
-            cas_engine::ValueDomain::ComplexEnabled
+            cas_solver::ValueDomain::ComplexEnabled
         );
-        assert_eq!(eval_options.const_fold, cas_engine::ConstFoldMode::Safe);
+        assert_eq!(eval_options.const_fold, cas_solver::ConstFoldMode::Safe);
     }
 
     #[test]
     fn semantics_preset_state_from_options_reads_const_fold() {
-        let simplify_options = cas_engine::SimplifyOptions::default();
-        let eval_options = cas_engine::EvalOptions {
-            const_fold: cas_engine::ConstFoldMode::Safe,
-            ..cas_engine::EvalOptions::default()
+        let simplify_options = cas_solver::SimplifyOptions::default();
+        let eval_options = cas_solver::EvalOptions {
+            const_fold: cas_solver::ConstFoldMode::Safe,
+            ..cas_solver::EvalOptions::default()
         };
         let state = semantics_preset_state_from_options(&simplify_options, &eval_options);
-        assert_eq!(state.const_fold, cas_engine::ConstFoldMode::Safe);
+        assert_eq!(state.const_fold, cas_solver::ConstFoldMode::Safe);
     }
 
     #[test]
     fn apply_semantics_preset_by_name_to_options_updates_runtime_state() {
-        let mut simplify_options = cas_engine::SimplifyOptions::default();
-        let mut eval_options = cas_engine::EvalOptions::default();
+        let mut simplify_options = cas_solver::SimplifyOptions::default();
+        let mut eval_options = cas_solver::EvalOptions::default();
         let application = apply_semantics_preset_by_name_to_options(
             "complex",
             &mut simplify_options,
@@ -457,15 +457,15 @@ mod tests {
         assert_eq!(application.preset.name, "complex");
         assert_eq!(
             simplify_options.shared.semantics.value_domain,
-            cas_engine::ValueDomain::ComplexEnabled
+            cas_solver::ValueDomain::ComplexEnabled
         );
-        assert_eq!(eval_options.const_fold, cas_engine::ConstFoldMode::Safe);
+        assert_eq!(eval_options.const_fold, cas_solver::ConstFoldMode::Safe);
     }
 
     #[test]
     fn evaluate_semantics_preset_args_to_options_lists_when_empty() {
-        let mut simplify_options = cas_engine::SimplifyOptions::default();
-        let mut eval_options = cas_engine::EvalOptions::default();
+        let mut simplify_options = cas_solver::SimplifyOptions::default();
+        let mut eval_options = cas_solver::EvalOptions::default();
         let out = evaluate_semantics_preset_args_to_options(
             &[],
             &mut simplify_options,
@@ -482,8 +482,8 @@ mod tests {
 
     #[test]
     fn evaluate_semantics_preset_args_to_options_applies_known_preset() {
-        let mut simplify_options = cas_engine::SimplifyOptions::default();
-        let mut eval_options = cas_engine::EvalOptions::default();
+        let mut simplify_options = cas_solver::SimplifyOptions::default();
+        let mut eval_options = cas_solver::EvalOptions::default();
         let out = evaluate_semantics_preset_args_to_options(
             &["complex"],
             &mut simplify_options,
@@ -492,7 +492,7 @@ mod tests {
         assert!(out.applied);
         assert_eq!(
             simplify_options.shared.semantics.value_domain,
-            cas_engine::ValueDomain::ComplexEnabled
+            cas_solver::ValueDomain::ComplexEnabled
         );
     }
 }

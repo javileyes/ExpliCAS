@@ -241,11 +241,7 @@ fn classify_for_test(
             matches!(mode, DomainMode::Strict),
         ),
         &SolveDomainEnv::default(),
-        |core_ctx, expr| match cas_solver::helpers::prove_positive(
-            core_ctx,
-            expr,
-            opts.value_domain,
-        ) {
+        |core_ctx, expr| match cas_solver::prove_positive(core_ctx, expr, opts.value_domain) {
             EngineProof::Proven | EngineProof::ProvenImplicit => TriProof::Proven,
             EngineProof::Disproven => TriProof::Disproven,
             EngineProof::Unknown => TriProof::Unknown,

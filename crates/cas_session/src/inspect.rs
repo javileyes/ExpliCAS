@@ -84,9 +84,9 @@ pub struct HistoryExprInspection {
     pub parsed: ExprId,
     pub resolved: Option<ExprId>,
     pub simplified: Option<ExprId>,
-    pub required_conditions: Vec<cas_engine::ImplicitCondition>,
-    pub domain_warnings: Vec<cas_engine::DomainWarning>,
-    pub blocked_hints: Vec<cas_engine::BlockedHint>,
+    pub required_conditions: Vec<cas_solver::ImplicitCondition>,
+    pub domain_warnings: Vec<cas_solver::DomainWarning>,
+    pub blocked_hints: Vec<cas_solver::BlockedHint>,
 }
 
 /// Parse a `show`-style ID token (supports optional `#` prefix).
@@ -105,7 +105,7 @@ pub fn parse_history_entry_id(input: &str) -> Result<EntryId, ParseHistoryEntryI
 /// Returns `None` when `id` does not exist.
 pub fn inspect_history_entry(
     state: &mut SessionState,
-    engine: &mut cas_engine::Engine,
+    engine: &mut cas_solver::Engine,
     id: EntryId,
 ) -> Option<HistoryEntryInspection> {
     let entry = state.history_get(id)?;
@@ -119,16 +119,16 @@ pub fn inspect_history_entry(
                 .resolve_state_refs(&mut engine.simplifier.context, expr_id)
                 .ok()
                 .filter(|resolved| *resolved != expr_id);
-            let eval_req = cas_engine::EvalRequest {
+            let eval_req = cas_solver::EvalRequest {
                 raw_input: raw_text.clone(),
                 parsed: expr_id,
-                action: cas_engine::EvalAction::Simplify,
+                action: cas_solver::EvalAction::Simplify,
                 auto_store: false,
             };
 
             let expr_inspection = if let Ok(output) = engine.eval(state, eval_req) {
                 let simplified = match output.result {
-                    cas_engine::EvalResult::Expr(simplified)
+                    cas_solver::EvalResult::Expr(simplified)
                         if simplified != resolved_expr.unwrap_or(expr_id) =>
                     {
                         Some(simplified)
@@ -142,7 +142,7 @@ pub fn inspect_history_entry(
                     simplified,
                     required_conditions: output.required_conditions,
                     domain_warnings: output.domain_warnings,
-                    blocked_hints: output.blocked_hints,
+                    blocked_hints: cas_solver::blocked_hints_from_engine(&output.blocked_hints),
                 }
             } else {
                 let base = resolved_expr.unwrap_or(expr_id);
@@ -176,7 +176,7 @@ pub fn inspect_history_entry(
 /// Parse and inspect a history entry in one call for command handlers.
 pub fn inspect_history_entry_input(
     state: &mut SessionState,
-    engine: &mut cas_engine::Engine,
+    engine: &mut cas_solver::Engine,
     input: &str,
 ) -> Result<HistoryEntryInspection, InspectHistoryEntryInputError> {
     let id = parse_history_entry_id(input).map_err(|_| InspectHistoryEntryInputError::InvalidId)?;
@@ -195,14 +195,14 @@ mod tests {
     #[test]
     fn inspect_history_entry_reports_missing_id() {
         let mut state = SessionState::new();
-        let mut engine = cas_engine::Engine::new();
+        let mut engine = cas_solver::Engine::new();
         assert!(inspect_history_entry(&mut state, &mut engine, 999).is_none());
     }
 
     #[test]
     fn inspect_history_entry_expr_contains_parsed() {
         let mut state = SessionState::new();
-        let mut engine = cas_engine::Engine::new();
+        let mut engine = cas_solver::Engine::new();
         let expr = cas_parser::parse("x + x", &mut engine.simplifier.context).expect("parse");
         let id = state.history_push(crate::EntryKind::Expr(expr), "x + x".to_string());
 
@@ -230,7 +230,7 @@ mod tests {
     #[test]
     fn inspect_history_entry_input_reports_not_found() {
         let mut state = SessionState::new();
-        let mut engine = cas_engine::Engine::new();
+        let mut engine = cas_solver::Engine::new();
         let err = inspect_history_entry_input(&mut state, &mut engine, "#3")
             .expect_err("expected not-found");
         assert_eq!(err, InspectHistoryEntryInputError::NotFound { id: 3 });

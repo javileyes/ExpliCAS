@@ -31,7 +31,7 @@ pub trait RuleSolveSafetyExt {
 
 impl<T: crate::Rule + ?Sized> RuleSolveSafetyExt for T {
     fn solve_safety_model(&self) -> SolveSafety {
-        SolveSafety::from(crate::Rule::solve_safety(self))
+        from_engine_solve_safety(crate::Rule::solve_safety(self))
     }
 }
 
@@ -60,58 +60,6 @@ impl SolveSafety {
                 provenance: from_core_provenance(desc.provenance),
             }
         })
-    }
-
-    /// Converts to engine solve-safety.
-    #[inline]
-    pub fn into_engine(self) -> cas_engine::SolveSafety {
-        self.into()
-    }
-}
-
-impl From<cas_engine::SolveSafety> for SolveSafety {
-    fn from(value: cas_engine::SolveSafety) -> Self {
-        match value {
-            cas_engine::SolveSafety::Always => Self::Always,
-            cas_engine::SolveSafety::IntrinsicCondition(class) => {
-                Self::IntrinsicCondition(class.into())
-            }
-            cas_engine::SolveSafety::NeedsCondition(class) => Self::NeedsCondition(class.into()),
-            cas_engine::SolveSafety::Never => Self::Never,
-        }
-    }
-}
-
-impl From<SolveSafety> for cas_engine::SolveSafety {
-    fn from(value: SolveSafety) -> Self {
-        match value {
-            SolveSafety::Always => cas_engine::SolveSafety::Always,
-            SolveSafety::IntrinsicCondition(class) => {
-                cas_engine::SolveSafety::IntrinsicCondition(class.into())
-            }
-            SolveSafety::NeedsCondition(class) => {
-                cas_engine::SolveSafety::NeedsCondition(class.into())
-            }
-            SolveSafety::Never => cas_engine::SolveSafety::Never,
-        }
-    }
-}
-
-impl From<cas_engine::RequirementDescriptor> for RequirementDescriptor {
-    fn from(value: cas_engine::RequirementDescriptor) -> Self {
-        Self {
-            class: value.class.into(),
-            provenance: value.provenance.into(),
-        }
-    }
-}
-
-impl From<RequirementDescriptor> for cas_engine::RequirementDescriptor {
-    fn from(value: RequirementDescriptor) -> Self {
-        Self {
-            class: value.class.into(),
-            provenance: value.provenance.into(),
-        }
     }
 }
 
@@ -156,4 +104,17 @@ fn to_core_domain_mode(
         matches!(domain_mode, crate::DomainMode::Assume),
         matches!(domain_mode, crate::DomainMode::Strict),
     )
+}
+
+fn from_engine_solve_safety(value: cas_engine::SolveSafety) -> SolveSafety {
+    match value {
+        cas_engine::SolveSafety::Always => SolveSafety::Always,
+        cas_engine::SolveSafety::IntrinsicCondition(class) => {
+            SolveSafety::IntrinsicCondition(crate::domain_types::condition_class_from_engine(class))
+        }
+        cas_engine::SolveSafety::NeedsCondition(class) => {
+            SolveSafety::NeedsCondition(crate::domain_types::condition_class_from_engine(class))
+        }
+        cas_engine::SolveSafety::Never => SolveSafety::Never,
+    }
 }

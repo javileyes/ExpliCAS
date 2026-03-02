@@ -35,15 +35,12 @@ pub fn evaluate_eval_json_with_session<S, F>(
     collect_steps: F,
 ) -> Result<EvalJsonOutput, String>
 where
-    S: cas_engine::EvalSession<
-        Options = cas_engine::EvalOptions,
-        Diagnostics = cas_engine::Diagnostics,
-    >,
-    S::Store: cas_engine::EvalStore<
-        DomainMode = cas_engine::DomainMode,
-        RequiredItem = cas_engine::RequiredItem,
-        Step = cas_engine::Step,
-        Diagnostics = cas_engine::Diagnostics,
+    S: crate::EvalSession<Options = crate::EvalOptions, Diagnostics = crate::Diagnostics>,
+    S::Store: crate::EvalStore<
+        DomainMode = crate::DomainMode,
+        RequiredItem = crate::RequiredItem,
+        Step = crate::Step,
+        Diagnostics = crate::Diagnostics,
     >,
     F: Fn(&crate::EvalOutput, &cas_ast::Context, &str) -> Vec<StepJson>,
 {

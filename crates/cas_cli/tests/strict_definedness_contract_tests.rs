@@ -19,8 +19,8 @@ fn simplify_strict(input: &str) -> String {
     let expr = cas_parser::parse(input, &mut simplifier.context).expect("parse failed");
 
     let opts = cas_solver::SimplifyOptions {
-        shared: cas_solver::phase::SharedSemanticConfig {
-            semantics: cas_solver::semantics::EvalConfig {
+        shared: cas_solver::SharedSemanticConfig {
+            semantics: cas_solver::EvalConfig {
                 domain_mode: cas_solver::DomainMode::Strict,
                 ..Default::default()
             },
@@ -45,8 +45,8 @@ fn simplify_assume(input: &str) -> String {
     let expr = cas_parser::parse(input, &mut simplifier.context).expect("parse failed");
 
     let opts = cas_solver::SimplifyOptions {
-        shared: cas_solver::phase::SharedSemanticConfig {
-            semantics: cas_solver::semantics::EvalConfig {
+        shared: cas_solver::SharedSemanticConfig {
+            semantics: cas_solver::EvalConfig {
                 domain_mode: cas_solver::DomainMode::Assume,
                 ..Default::default()
             },

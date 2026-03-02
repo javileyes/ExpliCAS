@@ -1,4 +1,5 @@
 use super::*;
+use crate::assumption_format;
 
 #[derive(Debug, Clone, Copy)]
 struct EvalMetadataSectionLabels<'a> {
@@ -28,7 +29,7 @@ fn format_eval_metadata_sections(
 
     if !required_conditions.is_empty() {
         lines.push(labels.required_header.to_string());
-        lines.extend(cas_solver::format_required_condition_lines(
+        lines.extend(assumption_format::format_required_condition_lines(
             ctx,
             required_conditions,
             labels.line_prefix,
@@ -37,7 +38,7 @@ fn format_eval_metadata_sections(
 
     if !domain_warnings.is_empty() {
         lines.push(labels.assumed_header.to_string());
-        lines.extend(cas_solver::format_domain_warning_lines(
+        lines.extend(assumption_format::format_domain_warning_lines(
             domain_warnings,
             false,
             labels.line_prefix,
@@ -46,7 +47,7 @@ fn format_eval_metadata_sections(
 
     if !blocked_hints.is_empty() {
         lines.push(labels.blocked_header.to_string());
-        lines.extend(cas_solver::format_blocked_hint_lines(
+        lines.extend(assumption_format::format_blocked_hint_lines(
             blocked_hints,
             labels.line_prefix,
         ));

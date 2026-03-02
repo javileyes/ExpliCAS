@@ -4,7 +4,7 @@
 //! based on ValueDomain and DomainMode settings. See POLICY.md for details.
 
 use cas_ast::SolutionSet;
-use cas_solver::engine::Simplifier;
+use cas_solver::Simplifier;
 use cas_solver::{solve_with_display_steps, SolverOptions};
 
 /// Helper to solve an equation string and return the solution set.

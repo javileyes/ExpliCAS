@@ -5,9 +5,7 @@
 use cas_ast::{Context, ExprId};
 use cas_formatter::DisplayExpr;
 use cas_parser::parse;
-use cas_solver::engine::eval_f64;
-use cas_solver::helpers::is_zero;
-use cas_solver::Simplifier;
+use cas_solver::{eval_f64, is_zero, EvalConfig, SharedSemanticConfig, Simplifier};
 use std::collections::HashMap;
 
 // =============================================================================
@@ -31,8 +29,8 @@ fn simplify_str_assume(input: &str) -> String {
     let mut simplifier = Simplifier::with_default_rules();
     let expr = parse(input, &mut simplifier.context).unwrap();
     let opts = cas_solver::SimplifyOptions {
-        shared: cas_solver::phase::SharedSemanticConfig {
-            semantics: cas_solver::semantics::EvalConfig {
+        shared: SharedSemanticConfig {
+            semantics: EvalConfig {
                 domain_mode: cas_solver::DomainMode::Assume,
                 ..Default::default()
             },

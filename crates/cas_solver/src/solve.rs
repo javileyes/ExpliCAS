@@ -239,7 +239,7 @@ pub(crate) fn simplifier_simplify_expr(simplifier: &mut Simplifier, expr: ExprId
 }
 
 pub(crate) fn simplifier_expand_expr(simplifier: &mut Simplifier, expr: ExprId) -> ExprId {
-    crate::expand::expand(&mut simplifier.context, expr)
+    crate::expand(&mut simplifier.context, expr)
 }
 
 pub(crate) fn simplifier_render_expr(simplifier: &mut Simplifier, expr: ExprId) -> String {

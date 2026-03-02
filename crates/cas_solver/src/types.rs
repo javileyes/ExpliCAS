@@ -54,29 +54,6 @@ impl SolverOptions {
     pub fn wildcard_scope(&self) -> bool {
         self.assume_scope == crate::AssumeScope::Wildcard
     }
-
-    /// Convert into the engine's solver options.
-    pub fn into_engine(self) -> cas_engine::SolverOptions {
-        cas_engine::SolverOptions {
-            value_domain: self.value_domain,
-            domain_mode: self.domain_mode,
-            assume_scope: self.assume_scope,
-            budget: self.budget,
-            detailed_steps: self.detailed_steps,
-        }
-    }
-}
-
-impl From<cas_engine::SolverOptions> for SolverOptions {
-    fn from(value: cas_engine::SolverOptions) -> Self {
-        Self {
-            value_domain: value.value_domain,
-            domain_mode: value.domain_mode,
-            assume_scope: value.assume_scope,
-            budget: value.budget,
-            detailed_steps: value.detailed_steps,
-        }
-    }
 }
 
 /// Domain environment for solver operations.

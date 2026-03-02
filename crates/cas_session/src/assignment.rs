@@ -101,7 +101,7 @@ fn unwrap_hold_top(ctx: &cas_ast::Context, expr: ExprId) -> ExprId {
 /// - `lazy = true` behaves like `let a := ...` (store unresolved formula after ref/env substitution).
 pub fn apply_assignment(
     state: &mut SessionState,
-    simplifier: &mut cas_engine::Simplifier,
+    simplifier: &mut cas_solver::Simplifier,
     name: &str,
     expr_str: &str,
     lazy: bool,
@@ -158,7 +158,7 @@ mod tests {
     #[test]
     fn apply_assignment_validates_name() {
         let mut state = crate::SessionState::new();
-        let mut simplifier = cas_engine::Simplifier::with_default_rules();
+        let mut simplifier = cas_solver::Simplifier::with_default_rules();
         let err = apply_assignment(&mut state, &mut simplifier, "", "1", false).expect_err("err");
         assert_eq!(err, AssignmentError::EmptyName);
     }
@@ -166,7 +166,7 @@ mod tests {
     #[test]
     fn apply_assignment_stores_eager_value() {
         let mut state = crate::SessionState::new();
-        let mut simplifier = cas_engine::Simplifier::with_default_rules();
+        let mut simplifier = cas_solver::Simplifier::with_default_rules();
         let id = apply_assignment(&mut state, &mut simplifier, "a", "x + x", false).expect("ok");
         let rendered = format!(
             "{}",
@@ -181,7 +181,7 @@ mod tests {
     #[test]
     fn apply_assignment_stores_lazy_formula() {
         let mut state = crate::SessionState::new();
-        let mut simplifier = cas_engine::Simplifier::with_default_rules();
+        let mut simplifier = cas_solver::Simplifier::with_default_rules();
         let id = apply_assignment(&mut state, &mut simplifier, "a", "x + x", true).expect("ok");
         let rendered = format!(
             "{}",

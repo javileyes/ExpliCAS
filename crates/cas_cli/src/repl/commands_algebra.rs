@@ -1,4 +1,6 @@
 use super::*;
+use crate::assumption_format;
+use crate::result_format;
 
 const TELESCOPE_USAGE_MESSAGE: &str = "Usage: telescope <expression>\n\
                  Example: telescope 1 + 2*cos(x) + 2*cos(2*x) - sin(5*x/2)/sin(x/2)";
@@ -98,8 +100,10 @@ fn format_unary_function_eval_lines(
                 step.rule_name
             ));
             if show_step_assumptions {
+                let assumption_events =
+                    cas_solver::assumption_events_from_engine(step.assumption_events());
                 for assumption_line in
-                    cas_solver::format_displayable_assumption_lines(step.assumption_events())
+                    assumption_format::format_displayable_assumption_lines(&assumption_events)
                 {
                     lines.push(format!("   {}", assumption_line));
                 }
@@ -140,7 +144,7 @@ fn evaluate_unary_command_lines(
         show_step_assumptions,
     );
     if clean_result_line {
-        cas_solver::clean_result_output_line(&mut lines);
+        result_format::clean_result_output_line(&mut lines);
     }
     Ok(lines)
 }
@@ -197,10 +201,7 @@ impl Repl {
             Ok(expr) => expr,
             Err(e) => return reply_output(format!("Parse error: {e}")),
         };
-        let result = cas_solver::telescoping::telescope(
-            &mut self.core.engine.simplifier.context,
-            parsed_expr,
-        );
+        let result = cas_solver::telescope(&mut self.core.engine.simplifier.context, parsed_expr);
         let formatted_result = result.format(&self.core.engine.simplifier.context);
         let lines = format_telescope_eval_lines(rest, &formatted_result);
         reply_output(lines.join("\n"))
@@ -235,7 +236,7 @@ impl Repl {
             parsed_expr,
             expanded_expr,
         );
-        cas_solver::clean_result_output_line(&mut lines);
+        result_format::clean_result_output_line(&mut lines);
         reply_output(lines.join("\n"))
     }
 }

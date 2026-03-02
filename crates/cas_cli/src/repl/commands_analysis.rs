@@ -1,4 +1,5 @@
 use super::*;
+use crate::result_format;
 
 fn extract_equiv_command_tail(line: &str) -> &str {
     line.strip_prefix("equiv").unwrap_or(line).trim()
@@ -308,7 +309,16 @@ fn evaluate_timeline_command_input(
                 &solve_rest,
                 eval_options,
             )
-            .map(cas_didactic::TimelineCommandOutput::Solve)
+            .map(|out| {
+                cas_didactic::TimelineCommandOutput::Solve(
+                    cas_didactic::TimelineSolveCommandOutput {
+                        equation: out.equation,
+                        var: out.var,
+                        solution_set: out.solution_set,
+                        display_steps: out.display_steps,
+                    },
+                )
+            })
             .map_err(TimelineCommandEvalError::Solve)
         }
         TimelineCommandInput::Simplify { expr, aggressive } => {
@@ -596,7 +606,7 @@ impl Repl {
             &output,
             render_mode,
         );
-        cas_solver::clean_result_output_line(&mut lines);
+        result_format::clean_result_output_line(&mut lines);
         reply_output(lines.join("\n"))
     }
 
@@ -684,7 +694,7 @@ impl Repl {
             &result.steps,
             result.value,
         );
-        cas_solver::clean_result_output_line(&mut lines);
+        result_format::clean_result_output_line(&mut lines);
         reply_output(lines.join("\n"))
     }
 }

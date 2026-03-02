@@ -296,17 +296,21 @@ fn options_propagation() {
 
 #[test]
 #[allow(clippy::useless_conversion)]
-fn assumption_event_roundtrip_with_engine_type() {
-    let mut ctx = Context::new();
-    let x = ctx.var("x");
-    let local = AssumptionEvent::positive(&ctx, x);
+fn assumption_event_from_engine_type() {
+    let engine = cas_engine::AssumptionEvent {
+        key: cas_engine::AssumptionKey::Positive {
+            expr_fingerprint: 12345,
+        },
+        expr_display: "x".to_string(),
+        message: "x > 0".to_string(),
+        kind: cas_engine::AssumptionKind::RequiresIntroduced,
+        expr_id: None,
+    };
+    let mapped = AssumptionEvent::from(engine);
 
-    let engine: cas_engine::AssumptionEvent = local.clone().into();
-    let mapped_back: AssumptionEvent = engine.into();
-
-    assert_eq!(local.key, mapped_back.key);
-    assert_eq!(local.expr_display, mapped_back.expr_display);
-    assert_eq!(local.message, mapped_back.message);
-    assert_eq!(local.kind, mapped_back.kind);
-    assert_eq!(local.expr_id, mapped_back.expr_id);
+    assert_eq!(mapped.key.kind(), "positive");
+    assert_eq!(mapped.expr_display, "x");
+    assert_eq!(mapped.message, "x > 0");
+    assert_eq!(mapped.kind, cas_solver::AssumptionKind::RequiresIntroduced);
+    assert_eq!(mapped.expr_id, None);
 }

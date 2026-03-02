@@ -419,7 +419,7 @@ fn check_symbolic_equiv_bucket_aware(
     let (exp_simplified, _) = simplifier.simplify(exp_expr);
     let (simp_simplified, _) = simplifier.simplify(simp_expr);
 
-    if cas_solver::ordering::compare_expr(&simplifier.context, exp_simplified, simp_simplified)
+    if cas_solver::compare_expr(&simplifier.context, exp_simplified, simp_simplified)
         == std::cmp::Ordering::Equal
     {
         return SymbolicResult::Pass;
@@ -2837,7 +2837,7 @@ fn run_csv_combination_tests(
 
                         // Check 1: NF convergence
                         let nf_match =
-                            cas_solver::ordering::compare_expr(&simplifier.context, e, s)
+                            cas_solver::compare_expr(&simplifier.context, e, s)
                                 == std::cmp::Ordering::Equal;
 
                         if nf_match {
@@ -3074,11 +3074,9 @@ fn run_csv_combination_tests(
                 }
 
                 // Check 1: Normal form convergence (exact structural match)
-                let nf_match = cas_solver::ordering::compare_expr(
-                    &simplifier.context,
-                    exp_simplified,
-                    simp_simplified,
-                ) == std::cmp::Ordering::Equal;
+                let nf_match =
+                    cas_solver::compare_expr(&simplifier.context, exp_simplified, simp_simplified)
+                        == std::cmp::Ordering::Equal;
 
                 if nf_match {
                     return ("nf", String::new(), String::new(), inline_cycles);
@@ -4960,7 +4958,7 @@ fn run_substitution_tests() -> ComboMetrics {
                     }
 
                     // Check 1: NF convergence
-                    let nf_match = cas_solver::ordering::compare_expr(&simplifier.context, e, s)
+                    let nf_match = cas_solver::compare_expr(&simplifier.context, e, s)
                         == std::cmp::Ordering::Equal;
                     if nf_match {
                         let _ = tx.send(Some(("nf".to_string(), String::new(), sub_cycles)));

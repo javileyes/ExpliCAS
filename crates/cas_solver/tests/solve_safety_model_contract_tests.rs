@@ -119,32 +119,16 @@ fn test_descriptor_distinguishes_intrinsic_from_introduced() {
 }
 
 #[test]
-fn test_solve_safety_roundtrip_with_engine_type() {
-    let local = SolveSafety::NeedsCondition(ConditionClass::Definability);
-    let engine: cas_engine::SolveSafety = local.into_engine();
-    let mapped_back = SolveSafety::from(engine);
-    assert_eq!(local, mapped_back);
-}
-
-#[test]
-fn test_requirement_descriptor_roundtrip_with_engine_type() {
-    let local = SolveSafety::IntrinsicCondition(ConditionClass::Analytic)
-        .requirement_descriptor()
-        .unwrap();
-    let engine: cas_engine::RequirementDescriptor = local.into();
-    let mapped_back: cas_solver::RequirementDescriptor = engine.into();
-    assert_eq!(local, mapped_back);
-}
-
-#[test]
-fn test_assumption_record_roundtrip_with_engine_type() {
-    let local = cas_solver::AssumptionRecord {
+fn test_assumption_record_from_engine_type() {
+    let engine = cas_engine::AssumptionRecord {
         kind: "nonzero".to_string(),
         expr: "x".to_string(),
         message: "x != 0".to_string(),
         count: 2,
     };
-    let engine: cas_engine::AssumptionRecord = local.clone().into();
-    let mapped_back: cas_solver::AssumptionRecord = engine.into();
-    assert_eq!(local, mapped_back);
+    let mapped = cas_solver::AssumptionRecord::from(engine);
+    assert_eq!(mapped.kind, "nonzero");
+    assert_eq!(mapped.expr, "x");
+    assert_eq!(mapped.message, "x != 0");
+    assert_eq!(mapped.count, 2);
 }

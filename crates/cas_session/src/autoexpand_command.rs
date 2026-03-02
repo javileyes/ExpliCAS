@@ -10,13 +10,13 @@ pub struct AutoexpandBudgetView {
 /// Runtime state needed to evaluate an `autoexpand` command.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AutoexpandCommandState {
-    pub policy: cas_engine::ExpandPolicy,
+    pub policy: cas_solver::ExpandPolicy,
     pub budget: AutoexpandBudgetView,
 }
 
 /// Build an autoexpand budget view from eval options.
 pub fn autoexpand_budget_view_from_options(
-    eval_options: &cas_engine::EvalOptions,
+    eval_options: &cas_solver::EvalOptions,
 ) -> AutoexpandBudgetView {
     let budget = &eval_options.shared.expand_budget;
     AutoexpandBudgetView {
@@ -31,7 +31,7 @@ pub fn autoexpand_budget_view_from_options(
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AutoexpandCommandInput {
     ShowCurrent,
-    SetPolicy(cas_engine::ExpandPolicy),
+    SetPolicy(cas_solver::ExpandPolicy),
     UnknownMode(String),
 }
 
@@ -42,7 +42,7 @@ pub enum AutoexpandCommandResult {
         message: String,
     },
     SetPolicy {
-        policy: cas_engine::ExpandPolicy,
+        policy: cas_solver::ExpandPolicy,
         message: String,
     },
     Invalid {
@@ -62,8 +62,8 @@ pub fn parse_autoexpand_command_input(line: &str) -> AutoexpandCommandInput {
     let args: Vec<&str> = line.split_whitespace().collect();
     match args.get(1) {
         None => AutoexpandCommandInput::ShowCurrent,
-        Some(&"on") => AutoexpandCommandInput::SetPolicy(cas_engine::ExpandPolicy::Auto),
-        Some(&"off") => AutoexpandCommandInput::SetPolicy(cas_engine::ExpandPolicy::Off),
+        Some(&"on") => AutoexpandCommandInput::SetPolicy(cas_solver::ExpandPolicy::Auto),
+        Some(&"off") => AutoexpandCommandInput::SetPolicy(cas_solver::ExpandPolicy::Off),
         Some(other) => AutoexpandCommandInput::UnknownMode((*other).to_string()),
     }
 }
@@ -89,8 +89,8 @@ pub fn evaluate_autoexpand_command_input(
 
 /// Apply autoexpand policy into eval options, returning whether policy changed.
 pub fn apply_autoexpand_policy_to_options(
-    policy: cas_engine::ExpandPolicy,
-    eval_options: &mut cas_engine::EvalOptions,
+    policy: cas_solver::ExpandPolicy,
+    eval_options: &mut cas_solver::EvalOptions,
 ) -> bool {
     if eval_options.shared.expand_policy == policy {
         return false;
@@ -102,7 +102,7 @@ pub fn apply_autoexpand_policy_to_options(
 /// Evaluate and apply an `autoexpand` command directly to runtime options.
 pub fn evaluate_and_apply_autoexpand_command(
     line: &str,
-    eval_options: &mut cas_engine::EvalOptions,
+    eval_options: &mut cas_solver::EvalOptions,
 ) -> AutoexpandCommandApplyOutput {
     let state = AutoexpandCommandState {
         policy: eval_options.shared.expand_policy,
@@ -126,12 +126,12 @@ pub fn evaluate_and_apply_autoexpand_command(
 
 /// Format status output for `autoexpand`.
 pub fn format_autoexpand_current_message(
-    policy: cas_engine::ExpandPolicy,
+    policy: cas_solver::ExpandPolicy,
     budget: AutoexpandBudgetView,
 ) -> String {
     let policy_str = match policy {
-        cas_engine::ExpandPolicy::Off => "off",
-        cas_engine::ExpandPolicy::Auto => "on",
+        cas_solver::ExpandPolicy::Off => "off",
+        cas_solver::ExpandPolicy::Auto => "on",
     };
     format!(
         "Auto-expand: {}\n\
@@ -147,17 +147,17 @@ pub fn format_autoexpand_current_message(
 
 /// Format feedback after applying an auto-expand policy.
 pub fn format_autoexpand_set_message(
-    policy: cas_engine::ExpandPolicy,
+    policy: cas_solver::ExpandPolicy,
     budget: AutoexpandBudgetView,
 ) -> String {
     match policy {
-        cas_engine::ExpandPolicy::Auto => format!(
+        cas_solver::ExpandPolicy::Auto => format!(
             "Auto-expand: on\n\
                Budget: pow<={}, base_terms<={}, gen_terms<={}, vars<={}\n\
                ⚠️ Expands small (sum)^n patterns automatically.",
             budget.max_pow_exp, budget.max_base_terms, budget.max_generated_terms, budget.max_vars
         ),
-        cas_engine::ExpandPolicy::Off => {
+        cas_solver::ExpandPolicy::Off => {
             "Auto-expand: off\n  Polynomial expansions require explicit expand().".to_string()
         }
     }
@@ -197,13 +197,13 @@ mod tests {
     fn parse_autoexpand_command_input_reads_on_mode() {
         assert_eq!(
             parse_autoexpand_command_input("autoexpand on"),
-            AutoexpandCommandInput::SetPolicy(cas_engine::ExpandPolicy::Auto)
+            AutoexpandCommandInput::SetPolicy(cas_solver::ExpandPolicy::Auto)
         );
     }
 
     #[test]
     fn format_autoexpand_current_message_contains_budget() {
-        let text = format_autoexpand_current_message(cas_engine::ExpandPolicy::Off, budget());
+        let text = format_autoexpand_current_message(cas_solver::ExpandPolicy::Off, budget());
         assert!(text.contains("Auto-expand: off"));
         assert!(text.contains("pow<=6"));
     }
@@ -217,7 +217,7 @@ mod tests {
 
     #[test]
     fn autoexpand_budget_view_from_options_reads_budget() {
-        let mut eval_options = cas_engine::EvalOptions::default();
+        let mut eval_options = cas_solver::EvalOptions::default();
         eval_options.shared.expand_budget.max_pow_exp = 9;
         let budget = autoexpand_budget_view_from_options(&eval_options);
         assert_eq!(budget.max_pow_exp, 9);
@@ -226,13 +226,13 @@ mod tests {
     #[test]
     fn evaluate_autoexpand_command_input_set_policy_returns_message() {
         let state = AutoexpandCommandState {
-            policy: cas_engine::ExpandPolicy::Off,
+            policy: cas_solver::ExpandPolicy::Off,
             budget: budget(),
         };
         let out = evaluate_autoexpand_command_input("autoexpand on", state);
         match out {
             AutoexpandCommandResult::SetPolicy { policy, message } => {
-                assert_eq!(policy, cas_engine::ExpandPolicy::Auto);
+                assert_eq!(policy, cas_solver::ExpandPolicy::Auto);
                 assert!(message.contains("Auto-expand: on"));
             }
             other => panic!("unexpected output: {other:?}"),
@@ -241,40 +241,40 @@ mod tests {
 
     #[test]
     fn apply_autoexpand_policy_to_options_reports_change() {
-        let mut eval_options = cas_engine::EvalOptions::default();
-        eval_options.shared.expand_policy = cas_engine::ExpandPolicy::Off;
+        let mut eval_options = cas_solver::EvalOptions::default();
+        eval_options.shared.expand_policy = cas_solver::ExpandPolicy::Off;
 
         assert!(!apply_autoexpand_policy_to_options(
-            cas_engine::ExpandPolicy::Off,
+            cas_solver::ExpandPolicy::Off,
             &mut eval_options
         ));
         assert!(apply_autoexpand_policy_to_options(
-            cas_engine::ExpandPolicy::Auto,
+            cas_solver::ExpandPolicy::Auto,
             &mut eval_options
         ));
         assert_eq!(
             eval_options.shared.expand_policy,
-            cas_engine::ExpandPolicy::Auto
+            cas_solver::ExpandPolicy::Auto
         );
     }
 
     #[test]
     fn evaluate_and_apply_autoexpand_command_sets_rebuild_flag_when_changed() {
-        let mut eval_options = cas_engine::EvalOptions::default();
-        eval_options.shared.expand_policy = cas_engine::ExpandPolicy::Off;
+        let mut eval_options = cas_solver::EvalOptions::default();
+        eval_options.shared.expand_policy = cas_solver::ExpandPolicy::Off;
 
         let out = evaluate_and_apply_autoexpand_command("autoexpand on", &mut eval_options);
         assert!(out.rebuild_simplifier);
         assert!(out.message.contains("Auto-expand: on"));
         assert_eq!(
             eval_options.shared.expand_policy,
-            cas_engine::ExpandPolicy::Auto
+            cas_solver::ExpandPolicy::Auto
         );
     }
 
     #[test]
     fn evaluate_and_apply_autoexpand_command_show_current_does_not_rebuild() {
-        let mut eval_options = cas_engine::EvalOptions::default();
+        let mut eval_options = cas_solver::EvalOptions::default();
         let out = evaluate_and_apply_autoexpand_command("autoexpand", &mut eval_options);
         assert!(!out.rebuild_simplifier);
         assert!(out.message.contains("Auto-expand:"));

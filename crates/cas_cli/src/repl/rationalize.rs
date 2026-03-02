@@ -27,22 +27,15 @@ fn evaluate_rationalize_input(
         cas_parser::parse(input, &mut simplifier.context).map_err(|e| format!("{:?}", e))?;
     let normalized_expr =
         cas_solver::canonical_forms::normalize_core(&mut simplifier.context, parsed_expr);
-    let config = cas_solver::rationalize::RationalizeConfig::default();
-    let rationalized = cas_solver::rationalize::rationalize_denominator(
-        &mut simplifier.context,
-        normalized_expr,
-        &config,
-    );
+    let config = cas_solver::RationalizeConfig::default();
+    let rationalized =
+        cas_solver::rationalize_denominator(&mut simplifier.context, normalized_expr, &config);
     let outcome = match rationalized {
-        cas_solver::rationalize::RationalizeResult::Success(expr) => {
+        cas_solver::RationalizeResult::Success(expr) => {
             RationalizeCliOutcome::Success(simplifier.simplify(expr).0)
         }
-        cas_solver::rationalize::RationalizeResult::NotApplicable => {
-            RationalizeCliOutcome::NotApplicable
-        }
-        cas_solver::rationalize::RationalizeResult::BudgetExceeded => {
-            RationalizeCliOutcome::BudgetExceeded
-        }
+        cas_solver::RationalizeResult::NotApplicable => RationalizeCliOutcome::NotApplicable,
+        cas_solver::RationalizeResult::BudgetExceeded => RationalizeCliOutcome::BudgetExceeded,
     };
     Ok((normalized_expr, outcome))
 }

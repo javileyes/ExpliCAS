@@ -34,7 +34,7 @@ fn parse_profile_cache_command_input(line: &str) -> ProfileCacheCommandInput {
 
 /// Apply a `cache` command line to an engine profile cache.
 pub fn apply_profile_cache_command(
-    engine: &mut cas_engine::Engine,
+    engine: &mut cas_solver::Engine,
     line: &str,
 ) -> ProfileCacheCommandResult {
     match parse_profile_cache_command_input(line) {
@@ -128,7 +128,7 @@ pub fn evaluate_profile_command_input(line: &str) -> ProfileCommandResult {
 }
 
 /// Apply a `profile` command directly to a simplifier and return user-facing text.
-pub fn apply_profile_command(simplifier: &mut cas_engine::Simplifier, line: &str) -> String {
+pub fn apply_profile_command(simplifier: &mut cas_solver::Simplifier, line: &str) -> String {
     match evaluate_profile_command_input(line) {
         ProfileCommandResult::ShowReport => simplifier.profiler.report(),
         ProfileCommandResult::SetEnabled { enabled, message } => {
@@ -253,7 +253,7 @@ pub struct AssignmentCommandOutput {
 /// Evaluate assignment command pieces and return a typed output payload.
 pub fn evaluate_assignment_command(
     state: &mut SessionState,
-    simplifier: &mut cas_engine::Simplifier,
+    simplifier: &mut cas_solver::Simplifier,
     name: &str,
     expr_str: &str,
     lazy: bool,
@@ -271,7 +271,7 @@ pub fn evaluate_assignment_command(
 /// Evaluate `let ...` command tail and return assignment output payload.
 pub fn evaluate_let_assignment_command(
     state: &mut SessionState,
-    simplifier: &mut cas_engine::Simplifier,
+    simplifier: &mut cas_solver::Simplifier,
     input: &str,
 ) -> Result<AssignmentCommandOutput, String> {
     let parsed = parse_let_assignment_input(input)
@@ -282,7 +282,7 @@ pub fn evaluate_let_assignment_command(
 /// Evaluate assignment command pieces and return formatted user-facing message.
 pub fn evaluate_assignment_command_message_with_simplifier(
     state: &mut SessionState,
-    simplifier: &mut cas_engine::Simplifier,
+    simplifier: &mut cas_solver::Simplifier,
     name: &str,
     expr_str: &str,
     lazy: bool,
@@ -301,7 +301,7 @@ pub fn evaluate_assignment_command_message_with_simplifier(
 /// Evaluate `let ...` command tail and return formatted user-facing message.
 pub fn evaluate_let_assignment_command_message_with_simplifier(
     state: &mut SessionState,
-    simplifier: &mut cas_engine::Simplifier,
+    simplifier: &mut cas_solver::Simplifier,
     input: &str,
 ) -> Result<String, String> {
     let output = evaluate_let_assignment_command(state, simplifier, input)?;
@@ -433,7 +433,7 @@ mod tests {
     #[test]
     fn evaluate_assignment_command_success() {
         let mut state = SessionState::new();
-        let mut simplifier = cas_engine::Simplifier::with_default_rules();
+        let mut simplifier = cas_solver::Simplifier::with_default_rules();
         let out = evaluate_assignment_command(&mut state, &mut simplifier, "a", "x + x", true)
             .expect("assign");
 
@@ -451,7 +451,7 @@ mod tests {
     #[test]
     fn evaluate_let_assignment_command_parse_error() {
         let mut state = SessionState::new();
-        let mut simplifier = cas_engine::Simplifier::with_default_rules();
+        let mut simplifier = cas_solver::Simplifier::with_default_rules();
         let err = evaluate_let_assignment_command(&mut state, &mut simplifier, "x + y")
             .expect_err("let parse error");
         assert!(err.contains("Usage:"));
@@ -460,7 +460,7 @@ mod tests {
     #[test]
     fn evaluate_assignment_command_message_with_simplifier_formats_success() {
         let mut state = SessionState::new();
-        let mut simplifier = cas_engine::Simplifier::with_default_rules();
+        let mut simplifier = cas_solver::Simplifier::with_default_rules();
         let out = evaluate_assignment_command_message_with_simplifier(
             &mut state,
             &mut simplifier,
@@ -475,7 +475,7 @@ mod tests {
     #[test]
     fn evaluate_let_assignment_command_message_with_simplifier_formats_success() {
         let mut state = SessionState::new();
-        let mut simplifier = cas_engine::Simplifier::with_default_rules();
+        let mut simplifier = cas_solver::Simplifier::with_default_rules();
         let out = evaluate_let_assignment_command_message_with_simplifier(
             &mut state,
             &mut simplifier,
@@ -495,7 +495,7 @@ mod tests {
 
     #[test]
     fn apply_profile_command_enable_and_disable_messages() {
-        let mut simplifier = cas_engine::Simplifier::with_default_rules();
+        let mut simplifier = cas_solver::Simplifier::with_default_rules();
         assert_eq!(
             apply_profile_command(&mut simplifier, "profile enable"),
             "Profiler enabled."
@@ -508,7 +508,7 @@ mod tests {
 
     #[test]
     fn apply_profile_cache_command_status_and_format() {
-        let mut engine = cas_engine::Engine::new();
+        let mut engine = cas_solver::Engine::new();
         let result = apply_profile_cache_command(&mut engine, "cache status");
         let lines = format_profile_cache_command_lines(&result);
         assert_eq!(lines.len(), 1);

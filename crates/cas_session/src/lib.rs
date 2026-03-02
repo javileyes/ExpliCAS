@@ -1,6 +1,6 @@
 //! Session-related components extracted from `cas_engine`.
 
-use cas_engine::{Diagnostics, RequireOrigin, RequiredItem};
+use cas_solver::{Diagnostics, RequireOrigin, RequiredItem};
 
 mod assignment;
 mod autoexpand_command;

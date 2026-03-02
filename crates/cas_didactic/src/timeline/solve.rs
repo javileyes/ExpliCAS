@@ -1,6 +1,6 @@
 use cas_ast::{Context, Equation, SolutionSet};
-use cas_engine::SolveStep;
 use cas_formatter::{clean_latex_identities, html_escape, DisplayExpr, LaTeXExpr};
+use cas_solver::SolveStep;
 
 /// Timeline HTML generator for equation solving steps
 pub struct SolveTimelineHtml<'a> {

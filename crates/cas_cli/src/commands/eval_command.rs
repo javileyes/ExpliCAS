@@ -1,3 +1,5 @@
+use crate::assumption_format;
+use crate::result_format;
 use cas_ast::{Expr, ExprId};
 use cas_formatter::root_style::ParseStyleSignals;
 
@@ -129,7 +131,7 @@ fn format_eval_result_line(
             Some(EvalResultLine {
                 line: format!(
                     "Result: {}",
-                    cas_solver::display_expr_or_poly(context, *res)
+                    result_format::display_expr_or_poly(context, *res)
                 ),
                 terminal: false,
             })
@@ -137,7 +139,7 @@ fn format_eval_result_line(
         cas_solver::EvalResult::SolutionSet(solution_set) => Some(EvalResultLine {
             line: format!(
                 "Result: {}",
-                cas_solver::display_solution_set(context, solution_set)
+                result_format::display_solution_set(context, solution_set)
             ),
             terminal: false,
         }),
@@ -178,7 +180,7 @@ fn format_eval_metadata_lines(
     assumption_reporting: cas_solver::AssumptionReporting,
 ) -> EvalMetadataLines {
     let warning_lines =
-        cas_solver::format_domain_warning_lines(&output.domain_warnings, true, "⚠ ");
+        assumption_format::format_domain_warning_lines(&output.domain_warnings, true, "⚠ ");
 
     let result_expr = match &output.result {
         cas_solver::EvalResult::Expr(expr_id) => Some(*expr_id),
@@ -186,7 +188,7 @@ fn format_eval_metadata_lines(
     };
     let mut requires_lines = Vec::new();
     if !output.diagnostics.requires.is_empty() {
-        let rendered = cas_solver::format_diagnostics_requires_lines(
+        let rendered = assumption_format::format_diagnostics_requires_lines(
             context,
             &output.diagnostics,
             result_expr,
@@ -200,26 +202,28 @@ fn format_eval_metadata_lines(
     }
 
     let hint_lines = if hints_enabled {
-        let hints = cas_solver::filter_blocked_hints_for_eval(
+        let blocked_hints = cas_solver::blocked_hints_from_engine(&output.blocked_hints);
+        let hints = assumption_format::filter_blocked_hints_for_eval(
             context,
             output.resolved,
-            &output.blocked_hints,
+            &blocked_hints,
         );
         if hints.is_empty() {
             Vec::new()
         } else {
-            cas_solver::format_eval_blocked_hints_lines(context, &hints, domain_mode)
+            assumption_format::format_eval_blocked_hints_lines(context, &hints, domain_mode)
         }
     } else {
         Vec::new()
     };
 
     let assumption_lines = if assumption_reporting != cas_solver::AssumptionReporting::Off {
-        let assumed_conditions = cas_solver::collect_assumed_conditions_from_steps(&output.steps);
+        let assumed_conditions =
+            assumption_format::collect_assumed_conditions_from_steps(&output.steps);
         if assumed_conditions.is_empty() {
             Vec::new()
         } else {
-            cas_solver::format_assumed_conditions_report_lines(&assumed_conditions)
+            assumption_format::format_assumed_conditions_report_lines(&assumed_conditions)
         }
     } else {
         Vec::new()

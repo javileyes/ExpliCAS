@@ -8,9 +8,7 @@
 use cas_ast::{Context, ExprId};
 use cas_formatter::DisplayExpr;
 use cas_parser::parse;
-use cas_solver::engine::eval_f64;
-use cas_solver::helpers::is_zero;
-use cas_solver::Simplifier;
+use cas_solver::{eval_f64, is_zero, Simplifier};
 use std::collections::HashMap;
 
 // =============================================================================

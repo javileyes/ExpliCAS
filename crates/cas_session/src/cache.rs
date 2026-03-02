@@ -15,12 +15,12 @@ pub enum CacheDomainMode {
     Generic,
 }
 
-impl From<cas_engine::DomainMode> for CacheDomainMode {
-    fn from(mode: cas_engine::DomainMode) -> Self {
+impl From<cas_solver::DomainMode> for CacheDomainMode {
+    fn from(mode: cas_solver::DomainMode) -> Self {
         match mode {
-            cas_engine::DomainMode::Strict => Self::Strict,
-            cas_engine::DomainMode::Assume => Self::Assume,
-            cas_engine::DomainMode::Generic => Self::Generic,
+            cas_solver::DomainMode::Strict => Self::Strict,
+            cas_solver::DomainMode::Assume => Self::Assume,
+            cas_solver::DomainMode::Generic => Self::Generic,
         }
     }
 }
@@ -39,7 +39,7 @@ pub struct SimplifyCacheKey {
 
 impl SimplifyCacheKey {
     /// Create a cache key from current context settings.
-    pub fn from_context(domain: cas_engine::DomainMode) -> Self {
+    pub fn from_context(domain: cas_solver::DomainMode) -> Self {
         Self {
             domain: domain.into(),
             // For now, use a static value. In the future this can hash ruleset config.
@@ -50,9 +50,9 @@ impl SimplifyCacheKey {
     /// Create a cache key from a CLI-style domain flag (`strict|assume|generic`).
     pub fn from_domain_flag(domain: &str) -> Self {
         let mode = match domain {
-            "strict" => cas_engine::DomainMode::Strict,
-            "assume" => cas_engine::DomainMode::Assume,
-            _ => cas_engine::DomainMode::Generic,
+            "strict" => cas_solver::DomainMode::Strict,
+            "assume" => cas_solver::DomainMode::Assume,
+            _ => cas_solver::DomainMode::Generic,
         };
         Self::from_context(mode)
     }
@@ -71,9 +71,9 @@ pub struct SimplifiedCache {
     /// Simplified expression.
     pub expr: ExprId,
     /// Domain requirements from this entry (for propagation).
-    pub requires: Vec<cas_engine::RequiredItem>,
+    pub requires: Vec<cas_solver::RequiredItem>,
     /// Derivation steps (None = light cache, steps omitted for large entries).
-    pub steps: Option<Arc<Vec<cas_engine::Step>>>,
+    pub steps: Option<Arc<Vec<cas_solver::Step>>>,
 }
 
 #[cfg(test)]

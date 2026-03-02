@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use cas_engine::Engine;
+use cas_solver::Engine;
 
 use crate::{SessionState, SimplifyCacheKey, SnapshotError};
 

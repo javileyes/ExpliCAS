@@ -251,7 +251,7 @@ fn check_equiv_3tier(lhs: &str, rhs: &str, vars: &[&str], timeout: Duration) -> 
         let r = simp_expr(&mut s, rp);
 
         // Tier 1: NF convergence
-        if cas_solver::ordering::compare_expr(&s.context, l, r) == std::cmp::Ordering::Equal {
+        if cas_solver::compare_expr(&s.context, l, r) == std::cmp::Ordering::Equal {
             let _ = tx.send(EquivResult::NfConvergent);
             return;
         }
@@ -490,7 +490,7 @@ fn test_expand_simplify_one(input: &str, vars: &[&str], timeout: Duration) -> Eq
         }
 
         // Tier 1: NF convergence
-        if cas_solver::ordering::compare_expr(&s.context, a, c) == std::cmp::Ordering::Equal {
+        if cas_solver::compare_expr(&s.context, a, c) == std::cmp::Ordering::Equal {
             let _ = tx2.send(EquivResult::NfConvergent);
             return;
         }
@@ -568,12 +568,10 @@ fn test_factor_expand_one(input: &str, vars: &[&str], timeout: Duration) -> Opti
         let simplified = simp_expr(&mut s, e2);
 
         // f = factor(simplify(x))
-        let factored = cas_solver::factor::factor(&mut s.context, simplified);
+        let factored = cas_solver::factor(&mut s.context, simplified);
 
         // Check if factor actually did something
-        if cas_solver::ordering::compare_expr(&s.context, factored, simplified)
-            == std::cmp::Ordering::Equal
-        {
+        if cas_solver::compare_expr(&s.context, factored, simplified) == std::cmp::Ordering::Equal {
             // factor() returned the same expression — skip this case
             let _ = tx.send(None);
             return;
@@ -595,7 +593,7 @@ fn test_factor_expand_one(input: &str, vars: &[&str], timeout: Duration) -> Opti
         }
 
         // Tier 1: NF convergence
-        if cas_solver::ordering::compare_expr(&s.context, a, c) == std::cmp::Ordering::Equal {
+        if cas_solver::compare_expr(&s.context, a, c) == std::cmp::Ordering::Equal {
             let _ = tx.send(Some(EquivResult::NfConvergent));
             return;
         }

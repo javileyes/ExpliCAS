@@ -2,7 +2,7 @@
 //!
 //! Canonical rationalize+autoexpand tests live in `cas_solver`.
 
-pub use cas_engine::{Engine, EvalOptions, ExpandPolicy};
+pub use cas_engine::{Engine, EvalOptions, ExpandPolicy, SharedSemanticConfig};
 pub mod phase {
     pub use cas_engine::SharedSemanticConfig;
 }

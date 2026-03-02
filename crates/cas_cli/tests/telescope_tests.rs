@@ -60,6 +60,6 @@ fn test_telescope_command_basic() {
     let expr =
         cas_parser::parse("1 + 2*cos(x) + 2*cos(2*x) - sin(5*x/2)/sin(x/2)", &mut ctx).unwrap();
 
-    let result = cas_solver::telescoping::telescope(&mut ctx, expr);
+    let result = cas_solver::telescope(&mut ctx, expr);
     assert!(result.success, "Telescoping proof should succeed");
 }

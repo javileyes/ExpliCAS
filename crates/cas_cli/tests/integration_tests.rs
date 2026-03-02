@@ -748,8 +748,8 @@ fn test_logarithm_simplification() {
     let input1 = "ln(x^3 * y) - 3 * ln(x)";
     let expr1 = parse(input1, &mut simplifier.context).expect("Failed to parse");
     let opts = cas_solver::SimplifyOptions {
-        shared: cas_solver::phase::SharedSemanticConfig {
-            semantics: cas_solver::semantics::EvalConfig {
+        shared: cas_solver::SharedSemanticConfig {
+            semantics: cas_solver::EvalConfig {
                 domain_mode: cas_solver::DomainMode::Assume,
                 ..Default::default()
             },
@@ -827,8 +827,8 @@ fn test_logarithm_simplification() {
     let expr3 = parse(input3, &mut simplifier.context).expect("Failed to parse");
     // Use Assume mode since Generic now blocks Analytic conditions (Positive)
     let opts = cas_solver::SimplifyOptions {
-        shared: cas_solver::phase::SharedSemanticConfig {
-            semantics: cas_solver::semantics::EvalConfig {
+        shared: cas_solver::SharedSemanticConfig {
+            semantics: cas_solver::EvalConfig {
                 domain_mode: cas_solver::DomainMode::Assume,
                 ..Default::default()
             },

@@ -36,7 +36,7 @@ fn test_hyperbolic_double_angle_exponential() {
 
     // Check if result is 0
     let zero = simplifier.context.num(0);
-    use cas_solver::ordering::compare_expr;
+    use cas_solver::compare_expr;
     use std::cmp::Ordering;
     assert_eq!(
         compare_expr(&simplifier.context, result_id, zero),

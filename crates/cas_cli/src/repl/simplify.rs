@@ -1,4 +1,5 @@
 use super::*;
+use crate::assumption_format;
 
 fn extract_simplify_command_tail(line: &str) -> &str {
     line.strip_prefix("simplify").unwrap_or(line).trim()
@@ -206,9 +207,13 @@ fn format_full_simplify_eval_lines(
                             ))
                         ));
 
-                        for assumption_line in cas_solver::format_displayable_assumption_lines(
-                            step.assumption_events(),
-                        ) {
+                        let assumption_events =
+                            cas_solver::assumption_events_from_engine(step.assumption_events());
+                        for assumption_line in
+                            assumption_format::format_displayable_assumption_lines(
+                                &assumption_events,
+                            )
+                        {
                             lines.push(format!("   {}", assumption_line));
                         }
                     }

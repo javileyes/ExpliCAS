@@ -82,7 +82,7 @@ fn fold_numeric_islands(ctx: &mut Context, root: ExprId) -> ExprId {
             },
             ..Default::default()
         },
-        budgets: crate::phase::PhaseBudgets {
+        budgets: crate::PhaseBudgets {
             core_iters: 4,
             transform_iters: 2,
             rationalize_iters: 0,

@@ -1,8 +1,4 @@
 use cas_ast::{Context, Expr, ExprId, ExprPath};
-use cas_engine::{
-    infer_implicit_domain, pathsteps_to_expr_path, render_conditions_normalized, AssumptionKind,
-    ImplicitCondition, ImportanceLevel, PathStep, Step, ValueDomain,
-};
 use cas_formatter::path::{
     diff_find_all_paths_to_expr, diff_find_path_to_expr, diff_find_paths_by_structure,
     extract_add_terms, find_path_to_expr, navigate_to_subexpr,
@@ -10,6 +6,10 @@ use cas_formatter::path::{
 use cas_formatter::{
     clean_latex_identities, html_escape, latex_escape, HighlightColor, HighlightConfig,
     LaTeXExprHighlighted, PathHighlightConfig, PathHighlightedLatexRenderer,
+};
+use cas_solver::{
+    infer_implicit_domain, pathsteps_to_expr_path, render_conditions_normalized, AssumptionKind,
+    ImplicitCondition, ImportanceLevel, PathStep, Step, ValueDomain,
 };
 
 /// Timeline HTML generator - exports simplification steps to interactive HTML
@@ -1138,10 +1138,11 @@ impl<'a> TimelineHtml<'a> {
             };
 
             // V2.12.13: Build assumption HTML from assumption_events, filtered and grouped by kind
-            let domain_html = if !step.assumption_events().is_empty() {
+            let assumption_events =
+                cas_solver::assumption_events_from_engine(step.assumption_events());
+            let domain_html = if !assumption_events.is_empty() {
                 // Filter to displayable events only
-                let displayable: Vec<_> = step
-                    .assumption_events()
+                let displayable: Vec<_> = assumption_events
                     .iter()
                     .filter(|e| e.kind.should_display())
                     .collect();

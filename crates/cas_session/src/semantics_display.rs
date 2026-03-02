@@ -1,21 +1,21 @@
 /// Snapshot of semantic settings used for user-facing formatting.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SemanticsViewState {
-    pub domain_mode: cas_engine::DomainMode,
-    pub value_domain: cas_engine::ValueDomain,
-    pub branch: cas_engine::BranchPolicy,
-    pub inv_trig: cas_engine::InverseTrigPolicy,
-    pub const_fold: cas_engine::ConstFoldMode,
-    pub assumption_reporting: cas_engine::AssumptionReporting,
-    pub assume_scope: cas_engine::AssumeScope,
+    pub domain_mode: cas_solver::DomainMode,
+    pub value_domain: cas_solver::ValueDomain,
+    pub branch: cas_solver::BranchPolicy,
+    pub inv_trig: cas_solver::InverseTrigPolicy,
+    pub const_fold: cas_solver::ConstFoldMode,
+    pub assumption_reporting: cas_solver::AssumptionReporting,
+    pub assume_scope: cas_solver::AssumeScope,
     pub hints_enabled: bool,
-    pub requires_display: cas_engine::RequiresDisplayLevel,
+    pub requires_display: cas_solver::RequiresDisplayLevel,
 }
 
 /// Build a semantics view snapshot from simplifier + eval options.
 pub fn semantics_view_state_from_options(
-    simplify_options: &cas_engine::SimplifyOptions,
-    eval_options: &cas_engine::EvalOptions,
+    simplify_options: &cas_solver::SimplifyOptions,
+    eval_options: &cas_solver::EvalOptions,
 ) -> SemanticsViewState {
     SemanticsViewState {
         domain_mode: simplify_options.shared.semantics.domain_mode,
@@ -35,30 +35,30 @@ pub fn format_semantics_overview_lines(state: &SemanticsViewState) -> Vec<String
     let mut lines = Vec::new();
 
     let domain = match state.domain_mode {
-        cas_engine::DomainMode::Strict => "strict",
-        cas_engine::DomainMode::Assume => "assume",
-        cas_engine::DomainMode::Generic => "generic",
+        cas_solver::DomainMode::Strict => "strict",
+        cas_solver::DomainMode::Assume => "assume",
+        cas_solver::DomainMode::Generic => "generic",
     };
 
     let value = match state.value_domain {
-        cas_engine::ValueDomain::RealOnly => "real",
-        cas_engine::ValueDomain::ComplexEnabled => "complex",
+        cas_solver::ValueDomain::RealOnly => "real",
+        cas_solver::ValueDomain::ComplexEnabled => "complex",
     };
 
     let branch = match state.branch {
-        cas_engine::BranchPolicy::Principal => "principal",
+        cas_solver::BranchPolicy::Principal => "principal",
     };
 
     let inv_trig = match state.inv_trig {
-        cas_engine::InverseTrigPolicy::Strict => "strict",
-        cas_engine::InverseTrigPolicy::PrincipalValue => "principal",
+        cas_solver::InverseTrigPolicy::Strict => "strict",
+        cas_solver::InverseTrigPolicy::PrincipalValue => "principal",
     };
 
     lines.push("Semantics:".to_string());
     lines.push(format!("  domain_mode: {}", domain));
     lines.push(format!("  value_domain: {}", value));
 
-    if state.value_domain == cas_engine::ValueDomain::RealOnly {
+    if state.value_domain == cas_solver::ValueDomain::RealOnly {
         lines.push(format!(
             "  branch: {} (inactive: value_domain=real)",
             branch
@@ -70,23 +70,23 @@ pub fn format_semantics_overview_lines(state: &SemanticsViewState) -> Vec<String
     lines.push(format!("  inv_trig: {}", inv_trig));
 
     let const_fold = match state.const_fold {
-        cas_engine::ConstFoldMode::Off => "off",
-        cas_engine::ConstFoldMode::Safe => "safe",
+        cas_solver::ConstFoldMode::Off => "off",
+        cas_solver::ConstFoldMode::Safe => "safe",
     };
     lines.push(format!("  const_fold: {}", const_fold));
 
     let assumptions = match state.assumption_reporting {
-        cas_engine::AssumptionReporting::Off => "off",
-        cas_engine::AssumptionReporting::Summary => "summary",
-        cas_engine::AssumptionReporting::Trace => "trace",
+        cas_solver::AssumptionReporting::Off => "off",
+        cas_solver::AssumptionReporting::Summary => "summary",
+        cas_solver::AssumptionReporting::Trace => "trace",
     };
     lines.push(format!("  assumptions: {}", assumptions));
 
     let assume_scope = match state.assume_scope {
-        cas_engine::AssumeScope::Real => "real",
-        cas_engine::AssumeScope::Wildcard => "wildcard",
+        cas_solver::AssumeScope::Real => "real",
+        cas_solver::AssumeScope::Wildcard => "wildcard",
     };
-    if state.domain_mode != cas_engine::DomainMode::Assume {
+    if state.domain_mode != cas_solver::DomainMode::Assume {
         lines.push(format!(
             "  assume_scope: {} (inactive: domain_mode != assume)",
             assume_scope
@@ -101,8 +101,8 @@ pub fn format_semantics_overview_lines(state: &SemanticsViewState) -> Vec<String
     ));
 
     let requires = match state.requires_display {
-        cas_engine::RequiresDisplayLevel::Essential => "essential",
-        cas_engine::RequiresDisplayLevel::All => "all",
+        cas_solver::RequiresDisplayLevel::Essential => "essential",
+        cas_solver::RequiresDisplayLevel::All => "all",
     };
     lines.push(format!("  requires: {}", requires));
 
@@ -116,9 +116,9 @@ pub fn format_semantics_axis_lines(state: &SemanticsViewState, axis: &str) -> Ve
     match axis {
         "domain" => {
             let current = match state.domain_mode {
-                cas_engine::DomainMode::Strict => "strict",
-                cas_engine::DomainMode::Assume => "assume",
-                cas_engine::DomainMode::Generic => "generic",
+                cas_solver::DomainMode::Strict => "strict",
+                cas_solver::DomainMode::Assume => "assume",
+                cas_solver::DomainMode::Generic => "generic",
             };
             lines.push(format!("domain: {}", current));
             lines.push("  Values: strict | generic | assume".to_string());
@@ -128,8 +128,8 @@ pub fn format_semantics_axis_lines(state: &SemanticsViewState, axis: &str) -> Ve
         }
         "value" => {
             let current = match state.value_domain {
-                cas_engine::ValueDomain::RealOnly => "real",
-                cas_engine::ValueDomain::ComplexEnabled => "complex",
+                cas_solver::ValueDomain::RealOnly => "real",
+                cas_solver::ValueDomain::ComplexEnabled => "complex",
             };
             lines.push(format!("value: {}", current));
             lines.push("  Values: real | complex".to_string());
@@ -138,9 +138,9 @@ pub fn format_semantics_axis_lines(state: &SemanticsViewState, axis: &str) -> Ve
         }
         "branch" => {
             let current = match state.branch {
-                cas_engine::BranchPolicy::Principal => "principal",
+                cas_solver::BranchPolicy::Principal => "principal",
             };
-            let inactive = state.value_domain == cas_engine::ValueDomain::RealOnly;
+            let inactive = state.value_domain == cas_solver::ValueDomain::RealOnly;
             if inactive {
                 lines.push(format!("branch: {} (inactive: value=real)", current));
             } else {
@@ -154,8 +154,8 @@ pub fn format_semantics_axis_lines(state: &SemanticsViewState, axis: &str) -> Ve
         }
         "inv_trig" => {
             let current = match state.inv_trig {
-                cas_engine::InverseTrigPolicy::Strict => "strict",
-                cas_engine::InverseTrigPolicy::PrincipalValue => "principal",
+                cas_solver::InverseTrigPolicy::Strict => "strict",
+                cas_solver::InverseTrigPolicy::PrincipalValue => "principal",
             };
             lines.push(format!("inv_trig: {}", current));
             lines.push("  Values: strict | principal".to_string());
@@ -164,8 +164,8 @@ pub fn format_semantics_axis_lines(state: &SemanticsViewState, axis: &str) -> Ve
         }
         "const_fold" => {
             let current = match state.const_fold {
-                cas_engine::ConstFoldMode::Off => "off",
-                cas_engine::ConstFoldMode::Safe => "safe",
+                cas_solver::ConstFoldMode::Off => "off",
+                cas_solver::ConstFoldMode::Safe => "safe",
             };
             lines.push(format!("const_fold: {}", current));
             lines.push("  Values: off | safe".to_string());
@@ -174,9 +174,9 @@ pub fn format_semantics_axis_lines(state: &SemanticsViewState, axis: &str) -> Ve
         }
         "assumptions" => {
             let current = match state.assumption_reporting {
-                cas_engine::AssumptionReporting::Off => "off",
-                cas_engine::AssumptionReporting::Summary => "summary",
-                cas_engine::AssumptionReporting::Trace => "trace",
+                cas_solver::AssumptionReporting::Off => "off",
+                cas_solver::AssumptionReporting::Summary => "summary",
+                cas_solver::AssumptionReporting::Trace => "trace",
             };
             lines.push(format!("assumptions: {}", current));
             lines.push("  Values: off | summary | trace".to_string());
@@ -186,10 +186,10 @@ pub fn format_semantics_axis_lines(state: &SemanticsViewState, axis: &str) -> Ve
         }
         "assume_scope" => {
             let current = match state.assume_scope {
-                cas_engine::AssumeScope::Real => "real",
-                cas_engine::AssumeScope::Wildcard => "wildcard",
+                cas_solver::AssumeScope::Real => "real",
+                cas_solver::AssumeScope::Wildcard => "wildcard",
             };
-            let inactive = state.domain_mode != cas_engine::DomainMode::Assume;
+            let inactive = state.domain_mode != cas_solver::DomainMode::Assume;
             if inactive {
                 lines.push(format!(
                     "assume_scope: {} (inactive: domain_mode != assume)",
@@ -207,8 +207,8 @@ pub fn format_semantics_axis_lines(state: &SemanticsViewState, axis: &str) -> Ve
         }
         "requires" => {
             let current = match state.requires_display {
-                cas_engine::RequiresDisplayLevel::Essential => "essential",
-                cas_engine::RequiresDisplayLevel::All => "all",
+                cas_solver::RequiresDisplayLevel::Essential => "essential",
+                cas_solver::RequiresDisplayLevel::All => "all",
             };
             lines.push(format!("requires: {}", current));
             lines.push("  Values: essential | all".to_string());
@@ -296,15 +296,15 @@ mod tests {
 
     fn state() -> SemanticsViewState {
         SemanticsViewState {
-            domain_mode: cas_engine::DomainMode::Generic,
-            value_domain: cas_engine::ValueDomain::RealOnly,
-            branch: cas_engine::BranchPolicy::Principal,
-            inv_trig: cas_engine::InverseTrigPolicy::Strict,
-            const_fold: cas_engine::ConstFoldMode::Off,
-            assumption_reporting: cas_engine::AssumptionReporting::Summary,
-            assume_scope: cas_engine::AssumeScope::Real,
+            domain_mode: cas_solver::DomainMode::Generic,
+            value_domain: cas_solver::ValueDomain::RealOnly,
+            branch: cas_solver::BranchPolicy::Principal,
+            inv_trig: cas_solver::InverseTrigPolicy::Strict,
+            const_fold: cas_solver::ConstFoldMode::Off,
+            assumption_reporting: cas_solver::AssumptionReporting::Summary,
+            assume_scope: cas_solver::AssumeScope::Real,
             hints_enabled: true,
-            requires_display: cas_engine::RequiresDisplayLevel::Essential,
+            requires_display: cas_solver::RequiresDisplayLevel::Essential,
         }
     }
 
@@ -336,15 +336,15 @@ mod tests {
 
     #[test]
     fn semantics_view_state_from_options_reads_requires_display() {
-        let simplify_options = cas_engine::SimplifyOptions::default();
-        let eval_options = cas_engine::EvalOptions {
-            requires_display: cas_engine::RequiresDisplayLevel::All,
-            ..cas_engine::EvalOptions::default()
+        let simplify_options = cas_solver::SimplifyOptions::default();
+        let eval_options = cas_solver::EvalOptions {
+            requires_display: cas_solver::RequiresDisplayLevel::All,
+            ..cas_solver::EvalOptions::default()
         };
         let state = semantics_view_state_from_options(&simplify_options, &eval_options);
         assert_eq!(
             state.requires_display,
-            cas_engine::RequiresDisplayLevel::All
+            cas_solver::RequiresDisplayLevel::All
         );
     }
 }
