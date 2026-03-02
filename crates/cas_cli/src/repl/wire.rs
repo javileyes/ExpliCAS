@@ -20,6 +20,10 @@ impl From<&ReplMsg> for WireMsg {
             ReplMsg::WriteFile { path, .. } => {
                 WireMsg::new(WireKind::Info, format!("Wrote: {}", path.display()))
             }
+            // OpenFile is an action, not a displayable message — convert to Info.
+            ReplMsg::OpenFile { path } => {
+                WireMsg::new(WireKind::Info, format!("Open: {}", path.display()))
+            }
         }
     }
 }
@@ -114,6 +118,16 @@ mod tests {
         let wire: WireMsg = (&msg).into();
         assert_eq!(wire.kind, WireKind::Info);
         assert!(wire.text.contains("Wrote:"));
+    }
+
+    #[test]
+    fn test_open_file_converts_to_info() {
+        let msg = ReplMsg::OpenFile {
+            path: PathBuf::from("/tmp/test.html"),
+        };
+        let wire: WireMsg = (&msg).into();
+        assert_eq!(wire.kind, WireKind::Info);
+        assert!(wire.text.contains("Open:"));
     }
 
     #[test]

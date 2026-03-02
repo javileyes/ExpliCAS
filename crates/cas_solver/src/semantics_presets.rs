@@ -41,6 +41,13 @@ pub struct SemanticsPresetApplication {
     pub next: SemanticsPresetState,
 }
 
+/// End-to-end evaluation result for `semantics preset` command args.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SemanticsPresetCommandOutput {
+    pub lines: Vec<String>,
+    pub applied: bool,
+}
+
 /// Error returned when preset application cannot proceed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SemanticsPresetApplyError {
@@ -225,6 +232,50 @@ pub fn apply_semantics_preset_by_name(
     })
 }
 
+/// Resolve and apply a semantics preset by name to runtime options.
+pub fn apply_semantics_preset_by_name_to_options(
+    name: &str,
+    simplify_options: &mut crate::SimplifyOptions,
+    eval_options: &mut crate::EvalOptions,
+) -> Result<SemanticsPresetApplication, SemanticsPresetApplyError> {
+    let application = apply_semantics_preset_by_name(name)?;
+    apply_semantics_preset_state_to_options(application.next, simplify_options, eval_options);
+    Ok(application)
+}
+
+/// Evaluate `semantics preset ...` args, mutating options on successful apply.
+pub fn evaluate_semantics_preset_args_to_options(
+    args: &[&str],
+    simplify_options: &mut crate::SimplifyOptions,
+    eval_options: &mut crate::EvalOptions,
+) -> SemanticsPresetCommandOutput {
+    match args.first().copied() {
+        None => SemanticsPresetCommandOutput {
+            lines: format_semantics_preset_list_lines(),
+            applied: false,
+        },
+        Some("help") => SemanticsPresetCommandOutput {
+            lines: format_semantics_preset_help_lines(args.get(1).copied()),
+            applied: false,
+        },
+        Some(name) => {
+            let current = semantics_preset_state_from_options(simplify_options, eval_options);
+            match apply_semantics_preset_by_name_to_options(name, simplify_options, eval_options) {
+                Ok(application) => SemanticsPresetCommandOutput {
+                    lines: format_semantics_preset_application_lines(current, &application),
+                    applied: true,
+                },
+                Err(SemanticsPresetApplyError::UnknownPreset { .. }) => {
+                    SemanticsPresetCommandOutput {
+                        lines: format_semantics_preset_help_lines(Some(name)),
+                        applied: false,
+                    }
+                }
+            }
+        }
+    }
+}
+
 pub fn format_semantics_preset_application_lines(
     current: SemanticsPresetState,
     application: &SemanticsPresetApplication,
@@ -291,10 +342,12 @@ pub fn format_semantics_preset_application_lines(
 #[cfg(test)]
 mod tests {
     use super::{
-        apply_semantics_preset_by_name, apply_semantics_preset_state_to_options,
+        apply_semantics_preset_by_name, apply_semantics_preset_by_name_to_options,
+        apply_semantics_preset_state_to_options, evaluate_semantics_preset_args_to_options,
         find_semantics_preset, format_semantics_preset_application_lines,
         format_semantics_preset_help_lines, format_semantics_preset_list_lines,
-        semantics_preset_state_from_options, SemanticsPresetApplyError, SemanticsPresetState,
+        semantics_preset_state_from_options, SemanticsPresetApplyError,
+        SemanticsPresetCommandOutput, SemanticsPresetState,
     };
 
     #[test]
@@ -388,5 +441,58 @@ mod tests {
         };
         let state = semantics_preset_state_from_options(&simplify_options, &eval_options);
         assert_eq!(state.const_fold, crate::ConstFoldMode::Safe);
+    }
+
+    #[test]
+    fn apply_semantics_preset_by_name_to_options_updates_runtime_state() {
+        let mut simplify_options = crate::SimplifyOptions::default();
+        let mut eval_options = crate::EvalOptions::default();
+        let application = apply_semantics_preset_by_name_to_options(
+            "complex",
+            &mut simplify_options,
+            &mut eval_options,
+        )
+        .expect("preset should exist");
+
+        assert_eq!(application.preset.name, "complex");
+        assert_eq!(
+            simplify_options.shared.semantics.value_domain,
+            crate::ValueDomain::ComplexEnabled
+        );
+        assert_eq!(eval_options.const_fold, crate::ConstFoldMode::Safe);
+    }
+
+    #[test]
+    fn evaluate_semantics_preset_args_to_options_lists_when_empty() {
+        let mut simplify_options = crate::SimplifyOptions::default();
+        let mut eval_options = crate::EvalOptions::default();
+        let out = evaluate_semantics_preset_args_to_options(
+            &[],
+            &mut simplify_options,
+            &mut eval_options,
+        );
+        assert_eq!(
+            out,
+            SemanticsPresetCommandOutput {
+                lines: format_semantics_preset_list_lines(),
+                applied: false,
+            }
+        );
+    }
+
+    #[test]
+    fn evaluate_semantics_preset_args_to_options_applies_known_preset() {
+        let mut simplify_options = crate::SimplifyOptions::default();
+        let mut eval_options = crate::EvalOptions::default();
+        let out = evaluate_semantics_preset_args_to_options(
+            &["complex"],
+            &mut simplify_options,
+            &mut eval_options,
+        );
+        assert!(out.applied);
+        assert_eq!(
+            simplify_options.shared.semantics.value_domain,
+            crate::ValueDomain::ComplexEnabled
+        );
     }
 }

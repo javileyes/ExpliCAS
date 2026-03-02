@@ -50,6 +50,13 @@ pub enum AutoexpandCommandResult {
     },
 }
 
+/// Result from evaluating + applying an `autoexpand` command to runtime options.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AutoexpandCommandApplyOutput {
+    pub message: String,
+    pub rebuild_simplifier: bool,
+}
+
 /// Parse raw `autoexpand ...` command input.
 pub fn parse_autoexpand_command_input(line: &str) -> AutoexpandCommandInput {
     let args: Vec<&str> = line.split_whitespace().collect();
@@ -76,6 +83,43 @@ pub fn evaluate_autoexpand_command_input(
         },
         AutoexpandCommandInput::UnknownMode(mode) => AutoexpandCommandResult::Invalid {
             message: format_autoexpand_unknown_mode_message(&mode),
+        },
+    }
+}
+
+/// Apply autoexpand policy into eval options, returning whether policy changed.
+pub fn apply_autoexpand_policy_to_options(
+    policy: crate::ExpandPolicy,
+    eval_options: &mut crate::EvalOptions,
+) -> bool {
+    if eval_options.shared.expand_policy == policy {
+        return false;
+    }
+    eval_options.shared.expand_policy = policy;
+    true
+}
+
+/// Evaluate and apply an `autoexpand` command directly to runtime options.
+pub fn evaluate_and_apply_autoexpand_command(
+    line: &str,
+    eval_options: &mut crate::EvalOptions,
+) -> AutoexpandCommandApplyOutput {
+    let state = AutoexpandCommandState {
+        policy: eval_options.shared.expand_policy,
+        budget: autoexpand_budget_view_from_options(eval_options),
+    };
+    match evaluate_autoexpand_command_input(line, state) {
+        AutoexpandCommandResult::ShowCurrent { message } => AutoexpandCommandApplyOutput {
+            message,
+            rebuild_simplifier: false,
+        },
+        AutoexpandCommandResult::SetPolicy { policy, message } => AutoexpandCommandApplyOutput {
+            message,
+            rebuild_simplifier: apply_autoexpand_policy_to_options(policy, eval_options),
+        },
+        AutoexpandCommandResult::Invalid { message } => AutoexpandCommandApplyOutput {
+            message,
+            rebuild_simplifier: false,
         },
     }
 }
@@ -133,7 +177,8 @@ pub fn format_autoexpand_unknown_mode_message(mode: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        autoexpand_budget_view_from_options, evaluate_autoexpand_command_input,
+        apply_autoexpand_policy_to_options, autoexpand_budget_view_from_options,
+        evaluate_and_apply_autoexpand_command, evaluate_autoexpand_command_input,
         format_autoexpand_current_message, format_autoexpand_unknown_mode_message,
         parse_autoexpand_command_input, AutoexpandBudgetView, AutoexpandCommandInput,
         AutoexpandCommandResult, AutoexpandCommandState,
@@ -192,5 +237,40 @@ mod tests {
             }
             other => panic!("unexpected output: {other:?}"),
         }
+    }
+
+    #[test]
+    fn apply_autoexpand_policy_to_options_reports_change() {
+        let mut eval_options = crate::EvalOptions::default();
+        eval_options.shared.expand_policy = crate::ExpandPolicy::Off;
+
+        assert!(!apply_autoexpand_policy_to_options(
+            crate::ExpandPolicy::Off,
+            &mut eval_options
+        ));
+        assert!(apply_autoexpand_policy_to_options(
+            crate::ExpandPolicy::Auto,
+            &mut eval_options
+        ));
+        assert_eq!(eval_options.shared.expand_policy, crate::ExpandPolicy::Auto);
+    }
+
+    #[test]
+    fn evaluate_and_apply_autoexpand_command_sets_rebuild_flag_when_changed() {
+        let mut eval_options = crate::EvalOptions::default();
+        eval_options.shared.expand_policy = crate::ExpandPolicy::Off;
+
+        let out = evaluate_and_apply_autoexpand_command("autoexpand on", &mut eval_options);
+        assert!(out.rebuild_simplifier);
+        assert!(out.message.contains("Auto-expand: on"));
+        assert_eq!(eval_options.shared.expand_policy, crate::ExpandPolicy::Auto);
+    }
+
+    #[test]
+    fn evaluate_and_apply_autoexpand_command_show_current_does_not_rebuild() {
+        let mut eval_options = crate::EvalOptions::default();
+        let out = evaluate_and_apply_autoexpand_command("autoexpand", &mut eval_options);
+        assert!(!out.rebuild_simplifier);
+        assert!(out.message.contains("Auto-expand:"));
     }
 }

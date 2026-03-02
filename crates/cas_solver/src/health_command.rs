@@ -16,6 +16,14 @@ pub struct HealthStatusInput {
     pub category_missing_arg: bool,
 }
 
+/// Evaluated output for a `health ...` command.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HealthCommandEvalOutput {
+    pub lines: Vec<String>,
+    pub set_enabled: Option<bool>,
+    pub clear_last_report: bool,
+}
+
 /// Parse raw `health ...` command input.
 pub fn parse_health_command_input(line: &str) -> HealthCommandInput {
     let parts: Vec<&str> = line.split_whitespace().collect();
@@ -51,6 +59,16 @@ pub fn parse_health_command_input(line: &str) -> HealthCommandInput {
     }
 }
 
+/// Parse and validate `health ...` command input.
+///
+/// Returns a preformatted usage message when command input is invalid.
+pub fn evaluate_health_command_input(line: &str) -> Result<HealthCommandInput, String> {
+    match parse_health_command_input(line) {
+        HealthCommandInput::Invalid => Err(health_usage_message()),
+        parsed => Ok(parsed),
+    }
+}
+
 pub fn health_enable_message() -> &'static str {
     "Health tracking ENABLED (metrics captured after each simplify)"
 }
@@ -61,6 +79,11 @@ pub fn health_disable_message() -> &'static str {
 
 pub fn health_clear_message() -> &'static str {
     "Health statistics cleared."
+}
+
+/// Clear health profiling counters for a simplifier.
+pub fn clear_health_profiler(simplifier: &mut crate::Simplifier) {
+    simplifier.profiler.clear_run();
 }
 
 pub fn format_health_usage_message(category_names: &str) -> String {
@@ -77,6 +100,11 @@ pub fn format_health_usage_message(category_names: &str) -> String {
                                             Categories: {}",
         category_names
     )
+}
+
+/// Usage message built from currently available health categories.
+pub fn health_usage_message() -> String {
+    format_health_usage_message(&crate::health_suite::category_names().join(", "))
 }
 
 pub fn format_health_missing_category_arg_message(category_names: &str) -> String {
@@ -129,6 +157,18 @@ pub fn format_health_status_running_message(category_label: &str) -> String {
     )
 }
 
+/// Optional warning line shown when health suite reports failures.
+pub fn format_health_failed_tests_warning_line(failed: usize) -> Option<String> {
+    if failed == 0 {
+        None
+    } else {
+        Some(format!(
+            "\n⚠ {} tests failed. Check Transform rules for churn.",
+            failed
+        ))
+    }
+}
+
 /// Build `health` report lines from last pipeline stats and optional report text.
 pub fn format_health_report_lines(
     last_stats: Option<&crate::PipelineStats>,
@@ -172,11 +212,90 @@ pub fn format_health_report_lines(
     lines
 }
 
+/// Evaluate `health status` request and return display lines.
+pub fn evaluate_health_status_lines(
+    simplifier: &mut crate::Simplifier,
+    status: &HealthStatusInput,
+) -> Result<Vec<String>, String> {
+    if status.list_only {
+        return Ok(vec![crate::health_suite::list_cases()]);
+    }
+
+    let category_names = crate::health_suite::category_names().join(", ");
+    let category_filter = resolve_health_category_filter(status, &category_names, |raw| {
+        raw.parse::<crate::health_suite::Category>()
+    })?;
+
+    let category_label = category_filter
+        .as_ref()
+        .map_or("all".to_string(), ToString::to_string);
+    let mut lines = vec![format_health_status_running_message(&category_label)];
+
+    let results = crate::health_suite::run_suite_filtered(simplifier, category_filter);
+    let report = crate::health_suite::format_report_filtered(&results, category_filter);
+    lines.push(report);
+
+    let (_passed, failed) = crate::health_suite::count_results(&results);
+    if let Some(warning) = format_health_failed_tests_warning_line(failed) {
+        lines.push(warning);
+    }
+
+    Ok(lines)
+}
+
+/// Evaluate full `health ...` command and return both lines and side-effect intents.
+///
+/// The caller applies `set_enabled` and `clear_last_report` to its UI/session state.
+pub fn evaluate_health_command(
+    simplifier: &mut crate::Simplifier,
+    line: &str,
+    last_stats: Option<&crate::PipelineStats>,
+    last_health_report: Option<&str>,
+) -> Result<HealthCommandEvalOutput, String> {
+    match evaluate_health_command_input(line)? {
+        HealthCommandInput::ShowLast => Ok(HealthCommandEvalOutput {
+            lines: format_health_report_lines(last_stats, last_health_report),
+            set_enabled: None,
+            clear_last_report: false,
+        }),
+        HealthCommandInput::SetEnabled { enabled } => Ok(HealthCommandEvalOutput {
+            lines: vec![if enabled {
+                health_enable_message().to_string()
+            } else {
+                health_disable_message().to_string()
+            }],
+            set_enabled: Some(enabled),
+            clear_last_report: false,
+        }),
+        HealthCommandInput::Clear => {
+            clear_health_profiler(simplifier);
+            Ok(HealthCommandEvalOutput {
+                lines: vec![health_clear_message().to_string()],
+                set_enabled: None,
+                clear_last_report: true,
+            })
+        }
+        HealthCommandInput::Status(status) => {
+            let lines = evaluate_health_status_lines(simplifier, &status)?;
+            Ok(HealthCommandEvalOutput {
+                lines,
+                set_enabled: None,
+                clear_last_report: false,
+            })
+        }
+        HealthCommandInput::Invalid => {
+            unreachable!("invalid is handled in evaluate_health_command_input")
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
+        clear_health_profiler, evaluate_health_command, evaluate_health_command_input,
+        evaluate_health_status_lines, format_health_failed_tests_warning_line,
         format_health_missing_category_arg_message, format_health_report_lines,
-        format_health_status_running_message, format_health_usage_message,
+        format_health_status_running_message, format_health_usage_message, health_usage_message,
         parse_health_command_input, resolve_health_category_filter, HealthCommandInput,
         HealthStatusInput,
     };
@@ -210,6 +329,12 @@ mod tests {
         let text = format_health_usage_message("a,b,c");
         assert!(text.contains("health status"));
         assert!(text.contains("Categories: a,b,c"));
+    }
+
+    #[test]
+    fn health_usage_message_includes_categories() {
+        let text = health_usage_message();
+        assert!(text.contains("Categories:"));
     }
 
     #[test]
@@ -259,5 +384,94 @@ mod tests {
     fn format_health_status_running_message_includes_category() {
         let line = format_health_status_running_message("algebra");
         assert!(line.contains("category=algebra"));
+    }
+
+    #[test]
+    fn format_health_failed_tests_warning_line_only_for_nonzero() {
+        assert!(format_health_failed_tests_warning_line(0).is_none());
+        let line = format_health_failed_tests_warning_line(2).expect("warning");
+        assert!(line.contains("2 tests failed"));
+    }
+
+    #[test]
+    fn evaluate_health_command_input_maps_invalid_to_usage() {
+        let err = evaluate_health_command_input("health nope").expect_err("invalid");
+        assert!(err.contains("Usage: health"));
+    }
+
+    #[test]
+    fn evaluate_health_status_lines_list_only() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let lines = evaluate_health_status_lines(
+            &mut simplifier,
+            &HealthStatusInput {
+                list_only: true,
+                category: None,
+                category_missing_arg: false,
+            },
+        )
+        .expect("list");
+        assert!(lines
+            .first()
+            .is_some_and(|line| line.contains("Available health cases")));
+    }
+
+    #[test]
+    fn evaluate_health_status_lines_invalid_category_returns_error() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let err = evaluate_health_status_lines(
+            &mut simplifier,
+            &HealthStatusInput {
+                list_only: false,
+                category: Some("unknown".to_string()),
+                category_missing_arg: false,
+            },
+        )
+        .expect_err("invalid category");
+        assert!(err.contains("Available categories"));
+    }
+
+    #[test]
+    fn clear_health_profiler_resets_profiler_state() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        clear_health_profiler(&mut simplifier);
+    }
+
+    #[test]
+    fn evaluate_health_command_show_last_uses_report_lines() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let out = evaluate_health_command(&mut simplifier, "health", None, None).expect("health");
+        assert!(out.set_enabled.is_none());
+        assert!(!out.clear_last_report);
+        assert!(out
+            .lines
+            .iter()
+            .any(|line| line.contains("No health report available.")));
+    }
+
+    #[test]
+    fn evaluate_health_command_enable_sets_flag() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let out =
+            evaluate_health_command(&mut simplifier, "health on", None, None).expect("health on");
+        assert_eq!(out.set_enabled, Some(true));
+        assert!(!out.clear_last_report);
+        assert!(out
+            .lines
+            .first()
+            .is_some_and(|line| line.contains("ENABLED")));
+    }
+
+    #[test]
+    fn evaluate_health_command_clear_requests_report_clear() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let out = evaluate_health_command(&mut simplifier, "health clear", None, None)
+            .expect("health clear");
+        assert!(out.set_enabled.is_none());
+        assert!(out.clear_last_report);
+        assert!(out
+            .lines
+            .first()
+            .is_some_and(|line| line.contains("Health statistics cleared")));
     }
 }

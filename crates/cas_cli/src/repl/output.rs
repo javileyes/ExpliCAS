@@ -22,6 +22,8 @@ pub enum ReplMsg {
     Debug(String),
     /// Action: write content to a file (executed by shell, not core)
     WriteFile { path: PathBuf, contents: String },
+    /// Action: open a file with host OS default app (executed by shell, not core)
+    OpenFile { path: PathBuf },
 }
 
 impl ReplMsg {

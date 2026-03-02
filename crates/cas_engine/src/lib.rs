@@ -79,6 +79,7 @@ pub use cas_math::substitute::{
     substitute_power_aware, substitute_with_trace, SubstituteOptions, SubstituteTraceResult,
     SubstituteTraceStep,
 };
+pub use cas_math::telescoping_dirichlet::try_dirichlet_kernel_identity as try_dirichlet_kernel_identity_pub;
 pub use const_fold::{fold_constants, ConstFoldMode, ConstFoldResult};
 pub use cycle_events::{CycleEvent, CycleLevel};
 pub use diagnostics::{Diagnostics, RequireOrigin, RequiredItem};
@@ -138,9 +139,7 @@ pub use solver::{
 pub use step::{
     pathsteps_to_expr_path, DisplayEvalSteps, ImportanceLevel, PathStep, Step, StepCategory,
 };
-pub use telescoping::{
-    telescope, try_dirichlet_kernel_identity_pub, TelescopingResult, TelescopingStep,
-};
+pub use telescoping::{telescope, TelescopingResult, TelescopingStep};
 pub use visitors::{DepthVisitor, VariableCollector};
 
 // Equation-level primitives (not simplifier rules — used by solver pipeline)

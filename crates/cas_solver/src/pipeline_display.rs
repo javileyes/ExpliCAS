@@ -1,3 +1,27 @@
+use cas_ast::{Context, ExprId};
+
+/// Normalize the last `Result: ...` line by cleaning display artifacts.
+pub fn clean_result_output_line(lines: &mut [String]) {
+    let Some(last) = lines.last_mut() else {
+        return;
+    };
+    let Some(raw_value) = last.strip_prefix("Result: ") else {
+        return;
+    };
+    *last = format!("Result: {}", cas_formatter::clean_display_string(raw_value));
+}
+
+/// Display an expression, preferring formatted poly output when available.
+pub fn display_expr_or_poly(ctx: &Context, id: ExprId) -> String {
+    if let Some(poly_str) = crate::try_render_poly_result(ctx, id) {
+        return poly_str;
+    }
+    cas_formatter::clean_display_string(&format!(
+        "{}",
+        cas_formatter::DisplayExpr { context: ctx, id }
+    ))
+}
+
 /// Format pipeline statistics for diagnostics.
 pub fn format_pipeline_stats(
     simplifier: &crate::Simplifier,
@@ -109,7 +133,7 @@ pub fn format_pipeline_stats(
 
 #[cfg(test)]
 mod tests {
-    use super::format_pipeline_stats;
+    use super::{clean_result_output_line, display_expr_or_poly, format_pipeline_stats};
 
     #[test]
     fn format_pipeline_stats_includes_headers() {
@@ -118,5 +142,20 @@ mod tests {
         let text = format_pipeline_stats(&simplifier, &stats);
         assert!(text.contains("Pipeline Diagnostics"));
         assert!(text.contains("Total rewrites:"));
+    }
+
+    #[test]
+    fn clean_result_output_line_cleans_last_result_line() {
+        let mut lines = vec!["info".to_string(), "Result: __hold(x+1)".to_string()];
+        clean_result_output_line(&mut lines);
+        assert_eq!(lines.last().unwrap(), "Result: x+1");
+    }
+
+    #[test]
+    fn display_expr_or_poly_falls_back_to_display_expr() {
+        let mut ctx = cas_ast::Context::new();
+        let expr = ctx.var("x");
+        let rendered = display_expr_or_poly(&ctx, expr);
+        assert_eq!(rendered, "x");
     }
 }

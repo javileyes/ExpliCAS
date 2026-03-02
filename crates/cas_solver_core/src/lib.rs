@@ -2,6 +2,7 @@ pub mod cycle_guard;
 pub mod display_steps;
 pub mod domain_env;
 pub mod equation_rewrite;
+pub mod equivalence;
 pub mod external_proof;
 pub mod fingerprint;
 pub mod function_inverse;

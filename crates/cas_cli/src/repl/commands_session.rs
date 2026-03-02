@@ -10,9 +10,24 @@ impl Repl {
 
     /// Handle "let <name> = <expr>" (eager) or "let <name> := <expr>" (lazy) command
     pub(crate) fn handle_let_command_core(&mut self, rest: &str) -> ReplReply {
-        match cas_session::parse_let_assignment_input(rest) {
-            Ok(parsed) => self.handle_assignment_core(parsed.name, parsed.expr, parsed.lazy),
-            Err(e) => reply_output(cas_session::format_let_assignment_parse_error_message(&e)),
+        match cas_session::evaluate_let_assignment_command(
+            &mut self.core.state,
+            &mut self.core.engine.simplifier,
+            rest,
+        ) {
+            Ok(output) => {
+                let rendered = format!(
+                    "{}",
+                    cas_formatter::DisplayExpr {
+                        context: &self.core.engine.simplifier.context,
+                        id: output.expr
+                    }
+                );
+                reply_output(cas_session::format_assignment_command_output_message(
+                    &output, &rendered,
+                ))
+            }
+            Err(message) => reply_output(message),
         }
     }
 
@@ -25,56 +40,47 @@ impl Repl {
         expr_str: &str,
         lazy: bool,
     ) -> ReplReply {
-        match cas_session::apply_assignment(
+        match cas_session::evaluate_assignment_command(
             &mut self.core.state,
             &mut self.core.engine.simplifier,
             name,
             expr_str,
             lazy,
         ) {
-            Ok(result) => {
-                let display = cas_formatter::DisplayExpr {
-                    context: &self.core.engine.simplifier.context,
-                    id: result,
-                };
-                reply_output(cas_session::format_assignment_success_message(
-                    name,
-                    &display.to_string(),
-                    lazy,
+            Ok(output) => {
+                let rendered = format!(
+                    "{}",
+                    cas_formatter::DisplayExpr {
+                        context: &self.core.engine.simplifier.context,
+                        id: output.expr
+                    }
+                );
+                reply_output(cas_session::format_assignment_command_output_message(
+                    &output, &rendered,
                 ))
             }
-            Err(e) => reply_output(cas_session::format_assignment_error_message(&e)),
+            Err(message) => reply_output(message),
         }
     }
 
     /// Handle "vars" command - list all variable bindings
     /// Core logic for "vars" command
     pub(crate) fn handle_vars_command_core(&self) -> ReplReply {
-        let bindings = cas_session::binding_overview_entries(&self.core.state);
-        if bindings.is_empty() {
-            reply_output(cas_session::vars_empty_message())
-        } else {
-            let lines = cas_session::format_binding_overview_lines(&bindings, |id| {
-                format!(
-                    "{}",
-                    cas_formatter::DisplayExpr {
-                        context: &self.core.engine.simplifier.context,
-                        id
-                    }
-                )
-            });
-            reply_output(lines.join("\n"))
-        }
+        let lines = cas_session::evaluate_vars_command_lines(&self.core.state, |id| {
+            format!(
+                "{}",
+                cas_formatter::DisplayExpr {
+                    context: &self.core.engine.simplifier.context,
+                    id
+                }
+            )
+        });
+        reply_output(lines.join("\n"))
     }
 
     /// Handle "history" or "list" command - show session history
     pub(crate) fn handle_history_command_core(&self) -> ReplReply {
-        let entries = cas_session::history_overview_entries(&self.core.state);
-        if entries.is_empty() {
-            return reply_output(cas_session::history_empty_message());
-        }
-
-        let lines = cas_session::format_history_overview_lines(&entries, |id| {
+        let lines = cas_session::evaluate_history_command_lines(&self.core.state, |id| {
             format!(
                 "{}",
                 DisplayExpr {
@@ -88,51 +94,46 @@ impl Repl {
 
     /// Handle "show #id" command - show details of a specific entry
     pub(crate) fn handle_show_command_core(&mut self, line: &str) -> ReplReply {
-        match cas_session::inspect_history_entry_input(
+        match cas_session::inspect_show_history_command(
             &mut self.core.state,
             &mut self.core.engine,
             line,
         ) {
             Ok(inspection) => {
-                let mut lines =
-                    cas_session::format_history_entry_inspection_lines(&inspection, |id| {
-                        format!(
-                            "{}",
-                            DisplayExpr {
-                                context: &self.core.engine.simplifier.context,
-                                id
-                            }
+                let context = &self.core.engine.simplifier.context;
+                let lines = cas_session::format_show_history_command_lines(
+                    &inspection,
+                    |id| format!("{}", DisplayExpr { context, id }),
+                    |expr_info| {
+                        cas_solver::format_eval_metadata_sections(
+                            context,
+                            &expr_info.required_conditions,
+                            &expr_info.domain_warnings,
+                            &expr_info.blocked_hints,
+                            cas_solver::history_eval_metadata_section_labels(),
                         )
-                    });
-                if let cas_session::HistoryEntryDetails::Expr(expr_info) = &inspection.details {
-                    lines.extend(cas_solver::format_eval_metadata_sections(
-                        &self.core.engine.simplifier.context,
-                        &expr_info.required_conditions,
-                        &expr_info.domain_warnings,
-                        &expr_info.blocked_hints,
-                        cas_solver::history_eval_metadata_section_labels(),
-                    ));
-                }
+                    },
+                );
                 reply_output(lines.join("\n"))
             }
-            Err(e) => reply_output(cas_session::format_inspect_history_entry_error_message(&e)),
+            Err(message) => reply_output(message),
         }
     }
 
     /// Handle "del #id [#id...]" command - delete session entries
     pub(crate) fn handle_del_command_core(&mut self, line: &str) -> ReplReply {
-        match cas_session::delete_history_entries(&mut self.core.state, line) {
-            Ok(result) => reply_output(cas_session::format_delete_history_result_message(&result)),
-            Err(e) => reply_output(cas_session::format_delete_history_error_message(&e)),
-        }
+        reply_output(cas_session::evaluate_delete_history_command_message(
+            &mut self.core.state,
+            line,
+        ))
     }
 
     /// Handle "clear" or "clear <names>" command
     /// Core logic for "clear" command
     pub(crate) fn handle_clear_command_core(&mut self, line: &str) -> ReplReply {
-        let result = cas_session::clear_bindings_command(&mut self.core.state, line);
+        let lines = cas_session::evaluate_clear_command_lines(&mut self.core.state, line);
         let mut reply = ReplReply::new();
-        for line in cas_session::format_clear_bindings_result_lines(&result) {
+        for line in lines {
             reply.push(ReplMsg::output(line));
         }
         reply
@@ -172,9 +173,8 @@ impl Repl {
     /// Handle "cache" command - show status or clear cache
     /// Core logic for "cache" command
     pub(crate) fn handle_cache_command_core(&mut self, line: &str) -> ReplReply {
-        let result = cas_solver::apply_profile_cache_command(&mut self.core.engine, line);
         let mut reply = ReplReply::new();
-        for line in cas_solver::format_profile_cache_command_lines(&result) {
+        for line in cas_solver::evaluate_profile_cache_command_lines(&mut self.core.engine, line) {
             reply.push(ReplMsg::output(line));
         }
         reply

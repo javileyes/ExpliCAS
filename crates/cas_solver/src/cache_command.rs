@@ -47,10 +47,20 @@ pub fn apply_profile_cache_command(
     }
 }
 
+/// Evaluate a `cache` command line end-to-end and return formatted output lines.
+pub fn evaluate_profile_cache_command_lines(
+    engine: &mut cas_engine::Engine,
+    line: &str,
+) -> Vec<String> {
+    let result = apply_profile_cache_command(engine, line);
+    format_profile_cache_command_lines(&result)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        apply_profile_cache_command, format_profile_cache_command_lines, ProfileCacheCommandResult,
+        apply_profile_cache_command, evaluate_profile_cache_command_lines,
+        format_profile_cache_command_lines, ProfileCacheCommandResult,
     };
 
     #[test]
@@ -114,5 +124,13 @@ mod tests {
         assert_eq!(lines.len(), 2);
         assert_eq!(lines[0], "Unknown cache command: nope");
         assert_eq!(lines[1], "Usage: cache [status|clear]");
+    }
+
+    #[test]
+    fn evaluate_profile_cache_command_lines_composes_apply_and_format() {
+        let mut engine = cas_engine::Engine::new();
+        let lines = evaluate_profile_cache_command_lines(&mut engine, "cache status");
+        assert_eq!(lines.len(), 1);
+        assert!(lines[0].contains("Profile Cache: 0 profiles cached"));
     }
 }

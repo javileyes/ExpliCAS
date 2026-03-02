@@ -10,7 +10,10 @@ use clap::Args;
 
 use cas_session::SimplifyCacheKey;
 
-use crate::session_io;
+use crate::{
+    AssumeScopeArg, BranchArg, BudgetPreset, ConstFoldArg, DomainArg, EvalArgs, EvalJsonLegacyArgs,
+    InvTrigArg, ValueDomainArg,
+};
 use cas_api_models::{ErrorJsonOutput, EvalJsonOutput, TimingsJson};
 
 /// Arguments for eval-json subcommand
@@ -84,6 +87,102 @@ pub struct EvalJsonArgs {
     pub session: Option<PathBuf>,
 }
 
+/// Build JSON args from the richer CLI `eval` args.
+pub fn from_eval_args(expr: String, args: &EvalArgs) -> EvalJsonArgs {
+    EvalJsonArgs {
+        expr,
+        budget_preset: budget_preset_to_string(args.budget),
+        strict: args.strict,
+        max_chars: args.max_chars,
+        steps: args.steps.clone(),
+        context: args.context.clone(),
+        branch: args.branch.clone(),
+        complex: args.complex.clone(),
+        autoexpand: args.autoexpand.clone(),
+        threads: args.threads,
+        domain: domain_arg_to_string(args.domain),
+        value_domain: value_domain_arg_to_string(args.value_domain),
+        inv_trig: inv_trig_arg_to_string(args.inv_trig),
+        complex_branch: branch_arg_to_string(args.complex_branch),
+        const_fold: const_fold_arg_to_string(args.const_fold),
+        assume_scope: assume_scope_arg_to_string(args.assume_scope),
+        session: args.session.clone(),
+    }
+}
+
+/// Build JSON args from legacy `eval-json` CLI args.
+pub fn from_legacy_eval_json_args(args: EvalJsonLegacyArgs) -> EvalJsonArgs {
+    EvalJsonArgs {
+        expr: args.expr,
+        budget_preset: "standard".to_string(),
+        strict: false,
+        max_chars: args.max_chars,
+        steps: args.steps,
+        context: args.context,
+        branch: args.branch,
+        complex: args.complex,
+        autoexpand: args.autoexpand,
+        threads: args.threads,
+        domain: domain_arg_to_string(args.domain),
+        value_domain: value_domain_arg_to_string(args.value_domain),
+        inv_trig: inv_trig_arg_to_string(args.inv_trig),
+        complex_branch: branch_arg_to_string(args.branch_policy),
+        const_fold: const_fold_arg_to_string(args.const_fold),
+        assume_scope: assume_scope_arg_to_string(args.assume_scope),
+        session: None,
+    }
+}
+
+fn budget_preset_to_string(preset: BudgetPreset) -> String {
+    match preset {
+        BudgetPreset::Small => "small".to_string(),
+        BudgetPreset::Standard | BudgetPreset::Cli => "standard".to_string(),
+        BudgetPreset::Unlimited => "unlimited".to_string(),
+    }
+}
+
+fn domain_arg_to_string(domain: DomainArg) -> String {
+    match domain {
+        DomainArg::Strict => "strict".to_string(),
+        DomainArg::Generic => "generic".to_string(),
+        DomainArg::Assume => "assume".to_string(),
+    }
+}
+
+fn value_domain_arg_to_string(vd: ValueDomainArg) -> String {
+    match vd {
+        ValueDomainArg::Real => "real".to_string(),
+        ValueDomainArg::Complex => "complex".to_string(),
+    }
+}
+
+fn inv_trig_arg_to_string(it: InvTrigArg) -> String {
+    match it {
+        InvTrigArg::Strict => "strict".to_string(),
+        InvTrigArg::Principal => "principal".to_string(),
+    }
+}
+
+fn branch_arg_to_string(b: BranchArg) -> String {
+    match b {
+        BranchArg::Principal => "principal".to_string(),
+    }
+}
+
+fn const_fold_arg_to_string(cf: ConstFoldArg) -> String {
+    match cf {
+        ConstFoldArg::Off => "off".to_string(),
+        ConstFoldArg::Safe => "safe".to_string(),
+    }
+}
+
+fn assume_scope_arg_to_string(as_: AssumeScopeArg) -> String {
+    match as_ {
+        AssumeScopeArg::Real => "real".to_string(),
+        AssumeScopeArg::Wildcard => "wildcard".to_string(),
+    }
+}
+
 /// Run the eval-json command
 pub fn run(args: EvalJsonArgs) {
     // Set thread count if specified
@@ -121,7 +220,7 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
 
     // Load or create engine and session state
     let (mut engine, mut state, _) =
-        session_io::load_or_new_session(args.session.as_deref(), &cache_key);
+        cas_session::load_or_new_session(args.session.as_deref(), &cache_key);
 
     // Configure options from args
     cas_solver::json::apply_eval_json_options(
@@ -162,7 +261,7 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
 
     // Save session snapshot if using persistent session
     if let Some(path) = args.session.as_deref() {
-        let _ = session_io::save_session(&engine, &state, path, &cache_key);
+        let _ = cas_session::save_session(&engine, &state, path, &cache_key);
     }
 
     let steps =

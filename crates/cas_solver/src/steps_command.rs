@@ -39,6 +39,13 @@ pub enum StepsCommandResult {
     },
 }
 
+/// Side-effects from applying a `steps` command update to runtime options.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StepsCommandApplyEffects {
+    pub set_steps_mode: Option<crate::StepsMode>,
+    pub set_display_mode: Option<StepsDisplayMode>,
+}
+
 /// Parse raw `steps ...` command input.
 pub fn parse_steps_command_input(line: &str) -> StepsCommandInput {
     let args: Vec<&str> = line.split_whitespace().collect();
@@ -89,6 +96,26 @@ pub fn evaluate_steps_command_input(line: &str, state: StepsCommandState) -> Ste
         StepsCommandInput::UnknownMode(mode) => StepsCommandResult::Invalid {
             message: format_steps_unknown_mode_message(&mode),
         },
+    }
+}
+
+/// Apply `steps` update fields into eval options and return external effects.
+pub fn apply_steps_command_update(
+    set_steps_mode: Option<crate::StepsMode>,
+    set_display_mode: Option<StepsDisplayMode>,
+    eval_options: &mut crate::EvalOptions,
+) -> StepsCommandApplyEffects {
+    let mut changed_steps_mode = None;
+    if let Some(mode) = set_steps_mode {
+        if eval_options.steps_mode != mode {
+            eval_options.steps_mode = mode;
+            changed_steps_mode = Some(mode);
+        }
+    }
+
+    StepsCommandApplyEffects {
+        set_steps_mode: changed_steps_mode,
+        set_display_mode,
     }
 }
 
@@ -161,9 +188,9 @@ pub fn format_steps_unknown_mode_message(mode: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        evaluate_steps_command_input, format_steps_current_message,
-        format_steps_unknown_mode_message, parse_steps_command_input, StepsCommandInput,
-        StepsCommandResult, StepsCommandState, StepsDisplayMode,
+        apply_steps_command_update, evaluate_steps_command_input, format_steps_current_message,
+        format_steps_unknown_mode_message, parse_steps_command_input, StepsCommandApplyEffects,
+        StepsCommandInput, StepsCommandResult, StepsCommandState, StepsDisplayMode,
     };
 
     #[test]
@@ -228,5 +255,46 @@ mod tests {
             }
             other => panic!("unexpected result: {other:?}"),
         }
+    }
+
+    #[test]
+    fn apply_steps_command_update_sets_mode_when_changed() {
+        let mut eval_options = crate::EvalOptions {
+            steps_mode: crate::StepsMode::On,
+            ..crate::EvalOptions::default()
+        };
+        let effects = apply_steps_command_update(
+            Some(crate::StepsMode::Compact),
+            Some(StepsDisplayMode::Succinct),
+            &mut eval_options,
+        );
+        assert_eq!(eval_options.steps_mode, crate::StepsMode::Compact);
+        assert_eq!(
+            effects,
+            StepsCommandApplyEffects {
+                set_steps_mode: Some(crate::StepsMode::Compact),
+                set_display_mode: Some(StepsDisplayMode::Succinct),
+            }
+        );
+    }
+
+    #[test]
+    fn apply_steps_command_update_skips_mode_when_unchanged() {
+        let mut eval_options = crate::EvalOptions {
+            steps_mode: crate::StepsMode::On,
+            ..crate::EvalOptions::default()
+        };
+        let effects = apply_steps_command_update(
+            Some(crate::StepsMode::On),
+            Some(StepsDisplayMode::Verbose),
+            &mut eval_options,
+        );
+        assert_eq!(
+            effects,
+            StepsCommandApplyEffects {
+                set_steps_mode: None,
+                set_display_mode: Some(StepsDisplayMode::Verbose),
+            }
+        );
     }
 }

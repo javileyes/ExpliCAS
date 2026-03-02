@@ -30,10 +30,30 @@ pub fn split_repl_statements(line: &str) -> Vec<&str> {
 /// Parse an input as expression; equations are converted to `Equal(lhs, rhs)`.
 pub fn parse_expr_or_equation_as_expr(ctx: &mut Context, input: &str) -> Result<ExprId, String> {
     let stmt = parse_statement_or_session_ref(ctx, input)?;
-    Ok(match stmt {
+    Ok(statement_to_expr_id(ctx, stmt))
+}
+
+/// Convert a parsed statement into an expression id.
+pub fn statement_to_expr_id(ctx: &mut Context, stmt: cas_parser::Statement) -> ExprId {
+    match stmt {
         cas_parser::Statement::Equation(eq) => ctx.call("Equal", vec![eq.lhs, eq.rhs]),
         cas_parser::Statement::Expression(expr) => expr,
-    })
+    }
+}
+
+/// Build a simplify eval request from an already-parsed statement.
+pub fn build_simplify_eval_request_from_statement(
+    ctx: &mut Context,
+    raw_input: &str,
+    stmt: cas_parser::Statement,
+    auto_store: bool,
+) -> crate::EvalRequest {
+    crate::EvalRequest {
+        raw_input: raw_input.to_string(),
+        parsed: statement_to_expr_id(ctx, stmt),
+        action: crate::EvalAction::Simplify,
+        auto_store,
+    }
 }
 
 /// Split string by delimiter, ignoring delimiters inside parentheses.
@@ -235,10 +255,11 @@ pub fn parse_substitute_args(
 #[cfg(test)]
 mod tests {
     use super::{
-        parse_cache_command_input, parse_expr_or_equation_as_expr, parse_expr_pair,
-        parse_limit_command_input, parse_statement_or_session_ref, parse_substitute_args,
-        parse_timeline_command_input, rsplit_ignoring_parens, split_by_comma_ignoring_parens,
-        split_repl_statements, CacheCommandInput, LimitCommandInput, ParseExprPairError,
+        build_simplify_eval_request_from_statement, parse_cache_command_input,
+        parse_expr_or_equation_as_expr, parse_expr_pair, parse_limit_command_input,
+        parse_statement_or_session_ref, parse_substitute_args, parse_timeline_command_input,
+        rsplit_ignoring_parens, split_by_comma_ignoring_parens, split_repl_statements,
+        statement_to_expr_id, CacheCommandInput, LimitCommandInput, ParseExprPairError,
         ParseSubstituteArgsError, TimelineCommandInput,
     };
 
@@ -260,6 +281,27 @@ mod tests {
             cas_ast::Expr::Function(_, args) => assert_eq!(args.len(), 2),
             _ => panic!("expected function-wrapped equation"),
         }
+    }
+
+    #[test]
+    fn statement_to_expr_id_wraps_equation_with_equal_call() {
+        let mut ctx = cas_ast::Context::new();
+        let stmt = cas_parser::parse_statement("x+1=2", &mut ctx).expect("parse");
+        let expr = statement_to_expr_id(&mut ctx, stmt);
+        match ctx.get(expr) {
+            cas_ast::Expr::Function(_, args) => assert_eq!(args.len(), 2),
+            _ => panic!("expected function-wrapped equation"),
+        }
+    }
+
+    #[test]
+    fn build_simplify_eval_request_from_statement_sets_expected_fields() {
+        let mut ctx = cas_ast::Context::new();
+        let stmt = cas_parser::parse_statement("x+1", &mut ctx).expect("parse");
+        let req = build_simplify_eval_request_from_statement(&mut ctx, "x+1", stmt, true);
+        assert_eq!(req.raw_input, "x+1");
+        assert!(matches!(req.action, crate::EvalAction::Simplify));
+        assert!(req.auto_store);
     }
 
     #[test]

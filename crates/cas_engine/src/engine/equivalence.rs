@@ -3,11 +3,9 @@
 //! Provides both simple boolean equivalence (`are_equivalent`) and
 //! extended tri-state equivalence with domain conditions (`are_equivalent_extended`).
 
-use super::evaluator::eval_f64;
-use super::{EquivalenceResult, Simplifier};
+use super::{eval_f64, EquivalenceResult, Simplifier};
 use cas_ast::{Expr, ExprId};
 use num_traits::Zero;
-use std::collections::HashMap;
 
 impl Simplifier {
     pub fn are_equivalent(&mut self, a: ExprId, b: ExprId) -> bool {
@@ -38,54 +36,15 @@ impl Simplifier {
                     return false;
                 }
                 let vars = cas_ast::collect_variables(&self.context, result_expr);
-                let mut var_map = HashMap::new();
-                for var in vars {
-                    var_map.insert(var, 1.23456789);
-                }
+                let var_map = cas_solver_core::equivalence::default_equiv_probe_map(vars);
 
                 if let Some(val) = eval_f64(&self.context, result_expr, &var_map) {
-                    val.abs() < 1e-9
+                    cas_solver_core::equivalence::is_numeric_equiv_zero(val)
                 } else {
                     false
                 }
             }
         }
-    }
-
-    /// Normalize, deduplicate, and sort requires strings for stable output.
-    ///
-    /// Normalization rules:
-    /// - `expr ≠ 0` where expr starts with `-` → canonicalize to positive form
-    /// - Deduplicate by exact string match
-    /// - Sort alphabetically for deterministic output
-    fn normalize_requires(&self, requires: &mut Vec<String>) {
-        use std::collections::HashSet;
-
-        // Normalize each require string
-        for req in requires.iter_mut() {
-            // Handle "expr ≠ 0" → strip leading negative if present
-            if let Some(expr_part) = req.strip_suffix(" ≠ 0") {
-                let trimmed = expr_part.trim();
-                // If expression starts with "-(" and ends with ")", remove the negative
-                if let Some(inner) = trimmed.strip_prefix("-(") {
-                    if let Some(inner) = inner.strip_suffix(")") {
-                        *req = format!("{} ≠ 0", inner.trim());
-                    }
-                } else if let Some(inner) = trimmed.strip_prefix("-") {
-                    // Simple negative like "-x" → "x"
-                    if !inner.starts_with('(') && !inner.contains(' ') {
-                        *req = format!("{} ≠ 0", inner.trim());
-                    }
-                }
-            }
-        }
-
-        // Deduplicate
-        let mut seen = HashSet::new();
-        requires.retain(|r| seen.insert(r.clone()));
-
-        // Sort for deterministic output
-        requires.sort();
     }
 
     /// Extended equivalence check returning tri-state result with domain conditions.
@@ -136,7 +95,7 @@ impl Simplifier {
             }
 
             self.set_collect_steps(was_collecting);
-            self.normalize_requires(&mut requires);
+            cas_solver_core::equivalence::normalize_requires(&mut requires);
 
             return if has_conditional_rules || !requires.is_empty() {
                 EquivalenceResult::ConditionalTrue { requires }
@@ -197,7 +156,7 @@ impl Simplifier {
             }
 
             self.set_collect_steps(was_collecting);
-            self.normalize_requires(&mut requires);
+            cas_solver_core::equivalence::normalize_requires(&mut requires);
 
             return if has_conditional_rules || !requires.is_empty() {
                 EquivalenceResult::ConditionalTrue { requires }
@@ -270,7 +229,7 @@ impl Simplifier {
                 }
             }
 
-            self.normalize_requires(&mut requires);
+            cas_solver_core::equivalence::normalize_requires(&mut requires);
 
             if has_conditional_rules || !requires.is_empty() {
                 EquivalenceResult::ConditionalTrue { requires }
@@ -331,7 +290,7 @@ impl Simplifier {
                     }
                 }
 
-                self.normalize_requires(&mut requires);
+                cas_solver_core::equivalence::normalize_requires(&mut requires);
 
                 return if has_conditional_rules || !requires.is_empty() {
                     EquivalenceResult::ConditionalTrue { requires }
@@ -343,13 +302,10 @@ impl Simplifier {
             // Not zero symbolically - try numeric verification
             if self.allow_numerical_verification {
                 let vars = cas_ast::collect_variables(&self.context, result_expr);
-                let mut var_map = HashMap::new();
-                for var in &vars {
-                    var_map.insert(var.clone(), 1.23456789);
-                }
+                let var_map = cas_solver_core::equivalence::default_equiv_probe_map(vars);
 
                 if let Some(val) = eval_f64(&self.context, result_expr, &var_map) {
-                    if val.abs() < 1e-9 {
+                    if cas_solver_core::equivalence::is_numeric_equiv_zero(val) {
                         // Numeric evidence suggests equivalence but couldn't prove symbolically
                         return EquivalenceResult::Unknown;
                     } else {

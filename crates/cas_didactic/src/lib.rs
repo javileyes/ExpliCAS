@@ -9,6 +9,13 @@ pub mod timeline;
 
 pub use cas_solver::to_display_steps;
 pub use cas_solver::{pathsteps_to_expr_path, DisplayEvalSteps, ImportanceLevel, PathStep, Step};
-pub use didactic::{enrich_steps, get_standalone_substeps, EnrichedStep, SubStep};
+pub use didactic::{
+    build_cli_substeps_render_plan, enrich_steps, format_cli_simplification_steps,
+    get_standalone_substeps, latex_to_plain_text, CliSubstepsRenderPlan, EnrichedStep, SubStep,
+};
 pub use eval_json_steps::collect_eval_json_steps;
-pub use timeline::{html_escape, latex_escape, SolveTimelineHtml, TimelineHtml, VerbosityLevel};
+pub use timeline::{
+    html_escape, latex_escape, render_simplify_timeline_cli_output, render_simplify_timeline_html,
+    render_solve_timeline_cli_output, render_solve_timeline_html, SolveTimelineHtml,
+    TimelineCliRender, TimelineHtml, VerbosityLevel, TIMELINE_HTML_FILE,
+};

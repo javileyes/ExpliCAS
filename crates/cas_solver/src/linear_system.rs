@@ -377,6 +377,18 @@ pub fn evaluate_linear_system_command_input(
     })
 }
 
+/// Evaluate full `solve_system ...` command line and return a formatted message.
+pub fn evaluate_linear_system_command_line(
+    ctx: &mut Context,
+    line: &str,
+) -> Result<String, String> {
+    let invocation = parse_linear_system_invocation_input(line);
+    match evaluate_linear_system_command_input(ctx, &invocation.spec) {
+        Ok(output) => Ok(format_linear_system_result_message(ctx, &output)),
+        Err(error) => Err(format_linear_system_command_error_message(&error)),
+    }
+}
+
 /// Display a linear-system unique solution in `{ x = a, y = b }` form.
 pub fn display_linear_system_solution(
     ctx: &mut Context,
@@ -900,12 +912,12 @@ fn solve_nxn_gauss(
 mod tests {
     use super::{
         display_linear_system_solution, evaluate_linear_system_command_input,
-        format_linear_system_command_error_message, format_linear_system_result_message,
-        is_valid_linear_system_var, parse_linear_system_invocation_input, parse_linear_system_spec,
-        solve_2x2_linear_system, solve_linear_system_spec, solve_nxn_linear_system,
-        split_semicolon_top_level, LinSolveResult, LinearSystemCommandEvalError,
-        LinearSystemCommandEvalOutput, LinearSystemError, LinearSystemInvocationInput,
-        LinearSystemSpecError,
+        evaluate_linear_system_command_line, format_linear_system_command_error_message,
+        format_linear_system_result_message, is_valid_linear_system_var,
+        parse_linear_system_invocation_input, parse_linear_system_spec, solve_2x2_linear_system,
+        solve_linear_system_spec, solve_nxn_linear_system, split_semicolon_top_level,
+        LinSolveResult, LinearSystemCommandEvalError, LinearSystemCommandEvalOutput,
+        LinearSystemError, LinearSystemInvocationInput, LinearSystemSpecError,
     };
     use cas_ast::Expr;
     use num_rational::BigRational;
@@ -1051,6 +1063,15 @@ mod tests {
             err,
             LinearSystemCommandEvalError::Parse(LinearSystemSpecError::InvalidPartCount)
         ));
+    }
+
+    #[test]
+    fn evaluate_linear_system_command_line_formats_success() {
+        let mut ctx = cas_ast::Context::new();
+        let shown =
+            evaluate_linear_system_command_line(&mut ctx, "solve_system(x+y=3; x-y=1; x; y)")
+                .expect("solve_system command");
+        assert_eq!(shown, "{ x = 2, y = 1 }");
     }
 
     #[test]

@@ -1,10 +1,8 @@
-use cas_ast::{Context, Expr, ExprId};
-use cas_didactic::PathStep;
-use cas_formatter::{DisplayExpr, DisplayExprStyled, ParseStyleSignals, StylePreferences};
+use cas_formatter::DisplayExpr;
+use cas_session::CasConfig;
 use rustyline::error::ReadlineError;
 
 use crate::completer::CasHelper;
-use crate::config::CasConfig;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Verbosity {
@@ -14,222 +12,6 @@ pub enum Verbosity {
     Verbose,
 }
 
-/// Clean verbose patterns from display strings for better didactic quality
-/// Removes patterns like "1 * x" -> "x" and "x * 1" -> "x"
-fn clean_display_string(s: &str) -> String {
-    let mut result = s.to_string();
-    let mut changed = true;
-
-    // Iterate until no more changes (handles nested patterns)
-    while changed {
-        let before = result.clone();
-
-        // Replace "1 * " at the very start
-        if result.starts_with("1 * ") {
-            result = result[4..].to_string();
-        }
-
-        // Replace " * 1" at the very end (but not " * 10" etc)
-        if result.ends_with(" * 1") && !result.ends_with("0 * 1") {
-            result = result[..result.len() - 4].to_string();
-        }
-
-        // Order matters: do more specific patterns first
-
-        // "(1 * " at start of parenthesized expression
-        result = result.replace("(1 * ", "(");
-
-        // " * 1)" at end of parenthesized expression
-        result = result.replace(" * 1)", ")");
-
-        // "1 * 1" -> "1" (common in fraction combination)
-        result = result.replace("1 * 1", "1");
-
-        // " + 1 * " -> " + " (after addition)
-        result = result.replace(" + 1 * ", " + ");
-
-        // " - 1 * " -> " - " (after subtraction)
-        result = result.replace(" - 1 * ", " - ");
-
-        // "/ (1 * " -> "/ ("
-        result = result.replace("/ (1 * ", "/ (");
-
-        // " * 1 +" -> " +"
-        result = result.replace(" * 1 +", " +");
-
-        // " * 1 -" -> " -"
-        result = result.replace(" * 1 -", " -");
-
-        // " * 1 /" -> " /"
-        result = result.replace(" * 1 /", " /");
-
-        // " * 1 *" -> " *" (chained multiplications)
-        result = result.replace(" * 1 *", " *");
-
-        // Handle edge case: "1 * -" at start (like "1 * -1^2")
-        if result.starts_with("1 * -") {
-            result = result[4..].to_string();
-        }
-
-        // "1 * " folsuccincted by digit at start (like "1 * 2")
-        if result.starts_with("1 * ") && result.len() > 4 {
-            let next_char = result.chars().nth(4);
-            if let Some(c) = next_char {
-                if c.is_ascii_digit() || c == '-' || c == 'x' || c == 'y' || c == '(' {
-                    result = result[4..].to_string();
-                }
-            }
-        }
-
-        // "/ (1 * x)" -> "/ x" for denominators
-        result = result.replace("/ (1 * x)", "/ x");
-        result = result.replace("/ (1 * y)", "/ y");
-
-        // Handle "2 * -1 * x" -> "-2 * x" is too complex, instead handle "* -1 * " later
-        result = result.replace(" * -1 * ", " * -");
-
-        // Also handle middot (·) patterns used in display output
-        // "1·x" -> "x" and "x·1" -> "x"
-        result = result.replace("(1·", "(");
-        result = result.replace("·1)", ")");
-        result = result.replace(" + 1·", " + ");
-        result = result.replace(" - 1·", " - ");
-        result = result.replace("·1 +", " +");
-        result = result.replace("·1 -", " -");
-        result = result.replace("·1 /", " /");
-        result = result.replace("·1·", "·");
-        result = result.replace("·1)", ")");
-        // Handle end of string patterns
-        if result.ends_with("·1") {
-            result = result[..result.len() - 3].to_string(); // ·1 is 3 bytes in UTF-8
-        }
-        // Handle start of string
-        if result.starts_with("1·") && result.len() > 3 {
-            result = result[3..].to_string(); // 1· is 3 bytes
-        }
-
-        changed = before != result;
-    }
-
-    // Remove __hold(...) wrapper - it's an internal invisible barrier
-    while let Some(start) = result.find("__hold(") {
-        // Find matching closing paren
-        let content_start = start + 7; // Length of "__hold("
-        let mut depth = 1;
-        let mut end = content_start;
-        for (i, c) in result[content_start..].char_indices() {
-            match c {
-                '(' => depth += 1,
-                ')' => {
-                    depth -= 1;
-                    if depth == 0 {
-                        end = content_start + i;
-                        break;
-                    }
-                }
-                _ => {}
-            }
-        }
-        if depth == 0 {
-            let inner = &result[content_start..end];
-            result = format!("{}{}{}", &result[..start], inner, &result[end + 1..]);
-        } else {
-            break; // Malformed, stop
-        }
-    }
-
-    // Clean sign patterns (matches LaTeX cleanup logic)
-    clean_sign_patterns(result)
-}
-
-/// Clean sign patterns from display strings.
-/// Converts `+ -` to `-` and `- -` to `+` only when followed by a digit or variable,
-/// NOT when followed by `(` (which indicates a grouped subexpression like `(-1)²`).
-/// This mirrors the LaTeX cleanup logic in clean_latex_negatives.
-fn clean_sign_patterns(s: String) -> String {
-    use regex::Regex;
-    use std::sync::LazyLock;
-
-    static RE_PLUS_MINUS: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r"\+ -([0-9a-zA-Z√^])").expect("valid regex literal"));
-    static RE_MINUS_MINUS: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r"- -([0-9a-zA-Z√^])").expect("valid regex literal"));
-    static RE_PLUS_MINUS_COMPACT: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r"\+-([0-9a-zA-Z])").expect("valid regex literal"));
-    static RE_MINUS_MINUS_COMPACT: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r"--([0-9a-zA-Z])").expect("valid regex literal"));
-
-    let mut result = s;
-
-    // Only clean "+ -" and "- -" when followed by a digit, letter, or √/^ symbol,
-    // NOT when followed by ( which indicates a parenthesized expression like (-1)²
-    result = RE_PLUS_MINUS.replace_all(&result, "- $1").to_string();
-    result = RE_MINUS_MINUS.replace_all(&result, "+ $1").to_string();
-
-    // Also handle without space variants, but only before digits/letters
-    result = RE_PLUS_MINUS_COMPACT
-        .replace_all(&result, "-$1")
-        .to_string();
-    result = RE_MINUS_MINUS_COMPACT
-        .replace_all(&result, "+$1")
-        .to_string();
-
-    result
-}
-
-fn clean_result_line(lines: &mut [String]) {
-    let Some(last) = lines.last_mut() else {
-        return;
-    };
-    let Some(raw_value) = last.strip_prefix("Result: ") else {
-        return;
-    };
-    *last = format!("Result: {}", clean_display_string(raw_value));
-}
-
-/// Display an expression, automatically rendering poly_result as formatted polynomial.
-/// This is the preferred way to display expressions that might be poly_result.
-fn display_expr_or_poly(ctx: &Context, id: ExprId) -> String {
-    // Try to render as poly_result first (fast path for opaque polynomials)
-    if let Some(poly_str) = cas_solver::try_render_poly_result(ctx, id) {
-        return poly_str;
-    }
-
-    // Fall back to standard display
-    clean_display_string(&format!("{}", DisplayExpr { context: ctx, id }))
-}
-
-/// Render an expression with scoped display transforms based on the rule name.
-/// Used for per-step rendering where certain rules (e.g., "Quadratic Formula")
-/// should display sqrt notation instead of ^(1/2).
-/// Now also respects global style preferences for consistent root display.
-fn render_with_rule_scope(
-    ctx: &Context,
-    id: ExprId,
-    rule_name: &str,
-    style_prefs: &StylePreferences,
-) -> String {
-    // Map rule names to scopes
-    let scopes: Vec<cas_formatter::display_transforms::ScopeTag> = match rule_name {
-        "Quadratic Formula" => vec![cas_formatter::display_transforms::ScopeTag::Rule(
-            "QuadraticFormula",
-        )],
-        // Add more rule mappings as needed
-        _ => vec![],
-    };
-
-    // ScopedRenderer now carries style prefs — when no transforms match,
-    // it falls through to DisplayExprStyled automatically
-    let registry = cas_formatter::display_transforms::DisplayTransformRegistry::with_defaults();
-    let renderer = cas_formatter::display_transforms::ScopedRenderer::new(
-        ctx,
-        &scopes,
-        &registry,
-        style_prefs,
-    );
-    renderer.render(id)
-}
-
 pub struct Repl {
     /// Core logic - pure computation without I/O
     pub core: ReplCore,
@@ -237,116 +19,6 @@ pub struct Repl {
     verbosity: Verbosity,
     /// CLI configuration (loaded from file, applies rules to core)
     config: CasConfig,
-}
-
-fn reconstruct_global_expr(
-    context: &mut Context,
-    root: ExprId,
-    path: &[PathStep],
-    replacement: ExprId,
-) -> ExprId {
-    if path.is_empty() {
-        return replacement;
-    }
-
-    let current_step = &path[0];
-    let remaining_path = &path[1..];
-    let expr = context.get(root).clone();
-
-    match (expr, current_step) {
-        (Expr::Add(l, r), PathStep::Left) => {
-            let new_l = reconstruct_global_expr(context, l, remaining_path, replacement);
-            context.add(Expr::Add(new_l, r))
-        }
-        // Special case: Sub(a,b) may have been canonicalized to Add(a, Neg(b))
-        // When PathStep::Right expects to modify the original "b", we need to
-        // traverse into the Neg wrapper and reconstruct there.
-        (Expr::Add(l, r), PathStep::Right) => {
-            // Check if right side is Neg - if so, this might be a canonicalized Sub
-            if let Expr::Neg(inner) = context.get(r).clone() {
-                // Traverse into the Neg and wrap result back in Neg
-                let new_inner =
-                    reconstruct_global_expr(context, inner, remaining_path, replacement);
-                let new_neg = context.add(Expr::Neg(new_inner));
-                context.add(Expr::Add(l, new_neg))
-            } else {
-                // Normal case - not a canonicalized Sub
-                let new_r = reconstruct_global_expr(context, r, remaining_path, replacement);
-                context.add(Expr::Add(l, new_r))
-            }
-        }
-        (Expr::Sub(l, r), PathStep::Left) => {
-            let new_l = reconstruct_global_expr(context, l, remaining_path, replacement);
-            context.add(Expr::Sub(new_l, r))
-        }
-        (Expr::Sub(l, r), PathStep::Right) => {
-            let new_r = reconstruct_global_expr(context, r, remaining_path, replacement);
-            context.add(Expr::Sub(l, new_r))
-        }
-        (Expr::Mul(l, r), PathStep::Left) => {
-            let new_l = reconstruct_global_expr(context, l, remaining_path, replacement);
-            context.add(Expr::Mul(new_l, r))
-        }
-        (Expr::Mul(l, r), PathStep::Right) => {
-            let new_r = reconstruct_global_expr(context, r, remaining_path, replacement);
-            context.add(Expr::Mul(l, new_r))
-        }
-        (Expr::Div(l, r), PathStep::Left) => {
-            let new_l = reconstruct_global_expr(context, l, remaining_path, replacement);
-            context.add(Expr::Div(new_l, r))
-        }
-        (Expr::Div(l, r), PathStep::Right) => {
-            let new_r = reconstruct_global_expr(context, r, remaining_path, replacement);
-            context.add(Expr::Div(l, new_r))
-        }
-        (Expr::Pow(b, e), PathStep::Base) => {
-            let new_b = reconstruct_global_expr(context, b, remaining_path, replacement);
-            context.add(Expr::Pow(new_b, e))
-        }
-        (Expr::Pow(b, e), PathStep::Exponent) => {
-            let new_e = reconstruct_global_expr(context, e, remaining_path, replacement);
-            context.add(Expr::Pow(b, new_e))
-        }
-        (Expr::Neg(e), PathStep::Inner) => {
-            let new_e = reconstruct_global_expr(context, e, remaining_path, replacement);
-            context.add(Expr::Neg(new_e))
-        }
-        (Expr::Function(name, args), PathStep::Arg(idx)) => {
-            let mut new_args = args.clone();
-            if *idx < new_args.len() {
-                new_args[*idx] =
-                    reconstruct_global_expr(context, new_args[*idx], remaining_path, replacement);
-                context.add(Expr::Function(name, new_args))
-            } else {
-                root // Should not happen if path is valid
-            }
-        }
-        _ => root, // Path mismatch or invalid structure
-    }
-}
-
-fn should_show_step(step: &cas_didactic::Step, verbosity: Verbosity) -> bool {
-    use cas_didactic::ImportanceLevel;
-
-    match verbosity {
-        Verbosity::None => false,
-        Verbosity::Verbose => true,
-        // Succinct and Normal both show Medium+ importance, just different display
-        Verbosity::Succinct | Verbosity::Normal => {
-            if step.get_importance() < ImportanceLevel::Medium {
-                return false;
-            }
-
-            // Additional check: global no-ops (expansion then contraction cycles)
-            if let (Some(before), Some(after)) = (step.global_before, step.global_after) {
-                if before == after {
-                    return false;
-                }
-            }
-
-            true
-        }
-    }
 }
 
 impl Default for Repl {
@@ -367,6 +39,7 @@ impl Default for Repl {
 //   dispatch.rs         - Command dispatch and routing
 //   help.rs             - Help system and documentation
 //   commands_analysis.rs - Analysis commands (equiv, subst, timeline, visualize, explain)
+//   commands_health.rs  - Health diagnostics command
 //   commands_session.rs  - Session environment (let, vars, clear, reset, cache)
 //   commands_semantics.rs - Semantics commands (semantics, presets)
 //   semantics.rs        - Semantic analysis commands
@@ -381,6 +54,8 @@ impl Default for Repl {
 
 mod commands_algebra;
 mod commands_analysis;
+mod commands_config;
+mod commands_health;
 mod commands_semantics;
 mod commands_session;
 mod commands_solve;

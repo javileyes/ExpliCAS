@@ -12,6 +12,7 @@ cas_session_core = { path = "../cas_session_core" }
 cas_engine = { path = "../cas_engine", default-features = false }
 cas_parser = { path = "../cas_parser" }
 serde = { version = "1.0", features = ["derive"] }
+toml = "0.9.8"
 bincode = "1"
 num-bigint = "0.4"
 num-rational = "0.4"

@@ -2,8 +2,9 @@
 
 use std::path::Path;
 
-use cas_session::{SessionState, SimplifyCacheKey, SnapshotError};
-use cas_solver::Engine;
+use cas_engine::Engine;
+
+use crate::{SessionState, SimplifyCacheKey, SnapshotError};
 
 /// Load a compatible session snapshot if available, otherwise create a fresh engine/state.
 ///

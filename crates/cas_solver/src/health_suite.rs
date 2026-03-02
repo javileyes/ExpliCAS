@@ -6,7 +6,7 @@
 //!
 //! Each case has expression, expected limits, and optional flags.
 
-use cas_solver::{PipelineStats, Simplifier, SimplifyOptions, SimplifyPhase};
+use crate::{PipelineStats, Simplifier, SimplifyOptions, SimplifyPhase};
 use std::str::FromStr;
 
 /// Category of health test case

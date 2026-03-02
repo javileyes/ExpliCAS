@@ -8,6 +8,7 @@ pub use cas_ast::{Constant, Context, Expr, ExprId};
 
 pub mod conditions;
 pub mod display;
+pub mod display_clean;
 pub mod display_context;
 pub mod display_hint_builder;
 pub mod display_transforms;
@@ -19,6 +20,7 @@ pub mod latex_highlight;
 pub mod latex_no_roots;
 pub mod path;
 pub mod root_style;
+pub mod rule_scope;
 pub mod visualizer;
 
 pub use conditions::{
@@ -26,6 +28,7 @@ pub use conditions::{
     condition_set_to_latex,
 };
 pub use display::{DisplayExpr, DisplayExprStyled, DisplayExprWithHints, RawDisplayExpr};
+pub use display_clean::{clean_display_string, clean_sign_patterns};
 pub use display_context::{DisplayContext, DisplayHint};
 pub use display_hint_builder::{
     build_display_context, build_display_context_with_result, DisplayStepLike,
@@ -47,6 +50,7 @@ pub use path::{
     extract_add_terms, find_path_to_expr, navigate_to_subexpr,
 };
 pub use root_style::{detect_root_style, ParseStyleSignals, RootStyle, StylePreferences};
+pub use rule_scope::render_with_rule_scope;
 pub use visualizer::AstVisualizer;
 
 /// Render one expression id to display text.

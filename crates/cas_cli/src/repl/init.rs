@@ -105,90 +105,23 @@ impl Repl {
                         Err(e) => eprintln!("✖ Failed to write {}: {}", path.display(), e),
                     }
                 }
-            }
-        }
-    }
-
-    /// Simplify expression using current pipeline options
-    #[allow(dead_code)]
-    pub(crate) fn do_simplify(
-        &mut self,
-        expr: cas_ast::ExprId,
-    ) -> (cas_ast::ExprId, Vec<cas_didactic::Step>) {
-        // Use state.options.to_simplify_options() to get correct expand_policy, context_mode, etc.
-        // (self.core.simplify_options is legacy and doesn't sync expand_policy)
-        let mut opts = self.core.state.options().to_simplify_options();
-        opts.collect_steps = self.core.engine.simplifier.collect_steps();
-        // V2.15.8: Copy autoexpand_binomials from simplify_options (set by 'set autoexpand_binomials on')
-        opts.shared.autoexpand_binomials = self.core.simplify_options.shared.autoexpand_binomials;
-        opts.shared.heuristic_poly = self.core.simplify_options.shared.heuristic_poly;
-
-        // Note: Tool dispatcher for collect/expand_log is in Engine::eval (cas_engine/src/eval.rs)
-        // This function is dead code but kept for internal use; no dispatcher needed here.
-
-        // Enable health metrics and clear previous run if debug or health mode is on
-        if self.core.debug_mode || self.core.health_enabled {
-            self.core.engine.simplifier.profiler.enable_health();
-            self.core.engine.simplifier.profiler.clear_run();
-        }
-
-        let (result, steps, stats) = self.core.engine.simplifier.simplify_with_stats(expr, opts);
-
-        // Store health report for the `health` command
-        // Always store if health_enabled; for debug-only use threshold
-        if self.core.health_enabled || (self.core.debug_mode && stats.total_rewrites >= 5) {
-            self.core.last_health_report =
-                Some(self.core.engine.simplifier.profiler.health_report());
-        }
-
-        // Show debug output if enabled
-        if self.core.debug_mode {
-            let mut lines: Vec<String> = Vec::new();
-            lines.push(cas_solver::format_pipeline_stats(
-                &self.core.engine.simplifier,
-                &stats,
-            ));
-
-            // Policy A+ hint: when simplify makes minimal changes to a Mul expression
-            if stats.total_rewrites <= 1
-                && matches!(
-                    self.core.engine.simplifier.context.get(result),
-                    cas_ast::Expr::Mul(_, _)
-                )
-            {
-                lines.push(
-                    "Note: simplify preserves factored products. Use expand(...) to expand."
-                        .to_string(),
-                );
-            }
-
-            // Show health report if significant activity (>= 5 rewrites)
-            if stats.total_rewrites >= 5 {
-                lines.push(String::new());
-                if let Some(ref report) = self.core.last_health_report {
-                    lines.push(report.to_string());
+                ReplMsg::OpenFile { path } => {
+                    #[cfg(target_os = "macos")]
+                    {
+                        match std::process::Command::new("open").arg(&path).spawn() {
+                            Ok(_) => {}
+                            Err(e) => {
+                                eprintln!("✖ Failed to open {}: {}", path.display(), e);
+                            }
+                        }
+                    }
+                    #[cfg(not(target_os = "macos"))]
+                    {
+                        let _ = path;
+                    }
                 }
             }
-
-            self.print_reply(reply_output(lines.join("\n")));
         }
-
-        self.core.last_stats = Some(stats.clone());
-
-        // Print assumptions summary if reporting is enabled and there are assumptions
-        if self.core.state.options().shared.assumption_reporting
-            != cas_solver::AssumptionReporting::Off
-            && !stats.assumptions.is_empty()
-        {
-            let assumption_records = cas_solver::assumption_records_from_engine(&stats.assumptions);
-            if let Some(summary) =
-                cas_solver::format_assumption_records_summary(&assumption_records)
-            {
-                self.print_reply(reply_output(format!("⚠ Assumptions: {}", summary)));
-            }
-        }
-
-        (result, steps)
     }
 
     pub(crate) fn sync_config_to_simplifier(&mut self) {

@@ -21,6 +21,13 @@ pub enum ContextCommandResult {
     },
 }
 
+/// Result from evaluating + applying a `context` command to runtime options.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ContextCommandApplyOutput {
+    pub message: String,
+    pub rebuild_simplifier: bool,
+}
+
 /// Parse raw `context ...` command input.
 pub fn parse_context_command_input(line: &str) -> ContextCommandInput {
     let args: Vec<&str> = line.split_whitespace().collect();
@@ -49,6 +56,39 @@ pub fn evaluate_context_command_input(
         },
         ContextCommandInput::UnknownMode(mode) => ContextCommandResult::Invalid {
             message: format_context_unknown_message(&mode),
+        },
+    }
+}
+
+/// Apply context mode into eval options, returning whether mode changed.
+pub fn apply_context_mode_to_options(
+    mode: crate::ContextMode,
+    eval_options: &mut crate::EvalOptions,
+) -> bool {
+    if eval_options.shared.context_mode == mode {
+        return false;
+    }
+    eval_options.shared.context_mode = mode;
+    true
+}
+
+/// Evaluate and apply a `context` command directly to runtime options.
+pub fn evaluate_and_apply_context_command(
+    line: &str,
+    eval_options: &mut crate::EvalOptions,
+) -> ContextCommandApplyOutput {
+    match evaluate_context_command_input(line, eval_options.shared.context_mode) {
+        ContextCommandResult::ShowCurrent { message } => ContextCommandApplyOutput {
+            message,
+            rebuild_simplifier: false,
+        },
+        ContextCommandResult::SetMode { mode, message } => ContextCommandApplyOutput {
+            message,
+            rebuild_simplifier: apply_context_mode_to_options(mode, eval_options),
+        },
+        ContextCommandResult::Invalid { message } => ContextCommandApplyOutput {
+            message,
+            rebuild_simplifier: false,
         },
     }
 }
@@ -90,6 +130,7 @@ pub fn format_context_unknown_message(mode: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
+        apply_context_mode_to_options, evaluate_and_apply_context_command,
         evaluate_context_command_input, format_context_current_message, format_context_set_message,
         parse_context_command_input, ContextCommandInput, ContextCommandResult,
     };
@@ -129,5 +170,40 @@ mod tests {
             }
             other => panic!("unexpected result: {other:?}"),
         }
+    }
+
+    #[test]
+    fn apply_context_mode_to_options_reports_change() {
+        let mut eval_options = crate::EvalOptions::default();
+        eval_options.shared.context_mode = crate::ContextMode::Auto;
+
+        assert!(!apply_context_mode_to_options(
+            crate::ContextMode::Auto,
+            &mut eval_options
+        ));
+        assert!(apply_context_mode_to_options(
+            crate::ContextMode::Solve,
+            &mut eval_options
+        ));
+        assert_eq!(eval_options.shared.context_mode, crate::ContextMode::Solve);
+    }
+
+    #[test]
+    fn evaluate_and_apply_context_command_sets_rebuild_flag_when_changed() {
+        let mut eval_options = crate::EvalOptions::default();
+        eval_options.shared.context_mode = crate::ContextMode::Auto;
+
+        let out = evaluate_and_apply_context_command("context solve", &mut eval_options);
+        assert!(out.rebuild_simplifier);
+        assert!(out.message.contains("Context: solve"));
+        assert_eq!(eval_options.shared.context_mode, crate::ContextMode::Solve);
+    }
+
+    #[test]
+    fn evaluate_and_apply_context_command_show_current_does_not_rebuild() {
+        let mut eval_options = crate::EvalOptions::default();
+        let out = evaluate_and_apply_context_command("context", &mut eval_options);
+        assert!(!out.rebuild_simplifier);
+        assert!(out.message.contains("Current context"));
     }
 }

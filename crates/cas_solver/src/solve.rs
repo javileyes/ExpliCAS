@@ -369,6 +369,40 @@ where
     })
 }
 
+/// Evaluate full REPL `solve ...` command and render output lines.
+pub fn evaluate_solve_command_lines<S>(
+    engine: &mut crate::Engine,
+    session: &mut S,
+    line: &str,
+    default_check_enabled: bool,
+    mut render_config: crate::SolveCommandRenderConfig,
+) -> Vec<String>
+where
+    S: cas_engine::EvalSession<
+        Options = cas_engine::EvalOptions,
+        Diagnostics = cas_engine::Diagnostics,
+    >,
+    S::Store: cas_engine::EvalStore<
+        DomainMode = cas_engine::DomainMode,
+        RequiredItem = cas_engine::RequiredItem,
+        Step = cas_engine::Step,
+        Diagnostics = cas_engine::Diagnostics,
+    >,
+{
+    let rest = crate::extract_solve_command_tail(line);
+    match evaluate_solve_invocation_input(engine, session, rest, default_check_enabled, true) {
+        Ok(invocation_out) => {
+            render_config.check_solutions = invocation_out.check_enabled;
+            crate::format_solve_command_eval_lines(
+                engine,
+                &invocation_out.eval_output,
+                render_config,
+            )
+        }
+        Err(error) => vec![format_solve_command_error_message(&error)],
+    }
+}
+
 /// Evaluate a parsed REPL `solve` command.
 pub fn evaluate_parsed_solve_command_input<S>(
     engine: &mut crate::Engine,
@@ -558,12 +592,13 @@ fn resolve_solve_var(
 mod tests {
     use super::{
         evaluate_parsed_solve_command_input, evaluate_solve_command_input,
-        evaluate_solve_invocation_input, evaluate_timeline_solve_command_input,
-        evaluate_timeline_solve_with_eval_options, format_solve_command_error_message,
-        format_solve_prepare_error_message, format_timeline_solve_error_message,
-        parse_solve_command_input, parse_solve_invocation_input, prepare_solve_eval_request,
-        prepare_timeline_solve_input, SolveCommandEvalError, SolveCommandInput,
-        SolveInvocationInput, SolvePrepareError, TimelineSolveEvalError,
+        evaluate_solve_command_lines, evaluate_solve_invocation_input,
+        evaluate_timeline_solve_command_input, evaluate_timeline_solve_with_eval_options,
+        format_solve_command_error_message, format_solve_prepare_error_message,
+        format_timeline_solve_error_message, parse_solve_command_input,
+        parse_solve_invocation_input, prepare_solve_eval_request, prepare_timeline_solve_input,
+        SolveCommandEvalError, SolveCommandInput, SolveInvocationInput, SolvePrepareError,
+        TimelineSolveEvalError,
     };
     use cas_session::SessionState;
 
@@ -721,6 +756,52 @@ mod tests {
         )
         .expect("solve invocation");
         assert!(out.check_enabled);
+    }
+
+    #[test]
+    fn evaluate_solve_command_lines_formats_result() {
+        let mut engine = crate::Engine::new();
+        let mut session = SessionState::new();
+        let lines = evaluate_solve_command_lines(
+            &mut engine,
+            &mut session,
+            "solve x + 2 = 5, x",
+            false,
+            crate::SolveCommandRenderConfig {
+                show_steps: false,
+                show_verbose_substeps: false,
+                requires_display: crate::RequiresDisplayLevel::Essential,
+                debug_mode: false,
+                hints_enabled: false,
+                domain_mode: crate::DomainMode::Generic,
+                check_solutions: false,
+            },
+        );
+        assert!(lines.iter().any(|line| line.starts_with("Result: ")));
+    }
+
+    #[test]
+    fn evaluate_solve_command_lines_formats_errors() {
+        let mut engine = crate::Engine::new();
+        let mut session = SessionState::new();
+        let lines = evaluate_solve_command_lines(
+            &mut engine,
+            &mut session,
+            "solve x + y = 3",
+            false,
+            crate::SolveCommandRenderConfig {
+                show_steps: false,
+                show_verbose_substeps: false,
+                requires_display: crate::RequiresDisplayLevel::Essential,
+                debug_mode: false,
+                hints_enabled: false,
+                domain_mode: crate::DomainMode::Generic,
+                check_solutions: false,
+            },
+        );
+        assert!(lines
+            .first()
+            .is_some_and(|line| line.contains("ambiguous variables")));
     }
 
     #[test]

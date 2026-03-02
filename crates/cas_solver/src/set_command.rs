@@ -58,6 +58,13 @@ impl SetCommandPlan {
     }
 }
 
+/// Side effects produced while applying a `SetCommandPlan`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct SetCommandApplyEffects {
+    pub set_steps_mode: Option<crate::StepsMode>,
+    pub set_display_mode: Option<SetDisplayMode>,
+}
+
 /// Evaluated `set` command result.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SetCommandResult {
@@ -92,6 +99,46 @@ pub fn evaluate_set_command_input(line: &str, state: SetCommandState) -> SetComm
             message: format_set_option_value(option, state),
         },
         SetCommandInput::SetOption { option, value } => evaluate_set_option(option, value, state),
+    }
+}
+
+/// Apply a normalized `set` plan to runtime options.
+///
+/// Returns UI-adjacent effects (`steps_mode`/`display_mode`) so frontends can
+/// update local renderer/runtime state without duplicating option mutation logic.
+pub fn apply_set_command_plan(
+    plan: &SetCommandPlan,
+    simplify_options: &mut crate::SimplifyOptions,
+    eval_options: &mut crate::EvalOptions,
+    debug_mode: &mut bool,
+) -> SetCommandApplyEffects {
+    if let Some(enabled) = plan.set_transform {
+        simplify_options.enable_transform = enabled;
+    }
+    if let Some(level) = plan.set_rationalize {
+        simplify_options.rationalize.auto_level = level;
+    }
+    if let Some(mode) = plan.set_heuristic_poly {
+        eval_options.shared.heuristic_poly = mode;
+        simplify_options.shared.heuristic_poly = mode;
+    }
+    if let Some(mode) = plan.set_autoexpand_binomials {
+        eval_options.shared.autoexpand_binomials = mode;
+        simplify_options.shared.autoexpand_binomials = mode;
+    }
+    if let Some(max_rewrites) = plan.set_max_rewrites {
+        simplify_options.budgets.max_total_rewrites = max_rewrites;
+    }
+    if let Some(value) = plan.set_debug_mode {
+        *debug_mode = value;
+    }
+    if let Some(mode) = plan.set_steps_mode {
+        eval_options.steps_mode = mode;
+    }
+
+    SetCommandApplyEffects {
+        set_steps_mode: plan.set_steps_mode,
+        set_display_mode: plan.set_display_mode,
     }
 }
 
@@ -364,8 +411,9 @@ fn display_mode_label(mode: SetDisplayMode) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::{
-        evaluate_set_command_input, format_set_help_text, parse_set_command_input, SetCommandInput,
-        SetCommandResult, SetCommandState, SetDisplayMode,
+        apply_set_command_plan, evaluate_set_command_input, format_set_help_text,
+        parse_set_command_input, SetCommandApplyEffects, SetCommandInput, SetCommandResult,
+        SetCommandState, SetDisplayMode,
     };
 
     fn state() -> SetCommandState {
@@ -429,5 +477,60 @@ mod tests {
         assert!(text.contains("Current settings:"));
         assert!(text.contains("transform: on"));
         assert!(text.contains("steps: on (display: normal)"));
+    }
+
+    #[test]
+    fn apply_set_command_plan_updates_states_and_effects() {
+        let mut simplify_options = crate::SimplifyOptions::default();
+        let mut eval_options = crate::EvalOptions::default();
+        let mut debug_mode = false;
+
+        let plan = super::SetCommandPlan {
+            set_transform: Some(false),
+            set_rationalize: Some(crate::AutoRationalizeLevel::Level1),
+            set_heuristic_poly: Some(crate::HeuristicPoly::On),
+            set_autoexpand_binomials: Some(crate::AutoExpandBinomials::On),
+            set_steps_mode: Some(crate::StepsMode::Compact),
+            set_display_mode: Some(SetDisplayMode::Succinct),
+            set_max_rewrites: Some(123),
+            set_debug_mode: Some(true),
+            message: "ok".to_string(),
+        };
+
+        let effects = apply_set_command_plan(
+            &plan,
+            &mut simplify_options,
+            &mut eval_options,
+            &mut debug_mode,
+        );
+
+        assert_eq!(
+            effects,
+            SetCommandApplyEffects {
+                set_steps_mode: Some(crate::StepsMode::Compact),
+                set_display_mode: Some(SetDisplayMode::Succinct),
+            }
+        );
+        assert!(!simplify_options.enable_transform);
+        assert_eq!(
+            simplify_options.rationalize.auto_level,
+            crate::AutoRationalizeLevel::Level1
+        );
+        assert_eq!(
+            simplify_options.shared.heuristic_poly,
+            crate::HeuristicPoly::On
+        );
+        assert_eq!(
+            simplify_options.shared.autoexpand_binomials,
+            crate::AutoExpandBinomials::On
+        );
+        assert_eq!(simplify_options.budgets.max_total_rewrites, 123);
+        assert_eq!(eval_options.steps_mode, crate::StepsMode::Compact);
+        assert_eq!(eval_options.shared.heuristic_poly, crate::HeuristicPoly::On);
+        assert_eq!(
+            eval_options.shared.autoexpand_binomials,
+            crate::AutoExpandBinomials::On
+        );
+        assert!(debug_mode);
     }
 }

@@ -247,6 +247,343 @@ pub fn get_standalone_substeps(ctx: &Context, original_expr: ExprId) -> Vec<SubS
     sub_steps
 }
 
+/// Rendering hints for CLI sub-step blocks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CliSubstepsRenderPlan {
+    /// Optional category header to display before sub-steps.
+    pub header: Option<&'static str>,
+    /// If true, this block should be shown only once (deduplicated across steps).
+    pub dedupe_once: bool,
+}
+
+/// Build a CLI rendering plan for enriched sub-steps.
+///
+/// This preserves the legacy precedence and dedupe behavior from REPL:
+/// - Polynomial normalization header has highest priority.
+/// - Fraction-sum header comes next (unless nested-fraction classification overrides it).
+/// - Factorization header next.
+/// - Nested-fraction header next.
+/// - Fraction-sum-only blocks are deduplicated (shown once).
+pub fn build_cli_substeps_render_plan(sub_steps: &[SubStep]) -> CliSubstepsRenderPlan {
+    let has_fraction_sum = sub_steps.iter().any(|s| {
+        s.description.contains("common denominator") || s.description.contains("Sum the fractions")
+    });
+    let has_factorization = sub_steps.iter().any(|s| {
+        s.description.contains("Cancel common factor") || s.description.contains("Factor")
+    });
+    let has_nested_fraction = sub_steps.iter().any(|s| {
+        s.description.contains("Combinar términos")
+            || s.description.contains("Invertir la fracción")
+            || s.description.contains("denominadores internos")
+    });
+    let has_polynomial_identity = sub_steps.iter().any(|s| {
+        s.description.contains("forma normal polinómica")
+            || s.description.contains("Cancelar términos semejantes")
+    });
+
+    let dedupe_once =
+        has_fraction_sum && !has_nested_fraction && !has_factorization && !has_polynomial_identity;
+
+    let header = if has_polynomial_identity {
+        Some("[Normalización polinómica]")
+    } else if has_fraction_sum && !has_nested_fraction {
+        Some("[Suma de fracciones en exponentes]")
+    } else if has_factorization {
+        Some("[Factorización de polinomios]")
+    } else if has_nested_fraction {
+        Some("[Simplificación de fracción compleja]")
+    } else {
+        None
+    };
+
+    CliSubstepsRenderPlan {
+        header,
+        dedupe_once,
+    }
+}
+
+/// Convert LaTeX-like notation into plain-text form for CLI display.
+pub fn latex_to_plain_text(s: &str) -> String {
+    let mut result = s.to_string();
+
+    // Replace \cdot with multiplication dot.
+    result = result.replace("\\cdot", " · ");
+
+    // Replace \text{...} with its inner content.
+    while let Some(start) = result.find("\\text{") {
+        if let Some(end) = result[start + 6..].find('}') {
+            let content = &result[start + 6..start + 6 + end];
+            result = format!(
+                "{}{}{}",
+                &result[..start],
+                content,
+                &result[start + 7 + end..]
+            );
+        } else {
+            break;
+        }
+    }
+
+    // Recursively replace \frac{num}{den} with (num/den).
+    let mut iterations = 0;
+    while result.contains("\\frac{") && iterations < 10 {
+        iterations += 1;
+        if let Some(start) = result.rfind("\\frac{") {
+            let rest = &result[start + 5..];
+            if let Some((numer, numer_end)) = find_balanced_braces(rest) {
+                let after_numer = &rest[numer_end + 1..];
+                if after_numer.starts_with('{') {
+                    if let Some((denom, denom_end)) = find_balanced_braces(after_numer) {
+                        let total_end = start + 5 + numer_end + 1 + denom_end + 1;
+                        let replacement = format!("({}/{})", numer, denom);
+                        result = format!(
+                            "{}{}{}",
+                            &result[..start],
+                            replacement,
+                            &result[total_end..]
+                        );
+                        continue;
+                    }
+                }
+            }
+        }
+        break;
+    }
+
+    result.replace("\\", "")
+}
+
+/// Format simplification steps for CLI/REPL text output.
+///
+/// This keeps didactic rendering rules outside frontends so clients can remain
+/// thin and only handle I/O.
+pub fn format_cli_simplification_steps(
+    ctx: &mut Context,
+    expr: ExprId,
+    steps: &[Step],
+    style_signals: cas_formatter::root_style::ParseStyleSignals,
+    display_mode: cas_solver::SetDisplayMode,
+) -> Vec<String> {
+    use cas_formatter::root_style::StylePreferences;
+    use cas_formatter::DisplayExprStyled;
+
+    if display_mode == cas_solver::SetDisplayMode::None {
+        return Vec::new();
+    }
+
+    let mut lines = Vec::new();
+    let style_prefs =
+        StylePreferences::from_expression_with_signals(ctx, expr, Some(&style_signals));
+
+    if steps.is_empty() {
+        let standalone_substeps = get_standalone_substeps(ctx, expr);
+
+        if !standalone_substeps.is_empty() && display_mode != cas_solver::SetDisplayMode::Succinct {
+            lines.push("Computation:".to_string());
+            for sub in &standalone_substeps {
+                lines.push(format!("   → {}", sub.description));
+                if !sub.before_expr.is_empty() {
+                    lines.push(format!(
+                        "     {} → {}",
+                        latex_to_plain_text(&sub.before_expr),
+                        latex_to_plain_text(&sub.after_expr)
+                    ));
+                }
+            }
+        } else if display_mode != cas_solver::SetDisplayMode::Succinct {
+            lines.push("No simplification steps needed.".to_string());
+        }
+
+        return lines;
+    }
+
+    if display_mode != cas_solver::SetDisplayMode::Succinct {
+        lines.push("Steps:".to_string());
+    }
+
+    let enriched_steps = enrich_steps(ctx, expr, steps.to_vec());
+    let mut current_root = expr;
+    let mut step_count = 0;
+    let mut sub_steps_shown = false;
+
+    for (step_idx, step) in steps.iter().enumerate() {
+        if cas_solver::should_show_simplify_step(step, display_mode) {
+            let before_disp = cas_formatter::clean_display_string(&format!(
+                "{}",
+                DisplayExprStyled::new(ctx, step.before, &style_prefs)
+            ));
+            let after_disp = cas_formatter::clean_display_string(&format!(
+                "{}",
+                DisplayExprStyled::new(ctx, step.after, &style_prefs)
+            ));
+
+            if before_disp == after_disp {
+                if let Some(global_after) = step.global_after {
+                    current_root = global_after;
+                }
+                continue;
+            }
+
+            step_count += 1;
+
+            if display_mode == cas_solver::SetDisplayMode::Succinct {
+                current_root =
+                    cas_solver::reconstruct_global_expr(ctx, current_root, step.path(), step.after);
+                lines.push(format!(
+                    "-> {}",
+                    DisplayExprStyled::new(ctx, current_root, &style_prefs)
+                ));
+                continue;
+            }
+
+            lines.push(format!(
+                "{}. {}  [{}]",
+                step_count, step.description, step.rule_name
+            ));
+
+            if let Some(global_before) = step.global_before {
+                lines.push(format!(
+                    "   Before: {}",
+                    cas_formatter::clean_display_string(&format!(
+                        "{}",
+                        DisplayExprStyled::new(ctx, global_before, &style_prefs)
+                    ))
+                ));
+            } else {
+                lines.push(format!(
+                    "   Before: {}",
+                    cas_formatter::clean_display_string(&format!(
+                        "{}",
+                        DisplayExprStyled::new(ctx, current_root, &style_prefs)
+                    ))
+                ));
+            }
+
+            if let Some(enriched_step) = enriched_steps.get(step_idx) {
+                if !enriched_step.sub_steps.is_empty() {
+                    let render_plan = build_cli_substeps_render_plan(&enriched_step.sub_steps);
+                    let should_show = if render_plan.dedupe_once {
+                        !sub_steps_shown
+                    } else {
+                        true
+                    };
+
+                    if should_show {
+                        if render_plan.dedupe_once {
+                            sub_steps_shown = true;
+                        }
+                        if let Some(header) = render_plan.header {
+                            lines.push(format!("   {}", header));
+                        }
+                        for sub in &enriched_step.sub_steps {
+                            lines.push(format!("      → {}", sub.description));
+                            if !sub.before_expr.is_empty() {
+                                lines.push(format!(
+                                    "        {} → {}",
+                                    latex_to_plain_text(&sub.before_expr),
+                                    latex_to_plain_text(&sub.after_expr)
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
+
+            let (rule_before_id, rule_after_id) = match (step.before_local(), step.after_local()) {
+                (Some(bl), Some(al)) => (bl, al),
+                _ => (step.before, step.after),
+            };
+
+            let before_disp = cas_formatter::clean_display_string(&format!(
+                "{}",
+                DisplayExprStyled::new(ctx, rule_before_id, &style_prefs)
+            ));
+            let after_disp =
+                cas_formatter::clean_display_string(&cas_formatter::render_with_rule_scope(
+                    ctx,
+                    rule_after_id,
+                    &step.rule_name,
+                    &style_prefs,
+                ));
+
+            if before_disp == after_disp {
+                if let Some(global_after) = step.global_after {
+                    current_root = global_after;
+                }
+                continue;
+            }
+
+            lines.push(format!("   Rule: {} -> {}", before_disp, after_disp));
+
+            if !step.substeps().is_empty() {
+                for substep in step.substeps() {
+                    lines.push(format!("   [{}]", substep.title));
+                    for line in &substep.lines {
+                        lines.push(format!("      • {}", line));
+                    }
+                }
+            }
+
+            if let Some(global_after) = step.global_after {
+                current_root = global_after;
+            } else {
+                current_root =
+                    cas_solver::reconstruct_global_expr(ctx, current_root, step.path(), step.after);
+            }
+
+            lines.push(format!(
+                "   After: {}",
+                cas_formatter::clean_display_string(&format!(
+                    "{}",
+                    DisplayExprStyled::new(ctx, current_root, &style_prefs)
+                ))
+            ));
+
+            for assumption_line in
+                cas_solver::format_displayable_assumption_lines(step.assumption_events())
+            {
+                lines.push(format!("   {}", assumption_line));
+            }
+        } else if let Some(global_after) = step.global_after {
+            current_root = global_after;
+        } else {
+            current_root =
+                cas_solver::reconstruct_global_expr(ctx, current_root, step.path(), step.after);
+        }
+    }
+
+    lines
+}
+
+/// Extract content within balanced braces starting at the first `{`.
+fn find_balanced_braces(s: &str) -> Option<(String, usize)> {
+    let mut depth = 0;
+    let mut content = String::new();
+    for (i, c) in s.chars().enumerate() {
+        match c {
+            '{' => {
+                if depth > 0 {
+                    content.push(c);
+                }
+                depth += 1;
+            }
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some((content, i));
+                }
+                content.push(c);
+            }
+            _ => {
+                if depth > 0 {
+                    content.push(c);
+                }
+            }
+        }
+    }
+    None
+}
+
 // --- Shared helpers used by submodules ---
 
 /// Try to interpret an expression as a fraction (BigRational)
@@ -465,5 +802,26 @@ mod tests {
         // 1 + 1/x contains div
         let add = ctx.add(Expr::Add(one, div));
         assert!(contains_division_like_term(&ctx, add));
+    }
+
+    #[test]
+    fn test_build_cli_substeps_render_plan_fraction_sum_deduped() {
+        let sub_steps = vec![SubStep::new(
+            "Find common denominator for fractions",
+            "",
+            "",
+        )];
+        let plan = build_cli_substeps_render_plan(&sub_steps);
+        assert_eq!(plan.header, Some("[Suma de fracciones en exponentes]"));
+        assert!(plan.dedupe_once);
+    }
+
+    #[test]
+    fn test_latex_to_plain_text_converts_frac_and_text() {
+        let input = r"\text{Paso}: \frac{1}{x+1} \cdot y";
+        let output = latex_to_plain_text(input);
+        assert!(output.contains("Paso"));
+        assert!(output.contains("(1/x+1)"));
+        assert!(output.contains("·"));
     }
 }

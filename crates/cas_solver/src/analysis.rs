@@ -5,7 +5,7 @@ use crate::{
     ParseSubstituteArgsError, Simplifier, Step, SubstituteOptions, SubstituteStrategy,
 };
 use cas_ast::{Expr, ExprId};
-use cas_formatter::DisplayExpr;
+use cas_formatter::{DisplayExpr, DisplayExprStyled, ParseStyleSignals, StylePreferences};
 
 /// Error while evaluating unary function commands (e.g. det/trace/transpose).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -129,6 +129,41 @@ pub struct VisualizeEvalOutput {
     pub dot: String,
 }
 
+/// CLI-facing payload for `visualize` command.
+#[derive(Debug, Clone)]
+pub struct VisualizeCliOutput {
+    pub file_name: &'static str,
+    pub contents: String,
+    pub hint_lines: Vec<String>,
+}
+
+/// Formatted final result line for REPL eval output.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EvalResultLine {
+    pub line: String,
+    /// When true, caller should stop rendering extra metadata sections.
+    pub terminal: bool,
+}
+
+/// Configuration for formatting eval metadata lines.
+#[derive(Debug, Clone, Copy)]
+pub struct EvalMetadataConfig {
+    pub requires_display: crate::RequiresDisplayLevel,
+    pub debug_mode: bool,
+    pub hints_enabled: bool,
+    pub domain_mode: crate::DomainMode,
+    pub assumption_reporting: crate::AssumptionReporting,
+}
+
+/// Formatted eval metadata lines grouped by display phase.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct EvalMetadataLines {
+    pub warning_lines: Vec<String>,
+    pub requires_lines: Vec<String>,
+    pub hint_lines: Vec<String>,
+    pub assumption_lines: Vec<String>,
+}
+
 /// Output of substitution command after applying substitution + simplification.
 #[derive(Debug, Clone)]
 pub struct SubstituteEvalOutput {
@@ -208,6 +243,175 @@ pub fn substitute_render_mode_from_display_mode(
         crate::set_command::SetDisplayMode::Normal => SubstituteRenderMode::Normal,
         crate::set_command::SetDisplayMode::Verbose => SubstituteRenderMode::Verbose,
     }
+}
+
+/// Decide whether a simplification step should be shown for a display mode.
+pub fn should_show_simplify_step(step: &Step, mode: crate::set_command::SetDisplayMode) -> bool {
+    match mode {
+        crate::set_command::SetDisplayMode::None => false,
+        crate::set_command::SetDisplayMode::Verbose => true,
+        crate::set_command::SetDisplayMode::Succinct
+        | crate::set_command::SetDisplayMode::Normal => {
+            if step.get_importance() < crate::ImportanceLevel::Medium {
+                return false;
+            }
+            if let (Some(before), Some(after)) = (step.global_before, step.global_after) {
+                if before == after {
+                    return false;
+                }
+            }
+            true
+        }
+    }
+}
+
+/// Render `full_simplify` output lines for REPL display.
+///
+/// This consolidates step rendering logic outside the CLI crate so the REPL
+/// stays focused on I/O and command routing.
+pub fn format_full_simplify_eval_lines(
+    ctx: &mut cas_ast::Context,
+    expr_input: &str,
+    output: &FullSimplifyEvalOutput,
+    mode: crate::set_command::SetDisplayMode,
+) -> Vec<String> {
+    let mut lines: Vec<String> = Vec::new();
+    let resolved_expr = output.resolved_expr;
+    let simplified = output.simplified_expr;
+    let steps = &output.steps;
+
+    let style_signals = ParseStyleSignals::from_input_string(expr_input);
+    let style_prefs =
+        StylePreferences::from_expression_with_signals(ctx, resolved_expr, Some(&style_signals));
+
+    lines.push(format!(
+        "Parsed: {}",
+        DisplayExpr {
+            context: ctx,
+            id: resolved_expr
+        }
+    ));
+
+    if mode != crate::set_command::SetDisplayMode::None {
+        if steps.is_empty() {
+            if mode != crate::set_command::SetDisplayMode::Succinct {
+                lines.push("No simplification steps needed.".to_string());
+            }
+        } else {
+            if mode != crate::set_command::SetDisplayMode::Succinct {
+                lines.push("Steps (Aggressive Mode):".to_string());
+            }
+
+            let mut current_root = resolved_expr;
+            let mut step_count = 0;
+
+            for step in steps {
+                if should_show_simplify_step(step, mode) {
+                    step_count += 1;
+
+                    if mode == crate::set_command::SetDisplayMode::Succinct {
+                        current_root = crate::reconstruct_global_expr(
+                            ctx,
+                            current_root,
+                            step.path(),
+                            step.after,
+                        );
+                        lines.push(format!(
+                            "-> {}",
+                            DisplayExpr {
+                                context: ctx,
+                                id: current_root
+                            }
+                        ));
+                    } else {
+                        lines.push(format!(
+                            "{}. {}  [{}]",
+                            step_count, step.description, step.rule_name
+                        ));
+
+                        if let Some(global_before) = step.global_before {
+                            lines.push(format!(
+                                "   Before: {}",
+                                cas_formatter::clean_display_string(&format!(
+                                    "{}",
+                                    DisplayExprStyled::new(ctx, global_before, &style_prefs)
+                                ))
+                            ));
+                        } else {
+                            lines.push(format!(
+                                "   Before: {}",
+                                cas_formatter::clean_display_string(&format!(
+                                    "{}",
+                                    DisplayExprStyled::new(ctx, current_root, &style_prefs)
+                                ))
+                            ));
+                        }
+
+                        let (rule_before_id, rule_after_id) =
+                            match (step.before_local(), step.after_local()) {
+                                (Some(bl), Some(al)) => (bl, al),
+                                _ => (step.before, step.after),
+                            };
+
+                        let before_disp = cas_formatter::clean_display_string(&format!(
+                            "{}",
+                            DisplayExprStyled::new(ctx, rule_before_id, &style_prefs)
+                        ));
+                        let after_disp = cas_formatter::clean_display_string(
+                            &cas_formatter::render_with_rule_scope(
+                                ctx,
+                                rule_after_id,
+                                &step.rule_name,
+                                &style_prefs,
+                            ),
+                        );
+
+                        lines.push(format!("   Rule: {} -> {}", before_disp, after_disp));
+
+                        if let Some(global_after) = step.global_after {
+                            current_root = global_after;
+                        } else {
+                            current_root = crate::reconstruct_global_expr(
+                                ctx,
+                                current_root,
+                                step.path(),
+                                step.after,
+                            );
+                        }
+
+                        lines.push(format!(
+                            "   After: {}",
+                            cas_formatter::clean_display_string(&format!(
+                                "{}",
+                                DisplayExprStyled::new(ctx, current_root, &style_prefs)
+                            ))
+                        ));
+
+                        for assumption_line in
+                            crate::format_displayable_assumption_lines(step.assumption_events())
+                        {
+                            lines.push(format!("   {}", assumption_line));
+                        }
+                    }
+                } else if let Some(global_after) = step.global_after {
+                    current_root = global_after;
+                } else {
+                    current_root =
+                        crate::reconstruct_global_expr(ctx, current_root, step.path(), step.after);
+                }
+            }
+        }
+    }
+
+    lines.push(format!(
+        "Result: {}",
+        cas_formatter::clean_display_string(&format!(
+            "{}",
+            DisplayExprStyled::new(ctx, simplified, &style_prefs)
+        ))
+    ));
+
+    lines
 }
 
 /// Parsed tail for `rationalize` command.
@@ -311,6 +515,14 @@ pub fn parse_expand_command_input(line: &str) -> ExpandCommandInput<'_> {
 /// Build `expand(<expr>)` function call string for eval path.
 pub fn wrap_expand_eval_expression(expr: &str) -> String {
     format!("expand({})", expr)
+}
+
+/// Evaluate `expand ...` command into a wrapped eval expression line.
+pub fn evaluate_expand_command_wrapped_line(line: &str) -> Result<String, String> {
+    match parse_expand_command_input(line) {
+        ExpandCommandInput::MissingInput => Err(expand_usage_message().to_string()),
+        ExpandCommandInput::Expr(rest) => Ok(wrap_expand_eval_expression(rest)),
+    }
 }
 
 /// Usage message for `expand_log` command.
@@ -567,6 +779,323 @@ pub fn visualize_output_hint_lines() -> Vec<String> {
         "Render with: dot -Tsvg ast.dot -o ast.svg".to_string(),
         "Or: dot -Tpng ast.dot -o ast.png".to_string(),
     ]
+}
+
+/// Build the CLI render payload for `visualize`.
+pub fn build_visualize_cli_output(out: VisualizeEvalOutput) -> VisualizeCliOutput {
+    VisualizeCliOutput {
+        file_name: "ast.dot",
+        contents: out.dot,
+        hint_lines: visualize_output_hint_lines(),
+    }
+}
+
+/// Evaluate an `equiv ...` command line end-to-end and return formatted output lines.
+pub fn evaluate_equiv_command_lines(
+    simplifier: &mut Simplifier,
+    line: &str,
+) -> Result<Vec<String>, String> {
+    let rest = extract_equiv_command_tail(line);
+    match evaluate_equiv_input(simplifier, rest) {
+        Ok(result) => Ok(format_equivalence_result_lines(&result)),
+        Err(error) => Err(format_expr_pair_parse_error_message(&error, "equiv")),
+    }
+}
+
+/// Evaluate a `subst ...` command line end-to-end and return formatted output lines.
+pub fn evaluate_substitute_command_lines(
+    simplifier: &mut Simplifier,
+    line: &str,
+    render_mode: SubstituteRenderMode,
+) -> Result<Vec<String>, String> {
+    let rest = extract_substitute_command_tail(line);
+    let output =
+        evaluate_substitute_and_simplify_input(simplifier, rest, SubstituteOptions::default())
+            .map_err(|error| format_substitute_parse_error_message(&error))?;
+    let mut lines = format_substitute_eval_lines(&simplifier.context, rest, &output, render_mode);
+    crate::clean_result_output_line(&mut lines);
+    Ok(lines)
+}
+
+/// Evaluate an `explain ...` command line end-to-end and return formatted output lines.
+pub fn evaluate_explain_command_lines(
+    simplifier: &mut Simplifier,
+    line: &str,
+) -> Result<Vec<String>, String> {
+    let rest = extract_explain_command_tail(line);
+    let output = evaluate_explain_gcd_input(simplifier, rest)
+        .map_err(|error| format_explain_error_message(&error))?;
+    let mut lines = format_explain_gcd_eval_lines(&simplifier.context, rest, &output);
+    crate::clean_result_output_line(&mut lines);
+    Ok(lines)
+}
+
+/// Evaluate a `visualize` / `viz` command line end-to-end and return CLI artifact payload.
+pub fn evaluate_visualize_command_output(
+    simplifier: &mut Simplifier,
+    line: &str,
+) -> Result<VisualizeCliOutput, String> {
+    let rest = extract_visualize_command_tail(line);
+    let output = evaluate_visualize_input(simplifier, rest)
+        .map_err(|error| format_transform_eval_error_message(&error))?;
+    Ok(build_visualize_cli_output(output))
+}
+
+/// Evaluate unary command line (`det`, `trace`, `transpose`) and return formatted lines.
+pub fn evaluate_unary_command_lines(
+    simplifier: &mut Simplifier,
+    line: &str,
+    command: &str,
+    display_mode: crate::set_command::SetDisplayMode,
+    show_step_assumptions: bool,
+    clean_result_line: bool,
+) -> Result<Vec<String>, String> {
+    let rest = extract_unary_command_tail(line, command);
+    let output = evaluate_unary_function_input(simplifier, command, rest)
+        .map_err(|error| format_unary_function_eval_error_message(&error))?;
+    let render_config =
+        unary_render_config_for_display_mode(command, display_mode, show_step_assumptions);
+    let mut lines =
+        format_unary_function_eval_lines(&simplifier.context, rest, &output, render_config);
+    if clean_result_line {
+        crate::clean_result_output_line(&mut lines);
+    }
+    Ok(lines)
+}
+
+/// Evaluate `telescope ...` command line and return formatted lines.
+pub fn evaluate_telescope_command_lines(
+    simplifier: &mut Simplifier,
+    line: &str,
+) -> Result<Vec<String>, String> {
+    let rest = match parse_telescope_command_input(line) {
+        TelescopeCommandInput::MissingInput => return Err(telescope_usage_message().to_string()),
+        TelescopeCommandInput::Expr(rest) => rest,
+    };
+    let output = evaluate_telescope_input(simplifier, rest)
+        .map_err(|error| format_transform_eval_error_message(&error))?;
+    Ok(format_telescope_eval_lines(rest, &output))
+}
+
+/// Evaluate `expand_log ...` command line and return formatted lines.
+pub fn evaluate_expand_log_command_lines(
+    simplifier: &mut Simplifier,
+    line: &str,
+) -> Result<Vec<String>, String> {
+    let rest = match parse_expand_log_command_input(line) {
+        ExpandLogCommandInput::MissingInput => return Err(expand_log_usage_message().to_string()),
+        ExpandLogCommandInput::Expr(rest) => rest,
+    };
+    let output = evaluate_expand_log_input(simplifier, rest)
+        .map_err(|error| format_transform_eval_error_message(&error))?;
+    let mut lines = format_expand_log_eval_lines(&simplifier.context, &output);
+    crate::clean_result_output_line(&mut lines);
+    Ok(lines)
+}
+
+/// Evaluate `weierstrass ...` command line and return formatted lines.
+pub fn evaluate_weierstrass_command_lines(
+    simplifier: &mut Simplifier,
+    line: &str,
+) -> Result<Vec<String>, String> {
+    let rest = match parse_weierstrass_command_input(line) {
+        WeierstrassCommandInput::MissingInput => {
+            return Err(weierstrass_usage_message().to_string())
+        }
+        WeierstrassCommandInput::Expr(rest) => rest,
+    };
+    let output = evaluate_weierstrass_input(simplifier, rest)
+        .map_err(|error| format_transform_eval_error_message(&error))?;
+    let mut lines = format_weierstrass_eval_lines(&simplifier.context, rest, &output);
+    crate::clean_result_output_line(&mut lines);
+    Ok(lines)
+}
+
+/// Evaluate `rationalize ...` command line and return formatted lines.
+pub fn evaluate_rationalize_command_lines(
+    simplifier: &mut Simplifier,
+    line: &str,
+) -> Result<Vec<String>, String> {
+    let rest = match parse_rationalize_command_input(line) {
+        RationalizeCommandInput::MissingInput => {
+            return Err(rationalize_usage_message().to_string())
+        }
+        RationalizeCommandInput::Expr(rest) => rest,
+    };
+    let output = evaluate_rationalize_input(simplifier, rest)
+        .map_err(|error| format_rationalize_eval_error_message(&error))?;
+    Ok(format_rationalize_eval_lines(&simplifier.context, &output))
+}
+
+/// Evaluate `limit ...` command line and return formatted lines.
+pub fn evaluate_limit_command_lines(line: &str) -> Result<Vec<String>, String> {
+    let rest = extract_limit_command_tail(line);
+    if rest.is_empty() {
+        return Err(limit_usage_message().to_string());
+    }
+    let output = evaluate_limit_command_input(rest)
+        .map_err(|error| format_limit_command_error_message(&error))?;
+    Ok(format_limit_command_eval_lines(&output))
+}
+
+/// Evaluate `simplify ...` command line end-to-end and return formatted lines.
+pub fn evaluate_full_simplify_command_lines<S>(
+    engine: &mut cas_engine::Engine,
+    session: &S,
+    line: &str,
+    collect_steps: bool,
+    display_mode: crate::set_command::SetDisplayMode,
+) -> Result<Vec<String>, String>
+where
+    S: cas_engine::EvalSession<
+        Options = cas_engine::EvalOptions,
+        Diagnostics = cas_engine::Diagnostics,
+    >,
+{
+    let expr_input = extract_simplify_command_tail(line);
+    let output = evaluate_full_simplify_input(engine, session, expr_input, collect_steps).map_err(
+        |error| match error {
+            FullSimplifyEvalError::Parse(message) => format!("Error: {}", message),
+            FullSimplifyEvalError::Resolve(message) => {
+                format!("Error resolving variables: {}", message)
+            }
+        },
+    )?;
+    Ok(format_full_simplify_eval_lines(
+        &mut engine.simplifier.context,
+        expr_input,
+        &output,
+        display_mode,
+    ))
+}
+
+/// Format the final `Result: ...` line for eval output.
+pub fn format_eval_result_line(
+    context: &cas_ast::Context,
+    parsed_expr: ExprId,
+    result: &crate::EvalResult,
+    style_signals: &ParseStyleSignals,
+) -> Option<EvalResultLine> {
+    let style_prefs =
+        StylePreferences::from_expression_with_signals(context, parsed_expr, Some(style_signals));
+
+    match result {
+        crate::EvalResult::Expr(res) => {
+            if let Expr::Function(name, args) = context.get(*res) {
+                if context.is_builtin(*name, cas_ast::BuiltinFn::Equal) && args.len() == 2 {
+                    return Some(EvalResultLine {
+                        line: format!(
+                            "Result: {} = {}",
+                            cas_formatter::clean_display_string(&format!(
+                                "{}",
+                                DisplayExprStyled::new(context, args[0], &style_prefs)
+                            )),
+                            cas_formatter::clean_display_string(&format!(
+                                "{}",
+                                DisplayExprStyled::new(context, args[1], &style_prefs)
+                            )),
+                        ),
+                        terminal: true,
+                    });
+                }
+            }
+
+            Some(EvalResultLine {
+                line: format!("Result: {}", crate::display_expr_or_poly(context, *res)),
+                terminal: false,
+            })
+        }
+        crate::EvalResult::SolutionSet(solution_set) => Some(EvalResultLine {
+            line: format!(
+                "Result: {}",
+                crate::display_solution_set(context, solution_set)
+            ),
+            terminal: false,
+        }),
+        crate::EvalResult::Set(_sols) => Some(EvalResultLine {
+            line: "Result: Set(...)".to_string(),
+            terminal: false,
+        }),
+        crate::EvalResult::Bool(value) => Some(EvalResultLine {
+            line: format!("Result: {}", value),
+            terminal: false,
+        }),
+        crate::EvalResult::None => None,
+    }
+}
+
+/// Format the stored-entry line (`#N: <expr>`) for eval output.
+pub fn format_eval_stored_entry_line(
+    context: &cas_ast::Context,
+    output: &crate::EvalOutput,
+) -> Option<String> {
+    output.stored_id.map(|id| {
+        format!(
+            "#{id}: {}",
+            DisplayExpr {
+                context,
+                id: output.parsed
+            }
+        )
+    })
+}
+
+/// Format warning/requires/hints/assumptions sections for eval output.
+pub fn format_eval_metadata_lines(
+    context: &mut cas_ast::Context,
+    output: &crate::EvalOutput,
+    config: EvalMetadataConfig,
+) -> EvalMetadataLines {
+    let warning_lines = crate::format_domain_warning_lines(&output.domain_warnings, true, "⚠ ");
+
+    let result_expr = match &output.result {
+        crate::EvalResult::Expr(expr_id) => Some(*expr_id),
+        _ => None,
+    };
+    let mut requires_lines = Vec::new();
+    if !output.diagnostics.requires.is_empty() {
+        let rendered = crate::format_diagnostics_requires_lines(
+            context,
+            &output.diagnostics,
+            result_expr,
+            config.requires_display,
+            config.debug_mode,
+        );
+        if !rendered.is_empty() {
+            requires_lines.push("ℹ️ Requires:".to_string());
+            requires_lines.extend(rendered);
+        }
+    }
+
+    let hint_lines = if config.hints_enabled {
+        let hints =
+            crate::filter_blocked_hints_for_eval(context, output.resolved, &output.blocked_hints);
+        if hints.is_empty() {
+            Vec::new()
+        } else {
+            crate::format_eval_blocked_hints_lines(context, &hints, config.domain_mode)
+        }
+    } else {
+        Vec::new()
+    };
+
+    let assumption_lines = if config.assumption_reporting != crate::AssumptionReporting::Off {
+        let assumed_conditions = crate::collect_assumed_conditions_from_steps(&output.steps);
+        if assumed_conditions.is_empty() {
+            Vec::new()
+        } else {
+            crate::format_assumed_conditions_report_lines(&assumed_conditions)
+        }
+    } else {
+        Vec::new()
+    };
+
+    EvalMetadataLines {
+        warning_lines,
+        requires_lines,
+        hint_lines,
+        assumption_lines,
+    }
 }
 
 /// Format timeline command dispatch errors for CLI/UI output.
@@ -1126,6 +1655,30 @@ where
     }
 }
 
+/// Evaluate full `timeline ...` REPL line and map failures to display messages.
+pub fn evaluate_timeline_command_line<S>(
+    engine: &mut cas_engine::Engine,
+    session: &mut S,
+    line: &str,
+    eval_options: &crate::EvalOptions,
+) -> Result<TimelineCommandEvalOutput, String>
+where
+    S: cas_engine::EvalSession<
+        Options = cas_engine::EvalOptions,
+        Diagnostics = cas_engine::Diagnostics,
+    >,
+    S::Store: cas_engine::EvalStore<
+        DomainMode = cas_engine::DomainMode,
+        RequiredItem = cas_engine::RequiredItem,
+        Step = cas_engine::Step,
+        Diagnostics = cas_engine::Diagnostics,
+    >,
+{
+    let rest = extract_timeline_command_tail(line);
+    evaluate_timeline_command_input(engine, session, rest, eval_options)
+        .map_err(|error| format_timeline_command_error_message(&error))
+}
+
 /// Evaluate full simplify input with aggressive default-rule simplifier.
 /// Uses a temporary simplifier with swapped context/profiler and resolves
 /// session refs via the provided session.
@@ -1211,17 +1764,22 @@ pub fn evaluate_limit_command_input(
 #[cfg(test)]
 mod tests {
     use super::{
-        evaluate_equiv_input, evaluate_expand_log_input, evaluate_explain_gcd_input,
-        evaluate_full_simplify_input, evaluate_limit_command_input, evaluate_rationalize_input,
-        evaluate_substitute_and_simplify_input, evaluate_substitute_input,
-        evaluate_telescope_input, evaluate_timeline_command_input,
-        evaluate_timeline_simplify_input, evaluate_unary_function_input, evaluate_visualize_input,
-        evaluate_weierstrass_input, expand_log_usage_message, expand_usage_message,
-        extract_equiv_command_tail, extract_explain_command_tail, extract_limit_command_tail,
-        extract_simplify_command_tail, extract_solve_command_tail, extract_substitute_command_tail,
-        extract_timeline_command_tail, extract_unary_command_tail, extract_visualize_command_tail,
-        format_equivalence_result_lines, format_expand_log_eval_lines,
-        format_explain_error_message, format_explain_gcd_eval_lines,
+        evaluate_equiv_command_lines, evaluate_equiv_input, evaluate_expand_log_command_lines,
+        evaluate_expand_log_input, evaluate_explain_command_lines, evaluate_explain_gcd_input,
+        evaluate_full_simplify_command_lines, evaluate_full_simplify_input,
+        evaluate_limit_command_input, evaluate_limit_command_lines,
+        evaluate_rationalize_command_lines, evaluate_rationalize_input,
+        evaluate_substitute_and_simplify_input, evaluate_substitute_command_lines,
+        evaluate_substitute_input, evaluate_telescope_command_lines, evaluate_telescope_input,
+        evaluate_timeline_command_input, evaluate_timeline_command_line,
+        evaluate_timeline_simplify_input, evaluate_unary_command_lines,
+        evaluate_unary_function_input, evaluate_visualize_command_output, evaluate_visualize_input,
+        evaluate_weierstrass_command_lines, evaluate_weierstrass_input, expand_log_usage_message,
+        expand_usage_message, extract_equiv_command_tail, extract_explain_command_tail,
+        extract_limit_command_tail, extract_simplify_command_tail, extract_solve_command_tail,
+        extract_substitute_command_tail, extract_timeline_command_tail, extract_unary_command_tail,
+        extract_visualize_command_tail, format_equivalence_result_lines,
+        format_expand_log_eval_lines, format_explain_error_message, format_explain_gcd_eval_lines,
         format_expr_pair_parse_error_message, format_limit_command_error_message,
         format_limit_command_eval_lines, format_rationalize_eval_error_message,
         format_rationalize_eval_lines, format_substitute_eval_lines,
@@ -1232,7 +1790,7 @@ mod tests {
         format_weierstrass_eval_lines, history_eval_metadata_section_labels, limit_usage_message,
         parse_expand_command_input, parse_expand_log_command_input,
         parse_rationalize_command_input, parse_telescope_command_input,
-        parse_weierstrass_command_input, rationalize_usage_message,
+        parse_weierstrass_command_input, rationalize_usage_message, should_show_simplify_step,
         substitute_render_mode_from_display_mode, substitute_usage_message,
         telescope_usage_message, timeline_no_steps_message, timeline_open_hint_message,
         unary_render_config_for_display_mode, visualize_output_hint_lines,
@@ -1263,6 +1821,13 @@ mod tests {
         let mut s = crate::Simplifier::with_default_rules();
         let err = evaluate_equiv_input(&mut s, "x+x").expect_err("missing delimiter");
         assert!(matches!(err, crate::ParseExprPairError::MissingDelimiter));
+    }
+
+    #[test]
+    fn evaluate_equiv_command_lines_formats_output() {
+        let mut s = crate::Simplifier::with_default_rules();
+        let lines = evaluate_equiv_command_lines(&mut s, "equiv x + x, 2*x").expect("equiv");
+        assert!(!lines.is_empty());
     }
 
     #[test]
@@ -1302,6 +1867,18 @@ mod tests {
     }
 
     #[test]
+    fn evaluate_substitute_command_lines_formats_output() {
+        let mut s = crate::Simplifier::with_default_rules();
+        let lines = evaluate_substitute_command_lines(
+            &mut s,
+            "subst x^2 + x, x, 3",
+            SubstituteRenderMode::Normal,
+        )
+        .expect("subst command");
+        assert!(lines.iter().any(|line| line.starts_with("Result: ")));
+    }
+
+    #[test]
     fn evaluate_unary_function_input_trace_works() {
         let mut s = crate::Simplifier::with_default_rules();
         let out = evaluate_unary_function_input(&mut s, "trace", "[[1,2],[3,4]]").expect("trace");
@@ -1323,6 +1900,21 @@ mod tests {
     }
 
     #[test]
+    fn evaluate_unary_command_lines_formats_result() {
+        let mut s = crate::Simplifier::with_default_rules();
+        let lines = evaluate_unary_command_lines(
+            &mut s,
+            "trace [[1,2],[3,4]]",
+            "trace",
+            crate::set_command::SetDisplayMode::Normal,
+            false,
+            true,
+        )
+        .expect("trace command");
+        assert!(lines.iter().any(|line| line.starts_with("Result: ")));
+    }
+
+    #[test]
     fn evaluate_rationalize_input_success() {
         let mut s = crate::Simplifier::with_default_rules();
         let out = evaluate_rationalize_input(&mut s, "1/(1 + sqrt(2))").expect("rationalize");
@@ -1339,6 +1931,13 @@ mod tests {
             }
             _ => panic!("expected success"),
         }
+    }
+
+    #[test]
+    fn evaluate_rationalize_command_lines_missing_input_uses_usage() {
+        let mut s = crate::Simplifier::with_default_rules();
+        let err = evaluate_rationalize_command_lines(&mut s, "rationalize").expect_err("usage");
+        assert!(err.contains("Usage: rationalize"));
     }
 
     #[test]
@@ -1457,6 +2056,12 @@ mod tests {
         assert!(expand_log_usage_message().contains("Usage: expand_log"));
         assert!(telescope_usage_message().contains("Usage: telescope"));
         assert_eq!(wrap_expand_eval_expression("x+1"), "expand(x+1)");
+        assert_eq!(
+            super::evaluate_expand_command_wrapped_line("expand x+1").expect("expand"),
+            "expand(x+1)"
+        );
+        let err = super::evaluate_expand_command_wrapped_line("expand").expect_err("usage");
+        assert!(err.contains("Usage: expand"));
     }
 
     #[test]
@@ -1477,6 +2082,36 @@ mod tests {
             substitute_render_mode_from_display_mode(crate::set_command::SetDisplayMode::Verbose),
             SubstituteRenderMode::Verbose
         );
+    }
+
+    #[test]
+    fn should_show_simplify_step_respects_display_mode_and_noops() {
+        let mut ctx = cas_ast::Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+
+        let mut step = crate::Step::new("test", "Test", x, y, vec![], Some(&ctx));
+        step.importance = crate::ImportanceLevel::Medium;
+
+        assert!(!should_show_simplify_step(
+            &step,
+            crate::set_command::SetDisplayMode::None
+        ));
+        assert!(should_show_simplify_step(
+            &step,
+            crate::set_command::SetDisplayMode::Verbose
+        ));
+        assert!(should_show_simplify_step(
+            &step,
+            crate::set_command::SetDisplayMode::Normal
+        ));
+
+        step.global_before = Some(x);
+        step.global_after = Some(x);
+        assert!(!should_show_simplify_step(
+            &step,
+            crate::set_command::SetDisplayMode::Succinct
+        ));
     }
 
     #[test]
@@ -1533,6 +2168,21 @@ mod tests {
     }
 
     #[test]
+    fn evaluate_weierstrass_command_lines_formats_output() {
+        let mut s = crate::Simplifier::with_default_rules();
+        let lines = evaluate_weierstrass_command_lines(&mut s, "weierstrass sin(x)")
+            .expect("weierstrass command");
+        assert!(!lines.is_empty());
+    }
+
+    #[test]
+    fn evaluate_weierstrass_command_lines_missing_input_uses_usage() {
+        let mut s = crate::Simplifier::with_default_rules();
+        let err = evaluate_weierstrass_command_lines(&mut s, "weierstrass").expect_err("usage");
+        assert!(err.contains("Usage: weierstrass"));
+    }
+
+    #[test]
     fn evaluate_expand_log_input_expands_simple_log() {
         let mut s = crate::Simplifier::with_default_rules();
         let out = evaluate_expand_log_input(&mut s, "ln(x*y)").expect("expand_log");
@@ -1547,10 +2197,25 @@ mod tests {
     }
 
     #[test]
+    fn evaluate_expand_log_command_lines_missing_input_uses_usage() {
+        let mut s = crate::Simplifier::with_default_rules();
+        let err = evaluate_expand_log_command_lines(&mut s, "expand_log").expect_err("usage");
+        assert!(err.contains("Usage: expand_log"));
+    }
+
+    #[test]
     fn evaluate_telescope_input_reports_steps() {
         let mut s = crate::Simplifier::with_default_rules();
         let out = evaluate_telescope_input(&mut s, "1 + 2*cos(x)").expect("telescope");
         assert!(!out.formatted_result.trim().is_empty());
+    }
+
+    #[test]
+    fn evaluate_telescope_command_lines_formats_output() {
+        let mut s = crate::Simplifier::with_default_rules();
+        let lines = evaluate_telescope_command_lines(&mut s, "telescope 1 + 2*cos(x)")
+            .expect("telescope command");
+        assert!(!lines.is_empty());
     }
 
     #[test]
@@ -1565,6 +2230,14 @@ mod tests {
         let mut s = crate::Simplifier::with_default_rules();
         let out = evaluate_visualize_input(&mut s, "x + 1").expect("viz");
         assert!(out.dot.contains("digraph"));
+    }
+
+    #[test]
+    fn evaluate_visualize_command_output_uses_default_file_name() {
+        let mut s = crate::Simplifier::with_default_rules();
+        let out = evaluate_visualize_command_output(&mut s, "viz x + 1").expect("viz command");
+        assert_eq!(out.file_name, "ast.dot");
+        assert!(out.contents.contains("digraph"));
     }
 
     #[test]
@@ -1625,6 +2298,21 @@ mod tests {
     }
 
     #[test]
+    fn evaluate_timeline_command_line_maps_errors() {
+        let mut engine = Engine::new();
+        let mut session = SessionState::new();
+        let eval_options = session.options().clone();
+        let err = evaluate_timeline_command_line(
+            &mut engine,
+            &mut session,
+            "timeline solve x + 1, x",
+            &eval_options,
+        )
+        .expect_err("timeline line error");
+        assert!(err.contains("Expected an equation"));
+    }
+
+    #[test]
     fn format_timeline_command_error_message_simplify_parse() {
         let msg = format_timeline_command_error_message(&TimelineCommandEvalError::Simplify(
             TimelineEvalError::Parse("bad".to_string()),
@@ -1657,6 +2345,36 @@ mod tests {
     }
 
     #[test]
+    fn evaluate_full_simplify_command_lines_formats_result() {
+        let mut engine = Engine::new();
+        let session = SessionState::new();
+        let lines = evaluate_full_simplify_command_lines(
+            &mut engine,
+            &session,
+            "simplify x + x",
+            true,
+            crate::set_command::SetDisplayMode::Normal,
+        )
+        .expect("simplify command");
+        assert!(lines.iter().any(|line| line.starts_with("Result: ")));
+    }
+
+    #[test]
+    fn evaluate_full_simplify_command_lines_maps_parse_error() {
+        let mut engine = Engine::new();
+        let session = SessionState::new();
+        let err = evaluate_full_simplify_command_lines(
+            &mut engine,
+            &session,
+            "simplify x +",
+            true,
+            crate::set_command::SetDisplayMode::Normal,
+        )
+        .expect_err("parse error");
+        assert!(err.starts_with("Error: "));
+    }
+
+    #[test]
     fn evaluate_limit_command_input_runs() {
         let out = evaluate_limit_command_input("(x^2+1)/(2*x^2-3), x, infinity").expect("limit");
         assert_eq!(out.var, "x");
@@ -1664,9 +2382,22 @@ mod tests {
     }
 
     #[test]
+    fn evaluate_limit_command_lines_runs() {
+        let lines = evaluate_limit_command_lines("limit (x^2+1)/(2*x^2-3), x, infinity")
+            .expect("limit command");
+        assert!(lines.iter().any(|line| line.contains("lim_{x")));
+    }
+
+    #[test]
     fn evaluate_limit_command_input_empty_error() {
         let err = evaluate_limit_command_input("  ").expect_err("empty");
         assert_eq!(err, LimitCommandEvalError::EmptyInput);
+    }
+
+    #[test]
+    fn evaluate_limit_command_lines_missing_input_uses_usage() {
+        let err = evaluate_limit_command_lines("limit").expect_err("usage");
+        assert!(err.contains("Usage: limit"));
     }
 
     #[test]
@@ -1692,6 +2423,14 @@ mod tests {
         let mut s = crate::Simplifier::with_default_rules();
         let err = evaluate_explain_gcd_input(&mut s, "x + 1").expect_err("not function");
         assert_eq!(err, ExplainEvalError::NotFunctionCall);
+    }
+
+    #[test]
+    fn evaluate_explain_command_lines_formats_result() {
+        let mut s = crate::Simplifier::with_default_rules();
+        let lines =
+            evaluate_explain_command_lines(&mut s, "explain gcd(48, 18)").expect("explain command");
+        assert!(lines.iter().any(|line| line.starts_with("Result: ")));
     }
 
     #[test]

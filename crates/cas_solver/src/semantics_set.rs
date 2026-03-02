@@ -58,6 +58,32 @@ pub fn apply_semantics_set_state_to_options(
     eval_options.requires_display = next.requires_display;
 }
 
+/// Parse `semantics set` args and apply the resulting state to runtime options.
+pub fn apply_semantics_set_args_to_options(
+    args: &[&str],
+    simplify_options: &mut crate::SimplifyOptions,
+    eval_options: &mut crate::EvalOptions,
+) -> Result<SemanticsSetState, String> {
+    let current = semantics_set_state_from_options(simplify_options, eval_options);
+    let next = evaluate_semantics_set_args(args, current)?;
+    apply_semantics_set_state_to_options(next, simplify_options, eval_options);
+    Ok(next)
+}
+
+/// Parse `semantics set` args, apply them, and return updated overview lines.
+pub fn evaluate_semantics_set_args_to_overview_lines(
+    args: &[&str],
+    simplify_options: &mut crate::SimplifyOptions,
+    eval_options: &mut crate::EvalOptions,
+) -> Result<Vec<String>, String> {
+    apply_semantics_set_args_to_options(args, simplify_options, eval_options)?;
+    let view_state =
+        crate::semantics_display::semantics_view_state_from_options(simplify_options, eval_options);
+    Ok(crate::semantics_display::format_semantics_overview_lines(
+        &view_state,
+    ))
+}
+
 fn set_semantic_axis(state: &mut SemanticsSetState, axis: &str, value: &str) -> Option<String> {
     match axis {
         "domain" => match value {
@@ -230,7 +256,8 @@ pub fn evaluate_semantics_set_args(
 #[cfg(test)]
 mod tests {
     use super::{
-        apply_semantics_set_state_to_options, evaluate_semantics_set_args,
+        apply_semantics_set_args_to_options, apply_semantics_set_state_to_options,
+        evaluate_semantics_set_args, evaluate_semantics_set_args_to_overview_lines,
         semantics_set_state_from_options, SemanticsSetState,
     };
 
@@ -313,5 +340,45 @@ mod tests {
         };
         let state = semantics_set_state_from_options(&simplify_options, &eval_options);
         assert!(!state.check_solutions);
+    }
+
+    #[test]
+    fn apply_semantics_set_args_to_options_updates_runtime_state() {
+        let mut simplify_options = crate::SimplifyOptions::default();
+        let mut eval_options = crate::EvalOptions::default();
+
+        let next = apply_semantics_set_args_to_options(
+            &["domain", "assume", "assumptions", "trace"],
+            &mut simplify_options,
+            &mut eval_options,
+        )
+        .expect("should parse and apply");
+
+        assert_eq!(next.domain_mode, crate::DomainMode::Assume);
+        assert_eq!(
+            simplify_options.shared.semantics.domain_mode,
+            crate::DomainMode::Assume
+        );
+        assert_eq!(
+            eval_options.shared.assumption_reporting,
+            crate::AssumptionReporting::Trace
+        );
+    }
+
+    #[test]
+    fn evaluate_semantics_set_args_to_overview_lines_returns_overview() {
+        let mut simplify_options = crate::SimplifyOptions::default();
+        let mut eval_options = crate::EvalOptions::default();
+        let lines = evaluate_semantics_set_args_to_overview_lines(
+            &["domain", "assume"],
+            &mut simplify_options,
+            &mut eval_options,
+        )
+        .expect("should parse and format");
+        assert!(lines.iter().any(|line| line.contains("domain_mode")));
+        assert_eq!(
+            simplify_options.shared.semantics.domain_mode,
+            crate::DomainMode::Assume
+        );
     }
 }

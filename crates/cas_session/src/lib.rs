@@ -5,10 +5,13 @@ use cas_engine::{Diagnostics, RequireOrigin, RequiredItem};
 mod assignment;
 mod bindings;
 mod cache;
+mod commands;
+mod config;
 pub mod env;
 mod history;
 mod inspect;
 mod options;
+mod session_io;
 mod snapshot;
 mod state;
 
@@ -23,6 +26,14 @@ pub use bindings::{
     ClearBindingsResult,
 };
 pub use cache::{CacheDomainMode, SimplifiedCache, SimplifyCacheKey};
+pub use commands::{
+    evaluate_assignment_command, evaluate_clear_command_lines,
+    evaluate_delete_history_command_message, evaluate_history_command_lines,
+    evaluate_let_assignment_command, evaluate_show_history_command_lines,
+    evaluate_vars_command_lines, format_assignment_command_output_message,
+    format_show_history_command_lines, inspect_show_history_command, AssignmentCommandOutput,
+};
+pub use config::CasConfig;
 pub use history::{
     delete_history_entries, format_delete_history_error_message,
     format_delete_history_result_message, format_history_overview_lines, history_empty_message,
@@ -38,6 +49,7 @@ pub use inspect::{
 pub use options::{
     apply_solve_budget_command, format_solve_budget_command_message, SolveBudgetCommandResult,
 };
+pub use session_io::{load_or_new_session, save_session};
 pub type CacheHitEntryId = u64;
 
 pub type ResolvedExpr = cas_session_core::cache::ResolvedExpr<RequiredItem>;

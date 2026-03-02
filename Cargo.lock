@@ -201,11 +201,8 @@ dependencies = [
  "num-rational",
  "num-traits",
  "predicates",
- "regex",
  "rustyline",
- "serde",
  "serde_json",
- "toml",
  "tracing",
  "tracing-subscriber",
 ]
@@ -310,6 +307,7 @@ dependencies = [
  "num-rational",
  "serde",
  "tempfile",
+ "toml",
 ]
 
 [[package]]

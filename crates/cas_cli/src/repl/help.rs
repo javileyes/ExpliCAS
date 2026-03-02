@@ -56,32 +56,18 @@ impl Repl {
     }
 
     fn apply_set_plan(&mut self, plan: &cas_solver::SetCommandPlan, ui_delta: &mut UiDelta) {
-        if let Some(enabled) = plan.set_transform {
-            self.core.simplify_options.enable_transform = enabled;
-        }
-        if let Some(level) = plan.set_rationalize {
-            self.core.simplify_options.rationalize.auto_level = level;
-        }
-        if let Some(mode) = plan.set_heuristic_poly {
-            self.core.state.options_mut().shared.heuristic_poly = mode;
-            self.core.simplify_options.shared.heuristic_poly = mode;
-        }
-        if let Some(mode) = plan.set_autoexpand_binomials {
-            self.core.state.options_mut().shared.autoexpand_binomials = mode;
-            self.core.simplify_options.shared.autoexpand_binomials = mode;
-        }
-        if let Some(mode) = plan.set_steps_mode {
-            self.core.state.options_mut().steps_mode = mode;
+        let effects = cas_solver::apply_set_command_plan(
+            plan,
+            &mut self.core.simplify_options,
+            self.core.state.options_mut(),
+            &mut self.core.debug_mode,
+        );
+
+        if let Some(mode) = effects.set_steps_mode {
             self.core.engine.simplifier.set_steps_mode(mode);
         }
-        if let Some(display) = plan.set_display_mode {
+        if let Some(display) = effects.set_display_mode {
             ui_delta.verbosity = Some(Self::verbosity_from_set_display_mode(display));
-        }
-        if let Some(max_rewrites) = plan.set_max_rewrites {
-            self.core.simplify_options.budgets.max_total_rewrites = max_rewrites;
-        }
-        if let Some(debug_mode) = plan.set_debug_mode {
-            self.core.debug_mode = debug_mode;
         }
     }
 
