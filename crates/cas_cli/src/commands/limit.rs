@@ -18,24 +18,27 @@ pub fn run(args: LimitArgs) {
         PreSimplifyArg::Safe => PreSimplifyMode::Safe,
     };
 
-    match cas_solver::evaluate_limit_subcommand_output(
+    match super::limit_command::evaluate_limit_subcommand_output(
         &args.expr,
         &args.var,
         approach,
         presimplify,
         matches!(args.format, OutputFormat::Json),
     ) {
-        Ok(cas_solver::LimitSubcommandOutput::Json(out)) => {
+        Ok(super::limit_command::LimitSubcommandOutput::Json(out)) => {
             println!("{}", out);
         }
-        Ok(cas_solver::LimitSubcommandOutput::Text { result, warning }) => {
+        Ok(super::limit_command::LimitSubcommandOutput::Text { result, warning }) => {
             println!("{}", result);
             if let Some(warning) = warning {
                 eprintln!("Warning: {}", warning);
             }
         }
         Err(error) => {
-            eprintln!("{}", cas_solver::format_limit_subcommand_error(&error));
+            eprintln!(
+                "{}",
+                super::limit_command::format_limit_subcommand_error(&error)
+            );
             std::process::exit(1);
         }
     }

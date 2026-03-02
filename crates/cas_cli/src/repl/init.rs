@@ -1,7 +1,22 @@
 use super::*;
 
-fn solver_rule_config_from_cli(config: &CasConfig) -> cas_solver::SimplifierRuleConfig {
-    cas_solver::SimplifierRuleConfig {
+/// Split a REPL line into executable statements.
+///
+/// Keeps `solve_system ...` as a single statement because semicolons are part
+/// of that command syntax.
+fn split_repl_statements(line: &str) -> Vec<&str> {
+    if line.starts_with("solve_system") {
+        return vec![line];
+    }
+
+    line.split(';')
+        .map(str::trim)
+        .filter(|stmt| !stmt.is_empty())
+        .collect()
+}
+
+fn solver_rule_config_from_cli(config: &CasConfig) -> cas_session::SimplifierRuleConfig {
+    cas_session::SimplifierRuleConfig {
         distribute: config.distribute,
         expand_binomials: config.expand_binomials,
         factor_difference_squares: config.factor_difference_squares,
@@ -15,8 +30,8 @@ fn solver_rule_config_from_cli(config: &CasConfig) -> cas_solver::SimplifierRule
     }
 }
 
-fn solver_toggle_config_from_cli(config: &CasConfig) -> cas_solver::SimplifierToggleConfig {
-    cas_solver::SimplifierToggleConfig {
+fn solver_toggle_config_from_cli(config: &CasConfig) -> cas_session::SimplifierToggleConfig {
+    cas_session::SimplifierToggleConfig {
         distribute: config.distribute,
         expand_binomials: config.expand_binomials,
         distribute_constants: config.distribute_constants,
@@ -32,13 +47,13 @@ fn solver_toggle_config_from_cli(config: &CasConfig) -> cas_solver::SimplifierTo
 }
 
 impl Repl {
-    pub(crate) fn config_as_solver_toggle(&self) -> cas_solver::SimplifierToggleConfig {
+    pub(crate) fn config_as_solver_toggle(&self) -> cas_session::SimplifierToggleConfig {
         solver_toggle_config_from_cli(&self.config)
     }
 
     pub(crate) fn set_config_from_solver_toggle(
         &mut self,
-        toggles: cas_solver::SimplifierToggleConfig,
+        toggles: cas_session::SimplifierToggleConfig,
     ) {
         self.config.distribute = toggles.distribute;
         self.config.expand_binomials = toggles.expand_binomials;
@@ -56,7 +71,7 @@ impl Repl {
     pub fn new() -> Self {
         let config = CasConfig::load();
         let simplifier =
-            cas_solver::build_simplifier_with_rule_config(solver_rule_config_from_cli(&config));
+            cas_session::build_simplifier_with_rule_config(solver_rule_config_from_cli(&config));
 
         let mut repl = Self {
             core: ReplCore::with_simplifier(simplifier),
@@ -68,8 +83,7 @@ impl Repl {
     }
 
     pub(crate) fn rebuild_engine_simplifier_from_config(&mut self) {
-        cas_solver::rebuild_engine_simplifier_with_rule_config(
-            &mut self.core.engine,
+        self.core.engine.simplifier = cas_session::build_simplifier_with_rule_config(
             solver_rule_config_from_cli(&self.config),
         );
     }
@@ -127,13 +141,13 @@ impl Repl {
 
     pub(crate) fn sync_config_to_simplifier(&mut self) {
         let toggles = self.config_as_solver_toggle();
-        cas_solver::apply_simplifier_toggle_config_to_engine(&mut self.core.engine, toggles);
+        cas_session::apply_simplifier_toggle_config(&mut self.core.engine.simplifier, toggles);
     }
 
     /// Build the REPL prompt with mode indicators.
     /// Only shows indicators for non-default modes to keep prompt clean.
     pub(crate) fn build_prompt(&self) -> String {
-        cas_solver::build_prompt_from_eval_options(self.core.state.options())
+        super::prompt_display::build_prompt_from_eval_options(self.core.state.options())
     }
 
     /// Generate startup banner messages (no I/O here)
@@ -190,9 +204,7 @@ impl Repl {
                         break;
                     }
 
-                    // Split using solver-owned parsing rules. This keeps command
-                    // syntax details (like solve_system semicolons) out of CLI.
-                    for statement in cas_solver::split_repl_statements(line) {
+                    for statement in split_repl_statements(line) {
                         self.handle_command(statement);
                     }
                 }
@@ -222,6 +234,23 @@ impl Repl {
     ///   simplify(...) -> simplify x^2 + 1
     ///   solve(...) -> solve x + 2 = 5, x
     pub(crate) fn preprocess_function_syntax(&self, line: &str) -> String {
-        cas_solver::preprocess_repl_function_syntax(line)
+        super::command_routing::preprocess_repl_function_syntax(line)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::split_repl_statements;
+
+    #[test]
+    fn split_repl_statements_preserves_solve_system_line() {
+        let parts = split_repl_statements("solve_system x+y=3; x-y=1; x; y");
+        assert_eq!(parts, vec!["solve_system x+y=3; x-y=1; x; y"]);
+    }
+
+    #[test]
+    fn split_repl_statements_splits_regular_semicolons() {
+        let parts = split_repl_statements("let a = 1; let b = 2; a + b");
+        assert_eq!(parts, vec!["let a = 1", "let b = 2", "a + b"]);
     }
 }

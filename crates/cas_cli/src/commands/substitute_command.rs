@@ -1,4 +1,4 @@
-use crate::json::{SubstituteEvalMode, SubstituteEvalResult, SubstituteEvalStep};
+use cas_solver::json::{SubstituteEvalMode, SubstituteEvalResult, SubstituteEvalStep};
 
 /// Evaluate substitute subcommand in JSON mode.
 pub fn evaluate_substitute_subcommand_json(
@@ -8,7 +8,7 @@ pub fn evaluate_substitute_subcommand_json(
     mode: &str,
     steps: bool,
 ) -> String {
-    crate::substitute_str_to_json_with_options(expr, target, replacement, mode, steps, true)
+    cas_solver::substitute_str_to_json_with_options(expr, target, replacement, mode, steps, true)
 }
 
 /// Evaluate substitute subcommand in text mode and return lines for CLI output.
@@ -19,8 +19,9 @@ pub fn evaluate_substitute_subcommand_text_lines(
     mode: SubstituteEvalMode,
     steps_enabled: bool,
 ) -> Result<Vec<String>, String> {
-    let output = crate::json::eval_substitute_from_str(expr, target, replacement, mode, steps_enabled)
-        .map_err(|error| error.to_string())?;
+    let output =
+        cas_solver::json::eval_substitute_from_str(expr, target, replacement, mode, steps_enabled)
+            .map_err(|error| error.to_string())?;
     Ok(format_substitute_subcommand_text_lines(
         &output,
         steps_enabled,
@@ -77,26 +78,30 @@ mod tests {
         evaluate_substitute_subcommand_text_lines_with_mode,
         format_substitute_subcommand_text_lines,
     };
-    use crate::json::{SubstituteEvalMode, SubstituteEvalResult, SubstituteEvalStep};
+    use cas_solver::json::{SubstituteEvalMode, SubstituteEvalResult, SubstituteEvalStep};
 
     #[test]
     fn evaluate_substitute_subcommand_json_returns_ok_contract() {
-        let out =
-            evaluate_substitute_subcommand_json("x^2+1", "x", "y", "exact", false);
-        let json: serde_json::Value = serde_json::from_str(&out).expect("valid json");
+        let out = evaluate_substitute_subcommand_json("x^2+1", "x", "y", "exact", false);
+        let json: serde_json::Value = match serde_json::from_str(&out) {
+            Ok(json) => json,
+            Err(err) => panic!("invalid json: {err}"),
+        };
         assert_eq!(json["ok"], true);
     }
 
     #[test]
     fn evaluate_substitute_subcommand_text_lines_success() {
-        let lines = evaluate_substitute_subcommand_text_lines(
+        let lines = match evaluate_substitute_subcommand_text_lines(
             "x^4 + x^2 + 1",
             "x^2",
             "y",
             SubstituteEvalMode::Power,
             true,
-        )
-        .expect("text output");
+        ) {
+            Ok(lines) => lines,
+            Err(err) => panic!("text output failed: {err}"),
+        };
 
         assert!(!lines.is_empty());
         assert_eq!(lines.first().map(String::as_str), Some("Steps:"));
@@ -105,27 +110,27 @@ mod tests {
 
     #[test]
     fn evaluate_substitute_subcommand_text_lines_with_mode_exact() {
-        let lines = evaluate_substitute_subcommand_text_lines_with_mode(
-            "x + 1",
-            "x",
-            "y",
-            "exact",
-            false,
-        )
-        .expect("text output");
+        let lines = match evaluate_substitute_subcommand_text_lines_with_mode(
+            "x + 1", "x", "y", "exact", false,
+        ) {
+            Ok(lines) => lines,
+            Err(err) => panic!("text output failed: {err}"),
+        };
         assert!(lines.last().is_some_and(|line| line.contains('y')));
     }
 
     #[test]
     fn evaluate_substitute_subcommand_text_lines_parse_error_passthrough() {
-        let err = evaluate_substitute_subcommand_text_lines(
+        let err = match evaluate_substitute_subcommand_text_lines(
             "x^2 + 1",
             "invalid(((",
             "y",
             SubstituteEvalMode::Power,
             false,
-        )
-        .expect_err("invalid target");
+        ) {
+            Ok(_) => panic!("expected parse error"),
+            Err(err) => err,
+        };
 
         assert!(err.contains("Parse error in target"));
     }

@@ -1,5 +1,60 @@
 use super::*;
 
+#[derive(Debug, Clone, Copy)]
+struct EvalMetadataSectionLabels<'a> {
+    required_header: &'a str,
+    assumed_header: &'a str,
+    blocked_header: &'a str,
+    line_prefix: &'a str,
+}
+
+fn history_eval_metadata_section_labels() -> EvalMetadataSectionLabels<'static> {
+    EvalMetadataSectionLabels {
+        required_header: "  ℹ️ Requires:",
+        assumed_header: "  ⚠ Assumed:",
+        blocked_header: "  🚫 Blocked:",
+        line_prefix: "    - ",
+    }
+}
+
+fn format_eval_metadata_sections(
+    ctx: &cas_ast::Context,
+    required_conditions: &[cas_solver::ImplicitCondition],
+    domain_warnings: &[cas_solver::DomainWarning],
+    blocked_hints: &[cas_solver::BlockedHint],
+    labels: EvalMetadataSectionLabels<'_>,
+) -> Vec<String> {
+    let mut lines = Vec::new();
+
+    if !required_conditions.is_empty() {
+        lines.push(labels.required_header.to_string());
+        lines.extend(cas_solver::format_required_condition_lines(
+            ctx,
+            required_conditions,
+            labels.line_prefix,
+        ));
+    }
+
+    if !domain_warnings.is_empty() {
+        lines.push(labels.assumed_header.to_string());
+        lines.extend(cas_solver::format_domain_warning_lines(
+            domain_warnings,
+            false,
+            labels.line_prefix,
+        ));
+    }
+
+    if !blocked_hints.is_empty() {
+        lines.push(labels.blocked_header.to_string());
+        lines.extend(cas_solver::format_blocked_hint_lines(
+            blocked_hints,
+            labels.line_prefix,
+        ));
+    }
+
+    lines
+}
+
 impl Repl {
     // ========== SESSION ENVIRONMENT HANDLERS ==========
 
@@ -10,9 +65,9 @@ impl Repl {
 
     /// Handle "let <name> = <expr>" (eager) or "let <name> := <expr>" (lazy) command
     pub(crate) fn handle_let_command_core(&mut self, rest: &str) -> ReplReply {
-        match cas_session::evaluate_let_assignment_command_message(
+        match cas_session::evaluate_let_assignment_command_message_with_simplifier(
             &mut self.core.state,
-            &mut self.core.engine,
+            &mut self.core.engine.simplifier,
             rest,
         ) {
             Ok(message) => reply_output(message),
@@ -29,9 +84,9 @@ impl Repl {
         expr_str: &str,
         lazy: bool,
     ) -> ReplReply {
-        match cas_session::evaluate_assignment_command_message(
+        match cas_session::evaluate_assignment_command_message_with_simplifier(
             &mut self.core.state,
-            &mut self.core.engine,
+            &mut self.core.engine.simplifier,
             name,
             expr_str,
             lazy,
@@ -44,41 +99,51 @@ impl Repl {
     /// Handle "vars" command - list all variable bindings
     /// Core logic for "vars" command
     pub(crate) fn handle_vars_command_core(&self) -> ReplReply {
-        let lines = cas_session::evaluate_vars_command_lines_with_engine(
+        let lines = cas_session::evaluate_vars_command_lines_with_context(
             &self.core.state,
-            &self.core.engine,
+            &self.core.engine.simplifier.context,
         );
         reply_output(lines.join("\n"))
     }
 
     /// Handle "history" or "list" command - show session history
     pub(crate) fn handle_history_command_core(&self) -> ReplReply {
-        let lines = cas_session::evaluate_history_command_lines_with_engine(
+        let lines = cas_session::evaluate_history_command_lines_with_context(
             &self.core.state,
-            &self.core.engine,
+            &self.core.engine.simplifier.context,
         );
         reply_output(lines.join("\n"))
     }
 
     /// Handle "show #id" command - show details of a specific entry
     pub(crate) fn handle_show_command_core(&mut self, line: &str) -> ReplReply {
-        match cas_session::evaluate_show_history_command_lines_with_engine(
+        let inspection = match cas_session::inspect_history_entry_input(
             &mut self.core.state,
             &mut self.core.engine,
             line,
+        ) {
+            Ok(inspection) => inspection,
+            Err(error) => {
+                return reply_output(cas_session::format_inspect_history_entry_error_message(
+                    &error,
+                ))
+            }
+        };
+
+        let lines = cas_session::format_show_history_command_lines_with_context(
+            &inspection,
+            &self.core.engine.simplifier.context,
             |context, expr_info| {
-                cas_solver::format_eval_metadata_sections(
+                format_eval_metadata_sections(
                     context,
                     &expr_info.required_conditions,
                     &expr_info.domain_warnings,
                     &expr_info.blocked_hints,
-                    cas_solver::history_eval_metadata_section_labels(),
+                    history_eval_metadata_section_labels(),
                 )
             },
-        ) {
-            Ok(lines) => reply_output(lines.join("\n")),
-            Err(message) => reply_output(message),
-        }
+        );
+        reply_output(lines.join("\n"))
     }
 
     /// Handle "del #id [#id...]" command - delete session entries
@@ -124,7 +189,7 @@ impl Repl {
     /// Handle "reset full" command - reset session AND clear profile cache
     pub(crate) fn handle_reset_full_command_core(&mut self) -> ReplReply {
         let mut reply = self.handle_reset_command_core();
-        cas_solver::clear_engine_profile_cache(&mut self.core.engine);
+        self.core.engine.clear_profile_cache();
         reply.push(ReplMsg::output(
             "Profile cache cleared (will rebuild on next eval).",
         ));
@@ -135,7 +200,8 @@ impl Repl {
     /// Core logic for "cache" command
     pub(crate) fn handle_cache_command_core(&mut self, line: &str) -> ReplReply {
         let mut reply = ReplReply::new();
-        for line in cas_solver::evaluate_profile_cache_command_lines(&mut self.core.engine, line) {
+        let cache_result = cas_session::apply_profile_cache_command(&mut self.core.engine, line);
+        for line in cas_session::format_profile_cache_command_lines(&cache_result) {
             reply.push(ReplMsg::output(line));
         }
         reply
@@ -159,7 +225,7 @@ mod tests {
     fn cache_status_uses_engine_profile_cache() {
         let mut repl = Repl::new();
 
-        if let Err(err) = cas_solver::evaluate_eval_command_output(
+        if let Err(err) = crate::commands::eval_command::evaluate_eval_command_output(
             &mut repl.core.engine,
             &mut repl.core.state,
             "x + x",
@@ -180,7 +246,7 @@ mod tests {
     fn cache_clear_empties_engine_profile_cache() {
         let mut repl = Repl::new();
 
-        if let Err(err) = cas_solver::evaluate_eval_command_output(
+        if let Err(err) = crate::commands::eval_command::evaluate_eval_command_output(
             &mut repl.core.engine,
             &mut repl.core.state,
             "x + x",
@@ -188,10 +254,10 @@ mod tests {
         ) {
             panic!("eval failed: {err:?}");
         }
-        assert_eq!(cas_solver::engine_profile_cache_len(&repl.core.engine), 1);
+        assert_eq!(repl.core.engine.profile_cache_len(), 1);
 
         let clear = repl.handle_cache_command_core("cache clear");
         assert!(first_output(&clear).contains("Profile cache cleared"));
-        assert_eq!(cas_solver::engine_profile_cache_len(&repl.core.engine), 0);
+        assert_eq!(repl.core.engine.profile_cache_len(), 0);
     }
 }

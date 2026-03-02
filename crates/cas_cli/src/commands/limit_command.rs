@@ -19,23 +19,27 @@ pub enum LimitSubcommandError {
 pub fn evaluate_limit_subcommand_output(
     expr: &str,
     var: &str,
-    approach: crate::Approach,
-    presimplify: crate::PreSimplifyMode,
+    approach: cas_solver::Approach,
+    presimplify: cas_solver::PreSimplifyMode,
     json_output: bool,
 ) -> Result<LimitSubcommandOutput, LimitSubcommandError> {
     if json_output {
-        return Ok(LimitSubcommandOutput::Json(crate::json::limit_str_to_json(
-            expr, var, approach, presimplify, false,
-        )));
+        return Ok(LimitSubcommandOutput::Json(
+            cas_solver::json::limit_str_to_json(expr, var, approach, presimplify, false),
+        ));
     }
 
-    match crate::json::eval_limit_from_str(expr, var, approach, presimplify) {
+    match cas_solver::json::eval_limit_from_str(expr, var, approach, presimplify) {
         Ok(limit_result) => Ok(LimitSubcommandOutput::Text {
             result: limit_result.result,
             warning: limit_result.warning,
         }),
-        Err(crate::json::LimitEvalError::Parse(message)) => Err(LimitSubcommandError::Parse(message)),
-        Err(crate::json::LimitEvalError::Limit(message)) => Err(LimitSubcommandError::Limit(message)),
+        Err(cas_solver::json::LimitEvalError::Parse(message)) => {
+            Err(LimitSubcommandError::Parse(message))
+        }
+        Err(cas_solver::json::LimitEvalError::Limit(message)) => {
+            Err(LimitSubcommandError::Limit(message))
+        }
     }
 }
 
@@ -56,18 +60,23 @@ mod tests {
 
     #[test]
     fn evaluate_limit_subcommand_output_json_mode_returns_payload() {
-        let out = evaluate_limit_subcommand_output(
+        let out = match evaluate_limit_subcommand_output(
             "(x^2+1)/(2*x^2-3)",
             "x",
-            crate::Approach::PosInfinity,
-            crate::PreSimplifyMode::Off,
+            cas_solver::Approach::PosInfinity,
+            cas_solver::PreSimplifyMode::Off,
             true,
-        )
-        .expect("json output");
+        ) {
+            Ok(out) => out,
+            Err(err) => panic!("json output failed: {err:?}"),
+        };
 
         match out {
             LimitSubcommandOutput::Json(payload) => {
-                let json: serde_json::Value = serde_json::from_str(&payload).expect("valid json");
+                let json: serde_json::Value = match serde_json::from_str(&payload) {
+                    Ok(json) => json,
+                    Err(err) => panic!("invalid json: {err}"),
+                };
                 assert_eq!(json["ok"], true);
             }
             _ => panic!("expected json payload"),
@@ -76,14 +85,16 @@ mod tests {
 
     #[test]
     fn evaluate_limit_subcommand_output_parse_error_is_typed() {
-        let err = evaluate_limit_subcommand_output(
+        let err = match evaluate_limit_subcommand_output(
             "sin(",
             "x",
-            crate::Approach::PosInfinity,
-            crate::PreSimplifyMode::Off,
+            cas_solver::Approach::PosInfinity,
+            cas_solver::PreSimplifyMode::Off,
             false,
-        )
-        .expect_err("expected parse error");
+        ) {
+            Ok(_) => panic!("expected parse error"),
+            Err(err) => err,
+        };
 
         match err {
             LimitSubcommandError::Parse(message) => {

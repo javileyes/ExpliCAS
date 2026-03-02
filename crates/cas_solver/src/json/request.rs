@@ -1,3 +1,4 @@
+use crate::input_parse::parse_statement_or_session_ref;
 use crate::{EvalAction, EvalRequest};
 use cas_ast::ExprId;
 use cas_formatter::LaTeXExpr;
@@ -44,7 +45,7 @@ pub fn build_eval_request_for_input(
         };
     }
 
-    let stmt = crate::parse_statement_or_session_ref(ctx, raw_input)
+    let stmt = parse_statement_or_session_ref(ctx, raw_input)
         .map_err(|e| format!("Parse error: {}", e))?;
     match stmt {
         cas_parser::Statement::Equation(eq) => {
@@ -70,7 +71,7 @@ fn parse_solve_input_as_equation_expr(
     ctx: &mut cas_ast::Context,
     input: &str,
 ) -> Result<ExprId, String> {
-    let stmt = crate::parse_statement_or_session_ref(ctx, input)?;
+    let stmt = parse_statement_or_session_ref(ctx, input)?;
     let parsed = match stmt {
         cas_parser::Statement::Equation(eq) => ctx.call("Equal", vec![eq.lhs, eq.rhs]),
         cas_parser::Statement::Expression(expr) => {
@@ -102,18 +103,4 @@ pub fn format_eval_input_latex(ctx: &cas_ast::Context, parsed: ExprId) -> String
         }
         .to_latex()
     }
-}
-
-/// Engine-level wrapper for building eval request from raw input.
-pub fn build_eval_request_for_input_with_engine(
-    engine: &mut crate::Engine,
-    raw_input: &str,
-    auto_store: bool,
-) -> Result<EvalRequest, String> {
-    build_eval_request_for_input(raw_input, &mut engine.simplifier.context, auto_store)
-}
-
-/// Engine-level wrapper for rendering eval input LaTeX.
-pub fn format_eval_input_latex_with_engine(engine: &crate::Engine, parsed: ExprId) -> String {
-    format_eval_input_latex(&engine.simplifier.context, parsed)
 }

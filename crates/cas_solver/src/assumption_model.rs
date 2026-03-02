@@ -965,65 +965,6 @@ pub fn format_solve_assumption_and_blocked_sections(
     Vec::new()
 }
 
-/// Format a simple requires section from textual conditions.
-pub fn format_text_requires_lines(requires: &[String]) -> Vec<String> {
-    if requires.is_empty() {
-        return Vec::new();
-    }
-
-    let mut lines = vec!["ℹ️ Requires:".to_string()];
-    for req in requires {
-        lines.push(format!("  • {req}"));
-    }
-    lines
-}
-
-/// Labels and prefixes for eval metadata section rendering.
-#[derive(Debug, Clone, Copy)]
-pub struct EvalMetadataSectionLabels<'a> {
-    pub required_header: &'a str,
-    pub assumed_header: &'a str,
-    pub blocked_header: &'a str,
-    pub line_prefix: &'a str,
-}
-
-/// Render standard eval metadata sections for CLI/UI:
-/// `Requires`, `Assumed` and `Blocked`.
-pub fn format_eval_metadata_sections(
-    ctx: &Context,
-    required_conditions: &[crate::ImplicitCondition],
-    domain_warnings: &[crate::DomainWarning],
-    blocked_hints: &[crate::BlockedHint],
-    labels: EvalMetadataSectionLabels<'_>,
-) -> Vec<String> {
-    let mut lines = Vec::new();
-
-    if !required_conditions.is_empty() {
-        lines.push(labels.required_header.to_string());
-        lines.extend(format_required_condition_lines(
-            ctx,
-            required_conditions,
-            labels.line_prefix,
-        ));
-    }
-
-    if !domain_warnings.is_empty() {
-        lines.push(labels.assumed_header.to_string());
-        lines.extend(format_domain_warning_lines(
-            domain_warnings,
-            false,
-            labels.line_prefix,
-        ));
-    }
-
-    if !blocked_hints.is_empty() {
-        lines.push(labels.blocked_header.to_string());
-        lines.extend(format_blocked_hint_lines(blocked_hints, labels.line_prefix));
-    }
-
-    lines
-}
-
 /// Map one solver-core logarithmic assumption into a solver assumption event.
 pub(crate) fn assumption_event_from_log_assumption(
     ctx: &Context,

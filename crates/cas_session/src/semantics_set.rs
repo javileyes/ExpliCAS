@@ -1,22 +1,22 @@
 /// Mutable semantics state for evaluating `semantics set` commands.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SemanticsSetState {
-    pub domain_mode: crate::DomainMode,
-    pub value_domain: crate::ValueDomain,
-    pub branch: crate::BranchPolicy,
-    pub inv_trig: crate::InverseTrigPolicy,
-    pub const_fold: crate::ConstFoldMode,
-    pub assumption_reporting: crate::AssumptionReporting,
-    pub assume_scope: crate::AssumeScope,
+    pub domain_mode: cas_engine::DomainMode,
+    pub value_domain: cas_engine::ValueDomain,
+    pub branch: cas_engine::BranchPolicy,
+    pub inv_trig: cas_engine::InverseTrigPolicy,
+    pub const_fold: cas_engine::ConstFoldMode,
+    pub assumption_reporting: cas_engine::AssumptionReporting,
+    pub assume_scope: cas_engine::AssumeScope,
     pub hints_enabled: bool,
     pub check_solutions: bool,
-    pub requires_display: crate::RequiresDisplayLevel,
+    pub requires_display: cas_engine::RequiresDisplayLevel,
 }
 
 /// Build a mutable semantics-set snapshot from simplifier + eval options.
 pub fn semantics_set_state_from_options(
-    simplify_options: &crate::SimplifyOptions,
-    eval_options: &crate::EvalOptions,
+    simplify_options: &cas_engine::SimplifyOptions,
+    eval_options: &cas_engine::EvalOptions,
 ) -> SemanticsSetState {
     SemanticsSetState {
         domain_mode: simplify_options.shared.semantics.domain_mode,
@@ -35,8 +35,8 @@ pub fn semantics_set_state_from_options(
 /// Apply semantic state to both simplifier options and runtime eval options.
 pub fn apply_semantics_set_state_to_options(
     next: SemanticsSetState,
-    simplify_options: &mut crate::SimplifyOptions,
-    eval_options: &mut crate::EvalOptions,
+    simplify_options: &mut cas_engine::SimplifyOptions,
+    eval_options: &mut cas_engine::EvalOptions,
 ) {
     simplify_options.shared.semantics.domain_mode = next.domain_mode;
     simplify_options.shared.semantics.value_domain = next.value_domain;
@@ -61,8 +61,8 @@ pub fn apply_semantics_set_state_to_options(
 /// Parse `semantics set` args and apply the resulting state to runtime options.
 pub fn apply_semantics_set_args_to_options(
     args: &[&str],
-    simplify_options: &mut crate::SimplifyOptions,
-    eval_options: &mut crate::EvalOptions,
+    simplify_options: &mut cas_engine::SimplifyOptions,
+    eval_options: &mut cas_engine::EvalOptions,
 ) -> Result<SemanticsSetState, String> {
     let current = semantics_set_state_from_options(simplify_options, eval_options);
     let next = evaluate_semantics_set_args(args, current)?;
@@ -73,8 +73,8 @@ pub fn apply_semantics_set_args_to_options(
 /// Parse `semantics set` args, apply them, and return updated overview lines.
 pub fn evaluate_semantics_set_args_to_overview_lines(
     args: &[&str],
-    simplify_options: &mut crate::SimplifyOptions,
-    eval_options: &mut crate::EvalOptions,
+    simplify_options: &mut cas_engine::SimplifyOptions,
+    eval_options: &mut cas_engine::EvalOptions,
 ) -> Result<Vec<String>, String> {
     apply_semantics_set_args_to_options(args, simplify_options, eval_options)?;
     let view_state =
@@ -87,9 +87,9 @@ pub fn evaluate_semantics_set_args_to_overview_lines(
 fn set_semantic_axis(state: &mut SemanticsSetState, axis: &str, value: &str) -> Option<String> {
     match axis {
         "domain" => match value {
-            "strict" => state.domain_mode = crate::DomainMode::Strict,
-            "generic" => state.domain_mode = crate::DomainMode::Generic,
-            "assume" => state.domain_mode = crate::DomainMode::Assume,
+            "strict" => state.domain_mode = cas_engine::DomainMode::Strict,
+            "generic" => state.domain_mode = cas_engine::DomainMode::Generic,
+            "assume" => state.domain_mode = cas_engine::DomainMode::Assume,
             _ => {
                 return Some(format!(
                     "ERROR: Invalid value '{}' for axis 'domain'\nAllowed: strict, generic, assume",
@@ -98,8 +98,8 @@ fn set_semantic_axis(state: &mut SemanticsSetState, axis: &str, value: &str) -> 
             }
         },
         "value" => match value {
-            "real" => state.value_domain = crate::ValueDomain::RealOnly,
-            "complex" => state.value_domain = crate::ValueDomain::ComplexEnabled,
+            "real" => state.value_domain = cas_engine::ValueDomain::RealOnly,
+            "complex" => state.value_domain = cas_engine::ValueDomain::ComplexEnabled,
             _ => {
                 return Some(format!(
                     "ERROR: Invalid value '{}' for axis 'value'\nAllowed: real, complex",
@@ -108,7 +108,7 @@ fn set_semantic_axis(state: &mut SemanticsSetState, axis: &str, value: &str) -> 
             }
         },
         "branch" => match value {
-            "principal" => state.branch = crate::BranchPolicy::Principal,
+            "principal" => state.branch = cas_engine::BranchPolicy::Principal,
             _ => {
                 return Some(format!(
                     "ERROR: Invalid value '{}' for axis 'branch'\nAllowed: principal",
@@ -117,8 +117,8 @@ fn set_semantic_axis(state: &mut SemanticsSetState, axis: &str, value: &str) -> 
             }
         },
         "inv_trig" => match value {
-            "strict" => state.inv_trig = crate::InverseTrigPolicy::Strict,
-            "principal" => state.inv_trig = crate::InverseTrigPolicy::PrincipalValue,
+            "strict" => state.inv_trig = cas_engine::InverseTrigPolicy::Strict,
+            "principal" => state.inv_trig = cas_engine::InverseTrigPolicy::PrincipalValue,
             _ => {
                 return Some(format!(
                     "ERROR: Invalid value '{}' for axis 'inv_trig'\nAllowed: strict, principal",
@@ -127,8 +127,8 @@ fn set_semantic_axis(state: &mut SemanticsSetState, axis: &str, value: &str) -> 
             }
         },
         "const_fold" => match value {
-            "off" => state.const_fold = crate::ConstFoldMode::Off,
-            "safe" => state.const_fold = crate::ConstFoldMode::Safe,
+            "off" => state.const_fold = cas_engine::ConstFoldMode::Off,
+            "safe" => state.const_fold = cas_engine::ConstFoldMode::Safe,
             _ => {
                 return Some(format!(
                     "ERROR: Invalid value '{}' for axis 'const_fold'\nAllowed: off, safe",
@@ -137,9 +137,9 @@ fn set_semantic_axis(state: &mut SemanticsSetState, axis: &str, value: &str) -> 
             }
         },
         "assumptions" => match value {
-            "off" => state.assumption_reporting = crate::AssumptionReporting::Off,
-            "summary" => state.assumption_reporting = crate::AssumptionReporting::Summary,
-            "trace" => state.assumption_reporting = crate::AssumptionReporting::Trace,
+            "off" => state.assumption_reporting = cas_engine::AssumptionReporting::Off,
+            "summary" => state.assumption_reporting = cas_engine::AssumptionReporting::Summary,
+            "trace" => state.assumption_reporting = cas_engine::AssumptionReporting::Trace,
             _ => {
                 return Some(format!(
                     "ERROR: Invalid value '{}' for axis 'assumptions'\nAllowed: off, summary, trace",
@@ -148,8 +148,8 @@ fn set_semantic_axis(state: &mut SemanticsSetState, axis: &str, value: &str) -> 
             }
         },
         "assume_scope" => match value {
-            "real" => state.assume_scope = crate::AssumeScope::Real,
-            "wildcard" => state.assume_scope = crate::AssumeScope::Wildcard,
+            "real" => state.assume_scope = cas_engine::AssumeScope::Real,
+            "wildcard" => state.assume_scope = cas_engine::AssumeScope::Wildcard,
             _ => {
                 return Some(format!(
                     "ERROR: Invalid value '{}' for axis 'assume_scope'\nAllowed: real, wildcard",
@@ -182,8 +182,8 @@ fn set_semantic_axis(state: &mut SemanticsSetState, axis: &str, value: &str) -> 
             }
         },
         "requires" => match value {
-            "essential" => state.requires_display = crate::RequiresDisplayLevel::Essential,
-            "all" => state.requires_display = crate::RequiresDisplayLevel::All,
+            "essential" => state.requires_display = cas_engine::RequiresDisplayLevel::Essential,
+            "all" => state.requires_display = cas_engine::RequiresDisplayLevel::All,
             _ => {
                 return Some(format!(
                     "ERROR: Invalid value '{}' for axis 'requires'\nAllowed: essential, all",
@@ -263,16 +263,16 @@ mod tests {
 
     fn state() -> SemanticsSetState {
         SemanticsSetState {
-            domain_mode: crate::DomainMode::Generic,
-            value_domain: crate::ValueDomain::RealOnly,
-            branch: crate::BranchPolicy::Principal,
-            inv_trig: crate::InverseTrigPolicy::Strict,
-            const_fold: crate::ConstFoldMode::Off,
-            assumption_reporting: crate::AssumptionReporting::Summary,
-            assume_scope: crate::AssumeScope::Real,
+            domain_mode: cas_engine::DomainMode::Generic,
+            value_domain: cas_engine::ValueDomain::RealOnly,
+            branch: cas_engine::BranchPolicy::Principal,
+            inv_trig: cas_engine::InverseTrigPolicy::Strict,
+            const_fold: cas_engine::ConstFoldMode::Off,
+            assumption_reporting: cas_engine::AssumptionReporting::Summary,
+            assume_scope: cas_engine::AssumeScope::Real,
             hints_enabled: true,
             check_solutions: true,
-            requires_display: crate::RequiresDisplayLevel::Essential,
+            requires_display: cas_engine::RequiresDisplayLevel::Essential,
         }
     }
 
@@ -280,8 +280,8 @@ mod tests {
     fn evaluate_semantics_set_args_updates_key_value_pairs() {
         let next = evaluate_semantics_set_args(&["domain=strict", "value=complex"], state())
             .expect("should parse");
-        assert_eq!(next.domain_mode, crate::DomainMode::Strict);
-        assert_eq!(next.value_domain, crate::ValueDomain::ComplexEnabled);
+        assert_eq!(next.domain_mode, cas_engine::DomainMode::Strict);
+        assert_eq!(next.value_domain, cas_engine::ValueDomain::ComplexEnabled);
     }
 
     #[test]
@@ -299,44 +299,44 @@ mod tests {
 
     #[test]
     fn apply_semantics_set_state_to_options_updates_shared_semantics() {
-        let mut simplify_options = crate::SimplifyOptions::default();
-        let mut eval_options = crate::EvalOptions::default();
+        let mut simplify_options = cas_engine::SimplifyOptions::default();
+        let mut eval_options = cas_engine::EvalOptions::default();
         let next = SemanticsSetState {
-            domain_mode: crate::DomainMode::Strict,
-            value_domain: crate::ValueDomain::ComplexEnabled,
-            branch: crate::BranchPolicy::Principal,
-            inv_trig: crate::InverseTrigPolicy::PrincipalValue,
-            const_fold: crate::ConstFoldMode::Safe,
-            assumption_reporting: crate::AssumptionReporting::Trace,
-            assume_scope: crate::AssumeScope::Wildcard,
+            domain_mode: cas_engine::DomainMode::Strict,
+            value_domain: cas_engine::ValueDomain::ComplexEnabled,
+            branch: cas_engine::BranchPolicy::Principal,
+            inv_trig: cas_engine::InverseTrigPolicy::PrincipalValue,
+            const_fold: cas_engine::ConstFoldMode::Safe,
+            assumption_reporting: cas_engine::AssumptionReporting::Trace,
+            assume_scope: cas_engine::AssumeScope::Wildcard,
             hints_enabled: false,
             check_solutions: false,
-            requires_display: crate::RequiresDisplayLevel::All,
+            requires_display: cas_engine::RequiresDisplayLevel::All,
         };
         apply_semantics_set_state_to_options(next, &mut simplify_options, &mut eval_options);
 
         assert_eq!(
             simplify_options.shared.semantics.domain_mode,
-            crate::DomainMode::Strict
+            cas_engine::DomainMode::Strict
         );
         assert_eq!(
             eval_options.shared.semantics.value_domain,
-            crate::ValueDomain::ComplexEnabled
+            cas_engine::ValueDomain::ComplexEnabled
         );
-        assert_eq!(eval_options.const_fold, crate::ConstFoldMode::Safe);
+        assert_eq!(eval_options.const_fold, cas_engine::ConstFoldMode::Safe);
         assert!(!eval_options.hints_enabled);
         assert_eq!(
             eval_options.requires_display,
-            crate::RequiresDisplayLevel::All
+            cas_engine::RequiresDisplayLevel::All
         );
     }
 
     #[test]
     fn semantics_set_state_from_options_reads_check_solutions() {
-        let simplify_options = crate::SimplifyOptions::default();
-        let eval_options = crate::EvalOptions {
+        let simplify_options = cas_engine::SimplifyOptions::default();
+        let eval_options = cas_engine::EvalOptions {
             check_solutions: false,
-            ..crate::EvalOptions::default()
+            ..cas_engine::EvalOptions::default()
         };
         let state = semantics_set_state_from_options(&simplify_options, &eval_options);
         assert!(!state.check_solutions);
@@ -344,8 +344,8 @@ mod tests {
 
     #[test]
     fn apply_semantics_set_args_to_options_updates_runtime_state() {
-        let mut simplify_options = crate::SimplifyOptions::default();
-        let mut eval_options = crate::EvalOptions::default();
+        let mut simplify_options = cas_engine::SimplifyOptions::default();
+        let mut eval_options = cas_engine::EvalOptions::default();
 
         let next = apply_semantics_set_args_to_options(
             &["domain", "assume", "assumptions", "trace"],
@@ -354,21 +354,21 @@ mod tests {
         )
         .expect("should parse and apply");
 
-        assert_eq!(next.domain_mode, crate::DomainMode::Assume);
+        assert_eq!(next.domain_mode, cas_engine::DomainMode::Assume);
         assert_eq!(
             simplify_options.shared.semantics.domain_mode,
-            crate::DomainMode::Assume
+            cas_engine::DomainMode::Assume
         );
         assert_eq!(
             eval_options.shared.assumption_reporting,
-            crate::AssumptionReporting::Trace
+            cas_engine::AssumptionReporting::Trace
         );
     }
 
     #[test]
     fn evaluate_semantics_set_args_to_overview_lines_returns_overview() {
-        let mut simplify_options = crate::SimplifyOptions::default();
-        let mut eval_options = crate::EvalOptions::default();
+        let mut simplify_options = cas_engine::SimplifyOptions::default();
+        let mut eval_options = cas_engine::EvalOptions::default();
         let lines = evaluate_semantics_set_args_to_overview_lines(
             &["domain", "assume"],
             &mut simplify_options,
@@ -378,7 +378,7 @@ mod tests {
         assert!(lines.iter().any(|line| line.contains("domain_mode")));
         assert_eq!(
             simplify_options.shared.semantics.domain_mode,
-            crate::DomainMode::Assume
+            cas_engine::DomainMode::Assume
         );
     }
 }

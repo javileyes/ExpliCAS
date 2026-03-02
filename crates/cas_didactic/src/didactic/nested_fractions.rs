@@ -1,6 +1,6 @@
 use cas_ast::{Context, Expr, ExprId};
+use cas_engine::Step;
 use cas_math::expr_predicates::contains_division_like_term;
-use cas_solver::Step;
 use num_bigint::BigInt;
 use num_rational::BigRational;
 use num_traits::Signed;

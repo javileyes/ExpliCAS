@@ -9,13 +9,32 @@ mod solve;
 
 // Re-export the public API
 use cas_ast::{Context, Equation, ExprId, SolutionSet};
+use cas_engine::{DisplayEvalSteps, SolveStep, Step};
 pub use cas_formatter::{html_escape, latex_escape};
-use cas_solver::{SolveStep, Step};
 pub use simplify::{TimelineHtml, VerbosityLevel};
 pub use solve::SolveTimelineHtml;
 
 /// Canonical output file name used by timeline CLI render helpers.
 pub const TIMELINE_HTML_FILE: &str = "timeline.html";
+const TIMELINE_NO_STEPS_MESSAGE: &str = "No simplification steps to visualize.";
+const TIMELINE_OPEN_HINT_MESSAGE: &str = "Open in browser to view interactive visualization.";
+
+/// Simplify branch payload for CLI `timeline` rendering.
+#[derive(Debug, Clone)]
+pub struct TimelineSimplifyCommandOutput {
+    pub expr_input: String,
+    pub use_aggressive: bool,
+    pub parsed_expr: ExprId,
+    pub simplified_expr: ExprId,
+    pub steps: DisplayEvalSteps,
+}
+
+/// End-to-end output for CLI `timeline` rendering.
+#[derive(Debug)]
+pub enum TimelineCommandOutput {
+    Solve(cas_solver::TimelineSolveEvalOutput),
+    Simplify(TimelineSimplifyCommandOutput),
+}
 
 /// CLI-facing timeline render artifact.
 #[derive(Debug, Clone)]
@@ -28,6 +47,29 @@ pub enum TimelineCliRender {
         html: String,
         lines: Vec<String>,
     },
+}
+
+fn timeline_simplify_info_lines(use_aggressive: bool) -> Vec<String> {
+    let mut lines = Vec::new();
+    if use_aggressive {
+        lines.push("(Aggressive simplification mode)".to_string());
+    }
+    lines.push(TIMELINE_OPEN_HINT_MESSAGE.to_string());
+    lines
+}
+
+fn format_timeline_solve_result_line(context: &Context, solution_set: &SolutionSet) -> String {
+    format!(
+        "Result: {}",
+        cas_solver::display_solution_set(context, solution_set)
+    )
+}
+
+fn format_timeline_solve_no_steps_message(context: &Context, solution_set: &SolutionSet) -> String {
+    format!(
+        "No solving steps to visualize.\n{}",
+        format_timeline_solve_result_line(context, solution_set)
+    )
 }
 
 /// Render full HTML for simplification timeline.
@@ -65,12 +107,12 @@ pub fn render_solve_timeline_html(
 /// Build CLI render output for simplify timeline command.
 pub fn render_simplify_timeline_cli_output(
     context: &mut Context,
-    out: &cas_solver::TimelineSimplifyCommandEvalOutput,
+    out: &TimelineSimplifyCommandOutput,
     verbosity: VerbosityLevel,
 ) -> TimelineCliRender {
     if out.steps.is_empty() {
         return TimelineCliRender::NoSteps {
-            lines: vec![cas_solver::timeline_no_steps_message().to_string()],
+            lines: vec![TIMELINE_NO_STEPS_MESSAGE.to_string()],
         };
     }
 
@@ -82,7 +124,7 @@ pub fn render_simplify_timeline_cli_output(
         verbosity,
         Some(out.expr_input.as_str()),
     );
-    let lines = cas_solver::format_timeline_simplify_info_lines(out.use_aggressive);
+    let lines = timeline_simplify_info_lines(out.use_aggressive);
 
     TimelineCliRender::Html {
         file_name: TIMELINE_HTML_FILE,
@@ -98,7 +140,7 @@ pub fn render_solve_timeline_cli_output(
 ) -> TimelineCliRender {
     if out.display_steps.0.is_empty() {
         return TimelineCliRender::NoSteps {
-            lines: vec![cas_solver::format_timeline_solve_no_steps_message(
+            lines: vec![format_timeline_solve_no_steps_message(
                 context,
                 &out.solution_set,
             )],
@@ -113,8 +155,8 @@ pub fn render_solve_timeline_cli_output(
         &out.var,
     );
     let lines = vec![
-        cas_solver::format_timeline_solve_result_line(context, &out.solution_set),
-        cas_solver::timeline_open_hint_message().to_string(),
+        format_timeline_solve_result_line(context, &out.solution_set),
+        TIMELINE_OPEN_HINT_MESSAGE.to_string(),
     ];
 
     TimelineCliRender::Html {
@@ -127,33 +169,24 @@ pub fn render_solve_timeline_cli_output(
 /// Build CLI render output for a full `timeline` command eval output.
 pub fn render_timeline_command_cli_output(
     context: &mut Context,
-    out: &cas_solver::TimelineCommandEvalOutput,
+    out: &TimelineCommandOutput,
     verbosity: VerbosityLevel,
 ) -> TimelineCliRender {
     match out {
-        cas_solver::TimelineCommandEvalOutput::Solve(solve_out) => {
+        TimelineCommandOutput::Solve(solve_out) => {
             render_solve_timeline_cli_output(context, solve_out)
         }
-        cas_solver::TimelineCommandEvalOutput::Simplify(simplify_out) => {
+        TimelineCommandOutput::Simplify(simplify_out) => {
             render_simplify_timeline_cli_output(context, simplify_out, verbosity)
         }
     }
-}
-
-/// Engine-level wrapper for timeline CLI render planning.
-pub fn render_timeline_command_cli_output_with_engine(
-    engine: &mut cas_solver::Engine,
-    out: &cas_solver::TimelineCommandEvalOutput,
-    verbosity: VerbosityLevel,
-) -> TimelineCliRender {
-    render_timeline_command_cli_output(&mut engine.simplifier.context, out, verbosity)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use cas_ast::{Context, Expr};
-    use cas_solver::Step;
+    use cas_engine::{to_display_steps, Step};
 
     #[test]
     fn test_html_generation() {
@@ -211,15 +244,13 @@ mod tests {
     fn render_timeline_command_cli_output_simplify_no_steps() {
         let mut ctx = Context::new();
         let x = ctx.var("x");
-        let out = cas_solver::TimelineCommandEvalOutput::Simplify(
-            cas_solver::TimelineSimplifyCommandEvalOutput {
-                expr_input: "x".to_string(),
-                use_aggressive: false,
-                parsed_expr: x,
-                simplified_expr: x,
-                steps: cas_solver::to_display_steps(Vec::new()),
-            },
-        );
+        let out = TimelineCommandOutput::Simplify(TimelineSimplifyCommandOutput {
+            expr_input: "x".to_string(),
+            use_aggressive: false,
+            parsed_expr: x,
+            simplified_expr: x,
+            steps: to_display_steps(Vec::new()),
+        });
 
         let render = render_timeline_command_cli_output(&mut ctx, &out, VerbosityLevel::Normal);
         match render {

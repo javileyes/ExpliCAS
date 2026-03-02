@@ -1,6 +1,6 @@
 //! substitute subcommand handler.
 //!
-//! Keeps CLI I/O and delegates canonical JSON/text logic to `cas_solver`.
+//! Keeps CLI I/O and delegates canonical JSON/text logic to local command helpers.
 
 use crate::{OutputFormat, SubstituteArgs, SubstituteModeArg};
 
@@ -12,7 +12,7 @@ pub fn run(args: SubstituteArgs) {
     };
 
     if matches!(args.format, OutputFormat::Json) {
-        let out = cas_solver::evaluate_substitute_subcommand_json(
+        let out = super::substitute_command::evaluate_substitute_subcommand_json(
             &args.expr,
             &args.target,
             &args.replacement,
@@ -23,7 +23,7 @@ pub fn run(args: SubstituteArgs) {
         return;
     }
 
-    let lines = match cas_solver::evaluate_substitute_subcommand_text_lines_with_mode(
+    let lines = match super::substitute_command::evaluate_substitute_subcommand_text_lines_with_mode(
         &args.expr,
         &args.target,
         &args.replacement,

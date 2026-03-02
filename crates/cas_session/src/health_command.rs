@@ -82,17 +82,17 @@ pub fn health_clear_message() -> &'static str {
 }
 
 /// Clear health profiling counters for a simplifier.
-pub fn clear_health_profiler(simplifier: &mut crate::Simplifier) {
+pub fn clear_health_profiler(simplifier: &mut cas_engine::Simplifier) {
     simplifier.profiler.clear_run();
 }
 
 /// Capture current health report only when health tracking is enabled.
 pub fn capture_health_report_if_enabled(
-    engine: &crate::Engine,
+    simplifier: &cas_engine::Simplifier,
     health_enabled: bool,
 ) -> Option<String> {
     if health_enabled {
-        Some(engine.simplifier.profiler.health_report())
+        Some(simplifier.profiler.health_report())
     } else {
         None
     }
@@ -183,7 +183,7 @@ pub fn format_health_failed_tests_warning_line(failed: usize) -> Option<String> 
 
 /// Build `health` report lines from last pipeline stats and optional report text.
 pub fn format_health_report_lines(
-    last_stats: Option<&crate::PipelineStats>,
+    last_stats: Option<&cas_engine::PipelineStats>,
     report_text: Option<&str>,
 ) -> Vec<String> {
     let mut lines: Vec<String> = Vec::new();
@@ -226,7 +226,7 @@ pub fn format_health_report_lines(
 
 /// Evaluate `health status` request and return display lines.
 pub fn evaluate_health_status_lines(
-    simplifier: &mut crate::Simplifier,
+    simplifier: &mut cas_engine::Simplifier,
     status: &HealthStatusInput,
 ) -> Result<Vec<String>, String> {
     if status.list_only {
@@ -259,9 +259,9 @@ pub fn evaluate_health_status_lines(
 ///
 /// The caller applies `set_enabled` and `clear_last_report` to its UI/session state.
 pub fn evaluate_health_command(
-    simplifier: &mut crate::Simplifier,
+    simplifier: &mut cas_engine::Simplifier,
     line: &str,
-    last_stats: Option<&crate::PipelineStats>,
+    last_stats: Option<&cas_engine::PipelineStats>,
     last_health_report: Option<&str>,
 ) -> Result<HealthCommandEvalOutput, String> {
     match evaluate_health_command_input(line)? {
@@ -299,16 +299,6 @@ pub fn evaluate_health_command(
             unreachable!("invalid is handled in evaluate_health_command_input")
         }
     }
-}
-
-/// Engine-level wrapper for full `health` command evaluation.
-pub fn evaluate_health_command_with_engine(
-    engine: &mut crate::Engine,
-    line: &str,
-    last_stats: Option<&crate::PipelineStats>,
-    last_health_report: Option<&str>,
-) -> Result<HealthCommandEvalOutput, String> {
-    evaluate_health_command(&mut engine.simplifier, line, last_stats, last_health_report)
 }
 
 #[cfg(test)]
@@ -423,7 +413,7 @@ mod tests {
 
     #[test]
     fn evaluate_health_status_lines_list_only() {
-        let mut simplifier = crate::Simplifier::with_default_rules();
+        let mut simplifier = cas_engine::Simplifier::with_default_rules();
         let lines = evaluate_health_status_lines(
             &mut simplifier,
             &HealthStatusInput {
@@ -440,7 +430,7 @@ mod tests {
 
     #[test]
     fn evaluate_health_status_lines_invalid_category_returns_error() {
-        let mut simplifier = crate::Simplifier::with_default_rules();
+        let mut simplifier = cas_engine::Simplifier::with_default_rules();
         let err = evaluate_health_status_lines(
             &mut simplifier,
             &HealthStatusInput {
@@ -455,13 +445,13 @@ mod tests {
 
     #[test]
     fn clear_health_profiler_resets_profiler_state() {
-        let mut simplifier = crate::Simplifier::with_default_rules();
+        let mut simplifier = cas_engine::Simplifier::with_default_rules();
         clear_health_profiler(&mut simplifier);
     }
 
     #[test]
     fn evaluate_health_command_show_last_uses_report_lines() {
-        let mut simplifier = crate::Simplifier::with_default_rules();
+        let mut simplifier = cas_engine::Simplifier::with_default_rules();
         let out = evaluate_health_command(&mut simplifier, "health", None, None).expect("health");
         assert!(out.set_enabled.is_none());
         assert!(!out.clear_last_report);
@@ -473,7 +463,7 @@ mod tests {
 
     #[test]
     fn evaluate_health_command_enable_sets_flag() {
-        let mut simplifier = crate::Simplifier::with_default_rules();
+        let mut simplifier = cas_engine::Simplifier::with_default_rules();
         let out =
             evaluate_health_command(&mut simplifier, "health on", None, None).expect("health on");
         assert_eq!(out.set_enabled, Some(true));
@@ -486,7 +476,7 @@ mod tests {
 
     #[test]
     fn evaluate_health_command_clear_requests_report_clear() {
-        let mut simplifier = crate::Simplifier::with_default_rules();
+        let mut simplifier = cas_engine::Simplifier::with_default_rules();
         let out = evaluate_health_command(&mut simplifier, "health clear", None, None)
             .expect("health clear");
         assert!(out.set_enabled.is_none());

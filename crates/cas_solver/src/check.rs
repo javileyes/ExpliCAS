@@ -57,52 +57,6 @@ pub fn verify_solution_set(
     verify_solution_set_with_state(simplifier, solutions, &mut verify_discrete)
 }
 
-/// Format verification summary lines for CLI/UI output.
-pub fn format_verify_summary_lines(
-    ctx: &Context,
-    var: &str,
-    verify_result: &VerifyResult,
-    detail_prefix: &str,
-) -> Vec<String> {
-    let mut lines = Vec::new();
-
-    match verify_result.summary {
-        VerifySummary::AllVerified => {
-            lines.push("✓ All solutions verified".to_string());
-        }
-        VerifySummary::PartiallyVerified => {
-            lines.push("⚠ Some solutions verified".to_string());
-            for (sol_id, status) in &verify_result.solutions {
-                let sol_str = cas_formatter::render_expr(ctx, *sol_id);
-                match status {
-                    VerifyStatus::Verified => {
-                        lines.push(format!("{detail_prefix}✓ {var} = {sol_str} verified"));
-                    }
-                    VerifyStatus::Unverifiable { reason, .. } => {
-                        lines.push(format!("{detail_prefix}⚠ {var} = {sol_str}: {reason}"));
-                    }
-                    VerifyStatus::NotCheckable { reason } => {
-                        lines.push(format!("{detail_prefix}ℹ {var} = {sol_str}: {reason}"));
-                    }
-                }
-            }
-        }
-        VerifySummary::NoneVerified => {
-            lines.push("⚠ No solutions could be verified".to_string());
-        }
-        VerifySummary::NotCheckable => {
-            if let Some(desc) = &verify_result.guard_description {
-                lines.push(format!("ℹ {desc}"));
-            } else {
-                lines.push("ℹ Solution type not checkable".to_string());
-            }
-        }
-        VerifySummary::Empty => {}
-    }
-
-    lines
-}
-
 fn simplify_options_for_domain(domain_mode: DomainMode) -> SimplifyOptions {
     SimplifyOptions {
         shared: crate::SharedSemanticConfig {

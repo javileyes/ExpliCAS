@@ -47,8 +47,8 @@ pub fn parse_semantics_command_input(line: &str) -> SemanticsCommandInput {
 /// Evaluate `semantics ...` command line and apply runtime option changes.
 pub fn evaluate_semantics_command_line(
     line: &str,
-    simplify_options: &mut crate::SimplifyOptions,
-    eval_options: &mut crate::EvalOptions,
+    simplify_options: &mut cas_engine::SimplifyOptions,
+    eval_options: &mut cas_engine::EvalOptions,
 ) -> SemanticsCommandOutput {
     match parse_semantics_command_input(line) {
         SemanticsCommandInput::Show => {
@@ -154,8 +154,8 @@ mod tests {
 
     #[test]
     fn evaluate_semantics_command_line_show_formats_overview() {
-        let mut simplify_options = crate::SimplifyOptions::default();
-        let mut eval_options = crate::EvalOptions::default();
+        let mut simplify_options = cas_engine::SimplifyOptions::default();
+        let mut eval_options = cas_engine::EvalOptions::default();
         let out =
             evaluate_semantics_command_line("semantics", &mut simplify_options, &mut eval_options);
         assert!(!out.sync_simplifier);
@@ -164,8 +164,8 @@ mod tests {
 
     #[test]
     fn evaluate_semantics_command_line_set_applies_and_requests_sync() {
-        let mut simplify_options = crate::SimplifyOptions::default();
-        let mut eval_options = crate::EvalOptions::default();
+        let mut simplify_options = cas_engine::SimplifyOptions::default();
+        let mut eval_options = cas_engine::EvalOptions::default();
         let out = evaluate_semantics_command_line(
             "semantics set domain assume",
             &mut simplify_options,
@@ -174,7 +174,7 @@ mod tests {
         assert!(out.sync_simplifier);
         assert_eq!(
             simplify_options.shared.semantics.domain_mode,
-            crate::DomainMode::Assume
+            cas_engine::DomainMode::Assume
         );
     }
 }

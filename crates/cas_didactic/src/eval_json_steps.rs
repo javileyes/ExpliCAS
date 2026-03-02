@@ -1,6 +1,6 @@
 use cas_api_models::{StepJson, SubStepJson};
 use cas_ast::Context;
-use cas_solver::{pathsteps_to_expr_path, EvalOutput, ImportanceLevel};
+use cas_engine::{pathsteps_to_expr_path, EvalOutput, ImportanceLevel};
 
 /// Convert engine steps to eval-json step payloads.
 ///
@@ -144,13 +144,4 @@ pub fn collect_eval_json_steps(
             }
         })
         .collect()
-}
-
-/// Engine-level wrapper for eval-json step collection.
-pub fn collect_eval_json_steps_with_engine(
-    output: &EvalOutput,
-    engine: &cas_solver::Engine,
-    steps_mode: &str,
-) -> Vec<StepJson> {
-    collect_eval_json_steps(output, &engine.simplifier.context, steps_mode)
 }

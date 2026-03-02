@@ -1,4 +1,8 @@
 use cas_ast::{Context, Expr, ExprId, ExprPath};
+use cas_engine::{
+    infer_implicit_domain, pathsteps_to_expr_path, render_conditions_normalized, AssumptionKind,
+    ImplicitCondition, ImportanceLevel, PathStep, Step, ValueDomain,
+};
 use cas_formatter::path::{
     diff_find_all_paths_to_expr, diff_find_path_to_expr, diff_find_paths_by_structure,
     extract_add_terms, find_path_to_expr, navigate_to_subexpr,
@@ -7,7 +11,6 @@ use cas_formatter::{
     clean_latex_identities, html_escape, latex_escape, HighlightColor, HighlightConfig,
     LaTeXExprHighlighted, PathHighlightConfig, PathHighlightedLatexRenderer,
 };
-use cas_solver::{pathsteps_to_expr_path, PathStep, Step};
 
 /// Timeline HTML generator - exports simplification steps to interactive HTML
 pub struct TimelineHtml<'a> {
@@ -19,7 +22,7 @@ pub struct TimelineHtml<'a> {
     verbosity_level: VerbosityLevel,
     /// V2.12.13: Global requires inferred from input expression.
     /// Shown at the end of the timeline, after final result.
-    global_requires: Vec<cas_solver::ImplicitCondition>,
+    global_requires: Vec<ImplicitCondition>,
     /// V2.14.40: Style preferences derived from input string for consistent root rendering
     style_prefs: cas_formatter::root_style::StylePreferences,
 }
@@ -35,8 +38,6 @@ impl VerbosityLevel {
     /// Check if a step should be shown at this verbosity level
     /// Uses step.get_importance() as the single source of truth
     fn should_show_step(&self, step: &Step) -> bool {
-        use cas_solver::ImportanceLevel;
-
         match self {
             VerbosityLevel::Verbose => true,
             VerbosityLevel::Low => step.get_importance() >= ImportanceLevel::High,
@@ -83,9 +84,6 @@ impl<'a> TimelineHtml<'a> {
         verbosity: VerbosityLevel,
         input_string: Option<&str>,
     ) -> Self {
-        use cas_solver::infer_implicit_domain;
-        use cas_solver::ValueDomain;
-
         // V2.14.40: Compute style preferences from input string
         let signals =
             input_string.map(cas_formatter::root_style::ParseStyleSignals::from_input_string);
@@ -1141,8 +1139,6 @@ impl<'a> TimelineHtml<'a> {
 
             // V2.12.13: Build assumption HTML from assumption_events, filtered and grouped by kind
             let domain_html = if !step.assumption_events().is_empty() {
-                use cas_solver::AssumptionKind;
-
                 // Filter to displayable events only
                 let displayable: Vec<_> = step
                     .assumption_events()
@@ -1158,12 +1154,7 @@ impl<'a> TimelineHtml<'a> {
                     // Group by kind and format with icons
                     let requires: Vec<_> = displayable
                         .iter()
-                        .filter(|e| {
-                            matches!(
-                                AssumptionKind::from(e.kind),
-                                AssumptionKind::RequiresIntroduced
-                            )
-                        })
+                        .filter(|e| matches!(e.kind, AssumptionKind::RequiresIntroduced))
                         .map(|e| html_escape(&e.message))
                         .collect();
                     if !requires.is_empty() {
@@ -1172,9 +1163,7 @@ impl<'a> TimelineHtml<'a> {
 
                     let branches: Vec<_> = displayable
                         .iter()
-                        .filter(|e| {
-                            matches!(AssumptionKind::from(e.kind), AssumptionKind::BranchChoice)
-                        })
+                        .filter(|e| matches!(e.kind, AssumptionKind::BranchChoice))
                         .map(|e| html_escape(&e.message))
                         .collect();
                     if !branches.is_empty() {
@@ -1183,12 +1172,7 @@ impl<'a> TimelineHtml<'a> {
 
                     let domain_ext: Vec<_> = displayable
                         .iter()
-                        .filter(|e| {
-                            matches!(
-                                AssumptionKind::from(e.kind),
-                                AssumptionKind::DomainExtension
-                            )
-                        })
+                        .filter(|e| matches!(e.kind, AssumptionKind::DomainExtension))
                         .map(|e| html_escape(&e.message))
                         .collect();
                     if !domain_ext.is_empty() {
@@ -1197,12 +1181,7 @@ impl<'a> TimelineHtml<'a> {
 
                     let assumes: Vec<_> = displayable
                         .iter()
-                        .filter(|e| {
-                            matches!(
-                                AssumptionKind::from(e.kind),
-                                AssumptionKind::HeuristicAssumption
-                            )
-                        })
+                        .filter(|e| matches!(e.kind, AssumptionKind::HeuristicAssumption))
                         .map(|e| html_escape(&e.message))
                         .collect();
                     if !assumes.is_empty() {
@@ -1321,7 +1300,7 @@ impl<'a> TimelineHtml<'a> {
         // This ensures timeline shows the same requires as REPL
         if !self.global_requires.is_empty() {
             let requires_messages =
-                cas_solver::render_conditions_normalized(self.context, &self.global_requires);
+                render_conditions_normalized(self.context, &self.global_requires);
             if !requires_messages.is_empty() {
                 html.push_str(r#"        <div class="global-requires">"#);
                 html.push_str("\n            <strong>ℹ️ Requires:</strong> ");

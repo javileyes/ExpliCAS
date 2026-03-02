@@ -164,15 +164,6 @@ pub fn collect_solve_steps_eval_json(
         .collect()
 }
 
-/// Engine-level wrapper for collecting solve steps in eval-json format.
-pub fn collect_solve_steps_eval_json_with_engine(
-    output: &EvalOutput,
-    engine: &crate::Engine,
-    steps_mode: &str,
-) -> Vec<SolveStepJson> {
-    collect_solve_steps_eval_json(output, &engine.simplifier.context, steps_mode)
-}
-
 /// Format a solution set for eval-json plain-text result.
 pub fn format_solution_set_eval_json(ctx: &Context, solution_set: &SolutionSet) -> String {
     match solution_set {
@@ -408,14 +399,6 @@ pub fn collect_required_conditions_eval_json(
         .collect()
 }
 
-/// Engine-level wrapper for collecting required conditions in eval-json format.
-pub fn collect_required_conditions_eval_json_with_engine(
-    output: &EvalOutput,
-    engine: &crate::Engine,
-) -> Vec<RequiredConditionJson> {
-    collect_required_conditions_eval_json(output, &engine.simplifier.context)
-}
-
 /// Collect human-readable required condition strings.
 pub fn collect_required_display_eval_json(output: &EvalOutput, ctx: &Context) -> Vec<String> {
     output
@@ -423,12 +406,4 @@ pub fn collect_required_display_eval_json(output: &EvalOutput, ctx: &Context) ->
         .iter()
         .map(|cond| cond.display(ctx))
         .collect()
-}
-
-/// Engine-level wrapper for collecting required condition display strings.
-pub fn collect_required_display_eval_json_with_engine(
-    output: &EvalOutput,
-    engine: &crate::Engine,
-) -> Vec<String> {
-    collect_required_display_eval_json(output, &engine.simplifier.context)
 }

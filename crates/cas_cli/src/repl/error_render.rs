@@ -5,6 +5,27 @@
 use cas_ast::Span;
 use cas_parser::ParseError;
 
+const SUBSTITUTE_USAGE_MESSAGE: &str = "Usage: subst <expr>, <target>, <replacement>\n\n\
+                     Examples:\n\
+                       subst x^2 + x, x, 3              → 12\n\
+                       subst x^4 + x^2 + 1, x^2, y      → y² + y + 1\n\
+                       subst x^3, x^2, y                → y·x";
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ParseExprPairError {
+    MissingDelimiter,
+    FirstArg(String),
+    SecondArg(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ParseSubstituteArgsError {
+    InvalidArity,
+    Expression(String),
+    Target(String),
+    Replacement(String),
+}
+
 /// Render parse error with caret indicator.
 ///
 /// # Example Output
@@ -44,6 +65,33 @@ pub fn render_parse_error(input: &str, error: &ParseError) -> String {
         render_error_with_caret(input, span, error.message())
     } else {
         format!("Parse error: {}", error)
+    }
+}
+
+pub fn format_expr_pair_parse_error_message(error: &ParseExprPairError, command: &str) -> String {
+    match error {
+        ParseExprPairError::MissingDelimiter => {
+            format!("Usage: {} <expr1>, <expr2>", command)
+        }
+        ParseExprPairError::FirstArg(e) => format!("Error parsing first arg: {}", e),
+        ParseExprPairError::SecondArg(e) => {
+            format!("Error parsing second arg: {}", e)
+        }
+    }
+}
+
+pub fn format_substitute_parse_error_message(error: &ParseSubstituteArgsError) -> String {
+    match error {
+        ParseSubstituteArgsError::InvalidArity => SUBSTITUTE_USAGE_MESSAGE.to_string(),
+        ParseSubstituteArgsError::Expression(e) => {
+            format!("Error parsing expression: {}", e)
+        }
+        ParseSubstituteArgsError::Target(e) => {
+            format!("Error parsing target: {}", e)
+        }
+        ParseSubstituteArgsError::Replacement(e) => {
+            format!("Error parsing replacement: {}", e)
+        }
     }
 }
 

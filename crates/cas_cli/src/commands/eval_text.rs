@@ -12,18 +12,15 @@ pub fn run(args: &EvalArgs) {
         DomainArg::Assume => "assume",
     };
 
-    let (result, load_warning, save_warning) = cas_session::run_with_domain_session(
-        args.session.as_deref(),
-        domain,
-        |engine, state| {
-            cas_solver::evaluate_eval_text_simplify_with_session(
+    let (result, load_warning, save_warning) =
+        cas_session::run_with_domain_session(args.session.as_deref(), domain, |engine, state| {
+            super::eval_command::evaluate_eval_text_simplify_with_session(
                 engine,
                 state,
                 &args.expr,
                 args.session.is_some(),
             )
-        },
-    );
+        });
     if let Some(warning) = load_warning {
         eprintln!("{}", warning);
     }

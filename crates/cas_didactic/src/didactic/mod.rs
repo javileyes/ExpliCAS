@@ -39,7 +39,7 @@ mod fraction_steps;
 mod nested_fractions;
 
 use cas_ast::{Context, Expr, ExprId};
-use cas_solver::Step;
+use cas_engine::{AssumptionEvent, PathStep, Step};
 use num_bigint::BigInt;
 use num_rational::BigRational;
 use num_traits::{Signed, Zero};
@@ -53,6 +53,15 @@ use nested_fractions::{
     generate_rationalization_substeps, generate_root_denesting_substeps,
     generate_sum_three_cubes_substeps,
 };
+
+/// Display verbosity mode for didactic simplification rendering.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StepDisplayMode {
+    None,
+    Succinct,
+    Normal,
+    Verbose,
+}
 
 /// An enriched step with optional sub-steps for didactic explanation
 #[derive(Debug, Clone)]
@@ -353,6 +362,24 @@ pub fn latex_to_plain_text(s: &str) -> String {
     result.replace("\\", "")
 }
 
+fn should_show_simplify_step(step: &Step, mode: StepDisplayMode) -> bool {
+    match mode {
+        StepDisplayMode::None => false,
+        StepDisplayMode::Verbose => true,
+        StepDisplayMode::Succinct | StepDisplayMode::Normal => {
+            if step.get_importance() < cas_engine::ImportanceLevel::Medium {
+                return false;
+            }
+            if let (Some(before), Some(after)) = (step.global_before, step.global_after) {
+                if before == after {
+                    return false;
+                }
+            }
+            true
+        }
+    }
+}
+
 /// Format simplification steps for CLI/REPL text output.
 ///
 /// This keeps didactic rendering rules outside frontends so clients can remain
@@ -362,12 +389,12 @@ pub fn format_cli_simplification_steps(
     expr: ExprId,
     steps: &[Step],
     style_signals: cas_formatter::root_style::ParseStyleSignals,
-    display_mode: cas_solver::SetDisplayMode,
+    display_mode: StepDisplayMode,
 ) -> Vec<String> {
     use cas_formatter::root_style::StylePreferences;
     use cas_formatter::DisplayExprStyled;
 
-    if display_mode == cas_solver::SetDisplayMode::None {
+    if display_mode == StepDisplayMode::None {
         return Vec::new();
     }
 
@@ -378,7 +405,7 @@ pub fn format_cli_simplification_steps(
     if steps.is_empty() {
         let standalone_substeps = get_standalone_substeps(ctx, expr);
 
-        if !standalone_substeps.is_empty() && display_mode != cas_solver::SetDisplayMode::Succinct {
+        if !standalone_substeps.is_empty() && display_mode != StepDisplayMode::Succinct {
             lines.push("Computation:".to_string());
             for sub in &standalone_substeps {
                 lines.push(format!("   → {}", sub.description));
@@ -390,14 +417,14 @@ pub fn format_cli_simplification_steps(
                     ));
                 }
             }
-        } else if display_mode != cas_solver::SetDisplayMode::Succinct {
+        } else if display_mode != StepDisplayMode::Succinct {
             lines.push("No simplification steps needed.".to_string());
         }
 
         return lines;
     }
 
-    if display_mode != cas_solver::SetDisplayMode::Succinct {
+    if display_mode != StepDisplayMode::Succinct {
         lines.push("Steps:".to_string());
     }
 
@@ -407,7 +434,7 @@ pub fn format_cli_simplification_steps(
     let mut sub_steps_shown = false;
 
     for (step_idx, step) in steps.iter().enumerate() {
-        if cas_solver::should_show_simplify_step(step, display_mode) {
+        if should_show_simplify_step(step, display_mode) {
             let before_disp = cas_formatter::clean_display_string(&format!(
                 "{}",
                 DisplayExprStyled::new(ctx, step.before, &style_prefs)
@@ -426,9 +453,8 @@ pub fn format_cli_simplification_steps(
 
             step_count += 1;
 
-            if display_mode == cas_solver::SetDisplayMode::Succinct {
-                current_root =
-                    cas_solver::reconstruct_global_expr(ctx, current_root, step.path(), step.after);
+            if display_mode == StepDisplayMode::Succinct {
+                current_root = reconstruct_global_expr(ctx, current_root, step.path(), step.after);
                 lines.push(format!(
                     "-> {}",
                     DisplayExprStyled::new(ctx, current_root, &style_prefs)
@@ -527,8 +553,7 @@ pub fn format_cli_simplification_steps(
             if let Some(global_after) = step.global_after {
                 current_root = global_after;
             } else {
-                current_root =
-                    cas_solver::reconstruct_global_expr(ctx, current_root, step.path(), step.after);
+                current_root = reconstruct_global_expr(ctx, current_root, step.path(), step.after);
             }
 
             lines.push(format!(
@@ -539,37 +564,17 @@ pub fn format_cli_simplification_steps(
                 ))
             ));
 
-            for assumption_line in
-                cas_solver::format_displayable_assumption_lines(step.assumption_events())
-            {
+            for assumption_line in format_displayable_assumption_lines(step.assumption_events()) {
                 lines.push(format!("   {}", assumption_line));
             }
         } else if let Some(global_after) = step.global_after {
             current_root = global_after;
         } else {
-            current_root =
-                cas_solver::reconstruct_global_expr(ctx, current_root, step.path(), step.after);
+            current_root = reconstruct_global_expr(ctx, current_root, step.path(), step.after);
         }
     }
 
     lines
-}
-
-/// Engine-level wrapper for CLI simplification step formatting.
-pub fn format_cli_simplification_steps_with_engine(
-    engine: &mut cas_solver::Engine,
-    expr: ExprId,
-    steps: &[Step],
-    style_signals: cas_formatter::root_style::ParseStyleSignals,
-    display_mode: cas_solver::SetDisplayMode,
-) -> Vec<String> {
-    format_cli_simplification_steps(
-        &mut engine.simplifier.context,
-        expr,
-        steps,
-        style_signals,
-        display_mode,
-    )
 }
 
 /// Extract content within balanced braces starting at the first `{`.
@@ -599,6 +604,105 @@ fn find_balanced_braces(s: &str) -> Option<(String, usize)> {
         }
     }
     None
+}
+
+fn format_displayable_assumption_lines(events: &[AssumptionEvent]) -> Vec<String> {
+    events
+        .iter()
+        .filter_map(|event| {
+            if event.kind.should_display() {
+                Some(format!(
+                    "{} {}: {}",
+                    event.kind.icon(),
+                    event.kind.label(),
+                    event.message
+                ))
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+fn reconstruct_global_expr(
+    context: &mut Context,
+    root: ExprId,
+    path: &[PathStep],
+    replacement: ExprId,
+) -> ExprId {
+    if path.is_empty() {
+        return replacement;
+    }
+
+    let current_step = &path[0];
+    let remaining_path = &path[1..];
+    let expr = context.get(root).clone();
+
+    match (expr, current_step) {
+        (Expr::Add(l, r), PathStep::Left) => {
+            let new_l = reconstruct_global_expr(context, l, remaining_path, replacement);
+            context.add(Expr::Add(new_l, r))
+        }
+        // Sub(a,b) may be canonicalized as Add(a, Neg(b)).
+        (Expr::Add(l, r), PathStep::Right) => {
+            if let Expr::Neg(inner) = context.get(r).clone() {
+                let new_inner =
+                    reconstruct_global_expr(context, inner, remaining_path, replacement);
+                let new_neg = context.add(Expr::Neg(new_inner));
+                context.add(Expr::Add(l, new_neg))
+            } else {
+                let new_r = reconstruct_global_expr(context, r, remaining_path, replacement);
+                context.add(Expr::Add(l, new_r))
+            }
+        }
+        (Expr::Sub(l, r), PathStep::Left) => {
+            let new_l = reconstruct_global_expr(context, l, remaining_path, replacement);
+            context.add(Expr::Sub(new_l, r))
+        }
+        (Expr::Sub(l, r), PathStep::Right) => {
+            let new_r = reconstruct_global_expr(context, r, remaining_path, replacement);
+            context.add(Expr::Sub(l, new_r))
+        }
+        (Expr::Mul(l, r), PathStep::Left) => {
+            let new_l = reconstruct_global_expr(context, l, remaining_path, replacement);
+            context.add(Expr::Mul(new_l, r))
+        }
+        (Expr::Mul(l, r), PathStep::Right) => {
+            let new_r = reconstruct_global_expr(context, r, remaining_path, replacement);
+            context.add(Expr::Mul(l, new_r))
+        }
+        (Expr::Div(l, r), PathStep::Left) => {
+            let new_l = reconstruct_global_expr(context, l, remaining_path, replacement);
+            context.add(Expr::Div(new_l, r))
+        }
+        (Expr::Div(l, r), PathStep::Right) => {
+            let new_r = reconstruct_global_expr(context, r, remaining_path, replacement);
+            context.add(Expr::Div(l, new_r))
+        }
+        (Expr::Pow(b, e), PathStep::Base) => {
+            let new_b = reconstruct_global_expr(context, b, remaining_path, replacement);
+            context.add(Expr::Pow(new_b, e))
+        }
+        (Expr::Pow(b, e), PathStep::Exponent) => {
+            let new_e = reconstruct_global_expr(context, e, remaining_path, replacement);
+            context.add(Expr::Pow(b, new_e))
+        }
+        (Expr::Neg(e), PathStep::Inner) => {
+            let new_e = reconstruct_global_expr(context, e, remaining_path, replacement);
+            context.add(Expr::Neg(new_e))
+        }
+        (Expr::Function(name, args), PathStep::Arg(idx)) => {
+            let mut new_args = args.clone();
+            if *idx < new_args.len() {
+                new_args[*idx] =
+                    reconstruct_global_expr(context, new_args[*idx], remaining_path, replacement);
+                context.add(Expr::Function(name, new_args))
+            } else {
+                root
+            }
+        }
+        _ => root,
+    }
 }
 
 // --- Shared helpers used by submodules ---

@@ -1,16 +1,16 @@
-use crate::rules::arithmetic::{AddZeroRule, CombineConstantsRule, MulOneRule, MulZeroRule};
-use crate::rules::calculus::{DiffRule, IntegrateRule};
-use crate::rules::exponents::{
+use cas_engine::rules::arithmetic::{AddZeroRule, CombineConstantsRule, MulOneRule, MulZeroRule};
+use cas_engine::rules::calculus::{DiffRule, IntegrateRule};
+use cas_engine::rules::exponents::{
     EvaluatePowerRule, IdentityPowerRule, PowerPowerRule, PowerProductRule, PowerQuotientRule,
     ProductPowerRule,
 };
-use crate::rules::grouping::CollectRule;
-use crate::rules::logarithms::{EvaluateLogRule, ExponentialLogRule, SplitLogExponentsRule};
-use crate::rules::number_theory::NumberTheoryRule;
-use crate::rules::polynomial::{
+use cas_engine::rules::grouping::CollectRule;
+use cas_engine::rules::logarithms::{EvaluateLogRule, ExponentialLogRule, SplitLogExponentsRule};
+use cas_engine::rules::number_theory::NumberTheoryRule;
+use cas_engine::rules::polynomial::{
     AnnihilationRule, BinomialExpansionRule, CombineLikeTermsRule, DistributeRule,
 };
-use crate::rules::trigonometry::{
+use cas_engine::rules::trigonometry::{
     AngleConsistencyRule, AngleIdentityRule, DoubleAngleRule, EvaluateTrigRule,
     PythagoreanIdentityRule, TanToSinCosRule,
 };
@@ -102,35 +102,6 @@ impl From<SimplifierRuleConfig> for SimplifierToggleConfig {
     }
 }
 
-/// Format current simplifier toggle configuration for CLI display.
-pub fn format_simplifier_toggle_config(config: SimplifierToggleConfig) -> String {
-    format!(
-        "Current Configuration:\n\
-           distribute: {}\n\
-           expand_binomials: {}\n\
-           distribute_constants: {}\n\
-           factor_difference_squares: {}\n\
-           root_denesting: {}\n\
-           trig_double_angle: {}\n\
-           trig_angle_sum: {}\n\
-           log_split_exponents: {}\n\
-           rationalize_denominator: {}\n\
-           canonicalize_trig_square: {}\n\
-           auto_factor: {}",
-        config.distribute,
-        config.expand_binomials,
-        config.distribute_constants,
-        config.factor_difference_squares,
-        config.root_denesting,
-        config.trig_double_angle,
-        config.trig_angle_sum,
-        config.log_split_exponents,
-        config.rationalize_denominator,
-        config.canonicalize_trig_square,
-        config.auto_factor
-    )
-}
-
 /// Update one named toggle rule.
 pub fn set_simplifier_toggle_rule(
     config: &mut SimplifierToggleConfig,
@@ -158,11 +129,11 @@ pub fn set_simplifier_toggle_rule(
 ///
 /// This centralizes rule wiring outside frontends, so REPL/FFI/web can share
 /// a consistent initialization path.
-pub fn build_simplifier_with_rule_config(config: SimplifierRuleConfig) -> crate::Simplifier {
-    let mut simplifier = crate::Simplifier::with_default_rules();
+pub fn build_simplifier_with_rule_config(config: SimplifierRuleConfig) -> cas_engine::Simplifier {
+    let mut simplifier = cas_engine::Simplifier::with_default_rules();
 
     // Always enabled core rules.
-    simplifier.add_rule(Box::new(crate::rules::functions::AbsSquaredRule));
+    simplifier.add_rule(Box::new(cas_engine::rules::functions::AbsSquaredRule));
     simplifier.add_rule(Box::new(EvaluateTrigRule));
     simplifier.add_rule(Box::new(PythagoreanIdentityRule));
     if config.trig_angle_sum {
@@ -174,15 +145,15 @@ pub fn build_simplifier_with_rule_config(config: SimplifierRuleConfig) -> crate:
     }
     if config.canonicalize_trig_square {
         simplifier.add_rule(Box::new(
-            crate::rules::trigonometry::CanonicalizeTrigSquareRule,
+            cas_engine::rules::trigonometry::CanonicalizeTrigSquareRule,
         ));
     }
     simplifier.add_rule(Box::new(EvaluateLogRule));
     simplifier.add_rule(Box::new(ExponentialLogRule));
-    simplifier.add_rule(Box::new(crate::rules::algebra::SimplifyFractionRule));
-    simplifier.add_rule(Box::new(crate::rules::algebra::ExpandRule));
-    simplifier.add_rule(Box::new(crate::rules::algebra::ConservativeExpandRule));
-    simplifier.add_rule(Box::new(crate::rules::algebra::FactorRule));
+    simplifier.add_rule(Box::new(cas_engine::rules::algebra::SimplifyFractionRule));
+    simplifier.add_rule(Box::new(cas_engine::rules::algebra::ExpandRule));
+    simplifier.add_rule(Box::new(cas_engine::rules::algebra::ConservativeExpandRule));
+    simplifier.add_rule(Box::new(cas_engine::rules::algebra::FactorRule));
     simplifier.add_rule(Box::new(CollectRule));
     // Kept duplicated intentionally to preserve current behavior.
     simplifier.add_rule(Box::new(EvaluatePowerRule));
@@ -192,13 +163,17 @@ pub fn build_simplifier_with_rule_config(config: SimplifierRuleConfig) -> crate:
     }
 
     // Advanced algebra rules (critical for solver).
-    simplifier.add_rule(Box::new(crate::rules::algebra::NestedFractionRule));
-    simplifier.add_rule(Box::new(crate::rules::algebra::AddFractionsRule));
-    simplifier.add_rule(Box::new(crate::rules::algebra::SimplifyMulDivRule));
+    simplifier.add_rule(Box::new(cas_engine::rules::algebra::NestedFractionRule));
+    simplifier.add_rule(Box::new(cas_engine::rules::algebra::AddFractionsRule));
+    simplifier.add_rule(Box::new(cas_engine::rules::algebra::SimplifyMulDivRule));
     if config.rationalize_denominator {
-        simplifier.add_rule(Box::new(crate::rules::algebra::RationalizeDenominatorRule));
+        simplifier.add_rule(Box::new(
+            cas_engine::rules::algebra::RationalizeDenominatorRule,
+        ));
     }
-    simplifier.add_rule(Box::new(crate::rules::algebra::CancelCommonFactorsRule));
+    simplifier.add_rule(Box::new(
+        cas_engine::rules::algebra::CancelCommonFactorsRule,
+    ));
 
     if config.distribute {
         simplifier.add_rule(Box::new(DistributeRule));
@@ -207,13 +182,15 @@ pub fn build_simplifier_with_rule_config(config: SimplifierRuleConfig) -> crate:
         simplifier.add_rule(Box::new(BinomialExpansionRule));
     }
     if config.factor_difference_squares {
-        simplifier.add_rule(Box::new(crate::rules::algebra::FactorDifferenceSquaresRule));
+        simplifier.add_rule(Box::new(
+            cas_engine::rules::algebra::FactorDifferenceSquaresRule,
+        ));
     }
     if config.root_denesting {
-        simplifier.add_rule(Box::new(crate::rules::algebra::RootDenestingRule));
+        simplifier.add_rule(Box::new(cas_engine::rules::algebra::RootDenestingRule));
     }
     if config.auto_factor {
-        simplifier.add_rule(Box::new(crate::rules::algebra::AutomaticFactorRule));
+        simplifier.add_rule(Box::new(cas_engine::rules::algebra::AutomaticFactorRule));
     }
 
     simplifier.add_rule(Box::new(AngleConsistencyRule));
@@ -226,11 +203,13 @@ pub fn build_simplifier_with_rule_config(config: SimplifierRuleConfig) -> crate:
     simplifier.add_rule(Box::new(PowerProductRule));
     simplifier.add_rule(Box::new(PowerQuotientRule));
     simplifier.add_rule(Box::new(IdentityPowerRule));
-    simplifier.add_rule(Box::new(crate::rules::exponents::NegativeBasePowerRule));
+    simplifier.add_rule(Box::new(
+        cas_engine::rules::exponents::NegativeBasePowerRule,
+    ));
     simplifier.add_rule(Box::new(AddZeroRule));
     simplifier.add_rule(Box::new(MulOneRule));
     simplifier.add_rule(Box::new(MulZeroRule));
-    simplifier.add_rule(Box::new(crate::rules::arithmetic::DivZeroRule));
+    simplifier.add_rule(Box::new(cas_engine::rules::arithmetic::DivZeroRule));
     simplifier.add_rule(Box::new(CombineConstantsRule));
     simplifier.add_rule(Box::new(IntegrateRule));
     simplifier.add_rule(Box::new(DiffRule));
@@ -241,7 +220,7 @@ pub fn build_simplifier_with_rule_config(config: SimplifierRuleConfig) -> crate:
 
 /// Apply runtime rule toggles to an existing simplifier instance.
 pub fn apply_simplifier_toggle_config(
-    simplifier: &mut crate::Simplifier,
+    simplifier: &mut cas_engine::Simplifier,
     config: SimplifierToggleConfig,
 ) {
     let mut toggle = |name: &str, enabled: bool| {
@@ -283,36 +262,11 @@ pub fn apply_simplifier_toggle_config(
     }
 }
 
-/// Rebuild the engine simplifier with a full rule config.
-pub fn rebuild_engine_simplifier_with_rule_config(
-    engine: &mut crate::Engine,
-    config: SimplifierRuleConfig,
-) {
-    engine.simplifier = build_simplifier_with_rule_config(config);
-}
-
-/// Rebuild the engine simplifier from current eval options profile.
-pub fn rebuild_engine_simplifier_with_profile(
-    engine: &mut crate::Engine,
-    options: &crate::EvalOptions,
-) {
-    engine.simplifier = crate::Simplifier::with_profile(options);
-}
-
-/// Apply simplifier toggles directly to an engine instance.
-pub fn apply_simplifier_toggle_config_to_engine(
-    engine: &mut crate::Engine,
-    config: SimplifierToggleConfig,
-) {
-    apply_simplifier_toggle_config(&mut engine.simplifier, config);
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
         apply_simplifier_toggle_config, build_simplifier_with_rule_config,
-        format_simplifier_toggle_config, set_simplifier_toggle_rule, SimplifierRuleConfig,
-        SimplifierToggleConfig,
+        set_simplifier_toggle_rule, SimplifierRuleConfig, SimplifierToggleConfig,
     };
     use cas_formatter::DisplayExpr;
 
@@ -375,12 +329,5 @@ mod tests {
         let mut cfg = SimplifierToggleConfig::default();
         let err = set_simplifier_toggle_rule(&mut cfg, "missing_rule", true).expect_err("error");
         assert!(err.contains("Unknown rule: missing_rule"));
-    }
-
-    #[test]
-    fn format_simplifier_toggle_config_mentions_distribute() {
-        let text = format_simplifier_toggle_config(SimplifierToggleConfig::default());
-        assert!(text.contains("Current Configuration:"));
-        assert!(text.contains("distribute: false"));
     }
 }

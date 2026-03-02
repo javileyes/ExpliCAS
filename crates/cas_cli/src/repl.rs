@@ -51,6 +51,7 @@ impl Default for Repl {
 //   limit.rs            - Limit computation
 // =============================================================================
 
+mod command_routing;
 mod commands_algebra;
 mod commands_analysis;
 mod commands_config;
@@ -59,18 +60,26 @@ mod commands_semantics;
 mod commands_session;
 mod commands_solve;
 mod commands_system;
+mod config_command;
 mod core;
 mod dispatch;
 mod error_render;
 mod eval;
+mod general_help;
 mod help;
+mod help_command;
+mod help_topics;
 mod init;
 mod limit;
 pub mod output;
+mod panic_guard;
+mod prompt_display;
 mod rationalize;
 mod semantics;
+mod set_command;
 mod show_steps;
 mod simplify;
+mod steps_command;
 pub mod wire;
 
 #[cfg(test)]
@@ -79,3 +88,4 @@ mod core_tests;
 // Re-export core types for external use
 pub use core::ReplCore;
 pub use output::{reply_output, CoreResult, ReplMsg, ReplReply, ReplReplyExt, UiDelta};
+pub use set_command::SetDisplayMode;

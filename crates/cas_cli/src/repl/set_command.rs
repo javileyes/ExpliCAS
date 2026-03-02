@@ -1,4 +1,3 @@
-/// Display verbosity state mirrored from CLI for `set steps ...`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SetDisplayMode {
     None,
@@ -11,10 +10,10 @@ pub enum SetDisplayMode {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SetCommandState {
     pub transform: bool,
-    pub rationalize: crate::AutoRationalizeLevel,
-    pub heuristic_poly: crate::HeuristicPoly,
-    pub autoexpand_binomials: crate::AutoExpandBinomials,
-    pub steps_mode: crate::StepsMode,
+    pub rationalize: cas_solver::AutoRationalizeLevel,
+    pub heuristic_poly: cas_solver::HeuristicPoly,
+    pub autoexpand_binomials: cas_solver::AutoExpandBinomials,
+    pub steps_mode: cas_solver::StepsMode,
     pub display_mode: SetDisplayMode,
     pub max_rewrites: usize,
     pub debug_mode: bool,
@@ -32,10 +31,10 @@ pub enum SetCommandInput<'a> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SetCommandPlan {
     pub set_transform: Option<bool>,
-    pub set_rationalize: Option<crate::AutoRationalizeLevel>,
-    pub set_heuristic_poly: Option<crate::HeuristicPoly>,
-    pub set_autoexpand_binomials: Option<crate::AutoExpandBinomials>,
-    pub set_steps_mode: Option<crate::StepsMode>,
+    pub set_rationalize: Option<cas_solver::AutoRationalizeLevel>,
+    pub set_heuristic_poly: Option<cas_solver::HeuristicPoly>,
+    pub set_autoexpand_binomials: Option<cas_solver::AutoExpandBinomials>,
+    pub set_steps_mode: Option<cas_solver::StepsMode>,
     pub set_display_mode: Option<SetDisplayMode>,
     pub set_max_rewrites: Option<usize>,
     pub set_debug_mode: Option<bool>,
@@ -61,7 +60,7 @@ impl SetCommandPlan {
 /// Side effects produced while applying a `SetCommandPlan`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct SetCommandApplyEffects {
-    pub set_steps_mode: Option<crate::StepsMode>,
+    pub set_steps_mode: Option<cas_solver::StepsMode>,
     pub set_display_mode: Option<SetDisplayMode>,
 }
 
@@ -108,8 +107,8 @@ pub fn evaluate_set_command_input(line: &str, state: SetCommandState) -> SetComm
 /// update local renderer/runtime state without duplicating option mutation logic.
 pub fn apply_set_command_plan(
     plan: &SetCommandPlan,
-    simplify_options: &mut crate::SimplifyOptions,
-    eval_options: &mut crate::EvalOptions,
+    simplify_options: &mut cas_solver::SimplifyOptions,
+    eval_options: &mut cas_solver::EvalOptions,
     debug_mode: &mut bool,
 ) -> SetCommandApplyEffects {
     if let Some(enabled) = plan.set_transform {
@@ -168,14 +167,14 @@ fn evaluate_set_option(option: &str, value: &str, state: SetCommandState) -> Set
                 let mut plan = SetCommandPlan::with_message(
                     "Autoexpand binomials: ON (always expand)\n  (x+1)^5 will now expand to x⁵+5x⁴+10x³+10x²+5x+1",
                 );
-                plan.set_autoexpand_binomials = Some(crate::AutoExpandBinomials::On);
+                plan.set_autoexpand_binomials = Some(cas_solver::AutoExpandBinomials::On);
                 SetCommandResult::Apply { plan }
             }
             "off" | "false" | "0" => {
                 let mut plan = SetCommandPlan::with_message(
                     "Autoexpand binomials: OFF (default, keep factored form)",
                 );
-                plan.set_autoexpand_binomials = Some(crate::AutoExpandBinomials::Off);
+                plan.set_autoexpand_binomials = Some(cas_solver::AutoExpandBinomials::Off);
                 SetCommandResult::Apply { plan }
             }
             _ => SetCommandResult::Invalid {
@@ -187,14 +186,14 @@ fn evaluate_set_option(option: &str, value: &str, state: SetCommandState) -> Set
                 let mut plan = SetCommandPlan::with_message(
                     "Heuristic polynomial simplification: ON\n  - Extract common factors in Add/Sub\n  - Poly normalize if no factor found\n  Example: (x+1)^4 + 4·(x+1)^3 → (x+1)³·(x+5)",
                 );
-                plan.set_heuristic_poly = Some(crate::HeuristicPoly::On);
+                plan.set_heuristic_poly = Some(cas_solver::HeuristicPoly::On);
                 SetCommandResult::Apply { plan }
             }
             "off" | "false" | "0" => {
                 let mut plan = SetCommandPlan::with_message(
                     "Heuristic polynomial simplification: OFF (default)",
                 );
-                plan.set_heuristic_poly = Some(crate::HeuristicPoly::Off);
+                plan.set_heuristic_poly = Some(cas_solver::HeuristicPoly::Off);
                 SetCommandResult::Apply { plan }
             }
             _ => SetCommandResult::Invalid {
@@ -204,32 +203,32 @@ fn evaluate_set_option(option: &str, value: &str, state: SetCommandState) -> Set
         "rationalize" => match value {
             "on" | "true" | "auto" => {
                 let mut plan = SetCommandPlan::with_message("Rationalization ENABLED (Level 1.5)");
-                plan.set_rationalize = Some(crate::AutoRationalizeLevel::Level15);
+                plan.set_rationalize = Some(cas_solver::AutoRationalizeLevel::Level15);
                 SetCommandResult::Apply { plan }
             }
             "off" | "false" => {
                 let mut plan = SetCommandPlan::with_message("Rationalization DISABLED");
-                plan.set_rationalize = Some(crate::AutoRationalizeLevel::Off);
+                plan.set_rationalize = Some(cas_solver::AutoRationalizeLevel::Off);
                 SetCommandResult::Apply { plan }
             }
             "0" | "level0" => {
                 let mut plan =
                     SetCommandPlan::with_message("Rationalization set to Level 0 (single sqrt)");
-                plan.set_rationalize = Some(crate::AutoRationalizeLevel::Level0);
+                plan.set_rationalize = Some(cas_solver::AutoRationalizeLevel::Level0);
                 SetCommandResult::Apply { plan }
             }
             "1" | "level1" => {
                 let mut plan = SetCommandPlan::with_message(
                     "Rationalization set to Level 1 (binomial conjugate)",
                 );
-                plan.set_rationalize = Some(crate::AutoRationalizeLevel::Level1);
+                plan.set_rationalize = Some(cas_solver::AutoRationalizeLevel::Level1);
                 SetCommandResult::Apply { plan }
             }
             "1.5" | "level15" => {
                 let mut plan = SetCommandPlan::with_message(
                     "Rationalization set to Level 1.5 (same-surd products)",
                 );
-                plan.set_rationalize = Some(crate::AutoRationalizeLevel::Level15);
+                plan.set_rationalize = Some(cas_solver::AutoRationalizeLevel::Level15);
                 SetCommandResult::Apply { plan }
             }
             _ => SetCommandResult::Invalid {
@@ -275,38 +274,38 @@ fn evaluate_set_steps(value: &str) -> SetCommandResult {
         "on" => {
             let mut plan =
                 SetCommandPlan::with_message("Steps: on (full collection, normal display)");
-            plan.set_steps_mode = Some(crate::StepsMode::On);
+            plan.set_steps_mode = Some(cas_solver::StepsMode::On);
             plan.set_display_mode = Some(SetDisplayMode::Normal);
             SetCommandResult::Apply { plan }
         }
         "off" => {
             let mut plan = SetCommandPlan::with_message("Steps: off");
-            plan.set_steps_mode = Some(crate::StepsMode::Off);
+            plan.set_steps_mode = Some(cas_solver::StepsMode::Off);
             plan.set_display_mode = Some(SetDisplayMode::None);
             SetCommandResult::Apply { plan }
         }
         "compact" => {
             let mut plan =
                 SetCommandPlan::with_message("Steps: compact (no before/after snapshots)");
-            plan.set_steps_mode = Some(crate::StepsMode::Compact);
+            plan.set_steps_mode = Some(cas_solver::StepsMode::Compact);
             SetCommandResult::Apply { plan }
         }
         "verbose" => {
             let mut plan = SetCommandPlan::with_message("Steps: verbose (all rules, full detail)");
-            plan.set_steps_mode = Some(crate::StepsMode::On);
+            plan.set_steps_mode = Some(cas_solver::StepsMode::On);
             plan.set_display_mode = Some(SetDisplayMode::Verbose);
             SetCommandResult::Apply { plan }
         }
         "succinct" => {
             let mut plan =
                 SetCommandPlan::with_message("Steps: succinct (compact 1-line per step)");
-            plan.set_steps_mode = Some(crate::StepsMode::On);
+            plan.set_steps_mode = Some(cas_solver::StepsMode::On);
             plan.set_display_mode = Some(SetDisplayMode::Succinct);
             SetCommandResult::Apply { plan }
         }
         "normal" => {
             let mut plan = SetCommandPlan::with_message("Steps: normal (default display)");
-            plan.set_steps_mode = Some(crate::StepsMode::On);
+            plan.set_steps_mode = Some(cas_solver::StepsMode::On);
             plan.set_display_mode = Some(SetDisplayMode::Normal);
             SetCommandResult::Apply { plan }
         }
@@ -329,11 +328,11 @@ pub fn format_set_option_value(option: &str, state: SetCommandState) -> String {
         "rationalize" => format!("rationalize: {:?}", state.rationalize),
         "heuristic_poly" => format!(
             "heuristic_poly: {}",
-            on_off(state.heuristic_poly == crate::HeuristicPoly::On)
+            on_off(state.heuristic_poly == cas_solver::HeuristicPoly::On)
         ),
         "autoexpand" | "autoexpand_binomials" => format!(
             "autoexpand: {}",
-            on_off(state.autoexpand_binomials == crate::AutoExpandBinomials::On)
+            on_off(state.autoexpand_binomials == cas_solver::AutoExpandBinomials::On)
         ),
         "max-rewrites" => format!("max-rewrites: {}", state.max_rewrites),
         "debug" => format!("debug: {}", on_off(state.debug_mode)),
@@ -367,11 +366,11 @@ pub fn format_set_help_text(state: SetCommandState) -> String {
     s.push_str(&format!("  rationalize: {:?}\n", state.rationalize));
     s.push_str(&format!(
         "  heuristic_poly: {}\n",
-        on_off(state.heuristic_poly == crate::HeuristicPoly::On)
+        on_off(state.heuristic_poly == cas_solver::HeuristicPoly::On)
     ));
     s.push_str(&format!(
         "  autoexpand: {}\n",
-        on_off(state.autoexpand_binomials == crate::AutoExpandBinomials::On)
+        on_off(state.autoexpand_binomials == cas_solver::AutoExpandBinomials::On)
     ));
     s.push_str(&format!(
         "  steps: {} (display: {})\n",
@@ -391,11 +390,11 @@ fn on_off(enabled: bool) -> &'static str {
     }
 }
 
-fn steps_mode_label(mode: crate::StepsMode) -> &'static str {
+fn steps_mode_label(mode: cas_solver::StepsMode) -> &'static str {
     match mode {
-        crate::StepsMode::On => "on",
-        crate::StepsMode::Off => "off",
-        crate::StepsMode::Compact => "compact",
+        cas_solver::StepsMode::On => "on",
+        cas_solver::StepsMode::Off => "off",
+        cas_solver::StepsMode::Compact => "compact",
     }
 }
 
@@ -419,10 +418,10 @@ mod tests {
     fn state() -> SetCommandState {
         SetCommandState {
             transform: true,
-            rationalize: crate::AutoRationalizeLevel::Level15,
-            heuristic_poly: crate::HeuristicPoly::Off,
-            autoexpand_binomials: crate::AutoExpandBinomials::Off,
-            steps_mode: crate::StepsMode::On,
+            rationalize: cas_solver::AutoRationalizeLevel::Level15,
+            heuristic_poly: cas_solver::HeuristicPoly::Off,
+            autoexpand_binomials: cas_solver::AutoExpandBinomials::Off,
+            steps_mode: cas_solver::StepsMode::On,
             display_mode: SetDisplayMode::Normal,
             max_rewrites: 200,
             debug_mode: false,
@@ -453,7 +452,7 @@ mod tests {
         let out = evaluate_set_command_input("set steps verbose", state());
         match out {
             SetCommandResult::Apply { plan } => {
-                assert_eq!(plan.set_steps_mode, Some(crate::StepsMode::On));
+                assert_eq!(plan.set_steps_mode, Some(cas_solver::StepsMode::On));
                 assert_eq!(plan.set_display_mode, Some(SetDisplayMode::Verbose));
             }
             other => panic!("unexpected result: {other:?}"),
@@ -481,16 +480,16 @@ mod tests {
 
     #[test]
     fn apply_set_command_plan_updates_states_and_effects() {
-        let mut simplify_options = crate::SimplifyOptions::default();
-        let mut eval_options = crate::EvalOptions::default();
+        let mut simplify_options = cas_solver::SimplifyOptions::default();
+        let mut eval_options = cas_solver::EvalOptions::default();
         let mut debug_mode = false;
 
         let plan = super::SetCommandPlan {
             set_transform: Some(false),
-            set_rationalize: Some(crate::AutoRationalizeLevel::Level1),
-            set_heuristic_poly: Some(crate::HeuristicPoly::On),
-            set_autoexpand_binomials: Some(crate::AutoExpandBinomials::On),
-            set_steps_mode: Some(crate::StepsMode::Compact),
+            set_rationalize: Some(cas_solver::AutoRationalizeLevel::Level1),
+            set_heuristic_poly: Some(cas_solver::HeuristicPoly::On),
+            set_autoexpand_binomials: Some(cas_solver::AutoExpandBinomials::On),
+            set_steps_mode: Some(cas_solver::StepsMode::Compact),
             set_display_mode: Some(SetDisplayMode::Succinct),
             set_max_rewrites: Some(123),
             set_debug_mode: Some(true),
@@ -507,29 +506,32 @@ mod tests {
         assert_eq!(
             effects,
             SetCommandApplyEffects {
-                set_steps_mode: Some(crate::StepsMode::Compact),
+                set_steps_mode: Some(cas_solver::StepsMode::Compact),
                 set_display_mode: Some(SetDisplayMode::Succinct),
             }
         );
         assert!(!simplify_options.enable_transform);
         assert_eq!(
             simplify_options.rationalize.auto_level,
-            crate::AutoRationalizeLevel::Level1
+            cas_solver::AutoRationalizeLevel::Level1
         );
         assert_eq!(
             simplify_options.shared.heuristic_poly,
-            crate::HeuristicPoly::On
+            cas_solver::HeuristicPoly::On
         );
         assert_eq!(
             simplify_options.shared.autoexpand_binomials,
-            crate::AutoExpandBinomials::On
+            cas_solver::AutoExpandBinomials::On
         );
         assert_eq!(simplify_options.budgets.max_total_rewrites, 123);
-        assert_eq!(eval_options.steps_mode, crate::StepsMode::Compact);
-        assert_eq!(eval_options.shared.heuristic_poly, crate::HeuristicPoly::On);
+        assert_eq!(eval_options.steps_mode, cas_solver::StepsMode::Compact);
+        assert_eq!(
+            eval_options.shared.heuristic_poly,
+            cas_solver::HeuristicPoly::On
+        );
         assert_eq!(
             eval_options.shared.autoexpand_binomials,
-            crate::AutoExpandBinomials::On
+            cas_solver::AutoExpandBinomials::On
         );
         assert!(debug_mode);
     }

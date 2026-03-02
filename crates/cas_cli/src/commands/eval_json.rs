@@ -11,7 +11,7 @@ use crate::{
     AssumeScopeArg, BranchArg, BudgetPreset, ConstFoldArg, DomainArg, EvalArgs, EvalJsonLegacyArgs,
     InvTrigArg, ValueDomainArg,
 };
-use cas_api_models::{ErrorJsonOutput, EvalJsonOutput};
+use cas_api_models::EvalJsonOutput;
 
 /// Arguments for eval-json subcommand
 #[derive(Args, Debug)]
@@ -192,15 +192,18 @@ pub fn run(args: EvalJsonArgs) {
             println!("{}", output.to_json_pretty());
         }
         Err(e) => {
-            // Classify error type based on message prefix
             let err_str = e.to_string();
-            let err_output = if err_str.starts_with("Parse error:") {
-                ErrorJsonOutput::parse_error(&err_str, Some(args.expr.clone()))
-            } else {
-                ErrorJsonOutput::with_input(&err_str, &args.expr)
-            };
+            let err_output = build_eval_json_error_output(&err_str, &args.expr);
             println!("{}", err_output.to_json_pretty());
         }
+    }
+}
+
+fn build_eval_json_error_output(error: &str, input: &str) -> cas_api_models::ErrorJsonOutput {
+    if error.starts_with("Parse error:") {
+        cas_api_models::ErrorJsonOutput::parse_error(error, Some(input.to_string()))
+    } else {
+        cas_api_models::ErrorJsonOutput::with_input(error, input)
     }
 }
 
@@ -209,37 +212,37 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
         args.session.as_deref(),
         &args.domain,
         |engine, state| {
-            cas_solver::evaluate_eval_json_command_with_session(
+            cas_solver::json::evaluate_eval_json_with_session(
                 engine,
                 state,
-                cas_solver::EvalJsonCommandConfig {
-                    expr: &args.expr,
-                    auto_store: args.session.is_some(),
-                    max_chars: args.max_chars,
-                    steps_mode: &args.steps,
-                    budget_preset: &args.budget_preset,
-                    strict: args.strict,
-                    domain: &args.domain,
-                    context_mode: &args.context,
-                    branch_mode: &args.branch,
-                    expand_policy: &args.autoexpand,
-                    complex_mode: &args.complex,
-                    const_fold: &args.const_fold,
-                    value_domain: &args.value_domain,
-                    complex_branch: &args.complex_branch,
-                    inv_trig: &args.inv_trig,
-                    assume_scope: &args.assume_scope,
-                },
-                |eval_output, eval_engine, steps_mode| {
-                    cas_didactic::collect_eval_json_steps_with_engine(
-                        eval_output,
-                        eval_engine,
-                        steps_mode,
-                    )
+                eval_json_command_config(args),
+                |eval_output, context, steps_mode| {
+                    cas_didactic::collect_eval_json_steps(eval_output, context, steps_mode)
                 },
             )
         },
     );
 
     output.map_err(anyhow::Error::msg)
+}
+
+fn eval_json_command_config(args: &EvalJsonArgs) -> cas_solver::json::EvalJsonSessionRunConfig<'_> {
+    cas_solver::json::EvalJsonSessionRunConfig {
+        expr: &args.expr,
+        auto_store: args.session.is_some(),
+        max_chars: args.max_chars,
+        steps_mode: &args.steps,
+        budget_preset: &args.budget_preset,
+        strict: args.strict,
+        domain: &args.domain,
+        context_mode: &args.context,
+        branch_mode: &args.branch,
+        expand_policy: &args.autoexpand,
+        complex_mode: &args.complex,
+        const_fold: &args.const_fold,
+        value_domain: &args.value_domain,
+        complex_branch: &args.complex_branch,
+        inv_trig: &args.inv_trig,
+        assume_scope: &args.assume_scope,
+    }
 }

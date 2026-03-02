@@ -45,7 +45,7 @@ where
         Step = cas_engine::Step,
         Diagnostics = cas_engine::Diagnostics,
     >,
-    F: Fn(&crate::EvalOutput, &crate::Engine, &str) -> Vec<StepJson>,
+    F: Fn(&crate::EvalOutput, &cas_ast::Context, &str) -> Vec<StepJson>,
 {
     let total_start = Instant::now();
 
@@ -64,9 +64,9 @@ where
     );
 
     let parse_start = Instant::now();
-    let req = crate::json::build_eval_request_for_input_with_engine(
-        engine,
+    let req = crate::json::build_eval_request_for_input(
         config.expr,
+        &mut engine.simplifier.context,
         config.auto_store,
     )?;
     let parsed_input = req.parsed;
@@ -76,54 +76,55 @@ where
     let output = engine.eval(session, req).map_err(|e| e.to_string())?;
     let simplify_us = simplify_start.elapsed().as_micros() as u64;
 
-    let input_latex = Some(crate::json::format_eval_input_latex_with_engine(
-        engine,
+    let input_latex = Some(crate::json::format_eval_input_latex(
+        &engine.simplifier.context,
         parsed_input,
     ));
-    let steps = collect_steps(&output, engine, config.steps_mode);
-    let solve_steps =
-        crate::json::collect_solve_steps_eval_json_with_engine(&output, engine, config.steps_mode);
+    let steps = collect_steps(&output, &engine.simplifier.context, config.steps_mode);
+    let solve_steps = crate::json::collect_solve_steps_eval_json(
+        &output,
+        &engine.simplifier.context,
+        config.steps_mode,
+    );
     let warnings = crate::json::collect_warnings_eval_json(&output);
     let required_conditions =
-        crate::json::collect_required_conditions_eval_json_with_engine(&output, engine);
+        crate::json::collect_required_conditions_eval_json(&output, &engine.simplifier.context);
     let required_display =
-        crate::json::collect_required_display_eval_json_with_engine(&output, engine);
+        crate::json::collect_required_display_eval_json(&output, &engine.simplifier.context);
     let timings_us = TimingsJson {
         parse_us,
         simplify_us,
         total_us: total_start.elapsed().as_micros() as u64,
     };
 
-    crate::json::finalize_eval_json_output_with_engine(
-        engine,
-        crate::json::EvalJsonFinalizeWithEngineInput {
-            result: &output.result,
-            max_chars: config.max_chars,
-            input: config.expr,
-            input_latex,
-            steps_mode: config.steps_mode,
-            steps,
-            solve_steps,
-            warnings,
-            required_conditions,
-            required_display,
-            raw_steps_count: output.steps.len(),
-            raw_solve_steps_count: output.solve_steps.len(),
-            budget_preset: config.budget_preset,
-            strict: config.strict,
-            domain: config.domain,
-            timings_us,
-            context_mode: config.context_mode,
-            branch_mode: config.branch_mode,
-            expand_policy: config.expand_policy,
-            complex_mode: config.complex_mode,
-            const_fold: config.const_fold,
-            value_domain: config.value_domain,
-            complex_branch: config.complex_branch,
-            inv_trig: config.inv_trig,
-            assume_scope: config.assume_scope,
-        },
-    )
+    crate::json::finalize_eval_json_output(crate::json::EvalJsonFinalizeInput {
+        result: &output.result,
+        ctx: &engine.simplifier.context,
+        max_chars: config.max_chars,
+        input: config.expr,
+        input_latex,
+        steps_mode: config.steps_mode,
+        steps,
+        solve_steps,
+        warnings,
+        required_conditions,
+        required_display,
+        raw_steps_count: output.steps.len(),
+        raw_solve_steps_count: output.solve_steps.len(),
+        budget_preset: config.budget_preset,
+        strict: config.strict,
+        domain: config.domain,
+        timings_us,
+        context_mode: config.context_mode,
+        branch_mode: config.branch_mode,
+        expand_policy: config.expand_policy,
+        complex_mode: config.complex_mode,
+        const_fold: config.const_fold,
+        value_domain: config.value_domain,
+        complex_branch: config.complex_branch,
+        inv_trig: config.inv_trig,
+        assume_scope: config.assume_scope,
+    })
 }
 
 #[cfg(test)]
@@ -155,7 +156,7 @@ mod tests {
                 inv_trig: "strict",
                 assume_scope: "real",
             },
-            |_output, _engine, _steps_mode| Vec::new(),
+            |_output, _context, _steps_mode| Vec::new(),
         )
         .expect("eval-json");
 

@@ -19,7 +19,7 @@ pub enum ConfigCommandResult {
     SaveRequested,
     RestoreRequested,
     ApplyToggleConfig {
-        toggles: crate::SimplifierToggleConfig,
+        toggles: cas_session::SimplifierToggleConfig,
         message: String,
     },
     Error {
@@ -66,23 +66,51 @@ pub fn config_unknown_subcommand_message(subcommand: &str) -> String {
     format!("Unknown config command: {}", subcommand)
 }
 
+fn format_simplifier_toggle_config(config: cas_session::SimplifierToggleConfig) -> String {
+    format!(
+        "Current Configuration:\n\
+           distribute: {}\n\
+           expand_binomials: {}\n\
+           distribute_constants: {}\n\
+           factor_difference_squares: {}\n\
+           root_denesting: {}\n\
+           trig_double_angle: {}\n\
+           trig_angle_sum: {}\n\
+           log_split_exponents: {}\n\
+           rationalize_denominator: {}\n\
+           canonicalize_trig_square: {}\n\
+           auto_factor: {}",
+        config.distribute,
+        config.expand_binomials,
+        config.distribute_constants,
+        config.factor_difference_squares,
+        config.root_denesting,
+        config.trig_double_angle,
+        config.trig_angle_sum,
+        config.log_split_exponents,
+        config.rationalize_denominator,
+        config.canonicalize_trig_square,
+        config.auto_factor
+    )
+}
+
 /// Evaluate `config ...` command into an actionable result.
 ///
 /// This keeps parsing, validation, and user-facing messaging in one place,
 /// leaving callers to apply only infrastructure effects (save/restore/sync).
 pub fn evaluate_config_command(
     line: &str,
-    toggles: crate::SimplifierToggleConfig,
+    toggles: cas_session::SimplifierToggleConfig,
 ) -> ConfigCommandResult {
     match parse_config_command_input(line) {
         ConfigCommandInput::List => ConfigCommandResult::ShowList {
-            message: crate::format_simplifier_toggle_config(toggles),
+            message: format_simplifier_toggle_config(toggles),
         },
         ConfigCommandInput::Save => ConfigCommandResult::SaveRequested,
         ConfigCommandInput::Restore => ConfigCommandResult::RestoreRequested,
         ConfigCommandInput::SetRule { rule, enable } => {
             let mut next = toggles;
-            match crate::set_simplifier_toggle_rule(&mut next, &rule, enable) {
+            match cas_session::set_simplifier_toggle_rule(&mut next, &rule, enable) {
                 Ok(()) => ConfigCommandResult::ApplyToggleConfig {
                     toggles: next,
                     message: format!("Rule '{}' set to {}.", rule, enable),
@@ -142,7 +170,7 @@ mod tests {
 
     #[test]
     fn evaluate_config_command_set_rule_applies_toggle_config() {
-        let toggles = crate::SimplifierToggleConfig::default();
+        let toggles = cas_session::SimplifierToggleConfig::default();
         let result = evaluate_config_command("config enable distribute", toggles);
         match result {
             ConfigCommandResult::ApplyToggleConfig { toggles, message } => {
@@ -155,7 +183,7 @@ mod tests {
 
     #[test]
     fn evaluate_config_command_list_formats_message() {
-        let toggles = crate::SimplifierToggleConfig::default();
+        let toggles = cas_session::SimplifierToggleConfig::default();
         let result = evaluate_config_command("config list", toggles);
         match result {
             ConfigCommandResult::ShowList { message } => {
@@ -167,7 +195,7 @@ mod tests {
 
     #[test]
     fn evaluate_config_command_invalid_usage_returns_error() {
-        let toggles = crate::SimplifierToggleConfig::default();
+        let toggles = cas_session::SimplifierToggleConfig::default();
         let result = evaluate_config_command("config", toggles);
         assert!(matches!(result, ConfigCommandResult::Error { .. }));
     }

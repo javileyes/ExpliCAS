@@ -5,27 +5,27 @@ impl Repl {
     pub(crate) fn handle_eval_core(&mut self, line: &str) -> ReplReply {
         let mut reply: ReplReply = vec![];
 
-        match cas_solver::evaluate_eval_command_output(
+        match crate::commands::eval_command::evaluate_eval_command_output(
             &mut self.core.engine,
             &mut self.core.state,
             line,
             self.core.debug_mode,
         ) {
             Ok(out) => {
-                let plan = cas_solver::build_eval_command_render_plan(
+                let plan = crate::commands::eval_command::build_eval_command_render_plan(
                     out,
                     self.verbosity == Verbosity::None,
                 );
 
                 for message in plan.pre_messages {
                     match message.kind {
-                        cas_solver::EvalDisplayMessageKind::Output => {
+                        crate::commands::eval_command::EvalDisplayMessageKind::Output => {
                             reply.push(ReplMsg::output(message.text))
                         }
-                        cas_solver::EvalDisplayMessageKind::Warn => {
+                        crate::commands::eval_command::EvalDisplayMessageKind::Warn => {
                             reply.push(ReplMsg::warn(message.text))
                         }
-                        cas_solver::EvalDisplayMessageKind::Info => {
+                        crate::commands::eval_command::EvalDisplayMessageKind::Info => {
                             reply.push(ReplMsg::info(message.text))
                         }
                     }
@@ -51,10 +51,12 @@ impl Repl {
                     reply.push(ReplMsg::info(message.text));
                 }
             }
-            Err(cas_solver::EvalCommandError::Parse(e)) => reply.push(ReplMsg::error(
-                super::error_render::render_parse_error(line, &e),
-            )),
-            Err(cas_solver::EvalCommandError::Eval(message)) => reply.push(ReplMsg::error(message)),
+            Err(crate::commands::eval_command::EvalCommandError::Parse(e)) => reply.push(
+                ReplMsg::error(super::error_render::render_parse_error(line, &e)),
+            ),
+            Err(crate::commands::eval_command::EvalCommandError::Eval(message)) => {
+                reply.push(ReplMsg::error(message))
+            }
         }
 
         reply

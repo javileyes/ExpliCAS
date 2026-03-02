@@ -10,7 +10,7 @@ pub enum StepsDisplayMode {
 /// Runtime state needed to evaluate a `steps` command.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StepsCommandState {
-    pub steps_mode: crate::StepsMode,
+    pub steps_mode: cas_solver::StepsMode,
     pub display_mode: StepsDisplayMode,
 }
 
@@ -18,7 +18,7 @@ pub struct StepsCommandState {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StepsCommandInput {
     ShowCurrent,
-    SetCollectionMode(crate::StepsMode),
+    SetCollectionMode(cas_solver::StepsMode),
     SetDisplayMode(StepsDisplayMode),
     UnknownMode(String),
 }
@@ -30,7 +30,7 @@ pub enum StepsCommandResult {
         message: String,
     },
     Update {
-        set_steps_mode: Option<crate::StepsMode>,
+        set_steps_mode: Option<cas_solver::StepsMode>,
         set_display_mode: Option<StepsDisplayMode>,
         message: String,
     },
@@ -42,7 +42,7 @@ pub enum StepsCommandResult {
 /// Side-effects from applying a `steps` command update to runtime options.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StepsCommandApplyEffects {
-    pub set_steps_mode: Option<crate::StepsMode>,
+    pub set_steps_mode: Option<cas_solver::StepsMode>,
     pub set_display_mode: Option<StepsDisplayMode>,
 }
 
@@ -51,9 +51,9 @@ pub fn parse_steps_command_input(line: &str) -> StepsCommandInput {
     let args: Vec<&str> = line.split_whitespace().collect();
     match args.get(1) {
         None => StepsCommandInput::ShowCurrent,
-        Some(&"on") => StepsCommandInput::SetCollectionMode(crate::StepsMode::On),
-        Some(&"off") => StepsCommandInput::SetCollectionMode(crate::StepsMode::Off),
-        Some(&"compact") => StepsCommandInput::SetCollectionMode(crate::StepsMode::Compact),
+        Some(&"on") => StepsCommandInput::SetCollectionMode(cas_solver::StepsMode::On),
+        Some(&"off") => StepsCommandInput::SetCollectionMode(cas_solver::StepsMode::Off),
+        Some(&"compact") => StepsCommandInput::SetCollectionMode(cas_solver::StepsMode::Compact),
         Some(&"verbose") => StepsCommandInput::SetDisplayMode(StepsDisplayMode::Verbose),
         Some(&"succinct") => StepsCommandInput::SetDisplayMode(StepsDisplayMode::Succinct),
         Some(&"normal") => StepsCommandInput::SetDisplayMode(StepsDisplayMode::Normal),
@@ -70,9 +70,9 @@ pub fn evaluate_steps_command_input(line: &str, state: StepsCommandState) -> Ste
         },
         StepsCommandInput::SetCollectionMode(mode) => {
             let display = match mode {
-                crate::StepsMode::On => Some(StepsDisplayMode::Normal),
-                crate::StepsMode::Off => Some(StepsDisplayMode::None),
-                crate::StepsMode::Compact => None,
+                cas_solver::StepsMode::On => Some(StepsDisplayMode::Normal),
+                cas_solver::StepsMode::Off => Some(StepsDisplayMode::None),
+                cas_solver::StepsMode::Compact => None,
             };
             StepsCommandResult::Update {
                 set_steps_mode: Some(mode),
@@ -84,7 +84,7 @@ pub fn evaluate_steps_command_input(line: &str, state: StepsCommandState) -> Ste
             let steps_mode = match mode {
                 StepsDisplayMode::Verbose
                 | StepsDisplayMode::Succinct
-                | StepsDisplayMode::Normal => Some(crate::StepsMode::On),
+                | StepsDisplayMode::Normal => Some(cas_solver::StepsMode::On),
                 StepsDisplayMode::None => None,
             };
             StepsCommandResult::Update {
@@ -101,9 +101,9 @@ pub fn evaluate_steps_command_input(line: &str, state: StepsCommandState) -> Ste
 
 /// Apply `steps` update fields into eval options and return external effects.
 pub fn apply_steps_command_update(
-    set_steps_mode: Option<crate::StepsMode>,
+    set_steps_mode: Option<cas_solver::StepsMode>,
     set_display_mode: Option<StepsDisplayMode>,
-    eval_options: &mut crate::EvalOptions,
+    eval_options: &mut cas_solver::EvalOptions,
 ) -> StepsCommandApplyEffects {
     let mut changed_steps_mode = None;
     if let Some(mode) = set_steps_mode {
@@ -119,20 +119,15 @@ pub fn apply_steps_command_update(
     }
 }
 
-/// Apply a steps mode directly to an engine instance.
-pub fn set_engine_steps_mode(engine: &mut crate::Engine, mode: crate::StepsMode) {
-    engine.simplifier.set_steps_mode(mode);
-}
-
 /// Format current steps collection/display status.
 pub fn format_steps_current_message(
-    steps_mode: crate::StepsMode,
+    steps_mode: cas_solver::StepsMode,
     display_mode: StepsDisplayMode,
 ) -> String {
     let mode_str = match steps_mode {
-        crate::StepsMode::On => "on",
-        crate::StepsMode::Off => "off",
-        crate::StepsMode::Compact => "compact",
+        cas_solver::StepsMode::On => "on",
+        cas_solver::StepsMode::Off => "off",
+        cas_solver::StepsMode::Compact => "compact",
     };
     let display_str = match display_mode {
         StepsDisplayMode::None => "none",
@@ -150,13 +145,13 @@ pub fn format_steps_current_message(
 }
 
 /// Format feedback for collection-mode updates.
-pub fn format_steps_collection_set_message(mode: crate::StepsMode) -> &'static str {
+pub fn format_steps_collection_set_message(mode: cas_solver::StepsMode) -> &'static str {
     match mode {
-        crate::StepsMode::On => "Steps: on (full collection, normal display)",
-        crate::StepsMode::Off => {
+        cas_solver::StepsMode::On => "Steps: on (full collection, normal display)",
+        cas_solver::StepsMode::Off => {
             "Steps: off\n  ⚡ Steps disabled (faster). Warnings still enabled."
         }
-        crate::StepsMode::Compact => "Steps: compact (no before/after snapshots)",
+        cas_solver::StepsMode::Compact => "Steps: compact (no before/after snapshots)",
     }
 }
 
@@ -202,7 +197,7 @@ mod tests {
     fn parse_steps_command_input_reads_compact() {
         assert_eq!(
             parse_steps_command_input("steps compact"),
-            StepsCommandInput::SetCollectionMode(crate::StepsMode::Compact)
+            StepsCommandInput::SetCollectionMode(cas_solver::StepsMode::Compact)
         );
     }
 
@@ -216,7 +211,8 @@ mod tests {
 
     #[test]
     fn format_steps_current_message_reports_modes() {
-        let text = format_steps_current_message(crate::StepsMode::On, StepsDisplayMode::Normal);
+        let text =
+            format_steps_current_message(cas_solver::StepsMode::On, StepsDisplayMode::Normal);
         assert!(text.contains("Steps collection: on"));
         assert!(text.contains("Steps display: normal"));
     }
@@ -231,14 +227,14 @@ mod tests {
     #[test]
     fn evaluate_steps_command_input_off_disables_collection_and_display() {
         let state = StepsCommandState {
-            steps_mode: crate::StepsMode::On,
+            steps_mode: cas_solver::StepsMode::On,
             display_mode: StepsDisplayMode::Normal,
         };
         let out = evaluate_steps_command_input("steps off", state);
         assert_eq!(
             out,
             StepsCommandResult::Update {
-                set_steps_mode: Some(crate::StepsMode::Off),
+                set_steps_mode: Some(cas_solver::StepsMode::Off),
                 set_display_mode: Some(StepsDisplayMode::None),
                 message: "Steps: off\n  ⚡ Steps disabled (faster). Warnings still enabled."
                     .to_string(),
@@ -249,7 +245,7 @@ mod tests {
     #[test]
     fn evaluate_steps_command_input_show_current_renders_message() {
         let state = StepsCommandState {
-            steps_mode: crate::StepsMode::Compact,
+            steps_mode: cas_solver::StepsMode::Compact,
             display_mode: StepsDisplayMode::Succinct,
         };
         let out = evaluate_steps_command_input("steps", state);
@@ -264,20 +260,20 @@ mod tests {
 
     #[test]
     fn apply_steps_command_update_sets_mode_when_changed() {
-        let mut eval_options = crate::EvalOptions {
-            steps_mode: crate::StepsMode::On,
-            ..crate::EvalOptions::default()
+        let mut eval_options = cas_solver::EvalOptions {
+            steps_mode: cas_solver::StepsMode::On,
+            ..cas_solver::EvalOptions::default()
         };
         let effects = apply_steps_command_update(
-            Some(crate::StepsMode::Compact),
+            Some(cas_solver::StepsMode::Compact),
             Some(StepsDisplayMode::Succinct),
             &mut eval_options,
         );
-        assert_eq!(eval_options.steps_mode, crate::StepsMode::Compact);
+        assert_eq!(eval_options.steps_mode, cas_solver::StepsMode::Compact);
         assert_eq!(
             effects,
             StepsCommandApplyEffects {
-                set_steps_mode: Some(crate::StepsMode::Compact),
+                set_steps_mode: Some(cas_solver::StepsMode::Compact),
                 set_display_mode: Some(StepsDisplayMode::Succinct),
             }
         );
@@ -285,12 +281,12 @@ mod tests {
 
     #[test]
     fn apply_steps_command_update_skips_mode_when_unchanged() {
-        let mut eval_options = crate::EvalOptions {
-            steps_mode: crate::StepsMode::On,
-            ..crate::EvalOptions::default()
+        let mut eval_options = cas_solver::EvalOptions {
+            steps_mode: cas_solver::StepsMode::On,
+            ..cas_solver::EvalOptions::default()
         };
         let effects = apply_steps_command_update(
-            Some(crate::StepsMode::On),
+            Some(cas_solver::StepsMode::On),
             Some(StepsDisplayMode::Verbose),
             &mut eval_options,
         );
