@@ -27,11 +27,15 @@ pub use bindings::{
 };
 pub use cache::{CacheDomainMode, SimplifiedCache, SimplifyCacheKey};
 pub use commands::{
-    evaluate_assignment_command, evaluate_clear_command_lines,
+    evaluate_assignment_command, evaluate_assignment_command_message, evaluate_clear_command_lines,
     evaluate_delete_history_command_message, evaluate_history_command_lines,
-    evaluate_let_assignment_command, evaluate_show_history_command_lines,
-    evaluate_vars_command_lines, format_assignment_command_output_message,
-    format_show_history_command_lines, inspect_show_history_command, AssignmentCommandOutput,
+    evaluate_history_command_lines_with_engine, evaluate_let_assignment_command,
+    evaluate_let_assignment_command_message, evaluate_show_history_command_lines,
+    evaluate_show_history_command_lines_with_engine,
+    evaluate_vars_command_lines, evaluate_vars_command_lines_with_engine,
+    format_assignment_command_output_message, format_show_history_command_lines,
+    format_show_history_command_lines_with_engine, inspect_show_history_command,
+    AssignmentCommandOutput,
 };
 pub use config::CasConfig;
 pub use history::{
@@ -49,7 +53,7 @@ pub use inspect::{
 pub use options::{
     apply_solve_budget_command, format_solve_budget_command_message, SolveBudgetCommandResult,
 };
-pub use session_io::{load_or_new_session, save_session};
+pub use session_io::{load_or_new_session, run_with_domain_session, run_with_session, save_session};
 pub type CacheHitEntryId = u64;
 
 pub type ResolvedExpr = cas_session_core::cache::ResolvedExpr<RequiredItem>;

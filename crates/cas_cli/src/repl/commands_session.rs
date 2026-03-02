@@ -10,23 +10,12 @@ impl Repl {
 
     /// Handle "let <name> = <expr>" (eager) or "let <name> := <expr>" (lazy) command
     pub(crate) fn handle_let_command_core(&mut self, rest: &str) -> ReplReply {
-        match cas_session::evaluate_let_assignment_command(
+        match cas_session::evaluate_let_assignment_command_message(
             &mut self.core.state,
-            &mut self.core.engine.simplifier,
+            &mut self.core.engine,
             rest,
         ) {
-            Ok(output) => {
-                let rendered = format!(
-                    "{}",
-                    cas_formatter::DisplayExpr {
-                        context: &self.core.engine.simplifier.context,
-                        id: output.expr
-                    }
-                );
-                reply_output(cas_session::format_assignment_command_output_message(
-                    &output, &rendered,
-                ))
-            }
+            Ok(message) => reply_output(message),
             Err(message) => reply_output(message),
         }
     }
@@ -40,25 +29,14 @@ impl Repl {
         expr_str: &str,
         lazy: bool,
     ) -> ReplReply {
-        match cas_session::evaluate_assignment_command(
+        match cas_session::evaluate_assignment_command_message(
             &mut self.core.state,
-            &mut self.core.engine.simplifier,
+            &mut self.core.engine,
             name,
             expr_str,
             lazy,
         ) {
-            Ok(output) => {
-                let rendered = format!(
-                    "{}",
-                    cas_formatter::DisplayExpr {
-                        context: &self.core.engine.simplifier.context,
-                        id: output.expr
-                    }
-                );
-                reply_output(cas_session::format_assignment_command_output_message(
-                    &output, &rendered,
-                ))
-            }
+            Ok(message) => reply_output(message),
             Err(message) => reply_output(message),
         }
     }
@@ -66,56 +44,39 @@ impl Repl {
     /// Handle "vars" command - list all variable bindings
     /// Core logic for "vars" command
     pub(crate) fn handle_vars_command_core(&self) -> ReplReply {
-        let lines = cas_session::evaluate_vars_command_lines(&self.core.state, |id| {
-            format!(
-                "{}",
-                cas_formatter::DisplayExpr {
-                    context: &self.core.engine.simplifier.context,
-                    id
-                }
-            )
-        });
+        let lines = cas_session::evaluate_vars_command_lines_with_engine(
+            &self.core.state,
+            &self.core.engine,
+        );
         reply_output(lines.join("\n"))
     }
 
     /// Handle "history" or "list" command - show session history
     pub(crate) fn handle_history_command_core(&self) -> ReplReply {
-        let lines = cas_session::evaluate_history_command_lines(&self.core.state, |id| {
-            format!(
-                "{}",
-                DisplayExpr {
-                    context: &self.core.engine.simplifier.context,
-                    id
-                }
-            )
-        });
+        let lines = cas_session::evaluate_history_command_lines_with_engine(
+            &self.core.state,
+            &self.core.engine,
+        );
         reply_output(lines.join("\n"))
     }
 
     /// Handle "show #id" command - show details of a specific entry
     pub(crate) fn handle_show_command_core(&mut self, line: &str) -> ReplReply {
-        match cas_session::inspect_show_history_command(
+        match cas_session::evaluate_show_history_command_lines_with_engine(
             &mut self.core.state,
             &mut self.core.engine,
             line,
+            |context, expr_info| {
+                cas_solver::format_eval_metadata_sections(
+                    context,
+                    &expr_info.required_conditions,
+                    &expr_info.domain_warnings,
+                    &expr_info.blocked_hints,
+                    cas_solver::history_eval_metadata_section_labels(),
+                )
+            },
         ) {
-            Ok(inspection) => {
-                let context = &self.core.engine.simplifier.context;
-                let lines = cas_session::format_show_history_command_lines(
-                    &inspection,
-                    |id| format!("{}", DisplayExpr { context, id }),
-                    |expr_info| {
-                        cas_solver::format_eval_metadata_sections(
-                            context,
-                            &expr_info.required_conditions,
-                            &expr_info.domain_warnings,
-                            &expr_info.blocked_hints,
-                            cas_solver::history_eval_metadata_section_labels(),
-                        )
-                    },
-                );
-                reply_output(lines.join("\n"))
-            }
+            Ok(lines) => reply_output(lines.join("\n")),
             Err(message) => reply_output(message),
         }
     }
@@ -163,7 +124,7 @@ impl Repl {
     /// Handle "reset full" command - reset session AND clear profile cache
     pub(crate) fn handle_reset_full_command_core(&mut self) -> ReplReply {
         let mut reply = self.handle_reset_command_core();
-        self.core.engine.clear_profile_cache();
+        cas_solver::clear_engine_profile_cache(&mut self.core.engine);
         reply.push(ReplMsg::output(
             "Profile cache cleared (will rebuild on next eval).",
         ));
@@ -198,22 +159,13 @@ mod tests {
     fn cache_status_uses_engine_profile_cache() {
         let mut repl = Repl::new();
 
-        let parsed = match cas_parser::parse("x + x", &mut repl.core.engine.simplifier.context) {
-            Ok(id) => id,
-            Err(err) => panic!("parse expression failed: {err}"),
-        };
-        let req = cas_solver::EvalRequest {
-            raw_input: "x + x".to_string(),
-            parsed,
-            action: cas_solver::EvalAction::Simplify,
-            auto_store: false,
-        };
-        if let Err(err) = repl
-            .core
-            .engine
-            .eval_stateless(cas_solver::EvalOptions::default(), req)
-        {
-            panic!("eval failed: {err}");
+        if let Err(err) = cas_solver::evaluate_eval_command_output(
+            &mut repl.core.engine,
+            &mut repl.core.state,
+            "x + x",
+            false,
+        ) {
+            panic!("eval failed: {err:?}");
         }
 
         let status = repl.handle_cache_command_core("cache status");
@@ -228,27 +180,18 @@ mod tests {
     fn cache_clear_empties_engine_profile_cache() {
         let mut repl = Repl::new();
 
-        let parsed = match cas_parser::parse("x + x", &mut repl.core.engine.simplifier.context) {
-            Ok(id) => id,
-            Err(err) => panic!("parse expression failed: {err}"),
-        };
-        let req = cas_solver::EvalRequest {
-            raw_input: "x + x".to_string(),
-            parsed,
-            action: cas_solver::EvalAction::Simplify,
-            auto_store: false,
-        };
-        if let Err(err) = repl
-            .core
-            .engine
-            .eval_stateless(cas_solver::EvalOptions::default(), req)
-        {
-            panic!("eval failed: {err}");
+        if let Err(err) = cas_solver::evaluate_eval_command_output(
+            &mut repl.core.engine,
+            &mut repl.core.state,
+            "x + x",
+            false,
+        ) {
+            panic!("eval failed: {err:?}");
         }
-        assert_eq!(repl.core.engine.profile_cache_len(), 1);
+        assert_eq!(cas_solver::engine_profile_cache_len(&repl.core.engine), 1);
 
         let clear = repl.handle_cache_command_core("cache clear");
         assert!(first_output(&clear).contains("Profile cache cleared"));
-        assert_eq!(repl.core.engine.profile_cache_len(), 0);
+        assert_eq!(cas_solver::engine_profile_cache_len(&repl.core.engine), 0);
     }
 }

@@ -64,7 +64,7 @@ impl Repl {
         );
 
         if let Some(mode) = effects.set_steps_mode {
-            self.core.engine.simplifier.set_steps_mode(mode);
+            cas_solver::set_engine_steps_mode(&mut self.core.engine, mode);
         }
         if let Some(display) = effects.set_display_mode {
             ui_delta.verbosity = Some(Self::verbosity_from_set_display_mode(display));

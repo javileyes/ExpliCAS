@@ -18,31 +18,24 @@ pub fn run(args: LimitArgs) {
         PreSimplifyArg::Safe => PreSimplifyMode::Safe,
     };
 
-    if matches!(args.format, OutputFormat::Json) {
-        let out = cas_solver::json::limit_str_to_json(
-            &args.expr,
-            &args.var,
-            approach,
-            presimplify,
-            false,
-        );
-        println!("{}", out);
-        return;
-    }
-
-    match cas_solver::json::eval_limit_from_str(&args.expr, &args.var, approach, presimplify) {
-        Ok(limit_result) => {
-            println!("{}", limit_result.result);
-            if let Some(warning) = &limit_result.warning {
+    match cas_solver::evaluate_limit_subcommand_output(
+        &args.expr,
+        &args.var,
+        approach,
+        presimplify,
+        matches!(args.format, OutputFormat::Json),
+    ) {
+        Ok(cas_solver::LimitSubcommandOutput::Json(out)) => {
+            println!("{}", out);
+        }
+        Ok(cas_solver::LimitSubcommandOutput::Text { result, warning }) => {
+            println!("{}", result);
+            if let Some(warning) = warning {
                 eprintln!("Warning: {}", warning);
             }
         }
-        Err(cas_solver::json::LimitEvalError::Parse(message)) => {
-            eprintln!("{}", message);
-            std::process::exit(1);
-        }
-        Err(cas_solver::json::LimitEvalError::Limit(message)) => {
-            eprintln!("Error: {}", message);
+        Err(error) => {
+            eprintln!("{}", cas_solver::format_limit_subcommand_error(&error));
             std::process::exit(1);
         }
     }

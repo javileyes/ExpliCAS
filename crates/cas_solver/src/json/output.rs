@@ -68,6 +68,35 @@ pub struct EvalJsonFinalizeInput<'a> {
     pub assume_scope: &'a str,
 }
 
+/// Inputs used to finalize eval-json output using engine context.
+pub struct EvalJsonFinalizeWithEngineInput<'a> {
+    pub result: &'a crate::EvalResult,
+    pub max_chars: usize,
+    pub input: &'a str,
+    pub input_latex: Option<String>,
+    pub steps_mode: &'a str,
+    pub steps: Vec<StepJson>,
+    pub solve_steps: Vec<SolveStepJson>,
+    pub warnings: Vec<WarningJson>,
+    pub required_conditions: Vec<RequiredConditionJson>,
+    pub required_display: Vec<String>,
+    pub raw_steps_count: usize,
+    pub raw_solve_steps_count: usize,
+    pub budget_preset: &'a str,
+    pub strict: bool,
+    pub domain: &'a str,
+    pub timings_us: TimingsJson,
+    pub context_mode: &'a str,
+    pub branch_mode: &'a str,
+    pub expand_policy: &'a str,
+    pub complex_mode: &'a str,
+    pub const_fold: &'a str,
+    pub value_domain: &'a str,
+    pub complex_branch: &'a str,
+    pub inv_trig: &'a str,
+    pub assume_scope: &'a str,
+}
+
 /// Build a complete eval-json output payload from precomputed components.
 pub fn build_eval_json_output(parts: EvalJsonOutputBuild<'_>) -> EvalJsonOutput {
     EvalJsonOutput {
@@ -290,6 +319,41 @@ pub fn finalize_eval_json_output(
         }
         _ => Err("No result expression".to_string()),
     }
+}
+
+/// Finalize `EvalJsonOutput` using context from engine.
+pub fn finalize_eval_json_output_with_engine(
+    engine: &crate::Engine,
+    input: EvalJsonFinalizeWithEngineInput<'_>,
+) -> Result<EvalJsonOutput, String> {
+    finalize_eval_json_output(EvalJsonFinalizeInput {
+        result: input.result,
+        ctx: &engine.simplifier.context,
+        max_chars: input.max_chars,
+        input: input.input,
+        input_latex: input.input_latex,
+        steps_mode: input.steps_mode,
+        steps: input.steps,
+        solve_steps: input.solve_steps,
+        warnings: input.warnings,
+        required_conditions: input.required_conditions,
+        required_display: input.required_display,
+        raw_steps_count: input.raw_steps_count,
+        raw_solve_steps_count: input.raw_solve_steps_count,
+        budget_preset: input.budget_preset,
+        strict: input.strict,
+        domain: input.domain,
+        timings_us: input.timings_us,
+        context_mode: input.context_mode,
+        branch_mode: input.branch_mode,
+        expand_policy: input.expand_policy,
+        complex_mode: input.complex_mode,
+        const_fold: input.const_fold,
+        value_domain: input.value_domain,
+        complex_branch: input.complex_branch,
+        inv_trig: input.inv_trig,
+        assume_scope: input.assume_scope,
+    })
 }
 
 struct ExprLikeFinalizeInput<'a> {

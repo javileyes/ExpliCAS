@@ -283,6 +283,30 @@ pub fn apply_simplifier_toggle_config(
     }
 }
 
+/// Rebuild the engine simplifier with a full rule config.
+pub fn rebuild_engine_simplifier_with_rule_config(
+    engine: &mut crate::Engine,
+    config: SimplifierRuleConfig,
+) {
+    engine.simplifier = build_simplifier_with_rule_config(config);
+}
+
+/// Rebuild the engine simplifier from current eval options profile.
+pub fn rebuild_engine_simplifier_with_profile(
+    engine: &mut crate::Engine,
+    options: &crate::EvalOptions,
+) {
+    engine.simplifier = crate::Simplifier::with_profile(options);
+}
+
+/// Apply simplifier toggles directly to an engine instance.
+pub fn apply_simplifier_toggle_config_to_engine(
+    engine: &mut crate::Engine,
+    config: SimplifierToggleConfig,
+) {
+    apply_simplifier_toggle_config(&mut engine.simplifier, config);
+}
+
 #[cfg(test)]
 mod tests {
     use super::{

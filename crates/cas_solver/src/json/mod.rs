@@ -14,6 +14,7 @@
 //! - `details` is extensible (new keys may be added)
 
 mod config;
+mod eval_flow;
 mod envelope;
 mod eval;
 mod input_parse;
@@ -29,20 +30,28 @@ pub use config::{
     apply_eval_json_options, build_budget_json_eval, build_domain_json_eval,
     build_options_json_eval, build_semantics_json_eval,
 };
+pub use eval_flow::{evaluate_eval_json_with_session, EvalJsonSessionRunConfig};
 pub use envelope::eval_str_to_output_envelope;
 pub use eval::eval_str_to_json;
 pub use input_parse::{parse_eval_json_special_command, EvalJsonSpecialCommand};
 pub use limit::{eval_limit_from_str, limit_str_to_json, LimitEvalError, LimitEvalResult};
 pub use output::{
     build_eval_json_output, build_eval_wire_value, expr_hash_eval_json, expr_stats_eval_json,
-    finalize_eval_json_output, format_eval_result_text, format_expr_limited_eval_json,
-    EvalJsonFinalizeInput, EvalJsonOutputBuild,
+    finalize_eval_json_output, finalize_eval_json_output_with_engine, format_eval_result_text,
+    format_expr_limited_eval_json, EvalJsonFinalizeInput, EvalJsonFinalizeWithEngineInput,
+    EvalJsonOutputBuild,
 };
-pub use request::{build_eval_request_for_input, format_eval_input_latex};
+pub use request::{
+    build_eval_request_for_input, build_eval_request_for_input_with_engine,
+    format_eval_input_latex, format_eval_input_latex_with_engine,
+};
 pub use solve_render::{
     collect_required_conditions_eval_json, collect_required_display_eval_json,
-    collect_solve_steps_eval_json, collect_warnings_eval_json, detect_solve_variable_eval_json,
-    format_solution_set_eval_json, solution_set_to_latex_eval_json,
+    collect_required_conditions_eval_json_with_engine,
+    collect_required_display_eval_json_with_engine, collect_solve_steps_eval_json,
+    collect_solve_steps_eval_json_with_engine, collect_warnings_eval_json,
+    detect_solve_variable_eval_json, format_solution_set_eval_json,
+    solution_set_to_latex_eval_json,
 };
 pub use substitute::{
     eval_substitute_from_str, substitute_str_to_json, substitute_str_to_json_with_options,

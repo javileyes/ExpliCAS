@@ -802,6 +802,14 @@ pub fn evaluate_equiv_command_lines(
     }
 }
 
+/// Engine-level wrapper for `equiv` command evaluation.
+pub fn evaluate_equiv_command_lines_with_engine(
+    engine: &mut cas_engine::Engine,
+    line: &str,
+) -> Result<Vec<String>, String> {
+    evaluate_equiv_command_lines(&mut engine.simplifier, line)
+}
+
 /// Evaluate a `subst ...` command line end-to-end and return formatted output lines.
 pub fn evaluate_substitute_command_lines(
     simplifier: &mut Simplifier,
@@ -817,6 +825,28 @@ pub fn evaluate_substitute_command_lines(
     Ok(lines)
 }
 
+/// Evaluate a `subst ...` command line from display mode (CLI-level abstraction).
+pub fn evaluate_substitute_command_lines_for_display_mode(
+    simplifier: &mut Simplifier,
+    line: &str,
+    display_mode: crate::set_command::SetDisplayMode,
+) -> Result<Vec<String>, String> {
+    evaluate_substitute_command_lines(
+        simplifier,
+        line,
+        substitute_render_mode_from_display_mode(display_mode),
+    )
+}
+
+/// Engine-level wrapper for `subst` command evaluation from display mode.
+pub fn evaluate_substitute_command_lines_for_display_mode_with_engine(
+    engine: &mut cas_engine::Engine,
+    line: &str,
+    display_mode: crate::set_command::SetDisplayMode,
+) -> Result<Vec<String>, String> {
+    evaluate_substitute_command_lines_for_display_mode(&mut engine.simplifier, line, display_mode)
+}
+
 /// Evaluate an `explain ...` command line end-to-end and return formatted output lines.
 pub fn evaluate_explain_command_lines(
     simplifier: &mut Simplifier,
@@ -830,6 +860,14 @@ pub fn evaluate_explain_command_lines(
     Ok(lines)
 }
 
+/// Engine-level wrapper for `explain` command evaluation.
+pub fn evaluate_explain_command_lines_with_engine(
+    engine: &mut cas_engine::Engine,
+    line: &str,
+) -> Result<Vec<String>, String> {
+    evaluate_explain_command_lines(&mut engine.simplifier, line)
+}
+
 /// Evaluate a `visualize` / `viz` command line end-to-end and return CLI artifact payload.
 pub fn evaluate_visualize_command_output(
     simplifier: &mut Simplifier,
@@ -839,6 +877,14 @@ pub fn evaluate_visualize_command_output(
     let output = evaluate_visualize_input(simplifier, rest)
         .map_err(|error| format_transform_eval_error_message(&error))?;
     Ok(build_visualize_cli_output(output))
+}
+
+/// Engine-level wrapper for `visualize` command evaluation.
+pub fn evaluate_visualize_command_output_with_engine(
+    engine: &mut cas_engine::Engine,
+    line: &str,
+) -> Result<VisualizeCliOutput, String> {
+    evaluate_visualize_command_output(&mut engine.simplifier, line)
 }
 
 /// Evaluate unary command line (`det`, `trace`, `transpose`) and return formatted lines.
@@ -863,6 +909,60 @@ pub fn evaluate_unary_command_lines(
     Ok(lines)
 }
 
+/// Evaluate a `det ...` command line and return formatted lines.
+pub fn evaluate_det_command_lines(
+    simplifier: &mut Simplifier,
+    line: &str,
+    display_mode: crate::set_command::SetDisplayMode,
+) -> Result<Vec<String>, String> {
+    evaluate_unary_command_lines(simplifier, line, "det", display_mode, true, true)
+}
+
+/// Engine-level wrapper for `det` command evaluation.
+pub fn evaluate_det_command_lines_with_engine(
+    engine: &mut cas_engine::Engine,
+    line: &str,
+    display_mode: crate::set_command::SetDisplayMode,
+) -> Result<Vec<String>, String> {
+    evaluate_det_command_lines(&mut engine.simplifier, line, display_mode)
+}
+
+/// Evaluate a `transpose ...` command line and return formatted lines.
+pub fn evaluate_transpose_command_lines(
+    simplifier: &mut Simplifier,
+    line: &str,
+    display_mode: crate::set_command::SetDisplayMode,
+) -> Result<Vec<String>, String> {
+    evaluate_unary_command_lines(simplifier, line, "transpose", display_mode, false, false)
+}
+
+/// Engine-level wrapper for `transpose` command evaluation.
+pub fn evaluate_transpose_command_lines_with_engine(
+    engine: &mut cas_engine::Engine,
+    line: &str,
+    display_mode: crate::set_command::SetDisplayMode,
+) -> Result<Vec<String>, String> {
+    evaluate_transpose_command_lines(&mut engine.simplifier, line, display_mode)
+}
+
+/// Evaluate a `trace ...` command line and return formatted lines.
+pub fn evaluate_trace_command_lines(
+    simplifier: &mut Simplifier,
+    line: &str,
+    display_mode: crate::set_command::SetDisplayMode,
+) -> Result<Vec<String>, String> {
+    evaluate_unary_command_lines(simplifier, line, "trace", display_mode, false, true)
+}
+
+/// Engine-level wrapper for `trace` command evaluation.
+pub fn evaluate_trace_command_lines_with_engine(
+    engine: &mut cas_engine::Engine,
+    line: &str,
+    display_mode: crate::set_command::SetDisplayMode,
+) -> Result<Vec<String>, String> {
+    evaluate_trace_command_lines(&mut engine.simplifier, line, display_mode)
+}
+
 /// Evaluate `telescope ...` command line and return formatted lines.
 pub fn evaluate_telescope_command_lines(
     simplifier: &mut Simplifier,
@@ -875,6 +975,14 @@ pub fn evaluate_telescope_command_lines(
     let output = evaluate_telescope_input(simplifier, rest)
         .map_err(|error| format_transform_eval_error_message(&error))?;
     Ok(format_telescope_eval_lines(rest, &output))
+}
+
+/// Engine-level wrapper for `telescope` command evaluation.
+pub fn evaluate_telescope_command_lines_with_engine(
+    engine: &mut cas_engine::Engine,
+    line: &str,
+) -> Result<Vec<String>, String> {
+    evaluate_telescope_command_lines(&mut engine.simplifier, line)
 }
 
 /// Evaluate `expand_log ...` command line and return formatted lines.
@@ -891,6 +999,14 @@ pub fn evaluate_expand_log_command_lines(
     let mut lines = format_expand_log_eval_lines(&simplifier.context, &output);
     crate::clean_result_output_line(&mut lines);
     Ok(lines)
+}
+
+/// Engine-level wrapper for `expand_log` command evaluation.
+pub fn evaluate_expand_log_command_lines_with_engine(
+    engine: &mut cas_engine::Engine,
+    line: &str,
+) -> Result<Vec<String>, String> {
+    evaluate_expand_log_command_lines(&mut engine.simplifier, line)
 }
 
 /// Evaluate `weierstrass ...` command line and return formatted lines.
@@ -911,6 +1027,14 @@ pub fn evaluate_weierstrass_command_lines(
     Ok(lines)
 }
 
+/// Engine-level wrapper for `weierstrass` command evaluation.
+pub fn evaluate_weierstrass_command_lines_with_engine(
+    engine: &mut cas_engine::Engine,
+    line: &str,
+) -> Result<Vec<String>, String> {
+    evaluate_weierstrass_command_lines(&mut engine.simplifier, line)
+}
+
 /// Evaluate `rationalize ...` command line and return formatted lines.
 pub fn evaluate_rationalize_command_lines(
     simplifier: &mut Simplifier,
@@ -925,6 +1049,14 @@ pub fn evaluate_rationalize_command_lines(
     let output = evaluate_rationalize_input(simplifier, rest)
         .map_err(|error| format_rationalize_eval_error_message(&error))?;
     Ok(format_rationalize_eval_lines(&simplifier.context, &output))
+}
+
+/// Engine-level wrapper for `rationalize` command evaluation.
+pub fn evaluate_rationalize_command_lines_with_engine(
+    engine: &mut cas_engine::Engine,
+    line: &str,
+) -> Result<Vec<String>, String> {
+    evaluate_rationalize_command_lines(&mut engine.simplifier, line)
 }
 
 /// Evaluate `limit ...` command line and return formatted lines.
@@ -967,6 +1099,28 @@ where
         &output,
         display_mode,
     ))
+}
+
+/// Evaluate `simplify ...` command line using only display mode to derive step collection.
+pub fn evaluate_full_simplify_command_lines_for_display_mode<S>(
+    engine: &mut cas_engine::Engine,
+    session: &S,
+    line: &str,
+    display_mode: crate::set_command::SetDisplayMode,
+) -> Result<Vec<String>, String>
+where
+    S: cas_engine::EvalSession<
+        Options = cas_engine::EvalOptions,
+        Diagnostics = cas_engine::Diagnostics,
+    >,
+{
+    evaluate_full_simplify_command_lines(
+        engine,
+        session,
+        line,
+        !matches!(display_mode, crate::set_command::SetDisplayMode::None),
+        display_mode,
+    )
 }
 
 /// Format the final `Result: ...` line for eval output.
@@ -1679,6 +1833,28 @@ where
         .map_err(|error| format_timeline_command_error_message(&error))
 }
 
+/// Evaluate full `timeline ...` REPL line using options cloned from the session.
+pub fn evaluate_timeline_command_line_with_session_options<S>(
+    engine: &mut cas_engine::Engine,
+    session: &mut S,
+    line: &str,
+) -> Result<TimelineCommandEvalOutput, String>
+where
+    S: cas_engine::EvalSession<
+        Options = cas_engine::EvalOptions,
+        Diagnostics = cas_engine::Diagnostics,
+    >,
+    S::Store: cas_engine::EvalStore<
+        DomainMode = cas_engine::DomainMode,
+        RequiredItem = cas_engine::RequiredItem,
+        Step = cas_engine::Step,
+        Diagnostics = cas_engine::Diagnostics,
+    >,
+{
+    let eval_options = session.options().clone();
+    evaluate_timeline_command_line(engine, session, line, &eval_options)
+}
+
 /// Evaluate full simplify input with aggressive default-rule simplifier.
 /// Uses a temporary simplifier with swapped context/profiler and resolves
 /// session refs via the provided session.
@@ -1879,6 +2055,18 @@ mod tests {
     }
 
     #[test]
+    fn evaluate_substitute_command_lines_for_display_mode_formats_output() {
+        let mut s = crate::Simplifier::with_default_rules();
+        let lines = super::evaluate_substitute_command_lines_for_display_mode(
+            &mut s,
+            "subst x^2 + x, x, 3",
+            crate::set_command::SetDisplayMode::Normal,
+        )
+        .expect("subst command");
+        assert!(lines.iter().any(|line| line.starts_with("Result: ")));
+    }
+
+    #[test]
     fn evaluate_unary_function_input_trace_works() {
         let mut s = crate::Simplifier::with_default_rules();
         let out = evaluate_unary_function_input(&mut s, "trace", "[[1,2],[3,4]]").expect("trace");
@@ -1912,6 +2100,37 @@ mod tests {
         )
         .expect("trace command");
         assert!(lines.iter().any(|line| line.starts_with("Result: ")));
+    }
+
+    #[test]
+    fn evaluate_det_trace_transpose_command_lines_format_result() {
+        let mut s = crate::Simplifier::with_default_rules();
+
+        let det_lines = super::evaluate_det_command_lines(
+            &mut s,
+            "det [[1,2],[3,4]]",
+            crate::set_command::SetDisplayMode::Normal,
+        )
+        .expect("det command");
+        assert!(det_lines.iter().any(|line| line.starts_with("Result: ")));
+
+        let trace_lines = super::evaluate_trace_command_lines(
+            &mut s,
+            "trace [[1,2],[3,4]]",
+            crate::set_command::SetDisplayMode::Normal,
+        )
+        .expect("trace command");
+        assert!(trace_lines.iter().any(|line| line.starts_with("Result: ")));
+
+        let transpose_lines = super::evaluate_transpose_command_lines(
+            &mut s,
+            "transpose [[1,2],[3,4]]",
+            crate::set_command::SetDisplayMode::Normal,
+        )
+        .expect("transpose command");
+        assert!(transpose_lines
+            .iter()
+            .any(|line| line.starts_with("Result: ")));
     }
 
     #[test]
@@ -2313,6 +2532,19 @@ mod tests {
     }
 
     #[test]
+    fn evaluate_timeline_command_line_with_session_options_dispatches() {
+        let mut engine = Engine::new();
+        let mut session = SessionState::new();
+        let out = super::evaluate_timeline_command_line_with_session_options(
+            &mut engine,
+            &mut session,
+            "timeline x + x",
+        )
+        .expect("timeline");
+        assert!(matches!(out, TimelineCommandEvalOutput::Simplify(_)));
+    }
+
+    #[test]
     fn format_timeline_command_error_message_simplify_parse() {
         let msg = format_timeline_command_error_message(&TimelineCommandEvalError::Simplify(
             TimelineEvalError::Parse("bad".to_string()),
@@ -2372,6 +2604,20 @@ mod tests {
         )
         .expect_err("parse error");
         assert!(err.starts_with("Error: "));
+    }
+
+    #[test]
+    fn evaluate_full_simplify_command_lines_for_display_mode_formats_result() {
+        let mut engine = Engine::new();
+        let session = SessionState::new();
+        let lines = super::evaluate_full_simplify_command_lines_for_display_mode(
+            &mut engine,
+            &session,
+            "simplify x + x",
+            crate::set_command::SetDisplayMode::Normal,
+        )
+        .expect("simplify command");
+        assert!(lines.iter().any(|line| line.starts_with("Result: ")));
     }
 
     #[test]

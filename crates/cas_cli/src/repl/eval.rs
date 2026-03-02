@@ -3,52 +3,52 @@ use super::*;
 impl Repl {
     /// Core: handle eval command, returns ReplReply (no I/O)
     pub(crate) fn handle_eval_core(&mut self, line: &str) -> ReplReply {
-        use cas_formatter::root_style::ParseStyleSignals;
-
         let mut reply: ReplReply = vec![];
 
-        let style_signals = ParseStyleSignals::from_input_string(line);
         match cas_solver::evaluate_eval_command_output(
             &mut self.core.engine,
             &mut self.core.state,
             line,
-            &style_signals,
             self.core.debug_mode,
         ) {
             Ok(out) => {
-                if let Some(line) = out.stored_entry_line {
-                    reply.push(ReplMsg::output(line));
+                let plan = cas_solver::build_eval_command_render_plan(
+                    out,
+                    self.verbosity == Verbosity::None,
+                );
+
+                for message in plan.pre_messages {
+                    match message.kind {
+                        cas_solver::EvalDisplayMessageKind::Output => {
+                            reply.push(ReplMsg::output(message.text))
+                        }
+                        cas_solver::EvalDisplayMessageKind::Warn => {
+                            reply.push(ReplMsg::warn(message.text))
+                        }
+                        cas_solver::EvalDisplayMessageKind::Info => {
+                            reply.push(ReplMsg::info(message.text))
+                        }
+                    }
                 }
 
-                for line in out.metadata.warning_lines {
-                    reply.push(ReplMsg::warn(line));
-                }
-
-                for line in out.metadata.requires_lines {
-                    reply.push(ReplMsg::info(line));
-                }
-
-                if !out.steps.is_empty() || self.verbosity != Verbosity::None {
+                if plan.render_steps {
                     let steps_reply = self.show_simplification_steps_core(
-                        out.resolved_expr,
-                        &out.steps,
-                        style_signals.clone(),
+                        plan.resolved_expr,
+                        &plan.steps,
+                        plan.style_signals.clone(),
                     );
                     reply.extend(steps_reply);
                 }
 
-                if let Some(result_line) = out.result_line {
-                    reply.push(ReplMsg::output(result_line.line));
-                    if result_line.terminal {
+                if let Some(result_message) = plan.result_message {
+                    reply.push(ReplMsg::output(result_message.text));
+                    if plan.result_terminal {
                         return reply;
                     }
                 }
 
-                for line in out.metadata.hint_lines {
-                    reply.push(ReplMsg::info(line));
-                }
-                for line in out.metadata.assumption_lines {
-                    reply.push(ReplMsg::info(line));
+                for message in plan.post_messages {
+                    reply.push(ReplMsg::info(message.text));
                 }
             }
             Err(cas_solver::EvalCommandError::Parse(e)) => reply.push(ReplMsg::error(

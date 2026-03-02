@@ -56,6 +56,16 @@ pub fn evaluate_profile_cache_command_lines(
     format_profile_cache_command_lines(&result)
 }
 
+/// Get current profile cache size from engine.
+pub fn engine_profile_cache_len(engine: &cas_engine::Engine) -> usize {
+    engine.profile_cache_len()
+}
+
+/// Clear profile cache in engine.
+pub fn clear_engine_profile_cache(engine: &mut cas_engine::Engine) {
+    engine.clear_profile_cache();
+}
+
 #[cfg(test)]
 mod tests {
     use super::{

@@ -86,6 +86,18 @@ pub fn clear_health_profiler(simplifier: &mut crate::Simplifier) {
     simplifier.profiler.clear_run();
 }
 
+/// Capture current health report only when health tracking is enabled.
+pub fn capture_health_report_if_enabled(
+    engine: &crate::Engine,
+    health_enabled: bool,
+) -> Option<String> {
+    if health_enabled {
+        Some(engine.simplifier.profiler.health_report())
+    } else {
+        None
+    }
+}
+
 pub fn format_health_usage_message(category_names: &str) -> String {
     format!(
         "Usage: health [on|off|reset|status]\n\
@@ -287,6 +299,16 @@ pub fn evaluate_health_command(
             unreachable!("invalid is handled in evaluate_health_command_input")
         }
     }
+}
+
+/// Engine-level wrapper for full `health` command evaluation.
+pub fn evaluate_health_command_with_engine(
+    engine: &mut crate::Engine,
+    line: &str,
+    last_stats: Option<&crate::PipelineStats>,
+    last_health_report: Option<&str>,
+) -> Result<HealthCommandEvalOutput, String> {
+    evaluate_health_command(&mut engine.simplifier, line, last_stats, last_health_report)
 }
 
 #[cfg(test)]

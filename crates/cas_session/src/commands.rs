@@ -23,6 +23,22 @@ where
     }
 }
 
+/// Evaluate `vars` command lines using the engine display context.
+pub fn evaluate_vars_command_lines_with_engine(
+    state: &SessionState,
+    engine: &cas_engine::Engine,
+) -> Vec<String> {
+    evaluate_vars_command_lines(state, |id| {
+        format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: &engine.simplifier.context,
+                id
+            }
+        )
+    })
+}
+
 /// Evaluate `history` command lines using an expression renderer callback.
 pub fn evaluate_history_command_lines<F>(state: &SessionState, render_expr: F) -> Vec<String>
 where
@@ -34,6 +50,22 @@ where
     } else {
         format_history_overview_lines(&entries, render_expr)
     }
+}
+
+/// Evaluate `history` command lines using the engine display context.
+pub fn evaluate_history_command_lines_with_engine(
+    state: &SessionState,
+    engine: &cas_engine::Engine,
+) -> Vec<String> {
+    evaluate_history_command_lines(state, |id| {
+        format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: &engine.simplifier.context,
+                id
+            }
+        )
+    })
 }
 
 /// Evaluate `clear` command and return output lines.
@@ -80,6 +112,31 @@ where
     lines
 }
 
+/// Format `show` command lines from a pre-computed inspection using engine context.
+pub fn format_show_history_command_lines_with_engine<M>(
+    inspection: &HistoryEntryInspection,
+    engine: &cas_engine::Engine,
+    mut metadata_lines: M,
+) -> Vec<String>
+where
+    M: FnMut(&cas_ast::Context, &HistoryExprInspection) -> Vec<String>,
+{
+    let context = &engine.simplifier.context;
+    let mut lines = format_history_entry_inspection_lines(inspection, |id| {
+        format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context,
+                id,
+            }
+        )
+    });
+    if let HistoryEntryDetails::Expr(expr_info) = &inspection.details {
+        lines.extend(metadata_lines(context, expr_info));
+    }
+    lines
+}
+
 /// Evaluate `show` command and return output lines.
 pub fn evaluate_show_history_command_lines<F, M>(
     state: &mut SessionState,
@@ -96,6 +153,24 @@ where
     Ok(format_show_history_command_lines(
         &inspection,
         render_expr,
+        metadata_lines,
+    ))
+}
+
+/// Evaluate `show` command and return output lines using engine display context.
+pub fn evaluate_show_history_command_lines_with_engine<M>(
+    state: &mut SessionState,
+    engine: &mut cas_engine::Engine,
+    input: &str,
+    metadata_lines: M,
+) -> Result<Vec<String>, String>
+where
+    M: FnMut(&cas_ast::Context, &HistoryExprInspection) -> Vec<String>,
+{
+    let inspection = inspect_show_history_command(state, engine, input)?;
+    Ok(format_show_history_command_lines_with_engine(
+        &inspection,
+        engine,
         metadata_lines,
     ))
 }
@@ -137,6 +212,42 @@ pub fn evaluate_let_assignment_command(
     evaluate_assignment_command(state, simplifier, parsed.name, parsed.expr, parsed.lazy)
 }
 
+/// Evaluate assignment command pieces and return formatted user-facing message.
+pub fn evaluate_assignment_command_message(
+    state: &mut SessionState,
+    engine: &mut cas_engine::Engine,
+    name: &str,
+    expr_str: &str,
+    lazy: bool,
+) -> Result<String, String> {
+    let output = evaluate_assignment_command(state, &mut engine.simplifier, name, expr_str, lazy)?;
+    let rendered = format!(
+        "{}",
+        cas_formatter::DisplayExpr {
+            context: &engine.simplifier.context,
+            id: output.expr
+        }
+    );
+    Ok(format_assignment_command_output_message(&output, &rendered))
+}
+
+/// Evaluate `let ...` command tail and return formatted user-facing message.
+pub fn evaluate_let_assignment_command_message(
+    state: &mut SessionState,
+    engine: &mut cas_engine::Engine,
+    input: &str,
+) -> Result<String, String> {
+    let output = evaluate_let_assignment_command(state, &mut engine.simplifier, input)?;
+    let rendered = format!(
+        "{}",
+        cas_formatter::DisplayExpr {
+            context: &engine.simplifier.context,
+            id: output.expr
+        }
+    );
+    Ok(format_assignment_command_output_message(&output, &rendered))
+}
+
 /// Format assignment output payload once caller rendered the expression.
 pub fn format_assignment_command_output_message(
     output: &AssignmentCommandOutput,
@@ -150,9 +261,12 @@ mod tests {
     use super::{
         evaluate_assignment_command, evaluate_clear_command_lines,
         evaluate_delete_history_command_message, evaluate_history_command_lines,
-        evaluate_let_assignment_command, evaluate_show_history_command_lines,
-        evaluate_vars_command_lines, format_assignment_command_output_message,
-        format_show_history_command_lines, inspect_show_history_command,
+        evaluate_history_command_lines_with_engine, evaluate_let_assignment_command,
+        evaluate_let_assignment_command_message, evaluate_show_history_command_lines,
+        evaluate_show_history_command_lines_with_engine,
+        evaluate_vars_command_lines, evaluate_vars_command_lines_with_engine,
+        format_assignment_command_output_message, format_show_history_command_lines,
+        format_show_history_command_lines_with_engine, inspect_show_history_command,
     };
     use crate::{EntryKind, SessionState};
 
@@ -167,6 +281,22 @@ mod tests {
     fn evaluate_history_command_lines_empty() {
         let state = SessionState::new();
         let lines = evaluate_history_command_lines(&state, |_id| "<expr>".to_string());
+        assert_eq!(lines, vec!["No entries in session history.".to_string()]);
+    }
+
+    #[test]
+    fn evaluate_vars_command_lines_with_engine_empty() {
+        let state = SessionState::new();
+        let engine = cas_engine::Engine::new();
+        let lines = evaluate_vars_command_lines_with_engine(&state, &engine);
+        assert_eq!(lines, vec!["No variables defined.".to_string()]);
+    }
+
+    #[test]
+    fn evaluate_history_command_lines_with_engine_empty() {
+        let state = SessionState::new();
+        let engine = cas_engine::Engine::new();
+        let lines = evaluate_history_command_lines_with_engine(&state, &engine);
         assert_eq!(lines, vec!["No entries in session history.".to_string()]);
     }
 
@@ -235,6 +365,31 @@ mod tests {
     }
 
     #[test]
+    fn format_show_history_command_lines_with_engine_appends_metadata() {
+        let mut engine = cas_engine::Engine::new();
+        let parsed = cas_parser::parse("x + x", &mut engine.simplifier.context).expect("parse");
+        let inspection = crate::HistoryEntryInspection {
+            id: 1,
+            type_str: "Expression".to_string(),
+            raw_text: "x+x".to_string(),
+            details: crate::HistoryEntryDetails::Expr(crate::HistoryExprInspection {
+                parsed,
+                resolved: None,
+                simplified: None,
+                required_conditions: Vec::new(),
+                domain_warnings: Vec::new(),
+                blocked_hints: Vec::new(),
+            }),
+        };
+        let lines = format_show_history_command_lines_with_engine(
+            &inspection,
+            &engine,
+            |_ctx, _expr_info| vec!["meta".to_string()],
+        );
+        assert!(lines.iter().any(|line| line == "meta"));
+    }
+
+    #[test]
     fn evaluate_assignment_command_success() {
         let mut state = SessionState::new();
         let mut simplifier = cas_engine::Simplifier::with_default_rules();
@@ -259,5 +414,32 @@ mod tests {
         let err = evaluate_let_assignment_command(&mut state, &mut simplifier, "x + y")
             .expect_err("let parse error");
         assert!(err.contains("Usage:"));
+    }
+
+    #[test]
+    fn evaluate_let_assignment_command_message_formats_success() {
+        let mut state = SessionState::new();
+        let mut engine = cas_engine::Engine::new();
+        let out = evaluate_let_assignment_command_message(&mut state, &mut engine, "a = x + x")
+            .expect("let message");
+        assert!(out.starts_with("a "));
+    }
+
+    #[test]
+    fn evaluate_show_history_command_lines_with_engine_appends_metadata() {
+        let mut state = SessionState::new();
+        let mut engine = cas_engine::Engine::new();
+        let expr = cas_parser::parse("x + x", &mut engine.simplifier.context).expect("parse expr");
+        let id = state.history_push(EntryKind::Expr(expr), "x + x".to_string());
+
+        let lines = evaluate_show_history_command_lines_with_engine(
+            &mut state,
+            &mut engine,
+            &format!("#{}", id),
+            |_ctx, _expr_info| vec!["meta".to_string()],
+        )
+        .expect("show lines");
+
+        assert!(lines.iter().any(|line| line == "meta"));
     }
 }

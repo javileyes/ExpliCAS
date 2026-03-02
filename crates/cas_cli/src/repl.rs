@@ -1,4 +1,3 @@
-use cas_formatter::DisplayExpr;
 use cas_session::CasConfig;
 use rustyline::error::ReadlineError;
 

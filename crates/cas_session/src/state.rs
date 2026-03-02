@@ -252,6 +252,10 @@ impl EvalSession for SessionState {
         &self.options
     }
 
+    fn options_mut(&mut self) -> &mut EvalOptions {
+        &mut self.options
+    }
+
     fn resolve_all_with_diagnostics(
         &self,
         ctx: &mut cas_ast::Context,

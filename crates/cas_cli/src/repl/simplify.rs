@@ -6,11 +6,10 @@ impl Repl {
         line: &str,
         verbosity: Verbosity,
     ) -> ReplReply {
-        let lines = match cas_solver::evaluate_full_simplify_command_lines(
+        let lines = match cas_solver::evaluate_full_simplify_command_lines_for_display_mode(
             &mut self.core.engine,
             &self.core.state,
             line,
-            verbosity != Verbosity::None,
             Self::set_display_mode_from_verbosity(verbosity),
         ) {
             Ok(lines) => lines,
@@ -18,10 +17,8 @@ impl Repl {
         };
 
         // Store health report for the `health` command (if health tracking is enabled)
-        if self.core.health_enabled {
-            self.core.last_health_report =
-                Some(self.core.engine.simplifier.profiler.health_report());
-        }
+        self.core.last_health_report =
+            cas_solver::capture_health_report_if_enabled(&self.core.engine, self.core.health_enabled);
 
         reply_output(lines.join("\n"))
     }

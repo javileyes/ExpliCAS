@@ -72,6 +72,11 @@ pub fn apply_profile_command(simplifier: &mut crate::Simplifier, line: &str) -> 
     }
 }
 
+/// Engine-level wrapper for `profile` command application.
+pub fn apply_profile_command_with_engine(engine: &mut crate::Engine, line: &str) -> String {
+    apply_profile_command(&mut engine.simplifier, line)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{

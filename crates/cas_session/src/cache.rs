@@ -47,6 +47,16 @@ impl SimplifyCacheKey {
         }
     }
 
+    /// Create a cache key from a CLI-style domain flag (`strict|assume|generic`).
+    pub fn from_domain_flag(domain: &str) -> Self {
+        let mode = match domain {
+            "strict" => cas_engine::DomainMode::Strict,
+            "assume" => cas_engine::DomainMode::Assume,
+            _ => cas_engine::DomainMode::Generic,
+        };
+        Self::from_context(mode)
+    }
+
     /// Check if this key is compatible with another (for cache hit).
     pub fn is_compatible(&self, other: &Self) -> bool {
         self == other
@@ -64,4 +74,33 @@ pub struct SimplifiedCache {
     pub requires: Vec<cas_engine::RequiredItem>,
     /// Derivation steps (None = light cache, steps omitted for large entries).
     pub steps: Option<Arc<Vec<cas_engine::Step>>>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{CacheDomainMode, SimplifyCacheKey};
+
+    #[test]
+    fn cache_key_from_domain_flag_maps_known_values() {
+        assert_eq!(
+            SimplifyCacheKey::from_domain_flag("strict").domain,
+            CacheDomainMode::Strict
+        );
+        assert_eq!(
+            SimplifyCacheKey::from_domain_flag("assume").domain,
+            CacheDomainMode::Assume
+        );
+        assert_eq!(
+            SimplifyCacheKey::from_domain_flag("generic").domain,
+            CacheDomainMode::Generic
+        );
+    }
+
+    #[test]
+    fn cache_key_from_domain_flag_defaults_to_generic() {
+        assert_eq!(
+            SimplifyCacheKey::from_domain_flag("unknown").domain,
+            CacheDomainMode::Generic
+        );
+    }
 }

@@ -119,6 +119,11 @@ pub fn apply_steps_command_update(
     }
 }
 
+/// Apply a steps mode directly to an engine instance.
+pub fn set_engine_steps_mode(engine: &mut crate::Engine, mode: crate::StepsMode) {
+    engine.simplifier.set_steps_mode(mode);
+}
+
 /// Format current steps collection/display status.
 pub fn format_steps_current_message(
     steps_mode: crate::StepsMode,

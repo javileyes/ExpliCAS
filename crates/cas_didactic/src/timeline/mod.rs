@@ -124,6 +124,31 @@ pub fn render_solve_timeline_cli_output(
     }
 }
 
+/// Build CLI render output for a full `timeline` command eval output.
+pub fn render_timeline_command_cli_output(
+    context: &mut Context,
+    out: &cas_solver::TimelineCommandEvalOutput,
+    verbosity: VerbosityLevel,
+) -> TimelineCliRender {
+    match out {
+        cas_solver::TimelineCommandEvalOutput::Solve(solve_out) => {
+            render_solve_timeline_cli_output(context, solve_out)
+        }
+        cas_solver::TimelineCommandEvalOutput::Simplify(simplify_out) => {
+            render_simplify_timeline_cli_output(context, simplify_out, verbosity)
+        }
+    }
+}
+
+/// Engine-level wrapper for timeline CLI render planning.
+pub fn render_timeline_command_cli_output_with_engine(
+    engine: &mut cas_solver::Engine,
+    out: &cas_solver::TimelineCommandEvalOutput,
+    verbosity: VerbosityLevel,
+) -> TimelineCliRender {
+    render_timeline_command_cli_output(&mut engine.simplifier.context, out, verbosity)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -180,5 +205,26 @@ mod tests {
             Some("x+y"),
         );
         assert!(html.contains("<!DOCTYPE html"));
+    }
+
+    #[test]
+    fn render_timeline_command_cli_output_simplify_no_steps() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let out = cas_solver::TimelineCommandEvalOutput::Simplify(
+            cas_solver::TimelineSimplifyCommandEvalOutput {
+                expr_input: "x".to_string(),
+                use_aggressive: false,
+                parsed_expr: x,
+                simplified_expr: x,
+                steps: cas_solver::to_display_steps(Vec::new()),
+            },
+        );
+
+        let render = render_timeline_command_cli_output(&mut ctx, &out, VerbosityLevel::Normal);
+        match render {
+            TimelineCliRender::NoSteps { lines } => assert!(!lines.is_empty()),
+            TimelineCliRender::Html { .. } => panic!("expected no-steps render"),
+        }
     }
 }

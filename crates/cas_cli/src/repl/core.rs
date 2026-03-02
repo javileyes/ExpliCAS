@@ -50,20 +50,6 @@ impl ReplCore {
         let simplifier = Simplifier::with_default_rules();
         Self::with_simplifier(simplifier)
     }
-
-    /// Get verbosity-aware formatted message
-    /// (verbosity is passed in since it lives in Repl, not ReplCore)
-    pub fn format_output(
-        &self,
-        expr: cas_ast::ExprId,
-        style_prefs: &cas_formatter::root_style::StylePreferences,
-    ) -> String {
-        use cas_formatter::DisplayExprStyled;
-        format!(
-            "{}",
-            DisplayExprStyled::new(&self.engine.simplifier.context, expr, style_prefs)
-        )
-    }
 }
 
 impl Default for ReplCore {

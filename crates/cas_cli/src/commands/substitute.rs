@@ -12,52 +12,32 @@ pub fn run(args: SubstituteArgs) {
     };
 
     if matches!(args.format, OutputFormat::Json) {
-        let out = cas_solver::substitute_str_to_json_with_options(
+        let out = cas_solver::evaluate_substitute_subcommand_json(
             &args.expr,
             &args.target,
             &args.replacement,
             mode_str,
             args.steps,
-            true,
         );
         println!("{}", out);
         return;
     }
 
-    let mode = match args.mode {
-        SubstituteModeArg::Exact => cas_solver::json::SubstituteEvalMode::Exact,
-        SubstituteModeArg::Power => cas_solver::json::SubstituteEvalMode::Power,
-    };
-    let output = match cas_solver::json::eval_substitute_from_str(
+    let lines = match cas_solver::evaluate_substitute_subcommand_text_lines_with_mode(
         &args.expr,
         &args.target,
         &args.replacement,
-        mode,
+        mode_str,
         args.steps,
     ) {
-        Ok(output) => output,
-        Err(
-            cas_solver::json::SubstituteEvalError::ParseExpression(message)
-            | cas_solver::json::SubstituteEvalError::ParseTarget(message)
-            | cas_solver::json::SubstituteEvalError::ParseReplacement(message),
-        ) => {
+        Ok(lines) => lines,
+        Err(message) => {
             eprintln!("{}", message);
             std::process::exit(1);
         }
     };
 
-    if args.steps && !output.steps.is_empty() {
-        println!("Steps:");
-        for step in &output.steps {
-            if let Some(ref note) = step.note {
-                println!(
-                    "  {} → {} [{}] ({})",
-                    step.before, step.after, step.rule, note
-                );
-            } else {
-                println!("  {} → {} [{}]", step.before, step.after, step.rule);
-            }
-        }
+    for line in lines {
+        println!("{}", line);
     }
-    println!("{}", output.result);
 }

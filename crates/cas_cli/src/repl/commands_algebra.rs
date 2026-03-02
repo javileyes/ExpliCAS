@@ -2,13 +2,10 @@ use super::*;
 
 impl Repl {
     pub(crate) fn handle_det_core(&mut self, line: &str, verbosity: Verbosity) -> ReplReply {
-        match cas_solver::evaluate_unary_command_lines(
-            &mut self.core.engine.simplifier,
+        match cas_solver::evaluate_det_command_lines_with_engine(
+            &mut self.core.engine,
             line,
-            "det",
             Self::set_display_mode_from_verbosity(verbosity),
-            true,
-            true,
         ) {
             Ok(lines) => reply_output(lines.join("\n")),
             Err(message) => reply_output(message),
@@ -16,13 +13,10 @@ impl Repl {
     }
 
     pub(crate) fn handle_transpose_core(&mut self, line: &str, verbosity: Verbosity) -> ReplReply {
-        match cas_solver::evaluate_unary_command_lines(
-            &mut self.core.engine.simplifier,
+        match cas_solver::evaluate_transpose_command_lines_with_engine(
+            &mut self.core.engine,
             line,
-            "transpose",
             Self::set_display_mode_from_verbosity(verbosity),
-            false,
-            false,
         ) {
             Ok(lines) => reply_output(lines.join("\n")),
             Err(message) => reply_output(message),
@@ -30,13 +24,10 @@ impl Repl {
     }
 
     pub(crate) fn handle_trace_core(&mut self, line: &str, verbosity: Verbosity) -> ReplReply {
-        match cas_solver::evaluate_unary_command_lines(
-            &mut self.core.engine.simplifier,
+        match cas_solver::evaluate_trace_command_lines_with_engine(
+            &mut self.core.engine,
             line,
-            "trace",
             Self::set_display_mode_from_verbosity(verbosity),
-            false,
-            true,
         ) {
             Ok(lines) => reply_output(lines.join("\n")),
             Err(message) => reply_output(message),
@@ -45,7 +36,8 @@ impl Repl {
 
     /// Handle the 'telescope' command for proving telescoping identities like Dirichlet kernel
     pub(crate) fn handle_telescope_core(&mut self, line: &str) -> ReplReply {
-        match cas_solver::evaluate_telescope_command_lines(&mut self.core.engine.simplifier, line) {
+        match cas_solver::evaluate_telescope_command_lines_with_engine(&mut self.core.engine, line)
+        {
             Ok(lines) => reply_output(lines.join("\n")),
             Err(message) => reply_output(message),
         }
@@ -66,7 +58,7 @@ impl Repl {
     /// Handle the 'expand_log' command for explicit logarithm expansion
     /// Expands ln(xy) → ln(x) + ln(y), ln(x/y) → ln(x) - ln(y), ln(x^n) → n*ln(x)
     pub(crate) fn handle_expand_log_core(&mut self, line: &str) -> ReplReply {
-        match cas_solver::evaluate_expand_log_command_lines(&mut self.core.engine.simplifier, line)
+        match cas_solver::evaluate_expand_log_command_lines_with_engine(&mut self.core.engine, line)
         {
             Ok(lines) => reply_output(lines.join("\n")),
             Err(message) => reply_output(message),

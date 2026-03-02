@@ -389,6 +389,14 @@ pub fn evaluate_linear_system_command_line(
     }
 }
 
+/// Engine-level wrapper for `solve_system` command line evaluation.
+pub fn evaluate_linear_system_command_line_with_engine(
+    engine: &mut crate::Engine,
+    line: &str,
+) -> Result<String, String> {
+    evaluate_linear_system_command_line(&mut engine.simplifier.context, line)
+}
+
 /// Display a linear-system unique solution in `{ x = a, y = b }` form.
 pub fn display_linear_system_solution(
     ctx: &mut Context,

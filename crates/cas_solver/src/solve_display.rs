@@ -21,6 +21,24 @@ pub struct SolveStepVerbosity {
     pub show_verbose_substeps: bool,
 }
 
+/// Build solve render config from eval options and display mode.
+pub fn solve_render_config_from_eval_options(
+    options: &crate::EvalOptions,
+    display_mode: crate::set_command::SetDisplayMode,
+    debug_mode: bool,
+) -> SolveCommandRenderConfig {
+    let step_verbosity = solve_step_verbosity_from_display_mode(display_mode);
+    SolveCommandRenderConfig {
+        show_steps: step_verbosity.show_steps,
+        show_verbose_substeps: step_verbosity.show_verbose_substeps,
+        requires_display: options.requires_display,
+        debug_mode,
+        hints_enabled: options.hints_enabled,
+        domain_mode: options.shared.semantics.domain_mode,
+        check_solutions: options.check_solutions,
+    }
+}
+
 /// Map generic display mode (shared across REPL commands) to solve-step visibility.
 pub fn solve_step_verbosity_from_display_mode(
     mode: crate::set_command::SetDisplayMode,
@@ -270,8 +288,8 @@ mod tests {
     use super::{
         format_solve_command_eval_lines, format_solve_result_line,
         format_timeline_solve_no_steps_message, format_timeline_solve_result_line,
-        requires_result_expr_anchor, solve_step_verbosity_from_display_mode,
-        SolveCommandRenderConfig, SolveStepVerbosity,
+        requires_result_expr_anchor, solve_render_config_from_eval_options,
+        solve_step_verbosity_from_display_mode, SolveCommandRenderConfig, SolveStepVerbosity,
     };
 
     #[test]
@@ -359,5 +377,28 @@ mod tests {
                 show_verbose_substeps: true
             }
         );
+    }
+
+    #[test]
+    fn solve_render_config_from_eval_options_uses_display_mode_and_flags() {
+        let options = crate::EvalOptions {
+            check_solutions: false,
+            hints_enabled: true,
+            requires_display: crate::RequiresDisplayLevel::All,
+            ..Default::default()
+        };
+
+        let cfg = solve_render_config_from_eval_options(
+            &options,
+            crate::set_command::SetDisplayMode::Verbose,
+            true,
+        );
+
+        assert!(cfg.show_steps);
+        assert!(cfg.show_verbose_substeps);
+        assert!(!cfg.check_solutions);
+        assert!(cfg.debug_mode);
+        assert!(cfg.hints_enabled);
+        assert_eq!(cfg.requires_display, crate::RequiresDisplayLevel::All);
     }
 }

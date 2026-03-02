@@ -68,7 +68,8 @@ impl Repl {
     }
 
     pub(crate) fn rebuild_engine_simplifier_from_config(&mut self) {
-        self.core.engine.simplifier = cas_solver::build_simplifier_with_rule_config(
+        cas_solver::rebuild_engine_simplifier_with_rule_config(
+            &mut self.core.engine,
             solver_rule_config_from_cli(&self.config),
         );
     }
@@ -126,7 +127,7 @@ impl Repl {
 
     pub(crate) fn sync_config_to_simplifier(&mut self) {
         let toggles = self.config_as_solver_toggle();
-        cas_solver::apply_simplifier_toggle_config(&mut self.core.engine.simplifier, toggles);
+        cas_solver::apply_simplifier_toggle_config_to_engine(&mut self.core.engine, toggles);
     }
 
     /// Build the REPL prompt with mode indicators.

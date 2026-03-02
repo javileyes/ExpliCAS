@@ -24,8 +24,10 @@ impl Repl {
         let applied =
             cas_solver::evaluate_and_apply_context_command(line, self.core.state.options_mut());
         if applied.rebuild_simplifier {
-            self.core.engine.simplifier =
-                cas_solver::Simplifier::with_profile(self.core.state.options());
+            cas_solver::rebuild_engine_simplifier_with_profile(
+                &mut self.core.engine,
+                self.core.state.options(),
+            );
             self.sync_config_to_simplifier();
         }
         reply_output(applied.message)
@@ -49,7 +51,7 @@ impl Repl {
             self.core.state.options_mut(),
         );
         if let Some(mode) = effects.set_steps_mode {
-            self.core.engine.simplifier.set_steps_mode(mode);
+            cas_solver::set_engine_steps_mode(&mut self.core.engine, mode);
         }
         if let Some(display_mode) = effects.set_display_mode {
             self.verbosity = Self::steps_display_mode_to_verbosity(display_mode);
@@ -79,8 +81,10 @@ impl Repl {
         let applied =
             cas_solver::evaluate_and_apply_autoexpand_command(line, self.core.state.options_mut());
         if applied.rebuild_simplifier {
-            self.core.engine.simplifier =
-                cas_solver::Simplifier::with_profile(self.core.state.options());
+            cas_solver::rebuild_engine_simplifier_with_profile(
+                &mut self.core.engine,
+                self.core.state.options(),
+            );
             self.sync_config_to_simplifier();
         }
         reply_output(applied.message)

@@ -36,6 +36,7 @@ pub trait EvalSession {
 
     fn store_mut(&mut self) -> &mut Self::Store;
     fn options(&self) -> &Self::Options;
+    fn options_mut(&mut self) -> &mut Self::Options;
 
     fn resolve_all_with_diagnostics(
         &self,
@@ -213,6 +214,10 @@ where
 
     fn options(&self) -> &Self::Options {
         &self.options
+    }
+
+    fn options_mut(&mut self) -> &mut Self::Options {
+        &mut self.options
     }
 
     fn resolve_all_with_diagnostics(
@@ -543,6 +548,7 @@ mod tests {
     #[derive(Default)]
     struct TestSession {
         store: TestStore,
+        options: (),
     }
 
     impl EvalStore for TestStore {
@@ -596,7 +602,11 @@ mod tests {
         }
 
         fn options(&self) -> &Self::Options {
-            &()
+            &self.options
+        }
+
+        fn options_mut(&mut self) -> &mut Self::Options {
+            &mut self.options
         }
 
         fn resolve_all_with_diagnostics(

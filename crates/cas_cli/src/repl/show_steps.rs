@@ -13,8 +13,8 @@ impl Repl {
         steps: &[cas_solver::Step],
         style_signals: cas_formatter::root_style::ParseStyleSignals,
     ) -> ReplReply {
-        let lines = cas_didactic::format_cli_simplification_steps(
-            &mut self.core.engine.simplifier.context,
+        let lines = cas_didactic::format_cli_simplification_steps_with_engine(
+            &mut self.core.engine,
             expr,
             steps,
             style_signals,

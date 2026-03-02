@@ -107,9 +107,12 @@ impl Repl {
             cas_solver::ReplCommandInput::Expand(line) => self.handle_expand_core(line),
             cas_solver::ReplCommandInput::Rationalize(line) => self.handle_rationalize_core(line),
             cas_solver::ReplCommandInput::Limit(line) => self.handle_limit_core(line),
-            cas_solver::ReplCommandInput::Profile(line) => reply_output(
-                cas_solver::apply_profile_command(&mut self.core.engine.simplifier, line),
-            ),
+            cas_solver::ReplCommandInput::Profile(line) => {
+                reply_output(cas_solver::apply_profile_command_with_engine(
+                    &mut self.core.engine,
+                    line,
+                ))
+            }
             cas_solver::ReplCommandInput::Health(line) => self.handle_health_core(line),
             cas_solver::ReplCommandInput::Eval(line) => self.handle_eval_core(line),
         }

@@ -403,6 +403,69 @@ where
     }
 }
 
+/// Evaluate full REPL `solve ...` command and render output lines from eval options.
+pub fn evaluate_solve_command_lines_with_options<S>(
+    engine: &mut crate::Engine,
+    session: &mut S,
+    line: &str,
+    options: &crate::EvalOptions,
+    display_mode: crate::set_command::SetDisplayMode,
+    debug_mode: bool,
+) -> Vec<String>
+where
+    S: cas_engine::EvalSession<
+        Options = cas_engine::EvalOptions,
+        Diagnostics = cas_engine::Diagnostics,
+    >,
+    S::Store: cas_engine::EvalStore<
+        DomainMode = cas_engine::DomainMode,
+        RequiredItem = cas_engine::RequiredItem,
+        Step = cas_engine::Step,
+        Diagnostics = cas_engine::Diagnostics,
+    >,
+{
+    let render_config =
+        crate::solve_render_config_from_eval_options(options, display_mode, debug_mode);
+    evaluate_solve_command_lines(
+        engine,
+        session,
+        line,
+        options.check_solutions,
+        render_config,
+    )
+}
+
+/// Evaluate full REPL `solve ...` command and render output lines using options from session.
+pub fn evaluate_solve_command_lines_with_session_options<S>(
+    engine: &mut crate::Engine,
+    session: &mut S,
+    line: &str,
+    display_mode: crate::set_command::SetDisplayMode,
+    debug_mode: bool,
+) -> Vec<String>
+where
+    S: cas_engine::EvalSession<
+        Options = cas_engine::EvalOptions,
+        Diagnostics = cas_engine::Diagnostics,
+    >,
+    S::Store: cas_engine::EvalStore<
+        DomainMode = cas_engine::DomainMode,
+        RequiredItem = cas_engine::RequiredItem,
+        Step = cas_engine::Step,
+        Diagnostics = cas_engine::Diagnostics,
+    >,
+{
+    let options = session.options().clone();
+    evaluate_solve_command_lines_with_options(
+        engine,
+        session,
+        line,
+        &options,
+        display_mode,
+        debug_mode,
+    )
+}
+
 /// Evaluate a parsed REPL `solve` command.
 pub fn evaluate_parsed_solve_command_input<S>(
     engine: &mut crate::Engine,
@@ -776,6 +839,36 @@ mod tests {
                 domain_mode: crate::DomainMode::Generic,
                 check_solutions: false,
             },
+        );
+        assert!(lines.iter().any(|line| line.starts_with("Result: ")));
+    }
+
+    #[test]
+    fn evaluate_solve_command_lines_with_options_formats_result() {
+        let mut engine = crate::Engine::new();
+        let mut session = SessionState::new();
+        let options = crate::EvalOptions::default();
+        let lines = super::evaluate_solve_command_lines_with_options(
+            &mut engine,
+            &mut session,
+            "solve x + 2 = 5, x",
+            &options,
+            crate::set_command::SetDisplayMode::Normal,
+            false,
+        );
+        assert!(lines.iter().any(|line| line.starts_with("Result: ")));
+    }
+
+    #[test]
+    fn evaluate_solve_command_lines_with_session_options_formats_result() {
+        let mut engine = crate::Engine::new();
+        let mut session = SessionState::new();
+        let lines = super::evaluate_solve_command_lines_with_session_options(
+            &mut engine,
+            &mut session,
+            "solve x + 2 = 5, x",
+            crate::set_command::SetDisplayMode::Normal,
+            false,
         );
         assert!(lines.iter().any(|line| line.starts_with("Result: ")));
     }

@@ -145,3 +145,12 @@ pub fn collect_eval_json_steps(
         })
         .collect()
 }
+
+/// Engine-level wrapper for eval-json step collection.
+pub fn collect_eval_json_steps_with_engine(
+    output: &EvalOutput,
+    engine: &cas_solver::Engine,
+    steps_mode: &str,
+) -> Vec<StepJson> {
+    collect_eval_json_steps(output, &engine.simplifier.context, steps_mode)
+}

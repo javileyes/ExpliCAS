@@ -9,10 +9,8 @@ use super::Repl;
 impl Repl {
     /// Core: handle_solve_system_core (returns ReplReply, no I/O)
     pub(crate) fn handle_solve_system_core(&mut self, line: &str) -> ReplReply {
-        match cas_solver::evaluate_linear_system_command_line(
-            &mut self.core.engine.simplifier.context,
-            line,
-        ) {
+        match cas_solver::evaluate_linear_system_command_line_with_engine(&mut self.core.engine, line)
+        {
             Ok(message) => reply_output(message),
             Err(message) => reply_output(message),
         }

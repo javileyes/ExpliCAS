@@ -103,3 +103,17 @@ pub fn format_eval_input_latex(ctx: &cas_ast::Context, parsed: ExprId) -> String
         .to_latex()
     }
 }
+
+/// Engine-level wrapper for building eval request from raw input.
+pub fn build_eval_request_for_input_with_engine(
+    engine: &mut crate::Engine,
+    raw_input: &str,
+    auto_store: bool,
+) -> Result<EvalRequest, String> {
+    build_eval_request_for_input(raw_input, &mut engine.simplifier.context, auto_store)
+}
+
+/// Engine-level wrapper for rendering eval input LaTeX.
+pub fn format_eval_input_latex_with_engine(engine: &crate::Engine, parsed: ExprId) -> String {
+    format_eval_input_latex(&engine.simplifier.context, parsed)
+}

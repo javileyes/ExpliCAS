@@ -31,7 +31,7 @@ impl Repl {
     }
 
     pub(crate) fn handle_equiv_core(&mut self, line: &str) -> ReplReply {
-        match cas_solver::evaluate_equiv_command_lines(&mut self.core.engine.simplifier, line) {
+        match cas_solver::evaluate_equiv_command_lines_with_engine(&mut self.core.engine, line) {
             Ok(lines) => reply_output(lines.join("\n")),
             Err(message) => reply_output(message),
         }
@@ -42,13 +42,10 @@ impl Repl {
         // Examples:
         //   subst x^4 + x^2 + 1, x^2, y   → y² + y + 1 (power-aware)
         //   subst x^2 + x, x, 3          → 12 (variable substitution)
-        let render_mode = cas_solver::substitute_render_mode_from_display_mode(
-            Self::set_display_mode_from_verbosity(verbosity),
-        );
-        match cas_solver::evaluate_substitute_command_lines(
-            &mut self.core.engine.simplifier,
+        match cas_solver::evaluate_substitute_command_lines_for_display_mode_with_engine(
+            &mut self.core.engine,
             line,
-            render_mode,
+            Self::set_display_mode_from_verbosity(verbosity),
         ) {
             Ok(lines) => reply_output(lines.join("\n")),
             Err(message) => reply_output(message),
@@ -56,27 +53,18 @@ impl Repl {
     }
 
     pub(crate) fn handle_timeline_core(&mut self, line: &str) -> ReplReply {
-        let eval_options = self.core.state.options().clone();
-        let eval_output = match cas_solver::evaluate_timeline_command_line(
+        let eval_output = match cas_solver::evaluate_timeline_command_line_with_session_options(
             &mut self.core.engine,
             &mut self.core.state,
             line,
-            &eval_options,
         ) {
             Ok(out) => out,
             Err(message) => return reply_output(message),
         };
 
-        let simplify_out = match eval_output {
-            cas_solver::TimelineCommandEvalOutput::Solve(out) => {
-                return self.render_timeline_solve_eval_output(out)
-            }
-            cas_solver::TimelineCommandEvalOutput::Simplify(out) => out,
-        };
-
-        let render = cas_didactic::render_simplify_timeline_cli_output(
-            &mut self.core.engine.simplifier.context,
-            &simplify_out,
+        let render = cas_didactic::render_timeline_command_cli_output_with_engine(
+            &mut self.core.engine,
+            &eval_output,
             cas_didactic::VerbosityLevel::Normal,
         );
 
@@ -86,7 +74,7 @@ impl Repl {
     pub(crate) fn handle_visualize_core(&mut self, line: &str) -> ReplReply {
         use std::path::PathBuf;
 
-        match cas_solver::evaluate_visualize_command_output(&mut self.core.engine.simplifier, line)
+        match cas_solver::evaluate_visualize_command_output_with_engine(&mut self.core.engine, line)
         {
             Ok(render) => {
                 let mut reply = vec![ReplMsg::WriteFile {
@@ -103,7 +91,7 @@ impl Repl {
     }
 
     pub(crate) fn handle_explain_core(&mut self, line: &str) -> ReplReply {
-        match cas_solver::evaluate_explain_command_lines(&mut self.core.engine.simplifier, line) {
+        match cas_solver::evaluate_explain_command_lines_with_engine(&mut self.core.engine, line) {
             Ok(lines) => reply_output(lines.join("\n")),
             Err(message) => reply_output(message),
         }
