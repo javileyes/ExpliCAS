@@ -1,43 +1,113 @@
 //! Solver facade crate.
 //!
-//! During migration this crate re-exports the solver API from `cas_engine`.
+//! During migration this crate hosts the solver entry points while still
+//! re-exporting selected `cas_engine` APIs for compatibility.
 
+mod analysis;
+mod assumption_model;
+mod assumption_types;
 pub mod check;
+mod domain_types;
+mod input_parse;
+mod isolation;
 pub mod json;
+mod linear_system;
+mod solution_display;
+mod solve;
+mod solve_core;
+mod solve_display;
+mod solve_safety;
 pub mod substitute;
+mod symbolic_transforms;
+mod types;
 
 /// Backward-compatible facade for former `cas_engine::strategies::substitute_expr` imports.
 pub mod strategies {
     pub use cas_ast::substitute_expr_by_id as substitute_expr;
 }
 
-pub use cas_engine::api::{
-    contains_var, solve, solve_with_display_steps, verify_stats, DisplaySolveSteps,
-    SolveDiagnostics, SolveStep, SolveSubStep, SolverOptions,
+/// Backward-compatible facade for former `cas_engine::api::*` imports.
+pub mod api {
+    pub use cas_ast::{
+        BoundType, Case, ConditionPredicate, ConditionSet, Interval, SolutionSet, SolveResult,
+    };
+    pub use cas_formatter::{DisplayExpr, LaTeXExpr};
+    pub use cas_solver_core::solve_budget::SolveBudget;
+
+    pub use crate::{
+        contains_var, infer_solve_variable, solve, solve_with_display_steps, verify_solution,
+        verify_solution_set, verify_stats, DisplaySolveSteps, SolveDiagnostics, SolveStep,
+        SolveSubStep, SolverOptions, VerifyResult, VerifyStatus, VerifySummary,
+    };
+}
+
+pub use analysis::{
+    evaluate_equiv_input, evaluate_expand_log_input, evaluate_explain_gcd_input,
+    evaluate_full_simplify_input, evaluate_rationalize_input,
+    evaluate_substitute_and_simplify_input, evaluate_substitute_input, evaluate_telescope_input,
+    evaluate_timeline_simplify_aggressive_input, evaluate_timeline_simplify_input,
+    evaluate_unary_function_input, evaluate_visualize_input, evaluate_weierstrass_input,
+    ExpandLogEvalOutput, ExplainEvalError, ExplainGcdEvalOutput, FullSimplifyEvalError,
+    FullSimplifyEvalOutput, RationalizeEvalError, RationalizeEvalOutcome, RationalizeEvalOutput,
+    SubstituteEvalOutput, TelescopeEvalOutput, TimelineEvalError, TimelineSimplifyEvalOutput,
+    TransformEvalError, UnaryFunctionEvalError, UnaryFunctionEvalOutput, VisualizeEvalOutput,
+    WeierstrassEvalOutput,
 };
+pub use assumption_model::{
+    assumption_records_from_engine, blocked_hint_suggestion, classify_assumption,
+    collect_assumed_conditions_from_steps, collect_assumption_records,
+    collect_assumption_records_from_iter, collect_blocked_hint_items,
+    filter_blocked_hints_for_eval, format_assumed_conditions_report_lines,
+    format_assumption_records_conditions, format_assumption_records_section_lines,
+    format_assumption_records_summary, format_blocked_hint_condition, format_blocked_hint_lines,
+    format_blocked_simplifications_section_lines, format_diagnostics_requires_lines,
+    format_displayable_assumption_lines, format_domain_warning_lines,
+    format_eval_blocked_hints_lines, format_eval_metadata_sections,
+    format_normalized_condition_lines, format_required_condition_lines, format_text_requires_lines,
+    group_assumed_conditions_by_rule, group_blocked_hint_conditions_by_rule, AssumptionCollector,
+    AssumptionEvent, AssumptionKey, AssumptionKind, EvalMetadataSectionLabels,
+};
+pub use assumption_types::AssumptionRecord;
 pub use cas_engine::error;
+pub use cas_engine::expand;
 pub use cas_engine::normalize_and_dedupe_conditions;
+pub use cas_engine::normalize_condition;
 pub use cas_engine::rules;
 pub use cas_engine::rules::logarithms::LogExpansionRule;
+pub use cas_engine::target_kind;
 pub use cas_engine::ConstFoldMode;
+pub use cas_engine::ConstFoldResult;
+pub use cas_engine::DomainContext;
+pub use cas_engine::DomainWarning;
+pub use cas_engine::EvalConfig;
 pub use cas_engine::ImportanceLevel;
+pub use cas_engine::Orchestrator;
 pub use cas_engine::ParentContext;
+pub use cas_engine::Proof;
+pub use cas_engine::Rewrite;
 pub use cas_engine::Rule;
+pub use cas_engine::SharedSemanticConfig;
 pub use cas_engine::SimpleRule;
 pub use cas_engine::{
-    infer_implicit_domain, pathsteps_to_expr_path, render_conditions_normalized,
-    take_blocked_hints, to_display_steps, AssumeScope, AssumptionKey, AssumptionKind,
-    AssumptionReporting, AutoExpandBinomials, BlockedHint, BranchMode, Budget, CasError,
-    ComplexMode, ContextMode, DisplayEvalSteps, DomainMode, Engine, EquivalenceResult, EvalAction,
-    EvalOptions, EvalOutput, EvalRequest, EvalResult, HeuristicPoly, ImplicitCondition, PathStep,
-    PipelineStats, RequiresDisplayLevel, Simplifier, SimplifyOptions, Step, StepCategory,
-    StepsMode,
+    cancel_additive_terms_semantic, cancel_common_additive_terms, clear_blocked_hints,
+    expand_with_stats, fold_constants, infer_implicit_domain, is_zero, pathsteps_to_expr_path,
+    register_blocked_hint, render_conditions_normalized, take_blocked_hints, to_display_steps,
+    AssumeScope, AssumptionReporting, AutoExpandBinomials, BlockedHint, BranchMode, Budget,
+    CasError, ComplexMode, ContextMode, DisplayEvalSteps, DomainMode, Engine, EquivalenceResult,
+    EvalAction, EvalOptions, EvalOutput, EvalRequest, EvalResult, HeuristicPoly, ImplicitCondition,
+    Metric, Operation, PassStats, PathStep, PipelineStats, RequiresDisplayLevel, RuleProfiler,
+    Simplifier, SimplifyOptions, Step, StepCategory, StepsMode,
 };
+pub use cas_engine::{
+    derive_requires_from_equation, domain_delta_check, BudgetExceeded, DomainDelta, DomainFact,
+    DomainOracle, FactStrength, ImplicitDomain, Predicate, StandardOracle,
+};
+pub use cas_engine::{eval_f64, eval_f64_checked, EvalCheckedError, EvalCheckedOptions};
+pub use cas_engine::{infer_domain_calls_get, infer_domain_calls_reset};
 pub use cas_engine::{limit, Approach, LimitOptions, PreSimplifyMode};
-pub use cas_engine::{AssumptionRecord, DomainWarning};
+pub use cas_engine::{prove_nonzero, prove_positive};
 pub use cas_engine::{BranchPolicy, InverseTrigPolicy, ValueDomain};
 pub use cas_engine::{ExpandPolicy, SimplifyPhase};
-pub use cas_engine::{RequirementDescriptor, SolveSafety};
 pub use cas_formatter::visualizer;
 pub use cas_math::canonical_forms;
 pub use cas_math::number_theory_support::GcdResult;
@@ -46,22 +116,42 @@ pub use cas_math::poly_store::{try_get_poly_result_term_count, try_render_poly_r
 pub use cas_math::rationalize_policy::{AutoRationalizeLevel, RationalizeOutcome};
 pub use cas_solver_core::solve_budget::SolveBudget;
 pub use cas_solver_core::solve_safety_policy::SimplifyPurpose;
-pub use check::{verify_solution, verify_solution_set, VerifyResult, VerifyStatus, VerifySummary};
-pub use json::{
-    eval_str_to_json, eval_str_to_output_envelope, substitute_str_to_json, EnvelopeEvalOptions,
+pub use check::{
+    format_verify_summary_lines, verify_solution, verify_solution_set, VerifyResult, VerifyStatus,
+    VerifySummary,
 };
-pub use substitute::{substitute_power_aware, substitute_with_steps, SubstituteOptions};
-
-/// Domain environment for solver operations.
-pub type SolveDomainEnv = cas_solver_core::domain_env::SolveDomainEnv<cas_engine::ImplicitDomain>;
-
-/// Solver context for recursive and nested solve flows.
-pub type SolveCtx = cas_solver_core::solve_context::SolveContext<
-    SolveDomainEnv,
-    cas_engine::ImplicitCondition,
-    cas_engine::AssumptionEvent,
-    cas_formatter::display_transforms::ScopeTag,
->;
+pub use domain_types::{ConditionClass, Provenance};
+pub use input_parse::{
+    parse_expr_or_equation_as_expr, parse_expr_pair, parse_limit_command_input,
+    parse_statement_or_session_ref, parse_substitute_args, parse_timeline_command_input,
+    rsplit_ignoring_parens, split_by_comma_ignoring_parens, LimitCommandInput, ParseExprPairError,
+    ParseSubstituteArgsError, TimelineCommandInput,
+};
+pub use json::{
+    eval_str_to_json, eval_str_to_output_envelope, substitute_str_to_json,
+    substitute_str_to_json_with_options, EnvelopeEvalOptions,
+};
+pub use linear_system::{
+    is_valid_linear_system_var, parse_linear_system_spec, solve_2x2_linear_system,
+    solve_3x3_linear_system, solve_linear_system_spec, solve_nxn_linear_system,
+    split_semicolon_top_level, LinSolveResult, LinearSystemError, LinearSystemSpec,
+    LinearSystemSpecError,
+};
+pub use solution_display::{display_interval, display_solution_set, is_pure_residual_otherwise};
+pub use solve::{
+    contains_var, infer_solve_variable, parse_solve_command_input, prepare_solve_eval_request,
+    prepare_timeline_solve_input, solve, solve_with_display_steps, verify_stats, DisplaySolveSteps,
+    PreparedSolveRequest, PreparedTimelineSolve, SolveCommandInput, SolveDiagnostics,
+    SolvePrepareError, SolveStep, SolveSubStep, SolverOptions,
+};
+pub use solve_display::format_solve_steps_lines;
+pub use solve_safety::{RequirementDescriptor, RuleSolveSafetyExt, SolveSafety};
+pub use substitute::{
+    detect_substitute_strategy, substitute_auto, substitute_auto_with_strategy,
+    substitute_power_aware, substitute_with_steps, SubstituteOptions, SubstituteStrategy,
+};
+pub use symbolic_transforms::{apply_weierstrass_recursive, expand_log_recursive};
+pub use types::{SolveCtx, SolveDomainEnv};
 
 /// Number-theory helpers exposed by the solver facade without pulling engine rule modules.
 pub mod number_theory {
@@ -76,6 +166,11 @@ pub mod expand {
     };
 }
 
+/// Backward-compatible facade for former `cas_engine::factor::*` imports.
+pub mod factor {
+    pub use cas_engine::factor::*;
+}
+
 /// Backward-compatible facade for former `cas_engine::helpers::*` imports.
 pub mod helpers {
     pub use cas_engine::{is_zero, prove_nonzero, prove_positive};
@@ -87,6 +182,16 @@ pub mod engine {
         eval_f64, eval_f64_checked, Engine, EquivalenceResult, EvalCheckedError,
         EvalCheckedOptions, LoopConfig, Simplifier,
     };
+}
+
+/// Backward-compatible facade for former `cas_engine::ordering::*` imports.
+pub mod ordering {
+    pub use cas_engine::ordering::*;
+}
+
+/// Backward-compatible facade for former `cas_engine::nary::*` imports.
+pub mod nary {
+    pub use cas_engine::nary::*;
 }
 
 /// Backward-compatible facade for former `cas_engine::phase::*` imports.

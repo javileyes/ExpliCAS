@@ -174,35 +174,18 @@ impl Repl {
                                     }
                                 }
 
-                                // Show Requires (implicit domain conditions)
-                                if !output.required_conditions.is_empty() {
-                                    lines.push("  ℹ️ Requires:".to_string());
-                                    for cond in &output.required_conditions {
-                                        lines.push(format!(
-                                            "    - {}",
-                                            cond.display(&self.core.engine.simplifier.context)
-                                        ));
-                                    }
-                                }
-
-                                // Show Assumed (domain warnings)
-                                if !output.domain_warnings.is_empty() {
-                                    lines.push("  ⚠ Assumed:".to_string());
-                                    for w in &output.domain_warnings {
-                                        lines.push(format!("    - {}", w.message));
-                                    }
-                                }
-
-                                // Show Blocked hints (rules that couldn't fire)
-                                if !output.blocked_hints.is_empty() {
-                                    lines.push("  🚫 Blocked:".to_string());
-                                    for hint in &output.blocked_hints {
-                                        lines.push(format!(
-                                            "    - {} (hint: {})",
-                                            hint.rule, hint.suggestion
-                                        ));
-                                    }
-                                }
+                                lines.extend(cas_solver::format_eval_metadata_sections(
+                                    &self.core.engine.simplifier.context,
+                                    &output.required_conditions,
+                                    &output.domain_warnings,
+                                    &output.blocked_hints,
+                                    cas_solver::EvalMetadataSectionLabels {
+                                        required_header: "  ℹ️ Requires:",
+                                        assumed_header: "  ⚠ Assumed:",
+                                        blocked_header: "  🚫 Blocked:",
+                                        line_prefix: "    - ",
+                                    },
+                                ));
                             } else {
                                 // Fallback: just simplify without metadata
                                 let (simplified, _) =
@@ -299,36 +282,28 @@ impl Repl {
     fn handle_det_core(&mut self, line: &str, verbosity: Verbosity) -> ReplReply {
         let rest = line[4..].trim(); // Remove "det "
 
-        // Parse the matrix expression
-        match cas_parser::parse(rest, &mut self.core.engine.simplifier.context) {
-            Ok(expr) => {
-                // Wrap in det() function call
-                let det_expr = self.core.engine.simplifier.context.call("det", vec![expr]);
-
-                // Simplify to compute determinant
-                let (result, steps) = self.core.engine.simplifier.simplify(det_expr);
-
+        match cas_solver::evaluate_unary_function_input(
+            &mut self.core.engine.simplifier,
+            "det",
+            rest,
+        ) {
+            Ok(out) => {
                 let mut lines = vec![format!("Parsed: det({})", rest)];
 
                 // Print steps if verbosity is not None
-                if verbosity != Verbosity::None && !steps.is_empty() {
+                if verbosity != Verbosity::None && !out.steps.is_empty() {
                     lines.push("Steps:".to_string());
-                    for (i, step) in steps.iter().enumerate() {
+                    for (i, step) in out.steps.iter().enumerate() {
                         lines.push(format!(
                             "{}. {}  [{}]",
                             i + 1,
                             step.description,
                             step.rule_name
                         ));
-                        for event in step.assumption_events() {
-                            if event.kind.should_display() {
-                                lines.push(format!(
-                                    "   {} {}: {}",
-                                    event.kind.icon(),
-                                    event.kind.label(),
-                                    event.message
-                                ));
-                            }
+                        for assumption_line in cas_solver::format_displayable_assumption_lines(
+                            step.assumption_events(),
+                        ) {
+                            lines.push(format!("   {}", assumption_line));
                         }
                     }
                 }
@@ -339,13 +314,15 @@ impl Repl {
                         "{}",
                         DisplayExpr {
                             context: &self.core.engine.simplifier.context,
-                            id: result
+                            id: out.result_expr
                         }
                     ))
                 ));
                 reply_output(lines.join("\n"))
             }
-            Err(e) => reply_output(format!("Parse error: {}", e)),
+            Err(cas_solver::UnaryFunctionEvalError::Parse(e)) => {
+                reply_output(format!("Parse error: {}", e))
+            }
         }
     }
 
@@ -357,26 +334,18 @@ impl Repl {
     fn handle_transpose_core(&mut self, line: &str, verbosity: Verbosity) -> ReplReply {
         let rest = line[10..].trim(); // Remove "transpose "
 
-        // Parse the matrix expression
-        match cas_parser::parse(rest, &mut self.core.engine.simplifier.context) {
-            Ok(expr) => {
-                // Wrap in transpose() function call
-                let transpose_expr = self
-                    .core
-                    .engine
-                    .simplifier
-                    .context
-                    .call("transpose", vec![expr]);
-
-                // Simplify to compute transpose
-                let (result, steps) = self.core.engine.simplifier.simplify(transpose_expr);
-
+        match cas_solver::evaluate_unary_function_input(
+            &mut self.core.engine.simplifier,
+            "transpose",
+            rest,
+        ) {
+            Ok(out) => {
                 let mut lines = vec![format!("Parsed: transpose({})", rest)];
 
                 // Print steps if verbosity is not None
-                if verbosity != Verbosity::None && !steps.is_empty() {
+                if verbosity != Verbosity::None && !out.steps.is_empty() {
                     lines.push("Steps:".to_string());
-                    for (i, step) in steps.iter().enumerate() {
+                    for (i, step) in out.steps.iter().enumerate() {
                         lines.push(format!(
                             "{}. {}  [{}]",
                             i + 1,
@@ -390,12 +359,14 @@ impl Repl {
                     "Result: {}",
                     DisplayExpr {
                         context: &self.core.engine.simplifier.context,
-                        id: result
+                        id: out.result_expr
                     }
                 ));
                 reply_output(lines.join("\n"))
             }
-            Err(e) => reply_output(format!("Parse error: {}", e)),
+            Err(cas_solver::UnaryFunctionEvalError::Parse(e)) => {
+                reply_output(format!("Parse error: {}", e))
+            }
         }
     }
 
@@ -407,26 +378,18 @@ impl Repl {
     fn handle_trace_core(&mut self, line: &str, verbosity: Verbosity) -> ReplReply {
         let rest = line[6..].trim(); // Remove "trace "
 
-        // Parse the matrix expression
-        match cas_parser::parse(rest, &mut self.core.engine.simplifier.context) {
-            Ok(expr) => {
-                // Wrap in trace() function call
-                let trace_expr = self
-                    .core
-                    .engine
-                    .simplifier
-                    .context
-                    .call("trace", vec![expr]);
-
-                // Simplify to compute trace
-                let (result, steps) = self.core.engine.simplifier.simplify(trace_expr);
-
+        match cas_solver::evaluate_unary_function_input(
+            &mut self.core.engine.simplifier,
+            "trace",
+            rest,
+        ) {
+            Ok(out) => {
                 let mut lines = vec![format!("Parsed: trace({})", rest)];
 
                 // Print steps if verbosity is not None
-                if verbosity != Verbosity::None && !steps.is_empty() {
+                if verbosity != Verbosity::None && !out.steps.is_empty() {
                     lines.push("Steps:".to_string());
-                    for (i, step) in steps.iter().enumerate() {
+                    for (i, step) in out.steps.iter().enumerate() {
                         lines.push(format!(
                             "{}. {}  [{}]",
                             i + 1,
@@ -442,13 +405,15 @@ impl Repl {
                         "{}",
                         DisplayExpr {
                             context: &self.core.engine.simplifier.context,
-                            id: result
+                            id: out.result_expr
                         }
                     ))
                 ));
                 reply_output(lines.join("\n"))
             }
-            Err(e) => reply_output(format!("Parse error: {}", e)),
+            Err(cas_solver::UnaryFunctionEvalError::Parse(e)) => {
+                reply_output(format!("Parse error: {}", e))
+            }
         }
     }
 
@@ -468,23 +433,11 @@ impl Repl {
             );
         }
 
-        // Parse the expression
-        match cas_parser::parse(rest, &mut self.core.engine.simplifier.context) {
-            Ok(expr) => {
-                // Apply telescoping strategy
-                let result = cas_solver::telescoping::telescope(
-                    &mut self.core.engine.simplifier.context,
-                    expr,
-                );
-
-                // Return formatted output
-                reply_output(format!(
-                    "Parsed: {}\n\n{}",
-                    rest,
-                    result.format(&self.core.engine.simplifier.context)
-                ))
+        match cas_solver::evaluate_telescope_input(&mut self.core.engine.simplifier, rest) {
+            Ok(out) => reply_output(format!("Parsed: {}\n\n{}", rest, out.formatted_result)),
+            Err(cas_solver::TransformEvalError::Parse(e)) => {
+                reply_output(format!("Parse error: {}", e))
             }
-            Err(e) => reply_output(format!("Parse error: {}", e)),
         }
     }
 
@@ -530,36 +483,30 @@ impl Repl {
             );
         }
 
-        match cas_parser::parse(rest, &mut self.core.engine.simplifier.context) {
-            Ok(expr) => {
+        match cas_solver::evaluate_expand_log_input(&mut self.core.engine.simplifier, rest) {
+            Ok(out) => {
                 let parsed_str = format!(
                     "Parsed: {}",
                     DisplayExpr {
                         context: &self.core.engine.simplifier.context,
-                        id: expr
+                        id: out.parsed_expr
                     }
                 );
-
-                // Apply LogExpansionRule recursively to all subexpressions
-                let expanded = self.expand_log_recursive(expr);
-
-                // NOTE: We do NOT call simplify() here because LogContractionRule
-                // (which is in default rules) would immediately undo the expansion.
-                // The expanded form is the desired result.
-
                 let result_str = format!(
                     "Result: {}",
                     clean_display_string(&format!(
                         "{}",
                         DisplayExpr {
                             context: &self.core.engine.simplifier.context,
-                            id: expanded
+                            id: out.expanded_expr
                         }
                     ))
                 );
                 reply_output(format!("{}\n{}", parsed_str, result_str))
             }
-            Err(e) => reply_output(format!("Parse error: {:?}", e)),
+            Err(cas_solver::TransformEvalError::Parse(e)) => {
+                reply_output(format!("Parse error: {}", e))
+            }
         }
     }
 }

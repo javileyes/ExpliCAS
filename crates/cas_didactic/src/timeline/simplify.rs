@@ -1158,7 +1158,12 @@ impl<'a> TimelineHtml<'a> {
                     // Group by kind and format with icons
                     let requires: Vec<_> = displayable
                         .iter()
-                        .filter(|e| matches!(e.kind, AssumptionKind::RequiresIntroduced))
+                        .filter(|e| {
+                            matches!(
+                                AssumptionKind::from(e.kind),
+                                AssumptionKind::RequiresIntroduced
+                            )
+                        })
                         .map(|e| html_escape(&e.message))
                         .collect();
                     if !requires.is_empty() {
@@ -1167,7 +1172,9 @@ impl<'a> TimelineHtml<'a> {
 
                     let branches: Vec<_> = displayable
                         .iter()
-                        .filter(|e| matches!(e.kind, AssumptionKind::BranchChoice))
+                        .filter(|e| {
+                            matches!(AssumptionKind::from(e.kind), AssumptionKind::BranchChoice)
+                        })
                         .map(|e| html_escape(&e.message))
                         .collect();
                     if !branches.is_empty() {
@@ -1176,7 +1183,12 @@ impl<'a> TimelineHtml<'a> {
 
                     let domain_ext: Vec<_> = displayable
                         .iter()
-                        .filter(|e| matches!(e.kind, AssumptionKind::DomainExtension))
+                        .filter(|e| {
+                            matches!(
+                                AssumptionKind::from(e.kind),
+                                AssumptionKind::DomainExtension
+                            )
+                        })
                         .map(|e| html_escape(&e.message))
                         .collect();
                     if !domain_ext.is_empty() {
@@ -1185,7 +1197,12 @@ impl<'a> TimelineHtml<'a> {
 
                     let assumes: Vec<_> = displayable
                         .iter()
-                        .filter(|e| matches!(e.kind, AssumptionKind::HeuristicAssumption))
+                        .filter(|e| {
+                            matches!(
+                                AssumptionKind::from(e.kind),
+                                AssumptionKind::HeuristicAssumption
+                            )
+                        })
                         .map(|e| html_escape(&e.message))
                         .collect();
                     if !assumes.is_empty() {

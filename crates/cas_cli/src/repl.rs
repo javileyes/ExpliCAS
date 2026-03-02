@@ -22,16 +22,6 @@ use rustyline::error::ReadlineError;
 use crate::completer::CasHelper;
 use crate::config::CasConfig;
 
-/// Unwrap top-level __hold() wrapper (used for eager let bindings)
-fn unwrap_hold_top(ctx: &Context, expr: ExprId) -> ExprId {
-    if let Expr::Function(name, args) = ctx.get(expr) {
-        if ctx.is_builtin(*name, cas_ast::BuiltinFn::Hold) && args.len() == 1 {
-            return args[0];
-        }
-    }
-    expr
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Verbosity {
     None,
@@ -393,7 +383,6 @@ impl Default for Repl {
 //   simplify.rs         - Simplification pipeline
 //   rationalize.rs      - Rationalization commands
 //   limit.rs            - Limit computation
-//   free_fns.rs         - Free functions (format helpers, etc.)
 // =============================================================================
 
 mod commands_algebra;
@@ -406,7 +395,6 @@ mod core;
 mod dispatch;
 mod error_render;
 mod eval;
-mod free_fns;
 mod help;
 mod init;
 mod limit;
@@ -423,9 +411,3 @@ mod core_tests;
 // Re-export core types for external use
 pub use core::ReplCore;
 pub use output::{reply_output, CoreResult, ReplMsg, ReplReply, ReplReplyExt, UiDelta};
-
-// These were historically plain module-level helpers (when using include!()).
-// Re-export them into this module scope so existing code can keep calling them
-// directly (e.g. `display_solution_set(...)`) without `free_fns::` prefixes.
-#[allow(unused_imports)]
-use free_fns::*;

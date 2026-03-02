@@ -7,7 +7,7 @@ impl Repl {
     }
 
     fn handle_limit_core(&mut self, line: &str) -> ReplReply {
-        use cas_solver::{limit, Approach, Budget, LimitOptions, PreSimplifyMode};
+        use cas_solver::Approach;
 
         let rest = line.strip_prefix("limit").unwrap_or(line).trim();
         if rest.is_empty() {
@@ -21,78 +21,31 @@ impl Repl {
             );
         }
 
-        // Parse: expr [, var [, direction [, mode]]]
-        // Split by comma, respecting parentheses
-        let parts: Vec<&str> = rest.split(',').map(|s| s.trim()).collect();
+        let parsed = cas_solver::parse_limit_command_input(rest);
+        let expr_str = parsed.expr;
+        let var_str = parsed.var;
+        let approach = parsed.approach;
+        let presimplify = parsed.presimplify;
 
-        let expr_str = parts.first().unwrap_or(&"");
-        let var_str = parts.get(1).copied().unwrap_or("x");
-        let dir_str = parts.get(2).copied().unwrap_or("infinity");
-        let mode_str = parts.get(3).copied().unwrap_or("off");
-
-        // Parse expression
-        let expr = match cas_parser::parse(expr_str, &mut self.core.engine.simplifier.context) {
-            Ok(e) => e,
-            Err(e) => {
-                return reply_output(format!("Parse error: {:?}", e));
-            }
-        };
-
-        // Get variable
-        let var = self.core.engine.simplifier.context.var(var_str);
-
-        // Parse direction
-        let approach = if dir_str.contains("-infinity") || dir_str.contains("-inf") {
-            Approach::NegInfinity
-        } else {
-            Approach::PosInfinity
-        };
-
-        // Parse presimplify mode
-        let presimplify = if mode_str.eq_ignore_ascii_case("safe") {
-            PreSimplifyMode::Safe
-        } else {
-            PreSimplifyMode::Off
-        };
-
-        // Compute limit
-        let mut budget = Budget::new();
-        let opts = LimitOptions {
-            presimplify,
-            ..Default::default()
-        };
-
-        match limit(
-            &mut self.core.engine.simplifier.context,
-            expr,
-            var,
-            approach,
-            &opts,
-            &mut budget,
-        ) {
-            Ok(result) => {
-                let result_disp = cas_formatter::DisplayExpr {
-                    context: &self.core.engine.simplifier.context,
-                    id: result.expr,
-                };
-
+        match cas_solver::json::eval_limit_from_str(expr_str, var_str, approach, presimplify) {
+            Ok(limit_result) => {
                 let dir_disp = match approach {
                     Approach::PosInfinity => "+∞",
                     Approach::NegInfinity => "-∞",
                 };
-
                 let mut lines = vec![format!(
                     "lim_{{{}→{}}} = {}",
-                    var_str, dir_disp, result_disp
+                    var_str, dir_disp, limit_result.result
                 )];
-
-                if let Some(warning) = result.warning {
+                if let Some(warning) = limit_result.warning {
                     lines.push(format!("Warning: {}", warning));
                 }
-
                 reply_output(lines.join("\n"))
             }
-            Err(e) => reply_output(format!("Error computing limit: {}", e)),
+            Err(cas_solver::json::LimitEvalError::Parse(message)) => reply_output(message),
+            Err(cas_solver::json::LimitEvalError::Limit(message)) => {
+                reply_output(format!("Error computing limit: {}", message))
+            }
         }
     }
 }

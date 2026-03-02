@@ -1,5 +1,4 @@
-use cas_engine::{ConditionClass, DomainMode, Provenance};
-use cas_solver::SolveSafety;
+use cas_solver::{ConditionClass, DomainMode, Provenance, SolveSafety};
 
 #[test]
 fn test_always_safe_everywhere() {
@@ -117,4 +116,35 @@ fn test_descriptor_distinguishes_intrinsic_from_introduced() {
     // Same class, different provenance.
     assert_eq!(intrinsic.class, introduced.class);
     assert_ne!(intrinsic.provenance, introduced.provenance);
+}
+
+#[test]
+fn test_solve_safety_roundtrip_with_engine_type() {
+    let local = SolveSafety::NeedsCondition(ConditionClass::Definability);
+    let engine: cas_engine::SolveSafety = local.into_engine();
+    let mapped_back = SolveSafety::from(engine);
+    assert_eq!(local, mapped_back);
+}
+
+#[test]
+fn test_requirement_descriptor_roundtrip_with_engine_type() {
+    let local = SolveSafety::IntrinsicCondition(ConditionClass::Analytic)
+        .requirement_descriptor()
+        .unwrap();
+    let engine: cas_engine::RequirementDescriptor = local.into();
+    let mapped_back: cas_solver::RequirementDescriptor = engine.into();
+    assert_eq!(local, mapped_back);
+}
+
+#[test]
+fn test_assumption_record_roundtrip_with_engine_type() {
+    let local = cas_solver::AssumptionRecord {
+        kind: "nonzero".to_string(),
+        expr: "x".to_string(),
+        message: "x != 0".to_string(),
+        count: 2,
+    };
+    let engine: cas_engine::AssumptionRecord = local.clone().into();
+    let mapped_back: cas_solver::AssumptionRecord = engine.into();
+    assert_eq!(local, mapped_back);
 }

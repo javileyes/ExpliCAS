@@ -14,13 +14,10 @@ cas_ast = { path = "../cas_ast" }
 cas_didactic = { path = "../cas_didactic", default-features = false }
 cas_parser = { path = "../cas_parser" }
 cas_formatter = { path = "../cas_formatter" }
-cas_math = { path = "../cas_math" }
 cas_session = { path = "../cas_session" }
 cas_solver = { path = "../cas_solver", default-features = false }
 rustyline = "12.0"
-num-traits = "0.2"
 num-rational = "0.4"
-num-bigint = "0.4"
 serde = { version = "1.0.228", features = ["derive"] }
 toml = "0.9.8"
 tracing = "0.1.43"
@@ -34,3 +31,4 @@ anyhow = "1.0"
 [dev-dependencies]
 assert_cmd = "2.0"
 predicates = "3.0"
+num-traits = "0.2"

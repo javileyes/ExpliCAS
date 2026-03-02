@@ -21,7 +21,7 @@ desarrollo
 salida*
 results.txt
 mm_modp.txt
-crates/cas_engine/tests/baselines/metatest_baseline.jsonl
+crates/cas_solver/tests/baselines/metatest_baseline.jsonl
 tests/output_*.txt
 tests/benchmarks.log
 create_release.sh

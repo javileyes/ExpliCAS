@@ -73,8 +73,8 @@ fn build_request_info(expr: &str, opts: &EnvelopeEvalOptions) -> RequestInfo {
 
 fn build_transparency(output: &EvalOutput, ctx: &cas_ast::Context) -> TransparencyDto {
     let required_conditions = map_required_conditions(&output.required_conditions, ctx);
-    let assumptions_used =
-        map_assumptions_used(&output.solver_assumptions, &output.domain_warnings);
+    let solver_assumptions = crate::assumption_records_from_engine(&output.solver_assumptions);
+    let assumptions_used = map_assumptions_used(&solver_assumptions, &output.domain_warnings);
     let blocked_hints = map_blocked_hints(&output.blocked_hints);
 
     TransparencyDto {

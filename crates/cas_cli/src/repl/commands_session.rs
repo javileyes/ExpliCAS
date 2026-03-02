@@ -10,21 +10,13 @@ impl Repl {
     }
 
     fn handle_let_command_core(&mut self, rest: &str) -> ReplReply {
-        // Detect := (lazy) before = (eager) - order matters!
-        if let Some(idx) = rest.find(":=") {
-            let name = rest[..idx].trim();
-            let expr_str = rest[idx + 2..].trim();
-            self.handle_assignment_core(name, expr_str, true) // lazy
-        } else if let Some(eq_idx) = rest.find('=') {
-            let name = rest[..eq_idx].trim();
-            let expr_str = rest[eq_idx + 1..].trim();
-            self.handle_assignment_core(name, expr_str, false) // eager
-        } else {
-            reply_output(
+        match cas_session::parse_let_assignment_input(rest) {
+            Ok(parsed) => self.handle_assignment_core(parsed.name, parsed.expr, parsed.lazy),
+            Err(cas_session::LetAssignmentParseError::MissingAssignmentOperator) => reply_output(
                 "Usage: let <name> = <expr>   (eager - evaluates)\n\
                         let <name> := <expr>  (lazy - stores formula)\n\
                  Example: let a = expand((1+x)^3)",
-            )
+            ),
         }
     }
 
@@ -37,77 +29,37 @@ impl Repl {
     }
 
     fn handle_assignment_core(&mut self, name: &str, expr_str: &str, lazy: bool) -> ReplReply {
-        // Validate name
-        if name.is_empty() {
-            return reply_output("Error: Variable name cannot be empty");
-        }
-
-        // Check if identifier is valid (alphanumeric + underscore, starts with letter/underscore)
-        let starts_with_letter = name
-            .chars()
-            .next()
-            .map(|c| c.is_alphabetic())
-            .unwrap_or(false);
-        if !starts_with_letter && !name.starts_with('_') {
-            return reply_output("Error: Variable name must start with a letter or underscore");
-        }
-
-        // Check reserved names
-        if cas_session::env::is_reserved(name) {
-            return reply_output(format!(
-                "Error: '{}' is a reserved name and cannot be assigned",
-                name
-            ));
-        }
-
-        // Parse the expression
-        match cas_parser::parse(expr_str, &mut self.core.engine.simplifier.context) {
-            Ok(rhs_expr) => {
-                // Temporarily remove this binding to prevent self-reference in substitute
-                let old_binding = self.core.state.get_binding(name);
-                self.core.state.unset_binding(name);
-
-                // Substitute using current environment and session refs
-                let rhs_substituted = match self
-                    .core
-                    .state
-                    .resolve_state_refs(&mut self.core.engine.simplifier.context, rhs_expr)
-                {
-                    Ok(r) => r,
-                    Err(_) => rhs_expr,
-                };
-
-                let result = if lazy {
-                    // LAZY (:=): store the expression without evaluating
-                    rhs_substituted
-                } else {
-                    // EAGER (=): simplify the expression, then unwrap __hold
-                    let (simplified, _steps) =
-                        self.core.engine.simplifier.simplify(rhs_substituted);
-
-                    // Unwrap top-level __hold to get the actual polynomial
-                    unwrap_hold_top(&self.core.engine.simplifier.context, simplified)
-                };
-
-                // Store the binding
-                self.core.state.set_binding(name.to_string(), result);
-
-                // Display confirmation (with mode indicator for lazy)
+        match cas_session::apply_assignment(
+            &mut self.core.state,
+            &mut self.core.engine.simplifier,
+            name,
+            expr_str,
+            lazy,
+        ) {
+            Ok(result) => {
                 let display = cas_formatter::DisplayExpr {
                     context: &self.core.engine.simplifier.context,
                     id: result,
                 };
-
-                // Note: we don't restore old_binding - this is an assignment/update
-                let _ = old_binding;
-
                 if lazy {
                     reply_output(format!("{} := {}", name, display))
                 } else {
                     reply_output(format!("{} = {}", name, display))
                 }
             }
-            Err(e) => reply_output(format!("Parse error: {}", e)),
+            Err(cas_session::AssignmentError::EmptyName) => {
+                reply_output("Error: Variable name cannot be empty")
+            }
+            Err(cas_session::AssignmentError::InvalidNameStart) => {
+                reply_output("Error: Variable name must start with a letter or underscore")
+            }
+            Err(cas_session::AssignmentError::ReservedName(name)) => reply_output(format!(
+                "Error: '{}' is a reserved name and cannot be assigned",
+                name
+            )),
+            Err(cas_session::AssignmentError::Parse(e)) => {
+                reply_output(format!("Parse error: {}", e))
+            }
         }
     }
 

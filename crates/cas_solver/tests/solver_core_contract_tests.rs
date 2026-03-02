@@ -1,9 +1,10 @@
 use cas_ast::{BoundType, Context, Equation, Expr, RelOp, SolutionSet};
-use cas_engine::Proof as EngineProof;
 use cas_formatter::DisplayExpr;
 use cas_math::tri_proof::TriProof;
 use cas_parser::parse;
-use cas_solver::{solve, DomainMode, Simplifier, SolveDomainEnv, SolverOptions, ValueDomain};
+use cas_solver::{
+    solve, DomainMode, Proof as EngineProof, Simplifier, SolveDomainEnv, SolverOptions, ValueDomain,
+};
 
 // Helper to make equation from strings
 fn make_eq(ctx: &mut Context, lhs: &str, rhs: &str) -> Equation {

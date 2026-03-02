@@ -7,10 +7,6 @@ impl Repl {
     }
 
     fn handle_rationalize_core(&mut self, line: &str) -> ReplReply {
-        use cas_solver::rationalize::{
-            rationalize_denominator, RationalizeConfig, RationalizeResult,
-        };
-
         let rest = line.strip_prefix("rationalize").unwrap_or(line).trim();
         if rest.is_empty() {
             return reply_output(
@@ -19,19 +15,12 @@ impl Repl {
             );
         }
 
-        match cas_parser::parse(rest, &mut self.core.engine.simplifier.context) {
-            Ok(parsed_expr) => {
-                // CANONICALIZE: Rebuild tree to trigger Add auto-flatten at all levels
-                // Parser creates tree incrementally, so nested Adds may not be flattened
-                // normalize_core forces reconstruction ensuring canonical form
-                let expr = cas_solver::canonical_forms::normalize_core(
-                    &mut self.core.engine.simplifier.context,
-                    parsed_expr,
-                );
+        match cas_solver::evaluate_rationalize_input(&mut self.core.engine.simplifier, rest) {
+            Ok(out) => {
                 // STYLE SNIFFING: Detect user's preferred notation BEFORE processing
                 let user_style = cas_formatter::root_style::detect_root_style(
                     &self.core.engine.simplifier.context,
-                    expr,
+                    out.normalized_expr,
                 );
 
                 // Convert to string BEFORE mutable borrows to avoid borrow conflict
@@ -39,32 +28,23 @@ impl Repl {
                     "{}",
                     cas_formatter::DisplayExpr {
                         context: &self.core.engine.simplifier.context,
-                        id: expr,
+                        id: out.normalized_expr,
                     }
                 );
 
-                let config = RationalizeConfig::default();
-                let result = rationalize_denominator(
-                    &mut self.core.engine.simplifier.context,
-                    expr,
-                    &config,
-                );
-
-                match result {
-                    RationalizeResult::Success(rationalized) => {
-                        // Simplify the result
-                        let (simplified, _) = self.core.engine.simplifier.simplify(rationalized);
-
+                match out.outcome {
+                    cas_solver::RationalizeEvalOutcome::Success { simplified_expr } => {
                         // Use DisplayExprStyled with detected style for consistent output
-                        let style = cas_formatter::root_style::StylePreferences::with_root_style(user_style);
+                        let style =
+                            cas_formatter::root_style::StylePreferences::with_root_style(user_style);
                         let result_disp = cas_formatter::DisplayExprStyled::new(
                             &self.core.engine.simplifier.context,
-                            simplified,
+                            simplified_expr,
                             &style,
                         );
                         reply_output(format!("Parsed: {}\nRationalized: {}", parsed_str, result_disp))
                     }
-                    RationalizeResult::NotApplicable => {
+                    cas_solver::RationalizeEvalOutcome::NotApplicable => {
                         reply_output(format!(
                             "Parsed: {}\n\
                              Cannot rationalize: denominator is not a sum of surds\n\
@@ -72,7 +52,7 @@ impl Repl {
                             parsed_str
                         ))
                     }
-                    RationalizeResult::BudgetExceeded => {
+                    cas_solver::RationalizeEvalOutcome::BudgetExceeded => {
                         reply_output(format!(
                             "Parsed: {}\n\
                              Rationalization aborted: expression became too complex",
@@ -81,7 +61,9 @@ impl Repl {
                     }
                 }
             }
-            Err(e) => reply_output(format!("Parse error: {:?}", e)),
+            Err(cas_solver::RationalizeEvalError::Parse(e)) => {
+                reply_output(format!("Parse error: {}", e))
+            }
         }
     }
 }

@@ -193,13 +193,11 @@ dependencies = [
  "cas_ast",
  "cas_didactic",
  "cas_formatter",
- "cas_math",
  "cas_parser",
  "cas_session",
  "cas_solver",
  "clap",
  "dirs",
- "num-bigint",
  "num-rational",
  "num-traits",
  "predicates",
@@ -216,6 +214,7 @@ dependencies = [
 name = "cas_didactic"
 version = "0.1.0"
 dependencies = [
+ "cas_api_models",
  "cas_ast",
  "cas_formatter",
  "cas_math",
@@ -341,7 +340,11 @@ dependencies = [
  "cas_session",
  "cas_solver_core",
  "insta",
+ "num-bigint",
+ "num-integer",
  "num-rational",
+ "num-traits",
+ "proptest",
  "serde_json",
 ]
 

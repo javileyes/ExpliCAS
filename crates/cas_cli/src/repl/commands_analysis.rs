@@ -7,64 +7,38 @@ impl Repl {
     }
 
     fn handle_equiv_core(&mut self, line: &str) -> ReplReply {
-        use cas_parser::Statement;
-
         let rest = line[6..].trim();
-        if let Some((expr1_str, expr2_str)) = rsplit_ignoring_parens(rest, ',') {
-            let expr1_str = expr1_str.trim();
-            let expr2_str = expr2_str.trim();
-
-            // Helper to parse string to ExprId
-            fn parse_arg(s: &str, ctx: &mut cas_ast::Context) -> Result<cas_ast::ExprId, String> {
-                if s.starts_with('#') && s[1..].chars().all(char::is_numeric) {
-                    Ok(ctx.var(s))
-                } else {
-                    match cas_parser::parse_statement(s, ctx) {
-                        Ok(Statement::Equation(eq)) => Ok(ctx.call("Equal", vec![eq.lhs, eq.rhs])),
-                        Ok(Statement::Expression(e)) => Ok(e),
-                        Err(e) => Err(format!("{}", e)),
+        match cas_solver::evaluate_equiv_input(&mut self.core.engine.simplifier, rest) {
+            Ok(result) => {
+                let mut lines = Vec::new();
+                match result {
+                    cas_solver::EquivalenceResult::True => {
+                        lines.push("True".to_string());
                     }
-                }
-            }
-
-            let e1_res = parse_arg(expr1_str, &mut self.core.engine.simplifier.context);
-            let e2_res = parse_arg(expr2_str, &mut self.core.engine.simplifier.context);
-
-            match (e1_res, e2_res) {
-                (Ok(e1), Ok(e2)) => {
-                    // V2.14.45: Use new tri-state equivalence check
-                    use cas_solver::EquivalenceResult;
-
-                    let result = self.core.engine.simplifier.are_equivalent_extended(e1, e2);
-
-                    let mut lines = Vec::new();
-                    match result {
-                        EquivalenceResult::True => {
-                            lines.push("True".to_string());
-                        }
-                        EquivalenceResult::ConditionalTrue { requires } => {
-                            lines.push("True (conditional)".to_string());
-                            if !requires.is_empty() {
-                                lines.push("ℹ️ Requires:".to_string());
-                                for req in &requires {
-                                    lines.push(format!("  • {}", req));
-                                }
-                            }
-                        }
-                        EquivalenceResult::False => {
-                            lines.push("False".to_string());
-                        }
-                        EquivalenceResult::Unknown => {
-                            lines.push("Unknown (cannot prove equivalence)".to_string());
+                    cas_solver::EquivalenceResult::ConditionalTrue { requires } => {
+                        lines.push("True (conditional)".to_string());
+                        for line in cas_solver::format_text_requires_lines(&requires) {
+                            lines.push(line);
                         }
                     }
-                    reply_output(lines.join("\n"))
+                    cas_solver::EquivalenceResult::False => {
+                        lines.push("False".to_string());
+                    }
+                    cas_solver::EquivalenceResult::Unknown => {
+                        lines.push("Unknown (cannot prove equivalence)".to_string());
+                    }
                 }
-                (Err(e), _) => reply_output(format!("Error parsing first arg: {}", e)),
-                (_, Err(e)) => reply_output(format!("Error parsing second arg: {}", e)),
+                reply_output(lines.join("\n"))
             }
-        } else {
-            reply_output("Usage: equiv <expr1>, <expr2>")
+            Err(cas_solver::ParseExprPairError::MissingDelimiter) => {
+                reply_output("Usage: equiv <expr1>, <expr2>")
+            }
+            Err(cas_solver::ParseExprPairError::FirstArg(e)) => {
+                reply_output(format!("Error parsing first arg: {}", e))
+            }
+            Err(cas_solver::ParseExprPairError::SecondArg(e)) => {
+                reply_output(format!("Error parsing second arg: {}", e))
+            }
         }
     }
 
@@ -80,87 +54,52 @@ impl Repl {
         //   subst x^2 + x, x, 3          → 12 (variable substitution)
         let rest = line[6..].trim();
 
-        // Split by commas (respecting parentheses)
-        let parts: Vec<&str> = split_by_comma_ignoring_parens(rest);
+        let usage = "Usage: subst <expr>, <target>, <replacement>\n\n\
+                     Examples:\n\
+                       subst x^2 + x, x, 3              → 12\n\
+                       subst x^4 + x^2 + 1, x^2, y      → y² + y + 1\n\
+                       subst x^3, x^2, y                → y·x";
 
-        if parts.len() != 3 {
-            return reply_output(
-                "Usage: subst <expr>, <target>, <replacement>\n\n\
-                 Examples:\n\
-                   subst x^2 + x, x, 3              → 12\n\
-                   subst x^4 + x^2 + 1, x^2, y      → y² + y + 1\n\
-                   subst x^3, x^2, y                → y·x",
-            );
-        }
-
-        let expr_str = parts[0].trim();
-        let target_str = parts[1].trim();
-        let replacement_str = parts[2].trim();
-
-        // Parse the main expression
-        let expr = match cas_parser::parse(expr_str, &mut self.core.engine.simplifier.context) {
-            Ok(e) => e,
-            Err(e) => {
+        let output = match cas_solver::evaluate_substitute_and_simplify_input(
+            &mut self.core.engine.simplifier,
+            rest,
+            cas_solver::SubstituteOptions::default(),
+        ) {
+            Ok(out) => out,
+            Err(cas_solver::ParseSubstituteArgsError::InvalidArity) => {
+                return reply_output(usage);
+            }
+            Err(cas_solver::ParseSubstituteArgsError::Expression(e)) => {
                 return reply_output(format!("Error parsing expression: {}", e));
             }
+            Err(cas_solver::ParseSubstituteArgsError::Target(e)) => {
+                return reply_output(format!("Error parsing target: {}", e));
+            }
+            Err(cas_solver::ParseSubstituteArgsError::Replacement(e)) => {
+                return reply_output(format!("Error parsing replacement: {}", e));
+            }
         };
+        let strategy = output.strategy;
 
-        // Parse target
-        let target_expr =
-            match cas_parser::parse(target_str, &mut self.core.engine.simplifier.context) {
-                Ok(e) => e,
-                Err(e) => {
-                    return reply_output(format!("Error parsing target: {}", e));
-                }
-            };
-
-        // Parse replacement
-        let replacement_expr =
-            match cas_parser::parse(replacement_str, &mut self.core.engine.simplifier.context) {
-                Ok(e) => e,
-                Err(e) => {
-                    return reply_output(format!("Error parsing replacement: {}", e));
-                }
-            };
+        let display_parts = cas_solver::split_by_comma_ignoring_parens(rest);
+        let expr_str = display_parts.first().map(|s| s.trim()).unwrap_or_default();
+        let target_str = display_parts.get(1).map(|s| s.trim()).unwrap_or_default();
+        let replacement_str = display_parts.get(2).map(|s| s.trim()).unwrap_or_default();
 
         let mut lines = Vec::new();
+        if verbosity != Verbosity::None {
+            let label = match strategy {
+                cas_solver::SubstituteStrategy::Variable => "Variable substitution",
+                cas_solver::SubstituteStrategy::PowerAware => "Expression substitution",
+            };
+            lines.push(format!(
+                "{label}: {} → {} in {}",
+                target_str, replacement_str, expr_str
+            ));
+        }
 
-        // Detect if target is a simple variable or an expression
-        let is_simple_var = target_str.chars().all(|c| c.is_alphanumeric() || c == '_');
-
-        let subbed = if is_simple_var {
-            // Variable substitution
-            if verbosity != Verbosity::None {
-                lines.push(format!(
-                    "Variable substitution: {} → {} in {}",
-                    target_str, replacement_str, expr_str
-                ));
-            }
-            let target_var = self.core.engine.simplifier.context.var(target_str);
-            cas_solver::strategies::substitute_expr(
-                &mut self.core.engine.simplifier.context,
-                expr,
-                target_var,
-                replacement_expr,
-            )
-        } else {
-            // Expression substitution (power-aware)
-            if verbosity != Verbosity::None {
-                lines.push(format!(
-                    "Expression substitution: {} → {} in {}",
-                    target_str, replacement_str, expr_str
-                ));
-            }
-            cas_solver::substitute_power_aware(
-                &mut self.core.engine.simplifier.context,
-                expr,
-                target_expr,
-                replacement_expr,
-                cas_solver::SubstituteOptions::default(),
-            )
-        };
-
-        let (result, steps) = self.core.engine.simplifier.simplify(subbed);
+        let result = output.simplified_expr;
+        let steps = output.steps;
         if verbosity != Verbosity::None && !steps.is_empty() {
             if verbosity != Verbosity::Succinct {
                 lines.push("Steps:".to_string());
@@ -221,113 +160,39 @@ impl Repl {
 
         let rest = line[9..].trim();
 
-        // Check if the user wants to use "solve" within timeline
-        // e.g., "timeline solve x + 2 = 5, x"
-        if let Some(solve_rest) = rest.strip_prefix("solve ") {
-            // Delegate to solve timeline (still uses old pattern for now)
-            self.handle_timeline_solve(solve_rest);
-            return ReplReply::new();
-        }
-
-        // Check if the user wants to use "simplify" within timeline
-        // e.g., "timeline simplify(expr)" or "timeline simplify expr"
-        let (expr_str, use_aggressive) = if let Some(inner) = rest
-            .strip_prefix("simplify(")
-            .and_then(|s| s.strip_suffix(')'))
-        {
-            // Extract expression from "simplify(expr)"
-            (inner, true)
-        } else if let Some(simplify_rest) = rest.strip_prefix("simplify ") {
-            // Extract expression from "simplify expr"
-            (simplify_rest, true)
-        } else {
-            // No simplify prefix, treat entire rest as expression
-            (rest, false)
+        let timeline_input = cas_solver::parse_timeline_command_input(rest);
+        let (expr_str, use_aggressive) = match timeline_input {
+            cas_solver::TimelineCommandInput::Solve(solve_rest) => {
+                self.handle_timeline_solve(&solve_rest);
+                return ReplReply::new();
+            }
+            cas_solver::TimelineCommandInput::Simplify { expr, aggressive } => (expr, aggressive),
         };
 
-        // Choose simplifier based on whether aggressive mode is requested
-        let (steps, expr_id, simplified) = if use_aggressive {
-            // Create temporary simplifier with aggressive rules (like handle_full_simplify)
-            let mut temp_simplifier = Simplifier::with_default_rules();
-            temp_simplifier.set_collect_steps(true); // Always collect steps for timeline
-
-            // Swap context to preserve variables
-            std::mem::swap(
-                &mut self.core.engine.simplifier.context,
-                &mut temp_simplifier.context,
-            );
-
-            match cas_parser::parse(expr_str.trim(), &mut temp_simplifier.context) {
-                Ok(expr) => {
-                    let (simplified, steps) = temp_simplifier.simplify(expr);
-
-                    // Swap context back
-                    std::mem::swap(
-                        &mut self.core.engine.simplifier.context,
-                        &mut temp_simplifier.context,
-                    );
-
-                    // V2.9.9: Apply same pipeline as engine.eval for consistency
-                    let display_steps = cas_didactic::to_display_steps(steps);
-                    (display_steps, expr, simplified)
-                }
-                Err(e) => {
-                    // Swap context back even on error
-                    std::mem::swap(
-                        &mut self.core.engine.simplifier.context,
-                        &mut temp_simplifier.context,
-                    );
-                    return reply_output(format!("Parse error: {}", e));
-                }
-            }
+        let eval_output = if use_aggressive {
+            cas_solver::evaluate_timeline_simplify_aggressive_input(
+                &mut self.core.engine.simplifier,
+                &expr_str,
+            )
         } else {
-            // Use engine.eval like handle_eval does - this ensures the same pipeline
-            // (Core → Transform → Rationalize → PostCleanup) is used
-            use cas_solver::{EvalAction, EvalRequest, EvalResult};
-
-            // Force collect_steps for timeline
-            let was_collecting = self.core.engine.simplifier.collect_steps();
-            self.core.engine.simplifier.set_collect_steps(true);
-
-            match cas_parser::parse(expr_str.trim(), &mut self.core.engine.simplifier.context) {
-                Ok(expr) => {
-                    let req = EvalRequest {
-                        raw_input: expr_str.to_string(),
-                        parsed: expr,
-                        action: EvalAction::Simplify,
-                        auto_store: false, // Don't store in session history for timeline
-                    };
-
-                    match self.core.engine.eval(&mut self.core.state, req) {
-                        Ok(output) => {
-                            let simplified = match output.result {
-                                EvalResult::Expr(e) => e,
-                                _ => expr, // Fallback
-                            };
-                            self.core
-                                .engine
-                                .simplifier
-                                .set_collect_steps(was_collecting);
-                            (output.steps, expr, simplified)
-                        }
-                        Err(e) => {
-                            self.core
-                                .engine
-                                .simplifier
-                                .set_collect_steps(was_collecting);
-                            return reply_output(format!("Simplification error: {}", e));
-                        }
-                    }
-                }
-                Err(e) => {
-                    self.core
-                        .engine
-                        .simplifier
-                        .set_collect_steps(was_collecting);
-                    return reply_output(format!("Parse error: {}", e));
-                }
+            cas_solver::evaluate_timeline_simplify_input(
+                &mut self.core.engine,
+                &mut self.core.state,
+                &expr_str,
+            )
+        };
+        let eval_output = match eval_output {
+            Ok(out) => out,
+            Err(cas_solver::TimelineEvalError::Parse(e)) => {
+                return reply_output(format!("Parse error: {}", e));
+            }
+            Err(cas_solver::TimelineEvalError::Eval(e)) => {
+                return reply_output(format!("Simplification error: {}", e));
             }
         };
+        let steps = eval_output.steps;
+        let expr_id = eval_output.parsed_expr;
+        let simplified = eval_output.simplified_expr;
 
         if steps.is_empty() {
             return reply_output("No simplification steps to visualize.");
@@ -348,7 +213,7 @@ impl Repl {
             expr_id,
             Some(simplified),
             timeline_verbosity,
-            Some(expr_str),
+            Some(expr_str.as_str()),
         );
         let html = timeline.to_html();
 
@@ -381,25 +246,18 @@ impl Repl {
             .unwrap_or(line)
             .trim();
 
-        match cas_parser::parse(rest, &mut self.core.engine.simplifier.context) {
-            Ok(expr) => {
-                let mut viz = cas_solver::visualizer::AstVisualizer::new(
-                    &self.core.engine.simplifier.context,
-                );
-                let dot = viz.to_dot(expr);
-
-                // Return WriteFile action - shell will execute the write
-                let filename = PathBuf::from("ast.dot");
-                vec![
-                    ReplMsg::WriteFile {
-                        path: filename,
-                        contents: dot,
-                    },
-                    ReplMsg::output("Render with: dot -Tsvg ast.dot -o ast.svg"),
-                    ReplMsg::output("Or: dot -Tpng ast.dot -o ast.png"),
-                ]
+        match cas_solver::evaluate_visualize_input(&mut self.core.engine.simplifier, rest) {
+            Ok(out) => vec![
+                ReplMsg::WriteFile {
+                    path: PathBuf::from("ast.dot"),
+                    contents: out.dot,
+                },
+                ReplMsg::output("Render with: dot -Tsvg ast.dot -o ast.svg"),
+                ReplMsg::output("Or: dot -Tpng ast.dot -o ast.png"),
+            ],
+            Err(cas_solver::TransformEvalError::Parse(e)) => {
+                reply_output(format!("Parse error: {}", e))
             }
-            Err(e) => reply_output(format!("Parse error: {}", e)),
         }
     }
 
@@ -410,76 +268,54 @@ impl Repl {
 
     fn handle_explain_core(&mut self, line: &str) -> ReplReply {
         let rest = line[8..].trim(); // Remove "explain "
+        match cas_solver::evaluate_explain_gcd_input(&mut self.core.engine.simplifier, rest) {
+            Ok(out) => {
+                let mut lines = Vec::new();
+                lines.push(format!("Parsed: {}", rest));
+                lines.push(String::new());
+                lines.push("Educational Steps:".to_string());
+                lines.push("─".repeat(60));
 
-        // Parse the expression
-        match cas_parser::parse(rest, &mut self.core.engine.simplifier.context) {
-            Ok(expr) => {
-                // Check if it's a function call
-                let expr_data = self.core.engine.simplifier.context.get(expr).clone();
-                if let Expr::Function(name_id, args) = expr_data {
-                    let name = self
-                        .core
-                        .engine
-                        .simplifier
-                        .context
-                        .sym_name(name_id)
-                        .to_string();
-                    match name.as_str() {
-                        "gcd" => {
-                            if args.len() == 2 {
-                                // Use solver facade (decoupled from engine rule modules).
-                                let result = cas_solver::number_theory::explain_gcd(
-                                    &mut self.core.engine.simplifier.context,
-                                    args[0],
-                                    args[1],
-                                );
-
-                                let mut lines = Vec::new();
-                                lines.push(format!("Parsed: {}", rest));
-                                lines.push(String::new());
-                                lines.push("Educational Steps:".to_string());
-                                lines.push("─".repeat(60));
-
-                                for step in &result.steps {
-                                    lines.push(step.clone());
-                                }
-
-                                lines.push("─".repeat(60));
-                                lines.push(String::new());
-
-                                if let Some(result_expr) = result.value {
-                                    lines.push(format!(
-                                        "Result: {}",
-                                        clean_display_string(&format!(
-                                            "{}",
-                                            DisplayExpr {
-                                                context: &self.core.engine.simplifier.context,
-                                                id: result_expr
-                                            }
-                                        ))
-                                    ));
-                                } else {
-                                    lines.push("Could not compute GCD".to_string());
-                                }
-                                reply_output(lines.join("\n"))
-                            } else {
-                                reply_output("Usage: explain gcd(a, b)")
-                            }
-                        }
-                        _ => reply_output(format!(
-                            "Explain mode not yet implemented for function '{}'\n\
-                                 Currently supported: gcd",
-                            name
-                        )),
-                    }
-                } else {
-                    reply_output(
-                        "Explain mode currently only supports function calls\n\
-                         Try: explain gcd(48, 18)",
-                    )
+                for step in &out.steps {
+                    lines.push(step.clone());
                 }
+
+                lines.push("─".repeat(60));
+                lines.push(String::new());
+
+                if let Some(result_expr) = out.value {
+                    lines.push(format!(
+                        "Result: {}",
+                        clean_display_string(&format!(
+                            "{}",
+                            DisplayExpr {
+                                context: &self.core.engine.simplifier.context,
+                                id: result_expr
+                            }
+                        ))
+                    ));
+                } else {
+                    lines.push("Could not compute GCD".to_string());
+                }
+                reply_output(lines.join("\n"))
             }
-            Err(e) => reply_output(format!("Parse error: {}", e)),
+            Err(cas_solver::ExplainEvalError::Parse(e)) => {
+                reply_output(format!("Parse error: {}", e))
+            }
+            Err(cas_solver::ExplainEvalError::NotFunctionCall) => reply_output(
+                "Explain mode currently only supports function calls\n\
+                 Try: explain gcd(48, 18)",
+            ),
+            Err(cas_solver::ExplainEvalError::UnsupportedFunction(name)) => reply_output(format!(
+                "Explain mode not yet implemented for function '{}'\n\
+                 Currently supported: gcd",
+                name
+            )),
+            Err(cas_solver::ExplainEvalError::InvalidArity {
+                function: _,
+                expected: _,
+                actual: _,
+            }) => reply_output("Usage: explain gcd(a, b)"),
         }
     }
 }

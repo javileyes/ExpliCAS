@@ -175,7 +175,8 @@ pub fn eval_str_to_json(expr: &str, opts_json: &str) -> String {
 
     let mut resp = EngineJsonResponse::ok_with_steps(result_str, steps, budget_info);
     resp.warnings = map_domain_warnings_to_engine_warnings(&output.domain_warnings);
-    resp.assumptions = map_solver_assumptions_to_api_records(&output.solver_assumptions);
+    let solver_assumptions = crate::assumption_records_from_engine(&output.solver_assumptions);
+    resp.assumptions = map_solver_assumptions_to_api_records(&solver_assumptions);
 
     if opts.pretty {
         resp.to_json_pretty()

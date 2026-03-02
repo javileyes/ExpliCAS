@@ -32,11 +32,11 @@ mod prepass_tests {
     #[test]
     fn cancel_common_factors_rule_marked_correctly() {
         use cas_solver::rules::algebra::fractions::CancelCommonFactorsRule;
-        use cas_solver::SimpleRule;
+        use cas_solver::RuleSolveSafetyExt;
         use cas_solver::SolveSafety;
 
         let rule = CancelCommonFactorsRule;
-        let safety = rule.solve_safety();
+        let safety = rule.solve_safety_model();
 
         // Must be NeedsCondition, not Always
         assert!(
@@ -56,11 +56,11 @@ mod prepass_tests {
     #[test]
     fn simplify_fraction_rule_marked_correctly() {
         use cas_solver::rules::algebra::fractions::SimplifyFractionRule;
-        use cas_solver::SimpleRule;
+        use cas_solver::RuleSolveSafetyExt;
         use cas_solver::SolveSafety;
 
         let rule = SimplifyFractionRule;
-        let safety = rule.solve_safety();
+        let safety = rule.solve_safety_model();
 
         assert!(
             !safety.safe_for_prepass(),
@@ -303,13 +303,13 @@ mod solver_tests {
 /// as NeedsCondition. If these tests fail, a dangerous rule was added
 /// without proper SolveSafety classification.
 mod guardrail_tests {
+    use cas_solver::RuleSolveSafetyExt;
     use cas_solver::SolveSafety;
-    use cas_solver::{Rule, SimpleRule};
 
     /// Helper macro for SimpleRule implementations
     macro_rules! assert_simple_not_always {
         ($rule:expr, $name:expr) => {
-            let safety = SimpleRule::solve_safety(&$rule);
+            let safety = $rule.solve_safety_model();
             assert!(
                 !matches!(safety, SolveSafety::Always),
                 "{} should be marked with NeedsCondition, got: {:?}",
@@ -322,7 +322,7 @@ mod guardrail_tests {
     /// Helper macro for Rule implementations (manual impl)
     macro_rules! assert_rule_not_always {
         ($rule:expr, $name:expr) => {
-            let safety = Rule::solve_safety(&$rule);
+            let safety = $rule.solve_safety_model();
             assert!(
                 !matches!(safety, SolveSafety::Always),
                 "{} should be marked with NeedsCondition, got: {:?}",

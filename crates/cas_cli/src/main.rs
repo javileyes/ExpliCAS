@@ -5,7 +5,6 @@
 mod commands;
 mod completer;
 mod config;
-mod format;
 mod health_suite;
 pub mod repl;
 mod session_io;
@@ -497,10 +496,9 @@ fn read_expr_or_stdin(expr: &str) -> String {
 
 /// Run eval with text output
 fn run_eval_text(args: &EvalArgs) {
-    use cas_formatter::DisplayExpr;
     use cas_parser::parse;
     use cas_session::SimplifyCacheKey;
-    use cas_solver::{EvalAction, EvalRequest, EvalResult};
+    use cas_solver::{EvalAction, EvalRequest};
 
     // Build cache key for snapshot compatibility check
     let domain_mode = match args.domain {
@@ -537,35 +535,10 @@ fn run_eval_text(args: &EvalArgs) {
     // Evaluate
     match engine.eval(&mut state, req) {
         Ok(output) => {
-            let result_str = match &output.result {
-                EvalResult::Expr(e) => {
-                    // Try to render as poly_result first (fast path for large polynomials)
-                    if let Some(poly_str) =
-                        cas_solver::try_render_poly_result(&engine.simplifier.context, *e)
-                    {
-                        poly_str
-                    } else {
-                        format!(
-                            "{}",
-                            DisplayExpr {
-                                context: &engine.simplifier.context,
-                                id: *e
-                            }
-                        )
-                    }
-                }
-                EvalResult::Set(v) if !v.is_empty() => {
-                    format!(
-                        "{}",
-                        DisplayExpr {
-                            context: &engine.simplifier.context,
-                            id: v[0]
-                        }
-                    )
-                }
-                EvalResult::Bool(b) => b.to_string(),
-                _ => "(no result)".to_string(),
-            };
+            let result_str = cas_solver::json::format_eval_result_text(
+                &engine.simplifier.context,
+                &output.result,
+            );
             println!("{}", result_str);
 
             // Save session snapshot if --session is specified
@@ -640,190 +613,94 @@ fn assume_scope_arg_to_string(as_: AssumeScopeArg) -> String {
 }
 
 fn run_limit(args: LimitArgs) {
-    use cas_formatter::DisplayExpr;
-    use cas_parser::parse;
-    use cas_solver::{limit, Approach, Budget, LimitOptions, PreSimplifyMode};
+    use cas_solver::{Approach, PreSimplifyMode};
 
-    let mut ctx = cas_ast::Context::new();
-
-    // Parse expression
-    let expr = match parse(&args.expr, &mut ctx) {
-        Ok(e) => e,
-        Err(e) => {
-            match args.format {
-                OutputFormat::Json => {
-                    let json = serde_json::json!({
-                        "ok": false,
-                        "error": format!("Parse error: {}", e),
-                        "code": "PARSE_ERROR"
-                    });
-                    println!("{}", json);
-                }
-                OutputFormat::Text => {
-                    eprintln!("Parse error: {}", e);
-                    std::process::exit(1);
-                }
-            }
-            return;
-        }
-    };
-
-    // Parse variable
-    let var = ctx.var(&args.var);
-
-    // Convert approach
     let approach = match args.to {
         ApproachArg::Infinity => Approach::PosInfinity,
         ApproachArg::NegInfinity => Approach::NegInfinity,
     };
 
-    // Convert presimplify mode
     let presimplify = match args.presimplify {
         PreSimplifyArg::Off => PreSimplifyMode::Off,
         PreSimplifyArg::Safe => PreSimplifyMode::Safe,
     };
 
-    // Run limit
-    let mut budget = Budget::new();
-    let opts = LimitOptions {
-        presimplify,
-        ..Default::default()
-    };
-
-    let result = limit(&mut ctx, expr, var, approach, &opts, &mut budget);
-
-    match result {
-        Ok(limit_result) => {
-            let result_str = DisplayExpr {
-                context: &ctx,
-                id: limit_result.expr,
-            }
-            .to_string();
-
-            match args.format {
-                OutputFormat::Json => {
-                    let mut json = serde_json::json!({
-                        "ok": true,
-                        "result": result_str,
-                    });
-                    if let Some(warning) = &limit_result.warning {
-                        json["warning"] = serde_json::Value::String(warning.clone());
-                    }
-                    println!("{}", json);
-                }
-                OutputFormat::Text => {
-                    println!("{}", result_str);
-                    if let Some(warning) = &limit_result.warning {
-                        eprintln!("Warning: {}", warning);
-                    }
-                }
-            }
-        }
-        Err(e) => match args.format {
-            OutputFormat::Json => {
-                let json = serde_json::json!({
-                    "ok": false,
-                    "error": format!("{}", e),
-                    "code": "LIMIT_ERROR"
-                });
-                println!("{}", json);
-            }
-            OutputFormat::Text => {
-                eprintln!("Error: {}", e);
-                std::process::exit(1);
-            }
-        },
-    }
-}
-
-fn run_substitute(args: SubstituteArgs) {
-    // For JSON output, delegate to canonical API (single source of truth)
     if matches!(args.format, OutputFormat::Json) {
-        let mode_str = match args.mode {
-            SubstituteModeArg::Exact => "exact",
-            SubstituteModeArg::Power => "power",
-        };
-        let opts_json = serde_json::json!({
-            "mode": mode_str,
-            "steps": args.steps,
-            "pretty": true
-        });
-        let opts_str = match serde_json::to_string(&opts_json) {
-            Ok(s) => s,
-            Err(e) => {
-                eprintln!("Internal error: failed to serialize options: {}", e);
-                std::process::exit(1);
-            }
-        };
-
-        let out = cas_solver::substitute_str_to_json(
+        let out = cas_solver::json::limit_str_to_json(
             &args.expr,
-            &args.target,
-            &args.replacement,
-            Some(&opts_str),
+            &args.var,
+            approach,
+            presimplify,
+            false,
         );
         println!("{}", out);
         return;
     }
 
-    // Text output path (unchanged)
-    use cas_formatter::DisplayExpr;
-    use cas_parser::parse;
-    use cas_solver::{substitute_power_aware, substitute_with_steps, SubstituteOptions};
-
-    let mut ctx = cas_ast::Context::new();
-
-    // Parse expression
-    let expr = match parse(&args.expr, &mut ctx) {
-        Ok(e) => e,
-        Err(e) => {
-            eprintln!("Parse error in expression: {}", e);
+    match cas_solver::json::eval_limit_from_str(&args.expr, &args.var, approach, presimplify) {
+        Ok(limit_result) => {
+            println!("{}", limit_result.result);
+            if let Some(warning) = &limit_result.warning {
+                eprintln!("Warning: {}", warning);
+            }
+        }
+        Err(cas_solver::json::LimitEvalError::Parse(message)) => {
+            eprintln!("{}", message);
             std::process::exit(1);
         }
-    };
-
-    // Parse target
-    let target = match parse(&args.target, &mut ctx) {
-        Ok(e) => e,
-        Err(e) => {
-            eprintln!("Parse error in target: {}", e);
+        Err(cas_solver::json::LimitEvalError::Limit(message)) => {
+            eprintln!("Error: {}", message);
             std::process::exit(1);
         }
+    }
+}
+
+fn run_substitute(args: SubstituteArgs) {
+    let mode_str = match args.mode {
+        SubstituteModeArg::Exact => "exact",
+        SubstituteModeArg::Power => "power",
     };
 
-    // Parse replacement
-    let replacement = match parse(&args.replacement, &mut ctx) {
-        Ok(e) => e,
-        Err(e) => {
-            eprintln!("Parse error in replacement: {}", e);
-            std::process::exit(1);
-        }
-    };
-
-    // Build options
-    let mut opts = match args.mode {
-        SubstituteModeArg::Exact => SubstituteOptions::exact(),
-        SubstituteModeArg::Power => SubstituteOptions::default(),
-    };
-    if args.steps {
-        opts = opts.with_steps();
+    // For JSON output, delegate to canonical API (single source of truth)
+    if matches!(args.format, OutputFormat::Json) {
+        let out = cas_solver::substitute_str_to_json_with_options(
+            &args.expr,
+            &args.target,
+            &args.replacement,
+            mode_str,
+            args.steps,
+            true,
+        );
+        println!("{}", out);
+        return;
     }
 
-    // Run substitution with steps if requested
-    let (result, steps) = if args.steps {
-        let res = substitute_with_steps(&mut ctx, expr, target, replacement, opts);
-        (res.expr, res.steps)
-    } else {
-        (
-            substitute_power_aware(&mut ctx, expr, target, replacement, opts),
-            vec![],
-        )
+    let mode = match args.mode {
+        SubstituteModeArg::Exact => cas_solver::json::SubstituteEvalMode::Exact,
+        SubstituteModeArg::Power => cas_solver::json::SubstituteEvalMode::Power,
+    };
+    let output = match cas_solver::json::eval_substitute_from_str(
+        &args.expr,
+        &args.target,
+        &args.replacement,
+        mode,
+        args.steps,
+    ) {
+        Ok(output) => output,
+        Err(
+            cas_solver::json::SubstituteEvalError::ParseExpression(message)
+            | cas_solver::json::SubstituteEvalError::ParseTarget(message)
+            | cas_solver::json::SubstituteEvalError::ParseReplacement(message),
+        ) => {
+            eprintln!("{}", message);
+            std::process::exit(1);
+        }
     };
 
     // Text output
-    if args.steps && !steps.is_empty() {
+    if args.steps && !output.steps.is_empty() {
         println!("Steps:");
-        for step in &steps {
+        for step in &output.steps {
             if let Some(ref note) = step.note {
                 println!(
                     "  {} → {} [{}] ({})",
@@ -834,11 +711,5 @@ fn run_substitute(args: SubstituteArgs) {
             }
         }
     }
-    println!(
-        "{}",
-        DisplayExpr {
-            context: &ctx,
-            id: result
-        }
-    );
+    println!("{}", output.result);
 }

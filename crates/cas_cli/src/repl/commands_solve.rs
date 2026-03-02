@@ -1,133 +1,6 @@
 use super::*;
 
 impl Repl {
-    /// Infer the variable to solve for when user doesn't specify one explicitly.
-    ///
-    /// Returns:
-    /// - `Ok(Some(var))` if exactly one free variable found
-    /// - `Ok(None)` if no variables found (error case)
-    /// - `Err(vars)` if multiple variables found (ambiguous)
-    ///
-    /// Filters out:
-    /// - Known constants: pi, π, e, i
-    /// - Internal symbols: _* and #*
-    fn infer_solve_variable(
-        ctx: &cas_ast::Context,
-        expr: cas_ast::ExprId,
-    ) -> Result<Option<String>, Vec<String>> {
-        let all_vars = cas_ast::collect_variables(ctx, expr);
-
-        // Filter out known constants and internal symbols
-        let free_vars: Vec<String> = all_vars
-            .into_iter()
-            .filter(|v| {
-                // Filter constants
-                let is_constant = matches!(v.as_str(), "pi" | "π" | "e" | "i");
-                // Filter internal symbols
-                let is_internal = v.starts_with('_') || v.starts_with('#');
-                !is_constant && !is_internal
-            })
-            .collect();
-
-        match free_vars.len() {
-            0 => Ok(None),
-            // free_vars.len() == 1 from match arm; pop() is infallible here
-            1 => Ok(free_vars.into_iter().next()),
-            _ => {
-                // Sort for stable error messages
-                let mut sorted = free_vars;
-                sorted.sort();
-                Err(sorted)
-            }
-        }
-    }
-
-    pub(crate) fn expand_log_recursive(&mut self, expr: cas_ast::ExprId) -> cas_ast::ExprId {
-        use cas_ast::Expr;
-        use cas_solver::{DomainMode, LogExpansionRule, ParentContext, Rule};
-
-        // Create a parent context with Assume mode to allow expansion of symbolic variables
-        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Assume);
-
-        let rule = LogExpansionRule;
-
-        // Try to apply the rule at this node
-        if let Some(rewrite) =
-            rule.apply(&mut self.core.engine.simplifier.context, expr, &parent_ctx)
-        {
-            // Recursively expand the result
-            return self.expand_log_recursive(rewrite.new_expr);
-        }
-
-        // If rule didn't apply, recurse into children
-        let expr_data = self.core.engine.simplifier.context.get(expr).clone();
-        match expr_data {
-            Expr::Add(l, r) => {
-                let new_l = self.expand_log_recursive(l);
-                let new_r = self.expand_log_recursive(r);
-                self.core
-                    .engine
-                    .simplifier
-                    .context
-                    .add(Expr::Add(new_l, new_r))
-            }
-            Expr::Sub(l, r) => {
-                let new_l = self.expand_log_recursive(l);
-                let new_r = self.expand_log_recursive(r);
-                self.core
-                    .engine
-                    .simplifier
-                    .context
-                    .add(Expr::Sub(new_l, new_r))
-            }
-            Expr::Mul(l, r) => {
-                let new_l = self.expand_log_recursive(l);
-                let new_r = self.expand_log_recursive(r);
-                self.core
-                    .engine
-                    .simplifier
-                    .context
-                    .add(Expr::Mul(new_l, new_r))
-            }
-            Expr::Div(l, r) => {
-                let new_l = self.expand_log_recursive(l);
-                let new_r = self.expand_log_recursive(r);
-                self.core
-                    .engine
-                    .simplifier
-                    .context
-                    .add(Expr::Div(new_l, new_r))
-            }
-            Expr::Pow(b, e) => {
-                let new_b = self.expand_log_recursive(b);
-                let new_e = self.expand_log_recursive(e);
-                self.core
-                    .engine
-                    .simplifier
-                    .context
-                    .add(Expr::Pow(new_b, new_e))
-            }
-            Expr::Neg(inner) => {
-                let new_inner = self.expand_log_recursive(inner);
-                self.core
-                    .engine
-                    .simplifier
-                    .context
-                    .add(Expr::Neg(new_inner))
-            }
-            Expr::Function(name, args) => {
-                let new_args: Vec<_> = args.iter().map(|a| self.expand_log_recursive(*a)).collect();
-                self.core
-                    .engine
-                    .simplifier
-                    .context
-                    .add(Expr::Function(name, new_args))
-            }
-            // Atoms: Number, Variable, Constant, Matrix, SessionRef - return as-is
-            _ => expr,
-        }
-    }
-
     /// Handle the 'weierstrass' command for applying Weierstrass substitution
     /// Transforms sin(x), cos(x), tan(x) into rational expressions in t = tan(x/2)
     pub(crate) fn handle_weierstrass(&mut self, line: &str) {
@@ -150,30 +23,21 @@ impl Repl {
             );
         }
 
-        // Parse the expression
-        match cas_parser::parse(rest, &mut self.core.engine.simplifier.context) {
-            Ok(expr) => {
+        match cas_solver::evaluate_weierstrass_input(&mut self.core.engine.simplifier, rest) {
+            Ok(out) => {
                 use cas_formatter::DisplayExpr;
-
-                // Apply Weierstrass substitution recursively
-                let result = self.apply_weierstrass_recursive(expr);
-
-                // Display result
                 let result_str = format!(
                     "{}",
                     DisplayExpr {
                         context: &self.core.engine.simplifier.context,
-                        id: result
+                        id: out.substituted_expr
                     }
                 );
-
-                // Try to simplify the result
-                let (simplified, _steps) = self.core.engine.simplifier.simplify(result);
                 let simplified_str = clean_display_string(&format!(
                     "{}",
                     DisplayExpr {
                         context: &self.core.engine.simplifier.context,
-                        id: simplified
+                        id: out.simplified_expr
                     }
                 ));
 
@@ -186,185 +50,9 @@ impl Repl {
                     rest, rest, result_str, simplified_str
                 ))
             }
-            Err(e) => reply_output(format!("Parse error: {}", e)),
-        }
-    }
-
-    /// Apply Weierstrass substitution recursively to all trig functions
-    pub(crate) fn apply_weierstrass_recursive(&mut self, expr: cas_ast::ExprId) -> cas_ast::ExprId {
-        use cas_ast::Expr;
-
-        let expr_data = self.core.engine.simplifier.context.get(expr).clone();
-
-        // Check if it's a trig function first
-        if let Expr::Function(name_id, ref args) = expr_data {
-            let name = self
-                .core
-                .engine
-                .simplifier
-                .context
-                .sym_name(name_id)
-                .to_string();
-            if matches!(name.as_str(), "sin" | "cos" | "tan") && args.len() == 1 {
-                let arg = args[0];
-
-                // Build t = tan(x/2) as sin(x/2)/cos(x/2)
-                let two_num = self.core.engine.simplifier.context.num(2);
-                let half_arg = self
-                    .core
-                    .engine
-                    .simplifier
-                    .context
-                    .add(Expr::Div(arg, two_num));
-                let sin_half = self
-                    .core
-                    .engine
-                    .simplifier
-                    .context
-                    .call("sin", vec![half_arg]);
-                let cos_half = self
-                    .core
-                    .engine
-                    .simplifier
-                    .context
-                    .call("cos", vec![half_arg]);
-                let t = self
-                    .core
-                    .engine
-                    .simplifier
-                    .context
-                    .add(Expr::Div(sin_half, cos_half)); // t = tan(x/2)
-
-                // Apply appropriate transformation
-                return match name.as_str() {
-                    "sin" => {
-                        // sin(x) → 2t/(1+t²)
-                        let two = self.core.engine.simplifier.context.num(2);
-                        let one = self.core.engine.simplifier.context.num(1);
-                        let t_squared = self.core.engine.simplifier.context.add(Expr::Pow(t, two));
-                        let numerator = self.core.engine.simplifier.context.add(Expr::Mul(two, t));
-                        let denominator = self
-                            .core
-                            .engine
-                            .simplifier
-                            .context
-                            .add(Expr::Add(one, t_squared));
-                        self.core
-                            .engine
-                            .simplifier
-                            .context
-                            .add(Expr::Div(numerator, denominator))
-                    }
-                    "cos" => {
-                        // cos(x) → (1-t²)/(1+t²)
-                        let one = self.core.engine.simplifier.context.num(1);
-                        let two = self.core.engine.simplifier.context.num(2);
-                        let t_squared = self.core.engine.simplifier.context.add(Expr::Pow(t, two));
-                        let numerator = self
-                            .core
-                            .engine
-                            .simplifier
-                            .context
-                            .add(Expr::Sub(one, t_squared));
-                        let denominator = self
-                            .core
-                            .engine
-                            .simplifier
-                            .context
-                            .add(Expr::Add(one, t_squared));
-                        self.core
-                            .engine
-                            .simplifier
-                            .context
-                            .add(Expr::Div(numerator, denominator))
-                    }
-                    "tan" => {
-                        // tan(x) → 2t/(1-t²)
-                        let two = self.core.engine.simplifier.context.num(2);
-                        let one = self.core.engine.simplifier.context.num(1);
-                        let t_squared = self.core.engine.simplifier.context.add(Expr::Pow(t, two));
-                        let numerator = self.core.engine.simplifier.context.add(Expr::Mul(two, t));
-                        let denominator = self
-                            .core
-                            .engine
-                            .simplifier
-                            .context
-                            .add(Expr::Sub(one, t_squared));
-                        self.core
-                            .engine
-                            .simplifier
-                            .context
-                            .add(Expr::Div(numerator, denominator))
-                    }
-                    _ => expr,
-                };
+            Err(cas_solver::TransformEvalError::Parse(e)) => {
+                reply_output(format!("Parse error: {}", e))
             }
-        }
-
-        // Handle other expression types
-        match expr_data {
-            Expr::Add(l, r) => {
-                let new_l = self.apply_weierstrass_recursive(l);
-                let new_r = self.apply_weierstrass_recursive(r);
-                self.core
-                    .engine
-                    .simplifier
-                    .context
-                    .add(Expr::Add(new_l, new_r))
-            }
-            Expr::Sub(l, r) => {
-                let new_l = self.apply_weierstrass_recursive(l);
-                let new_r = self.apply_weierstrass_recursive(r);
-                self.core
-                    .engine
-                    .simplifier
-                    .context
-                    .add(Expr::Sub(new_l, new_r))
-            }
-            Expr::Mul(l, r) => {
-                let new_l = self.apply_weierstrass_recursive(l);
-                let new_r = self.apply_weierstrass_recursive(r);
-                self.core
-                    .engine
-                    .simplifier
-                    .context
-                    .add(Expr::Mul(new_l, new_r))
-            }
-            Expr::Div(l, r) => {
-                let new_l = self.apply_weierstrass_recursive(l);
-                let new_r = self.apply_weierstrass_recursive(r);
-                self.core
-                    .engine
-                    .simplifier
-                    .context
-                    .add(Expr::Div(new_l, new_r))
-            }
-            Expr::Pow(base, exp) => {
-                let new_base = self.apply_weierstrass_recursive(base);
-                let new_exp = self.apply_weierstrass_recursive(exp);
-                self.core
-                    .engine
-                    .simplifier
-                    .context
-                    .add(Expr::Pow(new_base, new_exp))
-            }
-            Expr::Neg(e) => {
-                let new_e = self.apply_weierstrass_recursive(e);
-                self.core.engine.simplifier.context.add(Expr::Neg(new_e))
-            }
-            Expr::Function(name, args) => {
-                // Recurse into function arguments
-                let new_args: Vec<_> = args
-                    .iter()
-                    .map(|&a| self.apply_weierstrass_recursive(a))
-                    .collect();
-                self.core
-                    .engine
-                    .simplifier
-                    .context
-                    .add(Expr::Function(name, new_args))
-            }
-            _ => expr, // Number, Variable, Constant, Matrix - leave as is
         }
     }
 
@@ -392,57 +80,19 @@ impl Repl {
     fn handle_timeline_solve_core(&mut self, rest: &str) -> ReplReply {
         use std::path::PathBuf;
 
-        // Parse equation and variable: "x + 2 = 5, x" or "x + 2 = 5 x"
-        // var_explicit is Some if user provided variable, None if we need to infer
-        let (eq_str, var_explicit) = if let Some((e, v)) = rsplit_ignoring_parens(rest, ',') {
-            (e.trim(), Some(v.trim().to_string()))
-        } else {
-            // No comma. Try to see if it looks like "eq var"
-            if let Some((e, v)) = rsplit_ignoring_parens(rest, ' ') {
-                let v_trim = v.trim();
-                if !v_trim.is_empty() && v_trim.chars().all(char::is_alphabetic) {
-                    (e.trim(), Some(v_trim.to_string()))
-                } else {
-                    (rest, None)
-                }
-            } else {
-                (rest, None)
-            }
+        let parsed_input = cas_solver::parse_solve_command_input(rest);
+        let eq_str = parsed_input.equation.trim();
+        let var_explicit = parsed_input.variable;
+
+        let prepared = {
+            let ctx = &mut self.core.engine.simplifier.context;
+            cas_solver::prepare_timeline_solve_input(ctx, eq_str, var_explicit)
         };
 
-        match cas_parser::parse_statement(eq_str, &mut self.core.engine.simplifier.context) {
-            Ok(cas_parser::Statement::Equation(eq)) => {
-                // Infer variable if not explicitly provided
-                let var = match var_explicit {
-                    Some(v) => v,
-                    None => {
-                        // For equations, infer from lhs - rhs
-                        let eq_expr = self
-                            .core
-                            .engine
-                            .simplifier
-                            .context
-                            .add(cas_ast::Expr::Sub(eq.lhs, eq.rhs));
-                        let ctx = &self.core.engine.simplifier.context;
-                        match Self::infer_solve_variable(ctx, eq_expr) {
-                            Ok(Some(v)) => v,
-                            Ok(None) => {
-                                return reply_output(
-                                    "Error: timeline solve found no variable.\n\
-                                     Use timeline solve <equation>, <variable>",
-                                );
-                            }
-                            Err(vars) => {
-                                return reply_output(format!(
-                                    "Error: timeline solve found ambiguous variables {{{}}}.\n\
-                                     Use timeline solve <equation>, {}",
-                                    vars.join(", "),
-                                    vars.first().unwrap_or(&"x".to_string())
-                                ));
-                            }
-                        }
-                    }
-                };
+        match prepared {
+            Ok(prepared) => {
+                let eq = prepared.equation;
+                let var = prepared.var;
 
                 // Call solver with step collection enabled and semantic options
                 self.core.engine.simplifier.set_collect_steps(true);
@@ -463,7 +113,7 @@ impl Repl {
                 ) {
                     Ok((solution_set, display_steps, _diagnostics)) => {
                         if display_steps.0.is_empty() {
-                            let result_str = display_solution_set(
+                            let result_str = cas_solver::display_solution_set(
                                 &self.core.engine.simplifier.context,
                                 &solution_set,
                             );
@@ -485,7 +135,7 @@ impl Repl {
                         let html = timeline.to_html();
 
                         // Return WriteFile action + result
-                        let result_str = display_solution_set(
+                        let result_str = cas_solver::display_solution_set(
                             &self.core.engine.simplifier.context,
                             &solution_set,
                         );
@@ -501,12 +151,24 @@ impl Repl {
                     Err(e) => reply_output(format!("Error solving: {}", e)),
                 }
             }
-            Ok(cas_parser::Statement::Expression(_)) => reply_output(
+            Err(cas_solver::SolvePrepareError::ExpectedEquation) => reply_output(
                 "Error: Expected an equation for solve timeline, got an expression.\n\
                      Usage: timeline solve <equation>, <variable>\n\
                      Example: timeline solve x + 2 = 5, x",
             ),
-            Err(e) => reply_output(format!("Error parsing equation: {}", e)),
+            Err(cas_solver::SolvePrepareError::ParseError(e)) => {
+                reply_output(format!("Error parsing equation: {}", e))
+            }
+            Err(cas_solver::SolvePrepareError::NoVariable) => reply_output(
+                "Error: timeline solve found no variable.\n\
+                 Use timeline solve <equation>, <variable>",
+            ),
+            Err(cas_solver::SolvePrepareError::AmbiguousVariables(vars)) => reply_output(format!(
+                "Error: timeline solve found ambiguous variables {{{}}}.\n\
+                 Use timeline solve <equation>, {}",
+                vars.join(", "),
+                vars.first().unwrap_or(&"x".to_string())
+            )),
         }
     }
 
@@ -516,9 +178,7 @@ impl Repl {
     }
 
     fn handle_solve_core(&mut self, line: &str, verbosity: Verbosity) -> ReplReply {
-        use cas_formatter::DisplayExpr;
-        use cas_parser::Statement;
-        use cas_solver::{EvalAction, EvalRequest, EvalResult};
+        use cas_solver::EvalResult;
 
         let mut lines: Vec<String> = Vec::new();
 
@@ -534,109 +194,20 @@ impl Repl {
             (self.core.state.options().check_solutions, rest)
         };
 
-        // Split by comma or space to get equation and var
-        // var_explicit is Some if user explicitly provided a variable, None if we need to infer
-        let (eq_str, var_explicit) = if let Some((e, v)) = rsplit_ignoring_parens(rest, ',') {
-            (e.trim(), Some(v.trim().to_string()))
-        } else {
-            // No comma. Try to see if it looks like "eq var"
-            if let Some((e, v)) = rsplit_ignoring_parens(rest, ' ') {
-                let e_trim = e.trim();
-                let v_trim = v.trim();
-                // Check if v is a variable name (alphabetic) AND
-                // the remaining equation doesn't end with '=' (which would mean v is the RHS) AND
-                // there are no operators after '=' (which would mean v is part of an expression)
-                let has_operators_after_eq = if let Some(eq_pos) = e_trim.find('=') {
-                    let after_eq = &e_trim[eq_pos + 1..];
-                    after_eq.contains('+')
-                        || after_eq.contains('-')
-                        || after_eq.contains('*')
-                        || after_eq.contains('/')
-                        || after_eq.contains('^')
-                } else {
-                    false
-                };
-                if !v_trim.is_empty()
-                    && v_trim.chars().all(char::is_alphabetic)
-                    && !e_trim.ends_with('=')
-                    && !has_operators_after_eq
-                {
-                    (e_trim, Some(v_trim.to_string()))
-                } else {
-                    // No explicit variable - will infer after parsing
-                    (rest, None)
-                }
-            } else {
-                // No explicit variable - will infer after parsing
-                (rest, None)
-            }
+        let parsed_input = cas_solver::parse_solve_command_input(rest);
+        let eq_str = parsed_input.equation.trim();
+        let var_explicit = parsed_input.variable;
+
+        let prepared = {
+            let ctx = &mut self.core.engine.simplifier.context;
+            cas_solver::prepare_solve_eval_request(ctx, eq_str, var_explicit, true)
         };
 
-        // Parse equation part
-        // Style signals handled during display logic mostly, removing invalid context access
-
-        // Handle #id manually as Variable to let Engine resolve it, or parse string
-        let parsed_expr_res =
-            if eq_str.starts_with('#') && eq_str[1..].chars().all(char::is_numeric) {
-                // Pass as Variable("#id") - the engine will now handle this resolution!
-                Ok(Statement::Expression(
-                    self.core.engine.simplifier.context.var(eq_str),
-                ))
-            } else {
-                cas_parser::parse_statement(eq_str, &mut self.core.engine.simplifier.context)
-            };
-
-        match parsed_expr_res {
-            Ok(stmt) => {
-                // Store equation for potential verification
-                let original_equation: Option<cas_ast::Equation> = match &stmt {
-                    Statement::Equation(eq) => Some(eq.clone()),
-                    Statement::Expression(_) => None,
-                };
-
-                let parsed_expr = match stmt {
-                    Statement::Equation(eq) => self
-                        .core
-                        .engine
-                        .simplifier
-                        .context
-                        .call("Equal", vec![eq.lhs, eq.rhs]),
-                    Statement::Expression(e) => e,
-                };
-
-                // Determine the variable to solve for
-                let var = match var_explicit {
-                    Some(v) => v,
-                    None => {
-                        // Try to infer the variable from the expression
-                        let ctx = &self.core.engine.simplifier.context;
-                        match Self::infer_solve_variable(ctx, parsed_expr) {
-                            Ok(Some(v)) => v,
-                            Ok(None) => {
-                                return reply_output(
-                                    "Error: solve() found no variable to solve for.\n\
-                                     Use solve(expr, x) to specify the variable.",
-                                );
-                            }
-                            Err(vars) => {
-                                return reply_output(format!(
-                                    "Error: solve() found ambiguous variables {{{}}}.\n\
-                                     Use solve(expr, {}) or solve(expr, {{{}}}).",
-                                    vars.join(", "),
-                                    vars.first().unwrap_or(&"x".to_string()),
-                                    vars.join(", ")
-                                ));
-                            }
-                        }
-                    }
-                };
-
-                let req = EvalRequest {
-                    raw_input: eq_str.to_string(),
-                    parsed: parsed_expr,
-                    action: EvalAction::Solve { var: var.clone() },
-                    auto_store: true,
-                };
+        match prepared {
+            Ok(prepared) => {
+                let original_equation = prepared.original_equation;
+                let var = prepared.var;
+                let req = prepared.request;
 
                 match self.core.engine.eval(&mut self.core.state, req) {
                     Ok(output) => {
@@ -648,24 +219,21 @@ impl Repl {
                         };
                         lines.push(format!("{}Solving for {}...", id_prefix, var));
 
-                        for w in &output.domain_warnings {
-                            lines.push(format!("⚠ {} (from {})", w.message, w.rule_name));
+                        for line in cas_solver::format_domain_warning_lines(
+                            &output.domain_warnings,
+                            true,
+                            "⚠ ",
+                        ) {
+                            lines.push(line);
                         }
+                        let solver_assumption_records =
+                            cas_solver::assumption_records_from_engine(&output.solver_assumptions);
 
                         // Show solver assumptions summary if any
-                        if !output.solver_assumptions.is_empty() {
-                            let items: Vec<String> = output
-                                .solver_assumptions
-                                .iter()
-                                .map(|a| {
-                                    if a.count > 1 {
-                                        format!("{}({}) (×{})", a.kind, a.expr, a.count)
-                                    } else {
-                                        format!("{}({})", a.kind, a.expr)
-                                    }
-                                })
-                                .collect();
-                            lines.push(format!("⚠ Assumptions: {}", items.join(", ")));
+                        if let Some(summary) = cas_solver::format_assumption_records_summary(
+                            &solver_assumption_records,
+                        ) {
+                            lines.push(format!("⚠ Assumptions: {}", summary));
                         }
 
                         // Show Solve Steps
@@ -678,82 +246,12 @@ impl Repl {
 
                         if show_solve_steps {
                             lines.push("Steps:".to_string());
-
-                            // V2.9.8: Steps are now pre-cleaned by eval.rs via solve_with_display_steps
-                            // No manual cleanup needed - type-safe pipeline guarantees processing
-
-                            // Prepare scoped renderer with style preferences
-                            let registry = cas_formatter::display_transforms::DisplayTransformRegistry::with_defaults();
-                            let style = StylePreferences::default();
-                            let has_scopes = !output.output_scopes.is_empty();
-                            let renderer = if has_scopes {
-                                Some(cas_formatter::display_transforms::ScopedRenderer::new(
-                                    &self.core.engine.simplifier.context,
-                                    &output.output_scopes,
-                                    &registry,
-                                    &style,
-                                ))
-                            } else {
-                                None
-                            };
-
-                            for (i, step) in output.solve_steps.iter().enumerate() {
-                                lines.push(format!("{}. {}", i + 1, step.description));
-                                // Display equation after step with scoped transforms
-                                let ctx = &self.core.engine.simplifier.context;
-                                let (lhs_str, rhs_str) = if let Some(ref r) = renderer {
-                                    (
-                                        r.render(step.equation_after.lhs),
-                                        r.render(step.equation_after.rhs),
-                                    )
-                                } else {
-                                    (
-                                        DisplayExpr {
-                                            context: ctx,
-                                            id: step.equation_after.lhs,
-                                        }
-                                        .to_string(),
-                                        DisplayExpr {
-                                            context: ctx,
-                                            id: step.equation_after.rhs,
-                                        }
-                                        .to_string(),
-                                    )
-                                };
-                                lines.push(format!(
-                                    "   -> {} {} {}",
-                                    lhs_str, step.equation_after.op, rhs_str
-                                ));
-
-                                // Display substeps with indentation (educational details)
-                                if !step.substeps.is_empty() && verbosity == Verbosity::Verbose {
-                                    for (j, substep) in step.substeps.iter().enumerate() {
-                                        let sub_ctx = &self.core.engine.simplifier.context;
-                                        let (sub_lhs, sub_rhs) = (
-                                            DisplayExpr {
-                                                context: sub_ctx,
-                                                id: substep.equation_after.lhs,
-                                            }
-                                            .to_string(),
-                                            DisplayExpr {
-                                                context: sub_ctx,
-                                                id: substep.equation_after.rhs,
-                                            }
-                                            .to_string(),
-                                        );
-                                        lines.push(format!(
-                                            "      {}.{}. {}",
-                                            i + 1,
-                                            j + 1,
-                                            substep.description
-                                        ));
-                                        lines.push(format!(
-                                            "          -> {} {} {}",
-                                            sub_lhs, substep.equation_after.op, sub_rhs
-                                        ));
-                                    }
-                                }
-                            }
+                            lines.extend(cas_solver::format_solve_steps_lines(
+                                &self.core.engine.simplifier.context,
+                                &output.solve_steps,
+                                &output.output_scopes,
+                                verbosity == Verbosity::Verbose,
+                            ));
                         }
 
                         match output.result {
@@ -762,7 +260,7 @@ impl Repl {
                                 let ctx = &self.core.engine.simplifier.context;
                                 lines.push(format!(
                                     "Result: {}",
-                                    display_solution_set(ctx, solution_set)
+                                    cas_solver::display_solution_set(ctx, solution_set)
                                 ));
                             }
                             EvalResult::Set(ref sols) => {
@@ -798,34 +296,18 @@ impl Repl {
                             _ => output.resolved,
                         };
                         let display_level = self.core.state.options().requires_display;
-                        let requires_to_show = {
-                            let ctx = &self.core.engine.simplifier.context;
-                            output.diagnostics.filter_requires_for_display(
-                                ctx,
-                                result_expr_id,
-                                display_level,
-                            )
-                        };
+                        let requires_lines = cas_solver::format_diagnostics_requires_lines(
+                            &mut self.core.engine.simplifier.context,
+                            &output.diagnostics,
+                            Some(result_expr_id),
+                            display_level,
+                            self.core.debug_mode,
+                        );
 
-                        if !requires_to_show.is_empty() {
+                        if !requires_lines.is_empty() {
                             lines.push("ℹ️ Requires:".to_string());
-                            // Batch normalize and apply dominance rules
-                            let conditions: Vec<_> = requires_to_show
-                                .iter()
-                                .map(|item| item.cond.clone())
-                                .collect();
-                            let ctx_mut = &mut self.core.engine.simplifier.context;
-                            let normalized_conditions =
-                                cas_solver::normalize_and_dedupe_conditions(ctx_mut, &conditions);
-                            for cond in &normalized_conditions {
-                                if self.core.debug_mode {
-                                    lines.push(format!(
-                                        "  • {} (normalized)",
-                                        cond.display(ctx_mut)
-                                    ));
-                                } else {
-                                    lines.push(format!("  • {}", cond.display(ctx_mut)));
-                                }
+                            for line in requires_lines {
+                                lines.push(line);
                             }
                         }
 
@@ -838,72 +320,18 @@ impl Repl {
                         if check_enabled {
                             if let EvalResult::SolutionSet(ref solution_set) = output.result {
                                 if let Some(ref eq) = original_equation {
-                                    use cas_solver::{
-                                        verify_solution_set, VerifyStatus, VerifySummary,
-                                    };
-
-                                    let verify_result = verify_solution_set(
+                                    let verify_result = cas_solver::verify_solution_set(
                                         &mut self.core.engine.simplifier,
                                         eq,
                                         &var,
                                         solution_set,
                                     );
-
-                                    // Display verification status
-                                    match verify_result.summary {
-                                        VerifySummary::AllVerified => {
-                                            lines.push("✓ All solutions verified".to_string());
-                                        }
-                                        VerifySummary::PartiallyVerified => {
-                                            lines.push("⚠ Some solutions verified".to_string());
-                                            for (sol_id, status) in &verify_result.solutions {
-                                                let sol_str = DisplayExpr {
-                                                    context: &self.core.engine.simplifier.context,
-                                                    id: *sol_id,
-                                                }
-                                                .to_string();
-                                                match status {
-                                                    VerifyStatus::Verified => {
-                                                        lines.push(format!(
-                                                            "  ✓ {} = {} verified",
-                                                            var, sol_str
-                                                        ));
-                                                    }
-                                                    VerifyStatus::Unverifiable {
-                                                        reason, ..
-                                                    } => {
-                                                        lines.push(format!(
-                                                            "  ⚠ {} = {}: {}",
-                                                            var, sol_str, reason
-                                                        ));
-                                                    }
-                                                    VerifyStatus::NotCheckable { reason } => {
-                                                        lines.push(format!(
-                                                            "  ℹ {} = {}: {}",
-                                                            var, sol_str, reason
-                                                        ));
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        VerifySummary::NoneVerified => {
-                                            lines.push(
-                                                "⚠ No solutions could be verified".to_string(),
-                                            );
-                                        }
-                                        VerifySummary::NotCheckable => {
-                                            if let Some(desc) = verify_result.guard_description {
-                                                lines.push(format!("ℹ {}", desc));
-                                            } else {
-                                                lines.push(
-                                                    "ℹ Solution type not checkable".to_string(),
-                                                );
-                                            }
-                                        }
-                                        VerifySummary::Empty => {
-                                            // Empty set - nothing to verify
-                                        }
-                                    }
+                                    lines.extend(cas_solver::format_verify_summary_lines(
+                                        &self.core.engine.simplifier.context,
+                                        &var,
+                                        &verify_result,
+                                        "  ",
+                                    ));
                                 }
                             }
                         }
@@ -911,126 +339,77 @@ impl Repl {
                         // V2.1 Issue #3: Explain mode - structured summary for solve
                         // Collect blocked hints for debug output
                         let hints = cas_solver::take_blocked_hints();
-                        let has_assumptions = !output.solver_assumptions.is_empty();
+                        let has_assumptions = !solver_assumption_records.is_empty();
                         let has_blocked = !hints.is_empty();
 
                         if self.core.debug_mode && (has_assumptions || has_blocked) {
                             lines.push(String::new()); // Separator line
                             let ctx = &self.core.engine.simplifier.context;
+                            let domain_mode =
+                                self.core.state.options().shared.semantics.domain_mode;
 
                             // Block 1: Assumptions used
                             if has_assumptions {
-                                lines.push("ℹ️ Assumptions used:".to_string());
-                                // Dedup and stable order by (kind, expr)
-                                let mut assumption_items: Vec<_> = output
-                                    .solver_assumptions
-                                    .iter()
-                                    .map(|a| {
-                                        let cond_str = match a.kind.as_str() {
-                                            "Positive" => format!("{} > 0", a.expr),
-                                            "NonZero" => format!("{} ≠ 0", a.expr),
-                                            "NonNegative" => format!("{} ≥ 0", a.expr),
-                                            _ => format!("{} ({})", a.expr, a.kind),
-                                        };
-                                        cond_str
-                                    })
-                                    .collect();
-                                // Stable sort and dedup
-                                assumption_items.sort();
-                                assumption_items.dedup();
-                                for cond in assumption_items {
-                                    lines.push(format!("  - {}", cond));
+                                for line in cas_solver::format_assumption_records_section_lines(
+                                    &solver_assumption_records,
+                                    "ℹ️ Assumptions used:",
+                                    "  - ",
+                                ) {
+                                    lines.push(line);
                                 }
                             }
 
                             // Block 2: Blocked simplifications
                             if has_blocked {
-                                lines.push("ℹ️ Blocked simplifications:".to_string());
-                                // Helper to format condition with expression
-                                let format_condition = |hint: &cas_solver::BlockedHint| -> String {
-                                    let expr_str = cas_formatter::DisplayExpr {
-                                        context: ctx,
-                                        id: hint.expr_id,
-                                    }
-                                    .to_string();
-                                    match hint.key.kind() {
-                                        "positive" => format!("{} > 0", expr_str),
-                                        "nonzero" => format!("{} ≠ 0", expr_str),
-                                        "nonnegative" => format!("{} ≥ 0", expr_str),
-                                        _ => format!("{} ({})", expr_str, hint.key.kind()),
-                                    }
-                                };
-
-                                // Dedup by (condition, rule)
-                                let mut blocked_items: Vec<_> = hints
-                                    .iter()
-                                    .map(|h| (format_condition(h), h.rule.to_string()))
-                                    .collect();
-                                blocked_items.sort();
-                                blocked_items.dedup();
-                                for (cond, rule) in blocked_items {
-                                    lines.push(format!("  - requires {}  [{}]", cond, rule));
+                                for line in cas_solver::format_blocked_simplifications_section_lines(
+                                    ctx,
+                                    &hints,
+                                    domain_mode,
+                                ) {
+                                    lines.push(line);
                                 }
-
-                                // Contextual suggestion
-                                let suggestion =
-                                    match self.core.state.options().shared.semantics.domain_mode {
-                                        cas_solver::DomainMode::Strict => {
-                                            "tip: use `domain generic` or `domain assume` to allow"
-                                        }
-                                        cas_solver::DomainMode::Generic => {
-                                            "tip: use `semantics set domain assume` to allow"
-                                        }
-                                        cas_solver::DomainMode::Assume => {
-                                            "tip: assumptions already enabled"
-                                        }
-                                    };
-                                lines.push(format!("  {}", suggestion));
                             }
                         } else if has_blocked && self.core.state.options().hints_enabled {
                             // Legacy: show blocked hints even without debug_mode if hints_enabled
                             let ctx = &self.core.engine.simplifier.context;
-                            let format_condition = |hint: &cas_solver::BlockedHint| -> String {
-                                let expr_str = cas_formatter::DisplayExpr {
-                                    context: ctx,
-                                    id: hint.expr_id,
-                                }
-                                .to_string();
-                                match hint.key.kind() {
-                                    "positive" => format!("{} > 0", expr_str),
-                                    "nonzero" => format!("{} ≠ 0", expr_str),
-                                    "nonnegative" => format!("{} ≥ 0", expr_str),
-                                    _ => format!("{} ({})", expr_str, hint.key.kind()),
-                                }
-                            };
-
-                            let suggestion =
-                                match self.core.state.options().shared.semantics.domain_mode {
-                                    cas_solver::DomainMode::Strict => {
-                                        "use `domain generic` or `domain assume` to allow"
-                                    }
-                                    cas_solver::DomainMode::Generic => {
-                                        "use `semantics set domain assume` to allow"
-                                    }
-                                    cas_solver::DomainMode::Assume => "assumptions already enabled",
-                                };
+                            let domain_mode =
+                                self.core.state.options().shared.semantics.domain_mode;
 
                             lines.push(String::new());
-                            lines.push("ℹ️ Blocked simplifications:".to_string());
-                            for hint in &hints {
-                                lines.push(format!(
-                                    "  - requires {} [{}]",
-                                    format_condition(hint),
-                                    hint.rule
-                                ));
+                            for line in cas_solver::format_blocked_simplifications_section_lines(
+                                ctx,
+                                &hints,
+                                domain_mode,
+                            ) {
+                                lines.push(line);
                             }
-                            lines.push(format!("  tip: {}", suggestion));
                         }
                     }
                     Err(e) => lines.push(format!("Error: {}", e)),
                 }
             }
-            Err(e) => lines.push(format!("Parse error: {}", e)),
+            Err(cas_solver::SolvePrepareError::ParseError(e)) => {
+                lines.push(format!("Parse error: {}", e))
+            }
+            Err(cas_solver::SolvePrepareError::NoVariable) => {
+                lines.push(
+                    "Error: solve() found no variable to solve for.\n\
+                     Use solve(expr, x) to specify the variable."
+                        .to_string(),
+                );
+            }
+            Err(cas_solver::SolvePrepareError::AmbiguousVariables(vars)) => {
+                lines.push(format!(
+                    "Error: solve() found ambiguous variables {{{}}}.\n\
+                     Use solve(expr, {}) or solve(expr, {{{}}}).",
+                    vars.join(", "),
+                    vars.first().unwrap_or(&"x".to_string()),
+                    vars.join(", ")
+                ));
+            }
+            Err(cas_solver::SolvePrepareError::ExpectedEquation) => {
+                lines.push("Parse error: expected equation".to_string());
+            }
         }
 
         reply_output(lines.join("\n"))

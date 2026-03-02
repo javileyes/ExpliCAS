@@ -210,19 +210,12 @@ impl Repl {
             != cas_solver::AssumptionReporting::Off
             && !stats.assumptions.is_empty()
         {
-            // Build summary line
-            let items: Vec<String> = stats
-                .assumptions
-                .iter()
-                .map(|r| {
-                    if r.count > 1 {
-                        format!("{}({}) (×{})", r.kind, r.expr, r.count)
-                    } else {
-                        format!("{}({})", r.kind, r.expr)
-                    }
-                })
-                .collect();
-            self.print_reply(reply_output(format!("⚠ Assumptions: {}", items.join(", "))));
+            let assumption_records = cas_solver::assumption_records_from_engine(&stats.assumptions);
+            if let Some(summary) =
+                cas_solver::format_assumption_records_summary(&assumption_records)
+            {
+                self.print_reply(reply_output(format!("⚠ Assumptions: {}", summary)));
+            }
         }
 
         (result, steps)

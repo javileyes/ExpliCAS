@@ -83,8 +83,8 @@ pub use const_fold::{fold_constants, ConstFoldMode, ConstFoldResult};
 pub use cycle_events::{CycleEvent, CycleLevel};
 pub use diagnostics::{Diagnostics, RequireOrigin, RequiredItem};
 pub use domain::{
-    can_apply_analytic, can_cancel_factor, take_blocked_hints, BlockedHint, CancelDecision,
-    DomainMode, Proof,
+    can_apply_analytic, can_cancel_factor, clear_blocked_hints, register_blocked_hint,
+    take_blocked_hints, BlockedHint, CancelDecision, DomainMode, Proof,
 };
 pub use domain_facts::{
     decide, decide_by_class, mode_allows_predicate, predicate_condition_class, proof_to_strength,
@@ -130,6 +130,11 @@ pub use semantics::{
     AssumeScope, BranchPolicy, EvalConfig, InverseTrigPolicy, NormalFormGoal, ValueDomain,
 };
 pub use solve_safety::{RequirementDescriptor, SimplifyPurpose, SolveSafety};
+pub use solver::{
+    contains_var, solve, solve_with_display_steps, verify_solution, verify_solution_set,
+    verify_stats, DisplaySolveSteps, SolveCtx, SolveDiagnostics, SolveStep, SolveSubStep,
+    SolverOptions, VerifyResult, VerifyStatus, VerifySummary,
+};
 pub use step::{
     pathsteps_to_expr_path, DisplayEvalSteps, ImportanceLevel, PathStep, Step, StepCategory,
 };

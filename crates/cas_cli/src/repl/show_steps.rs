@@ -302,15 +302,10 @@ impl Repl {
                                 ))
                             ));
 
-                            for event in step.assumption_events() {
-                                if event.kind.should_display() {
-                                    buf.line(format!(
-                                        "   {} {}: {}",
-                                        event.kind.icon(),
-                                        event.kind.label(),
-                                        event.message
-                                    ));
-                                }
+                            for assumption_line in cas_solver::format_displayable_assumption_lines(
+                                step.assumption_events(),
+                            ) {
+                                buf.line(format!("   {}", assumption_line));
                             }
                         }
                     }

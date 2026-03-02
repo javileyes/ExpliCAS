@@ -7,6 +7,7 @@ license.workspace = true
 authors.workspace = true
 
 [dependencies]
+cas_api_models = { path = "../cas_api_models" }
 cas_solver = { path = "../cas_solver", default-features = false }
 cas_ast = { path = "../cas_ast" }
 cas_formatter = { path = "../cas_formatter" }

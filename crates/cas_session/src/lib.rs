@@ -2,11 +2,16 @@
 
 use cas_engine::{Diagnostics, RequireOrigin, RequiredItem};
 
+mod assignment;
 mod cache;
 pub mod env;
 mod snapshot;
 mod state;
 
+pub use assignment::{
+    apply_assignment, parse_let_assignment_input, AssignmentError, LetAssignmentParseError,
+    ParsedLetAssignment,
+};
 pub use cache::{CacheDomainMode, SimplifiedCache, SimplifyCacheKey};
 pub type CacheHitEntryId = u64;
 
