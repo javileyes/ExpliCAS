@@ -66,24 +66,6 @@ impl SolverOptions {
 pub(crate) type SolveDomainEnv =
     cas_solver_core::domain_env::SolveDomainEnv<crate::implicit_domain::ImplicitDomain>;
 
-impl cas_solver_core::domain_env::RequiredDomainSet for crate::implicit_domain::ImplicitDomain {
-    fn contains_positive(&self, expr: cas_ast::ExprId) -> bool {
-        crate::implicit_domain::ImplicitDomain::contains_positive(self, expr)
-    }
-
-    fn contains_nonnegative(&self, expr: cas_ast::ExprId) -> bool {
-        crate::implicit_domain::ImplicitDomain::contains_nonnegative(self, expr)
-    }
-
-    fn contains_nonzero(&self, expr: cas_ast::ExprId) -> bool {
-        crate::implicit_domain::ImplicitDomain::contains_nonzero(self, expr)
-    }
-
-    fn to_condition_set(&self) -> cas_ast::ConditionSet {
-        crate::implicit_domain::ImplicitDomain::to_condition_set(self)
-    }
-}
-
 /// Solver context — threaded explicitly through the solve pipeline.
 ///
 /// Holds per-invocation state that was formerly stored in TLS,

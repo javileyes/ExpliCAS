@@ -22,15 +22,3 @@ pub fn evaluate_show_command_lines(
         },
     ))
 }
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn evaluate_show_command_lines_invalid_id_reports_error() {
-        let mut engine = cas_solver::Engine::new();
-        let mut session = crate::SessionState::new();
-        let err = super::evaluate_show_command_lines(&mut session, &mut engine, "show nope")
-            .expect_err("expected invalid id error");
-        assert!(err.contains("Invalid entry ID"));
-    }
-}

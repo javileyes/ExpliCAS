@@ -3,37 +3,75 @@
 // See arc_with_non_send_sync allows in: profile_cache.rs
 
 pub(crate) mod assumptions;
+#[cfg(test)]
+mod assumptions_tests;
 pub(crate) mod best_so_far;
+#[cfg(test)]
+mod best_so_far_tests;
 pub(crate) mod budget;
+#[cfg(test)]
+mod budget_tests;
 pub(crate) mod collect;
+#[cfg(test)]
+mod collect_tests;
 pub(crate) mod const_fold;
 pub(crate) mod cycle_detector;
+#[cfg(test)]
+mod cycle_detector_tests;
 pub(crate) mod cycle_events;
+#[cfg(test)]
+mod cycle_events_tests;
 pub(crate) mod diagnostics;
+#[cfg(test)]
+mod diagnostics_tests;
 pub(crate) mod domain;
 pub(crate) mod domain_facts;
+#[cfg(test)]
+mod domain_facts_tests;
 pub(crate) mod domain_oracle;
+#[cfg(test)]
+mod domain_oracle_tests;
+#[cfg(test)]
+mod domain_tests;
 pub(crate) mod engine;
 pub(crate) mod eval;
 pub(crate) mod eval_step_pipeline;
+#[cfg(test)]
+mod eval_step_pipeline_tests;
 pub(crate) mod expand;
+#[cfg(test)]
+mod expand_tests;
 pub(crate) mod helpers;
 pub(crate) mod implicit_domain;
 pub(crate) mod limits;
 pub(crate) mod options;
 pub(crate) mod orchestrator;
 pub(crate) mod parent_context;
+#[cfg(test)]
+mod parent_context_tests;
 pub(crate) mod phase;
+#[cfg(test)]
+mod phase_tests;
 pub(crate) mod profile_cache;
+#[cfg(test)]
+mod profile_cache_tests;
 pub(crate) mod profiler;
+#[cfg(test)]
+mod profiler_tests;
 pub(crate) mod recursion_guard;
+#[cfg(test)]
+mod recursion_guard_tests;
 pub(crate) mod rule;
 pub mod rules;
 pub(crate) mod semantics;
+#[cfg(test)]
+mod semantics_tests;
 pub(crate) mod solve_safety;
 pub(crate) mod solver;
 pub(crate) mod step;
 pub(crate) mod step_optimization;
+#[cfg(test)]
+mod step_tests;
 pub(crate) mod strategies;
 pub(crate) mod telescoping;
 
@@ -49,6 +87,8 @@ mod numeric_property_tests;
 pub mod api;
 
 pub mod error;
+#[cfg(test)]
+mod error_tests;
 #[macro_use]
 pub mod macros;
 

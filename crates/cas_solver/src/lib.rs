@@ -12,13 +12,21 @@ mod eval_output_adapters;
 mod isolation;
 mod json;
 mod linear_system;
+#[cfg(test)]
+mod linear_system_tests;
 mod path_rewrite;
+#[cfg(test)]
+mod path_rewrite_tests;
 mod pipeline_display;
+#[cfg(test)]
+mod pipeline_display_tests;
 mod solution_display;
 mod solve;
 mod solve_core;
 mod solve_safety;
 pub mod substitute;
+#[cfg(test)]
+mod substitute_tests;
 mod symbolic_transforms;
 mod telescoping;
 mod types;

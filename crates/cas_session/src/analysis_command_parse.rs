@@ -22,11 +22,3 @@ pub fn extract_visualize_command_tail(line: &str) -> &str {
         .unwrap_or(line)
         .trim()
 }
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn extract_visualize_command_tail_accepts_alias() {
-        assert_eq!(super::extract_visualize_command_tail("viz x+1"), "x+1");
-    }
-}

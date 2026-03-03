@@ -22,3 +22,30 @@ pub mod reciprocal_trig;
 pub mod trig_canonicalization;
 pub mod trig_inverse_expansion;
 pub mod trigonometry;
+
+#[cfg(test)]
+mod arithmetic_tests;
+#[cfg(test)]
+mod cancel_common_terms_tests;
+#[cfg(test)]
+mod canonicalization_tests;
+#[cfg(test)]
+mod complex_tests;
+#[cfg(test)]
+mod constants_tests;
+#[cfg(test)]
+mod functions_tests;
+#[cfg(test)]
+mod grouping_tests;
+#[cfg(test)]
+mod hyperbolic_tests;
+#[cfg(test)]
+mod infinity_tests;
+#[cfg(test)]
+mod integration_tests;
+#[cfg(test)]
+mod logarithms_tests;
+#[cfg(test)]
+mod matrix_ops_tests;
+#[cfg(test)]
+mod rational_canonicalization_tests;

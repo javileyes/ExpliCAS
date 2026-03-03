@@ -18,6 +18,8 @@ pub use values_rules::{
 // --- Angle expansion and contraction ---
 mod expansion_rules;
 pub use expansion_rules::{DoubleAngleRule, TrigSumToProductRule};
+#[cfg(test)]
+mod expansion_rules_tests;
 
 mod contraction_rules;
 pub use contraction_rules::{
@@ -69,3 +71,5 @@ pub use tan_half_angle_rules::{
 // --- Miscellaneous identity rules ---
 mod misc_rules;
 pub use misc_rules::TrigSumToProductContractionRule;
+#[cfg(test)]
+mod misc_rules_tests;

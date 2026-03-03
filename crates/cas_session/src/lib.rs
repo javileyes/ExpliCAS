@@ -3,157 +3,382 @@
 use cas_solver::{Diagnostics, RequireOrigin, RequiredItem};
 
 mod algebra_command;
+mod algebra_command_eval;
+mod algebra_command_parse;
+#[cfg(test)]
+mod algebra_command_tests;
 mod analysis_command_equiv;
 mod analysis_command_eval;
+#[cfg(test)]
+mod analysis_command_eval_tests;
 mod analysis_command_explain;
 mod analysis_command_format;
 mod analysis_command_format_equivalence;
 mod analysis_command_format_errors;
 mod analysis_command_format_explain;
+#[cfg(test)]
+mod analysis_command_format_tests;
 mod analysis_command_parse;
+#[cfg(test)]
+mod analysis_command_parse_tests;
 mod analysis_command_types;
 mod analysis_command_visualize;
 mod analysis_input_parse;
+#[cfg(test)]
+mod analysis_input_parse_tests;
 mod assignment;
 mod assignment_command;
+mod assignment_eval;
+mod assignment_format;
+mod assignment_parse;
+#[cfg(test)]
+mod assignment_tests;
+mod assignment_types;
 mod assumption_format;
+mod assumption_format_assumed;
+mod assumption_format_blocked;
+mod assumption_format_blocked_eval;
+mod assumption_format_blocked_solve;
+mod assumption_format_blocked_support;
+mod assumption_format_requires;
 mod autoexpand_command;
+mod autoexpand_command_eval;
+mod autoexpand_command_format;
+mod autoexpand_command_parse;
+#[cfg(test)]
+mod autoexpand_command_tests;
+mod autoexpand_command_types;
 mod bindings;
+mod bindings_eval;
+mod bindings_format;
+#[cfg(test)]
+mod bindings_tests;
+mod bindings_types;
 mod cache;
+#[cfg(test)]
+mod cache_tests;
 mod commands;
+#[cfg(test)]
+mod commands_tests;
 mod config;
 mod config_command;
+mod config_command_eval;
+mod config_command_parse;
+#[cfg(test)]
+mod config_command_tests;
+mod config_command_types;
+#[cfg(test)]
+mod config_tests;
 mod context_command;
+mod context_command_eval;
+mod context_command_format;
+mod context_command_parse;
+#[cfg(test)]
+mod context_command_tests;
+mod context_command_types;
 pub mod env;
 mod envelope_json_command;
+mod envelope_json_command_runtime;
+mod envelope_json_command_support;
+#[cfg(test)]
+mod envelope_json_command_tests;
 mod eval_command;
 mod eval_command_eval;
 mod eval_command_format;
+mod eval_command_format_metadata;
+mod eval_command_format_result;
 mod eval_command_render;
 mod eval_command_request;
+#[cfg(test)]
+mod eval_command_tests;
 mod eval_command_text;
 mod eval_command_types;
 mod eval_json_command;
+mod eval_json_command_runtime;
+#[cfg(test)]
+mod eval_json_command_tests;
 mod eval_json_finalize;
+mod eval_json_finalize_expr;
+mod eval_json_finalize_input;
+mod eval_json_finalize_nonexpr;
+mod eval_json_finalize_wire;
 mod eval_json_input;
+mod eval_json_input_special;
+#[cfg(test)]
+mod eval_json_input_tests;
+mod eval_json_input_variable;
 mod eval_json_options;
+#[cfg(test)]
+mod eval_json_options_tests;
 mod eval_json_presentation;
+mod eval_json_presentation_conditions;
+mod eval_json_presentation_solution;
+mod eval_json_presentation_solution_display;
+mod eval_json_presentation_solution_latex;
+mod eval_json_presentation_solve;
+mod eval_json_presentation_solve_input;
+mod eval_json_presentation_solve_steps;
 mod eval_json_stats;
+mod eval_json_stats_format;
+mod eval_json_stats_hash;
+mod eval_json_stats_metrics;
+#[cfg(test)]
+mod eval_json_stats_tests;
 mod eval_text_command;
 mod full_simplify_eval;
+#[cfg(test)]
+mod full_simplify_eval_tests;
 mod full_simplify_render;
+mod full_simplify_render_command;
+mod full_simplify_render_steps;
+#[cfg(test)]
+mod full_simplify_render_tests;
 mod health_command;
 mod health_command_eval;
 mod health_command_format;
 mod health_command_messages;
 mod health_command_parse;
+#[cfg(test)]
+mod health_command_tests;
 mod health_command_types;
 mod health_suite;
 mod health_suite_catalog;
+mod health_suite_catalog_core;
+mod health_suite_catalog_stress;
 mod health_suite_format;
+mod health_suite_format_catalog;
+mod health_suite_format_report;
 mod health_suite_runner;
 mod health_suite_types;
 mod history;
+mod history_eval;
+mod history_format;
 mod history_metadata_format;
+#[cfg(test)]
+mod history_metadata_format_tests;
+#[cfg(test)]
+mod history_tests;
+mod history_types;
 mod input_parse_common;
 mod inspect;
+mod inspect_eval;
+mod inspect_format;
+#[cfg(test)]
+mod inspect_tests;
+mod inspect_types;
 mod json_bridge;
 mod json_bridge_eval;
+mod json_bridge_eval_mapping;
+mod json_bridge_eval_render;
 mod json_bridge_substitute;
+mod json_bridge_substitute_eval;
+mod json_bridge_substitute_parse;
+mod json_bridge_substitute_types;
+#[cfg(test)]
+mod json_bridge_tests;
 mod limit_command;
+mod limit_command_core;
 mod limit_command_eval;
+#[cfg(test)]
+mod limit_command_eval_tests;
+mod limit_command_parse;
+#[cfg(test)]
+mod limit_command_tests;
+mod limit_command_types;
 mod limit_subcommand;
+#[cfg(test)]
+mod limit_subcommand_tests;
 mod linear_system_command;
+#[cfg(test)]
+mod linear_system_command_tests;
 mod linear_system_eval;
 mod linear_system_format;
 mod linear_system_parse;
 mod linear_system_types;
 mod options;
+mod options_budget_eval;
+mod options_budget_format;
+mod options_budget_types;
+#[cfg(test)]
+mod options_tests;
 mod output_clean;
+#[cfg(test)]
+mod output_clean_tests;
 mod parse_error_render;
+#[cfg(test)]
+mod parse_error_render_tests;
 mod profile_cache_command;
 mod profile_command;
 mod prompt_display;
+#[cfg(test)]
+mod prompt_display_tests;
 mod rationalize_command;
+mod rationalize_command_eval;
+mod rationalize_command_format;
+mod rationalize_command_parse;
+#[cfg(test)]
+mod rationalize_command_tests;
+mod rationalize_command_types;
 mod repl_command_analysis_runtime;
 mod repl_command_core_runtime;
 mod repl_command_eval_runtime;
 mod repl_command_parse;
+mod repl_command_parse_early;
+mod repl_command_parse_routing;
 mod repl_command_preprocess;
 mod repl_command_routing;
+#[cfg(test)]
+mod repl_command_routing_tests;
 mod repl_command_runtime;
+#[cfg(test)]
+mod repl_command_runtime_tests;
 mod repl_command_session_runtime;
 mod repl_command_types;
 mod repl_command_unary_runtime;
 mod repl_config_runtime;
+#[cfg(test)]
+mod repl_config_runtime_tests;
 mod repl_core;
 mod repl_runtime;
+mod repl_runtime_core;
+#[cfg(test)]
+mod repl_runtime_tests;
 mod repl_semantics_runtime;
+#[cfg(test)]
+mod repl_semantics_runtime_tests;
 mod repl_set_apply;
 mod repl_set_eval;
 mod repl_set_runtime;
+#[cfg(test)]
+mod repl_set_runtime_tests;
 mod repl_set_types;
 mod repl_steps_runtime;
+#[cfg(test)]
+mod repl_steps_runtime_tests;
 mod semantics_command;
+mod semantics_command_eval;
+mod semantics_command_parse;
+#[cfg(test)]
+mod semantics_command_tests;
+mod semantics_command_types;
 mod semantics_display;
+#[cfg(test)]
+mod semantics_display_tests;
 mod semantics_preset_apply;
 mod semantics_preset_catalog;
 mod semantics_preset_format;
 mod semantics_preset_labels;
 mod semantics_preset_types;
 mod semantics_presets;
+#[cfg(test)]
+mod semantics_presets_tests;
 mod semantics_set;
 mod semantics_set_apply;
 mod semantics_set_parse;
+mod semantics_set_parse_apply;
+mod semantics_set_parse_axis;
+#[cfg(test)]
+mod semantics_set_tests;
 mod semantics_set_types;
 mod semantics_view_format;
+mod semantics_view_format_axis;
+mod semantics_view_format_help;
+mod semantics_view_format_overview;
 mod semantics_view_types;
 mod session_io;
 mod session_state_command;
+mod session_state_command_history;
+mod session_state_command_show;
+mod session_state_command_vars;
 mod set_command;
 mod set_command_apply;
 mod set_command_eval;
 mod set_command_format;
 mod set_command_options;
+mod set_command_options_rules;
+mod set_command_options_steps;
 mod set_command_parse;
+#[cfg(test)]
+mod set_command_tests;
 mod set_command_types;
 mod show_command;
+#[cfg(test)]
+mod show_command_tests;
 mod simplifier_setup;
+mod simplifier_setup_build;
+#[cfg(test)]
+mod simplifier_setup_tests;
+mod simplifier_setup_toggle;
+mod simplifier_setup_types;
 mod snapshot;
+mod snapshot_store_convert;
+#[cfg(test)]
+mod snapshot_tests;
 mod solve_budget_command;
 mod solve_command;
 mod solve_command_eval;
 mod solve_command_format;
 mod solve_command_format_errors;
+#[cfg(test)]
+mod solve_command_format_tests;
 mod solve_command_render;
 mod solve_command_render_lines;
+mod solve_command_render_result;
+mod solve_command_render_steps;
+#[cfg(test)]
+mod solve_command_render_tests;
 mod solve_command_render_types;
+#[cfg(test)]
+mod solve_command_tests;
 mod solve_command_types;
 mod solve_command_types_solve;
 mod solve_command_types_timeline;
 mod solve_command_weierstrass;
 mod solve_input_parse;
+mod solve_input_parse_parse;
+mod solve_input_parse_prepare;
+#[cfg(test)]
+mod solve_input_parse_tests;
 mod state;
+mod state_bindings;
+mod state_core;
+mod state_eval_session;
+mod state_eval_store;
+mod state_history;
+mod state_persistence;
+mod state_resolution;
 mod steps_command;
 mod steps_command_eval;
 mod steps_command_format;
 mod steps_command_parse;
+#[cfg(test)]
+mod steps_command_tests;
 mod steps_command_types;
 mod substitute_command;
 mod substitute_command_eval;
 mod substitute_command_format;
 mod substitute_command_parse;
+#[cfg(test)]
+mod substitute_command_tests;
 mod substitute_command_types;
 mod substitute_subcommand;
 mod substitute_subcommand_eval;
 mod substitute_subcommand_json;
+#[cfg(test)]
+mod substitute_subcommand_tests;
 mod substitute_subcommand_text;
 mod substitute_subcommand_types;
 mod timeline_command;
 mod timeline_command_eval;
 mod timeline_command_simplify;
 mod timeline_command_solve;
+#[cfg(test)]
+mod timeline_command_tests;
 mod unary_command;
+mod unary_command_eval;
+mod unary_command_format;
+#[cfg(test)]
+mod unary_command_tests;
 
 pub use algebra_command::{
     evaluate_expand_log_command_lines, evaluate_expand_log_invocation_lines,

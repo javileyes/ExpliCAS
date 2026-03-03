@@ -53,30 +53,3 @@ pub fn evaluate_limit_subcommand(
         Err(error) => Err(format_limit_subcommand_error(&error)),
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::{
-        evaluate_limit_subcommand, LimitCommandApproach, LimitCommandPreSimplify,
-        LimitSubcommandOutput,
-    };
-
-    #[test]
-    fn evaluate_limit_subcommand_json_contract() {
-        let out = evaluate_limit_subcommand(
-            "1/x",
-            "x",
-            LimitCommandApproach::Infinity,
-            LimitCommandPreSimplify::Safe,
-            true,
-        )
-        .expect("limit json");
-
-        match out {
-            LimitSubcommandOutput::Json(payload) => {
-                assert!(payload.contains("\"ok\""));
-            }
-            _ => panic!("expected json output"),
-        }
-    }
-}

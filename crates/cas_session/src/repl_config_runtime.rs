@@ -17,18 +17,3 @@ pub fn evaluate_and_apply_config_command_on_repl(
     }
     applied.message
 }
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn evaluate_and_apply_config_command_on_repl_reports_status() {
-        let mut config = crate::CasConfig::default();
-        let mut core = crate::ReplCore::new();
-        let out = super::evaluate_and_apply_config_command_on_repl(
-            "config status",
-            &mut config,
-            &mut core,
-        );
-        assert!(!out.trim().is_empty());
-    }
-}

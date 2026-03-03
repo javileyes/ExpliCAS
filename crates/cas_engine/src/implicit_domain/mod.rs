@@ -304,6 +304,26 @@ impl ImplicitDomain {
     }
 }
 
+// Bridge for solver core domain adapters. Keeping this impl in implicit-domain
+// avoids coupling the trait to solver module internals.
+impl cas_solver_core::domain_env::RequiredDomainSet for ImplicitDomain {
+    fn contains_positive(&self, expr: ExprId) -> bool {
+        self.contains_positive(expr)
+    }
+
+    fn contains_nonnegative(&self, expr: ExprId) -> bool {
+        self.contains_nonnegative(expr)
+    }
+
+    fn contains_nonzero(&self, expr: ExprId) -> bool {
+        self.contains_nonzero(expr)
+    }
+
+    fn to_condition_set(&self) -> cas_ast::ConditionSet {
+        self.to_condition_set()
+    }
+}
+
 // =============================================================================
 // Adapters: ImplicitCondition ↔ ConditionPredicate
 // =============================================================================

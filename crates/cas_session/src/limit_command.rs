@@ -51,12 +51,3 @@ pub fn evaluate_limit_command_lines(line: &str) -> Result<Vec<String>, String> {
         .map_err(|error| format_limit_command_error_message(&error))?;
     Ok(format_limit_command_eval_lines(&output))
 }
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn evaluate_limit_command_lines_empty_input_returns_usage() {
-        let err = super::evaluate_limit_command_lines("limit").expect_err("expected usage");
-        assert!(err.contains("Usage: limit"));
-    }
-}

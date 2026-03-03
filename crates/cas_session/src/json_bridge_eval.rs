@@ -1,10 +1,13 @@
 //! Canonical stateless eval-json bridge for external frontends.
 
-use cas_api_models::{
-    AssumptionRecord as ApiAssumptionRecord, BudgetJsonInfo, EngineJsonError as ApiEngineJsonError,
-    EngineJsonResponse, EngineJsonStep, EngineJsonWarning, JsonRunOptions, SpanJson as ApiSpanJson,
+use crate::json_bridge_eval_mapping::{
+    map_domain_warnings_to_engine_warnings, map_solver_assumptions_to_api_records,
 };
-use cas_ast::hold::strip_all_holds;
+use crate::json_bridge_eval_render::{render_eval_result, render_eval_steps};
+use cas_api_models::{
+    BudgetJsonInfo, EngineJsonError as ApiEngineJsonError, EngineJsonResponse, JsonRunOptions,
+    SpanJson as ApiSpanJson,
+};
 
 /// Stateless canonical eval JSON entry point.
 pub fn evaluate_eval_json_canonical(expr: &str, opts_json: &str) -> String {
@@ -52,65 +55,10 @@ pub fn evaluate_eval_json_canonical(expr: &str, opts_json: &str) -> String {
     };
     let output_view = cas_solver::eval_output_view(&output);
 
-    let result = match &output_view.result {
-        cas_solver::EvalResult::Expr(expr_id) => {
-            let clean = strip_all_holds(&mut engine.simplifier.context, *expr_id);
-            format!(
-                "{}",
-                cas_formatter::DisplayExpr {
-                    context: &engine.simplifier.context,
-                    id: clean
-                }
-            )
-        }
-        cas_solver::EvalResult::Set(values) if !values.is_empty() => {
-            let clean = strip_all_holds(&mut engine.simplifier.context, values[0]);
-            format!(
-                "{}",
-                cas_formatter::DisplayExpr {
-                    context: &engine.simplifier.context,
-                    id: clean
-                }
-            )
-        }
-        cas_solver::EvalResult::Bool(flag) => flag.to_string(),
-        _ => "(no result)".to_string(),
-    };
+    let result = render_eval_result(&mut engine.simplifier.context, &output_view.result);
 
     let steps = if opts.steps {
-        output_view
-            .steps
-            .iter()
-            .map(|step| {
-                let before = step.global_before.map(|id| {
-                    let clean = strip_all_holds(&mut engine.simplifier.context, id);
-                    format!(
-                        "{}",
-                        cas_formatter::DisplayExpr {
-                            context: &engine.simplifier.context,
-                            id: clean
-                        }
-                    )
-                });
-                let after = step.global_after.map(|id| {
-                    let clean = strip_all_holds(&mut engine.simplifier.context, id);
-                    format!(
-                        "{}",
-                        cas_formatter::DisplayExpr {
-                            context: &engine.simplifier.context,
-                            id: clean
-                        }
-                    )
-                });
-                EngineJsonStep {
-                    phase: "Simplify".to_string(),
-                    rule: step.rule_name.clone(),
-                    before: before.unwrap_or_default(),
-                    after: after.unwrap_or_default(),
-                    substeps: vec![],
-                }
-            })
-            .collect()
+        render_eval_steps(&mut engine.simplifier.context, &output_view.steps)
     } else {
         vec![]
     };
@@ -119,30 +67,4 @@ pub fn evaluate_eval_json_canonical(expr: &str, opts_json: &str) -> String {
     resp.warnings = map_domain_warnings_to_engine_warnings(&output_view.domain_warnings);
     resp.assumptions = map_solver_assumptions_to_api_records(&output_view.solver_assumptions);
     resp.to_json_with_pretty(opts.pretty)
-}
-
-fn map_domain_warnings_to_engine_warnings(
-    warnings: &[cas_solver::DomainWarning],
-) -> Vec<EngineJsonWarning> {
-    warnings
-        .iter()
-        .map(|warning| EngineJsonWarning {
-            kind: "domain_assumption".to_string(),
-            message: format!("{} (rule: {})", warning.message, warning.rule_name),
-        })
-        .collect()
-}
-
-fn map_solver_assumptions_to_api_records(
-    assumptions: &[cas_solver::AssumptionRecord],
-) -> Vec<ApiAssumptionRecord> {
-    assumptions
-        .iter()
-        .map(|assumption| ApiAssumptionRecord {
-            kind: assumption.kind.clone(),
-            expr: assumption.expr.clone(),
-            message: assumption.message.clone(),
-            count: assumption.count,
-        })
-        .collect()
 }

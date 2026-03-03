@@ -34,13 +34,3 @@ pub fn format_history_eval_metadata_sections(
 
     lines
 }
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn format_history_eval_metadata_sections_returns_empty_when_no_payloads() {
-        let ctx = cas_ast::Context::new();
-        let lines = super::format_history_eval_metadata_sections(&ctx, &[], &[], &[]);
-        assert!(lines.is_empty());
-    }
-}

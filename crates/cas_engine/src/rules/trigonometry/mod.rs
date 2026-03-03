@@ -26,3 +26,10 @@ pub use pythagorean_secondary::{
     TrigEvenPowerSumRule,
 };
 pub use weierstrass::{ReverseWeierstrassRule, WeierstrassSubstitutionRule};
+
+#[cfg(test)]
+mod evaluation_tests;
+#[cfg(test)]
+mod pythagorean_tests;
+#[cfg(test)]
+mod weierstrass_tests;

@@ -1,4 +1,6 @@
 #[cfg(test)]
+mod root_denesting_tests;
+#[cfg(test)]
 mod tests;
 
 pub mod fractions;
