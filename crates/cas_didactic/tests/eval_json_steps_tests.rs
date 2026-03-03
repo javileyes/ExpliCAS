@@ -20,15 +20,18 @@ fn eval_output_for(expr: &str) -> (Engine, cas_solver::EvalOutput) {
 #[test]
 fn eval_json_steps_off_mode_is_empty() {
     let (engine, output) = eval_output_for("x + x");
-    let steps = cas_didactic::collect_eval_json_steps(&output, &engine.simplifier.context, "off");
+    let steps =
+        cas_didactic::collect_eval_json_steps(&output.steps, &engine.simplifier.context, "off");
     assert!(steps.is_empty());
 }
 
 #[test]
 fn eval_json_steps_on_mode_matches_deterministically() {
     let (engine, output) = eval_output_for("(x + 2) + (x + 3)");
-    let first = cas_didactic::collect_eval_json_steps(&output, &engine.simplifier.context, "on");
-    let second = cas_didactic::collect_eval_json_steps(&output, &engine.simplifier.context, "on");
+    let first =
+        cas_didactic::collect_eval_json_steps(&output.steps, &engine.simplifier.context, "on");
+    let second =
+        cas_didactic::collect_eval_json_steps(&output.steps, &engine.simplifier.context, "on");
     assert_eq!(first.len(), second.len());
     if let (Some(a), Some(b)) = (first.first(), second.first()) {
         assert_eq!(a.rule, b.rule);

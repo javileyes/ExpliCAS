@@ -15,9 +15,15 @@ echo "=== Substitute JSON Canonical Enforcement ==="
 
 ERRORS=0
 
-# 1) CLI must call substitute_str_to_json for JSON output
+# 1) CLI must route JSON substitute through canonical substitute_str_to_json
+#    Accepted paths:
+#    - direct call from CLI
+#    - CLI -> cas_session helper -> substitute_str_to_json
 if grep -rq "substitute_str_to_json" "$ROOT/crates/cas_cli/src"; then
-    echo "✔ CLI uses substitute_str_to_json"
+    echo "✔ CLI uses substitute_str_to_json (direct)"
+elif grep -rq "evaluate_substitute_subcommand" "$ROOT/crates/cas_cli/src" \
+    && grep -rq "substitute_str_to_json" "$ROOT/crates/cas_session/src"; then
+    echo "✔ CLI routes substitute JSON via cas_session canonical helper"
 else
     echo "✘ ERROR: CLI must call cas_engine::substitute_str_to_json for JSON output"
     ERRORS=$((ERRORS + 1))
@@ -43,7 +49,7 @@ fi
 if [ "$ERRORS" -gt 0 ]; then
     echo ""
     echo "FAILED: $ERRORS error(s) found"
-    echo "Substitute JSON must use cas_engine::substitute_str_to_json"
+    echo "Substitute JSON must use canonical substitute_str_to_json path"
     exit 1
 fi
 

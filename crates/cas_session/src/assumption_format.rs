@@ -2,7 +2,7 @@ use cas_ast::{Context, ExprId};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 /// Render required-conditions as plain display lines using a line prefix.
-pub(crate) fn format_required_condition_lines(
+pub fn format_required_condition_lines(
     ctx: &Context,
     conditions: &[cas_solver::ImplicitCondition],
     line_prefix: &str,
@@ -16,7 +16,7 @@ pub(crate) fn format_required_condition_lines(
 /// Render domain warnings as display lines using a line prefix.
 ///
 /// When `include_rule` is true, appends `(from <rule>)`.
-pub(crate) fn format_domain_warning_lines(
+pub fn format_domain_warning_lines(
     warnings: &[cas_solver::DomainWarning],
     include_rule: bool,
     line_prefix: &str,
@@ -37,7 +37,7 @@ pub(crate) fn format_domain_warning_lines(
 }
 
 /// Render blocked hints as compact rule/suggestion lines using a line prefix.
-pub(crate) fn format_blocked_hint_lines(
+pub fn format_blocked_hint_lines(
     hints: &[cas_solver::BlockedHint],
     line_prefix: &str,
 ) -> Vec<String> {
@@ -48,7 +48,7 @@ pub(crate) fn format_blocked_hint_lines(
 }
 
 /// Render normalized required-conditions as REPL bullet lines.
-pub(crate) fn format_normalized_condition_lines(
+pub fn format_normalized_condition_lines(
     ctx: &mut Context,
     conditions: &[cas_solver::ImplicitCondition],
     debug_mode: bool,
@@ -67,7 +67,7 @@ pub(crate) fn format_normalized_condition_lines(
 }
 
 /// Render display lines for `Diagnostics::requires` after witness filtering.
-pub(crate) fn format_diagnostics_requires_lines(
+pub fn format_diagnostics_requires_lines(
     ctx: &mut Context,
     diagnostics: &cas_solver::Diagnostics,
     result_expr: Option<ExprId>,
@@ -128,14 +128,12 @@ fn condition_text(key: &cas_solver::AssumptionKey, expr_display: &str) -> String
 ///
 /// Returns `(condition_text, rule_name)` items, deduplicated by
 /// `(assumption_kind, expr_fingerprint)` to avoid cascades.
-pub(crate) fn collect_assumed_conditions_from_steps(
-    steps: &[cas_solver::Step],
-) -> Vec<(String, String)> {
+pub fn collect_assumed_conditions_from_steps(steps: &[cas_solver::Step]) -> Vec<(String, String)> {
     let mut seen = HashSet::new();
     let mut result = Vec::new();
 
     for step in steps {
-        let assumption_events = cas_solver::assumption_events_from_engine(step.assumption_events());
+        let assumption_events = cas_solver::assumption_events_from_step(step);
         for event in &assumption_events {
             let fp = dedupe_fingerprint(&event.key);
             if seen.insert(fp) {
@@ -153,7 +151,7 @@ pub(crate) fn collect_assumed_conditions_from_steps(
 /// Group `(condition, rule)` assumed-condition pairs by rule name.
 ///
 /// Conditions are sorted and deduplicated inside each rule group.
-pub(crate) fn group_assumed_conditions_by_rule(
+pub fn group_assumed_conditions_by_rule(
     conditions: &[(String, String)],
 ) -> Vec<(String, Vec<String>)> {
     let mut grouped: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
@@ -171,9 +169,7 @@ pub(crate) fn group_assumed_conditions_by_rule(
 }
 
 /// Format "assumptions used" report lines for REPL display.
-pub(crate) fn format_assumed_conditions_report_lines(
-    conditions: &[(String, String)],
-) -> Vec<String> {
+pub fn format_assumed_conditions_report_lines(conditions: &[(String, String)]) -> Vec<String> {
     if conditions.is_empty() {
         return Vec::new();
     }
@@ -263,7 +259,7 @@ fn assumption_record_condition(record: &cas_solver::AssumptionRecord) -> String 
 /// Format assumptions summary payload for REPL/UI.
 ///
 /// Returns only the right side content (without the `⚠ Assumptions:` prefix).
-pub(crate) fn format_assumption_records_summary(
+pub fn format_assumption_records_summary(
     records: &[cas_solver::AssumptionRecord],
 ) -> Option<String> {
     if records.is_empty() {
@@ -330,14 +326,14 @@ fn format_blocked_simplifications_section_lines(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SolveAssumptionSectionConfig {
+pub struct SolveAssumptionSectionConfig {
     pub debug_mode: bool,
     pub hints_enabled: bool,
     pub domain_mode: cas_solver::DomainMode,
 }
 
 /// Render optional solve assumption/blocked sections according to CLI flags.
-pub(crate) fn format_solve_assumption_and_blocked_sections(
+pub fn format_solve_assumption_and_blocked_sections(
     ctx: &Context,
     assumption_records: &[cas_solver::AssumptionRecord],
     blocked_hints: &[cas_solver::BlockedHint],
@@ -381,9 +377,7 @@ pub(crate) fn format_solve_assumption_and_blocked_sections(
 /// Format displayable assumption events into compact single-line strings.
 ///
 /// Output format: `"<icon> <label>: <message>"`.
-pub(crate) fn format_displayable_assumption_lines(
-    events: &[cas_solver::AssumptionEvent],
-) -> Vec<String> {
+pub fn format_displayable_assumption_lines(events: &[cas_solver::AssumptionEvent]) -> Vec<String> {
     events
         .iter()
         .filter_map(|event| {
@@ -406,7 +400,7 @@ pub(crate) fn format_displayable_assumption_lines(
 ///
 /// When the resolved result is `Undefined`, drops `defined` hints because
 /// they are often cycle-artifacts and not actionable.
-pub(crate) fn filter_blocked_hints_for_eval(
+pub fn filter_blocked_hints_for_eval(
     ctx: &Context,
     resolved: ExprId,
     hints: &[cas_solver::BlockedHint],
@@ -426,7 +420,7 @@ pub(crate) fn filter_blocked_hints_for_eval(
 /// Render blocked hints with eval-oriented messaging.
 ///
 /// Uses a compact single-line format when there is only one hint.
-pub(crate) fn format_eval_blocked_hints_lines(
+pub fn format_eval_blocked_hints_lines(
     ctx: &Context,
     hints: &[cas_solver::BlockedHint],
     domain_mode: cas_solver::DomainMode,

@@ -65,12 +65,6 @@ fn assumption_kind_from_engine(value: cas_engine::AssumptionKind) -> AssumptionK
     }
 }
 
-impl From<cas_engine::AssumptionKind> for AssumptionKind {
-    fn from(value: cas_engine::AssumptionKind) -> Self {
-        assumption_kind_from_engine(value)
-    }
-}
-
 /// Hashable key for assumption deduplication.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum AssumptionKey {
@@ -184,12 +178,6 @@ pub(crate) fn assumption_key_from_engine(value: cas_engine::AssumptionKey) -> As
             func,
             arg_fingerprint,
         },
-    }
-}
-
-impl From<cas_engine::AssumptionKey> for AssumptionKey {
-    fn from(value: cas_engine::AssumptionKey) -> Self {
-        assumption_key_from_engine(value)
     }
 }
 
@@ -368,12 +356,6 @@ fn assumption_event_from_engine(value: cas_engine::AssumptionEvent) -> Assumptio
     }
 }
 
-impl From<cas_engine::AssumptionEvent> for AssumptionEvent {
-    fn from(value: cas_engine::AssumptionEvent) -> Self {
-        assumption_event_from_engine(value)
-    }
-}
-
 /// Deduplicating assumption collector facade.
 #[derive(Debug, Clone, Default)]
 pub struct AssumptionCollector {
@@ -530,7 +512,7 @@ pub fn blocked_hint_suggestion(
 }
 
 /// Convert engine solver-assumption payload into solver-owned records.
-pub fn assumption_records_from_engine(
+pub(crate) fn assumption_records_from_engine(
     records: &[cas_engine::AssumptionRecord],
 ) -> Vec<crate::AssumptionRecord> {
     records
@@ -541,7 +523,7 @@ pub fn assumption_records_from_engine(
 }
 
 /// Convert engine step-assumption events into solver-owned events.
-pub fn assumption_events_from_engine(
+pub(crate) fn assumption_events_from_engine(
     events: &[cas_engine::AssumptionEvent],
 ) -> Vec<crate::AssumptionEvent> {
     events
@@ -549,6 +531,11 @@ pub fn assumption_events_from_engine(
         .cloned()
         .map(assumption_event_from_engine)
         .collect()
+}
+
+/// Convert assumption events from one step into solver-owned events.
+pub fn assumption_events_from_step(step: &crate::Step) -> Vec<crate::AssumptionEvent> {
+    assumption_events_from_engine(step.assumption_events())
 }
 
 /// Render a full blocked-simplifications section for CLI output.

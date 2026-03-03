@@ -42,7 +42,7 @@ where
         Step = crate::Step,
         Diagnostics = crate::Diagnostics,
     >,
-    F: Fn(&crate::EvalOutput, &cas_ast::Context, &str) -> Vec<StepJson>,
+    F: Fn(&[crate::Step], &cas_ast::Context, &str) -> Vec<StepJson>,
 {
     let total_start = Instant::now();
 
@@ -72,22 +72,30 @@ where
     let simplify_start = Instant::now();
     let output = engine.eval(session, req).map_err(|e| e.to_string())?;
     let simplify_us = simplify_start.elapsed().as_micros() as u64;
+    let output_view = crate::eval_output_view(&output);
 
     let input_latex = Some(crate::json::format_eval_input_latex(
         &engine.simplifier.context,
         parsed_input,
     ));
-    let steps = collect_steps(&output, &engine.simplifier.context, config.steps_mode);
+    let steps_raw = output_view.steps.as_slice();
+    let solve_steps_raw = output_view.solve_steps.as_slice();
+    let steps = collect_steps(steps_raw, &engine.simplifier.context, config.steps_mode);
     let solve_steps = crate::json::collect_solve_steps_eval_json(
-        &output,
+        solve_steps_raw,
         &engine.simplifier.context,
         config.steps_mode,
     );
-    let warnings = crate::json::collect_warnings_eval_json(&output);
-    let required_conditions =
-        crate::json::collect_required_conditions_eval_json(&output, &engine.simplifier.context);
-    let required_display =
-        crate::json::collect_required_display_eval_json(&output, &engine.simplifier.context);
+    let warnings = crate::json::collect_warnings_eval_json(&output_view.domain_warnings);
+    let required_conditions_raw = output_view.required_conditions.as_slice();
+    let required_conditions = crate::json::collect_required_conditions_eval_json(
+        required_conditions_raw,
+        &engine.simplifier.context,
+    );
+    let required_display = crate::json::collect_required_display_eval_json(
+        required_conditions_raw,
+        &engine.simplifier.context,
+    );
     let timings_us = TimingsJson {
         parse_us,
         simplify_us,
@@ -95,7 +103,7 @@ where
     };
 
     crate::json::finalize_eval_json_output(crate::json::EvalJsonFinalizeInput {
-        result: &output.result,
+        result: &output_view.result,
         ctx: &engine.simplifier.context,
         max_chars: config.max_chars,
         input: config.expr,
@@ -106,8 +114,8 @@ where
         warnings,
         required_conditions,
         required_display,
-        raw_steps_count: output.steps.len(),
-        raw_solve_steps_count: output.solve_steps.len(),
+        raw_steps_count: steps_raw.len(),
+        raw_solve_steps_count: solve_steps_raw.len(),
         budget_preset: config.budget_preset,
         strict: config.strict,
         domain: config.domain,
@@ -153,7 +161,7 @@ mod tests {
                 inv_trig: "strict",
                 assume_scope: "real",
             },
-            |_output, _context, _steps_mode| Vec::new(),
+            |_steps, _context, _steps_mode| Vec::new(),
         )
         .expect("eval-json");
 

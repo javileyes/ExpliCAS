@@ -32,7 +32,7 @@ fn blocked_hint_to_engine_owned(value: BlockedHint) -> cas_engine::BlockedHint {
 }
 
 /// Convert blocked hints from engine payloads into solver-owned models.
-pub fn blocked_hints_from_engine(hints: &[cas_engine::BlockedHint]) -> Vec<BlockedHint> {
+pub(crate) fn blocked_hints_from_engine(hints: &[cas_engine::BlockedHint]) -> Vec<BlockedHint> {
     hints
         .iter()
         .cloned()

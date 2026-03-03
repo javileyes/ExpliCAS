@@ -3,25 +3,10 @@ use super::*;
 
 impl Repl {
     pub(crate) fn handle_config_core(&mut self, line: &str) -> ReplReply {
-        match super::config_command::evaluate_config_command(line, self.config_as_solver_toggle()) {
-            super::config_command::ConfigCommandResult::ShowList { message } => {
-                reply_output(message)
-            }
-            super::config_command::ConfigCommandResult::SaveRequested => match self.config.save() {
-                Ok(_) => reply_output("Configuration saved to cas_config.toml"),
-                Err(e) => reply_output(format!("Error saving configuration: {}", e)),
-            },
-            super::config_command::ConfigCommandResult::RestoreRequested => {
-                self.config = CasConfig::restore();
-                self.sync_config_to_simplifier();
-                reply_output("Configuration restored to defaults.")
-            }
-            super::config_command::ConfigCommandResult::ApplyToggleConfig { toggles, message } => {
-                self.set_config_from_solver_toggle(toggles);
-                self.sync_config_to_simplifier();
-                reply_output(message)
-            }
-            super::config_command::ConfigCommandResult::Error { message } => reply_output(message),
-        }
+        reply_output(cas_session::evaluate_and_apply_config_command_on_repl(
+            line,
+            &mut self.config,
+            &mut self.core,
+        ))
     }
 }

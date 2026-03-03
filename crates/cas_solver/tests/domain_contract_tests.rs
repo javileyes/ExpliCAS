@@ -868,7 +868,6 @@ fn blocked_hint_exp_ln_5_no_hint() {
 ///
 /// This tests the "proven vs assumed" feature for timeline transparency.
 #[test]
-#[allow(clippy::useless_conversion)]
 fn step_tracks_assumed_nonzero_in_generic() {
     use cas_solver::{Engine, EvalAction, EvalRequest, EvalResult};
 
@@ -902,12 +901,9 @@ fn step_tracks_assumed_nonzero_in_generic() {
 
     // Check that at least one step has assumption_events with NonZero(x)
     let has_nonzero_assumption = output.steps.iter().any(|step| {
-        step.assumption_events().iter().any(|event| {
-            matches!(
-                cas_solver::AssumptionKey::from(event.key.clone()),
-                cas_solver::AssumptionKey::NonZero { .. }
-            )
-        })
+        step.assumption_events()
+            .iter()
+            .any(|event| matches!(event.key, cas_engine::AssumptionKey::NonZero { .. }))
     });
 
     assert!(
@@ -1037,7 +1033,6 @@ fn sqrt_conjugate_collapse_blocked_in_generic() {
 
 /// CONTRACT: In Assume mode, sqrt conjugate product CAN collapse with assumption recorded
 #[test]
-#[allow(clippy::useless_conversion)]
 fn sqrt_conjugate_collapse_allowed_in_assume() {
     use cas_solver::{Engine, EvalAction, EvalRequest};
 
@@ -1073,12 +1068,9 @@ fn sqrt_conjugate_collapse_allowed_in_assume() {
     // The key is that if it DOES collapse, there should be a NonNegative assumption
 
     let has_nonnegative_assumption = output.steps.iter().any(|step| {
-        step.assumption_events().iter().any(|event| {
-            matches!(
-                cas_solver::AssumptionKey::from(event.key.clone()),
-                cas_solver::AssumptionKey::NonNegative { .. }
-            )
-        })
+        step.assumption_events()
+            .iter()
+            .any(|event| matches!(event.key, cas_engine::AssumptionKey::NonNegative { .. }))
     });
 
     // If the expression was collapsed, we should see NonNegative assumption

@@ -1,21 +1,16 @@
 use cas_api_models::{StepJson, SubStepJson};
 use cas_ast::Context;
-use cas_solver::{pathsteps_to_expr_path, EvalOutput, ImportanceLevel};
+use cas_solver::{pathsteps_to_expr_path, ImportanceLevel, Step};
 
 /// Convert engine steps to eval-json step payloads.
 ///
 /// Keeps JSON step formatting behavior consistent with timeline rendering.
-pub fn collect_eval_json_steps(
-    output: &EvalOutput,
-    ctx: &Context,
-    steps_mode: &str,
-) -> Vec<StepJson> {
+pub fn collect_eval_json_steps(steps: &[Step], ctx: &Context, steps_mode: &str) -> Vec<StepJson> {
     if steps_mode != "on" {
         return vec![];
     }
 
-    let filtered: Vec<_> = output
-        .steps
+    let filtered: Vec<_> = steps
         .iter()
         .filter(|step| step.get_importance() >= ImportanceLevel::Medium)
         .cloned()

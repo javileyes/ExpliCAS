@@ -4,14 +4,12 @@
 
 use std::path::PathBuf;
 
-use anyhow::Result;
 use clap::Args;
 
 use crate::{
     AssumeScopeArg, BranchArg, BudgetPreset, ConstFoldArg, DomainArg, EvalArgs, EvalJsonLegacyArgs,
     InvTrigArg, ValueDomainArg,
 };
-use cas_api_models::EvalJsonOutput;
 
 /// Arguments for eval-json subcommand
 #[derive(Args, Debug)]
@@ -187,47 +185,18 @@ pub fn run(args: EvalJsonArgs) {
         std::env::set_var("RAYON_NUM_THREADS", n.to_string());
     }
 
-    match run_inner(&args) {
-        Ok(output) => {
-            println!("{}", output.to_json_pretty());
-        }
-        Err(e) => {
-            let err_str = e.to_string();
-            let err_output = build_eval_json_error_output(&err_str, &args.expr);
-            println!("{}", err_output.to_json_pretty());
-        }
-    }
-}
-
-fn build_eval_json_error_output(error: &str, input: &str) -> cas_api_models::ErrorJsonOutput {
-    if error.starts_with("Parse error:") {
-        cas_api_models::ErrorJsonOutput::parse_error(error, Some(input.to_string()))
-    } else {
-        cas_api_models::ErrorJsonOutput::with_input(error, input)
-    }
-}
-
-fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
-    let (output, _, _) = cas_session::run_with_domain_session(
+    let output = cas_session::evaluate_eval_json_command_pretty_with_session(
         args.session.as_deref(),
-        &args.domain,
-        |engine, state| {
-            cas_solver::json::evaluate_eval_json_with_session(
-                engine,
-                state,
-                eval_json_command_config(args),
-                |eval_output, context, steps_mode| {
-                    cas_didactic::collect_eval_json_steps(eval_output, context, steps_mode)
-                },
-            )
+        eval_json_command_config(&args),
+        |steps, context, steps_mode| {
+            cas_didactic::collect_eval_json_steps(steps, context, steps_mode)
         },
     );
-
-    output.map_err(anyhow::Error::msg)
+    println!("{}", output);
 }
 
-fn eval_json_command_config(args: &EvalJsonArgs) -> cas_solver::json::EvalJsonSessionRunConfig<'_> {
-    cas_solver::json::EvalJsonSessionRunConfig {
+fn eval_json_command_config(args: &EvalJsonArgs) -> cas_session::EvalJsonCommandConfig<'_> {
+    cas_session::EvalJsonCommandConfig {
         expr: &args.expr,
         auto_store: args.session.is_some(),
         max_chars: args.max_chars,

@@ -1,16 +1,11 @@
-//! Core REPL logic without I/O.
+//! REPL core state owned by session/application layer.
 //!
-//! ReplCore contains the pure computational logic of the REPL,
-//! returning structured messages instead of printing directly.
+//! `cas_cli` uses this type as a thin UI shell over session + solver orchestration.
 
-use cas_session::SessionState;
+use crate::SessionState;
 use cas_solver::{Engine, PipelineStats, Simplifier, SimplifyOptions};
 
-/// Core REPL logic - pure computation without I/O.
-///
-/// This struct handles the computational aspects of the REPL,
-/// returning `ReplReply` messages instead of printing directly.
-/// The outer `Repl` handles actual I/O.
+/// Core REPL state without terminal I/O concerns.
 pub struct ReplCore {
     /// The high-level Engine instance (wraps Simplifier)
     pub engine: Engine,
@@ -30,9 +25,6 @@ pub struct ReplCore {
 
 impl ReplCore {
     /// Create a new ReplCore with a pre-configured simplifier.
-    ///
-    /// Note: The simplifier should be configured by the caller (Repl::new)
-    /// since rule configuration depends on CasConfig which is UI-level.
     pub fn with_simplifier(simplifier: Simplifier) -> Self {
         Self {
             engine: Engine::with_simplifier(simplifier),
@@ -45,7 +37,7 @@ impl ReplCore {
         }
     }
 
-    /// Create with default rules (for testing or simple use)
+    /// Create with default rules (for testing or simple use).
     pub fn new() -> Self {
         let simplifier = Simplifier::with_default_rules();
         Self::with_simplifier(simplifier)

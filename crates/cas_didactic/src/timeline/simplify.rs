@@ -1138,8 +1138,7 @@ impl<'a> TimelineHtml<'a> {
             };
 
             // V2.12.13: Build assumption HTML from assumption_events, filtered and grouped by kind
-            let assumption_events =
-                cas_solver::assumption_events_from_engine(step.assumption_events());
+            let assumption_events = cas_solver::assumption_events_from_step(step);
             let domain_html = if !assumption_events.is_empty() {
                 // Filter to displayable events only
                 let displayable: Vec<_> = assumption_events

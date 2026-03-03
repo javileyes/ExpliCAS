@@ -6,38 +6,34 @@ use crate::{OutputFormat, SubstituteArgs, SubstituteModeArg};
 
 /// Run the substitute command.
 pub fn run(args: SubstituteArgs) {
-    let mode_str = match args.mode {
-        SubstituteModeArg::Exact => "exact",
-        SubstituteModeArg::Power => "power",
+    let mode = match args.mode {
+        SubstituteModeArg::Exact => cas_session::SubstituteCommandMode::Exact,
+        SubstituteModeArg::Power => cas_session::SubstituteCommandMode::Power,
     };
 
-    if matches!(args.format, OutputFormat::Json) {
-        let out = super::substitute_command::evaluate_substitute_subcommand_json(
-            &args.expr,
-            &args.target,
-            &args.replacement,
-            mode_str,
-            args.steps,
-        );
-        println!("{}", out);
-        return;
-    }
-
-    let lines = match super::substitute_command::evaluate_substitute_subcommand_text_lines_with_mode(
+    let output = match cas_session::evaluate_substitute_subcommand(
         &args.expr,
         &args.target,
         &args.replacement,
-        mode_str,
+        mode,
         args.steps,
+        matches!(args.format, OutputFormat::Json),
     ) {
-        Ok(lines) => lines,
+        Ok(output) => output,
         Err(message) => {
             eprintln!("{}", message);
             std::process::exit(1);
         }
     };
 
-    for line in lines {
-        println!("{}", line);
+    match output {
+        cas_session::SubstituteSubcommandOutput::Json(payload) => {
+            println!("{}", payload);
+        }
+        cas_session::SubstituteSubcommandOutput::TextLines(lines) => {
+            for line in lines {
+                println!("{}", line);
+            }
+        }
     }
 }

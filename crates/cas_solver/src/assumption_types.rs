@@ -20,9 +20,3 @@ pub(crate) fn assumption_record_from_engine(
         count: value.count,
     }
 }
-
-impl From<cas_engine::AssumptionRecord> for AssumptionRecord {
-    fn from(value: cas_engine::AssumptionRecord) -> Self {
-        assumption_record_from_engine(value)
-    }
-}

@@ -1,6 +1,6 @@
 use cas_api_models::{
-    wire::build_eval_wire_reply, EvalJsonOutput, ExprStatsJson, RequiredConditionJson,
-    SolveStepJson, StepJson, TimingsJson, WarningJson, SCHEMA_VERSION,
+    wire::build_eval_wire_reply, ErrorJsonOutput, EvalJsonOutput, ExprStatsJson,
+    RequiredConditionJson, SolveStepJson, StepJson, TimingsJson, WarningJson, SCHEMA_VERSION,
 };
 use cas_ast::{Context, Expr, ExprId};
 use cas_formatter::{DisplayExpr, LaTeXExpr};
@@ -108,6 +108,15 @@ pub fn build_eval_json_output(parts: EvalJsonOutputBuild<'_>) -> EvalJsonOutput 
             parts.assume_scope,
         ),
         wire: parts.wire,
+    }
+}
+
+/// Build canonical eval-json error payload from an error message and input.
+pub fn build_eval_json_error_output(error: &str, input: &str) -> ErrorJsonOutput {
+    if error.starts_with("Parse error:") {
+        ErrorJsonOutput::parse_error(error, Some(input.to_string()))
+    } else {
+        ErrorJsonOutput::with_input(error, input)
     }
 }
 
@@ -633,6 +642,20 @@ fn hash_expr_recursive<H: std::hash::Hasher>(ctx: &Context, expr: ExprId, hasher
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn build_eval_json_error_output_maps_parse_errors() {
+        let out = build_eval_json_error_output("Parse error: bad token", "x+");
+        assert_eq!(out.kind, "ParseError");
+        assert_eq!(out.code, "E_PARSE");
+    }
+
+    #[test]
+    fn build_eval_json_error_output_maps_generic_errors() {
+        let out = build_eval_json_error_output("boom", "x+1");
+        assert_eq!(out.kind, "InternalError");
+        assert_eq!(out.code, "E_INTERNAL");
+    }
 
     #[test]
     fn format_expr_limited_eval_json_no_truncate() {

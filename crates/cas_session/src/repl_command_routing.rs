@@ -18,6 +18,21 @@ pub fn preprocess_repl_function_syntax(line: &str) -> String {
     line.to_string()
 }
 
+/// Split a raw REPL line into executable statements.
+///
+/// Keeps `solve_system ...` as a single statement because semicolons are part
+/// of that command syntax.
+pub fn split_repl_statements(line: &str) -> Vec<&str> {
+    if line.starts_with("solve_system") {
+        return vec![line];
+    }
+
+    line.split(';')
+        .map(str::trim)
+        .filter(|stmt| !stmt.is_empty())
+        .collect()
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReplCommandInput<'a> {
     Help(&'a str),
@@ -226,7 +241,10 @@ pub fn parse_repl_command_input(line: &str) -> ReplCommandInput<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_repl_command_input, preprocess_repl_function_syntax, ReplCommandInput};
+    use super::{
+        parse_repl_command_input, preprocess_repl_function_syntax, split_repl_statements,
+        ReplCommandInput,
+    };
 
     #[test]
     fn preprocess_repl_function_syntax_maps_simplify_form() {
@@ -338,5 +356,17 @@ mod tests {
             parse_repl_command_input("x + x"),
             ReplCommandInput::Eval("x + x")
         );
+    }
+
+    #[test]
+    fn split_repl_statements_preserves_solve_system_line() {
+        let parts = split_repl_statements("solve_system x+y=3; x-y=1; x; y");
+        assert_eq!(parts, vec!["solve_system x+y=3; x-y=1; x; y"]);
+    }
+
+    #[test]
+    fn split_repl_statements_splits_regular_semicolons() {
+        let parts = split_repl_statements("let a = 1; let b = 2; a + b");
+        assert_eq!(parts, vec!["let a = 1", "let b = 2", "a + b"]);
     }
 }

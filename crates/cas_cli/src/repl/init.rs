@@ -1,91 +1,13 @@
 use super::*;
 
-/// Split a REPL line into executable statements.
-///
-/// Keeps `solve_system ...` as a single statement because semicolons are part
-/// of that command syntax.
-fn split_repl_statements(line: &str) -> Vec<&str> {
-    if line.starts_with("solve_system") {
-        return vec![line];
-    }
-
-    line.split(';')
-        .map(str::trim)
-        .filter(|stmt| !stmt.is_empty())
-        .collect()
-}
-
-fn solver_rule_config_from_cli(config: &CasConfig) -> cas_session::SimplifierRuleConfig {
-    cas_session::SimplifierRuleConfig {
-        distribute: config.distribute,
-        expand_binomials: config.expand_binomials,
-        factor_difference_squares: config.factor_difference_squares,
-        root_denesting: config.root_denesting,
-        trig_double_angle: config.trig_double_angle,
-        trig_angle_sum: config.trig_angle_sum,
-        log_split_exponents: config.log_split_exponents,
-        rationalize_denominator: config.rationalize_denominator,
-        canonicalize_trig_square: config.canonicalize_trig_square,
-        auto_factor: config.auto_factor,
-    }
-}
-
-fn solver_toggle_config_from_cli(config: &CasConfig) -> cas_session::SimplifierToggleConfig {
-    cas_session::SimplifierToggleConfig {
-        distribute: config.distribute,
-        expand_binomials: config.expand_binomials,
-        distribute_constants: config.distribute_constants,
-        factor_difference_squares: config.factor_difference_squares,
-        root_denesting: config.root_denesting,
-        trig_double_angle: config.trig_double_angle,
-        trig_angle_sum: config.trig_angle_sum,
-        log_split_exponents: config.log_split_exponents,
-        rationalize_denominator: config.rationalize_denominator,
-        canonicalize_trig_square: config.canonicalize_trig_square,
-        auto_factor: config.auto_factor,
-    }
-}
-
 impl Repl {
-    pub(crate) fn config_as_solver_toggle(&self) -> cas_session::SimplifierToggleConfig {
-        solver_toggle_config_from_cli(&self.config)
-    }
-
-    pub(crate) fn set_config_from_solver_toggle(
-        &mut self,
-        toggles: cas_session::SimplifierToggleConfig,
-    ) {
-        self.config.distribute = toggles.distribute;
-        self.config.expand_binomials = toggles.expand_binomials;
-        self.config.distribute_constants = toggles.distribute_constants;
-        self.config.factor_difference_squares = toggles.factor_difference_squares;
-        self.config.root_denesting = toggles.root_denesting;
-        self.config.trig_double_angle = toggles.trig_double_angle;
-        self.config.trig_angle_sum = toggles.trig_angle_sum;
-        self.config.log_split_exponents = toggles.log_split_exponents;
-        self.config.rationalize_denominator = toggles.rationalize_denominator;
-        self.config.canonicalize_trig_square = toggles.canonicalize_trig_square;
-        self.config.auto_factor = toggles.auto_factor;
-    }
-
     pub fn new() -> Self {
         let config = CasConfig::load();
-        let simplifier =
-            cas_session::build_simplifier_with_rule_config(solver_rule_config_from_cli(&config));
-
-        let mut repl = Self {
-            core: ReplCore::with_simplifier(simplifier),
+        Self {
+            core: cas_session::build_repl_core_with_config(&config),
             verbosity: Verbosity::Normal,
             config,
-        };
-        repl.sync_config_to_simplifier();
-        repl
-    }
-
-    pub(crate) fn rebuild_engine_simplifier_from_config(&mut self) {
-        self.core.engine.simplifier = cas_session::build_simplifier_with_rule_config(
-            solver_rule_config_from_cli(&self.config),
-        );
+        }
     }
 
     /// Print a ReplReply to stdout/stderr.
@@ -139,15 +61,10 @@ impl Repl {
         }
     }
 
-    pub(crate) fn sync_config_to_simplifier(&mut self) {
-        let toggles = self.config_as_solver_toggle();
-        cas_session::apply_simplifier_toggle_config(&mut self.core.engine.simplifier, toggles);
-    }
-
     /// Build the REPL prompt with mode indicators.
     /// Only shows indicators for non-default modes to keep prompt clean.
     pub(crate) fn build_prompt(&self) -> String {
-        super::prompt_display::build_prompt_from_eval_options(self.core.state.options())
+        cas_session::build_repl_prompt(&self.core)
     }
 
     /// Generate startup banner messages (no I/O here)
@@ -204,7 +121,7 @@ impl Repl {
                         break;
                     }
 
-                    for statement in split_repl_statements(line) {
+                    for statement in cas_session::split_repl_statements(line) {
                         self.handle_command(statement);
                     }
                 }
@@ -234,23 +151,6 @@ impl Repl {
     ///   simplify(...) -> simplify x^2 + 1
     ///   solve(...) -> solve x + 2 = 5, x
     pub(crate) fn preprocess_function_syntax(&self, line: &str) -> String {
-        super::command_routing::preprocess_repl_function_syntax(line)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::split_repl_statements;
-
-    #[test]
-    fn split_repl_statements_preserves_solve_system_line() {
-        let parts = split_repl_statements("solve_system x+y=3; x-y=1; x; y");
-        assert_eq!(parts, vec!["solve_system x+y=3; x-y=1; x; y"]);
-    }
-
-    #[test]
-    fn split_repl_statements_splits_regular_semicolons() {
-        let parts = split_repl_statements("let a = 1; let b = 2; a + b");
-        assert_eq!(parts, vec!["let a = 1", "let b = 2", "a + b"]);
+        cas_session::preprocess_repl_function_syntax(line)
     }
 }

@@ -262,11 +262,21 @@ pub fn apply_simplifier_toggle_config(
     }
 }
 
+/// Sync an existing simplifier with toggle values from `CasConfig`.
+pub fn sync_simplifier_with_cas_config(
+    simplifier: &mut cas_solver::Simplifier,
+    config: &crate::CasConfig,
+) {
+    let toggles = crate::solver_toggle_config_from_cas_config(config);
+    apply_simplifier_toggle_config(simplifier, toggles);
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         apply_simplifier_toggle_config, build_simplifier_with_rule_config,
-        set_simplifier_toggle_rule, SimplifierRuleConfig, SimplifierToggleConfig,
+        set_simplifier_toggle_rule, sync_simplifier_with_cas_config, SimplifierRuleConfig,
+        SimplifierToggleConfig,
     };
     use cas_formatter::DisplayExpr;
 
@@ -329,5 +339,16 @@ mod tests {
         let mut cfg = SimplifierToggleConfig::default();
         let err = set_simplifier_toggle_rule(&mut cfg, "missing_rule", true).expect_err("error");
         assert!(err.contains("Unknown rule: missing_rule"));
+    }
+
+    #[test]
+    fn sync_simplifier_with_cas_config_applies_toggles() {
+        let mut simplifier = build_simplifier_with_rule_config(SimplifierRuleConfig::default());
+        let mut config = crate::CasConfig::default();
+        config.distribute = true;
+        sync_simplifier_with_cas_config(&mut simplifier, &config);
+        assert!(!simplifier
+            .get_disabled_rules_clone()
+            .contains("Distributive Property"));
     }
 }

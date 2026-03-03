@@ -2,32 +2,102 @@
 
 use cas_solver::{Diagnostics, RequireOrigin, RequiredItem};
 
+mod algebra_command;
+mod analysis_command_eval;
+mod analysis_command_format;
+mod analysis_command_parse;
 mod assignment;
+mod assumption_format;
 mod autoexpand_command;
 mod bindings;
 mod cache;
 mod commands;
 mod config;
+mod config_command;
 mod context_command;
 pub mod env;
+mod envelope_json_command;
+mod eval_command;
+mod eval_json_command;
+mod eval_text_command;
+mod full_simplify_eval;
+mod full_simplify_render;
 mod health_command;
 mod health_suite;
 mod history;
+mod history_metadata_format;
 mod inspect;
+mod limit_command;
+mod limit_subcommand;
+mod linear_system_command;
 mod options;
+mod output_clean;
+mod parse_error_render;
+mod prompt_display;
+mod rationalize_command;
+mod repl_command_routing;
+mod repl_command_runtime;
+mod repl_config_runtime;
+mod repl_core;
+mod repl_runtime;
+mod repl_semantics_runtime;
+mod repl_set_runtime;
+mod repl_steps_runtime;
 mod semantics_command;
 mod semantics_display;
 mod semantics_presets;
 mod semantics_set;
 mod session_io;
+mod set_command;
+mod show_command;
 mod simplifier_setup;
 mod snapshot;
+mod solve_command;
+mod solve_command_format;
+mod solve_command_render;
 mod state;
+mod steps_command;
+mod substitute_command;
+mod substitute_subcommand;
+mod unary_command;
 
+pub use algebra_command::{
+    evaluate_expand_log_command_lines, evaluate_expand_log_invocation_lines,
+    evaluate_expand_log_invocation_message, evaluate_expand_wrapped_expression,
+    evaluate_telescope_command_lines, evaluate_telescope_invocation_lines,
+    evaluate_telescope_invocation_message, expand_log_usage_message, expand_usage_message,
+    parse_expand_invocation_input, parse_expand_log_invocation_input,
+    parse_telescope_invocation_input, telescope_usage_message, wrap_expand_eval_expression,
+};
+pub use analysis_command_eval::{
+    evaluate_equiv_command_lines, evaluate_equiv_command_message,
+    evaluate_equiv_invocation_message, evaluate_explain_command_lines,
+    evaluate_explain_command_message, evaluate_explain_invocation_message,
+    evaluate_visualize_command_dot, evaluate_visualize_command_output,
+    evaluate_visualize_invocation_output, VisualizeCommandOutput,
+};
+pub use analysis_command_format::{
+    format_equivalence_result_lines, format_explain_command_error_message,
+    format_explain_gcd_eval_lines, format_expr_pair_parse_error_message,
+    format_timeline_command_error_message, format_visualize_command_error_message,
+};
+pub use analysis_command_parse::{
+    extract_equiv_command_tail, extract_explain_command_tail, extract_substitute_command_tail,
+    extract_timeline_command_tail, extract_visualize_command_tail,
+};
 pub use assignment::{
     apply_assignment, format_assignment_error_message, format_assignment_success_message,
     format_let_assignment_parse_error_message, let_assignment_usage_message,
     parse_let_assignment_input, AssignmentError, LetAssignmentParseError, ParsedLetAssignment,
+};
+pub use assumption_format::{
+    collect_assumed_conditions_from_steps, filter_blocked_hints_for_eval,
+    format_assumed_conditions_report_lines, format_assumption_records_summary,
+    format_blocked_hint_lines, format_diagnostics_requires_lines,
+    format_displayable_assumption_lines, format_domain_warning_lines,
+    format_eval_blocked_hints_lines, format_normalized_condition_lines,
+    format_required_condition_lines, format_solve_assumption_and_blocked_sections,
+    group_assumed_conditions_by_rule, SolveAssumptionSectionConfig,
 };
 pub use autoexpand_command::{
     apply_autoexpand_policy_to_options, autoexpand_budget_view_from_options,
@@ -48,14 +118,19 @@ pub use commands::{
     evaluate_assignment_command_message_with_simplifier, evaluate_clear_command_lines,
     evaluate_delete_history_command_message, evaluate_history_command_lines,
     evaluate_history_command_lines_with_context, evaluate_let_assignment_command,
-    evaluate_let_assignment_command_message_with_simplifier, evaluate_profile_command_input,
+    evaluate_let_assignment_command_message_with_simplifier, evaluate_profile_cache_command_lines,
+    evaluate_profile_command_input, evaluate_solve_budget_command_message,
     evaluate_vars_command_lines, evaluate_vars_command_lines_with_context,
     format_assignment_command_output_message, format_profile_cache_command_lines,
     format_show_history_command_lines, format_show_history_command_lines_with_context,
     parse_profile_command_input, AssignmentCommandOutput, ProfileCacheCommandResult,
     ProfileCommandInput, ProfileCommandResult,
 };
-pub use config::CasConfig;
+pub use config::{
+    apply_solver_toggle_to_cas_config, solver_rule_config_from_cas_config,
+    solver_toggle_config_from_cas_config, CasConfig,
+};
+pub use config_command::{evaluate_and_apply_config_command, ConfigCommandApplyOutput};
 pub use context_command::{
     apply_context_mode_to_options, evaluate_and_apply_context_command,
     evaluate_context_command_input, format_context_current_message, format_context_set_message,
@@ -84,14 +159,68 @@ pub use history::{
     history_overview_entries, parse_history_ids, DeleteHistoryError, DeleteHistoryResult,
     HistoryOverviewEntry, HistoryOverviewKind,
 };
+pub use history_metadata_format::format_history_eval_metadata_sections;
 pub use inspect::{
     format_history_entry_inspection_lines, format_inspect_history_entry_error_message,
     inspect_history_entry, inspect_history_entry_input, parse_history_entry_id,
     HistoryEntryDetails, HistoryEntryInspection, HistoryExprInspection,
     InspectHistoryEntryInputError, ParseHistoryEntryIdError,
 };
+pub use limit_command::evaluate_limit_command_lines;
+pub use limit_subcommand::{
+    evaluate_limit_subcommand, LimitCommandApproach, LimitCommandPreSimplify, LimitSubcommandOutput,
+};
+pub use linear_system_command::evaluate_linear_system_command_message;
 pub use options::{
     apply_solve_budget_command, format_solve_budget_command_message, SolveBudgetCommandResult,
+};
+pub use output_clean::clean_result_output_line;
+pub use parse_error_render::{render_error_with_caret, render_parse_error};
+pub use prompt_display::build_prompt_from_eval_options;
+pub use rationalize_command::evaluate_rationalize_command_lines;
+pub use repl_command_routing::{
+    parse_repl_command_input, preprocess_repl_function_syntax, split_repl_statements,
+    ReplCommandInput,
+};
+pub use repl_command_runtime::{
+    evaluate_assignment_command_message_on_repl_core, evaluate_clear_command_lines_on_repl_core,
+    evaluate_delete_history_command_message_on_repl_core,
+    evaluate_equiv_invocation_message_on_repl_core, evaluate_eval_command_render_plan_on_repl_core,
+    evaluate_expand_log_invocation_message_on_repl_core,
+    evaluate_explain_invocation_message_on_repl_core,
+    evaluate_full_simplify_command_lines_on_repl_core,
+    evaluate_health_command_message_on_repl_core, evaluate_history_command_message_on_repl_core,
+    evaluate_let_assignment_command_message_on_repl_core,
+    evaluate_linear_system_command_message_on_repl_core,
+    evaluate_profile_cache_command_lines_on_repl_core,
+    evaluate_rationalize_command_lines_on_repl_core, evaluate_show_command_lines_on_repl_core,
+    evaluate_solve_budget_command_message_on_repl_core,
+    evaluate_solve_command_message_on_repl_core,
+    evaluate_substitute_invocation_user_message_on_repl_core,
+    evaluate_telescope_invocation_message_on_repl_core,
+    evaluate_unary_command_message_on_repl_core, evaluate_vars_command_message_on_repl_core,
+    evaluate_visualize_invocation_output_on_repl_core,
+    evaluate_weierstrass_invocation_message_on_repl_core, profile_cache_len_on_repl_core,
+    update_health_report_on_repl_core,
+};
+pub use repl_config_runtime::evaluate_and_apply_config_command_on_repl;
+pub use repl_core::ReplCore;
+pub use repl_runtime::{
+    apply_profile_command_on_repl_core, build_repl_core_with_config, build_repl_prompt,
+    clear_repl_profile_cache, eval_options_from_repl_core, reset_repl_core_full_with_config,
+    reset_repl_core_with_config, reset_repl_runtime_state,
+};
+pub use repl_semantics_runtime::{
+    apply_autoexpand_command_on_repl_core, apply_context_command_on_repl_core,
+    apply_semantics_command_on_repl_core, evaluate_autoexpand_command_on_repl,
+    evaluate_context_command_on_repl, evaluate_semantics_command_on_repl, ReplSemanticsApplyOutput,
+};
+pub use repl_set_runtime::{apply_set_command_plan_on_repl_core, set_command_state_for_repl_core};
+pub use repl_set_runtime::{
+    evaluate_set_command_on_repl_core, ReplSetCommandOutput, ReplSetMessageKind,
+};
+pub use repl_steps_runtime::{
+    apply_steps_command_update_on_repl_core, steps_command_state_for_repl_core,
 };
 pub use semantics_command::{
     evaluate_semantics_command_line, parse_semantics_command_input, SemanticsCommandInput,
@@ -119,9 +248,45 @@ pub use semantics_set::{
 pub use session_io::{
     load_or_new_session, run_with_domain_session, run_with_session, save_session,
 };
+pub use set_command::{
+    apply_set_command_plan, evaluate_set_command_input, format_set_help_text,
+    format_set_option_value, parse_set_command_input, SetCommandApplyEffects, SetCommandInput,
+    SetCommandPlan, SetCommandResult, SetCommandState, SetDisplayMode,
+};
+pub use show_command::evaluate_show_command_lines;
 pub use simplifier_setup::{
     apply_simplifier_toggle_config, build_simplifier_with_rule_config, set_simplifier_toggle_rule,
-    SimplifierRuleConfig, SimplifierToggleConfig,
+    sync_simplifier_with_cas_config, SimplifierRuleConfig, SimplifierToggleConfig,
+};
+pub use solve_command::{evaluate_solve_command_lines, evaluate_solve_command_message};
+pub use solve_command_format::{
+    evaluate_weierstrass_command_lines, evaluate_weierstrass_invocation_lines,
+    evaluate_weierstrass_invocation_message, format_solve_command_error_message,
+    format_solve_prepare_error_message, format_verify_summary_lines,
+    parse_weierstrass_invocation_input, weierstrass_usage_message,
+};
+pub use solve_command_render::{
+    format_solve_command_eval_lines, solve_render_config_from_eval_options,
+    SolveCommandRenderConfig,
+};
+pub use steps_command::{
+    apply_steps_command_update, evaluate_steps_command_input, format_steps_current_message,
+    format_steps_unknown_mode_message, parse_steps_command_input, StepsCommandApplyEffects,
+    StepsCommandInput, StepsCommandResult, StepsCommandState, StepsDisplayMode,
+};
+pub use substitute_command::{
+    evaluate_substitute_command_lines, evaluate_substitute_invocation_lines,
+    evaluate_substitute_invocation_message, evaluate_substitute_invocation_user_message,
+    format_substitute_eval_lines, format_substitute_parse_error_message,
+    substitute_render_mode_from_display_mode, SubstituteRenderMode,
+};
+pub use substitute_subcommand::{
+    evaluate_substitute_subcommand, evaluate_substitute_subcommand_json_canonical,
+    SubstituteCommandMode, SubstituteSubcommandOutput,
+};
+pub use unary_command::{
+    evaluate_unary_command_lines, evaluate_unary_command_message,
+    evaluate_unary_function_command_lines,
 };
 pub type CacheHitEntryId = u64;
 
@@ -130,7 +295,31 @@ pub type ResolvedExpr = cas_session_core::cache::ResolvedExpr<RequiredItem>;
 pub type Entry = cas_session_core::store::Entry<Diagnostics, SimplifiedCache>;
 pub type SessionStore = cas_session_core::store::SessionStore<Diagnostics, SimplifiedCache>;
 pub use cas_session_core::types::{CacheConfig, EntryId, EntryKind, RefMode, ResolveError};
+pub use cas_solver::{
+    BranchMode, ComplexMode, ContextMode, Engine, EvalOptions, ExpandPolicy, PipelineStats,
+    SharedSemanticConfig, Simplifier, SimplifyOptions, Step, StepsMode,
+};
 pub use env::{is_reserved, substitute, substitute_with_shadow, Environment};
+pub use envelope_json_command::evaluate_envelope_json_command;
+pub use eval_command::{
+    build_eval_command_render_plan, evaluate_eval_command_output,
+    evaluate_eval_text_simplify_with_session, EvalCommandError, EvalCommandOutput,
+    EvalCommandRenderPlan, EvalDisplayMessage, EvalDisplayMessageKind, EvalMetadataLines,
+    EvalResultLine,
+};
+pub use eval_json_command::{
+    evaluate_eval_json_command_pretty_with_session, evaluate_eval_json_command_with_session,
+    EvalJsonCommandConfig,
+};
+pub use eval_text_command::evaluate_eval_text_command_with_session;
+pub use full_simplify_eval::{
+    evaluate_full_simplify_input, format_full_simplify_eval_error_message, FullSimplifyEvalError,
+    FullSimplifyEvalOutput,
+};
+pub use full_simplify_render::{
+    evaluate_full_simplify_command_lines, extract_simplify_command_tail,
+    format_full_simplify_eval_lines,
+};
 pub use snapshot::SnapshotError;
 pub use state::SessionState;
 

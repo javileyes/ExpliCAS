@@ -61,13 +61,15 @@ fn output_helpers_map_required_conditions_and_warnings() {
         EvalResult::Bool(_) | EvalResult::None => {}
     }
 
-    let required = collect_required_conditions_eval_json(&output, ctx);
-    let display = collect_required_display_eval_json(&output, ctx);
-    let warnings = collect_warnings_eval_json(&output);
+    let required_conditions = cas_solver::required_conditions_from_eval_output(&output);
+    let domain_warnings = cas_solver::domain_warnings_from_eval_output(&output);
+    let required = collect_required_conditions_eval_json(&required_conditions, ctx);
+    let display = collect_required_display_eval_json(&required_conditions, ctx);
+    let warnings = collect_warnings_eval_json(&domain_warnings);
 
-    assert_eq!(warnings.len(), output.domain_warnings.len());
-    assert_eq!(required.len(), output.required_conditions.len());
-    assert_eq!(display.len(), output.required_conditions.len());
+    assert_eq!(warnings.len(), domain_warnings.len());
+    assert_eq!(required.len(), required_conditions.len());
+    assert_eq!(display.len(), required_conditions.len());
     if let Some(first) = required.first() {
         assert!(!first.kind.is_empty());
         assert!(!first.expr_display.is_empty());

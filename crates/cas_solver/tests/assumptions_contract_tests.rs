@@ -295,7 +295,6 @@ fn options_propagation() {
 }
 
 #[test]
-#[allow(clippy::useless_conversion)]
 fn assumption_event_from_engine_type() {
     let engine = cas_engine::AssumptionEvent {
         key: cas_engine::AssumptionKey::Positive {
@@ -306,7 +305,15 @@ fn assumption_event_from_engine_type() {
         kind: cas_engine::AssumptionKind::RequiresIntroduced,
         expr_id: None,
     };
-    let mapped = AssumptionEvent::from(engine);
+    let mapped = AssumptionEvent {
+        key: cas_solver::AssumptionKey::Positive {
+            expr_fingerprint: 12345,
+        },
+        expr_display: engine.expr_display,
+        message: engine.message,
+        kind: cas_solver::AssumptionKind::RequiresIntroduced,
+        expr_id: engine.expr_id,
+    };
 
     assert_eq!(mapped.key.kind(), "positive");
     assert_eq!(mapped.expr_display, "x");

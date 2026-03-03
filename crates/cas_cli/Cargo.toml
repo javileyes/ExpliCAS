@@ -6,7 +6,7 @@ rust-version.workspace = true
 
 [features]
 default = ["parallel"]
-parallel = ["cas_solver/parallel"]
+parallel = ["cas_session/parallel"]
 
 [dependencies]
 cas_api_models = { path = "../cas_api_models" }
@@ -15,7 +15,6 @@ cas_didactic = { path = "../cas_didactic", default-features = false }
 cas_parser = { path = "../cas_parser" }
 cas_formatter = { path = "../cas_formatter" }
 cas_session = { path = "../cas_session" }
-cas_solver = { path = "../cas_solver", default-features = false }
 rustyline = "12.0"
 num-rational = "0.4"
 tracing = "0.1.43"
@@ -29,3 +28,4 @@ anyhow = "1.0"
 assert_cmd = "2.0"
 predicates = "3.0"
 num-traits = "0.2"
+cas_solver = { path = "../cas_solver", default-features = false }

@@ -5,27 +5,21 @@ impl Repl {
     pub(crate) fn handle_eval_core(&mut self, line: &str) -> ReplReply {
         let mut reply: ReplReply = vec![];
 
-        match crate::commands::eval_command::evaluate_eval_command_output(
-            &mut self.core.engine,
-            &mut self.core.state,
+        match cas_session::evaluate_eval_command_render_plan_on_repl_core(
+            &mut self.core,
             line,
-            self.core.debug_mode,
+            self.verbosity == Verbosity::None,
         ) {
-            Ok(out) => {
-                let plan = crate::commands::eval_command::build_eval_command_render_plan(
-                    out,
-                    self.verbosity == Verbosity::None,
-                );
-
+            Ok(plan) => {
                 for message in plan.pre_messages {
                     match message.kind {
-                        crate::commands::eval_command::EvalDisplayMessageKind::Output => {
+                        cas_session::EvalDisplayMessageKind::Output => {
                             reply.push(ReplMsg::output(message.text))
                         }
-                        crate::commands::eval_command::EvalDisplayMessageKind::Warn => {
+                        cas_session::EvalDisplayMessageKind::Warn => {
                             reply.push(ReplMsg::warn(message.text))
                         }
-                        crate::commands::eval_command::EvalDisplayMessageKind::Info => {
+                        cas_session::EvalDisplayMessageKind::Info => {
                             reply.push(ReplMsg::info(message.text))
                         }
                     }
@@ -51,12 +45,7 @@ impl Repl {
                     reply.push(ReplMsg::info(message.text));
                 }
             }
-            Err(crate::commands::eval_command::EvalCommandError::Parse(e)) => reply.push(
-                ReplMsg::error(super::error_render::render_parse_error(line, &e)),
-            ),
-            Err(crate::commands::eval_command::EvalCommandError::Eval(message)) => {
-                reply.push(ReplMsg::error(message))
-            }
+            Err(message) => reply.push(ReplMsg::error(message)),
         }
 
         reply

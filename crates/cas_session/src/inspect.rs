@@ -127,7 +127,8 @@ pub fn inspect_history_entry(
             };
 
             let expr_inspection = if let Ok(output) = engine.eval(state, eval_req) {
-                let simplified = match output.result {
+                let output_view = cas_solver::eval_output_view(&output);
+                let simplified = match output_view.result {
                     cas_solver::EvalResult::Expr(simplified)
                         if simplified != resolved_expr.unwrap_or(expr_id) =>
                     {
@@ -140,9 +141,9 @@ pub fn inspect_history_entry(
                     parsed: expr_id,
                     resolved: resolved_expr,
                     simplified,
-                    required_conditions: output.required_conditions,
-                    domain_warnings: output.domain_warnings,
-                    blocked_hints: cas_solver::blocked_hints_from_engine(&output.blocked_hints),
+                    required_conditions: output_view.required_conditions,
+                    domain_warnings: output_view.domain_warnings,
+                    blocked_hints: output_view.blocked_hints,
                 }
             } else {
                 let base = resolved_expr.unwrap_or(expr_id);

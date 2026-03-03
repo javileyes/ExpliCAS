@@ -1,6 +1,7 @@
 use super::mappers::{map_assumptions_used, map_blocked_hints, map_required_conditions};
 use crate::{
-    DomainMode, Engine, EvalAction, EvalOptions, EvalOutput, EvalRequest, EvalResult, ValueDomain,
+    AssumptionRecord, BlockedHint, DomainMode, DomainWarning, Engine, EvalAction, EvalOptions,
+    EvalRequest, EvalResult, ImplicitCondition, ValueDomain,
 };
 use cas_api_models::{
     EnvelopeEvalOptions, ExprDto, OutputEnvelope, RequestInfo, RequestOptions, TransparencyDto,
@@ -34,22 +35,41 @@ pub fn eval_str_to_output_envelope(expr: &str, opts: &EnvelopeEvalOptions) -> Ou
         Ok(o) => o,
         Err(e) => return OutputEnvelope::eval_error(build_request_info(expr, opts), e.to_string()),
     };
+    let output_view = crate::eval_output_view(&output);
 
-    match &output.result {
+    match &output_view.result {
         EvalResult::Expr(id) => OutputEnvelope::eval_success(
             build_request_info(expr, opts),
             ExprDto::from_display(display_expr(&engine.simplifier.context, *id)),
-            build_transparency(&output, &engine.simplifier.context),
+            build_transparency(
+                &output_view.required_conditions,
+                &output_view.solver_assumptions,
+                &output_view.domain_warnings,
+                &output_view.blocked_hints,
+                &engine.simplifier.context,
+            ),
         ),
         EvalResult::Set(v) if !v.is_empty() => OutputEnvelope::eval_success(
             build_request_info(expr, opts),
             ExprDto::from_display(display_expr(&engine.simplifier.context, v[0])),
-            build_transparency(&output, &engine.simplifier.context),
+            build_transparency(
+                &output_view.required_conditions,
+                &output_view.solver_assumptions,
+                &output_view.domain_warnings,
+                &output_view.blocked_hints,
+                &engine.simplifier.context,
+            ),
         ),
         EvalResult::Bool(b) => OutputEnvelope::eval_success(
             build_request_info(expr, opts),
             ExprDto::from_display(b.to_string()),
-            build_transparency(&output, &engine.simplifier.context),
+            build_transparency(
+                &output_view.required_conditions,
+                &output_view.solver_assumptions,
+                &output_view.domain_warnings,
+                &output_view.blocked_hints,
+                &engine.simplifier.context,
+            ),
         ),
         _ => OutputEnvelope::eval_error(build_request_info(expr, opts), "No result expression"),
     }
@@ -71,11 +91,16 @@ fn build_request_info(expr: &str, opts: &EnvelopeEvalOptions) -> RequestInfo {
     )
 }
 
-fn build_transparency(output: &EvalOutput, ctx: &cas_ast::Context) -> TransparencyDto {
-    let required_conditions = map_required_conditions(&output.required_conditions, ctx);
-    let solver_assumptions = crate::assumption_records_from_engine(&output.solver_assumptions);
-    let assumptions_used = map_assumptions_used(&solver_assumptions, &output.domain_warnings);
-    let blocked_hints = map_blocked_hints(&crate::blocked_hints_from_engine(&output.blocked_hints));
+fn build_transparency(
+    required_conditions: &[ImplicitCondition],
+    solver_assumptions: &[AssumptionRecord],
+    domain_warnings: &[DomainWarning],
+    blocked_hints: &[BlockedHint],
+    ctx: &cas_ast::Context,
+) -> TransparencyDto {
+    let required_conditions = map_required_conditions(required_conditions, ctx);
+    let assumptions_used = map_assumptions_used(solver_assumptions, domain_warnings);
+    let blocked_hints = map_blocked_hints(blocked_hints);
 
     TransparencyDto {
         required_conditions,

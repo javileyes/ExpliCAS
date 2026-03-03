@@ -21,9 +21,42 @@ pub use crate::types::{
 /// - equation/expression part
 /// - optional explicit variable
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct SolveCommandInput {
+pub struct SolveCommandInput {
     pub equation: String,
     pub variable: Option<String>,
+}
+
+/// Prepared request for a stateful `solve` eval action.
+#[derive(Debug, Clone)]
+pub struct PreparedSolveEvalRequest {
+    pub request: crate::EvalRequest,
+    pub var: String,
+    pub original_equation: Option<Equation>,
+}
+
+/// Output of evaluating a parsed `solve` command through an engine/session.
+#[derive(Debug, Clone)]
+pub struct SolveCommandEvalOutput {
+    pub var: String,
+    pub original_equation: Option<Equation>,
+    pub output: crate::EvalOutputView,
+}
+
+/// Errors from evaluating a parsed `solve` command.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SolveCommandEvalError {
+    Prepare(SolvePrepareError),
+    Eval(String),
+}
+
+/// Parsed REPL `timeline` command:
+/// - `timeline solve ...`
+/// - `timeline simplify ...` / `timeline simplify(...)`
+/// - `timeline <expr>` (default simplify, non-aggressive)
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TimelineCommandInput {
+    Solve(String),
+    Simplify { expr: String, aggressive: bool },
 }
 
 /// Result of preparing a REPL `timeline solve` input.
@@ -34,13 +67,21 @@ struct PreparedTimelineSolve {
 }
 
 /// Result of evaluating a REPL `timeline solve` command end-to-end.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TimelineSolveEvalOutput {
     pub equation: Equation,
     pub var: String,
     pub solution_set: SolutionSet,
     pub display_steps: DisplaySolveSteps,
     pub diagnostics: SolveDiagnostics,
+}
+
+/// Result of evaluating a REPL `timeline simplify` command.
+#[derive(Debug, Clone)]
+pub struct TimelineSimplifyEvalOutput {
+    pub parsed_expr: ExprId,
+    pub simplified_expr: ExprId,
+    pub steps: crate::DisplayEvalSteps,
 }
 
 /// Errors while preparing REPL solve/timeline inputs.
@@ -59,11 +100,36 @@ pub enum TimelineSolveEvalError {
     Solve(String),
 }
 
+/// Errors while evaluating REPL `timeline simplify`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TimelineSimplifyEvalError {
+    Parse(String),
+    Eval(String),
+}
+
+/// Unified output of evaluating a `timeline` command.
+#[derive(Debug, Clone)]
+pub enum TimelineCommandEvalOutput {
+    Solve(TimelineSolveEvalOutput),
+    Simplify {
+        expr_input: String,
+        aggressive: bool,
+        output: TimelineSimplifyEvalOutput,
+    },
+}
+
+/// Unified error of evaluating a `timeline` command.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TimelineCommandEvalError {
+    Solve(TimelineSolveEvalError),
+    Simplify(TimelineSimplifyEvalError),
+}
+
 /// Parse REPL `solve`/`timeline solve` argument shape:
 /// - `<equation>, <var>`
 /// - `<equation> <var>` (when unambiguous)
 /// - `<equation>` (variable inferred later)
-fn parse_solve_command_input(input: &str) -> SolveCommandInput {
+pub fn parse_solve_command_input(input: &str) -> SolveCommandInput {
     if let Some((eq, var)) = rsplit_ignoring_parens(input, ',') {
         return SolveCommandInput {
             equation: eq.trim().to_string(),
@@ -101,6 +167,106 @@ fn parse_solve_command_input(input: &str) -> SolveCommandInput {
     SolveCommandInput {
         equation: input.to_string(),
         variable: None,
+    }
+}
+
+/// Parse optional `--check` solve flag and return:
+/// - whether solution checking should run
+/// - the remaining solve argument tail
+pub fn parse_solve_invocation_check(input: &str, default_check_enabled: bool) -> (bool, &str) {
+    let trimmed = input.trim();
+    if let Some(rest) = trimmed.strip_prefix("--check") {
+        (true, rest.trim_start())
+    } else {
+        (default_check_enabled, trimmed)
+    }
+}
+
+/// Parse REPL `timeline` argument shape.
+pub fn parse_timeline_command_input(rest: &str) -> TimelineCommandInput {
+    if let Some(solve_rest) = rest.strip_prefix("solve ") {
+        return TimelineCommandInput::Solve(solve_rest.trim().to_string());
+    }
+
+    if let Some(inner) = rest
+        .strip_prefix("simplify(")
+        .and_then(|s| s.strip_suffix(')'))
+    {
+        return TimelineCommandInput::Simplify {
+            expr: inner.trim().to_string(),
+            aggressive: true,
+        };
+    }
+
+    if let Some(simplify_rest) = rest.strip_prefix("simplify ") {
+        return TimelineCommandInput::Simplify {
+            expr: simplify_rest.trim().to_string(),
+            aggressive: true,
+        };
+    }
+
+    TimelineCommandInput::Simplify {
+        expr: rest.trim().to_string(),
+        aggressive: false,
+    }
+}
+
+/// Parse and evaluate `equiv <expr1>, <expr2>` style input.
+pub fn evaluate_equiv_input(
+    simplifier: &mut Simplifier,
+    input: &str,
+) -> Result<crate::EquivalenceResult, crate::input_parse::ParseExprPairError> {
+    let (lhs, rhs) = crate::input_parse::parse_expr_pair(&mut simplifier.context, input)?;
+    Ok(simplifier.are_equivalent_extended(lhs, rhs))
+}
+
+/// Evaluate parsed `solve` input against a stateful engine/session pair.
+pub fn evaluate_solve_command_with_session<S>(
+    engine: &mut crate::Engine,
+    session: &mut S,
+    parsed_input: SolveCommandInput,
+    auto_store: bool,
+) -> Result<SolveCommandEvalOutput, SolveCommandEvalError>
+where
+    S: crate::EvalSession<Options = crate::EvalOptions, Diagnostics = crate::Diagnostics>,
+    S::Store: crate::EvalStore<
+        DomainMode = crate::DomainMode,
+        RequiredItem = crate::RequiredItem,
+        Step = crate::Step,
+        Diagnostics = crate::Diagnostics,
+    >,
+{
+    let PreparedSolveEvalRequest {
+        request,
+        var,
+        original_equation,
+    } = prepare_solve_eval_request(
+        &mut engine.simplifier.context,
+        parsed_input.equation.trim(),
+        parsed_input.variable,
+        auto_store,
+    )
+    .map_err(SolveCommandEvalError::Prepare)?;
+
+    let output = engine
+        .eval(session, request)
+        .map_err(|e| SolveCommandEvalError::Eval(e.to_string()))?;
+    let output = crate::eval_output_view(&output);
+
+    Ok(SolveCommandEvalOutput {
+        var,
+        original_equation,
+        output,
+    })
+}
+
+fn statement_to_expr_id(
+    ctx: &mut cas_ast::Context,
+    stmt: cas_parser::Statement,
+) -> cas_ast::ExprId {
+    match stmt {
+        cas_parser::Statement::Equation(eq) => ctx.call("Equal", vec![eq.lhs, eq.rhs]),
+        cas_parser::Statement::Expression(expr) => expr,
     }
 }
 
@@ -160,6 +326,37 @@ fn prepare_timeline_solve_input(
     Ok(PreparedTimelineSolve { equation, var })
 }
 
+/// Build a stateful `EvalRequest` for `solve` preserving original expression/equation.
+///
+/// This allows frontends to parse user `solve` input while keeping orchestration
+/// logic out of transport/UI layers.
+pub fn prepare_solve_eval_request(
+    ctx: &mut cas_ast::Context,
+    input: &str,
+    explicit_var: Option<String>,
+    auto_store: bool,
+) -> Result<PreparedSolveEvalRequest, SolvePrepareError> {
+    let stmt = parse_statement_or_session_ref(ctx, input).map_err(SolvePrepareError::ParseError)?;
+
+    let original_equation = match &stmt {
+        cas_parser::Statement::Equation(eq) => Some(eq.clone()),
+        cas_parser::Statement::Expression(_) => None,
+    };
+    let parsed_expr = statement_to_expr_id(ctx, stmt);
+    let var = resolve_solve_var(ctx, parsed_expr, explicit_var)?;
+
+    Ok(PreparedSolveEvalRequest {
+        request: crate::EvalRequest {
+            raw_input: input.to_string(),
+            parsed: parsed_expr,
+            action: crate::EvalAction::Solve { var: var.clone() },
+            auto_store,
+        },
+        var,
+        original_equation,
+    })
+}
+
 /// Evaluate a REPL `timeline solve` command:
 /// parse command input, prepare equation/variable, and solve with display steps.
 fn evaluate_timeline_solve_command_input(
@@ -197,6 +394,130 @@ pub fn evaluate_timeline_solve_with_eval_options(
     simplifier.set_collect_steps(true);
     let opts = crate::SolverOptions::from_eval_options(eval_options);
     evaluate_timeline_solve_command_input(simplifier, input, opts)
+}
+
+fn evaluate_timeline_simplify_aggressive(
+    simplifier: &mut Simplifier,
+    input: &str,
+) -> Result<TimelineSimplifyEvalOutput, TimelineSimplifyEvalError> {
+    let mut temp_simplifier = Simplifier::with_default_rules();
+    temp_simplifier.set_collect_steps(true);
+
+    std::mem::swap(&mut simplifier.context, &mut temp_simplifier.context);
+    let result = (|| {
+        let parsed_expr = cas_parser::parse(input.trim(), &mut temp_simplifier.context)
+            .map_err(|e| TimelineSimplifyEvalError::Parse(e.to_string()))?;
+        let (simplified_expr, steps) = temp_simplifier.simplify(parsed_expr);
+        Ok(TimelineSimplifyEvalOutput {
+            parsed_expr,
+            simplified_expr,
+            steps: crate::to_display_steps(steps),
+        })
+    })();
+    std::mem::swap(&mut simplifier.context, &mut temp_simplifier.context);
+    result
+}
+
+fn evaluate_timeline_simplify_standard<S>(
+    engine: &mut crate::Engine,
+    session: &mut S,
+    input: &str,
+) -> Result<TimelineSimplifyEvalOutput, TimelineSimplifyEvalError>
+where
+    S: crate::EvalSession<Options = crate::EvalOptions, Diagnostics = crate::Diagnostics>,
+    S::Store: crate::EvalStore<
+        DomainMode = crate::DomainMode,
+        RequiredItem = crate::RequiredItem,
+        Step = crate::Step,
+        Diagnostics = crate::Diagnostics,
+    >,
+{
+    let was_collecting = engine.simplifier.collect_steps();
+    engine.simplifier.set_collect_steps(true);
+    let result = (|| {
+        let parsed_expr = cas_parser::parse(input.trim(), &mut engine.simplifier.context)
+            .map_err(|e| TimelineSimplifyEvalError::Parse(e.to_string()))?;
+        let req = crate::EvalRequest {
+            raw_input: input.to_string(),
+            parsed: parsed_expr,
+            action: crate::EvalAction::Simplify,
+            auto_store: false,
+        };
+        let output = engine
+            .eval(session, req)
+            .map_err(|e| TimelineSimplifyEvalError::Eval(e.to_string()))?;
+        let output_view = crate::eval_output_view(&output);
+        let simplified_expr = match output_view.result {
+            crate::EvalResult::Expr(e) => e,
+            _ => parsed_expr,
+        };
+        Ok(TimelineSimplifyEvalOutput {
+            parsed_expr,
+            simplified_expr,
+            steps: output_view.steps,
+        })
+    })();
+    engine.simplifier.set_collect_steps(was_collecting);
+    result
+}
+
+/// Evaluate REPL `timeline simplify` command in standard or aggressive mode.
+pub fn evaluate_timeline_simplify_with_session<S>(
+    engine: &mut crate::Engine,
+    session: &mut S,
+    input: &str,
+    aggressive: bool,
+) -> Result<TimelineSimplifyEvalOutput, TimelineSimplifyEvalError>
+where
+    S: crate::EvalSession<Options = crate::EvalOptions, Diagnostics = crate::Diagnostics>,
+    S::Store: crate::EvalStore<
+        DomainMode = crate::DomainMode,
+        RequiredItem = crate::RequiredItem,
+        Step = crate::Step,
+        Diagnostics = crate::Diagnostics,
+    >,
+{
+    if aggressive {
+        evaluate_timeline_simplify_aggressive(&mut engine.simplifier, input)
+    } else {
+        evaluate_timeline_simplify_standard(engine, session, input)
+    }
+}
+
+/// Evaluate REPL `timeline` command (solve/simplify) and return typed output.
+pub fn evaluate_timeline_command_with_session<S>(
+    engine: &mut crate::Engine,
+    session: &mut S,
+    input: &str,
+    eval_options: &crate::EvalOptions,
+) -> Result<TimelineCommandEvalOutput, TimelineCommandEvalError>
+where
+    S: crate::EvalSession<Options = crate::EvalOptions, Diagnostics = crate::Diagnostics>,
+    S::Store: crate::EvalStore<
+        DomainMode = crate::DomainMode,
+        RequiredItem = crate::RequiredItem,
+        Step = crate::Step,
+        Diagnostics = crate::Diagnostics,
+    >,
+{
+    match parse_timeline_command_input(input) {
+        TimelineCommandInput::Solve(solve_rest) => evaluate_timeline_solve_with_eval_options(
+            &mut engine.simplifier,
+            &solve_rest,
+            eval_options,
+        )
+        .map(TimelineCommandEvalOutput::Solve)
+        .map_err(TimelineCommandEvalError::Solve),
+        TimelineCommandInput::Simplify { expr, aggressive } => {
+            evaluate_timeline_simplify_with_session(engine, session, &expr, aggressive)
+                .map(|output| TimelineCommandEvalOutput::Simplify {
+                    expr_input: expr,
+                    aggressive,
+                    output,
+                })
+                .map_err(TimelineCommandEvalError::Simplify)
+        }
+    }
 }
 
 /// Solve an equation for a variable.
@@ -310,9 +631,12 @@ fn resolve_solve_var(
 #[cfg(test)]
 mod tests {
     use super::{
-        evaluate_timeline_solve_command_input, evaluate_timeline_solve_with_eval_options,
-        parse_solve_command_input, prepare_timeline_solve_input, SolveCommandInput,
-        SolvePrepareError, TimelineSolveEvalError,
+        evaluate_equiv_input, evaluate_timeline_command_with_session,
+        evaluate_timeline_simplify_with_session, evaluate_timeline_solve_command_input,
+        evaluate_timeline_solve_with_eval_options, parse_solve_command_input,
+        parse_solve_invocation_check, parse_timeline_command_input, prepare_solve_eval_request,
+        prepare_timeline_solve_input, SolveCommandInput, SolvePrepareError, TimelineCommandInput,
+        TimelineSolveEvalError,
     };
 
     #[test]
@@ -352,6 +676,53 @@ mod tests {
     }
 
     #[test]
+    fn parse_solve_invocation_check_enables_check_flag() {
+        let (check, tail) = parse_solve_invocation_check("--check x+1=2, x", false);
+        assert!(check);
+        assert_eq!(tail, "x+1=2, x");
+    }
+
+    #[test]
+    fn parse_solve_invocation_check_uses_default_when_flag_absent() {
+        let (check, tail) = parse_solve_invocation_check("x+1=2, x", true);
+        assert!(check);
+        assert_eq!(tail, "x+1=2, x");
+    }
+
+    #[test]
+    fn parse_timeline_input_solve() {
+        let parsed = parse_timeline_command_input("solve x + 2 = 5, x");
+        assert_eq!(
+            parsed,
+            TimelineCommandInput::Solve("x + 2 = 5, x".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_timeline_input_aggressive_simplify() {
+        let parsed = parse_timeline_command_input("simplify(x^2 - 1)");
+        assert_eq!(
+            parsed,
+            TimelineCommandInput::Simplify {
+                expr: "x^2 - 1".to_string(),
+                aggressive: true,
+            }
+        );
+    }
+
+    #[test]
+    fn parse_timeline_input_default_simplify() {
+        let parsed = parse_timeline_command_input("x + x");
+        assert_eq!(
+            parsed,
+            TimelineCommandInput::Simplify {
+                expr: "x + x".to_string(),
+                aggressive: false,
+            }
+        );
+    }
+
+    #[test]
     fn prepare_timeline_solve_requires_equation() {
         let mut ctx = cas_ast::Context::new();
         let err = prepare_timeline_solve_input(&mut ctx, "x+1", None).expect_err("expected error");
@@ -363,6 +734,34 @@ mod tests {
         let mut ctx = cas_ast::Context::new();
         let prepared = prepare_timeline_solve_input(&mut ctx, "x+2=5", None).expect("prepare");
         assert_eq!(prepared.var, "x");
+    }
+
+    #[test]
+    fn prepare_solve_eval_request_accepts_expression() {
+        let mut ctx = cas_ast::Context::new();
+        let prepared = prepare_solve_eval_request(&mut ctx, "x + 2", Some("x".to_string()), false)
+            .expect("prepare");
+
+        assert_eq!(prepared.var, "x");
+        assert!(prepared.original_equation.is_none());
+        match prepared.request.action {
+            crate::EvalAction::Solve { var } => assert_eq!(var, "x"),
+            _ => panic!("expected solve action"),
+        }
+    }
+
+    #[test]
+    fn prepare_solve_eval_request_keeps_equation_snapshot() {
+        let mut ctx = cas_ast::Context::new();
+        let prepared =
+            prepare_solve_eval_request(&mut ctx, "x + 2 = 5", None, false).expect("prepare");
+
+        assert_eq!(prepared.var, "x");
+        assert!(prepared.original_equation.is_some());
+        match prepared.request.action {
+            crate::EvalAction::Solve { var } => assert_eq!(var, "x"),
+            _ => panic!("expected solve action"),
+        }
     }
 
     #[test]
@@ -401,5 +800,80 @@ mod tests {
             evaluate_timeline_solve_with_eval_options(&mut simplifier, "x + 2 = 5, x", &eval_opts)
                 .expect("timeline solve");
         assert_eq!(out.var, "x");
+    }
+
+    #[test]
+    fn evaluate_timeline_simplify_with_session_standard_runs() {
+        let mut engine = crate::Engine::new();
+        let mut session = cas_session::SessionState::new();
+        let out =
+            evaluate_timeline_simplify_with_session(&mut engine, &mut session, "x + x", false)
+                .expect("timeline simplify");
+        assert_eq!(
+            cas_formatter::render_expr(&engine.simplifier.context, out.simplified_expr),
+            "2 * x"
+        );
+    }
+
+    #[test]
+    fn evaluate_timeline_simplify_with_session_aggressive_runs() {
+        let mut engine = crate::Engine::new();
+        let mut session = cas_session::SessionState::new();
+        let out = evaluate_timeline_simplify_with_session(
+            &mut engine,
+            &mut session,
+            "(x + 1) * (x - 1)",
+            true,
+        )
+        .expect("timeline simplify aggressive");
+        let rendered = cas_formatter::render_expr(&engine.simplifier.context, out.simplified_expr);
+        assert!(!rendered.is_empty());
+    }
+
+    #[test]
+    fn evaluate_timeline_command_with_session_simplify_runs() {
+        let mut engine = crate::Engine::new();
+        let mut session = cas_session::SessionState::new();
+        let eval_opts = crate::EvalOptions::default();
+        let out = evaluate_timeline_command_with_session(
+            &mut engine,
+            &mut session,
+            "simplify(x + x)",
+            &eval_opts,
+        )
+        .expect("timeline command simplify");
+
+        match out {
+            super::TimelineCommandEvalOutput::Simplify {
+                expr_input,
+                aggressive,
+                output,
+            } => {
+                assert_eq!(expr_input, "x + x");
+                assert!(aggressive);
+                assert_eq!(
+                    cas_formatter::render_expr(&engine.simplifier.context, output.simplified_expr),
+                    "2 * x"
+                );
+            }
+            super::TimelineCommandEvalOutput::Solve(_) => panic!("expected simplify output"),
+        }
+    }
+
+    #[test]
+    fn evaluate_equiv_input_true() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let out = evaluate_equiv_input(&mut simplifier, "x + x, 2*x").expect("equiv");
+        assert!(matches!(out, crate::EquivalenceResult::True));
+    }
+
+    #[test]
+    fn evaluate_equiv_input_requires_delimiter() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let err = evaluate_equiv_input(&mut simplifier, "x + x").expect_err("missing delimiter");
+        assert_eq!(
+            err,
+            crate::input_parse::ParseExprPairError::MissingDelimiter
+        );
     }
 }

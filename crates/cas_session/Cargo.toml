@@ -6,6 +6,10 @@ rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 
+[features]
+default = []
+parallel = ["cas_solver/parallel"]
+
 [dependencies]
 cas_ast = { path = "../cas_ast" }
 cas_session_core = { path = "../cas_session_core" }

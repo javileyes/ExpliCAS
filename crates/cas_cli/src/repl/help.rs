@@ -5,33 +5,22 @@ impl Repl {
     /// Core: handle set command, returns CoreResult with UI delta for verbosity changes
     pub(crate) fn handle_set_command_core(&mut self, line: &str) -> CoreResult {
         let mut ui_delta = UiDelta::default();
-        match super::set_command::evaluate_set_command_input(line, self.set_command_state()) {
-            super::set_command::SetCommandResult::ShowHelp { message } => {
-                CoreResult::reply_only(vec![ReplMsg::output(message)])
-            }
-            super::set_command::SetCommandResult::ShowValue { message } => {
-                CoreResult::reply_only(vec![ReplMsg::info(message)])
-            }
-            super::set_command::SetCommandResult::Invalid { message } => {
-                CoreResult::reply_only(vec![ReplMsg::info(message)])
-            }
-            super::set_command::SetCommandResult::Apply { plan } => {
-                self.apply_set_plan(&plan, &mut ui_delta);
-                CoreResult::with_delta(vec![ReplMsg::info(plan.message)], ui_delta)
-            }
+        let out = cas_session::evaluate_set_command_on_repl_core(
+            line,
+            &mut self.core,
+            Self::set_display_mode_from_verbosity(self.verbosity),
+        );
+        if let Some(display) = out.set_display_mode {
+            ui_delta.verbosity = Some(Self::verbosity_from_set_display_mode(display));
         }
-    }
-
-    fn set_command_state(&self) -> super::set_command::SetCommandState {
-        super::set_command::SetCommandState {
-            transform: self.core.simplify_options.enable_transform,
-            rationalize: self.core.simplify_options.rationalize.auto_level,
-            heuristic_poly: self.core.simplify_options.shared.heuristic_poly,
-            autoexpand_binomials: self.core.simplify_options.shared.autoexpand_binomials,
-            steps_mode: self.core.state.options().steps_mode,
-            display_mode: Self::set_display_mode_from_verbosity(self.verbosity),
-            max_rewrites: self.core.simplify_options.budgets.max_total_rewrites,
-            debug_mode: self.core.debug_mode,
+        let reply = match out.message_kind {
+            cas_session::ReplSetMessageKind::Output => vec![ReplMsg::output(out.message)],
+            cas_session::ReplSetMessageKind::Info => vec![ReplMsg::info(out.message)],
+        };
+        if ui_delta.verbosity.is_some() {
+            CoreResult::with_delta(reply, ui_delta)
+        } else {
+            CoreResult::reply_only(reply)
         }
     }
 
@@ -50,26 +39,6 @@ impl Repl {
             SetDisplayMode::Succinct => Verbosity::Succinct,
             SetDisplayMode::Normal => Verbosity::Normal,
             SetDisplayMode::Verbose => Verbosity::Verbose,
-        }
-    }
-
-    fn apply_set_plan(
-        &mut self,
-        plan: &super::set_command::SetCommandPlan,
-        ui_delta: &mut UiDelta,
-    ) {
-        let effects = super::set_command::apply_set_command_plan(
-            plan,
-            &mut self.core.simplify_options,
-            self.core.state.options_mut(),
-            &mut self.core.debug_mode,
-        );
-
-        if let Some(mode) = effects.set_steps_mode {
-            self.core.engine.simplifier.set_steps_mode(mode);
-        }
-        if let Some(display) = effects.set_display_mode {
-            ui_delta.verbosity = Some(Self::verbosity_from_set_display_mode(display));
         }
     }
 

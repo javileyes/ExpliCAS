@@ -107,9 +107,10 @@ pub fn eval_str_to_json(expr: &str, opts_json: &str) -> String {
             };
         }
     };
+    let output_view = crate::eval_output_view(&output);
 
     // Format result
-    let result_str = match &output.result {
+    let result_str = match &output_view.result {
         EvalResult::Expr(e) => {
             let clean = strip_all_holds(&mut engine.simplifier.context, *e);
             format!(
@@ -136,7 +137,7 @@ pub fn eval_str_to_json(expr: &str, opts_json: &str) -> String {
 
     // Build steps (if requested)
     let steps = if opts.steps {
-        output
+        output_view
             .steps
             .iter()
             .map(|s| {
@@ -174,9 +175,8 @@ pub fn eval_str_to_json(expr: &str, opts_json: &str) -> String {
     };
 
     let mut resp = EngineJsonResponse::ok_with_steps(result_str, steps, budget_info);
-    resp.warnings = map_domain_warnings_to_engine_warnings(&output.domain_warnings);
-    let solver_assumptions = crate::assumption_records_from_engine(&output.solver_assumptions);
-    resp.assumptions = map_solver_assumptions_to_api_records(&solver_assumptions);
+    resp.warnings = map_domain_warnings_to_engine_warnings(&output_view.domain_warnings);
+    resp.assumptions = map_solver_assumptions_to_api_records(&output_view.solver_assumptions);
 
     if opts.pretty {
         resp.to_json_pretty()

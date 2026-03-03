@@ -1,0 +1,84 @@
+//! Stateless CLI-subcommand helpers for `limit`.
+
+/// Limit direction for subcommand-level evaluation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LimitCommandApproach {
+    Infinity,
+    NegInfinity,
+}
+
+/// Pre-simplification policy for subcommand-level limit evaluation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LimitCommandPreSimplify {
+    Off,
+    Safe,
+}
+
+/// CLI-friendly output contract for `limit` subcommand.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LimitSubcommandOutput {
+    Json(String),
+    Text {
+        result: String,
+        warning: Option<String>,
+    },
+}
+
+/// Evaluate limit subcommand and map solver contracts to session-layer output.
+pub fn evaluate_limit_subcommand(
+    expr: &str,
+    var: &str,
+    approach: LimitCommandApproach,
+    presimplify: LimitCommandPreSimplify,
+    json_output: bool,
+) -> Result<LimitSubcommandOutput, String> {
+    let approach = match approach {
+        LimitCommandApproach::Infinity => cas_solver::Approach::PosInfinity,
+        LimitCommandApproach::NegInfinity => cas_solver::Approach::NegInfinity,
+    };
+    let presimplify = match presimplify {
+        LimitCommandPreSimplify::Off => cas_solver::PreSimplifyMode::Off,
+        LimitCommandPreSimplify::Safe => cas_solver::PreSimplifyMode::Safe,
+    };
+
+    match cas_solver::evaluate_limit_subcommand_output(
+        expr,
+        var,
+        approach,
+        presimplify,
+        json_output,
+    ) {
+        Ok(cas_solver::LimitSubcommandOutput::Json(out)) => Ok(LimitSubcommandOutput::Json(out)),
+        Ok(cas_solver::LimitSubcommandOutput::Text { result, warning }) => {
+            Ok(LimitSubcommandOutput::Text { result, warning })
+        }
+        Err(error) => Err(cas_solver::format_limit_subcommand_error(&error)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        evaluate_limit_subcommand, LimitCommandApproach, LimitCommandPreSimplify,
+        LimitSubcommandOutput,
+    };
+
+    #[test]
+    fn evaluate_limit_subcommand_json_contract() {
+        let out = evaluate_limit_subcommand(
+            "1/x",
+            "x",
+            LimitCommandApproach::Infinity,
+            LimitCommandPreSimplify::Safe,
+            true,
+        )
+        .expect("limit json");
+
+        match out {
+            LimitSubcommandOutput::Json(payload) => {
+                assert!(payload.contains("\"ok\""));
+            }
+            _ => panic!("expected json output"),
+        }
+    }
+}

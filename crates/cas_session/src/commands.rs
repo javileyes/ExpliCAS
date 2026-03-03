@@ -73,6 +73,15 @@ pub fn format_profile_cache_command_lines(result: &ProfileCacheCommandResult) ->
     }
 }
 
+/// Evaluate a `cache` command and return user-facing output lines.
+pub fn evaluate_profile_cache_command_lines(
+    engine: &mut cas_solver::Engine,
+    line: &str,
+) -> Vec<String> {
+    let result = apply_profile_cache_command(engine, line);
+    format_profile_cache_command_lines(&result)
+}
+
 /// Parsed input for the `profile` command.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProfileCommandInput {
@@ -145,6 +154,12 @@ pub fn apply_profile_command(simplifier: &mut cas_solver::Simplifier, line: &str
         }
         ProfileCommandResult::Invalid { message } => message,
     }
+}
+
+/// Evaluate a `budget` command and return a user-facing message.
+pub fn evaluate_solve_budget_command_message(state: &mut SessionState, line: &str) -> String {
+    let result = crate::apply_solve_budget_command(state, line);
+    crate::format_solve_budget_command_message(&result)
 }
 
 /// Evaluate `vars` command lines using an expression renderer callback.
@@ -366,6 +381,20 @@ mod tests {
         let ctx = cas_ast::Context::new();
         let lines = evaluate_history_command_lines_with_context(&state, &ctx);
         assert_eq!(lines, vec!["No entries in session history.".to_string()]);
+    }
+
+    #[test]
+    fn evaluate_profile_cache_command_lines_status() {
+        let mut engine = cas_solver::Engine::new();
+        let lines = super::evaluate_profile_cache_command_lines(&mut engine, "cache status");
+        assert!(lines.iter().any(|line| line.contains("Profile Cache:")));
+    }
+
+    #[test]
+    fn evaluate_solve_budget_command_message_returns_current_budget() {
+        let mut state = SessionState::new();
+        let message = super::evaluate_solve_budget_command_message(&mut state, "budget");
+        assert!(message.contains("Solve budget"));
     }
 
     #[test]

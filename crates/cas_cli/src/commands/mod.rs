@@ -3,10 +3,7 @@
 pub mod app;
 pub mod envelope_json;
 pub mod eval;
-pub mod eval_command;
 pub mod eval_json;
 pub mod eval_text;
 pub mod limit;
-pub mod limit_command;
 pub mod substitute;
-pub mod substitute_command;

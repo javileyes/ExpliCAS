@@ -564,8 +564,7 @@ pub fn format_cli_simplification_steps(
                 ))
             ));
 
-            let assumption_events =
-                cas_solver::assumption_events_from_engine(step.assumption_events());
+            let assumption_events = cas_solver::assumption_events_from_step(step);
             for assumption_line in format_displayable_assumption_lines(&assumption_events) {
                 lines.push(format!("   {}", assumption_line));
             }

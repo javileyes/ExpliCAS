@@ -126,7 +126,12 @@ fn test_assumption_record_from_engine_type() {
         message: "x != 0".to_string(),
         count: 2,
     };
-    let mapped = cas_solver::AssumptionRecord::from(engine);
+    let mapped = cas_solver::AssumptionRecord {
+        kind: engine.kind,
+        expr: engine.expr,
+        message: engine.message,
+        count: engine.count,
+    };
     assert_eq!(mapped.kind, "nonzero");
     assert_eq!(mapped.expr, "x");
     assert_eq!(mapped.message, "x != 0");

@@ -1,4 +1,4 @@
-use crate::{EvalOutput, ImplicitCondition, ImportanceLevel};
+use crate::{DomainWarning, ImplicitCondition, ImportanceLevel, SolveStep};
 use cas_api_models::{RequiredConditionJson, SolveStepJson, SolveSubStepJson, WarningJson};
 use cas_ast::{Context, Expr, ExprId, RelOp, SolutionSet};
 use cas_formatter::{DisplayExpr, LaTeXExpr};
@@ -55,7 +55,7 @@ pub fn detect_solve_variable_eval_json(ctx: &Context, lhs: ExprId, rhs: ExprId) 
 
 /// Convert solver steps to JSON format (for equation solving in eval-json).
 pub fn collect_solve_steps_eval_json(
-    output: &EvalOutput,
+    solve_steps: &[SolveStep],
     ctx: &Context,
     steps_mode: &str,
 ) -> Vec<SolveStepJson> {
@@ -63,8 +63,7 @@ pub fn collect_solve_steps_eval_json(
         return vec![];
     }
 
-    let filtered: Vec<_> = output
-        .solve_steps
+    let filtered: Vec<_> = solve_steps
         .iter()
         .filter(|step| step.importance >= ImportanceLevel::Medium)
         .collect();
@@ -360,9 +359,8 @@ fn relop_to_latex(op: &RelOp) -> String {
 }
 
 /// Collect domain warnings in eval-json schema format.
-pub fn collect_warnings_eval_json(output: &EvalOutput) -> Vec<WarningJson> {
-    output
-        .domain_warnings
+pub fn collect_warnings_eval_json(domain_warnings: &[DomainWarning]) -> Vec<WarningJson> {
+    domain_warnings
         .iter()
         .map(|w| WarningJson {
             rule: w.rule_name.clone(),
@@ -373,11 +371,10 @@ pub fn collect_warnings_eval_json(output: &EvalOutput) -> Vec<WarningJson> {
 
 /// Collect required conditions in eval-json schema format.
 pub fn collect_required_conditions_eval_json(
-    output: &EvalOutput,
+    required_conditions: &[ImplicitCondition],
     ctx: &Context,
 ) -> Vec<RequiredConditionJson> {
-    output
-        .required_conditions
+    required_conditions
         .iter()
         .map(|cond| {
             let (kind, expr_id) = match cond {
@@ -399,10 +396,11 @@ pub fn collect_required_conditions_eval_json(
         .collect()
 }
 
-/// Collect human-readable required condition strings.
-pub fn collect_required_display_eval_json(output: &EvalOutput, ctx: &Context) -> Vec<String> {
-    output
-        .required_conditions
+pub fn collect_required_display_eval_json(
+    required_conditions: &[ImplicitCondition],
+    ctx: &Context,
+) -> Vec<String> {
+    required_conditions
         .iter()
         .map(|cond| cond.display(ctx))
         .collect()

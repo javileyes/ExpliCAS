@@ -46,6 +46,123 @@ pub enum TimelineCommandOutput {
     Simplify(TimelineSimplifyCommandOutput),
 }
 
+/// Evaluate a `timeline` command and project solver output to didactic payload.
+pub fn evaluate_timeline_command_output_with_session<S>(
+    engine: &mut cas_solver::Engine,
+    session: &mut S,
+    input: &str,
+    eval_options: &cas_solver::EvalOptions,
+) -> Result<TimelineCommandOutput, cas_solver::TimelineCommandEvalError>
+where
+    S: cas_solver::EvalSession<
+        Options = cas_solver::EvalOptions,
+        Diagnostics = cas_solver::Diagnostics,
+    >,
+    S::Store: cas_solver::EvalStore<
+        DomainMode = cas_solver::DomainMode,
+        RequiredItem = cas_solver::RequiredItem,
+        Step = cas_solver::Step,
+        Diagnostics = cas_solver::Diagnostics,
+    >,
+{
+    let output =
+        cas_solver::evaluate_timeline_command_with_session(engine, session, input, eval_options)?;
+    Ok(timeline_command_output_from_solver(output))
+}
+
+/// Evaluate and render a `timeline` command to CLI render output in one call.
+pub fn evaluate_timeline_command_cli_render_with_session<S>(
+    engine: &mut cas_solver::Engine,
+    session: &mut S,
+    input: &str,
+    eval_options: &cas_solver::EvalOptions,
+    verbosity: VerbosityLevel,
+) -> Result<TimelineCliRender, cas_solver::TimelineCommandEvalError>
+where
+    S: cas_solver::EvalSession<
+        Options = cas_solver::EvalOptions,
+        Diagnostics = cas_solver::Diagnostics,
+    >,
+    S::Store: cas_solver::EvalStore<
+        DomainMode = cas_solver::DomainMode,
+        RequiredItem = cas_solver::RequiredItem,
+        Step = cas_solver::Step,
+        Diagnostics = cas_solver::Diagnostics,
+    >,
+{
+    let out = evaluate_timeline_command_output_with_session(engine, session, input, eval_options)?;
+    Ok(render_timeline_command_cli_output(
+        &mut engine.simplifier.context,
+        &out,
+        verbosity,
+    ))
+}
+
+/// Extract timeline input from a full invocation or return trimmed input as-is.
+pub fn extract_timeline_invocation_input(line: &str) -> &str {
+    line.strip_prefix("timeline")
+        .map(str::trim)
+        .unwrap_or_else(|| line.trim())
+}
+
+/// Evaluate a full `timeline ...` invocation and return normalized CLI actions.
+pub fn evaluate_timeline_invocation_cli_actions_with_session<S>(
+    engine: &mut cas_solver::Engine,
+    session: &mut S,
+    line: &str,
+    eval_options: &cas_solver::EvalOptions,
+    verbosity: VerbosityLevel,
+) -> Result<Vec<TimelineCliAction>, cas_solver::TimelineCommandEvalError>
+where
+    S: cas_solver::EvalSession<
+        Options = cas_solver::EvalOptions,
+        Diagnostics = cas_solver::Diagnostics,
+    >,
+    S::Store: cas_solver::EvalStore<
+        DomainMode = cas_solver::DomainMode,
+        RequiredItem = cas_solver::RequiredItem,
+        Step = cas_solver::Step,
+        Diagnostics = cas_solver::Diagnostics,
+    >,
+{
+    let input = extract_timeline_invocation_input(line);
+    let render = evaluate_timeline_command_cli_render_with_session(
+        engine,
+        session,
+        input,
+        eval_options,
+        verbosity,
+    )?;
+    Ok(timeline_cli_actions_from_render(render))
+}
+
+/// Convert solver timeline evaluation output into didactic render payload.
+pub fn timeline_command_output_from_solver(
+    output: cas_solver::TimelineCommandEvalOutput,
+) -> TimelineCommandOutput {
+    match output {
+        cas_solver::TimelineCommandEvalOutput::Solve(out) => {
+            TimelineCommandOutput::Solve(TimelineSolveCommandOutput {
+                equation: out.equation,
+                var: out.var,
+                solution_set: out.solution_set,
+                display_steps: out.display_steps,
+            })
+        }
+        cas_solver::TimelineCommandEvalOutput::Simplify {
+            expr_input,
+            aggressive,
+            output,
+        } => TimelineCommandOutput::Simplify(TimelineSimplifyCommandOutput {
+            expr_input,
+            use_aggressive: aggressive,
+            parsed_expr: output.parsed_expr,
+            simplified_expr: output.simplified_expr,
+            steps: output.steps,
+        }),
+    }
+}
+
 /// CLI-facing timeline render artifact.
 #[derive(Debug, Clone)]
 pub enum TimelineCliRender {
@@ -57,6 +174,14 @@ pub enum TimelineCliRender {
         html: String,
         lines: Vec<String>,
     },
+}
+
+/// Normalized CLI actions derived from [`TimelineCliRender`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TimelineCliAction {
+    Output(String),
+    WriteFile { path: String, contents: String },
+    OpenFile { path: String },
 }
 
 fn timeline_simplify_info_lines(use_aggressive: bool) -> Vec<String> {
@@ -260,6 +385,35 @@ pub fn render_timeline_command_cli_output(
     }
 }
 
+/// Convert timeline render output into primitive CLI actions.
+pub fn timeline_cli_actions_from_render(render: TimelineCliRender) -> Vec<TimelineCliAction> {
+    match render {
+        TimelineCliRender::NoSteps { lines } => lines
+            .into_iter()
+            .map(TimelineCliAction::Output)
+            .collect::<Vec<_>>(),
+        TimelineCliRender::Html {
+            file_name,
+            html,
+            lines,
+        } => {
+            let mut actions = vec![
+                TimelineCliAction::WriteFile {
+                    path: file_name.to_string(),
+                    contents: html,
+                },
+                TimelineCliAction::OpenFile {
+                    path: file_name.to_string(),
+                },
+            ];
+            for line in lines {
+                actions.push(TimelineCliAction::Output(line));
+            }
+            actions
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -335,5 +489,51 @@ mod tests {
             TimelineCliRender::NoSteps { lines } => assert!(!lines.is_empty()),
             TimelineCliRender::Html { .. } => panic!("expected no-steps render"),
         }
+    }
+
+    #[test]
+    fn timeline_cli_actions_from_render_html_emits_io_and_lines() {
+        let actions = timeline_cli_actions_from_render(TimelineCliRender::Html {
+            file_name: TIMELINE_HTML_FILE,
+            html: "<html/>".to_string(),
+            lines: vec!["line1".to_string(), "line2".to_string()],
+        });
+        assert!(matches!(
+            actions.first(),
+            Some(TimelineCliAction::WriteFile { .. })
+        ));
+        assert!(matches!(
+            actions.get(1),
+            Some(TimelineCliAction::OpenFile { .. })
+        ));
+        assert!(actions
+            .iter()
+            .any(|action| matches!(action, TimelineCliAction::Output(line) if line == "line1")));
+    }
+
+    #[test]
+    fn extract_timeline_invocation_input_strips_prefix() {
+        assert_eq!(extract_timeline_invocation_input("timeline x+1"), "x+1");
+        assert_eq!(
+            extract_timeline_invocation_input("timeline solve x+1=2,x"),
+            "solve x+1=2,x"
+        );
+        assert_eq!(extract_timeline_invocation_input("x+1"), "x+1");
+    }
+
+    #[test]
+    fn evaluate_timeline_invocation_cli_actions_with_session_returns_actions() {
+        let mut engine = cas_solver::Engine::new();
+        let mut session = cas_session::SessionState::new();
+        let options = cas_solver::EvalOptions::default();
+        let actions = evaluate_timeline_invocation_cli_actions_with_session(
+            &mut engine,
+            &mut session,
+            "timeline x+1",
+            &options,
+            VerbosityLevel::Normal,
+        )
+        .expect("timeline eval");
+        assert!(!actions.is_empty());
     }
 }

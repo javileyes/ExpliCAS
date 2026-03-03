@@ -6,39 +6,34 @@ use crate::{ApproachArg, LimitArgs, OutputFormat, PreSimplifyArg};
 
 /// Run the limit command.
 pub fn run(args: LimitArgs) {
-    use cas_solver::{Approach, PreSimplifyMode};
-
     let approach = match args.to {
-        ApproachArg::Infinity => Approach::PosInfinity,
-        ApproachArg::NegInfinity => Approach::NegInfinity,
+        ApproachArg::Infinity => cas_session::LimitCommandApproach::Infinity,
+        ApproachArg::NegInfinity => cas_session::LimitCommandApproach::NegInfinity,
     };
 
     let presimplify = match args.presimplify {
-        PreSimplifyArg::Off => PreSimplifyMode::Off,
-        PreSimplifyArg::Safe => PreSimplifyMode::Safe,
+        PreSimplifyArg::Off => cas_session::LimitCommandPreSimplify::Off,
+        PreSimplifyArg::Safe => cas_session::LimitCommandPreSimplify::Safe,
     };
 
-    match super::limit_command::evaluate_limit_subcommand_output(
+    match cas_session::evaluate_limit_subcommand(
         &args.expr,
         &args.var,
         approach,
         presimplify,
         matches!(args.format, OutputFormat::Json),
     ) {
-        Ok(super::limit_command::LimitSubcommandOutput::Json(out)) => {
+        Ok(cas_session::LimitSubcommandOutput::Json(out)) => {
             println!("{}", out);
         }
-        Ok(super::limit_command::LimitSubcommandOutput::Text { result, warning }) => {
+        Ok(cas_session::LimitSubcommandOutput::Text { result, warning }) => {
             println!("{}", result);
             if let Some(warning) = warning {
                 eprintln!("Warning: {}", warning);
             }
         }
-        Err(error) => {
-            eprintln!(
-                "{}",
-                super::limit_command::format_limit_subcommand_error(&error)
-            );
+        Err(message) => {
+            eprintln!("{}", message);
             std::process::exit(1);
         }
     }

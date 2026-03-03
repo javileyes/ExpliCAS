@@ -1,5 +1,3 @@
-use crate::assumption_format;
-use crate::result_format;
 use cas_ast::{Expr, ExprId};
 use cas_formatter::root_style::ParseStyleSignals;
 
@@ -64,6 +62,18 @@ pub struct EvalCommandRenderPlan {
 pub enum EvalCommandError {
     Parse(cas_parser::ParseError),
     Eval(String),
+}
+
+#[derive(Debug, Clone)]
+struct EvalCommandEvalView {
+    stored_id: Option<u64>,
+    parsed: ExprId,
+    resolved: ExprId,
+    result: cas_solver::EvalResult,
+    diagnostics: cas_solver::Diagnostics,
+    steps: cas_solver::DisplayEvalSteps,
+    domain_warnings: Vec<cas_solver::DomainWarning>,
+    blocked_hints: Vec<cas_solver::BlockedHint>,
 }
 
 fn statement_to_expr_id(ctx: &mut cas_ast::Context, stmt: cas_parser::Statement) -> ExprId {
@@ -131,7 +141,7 @@ fn format_eval_result_line(
             Some(EvalResultLine {
                 line: format!(
                     "Result: {}",
-                    result_format::display_expr_or_poly(context, *res)
+                    cas_solver::display_expr_or_poly(context, *res)
                 ),
                 terminal: false,
             })
@@ -139,7 +149,7 @@ fn format_eval_result_line(
         cas_solver::EvalResult::SolutionSet(solution_set) => Some(EvalResultLine {
             line: format!(
                 "Result: {}",
-                result_format::display_solution_set(context, solution_set)
+                cas_solver::display_solution_set(context, solution_set)
             ),
             terminal: false,
         }),
@@ -157,7 +167,7 @@ fn format_eval_result_line(
 
 fn format_eval_stored_entry_line(
     context: &cas_ast::Context,
-    output: &cas_solver::EvalOutput,
+    output: &EvalCommandEvalView,
 ) -> Option<String> {
     output.stored_id.map(|id| {
         format!(
@@ -172,15 +182,14 @@ fn format_eval_stored_entry_line(
 
 fn format_eval_metadata_lines(
     context: &mut cas_ast::Context,
-    output: &cas_solver::EvalOutput,
+    output: &EvalCommandEvalView,
     requires_display: cas_solver::RequiresDisplayLevel,
     debug_mode: bool,
     hints_enabled: bool,
     domain_mode: cas_solver::DomainMode,
     assumption_reporting: cas_solver::AssumptionReporting,
 ) -> EvalMetadataLines {
-    let warning_lines =
-        assumption_format::format_domain_warning_lines(&output.domain_warnings, true, "⚠ ");
+    let warning_lines = crate::format_domain_warning_lines(&output.domain_warnings, true, "⚠ ");
 
     let result_expr = match &output.result {
         cas_solver::EvalResult::Expr(expr_id) => Some(*expr_id),
@@ -188,7 +197,7 @@ fn format_eval_metadata_lines(
     };
     let mut requires_lines = Vec::new();
     if !output.diagnostics.requires.is_empty() {
-        let rendered = assumption_format::format_diagnostics_requires_lines(
+        let rendered = crate::format_diagnostics_requires_lines(
             context,
             &output.diagnostics,
             result_expr,
@@ -202,28 +211,23 @@ fn format_eval_metadata_lines(
     }
 
     let hint_lines = if hints_enabled {
-        let blocked_hints = cas_solver::blocked_hints_from_engine(&output.blocked_hints);
-        let hints = assumption_format::filter_blocked_hints_for_eval(
-            context,
-            output.resolved,
-            &blocked_hints,
-        );
+        let hints =
+            crate::filter_blocked_hints_for_eval(context, output.resolved, &output.blocked_hints);
         if hints.is_empty() {
             Vec::new()
         } else {
-            assumption_format::format_eval_blocked_hints_lines(context, &hints, domain_mode)
+            crate::format_eval_blocked_hints_lines(context, &hints, domain_mode)
         }
     } else {
         Vec::new()
     };
 
     let assumption_lines = if assumption_reporting != cas_solver::AssumptionReporting::Off {
-        let assumed_conditions =
-            assumption_format::collect_assumed_conditions_from_steps(&output.steps);
+        let assumed_conditions = crate::collect_assumed_conditions_from_steps(&output.steps);
         if assumed_conditions.is_empty() {
             Vec::new()
         } else {
-            assumption_format::format_assumed_conditions_report_lines(&assumed_conditions)
+            crate::format_assumed_conditions_report_lines(&assumed_conditions)
         }
     } else {
         Vec::new()
@@ -312,7 +316,7 @@ pub fn build_eval_command_render_plan(
 /// Evaluate full REPL `eval` input and prepare display payload.
 pub fn evaluate_eval_command_output(
     engine: &mut cas_solver::Engine,
-    session: &mut cas_session::SessionState,
+    session: &mut crate::SessionState,
     line: &str,
     debug_mode: bool,
 ) -> Result<EvalCommandOutput, EvalCommandError> {
@@ -330,11 +334,22 @@ pub fn evaluate_eval_command_output(
     let output = engine
         .eval(session, req)
         .map_err(|e| EvalCommandError::Eval(format!("Error: {}", e)))?;
+    let output_view = cas_solver::eval_output_view(&output);
+    let eval_view = EvalCommandEvalView {
+        stored_id: output_view.stored_id,
+        parsed: output_view.parsed,
+        resolved: output_view.resolved,
+        result: output_view.result,
+        diagnostics: output_view.diagnostics,
+        steps: output_view.steps,
+        domain_warnings: output_view.domain_warnings,
+        blocked_hints: output_view.blocked_hints,
+    };
 
     let eval_options = session.options().clone();
     let metadata = format_eval_metadata_lines(
         &mut engine.simplifier.context,
-        &output,
+        &eval_view,
         eval_options.requires_display,
         debug_mode,
         eval_options.hints_enabled,
@@ -342,18 +357,18 @@ pub fn evaluate_eval_command_output(
         eval_options.shared.assumption_reporting,
     );
 
-    let stored_entry_line = format_eval_stored_entry_line(&engine.simplifier.context, &output);
+    let stored_entry_line = format_eval_stored_entry_line(&engine.simplifier.context, &eval_view);
     let result_line = format_eval_result_line(
         &engine.simplifier.context,
-        output.parsed,
-        &output.result,
+        eval_view.parsed,
+        &eval_view.result,
         &style_signals,
     );
 
     Ok(EvalCommandOutput {
-        resolved_expr: output.resolved,
+        resolved_expr: eval_view.resolved,
         style_signals,
-        steps: output.steps,
+        steps: eval_view.steps,
         stored_entry_line,
         metadata,
         result_line,
@@ -366,7 +381,7 @@ pub fn evaluate_eval_command_output(
 /// want `parse -> eval(simplify) -> render result` with a stateful session.
 pub fn evaluate_eval_text_simplify_with_session(
     engine: &mut cas_solver::Engine,
-    session: &mut cas_session::SessionState,
+    session: &mut crate::SessionState,
     expr: &str,
     auto_store: bool,
 ) -> Result<String, String> {
@@ -381,9 +396,10 @@ pub fn evaluate_eval_text_simplify_with_session(
     let output = engine
         .eval(session, req)
         .map_err(|e| format!("Error: {}", e))?;
+    let output_view = cas_solver::eval_output_view(&output);
     Ok(cas_solver::json::format_eval_result_text(
         &engine.simplifier.context,
-        &output.result,
+        &output_view.result,
     ))
 }
 
@@ -394,7 +410,7 @@ mod tests {
         evaluate_eval_text_simplify_with_session, EvalCommandError, EvalCommandOutput,
         EvalDisplayMessageKind, EvalMetadataLines, EvalResultLine,
     };
-    use cas_session::SessionState;
+    use crate::SessionState;
 
     #[test]
     fn evaluate_eval_command_output_success() {

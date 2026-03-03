@@ -19,7 +19,7 @@ impl Repl {
     pub(crate) fn show_simplification_steps_core(
         &mut self,
         expr: cas_ast::ExprId,
-        steps: &[cas_solver::Step],
+        steps: &[cas_session::Step],
         style_signals: cas_formatter::root_style::ParseStyleSignals,
     ) -> ReplReply {
         let lines = cas_didactic::format_cli_simplification_steps(
