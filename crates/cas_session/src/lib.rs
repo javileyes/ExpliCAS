@@ -3,9 +3,16 @@
 use cas_solver::{Diagnostics, RequireOrigin, RequiredItem};
 
 mod algebra_command;
+mod analysis_command_equiv;
 mod analysis_command_eval;
+mod analysis_command_explain;
 mod analysis_command_format;
+mod analysis_command_format_equivalence;
+mod analysis_command_format_errors;
+mod analysis_command_format_explain;
 mod analysis_command_parse;
+mod analysis_command_types;
+mod analysis_command_visualize;
 mod analysis_input_parse;
 mod assignment;
 mod assignment_command;
@@ -107,6 +114,8 @@ mod set_command;
 mod set_command_apply;
 mod set_command_eval;
 mod set_command_format;
+mod set_command_options;
+mod set_command_parse;
 mod set_command_types;
 mod show_command;
 mod simplifier_setup;
@@ -120,6 +129,8 @@ mod solve_command_render;
 mod solve_command_render_lines;
 mod solve_command_render_types;
 mod solve_command_types;
+mod solve_command_types_solve;
+mod solve_command_types_timeline;
 mod solve_command_weierstrass;
 mod solve_input_parse;
 mod state;
@@ -139,6 +150,9 @@ mod substitute_subcommand_json;
 mod substitute_subcommand_text;
 mod substitute_subcommand_types;
 mod timeline_command;
+mod timeline_command_eval;
+mod timeline_command_simplify;
+mod timeline_command_solve;
 mod unary_command;
 
 pub use algebra_command::{
