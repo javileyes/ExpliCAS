@@ -12,8 +12,8 @@ crate-type = ["cdylib"]
 # JNI bindings
 jni = "0.21"
 
-# CAS solver facade
-cas_solver = { path = "../cas_solver", default-features = false }
+# CAS session/application facade
+cas_session = { path = "../cas_session", default-features = false }
 cas_api_models = { path = "../cas_api_models" }
 
 # JSON serialization

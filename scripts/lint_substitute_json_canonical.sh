@@ -2,7 +2,7 @@
 # Lint: Substitute JSON Canonical Enforcement
 #
 # This script ensures that CLI and FFI always use the canonical
-# substitute_str_to_json entry point and don't hand-serialize JSON.
+# cas_session substitute JSON bridge and don't hand-serialize JSON.
 #
 # POLICY: Single source of truth for substitute JSON API.
 # SEE: docs/SUBSTITUTE_POLICY.md
@@ -15,25 +15,31 @@ echo "=== Substitute JSON Canonical Enforcement ==="
 
 ERRORS=0
 
-# 1) CLI must route JSON substitute through canonical substitute_str_to_json
+# 1) CLI must route JSON substitute through canonical cas_session bridge
 #    Accepted paths:
 #    - direct call from CLI
-#    - CLI -> cas_session helper -> substitute_str_to_json
+#    - CLI -> cas_session helper -> evaluate_substitute_json_canonical
 if grep -rq "substitute_str_to_json" "$ROOT/crates/cas_cli/src"; then
     echo "✔ CLI uses substitute_str_to_json (direct)"
 elif grep -rq "evaluate_substitute_subcommand" "$ROOT/crates/cas_cli/src" \
-    && grep -rq "substitute_str_to_json" "$ROOT/crates/cas_session/src"; then
+    && grep -rq "pub fn evaluate_substitute_json_canonical" "$ROOT/crates/cas_session/src/json_bridge.rs"; then
     echo "✔ CLI routes substitute JSON via cas_session canonical helper"
 else
-    echo "✘ ERROR: CLI must call cas_engine::substitute_str_to_json for JSON output"
+    echo "✘ ERROR: CLI must call canonical substitute JSON path (direct or via cas_session)"
     ERRORS=$((ERRORS + 1))
 fi
 
-# 2) FFI must call substitute_str_to_json
+# 2) FFI must call canonical substitute path
+#    Accepted paths:
+#    - direct call to substitute_str_to_json
+#    - call to cas_session canonical wrapper
 if grep -rq "substitute_str_to_json" "$ROOT/crates/cas_android_ffi/src"; then
-    echo "✔ FFI uses substitute_str_to_json"
+    echo "✔ FFI uses substitute_str_to_json (direct)"
+elif grep -rq "evaluate_substitute_json_canonical" "$ROOT/crates/cas_android_ffi/src" \
+    && grep -rq "pub fn evaluate_substitute_json_canonical" "$ROOT/crates/cas_session/src/json_bridge.rs"; then
+    echo "✔ FFI routes substitute JSON via cas_session canonical helper"
 else
-    echo "✘ ERROR: FFI must call cas_engine::substitute_str_to_json"
+    echo "✘ ERROR: FFI must call canonical substitute JSON path"
     ERRORS=$((ERRORS + 1))
 fi
 
@@ -49,7 +55,7 @@ fi
 if [ "$ERRORS" -gt 0 ]; then
     echo ""
     echo "FAILED: $ERRORS error(s) found"
-    echo "Substitute JSON must use canonical substitute_str_to_json path"
+    echo "Substitute JSON must use canonical substitute bridge path"
     exit 1
 fi
 

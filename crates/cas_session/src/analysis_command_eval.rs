@@ -28,8 +28,8 @@ pub enum ExplainCommandEvalError {
 fn evaluate_equiv_input(
     simplifier: &mut cas_solver::Simplifier,
     input: &str,
-) -> Result<cas_solver::EquivalenceResult, cas_solver::ParseExprPairError> {
-    let (lhs, rhs) = cas_solver::parse_expr_pair(&mut simplifier.context, input)?;
+) -> Result<cas_solver::EquivalenceResult, crate::ParseExprPairError> {
+    let (lhs, rhs) = crate::parse_expr_pair(&mut simplifier.context, input)?;
     Ok(simplifier.are_equivalent_extended(lhs, rhs))
 }
 
@@ -52,7 +52,7 @@ fn visualize_output_hint_lines(file_name: &str) -> Vec<String> {
 pub fn evaluate_equiv_command_lines(
     simplifier: &mut cas_solver::Simplifier,
     input: &str,
-) -> Result<Vec<String>, cas_solver::ParseExprPairError> {
+) -> Result<Vec<String>, crate::ParseExprPairError> {
     let result = evaluate_equiv_input(simplifier, input)?;
     Ok(crate::format_equivalence_result_lines(&result))
 }
@@ -61,7 +61,7 @@ pub fn evaluate_equiv_command_lines(
 pub fn evaluate_equiv_command_message(
     simplifier: &mut cas_solver::Simplifier,
     input: &str,
-) -> Result<String, cas_solver::ParseExprPairError> {
+) -> Result<String, crate::ParseExprPairError> {
     Ok(evaluate_equiv_command_lines(simplifier, input)?.join("\n"))
 }
 

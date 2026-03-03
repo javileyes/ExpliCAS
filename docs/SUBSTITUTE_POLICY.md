@@ -38,7 +38,7 @@ bash scripts/lint_substitute_enforcement.sh
 
 ## Contract Tests
 
-Located in `crates/cas_engine/tests/substitute_contract_tests.rs`:
+Located in `crates/cas_solver/tests/substitute_contract_tests.rs`:
 - A1, A3: ExactOnly mode
 - B1-B5: PowerPattern mode
 - C1-C3: Robustness (no invented algebra)
@@ -116,7 +116,7 @@ Reserved for budget integration. Not yet exposed in JSON.
 
 ## JSON API (v1)
 
-### Entry Point
+### Solver Compatibility Entry Point
 
 ```rust
 pub fn substitute_str_to_json(
@@ -127,7 +127,23 @@ pub fn substitute_str_to_json(
 ) -> String
 ```
 
-**Canonical entry point** for CLI + FFI + Android. All implementations must use this function.
+This is the solver-level compatibility API.
+
+### Canonical App/Frontend Entry Point
+
+```rust
+pub fn evaluate_substitute_json_canonical(
+    expr: &str,
+    target: &str,
+    replacement: &str,
+    opts_json: Option<&str>,
+) -> String
+```
+
+Defined in `crates/cas_session/src/json_bridge.rs`.
+
+CLI/FFI/Android should call the **session-level canonical bridge** (`cas_session`) rather than
+calling solver JSON adapters directly.
 
 ### Options
 
@@ -157,12 +173,11 @@ pub fn substitute_str_to_json(
 
 ### Contract Tests
 
-Located in `crates/cas_engine/tests/substitute_json_contract_tests.rs`:
+Located in `crates/cas_solver/tests/substitute_json_contract_tests.rs`:
 - Schema version = 1
 - Request echo present
 - Options reflected
 - Steps schema v1
 - No `__hold` leak
 - Error path structure
-
 

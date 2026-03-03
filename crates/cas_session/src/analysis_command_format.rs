@@ -18,15 +18,15 @@ pub fn format_equivalence_result_lines(result: &cas_solver::EquivalenceResult) -
 
 /// Format parse errors for commands that expect `<expr1>, <expr2>` input.
 pub fn format_expr_pair_parse_error_message(
-    error: &cas_solver::ParseExprPairError,
+    error: &crate::ParseExprPairError,
     command: &str,
 ) -> String {
     match error {
-        cas_solver::ParseExprPairError::MissingDelimiter => {
+        crate::ParseExprPairError::MissingDelimiter => {
             format!("Usage: {command} <expr1>, <expr2>")
         }
-        cas_solver::ParseExprPairError::FirstArg(e) => format!("Error parsing first arg: {e}"),
-        cas_solver::ParseExprPairError::SecondArg(e) => {
+        crate::ParseExprPairError::FirstArg(e) => format!("Error parsing first arg: {e}"),
+        crate::ParseExprPairError::SecondArg(e) => {
             format!("Error parsing second arg: {e}")
         }
     }
@@ -45,36 +45,32 @@ fn format_text_requires_lines(requires: &[String]) -> Vec<String> {
 }
 
 /// Format timeline command error into user-facing message.
-pub fn format_timeline_command_error_message(
-    error: &cas_solver::TimelineCommandEvalError,
-) -> String {
+pub fn format_timeline_command_error_message(error: &crate::TimelineCommandEvalError) -> String {
     match error {
-        cas_solver::TimelineCommandEvalError::Solve(e) => format_timeline_solve_error_message(e),
-        cas_solver::TimelineCommandEvalError::Simplify(e) => format_timeline_eval_error_message(e),
+        crate::TimelineCommandEvalError::Solve(e) => format_timeline_solve_error_message(e),
+        crate::TimelineCommandEvalError::Simplify(e) => format_timeline_eval_error_message(e),
     }
 }
 
-fn format_timeline_solve_error_message(error: &cas_solver::TimelineSolveEvalError) -> String {
+fn format_timeline_solve_error_message(error: &crate::TimelineSolveEvalError) -> String {
     match error {
-        cas_solver::TimelineSolveEvalError::Prepare(
-            cas_solver::SolvePrepareError::ExpectedEquation,
-        ) => "Error: Expected an equation for solve timeline, got an expression.\n\
+        crate::TimelineSolveEvalError::Prepare(crate::SolvePrepareError::ExpectedEquation) => {
+            "Error: Expected an equation for solve timeline, got an expression.\n\
                      Usage: timeline solve <equation>, <variable>\n\
                      Example: timeline solve x + 2 = 5, x"
-            .to_string(),
-        cas_solver::TimelineSolveEvalError::Prepare(cas_solver::SolvePrepareError::ParseError(
-            e,
-        )) => {
+                .to_string()
+        }
+        crate::TimelineSolveEvalError::Prepare(crate::SolvePrepareError::ParseError(e)) => {
             format!("Error parsing equation: {e}")
         }
-        cas_solver::TimelineSolveEvalError::Prepare(cas_solver::SolvePrepareError::NoVariable) => {
+        crate::TimelineSolveEvalError::Prepare(crate::SolvePrepareError::NoVariable) => {
             "Error: timeline solve found no variable.\n\
                  Use timeline solve <equation>, <variable>"
                 .to_string()
         }
-        cas_solver::TimelineSolveEvalError::Prepare(
-            cas_solver::SolvePrepareError::AmbiguousVariables(vars),
-        ) => {
+        crate::TimelineSolveEvalError::Prepare(crate::SolvePrepareError::AmbiguousVariables(
+            vars,
+        )) => {
             format!(
                 "Error: timeline solve found ambiguous variables {{{}}}.\n\
                  Use timeline solve <equation>, {}",
@@ -82,14 +78,14 @@ fn format_timeline_solve_error_message(error: &cas_solver::TimelineSolveEvalErro
                 vars.first().unwrap_or(&"x".to_string())
             )
         }
-        cas_solver::TimelineSolveEvalError::Solve(e) => format!("Error solving: {e}"),
+        crate::TimelineSolveEvalError::Solve(e) => format!("Error solving: {e}"),
     }
 }
 
-fn format_timeline_eval_error_message(error: &cas_solver::TimelineSimplifyEvalError) -> String {
+fn format_timeline_eval_error_message(error: &crate::TimelineSimplifyEvalError) -> String {
     match error {
-        cas_solver::TimelineSimplifyEvalError::Parse(e) => format!("Parse error: {e}"),
-        cas_solver::TimelineSimplifyEvalError::Eval(e) => format!("Simplification error: {e}"),
+        crate::TimelineSimplifyEvalError::Parse(e) => format!("Parse error: {e}"),
+        crate::TimelineSimplifyEvalError::Eval(e) => format!("Simplification error: {e}"),
     }
 }
 
@@ -180,8 +176,8 @@ mod tests {
 
     #[test]
     fn format_timeline_command_error_message_parse_is_human_readable() {
-        let err = cas_solver::TimelineCommandEvalError::Simplify(
-            cas_solver::TimelineSimplifyEvalError::Parse("bad input".to_string()),
+        let err = crate::TimelineCommandEvalError::Simplify(
+            crate::TimelineSimplifyEvalError::Parse("bad input".to_string()),
         );
         let msg = format_timeline_command_error_message(&err);
         assert!(msg.contains("Parse error"));
@@ -206,7 +202,7 @@ mod tests {
     #[test]
     fn format_expr_pair_parse_error_message_usage_is_human_readable() {
         let msg = format_expr_pair_parse_error_message(
-            &cas_solver::ParseExprPairError::MissingDelimiter,
+            &crate::ParseExprPairError::MissingDelimiter,
             "equiv",
         );
         assert!(msg.contains("Usage: equiv"));

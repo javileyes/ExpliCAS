@@ -9,8 +9,9 @@ use cas_ast::hold::strip_all_holds;
 
 /// Evaluate an expression and return JSON response.
 ///
-/// This is the **canonical entry point** for all JSON-returning evaluation.
-/// Both CLI and FFI should use this to ensure consistent behavior.
+/// This is the **solver-level canonical entry point** for JSON-returning
+/// stateless evaluation. Frontends should normally go through
+/// `cas_session::evaluate_eval_json_canonical`.
 ///
 /// # Arguments
 /// * `expr` - Expression string to evaluate

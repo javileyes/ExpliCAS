@@ -6,7 +6,9 @@ mod algebra_command;
 mod analysis_command_eval;
 mod analysis_command_format;
 mod analysis_command_parse;
+mod analysis_input_parse;
 mod assignment;
+mod assignment_command;
 mod assumption_format;
 mod autoexpand_command;
 mod bindings;
@@ -18,48 +20,124 @@ mod context_command;
 pub mod env;
 mod envelope_json_command;
 mod eval_command;
+mod eval_command_eval;
+mod eval_command_format;
+mod eval_command_render;
+mod eval_command_request;
+mod eval_command_text;
+mod eval_command_types;
 mod eval_json_command;
+mod eval_json_finalize;
+mod eval_json_input;
+mod eval_json_options;
+mod eval_json_presentation;
+mod eval_json_stats;
 mod eval_text_command;
 mod full_simplify_eval;
 mod full_simplify_render;
 mod health_command;
+mod health_command_eval;
+mod health_command_format;
+mod health_command_messages;
+mod health_command_parse;
+mod health_command_types;
 mod health_suite;
+mod health_suite_catalog;
+mod health_suite_format;
+mod health_suite_runner;
+mod health_suite_types;
 mod history;
 mod history_metadata_format;
+mod input_parse_common;
 mod inspect;
+mod json_bridge;
+mod json_bridge_eval;
+mod json_bridge_substitute;
 mod limit_command;
 mod limit_command_eval;
 mod limit_subcommand;
 mod linear_system_command;
+mod linear_system_eval;
+mod linear_system_format;
+mod linear_system_parse;
+mod linear_system_types;
 mod options;
 mod output_clean;
 mod parse_error_render;
+mod profile_cache_command;
+mod profile_command;
 mod prompt_display;
 mod rationalize_command;
+mod repl_command_analysis_runtime;
+mod repl_command_core_runtime;
+mod repl_command_eval_runtime;
+mod repl_command_parse;
+mod repl_command_preprocess;
 mod repl_command_routing;
 mod repl_command_runtime;
+mod repl_command_session_runtime;
+mod repl_command_types;
+mod repl_command_unary_runtime;
 mod repl_config_runtime;
 mod repl_core;
 mod repl_runtime;
 mod repl_semantics_runtime;
+mod repl_set_apply;
+mod repl_set_eval;
 mod repl_set_runtime;
+mod repl_set_types;
 mod repl_steps_runtime;
 mod semantics_command;
 mod semantics_display;
+mod semantics_preset_apply;
+mod semantics_preset_catalog;
+mod semantics_preset_format;
+mod semantics_preset_labels;
+mod semantics_preset_types;
 mod semantics_presets;
 mod semantics_set;
+mod semantics_set_apply;
+mod semantics_set_parse;
+mod semantics_set_types;
+mod semantics_view_format;
+mod semantics_view_types;
 mod session_io;
+mod session_state_command;
 mod set_command;
+mod set_command_apply;
+mod set_command_eval;
+mod set_command_format;
+mod set_command_types;
 mod show_command;
 mod simplifier_setup;
 mod snapshot;
+mod solve_budget_command;
 mod solve_command;
+mod solve_command_eval;
 mod solve_command_format;
+mod solve_command_format_errors;
 mod solve_command_render;
+mod solve_command_render_lines;
+mod solve_command_render_types;
+mod solve_command_types;
+mod solve_command_weierstrass;
+mod solve_input_parse;
 mod state;
 mod steps_command;
+mod steps_command_eval;
+mod steps_command_format;
+mod steps_command_parse;
+mod steps_command_types;
 mod substitute_command;
+mod substitute_command_eval;
+mod substitute_command_format;
+mod substitute_command_parse;
+mod substitute_command_types;
 mod substitute_subcommand;
+mod substitute_subcommand_eval;
+mod substitute_subcommand_json;
+mod substitute_subcommand_text;
+mod substitute_subcommand_types;
 mod timeline_command;
 mod unary_command;
 
@@ -88,6 +166,7 @@ pub use analysis_command_parse::{
     extract_equiv_command_tail, extract_explain_command_tail, extract_substitute_command_tail,
     extract_visualize_command_tail,
 };
+pub use analysis_input_parse::{parse_expr_pair, ParseExprPairError};
 pub use assignment::{
     apply_assignment, format_assignment_error_message, format_assignment_success_message,
     format_let_assignment_parse_error_message, let_assignment_usage_message,
@@ -169,6 +248,7 @@ pub use inspect::{
     HistoryEntryDetails, HistoryEntryInspection, HistoryExprInspection,
     InspectHistoryEntryInputError, ParseHistoryEntryIdError,
 };
+pub use json_bridge::{evaluate_eval_json_canonical, evaluate_substitute_json_canonical};
 pub use limit_command::evaluate_limit_command_lines;
 pub use limit_subcommand::{
     evaluate_limit_subcommand, LimitCommandApproach, LimitCommandPreSimplify, LimitSubcommandOutput,
@@ -274,6 +354,12 @@ pub use solve_command_format::{
 pub use solve_command_render::{
     format_solve_command_eval_lines, solve_render_config_from_eval_options,
     SolveCommandRenderConfig,
+};
+pub use solve_command_types::{
+    PreparedSolveEvalRequest, SolveCommandEvalError, SolveCommandEvalOutput, SolveCommandInput,
+    SolvePrepareError, TimelineCommandEvalError, TimelineCommandEvalOutput, TimelineCommandInput,
+    TimelineSimplifyEvalError, TimelineSimplifyEvalOutput, TimelineSolveEvalError,
+    TimelineSolveEvalOutput,
 };
 pub use steps_command::{
     apply_steps_command_update, evaluate_steps_command_input, format_steps_current_message,

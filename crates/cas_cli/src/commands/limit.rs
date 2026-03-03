@@ -1,6 +1,6 @@
 //! limit subcommand handler.
 //!
-//! Keeps CLI I/O and delegates computation to `cas_solver` JSON/eval APIs.
+//! Keeps CLI I/O and delegates computation to `cas_session` application APIs.
 
 use crate::{ApproachArg, LimitArgs, OutputFormat, PreSimplifyArg};
 

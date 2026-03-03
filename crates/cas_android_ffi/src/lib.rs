@@ -1,6 +1,6 @@
 //! Android JNI bridge for ExpliCAS engine.
 //!
-//! Uses `cas_solver` JSON entry points with DTOs from `cas_api_models`.
+//! Uses `cas_session` canonical JSON entry points with DTOs from `cas_api_models`.
 //! Schema version: 1
 //!
 //! # Safety
@@ -24,7 +24,7 @@ use jni::JNIEnv;
 
 // JSON DTOs for stable FFI fallback responses
 use cas_api_models::{BudgetJsonInfo, EngineJsonError, EngineJsonResponse};
-use cas_solver::eval_str_to_json;
+use cas_session::evaluate_eval_json_canonical;
 
 // ============================================================================
 // JNI Entry Points
@@ -54,7 +54,7 @@ pub extern "system" fn Java_es_javiergimenez_explicas_CasNative_abiVersion(
 /// # Returns
 /// JSON string with schema_version: 1
 ///
-/// Uses `cas_solver::eval_str_to_json` as the canonical entry point.
+/// Uses `cas_session::evaluate_eval_json_canonical` as the canonical entry point.
 #[no_mangle]
 pub extern "system" fn Java_es_javiergimenez_explicas_CasNative_evalJson<'local>(
     mut env: JNIEnv<'local>,
@@ -102,7 +102,7 @@ fn internal_error_json(message: &str) -> String {
     resp.to_json()
 }
 
-/// Core evaluation function - uses canonical cas_solver::eval_str_to_json
+/// Core evaluation function - uses canonical cas_session entry point.
 ///
 /// This is the testable inner function that doesn't require JNI.
 pub fn eval_json_core(env: &mut JNIEnv, expr: JString, opts_json: JString) -> String {
@@ -122,7 +122,7 @@ pub fn eval_json_core(env: &mut JNIEnv, expr: JString, opts_json: JString) -> St
     };
 
     // 2. Use canonical eval function
-    eval_str_to_json(&expr_str, &opts_str)
+    evaluate_eval_json_canonical(&expr_str, &opts_str)
 }
 
 /// JNI function: Java_es_javiergimenez_explicas_CasNative_substituteJson
@@ -136,7 +136,7 @@ pub fn eval_json_core(env: &mut JNIEnv, expr: JString, opts_json: JString) -> St
 /// # Returns
 /// JSON string with schema_version: 1
 ///
-/// Uses `cas_solver::substitute_str_to_json` which is the canonical entry point.
+/// Uses `cas_session::evaluate_substitute_json_canonical` which is the canonical entry point.
 #[no_mangle]
 pub extern "system" fn Java_es_javiergimenez_explicas_CasNative_substituteJson<'local>(
     mut env: JNIEnv<'local>,
@@ -165,7 +165,7 @@ pub extern "system" fn Java_es_javiergimenez_explicas_CasNative_substituteJson<'
     }
 }
 
-/// Core substitute function - uses canonical cas_solver::substitute_str_to_json
+/// Core substitute function - uses canonical cas_session entry point.
 pub fn substitute_json_core(
     env: &mut JNIEnv,
     expr: JString,
@@ -199,7 +199,7 @@ pub fn substitute_json_core(
         Some(opts_str.as_str())
     };
 
-    cas_solver::substitute_str_to_json(&expr_str, &target_str, &with_str, opts)
+    cas_session::evaluate_substitute_json_canonical(&expr_str, &target_str, &with_str, opts)
 }
 
 // ============================================================================
@@ -208,7 +208,7 @@ pub fn substitute_json_core(
 
 #[cfg(test)]
 mod tests {
-    use cas_solver::eval_str_to_json;
+    use cas_session::evaluate_eval_json_canonical;
     use serde_json::Value;
 
     fn parse_json(s: &str) -> Value {
@@ -217,7 +217,7 @@ mod tests {
 
     #[test]
     fn test_eval_success() {
-        let json = eval_str_to_json("x + x", "{}");
+        let json = evaluate_eval_json_canonical("x + x", "{}");
         let v = parse_json(&json);
 
         assert_eq!(v["schema_version"], 1);
@@ -228,7 +228,7 @@ mod tests {
 
     #[test]
     fn test_eval_parse_error() {
-        let json = eval_str_to_json("(", "{}");
+        let json = evaluate_eval_json_canonical("(", "{}");
         let v = parse_json(&json);
 
         assert_eq!(v["schema_version"], 1);
@@ -239,7 +239,7 @@ mod tests {
 
     #[test]
     fn test_eval_invalid_opts() {
-        let json = eval_str_to_json("x+1", "{invalid");
+        let json = evaluate_eval_json_canonical("x+1", "{invalid");
         let v = parse_json(&json);
 
         assert_eq!(v["schema_version"], 1);
@@ -252,7 +252,7 @@ mod tests {
     #[test]
     fn test_opts_defaults() {
         // Empty opts should use defaults
-        let json = eval_str_to_json("2+2", "{}");
+        let json = evaluate_eval_json_canonical("2+2", "{}");
         let v = parse_json(&json);
 
         assert_eq!(v["ok"], true);
@@ -262,7 +262,8 @@ mod tests {
 
     #[test]
     fn test_opts_custom() {
-        let json = eval_str_to_json("2+2", r#"{"budget":{"preset":"small","mode":"strict"}}"#);
+        let json =
+            evaluate_eval_json_canonical("2+2", r#"{"budget":{"preset":"small","mode":"strict"}}"#);
         let v = parse_json(&json);
 
         assert_eq!(v["ok"], true);
@@ -273,7 +274,7 @@ mod tests {
     #[test]
     fn test_no_hold_leak() {
         // Expression that might internally use __hold
-        let json = eval_str_to_json("(x+1)^2 - (x+1)^2", "{}");
+        let json = evaluate_eval_json_canonical("(x+1)^2 - (x+1)^2", "{}");
         let v = parse_json(&json);
 
         if let Some(result) = v["result"].as_str() {
@@ -287,7 +288,7 @@ mod tests {
 
     #[test]
     fn test_steps_mode() {
-        let json = eval_str_to_json("x + x", r#"{"steps":true}"#);
+        let json = evaluate_eval_json_canonical("x + x", r#"{"steps":true}"#);
         let v = parse_json(&json);
 
         assert_eq!(v["ok"], true);

@@ -9,7 +9,6 @@ mod blocked_hint;
 pub mod check;
 mod domain_types;
 mod eval_output_adapters;
-mod input_parse;
 mod isolation;
 mod json;
 mod linear_system;
@@ -126,7 +125,6 @@ pub use eval_output_adapters::{
     solve_steps_from_eval_output, steps_from_eval_output, stored_id_from_eval_output,
     EvalOutputView,
 };
-pub use input_parse::{parse_expr_pair, ParseExprPairError};
 pub use json::{eval_str_to_json, substitute_str_to_json};
 pub use linear_system::{
     solve_2x2_linear_system, solve_3x3_linear_system, solve_nxn_linear_system, LinSolveResult,
@@ -137,11 +135,7 @@ pub use pipeline_display::{display_expr_or_poly, format_pipeline_stats};
 pub use solution_display::{display_interval, display_solution_set, is_pure_residual_otherwise};
 pub use solve::{
     contains_var, infer_solve_variable, solve, solve_with_display_steps, verify_stats,
-    DisplaySolveSteps, PreparedSolveEvalRequest, SolveCommandEvalError, SolveCommandEvalOutput,
-    SolveCommandInput, SolveDiagnostics, SolvePrepareError, SolveStep, SolveSubStep, SolverOptions,
-    TimelineCommandEvalError, TimelineCommandEvalOutput, TimelineCommandInput,
-    TimelineSimplifyEvalError, TimelineSimplifyEvalOutput, TimelineSolveEvalError,
-    TimelineSolveEvalOutput,
+    DisplaySolveSteps, SolveDiagnostics, SolveStep, SolveSubStep, SolverOptions,
 };
 pub use solve_safety::{RequirementDescriptor, RuleSolveSafetyExt, SolveSafety};
 pub use substitute::{

@@ -52,7 +52,7 @@ pub fn evaluate_timeline_command_output_with_session<S>(
     session: &mut S,
     input: &str,
     eval_options: &cas_solver::EvalOptions,
-) -> Result<TimelineCommandOutput, cas_solver::TimelineCommandEvalError>
+) -> Result<TimelineCommandOutput, cas_session::TimelineCommandEvalError>
 where
     S: cas_solver::EvalSession<
         Options = cas_solver::EvalOptions,
@@ -77,7 +77,7 @@ pub fn evaluate_timeline_command_cli_render_with_session<S>(
     input: &str,
     eval_options: &cas_solver::EvalOptions,
     verbosity: VerbosityLevel,
-) -> Result<TimelineCliRender, cas_solver::TimelineCommandEvalError>
+) -> Result<TimelineCliRender, cas_session::TimelineCommandEvalError>
 where
     S: cas_solver::EvalSession<
         Options = cas_solver::EvalOptions,
@@ -112,7 +112,7 @@ pub fn evaluate_timeline_invocation_cli_actions_with_session<S>(
     line: &str,
     eval_options: &cas_solver::EvalOptions,
     verbosity: VerbosityLevel,
-) -> Result<Vec<TimelineCliAction>, cas_solver::TimelineCommandEvalError>
+) -> Result<Vec<TimelineCliAction>, cas_session::TimelineCommandEvalError>
 where
     S: cas_solver::EvalSession<
         Options = cas_solver::EvalOptions,
@@ -138,10 +138,10 @@ where
 
 /// Convert solver timeline evaluation output into didactic render payload.
 pub fn timeline_command_output_from_solver(
-    output: cas_solver::TimelineCommandEvalOutput,
+    output: cas_session::TimelineCommandEvalOutput,
 ) -> TimelineCommandOutput {
     match output {
-        cas_solver::TimelineCommandEvalOutput::Solve(out) => {
+        cas_session::TimelineCommandEvalOutput::Solve(out) => {
             TimelineCommandOutput::Solve(TimelineSolveCommandOutput {
                 equation: out.equation,
                 var: out.var,
@@ -149,7 +149,7 @@ pub fn timeline_command_output_from_solver(
                 display_steps: out.display_steps,
             })
         }
-        cas_solver::TimelineCommandEvalOutput::Simplify {
+        cas_session::TimelineCommandEvalOutput::Simplify {
             expr_input,
             aggressive,
             output,
