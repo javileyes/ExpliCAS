@@ -109,56 +109,12 @@ impl Repl {
         }
         reply
     }
-}
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn first_output(reply: &ReplReply) -> &str {
-        for msg in reply {
-            if let ReplMsg::Output(text) = msg {
-                return text.as_str();
-            }
-        }
-        panic!("reply should contain output");
-    }
-
-    #[test]
-    fn cache_status_uses_engine_profile_cache() {
-        let mut repl = Repl::new();
-
-        if let Err(err) = cas_session::evaluate_eval_command_render_plan_on_repl_core(
-            &mut repl.core,
-            "x + x",
-            false,
-        ) {
-            panic!("eval failed: {err:?}");
-        }
-
-        let status = repl.handle_cache_command_core("cache status");
-        let output = first_output(&status);
-        assert!(
-            output.contains("Profile Cache: 1 profiles cached"),
-            "unexpected cache status output: {output}"
-        );
-    }
-
-    #[test]
-    fn cache_clear_empties_engine_profile_cache() {
-        let mut repl = Repl::new();
-
-        if let Err(err) = cas_session::evaluate_eval_command_render_plan_on_repl_core(
-            &mut repl.core,
-            "x + x",
-            false,
-        ) {
-            panic!("eval failed: {err:?}");
-        }
-        assert_eq!(cas_session::profile_cache_len_on_repl_core(&repl.core), 1);
-
-        let clear = repl.handle_cache_command_core("cache clear");
-        assert!(first_output(&clear).contains("Profile cache cleared"));
-        assert_eq!(cas_session::profile_cache_len_on_repl_core(&repl.core), 0);
+    /// Handle "profile" command - profiler status/toggles.
+    pub(crate) fn handle_profile_command_core(&mut self, line: &str) -> ReplReply {
+        reply_output(cas_session::evaluate_profile_command_message_on_repl_core(
+            &mut self.core,
+            line,
+        ))
     }
 }

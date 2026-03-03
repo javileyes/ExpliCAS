@@ -7,19 +7,6 @@ use cas_api_models::{
 };
 use cas_ast::hold::strip_all_holds;
 
-fn map_eval_error_message(message: String) -> EngineJsonError {
-    if message.contains("requires stateful eval") {
-        EngineJsonError::invalid_input(
-            "Session references (#N) are not supported in stateless eval_json mode",
-            serde_json::json!({
-                "hint": "Use stateful Engine::eval with an EvalSession for #N references"
-            }),
-        )
-    } else {
-        EngineJsonError::simple("InternalError", "E_INTERNAL", message)
-    }
-}
-
 /// Evaluate an expression and return JSON response.
 ///
 /// This is the **canonical entry point** for all JSON-returning evaluation.
@@ -45,18 +32,8 @@ pub fn eval_str_to_json(expr: &str, opts_json: &str) -> String {
     let opts: JsonRunOptions = match serde_json::from_str(opts_json) {
         Ok(o) => o,
         Err(e) => {
-            // Invalid optsJson -> return error response
-            let budget = BudgetJsonInfo::new("unknown", true);
-            let error = EngineJsonError::invalid_input(
-                format!("Invalid options JSON: {}", e),
-                serde_json::json!({ "error": e.to_string() }),
-            );
-            let resp = EngineJsonResponse::err(error, budget);
-            return if opts_json.contains("\"pretty\":true") {
-                resp.to_json_pretty()
-            } else {
-                resp.to_json()
-            };
+            let resp = EngineJsonResponse::invalid_options_json(e.to_string());
+            return resp.to_json_with_pretty(JsonRunOptions::requested_pretty(opts_json));
         }
     };
 
@@ -78,11 +55,7 @@ pub fn eval_str_to_json(expr: &str, opts_json: &str) -> String {
                 }),
             );
             let resp = EngineJsonResponse::err(error, budget_info);
-            return if opts.pretty {
-                resp.to_json_pretty()
-            } else {
-                resp.to_json()
-            };
+            return resp.to_json_with_pretty(opts.pretty);
         }
     };
 
@@ -98,13 +71,9 @@ pub fn eval_str_to_json(expr: &str, opts_json: &str) -> String {
     let output = match engine.eval_stateless(EvalOptions::default(), req) {
         Ok(o) => o,
         Err(e) => {
-            let error = map_eval_error_message(e.to_string());
+            let error = EngineJsonError::from_eval_runtime_error(e.to_string());
             let resp = EngineJsonResponse::err(error, budget_info);
-            return if opts.pretty {
-                resp.to_json_pretty()
-            } else {
-                resp.to_json()
-            };
+            return resp.to_json_with_pretty(opts.pretty);
         }
     };
     let output_view = crate::eval_output_view(&output);
@@ -178,11 +147,7 @@ pub fn eval_str_to_json(expr: &str, opts_json: &str) -> String {
     resp.warnings = map_domain_warnings_to_engine_warnings(&output_view.domain_warnings);
     resp.assumptions = map_solver_assumptions_to_api_records(&output_view.solver_assumptions);
 
-    if opts.pretty {
-        resp.to_json_pretty()
-    } else {
-        resp.to_json()
-    }
+    resp.to_json_with_pretty(opts.pretty)
 }
 
 #[cfg(test)]

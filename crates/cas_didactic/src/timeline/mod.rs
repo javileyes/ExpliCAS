@@ -66,7 +66,7 @@ where
     >,
 {
     let output =
-        cas_solver::evaluate_timeline_command_with_session(engine, session, input, eval_options)?;
+        cas_session::evaluate_timeline_command_with_session(engine, session, input, eval_options)?;
     Ok(timeline_command_output_from_solver(output))
 }
 

@@ -138,12 +138,16 @@ pub fn evaluate_weierstrass_command_lines(
     simplifier: &mut cas_solver::Simplifier,
     input: &str,
 ) -> Result<Vec<String>, String> {
-    let eval_output = cas_solver::evaluate_weierstrass_command(simplifier, input)?;
+    let parsed_expr = cas_parser::parse(input.trim(), &mut simplifier.context)
+        .map_err(|e| format!("Parse error: {e}"))?;
+    let substituted_expr =
+        cas_solver::apply_weierstrass_recursive(&mut simplifier.context, parsed_expr);
+    let (simplified_expr, _steps) = simplifier.simplify(substituted_expr);
     Ok(format_weierstrass_eval_lines(
         &simplifier.context,
         input,
-        eval_output.substituted_expr,
-        eval_output.simplified_expr,
+        substituted_expr,
+        simplified_expr,
     ))
 }
 

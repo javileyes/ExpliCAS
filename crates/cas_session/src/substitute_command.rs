@@ -1,6 +1,8 @@
 //! Session-level substitute command rendering helpers.
 
-type SubstituteEvalOutput = cas_solver::SubstituteSimplifyEvalOutput;
+use cas_ast::ExprId;
+
+type SubstituteEvalOutput = SubstituteSimplifyEvalOutput;
 
 const SUBSTITUTE_USAGE_MESSAGE: &str = "Usage: subst <expr>, <target>, <replacement>\n\n\
                      Examples:\n\
@@ -17,17 +19,34 @@ pub enum SubstituteRenderMode {
     Verbose,
 }
 
+/// Parse/eval errors for `subst <expr>, <target>, <replacement>`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SubstituteParseError {
+    InvalidArity,
+    Expression(String),
+    Target(String),
+    Replacement(String),
+}
+
+/// Evaluated payload for REPL-style `subst` followed by simplify.
+#[derive(Debug, Clone)]
+pub struct SubstituteSimplifyEvalOutput {
+    pub simplified_expr: ExprId,
+    pub strategy: cas_solver::SubstituteStrategy,
+    pub steps: Vec<cas_solver::Step>,
+}
+
 /// Format substitute parse errors into user-facing messages.
-pub fn format_substitute_parse_error_message(error: &cas_solver::SubstituteParseError) -> String {
+pub fn format_substitute_parse_error_message(error: &SubstituteParseError) -> String {
     match error {
-        cas_solver::SubstituteParseError::InvalidArity => SUBSTITUTE_USAGE_MESSAGE.to_string(),
-        cas_solver::SubstituteParseError::Expression(e) => {
+        SubstituteParseError::InvalidArity => SUBSTITUTE_USAGE_MESSAGE.to_string(),
+        SubstituteParseError::Expression(e) => {
             format!("Error parsing expression: {e}")
         }
-        cas_solver::SubstituteParseError::Target(e) => {
+        SubstituteParseError::Target(e) => {
             format!("Error parsing target: {e}")
         }
-        cas_solver::SubstituteParseError::Replacement(e) => {
+        SubstituteParseError::Replacement(e) => {
             format!("Error parsing replacement: {e}")
         }
     }
@@ -52,6 +71,51 @@ fn split_by_comma_ignoring_parens(s: &str) -> Vec<&str> {
 
     parts.push(&s[start..]);
     parts
+}
+
+/// Parse REPL-like substitute arguments (`expr, target, replacement`) into ids.
+fn parse_substitute_args(
+    ctx: &mut cas_ast::Context,
+    input: &str,
+) -> Result<(ExprId, ExprId, ExprId), SubstituteParseError> {
+    let parts = split_by_comma_ignoring_parens(input);
+    if parts.len() != 3 {
+        return Err(SubstituteParseError::InvalidArity);
+    }
+
+    let expr_str = parts[0].trim();
+    let target_str = parts[1].trim();
+    let replacement_str = parts[2].trim();
+
+    let expr = cas_parser::parse(expr_str, ctx)
+        .map_err(|e| SubstituteParseError::Expression(e.to_string()))?;
+    let target = cas_parser::parse(target_str, ctx)
+        .map_err(|e| SubstituteParseError::Target(e.to_string()))?;
+    let replacement = cas_parser::parse(replacement_str, ctx)
+        .map_err(|e| SubstituteParseError::Replacement(e.to_string()))?;
+
+    Ok((expr, target, replacement))
+}
+
+fn evaluate_substitute_and_simplify(
+    simplifier: &mut cas_solver::Simplifier,
+    input: &str,
+    options: cas_solver::SubstituteOptions,
+) -> Result<SubstituteSimplifyEvalOutput, SubstituteParseError> {
+    let (expr, target, replacement) = parse_substitute_args(&mut simplifier.context, input)?;
+    let (substituted_expr, strategy) = cas_solver::substitute_auto_with_strategy(
+        &mut simplifier.context,
+        expr,
+        target,
+        replacement,
+        options,
+    );
+    let (simplified_expr, steps) = simplifier.simplify(substituted_expr);
+    Ok(SubstituteSimplifyEvalOutput {
+        simplified_expr,
+        strategy,
+        steps,
+    })
 }
 
 /// Convert REPL display mode into substitute render mode.
@@ -144,8 +208,8 @@ pub fn evaluate_substitute_command_lines(
     simplifier: &mut cas_solver::Simplifier,
     input: &str,
     mode: SubstituteRenderMode,
-) -> Result<Vec<String>, cas_solver::SubstituteParseError> {
-    let output = cas_solver::evaluate_substitute_and_simplify(
+) -> Result<Vec<String>, SubstituteParseError> {
+    let output = evaluate_substitute_and_simplify(
         simplifier,
         input,
         cas_solver::SubstituteOptions::default(),
@@ -163,7 +227,7 @@ pub fn evaluate_substitute_invocation_lines(
     simplifier: &mut cas_solver::Simplifier,
     line: &str,
     display_mode: crate::SetDisplayMode,
-) -> Result<Vec<String>, cas_solver::SubstituteParseError> {
+) -> Result<Vec<String>, SubstituteParseError> {
     let input = crate::extract_substitute_command_tail(line);
     let mode = substitute_render_mode_from_display_mode(display_mode);
     let mut lines = evaluate_substitute_command_lines(simplifier, input, mode)?;
@@ -176,7 +240,7 @@ pub fn evaluate_substitute_invocation_message(
     simplifier: &mut cas_solver::Simplifier,
     line: &str,
     display_mode: crate::SetDisplayMode,
-) -> Result<String, cas_solver::SubstituteParseError> {
+) -> Result<String, SubstituteParseError> {
     Ok(evaluate_substitute_invocation_lines(simplifier, line, display_mode)?.join("\n"))
 }
 
@@ -231,8 +295,7 @@ mod tests {
 
     #[test]
     fn format_substitute_parse_error_message_usage_is_human_readable() {
-        let msg =
-            format_substitute_parse_error_message(&cas_solver::SubstituteParseError::InvalidArity);
+        let msg = format_substitute_parse_error_message(&super::SubstituteParseError::InvalidArity);
         assert!(msg.contains("Usage: subst"));
     }
 

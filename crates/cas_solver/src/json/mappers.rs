@@ -1,9 +1,5 @@
-use crate::{AssumptionRecord, BlockedHint, DomainWarning, ImplicitCondition};
-use cas_api_models::{
-    AssumptionDto, AssumptionRecord as ApiAssumptionRecord, BlockedHintDto, ConditionDto,
-    EngineJsonWarning,
-};
-use cas_formatter::DisplayExpr;
+use crate::{AssumptionRecord, DomainWarning};
+use cas_api_models::{AssumptionRecord as ApiAssumptionRecord, EngineJsonWarning};
 
 pub(super) fn map_domain_warnings_to_engine_warnings(
     warnings: &[DomainWarning],
@@ -27,66 +23,6 @@ pub(super) fn map_solver_assumptions_to_api_records(
             expr: a.expr.clone(),
             message: a.message.clone(),
             count: a.count,
-        })
-        .collect()
-}
-
-pub(super) fn map_required_conditions(
-    required_conditions: &[ImplicitCondition],
-    ctx: &cas_ast::Context,
-) -> Vec<ConditionDto> {
-    required_conditions
-        .iter()
-        .map(|cond| {
-            let (kind, expr_id) = match cond {
-                ImplicitCondition::NonNegative(e) => ("NonNegative", *e),
-                ImplicitCondition::Positive(e) => ("Positive", *e),
-                ImplicitCondition::NonZero(e) => ("NonZero", *e),
-            };
-            let expr_display = DisplayExpr {
-                context: ctx,
-                id: expr_id,
-            }
-            .to_string();
-            ConditionDto {
-                kind: kind.to_string(),
-                display: cond.display(ctx),
-                expr_display: expr_display.clone(),
-                expr_canonical: expr_display,
-            }
-        })
-        .collect()
-}
-
-pub(super) fn map_assumptions_used(
-    assumptions: &[AssumptionRecord],
-    warnings: &[DomainWarning],
-) -> Vec<AssumptionDto> {
-    let mut out: Vec<AssumptionDto> = assumptions
-        .iter()
-        .map(|a| AssumptionDto {
-            kind: a.kind.clone(),
-            display: a.message.clone(),
-            expr_canonical: a.expr.clone(),
-            rule: "solver".to_string(),
-        })
-        .collect();
-    out.extend(warnings.iter().map(|w| AssumptionDto {
-        kind: "domain_warning".to_string(),
-        display: w.message.clone(),
-        expr_canonical: String::new(),
-        rule: w.rule_name.clone(),
-    }));
-    out
-}
-
-pub(super) fn map_blocked_hints(blocked_hints: &[BlockedHint]) -> Vec<BlockedHintDto> {
-    blocked_hints
-        .iter()
-        .map(|h| BlockedHintDto {
-            rule: h.rule.clone(),
-            requires: vec![h.key.condition_display().to_string()],
-            tip: h.suggestion.to_string(),
         })
         .collect()
 }

@@ -3,8 +3,6 @@
 //! During migration this crate hosts the solver entry points while still
 //! re-exporting selected `cas_engine` APIs for compatibility.
 
-mod algebra_command_eval;
-mod analysis_command_eval;
 mod assumption_model;
 mod assumption_types;
 mod blocked_hint;
@@ -13,13 +11,10 @@ mod domain_types;
 mod eval_output_adapters;
 mod input_parse;
 mod isolation;
-pub mod json;
-mod limit_command_eval;
+mod json;
 mod linear_system;
-mod linear_system_command;
 mod path_rewrite;
 mod pipeline_display;
-mod rationalize_command_eval;
 mod solution_display;
 mod solve;
 mod solve_core;
@@ -49,15 +44,6 @@ pub mod api {
     };
 }
 
-pub use algebra_command_eval::{
-    evaluate_expand_log_command, evaluate_telescope_command, evaluate_unary_function_command,
-    evaluate_weierstrass_command, ExpandLogEvalOutput, TelescopeEvalOutput,
-    UnaryFunctionEvalOutput, WeierstrassEvalOutput,
-};
-pub use analysis_command_eval::{
-    evaluate_explain_gcd_command, evaluate_visualize_ast_dot, ExplainCommandEvalError,
-    ExplainGcdEvalOutput, VisualizeEvalError,
-};
 pub use assumption_model::{
     assumption_events_from_step, blocked_hint_suggestion, classify_assumption,
     collect_assumption_records, collect_assumption_records_from_iter, collect_blocked_hint_items,
@@ -141,46 +127,26 @@ pub use eval_output_adapters::{
     EvalOutputView,
 };
 pub use input_parse::{parse_expr_pair, ParseExprPairError};
-pub use json::{
-    eval_str_to_json, eval_str_to_output_envelope, substitute_str_to_json,
-    substitute_str_to_json_with_options, EnvelopeEvalOptions,
-};
-pub use limit_command_eval::{
-    evaluate_limit_command_input, evaluate_limit_subcommand_output, format_limit_subcommand_error,
-    parse_limit_command_input, LimitCommandEvalError, LimitCommandEvalOutput, LimitCommandInput,
-    LimitSubcommandError, LimitSubcommandOutput,
-};
+pub use json::{eval_str_to_json, substitute_str_to_json};
 pub use linear_system::{
     solve_2x2_linear_system, solve_3x3_linear_system, solve_nxn_linear_system, LinSolveResult,
     LinearSystemError,
 };
-pub use linear_system_command::{
-    evaluate_linear_system_command_input, parse_linear_system_invocation_input,
-    LinearSystemCommandEvalError, LinearSystemCommandEvalOutput, LinearSystemSpecError,
-};
 pub use path_rewrite::reconstruct_global_expr;
 pub use pipeline_display::{display_expr_or_poly, format_pipeline_stats};
-pub use rationalize_command_eval::{
-    evaluate_rationalize_command_input, RationalizeCommandEvalError, RationalizeCommandEvalOutput,
-    RationalizeCommandOutcome,
-};
 pub use solution_display::{display_interval, display_solution_set, is_pure_residual_otherwise};
 pub use solve::{
-    contains_var, evaluate_equiv_input, evaluate_solve_command_with_session,
-    evaluate_timeline_command_with_session, evaluate_timeline_simplify_with_session,
-    evaluate_timeline_solve_with_eval_options, infer_solve_variable, parse_solve_command_input,
-    parse_solve_invocation_check, parse_timeline_command_input, prepare_solve_eval_request, solve,
-    solve_with_display_steps, verify_stats, DisplaySolveSteps, PreparedSolveEvalRequest,
-    SolveCommandEvalError, SolveCommandEvalOutput, SolveCommandInput, SolveDiagnostics,
-    SolvePrepareError, SolveStep, SolveSubStep, SolverOptions, TimelineCommandEvalError,
-    TimelineCommandEvalOutput, TimelineCommandInput, TimelineSimplifyEvalError,
-    TimelineSimplifyEvalOutput, TimelineSolveEvalError, TimelineSolveEvalOutput,
+    contains_var, infer_solve_variable, solve, solve_with_display_steps, verify_stats,
+    DisplaySolveSteps, PreparedSolveEvalRequest, SolveCommandEvalError, SolveCommandEvalOutput,
+    SolveCommandInput, SolveDiagnostics, SolvePrepareError, SolveStep, SolveSubStep, SolverOptions,
+    TimelineCommandEvalError, TimelineCommandEvalOutput, TimelineCommandInput,
+    TimelineSimplifyEvalError, TimelineSimplifyEvalOutput, TimelineSolveEvalError,
+    TimelineSolveEvalOutput,
 };
 pub use solve_safety::{RequirementDescriptor, RuleSolveSafetyExt, SolveSafety};
 pub use substitute::{
-    detect_substitute_strategy, evaluate_substitute_and_simplify, parse_substitute_args,
-    substitute_auto, substitute_auto_with_strategy, substitute_power_aware, substitute_with_steps,
-    SubstituteOptions, SubstituteParseError, SubstituteSimplifyEvalOutput, SubstituteStrategy,
+    detect_substitute_strategy, substitute_auto, substitute_auto_with_strategy,
+    substitute_power_aware, substitute_with_steps, SubstituteOptions, SubstituteStrategy,
 };
 pub use symbolic_transforms::{apply_weierstrass_recursive, expand_log_recursive};
 pub use telescoping::{telescope, TelescopingResult, TelescopingStep};

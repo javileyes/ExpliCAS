@@ -15,11 +15,6 @@ pub fn extract_explain_command_tail(line: &str) -> &str {
     line.strip_prefix("explain").unwrap_or(line).trim()
 }
 
-/// Extract tail of `timeline ...` input.
-pub fn extract_timeline_command_tail(line: &str) -> &str {
-    line.strip_prefix("timeline").unwrap_or(line).trim()
-}
-
 /// Extract tail of `visualize ...` / `viz ...` input.
 pub fn extract_visualize_command_tail(line: &str) -> &str {
     line.strip_prefix("visualize ")

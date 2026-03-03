@@ -107,9 +107,7 @@ impl Repl {
             cas_session::ReplCommandInput::Expand(line) => self.handle_expand_core(line),
             cas_session::ReplCommandInput::Rationalize(line) => self.handle_rationalize_core(line),
             cas_session::ReplCommandInput::Limit(line) => self.handle_limit_core(line),
-            cas_session::ReplCommandInput::Profile(line) => reply_output(
-                cas_session::apply_profile_command_on_repl_core(&mut self.core, line),
-            ),
+            cas_session::ReplCommandInput::Profile(line) => self.handle_profile_command_core(line),
             cas_session::ReplCommandInput::Health(line) => self.handle_health_core(line),
             cas_session::ReplCommandInput::Eval(line) => self.handle_eval_core(line),
         }

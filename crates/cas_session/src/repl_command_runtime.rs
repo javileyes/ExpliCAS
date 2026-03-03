@@ -7,7 +7,7 @@ pub fn evaluate_equiv_invocation_message_on_repl_core(
     core: &mut ReplCore,
     line: &str,
 ) -> Result<String, String> {
-    crate::evaluate_equiv_invocation_message(&mut core.engine.simplifier, line)
+    crate::evaluate_equiv_invocation_message(core.simplifier_mut(), line)
 }
 
 /// Evaluate `subst ...` against the active REPL simplifier.
@@ -16,15 +16,11 @@ pub fn evaluate_substitute_invocation_user_message_on_repl_core(
     line: &str,
     display_mode: SetDisplayMode,
 ) -> Result<String, String> {
-    crate::evaluate_substitute_invocation_user_message(
-        &mut core.engine.simplifier,
-        line,
-        display_mode,
-    )
+    crate::evaluate_substitute_invocation_user_message(core.simplifier_mut(), line, display_mode)
 }
 
 /// Evaluate unary command invocation (`det`, `transpose`, `trace`) against REPL simplifier.
-pub fn evaluate_unary_command_message_on_repl_core(
+pub(crate) fn evaluate_unary_command_message_on_repl_core(
     core: &mut ReplCore,
     line: &str,
     function_name: &str,
@@ -33,7 +29,7 @@ pub fn evaluate_unary_command_message_on_repl_core(
     clean_result: bool,
 ) -> Result<String, String> {
     crate::evaluate_unary_command_message(
-        &mut core.engine.simplifier,
+        core.simplifier_mut(),
         line,
         function_name,
         display_mode,
@@ -42,12 +38,39 @@ pub fn evaluate_unary_command_message_on_repl_core(
     )
 }
 
+/// Evaluate `det ...` invocation against REPL simplifier.
+pub fn evaluate_det_command_message_on_repl_core(
+    core: &mut ReplCore,
+    line: &str,
+    display_mode: SetDisplayMode,
+) -> Result<String, String> {
+    evaluate_unary_command_message_on_repl_core(core, line, "det", display_mode, true, true)
+}
+
+/// Evaluate `transpose ...` invocation against REPL simplifier.
+pub fn evaluate_transpose_command_message_on_repl_core(
+    core: &mut ReplCore,
+    line: &str,
+    display_mode: SetDisplayMode,
+) -> Result<String, String> {
+    evaluate_unary_command_message_on_repl_core(core, line, "transpose", display_mode, false, false)
+}
+
+/// Evaluate `trace ...` invocation against REPL simplifier.
+pub fn evaluate_trace_command_message_on_repl_core(
+    core: &mut ReplCore,
+    line: &str,
+    display_mode: SetDisplayMode,
+) -> Result<String, String> {
+    evaluate_unary_command_message_on_repl_core(core, line, "trace", display_mode, false, true)
+}
+
 /// Evaluate `weierstrass ...` invocation against REPL simplifier.
 pub fn evaluate_weierstrass_invocation_message_on_repl_core(
     core: &mut ReplCore,
     line: &str,
 ) -> Result<String, String> {
-    crate::evaluate_weierstrass_invocation_message(&mut core.engine.simplifier, line)
+    crate::evaluate_weierstrass_invocation_message(core.simplifier_mut(), line)
 }
 
 /// Evaluate `telescope ...` using REPL context.
@@ -55,7 +78,7 @@ pub fn evaluate_telescope_invocation_message_on_repl_core(
     core: &mut ReplCore,
     line: &str,
 ) -> Result<String, String> {
-    crate::evaluate_telescope_invocation_message(&mut core.engine.simplifier.context, line)
+    crate::evaluate_telescope_invocation_message(&mut core.simplifier_mut().context, line)
 }
 
 /// Evaluate `expand_log ...` using REPL context.
@@ -63,7 +86,7 @@ pub fn evaluate_expand_log_invocation_message_on_repl_core(
     core: &mut ReplCore,
     line: &str,
 ) -> Result<String, String> {
-    crate::evaluate_expand_log_invocation_message(&mut core.engine.simplifier.context, line)
+    crate::evaluate_expand_log_invocation_message(&mut core.simplifier_mut().context, line)
 }
 
 /// Evaluate `solve_system ...` using REPL context.
@@ -71,7 +94,7 @@ pub fn evaluate_linear_system_command_message_on_repl_core(
     core: &mut ReplCore,
     line: &str,
 ) -> String {
-    crate::evaluate_linear_system_command_message(&mut core.engine.simplifier.context, line)
+    crate::evaluate_linear_system_command_message(&mut core.simplifier_mut().context, line)
 }
 
 /// Evaluate `visualize ...` using REPL context.
@@ -79,7 +102,7 @@ pub fn evaluate_visualize_invocation_output_on_repl_core(
     core: &mut ReplCore,
     line: &str,
 ) -> Result<VisualizeCommandOutput, String> {
-    crate::evaluate_visualize_invocation_output(&mut core.engine.simplifier.context, line)
+    crate::evaluate_visualize_invocation_output(&mut core.simplifier_mut().context, line)
 }
 
 /// Evaluate `solve ...` invocation against REPL core engine/session state.
@@ -88,13 +111,10 @@ pub fn evaluate_solve_command_message_on_repl_core(
     line: &str,
     display_mode: SetDisplayMode,
 ) -> Result<String, String> {
-    crate::evaluate_solve_command_message(
-        &mut core.engine,
-        &mut core.state,
-        line,
-        display_mode,
-        core.debug_mode,
-    )
+    let debug_mode = core.debug_mode();
+    core.with_engine_and_state(|engine, state| {
+        crate::evaluate_solve_command_message(engine, state, line, display_mode, debug_mode)
+    })
 }
 
 /// Evaluate `simplify ...` invocation against REPL core simplifier/session state.
@@ -103,12 +123,9 @@ pub fn evaluate_full_simplify_command_lines_on_repl_core(
     line: &str,
     display_mode: SetDisplayMode,
 ) -> Result<Vec<String>, String> {
-    crate::evaluate_full_simplify_command_lines(
-        &mut core.engine.simplifier,
-        &core.state,
-        line,
-        display_mode,
-    )
+    core.with_state_and_simplifier_mut(|state, simplifier| {
+        crate::evaluate_full_simplify_command_lines(simplifier, state, line, display_mode)
+    })
 }
 
 /// Evaluate `rationalize ...` invocation against REPL core simplifier.
@@ -116,13 +133,15 @@ pub fn evaluate_rationalize_command_lines_on_repl_core(
     core: &mut ReplCore,
     line: &str,
 ) -> Result<Vec<String>, String> {
-    crate::evaluate_rationalize_command_lines(&mut core.engine.simplifier, line)
+    crate::evaluate_rationalize_command_lines(core.simplifier_mut(), line)
 }
 
 /// Refresh last health report using current REPL simplifier and health flag.
 pub fn update_health_report_on_repl_core(core: &mut ReplCore) {
-    core.last_health_report =
-        crate::capture_health_report_if_enabled(&core.engine.simplifier, core.health_enabled);
+    core.set_last_health_report(crate::capture_health_report_if_enabled(
+        core.simplifier(),
+        core.health_enabled(),
+    ));
 }
 
 /// Evaluate `explain ...` using REPL context.
@@ -130,18 +149,18 @@ pub fn evaluate_explain_invocation_message_on_repl_core(
     core: &mut ReplCore,
     line: &str,
 ) -> Result<String, String> {
-    crate::evaluate_explain_invocation_message(&mut core.engine.simplifier.context, line)
+    crate::evaluate_explain_invocation_message(&mut core.simplifier_mut().context, line)
 }
 
 /// Render `vars` command output using REPL core state/context.
 pub fn evaluate_vars_command_message_on_repl_core(core: &ReplCore) -> String {
-    crate::evaluate_vars_command_lines_with_context(&core.state, &core.engine.simplifier.context)
+    crate::evaluate_vars_command_lines_with_context(core.state(), &core.simplifier().context)
         .join("\n")
 }
 
 /// Render `history` command output using REPL core state/context.
 pub fn evaluate_history_command_message_on_repl_core(core: &ReplCore) -> String {
-    crate::evaluate_history_command_lines_with_context(&core.state, &core.engine.simplifier.context)
+    crate::evaluate_history_command_lines_with_context(core.state(), &core.simplifier().context)
         .join("\n")
 }
 
@@ -150,12 +169,14 @@ pub fn evaluate_show_command_lines_on_repl_core(
     core: &mut ReplCore,
     line: &str,
 ) -> Result<Vec<String>, String> {
-    crate::evaluate_show_command_lines(&mut core.state, &mut core.engine, line)
+    core.with_engine_and_state(|engine, state| {
+        crate::evaluate_show_command_lines(state, engine, line)
+    })
 }
 
 /// Evaluate `clear` command lines against REPL core state.
 pub fn evaluate_clear_command_lines_on_repl_core(core: &mut ReplCore, line: &str) -> Vec<String> {
-    crate::evaluate_clear_command_lines(&mut core.state, line)
+    crate::evaluate_clear_command_lines(core.state_mut(), line)
 }
 
 /// Evaluate `del` command message against REPL core state.
@@ -163,7 +184,7 @@ pub fn evaluate_delete_history_command_message_on_repl_core(
     core: &mut ReplCore,
     line: &str,
 ) -> String {
-    crate::evaluate_delete_history_command_message(&mut core.state, line)
+    crate::evaluate_delete_history_command_message(core.state_mut(), line)
 }
 
 /// Evaluate profile `cache` command lines against REPL core engine.
@@ -171,7 +192,7 @@ pub fn evaluate_profile_cache_command_lines_on_repl_core(
     core: &mut ReplCore,
     line: &str,
 ) -> Vec<String> {
-    crate::evaluate_profile_cache_command_lines(&mut core.engine, line)
+    crate::evaluate_profile_cache_command_lines(core.engine_mut(), line)
 }
 
 /// Evaluate `budget ...` command message against REPL core session state.
@@ -179,7 +200,7 @@ pub fn evaluate_solve_budget_command_message_on_repl_core(
     core: &mut ReplCore,
     line: &str,
 ) -> String {
-    crate::evaluate_solve_budget_command_message(&mut core.state, line)
+    crate::evaluate_solve_budget_command_message(core.state_mut(), line)
 }
 
 /// Evaluate `let ...` command against REPL core and return user-facing message.
@@ -187,11 +208,9 @@ pub fn evaluate_let_assignment_command_message_on_repl_core(
     core: &mut ReplCore,
     input: &str,
 ) -> Result<String, String> {
-    crate::evaluate_let_assignment_command_message_with_simplifier(
-        &mut core.state,
-        &mut core.engine.simplifier,
-        input,
-    )
+    core.with_state_and_simplifier_mut(|state, simplifier| {
+        crate::evaluate_let_assignment_command_message_with_simplifier(state, simplifier, input)
+    })
 }
 
 /// Evaluate assignment command against REPL core and return user-facing message.
@@ -201,13 +220,11 @@ pub fn evaluate_assignment_command_message_on_repl_core(
     expr_str: &str,
     lazy: bool,
 ) -> Result<String, String> {
-    crate::evaluate_assignment_command_message_with_simplifier(
-        &mut core.state,
-        &mut core.engine.simplifier,
-        name,
-        expr_str,
-        lazy,
-    )
+    core.with_state_and_simplifier_mut(|state, simplifier| {
+        crate::evaluate_assignment_command_message_with_simplifier(
+            state, simplifier, name, expr_str, lazy,
+        )
+    })
 }
 
 /// Evaluate `health ...` command against REPL core and apply returned side-effects.
@@ -215,18 +232,20 @@ pub fn evaluate_health_command_message_on_repl_core(
     core: &mut ReplCore,
     line: &str,
 ) -> Result<String, String> {
+    let last_stats = core.last_stats().cloned();
+    let last_health_report = core.last_health_report().map(str::to_string);
     let out = crate::evaluate_health_command(
-        &mut core.engine.simplifier,
+        core.simplifier_mut(),
         line,
-        core.last_stats.as_ref(),
-        core.last_health_report.as_deref(),
+        last_stats.as_ref(),
+        last_health_report.as_deref(),
     )?;
 
     if let Some(enabled) = out.set_enabled {
-        core.health_enabled = enabled;
+        core.set_health_enabled(enabled);
     }
     if out.clear_last_report {
-        core.last_health_report = None;
+        core.clear_last_health_report();
     }
 
     Ok(out.lines.join("\n"))
@@ -238,27 +257,36 @@ pub fn evaluate_eval_command_render_plan_on_repl_core(
     line: &str,
     verbosity_is_none: bool,
 ) -> Result<crate::EvalCommandRenderPlan, String> {
-    let out = crate::evaluate_eval_command_output(
-        &mut core.engine,
-        &mut core.state,
-        line,
-        core.debug_mode,
-    )
-    .map_err(|error| match error {
-        crate::EvalCommandError::Parse(parse_error) => {
-            crate::render_parse_error(line, &parse_error)
-        }
-        crate::EvalCommandError::Eval(message) => message,
-    })?;
+    let debug_mode = core.debug_mode();
+    let out = core
+        .with_engine_and_state(|engine, state| {
+            crate::evaluate_eval_command_output(engine, state, line, debug_mode)
+        })
+        .map_err(|error| match error {
+            crate::EvalCommandError::Parse(parse_error) => {
+                crate::render_parse_error(line, &parse_error)
+            }
+            crate::EvalCommandError::Eval(message) => message,
+        })?;
     Ok(crate::build_eval_command_render_plan(
         out,
         verbosity_is_none,
     ))
 }
 
+/// Evaluate `expand ...` and return a frontend-agnostic render plan.
+pub fn evaluate_expand_command_render_plan_on_repl_core(
+    core: &mut ReplCore,
+    line: &str,
+    verbosity_is_none: bool,
+) -> Result<crate::EvalCommandRenderPlan, String> {
+    let wrapped = crate::evaluate_expand_wrapped_expression(line)?;
+    evaluate_eval_command_render_plan_on_repl_core(core, &wrapped, verbosity_is_none)
+}
+
 /// Return profile cache size for the current REPL core engine.
 pub fn profile_cache_len_on_repl_core(core: &ReplCore) -> usize {
-    core.engine.profile_cache_len()
+    core.profile_cache_len()
 }
 
 #[cfg(test)]
@@ -267,8 +295,9 @@ mod tests {
         evaluate_assignment_command_message_on_repl_core,
         evaluate_clear_command_lines_on_repl_core,
         evaluate_delete_history_command_message_on_repl_core,
-        evaluate_equiv_invocation_message_on_repl_core,
+        evaluate_det_command_message_on_repl_core, evaluate_equiv_invocation_message_on_repl_core,
         evaluate_eval_command_render_plan_on_repl_core,
+        evaluate_expand_command_render_plan_on_repl_core,
         evaluate_explain_invocation_message_on_repl_core,
         evaluate_health_command_message_on_repl_core,
         evaluate_history_command_message_on_repl_core,
@@ -279,6 +308,8 @@ mod tests {
         evaluate_solve_budget_command_message_on_repl_core,
         evaluate_solve_command_message_on_repl_core,
         evaluate_telescope_invocation_message_on_repl_core,
+        evaluate_trace_command_message_on_repl_core,
+        evaluate_transpose_command_message_on_repl_core,
         evaluate_unary_command_message_on_repl_core, evaluate_vars_command_message_on_repl_core,
         evaluate_weierstrass_invocation_message_on_repl_core, profile_cache_len_on_repl_core,
     };
@@ -351,6 +382,32 @@ mod tests {
     }
 
     #[test]
+    fn evaluate_profile_cache_command_lines_on_repl_core_reports_populated_cache() {
+        let mut core = crate::ReplCore::new();
+        let _ = evaluate_eval_command_render_plan_on_repl_core(&mut core, "x+x", false)
+            .expect("eval should populate cache");
+
+        let lines = evaluate_profile_cache_command_lines_on_repl_core(&mut core, "cache status");
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("Profile Cache: 1 profiles cached")));
+    }
+
+    #[test]
+    fn evaluate_profile_cache_command_lines_on_repl_core_clear_empties_cache() {
+        let mut core = crate::ReplCore::new();
+        let _ = evaluate_eval_command_render_plan_on_repl_core(&mut core, "x+x", false)
+            .expect("eval should populate cache");
+        assert_eq!(profile_cache_len_on_repl_core(&core), 1);
+
+        let lines = evaluate_profile_cache_command_lines_on_repl_core(&mut core, "cache clear");
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("Profile cache cleared")));
+        assert_eq!(profile_cache_len_on_repl_core(&core), 0);
+    }
+
+    #[test]
     fn evaluate_unary_command_message_on_repl_core_runs_det() {
         let mut core = crate::ReplCore::new();
         let out = evaluate_unary_command_message_on_repl_core(
@@ -363,6 +420,35 @@ mod tests {
         )
         .expect("det should evaluate");
         assert!(out.contains("Result:"));
+    }
+
+    #[test]
+    fn evaluate_det_transpose_trace_wrappers_on_repl_core_run() {
+        let mut core = crate::ReplCore::new();
+
+        let det = evaluate_det_command_message_on_repl_core(
+            &mut core,
+            "det([[1,2],[3,4]])",
+            crate::SetDisplayMode::Normal,
+        )
+        .expect("det should evaluate");
+        assert!(det.contains("Result:"));
+
+        let transpose = evaluate_transpose_command_message_on_repl_core(
+            &mut core,
+            "transpose([[1,2],[3,4]])",
+            crate::SetDisplayMode::Normal,
+        )
+        .expect("transpose should evaluate");
+        assert!(transpose.contains("Result:"));
+
+        let trace = evaluate_trace_command_message_on_repl_core(
+            &mut core,
+            "trace([[1,2],[3,4]])",
+            crate::SetDisplayMode::Normal,
+        )
+        .expect("trace should evaluate");
+        assert!(trace.contains("Result:"));
     }
 
     #[test]
@@ -420,5 +506,14 @@ mod tests {
             .expect("eval plan");
         assert!(plan.result_message.is_some());
         assert!(profile_cache_len_on_repl_core(&core) >= 1);
+    }
+
+    #[test]
+    fn evaluate_expand_command_render_plan_on_repl_core_returns_plan() {
+        let mut core = crate::ReplCore::new();
+        let plan =
+            evaluate_expand_command_render_plan_on_repl_core(&mut core, "expand (x+1)^2", false)
+                .expect("expand plan");
+        assert!(plan.result_message.is_some());
     }
 }

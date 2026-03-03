@@ -397,10 +397,37 @@ pub fn evaluate_eval_text_simplify_with_session(
         .eval(session, req)
         .map_err(|e| format!("Error: {}", e))?;
     let output_view = cas_solver::eval_output_view(&output);
-    Ok(cas_solver::json::format_eval_result_text(
+    Ok(format_eval_result_text(
         &engine.simplifier.context,
         &output_view.result,
     ))
+}
+
+fn format_eval_result_text(ctx: &cas_ast::Context, result: &cas_solver::EvalResult) -> String {
+    match result {
+        cas_solver::EvalResult::Expr(expr) => {
+            if let Some(poly_str) = cas_solver::try_render_poly_result(ctx, *expr) {
+                poly_str
+            } else {
+                format!(
+                    "{}",
+                    cas_formatter::DisplayExpr {
+                        context: ctx,
+                        id: *expr
+                    }
+                )
+            }
+        }
+        cas_solver::EvalResult::Set(values) if !values.is_empty() => format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: ctx,
+                id: values[0]
+            }
+        ),
+        cas_solver::EvalResult::Bool(value) => value.to_string(),
+        _ => "(no result)".to_string(),
+    }
 }
 
 #[cfg(test)]

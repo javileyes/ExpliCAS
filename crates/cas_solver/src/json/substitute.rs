@@ -1,64 +1,14 @@
 use cas_api_models::{
     EngineJsonError as ApiEngineJsonError, EngineJsonSubstep, SpanJson as ApiSpanJson,
 };
-pub use cas_api_models::{
-    SubstituteJsonOptions, SubstituteJsonResponse, SubstituteOptionsInner, SubstituteOptionsJson,
-    SubstituteRequestEcho,
+#[cfg(test)]
+use cas_api_models::{SubstituteEvalError, SubstituteEvalMode};
+use cas_api_models::{
+    SubstituteEvalResult, SubstituteEvalStep, SubstituteJsonOptions, SubstituteJsonResponse,
+    SubstituteOptionsInner, SubstituteOptionsJson, SubstituteRequestEcho,
 };
 use cas_ast::hold::strip_all_holds;
 use cas_ast::{Context, ExprId};
-
-/// Substitution mode for typed non-JSON evaluation APIs.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum SubstituteEvalMode {
-    Exact,
-    Power,
-}
-
-impl SubstituteEvalMode {
-    fn as_mode_str(self) -> &'static str {
-        match self {
-            Self::Exact => "exact",
-            Self::Power => "power",
-        }
-    }
-}
-
-/// One substitution step for typed non-JSON evaluation APIs.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct SubstituteEvalStep {
-    pub rule: String,
-    pub before: String,
-    pub after: String,
-    pub note: Option<String>,
-}
-
-/// Result payload for typed non-JSON substitution evaluation.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct SubstituteEvalResult {
-    pub result: String,
-    pub steps: Vec<SubstituteEvalStep>,
-}
-
-/// Parse-time errors produced by [`eval_substitute_from_str`].
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum SubstituteEvalError {
-    ParseExpression(String),
-    ParseTarget(String),
-    ParseReplacement(String),
-}
-
-impl std::fmt::Display for SubstituteEvalError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::ParseExpression(message)
-            | Self::ParseTarget(message)
-            | Self::ParseReplacement(message) => write!(f, "{message}"),
-        }
-    }
-}
-
-impl std::error::Error for SubstituteEvalError {}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ParseField {
@@ -75,6 +25,7 @@ struct SubstituteParseIssue {
 }
 
 impl SubstituteParseIssue {
+    #[cfg(test)]
     fn to_text_error(&self) -> SubstituteEvalError {
         match self.field {
             ParseField::Expression => SubstituteEvalError::ParseExpression(format!(
@@ -174,7 +125,8 @@ fn eval_substitute_impl(
 }
 
 /// Evaluate substitution from string inputs for text callers.
-pub fn eval_substitute_from_str(
+#[cfg(test)]
+fn eval_substitute_from_str(
     expr_str: &str,
     target_str: &str,
     with_str: &str,
@@ -192,18 +144,21 @@ pub fn eval_substitute_from_str(
 }
 
 /// Evaluate substitute subcommand in JSON mode.
-pub fn evaluate_substitute_subcommand_json(
+#[cfg(test)]
+fn evaluate_substitute_subcommand_json(
     expr: &str,
     target: &str,
     replacement: &str,
     mode: &str,
     steps: bool,
 ) -> String {
-    substitute_str_to_json_with_options(expr, target, replacement, mode, steps, true)
+    let opts = SubstituteJsonOptions::from_mode_flags(mode, steps, true);
+    substitute_str_to_json_impl(expr, target, replacement, opts)
 }
 
 /// Evaluate substitute subcommand in text mode and return output lines.
-pub fn evaluate_substitute_subcommand_text_lines(
+#[cfg(test)]
+fn evaluate_substitute_subcommand_text_lines(
     expr: &str,
     target: &str,
     replacement: &str,
@@ -219,7 +174,8 @@ pub fn evaluate_substitute_subcommand_text_lines(
 }
 
 /// Evaluate substitute subcommand in text mode from mode string (`exact|power`).
-pub fn evaluate_substitute_subcommand_text_lines_with_mode(
+#[cfg(test)]
+fn evaluate_substitute_subcommand_text_lines_with_mode(
     expr: &str,
     target: &str,
     replacement: &str,
@@ -231,7 +187,8 @@ pub fn evaluate_substitute_subcommand_text_lines_with_mode(
 }
 
 /// Format text output lines for substitute subcommand.
-pub fn format_substitute_subcommand_text_lines(
+#[cfg(test)]
+fn format_substitute_subcommand_text_lines(
     output: &SubstituteEvalResult,
     steps_enabled: bool,
 ) -> Vec<String> {
@@ -244,6 +201,7 @@ pub fn format_substitute_subcommand_text_lines(
     lines
 }
 
+#[cfg(test)]
 fn parse_substitute_eval_mode(mode: &str) -> SubstituteEvalMode {
     match mode {
         "exact" => SubstituteEvalMode::Exact,
@@ -251,6 +209,7 @@ fn parse_substitute_eval_mode(mode: &str) -> SubstituteEvalMode {
     }
 }
 
+#[cfg(test)]
 fn format_substitute_step_line(step: &SubstituteEvalStep) -> String {
     match &step.note {
         Some(note) => format!(
@@ -288,11 +247,7 @@ fn substitute_str_to_json_impl(
                 request.clone(),
                 options.clone(),
             );
-            return if opts.pretty {
-                resp.to_json_pretty()
-            } else {
-                resp.to_json()
-            };
+            return resp.to_json_with_pretty(opts.pretty);
         }
     };
 
@@ -308,29 +263,7 @@ fn substitute_str_to_json_impl(
         .collect();
 
     let resp = SubstituteJsonResponse::ok(eval.result, request, options, json_steps);
-
-    if opts.pretty {
-        resp.to_json_pretty()
-    } else {
-        resp.to_json()
-    }
-}
-
-/// Typed helper for callers that already have substitute options available.
-pub fn substitute_str_to_json_with_options(
-    expr_str: &str,
-    target_str: &str,
-    with_str: &str,
-    mode: &str,
-    steps: bool,
-    pretty: bool,
-) -> String {
-    let opts = SubstituteJsonOptions {
-        mode: mode.to_string(),
-        steps,
-        pretty,
-    };
-    substitute_str_to_json_impl(expr_str, target_str, with_str, opts)
+    resp.to_json_with_pretty(opts.pretty)
 }
 
 /// Substitute an expression and return JSON response.
@@ -353,11 +286,7 @@ pub fn substitute_str_to_json(
     with_str: &str,
     opts_json: Option<&str>,
 ) -> String {
-    // Parse options (with defaults)
-    let opts: SubstituteJsonOptions = match opts_json {
-        Some(json) => serde_json::from_str(json).unwrap_or_default(),
-        None => SubstituteJsonOptions::default(),
-    };
+    let opts = SubstituteJsonOptions::parse_optional_json(opts_json);
     substitute_str_to_json_impl(expr_str, target_str, with_str, opts)
 }
 

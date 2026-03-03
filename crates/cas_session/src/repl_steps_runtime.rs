@@ -8,7 +8,7 @@ pub fn steps_command_state_for_repl_core(
     display_mode: StepsDisplayMode,
 ) -> StepsCommandState {
     StepsCommandState {
-        steps_mode: core.state.options().steps_mode,
+        steps_mode: core.eval_options().steps_mode,
         display_mode,
     }
 }
@@ -24,10 +24,10 @@ pub fn apply_steps_command_update_on_repl_core(
     let effects = crate::apply_steps_command_update(
         set_steps_mode,
         set_display_mode,
-        core.state.options_mut(),
+        core.eval_options_mut(),
     );
     if let Some(mode) = effects.set_steps_mode {
-        core.engine.simplifier.set_steps_mode(mode);
+        core.simplifier_mut().set_steps_mode(mode);
     }
     effects
 }
@@ -56,6 +56,6 @@ mod tests {
             effects.set_display_mode,
             Some(crate::StepsDisplayMode::Succinct)
         );
-        assert_eq!(core.state.options().steps_mode, crate::StepsMode::Compact);
+        assert_eq!(core.eval_options().steps_mode, crate::StepsMode::Compact);
     }
 }

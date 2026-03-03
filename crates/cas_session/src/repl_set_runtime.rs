@@ -8,14 +8,14 @@ pub fn set_command_state_for_repl_core(
     display_mode: SetDisplayMode,
 ) -> SetCommandState {
     SetCommandState {
-        transform: core.simplify_options.enable_transform,
-        rationalize: core.simplify_options.rationalize.auto_level,
-        heuristic_poly: core.simplify_options.shared.heuristic_poly,
-        autoexpand_binomials: core.simplify_options.shared.autoexpand_binomials,
-        steps_mode: core.state.options().steps_mode,
+        transform: core.simplify_options().enable_transform,
+        rationalize: core.simplify_options().rationalize.auto_level,
+        heuristic_poly: core.simplify_options().shared.heuristic_poly,
+        autoexpand_binomials: core.simplify_options().shared.autoexpand_binomials,
+        steps_mode: core.eval_options().steps_mode,
         display_mode,
-        max_rewrites: core.simplify_options.budgets.max_total_rewrites,
-        debug_mode: core.debug_mode,
+        max_rewrites: core.simplify_options().budgets.max_total_rewrites,
+        debug_mode: core.debug_mode(),
     }
 }
 
@@ -24,15 +24,14 @@ pub fn apply_set_command_plan_on_repl_core(
     core: &mut ReplCore,
     plan: &SetCommandPlan,
 ) -> SetCommandApplyEffects {
-    let effects = crate::apply_set_command_plan(
-        plan,
-        &mut core.simplify_options,
-        core.state.options_mut(),
-        &mut core.debug_mode,
-    );
+    let mut debug_mode = core.debug_mode();
+    let effects = core.with_simplify_and_eval_options_mut(|simplify_options, eval_options| {
+        crate::apply_set_command_plan(plan, simplify_options, eval_options, &mut debug_mode)
+    });
+    core.set_debug_mode(debug_mode);
 
     if let Some(mode) = effects.set_steps_mode {
-        core.engine.simplifier.set_steps_mode(mode);
+        core.simplifier_mut().set_steps_mode(mode);
     }
 
     effects
@@ -107,7 +106,7 @@ mod tests {
         let effects = super::apply_set_command_plan_on_repl_core(&mut core, &plan);
         assert_eq!(effects.set_steps_mode, Some(cas_solver::StepsMode::Compact));
         assert_eq!(
-            core.state.options().steps_mode,
+            core.eval_options().steps_mode,
             cas_solver::StepsMode::Compact
         );
     }

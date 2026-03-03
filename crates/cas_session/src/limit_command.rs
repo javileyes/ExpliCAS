@@ -1,5 +1,9 @@
 //! Session-level helpers for `limit` command parsing/formatting.
 
+use crate::limit_command_eval::{
+    evaluate_limit_command_input, LimitCommandEvalError, LimitCommandEvalOutput,
+};
+
 const LIMIT_USAGE_MESSAGE: &str = "Usage: limit <expr> [, <var> [, <direction> [, safe]]]\n\
                  Examples:\n\
                    limit x^2                      → infinity (default: x → +∞)\n\
@@ -11,17 +15,17 @@ fn extract_limit_command_tail(line: &str) -> &str {
     line.strip_prefix("limit").unwrap_or(line).trim()
 }
 
-fn format_limit_command_error_message(error: &cas_solver::LimitCommandEvalError) -> String {
+fn format_limit_command_error_message(error: &LimitCommandEvalError) -> String {
     match error {
-        cas_solver::LimitCommandEvalError::EmptyInput => LIMIT_USAGE_MESSAGE.to_string(),
-        cas_solver::LimitCommandEvalError::Parse(message) => message.clone(),
-        cas_solver::LimitCommandEvalError::Limit(message) => {
+        LimitCommandEvalError::EmptyInput => LIMIT_USAGE_MESSAGE.to_string(),
+        LimitCommandEvalError::Parse(message) => message.clone(),
+        LimitCommandEvalError::Limit(message) => {
             format!("Error computing limit: {}", message)
         }
     }
 }
 
-fn format_limit_command_eval_lines(output: &cas_solver::LimitCommandEvalOutput) -> Vec<String> {
+fn format_limit_command_eval_lines(output: &LimitCommandEvalOutput) -> Vec<String> {
     let dir_disp = match output.approach {
         cas_solver::Approach::PosInfinity => "+∞",
         cas_solver::Approach::NegInfinity => "-∞",
@@ -43,7 +47,7 @@ pub fn evaluate_limit_command_lines(line: &str) -> Result<Vec<String>, String> {
         return Err(LIMIT_USAGE_MESSAGE.to_string());
     }
 
-    let output = cas_solver::evaluate_limit_command_input(rest)
+    let output = evaluate_limit_command_input(rest)
         .map_err(|error| format_limit_command_error_message(&error))?;
     Ok(format_limit_command_eval_lines(&output))
 }

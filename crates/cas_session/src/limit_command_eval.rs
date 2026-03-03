@@ -1,9 +1,12 @@
+use cas_api_models::{LimitEvalError, LimitEvalResult, LimitJsonResponse};
+use cas_formatter::DisplayExpr;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LimitCommandInput<'a> {
     pub expr: &'a str,
     pub var: &'a str,
-    pub approach: crate::Approach,
-    pub presimplify: crate::PreSimplifyMode,
+    pub approach: cas_solver::Approach,
+    pub presimplify: cas_solver::PreSimplifyMode,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -16,14 +19,14 @@ pub enum LimitCommandEvalError {
 #[derive(Debug, Clone)]
 pub struct LimitCommandEvalOutput {
     pub var: String,
-    pub approach: crate::Approach,
+    pub approach: cas_solver::Approach,
     pub result: String,
     pub warning: Option<String>,
 }
 
 /// Output payload for CLI-style `limit` subcommand execution.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum LimitSubcommandOutput {
+pub enum LimitSubcommandEvalOutput {
     Json(String),
     Text {
         result: String,
@@ -33,7 +36,7 @@ pub enum LimitSubcommandOutput {
 
 /// Error payload for CLI-style `limit` subcommand execution.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum LimitSubcommandError {
+pub enum LimitSubcommandEvalError {
     Parse(String),
     Limit(String),
 }
@@ -62,6 +65,55 @@ fn split_by_comma_ignoring_parens(s: &str) -> Vec<&str> {
     parts
 }
 
+fn eval_limit_from_str(
+    expr: &str,
+    var: &str,
+    approach: cas_solver::Approach,
+    presimplify: cas_solver::PreSimplifyMode,
+) -> Result<LimitEvalResult, LimitEvalError> {
+    let mut ctx = cas_ast::Context::new();
+    let parsed = cas_parser::parse(expr, &mut ctx)
+        .map_err(|e| LimitEvalError::Parse(format!("Parse error: {}", e)))?;
+
+    let var_id = ctx.var(var);
+    let mut budget = cas_solver::Budget::new();
+    let opts = cas_solver::LimitOptions {
+        presimplify,
+        ..Default::default()
+    };
+
+    match cas_solver::limit(&mut ctx, parsed, var_id, approach, &opts, &mut budget) {
+        Ok(limit_result) => {
+            let result = DisplayExpr {
+                context: &ctx,
+                id: limit_result.expr,
+            }
+            .to_string();
+            Ok(LimitEvalResult {
+                result,
+                warning: limit_result.warning,
+            })
+        }
+        Err(e) => Err(LimitEvalError::Limit(e.to_string())),
+    }
+}
+
+fn limit_str_to_json(
+    expr: &str,
+    var: &str,
+    approach: cas_solver::Approach,
+    presimplify: cas_solver::PreSimplifyMode,
+    pretty: bool,
+) -> String {
+    let response = match eval_limit_from_str(expr, var, approach, presimplify) {
+        Ok(limit_result) => LimitJsonResponse::ok(limit_result.result, limit_result.warning),
+        Err(LimitEvalError::Parse(message)) => LimitJsonResponse::parse_error(message),
+        Err(LimitEvalError::Limit(message)) => LimitJsonResponse::limit_error(message),
+    };
+
+    response.to_json_with_pretty(pretty)
+}
+
 pub fn parse_limit_command_input(rest: &str) -> LimitCommandInput<'_> {
     let parts = split_by_comma_ignoring_parens(rest);
     let expr = parts.first().copied().unwrap_or("").trim();
@@ -70,14 +122,14 @@ pub fn parse_limit_command_input(rest: &str) -> LimitCommandInput<'_> {
     let mode = parts.get(3).copied().unwrap_or("off").trim();
 
     let approach = if dir.contains("-infinity") || dir.contains("-inf") {
-        crate::Approach::NegInfinity
+        cas_solver::Approach::NegInfinity
     } else {
-        crate::Approach::PosInfinity
+        cas_solver::Approach::PosInfinity
     };
     let presimplify = if mode.eq_ignore_ascii_case("safe") {
-        crate::PreSimplifyMode::Safe
+        cas_solver::PreSimplifyMode::Safe
     } else {
-        crate::PreSimplifyMode::Off
+        cas_solver::PreSimplifyMode::Off
     };
 
     LimitCommandInput {
@@ -97,37 +149,27 @@ pub fn evaluate_limit_command_input(
     }
 
     let parsed = parse_limit_command_input(trimmed);
-    match crate::json::eval_limit_from_str(
-        parsed.expr,
-        parsed.var,
-        parsed.approach,
-        parsed.presimplify,
-    ) {
+    match eval_limit_from_str(parsed.expr, parsed.var, parsed.approach, parsed.presimplify) {
         Ok(limit_result) => Ok(LimitCommandEvalOutput {
             var: parsed.var.to_string(),
             approach: parsed.approach,
             result: limit_result.result,
             warning: limit_result.warning,
         }),
-        Err(crate::json::LimitEvalError::Parse(message)) => {
-            Err(LimitCommandEvalError::Parse(message))
-        }
-        Err(crate::json::LimitEvalError::Limit(message)) => {
-            Err(LimitCommandEvalError::Limit(message))
-        }
+        Err(LimitEvalError::Parse(message)) => Err(LimitCommandEvalError::Parse(message)),
+        Err(LimitEvalError::Limit(message)) => Err(LimitCommandEvalError::Limit(message)),
     }
 }
 
-/// Evaluate `limit` subcommand and return typed output for frontend printing.
 pub fn evaluate_limit_subcommand_output(
     expr: &str,
     var: &str,
-    approach: crate::Approach,
-    presimplify: crate::PreSimplifyMode,
+    approach: cas_solver::Approach,
+    presimplify: cas_solver::PreSimplifyMode,
     json_output: bool,
-) -> Result<LimitSubcommandOutput, LimitSubcommandError> {
+) -> Result<LimitSubcommandEvalOutput, LimitSubcommandEvalError> {
     if json_output {
-        return Ok(LimitSubcommandOutput::Json(crate::json::limit_str_to_json(
+        return Ok(LimitSubcommandEvalOutput::Json(limit_str_to_json(
             expr,
             var,
             approach,
@@ -136,25 +178,20 @@ pub fn evaluate_limit_subcommand_output(
         )));
     }
 
-    match crate::json::eval_limit_from_str(expr, var, approach, presimplify) {
-        Ok(limit_result) => Ok(LimitSubcommandOutput::Text {
+    match eval_limit_from_str(expr, var, approach, presimplify) {
+        Ok(limit_result) => Ok(LimitSubcommandEvalOutput::Text {
             result: limit_result.result,
             warning: limit_result.warning,
         }),
-        Err(crate::json::LimitEvalError::Parse(message)) => {
-            Err(LimitSubcommandError::Parse(message))
-        }
-        Err(crate::json::LimitEvalError::Limit(message)) => {
-            Err(LimitSubcommandError::Limit(message))
-        }
+        Err(LimitEvalError::Parse(message)) => Err(LimitSubcommandEvalError::Parse(message)),
+        Err(LimitEvalError::Limit(message)) => Err(LimitSubcommandEvalError::Limit(message)),
     }
 }
 
-/// Format a user-facing limit subcommand error message.
-pub fn format_limit_subcommand_error(error: &LimitSubcommandError) -> String {
+pub fn format_limit_subcommand_error(error: &LimitSubcommandEvalError) -> String {
     match error {
-        LimitSubcommandError::Parse(message) => message.clone(),
-        LimitSubcommandError::Limit(message) => format!("Error: {message}"),
+        LimitSubcommandEvalError::Parse(message) => message.clone(),
+        LimitSubcommandEvalError::Limit(message) => format!("Error: {message}"),
     }
 }
 
@@ -163,7 +200,7 @@ mod tests {
     use super::{
         evaluate_limit_command_input, evaluate_limit_subcommand_output,
         format_limit_subcommand_error, parse_limit_command_input, LimitCommandEvalError,
-        LimitSubcommandError, LimitSubcommandOutput,
+        LimitSubcommandEvalError, LimitSubcommandEvalOutput,
     };
 
     #[test]
@@ -171,8 +208,8 @@ mod tests {
         let parsed = parse_limit_command_input("x^2");
         assert_eq!(parsed.expr, "x^2");
         assert_eq!(parsed.var, "x");
-        assert_eq!(parsed.approach, crate::Approach::PosInfinity);
-        assert_eq!(parsed.presimplify, crate::PreSimplifyMode::Off);
+        assert_eq!(parsed.approach, cas_solver::Approach::PosInfinity);
+        assert_eq!(parsed.presimplify, cas_solver::PreSimplifyMode::Off);
     }
 
     #[test]
@@ -180,8 +217,8 @@ mod tests {
         let parsed = parse_limit_command_input("(x^2+1)/(2*x^2-3), t, -infinity, safe");
         assert_eq!(parsed.expr, "(x^2+1)/(2*x^2-3)");
         assert_eq!(parsed.var, "t");
-        assert_eq!(parsed.approach, crate::Approach::NegInfinity);
-        assert_eq!(parsed.presimplify, crate::PreSimplifyMode::Safe);
+        assert_eq!(parsed.approach, cas_solver::Approach::NegInfinity);
+        assert_eq!(parsed.presimplify, cas_solver::PreSimplifyMode::Safe);
     }
 
     #[test]
@@ -194,7 +231,7 @@ mod tests {
     fn evaluate_limit_command_input_computes_basic_limit() {
         let out = evaluate_limit_command_input("x^2, x, infinity").expect("limit eval");
         assert_eq!(out.var, "x");
-        assert_eq!(out.approach, crate::Approach::PosInfinity);
+        assert_eq!(out.approach, cas_solver::Approach::PosInfinity);
         assert!(!out.result.is_empty());
     }
 
@@ -203,14 +240,14 @@ mod tests {
         let out = evaluate_limit_subcommand_output(
             "(x^2+1)/(2*x^2-3)",
             "x",
-            crate::Approach::PosInfinity,
-            crate::PreSimplifyMode::Off,
+            cas_solver::Approach::PosInfinity,
+            cas_solver::PreSimplifyMode::Off,
             true,
         )
         .expect("json output");
 
         match out {
-            LimitSubcommandOutput::Json(payload) => {
+            LimitSubcommandEvalOutput::Json(payload) => {
                 let json: serde_json::Value = serde_json::from_str(&payload).expect("json");
                 assert_eq!(json["ok"], true);
             }
@@ -223,14 +260,14 @@ mod tests {
         let err = evaluate_limit_subcommand_output(
             "sin(",
             "x",
-            crate::Approach::PosInfinity,
-            crate::PreSimplifyMode::Off,
+            cas_solver::Approach::PosInfinity,
+            cas_solver::PreSimplifyMode::Off,
             false,
         )
         .expect_err("parse error");
 
         match err {
-            LimitSubcommandError::Parse(message) => {
+            LimitSubcommandEvalError::Parse(message) => {
                 assert!(message.starts_with("Parse error:"));
             }
             _ => panic!("expected parse error"),
@@ -239,12 +276,12 @@ mod tests {
 
     #[test]
     fn format_limit_subcommand_error_matches_cli_contract() {
-        let parse = format_limit_subcommand_error(&LimitSubcommandError::Parse(
+        let parse = format_limit_subcommand_error(&LimitSubcommandEvalError::Parse(
             "Parse error: bad input".to_string(),
         ));
         assert_eq!(parse, "Parse error: bad input");
 
-        let limit = format_limit_subcommand_error(&LimitSubcommandError::Limit(
+        let limit = format_limit_subcommand_error(&LimitSubcommandEvalError::Limit(
             "cannot compute".to_string(),
         ));
         assert_eq!(limit, "Error: cannot compute");

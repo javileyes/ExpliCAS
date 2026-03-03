@@ -28,6 +28,7 @@ mod history;
 mod history_metadata_format;
 mod inspect;
 mod limit_command;
+mod limit_command_eval;
 mod limit_subcommand;
 mod linear_system_command;
 mod options;
@@ -59,6 +60,7 @@ mod state;
 mod steps_command;
 mod substitute_command;
 mod substitute_subcommand;
+mod timeline_command;
 mod unary_command;
 
 pub use algebra_command::{
@@ -74,7 +76,8 @@ pub use analysis_command_eval::{
     evaluate_equiv_invocation_message, evaluate_explain_command_lines,
     evaluate_explain_command_message, evaluate_explain_invocation_message,
     evaluate_visualize_command_dot, evaluate_visualize_command_output,
-    evaluate_visualize_invocation_output, VisualizeCommandOutput,
+    evaluate_visualize_invocation_output, ExplainCommandEvalError, ExplainGcdEvalOutput,
+    VisualizeCommandOutput, VisualizeEvalError,
 };
 pub use analysis_command_format::{
     format_equivalence_result_lines, format_explain_command_error_message,
@@ -83,7 +86,7 @@ pub use analysis_command_format::{
 };
 pub use analysis_command_parse::{
     extract_equiv_command_tail, extract_explain_command_tail, extract_substitute_command_tail,
-    extract_timeline_command_tail, extract_visualize_command_tail,
+    extract_visualize_command_tail,
 };
 pub use assignment::{
     apply_assignment, format_assignment_error_message, format_assignment_success_message,
@@ -185,7 +188,9 @@ pub use repl_command_routing::{
 pub use repl_command_runtime::{
     evaluate_assignment_command_message_on_repl_core, evaluate_clear_command_lines_on_repl_core,
     evaluate_delete_history_command_message_on_repl_core,
-    evaluate_equiv_invocation_message_on_repl_core, evaluate_eval_command_render_plan_on_repl_core,
+    evaluate_det_command_message_on_repl_core, evaluate_equiv_invocation_message_on_repl_core,
+    evaluate_eval_command_render_plan_on_repl_core,
+    evaluate_expand_command_render_plan_on_repl_core,
     evaluate_expand_log_invocation_message_on_repl_core,
     evaluate_explain_invocation_message_on_repl_core,
     evaluate_full_simplify_command_lines_on_repl_core,
@@ -198,8 +203,8 @@ pub use repl_command_runtime::{
     evaluate_solve_command_message_on_repl_core,
     evaluate_substitute_invocation_user_message_on_repl_core,
     evaluate_telescope_invocation_message_on_repl_core,
-    evaluate_unary_command_message_on_repl_core, evaluate_vars_command_message_on_repl_core,
-    evaluate_visualize_invocation_output_on_repl_core,
+    evaluate_trace_command_message_on_repl_core, evaluate_transpose_command_message_on_repl_core,
+    evaluate_vars_command_message_on_repl_core, evaluate_visualize_invocation_output_on_repl_core,
     evaluate_weierstrass_invocation_message_on_repl_core, profile_cache_len_on_repl_core,
     update_health_report_on_repl_core,
 };
@@ -207,7 +212,8 @@ pub use repl_config_runtime::evaluate_and_apply_config_command_on_repl;
 pub use repl_core::ReplCore;
 pub use repl_runtime::{
     apply_profile_command_on_repl_core, build_repl_core_with_config, build_repl_prompt,
-    clear_repl_profile_cache, eval_options_from_repl_core, reset_repl_core_full_with_config,
+    clear_repl_profile_cache, eval_options_from_repl_core,
+    evaluate_profile_command_message_on_repl_core, reset_repl_core_full_with_config,
     reset_repl_core_with_config, reset_repl_runtime_state,
 };
 pub use repl_semantics_runtime::{
@@ -284,6 +290,7 @@ pub use substitute_subcommand::{
     evaluate_substitute_subcommand, evaluate_substitute_subcommand_json_canonical,
     SubstituteCommandMode, SubstituteSubcommandOutput,
 };
+pub use timeline_command::evaluate_timeline_command_with_session;
 pub use unary_command::{
     evaluate_unary_command_lines, evaluate_unary_command_message,
     evaluate_unary_function_command_lines,

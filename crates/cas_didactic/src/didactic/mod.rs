@@ -578,6 +578,25 @@ pub fn format_cli_simplification_steps(
     lines
 }
 
+/// Variant of [`format_cli_simplification_steps`] that accepts a simplifier.
+///
+/// Keeps REPL frontends from reaching into `simplifier.context` directly.
+pub fn format_cli_simplification_steps_with_simplifier(
+    simplifier: &mut cas_solver::Simplifier,
+    expr: ExprId,
+    steps: &[Step],
+    style_signals: cas_formatter::root_style::ParseStyleSignals,
+    display_mode: StepDisplayMode,
+) -> Vec<String> {
+    format_cli_simplification_steps(
+        &mut simplifier.context,
+        expr,
+        steps,
+        style_signals,
+        display_mode,
+    )
+}
+
 /// Extract content within balanced braces starting at the first `{`.
 fn find_balanced_braces(s: &str) -> Option<(String, usize)> {
     let mut depth = 0;

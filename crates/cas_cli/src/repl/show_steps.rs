@@ -22,15 +22,17 @@ impl Repl {
         steps: &[cas_session::Step],
         style_signals: cas_formatter::root_style::ParseStyleSignals,
     ) -> ReplReply {
-        let lines = cas_didactic::format_cli_simplification_steps(
-            &mut self.core.engine.simplifier.context,
-            expr,
-            steps,
-            style_signals,
-            Self::didactic_display_mode_from_repl(Self::set_display_mode_from_verbosity(
-                self.verbosity,
-            )),
-        );
+        let lines = self.core.with_simplifier_mut(|simplifier| {
+            cas_didactic::format_cli_simplification_steps_with_simplifier(
+                simplifier,
+                expr,
+                steps,
+                style_signals,
+                Self::didactic_display_mode_from_repl(Self::set_display_mode_from_verbosity(
+                    self.verbosity,
+                )),
+            )
+        });
         if lines.is_empty() {
             vec![]
         } else {

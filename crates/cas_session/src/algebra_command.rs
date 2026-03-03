@@ -76,8 +76,10 @@ pub fn evaluate_telescope_command_lines(
     ctx: &mut cas_ast::Context,
     input: &str,
 ) -> Result<Vec<String>, String> {
-    let eval_output = cas_solver::evaluate_telescope_command(ctx, input)?;
-    let formatted_result = eval_output.result.format(ctx);
+    let parsed_expr =
+        cas_parser::parse(input.trim(), ctx).map_err(|e| format!("Parse error: {e}"))?;
+    let result = cas_solver::telescope(ctx, parsed_expr);
+    let formatted_result = result.format(ctx);
     Ok(vec![format!("Parsed: {input}\n\n{formatted_result}")])
 }
 
@@ -105,20 +107,22 @@ pub fn evaluate_expand_log_command_lines(
     ctx: &mut cas_ast::Context,
     input: &str,
 ) -> Result<Vec<String>, String> {
-    let eval_output = cas_solver::evaluate_expand_log_command(ctx, input)?;
+    let parsed_expr =
+        cas_parser::parse(input.trim(), ctx).map_err(|e| format!("Parse error: {e}"))?;
+    let expanded_expr = cas_solver::expand_log_recursive(ctx, parsed_expr);
     Ok(vec![
         format!(
             "Parsed: {}",
             cas_formatter::DisplayExpr {
                 context: ctx,
-                id: eval_output.parsed_expr
+                id: parsed_expr
             }
         ),
         format!(
             "Result: {}",
             cas_formatter::DisplayExpr {
                 context: ctx,
-                id: eval_output.expanded_expr
+                id: expanded_expr
             }
         ),
     ])

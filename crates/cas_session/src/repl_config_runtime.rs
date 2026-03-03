@@ -13,7 +13,7 @@ pub fn evaluate_and_apply_config_command_on_repl(
 ) -> String {
     let applied = crate::evaluate_and_apply_config_command(line, config);
     if applied.sync_simplifier {
-        crate::sync_simplifier_with_cas_config(&mut core.engine.simplifier, config);
+        crate::sync_simplifier_with_cas_config(core.simplifier_mut(), config);
     }
     applied.message
 }

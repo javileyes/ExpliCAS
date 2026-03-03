@@ -298,6 +298,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "bincode",
+ "cas_api_models",
  "cas_ast",
  "cas_formatter",
  "cas_parser",
@@ -306,6 +307,7 @@ dependencies = [
  "num-bigint",
  "num-rational",
  "serde",
+ "serde_json",
  "tempfile",
  "toml",
 ]

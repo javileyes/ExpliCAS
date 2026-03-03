@@ -128,20 +128,20 @@ pub fn format_explain_gcd_eval_lines(
 }
 
 /// Format explain command errors into user-facing messages.
-pub fn format_explain_command_error_message(error: &cas_solver::ExplainCommandEvalError) -> String {
+pub fn format_explain_command_error_message(error: &crate::ExplainCommandEvalError) -> String {
     match error {
-        cas_solver::ExplainCommandEvalError::Parse(e) => format!("Parse error: {e}"),
-        cas_solver::ExplainCommandEvalError::ExpectedFunctionCall => {
+        crate::ExplainCommandEvalError::Parse(e) => format!("Parse error: {e}"),
+        crate::ExplainCommandEvalError::ExpectedFunctionCall => {
             "Explain mode currently only supports function calls\n\
              Try: explain gcd(48, 18)"
                 .to_string()
         }
-        cas_solver::ExplainCommandEvalError::UnsupportedFunction(name) => format!(
+        crate::ExplainCommandEvalError::UnsupportedFunction(name) => format!(
             "Explain mode not yet implemented for function '{}'\n\
              Currently supported: gcd",
             name
         ),
-        cas_solver::ExplainCommandEvalError::InvalidArity {
+        crate::ExplainCommandEvalError::InvalidArity {
             function, expected, ..
         } => {
             if function == "gcd" && *expected == 2 {
@@ -154,9 +154,9 @@ pub fn format_explain_command_error_message(error: &cas_solver::ExplainCommandEv
 }
 
 /// Format visualize command errors into user-facing messages.
-pub fn format_visualize_command_error_message(error: &cas_solver::VisualizeEvalError) -> String {
+pub fn format_visualize_command_error_message(error: &crate::VisualizeEvalError) -> String {
     match error {
-        cas_solver::VisualizeEvalError::Parse(message) => format!("Parse error: {message}"),
+        crate::VisualizeEvalError::Parse(message) => format!("Parse error: {message}"),
     }
 }
 
@@ -189,15 +189,15 @@ mod tests {
 
     #[test]
     fn format_explain_command_error_message_parse_is_human_readable() {
-        let msg = format_explain_command_error_message(
-            &cas_solver::ExplainCommandEvalError::Parse("oops".to_string()),
-        );
+        let msg = format_explain_command_error_message(&crate::ExplainCommandEvalError::Parse(
+            "oops".to_string(),
+        ));
         assert!(msg.contains("Parse error"));
     }
 
     #[test]
     fn format_visualize_command_error_message_parse_is_human_readable() {
-        let msg = format_visualize_command_error_message(&cas_solver::VisualizeEvalError::Parse(
+        let msg = format_visualize_command_error_message(&crate::VisualizeEvalError::Parse(
             "bad".to_string(),
         ));
         assert!(msg.contains("Parse error"));

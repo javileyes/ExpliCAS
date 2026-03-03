@@ -1,5 +1,38 @@
 //! Evaluation helpers for analysis commands (`equiv`, `visualize`, `explain`).
 
+use cas_ast::{Context, ExprId};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum VisualizeEvalError {
+    Parse(String),
+}
+
+#[derive(Debug, Clone)]
+pub struct ExplainGcdEvalOutput {
+    pub steps: Vec<String>,
+    pub value: Option<ExprId>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExplainCommandEvalError {
+    Parse(String),
+    ExpectedFunctionCall,
+    UnsupportedFunction(String),
+    InvalidArity {
+        function: String,
+        expected: usize,
+        found: usize,
+    },
+}
+
+fn evaluate_equiv_input(
+    simplifier: &mut cas_solver::Simplifier,
+    input: &str,
+) -> Result<cas_solver::EquivalenceResult, cas_solver::ParseExprPairError> {
+    let (lhs, rhs) = cas_solver::parse_expr_pair(&mut simplifier.context, input)?;
+    Ok(simplifier.are_equivalent_extended(lhs, rhs))
+}
+
 /// Session-level output for `visualize` command.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VisualizeCommandOutput {
@@ -20,7 +53,7 @@ pub fn evaluate_equiv_command_lines(
     simplifier: &mut cas_solver::Simplifier,
     input: &str,
 ) -> Result<Vec<String>, cas_solver::ParseExprPairError> {
-    let result = cas_solver::evaluate_equiv_input(simplifier, input)?;
+    let result = evaluate_equiv_input(simplifier, input)?;
     Ok(crate::format_equivalence_result_lines(&result))
 }
 
@@ -44,17 +77,20 @@ pub fn evaluate_equiv_invocation_message(
 
 /// Evaluate visualize command input and return DOT graph source.
 pub fn evaluate_visualize_command_dot(
-    ctx: &mut cas_ast::Context,
+    ctx: &mut Context,
     input: &str,
-) -> Result<String, cas_solver::VisualizeEvalError> {
-    cas_solver::evaluate_visualize_ast_dot(ctx, input)
+) -> Result<String, VisualizeEvalError> {
+    let parsed_expr = cas_parser::parse(input.trim(), ctx)
+        .map_err(|e| VisualizeEvalError::Parse(e.to_string()))?;
+    let mut viz = cas_solver::visualizer::AstVisualizer::new(ctx);
+    Ok(viz.to_dot(parsed_expr))
 }
 
 /// Evaluate visualize command input and return session-level output payload.
 pub fn evaluate_visualize_command_output(
-    ctx: &mut cas_ast::Context,
+    ctx: &mut Context,
     input: &str,
-) -> Result<VisualizeCommandOutput, cas_solver::VisualizeEvalError> {
+) -> Result<VisualizeCommandOutput, VisualizeEvalError> {
     let file_name = "ast.dot";
     let dot_source = evaluate_visualize_command_dot(ctx, input)?;
     Ok(VisualizeCommandOutput {
@@ -66,7 +102,7 @@ pub fn evaluate_visualize_command_output(
 
 /// Evaluate full `visualize ...` invocation and return session-level output payload.
 pub fn evaluate_visualize_invocation_output(
-    ctx: &mut cas_ast::Context,
+    ctx: &mut Context,
     line: &str,
 ) -> Result<VisualizeCommandOutput, String> {
     let input = crate::extract_visualize_command_tail(line);
@@ -76,10 +112,27 @@ pub fn evaluate_visualize_invocation_output(
 
 /// Evaluate explain command input and format user-facing output lines.
 pub fn evaluate_explain_command_lines(
-    ctx: &mut cas_ast::Context,
+    ctx: &mut Context,
     input: &str,
-) -> Result<Vec<String>, cas_solver::ExplainCommandEvalError> {
-    let result = cas_solver::evaluate_explain_gcd_command(ctx, input)?;
+) -> Result<Vec<String>, ExplainCommandEvalError> {
+    let parsed_expr = cas_parser::parse(input.trim(), ctx)
+        .map_err(|e| ExplainCommandEvalError::Parse(e.to_string()))?;
+    let expr_data = ctx.get(parsed_expr).clone();
+    let cas_ast::Expr::Function(name_id, args) = expr_data else {
+        return Err(ExplainCommandEvalError::ExpectedFunctionCall);
+    };
+    let function_name = ctx.sym_name(name_id).to_string();
+    if function_name != "gcd" {
+        return Err(ExplainCommandEvalError::UnsupportedFunction(function_name));
+    }
+    if args.len() != 2 {
+        return Err(ExplainCommandEvalError::InvalidArity {
+            function: function_name,
+            expected: 2,
+            found: args.len(),
+        });
+    }
+    let result = cas_solver::number_theory::explain_gcd(ctx, args[0], args[1]);
     Ok(crate::format_explain_gcd_eval_lines(
         ctx,
         input,
@@ -90,9 +143,9 @@ pub fn evaluate_explain_command_lines(
 
 /// Evaluate `explain` command input and return cleaned message text.
 pub fn evaluate_explain_command_message(
-    ctx: &mut cas_ast::Context,
+    ctx: &mut Context,
     input: &str,
-) -> Result<String, cas_solver::ExplainCommandEvalError> {
+) -> Result<String, ExplainCommandEvalError> {
     let mut lines = evaluate_explain_command_lines(ctx, input)?;
     crate::clean_result_output_line(&mut lines);
     Ok(lines.join("\n"))
@@ -123,7 +176,7 @@ mod tests {
         let mut ctx = cas_ast::Context::new();
         let err =
             super::evaluate_visualize_command_dot(&mut ctx, "x+").expect_err("expected parse");
-        assert!(matches!(err, cas_solver::VisualizeEvalError::Parse(_)));
+        assert!(matches!(err, super::VisualizeEvalError::Parse(_)));
     }
 
     #[test]

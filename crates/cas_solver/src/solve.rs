@@ -9,6 +9,7 @@ use cas_solver_core::external_proof::map_external_nonzero_status_with;
 pub use cas_solver_core::isolation_utils::contains_var;
 pub use cas_solver_core::verify_stats;
 
+#[cfg(test)]
 use crate::input_parse::{parse_statement_or_session_ref, rsplit_ignoring_parens};
 use crate::Simplifier;
 
@@ -60,6 +61,7 @@ pub enum TimelineCommandInput {
 }
 
 /// Result of preparing a REPL `timeline solve` input.
+#[cfg(test)]
 #[derive(Debug)]
 struct PreparedTimelineSolve {
     equation: Equation,
@@ -129,7 +131,8 @@ pub enum TimelineCommandEvalError {
 /// - `<equation>, <var>`
 /// - `<equation> <var>` (when unambiguous)
 /// - `<equation>` (variable inferred later)
-pub fn parse_solve_command_input(input: &str) -> SolveCommandInput {
+#[cfg(test)]
+pub(crate) fn parse_solve_command_input(input: &str) -> SolveCommandInput {
     if let Some((eq, var)) = rsplit_ignoring_parens(input, ',') {
         return SolveCommandInput {
             equation: eq.trim().to_string(),
@@ -170,20 +173,9 @@ pub fn parse_solve_command_input(input: &str) -> SolveCommandInput {
     }
 }
 
-/// Parse optional `--check` solve flag and return:
-/// - whether solution checking should run
-/// - the remaining solve argument tail
-pub fn parse_solve_invocation_check(input: &str, default_check_enabled: bool) -> (bool, &str) {
-    let trimmed = input.trim();
-    if let Some(rest) = trimmed.strip_prefix("--check") {
-        (true, rest.trim_start())
-    } else {
-        (default_check_enabled, trimmed)
-    }
-}
-
 /// Parse REPL `timeline` argument shape.
-pub fn parse_timeline_command_input(rest: &str) -> TimelineCommandInput {
+#[cfg(test)]
+pub(crate) fn parse_timeline_command_input(rest: &str) -> TimelineCommandInput {
     if let Some(solve_rest) = rest.strip_prefix("solve ") {
         return TimelineCommandInput::Solve(solve_rest.trim().to_string());
     }
@@ -212,7 +204,8 @@ pub fn parse_timeline_command_input(rest: &str) -> TimelineCommandInput {
 }
 
 /// Parse and evaluate `equiv <expr1>, <expr2>` style input.
-pub fn evaluate_equiv_input(
+#[cfg(test)]
+pub(crate) fn evaluate_equiv_input(
     simplifier: &mut Simplifier,
     input: &str,
 ) -> Result<crate::EquivalenceResult, crate::input_parse::ParseExprPairError> {
@@ -220,46 +213,7 @@ pub fn evaluate_equiv_input(
     Ok(simplifier.are_equivalent_extended(lhs, rhs))
 }
 
-/// Evaluate parsed `solve` input against a stateful engine/session pair.
-pub fn evaluate_solve_command_with_session<S>(
-    engine: &mut crate::Engine,
-    session: &mut S,
-    parsed_input: SolveCommandInput,
-    auto_store: bool,
-) -> Result<SolveCommandEvalOutput, SolveCommandEvalError>
-where
-    S: crate::EvalSession<Options = crate::EvalOptions, Diagnostics = crate::Diagnostics>,
-    S::Store: crate::EvalStore<
-        DomainMode = crate::DomainMode,
-        RequiredItem = crate::RequiredItem,
-        Step = crate::Step,
-        Diagnostics = crate::Diagnostics,
-    >,
-{
-    let PreparedSolveEvalRequest {
-        request,
-        var,
-        original_equation,
-    } = prepare_solve_eval_request(
-        &mut engine.simplifier.context,
-        parsed_input.equation.trim(),
-        parsed_input.variable,
-        auto_store,
-    )
-    .map_err(SolveCommandEvalError::Prepare)?;
-
-    let output = engine
-        .eval(session, request)
-        .map_err(|e| SolveCommandEvalError::Eval(e.to_string()))?;
-    let output = crate::eval_output_view(&output);
-
-    Ok(SolveCommandEvalOutput {
-        var,
-        original_equation,
-        output,
-    })
-}
-
+#[cfg(test)]
 fn statement_to_expr_id(
     ctx: &mut cas_ast::Context,
     stmt: cas_parser::Statement,
@@ -308,6 +262,7 @@ pub fn infer_solve_variable(
 /// Prepare a REPL `timeline solve` input:
 /// - parses an equation (not plain expression)
 /// - resolves explicit/inferred solve variable
+#[cfg(test)]
 fn prepare_timeline_solve_input(
     ctx: &mut cas_ast::Context,
     input: &str,
@@ -330,7 +285,8 @@ fn prepare_timeline_solve_input(
 ///
 /// This allows frontends to parse user `solve` input while keeping orchestration
 /// logic out of transport/UI layers.
-pub fn prepare_solve_eval_request(
+#[cfg(test)]
+pub(crate) fn prepare_solve_eval_request(
     ctx: &mut cas_ast::Context,
     input: &str,
     explicit_var: Option<String>,
@@ -359,6 +315,7 @@ pub fn prepare_solve_eval_request(
 
 /// Evaluate a REPL `timeline solve` command:
 /// parse command input, prepare equation/variable, and solve with display steps.
+#[cfg(test)]
 fn evaluate_timeline_solve_command_input(
     simplifier: &mut Simplifier,
     input: &str,
@@ -386,7 +343,8 @@ fn evaluate_timeline_solve_command_input(
 }
 
 /// Evaluate `timeline solve` using engine `EvalOptions` as semantic source.
-pub fn evaluate_timeline_solve_with_eval_options(
+#[cfg(test)]
+pub(crate) fn evaluate_timeline_solve_with_eval_options(
     simplifier: &mut Simplifier,
     input: &str,
     eval_options: &crate::EvalOptions,
@@ -396,6 +354,7 @@ pub fn evaluate_timeline_solve_with_eval_options(
     evaluate_timeline_solve_command_input(simplifier, input, opts)
 }
 
+#[cfg(test)]
 fn evaluate_timeline_simplify_aggressive(
     simplifier: &mut Simplifier,
     input: &str,
@@ -418,6 +377,7 @@ fn evaluate_timeline_simplify_aggressive(
     result
 }
 
+#[cfg(test)]
 fn evaluate_timeline_simplify_standard<S>(
     engine: &mut crate::Engine,
     session: &mut S,
@@ -462,7 +422,8 @@ where
 }
 
 /// Evaluate REPL `timeline simplify` command in standard or aggressive mode.
-pub fn evaluate_timeline_simplify_with_session<S>(
+#[cfg(test)]
+pub(crate) fn evaluate_timeline_simplify_with_session<S>(
     engine: &mut crate::Engine,
     session: &mut S,
     input: &str,
@@ -485,7 +446,8 @@ where
 }
 
 /// Evaluate REPL `timeline` command (solve/simplify) and return typed output.
-pub fn evaluate_timeline_command_with_session<S>(
+#[cfg(test)]
+pub(crate) fn evaluate_timeline_command_with_session<S>(
     engine: &mut crate::Engine,
     session: &mut S,
     input: &str,
@@ -610,6 +572,7 @@ pub(crate) fn medium_step(description: String, equation_after: Equation) -> Solv
     SolveStep::new(description, equation_after, crate::ImportanceLevel::Medium)
 }
 
+#[cfg(test)]
 fn resolve_solve_var(
     ctx: &cas_ast::Context,
     parsed_expr: ExprId,
@@ -634,9 +597,8 @@ mod tests {
         evaluate_equiv_input, evaluate_timeline_command_with_session,
         evaluate_timeline_simplify_with_session, evaluate_timeline_solve_command_input,
         evaluate_timeline_solve_with_eval_options, parse_solve_command_input,
-        parse_solve_invocation_check, parse_timeline_command_input, prepare_solve_eval_request,
-        prepare_timeline_solve_input, SolveCommandInput, SolvePrepareError, TimelineCommandInput,
-        TimelineSolveEvalError,
+        parse_timeline_command_input, prepare_solve_eval_request, prepare_timeline_solve_input,
+        SolveCommandInput, SolvePrepareError, TimelineCommandInput, TimelineSolveEvalError,
     };
 
     #[test]
@@ -673,20 +635,6 @@ mod tests {
                 variable: None,
             }
         );
-    }
-
-    #[test]
-    fn parse_solve_invocation_check_enables_check_flag() {
-        let (check, tail) = parse_solve_invocation_check("--check x+1=2, x", false);
-        assert!(check);
-        assert_eq!(tail, "x+1=2, x");
-    }
-
-    #[test]
-    fn parse_solve_invocation_check_uses_default_when_flag_absent() {
-        let (check, tail) = parse_solve_invocation_check("x+1=2, x", true);
-        assert!(check);
-        assert_eq!(tail, "x+1=2, x");
     }
 
     #[test]

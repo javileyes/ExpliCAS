@@ -344,8 +344,10 @@ mod tests {
     #[test]
     fn sync_simplifier_with_cas_config_applies_toggles() {
         let mut simplifier = build_simplifier_with_rule_config(SimplifierRuleConfig::default());
-        let mut config = crate::CasConfig::default();
-        config.distribute = true;
+        let config = crate::CasConfig {
+            distribute: true,
+            ..crate::CasConfig::default()
+        };
         sync_simplifier_with_cas_config(&mut simplifier, &config);
         assert!(!simplifier
             .get_disabled_rules_clone()

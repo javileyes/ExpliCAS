@@ -1,5 +1,9 @@
 //! Stateless CLI-subcommand helpers for `limit`.
 
+use crate::limit_command_eval::{
+    evaluate_limit_subcommand_output, format_limit_subcommand_error, LimitSubcommandEvalOutput,
+};
+
 /// Limit direction for subcommand-level evaluation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LimitCommandApproach {
@@ -41,18 +45,12 @@ pub fn evaluate_limit_subcommand(
         LimitCommandPreSimplify::Safe => cas_solver::PreSimplifyMode::Safe,
     };
 
-    match cas_solver::evaluate_limit_subcommand_output(
-        expr,
-        var,
-        approach,
-        presimplify,
-        json_output,
-    ) {
-        Ok(cas_solver::LimitSubcommandOutput::Json(out)) => Ok(LimitSubcommandOutput::Json(out)),
-        Ok(cas_solver::LimitSubcommandOutput::Text { result, warning }) => {
+    match evaluate_limit_subcommand_output(expr, var, approach, presimplify, json_output) {
+        Ok(LimitSubcommandEvalOutput::Json(out)) => Ok(LimitSubcommandOutput::Json(out)),
+        Ok(LimitSubcommandEvalOutput::Text { result, warning }) => {
             Ok(LimitSubcommandOutput::Text { result, warning })
         }
-        Err(error) => Err(cas_solver::format_limit_subcommand_error(&error)),
+        Err(error) => Err(format_limit_subcommand_error(&error)),
     }
 }
 
