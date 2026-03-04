@@ -1,3 +1,6 @@
+pub mod cancel_common_terms;
+#[cfg(test)]
+mod cancel_common_terms_tests;
 mod check;
 pub(crate) mod isolation;
 pub(crate) mod solve_core;
@@ -20,7 +23,7 @@ pub use types::{
     SolveSubStep, SolverOptions,
 };
 
-pub use self::solve_core::{solve, solve_with_display_steps};
+pub use self::solve_core::{solve, solve_with_ctx_and_options, solve_with_display_steps};
 
 pub(crate) fn simplifier_context(simplifier: &mut Simplifier) -> &cas_ast::Context {
     &simplifier.context

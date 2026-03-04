@@ -39,7 +39,7 @@ mod fraction_steps;
 mod nested_fractions;
 
 use cas_ast::{Context, Expr, ExprId};
-use cas_solver::{AssumptionEvent, ImportanceLevel, PathStep, Step};
+use cas_solver::{ImportanceLevel, Step};
 use num_bigint::BigInt;
 use num_rational::BigRational;
 use num_traits::{Signed, Zero};
@@ -454,7 +454,8 @@ pub fn format_cli_simplification_steps(
             step_count += 1;
 
             if display_mode == StepDisplayMode::Succinct {
-                current_root = reconstruct_global_expr(ctx, current_root, step.path(), step.after);
+                current_root =
+                    cas_solver::reconstruct_global_expr(ctx, current_root, step.path(), step.after);
                 lines.push(format!(
                     "-> {}",
                     DisplayExprStyled::new(ctx, current_root, &style_prefs)
@@ -553,7 +554,8 @@ pub fn format_cli_simplification_steps(
             if let Some(global_after) = step.global_after {
                 current_root = global_after;
             } else {
-                current_root = reconstruct_global_expr(ctx, current_root, step.path(), step.after);
+                current_root =
+                    cas_solver::reconstruct_global_expr(ctx, current_root, step.path(), step.after);
             }
 
             lines.push(format!(
@@ -564,14 +566,14 @@ pub fn format_cli_simplification_steps(
                 ))
             ));
 
-            let assumption_events = cas_solver::assumption_events_from_step(step);
-            for assumption_line in format_displayable_assumption_lines(&assumption_events) {
+            for assumption_line in cas_solver::format_displayable_assumption_lines_for_step(step) {
                 lines.push(format!("   {}", assumption_line));
             }
         } else if let Some(global_after) = step.global_after {
             current_root = global_after;
         } else {
-            current_root = reconstruct_global_expr(ctx, current_root, step.path(), step.after);
+            current_root =
+                cas_solver::reconstruct_global_expr(ctx, current_root, step.path(), step.after);
         }
     }
 
@@ -624,105 +626,6 @@ fn find_balanced_braces(s: &str) -> Option<(String, usize)> {
         }
     }
     None
-}
-
-fn format_displayable_assumption_lines(events: &[AssumptionEvent]) -> Vec<String> {
-    events
-        .iter()
-        .filter_map(|event| {
-            if event.kind.should_display() {
-                Some(format!(
-                    "{} {}: {}",
-                    event.kind.icon(),
-                    event.kind.label(),
-                    event.message
-                ))
-            } else {
-                None
-            }
-        })
-        .collect()
-}
-
-fn reconstruct_global_expr(
-    context: &mut Context,
-    root: ExprId,
-    path: &[PathStep],
-    replacement: ExprId,
-) -> ExprId {
-    if path.is_empty() {
-        return replacement;
-    }
-
-    let current_step = &path[0];
-    let remaining_path = &path[1..];
-    let expr = context.get(root).clone();
-
-    match (expr, current_step) {
-        (Expr::Add(l, r), PathStep::Left) => {
-            let new_l = reconstruct_global_expr(context, l, remaining_path, replacement);
-            context.add(Expr::Add(new_l, r))
-        }
-        // Sub(a,b) may be canonicalized as Add(a, Neg(b)).
-        (Expr::Add(l, r), PathStep::Right) => {
-            if let Expr::Neg(inner) = context.get(r).clone() {
-                let new_inner =
-                    reconstruct_global_expr(context, inner, remaining_path, replacement);
-                let new_neg = context.add(Expr::Neg(new_inner));
-                context.add(Expr::Add(l, new_neg))
-            } else {
-                let new_r = reconstruct_global_expr(context, r, remaining_path, replacement);
-                context.add(Expr::Add(l, new_r))
-            }
-        }
-        (Expr::Sub(l, r), PathStep::Left) => {
-            let new_l = reconstruct_global_expr(context, l, remaining_path, replacement);
-            context.add(Expr::Sub(new_l, r))
-        }
-        (Expr::Sub(l, r), PathStep::Right) => {
-            let new_r = reconstruct_global_expr(context, r, remaining_path, replacement);
-            context.add(Expr::Sub(l, new_r))
-        }
-        (Expr::Mul(l, r), PathStep::Left) => {
-            let new_l = reconstruct_global_expr(context, l, remaining_path, replacement);
-            context.add(Expr::Mul(new_l, r))
-        }
-        (Expr::Mul(l, r), PathStep::Right) => {
-            let new_r = reconstruct_global_expr(context, r, remaining_path, replacement);
-            context.add(Expr::Mul(l, new_r))
-        }
-        (Expr::Div(l, r), PathStep::Left) => {
-            let new_l = reconstruct_global_expr(context, l, remaining_path, replacement);
-            context.add(Expr::Div(new_l, r))
-        }
-        (Expr::Div(l, r), PathStep::Right) => {
-            let new_r = reconstruct_global_expr(context, r, remaining_path, replacement);
-            context.add(Expr::Div(l, new_r))
-        }
-        (Expr::Pow(b, e), PathStep::Base) => {
-            let new_b = reconstruct_global_expr(context, b, remaining_path, replacement);
-            context.add(Expr::Pow(new_b, e))
-        }
-        (Expr::Pow(b, e), PathStep::Exponent) => {
-            let new_e = reconstruct_global_expr(context, e, remaining_path, replacement);
-            context.add(Expr::Pow(b, new_e))
-        }
-        (Expr::Neg(e), PathStep::Inner) => {
-            let new_e = reconstruct_global_expr(context, e, remaining_path, replacement);
-            context.add(Expr::Neg(new_e))
-        }
-        (Expr::Function(name, args), PathStep::Arg(idx)) => {
-            let mut new_args = args.clone();
-            if *idx < new_args.len() {
-                new_args[*idx] =
-                    reconstruct_global_expr(context, new_args[*idx], remaining_path, replacement);
-                context.add(Expr::Function(name, new_args))
-            } else {
-                root
-            }
-        }
-        _ => root,
-    }
 }
 
 // --- Shared helpers used by submodules ---

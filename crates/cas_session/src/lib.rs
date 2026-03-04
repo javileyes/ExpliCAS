@@ -34,13 +34,6 @@ mod assignment_parse;
 #[cfg(test)]
 mod assignment_tests;
 mod assignment_types;
-mod assumption_format;
-mod assumption_format_assumed;
-mod assumption_format_blocked;
-mod assumption_format_blocked_eval;
-mod assumption_format_blocked_solve;
-mod assumption_format_blocked_support;
-mod assumption_format_requires;
 mod autoexpand_command;
 mod autoexpand_command_eval;
 mod autoexpand_command_format;
@@ -77,9 +70,6 @@ mod context_command_parse;
 mod context_command_tests;
 mod context_command_types;
 pub mod env;
-mod envelope_json_command;
-mod envelope_json_command_runtime;
-mod envelope_json_command_support;
 #[cfg(test)]
 mod envelope_json_command_tests;
 mod eval_command;
@@ -167,13 +157,6 @@ mod inspect_format;
 mod inspect_tests;
 mod inspect_types;
 mod json_bridge;
-mod json_bridge_eval;
-mod json_bridge_eval_mapping;
-mod json_bridge_eval_render;
-mod json_bridge_substitute;
-mod json_bridge_substitute_eval;
-mod json_bridge_substitute_parse;
-mod json_bridge_substitute_types;
 #[cfg(test)]
 mod json_bridge_tests;
 mod limit_command;
@@ -376,7 +359,6 @@ mod timeline_command_solve;
 mod timeline_command_tests;
 mod unary_command;
 mod unary_command_eval;
-mod unary_command_format;
 #[cfg(test)]
 mod unary_command_tests;
 
@@ -411,15 +393,6 @@ pub use assignment::{
     format_let_assignment_parse_error_message, let_assignment_usage_message,
     parse_let_assignment_input, AssignmentError, LetAssignmentParseError, ParsedLetAssignment,
 };
-pub use assumption_format::{
-    collect_assumed_conditions_from_steps, filter_blocked_hints_for_eval,
-    format_assumed_conditions_report_lines, format_assumption_records_summary,
-    format_blocked_hint_lines, format_diagnostics_requires_lines,
-    format_displayable_assumption_lines, format_domain_warning_lines,
-    format_eval_blocked_hints_lines, format_normalized_condition_lines,
-    format_required_condition_lines, format_solve_assumption_and_blocked_sections,
-    group_assumed_conditions_by_rule, SolveAssumptionSectionConfig,
-};
 pub use autoexpand_command::{
     apply_autoexpand_policy_to_options, autoexpand_budget_view_from_options,
     evaluate_and_apply_autoexpand_command, evaluate_autoexpand_command_input,
@@ -434,6 +407,15 @@ pub use bindings::{
     ClearBindingsResult,
 };
 pub use cache::{CacheDomainMode, SimplifiedCache, SimplifyCacheKey};
+pub use cas_solver::{
+    collect_assumed_conditions_from_steps, filter_blocked_hints_for_eval,
+    format_assumed_conditions_report_lines, format_assumption_records_summary,
+    format_blocked_hint_lines, format_diagnostics_requires_lines,
+    format_displayable_assumption_lines, format_domain_warning_lines,
+    format_eval_blocked_hints_lines, format_normalized_condition_lines,
+    format_required_condition_lines, format_solve_assumption_and_blocked_sections,
+    group_assumed_conditions_by_rule, SolveAssumptionSectionConfig,
+};
 pub use commands::{
     apply_profile_cache_command, apply_profile_command, evaluate_assignment_command,
     evaluate_assignment_command_message_with_simplifier, evaluate_clear_command_lines,
@@ -627,12 +609,12 @@ pub type ResolvedExpr = cas_session_core::cache::ResolvedExpr<RequiredItem>;
 pub type Entry = cas_session_core::store::Entry<Diagnostics, SimplifiedCache>;
 pub type SessionStore = cas_session_core::store::SessionStore<Diagnostics, SimplifiedCache>;
 pub use cas_session_core::types::{CacheConfig, EntryId, EntryKind, RefMode, ResolveError};
+pub use cas_solver::evaluate_envelope_json_command;
 pub use cas_solver::{
     BranchMode, ComplexMode, ContextMode, Engine, EvalOptions, ExpandPolicy, PipelineStats,
     SharedSemanticConfig, Simplifier, SimplifyOptions, Step, StepsMode,
 };
 pub use env::{is_reserved, substitute, substitute_with_shadow, Environment};
-pub use envelope_json_command::evaluate_envelope_json_command;
 pub use eval_command::{
     build_eval_command_render_plan, evaluate_eval_command_output,
     evaluate_eval_text_simplify_with_session, EvalCommandError, EvalCommandOutput,

@@ -903,7 +903,7 @@ fn step_tracks_assumed_nonzero_in_generic() {
     let has_nonzero_assumption = output.steps.iter().any(|step| {
         step.assumption_events()
             .iter()
-            .any(|event| matches!(event.key, cas_engine::AssumptionKey::NonZero { .. }))
+            .any(|event| matches!(event.key, cas_solver::AssumptionKey::NonZero { .. }))
     });
 
     assert!(
@@ -1070,7 +1070,7 @@ fn sqrt_conjugate_collapse_allowed_in_assume() {
     let has_nonnegative_assumption = output.steps.iter().any(|step| {
         step.assumption_events()
             .iter()
-            .any(|event| matches!(event.key, cas_engine::AssumptionKey::NonNegative { .. }))
+            .any(|event| matches!(event.key, cas_solver::AssumptionKey::NonNegative { .. }))
     });
 
     // If the expression was collapsed, we should see NonNegative assumption

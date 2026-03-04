@@ -74,16 +74,19 @@ pub fn solve_with_display_steps(
     // through solve_with_ctx_and_options will push conditions into this shared set.
     let ctx = super::SolveCtx::default();
     let result = solve_inner(eq, var, simplifier, opts, &ctx);
-
-    let diagnostics = ctx.diagnostics_with_records(crate::collect_assumption_records);
-
-    let (solution_set, raw_steps) = result?;
-
-    // Apply didactic cleanup using opts.detailed_steps and enforce DisplaySteps output.
-    let cleaned =
-        cleanup_display_solve_steps(&mut simplifier.context, raw_steps, opts.detailed_steps, var);
-
-    Ok((solution_set, cleaned, diagnostics))
+    cas_solver_core::solve_types::finalize_display_solve_with_ctx(
+        &ctx,
+        result,
+        crate::collect_assumption_records,
+        |raw_steps| {
+            cleanup_display_solve_steps(
+                &mut simplifier.context,
+                raw_steps,
+                opts.detailed_steps,
+                var,
+            )
+        },
+    )
 }
 
 /// Solve with options but no shared context.
@@ -101,18 +104,19 @@ pub(crate) fn solve_with_options(
     solve_inner(eq, var, simplifier, opts, &ctx)
 }
 
-// NOTE: Pre-solve exponent normalization (Div(p,q) → Number(p/q)) and
-// common additive term cancellation (Sub(Add(A,B), B) → A) were moved
-// from solver-only code to global simplifier rules:
-//   - rules/rational_canonicalization.rs (CanonicalizeRationalDivRule, CanonicalizeNestedPowRule)
-//   - rules/cancel_common_terms.rs (CancelCommonAdditiveTermsRule)
-// These are now applied automatically by simplify_for_solve().
+// NOTE: Pre-solve exponent normalization (Div(p,q) -> Number(p/q)) is handled
+// by canonicalization rules:
+//   - rules/rational_canonicalization.rs
+// Common additive cancellation remains an equation-level solver primitive and
+// lives under:
+//   - solver/cancel_common_terms.rs
+// (with shared kernels in cas_solver_core::cancel_common_terms).
 
 /// Solve with a shared `SolveCtx` and explicit options.
 ///
 /// This should be used by recursive strategy/isolation paths so nested solves
 /// preserve semantic/domain options from the top-level invocation.
-pub(crate) fn solve_with_ctx_and_options(
+pub fn solve_with_ctx_and_options(
     eq: &cas_ast::Equation,
     var: &str,
     simplifier: &mut Simplifier,
@@ -254,7 +258,7 @@ fn prepare_equation_for_strategy(
             cas_solver_core::isolation_utils::try_recompose_pow_quotient(&mut state.context, expr)
         },
         |state, lhs, rhs| {
-            crate::rules::cancel_common_terms::cancel_common_additive_terms(
+            cas_solver_core::cancel_common_terms::cancel_common_additive_terms(
                 &mut state.context,
                 lhs,
                 rhs,
@@ -262,7 +266,7 @@ fn prepare_equation_for_strategy(
             .map(|rewrite| (rewrite.new_lhs, rewrite.new_rhs))
         },
         |state, lhs, rhs| {
-            crate::rules::cancel_common_terms::cancel_additive_terms_semantic(state, lhs, rhs)
+            cancel_additive_terms_semantic_for_solver(state, lhs, rhs)
                 .map(|rewrite| (rewrite.new_lhs, rewrite.new_rhs))
         },
         |state, lhs, rhs| state.context.add(Expr::Sub(lhs, rhs)),
@@ -277,6 +281,49 @@ fn prepare_equation_for_strategy(
             )
         },
         simplifier_zero_expr,
+    )
+}
+
+/// Semantic additive-cancellation fallback used by the solve pipeline.
+///
+/// This keeps solve_core decoupled from `crate::rules::*` wrappers while
+/// preserving the same candidate/proof strategy:
+/// 1. candidate normalization in Generic mode
+/// 2. pair proof in Strict mode
+fn cancel_additive_terms_semantic_for_solver(
+    simplifier: &mut Simplifier,
+    lhs: ExprId,
+    rhs: ExprId,
+) -> Option<cas_solver_core::cancel_common_terms::CancelResult> {
+    use num_traits::Zero;
+
+    let candidate_opts = crate::SimplifyOptions {
+        collect_steps: false,
+        ..Default::default()
+    };
+    let strict_proof_opts = crate::SimplifyOptions {
+        shared: crate::phase::SharedSemanticConfig {
+            semantics: crate::semantics::EvalConfig::strict(),
+            ..Default::default()
+        },
+        collect_steps: false,
+        ..Default::default()
+    };
+
+    cas_solver_core::cancel_common_terms::cancel_additive_terms_semantic_with_state(
+        simplifier,
+        lhs,
+        rhs,
+        |state| &state.context,
+        |state| &mut state.context,
+        |state, term| state.simplify_with_stats(term, candidate_opts.clone()).0,
+        crate::expand::expand,
+        |state, lt, rt| {
+            let diff = state.context.add(Expr::Sub(lt, rt));
+            let (simplified_diff, _, _) =
+                state.simplify_with_stats(diff, strict_proof_opts.clone());
+            matches!(state.context.get(simplified_diff), Expr::Number(n) if n.is_zero())
+        },
     )
 }
 

@@ -119,21 +119,15 @@ fn test_descriptor_distinguishes_intrinsic_from_introduced() {
 }
 
 #[test]
-fn test_assumption_record_from_engine_type() {
-    let engine = cas_engine::AssumptionRecord {
+fn test_assumption_record_shape_stable() {
+    let record = cas_solver::AssumptionRecord {
         kind: "nonzero".to_string(),
         expr: "x".to_string(),
         message: "x != 0".to_string(),
         count: 2,
     };
-    let mapped = cas_solver::AssumptionRecord {
-        kind: engine.kind,
-        expr: engine.expr,
-        message: engine.message,
-        count: engine.count,
-    };
-    assert_eq!(mapped.kind, "nonzero");
-    assert_eq!(mapped.expr, "x");
-    assert_eq!(mapped.message, "x != 0");
-    assert_eq!(mapped.count, 2);
+    assert_eq!(record.kind, "nonzero");
+    assert_eq!(record.expr, "x");
+    assert_eq!(record.message, "x != 0");
+    assert_eq!(record.count, 2);
 }

@@ -19,8 +19,17 @@ pub fn reconstruct_global_expr(
 
     match (expr, current_step) {
         (Expr::Add(l, r), crate::PathStep::Left) => {
-            let new_l = reconstruct_global_expr(context, l, remaining_path, replacement);
-            context.add(Expr::Add(new_l, r))
+            // Special case: some rewrites target the "real" left child under Add(Neg(_), _)
+            // produced by canonicalization. Preserve the Neg wrapper while descending.
+            if let Expr::Neg(inner) = context.get(l).clone() {
+                let new_inner =
+                    reconstruct_global_expr(context, inner, remaining_path, replacement);
+                let new_neg = context.add(Expr::Neg(new_inner));
+                context.add(Expr::Add(new_neg, r))
+            } else {
+                let new_l = reconstruct_global_expr(context, l, remaining_path, replacement);
+                context.add(Expr::Add(new_l, r))
+            }
         }
         // Special case: Sub(a,b) may be canonicalized as Add(a, Neg(b)).
         (Expr::Add(l, r), crate::PathStep::Right) => {
@@ -71,7 +80,7 @@ pub fn reconstruct_global_expr(
             context.add(Expr::Neg(new_e))
         }
         (Expr::Function(name, args), crate::PathStep::Arg(idx)) => {
-            let mut new_args = args.clone();
+            let mut new_args = args;
             if *idx < new_args.len() {
                 new_args[*idx] =
                     reconstruct_global_expr(context, new_args[*idx], remaining_path, replacement);
@@ -79,6 +88,10 @@ pub fn reconstruct_global_expr(
             } else {
                 root
             }
+        }
+        (Expr::Hold(inner), crate::PathStep::Inner) => {
+            let new_inner = reconstruct_global_expr(context, inner, remaining_path, replacement);
+            context.add(Expr::Hold(new_inner))
         }
         _ => root,
     }

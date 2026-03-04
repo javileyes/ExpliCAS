@@ -13,9 +13,12 @@
 //! - `message` is human-readable and may change between versions
 //! - `details` is extensible (new keys may be added)
 //
+mod envelope;
 mod eval;
 mod mappers;
 mod substitute;
 
+pub use envelope::{eval_str_to_output_envelope, evaluate_envelope_json_command};
 pub use eval::eval_str_to_json;
+pub use mappers::{map_domain_warnings_to_engine_warnings, map_solver_assumptions_to_api_records};
 pub use substitute::substitute_str_to_json;

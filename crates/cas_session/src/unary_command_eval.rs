@@ -1,5 +1,3 @@
-use crate::unary_command_format::format_unary_function_eval_lines;
-
 /// Evaluate and format unary command output lines.
 pub fn evaluate_unary_function_command_lines(
     simplifier: &mut cas_solver::Simplifier,
@@ -12,7 +10,7 @@ pub fn evaluate_unary_function_command_lines(
         .map_err(|e| format!("Parse error: {e}"))?;
     let call_expr = simplifier.context.call(function_name, vec![parsed_expr]);
     let (result_expr, steps) = simplifier.simplify(call_expr);
-    Ok(format_unary_function_eval_lines(
+    Ok(cas_solver::format_unary_function_eval_lines(
         &simplifier.context,
         input,
         result_expr,

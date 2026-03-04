@@ -20,27 +20,7 @@ use crate::budget::{Budget, Metric, Operation};
 use crate::semantics::EvalConfig;
 use crate::CasError;
 use cas_ast::{Context, Expr, ExprId};
-
-/// Constant folding mode.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum ConstFoldMode {
-    /// No constant folding (default, preserves all expressions).
-    #[default]
-    Off,
-    /// Safe constant folding - only allowlist operations on provably constant subtrees.
-    Safe,
-}
-
-/// Constant folding result with statistics.
-#[derive(Debug, Clone)]
-pub struct ConstFoldResult {
-    /// The resulting expression (may be same as input if no folding occurred).
-    pub expr: ExprId,
-    /// Number of nodes created during folding.
-    pub nodes_created: u64,
-    /// Number of fold operations performed.
-    pub folds_performed: u64,
-}
+pub use cas_solver_core::const_fold_types::{ConstFoldMode, ConstFoldResult};
 
 /// Fold constants in an expression using allowlist-only operations.
 ///

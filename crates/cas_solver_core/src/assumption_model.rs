@@ -146,6 +146,38 @@ impl AssumptionKey {
     }
 }
 
+/// Stable fingerprint used to deduplicate assumption emissions across steps.
+pub fn assumption_key_dedupe_fingerprint(key: &AssumptionKey) -> u64 {
+    match key {
+        AssumptionKey::NonZero { expr_fingerprint } => *expr_fingerprint,
+        AssumptionKey::Positive { expr_fingerprint } => expr_fingerprint.wrapping_add(1_000_000),
+        AssumptionKey::NonNegative { expr_fingerprint } => expr_fingerprint.wrapping_add(2_000_000),
+        AssumptionKey::Defined { expr_fingerprint } => expr_fingerprint.wrapping_add(3_000_000),
+        AssumptionKey::InvTrigPrincipalRange {
+            arg_fingerprint, ..
+        } => arg_fingerprint.wrapping_add(4_000_000),
+        AssumptionKey::ComplexPrincipalBranch {
+            arg_fingerprint, ..
+        } => arg_fingerprint.wrapping_add(5_000_000),
+    }
+}
+
+/// Render the canonical textual condition for one assumption key and display expression.
+pub fn assumption_condition_text(key: &AssumptionKey, expr_display: &str) -> String {
+    match key {
+        AssumptionKey::NonZero { .. } => format!("{expr_display} ≠ 0"),
+        AssumptionKey::Positive { .. } => format!("{expr_display} > 0"),
+        AssumptionKey::NonNegative { .. } => format!("{expr_display} ≥ 0"),
+        AssumptionKey::Defined { .. } => format!("{expr_display} is defined"),
+        AssumptionKey::InvTrigPrincipalRange { func, .. } => {
+            format!("{expr_display} in {func} principal range")
+        }
+        AssumptionKey::ComplexPrincipalBranch { func, .. } => {
+            format!("{func}({expr_display}) principal branch")
+        }
+    }
+}
+
 /// Compute a stable fingerprint for an expression based on canonical display.
 pub fn expr_fingerprint(ctx: &Context, expr: ExprId) -> u64 {
     let display = cas_formatter::render_expr(ctx, expr);
@@ -645,10 +677,11 @@ pub fn map_log_blocked_hint(
 #[cfg(test)]
 mod tests {
     use super::{
-        assumption_condition_kind, blocked_hint_suggestion, classify_assumption_kind,
-        classify_assumption_with_condition, collect_blocked_hint_items,
-        format_assumption_records_conditions, format_blocked_hint_condition,
-        AssumptionConditionKind, AssumptionEvent, AssumptionKey, AssumptionKind, AssumptionRecord,
+        assumption_condition_kind, assumption_condition_text, assumption_key_dedupe_fingerprint,
+        blocked_hint_suggestion, classify_assumption_kind, classify_assumption_with_condition,
+        collect_blocked_hint_items, format_assumption_records_conditions,
+        format_blocked_hint_condition, AssumptionConditionKind, AssumptionEvent, AssumptionKey,
+        AssumptionKind, AssumptionRecord,
     };
 
     #[test]
@@ -682,6 +715,28 @@ mod tests {
             }
             .condition_display(),
             "∈ [-1, 1]"
+        );
+        assert_eq!(
+            assumption_key_dedupe_fingerprint(&AssumptionKey::NonZero {
+                expr_fingerprint: 10,
+            }),
+            10
+        );
+        assert_eq!(
+            assumption_key_dedupe_fingerprint(&AssumptionKey::Positive {
+                expr_fingerprint: 10,
+            }),
+            1_000_010
+        );
+        assert_eq!(
+            assumption_condition_text(
+                &AssumptionKey::ComplexPrincipalBranch {
+                    func: "log",
+                    arg_fingerprint: 42,
+                },
+                "x"
+            ),
+            "log(x) principal branch"
         );
     }
 

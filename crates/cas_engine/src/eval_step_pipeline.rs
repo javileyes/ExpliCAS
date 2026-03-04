@@ -32,35 +32,17 @@ use crate::step::{DisplayEvalSteps, Step};
 /// A `DisplayEvalSteps` wrapper guaranteeing cleanup has been applied.
 #[must_use = "the result of pipeline processing should be used"]
 pub fn to_display_steps(raw_steps: Vec<Step>) -> DisplayEvalSteps {
-    // Stage 1: Remove no-op steps
-    // V2.14.20: A step is a no-op only if:
-    //   - before == after (root level), AND
-    //   - before_local == after_local OR no local focus set
-    // This preserves steps with local changes (e.g., abs(x) -> x in nested context)
-    let mut cleaned: Vec<Step> = raw_steps
-        .into_iter()
-        .filter(|step| {
-            let global_changed = step.before != step.after;
-            let local_changed = match (step.before_local(), step.after_local()) {
-                (Some(bl), Some(al)) => bl != al,
-                _ => false, // No local focus means rely on global
-            };
-            global_changed || local_changed
-        })
-        .collect();
-
-    // V2.14.20: Trace coherence fix
-    // Due to recursive step generation, global_before may use stale root_expr.
-    // Fix: For consecutive steps, step[i+1].global_before = step[i].global_after
-    // This ensures the trace invariant: what we show as "After" in step N
-    // is exactly what we show as "Before" in step N+1
-    for i in 0..cleaned.len().saturating_sub(1) {
-        // Get the global_after from step i (immutably first)
-        if let Some(after_i) = cleaned[i].global_after {
-            // Then mutate step i+1's global_before
-            cleaned[i + 1].global_before = Some(after_i);
-        }
-    }
+    // Stage 1: remove no-op steps preserving local-focused changes.
+    // Stage 2: repair global_before chaining from previous global_after.
+    let cleaned = cas_solver_core::eval_step_pipeline::clean_eval_steps(
+        raw_steps,
+        |s: &Step| s.before,
+        |s: &Step| s.after,
+        |s: &Step| s.before_local(),
+        |s: &Step| s.after_local(),
+        |s: &Step| s.global_after,
+        |s: &mut Step, gb| s.global_before = Some(gb),
+    );
 
     // Stage 2: Future - collapse consecutive duplicates
     // Stage 3: Future - normalize descriptions

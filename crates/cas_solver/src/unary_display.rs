@@ -1,8 +1,9 @@
-pub(crate) fn format_unary_function_eval_lines(
+/// Format unary command output (`det`, `trace`, etc.) with optional steps.
+pub fn format_unary_function_eval_lines(
     context: &cas_ast::Context,
     input: &str,
     result_expr: cas_ast::ExprId,
-    steps: &[cas_solver::Step],
+    steps: &[crate::Step],
     function_name: &str,
     show_steps: bool,
     show_step_assumptions: bool,
@@ -19,10 +20,7 @@ pub(crate) fn format_unary_function_eval_lines(
                 step.rule_name
             ));
             if show_step_assumptions {
-                let assumption_events = cas_solver::assumption_events_from_step(step);
-                for assumption_line in
-                    crate::format_displayable_assumption_lines(&assumption_events)
-                {
+                for assumption_line in crate::format_displayable_assumption_lines_for_step(step) {
                     lines.push(format!("   {assumption_line}"));
                 }
             }

@@ -1,7 +1,7 @@
 use crate::{AssumptionRecord, DomainWarning};
 use cas_api_models::{AssumptionRecord as ApiAssumptionRecord, EngineJsonWarning};
 
-pub(super) fn map_domain_warnings_to_engine_warnings(
+pub fn map_domain_warnings_to_engine_warnings(
     warnings: &[DomainWarning],
 ) -> Vec<EngineJsonWarning> {
     warnings
@@ -13,7 +13,7 @@ pub(super) fn map_domain_warnings_to_engine_warnings(
         .collect()
 }
 
-pub(super) fn map_solver_assumptions_to_api_records(
+pub fn map_solver_assumptions_to_api_records(
     assumptions: &[AssumptionRecord],
 ) -> Vec<ApiAssumptionRecord> {
     assumptions

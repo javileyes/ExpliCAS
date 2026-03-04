@@ -26,8 +26,6 @@ pub mod trigonometry;
 #[cfg(test)]
 mod arithmetic_tests;
 #[cfg(test)]
-mod cancel_common_terms_tests;
-#[cfg(test)]
 mod canonicalization_tests;
 #[cfg(test)]
 mod complex_tests;

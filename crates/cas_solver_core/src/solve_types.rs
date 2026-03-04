@@ -1,6 +1,6 @@
 //! Generic solver data models shared across runtime crates.
 
-use cas_ast::{Context, Equation};
+use cas_ast::{Context, Equation, SolutionSet};
 
 /// Diagnostics collected during solve operation.
 #[derive(Debug, Clone, Default)]
@@ -103,6 +103,48 @@ where
             substeps: template.substeps,
         },
     )
+}
+
+/// Canonical output shape for display-ready solve calls.
+pub type DisplaySolveFinalization<Required, Assumption, AssumptionRecord, Scope, Step> = (
+    SolutionSet,
+    crate::display_steps::DisplaySteps<Step>,
+    SolveDiagnostics<Required, Assumption, AssumptionRecord, Scope>,
+);
+
+/// Finalize a raw solve result into display-ready output with diagnostics.
+///
+/// This helper centralizes the common pattern used by runtime facades:
+/// 1) compute diagnostics from shared solve context,
+/// 2) unwrap `(solution_set, raw_steps)`,
+/// 3) run step cleanup/wrapping.
+pub fn finalize_display_solve_with_ctx<
+    DomainEnv,
+    Required,
+    Assumption,
+    AssumptionRecord,
+    Scope,
+    Step,
+    E,
+    FBuildAssumedRecords,
+    FCleanupSteps,
+>(
+    ctx: &crate::solve_context::SolveContext<DomainEnv, Required, Assumption, Scope>,
+    solve_result: Result<(SolutionSet, Vec<Step>), E>,
+    build_assumed_records: FBuildAssumedRecords,
+    cleanup_steps: FCleanupSteps,
+) -> Result<DisplaySolveFinalization<Required, Assumption, AssumptionRecord, Scope, Step>, E>
+where
+    Required: Eq + std::hash::Hash + Clone,
+    Assumption: Clone,
+    Scope: Clone + PartialEq,
+    FBuildAssumedRecords: FnMut(&[Assumption]) -> Vec<AssumptionRecord>,
+    FCleanupSteps: FnOnce(Vec<Step>) -> crate::display_steps::DisplaySteps<Step>,
+{
+    let diagnostics = ctx.diagnostics_with_records(build_assumed_records);
+    let (solution_set, raw_steps) = solve_result?;
+    let cleaned = cleanup_steps(raw_steps);
+    Ok((solution_set, cleaned, diagnostics))
 }
 
 #[cfg(test)]

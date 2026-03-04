@@ -176,9 +176,10 @@ pub use semantics::{
     AssumeScope, BranchPolicy, EvalConfig, InverseTrigPolicy, NormalFormGoal, ValueDomain,
 };
 pub use solver::{
-    contains_var, infer_solve_variable, solve, solve_with_display_steps, verify_solution,
-    verify_solution_set, verify_stats, DisplaySolveSteps, SolveCtx, SolveDiagnostics, SolveStep,
-    SolveSubStep, SolverOptions, VerifyResult, VerifyStatus, VerifySummary,
+    contains_var, infer_solve_variable, solve, solve_with_ctx_and_options,
+    solve_with_display_steps, verify_solution, verify_solution_set, verify_stats,
+    DisplaySolveSteps, SolveCtx, SolveDiagnostics, SolveStep, SolveSubStep, SolverOptions,
+    VerifyResult, VerifyStatus, VerifySummary,
 };
 pub use step::{
     pathsteps_to_expr_path, DisplayEvalSteps, ImportanceLevel, PathStep, Step, StepCategory,
@@ -187,6 +188,7 @@ pub use telescoping::{telescope, TelescopingResult, TelescopingStep};
 pub use visitors::{DepthVisitor, VariableCollector};
 
 // Equation-level primitives (not simplifier rules — used by solver pipeline)
-pub use rules::cancel_common_terms::{
-    cancel_additive_terms_semantic, cancel_common_additive_terms, CancelResult,
+pub use cas_solver_core::cancel_common_terms::CancelResult;
+pub use solver::cancel_common_terms::{
+    cancel_additive_terms_semantic, cancel_common_additive_terms,
 };

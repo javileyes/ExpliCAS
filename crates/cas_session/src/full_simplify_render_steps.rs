@@ -90,8 +90,7 @@ fn push_detailed_step_lines(
         ))
     ));
 
-    let assumption_events = cas_solver::assumption_events_from_step(step);
-    for assumption_line in crate::format_displayable_assumption_lines(&assumption_events) {
+    for assumption_line in cas_solver::format_displayable_assumption_lines_for_step(step) {
         lines.push(format!("   {}", assumption_line));
     }
 

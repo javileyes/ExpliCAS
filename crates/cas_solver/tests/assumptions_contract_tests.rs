@@ -296,28 +296,19 @@ fn options_propagation() {
 
 #[test]
 fn assumption_event_from_engine_type() {
-    let engine = cas_engine::AssumptionEvent {
-        key: cas_engine::AssumptionKey::Positive {
+    let event = AssumptionEvent {
+        key: cas_solver::AssumptionKey::Positive {
             expr_fingerprint: 12345,
         },
         expr_display: "x".to_string(),
         message: "x > 0".to_string(),
-        kind: cas_engine::AssumptionKind::RequiresIntroduced,
+        kind: cas_solver::AssumptionKind::RequiresIntroduced,
         expr_id: None,
     };
-    let mapped = AssumptionEvent {
-        key: cas_solver::AssumptionKey::Positive {
-            expr_fingerprint: 12345,
-        },
-        expr_display: engine.expr_display,
-        message: engine.message,
-        kind: cas_solver::AssumptionKind::RequiresIntroduced,
-        expr_id: engine.expr_id,
-    };
 
-    assert_eq!(mapped.key.kind(), "positive");
-    assert_eq!(mapped.expr_display, "x");
-    assert_eq!(mapped.message, "x > 0");
-    assert_eq!(mapped.kind, cas_solver::AssumptionKind::RequiresIntroduced);
-    assert_eq!(mapped.expr_id, None);
+    assert_eq!(event.key.kind(), "positive");
+    assert_eq!(event.expr_display, "x");
+    assert_eq!(event.message, "x > 0");
+    assert_eq!(event.kind, cas_solver::AssumptionKind::RequiresIntroduced);
+    assert_eq!(event.expr_id, None);
 }

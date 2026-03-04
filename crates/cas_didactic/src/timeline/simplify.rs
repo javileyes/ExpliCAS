@@ -8,8 +8,8 @@ use cas_formatter::{
     LaTeXExprHighlighted, PathHighlightConfig, PathHighlightedLatexRenderer,
 };
 use cas_solver::{
-    infer_implicit_domain, pathsteps_to_expr_path, render_conditions_normalized, AssumptionKind,
-    ImplicitCondition, ImportanceLevel, PathStep, Step, ValueDomain,
+    infer_implicit_domain, pathsteps_to_expr_path, render_conditions_normalized, ImplicitCondition,
+    ImportanceLevel, Step, ValueDomain,
 };
 
 /// Timeline HTML generator - exports simplification steps to interactive HTML
@@ -628,113 +628,6 @@ impl<'a> TimelineHtml<'a> {
         )
     }
 
-    fn reconstruct_global_expr(
-        &mut self,
-        root: ExprId,
-        path: &[PathStep],
-        replacement: ExprId,
-    ) -> ExprId {
-        if path.is_empty() {
-            return replacement;
-        }
-
-        let current_step = &path[0];
-        let remaining_path = &path[1..];
-        let expr = self.context.get(root).clone();
-
-        match (expr, current_step) {
-            (Expr::Add(l, r), PathStep::Left) => {
-                // Check if left side is Neg - if so, preserve the Neg wrapper
-                if let Expr::Neg(inner) = self.context.get(l).clone() {
-                    // Traverse into the Neg and wrap result back in Neg
-                    let new_inner =
-                        self.reconstruct_global_expr(inner, remaining_path, replacement);
-                    let new_neg = self.context.add(Expr::Neg(new_inner));
-                    self.context.add(Expr::Add(new_neg, r))
-                } else {
-                    // Normal case
-                    let new_l = self.reconstruct_global_expr(l, remaining_path, replacement);
-                    self.context.add(Expr::Add(new_l, r))
-                }
-            }
-            // Special case: Sub(a,b) may have been canonicalized to Add(a, Neg(b))
-            // When PathStep::Right expects to modify the original "b", we need to
-            // traverse into the Neg wrapper and reconstruct there.
-            (Expr::Add(l, r), PathStep::Right) => {
-                // Check if right side is Neg - if so, this might be a canonicalized Sub
-                if let Expr::Neg(inner) = self.context.get(r).clone() {
-                    // Traverse into the Neg and wrap result back in Neg
-                    let new_inner =
-                        self.reconstruct_global_expr(inner, remaining_path, replacement);
-                    let new_neg = self.context.add(Expr::Neg(new_inner));
-                    self.context.add(Expr::Add(l, new_neg))
-                } else {
-                    // Normal case - not a canonicalized Sub
-                    let new_r = self.reconstruct_global_expr(r, remaining_path, replacement);
-                    self.context.add(Expr::Add(l, new_r))
-                }
-            }
-            (Expr::Sub(l, r), PathStep::Left) => {
-                let new_l = self.reconstruct_global_expr(l, remaining_path, replacement);
-                self.context.add(Expr::Sub(new_l, r))
-            }
-            (Expr::Sub(l, r), PathStep::Right) => {
-                let new_r = self.reconstruct_global_expr(r, remaining_path, replacement);
-                self.context.add(Expr::Sub(l, new_r))
-            }
-            (Expr::Mul(l, r), PathStep::Left) => {
-                let new_l = self.reconstruct_global_expr(l, remaining_path, replacement);
-                self.context.add(Expr::Mul(new_l, r))
-            }
-            (Expr::Mul(l, r), PathStep::Right) => {
-                let new_r = self.reconstruct_global_expr(r, remaining_path, replacement);
-                self.context.add(Expr::Mul(l, new_r))
-            }
-            (Expr::Div(l, r), PathStep::Left) => {
-                let new_l = self.reconstruct_global_expr(l, remaining_path, replacement);
-                self.context.add(Expr::Div(new_l, r))
-            }
-            (Expr::Div(l, r), PathStep::Right) => {
-                let new_r = self.reconstruct_global_expr(r, remaining_path, replacement);
-                self.context.add(Expr::Div(l, new_r))
-            }
-            (Expr::Pow(b, e), PathStep::Base) => {
-                let new_b = self.reconstruct_global_expr(b, remaining_path, replacement);
-                self.context.add(Expr::Pow(new_b, e))
-            }
-            (Expr::Pow(b, e), PathStep::Exponent) => {
-                let new_e = self.reconstruct_global_expr(e, remaining_path, replacement);
-                self.context.add(Expr::Pow(b, new_e))
-            }
-            (Expr::Neg(e), PathStep::Inner) => {
-                let new_e = self.reconstruct_global_expr(e, remaining_path, replacement);
-                self.context.add(Expr::Neg(new_e))
-            }
-            (Expr::Function(name, args), PathStep::Arg(idx)) => {
-                let mut new_args = args;
-                if *idx < new_args.len() {
-                    new_args[*idx] =
-                        self.reconstruct_global_expr(new_args[*idx], remaining_path, replacement);
-                    self.context.add(Expr::Function(name, new_args))
-                } else {
-                    root
-                }
-            }
-            (Expr::Hold(inner), PathStep::Inner) => {
-                let new_inner = self.reconstruct_global_expr(inner, remaining_path, replacement);
-                self.context.add(Expr::Hold(new_inner))
-            }
-            // Leaves — no children, path cannot descend further
-            (Expr::Number(_), _)
-            | (Expr::Constant(_), _)
-            | (Expr::Variable(_), _)
-            | (Expr::SessionRef(_), _)
-            | (Expr::Matrix { .. }, _) => root,
-            // Path mismatch: valid expr but wrong PathStep direction
-            _ => root,
-        }
-    }
-
     /// Render timeline with enriched sub-steps (expandable details)
     fn render_timeline_filtered_enriched(
         &mut self,
@@ -776,7 +669,12 @@ impl<'a> TimelineHtml<'a> {
                 }
             });
             let global_after_expr = step.global_after.unwrap_or_else(|| {
-                self.reconstruct_global_expr(global_before_expr, step.path(), step.after)
+                cas_solver::reconstruct_global_expr(
+                    self.context,
+                    global_before_expr,
+                    step.path(),
+                    step.after,
+                )
             });
             last_global_after = global_after_expr; // Always update for final result
 
@@ -1138,68 +1036,18 @@ impl<'a> TimelineHtml<'a> {
             };
 
             // V2.12.13: Build assumption HTML from assumption_events, filtered and grouped by kind
-            let assumption_events = cas_solver::assumption_events_from_step(step);
-            let domain_html = if !assumption_events.is_empty() {
-                // Filter to displayable events only
-                let displayable: Vec<_> = assumption_events
-                    .iter()
-                    .filter(|e| e.kind.should_display())
-                    .collect();
-
-                if displayable.is_empty() {
-                    String::new()
-                } else {
-                    let mut parts = Vec::new();
-
-                    // Group by kind and format with icons
-                    let requires: Vec<_> = displayable
-                        .iter()
-                        .filter(|e| matches!(e.kind, AssumptionKind::RequiresIntroduced))
-                        .map(|e| html_escape(&e.message))
-                        .collect();
-                    if !requires.is_empty() {
-                        parts.push(format!("ℹ️ Requires: {}", requires.join(", ")));
-                    }
-
-                    let branches: Vec<_> = displayable
-                        .iter()
-                        .filter(|e| matches!(e.kind, AssumptionKind::BranchChoice))
-                        .map(|e| html_escape(&e.message))
-                        .collect();
-                    if !branches.is_empty() {
-                        parts.push(format!("🔀 Branch: {}", branches.join(", ")));
-                    }
-
-                    let domain_ext: Vec<_> = displayable
-                        .iter()
-                        .filter(|e| matches!(e.kind, AssumptionKind::DomainExtension))
-                        .map(|e| html_escape(&e.message))
-                        .collect();
-                    if !domain_ext.is_empty() {
-                        parts.push(format!("🧿 Domain: {}", domain_ext.join(", ")));
-                    }
-
-                    let assumes: Vec<_> = displayable
-                        .iter()
-                        .filter(|e| matches!(e.kind, AssumptionKind::HeuristicAssumption))
-                        .map(|e| html_escape(&e.message))
-                        .collect();
-                    if !assumes.is_empty() {
-                        parts.push(format!("⚠️ Assumes: {}", assumes.join(", ")));
-                    }
-
-                    if parts.is_empty() {
-                        String::new()
-                    } else {
-                        format!(
-                            r#"                    <div class="domain-assumptions">{}</div>
-"#,
-                            parts.join("<br/>")
-                        )
-                    }
-                }
-            } else {
+            let grouped_lines =
+                cas_solver::format_displayable_assumption_lines_grouped_for_step(step);
+            let domain_html = if grouped_lines.is_empty() {
                 String::new()
+            } else {
+                let parts: Vec<String> =
+                    grouped_lines.iter().map(|line| html_escape(line)).collect();
+                format!(
+                    r#"                    <div class="domain-assumptions">{}</div>
+"#,
+                    parts.join("<br/>")
+                )
             };
 
             // V2.12.13: Per-step requires removed - they are now shown once in the
