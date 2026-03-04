@@ -46,7 +46,7 @@ impl crate::rule::Rule for HalfAngleTangentRule {
         expr: ExprId,
         _parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<crate::rule::Rewrite> {
-        use crate::implicit_domain::ImplicitCondition;
+        use crate::ImplicitCondition;
         let rewrite = try_rewrite_half_angle_tangent_div_expr(ctx, expr)?;
         Some(
             Rewrite::new(rewrite.rewritten)

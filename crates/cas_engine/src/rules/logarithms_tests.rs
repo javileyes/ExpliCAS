@@ -111,8 +111,8 @@ fn test_log_product() {
     // log(b, x*y) -> log(b, x) + log(b, y) (requires Assume mode for variables)
     let expr = parse("log(2, x * y)", &mut ctx).unwrap();
     // Create parent context with Assume mode (allows expansion with warning)
-    let parent_ctx = crate::parent_context::ParentContext::root()
-        .with_domain_mode(crate::domain::DomainMode::Assume);
+    let parent_ctx =
+        crate::parent_context::ParentContext::root().with_domain_mode(crate::DomainMode::Assume);
     let rewrite = rule.apply(&mut ctx, expr, &parent_ctx).unwrap();
     let res = format!(
         "{}",
@@ -133,8 +133,8 @@ fn test_log_quotient() {
     // log(b, x/y) -> log(b, x) - log(b, y) (requires Assume mode for variables)
     let expr = parse("log(2, x / y)", &mut ctx).unwrap();
     // Create parent context with Assume mode (allows expansion with warning)
-    let parent_ctx = crate::parent_context::ParentContext::root()
-        .with_domain_mode(crate::domain::DomainMode::Assume);
+    let parent_ctx =
+        crate::parent_context::ParentContext::root().with_domain_mode(crate::DomainMode::Assume);
     let rewrite = rule.apply(&mut ctx, expr, &parent_ctx).unwrap();
     let res = format!(
         "{}",

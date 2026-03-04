@@ -20,8 +20,8 @@ define_rule!(
     CombineSameDenominatorFractionsRule,
     "Combine Same Denominator Fractions",
     |ctx, expr, parent_ctx| {
-        use crate::domain::Proof;
         use crate::helpers::prove_nonzero;
+        use crate::Proof;
 
         let plan = try_plan_same_denominator_combination_with(
             ctx,

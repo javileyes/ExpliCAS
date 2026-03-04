@@ -18,9 +18,9 @@ pub(crate) type ActionResult = (
     Vec<DomainWarning>,
     Vec<crate::Step>,
     Vec<crate::api::SolveStep>,
-    Vec<crate::assumptions::AssumptionRecord>,
+    Vec<crate::AssumptionRecord>,
     Vec<cas_formatter::display_transforms::ScopeTag>,
-    Vec<crate::implicit_domain::ImplicitCondition>,
+    Vec<crate::ImplicitCondition>,
 );
 
 use crate::Simplifier;
@@ -174,12 +174,7 @@ pub enum EvalResult {
     None,                              // For commands with no output
 }
 
-/// A domain assumption warning with its source rule.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct DomainWarning {
-    pub message: String,
-    pub rule_name: String,
-}
+pub type DomainWarning = cas_solver_core::domain_warning::DomainWarning;
 
 #[derive(Clone, Debug)]
 pub struct EvalOutput {
@@ -192,16 +187,16 @@ pub struct EvalOutput {
     pub steps: crate::step::DisplayEvalSteps,
     pub solve_steps: Vec<crate::api::SolveStep>,
     /// Assumptions made during solver operations (for Assume mode).
-    pub solver_assumptions: Vec<crate::assumptions::AssumptionRecord>,
+    pub solver_assumptions: Vec<crate::AssumptionRecord>,
     /// Scopes for context-aware display (e.g., QuadraticFormula -> sqrt display).
     pub output_scopes: Vec<cas_formatter::display_transforms::ScopeTag>,
     /// Required conditions for validity - implicit domain constraints from input.
     /// NOT assumptions! These were already required by the input expression.
     /// Sorted and deduplicated for stable display.
-    pub required_conditions: Vec<crate::implicit_domain::ImplicitCondition>,
+    pub required_conditions: Vec<crate::ImplicitCondition>,
     /// Blocked hints - operations that could not proceed in Strict/Generic mode.
     /// These suggest using Assume mode to enable certain transformations.
-    pub blocked_hints: Vec<crate::domain::BlockedHint>,
+    pub blocked_hints: Vec<crate::BlockedHint>,
     /// V2.2+: Unified diagnostics with origin tracking.
     /// Consolidates requires, assumed, and blocked in one container.
     pub diagnostics: crate::diagnostics::Diagnostics,
@@ -218,8 +213,8 @@ pub(crate) fn collect_domain_warnings(steps: &[crate::Step]) -> Vec<DomainWarnin
         |event| {
             matches!(
                 event.kind,
-                crate::assumptions::AssumptionKind::RequiresIntroduced
-                    | crate::assumptions::AssumptionKind::DerivedFromRequires
+                crate::AssumptionKind::RequiresIntroduced
+                    | crate::AssumptionKind::DerivedFromRequires
             )
         },
         |event| event.message.clone(),

@@ -62,8 +62,8 @@ impl crate::rule::Rule for DyadicCosProductToSinRule {
         let plan = try_plan_dyadic_cos_product_with_policy(
             ctx,
             expr,
-            matches!(parent_ctx.domain_mode(), crate::domain::DomainMode::Assume),
-            matches!(parent_ctx.domain_mode(), crate::domain::DomainMode::Strict),
+            matches!(parent_ctx.domain_mode(), crate::DomainMode::Assume),
+            matches!(parent_ctx.domain_mode(), crate::DomainMode::Strict),
         );
         let plan = plan?;
         let sin_theta = plan.sin_theta;
@@ -73,10 +73,10 @@ impl crate::rule::Rule for DyadicCosProductToSinRule {
             cas_math::trig_dyadic_policy_support::DyadicSinNonzeroPolicyDecision::Block
         ) {
             // Block with hint
-            crate::domain::register_blocked_hint(crate::domain::BlockedHint {
+            crate::register_blocked_hint(crate::BlockedHint {
                 rule: "Dyadic Cos Product".to_string(),
                 expr_id: sin_theta,
-                key: crate::assumptions::AssumptionKey::nonzero_key(ctx, sin_theta),
+                key: crate::AssumptionKey::nonzero_key(ctx, sin_theta),
                 suggestion: "use `domain assume` to allow this transformation",
             });
             return None;
@@ -94,8 +94,8 @@ impl crate::rule::Rule for DyadicCosProductToSinRule {
             }
         ) {
             // Create NonZero assumption with HeuristicAssumption kind
-            let mut event = crate::assumptions::AssumptionEvent::nonzero(ctx, sin_theta);
-            event.kind = crate::assumptions::AssumptionKind::HeuristicAssumption;
+            let mut event = crate::AssumptionEvent::nonzero(ctx, sin_theta);
+            event.kind = crate::AssumptionKind::HeuristicAssumption;
             rewrite = rewrite.assume(event);
         }
 

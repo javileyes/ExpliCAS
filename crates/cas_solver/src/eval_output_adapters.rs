@@ -42,12 +42,12 @@ pub fn eval_output_view(output: &crate::EvalOutput) -> EvalOutputView {
 pub fn assumption_records_from_eval_output(
     output: &crate::EvalOutput,
 ) -> Vec<crate::AssumptionRecord> {
-    crate::assumption_model::assumption_records_from_engine(&output.solver_assumptions)
+    output.solver_assumptions.to_vec()
 }
 
 /// Convert blocked-hint payload from an eval output into solver-owned hints.
 pub fn blocked_hints_from_eval_output(output: &crate::EvalOutput) -> Vec<crate::BlockedHint> {
-    crate::blocked_hint::blocked_hints_from_engine(&output.blocked_hints)
+    output.blocked_hints.to_vec()
 }
 
 /// Clone domain warnings from eval output.

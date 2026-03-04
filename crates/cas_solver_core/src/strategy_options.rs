@@ -9,6 +9,12 @@ use crate::isolation_power::{
 use crate::log_domain::DomainModeKind;
 use crate::solve_budget::SolveBudget;
 
+/// Build `DomainModeKind` from runtime booleans used by upper-layer solver options.
+#[inline]
+pub fn solver_domain_mode_kind(assume_mode: bool, strict_mode: bool) -> DomainModeKind {
+    crate::log_domain::domain_mode_kind_from_flags(assume_mode, strict_mode)
+}
+
 /// Returns true when exponent-shortcut branching can explore both signs.
 pub fn shortcut_can_branch(budget: SolveBudget) -> bool {
     budget.max_branches >= 2
@@ -94,7 +100,7 @@ where
 mod tests {
     use super::{
         log_can_branch, pow_kernel_config_with, pow_kernel_inputs, pow_runtime_config_with,
-        shortcut_can_branch, solve_tactic_enabled,
+        shortcut_can_branch, solve_tactic_enabled, solver_domain_mode_kind,
     };
     use crate::log_domain::DomainModeKind;
     use crate::solve_budget::SolveBudget;
@@ -139,6 +145,16 @@ mod tests {
         assert!(inputs.solve_tactic_enabled);
         assert_eq!(inputs.mode, DomainModeKind::Assume);
         assert!(inputs.wildcard_scope);
+    }
+
+    #[test]
+    fn solver_domain_mode_kind_maps_flags_to_expected_mode() {
+        assert_eq!(solver_domain_mode_kind(false, true), DomainModeKind::Strict);
+        assert_eq!(
+            solver_domain_mode_kind(false, false),
+            DomainModeKind::Generic
+        );
+        assert_eq!(solver_domain_mode_kind(true, false), DomainModeKind::Assume);
     }
 
     #[test]

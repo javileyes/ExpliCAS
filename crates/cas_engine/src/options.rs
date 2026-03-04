@@ -131,7 +131,7 @@ pub struct EvalOptions {
     /// Issue #5: Verify solutions by substitution (default: false)
     pub check_solutions: bool,
     /// Display level for required conditions (Essential hides witness-surviving requires)
-    pub requires_display: crate::implicit_domain::RequiresDisplayLevel,
+    pub requires_display: crate::RequiresDisplayLevel,
     /// Shared configuration (expand policy, semantics, context, etc.)
     pub shared: crate::phase::SharedSemanticConfig,
 }
@@ -211,7 +211,7 @@ impl Default for EvalOptions {
             explain_mode: false,
             budget: cas_solver_core::solve_budget::SolveBudget::default(),
             check_solutions: false,
-            requires_display: crate::implicit_domain::RequiresDisplayLevel::Essential,
+            requires_display: crate::RequiresDisplayLevel::Essential,
             shared: crate::phase::SharedSemanticConfig::default(),
         }
     }

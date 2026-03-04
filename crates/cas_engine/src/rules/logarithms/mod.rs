@@ -28,7 +28,7 @@ define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
     let planned = try_rewrite_evaluate_log_expr(ctx, expr)?;
     let mut rewrite = Rewrite::new(planned.rewritten).desc(planned.desc);
     if let Some(positive_subject) = planned.assume_positive_base {
-        rewrite = rewrite.assume(crate::assumptions::AssumptionEvent::positive_assumed(
+        rewrite = rewrite.assume(crate::AssumptionEvent::positive_assumed(
             ctx,
             positive_subject,
         ));

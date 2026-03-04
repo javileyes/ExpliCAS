@@ -103,11 +103,11 @@ define_rule!(
 define_rule!(
     QuotientOfPowersRule,
     "Quotient of Powers",
-    solve_safety: crate::solve_safety::SolveSafety::NeedsCondition(
-        crate::assumptions::ConditionClass::Definability
+    solve_safety: crate::SolveSafety::NeedsCondition(
+        crate::ConditionClass::Definability
     ),
     |ctx, expr, parent_ctx| {
-        use crate::domain_facts::Predicate;
+        use crate::Predicate;
 
         let domain_mode = parent_ctx.domain_mode();
         let value_domain = parent_ctx.value_domain();
@@ -115,7 +115,7 @@ define_rule!(
             ctx,
             expr,
             |core_ctx, base| {
-                let decision = crate::domain_oracle::oracle_allows_with_hint(
+                let decision = crate::oracle_allows_with_hint(
                     core_ctx,
                     domain_mode,
                     value_domain,

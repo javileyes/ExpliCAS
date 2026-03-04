@@ -75,7 +75,7 @@ pub fn solve_with_display_steps(
     let ctx = super::SolveCtx::default();
     let result = solve_inner(eq, var, simplifier, opts, &ctx);
 
-    let diagnostics = ctx.diagnostics_with_records(crate::assumptions::collect_assumption_records);
+    let diagnostics = ctx.diagnostics_with_records(crate::collect_assumption_records);
 
     let (solution_set, raw_steps) = result?;
 
@@ -195,7 +195,7 @@ fn build_solve_preflight_state(
     simplifier: &Simplifier,
     eq: &Equation,
     var: &str,
-    value_domain: crate::semantics::ValueDomain,
+    value_domain: crate::ValueDomain,
     parent_ctx: &SolveCtx,
 ) -> SolvePreflightState {
     analyze_equation_preflight_and_fork_context_with(
@@ -205,7 +205,7 @@ fn build_solve_preflight_state(
         value_domain,
         parent_ctx,
         |expr, eval_domain| {
-            crate::implicit_domain::infer_implicit_domain(&simplifier.context, expr, eval_domain)
+            crate::infer_implicit_domain(&simplifier.context, expr, eval_domain)
                 .conditions()
                 .iter()
                 .cloned()
@@ -217,12 +217,12 @@ fn build_solve_preflight_state(
                 rhs,
                 existing,
                 eval_domain,
-                crate::implicit_domain::ImplicitDomain::empty,
+                crate::ImplicitDomain::empty,
                 |domain, cond| {
                     domain.conditions_mut().insert(cond);
                 },
                 |lhs, rhs, domain, eval_domain| {
-                    crate::implicit_domain::derive_requires_from_equation(
+                    crate::derive_requires_from_equation(
                         &simplifier.context,
                         lhs,
                         rhs,
@@ -464,22 +464,22 @@ fn apply_unwrap_strategy(
                 core_ctx,
                 base,
                 other_side,
-                opts.value_domain == crate::semantics::ValueDomain::RealOnly,
+                opts.value_domain == crate::ValueDomain::RealOnly,
                 opts.core_domain_mode(),
                 &ctx.domain_env,
-                |inner_ctx, expr| {
-                    crate::helpers::prove_positive_core(inner_ctx, expr, opts.value_domain)
-                },
+                |inner_ctx, expr| super::prove_positive_core(inner_ctx, expr, opts.value_domain),
             )
         },
         context_render_expr,
         |simplifier, record| {
-            ctx.note_assumption(crate::assumptions::assumption_event_from_log_assumption(
-                &simplifier.context,
-                record.assumption,
-                record.base,
-                record.other_side,
-            ));
+            ctx.note_assumption(
+                cas_solver_core::assumption_model::assumption_event_from_log_assumption(
+                    &simplifier.context,
+                    record.assumption,
+                    record.base,
+                    record.other_side,
+                ),
+            );
         },
         |simplifier, next_eq, solve_var| {
             solve_with_ctx_and_options(next_eq, solve_var, simplifier, *opts, ctx)
@@ -556,7 +556,7 @@ fn apply_quadratic_strategy(
     ctx: &SolveCtx,
 ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
     let include_items = simplifier.collect_steps();
-    let is_real_only = matches!(opts.value_domain, crate::semantics::ValueDomain::RealOnly);
+    let is_real_only = matches!(opts.value_domain, crate::ValueDomain::RealOnly);
     execute_quadratic_strategy_with_default_factorized_and_candidate_pipelines_and_unified_step_mappers_with_state(
         simplifier,
         equation,
@@ -581,7 +581,7 @@ fn apply_quadratic_strategy(
         |description, next_eq| SolveSubStep {
             description,
             equation_after: next_eq,
-            importance: crate::step::ImportanceLevel::Low,
+            importance: crate::ImportanceLevel::Low,
         },
         |_| {
             CasError::SolverError(

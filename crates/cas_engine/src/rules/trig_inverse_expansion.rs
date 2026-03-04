@@ -8,8 +8,8 @@ define_rule!(
     TrigInverseExpansionRule,
     "Trig of Inverse Trig Expansion",
     Some(crate::target_kind::TargetKindSet::FUNCTION),
-    solve_safety: crate::solve_safety::SolveSafety::NeedsCondition(
-        crate::assumptions::ConditionClass::Analytic
+    solve_safety: crate::SolveSafety::NeedsCondition(
+        crate::ConditionClass::Analytic
     ),
     |ctx, expr, _parent_ctx| {
         let rewrite = try_rewrite_trig_inverse_composition_expr(ctx, expr)?;

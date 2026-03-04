@@ -6,6 +6,28 @@
 use super::*;
 
 impl<'a> LocalSimplificationTransformer<'a> {
+    #[inline]
+    fn emit_rule_applied_event(
+        &mut self,
+        rule_name: &str,
+        before: ExprId,
+        after: ExprId,
+        global_before: Option<ExprId>,
+        global_after: Option<ExprId>,
+        is_chained: bool,
+    ) {
+        if let Some(listener) = self.event_listener.as_mut() {
+            listener.on_event(&cas_solver_core::engine_events::EngineEvent::RuleApplied {
+                rule_name: rule_name.to_string(),
+                before,
+                after,
+                global_before,
+                global_after,
+                is_chained,
+            });
+        }
+    }
+
     /// Record a step without inflating the recursive frame.
     /// Using #[inline(never)] to ensure Step construction stays out of transform_expr_recursive.
     #[inline(never)]
@@ -95,6 +117,14 @@ impl<'a> LocalSimplificationTransformer<'a> {
                 meta.substeps = main_substeps;
             }
             self.steps.push(step);
+            self.emit_rule_applied_event(
+                rule.name(),
+                expr_id,
+                main_new_expr,
+                Some(global_before),
+                Some(main_global_after),
+                false,
+            );
 
             // Trace coherence verification
             debug_assert_eq!(
@@ -132,18 +162,45 @@ impl<'a> LocalSimplificationTransformer<'a> {
                     meta.is_chained = true;
                 }
                 self.steps.push(chain_step);
+                self.emit_rule_applied_event(
+                    rule.name(),
+                    current,
+                    chain_rw.after,
+                    Some(chain_global_before),
+                    Some(chain_global_after),
+                    true,
+                );
 
                 current = chain_rw.after;
             }
 
             final_result
         } else {
-            // Without steps, just compute final result
-            rewrite
-                .chained
-                .last()
-                .map(|c| c.after)
-                .unwrap_or(rewrite.new_expr)
+            // Without steps, keep emitting local rule events when a listener is attached.
+            let mut current_before = expr_id;
+            self.emit_rule_applied_event(
+                rule.name(),
+                current_before,
+                rewrite.new_expr,
+                None,
+                None,
+                false,
+            );
+            current_before = rewrite.new_expr;
+            for chained in &rewrite.chained {
+                self.emit_rule_applied_event(
+                    rule.name(),
+                    current_before,
+                    chained.after,
+                    None,
+                    None,
+                    true,
+                );
+                current_before = chained.after;
+            }
+
+            // Without steps, just compute final result.
+            current_before
         }
     }
 }

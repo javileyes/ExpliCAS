@@ -39,8 +39,8 @@ define_rule!(
 define_rule!(
     MulZeroRule,
     "Zero Property of Multiplication",
-    solve_safety: crate::solve_safety::SolveSafety::NeedsCondition(
-        crate::assumptions::ConditionClass::Definability
+    solve_safety: crate::SolveSafety::NeedsCondition(
+        crate::ConditionClass::Definability
     ),
     |ctx, expr, parent_ctx| {
         let pattern = match_mul_zero_pattern(ctx, expr)?;
@@ -57,8 +57,8 @@ define_rule!(
         }
 
         // Build assumption events if has risk and allowed
-        let assumption_events: smallvec::SmallVec<[crate::assumptions::AssumptionEvent; 1]> = if has_risk {
-            smallvec::smallvec![crate::assumptions::AssumptionEvent::defined(ctx, other)]
+        let assumption_events: smallvec::SmallVec<[crate::AssumptionEvent; 1]> = if has_risk {
+            smallvec::smallvec![crate::AssumptionEvent::defined(ctx, other)]
         } else {
             smallvec::SmallVec::new()
         };
@@ -84,12 +84,12 @@ define_rule!(
 define_rule!(
     DivZeroRule,
     "Zero Property of Division",
-    solve_safety: crate::solve_safety::SolveSafety::NeedsCondition(
-        crate::assumptions::ConditionClass::Definability
+    solve_safety: crate::SolveSafety::NeedsCondition(
+        crate::ConditionClass::Definability
     ),
     |ctx, expr, parent_ctx| {
-        use crate::domain::Proof;
-        use crate::domain_facts::Predicate;
+        use crate::Proof;
+        use crate::Predicate;
 
         let pattern = match_div_zero_numerator_pattern(ctx, expr)?;
         let den = pattern.denominator;
@@ -101,7 +101,7 @@ define_rule!(
         }
 
         // Use unified oracle for NonZero condition (Definability class)
-        let decision = crate::domain_oracle::oracle_allows_with_hint(
+        let decision = crate::oracle_allows_with_hint(
             ctx,
             parent_ctx.domain_mode(),
             parent_ctx.value_domain(),
@@ -115,8 +115,8 @@ define_rule!(
 
         // Build assumption events if needed
         let den_proof = crate::helpers::prove_nonzero(ctx, den);
-        let assumption_events: smallvec::SmallVec<[crate::assumptions::AssumptionEvent; 1]> = if decision.assumption.is_some() && den_proof != Proof::Proven {
-            smallvec::smallvec![crate::assumptions::AssumptionEvent::nonzero(ctx, den)]
+        let assumption_events: smallvec::SmallVec<[crate::AssumptionEvent; 1]> = if decision.assumption.is_some() && den_proof != Proof::Proven {
+            smallvec::smallvec![crate::AssumptionEvent::nonzero(ctx, den)]
         } else {
             smallvec::SmallVec::new()
         };

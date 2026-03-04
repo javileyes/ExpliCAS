@@ -3,26 +3,19 @@ use std::collections::hash_map::DefaultHasher;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::hash::{Hash, Hasher};
 
-fn expr_fingerprint(ctx: &Context, expr: ExprId) -> u64 {
-    let display = cas_formatter::render_expr(ctx, expr);
-    let mut hasher = DefaultHasher::new();
-    display.hash(&mut hasher);
-    hasher.finish()
-}
-
 /// Classification of assumptions for display filtering and UI presentation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum AssumptionKind {
-    /// Redundant with requires from input - NOT displayed
+    /// Redundant with requires from input - not displayed
     DerivedFromRequires,
-    /// New constraint necessary for equivalence, not deducible from input
+    /// New constraint necessary for equivalence
     #[default]
     RequiresIntroduced,
     /// Heuristic for simplification, user convenience choice
     HeuristicAssumption,
     /// Choosing one branch of multi-valued function
     BranchChoice,
-    /// Extending domain (e.g. ℝ -> ℂ)
+    /// Extending domain (e.g. R -> C)
     DomainExtension,
 }
 
@@ -55,14 +48,13 @@ impl AssumptionKind {
     }
 }
 
-fn assumption_kind_from_engine(value: cas_engine::AssumptionKind) -> AssumptionKind {
-    match value {
-        cas_engine::AssumptionKind::DerivedFromRequires => AssumptionKind::DerivedFromRequires,
-        cas_engine::AssumptionKind::RequiresIntroduced => AssumptionKind::RequiresIntroduced,
-        cas_engine::AssumptionKind::HeuristicAssumption => AssumptionKind::HeuristicAssumption,
-        cas_engine::AssumptionKind::BranchChoice => AssumptionKind::BranchChoice,
-        cas_engine::AssumptionKind::DomainExtension => AssumptionKind::DomainExtension,
-    }
+/// Aggregated assumption record produced by solver/engine flows.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct AssumptionRecord {
+    pub kind: String,
+    pub expr: String,
+    pub message: String,
+    pub count: u32,
 }
 
 /// Hashable key for assumption deduplication.
@@ -101,32 +93,36 @@ impl AssumptionKey {
         }
     }
 
-    /// Get the condition class for DomainMode gating.
-    pub fn class(&self) -> crate::ConditionClass {
+    /// Get the condition class for domain-mode gating.
+    pub fn class(&self) -> crate::solve_safety_policy::ConditionClass {
         match self {
-            Self::NonZero { .. } | Self::Defined { .. } => crate::ConditionClass::Definability,
+            Self::NonZero { .. } | Self::Defined { .. } => {
+                crate::solve_safety_policy::ConditionClass::Definability
+            }
             Self::Positive { .. }
             | Self::NonNegative { .. }
             | Self::InvTrigPrincipalRange { .. }
-            | Self::ComplexPrincipalBranch { .. } => crate::ConditionClass::Analytic,
+            | Self::ComplexPrincipalBranch { .. } => {
+                crate::solve_safety_policy::ConditionClass::Analytic
+            }
         }
     }
 
-    /// Create a Positive key from an expression.
+    /// Create a positive key from an expression.
     pub fn positive_key(ctx: &Context, expr: ExprId) -> Self {
         Self::Positive {
             expr_fingerprint: expr_fingerprint(ctx, expr),
         }
     }
 
-    /// Create a NonZero key from an expression.
+    /// Create a non-zero key from an expression.
     pub fn nonzero_key(ctx: &Context, expr: ExprId) -> Self {
         Self::NonZero {
             expr_fingerprint: expr_fingerprint(ctx, expr),
         }
     }
 
-    /// Create a NonNegative key from an expression.
+    /// Create a non-negative key from an expression.
     pub fn nonnegative_key(ctx: &Context, expr: ExprId) -> Self {
         Self::NonNegative {
             expr_fingerprint: expr_fingerprint(ctx, expr),
@@ -150,41 +146,15 @@ impl AssumptionKey {
     }
 }
 
-pub(crate) fn assumption_key_from_engine(value: cas_engine::AssumptionKey) -> AssumptionKey {
-    match value {
-        cas_engine::AssumptionKey::NonZero { expr_fingerprint } => {
-            AssumptionKey::NonZero { expr_fingerprint }
-        }
-        cas_engine::AssumptionKey::Positive { expr_fingerprint } => {
-            AssumptionKey::Positive { expr_fingerprint }
-        }
-        cas_engine::AssumptionKey::NonNegative { expr_fingerprint } => {
-            AssumptionKey::NonNegative { expr_fingerprint }
-        }
-        cas_engine::AssumptionKey::Defined { expr_fingerprint } => {
-            AssumptionKey::Defined { expr_fingerprint }
-        }
-        cas_engine::AssumptionKey::InvTrigPrincipalRange {
-            func,
-            arg_fingerprint,
-        } => AssumptionKey::InvTrigPrincipalRange {
-            func,
-            arg_fingerprint,
-        },
-        cas_engine::AssumptionKey::ComplexPrincipalBranch {
-            func,
-            arg_fingerprint,
-        } => AssumptionKey::ComplexPrincipalBranch {
-            func,
-            arg_fingerprint,
-        },
-    }
+/// Compute a stable fingerprint for an expression based on canonical display.
+pub fn expr_fingerprint(ctx: &Context, expr: ExprId) -> u64 {
+    let display = cas_formatter::render_expr(ctx, expr);
+    let mut hasher = DefaultHasher::new();
+    display.hash(&mut hasher);
+    hasher.finish()
 }
 
 /// One assumption event emitted during rewriting.
-///
-/// This is owned by `cas_solver` but keeps field types aligned with the engine
-/// to preserve broad compatibility while decoupling call sites progressively.
 #[derive(Debug, Clone)]
 pub struct AssumptionEvent {
     pub key: AssumptionKey,
@@ -346,17 +316,84 @@ impl AssumptionEvent {
     }
 }
 
-fn assumption_event_from_engine(value: cas_engine::AssumptionEvent) -> AssumptionEvent {
-    AssumptionEvent {
-        key: assumption_key_from_engine(value.key),
-        expr_display: value.expr_display,
-        message: value.message,
-        kind: assumption_kind_from_engine(value.kind),
-        expr_id: value.expr_id,
+/// Condition kind derivable from an assumption event.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AssumptionConditionKind {
+    NonZero,
+    Positive,
+    NonNegative,
+}
+
+/// Convert an assumption event into a condition-kind + expression-id pair.
+///
+/// Returns `None` for assumptions that are not modeled as explicit implicit
+/// conditions (e.g. branch/principal-range choices).
+pub fn assumption_condition_kind(
+    event: &AssumptionEvent,
+) -> Option<(AssumptionConditionKind, ExprId)> {
+    let expr_id = event.expr_id?;
+    let kind = match event.key {
+        AssumptionKey::NonZero { .. } => AssumptionConditionKind::NonZero,
+        AssumptionKey::Positive { .. } => AssumptionConditionKind::Positive,
+        AssumptionKey::NonNegative { .. } => AssumptionConditionKind::NonNegative,
+        AssumptionKey::Defined { .. }
+        | AssumptionKey::InvTrigPrincipalRange { .. }
+        | AssumptionKey::ComplexPrincipalBranch { .. } => return None,
+    };
+    Some((kind, expr_id))
+}
+
+/// Canonical assumption-kind reclassification policy shared by engine/solver.
+///
+/// `condition_implied` must be:
+/// - `None` when the event cannot be mapped to a condition predicate.
+/// - `Some(true)` when a mapped condition is already implied by known requires.
+/// - `Some(false)` when a mapped condition is new.
+///
+/// Returns `(new_kind, should_introduce_requirement)`.
+pub fn classify_assumption_kind(
+    original_kind: AssumptionKind,
+    condition_implied: Option<bool>,
+) -> (AssumptionKind, bool) {
+    let Some(is_implied) = condition_implied else {
+        return (original_kind, false);
+    };
+
+    match original_kind {
+        AssumptionKind::BranchChoice | AssumptionKind::DomainExtension => (original_kind, false),
+        _ if is_implied => (AssumptionKind::DerivedFromRequires, false),
+        AssumptionKind::HeuristicAssumption => (AssumptionKind::HeuristicAssumption, false),
+        _ => (AssumptionKind::RequiresIntroduced, true),
     }
 }
 
-/// Deduplicating assumption collector facade.
+/// Classify one event plus its optional mapped condition using canonical policy.
+///
+/// Returns `(new_kind, condition_to_introduce)`, where the second value is
+/// populated only when the condition is not implied and policy requires adding
+/// it to introduced-requires.
+pub fn classify_assumption_with_condition<T>(
+    event: &AssumptionEvent,
+    condition: Option<T>,
+    mut is_condition_implied: impl FnMut(&T) -> bool,
+) -> (AssumptionKind, Option<T>) {
+    let Some(cond) = condition else {
+        let (new_kind, _) = classify_assumption_kind(event.kind, None);
+        return (new_kind, None);
+    };
+
+    let implied = is_condition_implied(&cond);
+    let (new_kind, should_introduce) = classify_assumption_kind(event.kind, Some(implied));
+    if should_introduce {
+        (new_kind, Some(cond))
+    } else {
+        (new_kind, None)
+    }
+}
+
+/// Collects assumption events with deduplication.
+///
+/// Multiple events with the same key are counted, not repeated.
 #[derive(Debug, Clone, Default)]
 pub struct AssumptionCollector {
     map: HashMap<AssumptionKey, (AssumptionEvent, u32)>,
@@ -390,11 +427,11 @@ impl AssumptionCollector {
     }
 
     /// Finish and return deduped assumption records.
-    pub fn finish(self) -> Vec<crate::AssumptionRecord> {
-        let mut records: Vec<crate::AssumptionRecord> = self
+    pub fn finish(self) -> Vec<AssumptionRecord> {
+        let mut records: Vec<AssumptionRecord> = self
             .map
             .into_values()
-            .map(|(event, count)| crate::AssumptionRecord {
+            .map(|(event, count)| AssumptionRecord {
                 kind: event.key.kind().to_string(),
                 expr: event.expr_display,
                 message: event.message,
@@ -427,12 +464,12 @@ impl AssumptionCollector {
 }
 
 /// Aggregate assumption events into sorted assumption records.
-pub fn collect_assumption_records(events: &[AssumptionEvent]) -> Vec<crate::AssumptionRecord> {
+pub fn collect_assumption_records(events: &[AssumptionEvent]) -> Vec<AssumptionRecord> {
     collect_assumption_records_from_iter(events.iter().cloned())
 }
 
 /// Aggregate assumption events from iterator into sorted assumption records.
-pub fn collect_assumption_records_from_iter<I>(events: I) -> Vec<crate::AssumptionRecord>
+pub fn collect_assumption_records_from_iter<I>(events: I) -> Vec<AssumptionRecord>
 where
     I: IntoIterator<Item = AssumptionEvent>,
 {
@@ -444,7 +481,10 @@ where
 }
 
 /// Format one blocked hint condition as a human-readable predicate string.
-pub fn format_blocked_hint_condition(ctx: &Context, hint: &crate::BlockedHint) -> String {
+pub fn format_blocked_hint_condition(
+    ctx: &Context,
+    hint: &crate::blocked_hint::BlockedHint,
+) -> String {
     let expr_str = cas_formatter::DisplayExpr {
         context: ctx,
         id: hint.expr_id,
@@ -461,7 +501,7 @@ pub fn format_blocked_hint_condition(ctx: &Context, hint: &crate::BlockedHint) -
 /// Group blocked hints by rule, with sorted and deduplicated condition lists.
 pub fn group_blocked_hint_conditions_by_rule(
     ctx: &Context,
-    hints: &[crate::BlockedHint],
+    hints: &[crate::blocked_hint::BlockedHint],
 ) -> Vec<(String, Vec<String>)> {
     let mut grouped: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     for hint in hints {
@@ -480,7 +520,7 @@ pub fn group_blocked_hint_conditions_by_rule(
 /// Collect `(condition, rule)` blocked-hint items sorted and deduplicated.
 pub fn collect_blocked_hint_items(
     ctx: &Context,
-    hints: &[crate::BlockedHint],
+    hints: &[crate::blocked_hint::BlockedHint],
 ) -> Vec<(String, String)> {
     let mut items: Vec<(String, String)> = hints
         .iter()
@@ -495,54 +535,29 @@ pub fn collect_blocked_hint_items(
 ///
 /// Set `mention_analytic` when UI copy should explicitly mention analytic assumptions.
 pub fn blocked_hint_suggestion(
-    domain_mode: crate::DomainMode,
+    domain_mode: crate::domain_mode::DomainMode,
     mention_analytic: bool,
 ) -> &'static str {
     match domain_mode {
-        crate::DomainMode::Strict => "use `domain generic` or `domain assume` to allow",
-        crate::DomainMode::Generic => {
+        crate::domain_mode::DomainMode::Strict => {
+            "use `domain generic` or `domain assume` to allow"
+        }
+        crate::domain_mode::DomainMode::Generic => {
             if mention_analytic {
                 "use `semantics set domain assume` to allow analytic assumptions"
             } else {
                 "use `semantics set domain assume` to allow"
             }
         }
-        crate::DomainMode::Assume => "assumptions already enabled",
+        crate::domain_mode::DomainMode::Assume => "assumptions already enabled",
     }
-}
-
-/// Convert engine solver-assumption payload into solver-owned records.
-pub(crate) fn assumption_records_from_engine(
-    records: &[cas_engine::AssumptionRecord],
-) -> Vec<crate::AssumptionRecord> {
-    records
-        .iter()
-        .cloned()
-        .map(crate::assumption_types::assumption_record_from_engine)
-        .collect()
-}
-
-/// Convert engine step-assumption events into solver-owned events.
-pub(crate) fn assumption_events_from_engine(
-    events: &[cas_engine::AssumptionEvent],
-) -> Vec<crate::AssumptionEvent> {
-    events
-        .iter()
-        .cloned()
-        .map(assumption_event_from_engine)
-        .collect()
-}
-
-/// Convert assumption events from one step into solver-owned events.
-pub fn assumption_events_from_step(step: &crate::Step) -> Vec<crate::AssumptionEvent> {
-    assumption_events_from_engine(step.assumption_events())
 }
 
 /// Render a full blocked-simplifications section for CLI output.
 pub fn format_blocked_simplifications_section_lines(
     ctx: &Context,
-    hints: &[crate::BlockedHint],
-    domain_mode: crate::DomainMode,
+    hints: &[crate::blocked_hint::BlockedHint],
+    domain_mode: crate::domain_mode::DomainMode,
 ) -> Vec<String> {
     if hints.is_empty() {
         return Vec::new();
@@ -559,7 +574,7 @@ pub fn format_blocked_simplifications_section_lines(
     lines
 }
 
-fn assumption_record_condition(record: &crate::AssumptionRecord) -> String {
+fn assumption_record_condition(record: &AssumptionRecord) -> String {
     match record.kind.to_ascii_lowercase().as_str() {
         "positive" => format!("{} > 0", record.expr),
         "nonzero" => format!("{} ≠ 0", record.expr),
@@ -572,7 +587,7 @@ fn assumption_record_condition(record: &crate::AssumptionRecord) -> String {
 /// Format assumptions as condition strings for debug explain blocks.
 ///
 /// Returned values are sorted and deduplicated for stable output.
-pub fn format_assumption_records_conditions(records: &[crate::AssumptionRecord]) -> Vec<String> {
+pub fn format_assumption_records_conditions(records: &[AssumptionRecord]) -> Vec<String> {
     let mut items: Vec<String> = records.iter().map(assumption_record_condition).collect();
     items.sort();
     items.dedup();
@@ -581,7 +596,7 @@ pub fn format_assumption_records_conditions(records: &[crate::AssumptionRecord])
 
 /// Format an assumptions section from aggregated assumption records.
 pub fn format_assumption_records_section_lines(
-    records: &[crate::AssumptionRecord],
+    records: &[AssumptionRecord],
     header: &str,
     line_prefix: &str,
 ) -> Vec<String> {
@@ -596,14 +611,14 @@ pub fn format_assumption_records_section_lines(
     lines
 }
 
-/// Map one solver-core logarithmic assumption into a solver assumption event.
-pub(crate) fn assumption_event_from_log_assumption(
+/// Map one logarithmic assumption into an assumption event.
+pub fn assumption_event_from_log_assumption(
     ctx: &Context,
-    assumption: cas_solver_core::log_domain::LogAssumption,
+    assumption: crate::log_domain::LogAssumption,
     base: ExprId,
     rhs: ExprId,
 ) -> AssumptionEvent {
-    cas_solver_core::log_assumptions::map_log_assumption_target_with(
+    crate::log_assumptions::map_log_assumption_target_with(
         ctx,
         assumption,
         base,
@@ -612,17 +627,14 @@ pub(crate) fn assumption_event_from_log_assumption(
     )
 }
 
-/// Convert one blocked log hint from solver-core into the engine-compatible payload.
-pub(crate) fn map_log_blocked_hint(
+/// Convert one blocked logarithmic hint into a blocked-hint payload.
+pub fn map_log_blocked_hint(
     ctx: &Context,
-    hint: cas_solver_core::solve_outcome::LogBlockedHintRecord,
-) -> crate::BlockedHint {
-    let mapped = cas_solver_core::log_assumptions::map_log_blocked_hint_with(
-        ctx,
-        hint,
-        AssumptionEvent::positive,
-    );
-    crate::BlockedHint {
+    hint: crate::solve_outcome::LogBlockedHintRecord,
+) -> crate::blocked_hint::BlockedHint {
+    let mapped =
+        crate::log_assumptions::map_log_blocked_hint_with(ctx, hint, AssumptionEvent::positive);
+    crate::blocked_hint::BlockedHint {
         key: mapped.event.key,
         expr_id: mapped.expr_id,
         rule: mapped.rule.to_string(),
@@ -630,84 +642,179 @@ pub(crate) fn map_log_blocked_hint(
     }
 }
 
-/// Convert and register one blocked log hint in the global blocked-hints registry.
-pub(crate) fn register_log_blocked_hint(
-    ctx: &Context,
-    hint: cas_solver_core::solve_outcome::LogBlockedHintRecord,
-) {
-    crate::register_blocked_hint(map_log_blocked_hint(ctx, hint));
-}
+#[cfg(test)]
+mod tests {
+    use super::{
+        assumption_condition_kind, blocked_hint_suggestion, classify_assumption_kind,
+        classify_assumption_with_condition, collect_blocked_hint_items,
+        format_assumption_records_conditions, format_blocked_hint_condition,
+        AssumptionConditionKind, AssumptionEvent, AssumptionKey, AssumptionKind, AssumptionRecord,
+    };
 
-/// Classify one assumption event against domain context.
-pub fn classify_assumption(
-    ctx: &Context,
-    dc: &crate::DomainContext,
-    event: &AssumptionEvent,
-) -> (AssumptionKind, Option<crate::ImplicitCondition>) {
-    match event.kind {
-        AssumptionKind::BranchChoice | AssumptionKind::DomainExtension => {
-            return (event.kind, None);
-        }
-        _ => {}
+    #[test]
+    fn assumption_kind_metadata() {
+        assert!(AssumptionKind::RequiresIntroduced.should_display());
+        assert!(!AssumptionKind::DerivedFromRequires.should_display());
+        assert_eq!(AssumptionKind::BranchChoice.icon(), "🔀");
+        assert_eq!(AssumptionKind::DomainExtension.label(), "Domain");
     }
 
-    match assumption_to_condition(event) {
-        Some(cond) => {
-            if dc.is_condition_implied(ctx, &cond) {
-                (AssumptionKind::DerivedFromRequires, None)
-            } else {
-                match event.kind {
-                    AssumptionKind::HeuristicAssumption => {
-                        (AssumptionKind::HeuristicAssumption, None)
-                    }
-                    _ => (AssumptionKind::RequiresIntroduced, Some(cond)),
-                }
+    #[test]
+    fn assumption_key_classification() {
+        assert_eq!(
+            AssumptionKey::NonZero {
+                expr_fingerprint: 1
             }
-        }
-        None => (event.kind, None),
+            .class(),
+            crate::solve_safety_policy::ConditionClass::Definability
+        );
+        assert_eq!(
+            AssumptionKey::Positive {
+                expr_fingerprint: 1
+            }
+            .class(),
+            crate::solve_safety_policy::ConditionClass::Analytic
+        );
+        assert_eq!(
+            AssumptionKey::InvTrigPrincipalRange {
+                func: "asin",
+                arg_fingerprint: 1
+            }
+            .condition_display(),
+            "∈ [-1, 1]"
+        );
     }
-}
 
-fn assumption_to_condition(event: &AssumptionEvent) -> Option<crate::ImplicitCondition> {
-    let expr_id = event.expr_id?;
-
-    match &event.key {
-        AssumptionKey::NonZero { .. } => Some(crate::ImplicitCondition::NonZero(expr_id)),
-        AssumptionKey::Positive { .. } => Some(crate::ImplicitCondition::Positive(expr_id)),
-        AssumptionKey::NonNegative { .. } => Some(crate::ImplicitCondition::NonNegative(expr_id)),
-        AssumptionKey::Defined { .. } => None,
-        AssumptionKey::InvTrigPrincipalRange { .. } => None,
-        AssumptionKey::ComplexPrincipalBranch { .. } => None,
+    #[test]
+    fn classify_assumption_kind_matches_engine_policy() {
+        assert_eq!(
+            classify_assumption_kind(AssumptionKind::RequiresIntroduced, None),
+            (AssumptionKind::RequiresIntroduced, false)
+        );
+        assert_eq!(
+            classify_assumption_kind(AssumptionKind::RequiresIntroduced, Some(true)),
+            (AssumptionKind::DerivedFromRequires, false)
+        );
+        assert_eq!(
+            classify_assumption_kind(AssumptionKind::RequiresIntroduced, Some(false)),
+            (AssumptionKind::RequiresIntroduced, true)
+        );
+        assert_eq!(
+            classify_assumption_kind(AssumptionKind::HeuristicAssumption, Some(true)),
+            (AssumptionKind::DerivedFromRequires, false)
+        );
+        assert_eq!(
+            classify_assumption_kind(AssumptionKind::HeuristicAssumption, Some(false)),
+            (AssumptionKind::HeuristicAssumption, false)
+        );
+        assert_eq!(
+            classify_assumption_kind(AssumptionKind::BranchChoice, Some(false)),
+            (AssumptionKind::BranchChoice, false)
+        );
     }
-}
 
-pub(crate) fn assumption_key_to_engine(key: AssumptionKey) -> cas_engine::AssumptionKey {
-    match key {
-        AssumptionKey::NonZero { expr_fingerprint } => {
-            cas_engine::AssumptionKey::NonZero { expr_fingerprint }
-        }
-        AssumptionKey::Positive { expr_fingerprint } => {
-            cas_engine::AssumptionKey::Positive { expr_fingerprint }
-        }
-        AssumptionKey::NonNegative { expr_fingerprint } => {
-            cas_engine::AssumptionKey::NonNegative { expr_fingerprint }
-        }
-        AssumptionKey::Defined { expr_fingerprint } => {
-            cas_engine::AssumptionKey::Defined { expr_fingerprint }
-        }
-        AssumptionKey::InvTrigPrincipalRange {
-            func,
-            arg_fingerprint,
-        } => cas_engine::AssumptionKey::InvTrigPrincipalRange {
-            func,
-            arg_fingerprint,
-        },
-        AssumptionKey::ComplexPrincipalBranch {
-            func,
-            arg_fingerprint,
-        } => cas_engine::AssumptionKey::ComplexPrincipalBranch {
-            func,
-            arg_fingerprint,
-        },
+    #[test]
+    fn assumption_condition_kind_extracts_conditional_events() {
+        let mut ctx = cas_ast::Context::default();
+        let x = ctx.var("x");
+        let nonzero = AssumptionEvent::nonzero(&ctx, x);
+        let positive = AssumptionEvent::positive(&ctx, x);
+        let defined = AssumptionEvent::defined(&ctx, x);
+
+        assert_eq!(
+            assumption_condition_kind(&nonzero),
+            Some((AssumptionConditionKind::NonZero, x))
+        );
+        assert_eq!(
+            assumption_condition_kind(&positive),
+            Some((AssumptionConditionKind::Positive, x))
+        );
+        assert_eq!(assumption_condition_kind(&defined), None);
+    }
+
+    #[test]
+    fn classify_assumption_with_condition_returns_expected_payload() {
+        let mut ctx = cas_ast::Context::default();
+        let x = ctx.var("x");
+        let event = AssumptionEvent::positive(&ctx, x);
+
+        let (kind_none, cond_none) =
+            classify_assumption_with_condition(&event, None::<u8>, |_| false);
+        assert_eq!(kind_none, AssumptionKind::RequiresIntroduced);
+        assert_eq!(cond_none, None);
+
+        let (kind_implied, cond_implied) =
+            classify_assumption_with_condition(&event, Some(7u8), |_| true);
+        assert_eq!(kind_implied, AssumptionKind::DerivedFromRequires);
+        assert_eq!(cond_implied, None);
+
+        let (kind_new, cond_new) = classify_assumption_with_condition(&event, Some(9u8), |_| false);
+        assert_eq!(kind_new, AssumptionKind::RequiresIntroduced);
+        assert_eq!(cond_new, Some(9u8));
+    }
+
+    #[test]
+    fn blocked_hint_formatting_and_grouping_are_stable() {
+        let mut ctx = cas_ast::Context::default();
+        let x = ctx.var("x");
+        let hint = crate::blocked_hint::BlockedHint {
+            key: AssumptionKey::NonZero {
+                expr_fingerprint: 11,
+            },
+            expr_id: x,
+            rule: "RuleA".to_string(),
+            suggestion: "tip",
+        };
+
+        assert_eq!(format_blocked_hint_condition(&ctx, &hint), "x ≠ 0");
+        let items = collect_blocked_hint_items(&ctx, &[hint]);
+        assert_eq!(items, vec![("x ≠ 0".to_string(), "RuleA".to_string())]);
+    }
+
+    #[test]
+    fn blocked_hint_suggestion_matrix_matches_contract() {
+        use crate::domain_mode::DomainMode;
+
+        assert_eq!(
+            blocked_hint_suggestion(DomainMode::Strict, false),
+            "use `domain generic` or `domain assume` to allow"
+        );
+        assert_eq!(
+            blocked_hint_suggestion(DomainMode::Generic, true),
+            "use `semantics set domain assume` to allow analytic assumptions"
+        );
+        assert_eq!(
+            blocked_hint_suggestion(DomainMode::Assume, false),
+            "assumptions already enabled"
+        );
+    }
+
+    #[test]
+    fn format_assumption_records_conditions_sorts_and_dedups() {
+        let records = vec![
+            AssumptionRecord {
+                kind: "nonzero".to_string(),
+                expr: "x".to_string(),
+                message: "x != 0".to_string(),
+                count: 1,
+            },
+            AssumptionRecord {
+                kind: "nonzero".to_string(),
+                expr: "x".to_string(),
+                message: "x != 0".to_string(),
+                count: 2,
+            },
+            AssumptionRecord {
+                kind: "positive".to_string(),
+                expr: "y".to_string(),
+                message: "y > 0".to_string(),
+                count: 1,
+            },
+        ];
+
+        assert_eq!(
+            format_assumption_records_conditions(&records),
+            vec!["x ≠ 0".to_string(), "y > 0".to_string()]
+        );
     }
 }

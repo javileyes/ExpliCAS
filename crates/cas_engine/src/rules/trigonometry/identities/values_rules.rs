@@ -55,13 +55,11 @@ impl crate::rule::Rule for TanTripleProductRule {
         for sub in tan_triple_product_substeps(&u_str) {
             out = out.substep(sub.title, sub.details);
         }
-        out = out.requires(crate::implicit_domain::ImplicitCondition::NonZero(
-            rewrite.nonzero_cos_u,
-        ));
-        out = out.requires(crate::implicit_domain::ImplicitCondition::NonZero(
+        out = out.requires(crate::ImplicitCondition::NonZero(rewrite.nonzero_cos_u));
+        out = out.requires(crate::ImplicitCondition::NonZero(
             rewrite.nonzero_cos_u_plus_pi_over_3,
         ));
-        out = out.requires(crate::implicit_domain::ImplicitCondition::NonZero(
+        out = out.requires(crate::ImplicitCondition::NonZero(
             rewrite.nonzero_cos_pi_over_3_minus_u,
         ));
         Some(out)

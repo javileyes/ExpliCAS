@@ -29,18 +29,18 @@ use cas_math::nested_fraction_support::try_rewrite_simplify_nested_fraction_expr
 define_rule!(
     CancelPowersDivisionRule,
     "Cancel Same-Base Powers",
-    solve_safety: crate::solve_safety::SolveSafety::NeedsCondition(
-        crate::assumptions::ConditionClass::Definability
+    solve_safety: crate::SolveSafety::NeedsCondition(
+        crate::ConditionClass::Definability
     ),
     |ctx, expr, parent_ctx| {
-        use crate::domain_facts::Predicate;
-        use crate::implicit_domain::ImplicitCondition;
+        use crate::Predicate;
+        use crate::ImplicitCondition;
 
         let plan = try_rewrite_cancel_same_base_powers_div_expr(ctx, expr)?;
 
         // DOMAIN GATE: need base ≠ 0 (derived from original denominator P^n ≠ 0)
         let domain_mode = parent_ctx.domain_mode();
-        let decision = crate::domain_oracle::oracle_allows_with_hint(
+        let decision = crate::oracle_allows_with_hint(
             ctx,
             domain_mode,
             parent_ctx.value_domain(),
@@ -71,18 +71,18 @@ define_rule!(
 define_rule!(
     CancelIdenticalFractionRule,
     "Cancel Identical Numerator/Denominator",
-    solve_safety: crate::solve_safety::SolveSafety::NeedsCondition(
-        crate::assumptions::ConditionClass::Definability
+    solve_safety: crate::SolveSafety::NeedsCondition(
+        crate::ConditionClass::Definability
     ),
     |ctx, expr, parent_ctx| {
-        use crate::domain_facts::Predicate;
-        use crate::implicit_domain::ImplicitCondition;
+        use crate::Predicate;
+        use crate::ImplicitCondition;
 
         let plan = try_rewrite_cancel_identical_fraction_expr(ctx, expr)?;
 
         // DOMAIN GATE: In Strict mode, only cancel if den is provably non-zero
         let domain_mode = parent_ctx.domain_mode();
-        let decision = crate::domain_oracle::oracle_allows_with_hint(
+        let decision = crate::oracle_allows_with_hint(
             ctx,
             domain_mode,
             parent_ctx.value_domain(),
@@ -110,18 +110,18 @@ define_rule!(
 define_rule!(
     CancelPowerFractionRule,
     "Cancel Power Fraction",
-    solve_safety: crate::solve_safety::SolveSafety::NeedsCondition(
-        crate::assumptions::ConditionClass::Definability
+    solve_safety: crate::SolveSafety::NeedsCondition(
+        crate::ConditionClass::Definability
     ),
     |ctx, expr, parent_ctx| {
-        use crate::domain_facts::Predicate;
-        use crate::implicit_domain::ImplicitCondition;
+        use crate::Predicate;
+        use crate::ImplicitCondition;
 
         let plan = try_rewrite_cancel_power_fraction_expr(ctx, expr)?;
 
         // DOMAIN GATE
         let domain_mode = parent_ctx.domain_mode();
-        let decision = crate::domain_oracle::oracle_allows_with_hint(
+        let decision = crate::oracle_allows_with_hint(
             ctx,
             domain_mode,
             parent_ctx.value_domain(),
@@ -146,11 +146,11 @@ define_rule!(
 define_rule!(
     SimplifyFractionRule,
     "Simplify Nested Fraction",
-    solve_safety: crate::solve_safety::SolveSafety::NeedsCondition(
-        crate::assumptions::ConditionClass::Definability
+    solve_safety: crate::SolveSafety::NeedsCondition(
+        crate::ConditionClass::Definability
     ),
     |ctx, expr, parent_ctx| {
-        use crate::domain_facts::Predicate;
+        use crate::Predicate;
         use cas_ast::views::RationalFnView;
 
         // Capture domain mode for cancellation decisions
@@ -162,7 +162,7 @@ define_rule!(
 
         // EARLY RETURN: didactic factorization/cancellation plans (ordered in cas_math).
         if let Some(plan) = try_plan_fraction_didactic_cancel(ctx, num, den) {
-            use crate::implicit_domain::ImplicitCondition;
+            use crate::ImplicitCondition;
             return Some(
                 Rewrite::new(plan.rewritten)
                     .desc(plan.desc)
@@ -181,7 +181,7 @@ define_rule!(
 
         // DOMAIN GATE: Check if we can cancel by this GCD
         // In Strict mode, only allow if GCD is provably non-zero
-        let decision = crate::domain_oracle::oracle_allows_with_hint(
+        let decision = crate::oracle_allows_with_hint(
             ctx,
             domain_mode,
             parent_ctx.value_domain(),
@@ -208,7 +208,7 @@ define_rule!(
 
         if plan.forms.numerator_is_zero {
             let zero = ctx.num(0);
-            use crate::implicit_domain::ImplicitCondition;
+            use crate::ImplicitCondition;
             return Some(
                 Rewrite::new(zero)
                     .desc("Numerator simplifies to 0")
@@ -220,7 +220,7 @@ define_rule!(
         // === ChainedRewrite Pattern: Factor -> Cancel ===
         // Step 1 (main): Factor - show the factored form
         // Use requires (not assume) to avoid duplicate Requires/Assumed display
-        use crate::implicit_domain::ImplicitCondition;
+        use crate::ImplicitCondition;
         let factor_desc =
             format_factor_by_gcd_desc_with(plan.gcd_expr, |id| cas_formatter::render_expr(ctx, id));
         let factor_rw = Rewrite::new(plan.forms.factored_form_norm)

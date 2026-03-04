@@ -25,11 +25,11 @@ define_rule!(
 define_rule!(
     CancelCommonFactorsRule,
     "Cancel Common Factors",
-    solve_safety: crate::solve_safety::SolveSafety::NeedsCondition(
-        crate::assumptions::ConditionClass::Definability
+    solve_safety: crate::SolveSafety::NeedsCondition(
+        crate::ConditionClass::Definability
     ),
     |ctx, expr, parent_ctx| {
-        use crate::domain_facts::Predicate;
+        use crate::Predicate;
 
         // Capture domain mode once at start
         let domain_mode = parent_ctx.domain_mode();
@@ -41,7 +41,7 @@ define_rule!(
             ctx,
             expr,
             |ctx, nonzero_base, _emit_assumption| {
-                let decision = crate::domain_oracle::oracle_allows_with_hint(
+                let decision = crate::oracle_allows_with_hint(
                     ctx,
                     domain_mode,
                     parent_ctx.value_domain(),
@@ -54,11 +54,11 @@ define_rule!(
                 }
             },
         )?;
-        let assumption_events: smallvec::SmallVec<[crate::assumptions::AssumptionEvent; 1]> =
+        let assumption_events: smallvec::SmallVec<[crate::AssumptionEvent; 1]> =
             rewrite
                 .assumed_nonzero_targets
                 .into_iter()
-                .map(|target| crate::assumptions::AssumptionEvent::nonzero(ctx, target))
+                .map(|target| crate::AssumptionEvent::nonzero(ctx, target))
                 .collect();
 
         Some(

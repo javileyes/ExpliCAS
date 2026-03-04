@@ -63,8 +63,8 @@ define_rule!(
 define_rule!(
     SqrtConjugateCollapseRule,
     "Collapse Sqrt Conjugate Product",
-    solve_safety: crate::solve_safety::SolveSafety::NeedsCondition(
-        crate::assumptions::ConditionClass::Analytic
+    solve_safety: crate::SolveSafety::NeedsCondition(
+        crate::ConditionClass::Analytic
     ),
     |ctx, expr, parent_ctx| {
         use crate::semantics::ValueDomain;
@@ -82,11 +82,11 @@ define_rule!(
                 // Analytic Gate: sqrt(other) requires other ≥ 0 (NonNegative)
                 // This is an Analytic condition, blocked in Generic, allowed in Assume
                 // ================================================================
-                let decision = crate::domain_oracle::oracle_allows_with_hint(
+                let decision = crate::oracle_allows_with_hint(
                     ctx,
                     parent_ctx.domain_mode(),
                     parent_ctx.value_domain(),
-                    &crate::domain_facts::Predicate::NonNegative(other),
+                    &crate::Predicate::NonNegative(other),
                     "Collapse Sqrt Conjugate Product",
                 );
                 SqrtConjugateCollapseGate {
@@ -95,9 +95,9 @@ define_rule!(
                 }
             },
         )?;
-        let assumption_events: smallvec::SmallVec<[crate::assumptions::AssumptionEvent; 1]> = rewrite
+        let assumption_events: smallvec::SmallVec<[crate::AssumptionEvent; 1]> = rewrite
             .assumed_nonnegative_target
-            .map(|target| smallvec::smallvec![crate::assumptions::AssumptionEvent::nonnegative(ctx, target)])
+            .map(|target| smallvec::smallvec![crate::AssumptionEvent::nonnegative(ctx, target)])
             .unwrap_or_default();
 
         Some(

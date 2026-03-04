@@ -171,11 +171,11 @@ pub struct StepMeta {
     pub after_local: Option<ExprId>,
     /// Structured assumption events.
     /// Propagated from Rewrite.assumption_events during step creation.
-    pub assumption_events: smallvec::SmallVec<[crate::assumptions::AssumptionEvent; 1]>,
+    pub assumption_events: smallvec::SmallVec<[crate::AssumptionEvent; 1]>,
     /// Required conditions for validity (implicit domain preservation) - NOT assumptions!
     /// These are conditions that were already implicitly required by the input expression.
     /// Propagated from Rewrite.required_conditions during step creation.
-    pub required_conditions: Vec<crate::implicit_domain::ImplicitCondition>,
+    pub required_conditions: Vec<crate::ImplicitCondition>,
     /// Optional: Polynomial proof data for identity cancellation (PolyZero airbag)
     /// Propagated from Rewrite.poly_proof during step creation for didactic display
     pub poly_proof: Option<cas_math::multipoly_display::PolynomialProofData>,
@@ -267,13 +267,13 @@ impl Step {
 
     /// Structured assumption events.
     #[inline]
-    pub fn assumption_events(&self) -> &[crate::assumptions::AssumptionEvent] {
+    pub fn assumption_events(&self) -> &[crate::AssumptionEvent] {
         self.meta.as_ref().map_or(&[], |m| &m.assumption_events)
     }
 
     /// Required conditions for validity.
     #[inline]
-    pub fn required_conditions(&self) -> &[crate::implicit_domain::ImplicitCondition] {
+    pub fn required_conditions(&self) -> &[crate::ImplicitCondition] {
         self.meta.as_ref().map_or(&[], |m| &m.required_conditions)
     }
 

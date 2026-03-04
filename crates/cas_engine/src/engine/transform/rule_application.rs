@@ -6,6 +6,7 @@
 
 use super::*;
 use crate::canonical_forms::normalize_core_with_cache;
+use cas_solver_core::solve_safety_policy::{safe_for_prepass, safe_for_tactic_with_domain_flags};
 
 impl<'a> LocalSimplificationTransformer<'a> {
     /// Build the ParentContext for the current node position.
@@ -69,15 +70,19 @@ impl<'a> LocalSimplificationTransformer<'a> {
         }
         if check_solve_safety {
             match self.simplify_purpose {
-                crate::solve_safety::SimplifyPurpose::Eval => {}
-                crate::solve_safety::SimplifyPurpose::SolvePrepass => {
-                    if !rule.solve_safety().safe_for_prepass() {
+                crate::SimplifyPurpose::Eval => {}
+                crate::SimplifyPurpose::SolvePrepass => {
+                    if !safe_for_prepass(rule.solve_safety()) {
                         return true;
                     }
                 }
-                crate::solve_safety::SimplifyPurpose::SolveTactic => {
+                crate::SimplifyPurpose::SolveTactic => {
                     let domain_mode = self.initial_parent_ctx.domain_mode();
-                    if !rule.solve_safety().safe_for_tactic(domain_mode) {
+                    if !safe_for_tactic_with_domain_flags(
+                        rule.solve_safety(),
+                        matches!(domain_mode, crate::DomainMode::Assume),
+                        matches!(domain_mode, crate::DomainMode::Strict),
+                    ) {
                         return true;
                     }
                 }
@@ -282,8 +287,8 @@ impl<'a> LocalSimplificationTransformer<'a> {
                                         cas_ast::Expr::Number(_) | cas_ast::Expr::Constant(_)
                                     );
                                     if !is_constant {
-                                        crate::domain::register_blocked_hint(crate::domain::BlockedHint {
-                                        key: crate::assumptions::AssumptionKey::Defined {
+                                        crate::register_blocked_hint(crate::BlockedHint {
+                                        key: crate::AssumptionKey::Defined {
                                             expr_fingerprint: h,
                                         },
                                         expr_id,

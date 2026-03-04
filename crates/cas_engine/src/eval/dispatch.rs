@@ -11,7 +11,7 @@ type PreparedEvalDispatch =
 
 type StatelessEvalSession = cas_session_core::eval::StatelessEvalSession<
     crate::options::EvalOptions,
-    crate::domain::DomainMode,
+    crate::DomainMode,
     crate::diagnostics::RequiredItem,
     crate::step::Step,
     crate::diagnostics::Diagnostics,
@@ -72,14 +72,14 @@ impl Engine {
     ) -> Result<EvalOutput, anyhow::Error>
     where
         S: cas_session_core::eval::TypedEvalSession<
-            crate::domain::DomainMode,
+            crate::DomainMode,
             crate::diagnostics::RequiredItem,
             crate::step::Step,
             crate::diagnostics::Diagnostics,
             crate::options::EvalOptions,
         >,
         S::Store: cas_session_core::eval::TypedEvalStore<
-            crate::domain::DomainMode,
+            crate::DomainMode,
             crate::diagnostics::RequiredItem,
             crate::step::Step,
             crate::diagnostics::Diagnostics,
@@ -105,14 +105,14 @@ impl Engine {
     ) -> Result<EvalOutput, anyhow::Error>
     where
         S: cas_session_core::eval::TypedEvalSession<
-            crate::domain::DomainMode,
+            crate::DomainMode,
             crate::diagnostics::RequiredItem,
             crate::step::Step,
             crate::diagnostics::Diagnostics,
             crate::options::EvalOptions,
         >,
         S::Store: cas_session_core::eval::TypedEvalStore<
-            crate::domain::DomainMode,
+            crate::DomainMode,
             crate::diagnostics::RequiredItem,
             crate::step::Step,
             crate::diagnostics::Diagnostics,

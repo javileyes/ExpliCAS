@@ -100,7 +100,7 @@ impl crate::rule::Rule for RootMergeMulRule {
         expr: ExprId,
         parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<Rewrite> {
-        let strict_mode = matches!(parent_ctx.domain_mode(), crate::domain::DomainMode::Strict);
+        let strict_mode = matches!(parent_ctx.domain_mode(), crate::DomainMode::Strict);
         let vd = parent_ctx.value_domain();
         let rewrite = cas_math::root_power_canonical_support::try_rewrite_root_merge_mul_expr_with(
             ctx,
@@ -111,16 +111,10 @@ impl crate::rule::Rule for RootMergeMulRule {
 
         let mut out = Rewrite::new(rewrite.rewritten).desc("√a · √b = √(a·b)");
         if rewrite.assume_left_nonnegative {
-            out = out.assume(crate::assumptions::AssumptionEvent::nonnegative(
-                ctx,
-                rewrite.left_base,
-            ));
+            out = out.assume(crate::AssumptionEvent::nonnegative(ctx, rewrite.left_base));
         }
         if rewrite.assume_right_nonnegative {
-            out = out.assume(crate::assumptions::AssumptionEvent::nonnegative(
-                ctx,
-                rewrite.right_base,
-            ));
+            out = out.assume(crate::AssumptionEvent::nonnegative(ctx, rewrite.right_base));
         }
         Some(out)
     }
@@ -159,7 +153,7 @@ impl crate::rule::Rule for RootMergeDivRule {
         expr: ExprId,
         parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<Rewrite> {
-        let strict_mode = matches!(parent_ctx.domain_mode(), crate::domain::DomainMode::Strict);
+        let strict_mode = matches!(parent_ctx.domain_mode(), crate::DomainMode::Strict);
         let vd = parent_ctx.value_domain();
         let rewrite = cas_math::root_power_canonical_support::try_rewrite_root_merge_div_expr_with(
             ctx,
@@ -171,16 +165,10 @@ impl crate::rule::Rule for RootMergeDivRule {
 
         let mut out = Rewrite::new(rewrite.rewritten).desc("√a / √b = √(a/b)");
         if rewrite.assume_num_nonnegative {
-            out = out.assume(crate::assumptions::AssumptionEvent::nonnegative(
-                ctx,
-                rewrite.num_base,
-            ));
+            out = out.assume(crate::AssumptionEvent::nonnegative(ctx, rewrite.num_base));
         }
         if rewrite.assume_den_positive {
-            out = out.assume(crate::assumptions::AssumptionEvent::positive(
-                ctx,
-                rewrite.den_base,
-            ));
+            out = out.assume(crate::AssumptionEvent::positive(ctx, rewrite.den_base));
         }
         Some(out)
     }
@@ -219,7 +207,7 @@ impl crate::rule::Rule for PowPowCancelReciprocalRule {
         expr: ExprId,
         parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<Rewrite> {
-        let strict_mode = matches!(parent_ctx.domain_mode(), crate::domain::DomainMode::Strict);
+        let strict_mode = matches!(parent_ctx.domain_mode(), crate::DomainMode::Strict);
         let vd = parent_ctx.value_domain();
         let rewrite =
             cas_math::root_power_canonical_support::try_rewrite_powpow_cancel_reciprocal_expr_with(
@@ -232,16 +220,10 @@ impl crate::rule::Rule for PowPowCancelReciprocalRule {
 
         let mut out = Rewrite::new(rewrite.rewritten).desc("(u^y)^(1/y) = u");
         if rewrite.assume_base_positive {
-            out = out.assume(crate::assumptions::AssumptionEvent::positive(
-                ctx,
-                rewrite.base,
-            ));
+            out = out.assume(crate::AssumptionEvent::positive(ctx, rewrite.base));
         }
         if rewrite.assume_exp_nonzero {
-            out = out.assume(crate::assumptions::AssumptionEvent::nonzero(
-                ctx,
-                rewrite.inner_exp,
-            ));
+            out = out.assume(crate::AssumptionEvent::nonzero(ctx, rewrite.inner_exp));
         }
         Some(out)
     }

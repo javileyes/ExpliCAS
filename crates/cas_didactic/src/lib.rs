@@ -5,6 +5,7 @@
 
 pub mod didactic;
 pub mod eval_json_steps;
+pub mod events;
 pub mod timeline;
 
 pub use cas_solver::to_display_steps;
@@ -15,6 +16,7 @@ pub use didactic::{
     CliSubstepsRenderPlan, EnrichedStep, StepDisplayMode, SubStep,
 };
 pub use eval_json_steps::collect_eval_json_steps;
+pub use events::EngineEventCollector;
 pub use timeline::{
     evaluate_timeline_command_cli_render_with_session,
     evaluate_timeline_command_output_with_session,

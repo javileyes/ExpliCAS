@@ -6,7 +6,7 @@
 use super::*;
 
 type EngineSimplifiedUpdate = cas_session_core::eval::SimplifiedUpdate<
-    crate::domain::DomainMode,
+    crate::DomainMode,
     crate::diagnostics::RequiredItem,
     crate::step::Step,
 >;
@@ -27,7 +27,7 @@ fn push_step_requires_with_display_dedup(
 }
 
 fn push_solver_requires(
-    solver_required: &[crate::implicit_domain::ImplicitCondition],
+    solver_required: &[crate::ImplicitCondition],
     diagnostics: &mut crate::diagnostics::Diagnostics,
 ) {
     for cond in solver_required {
@@ -59,7 +59,7 @@ fn push_structural_requires(
     result: &EvalResult,
     diagnostics: &mut crate::diagnostics::Diagnostics,
 ) {
-    use crate::implicit_domain::infer_implicit_domain;
+    use crate::infer_implicit_domain;
 
     let input_domain =
         infer_implicit_domain(ctx, resolved, crate::semantics::ValueDomain::RealOnly);
@@ -83,7 +83,7 @@ fn push_structural_requires(
 }
 
 fn push_blocked_hints(
-    blocked_hints: &[crate::domain::BlockedHint],
+    blocked_hints: &[crate::BlockedHint],
     diagnostics: &mut crate::diagnostics::Diagnostics,
 ) {
     for hint in blocked_hints {
@@ -129,8 +129,8 @@ fn build_eval_diagnostics(
     resolved: ExprId,
     result: &EvalResult,
     steps: &[crate::Step],
-    solver_required: &[crate::implicit_domain::ImplicitCondition],
-    blocked_hints: &[crate::domain::BlockedHint],
+    solver_required: &[crate::ImplicitCondition],
+    blocked_hints: &[crate::BlockedHint],
     inherited_diagnostics: &crate::diagnostics::Diagnostics,
 ) -> crate::diagnostics::Diagnostics {
     let mut diagnostics = crate::diagnostics::Diagnostics::new();
@@ -164,16 +164,16 @@ impl Engine {
         domain_warnings: Vec<DomainWarning>,
         steps: Vec<crate::Step>,
         solve_steps: Vec<crate::api::SolveStep>,
-        solver_assumptions: Vec<crate::assumptions::AssumptionRecord>,
+        solver_assumptions: Vec<crate::AssumptionRecord>,
         output_scopes: Vec<cas_formatter::display_transforms::ScopeTag>,
-        solver_required: Vec<crate::implicit_domain::ImplicitCondition>,
+        solver_required: Vec<crate::ImplicitCondition>,
         inherited_diagnostics: crate::diagnostics::Diagnostics,
         store: &mut StoreT,
         options: &crate::options::EvalOptions,
     ) -> Result<EvalOutput, anyhow::Error>
     where
         StoreT: cas_session_core::eval::TypedEvalStore<
-            crate::domain::DomainMode,
+            crate::DomainMode,
             crate::diagnostics::RequiredItem,
             crate::step::Step,
             crate::diagnostics::Diagnostics,

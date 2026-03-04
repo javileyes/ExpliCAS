@@ -146,7 +146,7 @@ pub struct PipelineStats {
     /// The level that was attempted
     pub rationalize_level: Option<cas_math::rationalize_policy::AutoRationalizeLevel>,
     /// Collected assumptions (deduplicated, with counts)
-    pub assumptions: Vec<crate::assumptions::AssumptionRecord>,
+    pub assumptions: Vec<crate::AssumptionRecord>,
     /// Collected cycle events detected during simplification
     pub cycle_events: Vec<crate::cycle_events::CycleEvent>,
 }
@@ -294,7 +294,7 @@ pub struct SharedSemanticConfig {
     /// Semantic configuration: domain_mode, value_domain, branch, inv_trig, assume_scope.
     pub semantics: crate::semantics::EvalConfig,
     /// Assumption reporting level (Off, Summary, Trace).
-    pub assumption_reporting: crate::assumptions::AssumptionReporting,
+    pub assumption_reporting: crate::AssumptionReporting,
     /// V2.15.8: Auto-expand small binomial powers.
     pub autoexpand_binomials: crate::options::AutoExpandBinomials,
     /// V2.15.9: Smart polynomial simplification in Add/Sub contexts.
@@ -309,7 +309,7 @@ impl Default for SharedSemanticConfig {
             log_expand_policy: ExpandPolicy::Off,
             context_mode: crate::options::ContextMode::default(),
             semantics: crate::semantics::EvalConfig::default(),
-            assumption_reporting: crate::assumptions::AssumptionReporting::Off,
+            assumption_reporting: crate::AssumptionReporting::Off,
             autoexpand_binomials: crate::options::AutoExpandBinomials::Off,
             heuristic_poly: crate::options::HeuristicPoly::On,
         }
@@ -352,7 +352,7 @@ pub struct SimplifyOptions {
     /// - Eval: all rules allowed
     /// - SolvePrepass: only SolveSafety::Always rules (no conditional rules)
     /// - SolveTactic: allows conditional rules based on DomainMode
-    pub simplify_purpose: crate::solve_safety::SimplifyPurpose,
+    pub simplify_purpose: crate::SimplifyPurpose,
 }
 
 impl Default for SimplifyOptions {
@@ -365,7 +365,7 @@ impl Default for SimplifyOptions {
             expand_mode: false,
             shared: SharedSemanticConfig::default(),
             goal: crate::semantics::NormalFormGoal::default(),
-            simplify_purpose: crate::solve_safety::SimplifyPurpose::default(),
+            simplify_purpose: crate::SimplifyPurpose::default(),
         }
     }
 }
@@ -400,16 +400,16 @@ impl SimplifyOptions {
     /// This prevents solution set corruption during equation pre-simplification.
     pub fn for_solve_prepass() -> Self {
         Self {
-            simplify_purpose: crate::solve_safety::SimplifyPurpose::SolvePrepass,
+            simplify_purpose: crate::SimplifyPurpose::SolvePrepass,
             collect_steps: false, // Pre-pass is invisible
             ..Default::default()
         }
     }
 
     /// Options for solver tactic: conditional rules allowed based on DomainMode.
-    pub fn for_solve_tactic(domain_mode: crate::domain::DomainMode) -> Self {
+    pub fn for_solve_tactic(domain_mode: crate::DomainMode) -> Self {
         Self {
-            simplify_purpose: crate::solve_safety::SimplifyPurpose::SolveTactic,
+            simplify_purpose: crate::SimplifyPurpose::SolveTactic,
             shared: SharedSemanticConfig {
                 semantics: crate::semantics::EvalConfig {
                     domain_mode,

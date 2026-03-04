@@ -13,20 +13,20 @@ fn register_symbolic_root_cancel_hints(
     inner_base: ExprId,
     inner_exp: ExprId,
 ) {
-    let hint1 = crate::domain::BlockedHint {
-        key: crate::assumptions::AssumptionKey::positive_key(ctx, inner_base),
+    let hint1 = crate::BlockedHint {
+        key: crate::AssumptionKey::positive_key(ctx, inner_base),
         expr_id: inner_base,
         rule: rule.to_string(),
         suggestion: ROOT_CANCEL_ASSUME_SUGGESTION,
     };
-    let hint2 = crate::domain::BlockedHint {
-        key: crate::assumptions::AssumptionKey::nonzero_key(ctx, inner_exp),
+    let hint2 = crate::BlockedHint {
+        key: crate::AssumptionKey::nonzero_key(ctx, inner_exp),
         expr_id: inner_exp,
         rule: rule.to_string(),
         suggestion: ROOT_CANCEL_ASSUME_SUGGESTION,
     };
-    crate::domain::register_blocked_hint(hint1);
-    crate::domain::register_blocked_hint(hint2);
+    crate::register_blocked_hint(hint1);
+    crate::register_blocked_hint(hint2);
 }
 
 fn assumed_symbolic_root_cancel_rewrite(
@@ -35,14 +35,12 @@ fn assumed_symbolic_root_cancel_rewrite(
     inner_base: ExprId,
     inner_exp: ExprId,
 ) -> Rewrite {
-    use crate::implicit_domain::ImplicitCondition;
+    use crate::ImplicitCondition;
     Rewrite::new(rewritten)
         .desc("(x^n)^(1/n) = x (assuming x > 0, n ≠ 0)")
         .requires(ImplicitCondition::Positive(inner_base))
         .requires(ImplicitCondition::NonZero(inner_exp))
-        .assume(crate::assumptions::AssumptionEvent::positive_assumed(
-            ctx, inner_base,
-        ))
+        .assume(crate::AssumptionEvent::positive_assumed(ctx, inner_base))
 }
 
 fn apply_symbolic_root_cancel_action(
@@ -83,8 +81,8 @@ fn symbolic_root_cancel_action_for_parent(
     let domain_mode = parent_ctx.domain_mode();
     cas_math::root_power_canonical_support::plan_symbolic_root_cancel_action_with_mode_flags(
         parent_ctx.value_domain() == ValueDomain::RealOnly,
-        matches!(domain_mode, crate::domain::DomainMode::Assume),
-        matches!(domain_mode, crate::domain::DomainMode::Strict),
+        matches!(domain_mode, crate::DomainMode::Assume),
+        matches!(domain_mode, crate::DomainMode::Strict),
         rewritten,
         inner_base,
         inner_exp,
@@ -98,9 +96,9 @@ fn power_power_nonnegative_proof_with_witness(
     parent_ctx: &crate::parent_context::ParentContext,
     value_domain: crate::semantics::ValueDomain,
 ) -> cas_math::tri_proof::TriProof {
-    use crate::domain::Proof;
     use crate::helpers::prove_nonnegative;
-    use crate::implicit_domain::{witness_survives_in_context, WitnessKind};
+    use crate::Proof;
+    use crate::{witness_survives_in_context, WitnessKind};
 
     let base_proof = prove_nonnegative(core_ctx, base, value_domain);
     let (implicit_contains_nonnegative, witness_survives) = if let (Some(implicit), Some(root)) =
@@ -122,7 +120,7 @@ fn power_power_nonnegative_proof_with_witness(
     };
 
     let proof = match cas_math::root_power_canonical_support::merge_nonnegative_proof_with_witness(
-        crate::helpers::engine_to_core_proof(base_proof),
+        cas_solver_core::predicate_proofs::proof_to_core(base_proof),
         implicit_contains_nonnegative,
         witness_survives,
     ) {
@@ -137,7 +135,7 @@ fn power_power_nonnegative_proof_with_witness(
         cas_math::tri_proof::TriProof::Unknown => Proof::Unknown,
     };
 
-    crate::helpers::engine_to_core_proof(proof)
+    cas_solver_core::predicate_proofs::proof_to_core(proof)
 }
 
 fn apply_power_power_even_root_action(
@@ -155,11 +153,11 @@ fn apply_power_power_even_root_action(
         } => {
             let mode = parent_ctx.domain_mode();
             let vd = parent_ctx.value_domain();
-            let decision = crate::domain_oracle::oracle_allows_with_hint(
+            let decision = crate::oracle_allows_with_hint(
                 ctx,
                 mode,
                 vd,
-                &crate::domain_facts::Predicate::NonNegative(inner_base),
+                &crate::Predicate::NonNegative(inner_base),
                 "Power of a Power",
             );
             if !decision.allow {
@@ -169,7 +167,7 @@ fn apply_power_power_even_root_action(
             let mut rewrite = Rewrite::new(rewritten).desc("Multiply exponents");
             if decision.assumption.is_some() {
                 rewrite =
-                    rewrite.assume(crate::assumptions::AssumptionEvent::nonnegative(ctx, inner_base));
+                    rewrite.assume(crate::AssumptionEvent::nonnegative(ctx, inner_base));
             }
             Some(rewrite)
         }
@@ -275,8 +273,8 @@ impl crate::rule::Rule for RootPowCancelRule {
 define_rule!(
     PowerPowerRule,
     "Power of a Power",
-    solve_safety: crate::solve_safety::SolveSafety::NeedsCondition(
-        crate::assumptions::ConditionClass::Analytic
+    solve_safety: crate::SolveSafety::NeedsCondition(
+        crate::ConditionClass::Analytic
     ),
     |ctx, expr, parent_ctx| {
     // (x^a)^b -> x^(a*b)

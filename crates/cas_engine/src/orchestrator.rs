@@ -478,9 +478,8 @@ impl Orchestrator {
 
         // Collect assumptions from steps if reporting is enabled
         // Priority: 1) structured assumption_events, 2) legacy domain_assumption string parsing
-        if self.options.shared.assumption_reporting != crate::assumptions::AssumptionReporting::Off
-        {
-            pipeline_stats.assumptions = crate::assumptions::collect_assumption_records_from_iter(
+        if self.options.shared.assumption_reporting != crate::AssumptionReporting::Off {
+            pipeline_stats.assumptions = crate::collect_assumption_records_from_iter(
                 optimized_steps
                     .iter()
                     .flat_map(|step| step.assumption_events().iter().cloned()),

@@ -71,7 +71,7 @@ impl Rule for CosProductTelescopingRule {
     ) -> Option<Rewrite> {
         let rewrite = try_rewrite_cos_product_telescoping_expr(ctx, expr)?;
         Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc).assume(
-            crate::assumptions::AssumptionEvent::nonzero(ctx, rewrite.assume_nonzero_expr),
+            crate::AssumptionEvent::nonzero(ctx, rewrite.assume_nonzero_expr),
         ))
     }
 }

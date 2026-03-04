@@ -13,7 +13,7 @@
 
 use cas_ast::{Context, Expr, ExprId};
 
-use crate::domain::Proof;
+use crate::Proof;
 
 /// Attempt to prove non-zero by simplifying a ground expression.
 ///
@@ -37,7 +37,7 @@ pub(crate) fn try_ground_nonzero(ctx: &Context, expr: ExprId) -> Option<Proof> {
                 expand_mode: false,
                 shared: crate::phase::SharedSemanticConfig {
                     semantics: crate::semantics::EvalConfig {
-                        domain_mode: crate::domain::DomainMode::Generic,
+                        domain_mode: crate::DomainMode::Generic,
                         ..Default::default()
                     },
                     ..Default::default()

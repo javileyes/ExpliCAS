@@ -23,10 +23,11 @@
 //! policy, but accessed through the unified `DomainOracle` trait.
 
 use cas_ast::Context;
+use cas_solver_core::domain_facts_model::{FactStrength, Predicate};
+use cas_solver_core::domain_oracle_model::DomainOracle;
 
-use crate::domain::{CancelDecision, DomainMode};
-use crate::domain_facts::{decide, proof_to_strength, DomainOracle, FactStrength, Predicate};
 use crate::semantics::ValueDomain;
+use crate::{CancelDecision, DomainMode};
 
 // =============================================================================
 // StandardOracle
@@ -67,6 +68,8 @@ impl<'a> StandardOracle<'a> {
 }
 
 impl DomainOracle for StandardOracle<'_> {
+    type Decision = CancelDecision;
+
     /// Query the strength of evidence for a predicate.
     ///
     /// Delegates to the appropriate prover:
@@ -77,28 +80,26 @@ impl DomainOracle for StandardOracle<'_> {
     fn query(&self, pred: &Predicate) -> FactStrength {
         use crate::helpers::{prove_nonnegative, prove_nonzero, prove_positive};
 
-        match pred {
-            Predicate::NonZero(e) => proof_to_strength(prove_nonzero(self.ctx, *e)),
-            Predicate::Positive(e) => {
-                proof_to_strength(prove_positive(self.ctx, *e, self.value_domain))
-            }
-            Predicate::NonNegative(e) => {
-                proof_to_strength(prove_nonnegative(self.ctx, *e, self.value_domain))
-            }
-            Predicate::Defined(_) => {
-                // No general prover for definedness yet.
-                // Conservative: Unknown.
-                FactStrength::Unknown
-            }
-        }
+        cas_solver_core::domain_oracle_model::query_predicate_strength_with_provers(
+            pred,
+            |expr| prove_nonzero(self.ctx, expr),
+            |expr| prove_positive(self.ctx, expr, self.value_domain),
+            |expr| prove_nonnegative(self.ctx, expr, self.value_domain),
+        )
     }
 
     /// Decide whether a transformation requiring this predicate is allowed.
     ///
     /// Combines `query()` result with the `DomainMode` policy.
     fn allows(&self, pred: &Predicate) -> CancelDecision {
-        let strength = self.query(pred);
-        decide(self.mode, pred, strength)
+        use crate::helpers::{prove_nonnegative, prove_nonzero, prove_positive};
+        cas_solver_core::domain_oracle_model::allows_with_provers(
+            self.mode,
+            pred,
+            |expr| prove_nonzero(self.ctx, expr),
+            |expr| prove_positive(self.ctx, expr, self.value_domain),
+            |expr| prove_nonnegative(self.ctx, expr, self.value_domain),
+        )
     }
 }
 
@@ -108,8 +109,8 @@ impl DomainOracle for StandardOracle<'_> {
 
 /// Rich version of oracle query that emits pedagogical hints for Strict mode.
 ///
-/// This wraps `can_cancel_factor_with_hint` and `can_apply_analytic_with_hint`
-/// into a single function using the unified predicate vocabulary.
+/// This routes each predicate through the canonical core domain gates
+/// using the unified predicate vocabulary.
 ///
 /// # Arguments
 ///
@@ -128,40 +129,14 @@ pub fn oracle_allows_with_hint(
     pred: &Predicate,
     rule: &'static str,
 ) -> CancelDecision {
-    use crate::assumptions::AssumptionKey;
     use crate::helpers::{prove_nonnegative, prove_nonzero, prove_positive};
-
-    let expr = pred.expr();
-
-    match pred {
-        Predicate::NonZero(_) => {
-            let proof = prove_nonzero(ctx, expr);
-            let key = AssumptionKey::nonzero_key(ctx, expr);
-            crate::domain::can_cancel_factor_with_hint(mode, proof, key, expr, rule)
-        }
-        Predicate::Positive(_) => {
-            let proof = prove_positive(ctx, expr, value_domain);
-            let key = AssumptionKey::positive_key(ctx, expr);
-            crate::domain::can_apply_analytic_with_hint(mode, proof, key, expr, rule)
-        }
-        Predicate::NonNegative(_) => {
-            let proof = prove_nonnegative(ctx, expr, value_domain);
-            let key = AssumptionKey::nonnegative_key(ctx, expr);
-            crate::domain::can_apply_analytic_with_hint(mode, proof, key, expr, rule)
-        }
-        Predicate::Defined(_) => {
-            // Defined uses Definability class, same as NonZero
-            let key = AssumptionKey::Defined {
-                expr_fingerprint: crate::assumptions::expr_fingerprint(ctx, expr),
-            };
-            // No dedicated prover — treat as Unknown
-            crate::domain::can_cancel_factor_with_hint(
-                mode,
-                crate::domain::Proof::Unknown,
-                key,
-                expr,
-                rule,
-            )
-        }
-    }
+    cas_solver_core::domain_oracle_model::allows_with_hint_using_provers(
+        ctx,
+        mode,
+        pred,
+        rule,
+        |expr| prove_nonzero(ctx, expr),
+        |expr| prove_positive(ctx, expr, value_domain),
+        |expr| prove_nonnegative(ctx, expr, value_domain),
+    )
 }

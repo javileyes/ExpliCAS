@@ -20,11 +20,11 @@ pub struct LoopConfig {
     pub expand_mode: bool,
     pub auto_expand: bool,
     pub expand_budget: crate::phase::ExpandBudget,
-    pub domain_mode: crate::domain::DomainMode,
+    pub domain_mode: crate::DomainMode,
     pub inv_trig: crate::semantics::InverseTrigPolicy,
     pub value_domain: crate::semantics::ValueDomain,
     pub goal: crate::semantics::NormalFormGoal,
-    pub simplify_purpose: crate::solve_safety::SimplifyPurpose,
+    pub simplify_purpose: crate::SimplifyPurpose,
     pub context_mode: crate::options::ContextMode,
     pub autoexpand_binomials: crate::options::AutoExpandBinomials,
     pub heuristic_poly: crate::options::HeuristicPoly,
@@ -37,11 +37,11 @@ impl Default for LoopConfig {
             expand_mode: false,
             auto_expand: false,
             expand_budget: crate::phase::ExpandBudget::default(),
-            domain_mode: crate::domain::DomainMode::default(),
+            domain_mode: crate::DomainMode::default(),
             inv_trig: crate::semantics::InverseTrigPolicy::default(),
             value_domain: crate::semantics::ValueDomain::default(),
             goal: crate::semantics::NormalFormGoal::default(),
-            simplify_purpose: crate::solve_safety::SimplifyPurpose::default(),
+            simplify_purpose: crate::SimplifyPurpose::default(),
             context_mode: crate::options::ContextMode::default(),
             autoexpand_binomials: crate::options::AutoExpandBinomials::Off,
             heuristic_poly: crate::options::HeuristicPoly::On,
@@ -68,6 +68,7 @@ impl Simplifier {
         // Create initial ParentContext with pattern marks
         let initial_parent_ctx =
             crate::parent_context::ParentContext::with_marks(pattern_marks.clone());
+        let mut step_listener = self.step_listener.take();
 
         let mut local_transformer = LocalSimplificationTransformer {
             context: &mut self.context,
@@ -83,6 +84,7 @@ impl Simplifier {
             pattern_marks: pattern_marks.clone(),
             initial_parent_ctx,
             root_expr: expr_id,
+            event_listener: step_listener.as_deref_mut(),
             current_phase: phase,
             cycle_detector: None,
             cycle_phase: None,
@@ -97,7 +99,7 @@ impl Simplifier {
             nodes_snap: 0,
             budget_op: crate::budget::Operation::SimplifyCore,
             stop_reason: None,
-            simplify_purpose: crate::solve_safety::SimplifyPurpose::default(),
+            simplify_purpose: crate::SimplifyPurpose::default(),
             normalize_cache: std::collections::HashMap::new(),
         };
 
@@ -111,6 +113,7 @@ impl Simplifier {
         // Copy domain_warnings to self (survives even in Off mode)
         self.last_domain_warnings = std::mem::take(&mut local_transformer.domain_warnings);
         drop(local_transformer);
+        self.step_listener = step_listener;
 
         (new_expr, steps)
     }
@@ -138,7 +141,7 @@ impl Simplifier {
         options: crate::phase::SimplifyOptions,
     ) -> (ExprId, Vec<Step>, crate::phase::PipelineStats) {
         // Clear blocked hints from previous simplifications
-        crate::domain::clear_blocked_hints();
+        crate::clear_blocked_hints();
 
         let mut orchestrator = crate::orchestrator::Orchestrator::new();
         orchestrator.enable_polynomial_strategy = self.enable_polynomial_strategy;
@@ -147,7 +150,7 @@ impl Simplifier {
         let result = orchestrator.simplify_pipeline(expr_id, self);
 
         // Collect blocked hints from thread-local to Simplifier field
-        self.last_blocked_hints = crate::domain::take_blocked_hints();
+        self.last_blocked_hints = crate::take_blocked_hints();
 
         result
     }
@@ -223,7 +226,7 @@ impl Simplifier {
 
         // Create initial ParentContext with pattern marks, expand_mode, auto-expand, domain_mode, inv_trig, value_domain, goal, simplify_purpose, and context_mode
         // V2.15: Reset domain inference call counter for regression testing
-        crate::implicit_domain::infer_domain_calls_reset();
+        crate::infer_domain_calls_reset();
 
         // V2.15.8: Use sticky implicit domain if set (from original input), otherwise calculate from current expr
         // This preserves inherited requires (e.g., x≥0 from sqrt) across all phases
@@ -277,6 +280,7 @@ impl Simplifier {
 
         // Capture nodes_created BEFORE creating transformer (can't access while borrowed)
         let nodes_snap = self.context.stats().nodes_created;
+        let mut step_listener = self.step_listener.take();
 
         let mut local_transformer = LocalSimplificationTransformer {
             context: &mut self.context,
@@ -292,6 +296,7 @@ impl Simplifier {
             pattern_marks: pattern_marks.clone(),
             initial_parent_ctx,
             root_expr: expr_id,
+            event_listener: step_listener.as_deref_mut(),
             current_phase: phase,
             cycle_detector: None,
             cycle_phase: None,
@@ -335,6 +340,7 @@ impl Simplifier {
         self.last_domain_warnings
             .append(&mut local_transformer.domain_warnings);
         drop(local_transformer);
+        self.step_listener = step_listener;
 
         // Calculate nodes delta AFTER dropping transformer (now we can borrow self.context)
         let nodes_delta = self

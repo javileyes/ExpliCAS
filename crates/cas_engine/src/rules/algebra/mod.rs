@@ -188,7 +188,7 @@ pub fn try_difference_of_squares_preorder(
             meta.before_local = Some(num);
             meta.after_local = Some(factored_num);
             meta.required_conditions
-                .push(crate::implicit_domain::ImplicitCondition::NonZero(den));
+                .push(crate::ImplicitCondition::NonZero(den));
         }
         factor_step.importance = crate::step::ImportanceLevel::High;
         steps.push(factor_step);

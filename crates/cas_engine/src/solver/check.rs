@@ -11,10 +11,10 @@ use cas_ast::Context;
 use cas_ast::{Equation, ExprId, SolutionSet};
 use cas_math::expr_predicates::contains_variable;
 use cas_math::ground_eval_guard::GroundEvalGuard;
+use cas_solver_core::domain_mode::DomainMode;
 use cas_solver_core::isolation_utils::is_numeric_zero;
-use cas_solver_core::verification::{
-    verify_solution_set_with_state,
-    verify_solution_with_strict_fold_and_generic_fallback_with_default_stats_and_state,
+use cas_solver_core::verification_flow::{
+    verify_solution_set_for_equation_with_state, verify_solution_with_domain_modes_with_state,
 };
 use cas_solver_core::verify_substitution::substitute_equation_diff;
 
@@ -30,22 +30,21 @@ pub fn verify_solution(
     var: &str,
     solution: ExprId,
 ) -> VerifyStatus {
-    let strict_opts = simplify_options_for_domain(crate::domain::DomainMode::Strict);
-    let generic_opts = simplify_options_for_domain(crate::domain::DomainMode::Generic);
-
-    verify_solution_with_strict_fold_and_generic_fallback_with_default_stats_and_state(
+    verify_solution_with_domain_modes_with_state(
         simplifier,
         equation,
         var,
         solution,
-        |simplifier, eq, solve_var, candidate| {
-            substitute_equation_diff(&mut simplifier.context, eq, solve_var, candidate)
+        |state, eq, solve_var, candidate| {
+            substitute_equation_diff(&mut state.context, eq, solve_var, candidate)
         },
-        |simplifier, expr| simplifier.simplify_with_stats(expr, strict_opts.clone()).0,
-        |simplifier, expr| simplifier.simplify_with_stats(expr, generic_opts.clone()).0,
-        |simplifier, expr| contains_variable(&simplifier.context, expr),
-        |simplifier, expr| fold_numeric_islands(&mut simplifier.context, expr),
-        |simplifier, expr| is_numeric_zero(&simplifier.context, expr),
+        |state, expr, domain_mode| {
+            let opts = simplify_options_for_domain(domain_mode);
+            state.simplify_with_stats(expr, opts).0
+        },
+        |state, expr| contains_variable(&state.context, expr),
+        |state, expr| fold_numeric_islands(&mut state.context, expr),
+        |state, expr| is_numeric_zero(&state.context, expr),
         simplifier_render_expr,
     )
 }
@@ -57,15 +56,19 @@ pub fn verify_solution_set(
     var: &str,
     solutions: &SolutionSet,
 ) -> VerifyResult {
-    let mut verify_discrete =
-        |state: &mut Simplifier, solution: ExprId| verify_solution(state, equation, var, solution);
-    verify_solution_set_with_state(simplifier, solutions, &mut verify_discrete)
+    verify_solution_set_for_equation_with_state(
+        simplifier,
+        equation,
+        var,
+        solutions,
+        verify_solution,
+    )
 }
 
-fn simplify_options_for_domain(domain_mode: crate::domain::DomainMode) -> crate::SimplifyOptions {
+fn simplify_options_for_domain(domain_mode: DomainMode) -> crate::SimplifyOptions {
     crate::SimplifyOptions {
-        shared: crate::phase::SharedSemanticConfig {
-            semantics: crate::semantics::EvalConfig {
+        shared: crate::SharedSemanticConfig {
+            semantics: crate::EvalConfig {
                 domain_mode,
                 ..Default::default()
             },
@@ -79,15 +82,15 @@ fn fold_numeric_islands(ctx: &mut Context, root: ExprId) -> ExprId {
     let fold_opts = crate::SimplifyOptions {
         collect_steps: false,
         expand_mode: false,
-        shared: crate::phase::SharedSemanticConfig {
-            semantics: crate::semantics::EvalConfig {
-                domain_mode: crate::domain::DomainMode::Generic,
-                value_domain: crate::semantics::ValueDomain::RealOnly,
+        shared: crate::SharedSemanticConfig {
+            semantics: crate::EvalConfig {
+                domain_mode: crate::DomainMode::Generic,
+                value_domain: crate::ValueDomain::RealOnly,
                 ..Default::default()
             },
             ..Default::default()
         },
-        budgets: crate::phase::PhaseBudgets {
+        budgets: crate::PhaseBudgets {
             core_iters: 4,
             transform_iters: 2,
             rationalize_iters: 0,

@@ -30,8 +30,8 @@ define_rule!(
         let plan = try_plan_cancel_cube_root_difference_expr(ctx, expr)?;
         let b_squared = &plan.b_value * &plan.b_value;
 
-        use crate::implicit_domain::ImplicitCondition;
         use crate::rule::ChainedRewrite;
+        use crate::ImplicitCondition;
 
         let factor_rw = Rewrite::new(plan.intermediate)
             .desc(format!(

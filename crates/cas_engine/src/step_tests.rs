@@ -1,5 +1,5 @@
-use crate::assumptions::{AssumptionEvent, AssumptionKey, AssumptionKind};
 use crate::step::{ImportanceLevel, Step};
+use crate::{AssumptionEvent, AssumptionKey, AssumptionKind};
 
 #[test]
 fn test_importance_classification() {

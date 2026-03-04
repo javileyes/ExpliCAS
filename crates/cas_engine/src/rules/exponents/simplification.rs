@@ -6,8 +6,8 @@ use cas_ast::{Context, Expr, ExprId};
 define_rule!(
     IdentityPowerRule,
     "Identity Power",
-    solve_safety: crate::solve_safety::SolveSafety::NeedsCondition(
-        crate::assumptions::ConditionClass::Definability
+    solve_safety: crate::SolveSafety::NeedsCondition(
+        crate::ConditionClass::Definability
     ),
     |ctx, expr, parent_ctx| {
         if let Some(rewrite) =
@@ -28,8 +28,8 @@ define_rule!(
                     let domain_mode = parent_ctx.domain_mode();
                     let action =
                         cas_math::power_identity_support::plan_pow_zero_policy_action_with_mode_flags(
-                        matches!(domain_mode, crate::domain::DomainMode::Assume),
-                        matches!(domain_mode, crate::domain::DomainMode::Strict),
+                        matches!(domain_mode, crate::DomainMode::Assume),
+                        matches!(domain_mode, crate::DomainMode::Strict),
                         base_is_literal_zero,
                         matches!(ctx.get(base), Expr::Number(_)),
                         crate::helpers::prove_nonzero_core(ctx, base),
@@ -49,7 +49,7 @@ define_rule!(
                             let mut rewrite = Rewrite::new(ctx.num(1)).desc(desc);
                             if assume_nonzero {
                                 rewrite = rewrite
-                                    .assume(crate::assumptions::AssumptionEvent::nonzero(
+                                    .assume(crate::AssumptionEvent::nonzero(
                                         ctx, base,
                                     ));
                             }
@@ -82,11 +82,11 @@ define_rule!(
                     }
 
                     // Use unified oracle for Positive condition (Analytic class)
-                    let decision = crate::domain_oracle::oracle_allows_with_hint(
+                    let decision = crate::oracle_allows_with_hint(
                         ctx,
                         parent_ctx.domain_mode(),
                         parent_ctx.value_domain(),
-                        &crate::domain_facts::Predicate::Positive(exp),
+                        &crate::Predicate::Positive(exp),
                         "Evaluate Power",
                     );
 

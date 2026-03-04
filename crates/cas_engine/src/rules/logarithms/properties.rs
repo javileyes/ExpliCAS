@@ -30,7 +30,7 @@ impl crate::rule::Rule for LogExpansionRule {
         expr: cas_ast::ExprId,
         parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<crate::rule::Rewrite> {
-        use crate::domain_facts::Predicate;
+        use crate::Predicate;
 
         // GATE 1: Never expand in complex domain (principal branch causes 2πi jumps)
         if parent_ctx.value_domain() == crate::semantics::ValueDomain::ComplexEnabled {
@@ -41,14 +41,14 @@ impl crate::rule::Rule for LogExpansionRule {
         let mode = parent_ctx.domain_mode();
         let vd = parent_ctx.value_domain();
 
-        let lhs_decision = crate::domain_oracle::oracle_allows_with_hint(
+        let lhs_decision = crate::oracle_allows_with_hint(
             ctx,
             mode,
             vd,
             &Predicate::Positive(planned.positive_lhs),
             "Log Expansion",
         );
-        let rhs_decision = crate::domain_oracle::oracle_allows_with_hint(
+        let rhs_decision = crate::oracle_allows_with_hint(
             ctx,
             mode,
             vd,
@@ -60,19 +60,12 @@ impl crate::rule::Rule for LogExpansionRule {
             return None;
         }
 
-        let mut events: smallvec::SmallVec<[crate::assumptions::AssumptionEvent; 2]> =
-            smallvec::SmallVec::new();
+        let mut events: smallvec::SmallVec<[crate::AssumptionEvent; 2]> = smallvec::SmallVec::new();
         if lhs_decision.assumption.is_some() {
-            events.push(crate::assumptions::AssumptionEvent::positive(
-                ctx,
-                planned.positive_lhs,
-            ));
+            events.push(crate::AssumptionEvent::positive(ctx, planned.positive_lhs));
         }
         if rhs_decision.assumption.is_some() {
-            events.push(crate::assumptions::AssumptionEvent::positive(
-                ctx,
-                planned.positive_rhs,
-            ));
+            events.push(crate::AssumptionEvent::positive(ctx, planned.positive_rhs));
         }
 
         Some(
@@ -86,10 +79,8 @@ impl crate::rule::Rule for LogExpansionRule {
         Some(crate::target_kind::TargetKindSet::FUNCTION)
     }
 
-    fn solve_safety(&self) -> crate::solve_safety::SolveSafety {
-        crate::solve_safety::SolveSafety::NeedsCondition(
-            crate::assumptions::ConditionClass::Analytic,
-        )
+    fn solve_safety(&self) -> crate::SolveSafety {
+        crate::SolveSafety::NeedsCondition(crate::ConditionClass::Analytic)
     }
 }
 
@@ -104,12 +95,12 @@ impl crate::rule::Rule for LogExpansionRule {
 pub(crate) fn expand_logs_with_assumptions(
     ctx: &mut cas_ast::Context,
     expr: cas_ast::ExprId,
-) -> (cas_ast::ExprId, Vec<crate::assumptions::AssumptionEvent>) {
+) -> (cas_ast::ExprId, Vec<crate::AssumptionEvent>) {
     let plan = expand_logs_collect_positive_assumptions(ctx, expr);
     let events = plan
         .assumed_positive
         .into_iter()
-        .map(|subject| crate::assumptions::AssumptionEvent::positive(ctx, subject))
+        .map(|subject| crate::AssumptionEvent::positive(ctx, subject))
         .collect();
     (plan.rewritten, events)
 }
@@ -148,9 +139,9 @@ impl crate::rule::Rule for LogEvenPowerWithChainedAbsRule {
         expr: ExprId,
         parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<crate::rule::Rewrite> {
-        use crate::domain::Proof;
         use crate::helpers::prove_positive;
         use crate::rule::ChainedRewrite;
+        use crate::Proof;
 
         let planned = try_plan_log_even_power_abs_expr(ctx, expr)?;
 
@@ -159,8 +150,8 @@ impl crate::rule::Rule for LogEvenPowerWithChainedAbsRule {
         let dm = parent_ctx.domain_mode();
         let pos = prove_positive(ctx, planned.inner_base, vd);
         let mode = log_exp_inverse_policy_mode_from_flags(
-            matches!(dm, crate::domain::DomainMode::Assume),
-            matches!(dm, crate::domain::DomainMode::Strict),
+            matches!(dm, crate::DomainMode::Assume),
+            matches!(dm, crate::DomainMode::Strict),
         );
 
         let in_requires = if log_even_power_needs_requires_lookup(
@@ -170,18 +161,16 @@ impl crate::rule::Rule for LogEvenPowerWithChainedAbsRule {
         ) {
             // V2.14.21: Check if x > 0 is in global requires using implicit_domain
             // V2.15: Use cached implicit_domain if available, fallback to computation with root_expr
-            let implicit_domain: Option<crate::implicit_domain::ImplicitDomain> =
+            let implicit_domain: Option<crate::ImplicitDomain> =
                 parent_ctx.implicit_domain().cloned().or_else(|| {
                     parent_ctx
                         .root_expr()
-                        .map(|root| crate::implicit_domain::infer_implicit_domain(ctx, root, vd))
+                        .map(|root| crate::infer_implicit_domain(ctx, root, vd))
                 });
 
             implicit_domain.as_ref().is_some_and(|id| {
-                let dc = crate::implicit_domain::DomainContext::new(
-                    id.conditions().iter().cloned().collect(),
-                );
-                let cond = crate::implicit_domain::ImplicitCondition::Positive(planned.inner_base);
+                let dc = crate::DomainContext::new(id.conditions().iter().cloned().collect());
+                let cond = crate::ImplicitCondition::Positive(planned.inner_base);
                 dc.is_condition_implied(ctx, &cond)
             })
         } else {
@@ -207,7 +196,7 @@ impl crate::rule::Rule for LogEvenPowerWithChainedAbsRule {
                     .desc(chain_desc)
                     .local(planned.abs_inner_base, planned.inner_base);
                 if assume_positive_subject {
-                    chain = chain.assume(crate::assumptions::AssumptionEvent::positive_assumed(
+                    chain = chain.assume(crate::AssumptionEvent::positive_assumed(
                         ctx,
                         planned.inner_base,
                     ));
@@ -221,7 +210,7 @@ impl crate::rule::Rule for LogEvenPowerWithChainedAbsRule {
                 let mut rw = crate::rule::Rewrite::new(planned.with_abs_rewrite)
                     .desc("log(b, x^(even)) = even·log(b, |x|)");
                 if assume_positive_subject {
-                    rw = rw.assume(crate::assumptions::AssumptionEvent::positive_assumed(
+                    rw = rw.assume(crate::AssumptionEvent::positive_assumed(
                         ctx,
                         planned.inner_base,
                     ));
@@ -270,14 +259,14 @@ impl crate::rule::Rule for LogAbsPowerRule {
         let planned = try_rewrite_log_abs_power_expr(ctx, expr)?;
 
         // Register hint that u ≠ 0 is required (for ln(|u|) to be defined)
-        let key = crate::assumptions::AssumptionKey::nonzero_key(ctx, planned.inner_subject);
-        let hint = crate::domain::BlockedHint {
+        let key = crate::AssumptionKey::nonzero_key(ctx, planned.inner_subject);
+        let hint = crate::BlockedHint {
             key,
             expr_id: planned.inner_subject,
             rule: "Log Abs Power".to_string(),
             suggestion: "requires u ≠ 0 for ln(|u|) to be defined",
         };
-        crate::domain::register_blocked_hint(hint);
+        crate::register_blocked_hint(hint);
 
         Some(crate::rule::Rewrite::new(planned.rewritten).desc(planned.desc))
     }
@@ -313,8 +302,8 @@ impl crate::rule::Rule for LogAbsSimplifyRule {
         let vd = parent_ctx.value_domain();
         let policy = plan_log_abs_simplify_policy(
             log_exp_inverse_policy_mode_from_flags(
-                matches!(parent_ctx.domain_mode(), crate::domain::DomainMode::Assume),
-                matches!(parent_ctx.domain_mode(), crate::domain::DomainMode::Strict),
+                matches!(parent_ctx.domain_mode(), crate::DomainMode::Assume),
+                matches!(parent_ctx.domain_mode(), crate::DomainMode::Strict),
             ),
             vd == crate::semantics::ValueDomain::ComplexEnabled,
             prove_positive(ctx, planned.inner_subject, vd).is_proven(),
@@ -328,11 +317,10 @@ impl crate::rule::Rule for LogAbsSimplifyRule {
             } => {
                 let mut rewrite = Rewrite::new(planned.rewritten).desc(desc);
                 if assume_positive_subject {
-                    rewrite =
-                        rewrite.assume(crate::assumptions::AssumptionEvent::positive_assumed(
-                            ctx,
-                            planned.inner_subject,
-                        ));
+                    rewrite = rewrite.assume(crate::AssumptionEvent::positive_assumed(
+                        ctx,
+                        planned.inner_subject,
+                    ));
                 }
                 Some(rewrite)
             }

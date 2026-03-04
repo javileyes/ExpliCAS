@@ -218,6 +218,7 @@ dependencies = [
  "cas_parser",
  "cas_session",
  "cas_solver",
+ "cas_solver_core",
  "num-bigint",
  "num-rational",
  "num-traits",
@@ -354,11 +355,13 @@ name = "cas_solver_core"
 version = "0.1.0"
 dependencies = [
  "cas_ast",
+ "cas_formatter",
  "cas_math",
  "num-bigint",
  "num-integer",
  "num-rational",
  "num-traits",
+ "smallvec",
 ]
 
 [[package]]

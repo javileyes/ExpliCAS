@@ -1,5 +1,5 @@
-use crate::domain::DomainMode;
 use crate::semantics::{BranchPolicy, EvalConfig, InverseTrigPolicy, ValueDomain};
+use crate::DomainMode;
 
 #[test]
 fn test_default_config() {

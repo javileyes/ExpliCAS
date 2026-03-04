@@ -70,8 +70,8 @@ define_rule!(
     NAngleAtanRule,
     "N-Angle Inverse Atan Composition",
     Some(TargetKindSet::FUNCTION),
-    solve_safety: crate::solve_safety::SolveSafety::NeedsCondition(
-        crate::assumptions::ConditionClass::Definability
+    solve_safety: crate::SolveSafety::NeedsCondition(
+        crate::ConditionClass::Definability
     ),
     |ctx, expr, _parent_ctx| {
         let plan =
@@ -80,7 +80,7 @@ define_rule!(
             Rewrite::new(plan.rewritten)
                 .desc(plan.desc)
                 .budget_exempt()
-                .assume(crate::assumptions::AssumptionEvent::nonzero(
+                .assume(crate::AssumptionEvent::nonzero(
                     ctx,
                     plan.assume_nonzero_expr,
                 )),
@@ -103,8 +103,8 @@ define_rule!(
     NAngleAcosRule,
     "N-Angle Inverse Acos Composition",
     Some(TargetKindSet::FUNCTION),
-    solve_safety: crate::solve_safety::SolveSafety::NeedsCondition(
-        crate::assumptions::ConditionClass::Definability
+    solve_safety: crate::SolveSafety::NeedsCondition(
+        crate::ConditionClass::Definability
     ),
     |ctx, expr, _parent_ctx| {
         let plan =
@@ -113,7 +113,7 @@ define_rule!(
             Rewrite::new(plan.rewritten)
                 .desc(plan.desc)
                 .budget_exempt()
-                .assume(crate::assumptions::AssumptionEvent::nonzero(
+                .assume(crate::AssumptionEvent::nonzero(
                     ctx,
                     plan.assume_nonzero_expr,
                 )),
@@ -139,8 +139,8 @@ define_rule!(
     NAngleAsinRule,
     "N-Angle Inverse Asin Composition",
     Some(TargetKindSet::FUNCTION),
-    solve_safety: crate::solve_safety::SolveSafety::NeedsCondition(
-        crate::assumptions::ConditionClass::Definability
+    solve_safety: crate::SolveSafety::NeedsCondition(
+        crate::ConditionClass::Definability
     ),
     |ctx, expr, _parent_ctx| {
         let plan =
@@ -149,7 +149,7 @@ define_rule!(
             Rewrite::new(plan.rewritten)
                 .desc(plan.desc)
                 .budget_exempt()
-                .assume(crate::assumptions::AssumptionEvent::nonzero(
+                .assume(crate::AssumptionEvent::nonzero(
                     ctx,
                     plan.assume_nonzero_expr,
                 )),

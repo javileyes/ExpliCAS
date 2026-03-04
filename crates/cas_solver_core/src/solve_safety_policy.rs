@@ -6,18 +6,42 @@ pub enum ConditionClassKind {
     Analytic,
 }
 
+/// Canonical condition-class type shared by engine/solver runtime crates.
+///
+/// Keep `ConditionClassKind` as the explicit enum name for internal modules and
+/// expose `ConditionClass` as the stable cross-crate alias.
+pub type ConditionClass = ConditionClassKind;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProvenanceKind {
     Intrinsic,
     Introduced,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SolveSafetyKind {
+    #[default]
     Always,
     IntrinsicCondition(ConditionClassKind),
     NeedsCondition(ConditionClassKind),
     Never,
+}
+
+impl SolveSafetyKind {
+    #[inline]
+    pub fn safe_for_prepass(self) -> bool {
+        safe_for_prepass(self)
+    }
+
+    #[inline]
+    pub fn safe_for_tactic(self, mode: DomainModeKind) -> bool {
+        safe_for_tactic(self, mode)
+    }
+
+    #[inline]
+    pub fn requirement_descriptor(self) -> Option<RequirementDescriptorKind> {
+        requirement_descriptor(self)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -67,6 +91,18 @@ pub fn safe_for_tactic(safety: SolveSafetyKind, mode: DomainModeKind) -> bool {
     }
 }
 
+#[inline]
+pub fn safe_for_tactic_with_domain_flags(
+    safety: SolveSafetyKind,
+    assume_mode: bool,
+    strict_mode: bool,
+) -> bool {
+    safe_for_tactic(
+        safety,
+        crate::strategy_options::solver_domain_mode_kind(assume_mode, strict_mode),
+    )
+}
+
 pub fn requirement_descriptor(safety: SolveSafetyKind) -> Option<RequirementDescriptorKind> {
     match safety {
         SolveSafetyKind::Always => None,
@@ -82,11 +118,19 @@ pub fn requirement_descriptor(safety: SolveSafetyKind) -> Option<RequirementDesc
     }
 }
 
+#[inline]
+pub fn requires_introduced_analytic_condition(safety: SolveSafetyKind) -> bool {
+    requirement_descriptor(safety).is_some_and(|req| {
+        req.class == ConditionClassKind::Analytic && req.provenance == ProvenanceKind::Introduced
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        requirement_descriptor, safe_for_prepass, safe_for_tactic, ConditionClassKind,
-        ProvenanceKind, RequirementDescriptorKind, SimplifyPurpose, SolveSafetyKind,
+        requirement_descriptor, requires_introduced_analytic_condition, safe_for_prepass,
+        safe_for_tactic, safe_for_tactic_with_domain_flags, ConditionClassKind, ProvenanceKind,
+        RequirementDescriptorKind, SimplifyPurpose, SolveSafetyKind,
     };
     use crate::log_domain::DomainModeKind;
 
@@ -125,6 +169,23 @@ mod tests {
     }
 
     #[test]
+    fn safe_for_tactic_flags_matches_mode_dispatch() {
+        let safety = SolveSafetyKind::NeedsCondition(ConditionClassKind::Definability);
+        assert_eq!(
+            safe_for_tactic_with_domain_flags(safety, false, true),
+            safe_for_tactic(safety, DomainModeKind::Strict)
+        );
+        assert_eq!(
+            safe_for_tactic_with_domain_flags(safety, false, false),
+            safe_for_tactic(safety, DomainModeKind::Generic)
+        );
+        assert_eq!(
+            safe_for_tactic_with_domain_flags(safety, true, false),
+            safe_for_tactic(safety, DomainModeKind::Assume)
+        );
+    }
+
+    #[test]
     fn descriptor_mapping_is_stable() {
         let intrinsic = requirement_descriptor(SolveSafetyKind::IntrinsicCondition(
             ConditionClassKind::Analytic,
@@ -153,6 +214,22 @@ mod tests {
     fn always_and_never_have_no_descriptor() {
         assert_eq!(requirement_descriptor(SolveSafetyKind::Always), None);
         assert_eq!(requirement_descriptor(SolveSafetyKind::Never), None);
+    }
+
+    #[test]
+    fn introduced_analytic_requirement_detector_matches_policy() {
+        assert!(!requires_introduced_analytic_condition(
+            SolveSafetyKind::Always
+        ));
+        assert!(!requires_introduced_analytic_condition(
+            SolveSafetyKind::IntrinsicCondition(ConditionClassKind::Analytic)
+        ));
+        assert!(!requires_introduced_analytic_condition(
+            SolveSafetyKind::NeedsCondition(ConditionClassKind::Definability)
+        ));
+        assert!(requires_introduced_analytic_condition(
+            SolveSafetyKind::NeedsCondition(ConditionClassKind::Analytic)
+        ));
     }
 
     #[test]

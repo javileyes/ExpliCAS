@@ -35,8 +35,8 @@ impl crate::rule::Rule for AbsPositiveSimplifyRule {
         expr: cas_ast::ExprId,
         parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<crate::rule::Rewrite> {
-        use crate::domain::{DomainMode, Proof};
         use crate::helpers::prove_positive;
+        use crate::{DomainMode, Proof};
 
         let vd = parent_ctx.value_domain();
         let dm = parent_ctx.domain_mode();
@@ -51,10 +51,8 @@ impl crate::rule::Rule for AbsPositiveSimplifyRule {
         // Only needed in Strict/Generic to accept inherited positivity from sticky implicit domain.
         let implied = if abs_needs_implicit_domain_check(mode, proven) {
             if let Some(id) = parent_ctx.implicit_domain() {
-                let dc = crate::implicit_domain::DomainContext::new(
-                    id.conditions().iter().cloned().collect(),
-                );
-                let cond = crate::implicit_domain::ImplicitCondition::Positive(inner);
+                let dc = crate::DomainContext::new(id.conditions().iter().cloned().collect());
+                let cond = crate::ImplicitCondition::Positive(inner);
                 dc.is_condition_implied(ctx, &cond)
             } else {
                 false
@@ -69,9 +67,7 @@ impl crate::rule::Rule for AbsPositiveSimplifyRule {
             .local(expr, plan.rewritten);
 
         if matches!(plan.assumption, Some(AbsAssumptionKind::Positive)) {
-            rewrite = rewrite.assume(crate::assumptions::AssumptionEvent::positive_assumed(
-                ctx, inner,
-            ));
+            rewrite = rewrite.assume(crate::AssumptionEvent::positive_assumed(ctx, inner));
         }
         Some(rewrite)
     }
@@ -107,8 +103,8 @@ impl crate::rule::Rule for AbsNonNegativeSimplifyRule {
         expr: cas_ast::ExprId,
         parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<crate::rule::Rewrite> {
-        use crate::domain::{DomainMode, Proof};
         use crate::helpers::prove_nonnegative;
+        use crate::{DomainMode, Proof};
 
         let vd = parent_ctx.value_domain();
         let dm = parent_ctx.domain_mode();
@@ -123,10 +119,8 @@ impl crate::rule::Rule for AbsNonNegativeSimplifyRule {
         // Only needed in Strict/Generic to accept inherited non-negativity from sticky implicit domain.
         let implied = if abs_needs_implicit_domain_check(mode, proven) {
             if let Some(id) = parent_ctx.implicit_domain() {
-                let dc = crate::implicit_domain::DomainContext::new(
-                    id.conditions().iter().cloned().collect(),
-                );
-                let cond = crate::implicit_domain::ImplicitCondition::NonNegative(inner);
+                let dc = crate::DomainContext::new(id.conditions().iter().cloned().collect());
+                let cond = crate::ImplicitCondition::NonNegative(inner);
                 dc.is_condition_implied(ctx, &cond)
             } else {
                 false
@@ -141,7 +135,7 @@ impl crate::rule::Rule for AbsNonNegativeSimplifyRule {
             .local(expr, plan.rewritten);
 
         if matches!(plan.assumption, Some(AbsAssumptionKind::NonNegative)) {
-            rewrite = rewrite.assume(crate::assumptions::AssumptionEvent::nonnegative(ctx, inner));
+            rewrite = rewrite.assume(crate::AssumptionEvent::nonnegative(ctx, inner));
         }
         Some(rewrite)
     }
@@ -264,8 +258,8 @@ impl crate::rule::Rule for SymbolicRootCancelRule {
     ) -> Option<crate::rule::Rewrite> {
         let domain_mode = parent_ctx.domain_mode();
         let mode = abs_domain_mode_from_flags(
-            matches!(domain_mode, crate::domain::DomainMode::Assume),
-            matches!(domain_mode, crate::domain::DomainMode::Strict),
+            matches!(domain_mode, crate::DomainMode::Assume),
+            matches!(domain_mode, crate::DomainMode::Strict),
         );
         let value_domain = value_domain_mode_from_flag(matches!(
             parent_ctx.value_domain(),
@@ -274,16 +268,13 @@ impl crate::rule::Rule for SymbolicRootCancelRule {
 
         let plan = try_plan_symbolic_root_cancel_rewrite(ctx, expr, mode, value_domain)?;
 
-        use crate::implicit_domain::ImplicitCondition;
+        use crate::ImplicitCondition;
         let mut rewrite = crate::rule::Rewrite::new(plan.rewritten).desc(plan.desc);
         if plan.requires_nonnegative {
             rewrite = rewrite.requires(ImplicitCondition::NonNegative(plan.rewritten));
         }
         if matches!(plan.assumption, Some(AbsAssumptionKind::NonNegative)) {
-            rewrite = rewrite.assume(crate::assumptions::AssumptionEvent::nonnegative(
-                ctx,
-                plan.rewritten,
-            ));
+            rewrite = rewrite.assume(crate::AssumptionEvent::nonnegative(ctx, plan.rewritten));
         }
         Some(rewrite)
     }

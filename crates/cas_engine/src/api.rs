@@ -77,7 +77,7 @@ pub use cas_ast::BoundType;
 pub use cas_solver_core::solve_budget::SolveBudget;
 
 /// Options for solver operations including domain and budget.
-pub use crate::solver::SolverOptions;
+pub use crate::SolverOptions;
 
 // =============================================================================
 // Stable Entrypoints
@@ -94,39 +94,41 @@ pub use crate::solver::SolverOptions;
 /// // ... set up equation ...
 /// // let (solution_set, steps) = solve(&equation, "x", &mut engine.simplifier)?;
 /// ```
-pub use crate::solver::solve;
+pub use crate::solve;
 
 /// Solve an equation with explicit options, returning display-ready steps.
 ///
 /// V2.9.8: Type-safe API - returns `DisplaySolveSteps` which guarantees
 /// cleanup has been applied. Replaces the old `solve_with_options` for
 /// display-facing code.
-pub use crate::solver::solve_with_display_steps;
+pub use crate::solve_with_display_steps;
 
 /// Solver helper: check whether an expression contains the target variable.
-pub use crate::solver::contains_var;
+pub use crate::contains_var;
+/// Solver helper: infer variable from free-variable set.
+pub use crate::infer_solve_variable;
 /// Solver verification instrumentation counters.
-pub use crate::solver::verify_stats;
+pub use crate::verify_stats;
 /// Display-ready solve steps (post-cleanup).
 /// Wrapper type that enforces step processing has been applied.
-pub use crate::solver::DisplaySolveSteps;
+pub use crate::DisplaySolveSteps;
 /// Diagnostics collected during solve operation.
-pub use crate::solver::SolveDiagnostics;
+pub use crate::SolveDiagnostics;
 /// Raw solve step entry (pre-display wrapper).
-pub use crate::solver::SolveStep;
+pub use crate::SolveStep;
 /// Raw solve sub-step entry.
-pub use crate::solver::SolveSubStep;
+pub use crate::SolveSubStep;
 
 /// Verify a single candidate solution by substitution.
-pub use crate::solver::verify_solution;
+pub use crate::verify_solution;
 /// Verify an entire solution set by substitution.
-pub use crate::solver::verify_solution_set;
+pub use crate::verify_solution_set;
 /// Verification result for a complete solution set.
-pub use crate::solver::VerifyResult;
+pub use crate::VerifyResult;
 /// Solver verification status for one candidate solution.
-pub use crate::solver::VerifyStatus;
+pub use crate::VerifyStatus;
 /// Solver verification result summary.
-pub use crate::solver::VerifySummary;
+pub use crate::VerifySummary;
 
 // =============================================================================
 // Display Traits (Human-readable output)

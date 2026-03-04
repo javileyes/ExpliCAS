@@ -2,7 +2,6 @@
 // See too_many_arguments allows in: inverse_trig.rs, step.rs
 // See arc_with_non_send_sync allows in: profile_cache.rs
 
-pub(crate) mod assumptions;
 #[cfg(test)]
 mod assumptions_tests;
 pub(crate) mod best_so_far;
@@ -22,22 +21,16 @@ pub(crate) mod cycle_events;
 #[cfg(test)]
 mod cycle_events_tests;
 pub(crate) mod diagnostics;
-#[cfg(test)]
-mod diagnostics_tests;
-pub(crate) mod domain;
-pub(crate) mod domain_facts;
-#[cfg(test)]
-mod domain_facts_tests;
 pub(crate) mod domain_oracle;
 #[cfg(test)]
 mod domain_oracle_tests;
-#[cfg(test)]
-mod domain_tests;
 pub(crate) mod engine;
 pub(crate) mod eval;
 pub(crate) mod eval_step_pipeline;
 #[cfg(test)]
 mod eval_step_pipeline_tests;
+#[cfg(test)]
+mod events_tests;
 pub(crate) mod expand;
 #[cfg(test)]
 mod expand_tests;
@@ -66,7 +59,6 @@ pub mod rules;
 pub(crate) mod semantics;
 #[cfg(test)]
 mod semantics_tests;
-pub(crate) mod solve_safety;
 pub(crate) mod solver;
 pub(crate) mod step;
 pub(crate) mod step_optimization;
@@ -105,10 +97,6 @@ pub(crate) use cas_ast::visitors;
 pub use cas_formatter::visualizer;
 pub(crate) use cas_math::pattern_scanner;
 
-pub use assumptions::{
-    AssumptionCollector, AssumptionEvent, AssumptionKey, AssumptionKind, AssumptionRecord,
-    AssumptionReporting, ConditionClass,
-};
 pub use budget::{Budget, BudgetExceeded, BudgetScope, Metric, Operation, PassStats};
 pub use cas_math::expr_predicates::is_zero_expr as is_zero;
 pub use cas_math::rationalize::{rationalize_denominator, RationalizeConfig, RationalizeResult};
@@ -120,17 +108,34 @@ pub use cas_math::substitute::{
     SubstituteTraceStep,
 };
 pub use cas_math::telescoping_dirichlet::try_dirichlet_kernel_identity as try_dirichlet_kernel_identity_pub;
+pub use cas_solver_core::assumption_model::{
+    collect_assumption_records, collect_assumption_records_from_iter, expr_fingerprint,
+    AssumptionCollector, AssumptionEvent, AssumptionKey, AssumptionKind, AssumptionRecord,
+};
+pub use cas_solver_core::assumption_reporting::AssumptionReporting;
+pub use cas_solver_core::blocked_hint::BlockedHint;
+pub use cas_solver_core::blocked_hint_store::{
+    clear_blocked_hints, register_blocked_hint, take_blocked_hints,
+};
+pub use cas_solver_core::domain_cancel_decision::CancelDecision;
+pub use cas_solver_core::domain_facts_model::{
+    predicate_condition_class, proof_to_strength, strength_to_proof, DomainFact, FactStrength,
+    Predicate, Provenance,
+};
+pub use cas_solver_core::domain_gate::{can_apply_analytic, can_cancel_factor};
+pub use cas_solver_core::domain_gate::{decide, decide_by_class};
+pub use cas_solver_core::domain_mode::DomainMode;
+pub use cas_solver_core::domain_oracle_model::DomainOracle;
+pub use cas_solver_core::domain_policy::mode_allows_predicate;
+pub use cas_solver_core::domain_proof::Proof;
+pub use cas_solver_core::engine_events::{EngineEvent, StepListener};
+pub use cas_solver_core::solve_safety_policy::ConditionClass;
+pub use cas_solver_core::solve_safety_policy::RequirementDescriptorKind as RequirementDescriptor;
+pub use cas_solver_core::solve_safety_policy::SimplifyPurpose;
+pub use cas_solver_core::solve_safety_policy::SolveSafetyKind as SolveSafety;
 pub use const_fold::{fold_constants, ConstFoldMode, ConstFoldResult};
 pub use cycle_events::{CycleEvent, CycleLevel};
 pub use diagnostics::{Diagnostics, RequireOrigin, RequiredItem};
-pub use domain::{
-    can_apply_analytic, can_cancel_factor, clear_blocked_hints, register_blocked_hint,
-    take_blocked_hints, BlockedHint, CancelDecision, DomainMode, Proof,
-};
-pub use domain_facts::{
-    decide, decide_by_class, mode_allows_predicate, predicate_condition_class, proof_to_strength,
-    strength_to_proof, DomainFact, DomainOracle, FactStrength, Predicate, Provenance,
-};
 pub use domain_oracle::{oracle_allows_with_hint, StandardOracle};
 pub use engine::{
     eval_f64, eval_f64_checked, strip_all_holds, substitute_expr_by_id, EquivalenceResult,
@@ -170,11 +175,10 @@ pub use rule::{ChainedRewrite, Rewrite, Rule, SimpleRule, SoundnessLabel};
 pub use semantics::{
     AssumeScope, BranchPolicy, EvalConfig, InverseTrigPolicy, NormalFormGoal, ValueDomain,
 };
-pub use solve_safety::{RequirementDescriptor, SimplifyPurpose, SolveSafety};
 pub use solver::{
-    contains_var, solve, solve_with_display_steps, verify_solution, verify_solution_set,
-    verify_stats, DisplaySolveSteps, SolveCtx, SolveDiagnostics, SolveStep, SolveSubStep,
-    SolverOptions, VerifyResult, VerifyStatus, VerifySummary,
+    contains_var, infer_solve_variable, solve, solve_with_display_steps, verify_solution,
+    verify_solution_set, verify_stats, DisplaySolveSteps, SolveCtx, SolveDiagnostics, SolveStep,
+    SolveSubStep, SolverOptions, VerifyResult, VerifyStatus, VerifySummary,
 };
 pub use step::{
     pathsteps_to_expr_path, DisplayEvalSteps, ImportanceLevel, PathStep, Step, StepCategory,

@@ -459,7 +459,7 @@ fn build_pow_isolation_config(
     cas_solver_core::strategy_options::pow_runtime_config_with(
         opts.core_domain_mode(),
         opts.wildcard_scope(),
-        opts.value_domain == crate::semantics::ValueDomain::RealOnly,
+        opts.value_domain == crate::ValueDomain::RealOnly,
         opts.budget,
         || simplifier.collect_steps(),
         || crate::SimplifyOptions::for_solve_tactic(opts.domain_mode),
@@ -497,7 +497,7 @@ fn execute_isolation_pow(
             isolate(iso_lhs, iso_rhs, iso_op, var, simplifier, opts, ctx)
         },
         simplifier_simplify_expr,
-        |_simplifier| crate::domain::clear_blocked_hints(),
+        |_simplifier| crate::clear_blocked_hints(),
         |simplifier, expr| {
             simplifier
                 .simplify_with_options(expr, config.tactic_opts.clone())
@@ -509,12 +509,10 @@ fn execute_isolation_pow(
                 &simplifier.context,
                 tactic_base,
                 tactic_rhs,
-                opts.value_domain == crate::semantics::ValueDomain::RealOnly,
+                opts.value_domain == crate::ValueDomain::RealOnly,
                 opts.core_domain_mode(),
                 &ctx.domain_env,
-                |core_ctx, expr| {
-                    crate::helpers::prove_positive_core(core_ctx, expr, opts.value_domain)
-                },
+                |core_ctx, expr| super::prove_positive_core(core_ctx, expr, opts.value_domain),
             )
         },
         |simplifier, shortcut_rhs, shortcut_op| {
@@ -523,13 +521,17 @@ fn execute_isolation_pow(
         medium_step,
         |local_var, message| CasError::IsolationError(local_var.to_string(), message.to_string()),
         |core_ctx, assumption| {
-            ctx.note_assumption(crate::assumptions::assumption_event_from_log_assumption(
-                core_ctx, assumption, b, rhs,
-            ));
+            ctx.note_assumption(
+                cas_solver_core::assumption_model::assumption_event_from_log_assumption(
+                    core_ctx, assumption, b, rhs,
+                ),
+            );
         },
         |simplifier, equation| isolate_equation_solutions(equation, var, simplifier, opts, ctx),
         |core_ctx, hint| {
-            crate::assumptions::register_log_blocked_hint(core_ctx, hint);
+            crate::register_blocked_hint(cas_solver_core::assumption_model::map_log_blocked_hint(
+                core_ctx, hint,
+            ));
         },
         |message| CasError::UnsupportedInRealDomain(message.to_string()),
         |simplifier, equation| isolate_equation(equation, var, simplifier, opts, ctx),

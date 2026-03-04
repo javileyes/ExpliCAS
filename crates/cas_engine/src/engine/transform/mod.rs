@@ -71,6 +71,9 @@ pub(super) struct LocalSimplificationTransformer<'a> {
     pub(super) depth_overflow_warned: bool,
     /// The current root expression being simplified, used to compute global_after for steps
     pub(super) root_expr: ExprId,
+    /// Optional event listener for rule-application events.
+    pub(super) event_listener:
+        Option<&'a mut (dyn cas_solver_core::engine_events::StepListener + 'static)>,
 
     // ── Rule context & filtering ─────────────────────────────────────────
     pub(super) profiler: &'a mut RuleProfiler,
@@ -80,7 +83,7 @@ pub(super) struct LocalSimplificationTransformer<'a> {
     /// Current phase of the simplification pipeline (controls which rules can run)
     pub(super) current_phase: crate::phase::SimplifyPhase,
     /// Purpose of simplification: controls which rules are filtered by solve_safety()
-    pub(super) simplify_purpose: crate::solve_safety::SimplifyPurpose,
+    pub(super) simplify_purpose: crate::SimplifyPurpose,
 
     // ── Cycle detection ──────────────────────────────────────────────────
     /// Cycle detector for ping-pong detection (always-on as of V2.14.30)

@@ -31,15 +31,12 @@ impl crate::rule::Rule for InverseTrigCompositionRule {
         let plan = try_plan_inverse_trig_composition_expr(
             ctx,
             expr,
-            matches!(mode, crate::domain::DomainMode::Assume),
-            matches!(mode, crate::domain::DomainMode::Strict),
+            matches!(mode, crate::DomainMode::Assume),
+            matches!(mode, crate::DomainMode::Strict),
         )?;
         let mut rewrite = Rewrite::new(plan.rewritten).desc(plan.desc);
         if let Some(defined_expr) = plan.assume_defined_expr {
-            rewrite = rewrite.assume(crate::assumptions::AssumptionEvent::defined(
-                ctx,
-                defined_expr,
-            ));
+            rewrite = rewrite.assume(crate::AssumptionEvent::defined(ctx, defined_expr));
         }
         Some(rewrite)
     }
@@ -238,13 +235,11 @@ impl crate::rule::Rule for PrincipalBranchInverseTrigRule {
             Rewrite::new(plan.rewritten)
                 .desc(plan.desc)
                 .local(plan.local_before, plan.local_after)
-                .assume(
-                    crate::assumptions::AssumptionEvent::inv_trig_principal_range(
-                        ctx,
-                        plan.assumption_fn,
-                        plan.local_after,
-                    ),
-                ),
+                .assume(crate::AssumptionEvent::inv_trig_principal_range(
+                    ctx,
+                    plan.assumption_fn,
+                    plan.local_after,
+                )),
         )
     }
 

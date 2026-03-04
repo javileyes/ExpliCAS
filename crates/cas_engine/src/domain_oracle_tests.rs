@@ -1,7 +1,7 @@
-use crate::domain::DomainMode;
-use crate::domain_facts::{DomainOracle, FactStrength, Predicate};
-use crate::domain_oracle::StandardOracle;
 use crate::semantics::ValueDomain;
+use crate::DomainMode;
+use crate::StandardOracle;
+use crate::{DomainOracle, FactStrength, Predicate};
 use cas_ast::Context;
 
 #[test]
@@ -140,7 +140,7 @@ fn test_oracle_parity_with_can_cancel_factor() {
         // Proven nonzero (constant 2)
         let oracle_decision = oracle.allows(&Predicate::NonZero(two));
         let proof = crate::helpers::prove_nonzero(&ctx, two);
-        let legacy_decision = crate::domain::can_cancel_factor(mode, proof);
+        let legacy_decision = crate::can_cancel_factor(mode, proof);
         assert_eq!(
             oracle_decision.allow, legacy_decision.allow,
             "Mismatch for mode={:?}, expr=2",
@@ -150,7 +150,7 @@ fn test_oracle_parity_with_can_cancel_factor() {
         // Disproven nonzero (constant 0)
         let oracle_decision = oracle.allows(&Predicate::NonZero(zero));
         let proof = crate::helpers::prove_nonzero(&ctx, zero);
-        let legacy_decision = crate::domain::can_cancel_factor(mode, proof);
+        let legacy_decision = crate::can_cancel_factor(mode, proof);
         assert_eq!(
             oracle_decision.allow, legacy_decision.allow,
             "Mismatch for mode={:?}, expr=0",
@@ -160,7 +160,7 @@ fn test_oracle_parity_with_can_cancel_factor() {
         // Unknown nonzero (variable x)
         let oracle_decision = oracle.allows(&Predicate::NonZero(x));
         let proof = crate::helpers::prove_nonzero(&ctx, x);
-        let legacy_decision = crate::domain::can_cancel_factor(mode, proof);
+        let legacy_decision = crate::can_cancel_factor(mode, proof);
         assert_eq!(
             oracle_decision.allow, legacy_decision.allow,
             "Mismatch for mode={:?}, expr=x",

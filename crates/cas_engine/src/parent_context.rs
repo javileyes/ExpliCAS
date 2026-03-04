@@ -19,7 +19,7 @@ pub struct ParentContext {
     /// Budget for auto-expand (only used when auto_expand=true)
     pub(crate) auto_expand_budget: Option<crate::phase::ExpandBudget>,
     /// Domain assumption mode for factor cancellation
-    pub(crate) domain_mode: crate::domain::DomainMode,
+    pub(crate) domain_mode: crate::DomainMode,
     /// Inverse trig composition policy
     pub(crate) inv_trig: crate::semantics::InverseTrigPolicy,
     /// Value domain for constants (RealOnly, ComplexEnabled)
@@ -31,11 +31,11 @@ pub struct ParentContext {
     /// Root expression for this simplification pass (for implicit domain)
     pub(crate) root_expr: Option<ExprId>,
     /// Cached implicit domain (computed once per pass)
-    pub(crate) implicit_domain: Option<crate::implicit_domain::ImplicitDomain>,
+    pub(crate) implicit_domain: Option<crate::ImplicitDomain>,
     /// Context mode (Standard, Solve, etc.)
     pub(crate) context_mode: crate::options::ContextMode,
     /// Purpose of simplification (Eval, SolvePrepass, SolveTactic)
-    pub(crate) simplify_purpose: crate::solve_safety::SimplifyPurpose,
+    pub(crate) simplify_purpose: crate::SimplifyPurpose,
     /// Count of Div ancestors - used to guard trig expansions in quotients
     pub(crate) div_ancestor_count: usize,
     /// True if inside sin/cos/tan arg with large coeff (n>2), blocks trig expansion
@@ -55,7 +55,7 @@ impl ParentContext {
             expand_mode: false,
             auto_expand: false,
             auto_expand_budget: None,
-            domain_mode: crate::domain::DomainMode::default(),
+            domain_mode: crate::DomainMode::default(),
             inv_trig: crate::semantics::InverseTrigPolicy::default(),
             value_domain: crate::semantics::ValueDomain::default(),
             branch: crate::semantics::BranchPolicy::default(),
@@ -63,7 +63,7 @@ impl ParentContext {
             root_expr: None,
             implicit_domain: None,
             context_mode: crate::options::ContextMode::default(),
-            simplify_purpose: crate::solve_safety::SimplifyPurpose::default(),
+            simplify_purpose: crate::SimplifyPurpose::default(),
             div_ancestor_count: 0,
             trig_large_coeff_protected: false,
             autoexpand_binomials: crate::options::AutoExpandBinomials::Off,
@@ -79,7 +79,7 @@ impl ParentContext {
             expand_mode: false,
             auto_expand: false,
             auto_expand_budget: None,
-            domain_mode: crate::domain::DomainMode::default(),
+            domain_mode: crate::DomainMode::default(),
             inv_trig: crate::semantics::InverseTrigPolicy::default(),
             value_domain: crate::semantics::ValueDomain::default(),
             branch: crate::semantics::BranchPolicy::default(),
@@ -87,7 +87,7 @@ impl ParentContext {
             root_expr: None,
             implicit_domain: None,
             context_mode: crate::options::ContextMode::default(),
-            simplify_purpose: crate::solve_safety::SimplifyPurpose::default(),
+            simplify_purpose: crate::SimplifyPurpose::default(),
             div_ancestor_count: 0,
             trig_large_coeff_protected: false,
             autoexpand_binomials: crate::options::AutoExpandBinomials::Off,
@@ -103,7 +103,7 @@ impl ParentContext {
             expand_mode: false,
             auto_expand: false,
             auto_expand_budget: None,
-            domain_mode: crate::domain::DomainMode::default(),
+            domain_mode: crate::DomainMode::default(),
             inv_trig: crate::semantics::InverseTrigPolicy::default(),
             value_domain: crate::semantics::ValueDomain::default(),
             branch: crate::semantics::BranchPolicy::default(),
@@ -111,7 +111,7 @@ impl ParentContext {
             root_expr: None,
             implicit_domain: None,
             context_mode: crate::options::ContextMode::default(),
-            simplify_purpose: crate::solve_safety::SimplifyPurpose::default(),
+            simplify_purpose: crate::SimplifyPurpose::default(),
             div_ancestor_count: 0,
             trig_large_coeff_protected: false,
             autoexpand_binomials: crate::options::AutoExpandBinomials::Off,
@@ -130,7 +130,7 @@ impl ParentContext {
             expand_mode,
             auto_expand: false,
             auto_expand_budget: None,
-            domain_mode: crate::domain::DomainMode::default(),
+            domain_mode: crate::DomainMode::default(),
             inv_trig: crate::semantics::InverseTrigPolicy::default(),
             value_domain: crate::semantics::ValueDomain::default(),
             branch: crate::semantics::BranchPolicy::default(),
@@ -138,7 +138,7 @@ impl ParentContext {
             root_expr: None,
             implicit_domain: None,
             context_mode: crate::options::ContextMode::default(),
-            simplify_purpose: crate::solve_safety::SimplifyPurpose::default(),
+            simplify_purpose: crate::SimplifyPurpose::default(),
             div_ancestor_count: 0,
             trig_large_coeff_protected: false,
             autoexpand_binomials: crate::options::AutoExpandBinomials::Off,
@@ -193,7 +193,7 @@ impl ParentContext {
     }
 
     /// Get the domain assumption mode
-    pub fn domain_mode(&self) -> crate::domain::DomainMode {
+    pub fn domain_mode(&self) -> crate::DomainMode {
         self.domain_mode
     }
 
@@ -207,15 +207,12 @@ impl ParentContext {
     /// let oracle = parent_ctx.make_oracle(ctx);
     /// let decision = oracle.allows(&Predicate::NonZero(factor_id));
     /// ```
-    pub fn make_oracle<'a>(
-        &self,
-        ctx: &'a cas_ast::Context,
-    ) -> crate::domain_oracle::StandardOracle<'a> {
-        crate::domain_oracle::StandardOracle::new(ctx, self.domain_mode, self.value_domain)
+    pub fn make_oracle<'a>(&self, ctx: &'a cas_ast::Context) -> crate::StandardOracle<'a> {
+        crate::StandardOracle::new(ctx, self.domain_mode, self.value_domain)
     }
 
     /// Set domain_mode flag, returning a new context
-    pub fn with_domain_mode(mut self, mode: crate::domain::DomainMode) -> Self {
+    pub fn with_domain_mode(mut self, mode: crate::DomainMode) -> Self {
         self.domain_mode = mode;
         self
     }
@@ -322,7 +319,7 @@ impl ParentContext {
 
     /// Set root expression and compute implicit domain
     pub fn with_root_expr(mut self, ctx: &Context, root: ExprId) -> Self {
-        use crate::implicit_domain::infer_implicit_domain;
+        use crate::infer_implicit_domain;
         self.root_expr = Some(root);
         self.implicit_domain = Some(infer_implicit_domain(ctx, root, self.value_domain));
         self
@@ -336,27 +333,24 @@ impl ParentContext {
     }
 
     /// Get cached implicit domain
-    pub fn implicit_domain(&self) -> Option<&crate::implicit_domain::ImplicitDomain> {
+    pub fn implicit_domain(&self) -> Option<&crate::ImplicitDomain> {
         self.implicit_domain.as_ref()
     }
 
     /// Set implicit domain (for propagation during rule execution)
     /// V2.14.20: Used to propagate pre-computed implicit domain from initial context
-    pub fn with_implicit_domain(
-        mut self,
-        domain: Option<crate::implicit_domain::ImplicitDomain>,
-    ) -> Self {
+    pub fn with_implicit_domain(mut self, domain: Option<crate::ImplicitDomain>) -> Self {
         self.implicit_domain = domain;
         self
     }
 
     /// Get simplify purpose (Eval, SolvePrepass, SolveTactic)
-    pub fn simplify_purpose(&self) -> crate::solve_safety::SimplifyPurpose {
+    pub fn simplify_purpose(&self) -> crate::SimplifyPurpose {
         self.simplify_purpose
     }
 
     /// Set simplify purpose, returning a new context
-    pub fn with_simplify_purpose(mut self, purpose: crate::solve_safety::SimplifyPurpose) -> Self {
+    pub fn with_simplify_purpose(mut self, purpose: crate::SimplifyPurpose) -> Self {
         self.simplify_purpose = purpose;
         self
     }
@@ -381,8 +375,7 @@ impl ParentContext {
         // Check simplify_purpose (solver pre-pass or tactic)
         matches!(
             self.simplify_purpose,
-            crate::solve_safety::SimplifyPurpose::SolvePrepass
-                | crate::solve_safety::SimplifyPurpose::SolveTactic
+            crate::SimplifyPurpose::SolvePrepass | crate::SimplifyPurpose::SolveTactic
         )
     }
 

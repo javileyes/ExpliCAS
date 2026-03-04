@@ -30,17 +30,17 @@ impl crate::rule::Rule for ExponentialLogRule {
         expr: cas_ast::ExprId,
         parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<crate::rule::Rewrite> {
-        use crate::domain::Proof;
         use crate::helpers::prove_positive;
-        use crate::implicit_domain::ImplicitCondition;
+        use crate::ImplicitCondition;
+        use crate::Proof;
 
         let planned = try_rewrite_exponential_log_inverse_expr(ctx, expr)?;
         let vd = parent_ctx.value_domain();
         let positive = prove_positive(ctx, planned.positive_subject, vd);
         let domain_mode = parent_ctx.domain_mode();
         let mode = log_exp_inverse_policy_mode_from_flags(
-            matches!(domain_mode, crate::domain::DomainMode::Assume),
-            matches!(domain_mode, crate::domain::DomainMode::Strict),
+            matches!(domain_mode, crate::DomainMode::Assume),
+            matches!(domain_mode, crate::DomainMode::Strict),
         );
         let policy = plan_exponential_log_inverse_policy(mode, positive == Proof::Proven);
 
@@ -63,20 +63,18 @@ impl crate::rule::Rule for ExponentialLogRule {
         Some(crate::target_kind::TargetKindSet::POW)
     }
 
-    fn solve_safety(&self) -> crate::solve_safety::SolveSafety {
+    fn solve_safety(&self) -> crate::SolveSafety {
         // Intrinsic: the condition x > 0 is already guaranteed by ln(x)/log(b,x)
         // being present in the input expression. This is inherited, not introduced.
-        crate::solve_safety::SolveSafety::IntrinsicCondition(
-            crate::assumptions::ConditionClass::Analytic,
-        )
+        crate::SolveSafety::IntrinsicCondition(crate::ConditionClass::Analytic)
     }
 }
 
 define_rule!(
     SplitLogExponentsRule,
     "Split Log Exponents",
-    solve_safety: crate::solve_safety::SolveSafety::NeedsCondition(
-        crate::assumptions::ConditionClass::Analytic
+    solve_safety: crate::SolveSafety::NeedsCondition(
+        crate::ConditionClass::Analytic
     ),
     |ctx, expr, _parent_ctx| {
     let rewrite = try_rewrite_split_log_exponents_expr(ctx, expr)?;
@@ -86,8 +84,8 @@ define_rule!(
 define_rule!(
     LogInversePowerRule,
     "Log Inverse Power",
-    solve_safety: crate::solve_safety::SolveSafety::NeedsCondition(
-        crate::assumptions::ConditionClass::Analytic
+    solve_safety: crate::SolveSafety::NeedsCondition(
+        crate::ConditionClass::Analytic
     ),
     |ctx, expr, _parent_ctx| {
     let rewrite = try_rewrite_log_inverse_power_expr(ctx, expr)?;
@@ -112,9 +110,9 @@ impl crate::rule::Rule for LogExpInverseRule {
         expr: cas_ast::ExprId,
         parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<crate::rule::Rewrite> {
-        use crate::domain::Proof;
         use crate::helpers::prove_positive;
         use crate::semantics::ValueDomain;
+        use crate::Proof;
 
         let matched = try_match_log_exp_inverse_expr(ctx, expr)?;
         match matched {
@@ -129,8 +127,8 @@ impl crate::rule::Rule for LogExpInverseRule {
                 let vd = parent_ctx.value_domain();
                 let domain_mode = parent_ctx.domain_mode();
                 let mode = log_exp_inverse_policy_mode_from_flags(
-                    matches!(domain_mode, crate::domain::DomainMode::Assume),
-                    matches!(domain_mode, crate::domain::DomainMode::Strict),
+                    matches!(domain_mode, crate::DomainMode::Assume),
+                    matches!(domain_mode, crate::DomainMode::Strict),
                 );
                 let plan = plan_log_exp_inverse_symbolic_policy(
                     mode,
@@ -149,13 +147,10 @@ impl crate::rule::Rule for LogExpInverseRule {
                         let base_minus_1 = ctx.add(Expr::Sub(base, one));
                         let mut rewrite = crate::rule::Rewrite::new(exponent)
                             .desc("log(b, b^x) → x")
-                            .requires(crate::implicit_domain::ImplicitCondition::NonZero(
-                                base_minus_1,
-                            ));
+                            .requires(crate::ImplicitCondition::NonZero(base_minus_1));
                         if assume_positive_base {
-                            rewrite = rewrite.assume(
-                                crate::assumptions::AssumptionEvent::positive_assumed(ctx, base),
-                            );
+                            rewrite =
+                                rewrite.assume(crate::AssumptionEvent::positive_assumed(ctx, base));
                         }
                         Some(rewrite)
                     }
@@ -196,18 +191,18 @@ impl crate::rule::Rule for LogPowerBaseRule {
         expr: cas_ast::ExprId,
         parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<crate::rule::Rewrite> {
-        use crate::domain::Proof;
         use crate::helpers::prove_positive;
-        use crate::implicit_domain::ImplicitCondition;
         use crate::semantics::ValueDomain;
+        use crate::ImplicitCondition;
+        use crate::Proof;
 
         let planned = try_rewrite_log_power_base_numeric_expr(ctx, expr)?;
 
         let vd = parent_ctx.value_domain();
         let domain_mode = parent_ctx.domain_mode();
         let mode = log_exp_inverse_policy_mode_from_flags(
-            matches!(domain_mode, crate::domain::DomainMode::Assume),
-            matches!(domain_mode, crate::domain::DomainMode::Strict),
+            matches!(domain_mode, crate::DomainMode::Assume),
+            matches!(domain_mode, crate::DomainMode::Strict),
         );
         let one = ctx.num(1);
         let policy = plan_log_power_base_numeric_policy(
@@ -312,18 +307,18 @@ impl crate::rule::Rule for AutoExpandLogRule {
         // Get domain mode from parent context
         let domain_mode = parent_ctx.domain_mode();
         let mode = log_auto_expand_mode_from_flags(
-            matches!(domain_mode, crate::domain::DomainMode::Assume),
-            matches!(domain_mode, crate::domain::DomainMode::Strict),
+            matches!(domain_mode, crate::DomainMode::Assume),
+            matches!(domain_mode, crate::DomainMode::Strict),
         );
 
         // V2.15: Use cached implicit_domain if available, fallback to computation
         let vd = parent_ctx.value_domain();
-        let implicit_domain: Option<crate::implicit_domain::ImplicitDomain> =
+        let implicit_domain: Option<crate::ImplicitDomain> =
             if log_auto_expand_needs_implicit_domain(mode) {
                 parent_ctx.implicit_domain().cloned().or_else(|| {
                     parent_ctx
                         .root_expr()
-                        .map(|root| crate::implicit_domain::infer_implicit_domain(ctx, root, vd))
+                        .map(|root| crate::infer_implicit_domain(ctx, root, vd))
                 })
             } else {
                 None
@@ -335,11 +330,9 @@ impl crate::rule::Rule for AutoExpandLogRule {
             mode,
             |factor| crate::helpers::prove_positive(ctx, factor, vd).is_proven(),
             |factor| {
-                let cond = crate::implicit_domain::ImplicitCondition::Positive(factor);
+                let cond = crate::ImplicitCondition::Positive(factor);
                 implicit_domain.as_ref().is_some_and(|id| {
-                    let dc = crate::implicit_domain::DomainContext::new(
-                        id.conditions().iter().cloned().collect(),
-                    );
+                    let dc = crate::DomainContext::new(id.conditions().iter().cloned().collect());
                     dc.is_condition_implied(ctx, &cond)
                 })
             },
@@ -350,23 +343,23 @@ impl crate::rule::Rule for AutoExpandLogRule {
                 expand_log_for_rule(ctx, expr, arg, &[])
             }
             cas_math::logarithm_inverse_support::LogAutoExpandPositivityPlan::AllowWithAssumptions(factors) => {
-                let events: Vec<crate::assumptions::AssumptionEvent> = factors
+                let events: Vec<crate::AssumptionEvent> = factors
                     .into_iter()
-                    .map(|factor| crate::assumptions::AssumptionEvent::positive_assumed(ctx, factor))
+                    .map(|factor| crate::AssumptionEvent::positive_assumed(ctx, factor))
                     .collect();
                 expand_log_for_rule(ctx, expr, arg, &events)
             }
             cas_math::logarithm_inverse_support::LogAutoExpandPositivityPlan::Blocked { factor } => {
                 if log_auto_expand_emits_blocked_hint(mode) {
-                    let hint = crate::domain::BlockedHint {
-                        key: crate::assumptions::AssumptionKey::Positive {
-                            expr_fingerprint: crate::assumptions::expr_fingerprint(ctx, factor),
+                    let hint = crate::BlockedHint {
+                        key: crate::AssumptionKey::Positive {
+                            expr_fingerprint: crate::expr_fingerprint(ctx, factor),
                         },
                         expr_id: factor,
                         rule: "AutoExpandLogRule".to_string(),
                         suggestion: "Use 'semantics set domain assume' to enable log expansion.",
                     };
-                    crate::domain::register_blocked_hint(hint);
+                    crate::register_blocked_hint(hint);
                 }
                 None
             }
@@ -395,7 +388,7 @@ fn expand_log_for_rule(
     ctx: &mut Context,
     original: ExprId,
     arg: ExprId,
-    events: &[crate::assumptions::AssumptionEvent],
+    events: &[crate::AssumptionEvent],
 ) -> Option<Rewrite> {
     let planned =
         cas_math::logarithm_inverse_support::try_expand_log_auto_rule_expr(ctx, original, arg)?;

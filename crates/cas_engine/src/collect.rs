@@ -13,8 +13,8 @@ pub(crate) type CollectResult = CollectSemanticsResult;
 /// Check if an expression contains any Div with a denominator that is not proven non-zero.
 /// This indicates "undefined risk" - the expression could be undefined at some points.
 pub(crate) fn has_undefined_risk(ctx: &Context, expr: ExprId) -> bool {
-    use crate::domain::Proof;
     use crate::helpers::prove_nonzero;
+    use crate::Proof;
 
     cas_math::undefined_risk_support::has_undefined_risk_with(ctx, expr, |core_ctx, den| {
         prove_nonzero(core_ctx, den) == Proof::Proven

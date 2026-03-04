@@ -139,13 +139,13 @@ impl Simplifier {
                     }
                 );
                 let hint_str = match &hint.key {
-                    crate::assumptions::AssumptionKey::NonZero { .. } => {
+                    crate::AssumptionKey::NonZero { .. } => {
                         format!("{} ≠ 0", expr_display)
                     }
-                    crate::assumptions::AssumptionKey::Positive { .. } => {
+                    crate::AssumptionKey::Positive { .. } => {
                         format!("{} > 0", expr_display)
                     }
-                    crate::assumptions::AssumptionKey::NonNegative { .. } => {
+                    crate::AssumptionKey::NonNegative { .. } => {
                         format!("{} ≥ 0", expr_display)
                     }
                     _ => format!("{} ({})", expr_display, hint.rule),
@@ -213,13 +213,13 @@ impl Simplifier {
                     }
                 );
                 let hint_str = match &hint.key {
-                    crate::assumptions::AssumptionKey::NonZero { .. } => {
+                    crate::AssumptionKey::NonZero { .. } => {
                         format!("{} ≠ 0", expr_display)
                     }
-                    crate::assumptions::AssumptionKey::Positive { .. } => {
+                    crate::AssumptionKey::Positive { .. } => {
                         format!("{} > 0", expr_display)
                     }
-                    crate::assumptions::AssumptionKey::NonNegative { .. } => {
+                    crate::AssumptionKey::NonNegative { .. } => {
                         format!("{} ≥ 0", expr_display)
                     }
                     _ => format!("{} ({})", expr_display, hint.rule),
@@ -274,13 +274,13 @@ impl Simplifier {
                         }
                     );
                     let hint_str = match &hint.key {
-                        crate::assumptions::AssumptionKey::NonZero { .. } => {
+                        crate::AssumptionKey::NonZero { .. } => {
                             format!("{} ≠ 0", expr_display)
                         }
-                        crate::assumptions::AssumptionKey::Positive { .. } => {
+                        crate::AssumptionKey::Positive { .. } => {
                             format!("{} > 0", expr_display)
                         }
-                        crate::assumptions::AssumptionKey::NonNegative { .. } => {
+                        crate::AssumptionKey::NonNegative { .. } => {
                             format!("{} ≥ 0", expr_display)
                         }
                         _ => format!("{} ({})", expr_display, hint.rule),

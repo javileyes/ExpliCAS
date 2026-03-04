@@ -1,60 +1,15 @@
 use cas_ast::Equation;
 
-/// Options for solver operations, containing semantic context.
-///
-/// This struct passes value domain and domain mode information to the solver,
-/// enabling domain-aware decisions like rejecting log operations on negative bases.
-#[derive(Debug, Clone, Copy)]
-pub struct SolverOptions {
-    /// The value domain (RealOnly or ComplexEnabled)
-    pub value_domain: crate::semantics::ValueDomain,
-    /// The domain mode (Strict, Assume, Generic)
-    pub domain_mode: crate::domain::DomainMode,
-    /// Scope for assumptions (only active if domain_mode=Assume)
-    pub assume_scope: crate::semantics::AssumeScope,
-    /// V2.0: Budget for conditional branching (anti-explosion)
-    pub budget: cas_solver_core::solve_budget::SolveBudget,
-    /// V2.9.8: If true, generate detailed step narrative (5 atomic steps).
-    /// If false, generate compact narrative (3 steps for Succinct verbosity).
-    pub detailed_steps: bool,
-}
+pub type SolverOptions = cas_solver_core::solver_options::SolverOptions;
 
-impl Default for SolverOptions {
-    fn default() -> Self {
-        Self {
-            value_domain: crate::semantics::ValueDomain::RealOnly,
-            domain_mode: crate::domain::DomainMode::Generic,
-            assume_scope: crate::semantics::AssumeScope::Real,
-            budget: cas_solver_core::solve_budget::SolveBudget::default(),
-            detailed_steps: true, // V2.9.8: Default to detailed (Normal/Verbose)
-        }
-    }
-}
-
-impl SolverOptions {
-    /// Build solver options from engine eval options.
-    pub fn from_eval_options(options: &crate::options::EvalOptions) -> Self {
-        Self {
-            value_domain: options.shared.semantics.value_domain,
-            domain_mode: options.shared.semantics.domain_mode,
-            assume_scope: options.shared.semantics.assume_scope,
-            budget: options.budget,
-            ..Default::default()
-        }
-    }
-
-    /// Convert engine domain mode into core solver domain mode kind.
-    pub fn core_domain_mode(&self) -> cas_solver_core::log_domain::DomainModeKind {
-        cas_solver_core::log_domain::domain_mode_kind_from_flags(
-            matches!(self.domain_mode, crate::domain::DomainMode::Assume),
-            matches!(self.domain_mode, crate::domain::DomainMode::Strict),
-        )
-    }
-
-    /// Returns true when assume-scope allows wildcard assumptions.
-    pub fn wildcard_scope(&self) -> bool {
-        self.assume_scope == crate::semantics::AssumeScope::Wildcard
-    }
+/// Build solver options from engine eval options.
+pub fn solver_options_from_eval_options(options: &crate::EvalOptions) -> SolverOptions {
+    SolverOptions::from_axes(
+        options.shared.semantics.value_domain,
+        options.shared.semantics.domain_mode,
+        options.shared.semantics.assume_scope,
+        options.budget,
+    )
 }
 
 /// Domain environment for solver operations.
@@ -64,7 +19,7 @@ impl SolverOptions {
 ///
 /// This is passed explicitly rather than via TLS for clean reentrancy and testability.
 pub(crate) type SolveDomainEnv =
-    cas_solver_core::domain_env::SolveDomainEnv<crate::implicit_domain::ImplicitDomain>;
+    cas_solver_core::solve_aliases::SolveDomainEnv<crate::ImplicitDomain>;
 
 /// Solver context — threaded explicitly through the solve pipeline.
 ///
@@ -75,10 +30,10 @@ pub(crate) type SolveDomainEnv =
 /// so recursive sub-solves contribute to one accumulator set.
 /// `solve_with_display_steps` creates one, and every recursive
 /// `solve_with_ctx_and_options` / `solve_with_options` pushes into it.
-pub type SolveCtx = cas_solver_core::solve_context::SolveContext<
+pub type SolveCtx = cas_solver_core::solve_aliases::SolveCtx<
     SolveDomainEnv,
-    crate::implicit_domain::ImplicitCondition,
-    crate::assumptions::AssumptionEvent,
+    crate::ImplicitCondition,
+    crate::AssumptionEvent,
     cas_formatter::display_transforms::ScopeTag,
 >;
 
@@ -90,23 +45,23 @@ pub type SolveCtx = cas_solver_core::solve_context::SolveContext<
 
 /// Display-ready solve steps after didactic cleanup and narration.
 /// All renderers (text, timeline, JSON) consume this type only.
-pub type DisplaySolveSteps = cas_solver_core::display_steps::DisplaySteps<SolveStep>;
+pub type DisplaySolveSteps = cas_solver_core::solve_aliases::DisplaySolveSteps<SolveStep>;
 
 /// Diagnostics collected during solve operation.
 ///
 /// This is returned alongside solutions to provide transparency about
 /// what conditions were required vs assumed during solving.
-pub type SolveDiagnostics = cas_solver_core::solve_types::SolveDiagnostics<
-    crate::implicit_domain::ImplicitCondition,
-    crate::assumptions::AssumptionEvent,
-    crate::assumptions::AssumptionRecord,
+pub type SolveDiagnostics = cas_solver_core::solve_aliases::SolveDiagnostics<
+    crate::ImplicitCondition,
+    crate::AssumptionEvent,
+    crate::AssumptionRecord,
     cas_formatter::display_transforms::ScopeTag,
 >;
 
 /// Educational sub-step for solver derivations (e.g., completing the square)
 /// Displayed as indented in REPL and collapsible in timeline.
 pub type SolveSubStep =
-    cas_solver_core::solve_types::SolveSubStep<Equation, crate::step::ImportanceLevel>;
+    cas_solver_core::solve_aliases::SolveSubStep<Equation, crate::ImportanceLevel>;
 
 pub type SolveStep =
-    cas_solver_core::solve_types::SolveStep<Equation, crate::step::ImportanceLevel, SolveSubStep>;
+    cas_solver_core::solve_aliases::SolveStep<Equation, crate::ImportanceLevel, SolveSubStep>;

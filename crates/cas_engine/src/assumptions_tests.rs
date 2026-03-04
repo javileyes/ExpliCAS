@@ -1,6 +1,5 @@
-use crate::assumptions::{
-    assumption_event_from_log_assumption, collect_assumption_records,
-    collect_assumption_records_from_iter, map_log_blocked_hint_to_domain_hint, AssumptionCollector,
+use crate::{
+    collect_assumption_records, collect_assumption_records_from_iter, AssumptionCollector,
     AssumptionEvent, AssumptionReporting,
 };
 use cas_ast::Context;
@@ -149,13 +148,13 @@ fn test_assumption_event_from_log_assumption_targets_base_and_rhs() {
     let base = ctx.var("b");
     let rhs = ctx.var("r");
 
-    let base_event = assumption_event_from_log_assumption(
+    let base_event = cas_solver_core::assumption_model::assumption_event_from_log_assumption(
         &ctx,
         cas_solver_core::log_domain::LogAssumption::PositiveBase,
         base,
         rhs,
     );
-    let rhs_event = assumption_event_from_log_assumption(
+    let rhs_event = cas_solver_core::assumption_model::assumption_event_from_log_assumption(
         &ctx,
         cas_solver_core::log_domain::LogAssumption::PositiveRhs,
         base,
@@ -177,7 +176,7 @@ fn test_map_log_blocked_hint_to_domain_hint_preserves_payload() {
         suggestion: "use `semantics set domain assume`",
     };
 
-    let blocked = map_log_blocked_hint_to_domain_hint(&ctx, hint);
+    let blocked = cas_solver_core::assumption_model::map_log_blocked_hint(&ctx, hint);
     let expected = AssumptionEvent::positive(&ctx, base);
 
     assert_eq!(blocked.key, expected.key);

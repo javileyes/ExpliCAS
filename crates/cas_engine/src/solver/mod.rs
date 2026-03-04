@@ -5,15 +5,19 @@ mod types;
 
 use crate::engine::Simplifier;
 use cas_ast::{Equation, ExprId};
+use cas_math::tri_proof::TriProof;
+use cas_solver_core::external_proof::map_external_nonzero_status_with;
 
 pub use self::check::{
     verify_solution, verify_solution_set, VerifyResult, VerifyStatus, VerifySummary,
 };
 pub use cas_solver_core::isolation_utils::contains_var;
+pub use cas_solver_core::solve_infer::infer_solve_variable;
 pub use cas_solver_core::verify_stats;
 pub(crate) use types::SolveDomainEnv;
 pub use types::{
-    DisplaySolveSteps, SolveCtx, SolveDiagnostics, SolveStep, SolveSubStep, SolverOptions,
+    solver_options_from_eval_options, DisplaySolveSteps, SolveCtx, SolveDiagnostics, SolveStep,
+    SolveSubStep, SolverOptions,
 };
 
 pub use self::solve_core::{solve, solve_with_display_steps};
@@ -39,7 +43,7 @@ pub(crate) fn simplifier_simplify_expr(simplifier: &mut Simplifier, expr: ExprId
 }
 
 pub(crate) fn simplifier_expand_expr(simplifier: &mut Simplifier, expr: ExprId) -> ExprId {
-    crate::expand::expand(&mut simplifier.context, expr)
+    crate::expand(&mut simplifier.context, expr)
 }
 
 pub(crate) fn simplifier_render_expr(simplifier: &mut Simplifier, expr: ExprId) -> String {
@@ -62,11 +66,19 @@ pub(crate) fn simplifier_prove_nonzero_status(
     simplifier: &mut Simplifier,
     expr: ExprId,
 ) -> cas_solver_core::linear_solution::NonZeroStatus {
-    cas_solver_core::external_proof::classify_nonzero_status_with_tri_prover(
-        &simplifier.context,
-        expr,
-        crate::helpers::prove_nonzero_core,
+    map_external_nonzero_status_with(
+        crate::prove_nonzero(&simplifier.context, expr),
+        |proof| matches!(proof, crate::Proof::Proven | crate::Proof::ProvenImplicit),
+        |proof| matches!(proof, crate::Proof::Disproven),
     )
+}
+
+pub(crate) fn prove_positive_core(
+    ctx: &cas_ast::Context,
+    expr: ExprId,
+    value_domain: crate::ValueDomain,
+) -> TriProof {
+    cas_solver_core::predicate_proofs::proof_to_core(crate::prove_positive(ctx, expr, value_domain))
 }
 
 pub(crate) fn simplifier_is_known_negative(simplifier: &mut Simplifier, expr: ExprId) -> bool {
@@ -74,9 +86,5 @@ pub(crate) fn simplifier_is_known_negative(simplifier: &mut Simplifier, expr: Ex
 }
 
 pub(crate) fn medium_step(description: String, equation_after: Equation) -> SolveStep {
-    SolveStep::new(
-        description,
-        equation_after,
-        crate::step::ImportanceLevel::Medium,
-    )
+    SolveStep::new(description, equation_after, crate::ImportanceLevel::Medium)
 }

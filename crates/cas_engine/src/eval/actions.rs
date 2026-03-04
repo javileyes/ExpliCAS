@@ -39,7 +39,7 @@ impl Engine {
             resolved,
         );
 
-        let solver_opts = crate::api::SolverOptions::from_eval_options(options);
+        let solver_opts = crate::solver::solver_options_from_eval_options(options);
 
         let sol_result = crate::api::solve_with_display_steps(
             &eq_to_solve,
@@ -52,13 +52,12 @@ impl Engine {
             Ok((solution_set, display_steps, diagnostics)) => {
                 let solve_steps = display_steps.0;
 
-                let solver_assumptions = if options.shared.assumption_reporting
-                    == crate::assumptions::AssumptionReporting::Off
-                {
-                    vec![]
-                } else {
-                    diagnostics.assumed_records.clone()
-                };
+                let solver_assumptions =
+                    if options.shared.assumption_reporting == crate::AssumptionReporting::Off {
+                        vec![]
+                    } else {
+                        diagnostics.assumed_records.clone()
+                    };
 
                 let warnings: Vec<DomainWarning> = vec![];
                 let eval_res = EvalResult::SolutionSet(solution_set);

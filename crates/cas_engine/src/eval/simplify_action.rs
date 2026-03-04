@@ -101,9 +101,7 @@ impl Engine {
         self.simplifier.context = ctx_simplifier.context;
 
         {
-            use crate::implicit_domain::{
-                classify_assumptions_in_place, infer_implicit_domain, DomainContext,
-            };
+            use crate::{classify_assumptions_in_place, infer_implicit_domain, DomainContext};
 
             let input_domain = infer_implicit_domain(
                 &self.simplifier.context,
