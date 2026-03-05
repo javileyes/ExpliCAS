@@ -1,7 +1,7 @@
-// Telescoping strategy for Dirichlet-kernel-like identities.
-//
-// This mirrors the previous engine-level API but lives in cas_solver so
-// callers do not need to import cas_engine for telescoping workflows.
+//! Telescoping strategy facade.
+//!
+//! Keeps the existing `cas_solver` API while owning the implementation
+//! locally during migration.
 
 use cas_ast::{Context, ExprId};
 use cas_formatter::DisplayExpr;
