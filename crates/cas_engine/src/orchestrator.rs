@@ -211,25 +211,15 @@ impl Orchestrator {
             let hash = cas_math::expr_semantic_hash::semantic_hash(&simplifier.context, current);
             if !seen_hashes.insert(hash) {
                 // Emit cycle event for the registry
-                let expr_str = format!(
-                    "{}",
-                    cas_formatter::DisplayExpr {
-                        context: &simplifier.context,
-                        id: current,
-                    }
-                );
-                cas_solver_core::cycle_event_registry::register_cycle_event(
-                    cas_solver_core::cycle_models::CycleEvent {
-                        phase,
-                        period: 0, // unknown period at inter-iteration level
-                        level: cas_solver_core::cycle_models::CycleLevel::InterIteration,
-                        rule_name: "(inter-iteration)".to_string(),
-                        expr_fingerprint: hash,
-                        expr_display: cas_solver_core::cycle_event_registry::truncate_display(
-                            &expr_str, 120,
-                        ),
-                        rewrite_step: iter,
-                    },
+                cas_solver_core::cycle_event_registry::register_cycle_event_for_expr(
+                    &simplifier.context,
+                    current,
+                    phase,
+                    0, // unknown period at inter-iteration level
+                    cas_solver_core::cycle_models::CycleLevel::InterIteration,
+                    "(inter-iteration)",
+                    hash,
+                    iter,
                 );
                 stats.iters_used = iter + 1;
                 tracing::warn!(

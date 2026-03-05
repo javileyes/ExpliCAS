@@ -258,26 +258,15 @@ impl<'a> LocalSimplificationTransformer<'a> {
                         if let Some(detector) = self.cycle_detector.as_mut() {
                             if let Some(info) = detector.observe(h) {
                                 // Emit cycle event for the registry
-                                let expr_str = format!(
-                                    "{}",
-                                    cas_formatter::DisplayExpr {
-                                        context: self.context,
-                                        id: expr_id,
-                                    }
-                                );
-                                cas_solver_core::cycle_event_registry::register_cycle_event(
-                                    cas_solver_core::cycle_models::CycleEvent {
-                                        phase: self.current_phase,
-                                        period: info.period,
-                                        level: cas_solver_core::cycle_models::CycleLevel::IntraNode,
-                                        rule_name: rule.name().to_string(),
-                                        expr_fingerprint: h,
-                                        expr_display:
-                                            cas_solver_core::cycle_event_registry::truncate_display(
-                                                &expr_str, 120,
-                                            ),
-                                        rewrite_step: info.at_step,
-                                    },
+                                cas_solver_core::cycle_event_registry::register_cycle_event_for_expr(
+                                    self.context,
+                                    expr_id,
+                                    self.current_phase,
+                                    info.period,
+                                    cas_solver_core::cycle_models::CycleLevel::IntraNode,
+                                    rule.name(),
+                                    h,
+                                    info.at_step,
                                 );
                                 // Add to blocklist to prevent re-entry
                                 let rule_name_static = rule.name();

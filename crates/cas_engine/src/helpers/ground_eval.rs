@@ -31,7 +31,7 @@ pub(crate) fn try_ground_nonzero(ctx: &Context, expr: ExprId) -> Option<Proof> {
         |source_ctx, source_expr| {
             let mut simplifier = crate::engine::Simplifier::with_context(source_ctx.clone());
             simplifier.set_collect_steps(false);
-            let opts = crate::solver::conservative_numeric_fold_options();
+            let opts = crate::conservative_simplify::conservative_numeric_fold_options();
 
             let (result, _, _) = simplifier.simplify_with_stats(source_expr, opts);
             Some((simplifier.context, result))

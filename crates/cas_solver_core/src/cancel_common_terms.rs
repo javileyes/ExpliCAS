@@ -68,9 +68,68 @@ where
     })
 }
 
+/// Runtime-oriented semantic cancellation helper with canonical option policy.
+///
+/// Applies the same 2-phase scheme across engine/solver wrappers:
+/// - candidate generation with default generic semantics,
+/// - strict proof per candidate pair via `(lt - rt) -> 0`.
+pub fn cancel_additive_terms_semantic_runtime_with_state<
+    S,
+    FGetContext,
+    FGetContextMut,
+    FSimplifyWithOptions,
+>(
+    state: &mut S,
+    lhs: ExprId,
+    rhs: ExprId,
+    get_context: FGetContext,
+    get_context_mut: FGetContextMut,
+    simplify_with_options: FSimplifyWithOptions,
+    fallback_expand: fn(&mut Context, ExprId) -> ExprId,
+) -> Option<CancelResult>
+where
+    FGetContext: Fn(&S) -> &Context,
+    FGetContextMut: Fn(&mut S) -> &mut Context,
+    FSimplifyWithOptions: Fn(&mut S, ExprId, crate::simplify_options::SimplifyOptions) -> ExprId,
+{
+    use cas_ast::Expr;
+    use num_traits::Zero;
+
+    let candidate_opts = crate::simplify_options::SimplifyOptions {
+        collect_steps: false,
+        ..Default::default()
+    };
+    let strict_proof_opts = crate::simplify_options::SimplifyOptions {
+        shared: crate::simplify_options::SharedSemanticConfig {
+            semantics: crate::eval_config::EvalConfig::strict(),
+            ..Default::default()
+        },
+        collect_steps: false,
+        ..Default::default()
+    };
+
+    cancel_additive_terms_semantic_with_state(
+        state,
+        lhs,
+        rhs,
+        |s| get_context(s),
+        |s| get_context_mut(s),
+        |s, term| simplify_with_options(s, term, candidate_opts.clone()),
+        fallback_expand,
+        |s, lt, rt| {
+            let diff = get_context_mut(s).add(Expr::Sub(lt, rt));
+            let simplified_diff = simplify_with_options(s, diff, strict_proof_opts.clone());
+            matches!(get_context(s).get(simplified_diff), Expr::Number(n) if n.is_zero())
+        },
+    )
+}
+
 #[cfg(test)]
 mod tests {
-    use super::cancel_additive_terms_semantic_with_state;
+    use super::{
+        cancel_additive_terms_semantic_runtime_with_state,
+        cancel_additive_terms_semantic_with_state,
+    };
     use cas_ast::ordering::compare_expr;
     use cas_ast::Expr;
     use num_traits::Zero;
@@ -128,5 +187,36 @@ mod tests {
         );
 
         assert!(out.is_none());
+    }
+
+    #[test]
+    fn semantic_cancel_runtime_helper_cancels_overlap() {
+        let mut ctx = cas_ast::Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let lhs = ctx.add(cas_ast::Expr::Add(x, one));
+        let rhs = x;
+
+        let out = cancel_additive_terms_semantic_runtime_with_state(
+            &mut ctx,
+            lhs,
+            rhs,
+            |s| s,
+            |s| s,
+            |state, term, _opts| match state.get(term) {
+                cas_ast::Expr::Sub(a, b) if compare_expr(state, *a, *b) == Ordering::Equal => {
+                    state.num(0)
+                }
+                _ => term,
+            },
+            no_expand,
+        )
+        .expect("expected cancellable overlap");
+
+        assert!(out.cancelled_count >= 1);
+        assert!(
+            matches!(ctx.get(out.new_rhs), cas_ast::Expr::Number(n) if n.is_zero()),
+            "rhs should reduce to zero after cancellation"
+        );
     }
 }

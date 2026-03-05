@@ -10,27 +10,18 @@ mod best_so_far_tests;
 pub(crate) mod budget;
 #[cfg(test)]
 mod budget_tests;
+pub(crate) mod cancel_common_terms_runtime;
 pub(crate) mod collect;
 #[cfg(test)]
 mod collect_tests;
+pub(crate) mod conservative_simplify;
 pub(crate) mod const_fold;
-#[cfg(test)]
-pub(crate) mod cycle_detector;
-#[cfg(test)]
-mod cycle_detector_tests;
-#[cfg(test)]
-pub(crate) mod cycle_events;
-#[cfg(test)]
-mod cycle_events_tests;
 pub(crate) mod diagnostics;
 pub(crate) mod domain_oracle;
 #[cfg(test)]
 mod domain_oracle_tests;
 pub(crate) mod engine;
 pub(crate) mod eval;
-pub(crate) mod eval_step_pipeline;
-#[cfg(test)]
-mod eval_step_pipeline_tests;
 #[cfg(test)]
 mod events_tests;
 pub(crate) mod expand;
@@ -61,6 +52,7 @@ pub mod rules;
 pub(crate) mod semantics;
 #[cfg(test)]
 mod semantics_tests;
+pub(crate) mod solve_runtime;
 pub(crate) mod solver;
 pub(crate) mod step;
 pub(crate) mod step_optimization;
@@ -68,6 +60,7 @@ pub(crate) mod step_optimization;
 mod step_tests;
 pub(crate) mod strategies;
 pub(crate) mod telescoping;
+pub(crate) mod verify_runtime;
 
 // Property-based numeric tests for rewrite correctness
 #[cfg(test)]
@@ -132,10 +125,15 @@ pub use cas_solver_core::domain_oracle_model::DomainOracle;
 pub use cas_solver_core::domain_policy::mode_allows_predicate;
 pub use cas_solver_core::domain_proof::Proof;
 pub use cas_solver_core::engine_events::{EngineEvent, StepListener};
+pub use cas_solver_core::eval_step_pipeline::to_display_eval_steps as to_display_steps;
+pub use cas_solver_core::isolation_utils::contains_var;
+pub use cas_solver_core::solve_infer::infer_solve_variable;
 pub use cas_solver_core::solve_safety_policy::ConditionClass;
 pub use cas_solver_core::solve_safety_policy::RequirementDescriptorKind as RequirementDescriptor;
 pub use cas_solver_core::solve_safety_policy::SimplifyPurpose;
 pub use cas_solver_core::solve_safety_policy::SolveSafetyKind as SolveSafety;
+pub use cas_solver_core::verification::{VerifyResult, VerifyStatus, VerifySummary};
+pub use cas_solver_core::verify_stats;
 pub use const_fold::{fold_constants, ConstFoldMode, ConstFoldResult};
 pub use diagnostics::{Diagnostics, RequireOrigin, RequiredItem};
 pub use domain_oracle::{oracle_allows_with_hint, StandardOracle};
@@ -145,7 +143,6 @@ pub use engine::{
 };
 pub use error::{CasError, CasResult};
 pub use eval::*;
-pub use eval_step_pipeline::to_display_steps;
 pub use expand::{
     eager_eval_expand_calls, estimate_expand_terms, expand, expand_div, expand_mul, expand_pow,
     expand_with_stats,
@@ -177,20 +174,19 @@ pub use rule::{ChainedRewrite, Rewrite, Rule, SimpleRule, SoundnessLabel};
 pub use semantics::{
     AssumeScope, BranchPolicy, EvalConfig, InverseTrigPolicy, NormalFormGoal, ValueDomain,
 };
-pub use solver::{
-    contains_var, infer_solve_variable, solve, solve_with_ctx_and_options,
-    solve_with_display_steps, verify_solution, verify_solution_set, verify_stats,
-    DisplaySolveSteps, SolveCtx, SolveDiagnostics, SolveStep, SolveSubStep, SolverOptions,
-    VerifyResult, VerifyStatus, VerifySummary,
+pub use solve_runtime::{
+    solve, solve_with_ctx_and_options, solve_with_display_steps, DisplaySolveSteps, SolveCtx,
+    SolveDiagnostics, SolveStep, SolveSubStep, SolverOptions,
 };
 pub use step::{
     pathsteps_to_expr_path, DisplayEvalSteps, ImportanceLevel, PathStep, Step, StepCategory,
 };
 pub use telescoping::{telescope, TelescopingResult, TelescopingStep};
+pub use verify_runtime::{verify_solution, verify_solution_set};
 pub use visitors::{DepthVisitor, VariableCollector};
 
 // Equation-level primitives (not simplifier rules — used by solver pipeline)
-pub use cas_solver_core::cancel_common_terms::CancelResult;
-pub use solver::cancel_common_terms::{
+pub use cancel_common_terms_runtime::{
     cancel_additive_terms_semantic, cancel_common_additive_terms,
 };
+pub use cas_solver_core::cancel_common_terms::CancelResult;

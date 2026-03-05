@@ -215,7 +215,7 @@ impl Engine {
         // V2.9.9: Convert raw steps to display-ready steps via unified pipeline.
         // This is the ONLY place DisplayEvalSteps is constructed from raw steps.
         // The pipeline removes no-ops and prepares steps for all renderers.
-        let display_steps = crate::eval_step_pipeline::to_display_steps(steps);
+        let display_steps = cas_solver_core::eval_step_pipeline::to_display_eval_steps(steps);
 
         Ok(EvalOutput {
             stored_id,

@@ -1,26 +1,17 @@
-//! Solution verification module.
-//!
-//! Verifies solver solutions by substituting back into the original equation
-//! and checking if the result simplifies to zero.
-//!
-//! Uses a 2-phase approach:
-//! - Phase 1 (Strict): domain-honest simplification.
-//! - Phase 2 (Generic fallback): only when strict residual is variable-free.
+//! Solution verification runtime helpers.
 
+use crate::conservative_simplify::{
+    conservative_numeric_fold_options, simplify_options_for_domain,
+};
+use crate::engine::Simplifier;
 use cas_ast::{Equation, ExprId, SolutionSet};
 use cas_math::expr_predicates::contains_variable;
 use cas_solver_core::isolation_utils::is_numeric_zero;
+use cas_solver_core::verification::{VerifyResult, VerifyStatus};
 use cas_solver_core::verification_flow::{
     verify_solution_set_for_equation_with_state, verify_solution_with_domain_modes_with_state,
 };
 use cas_solver_core::verify_substitution::substitute_equation_diff;
-
-use crate::engine::Simplifier;
-use crate::solver::{
-    conservative_numeric_fold_options, simplifier_render_expr, simplify_options_for_domain,
-};
-
-pub use cas_solver_core::verification::{VerifyResult, VerifyStatus, VerifySummary};
 
 fn fold_numeric_islands(ctx: &mut cas_ast::Context, root: ExprId) -> ExprId {
     let fold_opts = conservative_numeric_fold_options();
@@ -59,7 +50,7 @@ pub fn verify_solution(
         |state, expr| contains_variable(&state.context, expr),
         |state, expr| fold_numeric_islands(&mut state.context, expr),
         |state, expr| is_numeric_zero(&state.context, expr),
-        simplifier_render_expr,
+        |state, expr| cas_formatter::render_expr(&state.context, expr),
     )
 }
 
