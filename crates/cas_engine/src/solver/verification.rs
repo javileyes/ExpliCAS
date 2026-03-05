@@ -16,10 +16,26 @@ use cas_solver_core::verification_flow::{
 use cas_solver_core::verify_substitution::substitute_equation_diff;
 
 use crate::engine::Simplifier;
-use crate::solver::check_helpers::{fold_numeric_islands, simplify_options_for_domain};
-use crate::solver::simplifier_render_expr;
+use crate::solver::{
+    conservative_numeric_fold_options, simplifier_render_expr, simplify_options_for_domain,
+};
 
 pub use cas_solver_core::verification::{VerifyResult, VerifyStatus, VerifySummary};
+
+fn fold_numeric_islands(ctx: &mut cas_ast::Context, root: ExprId) -> ExprId {
+    let fold_opts = conservative_numeric_fold_options();
+
+    cas_solver_core::verification_runtime_helpers::fold_numeric_islands_with_default_guard_and_candidate(
+        ctx,
+        root,
+        |src_ctx, id| {
+            let mut tmp = Simplifier::with_context(src_ctx.clone());
+            tmp.set_collect_steps(false);
+            let (result, _, _) = tmp.simplify_with_stats(id, fold_opts.clone());
+            Some((tmp.context, result))
+        },
+    )
+}
 
 /// Verify a single solution by substituting into the equation.
 pub fn verify_solution(

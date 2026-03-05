@@ -32,21 +32,5 @@ use crate::step::{DisplayEvalSteps, Step};
 /// A `DisplayEvalSteps` wrapper guaranteeing cleanup has been applied.
 #[must_use = "the result of pipeline processing should be used"]
 pub fn to_display_steps(raw_steps: Vec<Step>) -> DisplayEvalSteps {
-    // Stage 1: remove no-op steps preserving local-focused changes.
-    // Stage 2: repair global_before chaining from previous global_after.
-    let cleaned = cas_solver_core::eval_step_pipeline::clean_eval_steps(
-        raw_steps,
-        |s: &Step| s.before,
-        |s: &Step| s.after,
-        |s: &Step| s.before_local(),
-        |s: &Step| s.after_local(),
-        |s: &Step| s.global_after,
-        |s: &mut Step, gb| s.global_before = Some(gb),
-    );
-
-    // Stage 2: Future - collapse consecutive duplicates
-    // Stage 3: Future - normalize descriptions
-    // Stage 4: Future - enrich with narrator text
-
-    DisplayEvalSteps(cleaned)
+    cas_solver_core::eval_step_pipeline::to_display_eval_steps(raw_steps)
 }

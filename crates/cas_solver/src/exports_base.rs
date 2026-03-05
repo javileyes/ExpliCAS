@@ -110,7 +110,6 @@ pub use crate::domain_facade::{
     derive_requires_from_equation, domain_delta_check, infer_implicit_domain,
     pathsteps_to_expr_path,
 };
-pub use crate::engine_exports::*;
 pub use crate::equiv_command::{
     evaluate_equiv_command_lines, evaluate_equiv_command_message, evaluate_equiv_invocation_message,
 };

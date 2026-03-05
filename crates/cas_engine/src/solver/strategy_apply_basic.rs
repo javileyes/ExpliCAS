@@ -95,7 +95,12 @@ pub(super) fn apply_unwrap_strategy(
                 opts.core_domain_mode(),
                 &ctx.domain_env,
                 |inner_ctx, expr| {
-                    crate::helpers::prove_positive_core(inner_ctx, expr, opts.value_domain)
+                    cas_solver_core::predicate_proofs::prove_positive_core_with(
+                        inner_ctx,
+                        expr,
+                        opts.value_domain,
+                        crate::helpers::prove_positive,
+                    )
                 },
             )
         },

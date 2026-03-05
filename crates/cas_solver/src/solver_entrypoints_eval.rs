@@ -4,6 +4,7 @@ use crate::{
     Budget, CasError, ConstFoldMode, ConstFoldResult, DisplayEvalSteps, EvalConfig, Operation,
     PassStats, Step,
 };
+use cas_ast::{Context, ExprId};
 use cas_math::limit_types::{Approach, LimitOptions};
 
 /// Result of symbolic limit evaluation from solver facade.
@@ -19,26 +20,19 @@ pub struct LimitResult {
 
 /// Convert raw eval steps to display-ready, cleaned steps.
 pub fn to_display_steps(raw_steps: Vec<Step>) -> DisplayEvalSteps {
-    let cleaned = cas_solver_core::eval_step_pipeline::clean_eval_steps(
-        raw_steps,
-        |s: &Step| s.before,
-        |s: &Step| s.after,
-        |s: &Step| s.before_local(),
-        |s: &Step| s.after_local(),
-        |s: &Step| s.global_after,
-        |s: &mut Step, gb| s.global_before = Some(gb),
-    );
-    DisplayEvalSteps(cleaned)
+    cas_solver_core::eval_step_pipeline::to_display_eval_steps(raw_steps)
 }
 
 /// Expand with budget tracking, returning pass stats for charging.
-pub fn expand_with_stats(
-    ctx: &mut cas_ast::Context,
-    expr: cas_ast::ExprId,
-) -> (cas_ast::ExprId, PassStats) {
+pub fn expand(ctx: &mut Context, expr: ExprId) -> ExprId {
+    cas_math::expand_ops::expand(ctx, expr)
+}
+
+/// Expand with budget tracking, returning pass stats for charging.
+pub fn expand_with_stats(ctx: &mut Context, expr: ExprId) -> (ExprId, PassStats) {
     let nodes_snap = ctx.stats().nodes_created;
     let estimated_terms = cas_math::expand_estimate::estimate_expand_terms(ctx, expr).unwrap_or(0);
-    let result = crate::expand(ctx, expr);
+    let result = expand(ctx, expr);
     let nodes_delta = ctx.stats().nodes_created.saturating_sub(nodes_snap);
 
     let stats = PassStats {
@@ -55,8 +49,8 @@ pub fn expand_with_stats(
 
 /// Fold constants under the given semantic config and mode.
 pub fn fold_constants(
-    ctx: &mut cas_ast::Context,
-    expr: cas_ast::ExprId,
+    ctx: &mut Context,
+    expr: ExprId,
     cfg: &EvalConfig,
     mode: ConstFoldMode,
     budget: &mut Budget,
@@ -66,9 +60,9 @@ pub fn fold_constants(
 
 /// Evaluate a symbolic limit with the engine's current limit evaluator.
 pub fn limit(
-    ctx: &mut cas_ast::Context,
-    expr: cas_ast::ExprId,
-    var: cas_ast::ExprId,
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
     approach: Approach,
     opts: &LimitOptions,
     _budget: &mut Budget,

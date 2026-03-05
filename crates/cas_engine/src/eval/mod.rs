@@ -24,7 +24,7 @@ pub(crate) type ActionResult = (
 );
 
 use crate::Simplifier;
-use cas_ast::{Expr, ExprId};
+use cas_ast::ExprId;
 
 /// The central Engine struct that wraps the core Simplifier and potentially other components.
 ///
@@ -138,69 +138,10 @@ impl Default for Engine {
     }
 }
 
-#[derive(Clone, Debug)]
-pub enum EvalAction {
-    Simplify,
-    Expand,
-    // Solve for a variable.
-    Solve {
-        var: String,
-    },
-    // Check equivalence between two expressions
-    Equiv {
-        other: ExprId,
-    },
-    // Compute limit as variable approaches a value
-    Limit {
-        var: String,
-        approach: crate::limits::Approach,
-    },
-}
-
-#[derive(Clone, Debug)]
-pub struct EvalRequest {
-    pub raw_input: String,
-    pub parsed: ExprId,
-    pub action: EvalAction,
-    pub auto_store: bool,
-}
-
-#[derive(Clone, Debug)]
-pub enum EvalResult {
-    Expr(ExprId),
-    Set(Vec<ExprId>),                  // For Solve multiple roots (legacy)
-    SolutionSet(cas_ast::SolutionSet), // V2.0: Full solution set including Conditional
-    Bool(bool),                        // For Equiv
-    None,                              // For commands with no output
-}
+pub use cas_solver_core::eval_models::{EvalAction, EvalRequest, EvalResult};
+pub use cas_solver_core::eval_output_model::EvalOutput;
 
 pub type DomainWarning = cas_solver_core::domain_warning::DomainWarning;
-
-#[derive(Clone, Debug)]
-pub struct EvalOutput {
-    pub stored_id: Option<u64>,
-    pub parsed: ExprId,
-    pub resolved: ExprId,
-    pub result: EvalResult,
-    /// Domain warnings with deduplication and rule source.
-    pub domain_warnings: Vec<DomainWarning>,
-    pub steps: crate::step::DisplayEvalSteps,
-    pub solve_steps: Vec<crate::api::SolveStep>,
-    /// Assumptions made during solver operations (for Assume mode).
-    pub solver_assumptions: Vec<crate::AssumptionRecord>,
-    /// Scopes for context-aware display (e.g., QuadraticFormula -> sqrt display).
-    pub output_scopes: Vec<cas_formatter::display_transforms::ScopeTag>,
-    /// Required conditions for validity - implicit domain constraints from input.
-    /// NOT assumptions! These were already required by the input expression.
-    /// Sorted and deduplicated for stable display.
-    pub required_conditions: Vec<crate::ImplicitCondition>,
-    /// Blocked hints - operations that could not proceed in Strict/Generic mode.
-    /// These suggest using Assume mode to enable certain transformations.
-    pub blocked_hints: Vec<crate::BlockedHint>,
-    /// V2.2+: Unified diagnostics with origin tracking.
-    /// Consolidates requires, assumed, and blocked in one container.
-    pub diagnostics: crate::diagnostics::Diagnostics,
-}
 
 /// Collect domain warnings from steps with deduplication.
 /// Collects structured assumption_events from each step.

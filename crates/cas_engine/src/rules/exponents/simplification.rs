@@ -32,7 +32,11 @@ define_rule!(
                         matches!(domain_mode, crate::DomainMode::Strict),
                         base_is_literal_zero,
                         matches!(ctx.get(base), Expr::Number(_)),
-                        crate::helpers::prove_nonzero_core(ctx, base),
+                        cas_solver_core::predicate_proofs::prove_nonzero_core_with(
+                            ctx,
+                            base,
+                            crate::helpers::prove_nonzero,
+                        ),
                     );
 
                     match action {

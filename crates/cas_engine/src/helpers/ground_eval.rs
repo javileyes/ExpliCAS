@@ -11,7 +11,7 @@
 //! a `thread_local!` counter prevents infinite recursion.  When the counter is
 //! non-zero, the fallback returns `None` immediately.
 
-use cas_ast::{Context, Expr, ExprId};
+use cas_ast::{Context, ExprId};
 
 use crate::Proof;
 
@@ -25,58 +25,18 @@ use crate::Proof;
 /// - Caller MUST ensure `!contains_variable(ctx, expr)`.
 /// - Re-entrancy guard prevents `prove_nonzero → simplify → prove_nonzero` cycles.
 pub(crate) fn try_ground_nonzero(ctx: &Context, expr: ExprId) -> Option<Proof> {
-    cas_math::ground_nonzero::try_ground_nonzero_with(
+    cas_solver_core::predicate_proofs::try_ground_nonzero_with_shallow_recursive(
         ctx,
         expr,
         |source_ctx, source_expr| {
             let mut simplifier = crate::engine::Simplifier::with_context(source_ctx.clone());
             simplifier.set_collect_steps(false);
-
-            let opts = crate::phase::SimplifyOptions {
-                collect_steps: false,
-                expand_mode: false,
-                shared: crate::phase::SharedSemanticConfig {
-                    semantics: crate::semantics::EvalConfig {
-                        domain_mode: crate::DomainMode::Generic,
-                        ..Default::default()
-                    },
-                    ..Default::default()
-                },
-                budgets: crate::phase::PhaseBudgets {
-                    core_iters: 4,
-                    transform_iters: 2,
-                    rationalize_iters: 0,
-                    post_iters: 2,
-                    max_total_rewrites: 50,
-                },
-                ..Default::default()
-            };
+            let opts = crate::solver::conservative_numeric_fold_options();
 
             let (result, _, _) = simplifier.simplify_with_stats(source_expr, opts);
             Some((simplifier.context, result))
         },
-        |evaluated_ctx, evaluated_expr| match evaluated_ctx.get(evaluated_expr) {
-            Expr::Number(n) => {
-                if num_traits::Zero::is_zero(n) {
-                    Some(Proof::Disproven)
-                } else {
-                    Some(Proof::Proven)
-                }
-            }
-            _ => None,
-        },
-        |evaluated_ctx, evaluated_expr| {
-            let proof = super::predicates::prove_nonzero_depth(
-                evaluated_ctx,
-                evaluated_expr,
-                8, // shallow depth budget
-            );
-            if proof == Proof::Proven || proof == Proof::Disproven {
-                Some(proof)
-            } else {
-                None
-            }
-        },
+        try_ground_nonzero,
     )
 }
 

@@ -87,13 +87,13 @@ pub(super) struct LocalSimplificationTransformer<'a> {
 
     // ── Cycle detection ──────────────────────────────────────────────────
     /// Cycle detector for ping-pong detection (always-on as of V2.14.30)
-    pub(super) cycle_detector: Option<crate::cycle_detector::CycleDetector>,
+    pub(super) cycle_detector: Option<cas_solver_core::cycle_detection::CycleDetector>,
     /// Phase that the cycle detector was initialized for (reset when phase changes)
     pub(super) cycle_phase: Option<crate::phase::SimplifyPhase>,
     /// Fingerprint memoization cache (cleared per phase)
-    pub(super) fp_memo: crate::cycle_detector::FingerprintMemo,
+    pub(super) fp_memo: cas_solver_core::cycle_detection::FingerprintMemo,
     /// Last detected cycle info (for PhaseStats)
-    pub(super) last_cycle: Option<crate::cycle_detector::CycleInfo>,
+    pub(super) last_cycle: Option<cas_solver_core::cycle_models::CycleInfo>,
     /// Blocked (fingerprint, rule) pairs to prevent cycle re-entry
     pub(super) blocked_rules: std::collections::HashSet<(u64, String)>,
 

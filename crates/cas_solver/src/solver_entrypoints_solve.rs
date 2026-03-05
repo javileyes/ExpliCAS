@@ -12,7 +12,7 @@ pub fn solve(
     simplifier: &mut Simplifier,
 ) -> Result<(cas_ast::SolutionSet, Vec<SolveStep>), CasError> {
     let ctx = SolveCtx::default();
-    solve_backend_dispatch::solve_with_engine_backend(
+    solve_backend_dispatch::solve_with_active_backend(
         eq,
         var,
         simplifier,
@@ -29,7 +29,7 @@ pub fn solve_with_display_steps(
     opts: SolverOptions,
 ) -> Result<(cas_ast::SolutionSet, DisplaySolveSteps, SolveDiagnostics), CasError> {
     let ctx = SolveCtx::default();
-    let result = solve_backend_dispatch::solve_with_engine_backend(
+    let result = solve_backend_dispatch::solve_with_active_backend(
         eq,
         var,
         simplifier,

@@ -1,5 +1,5 @@
 use super::*;
-use cas_ast::Constant;
+use cas_ast::{Constant, Expr};
 use cas_math::ground_eval_guard::GroundEvalGuard;
 
 fn make_ctx() -> Context {

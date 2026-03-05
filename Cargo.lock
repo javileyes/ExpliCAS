@@ -229,7 +229,6 @@ name = "cas_engine"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "bitflags 2.10.0",
  "cas_ast",
  "cas_formatter",
  "cas_math",
@@ -354,6 +353,7 @@ dependencies = [
 name = "cas_solver_core"
 version = "0.1.0"
 dependencies = [
+ "bitflags 2.10.0",
  "cas_ast",
  "cas_formatter",
  "cas_math",
@@ -362,6 +362,7 @@ dependencies = [
  "num-rational",
  "num-traits",
  "smallvec",
+ "thiserror",
 ]
 
 [[package]]

@@ -106,7 +106,14 @@ impl crate::rule::Rule for RootMergeMulRule {
             ctx,
             expr,
             strict_mode,
-            |core_ctx, inner| crate::helpers::prove_nonnegative_core(core_ctx, inner, vd),
+            |core_ctx, inner| {
+                cas_solver_core::predicate_proofs::prove_nonnegative_core_with(
+                    core_ctx,
+                    inner,
+                    vd,
+                    crate::helpers::prove_nonnegative,
+                )
+            },
         )?;
 
         let mut out = Rewrite::new(rewrite.rewritten).desc("√a · √b = √(a·b)");
@@ -159,8 +166,22 @@ impl crate::rule::Rule for RootMergeDivRule {
             ctx,
             expr,
             strict_mode,
-            |core_ctx, inner| crate::helpers::prove_nonnegative_core(core_ctx, inner, vd),
-            |core_ctx, inner| crate::helpers::prove_positive_core(core_ctx, inner, vd),
+            |core_ctx, inner| {
+                cas_solver_core::predicate_proofs::prove_nonnegative_core_with(
+                    core_ctx,
+                    inner,
+                    vd,
+                    crate::helpers::prove_nonnegative,
+                )
+            },
+            |core_ctx, inner| {
+                cas_solver_core::predicate_proofs::prove_positive_core_with(
+                    core_ctx,
+                    inner,
+                    vd,
+                    crate::helpers::prove_positive,
+                )
+            },
         )?;
 
         let mut out = Rewrite::new(rewrite.rewritten).desc("√a / √b = √(a/b)");
@@ -214,8 +235,21 @@ impl crate::rule::Rule for PowPowCancelReciprocalRule {
                 ctx,
                 expr,
                 strict_mode,
-                |core_ctx, inner| crate::helpers::prove_positive_core(core_ctx, inner, vd),
-                crate::helpers::prove_nonzero_core,
+                |core_ctx, inner| {
+                    cas_solver_core::predicate_proofs::prove_positive_core_with(
+                        core_ctx,
+                        inner,
+                        vd,
+                        crate::helpers::prove_positive,
+                    )
+                },
+                |core_ctx, inner| {
+                    cas_solver_core::predicate_proofs::prove_nonzero_core_with(
+                        core_ctx,
+                        inner,
+                        crate::helpers::prove_nonzero,
+                    )
+                },
             )?;
 
         let mut out = Rewrite::new(rewrite.rewritten).desc("(u^y)^(1/y) = u");

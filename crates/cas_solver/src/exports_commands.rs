@@ -1,3 +1,18 @@
+pub use crate::budget_runtime_types::{Budget, BudgetExceeded, Metric, Operation, PassStats};
+pub use crate::display_eval_steps::DisplayEvalSteps;
+pub use crate::engine_runtime_types::{
+    AutoExpandBinomials, BranchMode, CasError, ComplexMode, ContextMode, Engine, EvalAction,
+    EvalOptions, EvalOutput, EvalRequest, EvalResult, HeuristicPoly, RuleProfiler,
+    SharedSemanticConfig, Simplifier, SimplifyOptions, StepsMode,
+};
+pub use crate::error_runtime_types::error;
+pub use crate::phase_runtime_types::{
+    ExpandBudget, ExpandPolicy, PhaseBudgets, PhaseMask, PhaseStats, PipelineStats, SimplifyPhase,
+};
+pub use crate::rule_runtime_types::{
+    LogExpansionRule, Orchestrator, ParentContext, Rewrite, Rule, SimpleRule,
+};
+pub use crate::rules_runtime_types::rules;
 pub use crate::semantics_command_eval::evaluate_semantics_command_line;
 pub use crate::semantics_command_parse::parse_semantics_command_input;
 pub use crate::semantics_command_types::{SemanticsCommandInput, SemanticsCommandOutput};
@@ -71,6 +86,8 @@ pub use crate::solve_render_config::{
 pub use crate::solve_safety::{RequirementDescriptor, RuleSolveSafetyExt, SolveSafety};
 pub use crate::solve_verify_display::format_verify_summary_lines;
 pub use crate::solver_entrypoints::*;
+pub use crate::standard_oracle::{oracle_allows_with_hint, StandardOracle};
+pub use crate::step_runtime_types::{ImportanceLevel, PathStep, Step, StepCategory};
 pub use crate::steps_command_eval::{apply_steps_command_update, evaluate_steps_command_input};
 pub use crate::steps_command_format::{
     format_steps_collection_set_message, format_steps_current_message,
@@ -162,6 +179,7 @@ pub use cas_solver_core::blocked_hint_store::{
 pub use cas_solver_core::const_fold_types::{ConstFoldMode, ConstFoldResult};
 pub use cas_solver_core::diagnostics_model::{Diagnostics, RequireOrigin, RequiredItem};
 pub use cas_solver_core::domain_assumption_classification::classify_assumption;
+pub use cas_solver_core::domain_cancel_decision::CancelDecision;
 pub use cas_solver_core::domain_condition::{
     filter_requires_for_display, ImplicitCondition, ImplicitDomain, RequiresDisplayLevel,
 };

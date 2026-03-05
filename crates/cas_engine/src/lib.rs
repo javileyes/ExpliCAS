@@ -14,9 +14,11 @@ pub(crate) mod collect;
 #[cfg(test)]
 mod collect_tests;
 pub(crate) mod const_fold;
+#[cfg(test)]
 pub(crate) mod cycle_detector;
 #[cfg(test)]
 mod cycle_detector_tests;
+#[cfg(test)]
 pub(crate) mod cycle_events;
 #[cfg(test)]
 mod cycle_events_tests;
@@ -117,6 +119,7 @@ pub use cas_solver_core::blocked_hint::BlockedHint;
 pub use cas_solver_core::blocked_hint_store::{
     clear_blocked_hints, register_blocked_hint, take_blocked_hints,
 };
+pub use cas_solver_core::cycle_models::{CycleEvent, CycleLevel};
 pub use cas_solver_core::domain_cancel_decision::CancelDecision;
 pub use cas_solver_core::domain_facts_model::{
     predicate_condition_class, proof_to_strength, strength_to_proof, DomainFact, FactStrength,
@@ -134,7 +137,6 @@ pub use cas_solver_core::solve_safety_policy::RequirementDescriptorKind as Requi
 pub use cas_solver_core::solve_safety_policy::SimplifyPurpose;
 pub use cas_solver_core::solve_safety_policy::SolveSafetyKind as SolveSafety;
 pub use const_fold::{fold_constants, ConstFoldMode, ConstFoldResult};
-pub use cycle_events::{CycleEvent, CycleLevel};
 pub use diagnostics::{Diagnostics, RequireOrigin, RequiredItem};
 pub use domain_oracle::{oracle_allows_with_hint, StandardOracle};
 pub use engine::{

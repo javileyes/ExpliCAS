@@ -2,7 +2,7 @@ mod adapters;
 pub mod cancel_common_terms;
 #[cfg(test)]
 mod cancel_common_terms_tests;
-mod check_helpers;
+mod conservative_simplify;
 pub(crate) mod isolation;
 mod isolation_arith;
 mod isolation_arith_add_sub;
@@ -32,6 +32,9 @@ pub(crate) use self::adapters::{
     simplifier_is_known_negative, simplifier_prove_nonzero_status, simplifier_render_expr,
     simplifier_simplify_expr, simplifier_zero_expr,
 };
+pub(crate) use self::conservative_simplify::{
+    conservative_numeric_fold_options, simplify_options_for_domain,
+};
 pub use self::verification::{
     verify_solution, verify_solution_set, VerifyResult, VerifyStatus, VerifySummary,
 };
@@ -40,8 +43,7 @@ pub use cas_solver_core::solve_infer::infer_solve_variable;
 pub use cas_solver_core::verify_stats;
 pub(crate) use types::SolveDomainEnv;
 pub use types::{
-    solver_options_from_eval_options, DisplaySolveSteps, SolveCtx, SolveDiagnostics, SolveStep,
-    SolveSubStep, SolverOptions,
+    DisplaySolveSteps, SolveCtx, SolveDiagnostics, SolveStep, SolveSubStep, SolverOptions,
 };
 
 pub use self::solve_entrypoints::{solve, solve_with_ctx_and_options, solve_with_display_steps};

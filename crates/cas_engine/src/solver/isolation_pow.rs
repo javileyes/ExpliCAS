@@ -94,7 +94,12 @@ fn execute_isolation_pow(
                 opts.core_domain_mode(),
                 &ctx.domain_env,
                 |core_ctx, expr| {
-                    crate::helpers::prove_positive_core(core_ctx, expr, opts.value_domain)
+                    cas_solver_core::predicate_proofs::prove_positive_core_with(
+                        core_ctx,
+                        expr,
+                        opts.value_domain,
+                        crate::helpers::prove_positive,
+                    )
                 },
             )
         },

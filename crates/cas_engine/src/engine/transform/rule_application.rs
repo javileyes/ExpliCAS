@@ -241,15 +241,16 @@ impl<'a> LocalSimplificationTransformer<'a> {
                         // V2.14.30: Always-On Cycle Detection with blocklist
                         // Reset detector if phase changed since last initialization
                         if self.cycle_phase != Some(self.current_phase) {
-                            self.cycle_detector = Some(crate::cycle_detector::CycleDetector::new(
-                                self.current_phase,
-                            ));
+                            self.cycle_detector =
+                                Some(cas_solver_core::cycle_detection::CycleDetector::new(
+                                    self.current_phase,
+                                ));
                             self.cycle_phase = Some(self.current_phase);
                             self.fp_memo.clear();
                             // Note: blocked_rules persists across phases (conservative)
                         }
 
-                        let h = crate::cycle_detector::expr_fingerprint(
+                        let h = cas_solver_core::cycle_detection::expr_fingerprint(
                             self.context,
                             expr_id,
                             &mut self.fp_memo,
@@ -264,16 +265,17 @@ impl<'a> LocalSimplificationTransformer<'a> {
                                         id: expr_id,
                                     }
                                 );
-                                crate::cycle_events::register_cycle_event(
-                                    crate::cycle_events::CycleEvent {
+                                cas_solver_core::cycle_event_registry::register_cycle_event(
+                                    cas_solver_core::cycle_models::CycleEvent {
                                         phase: self.current_phase,
                                         period: info.period,
-                                        level: crate::cycle_events::CycleLevel::IntraNode,
+                                        level: cas_solver_core::cycle_models::CycleLevel::IntraNode,
                                         rule_name: rule.name().to_string(),
                                         expr_fingerprint: h,
-                                        expr_display: crate::cycle_events::truncate_display(
-                                            &expr_str, 120,
-                                        ),
+                                        expr_display:
+                                            cas_solver_core::cycle_event_registry::truncate_display(
+                                                &expr_str, 120,
+                                            ),
                                         rewrite_step: info.at_step,
                                     },
                                 );

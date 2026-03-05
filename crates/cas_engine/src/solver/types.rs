@@ -1,16 +1,4 @@
-use cas_ast::Equation;
-
 pub type SolverOptions = cas_solver_core::solver_options::SolverOptions;
-
-/// Build solver options from engine eval options.
-pub fn solver_options_from_eval_options(options: &crate::EvalOptions) -> SolverOptions {
-    SolverOptions::from_axes(
-        options.shared.semantics.value_domain,
-        options.shared.semantics.domain_mode,
-        options.shared.semantics.assume_scope,
-        options.budget,
-    )
-}
 
 /// Domain environment for solver operations.
 ///
@@ -61,7 +49,10 @@ pub type SolveDiagnostics = cas_solver_core::solve_aliases::SolveDiagnostics<
 /// Educational sub-step for solver derivations (e.g., completing the square)
 /// Displayed as indented in REPL and collapsible in timeline.
 pub type SolveSubStep =
-    cas_solver_core::solve_aliases::SolveSubStep<Equation, crate::ImportanceLevel>;
+    cas_solver_core::solve_aliases::SolveSubStep<cas_ast::Equation, crate::ImportanceLevel>;
 
-pub type SolveStep =
-    cas_solver_core::solve_aliases::SolveStep<Equation, crate::ImportanceLevel, SolveSubStep>;
+pub type SolveStep = cas_solver_core::solve_aliases::SolveStep<
+    cas_ast::Equation,
+    crate::ImportanceLevel,
+    SolveSubStep,
+>;

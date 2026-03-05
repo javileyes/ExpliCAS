@@ -50,6 +50,7 @@ mod bindings_command_tests;
 mod bindings_format;
 mod bindings_types;
 mod blocked_hint_format;
+mod budget_runtime_types;
 mod cancel_runtime;
 mod config_command_apply;
 mod config_command_eval;
@@ -57,6 +58,7 @@ mod config_command_parse;
 #[cfg(test)]
 mod config_command_tests;
 mod config_command_types;
+mod conservative_simplify;
 mod const_fold_local;
 mod context_command_eval;
 mod context_command_format;
@@ -64,10 +66,13 @@ mod context_command_parse;
 #[cfg(test)]
 mod context_command_tests;
 mod context_command_types;
+mod display_eval_steps;
 mod domain_facade;
-mod engine_exports;
+mod engine_bridge;
+mod engine_runtime_types;
 mod equiv_command;
 mod equiv_format;
+mod error_runtime_types;
 mod eval_command_eval;
 mod eval_command_format;
 mod eval_command_format_metadata;
@@ -189,6 +194,7 @@ mod parse_error_render_tests;
 mod path_rewrite;
 #[cfg(test)]
 mod path_rewrite_tests;
+mod phase_runtime_types;
 mod pipeline_display;
 #[cfg(test)]
 mod pipeline_display_tests;
@@ -242,6 +248,8 @@ mod repl_solve_runtime;
 mod repl_steps_runtime;
 #[cfg(test)]
 mod repl_steps_runtime_tests;
+mod rule_runtime_types;
+mod rules_runtime_types;
 mod semantics_command_eval;
 mod semantics_command_parse;
 #[cfg(test)]
@@ -289,7 +297,7 @@ mod solve_backend;
 mod solve_backend_active;
 mod solve_backend_contract;
 mod solve_backend_dispatch;
-mod solve_backend_engine;
+mod solve_backend_local;
 mod solve_command_errors;
 mod solve_command_eval_core;
 mod solve_command_session_eval;
@@ -309,6 +317,8 @@ mod solver_entrypoints_eval;
 mod solver_entrypoints_proof_verify;
 mod solver_entrypoints_solve;
 mod solver_number_theory;
+mod standard_oracle;
+mod step_runtime_types;
 mod steps_command_eval;
 mod steps_command_format;
 mod steps_command_parse;

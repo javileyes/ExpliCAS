@@ -1,6 +1,7 @@
 //! Simplify action handler for `Engine::eval`.
 
 use super::*;
+use cas_ast::Expr;
 
 impl Engine {
     /// Handle `EvalAction::Expand`.

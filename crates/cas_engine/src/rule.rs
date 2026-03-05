@@ -3,6 +3,7 @@ use crate::phase::PhaseMask;
 use crate::step::{ImportanceLevel, StepCategory};
 use crate::target_kind::TargetKindSet;
 use cas_ast::{Context, ExprId};
+pub use cas_solver_core::soundness_label::SoundnessLabel;
 use std::borrow::Cow;
 use std::cell::Cell;
 
@@ -29,44 +30,6 @@ pub fn set_steps_enabled(enabled: bool) {
 #[inline]
 pub fn steps_enabled() -> bool {
     STEPS_ENABLED.with(|s| s.get())
-}
-
-// =============================================================================
-// SoundnessLabel: Mathematical soundness classification for Rule transformations
-// =============================================================================
-
-/// Mathematical soundness classification for rules.
-///
-/// This enum classifies how a rule transformation relates to mathematical equivalence,
-/// used for:
-/// - Auditing rules during review
-/// - Property-based testing (only Equivalence* rules should preserve numeric value)
-/// - Per-step numeric validation in debug mode
-/// - UX feedback (showing assumption types to users)
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum SoundnessLabel {
-    /// Equivalence for all values in the implicit domain of the input.
-    /// The transformation preserves mathematical identity.
-    /// Example: x + 0 → x, sin²(x) + cos²(x) → 1
-    #[default]
-    Equivalence,
-
-    /// Equivalence, but requires additional conditions (typically RequiresIntroduced).
-    /// Example: log(ab) → log(a) + log(b) (requires a > 0, b > 0)
-    EquivalenceUnderIntroducedRequires,
-
-    /// The rule chooses one branch of a multi-valued expression (principal branch).
-    /// Example: sqrt(x²) → x (choosing positive root), arcsin(sin(x)) → x
-    BranchChoice,
-
-    /// Extends the domain (R → C, or similar).
-    /// Example: (-1)^(1/2) → i (moving from real to complex)
-    DomainExtension,
-
-    /// Heuristic: aims to "improve" the expression but doesn't guarantee
-    /// global equivalence. Used for simplification strategies.
-    /// Example: auto-expand with budget decisions
-    Heuristic,
 }
 
 // =============================================================================

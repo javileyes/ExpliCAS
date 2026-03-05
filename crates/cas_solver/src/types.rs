@@ -34,10 +34,8 @@ impl Default for SolverOptions {
 impl SolverOptions {
     /// Build solver options from eval options.
     pub fn from_eval_options(options: &crate::EvalOptions) -> Self {
-        let core = cas_solver_core::solver_options::SolverOptions::from_axes(
-            options.shared.semantics.value_domain,
-            options.shared.semantics.domain_mode,
-            options.shared.semantics.assume_scope,
+        let core = cas_solver_core::solver_options::SolverOptions::from_eval_config(
+            options.shared.semantics,
             options.budget,
         );
         Self {

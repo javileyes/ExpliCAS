@@ -27,7 +27,7 @@ pub fn eval_output_view(output: &crate::EvalOutput) -> EvalOutputView {
         parsed: parsed_expr_from_eval_output(output),
         resolved: resolved_expr_from_eval_output(output),
         result: result_from_eval_output(output).clone(),
-        steps: steps_from_eval_output(output).clone(),
+        steps: steps_from_eval_output(output),
         solve_steps: solve_steps_from_eval_output(output).to_vec(),
         output_scopes: output_scopes_from_eval_output(output).to_vec(),
         diagnostics: diagnostics_from_eval_output(output).clone(),
@@ -82,9 +82,9 @@ pub fn result_from_eval_output(output: &crate::EvalOutput) -> &crate::EvalResult
     &output.result
 }
 
-/// Borrow display-ready simplify steps.
-pub fn steps_from_eval_output(output: &crate::EvalOutput) -> &crate::DisplayEvalSteps {
-    &output.steps
+/// Clone display-ready simplify steps into solver-owned wrapper.
+pub fn steps_from_eval_output(output: &crate::EvalOutput) -> crate::DisplayEvalSteps {
+    crate::display_eval_steps::build_display_eval_steps(output.steps.0.clone())
 }
 
 /// Borrow solve-step sequence.
@@ -102,4 +102,46 @@ pub fn output_scopes_from_eval_output(
 /// Borrow diagnostics payload.
 pub fn diagnostics_from_eval_output(output: &crate::EvalOutput) -> &crate::Diagnostics {
     &output.diagnostics
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{eval_output_view, steps_from_eval_output};
+
+    fn sample_output() -> crate::EvalOutput {
+        let mut ctx = cas_ast::Context::new();
+        let one = ctx.num(1);
+        let step = crate::Step::new_compact("demo", "DemoRule", one, one);
+
+        crate::EvalOutput {
+            stored_id: Some(7),
+            parsed: one,
+            resolved: one,
+            result: crate::EvalResult::Expr(one),
+            domain_warnings: Vec::new(),
+            steps: cas_solver_core::display_steps::DisplaySteps(vec![step]),
+            solve_steps: Vec::new(),
+            solver_assumptions: Vec::new(),
+            output_scopes: Vec::new(),
+            required_conditions: Vec::new(),
+            blocked_hints: Vec::new(),
+            diagnostics: crate::Diagnostics::default(),
+        }
+    }
+
+    #[test]
+    fn steps_adapter_returns_solver_owned_wrapper() {
+        let output = sample_output();
+        let steps = steps_from_eval_output(&output);
+        assert_eq!(steps.len(), 1);
+        assert_eq!(steps.as_slice()[0].rule_name, "DemoRule");
+    }
+
+    #[test]
+    fn eval_output_view_converts_steps_into_solver_wrapper() {
+        let output = sample_output();
+        let view = eval_output_view(&output);
+        assert_eq!(view.steps.len(), 1);
+        assert_eq!(view.steps.as_slice()[0].description, "demo");
+    }
 }

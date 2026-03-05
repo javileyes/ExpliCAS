@@ -25,6 +25,7 @@
 use cas_ast::Context;
 use cas_solver_core::domain_facts_model::{FactStrength, Predicate};
 use cas_solver_core::domain_oracle_model::DomainOracle;
+use cas_solver_core::standard_oracle as core_standard_oracle;
 
 use crate::semantics::ValueDomain;
 use crate::{CancelDecision, DomainMode};
@@ -39,31 +40,34 @@ use crate::{CancelDecision, DomainMode};
 /// `prove_nonnegative` from `helpers::predicates`, then applies the
 /// `DomainMode` policy via `domain_facts::decide()`.
 pub struct StandardOracle<'a> {
-    ctx: &'a Context,
-    mode: DomainMode,
-    value_domain: ValueDomain,
+    inner: core_standard_oracle::StandardOracle<'a>,
 }
 
 impl<'a> StandardOracle<'a> {
     /// Create a new oracle with the given context and semantic configuration.
     pub fn new(ctx: &'a Context, mode: DomainMode, value_domain: ValueDomain) -> Self {
         Self {
-            ctx,
-            mode,
-            value_domain,
+            inner: core_standard_oracle::StandardOracle::new(
+                ctx,
+                mode,
+                value_domain,
+                crate::helpers::prove_nonzero,
+                crate::helpers::prove_positive,
+                crate::helpers::prove_nonnegative,
+            ),
         }
     }
 
     /// Get the underlying `DomainMode`.
     #[inline]
     pub fn mode(&self) -> DomainMode {
-        self.mode
+        self.inner.mode()
     }
 
     /// Get the underlying `ValueDomain`.
     #[inline]
     pub fn value_domain(&self) -> ValueDomain {
-        self.value_domain
+        self.inner.value_domain()
     }
 }
 
@@ -78,28 +82,14 @@ impl DomainOracle for StandardOracle<'_> {
     /// - `NonNegative` → `prove_nonnegative`
     /// - `Defined` → always `Unknown` (no prover for general definedness)
     fn query(&self, pred: &Predicate) -> FactStrength {
-        use crate::helpers::{prove_nonnegative, prove_nonzero, prove_positive};
-
-        cas_solver_core::domain_oracle_model::query_predicate_strength_with_provers(
-            pred,
-            |expr| prove_nonzero(self.ctx, expr),
-            |expr| prove_positive(self.ctx, expr, self.value_domain),
-            |expr| prove_nonnegative(self.ctx, expr, self.value_domain),
-        )
+        self.inner.query(pred)
     }
 
     /// Decide whether a transformation requiring this predicate is allowed.
     ///
     /// Combines `query()` result with the `DomainMode` policy.
     fn allows(&self, pred: &Predicate) -> CancelDecision {
-        use crate::helpers::{prove_nonnegative, prove_nonzero, prove_positive};
-        cas_solver_core::domain_oracle_model::allows_with_provers(
-            self.mode,
-            pred,
-            |expr| prove_nonzero(self.ctx, expr),
-            |expr| prove_positive(self.ctx, expr, self.value_domain),
-            |expr| prove_nonnegative(self.ctx, expr, self.value_domain),
-        )
+        self.inner.allows(pred)
     }
 }
 
@@ -129,14 +119,14 @@ pub fn oracle_allows_with_hint(
     pred: &Predicate,
     rule: &'static str,
 ) -> CancelDecision {
-    use crate::helpers::{prove_nonnegative, prove_nonzero, prove_positive};
-    cas_solver_core::domain_oracle_model::allows_with_hint_using_provers(
+    core_standard_oracle::oracle_allows_with_hint(
         ctx,
         mode,
+        value_domain,
         pred,
         rule,
-        |expr| prove_nonzero(ctx, expr),
-        |expr| prove_positive(ctx, expr, value_domain),
-        |expr| prove_nonnegative(ctx, expr, value_domain),
+        crate::helpers::prove_nonzero,
+        crate::helpers::prove_positive,
+        crate::helpers::prove_nonnegative,
     )
 }

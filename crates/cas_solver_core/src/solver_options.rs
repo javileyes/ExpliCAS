@@ -48,6 +48,19 @@ impl SolverOptions {
         }
     }
 
+    /// Build options from a full semantic config plus solve budget.
+    pub fn from_eval_config(
+        config: crate::eval_config::EvalConfig,
+        budget: crate::solve_budget::SolveBudget,
+    ) -> Self {
+        Self::from_axes(
+            config.value_domain,
+            config.domain_mode,
+            config.assume_scope,
+            budget,
+        )
+    }
+
     /// Convert domain mode into core solver domain mode kind.
     pub fn core_domain_mode(&self) -> crate::log_domain::DomainModeKind {
         crate::strategy_options::solver_domain_mode_kind(
@@ -59,5 +72,37 @@ impl SolverOptions {
     /// Returns true when assume-scope allows wildcard assumptions.
     pub fn wildcard_scope(&self) -> bool {
         self.assume_scope == crate::assume_scope::AssumeScope::Wildcard
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SolverOptions;
+    use crate::assume_scope::AssumeScope;
+    use crate::domain_mode::DomainMode;
+    use crate::eval_config::EvalConfig;
+    use crate::solve_budget::SolveBudget;
+    use crate::value_domain::ValueDomain;
+
+    #[test]
+    fn from_eval_config_maps_axes_and_budget() {
+        let cfg = EvalConfig {
+            domain_mode: DomainMode::Assume,
+            value_domain: ValueDomain::ComplexEnabled,
+            assume_scope: AssumeScope::Wildcard,
+            ..Default::default()
+        };
+        let budget = SolveBudget {
+            max_branches: 11,
+            max_depth: 7,
+        };
+
+        let opts = SolverOptions::from_eval_config(cfg, budget);
+
+        assert_eq!(opts.domain_mode, DomainMode::Assume);
+        assert_eq!(opts.value_domain, ValueDomain::ComplexEnabled);
+        assert_eq!(opts.assume_scope, AssumeScope::Wildcard);
+        assert_eq!(opts.budget.max_depth, 7);
+        assert_eq!(opts.budget.max_branches, 11);
     }
 }

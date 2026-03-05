@@ -4,13 +4,9 @@
 //! verification behavior while migration decouples solver APIs from
 //! `cas_engine` internals.
 
-use crate::{
-    DomainMode, EvalConfig, PhaseBudgets, SharedSemanticConfig, Simplifier, SimplifyOptions,
-    ValueDomain,
-};
+use crate::Simplifier;
 use cas_ast::{Context, Equation, ExprId, SolutionSet};
 use cas_math::expr_predicates::contains_variable;
-use cas_math::ground_eval_guard::GroundEvalGuard;
 use cas_solver_core::isolation_utils::is_numeric_zero;
 use cas_solver_core::verification::{VerifyResult, VerifyStatus};
 use cas_solver_core::verification_flow::{
@@ -18,45 +14,12 @@ use cas_solver_core::verification_flow::{
 };
 use cas_solver_core::verify_substitution::substitute_equation_diff;
 
-fn simplify_options_for_domain(domain_mode: DomainMode) -> SimplifyOptions {
-    SimplifyOptions {
-        shared: SharedSemanticConfig {
-            semantics: EvalConfig {
-                domain_mode,
-                ..Default::default()
-            },
-            ..Default::default()
-        },
-        ..Default::default()
-    }
-}
-
 fn fold_numeric_islands(ctx: &mut Context, root: ExprId) -> ExprId {
-    let fold_opts = SimplifyOptions {
-        collect_steps: false,
-        expand_mode: false,
-        shared: SharedSemanticConfig {
-            semantics: EvalConfig {
-                domain_mode: DomainMode::Generic,
-                value_domain: ValueDomain::RealOnly,
-                ..Default::default()
-            },
-            ..Default::default()
-        },
-        budgets: PhaseBudgets {
-            core_iters: 4,
-            transform_iters: 2,
-            rationalize_iters: 0,
-            post_iters: 2,
-            max_total_rewrites: 50,
-        },
-        ..Default::default()
-    };
+    let fold_opts = crate::conservative_simplify::conservative_numeric_fold_options();
 
-    cas_solver_core::verification_numeric_islands::fold_numeric_islands_guarded_with_default_limits_and_candidate_evaluator(
+    cas_solver_core::verification_runtime_helpers::fold_numeric_islands_with_default_guard_and_candidate(
         ctx,
         root,
-        GroundEvalGuard::enter,
         |src_ctx, id| {
             let mut tmp = Simplifier::with_context(src_ctx.clone());
             tmp.set_collect_steps(false);
@@ -81,7 +44,7 @@ pub(crate) fn verify_solution_local(
             substitute_equation_diff(&mut state.context, eq, solve_var, candidate)
         },
         |state, expr, domain_mode| {
-            let opts = simplify_options_for_domain(domain_mode);
+            let opts = crate::conservative_simplify::simplify_options_for_domain(domain_mode);
             state.simplify_with_stats(expr, opts).0
         },
         |state, expr| contains_variable(&state.context, expr),

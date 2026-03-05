@@ -52,6 +52,22 @@ where
     cleaned
 }
 
+/// Canonical conversion from raw eval steps to display-ready cleaned steps.
+pub fn to_display_eval_steps(
+    raw_steps: Vec<crate::step_model::Step>,
+) -> crate::display_steps::DisplaySteps<crate::step_model::Step> {
+    let cleaned = clean_eval_steps(
+        raw_steps,
+        |s: &crate::step_model::Step| s.before,
+        |s: &crate::step_model::Step| s.after,
+        |s: &crate::step_model::Step| s.before_local(),
+        |s: &crate::step_model::Step| s.after_local(),
+        |s: &crate::step_model::Step| s.global_after,
+        |s: &mut crate::step_model::Step, gb| s.global_before = Some(gb),
+    );
+    crate::display_steps::DisplaySteps(cleaned)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -173,5 +189,15 @@ mod tests {
 
         assert_eq!(cleaned.len(), 2);
         assert_eq!(cleaned[1].global_before, Some(c));
+    }
+
+    #[test]
+    fn to_display_eval_steps_removes_noop() {
+        let mut ctx = Context::new();
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        let step = crate::step_model::Step::new_compact("test", "rule", one, two);
+        let out = super::to_display_eval_steps(vec![step]);
+        assert_eq!(out.len(), 1);
     }
 }

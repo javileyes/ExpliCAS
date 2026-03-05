@@ -1,26 +1,11 @@
 use crate::{
-    AssumptionRecord, BlockedHint, DomainMode, DomainWarning, Engine, EvalAction, EvalOptions,
-    EvalRequest, EvalResult, ImplicitCondition, ValueDomain,
+    AssumptionRecord, BlockedHint, DomainWarning, Engine, EvalAction, EvalOptions, EvalRequest,
+    EvalResult, ImplicitCondition,
 };
 use cas_api_models::{
     AssumptionDto, BlockedHintDto, ConditionDto, EnvelopeEvalOptions, ExprDto, OutputEnvelope,
     RequestInfo, RequestOptions, TransparencyDto,
 };
-
-fn domain_mode_from_str(value: &str) -> DomainMode {
-    match value {
-        "strict" => DomainMode::Strict,
-        "assume" => DomainMode::Assume,
-        _ => DomainMode::Generic,
-    }
-}
-
-fn value_domain_from_str(value: &str) -> ValueDomain {
-    match value {
-        "complex" => ValueDomain::ComplexEnabled,
-        _ => ValueDomain::RealOnly,
-    }
-}
 
 fn display_expr(ctx: &cas_ast::Context, id: cas_ast::ExprId) -> String {
     cas_formatter::DisplayExpr { context: ctx, id }.to_string()
@@ -112,8 +97,10 @@ fn build_transparency(
 pub fn eval_str_to_output_envelope(expr: &str, opts: &EnvelopeEvalOptions) -> OutputEnvelope {
     let mut engine = Engine::new();
     let mut eval_options = EvalOptions::default();
-    eval_options.shared.semantics.domain_mode = domain_mode_from_str(&opts.domain);
-    eval_options.shared.semantics.value_domain = value_domain_from_str(&opts.value_domain);
+    eval_options.shared.semantics.domain_mode =
+        crate::eval_json_options::domain_mode_from_str(&opts.domain);
+    eval_options.shared.semantics.value_domain =
+        crate::eval_json_options::value_domain_from_str(&opts.value_domain);
 
     let parsed = match cas_parser::parse(expr, &mut engine.simplifier.context) {
         Ok(id) => id,

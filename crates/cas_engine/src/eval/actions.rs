@@ -39,7 +39,10 @@ impl Engine {
             resolved,
         );
 
-        let solver_opts = crate::solver::solver_options_from_eval_options(options);
+        let solver_opts = cas_solver_core::solver_options::SolverOptions::from_eval_config(
+            options.shared.semantics,
+            options.budget,
+        );
 
         let sol_result = crate::api::solve_with_display_steps(
             &eq_to_solve,

@@ -96,11 +96,14 @@ fn power_power_nonnegative_proof_with_witness(
     parent_ctx: &crate::parent_context::ParentContext,
     value_domain: crate::semantics::ValueDomain,
 ) -> cas_math::tri_proof::TriProof {
-    use crate::helpers::prove_nonnegative;
-    use crate::Proof;
     use crate::{witness_survives_in_context, WitnessKind};
 
-    let base_proof = prove_nonnegative(core_ctx, base, value_domain);
+    let explicit = cas_solver_core::predicate_proofs::prove_nonnegative_core_with(
+        core_ctx,
+        base,
+        value_domain,
+        crate::helpers::prove_nonnegative,
+    );
     let (implicit_contains_nonnegative, witness_survives) = if let (Some(implicit), Some(root)) =
         (parent_ctx.implicit_domain(), parent_ctx.root_expr())
     {
@@ -119,23 +122,11 @@ fn power_power_nonnegative_proof_with_witness(
         (false, false)
     };
 
-    let proof = match cas_math::root_power_canonical_support::merge_nonnegative_proof_with_witness(
-        cas_solver_core::predicate_proofs::proof_to_core(base_proof),
+    cas_math::root_power_canonical_support::merge_nonnegative_proof_with_witness(
+        explicit,
         implicit_contains_nonnegative,
         witness_survives,
-    ) {
-        cas_math::tri_proof::TriProof::Proven => {
-            if matches!(base_proof, Proof::Proven) {
-                Proof::Proven
-            } else {
-                Proof::ProvenImplicit
-            }
-        }
-        cas_math::tri_proof::TriProof::Disproven => Proof::Disproven,
-        cas_math::tri_proof::TriProof::Unknown => Proof::Unknown,
-    };
-
-    cas_solver_core::predicate_proofs::proof_to_core(proof)
+    )
 }
 
 fn apply_power_power_even_root_action(

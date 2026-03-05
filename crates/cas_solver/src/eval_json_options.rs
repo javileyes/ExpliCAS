@@ -15,6 +15,23 @@ pub(crate) struct EvalJsonOptionAxes<'a> {
     pub assume_scope: &'a str,
 }
 
+/// Parse domain mode from JSON string axis.
+pub(crate) fn domain_mode_from_str(value: &str) -> crate::DomainMode {
+    match value {
+        "strict" => crate::DomainMode::Strict,
+        "assume" => crate::DomainMode::Assume,
+        _ => crate::DomainMode::Generic,
+    }
+}
+
+/// Parse value domain from JSON string axis.
+pub(crate) fn value_domain_from_str(value: &str) -> crate::ValueDomain {
+    match value {
+        "complex" => crate::ValueDomain::ComplexEnabled,
+        _ => crate::ValueDomain::RealOnly,
+    }
+}
+
 /// Apply eval-json option axes onto `EvalOptions`.
 pub(crate) fn apply_eval_json_options(opts: &mut crate::EvalOptions, axes: EvalJsonOptionAxes<'_>) {
     opts.shared.context_mode = match axes.context {
@@ -46,21 +63,14 @@ pub(crate) fn apply_eval_json_options(opts: &mut crate::EvalOptions, axes: EvalJ
         _ => crate::ExpandPolicy::Off,
     };
 
-    opts.shared.semantics.domain_mode = match axes.domain {
-        "strict" => crate::DomainMode::Strict,
-        "assume" => crate::DomainMode::Assume,
-        _ => crate::DomainMode::Generic,
-    };
+    opts.shared.semantics.domain_mode = domain_mode_from_str(axes.domain);
 
     opts.shared.semantics.inv_trig = match axes.inv_trig {
         "principal" => crate::InverseTrigPolicy::PrincipalValue,
         _ => crate::InverseTrigPolicy::Strict,
     };
 
-    opts.shared.semantics.value_domain = match axes.value_domain {
-        "complex" => crate::ValueDomain::ComplexEnabled,
-        _ => crate::ValueDomain::RealOnly,
-    };
+    opts.shared.semantics.value_domain = value_domain_from_str(axes.value_domain);
 
     let _ = axes.complex_branch;
     opts.shared.semantics.branch = crate::BranchPolicy::Principal;

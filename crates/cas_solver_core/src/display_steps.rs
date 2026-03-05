@@ -7,6 +7,11 @@
 pub struct DisplaySteps<S>(pub Vec<S>);
 
 impl<S> DisplaySteps<S> {
+    /// Create an empty display-step wrapper.
+    pub fn empty() -> Self {
+        Self(Vec::new())
+    }
+
     /// Check if there are no steps.
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
@@ -39,6 +44,32 @@ impl<S> Default for DisplaySteps<S> {
     }
 }
 
+impl<S> std::ops::Deref for DisplaySteps<S> {
+    type Target = [S];
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<'a, S> IntoIterator for &'a DisplaySteps<S> {
+    type Item = &'a S;
+    type IntoIter = std::slice::Iter<'a, S>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
+}
+
+impl<S> IntoIterator for DisplaySteps<S> {
+    type Item = S;
+    type IntoIter = std::vec::IntoIter<S>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::DisplaySteps;
@@ -51,5 +82,14 @@ mod tests {
         assert_eq!(steps.as_slice(), &[1, 2, 3]);
         assert_eq!(steps.iter().copied().collect::<Vec<_>>(), vec![1, 2, 3]);
         assert_eq!(steps.into_inner(), vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn empty_deref_and_iter_contracts() {
+        let steps = DisplaySteps::<u8>::empty();
+        assert!(steps.is_empty());
+        assert_eq!((&steps as &[u8]).len(), 0);
+        assert_eq!(steps.iter().count(), 0);
+        assert_eq!((&steps).into_iter().count(), 0);
     }
 }
