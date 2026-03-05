@@ -22,7 +22,7 @@ ERRORS=0
 if grep -rq "substitute_str_to_json" "$ROOT/crates/cas_cli/src"; then
     echo "✔ CLI uses substitute_str_to_json (direct)"
 elif grep -rq "evaluate_substitute_subcommand" "$ROOT/crates/cas_cli/src" \
-    && grep -rq "pub fn evaluate_substitute_json_canonical" "$ROOT/crates/cas_session/src/json_bridge.rs"; then
+    && grep -rq "evaluate_substitute_json_canonical" "$ROOT/crates/cas_session/src"; then
     echo "✔ CLI routes substitute JSON via cas_session canonical helper"
 else
     echo "✘ ERROR: CLI must call canonical substitute JSON path (direct or via cas_session)"
@@ -36,7 +36,7 @@ fi
 if grep -rq "substitute_str_to_json" "$ROOT/crates/cas_android_ffi/src"; then
     echo "✔ FFI uses substitute_str_to_json (direct)"
 elif grep -rq "evaluate_substitute_json_canonical" "$ROOT/crates/cas_android_ffi/src" \
-    && grep -rq "pub fn evaluate_substitute_json_canonical" "$ROOT/crates/cas_session/src/json_bridge.rs"; then
+    && grep -rq "evaluate_substitute_json_canonical" "$ROOT/crates/cas_session/src"; then
     echo "✔ FFI routes substitute JSON via cas_session canonical helper"
 else
     echo "✘ ERROR: FFI must call canonical substitute JSON path"

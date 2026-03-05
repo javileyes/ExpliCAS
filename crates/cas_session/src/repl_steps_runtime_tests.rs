@@ -1,8 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::repl_steps_runtime::{
-        apply_steps_command_update_on_repl_core, steps_command_state_for_repl_core,
-    };
+    use crate::{apply_steps_command_update_on_repl_core, steps_command_state_for_repl_core};
 
     #[test]
     fn steps_command_state_for_repl_core_reads_state() {

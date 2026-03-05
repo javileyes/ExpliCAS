@@ -4,8 +4,9 @@ use crate::{
     evaluate_det_command_message_on_repl_core, evaluate_equiv_invocation_message_on_repl_core,
     evaluate_eval_command_render_plan_on_repl_core,
     evaluate_expand_command_render_plan_on_repl_core,
-    evaluate_explain_invocation_message_on_repl_core, evaluate_health_command_message_on_repl_core,
-    evaluate_history_command_message_on_repl_core,
+    evaluate_explain_invocation_message_on_repl_core,
+    evaluate_full_simplify_command_lines_on_repl_core,
+    evaluate_health_command_message_on_repl_core, evaluate_history_command_message_on_repl_core,
     evaluate_let_assignment_command_message_on_repl_core,
     evaluate_linear_system_command_message_on_repl_core,
     evaluate_profile_cache_command_lines_on_repl_core,
@@ -114,7 +115,7 @@ fn evaluate_profile_cache_command_lines_on_repl_core_clear_empties_cache() {
 #[test]
 fn evaluate_unary_command_message_on_repl_core_runs_det() {
     let mut core = crate::ReplCore::new();
-    let out = crate::repl_command_unary_runtime::evaluate_unary_command_message_on_repl_core(
+    let out = cas_solver::evaluate_unary_command_message_on_runtime(
         &mut core,
         "det([[1,2],[3,4]])",
         "det",
@@ -179,6 +180,30 @@ fn evaluate_solve_command_message_on_repl_core_runs() {
     .expect("solve");
     assert!(!out.trim().is_empty());
     assert!(out.contains('x'));
+}
+
+#[test]
+fn evaluate_solve_command_message_on_repl_core_reports_ambiguous_variables() {
+    let mut core = crate::ReplCore::new();
+    let err = evaluate_solve_command_message_on_repl_core(
+        &mut core,
+        "solve x+y=0",
+        crate::SetDisplayMode::Normal,
+    )
+    .expect_err("expected ambiguous-variable error");
+    assert!(err.contains("ambiguous variables"));
+}
+
+#[test]
+fn evaluate_full_simplify_command_lines_on_repl_core_runs() {
+    let mut core = crate::ReplCore::new();
+    let lines = evaluate_full_simplify_command_lines_on_repl_core(
+        &mut core,
+        "simplify x + 0",
+        crate::SetDisplayMode::Normal,
+    )
+    .expect("simplify");
+    assert!(lines.iter().any(|line| line.starts_with("Result:")));
 }
 
 #[test]

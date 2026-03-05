@@ -43,6 +43,6 @@ pub(crate) fn session_store_snapshot_into_store(snapshot: SessionStoreSnapshot) 
             requires: Vec::new(), // Recalculated on use if needed
             steps: None,          // Light cache: no steps persisted
         },
-        |config: CacheConfig| crate::session_store_with_cache_config(config),
+        |config: CacheConfig| crate::store_cache_policy::session_store_with_cache_config(config),
     )
 }

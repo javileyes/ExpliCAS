@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::repl_set_runtime::{
+    use crate::{
         apply_set_command_plan_on_repl_core, evaluate_set_command_on_repl_core,
         set_command_state_for_repl_core, ReplSetMessageKind,
     };

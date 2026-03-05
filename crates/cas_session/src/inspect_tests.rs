@@ -1,9 +1,9 @@
-use crate::inspect::{
+use crate::SessionState;
+use crate::{
     format_history_entry_inspection_lines, format_inspect_history_entry_error_message,
     inspect_history_entry, inspect_history_entry_input, parse_history_entry_id,
     HistoryEntryDetails, InspectHistoryEntryInputError, ParseHistoryEntryIdError,
 };
-use crate::SessionState;
 
 #[test]
 fn inspect_history_entry_reports_missing_id() {

@@ -1,14 +1,13 @@
 #[cfg(test)]
 mod tests {
     use crate::eval_json_command::EvalJsonCommandConfig;
-    use crate::eval_json_command_runtime::evaluate_eval_json_with_session;
     use crate::SessionState;
 
     #[test]
     fn evaluate_eval_json_with_session_runs() {
         let mut engine = cas_solver::Engine::new();
         let mut session = SessionState::new();
-        let out = evaluate_eval_json_with_session(
+        let out = cas_solver::evaluate_eval_json_with_session(
             &mut engine,
             &mut session,
             EvalJsonCommandConfig {

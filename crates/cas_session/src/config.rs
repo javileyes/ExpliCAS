@@ -115,3 +115,30 @@ pub fn apply_solver_toggle_to_cas_config(
     config.canonicalize_trig_square = toggles.canonicalize_trig_square;
     config.auto_factor = toggles.auto_factor;
 }
+
+/// Sync an existing simplifier with toggle values from `CasConfig`.
+pub fn sync_simplifier_with_cas_config(
+    simplifier: &mut cas_solver::Simplifier,
+    config: &CasConfig,
+) {
+    let toggles = solver_toggle_config_from_cas_config(config);
+    cas_solver::apply_simplifier_toggle_config(simplifier, toggles);
+}
+
+impl cas_solver::ConfigCommandApplyContext for CasConfig {
+    fn current_toggles(&self) -> cas_solver::SimplifierToggleConfig {
+        solver_toggle_config_from_cas_config(self)
+    }
+
+    fn save(&mut self) -> Result<(), String> {
+        CasConfig::save(self).map_err(|error| error.to_string())
+    }
+
+    fn restore_defaults(&mut self) {
+        *self = CasConfig::restore();
+    }
+
+    fn apply_toggles(&mut self, toggles: cas_solver::SimplifierToggleConfig) {
+        apply_solver_toggle_to_cas_config(self, toggles);
+    }
+}

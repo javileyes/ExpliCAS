@@ -2,8 +2,6 @@
 
 use std::path::Path;
 
-pub(crate) use crate::eval_json_command_runtime::evaluate_eval_json_with_session;
-
 /// Session-backed config for `eval-json` command orchestration.
 pub type EvalJsonCommandConfig<'a> = cas_api_models::EvalJsonSessionRunConfig<'a>;
 
@@ -23,7 +21,7 @@ where
     F: Fn(&[cas_solver::Step], &cas_ast::Context, &str) -> Vec<cas_api_models::StepJson>,
 {
     crate::run_with_domain_session(session_path, config.domain, |engine, state| {
-        evaluate_eval_json_with_session(engine, state, config, |steps, ctx, mode| {
+        cas_solver::evaluate_eval_json_with_session(engine, state, config, |steps, ctx, mode| {
             collect_steps(steps, ctx, mode)
         })
     })

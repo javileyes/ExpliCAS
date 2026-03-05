@@ -10,7 +10,7 @@ pub struct SessionEvalStore(pub(crate) SessionStore);
 
 impl SessionEvalStore {
     pub(crate) fn new() -> Self {
-        Self(crate::session_store_with_cache_config(
+        Self(crate::store_cache_policy::session_store_with_cache_config(
             cas_session_core::types::CacheConfig::default(),
         ))
     }

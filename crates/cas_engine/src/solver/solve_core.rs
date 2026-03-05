@@ -33,10 +33,10 @@ use cas_solver_core::strategy_order::{
 use cas_solver_core::substitution::execute_exponential_substitution_strategy_result_pipeline_with_default_substitution_var_and_plan_with_state;
 
 use super::{
-    context_render_expr, medium_step, simplifier_contains_var, simplifier_context,
-    simplifier_context_mut, simplifier_expand_expr, simplifier_render_expr,
-    simplifier_simplify_expr, simplifier_zero_expr, DisplaySolveSteps, SolveCtx, SolveDiagnostics,
-    SolveDomainEnv, SolveStep, SolveSubStep, SolverOptions,
+    cancel_common_terms::cancel_additive_terms_semantic, context_render_expr, medium_step,
+    simplifier_contains_var, simplifier_context, simplifier_context_mut, simplifier_expand_expr,
+    simplifier_render_expr, simplifier_simplify_expr, simplifier_zero_expr, DisplaySolveSteps,
+    SolveCtx, SolveDiagnostics, SolveDomainEnv, SolveStep, SolveSubStep, SolverOptions,
 };
 
 type SolvePreflightState = PreflightContext<SolveCtx>;
@@ -266,7 +266,7 @@ fn prepare_equation_for_strategy(
             .map(|rewrite| (rewrite.new_lhs, rewrite.new_rhs))
         },
         |state, lhs, rhs| {
-            cancel_additive_terms_semantic_for_solver(state, lhs, rhs)
+            cancel_additive_terms_semantic(state, lhs, rhs)
                 .map(|rewrite| (rewrite.new_lhs, rewrite.new_rhs))
         },
         |state, lhs, rhs| state.context.add(Expr::Sub(lhs, rhs)),
@@ -281,49 +281,6 @@ fn prepare_equation_for_strategy(
             )
         },
         simplifier_zero_expr,
-    )
-}
-
-/// Semantic additive-cancellation fallback used by the solve pipeline.
-///
-/// This keeps solve_core decoupled from `crate::rules::*` wrappers while
-/// preserving the same candidate/proof strategy:
-/// 1. candidate normalization in Generic mode
-/// 2. pair proof in Strict mode
-fn cancel_additive_terms_semantic_for_solver(
-    simplifier: &mut Simplifier,
-    lhs: ExprId,
-    rhs: ExprId,
-) -> Option<cas_solver_core::cancel_common_terms::CancelResult> {
-    use num_traits::Zero;
-
-    let candidate_opts = crate::SimplifyOptions {
-        collect_steps: false,
-        ..Default::default()
-    };
-    let strict_proof_opts = crate::SimplifyOptions {
-        shared: crate::phase::SharedSemanticConfig {
-            semantics: crate::semantics::EvalConfig::strict(),
-            ..Default::default()
-        },
-        collect_steps: false,
-        ..Default::default()
-    };
-
-    cas_solver_core::cancel_common_terms::cancel_additive_terms_semantic_with_state(
-        simplifier,
-        lhs,
-        rhs,
-        |state| &state.context,
-        |state| &mut state.context,
-        |state, term| state.simplify_with_stats(term, candidate_opts.clone()).0,
-        crate::expand::expand,
-        |state, lt, rt| {
-            let diff = state.context.add(Expr::Sub(lt, rt));
-            let (simplified_diff, _, _) =
-                state.simplify_with_stats(diff, strict_proof_opts.clone());
-            matches!(state.context.get(simplified_diff), Expr::Number(n) if n.is_zero())
-        },
     )
 }
 
