@@ -1,5 +1,3 @@
-use cas_ast::Equation;
-
 /// Options for solver operations, containing semantic context.
 ///
 /// `cas_solver` owns this facade type so solver consumers can remain decoupled
@@ -91,34 +89,22 @@ impl From<SolverOptions> for cas_solver_core::solver_options::SolverOptions {
 }
 
 /// Domain environment for solver operations.
-pub type SolveDomainEnv = cas_solver_core::solve_aliases::SolveDomainEnv<crate::ImplicitDomain>;
+pub type SolveDomainEnv = cas_solver_core::solve_runtime_types::RuntimeSolveDomainEnv;
 
 /// Solver context for recursive and nested solve flows.
-pub type SolveCtx = cas_solver_core::solve_aliases::SolveCtx<
-    SolveDomainEnv,
-    crate::ImplicitCondition,
-    crate::AssumptionEvent,
-    cas_formatter::display_transforms::ScopeTag,
->;
+pub type SolveCtx = cas_solver_core::solve_runtime_types::RuntimeSolveCtx;
 
 /// Display-ready solve steps (post-cleanup).
-pub type DisplaySolveSteps = cas_solver_core::solve_aliases::DisplaySolveSteps<SolveStep>;
+pub type DisplaySolveSteps = cas_solver_core::solve_runtime_types::RuntimeDisplaySolveSteps;
 
 /// Diagnostics collected during solve operation.
-pub type SolveDiagnostics = cas_solver_core::solve_aliases::SolveDiagnostics<
-    crate::ImplicitCondition,
-    crate::AssumptionEvent,
-    crate::AssumptionRecord,
-    cas_formatter::display_transforms::ScopeTag,
->;
+pub type SolveDiagnostics = cas_solver_core::solve_runtime_types::RuntimeSolveDiagnostics;
 
 /// Educational sub-step for solver derivations.
-pub type SolveSubStep =
-    cas_solver_core::solve_aliases::SolveSubStep<Equation, crate::ImportanceLevel>;
+pub type SolveSubStep = cas_solver_core::solve_runtime_types::RuntimeSolveSubStep;
 
 /// Top-level solver step entry.
-pub type SolveStep =
-    cas_solver_core::solve_aliases::SolveStep<Equation, crate::ImportanceLevel, SolveSubStep>;
+pub type SolveStep = cas_solver_core::solve_runtime_types::RuntimeSolveStep;
 
 /// Canonical stateless session adapter for solver-owned eval orchestration.
 pub type StatelessEvalSession = cas_session_core::eval::StatelessEvalSession<

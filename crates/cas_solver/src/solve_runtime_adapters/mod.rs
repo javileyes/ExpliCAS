@@ -2,8 +2,11 @@
 
 pub(crate) type SolverOptions = crate::solve_backend_contract::CoreSolverOptions;
 pub(crate) use crate::{SolveCtx, SolveStep};
-pub(crate) use cas_solver_core::solve_runtime_mapping::*;
-pub(crate) use helper_state::*;
+pub(crate) use cas_solver_core::solve_runtime_adapter_state_runtime::{
+    simplifier_contains_var, simplifier_context_mut, simplifier_expand_full_expr,
+    simplifier_simplify_for_solve, simplifier_zero_expr,
+};
+pub(crate) use helper_state::simplifier_expand_expr;
 pub(crate) use isolation_dispatch::isolate_with_default_depth;
 pub(crate) use pipeline_preflight_context::build_solve_preflight_state;
 pub(crate) use pipeline_preflight_equation::prepare_equation_for_strategy;

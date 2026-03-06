@@ -1,8 +1,8 @@
 //! Solve-oriented facade entrypoints.
 
 use crate::{
-    solve_backend_dispatch, CasError, DisplaySolveSteps, Simplifier, SolveCtx, SolveDiagnostics,
-    SolveStep, SolverOptions,
+    solve_backend_dispatch, CasError, DisplaySolveSteps, Simplifier, SolveDiagnostics, SolveStep,
+    SolverOptions,
 };
 
 /// Solve an equation for a variable.
@@ -11,13 +11,12 @@ pub fn solve(
     var: &str,
     simplifier: &mut Simplifier,
 ) -> Result<(cas_ast::SolutionSet, Vec<SolveStep>), CasError> {
-    let ctx = SolveCtx::default();
-    solve_backend_dispatch::solve_with_active_backend(
+    cas_solver_core::solver_entrypoints_bound_runtime::solve_with_default_runtime_ctx_and_backend_with_state(
         eq,
         var,
         simplifier,
         SolverOptions::default().to_core(),
-        &ctx,
+        solve_backend_dispatch::solve_with_active_backend,
     )
 }
 
@@ -28,21 +27,16 @@ pub fn solve_with_display_steps(
     simplifier: &mut Simplifier,
     opts: SolverOptions,
 ) -> Result<(cas_ast::SolutionSet, DisplaySolveSteps, SolveDiagnostics), CasError> {
-    let ctx = SolveCtx::default();
-    let result = solve_backend_dispatch::solve_with_active_backend(
+    cas_solver_core::solver_entrypoints_bound_runtime::solve_with_display_steps_with_default_runtime_ctx_and_backend_with_state(
         eq,
         var,
         simplifier,
         opts.to_core(),
-        &ctx,
-    );
-    cas_solver_core::solve_types::finalize_display_solve_with_ctx(
-        &ctx,
-        result,
+        solve_backend_dispatch::solve_with_active_backend,
         crate::collect_assumption_records,
-        |raw_steps| {
-            cas_solver_core::solve_types::cleanup_display_solve_steps(
-                &mut simplifier.context,
+        |simplifier, raw_steps| {
+            cas_solver_core::solver_entrypoints_bound_runtime::cleanup_display_solve_steps_with_runtime_state(
+                simplifier,
                 raw_steps,
                 opts.detailed_steps,
                 var,

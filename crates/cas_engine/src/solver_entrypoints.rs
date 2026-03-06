@@ -1,19 +1,23 @@
 //! Solve-oriented runtime entrypoints for the engine facade.
 
 use crate::solve_backend_contract::{
-    DisplaySolveSteps, SolveCtx, SolveDiagnostics, SolveStep, SolverOptions,
+    DisplaySolveSteps, SolveDiagnostics, SolveStep, SolverOptions,
 };
 use crate::{CasError, Simplifier};
 use cas_ast::{Equation, SolutionSet};
-use cas_solver_core::solve_types::cleanup_display_solve_steps;
 
 pub(crate) fn solve(
     eq: &Equation,
     var: &str,
     simplifier: &mut Simplifier,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-    let ctx = SolveCtx::default();
-    crate::solve_core_runtime::solve_inner(eq, var, simplifier, SolverOptions::default(), &ctx)
+    cas_solver_core::solver_entrypoints_bound_runtime::solve_with_default_runtime_ctx_and_backend_with_state(
+        eq,
+        var,
+        simplifier,
+        SolverOptions::default().into(),
+        crate::solve_core_runtime::solve_inner,
+    )
 }
 
 pub(crate) fn solve_with_display_steps(
@@ -22,15 +26,16 @@ pub(crate) fn solve_with_display_steps(
     simplifier: &mut Simplifier,
     opts: SolverOptions,
 ) -> Result<(SolutionSet, DisplaySolveSteps, SolveDiagnostics), CasError> {
-    let ctx = SolveCtx::default();
-    let result = crate::solve_core_runtime::solve_inner(eq, var, simplifier, opts, &ctx);
-    cas_solver_core::solve_types::finalize_display_solve_with_ctx(
-        &ctx,
-        result,
+    cas_solver_core::solver_entrypoints_bound_runtime::solve_with_display_steps_with_default_runtime_ctx_and_backend_with_state(
+        eq,
+        var,
+        simplifier,
+        opts.into(),
+        crate::solve_core_runtime::solve_inner,
         crate::collect_assumption_records,
-        |raw_steps| {
-            cleanup_display_solve_steps(
-                &mut simplifier.context,
+        |simplifier, raw_steps| {
+            cas_solver_core::solver_entrypoints_bound_runtime::cleanup_display_solve_steps_with_runtime_state(
+                simplifier,
                 raw_steps,
                 opts.detailed_steps,
                 var,

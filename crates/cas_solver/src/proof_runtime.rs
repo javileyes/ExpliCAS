@@ -9,7 +9,7 @@ pub(crate) fn ground_eval_candidate(
     source_expr: ExprId,
     opts: &cas_solver_core::simplify_options::SimplifyOptions,
 ) -> Option<(Context, ExprId)> {
-    cas_solver_core::ground_eval_runtime::ground_eval_candidate_with_runtime_simplifier_with_state(
+    cas_solver_core::proof_runtime_bound_runtime::ground_eval_candidate_with_runtime_simplifier_contract(
         source_ctx,
         source_expr,
         opts,
@@ -21,27 +21,36 @@ pub(crate) fn ground_eval_candidate(
 }
 
 pub(crate) fn prove_nonzero(ctx: &Context, expr: ExprId) -> Proof {
-    cas_solver_core::predicate_proofs::prove_nonzero_with_default_depth_with_runtime_evaluator(
+    cas_solver_core::proof_runtime_bound_runtime::prove_nonzero_with_runtime_simplifier_contract(
         ctx,
         expr,
-        ground_eval_candidate,
+        crate::Simplifier::with_context,
+        |state, collect| state.set_collect_steps(collect),
+        |state, expr, simplify_opts| state.simplify_with_stats(expr, simplify_opts).0,
+        |state| state.context,
     )
 }
 
 pub(crate) fn prove_positive(ctx: &Context, expr: ExprId, value_domain: ValueDomain) -> Proof {
-    cas_solver_core::predicate_proofs::prove_positive_with_default_depth_with_runtime_evaluator(
+    cas_solver_core::proof_runtime_bound_runtime::prove_positive_with_runtime_simplifier_contract(
         ctx,
         expr,
         value_domain,
-        ground_eval_candidate,
+        crate::Simplifier::with_context,
+        |state, collect| state.set_collect_steps(collect),
+        |state, expr, simplify_opts| state.simplify_with_stats(expr, simplify_opts).0,
+        |state| state.context,
     )
 }
 
 pub(crate) fn prove_nonnegative(ctx: &Context, expr: ExprId, value_domain: ValueDomain) -> Proof {
-    cas_solver_core::predicate_proofs::prove_nonnegative_with_default_depth_with_runtime_evaluator(
+    cas_solver_core::proof_runtime_bound_runtime::prove_nonnegative_with_runtime_simplifier_contract(
         ctx,
         expr,
         value_domain,
-        ground_eval_candidate,
+        crate::Simplifier::with_context,
+        |state, collect| state.set_collect_steps(collect),
+        |state, expr, simplify_opts| state.simplify_with_stats(expr, simplify_opts).0,
+        |state| state.context,
     )
 }

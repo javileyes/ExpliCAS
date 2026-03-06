@@ -49,22 +49,6 @@ pub fn map_variable_not_found_solver_error(missing_var: &str) -> crate::error_mo
     crate::error_model::CasError::VariableNotFound(missing_var.to_string())
 }
 
-pub fn emit_quadratic_formula_scope<DomainEnv, ImplicitCondition, AssumptionEvent>(
-    solve_ctx: &crate::solve_aliases::SolveCtx<
-        DomainEnv,
-        ImplicitCondition,
-        AssumptionEvent,
-        cas_formatter::display_transforms::ScopeTag,
-    >,
-) where
-    ImplicitCondition: Eq + std::hash::Hash + Clone,
-    AssumptionEvent: Clone,
-{
-    solve_ctx.emit_scope(cas_formatter::display_transforms::ScopeTag::Rule(
-        "QuadraticFormula",
-    ));
-}
-
 pub fn solver_cycle_detected_error() -> crate::error_model::CasError {
     crate::error_model::CasError::SolverError(
         "Cycle detected: equation revisited after rewriting (equivalent form loop)".to_string(),

@@ -9,36 +9,14 @@ pub(crate) fn build_solve_preflight_state(
     value_domain: crate::ValueDomain,
     parent_ctx: &SolveCtx,
 ) -> PreflightContext<SolveCtx> {
-    cas_solver_core::solve_runtime_pipeline_preflight_context_runtime::build_solve_preflight_state_with_existing_condition_derivation_with_state(
+    cas_solver_core::solve_runtime_pipeline_preflight_context_bound_runtime::build_runtime_solve_preflight_state_with_default_domain_inference_and_derivation(
         simplifier,
         eq,
         var,
         value_domain,
         parent_ctx,
         |state| &state.context,
-        |expr, eval_domain| {
-            crate::infer_implicit_domain(&simplifier.context, expr, eval_domain)
-                .conditions()
-                .iter()
-                .cloned()
-                .collect::<Vec<_>>()
-        },
-        crate::ImplicitDomain::empty,
-        |domain, cond| {
-            domain.conditions_mut().insert(cond);
-        },
-        |lhs, rhs, domain, eval_domain| {
-            crate::derive_requires_from_equation(
-                &simplifier.context,
-                lhs,
-                rhs,
-                domain,
-                eval_domain,
-            )
-        },
-        crate::SolveDomainEnv::new,
-        |domain_env, cond| {
-            domain_env.required.conditions_mut().insert(cond.clone());
-        },
+        crate::infer_implicit_domain,
+        crate::derive_requires_from_equation,
     )
 }

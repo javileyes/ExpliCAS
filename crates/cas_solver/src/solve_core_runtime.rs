@@ -5,8 +5,6 @@
 use crate::solve_backend_contract::CoreSolverOptions;
 use crate::{CasError, Simplifier};
 use cas_ast::{Equation, SolutionSet};
-use cas_solver_core::solve_analysis::guard_solved_result_with_exclusions;
-use cas_solver_core::strategy_order::SolveStrategyKind;
 
 use crate::solve_runtime_adapters::{
     apply_strategy, build_solve_preflight_state, execute_strategy_pipeline,
@@ -25,13 +23,12 @@ pub(crate) fn solve_inner(
     opts: CoreSolverOptions,
     parent_ctx: &SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-    let current_depth = parent_ctx.depth().saturating_add(1);
-
-    cas_solver_core::solve_runtime_flow::solve_inner_with_default_entry_preflight_prepare_and_pipeline_with_state(
+    cas_solver_core::solve_runtime_orchestration_context_runtime::solve_inner_with_runtime_ctx_and_default_rational_preflight_prepare_pipeline_with_state(
         simplifier,
         eq,
         var,
-        current_depth,
+        opts,
+        parent_ctx,
         |state| &state.context,
         || {
             CasError::SolverError(
@@ -40,36 +37,28 @@ pub(crate) fn solve_inner(
             )
         },
         || CasError::VariableNotFound(var.to_string()),
-        |state| build_solve_preflight_state(state, eq, var, opts.value_domain, parent_ctx),
-        |state, equation, solve_var, solve_ctx| {
+        |state, equation, solve_var, value_domain, solve_ctx| {
+            build_solve_preflight_state(state, equation, solve_var, value_domain, solve_ctx)
+        },
+        |strategy_kind, equation, solve_var, state, solve_opts, solve_ctx| {
             apply_strategy(
-                SolveStrategyKind::RationalExponent,
+                strategy_kind,
                 equation,
                 solve_var,
                 state,
-                &opts,
+                solve_opts,
                 solve_ctx,
             )
         },
-        guard_solved_result_with_exclusions,
         prepare_equation_for_strategy,
-        |state, prepared_eq| {
-            // NOTE: Pre-solve exponent normalization (Div(p,q) → Number(p/q)),
-            // nested-pow folding, and additive cancellation are applied above.
-            cas_solver_core::solve_analysis::debug_assert_equation_no_top_level_sub(
-                &state.context,
-                prepared_eq,
-            );
-        },
-        |state, original_eq, prepared_eq, residual, solve_var, solve_ctx, exclusions| {
-            // Resolve var-eliminated residuals early, otherwise guard cycle + run strategies.
+        |state, original_eq, prepared_eq, residual, solve_var, solve_opts, solve_ctx, exclusions| {
             execute_strategy_pipeline(
                 state,
                 original_eq,
                 prepared_eq,
                 residual,
                 solve_var,
-                opts,
+                solve_opts,
                 solve_ctx,
                 exclusions,
             )

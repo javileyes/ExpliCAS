@@ -170,7 +170,7 @@ pub use rule::{ChainedRewrite, Rewrite, Rule, SimpleRule, SoundnessLabel};
 pub use semantics::{
     AssumeScope, BranchPolicy, EvalConfig, InverseTrigPolicy, NormalFormGoal, ValueDomain,
 };
-pub(crate) use solve_backend_contract::{SolveCtx, SolveDomainEnv, SolveStep, SolverOptions};
+pub(crate) use solve_backend_contract::{SolveCtx, SolveStep, SolverOptions};
 pub use step::{
     pathsteps_to_expr_path, DisplayEvalSteps, ImportanceLevel, PathStep, Step, StepCategory,
 };

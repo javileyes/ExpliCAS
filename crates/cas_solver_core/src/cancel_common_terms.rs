@@ -85,7 +85,6 @@ pub fn cancel_additive_terms_semantic_runtime_with_state<
     get_context: FGetContext,
     get_context_mut: FGetContextMut,
     simplify_with_options: FSimplifyWithOptions,
-    fallback_expand: fn(&mut Context, ExprId) -> ExprId,
 ) -> Option<CancelResult>
 where
     FGetContext: Fn(&S) -> &Context,
@@ -115,7 +114,7 @@ where
         |s| get_context(s),
         |s| get_context_mut(s),
         |s, term| simplify_with_options(s, term, candidate_opts.clone()),
-        fallback_expand,
+        cas_math::expand_ops::expand,
         |s, lt, rt| {
             let diff = get_context_mut(s).add(Expr::Sub(lt, rt));
             let simplified_diff = simplify_with_options(s, diff, strict_proof_opts.clone());
@@ -209,7 +208,6 @@ mod tests {
                 }
                 _ => term,
             },
-            no_expand,
         )
         .expect("expected cancellable overlap");
 
