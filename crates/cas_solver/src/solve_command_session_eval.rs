@@ -1,5 +1,5 @@
 pub fn evaluate_solve_command_lines_with_session<S>(
-    engine: &mut crate::Engine,
+    simplifier: &mut crate::Simplifier,
     session: &mut S,
     line: &str,
     eval_options: &crate::EvalOptions,
@@ -7,20 +7,14 @@ pub fn evaluate_solve_command_lines_with_session<S>(
     debug_mode: bool,
 ) -> Result<Vec<String>, String>
 where
-    S: crate::EvalSession<Options = crate::EvalOptions, Diagnostics = crate::Diagnostics>,
-    S::Store: crate::EvalStore<
-        DomainMode = crate::DomainMode,
-        RequiredItem = crate::RequiredItem,
-        Step = crate::Step,
-        Diagnostics = crate::Diagnostics,
-    >,
+    S: crate::SolverEvalSession,
 {
     let rest = line.strip_prefix("solve").unwrap_or(line).trim();
     let (check_enabled, solve_tail) =
         crate::parse_solve_invocation_check(rest, eval_options.check_solutions);
     let parsed = crate::parse_solve_command_input(solve_tail);
 
-    let eval_output = crate::evaluate_solve_command_with_session(engine, session, parsed, true)
+    let eval_output = crate::evaluate_solve_command_with_session(simplifier, session, parsed, true)
         .map_err(|error| crate::format_solve_command_error_message(&error))?;
 
     let mut render_config =
@@ -28,7 +22,7 @@ where
     render_config.check_solutions = check_enabled;
 
     Ok(crate::format_solve_command_eval_lines(
-        &mut engine.simplifier,
+        simplifier,
         &eval_output.var,
         eval_output.original_equation.as_ref(),
         &eval_output.output,
@@ -37,7 +31,7 @@ where
 }
 
 pub fn evaluate_solve_command_message_with_session<S>(
-    engine: &mut crate::Engine,
+    simplifier: &mut crate::Simplifier,
     session: &mut S,
     line: &str,
     eval_options: &crate::EvalOptions,
@@ -45,16 +39,10 @@ pub fn evaluate_solve_command_message_with_session<S>(
     debug_mode: bool,
 ) -> Result<String, String>
 where
-    S: crate::EvalSession<Options = crate::EvalOptions, Diagnostics = crate::Diagnostics>,
-    S::Store: crate::EvalStore<
-        DomainMode = crate::DomainMode,
-        RequiredItem = crate::RequiredItem,
-        Step = crate::Step,
-        Diagnostics = crate::Diagnostics,
-    >,
+    S: crate::SolverEvalSession,
 {
     Ok(evaluate_solve_command_lines_with_session(
-        engine,
+        simplifier,
         session,
         line,
         eval_options,

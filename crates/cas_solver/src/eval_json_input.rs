@@ -4,22 +4,55 @@ use crate::eval_json_input_special::{map_limit_approach, parse_solve_input_as_eq
 use crate::eval_json_input_variable::detect_solve_variable_eval_json;
 use cas_api_models::{parse_eval_json_special_command, EvalJsonSpecialCommand};
 
-/// Build canonical eval request from raw eval-json input.
-pub fn build_eval_request_for_input(
+#[derive(Debug, Clone)]
+pub enum EvalJsonNonSolveAction {
+    Simplify,
+    Limit {
+        var: String,
+        approach: cas_math::limit_types::Approach,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub enum EvalJsonPreparedRequest {
+    Solve {
+        raw_input: String,
+        parsed: cas_ast::ExprId,
+        var: String,
+        auto_store: bool,
+    },
+    Eval {
+        raw_input: String,
+        parsed: cas_ast::ExprId,
+        action: EvalJsonNonSolveAction,
+        auto_store: bool,
+    },
+}
+
+impl EvalJsonPreparedRequest {
+    pub fn parsed(&self) -> cas_ast::ExprId {
+        match self {
+            Self::Solve { parsed, .. } => *parsed,
+            Self::Eval { parsed, .. } => *parsed,
+        }
+    }
+}
+
+/// Build eval-json request as a solver-owned action enum.
+pub fn build_eval_json_request_for_input(
     raw_input: &str,
     ctx: &mut cas_ast::Context,
     auto_store: bool,
-) -> Result<crate::EvalRequest, String> {
+) -> Result<EvalJsonPreparedRequest, String> {
     if let Some(command) = parse_eval_json_special_command(raw_input) {
         return match command {
             EvalJsonSpecialCommand::Solve { equation, var } => {
                 let parsed = parse_solve_input_as_equation_expr(ctx, &equation)
                     .map_err(|e| format!("Parse error in solve equation: {e}"))?;
-
-                Ok(crate::EvalRequest {
+                Ok(EvalJsonPreparedRequest::Solve {
                     raw_input: raw_input.to_string(),
                     parsed,
-                    action: crate::EvalAction::Solve { var },
+                    var,
                     auto_store,
                 })
             }
@@ -30,11 +63,10 @@ pub fn build_eval_request_for_input(
             } => {
                 let parsed = cas_parser::parse(&expr, ctx)
                     .map_err(|e| format!("Parse error in limit expression: {e}"))?;
-
-                Ok(crate::EvalRequest {
+                Ok(EvalJsonPreparedRequest::Eval {
                     raw_input: raw_input.to_string(),
                     parsed,
-                    action: crate::EvalAction::Limit {
+                    action: EvalJsonNonSolveAction::Limit {
                         var,
                         approach: map_limit_approach(approach),
                     },
@@ -50,17 +82,17 @@ pub fn build_eval_request_for_input(
         cas_parser::Statement::Equation(eq) => {
             let parsed = ctx.call("Equal", vec![eq.lhs, eq.rhs]);
             let var = detect_solve_variable_eval_json(ctx, eq.lhs, eq.rhs);
-            Ok(crate::EvalRequest {
+            Ok(EvalJsonPreparedRequest::Solve {
                 raw_input: raw_input.to_string(),
                 parsed,
-                action: crate::EvalAction::Solve { var },
+                var,
                 auto_store,
             })
         }
-        cas_parser::Statement::Expression(parsed) => Ok(crate::EvalRequest {
+        cas_parser::Statement::Expression(parsed) => Ok(EvalJsonPreparedRequest::Eval {
             raw_input: raw_input.to_string(),
             parsed,
-            action: crate::EvalAction::Simplify,
+            action: EvalJsonNonSolveAction::Simplify,
             auto_store,
         }),
     }

@@ -26,13 +26,7 @@ fn evaluate_timeline_simplify_standard<S>(
     input: &str,
 ) -> Result<crate::TimelineSimplifyEvalOutput, crate::TimelineSimplifyEvalError>
 where
-    S: crate::EvalSession<Options = crate::EvalOptions, Diagnostics = crate::Diagnostics>,
-    S::Store: crate::EvalStore<
-        DomainMode = crate::DomainMode,
-        RequiredItem = crate::RequiredItem,
-        Step = crate::Step,
-        Diagnostics = crate::Diagnostics,
-    >,
+    S: crate::SolverEvalSession,
 {
     let was_collecting = engine.simplifier.collect_steps();
     engine.simplifier.set_collect_steps(true);
@@ -70,13 +64,7 @@ pub(crate) fn evaluate_timeline_simplify_with_session<S>(
     aggressive: bool,
 ) -> Result<crate::TimelineSimplifyEvalOutput, crate::TimelineSimplifyEvalError>
 where
-    S: crate::EvalSession<Options = crate::EvalOptions, Diagnostics = crate::Diagnostics>,
-    S::Store: crate::EvalStore<
-        DomainMode = crate::DomainMode,
-        RequiredItem = crate::RequiredItem,
-        Step = crate::Step,
-        Diagnostics = crate::Diagnostics,
-    >,
+    S: crate::SolverEvalSession,
 {
     if aggressive {
         evaluate_timeline_simplify_aggressive(&mut engine.simplifier, input)

@@ -4,7 +4,9 @@
 #![allow(unused_variables)]
 use cas_parser::Statement;
 use cas_session::{EntryKind, SessionState};
-use cas_solver::{Engine, EvalAction, EvalRequest, EvalResult};
+use cas_solver::{
+    evaluate_solve_command_with_session, parse_solve_command_input, Engine, EvalResult,
+};
 
 #[test]
 fn test_solve_session_ref() {
@@ -41,20 +43,11 @@ fn test_solve_session_ref() {
     };
     state.history_push(kind, eq_str.to_string()); // Becomes #2
 
-    // Now solve #2 for x
-    // CLI parses "#2" as Variable("#2")
-    let id_var = engine.simplifier.context.var("#2");
-
-    let req = EvalRequest {
-        raw_input: "#2".to_string(),
-        parsed: id_var,
-        action: EvalAction::Solve {
-            var: "x".to_string(),
-        },
-        auto_store: true,
-    };
-
-    let result = engine.eval(&mut state, req);
+    // Now solve #2 for x via solver-native command path.
+    let parsed_input = parse_solve_command_input("#2 x");
+    let result =
+        evaluate_solve_command_with_session(&mut engine.simplifier, &mut state, parsed_input, true)
+            .map(|output| output.output);
 
     match result {
         Ok(output) => {

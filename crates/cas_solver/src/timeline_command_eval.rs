@@ -9,13 +9,7 @@ pub fn evaluate_timeline_command_with_session<S>(
     eval_options: &crate::EvalOptions,
 ) -> Result<crate::TimelineCommandEvalOutput, crate::TimelineCommandEvalError>
 where
-    S: crate::EvalSession<Options = crate::EvalOptions, Diagnostics = crate::Diagnostics>,
-    S::Store: crate::EvalStore<
-        DomainMode = crate::DomainMode,
-        RequiredItem = crate::RequiredItem,
-        Step = crate::Step,
-        Diagnostics = crate::Diagnostics,
-    >,
+    S: crate::SolverEvalSession,
 {
     match crate::parse_timeline_command_input(input) {
         crate::TimelineCommandInput::Solve(solve_rest) => {

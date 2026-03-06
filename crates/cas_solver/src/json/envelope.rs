@@ -1,6 +1,7 @@
+use super::stateless_eval::evaluate_prepared_stateless_request;
 use crate::{
-    AssumptionRecord, BlockedHint, DomainWarning, Engine, EvalAction, EvalOptions, EvalRequest,
-    EvalResult, ImplicitCondition,
+    AssumptionRecord, BlockedHint, DomainWarning, Engine, EvalOptions, EvalResult,
+    ImplicitCondition,
 };
 use cas_api_models::{
     AssumptionDto, BlockedHintDto, ConditionDto, EnvelopeEvalOptions, ExprDto, OutputEnvelope,
@@ -102,28 +103,23 @@ pub fn eval_str_to_output_envelope(expr: &str, opts: &EnvelopeEvalOptions) -> Ou
     eval_options.shared.semantics.value_domain =
         crate::eval_json_options::value_domain_from_str(&opts.value_domain);
 
-    let parsed = match cas_parser::parse(expr, &mut engine.simplifier.context) {
-        Ok(id) => id,
-        Err(e) => {
-            return OutputEnvelope::eval_error(
-                build_request_info(expr, opts),
-                format!("Parse error: {}", e),
-            );
-        }
-    };
+    let prepared =
+        match crate::build_eval_json_request_for_input(expr, &mut engine.simplifier.context, false)
+        {
+            Ok(request) => request,
+            Err(e) => {
+                return OutputEnvelope::eval_error(
+                    build_request_info(expr, opts),
+                    format!("Parse error: {}", e),
+                );
+            }
+        };
 
-    let req = EvalRequest {
-        raw_input: expr.to_string(),
-        parsed,
-        action: EvalAction::Simplify,
-        auto_store: false,
-    };
-
-    let output = match engine.eval_stateless(eval_options, req) {
-        Ok(o) => o,
+    let output_view = match evaluate_prepared_stateless_request(&mut engine, eval_options, prepared)
+    {
+        Ok(view) => view,
         Err(e) => return OutputEnvelope::eval_error(build_request_info(expr, opts), e.to_string()),
     };
-    let output_view = crate::eval_output_view(&output);
 
     match &output_view.result {
         EvalResult::Expr(id) => OutputEnvelope::eval_success(
@@ -151,6 +147,20 @@ pub fn eval_str_to_output_envelope(expr: &str, opts: &EnvelopeEvalOptions) -> Ou
         EvalResult::Bool(b) => OutputEnvelope::eval_success(
             build_request_info(expr, opts),
             ExprDto::from_display(b.to_string()),
+            build_transparency(
+                &output_view.required_conditions,
+                &output_view.solver_assumptions,
+                &output_view.domain_warnings,
+                &output_view.blocked_hints,
+                &engine.simplifier.context,
+            ),
+        ),
+        EvalResult::SolutionSet(solution_set) => OutputEnvelope::eval_success(
+            build_request_info(expr, opts),
+            ExprDto::from_display(crate::display_solution_set(
+                &engine.simplifier.context,
+                solution_set,
+            )),
             build_transparency(
                 &output_view.required_conditions,
                 &output_view.solver_assumptions,

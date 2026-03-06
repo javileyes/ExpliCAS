@@ -1,7 +1,8 @@
 use super::mappers::{
     map_domain_warnings_to_engine_warnings, map_solver_assumptions_to_api_records,
 };
-use crate::{Engine, EvalAction, EvalOptions, EvalRequest, EvalResult};
+use super::stateless_eval::evaluate_prepared_stateless_request;
+use crate::{Engine, EvalOptions, EvalResult};
 use cas_api_models::{
     BudgetJsonInfo, EngineJsonError, EngineJsonResponse, EngineJsonStep, JsonRunOptions, SpanJson,
 };
@@ -44,40 +45,28 @@ pub fn eval_str_to_json(expr: &str, opts_json: &str) -> String {
     // Create engine
     let mut engine = Engine::new();
 
-    // Parse expression
-    let parsed = match cas_parser::parse(expr, &mut engine.simplifier.context) {
-        Ok(id) => id,
-        Err(e) => {
-            let error = EngineJsonError::parse(
-                e.to_string(),
-                e.span().map(|s| SpanJson {
-                    start: s.start,
-                    end: s.end,
-                }),
-            );
-            let resp = EngineJsonResponse::err(error, budget_info);
-            return resp.to_json_with_pretty(opts.pretty);
-        }
-    };
+    // Parse input into a solver-owned prepared request.
+    let prepared =
+        match crate::build_eval_json_request_for_input(expr, &mut engine.simplifier.context, false)
+        {
+            Ok(request) => request,
+            Err(e) => {
+                let error = EngineJsonError::parse(e, Option::<SpanJson>::None);
+                let resp = EngineJsonResponse::err(error, budget_info);
+                return resp.to_json_with_pretty(opts.pretty);
+            }
+        };
 
-    // Build eval request
-    let req = EvalRequest {
-        raw_input: expr.to_string(),
-        parsed,
-        action: EvalAction::Simplify,
-        auto_store: false,
-    };
-
-    // Evaluate
-    let output = match engine.eval_stateless(EvalOptions::default(), req) {
-        Ok(o) => o,
-        Err(e) => {
-            let error = EngineJsonError::from_eval_runtime_error(e.to_string());
-            let resp = EngineJsonResponse::err(error, budget_info);
-            return resp.to_json_with_pretty(opts.pretty);
-        }
-    };
-    let output_view = crate::eval_output_view(&output);
+    // Evaluate in stateless mode.
+    let output_view =
+        match evaluate_prepared_stateless_request(&mut engine, EvalOptions::default(), prepared) {
+            Ok(view) => view,
+            Err(e) => {
+                let error = EngineJsonError::from_eval_runtime_error(e.to_string());
+                let resp = EngineJsonResponse::err(error, budget_info);
+                return resp.to_json_with_pretty(opts.pretty);
+            }
+        };
 
     // Format result
     let result_str = match &output_view.result {
@@ -100,6 +89,9 @@ pub fn eval_str_to_json(expr: &str, opts_json: &str) -> String {
                     id: clean
                 }
             )
+        }
+        EvalResult::SolutionSet(solution_set) => {
+            crate::display_solution_set(&engine.simplifier.context, solution_set)
         }
         EvalResult::Bool(b) => b.to_string(),
         _ => "(no result)".to_string(),

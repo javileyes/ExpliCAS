@@ -9,9 +9,7 @@ pub use crate::error_runtime_types::error;
 pub use crate::phase_runtime_types::{
     ExpandBudget, ExpandPolicy, PhaseBudgets, PhaseMask, PhaseStats, PipelineStats, SimplifyPhase,
 };
-pub use crate::rule_runtime_types::{
-    LogExpansionRule, Orchestrator, ParentContext, Rewrite, Rule, SimpleRule,
-};
+pub use crate::rule_runtime_types::{Orchestrator, ParentContext, Rewrite, Rule, SimpleRule};
 pub use crate::rules_runtime_types::rules;
 pub use crate::semantics_command_eval::evaluate_semantics_command_line;
 pub use crate::semantics_command_parse::parse_semantics_command_input;
@@ -64,8 +62,7 @@ pub use crate::solve_command_errors::{
     format_solve_command_error_message, format_solve_prepare_error_message,
 };
 pub use crate::solve_command_eval_core::{
-    evaluate_solve_command_with_session, prepare_solve_eval_request, PreparedSolveEvalRequest,
-    SolveCommandEvalError, SolveCommandEvalOutput,
+    evaluate_solve_command_with_session, SolveCommandEvalError, SolveCommandEvalOutput,
 };
 pub use crate::solve_command_session_eval::{
     evaluate_solve_command_lines_with_session, evaluate_solve_command_message_with_session,
@@ -126,7 +123,7 @@ pub use crate::timeline_types::{
 };
 pub use crate::types::{
     DisplaySolveSteps, SolveCtx, SolveDiagnostics, SolveDomainEnv, SolveStep, SolveSubStep,
-    SolverOptions,
+    SolverEvalSession, SolverEvalStore, SolverOptions, StatelessEvalSession,
 };
 pub use crate::unary_command_eval::{
     evaluate_unary_command_lines, evaluate_unary_command_message,

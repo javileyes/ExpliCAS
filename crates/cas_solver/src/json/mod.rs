@@ -16,6 +16,7 @@
 mod envelope;
 mod eval;
 mod mappers;
+mod stateless_eval;
 mod substitute;
 
 pub use envelope::{eval_str_to_output_envelope, evaluate_envelope_json_command};

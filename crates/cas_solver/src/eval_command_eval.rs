@@ -14,13 +14,7 @@ pub fn evaluate_eval_command_output<S>(
     debug_mode: bool,
 ) -> Result<EvalCommandOutput, EvalCommandError>
 where
-    S: crate::EvalSession<Options = crate::EvalOptions, Diagnostics = crate::Diagnostics>,
-    S::Store: crate::EvalStore<
-        DomainMode = crate::DomainMode,
-        RequiredItem = crate::RequiredItem,
-        Step = crate::Step,
-        Diagnostics = crate::Diagnostics,
-    >,
+    S: crate::SolverEvalSession,
 {
     let style_signals = ParseStyleSignals::from_input_string(line);
     let stmt = cas_parser::parse_statement(line, &mut engine.simplifier.context)

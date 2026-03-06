@@ -5,7 +5,7 @@ use cas_ast::{Equation, ExprId, SolutionSet};
 use cas_solver_core::verification::{VerifyResult, VerifyStatus};
 
 /// Verify a single solution by substituting into the equation.
-pub fn verify_solution(
+pub(crate) fn verify_solution(
     simplifier: &mut Simplifier,
     equation: &Equation,
     var: &str,
@@ -24,7 +24,7 @@ pub fn verify_solution(
 }
 
 /// Verify a solution set, handling all [`SolutionSet`] variants.
-pub fn verify_solution_set(
+pub(crate) fn verify_solution_set(
     simplifier: &mut Simplifier,
     equation: &Equation,
     var: &str,

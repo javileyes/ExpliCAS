@@ -11,13 +11,7 @@ pub fn evaluate_eval_text_simplify_with_session<S>(
     auto_store: bool,
 ) -> Result<String, String>
 where
-    S: crate::EvalSession<Options = crate::EvalOptions, Diagnostics = crate::Diagnostics>,
-    S::Store: crate::EvalStore<
-        DomainMode = crate::DomainMode,
-        RequiredItem = crate::RequiredItem,
-        Step = crate::Step,
-        Diagnostics = crate::Diagnostics,
-    >,
+    S: crate::SolverEvalSession,
 {
     let parsed = cas_parser::parse(expr, &mut engine.simplifier.context)
         .map_err(|e| format!("Parse error: {}", e))?;

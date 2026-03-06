@@ -47,10 +47,10 @@ where
     >,
 {
     let debug_mode = context.debug_mode();
-    context.with_engine_and_state(|engine, state| {
+    context.with_state_and_simplifier_mut(|state, simplifier| {
         let options = state.options().clone();
         crate::evaluate_solve_command_message_with_session(
-            engine,
+            simplifier,
             state,
             line,
             &options,

@@ -10,7 +10,7 @@ mod best_so_far_tests;
 pub(crate) mod budget;
 #[cfg(test)]
 mod budget_tests;
-pub(crate) mod cancel_common_terms_runtime;
+mod cancel_common_terms_runtime;
 pub(crate) mod collect;
 #[cfg(test)]
 mod collect_tests;
@@ -48,20 +48,20 @@ pub(crate) mod recursion_guard;
 mod recursion_guard_tests;
 pub(crate) mod rule;
 pub mod rules;
-pub(crate) mod runtime_ground_eval;
+mod runtime_ground_eval;
 pub(crate) mod semantics;
 #[cfg(test)]
 mod semantics_tests;
-pub(crate) mod solve_core_runtime;
-pub(crate) mod solve_isolation_runtime;
-pub(crate) mod solve_runtime;
-pub(crate) mod solve_runtime_adapters;
+mod solve_core_runtime;
+mod solve_isolation_runtime;
+mod solve_runtime;
+mod solve_runtime_adapters;
 pub(crate) mod step;
 #[cfg(test)]
 mod step_tests;
 pub(crate) mod strategies;
 pub(crate) mod telescoping;
-pub(crate) mod verify_runtime;
+mod verify_runtime;
 
 // Property-based numeric tests for rewrite correctness
 #[cfg(test)]
@@ -127,14 +127,10 @@ pub use cas_solver_core::domain_policy::mode_allows_predicate;
 pub use cas_solver_core::domain_proof::Proof;
 pub use cas_solver_core::engine_events::{EngineEvent, StepListener};
 pub use cas_solver_core::eval_step_pipeline::to_display_eval_steps as to_display_steps;
-pub use cas_solver_core::isolation_utils::contains_var;
-pub use cas_solver_core::solve_infer::infer_solve_variable;
 pub use cas_solver_core::solve_safety_policy::ConditionClass;
 pub use cas_solver_core::solve_safety_policy::RequirementDescriptorKind as RequirementDescriptor;
 pub use cas_solver_core::solve_safety_policy::SimplifyPurpose;
 pub use cas_solver_core::solve_safety_policy::SolveSafetyKind as SolveSafety;
-pub use cas_solver_core::verification::{VerifyResult, VerifyStatus, VerifySummary};
-pub use cas_solver_core::verify_stats;
 pub use const_fold::{fold_constants, ConstFoldMode, ConstFoldResult};
 pub use diagnostics::{Diagnostics, RequireOrigin, RequiredItem};
 pub use domain_oracle::{oracle_allows_with_hint, StandardOracle};
@@ -175,15 +171,10 @@ pub use rule::{ChainedRewrite, Rewrite, Rule, SimpleRule, SoundnessLabel};
 pub use semantics::{
     AssumeScope, BranchPolicy, EvalConfig, InverseTrigPolicy, NormalFormGoal, ValueDomain,
 };
-pub use solve_runtime::{
-    solve, solve_with_ctx_and_options, solve_with_display_steps, DisplaySolveSteps, SolveCtx,
-    SolveDiagnostics, SolveStep, SolveSubStep, SolverOptions,
-};
 pub use step::{
     pathsteps_to_expr_path, DisplayEvalSteps, ImportanceLevel, PathStep, Step, StepCategory,
 };
 pub use telescoping::{telescope, TelescopingResult, TelescopingStep};
-pub use verify_runtime::{verify_solution, verify_solution_set};
 pub use visitors::{DepthVisitor, VariableCollector};
 
 // Equation-level primitives (not simplifier rules — used by solver pipeline)

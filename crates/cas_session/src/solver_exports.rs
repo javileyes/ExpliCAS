@@ -241,10 +241,10 @@ pub use cas_solver::{
     HistoryEntryDetails, HistoryEntryInspection, HistoryExprInspection,
     InspectHistoryEntryInputError, ParseHistoryEntryIdError,
 };
+pub use cas_solver::{ReplSetCommandOutput, ReplSetMessageKind};
 pub use cas_solver::{
-    PreparedSolveEvalRequest, SolveCommandEvalError, SolveCommandEvalOutput, SolveCommandInput,
-    SolvePrepareError, TimelineCommandEvalError, TimelineCommandEvalOutput, TimelineCommandInput,
+    SolveCommandEvalError, SolveCommandEvalOutput, SolveCommandInput, SolvePrepareError,
+    TimelineCommandEvalError, TimelineCommandEvalOutput, TimelineCommandInput,
     TimelineSimplifyEvalError, TimelineSimplifyEvalOutput, TimelineSolveEvalError,
     TimelineSolveEvalOutput,
 };
-pub use cas_solver::{ReplSetCommandOutput, ReplSetMessageKind};

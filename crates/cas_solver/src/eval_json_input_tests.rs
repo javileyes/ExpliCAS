@@ -23,3 +23,48 @@ fn detect_solve_variable_falls_back_to_preferred_order() {
     let var = detect_solve_variable_eval_json(&mut ctx, lhs, rhs);
     assert_eq!(var, "y");
 }
+
+#[test]
+fn build_eval_json_request_wraps_equation_as_solve_variant() {
+    let mut ctx = cas_ast::Context::new();
+    let prepared =
+        crate::eval_json_input::build_eval_json_request_for_input("x + 1 = 0", &mut ctx, false)
+            .expect("request");
+
+    match prepared {
+        crate::eval_json_input::EvalJsonPreparedRequest::Solve {
+            var, auto_store, ..
+        } => {
+            assert_eq!(var, "x");
+            assert!(!auto_store);
+        }
+        _ => panic!("expected solve variant"),
+    }
+}
+
+#[test]
+fn build_eval_json_request_parses_limit_as_non_solve_action() {
+    let mut ctx = cas_ast::Context::new();
+    let prepared = crate::eval_json_input::build_eval_json_request_for_input(
+        "limit(x^2, x, +inf)",
+        &mut ctx,
+        true,
+    )
+    .expect("request");
+
+    match prepared {
+        crate::eval_json_input::EvalJsonPreparedRequest::Eval {
+            action, auto_store, ..
+        } => {
+            assert!(auto_store);
+            match action {
+                crate::eval_json_input::EvalJsonNonSolveAction::Limit { var, approach } => {
+                    assert_eq!(var, "x");
+                    assert_eq!(approach, cas_math::limit_types::Approach::PosInfinity);
+                }
+                _ => panic!("expected limit action"),
+            }
+        }
+        _ => panic!("expected eval variant"),
+    }
+}

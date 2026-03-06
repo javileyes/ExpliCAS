@@ -77,7 +77,7 @@ pub use cas_ast::BoundType;
 pub use cas_solver_core::solve_budget::SolveBudget;
 
 /// Options for solver operations including domain and budget.
-pub use crate::SolverOptions;
+pub type SolverOptions = cas_solver_core::solver_options::SolverOptions;
 
 // =============================================================================
 // Stable Entrypoints
@@ -94,41 +94,78 @@ pub use crate::SolverOptions;
 /// // ... set up equation ...
 /// // let (solution_set, steps) = solve(&equation, "x", &mut engine.simplifier)?;
 /// ```
-pub use crate::solve;
+pub fn solve(
+    eq: &cas_ast::Equation,
+    var: &str,
+    simplifier: &mut crate::engine::Simplifier,
+) -> Result<(cas_ast::SolutionSet, Vec<SolveStep>), crate::error::CasError> {
+    crate::solve_runtime::solve(eq, var, simplifier)
+}
 
 /// Solve an equation with explicit options, returning display-ready steps.
 ///
 /// V2.9.8: Type-safe API - returns `DisplaySolveSteps` which guarantees
 /// cleanup has been applied. Replaces the old `solve_with_options` for
 /// display-facing code.
-pub use crate::solve_with_display_steps;
+pub fn solve_with_display_steps(
+    eq: &cas_ast::Equation,
+    var: &str,
+    simplifier: &mut crate::engine::Simplifier,
+    opts: SolverOptions,
+) -> Result<(cas_ast::SolutionSet, DisplaySolveSteps, SolveDiagnostics), crate::error::CasError> {
+    crate::solve_runtime::solve_with_display_steps(eq, var, simplifier, opts)
+}
 
-/// Solver helper: check whether an expression contains the target variable.
-pub use crate::contains_var;
-/// Solver helper: infer variable from free-variable set.
-pub use crate::infer_solve_variable;
-/// Solver verification instrumentation counters.
-pub use crate::verify_stats;
 /// Display-ready solve steps (post-cleanup).
 /// Wrapper type that enforces step processing has been applied.
-pub use crate::DisplaySolveSteps;
+pub type DisplaySolveSteps = cas_solver_core::solve_aliases::DisplaySolveSteps<SolveStep>;
 /// Diagnostics collected during solve operation.
-pub use crate::SolveDiagnostics;
+pub type SolveDiagnostics = cas_solver_core::solve_aliases::SolveDiagnostics<
+    crate::ImplicitCondition,
+    crate::AssumptionEvent,
+    crate::AssumptionRecord,
+    cas_formatter::display_transforms::ScopeTag,
+>;
 /// Raw solve step entry (pre-display wrapper).
-pub use crate::SolveStep;
+pub type SolveStep = cas_solver_core::solve_aliases::SolveStep<
+    cas_ast::Equation,
+    crate::ImportanceLevel,
+    SolveSubStep,
+>;
 /// Raw solve sub-step entry.
-pub use crate::SolveSubStep;
+pub type SolveSubStep =
+    cas_solver_core::solve_aliases::SolveSubStep<cas_ast::Equation, crate::ImportanceLevel>;
+/// Solver helper: check whether an expression contains the target variable.
+pub use cas_solver_core::isolation_utils::contains_var;
+/// Solver helper: infer variable from free-variable set.
+pub use cas_solver_core::solve_infer::infer_solve_variable;
+/// Solver verification instrumentation counters.
+pub use cas_solver_core::verify_stats;
 
 /// Verify a single candidate solution by substitution.
-pub use crate::verify_solution;
+pub fn verify_solution(
+    simplifier: &mut crate::engine::Simplifier,
+    equation: &cas_ast::Equation,
+    var: &str,
+    solution: cas_ast::ExprId,
+) -> VerifyStatus {
+    crate::verify_runtime::verify_solution(simplifier, equation, var, solution)
+}
 /// Verify an entire solution set by substitution.
-pub use crate::verify_solution_set;
+pub fn verify_solution_set(
+    simplifier: &mut crate::engine::Simplifier,
+    equation: &cas_ast::Equation,
+    var: &str,
+    solutions: &cas_ast::SolutionSet,
+) -> VerifyResult {
+    crate::verify_runtime::verify_solution_set(simplifier, equation, var, solutions)
+}
 /// Verification result for a complete solution set.
-pub use crate::VerifyResult;
+pub use cas_solver_core::verification::VerifyResult;
 /// Solver verification status for one candidate solution.
-pub use crate::VerifyStatus;
+pub use cas_solver_core::verification::VerifyStatus;
 /// Solver verification result summary.
-pub use crate::VerifySummary;
+pub use cas_solver_core::verification::VerifySummary;
 
 // =============================================================================
 // Display Traits (Human-readable output)

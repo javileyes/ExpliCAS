@@ -1,6 +1,5 @@
-use crate::engine::Simplifier;
-use crate::error::CasError;
-use crate::solve_runtime::{SolveCtx, SolveStep, SolverOptions};
+use crate::solve_runtime_adapters::SolverOptions;
+use crate::{CasError, Simplifier, SolveCtx, SolveStep};
 use cas_ast::{Equation, ExprId, SolutionSet};
 
 pub(crate) fn solve_equation_with_solver_ctx(
@@ -45,7 +44,7 @@ pub(crate) fn classify_log_solve_with_solver_ctx(
         opts.value_domain,
         opts.core_domain_mode(),
         &solve_ctx.domain_env,
-        crate::helpers::prove_positive,
+        crate::proof_runtime::prove_positive,
     )
 }
 

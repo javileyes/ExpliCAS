@@ -124,7 +124,9 @@ pub use crate::eval_command_types::{
     EvalDisplayMessageKind, EvalMetadataLines, EvalResultLine,
 };
 pub use crate::eval_json_command_runtime::evaluate_eval_json_with_session;
-pub use crate::eval_json_input::build_eval_request_for_input;
+pub use crate::eval_json_input::{
+    build_eval_json_request_for_input, EvalJsonNonSolveAction, EvalJsonPreparedRequest,
+};
 pub use crate::eval_output_adapters::{
     assumption_records_from_eval_output, blocked_hints_from_eval_output,
     diagnostics_from_eval_output, domain_warnings_from_eval_output, eval_output_view,

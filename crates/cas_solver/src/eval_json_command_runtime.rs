@@ -16,13 +16,7 @@ pub fn evaluate_eval_json_with_session<S, F>(
     collect_steps: F,
 ) -> Result<EvalJsonOutput, String>
 where
-    S: crate::EvalSession<Options = crate::EvalOptions, Diagnostics = crate::Diagnostics>,
-    S::Store: crate::EvalStore<
-        DomainMode = crate::DomainMode,
-        RequiredItem = crate::RequiredItem,
-        Step = crate::Step,
-        Diagnostics = crate::Diagnostics,
-    >,
+    S: crate::SolverEvalSession,
     F: Fn(&[crate::Step], &cas_ast::Context, &str) -> Vec<StepJson>,
 {
     let total_start = Instant::now();
@@ -44,18 +38,19 @@ where
     );
 
     let parse_start = Instant::now();
-    let req = crate::build_eval_request_for_input(
+    let req = crate::eval_json_input::build_eval_json_request_for_input(
         config.expr,
         &mut engine.simplifier.context,
         config.auto_store,
     )?;
-    let parsed_input = req.parsed;
+    let parsed_input = req.parsed();
     let parse_us = parse_start.elapsed().as_micros() as u64;
 
     let simplify_start = Instant::now();
-    let output = engine.eval(session, req).map_err(|e| e.to_string())?;
+    let output_view = crate::eval_json_request_runtime::evaluate_prepared_request_with_session(
+        engine, session, req,
+    )?;
     let simplify_us = simplify_start.elapsed().as_micros() as u64;
-    let output_view = crate::eval_output_view(&output);
 
     let input_latex = Some(format_eval_input_latex(
         &engine.simplifier.context,

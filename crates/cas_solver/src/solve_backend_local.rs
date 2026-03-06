@@ -1,8 +1,8 @@
 //! Local active solve backend boundary.
 //!
-//! This backend is solver-owned and currently delegates to the engine backend.
-//! Keeping this indirection local lets us migrate solve internals incrementally
-//! without changing call sites.
+//! This backend is solver-owned and executes the solver-native runtime pipeline.
+//! Keeping this indirection local lets us switch implementations without
+//! changing call sites.
 
 use crate::{CasError, Simplifier, SolveCtx, SolveStep};
 use cas_ast::{Equation, SolutionSet};
@@ -21,6 +21,6 @@ impl SolveBackend for LocalSolveBackend {
         opts: CoreSolverOptions,
         ctx: &SolveCtx,
     ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-        crate::engine_bridge::solve_with_ctx_and_options(eq, var, simplifier, opts, ctx)
+        crate::solve_core_runtime::solve_inner(eq, var, simplifier, opts, ctx)
     }
 }

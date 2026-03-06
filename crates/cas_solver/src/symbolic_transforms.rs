@@ -1,53 +1,9 @@
-use crate::Rule;
 use cas_ast::{Expr, ExprId};
 
 /// Recursively expand logarithmic identities where the expansion rule applies.
 pub fn expand_log_recursive(ctx: &mut cas_ast::Context, expr: ExprId) -> ExprId {
-    // Allow symbolic log expansion under assume mode for this helper flow.
-    let parent_ctx = crate::ParentContext::root().with_domain_mode(crate::DomainMode::Assume);
-    let rule = crate::LogExpansionRule;
-
-    if let Some(rewrite) = rule.apply(ctx, expr, &parent_ctx) {
-        return expand_log_recursive(ctx, rewrite.new_expr);
-    }
-
-    let expr_data = ctx.get(expr).clone();
-    match expr_data {
-        Expr::Add(l, r) => {
-            let new_l = expand_log_recursive(ctx, l);
-            let new_r = expand_log_recursive(ctx, r);
-            ctx.add(Expr::Add(new_l, new_r))
-        }
-        Expr::Sub(l, r) => {
-            let new_l = expand_log_recursive(ctx, l);
-            let new_r = expand_log_recursive(ctx, r);
-            ctx.add(Expr::Sub(new_l, new_r))
-        }
-        Expr::Mul(l, r) => {
-            let new_l = expand_log_recursive(ctx, l);
-            let new_r = expand_log_recursive(ctx, r);
-            ctx.add(Expr::Mul(new_l, new_r))
-        }
-        Expr::Div(l, r) => {
-            let new_l = expand_log_recursive(ctx, l);
-            let new_r = expand_log_recursive(ctx, r);
-            ctx.add(Expr::Div(new_l, new_r))
-        }
-        Expr::Pow(b, e) => {
-            let new_b = expand_log_recursive(ctx, b);
-            let new_e = expand_log_recursive(ctx, e);
-            ctx.add(Expr::Pow(new_b, new_e))
-        }
-        Expr::Neg(inner) => {
-            let new_inner = expand_log_recursive(ctx, inner);
-            ctx.add(Expr::Neg(new_inner))
-        }
-        Expr::Function(name, args) => {
-            let new_args: Vec<_> = args.iter().map(|a| expand_log_recursive(ctx, *a)).collect();
-            ctx.add(Expr::Function(name, new_args))
-        }
-        _ => expr,
-    }
+    cas_math::logarithm_inverse_support::expand_logs_collect_positive_assumptions(ctx, expr)
+        .rewritten
 }
 
 /// Recursively apply Weierstrass substitution:
