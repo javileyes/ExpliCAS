@@ -1,0 +1,138 @@
+use cas_ast::{Equation, ExprId, RelOp, SolutionSet};
+
+/// Build a runtime power-isolation config by querying include-item hooks from
+/// mutable state.
+pub fn build_pow_isolation_runtime_config_with_state<
+    T,
+    TTacticOptions,
+    FCollectItem,
+    FBuildTacticOptions,
+>(
+    state: &mut T,
+    mode: crate::log_domain::DomainModeKind,
+    wildcard_scope: bool,
+    value_domain_real_only: bool,
+    budget: crate::solve_budget::SolveBudget,
+    mut collect_item: FCollectItem,
+    build_tactic_options: FBuildTacticOptions,
+) -> crate::strategy_options::PowIsolationRuntimeConfig<TTacticOptions>
+where
+    FCollectItem: FnMut(&mut T) -> bool,
+    FBuildTacticOptions: FnOnce() -> TTacticOptions,
+{
+    crate::strategy_options::pow_runtime_config_with(
+        mode,
+        wildcard_scope,
+        value_domain_real_only,
+        budget,
+        || collect_item(state),
+        build_tactic_options,
+    )
+}
+
+/// Execute power isolation (`base^exponent = rhs`) with one runtime config
+/// and default unified-step mapping in the core kernel.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_pow_isolation_with_runtime_config_and_unified_step_mapper_for_var_with_state<
+    T,
+    S,
+    E,
+    TTacticOptions,
+    FContextRef,
+    FContextMut,
+    FRenderExpr,
+    FIsolateBase,
+    FSimplifyShortcut,
+    FClearBlockedHints,
+    FSimplifyWithTactic,
+    FCollectItem,
+    FClassifyDecision,
+    FSolveShortcut,
+    FMapStep,
+    FMapEnsureError,
+    FVisitAssumption,
+    FTryGuardedSolve,
+    FRegisterBlockedHint,
+    FMapUnsupportedErr,
+    FSolveRewrite,
+>(
+    state: &mut T,
+    lhs: ExprId,
+    base: ExprId,
+    exponent: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    var: &str,
+    config: crate::strategy_options::PowIsolationRuntimeConfig<TTacticOptions>,
+    existing_steps: Vec<S>,
+    context_ref: FContextRef,
+    context_mut: FContextMut,
+    render_expr: FRenderExpr,
+    isolate_base: FIsolateBase,
+    simplify_shortcut: FSimplifyShortcut,
+    clear_blocked_hints: FClearBlockedHints,
+    mut simplify_with_tactic: FSimplifyWithTactic,
+    collect_item: FCollectItem,
+    classify_decision: FClassifyDecision,
+    solve_shortcut: FSolveShortcut,
+    map_step: FMapStep,
+    map_ensure_error: FMapEnsureError,
+    visit_assumption: FVisitAssumption,
+    try_guarded_solve: FTryGuardedSolve,
+    register_blocked_hint: FRegisterBlockedHint,
+    map_unsupported_err: FMapUnsupportedErr,
+    solve_rewrite: FSolveRewrite,
+) -> Result<(SolutionSet, Vec<S>), E>
+where
+    S: Clone,
+    FContextRef: Fn(&mut T) -> &cas_ast::Context,
+    FContextMut: Fn(&mut T) -> &mut cas_ast::Context,
+    FRenderExpr: Fn(&cas_ast::Context, ExprId) -> String,
+    FIsolateBase: FnMut(&mut T, ExprId, ExprId, RelOp) -> Result<(SolutionSet, Vec<S>), E>,
+    FSimplifyShortcut: FnMut(&mut T, ExprId) -> ExprId,
+    FClearBlockedHints: FnMut(&mut T),
+    FSimplifyWithTactic: FnMut(&mut T, ExprId, &TTacticOptions) -> ExprId,
+    FCollectItem: FnMut(&mut T) -> bool,
+    FClassifyDecision: FnMut(&mut T, ExprId, ExprId) -> crate::log_domain::LogSolveDecision,
+    FSolveShortcut: FnMut(&mut T, ExprId, RelOp) -> Result<(SolutionSet, Vec<S>), E>,
+    FMapStep: FnMut(String, Equation) -> S,
+    FMapEnsureError: FnMut(&str, &'static str) -> E,
+    FVisitAssumption: FnMut(&cas_ast::Context, crate::log_domain::LogAssumption),
+    FTryGuardedSolve: FnMut(&mut T, &Equation) -> Option<SolutionSet>,
+    FRegisterBlockedHint: FnMut(&cas_ast::Context, crate::solve_outcome::LogBlockedHintRecord),
+    FMapUnsupportedErr: FnMut(&'static str) -> E,
+    FSolveRewrite: FnMut(&mut T, &Equation) -> Result<(SolutionSet, Vec<S>), E>,
+{
+    let crate::strategy_options::PowIsolationRuntimeConfig {
+        kernel,
+        tactic_opts,
+    } = config;
+    crate::isolation_power::execute_pow_isolation_with_kernel_config_and_unified_step_mapper_for_var_with_state(
+        state,
+        lhs,
+        base,
+        exponent,
+        rhs,
+        op,
+        var,
+        kernel,
+        existing_steps,
+        context_ref,
+        context_mut,
+        render_expr,
+        isolate_base,
+        simplify_shortcut,
+        clear_blocked_hints,
+        |state, expr| simplify_with_tactic(state, expr, &tactic_opts),
+        collect_item,
+        classify_decision,
+        solve_shortcut,
+        map_step,
+        map_ensure_error,
+        visit_assumption,
+        try_guarded_solve,
+        register_blocked_hint,
+        map_unsupported_err,
+        solve_rewrite,
+    )
+}

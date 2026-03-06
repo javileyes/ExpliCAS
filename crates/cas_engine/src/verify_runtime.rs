@@ -4,22 +4,6 @@ use crate::engine::Simplifier;
 use cas_ast::{Equation, ExprId, SolutionSet};
 use cas_solver_core::verification::{VerifyResult, VerifyStatus};
 
-fn context_ref(simplifier: &Simplifier) -> &cas_ast::Context {
-    &simplifier.context
-}
-
-fn context_mut(simplifier: &mut Simplifier) -> &mut cas_ast::Context {
-    &mut simplifier.context
-}
-
-fn simplify_with_options(
-    simplifier: &mut Simplifier,
-    expr: ExprId,
-    opts: cas_solver_core::simplify_options::SimplifyOptions,
-) -> ExprId {
-    simplifier.simplify_with_stats(expr, opts).0
-}
-
 /// Verify a single solution by substituting into the equation.
 pub fn verify_solution(
     simplifier: &mut Simplifier,
@@ -32,9 +16,9 @@ pub fn verify_solution(
         equation,
         var,
         solution,
-        context_ref,
-        context_mut,
-        simplify_with_options,
+        |state| &state.context,
+        |state| &mut state.context,
+        |state, expr, opts| state.simplify_with_stats(expr, opts).0,
         crate::runtime_ground_eval::ground_eval_candidate,
     )
 }
@@ -51,9 +35,9 @@ pub fn verify_solution_set(
         equation,
         var,
         solutions,
-        context_ref,
-        context_mut,
-        simplify_with_options,
+        |state| &state.context,
+        |state| &mut state.context,
+        |state, expr, opts| state.simplify_with_stats(expr, opts).0,
         crate::runtime_ground_eval::ground_eval_candidate,
     )
 }
