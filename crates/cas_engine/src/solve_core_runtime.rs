@@ -4,13 +4,14 @@
 
 use crate::engine::Simplifier;
 use crate::error::CasError;
+use crate::solve_backend_contract::{SolveCtx, SolveStep, SolverOptions};
 use cas_ast::{Equation, SolutionSet};
 use cas_solver_core::solve_analysis::guard_solved_result_with_exclusions;
 use cas_solver_core::strategy_order::SolveStrategyKind;
 
 use crate::solve_runtime_adapters::{
     apply_strategy, build_solve_preflight_state, execute_strategy_pipeline,
-    prepare_equation_for_strategy, SolveCtx, SolveStep, SolverOptions,
+    prepare_equation_for_strategy,
 };
 
 /// Core solver implementation.

@@ -30,7 +30,16 @@ pub fn verify_solution(
     var: &str,
     solution: cas_ast::ExprId,
 ) -> VerifyStatus {
-    crate::verify_runtime::verify_solution_local(simplifier, equation, var, solution)
+    cas_solver_core::verification_runtime_flow::verify_solution_with_runtime_kernels_with_state(
+        simplifier,
+        equation,
+        var,
+        solution,
+        |state| &state.context,
+        |state| &mut state.context,
+        |state, expr, opts| state.simplify_with_stats(expr, opts).0,
+        crate::proof_runtime::ground_eval_candidate,
+    )
 }
 
 /// Verify an entire solution set against the source equation.
@@ -40,5 +49,14 @@ pub fn verify_solution_set(
     var: &str,
     solutions: &cas_ast::SolutionSet,
 ) -> VerifyResult {
-    crate::verify_runtime::verify_solution_set_local(simplifier, equation, var, solutions)
+    cas_solver_core::verification_runtime_flow::verify_solution_set_with_runtime_kernels_with_state(
+        simplifier,
+        equation,
+        var,
+        solutions,
+        |state| &state.context,
+        |state| &mut state.context,
+        |state, expr, opts| state.simplify_with_stats(expr, opts).0,
+        crate::proof_runtime::ground_eval_candidate,
+    )
 }

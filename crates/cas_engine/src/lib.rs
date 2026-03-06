@@ -10,7 +10,7 @@ mod best_so_far_tests;
 pub(crate) mod budget;
 #[cfg(test)]
 mod budget_tests;
-mod cancel_common_terms_runtime;
+mod cancel_runtime;
 pub(crate) mod collect;
 #[cfg(test)]
 mod collect_tests;
@@ -43,25 +43,24 @@ mod profile_cache_tests;
 pub(crate) mod profiler;
 #[cfg(test)]
 mod profiler_tests;
+mod proof_runtime;
 pub(crate) mod recursion_guard;
 #[cfg(test)]
 mod recursion_guard_tests;
 pub(crate) mod rule;
 pub mod rules;
-mod runtime_ground_eval;
 pub(crate) mod semantics;
 #[cfg(test)]
 mod semantics_tests;
+mod solve_backend_contract;
 mod solve_core_runtime;
-mod solve_isolation_runtime;
-mod solve_runtime;
 mod solve_runtime_adapters;
+mod solver_entrypoints;
+mod solver_entrypoints_proof_verify;
 pub(crate) mod step;
 #[cfg(test)]
 mod step_tests;
-pub(crate) mod strategies;
 pub(crate) mod telescoping;
-mod verify_runtime;
 
 // Property-based numeric tests for rewrite correctness
 #[cfg(test)]
@@ -171,6 +170,7 @@ pub use rule::{ChainedRewrite, Rewrite, Rule, SimpleRule, SoundnessLabel};
 pub use semantics::{
     AssumeScope, BranchPolicy, EvalConfig, InverseTrigPolicy, NormalFormGoal, ValueDomain,
 };
+pub(crate) use solve_backend_contract::{SolveCtx, SolveDomainEnv, SolveStep, SolverOptions};
 pub use step::{
     pathsteps_to_expr_path, DisplayEvalSteps, ImportanceLevel, PathStep, Step, StepCategory,
 };
@@ -178,5 +178,5 @@ pub use telescoping::{telescope, TelescopingResult, TelescopingStep};
 pub use visitors::{DepthVisitor, VariableCollector};
 
 // Equation-level primitives (not simplifier rules — used by solver pipeline)
-pub use cancel_common_terms_runtime::cancel_additive_terms_semantic;
+pub use cancel_runtime::cancel_additive_terms_semantic;
 pub use cas_solver_core::cancel_common_terms::{cancel_common_additive_terms, CancelResult};

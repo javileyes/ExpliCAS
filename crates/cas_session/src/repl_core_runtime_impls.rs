@@ -3,12 +3,14 @@
 use crate::{ReplCore, SessionState};
 use cas_solver::{
     Engine, EvalCommandError, EvalCommandOutput, EvalOptions, PipelineStats,
-    ReplConfiguredRuntimeContext, ReplEvalRuntimeContext, ReplHealthRuntimeContext,
-    ReplRuntimeStateContext, ReplSemanticsRuntimeContext, ReplSessionRuntimeContext,
-    ReplSetRuntimeContext, ReplSimplifierRuntimeContext, ReplSolveRuntimeContext,
-    ReplStepsRuntimeContext, SetCommandApplyEffects, SetCommandPlan, SetCommandState,
-    SetDisplayMode, Simplifier, SimplifyOptions, StepsCommandApplyEffects, StepsDisplayMode,
-    StepsMode,
+    ReplConfiguredRuntimeContext, ReplEngineRuntimeContext, ReplEvalRuntimeContext,
+    ReplHealthRuntimeContext, ReplRuntimeStateContext, ReplSemanticsRuntimeContext,
+    ReplSessionEngineRuntimeContext, ReplSessionRuntimeContext,
+    ReplSessionSimplifierRuntimeContext, ReplSessionStateMutRuntimeContext,
+    ReplSessionViewRuntimeContext, ReplSetRuntimeContext, ReplSimplifierRuntimeContext,
+    ReplSolveRuntimeContext, ReplStepsRuntimeContext, SetCommandApplyEffects, SetCommandPlan,
+    SetCommandState, SetDisplayMode, Simplifier, SimplifyOptions, StepsCommandApplyEffects,
+    StepsDisplayMode, StepsMode,
 };
 
 impl ReplEvalRuntimeContext for ReplCore {
@@ -130,26 +132,21 @@ impl ReplSessionRuntimeContext for ReplCore {
     fn state(&self) -> &Self::State {
         ReplCore::state(self)
     }
+}
 
-    fn state_mut(&mut self) -> &mut Self::State {
-        ReplCore::state_mut(self)
-    }
-
+impl ReplSessionViewRuntimeContext for ReplCore {
     fn simplifier_context(&self) -> &cas_ast::Context {
         &ReplCore::simplifier(self).context
     }
+}
 
-    fn engine_mut(&mut self) -> &mut Engine {
-        ReplCore::engine_mut(self)
+impl ReplSessionStateMutRuntimeContext for ReplCore {
+    fn state_mut(&mut self) -> &mut Self::State {
+        ReplCore::state_mut(self)
     }
+}
 
-    fn with_engine_and_state<R>(
-        &mut self,
-        f: impl FnOnce(&mut Engine, &mut Self::State) -> R,
-    ) -> R {
-        ReplCore::with_engine_and_state(self, f)
-    }
-
+impl ReplSessionSimplifierRuntimeContext for ReplCore {
     fn with_state_and_simplifier_mut<R>(
         &mut self,
         f: impl FnOnce(&mut Self::State, &mut Simplifier) -> R,
@@ -158,25 +155,26 @@ impl ReplSessionRuntimeContext for ReplCore {
     }
 }
 
-impl ReplSolveRuntimeContext for ReplCore {
-    type State = SessionState;
-
-    fn debug_mode(&self) -> bool {
-        ReplCore::debug_mode(self)
-    }
-
+impl ReplSessionEngineRuntimeContext for ReplCore {
     fn with_engine_and_state<R>(
         &mut self,
         f: impl FnOnce(&mut Engine, &mut Self::State) -> R,
     ) -> R {
         ReplCore::with_engine_and_state(self, f)
     }
+}
 
-    fn with_state_and_simplifier_mut<R>(
-        &mut self,
-        f: impl FnOnce(&mut Self::State, &mut Simplifier) -> R,
-    ) -> R {
-        ReplCore::with_state_and_simplifier_mut(self, f)
+impl ReplEngineRuntimeContext for ReplCore {
+    type Engine = Engine;
+
+    fn with_engine_mut<R>(&mut self, f: impl FnOnce(&mut Self::Engine) -> R) -> R {
+        ReplCore::with_engine_and_state(self, |engine, _state| f(engine))
+    }
+}
+
+impl ReplSolveRuntimeContext for ReplCore {
+    fn debug_mode(&self) -> bool {
+        ReplCore::debug_mode(self)
     }
 }
 

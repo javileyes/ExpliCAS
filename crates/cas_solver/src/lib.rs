@@ -250,7 +250,6 @@ mod repl_steps_runtime;
 mod repl_steps_runtime_tests;
 mod rule_runtime_types;
 mod rules_runtime_types;
-mod runtime_ground_eval;
 mod semantics_command_eval;
 mod semantics_command_parse;
 #[cfg(test)]
@@ -311,7 +310,6 @@ mod solve_input_parse_prepare;
 #[cfg(test)]
 mod solve_input_parse_tests;
 mod solve_input_types;
-mod solve_isolation_runtime;
 mod solve_render_config;
 mod solve_runtime_adapters;
 mod solve_safety;
@@ -358,13 +356,14 @@ mod unary_display;
 mod vars_command_display;
 #[cfg(test)]
 mod vars_command_display_tests;
-mod verify_runtime;
 mod weierstrass_command;
 #[cfg(test)]
 mod weierstrass_command_tests;
 
 /// Backward-compatible facade for former `cas_engine::strategies::substitute_expr` imports.
-pub mod strategies;
+pub mod strategies {
+    pub use cas_ast::substitute_expr_by_id as substitute_expr;
+}
 
 /// Backward-compatible facade for former `cas_engine::api::*` imports.
 pub mod api;

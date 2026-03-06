@@ -65,6 +65,6 @@ fn test_solve_session_ref() {
                 _ => panic!("Expected SolutionSet result, got {:?}", output.result),
             }
         }
-        Err(e) => panic!("Eval failed: {}", e),
+        Err(e) => panic!("Eval failed: {:?}", e),
     }
 }

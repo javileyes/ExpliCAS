@@ -64,11 +64,6 @@ impl ReplCore {
         f(&mut self.state, &mut self.engine.simplifier)
     }
 
-    /// Borrow the current solver engine mutably.
-    pub(crate) fn engine_mut(&mut self) -> &mut Engine {
-        &mut self.engine
-    }
-
     /// Borrow the session state.
     pub(crate) fn state(&self) -> &SessionState {
         &self.state

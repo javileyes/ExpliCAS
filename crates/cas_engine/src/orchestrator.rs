@@ -451,7 +451,12 @@ impl Orchestrator {
 
         // Filter and optimize steps
         let filtered_steps = if collect_steps {
-            crate::strategies::filter_non_productive_steps(&mut simplifier.context, expr, all_steps)
+            cas_solver_core::step_productivity_runtime::filter_non_productive_solver_steps_with_runtime_recompose_mul(
+                &mut simplifier.context,
+                expr,
+                all_steps,
+                crate::build::mul2_raw,
+            )
         } else {
             all_steps
         };

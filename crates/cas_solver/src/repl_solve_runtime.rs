@@ -1,4 +1,4 @@
-use crate::{Engine, EvalOptions, EvalSession, EvalStore, SetDisplayMode, Simplifier};
+use crate::{EvalSession, SetDisplayMode};
 
 fn map_solve_display_mode(mode: SetDisplayMode) -> crate::SolveDisplayMode {
     match mode {
@@ -19,33 +19,18 @@ fn map_full_simplify_display_mode(mode: SetDisplayMode) -> crate::FullSimplifyDi
 }
 
 /// Runtime context needed by solve/full-simplify REPL command adapters.
-pub trait ReplSolveRuntimeContext {
-    type State: EvalSession<Options = EvalOptions, Diagnostics = crate::Diagnostics>;
-
+pub trait ReplSolveRuntimeContext:
+    crate::ReplSessionSimplifierRuntimeContext<State: crate::SolverEvalSession>
+{
     fn debug_mode(&self) -> bool;
-    fn with_engine_and_state<R>(&mut self, f: impl FnOnce(&mut Engine, &mut Self::State) -> R)
-        -> R;
-    fn with_state_and_simplifier_mut<R>(
-        &mut self,
-        f: impl FnOnce(&mut Self::State, &mut Simplifier) -> R,
-    ) -> R;
 }
 
-/// Evaluate `solve ...` invocation against runtime engine/session state.
+/// Evaluate `solve ...` invocation against runtime simplifier/session state.
 pub fn evaluate_solve_command_message_on_runtime<C: ReplSolveRuntimeContext>(
     context: &mut C,
     line: &str,
     display_mode: SetDisplayMode,
-) -> Result<String, String>
-where
-    C::State: EvalSession<Options = EvalOptions, Diagnostics = crate::Diagnostics>,
-    <C::State as EvalSession>::Store: EvalStore<
-        DomainMode = crate::DomainMode,
-        RequiredItem = crate::RequiredItem,
-        Step = crate::Step,
-        Diagnostics = crate::Diagnostics,
-    >,
-{
+) -> Result<String, String> {
     let debug_mode = context.debug_mode();
     context.with_state_and_simplifier_mut(|state, simplifier| {
         let options = state.options().clone();

@@ -1,7 +1,6 @@
 pub mod algebra;
 pub mod arithmetic;
 pub mod calculus;
-pub mod cancel_common_terms;
 pub mod canonicalization;
 pub mod complex;
 pub mod constants;

@@ -2,6 +2,7 @@ use crate::Simplifier;
 use cas_ast::symbol::SymbolId;
 use cas_ast::ExprId;
 use cas_solver_core::external_proof::map_external_nonzero_status_with;
+use cas_solver_core::solve_runtime_state_helpers as state_helpers;
 
 pub(crate) fn simplifier_context(simplifier: &mut Simplifier) -> &cas_ast::Context {
     &simplifier.context
@@ -16,7 +17,7 @@ pub(crate) fn simplifier_contains_var(
     expr: ExprId,
     var: &str,
 ) -> bool {
-    cas_solver_core::isolation_utils::contains_var(&simplifier.context, expr, var)
+    state_helpers::contains_var_in_context(&simplifier.context, expr, var)
 }
 
 pub(crate) fn simplifier_simplify_expr(simplifier: &mut Simplifier, expr: ExprId) -> ExprId {
@@ -28,15 +29,15 @@ pub(crate) fn simplifier_expand_expr(simplifier: &mut Simplifier, expr: ExprId) 
 }
 
 pub(crate) fn simplifier_render_expr(simplifier: &mut Simplifier, expr: ExprId) -> String {
-    cas_formatter::render_expr(&simplifier.context, expr)
+    state_helpers::render_expr_in_context(&simplifier.context, expr)
 }
 
 pub(crate) fn context_render_expr(ctx: &cas_ast::Context, expr: ExprId) -> String {
-    cas_formatter::render_expr(ctx, expr)
+    state_helpers::render_expr_in_context(ctx, expr)
 }
 
 pub(crate) fn simplifier_zero_expr(simplifier: &mut Simplifier) -> ExprId {
-    simplifier.context.num(0)
+    state_helpers::zero_expr_in_context(&mut simplifier.context)
 }
 
 pub(crate) fn simplifier_collect_steps(simplifier: &mut Simplifier) -> bool {
@@ -48,14 +49,14 @@ pub(crate) fn simplifier_prove_nonzero_status(
     expr: ExprId,
 ) -> cas_solver_core::linear_solution::NonZeroStatus {
     map_external_nonzero_status_with(
-        crate::prove_nonzero(&simplifier.context, expr),
+        crate::proof_runtime::prove_nonzero(&simplifier.context, expr),
         |proof| matches!(proof, crate::Proof::Proven | crate::Proof::ProvenImplicit),
         |proof| matches!(proof, crate::Proof::Disproven),
     )
 }
 
 pub(crate) fn simplifier_is_known_negative(simplifier: &mut Simplifier, expr: ExprId) -> bool {
-    cas_solver_core::isolation_utils::is_known_negative(&simplifier.context, expr)
+    state_helpers::is_known_negative_in_context(&simplifier.context, expr)
 }
 
 pub(crate) fn simplify_rhs_with_step_pairs(
@@ -63,13 +64,9 @@ pub(crate) fn simplify_rhs_with_step_pairs(
     rhs_expr: ExprId,
 ) -> (ExprId, Vec<(String, ExprId)>) {
     let (simplified_rhs, sim_steps) = simplifier.simplify(rhs_expr);
-    let entries = sim_steps
-        .into_iter()
-        .map(|step| (step.description, step.after))
-        .collect::<Vec<_>>();
-    (simplified_rhs, entries)
+    state_helpers::simplify_rhs_with_step_pairs(simplified_rhs, sim_steps)
 }
 
 pub(crate) fn sym_name_as_string(simplifier: &mut Simplifier, fn_symbol: SymbolId) -> String {
-    simplifier.context.sym_name(fn_symbol).to_string()
+    state_helpers::sym_name_as_string(&simplifier.context, fn_symbol)
 }

@@ -33,7 +33,9 @@ pub use crate::repl_session_runtime::{
     evaluate_let_assignment_command_message_on_runtime,
     evaluate_profile_cache_command_lines_on_runtime, evaluate_show_command_lines_on_runtime,
     evaluate_solve_budget_command_message_on_runtime, evaluate_vars_command_message_on_runtime,
-    ReplSessionRuntimeContext,
+    ReplEngineRuntimeContext, ReplSessionEngineRuntimeContext, ReplSessionRuntimeContext,
+    ReplSessionSimplifierRuntimeContext, ReplSessionStateMutRuntimeContext,
+    ReplSessionViewRuntimeContext,
 };
 pub use crate::repl_set_runtime::{
     apply_set_command_plan_on_runtime, evaluate_set_command_on_runtime,

@@ -99,7 +99,7 @@ pub fn solve(
     var: &str,
     simplifier: &mut crate::engine::Simplifier,
 ) -> Result<(cas_ast::SolutionSet, Vec<SolveStep>), crate::error::CasError> {
-    crate::solve_runtime::solve(eq, var, simplifier)
+    crate::solver_entrypoints::solve(eq, var, simplifier)
 }
 
 /// Solve an equation with explicit options, returning display-ready steps.
@@ -113,28 +113,18 @@ pub fn solve_with_display_steps(
     simplifier: &mut crate::engine::Simplifier,
     opts: SolverOptions,
 ) -> Result<(cas_ast::SolutionSet, DisplaySolveSteps, SolveDiagnostics), crate::error::CasError> {
-    crate::solve_runtime::solve_with_display_steps(eq, var, simplifier, opts)
+    crate::solver_entrypoints::solve_with_display_steps(eq, var, simplifier, opts)
 }
 
 /// Display-ready solve steps (post-cleanup).
 /// Wrapper type that enforces step processing has been applied.
-pub type DisplaySolveSteps = cas_solver_core::solve_aliases::DisplaySolveSteps<SolveStep>;
+pub type DisplaySolveSteps = crate::solve_backend_contract::DisplaySolveSteps;
 /// Diagnostics collected during solve operation.
-pub type SolveDiagnostics = cas_solver_core::solve_aliases::SolveDiagnostics<
-    crate::ImplicitCondition,
-    crate::AssumptionEvent,
-    crate::AssumptionRecord,
-    cas_formatter::display_transforms::ScopeTag,
->;
+pub type SolveDiagnostics = crate::solve_backend_contract::SolveDiagnostics;
 /// Raw solve step entry (pre-display wrapper).
-pub type SolveStep = cas_solver_core::solve_aliases::SolveStep<
-    cas_ast::Equation,
-    crate::ImportanceLevel,
-    SolveSubStep,
->;
+pub type SolveStep = crate::solve_backend_contract::SolveStep;
 /// Raw solve sub-step entry.
-pub type SolveSubStep =
-    cas_solver_core::solve_aliases::SolveSubStep<cas_ast::Equation, crate::ImportanceLevel>;
+pub type SolveSubStep = crate::solve_backend_contract::SolveSubStep;
 /// Solver helper: check whether an expression contains the target variable.
 pub use cas_solver_core::isolation_utils::contains_var;
 /// Solver helper: infer variable from free-variable set.
@@ -149,7 +139,7 @@ pub fn verify_solution(
     var: &str,
     solution: cas_ast::ExprId,
 ) -> VerifyStatus {
-    crate::verify_runtime::verify_solution(simplifier, equation, var, solution)
+    crate::solver_entrypoints_proof_verify::verify_solution(simplifier, equation, var, solution)
 }
 /// Verify an entire solution set by substitution.
 pub fn verify_solution_set(
@@ -158,7 +148,9 @@ pub fn verify_solution_set(
     var: &str,
     solutions: &cas_ast::SolutionSet,
 ) -> VerifyResult {
-    crate::verify_runtime::verify_solution_set(simplifier, equation, var, solutions)
+    crate::solver_entrypoints_proof_verify::verify_solution_set(
+        simplifier, equation, var, solutions,
+    )
 }
 /// Verification result for a complete solution set.
 pub use cas_solver_core::verification::VerifyResult;

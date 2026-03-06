@@ -12,6 +12,22 @@ enum ProfileCacheCommandInput {
     Unknown(String),
 }
 
+/// Minimal profile-cache surface needed by `cache` REPL commands.
+pub trait ProfileCacheStore {
+    fn profile_cache_len(&self) -> usize;
+    fn clear_profile_cache(&mut self);
+}
+
+impl ProfileCacheStore for crate::Engine {
+    fn profile_cache_len(&self) -> usize {
+        crate::Engine::profile_cache_len(self)
+    }
+
+    fn clear_profile_cache(&mut self) {
+        crate::Engine::clear_profile_cache(self);
+    }
+}
+
 fn parse_profile_cache_command_input(line: &str) -> ProfileCacheCommandInput {
     let args: Vec<&str> = line.split_whitespace().collect();
     match args.get(1).copied() {
@@ -22,8 +38,8 @@ fn parse_profile_cache_command_input(line: &str) -> ProfileCacheCommandInput {
 }
 
 /// Apply a `cache` command line to an engine profile cache.
-pub fn apply_profile_cache_command(
-    engine: &mut crate::Engine,
+pub fn apply_profile_cache_command<E: ProfileCacheStore>(
+    engine: &mut E,
     line: &str,
 ) -> ProfileCacheCommandResult {
     match parse_profile_cache_command_input(line) {
@@ -63,7 +79,10 @@ pub fn format_profile_cache_command_lines(result: &ProfileCacheCommandResult) ->
 }
 
 /// Evaluate a `cache` command and return user-facing output lines.
-pub fn evaluate_profile_cache_command_lines(engine: &mut crate::Engine, line: &str) -> Vec<String> {
+pub fn evaluate_profile_cache_command_lines<E: ProfileCacheStore>(
+    engine: &mut E,
+    line: &str,
+) -> Vec<String> {
     let result = apply_profile_cache_command(engine, line);
     format_profile_cache_command_lines(&result)
 }

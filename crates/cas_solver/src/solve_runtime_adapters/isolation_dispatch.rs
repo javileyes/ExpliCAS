@@ -1,15 +1,28 @@
 use crate::solve_runtime_adapters::{
-    classify_log_solve_with_solver_ctx, context_render_expr, isolate_equation_with_solver_ctx,
-    map_isolation_cannot_isolate_error, map_isolation_error, map_unknown_function_error,
-    map_unsupported_in_real_domain_error, map_variable_not_found_solver_error, medium_step,
-    note_log_assumption_with_solver_ctx, note_log_blocked_hint_with_default_sink,
+    context_render_expr, map_isolation_error, map_unsupported_in_real_domain_error,
     simplifier_collect_steps, simplifier_context, simplifier_context_mut,
     simplifier_is_known_negative, simplifier_prove_nonzero_status, simplifier_simplify_expr,
-    simplify_rhs_with_step_pairs, solve_equation_with_solver_ctx, sym_name_as_string, SolveCtx,
-    SolveStep, SolverOptions,
+    simplify_rhs_with_step_pairs, sym_name_as_string, SolveCtx, SolveStep, SolverOptions,
 };
 use crate::{CasError, Simplifier};
 use cas_ast::{ExprId, RelOp, SolutionSet};
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn isolate_with_default_depth(
+    lhs: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    var: &str,
+    simplifier: &mut Simplifier,
+    opts: SolverOptions,
+    ctx: &SolveCtx,
+) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
+    cas_solver_core::solve_runtime_isolation_entry_runtime::isolate_with_default_depth_guard_and_error_with_state(
+        simplifier,
+        ctx.depth(),
+        |state| dispatch_isolation_with_default_routes(lhs, rhs, op.clone(), var, state, opts, ctx),
+    )
+}
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn dispatch_isolation_with_default_routes(
@@ -21,7 +34,7 @@ pub(crate) fn dispatch_isolation_with_default_routes(
     opts: SolverOptions,
     ctx: &SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-    cas_solver_core::solve_runtime_flow::dispatch_isolation_with_default_kernels_and_default_arithmetic_pow_function_routes_with_state(
+    cas_solver_core::solve_runtime_isolation_dispatch_runtime::dispatch_isolation_with_default_routes_and_mappers_with_state(
         simplifier,
         lhs,
         rhs,
@@ -36,11 +49,19 @@ pub(crate) fn dispatch_isolation_with_default_routes(
         context_render_expr,
         |state| state.collect_steps(),
         |simplifier, equation, solve_var| {
-            solve_equation_with_solver_ctx(simplifier, equation, solve_var, opts, ctx)
+            crate::solve_core_runtime::solve_inner(equation, solve_var, simplifier, opts, ctx)
         },
         simplifier_is_known_negative,
         |simplifier, equation, solve_var| {
-            isolate_equation_with_solver_ctx(simplifier, &equation, solve_var, opts, ctx)
+            isolate_with_default_depth(
+                equation.lhs,
+                equation.rhs,
+                equation.op.clone(),
+                solve_var,
+                simplifier,
+                opts,
+                ctx,
+            )
         },
         opts.core_domain_mode(),
         opts.wildcard_scope(),
@@ -52,31 +73,48 @@ pub(crate) fn dispatch_isolation_with_default_routes(
         |_simplifier| crate::clear_blocked_hints(),
         |simplifier, expr, tactic_opts| simplifier.simplify_with_options(expr, tactic_opts.clone()).0,
         |simplifier, tactic_base, tactic_rhs| {
-            classify_log_solve_with_solver_ctx(
+            cas_solver_core::solve_runtime_flow::classify_log_solve_with_domain_env_and_runtime_positive_prover(
                 &simplifier.context,
                 tactic_base,
                 tactic_rhs,
-                &opts,
-                ctx,
+                opts.value_domain,
+                opts.core_domain_mode(),
+                &ctx.domain_env,
+                crate::proof_runtime::prove_positive,
             )
         },
         map_isolation_error,
         |core_ctx, base, eq_rhs, assumption| {
-            note_log_assumption_with_solver_ctx(core_ctx, base, eq_rhs, assumption, ctx)
+            cas_solver_core::solve_runtime_flow::note_log_assumption_with_runtime_sink(
+                core_ctx,
+                base,
+                eq_rhs,
+                assumption,
+                |event| ctx.note_assumption(event),
+            );
         },
-        note_log_blocked_hint_with_default_sink,
+        |core_ctx, hint| {
+            cas_solver_core::solve_runtime_flow::note_log_blocked_hint_with_runtime_sink(
+                core_ctx,
+                hint,
+                crate::register_blocked_hint,
+            );
+        },
         map_unsupported_in_real_domain_error,
         simplifier_collect_steps,
         simplify_rhs_with_step_pairs,
         sym_name_as_string,
-        |_simplifier, missing_var| map_variable_not_found_solver_error(missing_var),
-        |_simplifier, unsupported_var, message| map_isolation_error(unsupported_var, message),
-        |_simplifier, fn_name| map_unknown_function_error(fn_name),
         |simplifier, equation, solve_var| {
-            isolate_equation_with_solver_ctx(simplifier, &equation, solve_var, opts, ctx)
+            isolate_with_default_depth(
+                equation.lhs,
+                equation.rhs,
+                equation.op.clone(),
+                solve_var,
+                simplifier,
+                opts,
+                ctx,
+            )
         },
         simplifier_collect_steps,
-        medium_step,
-        |_simplifier, lhs_expr| map_isolation_cannot_isolate_error(var, lhs_expr),
     )
 }
