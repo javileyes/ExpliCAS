@@ -50,7 +50,7 @@ pub fn solve_with_display_steps(
     opts: SolverOptions,
 ) -> Result<(SolutionSet, DisplaySolveSteps, SolveDiagnostics), CasError> {
     let ctx = SolveCtx::default();
-    let result = crate::solver::solve_core::solve_inner(eq, var, simplifier, opts, &ctx);
+    let result = crate::solve_core_runtime::solve_inner(eq, var, simplifier, opts, &ctx);
     cas_solver_core::solve_types::finalize_display_solve_with_ctx(
         &ctx,
         result,
@@ -73,7 +73,7 @@ pub(crate) fn solve_with_options(
     opts: SolverOptions,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     let ctx = SolveCtx::default();
-    crate::solver::solve_core::solve_inner(eq, var, simplifier, opts, &ctx)
+    crate::solve_core_runtime::solve_inner(eq, var, simplifier, opts, &ctx)
 }
 
 pub fn solve_with_ctx_and_options(
@@ -83,5 +83,5 @@ pub fn solve_with_ctx_and_options(
     opts: SolverOptions,
     ctx: &SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-    crate::solver::solve_core::solve_inner(eq, var, simplifier, opts, ctx)
+    crate::solve_core_runtime::solve_inner(eq, var, simplifier, opts, ctx)
 }

@@ -14,7 +14,6 @@ pub(crate) mod cancel_common_terms_runtime;
 pub(crate) mod collect;
 #[cfg(test)]
 mod collect_tests;
-pub(crate) mod conservative_simplify;
 pub(crate) mod const_fold;
 pub(crate) mod diagnostics;
 pub(crate) mod domain_oracle;
@@ -49,13 +48,15 @@ pub(crate) mod recursion_guard;
 mod recursion_guard_tests;
 pub(crate) mod rule;
 pub mod rules;
+pub(crate) mod runtime_ground_eval;
 pub(crate) mod semantics;
 #[cfg(test)]
 mod semantics_tests;
+pub(crate) mod solve_core_runtime;
+pub(crate) mod solve_isolation_runtime;
 pub(crate) mod solve_runtime;
-pub(crate) mod solver;
+pub(crate) mod solve_runtime_adapters;
 pub(crate) mod step;
-pub(crate) mod step_optimization;
 #[cfg(test)]
 mod step_tests;
 pub(crate) mod strategies;
@@ -186,7 +187,5 @@ pub use verify_runtime::{verify_solution, verify_solution_set};
 pub use visitors::{DepthVisitor, VariableCollector};
 
 // Equation-level primitives (not simplifier rules — used by solver pipeline)
-pub use cancel_common_terms_runtime::{
-    cancel_additive_terms_semantic, cancel_common_additive_terms,
-};
-pub use cas_solver_core::cancel_common_terms::CancelResult;
+pub use cancel_common_terms_runtime::cancel_additive_terms_semantic;
+pub use cas_solver_core::cancel_common_terms::{cancel_common_additive_terms, CancelResult};

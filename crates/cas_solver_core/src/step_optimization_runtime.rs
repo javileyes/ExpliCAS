@@ -1,4 +1,8 @@
-use crate::step::Step;
+//! Runtime step optimization pipeline shared across integration crates.
+
+use crate::soundness_label::SoundnessLabel;
+use crate::step_model::{Step, StepMeta};
+use crate::step_types::{ImportanceLevel, StepCategory};
 use cas_ast::{Context, ExprId};
 use cas_math::step_optimize::optimize_steps_with_rules;
 use cas_math::step_rules::{
@@ -6,17 +10,19 @@ use cas_math::step_rules::{
 };
 use cas_math::step_semantic::is_semantic_noop_without_didactic_steps;
 
-/// Result of step optimization with semantic analysis
+/// Result of step optimization with semantic analysis.
 #[derive(Debug)]
 pub enum StepOptimizationResult {
-    /// Steps were optimized normally
+    /// Steps were optimized normally.
     Steps(Vec<Step>),
-    /// No real simplification occurred (result semantically equals input)
+    /// No real simplification occurred (result semantically equals input).
     NoSimplificationNeeded,
 }
 
-/// Optimize steps with semantic cycle detection
-/// Returns NoSimplificationNeeded if final result is semantically equal to original input
+/// Optimize steps with semantic cycle detection.
+///
+/// Returns `NoSimplificationNeeded` if final result is semantically equal to
+/// original input and there are no didactically important steps to preserve.
 pub fn optimize_steps_semantic(
     steps: Vec<Step>,
     ctx: &Context,
@@ -33,10 +39,10 @@ pub fn optimize_steps_semantic(
         return StepOptimizationResult::NoSimplificationNeeded;
     }
 
-    // Check if there are polynomial identity steps - use absorption to hide mechanical steps
+    // Check if there are polynomial identity steps - use absorption to hide mechanical steps.
     let has_poly_identity = steps.iter().any(|s| s.poly_proof().is_some());
 
-    // Otherwise, apply normal optimization (with absorption if PolyZero present)
+    // Otherwise, apply normal optimization (with absorption if PolyZero present).
     if has_poly_identity {
         StepOptimizationResult::Steps(optimize_steps_with_absorption(steps))
     } else {
@@ -44,6 +50,7 @@ pub fn optimize_steps_semantic(
     }
 }
 
+/// Collapse low-signal step chains while preserving important transitions.
 pub fn optimize_steps(steps: Vec<Step>) -> Vec<Step> {
     optimize_steps_with_rules(
         steps,
@@ -51,7 +58,7 @@ pub fn optimize_steps(steps: Vec<Step>) -> Vec<Step> {
         |step| step.rule_name.as_str(),
         is_expansion_rule_name,
         is_canonicalization_rule_name,
-        |step| step.importance >= crate::step::ImportanceLevel::Medium,
+        |step| step.importance >= ImportanceLevel::Medium,
         |a, b| a.path() == b.path(),
         |step| {
             step.rule_name == "Evaluate Numeric Power"
@@ -65,10 +72,10 @@ pub fn optimize_steps(steps: Vec<Step>) -> Vec<Step> {
             after: last.after,
             global_before: first.global_before,
             global_after: last.global_after,
-            importance: crate::step::ImportanceLevel::Low,
-            category: crate::step::StepCategory::Canonicalize,
-            soundness: crate::rule::SoundnessLabel::Equivalence,
-            meta: Some(Box::new(crate::step::StepMeta {
+            importance: ImportanceLevel::Low,
+            category: StepCategory::Canonicalize,
+            soundness: SoundnessLabel::Equivalence,
+            meta: Some(Box::new(StepMeta {
                 path: first.path().to_vec(),
                 after_str: last.after_str().map(|s| s.to_string()),
                 ..Default::default()
@@ -81,29 +88,23 @@ pub fn optimize_steps(steps: Vec<Step>) -> Vec<Step> {
     )
 }
 
-/// Absorb mechanical steps preceding a PolynomialIdentity step
-/// Uses window-based approach: absorb last K mechanical steps before PolyZero
-/// without requiring exact before/after chain matching (handles reorderings)
+/// Absorb mechanical steps preceding a polynomial-identity step.
 ///
-/// IMPORTANT: Steps with importance >= Medium are NEVER absorbed.
-/// Medium/High importance means "didactically important - user should see this".
+/// Uses a bounded look-back window and never absorbs medium/high-importance
+/// steps.
 pub fn find_steps_to_absorb_for_polyzero(steps: &[Step]) -> Vec<usize> {
-    use crate::step::ImportanceLevel;
-
     cas_math::step_absorption::find_absorption_indices_before_markers_with(
         steps,
-        8, // Max steps to look back
+        8, // Max steps to look back.
         |s| s.poly_proof().is_some(),
         |s| is_mechanical_rule_name(&s.rule_name),
         |s| s.importance >= ImportanceLevel::Medium,
     )
 }
 
-/// Enhanced step optimization with polynomial identity absorption
+/// Enhanced step optimization with polynomial identity absorption.
 pub fn optimize_steps_with_absorption(steps: Vec<Step>) -> Vec<Step> {
     let indices = find_steps_to_absorb_for_polyzero(&steps);
     let filtered = cas_math::step_absorption::absorb_indices(steps, &indices);
-
-    // Apply normal optimization on the filtered steps
     optimize_steps(filtered)
 }

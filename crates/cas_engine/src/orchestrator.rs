@@ -457,14 +457,16 @@ impl Orchestrator {
         };
 
         let optimized_steps = if collect_steps {
-            match crate::step_optimization::optimize_steps_semantic(
+            match cas_solver_core::step_optimization_runtime::optimize_steps_semantic(
                 filtered_steps,
                 &simplifier.context,
                 expr,
                 current,
             ) {
-                crate::step_optimization::StepOptimizationResult::Steps(steps) => steps,
-                crate::step_optimization::StepOptimizationResult::NoSimplificationNeeded => vec![],
+                cas_solver_core::step_optimization_runtime::StepOptimizationResult::Steps(steps) => {
+                    steps
+                }
+                cas_solver_core::step_optimization_runtime::StepOptimizationResult::NoSimplificationNeeded => vec![],
             }
         } else {
             filtered_steps

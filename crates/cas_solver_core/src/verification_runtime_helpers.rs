@@ -81,6 +81,28 @@ where
     )
 }
 
+/// Fold numeric islands using default guard/limits and the conservative
+/// simplify-option preset.
+///
+/// The evaluator receives `(source_context, expr_id, conservative_options)`.
+pub fn fold_numeric_islands_with_default_guard_and_conservative_options<FEvaluateCandidate>(
+    ctx: &mut Context,
+    root: ExprId,
+    mut evaluate_candidate: FEvaluateCandidate,
+) -> ExprId
+where
+    FEvaluateCandidate: FnMut(
+        &Context,
+        ExprId,
+        &crate::simplify_options::SimplifyOptions,
+    ) -> Option<(Context, ExprId)>,
+{
+    let fold_opts = crate::conservative_eval_config::conservative_numeric_fold_options();
+    fold_numeric_islands_with_default_guard_and_candidate(ctx, root, |src_ctx, id| {
+        evaluate_candidate(src_ctx, id, &fold_opts)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::{

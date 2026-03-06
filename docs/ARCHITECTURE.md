@@ -3826,8 +3826,8 @@ solve_with_display_steps(eq, var, simplifier, opts)
 
 | Type | Location | Purpose |
 |------|----------|---------|
-| `SolveCtx` | `solver/mod.rs` | Per-solve context with condition sink and options |
-| `SolveDiagnostics` | `solver/mod.rs` | Return value containing accumulated conditions |
+| `SolveCtx` | `solve_runtime.rs` | Per-solve context with condition sink and options |
+| `SolveDiagnostics` | `solve_runtime.rs` | Return value containing accumulated conditions |
 | `ImplicitCondition` | `implicit_domain.rs` | Domain conditions (`Positive`, `NonNegative`, etc.) |
 
 ### Thread Safety
@@ -3836,16 +3836,10 @@ Each call to `solve_with_display_steps` creates its own `SolveCtx` with a fresh
 `Rc<RefCell<HashSet>>`. Since `Rc` is not `Send`, it cannot accidentally cross
 thread boundaries. Each thread uses its own `Engine` and `Simplifier`.
 
-### Legacy TLS Policy
+### Solver TLS Policy
 
-Four `thread_local!` cells remain in the solver for diagnostic/UI purposes:
-
-| Cell | Purpose | Affects semantics? |
-|------|---------|--------------------|
-| `SOLVE_DEPTH` | Recursion limit guard | No (safety only) |
-| `SOLVE_SEEN` | Cycle detection fingerprints | No (termination only) |
-| `SOLVE_ASSUMPTIONS` | Assumption collection for display | No (diagnostic only) |
-| `OUTPUT_SCOPES` | Display scope tags from strategies | No (UI only) |
+No solver-runtime `thread_local!` cells remain.
+Solver state flows through `SolveCtx` and explicit parameters.
 
 > **Policy**: No new `thread_local!` may carry solver-semantic state.
 > Enforced by `scripts/lint_no_solver_tls.sh` (CI).
@@ -3855,9 +3849,9 @@ Four `thread_local!` cells remain in the solver for diagnostic/UI purposes:
 
 | File | Purpose |
 |------|---------|
-| `solver/mod.rs` | `SolveCtx`, `SolveDiagnostics`, TLS declarations, strategy dispatch |
-| `solver/solve_core.rs` | Core solving loop, `SOLVE_SEEN` cycle detection |
-| `solver/isolation/` | Equation isolation functions (all receive `&SolveCtx`) |
+| `solve_runtime.rs` | Public solve entrypoints and solve type aliases |
+| `solve_core_runtime.rs` | Core solving loop and strategy pipeline |
+| `solve_isolation_runtime.rs` | Equation isolation functions (all receive `&SolveCtx`) |
 | `scripts/lint_no_solver_tls.sh` | CI lint preventing new TLS in solver |
 | `tests/solver_parallel_reentrancy_tests.rs` | Multi-thread reentrancy tests |
 | `tests/solver_assumptions_contract_tests.rs` | Sequential reentrancy + condition isolation |

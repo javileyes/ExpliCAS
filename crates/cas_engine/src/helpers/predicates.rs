@@ -5,10 +5,10 @@ use cas_ast::{Context, ExprId};
 
 /// Attempt to prove whether an expression is non-zero.
 pub fn prove_nonzero(ctx: &Context, expr: ExprId) -> crate::Proof {
-    cas_solver_core::predicate_proofs::prove_nonzero_with_default_depth_with_runtime_ground(
+    cas_solver_core::predicate_proofs::prove_nonzero_with_default_depth_with_runtime_evaluator(
         ctx,
         expr,
-        super::ground_eval::try_ground_nonzero,
+        crate::runtime_ground_eval::ground_eval_candidate,
     )
 }
 
@@ -18,11 +18,11 @@ pub fn prove_positive(
     expr: ExprId,
     value_domain: crate::semantics::ValueDomain,
 ) -> crate::Proof {
-    cas_solver_core::predicate_proofs::prove_positive_with_default_depth_with_runtime_ground(
+    cas_solver_core::predicate_proofs::prove_positive_with_default_depth_with_runtime_evaluator(
         ctx,
         expr,
         value_domain,
-        super::ground_eval::try_ground_nonzero,
+        crate::runtime_ground_eval::ground_eval_candidate,
     )
 }
 
@@ -32,10 +32,10 @@ pub(crate) fn prove_nonnegative(
     expr: ExprId,
     value_domain: crate::semantics::ValueDomain,
 ) -> crate::Proof {
-    cas_solver_core::predicate_proofs::prove_nonnegative_with_default_depth_with_runtime_ground(
+    cas_solver_core::predicate_proofs::prove_nonnegative_with_default_depth_with_runtime_evaluator(
         ctx,
         expr,
         value_domain,
-        super::ground_eval::try_ground_nonzero,
+        crate::runtime_ground_eval::ground_eval_candidate,
     )
 }

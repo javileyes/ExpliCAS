@@ -3,10 +3,11 @@
 use crate::{Proof, Simplifier, ValueDomain, VerifyResult, VerifyStatus};
 
 /// Result shape for equation-level additive cancellation.
-pub type CancelResult = crate::cancel_runtime::CancelResult;
+pub type CancelResult = cas_solver_core::cancel_common_terms::CancelResult;
 
 /// Equation-level additive cancellation primitives owned by `cas_solver`.
-pub use crate::cancel_runtime::{cancel_additive_terms_semantic, cancel_common_additive_terms};
+pub use crate::cancel_runtime::cancel_additive_terms_semantic;
+pub use cas_solver_core::cancel_common_terms::cancel_common_additive_terms;
 
 /// Attempt to prove that an expression is non-zero.
 pub fn prove_nonzero(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> Proof {

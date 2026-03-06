@@ -57,7 +57,7 @@ This document defines the semantic configuration axes that control how ExpliCAS 
 |------|------------|---------|
 | `RawEvalSteps` | `pub(crate)` | Internal placeholder, minimal use |
 | `DisplayEvalSteps` | `pub` | All external consumers, post-cleanup |
-| `step_optimization` | `pub(crate)` | Internal step optimization helpers |
+| `cas_solver_core::step_optimization_runtime` | `pub` | Shared step optimization runtime helpers |
 | `strategies` | `pub(crate)` | Internal strategy helpers |
 
 ### Pipeline Independence Principle
@@ -116,7 +116,7 @@ for step in &output.steps {  // DisplayEvalSteps derefs to &[Step]
 }
 
 // ❌ WRONG: Direct access to raw steps is blocked via pub(crate).
-// step_optimization::optimize_steps() is pub(crate)
+// Step optimization runtime now lives in cas_solver_core and is called by engine orchestration.
 // strategies::filter_non_productive_steps() is pub(crate)
 ```
 

@@ -9,7 +9,6 @@
 //! - **Flatten/roots**: `cas_math::trig_roots_flatten`
 //! - **Scoring**: `nf_scoring`
 
-pub(crate) mod ground_eval;
 mod predicates;
 
 // predicates has `is_zero` and `prove_nonzero` used by integration tests — keep pub
