@@ -1,73 +1,26 @@
+mod composite;
+mod leaf;
+
 use cas_ast::{Context, Expr, ExprId};
 
 fn hash_expr_recursive<H: std::hash::Hasher>(ctx: &Context, expr: ExprId, hasher: &mut H) {
-    use std::hash::Hash;
-
     match ctx.get(expr) {
-        Expr::Number(n) => {
-            0u8.hash(hasher);
-            n.numer().to_string().hash(hasher);
-            n.denom().to_string().hash(hasher);
-        }
-        Expr::Variable(name) => {
-            1u8.hash(hasher);
-            name.hash(hasher);
-        }
-        Expr::Constant(c) => {
-            2u8.hash(hasher);
-            format!("{:?}", c).hash(hasher);
-        }
-        Expr::SessionRef(id) => {
-            11u8.hash(hasher);
-            id.hash(hasher);
-        }
-        Expr::Hold(inner) => {
-            12u8.hash(hasher);
-            hash_expr_recursive(ctx, *inner, hasher);
-        }
-        Expr::Add(l, r) => {
-            3u8.hash(hasher);
-            hash_expr_recursive(ctx, *l, hasher);
-            hash_expr_recursive(ctx, *r, hasher);
-        }
-        Expr::Sub(l, r) => {
-            4u8.hash(hasher);
-            hash_expr_recursive(ctx, *l, hasher);
-            hash_expr_recursive(ctx, *r, hasher);
-        }
-        Expr::Mul(l, r) => {
-            5u8.hash(hasher);
-            hash_expr_recursive(ctx, *l, hasher);
-            hash_expr_recursive(ctx, *r, hasher);
-        }
-        Expr::Div(l, r) => {
-            6u8.hash(hasher);
-            hash_expr_recursive(ctx, *l, hasher);
-            hash_expr_recursive(ctx, *r, hasher);
-        }
-        Expr::Pow(l, r) => {
-            7u8.hash(hasher);
-            hash_expr_recursive(ctx, *l, hasher);
-            hash_expr_recursive(ctx, *r, hasher);
-        }
-        Expr::Neg(inner) => {
-            8u8.hash(hasher);
-            hash_expr_recursive(ctx, *inner, hasher);
-        }
+        Expr::Number(n) => leaf::hash_number(n, hasher),
+        Expr::Variable(name) => leaf::hash_variable(name, hasher),
+        Expr::Constant(c) => leaf::hash_constant(c, hasher),
+        Expr::SessionRef(id) => leaf::hash_session_ref(id, hasher),
+        Expr::Hold(inner) => composite::hash_hold(ctx, *inner, hasher, hash_expr_recursive::<H>),
+        Expr::Add(l, r) => composite::hash_add(ctx, *l, *r, hasher, hash_expr_recursive::<H>),
+        Expr::Sub(l, r) => composite::hash_sub(ctx, *l, *r, hasher, hash_expr_recursive::<H>),
+        Expr::Mul(l, r) => composite::hash_mul(ctx, *l, *r, hasher, hash_expr_recursive::<H>),
+        Expr::Div(l, r) => composite::hash_div(ctx, *l, *r, hasher, hash_expr_recursive::<H>),
+        Expr::Pow(l, r) => composite::hash_pow(ctx, *l, *r, hasher, hash_expr_recursive::<H>),
+        Expr::Neg(inner) => composite::hash_neg(ctx, *inner, hasher, hash_expr_recursive::<H>),
         Expr::Function(name, args) => {
-            9u8.hash(hasher);
-            name.hash(hasher);
-            for arg in args {
-                hash_expr_recursive(ctx, *arg, hasher);
-            }
+            composite::hash_function(ctx, name, args, hasher, hash_expr_recursive::<H>)
         }
         Expr::Matrix { rows, cols, data } => {
-            10u8.hash(hasher);
-            rows.hash(hasher);
-            cols.hash(hasher);
-            for elem in data {
-                hash_expr_recursive(ctx, *elem, hasher);
-            }
+            composite::hash_matrix(ctx, rows, cols, data, hasher, hash_expr_recursive::<H>)
         }
     }
 }

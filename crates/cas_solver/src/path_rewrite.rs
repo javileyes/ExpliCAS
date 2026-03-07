@@ -1,3 +1,7 @@
+mod binary;
+mod function;
+mod unary;
+
 use cas_ast::{Context, Expr, ExprId};
 
 /// Reconstruct an expression by replacing the sub-expression at `path`.
@@ -18,80 +22,35 @@ pub fn reconstruct_global_expr(
     let expr = context.get(root).clone();
 
     match (expr, current_step) {
-        (Expr::Add(l, r), crate::PathStep::Left) => {
-            // Special case: some rewrites target the "real" left child under Add(Neg(_), _)
-            // produced by canonicalization. Preserve the Neg wrapper while descending.
-            if let Expr::Neg(inner) = context.get(l).clone() {
-                let new_inner =
-                    reconstruct_global_expr(context, inner, remaining_path, replacement);
-                let new_neg = context.add(Expr::Neg(new_inner));
-                context.add(Expr::Add(new_neg, r))
-            } else {
-                let new_l = reconstruct_global_expr(context, l, remaining_path, replacement);
-                context.add(Expr::Add(new_l, r))
-            }
+        (Expr::Add(l, r), step) => {
+            binary::reconstruct_add(context, root, l, r, step, remaining_path, replacement)
         }
-        // Special case: Sub(a,b) may be canonicalized as Add(a, Neg(b)).
-        (Expr::Add(l, r), crate::PathStep::Right) => {
-            if let Expr::Neg(inner) = context.get(r).clone() {
-                let new_inner =
-                    reconstruct_global_expr(context, inner, remaining_path, replacement);
-                let new_neg = context.add(Expr::Neg(new_inner));
-                context.add(Expr::Add(l, new_neg))
-            } else {
-                let new_r = reconstruct_global_expr(context, r, remaining_path, replacement);
-                context.add(Expr::Add(l, new_r))
-            }
+        (Expr::Sub(l, r), step) => {
+            binary::reconstruct_sub(context, root, l, r, step, remaining_path, replacement)
         }
-        (Expr::Sub(l, r), crate::PathStep::Left) => {
-            let new_l = reconstruct_global_expr(context, l, remaining_path, replacement);
-            context.add(Expr::Sub(new_l, r))
+        (Expr::Mul(l, r), step) => {
+            binary::reconstruct_mul(context, root, l, r, step, remaining_path, replacement)
         }
-        (Expr::Sub(l, r), crate::PathStep::Right) => {
-            let new_r = reconstruct_global_expr(context, r, remaining_path, replacement);
-            context.add(Expr::Sub(l, new_r))
+        (Expr::Div(l, r), step) => {
+            binary::reconstruct_div(context, root, l, r, step, remaining_path, replacement)
         }
-        (Expr::Mul(l, r), crate::PathStep::Left) => {
-            let new_l = reconstruct_global_expr(context, l, remaining_path, replacement);
-            context.add(Expr::Mul(new_l, r))
+        (Expr::Pow(b, e), step) => {
+            binary::reconstruct_pow(context, root, b, e, step, remaining_path, replacement)
         }
-        (Expr::Mul(l, r), crate::PathStep::Right) => {
-            let new_r = reconstruct_global_expr(context, r, remaining_path, replacement);
-            context.add(Expr::Mul(l, new_r))
+        (Expr::Neg(e), step) => {
+            unary::reconstruct_neg(context, root, e, step, remaining_path, replacement)
         }
-        (Expr::Div(l, r), crate::PathStep::Left) => {
-            let new_l = reconstruct_global_expr(context, l, remaining_path, replacement);
-            context.add(Expr::Div(new_l, r))
-        }
-        (Expr::Div(l, r), crate::PathStep::Right) => {
-            let new_r = reconstruct_global_expr(context, r, remaining_path, replacement);
-            context.add(Expr::Div(l, new_r))
-        }
-        (Expr::Pow(b, e), crate::PathStep::Base) => {
-            let new_b = reconstruct_global_expr(context, b, remaining_path, replacement);
-            context.add(Expr::Pow(new_b, e))
-        }
-        (Expr::Pow(b, e), crate::PathStep::Exponent) => {
-            let new_e = reconstruct_global_expr(context, e, remaining_path, replacement);
-            context.add(Expr::Pow(b, new_e))
-        }
-        (Expr::Neg(e), crate::PathStep::Inner) => {
-            let new_e = reconstruct_global_expr(context, e, remaining_path, replacement);
-            context.add(Expr::Neg(new_e))
-        }
-        (Expr::Function(name, args), crate::PathStep::Arg(idx)) => {
-            let mut new_args = args;
-            if *idx < new_args.len() {
-                new_args[*idx] =
-                    reconstruct_global_expr(context, new_args[*idx], remaining_path, replacement);
-                context.add(Expr::Function(name, new_args))
-            } else {
-                root
-            }
-        }
-        (Expr::Hold(inner), crate::PathStep::Inner) => {
-            let new_inner = reconstruct_global_expr(context, inner, remaining_path, replacement);
-            context.add(Expr::Hold(new_inner))
+        (Expr::Function(name, args), step) => function::reconstruct_function(
+            context,
+            root,
+            name,
+            args,
+            step,
+            remaining_path,
+            replacement,
+        ),
+        (Expr::Hold(inner), step) => {
+            unary::reconstruct_hold(context, root, inner, step, remaining_path, replacement)
         }
         _ => root,
     }

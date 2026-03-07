@@ -1,6 +1,18 @@
-use super::{
-    diagnostics::build_solve_command_diagnostics, SolveCommandEvalError, SolveCommandEvalOutput,
-};
+mod execute;
+mod output;
+
+use super::{SolveCommandEvalError, SolveCommandEvalOutput};
+
+struct SolveSessionExecution {
+    stored_id: Option<u64>,
+    parsed_expr: cas_ast::ExprId,
+    resolved: cas_ast::ExprId,
+    solution_set: cas_ast::SolutionSet,
+    display_steps: crate::DisplaySolveSteps,
+    solve_diagnostics: crate::SolveDiagnostics,
+    inherited_diagnostics: crate::Diagnostics,
+    eval_options: crate::EvalOptions,
+}
 
 pub(crate) fn evaluate_solve_parsed_with_session<S>(
     simplifier: &mut crate::Simplifier,
@@ -13,78 +25,17 @@ pub(crate) fn evaluate_solve_parsed_with_session<S>(
 where
     S: crate::SolverEvalSession,
 {
-    let resolved_input = cas_session_core::eval::resolve_eval_input(
+    let execution = execute::solve_parsed_with_session(
+        simplifier,
         session,
-        &mut simplifier.context,
-        parsed_expr,
-        None,
-    )
-    .map_err(|error| error.to_string())?;
-
-    let stored_id = cas_session_core::eval::apply_pre_dispatch_store_updates(
-        session.store_mut(),
-        &simplifier.context,
-        parsed_expr,
         raw_input,
+        parsed_expr,
+        var,
         auto_store,
-        &resolved_input.cache_hits,
-    );
-
-    let eq_to_solve = cas_solver_core::solve_entry::equation_from_expr_or_zero(
-        &mut simplifier.context,
-        resolved_input.resolved,
-    );
-    let eval_options = session.options().clone();
-    let solver_opts = crate::SolverOptions::from_eval_options(&eval_options);
-
-    let (solution_set, display_steps, solve_diagnostics) =
-        crate::solve_with_display_steps(&eq_to_solve, var, simplifier, solver_opts)
-            .map_err(|error| format!("Solver error: {error}"))?;
-
-    let diagnostics = build_solve_command_diagnostics(
-        &simplifier.context,
-        resolved_input.resolved,
-        &solution_set,
-        &solve_diagnostics,
-        &resolved_input.inherited_diagnostics,
-    );
-    let required_conditions = diagnostics.required_conditions();
-
-    let no_simplified_cache: Option<
-        cas_session_core::eval::SimplifiedUpdate<
-            crate::DomainMode,
-            crate::RequiredItem,
-            crate::Step,
-        >,
-    > = None;
-    cas_session_core::eval::apply_post_dispatch_store_updates(
-        session.store_mut(),
-        stored_id,
-        diagnostics.clone(),
-        no_simplified_cache,
-    );
-
-    let solver_assumptions =
-        if eval_options.shared.assumption_reporting == crate::AssumptionReporting::Off {
-            vec![]
-        } else {
-            solve_diagnostics.assumed_records.clone()
-        };
-
-    Ok(crate::EvalOutputView {
-        stored_id,
-        parsed: parsed_expr,
-        resolved: resolved_input.resolved,
-        result: crate::EvalResult::SolutionSet(solution_set),
-        steps: crate::DisplayEvalSteps::default(),
-        solve_steps: display_steps.into_inner(),
-        output_scopes: solve_diagnostics.output_scopes.clone(),
-        diagnostics,
-        required_conditions,
-        domain_warnings: Vec::new(),
-        blocked_hints: Vec::new(),
-        solver_assumptions,
-    })
+    )?;
+    Ok(output::finalize_solve_eval_output(
+        session, simplifier, execution,
+    ))
 }
 
 pub fn evaluate_solve_command_with_session<S>(

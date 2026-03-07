@@ -1,73 +1,37 @@
-use crate::eval_command_types::{
-    EvalCommandOutput, EvalCommandRenderPlan, EvalDisplayMessage, EvalDisplayMessageKind,
-};
+mod post;
+mod pre;
+mod result;
+
+use crate::eval_command_types::{EvalCommandOutput, EvalCommandRenderPlan};
 
 /// Convert an eval output payload into an ordered rendering plan.
 pub fn build_eval_command_render_plan(
     output: EvalCommandOutput,
     verbosity_is_none: bool,
 ) -> EvalCommandRenderPlan {
-    let mut pre_messages = Vec::new();
-    if let Some(line) = output.stored_entry_line {
-        pre_messages.push(EvalDisplayMessage {
-            kind: EvalDisplayMessageKind::Output,
-            text: line,
-        });
-    }
-    pre_messages.extend(
-        output
-            .metadata
-            .warning_lines
-            .into_iter()
-            .map(|line| EvalDisplayMessage {
-                kind: EvalDisplayMessageKind::Warn,
-                text: line,
-            }),
+    let crate::eval_command_types::EvalCommandOutput {
+        resolved_expr,
+        style_signals,
+        steps,
+        stored_entry_line,
+        metadata,
+        result_line,
+    } = output;
+    let render_steps = !steps.is_empty() || !verbosity_is_none;
+    let pre_messages = pre::build_pre_messages(
+        stored_entry_line,
+        metadata.warning_lines,
+        metadata.requires_lines,
     );
-    pre_messages.extend(output.metadata.requires_lines.into_iter().map(|line| {
-        EvalDisplayMessage {
-            kind: EvalDisplayMessageKind::Info,
-            text: line,
-        }
-    }));
-
-    let render_steps = !output.steps.is_empty() || !verbosity_is_none;
-
-    let (result_message, result_terminal) = match output.result_line {
-        Some(result) => (
-            Some(EvalDisplayMessage {
-                kind: EvalDisplayMessageKind::Output,
-                text: result.line,
-            }),
-            result.terminal,
-        ),
-        None => (None, false),
-    };
-
-    let mut post_messages = Vec::new();
-    post_messages.extend(
-        output
-            .metadata
-            .hint_lines
-            .into_iter()
-            .map(|line| EvalDisplayMessage {
-                kind: EvalDisplayMessageKind::Info,
-                text: line,
-            }),
-    );
-    post_messages.extend(output.metadata.assumption_lines.into_iter().map(|line| {
-        EvalDisplayMessage {
-            kind: EvalDisplayMessageKind::Info,
-            text: line,
-        }
-    }));
+    let (result_message, result_terminal) = result::build_result_message(result_line);
+    let post_messages = post::build_post_messages(metadata.hint_lines, metadata.assumption_lines);
 
     EvalCommandRenderPlan {
         pre_messages,
         render_steps,
-        resolved_expr: output.resolved_expr,
-        style_signals: output.style_signals,
-        steps: output.steps,
+        resolved_expr,
+        style_signals,
+        steps,
         result_message,
         result_terminal,
         post_messages,

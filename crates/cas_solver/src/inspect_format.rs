@@ -1,53 +1,5 @@
-use cas_ast::ExprId;
+mod error;
+mod lines;
 
-use crate::inspect_types::{
-    HistoryEntryDetails, HistoryEntryInspection, InspectHistoryEntryInputError,
-};
-
-/// Format inspection command errors as user-facing messages.
-pub fn format_inspect_history_entry_error_message(error: &InspectHistoryEntryInputError) -> String {
-    match error {
-        InspectHistoryEntryInputError::InvalidId => {
-            "Error: Invalid entry ID. Use 'show #N' or 'show N'.".to_string()
-        }
-        InspectHistoryEntryInputError::NotFound { id } => format!(
-            "Error: Entry #{} not found.\nHint: Use 'history' to see available entries.",
-            id
-        ),
-    }
-}
-
-/// Format history-entry inspection lines using an expression renderer callback.
-pub fn format_history_entry_inspection_lines<F>(
-    inspection: &HistoryEntryInspection,
-    mut render_expr: F,
-) -> Vec<String>
-where
-    F: FnMut(ExprId) -> String,
-{
-    let mut lines = vec![
-        format!("Entry #{}:", inspection.id),
-        format!("  Type:       {}", inspection.type_str),
-        format!("  Raw:        {}", inspection.raw_text),
-    ];
-
-    match &inspection.details {
-        HistoryEntryDetails::Expr(expr_info) => {
-            lines.push(format!("  Parsed:     {}", render_expr(expr_info.parsed)));
-            if let Some(resolved) = expr_info.resolved {
-                lines.push(format!("  Resolved:   {}", render_expr(resolved)));
-            }
-            if let Some(simplified) = expr_info.simplified {
-                lines.push(format!("  Simplified: {}", render_expr(simplified)));
-            }
-        }
-        HistoryEntryDetails::Eq { lhs, rhs } => {
-            lines.push(format!("  LHS:        {}", render_expr(*lhs)));
-            lines.push(format!("  RHS:        {}", render_expr(*rhs)));
-            lines.push(String::new());
-            lines.push("  Note: When used as expression, this becomes (LHS - RHS).".to_string());
-        }
-    }
-
-    lines
-}
+pub use error::format_inspect_history_entry_error_message;
+pub use lines::format_history_entry_inspection_lines;
