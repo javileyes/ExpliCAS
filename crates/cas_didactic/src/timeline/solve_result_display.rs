@@ -1,76 +1,8 @@
-use cas_ast::{BoundType, Case, Context, Interval, SolutionSet};
-use cas_formatter::{condition_set_to_display, DisplayExpr};
+mod conditional;
+mod interval;
 
-fn is_pure_residual_otherwise(case: &Case) -> bool {
-    case.when.is_empty() && matches!(&case.then.solutions, SolutionSet::Residual(_))
-}
-
-fn display_interval(context: &Context, interval: &Interval) -> String {
-    let min_bracket = match interval.min_type {
-        BoundType::Open => "(",
-        BoundType::Closed => "[",
-    };
-    let max_bracket = match interval.max_type {
-        BoundType::Open => ")",
-        BoundType::Closed => "]",
-    };
-    format!(
-        "{}{}, {}{}",
-        min_bracket,
-        DisplayExpr {
-            context,
-            id: interval.min
-        },
-        DisplayExpr {
-            context,
-            id: interval.max
-        },
-        max_bracket
-    )
-}
-
-fn display_solution_set(context: &Context, set: &SolutionSet) -> String {
-    match set {
-        SolutionSet::Empty => "Empty Set".to_string(),
-        SolutionSet::AllReals => "All Real Numbers".to_string(),
-        SolutionSet::Discrete(exprs) => {
-            let rendered: Vec<String> = exprs
-                .iter()
-                .map(|e| format!("{}", DisplayExpr { context, id: *e }))
-                .collect();
-            format!("{{ {} }}", rendered.join(", "))
-        }
-        SolutionSet::Continuous(interval) => display_interval(context, interval),
-        SolutionSet::Union(intervals) => intervals
-            .iter()
-            .map(|i| display_interval(context, i))
-            .collect::<Vec<_>>()
-            .join(" U "),
-        SolutionSet::Residual(expr) => format!("{}", DisplayExpr { context, id: *expr }),
-        SolutionSet::Conditional(cases) => {
-            let case_strs: Vec<String> = cases
-                .iter()
-                .filter_map(|case| {
-                    if is_pure_residual_otherwise(case) {
-                        return None;
-                    }
-                    let sol_str = display_solution_set(context, &case.then.solutions);
-                    if case.when.is_otherwise() {
-                        Some(format!("  otherwise: {}", sol_str))
-                    } else {
-                        let cond_str = condition_set_to_display(&case.when, context);
-                        Some(format!("  if {}: {}", cond_str, sol_str))
-                    }
-                })
-                .collect();
-            if case_strs.len() == 1 {
-                case_strs[0].trim().to_string()
-            } else {
-                format!("Conditional:\n{}", case_strs.join("\n"))
-            }
-        }
-    }
-}
+use cas_ast::{Context, ExprId, SolutionSet};
+use cas_formatter::DisplayExpr;
 
 pub(super) fn format_timeline_solve_result_line(
     context: &Context,
@@ -87,4 +19,34 @@ pub(super) fn format_timeline_solve_no_steps_message(
         "No solving steps to visualize.\n{}",
         format_timeline_solve_result_line(context, solution_set)
     )
+}
+
+fn display_solution_set(context: &Context, solution_set: &SolutionSet) -> String {
+    match solution_set {
+        SolutionSet::Empty => "Empty Set".to_string(),
+        SolutionSet::AllReals => "All Real Numbers".to_string(),
+        SolutionSet::Discrete(exprs) => display_discrete_solution_set(context, exprs),
+        SolutionSet::Continuous(interval) => interval::display_interval(context, interval),
+        SolutionSet::Union(intervals) => intervals
+            .iter()
+            .map(|interval| interval::display_interval(context, interval))
+            .collect::<Vec<_>>()
+            .join(" U "),
+        SolutionSet::Residual(expr) => display_expr(context, *expr),
+        SolutionSet::Conditional(cases) => {
+            conditional::display_conditional_solution_set(context, cases, display_solution_set)
+        }
+    }
+}
+
+fn display_discrete_solution_set(context: &Context, exprs: &[ExprId]) -> String {
+    let rendered: Vec<String> = exprs
+        .iter()
+        .map(|expr| display_expr(context, *expr))
+        .collect();
+    format!("{{ {} }}", rendered.join(", "))
+}
+
+fn display_expr(context: &Context, expr: ExprId) -> String {
+    format!("{}", DisplayExpr { context, id: expr })
 }

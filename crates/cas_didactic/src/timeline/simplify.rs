@@ -1,9 +1,12 @@
+mod document;
+mod prepare;
+mod verbosity;
+
 use super::simplify_init::build_simplify_timeline_init;
-use super::simplify_page::{render_simplify_timeline_html_header, simplify_timeline_html_footer};
 use super::simplify_render::render_timeline_filtered_enriched;
 use cas_ast::{Context, ExprId};
-use cas_formatter::clean_latex_identities;
 use cas_solver::{ImplicitCondition, Step};
+pub use verbosity::VerbosityLevel;
 
 /// Timeline HTML generator - exports simplification steps to interactive HTML
 pub struct TimelineHtml<'a> {
@@ -18,23 +21,6 @@ pub struct TimelineHtml<'a> {
     global_requires: Vec<ImplicitCondition>,
     /// V2.14.40: Style preferences derived from input string for consistent root rendering
     style_prefs: cas_formatter::root_style::StylePreferences,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum VerbosityLevel {
-    Low,     // Only high-importance steps (Factor, Expand, Integrate, etc.)
-    Normal,  // Medium+ importance steps (most transformations)
-    Verbose, // All steps including trivial ones
-}
-
-impl VerbosityLevel {
-    fn step_visibility(&self) -> crate::didactic::StepVisibility {
-        match self {
-            VerbosityLevel::Verbose => crate::didactic::StepVisibility::All,
-            VerbosityLevel::Low => crate::didactic::StepVisibility::HighOrHigher,
-            VerbosityLevel::Normal => crate::didactic::StepVisibility::MediumOrHigher,
-        }
-    }
 }
 
 impl<'a> TimelineHtml<'a> {
@@ -97,36 +83,22 @@ impl<'a> TimelineHtml<'a> {
 
     /// Generate complete HTML document
     pub fn to_html(&mut self) -> String {
-        // Filter steps based on verbosity level
-        let filtered_steps: Vec<&Step> = self
-            .steps
-            .iter()
-            .filter(|step| {
-                crate::didactic::step_matches_visibility(
-                    step,
-                    self.verbosity_level.step_visibility(),
-                )
-            })
-            .collect();
-
-        // Enrich steps with didactic sub-steps
-        let enriched_steps =
-            crate::didactic::enrich_steps(self.context, self.original_expr, self.steps.to_vec());
-
-        let mut html = render_simplify_timeline_html_header(&self.title);
-        html.push_str(&render_timeline_filtered_enriched(
+        let render_data = prepare::prepare_timeline_render_data(
+            self.context,
+            self.steps,
+            self.original_expr,
+            self.verbosity_level,
+        );
+        let body = render_timeline_filtered_enriched(
             self.context,
             self.steps,
             self.original_expr,
             self.simplified_result,
             &self.global_requires,
             &self.style_prefs,
-            &filtered_steps,
-            &enriched_steps,
-        ));
-        html.push_str(&simplify_timeline_html_footer());
-
-        // Clean up identity patterns like "\cdot 1" for better display
-        clean_latex_identities(&html)
+            &render_data.filtered_steps,
+            &render_data.enriched_steps,
+        );
+        document::render_simplify_timeline_document(&self.title, &body)
     }
 }

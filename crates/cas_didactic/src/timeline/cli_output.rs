@@ -1,3 +1,4 @@
+mod shared;
 mod simplify;
 mod solve;
 
