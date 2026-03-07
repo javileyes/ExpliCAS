@@ -1,12 +1,13 @@
 mod css;
 
-use self::css::SIMPLIFY_TIMELINE_EXTRA_CSS;
+use self::css::simplify_timeline_extra_css;
 use super::page_shell::{
     render_timeline_page_footer, render_timeline_page_header, TimelinePageShell,
 };
 use cas_formatter::latex_escape;
 
 pub(super) fn render_simplify_timeline_html_header(title: &str) -> String {
+    let extra_css = simplify_timeline_extra_css();
     render_timeline_page_header(TimelinePageShell {
         page_title_prefix: "CAS Steps",
         title,
@@ -14,7 +15,7 @@ pub(super) fn render_simplify_timeline_html_header(title: &str) -> String {
         subtitle_html: "Step-by-step visualization",
         original_label: "Original Expression:",
         original_latex: &latex_escape(title),
-        extra_css: SIMPLIFY_TIMELINE_EXTRA_CSS,
+        extra_css: &extra_css,
     })
 }
 

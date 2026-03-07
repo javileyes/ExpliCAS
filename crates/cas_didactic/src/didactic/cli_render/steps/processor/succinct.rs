@@ -1,0 +1,18 @@
+use super::super::render::lines::render_succinct_step_line;
+use super::super::state::StepLoopState;
+use cas_ast::Context;
+use cas_solver::Step;
+
+pub(super) fn render_succinct_step_lines(
+    ctx: &mut Context,
+    step: &Step,
+    style_prefs: &cas_formatter::root_style::StylePreferences,
+    state: &mut StepLoopState,
+) -> Vec<String> {
+    state.advance(ctx, step);
+    vec![render_succinct_step_line(
+        ctx,
+        state.current_root(),
+        style_prefs,
+    )]
+}

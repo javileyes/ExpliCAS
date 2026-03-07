@@ -1,4 +1,5 @@
 mod empty;
+mod prepare;
 mod steps;
 
 use super::display_policy::StepDisplayMode;
@@ -16,34 +17,16 @@ pub fn format_cli_simplification_steps(
     style_signals: cas_formatter::root_style::ParseStyleSignals,
     display_mode: StepDisplayMode,
 ) -> Vec<String> {
-    use cas_formatter::root_style::StylePreferences;
-
     if display_mode == StepDisplayMode::None {
         return Vec::new();
     }
 
-    let mut lines = Vec::new();
-    let style_prefs =
-        StylePreferences::from_expression_with_signals(ctx, expr, Some(&style_signals));
-
     if steps.is_empty() {
-        lines.extend(empty::render_empty_simplification_lines(
-            ctx,
-            expr,
-            display_mode,
-        ));
-        return lines;
+        return empty::render_empty_simplification_lines(ctx, expr, display_mode);
     }
 
-    lines.extend(steps::render_simplification_step_lines(
-        ctx,
-        expr,
-        steps,
-        &style_prefs,
-        display_mode,
-    ));
-
-    lines
+    let style_prefs = prepare::build_cli_style_preferences(ctx, expr, style_signals);
+    steps::render_simplification_step_lines(ctx, expr, steps, &style_prefs, display_mode)
 }
 
 /// Variant of [`format_cli_simplification_steps`] that accepts a simplifier.

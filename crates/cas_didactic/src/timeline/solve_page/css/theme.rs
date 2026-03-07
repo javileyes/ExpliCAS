@@ -1,0 +1,12 @@
+pub(super) const THEME_CSS: &str = r#"
+    :root {
+        --footer-color: white;
+    }
+    .description {
+        color: var(--description-color);
+        font-size: 1em;
+        margin-bottom: 10px;
+        font-style: italic;
+        transition: color 0.3s ease;
+    }
+"#;

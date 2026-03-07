@@ -1,7 +1,7 @@
 mod css;
 mod script;
 
-use self::css::SOLVE_TIMELINE_EXTRA_CSS;
+use self::css::solve_timeline_extra_css;
 use self::script::SOLVE_TIMELINE_SUBSTEPS_SCRIPT;
 use super::page_shell::{
     render_timeline_page_footer, render_timeline_page_header, TimelinePageShell,
@@ -14,6 +14,7 @@ pub(super) fn render_solve_timeline_html_header(
     original_latex: &str,
 ) -> String {
     let subtitle_html = format!("Solving for <strong>{}</strong>", html_escape(var));
+    let extra_css = solve_timeline_extra_css();
     render_timeline_page_header(TimelinePageShell {
         page_title_prefix: "Solve Steps",
         title,
@@ -21,7 +22,7 @@ pub(super) fn render_solve_timeline_html_header(
         subtitle_html: &subtitle_html,
         original_label: "Original Equation:",
         original_latex,
-        extra_css: SOLVE_TIMELINE_EXTRA_CSS,
+        extra_css: &extra_css,
     })
 }
 

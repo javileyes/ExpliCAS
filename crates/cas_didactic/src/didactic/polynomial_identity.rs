@@ -1,3 +1,4 @@
+mod format;
 mod normal_form;
 mod substitution;
 
@@ -20,47 +21,21 @@ pub(crate) fn generate_polynomial_identity_substeps(ctx: &Context, step: &Step) 
     normal_form::generate_polynomial_identity_normal_form_substeps(ctx, step, proof)
 }
 
-fn display_expr(ctx: &Context, expr_id: cas_ast::ExprId) -> String {
-    format!(
-        "{}",
-        cas_formatter::DisplayExpr {
-            context: ctx,
-            id: expr_id
-        }
-    )
+pub(super) fn display_expr(ctx: &Context, expr_id: cas_ast::ExprId) -> String {
+    format::display_expr(ctx, expr_id)
 }
 
-fn latex_expr(ctx: &Context, expr_id: cas_ast::ExprId) -> String {
-    cas_formatter::LaTeXExpr {
-        context: ctx,
-        id: expr_id,
-    }
-    .to_latex()
+pub(super) fn latex_expr(ctx: &Context, expr_id: cas_ast::ExprId) -> String {
+    format::latex_expr(ctx, expr_id)
 }
 
-fn format_poly_stats(ctx: &Context, stats: &PolyNormalFormStats) -> String {
-    if let Some(expr_id) = stats.expr {
-        display_expr(ctx, expr_id)
-    } else {
-        format!("{} monomios, grado {}", stats.monomials, stats.degree)
-    }
+pub(super) fn format_poly_stats(ctx: &Context, stats: &PolyNormalFormStats) -> String {
+    format::format_poly_stats(ctx, stats)
 }
 
-fn normal_form_summary(ctx: &Context, proof: &PolynomialProofData) -> (String, Option<String>) {
-    if let Some(expr_id) = proof.normal_form_expr {
-        (display_expr(ctx, expr_id), Some(latex_expr(ctx, expr_id)))
-    } else {
-        let vars_str = if proof.vars.is_empty() {
-            "constante".to_string()
-        } else {
-            proof.vars.join(", ")
-        };
-        (
-            format!(
-                "{} monomios, grado {}, vars: {}",
-                proof.monomials, proof.degree, vars_str
-            ),
-            None,
-        )
-    }
+pub(super) fn normal_form_summary(
+    ctx: &Context,
+    proof: &PolynomialProofData,
+) -> (String, Option<String>) {
+    format::normal_form_summary(ctx, proof)
 }
