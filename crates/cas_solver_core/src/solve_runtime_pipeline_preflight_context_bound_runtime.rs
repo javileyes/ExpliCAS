@@ -63,3 +63,31 @@ where
         },
     )
 }
+
+/// Build a preflight context using only [`RuntimeSolveAdapterState`] for
+/// domain inference and requirement derivation.
+pub fn build_runtime_solve_preflight_state_with_adapter_state_and_default_domain_derivation<
+    SState,
+>(
+    state: &SState,
+    equation: &Equation,
+    var: &str,
+    value_domain: crate::value_domain::ValueDomain,
+    parent_ctx: &crate::solve_runtime_types::RuntimeSolveCtx,
+) -> crate::solve_analysis::PreflightContext<crate::solve_runtime_types::RuntimeSolveCtx>
+where
+    SState: crate::solve_runtime_adapter_state_runtime::RuntimeSolveAdapterState,
+{
+    build_runtime_solve_preflight_state_with_default_domain_inference_and_derivation(
+        state,
+        equation,
+        var,
+        value_domain,
+        parent_ctx,
+        crate::solve_runtime_adapter_state_runtime::RuntimeSolveAdapterState::runtime_context,
+        |_ctx, expr, eval_domain| state.runtime_infer_implicit_domain(expr, eval_domain),
+        |_ctx, lhs, rhs, domain, eval_domain| {
+            state.runtime_derive_requires_from_equation(lhs, rhs, domain, eval_domain)
+        },
+    )
+}

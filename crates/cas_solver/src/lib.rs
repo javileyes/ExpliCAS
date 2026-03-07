@@ -203,7 +203,6 @@ mod profile_command;
 mod prompt_display;
 #[cfg(test)]
 mod prompt_display_tests;
-mod proof_runtime;
 mod rationalize_command;
 mod rationalize_command_eval;
 mod rationalize_command_format;

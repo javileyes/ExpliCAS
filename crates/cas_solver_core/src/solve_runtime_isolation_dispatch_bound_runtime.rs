@@ -10,7 +10,6 @@ pub fn dispatch_isolation_with_runtime_state_and_reentrant_entrypoints_and_state
     T,
     FSolveReentrant,
     FIsolateReentrant,
-    FProvePositive,
     FRegisterBlockedHint,
 >(
     state: &mut T,
@@ -22,7 +21,6 @@ pub fn dispatch_isolation_with_runtime_state_and_reentrant_entrypoints_and_state
     ctx: &crate::solve_runtime_types::RuntimeSolveCtx,
     solve_reentrant: FSolveReentrant,
     isolate_reentrant: FIsolateReentrant,
-    prove_positive: FProvePositive,
     register_blocked_hint: FRegisterBlockedHint,
 ) -> Result<
     (
@@ -32,7 +30,8 @@ pub fn dispatch_isolation_with_runtime_state_and_reentrant_entrypoints_and_state
     crate::error_model::CasError,
 >
 where
-    T: crate::solve_runtime_adapter_state_runtime::RuntimeSolveAdapterState,
+    T: crate::proof_runtime_bound_runtime::RuntimeProofSimplifierFactory
+        + crate::solve_runtime_adapter_state_runtime::RuntimeSolveAdapterState,
     FSolveReentrant: FnMut(
         &Equation,
         &str,
@@ -61,11 +60,6 @@ where
         ),
         crate::error_model::CasError,
     >,
-    FProvePositive: FnMut(
-        &cas_ast::Context,
-        ExprId,
-        crate::value_domain::ValueDomain,
-    ) -> crate::domain_proof::Proof,
     FRegisterBlockedHint: FnMut(crate::blocked_hint::BlockedHint),
 {
     crate::solve_runtime_isolation_dispatch_reentrant_context_runtime::dispatch_isolation_with_runtime_ctx_and_reentrant_entrypoints_and_state(
@@ -87,7 +81,7 @@ where
         isolate_reentrant,
         crate::solve_runtime_adapter_state_runtime::simplifier_clear_blocked_hints,
         crate::solve_runtime_adapter_state_runtime::simplifier_simplify_with_options_expr,
-        prove_positive,
+        crate::proof_runtime_bound_runtime::prove_positive_with_runtime_proof_simplifier::<T>,
         register_blocked_hint,
         crate::solve_runtime_adapter_state_runtime::simplify_rhs_with_step_pairs,
         crate::solve_runtime_adapter_state_runtime::sym_name_as_string,

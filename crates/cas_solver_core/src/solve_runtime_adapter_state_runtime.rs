@@ -23,6 +23,28 @@ pub trait RuntimeSolveAdapterState {
     fn runtime_are_equivalent(&mut self, lhs: ExprId, rhs: ExprId) -> bool;
     fn runtime_clear_blocked_hints(&mut self);
     fn runtime_prove_nonzero(&self, expr: ExprId) -> crate::domain_proof::Proof;
+    fn runtime_prove_positive(
+        &self,
+        expr: ExprId,
+        value_domain: crate::value_domain::ValueDomain,
+    ) -> crate::domain_proof::Proof;
+    fn runtime_infer_implicit_domain(
+        &self,
+        expr: ExprId,
+        value_domain: crate::value_domain::ValueDomain,
+    ) -> crate::solve_runtime_types::RuntimeImplicitDomain;
+    fn runtime_derive_requires_from_equation(
+        &self,
+        lhs: ExprId,
+        rhs: ExprId,
+        existing: &crate::solve_runtime_types::RuntimeImplicitDomain,
+        value_domain: crate::value_domain::ValueDomain,
+    ) -> Vec<crate::solve_runtime_types::RuntimeImplicitCondition>;
+    fn runtime_cancel_additive_terms_semantic(
+        &mut self,
+        lhs: ExprId,
+        rhs: ExprId,
+    ) -> Option<(ExprId, ExprId)>;
     fn runtime_simplify_with_steps(
         &mut self,
         expr: ExprId,
@@ -135,6 +157,40 @@ pub fn simplifier_prove_nonzero_status<S: RuntimeSolveAdapterState>(
         },
         |proof| matches!(proof, crate::domain_proof::Proof::Disproven),
     )
+}
+
+pub fn simplifier_prove_positive<S: RuntimeSolveAdapterState>(
+    simplifier: &mut S,
+    expr: ExprId,
+    value_domain: crate::value_domain::ValueDomain,
+) -> crate::domain_proof::Proof {
+    simplifier.runtime_prove_positive(expr, value_domain)
+}
+
+pub fn simplifier_infer_implicit_domain<S: RuntimeSolveAdapterState>(
+    simplifier: &S,
+    expr: ExprId,
+    value_domain: crate::value_domain::ValueDomain,
+) -> crate::solve_runtime_types::RuntimeImplicitDomain {
+    simplifier.runtime_infer_implicit_domain(expr, value_domain)
+}
+
+pub fn simplifier_derive_requires_from_equation<S: RuntimeSolveAdapterState>(
+    simplifier: &S,
+    lhs: ExprId,
+    rhs: ExprId,
+    existing: &crate::solve_runtime_types::RuntimeImplicitDomain,
+    value_domain: crate::value_domain::ValueDomain,
+) -> Vec<crate::solve_runtime_types::RuntimeImplicitCondition> {
+    simplifier.runtime_derive_requires_from_equation(lhs, rhs, existing, value_domain)
+}
+
+pub fn simplifier_cancel_additive_terms_semantic<S: RuntimeSolveAdapterState>(
+    simplifier: &mut S,
+    lhs: ExprId,
+    rhs: ExprId,
+) -> Option<(ExprId, ExprId)> {
+    simplifier.runtime_cancel_additive_terms_semantic(lhs, rhs)
 }
 
 pub fn simplifier_is_known_negative<S: RuntimeSolveAdapterState>(

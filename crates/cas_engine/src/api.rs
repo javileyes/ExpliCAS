@@ -99,7 +99,13 @@ pub fn solve(
     var: &str,
     simplifier: &mut crate::engine::Simplifier,
 ) -> Result<(cas_ast::SolutionSet, Vec<SolveStep>), crate::error::CasError> {
-    crate::solver_entrypoints::solve(eq, var, simplifier)
+    cas_solver_core::solver_entrypoints_bound_runtime::solve_with_default_runtime_ctx_and_backend_with_state(
+        eq,
+        var,
+        simplifier,
+        SolverOptions::default(),
+        crate::solve_core_runtime::solve_inner,
+    )
 }
 
 /// Solve an equation with explicit options, returning display-ready steps.
@@ -113,18 +119,33 @@ pub fn solve_with_display_steps(
     simplifier: &mut crate::engine::Simplifier,
     opts: SolverOptions,
 ) -> Result<(cas_ast::SolutionSet, DisplaySolveSteps, SolveDiagnostics), crate::error::CasError> {
-    crate::solver_entrypoints::solve_with_display_steps(eq, var, simplifier, opts)
+    cas_solver_core::solver_entrypoints_bound_runtime::solve_with_display_steps_with_default_runtime_ctx_and_backend_with_state(
+        eq,
+        var,
+        simplifier,
+        opts,
+        crate::solve_core_runtime::solve_inner,
+        crate::collect_assumption_records,
+        |simplifier, raw_steps| {
+            cas_solver_core::solver_entrypoints_bound_runtime::cleanup_display_solve_steps_with_runtime_state(
+                simplifier,
+                raw_steps,
+                opts.detailed_steps,
+                var,
+            )
+        },
+    )
 }
 
 /// Display-ready solve steps (post-cleanup).
 /// Wrapper type that enforces step processing has been applied.
-pub type DisplaySolveSteps = crate::solve_backend_contract::DisplaySolveSteps;
+pub type DisplaySolveSteps = cas_solver_core::solve_runtime_types::RuntimeDisplaySolveSteps;
 /// Diagnostics collected during solve operation.
-pub type SolveDiagnostics = crate::solve_backend_contract::SolveDiagnostics;
+pub type SolveDiagnostics = cas_solver_core::solve_runtime_types::RuntimeSolveDiagnostics;
 /// Raw solve step entry (pre-display wrapper).
-pub type SolveStep = crate::solve_backend_contract::SolveStep;
+pub type SolveStep = cas_solver_core::solve_runtime_types::RuntimeSolveStep;
 /// Raw solve sub-step entry.
-pub type SolveSubStep = crate::solve_backend_contract::SolveSubStep;
+pub type SolveSubStep = cas_solver_core::solve_runtime_types::RuntimeSolveSubStep;
 /// Solver helper: check whether an expression contains the target variable.
 pub use cas_solver_core::isolation_utils::contains_var;
 /// Solver helper: infer variable from free-variable set.
@@ -139,7 +160,12 @@ pub fn verify_solution(
     var: &str,
     solution: cas_ast::ExprId,
 ) -> VerifyStatus {
-    crate::solver_entrypoints_proof_verify::verify_solution(simplifier, equation, var, solution)
+    cas_solver_core::verification_runtime_bound_runtime::verify_solution_with_runtime_state_and_runtime_proof_simplifier_with_state(
+        simplifier,
+        equation,
+        var,
+        solution,
+    )
 }
 /// Verify an entire solution set by substitution.
 pub fn verify_solution_set(
@@ -148,7 +174,7 @@ pub fn verify_solution_set(
     var: &str,
     solutions: &cas_ast::SolutionSet,
 ) -> VerifyResult {
-    crate::solver_entrypoints_proof_verify::verify_solution_set(
+    cas_solver_core::verification_runtime_bound_runtime::verify_solution_set_with_runtime_state_and_runtime_proof_simplifier_with_state(
         simplifier, equation, var, solutions,
     )
 }

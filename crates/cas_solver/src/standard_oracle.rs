@@ -24,9 +24,9 @@ impl<'a> StandardOracle<'a> {
                 ctx,
                 mode,
                 value_domain,
-                crate::proof_runtime::prove_nonzero,
-                crate::proof_runtime::prove_positive,
-                crate::proof_runtime::prove_nonnegative,
+                cas_solver_core::proof_runtime_bound_runtime::prove_nonzero_with_runtime_proof_simplifier::<crate::Simplifier>,
+                cas_solver_core::proof_runtime_bound_runtime::prove_positive_with_runtime_proof_simplifier::<crate::Simplifier>,
+                cas_solver_core::proof_runtime_bound_runtime::prove_nonnegative_with_runtime_proof_simplifier::<crate::Simplifier>,
             ),
         }
     }
@@ -70,9 +70,9 @@ pub fn oracle_allows_with_hint(
         value_domain,
         pred,
         rule,
-        crate::proof_runtime::prove_nonzero,
-        crate::proof_runtime::prove_positive,
-        crate::proof_runtime::prove_nonnegative,
+        cas_solver_core::proof_runtime_bound_runtime::prove_nonzero_with_runtime_proof_simplifier::<crate::Simplifier>,
+        cas_solver_core::proof_runtime_bound_runtime::prove_positive_with_runtime_proof_simplifier::<crate::Simplifier>,
+        cas_solver_core::proof_runtime_bound_runtime::prove_nonnegative_with_runtime_proof_simplifier::<crate::Simplifier>,
     )
 }
 

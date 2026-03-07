@@ -4,7 +4,6 @@
 
 use crate::engine::Simplifier;
 use crate::error::CasError;
-use crate::solve_backend_contract::CoreSolverOptions;
 use cas_ast::{Equation, SolutionSet};
 
 use crate::solve_runtime_adapters::{
@@ -21,7 +20,7 @@ pub(crate) fn solve_inner(
     eq: &Equation,
     var: &str,
     simplifier: &mut Simplifier,
-    opts: CoreSolverOptions,
+    opts: crate::SolverOptions,
     parent_ctx: &SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     cas_solver_core::solve_runtime_orchestration_context_runtime::solve_inner_with_runtime_ctx_and_default_rational_preflight_prepare_pipeline_with_state(

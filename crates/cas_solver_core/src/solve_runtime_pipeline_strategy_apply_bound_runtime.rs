@@ -8,10 +8,8 @@ use cas_ast::{Equation, ExprId, RelOp, SolutionSet};
 #[allow(clippy::too_many_arguments)]
 pub fn apply_strategy_with_runtime_state_and_reentrant_entrypoints_and_state<
     T,
-    FExpandExpr,
     FSolveReentrant,
     FIsolateReentrant,
-    FProvePositive,
 >(
     state: &mut T,
     kind: crate::strategy_order::SolveStrategyKind,
@@ -19,10 +17,8 @@ pub fn apply_strategy_with_runtime_state_and_reentrant_entrypoints_and_state<
     var: &str,
     opts: crate::solver_options::SolverOptions,
     ctx: &crate::solve_runtime_types::RuntimeSolveCtx,
-    expand_expr: FExpandExpr,
     solve_reentrant: FSolveReentrant,
     isolate_reentrant: FIsolateReentrant,
-    prove_positive: FProvePositive,
 ) -> Option<
     Result<
         (
@@ -33,8 +29,8 @@ pub fn apply_strategy_with_runtime_state_and_reentrant_entrypoints_and_state<
     >,
 >
 where
-    T: crate::solve_runtime_adapter_state_runtime::RuntimeSolveAdapterState,
-    FExpandExpr: FnMut(&mut T, ExprId) -> ExprId,
+    T: crate::proof_runtime_bound_runtime::RuntimeProofSimplifierFactory
+        + crate::solve_runtime_adapter_state_runtime::RuntimeSolveAdapterState,
     FSolveReentrant: FnMut(
         &Equation,
         &str,
@@ -63,11 +59,6 @@ where
         ),
         crate::error_model::CasError,
     >,
-    FProvePositive: FnMut(
-        &cas_ast::Context,
-        ExprId,
-        crate::value_domain::ValueDomain,
-    ) -> crate::domain_proof::Proof,
 {
     crate::solve_runtime_pipeline_strategy_apply_reentrant_context_runtime::apply_strategy_with_runtime_ctx_and_reentrant_entrypoints_and_state(
         state,
@@ -81,11 +72,11 @@ where
         crate::solve_runtime_adapter_state_runtime::simplifier_context_mut,
         crate::solve_runtime_adapter_state_runtime::simplifier_set_collect_steps,
         crate::solve_runtime_adapter_state_runtime::simplifier_simplify_expr,
-        expand_expr,
+        crate::solve_runtime_adapter_state_runtime::simplifier_expand_expr,
         crate::solve_runtime_adapter_state_runtime::simplifier_render_expr,
         crate::solve_runtime_adapter_state_runtime::context_render_expr,
         solve_reentrant,
         isolate_reentrant,
-        prove_positive,
+        crate::proof_runtime_bound_runtime::prove_positive_with_runtime_proof_simplifier::<T>,
     )
 }

@@ -11,9 +11,10 @@ pub mod timeline;
 pub use cas_solver::to_display_steps;
 pub use cas_solver::{pathsteps_to_expr_path, DisplayEvalSteps, ImportanceLevel, PathStep, Step};
 pub use didactic::{
-    build_cli_substeps_render_plan, enrich_steps, format_cli_simplification_steps,
-    format_cli_simplification_steps_with_simplifier, get_standalone_substeps, latex_to_plain_text,
-    CliSubstepsRenderPlan, EnrichedStep, StepDisplayMode, SubStep,
+    build_cli_substeps_render_plan, build_timeline_substeps_render_plan, enrich_steps,
+    format_cli_simplification_steps, format_cli_simplification_steps_with_simplifier,
+    get_standalone_substeps, latex_to_plain_text, CliSubstepsRenderPlan, EnrichedStep,
+    StepDisplayMode, SubStep, TimelineSubstepsRenderPlan,
 };
 pub use eval_json_steps::collect_eval_json_steps;
 pub use events::EngineEventCollector;

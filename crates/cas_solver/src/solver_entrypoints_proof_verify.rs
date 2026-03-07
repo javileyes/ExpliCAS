@@ -11,7 +11,9 @@ pub use cas_solver_core::cancel_common_terms::cancel_common_additive_terms;
 
 /// Attempt to prove that an expression is non-zero.
 pub fn prove_nonzero(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> Proof {
-    crate::proof_runtime::prove_nonzero(ctx, expr)
+    cas_solver_core::proof_runtime_bound_runtime::prove_nonzero_with_runtime_proof_simplifier::<
+        crate::Simplifier,
+    >(ctx, expr)
 }
 
 /// Attempt to prove that an expression is strictly positive.
@@ -20,7 +22,9 @@ pub fn prove_positive(
     expr: cas_ast::ExprId,
     value_domain: ValueDomain,
 ) -> Proof {
-    crate::proof_runtime::prove_positive(ctx, expr, value_domain)
+    cas_solver_core::proof_runtime_bound_runtime::prove_positive_with_runtime_proof_simplifier::<
+        crate::Simplifier,
+    >(ctx, expr, value_domain)
 }
 
 /// Verify a single solution by substituting into the equation.
@@ -30,12 +34,11 @@ pub fn verify_solution(
     var: &str,
     solution: cas_ast::ExprId,
 ) -> VerifyStatus {
-    cas_solver_core::verification_runtime_bound_runtime::verify_solution_with_runtime_state_and_ground_eval_with_state(
+    cas_solver_core::verification_runtime_bound_runtime::verify_solution_with_runtime_state_and_runtime_proof_simplifier_with_state(
         simplifier,
         equation,
         var,
         solution,
-        crate::proof_runtime::ground_eval_candidate,
     )
 }
 
@@ -46,11 +49,10 @@ pub fn verify_solution_set(
     var: &str,
     solutions: &cas_ast::SolutionSet,
 ) -> VerifyResult {
-    cas_solver_core::verification_runtime_bound_runtime::verify_solution_set_with_runtime_state_and_ground_eval_with_state(
+    cas_solver_core::verification_runtime_bound_runtime::verify_solution_set_with_runtime_state_and_runtime_proof_simplifier_with_state(
         simplifier,
         equation,
         var,
         solutions,
-        crate::proof_runtime::ground_eval_candidate,
     )
 }

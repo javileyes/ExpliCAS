@@ -44,7 +44,6 @@ pub(crate) fn dispatch_isolation_with_default_routes(
         ctx,
         crate::solve_core_runtime::solve_inner,
         isolate_with_default_depth,
-        crate::proof_runtime::prove_positive,
         crate::register_blocked_hint,
     )
 }

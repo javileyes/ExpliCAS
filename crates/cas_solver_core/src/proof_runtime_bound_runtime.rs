@@ -2,6 +2,38 @@
 
 use cas_ast::{Context, ExprId};
 
+/// Factory contract for short-lived simplifiers used by proof/ground-eval flows.
+pub trait RuntimeProofSimplifierFactory {
+    fn runtime_proof_with_context(ctx: Context) -> Self;
+    fn runtime_proof_set_collect_steps(&mut self, collect: bool);
+    fn runtime_proof_simplify_with_options_expr(
+        &mut self,
+        expr: ExprId,
+        opts: crate::simplify_options::SimplifyOptions,
+    ) -> ExprId;
+    fn runtime_proof_into_context(self) -> Context;
+}
+
+/// Evaluate one ground candidate using a proof-simplifier factory.
+pub fn ground_eval_candidate_with_runtime_proof_simplifier<SState>(
+    source_ctx: &Context,
+    source_expr: ExprId,
+    opts: &crate::simplify_options::SimplifyOptions,
+) -> Option<(Context, ExprId)>
+where
+    SState: RuntimeProofSimplifierFactory,
+{
+    ground_eval_candidate_with_runtime_simplifier_contract(
+        source_ctx,
+        source_expr,
+        opts,
+        SState::runtime_proof_with_context,
+        SState::runtime_proof_set_collect_steps,
+        SState::runtime_proof_simplify_with_options_expr,
+        SState::runtime_proof_into_context,
+    )
+}
+
 /// Evaluate one ground candidate using a host-provided simplifier contract.
 pub fn ground_eval_candidate_with_runtime_simplifier_contract<
     SState,
@@ -33,6 +65,24 @@ where
         set_collect_steps,
         simplify_expr_with_options,
         into_context,
+    )
+}
+
+/// Prove non-zero using a proof-simplifier factory.
+pub fn prove_nonzero_with_runtime_proof_simplifier<SState>(
+    ctx: &Context,
+    expr: ExprId,
+) -> crate::domain_proof::Proof
+where
+    SState: RuntimeProofSimplifierFactory,
+{
+    prove_nonzero_with_runtime_simplifier_contract(
+        ctx,
+        expr,
+        SState::runtime_proof_with_context,
+        SState::runtime_proof_set_collect_steps,
+        SState::runtime_proof_simplify_with_options_expr,
+        SState::runtime_proof_into_context,
     )
 }
 
@@ -75,6 +125,26 @@ where
     )
 }
 
+/// Prove positivity using a proof-simplifier factory.
+pub fn prove_positive_with_runtime_proof_simplifier<SState>(
+    ctx: &Context,
+    expr: ExprId,
+    value_domain: crate::value_domain::ValueDomain,
+) -> crate::domain_proof::Proof
+where
+    SState: RuntimeProofSimplifierFactory,
+{
+    prove_positive_with_runtime_simplifier_contract(
+        ctx,
+        expr,
+        value_domain,
+        SState::runtime_proof_with_context,
+        SState::runtime_proof_set_collect_steps,
+        SState::runtime_proof_simplify_with_options_expr,
+        SState::runtime_proof_into_context,
+    )
+}
+
 /// Prove positivity using the host runtime simplifier contract.
 pub fn prove_positive_with_runtime_simplifier_contract<
     SState,
@@ -113,6 +183,26 @@ where
                 into_context,
             )
         },
+    )
+}
+
+/// Prove non-negativity using a proof-simplifier factory.
+pub fn prove_nonnegative_with_runtime_proof_simplifier<SState>(
+    ctx: &Context,
+    expr: ExprId,
+    value_domain: crate::value_domain::ValueDomain,
+) -> crate::domain_proof::Proof
+where
+    SState: RuntimeProofSimplifierFactory,
+{
+    prove_nonnegative_with_runtime_simplifier_contract(
+        ctx,
+        expr,
+        value_domain,
+        SState::runtime_proof_with_context,
+        SState::runtime_proof_set_collect_steps,
+        SState::runtime_proof_simplify_with_options_expr,
+        SState::runtime_proof_into_context,
     )
 }
 

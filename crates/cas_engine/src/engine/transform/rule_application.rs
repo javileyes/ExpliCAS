@@ -114,8 +114,8 @@ impl<'a> LocalSimplificationTransformer<'a> {
                         // Check semantic equality - skip if no real change
                         // EXCEPTION: Didactic rules should always generate steps
                         // even if result is semantically equivalent (e.g., sqrt(12) → 2*√3)
-                        let is_didactic_rule = rule.name() == "Evaluate Numeric Power"
-                            || rule.name() == "Sum Exponents";
+                        let is_didactic_rule =
+                            cas_math::step_rules::is_always_keep_step_rule_name(rule.name());
 
                         if !is_didactic_rule {
                             use cas_math::semantic_equality::SemanticEqualityChecker;
@@ -321,7 +321,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                     // Semantic equality check to prevent infinite loops
                     // Skip rewrites that produce semantically equivalent results without improvement
                     let is_didactic_rule =
-                        rule.name() == "Evaluate Numeric Power" || rule.name() == "Sum Exponents";
+                        cas_math::step_rules::is_always_keep_step_rule_name(rule.name());
 
                     if !is_didactic_rule {
                         use cas_math::semantic_equality::SemanticEqualityChecker;

@@ -939,18 +939,11 @@ impl<'a> TimelineHtml<'a> {
             // Detect enrichment type FIRST
             let sub_steps_html = if let Some(enriched) = enriched_steps.get(step_idx) {
                 if !enriched.sub_steps.is_empty() {
-                    // Detect type from sub-step descriptions
-                    let has_fraction_sum = enriched.sub_steps.iter().any(|s| {
-                        s.description.contains("common denominator")
-                            || s.description.contains("Sum the fractions")
-                    });
-                    let has_factorization = enriched.sub_steps.iter().any(|s| {
-                        s.description.contains("Cancel common factor")
-                            || s.description.contains("Factor")
-                    });
-                    let has_nested_fraction = enriched.sub_steps.iter().any(|s| {
-                        s.description.contains("Invertir") || s.description.contains("denominador")
-                    });
+                    let classification = crate::didactic::classify_sub_steps(&enriched.sub_steps);
+                    let render_plan =
+                        crate::didactic::build_timeline_substeps_render_plan(&enriched.sub_steps);
+                    let has_factorization = classification.has_factorization;
+                    let has_nested_fraction = classification.has_nested_fraction;
 
                     // Per-step enrichments (nested fractions, factorization): always show
                     // Global enrichments (fraction sums): show only once
@@ -962,25 +955,15 @@ impl<'a> TimelineHtml<'a> {
 
                     if should_show {
                         // Mark as shown for global enrichments only
-                        if has_fraction_sum && !has_nested_fraction && !has_factorization {
+                        if render_plan.dedupe_once {
                             sub_steps_shown = true;
                         }
-
-                        let header = if has_nested_fraction {
-                            "Simplificación de fracción compleja"
-                        } else if has_fraction_sum {
-                            "Suma de fracciones"
-                        } else if has_factorization {
-                            "Factorización de polinomios"
-                        } else {
-                            "Pasos intermedios"
-                        };
 
                         let mut details_html = format!(
                             r#"<details class="substeps-details">
                             <summary>{}</summary>
                             <div class="substeps-content">"#,
-                            header
+                            render_plan.header
                         );
                         for sub in &enriched.sub_steps {
                             details_html.push_str(&format!(

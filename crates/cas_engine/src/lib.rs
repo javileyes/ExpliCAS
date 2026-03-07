@@ -43,7 +43,6 @@ mod profile_cache_tests;
 pub(crate) mod profiler;
 #[cfg(test)]
 mod profiler_tests;
-mod proof_runtime;
 pub(crate) mod recursion_guard;
 #[cfg(test)]
 mod recursion_guard_tests;
@@ -52,11 +51,8 @@ pub mod rules;
 pub(crate) mod semantics;
 #[cfg(test)]
 mod semantics_tests;
-mod solve_backend_contract;
 mod solve_core_runtime;
 mod solve_runtime_adapters;
-mod solver_entrypoints;
-mod solver_entrypoints_proof_verify;
 pub(crate) mod step;
 #[cfg(test)]
 mod step_tests;
@@ -170,12 +166,15 @@ pub use rule::{ChainedRewrite, Rewrite, Rule, SimpleRule, SoundnessLabel};
 pub use semantics::{
     AssumeScope, BranchPolicy, EvalConfig, InverseTrigPolicy, NormalFormGoal, ValueDomain,
 };
-pub(crate) use solve_backend_contract::{SolveCtx, SolveStep, SolverOptions};
 pub use step::{
     pathsteps_to_expr_path, DisplayEvalSteps, ImportanceLevel, PathStep, Step, StepCategory,
 };
 pub use telescoping::{telescope, TelescopingResult, TelescopingStep};
 pub use visitors::{DepthVisitor, VariableCollector};
+
+pub(crate) type SolverOptions = cas_solver_core::solver_options::SolverOptions;
+pub(crate) type SolveCtx = cas_solver_core::solve_runtime_types::RuntimeSolveCtx;
+pub(crate) type SolveStep = cas_solver_core::solve_runtime_types::RuntimeSolveStep;
 
 // Equation-level primitives (not simplifier rules — used by solver pipeline)
 pub use cancel_runtime::cancel_additive_terms_semantic;
