@@ -1,6 +1,6 @@
 //! Session-related components extracted from `cas_engine`.
 
-use cas_solver::{Diagnostics, RequiredItem};
+use cas_solver_core::diagnostics_model::{Diagnostics, RequiredItem};
 
 #[cfg(test)]
 mod assignment_tests;

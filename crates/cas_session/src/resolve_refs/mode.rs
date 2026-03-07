@@ -1,4 +1,4 @@
-use cas_solver::Diagnostics;
+use cas_solver_core::diagnostics_model::Diagnostics;
 
 use super::plumbing::{
     mode_resolve_config, push_session_propagated_requirement, with_mode_resolution_plumbing,

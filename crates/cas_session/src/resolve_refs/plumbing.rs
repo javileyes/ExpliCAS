@@ -1,4 +1,4 @@
-use cas_solver::{Diagnostics, RequireOrigin, RequiredItem};
+use cas_solver_core::diagnostics_model::{Diagnostics, RequireOrigin, RequiredItem};
 
 use crate::{Entry, EntryId, Environment, RefMode, SessionStore, SimplifyCacheKey};
 

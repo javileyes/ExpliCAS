@@ -1,5 +1,5 @@
 use cas_ast::ExprId;
-use cas_solver::Diagnostics;
+use cas_solver_core::diagnostics_model::Diagnostics;
 
 use crate::{state_core::SessionState, ResolveError, SimplifyCacheKey};
 

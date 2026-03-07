@@ -1,3 +1,5 @@
+use cas_solver_core::domain_mode::DomainMode;
+
 /// Session-local domain axis used by cache keys.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -7,12 +9,12 @@ pub enum CacheDomainMode {
     Generic,
 }
 
-impl From<cas_solver::DomainMode> for CacheDomainMode {
-    fn from(mode: cas_solver::DomainMode) -> Self {
+impl From<DomainMode> for CacheDomainMode {
+    fn from(mode: DomainMode) -> Self {
         match mode {
-            cas_solver::DomainMode::Strict => Self::Strict,
-            cas_solver::DomainMode::Assume => Self::Assume,
-            cas_solver::DomainMode::Generic => Self::Generic,
+            DomainMode::Strict => Self::Strict,
+            DomainMode::Assume => Self::Assume,
+            DomainMode::Generic => Self::Generic,
         }
     }
 }

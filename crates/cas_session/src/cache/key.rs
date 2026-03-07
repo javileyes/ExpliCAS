@@ -1,3 +1,5 @@
+use cas_solver_core::domain_mode::DomainMode;
+
 use super::CacheDomainMode;
 
 /// Key for cache invalidation.
@@ -14,7 +16,7 @@ pub struct SimplifyCacheKey {
 
 impl SimplifyCacheKey {
     /// Create a cache key from current context settings.
-    pub fn from_context(domain: cas_solver::DomainMode) -> Self {
+    pub fn from_context(domain: DomainMode) -> Self {
         Self {
             domain: domain.into(),
             // For now, use a static value. In the future this can hash ruleset config.
@@ -25,9 +27,9 @@ impl SimplifyCacheKey {
     /// Create a cache key from a CLI-style domain flag (`strict|assume|generic`).
     pub fn from_domain_flag(domain: &str) -> Self {
         let mode = match domain {
-            "strict" => cas_solver::DomainMode::Strict,
-            "assume" => cas_solver::DomainMode::Assume,
-            _ => cas_solver::DomainMode::Generic,
+            "strict" => DomainMode::Strict,
+            "assume" => DomainMode::Assume,
+            _ => DomainMode::Generic,
         };
         Self::from_context(mode)
     }

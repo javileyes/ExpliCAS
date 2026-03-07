@@ -304,6 +304,7 @@ dependencies = [
  "cas_parser",
  "cas_session_core",
  "cas_solver",
+ "cas_solver_core",
  "num-bigint",
  "num-rational",
  "serde",

@@ -1,13 +1,14 @@
 use cas_ast::ExprId;
 use cas_session_core::eval::EvalStore;
-use cas_solver::Diagnostics;
+use cas_solver_core::diagnostics_model::{Diagnostics, RequiredItem};
+use cas_solver_core::domain_mode::DomainMode;
 
 use super::SessionEvalStore;
 use crate::SimplifyCacheKey;
 
 impl EvalStore for SessionEvalStore {
-    type DomainMode = cas_solver::DomainMode;
-    type RequiredItem = cas_solver::RequiredItem;
+    type DomainMode = DomainMode;
+    type RequiredItem = RequiredItem;
     type Step = cas_solver::Step;
     type Diagnostics = Diagnostics;
 
@@ -30,9 +31,9 @@ impl EvalStore for SessionEvalStore {
     fn update_simplified(
         &mut self,
         id: u64,
-        domain: cas_solver::DomainMode,
+        domain: DomainMode,
         expr: ExprId,
-        requires: Vec<cas_solver::RequiredItem>,
+        requires: Vec<RequiredItem>,
         steps: Option<std::sync::Arc<Vec<cas_solver::Step>>>,
     ) {
         self.0.update_simplified(

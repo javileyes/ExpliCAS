@@ -1,4 +1,4 @@
-use cas_solver::Diagnostics;
+use cas_solver_core::diagnostics_model::Diagnostics;
 
 use crate::{EntryId, Environment, ResolveError, SessionStore};
 

@@ -1,4 +1,7 @@
-use cas_ast::{Expr, ExprId};
+mod expr;
+mod scalar;
+
+use cas_ast::ExprId;
 use cas_formatter::root_style::ParseStyleSignals;
 
 use crate::eval_command_types::EvalResultLine;
@@ -16,60 +19,14 @@ pub(super) fn format_eval_result_line(
     );
 
     match result {
-        crate::EvalResult::Expr(res) => Some(format_expr_result_line(context, &style_prefs, *res)),
-        crate::EvalResult::SolutionSet(solution_set) => Some(EvalResultLine {
-            line: format!(
-                "Result: {}",
-                crate::display_solution_set(context, solution_set)
-            ),
-            terminal: false,
-        }),
-        crate::EvalResult::Set(_sols) => Some(EvalResultLine {
-            line: "Result: Set(...)".to_string(),
-            terminal: false,
-        }),
-        crate::EvalResult::Bool(value) => Some(EvalResultLine {
-            line: format!("Result: {}", value),
-            terminal: false,
-        }),
+        crate::EvalResult::Expr(res) => {
+            Some(expr::format_expr_result_line(context, &style_prefs, *res))
+        }
+        crate::EvalResult::SolutionSet(solution_set) => Some(
+            scalar::format_solution_set_result_line(context, solution_set),
+        ),
+        crate::EvalResult::Set(_sols) => Some(scalar::format_set_result_line()),
+        crate::EvalResult::Bool(value) => Some(scalar::format_bool_result_line(*value)),
         crate::EvalResult::None => None,
     }
-}
-
-fn format_expr_result_line(
-    context: &cas_ast::Context,
-    style_prefs: &cas_formatter::StylePreferences,
-    result_expr: ExprId,
-) -> EvalResultLine {
-    if let Expr::Function(name, args) = context.get(result_expr) {
-        if context.is_builtin(*name, cas_ast::BuiltinFn::Equal) && args.len() == 2 {
-            return EvalResultLine {
-                line: format!(
-                    "Result: {} = {}",
-                    render_styled_expr(context, args[0], style_prefs),
-                    render_styled_expr(context, args[1], style_prefs),
-                ),
-                terminal: true,
-            };
-        }
-    }
-
-    EvalResultLine {
-        line: format!(
-            "Result: {}",
-            crate::display_expr_or_poly(context, result_expr)
-        ),
-        terminal: false,
-    }
-}
-
-fn render_styled_expr(
-    context: &cas_ast::Context,
-    expr: ExprId,
-    style_prefs: &cas_formatter::StylePreferences,
-) -> String {
-    cas_formatter::clean_display_string(&format!(
-        "{}",
-        cas_formatter::DisplayExprStyled::new(context, expr, style_prefs)
-    ))
 }

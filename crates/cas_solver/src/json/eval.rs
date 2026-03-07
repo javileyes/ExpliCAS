@@ -2,10 +2,11 @@ use super::mappers::{
     map_domain_warnings_to_engine_warnings, map_solver_assumptions_to_api_records,
 };
 use super::stateless_eval::evaluate_prepared_stateless_request;
-use crate::{Engine, EvalOptions};
+use crate::EvalOptions;
 use cas_api_models::{EngineJsonError, EngineJsonResponse};
 
 mod options;
+mod prepare;
 mod render;
 mod request;
 mod success;
@@ -32,21 +33,11 @@ mod success;
 /// assert!(json.contains("\"ok\":true"));
 /// ```
 pub fn eval_str_to_json(expr: &str, opts_json: &str) -> String {
-    let opts = match options::parse_json_run_options(opts_json) {
-        Ok(opts) => opts,
-        Err(resp) => return resp,
-    };
-    let budget_info = options::build_budget_info(&opts);
-
-    let mut engine = Engine::new();
-
-    let prepared = match request::build_prepared_eval_json_request(expr, &mut engine) {
-        Ok(request) => request,
-        Err(error) => {
-            let resp = EngineJsonResponse::err(error, budget_info);
-            return resp.to_json_with_pretty(opts.pretty);
-        }
-    };
+    let (opts, budget_info, mut engine, prepared) =
+        match prepare::prepare_eval_json_request(expr, opts_json) {
+            Ok(state) => state,
+            Err(resp) => return resp,
+        };
 
     let output_view =
         match evaluate_prepared_stateless_request(&mut engine, EvalOptions::default(), prepared) {

@@ -1,6 +1,8 @@
+mod degenerate;
+mod unique;
+
 use cas_ast::Context;
 
-use super::display_linear_system_solution;
 use crate::linear_system_command_types::LinearSystemCommandEvalOutput;
 
 pub(crate) fn format_linear_system_result_message(
@@ -9,13 +11,9 @@ pub(crate) fn format_linear_system_result_message(
 ) -> String {
     match &output.result {
         crate::LinSolveResult::Unique(solution) => {
-            display_linear_system_solution(ctx, &output.vars, solution)
+            unique::format_unique_result(ctx, &output.vars, solution)
         }
-        crate::LinSolveResult::Infinite => "System has infinitely many solutions.\n\
-                 The equations are dependent."
-            .to_string(),
-        crate::LinSolveResult::Inconsistent => "System has no solution.\n\
-                 The equations are inconsistent."
-            .to_string(),
+        crate::LinSolveResult::Infinite => degenerate::format_infinite_result(),
+        crate::LinSolveResult::Inconsistent => degenerate::format_inconsistent_result(),
     }
 }

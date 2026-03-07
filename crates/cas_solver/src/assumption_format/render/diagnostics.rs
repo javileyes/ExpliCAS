@@ -1,3 +1,5 @@
+mod filter;
+
 use cas_ast::{Context, ExprId};
 
 use super::normalized::format_normalized_condition_lines;
@@ -10,11 +12,7 @@ pub fn format_diagnostics_requires_lines(
     display_level: crate::RequiresDisplayLevel,
     debug_mode: bool,
 ) -> Vec<String> {
-    let filtered: Vec<_> = if let Some(result) = result_expr {
-        diagnostics.filter_requires_for_display(ctx, result, display_level)
-    } else {
-        diagnostics.requires.iter().collect()
-    };
+    let filtered = filter::filter_diagnostic_requires(ctx, diagnostics, result_expr, display_level);
 
     if filtered.is_empty() {
         return Vec::new();

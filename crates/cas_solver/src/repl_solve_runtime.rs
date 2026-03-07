@@ -1,22 +1,8 @@
-use crate::{EvalSession, SetDisplayMode};
+mod display_mode;
+mod full_simplify;
+mod solve;
 
-fn map_solve_display_mode(mode: SetDisplayMode) -> crate::SolveDisplayMode {
-    match mode {
-        SetDisplayMode::None => crate::SolveDisplayMode::None,
-        SetDisplayMode::Succinct => crate::SolveDisplayMode::Succinct,
-        SetDisplayMode::Normal => crate::SolveDisplayMode::Normal,
-        SetDisplayMode::Verbose => crate::SolveDisplayMode::Verbose,
-    }
-}
-
-fn map_full_simplify_display_mode(mode: SetDisplayMode) -> crate::FullSimplifyDisplayMode {
-    match mode {
-        SetDisplayMode::None => crate::FullSimplifyDisplayMode::None,
-        SetDisplayMode::Succinct => crate::FullSimplifyDisplayMode::Succinct,
-        SetDisplayMode::Normal => crate::FullSimplifyDisplayMode::Normal,
-        SetDisplayMode::Verbose => crate::FullSimplifyDisplayMode::Verbose,
-    }
-}
+use crate::SetDisplayMode;
 
 /// Runtime context needed by solve/full-simplify REPL command adapters.
 pub trait ReplSolveRuntimeContext:
@@ -31,18 +17,7 @@ pub fn evaluate_solve_command_message_on_runtime<C: ReplSolveRuntimeContext>(
     line: &str,
     display_mode: SetDisplayMode,
 ) -> Result<String, String> {
-    let debug_mode = context.debug_mode();
-    context.with_state_and_simplifier_mut(|state, simplifier| {
-        let options = state.options().clone();
-        crate::evaluate_solve_command_message_with_session(
-            simplifier,
-            state,
-            line,
-            &options,
-            map_solve_display_mode(display_mode),
-            debug_mode,
-        )
-    })
+    solve::evaluate_solve_command_message_on_runtime(context, line, display_mode)
 }
 
 /// Evaluate `simplify ...` invocation against runtime simplifier/session state.
@@ -51,19 +26,5 @@ pub fn evaluate_full_simplify_command_lines_on_runtime<C: ReplSolveRuntimeContex
     line: &str,
     display_mode: SetDisplayMode,
 ) -> Result<Vec<String>, String> {
-    context.with_state_and_simplifier_mut(|state, simplifier| {
-        let simplify_options = state.options().to_simplify_options();
-        crate::evaluate_full_simplify_command_lines_with_resolver(
-            simplifier,
-            line,
-            map_full_simplify_display_mode(display_mode),
-            simplify_options,
-            |ctx, parsed_expr| {
-                state
-                    .resolve_all_with_diagnostics(ctx, parsed_expr)
-                    .map(|(resolved_expr, _diag, _cache_hits)| resolved_expr)
-                    .map_err(|error| error.to_string())
-            },
-        )
-    })
+    full_simplify::evaluate_full_simplify_command_lines_on_runtime(context, line, display_mode)
 }

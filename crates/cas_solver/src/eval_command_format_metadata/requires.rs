@@ -1,3 +1,5 @@
+mod result;
+
 use crate::eval_command_types::EvalCommandEvalView;
 
 pub(super) fn format_requires_lines(
@@ -10,10 +12,7 @@ pub(super) fn format_requires_lines(
         return Vec::new();
     }
 
-    let result_expr = match &output.result {
-        crate::EvalResult::Expr(expr_id) => Some(*expr_id),
-        _ => None,
-    };
+    let result_expr = result::eval_result_expr(&output.result);
     let rendered = crate::format_diagnostics_requires_lines(
         context,
         &output.diagnostics,

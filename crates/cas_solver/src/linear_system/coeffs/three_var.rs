@@ -1,10 +1,9 @@
+mod extract;
+
 use cas_ast::{Context, ExprId};
-use cas_math::multipoly::PolyBudget;
-use num_rational::BigRational;
-use num_traits::Zero;
 
 use super::super::types::LinearSystemError;
-use super::shared::{build_linear_poly, non_linear_degree_error, unexpected_variable_error};
+use num_rational::BigRational;
 
 /// Linear coefficients for equation `a*x + b*y + c*z + d = 0` (3 variables).
 #[derive(Debug, Clone)]
@@ -22,55 +21,5 @@ pub(crate) fn extract_linear_coeffs_3(
     var_y: &str,
     var_z: &str,
 ) -> Result<LinearCoeffs3, LinearSystemError> {
-    let poly = build_linear_poly(
-        ctx,
-        expr,
-        PolyBudget {
-            max_terms: 100,
-            max_total_degree: 2,
-            max_pow_exp: 2,
-        },
-    )?;
-
-    let idx_x = poly.vars.iter().position(|v| v == var_x);
-    let idx_y = poly.vars.iter().position(|v| v == var_y);
-    let idx_z = poly.vars.iter().position(|v| v == var_z);
-
-    let mut a = BigRational::zero();
-    let mut b = BigRational::zero();
-    let mut c = BigRational::zero();
-    let mut d = BigRational::zero();
-
-    for (coef, mono) in &poly.terms {
-        let total_exp: u32 = mono.iter().sum();
-
-        if total_exp == 0 {
-            d = &d + coef;
-        } else if total_exp == 1 {
-            let mut found = false;
-            for (i, &exp) in mono.iter().enumerate() {
-                if exp == 1 {
-                    if Some(i) == idx_x {
-                        a = &a + coef;
-                        found = true;
-                    } else if Some(i) == idx_y {
-                        b = &b + coef;
-                        found = true;
-                    } else if Some(i) == idx_z {
-                        c = &c + coef;
-                        found = true;
-                    } else {
-                        return Err(unexpected_variable_error(&poly.vars[i]));
-                    }
-                }
-            }
-            if !found {
-                d = &d + coef;
-            }
-        } else {
-            return Err(non_linear_degree_error(total_exp));
-        }
-    }
-
-    Ok(LinearCoeffs3 { a, b, c, d })
+    extract::extract_linear_coeffs_3(ctx, expr, var_x, var_y, var_z)
 }

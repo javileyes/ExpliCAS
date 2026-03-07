@@ -1,18 +1,9 @@
 mod execute;
 mod output;
+mod types;
 
+use self::types::SolveSessionExecution;
 use super::{SolveCommandEvalError, SolveCommandEvalOutput};
-
-struct SolveSessionExecution {
-    stored_id: Option<u64>,
-    parsed_expr: cas_ast::ExprId,
-    resolved: cas_ast::ExprId,
-    solution_set: cas_ast::SolutionSet,
-    display_steps: crate::DisplaySolveSteps,
-    solve_diagnostics: crate::SolveDiagnostics,
-    inherited_diagnostics: crate::Diagnostics,
-    eval_options: crate::EvalOptions,
-}
 
 pub(crate) fn evaluate_solve_parsed_with_session<S>(
     simplifier: &mut crate::Simplifier,
