@@ -310,7 +310,6 @@ mod solve_input_parse_prepare;
 mod solve_input_parse_tests;
 mod solve_input_types;
 mod solve_render_config;
-mod solve_runtime_adapters;
 mod solve_safety;
 mod solve_verify_display;
 mod solver_entrypoints;

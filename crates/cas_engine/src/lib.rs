@@ -52,7 +52,7 @@ pub(crate) mod semantics;
 #[cfg(test)]
 mod semantics_tests;
 mod solve_core_runtime;
-mod solve_runtime_adapters;
+mod solve_runtime_state_impl;
 pub(crate) mod step;
 #[cfg(test)]
 mod step_tests;

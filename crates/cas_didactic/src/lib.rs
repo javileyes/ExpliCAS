@@ -4,6 +4,7 @@
 //! frontends can consume them without importing `cas_engine` root exports.
 
 pub mod didactic;
+pub mod eval_json_render;
 pub mod eval_json_steps;
 pub mod events;
 pub mod timeline;
@@ -13,8 +14,8 @@ pub use cas_solver::{pathsteps_to_expr_path, DisplayEvalSteps, ImportanceLevel, 
 pub use didactic::{
     build_cli_substeps_render_plan, build_timeline_substeps_render_plan, enrich_steps,
     format_cli_simplification_steps, format_cli_simplification_steps_with_simplifier,
-    get_standalone_substeps, latex_to_plain_text, CliSubstepsRenderPlan, EnrichedStep,
-    StepDisplayMode, SubStep, TimelineSubstepsRenderPlan,
+    get_standalone_substeps, is_high_or_higher_step, is_medium_or_higher_step, latex_to_plain_text,
+    CliSubstepsRenderPlan, EnrichedStep, StepDisplayMode, SubStep, TimelineSubstepsRenderPlan,
 };
 pub use eval_json_steps::collect_eval_json_steps;
 pub use events::EngineEventCollector;

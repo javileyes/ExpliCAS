@@ -1,6 +1,6 @@
-use cas_api_models::{StepJson, SubStepJson};
+use cas_api_models::StepJson;
 use cas_ast::Context;
-use cas_solver::{pathsteps_to_expr_path, ImportanceLevel, Step};
+use cas_solver::{pathsteps_to_expr_path, Step};
 
 /// Convert engine steps to eval-json step payloads.
 ///
@@ -10,21 +10,19 @@ pub fn collect_eval_json_steps(steps: &[Step], ctx: &Context, steps_mode: &str) 
         return vec![];
     }
 
-    let filtered: Vec<_> = steps
-        .iter()
-        .filter(|step| step.get_importance() >= ImportanceLevel::Medium)
-        .cloned()
-        .collect();
+    let filtered = crate::didactic::clone_steps_matching_visibility(
+        steps,
+        crate::didactic::StepVisibility::MediumOrHigher,
+    );
 
     if filtered.is_empty() {
         return vec![];
     }
 
-    let first_step = match filtered.first() {
-        Some(s) => s,
+    let original_expr = match crate::didactic::infer_original_expr_for_steps(&filtered) {
+        Some(expr) => expr,
         None => return vec![],
     };
-    let original_expr = first_step.global_before.unwrap_or(first_step.before);
     let enriched_steps = crate::didactic::enrich_steps(ctx, original_expr, filtered.clone());
 
     enriched_steps
@@ -55,77 +53,21 @@ pub fn collect_eval_json_steps(steps: &[Step], ctx: &Context, steps_mode: &str) 
             );
 
             let expr_path = pathsteps_to_expr_path(step.path());
-
-            let mut before_config = cas_formatter::PathHighlightConfig::new();
-            before_config.add(expr_path.clone(), cas_formatter::HighlightColor::Red);
-            let before_latex = cas_formatter::PathHighlightedLatexRenderer {
-                context: ctx,
-                id: before_expr,
-                path_highlights: &before_config,
-                hints: None,
-                style_prefs: None,
-            }
-            .to_latex();
-
-            let mut after_config = cas_formatter::PathHighlightConfig::new();
-            after_config.add(expr_path, cas_formatter::HighlightColor::Green);
-            let after_latex = cas_formatter::PathHighlightedLatexRenderer {
-                context: ctx,
-                id: after_expr,
-                path_highlights: &after_config,
-                hints: None,
-                style_prefs: None,
-            }
-            .to_latex();
-
-            let mut rule_before_config = cas_formatter::HighlightConfig::new();
-            rule_before_config.add(focus_before, cas_formatter::HighlightColor::Red);
-            let local_before_colored = cas_formatter::LaTeXExprHighlighted {
-                context: ctx,
-                id: focus_before,
-                highlights: &rule_before_config,
-            }
-            .to_latex();
-
-            let mut rule_after_config = cas_formatter::HighlightConfig::new();
-            rule_after_config.add(focus_after, cas_formatter::HighlightColor::Green);
-            let local_after_colored = cas_formatter::LaTeXExprHighlighted {
-                context: ctx,
-                id: focus_after,
-                highlights: &rule_after_config,
-            }
-            .to_latex();
-
-            let rule_latex = format!(
-                "{} \\rightarrow {}",
-                local_before_colored, local_after_colored
+            let before_latex = crate::eval_json_render::render_step_path_latex(
+                ctx,
+                before_expr,
+                expr_path.clone(),
+                cas_formatter::HighlightColor::Red,
             );
-
-            let mut substeps: Vec<SubStepJson> = Vec::new();
-            for ss in step.substeps() {
-                substeps.push(SubStepJson {
-                    title: ss.title.clone(),
-                    lines: ss.lines.clone(),
-                    before_latex: None,
-                    after_latex: None,
-                });
-            }
-            for ss in &enriched.sub_steps {
-                let before_latex = ss
-                    .before_latex
-                    .clone()
-                    .unwrap_or_else(|| format!("\\text{{{}}}", ss.before_expr));
-                let after_latex = ss
-                    .after_latex
-                    .clone()
-                    .unwrap_or_else(|| format!("\\text{{{}}}", ss.after_expr));
-                substeps.push(SubStepJson {
-                    title: ss.description.clone(),
-                    lines: vec![],
-                    before_latex: Some(before_latex),
-                    after_latex: Some(after_latex),
-                });
-            }
+            let after_latex = crate::eval_json_render::render_step_path_latex(
+                ctx,
+                after_expr,
+                expr_path,
+                cas_formatter::HighlightColor::Green,
+            );
+            let rule_latex =
+                crate::eval_json_render::render_local_rule_latex(ctx, focus_before, focus_after);
+            let substeps = crate::eval_json_render::collect_step_json_substeps(step, enriched);
 
             StepJson {
                 index: i + 1,

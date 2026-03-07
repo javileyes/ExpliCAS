@@ -128,6 +128,7 @@ pub mod solve_runtime_pipeline_strategy_execute_bound_runtime;
 pub mod solve_runtime_pipeline_strategy_execute_context_runtime;
 pub mod solve_runtime_pipeline_strategy_execute_runtime;
 pub mod solve_runtime_preflight_runtime;
+pub mod solve_runtime_recursive_bound_runtime;
 pub mod solve_runtime_state_helpers;
 pub mod solve_runtime_types;
 pub mod solve_safety_policy;

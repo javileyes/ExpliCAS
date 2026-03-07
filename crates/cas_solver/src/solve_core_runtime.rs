@@ -6,11 +6,6 @@ use crate::solve_backend_contract::CoreSolverOptions;
 use crate::{CasError, Simplifier};
 use cas_ast::{Equation, SolutionSet};
 
-use crate::solve_runtime_adapters::{
-    apply_strategy, build_solve_preflight_state, execute_strategy_pipeline,
-    prepare_equation_for_strategy, SolveCtx, SolveStep,
-};
-
 /// Core solver implementation.
 ///
 /// All public entry points delegate here. `parent_ctx` carries the shared
@@ -21,15 +16,16 @@ pub(crate) fn solve_inner(
     var: &str,
     simplifier: &mut Simplifier,
     opts: CoreSolverOptions,
-    parent_ctx: &SolveCtx,
-) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-    cas_solver_core::solve_runtime_orchestration_context_runtime::solve_inner_with_runtime_ctx_and_default_rational_preflight_prepare_pipeline_with_state(
-        simplifier,
+    parent_ctx: &crate::SolveCtx,
+) -> Result<(SolutionSet, Vec<crate::SolveStep>), CasError> {
+    cas_solver_core::solve_runtime_recursive_bound_runtime::solve_inner_with_runtime_state_and_default_recursive_routes_and_errors(
         eq,
         var,
+        simplifier,
         opts,
         parent_ctx,
-        |state| &state.context,
+        solve_inner,
+        crate::register_blocked_hint,
         || {
             CasError::SolverError(
                 "Maximum solver recursion depth exceeded. The equation may be too complex."
@@ -37,31 +33,5 @@ pub(crate) fn solve_inner(
             )
         },
         || CasError::VariableNotFound(var.to_string()),
-        |state, equation, solve_var, value_domain, solve_ctx| {
-            build_solve_preflight_state(state, equation, solve_var, value_domain, solve_ctx)
-        },
-        |strategy_kind, equation, solve_var, state, solve_opts, solve_ctx| {
-            apply_strategy(
-                strategy_kind,
-                equation,
-                solve_var,
-                state,
-                solve_opts,
-                solve_ctx,
-            )
-        },
-        prepare_equation_for_strategy,
-        |state, original_eq, prepared_eq, residual, solve_var, solve_opts, solve_ctx, exclusions| {
-            execute_strategy_pipeline(
-                state,
-                original_eq,
-                prepared_eq,
-                residual,
-                solve_var,
-                solve_opts,
-                solve_ctx,
-                exclusions,
-            )
-        },
     )
 }

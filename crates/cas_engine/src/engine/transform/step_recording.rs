@@ -38,7 +38,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
         before: ExprId,
         after: ExprId,
     ) {
-        if self.steps_mode != StepsMode::Off {
+        if self.collect_steps_enabled() {
             let step = crate::step::Step::new(
                 name,
                 description,
@@ -75,7 +75,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
         expr_id: ExprId,
         rewrite: &crate::rule::Rewrite,
     ) -> ExprId {
-        if self.steps_mode != StepsMode::Off {
+        if self.collect_steps_enabled() {
             let main_new_expr = rewrite.new_expr;
             let main_description = &rewrite.description;
             let main_before_local = rewrite.before_local;
