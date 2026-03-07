@@ -3,6 +3,7 @@
 //! This allows the REPL logic to be decoupled from I/O, making it testable
 //! and reusable for web/TUI/API contexts.
 
+use cas_didactic::TimelineCliAction;
 use std::path::PathBuf;
 
 /// Structured message returned by ReplCore operations.
@@ -69,6 +70,47 @@ pub fn reply() -> ReplReply {
 /// Create a ReplReply with a single Output message
 pub fn reply_output(s: impl Into<String>) -> ReplReply {
     vec![ReplMsg::output(s)]
+}
+
+/// Create a `ReplReply` from output lines.
+pub fn reply_output_lines<I, S>(lines: I) -> ReplReply
+where
+    I: IntoIterator<Item = S>,
+    S: Into<String>,
+{
+    lines.into_iter().map(ReplMsg::output).collect()
+}
+
+/// Convert timeline CLI actions into a REPL reply payload.
+pub fn timeline_cli_actions_to_reply(actions: Vec<TimelineCliAction>) -> ReplReply {
+    let mut reply = ReplReply::new();
+    for action in actions {
+        match action {
+            TimelineCliAction::Output(line) => reply.push(ReplMsg::output(line)),
+            TimelineCliAction::WriteFile { path, contents } => {
+                reply.push(ReplMsg::WriteFile {
+                    path: PathBuf::from(path),
+                    contents,
+                });
+            }
+            TimelineCliAction::OpenFile { path } => {
+                reply.push(ReplMsg::OpenFile {
+                    path: PathBuf::from(path),
+                });
+            }
+        }
+    }
+    reply
+}
+
+/// Convert a visualize command output into REPL actions.
+pub fn visualize_output_to_reply(output: cas_session::VisualizeCommandOutput) -> ReplReply {
+    let mut reply = vec![ReplMsg::WriteFile {
+        path: PathBuf::from(output.file_name),
+        contents: output.dot_source,
+    }];
+    reply.extend(output.hint_lines.into_iter().map(ReplMsg::output));
+    reply
 }
 
 /// Extension trait for ReplReply to add helper methods

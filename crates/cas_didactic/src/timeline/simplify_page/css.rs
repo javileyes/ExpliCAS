@@ -4,9 +4,9 @@ mod summary;
 
 pub(super) fn simplify_timeline_extra_css() -> String {
     [
-        content::CONTENT_CSS,
-        details::DETAILS_CSS,
-        summary::SUMMARY_CSS,
+        content::content_css(),
+        details::details_css(),
+        summary::summary_css(),
     ]
     .concat()
 }

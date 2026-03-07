@@ -1,9 +1,13 @@
+mod around;
+mod expr;
+mod header;
+mod rule;
+
 use cas_ast::{Context, ExprId};
-use cas_formatter::DisplayExprStyled;
 use cas_solver::Step;
 
 pub(super) fn render_step_header(step_count: usize, step: &Step) -> String {
-    format!("{}. {}  [{}]", step_count, step.description, step.rule_name)
+    header::render_step_header(step_count, step)
 }
 
 pub(super) fn render_before_line(
@@ -11,13 +15,7 @@ pub(super) fn render_before_line(
     before_expr: ExprId,
     style_prefs: &cas_formatter::root_style::StylePreferences,
 ) -> String {
-    format!(
-        "   Before: {}",
-        cas_formatter::clean_display_string(&format!(
-            "{}",
-            DisplayExprStyled::new(ctx, before_expr, style_prefs)
-        ))
-    )
+    around::render_before_line(ctx, before_expr, style_prefs, expr::display_expr_styled)
 }
 
 pub(super) fn render_rule_with_scope_line(
@@ -26,19 +24,13 @@ pub(super) fn render_rule_with_scope_line(
     style_prefs: &cas_formatter::root_style::StylePreferences,
     local_rule_expr_ids: fn(&Step) -> (ExprId, ExprId),
 ) -> String {
-    let (rule_before_id, rule_after_id) = local_rule_expr_ids(step);
-    let before_disp = cas_formatter::clean_display_string(&format!(
-        "{}",
-        DisplayExprStyled::new(ctx, rule_before_id, style_prefs)
-    ));
-    let after_disp = cas_formatter::clean_display_string(&cas_formatter::render_with_rule_scope(
+    rule::render_rule_with_scope_line(
         ctx,
-        rule_after_id,
-        &step.rule_name,
+        step,
         style_prefs,
-    ));
-
-    format!("   Rule: {} -> {}", before_disp, after_disp)
+        local_rule_expr_ids,
+        expr::display_expr_styled,
+    )
 }
 
 pub(super) fn render_after_line(
@@ -46,11 +38,5 @@ pub(super) fn render_after_line(
     after_expr: ExprId,
     style_prefs: &cas_formatter::root_style::StylePreferences,
 ) -> String {
-    format!(
-        "   After: {}",
-        cas_formatter::clean_display_string(&format!(
-            "{}",
-            DisplayExprStyled::new(ctx, after_expr, style_prefs)
-        ))
-    )
+    around::render_after_line(ctx, after_expr, style_prefs, expr::display_expr_styled)
 }

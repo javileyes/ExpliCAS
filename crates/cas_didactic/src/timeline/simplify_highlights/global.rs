@@ -1,19 +1,15 @@
 mod additive;
 mod additive_render;
 mod additive_search;
+mod default_transition;
 mod direct;
 mod scope;
 
-use self::additive::render_additive_focus_transition;
-use self::additive_render::{render_after_additive_focus, render_before_additive_focus};
-use self::additive_search::collect_additive_focus_paths;
-use self::direct::render_direct_focus_transition;
 use self::scope::render_local_scope_transition;
-use super::renderers::render_with_single_path;
 use super::TimelineStepSnapshots;
 use cas_ast::Context;
-use cas_formatter::{DisplayContext, HighlightColor, StylePreferences};
-use cas_solver::{pathsteps_to_expr_path, Step};
+use cas_formatter::{DisplayContext, StylePreferences};
+use cas_solver::Step;
 
 pub(super) fn render_global_transition_latex(
     context: &Context,
@@ -33,22 +29,11 @@ pub(super) fn render_global_transition_latex(
         );
     }
 
-    let expr_path = pathsteps_to_expr_path(step.path());
-    let before = render_with_single_path(
+    default_transition::render_default_global_transition(
         context,
-        snapshots.global_before_expr,
-        expr_path.clone(),
-        HighlightColor::Red,
+        step,
+        snapshots,
         display_hints,
         style_prefs,
-    );
-    let after = render_with_single_path(
-        context,
-        snapshots.global_after_expr,
-        expr_path,
-        HighlightColor::Green,
-        display_hints,
-        style_prefs,
-    );
-    (before, after)
+    )
 }

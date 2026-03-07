@@ -1,10 +1,10 @@
 mod detailed;
+mod detailed_flow;
+mod gate;
 mod succinct;
 
 use super::super::super::display_policy::{render_cli_enriched_substeps_lines, StepDisplayMode};
-use super::super::super::step_visibility::should_show_simplify_step;
 use super::super::super::EnrichedStep;
-use super::render::visibility::{render_rule_visible_change, render_step_visible_change};
 use super::state::StepLoopState;
 use cas_ast::Context;
 use cas_solver::Step;
@@ -17,17 +17,7 @@ pub(super) fn render_step_lines(
     display_mode: StepDisplayMode,
     state: &mut StepLoopState,
 ) -> Option<Vec<String>> {
-    if !should_show_simplify_step(step, display_mode) {
-        state.advance(ctx, step);
-        return None;
-    }
-
-    if !render_step_visible_change(ctx, step, style_prefs) {
-        state.advance(ctx, step);
-        return None;
-    }
-
-    let step_number = state.next_step_number();
+    let step_number = gate::begin_step_render(ctx, step, style_prefs, display_mode, state)?;
 
     if display_mode == StepDisplayMode::Succinct {
         return Some(succinct::render_succinct_step_lines(
@@ -38,7 +28,7 @@ pub(super) fn render_step_lines(
         ));
     }
 
-    let mut lines = detailed::render_step_prelude(
+    Some(detailed_flow::render_detailed_step_lines(
         ctx,
         step,
         enriched_step,
@@ -46,18 +36,7 @@ pub(super) fn render_step_lines(
         step_number,
         state,
         render_cli_enriched_substeps_lines,
-    );
-
-    if !render_rule_visible_change(ctx, step, style_prefs) {
-        state.advance(ctx, step);
-        return Some(lines);
-    }
-
-    lines.extend(detailed::render_step_postrule(
-        ctx,
-        step,
-        style_prefs,
-        state,
-    ));
-    Some(lines)
+        detailed::render_step_prelude,
+        detailed::render_step_postrule,
+    ))
 }

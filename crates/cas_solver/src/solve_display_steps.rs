@@ -1,3 +1,6 @@
+mod render;
+mod substeps;
+
 use cas_ast::Context;
 use cas_formatter::display_transforms::{DisplayTransformRegistry, ScopeTag, ScopedRenderer};
 
@@ -20,56 +23,10 @@ pub fn format_solve_steps_lines(
     };
 
     let mut lines = Vec::new();
-    for (i, step) in solve_steps.iter().enumerate() {
-        lines.push(format!("{}. {}", i + 1, step.description));
-
-        let (lhs_str, rhs_str) = if let Some(ref r) = renderer {
-            (
-                r.render(step.equation_after.lhs),
-                r.render(step.equation_after.rhs),
-            )
-        } else {
-            (
-                cas_formatter::DisplayExpr {
-                    context: ctx,
-                    id: step.equation_after.lhs,
-                }
-                .to_string(),
-                cas_formatter::DisplayExpr {
-                    context: ctx,
-                    id: step.equation_after.rhs,
-                }
-                .to_string(),
-            )
-        };
-        lines.push(format!(
-            "   -> {} {} {}",
-            lhs_str, step.equation_after.op, rhs_str
-        ));
-
+    for (index, step) in solve_steps.iter().enumerate() {
+        render::push_solve_step_lines(&mut lines, ctx, renderer.as_ref(), index, step);
         if include_verbose_substeps && !step.substeps.is_empty() {
-            for (j, substep) in step.substeps.iter().enumerate() {
-                let sub_lhs = cas_formatter::DisplayExpr {
-                    context: ctx,
-                    id: substep.equation_after.lhs,
-                }
-                .to_string();
-                let sub_rhs = cas_formatter::DisplayExpr {
-                    context: ctx,
-                    id: substep.equation_after.rhs,
-                }
-                .to_string();
-                lines.push(format!(
-                    "      {}.{}. {}",
-                    i + 1,
-                    j + 1,
-                    substep.description
-                ));
-                lines.push(format!(
-                    "          -> {} {} {}",
-                    sub_lhs, substep.equation_after.op, sub_rhs
-                ));
-            }
+            substeps::push_verbose_substep_lines(&mut lines, ctx, index, &step.substeps);
         }
     }
 

@@ -1,0 +1,55 @@
+//! Symbolic command evaluation APIs re-exported for session clients.
+
+pub use cas_solver::{
+    evaluate_equiv_command_lines, evaluate_equiv_command_message, evaluate_equiv_invocation_message,
+};
+pub use cas_solver::{
+    evaluate_expand_log_command_lines, evaluate_expand_log_invocation_lines,
+    evaluate_expand_log_invocation_message, evaluate_expand_wrapped_expression,
+    evaluate_telescope_command_lines, evaluate_telescope_invocation_lines,
+    evaluate_telescope_invocation_message, expand_log_usage_message, expand_usage_message,
+    parse_expand_invocation_input, parse_expand_log_invocation_input,
+    parse_telescope_invocation_input, telescope_usage_message, wrap_expand_eval_expression,
+};
+pub use cas_solver::{
+    evaluate_explain_command_lines, evaluate_explain_command_message,
+    evaluate_explain_invocation_message, evaluate_visualize_command_dot,
+    evaluate_visualize_command_output, evaluate_visualize_invocation_output,
+    format_explain_command_error_message, format_explain_gcd_eval_lines,
+    format_timeline_command_error_message, format_visualize_command_error_message,
+    ExplainCommandEvalError, ExplainGcdEvalOutput, VisualizeCommandOutput, VisualizeEvalError,
+};
+pub use cas_solver::{evaluate_health_command, evaluate_health_status_lines};
+pub use cas_solver::{evaluate_health_command_input, parse_health_command_input};
+pub use cas_solver::{
+    evaluate_limit_command_lines, evaluate_limit_subcommand, LimitCommandApproach,
+    LimitCommandPreSimplify, LimitSubcommandOutput,
+};
+pub use cas_solver::{
+    evaluate_semantics_command_line, parse_semantics_command_input, SemanticsCommandInput,
+    SemanticsCommandOutput,
+};
+pub use cas_solver::{
+    evaluate_substitute_command_lines, evaluate_substitute_invocation_lines,
+    evaluate_substitute_invocation_message, evaluate_substitute_invocation_user_message,
+    format_substitute_eval_lines, format_substitute_parse_error_message,
+    substitute_render_mode_from_display_mode, SubstituteRenderMode,
+};
+pub use cas_solver::{
+    evaluate_substitute_subcommand, evaluate_substitute_subcommand_json_canonical,
+    SubstituteCommandMode, SubstituteSubcommandOutput,
+};
+pub use cas_solver::{
+    evaluate_unary_command_lines, evaluate_unary_command_message,
+    evaluate_unary_function_command_lines,
+};
+pub use cas_solver::{
+    evaluate_weierstrass_command_lines, evaluate_weierstrass_invocation_lines,
+    evaluate_weierstrass_invocation_message, format_solve_command_error_message,
+    format_solve_prepare_error_message, format_verify_summary_lines,
+    parse_weierstrass_invocation_input, weierstrass_usage_message,
+};
+pub use cas_solver::{
+    extract_equiv_command_tail, extract_explain_command_tail, extract_substitute_command_tail,
+    extract_visualize_command_tail,
+};

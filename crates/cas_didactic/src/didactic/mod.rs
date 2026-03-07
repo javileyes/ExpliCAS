@@ -50,8 +50,7 @@ mod root_denesting;
 mod shared_numeric;
 mod step_visibility;
 mod sum_three_cubes;
-
-use cas_solver::Step;
+mod types;
 
 pub use cli_render::{
     format_cli_simplification_steps, format_cli_simplification_steps_with_simplifier,
@@ -70,62 +69,7 @@ pub(crate) use step_visibility::{
     StepVisibility,
 };
 pub use step_visibility::{is_high_or_higher_step, is_medium_or_higher_step};
-
-/// An enriched step with optional sub-steps for didactic explanation
-#[derive(Debug, Clone)]
-pub struct EnrichedStep {
-    /// The original step from the engine
-    pub base_step: Step,
-    /// Synthetic sub-steps that explain hidden operations
-    pub sub_steps: Vec<SubStep>,
-}
-
-/// A synthetic sub-step that explains a hidden operation
-#[derive(Debug, Clone)]
-pub struct SubStep {
-    /// Human-readable description of the operation
-    pub description: String,
-    /// Expression before the operation (plain text for CLI display)
-    pub before_expr: String,
-    /// Expression after the operation (plain text for CLI display)
-    pub after_expr: String,
-    /// Optional LaTeX for `before_expr` (for web/MathJax rendering).
-    /// When set, the JSON layer uses this instead of `before_expr`.
-    pub before_latex: Option<String>,
-    /// Optional LaTeX for `after_expr` (for web/MathJax rendering).
-    /// When set, the JSON layer uses this instead of `after_expr`.
-    pub after_latex: Option<String>,
-}
-
-impl SubStep {
-    /// Create a plain-text sub-step (no LaTeX).
-    /// Text will be wrapped in `\text{}` by the JSON layer.
-    pub fn new(
-        description: impl Into<String>,
-        before_expr: impl Into<String>,
-        after_expr: impl Into<String>,
-    ) -> Self {
-        Self {
-            description: description.into(),
-            before_expr: before_expr.into(),
-            after_expr: after_expr.into(),
-            before_latex: None,
-            after_latex: None,
-        }
-    }
-
-    /// Set the LaTeX for `before_expr`.
-    pub fn with_before_latex(mut self, latex: impl Into<String>) -> Self {
-        self.before_latex = Some(latex.into());
-        self
-    }
-
-    /// Set the LaTeX for `after_expr`.
-    pub fn with_after_latex(mut self, latex: impl Into<String>) -> Self {
-        self.after_latex = Some(latex.into());
-        self
-    }
-}
+pub use types::{EnrichedStep, SubStep};
 
 #[cfg(test)]
 mod tests;

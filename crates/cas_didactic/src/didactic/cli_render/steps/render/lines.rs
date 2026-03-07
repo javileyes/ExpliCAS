@@ -1,9 +1,9 @@
 mod details;
 mod display;
+mod succinct;
 
 use super::local_rule_expr_ids;
 use cas_ast::{Context, ExprId};
-use cas_formatter::DisplayExprStyled;
 use cas_solver::Step;
 
 pub(crate) fn render_succinct_step_line(
@@ -11,10 +11,7 @@ pub(crate) fn render_succinct_step_line(
     current_root: ExprId,
     style_prefs: &cas_formatter::root_style::StylePreferences,
 ) -> String {
-    format!(
-        "-> {}",
-        DisplayExprStyled::new(ctx, current_root, style_prefs)
-    )
+    succinct::render_succinct_step_line(ctx, current_root, style_prefs)
 }
 
 pub(crate) fn render_step_header(step_count: usize, step: &Step) -> String {

@@ -1,29 +1,13 @@
+mod normalize;
+mod render;
+
 use cas_ast::Context;
-use cas_formatter::html_escape;
-use cas_solver::{render_conditions_normalized, ImplicitCondition};
+use cas_solver::ImplicitCondition;
 
 pub(super) fn render_timeline_global_requires_html(
     context: &mut Context,
     global_requires: &[ImplicitCondition],
 ) -> String {
-    if global_requires.is_empty() {
-        return String::new();
-    }
-
-    let requires_messages = render_conditions_normalized(context, global_requires);
-    if requires_messages.is_empty() {
-        return String::new();
-    }
-
-    let escaped: Vec<String> = requires_messages
-        .iter()
-        .map(|message| html_escape(message))
-        .collect();
-    format!(
-        r#"        <div class="global-requires">
-            <strong>ℹ️ Requires:</strong> {}
-        </div>
-"#,
-        escaped.join(", ")
-    )
+    let requires_messages = normalize::normalize_global_requires(context, global_requires);
+    render::render_global_requires_html(&requires_messages)
 }

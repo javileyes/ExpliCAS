@@ -1,8 +1,9 @@
+use super::super::super::simplify_highlights::render_timeline_step_math;
 use super::super::super::simplify_highlights::TimelineStepSnapshots;
-use super::super::{
+use super::super::super::simplify_step_html::render_timeline_step_html;
+use super::super::super::simplify_substeps::{
     render_timeline_domain_assumptions_html, render_timeline_enriched_substeps_html,
-    render_timeline_rule_substeps_html, render_timeline_step_html, render_timeline_step_math,
-    TimelineSubstepsRenderState,
+    render_timeline_rule_substeps_html, TimelineSubstepsRenderState,
 };
 use cas_ast::Context;
 use cas_formatter::{DisplayContext, StylePreferences};

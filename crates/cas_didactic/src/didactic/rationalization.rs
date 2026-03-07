@@ -1,8 +1,10 @@
+mod add_terms;
 mod binomial;
 mod grouping;
+mod latex;
 mod product;
 
-use cas_ast::{Context, Expr, ExprId};
+use cas_ast::{Context, ExprId};
 use cas_solver::Step;
 
 use super::SubStep;
@@ -31,26 +33,9 @@ fn rationalization_latex(
     hints: &cas_formatter::DisplayContext,
     id: ExprId,
 ) -> String {
-    cas_formatter::LaTeXExprWithHints {
-        context: ctx,
-        id,
-        hints,
-    }
-    .to_latex()
+    latex::rationalization_latex(ctx, hints, id)
 }
 
 fn collect_add_terms(ctx: &Context, expr: ExprId) -> Vec<ExprId> {
-    let mut terms = Vec::new();
-    collect_add_terms_recursive(ctx, expr, &mut terms);
-    terms
-}
-
-fn collect_add_terms_recursive(ctx: &Context, expr: ExprId, terms: &mut Vec<ExprId>) {
-    match ctx.get(expr) {
-        Expr::Add(l, r) => {
-            collect_add_terms_recursive(ctx, *l, terms);
-            collect_add_terms_recursive(ctx, *r, terms);
-        }
-        _ => terms.push(expr),
-    }
+    add_terms::collect_add_terms(ctx, expr)
 }

@@ -1,10 +1,12 @@
+mod dispatch;
 mod general;
+mod latex;
 mod structured;
 
 use cas_ast::{Context, ExprId};
 use cas_solver::Step;
 
-use super::nested_fraction_analysis::{classify_nested_fraction, NestedFractionPattern};
+use super::nested_fraction_analysis::classify_nested_fraction;
 use super::SubStep;
 
 /// Generate sub-steps explaining nested fraction simplification
@@ -20,21 +22,14 @@ pub(crate) fn generate_nested_fraction_substeps(ctx: &Context, step: &Step) -> V
     };
     let hints = cas_formatter::DisplayContext::default();
 
-    if matches!(pattern, NestedFractionPattern::General) {
-        return general::generate_general_nested_fraction_substeps(
-            ctx,
-            before_expr,
-            after_expr,
-            &hints,
-        );
-    }
-
-    structured::generate_structured_nested_fraction_substeps(
+    dispatch::generate_nested_fraction_substeps_for_pattern(
         ctx,
         before_expr,
         after_expr,
         pattern,
         &hints,
+        general::generate_general_nested_fraction_substeps,
+        structured::generate_structured_nested_fraction_substeps,
     )
 }
 
@@ -43,10 +38,5 @@ fn nested_fraction_latex(
     hints: &cas_formatter::DisplayContext,
     id: ExprId,
 ) -> String {
-    cas_formatter::LaTeXExprWithHints {
-        context: ctx,
-        id,
-        hints,
-    }
-    .to_latex()
+    latex::nested_fraction_latex(ctx, hints, id)
 }

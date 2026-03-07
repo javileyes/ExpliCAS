@@ -1,8 +1,8 @@
+mod local_change;
+mod paths;
+
 use cas_ast::{Context, ExprId, ExprPath};
-use cas_formatter::{
-    DisplayContext, HighlightColor, HighlightConfig, LaTeXExprHighlightedWithHints,
-    PathHighlightConfig, PathHighlightedLatexRenderer, StylePreferences,
-};
+use cas_formatter::{DisplayContext, HighlightColor, PathHighlightConfig, StylePreferences};
 use cas_solver::Step;
 
 pub(super) fn render_local_change_latex(
@@ -11,35 +11,7 @@ pub(super) fn render_local_change_latex(
     display_hints: &DisplayContext,
     style_prefs: &StylePreferences,
 ) -> String {
-    let focus_before = step.before_local().unwrap_or(step.before);
-    let focus_after = step.after_local().unwrap_or(step.after);
-
-    let mut rule_before_config = HighlightConfig::new();
-    rule_before_config.add(focus_before, HighlightColor::Red);
-    let local_before_colored = LaTeXExprHighlightedWithHints {
-        context,
-        id: focus_before,
-        highlights: &rule_before_config,
-        hints: display_hints,
-        style_prefs: Some(style_prefs),
-    }
-    .to_latex();
-
-    let mut rule_after_config = HighlightConfig::new();
-    rule_after_config.add(focus_after, HighlightColor::Green);
-    let local_after_colored = LaTeXExprHighlightedWithHints {
-        context,
-        id: focus_after,
-        highlights: &rule_after_config,
-        hints: display_hints,
-        style_prefs: Some(style_prefs),
-    }
-    .to_latex();
-
-    format!(
-        "{} \\rightarrow {}",
-        local_before_colored, local_after_colored
-    )
+    local_change::render_local_change_latex(context, step, display_hints, style_prefs)
 }
 
 pub(super) fn render_with_single_path(
@@ -50,9 +22,7 @@ pub(super) fn render_with_single_path(
     display_hints: &DisplayContext,
     style_prefs: &StylePreferences,
 ) -> String {
-    let mut config = PathHighlightConfig::new();
-    config.add(path, color);
-    render_with_paths(context, id, &config, display_hints, style_prefs)
+    paths::render_with_single_path(context, id, path, color, display_hints, style_prefs)
 }
 
 pub(super) fn render_with_paths(
@@ -62,12 +32,5 @@ pub(super) fn render_with_paths(
     display_hints: &DisplayContext,
     style_prefs: &StylePreferences,
 ) -> String {
-    PathHighlightedLatexRenderer {
-        context,
-        id,
-        path_highlights,
-        hints: Some(display_hints),
-        style_prefs: Some(style_prefs),
-    }
-    .to_latex()
+    paths::render_with_paths(context, id, path_highlights, display_hints, style_prefs)
 }

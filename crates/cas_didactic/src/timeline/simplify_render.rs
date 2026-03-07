@@ -1,43 +1,30 @@
 mod footer;
+mod prepare;
+mod shell;
 mod steps;
 
-use super::simplify_highlights::{
-    render_timeline_step_math, resolve_timeline_step_global_snapshots,
-};
-use super::simplify_step_html::render_timeline_step_html;
-use super::simplify_substeps::{
-    render_timeline_domain_assumptions_html, render_timeline_enriched_substeps_html,
-    render_timeline_rule_substeps_html, TimelineSubstepsRenderState,
-};
-use super::simplify_summary::{
-    render_timeline_final_result_html, render_timeline_global_requires_html,
-};
 use cas_ast::{Context, ExprId};
-use cas_solver::{ImplicitCondition, Step};
-use std::collections::HashSet;
+use cas_solver::ImplicitCondition;
 
 pub(super) fn render_timeline_filtered_enriched(
     context: &mut Context,
-    steps: &[Step],
+    steps: &[cas_solver::Step],
     original_expr: ExprId,
     simplified_result: Option<ExprId>,
     global_requires: &[ImplicitCondition],
     style_prefs: &cas_formatter::root_style::StylePreferences,
-    filtered_steps: &[&Step],
+    filtered_steps: &[&cas_solver::Step],
     enriched_steps: &[crate::didactic::EnrichedStep],
 ) -> String {
-    let mut html = String::from("        <div class=\"timeline\">\n");
-    let display_hints = cas_formatter::build_display_context_with_result(
+    let mut html = shell::open_timeline_html();
+    let prepared = prepare::prepare_timeline_render(
         context,
+        &mut html,
         original_expr,
         steps,
         simplified_result,
+        filtered_steps,
     );
-
-    let filtered_indices: HashSet<_> = filtered_steps
-        .iter()
-        .map(|step| *step as *const Step)
-        .collect();
     let last_global_after = steps::render_timeline_filtered_steps(
         context,
         &mut html,
@@ -45,8 +32,8 @@ pub(super) fn render_timeline_filtered_enriched(
         original_expr,
         style_prefs,
         enriched_steps,
-        &display_hints,
-        &filtered_indices,
+        &prepared.display_hints,
+        &prepared.filtered_indices,
     );
 
     footer::render_timeline_footer(
@@ -54,13 +41,10 @@ pub(super) fn render_timeline_filtered_enriched(
         &mut html,
         simplified_result.unwrap_or(last_global_after),
         global_requires,
-        &display_hints,
+        &prepared.display_hints,
         style_prefs,
     );
 
-    html.push_str(
-        r#"    </div>
-"#,
-    );
+    html.push_str(shell::TIMELINE_CLOSING_HTML);
     html
 }

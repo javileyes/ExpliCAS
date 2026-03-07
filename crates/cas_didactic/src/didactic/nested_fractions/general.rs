@@ -1,3 +1,4 @@
+mod default;
 mod inner_fraction;
 
 use super::super::nested_fraction_analysis::find_div_in_expr;
@@ -27,20 +28,8 @@ pub(super) fn generate_general_nested_fraction_substeps(
             );
         }
 
-        return vec![SubStep {
-            description: "Simplificar fracción anidada".to_string(),
-            before_expr: before_str,
-            after_expr: after_str,
-            before_latex: None,
-            after_latex: None,
-        }];
+        return default::build_nested_fraction_default_substeps(&before_str, &after_str);
     }
 
-    vec![SubStep {
-        description: "Simplificar expresión".to_string(),
-        before_expr: before_str,
-        after_expr: after_str,
-        before_latex: None,
-        after_latex: None,
-    }]
+    default::build_general_expression_default_substeps(&before_str, &after_str)
 }

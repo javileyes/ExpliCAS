@@ -1,0 +1,31 @@
+pub(super) const CONTENT_CSS: &str = r#"
+        h1 {
+            color: var(--title-color);
+            text-align: center;
+            margin-bottom: 10px;
+            font-size: 1.8em;
+            transition: color 0.3s ease;
+        }
+        .subtitle {
+            text-align: center;
+            color: var(--subtitle-color);
+            margin-bottom: 25px;
+            transition: color 0.3s ease;
+        }
+        .original {
+            background: linear-gradient(135deg, var(--original-bg-start), var(--original-bg-end));
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+            text-align: center;
+            box-shadow: 0 4px 15px var(--original-shadow);
+            transition: background 0.3s ease;
+        }
+        footer {
+            text-align: center;
+            margin-top: 30px;
+            color: var(--footer-color);
+            font-size: 0.9em;
+            transition: color 0.3s ease;
+        }
+"#;

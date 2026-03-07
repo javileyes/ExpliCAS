@@ -1,9 +1,11 @@
+mod delta;
 mod sqrt;
 mod surd;
+mod terms;
 
 use self::sqrt::get_sqrt_inner;
 use self::surd::analyze_surd;
-use cas_ast::{Context, Expr, ExprId};
+use cas_ast::{Context, ExprId};
 use num_rational::BigRational;
 
 pub(super) struct RootDenestingAnalysis {
@@ -19,47 +21,13 @@ pub(super) fn analyze_root_denesting(
     before_expr: ExprId,
 ) -> Option<RootDenestingAnalysis> {
     let inner_expr = get_sqrt_inner(ctx, before_expr)?;
-
-    let (a_term, b_term, is_add) = match ctx.get(inner_expr) {
-        Expr::Add(l, r) => (*l, *r, true),
-        Expr::Sub(l, r) => (*l, *r, false),
-        _ => return None,
-    };
-
-    if let Some((coeff, rad)) = analyze_surd(ctx, a_term) {
-        return Some(RootDenestingAnalysis {
-            inner_expr,
-            a_expr: b_term,
-            c_coeff: coeff,
-            d_expr: rad,
-            is_add,
-        });
-    }
-
-    if let Some((coeff, rad)) = analyze_surd(ctx, b_term) {
-        return Some(RootDenestingAnalysis {
-            inner_expr,
-            a_expr: a_term,
-            c_coeff: coeff,
-            d_expr: rad,
-            is_add,
-        });
-    }
-
-    None
+    let (a_term, b_term, is_add) = terms::extract_denesting_terms(ctx, inner_expr)?;
+    terms::build_root_denesting_analysis(ctx, inner_expr, a_term, b_term, is_add, analyze_surd)
 }
 
 pub(super) fn compute_denesting_delta(
     ctx: &Context,
     analysis: &RootDenestingAnalysis,
 ) -> Option<BigRational> {
-    let Expr::Number(a_num) = ctx.get(analysis.a_expr) else {
-        return None;
-    };
-    let Expr::Number(d_num) = ctx.get(analysis.d_expr) else {
-        return None;
-    };
-
-    let c_sq = &analysis.c_coeff * &analysis.c_coeff;
-    Some(a_num * a_num - &c_sq * d_num)
+    delta::compute_denesting_delta(ctx, analysis)
 }

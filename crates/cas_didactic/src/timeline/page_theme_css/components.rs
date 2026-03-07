@@ -5,9 +5,9 @@ mod substeps;
 
 pub(super) fn components_css() -> String {
     [
-        step::STEP_CSS,
-        math::MATH_CSS,
-        substeps::SUBSTEPS_CSS,
+        &step::step_css(),
+        &math::math_css(),
+        &substeps::substeps_css(),
         final_result::FINAL_RESULT_CSS,
     ]
     .concat()

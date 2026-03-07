@@ -1,0 +1,26 @@
+pub(super) const SUBSTEPS_TOGGLE_CSS: &str = r#"
+    .substeps-toggle {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 12px;
+        padding: 8px 12px;
+        background: rgba(100, 181, 246, 0.15);
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 0.9em;
+        color: var(--step-number-color);
+        border: 1px solid rgba(100, 181, 246, 0.3);
+        transition: all 0.2s ease;
+    }
+    .substeps-toggle:hover {
+        background: rgba(100, 181, 246, 0.25);
+    }
+    .substeps-toggle .arrow {
+        transition: transform 0.3s ease;
+        font-size: 0.8em;
+    }
+    .substeps-toggle.expanded .arrow {
+        transform: rotate(90deg);
+    }
+"#;

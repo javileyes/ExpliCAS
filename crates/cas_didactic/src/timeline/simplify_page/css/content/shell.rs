@@ -1,0 +1,19 @@
+pub(super) const CONTENT_SHELL_CSS: &str = r#"
+        .step-content {
+            background: var(--content-bg);
+            padding: 20px;
+            border-radius: 10px;
+            border: 1px solid var(--content-border);
+            transition: transform 0.2s, box-shadow 0.2s, background 0.3s ease;
+        }
+        .step-content:hover {
+            transform: translateX(5px);
+            box-shadow: 0 4px 16px var(--step-hover-shadow);
+        }
+        .step-content h3 {
+            margin-top: 0;
+            color: var(--content-h3-color);
+            font-size: 1.1em;
+            transition: color 0.3s ease;
+        }
+"#;

@@ -1,6 +1,8 @@
+mod base;
+mod substeps;
+
 use super::render_equation_latex;
 use cas_ast::Context;
-use cas_formatter::html_escape;
 use cas_solver::SolveStep;
 
 pub(super) fn render_solve_step_html(
@@ -9,55 +11,12 @@ pub(super) fn render_solve_step_html(
     step: &SolveStep,
 ) -> String {
     let eq_latex = render_equation_latex(context, &step.equation_after);
-
-    let mut html = format!(
-        r#"        <div class="step">
-            <div class="step-number">Step {}</div>
-            <div class="description">{}</div>
-            <div class="equation">
-                \[{}\]
-            </div>
-"#,
+    let mut html = base::render_solve_step_open_html(step_number, step, &eq_latex);
+    html.push_str(&substeps::render_solve_substeps_html(
+        context,
         step_number,
-        html_escape(&step.description),
-        eq_latex
-    );
-
-    if !step.substeps.is_empty() {
-        let substep_id = format!("substeps-{}", step_number);
-        html.push_str(&format!(
-            r#"            <div class="substeps-toggle" onclick="toggleSubsteps('{}')">
-                <span class="arrow">▶</span>
-                <span>Show derivation ({} steps)</span>
-            </div>
-            <div id="{}" class="substeps-container">
-"#,
-            substep_id,
-            step.substeps.len(),
-            substep_id
-        ));
-
-        for (j, substep) in step.substeps.iter().enumerate() {
-            let sub_eq_latex = render_equation_latex(context, &substep.equation_after);
-            html.push_str(&format!(
-                r#"                <div class="substep">
-                    <div class="substep-number">Step {}.{}</div>
-                    <div class="substep-description">{}</div>
-                    <div class="substep-equation">
-                        \[{}\]
-                    </div>
-                </div>
-"#,
-                step_number,
-                j + 1,
-                html_escape(&substep.description),
-                sub_eq_latex
-            ));
-        }
-
-        html.push_str("            </div>\n");
-    }
-
-    html.push_str("        </div>\n");
+        step,
+    ));
+    html.push_str(base::STEP_CLOSE_HTML);
     html
 }
