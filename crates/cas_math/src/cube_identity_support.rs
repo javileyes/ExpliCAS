@@ -16,7 +16,6 @@ pub struct CubeIdentityMatch {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SumDiffCubesContractionRewrite {
     pub rewritten: ExprId,
-    pub desc: &'static str,
 }
 
 /// Return true when `a*b` matches one of:
@@ -50,10 +49,7 @@ pub fn try_rewrite_sum_diff_cubes_product_expr(
     let c_cubed_node = ctx.add(Expr::Number(matched.constant_cubed));
     let rewritten = ctx.add(Expr::Add(x_cubed, c_cubed_node));
 
-    Some(SumDiffCubesContractionRewrite {
-        rewritten,
-        desc: "Sum/Difference of cubes",
-    })
+    Some(SumDiffCubesContractionRewrite { rewritten })
 }
 
 fn try_extract_cube_identity_ordered(

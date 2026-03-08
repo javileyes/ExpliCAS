@@ -1,5 +1,5 @@
 use crate::trig_half_angle_support::{extract_tan_half_angle, is_half_angle};
-use crate::trig_identity_zero_support::IdentityZeroRewrite;
+use crate::trig_identity_zero_support::{IdentityZeroRewrite, IdentityZeroRewriteKind};
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use num_traits::One;
 use std::cmp::Ordering;
@@ -373,7 +373,7 @@ pub fn try_rewrite_weierstrass_sin_identity_zero_expr(
         return None;
     }
     Some(IdentityZeroRewrite {
-        desc: "sin(x) = 2·tan(x/2)/(1 + tan²(x/2)) [Weierstrass]",
+        kind: IdentityZeroRewriteKind::WeierstrassSin,
     })
 }
 
@@ -387,7 +387,7 @@ pub fn try_rewrite_weierstrass_cos_identity_zero_expr(
         return None;
     }
     Some(IdentityZeroRewrite {
-        desc: "cos(x) = (1 - tan²(x/2))/(1 + tan²(x/2)) [Weierstrass]",
+        kind: IdentityZeroRewriteKind::WeierstrassCos,
     })
 }
 

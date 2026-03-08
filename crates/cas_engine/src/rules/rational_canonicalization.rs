@@ -24,7 +24,7 @@ define_rule!(
     importance: crate::step::ImportanceLevel::Low,
     |ctx, expr| {
         let rewrite = try_rewrite_rational_div_canonical_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc("p / q = p/q (exact rational)"))
     }
 );
 
@@ -49,7 +49,7 @@ define_rule!(
     importance: crate::step::ImportanceLevel::Low,
     |ctx, expr| {
         let rewrite = try_rewrite_nested_pow_canonical_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc("(x^k)^r = x^(k·r)"))
     }
 );
 

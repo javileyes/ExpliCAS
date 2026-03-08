@@ -4,7 +4,6 @@ use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HyperbolicCoreRewrite {
     pub rewritten: ExprId,
-    pub desc: &'static str,
 }
 
 /// Evaluate hyperbolic function values at special constants.
@@ -25,27 +24,21 @@ pub fn try_eval_hyperbolic_special_value(
     match ctx.builtin_of(fn_id) {
         Some(BuiltinFn::Sinh) if is_zero_expr(ctx, arg) => Some(HyperbolicCoreRewrite {
             rewritten: ctx.num(0),
-            desc: "sinh(0) = 0",
         }),
         Some(BuiltinFn::Tanh) if is_zero_expr(ctx, arg) => Some(HyperbolicCoreRewrite {
             rewritten: ctx.num(0),
-            desc: "tanh(0) = 0",
         }),
         Some(BuiltinFn::Cosh) if is_zero_expr(ctx, arg) => Some(HyperbolicCoreRewrite {
             rewritten: ctx.num(1),
-            desc: "cosh(0) = 1",
         }),
         Some(BuiltinFn::Asinh) if is_zero_expr(ctx, arg) => Some(HyperbolicCoreRewrite {
             rewritten: ctx.num(0),
-            desc: "asinh(0) = 0",
         }),
         Some(BuiltinFn::Atanh) if is_zero_expr(ctx, arg) => Some(HyperbolicCoreRewrite {
             rewritten: ctx.num(0),
-            desc: "atanh(0) = 0",
         }),
         Some(BuiltinFn::Acosh) if is_one_expr(ctx, arg) => Some(HyperbolicCoreRewrite {
             rewritten: ctx.num(0),
-            desc: "acosh(1) = 0",
         }),
         _ => None,
     }
@@ -84,20 +77,17 @@ pub fn try_rewrite_hyperbolic_composition(
     }
     let x = inner_args[0];
 
-    let mapping = match (ctx.builtin_of(outer_fn), ctx.builtin_of(inner_fn)) {
-        (Some(BuiltinFn::Sinh), Some(BuiltinFn::Asinh)) => Some("sinh(asinh(x)) = x"),
-        (Some(BuiltinFn::Cosh), Some(BuiltinFn::Acosh)) => Some("cosh(acosh(x)) = x"),
-        (Some(BuiltinFn::Tanh), Some(BuiltinFn::Atanh)) => Some("tanh(atanh(x)) = x"),
-        (Some(BuiltinFn::Asinh), Some(BuiltinFn::Sinh)) => Some("asinh(sinh(x)) = x"),
-        (Some(BuiltinFn::Acosh), Some(BuiltinFn::Cosh)) => Some("acosh(cosh(x)) = x"),
-        (Some(BuiltinFn::Atanh), Some(BuiltinFn::Tanh)) => Some("atanh(tanh(x)) = x"),
-        _ => None,
-    }?;
+    match (ctx.builtin_of(outer_fn), ctx.builtin_of(inner_fn)) {
+        (Some(BuiltinFn::Sinh), Some(BuiltinFn::Asinh))
+        | (Some(BuiltinFn::Cosh), Some(BuiltinFn::Acosh))
+        | (Some(BuiltinFn::Tanh), Some(BuiltinFn::Atanh))
+        | (Some(BuiltinFn::Asinh), Some(BuiltinFn::Sinh))
+        | (Some(BuiltinFn::Acosh), Some(BuiltinFn::Cosh))
+        | (Some(BuiltinFn::Atanh), Some(BuiltinFn::Tanh)) => {}
+        _ => return None,
+    }
 
-    Some(HyperbolicCoreRewrite {
-        rewritten: x,
-        desc: mapping,
-    })
+    Some(HyperbolicCoreRewrite { rewritten: x })
 }
 
 #[cfg(test)]
@@ -118,20 +108,20 @@ mod tests {
         assert_eq!(
             try_eval_hyperbolic_special_value(&mut ctx, sinh0)
                 .expect("sinh0")
-                .desc,
-            "sinh(0) = 0"
+                .rewritten,
+            zero
         );
         assert_eq!(
             try_eval_hyperbolic_special_value(&mut ctx, cosh0)
                 .expect("cosh0")
-                .desc,
-            "cosh(0) = 1"
+                .rewritten,
+            one
         );
         assert_eq!(
             try_eval_hyperbolic_special_value(&mut ctx, acosh1)
                 .expect("acosh1")
-                .desc,
-            "acosh(1) = 0"
+                .rewritten,
+            zero
         );
     }
 
@@ -144,6 +134,5 @@ mod tests {
 
         let rewrite = try_rewrite_hyperbolic_composition(&ctx, expr).expect("rewrite");
         assert_eq!(rewrite.rewritten, x);
-        assert_eq!(rewrite.desc, "sinh(asinh(x)) = x");
     }
 }

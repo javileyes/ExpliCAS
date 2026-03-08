@@ -46,7 +46,7 @@ define_rule!(
         let rewrite = try_rewrite_sum_diff_cubes_product_expr(ctx, expr)?;
         Some(
             Rewrite::new(rewrite.rewritten)
-                .desc(rewrite.desc)
+                .desc("Sum/Difference of cubes")
                 .local(expr, rewrite.rewritten),
         )
     }
@@ -75,7 +75,7 @@ define_rule!(
             cas_math::perfect_square_support::try_rewrite_sqrt_perfect_square_expr(ctx, expr)?;
         Some(
             Rewrite::new(rewrite.rewritten)
-                .desc(rewrite.desc)
+                .desc("sqrt(A^2 ± 2AB + B^2) = |A ± B|")
                 .local(expr, rewrite.rewritten),
         )
     }
@@ -137,7 +137,7 @@ define_rule!(
         {
             return Some(
                 Rewrite::new(rewrite.rewritten)
-                    .desc(rewrite.desc)
+                    .desc("Distribute")
                     .local(expr, rewrite.rewritten),
             );
         }
@@ -145,7 +145,7 @@ define_rule!(
         if let Some(rewrite) = try_rewrite_div_distribution_simplifying_expr(ctx, expr) {
             return Some(
                 Rewrite::new(rewrite.rewritten)
-                    .desc(rewrite.desc)
+                    .desc("Distribute division (simplifying)")
                     .local(expr, rewrite.rewritten),
             );
         }

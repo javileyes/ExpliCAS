@@ -1,6 +1,8 @@
 use crate::define_rule;
 use crate::rule::Rewrite;
-use cas_ast::{Context, ExprId};
+use cas_ast::{Context, Expr, ExprId};
+use cas_math::root_den_rationalize_support::RootDenRationalizeRewriteKind;
+use num_traits::One;
 
 // =============================================================================
 // RationalizeLinearSqrtDenRule: 1/(sqrt(t)+c) → (sqrt(t)-c)/(t-c²)
@@ -24,7 +26,7 @@ define_rule!(
             cas_math::root_den_rationalize_support::try_rewrite_rationalize_linear_sqrt_den_expr(
                 ctx, expr,
             )?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc(format_root_den_rationalize_desc(rewrite.kind)))
     }
 );
 
@@ -45,7 +47,7 @@ define_rule!(
             cas_math::root_den_rationalize_support::try_rewrite_rationalize_sum_of_sqrts_den_expr(
                 ctx, expr,
             )?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc(format_root_den_rationalize_desc(rewrite.kind)))
     }
 );
 
@@ -71,9 +73,21 @@ define_rule!(
             cas_math::root_den_rationalize_support::try_rewrite_rationalize_cube_root_den_expr(
                 ctx, expr,
             )?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc(format_root_den_rationalize_desc(rewrite.kind)))
     }
 );
+
+fn format_root_den_rationalize_desc(kind: RootDenRationalizeRewriteKind) -> &'static str {
+    match kind {
+        RootDenRationalizeRewriteKind::LinearSqrtDen => "Rationalize: multiply by conjugate",
+        RootDenRationalizeRewriteKind::SumOfSqrtsDen => {
+            "Rationalize: (sqrt(p)±sqrt(q)) multiply by conjugate"
+        }
+        RootDenRationalizeRewriteKind::CubeRootDen => {
+            "Rationalize: cube root denominator via sum of cubes"
+        }
+    }
+}
 
 // =============================================================================
 // RootMergeMulRule: sqrt(a) * sqrt(b) → sqrt(a*b)
@@ -306,7 +320,17 @@ impl crate::rule::Rule for ReciprocalSqrtCanonRule {
             cas_math::reciprocal_sqrt_canon_support::try_rewrite_reciprocal_sqrt_canon_expr(
                 ctx, expr,
             )?;
-        Some(crate::rule::Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        let desc = match ctx.get(expr) {
+            Expr::Div(num, _) => {
+                if matches!(ctx.get(*num), Expr::Number(n) if n.is_one()) {
+                    "1/√x = x^(-1/2)"
+                } else {
+                    "√x/x = x^(-1/2)"
+                }
+            }
+            _ => "Canonicalize reciprocal sqrt",
+        };
+        Some(crate::rule::Rewrite::new(rewrite.rewritten).desc(desc))
     }
 
     fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {

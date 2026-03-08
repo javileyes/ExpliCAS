@@ -7,7 +7,14 @@ use num_traits::One;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RootDenRationalizeRewrite {
     pub rewritten: ExprId,
-    pub desc: &'static str,
+    pub kind: RootDenRationalizeRewriteKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RootDenRationalizeRewriteKind {
+    LinearSqrtDen,
+    SumOfSqrtsDen,
+    CubeRootDen,
 }
 
 fn is_one(ctx: &Context, expr: ExprId) -> bool {
@@ -66,7 +73,7 @@ pub fn try_rewrite_rationalize_linear_sqrt_den_expr(
 
     Some(RootDenRationalizeRewrite {
         rewritten,
-        desc: "Rationalize: multiply by conjugate",
+        kind: RootDenRationalizeRewriteKind::LinearSqrtDen,
     })
 }
 
@@ -117,7 +124,7 @@ pub fn try_rewrite_rationalize_sum_of_sqrts_den_expr(
 
     Some(RootDenRationalizeRewrite {
         rewritten,
-        desc: "Rationalize: (sqrt(p)±sqrt(q)) multiply by conjugate",
+        kind: RootDenRationalizeRewriteKind::SumOfSqrtsDen,
     })
 }
 
@@ -178,7 +185,7 @@ pub fn try_rewrite_rationalize_cube_root_den_expr(
 
     Some(RootDenRationalizeRewrite {
         rewritten,
-        desc: "Rationalize: cube root denominator via sum of cubes",
+        kind: RootDenRationalizeRewriteKind::CubeRootDen,
     })
 }
 

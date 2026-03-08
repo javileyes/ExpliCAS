@@ -56,6 +56,7 @@ pub mod function_inverse;
 pub mod ground_eval_runtime;
 pub mod health_category;
 pub mod health_runtime;
+pub mod health_suite_models;
 pub mod history_models;
 pub mod history_runtime;
 pub mod inverse_trig_policy;

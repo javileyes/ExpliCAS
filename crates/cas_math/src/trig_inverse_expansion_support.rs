@@ -5,22 +5,40 @@ use num_rational::Ratio;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TrigInverseExpansionRewrite {
     pub rewritten: ExprId,
-    pub desc: &'static str,
+    pub kind: TrigInverseExpansionKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TrigInverseExpansionKind {
+    SinArctan,
+    CosArctan,
+    TanArcsin,
+    CotArcsin,
+    CosArcsin,
+    SinArccos,
+    SinArcsec,
+    CosArcsec,
+    TanArccos,
+    CotArccos,
+    SecArctan,
+    CscArctan,
+    SecArcsin,
+    CscArcsin,
 }
 
 /// Try to expand compositions like `sin(arctan(x))`.
 ///
-/// Returns `(expanded_expr, description)` when a known identity matches.
+/// Returns `(expanded_expr, kind)` when a known identity matches.
 pub fn expand_trig_inverse_composition(
     ctx: &mut Context,
     outer_name: &str,
     inner_name: &str,
     x: ExprId,
-) -> Option<(ExprId, &'static str)> {
-    for (outer_expected, inner_variants, transform, description) in EXPANSIONS {
+) -> Option<(ExprId, TrigInverseExpansionKind)> {
+    for (outer_expected, inner_variants, transform, kind) in EXPANSIONS {
         if outer_name == *outer_expected && inner_variants.contains(&inner_name) {
             let result = apply_transform(ctx, x, *transform);
-            return Some((result, description));
+            return Some((result, *kind));
         }
     }
     None
@@ -47,9 +65,9 @@ pub fn try_rewrite_trig_inverse_composition_expr(
 
     let outer_name = ctx.builtin_of(*outer_fn)?.name();
     let inner_name = ctx.builtin_of(*inner_fn)?.name();
-    let (rewritten, desc) =
+    let (rewritten, kind) =
         expand_trig_inverse_composition(ctx, outer_name, inner_name, inner_args[0])?;
-    Some(TrigInverseExpansionRewrite { rewritten, desc })
+    Some(TrigInverseExpansionRewrite { rewritten, kind })
 }
 
 /// Build sqrt(expr) = expr^(1/2)
@@ -142,105 +160,105 @@ fn apply_transform(ctx: &mut Context, x: ExprId, transform: Transform) -> ExprId
     }
 }
 
-/// Maps (outer_func, inner_func) -> (Transform, description)
-const EXPANSIONS: &[(&str, &[&str], Transform, &str)] = &[
+/// Maps (outer_func, inner_func) -> (Transform, kind)
+const EXPANSIONS: &[(&str, &[&str], Transform, TrigInverseExpansionKind)] = &[
     // sin(arctan(x)) → x/√(1+x²)
     (
         "sin",
         &["arctan", "atan"],
         Transform::XOverSqrt(Base::OnePlus),
-        "sin(arctan(x)) → x/√(1+x²)",
+        TrigInverseExpansionKind::SinArctan,
     ),
     // cos(arctan(x)) → 1/√(1+x²)
     (
         "cos",
         &["arctan", "atan"],
         Transform::OneOverSqrt(Base::OnePlus),
-        "cos(arctan(x)) → 1/√(1+x²)",
+        TrigInverseExpansionKind::CosArctan,
     ),
     // tan(arcsin(x)) → x/√(1-x²)
     (
         "tan",
         &["arcsin", "asin"],
         Transform::XOverSqrt(Base::OneMinus),
-        "tan(arcsin(x)) → x/√(1-x²)",
+        TrigInverseExpansionKind::TanArcsin,
     ),
     // cot(arcsin(x)) → √(1-x²)/x
     (
         "cot",
         &["arcsin", "asin"],
         Transform::SqrtOverX(Base::OneMinus),
-        "cot(arcsin(x)) → √(1-x²)/x",
+        TrigInverseExpansionKind::CotArcsin,
     ),
     // cos(arcsin(x)) → √(1-x²)
     (
         "cos",
         &["arcsin", "asin"],
         Transform::JustSqrt(Base::OneMinus),
-        "cos(arcsin(x)) → √(1-x²)",
+        TrigInverseExpansionKind::CosArcsin,
     ),
     // sin(arccos(x)) → √(1-x²)
     (
         "sin",
         &["arccos", "acos"],
         Transform::JustSqrt(Base::OneMinus),
-        "sin(arccos(x)) → √(1-x²)",
+        TrigInverseExpansionKind::SinArccos,
     ),
     // sin(arcsec(x)) → √(x²-1)/x
     (
         "sin",
         &["arcsec", "asec"],
         Transform::SqrtOverX(Base::XMinus),
-        "sin(arcsec(x)) → √(x²-1)/x",
+        TrigInverseExpansionKind::SinArcsec,
     ),
     // cos(arcsec(x)) → 1/x
     (
         "cos",
         &["arcsec", "asec"],
         Transform::OneOverX,
-        "cos(arcsec(x)) → 1/x",
+        TrigInverseExpansionKind::CosArcsec,
     ),
     // tan(arccos(x)) → √(1-x²)/x
     (
         "tan",
         &["arccos", "acos"],
         Transform::SqrtOverX(Base::OneMinus),
-        "tan(arccos(x)) → √(1-x²)/x",
+        TrigInverseExpansionKind::TanArccos,
     ),
     // cot(arccos(x)) → x/√(1-x²)
     (
         "cot",
         &["arccos", "acos"],
         Transform::XOverSqrt(Base::OneMinus),
-        "cot(arccos(x)) → x/√(1-x²)",
+        TrigInverseExpansionKind::CotArccos,
     ),
     // sec(arctan(x)) → √(1+x²)
     (
         "sec",
         &["arctan", "atan"],
         Transform::JustSqrt(Base::OnePlus),
-        "sec(arctan(x)) → √(1+x²)",
+        TrigInverseExpansionKind::SecArctan,
     ),
     // csc(arctan(x)) → √(1+x²)/x
     (
         "csc",
         &["arctan", "atan"],
         Transform::SqrtOverX(Base::OnePlus),
-        "csc(arctan(x)) → √(1+x²)/x",
+        TrigInverseExpansionKind::CscArctan,
     ),
     // sec(arcsin(x)) → 1/√(1-x²)
     (
         "sec",
         &["arcsin", "asin"],
         Transform::OneOverSqrt(Base::OneMinus),
-        "sec(arcsin(x)) → 1/√(1-x²)",
+        TrigInverseExpansionKind::SecArcsin,
     ),
     // csc(arcsin(x)) → 1/x
     (
         "csc",
         &["arcsin", "asin"],
         Transform::OneOverX,
-        "csc(arcsin(x)) → 1/x",
+        TrigInverseExpansionKind::CscArcsin,
     ),
 ];
 
@@ -253,9 +271,9 @@ mod tests {
     fn expands_sin_arctan() {
         let mut ctx = Context::new();
         let x = parse("x", &mut ctx).expect("x");
-        let (expanded, desc) =
+        let (expanded, kind) =
             expand_trig_inverse_composition(&mut ctx, "sin", "arctan", x).expect("expanded");
-        assert_eq!(desc, "sin(arctan(x)) → x/√(1+x²)");
+        assert_eq!(kind, TrigInverseExpansionKind::SinArctan);
         let expected = parse("x/((x^2+1)^(1/2))", &mut ctx).expect("expected");
         let checker = crate::semantic_equality::SemanticEqualityChecker::new(&ctx);
         assert!(checker.are_equal(expanded, expected));
@@ -265,9 +283,9 @@ mod tests {
     fn expands_cos_arcsec() {
         let mut ctx = Context::new();
         let x = parse("x", &mut ctx).expect("x");
-        let (expanded, desc) =
+        let (expanded, kind) =
             expand_trig_inverse_composition(&mut ctx, "cos", "arcsec", x).expect("expanded");
-        assert_eq!(desc, "cos(arcsec(x)) → 1/x");
+        assert_eq!(kind, TrigInverseExpansionKind::CosArcsec);
         let expected = parse("1/x", &mut ctx).expect("expected");
         let checker = crate::semantic_equality::SemanticEqualityChecker::new(&ctx);
         assert!(checker.are_equal(expanded, expected));
@@ -286,6 +304,6 @@ mod tests {
         let mut ctx = Context::new();
         let expr = parse("cos(arctan(x))", &mut ctx).expect("expr");
         let rewrite = try_rewrite_trig_inverse_composition_expr(&mut ctx, expr).expect("rewrite");
-        assert_eq!(rewrite.desc, "cos(arctan(x)) → 1/√(1+x²)");
+        assert_eq!(rewrite.kind, TrigInverseExpansionKind::CosArctan);
     }
 }

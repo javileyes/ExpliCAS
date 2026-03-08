@@ -3,7 +3,9 @@
 use crate::define_rule;
 use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
-use cas_math::div_scalar_into_add_support::try_rewrite_div_scalar_into_add_expr;
+use cas_math::div_scalar_into_add_support::{
+    try_rewrite_div_scalar_into_add_expr, DivScalarIntoAddRewriteKind,
+};
 use cas_math::rationalize_single_surd_support::try_rewrite_rationalize_single_surd_expr;
 
 // ========== Light Rationalization for Single Numeric Surd Denominators ==========
@@ -48,9 +50,18 @@ define_rule!(
     importance: crate::step::ImportanceLevel::Medium,
     |ctx, expr| {
         let rewrite = try_rewrite_div_scalar_into_add_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc(format_div_scalar_into_add_desc(rewrite.kind)))
     }
 );
+
+fn format_div_scalar_into_add_desc(kind: DivScalarIntoAddRewriteKind) -> &'static str {
+    match kind {
+        DivScalarIntoAddRewriteKind::AllTermsCancel => "All terms cancel",
+        DivScalarIntoAddRewriteKind::FactorCommonCoefficientFromSum => {
+            "Factor common coefficient from sum"
+        }
+    }
+}
 
 fn format_rationalize_single_surd_desc(
     ctx: &cas_ast::Context,

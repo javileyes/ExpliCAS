@@ -8,7 +8,14 @@ use num_rational::BigRational;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ConstantRewrite {
     pub rewritten: ExprId,
-    pub desc: &'static str,
+    pub kind: ConstantRewriteKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConstantRewriteKind {
+    RecognizePhi,
+    PhiSquared,
+    PhiReciprocal,
 }
 
 /// Recognize `(1 + sqrt(5))/2` in division or product-with-half form.
@@ -25,7 +32,7 @@ pub fn try_rewrite_recognize_phi_expr(ctx: &mut Context, expr: ExprId) -> Option
             if matches_phi_sum {
                 return Some(ConstantRewrite {
                     rewritten: ctx.add(Expr::Constant(Constant::Phi)),
-                    desc: "(1 + √5)/2 = φ",
+                    kind: ConstantRewriteKind::RecognizePhi,
                 });
             }
         }
@@ -47,7 +54,7 @@ pub fn try_rewrite_recognize_phi_expr(ctx: &mut Context, expr: ExprId) -> Option
             if matches_phi_sum {
                 return Some(ConstantRewrite {
                     rewritten: ctx.add(Expr::Constant(Constant::Phi)),
-                    desc: "(1 + √5)/2 = φ",
+                    kind: ConstantRewriteKind::RecognizePhi,
                 });
             }
         }
@@ -72,7 +79,7 @@ pub fn try_rewrite_phi_squared_expr(ctx: &mut Context, expr: ExprId) -> Option<C
     let one = ctx.num(1);
     Some(ConstantRewrite {
         rewritten: ctx.add(Expr::Add(phi, one)),
-        desc: "φ² = φ + 1",
+        kind: ConstantRewriteKind::PhiSquared,
     })
 }
 
@@ -93,7 +100,7 @@ pub fn try_rewrite_phi_reciprocal_expr(ctx: &mut Context, expr: ExprId) -> Optio
     let neg_one = ctx.add(Expr::Neg(one));
     Some(ConstantRewrite {
         rewritten: ctx.add(Expr::Add(phi, neg_one)),
-        desc: "1/φ = φ - 1",
+        kind: ConstantRewriteKind::PhiReciprocal,
     })
 }
 

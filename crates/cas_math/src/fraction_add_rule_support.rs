@@ -11,14 +11,13 @@ use crate::fraction_sub_term_match_support::try_rewrite_sub_term_matches_denom_e
 #[derive(Clone, Debug)]
 pub struct FoldAddIntoFractionPlan {
     pub rewritten: ExprId,
-    pub desc: &'static str,
+    pub swapped: bool,
 }
 
 /// Planned rewrite for `a - b/a -> (a^2 - b)/a`.
 #[derive(Clone, Debug)]
 pub struct SubTermMatchesDenomPlan {
     pub rewritten: ExprId,
-    pub desc: &'static str,
 }
 
 /// Try planning fold-add into fraction rewrite for one `Add(l, r)` node.
@@ -47,12 +46,10 @@ pub fn try_plan_fold_add_into_fraction_rewrite(
     }
 
     let rewritten = try_build_fold_add_fraction_rewrite(ctx, expr, term, p, q)?;
-    let desc = if ops.swapped {
-        "Common denominator: p/q + k → (p + k·q)/q"
-    } else {
-        "Common denominator: k + p/q → (k·q + p)/q"
-    };
-    Some(FoldAddIntoFractionPlan { rewritten, desc })
+    Some(FoldAddIntoFractionPlan {
+        rewritten,
+        swapped: ops.swapped,
+    })
 }
 
 /// Try planning `a - b/a` denominator-match rewrite.
@@ -67,7 +64,6 @@ pub fn try_plan_sub_term_matches_denom_rewrite(
     let rewrite = try_rewrite_sub_term_matches_denom_expr(ctx, expr)?;
     Some(SubTermMatchesDenomPlan {
         rewritten: rewrite.rewritten,
-        desc: rewrite.desc,
     })
 }
 
@@ -102,7 +98,7 @@ mod tests {
 
         let plan = try_plan_fold_add_into_fraction_rewrite(&mut ctx, add, x, frac, false, false)
             .expect("plan");
-        assert_eq!(plan.desc, "Common denominator: k + p/q → (k·q + p)/q");
+        assert!(!plan.swapped);
     }
 
     #[test]

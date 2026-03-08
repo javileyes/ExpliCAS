@@ -38,17 +38,6 @@ pub enum DivExpandToCancelKind {
     ExpandedEquality,
 }
 
-impl DivExpandToCancelKind {
-    pub fn desc(self) -> &'static str {
-        match self {
-            DivExpandToCancelKind::OpaqueSubstitution => {
-                "Polynomial division with opaque substitution"
-            }
-            DivExpandToCancelKind::ExpandedEquality => "Expanded numerator equals denominator",
-        }
-    }
-}
-
 #[derive(Debug, Clone, Copy)]
 pub struct DivExpandToCancelRewrite {
     pub rewritten: ExprId,

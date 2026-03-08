@@ -8,7 +8,6 @@ use cas_ast::{Context, Expr, ExprId};
 #[derive(Debug, Clone, Copy)]
 pub struct SubTermMatchesDenomRewrite {
     pub rewritten: ExprId,
-    pub desc: &'static str,
 }
 
 /// Try to rewrite `a - b/a` (canonicalized as `a + -(b/a)`) to `(a^2 - b)/a`.
@@ -53,7 +52,6 @@ pub fn try_rewrite_sub_term_matches_denom_expr(
 
     Some(SubTermMatchesDenomRewrite {
         rewritten: new_expr,
-        desc: "Common denominator: a - b/a → (a² - b)/a",
     })
 }
 

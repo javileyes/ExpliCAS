@@ -15,16 +15,26 @@ use cas_math::trig_contraction_support::{
 };
 use cas_math::trig_half_angle_support::{
     try_rewrite_hyperbolic_half_angle_squares_expr, try_rewrite_trig_half_angle_squares_expr,
+    HalfAngleSquareRewriteKind,
 };
 
 // =============================================================================
+
+fn format_half_angle_square_desc(kind: HalfAngleSquareRewriteKind) -> &'static str {
+    match kind {
+        HalfAngleSquareRewriteKind::HyperbolicCosh => "cosh²(x/2) = (cosh(x)+1)/2",
+        HalfAngleSquareRewriteKind::HyperbolicSinh => "sinh²(x/2) = (cosh(x)-1)/2",
+        HalfAngleSquareRewriteKind::TrigSin => "sin²(x/2) = (1 - cos(x))/2",
+        HalfAngleSquareRewriteKind::TrigCos => "cos²(x/2) = (1 + cos(x))/2",
+    }
+}
 
 define_rule!(
     HyperbolicHalfAngleSquaresRule,
     "Hyperbolic Half-Angle Squares",
     |ctx, expr| {
         let rewrite = try_rewrite_hyperbolic_half_angle_squares_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc(format_half_angle_square_desc(rewrite.kind)))
     }
 );
 
@@ -52,7 +62,7 @@ impl crate::rule::Rule for TrigHalfAngleSquaresRule {
         _parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<crate::rule::Rewrite> {
         let rewrite = try_rewrite_trig_half_angle_squares_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc(format_half_angle_square_desc(rewrite.kind)))
     }
 
     fn allowed_phases(&self) -> crate::phase::PhaseMask {

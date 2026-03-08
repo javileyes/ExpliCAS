@@ -8,10 +8,11 @@ use crate::define_rule;
 use crate::rule::{ChainedRewrite, Rewrite};
 use cas_ast::Context;
 use cas_math::fraction_gcd_plan_support::try_plan_fraction_gcd_rewrite;
-use cas_math::fraction_mul_div_support::try_rewrite_simplify_mul_div_expr;
+use cas_math::fraction_mul_div_support::{try_rewrite_simplify_mul_div_expr, MulDivRewriteKind};
 use cas_math::fraction_power_cancel_support::{
     try_rewrite_cancel_identical_fraction_expr, try_rewrite_cancel_power_fraction_expr,
-    try_rewrite_cancel_same_base_powers_div_expr,
+    try_rewrite_cancel_same_base_powers_div_expr, CancelIdenticalFractionRewriteKind,
+    CancelPowerFractionRewriteKind, CancelSameBasePowersRewriteKind,
 };
 use cas_math::nested_fraction_support::try_rewrite_simplify_nested_fraction_expr;
 
@@ -20,6 +21,45 @@ fn format_factor_by_gcd_desc(ctx: &Context, gcd_expr: cas_ast::ExprId) -> String
         "Factor by GCD: {}",
         cas_formatter::render_expr(ctx, gcd_expr)
     )
+}
+
+fn format_mul_div_desc(kind: MulDivRewriteKind) -> &'static str {
+    match kind {
+        MulDivRewriteKind::CancelLeftFractionTimesDenominator => "Cancel division: (a/b)*b -> a",
+        MulDivRewriteKind::CancelRightFractionTimesDenominator => "Cancel division: a*(b/a) -> b",
+        MulDivRewriteKind::CombineFractionsInMultiplication => {
+            "Combine fractions in multiplication"
+        }
+    }
+}
+
+fn format_cancel_same_base_powers_desc(kind: CancelSameBasePowersRewriteKind) -> String {
+    match kind {
+        CancelSameBasePowersRewriteKind::EqualPowers => "Cancel: P^n/P^n -> 1".to_string(),
+        CancelSameBasePowersRewriteKind::CollapseToBase => "Cancel: P^n/P^m -> P".to_string(),
+        CancelSameBasePowersRewriteKind::CollapseToReciprocalBase => {
+            "Cancel: P^n/P^m -> 1/P".to_string()
+        }
+        CancelSameBasePowersRewriteKind::CollapseToPositivePower(diff) => {
+            format!("Cancel: P^n/P^m -> P^{diff}")
+        }
+        CancelSameBasePowersRewriteKind::CollapseToReciprocalPower(diff) => {
+            format!("Cancel: P^n/P^m -> 1/P^{diff}")
+        }
+    }
+}
+
+fn format_cancel_identical_fraction_desc(
+    _kind: CancelIdenticalFractionRewriteKind,
+) -> &'static str {
+    "Cancel: P/P -> 1"
+}
+
+fn format_cancel_power_fraction_desc(kind: CancelPowerFractionRewriteKind) -> &'static str {
+    match kind {
+        CancelPowerFractionRewriteKind::SameSign => "Cancel: P^n/P -> P^(n-1)",
+        CancelPowerFractionRewriteKind::NegatedDenominator => "Cancel: P^n/(-P) -> -P^(n-1)",
+    }
 }
 
 // ========== Micro-API for safe Mul construction ==========
@@ -60,7 +100,7 @@ define_rule!(
 
         Some(
             Rewrite::new(plan.rewritten)
-                .desc(plan.desc)
+                .desc(format_cancel_same_base_powers_desc(plan.kind))
                 .local(expr, plan.rewritten)
                 .requires(ImplicitCondition::NonZero(plan.nonzero_target))
                 .assume_all(decision.assumption_events(ctx, plan.nonzero_target)),
@@ -103,7 +143,7 @@ define_rule!(
 
         Some(
             Rewrite::new(plan.rewritten)
-                .desc(plan.desc)
+                .desc(format_cancel_identical_fraction_desc(plan.kind))
                 .local(expr, plan.rewritten)
                 .requires(ImplicitCondition::NonZero(plan.nonzero_target))
                 .assume_all(decision.assumption_events(ctx, plan.nonzero_target)),
@@ -141,7 +181,7 @@ define_rule!(
 
         Some(
             Rewrite::new(plan.rewritten)
-                .desc(plan.desc)
+                .desc(format_cancel_power_fraction_desc(plan.kind))
                 .local(expr, plan.rewritten)
                 .requires(ImplicitCondition::NonZero(plan.nonzero_target))
                 .assume_all(decision.assumption_events(ctx, plan.nonzero_target)),
@@ -249,7 +289,7 @@ define_rule!(
         let rewrite = try_rewrite_simplify_nested_fraction_expr(ctx, expr)?;
         Some(
             Rewrite::new(rewrite.rewritten)
-                .desc(rewrite.desc)
+                .desc("Simplify nested fraction")
                 .local(expr, rewrite.rewritten),
         )
     }
@@ -260,6 +300,6 @@ define_rule!(
     "Simplify Multiplication with Division",
     |ctx, expr| {
         let rewrite = try_rewrite_simplify_mul_div_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc(format_mul_div_desc(rewrite.kind)))
     }
 );

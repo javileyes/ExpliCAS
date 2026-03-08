@@ -6,7 +6,7 @@ use crate::fraction_add_heuristics_support::{
     assess_fraction_add_simplification, should_accept_fraction_add_rewrite,
     FractionAddAcceptanceInput,
 };
-use crate::fraction_trig_add_policy_support::try_plan_numeric_fraction_add_desc;
+use crate::fraction_trig_add_policy_support::should_allow_numeric_fraction_add_rewrite;
 use crate::fraction_zero_numerator_support::{
     build_zero_or_zero_over_den, numerator_simplifies_to_zero_with,
 };
@@ -90,9 +90,14 @@ where
     let new_complexity = count_nodes(ctx, rewritten);
 
     if matches!(ctx.get(d1), Expr::Number(_)) && matches!(ctx.get(d2), Expr::Number(_)) {
-        let desc =
-            try_plan_numeric_fraction_add_desc(ctx, input.l, input.r, d1, d2, input.inside_trig)?;
-        if desc == "Add numeric fractions" {
+        if should_allow_numeric_fraction_add_rewrite(
+            ctx,
+            input.l,
+            input.r,
+            d1,
+            d2,
+            input.inside_trig,
+        ) {
             return Some(AddFractionRewritePlan {
                 rewritten,
                 kind: AddFractionRewriteKind::NumericDenominators,

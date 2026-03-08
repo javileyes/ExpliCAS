@@ -141,7 +141,7 @@ impl crate::rule::Rule for ExpToEPowRule {
         }
 
         let rewrite = try_rewrite_exp_to_epow_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc("exp(x) = e^x"))
     }
 
     fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {

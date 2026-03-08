@@ -218,7 +218,6 @@ pub struct TrigSumToProductContractionRewrite {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TanDifferenceRewrite {
     pub rewritten: ExprId,
-    pub desc: &'static str,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -263,10 +262,7 @@ pub fn try_rewrite_tan_difference_expr(
     let denominator = ctx.add(Expr::Add(one, product));
 
     let rewritten = ctx.add(Expr::Div(numerator, denominator));
-    Some(TanDifferenceRewrite {
-        rewritten,
-        desc: "tan(a-b) = (tan(a)-tan(b))/(1+tan(a)·tan(b))",
-    })
+    Some(TanDifferenceRewrite { rewritten })
 }
 
 /// Plan the sum-to-product quotient rewrite:

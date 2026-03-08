@@ -18,7 +18,7 @@ define_rule!(
     PhaseMask::RATIONALIZE,
     |ctx, expr| {
         let rewrite = try_rewrite_rationalize_product_denominator_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc("Rationalize product denominator"))
     }
 );
 

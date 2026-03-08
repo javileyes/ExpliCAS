@@ -1,6 +1,8 @@
 use crate::define_rule;
 use crate::rule::Rewrite;
-use cas_math::trig_inverse_expansion_support::try_rewrite_trig_inverse_composition_expr;
+use cas_math::trig_inverse_expansion_support::{
+    try_rewrite_trig_inverse_composition_expr, TrigInverseExpansionKind,
+};
 
 // ========== Unified Rule ==========
 
@@ -13,9 +15,30 @@ define_rule!(
     ),
     |ctx, expr, _parent_ctx| {
         let rewrite = try_rewrite_trig_inverse_composition_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc(format_trig_inverse_expansion_desc(
+            rewrite.kind,
+        )))
     }
 );
+
+fn format_trig_inverse_expansion_desc(kind: TrigInverseExpansionKind) -> &'static str {
+    match kind {
+        TrigInverseExpansionKind::SinArctan => "sin(arctan(x)) → x/√(1+x²)",
+        TrigInverseExpansionKind::CosArctan => "cos(arctan(x)) → 1/√(1+x²)",
+        TrigInverseExpansionKind::TanArcsin => "tan(arcsin(x)) → x/√(1-x²)",
+        TrigInverseExpansionKind::CotArcsin => "cot(arcsin(x)) → √(1-x²)/x",
+        TrigInverseExpansionKind::CosArcsin => "cos(arcsin(x)) → √(1-x²)",
+        TrigInverseExpansionKind::SinArccos => "sin(arccos(x)) → √(1-x²)",
+        TrigInverseExpansionKind::SinArcsec => "sin(arcsec(x)) → √(x²-1)/x",
+        TrigInverseExpansionKind::CosArcsec => "cos(arcsec(x)) → 1/x",
+        TrigInverseExpansionKind::TanArccos => "tan(arccos(x)) → √(1-x²)/x",
+        TrigInverseExpansionKind::CotArccos => "cot(arccos(x)) → x/√(1-x²)",
+        TrigInverseExpansionKind::SecArctan => "sec(arctan(x)) → √(1+x²)",
+        TrigInverseExpansionKind::CscArctan => "csc(arctan(x)) → √(1+x²)/x",
+        TrigInverseExpansionKind::SecArcsin => "sec(arcsin(x)) → 1/√(1-x²)",
+        TrigInverseExpansionKind::CscArcsin => "csc(arcsin(x)) → 1/x",
+    }
+}
 
 // ========== Registration ==========
 

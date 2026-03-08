@@ -31,7 +31,14 @@ impl Default for ExpandCallPolicy {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ExpandCallRewrite {
     pub rewritten: ExprId,
-    pub desc: &'static str,
+    pub kind: ExpandCallRewriteKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExpandCallRewriteKind {
+    ModpFastPath,
+    Expand,
+    ExpandAtom,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -101,7 +108,7 @@ pub fn decide_expand_call_rewrite_with_policy(
             let rewritten = strip_all_holds(ctx, result);
             return Some(ExpandCallDecision::Rewrite(ExpandCallRewrite {
                 rewritten,
-                desc: "expand() [mod-p fast path]",
+                kind: ExpandCallRewriteKind::ModpFastPath,
             }));
         }
     }
@@ -111,12 +118,12 @@ pub fn decide_expand_call_rewrite_with_policy(
     if rewritten != expr {
         Some(ExpandCallDecision::Rewrite(ExpandCallRewrite {
             rewritten,
-            desc: "expand()",
+            kind: ExpandCallRewriteKind::Expand,
         }))
     } else {
         Some(ExpandCallDecision::Rewrite(ExpandCallRewrite {
             rewritten: arg,
-            desc: "expand(atom)",
+            kind: ExpandCallRewriteKind::ExpandAtom,
         }))
     }
 }
@@ -125,8 +132,8 @@ pub fn decide_expand_call_rewrite_with_policy(
 mod tests {
     use super::{
         decide_expand_call_rewrite_with_policy, try_plan_conservative_implicit_expand_expr,
-        ExpandCallDecision, ExpandCallPolicy, DEFAULT_EXPAND_MAX_MATERIALIZE_TERMS,
-        DEFAULT_EXPAND_MODP_THRESHOLD,
+        ExpandCallDecision, ExpandCallPolicy, ExpandCallRewriteKind,
+        DEFAULT_EXPAND_MAX_MATERIALIZE_TERMS, DEFAULT_EXPAND_MODP_THRESHOLD,
     };
     use cas_ast::Context;
     use cas_parser::parse;
@@ -146,7 +153,7 @@ mod tests {
         .expect("decision");
         match decision {
             ExpandCallDecision::Rewrite(rewrite) => {
-                assert_eq!(rewrite.desc, "expand()");
+                assert_eq!(rewrite.kind, ExpandCallRewriteKind::Expand);
                 assert_eq!(cas_formatter::render_expr(&ctx, rewrite.rewritten), "x");
             }
             other => panic!("expected rewrite, got {other:?}"),

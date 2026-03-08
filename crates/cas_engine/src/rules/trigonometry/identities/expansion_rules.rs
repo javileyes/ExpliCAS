@@ -4,8 +4,17 @@ use crate::define_rule;
 use crate::rule::Rewrite;
 use cas_math::trig_multi_angle_support::{
     should_block_double_angle_expr_with_context, try_rewrite_double_angle_function_expr,
+    TrigMultiAngleRewriteKind,
 };
 use cas_math::trig_sum_product_support::try_rewrite_trig_sum_to_product_expr;
+
+fn format_double_angle_desc(kind: TrigMultiAngleRewriteKind) -> &'static str {
+    match kind {
+        TrigMultiAngleRewriteKind::DoubleSin => "sin(2x) -> 2sin(x)cos(x)",
+        TrigMultiAngleRewriteKind::DoubleCos => "cos(2x) -> cos^2(x) - sin^2(x)",
+        _ => unreachable!("non-double-angle rewrite in DoubleAngleRule"),
+    }
+}
 
 // =============================================================================
 // STANDALONE SUM-TO-PRODUCT RULE
@@ -46,6 +55,6 @@ define_rule!(
         }
 
         let rewrite = try_rewrite_double_angle_function_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc(format_double_angle_desc(rewrite.kind)))
     }
 );

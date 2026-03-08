@@ -174,7 +174,6 @@ pub fn try_match_perfect_square_trinomial(
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SqrtPerfectSquareRewrite {
     pub rewritten: ExprId,
-    pub desc: &'static str,
 }
 
 /// Rewrite sqrt of perfect-square trinomials:
@@ -208,10 +207,7 @@ pub fn try_rewrite_sqrt_perfect_square_expr(
         ctx.add(Expr::Add(a, b))
     };
     let rewritten = ctx.call_builtin(cas_ast::BuiltinFn::Abs, vec![inner]);
-    Some(SqrtPerfectSquareRewrite {
-        rewritten,
-        desc: "sqrt(A^2 ± 2AB + B^2) = |A ± B|",
-    })
+    Some(SqrtPerfectSquareRewrite { rewritten })
 }
 
 fn check_middle_term_2ab(

@@ -21,7 +21,6 @@ use num_traits::ToPrimitive;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RationalizeDiffSquaresRewrite {
     pub rewritten: ExprId,
-    pub desc: &'static str,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -63,7 +62,6 @@ pub struct SqrtConjugateCollapseRewrite {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RationalizeProductDenominatorRewrite {
     pub rewritten: ExprId,
-    pub desc: &'static str,
 }
 
 /// Try to rationalize a binomial denominator with square roots using difference of squares.
@@ -120,10 +118,7 @@ pub fn try_rewrite_rationalize_denominator_diff_squares_expr(
     let new_den = ctx.add(Expr::Sub(l_sq, r_sq));
 
     let rewritten = ctx.add(Expr::Div(new_num, new_den));
-    Some(RationalizeDiffSquaresRewrite {
-        rewritten,
-        desc: "Rationalize denominator (diff squares)",
-    })
+    Some(RationalizeDiffSquaresRewrite { rewritten })
 }
 
 fn ordinal(n: u32) -> &'static str {
@@ -472,10 +467,7 @@ pub fn try_rewrite_rationalize_product_denominator_expr(
 
         let new_num = mul2_raw(ctx, num, root);
         let rewritten = ctx.add(Expr::Div(new_num, radicand));
-        return Some(RationalizeProductDenominatorRewrite {
-            rewritten,
-            desc: "Rationalize: multiply by √n/√n",
-        });
+        return Some(RationalizeProductDenominatorRewrite { rewritten });
     }
 
     if let Some((radicand, _index)) = extract_root_base(ctx, root) {
@@ -504,10 +496,7 @@ pub fn try_rewrite_rationalize_product_denominator_expr(
     }
 
     let rewritten = ctx.add(Expr::Div(new_num, new_den));
-    Some(RationalizeProductDenominatorRewrite {
-        rewritten,
-        desc: "Rationalize product denominator",
-    })
+    Some(RationalizeProductDenominatorRewrite { rewritten })
 }
 
 /// Match and build `sqrt(A) * B -> sqrt(B)` when `A` and `B` are conjugates.
@@ -657,7 +646,6 @@ mod tests {
         assert!(fp.is_fraction());
         let (_, den, _) = fp.to_num_den(&mut ctx);
         assert!(!contains_irrational(&ctx, den));
-        assert_eq!(rewrite.desc, "Rationalize denominator (diff squares)");
     }
 
     #[test]
@@ -730,7 +718,6 @@ mod tests {
         let expr = parse("1/(x*sqrt(y))", &mut ctx).expect("parse");
         let rewrite = try_rewrite_rationalize_product_denominator_expr(&mut ctx, expr)
             .expect("product-den rationalization should apply");
-        assert_eq!(rewrite.desc, "Rationalize product denominator");
         let rendered = cas_formatter::render_expr(&ctx, rewrite.rewritten);
         assert!(rendered.contains("sqrt(y)") || rendered.contains("y^(1/2)"));
     }

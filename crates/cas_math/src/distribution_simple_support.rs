@@ -6,7 +6,6 @@ use cas_ast::{Context, Expr, ExprId};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SimpleDistributionRewrite {
     pub rewritten: ExprId,
-    pub desc: &'static str,
 }
 
 /// Rewrite one-step multiplicative distribution:
@@ -25,20 +24,14 @@ pub fn try_rewrite_simple_mul_distribution_expr(
     if matches!(ctx.get(right), Expr::Add(_, _) | Expr::Sub(_, _)) {
         let rewritten = distribute(ctx, right, left);
         if rewritten != expr {
-            return Some(SimpleDistributionRewrite {
-                rewritten,
-                desc: "Distribute (RHS)",
-            });
+            return Some(SimpleDistributionRewrite { rewritten });
         }
     }
 
     if matches!(ctx.get(left), Expr::Add(_, _) | Expr::Sub(_, _)) {
         let rewritten = distribute(ctx, left, right);
         if rewritten != expr {
-            return Some(SimpleDistributionRewrite {
-                rewritten,
-                desc: "Distribute (LHS)",
-            });
+            return Some(SimpleDistributionRewrite { rewritten });
         }
     }
 
@@ -56,7 +49,6 @@ mod tests {
         let mut ctx = Context::new();
         let expr = parse("a*(b+c)", &mut ctx).expect("parse");
         let rewrite = try_rewrite_simple_mul_distribution_expr(&mut ctx, expr).expect("rewrite");
-        assert_eq!(rewrite.desc, "Distribute (RHS)");
         assert!(matches!(ctx.get(rewrite.rewritten), Expr::Add(_, _)));
     }
 
@@ -65,7 +57,6 @@ mod tests {
         let mut ctx = Context::new();
         let expr = parse("(b-c)*a", &mut ctx).expect("parse");
         let rewrite = try_rewrite_simple_mul_distribution_expr(&mut ctx, expr).expect("rewrite");
-        assert!(rewrite.desc == "Distribute (LHS)" || rewrite.desc == "Distribute (RHS)");
         assert!(matches!(
             ctx.get(rewrite.rewritten),
             Expr::Add(_, _) | Expr::Sub(_, _)

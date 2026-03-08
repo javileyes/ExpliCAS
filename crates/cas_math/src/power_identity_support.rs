@@ -7,12 +7,6 @@ use num_traits::One;
 use num_traits::{Signed, Zero};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct PowerIdentityRewrite {
-    pub rewritten: ExprId,
-    pub desc: &'static str,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PowerIdentityPolicyPattern {
     /// `x^0` with optional literal-zero base detection (`0^0`).
     PowZero {
@@ -66,12 +60,9 @@ pub enum PowZeroPolicyDecision {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PowZeroPolicyAction {
     /// `0^0` case.
-    RewriteToUndefined { desc: &'static str },
+    RewriteToUndefined,
     /// Rewrite to `1`; caller may emit assumptions.
-    RewriteToOne {
-        desc: &'static str,
-        assume_nonzero: bool,
-    },
+    RewriteToOne { assume_nonzero: bool },
     /// Keep expression as-is.
     NoRewrite,
 }
@@ -90,7 +81,7 @@ pub enum ZeroPowNumericPolicyDecision {
 /// Planned rewrite action for the `0^x` branch.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ZeroPowPolicyAction {
-    RewriteToZero { desc: &'static str },
+    RewriteToZero,
     NoRewrite,
     NeedsPositiveCondition,
 }
@@ -98,26 +89,17 @@ pub enum ZeroPowPolicyAction {
 /// Try always-safe identities:
 /// - `x^1 -> x`
 /// - `1^x -> 1`
-pub fn try_rewrite_pow_one_or_one_pow_expr(
-    ctx: &mut Context,
-    expr: ExprId,
-) -> Option<PowerIdentityRewrite> {
+pub fn try_rewrite_pow_one_or_one_pow_expr(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
     let (base, exp) = as_pow(ctx, expr)?;
     if let Expr::Number(n) = ctx.get(exp) {
         if n.is_one() {
-            return Some(PowerIdentityRewrite {
-                rewritten: base,
-                desc: "x^1 -> x",
-            });
+            return Some(base);
         }
     }
 
     if let Expr::Number(n) = ctx.get(base) {
         if n.is_one() {
-            return Some(PowerIdentityRewrite {
-                rewritten: ctx.num(1),
-                desc: "1^x -> 1",
-            });
+            return Some(ctx.num(1));
         }
     }
 
@@ -190,7 +172,7 @@ pub fn decide_pow_zero_policy(
     }
 }
 
-/// Plan the full `x^0` rewrite action (policy + description text).
+/// Plan the full `x^0` rewrite action.
 pub fn plan_pow_zero_policy_action(
     mode: PowerIdentityDomainMode,
     base_is_literal_zero: bool,
@@ -203,19 +185,9 @@ pub fn plan_pow_zero_policy_action(
         base_is_numeric_literal,
         base_nonzero_proof,
     ) {
-        PowZeroPolicyDecision::RewriteToUndefined => PowZeroPolicyAction::RewriteToUndefined {
-            desc: "0^0 -> undefined",
-        },
+        PowZeroPolicyDecision::RewriteToUndefined => PowZeroPolicyAction::RewriteToUndefined,
         PowZeroPolicyDecision::RewriteToOne { assume_nonzero } => {
-            let desc = match mode {
-                PowerIdentityDomainMode::Strict => "x^0 -> 1 (x ≠ 0 proven)",
-                PowerIdentityDomainMode::Generic => "x^0 -> 1",
-                PowerIdentityDomainMode::Assume => "x^0 -> 1 (assuming x ≠ 0)",
-            };
-            PowZeroPolicyAction::RewriteToOne {
-                desc,
-                assume_nonzero,
-            }
+            PowZeroPolicyAction::RewriteToOne { assume_nonzero }
         }
         PowZeroPolicyDecision::NoRewrite => PowZeroPolicyAction::NoRewrite,
     }
@@ -258,9 +230,7 @@ pub fn plan_zero_pow_policy_action(
     exp_is_numeric_non_positive: bool,
 ) -> ZeroPowPolicyAction {
     match decide_zero_pow_numeric_policy(exp_is_numeric_positive, exp_is_numeric_non_positive) {
-        ZeroPowNumericPolicyDecision::RewriteToZero => ZeroPowPolicyAction::RewriteToZero {
-            desc: "0^n -> 0 (n > 0)",
-        },
+        ZeroPowNumericPolicyDecision::RewriteToZero => ZeroPowPolicyAction::RewriteToZero,
         ZeroPowNumericPolicyDecision::NoRewrite => ZeroPowPolicyAction::NoRewrite,
         ZeroPowNumericPolicyDecision::NeedsPositiveCondition => {
             ZeroPowPolicyAction::NeedsPositiveCondition
@@ -395,9 +365,7 @@ mod tests {
     fn plan_zero_pow_policy_action_maps_numeric_routes() {
         assert_eq!(
             plan_zero_pow_policy_action(true, false),
-            ZeroPowPolicyAction::RewriteToZero {
-                desc: "0^n -> 0 (n > 0)"
-            }
+            ZeroPowPolicyAction::RewriteToZero
         );
         assert_eq!(
             plan_zero_pow_policy_action(false, true),
@@ -420,7 +388,6 @@ mod tests {
         assert_eq!(
             action,
             PowZeroPolicyAction::RewriteToOne {
-                desc: "x^0 -> 1",
                 assume_nonzero: true
             }
         );
@@ -434,12 +401,7 @@ mod tests {
             true,
             TriProof::Unknown,
         );
-        assert_eq!(
-            action,
-            PowZeroPolicyAction::RewriteToUndefined {
-                desc: "0^0 -> undefined"
-            }
-        );
+        assert_eq!(action, PowZeroPolicyAction::RewriteToUndefined);
     }
 
     #[test]

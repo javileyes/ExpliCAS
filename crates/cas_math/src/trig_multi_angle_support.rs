@@ -21,7 +21,23 @@ use std::cmp::Ordering;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TrigMultiAngleRewrite {
     pub rewritten: ExprId,
-    pub desc: &'static str,
+    pub kind: TrigMultiAngleRewriteKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TrigMultiAngleRewriteKind {
+    TripleSin,
+    TripleCos,
+    TripleTan,
+    DoubleSin,
+    DoubleCos,
+    QuintupleSin,
+    QuintupleCos,
+    TripleContractionSin,
+    TripleContractionCos,
+    CanonicalizeCosSquared,
+    CanonicalizeCosEvenPower,
+    HalfAngleExpansion,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -79,7 +95,7 @@ pub fn try_rewrite_triple_angle_expr(
             let rewritten = ctx.add(Expr::Sub(term1, term2));
             Some(TrigMultiAngleRewrite {
                 rewritten,
-                desc: "sin(3x) → 3sin(x) - 4sin³(x)",
+                kind: TrigMultiAngleRewriteKind::TripleSin,
             })
         }
         Some(BuiltinFn::Cos) => {
@@ -94,7 +110,7 @@ pub fn try_rewrite_triple_angle_expr(
             let rewritten = ctx.add(Expr::Sub(term1, term2));
             Some(TrigMultiAngleRewrite {
                 rewritten,
-                desc: "cos(3x) → 4cos³(x) - 3cos(x)",
+                kind: TrigMultiAngleRewriteKind::TripleCos,
             })
         }
         Some(BuiltinFn::Tan) => {
@@ -115,7 +131,7 @@ pub fn try_rewrite_triple_angle_expr(
             let rewritten = ctx.add(Expr::Div(numer, denom));
             Some(TrigMultiAngleRewrite {
                 rewritten,
-                desc: "tan(3x) → (3tan(x) - tan³(x))/(1 - 3tan²(x))",
+                kind: TrigMultiAngleRewriteKind::TripleTan,
             })
         }
         _ => None,
@@ -150,7 +166,7 @@ pub fn try_rewrite_double_angle_function_expr(
             let rewritten = smart_mul(ctx, two, sin_cos);
             Some(TrigMultiAngleRewrite {
                 rewritten,
-                desc: "sin(2x) -> 2sin(x)cos(x)",
+                kind: TrigMultiAngleRewriteKind::DoubleSin,
             })
         }
         Some(BuiltinFn::Cos) => {
@@ -163,7 +179,7 @@ pub fn try_rewrite_double_angle_function_expr(
             let rewritten = ctx.add(Expr::Sub(cos2, sin2));
             Some(TrigMultiAngleRewrite {
                 rewritten,
-                desc: "cos(2x) -> cos^2(x) - sin^2(x)",
+                kind: TrigMultiAngleRewriteKind::DoubleCos,
             })
         }
         _ => None,
@@ -250,7 +266,7 @@ pub fn try_rewrite_quintuple_angle_expr(
             let rewritten = ctx.add(Expr::Add(sub1, term3));
             Some(TrigMultiAngleRewrite {
                 rewritten,
-                desc: "sin(5x) → 16sin⁵(x) - 20sin³(x) + 5sin(x)",
+                kind: TrigMultiAngleRewriteKind::QuintupleSin,
             })
         }
         Some(BuiltinFn::Cos) => {
@@ -270,7 +286,7 @@ pub fn try_rewrite_quintuple_angle_expr(
             let rewritten = ctx.add(Expr::Add(sub1, term3));
             Some(TrigMultiAngleRewrite {
                 rewritten,
-                desc: "cos(5x) → 16cos⁵(x) - 20cos³(x) + 5cos(x)",
+                kind: TrigMultiAngleRewriteKind::QuintupleCos,
             })
         }
         _ => None,
@@ -419,16 +435,16 @@ pub fn try_rewrite_triple_angle_contraction_expr(
                 smart_mul(ctx, scale_id, contracted)
             };
 
-            let desc = match t1.builtin {
-                BuiltinFn::Sin => "3sin(θ)−4sin³(θ) → sin(3θ)",
-                BuiltinFn::Cos => "4cos³(θ)−3cos(θ) → cos(3θ)",
-                _ => "triple angle contraction",
+            let kind = match t1.builtin {
+                BuiltinFn::Sin => TrigMultiAngleRewriteKind::TripleContractionSin,
+                BuiltinFn::Cos => TrigMultiAngleRewriteKind::TripleContractionCos,
+                _ => continue,
             };
 
             if signed_terms.len() == 2 {
                 return Some(TrigMultiAngleRewrite {
                     rewritten: scaled,
-                    desc,
+                    kind,
                 });
             }
 
@@ -450,7 +466,7 @@ pub fn try_rewrite_triple_angle_contraction_expr(
             }
             return Some(TrigMultiAngleRewrite {
                 rewritten: acc,
-                desc,
+                kind,
             });
         }
     }
@@ -494,7 +510,7 @@ pub fn try_rewrite_canonicalize_trig_square_pow_expr(
     if half_n.is_one() {
         return Some(TrigMultiAngleRewrite {
             rewritten: base_term,
-            desc: "cos^2(x) -> 1 - sin^2(x)",
+            kind: TrigMultiAngleRewriteKind::CanonicalizeCosSquared,
         });
     }
 
@@ -502,7 +518,7 @@ pub fn try_rewrite_canonicalize_trig_square_pow_expr(
     let rewritten = ctx.add(Expr::Pow(base_term, half_n_expr));
     Some(TrigMultiAngleRewrite {
         rewritten,
-        desc: "cos^2k(x) -> (1 - sin^2(x))^k",
+        kind: TrigMultiAngleRewriteKind::CanonicalizeCosEvenPower,
     })
 }
 
@@ -610,7 +626,7 @@ pub fn try_rewrite_angle_consistency_expr(
             if rewritten != expr {
                 return Some(TrigMultiAngleRewrite {
                     rewritten,
-                    desc: "Half-Angle Expansion",
+                    kind: TrigMultiAngleRewriteKind::HalfAngleExpansion,
                 });
             }
         }

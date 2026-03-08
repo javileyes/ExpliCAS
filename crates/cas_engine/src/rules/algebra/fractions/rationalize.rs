@@ -1,5 +1,13 @@
 use crate::define_rule;
 use crate::rule::Rewrite;
+use cas_math::pull_constant_from_fraction_support::PullConstantFromFractionKind;
+
+fn format_pull_constant_from_fraction_desc(kind: PullConstantFromFractionKind) -> &'static str {
+    match kind {
+        PullConstantFromFractionKind::PullConstant => "Pull constant from numerator",
+        PullConstantFromFractionKind::PullNegation => "Pull negation from numerator",
+    }
+}
 
 // =============================================================================
 // DivAddCommonFactorFromDenRule: Factor out MULTI-FACTOR from Add numerator
@@ -100,6 +108,25 @@ define_rule!(
 
 // Atomized rule for quotient of powers: a^n / a^m = a^(n-m)
 // This is separated from CancelCommonFactorsRule for pedagogical clarity
+fn format_quotient_of_powers_desc(
+    kind: cas_math::quotient_of_powers_support::QuotientOfPowersRewriteKind,
+) -> &'static str {
+    match kind {
+        cas_math::quotient_of_powers_support::QuotientOfPowersRewriteKind::EqualPowers => {
+            "a^n / a^n = 1"
+        }
+        cas_math::quotient_of_powers_support::QuotientOfPowersRewriteKind::PowOverPow => {
+            "a^n / a^m = a^(n-m)"
+        }
+        cas_math::quotient_of_powers_support::QuotientOfPowersRewriteKind::PowOverBase => {
+            "a^n / a = a^(n-1)"
+        }
+        cas_math::quotient_of_powers_support::QuotientOfPowersRewriteKind::BaseOverPow => {
+            "a / a^m = a^(1-m)"
+        }
+    }
+}
+
 define_rule!(
     QuotientOfPowersRule,
     "Quotient of Powers",
@@ -126,7 +153,7 @@ define_rule!(
             },
         )?;
 
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc(format_quotient_of_powers_desc(rewrite.kind)))
     }
 );
 
@@ -138,7 +165,10 @@ define_rule!(
             cas_math::pull_constant_from_fraction_support::try_rewrite_pull_constant_from_fraction_expr(
                 ctx, expr,
             )?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(
+            Rewrite::new(rewrite.rewritten)
+                .desc(format_pull_constant_from_fraction_desc(rewrite.kind)),
+        )
     }
 );
 
@@ -178,6 +208,19 @@ define_rule!(
     DivExpandToCancelRule,
     "Expand to Cancel Fraction",
     |ctx, expr| {
+        fn format_div_expand_cancel_desc(
+            kind: cas_math::div_expand_cancel_support::DivExpandToCancelKind,
+        ) -> &'static str {
+            match kind {
+                cas_math::div_expand_cancel_support::DivExpandToCancelKind::OpaqueSubstitution => {
+                    "Polynomial division with opaque substitution"
+                }
+                cas_math::div_expand_cancel_support::DivExpandToCancelKind::ExpandedEquality => {
+                    "Expanded numerator equals denominator"
+                }
+            }
+        }
+
         let rewrite = cas_math::div_expand_cancel_support::try_rewrite_div_expand_to_cancel_expr_with_thread_guards(
             ctx,
             expr,
@@ -197,6 +240,6 @@ define_rule!(
             },
         )?;
 
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.kind.desc()))
+        Some(Rewrite::new(rewrite.rewritten).desc(format_div_expand_cancel_desc(rewrite.kind)))
     }
 );

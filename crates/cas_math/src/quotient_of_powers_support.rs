@@ -9,7 +9,15 @@ use std::cmp::Ordering;
 #[derive(Debug, Clone, Copy)]
 pub struct QuotientOfPowersRewrite {
     pub rewritten: ExprId,
-    pub desc: &'static str,
+    pub kind: QuotientOfPowersRewriteKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum QuotientOfPowersRewriteKind {
+    EqualPowers,
+    PowOverPow,
+    PowOverBase,
+    BaseOverPow,
 }
 
 /// Try to rewrite fractional-exponent quotient-of-powers patterns.
@@ -51,12 +59,12 @@ where
                     }
                     return Some(QuotientOfPowersRewrite {
                         rewritten: ctx.num(1),
-                        desc: "a^n / a^n = 1",
+                        kind: QuotientOfPowersRewriteKind::EqualPowers,
                     });
                 } else if diff.is_one() {
                     return Some(QuotientOfPowersRewrite {
                         rewritten: b_n,
-                        desc: "a^n / a^m = a^(n-m)",
+                        kind: QuotientOfPowersRewriteKind::PowOverPow,
                     });
                 } else {
                     if diff < num_rational::BigRational::zero() && !diff.is_integer() {
@@ -65,7 +73,7 @@ where
                     let new_exp = ctx.add(Expr::Number(diff));
                     return Some(QuotientOfPowersRewrite {
                         rewritten: ctx.add(Expr::Pow(b_n, new_exp)),
-                        desc: "a^n / a^m = a^(n-m)",
+                        kind: QuotientOfPowersRewriteKind::PowOverPow,
                     });
                 }
             }
@@ -83,13 +91,13 @@ where
                     if new_exp_val.is_one() {
                         return Some(QuotientOfPowersRewrite {
                             rewritten: b_n,
-                            desc: "a^n / a = a^(n-1)",
+                            kind: QuotientOfPowersRewriteKind::PowOverBase,
                         });
                     } else {
                         let new_exp = ctx.add(Expr::Number(new_exp_val));
                         return Some(QuotientOfPowersRewrite {
                             rewritten: ctx.add(Expr::Pow(b_n, new_exp)),
-                            desc: "a^n / a = a^(n-1)",
+                            kind: QuotientOfPowersRewriteKind::PowOverBase,
                         });
                     }
                 }
@@ -108,7 +116,7 @@ where
                     let new_exp = ctx.add(Expr::Number(new_exp_val));
                     return Some(QuotientOfPowersRewrite {
                         rewritten: ctx.add(Expr::Pow(num, new_exp)),
-                        desc: "a / a^m = a^(1-m)",
+                        kind: QuotientOfPowersRewriteKind::BaseOverPow,
                     });
                 }
             }

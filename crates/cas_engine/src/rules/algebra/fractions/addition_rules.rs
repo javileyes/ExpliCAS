@@ -53,6 +53,18 @@ fn format_sub_fraction_desc(
     }
 }
 
+fn format_fold_add_into_fraction_desc(swapped: bool) -> &'static str {
+    if swapped {
+        "Common denominator: p/q + k → (p + k·q)/q"
+    } else {
+        "Common denominator: k + p/q → (k·q + p)/q"
+    }
+}
+
+fn format_sub_term_matches_denom_desc() -> &'static str {
+    "Common denominator: a - b/a → (a² - b)/a"
+}
+
 // =============================================================================
 // Fold Add Into Fraction: k + p/q → (k·q + p)/q
 // =============================================================================
@@ -89,7 +101,7 @@ define_rule!(
 
         let plan =
             try_plan_fold_add_into_fraction_rewrite(ctx, expr, l, r, inside_trig, inside_fraction)?;
-        Some(Rewrite::new(plan.rewritten).desc(plan.desc))
+        Some(Rewrite::new(plan.rewritten).desc(format_fold_add_into_fraction_desc(plan.swapped)))
     }
 );
 
@@ -116,7 +128,7 @@ define_rule!(
             matches!(c.get(node_id), Expr::Function(fn_id, _) if is_trig_function(c, *fn_id))
         });
         let plan = try_plan_sub_term_matches_denom_rewrite(ctx, expr, inside_trig)?;
-        Some(Rewrite::new(plan.rewritten).desc(plan.desc))
+        Some(Rewrite::new(plan.rewritten).desc(format_sub_term_matches_denom_desc()))
     }
 );
 

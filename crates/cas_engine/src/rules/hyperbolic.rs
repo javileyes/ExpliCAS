@@ -1,5 +1,6 @@
 use crate::define_rule;
 use crate::rule::Rewrite;
+use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use cas_math::hyperbolic_core_support::{
     try_eval_hyperbolic_special_value, try_rewrite_hyperbolic_composition,
 };
@@ -12,6 +13,85 @@ use cas_math::hyperbolic_identity_support::{
 };
 use cas_math::hyperbolic_negative_support::try_rewrite_hyperbolic_negative_expr;
 
+fn format_hyperbolic_negative_desc(
+    kind: cas_math::hyperbolic_negative_support::HyperbolicNegativeRewriteKind,
+) -> &'static str {
+    match kind {
+        cas_math::hyperbolic_negative_support::HyperbolicNegativeRewriteKind::SinhExplicitNeg => {
+            "sinh(-x) = -sinh(x)"
+        }
+        cas_math::hyperbolic_negative_support::HyperbolicNegativeRewriteKind::CoshExplicitNeg => {
+            "cosh(-x) = cosh(x)"
+        }
+        cas_math::hyperbolic_negative_support::HyperbolicNegativeRewriteKind::TanhExplicitNeg => {
+            "tanh(-x) = -tanh(x)"
+        }
+        cas_math::hyperbolic_negative_support::HyperbolicNegativeRewriteKind::AsinhExplicitNeg => {
+            "asinh(-x) = -asinh(x)"
+        }
+        cas_math::hyperbolic_negative_support::HyperbolicNegativeRewriteKind::AtanhExplicitNeg => {
+            "atanh(-x) = -atanh(x)"
+        }
+        cas_math::hyperbolic_negative_support::HyperbolicNegativeRewriteKind::SinhCanonicalSub => {
+            "sinh(a−b) = −sinh(b−a)"
+        }
+        cas_math::hyperbolic_negative_support::HyperbolicNegativeRewriteKind::CoshCanonicalSub => {
+            "cosh(a−b) = cosh(b−a)"
+        }
+        cas_math::hyperbolic_negative_support::HyperbolicNegativeRewriteKind::TanhCanonicalSub => {
+            "tanh(a−b) = −tanh(b−a)"
+        }
+        cas_math::hyperbolic_negative_support::HyperbolicNegativeRewriteKind::AsinhCanonicalSub => {
+            "asinh(a−b) = −asinh(b−a)"
+        }
+        cas_math::hyperbolic_negative_support::HyperbolicNegativeRewriteKind::AtanhCanonicalSub => {
+            "atanh(a−b) = −atanh(b−a)"
+        }
+    }
+}
+
+fn format_hyperbolic_special_value_desc(ctx: &Context, expr: ExprId) -> Option<&'static str> {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return None;
+    };
+    if args.len() != 1 {
+        return None;
+    }
+    match ctx.builtin_of(*fn_id) {
+        Some(BuiltinFn::Sinh) => Some("sinh(0) = 0"),
+        Some(BuiltinFn::Tanh) => Some("tanh(0) = 0"),
+        Some(BuiltinFn::Cosh) => Some("cosh(0) = 1"),
+        Some(BuiltinFn::Asinh) => Some("asinh(0) = 0"),
+        Some(BuiltinFn::Atanh) => Some("atanh(0) = 0"),
+        Some(BuiltinFn::Acosh) => Some("acosh(1) = 0"),
+        _ => None,
+    }
+}
+
+fn format_hyperbolic_composition_desc(ctx: &Context, expr: ExprId) -> Option<&'static str> {
+    let Expr::Function(outer_fn, outer_args) = ctx.get(expr) else {
+        return None;
+    };
+    if outer_args.len() != 1 {
+        return None;
+    }
+    let Expr::Function(inner_fn, inner_args) = ctx.get(outer_args[0]) else {
+        return None;
+    };
+    if inner_args.len() != 1 {
+        return None;
+    }
+    match (ctx.builtin_of(*outer_fn), ctx.builtin_of(*inner_fn)) {
+        (Some(BuiltinFn::Sinh), Some(BuiltinFn::Asinh)) => Some("sinh(asinh(x)) = x"),
+        (Some(BuiltinFn::Cosh), Some(BuiltinFn::Acosh)) => Some("cosh(acosh(x)) = x"),
+        (Some(BuiltinFn::Tanh), Some(BuiltinFn::Atanh)) => Some("tanh(atanh(x)) = x"),
+        (Some(BuiltinFn::Asinh), Some(BuiltinFn::Sinh)) => Some("asinh(sinh(x)) = x"),
+        (Some(BuiltinFn::Acosh), Some(BuiltinFn::Cosh)) => Some("acosh(cosh(x)) = x"),
+        (Some(BuiltinFn::Atanh), Some(BuiltinFn::Tanh)) => Some("atanh(tanh(x)) = x"),
+        _ => None,
+    }
+}
+
 // ==================== Hyperbolic Function Rules ====================
 
 // Rule 1: Evaluate hyperbolic functions at special values
@@ -21,7 +101,7 @@ define_rule!(
     Some(crate::target_kind::TargetKindSet::FUNCTION),
     |ctx, expr| {
         let rewrite = try_eval_hyperbolic_special_value(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc(format_hyperbolic_special_value_desc(ctx, expr)?))
     }
 );
 
@@ -36,7 +116,7 @@ define_rule!(
     ),
     |ctx, expr, _parent_ctx| {
         let rewrite = try_rewrite_hyperbolic_composition(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc(format_hyperbolic_composition_desc(ctx, expr)?))
     }
 );
 
@@ -49,7 +129,7 @@ define_rule!(
     Some(crate::target_kind::TargetKindSet::FUNCTION),
     |ctx, expr| {
         let rewrite = try_rewrite_hyperbolic_negative_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc(format_hyperbolic_negative_desc(rewrite.kind)))
     }
 );
 

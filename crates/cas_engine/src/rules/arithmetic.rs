@@ -163,7 +163,7 @@ define_rule!(
             return None;
         }
 
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc("a - a = 0"))
     }
 );
 
@@ -193,7 +193,7 @@ define_rule!(AddInverseRule, "Add Inverse", |ctx, expr, parent_ctx| {
     // V2.12.13: No assumption events - the division conditions are already
     // tracked as Requires from the original Div operations.
     // Adding "a is defined" here is redundant and clutters the output.
-    Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+    Some(Rewrite::new(rewrite.rewritten).desc("a + (-a) = 0"))
 });
 
 // Simplify sums of fractions in exponents: x^(1/2 + 1/3) → x^(5/6)

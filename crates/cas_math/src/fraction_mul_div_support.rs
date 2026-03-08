@@ -6,9 +6,16 @@ use cas_ast::views::{Factor, FractionParts};
 use cas_ast::{Context, Expr, ExprId};
 
 #[derive(Debug, Clone, Copy)]
+pub enum MulDivRewriteKind {
+    CancelLeftFractionTimesDenominator,
+    CancelRightFractionTimesDenominator,
+    CombineFractionsInMultiplication,
+}
+
+#[derive(Debug, Clone, Copy)]
 pub struct MulDivRewrite {
     pub rewritten: ExprId,
-    pub desc: &'static str,
+    pub kind: MulDivRewriteKind,
 }
 
 /// Simplify multiplication expressions that include fraction-like factors.
@@ -42,7 +49,7 @@ pub fn try_rewrite_simplify_mul_div_expr(ctx: &mut Context, expr: ExprId) -> Opt
             };
             return Some(MulDivRewrite {
                 rewritten,
-                desc: "Cancel division: (a/b)*b -> a",
+                kind: MulDivRewriteKind::CancelLeftFractionTimesDenominator,
             });
         }
     }
@@ -62,7 +69,7 @@ pub fn try_rewrite_simplify_mul_div_expr(ctx: &mut Context, expr: ExprId) -> Opt
             };
             return Some(MulDivRewrite {
                 rewritten,
-                desc: "Cancel division: a*(b/a) -> b",
+                kind: MulDivRewriteKind::CancelRightFractionTimesDenominator,
             });
         }
     }
@@ -112,7 +119,7 @@ pub fn try_rewrite_simplify_mul_div_expr(ctx: &mut Context, expr: ExprId) -> Opt
             if new_expr != expr {
                 return Some(MulDivRewrite {
                     rewritten: new_expr,
-                    desc: "Combine fractions in multiplication",
+                    kind: MulDivRewriteKind::CombineFractionsInMultiplication,
                 });
             }
         }
@@ -176,7 +183,7 @@ pub fn try_rewrite_simplify_mul_div_expr(ctx: &mut Context, expr: ExprId) -> Opt
 
         return Some(MulDivRewrite {
             rewritten: new_expr,
-            desc: "Combine fractions in multiplication",
+            kind: MulDivRewriteKind::CombineFractionsInMultiplication,
         });
     }
 

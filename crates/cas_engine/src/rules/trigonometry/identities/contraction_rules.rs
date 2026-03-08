@@ -8,7 +8,7 @@ use cas_ast::ExprId;
 use cas_math::trig_contraction_support::{
     should_block_double_angle_contraction_for_marks, try_rewrite_angle_sum_fraction_to_tan_expr,
     try_rewrite_cos2x_additive_contraction_expr, try_rewrite_double_angle_contraction_expr,
-    try_rewrite_half_angle_tangent_div_expr,
+    try_rewrite_half_angle_tangent_div_expr, HalfAngleTangentRewriteKind,
 };
 
 // =============================================================================
@@ -31,6 +31,13 @@ use cas_math::trig_contraction_support::{
 // Uses SoundnessLabel::EquivalenceUnderIntroducedRequires
 pub struct HalfAngleTangentRule;
 
+fn format_half_angle_tangent_desc(kind: HalfAngleTangentRewriteKind) -> &'static str {
+    match kind {
+        HalfAngleTangentRewriteKind::OneMinusCosOverSin => "(1 - cos(2x))/sin(2x) = tan(x)",
+        HalfAngleTangentRewriteKind::SinOverOnePlusCos => "sin(2x)/(1 + cos(2x)) = tan(x)",
+    }
+}
+
 impl crate::rule::Rule for HalfAngleTangentRule {
     fn name(&self) -> &str {
         "Half-Angle Tangent Identity"
@@ -50,7 +57,7 @@ impl crate::rule::Rule for HalfAngleTangentRule {
         let rewrite = try_rewrite_half_angle_tangent_div_expr(ctx, expr)?;
         Some(
             Rewrite::new(rewrite.rewritten)
-                .desc(rewrite.desc)
+                .desc(format_half_angle_tangent_desc(rewrite.kind))
                 .requires(ImplicitCondition::NonZero(rewrite.inherited_nonzero))
                 .requires(ImplicitCondition::NonZero(rewrite.required_nonzero)),
         )

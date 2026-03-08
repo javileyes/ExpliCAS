@@ -17,7 +17,14 @@ pub struct PowerEvalRewrite {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PowerEvalStaticRewrite {
     pub rewritten: ExprId,
-    pub desc: &'static str,
+    pub kind: PowerEvalStaticRewriteKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PowerEvalStaticRewriteKind {
+    NegativeExponentNormalization,
+    NegativeBaseEven,
+    NegativeBaseOdd,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -25,7 +32,6 @@ pub struct EvenPowSubSwapRewrite {
     pub rewritten: ExprId,
     pub old_base: ExprId,
     pub new_base: ExprId,
-    pub desc: &'static str,
 }
 
 /// Try `x^(-n) -> 1/x^n` for integer negative exponents.
@@ -43,7 +49,7 @@ pub fn try_rewrite_negative_exponent_normalization_expr(
             let rewritten = ctx.add(Expr::Div(one, pos_pow));
             return Some(PowerEvalStaticRewrite {
                 rewritten,
-                desc: "x^(-n) -> 1/x^n",
+                kind: PowerEvalStaticRewriteKind::NegativeExponentNormalization,
             });
         }
     }
@@ -65,14 +71,14 @@ pub fn try_rewrite_negative_base_power_expr(
                 let rewritten = ctx.add(Expr::Pow(inner, exp));
                 return Some(PowerEvalStaticRewrite {
                     rewritten,
-                    desc: "(-x)^even -> x^even",
+                    kind: PowerEvalStaticRewriteKind::NegativeBaseEven,
                 });
             }
             let pow = ctx.add(Expr::Pow(inner, exp));
             let rewritten = ctx.add(Expr::Neg(pow));
             return Some(PowerEvalStaticRewrite {
                 rewritten,
-                desc: "(-x)^odd -> -(x^odd)",
+                kind: PowerEvalStaticRewriteKind::NegativeBaseOdd,
             });
         }
     }
@@ -120,7 +126,6 @@ pub fn try_rewrite_even_pow_sub_swap_expr(
         rewritten,
         old_base: base,
         new_base,
-        desc: "For even exponent: (a-b)² = (b-a)², normalize for cancellation",
     })
 }
 

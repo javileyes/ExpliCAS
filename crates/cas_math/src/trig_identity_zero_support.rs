@@ -15,7 +15,15 @@ pub struct TanDifferenceIdentityMatch {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct IdentityZeroRewrite {
-    pub desc: &'static str,
+    pub kind: IdentityZeroRewriteKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IdentityZeroRewriteKind {
+    WeierstrassSin,
+    WeierstrassCos,
+    TanDifference,
+    Sin4x,
 }
 
 fn is_trig_squared_t(ctx: &Context, expr: ExprId, trig: BuiltinFn, t: ExprId) -> bool {
@@ -171,7 +179,7 @@ pub fn try_rewrite_tan_difference_identity_zero_expr(
 ) -> Option<IdentityZeroRewrite> {
     let _ = match_tan_difference_identity_expr(ctx, expr)?;
     Some(IdentityZeroRewrite {
-        desc: "tan(a-b) = (tan(a)-tan(b))/(1+tan(a)·tan(b))",
+        kind: IdentityZeroRewriteKind::TanDifference,
     })
 }
 
@@ -330,7 +338,7 @@ pub fn try_rewrite_sin4x_identity_zero_expr(
         return None;
     }
     Some(IdentityZeroRewrite {
-        desc: "sin(4t) = 4·sin(t)·cos(t)·(cos²(t)-sin²(t))",
+        kind: IdentityZeroRewriteKind::Sin4x,
     })
 }
 
@@ -384,7 +392,7 @@ mod tests {
         let mut ctx = Context::new();
         let expr = parse("tan(a-b) - (tan(a)-tan(b))/(1 + tan(a)*tan(b))", &mut ctx).expect("expr");
         let rewrite = try_rewrite_tan_difference_identity_zero_expr(&ctx, expr).expect("rewrite");
-        assert_eq!(rewrite.desc, "tan(a-b) = (tan(a)-tan(b))/(1+tan(a)·tan(b))");
+        assert_eq!(rewrite.kind, IdentityZeroRewriteKind::TanDifference);
     }
 
     #[test]
@@ -410,6 +418,6 @@ mod tests {
         let mut ctx = Context::new();
         let expr = parse("sin(4*t) - 4*sin(t)*cos(t)*(cos(t)^2-sin(t)^2)", &mut ctx).expect("expr");
         let rewrite = try_rewrite_sin4x_identity_zero_expr(&ctx, expr).expect("rewrite");
-        assert_eq!(rewrite.desc, "sin(4t) = 4·sin(t)·cos(t)·(cos²(t)-sin²(t))");
+        assert_eq!(rewrite.kind, IdentityZeroRewriteKind::Sin4x);
     }
 }

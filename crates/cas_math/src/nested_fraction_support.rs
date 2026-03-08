@@ -11,7 +11,6 @@ use cas_ast::{Context, Expr, ExprId};
 #[derive(Debug, Clone, Copy)]
 pub struct NestedFractionRewrite {
     pub rewritten: ExprId,
-    pub desc: &'static str,
 }
 
 /// Try to simplify nested fractions by clearing inner denominators.
@@ -66,7 +65,6 @@ pub fn try_rewrite_simplify_nested_fraction_expr(
 
     Some(NestedFractionRewrite {
         rewritten: new_expr,
-        desc: "Simplify nested fraction",
     })
 }
 

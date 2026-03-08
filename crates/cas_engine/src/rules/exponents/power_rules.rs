@@ -4,6 +4,22 @@ use crate::rule::Rewrite;
 use cas_ast::Context;
 use cas_ast::ExprId;
 
+fn format_power_eval_static_desc(
+    kind: cas_math::power_eval_support::PowerEvalStaticRewriteKind,
+) -> &'static str {
+    match kind {
+        cas_math::power_eval_support::PowerEvalStaticRewriteKind::NegativeExponentNormalization => {
+            "x^(-n) -> 1/x^n"
+        }
+        cas_math::power_eval_support::PowerEvalStaticRewriteKind::NegativeBaseEven => {
+            "(-x)^even -> x^even"
+        }
+        cas_math::power_eval_support::PowerEvalStaticRewriteKind::NegativeBaseOdd => {
+            "(-x)^odd -> -(x^odd)"
+        }
+    }
+}
+
 const ROOT_CANCEL_ASSUME_SUGGESTION: &str =
     "Use 'semantics set domain assume' to simplify (x^n)^(1/n) → x.";
 
@@ -325,12 +341,12 @@ define_rule!(
     "Normalize Negative Exponent",
     importance: crate::step::ImportanceLevel::Low,
     |ctx, expr| {
-        let rewrite =
-            cas_math::power_eval_support::try_rewrite_negative_exponent_normalization_expr(
-                ctx, expr,
-            )?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
-    }
+    let rewrite =
+        cas_math::power_eval_support::try_rewrite_negative_exponent_normalization_expr(
+            ctx, expr,
+        )?;
+    Some(Rewrite::new(rewrite.rewritten).desc(format_power_eval_static_desc(rewrite.kind)))
+}
 );
 
 define_rule!(EvaluatePowerRule, "Evaluate Numeric Power", importance: crate::step::ImportanceLevel::Low, |ctx, expr| {

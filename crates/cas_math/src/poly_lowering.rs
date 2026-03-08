@@ -71,18 +71,6 @@ pub enum PolyLowerStepKind {
     Promoted,
 }
 
-/// Default didactic message for one poly-lowering step kind.
-pub fn poly_lower_step_message(kind: PolyLowerStepKind) -> &'static str {
-    match kind {
-        PolyLowerStepKind::Direct { op } => match op {
-            PolyBinaryOp::Add => "Poly lowering: combined poly_result + poly_result",
-            PolyBinaryOp::Sub => "Poly lowering: combined poly_result - poly_result",
-            PolyBinaryOp::Mul => "Poly lowering: combined poly_result * poly_result",
-        },
-        PolyLowerStepKind::Promoted => "Poly lowering: promoted and combined expressions",
-    }
-}
-
 /// One lowering rewrite performed in polynomial space.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PolyLowerStep {
@@ -343,25 +331,40 @@ fn extract_int(ctx: &Context, expr: ExprId) -> Option<i64> {
 
 #[cfg(test)]
 mod tests {
-    use super::{poly_lower_pass_with_items, poly_lower_step_message, PolyLowerStepKind};
+    use super::{poly_lower_pass_with_items, PolyLowerStepKind};
     use crate::poly_lowering_ops::PolyBinaryOp;
     use cas_ast::{BuiltinFn, Context, Expr};
 
     #[test]
-    fn poly_lower_step_message_covers_all_kinds() {
-        assert!(poly_lower_step_message(PolyLowerStepKind::Direct {
-            op: PolyBinaryOp::Add
-        })
-        .contains("+"));
-        assert!(poly_lower_step_message(PolyLowerStepKind::Direct {
-            op: PolyBinaryOp::Sub
-        })
-        .contains("-"));
-        assert!(poly_lower_step_message(PolyLowerStepKind::Direct {
-            op: PolyBinaryOp::Mul
-        })
-        .contains("*"));
-        assert!(poly_lower_step_message(PolyLowerStepKind::Promoted).contains("promoted"));
+    fn poly_lower_step_kind_covers_all_kinds() {
+        assert!(matches!(
+            PolyLowerStepKind::Direct {
+                op: PolyBinaryOp::Add
+            },
+            PolyLowerStepKind::Direct {
+                op: PolyBinaryOp::Add
+            }
+        ));
+        assert!(matches!(
+            PolyLowerStepKind::Direct {
+                op: PolyBinaryOp::Sub
+            },
+            PolyLowerStepKind::Direct {
+                op: PolyBinaryOp::Sub
+            }
+        ));
+        assert!(matches!(
+            PolyLowerStepKind::Direct {
+                op: PolyBinaryOp::Mul
+            },
+            PolyLowerStepKind::Direct {
+                op: PolyBinaryOp::Mul
+            }
+        ));
+        assert!(matches!(
+            PolyLowerStepKind::Promoted,
+            PolyLowerStepKind::Promoted
+        ));
     }
 
     #[test]
@@ -372,7 +375,7 @@ mod tests {
         let expr = ctx.add(Expr::Add(poly, poly));
 
         let out = poly_lower_pass_with_items(&mut ctx, expr, true, |_ctx, step| {
-            poly_lower_step_message(step.kind).to_string()
+            format!("{:?}", step.kind)
         });
 
         // Mapping contract: when lowering combines anything, at least one

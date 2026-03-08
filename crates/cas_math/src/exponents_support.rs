@@ -34,7 +34,6 @@ pub fn has_numeric_factor(ctx: &Context, expr: ExprId) -> bool {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ExpToEPowRewrite {
     pub rewritten: ExprId,
-    pub desc: &'static str,
 }
 
 /// Rewrite `exp(x)` to `e^x`.
@@ -49,10 +48,7 @@ pub fn try_rewrite_exp_to_epow_expr(ctx: &mut Context, expr: ExprId) -> Option<E
     let arg = args[0];
     let e = ctx.add(Expr::Constant(cas_ast::Constant::E));
     let rewritten = ctx.add(Expr::Pow(e, arg));
-    Some(ExpToEPowRewrite {
-        rewritten,
-        desc: "exp(x) = e^x",
-    })
+    Some(ExpToEPowRewrite { rewritten })
 }
 
 #[cfg(test)]

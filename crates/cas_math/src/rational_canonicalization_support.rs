@@ -8,7 +8,6 @@ use num_traits::Zero;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RationalCanonicalizationRewrite {
     pub rewritten: ExprId,
-    pub desc: &'static str,
 }
 
 /// Rewrite `Div(Number(p), Number(q)) -> Number(p/q)` when denominator is non-zero.
@@ -28,10 +27,7 @@ pub fn try_rewrite_rational_div_canonical_expr(
     }
 
     let rewritten = ctx.add(Expr::Number(&p / &q));
-    Some(RationalCanonicalizationRewrite {
-        rewritten,
-        desc: "p / q = p/q (exact rational)",
-    })
+    Some(RationalCanonicalizationRewrite { rewritten })
 }
 
 /// Rewrite `Pow(Pow(base, k), r) -> Pow(base, k*r)` when domain-safe in reals.
@@ -66,10 +62,7 @@ pub fn try_rewrite_nested_pow_canonical_expr(
 
     let new_exp = ctx.add(Expr::Number(&k * &r));
     let rewritten = ctx.add(Expr::Pow(inner_base, new_exp));
-    Some(RationalCanonicalizationRewrite {
-        rewritten,
-        desc: "(x^k)^r = x^(k·r)",
-    })
+    Some(RationalCanonicalizationRewrite { rewritten })
 }
 
 #[cfg(test)]
@@ -84,7 +77,6 @@ mod tests {
         let six = ctx.num(6);
         let expr = ctx.add(Expr::Div(five, six));
         let rewrite = try_rewrite_rational_div_canonical_expr(&mut ctx, expr).expect("rewrite");
-        assert_eq!(rewrite.desc, "p / q = p/q (exact rational)");
         match ctx.get(rewrite.rewritten) {
             Expr::Number(n) => assert_eq!(n.to_string(), "5/6"),
             got => panic!("expected number, got {:?}", got),
@@ -109,7 +101,6 @@ mod tests {
         let half = ctx.rational(1, 2);
         let expr = ctx.add(Expr::Pow(inner, half));
         let rewrite = try_rewrite_nested_pow_canonical_expr(&mut ctx, expr).expect("rewrite");
-        assert_eq!(rewrite.desc, "(x^k)^r = x^(k·r)");
         match ctx.get(rewrite.rewritten) {
             Expr::Pow(_, exp) => match ctx.get(*exp) {
                 Expr::Number(n) => assert_eq!(n.to_string(), "3/2"),

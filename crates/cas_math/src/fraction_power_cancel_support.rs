@@ -17,21 +17,41 @@ use cas_ast::{Context, Expr, ExprId};
 pub struct CancelSameBasePowersRewrite {
     pub rewritten: ExprId,
     pub nonzero_target: ExprId,
-    pub desc: String,
+    pub kind: CancelSameBasePowersRewriteKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CancelSameBasePowersRewriteKind {
+    EqualPowers,
+    CollapseToBase,
+    CollapseToReciprocalBase,
+    CollapseToPositivePower(i64),
+    CollapseToReciprocalPower(i64),
 }
 
 #[derive(Debug, Clone)]
 pub struct CancelIdenticalFractionRewrite {
     pub rewritten: ExprId,
     pub nonzero_target: ExprId,
-    pub desc: &'static str,
+    pub kind: CancelIdenticalFractionRewriteKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CancelIdenticalFractionRewriteKind {
+    IdenticalFraction,
 }
 
 #[derive(Debug, Clone)]
 pub struct CancelPowerFractionRewrite {
     pub rewritten: ExprId,
     pub nonzero_target: ExprId,
-    pub desc: &'static str,
+    pub kind: CancelPowerFractionRewriteKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CancelPowerFractionRewriteKind {
+    SameSign,
+    NegatedDenominator,
 }
 
 /// Try to rewrite `P^m / P^n` into a simpler power form (integer exponents).
@@ -54,18 +74,24 @@ pub fn try_rewrite_cancel_same_base_powers_div_expr(
     }
 
     let diff = m - n;
-    let (rewritten, desc) = if diff == 0 {
-        (ctx.num(1), format!("Cancel: P^{}/P^{} -> 1", m, n))
+    let (rewritten, kind) = if diff == 0 {
+        (ctx.num(1), CancelSameBasePowersRewriteKind::EqualPowers)
     } else if diff == 1 {
-        (base_num, format!("Cancel: P^{}/P^{} -> P", m, n))
+        (base_num, CancelSameBasePowersRewriteKind::CollapseToBase)
     } else if diff == -1 {
         let one = ctx.num(1);
         let rewritten = ctx.add(Expr::Div(one, base_num));
-        (rewritten, format!("Cancel: P^{}/P^{} -> 1/P", m, n))
+        (
+            rewritten,
+            CancelSameBasePowersRewriteKind::CollapseToReciprocalBase,
+        )
     } else if diff > 0 {
         let new_exp = ctx.num(diff);
         let rewritten = ctx.add(Expr::Pow(base_num, new_exp));
-        (rewritten, format!("Cancel: P^{}/P^{} -> P^{}", m, n, diff))
+        (
+            rewritten,
+            CancelSameBasePowersRewriteKind::CollapseToPositivePower(diff),
+        )
     } else {
         let pos_diff = -diff;
         let new_exp = ctx.num(pos_diff);
@@ -74,14 +100,14 @@ pub fn try_rewrite_cancel_same_base_powers_div_expr(
         let rewritten = ctx.add(Expr::Div(one, pow_result));
         (
             rewritten,
-            format!("Cancel: P^{}/P^{} -> 1/P^{}", m, n, pos_diff),
+            CancelSameBasePowersRewriteKind::CollapseToReciprocalPower(pos_diff),
         )
     };
 
     Some(CancelSameBasePowersRewrite {
         rewritten,
         nonzero_target: base_num,
-        desc,
+        kind,
     })
 }
 
@@ -98,7 +124,7 @@ pub fn try_rewrite_cancel_identical_fraction_expr(
     Some(CancelIdenticalFractionRewrite {
         rewritten: ctx.num(1),
         nonzero_target: den,
-        desc: "Cancel: P/P -> 1",
+        kind: CancelIdenticalFractionRewriteKind::IdenticalFraction,
     })
 }
 
@@ -125,18 +151,18 @@ pub fn try_rewrite_cancel_power_fraction_expr(
         ctx.add(Expr::Pow(base, new_exp))
     };
 
-    let (rewritten, desc) = match relation {
-        SignRelation::Same => (base_result, "Cancel: P^n/P -> P^(n-1)"),
+    let (rewritten, kind) = match relation {
+        SignRelation::Same => (base_result, CancelPowerFractionRewriteKind::SameSign),
         SignRelation::Negated => {
             let negated = ctx.add(Expr::Neg(base_result));
-            (negated, "Cancel: P^n/(-P) -> -P^(n-1)")
+            (negated, CancelPowerFractionRewriteKind::NegatedDenominator)
         }
     };
 
     Some(CancelPowerFractionRewrite {
         rewritten,
         nonzero_target: den,
-        desc,
+        kind,
     })
 }
 

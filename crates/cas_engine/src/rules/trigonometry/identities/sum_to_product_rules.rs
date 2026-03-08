@@ -6,10 +6,18 @@ use crate::rules::trigonometry::{evaluation, pythagorean, pythagorean_secondary}
 use cas_ast::ExprId;
 use cas_math::trig_multi_angle_support::{
     try_plan_dyadic_cos_product_with_policy, try_rewrite_angle_consistency_expr,
+    TrigMultiAngleRewriteKind,
 };
 
 fn format_dyadic_cos_product_desc(n: u32) -> String {
     format!("2^{n}·∏cos(2^k·θ) = sin(2^{n}·θ)/sin(θ)")
+}
+
+fn format_angle_consistency_desc(kind: TrigMultiAngleRewriteKind) -> &'static str {
+    match kind {
+        TrigMultiAngleRewriteKind::HalfAngleExpansion => "Half-Angle Expansion",
+        _ => unreachable!("non-angle-consistency rewrite in AngleConsistencyRule"),
+    }
 }
 
 // Import rules from parent module (still defined in include!() files)
@@ -259,6 +267,6 @@ define_rule!(
     "Angle Consistency (Half-Angle)",
     |ctx, expr| {
         let rewrite = try_rewrite_angle_consistency_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc(format_angle_consistency_desc(rewrite.kind)))
     }
 );

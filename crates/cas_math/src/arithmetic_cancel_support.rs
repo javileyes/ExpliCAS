@@ -7,7 +7,6 @@ use cas_ast::{Context, Expr, ExprId};
 pub struct ArithmeticCancelRewrite {
     pub rewritten: ExprId,
     pub inner: ExprId,
-    pub desc: &'static str,
 }
 
 /// Match `a - a` using semantic equality.
@@ -59,7 +58,6 @@ pub fn try_rewrite_sub_self_zero_expr(
     Some(ArithmeticCancelRewrite {
         rewritten: ctx.num(0),
         inner,
-        desc: "a - a = 0",
     })
 }
 
@@ -72,7 +70,6 @@ pub fn try_rewrite_add_inverse_zero_expr(
     Some(ArithmeticCancelRewrite {
         rewritten: ctx.num(0),
         inner,
-        desc: "a + (-a) = 0",
     })
 }
 

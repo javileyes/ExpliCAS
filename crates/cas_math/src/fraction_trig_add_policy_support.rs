@@ -26,21 +26,21 @@ pub fn should_block_numeric_fraction_add_inside_trig(
     (l_is_pi && !r_is_const) || (r_is_pi && !l_is_const)
 }
 
-/// Return description for numeric-denominator addition rewrite when allowed.
+/// True when a numeric-denominator addition rewrite is allowed.
 ///
-/// Returns `None` when denominators are not both numeric, or when trig-aware
+/// Returns `false` when denominators are not both numeric, or when trig-aware
 /// blocking policy says to preserve the original structure.
-pub fn try_plan_numeric_fraction_add_desc(
+pub fn should_allow_numeric_fraction_add_rewrite(
     ctx: &Context,
     l: ExprId,
     r: ExprId,
     d1: ExprId,
     d2: ExprId,
     inside_trig: bool,
-) -> Option<&'static str> {
+) -> bool {
     let is_numeric = |e: ExprId| matches!(ctx.get(e), Expr::Number(_));
     if !is_numeric(d1) || !is_numeric(d2) {
-        return None;
+        return false;
     }
 
     let l_is_const = is_constant_expr(ctx, l);
@@ -54,16 +54,16 @@ pub fn try_plan_numeric_fraction_add_desc(
         l_is_pi,
         r_is_pi,
     ) {
-        return None;
+        return false;
     }
 
-    Some("Add numeric fractions")
+    true
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        should_block_numeric_fraction_add_inside_trig, try_plan_numeric_fraction_add_desc,
+        should_allow_numeric_fraction_add_rewrite, should_block_numeric_fraction_add_inside_trig,
     };
     use cas_ast::Context;
     use cas_parser::parse;
@@ -99,8 +99,9 @@ mod tests {
         let r = parse("pi/6", &mut ctx).expect("parse");
         let d1 = parse("2", &mut ctx).expect("parse");
         let d2 = parse("3", &mut ctx).expect("parse");
-        let got = try_plan_numeric_fraction_add_desc(&ctx, l, r, d1, d2, false);
-        assert_eq!(got, Some("Add numeric fractions"));
+        assert!(should_allow_numeric_fraction_add_rewrite(
+            &ctx, l, r, d1, d2, false
+        ));
     }
 
     #[test]
@@ -110,7 +111,8 @@ mod tests {
         let r = parse("pi/6", &mut ctx).expect("parse");
         let d1 = parse("2", &mut ctx).expect("parse");
         let d2 = parse("3", &mut ctx).expect("parse");
-        let got = try_plan_numeric_fraction_add_desc(&ctx, l, r, d1, d2, true);
-        assert_eq!(got, None);
+        assert!(!should_allow_numeric_fraction_add_rewrite(
+            &ctx, l, r, d1, d2, true
+        ));
     }
 }

@@ -4,9 +4,15 @@ use crate::build::mul2_raw;
 use cas_ast::{Context, Expr, ExprId};
 
 #[derive(Debug, Clone, Copy)]
+pub enum PullConstantFromFractionKind {
+    PullConstant,
+    PullNegation,
+}
+
+#[derive(Debug, Clone, Copy)]
 pub struct PullConstantFromFractionRewrite {
     pub rewritten: ExprId,
-    pub desc: &'static str,
+    pub kind: PullConstantFromFractionKind,
 }
 
 /// Rewrite:
@@ -41,14 +47,14 @@ pub fn try_rewrite_pull_constant_from_fraction_expr(
             let div = ctx.add(Expr::Div(r, d));
             return Some(PullConstantFromFractionRewrite {
                 rewritten: mul2_raw(ctx, l, div),
-                desc: "Pull constant from numerator",
+                kind: PullConstantFromFractionKind::PullConstant,
             });
         }
         if r_is_const {
             let div = ctx.add(Expr::Div(l, d));
             return Some(PullConstantFromFractionRewrite {
                 rewritten: mul2_raw(ctx, r, div),
-                desc: "Pull constant from numerator",
+                kind: PullConstantFromFractionKind::PullConstant,
             });
         }
     }
@@ -58,7 +64,7 @@ pub fn try_rewrite_pull_constant_from_fraction_expr(
         let div = ctx.add(Expr::Div(inner, d));
         return Some(PullConstantFromFractionRewrite {
             rewritten: mul2_raw(ctx, minus_one, div),
-            desc: "Pull negation from numerator",
+            kind: PullConstantFromFractionKind::PullNegation,
         });
     }
 

@@ -19,6 +19,25 @@ fn to_math_auto_expand_budget(
     }
 }
 
+fn poly_lower_step_message(kind: cas_math::poly_lowering::PolyLowerStepKind) -> &'static str {
+    match kind {
+        cas_math::poly_lowering::PolyLowerStepKind::Direct { op } => match op {
+            cas_math::poly_lowering_ops::PolyBinaryOp::Add => {
+                "Poly lowering: combined poly_result + poly_result"
+            }
+            cas_math::poly_lowering_ops::PolyBinaryOp::Sub => {
+                "Poly lowering: combined poly_result - poly_result"
+            }
+            cas_math::poly_lowering_ops::PolyBinaryOp::Mul => {
+                "Poly lowering: combined poly_result * poly_result"
+            }
+        },
+        cas_math::poly_lowering::PolyLowerStepKind::Promoted => {
+            "Poly lowering: promoted and combined expressions"
+        }
+    }
+}
+
 fn run_poly_lower_pass(
     ctx: &mut Context,
     expr: ExprId,
@@ -27,7 +46,7 @@ fn run_poly_lower_pass(
     let out =
         poly_lowering::poly_lower_pass_with_items(ctx, expr, collect_steps, |core_ctx, step| {
             Step::new(
-                poly_lowering::poly_lower_step_message(step.kind),
+                poly_lower_step_message(step.kind),
                 "Polynomial Combination",
                 step.before,
                 step.after,

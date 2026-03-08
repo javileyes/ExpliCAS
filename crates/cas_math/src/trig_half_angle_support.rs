@@ -5,13 +5,27 @@ use std::cmp::Ordering;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HalfAngleSquareRewrite {
     pub rewritten: ExprId,
-    pub desc: &'static str,
+    pub kind: HalfAngleSquareRewriteKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HalfAngleSquareRewriteKind {
+    HyperbolicCosh,
+    HyperbolicSinh,
+    TrigSin,
+    TrigCos,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CotHalfAngleDifferenceRewrite {
     pub rewritten: ExprId,
-    pub desc: &'static str,
+    pub kind: CotHalfAngleDifferenceRewriteKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CotHalfAngleDifferenceRewriteKind {
+    Positive,
+    Negative,
 }
 
 /// Check if `arg` represents `u/2` and return `u`.
@@ -196,10 +210,13 @@ pub fn try_rewrite_cot_half_angle_difference_expr(
             let sin_u = ctx.call_builtin(BuiltinFn::Sin, vec![t_full.arg]);
             let base = ctx.add(Expr::Div(one, sin_u));
 
-            let (result, desc) = if t_half.is_positive && !t_full.is_positive {
-                (base, "cot(u/2) - cot(u) = 1/sin(u)")
+            let (result, kind) = if t_half.is_positive && !t_full.is_positive {
+                (base, CotHalfAngleDifferenceRewriteKind::Positive)
             } else if !t_half.is_positive && t_full.is_positive {
-                (ctx.add(Expr::Neg(base)), "-cot(u/2) + cot(u) = -1/sin(u)")
+                (
+                    ctx.add(Expr::Neg(base)),
+                    CotHalfAngleDifferenceRewriteKind::Negative,
+                )
             } else {
                 continue;
             };
@@ -213,7 +230,7 @@ pub fn try_rewrite_cot_half_angle_difference_expr(
             if is_explicit_sub && terms.len() == 2 {
                 return Some(CotHalfAngleDifferenceRewrite {
                     rewritten: final_result,
-                    desc,
+                    kind,
                 });
             }
 
@@ -232,7 +249,7 @@ pub fn try_rewrite_cot_half_angle_difference_expr(
 
             return Some(CotHalfAngleDifferenceRewrite {
                 rewritten: new_expr,
-                desc,
+                kind,
             });
         }
     }
@@ -288,14 +305,14 @@ pub fn try_rewrite_hyperbolic_half_angle_squares_expr(
         let rewritten = ctx.add(Expr::Mul(half, sum));
         Some(HalfAngleSquareRewrite {
             rewritten,
-            desc: "cosh²(x/2) = (cosh(x)+1)/2",
+            kind: HalfAngleSquareRewriteKind::HyperbolicCosh,
         })
     } else {
         let diff = ctx.add(Expr::Sub(cosh_x, one));
         let rewritten = ctx.add(Expr::Mul(half, diff));
         Some(HalfAngleSquareRewrite {
             rewritten,
-            desc: "sinh²(x/2) = (cosh(x)-1)/2",
+            kind: HalfAngleSquareRewriteKind::HyperbolicSinh,
         })
     }
 }
@@ -349,14 +366,14 @@ pub fn try_rewrite_trig_half_angle_squares_expr(
         let rewritten = ctx.add(Expr::Mul(half, diff));
         Some(HalfAngleSquareRewrite {
             rewritten,
-            desc: "sin²(x/2) = (1 - cos(x))/2",
+            kind: HalfAngleSquareRewriteKind::TrigSin,
         })
     } else {
         let sum = ctx.add(Expr::Add(one, cos_x));
         let rewritten = ctx.add(Expr::Mul(half, sum));
         Some(HalfAngleSquareRewrite {
             rewritten,
-            desc: "cos²(x/2) = (1 + cos(x))/2",
+            kind: HalfAngleSquareRewriteKind::TrigCos,
         })
     }
 }

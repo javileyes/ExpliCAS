@@ -8,7 +8,26 @@ use cas_math::trig_multi_angle_support::{
     should_block_high_order_trig_expansion_expr, try_rewrite_canonicalize_trig_square_pow_expr,
     try_rewrite_quintuple_angle_expr, try_rewrite_recursive_trig_expansion_expr,
     try_rewrite_triple_angle_contraction_expr, try_rewrite_triple_angle_expr,
+    TrigMultiAngleRewriteKind,
 };
+
+fn format_trig_multi_angle_desc(kind: TrigMultiAngleRewriteKind) -> &'static str {
+    match kind {
+        TrigMultiAngleRewriteKind::TripleSin => "sin(3x) → 3sin(x) - 4sin³(x)",
+        TrigMultiAngleRewriteKind::TripleCos => "cos(3x) → 4cos³(x) - 3cos(x)",
+        TrigMultiAngleRewriteKind::TripleTan => "tan(3x) → (3tan(x) - tan³(x))/(1 - 3tan²(x))",
+        TrigMultiAngleRewriteKind::QuintupleSin => "sin(5x) → 16sin⁵(x) - 20sin³(x) + 5sin(x)",
+        TrigMultiAngleRewriteKind::QuintupleCos => "cos(5x) → 16cos⁵(x) - 20cos³(x) + 5cos(x)",
+        TrigMultiAngleRewriteKind::TripleContractionSin => "3sin(θ)−4sin³(θ) → sin(3θ)",
+        TrigMultiAngleRewriteKind::TripleContractionCos => "4cos³(θ)−3cos(θ) → cos(3θ)",
+        TrigMultiAngleRewriteKind::CanonicalizeCosSquared => "cos^2(x) -> 1 - sin^2(x)",
+        TrigMultiAngleRewriteKind::CanonicalizeCosEvenPower => "cos^2k(x) -> (1 - sin^2(x))^k",
+        TrigMultiAngleRewriteKind::HalfAngleExpansion => "Half-Angle Expansion",
+        TrigMultiAngleRewriteKind::DoubleSin | TrigMultiAngleRewriteKind::DoubleCos => {
+            unreachable!("double-angle rewrite handled in expansion_rules.rs")
+        }
+    }
+}
 
 // Triple Angle Shortcut Rule: sin(3x) → 3sin(x) - 4sin³(x), cos(3x) → 4cos³(x) - 3cos(x)
 // This is a performance optimization to avoid recursive expansion via double-angle rules.
@@ -28,7 +47,7 @@ define_rule!(
         }
 
         let rewrite = try_rewrite_triple_angle_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc(format_trig_multi_angle_desc(rewrite.kind)))
     }
 );
 
@@ -49,7 +68,7 @@ define_rule!(
         }
 
         let rewrite = try_rewrite_quintuple_angle_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc(format_trig_multi_angle_desc(rewrite.kind)))
     }
 );
 
@@ -78,7 +97,7 @@ define_rule!(
     importance: crate::step::ImportanceLevel::Low,
     |ctx, expr| {
         let rewrite = try_rewrite_canonicalize_trig_square_pow_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc(format_trig_multi_angle_desc(rewrite.kind)))
     }
 );
 
@@ -103,6 +122,6 @@ define_rule!(
     "Triple Angle Contraction",
     |ctx, expr| {
         let rewrite = try_rewrite_triple_angle_contraction_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc(format_trig_multi_angle_desc(rewrite.kind)))
     }
 );

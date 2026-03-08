@@ -11,10 +11,24 @@ use crate::rule::Rewrite;
 use cas_ast::ExprId;
 use cas_math::trig_identity_zero_support::{
     try_rewrite_sin4x_identity_zero_expr, try_rewrite_tan_difference_identity_zero_expr,
+    IdentityZeroRewriteKind,
 };
 use cas_math::trig_weierstrass_support::{
     try_rewrite_weierstrass_cos_identity_zero_expr, try_rewrite_weierstrass_sin_identity_zero_expr,
 };
+
+fn format_identity_zero_desc(kind: IdentityZeroRewriteKind) -> &'static str {
+    match kind {
+        IdentityZeroRewriteKind::WeierstrassSin => {
+            "sin(x) = 2·tan(x/2)/(1 + tan²(x/2)) [Weierstrass]"
+        }
+        IdentityZeroRewriteKind::WeierstrassCos => {
+            "cos(x) = (1 - tan²(x/2))/(1 + tan²(x/2)) [Weierstrass]"
+        }
+        IdentityZeroRewriteKind::TanDifference => "tan(a-b) = (tan(a)-tan(b))/(1+tan(a)·tan(b))",
+        IdentityZeroRewriteKind::Sin4x => "sin(4t) = 4·sin(t)·cos(t)·(cos²(t)-sin²(t))",
+    }
+}
 
 // =============================================================================
 // WEIERSTRASS IDENTITY ZERO RULES (Pattern-Driven Cancellation)
@@ -41,7 +55,7 @@ impl crate::rule::Rule for WeierstrassSinIdentityZeroRule {
         _parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<Rewrite> {
         let rewrite = try_rewrite_weierstrass_sin_identity_zero_expr(ctx, expr)?;
-        Some(Rewrite::new(ctx.num(0)).desc(rewrite.desc))
+        Some(Rewrite::new(ctx.num(0)).desc(format_identity_zero_desc(rewrite.kind)))
     }
 
     fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
@@ -72,7 +86,7 @@ impl crate::rule::Rule for WeierstrassCosIdentityZeroRule {
         _parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<Rewrite> {
         let rewrite = try_rewrite_weierstrass_cos_identity_zero_expr(ctx, expr)?;
-        Some(Rewrite::new(ctx.num(0)).desc(rewrite.desc))
+        Some(Rewrite::new(ctx.num(0)).desc(format_identity_zero_desc(rewrite.kind)))
     }
 
     fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
@@ -107,7 +121,7 @@ impl crate::rule::Rule for Sin4xIdentityZeroRule {
         _parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<Rewrite> {
         let rewrite = try_rewrite_sin4x_identity_zero_expr(ctx, expr)?;
-        Some(Rewrite::new(ctx.num(0)).desc(rewrite.desc))
+        Some(Rewrite::new(ctx.num(0)).desc(format_identity_zero_desc(rewrite.kind)))
     }
 
     fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
@@ -142,7 +156,7 @@ impl crate::rule::Rule for TanDifferenceIdentityZeroRule {
         _parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<Rewrite> {
         let rewrite = try_rewrite_tan_difference_identity_zero_expr(ctx, expr)?;
-        Some(Rewrite::new(ctx.num(0)).desc(rewrite.desc))
+        Some(Rewrite::new(ctx.num(0)).desc(format_identity_zero_desc(rewrite.kind)))
     }
 
     fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {

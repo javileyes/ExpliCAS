@@ -16,7 +16,6 @@ use cas_ast::{Context, Expr, ExprId};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DistributionMulRewrite {
     pub rewritten: ExprId,
-    pub desc: &'static str,
 }
 
 /// Plan multiplicative distribution preserving legacy guard semantics.
@@ -67,7 +66,6 @@ pub fn try_rewrite_mul_distribution_legacy_expr(
         let ac = smart_mul(ctx, l, c);
         return Some(DistributionMulRewrite {
             rewritten: ctx.add(Expr::Add(ab, ac)),
-            desc: "Distribute",
         });
     }
 
@@ -101,7 +99,6 @@ pub fn try_rewrite_mul_distribution_legacy_expr(
         let ac = smart_mul(ctx, l, c);
         return Some(DistributionMulRewrite {
             rewritten: ctx.add(Expr::Sub(ab, ac)),
-            desc: "Distribute",
         });
     }
 
@@ -135,7 +132,6 @@ pub fn try_rewrite_mul_distribution_legacy_expr(
         let ca = smart_mul(ctx, c, r);
         return Some(DistributionMulRewrite {
             rewritten: ctx.add(Expr::Add(ba, ca)),
-            desc: "Distribute",
         });
     }
 
@@ -169,7 +165,6 @@ pub fn try_rewrite_mul_distribution_legacy_expr(
         let ca = smart_mul(ctx, c, r);
         return Some(DistributionMulRewrite {
             rewritten: ctx.add(Expr::Sub(ba, ca)),
-            desc: "Distribute",
         });
     }
 

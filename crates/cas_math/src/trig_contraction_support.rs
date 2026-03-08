@@ -19,7 +19,13 @@ pub struct HalfAngleTangentRewrite {
     pub rewritten: ExprId,
     pub inherited_nonzero: ExprId,
     pub required_nonzero: ExprId,
-    pub desc: &'static str,
+    pub kind: HalfAngleTangentRewriteKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HalfAngleTangentRewriteKind {
+    OneMinusCosOverSin,
+    SinOverOnePlusCos,
 }
 
 /// Policy guard for double-angle contraction when the `sin(4x)` identity pattern
@@ -635,11 +641,15 @@ pub fn try_rewrite_half_angle_tangent_div_expr(
         None
     }?;
 
-    let (x, inherited_nonzero, desc) = match pattern {
-        Pattern::OneMinusCosOverSin { x, sin_2x } => (x, sin_2x, "(1 - cos(2x))/sin(2x) = tan(x)"),
-        Pattern::SinOverOnePlusCos { x, one_plus_cos_2x } => {
-            (x, one_plus_cos_2x, "sin(2x)/(1 + cos(2x)) = tan(x)")
+    let (x, inherited_nonzero, kind) = match pattern {
+        Pattern::OneMinusCosOverSin { x, sin_2x } => {
+            (x, sin_2x, HalfAngleTangentRewriteKind::OneMinusCosOverSin)
         }
+        Pattern::SinOverOnePlusCos { x, one_plus_cos_2x } => (
+            x,
+            one_plus_cos_2x,
+            HalfAngleTangentRewriteKind::SinOverOnePlusCos,
+        ),
     };
 
     let rewritten = ctx.call_builtin(BuiltinFn::Tan, vec![x]);
@@ -648,7 +658,7 @@ pub fn try_rewrite_half_angle_tangent_div_expr(
         rewritten,
         inherited_nonzero,
         required_nonzero,
-        desc,
+        kind,
     })
 }
 

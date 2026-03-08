@@ -10,7 +10,16 @@ use crate::define_rule;
 use crate::rule::Rewrite;
 use cas_math::constants_support::{
     try_rewrite_phi_reciprocal_expr, try_rewrite_phi_squared_expr, try_rewrite_recognize_phi_expr,
+    ConstantRewriteKind,
 };
+
+fn format_constant_rewrite_desc(kind: ConstantRewriteKind) -> &'static str {
+    match kind {
+        ConstantRewriteKind::RecognizePhi => "(1 + √5)/2 = φ",
+        ConstantRewriteKind::PhiSquared => "φ² = φ + 1",
+        ConstantRewriteKind::PhiReciprocal => "1/φ = φ - 1",
+    }
+}
 
 // Rule 1: Recognize (1 + √5)/2 as φ
 // Matches both:
@@ -22,7 +31,7 @@ define_rule!(
     importance: crate::step::ImportanceLevel::Low,
     |ctx, expr| {
         let rewrite = try_rewrite_recognize_phi_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc(format_constant_rewrite_desc(rewrite.kind)))
     }
 );
 
@@ -33,7 +42,7 @@ define_rule!(
     importance: crate::step::ImportanceLevel::Medium,
     |ctx, expr| {
         let rewrite = try_rewrite_phi_squared_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc(format_constant_rewrite_desc(rewrite.kind)))
     }
 );
 
@@ -44,7 +53,7 @@ define_rule!(
     importance: crate::step::ImportanceLevel::Medium,
     |ctx, expr| {
         let rewrite = try_rewrite_phi_reciprocal_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc(format_constant_rewrite_desc(rewrite.kind)))
     }
 );
 

@@ -11,7 +11,6 @@ use cas_ast::{Context, Expr, ExprId};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DivisionDistributionRewrite {
     pub rewritten: ExprId,
-    pub desc: &'static str,
 }
 
 /// Plan division distribution rewrite when heuristics predict simplification.
@@ -67,10 +66,7 @@ pub fn try_rewrite_div_distribution_simplifying_expr(
         return None;
     }
 
-    Some(DivisionDistributionRewrite {
-        rewritten,
-        desc: "Distribute division (simplifying)",
-    })
+    Some(DivisionDistributionRewrite { rewritten })
 }
 
 #[cfg(test)]

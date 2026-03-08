@@ -7,7 +7,6 @@ use num_traits::One;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ReciprocalSqrtCanonRewrite {
     pub rewritten: ExprId,
-    pub desc: &'static str,
 }
 
 fn contains_symbol(ctx: &Context, e: ExprId) -> bool {
@@ -50,10 +49,7 @@ pub fn try_rewrite_reciprocal_sqrt_canon_expr(
                     2.into(),
                 )));
                 let rewritten = ctx.add(Expr::Pow(base, exp));
-                return Some(ReciprocalSqrtCanonRewrite {
-                    rewritten,
-                    desc: "1/√x = x^(-1/2)",
-                });
+                return Some(ReciprocalSqrtCanonRewrite { rewritten });
             }
         }
     }
@@ -69,10 +65,7 @@ pub fn try_rewrite_reciprocal_sqrt_canon_expr(
                 2.into(),
             )));
             let rewritten = ctx.add(Expr::Pow(sqrt_base, exp));
-            return Some(ReciprocalSqrtCanonRewrite {
-                rewritten,
-                desc: "√x/x = x^(-1/2)",
-            });
+            return Some(ReciprocalSqrtCanonRewrite { rewritten });
         }
     }
 

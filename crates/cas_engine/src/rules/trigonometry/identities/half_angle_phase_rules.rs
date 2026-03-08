@@ -4,7 +4,9 @@ use crate::define_rule;
 use crate::rule::Rewrite;
 use cas_ast::ExprId;
 use cas_math::hyperbolic_identity_support::try_rewrite_tanh_pythagorean_add_chain;
-use cas_math::trig_half_angle_support::try_rewrite_cot_half_angle_difference_expr;
+use cas_math::trig_half_angle_support::{
+    try_rewrite_cot_half_angle_difference_expr, CotHalfAngleDifferenceRewriteKind,
+};
 use cas_math::trig_sum_product_support::try_rewrite_tan_difference_expr;
 use cas_math::trig_weierstrass_support::try_rewrite_weierstrass_contraction_div_expr;
 
@@ -62,9 +64,19 @@ define_rule!(
     "Cotangent Half-Angle Difference",
     |ctx, expr| {
         let rewrite = try_rewrite_cot_half_angle_difference_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(
+            Rewrite::new(rewrite.rewritten)
+                .desc(format_cot_half_angle_difference_desc(rewrite.kind)),
+        )
     }
 );
+
+fn format_cot_half_angle_difference_desc(kind: CotHalfAngleDifferenceRewriteKind) -> &'static str {
+    match kind {
+        CotHalfAngleDifferenceRewriteKind::Positive => "cot(u/2) - cot(u) = 1/sin(u)",
+        CotHalfAngleDifferenceRewriteKind::Negative => "-cot(u/2) + cot(u) = -1/sin(u)",
+    }
+}
 
 // =============================================================================
 // TanDifferenceRule: tan(a - b) → (tan(a) - tan(b)) / (1 + tan(a)*tan(b))
@@ -72,7 +84,7 @@ define_rule!(
 
 define_rule!(TanDifferenceRule, "Tangent Difference", |ctx, expr| {
     let rewrite = try_rewrite_tan_difference_expr(ctx, expr)?;
-    Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+    Some(Rewrite::new(rewrite.rewritten).desc("tan(a-b) = (tan(a)-tan(b))/(1+tan(a)·tan(b))"))
 });
 
 // =============================================================================

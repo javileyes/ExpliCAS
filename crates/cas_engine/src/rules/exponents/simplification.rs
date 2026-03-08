@@ -2,6 +2,52 @@ use crate::define_rule;
 use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
 use cas_ast::{Context, Expr, ExprId};
+use num_traits::One;
+
+fn format_power_eval_static_desc(
+    kind: cas_math::power_eval_support::PowerEvalStaticRewriteKind,
+) -> &'static str {
+    match kind {
+        cas_math::power_eval_support::PowerEvalStaticRewriteKind::NegativeExponentNormalization => {
+            "x^(-n) -> 1/x^n"
+        }
+        cas_math::power_eval_support::PowerEvalStaticRewriteKind::NegativeBaseEven => {
+            "(-x)^even -> x^even"
+        }
+        cas_math::power_eval_support::PowerEvalStaticRewriteKind::NegativeBaseOdd => {
+            "(-x)^odd -> -(x^odd)"
+        }
+    }
+}
+
+fn format_pow_zero_desc(
+    mode: cas_math::power_identity_support::PowerIdentityDomainMode,
+) -> &'static str {
+    match mode {
+        cas_math::power_identity_support::PowerIdentityDomainMode::Strict => {
+            "x^0 -> 1 (x ≠ 0 proven)"
+        }
+        cas_math::power_identity_support::PowerIdentityDomainMode::Generic => "x^0 -> 1",
+        cas_math::power_identity_support::PowerIdentityDomainMode::Assume => {
+            "x^0 -> 1 (assuming x ≠ 0)"
+        }
+    }
+}
+
+fn format_pow_one_desc(ctx: &Context, expr: ExprId) -> &'static str {
+    match ctx.get(expr) {
+        Expr::Pow(base, exp) => {
+            if matches!(ctx.get(*exp), Expr::Number(n) if n.is_one()) {
+                "x^1 -> x"
+            } else if matches!(ctx.get(*base), Expr::Number(n) if n.is_one()) {
+                "1^x -> 1"
+            } else {
+                "Power identity"
+            }
+        }
+        _ => "Power identity",
+    }
+}
 
 define_rule!(
     IdentityPowerRule,
@@ -10,10 +56,10 @@ define_rule!(
         crate::ConditionClass::Definability
     ),
     |ctx, expr, parent_ctx| {
-        if let Some(rewrite) =
+        if let Some(rewritten) =
             cas_math::power_identity_support::try_rewrite_pow_one_or_one_pow_expr(ctx, expr)
         {
-            return Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc));
+            return Some(Rewrite::new(rewritten).desc(format_pow_one_desc(ctx, expr)));
         }
 
         if let Some(pattern) =
@@ -26,6 +72,11 @@ define_rule!(
                 } => {
                     // x^0 -> 1 REQUIRES x ≠ 0 (because 0^0 is undefined)
                     let domain_mode = parent_ctx.domain_mode();
+                    let power_mode =
+                        cas_math::power_identity_support::power_identity_mode_from_flags(
+                            matches!(domain_mode, crate::DomainMode::Assume),
+                            matches!(domain_mode, crate::DomainMode::Strict),
+                        );
                     let action =
                         cas_math::power_identity_support::plan_pow_zero_policy_action_with_mode_flags(
                         matches!(domain_mode, crate::DomainMode::Assume),
@@ -40,17 +91,17 @@ define_rule!(
                     );
 
                     match action {
-                        cas_math::power_identity_support::PowZeroPolicyAction::RewriteToUndefined { desc } => {
+                        cas_math::power_identity_support::PowZeroPolicyAction::RewriteToUndefined => {
                             return Some(
                                 Rewrite::new(ctx.add(Expr::Constant(cas_ast::Constant::Undefined)))
-                                    .desc(desc),
+                                    .desc("0^0 -> undefined"),
                             );
                         }
                         cas_math::power_identity_support::PowZeroPolicyAction::RewriteToOne {
-                            desc,
                             assume_nonzero,
                         } => {
-                            let mut rewrite = Rewrite::new(ctx.num(1)).desc(desc);
+                            let mut rewrite =
+                                Rewrite::new(ctx.num(1)).desc(format_pow_zero_desc(power_mode));
                             if assume_nonzero {
                                 rewrite = rewrite
                                     .assume(crate::AssumptionEvent::nonzero(
@@ -74,10 +125,8 @@ define_rule!(
                         exp_is_numeric_positive,
                         exp_is_numeric_non_positive,
                     ) {
-                        cas_math::power_identity_support::ZeroPowPolicyAction::RewriteToZero {
-                            desc,
-                        } => {
-                            return Some(Rewrite::new(ctx.num(0)).desc(desc));
+                        cas_math::power_identity_support::ZeroPowPolicyAction::RewriteToZero => {
+                            return Some(Rewrite::new(ctx.num(0)).desc("0^n -> 0 (n > 0)"));
                         }
                         cas_math::power_identity_support::ZeroPowPolicyAction::NoRewrite => {
                             return None;
@@ -167,7 +216,7 @@ impl crate::rule::Rule for MulNaryCombinePowersRule {
 
 define_rule!(NegativeBasePowerRule, "Negative Base Power", |ctx, expr| {
     let rewrite = cas_math::power_eval_support::try_rewrite_negative_base_power_expr(ctx, expr)?;
-    Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+    Some(Rewrite::new(rewrite.rewritten).desc(format_power_eval_static_desc(rewrite.kind)))
 });
 
 // Canonicalize bases in even powers: (b-a)^even → (a-b)^even when a < b
@@ -181,7 +230,7 @@ define_rule!(
         let rewrite = cas_math::power_eval_support::try_rewrite_even_pow_sub_swap_expr(ctx, expr)?;
         Some(
             Rewrite::new(rewrite.rewritten)
-                .desc(rewrite.desc)
+                .desc("For even exponent: (a-b)² = (b-a)², normalize for cancellation")
                 .local(rewrite.old_base, rewrite.new_base),
         )
     }

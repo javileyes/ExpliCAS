@@ -10,7 +10,13 @@ use num_traits::{One, Signed, Zero};
 #[derive(Debug, Clone, Copy)]
 pub struct DivScalarIntoAddRewrite {
     pub rewritten: ExprId,
-    pub desc: &'static str,
+    pub kind: DivScalarIntoAddRewriteKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DivScalarIntoAddRewriteKind {
+    AllTermsCancel,
+    FactorCommonCoefficientFromSum,
 }
 
 /// Try to rewrite `Mul(Number(frac), Add(...))` by factoring a common
@@ -91,7 +97,7 @@ pub fn try_rewrite_div_scalar_into_add_expr(
     if new_terms.is_empty() {
         return Some(DivScalarIntoAddRewrite {
             rewritten: ctx.num(0),
-            desc: "All terms cancel",
+            kind: DivScalarIntoAddRewriteKind::AllTermsCancel,
         });
     }
 
@@ -111,7 +117,7 @@ pub fn try_rewrite_div_scalar_into_add_expr(
 
     Some(DivScalarIntoAddRewrite {
         rewritten,
-        desc: "Factor common coefficient from sum",
+        kind: DivScalarIntoAddRewriteKind::FactorCommonCoefficientFromSum,
     })
 }
 

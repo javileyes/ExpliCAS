@@ -20,7 +20,7 @@ define_rule!(
     PhaseMask::RATIONALIZE,
     |ctx, expr| {
         let rewrite = try_rewrite_rationalize_denominator_diff_squares_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc("Rationalize denominator (diff squares)"))
     }
 );
 
