@@ -10,7 +10,15 @@ use num_traits::{One, Signed, ToPrimitive, Zero};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CanonicalRootRewrite {
     pub rewritten: ExprId,
-    pub desc: &'static str,
+    pub kind: CanonicalRootRewriteKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CanonicalRootRewriteKind {
+    SqrtEvenPower,
+    SqrtUnary,
+    SqrtWithIndex,
+    RootWithIndex,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -29,19 +37,35 @@ pub struct DenestSqrtAddSqrtRewrite {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RootDenestingRewrite {
     pub rewritten: ExprId,
-    pub desc: &'static str,
+    pub kind: RootDenestingRewriteKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RootDenestingRewriteKind {
+    DenestSquareRoot,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ExtractPerfectPowerFromRadicandRewrite {
     pub rewritten: ExprId,
-    pub desc: &'static str,
+    pub kind: ExtractPerfectPowerFromRadicandKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExtractPerfectPowerFromRadicandKind {
+    ExtractPerfectSquare,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SimplifySquareRootRewrite {
     pub rewritten: ExprId,
-    pub desc: &'static str,
+    pub kind: SimplifySquareRootRewriteKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SimplifySquareRootRewriteKind {
+    PerfectSquare,
+    SquareRootFactors,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -271,7 +295,7 @@ pub fn try_rewrite_root_denesting_expr(
     let rewritten = check_permutation(ctx, a, b).or_else(|| check_permutation(ctx, b, a))?;
     Some(RootDenestingRewrite {
         rewritten,
-        desc: "Denest square root",
+        kind: RootDenestingRewriteKind::DenestSquareRoot,
     })
 }
 
@@ -382,7 +406,7 @@ pub fn try_rewrite_extract_perfect_power_from_radicand_expr(
 
     Some(ExtractPerfectPowerFromRadicandRewrite {
         rewritten,
-        desc: "Extract perfect square from under radical",
+        kind: ExtractPerfectPowerFromRadicandKind::ExtractPerfectSquare,
     })
 }
 
@@ -459,7 +483,7 @@ pub fn try_rewrite_simplify_square_root_expr(
                     let rewritten = ctx.call_builtin(BuiltinFn::Abs, vec![linear]);
                     return Some(SimplifySquareRootRewrite {
                         rewritten,
-                        desc: "Simplify perfect square root",
+                        kind: SimplifySquareRootRewriteKind::PerfectSquare,
                     });
                 }
             }
@@ -492,7 +516,7 @@ pub fn try_rewrite_simplify_square_root_expr(
     if rem == 0 {
         return Some(SimplifySquareRootRewrite {
             rewritten: term1,
-            desc: "Simplify perfect square root",
+            kind: SimplifySquareRootRewriteKind::PerfectSquare,
         });
     }
 
@@ -500,7 +524,7 @@ pub fn try_rewrite_simplify_square_root_expr(
     let rewritten = smart_mul(ctx, term1, sqrt_base);
     Some(SimplifySquareRootRewrite {
         rewritten,
-        desc: "Simplify square root factors",
+        kind: SimplifySquareRootRewriteKind::SquareRootFactors,
     })
 }
 
@@ -747,7 +771,7 @@ pub fn try_rewrite_canonical_root_expr(
                         let rewritten = ctx.add(Expr::Pow(abs_base, k));
                         return Some(CanonicalRootRewrite {
                             rewritten,
-                            desc: "sqrt(x^2k) -> |x|^k",
+                            kind: CanonicalRootRewriteKind::SqrtEvenPower,
                         });
                     }
                 }
@@ -757,7 +781,7 @@ pub fn try_rewrite_canonical_root_expr(
             let rewritten = ctx.add(Expr::Pow(arg, half));
             return Some(CanonicalRootRewrite {
                 rewritten,
-                desc: "sqrt(x) = x^(1/2)",
+                kind: CanonicalRootRewriteKind::SqrtUnary,
             });
         }
 
@@ -771,7 +795,7 @@ pub fn try_rewrite_canonical_root_expr(
             let rewritten = ctx.add(Expr::Pow(base_arg, exp));
             return Some(CanonicalRootRewrite {
                 rewritten,
-                desc: "sqrt(x, n) = x^(1/n)",
+                kind: CanonicalRootRewriteKind::SqrtWithIndex,
             });
         }
     }
@@ -786,7 +810,7 @@ pub fn try_rewrite_canonical_root_expr(
         let rewritten = ctx.add(Expr::Pow(base_arg, exp));
         return Some(CanonicalRootRewrite {
             rewritten,
-            desc: "root(x, n) = x^(1/n)",
+            kind: CanonicalRootRewriteKind::RootWithIndex,
         });
     }
 

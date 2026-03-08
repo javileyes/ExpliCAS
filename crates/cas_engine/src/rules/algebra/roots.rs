@@ -1,11 +1,35 @@
 use crate::define_rule;
 use crate::rule::Rewrite;
+use cas_math::root_forms::{
+    ExtractPerfectPowerFromRadicandKind, RootDenestingRewriteKind, SimplifySquareRootRewriteKind,
+};
+
+fn format_root_denesting_desc(kind: RootDenestingRewriteKind) -> &'static str {
+    match kind {
+        RootDenestingRewriteKind::DenestSquareRoot => "Denest square root",
+    }
+}
+
+fn format_extract_perfect_power_desc(kind: ExtractPerfectPowerFromRadicandKind) -> &'static str {
+    match kind {
+        ExtractPerfectPowerFromRadicandKind::ExtractPerfectSquare => {
+            "Extract perfect square from under radical"
+        }
+    }
+}
+
+fn format_simplify_square_root_desc(kind: SimplifySquareRootRewriteKind) -> &'static str {
+    match kind {
+        SimplifySquareRootRewriteKind::PerfectSquare => "Simplify perfect square root",
+        SimplifySquareRootRewriteKind::SquareRootFactors => "Simplify square root factors",
+    }
+}
 
 define_rule!(RootDenestingRule, "Root Denesting", |ctx, expr| {
     let rewrite = cas_math::root_forms::try_rewrite_root_denesting_expr(ctx, expr)?;
     Some(
         Rewrite::new(rewrite.rewritten)
-            .desc(rewrite.desc)
+            .desc(format_root_denesting_desc(rewrite.kind))
             .local(expr, rewrite.rewritten),
     )
 });
@@ -15,7 +39,7 @@ define_rule!(
     "Simplify Square Root",
     |ctx, expr| {
         let rewrite = cas_math::root_forms::try_rewrite_simplify_square_root_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc(format_simplify_square_root_desc(rewrite.kind)))
     }
 );
 
@@ -33,6 +57,6 @@ define_rule!(
     |ctx, expr| {
         let rewrite =
             cas_math::root_forms::try_rewrite_extract_perfect_power_from_radicand_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc(format_extract_perfect_power_desc(rewrite.kind)))
     }
 );

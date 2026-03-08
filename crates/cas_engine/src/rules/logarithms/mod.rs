@@ -21,8 +21,15 @@ use crate::define_rule;
 use crate::rule::Rewrite;
 use cas_math::logarithm_inverse_support::{
     try_rewrite_evaluate_log_expr, try_rewrite_ln_e_div_expr, try_rewrite_ln_e_product_expr,
-    try_rewrite_log_perfect_square_expr,
+    try_rewrite_log_perfect_square_expr, LnEDivRewriteKind,
 };
+
+fn format_ln_e_div_desc(kind: LnEDivRewriteKind) -> &'static str {
+    match kind {
+        LnEDivRewriteKind::XOverE => "ln(x/e) = ln(x) - 1",
+        LnEDivRewriteKind::EOverX => "ln(e/x) = 1 - ln(x)",
+    }
+}
 
 define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
     let planned = try_rewrite_evaluate_log_expr(ctx, expr)?;
@@ -48,7 +55,7 @@ define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
 // =============================================================================
 define_rule!(LnEProductRule, "Factor e from ln Product", |ctx, expr| {
     let rewrite = try_rewrite_ln_e_product_expr(ctx, expr)?;
-    Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+    Some(Rewrite::new(rewrite.rewritten).desc("ln(e*x) = 1 + ln(x)"))
 });
 
 // =============================================================================
@@ -59,7 +66,7 @@ define_rule!(LnEProductRule, "Factor e from ln Product", |ctx, expr| {
 // =============================================================================
 define_rule!(LnEDivRule, "Factor e from ln Quotient", |ctx, expr| {
     let rewrite = try_rewrite_ln_e_div_expr(ctx, expr)?;
-    Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+    Some(Rewrite::new(rewrite.rewritten).desc(format_ln_e_div_desc(rewrite.kind)))
 });
 
 /// LogContractionRule: Contracts sums/differences of logs into single logs.

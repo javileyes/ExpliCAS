@@ -1,6 +1,7 @@
 use super::StepVisibility;
 use cas_solver::Step;
 
+#[allow(clippy::type_complexity)]
 pub(super) fn step_matches_visibility(
     step: &Step,
     visibility: StepVisibility,

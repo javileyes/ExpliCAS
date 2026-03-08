@@ -6,13 +6,25 @@ use cas_math::trig_multi_angle_support::{
     should_block_double_angle_expr_with_context, try_rewrite_double_angle_function_expr,
     TrigMultiAngleRewriteKind,
 };
-use cas_math::trig_sum_product_support::try_rewrite_trig_sum_to_product_expr;
+use cas_math::trig_sum_product_support::{
+    try_rewrite_trig_sum_to_product_expr, TrigSumProductRewriteKind,
+};
 
 fn format_double_angle_desc(kind: TrigMultiAngleRewriteKind) -> &'static str {
     match kind {
         TrigMultiAngleRewriteKind::DoubleSin => "sin(2x) -> 2sin(x)cos(x)",
         TrigMultiAngleRewriteKind::DoubleCos => "cos(2x) -> cos^2(x) - sin^2(x)",
         _ => unreachable!("non-double-angle rewrite in DoubleAngleRule"),
+    }
+}
+
+fn format_trig_sum_to_product_desc(kind: TrigSumProductRewriteKind) -> &'static str {
+    match kind {
+        TrigSumProductRewriteKind::Werner => "2·sin(A)·cos(B) → sin(A+B) + sin(A-B) (Werner)",
+        TrigSumProductRewriteKind::SinSum => "sin(A)+sin(B) = 2·sin((A+B)/2)·cos((A-B)/2)",
+        TrigSumProductRewriteKind::SinDiff => "sin(A)-sin(B) = 2·cos((A+B)/2)·sin((A-B)/2)",
+        TrigSumProductRewriteKind::CosSum => "cos(A)+cos(B) = 2·cos((A+B)/2)·cos((A-B)/2)",
+        TrigSumProductRewriteKind::CosDiff => "cos(A)-cos(B) = -2·sin((A+B)/2)·sin((A-B)/2)",
     }
 }
 
@@ -37,7 +49,7 @@ define_rule!(
     "Sum-to-Product Identity",
     |ctx, expr| {
         let rewrite = try_rewrite_trig_sum_to_product_expr(ctx, expr, crate::collect::collect)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc(format_trig_sum_to_product_desc(rewrite.kind)))
     }
 );
 

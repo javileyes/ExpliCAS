@@ -1,6 +1,7 @@
 use cas_ast::{Context, Equation, SolutionSet};
 use cas_solver::SolveStep;
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn render_solve_timeline_document(
     context: &mut Context,
     steps: &[SolveStep],

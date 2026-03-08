@@ -25,8 +25,12 @@ pub fn try_rewrite_collect_by_var_expr(
     ctx: &mut Context,
     expr: ExprId,
 ) -> Option<CollectByVarRewrite> {
+    if !ctx.is_call_named(expr, "collect") {
+        return None;
+    }
+
     let (target_expr, var_name) = match ctx.get(expr) {
-        Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "collect" && args.len() == 2 => {
+        Expr::Function(_, args) if args.len() == 2 => {
             let target_expr = args[0];
             let var_expr = args[1];
             let var_name = if let Expr::Variable(sym_id) = ctx.get(var_expr) {

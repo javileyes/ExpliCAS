@@ -7,7 +7,13 @@ use std::cmp::Ordering;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct WeierstrassContractionRewrite {
     pub rewritten: ExprId,
-    pub desc: &'static str,
+    pub kind: WeierstrassContractionKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WeierstrassContractionKind {
+    Sin,
+    Cos,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -261,7 +267,7 @@ pub fn try_rewrite_weierstrass_contraction_div_expr(
                 let sin_x = ctx.call_builtin(BuiltinFn::Sin, vec![full_angle]);
                 return Some(WeierstrassContractionRewrite {
                     rewritten: sin_x,
-                    desc: "2·tan(x/2)/(1 + tan²(x/2)) = sin(x)",
+                    kind: WeierstrassContractionKind::Sin,
                 });
             }
         }
@@ -273,7 +279,7 @@ pub fn try_rewrite_weierstrass_contraction_div_expr(
                 let cos_x = ctx.call_builtin(BuiltinFn::Cos, vec![num_angle]);
                 return Some(WeierstrassContractionRewrite {
                     rewritten: cos_x,
-                    desc: "(1 - tan²(x/2))/(1 + tan²(x/2)) = cos(x)",
+                    kind: WeierstrassContractionKind::Cos,
                 });
             }
         }
@@ -536,13 +542,7 @@ mod tests {
 
         let sin_rw = try_rewrite_weierstrass_sin_identity_zero_expr(&ctx, sin_expr).expect("sin");
         let cos_rw = try_rewrite_weierstrass_cos_identity_zero_expr(&ctx, cos_expr).expect("cos");
-        assert_eq!(
-            sin_rw.desc,
-            "sin(x) = 2·tan(x/2)/(1 + tan²(x/2)) [Weierstrass]"
-        );
-        assert_eq!(
-            cos_rw.desc,
-            "cos(x) = (1 - tan²(x/2))/(1 + tan²(x/2)) [Weierstrass]"
-        );
+        assert_eq!(sin_rw.kind, IdentityZeroRewriteKind::WeierstrassSin);
+        assert_eq!(cos_rw.kind, IdentityZeroRewriteKind::WeierstrassCos);
     }
 }

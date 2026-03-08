@@ -8,7 +8,20 @@ use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TrigEvalRewrite {
     pub rewritten: ExprId,
-    pub desc: String,
+    pub kind: TrigEvalRewriteKind,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TrigEvalRewriteKind {
+    Table(String),
+    NegativeParity(TrigNegativeParityKind),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TrigNegativeParityKind {
+    Sin,
+    Cos,
+    Tan,
 }
 
 /// Lookup result for trig/inverse-trig exact-value tables.
@@ -53,20 +66,20 @@ pub fn rewrite_negative_trig_argument(
     ctx: &mut Context,
     fn_name: &str,
     arg: ExprId,
-) -> Option<(ExprId, &'static str)> {
+) -> Option<(ExprId, TrigNegativeParityKind)> {
     let inner = extract_negated_inner(ctx, arg)?;
     match fn_name {
         "sin" => {
             let sin_inner = ctx.call_builtin(BuiltinFn::Sin, vec![inner]);
-            Some((ctx.add(Expr::Neg(sin_inner)), "sin(-x) = -sin(x)"))
+            Some((ctx.add(Expr::Neg(sin_inner)), TrigNegativeParityKind::Sin))
         }
         "cos" => {
             let cos_inner = ctx.call_builtin(BuiltinFn::Cos, vec![inner]);
-            Some((cos_inner, "cos(-x) = cos(x)"))
+            Some((cos_inner, TrigNegativeParityKind::Cos))
         }
         "tan" => {
             let tan_inner = ctx.call_builtin(BuiltinFn::Tan, vec![inner]);
-            Some((ctx.add(Expr::Neg(tan_inner)), "tan(-x) = -tan(x)"))
+            Some((ctx.add(Expr::Neg(tan_inner)), TrigNegativeParityKind::Tan))
         }
         _ => None,
     }
@@ -89,14 +102,19 @@ pub fn try_rewrite_trig_eval_table_expr(
     if let Some(hit) = lookup_trig_or_inverse(ctx, &fn_name, arg) {
         return Some(TrigEvalRewrite {
             rewritten: hit.value.to_expr(ctx),
-            desc: format!("{}({}) = {}", fn_name, hit.key_display, hit.value.display()),
+            kind: TrigEvalRewriteKind::Table(format!(
+                "{}({}) = {}",
+                fn_name,
+                hit.key_display,
+                hit.value.display()
+            )),
         });
     }
 
-    let (rewritten, desc) = rewrite_negative_trig_argument(ctx, &fn_name, arg)?;
+    let (rewritten, kind) = rewrite_negative_trig_argument(ctx, &fn_name, arg)?;
     Some(TrigEvalRewrite {
         rewritten,
-        desc: desc.to_string(),
+        kind: TrigEvalRewriteKind::NegativeParity(kind),
     })
 }
 
@@ -139,9 +157,9 @@ mod tests {
         let mut ctx = Context::new();
         let x = ctx.var("x");
         let neg_x = ctx.add(Expr::Neg(x));
-        let (new_expr, desc) =
+        let (new_expr, kind) =
             rewrite_negative_trig_argument(&mut ctx, "sin", neg_x).expect("expected rewrite");
-        assert_eq!(desc, "sin(-x) = -sin(x)");
+        assert_eq!(kind, TrigNegativeParityKind::Sin);
         match ctx.get(new_expr) {
             Expr::Neg(inner) => match ctx.get(*inner) {
                 Expr::Function(fn_id, args) => {
@@ -159,9 +177,9 @@ mod tests {
         let mut ctx = Context::new();
         let x = ctx.var("x");
         let neg_x = ctx.add(Expr::Neg(x));
-        let (new_expr, desc) =
+        let (new_expr, kind) =
             rewrite_negative_trig_argument(&mut ctx, "cos", neg_x).expect("expected rewrite");
-        assert_eq!(desc, "cos(-x) = cos(x)");
+        assert_eq!(kind, TrigNegativeParityKind::Cos);
         match ctx.get(new_expr) {
             Expr::Function(fn_id, args) => {
                 assert_eq!(ctx.builtin_of(*fn_id), Some(BuiltinFn::Cos));
@@ -176,7 +194,10 @@ mod tests {
         let mut ctx = Context::new();
         let expr = cas_parser::parse("sin(pi/6)", &mut ctx).expect("parse");
         let rewrite = try_rewrite_trig_eval_table_expr(&mut ctx, expr).expect("rewrite");
-        assert_eq!(rewrite.desc, "sin(π/6) = 1/2");
+        assert_eq!(
+            rewrite.kind,
+            TrigEvalRewriteKind::Table("sin(π/6) = 1/2".to_string())
+        );
     }
 
     #[test]
@@ -184,7 +205,10 @@ mod tests {
         let mut ctx = Context::new();
         let expr = cas_parser::parse("cos(-x)", &mut ctx).expect("parse");
         let rewrite = try_rewrite_trig_eval_table_expr(&mut ctx, expr).expect("rewrite");
-        assert_eq!(rewrite.desc, "cos(-x) = cos(x)");
+        assert_eq!(
+            rewrite.kind,
+            TrigEvalRewriteKind::NegativeParity(TrigNegativeParityKind::Cos)
+        );
         match ctx.get(rewrite.rewritten) {
             Expr::Function(fn_id, _) => assert_eq!(ctx.builtin_of(*fn_id), Some(BuiltinFn::Cos)),
             _ => panic!("expected cosine call"),

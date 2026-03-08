@@ -6,6 +6,7 @@ mod steps;
 use cas_ast::{Context, ExprId};
 use cas_solver::ImplicitCondition;
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn render_timeline_filtered_enriched(
     context: &mut Context,
     steps: &[cas_solver::Step],

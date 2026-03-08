@@ -555,13 +555,25 @@ pub fn mul_leaves(ctx: &Context, root: ExprId) -> SmallVec<[ExprId; 8]> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CanonicalizeAddRewrite {
     pub rewritten: ExprId,
-    pub desc: &'static str,
+    pub kind: CanonicalizeAddRewriteKind,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CanonicalizeMulRewrite {
     pub rewritten: ExprId,
-    pub desc: &'static str,
+    pub kind: CanonicalizeMulRewriteKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CanonicalizeAddRewriteKind {
+    SortTerms,
+    RightAssociate,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CanonicalizeMulRewriteKind {
+    SortFactors,
+    RightAssociate,
 }
 
 fn build_right_assoc_add(ctx: &mut Context, terms: &[ExprId]) -> Option<ExprId> {
@@ -601,7 +613,7 @@ pub fn try_rewrite_canonicalize_add_expr(
         let rewritten = build_right_assoc_add(ctx, &terms)?;
         return Some(CanonicalizeAddRewrite {
             rewritten,
-            desc: "Sort addition terms",
+            kind: CanonicalizeAddRewriteKind::SortTerms,
         });
     }
 
@@ -612,7 +624,7 @@ pub fn try_rewrite_canonicalize_add_expr(
         let rewritten = build_right_assoc_add(ctx, &terms)?;
         return Some(CanonicalizeAddRewrite {
             rewritten,
-            desc: "Fix associativity (a+b)+c -> a+(b+c)",
+            kind: CanonicalizeAddRewriteKind::RightAssociate,
         });
     }
 
@@ -644,7 +656,7 @@ pub fn try_rewrite_canonicalize_mul_expr(
         let rewritten = build_right_assoc_mul(ctx, &factors)?;
         return Some(CanonicalizeMulRewrite {
             rewritten,
-            desc: "Sort multiplication factors",
+            kind: CanonicalizeMulRewriteKind::SortFactors,
         });
     }
 
@@ -655,7 +667,7 @@ pub fn try_rewrite_canonicalize_mul_expr(
         let rewritten = build_right_assoc_mul(ctx, &factors)?;
         return Some(CanonicalizeMulRewrite {
             rewritten,
-            desc: "Fix associativity (a*b)*c -> a*(b*c)",
+            kind: CanonicalizeMulRewriteKind::RightAssociate,
         });
     }
 

@@ -65,6 +65,7 @@ pub(super) fn reconstruct_div(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn reconstruct_left_right_binary(
     context: &mut Context,
     root: ExprId,

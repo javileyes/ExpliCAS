@@ -446,8 +446,6 @@ mod tests {
     };
     use cas_ast::{BuiltinFn, Context, Expr};
     use cas_parser::parse;
-    use num_bigint::BigInt;
-
     #[test]
     fn difference_of_squares_support_matches_basic_conjugate_product() {
         let mut ctx = Context::new();

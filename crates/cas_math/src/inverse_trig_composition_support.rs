@@ -339,6 +339,19 @@ pub struct InverseTrigUnaryRewrite {
     pub desc: &'static str,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InverseTrigReciprocalRewriteKind {
+    ArcsecToArccos,
+    ArccscToArcsin,
+    ArccotToArctan,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InverseTrigReciprocalRewrite {
+    pub rewritten: ExprId,
+    pub kind: InverseTrigReciprocalRewriteKind,
+}
+
 #[derive(Debug, Clone)]
 pub struct PrincipalBranchInverseTrigPlan {
     pub rewritten: ExprId,
@@ -554,7 +567,7 @@ pub fn try_rewrite_inverse_trig_negative_expr(
 pub fn try_rewrite_arcsec_to_arccos_expr(
     ctx: &mut Context,
     expr: ExprId,
-) -> Option<InverseTrigUnaryRewrite> {
+) -> Option<InverseTrigReciprocalRewrite> {
     let (fn_id, args) = match ctx.get(expr) {
         Expr::Function(fn_id, args) => (*fn_id, args.clone()),
         _ => return None,
@@ -572,9 +585,9 @@ pub fn try_rewrite_arcsec_to_arccos_expr(
     let one = ctx.num(1);
     let reciprocal = ctx.add(Expr::Div(one, arg));
     let rewritten = ctx.call_builtin(BuiltinFn::Arccos, vec![reciprocal]);
-    Some(InverseTrigUnaryRewrite {
+    Some(InverseTrigReciprocalRewrite {
         rewritten,
-        desc: "arcsec(x) → arccos(1/x)",
+        kind: InverseTrigReciprocalRewriteKind::ArcsecToArccos,
     })
 }
 
@@ -660,7 +673,7 @@ pub fn try_plan_atan_rational_add_expr(
 pub fn try_rewrite_arccsc_to_arcsin_expr(
     ctx: &mut Context,
     expr: ExprId,
-) -> Option<InverseTrigUnaryRewrite> {
+) -> Option<InverseTrigReciprocalRewrite> {
     let (fn_id, args) = match ctx.get(expr) {
         Expr::Function(fn_id, args) => (*fn_id, args.clone()),
         _ => return None,
@@ -678,9 +691,9 @@ pub fn try_rewrite_arccsc_to_arcsin_expr(
     let one = ctx.num(1);
     let reciprocal = ctx.add(Expr::Div(one, arg));
     let rewritten = ctx.call_builtin(BuiltinFn::Arcsin, vec![reciprocal]);
-    Some(InverseTrigUnaryRewrite {
+    Some(InverseTrigReciprocalRewrite {
         rewritten,
-        desc: "arccsc(x) → arcsin(1/x)",
+        kind: InverseTrigReciprocalRewriteKind::ArccscToArcsin,
     })
 }
 
@@ -688,7 +701,7 @@ pub fn try_rewrite_arccsc_to_arcsin_expr(
 pub fn try_rewrite_arccot_to_arctan_expr(
     ctx: &mut Context,
     expr: ExprId,
-) -> Option<InverseTrigUnaryRewrite> {
+) -> Option<InverseTrigReciprocalRewrite> {
     let (fn_id, args) = match ctx.get(expr) {
         Expr::Function(fn_id, args) => (*fn_id, args.clone()),
         _ => return None,
@@ -706,9 +719,9 @@ pub fn try_rewrite_arccot_to_arctan_expr(
     let one = ctx.num(1);
     let reciprocal = ctx.add(Expr::Div(one, arg));
     let rewritten = ctx.call_builtin(BuiltinFn::Arctan, vec![reciprocal]);
-    Some(InverseTrigUnaryRewrite {
+    Some(InverseTrigReciprocalRewrite {
         rewritten,
-        desc: "arccot(x) → arctan(1/x)",
+        kind: InverseTrigReciprocalRewriteKind::ArccotToArctan,
     })
 }
 

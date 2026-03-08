@@ -356,6 +356,23 @@ pub struct LogRewrite {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LnEProductRewrite {
+    pub rewritten: ExprId,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LnEDivRewriteKind {
+    XOverE,
+    EOverX,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LnEDivRewrite {
+    pub rewritten: ExprId,
+    pub kind: LnEDivRewriteKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LogContractionRewrite {
     pub rewritten: ExprId,
     pub desc: &'static str,
@@ -755,7 +772,7 @@ pub fn bases_equal_for_logs(ctx: &Context, base_l: ExprId, base_r: ExprId) -> bo
 }
 
 /// Rewrite `ln(e*x)` or `ln(x*e)` to `1 + ln(x)`.
-pub fn try_rewrite_ln_e_product_expr(ctx: &mut Context, expr: ExprId) -> Option<LogRewrite> {
+pub fn try_rewrite_ln_e_product_expr(ctx: &mut Context, expr: ExprId) -> Option<LnEProductRewrite> {
     let Expr::Function(fn_id, args) = ctx.get(expr) else {
         return None;
     };
@@ -784,16 +801,13 @@ pub fn try_rewrite_ln_e_product_expr(ctx: &mut Context, expr: ExprId) -> Option<
     let one = ctx.num(1);
     let ln_x = ctx.call_builtin(BuiltinFn::Ln, vec![x]);
     let rewritten = ctx.add(Expr::Add(one, ln_x));
-    Some(LogRewrite {
-        rewritten,
-        desc: "ln(e*x) = 1 + ln(x)",
-    })
+    Some(LnEProductRewrite { rewritten })
 }
 
 /// Rewrite:
 /// - `ln(x/e)` -> `ln(x) - 1`
 /// - `ln(e/x)` -> `1 - ln(x)`
-pub fn try_rewrite_ln_e_div_expr(ctx: &mut Context, expr: ExprId) -> Option<LogRewrite> {
+pub fn try_rewrite_ln_e_div_expr(ctx: &mut Context, expr: ExprId) -> Option<LnEDivRewrite> {
     let Expr::Function(fn_id, args) = ctx.get(expr) else {
         return None;
     };
@@ -815,9 +829,9 @@ pub fn try_rewrite_ln_e_div_expr(ctx: &mut Context, expr: ExprId) -> Option<LogR
         let ln_x = ctx.call_builtin(BuiltinFn::Ln, vec![num]);
         let one = ctx.num(1);
         let rewritten = ctx.add(Expr::Sub(ln_x, one));
-        return Some(LogRewrite {
+        return Some(LnEDivRewrite {
             rewritten,
-            desc: "ln(x/e) = ln(x) - 1",
+            kind: LnEDivRewriteKind::XOverE,
         });
     }
 
@@ -825,9 +839,9 @@ pub fn try_rewrite_ln_e_div_expr(ctx: &mut Context, expr: ExprId) -> Option<LogR
         let one = ctx.num(1);
         let ln_x = ctx.call_builtin(BuiltinFn::Ln, vec![den]);
         let rewritten = ctx.add(Expr::Sub(one, ln_x));
-        return Some(LogRewrite {
+        return Some(LnEDivRewrite {
             rewritten,
-            desc: "ln(e/x) = 1 - ln(x)",
+            kind: LnEDivRewriteKind::EOverX,
         });
     }
 
@@ -2137,20 +2151,20 @@ mod tests {
         assert_eq!(
             try_rewrite_ln_e_product_expr(&mut ctx, prod)
                 .expect("prod rewrite")
-                .desc,
-            "ln(e*x) = 1 + ln(x)"
+                .rewritten,
+            parse("1 + ln(x)", &mut ctx).expect("prod expected")
         );
         assert_eq!(
             try_rewrite_ln_e_div_expr(&mut ctx, div1)
                 .expect("div1 rewrite")
-                .desc,
-            "ln(x/e) = ln(x) - 1"
+                .kind,
+            LnEDivRewriteKind::XOverE
         );
         assert_eq!(
             try_rewrite_ln_e_div_expr(&mut ctx, div2)
                 .expect("div2 rewrite")
-                .desc,
-            "ln(e/x) = 1 - ln(x)"
+                .kind,
+            LnEDivRewriteKind::EOverX
         );
     }
 

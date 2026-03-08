@@ -19,6 +19,19 @@ pub struct TrigCoreRewrite {
     pub desc: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TrigOddEvenParityKind {
+    Odd,
+    Even,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TrigOddEvenParityRewrite {
+    pub rewritten: ExprId,
+    pub fn_name: String,
+    pub kind: TrigOddEvenParityKind,
+}
+
 /// Rewrite exact values for `sin(n*pi)` and `cos(n*pi)` when `n` is integer.
 pub fn try_rewrite_sin_cos_integer_pi_expr(
     ctx: &mut Context,
@@ -68,7 +81,7 @@ pub fn try_rewrite_sin_cos_integer_pi_expr(
 pub fn try_rewrite_trig_odd_even_parity_expr(
     ctx: &mut Context,
     expr: ExprId,
-) -> Option<TrigCoreRewrite> {
+) -> Option<TrigOddEvenParityRewrite> {
     let (fn_id, args) = match ctx.get(expr) {
         Expr::Function(fn_id, args) => (*fn_id, args.clone()),
         _ => return None,
@@ -107,6 +120,13 @@ pub fn try_rewrite_trig_odd_even_parity_expr(
             } else {
                 None
             }
+        } else if let Some((a, b)) = as_sub(ctx, arg) {
+            if compare_expr(ctx, a, b) == std::cmp::Ordering::Less {
+                let flipped = ctx.add(Expr::Sub(b, a));
+                Some((flipped, None))
+            } else {
+                None
+            }
         } else {
             try_extract_all_negative_sum(ctx, arg)
         };
@@ -127,16 +147,18 @@ pub fn try_rewrite_trig_odd_even_parity_expr(
         "sin" | "tan" | "csc" | "cot" | "sinh" | "tanh" => {
             let f_u = ctx.add(Expr::Function(fn_id, vec![positive_arg]));
             let neg_f_u = ctx.add(Expr::Neg(f_u));
-            Some(TrigCoreRewrite {
+            Some(TrigOddEvenParityRewrite {
                 rewritten: neg_f_u,
-                desc: format!("{}(-u) = -{}(u) [odd function]", name, name),
+                fn_name: name,
+                kind: TrigOddEvenParityKind::Odd,
             })
         }
         "cos" | "sec" | "cosh" => {
             let f_u = ctx.add(Expr::Function(fn_id, vec![positive_arg]));
-            Some(TrigCoreRewrite {
+            Some(TrigOddEvenParityRewrite {
                 rewritten: f_u,
-                desc: format!("{}(-u) = {}(u) [even function]", name, name),
+                fn_name: name,
+                kind: TrigOddEvenParityKind::Even,
             })
         }
         _ => None,
@@ -878,6 +900,7 @@ mod tests {
         let rewrite = try_rewrite_trig_odd_even_parity_expr(&mut ctx, expr).expect("rewrite");
         let rendered = render(&ctx, rewrite.rewritten);
         assert!(rendered.contains("-sin(x)"));
+        assert_eq!(rewrite.kind, TrigOddEvenParityKind::Odd);
     }
 
     #[test]
@@ -886,6 +909,25 @@ mod tests {
         let expr = parse("cos(-x)", &mut ctx).expect("parse");
         let rewrite = try_rewrite_trig_odd_even_parity_expr(&mut ctx, expr).expect("rewrite");
         assert_eq!(render(&ctx, rewrite.rewritten), "cos(x)");
+        assert_eq!(rewrite.kind, TrigOddEvenParityKind::Even);
+    }
+
+    #[test]
+    fn rewrites_odd_parity_after_sub_flip() {
+        let mut ctx = Context::new();
+        let expr = parse("sin(1 - u)", &mut ctx).expect("parse");
+        let rewrite = try_rewrite_trig_odd_even_parity_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(render(&ctx, rewrite.rewritten), "-sin(u - 1)");
+        assert_eq!(rewrite.kind, TrigOddEvenParityKind::Odd);
+    }
+
+    #[test]
+    fn rewrites_even_parity_after_sub_flip() {
+        let mut ctx = Context::new();
+        let expr = parse("cos(1 - u)", &mut ctx).expect("parse");
+        let rewrite = try_rewrite_trig_odd_even_parity_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(render(&ctx, rewrite.rewritten), "cos(u - 1)");
+        assert_eq!(rewrite.kind, TrigOddEvenParityKind::Even);
     }
 
     #[test]

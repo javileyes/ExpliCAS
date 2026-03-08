@@ -29,6 +29,14 @@ fn format_half_angle_square_desc(kind: HalfAngleSquareRewriteKind) -> &'static s
     }
 }
 
+fn format_generalized_sin_cos_contraction_desc() -> &'static str {
+    "k·sin(t)·cos(t) = (k/2)·sin(2t)"
+}
+
+fn format_tan_double_angle_contraction_desc() -> &'static str {
+    "2·tan(t)/(1-tan²(t)) = tan(2t)"
+}
+
 define_rule!(
     HyperbolicHalfAngleSquaresRule,
     "Hyperbolic Half-Angle Squares",
@@ -89,7 +97,7 @@ define_rule!(
     "Generalized Sin Cos Contraction",
     |ctx, expr| {
         let rewrite = try_rewrite_generalized_sin_cos_contraction_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc(format_generalized_sin_cos_contraction_desc()))
     }
 );
 
@@ -120,6 +128,6 @@ define_rule!(
     "Tan Double Angle Contraction",
     |ctx, expr| {
         let rewrite = try_rewrite_tan_double_angle_contraction_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc(format_tan_double_angle_contraction_desc()))
     }
 );

@@ -13,6 +13,10 @@ use crate::rule::{Rewrite, Rule};
 use cas_ast::{Context, ExprId};
 use cas_math::trig_sum_product_support::try_rewrite_product_to_sum_werner_expr;
 
+fn format_product_to_sum_werner_desc() -> &'static str {
+    "2·sin(A)·cos(B) → sin(A+B) + sin(A-B) (Werner)"
+}
+
 /// Product-to-sum identity for trigonometric products (Werner formulas).
 ///
 /// `2 * sin(A) * cos(B) → sin(A+B) + sin(A-B)`
@@ -36,7 +40,7 @@ impl Rule for ProductToSumRule {
         _parent_ctx: &ParentContext,
     ) -> Option<Rewrite> {
         let rewrite = try_rewrite_product_to_sum_werner_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc(format_product_to_sum_werner_desc()))
     }
 }
 

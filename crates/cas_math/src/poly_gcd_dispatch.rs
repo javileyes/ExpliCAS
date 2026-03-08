@@ -217,8 +217,9 @@ mod tests {
         GcdPreEvalDirective,
     };
     use crate::gcd_zippel_modp::ZippelPreset;
-    use crate::poly_gcd_mode::GcdMode;
+    use crate::poly_gcd_mode::{GcdGoal, GcdMode};
     use cas_ast::{BuiltinFn, Expr};
+    use cas_parser::parse;
 
     #[test]
     fn structural_mode_finds_common_factor() {

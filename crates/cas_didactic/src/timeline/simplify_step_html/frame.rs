@@ -1,3 +1,4 @@
+#[allow(clippy::too_many_arguments)]
 pub(super) fn render_step_frame(
     step_number: usize,
     step_title: &str,

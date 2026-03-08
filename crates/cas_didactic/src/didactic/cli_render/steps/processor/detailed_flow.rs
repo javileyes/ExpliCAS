@@ -6,6 +6,7 @@ use super::super::state::StepLoopState;
 use cas_ast::Context;
 use cas_solver::Step;
 
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 pub(super) fn render_detailed_step_lines(
     ctx: &mut Context,
     step: &Step,

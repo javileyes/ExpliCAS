@@ -5026,6 +5026,32 @@ fn run_substitution_tests() -> ComboMetrics {
                         }
                     }
 
+                    // Check 2d: Polluted-context fallback — simplify(e - s) == 0
+                    // This mirrors the combination tests and catches cases where
+                    // the already-simplified operands make the residual collapse
+                    // immediately in the active context.
+                    {
+                        let d = simplifier.context.add(cas_ast::Expr::Sub(e, s));
+                        let (mut ds, _) = simplifier.simplify(d);
+                        let cfg = cas_solver::EvalConfig::default();
+                        let mut budget = cas_solver::Budget::preset_cli();
+                        if let Ok(r) = cas_solver::fold_constants(
+                            &mut simplifier.context,
+                            ds,
+                            &cfg,
+                            cas_solver::ConstFoldMode::Safe,
+                            &mut budget,
+                        ) {
+                            ds = r.expr;
+                        }
+                        let zero = num_rational::BigRational::from_integer(0.into());
+                        if matches!(simplifier.context.get(ds), cas_ast::Expr::Number(n) if *n == zero)
+                        {
+                            let _ = tx.send(Some(("proved".to_string(), String::new(), sub_cycles)));
+                            return;
+                        }
+                    }
+
                     // Check 3: Numeric equivalence (1 variable)
                     let result = check_numeric_equiv_1var(
                         &simplifier.context,

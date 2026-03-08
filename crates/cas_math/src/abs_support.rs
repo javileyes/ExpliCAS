@@ -50,6 +50,14 @@ pub enum AbsAssumptionKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AbsDomainRewriteKind {
+    Positive,
+    PositiveAssume,
+    NonNegative,
+    NonNegativeAssume,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ValueDomainMode {
     RealOnly,
     ComplexEnabled,
@@ -67,14 +75,19 @@ pub fn value_domain_mode_from_flag(real_only: bool) -> ValueDomainMode {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AbsDomainRewrite {
     pub rewritten: ExprId,
-    pub desc: &'static str,
+    pub kind: AbsDomainRewriteKind,
     pub assumption: Option<AbsAssumptionKind>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SymbolicRootCancelRewriteKind {
+    AssumeNonNegative,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SymbolicRootCancelRewrite {
     pub rewritten: ExprId,
-    pub desc: &'static str,
+    pub kind: SymbolicRootCancelRewriteKind,
     pub requires_nonnegative: bool,
     pub assumption: Option<AbsAssumptionKind>,
 }
@@ -108,7 +121,7 @@ pub fn try_plan_abs_positive_rewrite(
             }
             Some(AbsDomainRewrite {
                 rewritten: inner,
-                desc: "|x| = x for x > 0",
+                kind: AbsDomainRewriteKind::Positive,
                 assumption: None,
             })
         }
@@ -116,13 +129,13 @@ pub fn try_plan_abs_positive_rewrite(
             if proven_positive {
                 Some(AbsDomainRewrite {
                     rewritten: inner,
-                    desc: "|x| = x for x > 0",
+                    kind: AbsDomainRewriteKind::Positive,
                     assumption: None,
                 })
             } else {
                 Some(AbsDomainRewrite {
                     rewritten: inner,
-                    desc: "|x| = x (assuming x > 0)",
+                    kind: AbsDomainRewriteKind::PositiveAssume,
                     assumption: Some(AbsAssumptionKind::Positive),
                 })
             }
@@ -151,7 +164,7 @@ pub fn try_plan_abs_nonnegative_rewrite(
             }
             Some(AbsDomainRewrite {
                 rewritten: inner,
-                desc: "|x| = x for x ≥ 0",
+                kind: AbsDomainRewriteKind::NonNegative,
                 assumption: None,
             })
         }
@@ -159,13 +172,13 @@ pub fn try_plan_abs_nonnegative_rewrite(
             if proven_nonnegative {
                 Some(AbsDomainRewrite {
                     rewritten: inner,
-                    desc: "|x| = x for x ≥ 0",
+                    kind: AbsDomainRewriteKind::NonNegative,
                     assumption: None,
                 })
             } else {
                 Some(AbsDomainRewrite {
                     rewritten: inner,
-                    desc: "|x| = x (assuming x ≥ 0)",
+                    kind: AbsDomainRewriteKind::NonNegativeAssume,
                     assumption: Some(AbsAssumptionKind::NonNegative),
                 })
             }
@@ -189,7 +202,7 @@ pub fn try_plan_symbolic_root_cancel_rewrite(
     let rewritten = try_extract_symbolic_root_cancel_base(ctx, expr)?;
     Some(SymbolicRootCancelRewrite {
         rewritten,
-        desc: "sqrt(x^n, n) = x (assuming x ≥ 0)",
+        kind: SymbolicRootCancelRewriteKind::AssumeNonNegative,
         requires_nonnegative: true,
         assumption: Some(AbsAssumptionKind::NonNegative),
     })

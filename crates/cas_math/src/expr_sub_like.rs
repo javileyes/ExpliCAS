@@ -115,7 +115,6 @@ pub fn build_unnegated_sub_like_expr(ctx: &mut Context, id: ExprId) -> ExprId {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NegCoeffFlipRewrite {
     pub rewritten: ExprId,
-    pub desc: &'static str,
 }
 
 /// Rewrite negative-coefficient binomial forms:
@@ -176,10 +175,7 @@ pub fn try_rewrite_neg_coeff_flip_binomial_expr(
         rewritten = crate::build::mul2_raw(ctx, rewritten, f);
     }
 
-    Some(NegCoeffFlipRewrite {
-        rewritten,
-        desc: "(-k) * (...) * (a-b) → k * (...) * (b-a)",
-    })
+    Some(NegCoeffFlipRewrite { rewritten })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -191,14 +187,12 @@ pub struct NormalizeSignsRewrite {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NormalizeBinomialOrderRewrite {
     pub rewritten: ExprId,
-    pub desc: &'static str,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NegSubFlipRewrite {
     pub inner: ExprId,
     pub rewritten: ExprId,
-    pub desc: &'static str,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -216,7 +210,6 @@ pub struct CanonicalizeNegationRewrite {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CancelFractionSignsRewrite {
     pub rewritten: ExprId,
-    pub desc: &'static str,
 }
 
 /// Rewrite additive negative-constant forms to subtraction:
@@ -413,10 +406,7 @@ pub fn try_rewrite_normalize_binomial_order_expr(
     let neg_l = ctx.add(Expr::Neg(l));
     let inner_minus_l = ctx.add(Expr::Add(inner, neg_l));
     let rewritten = ctx.add(Expr::Neg(inner_minus_l));
-    Some(NormalizeBinomialOrderRewrite {
-        rewritten,
-        desc: "(y-x) -> -(x-y) for canonical order",
-    })
+    Some(NormalizeBinomialOrderRewrite { rewritten })
 }
 
 /// Rewrite `-(a-b)` into canonical orientation `(b-a)` only when `a > b`.
@@ -432,11 +422,7 @@ pub fn try_rewrite_neg_sub_flip_expr(ctx: &mut Context, expr: ExprId) -> Option<
     }
 
     let rewritten = build_sub_like_expr(ctx, b, a);
-    Some(NegSubFlipRewrite {
-        inner,
-        rewritten,
-        desc: "-(a - b) → (b - a) (canonical orientation)",
-    })
+    Some(NegSubFlipRewrite { inner, rewritten })
 }
 
 /// Rewrite division by numeric constant into multiplication by reciprocal,
@@ -502,10 +488,7 @@ pub fn try_rewrite_cancel_fraction_signs_expr(
     let new_den = build_unnegated_sub_like_expr(ctx, den_id);
     let rewritten = ctx.add(Expr::Div(new_num, new_den));
 
-    Some(CancelFractionSignsRewrite {
-        rewritten,
-        desc: "(-A)/(-B) = A/B (cancel double sign)",
-    })
+    Some(CancelFractionSignsRewrite { rewritten })
 }
 
 #[cfg(test)]
@@ -612,6 +595,19 @@ mod tests {
 
     #[test]
     fn rewrites_negative_coeff_binomial_forms() {
+        use cas_formatter::render_expr;
+
+        fn compact(s: &str) -> String {
+            s.chars().filter(|c| !c.is_whitespace()).collect()
+        }
+
+        fn assert_one_of(actual: String, expected: &[&str]) {
+            assert!(
+                expected.iter().any(|candidate| actual == *candidate),
+                "unexpected render: {actual}"
+            );
+        }
+
         let mut ctx = Context::new();
         let x = ctx.var("x");
         let a = ctx.var("a");
@@ -621,19 +617,25 @@ mod tests {
         let a_minus_b = ctx.add(Expr::Sub(a, b));
         let direct = ctx.add(Expr::Mul(minus_two, a_minus_b));
         let rewrite1 = try_rewrite_neg_coeff_flip_binomial_expr(&mut ctx, direct).expect("direct");
-        assert!(rewrite1.desc.contains("(-k)"));
+        assert_eq!(compact(&render_expr(&ctx, rewrite1.rewritten)), "2*(b-a)");
 
         let nested = ctx.add(Expr::Mul(x, a_minus_b));
         let expr2 = ctx.add(Expr::Mul(minus_two, nested));
         let rewrite2 =
             try_rewrite_neg_coeff_flip_binomial_expr(&mut ctx, expr2).expect("nested right");
-        assert!(rewrite2.desc.contains("(-k)"));
+        assert_one_of(
+            compact(&render_expr(&ctx, rewrite2.rewritten)),
+            &["2*(x*(b-a))", "2*x*(b-a)", "2*((b-a)*x)", "2*(b-a)*x"],
+        );
 
         let nested_left = ctx.add(Expr::Mul(a_minus_b, x));
         let expr3 = ctx.add(Expr::Mul(minus_two, nested_left));
         let rewrite3 =
             try_rewrite_neg_coeff_flip_binomial_expr(&mut ctx, expr3).expect("nested left");
-        assert!(rewrite3.desc.contains("(-k)"));
+        assert_one_of(
+            compact(&render_expr(&ctx, rewrite3.rewritten)),
+            &["2*((b-a)*x)", "2*(b-a)*x", "2*(x*(b-a))", "2*x*(b-a)"],
+        );
     }
 
     #[test]

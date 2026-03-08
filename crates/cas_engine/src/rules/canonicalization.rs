@@ -2,14 +2,17 @@ use crate::define_rule;
 use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
 use cas_math::exponents_support::try_rewrite_exp_to_epow_expr;
-use cas_math::expr_nary::{try_rewrite_canonicalize_add_expr, try_rewrite_canonicalize_mul_expr};
+use cas_math::expr_nary::{
+    try_rewrite_canonicalize_add_expr, try_rewrite_canonicalize_mul_expr,
+    CanonicalizeAddRewriteKind, CanonicalizeMulRewriteKind,
+};
 use cas_math::expr_sub_like::{
     try_rewrite_add_negative_constant_to_sub_expr, try_rewrite_cancel_fraction_signs_expr,
     try_rewrite_canonicalize_div_expr, try_rewrite_canonicalize_negation_expr,
     try_rewrite_neg_coeff_flip_binomial_expr, try_rewrite_neg_sub_flip_expr,
     try_rewrite_normalize_binomial_order_expr,
 };
-use cas_math::root_forms::try_rewrite_canonical_root_expr;
+use cas_math::root_forms::{try_rewrite_canonical_root_expr, CanonicalRootRewriteKind};
 
 define_rule!(
     CanonicalizeNegationRule,
@@ -23,7 +26,7 @@ define_rule!(
 
 define_rule!(CanonicalizeAddRule, "Canonicalize Addition", importance: crate::step::ImportanceLevel::Low, |ctx, expr| {
     let rewrite = try_rewrite_canonicalize_add_expr(ctx, expr)?;
-    Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+    Some(Rewrite::new(rewrite.rewritten).desc(format_canonicalize_add_desc(rewrite.kind)))
 });
 
 define_rule!(
@@ -32,9 +35,39 @@ define_rule!(
     importance: crate::step::ImportanceLevel::Low,
     |ctx, expr| {
         let rewrite = try_rewrite_canonicalize_mul_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc(format_canonicalize_mul_desc(rewrite.kind)))
     }
 );
+
+fn format_canonicalize_add_desc(kind: CanonicalizeAddRewriteKind) -> &'static str {
+    match kind {
+        CanonicalizeAddRewriteKind::SortTerms => "Sort addition terms",
+        CanonicalizeAddRewriteKind::RightAssociate => "Fix associativity (a+b)+c -> a+(b+c)",
+    }
+}
+
+fn format_canonicalize_mul_desc(kind: CanonicalizeMulRewriteKind) -> &'static str {
+    match kind {
+        CanonicalizeMulRewriteKind::SortFactors => "Sort multiplication factors",
+        CanonicalizeMulRewriteKind::RightAssociate => "Fix associativity (a*b)*c -> a*(b*c)",
+    }
+}
+
+fn format_normalize_binomial_order_desc() -> &'static str {
+    "(y-x) -> -(x-y) for canonical order"
+}
+
+fn format_neg_sub_flip_desc() -> &'static str {
+    "-(a - b) → (b - a) (canonical orientation)"
+}
+
+fn format_cancel_fraction_signs_desc() -> &'static str {
+    "(-A)/(-B) = A/B (cancel double sign)"
+}
+
+fn format_neg_coeff_flip_binomial_desc() -> &'static str {
+    "(-k) * (...) * (a-b) → k * (...) * (b-a)"
+}
 
 define_rule!(CanonicalizeDivRule, "Canonicalize Division", importance: crate::step::ImportanceLevel::Low, |ctx, expr| {
     let rewrite = try_rewrite_canonicalize_div_expr(ctx, expr)?;
@@ -43,8 +76,17 @@ define_rule!(CanonicalizeDivRule, "Canonicalize Division", importance: crate::st
 
 define_rule!(CanonicalizeRootRule, "Canonicalize Roots", importance: crate::step::ImportanceLevel::Low, |ctx, expr| {
     let rewrite = try_rewrite_canonical_root_expr(ctx, expr)?;
-    Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+    Some(Rewrite::new(rewrite.rewritten).desc(format_canonical_root_desc(rewrite.kind)))
 });
+
+fn format_canonical_root_desc(kind: CanonicalRootRewriteKind) -> &'static str {
+    match kind {
+        CanonicalRootRewriteKind::SqrtEvenPower => "sqrt(x^2k) -> |x|^k",
+        CanonicalRootRewriteKind::SqrtUnary => "sqrt(x) = x^(1/2)",
+        CanonicalRootRewriteKind::SqrtWithIndex => "sqrt(x, n) = x^(1/n)",
+        CanonicalRootRewriteKind::RootWithIndex => "root(x, n) = x^(1/n)",
+    }
+}
 
 define_rule!(NormalizeSignsRule, "Normalize Signs", |ctx, expr| {
     let rewrite = try_rewrite_add_negative_constant_to_sub_expr(ctx, expr)?;
@@ -60,7 +102,7 @@ define_rule!(
     importance: crate::step::ImportanceLevel::Low,
     |ctx, expr| {
         let rewrite = try_rewrite_normalize_binomial_order_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc(format_normalize_binomial_order_desc()))
     }
 );
 
@@ -79,7 +121,7 @@ define_rule!(
         let rewrite = try_rewrite_neg_sub_flip_expr(ctx, expr)?;
         Some(
             Rewrite::new(rewrite.rewritten)
-                .desc(rewrite.desc)
+                .desc(format_neg_sub_flip_desc())
                 .local(rewrite.inner, rewrite.rewritten),
         )
     }
@@ -96,7 +138,7 @@ define_rule!(
     importance: crate::step::ImportanceLevel::Low,
     |ctx, expr| {
         let rewrite = try_rewrite_cancel_fraction_signs_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc(format_cancel_fraction_signs_desc()))
     }
 );
 
@@ -109,7 +151,7 @@ define_rule!(
     importance: crate::step::ImportanceLevel::Low,
     |ctx, expr| {
         let rewrite = try_rewrite_neg_coeff_flip_binomial_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc(format_neg_coeff_flip_binomial_desc()))
     }
 );
 /// ExpToEPowRule: Convert exp(x) → e^x

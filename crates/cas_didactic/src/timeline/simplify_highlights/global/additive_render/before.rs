@@ -6,6 +6,7 @@ use cas_ast::{Context, ExprPath};
 use cas_formatter::{DisplayContext, HighlightColor, PathHighlightConfig, StylePreferences};
 use cas_solver::Step;
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn render_before_additive_focus(
     context: &Context,
     global_before_expr: cas_ast::ExprId,

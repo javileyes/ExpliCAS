@@ -2,6 +2,7 @@ use super::super::{TimelineHtml, VerbosityLevel};
 use cas_ast::{Context, ExprId};
 use cas_solver::Step;
 
+#[allow(clippy::type_complexity)]
 pub(super) fn build_timeline_html<'a>(
     context: &'a mut Context,
     steps: &'a [Step],

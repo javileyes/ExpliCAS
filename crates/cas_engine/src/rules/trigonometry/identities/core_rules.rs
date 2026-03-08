@@ -6,7 +6,15 @@ use cas_math::trig_core_identity_support::{
     should_block_angle_identity_expr, try_rewrite_angle_sum_diff_identity_expr,
     try_rewrite_legacy_evaluate_trig_expr, try_rewrite_pythagorean_identity_add_expr,
     try_rewrite_sin_cos_integer_pi_expr, try_rewrite_trig_odd_even_parity_expr,
+    TrigOddEvenParityKind,
 };
+
+fn format_trig_odd_even_parity_desc(fn_name: &str, kind: TrigOddEvenParityKind) -> String {
+    match kind {
+        TrigOddEvenParityKind::Odd => format!("{fn_name}(-u) = -{fn_name}(u) [odd function]"),
+        TrigOddEvenParityKind::Even => format!("{fn_name}(-u) = {fn_name}(u) [even function]"),
+    }
+}
 
 // =============================================================================
 // SinCosIntegerPiRule: Pre-order evaluation of sin(n·π) and cos(n·π)
@@ -43,7 +51,12 @@ define_rule!(
     "Trig Parity (Odd/Even)",
     |ctx, expr| {
         let rewrite = try_rewrite_trig_odd_even_parity_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(
+            Rewrite::new(rewrite.rewritten).desc(format_trig_odd_even_parity_desc(
+                &rewrite.fn_name,
+                rewrite.kind,
+            )),
+        )
     }
 );
 

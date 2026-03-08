@@ -15,6 +15,16 @@ pub struct TrigContractionRewrite {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GeneralizedSinCosContractionRewrite {
+    pub rewritten: ExprId,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TanDoubleAngleContractionRewrite {
+    pub rewritten: ExprId,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HalfAngleTangentRewrite {
     pub rewritten: ExprId,
     pub inherited_nonzero: ExprId,
@@ -707,7 +717,7 @@ pub fn try_rewrite_double_angle_contraction_expr(
 pub fn try_rewrite_generalized_sin_cos_contraction_expr(
     ctx: &mut Context,
     expr: ExprId,
-) -> Option<TrigContractionRewrite> {
+) -> Option<GeneralizedSinCosContractionRewrite> {
     let factors = mul_leaves(ctx, expr);
     if factors.len() < 3 {
         return None;
@@ -777,10 +787,7 @@ pub fn try_rewrite_generalized_sin_cos_contraction_expr(
         acc
     };
 
-    Some(TrigContractionRewrite {
-        rewritten,
-        desc: "k·sin(t)·cos(t) = (k/2)·sin(2t)",
-    })
+    Some(GeneralizedSinCosContractionRewrite { rewritten })
 }
 
 /// Rewrite tangent double-angle contraction:
@@ -788,16 +795,13 @@ pub fn try_rewrite_generalized_sin_cos_contraction_expr(
 pub fn try_rewrite_tan_double_angle_contraction_expr(
     ctx: &mut Context,
     expr: ExprId,
-) -> Option<TrigContractionRewrite> {
+) -> Option<TanDoubleAngleContractionRewrite> {
     let tan_arg = match_tan_double_angle_contraction_arg(ctx, expr)?;
 
     let two = ctx.num(2);
     let double_t = ctx.add(Expr::Mul(two, tan_arg));
     let rewritten = ctx.call_builtin(BuiltinFn::Tan, vec![double_t]);
-    Some(TrigContractionRewrite {
-        rewritten,
-        desc: "2·tan(t)/(1-tan²(t)) = tan(2t)",
-    })
+    Some(TanDoubleAngleContractionRewrite { rewritten })
 }
 
 /// Rewrite:

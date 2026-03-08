@@ -212,7 +212,14 @@ run_ci_for_toolchain() {
   fi
 
   if [[ "$RUN_TESTS" -eq 1 ]]; then
-    run "cargo test (debug) ($tc)" cargo +"$tc" "${CARGO_TEST_ARGS[@]}"
+    local debug_test_jobs="${CI_DEBUG_TEST_JOBS:-1}"
+    run "cargo test (debug) ($tc) [jobs=${debug_test_jobs}, debuginfo=0]" \
+      env \
+        CARGO_BUILD_JOBS="$debug_test_jobs" \
+        CARGO_INCREMENTAL=0 \
+        CARGO_PROFILE_DEV_DEBUG=0 \
+        CARGO_PROFILE_TEST_DEBUG=0 \
+        cargo +"$tc" "${CARGO_TEST_ARGS[@]}"
   fi
 
   if [[ "$RUN_RELEASE_BUILD" -eq 1 ]]; then

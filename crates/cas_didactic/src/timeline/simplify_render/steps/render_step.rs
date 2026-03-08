@@ -9,6 +9,7 @@ use cas_ast::Context;
 use cas_formatter::{DisplayContext, StylePreferences};
 use cas_solver::Step;
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn render_timeline_step_block(
     context: &mut Context,
     step_number: usize,

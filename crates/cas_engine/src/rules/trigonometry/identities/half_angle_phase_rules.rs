@@ -8,7 +8,9 @@ use cas_math::trig_half_angle_support::{
     try_rewrite_cot_half_angle_difference_expr, CotHalfAngleDifferenceRewriteKind,
 };
 use cas_math::trig_sum_product_support::try_rewrite_tan_difference_expr;
-use cas_math::trig_weierstrass_support::try_rewrite_weierstrass_contraction_div_expr;
+use cas_math::trig_weierstrass_support::{
+    try_rewrite_weierstrass_contraction_div_expr, WeierstrassContractionKind,
+};
 
 // ============================================================================
 // Cotangent Half-Angle Difference Rule
@@ -35,6 +37,13 @@ use cas_math::trig_weierstrass_support::try_rewrite_weierstrass_contraction_div_
 // and (1-tan²(x/2))/(1+tan²(x/2)) → cos(x)
 pub struct WeierstrassContractionRule;
 
+fn format_weierstrass_contraction_desc(kind: WeierstrassContractionKind) -> &'static str {
+    match kind {
+        WeierstrassContractionKind::Sin => "2·tan(x/2)/(1 + tan²(x/2)) = sin(x)",
+        WeierstrassContractionKind::Cos => "(1 - tan²(x/2))/(1 + tan²(x/2)) = cos(x)",
+    }
+}
+
 impl crate::rule::Rule for WeierstrassContractionRule {
     fn name(&self) -> &str {
         "Weierstrass Half-Angle Contraction"
@@ -47,7 +56,9 @@ impl crate::rule::Rule for WeierstrassContractionRule {
         _parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<crate::rule::Rewrite> {
         let rewrite = try_rewrite_weierstrass_contraction_div_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(
+            Rewrite::new(rewrite.rewritten).desc(format_weierstrass_contraction_desc(rewrite.kind)),
+        )
     }
 
     fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {

@@ -9,6 +9,56 @@ pub struct ReciprocalTrigRewrite {
     pub desc: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReciprocalTrigEvalKind {
+    CotPiOver4,
+    CotPiOver2,
+    SecZero,
+    CscPiOver2,
+    ArccotOne,
+    ArccotZero,
+    ArcsecOne,
+    ArccscOne,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReciprocalTrigEvalRewrite {
+    pub rewritten: ExprId,
+    pub kind: ReciprocalTrigEvalKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReciprocalTrigNegativeKind {
+    Cot,
+    Sec,
+    Csc,
+    Arccot,
+    Arcsec,
+    Arccsc,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReciprocalTrigNegativeRewrite {
+    pub rewritten: ExprId,
+    pub kind: ReciprocalTrigNegativeKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReciprocalTrigCompositionKind {
+    CotArccot,
+    SecArcsec,
+    CscArccsc,
+    ArccotCot,
+    ArcsecSec,
+    ArccscCsc,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReciprocalTrigCompositionRewrite {
+    pub rewritten: ExprId,
+    pub kind: ReciprocalTrigCompositionKind,
+}
+
 type EvalCheck = fn(&Context, ExprId) -> bool;
 type ResultBuilder = fn(&mut Context) -> ExprId;
 
@@ -28,54 +78,54 @@ fn build_pi_over_4(ctx: &mut Context) -> ExprId {
     build_pi_over_n(ctx, 4)
 }
 
-const EVAL_RULES: &[(&str, EvalCheck, ResultBuilder, &str)] = &[
+const EVAL_RULES: &[(&str, EvalCheck, ResultBuilder, ReciprocalTrigEvalKind)] = &[
     (
         "cot",
         |ctx, e| is_pi_over_n(ctx, e, 4),
         build_one,
-        "cot(π/4) = 1",
+        ReciprocalTrigEvalKind::CotPiOver4,
     ),
     (
         "cot",
         |ctx, e| is_pi_over_n(ctx, e, 2),
         build_zero,
-        "cot(π/2) = 0",
+        ReciprocalTrigEvalKind::CotPiOver2,
     ),
     (
         "sec",
         |ctx, e| is_zero_expr(ctx, e),
         build_one,
-        "sec(0) = 1",
+        ReciprocalTrigEvalKind::SecZero,
     ),
     (
         "csc",
         |ctx, e| is_pi_over_n(ctx, e, 2),
         build_one,
-        "csc(π/2) = 1",
+        ReciprocalTrigEvalKind::CscPiOver2,
     ),
     (
         "arccot",
         |ctx, e| is_one_expr(ctx, e),
         build_pi_over_4,
-        "arccot(1) = π/4",
+        ReciprocalTrigEvalKind::ArccotOne,
     ),
     (
         "arccot",
         |ctx, e| is_zero_expr(ctx, e),
         build_pi_over_2,
-        "arccot(0) = π/2",
+        ReciprocalTrigEvalKind::ArccotZero,
     ),
     (
         "arcsec",
         |ctx, e| is_one_expr(ctx, e),
         build_zero,
-        "arcsec(1) = 0",
+        ReciprocalTrigEvalKind::ArcsecOne,
     ),
     (
         "arccsc",
         |ctx, e| is_one_expr(ctx, e),
         build_pi_over_2,
-        "arccsc(1) = π/2",
+        ReciprocalTrigEvalKind::ArccscOne,
     ),
 ];
 
@@ -84,10 +134,10 @@ pub fn eval_reciprocal_trig_value(
     ctx: &mut Context,
     fn_name: &str,
     arg: ExprId,
-) -> Option<(ExprId, &'static str)> {
+) -> Option<(ExprId, ReciprocalTrigEvalKind)> {
     for (func, check, build, desc) in EVAL_RULES {
         if fn_name == *func && check(ctx, arg) {
-            return Some((build(ctx), desc));
+            return Some((build(ctx), *desc));
         }
     }
     None
@@ -97,7 +147,7 @@ pub fn eval_reciprocal_trig_value(
 pub fn try_rewrite_eval_reciprocal_trig_expr(
     ctx: &mut Context,
     expr: ExprId,
-) -> Option<ReciprocalTrigRewrite> {
+) -> Option<ReciprocalTrigEvalRewrite> {
     let Expr::Function(fn_id, args) = ctx.get(expr) else {
         return None;
     };
@@ -106,9 +156,9 @@ pub fn try_rewrite_eval_reciprocal_trig_expr(
     }
     let fn_name = ctx.builtin_of(*fn_id)?.name();
     let (rewritten, desc) = eval_reciprocal_trig_value(ctx, fn_name, args[0])?;
-    Some(ReciprocalTrigRewrite {
+    Some(ReciprocalTrigEvalRewrite {
         rewritten,
-        desc: desc.to_string(),
+        kind: desc,
     })
 }
 
@@ -132,7 +182,7 @@ pub fn is_reciprocal_trig_composition(outer_name: &str, inner_name: &str) -> boo
 pub fn try_rewrite_reciprocal_trig_composition_expr(
     ctx: &Context,
     expr: ExprId,
-) -> Option<ReciprocalTrigRewrite> {
+) -> Option<ReciprocalTrigCompositionRewrite> {
     let Expr::Function(outer_fn_id, outer_args) = ctx.get(expr) else {
         return None;
     };
@@ -153,9 +203,19 @@ pub fn try_rewrite_reciprocal_trig_composition_expr(
         return None;
     }
 
-    Some(ReciprocalTrigRewrite {
+    let kind = match (outer_name, inner_name) {
+        ("cot", "arccot") => ReciprocalTrigCompositionKind::CotArccot,
+        ("sec", "arcsec") => ReciprocalTrigCompositionKind::SecArcsec,
+        ("csc", "arccsc") => ReciprocalTrigCompositionKind::CscArccsc,
+        ("arccot", "cot") => ReciprocalTrigCompositionKind::ArccotCot,
+        ("arcsec", "sec") => ReciprocalTrigCompositionKind::ArcsecSec,
+        ("arccsc", "csc") => ReciprocalTrigCompositionKind::ArccscCsc,
+        _ => return None,
+    };
+
+    Some(ReciprocalTrigCompositionRewrite {
         rewritten: inner_args[0],
-        desc: format!("{}({}(x)) = x", outer_name, inner_name),
+        kind,
     })
 }
 
@@ -180,7 +240,7 @@ pub fn rewrite_negative_reciprocal_trig_argument(
     ctx: &mut Context,
     fn_name: &str,
     arg: ExprId,
-) -> Option<(ExprId, &'static str)> {
+) -> Option<(ExprId, ReciprocalTrigNegativeKind)> {
     let inner = extract_negated_inner(ctx, arg)?;
     for (func, behavior) in NEG_BEHAVIORS {
         if fn_name != *func {
@@ -191,17 +251,17 @@ pub fn rewrite_negative_reciprocal_trig_argument(
             NegBehavior::Odd => (
                 ctx.add(Expr::Neg(f_inner)),
                 match fn_name {
-                    "cot" => "cot(-x) = -cot(x)",
-                    "csc" => "csc(-x) = -csc(x)",
-                    "arccot" => "arccot(-x) = -arccot(x)",
-                    "arccsc" => "arccsc(-x) = -arccsc(x)",
+                    "cot" => ReciprocalTrigNegativeKind::Cot,
+                    "csc" => ReciprocalTrigNegativeKind::Csc,
+                    "arccot" => ReciprocalTrigNegativeKind::Arccot,
+                    "arccsc" => ReciprocalTrigNegativeKind::Arccsc,
                     _ => return None,
                 },
             ),
             NegBehavior::Even => (
                 f_inner,
                 match fn_name {
-                    "sec" => "sec(-x) = sec(x)",
+                    "sec" => ReciprocalTrigNegativeKind::Sec,
                     _ => return None,
                 },
             ),
@@ -210,7 +270,7 @@ pub fn rewrite_negative_reciprocal_trig_argument(
                 (
                     ctx.add(Expr::Sub(pi, f_inner)),
                     match fn_name {
-                        "arcsec" => "arcsec(-x) = π - arcsec(x)",
+                        "arcsec" => ReciprocalTrigNegativeKind::Arcsec,
                         _ => return None,
                     },
                 )
@@ -225,7 +285,7 @@ pub fn rewrite_negative_reciprocal_trig_argument(
 pub fn try_rewrite_negative_reciprocal_trig_expr(
     ctx: &mut Context,
     expr: ExprId,
-) -> Option<ReciprocalTrigRewrite> {
+) -> Option<ReciprocalTrigNegativeRewrite> {
     let Expr::Function(fn_id, args) = ctx.get(expr) else {
         return None;
     };
@@ -234,9 +294,9 @@ pub fn try_rewrite_negative_reciprocal_trig_expr(
     }
     let fn_name = ctx.builtin_of(*fn_id)?.name();
     let (rewritten, desc) = rewrite_negative_reciprocal_trig_argument(ctx, fn_name, args[0])?;
-    Some(ReciprocalTrigRewrite {
+    Some(ReciprocalTrigNegativeRewrite {
         rewritten,
-        desc: desc.to_string(),
+        kind: desc,
     })
 }
 
@@ -249,8 +309,8 @@ mod tests {
     fn evaluates_known_reciprocal_trig_values() {
         let mut ctx = Context::new();
         let arg = parse("pi/4", &mut ctx).expect("arg");
-        let (out, desc) = eval_reciprocal_trig_value(&mut ctx, "cot", arg).expect("eval");
-        assert_eq!(desc, "cot(π/4) = 1");
+        let (out, kind) = eval_reciprocal_trig_value(&mut ctx, "cot", arg).expect("eval");
+        assert_eq!(kind, ReciprocalTrigEvalKind::CotPiOver4);
         assert!(
             matches!(ctx.get(out), Expr::Number(n) if *n == num_rational::BigRational::from_integer(1.into()))
         );
@@ -268,9 +328,9 @@ mod tests {
         let mut ctx = Context::new();
         let x = parse("x", &mut ctx).expect("x");
         let neg_x = ctx.add(Expr::Neg(x));
-        let (out, desc) =
+        let (out, kind) =
             rewrite_negative_reciprocal_trig_argument(&mut ctx, "arcsec", neg_x).expect("rw");
-        assert_eq!(desc, "arcsec(-x) = π - arcsec(x)");
+        assert_eq!(kind, ReciprocalTrigNegativeKind::Arcsec);
         match ctx.get(out) {
             Expr::Sub(l, r) => {
                 assert!(matches!(ctx.get(*l), Expr::Constant(cas_ast::Constant::Pi)));
@@ -288,7 +348,7 @@ mod tests {
         let mut ctx = Context::new();
         let expr = parse("cot(pi/4)", &mut ctx).expect("expr");
         let rewrite = try_rewrite_eval_reciprocal_trig_expr(&mut ctx, expr).expect("rewrite");
-        assert_eq!(rewrite.desc, "cot(π/4) = 1");
+        assert_eq!(rewrite.kind, ReciprocalTrigEvalKind::CotPiOver4);
         assert!(
             matches!(ctx.get(rewrite.rewritten), Expr::Number(n) if *n == num_rational::BigRational::from_integer(1.into()))
         );
@@ -299,6 +359,7 @@ mod tests {
         let mut ctx = Context::new();
         let expr = parse("sec(arcsec(x))", &mut ctx).expect("expr");
         let rewrite = try_rewrite_reciprocal_trig_composition_expr(&ctx, expr).expect("rewrite");
+        assert_eq!(rewrite.kind, ReciprocalTrigCompositionKind::SecArcsec);
         assert_eq!(rewrite.rewritten, parse("x", &mut ctx).expect("x"));
     }
 
@@ -307,6 +368,6 @@ mod tests {
         let mut ctx = Context::new();
         let expr = parse("arcsec(-x)", &mut ctx).expect("expr");
         let rewrite = try_rewrite_negative_reciprocal_trig_expr(&mut ctx, expr).expect("rewrite");
-        assert_eq!(rewrite.desc, "arcsec(-x) = π - arcsec(x)");
+        assert_eq!(rewrite.kind, ReciprocalTrigNegativeKind::Arcsec);
     }
 }

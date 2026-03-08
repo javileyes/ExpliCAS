@@ -1,5 +1,14 @@
 use crate::define_rule;
 use crate::rule::Rewrite;
+use cas_math::inverse_trig_composition_support::InverseTrigReciprocalRewriteKind;
+
+fn format_inverse_trig_reciprocal_desc(kind: InverseTrigReciprocalRewriteKind) -> &'static str {
+    match kind {
+        InverseTrigReciprocalRewriteKind::ArcsecToArccos => "arcsec(x) → arccos(1/x)",
+        InverseTrigReciprocalRewriteKind::ArccscToArcsin => "arccsc(x) → arcsin(1/x)",
+        InverseTrigReciprocalRewriteKind::ArccotToArctan => "arccot(x) → arctan(1/x)",
+    }
+}
 use cas_ast::{Context, Expr, ExprId};
 use cas_math::inverse_trig_composition_support::{
     try_plan_atan_rational_add_expr, try_plan_inverse_atan_reciprocal_add_expr,
@@ -159,7 +168,9 @@ define_rule!(
     Some(crate::target_kind::TargetKindSet::FUNCTION),
     |ctx, expr| {
         let rewrite = try_rewrite_arcsec_to_arccos_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(
+            Rewrite::new(rewrite.rewritten).desc(format_inverse_trig_reciprocal_desc(rewrite.kind)),
+        )
     }
 );
 
@@ -170,7 +181,9 @@ define_rule!(
     Some(crate::target_kind::TargetKindSet::FUNCTION),
     |ctx, expr| {
         let rewrite = try_rewrite_arccsc_to_arcsin_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(
+            Rewrite::new(rewrite.rewritten).desc(format_inverse_trig_reciprocal_desc(rewrite.kind)),
+        )
     }
 );
 
@@ -182,7 +195,9 @@ define_rule!(
     Some(crate::target_kind::TargetKindSet::FUNCTION),
     |ctx, expr| {
         let rewrite = try_rewrite_arccot_to_arctan_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(
+            Rewrite::new(rewrite.rewritten).desc(format_inverse_trig_reciprocal_desc(rewrite.kind)),
+        )
     }
 );
 

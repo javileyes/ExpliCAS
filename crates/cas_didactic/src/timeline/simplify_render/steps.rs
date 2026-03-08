@@ -8,6 +8,7 @@ use cas_formatter::{DisplayContext, StylePreferences};
 use cas_solver::Step;
 use std::collections::HashSet;
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn render_timeline_filtered_steps(
     context: &mut Context,
     html: &mut String,

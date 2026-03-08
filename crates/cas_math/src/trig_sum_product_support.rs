@@ -200,19 +200,44 @@ pub fn build_avg_with_simplifier(
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TrigSumProductRewrite {
     pub rewritten: ExprId,
-    pub desc: &'static str,
+    pub kind: TrigSumProductRewriteKind,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TrigProductToSumRewrite {
     pub rewritten: ExprId,
-    pub desc: &'static str,
+    pub kind: TrigProductToSumRewriteKind,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TrigSumToProductContractionRewrite {
     pub rewritten: ExprId,
-    pub desc: &'static str,
+    pub kind: TrigSumToProductContractionRewriteKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TrigSumProductRewriteKind {
+    Werner,
+    SinSum,
+    SinDiff,
+    CosSum,
+    CosDiff,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TrigProductToSumRewriteKind {
+    SinCos,
+    CosSin,
+    CosCos,
+    SinSin,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TrigSumToProductContractionRewriteKind {
+    SinSum,
+    SinDiff,
+    CosSum,
+    CosDiff,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -427,7 +452,7 @@ pub fn try_rewrite_product_to_sum_werner_expr(
 
     Some(TrigSumProductRewrite {
         rewritten,
-        desc: "2·sin(A)·cos(B) → sin(A+B) + sin(A-B) (Werner)",
+        kind: TrigSumProductRewriteKind::Werner,
     })
 }
 
@@ -476,14 +501,14 @@ pub fn try_rewrite_trig_sum_to_product_expr(
     let half_diff = build_half_diff_with_simplifier(ctx, arg_a, arg_b, false, simplify_expr);
     let two = ctx.num(2);
 
-    let (rewritten, desc) = match (fn_name, is_diff) {
+    let (rewritten, kind) = match (fn_name, is_diff) {
         ("sin", false) => {
             let sin_avg = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![avg]);
             let cos_half = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![half_diff]);
             let product = smart_mul(ctx, sin_avg, cos_half);
             (
                 smart_mul(ctx, two, product),
-                "sin(A)+sin(B) = 2·sin((A+B)/2)·cos((A-B)/2)",
+                TrigSumProductRewriteKind::SinSum,
             )
         }
         ("sin", true) => {
@@ -492,7 +517,7 @@ pub fn try_rewrite_trig_sum_to_product_expr(
             let product = smart_mul(ctx, cos_avg, sin_half);
             (
                 smart_mul(ctx, two, product),
-                "sin(A)-sin(B) = 2·cos((A+B)/2)·sin((A-B)/2)",
+                TrigSumProductRewriteKind::SinDiff,
             )
         }
         ("cos", false) => {
@@ -502,7 +527,7 @@ pub fn try_rewrite_trig_sum_to_product_expr(
             let product = smart_mul(ctx, cos_avg, cos_half);
             (
                 smart_mul(ctx, two, product),
-                "cos(A)+cos(B) = 2·cos((A+B)/2)·cos((A-B)/2)",
+                TrigSumProductRewriteKind::CosSum,
             )
         }
         ("cos", true) => {
@@ -512,13 +537,13 @@ pub fn try_rewrite_trig_sum_to_product_expr(
             let two_product = smart_mul(ctx, two, product);
             (
                 ctx.add(Expr::Neg(two_product)),
-                "cos(A)-cos(B) = -2·sin((A+B)/2)·sin((A-B)/2)",
+                TrigSumProductRewriteKind::CosDiff,
             )
         }
         _ => return None,
     };
 
-    Some(TrigSumProductRewrite { rewritten, desc })
+    Some(TrigSumProductRewrite { rewritten, kind })
 }
 
 /// Full product-to-sum identities:
@@ -573,7 +598,7 @@ pub fn try_rewrite_product_to_sum_expr(
         }
     }
 
-    let (rewritten, desc) = match (name1, name2) {
+    let (rewritten, kind) = match (name1, name2) {
         ("sin", "cos") => {
             let sum_arg = ctx.add(Expr::Add(arg1, arg2));
             let diff_arg = ctx.add(Expr::Sub(arg1, arg2));
@@ -581,7 +606,7 @@ pub fn try_rewrite_product_to_sum_expr(
             let sin_diff = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![diff_arg]);
             (
                 ctx.add(Expr::Add(sin_sum, sin_diff)),
-                "2·sin(a)·cos(b) → sin(a+b) + sin(a-b)",
+                TrigProductToSumRewriteKind::SinCos,
             )
         }
         ("cos", "sin") => {
@@ -591,7 +616,7 @@ pub fn try_rewrite_product_to_sum_expr(
             let sin_diff = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![diff_arg]);
             (
                 ctx.add(Expr::Sub(sin_sum, sin_diff)),
-                "2·cos(a)·sin(b) → sin(a+b) - sin(a-b)",
+                TrigProductToSumRewriteKind::CosSin,
             )
         }
         ("cos", "cos") => {
@@ -601,7 +626,7 @@ pub fn try_rewrite_product_to_sum_expr(
             let cos_diff = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![diff_arg]);
             (
                 ctx.add(Expr::Add(cos_sum, cos_diff)),
-                "2·cos(a)·cos(b) → cos(a+b) + cos(a-b)",
+                TrigProductToSumRewriteKind::CosCos,
             )
         }
         ("sin", "sin") => {
@@ -611,7 +636,7 @@ pub fn try_rewrite_product_to_sum_expr(
             let cos_diff = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![diff_arg]);
             (
                 ctx.add(Expr::Sub(cos_diff, cos_sum)),
-                "2·sin(a)·sin(b) → cos(a-b) - cos(a+b)",
+                TrigProductToSumRewriteKind::SinSin,
             )
         }
         _ => return None,
@@ -620,7 +645,7 @@ pub fn try_rewrite_product_to_sum_expr(
     let rewritten = remaining
         .into_iter()
         .fold(rewritten, |acc, factor| smart_mul(ctx, acc, factor));
-    Some(TrigProductToSumRewrite { rewritten, desc })
+    Some(TrigProductToSumRewrite { rewritten, kind })
 }
 
 /// Contraction identities:
@@ -657,39 +682,48 @@ pub fn try_rewrite_sum_to_product_contraction_expr(
     let half_diff_arg = build_coef_times_base(ctx, &half_diff, base);
     let two_id = ctx.num(2);
 
-    let rewritten = match (l_name, is_add) {
+    let (rewritten, kind) = match (l_name, is_add) {
         ("sin", true) => {
             let sin_half_sum = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![half_sum_arg]);
             let cos_half_diff = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![half_diff_arg]);
             let product = ctx.add(Expr::Mul(sin_half_sum, cos_half_diff));
-            ctx.add(Expr::Mul(two_id, product))
+            (
+                ctx.add(Expr::Mul(two_id, product)),
+                TrigSumToProductContractionRewriteKind::SinSum,
+            )
         }
         ("sin", false) => {
             let cos_half_sum = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![half_sum_arg]);
             let sin_half_diff = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![half_diff_arg]);
             let product = ctx.add(Expr::Mul(cos_half_sum, sin_half_diff));
-            ctx.add(Expr::Mul(two_id, product))
+            (
+                ctx.add(Expr::Mul(two_id, product)),
+                TrigSumToProductContractionRewriteKind::SinDiff,
+            )
         }
         ("cos", true) => {
             let cos_half_sum = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![half_sum_arg]);
             let cos_half_diff = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![half_diff_arg]);
             let product = ctx.add(Expr::Mul(cos_half_sum, cos_half_diff));
-            ctx.add(Expr::Mul(two_id, product))
+            (
+                ctx.add(Expr::Mul(two_id, product)),
+                TrigSumToProductContractionRewriteKind::CosSum,
+            )
         }
         ("cos", false) => {
             let sin_half_sum = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![half_sum_arg]);
             let sin_half_diff = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![half_diff_arg]);
             let product = ctx.add(Expr::Mul(sin_half_sum, sin_half_diff));
             let two_times = ctx.add(Expr::Mul(two_id, product));
-            ctx.add(Expr::Neg(two_times))
+            (
+                ctx.add(Expr::Neg(two_times)),
+                TrigSumToProductContractionRewriteKind::CosDiff,
+            )
         }
         _ => return None,
     };
 
-    Some(TrigSumToProductContractionRewrite {
-        rewritten,
-        desc: "Sum-to-product: sin/cos sum → product form",
-    })
+    Some(TrigSumToProductContractionRewrite { rewritten, kind })
 }
 
 #[cfg(test)]

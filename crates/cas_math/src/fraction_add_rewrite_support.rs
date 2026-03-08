@@ -89,20 +89,21 @@ where
     let rewritten = ctx.add(Expr::Div(new_num, common_den));
     let new_complexity = count_nodes(ctx, rewritten);
 
-    if matches!(ctx.get(d1), Expr::Number(_)) && matches!(ctx.get(d2), Expr::Number(_)) {
-        if should_allow_numeric_fraction_add_rewrite(
+    if matches!(ctx.get(d1), Expr::Number(_))
+        && matches!(ctx.get(d2), Expr::Number(_))
+        && should_allow_numeric_fraction_add_rewrite(
             ctx,
             input.l,
             input.r,
             d1,
             d2,
             input.inside_trig,
-        ) {
-            return Some(AddFractionRewritePlan {
-                rewritten,
-                kind: AddFractionRewriteKind::NumericDenominators,
-            });
-        }
+        )
+    {
+        return Some(AddFractionRewritePlan {
+            rewritten,
+            kind: AddFractionRewriteKind::NumericDenominators,
+        });
     }
 
     let (does_simplify, is_proper) = assess_fraction_add_simplification(ctx, new_num, common_den);

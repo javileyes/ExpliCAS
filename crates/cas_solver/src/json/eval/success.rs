@@ -3,6 +3,7 @@ use cas_api_models::{
     JsonRunOptions,
 };
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn build_success_json(
     engine: &mut crate::Engine,
     output_view: &crate::EvalOutputView,

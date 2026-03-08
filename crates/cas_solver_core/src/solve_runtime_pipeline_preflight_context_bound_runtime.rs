@@ -5,6 +5,7 @@ use cas_ast::{Equation, ExprId};
 
 /// Build a preflight context using the runtime solve context/domain aliases and
 /// the standard implicit-domain accumulation policy.
+#[allow(clippy::too_many_arguments)]
 pub fn build_runtime_solve_preflight_state_with_default_domain_inference_and_derivation<
     SState,
     FContextRef,

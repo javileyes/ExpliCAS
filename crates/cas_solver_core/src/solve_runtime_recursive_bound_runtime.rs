@@ -4,6 +4,7 @@ use cas_ast::{Equation, ExprId, RelOp, SolutionSet};
 
 /// Run `solve_inner` using default preflight/prepare/pipeline wiring plus the
 /// default recursive apply/isolation routes.
+#[allow(clippy::too_many_arguments)]
 pub fn solve_inner_with_runtime_state_and_default_recursive_routes_and_errors<
     T,
     FSolveReentrant,
@@ -107,6 +108,7 @@ where
 }
 
 /// Apply one strategy using the default recursive solve/isolation routes.
+#[allow(clippy::too_many_arguments)]
 pub fn apply_strategy_with_runtime_state_and_default_recursive_routes<
     T,
     FSolveReentrant,

@@ -5,6 +5,7 @@ use cas_ast::{ExprId, RelOp, SolutionSet};
 
 /// Guard recursion depth and then run a direct isolation-dispatch entrypoint
 /// through the current runtime solve context and solver options.
+#[allow(clippy::too_many_arguments)]
 pub fn isolate_with_default_depth_guard_and_dispatch_with_state<T, FDispatchEntry>(
     state: &mut T,
     lhs: ExprId,

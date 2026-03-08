@@ -11,9 +11,25 @@ use cas_math::abs_support::{
     try_rewrite_abs_quotient_identity_expr, try_rewrite_abs_sqrt_identity_expr,
     try_rewrite_abs_sub_normalize_expr, try_rewrite_abs_sum_nonnegative_expr,
     try_rewrite_evaluate_abs_expr, try_rewrite_sqrt_square_expr, try_unwrap_abs_arg,
-    value_domain_mode_from_flag, AbsAssumptionKind,
+    value_domain_mode_from_flag, AbsAssumptionKind, AbsDomainRewriteKind,
+    SymbolicRootCancelRewriteKind,
 };
 use cas_math::root_forms::try_rewrite_odd_half_power_expr;
+
+fn format_abs_domain_rewrite_desc(kind: AbsDomainRewriteKind) -> &'static str {
+    match kind {
+        AbsDomainRewriteKind::Positive => "|x| = x for x > 0",
+        AbsDomainRewriteKind::PositiveAssume => "|x| = x (assuming x > 0)",
+        AbsDomainRewriteKind::NonNegative => "|x| = x for x >= 0",
+        AbsDomainRewriteKind::NonNegativeAssume => "|x| = x (assuming x >= 0)",
+    }
+}
+
+fn format_symbolic_root_cancel_desc(kind: SymbolicRootCancelRewriteKind) -> &'static str {
+    match kind {
+        SymbolicRootCancelRewriteKind::AssumeNonNegative => "sqrt(x^n, n) = x (assuming x >= 0)",
+    }
+}
 
 define_rule!(EvaluateAbsRule, "Evaluate Absolute Value", |ctx, expr| {
     let rewrite = try_rewrite_evaluate_abs_expr(ctx, expr)?;
@@ -63,7 +79,7 @@ impl crate::rule::Rule for AbsPositiveSimplifyRule {
 
         let plan = try_plan_abs_positive_rewrite(ctx, expr, mode, proven, implied)?;
         let mut rewrite = Rewrite::new(plan.rewritten)
-            .desc(plan.desc)
+            .desc(format_abs_domain_rewrite_desc(plan.kind))
             .local(expr, plan.rewritten);
 
         if matches!(plan.assumption, Some(AbsAssumptionKind::Positive)) {
@@ -131,7 +147,7 @@ impl crate::rule::Rule for AbsNonNegativeSimplifyRule {
 
         let plan = try_plan_abs_nonnegative_rewrite(ctx, expr, mode, proven, implied)?;
         let mut rewrite = Rewrite::new(plan.rewritten)
-            .desc(plan.desc)
+            .desc(format_abs_domain_rewrite_desc(plan.kind))
             .local(expr, plan.rewritten);
 
         if matches!(plan.assumption, Some(AbsAssumptionKind::NonNegative)) {
@@ -269,7 +285,8 @@ impl crate::rule::Rule for SymbolicRootCancelRule {
         let plan = try_plan_symbolic_root_cancel_rewrite(ctx, expr, mode, value_domain)?;
 
         use crate::ImplicitCondition;
-        let mut rewrite = crate::rule::Rewrite::new(plan.rewritten).desc(plan.desc);
+        let mut rewrite = crate::rule::Rewrite::new(plan.rewritten)
+            .desc(format_symbolic_root_cancel_desc(plan.kind));
         if plan.requires_nonnegative {
             rewrite = rewrite.requires(ImplicitCondition::NonNegative(plan.rewritten));
         }

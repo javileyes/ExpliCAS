@@ -1,7 +1,7 @@
 use cas_ast::{Context, Expr};
 use cas_formatter::DisplayExpr;
 use cas_math::poly_gcd_structural::poly_gcd_structural;
-use cas_math::poly_modp_calls::rewrite_poly_mul_modp_stats_call_with_defaults;
+use cas_math::poly_modp_calls::try_eval_poly_mul_modp_stats_call_with_limit_policy;
 use cas_math::poly_modp_conv::{check_poly_equal_modp_expr, DEFAULT_PRIME};
 use cas_parser::parse;
 use num_bigint::BigInt;
@@ -92,10 +92,16 @@ fn poly_mul_modp_stats_rewrite_returns_stats_function() {
     let mut ctx = Context::new();
     let expr = parse("poly_mul_modp((x+1)^2, (x-1)^2)", &mut ctx).expect("parse call");
 
-    let rewritten = rewrite_poly_mul_modp_stats_call_with_defaults(&mut ctx, expr, |_est, _lim| {})
-        .expect("poly_mul_modp rewrite");
+    let rewritten = try_eval_poly_mul_modp_stats_call_with_limit_policy(
+        &mut ctx,
+        expr,
+        DEFAULT_PRIME,
+        100_000,
+        |_est, _lim| {},
+    )
+    .expect("poly_mul_modp rewrite");
 
-    match ctx.get(rewritten.0) {
+    match ctx.get(rewritten.stats_expr) {
         Expr::Function(fn_id, args) => {
             assert_eq!(ctx.sym_name(*fn_id), "poly_mul_stats");
             assert_eq!(args.len(), 4);

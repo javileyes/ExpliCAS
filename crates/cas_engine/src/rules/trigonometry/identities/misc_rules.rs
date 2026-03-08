@@ -5,7 +5,28 @@
 
 use crate::rule::Rewrite;
 use cas_ast::ExprId;
-use cas_math::trig_sum_product_support::try_rewrite_sum_to_product_contraction_expr;
+use cas_math::trig_sum_product_support::{
+    try_rewrite_sum_to_product_contraction_expr, TrigSumToProductContractionRewriteKind,
+};
+
+fn format_trig_sum_to_product_contraction_desc(
+    kind: TrigSumToProductContractionRewriteKind,
+) -> &'static str {
+    match kind {
+        TrigSumToProductContractionRewriteKind::SinSum => {
+            "sin(a)+sin(b) → 2·sin((a+b)/2)·cos((a-b)/2)"
+        }
+        TrigSumToProductContractionRewriteKind::SinDiff => {
+            "sin(a)-sin(b) → 2·cos((a+b)/2)·sin((a-b)/2)"
+        }
+        TrigSumToProductContractionRewriteKind::CosSum => {
+            "cos(a)+cos(b) → 2·cos((a+b)/2)·cos((a-b)/2)"
+        }
+        TrigSumToProductContractionRewriteKind::CosDiff => {
+            "cos(a)-cos(b) → -2·sin((a+b)/2)·sin((a-b)/2)"
+        }
+    }
+}
 
 // =============================================================================
 // TrigSumToProductContractionRule: sin(a)+sin(b) → 2*sin((a+b)/2)*cos((a-b)/2)
@@ -38,7 +59,10 @@ impl crate::rule::Rule for TrigSumToProductContractionRule {
         _parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<Rewrite> {
         let rewrite = try_rewrite_sum_to_product_contraction_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(
+            Rewrite::new(rewrite.rewritten)
+                .desc(format_trig_sum_to_product_contraction_desc(rewrite.kind)),
+        )
     }
 
     fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
