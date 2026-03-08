@@ -188,8 +188,8 @@ pub fn run(args: EvalJsonArgs) {
     let output = cas_session::evaluate_eval_json_command_pretty_with_session(
         args.session.as_deref(),
         eval_json_command_config(&args),
-        |steps, context, steps_mode| {
-            cas_didactic::collect_eval_json_steps(steps, context, steps_mode)
+        |steps, events, context, steps_mode| {
+            cas_didactic::collect_eval_json_steps_with_events(steps, events, context, steps_mode)
         },
     );
     println!("{}", output);

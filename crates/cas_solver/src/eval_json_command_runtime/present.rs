@@ -1,4 +1,5 @@
 use cas_api_models::{EvalJsonOutput, EvalJsonSessionRunConfig, StepJson};
+use cas_solver_core::engine_events::EngineEvent;
 
 use super::PreparedEvalJsonRun;
 
@@ -13,7 +14,7 @@ pub(super) fn finalize_eval_json_run<F>(
     total_us: u64,
 ) -> Result<EvalJsonOutput, String>
 where
-    F: Fn(&[crate::Step], &cas_ast::Context, &str) -> Vec<StepJson>,
+    F: Fn(&[crate::Step], &[EngineEvent], &cas_ast::Context, &str) -> Vec<StepJson>,
 {
     let collected = collect::collect_eval_json_artifacts(
         &engine.simplifier.context,

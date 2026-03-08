@@ -28,7 +28,7 @@ mod tests {
                 inv_trig: "strict",
                 assume_scope: "real",
             },
-            |_steps, _context, _steps_mode| Vec::new(),
+            |_steps, _events, _context, _steps_mode| Vec::new(),
         )
         .expect("eval-json");
 

@@ -68,6 +68,7 @@ mod context_command_types;
 mod display_eval_steps;
 mod domain_facade;
 mod engine_bridge;
+mod engine_event_display_steps;
 mod engine_runtime_types;
 mod equiv_command;
 mod equiv_format;

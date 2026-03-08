@@ -17,7 +17,7 @@ pub use didactic::{
     get_standalone_substeps, is_high_or_higher_step, is_medium_or_higher_step, latex_to_plain_text,
     CliSubstepsRenderPlan, EnrichedStep, StepDisplayMode, SubStep, TimelineSubstepsRenderPlan,
 };
-pub use eval_json_steps::collect_eval_json_steps;
+pub use eval_json_steps::{collect_eval_json_steps, collect_eval_json_steps_with_events};
 pub use events::EngineEventCollector;
 pub use timeline::{
     evaluate_timeline_command_cli_render_with_session,
