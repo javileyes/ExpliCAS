@@ -1,10 +1,12 @@
 use cas_ast::ordering::compare_expr;
 use cas_ast::{Context, Expr, ExprId};
+use cas_math::expr_destructure::{as_add, as_neg, as_pow, as_sub};
 use num_rational::BigRational;
 use std::cmp::Ordering;
 
-use crate::expr_rewrite::smart_mul;
-use crate::poly_compare::poly_eq;
+use cas_math::expr_rewrite::smart_mul;
+use cas_math::numeric::as_i64;
+use cas_math::poly_compare::poly_eq;
 
 /// Plan for `(a^2 + 2ab + b^2)/(a+b)^2` denominator expansion prior to cancel.
 #[derive(Clone, Debug)]
@@ -56,12 +58,12 @@ pub fn try_plan_expand_binomial_square_in_den_for_cancel(
     num: ExprId,
     den: ExprId,
 ) -> Option<ExpandBinomialSquareDenCancelPlan> {
-    let (base, exp) = crate::expr_destructure::as_pow(ctx, den)?;
-    if crate::numeric::as_i64(ctx, exp)? != 2 {
+    let (base, exp) = as_pow(ctx, den)?;
+    if as_i64(ctx, exp)? != 2 {
         return None;
     }
 
-    let (a, b) = crate::expr_destructure::as_add(ctx, base)?;
+    let (a, b) = as_add(ctx, base)?;
 
     let two = ctx.num(2);
     let exp_two = ctx.num(2);
@@ -90,14 +92,14 @@ pub fn try_plan_difference_of_squares_in_num(
     num: ExprId,
     den: ExprId,
 ) -> Option<DifferenceOfSquaresCancelPlan> {
-    let (a, b) = if let Some((left, right)) = crate::expr_destructure::as_sub(ctx, num) {
-        let (a, exp_a) = crate::expr_destructure::as_pow(ctx, left)?;
-        if crate::numeric::as_i64(ctx, exp_a)? != 2 {
+    let (a, b) = if let Some((left, right)) = as_sub(ctx, num) {
+        let (a, exp_a) = as_pow(ctx, left)?;
+        if as_i64(ctx, exp_a)? != 2 {
             return None;
         }
 
-        if let Some((b, exp_b)) = crate::expr_destructure::as_pow(ctx, right) {
-            if crate::numeric::as_i64(ctx, exp_b)? != 2 {
+        if let Some((b, exp_b)) = as_pow(ctx, right) {
+            if as_i64(ctx, exp_b)? != 2 {
                 return None;
             }
             (a, b)
@@ -108,15 +110,15 @@ pub fn try_plan_difference_of_squares_in_num(
         } else {
             return None;
         }
-    } else if let Some((left, right)) = crate::expr_destructure::as_add(ctx, num) {
-        let (a, exp_a) = crate::expr_destructure::as_pow(ctx, left)?;
-        if crate::numeric::as_i64(ctx, exp_a)? != 2 {
+    } else if let Some((left, right)) = as_add(ctx, num) {
+        let (a, exp_a) = as_pow(ctx, left)?;
+        if as_i64(ctx, exp_a)? != 2 {
             return None;
         }
 
-        let neg_inner = crate::expr_destructure::as_neg(ctx, right)?;
-        if let Some((b, exp_b)) = crate::expr_destructure::as_pow(ctx, neg_inner) {
-            if crate::numeric::as_i64(ctx, exp_b)? != 2 {
+        let neg_inner = as_neg(ctx, right)?;
+        if let Some((b, exp_b)) = as_pow(ctx, neg_inner) {
+            if as_i64(ctx, exp_b)? != 2 {
                 return None;
             }
             (a, b)
@@ -131,7 +133,7 @@ pub fn try_plan_difference_of_squares_in_num(
         return None;
     };
 
-    let den_matches_a_plus_b = if let Some((da, db)) = crate::expr_destructure::as_add(ctx, den) {
+    let den_matches_a_plus_b = if let Some((da, db)) = as_add(ctx, den) {
         (compare_expr(ctx, da, a) == Ordering::Equal && compare_expr(ctx, db, b) == Ordering::Equal)
             || (compare_expr(ctx, da, b) == Ordering::Equal
                 && compare_expr(ctx, db, a) == Ordering::Equal)
@@ -139,7 +141,7 @@ pub fn try_plan_difference_of_squares_in_num(
         false
     };
 
-    let den_matches_a_minus_b = if let Some((da, db)) = crate::expr_destructure::as_sub(ctx, den) {
+    let den_matches_a_minus_b = if let Some((da, db)) = as_sub(ctx, den) {
         compare_expr(ctx, da, a) == Ordering::Equal && compare_expr(ctx, db, b) == Ordering::Equal
     } else {
         false
@@ -170,12 +172,12 @@ pub fn try_plan_perfect_square_minus_in_num(
     num: ExprId,
     den: ExprId,
 ) -> Option<PerfectSquareMinusCancelPlan> {
-    let (a, b) = if let Some((a, b)) = crate::expr_destructure::as_sub(ctx, den) {
+    let (a, b) = if let Some((a, b)) = as_sub(ctx, den) {
         (a, b)
-    } else if let Some((left, right)) = crate::expr_destructure::as_add(ctx, den) {
-        if let Some(neg_inner) = crate::expr_destructure::as_neg(ctx, right) {
+    } else if let Some((left, right)) = as_add(ctx, den) {
+        if let Some(neg_inner) = as_neg(ctx, right) {
             (left, neg_inner)
-        } else if let Some(neg_inner) = crate::expr_destructure::as_neg(ctx, left) {
+        } else if let Some(neg_inner) = as_neg(ctx, left) {
             (right, neg_inner)
         } else {
             return None;
@@ -216,48 +218,47 @@ pub fn try_plan_sum_diff_of_cubes_in_num(
     num: ExprId,
     den: ExprId,
 ) -> Option<SumDiffCubesCancelPlan> {
-    let (a, b, is_difference) =
-        if let Some((left, right)) = crate::expr_destructure::as_sub(ctx, num) {
-            let (a, exp_a) = crate::expr_destructure::as_pow(ctx, left)?;
-            if crate::numeric::as_i64(ctx, exp_a)? != 3 {
-                return None;
-            }
-
-            let (b, exp_b) = crate::expr_destructure::as_pow(ctx, right)?;
-            if crate::numeric::as_i64(ctx, exp_b)? != 3 {
-                return None;
-            }
-
-            (a, b, true)
-        } else if let Some((left, right)) = crate::expr_destructure::as_add(ctx, num) {
-            let (a, exp_a) = crate::expr_destructure::as_pow(ctx, left)?;
-            if crate::numeric::as_i64(ctx, exp_a)? != 3 {
-                return None;
-            }
-
-            if let Some(neg_inner) = crate::expr_destructure::as_neg(ctx, right) {
-                let (b, exp_b) = crate::expr_destructure::as_pow(ctx, neg_inner)?;
-                if crate::numeric::as_i64(ctx, exp_b)? != 3 {
-                    return None;
-                }
-                (a, b, true)
-            } else {
-                let (b, exp_b) = crate::expr_destructure::as_pow(ctx, right)?;
-                if crate::numeric::as_i64(ctx, exp_b)? != 3 {
-                    return None;
-                }
-                (a, b, false)
-            }
-        } else {
+    let (a, b, is_difference) = if let Some((left, right)) = as_sub(ctx, num) {
+        let (a, exp_a) = as_pow(ctx, left)?;
+        if as_i64(ctx, exp_a)? != 3 {
             return None;
-        };
+        }
 
-    let den_is_a_minus_b = if let Some((da, db)) = crate::expr_destructure::as_sub(ctx, den) {
+        let (b, exp_b) = as_pow(ctx, right)?;
+        if as_i64(ctx, exp_b)? != 3 {
+            return None;
+        }
+
+        (a, b, true)
+    } else if let Some((left, right)) = as_add(ctx, num) {
+        let (a, exp_a) = as_pow(ctx, left)?;
+        if as_i64(ctx, exp_a)? != 3 {
+            return None;
+        }
+
+        if let Some(neg_inner) = as_neg(ctx, right) {
+            let (b, exp_b) = as_pow(ctx, neg_inner)?;
+            if as_i64(ctx, exp_b)? != 3 {
+                return None;
+            }
+            (a, b, true)
+        } else {
+            let (b, exp_b) = as_pow(ctx, right)?;
+            if as_i64(ctx, exp_b)? != 3 {
+                return None;
+            }
+            (a, b, false)
+        }
+    } else {
+        return None;
+    };
+
+    let den_is_a_minus_b = if let Some((da, db)) = as_sub(ctx, den) {
         poly_eq(ctx, da, a) && poly_eq(ctx, db, b)
-    } else if let Some((left, right)) = crate::expr_destructure::as_add(ctx, den) {
-        if let Some(neg_inner) = crate::expr_destructure::as_neg(ctx, right) {
+    } else if let Some((left, right)) = as_add(ctx, den) {
+        if let Some(neg_inner) = as_neg(ctx, right) {
             poly_eq(ctx, left, a) && poly_eq(ctx, neg_inner, b)
-        } else if let Some(neg_inner) = crate::expr_destructure::as_neg(ctx, left) {
+        } else if let Some(neg_inner) = as_neg(ctx, left) {
             poly_eq(ctx, right, a) && poly_eq(ctx, neg_inner, b)
         } else {
             false
@@ -266,10 +267,8 @@ pub fn try_plan_sum_diff_of_cubes_in_num(
         false
     };
 
-    let den_is_a_plus_b = if let Some((da, db)) = crate::expr_destructure::as_add(ctx, den) {
-        if crate::expr_destructure::as_neg(ctx, da).is_some()
-            || crate::expr_destructure::as_neg(ctx, db).is_some()
-        {
+    let den_is_a_plus_b = if let Some((da, db)) = as_add(ctx, den) {
+        if as_neg(ctx, da).is_some() || as_neg(ctx, db).is_some() {
             false
         } else {
             (poly_eq(ctx, da, a) && poly_eq(ctx, db, b))
@@ -328,13 +327,13 @@ pub fn try_plan_power_quotient_preserve_form(
     num: ExprId,
     den: ExprId,
 ) -> Option<PowerQuotientPreserveFormPlan> {
-    let (num_base, num_exp) = if let Some((base, exp)) = crate::expr_destructure::as_pow(ctx, num) {
+    let (num_base, num_exp) = if let Some((base, exp)) = as_pow(ctx, num) {
         (base, Some(exp))
     } else {
         (num, None)
     };
 
-    let (den_base, den_exp) = if let Some((base, exp)) = crate::expr_destructure::as_pow(ctx, den) {
+    let (den_base, den_exp) = if let Some((base, exp)) = as_pow(ctx, den) {
         (base, Some(exp))
     } else {
         (den, None)
@@ -345,11 +344,11 @@ pub fn try_plan_power_quotient_preserve_form(
     }
 
     let num_exp_val = match num_exp {
-        Some(e) => crate::numeric::as_i64(ctx, e)?,
+        Some(e) => as_i64(ctx, e)?,
         None => 1,
     };
     let den_exp_val = match den_exp {
-        Some(e) => crate::numeric::as_i64(ctx, e)?,
+        Some(e) => as_i64(ctx, e)?,
         None => 1,
     };
 

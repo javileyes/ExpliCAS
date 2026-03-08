@@ -1,3 +1,4 @@
+use cas_engine::Step;
 use std::path::Path;
 
 /// Session-backed config for `eval-json` command orchestration.
@@ -16,7 +17,7 @@ pub fn evaluate_eval_json_command_with_session<F>(
     Option<String>,
 )
 where
-    F: Fn(&[cas_solver::Step], &cas_ast::Context, &str) -> Vec<cas_api_models::StepJson>,
+    F: Fn(&[Step], &cas_ast::Context, &str) -> Vec<cas_api_models::StepJson>,
 {
     crate::run_with_domain_session(session_path, config.domain, |engine, state| {
         cas_solver::evaluate_eval_json_with_session(engine, state, config, |steps, ctx, mode| {

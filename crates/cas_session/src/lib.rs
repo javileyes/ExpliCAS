@@ -101,6 +101,7 @@ pub type ResolvedExpr = cas_session_core::cache::ResolvedExpr<RequiredItem>;
 
 pub type Entry = cas_session_core::store::Entry<Diagnostics, SimplifiedCache>;
 pub type SessionStore = cas_session_core::store::SessionStore<Diagnostics, SimplifiedCache>;
+pub use cas_engine::{Engine, Simplifier, Step};
 pub use cas_session_core::env;
 pub use cas_session_core::types::{CacheConfig, EntryId, EntryKind, RefMode, ResolveError};
 pub use cas_solver::evaluate_envelope_json_command;
@@ -110,10 +111,11 @@ pub use cas_solver::{
     EvalCommandRenderPlan, EvalDisplayMessage, EvalDisplayMessageKind, EvalMetadataLines,
     EvalResultLine,
 };
-pub use cas_solver::{
-    BranchMode, ComplexMode, ContextMode, Engine, EvalOptions, ExpandPolicy, PipelineStats,
-    SharedSemanticConfig, Simplifier, SimplifyOptions, Step, StepsMode,
-};
+pub use cas_solver_core::eval_option_axes::{BranchMode, ComplexMode, ContextMode, StepsMode};
+pub use cas_solver_core::eval_options::EvalOptions;
+pub use cas_solver_core::expand_policy::ExpandPolicy;
+pub use cas_solver_core::phase_stats::PipelineStats;
+pub use cas_solver_core::simplify_options::{SharedSemanticConfig, SimplifyOptions};
 pub use env::{is_reserved, substitute, substitute_with_shadow, Environment};
 pub use eval_json_command::{
     evaluate_eval_json_command_pretty_with_session, evaluate_eval_json_command_with_session,

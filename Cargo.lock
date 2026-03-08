@@ -300,6 +300,7 @@ dependencies = [
  "bincode",
  "cas_api_models",
  "cas_ast",
+ "cas_engine",
  "cas_formatter",
  "cas_parser",
  "cas_session_core",

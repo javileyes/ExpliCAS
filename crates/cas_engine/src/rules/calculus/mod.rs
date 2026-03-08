@@ -11,7 +11,7 @@ mod summation;
 
 use crate::define_rule;
 use crate::rule::Rewrite;
-use cas_math::symbolic_calculus_call_support::{
+use crate::symbolic_calculus_call_support::{
     render_diff_desc_with, render_integrate_desc_with, try_extract_diff_call,
     try_extract_integrate_call,
 };

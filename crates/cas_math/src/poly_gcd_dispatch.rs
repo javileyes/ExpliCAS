@@ -312,34 +312,13 @@ where
     ))
 }
 
-/// Convenience wrapper for user-facing `poly_gcd(...)` behavior with
-/// `UserPolyGcd` goal semantics.
-pub fn rewrite_user_poly_gcd_call_held_with_expand_eval<FEvalExpand, FRender>(
-    ctx: &mut Context,
-    expr: ExprId,
-    eval_expand: FEvalExpand,
-    render: FRender,
-) -> Option<(ExprId, String)>
-where
-    FEvalExpand: FnMut(&mut Context, ExprId) -> ExprId,
-    FRender: FnMut(&Context, ExprId) -> String,
-{
-    rewrite_poly_gcd_call_held_with_expand_eval(
-        ctx,
-        expr,
-        GcdGoal::UserPolyGcd,
-        eval_expand,
-        render,
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
         classify_pre_evaluate_for_gcd, compute_poly_gcd_unified_held_with_expand_eval,
         compute_poly_gcd_unified_with, compute_poly_gcd_unified_with_expand_eval,
         pre_evaluate_for_gcd_with, rewrite_poly_gcd_call_held_with_expand_eval,
-        rewrite_user_poly_gcd_call_held_with_expand_eval, GcdPreEvalDirective,
+        GcdPreEvalDirective,
     };
     use crate::gcd_zippel_modp::ZippelPreset;
     use crate::poly_gcd_mode::{GcdGoal, GcdMode};
@@ -522,13 +501,14 @@ mod tests {
     }
 
     #[test]
-    fn rewrite_user_poly_gcd_call_held_with_expand_eval_matches_poly_gcd_call() {
+    fn rewrite_poly_gcd_call_held_with_expand_eval_matches_user_poly_gcd_goal() {
         let mut ctx = cas_ast::Context::new();
         let expr = parse("poly_gcd((x+1)^2, x+1, exact)", &mut ctx).expect("parse");
 
-        let rewritten = rewrite_user_poly_gcd_call_held_with_expand_eval(
+        let rewritten = rewrite_poly_gcd_call_held_with_expand_eval(
             &mut ctx,
             expr,
+            GcdGoal::UserPolyGcd,
             |_core_ctx, expand_call| expand_call,
             |_core_ctx, id| format!("{id:?}"),
         )

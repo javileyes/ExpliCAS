@@ -115,36 +115,6 @@ where
     )
 }
 
-/// Rewrite `poly_gcd_exact(a, b)` / `pgcdx(a, b)` into `(gcd_expr, description)`.
-pub fn rewrite_poly_gcd_exact_function_expr_with<FRender>(
-    ctx: &mut Context,
-    expr: ExprId,
-    budget: &GcdExactBudget,
-    mut render_expr: FRender,
-) -> Option<(ExprId, String)>
-where
-    FRender: FnMut(&Context, ExprId) -> String,
-{
-    let rewrite = try_rewrite_poly_gcd_exact_function_expr(ctx, expr, budget)?;
-    let desc =
-        format_poly_gcd_exact_desc_with(rewrite.lhs, rewrite.rhs, rewrite.layer_used, |id| {
-            render_expr(ctx, id)
-        });
-    Some((rewrite.gcd, desc))
-}
-
-/// Rewrite `poly_gcd_exact` with default budget.
-pub fn rewrite_poly_gcd_exact_function_expr_default_with<FRender>(
-    ctx: &mut Context,
-    expr: ExprId,
-    render_expr: FRender,
-) -> Option<(ExprId, String)>
-where
-    FRender: FnMut(&Context, ExprId) -> String,
-{
-    rewrite_poly_gcd_exact_function_expr_with(ctx, expr, &GcdExactBudget::default(), render_expr)
-}
-
 /// Strip __hold() wrapper(s) from an expression. __hold is an internal barrier
 /// that should be transparent for algebraic operations like poly_gcd_exact.
 /// Uses canonical implementation from cas_ast::hold
@@ -588,15 +558,17 @@ mod tests {
     }
 
     #[test]
-    fn test_rewrite_poly_gcd_exact_function_expr_default_with() {
+    fn test_poly_gcd_exact_desc_can_be_built_from_rewrite() {
         let mut ctx = Context::new();
         let expr = parse("poly_gcd_exact(x^2 - 1, x - 1)", &mut ctx).expect("parse");
-        let rewritten =
-            rewrite_poly_gcd_exact_function_expr_default_with(&mut ctx, expr, |_core_ctx, id| {
+        let rewrite =
+            try_rewrite_poly_gcd_exact_function_expr(&mut ctx, expr, &GcdExactBudget::default())
+                .expect("rewrite");
+        let desc =
+            format_poly_gcd_exact_desc_with(rewrite.lhs, rewrite.rhs, rewrite.layer_used, |id| {
                 format!("{:?}", id)
-            })
-            .expect("rewrite");
-        assert!(rewritten.1.contains("poly_gcd_exact("));
-        assert_ne!(rewritten.0, expr);
+            });
+        assert!(desc.contains("poly_gcd_exact("));
+        assert_ne!(rewrite.gcd, expr);
     }
 }

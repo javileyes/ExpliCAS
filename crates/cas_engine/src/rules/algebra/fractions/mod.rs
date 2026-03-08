@@ -7,6 +7,7 @@
 //! - Rationalization (RationalizeDenominatorRule, etc.)
 
 // GCD-based cancellation rules module
+mod didactic_factor_support;
 mod gcd_cancel;
 
 // Re-export rules from gcd_cancel

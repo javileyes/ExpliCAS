@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use super::{evaluate_eval_json_command_with_session, EvalJsonCommandConfig};
+use cas_engine::Step;
 
 /// Evaluate `eval-json` and always return a pretty JSON string.
 ///
@@ -12,7 +13,7 @@ pub fn evaluate_eval_json_command_pretty_with_session<F>(
     collect_steps: F,
 ) -> String
 where
-    F: Fn(&[cas_solver::Step], &cas_ast::Context, &str) -> Vec<cas_api_models::StepJson>,
+    F: Fn(&[Step], &cas_ast::Context, &str) -> Vec<cas_api_models::StepJson>,
 {
     let input = config.expr.to_string();
     let (output, _, _) =

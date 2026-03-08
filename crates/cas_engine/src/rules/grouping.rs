@@ -1,7 +1,7 @@
+use crate::collect_by_var_support::try_rewrite_collect_by_var_expr;
+use crate::collect_rule_support::try_rewrite_collect_like_terms_identity_expr;
 use crate::define_rule;
 use crate::rule::Rewrite;
-use cas_math::collect_by_var_support::try_rewrite_collect_by_var_expr;
-use cas_math::collect_rule_support::try_rewrite_collect_like_terms_identity_expr;
 
 define_rule!(CollectRule, "Collect Terms", |ctx, expr| {
     let rewrite = try_rewrite_collect_by_var_expr(ctx, expr)?;

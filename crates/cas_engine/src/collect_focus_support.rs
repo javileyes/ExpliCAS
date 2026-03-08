@@ -1,7 +1,8 @@
 //! Didactic focus helpers for collect/combine-like-terms style rewrites.
 
-use crate::collect_terms::{CancelledGroup, CombinedGroup};
 use cas_ast::{Context, ExprId};
+use cas_math::collect_terms::{CancelledGroup, CombinedGroup};
+use cas_math::expr_terms::build_sum;
 
 #[derive(Debug, Clone)]
 pub struct CollectDidacticFocus {
@@ -42,11 +43,11 @@ pub fn select_collect_didactic_focus(
         };
     }
 
-    let before = crate::expr_terms::build_sum(ctx, &all_before_terms);
+    let before = build_sum(ctx, &all_before_terms);
     let after = if all_after_terms.is_empty() {
         ctx.num(0)
     } else {
-        crate::expr_terms::build_sum(ctx, &all_after_terms)
+        build_sum(ctx, &all_after_terms)
     };
 
     let description = if has_cancellation && has_combination {
@@ -77,7 +78,7 @@ mod tests {
         let x = parse("x", &mut ctx).expect("parse");
         let two_x = parse("2*x", &mut ctx).expect("parse");
         let three_x = parse("3*x", &mut ctx).expect("parse");
-        let group = crate::collect_terms::CombinedGroup {
+        let group = cas_math::collect_terms::CombinedGroup {
             key: x,
             original_terms: smallvec![x, two_x],
             combined_term: three_x,
@@ -93,7 +94,7 @@ mod tests {
         let mut ctx = Context::new();
         let x = parse("x", &mut ctx).expect("parse");
         let neg_x = ctx.add(Expr::Neg(x));
-        let group = crate::collect_terms::CancelledGroup {
+        let group = cas_math::collect_terms::CancelledGroup {
             key: x,
             original_terms: smallvec![x, neg_x],
             is_constant: false,

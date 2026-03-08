@@ -1,9 +1,9 @@
 //! Support for `collect(expr, var)` style polynomial term grouping.
 
-use crate::expr_predicates::{is_one_expr, is_zero_expr};
-use crate::expr_rewrite::smart_mul;
-use crate::trig_roots_flatten::{flatten_add_sub_chain, flatten_mul_chain};
 use cas_ast::{Context, Expr, ExprId};
+use cas_math::expr_predicates::{is_one_expr, is_zero_expr};
+use cas_math::expr_rewrite::smart_mul;
+use cas_math::trig_roots_flatten::{flatten_add_sub_chain, flatten_mul_chain};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq, Eq)]

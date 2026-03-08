@@ -272,16 +272,6 @@ pub fn format_factor_common_integer_from_add_desc(gcd_int: &BigInt) -> String {
     format!("Factor out {}", gcd_int)
 }
 
-/// Rewrite helper for common-integer factoring returning `(rewritten, description)`.
-pub fn rewrite_factor_common_integer_from_add_expr(
-    ctx: &mut Context,
-    expr: ExprId,
-) -> Option<(ExprId, String)> {
-    let rewrite = try_rewrite_factor_common_integer_from_add_expr(ctx, expr)?;
-    let desc = format_factor_common_integer_from_add_desc(&rewrite.gcd_int);
-    Some((rewrite.rewritten, desc))
-}
-
 /// Rewrite `x^3 + y^3 + z^3` into `3xyz` when `x+y+z = 0`.
 pub fn try_rewrite_sum_three_cubes_zero_expr(
     ctx: &mut Context,
@@ -454,8 +444,8 @@ pub fn try_rewrite_automatic_factor_expr(
 #[cfg(test)]
 mod tests {
     use super::{
-        format_factor_common_integer_from_add_desc, rewrite_factor_common_integer_from_add_expr,
-        try_rewrite_automatic_factor_expr, try_rewrite_difference_of_squares_product_expr,
+        format_factor_common_integer_from_add_desc, try_rewrite_automatic_factor_expr,
+        try_rewrite_difference_of_squares_product_expr,
         try_rewrite_factor_common_integer_from_add_expr,
         try_rewrite_factor_difference_squares_nary_expr, try_rewrite_factor_function_expr,
         try_rewrite_sum_three_cubes_zero_expr,
@@ -508,12 +498,13 @@ mod tests {
     }
 
     #[test]
-    fn factor_common_integer_rewrite_helper_returns_desc() {
+    fn factor_common_integer_desc_can_be_built_from_rewrite() {
         let mut ctx = Context::new();
         let expr = parse("2*sqrt(2)+4", &mut ctx).expect("parse");
-        let (rewritten, desc) =
-            rewrite_factor_common_integer_from_add_expr(&mut ctx, expr).expect("rewrite");
-        assert!(matches!(ctx.get(rewritten), Expr::Mul(_, _)));
+        let rewrite =
+            try_rewrite_factor_common_integer_from_add_expr(&mut ctx, expr).expect("rewrite");
+        let desc = format_factor_common_integer_from_add_desc(&rewrite.gcd_int);
+        assert!(matches!(ctx.get(rewrite.rewritten), Expr::Mul(_, _)));
         assert_eq!(desc, "Factor out 2");
     }
 

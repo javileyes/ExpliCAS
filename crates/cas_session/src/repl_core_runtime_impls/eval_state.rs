@@ -1,8 +1,10 @@
 use crate::ReplCore;
 use cas_solver::{
-    EvalCommandError, EvalCommandOutput, EvalOptions, PipelineStats, ReplConfiguredRuntimeContext,
-    ReplEvalRuntimeContext, ReplRuntimeStateContext, ReplSimplifierRuntimeContext, Simplifier,
+    EvalCommandError, EvalCommandOutput, ReplConfiguredRuntimeContext, ReplEvalRuntimeContext,
+    ReplRuntimeStateContext, ReplSimplifierRuntimeContext, Simplifier,
 };
+use cas_solver_core::eval_options::EvalOptions;
+use cas_solver_core::phase_stats::PipelineStats;
 
 impl ReplEvalRuntimeContext for ReplCore {
     fn debug_mode(&self) -> bool {

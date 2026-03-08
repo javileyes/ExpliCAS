@@ -1,8 +1,10 @@
 use crate::ReplCore;
 use cas_solver::{
-    EvalOptions, PipelineStats, ReplHealthRuntimeContext, ReplSemanticsRuntimeContext,
-    ReplSolveRuntimeContext, Simplifier, SimplifyOptions,
+    ReplHealthRuntimeContext, ReplSemanticsRuntimeContext, ReplSolveRuntimeContext, Simplifier,
 };
+use cas_solver_core::eval_options::EvalOptions;
+use cas_solver_core::phase_stats::PipelineStats;
+use cas_solver_core::simplify_options::SimplifyOptions;
 
 impl ReplHealthRuntimeContext for ReplCore {
     fn simplifier(&self) -> &Simplifier {

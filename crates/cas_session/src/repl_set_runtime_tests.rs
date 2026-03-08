@@ -4,6 +4,7 @@ mod tests {
         apply_set_command_plan_on_repl_core, evaluate_set_command_on_repl_core,
         set_command_state_for_repl_core, ReplSetMessageKind,
     };
+    use cas_solver_core::eval_option_axes::StepsMode;
 
     #[test]
     fn set_command_state_for_repl_core_reads_runtime() {
@@ -21,11 +22,8 @@ mod tests {
             other => panic!("unexpected result: {other:?}"),
         };
         let effects = apply_set_command_plan_on_repl_core(&mut core, &plan);
-        assert_eq!(effects.set_steps_mode, Some(cas_solver::StepsMode::Compact));
-        assert_eq!(
-            core.eval_options().steps_mode,
-            cas_solver::StepsMode::Compact
-        );
+        assert_eq!(effects.set_steps_mode, Some(StepsMode::Compact));
+        assert_eq!(core.eval_options().steps_mode, StepsMode::Compact);
     }
 
     #[test]

@@ -3,8 +3,8 @@ use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
 use cas_math::distribution_simple_support::try_rewrite_simple_mul_distribution_expr;
 use cas_math::expand_call_support::{
-    decide_expand_call_rewrite_conservative, decide_expand_call_rewrite_default,
-    try_plan_conservative_implicit_expand_expr, ExpandCallDecision,
+    decide_expand_call_rewrite_with_policy, try_plan_conservative_implicit_expand_expr,
+    ExpandCallDecision, ExpandCallPolicy,
 };
 
 // ExpandRule: only runs in Transform phase
@@ -14,7 +14,9 @@ define_rule!(
     None,
     PhaseMask::TRANSFORM,
     |ctx, expr| {
-        if let Some(decision) = decide_expand_call_rewrite_default(ctx, expr) {
+        if let Some(decision) =
+            decide_expand_call_rewrite_with_policy(ctx, expr, ExpandCallPolicy::default())
+        {
             match decision {
                 ExpandCallDecision::Rewrite(rewrite) => {
                     return Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc));
@@ -47,9 +49,14 @@ define_rule!(
     None,
     PhaseMask::TRANSFORM,
     |ctx, expr| {
-        if let Some(ExpandCallDecision::Rewrite(rewrite)) =
-            decide_expand_call_rewrite_conservative(ctx, expr)
-        {
+        if let Some(ExpandCallDecision::Rewrite(rewrite)) = decide_expand_call_rewrite_with_policy(
+            ctx,
+            expr,
+            ExpandCallPolicy {
+                max_materialize_terms: u64::MAX,
+                modp_threshold: u64::MAX,
+            },
+        ) {
             return Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc));
         }
 

@@ -1,7 +1,7 @@
 use cas_ast::ExprId;
 use cas_session_core::eval::EvalSession;
-use cas_solver::EvalOptions;
 use cas_solver_core::diagnostics_model::Diagnostics;
+use cas_solver_core::eval_options::EvalOptions;
 
 use crate::{state_core::SessionState, state_eval_store::SessionEvalStore};
 

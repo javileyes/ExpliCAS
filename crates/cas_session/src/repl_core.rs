@@ -7,7 +7,9 @@ mod constructors;
 mod runtime_state;
 
 use crate::SessionState;
-use cas_solver::{Engine, PipelineStats, SimplifyOptions};
+use cas_engine::Engine;
+use cas_solver_core::phase_stats::PipelineStats;
+use cas_solver_core::simplify_options::SimplifyOptions;
 
 /// Core REPL state without terminal I/O concerns.
 pub struct ReplCore {

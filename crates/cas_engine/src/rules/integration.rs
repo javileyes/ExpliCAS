@@ -7,10 +7,10 @@
 //! Only active when `ContextMode::IntegratePrep` is set.
 
 use crate::engine::Simplifier;
+use crate::integration_prep_support::try_rewrite_cos_product_telescoping_expr;
 use crate::parent_context::ParentContext;
 use crate::rule::{Rewrite, Rule};
 use cas_ast::{Context, ExprId};
-use cas_math::integration_prep_support::try_rewrite_cos_product_telescoping_expr;
 use cas_math::trig_sum_product_support::try_rewrite_product_to_sum_werner_expr;
 
 /// Product-to-sum identity for trigonometric products (Werner formulas).

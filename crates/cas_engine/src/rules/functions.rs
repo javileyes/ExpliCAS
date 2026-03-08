@@ -297,7 +297,7 @@ define_rule!(
     "Evaluate Meta Functions",
     Some(crate::target_kind::TargetKindSet::FUNCTION),
     |ctx, expr| {
-        let rewrite = cas_math::meta_functions_support::try_rewrite_meta_function_expr(ctx, expr)?;
+        let rewrite = crate::meta_functions_support::try_rewrite_meta_function_expr(ctx, expr)?;
         Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
     }
 );

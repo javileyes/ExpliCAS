@@ -4,14 +4,14 @@
 //! without materializing the full AST.
 
 use crate::phase::PhaseMask;
-use crate::rule::{Rewrite, SimpleRule};
-use cas_ast::{Context, ExprId};
-use cas_math::poly_result_calls::{
+use crate::poly_result_calls::{
     rewrite_poly_latex_call_with_default_limit, rewrite_poly_print_call_with_default_limit,
     rewrite_poly_stats_call_with_materialize_limit, rewrite_poly_to_expr_call_with_default_limit,
     DEFAULT_POLY_LATEX_MAX_TERMS, DEFAULT_POLY_PRINT_MAX_TERMS,
     DEFAULT_POLY_STATS_MATERIALIZE_LIMIT, DEFAULT_POLY_TO_EXPR_MAX_TERMS,
 };
+use crate::rule::{Rewrite, SimpleRule};
+use cas_ast::{Context, ExprId};
 
 /// Rule: poly_stats(poly_result(id)) → metadata display
 pub struct PolyStatsRule;

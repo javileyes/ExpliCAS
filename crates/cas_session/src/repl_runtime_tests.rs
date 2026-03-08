@@ -4,6 +4,7 @@ use crate::{
     evaluate_profile_command_message_on_repl_core, reset_repl_core_full_with_config,
     reset_repl_core_with_config, reset_repl_runtime_state,
 };
+use cas_solver_core::eval_options::EvalOptions;
 
 #[test]
 fn reset_repl_runtime_state_clears_session_and_runtime_flags() {
@@ -104,12 +105,9 @@ fn build_repl_prompt_returns_default_prompt() {
 fn eval_options_from_repl_core_clones_default_options() {
     let core = crate::ReplCore::new();
     let options = eval_options_from_repl_core(&core);
-    assert_eq!(
-        options.steps_mode,
-        cas_solver::EvalOptions::default().steps_mode
-    );
+    assert_eq!(options.steps_mode, EvalOptions::default().steps_mode);
     assert_eq!(
         options.shared.context_mode,
-        cas_solver::EvalOptions::default().shared.context_mode
+        EvalOptions::default().shared.context_mode
     );
 }

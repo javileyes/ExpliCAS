@@ -1,5 +1,5 @@
 use crate::ReplCore;
-use cas_solver::PipelineStats;
+use cas_solver_core::phase_stats::PipelineStats;
 
 impl ReplCore {
     /// Return whether debug mode is enabled.

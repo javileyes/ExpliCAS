@@ -1,16 +1,17 @@
 use super::SessionState;
 use crate::{state_eval_store::SessionEvalStore, SessionStore};
+use cas_solver_core::eval_options::EvalOptions;
 
 impl SessionState {
-    pub fn assumptions(&self) -> &cas_solver::EvalOptions {
+    pub fn assumptions(&self) -> &EvalOptions {
         &self.options
     }
 
-    pub fn options(&self) -> &cas_solver::EvalOptions {
+    pub fn options(&self) -> &EvalOptions {
         &self.options
     }
 
-    pub fn options_mut(&mut self) -> &mut cas_solver::EvalOptions {
+    pub fn options_mut(&mut self) -> &mut EvalOptions {
         &mut self.options
     }
 
@@ -18,7 +19,7 @@ impl SessionState {
         Self {
             store: SessionEvalStore::new(),
             env: crate::Environment::new(),
-            options: cas_solver::EvalOptions::default(),
+            options: EvalOptions::default(),
         }
     }
 
@@ -27,7 +28,7 @@ impl SessionState {
         Self {
             store: SessionEvalStore::from_store(store),
             env: crate::Environment::new(),
-            options: cas_solver::EvalOptions::default(),
+            options: EvalOptions::default(),
         }
     }
 }

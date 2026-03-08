@@ -1,6 +1,8 @@
 use super::ReplCore;
 use crate::SessionState;
-use cas_solver::{Engine, EvalOptions, Simplifier, SimplifyOptions};
+use cas_engine::{Engine, Simplifier};
+use cas_solver_core::eval_options::EvalOptions;
+use cas_solver_core::simplify_options::SimplifyOptions;
 
 impl ReplCore {
     /// Run a closure with mutable access to engine + session state.

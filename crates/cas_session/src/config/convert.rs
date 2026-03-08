@@ -53,7 +53,7 @@ pub fn apply_solver_toggle_to_cas_config(
 
 /// Sync an existing simplifier with toggle values from `CasConfig`.
 pub fn sync_simplifier_with_cas_config(
-    simplifier: &mut cas_solver::Simplifier,
+    simplifier: &mut cas_engine::Simplifier,
     config: &CasConfig,
 ) {
     let toggles = solver_toggle_config_from_cas_config(config);

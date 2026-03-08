@@ -1,4 +1,4 @@
-use cas_solver::EvalOptions;
+use cas_solver_core::eval_options::EvalOptions;
 
 use crate::state_eval_store::SessionEvalStore;
 

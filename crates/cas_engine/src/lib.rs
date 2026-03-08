@@ -12,6 +12,9 @@ pub(crate) mod budget;
 mod budget_tests;
 mod cancel_runtime;
 pub(crate) mod collect;
+mod collect_by_var_support;
+mod collect_focus_support;
+mod collect_rule_support;
 #[cfg(test)]
 mod collect_tests;
 pub(crate) mod const_fold;
@@ -28,7 +31,10 @@ pub(crate) mod expand;
 mod expand_tests;
 pub(crate) mod helpers;
 pub(crate) mod implicit_domain;
+mod integration_prep_support;
 pub(crate) mod limits;
+mod matrix_rule_support;
+mod meta_functions_support;
 pub(crate) mod options;
 pub(crate) mod orchestrator;
 pub(crate) mod parent_context;
@@ -37,6 +43,8 @@ mod parent_context_tests;
 pub(crate) mod phase;
 #[cfg(test)]
 mod phase_tests;
+mod poly_result_calls;
+mod polynomial_identity_support;
 pub(crate) mod profile_cache;
 #[cfg(test)]
 mod profile_cache_tests;
@@ -56,6 +64,7 @@ mod solve_runtime_state_impl;
 pub(crate) mod step;
 #[cfg(test)]
 mod step_tests;
+mod symbolic_calculus_call_support;
 pub(crate) mod telescoping;
 
 // Property-based numeric tests for rewrite correctness

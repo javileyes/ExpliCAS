@@ -1,4 +1,5 @@
 use cas_ast::ExprId;
+use cas_engine::Step;
 use cas_solver_core::diagnostics_model::RequiredItem;
 use std::sync::Arc;
 
@@ -14,5 +15,5 @@ pub struct SimplifiedCache {
     /// Domain requirements from this entry (for propagation).
     pub requires: Vec<RequiredItem>,
     /// Derivation steps (None = light cache, steps omitted for large entries).
-    pub steps: Option<Arc<Vec<cas_solver::Step>>>,
+    pub steps: Option<Arc<Vec<Step>>>,
 }

@@ -1,9 +1,7 @@
-//! Shared helpers for `poly_result(...)` consumer calls.
-//!
-//! Keeps rule-level parsing and small expression builders out of `cas_engine`.
+//! Shared helpers for `poly_result(...)` consumer calls used by engine rules.
 
-use crate::poly_result::{parse_poly_result_id, PolyResultId};
 use cas_ast::{Context, Expr, ExprId};
+use cas_math::poly_result::{parse_poly_result_id, PolyResultId};
 
 /// Default limit for showing poly materialization hint in `poly_stats`.
 pub const DEFAULT_POLY_STATS_MATERIALIZE_LIMIT: usize = 50_000;
@@ -103,7 +101,7 @@ pub fn rewrite_poly_stats_call_with_materialize_limit(
     materialize_limit: usize,
 ) -> Option<(ExprId, String)> {
     let call = try_parse_poly_stats_call(ctx, expr)?;
-    let meta = crate::poly_store::thread_local_meta(call.poly_id)?;
+    let meta = cas_math::poly_store::thread_local_meta(call.poly_id)?;
     let rewritten = build_poly_info_expr(ctx, call.poly_id, meta.n_terms, meta.n_vars);
     let materialize_note =
         format_materialization_note(call.poly_id, meta.n_terms, materialize_limit);
@@ -126,7 +124,7 @@ pub fn rewrite_poly_to_expr_call_with_default_limit(
     default_max_terms: usize,
 ) -> Option<(ExprId, String)> {
     let call = try_parse_poly_to_expr_call(ctx, expr, default_max_terms)?;
-    let meta = crate::poly_store::thread_local_meta(call.poly_id)?;
+    let meta = cas_math::poly_store::thread_local_meta(call.poly_id)?;
     if meta.n_terms > call.max_terms {
         let message_expr = ctx.var(&format!(
             "Error: {} terms exceeds limit {}",
@@ -139,7 +137,7 @@ pub fn rewrite_poly_to_expr_call_with_default_limit(
         return Some((message_expr, desc));
     }
 
-    let materialized = crate::poly_store::materialize_poly_result_expr(ctx, call.poly_id)?;
+    let materialized = cas_math::poly_store::materialize_poly_result_expr(ctx, call.poly_id)?;
     let desc = format!("Materialized polynomial: {} terms", meta.n_terms);
     Some((materialized, desc))
 }
@@ -153,8 +151,8 @@ pub fn rewrite_poly_print_call_with_default_limit(
     default_max_terms: usize,
 ) -> Option<(ExprId, String)> {
     let call = try_parse_poly_print_call(ctx, expr, default_max_terms)?;
-    let meta = crate::poly_store::thread_local_meta(call.poly_id)?;
-    let formatted = crate::poly_store::render_poly_result(call.poly_id, call.max_terms)?;
+    let meta = cas_math::poly_store::thread_local_meta(call.poly_id)?;
+    let formatted = cas_math::poly_store::render_poly_result(call.poly_id, call.max_terms)?;
     let rewritten = ctx.var(&formatted);
     let desc = if meta.n_terms > call.max_terms {
         format!(
@@ -176,8 +174,8 @@ pub fn rewrite_poly_latex_call_with_default_limit(
     default_max_terms: usize,
 ) -> Option<(ExprId, String)> {
     let call = try_parse_poly_latex_call(ctx, expr, default_max_terms)?;
-    let meta = crate::poly_store::thread_local_meta(call.poly_id)?;
-    let formatted = crate::poly_store::render_poly_result_latex(call.poly_id, call.max_terms)?;
+    let meta = cas_math::poly_store::thread_local_meta(call.poly_id)?;
+    let formatted = cas_math::poly_store::render_poly_result_latex(call.poly_id, call.max_terms)?;
     let rewritten = ctx.var(&formatted);
     let desc = format!(
         "LaTeX polynomial: {} terms",
@@ -220,9 +218,9 @@ fn parse_max_terms_arg(ctx: &Context, expr: ExprId) -> Option<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::multipoly_modp::MultiPolyModP;
-    use crate::poly_store::{clear_thread_local_store, thread_local_insert, PolyMeta};
     use cas_ast::{BuiltinFn, Expr};
+    use cas_math::multipoly_modp::MultiPolyModP;
+    use cas_math::poly_store::{clear_thread_local_store, thread_local_insert, PolyMeta};
 
     fn poly_result_expr(ctx: &mut Context, id: i64) -> ExprId {
         let id_expr = ctx.num(id);

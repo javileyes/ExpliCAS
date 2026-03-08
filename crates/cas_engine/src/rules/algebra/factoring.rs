@@ -2,8 +2,9 @@ use crate::define_rule;
 use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
 use cas_math::factoring_support::{
-    rewrite_factor_common_integer_from_add_expr, try_rewrite_automatic_factor_expr,
+    format_factor_common_integer_from_add_desc, try_rewrite_automatic_factor_expr,
     try_rewrite_difference_of_squares_product_expr,
+    try_rewrite_factor_common_integer_from_add_expr,
     try_rewrite_factor_difference_squares_nary_expr, try_rewrite_factor_function_expr,
     try_rewrite_sum_three_cubes_zero_expr,
 };
@@ -62,13 +63,10 @@ define_rule!(
     None,
     PhaseMask::POST,
     |ctx, expr| {
-        let rewrite = rewrite_factor_common_integer_from_add_expr(ctx, expr)?;
-        let rewritten = rewrite.0;
-        Some(
-            Rewrite::new(rewritten)
-                .desc(rewrite.1)
-                .local(expr, rewritten),
-        )
+        let rewrite = try_rewrite_factor_common_integer_from_add_expr(ctx, expr)?;
+        let rewritten = rewrite.rewritten;
+        let desc = format_factor_common_integer_from_add_desc(&rewrite.gcd_int);
+        Some(Rewrite::new(rewritten).desc(desc).local(expr, rewritten))
     }
 );
 

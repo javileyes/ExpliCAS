@@ -14,6 +14,7 @@ parallel = ["cas_solver/parallel"]
 cas_ast = { path = "../cas_ast" }
 cas_api_models = { path = "../cas_api_models" }
 cas_session_core = { path = "../cas_session_core" }
+cas_engine = { path = "../cas_engine" }
 cas_solver = { path = "../cas_solver", default-features = false }
 cas_solver_core = { path = "../cas_solver_core" }
 cas_formatter = { path = "../cas_formatter" }

@@ -6,7 +6,9 @@ use crate::rule::Rewrite;
 use cas_math::difference_product_rule_support::{
     try_rewrite_absorb_negation_into_difference_expr, try_rewrite_canonical_difference_product_expr,
 };
-use cas_math::rationalize_binomial_surd_support::rewrite_rationalize_binomial_surd_expr_with;
+use cas_math::rationalize_binomial_surd_support::{
+    format_rationalize_binomial_surd_desc_with, try_rewrite_rationalize_binomial_surd_expr,
+};
 
 // ========== Binomial Conjugate Rationalization (Level 1) ==========
 // Transforms: num / (A + B√n) → num * (A - B√n) / (A² - B²·n)
@@ -21,9 +23,11 @@ define_rule!(
     None,
     PhaseMask::RATIONALIZE,
     |ctx, expr| {
-        let rewritten =
-            rewrite_rationalize_binomial_surd_expr_with(ctx, expr, cas_formatter::render_expr)?;
-        Some(Rewrite::new(rewritten.0).desc(rewritten.1))
+        let rewritten = try_rewrite_rationalize_binomial_surd_expr(ctx, expr)?;
+        let desc = format_rationalize_binomial_surd_desc_with(rewritten, |id| {
+            cas_formatter::render_expr(ctx, id)
+        });
+        Some(Rewrite::new(rewritten.rewritten).desc(desc))
     }
 );
 

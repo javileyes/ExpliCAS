@@ -12,7 +12,8 @@
 use crate::define_rule;
 use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
-use cas_math::poly_modp_calls::try_rewrite_hold_poly_sub_to_zero_default;
+use cas_math::poly_modp_calls::try_rewrite_hold_poly_sub_to_zero;
+use cas_math::poly_modp_conv::DEFAULT_PRIME;
 
 // PolySubModpRule: handle __hold(P) - __hold(Q) in polynomial domain
 define_rule!(
@@ -21,7 +22,7 @@ define_rule!(
     Some(crate::target_kind::TargetKindSet::SUB),
     PhaseMask::CORE | PhaseMask::POST,
     |ctx, expr| {
-        let zero = try_rewrite_hold_poly_sub_to_zero_default(ctx, expr)?;
+        let zero = try_rewrite_hold_poly_sub_to_zero(ctx, expr, DEFAULT_PRIME)?;
         Some(
             Rewrite::new(zero)
                 .desc("__hold(P) - __hold(Q) = 0 (equal polynomials mod p, up to scalar)"),

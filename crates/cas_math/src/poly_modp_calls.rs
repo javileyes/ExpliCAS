@@ -10,9 +10,7 @@ use crate::poly_modp_conv::{
     check_poly_equal_modp_expr, compute_gcd_modp_expr_with_factor_extraction, strip_hold,
     PolyConvError, DEFAULT_PRIME,
 };
-use crate::poly_store::{
-    compute_poly_mul_modp_meta, PolyMeta, PolyMulMetaError, POLY_MAX_STORE_TERMS,
-};
+use crate::poly_store::{compute_poly_mul_modp_meta, PolyMeta, PolyMulMetaError};
 use cas_ast::{hold, Context, Expr, ExprId};
 
 /// Compute `poly_gcd_modp` with structural factor extraction and wrap in `__hold(...)`.
@@ -90,15 +88,6 @@ pub fn try_rewrite_hold_poly_sub_to_zero(
         return Some(ctx.num(0));
     }
     None
-}
-
-/// Rewrite helper for held polynomial subtraction using crate defaults:
-/// `__hold(P) - __hold(Q) -> 0` when equal in mod-p space.
-pub fn try_rewrite_hold_poly_sub_to_zero_default(
-    ctx: &mut Context,
-    expr: ExprId,
-) -> Option<ExprId> {
-    try_rewrite_hold_poly_sub_to_zero(ctx, expr, DEFAULT_PRIME)
 }
 
 /// Parsed and evaluated payload for one `poly_mul_modp(...)` function call.
@@ -306,35 +295,6 @@ where
     Some((call.held_expr, desc))
 }
 
-/// Rewrite `poly_gcd_modp(...)` while silently ignoring conversion errors.
-///
-/// This is useful for rule engines where non-firing behavior is preferred over
-/// surfacing conversion diagnostics for normal rewrite passes.
-pub fn rewrite_poly_gcd_modp_call_silent_with<FRender>(
-    ctx: &mut Context,
-    expr: ExprId,
-    default_prime: u64,
-    render_expr: FRender,
-) -> Option<(ExprId, String)>
-where
-    FRender: FnMut(&Context, ExprId) -> String,
-{
-    rewrite_poly_gcd_modp_call_with(ctx, expr, default_prime, |_err| {}, render_expr)
-}
-
-/// Rewrite `poly_gcd_modp(...)` with crate default modulus while silently
-/// ignoring conversion/evaluation errors.
-pub fn rewrite_poly_gcd_modp_call_default_silent_with<FRender>(
-    ctx: &mut Context,
-    expr: ExprId,
-    render_expr: FRender,
-) -> Option<(ExprId, String)>
-where
-    FRender: FnMut(&Context, ExprId) -> String,
-{
-    rewrite_poly_gcd_modp_call_silent_with(ctx, expr, DEFAULT_PRIME, render_expr)
-}
-
 /// Try to parse and evaluate `poly_eq_modp(a, b [, p])`.
 ///
 /// Returns:
@@ -423,35 +383,6 @@ where
     Some((call.indicator_expr, desc))
 }
 
-/// Rewrite `poly_eq_modp(...)` while silently ignoring conversion errors.
-///
-/// This is useful for rewrite rules where malformed/non-convertible inputs should
-/// simply skip the rewrite without logging.
-pub fn rewrite_poly_eq_modp_call_silent_with<FRender>(
-    ctx: &mut Context,
-    expr: ExprId,
-    default_prime: u64,
-    render_expr: FRender,
-) -> Option<(ExprId, String)>
-where
-    FRender: FnMut(&Context, ExprId) -> String,
-{
-    rewrite_poly_eq_modp_call_with(ctx, expr, default_prime, |_err| {}, render_expr)
-}
-
-/// Rewrite `poly_eq_modp(...)` with crate default modulus while silently
-/// ignoring conversion/evaluation errors.
-pub fn rewrite_poly_eq_modp_call_default_silent_with<FRender>(
-    ctx: &mut Context,
-    expr: ExprId,
-    render_expr: FRender,
-) -> Option<(ExprId, String)>
-where
-    FRender: FnMut(&Context, ExprId) -> String,
-{
-    rewrite_poly_eq_modp_call_silent_with(ctx, expr, DEFAULT_PRIME, render_expr)
-}
-
 /// Rewrite `poly_mul_modp(...)` call into `(stats_expr, description)`.
 ///
 /// Returns `None` when expression is non-matching or conversion fails.
@@ -475,24 +406,6 @@ where
     )?;
     let desc = format_poly_mul_modp_stats_desc(&call.meta, call.modulus);
     Some((call.stats_expr, desc))
-}
-
-/// Rewrite `poly_mul_modp(...)` using crate default modulus and store limits.
-pub fn rewrite_poly_mul_modp_stats_call_with_defaults<FOnEstimatedTooLarge>(
-    ctx: &mut Context,
-    expr: ExprId,
-    on_estimated_too_large: FOnEstimatedTooLarge,
-) -> Option<(ExprId, String)>
-where
-    FOnEstimatedTooLarge: FnMut(u128, usize),
-{
-    rewrite_poly_mul_modp_stats_call_with_limit_policy(
-        ctx,
-        expr,
-        DEFAULT_PRIME,
-        POLY_MAX_STORE_TERMS,
-        on_estimated_too_large,
-    )
 }
 
 /// Build `poly_mul_stats(terms, degree, vars, modulus)` expression from metadata.
@@ -795,16 +708,15 @@ mod tests {
     }
 
     #[test]
-    fn try_rewrite_hold_poly_sub_to_zero_default_matches_explicit_default_prime() {
+    fn try_rewrite_hold_poly_sub_to_zero_explicit_default_prime_is_stable() {
         let mut ctx = Context::new();
         let poly = parse("x + 1", &mut ctx).expect("parse poly");
         let hold_a = hold::wrap_hold(&mut ctx, poly);
         let hold_b = hold::wrap_hold(&mut ctx, poly);
         let sub_expr = ctx.add(Expr::Sub(hold_a, hold_b));
 
-        let explicit = try_rewrite_hold_poly_sub_to_zero(&mut ctx, sub_expr, DEFAULT_PRIME);
-        let defaulted = try_rewrite_hold_poly_sub_to_zero_default(&mut ctx, sub_expr);
-        assert_eq!(explicit, defaulted);
+        let rewritten = try_rewrite_hold_poly_sub_to_zero(&mut ctx, sub_expr, DEFAULT_PRIME);
+        assert_eq!(rewritten, Some(ctx.num(0)));
     }
 
     #[test]
@@ -917,13 +829,14 @@ mod tests {
     }
 
     #[test]
-    fn rewrite_poly_gcd_modp_call_silent_with_returns_desc_and_hold() {
+    fn rewrite_poly_gcd_modp_call_with_can_silence_errors_explicitly() {
         let mut ctx = Context::new();
         let expr = parse("poly_gcd_modp(x^2+2*x+1, x+1)", &mut ctx).expect("parse");
-        let rewritten = rewrite_poly_gcd_modp_call_silent_with(
+        let rewritten = rewrite_poly_gcd_modp_call_with(
             &mut ctx,
             expr,
             DEFAULT_PRIME,
+            |_err| {},
             |core_ctx, id| format!("{:?}", core_ctx.get(id)),
         )
         .expect("rewrite");
@@ -932,14 +845,17 @@ mod tests {
     }
 
     #[test]
-    fn rewrite_poly_eq_modp_call_silent_with_returns_indicator_and_desc() {
+    fn rewrite_poly_eq_modp_call_with_can_silence_errors_explicitly() {
         let mut ctx = Context::new();
         let expr = parse("poly_eq_modp(x+1, 1+x)", &mut ctx).expect("parse");
-        let rewritten =
-            rewrite_poly_eq_modp_call_silent_with(&mut ctx, expr, DEFAULT_PRIME, |core_ctx, id| {
-                format!("{:?}", core_ctx.get(id))
-            })
-            .expect("rewrite");
+        let rewritten = rewrite_poly_eq_modp_call_with(
+            &mut ctx,
+            expr,
+            DEFAULT_PRIME,
+            |_err| {},
+            |core_ctx, id| format!("{:?}", core_ctx.get(id)),
+        )
+        .expect("rewrite");
         assert!(matches!(ctx.get(rewritten.0), Expr::Number(_)));
         assert!(rewritten.1.contains("poly_eq_modp("));
     }
@@ -965,12 +881,17 @@ mod tests {
     }
 
     #[test]
-    fn rewrite_poly_mul_modp_stats_call_with_defaults_returns_stats_and_desc() {
+    fn rewrite_poly_mul_modp_stats_call_with_explicit_defaults_returns_stats_and_desc() {
         let mut ctx = Context::new();
         let expr = parse("poly_mul_modp((x+1)^2, (x-1)^2)", &mut ctx).expect("parse");
-        let rewritten =
-            rewrite_poly_mul_modp_stats_call_with_defaults(&mut ctx, expr, |_estimated, _limit| {})
-                .expect("rewrite");
+        let rewritten = rewrite_poly_mul_modp_stats_call_with_limit_policy(
+            &mut ctx,
+            expr,
+            DEFAULT_PRIME,
+            crate::poly_store::POLY_MAX_STORE_TERMS,
+            |_estimated, _limit| {},
+        )
+        .expect("rewrite");
         if let Expr::Function(fn_id, _args) = ctx.get(rewritten.0) {
             assert_eq!(ctx.sym_name(*fn_id), "poly_mul_stats");
         } else {

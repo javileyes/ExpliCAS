@@ -12,6 +12,7 @@ pub use runtime::StandardOracle;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{DomainMode, ValueDomain};
     use cas_solver_core::domain_facts_model::Predicate;
     use cas_solver_core::domain_oracle_model::DomainOracle;
 

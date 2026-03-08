@@ -1,14 +1,14 @@
 //! Structural support for proving polynomial identities equal to zero.
 
-use crate::multipoly::{MultiPoly, PolyBudget};
-use crate::multipoly_display::PolynomialProofData;
-use crate::opaque_atoms::{
+use cas_ast::{Constant, Context, Expr, ExprId};
+use cas_math::multipoly::{MultiPoly, PolyBudget};
+use cas_math::multipoly_display::PolynomialProofData;
+use cas_math::opaque_atoms::{
     collect_exp_exponents, collect_function_calls, dedup_expr_ids, find_exp_base,
     is_polynomial_candidate, substitute_exp_atoms,
 };
-use crate::poly_convert::try_multipoly_from_expr_with_var_limit;
-use crate::substitute::{substitute_power_aware, SubstituteOptions};
-use cas_ast::{Constant, Context, Expr, ExprId};
+use cas_math::poly_convert::try_multipoly_from_expr_with_var_limit;
+use cas_math::substitute::{substitute_power_aware, SubstituteOptions};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PolynomialIdentityProofKind {
@@ -238,7 +238,7 @@ fn try_opaque_zero(
         .collect();
 
     let expanded_form_expr =
-        crate::multipoly_display::expand_additive_terms(ctx, display_expr, &display_vars);
+        cas_math::multipoly_display::expand_additive_terms(ctx, display_expr, &display_vars);
 
     let mut proof = PolynomialProofData {
         monomials: 0,

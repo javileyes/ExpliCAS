@@ -1,10 +1,10 @@
-use crate::rule::{Rewrite, SimpleRule};
-use cas_ast::{Context, ExprId};
-use cas_math::matrix_rule_support::{
+use crate::matrix_rule_support::{
     try_eval_matrix_add_expr, try_eval_matrix_mul_expr, try_eval_matrix_sub_expr,
     try_eval_scalar_matrix_mul_expr, try_rewrite_matrix_function_rule_expr,
     try_rewrite_transpose_product_identity_expr,
 };
+use crate::rule::{Rewrite, SimpleRule};
+use cas_ast::{Context, ExprId};
 
 /// Rule to add two matrices
 pub struct MatrixAddRule;

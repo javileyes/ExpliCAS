@@ -1,4 +1,5 @@
 use cas_ast::ExprId;
+use cas_engine::Step;
 use cas_session_core::eval::EvalStore;
 use cas_solver_core::diagnostics_model::{Diagnostics, RequiredItem};
 use cas_solver_core::domain_mode::DomainMode;
@@ -9,7 +10,7 @@ use crate::SimplifyCacheKey;
 impl EvalStore for SessionEvalStore {
     type DomainMode = DomainMode;
     type RequiredItem = RequiredItem;
-    type Step = cas_solver::Step;
+    type Step = Step;
     type Diagnostics = Diagnostics;
 
     fn push_raw_expr(&mut self, expr: ExprId, raw_input: String) -> u64 {
@@ -34,7 +35,7 @@ impl EvalStore for SessionEvalStore {
         domain: DomainMode,
         expr: ExprId,
         requires: Vec<RequiredItem>,
-        steps: Option<std::sync::Arc<Vec<cas_solver::Step>>>,
+        steps: Option<std::sync::Arc<Vec<Step>>>,
     ) {
         self.0.update_simplified(
             id,

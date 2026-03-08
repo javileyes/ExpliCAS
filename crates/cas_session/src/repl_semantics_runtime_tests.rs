@@ -3,26 +3,23 @@ use crate::{
     apply_semantics_command_on_repl_core, evaluate_autoexpand_command_on_repl,
     evaluate_context_command_on_repl, evaluate_semantics_command_on_repl,
 };
+use cas_solver_core::domain_mode::DomainMode;
+use cas_solver_core::eval_option_axes::ContextMode;
+use cas_solver_core::expand_policy::ExpandPolicy;
 
 #[test]
 fn apply_context_command_on_repl_core_updates_mode() {
     let mut core = crate::ReplCore::new();
     let out = apply_context_command_on_repl_core("context solve", &mut core);
     assert!(out.rebuilt_simplifier);
-    assert_eq!(
-        core.eval_options().shared.context_mode,
-        cas_solver::ContextMode::Solve
-    );
+    assert_eq!(core.eval_options().shared.context_mode, ContextMode::Solve);
 }
 
 #[test]
 fn apply_autoexpand_command_on_repl_core_updates_policy() {
     let mut core = crate::ReplCore::new();
     let out = apply_autoexpand_command_on_repl_core("autoexpand on", &mut core);
-    assert_eq!(
-        core.eval_options().shared.expand_policy,
-        cas_solver::ExpandPolicy::Auto
-    );
+    assert_eq!(core.eval_options().shared.expand_policy, ExpandPolicy::Auto);
     assert!(out.message.contains("Auto-expand"));
 }
 
@@ -33,7 +30,7 @@ fn apply_semantics_command_on_repl_core_updates_domain() {
     assert!(out.sync_simplifier);
     assert_eq!(
         core.simplify_options().shared.semantics.domain_mode,
-        cas_solver::DomainMode::Assume
+        DomainMode::Assume
     );
 }
 

@@ -14,7 +14,8 @@
 use crate::define_rule;
 use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
-use cas_math::poly_gcd_dispatch::rewrite_user_poly_gcd_call_held_with_expand_eval;
+use cas_math::poly_gcd_dispatch::rewrite_poly_gcd_call_held_with_expand_eval;
+use cas_math::poly_gcd_mode::GcdGoal;
 
 // =============================================================================
 // REPL function rule
@@ -29,9 +30,10 @@ define_rule!(
     PhaseMask::CORE | PhaseMask::TRANSFORM,
     priority: 200,
     |ctx, expr| {
-        let rewritten = rewrite_user_poly_gcd_call_held_with_expand_eval(
+        let rewritten = rewrite_poly_gcd_call_held_with_expand_eval(
             ctx,
             expr,
+            GcdGoal::UserPolyGcd,
             crate::expand::eval_expand_off,
             cas_formatter::render_expr,
         )?;

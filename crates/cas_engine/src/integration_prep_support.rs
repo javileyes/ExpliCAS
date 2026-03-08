@@ -1,8 +1,8 @@
 //! Support helpers for integration-preparation rewrite rules.
 
-use crate::expr_extract::extract_i64_multiplier_and_base;
-use crate::trig_roots_flatten::flatten_mul_chain;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
+use cas_math::expr_extract::extract_i64_multiplier_and_base;
+use cas_math::trig_roots_flatten::flatten_mul_chain;
 use num_bigint::BigInt;
 use num_rational::BigRational;
 

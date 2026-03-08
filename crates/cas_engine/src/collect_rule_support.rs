@@ -1,10 +1,11 @@
 //! Planning helpers for combine-like-terms rewrite rules.
 
-use crate::collect_focus_support::select_collect_didactic_focus;
-use crate::collect_semantics_support::{collect_with_semantics_mode, CollectSemanticsMode};
 use cas_ast::ordering::compare_expr;
 use cas_ast::{Context, Expr, ExprId};
+use cas_math::collect_semantics_support::{collect_with_semantics_mode, CollectSemanticsMode};
 use std::cmp::Ordering;
+
+use crate::collect_focus_support::select_collect_didactic_focus;
 
 #[derive(Debug, Clone)]
 pub struct CollectRulePlan {
@@ -12,7 +13,6 @@ pub struct CollectRulePlan {
     pub description: String,
     pub local_before: Option<ExprId>,
     pub local_after: Option<ExprId>,
-    pub assumption: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -50,7 +50,6 @@ pub fn try_plan_collect_rule_expr(
         description: focus.description,
         local_before: focus.before,
         local_after: focus.after,
-        assumption: result.assumption,
     })
 }
 
@@ -93,9 +92,9 @@ mod tests {
         try_plan_collect_rule_expr, try_rewrite_collect_like_terms_expr,
         try_rewrite_collect_like_terms_identity_expr,
     };
-    use crate::collect_semantics_support::CollectSemanticsMode;
     use cas_ast::Context;
     use cas_formatter::DisplayExpr;
+    use cas_math::collect_semantics_support::CollectSemanticsMode;
     use cas_parser::parse;
 
     #[test]

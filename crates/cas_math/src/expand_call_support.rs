@@ -121,35 +121,9 @@ pub fn decide_expand_call_rewrite_with_policy(
     }
 }
 
-/// Decide rewrite for `expand(arg)` using crate default policy.
-pub fn decide_expand_call_rewrite_default(
-    ctx: &mut Context,
-    expr: ExprId,
-) -> Option<ExpandCallDecision> {
-    decide_expand_call_rewrite_with_policy(ctx, expr, ExpandCallPolicy::default())
-}
-
-/// Decide rewrite for `expand(arg)` using conservative "never too-large" policy.
-///
-/// This keeps eager expansion in AST space by disabling mod-p and size cutoffs.
-pub fn decide_expand_call_rewrite_conservative(
-    ctx: &mut Context,
-    expr: ExprId,
-) -> Option<ExpandCallDecision> {
-    decide_expand_call_rewrite_with_policy(
-        ctx,
-        expr,
-        ExpandCallPolicy {
-            max_materialize_terms: u64::MAX,
-            modp_threshold: u64::MAX,
-        },
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
-        decide_expand_call_rewrite_conservative, decide_expand_call_rewrite_default,
         decide_expand_call_rewrite_with_policy, try_plan_conservative_implicit_expand_expr,
         ExpandCallDecision, ExpandCallPolicy, DEFAULT_EXPAND_MAX_MATERIALIZE_TERMS,
         DEFAULT_EXPAND_MODP_THRESHOLD,
@@ -218,12 +192,21 @@ mod tests {
     }
 
     #[test]
-    fn default_and_conservative_wrappers_forward_to_policy() {
+    fn explicit_default_and_conservative_policies_both_rewrite() {
         let mut ctx = Context::new();
         let expr = parse("expand((x+1)^8)", &mut ctx).expect("parse");
-        let defaulted = decide_expand_call_rewrite_default(&mut ctx, expr).expect("default");
-        let conservative =
-            decide_expand_call_rewrite_conservative(&mut ctx, expr).expect("conservative");
+        let defaulted =
+            decide_expand_call_rewrite_with_policy(&mut ctx, expr, ExpandCallPolicy::default())
+                .expect("default");
+        let conservative = decide_expand_call_rewrite_with_policy(
+            &mut ctx,
+            expr,
+            ExpandCallPolicy {
+                max_materialize_terms: u64::MAX,
+                modp_threshold: u64::MAX,
+            },
+        )
+        .expect("conservative");
         assert!(matches!(defaulted, ExpandCallDecision::Rewrite(_)));
         assert!(matches!(conservative, ExpandCallDecision::Rewrite(_)));
     }

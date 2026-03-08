@@ -4,14 +4,14 @@
 //! core binomial/multinomial expansion logic.
 
 use crate::phase::PhaseMask;
+use crate::polynomial_identity_support::{
+    try_prove_polynomial_identity_zero_expr, PolynomialIdentityProofKind,
+};
 use crate::rule::Rewrite;
 use cas_ast::{Context, Expr, ExprId};
 use cas_math::expansion_rule_support::{
     try_expand_small_pow_sum_expr, try_heuristic_poly_normalize_add_expr,
     HeuristicPolyNormalizePolicy, SmallPowExpandPolicy,
-};
-use cas_math::polynomial_identity_support::{
-    try_prove_polynomial_identity_zero_expr, PolynomialIdentityProofKind,
 };
 
 // =============================================================================

@@ -38,67 +38,6 @@ pub struct ProductEvaluationPlan {
     pub kind: ProductEvaluationKind,
 }
 
-/// Render a user-facing description for a finite `sum(...)` rewrite.
-pub fn render_sum_evaluation_desc_with<F>(
-    kind: &SumEvaluationKind,
-    call: &FiniteAggregateCall,
-    mut render_expr: F,
-) -> String
-where
-    F: FnMut(ExprId) -> String,
-{
-    match kind {
-        SumEvaluationKind::Telescoping => format!(
-            "Telescoping sum: Σ({}, {}) from {} to {}",
-            render_expr(call.term),
-            call.var_name,
-            render_expr(call.start_expr),
-            render_expr(call.end_expr)
-        ),
-        SumEvaluationKind::FiniteDirect { start, end } => format!(
-            "sum({}, {}, {}, {})",
-            render_expr(call.term),
-            call.var_name,
-            start,
-            end
-        ),
-    }
-}
-
-/// Render a user-facing description for a finite `product(...)` rewrite.
-pub fn render_product_evaluation_desc_with<F>(
-    kind: &ProductEvaluationKind,
-    call: &FiniteAggregateCall,
-    mut render_expr: F,
-) -> String
-where
-    F: FnMut(ExprId) -> String,
-{
-    match kind {
-        ProductEvaluationKind::Telescoping => format!(
-            "Telescoping product: Π({}, {}) from {} to {}",
-            render_expr(call.term),
-            call.var_name,
-            render_expr(call.start_expr),
-            render_expr(call.end_expr)
-        ),
-        ProductEvaluationKind::FactorizedTelescoping => format!(
-            "Factorized telescoping product: Π({}, {}) from {} to {}",
-            render_expr(call.term),
-            call.var_name,
-            render_expr(call.start_expr),
-            render_expr(call.end_expr)
-        ),
-        ProductEvaluationKind::FiniteDirect { start, end } => format!(
-            "product({}, {}, {}, {})",
-            render_expr(call.term),
-            call.var_name,
-            start,
-            end
-        ),
-    }
-}
-
 /// Parse finite aggregate call shape:
 /// - `sum(term, var, start, end)`
 /// - `product(term, var, start, end)`
@@ -557,7 +496,6 @@ mod tests {
     use super::{
         build_finite_product_substitution, build_finite_sum_substitution,
         detect_one_minus_reciprocal_power, detect_reciprocal_power, extract_linear_offset,
-        render_product_evaluation_desc_with, render_sum_evaluation_desc_with,
         try_build_factorizable_product_for_one_minus_reciprocal_square,
         try_build_telescoping_product_shift1, try_build_telescoping_rational_sum,
         try_extract_bounded_integer_range, try_extract_finite_aggregate_call,
@@ -807,27 +745,5 @@ mod tests {
             plan2.kind,
             ProductEvaluationKind::FactorizedTelescoping
         ));
-    }
-
-    #[test]
-    fn renders_sum_evaluation_descriptions() {
-        let mut ctx = Context::new();
-        let expr = cas_parser::parse("sum(k^2, k, 1, 5)", &mut ctx).expect("sum");
-        let plan = try_plan_finite_sum_evaluation(&mut ctx, expr, 1000).expect("plan");
-        let desc = render_sum_evaluation_desc_with(&plan.kind, &plan.call, |id| {
-            format!("{}", cas_formatter::DisplayExpr { context: &ctx, id })
-        });
-        assert!(desc.contains("sum(") || desc.contains("Telescoping sum"));
-    }
-
-    #[test]
-    fn renders_product_evaluation_descriptions() {
-        let mut ctx = Context::new();
-        let expr = cas_parser::parse("product(k, k, 1, 3)", &mut ctx).expect("product");
-        let plan = try_plan_finite_product_evaluation(&mut ctx, expr, 1000).expect("plan");
-        let desc = render_product_evaluation_desc_with(&plan.kind, &plan.call, |id| {
-            format!("{}", cas_formatter::DisplayExpr { context: &ctx, id })
-        });
-        assert!(desc.contains("product(") || desc.contains("product: Π"));
     }
 }

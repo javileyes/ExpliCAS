@@ -7,7 +7,9 @@
 use crate::define_rule;
 use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
-use cas_math::poly_modp_calls::rewrite_poly_mul_modp_stats_call_with_defaults;
+use cas_math::poly_modp_calls::rewrite_poly_mul_modp_stats_call_with_limit_policy;
+use cas_math::poly_modp_conv::DEFAULT_PRIME;
+use cas_math::poly_store::POLY_MAX_STORE_TERMS;
 
 // =============================================================================
 // poly_mul_modp(a, b [, p]) -> poly_ref(id)
@@ -19,8 +21,12 @@ define_rule!(
     Some(crate::target_kind::TargetKindSet::FUNCTION),
     PhaseMask::TRANSFORM,
     |ctx, expr| {
-        let rewritten =
-            rewrite_poly_mul_modp_stats_call_with_defaults(ctx, expr, |estimated_terms, limit| {
+        let rewritten = rewrite_poly_mul_modp_stats_call_with_limit_policy(
+            ctx,
+            expr,
+            DEFAULT_PRIME,
+            POLY_MAX_STORE_TERMS,
+            |estimated_terms, limit| {
                 tracing::warn!(
                     estimated_terms = %estimated_terms,
                     limit = limit,
@@ -28,7 +34,8 @@ define_rule!(
                     estimated_terms,
                     limit
                 );
-            })?;
+            },
+        )?;
         Some(Rewrite::new(rewritten.0).desc(rewritten.1))
     }
 );

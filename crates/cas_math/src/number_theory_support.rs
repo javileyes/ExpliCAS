@@ -250,27 +250,6 @@ where
     }
 }
 
-/// Convenience wrapper for the common user-facing `gcd(...)` behavior where
-/// polynomial fallback is allowed with full `UserPolyGcd` goal semantics.
-pub fn rewrite_number_theory_call_user_poly_gcd_with_expand_eval<FRender, FEvalExpand>(
-    ctx: &mut Context,
-    expr: ExprId,
-    render_expr: FRender,
-    eval_expand: FEvalExpand,
-) -> Option<(ExprId, String)>
-where
-    FRender: FnMut(&Context, ExprId) -> String,
-    FEvalExpand: FnMut(&mut Context, ExprId) -> ExprId,
-{
-    rewrite_number_theory_call_with_expand_eval(
-        ctx,
-        expr,
-        GcdGoal::UserPolyGcd,
-        render_expr,
-        eval_expand,
-    )
-}
-
 /// Check if expression contains a `poly_result(...)` reference.
 pub fn contains_poly_result(ctx: &Context, expr: ExprId) -> bool {
     match ctx.get(expr) {
@@ -560,99 +539,16 @@ pub fn compute_perm_expr(ctx: &mut Context, n: ExprId, k: ExprId) -> Option<Expr
     Some(ctx.add(Expr::Number(BigRational::from_integer(res))))
 }
 
-/// Compute GCD of two integers with an educational Euclidean trace.
-///
-/// Returns `(gcd, steps)` where steps are human-readable Spanish explanations.
-pub fn verbose_integer_gcd_steps(a_int: i64, b_int: i64) -> (i64, Vec<String>) {
-    let mut a = a_int.abs();
-    let mut b = b_int.abs();
-    let mut steps = Vec::new();
-
-    steps.push("Algoritmo de Euclides para enteros:".to_string());
-
-    if a < b {
-        std::mem::swap(&mut a, &mut b);
-        steps.push(format!(
-            "Intercambiamos para que el primer número sea mayor: GCD({}, {}) = GCD({}, {})",
-            a_int.abs(),
-            b_int.abs(),
-            a,
-            b
-        ));
-    }
-
-    steps.push(format!("Calculamos GCD({}, {})", a, b));
-
-    while b != 0 {
-        let quotient = a / b;
-        let remainder = a % b;
-
-        steps.push(format!(
-            "Dividimos {} entre {}: Cociente = {}, Resto = {}",
-            a, b, quotient, remainder
-        ));
-
-        if remainder != 0 {
-            steps.push(format!(
-                "   → Como el resto es {}, el nuevo problema es GCD({}, {})",
-                remainder, b, remainder
-            ));
-        } else {
-            steps.push("   → El resto es 0. ¡Hemos terminado!".to_string());
-        }
-
-        a = b;
-        b = remainder;
-    }
-
-    steps.push(format!("El Máximo Común Divisor es: {}", a));
-    (a, steps)
-}
-
-/// Result of a (possibly explained) GCD computation.
-#[derive(Debug, Clone)]
-pub struct GcdResult {
-    pub value: Option<ExprId>,
-    pub steps: Vec<String>,
-}
-
-/// Compute GCD for integers/polynomials, with optional educational trace.
+/// Compute GCD for integers/polynomials.
 ///
 /// Behavior:
 /// - Integer inputs: Euclidean GCD (exact).
 /// - Univariate polynomial inputs on same variable: polynomial Euclidean GCD.
 /// - Multivariate or unsupported symbolic inputs: conservative fallback to `1`.
-pub fn compute_gcd(ctx: &mut Context, a: ExprId, b: ExprId, explain: bool) -> GcdResult {
-    let mut steps = Vec::new();
-
+pub fn compute_gcd(ctx: &mut Context, a: ExprId, b: ExprId) -> Option<ExprId> {
     // Integer fast path.
-    if let (Some(val_a), Some(val_b)) = (
-        extract_integer_bigint(ctx, a),
-        extract_integer_bigint(ctx, b),
-    ) {
-        use num_traits::ToPrimitive;
-
-        if explain {
-            if let (Some(a_i64), Some(b_i64)) = (val_a.to_i64(), val_b.to_i64()) {
-                steps.push(format!(
-                    "Intentando GCD numérico entre {} y {}",
-                    a_i64, b_i64
-                ));
-                let (gcd, sub_steps) = verbose_integer_gcd_steps(a_i64, b_i64);
-                steps.extend(sub_steps);
-                let res = ctx.add(Expr::Number(BigRational::from_integer(BigInt::from(gcd))));
-                return GcdResult {
-                    value: Some(res),
-                    steps,
-                };
-            }
-        }
-
-        let gcd = compute_integer_gcd_expr(ctx, a, b).expect("integer gcd after integer extract");
-        return GcdResult {
-            value: Some(gcd),
-            steps,
-        };
+    if extract_integer_bigint(ctx, a).is_some() && extract_integer_bigint(ctx, b).is_some() {
+        return compute_integer_gcd_expr(ctx, a, b);
     }
 
     // Try univariate polynomial GCD.
@@ -667,217 +563,18 @@ pub fn compute_gcd(ctx: &mut Context, a: ExprId, b: ExprId, explain: bool) -> Gc
                 Polynomial::from_expr(ctx, a, var),
                 Polynomial::from_expr(ctx, b, var),
             ) {
-                if explain {
-                    steps.push(format!(
-                        "Detectados polinomios univariados en '{}'. Aplicando Euclides polinómico.",
-                        var
-                    ));
-                    let (gcd_poly, sub_steps) = verbose_poly_gcd(&p_a, &p_b);
-                    steps.extend(sub_steps);
-                    return GcdResult {
-                        value: Some(gcd_poly.to_expr(ctx)),
-                        steps,
-                    };
-                }
-
                 let gcd_poly = p_a.gcd(&p_b);
-                return GcdResult {
-                    value: Some(gcd_poly.to_expr(ctx)),
-                    steps,
-                };
+                return Some(gcd_poly.to_expr(ctx));
             }
         }
     }
 
     // Multivariable fallback: conservative, never incorrect.
     if !vars_a.is_empty() || !vars_b.is_empty() {
-        if explain {
-            if vars_a.len() > 1
-                || vars_b.len() > 1
-                || (vars_a != vars_b && !vars_a.is_empty() && !vars_b.is_empty())
-            {
-                steps.push("Detectados polinomios multivariables.".to_string());
-                steps.push(
-                    "LIMITACIÓN: El GCD de polinomios multivariables no está implementado."
-                        .to_string(),
-                );
-                steps.push("Devolviendo GCD = 1 (conservador, no simplifica).".to_string());
-            } else {
-                steps.push("No se pudo calcular el GCD para estas expresiones.".to_string());
-            }
-        }
-        return GcdResult {
-            value: Some(ctx.num(1)),
-            steps,
-        };
+        return Some(ctx.num(1));
     }
 
-    if explain {
-        steps.push("No se pudo calcular el GCD".to_string());
-    }
-    GcdResult { value: None, steps }
-}
-
-/// Educational wrapper around [`compute_gcd`].
-pub fn explain_gcd(ctx: &mut Context, a: ExprId, b: ExprId) -> GcdResult {
-    compute_gcd(ctx, a, b, true)
-}
-
-fn format_rational_for_step(r: &BigRational) -> String {
-    if r.is_integer() {
-        r.to_integer().to_string()
-    } else {
-        format!("{}/{}", r.numer(), r.denom())
-    }
-}
-
-fn format_polynomial_for_step(poly: &crate::polynomial::Polynomial) -> String {
-    use num_traits::Signed;
-
-    if poly.is_zero() {
-        return "0".to_string();
-    }
-
-    let mut out = String::new();
-    for (i, coeff) in poly.coeffs.iter().enumerate().rev() {
-        if coeff.is_zero() {
-            continue;
-        }
-
-        let sign_neg = coeff.is_negative();
-        let abs_coeff = coeff.abs();
-        let var = &poly.var;
-        let term = if i == 0 {
-            format_rational_for_step(&abs_coeff)
-        } else {
-            let var_part = if i == 1 {
-                var.to_string()
-            } else {
-                format!("{}^{}", var, i)
-            };
-            if abs_coeff.is_one() {
-                var_part
-            } else {
-                format!("{}*{}", format_rational_for_step(&abs_coeff), var_part)
-            }
-        };
-
-        if out.is_empty() {
-            if sign_neg {
-                out.push('-');
-            }
-            out.push_str(&term);
-        } else if sign_neg {
-            out.push_str(" - ");
-            out.push_str(&term);
-        } else {
-            out.push_str(" + ");
-            out.push_str(&term);
-        }
-    }
-
-    out
-}
-
-/// Compute GCD of two polynomials with educational Euclidean trace.
-fn verbose_poly_gcd(
-    p1: &crate::polynomial::Polynomial,
-    p2: &crate::polynomial::Polynomial,
-) -> (crate::polynomial::Polynomial, Vec<String>) {
-    use crate::polynomial::Polynomial;
-
-    let mut a = p1.clone();
-    let mut b = p2.clone();
-    let mut steps = Vec::new();
-
-    steps.push("Algoritmo de Euclides para Polinomios:".to_string());
-    steps.push(
-        "Objetivo: Reducir el grado del polinomio mediante divisiones sucesivas.".to_string(),
-    );
-
-    let mut step_count = 1;
-    while !b.is_zero() {
-        steps.push(format!("--- Paso {} ---", step_count));
-        steps.push(format!(
-            "Polinomio A (grado {}): {}",
-            a.degree(),
-            format_polynomial_for_step(&a)
-        ));
-        steps.push(format!(
-            "Polinomio B (grado {}): {}",
-            b.degree(),
-            format_polynomial_for_step(&b)
-        ));
-
-        let (_, r) = a
-            .div_rem(&b)
-            .unwrap_or_else(|_| (Polynomial::zero(a.var.clone()), a.clone()));
-
-        steps.push("Dividimos A entre B.".to_string());
-        if r.is_zero() {
-            steps.push("El resto es 0 (división exacta).".to_string());
-        } else {
-            steps.push(format!(
-                "El resto R es: {} (grado {})",
-                format_polynomial_for_step(&r),
-                r.degree()
-            ));
-            steps.push("La propiedad gcd(A, B) = gcd(B, R) nos permite descartar A.".to_string());
-        }
-
-        a = b;
-        b = r;
-        step_count += 1;
-    }
-
-    steps.push("--- Paso Final ---".to_string());
-    steps.push(format!(
-        "El último divisor no nulo es: {}",
-        format_polynomial_for_step(&a)
-    ));
-
-    let gcd_final = if !a.is_zero() {
-        let content = a.content();
-        if !content.is_zero() && content != BigRational::one() {
-            let inv_content = BigRational::one() / &content;
-            let scalar = Polynomial::new(vec![inv_content], a.var.clone());
-            let normalized = a.mul(&scalar);
-
-            steps.push(format!(
-                "Normalizamos el polinomio (contenido = {})",
-                format_rational_for_step(&content)
-            ));
-            steps.push(
-                "Dividimos todos los coeficientes por el GCD para obtener coeficientes enteros:"
-                    .to_string(),
-            );
-            steps.push(format!(
-                "Resultado final: {}",
-                format_polynomial_for_step(&normalized)
-            ));
-            normalized
-        } else {
-            let lc = a.leading_coeff();
-            if lc < BigRational::zero() {
-                steps.push("Hacemos el coeficiente principal positivo:".to_string());
-                let result = a.neg();
-                steps.push(format!(
-                    "Resultado final: {}",
-                    format_polynomial_for_step(&result)
-                ));
-                result
-            } else {
-                steps.push(
-                    "El polinomio ya es primitivo (coeficientes enteros con GCD=1)".to_string(),
-                );
-                a
-            }
-        }
-    } else {
-        a
-    };
-
-    (gcd_final, steps)
+    None
 }
 
 #[cfg(test)]
@@ -986,11 +683,12 @@ mod tests {
     }
 
     #[test]
-    fn verbose_integer_gcd_trace_is_consistent() {
-        let (gcd, steps) = verbose_integer_gcd_steps(48, 18);
-        assert_eq!(gcd, 6);
-        assert!(!steps.is_empty());
-        assert!(steps.iter().any(|s| s.contains("Máximo Común Divisor")));
+    fn compute_gcd_returns_integer_result() {
+        let mut ctx = Context::new();
+        let a = ctx.num(48);
+        let b = ctx.num(18);
+        let gcd = compute_gcd(&mut ctx, a, b).expect("gcd");
+        assert_eq!(extract_integer_bigint(&ctx, gcd), Some(BigInt::from(6)));
     }
 
     #[test]
@@ -1142,13 +840,14 @@ mod tests {
     }
 
     #[test]
-    fn rewrite_number_theory_call_user_poly_gcd_with_expand_eval_handles_simple_path() {
+    fn rewrite_number_theory_call_with_expand_eval_handles_simple_user_poly_gcd_path() {
         let mut ctx = Context::new();
         let call = parse("gcd(12, 18)", &mut ctx).expect("parse");
 
-        let rewritten = rewrite_number_theory_call_user_poly_gcd_with_expand_eval(
+        let rewritten = rewrite_number_theory_call_with_expand_eval(
             &mut ctx,
             call,
+            GcdGoal::UserPolyGcd,
             |_core_ctx, id| format!("{id:?}"),
             |_core_ctx, expand_call| expand_call,
         )

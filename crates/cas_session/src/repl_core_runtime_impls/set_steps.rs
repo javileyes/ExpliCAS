@@ -1,8 +1,9 @@
 use crate::ReplCore;
 use cas_solver::{
     ReplSetRuntimeContext, ReplStepsRuntimeContext, SetCommandApplyEffects, SetCommandPlan,
-    SetCommandState, SetDisplayMode, StepsCommandApplyEffects, StepsDisplayMode, StepsMode,
+    SetCommandState, SetDisplayMode, StepsCommandApplyEffects, StepsDisplayMode,
 };
+use cas_solver_core::eval_option_axes::StepsMode;
 
 impl ReplSetRuntimeContext for ReplCore {
     fn set_command_state(&self, display_mode: SetDisplayMode) -> SetCommandState {

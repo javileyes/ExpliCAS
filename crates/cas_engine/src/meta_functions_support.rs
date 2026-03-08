@@ -32,7 +32,7 @@ pub fn try_rewrite_meta_function_expr(
             desc: "simplify(x) = x (already processed)",
         }),
         "factor" => {
-            let factored = crate::factor::factor(ctx, arg);
+            let factored = cas_math::factor::factor(ctx, arg);
             let desc = if factored != arg {
                 "factor(x) -> factored form"
             } else {
@@ -44,7 +44,7 @@ pub fn try_rewrite_meta_function_expr(
             })
         }
         "expand" => Some(MetaFunctionRewrite {
-            rewritten: crate::expand_ops::expand(ctx, arg),
+            rewritten: cas_math::expand_ops::expand(ctx, arg),
             desc: "expand(x) -> expanded form",
         }),
         _ => None,

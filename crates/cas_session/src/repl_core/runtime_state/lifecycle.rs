@@ -1,5 +1,5 @@
 use crate::ReplCore;
-use cas_solver::Simplifier;
+use cas_engine::Simplifier;
 
 impl ReplCore {
     /// Replace the inner simplifier.

@@ -1,6 +1,6 @@
+use crate::collect_rule_support::CollectRulePlan;
 use crate::parent_context::ParentContext;
 use cas_ast::{Context, ExprId};
-use cas_math::collect_rule_support::CollectRulePlan;
 use cas_math::collect_semantics_support::{
     collect_semantics_mode_from_flags, collect_semantics_needs_undefined_risk_scan,
     collect_with_semantics_mode, CollectSemanticsMode, CollectSemanticsResult,
@@ -44,7 +44,7 @@ pub(crate) fn plan_collect_rule_rewrite(
     parent_ctx: &ParentContext,
 ) -> Option<CollectRulePlan> {
     let (mode, risk) = resolve_mode_and_risk(ctx, expr, parent_ctx);
-    cas_math::collect_rule_support::try_plan_collect_rule_expr(ctx, expr, mode, risk)
+    crate::collect_rule_support::try_plan_collect_rule_expr(ctx, expr, mode, risk)
 }
 
 /// Collects like terms in an expression using Generic mode semantics.

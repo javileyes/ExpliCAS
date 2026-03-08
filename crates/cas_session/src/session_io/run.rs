@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use cas_solver::Engine;
+use cas_engine::Engine;
 
 use super::{load_or_new_session, save_session};
 use crate::{SessionState, SimplifyCacheKey};
