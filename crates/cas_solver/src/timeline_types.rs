@@ -13,18 +13,9 @@ pub struct TimelineSimplifyEvalOutput {
     pub simplified_expr: cas_ast::ExprId,
     pub steps: crate::DisplayEvalSteps,
 }
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum TimelineSolveEvalError {
-    Prepare(crate::SolvePrepareError),
-    Solve(String),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum TimelineSimplifyEvalError {
-    Parse(String),
-    Eval(String),
-}
+pub use cas_solver_core::solve_command_types::{
+    TimelineCommandEvalError, TimelineSimplifyEvalError, TimelineSolveEvalError,
+};
 
 #[derive(Debug, Clone)]
 pub enum TimelineCommandEvalOutput {
@@ -34,10 +25,4 @@ pub enum TimelineCommandEvalOutput {
         aggressive: bool,
         output: TimelineSimplifyEvalOutput,
     },
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum TimelineCommandEvalError {
-    Solve(TimelineSolveEvalError),
-    Simplify(TimelineSimplifyEvalError),
 }

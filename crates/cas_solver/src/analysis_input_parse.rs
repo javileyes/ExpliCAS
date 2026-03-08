@@ -1,14 +1,7 @@
 //! Parsing helpers for analysis-style pair inputs (`<expr1>, <expr2>`).
 
 use cas_ast::{Context, ExprId};
-
-/// Parse errors for `<expr1>, <expr2>` command shapes (e.g. `equiv`).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ParseExprPairError {
-    MissingDelimiter,
-    FirstArg(String),
-    SecondArg(String),
-}
+use cas_solver_core::analysis_command_types::ParseExprPairError;
 
 fn parse_expr_or_equation_as_expr(ctx: &mut Context, input: &str) -> Result<ExprId, String> {
     let stmt = crate::input_parse_common::parse_statement_or_session_ref(ctx, input)?;

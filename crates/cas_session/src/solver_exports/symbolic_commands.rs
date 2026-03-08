@@ -17,27 +17,19 @@ pub use cas_solver::{
     evaluate_visualize_command_output, evaluate_visualize_invocation_output,
     format_explain_command_error_message, format_explain_gcd_eval_lines,
     format_timeline_command_error_message, format_visualize_command_error_message,
-    ExplainCommandEvalError, ExplainGcdEvalOutput, VisualizeCommandOutput, VisualizeEvalError,
 };
 pub use cas_solver::{evaluate_health_command, evaluate_health_status_lines};
 pub use cas_solver::{evaluate_health_command_input, parse_health_command_input};
-pub use cas_solver::{
-    evaluate_limit_command_lines, evaluate_limit_subcommand, LimitCommandApproach,
-    LimitCommandPreSimplify, LimitSubcommandOutput,
-};
-pub use cas_solver::{
-    evaluate_semantics_command_line, parse_semantics_command_input, SemanticsCommandInput,
-    SemanticsCommandOutput,
-};
+pub use cas_solver::{evaluate_limit_command_lines, evaluate_limit_subcommand};
+pub use cas_solver::{evaluate_semantics_command_line, parse_semantics_command_input};
 pub use cas_solver::{
     evaluate_substitute_command_lines, evaluate_substitute_invocation_lines,
     evaluate_substitute_invocation_message, evaluate_substitute_invocation_user_message,
     format_substitute_eval_lines, format_substitute_parse_error_message,
-    substitute_render_mode_from_display_mode, SubstituteRenderMode,
+    substitute_render_mode_from_display_mode,
 };
 pub use cas_solver::{
     evaluate_substitute_subcommand, evaluate_substitute_subcommand_json_canonical,
-    SubstituteCommandMode, SubstituteSubcommandOutput,
 };
 pub use cas_solver::{
     evaluate_unary_command_lines, evaluate_unary_command_message,
@@ -52,4 +44,14 @@ pub use cas_solver::{
 pub use cas_solver::{
     extract_equiv_command_tail, extract_explain_command_tail, extract_substitute_command_tail,
     extract_visualize_command_tail,
+};
+pub use cas_solver_core::analysis_command_types::{
+    ExplainCommandEvalError, ExplainGcdEvalOutput, VisualizeCommandOutput, VisualizeEvalError,
+};
+pub use cas_solver_core::limit_subcommand_types::{
+    LimitCommandApproach, LimitCommandPreSimplify, LimitSubcommandOutput,
+};
+pub use cas_solver_core::semantics_command_types::{SemanticsCommandInput, SemanticsCommandOutput};
+pub use cas_solver_core::substitute_command_types::{
+    SubstituteCommandMode, SubstituteRenderMode, SubstituteSubcommandOutput,
 };

@@ -1,6 +1,6 @@
 use crate::state_core::SessionState;
 
-impl cas_solver::HistoryDeleteContext for SessionState {
+impl cas_solver_core::history_runtime::HistoryDeleteContext for SessionState {
     fn history_len(&self) -> usize {
         SessionState::history_len(self)
     }
@@ -10,34 +10,41 @@ impl cas_solver::HistoryDeleteContext for SessionState {
     }
 }
 
-impl cas_solver::HistoryOverviewContext for SessionState {
-    fn history_entries_raw(&self) -> Vec<cas_solver::HistoryEntryRaw> {
+impl cas_solver_core::history_runtime::HistoryOverviewContext for SessionState {
+    fn history_entries_raw(&self) -> Vec<cas_solver_core::history_runtime::HistoryEntryRaw> {
         self.history_entries()
             .iter()
             .map(|entry| {
                 let kind = match entry.kind {
-                    crate::EntryKind::Expr(expr) => cas_solver::HistoryEntryKindRaw::Expr(expr),
+                    crate::EntryKind::Expr(expr) => {
+                        cas_solver_core::history_runtime::HistoryEntryKindRaw::Expr(expr)
+                    }
                     crate::EntryKind::Eq { lhs, rhs } => {
-                        cas_solver::HistoryEntryKindRaw::Eq { lhs, rhs }
+                        cas_solver_core::history_runtime::HistoryEntryKindRaw::Eq { lhs, rhs }
                     }
                 };
-                cas_solver::HistoryEntryRaw { id: entry.id, kind }
+                cas_solver_core::history_runtime::HistoryEntryRaw { id: entry.id, kind }
             })
             .collect()
     }
 }
 
 impl cas_solver::InspectHistoryContext for SessionState {
-    fn history_entry_raw(&self, id: u64) -> Option<cas_solver::HistoryInspectEntryRaw> {
+    fn history_entry_raw(
+        &self,
+        id: u64,
+    ) -> Option<cas_solver_core::history_runtime::HistoryInspectEntryRaw> {
         self.history_get(id).map(|entry| {
             let kind = match entry.kind {
-                crate::EntryKind::Expr(expr) => cas_solver::HistoryEntryKindRaw::Expr(expr),
+                crate::EntryKind::Expr(expr) => {
+                    cas_solver_core::history_runtime::HistoryEntryKindRaw::Expr(expr)
+                }
                 crate::EntryKind::Eq { lhs, rhs } => {
-                    cas_solver::HistoryEntryKindRaw::Eq { lhs, rhs }
+                    cas_solver_core::history_runtime::HistoryEntryKindRaw::Eq { lhs, rhs }
                 }
             };
 
-            cas_solver::HistoryInspectEntryRaw {
+            cas_solver_core::history_runtime::HistoryInspectEntryRaw {
                 id: entry.id,
                 type_str: entry.type_str().to_string(),
                 raw_text: entry.raw_text.clone(),

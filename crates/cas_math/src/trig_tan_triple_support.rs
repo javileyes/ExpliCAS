@@ -13,38 +13,6 @@ pub struct TanTripleProductRewrite {
     pub nonzero_cos_pi_over_3_minus_u: ExprId,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TanTripleDidacticSubstep {
-    pub title: &'static str,
-    pub details: Vec<String>,
-}
-
-pub fn tan_triple_product_desc() -> &'static str {
-    "tan(u)·tan(π/3+u)·tan(π/3−u) = tan(3u)"
-}
-
-pub fn tan_triple_product_substeps(u_display: &str) -> Vec<TanTripleDidacticSubstep> {
-    vec![
-        TanTripleDidacticSubstep {
-            title: "Normalizar argumentos",
-            details: vec![
-                "π/3 − u se representa como −u + π/3 para comparar como u + const".to_string(),
-            ],
-        },
-        TanTripleDidacticSubstep {
-            title: "Reconocer patrón",
-            details: vec![
-                format!("Sea u = {}", u_display),
-                "Factores: tan(u), tan(u + π/3), tan(π/3 − u)".to_string(),
-            ],
-        },
-        TanTripleDidacticSubstep {
-            title: "Aplicar identidad",
-            details: vec!["tan(u)·tan(u + π/3)·tan(π/3 − u) = tan(3u)".to_string()],
-        },
-    ]
-}
-
 /// Check if an expression is `π/3` (division or canonical multiplication form).
 pub fn is_pi_over_3(ctx: &Context, expr: ExprId) -> bool {
     let is_one_third_factor = |id: ExprId| -> bool {
@@ -349,16 +317,5 @@ mod tests {
             cas_ast::ordering::compare_expr(&ctx, stripped, expected),
             Ordering::Equal
         );
-    }
-
-    #[test]
-    fn tan_triple_didactic_builder_contains_pattern_and_identity() {
-        let substeps = tan_triple_product_substeps("x");
-        assert_eq!(
-            tan_triple_product_desc(),
-            "tan(u)·tan(π/3+u)·tan(π/3−u) = tan(3u)"
-        );
-        assert_eq!(substeps.len(), 3);
-        assert!(substeps[1].details.iter().any(|d| d.contains("Sea u = x")));
     }
 }

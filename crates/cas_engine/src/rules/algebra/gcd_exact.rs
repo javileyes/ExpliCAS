@@ -4,7 +4,7 @@ use crate::define_rule;
 use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
 use cas_math::gcd_exact::{
-    format_poly_gcd_exact_desc_with, try_rewrite_poly_gcd_exact_function_expr, GcdExactBudget,
+    try_rewrite_poly_gcd_exact_function_expr, GcdExactBudget, GcdExactLayer,
 };
 
 // Rule for poly_gcd_exact(a, b) function.
@@ -18,12 +18,21 @@ define_rule!(
     |ctx, expr| {
         let rewrite =
             try_rewrite_poly_gcd_exact_function_expr(ctx, expr, &GcdExactBudget::default())?;
-        let desc = format_poly_gcd_exact_desc_with(
-            rewrite.lhs,
-            rewrite.rhs,
-            rewrite.layer_used,
-            |id| cas_formatter::render_expr(ctx, id),
-        );
+        let desc = format_poly_gcd_exact_desc(ctx, rewrite.lhs, rewrite.rhs, rewrite.layer_used);
         Some(Rewrite::simple(rewrite.gcd, desc))
     }
 );
+
+fn format_poly_gcd_exact_desc(
+    ctx: &cas_ast::Context,
+    lhs: cas_ast::ExprId,
+    rhs: cas_ast::ExprId,
+    layer_used: GcdExactLayer,
+) -> String {
+    format!(
+        "poly_gcd_exact({}, {}) [{:?}]",
+        cas_formatter::render_expr(ctx, lhs),
+        cas_formatter::render_expr(ctx, rhs),
+        layer_used
+    )
+}

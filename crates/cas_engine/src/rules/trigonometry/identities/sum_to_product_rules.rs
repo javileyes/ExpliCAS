@@ -5,9 +5,12 @@ use crate::rule::Rewrite;
 use crate::rules::trigonometry::{evaluation, pythagorean, pythagorean_secondary};
 use cas_ast::ExprId;
 use cas_math::trig_multi_angle_support::{
-    format_dyadic_cos_product_desc, try_plan_dyadic_cos_product_with_policy,
-    try_rewrite_angle_consistency_expr,
+    try_plan_dyadic_cos_product_with_policy, try_rewrite_angle_consistency_expr,
 };
+
+fn format_dyadic_cos_product_desc(n: u32) -> String {
+    format!("2^{n}·∏cos(2^k·θ) = sin(2^{n}·θ)/sin(θ)")
+}
 
 // Import rules from parent module (still defined in include!() files)
 use super::{

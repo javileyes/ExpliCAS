@@ -5,7 +5,7 @@
 
 use crate::gcd_exact::{gcd_exact, GcdExactBudget, GcdExactLayer};
 use crate::gcd_zippel_modp::ZippelPreset;
-use crate::poly_gcd_mode::{try_parse_poly_gcd_call, GcdGoal, GcdMode};
+use crate::poly_gcd_mode::{GcdGoal, GcdMode};
 use crate::poly_gcd_structural::poly_gcd_structural;
 use crate::poly_modp_conv::{compute_gcd_modp_expr_with_options, DEFAULT_PRIME};
 use cas_ast::{Context, Expr, ExprId};
@@ -210,120 +210,15 @@ where
     }
 }
 
-/// Compute polynomial GCD using mode selection while delegating `expand(...)`
-/// evaluation to the caller.
-///
-/// This is a convenience adapter over [`compute_poly_gcd_unified_with`] that
-/// applies [`pre_evaluate_for_gcd_with`] to each operand before exact/modp
-/// paths.
-#[allow(clippy::too_many_arguments)]
-pub fn compute_poly_gcd_unified_with_expand_eval<FEvalExpand, FRender>(
-    ctx: &mut Context,
-    a: ExprId,
-    b: ExprId,
-    goal: GcdGoal,
-    mode: GcdMode,
-    modp_preset: Option<ZippelPreset>,
-    modp_main_var: Option<usize>,
-    mut eval_expand: FEvalExpand,
-    render: FRender,
-) -> (ExprId, String)
-where
-    FEvalExpand: FnMut(&mut Context, ExprId) -> ExprId,
-    FRender: FnMut(&Context, ExprId) -> String,
-{
-    compute_poly_gcd_unified_with(
-        ctx,
-        a,
-        b,
-        goal,
-        mode,
-        modp_preset,
-        modp_main_var,
-        |core_ctx, id| {
-            pre_evaluate_for_gcd_with(core_ctx, id, |inner_ctx, expand_call| {
-                eval_expand(inner_ctx, expand_call)
-            })
-        },
-        render,
-    )
-}
-
-/// Compute polynomial GCD and wrap the result in `__hold(...)`.
-///
-/// Runtime crates can use this helper when they need the GCD materialized as a
-/// hold-protected expression for downstream rewrite stages.
-#[allow(clippy::too_many_arguments)]
-pub fn compute_poly_gcd_unified_held_with_expand_eval<FEvalExpand, FRender>(
-    ctx: &mut Context,
-    a: ExprId,
-    b: ExprId,
-    goal: GcdGoal,
-    mode: GcdMode,
-    modp_preset: Option<ZippelPreset>,
-    modp_main_var: Option<usize>,
-    eval_expand: FEvalExpand,
-    render: FRender,
-) -> (ExprId, String)
-where
-    FEvalExpand: FnMut(&mut Context, ExprId) -> ExprId,
-    FRender: FnMut(&Context, ExprId) -> String,
-{
-    let (result, desc) = compute_poly_gcd_unified_with_expand_eval(
-        ctx,
-        a,
-        b,
-        goal,
-        mode,
-        modp_preset,
-        modp_main_var,
-        eval_expand,
-        render,
-    );
-    (cas_ast::hold::wrap_hold(ctx, result), desc)
-}
-
-/// Rewrite `poly_gcd(...)`/`pgcd(...)` call into `(held_result_expr, description)`.
-///
-/// Returns `None` when expression is not a recognized poly-GCD function shape.
-#[allow(clippy::too_many_arguments)]
-pub fn rewrite_poly_gcd_call_held_with_expand_eval<FEvalExpand, FRender>(
-    ctx: &mut Context,
-    expr: ExprId,
-    goal: GcdGoal,
-    eval_expand: FEvalExpand,
-    render: FRender,
-) -> Option<(ExprId, String)>
-where
-    FEvalExpand: FnMut(&mut Context, ExprId) -> ExprId,
-    FRender: FnMut(&Context, ExprId) -> String,
-{
-    let parsed = try_parse_poly_gcd_call(ctx, expr)?;
-    Some(compute_poly_gcd_unified_held_with_expand_eval(
-        ctx,
-        parsed.lhs,
-        parsed.rhs,
-        goal,
-        parsed.mode,
-        parsed.modp_preset,
-        parsed.modp_main_var,
-        eval_expand,
-        render,
-    ))
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
-        classify_pre_evaluate_for_gcd, compute_poly_gcd_unified_held_with_expand_eval,
-        compute_poly_gcd_unified_with, compute_poly_gcd_unified_with_expand_eval,
-        pre_evaluate_for_gcd_with, rewrite_poly_gcd_call_held_with_expand_eval,
+        classify_pre_evaluate_for_gcd, compute_poly_gcd_unified_with, pre_evaluate_for_gcd_with,
         GcdPreEvalDirective,
     };
     use crate::gcd_zippel_modp::ZippelPreset;
-    use crate::poly_gcd_mode::{GcdGoal, GcdMode};
+    use crate::poly_gcd_mode::GcdMode;
     use cas_ast::{BuiltinFn, Expr};
-    use cas_parser::parse;
 
     #[test]
     fn structural_mode_finds_common_factor() {
@@ -383,12 +278,12 @@ mod tests {
     }
 
     #[test]
-    fn held_adapter_wraps_output_in_hold() {
+    fn explicit_composition_can_wrap_output_in_hold() {
         let mut ctx = cas_ast::Context::new();
         let a = parse("(x+1)*(y+2)", &mut ctx).expect("parse a");
         let b = parse("(x+1)*(z+3)", &mut ctx).expect("parse b");
 
-        let (held, _desc) = compute_poly_gcd_unified_held_with_expand_eval(
+        let (gcd, _desc) = compute_poly_gcd_unified_with(
             &mut ctx,
             a,
             b,
@@ -396,9 +291,10 @@ mod tests {
             GcdMode::Structural,
             None,
             None,
-            |_ctx, id| id,
+            |core_ctx, id| pre_evaluate_for_gcd_with(core_ctx, id, |_ctx, expand_call| expand_call),
             |_ctx, id| format!("{id:?}"),
         );
+        let held = cas_ast::hold::wrap_hold(&mut ctx, gcd);
 
         assert!(cas_ast::hold::is_hold(&ctx, held));
     }
@@ -456,13 +352,13 @@ mod tests {
     }
 
     #[test]
-    fn unified_with_expand_eval_invokes_expand_callback_for_exact_mode() {
+    fn explicit_pre_eval_invokes_expand_callback_for_exact_mode() {
         let mut ctx = cas_ast::Context::new();
         let a = parse("expand((x+1)^2)", &mut ctx).expect("parse a");
         let b = parse("x+1", &mut ctx).expect("parse b");
 
         let mut expanded_calls = 0usize;
-        let (_gcd, _desc) = compute_poly_gcd_unified_with_expand_eval(
+        let (_gcd, _desc) = compute_poly_gcd_unified_with(
             &mut ctx,
             a,
             b,
@@ -470,51 +366,17 @@ mod tests {
             GcdMode::Exact,
             None,
             None,
-            |core_ctx, expand_call| {
-                expanded_calls += 1;
-                let Expr::Function(_, args) = core_ctx.get(expand_call) else {
-                    panic!("expected expand call");
-                };
-                args[0]
+            |core_ctx, id| {
+                pre_evaluate_for_gcd_with(core_ctx, id, |inner_ctx, expand_call| {
+                    expanded_calls += 1;
+                    let Expr::Function(_, args) = inner_ctx.get(expand_call) else {
+                        panic!("expected expand call");
+                    };
+                    args[0]
+                })
             },
             |_ctx, id| format!("{id:?}"),
         );
         assert_eq!(expanded_calls, 1);
-    }
-
-    #[test]
-    fn rewrite_poly_gcd_call_held_with_expand_eval_matches_poly_gcd_call() {
-        let mut ctx = cas_ast::Context::new();
-        let expr = parse("poly_gcd((x+1)^2, x+1, exact)", &mut ctx).expect("parse");
-
-        let rewritten = rewrite_poly_gcd_call_held_with_expand_eval(
-            &mut ctx,
-            expr,
-            GcdGoal::UserPolyGcd,
-            |_core_ctx, expand_call| expand_call,
-            |_core_ctx, id| format!("{id:?}"),
-        )
-        .expect("rewrite");
-
-        assert!(cas_ast::hold::is_hold(&ctx, rewritten.0));
-        assert!(rewritten.1.contains("poly_gcd("));
-    }
-
-    #[test]
-    fn rewrite_poly_gcd_call_held_with_expand_eval_matches_user_poly_gcd_goal() {
-        let mut ctx = cas_ast::Context::new();
-        let expr = parse("poly_gcd((x+1)^2, x+1, exact)", &mut ctx).expect("parse");
-
-        let rewritten = rewrite_poly_gcd_call_held_with_expand_eval(
-            &mut ctx,
-            expr,
-            GcdGoal::UserPolyGcd,
-            |_core_ctx, expand_call| expand_call,
-            |_core_ctx, id| format!("{id:?}"),
-        )
-        .expect("rewrite");
-
-        assert!(cas_ast::hold::is_hold(&ctx, rewritten.0));
-        assert!(rewritten.1.contains("poly_gcd("));
     }
 }

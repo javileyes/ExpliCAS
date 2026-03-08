@@ -1,11 +1,5 @@
 use crate::{EvalOptions, SimplifyOptions};
-
-/// Result of applying a semantics-related command over runtime state.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ReplSemanticsApplyOutput {
-    pub message: String,
-    pub rebuilt_simplifier: bool,
-}
+pub use cas_solver_core::repl_runtime::ReplSemanticsApplyOutput;
 
 /// Runtime context needed by semantics command adapters.
 pub trait ReplSemanticsRuntimeContext {

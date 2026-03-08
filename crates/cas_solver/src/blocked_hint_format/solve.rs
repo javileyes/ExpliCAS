@@ -1,11 +1,6 @@
 use cas_ast::Context;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct SolveAssumptionSectionConfig {
-    pub debug_mode: bool,
-    pub hints_enabled: bool,
-    pub domain_mode: crate::DomainMode,
-}
+pub use cas_solver_core::solve_assumption_types::SolveAssumptionSectionConfig;
 
 /// Render optional solve assumption/blocked sections according to CLI flags.
 pub fn format_solve_assumption_and_blocked_sections(

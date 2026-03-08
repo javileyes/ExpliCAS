@@ -1,10 +1,4 @@
-/// Result of applying a `cache` command against engine profile cache.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ProfileCacheCommandResult {
-    Status { cached_profiles: usize },
-    Cleared,
-    Unknown { command: String },
-}
+pub use cas_solver_core::profile_cache_command_types::ProfileCacheCommandResult;
 
 pub(super) enum ProfileCacheCommandInput {
     Status,

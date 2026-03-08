@@ -3,30 +3,9 @@
 use crate::limit_command_eval::{
     evaluate_limit_subcommand_output, format_limit_subcommand_error, LimitSubcommandEvalOutput,
 };
-
-/// Limit direction for subcommand-level evaluation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LimitCommandApproach {
-    Infinity,
-    NegInfinity,
-}
-
-/// Pre-simplification policy for subcommand-level limit evaluation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LimitCommandPreSimplify {
-    Off,
-    Safe,
-}
-
-/// CLI-friendly output contract for `limit` subcommand.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum LimitSubcommandOutput {
-    Json(String),
-    Text {
-        result: String,
-        warning: Option<String>,
-    },
-}
+pub use cas_solver_core::limit_subcommand_types::{
+    LimitCommandApproach, LimitCommandPreSimplify, LimitSubcommandOutput,
+};
 
 /// Evaluate limit subcommand and map solver contracts to CLI-friendly output.
 pub fn evaluate_limit_subcommand(

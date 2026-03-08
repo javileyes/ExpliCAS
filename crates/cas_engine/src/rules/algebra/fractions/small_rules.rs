@@ -4,9 +4,7 @@ use crate::define_rule;
 use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
 use cas_math::div_scalar_into_add_support::try_rewrite_div_scalar_into_add_expr;
-use cas_math::rationalize_single_surd_support::{
-    format_rationalize_single_surd_desc_with, try_rewrite_rationalize_single_surd_expr,
-};
+use cas_math::rationalize_single_surd_support::try_rewrite_rationalize_single_surd_expr;
 
 // ========== Light Rationalization for Single Numeric Surd Denominators ==========
 // Transforms: num / (k * √n) → (num * √n) / (k * n)
@@ -22,9 +20,7 @@ define_rule!(
     PhaseMask::RATIONALIZE,
     |ctx, expr| {
         let rewritten = try_rewrite_rationalize_single_surd_expr(ctx, expr)?;
-        let desc = format_rationalize_single_surd_desc_with(rewritten, |id| {
-            cas_formatter::render_expr(ctx, id)
-        });
+        let desc = format_rationalize_single_surd_desc(ctx, rewritten);
         Some(Rewrite::new(rewritten.rewritten).desc(desc))
     }
 );
@@ -55,3 +51,16 @@ define_rule!(
         Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
     }
 );
+
+fn format_rationalize_single_surd_desc(
+    ctx: &cas_ast::Context,
+    rewrite: cas_math::rationalize_single_surd_support::RationalizeSingleSurdRewrite,
+) -> String {
+    format!(
+        "{} / {} -> {} / {}",
+        cas_formatter::render_expr(ctx, rewrite.num),
+        cas_formatter::render_expr(ctx, rewrite.den),
+        cas_formatter::render_expr(ctx, rewrite.new_num),
+        cas_formatter::render_expr(ctx, rewrite.new_den)
+    )
+}

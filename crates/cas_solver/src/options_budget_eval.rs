@@ -1,10 +1,5 @@
 use crate::{format_solve_budget_command_message, SolveBudgetCommandResult};
-
-/// Mutable context required to apply `budget` command updates.
-pub trait SolveBudgetContext {
-    fn solve_budget_max_branches(&self) -> usize;
-    fn set_solve_budget_max_branches(&mut self, max_branches: usize);
-}
+pub use cas_solver_core::session_runtime::SolveBudgetContext;
 
 /// Apply a `budget` command:
 /// - `budget` returns current value

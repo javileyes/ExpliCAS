@@ -108,8 +108,10 @@ pub use cas_solver::evaluate_envelope_json_command;
 pub use cas_solver::{
     build_eval_command_render_plan, evaluate_eval_command_output,
     evaluate_eval_text_simplify_with_session, EvalCommandError, EvalCommandOutput,
-    EvalCommandRenderPlan, EvalDisplayMessage, EvalDisplayMessageKind, EvalMetadataLines,
-    EvalResultLine,
+    EvalCommandRenderPlan,
+};
+pub use cas_solver_core::eval_display_types::{
+    EvalDisplayMessage, EvalDisplayMessageKind, EvalMetadataLines, EvalResultLine,
 };
 pub use cas_solver_core::eval_option_axes::{BranchMode, ComplexMode, ContextMode, StepsMode};
 pub use cas_solver_core::eval_options::EvalOptions;

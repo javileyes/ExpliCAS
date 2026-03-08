@@ -29,7 +29,7 @@ pub use crate::analysis_command_visualize::{
     evaluate_visualize_command_dot, evaluate_visualize_command_output,
     evaluate_visualize_invocation_output,
 };
-pub use crate::analysis_input_parse::{parse_expr_pair, ParseExprPairError};
+pub use crate::analysis_input_parse::parse_expr_pair;
 pub use crate::domain_facade::{
     derive_requires_from_equation, domain_delta_check, infer_implicit_domain,
     pathsteps_to_expr_path,
@@ -40,3 +40,4 @@ pub use crate::equiv_command::{
 pub use crate::equiv_format::{
     format_equivalence_result_lines, format_expr_pair_parse_error_message,
 };
+pub use cas_solver_core::analysis_command_types::ParseExprPairError;

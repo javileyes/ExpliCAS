@@ -1,8 +1,9 @@
 use cas_ast::ExprId;
+use cas_solver_core::session_runtime::{AssignmentApplyContext, BindingsContext};
 
 use crate::state_core::SessionState;
 
-impl cas_solver::BindingsContext for SessionState {
+impl BindingsContext for SessionState {
     fn binding_count(&self) -> usize {
         SessionState::binding_count(self)
     }
@@ -20,7 +21,7 @@ impl cas_solver::BindingsContext for SessionState {
     }
 }
 
-impl cas_solver::AssignmentApplyContext for SessionState {
+impl AssignmentApplyContext for SessionState {
     fn assignment_unset_binding(&mut self, name: &str) -> bool {
         SessionState::unset_binding(self, name)
     }

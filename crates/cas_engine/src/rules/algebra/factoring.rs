@@ -2,12 +2,16 @@ use crate::define_rule;
 use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
 use cas_math::factoring_support::{
-    format_factor_common_integer_from_add_desc, try_rewrite_automatic_factor_expr,
-    try_rewrite_difference_of_squares_product_expr,
+    try_rewrite_automatic_factor_expr, try_rewrite_difference_of_squares_product_expr,
     try_rewrite_factor_common_integer_from_add_expr,
     try_rewrite_factor_difference_squares_nary_expr, try_rewrite_factor_function_expr,
     try_rewrite_sum_three_cubes_zero_expr,
 };
+use num_bigint::BigInt;
+
+fn format_factor_common_integer_from_add_desc(gcd_int: &BigInt) -> String {
+    format!("Factor out {}", gcd_int)
+}
 
 // DifferenceOfSquaresRule: Expands conjugate products
 // (a - b) * (a + b) → a² - b²

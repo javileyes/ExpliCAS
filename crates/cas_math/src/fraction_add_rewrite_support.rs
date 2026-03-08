@@ -38,16 +38,6 @@ pub struct AddFractionRewritePlan {
     pub kind: AddFractionRewriteKind,
 }
 
-impl AddFractionRewritePlan {
-    pub fn desc(self) -> &'static str {
-        match self.kind {
-            AddFractionRewriteKind::ZeroNumerator => "Add fractions: numerator cancels to 0",
-            AddFractionRewriteKind::NumericDenominators => "Add numeric fractions",
-            AddFractionRewriteKind::General => "Add fractions: a/b + c/d -> (ad+bc)/bd",
-        }
-    }
-}
-
 /// Plan rewrite for `(n1/d1) + (n2/d2)`.
 ///
 /// Includes:

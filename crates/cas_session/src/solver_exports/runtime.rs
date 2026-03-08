@@ -63,5 +63,5 @@ pub use cas_solver::run_health_suite_filtered;
 pub use cas_solver::set_command_state_for_runtime as set_command_state_for_repl_core;
 pub use cas_solver::steps_command_state_for_runtime as steps_command_state_for_repl_core;
 pub use cas_solver::update_health_report_on_runtime as update_health_report_on_repl_core;
-pub use cas_solver::HealthSuiteCategory;
-pub use cas_solver::ReplSemanticsApplyOutput;
+pub use cas_solver_core::health_category::Category as HealthSuiteCategory;
+pub use cas_solver_core::repl_runtime::ReplSemanticsApplyOutput;

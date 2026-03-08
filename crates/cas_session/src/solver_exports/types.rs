@@ -1,18 +1,20 @@
 //! Solver command/output types re-exported for session clients.
 
-pub use cas_solver::{BindingOverviewEntry, ClearBindingsResult};
 pub use cas_solver::{
-    DeleteHistoryError, DeleteHistoryResult, HistoryOverviewEntry, HistoryOverviewKind,
+    SolveCommandEvalOutput, TimelineCommandEvalOutput, TimelineSimplifyEvalOutput,
+    TimelineSolveEvalOutput,
 };
-pub use cas_solver::{HealthCommandEvalOutput, HealthCommandInput, HealthStatusInput};
-pub use cas_solver::{
-    HistoryEntryDetails, HistoryEntryInspection, HistoryExprInspection,
+pub use cas_solver_core::health_runtime::{
+    HealthCommandEvalOutput, HealthCommandInput, HealthStatusInput,
+};
+pub use cas_solver_core::history_models::{
+    DeleteHistoryError, DeleteHistoryResult, HistoryEntryDetails, HistoryEntryInspection,
+    HistoryExprInspection, HistoryOverviewEntry, HistoryOverviewKind,
     InspectHistoryEntryInputError, ParseHistoryEntryIdError,
 };
-pub use cas_solver::{ReplSetCommandOutput, ReplSetMessageKind};
-pub use cas_solver::{
-    SolveCommandEvalError, SolveCommandEvalOutput, SolveCommandInput, SolvePrepareError,
-    TimelineCommandEvalError, TimelineCommandEvalOutput, TimelineCommandInput,
-    TimelineSimplifyEvalError, TimelineSimplifyEvalOutput, TimelineSolveEvalError,
-    TimelineSolveEvalOutput,
+pub use cas_solver_core::repl_set_types::{ReplSetCommandOutput, ReplSetMessageKind};
+pub use cas_solver_core::session_runtime::{BindingOverviewEntry, ClearBindingsResult};
+pub use cas_solver_core::solve_command_types::{
+    SolveCommandEvalError, SolveCommandInput, SolvePrepareError, TimelineCommandEvalError,
+    TimelineCommandInput, TimelineSimplifyEvalError, TimelineSolveEvalError,
 };

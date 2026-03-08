@@ -20,16 +20,6 @@ pub struct SubFractionRewritePlan {
     pub kind: SubFractionRewriteKind,
 }
 
-impl SubFractionRewritePlan {
-    pub fn desc(self) -> &'static str {
-        match self.kind {
-            SubFractionRewriteKind::ZeroNumerator => "Subtract fractions: numerator cancels to 0",
-            SubFractionRewriteKind::NumericDenominators => "Subtract numeric fractions",
-            SubFractionRewriteKind::General => "Subtract fractions: a/b - c/d -> (ad-bc)/bd",
-        }
-    }
-}
-
 /// Plan rewrite for `(n1/d1) - (n2/d2)`.
 ///
 /// Includes:

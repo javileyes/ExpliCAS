@@ -94,27 +94,6 @@ pub fn try_rewrite_poly_gcd_exact_function_expr(
     })
 }
 
-/// Build human-readable `poly_gcd_exact` call description.
-///
-/// Caller provides expression rendering to keep this crate independent from
-/// formatter crates.
-pub fn format_poly_gcd_exact_desc_with<FRender>(
-    lhs: ExprId,
-    rhs: ExprId,
-    layer_used: GcdExactLayer,
-    mut render_expr: FRender,
-) -> String
-where
-    FRender: FnMut(ExprId) -> String,
-{
-    format!(
-        "poly_gcd_exact({}, {}) [{:?}]",
-        render_expr(lhs),
-        render_expr(rhs),
-        layer_used
-    )
-}
-
 /// Strip __hold() wrapper(s) from an expression. __hold is an internal barrier
 /// that should be transparent for algebraic operations like poly_gcd_exact.
 /// Uses canonical implementation from cas_ast::hold
@@ -544,31 +523,5 @@ mod tests {
         );
         assert!(result_str.contains("x"));
         assert!(result_str.contains("1"));
-    }
-
-    #[test]
-    fn test_format_poly_gcd_exact_desc_with() {
-        let lhs = ExprId::from_raw(10);
-        let rhs = ExprId::from_raw(11);
-        let desc = format_poly_gcd_exact_desc_with(lhs, rhs, GcdExactLayer::Univariate, |id| {
-            format!("{:?}", id)
-        });
-        assert!(desc.contains("poly_gcd_exact("));
-        assert!(desc.contains("Univariate"));
-    }
-
-    #[test]
-    fn test_poly_gcd_exact_desc_can_be_built_from_rewrite() {
-        let mut ctx = Context::new();
-        let expr = parse("poly_gcd_exact(x^2 - 1, x - 1)", &mut ctx).expect("parse");
-        let rewrite =
-            try_rewrite_poly_gcd_exact_function_expr(&mut ctx, expr, &GcdExactBudget::default())
-                .expect("rewrite");
-        let desc =
-            format_poly_gcd_exact_desc_with(rewrite.lhs, rewrite.rhs, rewrite.layer_used, |id| {
-                format!("{:?}", id)
-            });
-        assert!(desc.contains("poly_gcd_exact("));
-        assert_ne!(rewrite.gcd, expr);
     }
 }

@@ -1,9 +1,4 @@
-mod input;
-mod plan;
-mod result;
-mod state;
-
-pub use input::{SetCommandInput, SetDisplayMode};
-pub use plan::{SetCommandApplyEffects, SetCommandPlan};
-pub use result::SetCommandResult;
-pub use state::SetCommandState;
+pub use cas_solver_core::set_command_types::{
+    SetCommandApplyEffects, SetCommandInput, SetCommandPlan, SetCommandResult, SetCommandState,
+    SetDisplayMode,
+};

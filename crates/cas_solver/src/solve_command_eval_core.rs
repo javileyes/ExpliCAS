@@ -2,6 +2,8 @@ mod diagnostics;
 mod eval;
 mod prepare;
 
+pub use cas_solver_core::solve_command_types::SolveCommandEvalError;
+
 pub(crate) struct PreparedSolveEvalRequest {
     pub raw_input: String,
     pub parsed_expr: cas_ast::ExprId,
@@ -15,12 +17,6 @@ pub struct SolveCommandEvalOutput {
     pub var: String,
     pub original_equation: Option<cas_ast::Equation>,
     pub output: crate::EvalOutputView,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SolveCommandEvalError {
-    Prepare(crate::SolvePrepareError),
-    Eval(String),
 }
 
 pub use eval::evaluate_solve_command_with_session;

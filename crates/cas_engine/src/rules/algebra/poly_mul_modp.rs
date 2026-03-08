@@ -7,9 +7,16 @@
 use crate::define_rule;
 use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
-use cas_math::poly_modp_calls::rewrite_poly_mul_modp_stats_call_with_limit_policy;
+use cas_math::poly_modp_calls::try_eval_poly_mul_modp_stats_call_with_limit_policy;
 use cas_math::poly_modp_conv::DEFAULT_PRIME;
-use cas_math::poly_store::POLY_MAX_STORE_TERMS;
+use cas_math::poly_store::{PolyMeta, POLY_MAX_STORE_TERMS};
+
+fn format_poly_mul_modp_stats_desc(meta: &PolyMeta, modulus: u64) -> String {
+    format!(
+        "poly_mul_modp: {} terms, degree {}, {} vars (mod {})",
+        meta.n_terms, meta.max_total_degree, meta.n_vars, modulus
+    )
+}
 
 // =============================================================================
 // poly_mul_modp(a, b [, p]) -> poly_ref(id)
@@ -21,7 +28,7 @@ define_rule!(
     Some(crate::target_kind::TargetKindSet::FUNCTION),
     PhaseMask::TRANSFORM,
     |ctx, expr| {
-        let rewritten = rewrite_poly_mul_modp_stats_call_with_limit_policy(
+        let call = try_eval_poly_mul_modp_stats_call_with_limit_policy(
             ctx,
             expr,
             DEFAULT_PRIME,
@@ -36,7 +43,8 @@ define_rule!(
                 );
             },
         )?;
-        Some(Rewrite::new(rewritten.0).desc(rewritten.1))
+        let desc = format_poly_mul_modp_stats_desc(&call.meta, call.modulus);
+        Some(Rewrite::new(call.stats_expr).desc(desc))
     }
 );
 

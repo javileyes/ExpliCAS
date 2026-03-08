@@ -21,6 +21,38 @@ use cas_math::fraction_pair_guard_support::{
 use cas_math::fraction_pair_support::extract_fraction_pair;
 use cas_math::fraction_sub_rewrite_support::plan_sub_fraction_rewrite_with;
 
+fn format_add_fraction_desc(
+    kind: cas_math::fraction_add_rewrite_support::AddFractionRewriteKind,
+) -> &'static str {
+    match kind {
+        cas_math::fraction_add_rewrite_support::AddFractionRewriteKind::ZeroNumerator => {
+            "Add fractions: numerator cancels to 0"
+        }
+        cas_math::fraction_add_rewrite_support::AddFractionRewriteKind::NumericDenominators => {
+            "Add numeric fractions"
+        }
+        cas_math::fraction_add_rewrite_support::AddFractionRewriteKind::General => {
+            "Add fractions: a/b + c/d -> (ad+bc)/bd"
+        }
+    }
+}
+
+fn format_sub_fraction_desc(
+    kind: cas_math::fraction_sub_rewrite_support::SubFractionRewriteKind,
+) -> &'static str {
+    match kind {
+        cas_math::fraction_sub_rewrite_support::SubFractionRewriteKind::ZeroNumerator => {
+            "Subtract fractions: numerator cancels to 0"
+        }
+        cas_math::fraction_sub_rewrite_support::SubFractionRewriteKind::NumericDenominators => {
+            "Subtract numeric fractions"
+        }
+        cas_math::fraction_sub_rewrite_support::SubFractionRewriteKind::General => {
+            "Subtract fractions: a/b - c/d -> (ad-bc)/bd"
+        }
+    }
+}
+
 // =============================================================================
 // Fold Add Into Fraction: k + p/q → (k·q + p)/q
 // =============================================================================
@@ -139,7 +171,7 @@ define_rule!(
             },
             crate::expand::expand,
         )?;
-        Some(Rewrite::new(plan.rewritten).desc(plan.desc()))
+        Some(Rewrite::new(plan.rewritten).desc(format_add_fraction_desc(plan.kind)))
     }
 );
 
@@ -197,6 +229,6 @@ define_rule!(
         }
 
         let plan = plan_sub_fraction_rewrite_with(ctx, n1, n2, d1, d2, crate::expand::expand);
-        Some(Rewrite::new(plan.rewritten).desc(plan.desc()))
+        Some(Rewrite::new(plan.rewritten).desc(format_sub_fraction_desc(plan.kind)))
     }
 );

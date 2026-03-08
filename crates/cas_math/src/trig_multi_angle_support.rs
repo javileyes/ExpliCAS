@@ -920,11 +920,6 @@ pub fn try_plan_dyadic_cos_product_expr(
     })
 }
 
-/// Build canonical textual description for dyadic cosine product rewrite.
-pub fn format_dyadic_cos_product_desc(n: u32) -> String {
-    format!("2^{n}·∏cos(2^k·θ) = sin(2^{n}·θ)/sin(θ)")
-}
-
 /// Plan dyadic cosine product rewrite plus domain policy for `sin(theta) != 0`.
 pub fn try_plan_dyadic_cos_product_with_policy(
     ctx: &mut Context,
@@ -1422,10 +1417,7 @@ mod tests {
         let plan = try_plan_dyadic_cos_product_with_policy(&mut ctx, expr, false, true)
             .expect("policy plan");
         assert_eq!(plan.policy, DyadicSinNonzeroPolicyDecision::Block);
-        assert_eq!(
-            format_dyadic_cos_product_desc(plan.n),
-            "2^3·∏cos(2^k·θ) = sin(2^3·θ)/sin(θ)"
-        );
+        assert_eq!(plan.n, 3);
     }
 
     #[test]

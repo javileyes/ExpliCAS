@@ -2,12 +2,7 @@ use crate::{
     format_delete_history_error_message, format_delete_history_result_message, parse_history_ids,
     DeleteHistoryError, DeleteHistoryResult,
 };
-
-/// Mutable context required to delete entries from command-style history.
-pub trait HistoryDeleteContext {
-    fn history_len(&self) -> usize;
-    fn history_remove(&mut self, ids: &[u64]);
-}
+pub use cas_solver_core::history_runtime::HistoryDeleteContext;
 
 /// Delete history entries based on command-style ID input.
 pub fn delete_history_entries<C: HistoryDeleteContext>(

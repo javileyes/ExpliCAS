@@ -14,8 +14,8 @@
 use crate::define_rule;
 use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
-use cas_math::poly_gcd_dispatch::rewrite_poly_gcd_call_held_with_expand_eval;
-use cas_math::poly_gcd_mode::GcdGoal;
+use cas_math::poly_gcd_dispatch::{compute_poly_gcd_unified_with, pre_evaluate_for_gcd_with};
+use cas_math::poly_gcd_mode::{try_parse_poly_gcd_call, GcdGoal};
 
 // =============================================================================
 // REPL function rule
@@ -30,13 +30,20 @@ define_rule!(
     PhaseMask::CORE | PhaseMask::TRANSFORM,
     priority: 200,
     |ctx, expr| {
-        let rewritten = rewrite_poly_gcd_call_held_with_expand_eval(
+        let parsed = try_parse_poly_gcd_call(ctx, expr)?;
+        let (result, desc) = compute_poly_gcd_unified_with(
             ctx,
-            expr,
+            parsed.lhs,
+            parsed.rhs,
             GcdGoal::UserPolyGcd,
-            crate::expand::eval_expand_off,
+            parsed.mode,
+            parsed.modp_preset,
+            parsed.modp_main_var,
+            |core_ctx, id| {
+                pre_evaluate_for_gcd_with(core_ctx, id, crate::expand::eval_expand_off)
+            },
             cas_formatter::render_expr,
-        )?;
-        Some(Rewrite::simple(rewritten.0, rewritten.1))
+        );
+        Some(Rewrite::simple(cas_ast::hold::wrap_hold(ctx, result), desc))
     }
 );

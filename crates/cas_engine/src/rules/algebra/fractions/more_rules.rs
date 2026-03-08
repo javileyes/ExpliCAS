@@ -6,9 +6,7 @@ use crate::rule::Rewrite;
 use cas_math::difference_product_rule_support::{
     try_rewrite_absorb_negation_into_difference_expr, try_rewrite_canonical_difference_product_expr,
 };
-use cas_math::rationalize_binomial_surd_support::{
-    format_rationalize_binomial_surd_desc_with, try_rewrite_rationalize_binomial_surd_expr,
-};
+use cas_math::rationalize_binomial_surd_support::try_rewrite_rationalize_binomial_surd_expr;
 
 // ========== Binomial Conjugate Rationalization (Level 1) ==========
 // Transforms: num / (A + B√n) → num * (A - B√n) / (A² - B²·n)
@@ -24,9 +22,7 @@ define_rule!(
     PhaseMask::RATIONALIZE,
     |ctx, expr| {
         let rewritten = try_rewrite_rationalize_binomial_surd_expr(ctx, expr)?;
-        let desc = format_rationalize_binomial_surd_desc_with(rewritten, |id| {
-            cas_formatter::render_expr(ctx, id)
-        });
+        let desc = format_rationalize_binomial_surd_desc(ctx, rewritten);
         Some(Rewrite::new(rewritten.rewritten).desc(desc))
     }
 );
@@ -64,3 +60,16 @@ define_rule!(
         Some(Rewrite::new(rewrite.rewritten).desc("Canonicalize same-tail difference product"))
     }
 );
+
+fn format_rationalize_binomial_surd_desc(
+    ctx: &cas_ast::Context,
+    rewrite: cas_math::rationalize_binomial_surd_support::RationalizeBinomialSurdRewrite,
+) -> String {
+    format!(
+        "{} / {} -> {} / {}",
+        cas_formatter::render_expr(ctx, rewrite.num),
+        cas_formatter::render_expr(ctx, rewrite.den),
+        cas_formatter::render_expr(ctx, rewrite.new_num),
+        cas_formatter::render_expr(ctx, rewrite.new_den)
+    )
+}

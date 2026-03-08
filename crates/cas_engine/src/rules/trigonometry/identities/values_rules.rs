@@ -6,15 +6,45 @@ use cas_math::trig_canonicalization_support::{
     try_rewrite_csc_cot_pythagorean_identity_expr, try_rewrite_sec_tan_pythagorean_identity_expr,
     try_rewrite_trig_quotient_div_expr,
 };
-use cas_math::trig_tan_triple_support::{
-    tan_triple_product_desc, tan_triple_product_substeps, try_rewrite_tan_triple_product_mul_expr,
-};
+use cas_math::trig_tan_triple_support::try_rewrite_tan_triple_product_mul_expr;
 use cas_math::trig_value_detection_support::try_plan_tan_to_sin_cos_with_policy;
 
 // =============================================================================
 // TRIPLE TANGENT PRODUCT IDENTITY
 // tan(u) · tan(π/3 - u) · tan(π/3 + u) = tan(3u)
 // =============================================================================
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TanTripleDidacticSubstep {
+    title: &'static str,
+    details: Vec<String>,
+}
+
+fn tan_triple_product_desc() -> &'static str {
+    "tan(u)·tan(π/3+u)·tan(π/3−u) = tan(3u)"
+}
+
+fn tan_triple_product_substeps(u_display: &str) -> Vec<TanTripleDidacticSubstep> {
+    vec![
+        TanTripleDidacticSubstep {
+            title: "Normalizar argumentos",
+            details: vec![
+                "π/3 − u se representa como −u + π/3 para comparar como u + const".to_string(),
+            ],
+        },
+        TanTripleDidacticSubstep {
+            title: "Reconocer patrón",
+            details: vec![
+                format!("Sea u = {}", u_display),
+                "Factores: tan(u), tan(u + π/3), tan(π/3 − u)".to_string(),
+            ],
+        },
+        TanTripleDidacticSubstep {
+            title: "Aplicar identidad",
+            details: vec!["tan(u)·tan(u + π/3)·tan(π/3 − u) = tan(3u)".to_string()],
+        },
+    ]
+}
 
 /// Matches tan(u)·tan(π/3+u)·tan(π/3-u) and simplifies to tan(3u).
 /// Must run BEFORE TanToSinCosRule to prevent expansion.
@@ -159,3 +189,19 @@ define_rule!(
         Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
     }
 );
+
+#[cfg(test)]
+mod tests {
+    use super::{tan_triple_product_desc, tan_triple_product_substeps};
+
+    #[test]
+    fn tan_triple_didactic_builder_contains_pattern_and_identity() {
+        let substeps = tan_triple_product_substeps("x");
+        assert_eq!(
+            tan_triple_product_desc(),
+            "tan(u)·tan(π/3+u)·tan(π/3−u) = tan(3u)"
+        );
+        assert_eq!(substeps.len(), 3);
+        assert!(substeps[1].details.iter().any(|d| d.contains("Sea u = x")));
+    }
+}

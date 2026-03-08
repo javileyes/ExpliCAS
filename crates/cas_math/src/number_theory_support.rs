@@ -1,5 +1,4 @@
-use crate::poly_gcd_dispatch::compute_poly_gcd_unified_held_with_expand_eval;
-use crate::poly_gcd_mode::{GcdGoal, GcdMode};
+use crate::poly_gcd_mode::GcdMode;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use num_bigint::BigInt;
 use num_integer::Integer;
@@ -42,27 +41,6 @@ impl NumberTheorySimpleRewrite {
     pub fn result(&self) -> ExprId {
         match self {
             Self::Unary { result, .. } | Self::Binary { result, .. } => *result,
-        }
-    }
-}
-
-/// Render canonical textual description for a simple number-theory rewrite.
-///
-/// Caller provides expression rendering (to keep this crate independent from
-/// formatting crates).
-pub fn render_number_theory_desc_with<F>(
-    call: NumberTheorySimpleRewrite,
-    mut render_expr: F,
-) -> String
-where
-    F: FnMut(ExprId) -> String,
-{
-    match call {
-        NumberTheorySimpleRewrite::Unary { name, arg, .. } => {
-            format!("{}({})", name, render_expr(arg))
-        }
-        NumberTheorySimpleRewrite::Binary { name, lhs, rhs, .. } => {
-            format!("{}({}, {})", name, render_expr(lhs), render_expr(rhs))
         }
     }
 }
@@ -179,75 +157,6 @@ pub fn dispatch_number_theory_call(
     }
 
     None
-}
-
-/// Evaluate one number-theory function call into `(result_expr, description)`.
-///
-/// This helper keeps runtime crates thin by centralizing dispatch between:
-/// - simple integer rewrites, and
-/// - polynomial-GCD fallback rewrites.
-///
-/// Runtime crates provide:
-/// - `render_expr`: how to render `ExprId` for user-facing descriptions.
-/// - `poly_gcd_rewrite`: how to execute the poly-GCD fallback in their runtime.
-pub fn rewrite_number_theory_call_with<FRender, FPolyGcd>(
-    ctx: &mut Context,
-    expr: ExprId,
-    mut render_expr: FRender,
-    mut poly_gcd_rewrite: FPolyGcd,
-) -> Option<(ExprId, String)>
-where
-    FRender: FnMut(&Context, ExprId) -> String,
-    FPolyGcd: FnMut(&mut Context, ExprId, ExprId, GcdMode) -> (ExprId, String),
-{
-    match dispatch_number_theory_call(ctx, expr)? {
-        NumberTheoryDispatch::Simple(simple) => {
-            let desc = render_number_theory_desc_with(simple, |id| render_expr(ctx, id));
-            Some((simple.result(), desc))
-        }
-        NumberTheoryDispatch::PolyGcd { lhs, rhs, mode } => {
-            let (result, desc) = poly_gcd_rewrite(ctx, lhs, rhs, mode);
-            Some((result, desc))
-        }
-    }
-}
-
-/// Evaluate one number-theory function call and resolve polynomial GCD via
-/// unified dispatch with caller-provided runtime callbacks.
-///
-/// Runtime crates provide:
-/// - `render_expr`: expression string renderer
-/// - `eval_expand`: evaluator for explicit `expand(...)` wrappers
-pub fn rewrite_number_theory_call_with_expand_eval<FRender, FEvalExpand>(
-    ctx: &mut Context,
-    expr: ExprId,
-    goal: GcdGoal,
-    mut render_expr: FRender,
-    mut eval_expand: FEvalExpand,
-) -> Option<(ExprId, String)>
-where
-    FRender: FnMut(&Context, ExprId) -> String,
-    FEvalExpand: FnMut(&mut Context, ExprId) -> ExprId,
-{
-    match dispatch_number_theory_call(ctx, expr)? {
-        NumberTheoryDispatch::Simple(simple) => {
-            let desc = render_number_theory_desc_with(simple, |id| render_expr(ctx, id));
-            Some((simple.result(), desc))
-        }
-        NumberTheoryDispatch::PolyGcd { lhs, rhs, mode } => {
-            Some(compute_poly_gcd_unified_held_with_expand_eval(
-                ctx,
-                lhs,
-                rhs,
-                goal,
-                mode,
-                None,
-                None,
-                |core_ctx, expand_call| eval_expand(core_ctx, expand_call),
-                |core_ctx, id| render_expr(core_ctx, id),
-            ))
-        }
-    }
 }
 
 /// Check if expression contains a `poly_result(...)` reference.
@@ -751,112 +660,5 @@ mod tests {
             }
             NumberTheoryDispatch::Simple(_) => panic!("expected poly gcd fallback"),
         }
-    }
-
-    #[test]
-    fn renders_simple_number_theory_description_with_callback() {
-        let mut ctx = Context::new();
-        let twelve = ctx.num(12);
-        let eighteen = ctx.num(18);
-        let rewrite = NumberTheorySimpleRewrite::Binary {
-            name: "gcd",
-            lhs: twelve,
-            rhs: eighteen,
-            result: ctx.num(6),
-        };
-        let desc = render_number_theory_desc_with(rewrite, |id| {
-            if id == twelve {
-                "12".to_string()
-            } else if id == eighteen {
-                "18".to_string()
-            } else {
-                "?".to_string()
-            }
-        });
-        assert_eq!(desc, "gcd(12, 18)");
-    }
-
-    #[test]
-    fn rewrite_number_theory_call_with_handles_simple_path() {
-        let mut ctx = Context::new();
-        let call = parse("gcd(12, 18)", &mut ctx).expect("parse");
-
-        let rewritten = rewrite_number_theory_call_with(
-            &mut ctx,
-            call,
-            |_core_ctx, id| format!("{id:?}"),
-            |_core_ctx, _lhs, _rhs, _mode| panic!("poly fallback should not run"),
-        )
-        .expect("rewrite");
-
-        assert_eq!(
-            extract_integer_bigint(&ctx, rewritten.0),
-            Some(BigInt::from(6))
-        );
-        assert!(rewritten.1.starts_with("gcd("));
-    }
-
-    #[test]
-    fn rewrite_number_theory_call_with_handles_poly_fallback() {
-        let mut ctx = Context::new();
-        let call = parse("gcd(x^2-1, x-1)", &mut ctx).expect("parse");
-
-        let mut invoked = false;
-        let rewritten = rewrite_number_theory_call_with(
-            &mut ctx,
-            call,
-            |_core_ctx, id| format!("{id:?}"),
-            |core_ctx, lhs, _rhs, mode| {
-                invoked = true;
-                assert_eq!(mode, GcdMode::Structural);
-                (
-                    lhs,
-                    format!("poly fallback @{}", core_ctx.stats().nodes_created),
-                )
-            },
-        )
-        .expect("rewrite");
-
-        assert!(invoked, "poly fallback closure should run");
-        assert!(rewritten.1.contains("poly fallback"));
-    }
-
-    #[test]
-    fn rewrite_number_theory_call_with_expand_eval_handles_poly_path() {
-        let mut ctx = Context::new();
-        let call = parse("gcd((x+1)^2, x+1, exact)", &mut ctx).expect("parse");
-
-        let rewritten = rewrite_number_theory_call_with_expand_eval(
-            &mut ctx,
-            call,
-            GcdGoal::UserPolyGcd,
-            |_core_ctx, id| format!("{id:?}"),
-            |_core_ctx, expand_call| expand_call,
-        )
-        .expect("rewrite");
-
-        assert!(cas_ast::hold::is_hold(&ctx, rewritten.0));
-        assert!(rewritten.1.contains("poly_gcd("));
-    }
-
-    #[test]
-    fn rewrite_number_theory_call_with_expand_eval_handles_simple_user_poly_gcd_path() {
-        let mut ctx = Context::new();
-        let call = parse("gcd(12, 18)", &mut ctx).expect("parse");
-
-        let rewritten = rewrite_number_theory_call_with_expand_eval(
-            &mut ctx,
-            call,
-            GcdGoal::UserPolyGcd,
-            |_core_ctx, id| format!("{id:?}"),
-            |_core_ctx, expand_call| expand_call,
-        )
-        .expect("rewrite");
-
-        assert_eq!(
-            extract_integer_bigint(&ctx, rewritten.0),
-            Some(BigInt::from(6))
-        );
-        assert!(rewritten.1.starts_with("gcd("));
     }
 }

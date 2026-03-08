@@ -272,29 +272,6 @@ where
     }
 }
 
-/// Rewrite `poly_gcd_modp(...)` call into `(held_result_expr, description)`.
-///
-/// Returns `None` when:
-/// - expression does not match `poly_gcd_modp`/`pgcdp`, or
-/// - evaluation fails (error forwarded to `on_error`).
-pub fn rewrite_poly_gcd_modp_call_with<FOnError, FRender>(
-    ctx: &mut Context,
-    expr: ExprId,
-    default_prime: u64,
-    on_error: FOnError,
-    mut render_expr: FRender,
-) -> Option<(ExprId, String)>
-where
-    FOnError: FnMut(&PolyConvError),
-    FRender: FnMut(&Context, ExprId) -> String,
-{
-    let call = try_eval_poly_gcd_modp_call_with_error_policy(ctx, expr, default_prime, on_error)?;
-    let desc = format_poly_gcd_modp_desc_with(call.a_expr, call.b_expr, call.path, |id| {
-        render_expr(ctx, id)
-    });
-    Some((call.held_expr, desc))
-}
-
 /// Try to parse and evaluate `poly_eq_modp(a, b [, p])`.
 ///
 /// Returns:
@@ -360,54 +337,6 @@ where
     }
 }
 
-/// Rewrite `poly_eq_modp(...)` call into `(indicator_expr, description)`.
-///
-/// Returns `None` when:
-/// - expression does not match `poly_eq_modp`/`peqp`, or
-/// - evaluation fails (error forwarded to `on_error`).
-pub fn rewrite_poly_eq_modp_call_with<FOnError, FRender>(
-    ctx: &mut Context,
-    expr: ExprId,
-    default_prime: u64,
-    on_error: FOnError,
-    mut render_expr: FRender,
-) -> Option<(ExprId, String)>
-where
-    FOnError: FnMut(&PolyConvError),
-    FRender: FnMut(&Context, ExprId) -> String,
-{
-    let call = try_eval_poly_eq_modp_call_with_error_policy(ctx, expr, default_prime, on_error)?;
-    let desc = format_poly_eq_modp_desc_with(call.a_expr, call.b_expr, call.equal, |id| {
-        render_expr(ctx, id)
-    });
-    Some((call.indicator_expr, desc))
-}
-
-/// Rewrite `poly_mul_modp(...)` call into `(stats_expr, description)`.
-///
-/// Returns `None` when expression is non-matching or conversion fails.
-/// If estimated size exceeds `max_store_terms`, callback is invoked and `None` is returned.
-pub fn rewrite_poly_mul_modp_stats_call_with_limit_policy<FOnEstimatedTooLarge>(
-    ctx: &mut Context,
-    expr: ExprId,
-    default_prime: u64,
-    max_store_terms: usize,
-    on_estimated_too_large: FOnEstimatedTooLarge,
-) -> Option<(ExprId, String)>
-where
-    FOnEstimatedTooLarge: FnMut(u128, usize),
-{
-    let call = try_eval_poly_mul_modp_stats_call_with_limit_policy(
-        ctx,
-        expr,
-        default_prime,
-        max_store_terms,
-        on_estimated_too_large,
-    )?;
-    let desc = format_poly_mul_modp_stats_desc(&call.meta, call.modulus);
-    Some((call.stats_expr, desc))
-}
-
 /// Build `poly_mul_stats(terms, degree, vars, modulus)` expression from metadata.
 pub fn build_poly_mul_stats_expr(ctx: &mut Context, meta: &PolyMeta) -> ExprId {
     let terms = ctx.num(meta.n_terms as i64);
@@ -415,54 +344,6 @@ pub fn build_poly_mul_stats_expr(ctx: &mut Context, meta: &PolyMeta) -> ExprId {
     let nvars = ctx.num(meta.n_vars as i64);
     let modulus = ctx.num(meta.modulus as i64);
     ctx.call("poly_mul_stats", vec![terms, degree, nvars, modulus])
-}
-
-/// Build human-readable `poly_mul_modp` stats description.
-pub fn format_poly_mul_modp_stats_desc(meta: &PolyMeta, modulus: u64) -> String {
-    format!(
-        "poly_mul_modp: {} terms, degree {}, {} vars (mod {})",
-        meta.n_terms, meta.max_total_degree, meta.n_vars, modulus
-    )
-}
-
-/// Build human-readable `poly_gcd_modp` description.
-pub fn format_poly_gcd_modp_desc_with<FRender>(
-    a_expr: ExprId,
-    b_expr: ExprId,
-    path: PolyGcdModpEvalPath,
-    mut render: FRender,
-) -> String
-where
-    FRender: FnMut(ExprId) -> String,
-{
-    match path {
-        PolyGcdModpEvalPath::FastDefault => format!(
-            "poly_gcd_modp({}, {}) [eager eval + factor extraction]",
-            render(a_expr),
-            render(b_expr)
-        ),
-        PolyGcdModpEvalPath::ExplicitOptions => {
-            format!("poly_gcd_modp({}, {})", render(a_expr), render(b_expr))
-        }
-    }
-}
-
-/// Build human-readable `poly_eq_modp` description.
-pub fn format_poly_eq_modp_desc_with<FRender>(
-    a_expr: ExprId,
-    b_expr: ExprId,
-    equal: bool,
-    mut render: FRender,
-) -> String
-where
-    FRender: FnMut(ExprId) -> String,
-{
-    format!(
-        "poly_eq_modp({}, {}) = {}",
-        render(a_expr),
-        render(b_expr),
-        if equal { "true" } else { "false" }
-    )
 }
 
 /// Eagerly evaluate `poly_gcd_modp` calls in an expression tree.
@@ -632,60 +513,6 @@ mod tests {
     }
 
     #[test]
-    fn format_poly_mul_modp_stats_desc_includes_core_fields() {
-        let meta = PolyMeta {
-            modulus: 101,
-            n_terms: 12,
-            n_vars: 3,
-            max_total_degree: 7,
-            var_names: vec!["x".to_string(), "y".to_string(), "z".to_string()],
-        };
-        let desc = format_poly_mul_modp_stats_desc(&meta, 101);
-        assert!(desc.contains("12 terms"));
-        assert!(desc.contains("degree 7"));
-        assert!(desc.contains("3 vars"));
-        assert!(desc.contains("mod 101"));
-    }
-
-    #[test]
-    fn format_poly_gcd_modp_desc_with_renders_by_path() {
-        let a = cas_ast::ExprId::from_raw(10);
-        let b = cas_ast::ExprId::from_raw(11);
-        let render = |id: cas_ast::ExprId| {
-            if id.index() == a.index() {
-                "A".to_string()
-            } else {
-                "B".to_string()
-            }
-        };
-        let fast = format_poly_gcd_modp_desc_with(a, b, PolyGcdModpEvalPath::FastDefault, render);
-        let explicit =
-            format_poly_gcd_modp_desc_with(a, b, PolyGcdModpEvalPath::ExplicitOptions, render);
-        assert!(fast.contains("eager eval + factor extraction"));
-        assert!(fast.contains("A"));
-        assert!(fast.contains("B"));
-        assert!(explicit.contains("poly_gcd_modp(A, B)"));
-    }
-
-    #[test]
-    fn format_poly_eq_modp_desc_with_renders_truth_value() {
-        let a = cas_ast::ExprId::from_raw(20);
-        let b = cas_ast::ExprId::from_raw(21);
-        let render = |id: cas_ast::ExprId| {
-            if id.index() == a.index() {
-                "LHS".to_string()
-            } else {
-                "RHS".to_string()
-            }
-        };
-        let yes = format_poly_eq_modp_desc_with(a, b, true, render);
-        let no = format_poly_eq_modp_desc_with(a, b, false, render);
-        assert!(yes.contains("poly_eq_modp(LHS, RHS)"));
-        assert!(yes.ends_with("true"));
-        assert!(no.ends_with("false"));
-    }
-
-    #[test]
     fn try_rewrite_hold_poly_sub_to_zero_rewrites_equal_held_polys() {
         let mut ctx = Context::new();
         let poly = parse("x + 1", &mut ctx).expect("parse poly");
@@ -794,110 +621,6 @@ mod tests {
         let call = try_eval_poly_gcd_modp_call(&mut ctx, expr, DEFAULT_PRIME)
             .expect("eval should not error");
         assert!(call.is_none());
-    }
-
-    #[test]
-    fn rewrite_poly_gcd_modp_call_with_returns_desc_and_hold() {
-        let mut ctx = Context::new();
-        let expr = parse("poly_gcd_modp(x^2+2*x+1, x+1)", &mut ctx).expect("parse");
-        let rewritten = rewrite_poly_gcd_modp_call_with(
-            &mut ctx,
-            expr,
-            DEFAULT_PRIME,
-            |_e| {},
-            |core_ctx, id| format!("{:?}", core_ctx.get(id)),
-        )
-        .expect("rewrite");
-        assert!(hold::is_hold(&ctx, rewritten.0));
-        assert!(rewritten.1.contains("poly_gcd_modp("));
-    }
-
-    #[test]
-    fn rewrite_poly_eq_modp_call_with_returns_indicator_and_desc() {
-        let mut ctx = Context::new();
-        let expr = parse("poly_eq_modp(x+1, 1+x)", &mut ctx).expect("parse");
-        let rewritten = rewrite_poly_eq_modp_call_with(
-            &mut ctx,
-            expr,
-            DEFAULT_PRIME,
-            |_e| {},
-            |core_ctx, id| format!("{:?}", core_ctx.get(id)),
-        )
-        .expect("rewrite");
-        assert!(matches!(ctx.get(rewritten.0), Expr::Number(_)));
-        assert!(rewritten.1.contains("poly_eq_modp("));
-    }
-
-    #[test]
-    fn rewrite_poly_gcd_modp_call_with_can_silence_errors_explicitly() {
-        let mut ctx = Context::new();
-        let expr = parse("poly_gcd_modp(x^2+2*x+1, x+1)", &mut ctx).expect("parse");
-        let rewritten = rewrite_poly_gcd_modp_call_with(
-            &mut ctx,
-            expr,
-            DEFAULT_PRIME,
-            |_err| {},
-            |core_ctx, id| format!("{:?}", core_ctx.get(id)),
-        )
-        .expect("rewrite");
-        assert!(hold::is_hold(&ctx, rewritten.0));
-        assert!(rewritten.1.contains("poly_gcd_modp("));
-    }
-
-    #[test]
-    fn rewrite_poly_eq_modp_call_with_can_silence_errors_explicitly() {
-        let mut ctx = Context::new();
-        let expr = parse("poly_eq_modp(x+1, 1+x)", &mut ctx).expect("parse");
-        let rewritten = rewrite_poly_eq_modp_call_with(
-            &mut ctx,
-            expr,
-            DEFAULT_PRIME,
-            |_err| {},
-            |core_ctx, id| format!("{:?}", core_ctx.get(id)),
-        )
-        .expect("rewrite");
-        assert!(matches!(ctx.get(rewritten.0), Expr::Number(_)));
-        assert!(rewritten.1.contains("poly_eq_modp("));
-    }
-
-    #[test]
-    fn rewrite_poly_mul_modp_stats_call_with_limit_policy_returns_stats_and_desc() {
-        let mut ctx = Context::new();
-        let expr = parse("poly_mul_modp((x+1)^2, (x-1)^2)", &mut ctx).expect("parse");
-        let rewritten = rewrite_poly_mul_modp_stats_call_with_limit_policy(
-            &mut ctx,
-            expr,
-            DEFAULT_PRIME,
-            100_000,
-            |_estimated, _limit| {},
-        )
-        .expect("rewrite");
-        if let Expr::Function(fn_id, _args) = ctx.get(rewritten.0) {
-            assert_eq!(ctx.sym_name(*fn_id), "poly_mul_stats");
-        } else {
-            panic!("expected poly_mul_stats");
-        }
-        assert!(rewritten.1.contains("poly_mul_modp:"));
-    }
-
-    #[test]
-    fn rewrite_poly_mul_modp_stats_call_with_explicit_defaults_returns_stats_and_desc() {
-        let mut ctx = Context::new();
-        let expr = parse("poly_mul_modp((x+1)^2, (x-1)^2)", &mut ctx).expect("parse");
-        let rewritten = rewrite_poly_mul_modp_stats_call_with_limit_policy(
-            &mut ctx,
-            expr,
-            DEFAULT_PRIME,
-            crate::poly_store::POLY_MAX_STORE_TERMS,
-            |_estimated, _limit| {},
-        )
-        .expect("rewrite");
-        if let Expr::Function(fn_id, _args) = ctx.get(rewritten.0) {
-            assert_eq!(ctx.sym_name(*fn_id), "poly_mul_stats");
-        } else {
-            panic!("expected poly_mul_stats");
-        }
-        assert!(rewritten.1.contains("poly_mul_modp:"));
     }
 
     #[test]

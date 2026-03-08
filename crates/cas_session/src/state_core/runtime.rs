@@ -1,6 +1,7 @@
 use super::SessionState;
+use cas_solver_core::session_runtime::SolveBudgetContext;
 
-impl cas_solver::SolveBudgetContext for SessionState {
+impl SolveBudgetContext for SessionState {
     fn solve_budget_max_branches(&self) -> usize {
         self.options().budget.max_branches
     }
