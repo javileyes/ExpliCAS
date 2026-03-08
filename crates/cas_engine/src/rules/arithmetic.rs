@@ -1,27 +1,22 @@
 use crate::define_rule;
-use crate::helpers::{as_add, as_div, as_mul, as_sub};
 use crate::rule::Rewrite;
-use crate::rules::algebra::helpers::smart_mul;
 use cas_ast::Expr;
-use num_traits::{One, Zero};
+use cas_math::arithmetic_cancel_support::{
+    try_rewrite_add_inverse_zero_expr, try_rewrite_sub_self_zero_expr,
+};
+use cas_math::arithmetic_rule_support::{
+    try_rewrite_add_zero_expr, try_rewrite_combine_constants_expr, try_rewrite_mul_one_expr,
+    try_rewrite_normalize_mul_neg_expr, try_rewrite_simplify_numeric_exponents_expr,
+};
+use cas_math::arithmetic_zero_support::{match_div_zero_numerator_pattern, match_mul_zero_pattern};
 
 define_rule!(
     AddZeroRule,
     "Identity Property of Addition",
     importance: crate::step::ImportanceLevel::Low,
     |ctx, expr| {
-        let (lhs, rhs) = as_add(ctx, expr)?;
-        if let Expr::Number(n) = ctx.get(rhs) {
-            if n.is_zero() {
-                return Some(Rewrite::new(lhs).desc("x + 0 = x"));
-            }
-        }
-        if let Expr::Number(n) = ctx.get(lhs) {
-            if n.is_zero() {
-                return Some(Rewrite::new(rhs).desc("0 + x = x"));
-            }
-        }
-        None
+        let rewrite = try_rewrite_add_zero_expr(ctx, expr)?;
+        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.description))
     }
 );
 
@@ -30,18 +25,8 @@ define_rule!(
     "Identity Property of Multiplication",
     importance: crate::step::ImportanceLevel::Low,
     |ctx, expr| {
-        let (lhs, rhs) = as_mul(ctx, expr)?;
-        if let Expr::Number(n) = ctx.get(rhs) {
-            if n.is_one() {
-                return Some(Rewrite::new(lhs).desc("x * 1 = x"));
-            }
-        }
-        if let Expr::Number(n) = ctx.get(lhs) {
-            if n.is_one() {
-                return Some(Rewrite::new(rhs).desc("1 * x = x"));
-            }
-        }
-        None
+        let rewrite = try_rewrite_mul_one_expr(ctx, expr)?;
+        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.description))
     }
 );
 
@@ -54,63 +39,39 @@ define_rule!(
 define_rule!(
     MulZeroRule,
     "Zero Property of Multiplication",
-    solve_safety: crate::solve_safety::SolveSafety::NeedsCondition(
-        crate::assumptions::ConditionClass::Definability
+    solve_safety: crate::SolveSafety::NeedsCondition(
+        crate::ConditionClass::Definability
     ),
     |ctx, expr, parent_ctx| {
-        use crate::assumptions::ConditionClass;
+        let pattern = match_mul_zero_pattern(ctx, expr)?;
+        let other = pattern.other;
+        let has_risk = crate::collect::has_undefined_risk(ctx, other);
+        let allowed = cas_math::undefined_risk_policy_support::allow_cancellation_with_undefined_risk_mode_flags(
+            matches!(parent_ctx.domain_mode(), crate::DomainMode::Assume),
+            matches!(parent_ctx.domain_mode(), crate::DomainMode::Strict),
+            has_risk,
+        );
 
-        // Helper: check if expression contains any Div with non-literal denominator
-        // Delegates to canonical implementation that handles Hold/Matrix
-        let has_undefined_risk = |ctx: &cas_ast::Context, expr: cas_ast::ExprId| -> bool {
-            crate::collect::has_undefined_risk(ctx, expr)
+        if !allowed {
+            return None; // Strict mode: don't simplify if has risk
+        }
+
+        // Build assumption events if has risk and allowed
+        let assumption_events: smallvec::SmallVec<[crate::AssumptionEvent; 1]> = if has_risk {
+            smallvec::smallvec![crate::AssumptionEvent::defined(ctx, other)]
+        } else {
+            smallvec::SmallVec::new()
         };
 
-        let (lhs, rhs) = match ctx.get(expr) {
-            Expr::Mul(l, r) => (*l, *r),
-            _ => return None,
+        let description = if pattern.zero_on_lhs {
+            "0 * x = 0".to_string()
+        } else {
+            "x * 0 = 0".to_string()
         };
-            // Check if either side is zero literal
-            let lhs_is_zero = matches!(ctx.get(lhs), Expr::Number(n) if n.is_zero());
-            let rhs_is_zero = matches!(ctx.get(rhs), Expr::Number(n) if n.is_zero());
-
-            if !(lhs_is_zero || rhs_is_zero) {
-                return None;
-            }
-
-            // The "other" side: 0 * other
-            let other = if lhs_is_zero { rhs } else { lhs };
-            let has_risk = has_undefined_risk(ctx, other);
-
-            // Use ConditionClass gate: Defined is Definability class
-            let allowed = if has_risk {
-                parent_ctx
-                    .domain_mode()
-                    .allows_unproven(ConditionClass::Definability)
-            } else {
-                true // No risk = always allowed
-            };
-
-            if !allowed {
-                return None; // Strict mode: don't simplify if has risk
-            }
-
-            // Build assumption events if has risk and allowed
-            let assumption_events: smallvec::SmallVec<[crate::assumptions::AssumptionEvent; 1]> = if has_risk {
-                smallvec::smallvec![crate::assumptions::AssumptionEvent::defined(ctx, other)]
-            } else {
-                smallvec::SmallVec::new()
-            };
-
-            let description = if lhs_is_zero {
-                "0 * x = 0".to_string()
-            } else {
-                "x * 0 = 0".to_string()
-            };
 
 
-            let zero = ctx.num(0);
-            Some(Rewrite::new(zero).desc(description).assume_all(assumption_events))
+        let zero = ctx.num(0);
+        Some(Rewrite::new(zero).desc(description).assume_all(assumption_events))
     }
 );
 
@@ -123,31 +84,24 @@ define_rule!(
 define_rule!(
     DivZeroRule,
     "Zero Property of Division",
-    solve_safety: crate::solve_safety::SolveSafety::NeedsCondition(
-        crate::assumptions::ConditionClass::Definability
+    solve_safety: crate::SolveSafety::NeedsCondition(
+        crate::ConditionClass::Definability
     ),
     |ctx, expr, parent_ctx| {
-        use crate::domain::Proof;
-        use crate::domain_facts::Predicate;
+        use crate::Proof;
+        use crate::Predicate;
 
-        let (num, den) = as_div(ctx, expr)?;
-
-        // Check if numerator is 0
-        let num_is_zero = matches!(ctx.get(num), Expr::Number(n) if n.is_zero());
-        if !num_is_zero {
-            return None;
-        }
+        let pattern = match_div_zero_numerator_pattern(ctx, expr)?;
+        let den = pattern.denominator;
 
         // Special case: 0/0 → undefined (all modes)
-        if let Expr::Number(d) = ctx.get(den) {
-            if d.is_zero() {
-                let undef = ctx.add(Expr::Constant(cas_ast::Constant::Undefined));
-                return Some(Rewrite::new(undef).desc("0/0 is undefined"));
-            }
+        if pattern.denominator_is_literal_zero {
+            let undef = ctx.add(Expr::Constant(cas_ast::Constant::Undefined));
+            return Some(Rewrite::new(undef).desc("0/0 is undefined"));
         }
 
         // Use unified oracle for NonZero condition (Definability class)
-        let decision = crate::domain_oracle::oracle_allows_with_hint(
+        let decision = crate::oracle_allows_with_hint(
             ctx,
             parent_ctx.domain_mode(),
             parent_ctx.value_domain(),
@@ -161,8 +115,8 @@ define_rule!(
 
         // Build assumption events if needed
         let den_proof = crate::helpers::prove_nonzero(ctx, den);
-        let assumption_events: smallvec::SmallVec<[crate::assumptions::AssumptionEvent; 1]> = if decision.assumption.is_some() && den_proof != Proof::Proven {
-            smallvec::smallvec![crate::assumptions::AssumptionEvent::nonzero(ctx, den)]
+        let assumption_events: smallvec::SmallVec<[crate::AssumptionEvent; 1]> = if decision.assumption.is_some() && den_proof != Proof::Proven {
+            smallvec::smallvec![crate::AssumptionEvent::nonzero(ctx, den)]
         } else {
             smallvec::SmallVec::new()
         };
@@ -172,288 +126,15 @@ define_rule!(
     }
 );
 
-define_rule!(CombineConstantsRule, "Combine Constants", importance: crate::step::ImportanceLevel::Low, |ctx, expr| {
-    // Try Add branch
-    if let Some((lhs, rhs)) = as_add(ctx, expr) {
-        if let (Expr::Number(n1), Expr::Number(n2)) = (ctx.get(lhs), ctx.get(rhs)) {
-            let (n1, n2) = (n1.clone(), n2.clone());
-            let sum = &n1 + &n2;
-            let new_expr = ctx.add(Expr::Number(sum.clone()));
-            let description = if n2 < num_rational::BigRational::from_integer(0.into()) {
-                let abs_n2 = -&n2;
-                format!("{} - {} = {}", n1, abs_n2, sum)
-            } else {
-                format!("{} + {} = {}", n1, n2, sum)
-            };
-            return Some(Rewrite::new(new_expr).desc(description));
-        }
-        // Handle nested: c1 + (c2 + x) -> (c1+c2) + x
-        if let Expr::Number(n1) = ctx.get(lhs) {
-            let n1 = n1.clone();
-            if let Some((rl, rr)) = as_add(ctx, rhs) {
-                if let Expr::Number(n2) = ctx.get(rl) {
-                    let n2 = n2.clone();
-                    let sum = &n1 + &n2;
-                    let sum_expr = ctx.add(Expr::Number(sum));
-                    let new_expr = ctx.add(Expr::Add(sum_expr, rr));
-                    return Some(
-                        Rewrite::new(new_expr)
-                            .desc_lazy(|| format!("Combine nested constants: {} + {}", n1, n2)),
-                    );
-                }
-            }
-        }
+define_rule!(
+    CombineConstantsRule,
+    "Combine Constants",
+    importance: crate::step::ImportanceLevel::Low,
+    |ctx, expr| {
+        let rewrite = try_rewrite_combine_constants_expr(ctx, expr)?;
+        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.description))
     }
-
-    // Try Mul branch
-    if let Some((lhs, rhs)) = as_mul(ctx, expr) {
-        if let (Expr::Number(n1), Expr::Number(n2)) = (ctx.get(lhs), ctx.get(rhs)) {
-            let (n1, n2) = (n1.clone(), n2.clone());
-            let prod = &n1 * &n2;
-            let new_expr = ctx.add(Expr::Number(prod.clone()));
-            return Some(Rewrite::new(new_expr).desc_lazy(|| format!("{} * {} = {}", n1, n2, prod)));
-        }
-
-        // V2.15.25: Flatten complete Mul chain and combine ALL numeric factors
-        let mut factors = Vec::new();
-        let mut stack = vec![expr];
-        while let Some(id) = stack.pop() {
-            if let Expr::Mul(l, r) = ctx.get(id) {
-                stack.push(*r);
-                stack.push(*l);
-            } else {
-                factors.push(id);
-            }
-        }
-
-        let mut numeric_factors: Vec<num_rational::BigRational> = Vec::new();
-        let mut non_numeric: Vec<cas_ast::ExprId> = Vec::new();
-
-        for &f in &factors {
-            if let Expr::Number(n) = ctx.get(f) {
-                numeric_factors.push(n.clone());
-            } else {
-                non_numeric.push(f);
-            }
-        }
-
-        if numeric_factors.len() >= 2 {
-            let product: num_rational::BigRational = numeric_factors.iter().fold(
-                num_rational::BigRational::from_integer(1.into()),
-                |acc, n| acc * n
-            );
-
-            if product.is_zero() {
-                let zero = ctx.num(0);
-                return Some(Rewrite::new(zero).desc("0 * x = 0"));
-            }
-
-            let mut result: cas_ast::ExprId;
-            if product.is_one() && !non_numeric.is_empty() {
-                result = non_numeric[0];
-                for &f in &non_numeric[1..] {
-                    result = smart_mul(ctx, result, f);
-                }
-            } else if non_numeric.is_empty() {
-                result = ctx.add(Expr::Number(product.clone()));
-            } else {
-                let prod_expr = ctx.add(Expr::Number(product.clone()));
-                result = prod_expr;
-                for &f in &non_numeric {
-                    result = smart_mul(ctx, result, f);
-                }
-            }
-
-            let nums_str: Vec<String> = numeric_factors.iter().map(|n| format!("{}", n)).collect();
-            return Some(Rewrite::new(result).desc_lazy(|| format!(
-                "Combine nested constants: {} = {}",
-                nums_str.join(" * "),
-                product
-            )));
-        }
-
-        // Fallback: Handle c1 * (c2 * x) -> (c1*c2) * x
-        if let Expr::Number(n1) = ctx.get(lhs) {
-            let n1 = n1.clone();
-            if let Some((rl, rr)) = as_mul(ctx, rhs) {
-                if let Expr::Number(n2) = ctx.get(rl) {
-                    let n2 = n2.clone();
-                    let prod = &n1 * &n2;
-                    let prod_expr = ctx.add(Expr::Number(prod));
-                    let new_expr = smart_mul(ctx, prod_expr, rr);
-                    return Some(
-                        Rewrite::new(new_expr)
-                            .desc_lazy(|| format!("Combine nested constants: {} * {}", n1, n2)),
-                    );
-                }
-            }
-
-            // Handle c1 * (x / c2) -> (c1/c2) * x
-            if let Some((num, den)) = as_div(ctx, rhs) {
-                if let Expr::Number(n2) = ctx.get(den) {
-                    let n2 = n2.clone();
-                    if !n2.is_zero() {
-                        let ratio = &n1 / &n2;
-                        let ratio_expr = ctx.add(Expr::Number(ratio));
-                        let new_expr = smart_mul(ctx, ratio_expr, num);
-                        return Some(
-                            Rewrite::new(new_expr).desc_lazy(|| format!(
-                                "{} * (x / {}) -> ({} / {}) * x",
-                                n1, n2, n1, n2
-                            )),
-                        );
-                    }
-                }
-            }
-        }
-    }
-
-    // Try Sub branch
-    if let Some((lhs, rhs)) = as_sub(ctx, expr) {
-        if let (Expr::Number(n1), Expr::Number(n2)) = (ctx.get(lhs), ctx.get(rhs)) {
-            let (n1, n2) = (n1.clone(), n2.clone());
-            let diff = &n1 - &n2;
-            let new_expr = ctx.add(Expr::Number(diff.clone()));
-            return Some(Rewrite::new(new_expr).desc_lazy(|| format!("{} - {} = {}", n1, n2, diff)));
-        }
-    }
-
-    // Try Div branch
-    if let Some((lhs, rhs)) = as_div(ctx, expr) {
-        if let (Expr::Number(n1), Expr::Number(n2)) = (ctx.get(lhs), ctx.get(rhs)) {
-            let (n1, n2) = (n1.clone(), n2.clone());
-            if !n2.is_zero() {
-                let quot = &n1 / &n2;
-                let new_expr = ctx.add(Expr::Number(quot.clone()));
-                return Some(
-                    Rewrite::new(new_expr).desc_lazy(|| format!("{} / {} = {}", n1, n2, quot)),
-                );
-            } else {
-                let undef = ctx.add(Expr::Constant(cas_ast::Constant::Undefined));
-                return Some(Rewrite::new(undef).desc("Division by zero"));
-            }
-        }
-
-        // Handle (c * x) / d -> (c/d) * x
-        if let Expr::Number(d) = ctx.get(rhs) {
-            let d = d.clone();
-            if !d.is_zero() {
-                if let Some((ml, mr)) = as_mul(ctx, lhs) {
-                    // Case 1: (c * x) / d
-                    if let Expr::Number(c) = ctx.get(ml) {
-                        let c = c.clone();
-                        let ratio = &c / &d;
-                        let ratio_expr = ctx.add(Expr::Number(ratio));
-                        let new_expr = smart_mul(ctx, ratio_expr, mr);
-                        return Some(
-                            Rewrite::new(new_expr)
-                                .desc_lazy(|| format!("({} * x) / {} -> ({} / {}) * x", c, d, c, d)),
-                        );
-                    }
-
-                    // Case 2: (x * c) / d
-                    if let Expr::Number(c) = ctx.get(mr) {
-                        let c = c.clone();
-                        let ratio = &c / &d;
-                        let ratio_expr = ctx.add(Expr::Number(ratio));
-                        let new_expr = smart_mul(ctx, ratio_expr, ml);
-                        return Some(
-                            Rewrite::new(new_expr)
-                                .desc_lazy(|| format!("(x * {}) / {} -> ({} / {}) * x", c, d, c, d)),
-                        );
-                    }
-                }
-            }
-        }
-    }
-
-    None
-});
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::rule::Rule;
-    use cas_ast::{Context, DisplayExpr};
-
-    #[test]
-    fn test_add_zero() {
-        let mut ctx = Context::new();
-        let rule = AddZeroRule;
-        let x = ctx.var("x");
-        let zero = ctx.num(0);
-        let expr = ctx.add(Expr::Add(x, zero));
-        let rewrite = rule
-            .apply(
-                &mut ctx,
-                expr,
-                &crate::parent_context::ParentContext::root(),
-            )
-            .unwrap();
-        assert_eq!(
-            format!(
-                "{}",
-                DisplayExpr {
-                    context: &ctx,
-                    id: rewrite.new_expr
-                }
-            ),
-            "x"
-        );
-    }
-
-    #[test]
-    fn test_mul_one() {
-        let mut ctx = Context::new();
-        let rule = MulOneRule;
-        let one = ctx.num(1);
-        let y = ctx.var("y");
-        let expr = ctx.add(Expr::Mul(one, y));
-        let rewrite = rule
-            .apply(
-                &mut ctx,
-                expr,
-                &crate::parent_context::ParentContext::root(),
-            )
-            .unwrap();
-        assert_eq!(
-            format!(
-                "{}",
-                DisplayExpr {
-                    context: &ctx,
-                    id: rewrite.new_expr
-                }
-            ),
-            "y"
-        );
-    }
-
-    #[test]
-    fn test_combine_constants() {
-        let mut ctx = Context::new();
-        let rule = CombineConstantsRule;
-        let two = ctx.num(2);
-        let three = ctx.num(3);
-        let expr = ctx.add(Expr::Add(two, three));
-        let rewrite = rule
-            .apply(
-                &mut ctx,
-                expr,
-                &crate::parent_context::ParentContext::root(),
-            )
-            .unwrap();
-        assert_eq!(
-            format!(
-                "{}",
-                DisplayExpr {
-                    context: &ctx,
-                    id: rewrite.new_expr
-                }
-            ),
-            "5"
-        );
-    }
-}
+);
 
 // =============================================================================
 // SubSelfToZeroRule: a - a = 0 (Short-circuit)
@@ -471,33 +152,18 @@ define_rule!(
     "Subtraction Self-Cancel",
     priority: 500, // High priority: before any expansion rules
     |ctx, expr, parent_ctx| {
-        use crate::semantic_equality::SemanticEqualityChecker;
-
-        // Helper: check if expression contains any Div with non-literal denominator
-        // Delegates to canonical implementation that handles Hold/Matrix
-        let has_undefined_risk = |ctx: &cas_ast::Context, expr: cas_ast::ExprId| -> bool {
-            crate::collect::has_undefined_risk(ctx, expr)
-        };
-
-        // Match: Sub(lhs, rhs)
-        if let Expr::Sub(lhs, rhs) = ctx.get(expr) {
-            let lhs = *lhs;
-            let rhs = *rhs;
-
-            // Use semantic equality (handles structural equivalence like tan(3x) vs tan(3·x))
-            let checker = SemanticEqualityChecker::new(ctx);
-            if checker.are_equal(lhs, rhs) {
-                let domain_mode = parent_ctx.domain_mode();
-
-                // In Strict mode, check for undefined risk
-                if domain_mode == crate::DomainMode::Strict && has_undefined_risk(ctx, lhs) {
-                    return None;
-                }
-
-                return Some(Rewrite::new(ctx.num(0)).desc("a - a = 0"));
-            }
+        let rewrite = try_rewrite_sub_self_zero_expr(ctx, expr)?;
+        let allow =
+            cas_math::undefined_risk_policy_support::allow_cancellation_with_undefined_risk_mode_flags(
+                matches!(parent_ctx.domain_mode(), crate::DomainMode::Assume),
+                matches!(parent_ctx.domain_mode(), crate::DomainMode::Strict),
+                crate::collect::has_undefined_risk(ctx, rewrite.inner),
+            );
+        if !allow {
+            return None;
         }
-        None
+
+        Some(Rewrite::new(rewrite.rewritten).desc("a - a = 0"))
     }
 );
 
@@ -513,44 +179,21 @@ define_rule!(
 // The individual Div operations already emit NonZero(denominator) as Requires.
 // Showing "a is defined" here is redundant and confusing.
 define_rule!(AddInverseRule, "Add Inverse", |ctx, expr, parent_ctx| {
-    // Helper: check if expression contains any Div with non-literal denominator
-    fn has_undefined_risk(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> bool {
-        crate::collect::has_undefined_risk(ctx, expr)
+    let rewrite = try_rewrite_add_inverse_zero_expr(ctx, expr)?;
+    let allow =
+        cas_math::undefined_risk_policy_support::allow_cancellation_with_undefined_risk_mode_flags(
+            matches!(parent_ctx.domain_mode(), crate::DomainMode::Assume),
+            matches!(parent_ctx.domain_mode(), crate::DomainMode::Strict),
+            crate::collect::has_undefined_risk(ctx, rewrite.inner),
+        );
+    if !allow {
+        return None;
     }
 
-    // Pattern: a + (-a) = 0 or (-a) + a = 0
-    if let Expr::Add(l, r) = ctx.get(expr) {
-        let mut matched_inner: Option<cas_ast::ExprId> = None;
-
-        // Check if r = -l or l = -r
-        if let Expr::Neg(neg_inner) = ctx.get(*r) {
-            if *neg_inner == *l {
-                matched_inner = Some(*l);
-            }
-        }
-        if matched_inner.is_none() {
-            if let Expr::Neg(neg_inner) = ctx.get(*l) {
-                if *neg_inner == *r {
-                    matched_inner = Some(*r);
-                }
-            }
-        }
-
-        if let Some(inner) = matched_inner {
-            let domain_mode = parent_ctx.domain_mode();
-
-            // In Strict mode, check for undefined risk
-            if domain_mode == crate::DomainMode::Strict && has_undefined_risk(ctx, inner) {
-                return None;
-            }
-
-            // V2.12.13: No assumption events - the division conditions are already
-            // tracked as Requires from the original Div operations.
-            // Adding "a is defined" here is redundant and clutters the output.
-            return Some(Rewrite::new(ctx.num(0)).desc("a + (-a) = 0"));
-        }
-    }
-    None
+    // V2.12.13: No assumption events - the division conditions are already
+    // tracked as Requires from the original Div operations.
+    // Adding "a is defined" here is redundant and clutters the output.
+    Some(Rewrite::new(rewrite.rewritten).desc("a + (-a) = 0"))
 });
 
 // Simplify sums of fractions in exponents: x^(1/2 + 1/3) → x^(5/6)
@@ -559,78 +202,8 @@ define_rule!(
     SimplifyNumericExponentsRule,
     "Sum Exponents",
     |ctx, expr| {
-        // Only match Pow(base, exp) where exp is a sum of numeric terms
-        if let Expr::Pow(base, exp) = ctx.get(expr) {
-            let base = *base;
-            let exp = *exp;
-
-            // Collect all addends from the exponent
-            let mut addends: Vec<num_rational::BigRational> = Vec::new();
-            let mut stack = vec![exp];
-            let mut all_numeric = true;
-
-            while let Some(id) = stack.pop() {
-                match ctx.get(id) {
-                    Expr::Add(l, r) => {
-                        stack.push(*l);
-                        stack.push(*r);
-                    }
-                    Expr::Number(n) => {
-                        addends.push(n.clone());
-                    }
-                    Expr::Div(num, den) => {
-                        // Check if it's a numeric fraction
-                        if let (Expr::Number(n), Expr::Number(d)) = (ctx.get(*num), ctx.get(*den)) {
-                            if !d.is_zero() {
-                                addends.push(n / d);
-                            } else {
-                                all_numeric = false;
-                            }
-                        } else {
-                            all_numeric = false;
-                        }
-                    }
-                    _ => {
-                        all_numeric = false;
-                    }
-                }
-            }
-
-            // Only simplify if:
-            // 1. All terms are numeric
-            // 2. There are at least 2 terms (otherwise it's already simplified)
-            if all_numeric && addends.len() >= 2 {
-                // Sum all fractions
-                let sum: num_rational::BigRational = addends.iter().sum();
-
-                // Create the simplified exponent as a Number
-                let new_exp = ctx.add(Expr::Number(sum.clone()));
-                let new_pow = ctx.add(Expr::Pow(base, new_exp));
-
-                // Generate description showing the sum
-                let addend_strs: Vec<String> = addends
-                    .iter()
-                    .map(|r| {
-                        if r.is_integer() {
-                            format!("{}", r.numer())
-                        } else {
-                            format!("({}/{})", r.numer(), r.denom())
-                        }
-                    })
-                    .collect();
-                let sum_str = if sum.is_integer() {
-                    format!("{}", sum.numer())
-                } else {
-                    format!("{}/{}", sum.numer(), sum.denom())
-                };
-
-                return Some(
-                    Rewrite::new(new_pow)
-                        .desc_lazy(|| format!("{} = {}", addend_strs.join(" + "), sum_str)),
-                );
-            }
-        }
-        None
+        let rewrite = try_rewrite_simplify_numeric_exponents_expr(ctx, expr)?;
+        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.description))
     }
 );
 
@@ -653,35 +226,8 @@ define_rule!(
     "Normalize Negation in Product",
     importance: crate::step::ImportanceLevel::Low,
     |ctx, expr| {
-        if let Expr::Mul(l, r) = ctx.get(expr) {
-            let l = *l;
-            let r = *r;
-
-            let l_neg = if let Expr::Neg(inner) = ctx.get(l) { Some(*inner) } else { None };
-            let r_neg = if let Expr::Neg(inner) = ctx.get(r) { Some(*inner) } else { None };
-
-            match (l_neg, r_neg) {
-                // Mul(Neg(a), Neg(b)) → Mul(a, b) (double negation)
-                (Some(a), Some(b)) => {
-                    let new_mul = crate::build::mul2_raw(ctx, a, b);
-                    return Some(Rewrite::new(new_mul).desc("(-a) * (-b) = a * b"));
-                }
-                // Mul(Neg(a), b) → Neg(Mul(a, b))
-                (Some(a), None) => {
-                    let new_mul = crate::build::mul2_raw(ctx, a, r);
-                    let result = ctx.add(Expr::Neg(new_mul));
-                    return Some(Rewrite::new(result).desc("(-a) * b = -(a * b)"));
-                }
-                // Mul(a, Neg(b)) → Neg(Mul(a, b))
-                (None, Some(b)) => {
-                    let new_mul = crate::build::mul2_raw(ctx, l, b);
-                    let result = ctx.add(Expr::Neg(new_mul));
-                    return Some(Rewrite::new(result).desc("a * (-b) = -(a * b)"));
-                }
-                _ => {}
-            }
-        }
-        None
+        let rewrite = try_rewrite_normalize_mul_neg_expr(ctx, expr)?;
+        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.description))
     }
 );
 
@@ -697,31 +243,4 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(CombineConstantsRule));
     simplifier.add_rule(Box::new(SimplifyNumericExponentsRule));
     simplifier.add_rule(Box::new(AddInverseRule));
-}
-
-#[cfg(test)]
-mod importance_tests {
-    use super::*;
-    use crate::rule::SimpleRule;
-    use crate::step::ImportanceLevel;
-
-    #[test]
-    fn test_mul_one_rule_importance() {
-        let rule = MulOneRule;
-        assert_eq!(
-            rule.importance(),
-            ImportanceLevel::Low,
-            "MulOneRule should have Low importance (hidden in normal mode)"
-        );
-    }
-
-    #[test]
-    fn test_add_zero_rule_importance() {
-        let rule = AddZeroRule;
-        assert_eq!(
-            rule.importance(),
-            ImportanceLevel::Low,
-            "AddZeroRule should have Low importance (hidden in normal mode)"
-        );
-    }
 }

@@ -147,7 +147,7 @@ object CasNative {
 
 ## Kotlin Prototype
 
-Complete Kotlin prototype files are in the `kotlin/` directory:
+Complete Kotlin prototype files are in the repository-level `android_app/` directory:
 
 - `CasNative.kt` - JNI bridge class with documentation
 - `MainActivity.kt` - Demo Activity with UI and coroutines

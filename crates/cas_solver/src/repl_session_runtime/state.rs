@@ -1,0 +1,34 @@
+use crate::{
+    evaluate_clear_bindings_command_lines, evaluate_delete_history_command_message,
+    evaluate_solve_budget_command_message, BindingsContext, HistoryDeleteContext,
+    SolveBudgetContext,
+};
+
+use super::ReplSessionStateMutRuntimeContext;
+
+/// Evaluate `clear` command lines against runtime state.
+pub fn evaluate_clear_command_lines_on_runtime<C>(context: &mut C, line: &str) -> Vec<String>
+where
+    C: ReplSessionStateMutRuntimeContext,
+    C::State: BindingsContext,
+{
+    evaluate_clear_bindings_command_lines(context.state_mut(), line)
+}
+
+/// Evaluate `del` command message against runtime state.
+pub fn evaluate_delete_history_command_message_on_runtime<C>(context: &mut C, line: &str) -> String
+where
+    C: ReplSessionStateMutRuntimeContext,
+    C::State: HistoryDeleteContext,
+{
+    evaluate_delete_history_command_message(context.state_mut(), line)
+}
+
+/// Evaluate `budget ...` command message against runtime session state.
+pub fn evaluate_solve_budget_command_message_on_runtime<C>(context: &mut C, line: &str) -> String
+where
+    C: ReplSessionStateMutRuntimeContext,
+    C::State: SolveBudgetContext,
+{
+    evaluate_solve_budget_command_message(context.state_mut(), line)
+}

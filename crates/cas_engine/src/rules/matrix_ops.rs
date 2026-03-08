@@ -1,6 +1,10 @@
-use crate::matrix::Matrix;
+use crate::matrix_rule_support::{
+    try_eval_matrix_add_expr, try_eval_matrix_mul_expr, try_eval_matrix_sub_expr,
+    try_eval_scalar_matrix_mul_expr, try_rewrite_matrix_function_rule_expr,
+    try_rewrite_transpose_product_identity_expr,
+};
 use crate::rule::{Rewrite, SimpleRule};
-use cas_ast::{Context, Expr, ExprId};
+use cas_ast::{Context, ExprId};
 
 /// Rule to add two matrices
 pub struct MatrixAddRule;
@@ -15,27 +19,8 @@ impl SimpleRule for MatrixAddRule {
     }
 
     fn apply_simple(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
-        if let Expr::Add(left, right) = ctx.get(expr) {
-            let left_id = *left;
-            let right_id = *right;
-
-            // Try to interpret both as matrices
-            if let (Some(m1), Some(m2)) = (
-                Matrix::from_expr(ctx, left_id),
-                Matrix::from_expr(ctx, right_id),
-            ) {
-                // Add matrices
-                if let Some(result) = m1.add(&m2, ctx) {
-                    return Some(Rewrite::new(result.to_expr(ctx)).desc_lazy(|| {
-                        format!(
-                            "Matrix addition: {}×{} + {}×{}",
-                            m1.rows, m1.cols, m2.rows, m2.cols
-                        )
-                    }));
-                }
-            }
-        }
-        None
+        let eval = try_eval_matrix_add_expr(ctx, expr)?;
+        Some(Rewrite::new(eval.result.to_expr(ctx)).desc(eval.add_desc()))
     }
 }
 
@@ -52,25 +37,8 @@ impl SimpleRule for MatrixSubRule {
     }
 
     fn apply_simple(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
-        if let Expr::Sub(left, right) = ctx.get(expr) {
-            let left_id = *left;
-            let right_id = *right;
-
-            if let (Some(m1), Some(m2)) = (
-                Matrix::from_expr(ctx, left_id),
-                Matrix::from_expr(ctx, right_id),
-            ) {
-                if let Some(result) = m1.sub(&m2, ctx) {
-                    return Some(Rewrite::new(result.to_expr(ctx)).desc_lazy(|| {
-                        format!(
-                            "Matrix subtraction: {}×{} - {}×{}",
-                            m1.rows, m1.cols, m2.rows, m2.cols
-                        )
-                    }));
-                }
-            }
-        }
-        None
+        let eval = try_eval_matrix_sub_expr(ctx, expr)?;
+        Some(Rewrite::new(eval.result.to_expr(ctx)).desc(eval.sub_desc()))
     }
 }
 
@@ -87,35 +55,8 @@ impl SimpleRule for ScalarMatrixRule {
     }
 
     fn apply_simple(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
-        if let Expr::Mul(left, right) = ctx.get(expr) {
-            let left_id = *left;
-            let right_id = *right;
-
-            // Try scalar * matrix
-            if let Some(matrix) = Matrix::from_expr(ctx, right_id) {
-                // left is the scalar
-                let result = matrix.scalar_mul(left_id, ctx);
-                return Some(Rewrite::new(result.to_expr(ctx)).desc_lazy(|| {
-                    format!(
-                        "Scalar multiplication: scalar × {}×{} matrix",
-                        matrix.rows, matrix.cols
-                    )
-                }));
-            }
-
-            // Try matrix * scalar
-            if let Some(matrix) = Matrix::from_expr(ctx, left_id) {
-                // right is the scalar
-                let result = matrix.scalar_mul(right_id, ctx);
-                return Some(Rewrite::new(result.to_expr(ctx)).desc_lazy(|| {
-                    format!(
-                        "Scalar multiplication: {}×{} matrix × scalar",
-                        matrix.rows, matrix.cols
-                    )
-                }));
-            }
-        }
-        None
+        let eval = try_eval_scalar_matrix_mul_expr(ctx, expr)?;
+        Some(Rewrite::new(eval.result.to_expr(ctx)).desc(eval.desc()))
     }
 }
 
@@ -132,29 +73,8 @@ impl SimpleRule for MatrixMultiplyRule {
     }
 
     fn apply_simple(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
-        if let Expr::Mul(left, right) = ctx.get(expr) {
-            let left_id = *left;
-            let right_id = *right;
-
-            // Check if both are matrices (and not scalar-matrix case)
-            if let (Some(m1), Some(m2)) = (
-                Matrix::from_expr(ctx, left_id),
-                Matrix::from_expr(ctx, right_id),
-            ) {
-                // Verify neither is a scalar (1×1 matrix)
-                // Actually, 1×1 matrices should be treated as matrices for multiplication
-                // So we proceed with matrix multiplication
-                if let Some(result) = m1.multiply(&m2, ctx) {
-                    return Some(Rewrite::new(result.to_expr(ctx)).desc_lazy(|| {
-                        format!(
-                            "Matrix multiplication: {}×{} × {}×{} = {}×{}",
-                            m1.rows, m1.cols, m2.rows, m2.cols, result.rows, result.cols
-                        )
-                    }));
-                }
-            }
-        }
-        None
+        let eval = try_eval_matrix_mul_expr(ctx, expr)?;
+        Some(Rewrite::new(eval.result.to_expr(ctx)).desc(eval.mul_desc()))
     }
 }
 
@@ -171,50 +91,8 @@ impl SimpleRule for MatrixFunctionRule {
     }
 
     fn apply_simple(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
-        if let Expr::Function(fn_id, args) = ctx.get(expr) {
-            let name = ctx.sym_name(*fn_id).to_string();
-            let args = args.clone();
-
-            match name.as_str() {
-                "det" | "determinant" => {
-                    if args.len() == 1 {
-                        if let Some(matrix) = Matrix::from_expr(ctx, args[0]) {
-                            if let Some(det_value) = matrix.determinant(ctx) {
-                                return Some(Rewrite::new(det_value).desc_lazy(|| {
-                                    format!("det({}×{} matrix)", matrix.rows, matrix.cols)
-                                }));
-                            }
-                        }
-                    }
-                }
-                "transpose" | "T" => {
-                    if args.len() == 1 {
-                        if let Some(matrix) = Matrix::from_expr(ctx, args[0]) {
-                            let transposed = matrix.transpose();
-                            return Some(Rewrite::new(transposed.to_expr(ctx)).desc_lazy(|| {
-                                format!(
-                                    "transpose({}×{}) = {}×{}",
-                                    matrix.rows, matrix.cols, transposed.rows, transposed.cols
-                                )
-                            }));
-                        }
-                    }
-                }
-                "trace" | "tr" => {
-                    if args.len() == 1 {
-                        if let Some(matrix) = Matrix::from_expr(ctx, args[0]) {
-                            if let Some(trace_value) = matrix.trace(ctx) {
-                                return Some(Rewrite::new(trace_value).desc_lazy(|| {
-                                    format!("trace({}×{} matrix)", matrix.rows, matrix.cols)
-                                }));
-                            }
-                        }
-                    }
-                }
-                _ => {}
-            }
-        }
-        None
+        let rewrite = try_rewrite_matrix_function_rule_expr(ctx, expr)?;
+        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
     }
 }
 
@@ -232,31 +110,8 @@ impl SimpleRule for TransposeProductRule {
     }
 
     fn apply_simple(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
-        if let Expr::Function(fn_id, args) = ctx.get(expr) {
-            let name = ctx.sym_name(*fn_id).to_string();
-            let args = args.clone();
-
-            if (name == "transpose" || name == "T") && args.len() == 1 {
-                // Check if arg is matmul(A, B)
-                if let Expr::Function(inner_fn_id, inner_args) = ctx.get(args[0]) {
-                    let inner_name = ctx.sym_name(*inner_fn_id).to_string();
-                    let inner_args = inner_args.clone();
-
-                    if inner_name == "matmul" && inner_args.len() == 2 {
-                        let a = inner_args[0];
-                        let b = inner_args[1];
-
-                        // Build: matmul(transpose(B), transpose(A))
-                        let transposed_b = ctx.call("transpose", vec![b]);
-                        let transposed_a = ctx.call("transpose", vec![a]);
-                        let result = ctx.call("matmul", vec![transposed_b, transposed_a]);
-
-                        return Some(Rewrite::new(result).desc("(AB)^T = B^T·A^T"));
-                    }
-                }
-            }
-        }
-        None
+        let rewrite = try_rewrite_transpose_product_identity_expr(ctx, expr)?;
+        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
     }
 }
 
@@ -270,74 +125,4 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(MatrixFunctionRule));
     // Algebraic identity: (AB)^T = B^T·A^T
     simplifier.add_rule(Box::new(TransposeProductRule));
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_matrix_add_rule() {
-        let mut ctx = Context::new();
-        let rule = MatrixAddRule;
-
-        // [[1, 2], [3, 4]] + [[5, 6], [7, 8]]
-        let n1 = ctx.num(1);
-        let n2 = ctx.num(2);
-        let n3 = ctx.num(3);
-        let n4 = ctx.num(4);
-        let n5 = ctx.num(5);
-        let n6 = ctx.num(6);
-        let n7 = ctx.num(7);
-        let n8 = ctx.num(8);
-
-        let m1 = ctx.matrix(2, 2, vec![n1, n2, n3, n4]).unwrap();
-        let m2 = ctx.matrix(2, 2, vec![n5, n6, n7, n8]).unwrap();
-        let add_expr = ctx.add(Expr::Add(m1, m2));
-
-        let result = rule.apply_simple(&mut ctx, add_expr);
-        assert!(result.is_some());
-    }
-
-    #[test]
-    fn test_scalar_matrix_rule() {
-        let mut ctx = Context::new();
-        let rule = ScalarMatrixRule;
-
-        // 2 * [[1, 2], [3, 4]]
-        let scalar = ctx.num(2);
-        let n1 = ctx.num(1);
-        let n2 = ctx.num(2);
-        let n3 = ctx.num(3);
-        let n4 = ctx.num(4);
-
-        let matrix = ctx.matrix(2, 2, vec![n1, n2, n3, n4]).unwrap();
-        let mul_expr = ctx.add(Expr::Mul(scalar, matrix));
-
-        let result = rule.apply_simple(&mut ctx, mul_expr);
-        assert!(result.is_some());
-    }
-
-    #[test]
-    fn test_matrix_multiply_rule() {
-        let mut ctx = Context::new();
-        let rule = MatrixMultiplyRule;
-
-        // [[1, 2], [3, 4]] * [[5, 6], [7, 8]]
-        let n1 = ctx.num(1);
-        let n2 = ctx.num(2);
-        let n3 = ctx.num(3);
-        let n4 = ctx.num(4);
-        let n5 = ctx.num(5);
-        let n6 = ctx.num(6);
-        let n7 = ctx.num(7);
-        let n8 = ctx.num(8);
-
-        let m1 = ctx.matrix(2, 2, vec![n1, n2, n3, n4]).unwrap();
-        let m2 = ctx.matrix(2, 2, vec![n5, n6, n7, n8]).unwrap();
-        let mul_expr = ctx.add(Expr::Mul(m1, m2));
-
-        let result = rule.apply_simple(&mut ctx, mul_expr);
-        assert!(result.is_some());
-    }
 }

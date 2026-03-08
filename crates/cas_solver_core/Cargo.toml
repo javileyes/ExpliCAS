@@ -1,0 +1,19 @@
+[package]
+name = "cas_solver_core"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+cas_ast = { path = "../cas_ast" }
+cas_formatter = { path = "../cas_formatter" }
+cas_math = { path = "../cas_math", default-features = false }
+num-bigint = "0.4"
+num-integer = "0.1"
+num-rational = "0.4"
+num-traits = "0.2"
+smallvec = "1"
+bitflags = "2"
+thiserror = "1.0"

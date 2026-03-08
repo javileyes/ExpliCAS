@@ -20,27 +20,7 @@ use crate::budget::{Budget, Metric, Operation};
 use crate::semantics::EvalConfig;
 use crate::CasError;
 use cas_ast::{Context, Expr, ExprId};
-
-/// Constant folding mode.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum ConstFoldMode {
-    /// No constant folding (default, preserves all expressions).
-    #[default]
-    Off,
-    /// Safe constant folding - only allowlist operations on provably constant subtrees.
-    Safe,
-}
-
-/// Constant folding result with statistics.
-#[derive(Debug, Clone)]
-pub struct ConstFoldResult {
-    /// The resulting expression (may be same as input if no folding occurred).
-    pub expr: ExprId,
-    /// Number of nodes created during folding.
-    pub nodes_created: u64,
-    /// Number of fold operations performed.
-    pub folds_performed: u64,
-}
+pub use cas_solver_core::const_fold_types::{ConstFoldMode, ConstFoldResult};
 
 /// Fold constants in an expression using allowlist-only operations.
 ///
@@ -337,31 +317,4 @@ impl<'a> IterativeFolder<'a> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use cas_ast::Context;
-
-    #[test]
-    fn test_off_mode_is_noop() {
-        let mut ctx = Context::new();
-        let expr = ctx.num(42);
-        let cfg = EvalConfig::default();
-        let mut budget = Budget::preset_unlimited();
-
-        let result = fold_constants(&mut ctx, expr, &cfg, ConstFoldMode::Off, &mut budget).unwrap();
-        assert_eq!(result.expr, expr);
-        assert_eq!(result.folds_performed, 0);
-    }
-
-    #[test]
-    fn test_literal_unchanged() {
-        let mut ctx = Context::new();
-        let expr = ctx.num(42);
-        let cfg = EvalConfig::default();
-        let mut budget = Budget::preset_unlimited();
-
-        let result =
-            fold_constants(&mut ctx, expr, &cfg, ConstFoldMode::Safe, &mut budget).unwrap();
-        assert_eq!(result.expr, expr);
-    }
-}
+mod tests;

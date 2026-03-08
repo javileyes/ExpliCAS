@@ -71,6 +71,9 @@ pub(super) struct LocalSimplificationTransformer<'a> {
     pub(super) depth_overflow_warned: bool,
     /// The current root expression being simplified, used to compute global_after for steps
     pub(super) root_expr: ExprId,
+    /// Optional event listener for rule-application events.
+    pub(super) event_listener:
+        Option<&'a mut (dyn cas_solver_core::engine_events::StepListener + 'static)>,
 
     // ── Rule context & filtering ─────────────────────────────────────────
     pub(super) profiler: &'a mut RuleProfiler,
@@ -80,17 +83,17 @@ pub(super) struct LocalSimplificationTransformer<'a> {
     /// Current phase of the simplification pipeline (controls which rules can run)
     pub(super) current_phase: crate::phase::SimplifyPhase,
     /// Purpose of simplification: controls which rules are filtered by solve_safety()
-    pub(super) simplify_purpose: crate::solve_safety::SimplifyPurpose,
+    pub(super) simplify_purpose: crate::SimplifyPurpose,
 
     // ── Cycle detection ──────────────────────────────────────────────────
     /// Cycle detector for ping-pong detection (always-on as of V2.14.30)
-    pub(super) cycle_detector: Option<crate::cycle_detector::CycleDetector>,
+    pub(super) cycle_detector: Option<cas_solver_core::cycle_detection::CycleDetector>,
     /// Phase that the cycle detector was initialized for (reset when phase changes)
     pub(super) cycle_phase: Option<crate::phase::SimplifyPhase>,
     /// Fingerprint memoization cache (cleared per phase)
-    pub(super) fp_memo: crate::cycle_detector::FingerprintMemo,
+    pub(super) fp_memo: cas_solver_core::cycle_detection::FingerprintMemo,
     /// Last detected cycle info (for PhaseStats)
-    pub(super) last_cycle: Option<crate::cycle_detector::CycleInfo>,
+    pub(super) last_cycle: Option<cas_solver_core::cycle_models::CycleInfo>,
     /// Blocked (fingerprint, rule) pairs to prevent cycle re-entry
     pub(super) blocked_rules: std::collections::HashSet<(u64, String)>,
 
@@ -140,6 +143,40 @@ impl<'a> LocalSimplificationTransformer<'a> {
         "  ".repeat(self.current_path.len())
     }
 
+    #[inline]
+    pub(super) fn collect_steps_enabled(&self) -> bool {
+        self.steps_mode != StepsMode::Off
+    }
+
+    #[inline]
+    fn push_path_step_if_recording(&mut self, step: crate::step::PathStep) {
+        if self.collect_steps_enabled() {
+            self.current_path.push(step);
+        }
+    }
+
+    #[inline]
+    fn pop_path_step_if_recording(&mut self) {
+        if self.collect_steps_enabled() {
+            self.current_path.pop();
+        }
+    }
+
+    #[inline]
+    fn transform_child_at(
+        &mut self,
+        parent: ExprId,
+        path_step: crate::step::PathStep,
+        child: ExprId,
+    ) -> ExprId {
+        self.push_path_step_if_recording(path_step);
+        self.ancestor_stack.push(parent);
+        let transformed = self.transform_expr_recursive(child);
+        self.ancestor_stack.pop();
+        self.pop_path_step_if_recording();
+        transformed
+    }
+
     pub(super) fn transform_expr_recursive(&mut self, id: ExprId) -> ExprId {
         // Depth guard: prevent stack overflow by limiting recursion depth
         self.current_depth += 1;
@@ -148,7 +185,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                 self.depth_overflow_warned = true;
 
                 // Log the expression to file for later investigation
-                let display = cas_ast::DisplayExpr {
+                let display = cas_formatter::DisplayExpr {
                     context: self.context,
                     id: self.root_expr,
                 };
@@ -208,15 +245,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
             Expr::Div(l, r) => self.transform_div(id, l, r),
             Expr::Pow(b, e) => self.transform_pow(id, b, e),
             Expr::Neg(e) => {
-                if self.steps_mode != StepsMode::Off {
-                    self.current_path.push(crate::step::PathStep::Inner);
-                }
-                self.ancestor_stack.push(id); // Track current node as parent for children
-                let new_e = self.transform_expr_recursive(e);
-                self.ancestor_stack.pop();
-                if self.steps_mode != StepsMode::Off {
-                    self.current_path.pop();
-                }
+                let new_e = self.transform_child_at(id, crate::step::PathStep::Inner, e);
 
                 if new_e != e {
                     self.context.add(Expr::Neg(new_e))
@@ -230,15 +259,8 @@ impl<'a> LocalSimplificationTransformer<'a> {
                 let mut new_data = Vec::new();
                 let mut changed = false;
                 for (i, elem) in data.iter().enumerate() {
-                    if self.steps_mode != StepsMode::Off {
-                        self.current_path.push(crate::step::PathStep::Arg(i));
-                    }
-                    self.ancestor_stack.push(id); // Track current node as parent for children
-                    let new_elem = self.transform_expr_recursive(*elem);
-                    self.ancestor_stack.pop();
-                    if self.steps_mode != StepsMode::Off {
-                        self.current_path.pop();
-                    }
+                    let new_elem =
+                        self.transform_child_at(id, crate::step::PathStep::Arg(i), *elem);
                     if new_elem != *elem {
                         changed = true;
                     }
@@ -258,15 +280,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
             Expr::SessionRef(_) => id,
             // Hold barrier: simplify contents but preserve the wrapper (blocks expansive rules)
             Expr::Hold(inner) => {
-                if self.steps_mode != StepsMode::Off {
-                    self.current_path.push(crate::step::PathStep::Inner);
-                }
-                self.ancestor_stack.push(id);
-                let new_inner = self.transform_expr_recursive(inner);
-                self.ancestor_stack.pop();
-                if self.steps_mode != StepsMode::Off {
-                    self.current_path.pop();
-                }
+                let new_inner = self.transform_child_at(id, crate::step::PathStep::Inner, inner);
 
                 if new_inner != inner {
                     self.context.add(Expr::Hold(new_inner))

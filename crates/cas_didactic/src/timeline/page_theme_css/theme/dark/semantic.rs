@@ -1,0 +1,11 @@
+pub(super) const SEMANTIC_CSS: &str = r#"
+        :root {
+            --description-color: #b0bec5;
+            --math-strong-color: #b0bec5;
+            --final-bg-start: #2e7d32;
+            --final-bg-end: #1b5e20;
+            --final-shadow: rgba(76, 175, 80, 0.3);
+            --substep-desc-color: #b0bec5;
+            --text-color: #e0e0e0;
+        }
+"#;

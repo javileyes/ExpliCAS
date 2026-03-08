@@ -74,6 +74,26 @@ run() {
   ok "$name"
 }
 
+enable_darwin_linker_workaround() {
+  # macOS ld can assert on very long Rust symbols in large test binaries.
+  # Use v0 mangling unless user already configured a mangling mode.
+  if [[ "$(uname -s)" != "Darwin" ]]; then
+    return 0
+  fi
+  case " ${RUSTFLAGS:-} " in
+    *" symbol-mangling-version="*)
+      return 0
+      ;;
+  esac
+
+  if [[ -n "${RUSTFLAGS:-}" ]]; then
+    export RUSTFLAGS="${RUSTFLAGS} -Csymbol-mangling-version=v0"
+  else
+    export RUSTFLAGS="-Csymbol-mangling-version=v0"
+  fi
+  warn "Darwin linker workaround enabled: RUSTFLAGS='${RUSTFLAGS}'"
+}
+
 # -----------------------------
 # defaults / flags
 # -----------------------------
@@ -144,6 +164,7 @@ if [[ -z "$MSRV" ]]; then
 fi
 
 ensure_toolchain_installed "$TOOLCHAIN"
+enable_darwin_linker_workaround
 
 echo "${BLU}Local CI Runner${RST}"
 echo "  Repo:           $ROOT_DIR"
@@ -191,7 +212,14 @@ run_ci_for_toolchain() {
   fi
 
   if [[ "$RUN_TESTS" -eq 1 ]]; then
-    run "cargo test (debug) ($tc)" cargo +"$tc" "${CARGO_TEST_ARGS[@]}"
+    local debug_test_jobs="${CI_DEBUG_TEST_JOBS:-1}"
+    run "cargo test (debug) ($tc) [jobs=${debug_test_jobs}, debuginfo=0]" \
+      env \
+        CARGO_BUILD_JOBS="$debug_test_jobs" \
+        CARGO_INCREMENTAL=0 \
+        CARGO_PROFILE_DEV_DEBUG=0 \
+        CARGO_PROFILE_TEST_DEBUG=0 \
+        cargo +"$tc" "${CARGO_TEST_ARGS[@]}"
   fi
 
   if [[ "$RUN_RELEASE_BUILD" -eq 1 ]]; then

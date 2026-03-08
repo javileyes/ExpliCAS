@@ -5,9 +5,9 @@
 //!
 //! Polynomials are constructed directly in Fp without going through CAS.
 
-use cas_engine::gcd_zippel_modp::{budget_for_mm_gcd, gcd_zippel_modp_with_main};
-use cas_engine::modp::neg_mod;
-use cas_engine::multipoly_modp::{build_linear_pow_direct, MultiPolyModP};
+use cas_math::gcd_zippel_modp::{budget_for_mm_gcd, gcd_zippel_modp_with_main};
+use cas_math::modp::neg_mod;
+use cas_math::multipoly_modp::{build_linear_pow_direct, MultiPolyModP};
 use criterion::{criterion_group, criterion_main, Criterion};
 use std::hint::black_box;
 use std::time::{Duration, Instant};

@@ -12,3 +12,6 @@ num-bigint = "0.4"
 num-traits = "0.2"
 thiserror = "1.0"
  # Using nom for parsing as planned
+
+[dev-dependencies]
+cas_formatter = { path = "../cas_formatter" }

@@ -1,111 +1,34 @@
-use super::*;
+pub(super) use super::*;
 
-impl Repl {
-    pub fn new() -> Self {
-        let config = CasConfig::load();
-        let mut simplifier = Simplifier::with_default_rules();
+mod build;
+mod messages;
+mod run_loop;
 
-        // Always enabled core rules
-        simplifier.add_rule(Box::new(cas_engine::rules::functions::AbsSquaredRule));
-        simplifier.add_rule(Box::new(EvaluateTrigRule));
-        simplifier.add_rule(Box::new(PythagoreanIdentityRule));
-        if config.trig_angle_sum {
-            simplifier.add_rule(Box::new(AngleIdentityRule));
-        }
-        simplifier.add_rule(Box::new(TanToSinCosRule));
-        if config.trig_double_angle {
-            simplifier.add_rule(Box::new(DoubleAngleRule));
-        }
-        if config.canonicalize_trig_square {
-            simplifier.add_rule(Box::new(
-                cas_engine::rules::trigonometry::CanonicalizeTrigSquareRule,
-            ));
-        }
-        simplifier.add_rule(Box::new(EvaluateLogRule));
-        simplifier.add_rule(Box::new(ExponentialLogRule));
-        simplifier.add_rule(Box::new(SimplifyFractionRule));
-        simplifier.add_rule(Box::new(ExpandRule));
-        simplifier.add_rule(Box::new(cas_engine::rules::algebra::ConservativeExpandRule));
-        simplifier.add_rule(Box::new(FactorRule));
-        simplifier.add_rule(Box::new(CollectRule));
-        simplifier.add_rule(Box::new(EvaluatePowerRule));
-        simplifier.add_rule(Box::new(EvaluatePowerRule));
-        if config.log_split_exponents {
-            simplifier.add_rule(Box::new(
-                cas_engine::rules::logarithms::SplitLogExponentsRule,
-            ));
-        }
+fn ensure_parent_dir(path: &std::path::Path) -> Result<(), String> {
+    let Some(parent) = path.parent() else {
+        return Ok(());
+    };
 
-        // Advanced Algebra Rules (Critical for Solver)
-        simplifier.add_rule(Box::new(cas_engine::rules::algebra::NestedFractionRule));
-        simplifier.add_rule(Box::new(cas_engine::rules::algebra::AddFractionsRule));
-        simplifier.add_rule(Box::new(cas_engine::rules::algebra::SimplifyMulDivRule));
-        if config.rationalize_denominator {
-            simplifier.add_rule(Box::new(
-                cas_engine::rules::algebra::RationalizeDenominatorRule,
-            ));
-        }
-        simplifier.add_rule(Box::new(
-            cas_engine::rules::algebra::CancelCommonFactorsRule,
-        ));
-
-        // Configurable rules
-        if config.distribute {
-            simplifier.add_rule(Box::new(cas_engine::rules::polynomial::DistributeRule));
-        }
-
-        if config.expand_binomials {
-            simplifier.add_rule(Box::new(
-                cas_engine::rules::polynomial::BinomialExpansionRule,
-            ));
-        }
-
-        if config.factor_difference_squares {
-            simplifier.add_rule(Box::new(
-                cas_engine::rules::algebra::FactorDifferenceSquaresRule,
-            ));
-        }
-
-        if config.root_denesting {
-            simplifier.add_rule(Box::new(cas_engine::rules::algebra::RootDenestingRule));
-        }
-
-        if config.auto_factor {
-            simplifier.add_rule(Box::new(cas_engine::rules::algebra::AutomaticFactorRule));
-        }
-
-        simplifier.add_rule(Box::new(
-            cas_engine::rules::trigonometry::AngleConsistencyRule,
-        ));
-        simplifier.add_rule(Box::new(CombineLikeTermsRule));
-        simplifier.add_rule(Box::new(CombineLikeTermsRule));
-        simplifier.add_rule(Box::new(AnnihilationRule));
-        simplifier.add_rule(Box::new(ProductPowerRule));
-        simplifier.add_rule(Box::new(PowerPowerRule));
-        simplifier.add_rule(Box::new(PowerProductRule));
-        simplifier.add_rule(Box::new(PowerQuotientRule));
-        simplifier.add_rule(Box::new(IdentityPowerRule));
-        simplifier.add_rule(Box::new(
-            cas_engine::rules::exponents::NegativeBasePowerRule,
-        ));
-        simplifier.add_rule(Box::new(AddZeroRule));
-        simplifier.add_rule(Box::new(MulOneRule));
-        simplifier.add_rule(Box::new(MulZeroRule));
-        simplifier.add_rule(Box::new(cas_engine::rules::arithmetic::DivZeroRule));
-        simplifier.add_rule(Box::new(CombineConstantsRule));
-        simplifier.add_rule(Box::new(IntegrateRule));
-        simplifier.add_rule(Box::new(DiffRule));
-        simplifier.add_rule(Box::new(NumberTheoryRule));
-
-        let mut repl = Self {
-            core: ReplCore::with_simplifier(simplifier),
-            verbosity: Verbosity::Normal,
-            config,
-        };
-        repl.sync_config_to_simplifier();
-        repl
+    if parent.exists() {
+        return Ok(());
     }
 
+    std::fs::create_dir_all(parent).map_err(|error| {
+        format!(
+            "✖ Failed to create directory {}: {}",
+            parent.display(),
+            error
+        )
+    })
+}
+
+fn write_file_action(path: &std::path::Path, contents: &str) -> Result<(), String> {
+    ensure_parent_dir(path)?;
+    std::fs::write(path, contents)
+        .map_err(|error| format!("✖ Failed to write {}: {}", path.display(), error))
+}
+
+impl Repl {
     /// Print a ReplReply to stdout/stderr.
     /// This is the single point where ReplCore output becomes visible.
     /// WriteFile actions are executed here (file I/O), with results printed.
@@ -119,459 +42,27 @@ impl Repl {
                 ReplMsg::Steps(s) => println!("{s}"),
                 ReplMsg::Debug(s) => println!("{s}"),
                 ReplMsg::WriteFile { path, contents } => {
-                    // Execute file write (I/O happens in shell, not core)
-                    // Create parent directories if needed
-                    if let Some(parent) = path.parent() {
-                        if !parent.exists() {
-                            if let Err(e) = std::fs::create_dir_all(parent) {
-                                eprintln!(
-                                    "✖ Failed to create directory {}: {}",
-                                    parent.display(),
-                                    e
-                                );
-                                continue;
-                            }
-                        }
-                    }
-                    match std::fs::write(&path, &contents) {
+                    match write_file_action(&path, &contents) {
                         Ok(()) => println!("Wrote: {}", path.display()),
-                        Err(e) => eprintln!("✖ Failed to write {}: {}", path.display(), e),
+                        Err(message) => eprintln!("{message}"),
                     }
                 }
-            }
-        }
-    }
-
-    /// Simplify expression using current pipeline options
-    #[allow(dead_code)]
-    pub(crate) fn do_simplify(
-        &mut self,
-        expr: cas_ast::ExprId,
-    ) -> (cas_ast::ExprId, Vec<cas_engine::Step>) {
-        // Use state.options.to_simplify_options() to get correct expand_policy, context_mode, etc.
-        // (self.core.simplify_options is legacy and doesn't sync expand_policy)
-        let mut opts = self.core.state.options.to_simplify_options();
-        opts.collect_steps = self.core.engine.simplifier.collect_steps();
-        // V2.15.8: Copy autoexpand_binomials from simplify_options (set by 'set autoexpand_binomials on')
-        opts.shared.autoexpand_binomials = self.core.simplify_options.shared.autoexpand_binomials;
-        opts.shared.heuristic_poly = self.core.simplify_options.shared.heuristic_poly;
-
-        // Note: Tool dispatcher for collect/expand_log is in Engine::eval (cas_engine/src/eval.rs)
-        // This function is dead code but kept for internal use; no dispatcher needed here.
-
-        // Enable health metrics and clear previous run if debug or health mode is on
-        if self.core.debug_mode || self.core.health_enabled {
-            self.core.engine.simplifier.profiler.enable_health();
-            self.core.engine.simplifier.profiler.clear_run();
-        }
-
-        let (result, steps, stats) = self.core.engine.simplifier.simplify_with_stats(expr, opts);
-
-        // Store health report for the `health` command
-        // Always store if health_enabled; for debug-only use threshold
-        if self.core.health_enabled || (self.core.debug_mode && stats.total_rewrites >= 5) {
-            self.core.last_health_report =
-                Some(self.core.engine.simplifier.profiler.health_report());
-        }
-
-        // Show debug output if enabled
-        if self.core.debug_mode {
-            let mut lines: Vec<String> = Vec::new();
-            lines.push(self.format_pipeline_stats(&stats));
-
-            // Policy A+ hint: when simplify makes minimal changes to a Mul expression
-            if stats.total_rewrites <= 1
-                && matches!(
-                    self.core.engine.simplifier.context.get(result),
-                    cas_ast::Expr::Mul(_, _)
-                )
-            {
-                lines.push(
-                    "Note: simplify preserves factored products. Use expand(...) to expand."
-                        .to_string(),
-                );
-            }
-
-            // Show health report if significant activity (>= 5 rewrites)
-            if stats.total_rewrites >= 5 {
-                lines.push(String::new());
-                if let Some(ref report) = self.core.last_health_report {
-                    lines.push(report.to_string());
-                }
-            }
-
-            self.print_reply(reply_output(lines.join("\n")));
-        }
-
-        self.core.last_stats = Some(stats.clone());
-
-        // Print assumptions summary if reporting is enabled and there are assumptions
-        if self.core.state.options.shared.assumption_reporting
-            != cas_engine::AssumptionReporting::Off
-            && !stats.assumptions.is_empty()
-        {
-            // Build summary line
-            let items: Vec<String> = stats
-                .assumptions
-                .iter()
-                .map(|r| {
-                    if r.count > 1 {
-                        format!("{}({}) (×{})", r.kind, r.expr, r.count)
-                    } else {
-                        format!("{}({})", r.kind, r.expr)
-                    }
-                })
-                .collect();
-            self.print_reply(reply_output(format!("⚠ Assumptions: {}", items.join(", "))));
-        }
-
-        (result, steps)
-    }
-
-    /// Format pipeline statistics for diagnostics (returns String, no I/O)
-    #[allow(dead_code)]
-    pub(crate) fn format_pipeline_stats(&self, stats: &cas_engine::PipelineStats) -> String {
-        let mut lines: Vec<String> = Vec::new();
-
-        lines.push(String::new());
-        lines.push("──── Pipeline Diagnostics ────".to_string());
-        lines.push(format!(
-            "  Core:       {} iters, {} rewrites",
-            stats.core.iters_used, stats.core.rewrites_used
-        ));
-        if let Some(ref cycle) = stats.core.cycle {
-            lines.push(format!(
-                "              ⚠ Cycle detected: period={} at rewrite={} (stopped early)",
-                cycle.period, cycle.at_step
-            ));
-            let top = self
-                .core
-                .engine
-                .simplifier
-                .profiler
-                .top_applied_for_phase(cas_engine::SimplifyPhase::Core, 2);
-            if !top.is_empty() {
-                let hints: Vec<_> = top.iter().map(|(r, c)| format!("{}={}", r, c)).collect();
-                lines.push(format!(
-                    "              Likely contributors: {}",
-                    hints.join(", ")
-                ));
-            }
-        }
-        lines.push(format!(
-            "  Transform:  {} iters, {} rewrites, changed={}",
-            stats.transform.iters_used, stats.transform.rewrites_used, stats.transform.changed
-        ));
-        if let Some(ref cycle) = stats.transform.cycle {
-            lines.push(format!(
-                "              ⚠ Cycle detected: period={} at rewrite={} (stopped early)",
-                cycle.period, cycle.at_step
-            ));
-            let top = self
-                .core
-                .engine
-                .simplifier
-                .profiler
-                .top_applied_for_phase(cas_engine::SimplifyPhase::Transform, 2);
-            if !top.is_empty() {
-                let hints: Vec<_> = top.iter().map(|(r, c)| format!("{}={}", r, c)).collect();
-                lines.push(format!(
-                    "              Likely contributors: {}",
-                    hints.join(", ")
-                ));
-            }
-        }
-        lines.push(format!(
-            "  Rationalize: {:?}",
-            stats
-                .rationalize_level
-                .unwrap_or(cas_engine::AutoRationalizeLevel::Off)
-        ));
-
-        if let Some(ref outcome) = stats.rationalize_outcome {
-            match outcome {
-                cas_engine::RationalizeOutcome::Applied => {
-                    lines.push("              → Applied ✓".to_string());
-                }
-                cas_engine::RationalizeOutcome::NotApplied(reason) => {
-                    lines.push(format!("              → NotApplied: {:?}", reason));
-                }
-            }
-        }
-        if let Some(ref cycle) = stats.rationalize.cycle {
-            lines.push(format!(
-                "              ⚠ Cycle detected: period={} at rewrite={} (stopped early)",
-                cycle.period, cycle.at_step
-            ));
-            let top = self
-                .core
-                .engine
-                .simplifier
-                .profiler
-                .top_applied_for_phase(cas_engine::SimplifyPhase::Rationalize, 2);
-            if !top.is_empty() {
-                let hints: Vec<_> = top.iter().map(|(r, c)| format!("{}={}", r, c)).collect();
-                lines.push(format!(
-                    "              Likely contributors: {}",
-                    hints.join(", ")
-                ));
-            }
-        }
-
-        lines.push(format!(
-            "  PostCleanup: {} iters, {} rewrites",
-            stats.post_cleanup.iters_used, stats.post_cleanup.rewrites_used
-        ));
-        if let Some(ref cycle) = stats.post_cleanup.cycle {
-            lines.push(format!(
-                "              ⚠ Cycle detected: period={} at rewrite={} (stopped early)",
-                cycle.period, cycle.at_step
-            ));
-            let top = self
-                .core
-                .engine
-                .simplifier
-                .profiler
-                .top_applied_for_phase(cas_engine::SimplifyPhase::PostCleanup, 2);
-            if !top.is_empty() {
-                let hints: Vec<_> = top.iter().map(|(r, c)| format!("{}={}", r, c)).collect();
-                lines.push(format!(
-                    "              Likely contributors: {}",
-                    hints.join(", ")
-                ));
-            }
-        }
-        lines.push(format!("  Total rewrites: {}", stats.total_rewrites));
-        lines.push("───────────────────────────────".to_string());
-
-        lines.join("\n")
-    }
-
-    pub(crate) fn sync_config_to_simplifier(&mut self) {
-        let config = &self.config;
-
-        // Helper to toggle rule
-        let mut toggle = |name: &str, enabled: bool| {
-            if enabled {
-                self.core.engine.simplifier.enable_rule(name);
-            } else {
-                self.core.engine.simplifier.disable_rule(name);
-            }
-        };
-
-        toggle("Distributive Property", config.distribute);
-        toggle("Binomial Expansion", config.expand_binomials);
-        toggle("Distribute Constant", config.distribute_constants);
-        toggle(
-            "Factor Difference of Squares",
-            config.factor_difference_squares,
-        );
-        toggle("Root Denesting", config.root_denesting);
-        toggle("Double Angle Identity", config.trig_double_angle);
-        toggle("Angle Sum/Diff Identity", config.trig_angle_sum);
-        toggle("Split Log Exponents", config.log_split_exponents);
-        toggle("Rationalize Denominator", config.rationalize_denominator);
-        toggle("Canonicalize Trig Square", config.canonicalize_trig_square);
-
-        // Auto Factor Logic:
-        // If auto_factor is on, we enable AutomaticFactorRule AND ConservativeExpandRule.
-        // We DISABLE the aggressive ExpandRule to prevent loops.
-        if config.auto_factor {
-            self.core
-                .engine
-                .simplifier
-                .enable_rule("Automatic Factorization");
-            self.core
-                .engine
-                .simplifier
-                .enable_rule("Conservative Expand");
-            self.core
-                .engine
-                .simplifier
-                .disable_rule("Expand Polynomial");
-            self.core
-                .engine
-                .simplifier
-                .disable_rule("Binomial Expansion");
-        } else {
-            self.core
-                .engine
-                .simplifier
-                .disable_rule("Automatic Factorization");
-            self.core
-                .engine
-                .simplifier
-                .disable_rule("Conservative Expand");
-            self.core.engine.simplifier.enable_rule("Expand Polynomial");
-            // Re-enable Binomial Expansion if config says so
-            if config.expand_binomials {
-                self.core
-                    .engine
-                    .simplifier
-                    .enable_rule("Binomial Expansion");
-            }
-        }
-    }
-
-    /// Build the REPL prompt with mode indicators.
-    /// Only shows indicators for non-default modes to keep prompt clean.
-    pub(crate) fn build_prompt(&self) -> String {
-        use cas_engine::options::{BranchMode, ComplexMode, ContextMode, StepsMode};
-
-        let mut indicators = Vec::new();
-
-        // Show steps mode if not On (default)
-        match self.core.state.options.steps_mode {
-            StepsMode::Off => indicators.push("[steps:off]"),
-            StepsMode::Compact => indicators.push("[steps:compact]"),
-            StepsMode::On => {} // Default, no indicator
-        }
-
-        // Show context mode if not Auto (default)
-        match self.core.state.options.shared.context_mode {
-            ContextMode::IntegratePrep => indicators.push("[ctx:integrate]"),
-            ContextMode::Solve => indicators.push("[ctx:solve]"),
-            ContextMode::Standard => indicators.push("[ctx:standard]"),
-            ContextMode::Auto => {} // Default, no indicator
-        }
-
-        // Show branch mode if not Strict (default)
-        match self.core.state.options.branch_mode {
-            BranchMode::PrincipalBranch => indicators.push("[branch:principal]"),
-            BranchMode::Strict => {} // Default, no indicator
-        }
-
-        // Show complex mode if not Auto (default)
-        match self.core.state.options.complex_mode {
-            ComplexMode::On => indicators.push("[cx:on]"),
-            ComplexMode::Off => indicators.push("[cx:off]"),
-            ComplexMode::Auto => {} // Default, no indicator
-        }
-
-        // Show expand_policy if Auto (not default Off)
-        use cas_engine::phase::ExpandPolicy;
-        if self.core.state.options.shared.expand_policy == ExpandPolicy::Auto {
-            indicators.push("[autoexp:on]");
-        }
-
-        if indicators.is_empty() {
-            "> ".to_string()
-        } else {
-            format!("{} > ", indicators.join(""))
-        }
-    }
-
-    /// Generate startup banner messages (no I/O here)
-    pub(crate) fn startup_messages(&self) -> ReplReply {
-        reply_output(
-            "Rust CAS Step-by-Step Demo\n\
-             Step-by-step output enabled (Normal).\n\
-             Enter an expression (e.g., '2 * 3 + 0'):",
-        )
-    }
-
-    /// Generate goodbye message (no I/O here)
-    pub(crate) fn goodbye_message(&self) -> ReplReply {
-        reply_output("Goodbye!")
-    }
-
-    pub fn run(&mut self) -> rustyline::Result<()> {
-        // Print startup banner
-        self.print_reply(self.startup_messages());
-
-        let helper = CasHelper::new();
-        let config = rustyline::Config::builder()
-            .max_history_size(100)?
-            .completion_type(rustyline::CompletionType::List)
-            .build();
-        let mut rl =
-            rustyline::Editor::<CasHelper, rustyline::history::DefaultHistory>::with_config(
-                config,
-            )?;
-        rl.set_helper(Some(helper));
-
-        // History file path: ~/.cas_history
-        let history_path = dirs::home_dir()
-            .map(|p| p.join(".cas_history"))
-            .unwrap_or_else(|| std::path::PathBuf::from(".cas_history"));
-
-        // Load history if file exists (errors are silently ignored)
-        let _ = rl.load_history(&history_path);
-
-        loop {
-            let prompt = self.build_prompt();
-            let readline = rl.readline(&prompt);
-            match readline {
-                Ok(line) => {
-                    let line = line.trim();
-                    if line.is_empty() {
-                        continue;
-                    }
-
-                    rl.add_history_entry(line)?;
-
-                    if line == "quit" || line == "exit" {
-                        self.print_reply(self.goodbye_message());
-                        break;
-                    }
-
-                    // Special case: solve_system uses ; as internal separator
-                    // Handle it directly without splitting
-                    if line.starts_with("solve_system") {
-                        self.handle_command(line);
-                    } else {
-                        // Split by semicolon to allow multiple statements on one line
-                        // e.g., "let a = 3*x; let b = 4*x; a + b"
-                        for statement in line.split(';') {
-                            let statement = statement.trim();
-                            if statement.is_empty() {
-                                continue;
+                ReplMsg::OpenFile { path } => {
+                    #[cfg(target_os = "macos")]
+                    {
+                        match std::process::Command::new("open").arg(&path).spawn() {
+                            Ok(_) => {}
+                            Err(error) => {
+                                eprintln!("✖ Failed to open {}: {}", path.display(), error);
                             }
-                            self.handle_command(statement);
                         }
                     }
-                }
-                Err(ReadlineError::Interrupted) => {
-                    self.print_reply(reply_output("CTRL-C"));
-                    break;
-                }
-                Err(ReadlineError::Eof) => {
-                    self.print_reply(reply_output("CTRL-D"));
-                    break;
-                }
-                Err(err) => {
-                    self.print_reply(reply_output(format!("Error: {:?}", err)));
-                    break;
+                    #[cfg(not(target_os = "macos"))]
+                    {
+                        let _ = path;
+                    }
                 }
             }
         }
-
-        // Save history on exit (errors are silently ignored)
-        let _ = rl.save_history(&history_path);
-
-        Ok(())
-    }
-
-    /// Converts function-style commands to command-style
-    /// Examples:
-    ///   simplify(...) -> simplify x^2 + 1
-    ///   solve(...) -> solve x + 2 = 5, x
-    pub(crate) fn preprocess_function_syntax(&self, line: &str) -> String {
-        let line = line.trim();
-
-        // Check for simplify(...)
-        if line.starts_with("simplify(") && line.ends_with(")") {
-            let content = &line["simplify(".len()..line.len() - 1];
-            return format!("simplify {}", content);
-        }
-
-        // Check for solve(...)
-        if line.starts_with("solve(") && line.ends_with(")") {
-            let content = &line["solve(".len()..line.len() - 1];
-            return format!("solve {}", content);
-        }
-
-        // Return unchanged
-        line.to_string()
     }
 }

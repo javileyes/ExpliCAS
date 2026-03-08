@@ -1,7 +1,6 @@
 use cas_ast::{Equation, RelOp, SolutionSet};
-use cas_engine::engine::Simplifier;
-use cas_engine::solver::solve;
 use cas_parser::parse;
+use cas_solver::{solve, Simplifier};
 
 #[test]
 fn test_rational_inequality_1_over_x() {
@@ -51,14 +50,14 @@ fn test_linear_equation_with_fractions() {
 
     println!(
         "LHS: {}",
-        cas_ast::DisplayExpr {
+        cas_formatter::DisplayExpr {
             context: &simplifier.context,
             id: lhs
         }
     );
     println!(
         "RHS: {}",
-        cas_ast::DisplayExpr {
+        cas_formatter::DisplayExpr {
             context: &simplifier.context,
             id: rhs
         }
@@ -81,12 +80,12 @@ fn test_linear_equation_with_fractions() {
         println!("Step {}: {}", i + 1, step.description);
         println!(
             "  After: {} {} {}",
-            cas_ast::DisplayExpr {
+            cas_formatter::DisplayExpr {
                 context: &simplifier.context,
                 id: step.equation_after.lhs
             },
             step.equation_after.op,
-            cas_ast::DisplayExpr {
+            cas_formatter::DisplayExpr {
                 context: &simplifier.context,
                 id: step.equation_after.rhs
             }
@@ -101,7 +100,7 @@ fn test_linear_equation_with_fractions() {
                 for sol in &sols {
                     println!(
                         "  x = {}",
-                        cas_ast::DisplayExpr {
+                        cas_formatter::DisplayExpr {
                             context: &simplifier.context,
                             id: *sol
                         }

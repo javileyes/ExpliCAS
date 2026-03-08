@@ -10,7 +10,7 @@
 //! For 7-var mm_gcd, a Zippel modular GCD would be needed.
 
 use cas_ast::Context;
-use cas_engine::multipoly::{
+use cas_math::multipoly::{
     gcd_multivar_layer25, multipoly_from_expr, Layer25Budget, MultiPoly, PolyBudget,
 };
 use cas_parser::parse;

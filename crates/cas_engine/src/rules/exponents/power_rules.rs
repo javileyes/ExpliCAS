@@ -1,183 +1,189 @@
-use crate::build::mul2_raw;
 use crate::define_rule;
-use crate::helpers::{as_div, as_mul, as_pow, is_half};
-use crate::ordering::compare_expr;
 use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
-use cas_ast::{Context, Expr, ExprId};
-use num_integer::Integer;
-use num_traits::{One, Signed, ToPrimitive};
-use std::cmp::Ordering;
+use cas_ast::Context;
+use cas_ast::ExprId;
 
-use super::{add_exp, has_numeric_factor, mul_exp};
-
-define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
-    // x^a * x^b -> x^(a+b)
-    let should_combine = |ctx: &Context, base: ExprId, e1: ExprId, e2: ExprId| -> bool {
-        if let Expr::Number(_) = ctx.get(base) {
-            if let (Expr::Number(n1), Expr::Number(n2)) = (ctx.get(e1), ctx.get(e2)) {
-                let sum = n1 + n2;
-                if sum.is_integer() {
-                    return true;
-                }
-                // Check if proper fraction: |num| < den
-                let num = sum.numer().abs();
-                let den = sum.denom().abs();
-                return num < den;
-            }
+fn format_power_eval_static_desc(
+    kind: cas_math::power_eval_support::PowerEvalStaticRewriteKind,
+) -> &'static str {
+    match kind {
+        cas_math::power_eval_support::PowerEvalStaticRewriteKind::NegativeExponentNormalization => {
+            "x^(-n) -> 1/x^n"
         }
-        true
-    };
-
-    if let Some((lhs, rhs)) = as_mul(ctx, expr) {
-        let lhs_pow = as_pow(ctx, lhs);
-        let rhs_pow = as_pow(ctx, rhs);
-
-        // Case 1: Both are powers with same base: x^a * x^b
-        if let (Some((base1, exp1)), Some((base2, exp2))) = (lhs_pow, rhs_pow) {
-            if compare_expr(ctx, base1, base2) == Ordering::Equal
-                && should_combine(ctx, base1, exp1, exp2)
-            {
-                let sum_exp = add_exp(ctx, exp1, exp2);
-                let new_expr = ctx.add(Expr::Pow(base1, sum_exp));
-                return Some(Rewrite::new(new_expr).desc("Combine powers with same base"));
-            }
+        cas_math::power_eval_support::PowerEvalStaticRewriteKind::NegativeBaseEven => {
+            "(-x)^even -> x^even"
         }
-        // Case 2: One is power, one is base: x^a * x -> x^(a+1)
-        // Left is power
-        if let Some((base1, exp1)) = lhs_pow {
-            if compare_expr(ctx, base1, rhs) == Ordering::Equal {
-                let one = ctx.num(1);
-                if should_combine(ctx, base1, exp1, one) {
-                    let sum_exp = add_exp(ctx, exp1, one);
-                    let new_expr = ctx.add(Expr::Pow(base1, sum_exp));
-                    return Some(Rewrite::new(new_expr).desc("Combine power and base"));
-                }
-            }
-        }
-        // Right is power
-        if let Some((base2, exp2)) = rhs_pow {
-            if compare_expr(ctx, base2, lhs) == Ordering::Equal {
-                let one = ctx.num(1);
-                if should_combine(ctx, base2, one, exp2) {
-                    let sum_exp = add_exp(ctx, one, exp2);
-                    let new_expr = ctx.add(Expr::Pow(base2, sum_exp));
-                    return Some(Rewrite::new(new_expr).desc("Combine base and power"));
-                }
-            }
-        }
-        // Case 3: Both are same base (implicit power 1): x * x -> x^2
-        if compare_expr(ctx, lhs, rhs) == Ordering::Equal {
-            let two = ctx.num(2);
-            let new_expr = ctx.add(Expr::Pow(lhs, two));
-            return Some(Rewrite::new(new_expr).desc("Multiply identical terms"));
-        }
-
-        // Case 4: Nested Multiplication: x * (x * y) -> x^2 * y
-        if let Some((rl, rr)) = as_mul(ctx, rhs) {
-            // x * (x * y)
-            if compare_expr(ctx, lhs, rl) == Ordering::Equal {
-                let two = ctx.num(2);
-                let x_squared = ctx.add(Expr::Pow(lhs, two));
-                let new_expr = mul2_raw(ctx, x_squared, rr);
-                return Some(Rewrite::new(new_expr).desc("Combine nested identical terms"));
-            }
-
-            // x^a * (x^b * y) -> x^(a+b) * y
-            let rl_pow = as_pow(ctx, rl);
-
-            if let (Some((base1, exp1)), Some((base2, exp2))) = (lhs_pow, rl_pow) {
-                if compare_expr(ctx, base1, base2) == Ordering::Equal {
-                    let sum_exp = add_exp(ctx, exp1, exp2);
-                    let new_pow = ctx.add(Expr::Pow(base1, sum_exp));
-                    let new_expr = mul2_raw(ctx, new_pow, rr);
-                    return Some(Rewrite::new(new_expr).desc("Combine nested powers"));
-                }
-            }
-
-            // x * (x^a * y) -> x^(a+1) * y
-            if let Some((base2, exp2)) = rl_pow {
-                if compare_expr(ctx, lhs, base2) == Ordering::Equal {
-                    let one = ctx.num(1);
-                    let sum_exp = add_exp(ctx, exp2, one);
-                    let new_pow = ctx.add(Expr::Pow(base2, sum_exp));
-                    let new_expr = mul2_raw(ctx, new_pow, rr);
-                    return Some(Rewrite::new(new_expr).desc("Combine base and nested power"));
-                }
-            }
-
-            // x^a * (x * y) -> x^(a+1) * y
-            if let Some((base1, exp1)) = lhs_pow {
-                if compare_expr(ctx, base1, rl) == Ordering::Equal {
-                    let one = ctx.num(1);
-                    let sum_exp = ctx.add(Expr::Add(exp1, one));
-                    let new_pow = ctx.add(Expr::Pow(base1, sum_exp));
-                    let new_expr = mul2_raw(ctx, new_pow, rr);
-                    return Some(Rewrite::new(new_expr).desc("Combine power and nested base"));
-                }
-            }
-
-            // (c * x^a) * x^b -> c * x^(a+b)
-            if let Some((ll, lr)) = as_mul(ctx, lhs) {
-                if let Expr::Number(_) = ctx.get(ll) {
-                    let lr_pow = as_pow(ctx, lr);
-
-                    if let (Some((base1, exp1)), Some((base2, exp2))) = (lr_pow, rhs_pow) {
-                        if compare_expr(ctx, base1, base2) == Ordering::Equal {
-                            let sum_exp = add_exp(ctx, exp1, exp2);
-                            let new_pow = ctx.add(Expr::Pow(base1, sum_exp));
-                            let new_expr = mul2_raw(ctx, ll, new_pow);
-                            return Some(
-                                Rewrite::new(new_expr).desc("Combine coeff-power and power"),
-                            );
-                        }
-                    }
-
-                    // (c * x^a) * x -> c * x^(a+1)
-                    if let Some((base1, exp1)) = lr_pow {
-                        if compare_expr(ctx, base1, rhs) == Ordering::Equal {
-                            let one = ctx.num(1);
-                            let sum_exp = ctx.add(Expr::Add(exp1, one));
-                            let new_pow = ctx.add(Expr::Pow(base1, sum_exp));
-                            let new_expr = mul2_raw(ctx, ll, new_pow);
-                            return Some(
-                                Rewrite::new(new_expr).desc("Combine coeff-power and base"),
-                            );
-                        }
-                    }
-                }
-            }
-
-            // (c * x) * x^a -> c * x^(a+1)
-            if let Some((ll, lr)) = as_mul(ctx, lhs) {
-                if let Expr::Number(_) = ctx.get(ll) {
-                    if let Some((base2, exp2)) = rhs_pow {
-                        if compare_expr(ctx, lr, base2) == Ordering::Equal {
-                            let one = ctx.num(1);
-                            let sum_exp = add_exp(ctx, exp2, one);
-                            let new_pow = ctx.add(Expr::Pow(base2, sum_exp));
-                            let new_expr = mul2_raw(ctx, ll, new_pow);
-                            return Some(
-                                Rewrite::new(new_expr).desc("Combine coeff-base and power"),
-                            );
-                        }
-                    }
-                }
-            }
-
-            // x * (x^b * y) -> x^(1+b) * y
-            if let Some((base2, exp2)) = rl_pow {
-                if compare_expr(ctx, lhs, base2) == Ordering::Equal {
-                    let one = ctx.num(1);
-                    let sum_exp = ctx.add(Expr::Add(one, exp2));
-                    let new_pow = ctx.add(Expr::Pow(base2, sum_exp));
-                    let new_expr = mul2_raw(ctx, new_pow, rr);
-                    return Some(Rewrite::new(new_expr).desc("Combine nested base and power"));
-                }
-            }
+        cas_math::power_eval_support::PowerEvalStaticRewriteKind::NegativeBaseOdd => {
+            "(-x)^odd -> -(x^odd)"
         }
     }
-    None
+}
+
+const ROOT_CANCEL_ASSUME_SUGGESTION: &str =
+    "Use 'semantics set domain assume' to simplify (x^n)^(1/n) → x.";
+
+fn register_symbolic_root_cancel_hints(
+    ctx: &cas_ast::Context,
+    rule: &str,
+    inner_base: ExprId,
+    inner_exp: ExprId,
+) {
+    let hint1 = crate::BlockedHint {
+        key: crate::AssumptionKey::positive_key(ctx, inner_base),
+        expr_id: inner_base,
+        rule: rule.to_string(),
+        suggestion: ROOT_CANCEL_ASSUME_SUGGESTION,
+    };
+    let hint2 = crate::BlockedHint {
+        key: crate::AssumptionKey::nonzero_key(ctx, inner_exp),
+        expr_id: inner_exp,
+        rule: rule.to_string(),
+        suggestion: ROOT_CANCEL_ASSUME_SUGGESTION,
+    };
+    crate::register_blocked_hint(hint1);
+    crate::register_blocked_hint(hint2);
+}
+
+fn assumed_symbolic_root_cancel_rewrite(
+    ctx: &Context,
+    rewritten: ExprId,
+    inner_base: ExprId,
+    inner_exp: ExprId,
+) -> Rewrite {
+    use crate::ImplicitCondition;
+    Rewrite::new(rewritten)
+        .desc("(x^n)^(1/n) = x (assuming x > 0, n ≠ 0)")
+        .requires(ImplicitCondition::Positive(inner_base))
+        .requires(ImplicitCondition::NonZero(inner_exp))
+        .assume(crate::AssumptionEvent::positive_assumed(ctx, inner_base))
+}
+
+fn apply_symbolic_root_cancel_action(
+    ctx: &Context,
+    rule_name: &str,
+    action: cas_math::root_power_canonical_support::SymbolicRootCancelAction,
+    unconditional_desc: &'static str,
+) -> Option<Rewrite> {
+    match action {
+        cas_math::root_power_canonical_support::SymbolicRootCancelAction::BlockedNeedsAssumeMode {
+            inner_base,
+            inner_exp,
+        } => {
+            register_symbolic_root_cancel_hints(ctx, rule_name, inner_base, inner_exp);
+            None
+        }
+        cas_math::root_power_canonical_support::SymbolicRootCancelAction::ApplyWithAssumptions {
+            rewritten,
+            inner_base,
+            inner_exp,
+        } => Some(assumed_symbolic_root_cancel_rewrite(
+            ctx, rewritten, inner_base, inner_exp,
+        )),
+        cas_math::root_power_canonical_support::SymbolicRootCancelAction::ApplyUnconditionally {
+            rewritten,
+        } => Some(Rewrite::new(rewritten).desc(unconditional_desc)),
+    }
+}
+
+fn symbolic_root_cancel_action_for_parent(
+    parent_ctx: &crate::parent_context::ParentContext,
+    rewritten: ExprId,
+    inner_base: ExprId,
+    inner_exp: ExprId,
+) -> cas_math::root_power_canonical_support::SymbolicRootCancelAction {
+    use crate::semantics::ValueDomain;
+
+    let domain_mode = parent_ctx.domain_mode();
+    cas_math::root_power_canonical_support::plan_symbolic_root_cancel_action_with_mode_flags(
+        parent_ctx.value_domain() == ValueDomain::RealOnly,
+        matches!(domain_mode, crate::DomainMode::Assume),
+        matches!(domain_mode, crate::DomainMode::Strict),
+        rewritten,
+        inner_base,
+        inner_exp,
+    )
+}
+
+fn power_power_nonnegative_proof_with_witness(
+    core_ctx: &Context,
+    base: ExprId,
+    full_expr: ExprId,
+    parent_ctx: &crate::parent_context::ParentContext,
+    value_domain: crate::semantics::ValueDomain,
+) -> cas_math::tri_proof::TriProof {
+    use crate::{witness_survives_in_context, WitnessKind};
+
+    let explicit = cas_solver_core::predicate_proofs::prove_nonnegative_core_with(
+        core_ctx,
+        base,
+        value_domain,
+        crate::helpers::prove_nonnegative,
+    );
+    let (implicit_contains_nonnegative, witness_survives) = if let (Some(implicit), Some(root)) =
+        (parent_ctx.implicit_domain(), parent_ctx.root_expr())
+    {
+        let contains = implicit.contains_nonnegative(base);
+        let survives = contains
+            && witness_survives_in_context(
+                core_ctx,
+                base,
+                root,
+                full_expr,
+                Some(base),
+                WitnessKind::Sqrt,
+            );
+        (contains, survives)
+    } else {
+        (false, false)
+    };
+
+    cas_math::root_power_canonical_support::merge_nonnegative_proof_with_witness(
+        explicit,
+        implicit_contains_nonnegative,
+        witness_survives,
+    )
+}
+
+fn apply_power_power_even_root_action(
+    ctx: &Context,
+    parent_ctx: &crate::parent_context::ParentContext,
+    action: cas_math::root_power_canonical_support::PowerPowerEvenRootAction,
+) -> Option<Rewrite> {
+    match action {
+        cas_math::root_power_canonical_support::PowerPowerEvenRootAction::Apply { rewritten } => {
+            Some(Rewrite::new(rewritten).desc("Multiply exponents"))
+        }
+        cas_math::root_power_canonical_support::PowerPowerEvenRootAction::NeedsNonNegativeCondition {
+            rewritten,
+            inner_base,
+        } => {
+            let mode = parent_ctx.domain_mode();
+            let vd = parent_ctx.value_domain();
+            let decision = crate::oracle_allows_with_hint(
+                ctx,
+                mode,
+                vd,
+                &crate::Predicate::NonNegative(inner_base),
+                "Power of a Power",
+            );
+            if !decision.allow {
+                return None;
+            }
+
+            let mut rewrite = Rewrite::new(rewritten).desc("Multiply exponents");
+            if decision.assumption.is_some() {
+                rewrite =
+                    rewrite.assume(crate::AssumptionEvent::nonnegative(ctx, inner_base));
+            }
+            Some(rewrite)
+        }
+    }
+}
+
+define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
+    let rewrite = cas_math::power_product_support::try_rewrite_product_power_expr(ctx, expr)?;
+    Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
 });
 
 // a^n * b^n = (ab)^n - combines products of powers with same exponent
@@ -188,55 +194,9 @@ define_rule!(
     None,
     PhaseMask::CORE | PhaseMask::TRANSFORM | PhaseMask::RATIONALIZE,
     |ctx, expr| {
-        if let Some((lhs, rhs)) = as_mul(ctx, expr) {
-            let lhs_pow = as_pow(ctx, lhs);
-            let rhs_pow = as_pow(ctx, rhs);
-
-            // Case 1: Both are powers with same exponent: a^n * b^n
-            if let (Some((base1, exp1)), Some((base2, exp2))) = (lhs_pow, rhs_pow) {
-                if compare_expr(ctx, exp1, exp2) == Ordering::Equal {
-                    let base1_is_num = matches!(ctx.get(base1), Expr::Number(_));
-                    let base2_is_num = matches!(ctx.get(base2), Expr::Number(_));
-                    let base1_has_num = base1_is_num || has_numeric_factor(ctx, base1);
-                    let base2_has_num = base2_is_num || has_numeric_factor(ctx, base2);
-
-                    if !base1_has_num && !base2_has_num {
-                        return None;
-                    }
-
-                    let new_base = mul2_raw(ctx, base1, base2);
-                    let new_expr = ctx.add(Expr::Pow(new_base, exp1));
-                    return Some(Rewrite::new(new_expr).desc("Combine powers with same exponent"));
-                }
-            }
-
-            // Case 2: Nested: a^n * (b^n * c) -> (a*b)^n * c
-            if let Some((base1, exp1)) = lhs_pow {
-                if let Some((rl, rr)) = as_mul(ctx, rhs) {
-                    if let Some((base2, exp2)) = as_pow(ctx, rl) {
-                        if compare_expr(ctx, exp1, exp2) == Ordering::Equal {
-                            let base1_is_num = matches!(ctx.get(base1), Expr::Number(_));
-                            let base2_is_num = matches!(ctx.get(base2), Expr::Number(_));
-                            let base1_has_num = base1_is_num || has_numeric_factor(ctx, base1);
-                            let base2_has_num = base2_is_num || has_numeric_factor(ctx, base2);
-
-                            if !base1_has_num && !base2_has_num {
-                                return None;
-                            }
-
-                            let new_base = mul2_raw(ctx, base1, base2);
-                            let combined_pow = ctx.add(Expr::Pow(new_base, exp1));
-                            let new_expr = mul2_raw(ctx, combined_pow, rr);
-                            return Some(
-                                Rewrite::new(new_expr)
-                                    .desc("Combine nested powers with same exponent"),
-                            );
-                        }
-                    }
-                }
-            }
-        }
-        None
+        let rewrite =
+            cas_math::power_product_support::try_rewrite_product_same_exponent_expr(ctx, expr)?;
+        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
     }
 );
 
@@ -247,36 +207,9 @@ define_rule!(
     None,
     PhaseMask::CORE | PhaseMask::TRANSFORM,
     |ctx, expr| {
-        use cas_ast::views::FractionParts;
-
-        let fp = FractionParts::from(&*ctx, expr);
-        if !fp.is_fraction() {
-            return None;
-        }
-
-        let (num, den, _) = fp.to_num_den(ctx);
-
-        if let (Expr::Pow(base_num, exp_num), Expr::Pow(base_den, exp_den)) =
-            (ctx.get(num), ctx.get(den))
-        {
-            let (base_num, exp_num, base_den, exp_den) = (*base_num, *exp_num, *base_den, *exp_den);
-            if compare_expr(ctx, exp_num, exp_den) == Ordering::Equal {
-                let base_num_is_num = matches!(ctx.get(base_num), Expr::Number(_));
-                let base_den_is_num = matches!(ctx.get(base_den), Expr::Number(_));
-                let base_num_has_num = base_num_is_num || has_numeric_factor(ctx, base_num);
-                let base_den_has_num = base_den_is_num || has_numeric_factor(ctx, base_den);
-
-                if !base_num_has_num && !base_den_has_num {
-                    return None;
-                }
-
-                let new_base = ctx.add(Expr::Div(base_num, base_den));
-                let new_expr = ctx.add(Expr::Pow(new_base, exp_num));
-                return Some(Rewrite::new(new_expr).desc("a^n / b^n = (a/b)^n"));
-            }
-        }
-
-        None
+        let rewrite =
+            cas_math::power_product_support::try_rewrite_quotient_same_exponent_expr(ctx, expr)?;
+        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
     }
 );
 
@@ -298,92 +231,34 @@ impl crate::rule::Rule for RootPowCancelRule {
     ) -> Option<crate::rule::Rewrite> {
         use crate::semantics::ValueDomain;
 
-        let (base, outer_exp) = as_pow(ctx, expr)?;
-
-        let (inner_base, inner_exp) = as_pow(ctx, base)?;
-
-        let combined_is_one = match (ctx.get(outer_exp), ctx.get(inner_exp)) {
-            (Expr::Number(o), Expr::Number(i)) => {
-                let combined = o * i;
-                combined.is_one()
-            }
-            _ => {
-                if let Some((num, denom)) = as_div(ctx, outer_exp) {
-                    if let Expr::Number(n) = ctx.get(num) {
-                        if n.is_one() {
-                            crate::ordering::compare_expr(ctx, denom, inner_exp) == Ordering::Equal
-                        } else {
-                            false
-                        }
-                    } else {
-                        false
-                    }
-                } else {
-                    false
-                }
-            }
-        };
-
-        if !combined_is_one {
-            return None;
-        }
+        let pattern =
+            cas_math::root_power_canonical_support::classify_root_pow_cancel_pattern(ctx, expr)?;
 
         let vd = parent_ctx.value_domain();
         if vd == ValueDomain::ComplexEnabled {
             return None;
         }
 
-        if let Expr::Number(n) = ctx.get(inner_exp) {
-            if n.is_integer() {
-                let n_int = n.to_integer();
-                let is_even = n_int.is_even();
-
-                if is_even {
-                    let abs_base = ctx.call_builtin(cas_ast::BuiltinFn::Abs, vec![inner_base]);
-                    return Some(
-                        crate::rule::Rewrite::new(abs_base).desc("(x^n)^(1/n) = |x| for even n"),
-                    );
-                } else {
-                    return Some(
-                        crate::rule::Rewrite::new(inner_base).desc("(x^n)^(1/n) = x for odd n"),
-                    );
-                }
-            } else {
-                return None;
-            }
-        }
-
-        // n is symbolic
-        let dm = parent_ctx.domain_mode();
-
-        match dm {
-            crate::domain::DomainMode::Strict | crate::domain::DomainMode::Generic => {
-                let hint1 = crate::domain::BlockedHint {
-                    key: crate::assumptions::AssumptionKey::positive_key(ctx, inner_base),
-                    expr_id: inner_base,
-                    rule: "Root Power Cancel".to_string(),
-                    suggestion: "Use 'semantics set domain assume' to simplify (x^n)^(1/n) → x.",
-                };
-                let hint2 = crate::domain::BlockedHint {
-                    key: crate::assumptions::AssumptionKey::nonzero_key(ctx, inner_exp),
-                    expr_id: inner_exp,
-                    rule: "Root Power Cancel".to_string(),
-                    suggestion: "Use 'semantics set domain assume' to simplify (x^n)^(1/n) → x.",
-                };
-                crate::domain::register_blocked_hint(hint1);
-                crate::domain::register_blocked_hint(hint2);
-                None
-            }
-            crate::domain::DomainMode::Assume => {
-                use crate::implicit_domain::ImplicitCondition;
-                Some(
-                    crate::rule::Rewrite::new(inner_base)
-                        .desc("(x^n)^(1/n) = x (assuming x > 0, n ≠ 0)")
-                        .requires(ImplicitCondition::Positive(inner_base))
-                        .requires(ImplicitCondition::NonZero(inner_exp))
-                        .assume(crate::assumptions::AssumptionEvent::positive_assumed(
-                            ctx, inner_base,
-                        )),
+        match pattern {
+            cas_math::root_power_canonical_support::RootPowCancelPattern::NumericEven {
+                rewritten,
+            } => Some(crate::rule::Rewrite::new(rewritten).desc("(x^n)^(1/n) = |x| for even n")),
+            cas_math::root_power_canonical_support::RootPowCancelPattern::NumericOdd {
+                rewritten,
+            } => Some(crate::rule::Rewrite::new(rewritten).desc("(x^n)^(1/n) = x for odd n")),
+            cas_math::root_power_canonical_support::RootPowCancelPattern::SymbolicCandidate {
+                rewritten,
+                inner_base,
+                inner_exp,
+            } => {
+                let action = symbolic_root_cancel_action_for_parent(
+                    parent_ctx, rewritten, inner_base, inner_exp,
+                );
+                apply_symbolic_root_cancel_action(
+                    ctx,
+                    "Root Power Cancel",
+                    action,
+                    "(x^n)^(1/n) = x",
                 )
             }
         }
@@ -405,147 +280,54 @@ impl crate::rule::Rule for RootPowCancelRule {
 define_rule!(
     PowerPowerRule,
     "Power of a Power",
-    solve_safety: crate::solve_safety::SolveSafety::NeedsCondition(
-        crate::assumptions::ConditionClass::Analytic
+    solve_safety: crate::SolveSafety::NeedsCondition(
+        crate::ConditionClass::Analytic
     ),
     |ctx, expr, parent_ctx| {
     // (x^a)^b -> x^(a*b)
-    if let Some((base, outer_exp)) = as_pow(ctx, expr) {
-        if let Some((inner_base, inner_exp)) = as_pow(ctx, base) {
-            let is_even_int = |e: ExprId| -> bool {
-                if let Expr::Number(n) = ctx.get(e) {
-                    n.is_integer() && n.to_integer().is_even()
-                } else {
-                    false
-                }
-            };
-
-            if is_even_int(inner_exp) && is_half(ctx, outer_exp) {
-                let prod_exp = mul_exp(ctx, inner_exp, outer_exp);
-                let abs_base = ctx.call_builtin(cas_ast::BuiltinFn::Abs, vec![inner_base]);
-                let new_expr = ctx.add(Expr::Pow(abs_base, prod_exp));
-                return Some(Rewrite::new(new_expr).desc("Power of power with even root: (x^2k)^(1/2) -> |x|^k"));
+    if let Some(pattern) = cas_math::root_power_canonical_support::classify_power_power_pattern(ctx, expr) {
+        match pattern {
+            cas_math::root_power_canonical_support::PowerPowerPattern::EvenRootAbs { rewritten } => {
+                return Some(Rewrite::new(rewritten).desc(
+                    "Power of power with even root: (x^2k)^(1/2) -> |x|^k",
+                ));
             }
-
-            let inner_is_even_root = if let Expr::Number(n) = ctx.get(inner_exp) {
-                let denom = n.denom();
-                denom.is_even()
-            } else {
-                false
-            };
-
-            if inner_is_even_root {
-                use crate::domain::Proof;
-                use crate::helpers::prove_nonnegative;
-                use crate::implicit_domain::{witness_survives_in_context, WitnessKind};
-
-                let mode = parent_ctx.domain_mode();
+            cas_math::root_power_canonical_support::PowerPowerPattern::EvenRootNeedsNonNegative { .. } => {
                 let vd = parent_ctx.value_domain();
-                let base_proof = prove_nonnegative(ctx, inner_base, vd);
 
-                let proof = if matches!(base_proof, Proof::Unknown) {
-                    if let (Some(implicit), Some(root)) = (parent_ctx.implicit_domain(), parent_ctx.root_expr()) {
-                        if implicit.contains_nonnegative(inner_base) {
-                            let output_candidate = inner_base;
-                            if witness_survives_in_context(
-                                ctx,
-                                inner_base,
-                                root,
-                                expr,
-                                Some(output_candidate),
-                                WitnessKind::Sqrt,
-                            ) {
-                                Proof::ProvenImplicit
-                            } else {
-                                Proof::Unknown
-                            }
-                        } else {
-                            Proof::Unknown
-                        }
-                    } else {
-                        Proof::Unknown
-                    }
-                } else {
-                    base_proof
-                };
-
-                if matches!(proof, Proof::Proven | Proof::ProvenImplicit) {
-                    let prod_exp = mul_exp(ctx, inner_exp, outer_exp);
-                    let new_expr = ctx.add(Expr::Pow(inner_base, prod_exp));
-                    return Some(Rewrite::new(new_expr).desc("Multiply exponents"));
-                }
-
-                let decision = crate::domain_oracle::oracle_allows_with_hint(
+                let action = cas_math::root_power_canonical_support::plan_power_power_even_root_action_with(
                     ctx,
-                    mode,
-                    vd,
-                    &crate::domain_facts::Predicate::NonNegative(inner_base),
+                    expr,
+                    |core_ctx, base| {
+                        power_power_nonnegative_proof_with_witness(
+                            core_ctx, base, expr, parent_ctx, vd,
+                        )
+                    },
+                )?;
+                return apply_power_power_even_root_action(ctx, parent_ctx, action);
+            }
+            cas_math::root_power_canonical_support::PowerPowerPattern::SymbolicRootCancelCandidate {
+                rewritten,
+                inner_base,
+                inner_exp,
+            } => {
+                let action =
+                    symbolic_root_cancel_action_for_parent(parent_ctx, rewritten, inner_base, inner_exp);
+                if let Some(rewrite) = apply_symbolic_root_cancel_action(
+                    ctx,
                     "Power of a Power",
-                );
-
-                if !decision.allow {
-                    return None;
+                    action,
+                    "Multiply exponents",
+                ) {
+                    return Some(rewrite);
                 }
-
-                let prod_exp = mul_exp(ctx, inner_exp, outer_exp);
-                let new_expr = ctx.add(Expr::Pow(inner_base, prod_exp));
-
-                let mut rewrite = Rewrite::new(new_expr).desc("Multiply exponents");
-                if decision.assumption.is_some() {
-                    rewrite = rewrite.assume(crate::assumptions::AssumptionEvent::nonnegative(ctx, inner_base));
-                }
-                return Some(rewrite);
+                return None;
             }
-
-            let is_symbolic_root_cancel = if let Some((_num, denom)) = as_div(ctx, outer_exp) {
-                crate::ordering::compare_expr(ctx, denom, inner_exp) == Ordering::Equal
-            } else {
-                false
-            };
-
-            if is_symbolic_root_cancel {
-                let dm = parent_ctx.domain_mode();
-                let vd = parent_ctx.value_domain();
-
-                if vd == crate::semantics::ValueDomain::RealOnly {
-                    match dm {
-                        crate::domain::DomainMode::Strict | crate::domain::DomainMode::Generic => {
-                            let hint1 = crate::domain::BlockedHint {
-                                key: crate::assumptions::AssumptionKey::positive_key(ctx, inner_base),
-                                expr_id: inner_base,
-                                rule: "Power of a Power".to_string(),
-                                suggestion: "Use 'semantics set domain assume' to simplify (x^n)^(1/n) → x.",
-                            };
-                            let hint2 = crate::domain::BlockedHint {
-                                key: crate::assumptions::AssumptionKey::nonzero_key(ctx, inner_exp),
-                                expr_id: inner_exp,
-                                rule: "Power of a Power".to_string(),
-                                suggestion: "Use 'semantics set domain assume' to simplify (x^n)^(1/n) → x.",
-                            };
-                            crate::domain::register_blocked_hint(hint1);
-                            crate::domain::register_blocked_hint(hint2);
-                            return None;
-                        }
-                        crate::domain::DomainMode::Assume => {
-                            use crate::implicit_domain::ImplicitCondition;
-                            let prod_exp = mul_exp(ctx, inner_exp, outer_exp);
-                            let new_expr = ctx.add(Expr::Pow(inner_base, prod_exp));
-                            return Some(
-                                Rewrite::new(new_expr)
-                                    .desc("(x^n)^(1/n) = x (assuming x > 0, n ≠ 0)")
-                                    .requires(ImplicitCondition::Positive(inner_base))
-                                    .requires(ImplicitCondition::NonZero(inner_exp))
-                                    .assume(crate::assumptions::AssumptionEvent::positive_assumed(ctx, inner_base))
-                            );
-                        }
-                    }
-                }
+            cas_math::root_power_canonical_support::PowerPowerPattern::MultiplyExponents {
+                rewritten,
+            } => {
+                return Some(Rewrite::new(rewritten).desc("Multiply exponents"));
             }
-
-            // Default case
-            let prod_exp = mul_exp(ctx, inner_exp, outer_exp);
-            let new_expr = ctx.add(Expr::Pow(inner_base, prod_exp));
-            return Some(Rewrite::new(new_expr).desc("Multiply exponents"));
         }
     }
     None
@@ -559,73 +341,15 @@ define_rule!(
     "Normalize Negative Exponent",
     importance: crate::step::ImportanceLevel::Low,
     |ctx, expr| {
-    if let Some((base, exp)) = as_pow(ctx, expr) {
-            if let Expr::Number(n) = ctx.get(exp) {
-                if n.is_integer() && n.is_negative() {
-                    let pos_n = -n.clone();
-                    let pos_exp = ctx.add(Expr::Number(pos_n));
-                    let one = ctx.num(1);
-                    let pos_pow = ctx.add(Expr::Pow(base, pos_exp));
-                    let result = ctx.add(Expr::Div(one, pos_pow));
-                    return Some(Rewrite::new(result).desc("x^(-n) → 1/x^n"));
-                }
-            }
-        }
-        None
-    }
+    let rewrite =
+        cas_math::power_eval_support::try_rewrite_negative_exponent_normalization_expr(
+            ctx, expr,
+        )?;
+    Some(Rewrite::new(rewrite.rewritten).desc(format_power_eval_static_desc(rewrite.kind)))
+}
 );
 
 define_rule!(EvaluatePowerRule, "Evaluate Numeric Power", importance: crate::step::ImportanceLevel::Low, |ctx, expr| {
-    if let Some((base, exp)) = as_pow(ctx, expr) {
-        if let Some(result) = crate::const_eval::try_eval_pow_literal(ctx, base, exp) {
-            return Some(Rewrite::new(result).desc("Evaluate literal power"));
-        }
-
-        if let (Expr::Number(b), Expr::Number(e)) = (ctx.get(base), ctx.get(exp)) {
-            let (b, e) = (b.clone(), e.clone());
-            let numer = e.numer();
-            let denom = e.denom();
-
-            if let Some(n) = denom.to_u32() {
-                let b_num = b.numer();
-                let b_den = b.denom();
-
-                let (out_n, in_n) = super::extract_root_factor(b_num, n);
-                let (out_d, in_d) = super::extract_root_factor(b_den, n);
-
-                if !out_n.is_one() || !out_d.is_one() {
-                    if let Some(pow_num) = numer.to_i32() {
-                        use num_rational::BigRational;
-                        let outside_rat = BigRational::new(out_n.clone(), out_d.clone());
-                        let outside_val = if pow_num == 1 {
-                            outside_rat
-                        } else {
-                            num_traits::Pow::pow(&outside_rat, pow_num.unsigned_abs())
-                        };
-                        let outside_val = if pow_num < 0 {
-                            outside_val.recip()
-                        } else {
-                            outside_val
-                        };
-
-                        let inside_rat = BigRational::new(in_n, in_d);
-                        if inside_rat.is_one() {
-                            let new_expr = ctx.add(Expr::Number(outside_val));
-                            return Some(Rewrite::new(new_expr).desc_lazy(|| format!("Simplify root: {}^{}", b, e)));
-                        } else {
-                            let outside_expr = ctx.add(Expr::Number(outside_val));
-                            let inside_expr = ctx.add(Expr::Number(inside_rat));
-                            let exp_expr = ctx.add(Expr::Number(e.clone()));
-                            let root_part = ctx.add(Expr::Pow(inside_expr, exp_expr));
-                            let new_expr = ctx.add(Expr::Mul(outside_expr, root_part));
-                            return Some(
-                                Rewrite::new(new_expr).desc_lazy(|| format!("Simplify root: {}^{}", b, e)),
-                            );
-                        }
-                    }
-                }
-            }
-        }
-    }
-    None
+    let rewrite = cas_math::power_eval_support::try_rewrite_evaluate_power_expr(ctx, expr)?;
+    Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
 });

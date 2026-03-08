@@ -27,13 +27,15 @@ pub struct Simplifier {
     /// Domain warnings from last simplify() call (side-channel for Off mode)
     pub(super) last_domain_warnings: Vec<(String, String)>,
     /// Blocked hints from last simplify() call (pedagogical hints for blocked Analytic conditions)
-    pub(super) last_blocked_hints: Vec<crate::domain::BlockedHint>,
+    pub(super) last_blocked_hints: Vec<crate::BlockedHint>,
     /// Sticky root expression: when set, this is used instead of recalculating per-phase
     /// This preserves inherited requires across all phases (e.g., x≥0 from sqrt(x))
     pub(super) sticky_root_expr: Option<ExprId>,
     /// Sticky implicit domain: when set, this is propagated to all phases
     /// Computed from the original input, survives even after witnesses are consumed
-    pub(super) sticky_implicit_domain: Option<crate::implicit_domain::ImplicitDomain>,
+    pub(super) sticky_implicit_domain: Option<crate::ImplicitDomain>,
+    /// Optional observer that receives rewrite events during simplification.
+    pub(super) step_listener: Option<Box<dyn crate::StepListener>>,
 }
 
 impl Default for Simplifier {
@@ -61,6 +63,7 @@ impl Simplifier {
             last_blocked_hints: Vec::new(),
             sticky_root_expr: None,
             sticky_implicit_domain: None,
+            step_listener: None,
         }
     }
 
@@ -105,6 +108,7 @@ impl Simplifier {
             last_blocked_hints: Vec::new(),
             sticky_root_expr: None,
             sticky_implicit_domain: None,
+            step_listener: None,
         };
         s.register_default_rules();
         s
@@ -166,6 +170,7 @@ impl Simplifier {
             last_blocked_hints: Vec::new(),
             sticky_root_expr: None,
             sticky_implicit_domain: None,
+            step_listener: None,
         }
     }
 
@@ -195,6 +200,11 @@ impl Simplifier {
         self.steps_mode = mode;
     }
 
+    /// Install or clear an optional listener for engine rewrite events.
+    pub fn set_step_listener(&mut self, listener: Option<Box<dyn crate::StepListener>>) {
+        self.step_listener = listener;
+    }
+
     /// Take and clear domain warnings from the last simplify() call.
     /// This is the side-channel to get warnings even in Off mode (when steps is empty).
     /// Warnings are deduplicated by (rule_name, message), preserving first-occurrence order.
@@ -209,7 +219,7 @@ impl Simplifier {
     /// Take and clear blocked hints from the last simplify() call.
     /// These are pedagogical hints when Generic mode blocks Analytic conditions.
     /// Hints are deduplicated by (rule, assumption_key), preserving first-occurrence order.
-    pub fn take_blocked_hints(&mut self) -> Vec<crate::domain::BlockedHint> {
+    pub fn take_blocked_hints(&mut self) -> Vec<crate::BlockedHint> {
         let mut hints = std::mem::take(&mut self.last_blocked_hints);
         // Dedup by (rule, key) preserving first occurrence order
         let mut seen = std::collections::HashSet::new();
@@ -219,7 +229,7 @@ impl Simplifier {
 
     /// Extend blocked hints from an external source (used for context transfer).
     /// Hints will be deduplicated when take_blocked_hints is called.
-    pub fn extend_blocked_hints(&mut self, hints: Vec<crate::domain::BlockedHint>) {
+    pub fn extend_blocked_hints(&mut self, hints: Vec<crate::BlockedHint>) {
         self.last_blocked_hints.extend(hints);
     }
 
@@ -231,7 +241,7 @@ impl Simplifier {
         root: ExprId,
         value_domain: crate::semantics::ValueDomain,
     ) {
-        use crate::implicit_domain::infer_implicit_domain;
+        use crate::infer_implicit_domain;
         self.sticky_root_expr = Some(root);
         self.sticky_implicit_domain =
             Some(infer_implicit_domain(&self.context, root, value_domain));
@@ -244,7 +254,7 @@ impl Simplifier {
     }
 
     /// Get the sticky implicit domain, if set.
-    pub fn sticky_implicit_domain(&self) -> Option<&crate::implicit_domain::ImplicitDomain> {
+    pub fn sticky_implicit_domain(&self) -> Option<&crate::ImplicitDomain> {
         self.sticky_implicit_domain.as_ref()
     }
 
@@ -311,12 +321,8 @@ impl Simplifier {
         inverse_trig::register(self); // Compositions like tan(arctan(x)) → x
 
         // Generalized n-angle inverse-trig compositions (Weierstrass / Chebyshev / recurrence)
-        // Handles sin/cos/tan(n·arctan(t)) for n=1..10 via (1+it)^n recurrence
-        // (replaces hardcoded arctan rules in trig_inverse_compositions)
+        // Handles sin/cos/tan(n·arctan(t)) for n=1..10 via (1+it)^n recurrence.
         inv_trig_n_angle::register(self);
-
-        // Legacy arcsin/arccos compositions (n=2,3) — will be migrated to inv_trig_n_angle
-        trig_inverse_compositions::register(self);
 
         // Expand trig(inverse_trig) to algebraic forms AFTER compositions
         trig_inverse_expansion::register(self);

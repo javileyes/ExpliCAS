@@ -5,12 +5,13 @@ use std::hint::black_box;
 
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 
-use cas_ast::{Context, DisplayExpr};
+use cas_ast::Context;
+use cas_formatter::DisplayExpr;
 use cas_parser::parse;
 
-use cas_engine::options::{BranchMode, ComplexMode, ContextMode, EvalOptions, StepsMode};
-use cas_engine::profile_cache::ProfileCache;
-use cas_engine::Simplifier;
+use cas_engine::{
+    BranchMode, ComplexMode, ContextMode, EvalOptions, ProfileCache, Simplifier, StepsMode,
+};
 
 /// Full REPL flow: parse → simplify → format result
 fn full_eval(profile_cache: &mut ProfileCache, opts: &EvalOptions, input: &str) -> String {
@@ -84,7 +85,7 @@ fn bench_repl_end_to_end(c: &mut Criterion) {
 
     let opts = EvalOptions {
         branch_mode: BranchMode::Strict,
-        shared: cas_engine::phase::SharedSemanticConfig {
+        shared: cas_engine::SharedSemanticConfig {
             context_mode: ContextMode::Standard,
             ..Default::default()
         },
@@ -169,7 +170,7 @@ fn bench_steps_mode_comparison(c: &mut Criterion) {
 
     let opts = EvalOptions {
         branch_mode: BranchMode::Strict,
-        shared: cas_engine::phase::SharedSemanticConfig {
+        shared: cas_engine::SharedSemanticConfig {
             context_mode: ContextMode::Standard,
             ..Default::default()
         },

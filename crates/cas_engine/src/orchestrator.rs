@@ -1,12 +1,83 @@
 use crate::best_so_far::{BestSoFar, BestSoFarBudget};
 use crate::expand::eager_eval_expand_calls;
 use crate::phase::{SimplifyOptions, SimplifyPhase};
-use crate::poly_store::clear_thread_local_store;
-use crate::rationalize_policy::AutoRationalizeLevel;
-use crate::rules::algebra::gcd_modp::eager_eval_poly_gcd_calls;
 use crate::{Simplifier, Step};
-use cas_ast::{BuiltinFn, ExprId};
+use cas_ast::{BuiltinFn, Context, ExprId};
+use cas_math::poly_lowering;
+use cas_math::poly_store::clear_thread_local_store;
+use cas_math::rationalize_policy::AutoRationalizeLevel;
 use std::collections::HashSet;
+
+fn to_math_auto_expand_budget(
+    budget: &crate::phase::ExpandBudget,
+) -> cas_math::auto_expand_scan::ExpandBudget {
+    cas_math::auto_expand_scan::ExpandBudget {
+        max_pow_exp: budget.max_pow_exp,
+        max_base_terms: budget.max_base_terms,
+        max_generated_terms: budget.max_generated_terms,
+        max_vars: budget.max_vars,
+    }
+}
+
+fn poly_lower_step_message(kind: cas_math::poly_lowering::PolyLowerStepKind) -> &'static str {
+    match kind {
+        cas_math::poly_lowering::PolyLowerStepKind::Direct { op } => match op {
+            cas_math::poly_lowering_ops::PolyBinaryOp::Add => {
+                "Poly lowering: combined poly_result + poly_result"
+            }
+            cas_math::poly_lowering_ops::PolyBinaryOp::Sub => {
+                "Poly lowering: combined poly_result - poly_result"
+            }
+            cas_math::poly_lowering_ops::PolyBinaryOp::Mul => {
+                "Poly lowering: combined poly_result * poly_result"
+            }
+        },
+        cas_math::poly_lowering::PolyLowerStepKind::Promoted => {
+            "Poly lowering: promoted and combined expressions"
+        }
+    }
+}
+
+fn run_poly_lower_pass(
+    ctx: &mut Context,
+    expr: ExprId,
+    collect_steps: bool,
+) -> (ExprId, Vec<Step>) {
+    let out =
+        poly_lowering::poly_lower_pass_with_items(ctx, expr, collect_steps, |core_ctx, step| {
+            Step::new(
+                poly_lower_step_message(step.kind),
+                "Polynomial Combination",
+                step.before,
+                step.after,
+                Vec::new(),
+                Some(core_ctx),
+            )
+        });
+    (out.expr, out.items)
+}
+
+fn run_poly_gcd_modp_eager_pass(
+    ctx: &mut Context,
+    expr: ExprId,
+    collect_steps: bool,
+) -> (ExprId, Vec<Step>) {
+    cas_math::poly_modp_calls::eager_eval_poly_gcd_calls_with(
+        ctx,
+        expr,
+        collect_steps,
+        |core_ctx, before, after| {
+            Step::new(
+                "Eager eval poly_gcd_modp (bypass simplifier)",
+                "Polynomial GCD mod p",
+                before,
+                after,
+                Vec::new(),
+                Some(core_ctx),
+            )
+        },
+    )
+}
 
 pub struct Orchestrator {
     // Configuration for the pipeline
@@ -87,10 +158,11 @@ impl Orchestrator {
             // Always scan for cancellation contexts (unless in Solve mode)
             // This enables Smart Expansion: auto-expand only when it leads to cancellation
             if !is_solve_mode {
-                crate::auto_expand_scan::mark_auto_expand_candidates(
+                let math_budget = to_math_auto_expand_budget(&self.options.shared.expand_budget);
+                cas_math::auto_expand_scan::mark_auto_expand_candidates(
                     &simplifier.context,
                     current,
-                    &self.options.shared.expand_budget,
+                    &math_budget,
                     &mut self.pattern_marks,
                 );
             }
@@ -155,25 +227,19 @@ impl Orchestrator {
             }
 
             // Cycle detection: HashSet catches cycles of any period
-            let hash = CycleDetector::semantic_hash(&simplifier.context, current);
+            let hash = cas_math::expr_semantic_hash::semantic_hash(&simplifier.context, current);
             if !seen_hashes.insert(hash) {
                 // Emit cycle event for the registry
-                let expr_str = format!(
-                    "{}",
-                    cas_ast::DisplayExpr {
-                        context: &simplifier.context,
-                        id: current,
-                    }
-                );
-                crate::cycle_events::register_cycle_event(crate::cycle_events::CycleEvent {
+                cas_solver_core::cycle_event_registry::register_cycle_event_for_expr(
+                    &simplifier.context,
+                    current,
                     phase,
-                    period: 0, // unknown period at inter-iteration level
-                    level: crate::cycle_events::CycleLevel::InterIteration,
-                    rule_name: "(inter-iteration)".to_string(),
-                    expr_fingerprint: hash,
-                    expr_display: crate::cycle_events::truncate_display(&expr_str, 120),
-                    rewrite_step: iter,
-                });
+                    0, // unknown period at inter-iteration level
+                    cas_solver_core::cycle_models::CycleLevel::InterIteration,
+                    "(inter-iteration)",
+                    hash,
+                    iter,
+                );
                 stats.iters_used = iter + 1;
                 tracing::warn!(
                     target: "simplify",
@@ -229,7 +295,7 @@ impl Orchestrator {
         clear_thread_local_store();
 
         // Clear cycle events from any previous pipeline run
-        crate::cycle_events::clear_cycle_events();
+        cas_solver_core::cycle_event_registry::clear_cycle_events();
 
         // Extract collect_steps early so pre-passes can skip Step construction
         let collect_steps = self.options.collect_steps;
@@ -242,19 +308,17 @@ impl Orchestrator {
 
         // PRE-PASS 2: Eager eval for special functions (poly_gcd_modp)
         let (current, eager_steps) =
-            eager_eval_poly_gcd_calls(&mut simplifier.context, current, collect_steps);
+            run_poly_gcd_modp_eager_pass(&mut simplifier.context, current, collect_steps);
         all_steps.extend(eager_steps);
 
         // PRE-PASS 3: Poly lowering - combine poly_result operations before simplification
         // This handles poly_result(0) + poly_result(1) → poly_result(2) internally
-        let lower_result =
-            crate::poly_lowering::poly_lower_pass(&mut simplifier.context, current, collect_steps);
-        let current = lower_result.expr;
-        all_steps.extend(lower_result.steps);
+        let (current, lower_steps) =
+            run_poly_lower_pass(&mut simplifier.context, current, collect_steps);
+        all_steps.extend(lower_steps);
 
         // Check for specialized strategies first
-        if let Some(result) =
-            crate::telescoping::try_dirichlet_kernel_identity_pub(&simplifier.context, current)
+        if let Some(result) = crate::try_dirichlet_kernel_identity_pub(&simplifier.context, current)
         {
             let zero = simplifier.context.num(0);
             if self.options.collect_steps {
@@ -326,14 +390,15 @@ impl Orchestrator {
             pipeline_stats.rationalize_level = Some(auto_level);
             if stats.changed {
                 pipeline_stats.rationalize_outcome =
-                    Some(crate::rationalize_policy::RationalizeOutcome::Applied);
+                    Some(cas_math::rationalize_policy::RationalizeOutcome::Applied);
             } else {
                 // If enabled but didn't change, it was blocked for some reason
                 // We don't have detailed reason here; would need deeper integration
-                pipeline_stats.rationalize_outcome =
-                    Some(crate::rationalize_policy::RationalizeOutcome::NotApplied(
-                        crate::rationalize_policy::RationalizeReason::NoBinomialFound,
-                    ));
+                pipeline_stats.rationalize_outcome = Some(
+                    cas_math::rationalize_policy::RationalizeOutcome::NotApplied(
+                        cas_math::rationalize_policy::RationalizeReason::NoBinomialFound,
+                    ),
+                );
             }
 
             current = next;
@@ -343,10 +408,11 @@ impl Orchestrator {
             best.consider(current, &all_steps, &simplifier.context);
         } else {
             pipeline_stats.rationalize_level = Some(AutoRationalizeLevel::Off);
-            pipeline_stats.rationalize_outcome =
-                Some(crate::rationalize_policy::RationalizeOutcome::NotApplied(
-                    crate::rationalize_policy::RationalizeReason::PolicyDisabled,
-                ));
+            pipeline_stats.rationalize_outcome = Some(
+                cas_math::rationalize_policy::RationalizeOutcome::NotApplied(
+                    cas_math::rationalize_policy::RationalizeReason::PolicyDisabled,
+                ),
+            );
         }
 
         // Phase 4: PostCleanup - Final cleanup
@@ -404,20 +470,27 @@ impl Orchestrator {
 
         // Filter and optimize steps
         let filtered_steps = if collect_steps {
-            crate::strategies::filter_non_productive_steps(&mut simplifier.context, expr, all_steps)
+            cas_solver_core::step_productivity_runtime::filter_non_productive_solver_steps_with_runtime_recompose_mul(
+                &mut simplifier.context,
+                expr,
+                all_steps,
+                crate::build::mul2_raw,
+            )
         } else {
             all_steps
         };
 
         let optimized_steps = if collect_steps {
-            match crate::step_optimization::optimize_steps_semantic(
+            match cas_solver_core::step_optimization_runtime::optimize_steps_semantic(
                 filtered_steps,
                 &simplifier.context,
                 expr,
                 current,
             ) {
-                crate::step_optimization::StepOptimizationResult::Steps(steps) => steps,
-                crate::step_optimization::StepOptimizationResult::NoSimplificationNeeded => vec![],
+                cas_solver_core::step_optimization_runtime::StepOptimizationResult::Steps(steps) => {
+                    steps
+                }
+                cas_solver_core::step_optimization_runtime::StepOptimizationResult::NoSimplificationNeeded => vec![],
             }
         } else {
             filtered_steps
@@ -425,20 +498,16 @@ impl Orchestrator {
 
         // Collect assumptions from steps if reporting is enabled
         // Priority: 1) structured assumption_events, 2) legacy domain_assumption string parsing
-        if self.options.shared.assumption_reporting != crate::assumptions::AssumptionReporting::Off
-        {
-            let mut collector = crate::assumptions::AssumptionCollector::new();
-            for step in &optimized_steps {
-                // Collect structured assumption_events
-                for event in step.assumption_events() {
-                    collector.note(event.clone());
-                }
-            }
-            pipeline_stats.assumptions = collector.finish();
+        if self.options.shared.assumption_reporting != crate::AssumptionReporting::Off {
+            pipeline_stats.assumptions = crate::collect_assumption_records_from_iter(
+                optimized_steps
+                    .iter()
+                    .flat_map(|step| step.assumption_events().iter().cloned()),
+            );
         }
 
         // Collect cycle events detected during this pipeline run
-        pipeline_stats.cycle_events = crate::cycle_events::take_cycle_events();
+        pipeline_stats.cycle_events = cas_solver_core::cycle_event_registry::take_cycle_events();
 
         // V2.15.8: Clear sticky domain when pipeline completes
         simplifier.clear_sticky_implicit_domain();
@@ -482,134 +551,5 @@ impl Orchestrator {
         } else {
             (current, optimized_steps, pipeline_stats)
         }
-    }
-}
-
-/// Helper struct for computing semantic hashes for cycle detection.
-/// The actual cycle tracking is done by a `HashSet<u64>` in `run_phase`.
-struct CycleDetector;
-
-impl CycleDetector {
-    /// Compute a hash based on the semantic structure of the expression
-    /// This allows us to detect when expressions are equivalent even with different ExprIds
-    /// Uses iterative traversal with depth limit to prevent stack overflow.
-    fn semantic_hash(ctx: &cas_ast::Context, expr: ExprId) -> u64 {
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
-
-        const MAX_HASH_DEPTH: usize = 200;
-
-        // Use a work stack: (expr_id, pending_hash) to process nodes iteratively
-        // For simplicity, we'll use a depth-limited recursive approach with explicit limit
-        fn hash_expr_depth(
-            ctx: &cas_ast::Context,
-            expr: ExprId,
-            depth: usize,
-            hasher: &mut DefaultHasher,
-        ) {
-            if depth == 0 {
-                // Depth limit exceeded - hash the ExprId directly as fallback
-                format!("{:?}", expr).hash(hasher);
-                return;
-            }
-
-            match ctx.get(expr) {
-                cas_ast::Expr::Number(n) => {
-                    0u8.hash(hasher);
-                    n.to_string().hash(hasher);
-                }
-                cas_ast::Expr::Constant(c) => {
-                    1u8.hash(hasher);
-                    format!("{:?}", c).hash(hasher);
-                }
-                cas_ast::Expr::Variable(v) => {
-                    2u8.hash(hasher);
-                    v.hash(hasher);
-                }
-                cas_ast::Expr::Add(l, r) => {
-                    3u8.hash(hasher);
-                    // Compute child hashes for commutative sorting
-                    let mut h1 = DefaultHasher::new();
-                    let mut h2 = DefaultHasher::new();
-                    hash_expr_depth(ctx, *l, depth - 1, &mut h1);
-                    hash_expr_depth(ctx, *r, depth - 1, &mut h2);
-                    let hash_l = h1.finish();
-                    let hash_r = h2.finish();
-                    if hash_l <= hash_r {
-                        hash_l.hash(hasher);
-                        hash_r.hash(hasher);
-                    } else {
-                        hash_r.hash(hasher);
-                        hash_l.hash(hasher);
-                    }
-                }
-                cas_ast::Expr::Sub(l, r) => {
-                    4u8.hash(hasher);
-                    hash_expr_depth(ctx, *l, depth - 1, hasher);
-                    hash_expr_depth(ctx, *r, depth - 1, hasher);
-                }
-                cas_ast::Expr::Mul(l, r) => {
-                    5u8.hash(hasher);
-                    // Compute child hashes for commutative sorting
-                    let mut h1 = DefaultHasher::new();
-                    let mut h2 = DefaultHasher::new();
-                    hash_expr_depth(ctx, *l, depth - 1, &mut h1);
-                    hash_expr_depth(ctx, *r, depth - 1, &mut h2);
-                    let hash_l = h1.finish();
-                    let hash_r = h2.finish();
-                    if hash_l <= hash_r {
-                        hash_l.hash(hasher);
-                        hash_r.hash(hasher);
-                    } else {
-                        hash_r.hash(hasher);
-                        hash_l.hash(hasher);
-                    }
-                }
-                cas_ast::Expr::Div(l, r) => {
-                    6u8.hash(hasher);
-                    hash_expr_depth(ctx, *l, depth - 1, hasher);
-                    hash_expr_depth(ctx, *r, depth - 1, hasher);
-                }
-                cas_ast::Expr::Pow(b, e) => {
-                    7u8.hash(hasher);
-                    hash_expr_depth(ctx, *b, depth - 1, hasher);
-                    hash_expr_depth(ctx, *e, depth - 1, hasher);
-                }
-                cas_ast::Expr::Neg(e) => {
-                    8u8.hash(hasher);
-                    hash_expr_depth(ctx, *e, depth - 1, hasher);
-                }
-                cas_ast::Expr::Function(name, args) => {
-                    9u8.hash(hasher);
-                    name.hash(hasher);
-                    args.len().hash(hasher);
-                    for arg in args {
-                        hash_expr_depth(ctx, *arg, depth - 1, hasher);
-                    }
-                }
-                cas_ast::Expr::Matrix { rows, cols, data } => {
-                    10u8.hash(hasher);
-                    rows.hash(hasher);
-                    cols.hash(hasher);
-                    data.len().hash(hasher);
-                    for elem in data {
-                        hash_expr_depth(ctx, *elem, depth - 1, hasher);
-                    }
-                }
-                cas_ast::Expr::SessionRef(id) => {
-                    11u8.hash(hasher);
-                    id.hash(hasher);
-                }
-                // Hold is transparent for hashing - hash inner like Neg
-                cas_ast::Expr::Hold(e) => {
-                    12u8.hash(hasher);
-                    hash_expr_depth(ctx, *e, depth - 1, hasher);
-                }
-            }
-        }
-
-        let mut hasher = DefaultHasher::new();
-        hash_expr_depth(ctx, expr, MAX_HASH_DEPTH, &mut hasher);
-        hasher.finish()
     }
 }

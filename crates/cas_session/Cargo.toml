@@ -1,0 +1,32 @@
+[package]
+name = "cas_session"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[features]
+default = []
+parallel = ["cas_solver/parallel"]
+
+[dependencies]
+cas_ast = { path = "../cas_ast" }
+cas_api_models = { path = "../cas_api_models" }
+cas_session_core = { path = "../cas_session_core" }
+cas_engine = { path = "../cas_engine" }
+cas_solver = { path = "../cas_solver", default-features = false }
+cas_solver_core = { path = "../cas_solver_core" }
+cas_formatter = { path = "../cas_formatter" }
+cas_parser = { path = "../cas_parser" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.9.8"
+bincode = "1"
+num-bigint = "0.4"
+num-rational = "0.4"
+anyhow = "1.0.100"
+
+[dev-dependencies]
+cas_parser = { path = "../cas_parser" }
+tempfile = "3"

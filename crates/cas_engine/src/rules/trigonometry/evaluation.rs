@@ -5,143 +5,29 @@
 
 use crate::define_rule;
 use crate::rule::Rewrite;
-use cas_ast::{Expr, ExprId};
-
-use super::values::{
-    detect_inverse_trig_input, detect_special_angle, lookup_inverse_trig_value, lookup_trig_value,
+use cas_math::trig_eval_table_support::{
+    try_rewrite_trig_eval_table_expr, TrigEvalRewriteKind, TrigNegativeParityKind,
 };
+
+fn format_trig_negative_parity_desc(kind: TrigNegativeParityKind) -> &'static str {
+    match kind {
+        TrigNegativeParityKind::Sin => "sin(-x) = -sin(x)",
+        TrigNegativeParityKind::Cos => "cos(-x) = cos(x)",
+        TrigNegativeParityKind::Tan => "tan(-x) = -tan(x)",
+    }
+}
 
 define_rule!(
     EvaluateTrigTableRule,
     "Evaluate Trigonometric Functions (Table)",
     |ctx, expr| {
-        let (fn_id, args) = if let Expr::Function(fn_id, args) = ctx.get(expr) {
-            (*fn_id, args.clone())
-        } else {
-            return None;
-        };
-        {
-            let builtin = ctx.builtin_of(fn_id);
-            // Only process known trig/inverse trig functions
-            let name = match builtin {
-                Some(b) => b.name().to_string(),
-                None => return None,
-            };
-            if args.len() == 1 {
-                let arg = args[0];
-
-                // Check if argument is a special angle (for sin, cos, tan)
-                if let Some(angle) = detect_special_angle(ctx, arg) {
-                    // Look up the value in our static table
-                    if let Some(trig_value) = lookup_trig_value(&name, angle) {
-                        let new_expr = trig_value.to_expr(ctx);
-                        return Some(Rewrite::new(new_expr).desc_lazy(|| {
-                            format!("{}({}) = {}", name, angle.display(), trig_value.display())
-                        }));
-                    }
-                }
-
-                // Check for inverse trig functions at special inputs (0, 1, 1/2)
-                if let Some(input) = detect_inverse_trig_input(ctx, arg) {
-                    if let Some(trig_value) = lookup_inverse_trig_value(&name, input) {
-                        let new_expr = trig_value.to_expr(ctx);
-                        return Some(Rewrite::new(new_expr).desc_lazy(|| {
-                            format!("{}({}) = {}", name, input.display(), trig_value.display())
-                        }));
-                    }
-                }
-
-                // Handle negative arguments: sin(-x) = -sin(x), cos(-x) = cos(x), tan(-x) = -tan(x)
-                let inner_opt = extract_negated_inner(ctx, arg);
-                if let Some(inner) = inner_opt {
-                    match name.as_str() {
-                        "sin" => {
-                            let sin_inner = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![inner]);
-                            let new_expr = ctx.add(Expr::Neg(sin_inner));
-                            return Some(Rewrite::new(new_expr).desc("sin(-x) = -sin(x)"));
-                        }
-                        "cos" => {
-                            let new_expr = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![inner]);
-                            return Some(Rewrite::new(new_expr).desc("cos(-x) = cos(x)"));
-                        }
-                        "tan" => {
-                            let tan_inner = ctx.call_builtin(cas_ast::BuiltinFn::Tan, vec![inner]);
-                            let new_expr = ctx.add(Expr::Neg(tan_inner));
-                            return Some(Rewrite::new(new_expr).desc("tan(-x) = -tan(x)"));
-                        }
-                        _ => {}
-                    }
-                }
+        let rewrite = try_rewrite_trig_eval_table_expr(ctx, expr)?;
+        let desc = match rewrite.kind {
+            TrigEvalRewriteKind::Table(desc) => desc,
+            TrigEvalRewriteKind::NegativeParity(kind) => {
+                format_trig_negative_parity_desc(kind).to_string()
             }
-        }
-        None
+        };
+        Some(Rewrite::new(rewrite.rewritten).desc(desc))
     }
 );
-
-/// Extract the inner expression from Neg(x) or Mul(-1, x)
-fn extract_negated_inner(ctx: &cas_ast::Context, arg: ExprId) -> Option<ExprId> {
-    match ctx.get(arg) {
-        Expr::Neg(inner) => Some(*inner),
-        Expr::Mul(l, r) => {
-            if let Expr::Number(n) = ctx.get(*l) {
-                if *n == num_rational::BigRational::from_integer((-1).into()) {
-                    return Some(*r);
-                }
-            }
-            if let Expr::Number(n) = ctx.get(*r) {
-                if *n == num_rational::BigRational::from_integer((-1).into()) {
-                    return Some(*l);
-                }
-            }
-            None
-        }
-        _ => None,
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::parent_context::ParentContext;
-    use crate::rule::Rule;
-    use cas_ast::Context;
-    use num_traits::Zero;
-
-    #[test]
-    fn test_sin_zero() {
-        let mut ctx = Context::new();
-        let zero = ctx.num(0);
-        let sin_zero = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![zero]);
-
-        let rule = EvaluateTrigTableRule;
-        let parent_ctx = ParentContext::root();
-        let result = rule.apply(&mut ctx, sin_zero, &parent_ctx);
-
-        assert!(result.is_some());
-        let rewrite = result.unwrap();
-        if let Expr::Number(n) = ctx.get(rewrite.new_expr) {
-            assert!(n.is_zero());
-        } else {
-            panic!("Expected Number(0)");
-        }
-    }
-
-    #[test]
-    fn test_cos_pi() {
-        let mut ctx = Context::new();
-        let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
-        let cos_pi = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![pi]);
-
-        let rule = EvaluateTrigTableRule;
-        let parent_ctx = ParentContext::root();
-        let result = rule.apply(&mut ctx, cos_pi, &parent_ctx);
-
-        assert!(result.is_some());
-        let rewrite = result.unwrap();
-        if let Expr::Number(n) = ctx.get(rewrite.new_expr) {
-            assert_eq!(*n, num_rational::BigRational::from_integer((-1).into()));
-        } else {
-            panic!("Expected Number(-1)");
-        }
-    }
-}

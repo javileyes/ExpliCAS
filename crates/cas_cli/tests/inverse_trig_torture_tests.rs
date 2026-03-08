@@ -2,11 +2,10 @@
 //!
 //! Tests for complex inverse trig identities and compositions.
 
-use cas_ast::{Context, DisplayExpr, ExprId};
-use cas_engine::engine::eval_f64;
-use cas_engine::helpers::is_zero;
-use cas_engine::Simplifier;
+use cas_ast::{Context, ExprId};
+use cas_formatter::DisplayExpr;
 use cas_parser::parse;
+use cas_solver::{eval_f64, is_zero, EvalConfig, SharedSemanticConfig, Simplifier};
 use std::collections::HashMap;
 
 // =============================================================================
@@ -29,10 +28,10 @@ fn simplify_str(input: &str) -> String {
 fn simplify_str_assume(input: &str) -> String {
     let mut simplifier = Simplifier::with_default_rules();
     let expr = parse(input, &mut simplifier.context).unwrap();
-    let opts = cas_engine::SimplifyOptions {
-        shared: cas_engine::phase::SharedSemanticConfig {
-            semantics: cas_engine::semantics::EvalConfig {
-                domain_mode: cas_engine::DomainMode::Assume,
+    let opts = cas_solver::SimplifyOptions {
+        shared: SharedSemanticConfig {
+            semantics: EvalConfig {
+                domain_mode: cas_solver::DomainMode::Assume,
                 ..Default::default()
             },
             ..Default::default()

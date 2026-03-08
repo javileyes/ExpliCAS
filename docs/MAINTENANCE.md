@@ -526,7 +526,7 @@ and `engine/simplifier.rs` `register_default_rules()` for the order contract.
 
 For **relational transforms** (cancellation LHS↔RHS, moving terms between sides,
 normalizing equations), prefer utilities in the solver pre-solve pipeline
-(`solver/solve_core.rs`) rather than single-expression simplifier rules.
+(`solve_core_runtime.rs`) rather than single-expression simplifier rules.
 Validate equation-level changes with **S2 metamorphic equation tests**
 (`metatest_equation_identity_transforms`).
 
@@ -542,7 +542,8 @@ Validate equation-level changes with **S2 metamorphic equation tests**
         }
     }
     ```
-3.  **Register the Strategy**: Add it to the `strategies` vector in `crates/cas_engine/src/solver/mod.rs`.
+3.  **Register the Strategy**: Add it to the canonical strategy order in
+    `crates/cas_solver_core/src/strategy_order.rs` (consumed by `solve_core_runtime.rs`).
 
 ## 4. Testing Strategy
 
@@ -1187,23 +1188,21 @@ composable, reentrancy-safe, and testable.
 | Assumption collection | TLS `SOLVE_ASSUMPTIONS` (legacy, display) | pedagogical output |
 | Display scopes | TLS `OUTPUT_SCOPES` (legacy, display) | strategy scope tags |
 
-### Allowlisted TLS (4 cells)
+### Allowlisted TLS (solver runtime)
 
-These are retained for diagnostic/UI purposes only:
+No solver-runtime `thread_local!` cells remain.
+All solve state now flows through `SolveCtx`.
 
 | Cell | Location | Purpose |
 |------|----------|---------|
-| `SOLVE_DEPTH` | `solver/mod.rs` | Recursion depth guard (prevents stack overflow) |
-| `SOLVE_SEEN` | `solver/solve_core.rs` | Cycle fingerprinting (prevents infinite loops) |
-| `SOLVE_ASSUMPTIONS` | `solver/mod.rs` | Per-solve assumption collector (display) |
-| `OUTPUT_SCOPES` | `solver/mod.rs` | Display scope tags emitted by strategies |
+| *(none)* | *(n/a)* | *(n/a)* |
 
 ### CI Enforcement
 
 The lint script `scripts/lint_no_solver_tls.sh` runs automatically during `make ci`:
 
 ```bash
-# Runs grep for thread_local! in solver/, checks against allowlist
+# Runs grep for thread_local! in solve runtime modules, checks against allowlist
 ./scripts/lint_no_solver_tls.sh
 
 # Expected output:
@@ -1305,4 +1304,3 @@ cargo test --package cas_engine --test rationalization_stability_tests -- --noca
 # Check expand/contract mode behavior
 cargo test --package cas_engine --test expand_contract_tests -- --nocapture
 ```
-

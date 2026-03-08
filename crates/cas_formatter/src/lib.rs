@@ -1,0 +1,72 @@
+//! Formatting facade for AST rendering concerns.
+//!
+//! This crate centralizes display/LaTeX APIs so callers can avoid importing
+//! presentation modules directly from `cas_ast`.
+
+pub use cas_ast::{eq, expr_path, hold, ordering, views};
+pub use cas_ast::{Constant, Context, Expr, ExprId};
+
+pub mod conditions;
+pub mod display;
+pub mod display_clean;
+pub mod display_context;
+pub mod display_hint_builder;
+pub mod display_transforms;
+pub mod escape;
+pub mod latex;
+pub mod latex_clean;
+pub mod latex_core;
+pub mod latex_highlight;
+pub mod latex_no_roots;
+pub mod path;
+pub mod root_style;
+pub mod rule_scope;
+pub mod visualizer;
+
+pub use conditions::{
+    condition_predicate_to_display, condition_predicate_to_latex, condition_set_to_display,
+    condition_set_to_latex,
+};
+pub use display::{DisplayExpr, DisplayExprStyled, DisplayExprWithHints, RawDisplayExpr};
+pub use display_clean::{clean_display_string, clean_sign_patterns};
+pub use display_context::{DisplayContext, DisplayHint};
+pub use display_hint_builder::{
+    build_display_context, build_display_context_with_result, DisplayStepLike,
+};
+pub use display_transforms::{
+    DisplayTransform, DisplayTransformRegistry, ScopeTag, ScopedRenderer,
+};
+pub use escape::{html_escape, latex_escape};
+pub use latex::{LaTeXExpr, LaTeXExprWithHints};
+pub use latex_clean::clean_latex_identities;
+pub use latex_core::PathHighlightedLatexRenderer;
+pub use latex_highlight::{
+    HighlightColor, HighlightConfig, LaTeXExprHighlighted, LaTeXExprHighlightedWithHints,
+    PathHighlightConfig,
+};
+pub use latex_no_roots::LatexNoRoots;
+pub use path::{
+    diff_find_all_paths_to_expr, diff_find_path_to_expr, diff_find_paths_by_structure,
+    extract_add_terms, find_path_to_expr, navigate_to_subexpr,
+};
+pub use root_style::{detect_root_style, ParseStyleSignals, RootStyle, StylePreferences};
+pub use rule_scope::render_with_rule_scope;
+pub use visualizer::AstVisualizer;
+
+/// Render one expression id to display text.
+pub fn render_expr(context: &Context, id: ExprId) -> String {
+    format!("{}", DisplayExpr { context, id })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::render_expr;
+    use cas_ast::Context;
+
+    #[test]
+    fn render_expr_renders_basic_expression() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        assert_eq!(render_expr(&ctx, x), "x");
+    }
+}

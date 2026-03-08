@@ -28,13 +28,15 @@ count_pattern() {
     fi
     # Use rg if available, otherwise grep -F (fixed-string)
     if command -v rg >/dev/null 2>&1; then
-        rg -c "$rg_pattern" "$ROOT_DIR/$dir" \
-            --glob '*.rs' \
-            --glob '!**/tests/**' \
-            --glob '!**/test/**' \
-            --glob '!**/*test*.rs' \
-            --glob '!**/*tests*.rs' \
-            2>/dev/null | awk -F: '{s+=$2} END {print s+0}'
+        {
+            rg -c "$rg_pattern" "$ROOT_DIR/$dir" \
+                --glob '*.rs' \
+                --glob '!**/tests/**' \
+                --glob '!**/test/**' \
+                --glob '!**/*test*.rs' \
+                --glob '!**/*tests*.rs' \
+                2>/dev/null || true
+        } | awk -F: '{s+=$2} END {print s+0}'
     else
         find "$ROOT_DIR/$dir" -name '*.rs' \
             ! -path '*/tests/*' \

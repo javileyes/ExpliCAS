@@ -6,6 +6,7 @@
 
 use super::*;
 use crate::canonical_forms::normalize_core_with_cache;
+use cas_solver_core::solve_safety_policy::{safe_for_prepass, safe_for_tactic_with_domain_flags};
 
 impl<'a> LocalSimplificationTransformer<'a> {
     /// Build the ParentContext for the current node position.
@@ -69,15 +70,19 @@ impl<'a> LocalSimplificationTransformer<'a> {
         }
         if check_solve_safety {
             match self.simplify_purpose {
-                crate::solve_safety::SimplifyPurpose::Eval => {}
-                crate::solve_safety::SimplifyPurpose::SolvePrepass => {
-                    if !rule.solve_safety().safe_for_prepass() {
+                crate::SimplifyPurpose::Eval => {}
+                crate::SimplifyPurpose::SolvePrepass => {
+                    if !safe_for_prepass(rule.solve_safety()) {
                         return true;
                     }
                 }
-                crate::solve_safety::SimplifyPurpose::SolveTactic => {
+                crate::SimplifyPurpose::SolveTactic => {
                     let domain_mode = self.initial_parent_ctx.domain_mode();
-                    if !rule.solve_safety().safe_for_tactic(domain_mode) {
+                    if !safe_for_tactic_with_domain_flags(
+                        rule.solve_safety(),
+                        matches!(domain_mode, crate::DomainMode::Assume),
+                        matches!(domain_mode, crate::DomainMode::Strict),
+                    ) {
                         return true;
                     }
                 }
@@ -109,11 +114,11 @@ impl<'a> LocalSimplificationTransformer<'a> {
                         // Check semantic equality - skip if no real change
                         // EXCEPTION: Didactic rules should always generate steps
                         // even if result is semantically equivalent (e.g., sqrt(12) → 2*√3)
-                        let is_didactic_rule = rule.name() == "Evaluate Numeric Power"
-                            || rule.name() == "Sum Exponents";
+                        let is_didactic_rule =
+                            cas_math::step_rules::is_always_keep_step_rule_name(rule.name());
 
                         if !is_didactic_rule {
-                            use crate::semantic_equality::SemanticEqualityChecker;
+                            use cas_math::semantic_equality::SemanticEqualityChecker;
                             let checker = SemanticEqualityChecker::new(self.context);
                             if checker.are_equal(expr_id, rewrite.new_expr) {
                                 debug!(
@@ -137,7 +142,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                         if !parent_ctx.is_expand_mode()
                             && !parent_ctx.in_auto_expand_context()
                             && !rewrite.budget_exempt
-                            && crate::helpers::rewrite_worsens_too_much(
+                            && cas_math::expr_complexity::rewrite_worsens_too_much(
                                 self.context,
                                 expr_id,
                                 rewrite.new_expr,
@@ -166,9 +171,12 @@ impl<'a> LocalSimplificationTransformer<'a> {
 
                         // Record rule application with delta_nodes for health metrics
                         let delta = if self.profiler.is_health_enabled() {
-                            let before = crate::helpers::count_all_nodes(self.context, expr_id);
-                            let after =
-                                crate::helpers::count_all_nodes(self.context, rewrite.new_expr);
+                            let before =
+                                cas_math::expr_nf_scoring::count_all_nodes(self.context, expr_id);
+                            let after = cas_math::expr_nf_scoring::count_all_nodes(
+                                self.context,
+                                rewrite.new_expr,
+                            );
                             after as i64 - before as i64
                         } else {
                             0
@@ -184,10 +192,14 @@ impl<'a> LocalSimplificationTransformer<'a> {
                                 .append(true)
                                 .open("/tmp/rule_trace.log")
                             {
-                                let node_count_before =
-                                    crate::helpers::node_count_tree(self.context, expr_id);
-                                let node_count_after =
-                                    crate::helpers::node_count_tree(self.context, rewrite.new_expr);
+                                let node_count_before = cas_math::expr_complexity::node_count_tree(
+                                    self.context,
+                                    expr_id,
+                                );
+                                let node_count_after = cas_math::expr_complexity::node_count_tree(
+                                    self.context,
+                                    rewrite.new_expr,
+                                );
                                 let _ = writeln!(
                                     f,
                                     "APPLIED depth={} rule={} nodes={}->{}",
@@ -229,15 +241,16 @@ impl<'a> LocalSimplificationTransformer<'a> {
                         // V2.14.30: Always-On Cycle Detection with blocklist
                         // Reset detector if phase changed since last initialization
                         if self.cycle_phase != Some(self.current_phase) {
-                            self.cycle_detector = Some(crate::cycle_detector::CycleDetector::new(
-                                self.current_phase,
-                            ));
+                            self.cycle_detector =
+                                Some(cas_solver_core::cycle_detection::CycleDetector::new(
+                                    self.current_phase,
+                                ));
                             self.cycle_phase = Some(self.current_phase);
                             self.fp_memo.clear();
                             // Note: blocked_rules persists across phases (conservative)
                         }
 
-                        let h = crate::cycle_detector::expr_fingerprint(
+                        let h = cas_solver_core::cycle_detection::expr_fingerprint(
                             self.context,
                             expr_id,
                             &mut self.fp_memo,
@@ -245,25 +258,15 @@ impl<'a> LocalSimplificationTransformer<'a> {
                         if let Some(detector) = self.cycle_detector.as_mut() {
                             if let Some(info) = detector.observe(h) {
                                 // Emit cycle event for the registry
-                                let expr_str = format!(
-                                    "{}",
-                                    cas_ast::DisplayExpr {
-                                        context: self.context,
-                                        id: expr_id,
-                                    }
-                                );
-                                crate::cycle_events::register_cycle_event(
-                                    crate::cycle_events::CycleEvent {
-                                        phase: self.current_phase,
-                                        period: info.period,
-                                        level: crate::cycle_events::CycleLevel::IntraNode,
-                                        rule_name: rule.name().to_string(),
-                                        expr_fingerprint: h,
-                                        expr_display: crate::cycle_events::truncate_display(
-                                            &expr_str, 120,
-                                        ),
-                                        rewrite_step: info.at_step,
-                                    },
+                                cas_solver_core::cycle_event_registry::register_cycle_event_for_expr(
+                                    self.context,
+                                    expr_id,
+                                    self.current_phase,
+                                    info.period,
+                                    cas_solver_core::cycle_models::CycleLevel::IntraNode,
+                                    rule.name(),
+                                    h,
+                                    info.at_step,
                                 );
                                 // Add to blocklist to prevent re-entry
                                 let rule_name_static = rule.name();
@@ -275,8 +278,8 @@ impl<'a> LocalSimplificationTransformer<'a> {
                                         cas_ast::Expr::Number(_) | cas_ast::Expr::Constant(_)
                                     );
                                     if !is_constant {
-                                        crate::domain::register_blocked_hint(crate::domain::BlockedHint {
-                                        key: crate::assumptions::AssumptionKey::Defined {
+                                        crate::register_blocked_hint(crate::BlockedHint {
+                                        key: crate::AssumptionKey::Defined {
                                             expr_fingerprint: h,
                                         },
                                         expr_id,
@@ -318,14 +321,14 @@ impl<'a> LocalSimplificationTransformer<'a> {
                     // Semantic equality check to prevent infinite loops
                     // Skip rewrites that produce semantically equivalent results without improvement
                     let is_didactic_rule =
-                        rule.name() == "Evaluate Numeric Power" || rule.name() == "Sum Exponents";
+                        cas_math::step_rules::is_always_keep_step_rule_name(rule.name());
 
                     if !is_didactic_rule {
-                        use crate::semantic_equality::SemanticEqualityChecker;
+                        use cas_math::semantic_equality::SemanticEqualityChecker;
                         let checker = SemanticEqualityChecker::new(self.context);
                         if checker.are_equal(expr_id, rewrite.new_expr) {
                             // Provably equal - only accept if it improves normal form
-                            if !crate::helpers::nf_score_after_is_better(
+                            if !cas_math::expr_nf_scoring::nf_score_after_is_better(
                                 self.context,
                                 expr_id,
                                 rewrite.new_expr,

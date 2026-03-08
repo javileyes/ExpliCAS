@@ -1,6 +1,6 @@
 use cas_ast::{Context, Expr};
-use cas_engine::Simplifier;
 use cas_parser::parse;
+use cas_solver::Simplifier;
 
 #[test]
 fn debug_pi_forms() {

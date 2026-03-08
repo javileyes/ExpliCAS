@@ -2,10 +2,6 @@
 //!
 //! This module re-exports all identity rules from specialized submodules.
 
-// --- Table-driven trig evaluation (Phases 1-6) ---
-pub mod trig_table;
-pub use trig_table::{AngleSpec, ValueSpec};
-
 // --- Core evaluation and fundamental identities ---
 mod core_rules;
 pub use core_rules::{
@@ -14,7 +10,6 @@ pub use core_rules::{
 };
 
 mod values_rules;
-pub use values_rules::{has_large_coefficient, is_multiple_angle};
 pub use values_rules::{
     CscCotPythagoreanRule, SecTanPythagoreanRule, TanToSinCosRule, TanTripleProductRule,
     TrigQuotientRule,
@@ -23,6 +18,8 @@ pub use values_rules::{
 // --- Angle expansion and contraction ---
 mod expansion_rules;
 pub use expansion_rules::{DoubleAngleRule, TrigSumToProductRule};
+#[cfg(test)]
+mod expansion_rules_tests;
 
 mod contraction_rules;
 pub use contraction_rules::{
@@ -45,15 +42,11 @@ pub use sum_to_product_rules::{register, AngleConsistencyRule, DyadicCosProductT
 
 mod power_products_rules;
 pub use power_products_rules::{
-    build_avg, build_half_diff, extract_trig_arg, normalize_for_even_fn,
-};
-pub use power_products_rules::{
     SinCosQuarticSumRule, SinCosSumQuotientRule, TrigHiddenCubicIdentityRule,
 };
 
 // --- Phase shift and supplementary angle ---
 mod phase_shift_rules;
-pub use phase_shift_rules::extract_phase_shift;
 pub use phase_shift_rules::SinSupplementaryAngleRule;
 
 // --- Half-angle and Weierstrass substitution ---
@@ -78,3 +71,5 @@ pub use tan_half_angle_rules::{
 // --- Miscellaneous identity rules ---
 mod misc_rules;
 pub use misc_rules::TrigSumToProductContractionRule;
+#[cfg(test)]
+mod misc_rules_tests;

@@ -1,0 +1,16 @@
+pub(super) const TIMELINE_CSS: &str = r#"
+        .timeline {
+            position: relative;
+            padding-left: 30px;
+        }
+        .timeline::before {
+            content: '';
+            position: absolute;
+            left: 10px;
+            top: 0;
+            bottom: 0;
+            width: 3px;
+            background: linear-gradient(to bottom, var(--timeline-line-start), var(--timeline-line-end));
+            transition: background 0.3s ease;
+        }
+"#;

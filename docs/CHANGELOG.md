@@ -92,8 +92,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **Legacy TLS Documentation**: Added block comment above remaining TLS declarations in
-  `solver/mod.rs` and `solve_core.rs` documenting they are diagnostic/UI only and must
-  not carry solver-semantic information. References TLS policy for future contributors.
+  `solve_runtime.rs` / `solve_core_runtime.rs` documenting they are diagnostic/UI only
+  and must not carry solver-semantic information. References TLS policy for future contributors.
 
 ### Documentation
 
@@ -646,4 +646,3 @@ Areas for potential extension (documented in ARCHITECTURE.md):
 ## Previous Releases
 
 _(Historical changes will be documented here as the project evolves)_
-

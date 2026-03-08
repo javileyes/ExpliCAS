@@ -1,0 +1,25 @@
+[package]
+name = "cas_math"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[features]
+default = ["parallel"]
+parallel = ["rayon"]
+
+[dependencies]
+cas_ast = { path = "../cas_ast" }
+rustc-hash = "1.1"
+rayon = { version = "1.10", optional = true }
+num-rational = "0.4"
+num-traits = "0.2"
+num-bigint = "0.4"
+num-integer = "0.1"
+smallvec = "1"
+
+[dev-dependencies]
+cas_formatter = { path = "../cas_formatter" }
+cas_parser = { path = "../cas_parser" }

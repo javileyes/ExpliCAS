@@ -1,0 +1,21 @@
+use crate::health_suite_types::{Category, HealthCase, HealthLimits};
+
+pub(super) fn policy_case(
+    name: &'static str,
+    expr: &'static str,
+    max_total_rewrites: usize,
+    max_growth: i64,
+    max_transform_rewrites: usize,
+) -> HealthCase {
+    HealthCase {
+        name,
+        category: Category::Policy,
+        expr,
+        limits: HealthLimits {
+            max_total_rewrites,
+            max_growth,
+            max_transform_rewrites,
+            forbid_cycles: true,
+        },
+    }
+}

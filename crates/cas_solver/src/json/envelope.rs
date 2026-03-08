@@ -1,0 +1,51 @@
+use super::stateless_eval::evaluate_prepared_stateless_request;
+use crate::{Engine, EvalOptions};
+use cas_api_models::{EnvelopeEvalOptions, OutputEnvelope};
+
+mod common;
+mod success;
+#[cfg(test)]
+mod tests;
+mod transparency;
+
+use self::common::build_request_info;
+use self::success::build_success_envelope;
+
+/// Stateless envelope evaluation used by application wrappers.
+pub fn eval_str_to_output_envelope(expr: &str, opts: &EnvelopeEvalOptions) -> OutputEnvelope {
+    let mut engine = Engine::new();
+    let mut eval_options = EvalOptions::default();
+    eval_options.shared.semantics.domain_mode =
+        crate::eval_json_options::domain_mode_from_str(&opts.domain);
+    eval_options.shared.semantics.value_domain =
+        crate::eval_json_options::value_domain_from_str(&opts.value_domain);
+
+    let prepared =
+        match crate::build_eval_json_request_for_input(expr, &mut engine.simplifier.context, false)
+        {
+            Ok(request) => request,
+            Err(e) => {
+                return OutputEnvelope::eval_error(
+                    build_request_info(expr, opts),
+                    format!("Parse error: {}", e),
+                );
+            }
+        };
+
+    let output_view = match evaluate_prepared_stateless_request(&mut engine, eval_options, prepared)
+    {
+        Ok(view) => view,
+        Err(e) => return OutputEnvelope::eval_error(build_request_info(expr, opts), e.to_string()),
+    };
+
+    build_success_envelope(expr, opts, &engine.simplifier.context, &output_view)
+}
+
+/// Stateless CLI helper for `envelope-json` command.
+pub fn evaluate_envelope_json_command(expr: &str, domain: &str, value_domain: &str) -> String {
+    let opts = EnvelopeEvalOptions {
+        domain: domain.to_string(),
+        value_domain: value_domain.to_string(),
+    };
+    eval_str_to_output_envelope(expr, &opts).to_json_pretty()
+}

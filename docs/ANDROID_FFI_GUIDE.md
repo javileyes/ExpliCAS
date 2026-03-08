@@ -355,7 +355,7 @@ El `.so` release es ~2-4 MB. Para reducir:
 
 ## Archivos de referencia
 
-Los siguientes archivos están disponibles en `crates/cas_android_ffi/kotlin/`:
+Los siguientes archivos están disponibles en `android_app/`:
 
 | Archivo | Descripción |
 |---------|-------------|

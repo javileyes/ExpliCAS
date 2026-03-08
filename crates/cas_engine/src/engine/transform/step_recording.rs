@@ -6,6 +6,28 @@
 use super::*;
 
 impl<'a> LocalSimplificationTransformer<'a> {
+    #[inline]
+    fn emit_rule_applied_event(
+        &mut self,
+        rule_name: &str,
+        before: ExprId,
+        after: ExprId,
+        global_before: Option<ExprId>,
+        global_after: Option<ExprId>,
+        is_chained: bool,
+    ) {
+        if let Some(listener) = self.event_listener.as_mut() {
+            listener.on_event(&cas_solver_core::engine_events::EngineEvent::RuleApplied {
+                rule_name: rule_name.to_string(),
+                before,
+                after,
+                global_before,
+                global_after,
+                is_chained,
+            });
+        }
+    }
+
     /// Record a step without inflating the recursive frame.
     /// Using #[inline(never)] to ensure Step construction stays out of transform_expr_recursive.
     #[inline(never)]
@@ -16,7 +38,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
         before: ExprId,
         after: ExprId,
     ) {
-        if self.steps_mode != StepsMode::Off {
+        if self.collect_steps_enabled() {
             let step = crate::step::Step::new(
                 name,
                 description,
@@ -31,103 +53,11 @@ impl<'a> LocalSimplificationTransformer<'a> {
 
     /// Reconstruct the global expression by substituting `replacement` at the given path
     pub(super) fn reconstruct_at_path(&mut self, replacement: ExprId) -> ExprId {
-        use crate::step::PathStep;
-
-        fn reconstruct_recursive(
-            context: &mut Context,
-            root: ExprId,
-            path: &[PathStep],
-            replacement: ExprId,
-        ) -> ExprId {
-            if path.is_empty() {
-                return replacement;
-            }
-
-            let current_step = &path[0];
-            let remaining_path = &path[1..];
-            let expr = context.get(root).clone();
-
-            match (expr, current_step) {
-                (Expr::Add(l, r), PathStep::Left) => {
-                    let new_l = reconstruct_recursive(context, l, remaining_path, replacement);
-                    context.add_raw(Expr::Add(new_l, r)) // Use add_raw to preserve structure
-                }
-                (Expr::Add(l, r), PathStep::Right) => {
-                    // Follow AST literally - don't do magic Neg unwrapping.
-                    // If we need to modify inside a Neg, the path should include PathStep::Inner.
-                    let new_r = reconstruct_recursive(context, r, remaining_path, replacement);
-                    context.add_raw(Expr::Add(l, new_r)) // Use add_raw to preserve structure
-                }
-                (Expr::Sub(l, r), PathStep::Left) => {
-                    let new_l = reconstruct_recursive(context, l, remaining_path, replacement);
-                    context.add_raw(Expr::Sub(new_l, r)) // Use add_raw to preserve structure
-                }
-                (Expr::Sub(l, r), PathStep::Right) => {
-                    let new_r = reconstruct_recursive(context, r, remaining_path, replacement);
-                    context.add_raw(Expr::Sub(l, new_r)) // Use add_raw to preserve structure
-                }
-                (Expr::Mul(l, r), PathStep::Left) => {
-                    let new_l = reconstruct_recursive(context, l, remaining_path, replacement);
-                    context.add_raw(Expr::Mul(new_l, r)) // Use add_raw to preserve structure
-                }
-                (Expr::Mul(l, r), PathStep::Right) => {
-                    let new_r = reconstruct_recursive(context, r, remaining_path, replacement);
-                    context.add_raw(Expr::Mul(l, new_r)) // Use add_raw to preserve structure
-                }
-                (Expr::Div(l, r), PathStep::Left) => {
-                    let new_l = reconstruct_recursive(context, l, remaining_path, replacement);
-                    context.add_raw(Expr::Div(new_l, r)) // Use add_raw to preserve structure
-                }
-                (Expr::Div(l, r), PathStep::Right) => {
-                    let new_r = reconstruct_recursive(context, r, remaining_path, replacement);
-                    context.add_raw(Expr::Div(l, new_r)) // Use add_raw to preserve structure
-                }
-                (Expr::Pow(b, e), PathStep::Base) => {
-                    let new_b = reconstruct_recursive(context, b, remaining_path, replacement);
-                    context.add_raw(Expr::Pow(new_b, e)) // Use add_raw to preserve structure
-                }
-                (Expr::Pow(b, e), PathStep::Exponent) => {
-                    let new_e = reconstruct_recursive(context, e, remaining_path, replacement);
-                    context.add_raw(Expr::Pow(b, new_e)) // Use add_raw to preserve structure
-                }
-                (Expr::Neg(e), PathStep::Inner) => {
-                    let new_e = reconstruct_recursive(context, e, remaining_path, replacement);
-                    context.add_raw(Expr::Neg(new_e)) // Use add_raw to preserve structure
-                }
-                (Expr::Function(name, args), PathStep::Arg(idx)) => {
-                    let mut new_args = args;
-                    if *idx < new_args.len() {
-                        new_args[*idx] = reconstruct_recursive(
-                            context,
-                            new_args[*idx],
-                            remaining_path,
-                            replacement,
-                        );
-                        context.add_raw(Expr::Function(name, new_args)) // Use add_raw to preserve structure
-                    } else {
-                        root
-                    }
-                }
-                (Expr::Hold(inner), PathStep::Inner) => {
-                    let new_inner =
-                        reconstruct_recursive(context, inner, remaining_path, replacement);
-                    context.add_raw(Expr::Hold(new_inner))
-                }
-                // Leaves — no children, path cannot descend further
-                (Expr::Number(_), _)
-                | (Expr::Constant(_), _)
-                | (Expr::Variable(_), _)
-                | (Expr::SessionRef(_), _)
-                | (Expr::Matrix { .. }, _) => root,
-                // Path mismatch: valid expr but wrong PathStep direction
-                _ => root,
-            }
-        }
-
-        let new_root = reconstruct_recursive(
+        let path = crate::step::pathsteps_to_expr_path(&self.current_path);
+        let new_root = cas_math::expr_path_rewrite::rewrite_at_expr_path_raw(
             self.context,
             self.root_expr,
-            &self.current_path,
+            &path,
             replacement,
         );
         self.root_expr = new_root; // Update root for next step
@@ -145,7 +75,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
         expr_id: ExprId,
         rewrite: &crate::rule::Rewrite,
     ) -> ExprId {
-        if self.steps_mode != StepsMode::Off {
+        if self.collect_steps_enabled() {
             let main_new_expr = rewrite.new_expr;
             let main_description = &rewrite.description;
             let main_before_local = rewrite.before_local;
@@ -187,6 +117,14 @@ impl<'a> LocalSimplificationTransformer<'a> {
                 meta.substeps = main_substeps;
             }
             self.steps.push(step);
+            self.emit_rule_applied_event(
+                rule.name(),
+                expr_id,
+                main_new_expr,
+                Some(global_before),
+                Some(main_global_after),
+                false,
+            );
 
             // Trace coherence verification
             debug_assert_eq!(
@@ -224,18 +162,45 @@ impl<'a> LocalSimplificationTransformer<'a> {
                     meta.is_chained = true;
                 }
                 self.steps.push(chain_step);
+                self.emit_rule_applied_event(
+                    rule.name(),
+                    current,
+                    chain_rw.after,
+                    Some(chain_global_before),
+                    Some(chain_global_after),
+                    true,
+                );
 
                 current = chain_rw.after;
             }
 
             final_result
         } else {
-            // Without steps, just compute final result
-            rewrite
-                .chained
-                .last()
-                .map(|c| c.after)
-                .unwrap_or(rewrite.new_expr)
+            // Without steps, keep emitting local rule events when a listener is attached.
+            let mut current_before = expr_id;
+            self.emit_rule_applied_event(
+                rule.name(),
+                current_before,
+                rewrite.new_expr,
+                None,
+                None,
+                false,
+            );
+            current_before = rewrite.new_expr;
+            for chained in &rewrite.chained {
+                self.emit_rule_applied_event(
+                    rule.name(),
+                    current_before,
+                    chained.after,
+                    None,
+                    None,
+                    true,
+                );
+                current_before = chained.after;
+            }
+
+            // Without steps, just compute final result.
+            current_before
         }
     }
 }

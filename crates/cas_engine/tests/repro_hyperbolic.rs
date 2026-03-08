@@ -1,47 +1,15 @@
-use cas_engine::options::EvalOptions;
-use cas_engine::phase::ExpandPolicy;
-use cas_engine::Simplifier;
-use cas_parser::parse;
+//! Compatibility wrapper.
+//!
+//! Canonical repro_hyperbolic lives in `cas_solver`.
 
-/// Options with auto-expand enabled for identity tests
-fn opts_autoexpand() -> EvalOptions {
-    EvalOptions {
-        shared: cas_engine::phase::SharedSemanticConfig {
-            expand_policy: ExpandPolicy::Auto,
-            ..Default::default()
-        },
-        ..Default::default()
-    }
-}
+#[allow(unused_imports)]
+pub use cas_ast::ordering::compare_expr;
+pub use cas_engine::*;
+#[allow(unused_imports)]
+pub use cas_math::expr_nary::{add_terms_signed, Sign};
+#[allow(unused_imports)]
+pub use cas_math::factor::factor;
+extern crate self as cas_solver;
 
-#[test]
-fn test_hyperbolic_double_angle_exponential() {
-    let opts = opts_autoexpand();
-    let mut simplifier = Simplifier::with_profile(&opts);
-    simplifier.enable_debug();
-
-    // (e^(2*x) + e^(-2*x))/2 - (((e^x + e^(-x))/2)^2 + ((e^x - e^(-x))/2)^2)
-    // This is cosh(2x) - (cosh²(x) + sinh²(x)) which should be 0.
-    // With RecognizeHyperbolicFromExpRule and HyperbolicDoubleAngleRule,
-    // this now correctly simplifies to 0.
-    let input_str = "(e^(2*x) + e^(-2*x))/2 - (((e^x + e^(-x))/2)^2 + ((e^x - e^(-x))/2)^2)";
-    let input = parse(input_str, &mut simplifier.context).expect("Failed to parse input");
-
-    // Use simplify_with_options to propagate expand_policy
-    let simplify_opts = opts.to_simplify_options();
-    let (result_id, _) = simplifier.simplify_with_options(input, simplify_opts);
-    let result_expr = simplifier.context.get(result_id).clone();
-
-    println!("Result: {:?}", result_expr);
-
-    // Check if result is 0
-    let zero = simplifier.context.num(0);
-    use cas_engine::ordering::compare_expr;
-    use std::cmp::Ordering;
-    assert_eq!(
-        compare_expr(&simplifier.context, result_id, zero),
-        Ordering::Equal,
-        "Expected 0, got {:?}",
-        simplifier.context.get(result_id)
-    );
-}
+#[path = "../../cas_solver/tests/repro_hyperbolic.rs"]
+mod solver_repro_hyperbolic;

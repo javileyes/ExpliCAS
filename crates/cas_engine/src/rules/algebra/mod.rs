@@ -1,8 +1,7 @@
 #[cfg(test)]
+mod root_denesting_tests;
+#[cfg(test)]
 mod tests;
-
-pub mod helpers;
-pub(crate) use helpers::*;
 
 pub mod fractions;
 pub use fractions::*;
@@ -11,7 +10,6 @@ pub mod distribution;
 pub use distribution::*;
 
 pub mod factoring;
-mod factoring_helpers;
 pub use factoring::*;
 
 pub mod roots;
@@ -24,16 +22,15 @@ pub mod root_denesting_advanced;
 pub use root_denesting_advanced::*;
 
 pub mod poly_gcd;
-pub use poly_gcd::*;
+pub use poly_gcd::PolyGcdRule;
 
 pub mod gcd_exact;
-pub use gcd_exact::*;
+pub use gcd_exact::PolyGcdExactRule;
 
 pub mod gcd_modp;
-pub use gcd_modp::*;
 
 pub mod poly_arith_modp;
-pub use poly_arith_modp::*;
+pub use poly_arith_modp::PolySubModpRule;
 
 pub mod difference_of_cubes;
 pub use difference_of_cubes::*;
@@ -104,9 +101,9 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     // Polynomial GCD exact: poly_gcd_exact(a, b) → algebraic GCD over ℚ
     simplifier.add_rule(Box::new(PolyGcdExactRule));
     // Polynomial GCD mod p: poly_gcd_modp(a, b) → fast Zippel GCD
-    simplifier.add_rule(Box::new(PolyGcdModpRule));
+    simplifier.add_rule(Box::new(gcd_modp::PolyGcdModpRule));
     // Polynomial equality mod p: poly_eq_modp(a, b) → 1 or 0
-    simplifier.add_rule(Box::new(PolyEqModpRule));
+    simplifier.add_rule(Box::new(gcd_modp::PolyEqModpRule));
     // Polynomial arithmetic on __hold: __hold(P) - __hold(Q) = 0 if equal mod p
     simplifier.add_rule(Box::new(PolySubModpRule));
     // Sum of three cubes identity: x³ + y³ + z³ = 3xyz when x + y + z = 0
@@ -156,122 +153,18 @@ pub fn try_difference_of_squares_preorder(
     steps: &mut Vec<crate::step::Step>,
     current_path: &[crate::step::PathStep],
 ) -> Option<cas_ast::ExprId> {
-    use cas_ast::Expr;
-
-    // STEP 1: Check if numerator is A² - B²
-    // Can be Sub(Pow(A,2), Pow(B,2)) or Add(Pow(A,2), Neg(Pow(B,2)))
-    let (a, b) = match ctx.get(num) {
-        Expr::Sub(left, right) => {
-            // Check if left = A² and right = B²
-            let a_opt = extract_squared_base(ctx, *left)?;
-            let b_opt = extract_squared_base(ctx, *right)?;
-            (a_opt, b_opt)
-        }
-        Expr::Add(left, right) => {
-            // Check for Add(A², Neg(B²))
-            let a_opt = extract_squared_base(ctx, *left)?;
-            if let Expr::Neg(inner) = ctx.get(*right) {
-                let b_opt = extract_squared_base(ctx, *inner)?;
-                (a_opt, b_opt)
-            } else {
-                return None;
-            }
-        }
-        _ => return None,
-    };
-
-    #[allow(dead_code)]
-    enum DenMatch {
-        AMinusB,
-        APlusB,
-        BMinusA,
-        BPlusA,
-    }
-
-    // STEP 2: Quick structural pre-filter to avoid expensive poly conversion
-    // The denominator must be Sub/Add to match A-B or A+B, so skip poly conversion
-    // for simple cases like x, x*y, etc.
-    let den_is_candidate = matches!(ctx.get(den), Expr::Sub(_, _) | Expr::Add(_, _));
-    if !den_is_candidate {
-        return None; // Denominator can't possibly be A-B or A+B
-    }
-
-    // STEP 3: Check if denominator matches A-B, A+B using POLYNOMIAL comparison
-    // This handles cases like den = (x+2y) - (3x-y) being compared to A-B
-    // where A and B come from different AST nodes but are polynomially equal
-    use crate::multipoly::{multipoly_from_expr, multipoly_to_expr, PolyBudget};
-
-    let budget = PolyBudget {
-        max_terms: 50,
-        max_total_degree: 6,
-        max_pow_exp: 4,
-    };
-
-    // Build A-B and A+B as raw expressions
-    let a_minus_b_raw = ctx.add(Expr::Sub(a, b));
-    let a_plus_b_raw = ctx.add(Expr::Add(a, b));
-
-    // Convert to polynomials for comparison
-    let den_poly = multipoly_from_expr(ctx, den, &budget).ok()?;
-    let a_minus_b_poly = multipoly_from_expr(ctx, a_minus_b_raw, &budget).ok()?;
-    let a_plus_b_poly = multipoly_from_expr(ctx, a_plus_b_raw, &budget).ok()?;
-
-    // Check which form the denominator matches
-    let _den_match = if den_poly == a_minus_b_poly {
-        DenMatch::AMinusB
-    } else if den_poly == a_minus_b_poly.neg() {
-        DenMatch::BMinusA // den = -(A-B) = B-A
-    } else if den_poly == a_plus_b_poly {
-        DenMatch::APlusB
-    } else if den_poly == a_plus_b_poly.neg() {
-        DenMatch::BPlusA // den = -(A+B) = -A-B (same as B+A up to sign)
-    } else {
-        return None; // No match
-    };
-
-    // STEP 3: Build FINAL result and intermediate forms
-    // A² - B² = (A-B)(A+B)
-    // If den = A-B: result = A+B
-    // If den = B-A = -(A-B): result = -(A+B)
-    // If den = A+B: result = A-B
-    // If den = B+A = -(A+B): result = -(A-B) = B-A
-
-    // Simplify factors to canonical polynomial form
-    let a_minus_b = if let Ok(p) = multipoly_from_expr(ctx, a_minus_b_raw, &budget) {
-        multipoly_to_expr(&p, ctx)
-    } else {
-        a_minus_b_raw
-    };
-
-    let a_plus_b = if let Ok(p) = multipoly_from_expr(ctx, a_plus_b_raw, &budget) {
-        multipoly_to_expr(&p, ctx)
-    } else {
-        a_plus_b_raw
-    };
-
-    // Simplify denominator to canonical form
-    let den_simplified = if let Ok(p) = multipoly_from_expr(ctx, den, &budget) {
-        multipoly_to_expr(&p, ctx)
-    } else {
-        den
-    };
-
-    // Build factored numerator and compute final result based on den match
-    let factored_num = ctx.add(Expr::Mul(a_minus_b, a_plus_b));
-    // Two intermediate states for proper didactic step sequence:
-    // 1. Factored numerator with ORIGINAL denominator (for Factor step)
-    // 2. Factored numerator with SIMPLIFIED denominator (for Combine step → Cancel step)
-    let intermediate_with_orig_den = ctx.add(Expr::Div(factored_num, den));
-    let intermediate = ctx.add(Expr::Div(factored_num, den_simplified));
-
-    let final_result = match _den_match {
-        DenMatch::AMinusB => a_plus_b, // A² - B² = (A-B)(A+B), cancel (A-B) -> A+B
-        DenMatch::BMinusA => {
-            // den = -(A-B), cancel (A-B) -> -(A+B)
-            ctx.add(Expr::Neg(a_plus_b))
-        }
-        DenMatch::APlusB | DenMatch::BPlusA => a_minus_b, // cancel (A+B) -> A-B
-    };
+    let plan =
+        cas_math::difference_of_squares_support::try_plan_difference_of_squares_division_expr(
+            ctx,
+            num,
+            den,
+            cas_math::difference_of_squares_support::DifferenceOfSquaresDivisionPolicy::default(),
+        )?;
+    let factored_num = plan.factored_numerator;
+    let intermediate_with_orig_den = plan.intermediate_with_orig_den;
+    let den_simplified = plan.den_simplified;
+    let intermediate = plan.intermediate;
+    let final_result = plan.final_result;
 
     // STEP 4: Record steps if needed (Factor step + optional Simplify Denominator + Cancel step)
     if collect_steps {
@@ -295,7 +188,7 @@ pub fn try_difference_of_squares_preorder(
             meta.before_local = Some(num);
             meta.after_local = Some(factored_num);
             meta.required_conditions
-                .push(crate::implicit_domain::ImplicitCondition::NonZero(den));
+                .push(crate::ImplicitCondition::NonZero(den));
         }
         factor_step.importance = crate::step::ImportanceLevel::High;
         steps.push(factor_step);
@@ -343,17 +236,4 @@ pub fn try_difference_of_squares_preorder(
 
     // Return FINAL result to prevent GCD from reprocessing
     Some(final_result)
-}
-
-/// Helper: Extract base from Pow(base, 2)
-fn extract_squared_base(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> Option<cas_ast::ExprId> {
-    use cas_ast::Expr;
-    if let Expr::Pow(base, exp) = ctx.get(expr) {
-        if let Expr::Number(n) = ctx.get(*exp) {
-            if n.is_integer() && *n == num_rational::BigRational::from_integer(2.into()) {
-                return Some(*base);
-            }
-        }
-    }
-    None
 }

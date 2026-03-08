@@ -3,6 +3,7 @@ use crate::phase::PhaseMask;
 use crate::step::{ImportanceLevel, StepCategory};
 use crate::target_kind::TargetKindSet;
 use cas_ast::{Context, ExprId};
+pub use cas_solver_core::soundness_label::SoundnessLabel;
 use std::borrow::Cow;
 use std::cell::Cell;
 
@@ -32,44 +33,6 @@ pub fn steps_enabled() -> bool {
 }
 
 // =============================================================================
-// SoundnessLabel: Mathematical soundness classification for Rule transformations
-// =============================================================================
-
-/// Mathematical soundness classification for rules.
-///
-/// This enum classifies how a rule transformation relates to mathematical equivalence,
-/// used for:
-/// - Auditing rules during review
-/// - Property-based testing (only Equivalence* rules should preserve numeric value)
-/// - Per-step numeric validation in debug mode
-/// - UX feedback (showing assumption types to users)
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum SoundnessLabel {
-    /// Equivalence for all values in the implicit domain of the input.
-    /// The transformation preserves mathematical identity.
-    /// Example: x + 0 → x, sin²(x) + cos²(x) → 1
-    #[default]
-    Equivalence,
-
-    /// Equivalence, but requires additional conditions (typically RequiresIntroduced).
-    /// Example: log(ab) → log(a) + log(b) (requires a > 0, b > 0)
-    EquivalenceUnderIntroducedRequires,
-
-    /// The rule chooses one branch of a multi-valued expression (principal branch).
-    /// Example: sqrt(x²) → x (choosing positive root), arcsin(sin(x)) → x
-    BranchChoice,
-
-    /// Extends the domain (R → C, or similar).
-    /// Example: (-1)^(1/2) → i (moving from real to complex)
-    DomainExtension,
-
-    /// Heuristic: aims to "improve" the expression but doesn't guarantee
-    /// global equivalence. Used for simplification strategies.
-    /// Example: auto-expand with budget decisions
-    Heuristic,
-}
-
-// =============================================================================
 // ChainedRewrite: A subsequent transformation following the main Rewrite
 // =============================================================================
 
@@ -92,11 +55,11 @@ pub struct ChainedRewrite {
     /// Optional: Focus the "Rule:" line on this result
     pub after_local: Option<ExprId>,
     /// Required conditions for this step
-    pub required_conditions: Vec<crate::implicit_domain::ImplicitCondition>,
+    pub required_conditions: Vec<crate::ImplicitCondition>,
     /// Assumptions made by this step
-    pub assumption_events: smallvec::SmallVec<[crate::assumptions::AssumptionEvent; 1]>,
+    pub assumption_events: smallvec::SmallVec<[crate::AssumptionEvent; 1]>,
     /// Optional polynomial proof data
-    pub poly_proof: Option<crate::multipoly_display::PolynomialProofData>,
+    pub poly_proof: Option<cas_math::multipoly_display::PolynomialProofData>,
     /// Optional importance override (defaults to rule's importance)
     pub importance: Option<ImportanceLevel>,
 }
@@ -154,14 +117,14 @@ impl ChainedRewrite {
 
     /// Add a required condition.
     #[must_use]
-    pub fn requires(mut self, cond: crate::implicit_domain::ImplicitCondition) -> Self {
+    pub fn requires(mut self, cond: crate::ImplicitCondition) -> Self {
         self.required_conditions.push(cond);
         self
     }
 
     /// Add an assumption event.
     #[must_use]
-    pub fn assume(mut self, ev: crate::assumptions::AssumptionEvent) -> Self {
+    pub fn assume(mut self, ev: crate::AssumptionEvent) -> Self {
         self.assumption_events.push(ev);
         self
     }
@@ -186,14 +149,14 @@ pub struct Rewrite {
     /// LEGACY: use assumption_events for structured emission, this is fallback.
     /// Structured assumption events (preferred over domain_assumption string)
     /// Multiple events allowed for rules that make several assumptions.
-    pub assumption_events: smallvec::SmallVec<[crate::assumptions::AssumptionEvent; 1]>,
+    pub assumption_events: smallvec::SmallVec<[crate::AssumptionEvent; 1]>,
     /// Required conditions for validity (implicit domain preservation) - NOT assumptions!
     /// These are conditions that were already implicitly required by the input expression.
     /// Used when a rewrite makes implicit domain constraints explicit (e.g., sqrt(x)^2 → x requires x ≥ 0).
-    pub required_conditions: Vec<crate::implicit_domain::ImplicitCondition>,
+    pub required_conditions: Vec<crate::ImplicitCondition>,
     /// Optional: Polynomial proof data for identity cancellation (PolyZero airbag)
     /// Used for didactic display of the normalization process
-    pub poly_proof: Option<crate::multipoly_display::PolynomialProofData>,
+    pub poly_proof: Option<cas_math::multipoly_display::PolynomialProofData>,
     /// Chained sequential rewrites following this one.
     /// Engine processes these in order, constructing Steps with correct before/after.
     /// See `ChainedRewrite` documentation for the sequential coherence guarantee.
@@ -271,7 +234,7 @@ impl Rewrite {
     pub fn with_poly_proof(
         new_expr: ExprId,
         description: impl Into<Cow<'static, str>>,
-        poly_proof: crate::multipoly_display::PolynomialProofData,
+        poly_proof: cas_math::multipoly_display::PolynomialProofData,
     ) -> Self {
         Self::new(new_expr).desc(description).poly_proof(poly_proof)
     }
@@ -312,7 +275,7 @@ impl Rewrite {
     /// Add a required condition for validity.
     /// These are conditions that were already implicitly required by the input expression.
     #[must_use]
-    pub fn requires(mut self, cond: crate::implicit_domain::ImplicitCondition) -> Self {
+    pub fn requires(mut self, cond: crate::ImplicitCondition) -> Self {
         self.required_conditions.push(cond);
         self
     }
@@ -321,7 +284,7 @@ impl Rewrite {
     #[must_use]
     pub fn requires_all<I>(mut self, conds: I) -> Self
     where
-        I: IntoIterator<Item = crate::implicit_domain::ImplicitCondition>,
+        I: IntoIterator<Item = crate::ImplicitCondition>,
     {
         self.required_conditions.extend(conds);
         self
@@ -329,7 +292,7 @@ impl Rewrite {
 
     /// Add an assumption event (structured domain assumption).
     #[must_use]
-    pub fn assume(mut self, ev: crate::assumptions::AssumptionEvent) -> Self {
+    pub fn assume(mut self, ev: crate::AssumptionEvent) -> Self {
         self.assumption_events.push(ev);
         self
     }
@@ -338,7 +301,7 @@ impl Rewrite {
     #[must_use]
     pub fn assume_all<I>(mut self, evs: I) -> Self
     where
-        I: IntoIterator<Item = crate::assumptions::AssumptionEvent>,
+        I: IntoIterator<Item = crate::AssumptionEvent>,
     {
         self.assumption_events.extend(evs);
         self
@@ -346,7 +309,7 @@ impl Rewrite {
 
     /// Set polynomial proof data (for PolyZero airbag didactic display).
     #[must_use]
-    pub fn poly_proof(mut self, proof: crate::multipoly_display::PolynomialProofData) -> Self {
+    pub fn poly_proof(mut self, proof: cas_math::multipoly_display::PolynomialProofData) -> Self {
         self.poly_proof = Some(proof);
         self
     }
@@ -451,8 +414,8 @@ pub trait SimpleRule {
     /// Safety classification for use in equation solving.
     /// Default: Always (safe in solver pre-pass).
     /// Override to NeedsCondition for rules requiring assumptions (e.g., cancellation).
-    fn solve_safety(&self) -> crate::solve_safety::SolveSafety {
-        crate::solve_safety::SolveSafety::Always
+    fn solve_safety(&self) -> crate::SolveSafety {
+        crate::SolveSafety::Always
     }
 
     /// Mathematical soundness classification for this rule.
@@ -506,8 +469,8 @@ pub trait Rule {
     }
 
     /// Safety classification for use in equation solving.
-    fn solve_safety(&self) -> crate::solve_safety::SolveSafety {
-        crate::solve_safety::SolveSafety::Always
+    fn solve_safety(&self) -> crate::SolveSafety {
+        crate::SolveSafety::Always
     }
 
     /// Mathematical soundness classification for this rule.
@@ -554,7 +517,7 @@ impl<T: SimpleRule> Rule for T {
         SimpleRule::category(self)
     }
 
-    fn solve_safety(&self) -> crate::solve_safety::SolveSafety {
+    fn solve_safety(&self) -> crate::SolveSafety {
         SimpleRule::solve_safety(self)
     }
 

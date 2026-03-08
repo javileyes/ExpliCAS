@@ -13,12 +13,12 @@ NC='\033[0m' # No Color
 # Hotspot modules that must have budget instrumentation
 HOTSPOTS=(
     "crates/cas_engine/src/expand.rs"
-    "crates/cas_engine/src/multinomial_expand.rs"
+    "crates/cas_math/src/multinomial_expand.rs"
     "crates/cas_engine/src/engine/orchestration.rs"
     "crates/cas_engine/src/engine/transform/mod.rs"
-    "crates/cas_engine/src/multipoly/arithmetic.rs"
-    "crates/cas_engine/src/multipoly/gcd.rs"
-    "crates/cas_engine/src/gcd_zippel_modp.rs"
+    "crates/cas_math/src/multipoly/arithmetic.rs"
+    "crates/cas_math/src/multipoly/gcd.rs"
+    "crates/cas_math/src/gcd_zippel_modp.rs"
 )
 
 # Budget-related patterns that indicate instrumentation

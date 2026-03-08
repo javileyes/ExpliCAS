@@ -5,11 +5,10 @@
 
 // This is in cas_cli/tests, so we need to create local equivalence helpers
 
-use cas_ast::{Context, DisplayExpr, ExprId};
-use cas_engine::engine::eval_f64;
-use cas_engine::helpers::is_zero;
-use cas_engine::Simplifier;
+use cas_ast::{Context, ExprId};
+use cas_formatter::DisplayExpr;
 use cas_parser::parse;
+use cas_solver::{eval_f64, is_zero, Simplifier};
 use std::collections::HashMap;
 
 // =============================================================================

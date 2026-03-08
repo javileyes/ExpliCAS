@@ -1,0 +1,29 @@
+pub(super) const CONTENT_RULE_CSS: &str = r#"
+        .rule-description {
+            text-align: center;
+            padding: 12px 20px;
+            margin: 15px 0;
+            background: var(--rule-bg);
+            border-radius: 6px;
+            font-size: 0.95em;
+            color: var(--rule-color);
+            border: 2px dashed var(--rule-border);
+            transition: background 0.3s ease, color 0.3s ease;
+        }
+        .local-change {
+            font-size: 1.1em;
+            margin: 8px 0;
+            padding: 10px;
+            background: var(--local-change-bg);
+            border-radius: 4px;
+            text-align: center;
+            transition: background 0.3s ease;
+        }
+        .rule-name {
+            font-size: 0.85em;
+            color: var(--rule-name-color);
+            font-weight: bold;
+            margin-bottom: 5px;
+            transition: color 0.3s ease;
+        }
+"#;

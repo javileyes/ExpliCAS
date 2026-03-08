@@ -327,7 +327,7 @@ macro_rules! define_rule {
                 $body
             }
 
-            fn solve_safety(&self) -> $crate::solve_safety::SolveSafety {
+            fn solve_safety(&self) -> $crate::SolveSafety {
                 $safety
             }
         }
@@ -367,7 +367,7 @@ macro_rules! define_rule {
                 $importance
             }
 
-            fn solve_safety(&self) -> $crate::solve_safety::SolveSafety {
+            fn solve_safety(&self) -> $crate::SolveSafety {
                 $safety
             }
         }
@@ -393,7 +393,7 @@ macro_rules! define_rule {
                 $body
             }
 
-            fn solve_safety(&self) -> $crate::solve_safety::SolveSafety {
+            fn solve_safety(&self) -> $crate::SolveSafety {
                 $safety
             }
         }
@@ -433,7 +433,7 @@ macro_rules! define_rule {
                 $targets
             }
 
-            fn solve_safety(&self) -> $crate::solve_safety::SolveSafety {
+            fn solve_safety(&self) -> $crate::SolveSafety {
                 $safety
             }
         }

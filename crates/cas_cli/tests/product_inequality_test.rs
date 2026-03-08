@@ -1,6 +1,5 @@
 use cas_ast::{Equation, RelOp, SolutionSet};
-use cas_engine::engine::Simplifier;
-use cas_engine::solver::solve;
+use cas_solver::{solve, Simplifier};
 
 #[test]
 fn test_product_inequality_both_negative() {
@@ -32,11 +31,11 @@ fn test_product_inequality_both_negative() {
         SolutionSet::Continuous(interval) => {
             println!(
                 "Got interval: min={}, max={}",
-                cas_ast::DisplayExpr {
+                cas_formatter::DisplayExpr {
                     context: &simplifier.context,
                     id: interval.min
                 },
-                cas_ast::DisplayExpr {
+                cas_formatter::DisplayExpr {
                     context: &simplifier.context,
                     id: interval.max
                 }
