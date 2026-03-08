@@ -205,6 +205,14 @@ impl Simplifier {
         self.step_listener = listener;
     }
 
+    /// Replace the current engine event listener, returning the previous one.
+    pub fn replace_step_listener(
+        &mut self,
+        listener: Option<Box<dyn crate::StepListener>>,
+    ) -> Option<Box<dyn crate::StepListener>> {
+        std::mem::replace(&mut self.step_listener, listener)
+    }
+
     /// Take and clear domain warnings from the last simplify() call.
     /// This is the side-channel to get warnings even in Off mode (when steps is empty).
     /// Warnings are deduplicated by (rule_name, message), preserving first-occurrence order.

@@ -38,6 +38,7 @@ pub mod domain_policy;
 pub mod domain_proof;
 pub mod domain_warning;
 pub mod domain_witness;
+pub mod engine_event_collector;
 pub mod engine_events;
 pub mod equation_rewrite;
 pub mod equivalence;

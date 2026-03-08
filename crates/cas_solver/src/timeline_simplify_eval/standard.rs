@@ -7,6 +7,10 @@ where
     S: crate::SolverEvalSession,
 {
     let was_collecting = engine.simplifier.collect_steps();
+    let collector = cas_solver_core::engine_event_collector::EngineEventCollector::new();
+    let previous_listener = engine
+        .simplifier
+        .replace_step_listener(Some(Box::new(collector.clone())));
     engine.simplifier.set_collect_steps(true);
     let result = (|| {
         let parsed_expr = cas_parser::parse(input.trim(), &mut engine.simplifier.context)
@@ -25,12 +29,24 @@ where
             crate::EvalResult::Expr(e) => e,
             _ => parsed_expr,
         };
+        let mut steps = output_view.steps;
+        if steps.is_empty() {
+            let fallback_steps =
+                crate::engine_event_display_steps::build_display_eval_steps_from_events(
+                    &collector.events(),
+                    &engine.simplifier.context,
+                );
+            if !fallback_steps.is_empty() {
+                steps = fallback_steps;
+            }
+        }
         Ok(crate::TimelineSimplifyEvalOutput {
             parsed_expr,
             simplified_expr,
-            steps: output_view.steps,
+            steps,
         })
     })();
     engine.simplifier.set_collect_steps(was_collecting);
+    let _ = engine.simplifier.replace_step_listener(previous_listener);
     result
 }

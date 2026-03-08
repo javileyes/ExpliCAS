@@ -1,6 +1,7 @@
 use std::time::Instant;
 
 use cas_api_models::EvalJsonSessionRunConfig;
+use cas_solver_core::engine_event_collector::EngineEventCollector;
 
 use super::PreparedEvalJsonRun;
 
@@ -37,10 +38,18 @@ where
     let parsed_input = req.parsed();
     let parse_us = parse_start.elapsed().as_micros() as u64;
 
+    let collector = EngineEventCollector::new();
+    let previous_listener = engine
+        .simplifier
+        .replace_step_listener(Some(Box::new(collector.clone())));
+
     let simplify_start = Instant::now();
-    let output_view = crate::eval_json_request_runtime::evaluate_prepared_request_with_session(
-        engine, session, req,
-    )?;
+    let output_view_result =
+        crate::eval_json_request_runtime::evaluate_prepared_request_with_session(
+            engine, session, req,
+        );
+    let _ = engine.simplifier.replace_step_listener(previous_listener);
+    let output_view = output_view_result?;
     let simplify_us = simplify_start.elapsed().as_micros() as u64;
 
     Ok(PreparedEvalJsonRun {
@@ -48,5 +57,6 @@ where
         parse_us,
         simplify_us,
         output_view,
+        events: collector.into_events(),
     })
 }

@@ -1,4 +1,5 @@
 use cas_solver::{Engine, EvalAction, EvalOptions, EvalRequest};
+use cas_solver_core::engine_events::EngineEvent;
 
 fn eval_output_for(expr: &str) -> (Engine, cas_solver::EvalOutput) {
     let mut engine = Engine::new();
@@ -38,4 +39,51 @@ fn eval_json_steps_on_mode_matches_deterministically() {
         assert_eq!(a.before, b.before);
         assert_eq!(a.after, b.after);
     }
+}
+
+#[test]
+fn eval_json_steps_events_fallback_is_used_when_steps_are_missing() {
+    let mut ctx = cas_ast::Context::new();
+    let x = ctx.var("x");
+    let zero = ctx.num(0);
+    let before = ctx.add(cas_ast::Expr::Add(x, zero));
+
+    let steps = cas_didactic::collect_eval_json_steps_with_events(
+        &[],
+        &[EngineEvent::RuleApplied {
+            rule_name: "Additive Identity".to_string(),
+            before: x,
+            after: x,
+            global_before: Some(before),
+            global_after: Some(x),
+            is_chained: false,
+        }],
+        &ctx,
+        "on",
+    );
+
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0].rule, "Additive Identity");
+    assert_eq!(steps[0].before, "x + 0");
+    assert_eq!(steps[0].after, "x");
+}
+
+#[test]
+fn eval_json_steps_events_fallback_respects_off_mode() {
+    let mut ctx = cas_ast::Context::new();
+    let x = ctx.var("x");
+    let steps = cas_didactic::collect_eval_json_steps_with_events(
+        &[],
+        &[EngineEvent::RuleApplied {
+            rule_name: "test".to_string(),
+            before: x,
+            after: x,
+            global_before: None,
+            global_after: None,
+            is_chained: false,
+        }],
+        &ctx,
+        "off",
+    );
+    assert!(steps.is_empty());
 }
