@@ -108,7 +108,7 @@ define_rule!(
     "Hyperbolic Tanh Pythagorean",
     |ctx, expr| {
         let rewrite = try_rewrite_tanh_pythagorean_add_chain(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc("1 - tanh²(x) = 1/cosh²(x)"))
     }
 );
 

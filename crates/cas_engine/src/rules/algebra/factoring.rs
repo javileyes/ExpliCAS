@@ -5,12 +5,54 @@ use cas_math::factoring_support::{
     try_rewrite_automatic_factor_expr, try_rewrite_difference_of_squares_product_expr,
     try_rewrite_factor_common_integer_from_add_expr,
     try_rewrite_factor_difference_squares_nary_expr, try_rewrite_factor_function_expr,
-    try_rewrite_sum_three_cubes_zero_expr,
+    try_rewrite_sum_three_cubes_zero_expr, AutomaticFactorRewriteKind,
+    DifferenceOfSquaresProductRewriteKind, FactorDifferenceSquaresNaryRewriteKind,
+    FactorFunctionRewriteKind, SumThreeCubesZeroRewriteKind,
 };
 use num_bigint::BigInt;
 
 fn format_factor_common_integer_from_add_desc(gcd_int: &BigInt) -> String {
     format!("Factor out {}", gcd_int)
+}
+
+fn format_difference_of_squares_product_desc(
+    kind: DifferenceOfSquaresProductRewriteKind,
+) -> &'static str {
+    match kind {
+        DifferenceOfSquaresProductRewriteKind::Basic => "(a-b)(a+b) = a² - b²",
+        DifferenceOfSquaresProductRewriteKind::NaryConjugateProduct => {
+            "(U+V)(U-V) = U² - V² (conjugate product)"
+        }
+        DifferenceOfSquaresProductRewriteKind::NaryScan => "(a-b)(a+b)·… = (a²-b²)·… (n-ary scan)",
+    }
+}
+
+fn format_factor_function_desc(kind: FactorFunctionRewriteKind) -> &'static str {
+    match kind {
+        FactorFunctionRewriteKind::Factorization => "Factorization",
+    }
+}
+
+fn format_factor_difference_squares_nary_desc(
+    kind: FactorDifferenceSquaresNaryRewriteKind,
+) -> &'static str {
+    match kind {
+        FactorDifferenceSquaresNaryRewriteKind::Empty => "Factor difference of squares (Empty)",
+        FactorDifferenceSquaresNaryRewriteKind::Nary => "Factor difference of squares (N-ary)",
+    }
+}
+
+fn format_automatic_factor_desc(kind: AutomaticFactorRewriteKind) -> &'static str {
+    match kind {
+        AutomaticFactorRewriteKind::ReducedSize => "Automatic Factorization (Reduced Size)",
+        AutomaticFactorRewriteKind::DiffSquares => "Automatic Factorization (Diff Squares)",
+    }
+}
+
+fn format_sum_three_cubes_zero_desc(kind: SumThreeCubesZeroRewriteKind) -> &'static str {
+    match kind {
+        SumThreeCubesZeroRewriteKind::ZeroSumIdentity => "x³ + y³ + z³ = 3xyz (when x + y + z = 0)",
+    }
 }
 
 // DifferenceOfSquaresRule: Expands conjugate products
@@ -25,7 +67,10 @@ define_rule!(
     PhaseMask::CORE | PhaseMask::POST,
     |ctx, expr| {
         let rewrite = try_rewrite_difference_of_squares_product_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(
+            Rewrite::new(rewrite.rewritten)
+                .desc(format_difference_of_squares_product_desc(rewrite.kind)),
+        )
     }
 );
 
@@ -36,7 +81,7 @@ define_rule!(
     PhaseMask::CORE | PhaseMask::POST,
     |ctx, expr| {
         let rewrite = try_rewrite_factor_function_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc(format_factor_function_desc(rewrite.kind)))
     }
 );
 
@@ -45,7 +90,10 @@ define_rule!(
     "Factor Difference of Squares",
     |ctx, expr| {
         let rewrite = try_rewrite_factor_difference_squares_nary_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(
+            Rewrite::new(rewrite.rewritten)
+                .desc(format_factor_difference_squares_nary_desc(rewrite.kind)),
+        )
     }
 );
 
@@ -54,7 +102,7 @@ define_rule!(
     "Automatic Factorization",
     |ctx, expr| {
         let rewrite = try_rewrite_automatic_factor_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc(format_automatic_factor_desc(rewrite.kind)))
     }
 );
 
@@ -87,7 +135,7 @@ define_rule!(
         let rewrite = try_rewrite_sum_three_cubes_zero_expr(ctx, expr)?;
         Some(
             Rewrite::new(rewrite.rewritten)
-                .desc(rewrite.desc)
+                .desc(format_sum_three_cubes_zero_desc(rewrite.kind))
                 .local(expr, rewrite.rewritten),
         )
     }

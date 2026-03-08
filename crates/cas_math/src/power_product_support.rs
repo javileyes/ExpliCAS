@@ -19,7 +19,33 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PowerProductRewrite {
     pub rewritten: ExprId,
-    pub desc: &'static str,
+    pub kind: PowerProductRewriteKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PowerProductRewriteKind {
+    SameBase,
+    PowerAndBase,
+    BaseAndPower,
+    MultiplyIdenticalTerms,
+    NestedIdenticalTerms,
+    NestedPowers,
+    BaseAndNestedPower,
+    PowerAndNestedBase,
+    CoeffPowerAndPower,
+    CoeffPowerAndBase,
+    CoeffBaseAndPower,
+    NestedBaseAndPower,
+    DistributePowerOverProduct,
+    SameExponent,
+    NestedSameExponent,
+    QuotientSameExponent,
+    DistributePowerOverQuotient,
+    ExpQuotient,
+    ExpOverExpPower,
+    ExpPowerOverExp,
+    AllFactorsCancelled,
+    SameBaseNary,
 }
 
 /// Try product-of-powers rewrites:
@@ -57,7 +83,7 @@ pub fn try_rewrite_product_power_expr(
                 let rewritten = ctx.add(Expr::Pow(base1, sum_exp));
                 return Some(PowerProductRewrite {
                     rewritten,
-                    desc: "Combine powers with same base",
+                    kind: PowerProductRewriteKind::SameBase,
                 });
             }
         }
@@ -70,7 +96,7 @@ pub fn try_rewrite_product_power_expr(
                     let rewritten = ctx.add(Expr::Pow(base1, sum_exp));
                     return Some(PowerProductRewrite {
                         rewritten,
-                        desc: "Combine power and base",
+                        kind: PowerProductRewriteKind::PowerAndBase,
                     });
                 }
             }
@@ -84,7 +110,7 @@ pub fn try_rewrite_product_power_expr(
                     let rewritten = ctx.add(Expr::Pow(base2, sum_exp));
                     return Some(PowerProductRewrite {
                         rewritten,
-                        desc: "Combine base and power",
+                        kind: PowerProductRewriteKind::BaseAndPower,
                     });
                 }
             }
@@ -95,7 +121,7 @@ pub fn try_rewrite_product_power_expr(
             let rewritten = ctx.add(Expr::Pow(lhs, two));
             return Some(PowerProductRewrite {
                 rewritten,
-                desc: "Multiply identical terms",
+                kind: PowerProductRewriteKind::MultiplyIdenticalTerms,
             });
         }
 
@@ -106,7 +132,7 @@ pub fn try_rewrite_product_power_expr(
                 let rewritten = mul2_raw(ctx, x_squared, rr);
                 return Some(PowerProductRewrite {
                     rewritten,
-                    desc: "Combine nested identical terms",
+                    kind: PowerProductRewriteKind::NestedIdenticalTerms,
                 });
             }
 
@@ -119,7 +145,7 @@ pub fn try_rewrite_product_power_expr(
                     let rewritten = mul2_raw(ctx, new_pow, rr);
                     return Some(PowerProductRewrite {
                         rewritten,
-                        desc: "Combine nested powers",
+                        kind: PowerProductRewriteKind::NestedPowers,
                     });
                 }
             }
@@ -132,7 +158,7 @@ pub fn try_rewrite_product_power_expr(
                     let rewritten = mul2_raw(ctx, new_pow, rr);
                     return Some(PowerProductRewrite {
                         rewritten,
-                        desc: "Combine base and nested power",
+                        kind: PowerProductRewriteKind::BaseAndNestedPower,
                     });
                 }
             }
@@ -145,7 +171,7 @@ pub fn try_rewrite_product_power_expr(
                     let rewritten = mul2_raw(ctx, new_pow, rr);
                     return Some(PowerProductRewrite {
                         rewritten,
-                        desc: "Combine power and nested base",
+                        kind: PowerProductRewriteKind::PowerAndNestedBase,
                     });
                 }
             }
@@ -161,7 +187,7 @@ pub fn try_rewrite_product_power_expr(
                             let rewritten = mul2_raw(ctx, ll, new_pow);
                             return Some(PowerProductRewrite {
                                 rewritten,
-                                desc: "Combine coeff-power and power",
+                                kind: PowerProductRewriteKind::CoeffPowerAndPower,
                             });
                         }
                     }
@@ -174,7 +200,7 @@ pub fn try_rewrite_product_power_expr(
                             let rewritten = mul2_raw(ctx, ll, new_pow);
                             return Some(PowerProductRewrite {
                                 rewritten,
-                                desc: "Combine coeff-power and base",
+                                kind: PowerProductRewriteKind::CoeffPowerAndBase,
                             });
                         }
                     }
@@ -191,7 +217,7 @@ pub fn try_rewrite_product_power_expr(
                             let rewritten = mul2_raw(ctx, ll, new_pow);
                             return Some(PowerProductRewrite {
                                 rewritten,
-                                desc: "Combine coeff-base and power",
+                                kind: PowerProductRewriteKind::CoeffBaseAndPower,
                             });
                         }
                     }
@@ -206,7 +232,7 @@ pub fn try_rewrite_product_power_expr(
                     let rewritten = mul2_raw(ctx, new_pow, rr);
                     return Some(PowerProductRewrite {
                         rewritten,
-                        desc: "Combine nested base and power",
+                        kind: PowerProductRewriteKind::NestedBaseAndPower,
                     });
                 }
             }
@@ -248,7 +274,7 @@ pub fn try_rewrite_power_product_distribution_expr(
             let rewritten = mul2_raw(ctx, a_pow, b_pow);
             return Some(PowerProductRewrite {
                 rewritten,
-                desc: "Distribute power over product",
+                kind: PowerProductRewriteKind::DistributePowerOverProduct,
             });
         }
     }
@@ -281,7 +307,7 @@ pub fn try_rewrite_product_same_exponent_expr(
                 let rewritten = ctx.add(Expr::Pow(new_base, exp1));
                 return Some(PowerProductRewrite {
                     rewritten,
-                    desc: "Combine powers with same exponent",
+                    kind: PowerProductRewriteKind::SameExponent,
                 });
             }
         }
@@ -303,7 +329,7 @@ pub fn try_rewrite_product_same_exponent_expr(
                         let rewritten = mul2_raw(ctx, combined_pow, rr);
                         return Some(PowerProductRewrite {
                             rewritten,
-                            desc: "Combine nested powers with same exponent",
+                            kind: PowerProductRewriteKind::NestedSameExponent,
                         });
                     }
                 }
@@ -343,7 +369,7 @@ pub fn try_rewrite_quotient_same_exponent_expr(
             let rewritten = ctx.add(Expr::Pow(new_base, exp_num));
             return Some(PowerProductRewrite {
                 rewritten,
-                desc: "a^n / b^n = (a/b)^n",
+                kind: PowerProductRewriteKind::QuotientSameExponent,
             });
         }
     }
@@ -372,7 +398,7 @@ pub fn try_rewrite_power_quotient_expr(
             let rewritten = ctx.add(Expr::Div(new_num, new_den));
             return Some(PowerProductRewrite {
                 rewritten,
-                desc: "Distribute power over quotient",
+                kind: PowerProductRewriteKind::DistributePowerOverQuotient,
             });
         }
     }
@@ -398,7 +424,7 @@ pub fn try_rewrite_exp_quotient_expr(
                 let rewritten = ctx.add(Expr::Pow(e, diff));
                 return Some(PowerProductRewrite {
                     rewritten,
-                    desc: "e^a / e^b = e^(a-b)",
+                    kind: PowerProductRewriteKind::ExpQuotient,
                 });
             }
         }
@@ -412,7 +438,7 @@ pub fn try_rewrite_exp_quotient_expr(
                     let rewritten = ctx.add(Expr::Pow(e, diff));
                     return Some(PowerProductRewrite {
                         rewritten,
-                        desc: "e / e^b = e^(1-b)",
+                        kind: PowerProductRewriteKind::ExpOverExpPower,
                     });
                 }
             }
@@ -427,7 +453,7 @@ pub fn try_rewrite_exp_quotient_expr(
                     let rewritten = ctx.add(Expr::Pow(e, diff));
                     return Some(PowerProductRewrite {
                         rewritten,
-                        desc: "e^a / e = e^(a-1)",
+                        kind: PowerProductRewriteKind::ExpPowerOverExp,
                     });
                 }
             }
@@ -545,7 +571,7 @@ pub fn try_rewrite_mul_nary_combine_powers_expr(
     if result_factors.is_empty() {
         return Some(PowerProductRewrite {
             rewritten: ctx.num(1),
-            desc: "All factors cancelled",
+            kind: PowerProductRewriteKind::AllFactorsCancelled,
         });
     }
 
@@ -558,7 +584,7 @@ pub fn try_rewrite_mul_nary_combine_powers_expr(
     if result_factors.len() < factors.len() {
         Some(PowerProductRewrite {
             rewritten,
-            desc: "Combine powers with same base (n-ary)",
+            kind: PowerProductRewriteKind::SameBaseNary,
         })
     } else {
         None

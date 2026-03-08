@@ -7,8 +7,26 @@ use cas_math::trig_canonicalization_support::{
     try_rewrite_reciprocal_product_identity_expr, try_rewrite_sec_tan_minus_one_identity_zero_expr,
     try_rewrite_sec_tan_pythagorean_identity_expr,
     try_rewrite_tan_to_sec_pythagorean_identity_expr,
-    try_rewrite_trig_function_name_canonicalization_expr,
+    try_rewrite_trig_function_name_canonicalization_expr, TrigCanonicalIdentityKind,
 };
+
+fn format_trig_canonical_identity_desc(kind: TrigCanonicalIdentityKind) -> &'static str {
+    match kind {
+        TrigCanonicalIdentityKind::SecToRecipCos => "sec(x) = 1/cos(x)",
+        TrigCanonicalIdentityKind::CscToRecipSin => "csc(x) = 1/sin(x)",
+        TrigCanonicalIdentityKind::CotToCosSin => "cot(x) = cos(x)/sin(x)",
+        TrigCanonicalIdentityKind::SecTanPythagorean => "sec²(x) - tan²(x) = 1",
+        TrigCanonicalIdentityKind::CscCotPythagorean => "csc²(x) - cot²(x) = 1",
+        TrigCanonicalIdentityKind::TanToSecPythagorean => "1 + tan²(x) = sec²(x)",
+        TrigCanonicalIdentityKind::CotToCscPythagorean => "1 + cot²(x) = csc²(x)",
+        TrigCanonicalIdentityKind::SecTanMinusOneIdentityZero => "sec²(x) - tan²(x) - 1 = 0",
+        TrigCanonicalIdentityKind::CscCotMinusOneIdentityZero => "csc²(x) - cot²(x) - 1 = 0",
+        TrigCanonicalIdentityKind::ReciprocalProductIdentity => "Reciprocal trig product = 1",
+        TrigCanonicalIdentityKind::MixedFractionToSinCos => {
+            "Convert mixed trig fraction to sin/cos"
+        }
+    }
+}
 
 // ==================== Sophisticated Context-Aware Canonicalization ====================
 // STRATEGY: Only convert when it demonstrably helps simplification
@@ -71,7 +89,9 @@ define_rule!(
     Some(crate::target_kind::TargetKindSet::SUB),
     |ctx, expr| {
         let rewrite = try_rewrite_sec_tan_pythagorean_identity_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(
+            Rewrite::new(rewrite.rewritten).desc(format_trig_canonical_identity_desc(rewrite.kind)),
+        )
     }
 );
 
@@ -82,7 +102,9 @@ define_rule!(
     Some(crate::target_kind::TargetKindSet::SUB),
     |ctx, expr| {
         let rewrite = try_rewrite_csc_cot_pythagorean_identity_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(
+            Rewrite::new(rewrite.rewritten).desc(format_trig_canonical_identity_desc(rewrite.kind)),
+        )
     }
 );
 
@@ -93,7 +115,9 @@ define_rule!(
     Some(crate::target_kind::TargetKindSet::ADD),
     |ctx, expr| {
         let rewrite = try_rewrite_tan_to_sec_pythagorean_identity_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(
+            Rewrite::new(rewrite.rewritten).desc(format_trig_canonical_identity_desc(rewrite.kind)),
+        )
     }
 );
 
@@ -104,7 +128,9 @@ define_rule!(
     Some(crate::target_kind::TargetKindSet::ADD),
     |ctx, expr| {
         let rewrite = try_rewrite_cot_to_csc_pythagorean_identity_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(
+            Rewrite::new(rewrite.rewritten).desc(format_trig_canonical_identity_desc(rewrite.kind)),
+        )
     }
 );
 
@@ -118,7 +144,9 @@ define_rule!(
     Some(crate::target_kind::TargetKindSet::SUB),
     |ctx, expr| {
         let rewrite = try_rewrite_sec_tan_minus_one_identity_zero_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(
+            Rewrite::new(rewrite.rewritten).desc(format_trig_canonical_identity_desc(rewrite.kind)),
+        )
     }
 );
 
@@ -129,7 +157,9 @@ define_rule!(
     Some(crate::target_kind::TargetKindSet::SUB),
     |ctx, expr| {
         let rewrite = try_rewrite_csc_cot_minus_one_identity_zero_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(
+            Rewrite::new(rewrite.rewritten).desc(format_trig_canonical_identity_desc(rewrite.kind)),
+        )
     }
 );
 
@@ -140,7 +170,9 @@ define_rule!(
     Some(crate::target_kind::TargetKindSet::MUL),
     |ctx, expr| {
         let rewrite = try_rewrite_reciprocal_product_identity_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(
+            Rewrite::new(rewrite.rewritten).desc(format_trig_canonical_identity_desc(rewrite.kind)),
+        )
     }
 );
 
@@ -153,7 +185,9 @@ define_rule!(
     Some(crate::target_kind::TargetKindSet::DIV),
     |ctx, expr| {
         let rewrite = try_rewrite_mixed_fraction_to_sincos_plan_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(
+            Rewrite::new(rewrite.rewritten).desc(format_trig_canonical_identity_desc(rewrite.kind)),
+        )
     }
 );
 

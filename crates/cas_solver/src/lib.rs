@@ -305,6 +305,7 @@ mod solve_core_runtime;
 mod solve_display_lines;
 mod solve_display_result;
 mod solve_display_steps;
+mod solve_event_steps;
 mod solve_input_parse_parse;
 mod solve_input_parse_prepare;
 #[cfg(test)]

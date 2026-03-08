@@ -11,27 +11,49 @@ pub enum HyperbolicPythagoreanValue {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HyperbolicIdentityRewriteKind {
+    PythagoreanOne,
+    PythagoreanNegativeOne,
+    SinhCoshToTanh,
+    TanhToSinhCosh,
+    SinhDoubleAngleExpansion,
+    TanhDoubleAngleExpansion,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HyperbolicIdentityRewrite {
     pub rewritten: ExprId,
-    pub desc: &'static str,
+    pub kind: HyperbolicIdentityRewriteKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SinhCoshToExpRewriteKind {
+    Sum,
+    CoshMinusSinh,
+    SinhMinusCosh,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SinhCoshToExpRewrite {
     pub rewritten: ExprId,
-    pub desc: &'static str,
+    pub kind: SinhCoshToExpRewriteKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HyperbolicDoubleAngleRewriteKind {
+    Sum,
+    SubChain,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HyperbolicDoubleAngleRewrite {
     pub rewritten: ExprId,
-    pub desc: &'static str,
+    pub kind: HyperbolicDoubleAngleRewriteKind,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HyperbolicTanhPythagoreanRewrite {
     pub rewritten: ExprId,
-    pub desc: &'static str,
 }
 
 /// Detects hyperbolic Pythagorean subtraction forms:
@@ -89,11 +111,11 @@ pub fn try_rewrite_hyperbolic_pythagorean_sub_expr(
     match detect_hyperbolic_pythagorean_sub(ctx, expr)? {
         HyperbolicPythagoreanValue::One => Some(HyperbolicIdentityRewrite {
             rewritten: ctx.num(1),
-            desc: "cosh²(x) - sinh²(x) = 1",
+            kind: HyperbolicIdentityRewriteKind::PythagoreanOne,
         }),
         HyperbolicPythagoreanValue::NegativeOne => Some(HyperbolicIdentityRewrite {
             rewritten: ctx.num(-1),
-            desc: "sinh²(x) - cosh²(x) = -1",
+            kind: HyperbolicIdentityRewriteKind::PythagoreanNegativeOne,
         }),
     }
 }
@@ -128,7 +150,7 @@ pub fn try_rewrite_sinh_cosh_to_exp(
                 let exp_x = ctx.call_builtin(BuiltinFn::Exp, vec![l_args[0]]);
                 return Some(SinhCoshToExpRewrite {
                     rewritten: exp_x,
-                    desc: "sinh(x) + cosh(x) = exp(x)",
+                    kind: SinhCoshToExpRewriteKind::Sum,
                 });
             }
             None
@@ -159,12 +181,12 @@ pub fn try_rewrite_sinh_cosh_to_exp(
             if is_cosh_minus_sinh {
                 Some(SinhCoshToExpRewrite {
                     rewritten: exp_neg_x,
-                    desc: "cosh(x) - sinh(x) = exp(-x)",
+                    kind: SinhCoshToExpRewriteKind::CoshMinusSinh,
                 })
             } else {
                 Some(SinhCoshToExpRewrite {
                     rewritten: ctx.add(Expr::Neg(exp_neg_x)),
-                    desc: "sinh(x) - cosh(x) = -exp(-x)",
+                    kind: SinhCoshToExpRewriteKind::SinhMinusCosh,
                 })
             }
         }
@@ -217,7 +239,7 @@ pub fn try_rewrite_hyperbolic_double_angle_sum(
     let cosh_2x = ctx.call_builtin(BuiltinFn::Cosh, vec![two_x]);
     Some(HyperbolicDoubleAngleRewrite {
         rewritten: cosh_2x,
-        desc: "cosh²(x) + sinh²(x) = cosh(2x)",
+        kind: HyperbolicDoubleAngleRewriteKind::Sum,
     })
 }
 
@@ -319,7 +341,7 @@ pub fn try_rewrite_hyperbolic_double_angle_sub_chain(
 
     Some(HyperbolicDoubleAngleRewrite {
         rewritten,
-        desc: "cosh(2x) - cosh²(x) - sinh²(x) = 0",
+        kind: HyperbolicDoubleAngleRewriteKind::SubChain,
     })
 }
 
@@ -386,10 +408,7 @@ pub fn try_rewrite_tanh_pythagorean_add_chain(
         acc
     };
 
-    Some(HyperbolicTanhPythagoreanRewrite {
-        rewritten,
-        desc: "1 - tanh²(x) = 1/cosh²(x)",
-    })
+    Some(HyperbolicTanhPythagoreanRewrite { rewritten })
 }
 
 /// Detect and rewrite `sinh(x)/cosh(x) -> tanh(x)`.
@@ -429,7 +448,7 @@ pub fn try_rewrite_sinh_cosh_to_tanh_identity_expr(
     let rewritten = try_rewrite_sinh_cosh_to_tanh(ctx, expr)?;
     Some(HyperbolicIdentityRewrite {
         rewritten,
-        desc: "sinh(x)/cosh(x) = tanh(x)",
+        kind: HyperbolicIdentityRewriteKind::SinhCoshToTanh,
     })
 }
 
@@ -475,7 +494,7 @@ pub fn try_rewrite_tanh_to_sinh_cosh_identity_expr(
     let rewritten = try_rewrite_tanh_to_sinh_cosh(ctx, expr)?;
     Some(HyperbolicIdentityRewrite {
         rewritten,
-        desc: "tanh(x) = sinh(x)/cosh(x)",
+        kind: HyperbolicIdentityRewriteKind::TanhToSinhCosh,
     })
 }
 
@@ -504,14 +523,51 @@ pub fn try_rewrite_sinh_double_angle_expansion_identity_expr(
     let rewritten = try_rewrite_sinh_double_angle_expansion(ctx, expr)?;
     Some(HyperbolicIdentityRewrite {
         rewritten,
-        desc: "sinh(2x) = 2·sinh(x)·cosh(x)",
+        kind: HyperbolicIdentityRewriteKind::SinhDoubleAngleExpansion,
     })
+}
+
+/// Detect and rewrite `tanh(2x) -> 2*tanh(x)/(1 + tanh(x)^2)`.
+pub fn try_rewrite_tanh_double_angle_expansion(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return None;
+    };
+    if !ctx.is_builtin(*fn_id, BuiltinFn::Tanh) || args.len() != 1 {
+        return None;
+    }
+
+    let x = extract_double_angle_arg(ctx, args[0])?;
+    let two = ctx.num(2);
+    let one = ctx.num(1);
+    let tanh_x = ctx.call_builtin(BuiltinFn::Tanh, vec![x]);
+    let numerator = crate::expr_rewrite::smart_mul(ctx, two, tanh_x);
+    let tanh_sq = ctx.add(Expr::Pow(tanh_x, two));
+    let denominator = ctx.add(Expr::Add(one, tanh_sq));
+    Some(ctx.add(Expr::Div(numerator, denominator)))
+}
+
+/// Detect and rewrite `tanh(2x) -> 2*tanh(x)/(1 + tanh(x)^2)` with canonical description.
+pub fn try_rewrite_tanh_double_angle_expansion_identity_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<HyperbolicIdentityRewrite> {
+    let rewritten = try_rewrite_tanh_double_angle_expansion(ctx, expr)?;
+    Some(HyperbolicIdentityRewrite {
+        rewritten,
+        kind: HyperbolicIdentityRewriteKind::TanhDoubleAngleExpansion,
+    })
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HyperbolicTripleAngleRewriteKind {
+    Sinh,
+    Cosh,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HyperbolicTripleAngleRewrite {
     pub rewritten: ExprId,
-    pub desc: &'static str,
+    pub kind: HyperbolicTripleAngleRewriteKind,
 }
 
 /// Detect and rewrite hyperbolic triple-angle expansions.
@@ -565,7 +621,7 @@ pub fn try_rewrite_hyperbolic_triple_angle(
             let rewritten = ctx.add(Expr::Add(term1, term2));
             Some(HyperbolicTripleAngleRewrite {
                 rewritten,
-                desc: "sinh(3x) → 3sinh(x) + 4sinh³(x)",
+                kind: HyperbolicTripleAngleRewriteKind::Sinh,
             })
         }
         Some(BuiltinFn::Cosh) => {
@@ -579,7 +635,7 @@ pub fn try_rewrite_hyperbolic_triple_angle(
             let rewritten = ctx.add(Expr::Sub(term1, term2));
             Some(HyperbolicTripleAngleRewrite {
                 rewritten,
-                desc: "cosh(3x) → 4cosh³(x) - 3cosh(x)",
+                kind: HyperbolicTripleAngleRewriteKind::Cosh,
             })
         }
         _ => None,
@@ -587,9 +643,18 @@ pub fn try_rewrite_hyperbolic_triple_angle(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RecognizeHyperbolicFromExpRewriteKind {
+    CoshHalf,
+    SinhHalf,
+    NegSinhHalf,
+    TanhRatio,
+    NegTanhRatio,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RecognizeHyperbolicFromExpRewrite {
     pub rewritten: ExprId,
-    pub desc: &'static str,
+    pub kind: RecognizeHyperbolicFromExpRewriteKind,
 }
 
 /// Detect and rewrite exponential definitions of hyperbolic functions:
@@ -611,19 +676,19 @@ pub fn try_rewrite_recognize_hyperbolic_from_exp(
                     let cosh = ctx.call_builtin(BuiltinFn::Cosh, vec![arg]);
                     return Some(RecognizeHyperbolicFromExpRewrite {
                         rewritten: cosh,
-                        desc: "(e^x + e^(-x))/2 = cosh(x)",
+                        kind: RecognizeHyperbolicFromExpRewriteKind::CoshHalf,
                     });
                 } else if positive_first {
                     let sinh = ctx.call_builtin(BuiltinFn::Sinh, vec![arg]);
                     return Some(RecognizeHyperbolicFromExpRewrite {
                         rewritten: sinh,
-                        desc: "(e^x - e^(-x))/2 = sinh(x)",
+                        kind: RecognizeHyperbolicFromExpRewriteKind::SinhHalf,
                     });
                 } else {
                     let sinh = ctx.call_builtin(BuiltinFn::Sinh, vec![arg]);
                     return Some(RecognizeHyperbolicFromExpRewrite {
                         rewritten: ctx.add(Expr::Neg(sinh)),
-                        desc: "(e^(-x) - e^x)/2 = -sinh(x)",
+                        kind: RecognizeHyperbolicFromExpRewriteKind::NegSinhHalf,
                     });
                 }
             }
@@ -647,19 +712,19 @@ pub fn try_rewrite_recognize_hyperbolic_from_exp(
                     let cosh = ctx.call_builtin(BuiltinFn::Cosh, vec![arg]);
                     return Some(RecognizeHyperbolicFromExpRewrite {
                         rewritten: cosh,
-                        desc: "(e^x + e^(-x))/2 = cosh(x)",
+                        kind: RecognizeHyperbolicFromExpRewriteKind::CoshHalf,
                     });
                 } else if positive_first {
                     let sinh = ctx.call_builtin(BuiltinFn::Sinh, vec![arg]);
                     return Some(RecognizeHyperbolicFromExpRewrite {
                         rewritten: sinh,
-                        desc: "(e^x - e^(-x))/2 = sinh(x)",
+                        kind: RecognizeHyperbolicFromExpRewriteKind::SinhHalf,
                     });
                 } else {
                     let sinh = ctx.call_builtin(BuiltinFn::Sinh, vec![arg]);
                     return Some(RecognizeHyperbolicFromExpRewrite {
                         rewritten: ctx.add(Expr::Neg(sinh)),
-                        desc: "(e^(-x) - e^x)/2 = -sinh(x)",
+                        kind: RecognizeHyperbolicFromExpRewriteKind::NegSinhHalf,
                     });
                 }
             }
@@ -679,12 +744,12 @@ pub fn try_rewrite_recognize_hyperbolic_from_exp(
                     if num_positive_first {
                         return Some(RecognizeHyperbolicFromExpRewrite {
                             rewritten: tanh_x,
-                            desc: "(e^x - e^(-x))/(e^x + e^(-x)) = tanh(x)",
+                            kind: RecognizeHyperbolicFromExpRewriteKind::TanhRatio,
                         });
                     } else {
                         return Some(RecognizeHyperbolicFromExpRewrite {
                             rewritten: ctx.add(Expr::Neg(tanh_x)),
-                            desc: "(e^(-x) - e^x)/(e^x + e^(-x)) = -tanh(x)",
+                            kind: RecognizeHyperbolicFromExpRewriteKind::NegTanhRatio,
                         });
                     }
                 }
@@ -704,10 +769,16 @@ mod tests {
         try_rewrite_sinh_cosh_to_exp, try_rewrite_sinh_cosh_to_tanh,
         try_rewrite_sinh_cosh_to_tanh_identity_expr, try_rewrite_sinh_double_angle_expansion,
         try_rewrite_sinh_double_angle_expansion_identity_expr,
+        try_rewrite_tanh_double_angle_expansion,
+        try_rewrite_tanh_double_angle_expansion_identity_expr,
         try_rewrite_tanh_pythagorean_add_chain, try_rewrite_tanh_to_sinh_cosh,
-        try_rewrite_tanh_to_sinh_cosh_identity_expr, HyperbolicPythagoreanValue,
+        try_rewrite_tanh_to_sinh_cosh_identity_expr, HyperbolicDoubleAngleRewriteKind,
+        HyperbolicIdentityRewriteKind, HyperbolicPythagoreanValue,
+        HyperbolicTripleAngleRewriteKind, RecognizeHyperbolicFromExpRewriteKind,
+        SinhCoshToExpRewriteKind,
     };
     use cas_ast::{BuiltinFn, Context, Expr};
+    use cas_formatter::render_expr;
 
     #[test]
     fn detects_cosh2_minus_sinh2() {
@@ -754,7 +825,7 @@ mod tests {
         let rhs = ctx.add(Expr::Pow(sinh, two));
         let expr = ctx.add(Expr::Sub(lhs, rhs));
         let rewrite = try_rewrite_hyperbolic_pythagorean_sub_expr(&mut ctx, expr).expect("rewrite");
-        assert_eq!(rewrite.desc, "cosh²(x) - sinh²(x) = 1");
+        assert_eq!(rewrite.kind, HyperbolicIdentityRewriteKind::PythagoreanOne);
     }
 
     #[test]
@@ -781,7 +852,7 @@ mod tests {
         let expr = ctx.add(Expr::Add(sinh, cosh));
 
         let rewrite = try_rewrite_sinh_cosh_to_exp(&mut ctx, expr).expect("rewrite");
-        assert_eq!(rewrite.desc, "sinh(x) + cosh(x) = exp(x)");
+        assert_eq!(rewrite.kind, SinhCoshToExpRewriteKind::Sum);
     }
 
     #[test]
@@ -793,7 +864,7 @@ mod tests {
         let expr = ctx.add(Expr::Sub(cosh, sinh));
 
         let rewrite = try_rewrite_sinh_cosh_to_exp(&mut ctx, expr).expect("rewrite");
-        assert_eq!(rewrite.desc, "cosh(x) - sinh(x) = exp(-x)");
+        assert_eq!(rewrite.kind, SinhCoshToExpRewriteKind::CoshMinusSinh);
     }
 
     #[test]
@@ -808,7 +879,7 @@ mod tests {
         let expr = ctx.add(Expr::Add(cosh_sq, sinh_sq));
 
         let rewrite = try_rewrite_hyperbolic_double_angle_sum(&mut ctx, expr).expect("rewrite");
-        assert_eq!(rewrite.desc, "cosh²(x) + sinh²(x) = cosh(2x)");
+        assert_eq!(rewrite.kind, HyperbolicDoubleAngleRewriteKind::Sum);
     }
 
     #[test]
@@ -829,7 +900,7 @@ mod tests {
 
         let rewrite =
             try_rewrite_hyperbolic_double_angle_sub_chain(&mut ctx, expr).expect("rewrite");
-        assert_eq!(rewrite.desc, "cosh(2x) - cosh²(x) - sinh²(x) = 0");
+        assert_eq!(rewrite.kind, HyperbolicDoubleAngleRewriteKind::SubChain);
         let zero = num_rational::BigRational::from_integer(0.into());
         assert!(matches!(ctx.get(rewrite.rewritten), Expr::Number(n) if n == &zero));
     }
@@ -846,7 +917,7 @@ mod tests {
         let expr = ctx.add(Expr::Add(one, neg_tanh_sq));
 
         let rewrite = try_rewrite_tanh_pythagorean_add_chain(&mut ctx, expr).expect("rewrite");
-        assert_eq!(rewrite.desc, "1 - tanh²(x) = 1/cosh²(x)");
+        assert_eq!(render_expr(&ctx, rewrite.rewritten), "1 / cosh(x)^2");
     }
 
     #[test]
@@ -873,7 +944,7 @@ mod tests {
         let cosh = ctx.call_builtin(BuiltinFn::Cosh, vec![x]);
         let expr = ctx.add(Expr::Div(sinh, cosh));
         let rewrite = try_rewrite_sinh_cosh_to_tanh_identity_expr(&mut ctx, expr).expect("rewrite");
-        assert_eq!(rewrite.desc, "sinh(x)/cosh(x) = tanh(x)");
+        assert_eq!(rewrite.kind, HyperbolicIdentityRewriteKind::SinhCoshToTanh);
     }
 
     #[test]
@@ -904,7 +975,7 @@ mod tests {
         let x = ctx.var("x");
         let expr = ctx.call_builtin(BuiltinFn::Tanh, vec![x]);
         let rewrite = try_rewrite_tanh_to_sinh_cosh_identity_expr(&mut ctx, expr).expect("rewrite");
-        assert_eq!(rewrite.desc, "tanh(x) = sinh(x)/cosh(x)");
+        assert_eq!(rewrite.kind, HyperbolicIdentityRewriteKind::TanhToSinhCosh);
     }
 
     #[test]
@@ -956,7 +1027,45 @@ mod tests {
         let expr = ctx.call_builtin(BuiltinFn::Sinh, vec![two_x]);
         let rewrite =
             try_rewrite_sinh_double_angle_expansion_identity_expr(&mut ctx, expr).expect("rewrite");
-        assert_eq!(rewrite.desc, "sinh(2x) = 2·sinh(x)·cosh(x)");
+        assert_eq!(
+            rewrite.kind,
+            HyperbolicIdentityRewriteKind::SinhDoubleAngleExpansion
+        );
+    }
+
+    #[test]
+    fn rewrites_tanh_double_angle_expansion() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let two = ctx.num(2);
+        let two_x = ctx.add(Expr::Mul(two, x));
+        let expr = ctx.call_builtin(BuiltinFn::Tanh, vec![two_x]);
+
+        let rewrite = try_rewrite_tanh_double_angle_expansion(&mut ctx, expr).expect("rewrite");
+        let Expr::Div(num, den) = ctx.get(rewrite) else {
+            panic!("expected division");
+        };
+        assert_eq!(render_expr(&ctx, *num), "2 * tanh(x)");
+        let den_render = render_expr(&ctx, *den);
+        assert!(
+            den_render == "1 + tanh(x)^2" || den_render == "tanh(x)^2 + 1",
+            "unexpected denominator: {den_render}"
+        );
+    }
+
+    #[test]
+    fn rewrites_tanh_double_angle_expansion_with_desc() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let two = ctx.num(2);
+        let two_x = ctx.add(Expr::Mul(two, x));
+        let expr = ctx.call_builtin(BuiltinFn::Tanh, vec![two_x]);
+        let rewrite =
+            try_rewrite_tanh_double_angle_expansion_identity_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(
+            rewrite.kind,
+            HyperbolicIdentityRewriteKind::TanhDoubleAngleExpansion
+        );
     }
 
     #[test]
@@ -968,7 +1077,7 @@ mod tests {
         let expr = ctx.call_builtin(BuiltinFn::Sinh, vec![three_x]);
 
         let rewrite = try_rewrite_hyperbolic_triple_angle(&mut ctx, expr).expect("rewrite");
-        assert_eq!(rewrite.desc, "sinh(3x) → 3sinh(x) + 4sinh³(x)");
+        assert_eq!(rewrite.kind, HyperbolicTripleAngleRewriteKind::Sinh);
     }
 
     #[test]
@@ -980,7 +1089,7 @@ mod tests {
         let expr = ctx.call_builtin(BuiltinFn::Cosh, vec![three_x]);
 
         let rewrite = try_rewrite_hyperbolic_triple_angle(&mut ctx, expr).expect("rewrite");
-        assert_eq!(rewrite.desc, "cosh(3x) → 4cosh³(x) - 3cosh(x)");
+        assert_eq!(rewrite.kind, HyperbolicTripleAngleRewriteKind::Cosh);
     }
 
     #[test]
@@ -997,7 +1106,10 @@ mod tests {
         let expr = ctx.add(Expr::Div(sum, two));
 
         let rewrite = try_rewrite_recognize_hyperbolic_from_exp(&mut ctx, expr).expect("rewrite");
-        assert_eq!(rewrite.desc, "(e^x + e^(-x))/2 = cosh(x)");
+        assert_eq!(
+            rewrite.kind,
+            RecognizeHyperbolicFromExpRewriteKind::CoshHalf
+        );
     }
 
     #[test]
@@ -1014,6 +1126,9 @@ mod tests {
         let expr = ctx.add(Expr::Div(num, den));
 
         let rewrite = try_rewrite_recognize_hyperbolic_from_exp(&mut ctx, expr).expect("rewrite");
-        assert_eq!(rewrite.desc, "(e^x - e^(-x))/(e^x + e^(-x)) = tanh(x)");
+        assert_eq!(
+            rewrite.kind,
+            RecognizeHyperbolicFromExpRewriteKind::TanhRatio
+        );
     }
 }

@@ -4,8 +4,22 @@
 //! size of `transform_expr_recursive`.
 
 use super::*;
-use cas_math::factoring_support::try_rewrite_difference_of_squares_product_expr;
+use cas_math::factoring_support::{
+    try_rewrite_difference_of_squares_product_expr, DifferenceOfSquaresProductRewriteKind,
+};
 use cas_math::pow_preorder_support::try_plan_sqrt_square_pow_rewrite;
+
+fn format_difference_of_squares_product_desc(
+    kind: DifferenceOfSquaresProductRewriteKind,
+) -> &'static str {
+    match kind {
+        DifferenceOfSquaresProductRewriteKind::Basic => "(a-b)(a+b) = a² - b²",
+        DifferenceOfSquaresProductRewriteKind::NaryConjugateProduct => {
+            "(U+V)(U-V) = U² - V² (conjugate product)"
+        }
+        DifferenceOfSquaresProductRewriteKind::NaryScan => "(a-b)(a+b)·… = (a²-b²)·… (n-ary scan)",
+    }
+}
 
 impl<'a> LocalSimplificationTransformer<'a> {
     /// Transform binary expression (Add/Sub/Mul) by simplifying children.
@@ -53,7 +67,12 @@ impl<'a> LocalSimplificationTransformer<'a> {
     #[inline(never)]
     fn try_conjugate_pair_contraction(&mut self, id: ExprId) -> Option<ExprId> {
         let rewrite = try_rewrite_difference_of_squares_product_expr(self.context, id)?;
-        self.record_step(rewrite.desc, "Difference of Squares", id, rewrite.rewritten);
+        self.record_step(
+            format_difference_of_squares_product_desc(rewrite.kind),
+            "Difference of Squares",
+            id,
+            rewrite.rewritten,
+        );
         Some(self.transform_expr_recursive(rewrite.rewritten))
     }
 

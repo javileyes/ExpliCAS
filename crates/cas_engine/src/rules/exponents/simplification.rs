@@ -20,6 +20,35 @@ fn format_power_eval_static_desc(
     }
 }
 
+fn format_power_product_desc(
+    kind: cas_math::power_product_support::PowerProductRewriteKind,
+) -> &'static str {
+    match kind {
+        cas_math::power_product_support::PowerProductRewriteKind::DistributePowerOverProduct => {
+            "Distribute power over product"
+        }
+        cas_math::power_product_support::PowerProductRewriteKind::DistributePowerOverQuotient => {
+            "Distribute power over quotient"
+        }
+        cas_math::power_product_support::PowerProductRewriteKind::ExpQuotient => {
+            "e^a / e^b = e^(a-b)"
+        }
+        cas_math::power_product_support::PowerProductRewriteKind::ExpOverExpPower => {
+            "e / e^b = e^(1-b)"
+        }
+        cas_math::power_product_support::PowerProductRewriteKind::ExpPowerOverExp => {
+            "e^a / e = e^(a-1)"
+        }
+        cas_math::power_product_support::PowerProductRewriteKind::AllFactorsCancelled => {
+            "All factors cancelled"
+        }
+        cas_math::power_product_support::PowerProductRewriteKind::SameBaseNary => {
+            "Combine powers with same base (n-ary)"
+        }
+        _ => "Power product rewrite",
+    }
+}
+
 fn format_pow_zero_desc(
     mode: cas_math::power_identity_support::PowerIdentityDomainMode,
 ) -> &'static str {
@@ -167,13 +196,13 @@ define_rule!(
         let rewrite = cas_math::power_product_support::try_rewrite_power_product_distribution_expr(
             ctx, expr,
         )?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc(format_power_product_desc(rewrite.kind)))
     }
 );
 
 define_rule!(PowerQuotientRule, "Power of a Quotient", |ctx, expr| {
     let rewrite = cas_math::power_product_support::try_rewrite_power_quotient_expr(ctx, expr)?;
-    Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+    Some(Rewrite::new(rewrite.rewritten).desc(format_power_product_desc(rewrite.kind)))
 });
 
 // ============================================================================
@@ -181,7 +210,7 @@ define_rule!(PowerQuotientRule, "Power of a Quotient", |ctx, expr| {
 // ============================================================================
 define_rule!(ExpQuotientRule, "Exp Quotient", |ctx, expr| {
     let rewrite = cas_math::power_product_support::try_rewrite_exp_quotient_expr(ctx, expr)?;
-    Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+    Some(Rewrite::new(rewrite.rewritten).desc(format_power_product_desc(rewrite.kind)))
 });
 
 // ============================================================================
@@ -202,7 +231,7 @@ impl crate::rule::Rule for MulNaryCombinePowersRule {
     ) -> Option<Rewrite> {
         let rewrite =
             cas_math::power_product_support::try_rewrite_mul_nary_combine_powers_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc(format_power_product_desc(rewrite.kind)))
     }
 
     fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {

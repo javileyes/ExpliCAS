@@ -20,6 +20,59 @@ fn format_power_eval_static_desc(
     }
 }
 
+fn format_power_product_desc(
+    kind: cas_math::power_product_support::PowerProductRewriteKind,
+) -> &'static str {
+    match kind {
+        cas_math::power_product_support::PowerProductRewriteKind::SameBase => {
+            "Combine powers with same base"
+        }
+        cas_math::power_product_support::PowerProductRewriteKind::PowerAndBase => {
+            "Combine power and base"
+        }
+        cas_math::power_product_support::PowerProductRewriteKind::BaseAndPower => {
+            "Combine base and power"
+        }
+        cas_math::power_product_support::PowerProductRewriteKind::MultiplyIdenticalTerms => {
+            "Multiply identical terms"
+        }
+        cas_math::power_product_support::PowerProductRewriteKind::NestedIdenticalTerms => {
+            "Combine nested identical terms"
+        }
+        cas_math::power_product_support::PowerProductRewriteKind::NestedPowers => {
+            "Combine nested powers"
+        }
+        cas_math::power_product_support::PowerProductRewriteKind::BaseAndNestedPower => {
+            "Combine base and nested power"
+        }
+        cas_math::power_product_support::PowerProductRewriteKind::PowerAndNestedBase => {
+            "Combine power and nested base"
+        }
+        cas_math::power_product_support::PowerProductRewriteKind::CoeffPowerAndPower => {
+            "Combine coeff-power and power"
+        }
+        cas_math::power_product_support::PowerProductRewriteKind::CoeffPowerAndBase => {
+            "Combine coeff-power and base"
+        }
+        cas_math::power_product_support::PowerProductRewriteKind::CoeffBaseAndPower => {
+            "Combine coeff-base and power"
+        }
+        cas_math::power_product_support::PowerProductRewriteKind::NestedBaseAndPower => {
+            "Combine nested base and power"
+        }
+        cas_math::power_product_support::PowerProductRewriteKind::SameExponent => {
+            "Combine powers with same exponent"
+        }
+        cas_math::power_product_support::PowerProductRewriteKind::NestedSameExponent => {
+            "Combine nested powers with same exponent"
+        }
+        cas_math::power_product_support::PowerProductRewriteKind::QuotientSameExponent => {
+            "a^n / b^n = (a/b)^n"
+        }
+        _ => "Power product rewrite",
+    }
+}
+
 const ROOT_CANCEL_ASSUME_SUGGESTION: &str =
     "Use 'semantics set domain assume' to simplify (x^n)^(1/n) → x.";
 
@@ -183,7 +236,7 @@ fn apply_power_power_even_root_action(
 
 define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
     let rewrite = cas_math::power_product_support::try_rewrite_product_power_expr(ctx, expr)?;
-    Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+    Some(Rewrite::new(rewrite.rewritten).desc(format_power_product_desc(rewrite.kind)))
 });
 
 // a^n * b^n = (ab)^n - combines products of powers with same exponent
@@ -196,7 +249,7 @@ define_rule!(
     |ctx, expr| {
         let rewrite =
             cas_math::power_product_support::try_rewrite_product_same_exponent_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc(format_power_product_desc(rewrite.kind)))
     }
 );
 
@@ -209,7 +262,7 @@ define_rule!(
     |ctx, expr| {
         let rewrite =
             cas_math::power_product_support::try_rewrite_quotient_same_exponent_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc(format_power_product_desc(rewrite.kind)))
     }
 );
 

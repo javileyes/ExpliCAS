@@ -4,10 +4,18 @@ use crate::define_rule;
 use crate::rule::Rewrite;
 use cas_math::trig_canonicalization_support::{
     try_rewrite_csc_cot_pythagorean_identity_expr, try_rewrite_sec_tan_pythagorean_identity_expr,
-    try_rewrite_trig_quotient_div_expr,
+    try_rewrite_trig_quotient_div_expr, TrigCanonicalIdentityKind,
 };
 use cas_math::trig_tan_triple_support::try_rewrite_tan_triple_product_mul_expr;
 use cas_math::trig_value_detection_support::try_plan_tan_to_sin_cos_with_policy;
+
+fn format_trig_canonical_identity_desc(kind: TrigCanonicalIdentityKind) -> &'static str {
+    match kind {
+        TrigCanonicalIdentityKind::SecTanPythagorean => "sec²(x) - tan²(x) = 1",
+        TrigCanonicalIdentityKind::CscCotPythagorean => "csc²(x) - cot²(x) = 1",
+        _ => unreachable!("unexpected trig canonical identity kind in values_rules"),
+    }
+}
 
 // =============================================================================
 // TRIPLE TANGENT PRODUCT IDENTITY
@@ -175,7 +183,9 @@ define_rule!(
     "Secant-Tangent Pythagorean Identity",
     |ctx, expr| {
         let rewrite = try_rewrite_sec_tan_pythagorean_identity_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(
+            Rewrite::new(rewrite.rewritten).desc(format_trig_canonical_identity_desc(rewrite.kind)),
+        )
     }
 );
 
@@ -186,7 +196,9 @@ define_rule!(
     "Cosecant-Cotangent Pythagorean Identity",
     |ctx, expr| {
         let rewrite = try_rewrite_csc_cot_pythagorean_identity_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(
+            Rewrite::new(rewrite.rewritten).desc(format_trig_canonical_identity_desc(rewrite.kind)),
+        )
     }
 );
 

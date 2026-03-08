@@ -92,10 +92,8 @@ fn build_profile(opts: &EvalOptions) -> RuleProfile {
     use crate::Simplifier;
 
     // Create a temporary simplifier to build the rules
-    let simplifier = Simplifier::with_profile(opts);
-
-    // Extract the rules (this is safe because we're building, not sharing yet)
     let key = ProfileKey::from_options(opts);
+    let simplifier = Simplifier::with_profile(opts);
 
     RuleProfile {
         rules: simplifier.get_rules_clone(),

@@ -15,6 +15,11 @@ pub struct TrigContractionRewrite {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SquareDoubleAngleContractionRewrite {
+    pub rewritten: ExprId,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GeneralizedSinCosContractionRewrite {
     pub rewritten: ExprId,
 }
@@ -474,6 +479,27 @@ pub fn extract_coeff_trig_squared(
     Some((trig_arg, is_sin, numeric_coeff))
 }
 
+fn extract_trig_squared_factor(ctx: &Context, factor: ExprId) -> Option<(ExprId, bool)> {
+    let two_rat = BigRational::from_integer(2.into());
+    if let Expr::Pow(base, exp) = ctx.get(factor) {
+        if let Expr::Number(n) = ctx.get(*exp) {
+            if *n == two_rat {
+                if let Expr::Function(fn_id, args) = ctx.get(*base) {
+                    if args.len() == 1 {
+                        if matches!(ctx.builtin_of(*fn_id), Some(BuiltinFn::Sin)) {
+                            return Some((args[0], true));
+                        }
+                        if matches!(ctx.builtin_of(*fn_id), Some(BuiltinFn::Cos)) {
+                            return Some((args[0], false));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
 /// Match `(sin(a)cos(b) + cos(a)sin(b)) / (cos(a)cos(b) - sin(a)sin(b))`.
 /// Returns `(a, b)` if matched.
 pub fn match_angle_sum_fraction(
@@ -708,6 +734,49 @@ pub fn try_rewrite_double_angle_contraction_expr(
     }
 
     None
+}
+
+/// Rewrite:
+/// - `sin(t)^2*cos(t)^2 -> sin(2t)^2/4`
+pub fn try_rewrite_square_double_angle_contraction_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<SquareDoubleAngleContractionRewrite> {
+    let factors = mul_leaves(ctx, expr);
+    if factors.len() != 2 {
+        return None;
+    }
+
+    let mut sin_arg = None;
+    let mut cos_arg = None;
+    for &factor in &factors {
+        let (arg, is_sin) = extract_trig_squared_factor(ctx, factor)?;
+        if is_sin {
+            if sin_arg.is_some() {
+                return None;
+            }
+            sin_arg = Some(arg);
+        } else {
+            if cos_arg.is_some() {
+                return None;
+            }
+            cos_arg = Some(arg);
+        }
+    }
+
+    let sin_arg = sin_arg?;
+    let cos_arg = cos_arg?;
+    if compare_expr(ctx, sin_arg, cos_arg) != Ordering::Equal {
+        return None;
+    }
+
+    let two = ctx.num(2);
+    let four = ctx.num(4);
+    let double_arg = ctx.add(Expr::Mul(two, sin_arg));
+    let sin_2t = ctx.call_builtin(BuiltinFn::Sin, vec![double_arg]);
+    let sin_2t_sq = ctx.add(Expr::Pow(sin_2t, two));
+    let rewritten = ctx.add(Expr::Div(sin_2t_sq, four));
+    Some(SquareDoubleAngleContractionRewrite { rewritten })
 }
 
 /// Rewrite generalized even-coefficient forms:
@@ -1105,6 +1174,15 @@ mod tests {
         let expr = parse("6*sin(t)*cos(t)", &mut ctx).expect("expr");
         let expected = parse("3*sin(2*t)", &mut ctx).expect("expected");
         let rw = try_rewrite_generalized_sin_cos_contraction_expr(&mut ctx, expr).expect("rw");
+        assert_eq!(compare_expr(&ctx, rw.rewritten, expected), Ordering::Equal);
+    }
+
+    #[test]
+    fn rewrites_square_double_angle_contraction() {
+        let mut ctx = Context::new();
+        let expr = parse("sin(t)^2*cos(t)^2", &mut ctx).expect("expr");
+        let expected = parse("sin(2*t)^2/4", &mut ctx).expect("expected");
+        let rw = try_rewrite_square_double_angle_contraction_expr(&mut ctx, expr).expect("rw");
         assert_eq!(compare_expr(&ctx, rw.rewritten, expected), Ordering::Equal);
     }
 

@@ -8,11 +8,20 @@ use crate::define_rule;
 use crate::rule::Rewrite;
 use cas_math::trig_canonicalization_support::{
     try_rewrite_cot_to_cos_sin_function_expr, try_rewrite_csc_to_recip_sin_function_expr,
-    try_rewrite_sec_to_recip_cos_function_expr,
+    try_rewrite_sec_to_recip_cos_function_expr, TrigCanonicalIdentityKind,
 };
 use cas_math::trig_power_identity_support::{
     try_rewrite_trig_fourth_power_difference_add_expr, try_rewrite_trig_fourth_power_sum_add_expr,
 };
+
+fn format_trig_canonical_identity_desc(kind: TrigCanonicalIdentityKind) -> &'static str {
+    match kind {
+        TrigCanonicalIdentityKind::SecToRecipCos => "sec(x) = 1/cos(x)",
+        TrigCanonicalIdentityKind::CscToRecipSin => "csc(x) = 1/sin(x)",
+        TrigCanonicalIdentityKind::CotToCosSin => "cot(x) = cos(x)/sin(x)",
+        _ => unreachable!("unexpected trig canonical identity kind in pythagorean_secondary"),
+    }
+}
 
 // =============================================================================
 // SecToRecipCosRule: sec(x) → 1/cos(x) (canonical expansion)
@@ -24,7 +33,9 @@ define_rule!(
     "Secant to Reciprocal Cosine",
     |ctx, expr| {
         let rewrite = try_rewrite_sec_to_recip_cos_function_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(
+            Rewrite::new(rewrite.rewritten).desc(format_trig_canonical_identity_desc(rewrite.kind)),
+        )
     }
 );
 
@@ -37,7 +48,9 @@ define_rule!(
     "Cosecant to Reciprocal Sine",
     |ctx, expr| {
         let rewrite = try_rewrite_csc_to_recip_sin_function_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(
+            Rewrite::new(rewrite.rewritten).desc(format_trig_canonical_identity_desc(rewrite.kind)),
+        )
     }
 );
 
@@ -51,7 +64,9 @@ define_rule!(
     "Cotangent to Cosine over Sine",
     |ctx, expr| {
         let rewrite = try_rewrite_cot_to_cos_sin_function_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(
+            Rewrite::new(rewrite.rewritten).desc(format_trig_canonical_identity_desc(rewrite.kind)),
+        )
     }
 );
 

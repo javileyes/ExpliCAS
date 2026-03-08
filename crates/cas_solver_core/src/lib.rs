@@ -163,6 +163,8 @@ pub mod solve_runtime_types;
 pub mod solve_safety_policy;
 pub mod solve_types;
 pub mod solver_entrypoints_bound_runtime;
+pub mod solver_event_collector;
+pub mod solver_events;
 pub mod solver_options;
 pub mod soundness_label;
 pub mod standard_oracle;

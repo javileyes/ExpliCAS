@@ -36,9 +36,24 @@ pub struct TrigCanonicalRewritePlan {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TrigCanonicalIdentityKind {
+    SecToRecipCos,
+    CscToRecipSin,
+    CotToCosSin,
+    SecTanPythagorean,
+    CscCotPythagorean,
+    TanToSecPythagorean,
+    CotToCscPythagorean,
+    SecTanMinusOneIdentityZero,
+    CscCotMinusOneIdentityZero,
+    ReciprocalProductIdentity,
+    MixedFractionToSinCos,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TrigCanonicalIdentityRewrite {
     pub rewritten: ExprId,
-    pub desc: &'static str,
+    pub kind: TrigCanonicalIdentityKind,
 }
 
 /// Check if expression is a composition like `tan(arctan(x))`.
@@ -370,7 +385,7 @@ pub fn try_rewrite_sec_to_recip_cos_function_expr(
     let cos_arg = ctx.call_builtin(BuiltinFn::Cos, vec![arg]);
     Some(TrigCanonicalIdentityRewrite {
         rewritten: ctx.add(Expr::Div(one, cos_arg)),
-        desc: "sec(x) = 1/cos(x)",
+        kind: TrigCanonicalIdentityKind::SecToRecipCos,
     })
 }
 
@@ -391,7 +406,7 @@ pub fn try_rewrite_csc_to_recip_sin_function_expr(
     let sin_arg = ctx.call_builtin(BuiltinFn::Sin, vec![arg]);
     Some(TrigCanonicalIdentityRewrite {
         rewritten: ctx.add(Expr::Div(one, sin_arg)),
-        desc: "csc(x) = 1/sin(x)",
+        kind: TrigCanonicalIdentityKind::CscToRecipSin,
     })
 }
 
@@ -412,7 +427,7 @@ pub fn try_rewrite_cot_to_cos_sin_function_expr(
     let sin_arg = ctx.call_builtin(BuiltinFn::Sin, vec![arg]);
     Some(TrigCanonicalIdentityRewrite {
         rewritten: ctx.add(Expr::Div(cos_arg, sin_arg)),
-        desc: "cot(x) = cos(x)/sin(x)",
+        kind: TrigCanonicalIdentityKind::CotToCosSin,
     })
 }
 
@@ -532,7 +547,7 @@ pub fn try_rewrite_sec_tan_pythagorean_identity_expr(
     let rewritten = try_rewrite_sec_tan_pythagorean_expr(ctx, expr)?;
     Some(TrigCanonicalIdentityRewrite {
         rewritten,
-        desc: "sec²(x) - tan²(x) = 1",
+        kind: TrigCanonicalIdentityKind::SecTanPythagorean,
     })
 }
 
@@ -562,7 +577,7 @@ pub fn try_rewrite_csc_cot_pythagorean_identity_expr(
     let rewritten = try_rewrite_csc_cot_pythagorean_expr(ctx, expr)?;
     Some(TrigCanonicalIdentityRewrite {
         rewritten,
-        desc: "csc²(x) - cot²(x) = 1",
+        kind: TrigCanonicalIdentityKind::CscCotPythagorean,
     })
 }
 
@@ -591,7 +606,7 @@ pub fn try_rewrite_tan_to_sec_pythagorean_identity_expr(
     let rewritten = try_rewrite_tan_to_sec_pythagorean_expr(ctx, expr)?;
     Some(TrigCanonicalIdentityRewrite {
         rewritten,
-        desc: "1 + tan²(x) = sec²(x)",
+        kind: TrigCanonicalIdentityKind::TanToSecPythagorean,
     })
 }
 
@@ -620,7 +635,7 @@ pub fn try_rewrite_cot_to_csc_pythagorean_identity_expr(
     let rewritten = try_rewrite_cot_to_csc_pythagorean_expr(ctx, expr)?;
     Some(TrigCanonicalIdentityRewrite {
         rewritten,
-        desc: "1 + cot²(x) = csc²(x)",
+        kind: TrigCanonicalIdentityKind::CotToCscPythagorean,
     })
 }
 
@@ -660,7 +675,7 @@ pub fn try_rewrite_sec_tan_minus_one_identity_zero_expr(
     let rewritten = try_rewrite_sec_tan_minus_one_identity_expr(ctx, expr)?;
     Some(TrigCanonicalIdentityRewrite {
         rewritten,
-        desc: "sec²(x) - tan²(x) - 1 = 0",
+        kind: TrigCanonicalIdentityKind::SecTanMinusOneIdentityZero,
     })
 }
 
@@ -700,7 +715,7 @@ pub fn try_rewrite_csc_cot_minus_one_identity_zero_expr(
     let rewritten = try_rewrite_csc_cot_minus_one_identity_expr(ctx, expr)?;
     Some(TrigCanonicalIdentityRewrite {
         rewritten,
-        desc: "csc²(x) - cot²(x) - 1 = 0",
+        kind: TrigCanonicalIdentityKind::CscCotMinusOneIdentityZero,
     })
 }
 
@@ -723,7 +738,7 @@ pub fn try_rewrite_reciprocal_product_identity_expr(
     let rewritten = try_rewrite_reciprocal_product_expr(ctx, expr)?;
     Some(TrigCanonicalIdentityRewrite {
         rewritten,
-        desc: "Reciprocal trig product = 1",
+        kind: TrigCanonicalIdentityKind::ReciprocalProductIdentity,
     })
 }
 
@@ -753,7 +768,7 @@ pub fn try_rewrite_mixed_fraction_to_sincos_plan_expr(
     let rewritten = try_rewrite_mixed_fraction_to_sincos_expr(ctx, expr)?;
     Some(TrigCanonicalIdentityRewrite {
         rewritten,
-        desc: "Convert mixed trig fraction to sin/cos",
+        kind: TrigCanonicalIdentityKind::MixedFractionToSinCos,
     })
 }
 
@@ -857,7 +872,7 @@ mod tests {
         let expr = parse("1 + cot(x)^2", &mut ctx).expect("parse");
         let rewrite =
             try_rewrite_cot_to_csc_pythagorean_identity_expr(&mut ctx, expr).expect("rewrite");
-        assert_eq!(rewrite.desc, "1 + cot²(x) = csc²(x)");
+        assert_eq!(rewrite.kind, TrigCanonicalIdentityKind::CotToCscPythagorean);
     }
 
     #[test]
@@ -873,7 +888,10 @@ mod tests {
         let mut ctx = Context::new();
         let expr = parse("tan(x) * cot(x)", &mut ctx).expect("parse");
         let rewrite = try_rewrite_reciprocal_product_identity_expr(&mut ctx, expr).expect("plan");
-        assert_eq!(rewrite.desc, "Reciprocal trig product = 1");
+        assert_eq!(
+            rewrite.kind,
+            TrigCanonicalIdentityKind::ReciprocalProductIdentity
+        );
     }
 
     #[test]
@@ -931,8 +949,8 @@ mod tests {
         let csc_rw = try_rewrite_csc_to_recip_sin_function_expr(&mut ctx, csc).expect("csc_rw");
         let cot_rw = try_rewrite_cot_to_cos_sin_function_expr(&mut ctx, cot).expect("cot_rw");
 
-        assert_eq!(sec_rw.desc, "sec(x) = 1/cos(x)");
-        assert_eq!(csc_rw.desc, "csc(x) = 1/sin(x)");
-        assert_eq!(cot_rw.desc, "cot(x) = cos(x)/sin(x)");
+        assert_eq!(sec_rw.kind, TrigCanonicalIdentityKind::SecToRecipCos);
+        assert_eq!(csc_rw.kind, TrigCanonicalIdentityKind::CscToRecipSin);
+        assert_eq!(cot_rw.kind, TrigCanonicalIdentityKind::CotToCosSin);
     }
 }

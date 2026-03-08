@@ -21,6 +21,7 @@ fn format_angle_consistency_desc(kind: TrigMultiAngleRewriteKind) -> &'static st
 }
 
 // Import rules from parent module (still defined in include!() files)
+use super::contraction_rules::SquareDoubleAngleContractionRule;
 use super::{
     AngleIdentityRule, AngleSumFractionToTanRule, Cos2xAdditiveContractionRule,
     CotHalfAngleDifferenceRule, CscCotPythagoreanRule, DoubleAngleContractionRule, DoubleAngleRule,
@@ -174,6 +175,7 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(DyadicCosProductToSinRule));
     simplifier.add_rule(Box::new(DoubleAngleRule));
     simplifier.add_rule(Box::new(DoubleAngleContractionRule)); // 2sin·cos→sin(2t), cos²-sin²→cos(2t)
+    simplifier.add_rule(Box::new(SquareDoubleAngleContractionRule)); // sin²·cos²→sin²(2t)/4
     simplifier.add_rule(Box::new(AngleSumFractionToTanRule)); // sin(a)cos(b)±cos(a)sin(b) / cos·cos∓sin·sin → tan(a±b)
                                                               // Cos2xAdditiveContractionRule: 1-2sin²→cos(2t), 2cos²-1→cos(2t).
                                                               // Previously disabled due to +153 numeric-only regression. Re-enabled under Fix #5

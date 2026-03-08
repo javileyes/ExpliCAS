@@ -14,6 +14,8 @@ pub(crate) fn evaluate_timeline_solve_command_input(
     let (solution_set, display_steps, diagnostics) =
         crate::solve_with_display_steps(&equation, &var, simplifier, opts)
             .map_err(|e| crate::TimelineSolveEvalError::Solve(e.to_string()))?;
+    let display_steps =
+        crate::solve_event_steps::roundtrip_display_solve_steps_via_events(&display_steps);
 
     Ok(crate::TimelineSolveEvalOutput {
         equation,

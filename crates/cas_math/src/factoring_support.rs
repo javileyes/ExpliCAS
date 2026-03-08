@@ -18,13 +18,13 @@ use std::cmp::Ordering;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DifferenceOfSquaresProductRewrite {
     pub rewritten: ExprId,
-    pub desc: &'static str,
+    pub kind: DifferenceOfSquaresProductRewriteKind,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FactorFunctionRewrite {
     pub rewritten: ExprId,
-    pub desc: &'static str,
+    pub kind: FactorFunctionRewriteKind,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -36,19 +36,48 @@ pub struct FactorCommonIntegerFromAddRewrite {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SumThreeCubesZeroRewrite {
     pub rewritten: ExprId,
-    pub desc: &'static str,
+    pub kind: SumThreeCubesZeroRewriteKind,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FactorDifferenceSquaresNaryRewrite {
     pub rewritten: ExprId,
-    pub desc: &'static str,
+    pub kind: FactorDifferenceSquaresNaryRewriteKind,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AutomaticFactorRewrite {
     pub rewritten: ExprId,
-    pub desc: &'static str,
+    pub kind: AutomaticFactorRewriteKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DifferenceOfSquaresProductRewriteKind {
+    Basic,
+    NaryConjugateProduct,
+    NaryScan,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FactorFunctionRewriteKind {
+    Factorization,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SumThreeCubesZeroRewriteKind {
+    ZeroSumIdentity,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FactorDifferenceSquaresNaryRewriteKind {
+    Empty,
+    Nary,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AutomaticFactorRewriteKind {
+    ReducedSize,
+    DiffSquares,
 }
 
 /// Rewrite conjugate products:
@@ -88,7 +117,7 @@ pub fn try_rewrite_difference_of_squares_product_expr(
         let rewritten = ctx.add(Expr::Sub(a_squared, b_squared));
         return Some(DifferenceOfSquaresProductRewrite {
             rewritten,
-            desc: "(a-b)(a+b) = a² - b²",
+            kind: DifferenceOfSquaresProductRewriteKind::Basic,
         });
     }
 
@@ -100,7 +129,7 @@ pub fn try_rewrite_difference_of_squares_product_expr(
             let rewritten = ctx.add(Expr::Sub(u_squared, v_squared));
             return Some(DifferenceOfSquaresProductRewrite {
                 rewritten,
-                desc: "(U+V)(U-V) = U² - V² (conjugate product)",
+                kind: DifferenceOfSquaresProductRewriteKind::NaryConjugateProduct,
             });
         }
     }
@@ -139,7 +168,7 @@ pub fn try_rewrite_difference_of_squares_product_expr(
                 }
                 return Some(DifferenceOfSquaresProductRewrite {
                     rewritten,
-                    desc: "(a-b)(a+b)·… = (a²-b²)·… (n-ary scan)",
+                    kind: DifferenceOfSquaresProductRewriteKind::NaryScan,
                 });
             }
         }
@@ -171,7 +200,7 @@ pub fn try_rewrite_factor_function_expr(
     let rewritten = cas_ast::hold::wrap_hold(ctx, factored);
     Some(FactorFunctionRewrite {
         rewritten,
-        desc: "Factorization",
+        kind: FactorFunctionRewriteKind::Factorization,
     })
 }
 
@@ -331,7 +360,7 @@ pub fn try_rewrite_sum_three_cubes_zero_expr(
 
     Some(SumThreeCubesZeroRewrite {
         rewritten,
-        desc: "x³ + y³ + z³ = 3xyz (when x + y + z = 0)",
+        kind: SumThreeCubesZeroRewriteKind::ZeroSumIdentity,
     })
 }
 
@@ -379,7 +408,7 @@ pub fn try_rewrite_factor_difference_squares_nary_expr(
             if new_terms.is_empty() {
                 return Some(FactorDifferenceSquaresNaryRewrite {
                     rewritten: ctx.num(0),
-                    desc: "Factor difference of squares (Empty)",
+                    kind: FactorDifferenceSquaresNaryRewriteKind::Empty,
                 });
             }
 
@@ -389,7 +418,7 @@ pub fn try_rewrite_factor_difference_squares_nary_expr(
             }
             return Some(FactorDifferenceSquaresNaryRewrite {
                 rewritten,
-                desc: "Factor difference of squares (N-ary)",
+                kind: FactorDifferenceSquaresNaryRewriteKind::Nary,
             });
         }
     }
@@ -414,7 +443,7 @@ pub fn try_rewrite_automatic_factor_expr(
             if new_count < old_count && compare_expr(ctx, poly_factored, expr) != Ordering::Equal {
                 return Some(AutomaticFactorRewrite {
                     rewritten: poly_factored,
-                    desc: "Automatic Factorization (Reduced Size)",
+                    kind: AutomaticFactorRewriteKind::ReducedSize,
                 });
             }
         }
@@ -427,7 +456,7 @@ pub fn try_rewrite_automatic_factor_expr(
             if new_count < old_count {
                 return Some(AutomaticFactorRewrite {
                     rewritten: diff_squares,
-                    desc: "Automatic Factorization (Diff Squares)",
+                    kind: AutomaticFactorRewriteKind::DiffSquares,
                 });
             }
         }

@@ -8,7 +8,8 @@ use cas_ast::ExprId;
 use cas_math::trig_contraction_support::{
     should_block_double_angle_contraction_for_marks, try_rewrite_angle_sum_fraction_to_tan_expr,
     try_rewrite_cos2x_additive_contraction_expr, try_rewrite_double_angle_contraction_expr,
-    try_rewrite_half_angle_tangent_div_expr, HalfAngleTangentRewriteKind,
+    try_rewrite_half_angle_tangent_div_expr, try_rewrite_square_double_angle_contraction_expr,
+    HalfAngleTangentRewriteKind,
 };
 
 // =============================================================================
@@ -112,6 +113,45 @@ impl crate::rule::Rule for DoubleAngleContractionRule {
 
     fn priority(&self) -> i32 {
         200 // Run before expansion rules to prevent ping-pong
+    }
+}
+
+// =============================================================================
+// SQUARE DOUBLE ANGLE CONTRACTION RULE
+// sin²(t)·cos²(t) → sin²(2t)/4
+// =============================================================================
+// POST only: avoids oscillation with double-angle expansion during TRANSFORM.
+pub struct SquareDoubleAngleContractionRule;
+
+impl crate::rule::Rule for SquareDoubleAngleContractionRule {
+    fn name(&self) -> &str {
+        "Square Double Angle Contraction"
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: ExprId,
+        _parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<Rewrite> {
+        let rewrite = try_rewrite_square_double_angle_contraction_expr(ctx, expr)?;
+        Some(Rewrite::new(rewrite.rewritten).desc("sin²(t)·cos²(t) = sin²(2t)/4"))
+    }
+
+    fn allowed_phases(&self) -> crate::phase::PhaseMask {
+        crate::phase::PhaseMask::POST
+    }
+
+    fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
+        Some(crate::target_kind::TargetKindSet::MUL)
+    }
+
+    fn importance(&self) -> crate::step::ImportanceLevel {
+        crate::step::ImportanceLevel::High
+    }
+
+    fn priority(&self) -> i32 {
+        200
     }
 }
 

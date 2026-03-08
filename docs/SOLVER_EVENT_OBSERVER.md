@@ -288,6 +288,16 @@ Phase 1 is done when:
 2. `timeline_solve` can consume the event stream without behavior regressions
 3. public API remains compatible
 
+Current implementation status:
+
+- `SolverEvent` and `SolverEventCollector` exist in `cas_solver_core`
+- `SolveStep <-> SolverEvent` adapters exist in `cas_solver`
+- `timeline_solve` already goes through a minimal event roundtrip path
+- that integration is currently guarded by a shape-preserving fallback back to the
+  original `DisplaySolveSteps`
+- full renderer parity in `cas_didactic` remains the only unresolved part of
+  Phase 1
+
 ## Phase 2 Detailed Plan
 
 Phase 2 should happen only if Phase 1 proves value.

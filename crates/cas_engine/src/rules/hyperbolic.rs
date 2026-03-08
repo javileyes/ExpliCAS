@@ -9,6 +9,7 @@ use cas_math::hyperbolic_identity_support::{
     try_rewrite_hyperbolic_pythagorean_sub_expr, try_rewrite_hyperbolic_triple_angle,
     try_rewrite_sinh_cosh_to_exp, try_rewrite_sinh_cosh_to_tanh_identity_expr,
     try_rewrite_sinh_double_angle_expansion_identity_expr,
+    try_rewrite_tanh_double_angle_expansion_identity_expr,
     try_rewrite_tanh_to_sinh_cosh_identity_expr,
 };
 use cas_math::hyperbolic_negative_support::try_rewrite_hyperbolic_negative_expr;
@@ -92,6 +93,95 @@ fn format_hyperbolic_composition_desc(ctx: &Context, expr: ExprId) -> Option<&'s
     }
 }
 
+fn format_hyperbolic_identity_desc(
+    kind: cas_math::hyperbolic_identity_support::HyperbolicIdentityRewriteKind,
+) -> &'static str {
+    match kind {
+        cas_math::hyperbolic_identity_support::HyperbolicIdentityRewriteKind::PythagoreanOne => {
+            "cosh²(x) - sinh²(x) = 1"
+        }
+        cas_math::hyperbolic_identity_support::HyperbolicIdentityRewriteKind::PythagoreanNegativeOne => {
+            "sinh²(x) - cosh²(x) = -1"
+        }
+        cas_math::hyperbolic_identity_support::HyperbolicIdentityRewriteKind::SinhCoshToTanh => {
+            "sinh(x)/cosh(x) = tanh(x)"
+        }
+        cas_math::hyperbolic_identity_support::HyperbolicIdentityRewriteKind::TanhToSinhCosh => {
+            "tanh(x) = sinh(x)/cosh(x)"
+        }
+        cas_math::hyperbolic_identity_support::HyperbolicIdentityRewriteKind::SinhDoubleAngleExpansion => {
+            "sinh(2x) = 2·sinh(x)·cosh(x)"
+        }
+        cas_math::hyperbolic_identity_support::HyperbolicIdentityRewriteKind::TanhDoubleAngleExpansion => {
+            "tanh(2x) = 2·tanh(x)/(1+tanh²(x))"
+        }
+    }
+}
+
+fn format_sinh_cosh_to_exp_desc(
+    kind: cas_math::hyperbolic_identity_support::SinhCoshToExpRewriteKind,
+) -> &'static str {
+    match kind {
+        cas_math::hyperbolic_identity_support::SinhCoshToExpRewriteKind::Sum => {
+            "sinh(x) + cosh(x) = exp(x)"
+        }
+        cas_math::hyperbolic_identity_support::SinhCoshToExpRewriteKind::CoshMinusSinh => {
+            "cosh(x) - sinh(x) = exp(-x)"
+        }
+        cas_math::hyperbolic_identity_support::SinhCoshToExpRewriteKind::SinhMinusCosh => {
+            "sinh(x) - cosh(x) = -exp(-x)"
+        }
+    }
+}
+
+fn format_hyperbolic_double_angle_desc(
+    kind: cas_math::hyperbolic_identity_support::HyperbolicDoubleAngleRewriteKind,
+) -> &'static str {
+    match kind {
+        cas_math::hyperbolic_identity_support::HyperbolicDoubleAngleRewriteKind::Sum => {
+            "cosh²(x) + sinh²(x) = cosh(2x)"
+        }
+        cas_math::hyperbolic_identity_support::HyperbolicDoubleAngleRewriteKind::SubChain => {
+            "cosh(2x) - cosh²(x) - sinh²(x) = 0"
+        }
+    }
+}
+
+fn format_hyperbolic_triple_angle_desc(
+    kind: cas_math::hyperbolic_identity_support::HyperbolicTripleAngleRewriteKind,
+) -> &'static str {
+    match kind {
+        cas_math::hyperbolic_identity_support::HyperbolicTripleAngleRewriteKind::Sinh => {
+            "sinh(3x) → 3sinh(x) + 4sinh³(x)"
+        }
+        cas_math::hyperbolic_identity_support::HyperbolicTripleAngleRewriteKind::Cosh => {
+            "cosh(3x) → 4cosh³(x) - 3cosh(x)"
+        }
+    }
+}
+
+fn format_recognize_hyperbolic_from_exp_desc(
+    kind: cas_math::hyperbolic_identity_support::RecognizeHyperbolicFromExpRewriteKind,
+) -> &'static str {
+    match kind {
+        cas_math::hyperbolic_identity_support::RecognizeHyperbolicFromExpRewriteKind::CoshHalf => {
+            "(e^x + e^(-x))/2 = cosh(x)"
+        }
+        cas_math::hyperbolic_identity_support::RecognizeHyperbolicFromExpRewriteKind::SinhHalf => {
+            "(e^x - e^(-x))/2 = sinh(x)"
+        }
+        cas_math::hyperbolic_identity_support::RecognizeHyperbolicFromExpRewriteKind::NegSinhHalf => {
+            "(e^(-x) - e^x)/2 = -sinh(x)"
+        }
+        cas_math::hyperbolic_identity_support::RecognizeHyperbolicFromExpRewriteKind::TanhRatio => {
+            "(e^x - e^(-x))/(e^x + e^(-x)) = tanh(x)"
+        }
+        cas_math::hyperbolic_identity_support::RecognizeHyperbolicFromExpRewriteKind::NegTanhRatio => {
+            "(e^(-x) - e^x)/(e^x + e^(-x)) = -tanh(x)"
+        }
+    }
+}
+
 // ==================== Hyperbolic Function Rules ====================
 
 // Rule 1: Evaluate hyperbolic functions at special values
@@ -140,7 +230,7 @@ define_rule!(
     Some(crate::target_kind::TargetKindSet::SUB),
     |ctx, expr| {
         let rewrite = try_rewrite_hyperbolic_pythagorean_sub_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc(format_hyperbolic_identity_desc(rewrite.kind)))
     }
 );
 
@@ -152,7 +242,7 @@ define_rule!(
     Some(crate::target_kind::TargetKindSet::ADD.union(crate::target_kind::TargetKindSet::SUB)),
     |ctx, expr| {
         let rewrite = try_rewrite_sinh_cosh_to_exp(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc(format_sinh_cosh_to_exp_desc(rewrite.kind)))
     }
 );
 
@@ -165,7 +255,9 @@ define_rule!(
     Some(crate::target_kind::TargetKindSet::ADD),
     |ctx, expr| {
         let rewrite = try_rewrite_hyperbolic_double_angle_sum(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(
+            Rewrite::new(rewrite.rewritten).desc(format_hyperbolic_double_angle_desc(rewrite.kind)),
+        )
     }
 );
 
@@ -178,7 +270,7 @@ define_rule!(
     Some(crate::target_kind::TargetKindSet::FUNCTION),
     |ctx, expr| {
         let rewrite = try_rewrite_tanh_to_sinh_cosh_identity_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc(format_hyperbolic_identity_desc(rewrite.kind)))
     }
 );
 
@@ -190,7 +282,18 @@ define_rule!(
     Some(crate::target_kind::TargetKindSet::FUNCTION),
     |ctx, expr| {
         let rewrite = try_rewrite_sinh_double_angle_expansion_identity_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc(format_hyperbolic_identity_desc(rewrite.kind)))
+    }
+);
+
+// Rule: tanh(2x) → 2·tanh(x)/(1+tanh(x)^2)
+define_rule!(
+    TanhDoubleAngleExpansionRule,
+    "tanh(2x) = 2·tanh(x)/(1+tanh(x)^2)",
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
+    |ctx, expr| {
+        let rewrite = try_rewrite_tanh_double_angle_expansion_identity_expr(ctx, expr)?;
+        Some(Rewrite::new(rewrite.rewritten).desc(format_hyperbolic_identity_desc(rewrite.kind)))
     }
 );
 
@@ -204,7 +307,9 @@ define_rule!(
     Some(crate::target_kind::TargetKindSet::ADD),
     |ctx, expr| {
         let rewrite = try_rewrite_hyperbolic_double_angle_sub_chain(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(
+            Rewrite::new(rewrite.rewritten).desc(format_hyperbolic_double_angle_desc(rewrite.kind)),
+        )
     }
 );
 
@@ -216,7 +321,7 @@ define_rule!(
     Some(crate::target_kind::TargetKindSet::DIV),
     |ctx, expr| {
         let rewrite = try_rewrite_sinh_cosh_to_tanh_identity_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc(format_hyperbolic_identity_desc(rewrite.kind)))
     }
 );
 
@@ -232,7 +337,10 @@ define_rule!(
     importance: crate::step::ImportanceLevel::Medium,
     |ctx, expr| {
         let rewrite = cas_math::hyperbolic_identity_support::try_rewrite_recognize_hyperbolic_from_exp(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(
+            Rewrite::new(rewrite.rewritten)
+                .desc(format_recognize_hyperbolic_from_exp_desc(rewrite.kind))
+        )
     }
 );
 
@@ -246,7 +354,9 @@ define_rule!(
     Some(crate::target_kind::TargetKindSet::FUNCTION),
     |ctx, expr| {
         let rewrite = try_rewrite_hyperbolic_triple_angle(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(
+            Rewrite::new(rewrite.rewritten).desc(format_hyperbolic_triple_angle_desc(rewrite.kind)),
+        )
     }
 );
 
@@ -263,6 +373,7 @@ pub fn register(simplifier: &mut crate::engine::Simplifier) {
     // simplifier.add_rule(Box::new(TanhToSinhCoshRule)); // tanh(x) → sinh(x)/cosh(x)
     simplifier.add_rule(Box::new(SinhCoshToTanhRule)); // sinh(x)/cosh(x) → tanh(x) (contraction)
     simplifier.add_rule(Box::new(SinhDoubleAngleExpansionRule)); // sinh(2x) → 2sinh(x)cosh(x)
+    simplifier.add_rule(Box::new(TanhDoubleAngleExpansionRule)); // tanh(2x) → 2tanh(x)/(1+tanh(x)^2)
     simplifier.add_rule(Box::new(RecognizeHyperbolicFromExpRule));
     simplifier.add_rule(Box::new(HyperbolicTripleAngleRule)); // sinh(3x), cosh(3x)
 }
