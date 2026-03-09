@@ -25,7 +25,7 @@ pub struct UnivariateFractionGcdReduction {
 pub struct FractionCancelForms {
     pub result: ExprId,
     pub result_norm: ExprId,
-    pub factored_form_norm: ExprId,
+    pub factored_form_norm: Option<ExprId>,
     pub numerator_is_zero: bool,
 }
 
@@ -43,30 +43,52 @@ pub fn build_reduced_fraction_result(
     ctx.add(Expr::Div(new_num, new_den))
 }
 
+fn build_numeric_fraction_result(
+    ctx: &mut Context,
+    new_num: ExprId,
+    new_den: ExprId,
+) -> Option<ExprId> {
+    let (Expr::Number(num), Expr::Number(den)) = (ctx.get(new_num), ctx.get(new_den)) else {
+        return None;
+    };
+    if den.is_zero() {
+        return None;
+    }
+    Some(ctx.add(Expr::Number(num.clone() / den.clone())))
+}
+
 /// Build factored display/cancellation forms and normalized variants.
 pub fn build_fraction_cancel_forms(
     ctx: &mut Context,
     new_num: ExprId,
     new_den: ExprId,
     gcd_expr: ExprId,
+    include_factored_form: bool,
 ) -> FractionCancelForms {
     let numerator_is_zero = matches!(ctx.get(new_num), Expr::Number(n) if n.is_zero());
     let result = build_reduced_fraction_result(ctx, new_num, new_den);
-
-    let factored_num = mul2_raw(ctx, new_num, gcd_expr);
-    let factored_den = if let Expr::Number(n) = ctx.get(new_den) {
-        if n.is_one() {
-            gcd_expr
+    let result_norm = if include_factored_form {
+        normalize_core(ctx, result)
+    } else {
+        build_numeric_fraction_result(ctx, new_num, new_den)
+            .unwrap_or_else(|| normalize_core(ctx, result))
+    };
+    let factored_form_norm = if include_factored_form {
+        let factored_num = mul2_raw(ctx, new_num, gcd_expr);
+        let factored_den = if let Expr::Number(n) = ctx.get(new_den) {
+            if n.is_one() {
+                gcd_expr
+            } else {
+                mul2_raw(ctx, new_den, gcd_expr)
+            }
         } else {
             mul2_raw(ctx, new_den, gcd_expr)
-        }
+        };
+        let factored_form = ctx.add(Expr::Div(factored_num, factored_den));
+        Some(normalize_core(ctx, factored_form))
     } else {
-        mul2_raw(ctx, new_den, gcd_expr)
+        None
     };
-    let factored_form = ctx.add(Expr::Div(factored_num, factored_den));
-
-    let factored_form_norm = normalize_core(ctx, factored_form);
-    let result_norm = normalize_core(ctx, result);
 
     FractionCancelForms {
         result,
@@ -158,8 +180,18 @@ mod tests {
         let new_num = parse("0", &mut ctx).expect("parse");
         let new_den = parse("x+1", &mut ctx).expect("parse");
         let gcd = parse("x-1", &mut ctx).expect("parse");
-        let forms = build_fraction_cancel_forms(&mut ctx, new_num, new_den, gcd);
+        let forms = build_fraction_cancel_forms(&mut ctx, new_num, new_den, gcd, true);
         assert!(forms.numerator_is_zero);
+    }
+
+    #[test]
+    fn build_cancel_forms_can_skip_factored_form() {
+        let mut ctx = Context::new();
+        let new_num = parse("x+1", &mut ctx).expect("parse");
+        let new_den = parse("2", &mut ctx).expect("parse");
+        let gcd = parse("x-1", &mut ctx).expect("parse");
+        let forms = build_fraction_cancel_forms(&mut ctx, new_num, new_den, gcd, false);
+        assert!(forms.factored_form_norm.is_none());
     }
 
     #[test]

@@ -1,17 +1,13 @@
 use crate::build::mul2_raw;
 use crate::expr_predicates::{is_one_expr, is_two_expr};
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
-use std::collections::HashSet;
+use smallvec::SmallVec;
 
 fn is_reciprocal_trig_builtin(b: BuiltinFn) -> bool {
     matches!(
         b,
         BuiltinFn::Tan | BuiltinFn::Cot | BuiltinFn::Sec | BuiltinFn::Csc
     )
-}
-
-fn is_reciprocal_trig_name(name: &str) -> bool {
-    matches!(name, "tan" | "cot" | "sec" | "csc")
 }
 
 fn is_inverse_trig_builtin(b: BuiltinFn) -> bool {
@@ -98,54 +94,96 @@ pub fn is_inverse_trig_function_call(ctx: &Context, expr: ExprId) -> bool {
     }
 }
 
-fn collect_trig_recursive(ctx: &Context, expr: ExprId, funcs: &mut HashSet<String>) {
-    match ctx.get(expr) {
-        Expr::Function(fn_id, args) => {
-            if let Some(b) = ctx.builtin_of(*fn_id) {
-                if matches!(
-                    b,
-                    BuiltinFn::Sin
-                        | BuiltinFn::Cos
-                        | BuiltinFn::Tan
-                        | BuiltinFn::Cot
-                        | BuiltinFn::Sec
-                        | BuiltinFn::Csc
-                ) {
-                    funcs.insert(b.name().to_string());
-                }
-            }
-            for &arg in args {
-                collect_trig_recursive(ctx, arg, funcs);
-            }
-        }
-        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
-            collect_trig_recursive(ctx, *l, funcs);
-            collect_trig_recursive(ctx, *r, funcs);
-        }
-        Expr::Pow(base, exp) => {
-            collect_trig_recursive(ctx, *base, funcs);
-            collect_trig_recursive(ctx, *exp, funcs);
-        }
-        Expr::Neg(inner) | Expr::Hold(inner) => {
-            collect_trig_recursive(ctx, *inner, funcs);
-        }
-        Expr::Matrix { data, .. } => {
-            for elem in data {
-                collect_trig_recursive(ctx, *elem, funcs);
-            }
-        }
-        Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
+const TRIG_BIT_SIN: u8 = 1 << 0;
+const TRIG_BIT_COS: u8 = 1 << 1;
+const TRIG_BIT_TAN: u8 = 1 << 2;
+const TRIG_BIT_COT: u8 = 1 << 3;
+const TRIG_BIT_SEC: u8 = 1 << 4;
+const TRIG_BIT_CSC: u8 = 1 << 5;
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct TrigScan {
+    mask: u8,
+    has_reciprocal: bool,
+}
+
+impl TrigScan {
+    fn has_any(self) -> bool {
+        self.mask != 0
+    }
+
+    fn has_multiple_types(self) -> bool {
+        self.mask.count_ones() >= 2
     }
 }
 
-fn collect_trig_functions(ctx: &Context, expr: ExprId) -> HashSet<String> {
-    let mut funcs = HashSet::new();
-    collect_trig_recursive(ctx, expr, &mut funcs);
-    funcs
+fn trig_scan_bit(builtin: BuiltinFn) -> Option<u8> {
+    match builtin {
+        BuiltinFn::Sin => Some(TRIG_BIT_SIN),
+        BuiltinFn::Cos => Some(TRIG_BIT_COS),
+        BuiltinFn::Tan => Some(TRIG_BIT_TAN),
+        BuiltinFn::Cot => Some(TRIG_BIT_COT),
+        BuiltinFn::Sec => Some(TRIG_BIT_SEC),
+        BuiltinFn::Csc => Some(TRIG_BIT_CSC),
+        _ => None,
+    }
 }
 
-fn has_multiple_trig_types(funcs: &HashSet<String>) -> bool {
-    funcs.len() >= 2
+fn collect_trig_scan(ctx: &Context, root: ExprId) -> TrigScan {
+    let mut out = TrigScan::default();
+    let mut stack = SmallVec::<[ExprId; 16]>::new();
+    stack.push(root);
+
+    while let Some(expr) = stack.pop() {
+        match ctx.get(expr) {
+            Expr::Function(fn_id, args) => {
+                if let Some(builtin) = ctx.builtin_of(*fn_id) {
+                    if let Some(bit) = trig_scan_bit(builtin) {
+                        out.mask |= bit;
+                        out.has_reciprocal |= is_reciprocal_trig_builtin(builtin);
+                    }
+                }
+                stack.extend(args.iter().copied());
+            }
+            Expr::Add(l, r)
+            | Expr::Sub(l, r)
+            | Expr::Mul(l, r)
+            | Expr::Div(l, r)
+            | Expr::Pow(l, r) => {
+                stack.push(*l);
+                stack.push(*r);
+            }
+            Expr::Neg(inner) | Expr::Hold(inner) => stack.push(*inner),
+            Expr::Matrix { data, .. } => stack.extend(data.iter().copied()),
+            Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
+        }
+    }
+
+    out
+}
+
+fn contains_function_call(ctx: &Context, root: ExprId) -> bool {
+    let mut stack = SmallVec::<[ExprId; 16]>::new();
+    stack.push(root);
+
+    while let Some(expr) = stack.pop() {
+        match ctx.get(expr) {
+            Expr::Function(_, _) => return true,
+            Expr::Add(l, r)
+            | Expr::Sub(l, r)
+            | Expr::Mul(l, r)
+            | Expr::Div(l, r)
+            | Expr::Pow(l, r) => {
+                stack.push(*l);
+                stack.push(*r);
+            }
+            Expr::Neg(inner) | Expr::Hold(inner) => stack.push(*inner),
+            Expr::Matrix { data, .. } => stack.extend(data.iter().copied()),
+            Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
+        }
+    }
+
+    false
 }
 
 fn is_any_trig_function_squared(ctx: &Context, expr: ExprId) -> Option<ExprId> {
@@ -196,19 +234,26 @@ pub fn is_mixed_trig_fraction(ctx: &Context, num: ExprId, den: ExprId) -> bool {
         return false;
     }
 
-    let num_funcs = collect_trig_functions(ctx, num);
-    let den_funcs = collect_trig_functions(ctx, den);
-
-    if num_funcs.is_empty() && den_funcs.is_empty() {
+    if !contains_function_call(ctx, num) && !contains_function_call(ctx, den) {
         return false;
     }
 
-    let num_has_mixed = has_multiple_trig_types(&num_funcs);
-    let den_has_mixed = has_multiple_trig_types(&den_funcs);
-    let has_reciprocal = num_funcs.iter().any(|n| is_reciprocal_trig_name(n))
-        || den_funcs.iter().any(|n| is_reciprocal_trig_name(n));
+    let num_scan = collect_trig_scan(ctx, num);
+    if num_scan.has_reciprocal && num_scan.has_multiple_types() {
+        return true;
+    }
 
-    (num_has_mixed || den_has_mixed) && has_reciprocal
+    let den_scan = collect_trig_scan(ctx, den);
+    if !num_scan.has_any() && !den_scan.has_any() {
+        return false;
+    }
+
+    let has_reciprocal = num_scan.has_reciprocal || den_scan.has_reciprocal;
+    if !has_reciprocal {
+        return false;
+    }
+
+    num_scan.has_multiple_types() || den_scan.has_multiple_types()
 }
 
 /// Recursively convert reciprocal trig calls into `sin/cos` forms.
@@ -874,6 +919,30 @@ mod tests {
 
         assert!(is_mixed_trig_fraction(&ctx, mixed_num, mixed_den));
         assert!(!is_mixed_trig_fraction(&ctx, plain_num, plain_den));
+    }
+
+    #[test]
+    fn mixed_fraction_detection_skips_non_trig_power_fraction() {
+        let mut ctx = Context::new();
+        let expr = parse("(a^x)/a", &mut ctx).expect("expr");
+        let (num, den) = match ctx.get(expr) {
+            Expr::Div(n, d) => (*n, *d),
+            _ => panic!("expected div"),
+        };
+
+        assert!(!is_mixed_trig_fraction(&ctx, num, den));
+    }
+
+    #[test]
+    fn mixed_fraction_detection_skips_function_free_fraction() {
+        let mut ctx = Context::new();
+        let expr = parse("(2*x + 2*y)/(4*x + 4*y)", &mut ctx).expect("expr");
+        let (num, den) = match ctx.get(expr) {
+            Expr::Div(n, d) => (*n, *d),
+            _ => panic!("expected div"),
+        };
+
+        assert!(!is_mixed_trig_fraction(&ctx, num, den));
     }
 
     #[test]

@@ -232,6 +232,31 @@ Recent rejected hypotheses:
   cached eval path; the extra specificity looked attractive, but it changed
   rule ordering versus the global bucket and lost more in rewrite churn than it
   saved in dispatch cost, so it was reverted
+- adding cheap syntactic preguards to the specialized `Div` rules
+  (trig/root/hyperbolic/abs) also regressed the dedicated solve hotspots and
+  the generic solve batch, so it was reverted too
+- a targeted surface precheck for `Half-Angle Tangent Identity` also regressed
+  the generic solve batch and was reverted; the per-rule probe made it clear
+  that `Weierstrass Half-Angle Contraction` was the better next candidate
+- three micro-opts inside the structural scalar-multiple fraction fast path
+  were benchmarked and reverted because they regressed or stayed flat on the
+  dedicated solve hotspot and the generic solve batch:
+  `SmallVec` for the denominator term scratch buffer, a special-case matcher
+  for the 2-term additive case, and skipping the unused intermediate
+  `forms.result` construction in `build_fraction_cancel_forms(...)`
+- a broader no-trace reorder in `SimplifyFractionRule` that tried the full
+  GCD planner before the didactic matcher stack was also rejected: it helped
+  `difference_of_squares_fraction` / `power_quotient_fraction`, but it drove
+  `binomial_square_fraction` to an `~85-89%` regression in both
+  `solve_hotspots_cached/*` and `solve_eval_hotspots_cached/*`
+- making didactic fraction descriptions borrowed/lazy in
+  `didactic_factor_support` was also rejected after sequential re-runs:
+  despite looking like a free allocation win, it regressed
+  `difference_of_squares_fraction` / `power_quotient_fraction`
+- conditionally dropping `.local(...)` in the simple fraction-cancel rules
+  (`P/P`, `P^n/P`, same-base powers, nested fraction) was likewise rejected:
+  the extra `trace_payloads_enabled()` lookup cost more than the skipped local
+  payload on the dedicated `x/x` hotspot
 
 Decision:
 
@@ -254,6 +279,9 @@ Fast local loop:
 - use `profile_cache`'s `solve_hotspots_cached/*` benches when one input is
   dominating the solve batch and the aggregate `solve_modes_cached/*` signal is
   too noisy to trust
+- for tiny hotspot deltas, do not run Criterion compares in parallel: one bad
+  parallel run was enough to fabricate regressions on `x^0`; rerunning the
+  same compares in series brought the signal back to neutral / slight-improve
 - set `CAS_SOLVE_BENCH_PROFILE=1` to print top applied rules per phase before
   running `solve_modes_cached/*`; optionally narrow it with
   `CAS_SOLVE_BENCH_PROFILE_MODE=prepass|strict|generic|assume`
@@ -274,6 +302,143 @@ Fast local loop:
   `generic/scalar_multiple_fraction` is still around `151-153 us`; the next
   meaningful solve ROI is therefore still in nested-fraction/polynomial work,
   not in the smaller cancellation/log-inverse cases
+- `solve_hotspots_cached/*` now also covers the remaining generic/assume inputs
+  from `solve_tactic_generic_batch`, including `(a^x)/a`, `x^0`, and the
+  scalar-multiple fraction under `Assume`
+- `solve_hotspots_cached/*` now also supports the same diagnostic flags as the
+  batch benches via `CAS_SOLVE_BENCH_PROFILE_MODE=hotspots-generic|hotspots-assume`
+  and optional `CAS_SOLVE_BENCH_PROFILE_DETAIL=1`
+- detailed hotspot mode now prints `"(no rule hits)"` for inputs that stay as-is;
+  the current relevant finding is that `(a^x)/a` is a no-op hotspot in
+  `generic`, so its `~33 us` cost is dispatch/matching overhead rather than a
+  successful rewrite
+- when `CAS_SOLVE_BENCH_PROFILE_DETAIL=1` is active, the no-hit hotspot dump
+  now prints the full candidate bucket per phase together with its count,
+  instead of truncating to the first 8 rule names; that makes the next
+  `Div`-bucket investigation for `(a^x)/a` actionable without adding more
+  runtime instrumentation
+- set `CAS_SOLVE_BENCH_PROFILE_PROBE=1` to benchmark the no-hit candidate rules
+  individually before the timed run; optional `CAS_SOLVE_BENCH_PROFILE_PROBE_ITERS`
+  controls the per-rule loop count (default `2000`)
+- current full candidate dump for `(a^x)/a` in `hotspots-generic` is:
+  - `Core/Div` count `10`: `Angle Sum Fraction to Tan`,
+    `Half-Angle Tangent Identity`, `Division by Infinity`,
+    `Infinity Divided by Finite`, `Merge Sqrt Quotient`,
+    `Canonicalize Reciprocal Sqrt`, `Weierstrass Half-Angle Contraction`,
+    `sinh(x)/cosh(x) = tanh(x)`, `Convert Mixed Trig Fraction to sin/cos`,
+    `Abs Quotient`
+  - `PostCleanup/Div` count `10`: same family, but with `Trig Quotient`
+    replacing `Abs Quotient`
+- retained runtime win: `try_rewrite_weierstrass_contraction_div_expr(...)`
+  now has a constant-time surface gate, requiring the denominator to be an
+  `Add` and the numerator to be `Mul/Add/Sub` before running the full
+  Weierstrass matchers
+- validated fast-mode signal for that change, measured in serial:
+  - `solve_hotspots_cached/generic/a_pow_x_over_a`: `34.217-34.497 us`
+  - `solve_modes_cached/solve_tactic_generic_batch`: `300.04-302.08 us`, with
+    Criterion reporting about `4.4-6.2%` improvement
+- the new probe confirms the effect on the no-op `Div` bucket: after the
+  Weierstrass surface gate, `Weierstrass Half-Angle Contraction` drops to the
+  bottom of the candidate list at roughly `0.003 us/apply`, and the next
+  dominant no-hit candidates become `Convert Mixed Trig Fraction to sin/cos`
+  (`~0.011 us/apply`) followed by `Half-Angle Tangent Identity` /
+  `Angle Sum Fraction to Tan` (`~0.008-0.009 us/apply`)
+- retained hotspot win: `is_mixed_trig_fraction(...)` in
+  `trig_canonicalization_support` now uses an allocation-free trig bitmask scan
+  instead of `HashSet<String>` collection, plus a cheap early return when both
+  sides of the fraction are structurally incapable of containing trig calls
+- validated fast-mode signal for that change:
+  - `solve_hotspots_cached/generic/x_over_x`: `18.472-18.658 us`, with
+    Criterion reporting about `9-20%` improvement
+  - `solve_modes_cached/solve_tactic_generic_batch`: `322.13-325.27 us`, with
+    Criterion reporting about `1.6-3.7%` improvement
+  - `solve_hotspots_cached/generic/a_pow_x_over_a`: `36.061-36.513 us`, no
+    statistically significant change
+- retained follow-up win: the same `is_mixed_trig_fraction(...)` gate no longer
+  treats every `Add/Sub/Mul/Div` subtree as an automatic trig candidate before
+  the bitmask scan; it now does an exact `Function`-presence walk first, so
+  algebraic fractions like `(2*x + 2*y)/(4*x + 4*y)` and `(a^x)/a` skip the
+  expensive trig scan entirely
+- validated fast-mode signal for that refinement against named baseline
+  `mixed_trig_gate_pre`:
+  - `solve_hotspots_cached/generic/scalar_multiple_fraction`: `93.192-94.731 us`,
+    with Criterion reporting about `3.8-6.8%` improvement
+  - `solve_hotspots_cached/generic/a_pow_x_over_a`: `33.292-33.640 us`, with
+    Criterion reporting about `5.3-7.5%` improvement
+  - `solve_modes_cached/solve_tactic_generic_batch`: `300.34-304.39 us`, with
+    Criterion reporting about `5.3-7.1%` improvement
+- semantic spot-check after that refinement:
+  `(sin(x)+cos(x))/tan(x)` still rewrites in `solve generic` to
+  `(cos(x)^2 + sin(x)·cos(x)) / sin(x)`, so the positive mixed-trig path stays
+  intact while function-free fractions now bypass the rule cheaply
+- `profile_cache` now also includes `solve_eval_hotspots_cached/*` for the
+  direct `eval --context solve` path, which is distinct from `SolveTactic`
+  and is the path affected by the retained strict-domain scalar-multiple
+  simplification change
+- `solve_eval_hotspots_cached/*` also supports the existing solve diagnostic
+  flags, using `CAS_SOLVE_BENCH_PROFILE_MODE=eval-strict|eval-generic|eval-assume`
+  and optional `CAS_SOLVE_BENCH_PROFILE_DETAIL=1` to print the direct eval-path
+  output and top applied rules for that single hotspot input
+- important measurement fix: `solve_modes_cached/*`, `solve_hotspots_cached/*`,
+  and `solve_eval_hotspots_cached/*` now explicitly set the simplifier
+  `steps_mode` from the source `EvalOptions` before calling
+  `simplify_with_options(...)`
+- before that fix, those benches were accidentally running with `steps` on
+  because `Simplifier::from_profile_with_context(...)` defaults to
+  `StepsMode::On` and the engine overwrites `SimplifyOptions.collect_steps`
+  from the simplifier state at runtime; older `solve` numbers from this track
+  are therefore not directly comparable to the corrected baselines below
+- with `CAS_SOLVE_BENCH_PROFILE_DETAIL=1`, `solve_eval_hotspots_cached/*`
+  now also prints the ordered `EngineEvent::RuleApplied` trace for that input;
+  this is diagnostic only because detail mode installs a temporary listener and
+  therefore exercises the traced path rather than the plain `steps off` hot path
+- current traced order for the scalar-multiple hotspot in `eval-strict` and
+  `eval-generic` is:
+  - main `Simplify Nested Fraction` to
+    `1 * (2 * x + 2 * y) / (2 * (2 * x + 2 * y))`
+  - chained `Simplify Nested Fraction` to `1 / 2`
+  - `Combine Constants` to `1/2`
+- that trace confirms the residual fixed post-cancel work is real and happens
+  after the chained fraction rewrite, rather than inside the GCD planner itself
+- on the corrected plain `steps off` path, the profile for the scalar-multiple
+  eval hotspot now collapses to a single visible `Simplify Nested Fraction`
+  hit; the trailing `Combine Constants` was only present in the traced/listener
+  path or in the previously misconfigured benches
+- retained runtime change behind that result: `build_fraction_cancel_forms()`
+  now materializes pure numeric reduced fractions directly as `Number` when
+  `include_factored_form = false`, i.e. on the plain runtime path with no
+  didactic trace payloads
+- retained plain-runtime dispatch change: on the no-trace path,
+  `SimplifyFractionRule` now probes only the exact structural scalar-multiple
+  planner before falling back to the didactic matcher stack, so the known
+  hotspot avoids paying the full didactic cancellation pipeline when the exact
+  ratio escape hatch applies
+- current fast-mode snapshot after the retained solve wins:
+  - `solve_eval_hotspots_cached/strict/scalar_multiple_fraction`:
+    about `93.8-97.3 us`
+  - `solve_eval_hotspots_cached/generic/scalar_multiple_fraction`:
+    about `90.9-94.7 us`
+  - `solve_hotspots_cached/generic/scalar_multiple_fraction`:
+    about `97.5-101.7 us`
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    about `317.9-326.1 us`
+  - `solve_modes_cached/solve_prepass_batch`:
+    about `424.8-442.8 us`
+- the only follow-up matcher experiment that remains explicitly rejected is the
+  aligned-term shortcut inside the structural scalar-multiple matcher; that
+  version still made `solve_eval_hotspots_cached/*` worse instead of better
+- local Criterion hygiene is now codified in `Makefile`:
+  `make bench-clean`, `make bench-engine-fast`, `make bench-engine-fast-save`,
+  and `make bench-engine-fast-compare` keep named baselines separate from the
+  mutable default `base` results under `target/criterion`
+- validation guardrail restored: `cargo test -p cas_math --lib` is green again
+  (`1092 passed`, `1 ignored`) after updating stale unit tests that were still
+  asserting removed/internal representation details in
+  `trig_core_identity_support`, `abs_support`, and `trig_phase_shift_support`
+- that leaves the next ROI unchanged: the fraction/nested-fraction path is
+  still roughly `3.5-6x` heavier than the other remaining generic/assume
+  hotspot cases, so further work should stay there rather than moving to the
+  exponent fast paths
 - `fraction_gcd_plan_support` now has an earlier structural fast path for the
   scalar-multiple-additive case: when numerator and denominator are sums with
   the same term bodies and only differ by a constant coefficient ratio, the
@@ -293,6 +458,61 @@ Fast local loop:
   now lands around `391-398 us` in fast mode versus the prior `~405-410 us`
   range, while `solve_tactic_assume_batch` stayed essentially flat/noisy at
   `~404-426 us`
+- `SimplifyFractionRule` now separates `steps_enabled` from
+  `trace_payloads_enabled`: when both steps and listeners are absent, the GCD
+  path skips building the didactic factored intermediate entirely, while
+  `events_tests` now covers that `steps off` listeners still receive chained
+  fraction events
+- `SimplifyFractionRule` now also treats the exact
+  `FractionGcdRoute::StructuralScalarMultiple` case as intrinsically safe once
+  the original `den != 0` condition is retained, because that route proves
+  `den = c * gcd` with `c != 0`
+- that change is primarily semantic, not a large measured win: it now lets
+  `eval --context solve --domain strict` simplify
+  `(2*x + 2*y)/(4*x + 4*y)` to `1/2` with the same required condition
+  `4*x + 4*y != 0`, while the dedicated tactic hotspots stayed roughly flat /
+  noisy at about `129-133 us` (`generic`) and `128-133 us` (`assume`)
+- the measurable solve win came from moving the scalar-multiple structural
+  fast path ahead of `collect_variables` in `fraction_gcd_plan_support`, so
+  the dedicated hotspot no longer pays a full variable scan before taking its
+  exact-match escape hatch
+- that preserved the visible solve behavior of `(2*x + 2*y)/(4*x + 4*y)`
+  (`2` steps, same required condition `4*x + 4*y != 0`) while improving:
+  - `solve_hotspots_cached/generic/scalar_multiple_fraction` to about
+    `129.1-130.3 us`, with Criterion reporting about `1.1-3.2%` improvement
+  - `solve_modes_cached/solve_tactic_generic_batch` to about
+    `369.0-371.3 us`, with Criterion reporting about `2.1-4.4%` improvement
+- `profile_cache` now also tracks three more direct fraction-cancel hotspots
+  in both `solve_hotspots_cached/*` and `solve_eval_hotspots_cached/*`:
+  `(x^2 - y^2)/(x - y)`, `x^4/x^2`, and
+  `(x^2 + 2*x*y + y^2)/(x + y)^2`
+- retained follow-up win: when `SimplifyFractionRule` takes a didactic cancel
+  plan but `trace_payloads_enabled = false`, it now drops the unused
+  `.local(...)` metadata and keeps only the global rewrite/result; the
+  step/listener path is unchanged because it still preserves the local payload
+- rationale: the local didactic payload is only consumed by step rendering /
+  listeners, so on the plain `steps off` path it was pure hot-path overhead
+- validated against named baseline `didactic_bypass_pre`:
+  - `solve_hotspots_cached/generic/difference_of_squares_fraction`:
+    `68.267-70.102 us`, about `4.3-7.1%` better
+  - `solve_hotspots_cached/generic/power_quotient_fraction`:
+    `45.467-46.057 us`, about `6.3-8.1%` better
+  - `solve_hotspots_cached/generic/binomial_square_fraction`:
+    `144.18-147.18 us`, about `6.8-9.2%` better
+  - `solve_eval_hotspots_cached/generic/difference_of_squares_fraction`:
+    `66.638-68.640 us`, about `3.9-7.0%` better
+  - `solve_eval_hotspots_cached/generic/power_quotient_fraction`:
+    `42.630-43.109 us`, about `6.7-9.4%` better
+  - `solve_eval_hotspots_cached/generic/binomial_square_fraction`:
+    `139.89-142.62 us`, about `7.8-10.6%` better
+- retained cleanup in `IdentityPowerRule`: `x^0` now only calls the non-zero
+  prover in `Strict`; `Generic` and `Assume` pass `TriProof::Unknown`
+  directly because their policy path ignores the proof result entirely
+- measured outcome for that cleanup is intentionally conservative:
+  sequential compares against named baseline `pow_zero_pre` left both
+  `solve_hotspots_cached/generic/x_pow_0` and
+  `solve_hotspots_cached/assume/x_pow_0` inside Criterion's noise threshold,
+  so treat it as hot-path simplification rather than a claimed benchmark win
 
 ## Non-Goals
 

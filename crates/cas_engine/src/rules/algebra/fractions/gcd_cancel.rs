@@ -7,7 +7,7 @@ use super::didactic_factor_support::try_plan_fraction_didactic_cancel;
 use crate::define_rule;
 use crate::rule::{ChainedRewrite, Rewrite};
 use cas_ast::{Context, Expr, ExprId};
-use cas_math::fraction_gcd_plan_support::try_plan_fraction_gcd_rewrite;
+use cas_math::fraction_gcd_plan_support::{try_plan_fraction_gcd_rewrite, FractionGcdRoute};
 use cas_math::fraction_mul_div_support::{try_rewrite_simplify_mul_div_expr, MulDivRewriteKind};
 use cas_math::fraction_power_cancel_support::{
     try_rewrite_cancel_identical_fraction_expr, try_rewrite_cancel_power_fraction_expr,
@@ -233,16 +233,19 @@ define_rule!(
         // Use RationalFnView to detect any fraction form while preserving structure
         let view = RationalFnView::from(ctx, expr)?;
         let (num, den) = (view.num, view.den);
+        let trace_payloads_enabled = crate::rule::trace_payloads_enabled();
 
         // EARLY RETURN: didactic factorization/cancellation plans (ordered in cas_math).
         if let Some(plan) = try_plan_fraction_didactic_cancel(ctx, num, den) {
             use crate::ImplicitCondition;
-            return Some(
-                Rewrite::new(plan.rewritten)
-                    .desc(plan.desc)
-                    .local(num, plan.local_after)
-                    .requires(ImplicitCondition::NonZero(den)),
-            );
+            let rewrite = Rewrite::new(plan.rewritten)
+                .desc(plan.desc)
+                .requires(ImplicitCondition::NonZero(den));
+            return Some(if trace_payloads_enabled {
+                rewrite.local(num, plan.local_after)
+            } else {
+                rewrite
+            });
         }
 
         // NOTE: PR-2 shallow GCD integration deferred.
@@ -251,17 +254,22 @@ define_rule!(
         // Future work: investigate stack-safe approach for power cancellation.
 
         // GCD rewrite planning (multivariate or univariate structural path)
-        let plan = try_plan_fraction_gcd_rewrite(ctx, expr, num, den)?;
+        let plan = try_plan_fraction_gcd_rewrite(ctx, expr, num, den, trace_payloads_enabled)?;
 
         // DOMAIN GATE: Check if we can cancel by this GCD
         // In Strict mode, only allow if GCD is provably non-zero
-        let decision = crate::oracle_allows_with_hint(
-            ctx,
-            domain_mode,
-            parent_ctx.value_domain(),
-            &Predicate::NonZero(plan.gcd_expr),
-            "Simplify Nested Fraction",
-        );
+        let decision = match plan.route {
+            // Structural scalar-multiple plans prove denominator = c*gcd with c != 0,
+            // so the existing implicit condition den != 0 already implies gcd != 0.
+            FractionGcdRoute::StructuralScalarMultiple => crate::CancelDecision::allow(),
+            _ => crate::oracle_allows_with_hint(
+                ctx,
+                domain_mode,
+                parent_ctx.value_domain(),
+                &Predicate::NonZero(plan.gcd_expr),
+                "Simplify Nested Fraction",
+            ),
+        };
         if !decision.allow {
             // STRICT PARTIAL CANCEL: Try to cancel only numeric content
             // The numeric_gcd is always provably nonzero (it's a rational ≠ 0)
@@ -287,7 +295,7 @@ define_rule!(
                 Rewrite::new(zero)
                     .desc("Numerator simplifies to 0")
                     .local(num, zero)
-                    .requires(ImplicitCondition::NonZero(den))
+                    .requires(ImplicitCondition::NonZero(den)),
             );
         }
 
@@ -295,18 +303,27 @@ define_rule!(
         // Step 1 (main): Factor - show the factored form
         // Use requires (not assume) to avoid duplicate Requires/Assumed display
         use crate::ImplicitCondition;
-        let factor_desc = format_factor_by_gcd_desc(ctx, plan.gcd_expr);
-        let factor_rw = Rewrite::new(plan.forms.factored_form_norm)
-            .desc(factor_desc)
-            .local(expr, plan.forms.factored_form_norm)
-            .requires(ImplicitCondition::NonZero(den));
+        if let Some(factored_form_norm) = plan.forms.factored_form_norm {
+            let factor_desc = format_factor_by_gcd_desc(ctx, plan.gcd_expr);
+            let factor_rw = Rewrite::new(factored_form_norm)
+                .desc(factor_desc)
+                .local(expr, factored_form_norm)
+                .requires(ImplicitCondition::NonZero(den));
 
-        // Step 2 (chained): Cancel - reduce to final result
-        let cancel = ChainedRewrite::new(plan.forms.result_norm)
-            .desc("Cancel common factor")
-            .local(plan.forms.factored_form_norm, plan.forms.result_norm);
+            // Step 2 (chained): Cancel - reduce to final result
+            let cancel = ChainedRewrite::new(plan.forms.result_norm)
+                .desc("Cancel common factor")
+                .local(factored_form_norm, plan.forms.result_norm);
 
-        return Some(factor_rw.chain(cancel));
+            return Some(factor_rw.chain(cancel));
+        }
+
+        return Some(
+            Rewrite::new(plan.forms.result_norm)
+                .desc("Cancel common factor")
+                .local(expr, plan.forms.result_norm)
+                .requires(ImplicitCondition::NonZero(den)),
+        );
     }
 );
 

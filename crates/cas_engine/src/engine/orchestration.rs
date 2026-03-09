@@ -87,6 +87,9 @@ impl Simplifier {
             };
         let mut step_listener = self.step_listener.take();
 
+        let trace_payloads_enabled =
+            self.steps_mode != crate::options::StepsMode::Off || step_listener.is_some();
+
         let mut local_transformer = LocalSimplificationTransformer {
             context: &mut self.context,
             rules,
@@ -119,8 +122,11 @@ impl Simplifier {
             normalize_cache: std::collections::HashMap::new(),
         };
 
-        // PERF: Set steps-enabled flag so rules can skip description computation
+        // PERF: Let rules skip both descriptions and intermediate didactic payloads
+        // on the plain `steps off` path, while preserving chained event payloads
+        // when a listener is attached.
         crate::rule::set_steps_enabled(self.steps_mode != crate::options::StepsMode::Off);
+        crate::rule::set_trace_payloads_enabled(trace_payloads_enabled);
 
         let new_expr = local_transformer.transform_expr_recursive(expr_id);
 
@@ -310,6 +316,9 @@ impl Simplifier {
                 (&self.rules, &self.global_rules, &self.disabled_rules, false)
             };
 
+        let trace_payloads_enabled =
+            steps_mode != crate::options::StepsMode::Off || step_listener.is_some();
+
         let mut local_transformer = LocalSimplificationTransformer {
             context: &mut self.context,
             rules,
@@ -350,8 +359,11 @@ impl Simplifier {
             normalize_cache: std::collections::HashMap::new(),
         };
 
-        // PERF: Set steps-enabled flag so rules can skip description computation
+        // PERF: Let rules skip both descriptions and intermediate didactic payloads
+        // on the plain `steps off` path, while preserving chained event payloads
+        // when a listener is attached.
         crate::rule::set_steps_enabled(steps_mode != crate::options::StepsMode::Off);
+        crate::rule::set_trace_payloads_enabled(trace_payloads_enabled);
 
         let new_expr = local_transformer.transform_expr_recursive(expr_id);
 

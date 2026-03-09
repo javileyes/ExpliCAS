@@ -252,6 +252,17 @@ pub fn try_rewrite_reverse_weierstrass_sin_expr(
 /// Detect and contract classic Weierstrass half-angle tangent forms:
 /// - `2*tan(x/2) / (1 + tan(x/2)^2) -> sin(x)`
 /// - `(1 - tan(x/2)^2) / (1 + tan(x/2)^2) -> cos(x)`
+fn is_surface_weierstrass_contraction_candidate(ctx: &Context, num: ExprId, den: ExprId) -> bool {
+    if !matches!(ctx.get(den), Expr::Add(_, _)) {
+        return false;
+    }
+
+    matches!(
+        ctx.get(num),
+        Expr::Mul(_, _) | Expr::Add(_, _) | Expr::Sub(_, _)
+    )
+}
+
 pub fn try_rewrite_weierstrass_contraction_div_expr(
     ctx: &mut Context,
     expr: ExprId,
@@ -260,6 +271,9 @@ pub fn try_rewrite_weierstrass_contraction_div_expr(
         return None;
     };
     let (num_id, den_id) = (*num_id, *den_id);
+    if !is_surface_weierstrass_contraction_candidate(ctx, num_id, den_id) {
+        return None;
+    }
 
     if let Some((full_angle, _tan_half)) = match_one_plus_tan_half_squared(ctx, den_id) {
         if let Some(num_angle) = match_two_tan_half(ctx, num_id) {
@@ -490,6 +504,13 @@ mod tests {
             cas_ast::ordering::compare_expr(&ctx, cos_rw.rewritten, expected_cos),
             Ordering::Equal
         );
+    }
+
+    #[test]
+    fn weierstrass_contraction_rejects_non_trig_power_fraction() {
+        let mut ctx = Context::new();
+        let expr = parse("(a^x)/a", &mut ctx).expect("expr");
+        assert!(try_rewrite_weierstrass_contraction_div_expr(&mut ctx, expr).is_none());
     }
 
     #[test]

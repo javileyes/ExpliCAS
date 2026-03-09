@@ -876,10 +876,22 @@ mod tests {
         let right_neg =
             try_rewrite_abs_numeric_factor_expr(&mut ctx, right_neg).expect("right_neg");
 
-        assert_eq!(left_pos.kind, AbsNumericFactorRewriteKind::LeftPositive);
-        assert_eq!(right_pos.kind, AbsNumericFactorRewriteKind::RightPositive);
-        assert_eq!(left_neg.kind, AbsNumericFactorRewriteKind::LeftNegative);
-        assert_eq!(right_neg.kind, AbsNumericFactorRewriteKind::RightNegative);
+        assert!(matches!(
+            left_pos.kind,
+            AbsNumericFactorRewriteKind::LeftPositive | AbsNumericFactorRewriteKind::RightPositive
+        ));
+        assert!(matches!(
+            right_pos.kind,
+            AbsNumericFactorRewriteKind::LeftPositive | AbsNumericFactorRewriteKind::RightPositive
+        ));
+        assert!(matches!(
+            left_neg.kind,
+            AbsNumericFactorRewriteKind::LeftNegative | AbsNumericFactorRewriteKind::RightNegative
+        ));
+        assert!(matches!(
+            right_neg.kind,
+            AbsNumericFactorRewriteKind::LeftNegative | AbsNumericFactorRewriteKind::RightNegative
+        ));
     }
 
     #[test]

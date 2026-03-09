@@ -1,4 +1,4 @@
-.PHONY: ci ci-release ci-msrv ci-quick lint test fmt clippy build-release lint-allowlist lint-budget lint-limits audit-utils lint-string-compares lint-no-panic-prod help
+.PHONY: ci ci-release ci-msrv ci-quick lint test fmt clippy build-release lint-allowlist lint-budget lint-limits audit-utils lint-string-compares lint-no-panic-prod bench-clean bench-engine-fast bench-engine-fast-save bench-engine-fast-compare help
 
 help:
 	@echo "Targets:"
@@ -10,6 +10,13 @@ help:
 	@echo "  make lint-budget   -> check budget instrumentation in hotspots"
 	@echo "  make lint-limits   -> check presimplify_safe isolation"
 	@echo "  make lint-no-panic-prod -> forbid panic! in production code"
+	@echo "  make bench-clean   -> remove Criterion baselines/results from target/criterion"
+	@echo "  make bench-engine-fast BENCH=profile_cache [FILTER=...]"
+	@echo "                     -> run a fast cas_engine Criterion bench"
+	@echo "  make bench-engine-fast-save BENCH=profile_cache BASELINE=good [FILTER=...]"
+	@echo "                     -> save a named Criterion baseline"
+	@echo "  make bench-engine-fast-compare BENCH=profile_cache BASELINE=good [FILTER=...]"
+	@echo "                     -> compare against a named baseline without overwriting it"
 	@echo "  make audit-utils   -> show canonical utilities registry + lint check"
 	@echo "  make test          -> cargo test (debug) only"
 	@echo "  make build-release -> cargo build --release only"
@@ -35,6 +42,23 @@ test:
 
 fmt:
 	cargo fmt --all -- --check
+
+bench-clean:
+	rm -rf target/criterion
+
+bench-engine-fast:
+	@test -n "$(BENCH)" || { echo "Usage: make bench-engine-fast BENCH=profile_cache [FILTER=...]"; exit 1; }
+	CAS_BENCH_FAST=1 cargo bench -p cas_engine --bench $(BENCH) $(FILTER) -- --noplot
+
+bench-engine-fast-save:
+	@test -n "$(BENCH)" || { echo "Usage: make bench-engine-fast-save BENCH=profile_cache BASELINE=good [FILTER=...]"; exit 1; }
+	@test -n "$(BASELINE)" || { echo "Missing BASELINE=..."; exit 1; }
+	CAS_BENCH_FAST=1 cargo bench -p cas_engine --bench $(BENCH) $(FILTER) -- --noplot --save-baseline $(BASELINE)
+
+bench-engine-fast-compare:
+	@test -n "$(BENCH)" || { echo "Usage: make bench-engine-fast-compare BENCH=profile_cache BASELINE=good [FILTER=...]"; exit 1; }
+	@test -n "$(BASELINE)" || { echo "Missing BASELINE=..."; exit 1; }
+	CAS_BENCH_FAST=1 cargo bench -p cas_engine --bench $(BENCH) $(FILTER) -- --noplot --baseline $(BASELINE)
 
 clippy:
 	cargo clippy --workspace --all-targets -- -D warnings
@@ -121,4 +145,3 @@ lint-no-stringly-ir:
 		echo "✓ __eq__: CLEAN (enforced)"; \
 	fi; \
 	if [ "$$FAILED" = "1" ]; then exit 1; fi
-

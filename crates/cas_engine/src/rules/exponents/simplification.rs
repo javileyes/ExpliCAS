@@ -101,23 +101,30 @@ define_rule!(
                 } => {
                     // x^0 -> 1 REQUIRES x ≠ 0 (because 0^0 is undefined)
                     let domain_mode = parent_ctx.domain_mode();
+                    let assume_mode = matches!(domain_mode, crate::DomainMode::Assume);
+                    let strict_mode = matches!(domain_mode, crate::DomainMode::Strict);
                     let power_mode =
                         cas_math::power_identity_support::power_identity_mode_from_flags(
-                            matches!(domain_mode, crate::DomainMode::Assume),
-                            matches!(domain_mode, crate::DomainMode::Strict),
+                            assume_mode,
+                            strict_mode,
                         );
-                    let action =
-                        cas_math::power_identity_support::plan_pow_zero_policy_action_with_mode_flags(
-                        matches!(domain_mode, crate::DomainMode::Assume),
-                        matches!(domain_mode, crate::DomainMode::Strict),
-                        base_is_literal_zero,
-                        matches!(ctx.get(base), Expr::Number(_)),
+                    let base_nonzero_proof = if strict_mode {
                         cas_solver_core::predicate_proofs::prove_nonzero_core_with(
                             ctx,
                             base,
                             crate::helpers::prove_nonzero,
-                        ),
-                    );
+                        )
+                    } else {
+                        cas_math::tri_proof::TriProof::Unknown
+                    };
+                    let action =
+                        cas_math::power_identity_support::plan_pow_zero_policy_action_with_mode_flags(
+                            assume_mode,
+                            strict_mode,
+                            base_is_literal_zero,
+                            matches!(ctx.get(base), Expr::Number(_)),
+                            base_nonzero_proof,
+                        );
 
                     match action {
                         cas_math::power_identity_support::PowZeroPolicyAction::RewriteToUndefined => {

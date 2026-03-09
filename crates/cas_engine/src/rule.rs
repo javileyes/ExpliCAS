@@ -18,6 +18,7 @@ use std::cell::Cell;
 
 thread_local! {
     static STEPS_ENABLED: Cell<bool> = const { Cell::new(true) };
+    static TRACE_PAYLOADS_ENABLED: Cell<bool> = const { Cell::new(true) };
 }
 
 /// Set whether step descriptions should be computed.
@@ -30,6 +31,21 @@ pub fn set_steps_enabled(enabled: bool) {
 #[inline]
 pub fn steps_enabled() -> bool {
     STEPS_ENABLED.with(|s| s.get())
+}
+
+/// Set whether rules should build detailed intermediate payloads for traces.
+///
+/// This stays enabled when either step collection is on or an engine event
+/// listener is attached, so rules can keep emitting chained intermediate
+/// expressions without paying that cost in the plain `steps off` hot path.
+pub fn set_trace_payloads_enabled(enabled: bool) {
+    TRACE_PAYLOADS_ENABLED.with(|s| s.set(enabled));
+}
+
+/// Check if detailed trace payloads are enabled.
+#[inline]
+pub fn trace_payloads_enabled() -> bool {
+    TRACE_PAYLOADS_ENABLED.with(|s| s.get())
 }
 
 // =============================================================================

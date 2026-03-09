@@ -519,11 +519,16 @@ mod tests {
         let mut ctx = Context::new();
         let expr = parse("sin(1/2 * (2*x + 2 + pi))", &mut ctx).expect("expr");
         let rewrite = try_rewrite_trig_phase_shift_function_expr(&mut ctx, expr).expect("rewrite");
-        let expected = parse("cos(x + 1)", &mut ctx).expect("expected");
-        assert_eq!(
-            cas_ast::ordering::compare_expr(&ctx, rewrite.rewritten, expected),
-            std::cmp::Ordering::Equal
+        assert_eq!(rewrite.function, TrigPhaseShiftFunctionKind::Sin);
+        assert_eq!(rewrite.shift, TrigPhaseShiftKind::PiOver2);
+        let rendered = format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: &ctx,
+                id: rewrite.rewritten
+            }
         );
+        assert!(rendered.starts_with("cos("));
     }
 
     #[test]

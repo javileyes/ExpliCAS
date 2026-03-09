@@ -5,16 +5,37 @@
 use cas_ast::Context;
 use cas_parser::parse;
 use cas_solver::Simplifier;
-use cas_solver::{BranchMode, ComplexMode, ContextMode, EvalOptions, StepsMode};
+use cas_solver::{BranchMode, ComplexMode, ContextMode, DomainMode, EvalOptions, StepsMode};
 
 /// Helper: simplify expression and return result string
 fn simplify(input: &str) -> String {
+    simplify_with_semantics(input, ContextMode::Standard, DomainMode::Generic)
+}
+
+fn simplify_with_semantics(
+    input: &str,
+    context_mode: ContextMode,
+    domain_mode: DomainMode,
+) -> String {
+    simplify_with_semantics_and_steps(input, context_mode, domain_mode, StepsMode::On)
+}
+
+fn simplify_with_semantics_and_steps(
+    input: &str,
+    context_mode: ContextMode,
+    domain_mode: DomainMode,
+    steps_mode: StepsMode,
+) -> String {
     let opts = EvalOptions {
         branch_mode: BranchMode::Strict,
         complex_mode: ComplexMode::Auto,
-        steps_mode: StepsMode::On,
+        steps_mode,
         shared: cas_solver::SharedSemanticConfig {
-            context_mode: ContextMode::Standard,
+            context_mode,
+            semantics: cas_solver::EvalConfig {
+                domain_mode,
+                ..Default::default()
+            },
             ..Default::default()
         },
         ..Default::default()
@@ -45,6 +66,47 @@ fn test_content_gcd_multivar() {
     // With Layer 2: GCD = 2*(x+y), so result = 1/2
     let result = simplify("(2*x + 2*y) / (4*x + 4*y)");
     assert_eq!(result, "1/2", "(2x+2y)/(4x+4y) should simplify to 1/2");
+}
+
+#[test]
+fn test_content_gcd_multivar_in_solve_strict_context() {
+    let result = simplify_with_semantics(
+        "(2*x + 2*y) / (4*x + 4*y)",
+        ContextMode::Solve,
+        DomainMode::Strict,
+    );
+    assert_eq!(
+        result, "1/2",
+        "solve-context strict eval should simplify exact scalar-multiple fractions to 1/2"
+    );
+}
+
+#[test]
+fn test_content_gcd_multivar_in_solve_strict_context_steps_off() {
+    let result = simplify_with_semantics_and_steps(
+        "(2*x + 2*y) / (4*x + 4*y)",
+        ContextMode::Solve,
+        DomainMode::Strict,
+        StepsMode::Off,
+    );
+    assert_eq!(
+        result, "1/2",
+        "solve-context strict eval should keep the same scalar-multiple result with steps off"
+    );
+}
+
+#[test]
+fn test_content_gcd_multivar_in_solve_generic_context_steps_off() {
+    let result = simplify_with_semantics_and_steps(
+        "(2*x + 2*y) / (4*x + 4*y)",
+        ContextMode::Solve,
+        DomainMode::Generic,
+        StepsMode::Off,
+    );
+    assert_eq!(
+        result, "1/2",
+        "solve-context generic eval should keep the same scalar-multiple result with steps off"
+    );
 }
 
 // =============================================================================

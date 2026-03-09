@@ -1,5 +1,6 @@
 use crate::{EngineEvent, Simplifier, StepListener};
 use cas_ast::Expr;
+use cas_parser::parse;
 use std::sync::{Arc, Mutex};
 
 #[derive(Clone)]
@@ -69,5 +70,31 @@ fn emits_rule_applied_events_when_steps_are_off() {
             .iter()
             .any(|event| matches!(event, EngineEvent::RuleApplied { .. })),
         "expected RuleApplied events even with steps disabled"
+    );
+}
+
+#[test]
+fn steps_off_listener_keeps_chained_fraction_events() {
+    let mut simplifier = Simplifier::with_default_rules();
+    simplifier.set_collect_steps(false);
+    let sink = Arc::new(Mutex::new(Vec::new()));
+    simplifier.set_step_listener(Some(Box::new(CapturingListener::new(sink.clone()))));
+
+    let expr = parse("(27*x^3)/(9*x)", &mut simplifier.context).expect("parse");
+
+    let (_result, steps) = simplifier.simplify(expr);
+    let events = sink.lock().expect("listener sink poisoned");
+
+    assert!(steps.is_empty(), "steps should remain disabled");
+    assert!(
+        events.iter().any(|event| matches!(
+            event,
+            EngineEvent::RuleApplied {
+                rule_name,
+                is_chained: true,
+                ..
+            } if rule_name == "Simplify Nested Fraction"
+        )),
+        "expected chained Simplify Nested Fraction event even with steps disabled"
     );
 }

@@ -958,7 +958,8 @@ mod tests {
         let expr = parse("sin(3*pi)", &mut ctx).expect("parse");
         let rewrite = try_rewrite_sin_cos_integer_pi_expr(&mut ctx, expr).expect("rewrite");
         assert_eq!(render(&ctx, rewrite.rewritten), "0");
-        assert_eq!(rewrite.desc, "sin(3·π) = 0");
+        assert_eq!(rewrite.kind, SinCosIntegerPiKind::SinIntegerPi);
+        assert_eq!(rewrite.n, 3.into());
     }
 
     #[test]
@@ -967,7 +968,8 @@ mod tests {
         let expr = parse("cos(4*pi)", &mut ctx).expect("parse");
         let rewrite = try_rewrite_sin_cos_integer_pi_expr(&mut ctx, expr).expect("rewrite");
         assert_eq!(render(&ctx, rewrite.rewritten), "1");
-        assert_eq!(rewrite.desc, "cos(4·π) = 1");
+        assert_eq!(rewrite.kind, SinCosIntegerPiKind::CosIntegerPiEven);
+        assert_eq!(rewrite.n, 4.into());
     }
 
     #[test]

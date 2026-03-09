@@ -136,7 +136,6 @@ pub fn try_rewrite_cancel_power_fraction_expr(
     let (num, den) = as_div(ctx, expr)?;
     let (base, exp) = as_pow(ctx, num)?;
     let relation = poly_relation(ctx, base, den)?;
-
     let exp_val = as_i64(ctx, exp)?;
     if exp_val < 1 {
         return None;
@@ -233,5 +232,12 @@ mod tests {
         let rw = try_rewrite_cancel_power_fraction_expr(&mut ctx, expr).expect("rewrite");
         let expected = parse("-x^2", &mut ctx).expect("expected");
         assert!(poly_eq(&ctx, rw.rewritten, expected));
+    }
+
+    #[test]
+    fn cancel_power_fraction_rejects_symbolic_exponent_without_poly_compare() {
+        let mut ctx = Context::new();
+        let expr = parse("(a^x)/a", &mut ctx).expect("parse");
+        assert!(try_rewrite_cancel_power_fraction_expr(&mut ctx, expr).is_none());
     }
 }
