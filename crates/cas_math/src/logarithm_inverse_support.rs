@@ -375,13 +375,24 @@ pub struct LnEDivRewrite {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LogContractionRewrite {
     pub rewritten: ExprId,
-    pub desc: &'static str,
+    pub kind: LogContractionRewriteKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LogContractionRewriteKind {
+    Add,
+    Sub,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LogChainProductRewrite {
     pub rewritten: ExprId,
-    pub desc: &'static str,
+    pub kind: LogChainProductRewriteKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LogChainProductRewriteKind {
+    Telescoping,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -874,7 +885,7 @@ pub fn try_rewrite_log_contraction_expr(
             };
             Some(LogContractionRewrite {
                 rewritten,
-                desc: "ln(a) + ln(b) = ln(a*b)",
+                kind: LogContractionRewriteKind::Add,
             })
         }
         Expr::Sub(lhs, rhs) => {
@@ -893,7 +904,7 @@ pub fn try_rewrite_log_contraction_expr(
             };
             Some(LogContractionRewrite {
                 rewritten,
-                desc: "ln(a) - ln(b) = ln(a/b)",
+                kind: LogContractionRewriteKind::Sub,
             })
         }
         _ => None,
@@ -1361,7 +1372,7 @@ pub fn try_rewrite_log_chain_product_expr(
             let rewritten = if had_remaining { product } else { new_log };
             return Some(LogChainProductRewrite {
                 rewritten,
-                desc: "log(b, a) * log(a, c) = log(b, c)",
+                kind: LogChainProductRewriteKind::Telescoping,
             });
         }
     }
@@ -2213,8 +2224,8 @@ mod tests {
         let add_rw = try_rewrite_log_contraction_expr(&mut ctx, add_expr).expect("add rw");
         let sub_rw = try_rewrite_log_contraction_expr(&mut ctx, sub_expr).expect("sub rw");
 
-        assert_eq!(add_rw.desc, "ln(a) + ln(b) = ln(a*b)");
-        assert_eq!(sub_rw.desc, "ln(a) - ln(b) = ln(a/b)");
+        assert_eq!(add_rw.kind, LogContractionRewriteKind::Add);
+        assert_eq!(sub_rw.kind, LogContractionRewriteKind::Sub);
     }
 
     #[test]
@@ -2224,7 +2235,7 @@ mod tests {
         let expected = parse("log(b,c)", &mut ctx).expect("expected");
 
         let rw = try_rewrite_log_chain_product_expr(&mut ctx, expr).expect("chain rw");
-        assert_eq!(rw.desc, "log(b, a) * log(a, c) = log(b, c)");
+        assert_eq!(rw.kind, LogChainProductRewriteKind::Telescoping);
         assert_eq!(
             cas_ast::ordering::compare_expr(&ctx, rw.rewritten, expected),
             Ordering::Equal

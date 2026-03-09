@@ -104,6 +104,23 @@ pub fn extract_pi_half_multiple(ctx: &Context, expr: ExprId) -> Option<i32> {
     None
 }
 
+fn extract_positive_unit_fraction_denominator(ctx: &Context, expr: ExprId) -> Option<i32> {
+    match ctx.get(expr) {
+        Expr::Number(coeff) if coeff.numer() == &BigInt::from(1) && !coeff.denom().is_one() => {
+            coeff.denom().try_into().ok()
+        }
+        Expr::Div(num, den) => match (ctx.get(*num), ctx.get(*den)) {
+            (Expr::Number(num), Expr::Number(den))
+                if num.is_one() && den.is_integer() && den.denom().is_one() =>
+            {
+                den.to_integer().try_into().ok()
+            }
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
 /// Extract `(base_term, k)` from `expr` such that:
 /// `expr = base_term + k*π/2`.
 ///
@@ -166,35 +183,38 @@ pub fn extract_phase_shift(ctx: &mut Context, expr: ExprId) -> Option<(ExprId, i
 
     // Form 1b: Mul(1/n, Add(coeff*x, k*pi)) - canonical lowered division form
     if let Some((coeff_id, inner)) = as_mul(ctx, expr) {
-        if let Expr::Number(coeff) = ctx.get(coeff_id) {
-            if coeff.numer() == &num_bigint::BigInt::from(1) && !coeff.denom().is_one() {
-                let denom_val: i32 = coeff.denom().try_into().ok().unwrap_or(0);
-                if denom_val > 0 {
-                    if let Some((l, r)) = as_add(ctx, inner) {
-                        if is_pi(ctx, r) {
-                            let k = 2 / denom_val;
-                            if 2 % denom_val == 0 {
-                                let base = ctx.add(Expr::Mul(coeff_id, l));
-                                return Some((base, k));
-                            }
-                        }
+        if let Some(denom_val) = extract_positive_unit_fraction_denominator(ctx, coeff_id) {
+            let view = AddView::from_expr(ctx, inner);
+            if view.terms.len() >= 2 {
+                for (i, (term, sign)) in view.terms.iter().enumerate() {
+                    let mut k_times_2 = if is_pi(ctx, *term) {
+                        2
+                    } else if let Some(pi_coeff) = extract_pi_coefficient(ctx, *term) {
+                        2 * pi_coeff
+                    } else {
+                        continue;
+                    };
 
-                        if is_pi(ctx, l) {
-                            let k = 2 / denom_val;
-                            if 2 % denom_val == 0 {
-                                let base = ctx.add(Expr::Mul(coeff_id, r));
-                                return Some((base, k));
-                            }
-                        }
+                    if *sign == Sign::Neg {
+                        k_times_2 = -k_times_2;
+                    }
 
-                        if let Some(pi_coeff) = extract_pi_coefficient(ctx, r) {
-                            let k_times_2 = 2 * pi_coeff;
-                            if k_times_2 % denom_val == 0 {
-                                let k = k_times_2 / denom_val;
-                                let base = ctx.add(Expr::Mul(coeff_id, l));
-                                return Some((base, k));
-                            }
-                        }
+                    if k_times_2 % denom_val == 0 {
+                        let k = k_times_2 / denom_val;
+                        let remaining: smallvec::SmallVec<[(ExprId, Sign); 8]> = view
+                            .terms
+                            .iter()
+                            .enumerate()
+                            .filter(|(j, _)| *j != i)
+                            .map(|(_, t)| *t)
+                            .collect();
+                        let rest_view = AddView {
+                            root: inner,
+                            terms: remaining,
+                        };
+                        let base_inner = rest_view.rebuild(ctx);
+                        let base = ctx.add(Expr::Mul(coeff_id, base_inner));
+                        return Some((base, k));
                     }
                 }
             }
@@ -232,13 +252,31 @@ pub fn extract_phase_shift(ctx: &mut Context, expr: ExprId) -> Option<(ExprId, i
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TrigPhaseShiftRewriteOwned {
     pub rewritten: ExprId,
-    pub desc: String,
+    pub function: TrigPhaseShiftFunctionKind,
+    pub shift: TrigPhaseShiftKind,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TrigSupplementaryAngleRewriteOwned {
     pub rewritten: ExprId,
     pub desc: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TrigPhaseShiftFunctionKind {
+    Sin,
+    Cos,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TrigPhaseShiftKind {
+    PiOver2,
+    NegPiOver2,
+    Pi,
+    NegPi,
+    ThreePiOver2,
+    NegThreePiOver2,
+    KPiOver2,
 }
 
 /// Rewrites phase-shifted sin/cos forms:
@@ -291,17 +329,25 @@ pub fn try_rewrite_trig_phase_shift_function_expr(
         new_trig
     };
 
-    let shift_desc = match pi_multiple {
-        1 => "π/2",
-        -1 => "-π/2",
-        2 => "π",
-        -2 => "-π",
-        3 => "3π/2",
-        -3 => "-3π/2",
-        _ => "kπ/2",
+    let function = if is_sin {
+        TrigPhaseShiftFunctionKind::Sin
+    } else {
+        TrigPhaseShiftFunctionKind::Cos
     };
-    let desc = format!("{}(x + {}) phase shift", builtin.name(), shift_desc);
-    Some(TrigPhaseShiftRewriteOwned { rewritten, desc })
+    let shift = match pi_multiple {
+        1 => TrigPhaseShiftKind::PiOver2,
+        -1 => TrigPhaseShiftKind::NegPiOver2,
+        2 => TrigPhaseShiftKind::Pi,
+        -2 => TrigPhaseShiftKind::NegPi,
+        3 => TrigPhaseShiftKind::ThreePiOver2,
+        -3 => TrigPhaseShiftKind::NegThreePiOver2,
+        _ => TrigPhaseShiftKind::KPiOver2,
+    };
+    Some(TrigPhaseShiftRewriteOwned {
+        rewritten,
+        function,
+        shift,
+    })
 }
 
 /// Rewrites supplementary-angle forms:
@@ -443,11 +489,37 @@ mod tests {
     }
 
     #[test]
+    fn extract_phase_shift_from_scaled_nary_add_form() {
+        let mut ctx = Context::new();
+        let expr = parse("1/2 * (3*pi + 2*x + 2)", &mut ctx).expect("expr");
+        let expected_base = parse("1/2 * (2*x + 2)", &mut ctx).expect("expected");
+
+        let (base, k) = extract_phase_shift(&mut ctx, expr).expect("phase shift");
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, base, expected_base),
+            std::cmp::Ordering::Equal
+        );
+        assert_eq!(k, 3);
+    }
+
+    #[test]
     fn rewrites_trig_phase_shift_function_expr() {
         let mut ctx = Context::new();
         let expr = parse("sin(x + pi/2)", &mut ctx).expect("expr");
         let rewrite = try_rewrite_trig_phase_shift_function_expr(&mut ctx, expr).expect("rewrite");
         let expected = parse("cos(x)", &mut ctx).expect("expected");
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, rewrite.rewritten, expected),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn rewrites_trig_phase_shift_from_scaled_nary_add_form() {
+        let mut ctx = Context::new();
+        let expr = parse("sin(1/2 * (2*x + 2 + pi))", &mut ctx).expect("expr");
+        let rewrite = try_rewrite_trig_phase_shift_function_expr(&mut ctx, expr).expect("rewrite");
+        let expected = parse("cos(x + 1)", &mut ctx).expect("expected");
         assert_eq!(
             cas_ast::ordering::compare_expr(&ctx, rewrite.rewritten, expected),
             std::cmp::Ordering::Equal

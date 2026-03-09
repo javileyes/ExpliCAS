@@ -3,12 +3,6 @@ use crate::expr_relations::extract_negated_inner;
 use crate::pi_helpers::{build_pi_over_n, is_pi_over_n};
 use cas_ast::{Context, Expr, ExprId};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ReciprocalTrigRewrite {
-    pub rewritten: ExprId,
-    pub desc: String,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReciprocalTrigEvalKind {
     CotPiOver4,

@@ -8,6 +8,7 @@ use cas_math::trig_canonicalization_support::{
     try_rewrite_sec_tan_pythagorean_identity_expr,
     try_rewrite_tan_to_sec_pythagorean_identity_expr,
     try_rewrite_trig_function_name_canonicalization_expr, TrigCanonicalIdentityKind,
+    TrigCanonicalRewriteKind,
 };
 
 fn format_trig_canonical_identity_desc(kind: TrigCanonicalIdentityKind) -> &'static str {
@@ -25,6 +26,17 @@ fn format_trig_canonical_identity_desc(kind: TrigCanonicalIdentityKind) -> &'sta
         TrigCanonicalIdentityKind::MixedFractionToSinCos => {
             "Convert mixed trig fraction to sin/cos"
         }
+    }
+}
+
+pub(crate) fn format_trig_canonical_rewrite_desc(kind: TrigCanonicalRewriteKind) -> &'static str {
+    match kind {
+        TrigCanonicalRewriteKind::TanToSinCos => "tan(x) -> sin(x)/cos(x)",
+        TrigCanonicalRewriteKind::SinOverCosToTan => "sin(x)/cos(x) → tan(x)",
+        TrigCanonicalRewriteKind::CosOverSinToCot => "cos(x)/sin(x) → cot(x)",
+        TrigCanonicalRewriteKind::OneOverSinToCsc => "1/sin(x) → csc(x)",
+        TrigCanonicalRewriteKind::OneOverCosToSec => "1/cos(x) → sec(x)",
+        TrigCanonicalRewriteKind::OneOverTanToCot => "1/tan(x) → cot(x)",
     }
 }
 
@@ -47,7 +59,7 @@ define_rule!(
     importance: crate::step::ImportanceLevel::Low,
     |ctx, expr| {
         let plan = try_rewrite_trig_function_name_canonicalization_expr(ctx, expr)?;
-        Some(Rewrite::new(plan.rewritten).desc(plan.desc))
+        Some(Rewrite::new(plan.rewritten).desc(plan.desc.expect("dynamic canonical trig desc")))
     }
 );
 

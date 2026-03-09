@@ -403,6 +403,9 @@ define_rule!(
 );
 
 define_rule!(EvaluatePowerRule, "Evaluate Numeric Power", importance: crate::step::ImportanceLevel::Low, |ctx, expr| {
+    if let Some(rewrite) = cas_math::power_eval_support::try_rewrite_literal_power_eval_expr(ctx, expr) {
+        return Some(Rewrite::new(rewrite.rewritten).desc("Evaluate literal power"));
+    }
     let rewrite = cas_math::power_eval_support::try_rewrite_evaluate_power_expr(ctx, expr)?;
     Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
 });

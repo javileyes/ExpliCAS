@@ -1,12 +1,54 @@
 use crate::define_rule;
 use crate::rule::Rewrite;
-use cas_math::inverse_trig_composition_support::InverseTrigReciprocalRewriteKind;
+use cas_math::inverse_trig_composition_support::{
+    InverseTrigCompositionKind, InverseTrigReciprocalRewriteKind, InverseTrigUnaryRewriteKind,
+    PrincipalBranchInverseTrigKind,
+};
+
+fn format_inverse_trig_composition_desc(
+    kind: InverseTrigCompositionKind,
+    assume_defined: bool,
+) -> &'static str {
+    match (kind, assume_defined) {
+        (InverseTrigCompositionKind::SinArcsin, false) => "sin(arcsin(x)) = x",
+        (InverseTrigCompositionKind::SinArcsin, true) => {
+            "sin(arcsin(x)) = x (assuming x ∈ [-1, 1])"
+        }
+        (InverseTrigCompositionKind::CosArccos, false) => "cos(arccos(x)) = x",
+        (InverseTrigCompositionKind::CosArccos, true) => {
+            "cos(arccos(x)) = x (assuming x ∈ [-1, 1])"
+        }
+        (InverseTrigCompositionKind::TanArctan, _) => "tan(arctan(x)) = x",
+        (InverseTrigCompositionKind::ArctanTanArctan, _) => {
+            "arctan(tan(arctan(u))) = arctan(u) (principal branch)"
+        }
+    }
+}
 
 fn format_inverse_trig_reciprocal_desc(kind: InverseTrigReciprocalRewriteKind) -> &'static str {
     match kind {
         InverseTrigReciprocalRewriteKind::ArcsecToArccos => "arcsec(x) → arccos(1/x)",
         InverseTrigReciprocalRewriteKind::ArccscToArcsin => "arccsc(x) → arcsin(1/x)",
         InverseTrigReciprocalRewriteKind::ArccotToArctan => "arccot(x) → arctan(1/x)",
+    }
+}
+
+fn format_inverse_trig_unary_desc(kind: InverseTrigUnaryRewriteKind) -> &'static str {
+    match kind {
+        InverseTrigUnaryRewriteKind::ArcsinNegative => "arcsin(-x) = -arcsin(x)",
+        InverseTrigUnaryRewriteKind::ArctanNegative => "arctan(-x) = -arctan(x)",
+        InverseTrigUnaryRewriteKind::ArccosNegative => "arccos(-x) = π - arccos(x)",
+    }
+}
+
+fn format_principal_branch_inverse_trig_desc(kind: PrincipalBranchInverseTrigKind) -> &'static str {
+    match kind {
+        PrincipalBranchInverseTrigKind::ArcsinSin => "arcsin(sin(u)) → u (principal branch)",
+        PrincipalBranchInverseTrigKind::ArccosCos => "arccos(cos(u)) → u (principal branch)",
+        PrincipalBranchInverseTrigKind::ArctanTan => "arctan(tan(u)) → u (principal branch)",
+        PrincipalBranchInverseTrigKind::ArctanSinOverCos => {
+            "arctan(sin(u)/cos(u)) → u (principal branch)"
+        }
     }
 }
 use cas_ast::{Context, Expr, ExprId};
@@ -43,7 +85,10 @@ impl crate::rule::Rule for InverseTrigCompositionRule {
             matches!(mode, crate::DomainMode::Assume),
             matches!(mode, crate::DomainMode::Strict),
         )?;
-        let mut rewrite = Rewrite::new(plan.rewritten).desc(plan.desc);
+        let mut rewrite = Rewrite::new(plan.rewritten).desc(format_inverse_trig_composition_desc(
+            plan.kind,
+            plan.assume_defined_expr.is_some(),
+        ));
         if let Some(defined_expr) = plan.assume_defined_expr {
             rewrite = rewrite.assume(crate::AssumptionEvent::defined(ctx, defined_expr));
         }
@@ -154,7 +199,7 @@ define_rule!(
     Some(crate::target_kind::TargetKindSet::FUNCTION),
     |ctx, expr| {
         let rewrite = try_rewrite_inverse_trig_negative_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc(format_inverse_trig_unary_desc(rewrite.kind)))
     }
 );
 
@@ -248,7 +293,7 @@ impl crate::rule::Rule for PrincipalBranchInverseTrigRule {
         let plan = try_plan_principal_branch_inverse_trig_expr(ctx, expr)?;
         Some(
             Rewrite::new(plan.rewritten)
-                .desc(plan.desc)
+                .desc(format_principal_branch_inverse_trig_desc(plan.kind))
                 .local(plan.local_before, plan.local_after)
                 .assume(crate::AssumptionEvent::inv_trig_principal_range(
                     ctx,

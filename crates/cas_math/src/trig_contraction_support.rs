@@ -11,7 +11,17 @@ use std::cmp::Ordering;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TrigContractionRewrite {
     pub rewritten: ExprId,
-    pub desc: &'static str,
+    pub kind: TrigContractionRewriteKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TrigContractionRewriteKind {
+    DoubleAngleSin,
+    DoubleAngleCos,
+    Cos2xAdditiveSin,
+    Cos2xAdditiveCos,
+    AngleSumFractionToTan,
+    AngleDiffFractionToTan,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -713,7 +723,7 @@ pub fn try_rewrite_double_angle_contraction_expr(
                 let sin_2t = ctx.call_builtin(BuiltinFn::Sin, vec![double_arg]);
                 return Some(TrigContractionRewrite {
                     rewritten: sin_2t,
-                    desc: "2·sin(t)·cos(t) = sin(2t)",
+                    kind: TrigContractionRewriteKind::DoubleAngleSin,
                 });
             }
         }
@@ -727,7 +737,7 @@ pub fn try_rewrite_double_angle_contraction_expr(
                 let cos_2t = ctx.call_builtin(BuiltinFn::Cos, vec![double_arg]);
                 return Some(TrigContractionRewrite {
                     rewritten: cos_2t,
-                    desc: "cos²(t) - sin²(t) = cos(2t)",
+                    kind: TrigContractionRewriteKind::DoubleAngleCos,
                 });
             }
         }
@@ -931,14 +941,14 @@ pub fn try_rewrite_cos2x_additive_contraction_expr(
                 let two = ctx.num(2);
                 let double_arg = ctx.add(Expr::Mul(two, trig_arg));
                 let cos_2t = ctx.call_builtin(BuiltinFn::Cos, vec![double_arg]);
-                let desc = if trig_is_sin {
-                    "1 - 2·sin²(t) = cos(2t)"
+                let kind = if trig_is_sin {
+                    TrigContractionRewriteKind::Cos2xAdditiveSin
                 } else {
-                    "2·cos²(t) - 1 = cos(2t)"
+                    TrigContractionRewriteKind::Cos2xAdditiveCos
                 };
                 return Some(TrigContractionRewrite {
                     rewritten: cos_2t,
-                    desc,
+                    kind,
                 });
             }
         }
@@ -961,7 +971,7 @@ pub fn try_rewrite_angle_sum_fraction_to_tan_expr(
         let tan_result = ctx.call_builtin(BuiltinFn::Tan, vec![sum_arg]);
         return Some(TrigContractionRewrite {
             rewritten: tan_result,
-            desc: "(sin(a)cos(b)+cos(a)sin(b))/(cos(a)cos(b)-sin(a)sin(b)) = tan(a+b)",
+            kind: TrigContractionRewriteKind::AngleSumFractionToTan,
         });
     }
 
@@ -970,7 +980,7 @@ pub fn try_rewrite_angle_sum_fraction_to_tan_expr(
         let tan_result = ctx.call_builtin(BuiltinFn::Tan, vec![diff_arg]);
         return Some(TrigContractionRewrite {
             rewritten: tan_result,
-            desc: "(sin(a)cos(b)-cos(a)sin(b))/(cos(a)cos(b)+sin(a)sin(b)) = tan(a-b)",
+            kind: TrigContractionRewriteKind::AngleDiffFractionToTan,
         });
     }
 

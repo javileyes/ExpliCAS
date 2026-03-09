@@ -9,7 +9,7 @@ use cas_math::trig_contraction_support::{
     should_block_double_angle_contraction_for_marks, try_rewrite_angle_sum_fraction_to_tan_expr,
     try_rewrite_cos2x_additive_contraction_expr, try_rewrite_double_angle_contraction_expr,
     try_rewrite_half_angle_tangent_div_expr, try_rewrite_square_double_angle_contraction_expr,
-    HalfAngleTangentRewriteKind,
+    HalfAngleTangentRewriteKind, TrigContractionRewriteKind,
 };
 
 // =============================================================================
@@ -36,6 +36,21 @@ fn format_half_angle_tangent_desc(kind: HalfAngleTangentRewriteKind) -> &'static
     match kind {
         HalfAngleTangentRewriteKind::OneMinusCosOverSin => "(1 - cos(2x))/sin(2x) = tan(x)",
         HalfAngleTangentRewriteKind::SinOverOnePlusCos => "sin(2x)/(1 + cos(2x)) = tan(x)",
+    }
+}
+
+fn format_trig_contraction_desc(kind: TrigContractionRewriteKind) -> &'static str {
+    match kind {
+        TrigContractionRewriteKind::DoubleAngleSin => "2·sin(t)·cos(t) = sin(2t)",
+        TrigContractionRewriteKind::DoubleAngleCos => "cos²(t) - sin²(t) = cos(2t)",
+        TrigContractionRewriteKind::Cos2xAdditiveSin => "1 - 2·sin²(t) = cos(2t)",
+        TrigContractionRewriteKind::Cos2xAdditiveCos => "2·cos²(t) - 1 = cos(2t)",
+        TrigContractionRewriteKind::AngleSumFractionToTan => {
+            "(sin(a)cos(b)+cos(a)sin(b))/(cos(a)cos(b)-sin(a)sin(b)) = tan(a+b)"
+        }
+        TrigContractionRewriteKind::AngleDiffFractionToTan => {
+            "(sin(a)cos(b)-cos(a)sin(b))/(cos(a)cos(b)+sin(a)sin(b)) = tan(a-b)"
+        }
     }
 }
 
@@ -100,7 +115,7 @@ impl crate::rule::Rule for DoubleAngleContractionRule {
             return None;
         }
         let rewrite = try_rewrite_double_angle_contraction_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc(format_trig_contraction_desc(rewrite.kind)))
     }
 
     fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
@@ -182,7 +197,7 @@ impl crate::rule::Rule for Cos2xAdditiveContractionRule {
         _parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<Rewrite> {
         let rewrite = try_rewrite_cos2x_additive_contraction_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc(format_trig_contraction_desc(rewrite.kind)))
     }
 
     fn allowed_phases(&self) -> crate::phase::PhaseMask {
@@ -236,7 +251,7 @@ impl crate::rule::Rule for AngleSumFractionToTanRule {
         _parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<Rewrite> {
         let rewrite = try_rewrite_angle_sum_fraction_to_tan_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc(format_trig_contraction_desc(rewrite.kind)))
     }
 
     fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {

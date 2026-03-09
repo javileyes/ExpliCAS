@@ -11,18 +11,20 @@ use num_traits::One;
 pub enum InverseTrigCompositionKind {
     SinArcsin,
     CosArccos,
+    TanArctan,
+    ArctanTanArctan,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct InverseTrigCompositionPlan {
-    pub desc: &'static str,
+    pub kind: InverseTrigCompositionKind,
     pub assume_defined: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct InverseTrigCompositionRewritePlan {
     pub rewritten: ExprId,
-    pub desc: String,
+    pub kind: InverseTrigCompositionKind,
     pub assume_defined_expr: Option<ExprId>,
 }
 
@@ -46,20 +48,6 @@ fn inverse_trig_composition_mode_from_flags(
     }
 }
 
-fn default_desc(kind: InverseTrigCompositionKind) -> &'static str {
-    match kind {
-        InverseTrigCompositionKind::SinArcsin => "sin(arcsin(x)) = x",
-        InverseTrigCompositionKind::CosArccos => "cos(arccos(x)) = x",
-    }
-}
-
-fn assume_desc(kind: InverseTrigCompositionKind) -> &'static str {
-    match kind {
-        InverseTrigCompositionKind::SinArcsin => "sin(arcsin(x)) = x (assuming x ∈ [-1, 1])",
-        InverseTrigCompositionKind::CosArccos => "cos(arccos(x)) = x (assuming x ∈ [-1, 1])",
-    }
-}
-
 /// Domain-policy planner for `sin(arcsin(x))` and `cos(arccos(x))`.
 ///
 /// `arg_in_unit_interval_proven` should be true only when strict mode can prove
@@ -75,7 +63,7 @@ pub fn plan_inverse_trig_composition_with_mode_flags(
         InverseTrigCompositionMode::Strict => {
             if arg_in_unit_interval_proven {
                 Some(InverseTrigCompositionPlan {
-                    desc: default_desc(kind),
+                    kind,
                     assume_defined: false,
                 })
             } else {
@@ -83,11 +71,11 @@ pub fn plan_inverse_trig_composition_with_mode_flags(
             }
         }
         InverseTrigCompositionMode::Generic => Some(InverseTrigCompositionPlan {
-            desc: default_desc(kind),
+            kind,
             assume_defined: false,
         }),
         InverseTrigCompositionMode::Assume => Some(InverseTrigCompositionPlan {
-            desc: assume_desc(kind),
+            kind,
             assume_defined: true,
         }),
     }
@@ -139,7 +127,7 @@ pub fn try_plan_inverse_trig_composition_expr(
         )?;
         return Some(InverseTrigCompositionRewritePlan {
             rewritten: x,
-            desc: plan.desc.to_string(),
+            kind: plan.kind,
             assume_defined_expr: if plan.assume_defined { Some(x) } else { None },
         });
     }
@@ -156,7 +144,7 @@ pub fn try_plan_inverse_trig_composition_expr(
         )?;
         return Some(InverseTrigCompositionRewritePlan {
             rewritten: x,
-            desc: plan.desc.to_string(),
+            kind: plan.kind,
             assume_defined_expr: if plan.assume_defined { Some(x) } else { None },
         });
     }
@@ -167,7 +155,7 @@ pub fn try_plan_inverse_trig_composition_expr(
     {
         return Some(InverseTrigCompositionRewritePlan {
             rewritten: x,
-            desc: "tan(arctan(x)) = x".to_string(),
+            kind: InverseTrigCompositionKind::TanArctan,
             assume_defined_expr: None,
         });
     }
@@ -182,7 +170,7 @@ pub fn try_plan_inverse_trig_composition_expr(
             if is_innermost_arctan && innermost_args.len() == 1 {
                 return Some(InverseTrigCompositionRewritePlan {
                     rewritten: x,
-                    desc: "arctan(tan(arctan(u))) = arctan(u) (principal branch)".to_string(),
+                    kind: InverseTrigCompositionKind::ArctanTanArctan,
                     assume_defined_expr: None,
                 });
             }
@@ -333,10 +321,17 @@ pub struct AtanRationalAdditionPlan {
     pub desc: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InverseTrigUnaryRewriteKind {
+    ArcsinNegative,
+    ArctanNegative,
+    ArccosNegative,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct InverseTrigUnaryRewrite {
     pub rewritten: ExprId,
-    pub desc: &'static str,
+    pub kind: InverseTrigUnaryRewriteKind,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -352,12 +347,20 @@ pub struct InverseTrigReciprocalRewrite {
     pub kind: InverseTrigReciprocalRewriteKind,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PrincipalBranchInverseTrigKind {
+    ArcsinSin,
+    ArccosCos,
+    ArctanTan,
+    ArctanSinOverCos,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PrincipalBranchInverseTrigPlan {
     pub rewritten: ExprId,
     pub local_before: ExprId,
     pub local_after: ExprId,
-    pub desc: &'static str,
+    pub kind: PrincipalBranchInverseTrigKind,
     pub assumption_fn: &'static str,
 }
 
@@ -541,14 +544,14 @@ pub fn try_rewrite_inverse_trig_negative_expr(
             let arcsin_inner = ctx.call_builtin(BuiltinFn::Arcsin, vec![inner]);
             Some(InverseTrigUnaryRewrite {
                 rewritten: ctx.add(Expr::Neg(arcsin_inner)),
-                desc: "arcsin(-x) = -arcsin(x)",
+                kind: InverseTrigUnaryRewriteKind::ArcsinNegative,
             })
         }
         Some(BuiltinFn::Arctan) => {
             let arctan_inner = ctx.call_builtin(BuiltinFn::Arctan, vec![inner]);
             Some(InverseTrigUnaryRewrite {
                 rewritten: ctx.add(Expr::Neg(arctan_inner)),
-                desc: "arctan(-x) = -arctan(x)",
+                kind: InverseTrigUnaryRewriteKind::ArctanNegative,
             })
         }
         Some(BuiltinFn::Arccos) => {
@@ -556,7 +559,7 @@ pub fn try_rewrite_inverse_trig_negative_expr(
             let pi = ctx.add(Expr::Constant(Constant::Pi));
             Some(InverseTrigUnaryRewrite {
                 rewritten: ctx.add(Expr::Sub(pi, arccos_inner)),
-                desc: "arccos(-x) = π - arccos(x)",
+                kind: InverseTrigUnaryRewriteKind::ArccosNegative,
             })
         }
         _ => None,
@@ -752,7 +755,7 @@ pub fn try_plan_principal_branch_inverse_trig_expr(
                     rewritten: u,
                     local_before: expr,
                     local_after: u,
-                    desc: "arcsin(sin(u)) → u (principal branch)",
+                    kind: PrincipalBranchInverseTrigKind::ArcsinSin,
                     assumption_fn: "arcsin",
                 });
             }
@@ -767,7 +770,7 @@ pub fn try_plan_principal_branch_inverse_trig_expr(
                     rewritten: u,
                     local_before: expr,
                     local_after: u,
-                    desc: "arccos(cos(u)) → u (principal branch)",
+                    kind: PrincipalBranchInverseTrigKind::ArccosCos,
                     assumption_fn: "arccos",
                 });
             }
@@ -782,7 +785,7 @@ pub fn try_plan_principal_branch_inverse_trig_expr(
                     rewritten: u,
                     local_before: expr,
                     local_after: u,
-                    desc: "arctan(tan(u)) → u (principal branch)",
+                    kind: PrincipalBranchInverseTrigKind::ArctanTan,
                     assumption_fn: "arctan",
                 });
             }
@@ -813,7 +816,7 @@ pub fn try_plan_principal_branch_inverse_trig_expr(
                         rewritten: u,
                         local_before: expr,
                         local_after: u,
-                        desc: "arctan(sin(u)/cos(u)) → u (principal branch)",
+                        kind: PrincipalBranchInverseTrigKind::ArctanSinOverCos,
                         assumption_fn: "arctan",
                     });
                 }
@@ -874,7 +877,7 @@ mod tests {
         assert_eq!(
             out,
             Some(InverseTrigCompositionPlan {
-                desc: "cos(arccos(x)) = x",
+                kind: InverseTrigCompositionKind::CosArccos,
                 assume_defined: false,
             })
         );
@@ -891,7 +894,7 @@ mod tests {
         assert_eq!(
             out,
             Some(InverseTrigCompositionPlan {
-                desc: "sin(arcsin(x)) = x (assuming x ∈ [-1, 1])",
+                kind: InverseTrigCompositionKind::SinArcsin,
                 assume_defined: true,
             })
         );
@@ -908,7 +911,7 @@ mod tests {
         assert_eq!(
             out,
             Some(InverseTrigCompositionPlan {
-                desc: "sin(arcsin(x)) = x",
+                kind: InverseTrigCompositionKind::SinArcsin,
                 assume_defined: false,
             })
         );
@@ -925,7 +928,7 @@ mod tests {
         assert_eq!(
             out,
             Some(InverseTrigCompositionPlan {
-                desc: "cos(arccos(x)) = x (assuming x ∈ [-1, 1])",
+                kind: InverseTrigCompositionKind::CosArccos,
                 assume_defined: true,
             })
         );

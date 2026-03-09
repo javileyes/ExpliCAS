@@ -8,8 +8,21 @@ pub use cas_math::complex_support::{extract_gaussian, GaussianRational};
 use cas_math::complex_support::{
     try_rewrite_gaussian_add_expr, try_rewrite_gaussian_div_expr, try_rewrite_gaussian_mul_expr,
     try_rewrite_i_squared_mul_identity_expr, try_rewrite_imaginary_power_expr,
-    try_rewrite_sqrt_negative_expr,
+    try_rewrite_sqrt_negative_expr, ComplexRewriteKind,
 };
+
+fn format_complex_rewrite_desc(kind: ComplexRewriteKind) -> &'static str {
+    match kind {
+        ComplexRewriteKind::ImaginaryPower => "Imaginary power (using i⁴ = 1)",
+        ComplexRewriteKind::ISquaredMul => "i · i = -1",
+        ComplexRewriteKind::GaussianMul => {
+            "Gaussian multiplication: (a+bi)(c+di) = (ac-bd) + (ad+bc)i"
+        }
+        ComplexRewriteKind::GaussianAdd => "Gaussian addition: (a+bi) + (c+di) = (a+c) + (b+d)i",
+        ComplexRewriteKind::GaussianDiv => "Gaussian division: (a+bi)/(c+di) using conjugate",
+        ComplexRewriteKind::SqrtNegative => "sqrt(-n) = i·√n (complex mode)",
+    }
+}
 
 define_rule!(
     ImaginaryPowerRule,
@@ -20,7 +33,7 @@ define_rule!(
         }
 
         let rewrite = try_rewrite_imaginary_power_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc(format_complex_rewrite_desc(rewrite.kind)))
     }
 );
 
@@ -30,7 +43,7 @@ define_rule!(ISquaredMulRule, "i * i = -1", |ctx, expr, parent_ctx| {
     }
 
     let rewrite = try_rewrite_i_squared_mul_identity_expr(ctx, expr)?;
-    Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+    Some(Rewrite::new(rewrite.rewritten).desc(format_complex_rewrite_desc(rewrite.kind)))
 });
 
 define_rule!(
@@ -42,7 +55,7 @@ define_rule!(
         }
 
         let rewrite = try_rewrite_gaussian_mul_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc(format_complex_rewrite_desc(rewrite.kind)))
     }
 );
 
@@ -55,7 +68,7 @@ define_rule!(
         }
 
         let rewrite = try_rewrite_gaussian_add_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc(format_complex_rewrite_desc(rewrite.kind)))
     }
 );
 
@@ -68,7 +81,7 @@ define_rule!(
         }
 
         let rewrite = try_rewrite_gaussian_div_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc(format_complex_rewrite_desc(rewrite.kind)))
     }
 );
 
@@ -81,7 +94,7 @@ define_rule!(
         }
 
         let rewrite = try_rewrite_sqrt_negative_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc(format_complex_rewrite_desc(rewrite.kind)))
     }
 );
 

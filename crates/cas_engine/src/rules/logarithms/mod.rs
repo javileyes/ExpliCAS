@@ -21,13 +21,20 @@ use crate::define_rule;
 use crate::rule::Rewrite;
 use cas_math::logarithm_inverse_support::{
     try_rewrite_evaluate_log_expr, try_rewrite_ln_e_div_expr, try_rewrite_ln_e_product_expr,
-    try_rewrite_log_perfect_square_expr, LnEDivRewriteKind,
+    try_rewrite_log_perfect_square_expr, LnEDivRewriteKind, LogContractionRewriteKind,
 };
 
 fn format_ln_e_div_desc(kind: LnEDivRewriteKind) -> &'static str {
     match kind {
         LnEDivRewriteKind::XOverE => "ln(x/e) = ln(x) - 1",
         LnEDivRewriteKind::EOverX => "ln(e/x) = 1 - ln(x)",
+    }
+}
+
+fn format_log_contraction_desc(kind: LogContractionRewriteKind) -> &'static str {
+    match kind {
+        LogContractionRewriteKind::Add => "ln(a) + ln(b) = ln(a*b)",
+        LogContractionRewriteKind::Sub => "ln(a) - ln(b) = ln(a/b)",
     }
 }
 
@@ -106,7 +113,10 @@ impl crate::rule::Rule for LogContractionRule {
 
         let rewrite =
             cas_math::logarithm_inverse_support::try_rewrite_log_contraction_expr(ctx, expr)?;
-        Some(crate::rule::Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(
+            crate::rule::Rewrite::new(rewrite.rewritten)
+                .desc(format_log_contraction_desc(rewrite.kind)),
+        )
     }
 
     fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {

@@ -72,7 +72,17 @@ impl GaussianRational {
 #[derive(Debug, Clone)]
 pub struct ComplexRewrite {
     pub rewritten: ExprId,
-    pub desc: String,
+    pub kind: ComplexRewriteKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ComplexRewriteKind {
+    ImaginaryPower,
+    ISquaredMul,
+    GaussianMul,
+    GaussianAdd,
+    GaussianDiv,
+    SqrtNegative,
 }
 
 /// Extract `a + bi` from an expression when possible.
@@ -175,19 +185,12 @@ pub fn try_rewrite_imaginary_power_expr(ctx: &mut Context, expr: ExprId) -> Opti
         _ => unreachable!(),
     };
 
-    let desc = format!(
-        "i^{} = {} (using i⁴ = 1)",
-        n_int,
-        match normalized {
-            0 => "1",
-            1 => "i",
-            2 => "-1",
-            3 => "-i",
-            _ => unreachable!(),
-        }
-    );
+    let _ = n_int;
 
-    Some(ComplexRewrite { rewritten, desc })
+    Some(ComplexRewrite {
+        rewritten,
+        kind: ComplexRewriteKind::ImaginaryPower,
+    })
 }
 
 /// Rewrite `i * i` into `-1`.
@@ -215,7 +218,7 @@ pub fn try_rewrite_i_squared_mul_identity_expr(
     let rewritten = try_rewrite_i_squared_mul_expr(ctx, expr)?;
     Some(ComplexRewrite {
         rewritten,
-        desc: "i · i = -1".to_string(),
+        kind: ComplexRewriteKind::ISquaredMul,
     })
 }
 
@@ -241,7 +244,7 @@ pub fn try_rewrite_gaussian_mul_expr(ctx: &mut Context, expr: ExprId) -> Option<
     let rewritten = GaussianRational::new(ac - bd, ad + bc).to_expr(ctx);
     Some(ComplexRewrite {
         rewritten,
-        desc: "Gaussian multiplication: (a+bi)(c+di) = (ac-bd) + (ad+bc)i".to_string(),
+        kind: ComplexRewriteKind::GaussianMul,
     })
 }
 
@@ -273,7 +276,7 @@ pub fn try_rewrite_gaussian_add_expr(ctx: &mut Context, expr: ExprId) -> Option<
         GaussianRational::new(&left.real + &right.real, &left.imag + &right.imag).to_expr(ctx);
     Some(ComplexRewrite {
         rewritten,
-        desc: "Gaussian addition: (a+bi) + (c+di) = (a+c) + (b+d)i".to_string(),
+        kind: ComplexRewriteKind::GaussianAdd,
     })
 }
 
@@ -311,7 +314,7 @@ pub fn try_rewrite_gaussian_div_expr(ctx: &mut Context, expr: ExprId) -> Option<
 
     Some(ComplexRewrite {
         rewritten,
-        desc: "Gaussian division: (a+bi)/(c+di) using conjugate".to_string(),
+        kind: ComplexRewriteKind::GaussianDiv,
     })
 }
 
@@ -372,7 +375,7 @@ pub fn try_rewrite_sqrt_negative_expr(ctx: &mut Context, expr: ExprId) -> Option
 
     Some(ComplexRewrite {
         rewritten,
-        desc: "sqrt(-n) = i·√n (complex mode)".to_string(),
+        kind: ComplexRewriteKind::SqrtNegative,
     })
 }
 
@@ -381,7 +384,7 @@ mod tests {
     use super::{
         extract_gaussian, try_rewrite_gaussian_div_expr, try_rewrite_gaussian_mul_expr,
         try_rewrite_i_squared_mul_identity_expr, try_rewrite_imaginary_power_expr,
-        try_rewrite_sqrt_negative_expr, GaussianRational,
+        try_rewrite_sqrt_negative_expr, ComplexRewriteKind, GaussianRational,
     };
     use cas_ast::{Constant, Context, Expr};
     use cas_formatter::DisplayExpr;
@@ -404,6 +407,7 @@ mod tests {
         let exp = ctx.num(17);
         let expr = ctx.add(Expr::Pow(i, exp));
         let rewrite = try_rewrite_imaginary_power_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(rewrite.kind, ComplexRewriteKind::ImaginaryPower);
         assert_eq!(
             format!(
                 "{}",
@@ -423,6 +427,7 @@ mod tests {
         let right = cas_parser::parse("3 + 4*i", &mut ctx).expect("parse");
         let expr = ctx.add(Expr::Mul(left, right));
         let rewrite = try_rewrite_gaussian_mul_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(rewrite.kind, ComplexRewriteKind::GaussianMul);
         let g = extract_gaussian(&ctx, rewrite.rewritten).expect("gaussian");
         assert_eq!(g.real, BigRational::from_integer((-5).into()));
         assert_eq!(g.imag, BigRational::from_integer(10.into()));
@@ -433,6 +438,7 @@ mod tests {
         let mut ctx = Context::new();
         let expr = cas_parser::parse("(1 + i) / (1 - i)", &mut ctx).expect("parse");
         let rewrite = try_rewrite_gaussian_div_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(rewrite.kind, ComplexRewriteKind::GaussianDiv);
         let shown = format!(
             "{}",
             DisplayExpr {
@@ -448,6 +454,7 @@ mod tests {
         let mut ctx = Context::new();
         let expr = cas_parser::parse("sqrt(-4)", &mut ctx).expect("parse");
         let rewrite = try_rewrite_sqrt_negative_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(rewrite.kind, ComplexRewriteKind::SqrtNegative);
         assert_eq!(
             format!(
                 "{}",
@@ -487,7 +494,7 @@ mod tests {
         let i2 = ctx.add(Expr::Constant(Constant::I));
         let expr = ctx.add(Expr::Mul(i1, i2));
         let rewrite = try_rewrite_i_squared_mul_identity_expr(&mut ctx, expr).expect("rewrite");
-        assert_eq!(rewrite.desc, "i · i = -1");
+        assert_eq!(rewrite.kind, ComplexRewriteKind::ISquaredMul);
         assert_eq!(
             format!(
                 "{}",

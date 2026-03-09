@@ -8,6 +8,7 @@
 
 use crate::define_rule;
 use crate::rule::Rewrite;
+use crate::rules::trig_canonicalization::format_trig_canonical_rewrite_desc;
 use cas_ast::ExprId;
 use cas_math::trig_canonicalization_support::try_rewrite_trig_quotient_div_expr;
 use cas_math::trig_contraction_support::{
@@ -112,7 +113,11 @@ define_rule!(
     "Trig Quotient to Named Function",
     |ctx, expr| {
         let rewrite = try_rewrite_trig_quotient_div_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(
+            Rewrite::new(rewrite.rewritten).desc(format_trig_canonical_rewrite_desc(
+                rewrite.kind.expect("fixed quotient canonical desc"),
+            )),
+        )
     }
 );
 

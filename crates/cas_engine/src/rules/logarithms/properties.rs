@@ -5,7 +5,7 @@ use cas_math::logarithm_inverse_support::{
     log_exp_inverse_policy_mode_from_flags, plan_log_abs_simplify_policy,
     plan_log_even_power_policy, try_plan_log_even_power_abs_expr, try_rewrite_log_abs_power_expr,
     try_rewrite_log_abs_simplify_expr, try_rewrite_log_chain_product_expr,
-    try_rewrite_log_mul_div_expansion_expr,
+    try_rewrite_log_mul_div_expansion_expr, LogChainProductRewriteKind,
 };
 
 /// Domain-aware expansion rule for log products/quotients.
@@ -362,6 +362,12 @@ impl crate::rule::Rule for LogAbsSimplifyRule {
 // - These are already implied by the logs being defined
 pub struct LogChainProductRule;
 
+fn format_log_chain_product_desc(kind: LogChainProductRewriteKind) -> &'static str {
+    match kind {
+        LogChainProductRewriteKind::Telescoping => "log(b, a) * log(a, c) = log(b, c)",
+    }
+}
+
 impl crate::rule::Rule for LogChainProductRule {
     fn name(&self) -> &str {
         "Log Chain (Telescoping)"
@@ -374,7 +380,10 @@ impl crate::rule::Rule for LogChainProductRule {
         _parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<crate::rule::Rewrite> {
         let rewrite = try_rewrite_log_chain_product_expr(ctx, expr)?;
-        Some(crate::rule::Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(
+            crate::rule::Rewrite::new(rewrite.rewritten)
+                .desc(format_log_chain_product_desc(rewrite.kind)),
+        )
     }
 
     fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {

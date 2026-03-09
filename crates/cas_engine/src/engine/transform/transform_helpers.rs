@@ -7,7 +7,7 @@ use super::*;
 use cas_math::factoring_support::{
     try_rewrite_difference_of_squares_product_expr, DifferenceOfSquaresProductRewriteKind,
 };
-use cas_math::pow_preorder_support::try_plan_sqrt_square_pow_rewrite;
+use cas_math::pow_preorder_support::{try_plan_sqrt_square_pow_rewrite, SqrtSquarePowRewriteKind};
 
 fn format_difference_of_squares_product_desc(
     kind: DifferenceOfSquaresProductRewriteKind,
@@ -18,6 +18,17 @@ fn format_difference_of_squares_product_desc(
             "(U+V)(U-V) = U² - V² (conjugate product)"
         }
         DifferenceOfSquaresProductRewriteKind::NaryScan => "(a-b)(a+b)·… = (a²-b²)·… (n-ary scan)",
+    }
+}
+
+fn format_sqrt_square_pow_plan(kind: SqrtSquarePowRewriteKind) -> (&'static str, &'static str) {
+    match kind {
+        SqrtSquarePowRewriteKind::PowSquare => {
+            ("sqrt(u^2) = |u|", "Simplify Square Root of Square")
+        }
+        SqrtSquarePowRewriteKind::RepeatedMul => {
+            ("sqrt(u * u) = |u|", "Simplify Square Root of Product")
+        }
     }
 }
 
@@ -83,7 +94,8 @@ impl<'a> LocalSimplificationTransformer<'a> {
         // EARLY DETECTION: sqrt-of-square pattern (u^2)^(1/2) -> |u|
         // Must check BEFORE recursing into children to prevent binomial expansion
         if let Some(plan) = try_plan_sqrt_square_pow_rewrite(self.context, base, exp) {
-            self.record_step(plan.identity_desc, plan.rule_name, id, plan.rewritten);
+            let (identity_desc, rule_name) = format_sqrt_square_pow_plan(plan.kind);
+            self.record_step(identity_desc, rule_name, id, plan.rewritten);
             return self.transform_expr_recursive(plan.rewritten);
         }
 

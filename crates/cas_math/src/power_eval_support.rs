@@ -15,6 +15,11 @@ pub struct PowerEvalRewrite {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LiteralPowerEvalRewrite {
+    pub rewritten: ExprId,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PowerEvalStaticRewrite {
     pub rewritten: ExprId,
     pub kind: PowerEvalStaticRewriteKind,
@@ -129,21 +134,13 @@ pub fn try_rewrite_even_pow_sub_swap_expr(
     })
 }
 
-/// Try numeric power evaluation:
-/// - direct literal evaluation through `const_eval`
-/// - root-factor extraction simplification for rational exponents
+/// Try numeric power evaluation through root-factor extraction simplification
+/// for rational exponents.
 pub fn try_rewrite_evaluate_power_expr(
     ctx: &mut Context,
     expr: ExprId,
 ) -> Option<PowerEvalRewrite> {
     let (base, exp) = as_pow(ctx, expr)?;
-
-    if let Some(result) = crate::const_eval::try_eval_pow_literal(ctx, base, exp) {
-        return Some(PowerEvalRewrite {
-            rewritten: result,
-            desc: "Evaluate literal power".to_string(),
-        });
-    }
 
     if let (Expr::Number(b), Expr::Number(e)) = (ctx.get(base), ctx.get(exp)) {
         let (b, e) = (b.clone(), e.clone());
@@ -198,11 +195,22 @@ pub fn try_rewrite_evaluate_power_expr(
     None
 }
 
+/// Try direct literal power evaluation through `const_eval`.
+pub fn try_rewrite_literal_power_eval_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<LiteralPowerEvalRewrite> {
+    let (base, exp) = as_pow(ctx, expr)?;
+    let rewritten = crate::const_eval::try_eval_pow_literal(ctx, base, exp)?;
+    Some(LiteralPowerEvalRewrite { rewritten })
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         try_rewrite_evaluate_power_expr, try_rewrite_even_pow_sub_swap_expr,
-        try_rewrite_negative_base_power_expr, try_rewrite_negative_exponent_normalization_expr,
+        try_rewrite_literal_power_eval_expr, try_rewrite_negative_base_power_expr,
+        try_rewrite_negative_exponent_normalization_expr,
     };
     use cas_ast::{Context, Expr};
     use cas_parser::parse;
@@ -219,7 +227,7 @@ mod tests {
     fn evaluates_literal_power() {
         let mut ctx = Context::new();
         let expr = parse("2^3", &mut ctx).expect("parse");
-        let rewrite = try_rewrite_evaluate_power_expr(&mut ctx, expr).expect("rewrite");
+        let rewrite = try_rewrite_literal_power_eval_expr(&mut ctx, expr).expect("rewrite");
         assert!(matches!(ctx.get(rewrite.rewritten), Expr::Number(_)));
     }
 

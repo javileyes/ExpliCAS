@@ -32,7 +32,18 @@ fn is_inverse_trig_builtin(b: BuiltinFn) -> bool {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TrigCanonicalRewritePlan {
     pub rewritten: ExprId,
-    pub desc: String,
+    pub desc: Option<String>,
+    pub kind: Option<TrigCanonicalRewriteKind>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TrigCanonicalRewriteKind {
+    TanToSinCos,
+    SinOverCosToTan,
+    CosOverSinToCot,
+    OneOverSinToCsc,
+    OneOverCosToSec,
+    OneOverTanToCot,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -342,7 +353,8 @@ pub fn try_rewrite_trig_function_name_canonicalization_expr(
     let rewritten = ctx.call(canonical_name, args.clone());
     Some(TrigCanonicalRewritePlan {
         rewritten,
-        desc: format!("{} -> {}", old_name, canonical_name),
+        desc: Some(format!("{} -> {}", old_name, canonical_name)),
+        kind: None,
     })
 }
 
@@ -364,7 +376,8 @@ pub fn try_rewrite_tan_to_sin_cos_function_expr(
     let rewritten = ctx.add(Expr::Div(sin_x, cos_x));
     Some(TrigCanonicalRewritePlan {
         rewritten,
-        desc: "tan(x) -> sin(x)/cos(x)".to_string(),
+        desc: None,
+        kind: Some(TrigCanonicalRewriteKind::TanToSinCos),
     })
 }
 
@@ -472,7 +485,8 @@ pub fn try_rewrite_trig_quotient_div_expr(
             let rewritten = ctx.call_builtin(BuiltinFn::Tan, vec![num_args[0]]);
             return Some(TrigCanonicalRewritePlan {
                 rewritten,
-                desc: "sin(x)/cos(x) → tan(x)".to_string(),
+                desc: None,
+                kind: Some(TrigCanonicalRewriteKind::SinOverCosToTan),
             });
         }
 
@@ -486,7 +500,8 @@ pub fn try_rewrite_trig_quotient_div_expr(
             let rewritten = ctx.call_builtin(BuiltinFn::Cot, vec![num_args[0]]);
             return Some(TrigCanonicalRewritePlan {
                 rewritten,
-                desc: "cos(x)/sin(x) → cot(x)".to_string(),
+                desc: None,
+                kind: Some(TrigCanonicalRewriteKind::CosOverSinToCot),
             });
         }
     }
@@ -498,21 +513,24 @@ pub fn try_rewrite_trig_quotient_div_expr(
                 let rewritten = ctx.call_builtin(BuiltinFn::Csc, vec![den_args[0]]);
                 return Some(TrigCanonicalRewritePlan {
                     rewritten,
-                    desc: "1/sin(x) → csc(x)".to_string(),
+                    desc: None,
+                    kind: Some(TrigCanonicalRewriteKind::OneOverSinToCsc),
                 });
             }
             if matches!(den_builtin, Some(BuiltinFn::Cos)) && den_args.len() == 1 {
                 let rewritten = ctx.call_builtin(BuiltinFn::Sec, vec![den_args[0]]);
                 return Some(TrigCanonicalRewritePlan {
                     rewritten,
-                    desc: "1/cos(x) → sec(x)".to_string(),
+                    desc: None,
+                    kind: Some(TrigCanonicalRewriteKind::OneOverCosToSec),
                 });
             }
             if matches!(den_builtin, Some(BuiltinFn::Tan)) && den_args.len() == 1 {
                 let rewritten = ctx.call_builtin(BuiltinFn::Cot, vec![den_args[0]]);
                 return Some(TrigCanonicalRewritePlan {
                     rewritten,
-                    desc: "1/tan(x) → cot(x)".to_string(),
+                    desc: None,
+                    kind: Some(TrigCanonicalRewriteKind::OneOverTanToCot),
                 });
             }
         }
@@ -910,7 +928,7 @@ mod tests {
         let expr = parse("acos(x)", &mut ctx).expect("parse");
         let plan = try_rewrite_trig_function_name_canonicalization_expr(&mut ctx, expr)
             .expect("canonicalization");
-        assert!(plan.desc.contains("acos"));
+        assert!(plan.desc.expect("dynamic desc").contains("acos"));
         assert!(contains_named_call(&ctx, plan.rewritten, "arccos"));
     }
 
@@ -919,7 +937,7 @@ mod tests {
         let mut ctx = Context::new();
         let expr = parse("tan(x)", &mut ctx).expect("parse");
         let plan = try_rewrite_tan_to_sin_cos_function_expr(&mut ctx, expr).expect("rewrite");
-        assert_eq!(plan.desc, "tan(x) -> sin(x)/cos(x)");
+        assert_eq!(plan.kind, Some(TrigCanonicalRewriteKind::TanToSinCos));
         assert!(contains_named_call(&ctx, plan.rewritten, "sin"));
         assert!(contains_named_call(&ctx, plan.rewritten, "cos"));
         assert!(!contains_named_call(&ctx, plan.rewritten, "tan"));
@@ -934,6 +952,8 @@ mod tests {
         let plan1 = try_rewrite_trig_quotient_div_expr(&mut ctx, expr1).expect("plan1");
         let plan2 = try_rewrite_trig_quotient_div_expr(&mut ctx, expr2).expect("plan2");
 
+        assert_eq!(plan1.kind, Some(TrigCanonicalRewriteKind::SinOverCosToTan));
+        assert_eq!(plan2.kind, Some(TrigCanonicalRewriteKind::OneOverTanToCot));
         assert!(contains_named_call(&ctx, plan1.rewritten, "tan"));
         assert!(contains_named_call(&ctx, plan2.rewritten, "cot"));
     }

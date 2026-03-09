@@ -119,6 +119,7 @@ mod tests {
         roundtrip_display_solve_steps_via_events, solve_steps_to_events,
     };
     use cas_ast::{Equation, RelOp};
+    use cas_solver_core::solver_events::SolverEvent;
 
     fn eq(lhs: i64, rhs: i64) -> Equation {
         let mut ctx = cas_ast::Context::new();

@@ -21,6 +21,24 @@ pub struct AbsRewrite {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AbsFixedRewriteKind {
+    Idempotent,
+    SqrtSquare,
+    SumNonnegative,
+    SubNormalize,
+    ProductIdentity,
+    QuotientIdentity,
+    SqrtIdentity,
+    ExpIdentity,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AbsFixedRewrite {
+    pub rewritten: ExprId,
+    pub kind: AbsFixedRewriteKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AbsDomainMode {
     Strict,
     Generic,
@@ -245,12 +263,12 @@ pub fn try_rewrite_evaluate_abs_expr(ctx: &mut Context, expr: ExprId) -> Option<
 }
 
 /// Rewrite `||x|| -> |x|`.
-pub fn try_rewrite_abs_idempotent_expr(ctx: &Context, expr: ExprId) -> Option<AbsRewrite> {
+pub fn try_rewrite_abs_idempotent_expr(ctx: &Context, expr: ExprId) -> Option<AbsFixedRewrite> {
     let outer_arg = try_unwrap_abs_arg(ctx, expr)?;
     let _inner_arg = try_unwrap_abs_arg(ctx, outer_arg)?;
-    Some(AbsRewrite {
+    Some(AbsFixedRewrite {
         rewritten: outer_arg,
-        desc: "||x|| = |x|".to_string(),
+        kind: AbsFixedRewriteKind::Idempotent,
     })
 }
 
@@ -322,7 +340,7 @@ pub fn try_rewrite_abs_power_even_expr(ctx: &mut Context, expr: ExprId) -> Optio
 }
 
 /// Rewrite `sqrt(x^2) -> |x|` and `(x^2)^(1/2) -> |x|`.
-pub fn try_rewrite_sqrt_square_expr(ctx: &mut Context, expr: ExprId) -> Option<AbsRewrite> {
+pub fn try_rewrite_sqrt_square_expr(ctx: &mut Context, expr: ExprId) -> Option<AbsFixedRewrite> {
     let inner = if let Expr::Function(fn_id, args) = ctx.get(expr) {
         if ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) && args.len() == 1 {
             Some(args[0])
@@ -355,9 +373,9 @@ pub fn try_rewrite_sqrt_square_expr(ctx: &mut Context, expr: ExprId) -> Option<A
     }
 
     let rewritten = ctx.call_builtin(BuiltinFn::Abs, vec![base]);
-    Some(AbsRewrite {
+    Some(AbsFixedRewrite {
         rewritten,
-        desc: "sqrt(x^2) = |x|".to_string(),
+        kind: AbsFixedRewriteKind::SqrtSquare,
     })
 }
 
@@ -386,20 +404,26 @@ pub fn try_extract_symbolic_root_cancel_base(ctx: &Context, expr: ExprId) -> Opt
 
 /// Rewrite `|e| -> e` when `e` is structurally non-negative according to
 /// `is_sum_of_nonnegative`.
-pub fn try_rewrite_abs_sum_nonnegative_expr(ctx: &Context, expr: ExprId) -> Option<AbsRewrite> {
+pub fn try_rewrite_abs_sum_nonnegative_expr(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<AbsFixedRewrite> {
     let abs_arg = try_unwrap_abs_arg(ctx, expr)?;
     if !is_sum_of_nonnegative(ctx, abs_arg) {
         return None;
     }
-    Some(AbsRewrite {
+    Some(AbsFixedRewrite {
         rewritten: abs_arg,
-        desc: "|x² + ...| = x² + ...".to_string(),
+        kind: AbsFixedRewriteKind::SumNonnegative,
     })
 }
 
 /// Rewrite `|a-b| -> |b-a|` for sub-like expressions when canonical ordering
 /// prefers `b-a`, with complexity guards.
-pub fn try_rewrite_abs_sub_normalize_expr(ctx: &mut Context, expr: ExprId) -> Option<AbsRewrite> {
+pub fn try_rewrite_abs_sub_normalize_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<AbsFixedRewrite> {
     let abs_arg = try_unwrap_abs_arg(ctx, expr)?;
     let (a, b) = crate::expr_sub_like::extract_sub_like_pair(ctx, abs_arg)?;
 
@@ -420,9 +444,9 @@ pub fn try_rewrite_abs_sub_normalize_expr(ctx: &mut Context, expr: ExprId) -> Op
 
     let swapped = ctx.add(Expr::Sub(b, a));
     let rewritten = ctx.call_builtin(BuiltinFn::Abs, vec![swapped]);
-    Some(AbsRewrite {
+    Some(AbsFixedRewrite {
         rewritten,
-        desc: "|a−b| = |b−a|".to_string(),
+        kind: AbsFixedRewriteKind::SubNormalize,
     })
 }
 
@@ -443,11 +467,11 @@ pub fn try_rewrite_abs_product_expr(ctx: &mut Context, expr: ExprId) -> Option<E
 pub fn try_rewrite_abs_product_identity_expr(
     ctx: &mut Context,
     expr: ExprId,
-) -> Option<AbsRewrite> {
+) -> Option<AbsFixedRewrite> {
     let rewritten = try_rewrite_abs_product_expr(ctx, expr)?;
-    Some(AbsRewrite {
+    Some(AbsFixedRewrite {
         rewritten,
-        desc: "|x|·|y| = |x·y|".to_string(),
+        kind: AbsFixedRewriteKind::ProductIdentity,
     })
 }
 
@@ -468,11 +492,11 @@ pub fn try_rewrite_abs_quotient_expr(ctx: &mut Context, expr: ExprId) -> Option<
 pub fn try_rewrite_abs_quotient_identity_expr(
     ctx: &mut Context,
     expr: ExprId,
-) -> Option<AbsRewrite> {
+) -> Option<AbsFixedRewrite> {
     let rewritten = try_rewrite_abs_quotient_expr(ctx, expr)?;
-    Some(AbsRewrite {
+    Some(AbsFixedRewrite {
         rewritten,
-        desc: "|x| / |y| = |x / y|".to_string(),
+        kind: AbsFixedRewriteKind::QuotientIdentity,
     })
 }
 
@@ -502,11 +526,11 @@ pub fn try_extract_abs_sqrt_like_arg(ctx: &Context, expr: ExprId) -> Option<Expr
 }
 
 /// Rewrite `|sqrt_like(x)| -> sqrt_like(x)` with canonical description.
-pub fn try_rewrite_abs_sqrt_identity_expr(ctx: &Context, expr: ExprId) -> Option<AbsRewrite> {
+pub fn try_rewrite_abs_sqrt_identity_expr(ctx: &Context, expr: ExprId) -> Option<AbsFixedRewrite> {
     let rewritten = try_extract_abs_sqrt_like_arg(ctx, expr)?;
-    Some(AbsRewrite {
+    Some(AbsFixedRewrite {
         rewritten,
-        desc: "|√x| = √x".to_string(),
+        kind: AbsFixedRewriteKind::SqrtIdentity,
     })
 }
 
@@ -536,18 +560,26 @@ pub fn try_extract_abs_exp_like_arg(ctx: &Context, expr: ExprId) -> Option<ExprI
 }
 
 /// Rewrite `|exp_like(x)| -> exp_like(x)` with canonical description.
-pub fn try_rewrite_abs_exp_identity_expr(ctx: &Context, expr: ExprId) -> Option<AbsRewrite> {
+pub fn try_rewrite_abs_exp_identity_expr(ctx: &Context, expr: ExprId) -> Option<AbsFixedRewrite> {
     let rewritten = try_extract_abs_exp_like_arg(ctx, expr)?;
-    Some(AbsRewrite {
+    Some(AbsFixedRewrite {
         rewritten,
-        desc: "|e^x| = e^x".to_string(),
+        kind: AbsFixedRewriteKind::ExpIdentity,
     })
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AbsNumericFactorRewriteKind {
+    LeftPositive,
+    LeftNegative,
+    RightPositive,
+    RightNegative,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AbsNumericFactorRewrite {
     pub rewritten: ExprId,
-    pub desc: &'static str,
+    pub kind: AbsNumericFactorRewriteKind,
 }
 
 /// Rewrite `|k*x|`/`|x*k|` by extracting numeric factors:
@@ -569,7 +601,7 @@ pub fn try_rewrite_abs_numeric_factor_expr(
             let result = ctx.add(Expr::Mul(l, abs_r));
             return Some(AbsNumericFactorRewrite {
                 rewritten: result,
-                desc: "|k·x| = k·|x| for k > 0",
+                kind: AbsNumericFactorRewriteKind::LeftPositive,
             });
         }
         if n.is_negative() {
@@ -578,7 +610,7 @@ pub fn try_rewrite_abs_numeric_factor_expr(
             let result = ctx.add(Expr::Mul(abs_k, abs_r));
             return Some(AbsNumericFactorRewrite {
                 rewritten: result,
-                desc: "|(-k)·x| = |k|·|x| for k < 0",
+                kind: AbsNumericFactorRewriteKind::LeftNegative,
             });
         }
     }
@@ -589,7 +621,7 @@ pub fn try_rewrite_abs_numeric_factor_expr(
             let result = ctx.add(Expr::Mul(r, abs_l));
             return Some(AbsNumericFactorRewrite {
                 rewritten: result,
-                desc: "|x·k| = k·|x| for k > 0",
+                kind: AbsNumericFactorRewriteKind::RightPositive,
             });
         }
         if n.is_negative() {
@@ -598,7 +630,7 @@ pub fn try_rewrite_abs_numeric_factor_expr(
             let result = ctx.add(Expr::Mul(abs_k, abs_l));
             return Some(AbsNumericFactorRewrite {
                 rewritten: result,
-                desc: "|x·(-k)| = |k|·|x| for k < 0",
+                kind: AbsNumericFactorRewriteKind::RightNegative,
             });
         }
     }
@@ -648,7 +680,7 @@ mod tests {
         try_rewrite_abs_sqrt_identity_expr, try_rewrite_abs_sub_normalize_expr,
         try_rewrite_abs_sum_nonnegative_expr, try_rewrite_evaluate_abs_expr,
         try_rewrite_sqrt_square_expr, try_unwrap_abs_arg, value_domain_mode_from_flag,
-        AbsDomainMode, ValueDomainMode,
+        AbsDomainMode, AbsFixedRewriteKind, AbsNumericFactorRewriteKind, ValueDomainMode,
     };
     use cas_ast::{BuiltinFn, Context, Expr};
 
@@ -742,7 +774,7 @@ mod tests {
     }
 
     #[test]
-    fn rewrites_abs_product_identity_with_desc() {
+    fn rewrites_abs_product_identity_with_kind() {
         let mut ctx = Context::new();
         let x = ctx.var("x");
         let y = ctx.var("y");
@@ -750,11 +782,11 @@ mod tests {
         let abs_y = ctx.call_builtin(BuiltinFn::Abs, vec![y]);
         let expr = ctx.add(Expr::Mul(abs_x, abs_y));
         let rewrite = try_rewrite_abs_product_identity_expr(&mut ctx, expr).expect("rewrite");
-        assert_eq!(rewrite.desc, "|x|·|y| = |x·y|");
+        assert_eq!(rewrite.kind, AbsFixedRewriteKind::ProductIdentity);
     }
 
     #[test]
-    fn rewrites_abs_quotient_identity_with_desc() {
+    fn rewrites_abs_quotient_identity_with_kind() {
         let mut ctx = Context::new();
         let x = ctx.var("x");
         let y = ctx.var("y");
@@ -762,7 +794,7 @@ mod tests {
         let abs_y = ctx.call_builtin(BuiltinFn::Abs, vec![y]);
         let expr = ctx.add(Expr::Div(abs_x, abs_y));
         let rewrite = try_rewrite_abs_quotient_identity_expr(&mut ctx, expr).expect("rewrite");
-        assert_eq!(rewrite.desc, "|x| / |y| = |x / y|");
+        assert_eq!(rewrite.kind, AbsFixedRewriteKind::QuotientIdentity);
     }
 
     #[test]
@@ -786,13 +818,13 @@ mod tests {
     }
 
     #[test]
-    fn rewrites_abs_sqrt_identity_with_desc() {
+    fn rewrites_abs_sqrt_identity_with_kind() {
         let mut ctx = Context::new();
         let x = ctx.var("x");
         let sqrt_x = ctx.call_builtin(BuiltinFn::Sqrt, vec![x]);
         let abs_sqrt = ctx.call_builtin(BuiltinFn::Abs, vec![sqrt_x]);
         let rewrite = try_rewrite_abs_sqrt_identity_expr(&ctx, abs_sqrt).expect("rewrite");
-        assert_eq!(rewrite.desc, "|√x| = √x");
+        assert_eq!(rewrite.kind, AbsFixedRewriteKind::SqrtIdentity);
         assert_eq!(rewrite.rewritten, sqrt_x);
     }
 
@@ -811,13 +843,13 @@ mod tests {
     }
 
     #[test]
-    fn rewrites_abs_exp_identity_with_desc() {
+    fn rewrites_abs_exp_identity_with_kind() {
         let mut ctx = Context::new();
         let x = ctx.var("x");
         let exp_x = ctx.call_builtin(BuiltinFn::Exp, vec![x]);
         let abs_exp = ctx.call_builtin(BuiltinFn::Abs, vec![exp_x]);
         let rewrite = try_rewrite_abs_exp_identity_expr(&ctx, abs_exp).expect("rewrite");
-        assert_eq!(rewrite.desc, "|e^x| = e^x");
+        assert_eq!(rewrite.kind, AbsFixedRewriteKind::ExpIdentity);
         assert_eq!(rewrite.rewritten, exp_x);
     }
 
@@ -837,35 +869,17 @@ mod tests {
         let left_neg = ctx.call_builtin(BuiltinFn::Abs, vec![left_neg_inner]);
         let right_neg = ctx.call_builtin(BuiltinFn::Abs, vec![right_neg_inner]);
 
-        let desc_left_pos = try_rewrite_abs_numeric_factor_expr(&mut ctx, left_pos)
-            .expect("left_pos")
-            .desc;
-        let desc_right_pos = try_rewrite_abs_numeric_factor_expr(&mut ctx, right_pos)
-            .expect("right_pos")
-            .desc;
-        let desc_left_neg = try_rewrite_abs_numeric_factor_expr(&mut ctx, left_neg)
-            .expect("left_neg")
-            .desc;
-        let desc_right_neg = try_rewrite_abs_numeric_factor_expr(&mut ctx, right_neg)
-            .expect("right_neg")
-            .desc;
+        let left_pos = try_rewrite_abs_numeric_factor_expr(&mut ctx, left_pos).expect("left_pos");
+        let right_pos =
+            try_rewrite_abs_numeric_factor_expr(&mut ctx, right_pos).expect("right_pos");
+        let left_neg = try_rewrite_abs_numeric_factor_expr(&mut ctx, left_neg).expect("left_neg");
+        let right_neg =
+            try_rewrite_abs_numeric_factor_expr(&mut ctx, right_neg).expect("right_neg");
 
-        assert!(
-            desc_left_pos == "|k·x| = k·|x| for k > 0"
-                || desc_left_pos == "|x·k| = k·|x| for k > 0"
-        );
-        assert!(
-            desc_right_pos == "|k·x| = k·|x| for k > 0"
-                || desc_right_pos == "|x·k| = k·|x| for k > 0"
-        );
-        assert!(
-            desc_left_neg == "|(-k)·x| = |k|·|x| for k < 0"
-                || desc_left_neg == "|x·(-k)| = |k|·|x| for k < 0"
-        );
-        assert!(
-            desc_right_neg == "|(-k)·x| = |k|·|x| for k < 0"
-                || desc_right_neg == "|x·(-k)| = |k|·|x| for k < 0"
-        );
+        assert_eq!(left_pos.kind, AbsNumericFactorRewriteKind::LeftPositive);
+        assert_eq!(right_pos.kind, AbsNumericFactorRewriteKind::RightPositive);
+        assert_eq!(left_neg.kind, AbsNumericFactorRewriteKind::LeftNegative);
+        assert_eq!(right_neg.kind, AbsNumericFactorRewriteKind::RightNegative);
     }
 
     #[test]
@@ -895,6 +909,7 @@ mod tests {
         let abs_abs_x = ctx.call_builtin(BuiltinFn::Abs, vec![abs_x]);
         let rewrite = try_rewrite_abs_idempotent_expr(&ctx, abs_abs_x).expect("rewrite");
         assert_eq!(rewrite.rewritten, abs_x);
+        assert_eq!(rewrite.kind, AbsFixedRewriteKind::Idempotent);
     }
 
     #[test]
@@ -954,6 +969,8 @@ mod tests {
 
         let rewrite1 = try_rewrite_sqrt_square_expr(&mut ctx, sqrt_x2).expect("sqrt rewrite");
         let rewrite2 = try_rewrite_sqrt_square_expr(&mut ctx, pow_half).expect("pow rewrite");
+        assert_eq!(rewrite1.kind, AbsFixedRewriteKind::SqrtSquare);
+        assert_eq!(rewrite2.kind, AbsFixedRewriteKind::SqrtSquare);
 
         for rewritten in [rewrite1.rewritten, rewrite2.rewritten] {
             let Expr::Function(fn_id, args) = ctx.get(rewritten) else {
@@ -976,12 +993,14 @@ mod tests {
         let abs_sum = ctx.call_builtin(BuiltinFn::Abs, vec![sum]);
         let rewrite = try_rewrite_abs_sum_nonnegative_expr(&ctx, abs_sum).expect("sum rewrite");
         assert_eq!(rewrite.rewritten, sum);
+        assert_eq!(rewrite.kind, AbsFixedRewriteKind::SumNonnegative);
 
         let a = ctx.var("z");
         let b = ctx.var("a");
         let sub = ctx.add(Expr::Sub(a, b));
         let abs_sub = ctx.call_builtin(BuiltinFn::Abs, vec![sub]);
         let rewrite2 = try_rewrite_abs_sub_normalize_expr(&mut ctx, abs_sub).expect("sub rewrite");
+        assert_eq!(rewrite2.kind, AbsFixedRewriteKind::SubNormalize);
         let Expr::Function(fn_id, args) = ctx.get(rewrite2.rewritten) else {
             panic!("expected abs");
         };

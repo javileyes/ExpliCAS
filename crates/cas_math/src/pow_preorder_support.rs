@@ -5,10 +5,15 @@ use crate::sqrt_square_support::{detect_sqrt_square_pattern, SqrtSquarePattern};
 use cas_ast::{Context, ExprId};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SqrtSquarePowRewriteKind {
+    PowSquare,
+    RepeatedMul,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SqrtSquarePowRewritePlan {
     pub rewritten: ExprId,
-    pub identity_desc: &'static str,
-    pub rule_name: &'static str,
+    pub kind: SqrtSquarePowRewriteKind,
 }
 
 /// Plan `(u^2)^(1/2)` and `(u*u)^(1/2)` rewrites as `abs(u)`.
@@ -21,21 +26,13 @@ pub fn try_plan_sqrt_square_pow_rewrite(
         return None;
     }
 
-    let (arg, identity_desc, rule_name) = match detect_sqrt_square_pattern(ctx, base)? {
-        SqrtSquarePattern::PowSquare { arg } => {
-            (arg, "sqrt(u^2) = |u|", "Simplify Square Root of Square")
-        }
-        SqrtSquarePattern::RepeatedMul { arg } => {
-            (arg, "sqrt(u * u) = |u|", "Simplify Square Root of Product")
-        }
+    let (arg, kind) = match detect_sqrt_square_pattern(ctx, base)? {
+        SqrtSquarePattern::PowSquare { arg } => (arg, SqrtSquarePowRewriteKind::PowSquare),
+        SqrtSquarePattern::RepeatedMul { arg } => (arg, SqrtSquarePowRewriteKind::RepeatedMul),
     };
 
     let rewritten = ctx.call("abs", vec![arg]);
-    Some(SqrtSquarePowRewritePlan {
-        rewritten,
-        identity_desc,
-        rule_name,
-    })
+    Some(SqrtSquarePowRewritePlan { rewritten, kind })
 }
 
 #[cfg(test)]

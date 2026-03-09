@@ -13,16 +13,24 @@ use cas_ast::ordering::compare_expr;
 use cas_ast::{Context, Expr, ExprId};
 use num_traits::{One, Zero};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TrigCoreRewrite {
-    pub rewritten: ExprId,
-    pub desc: String,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TrigOddEvenParityKind {
     Odd,
     Even,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SinCosIntegerPiKind {
+    SinIntegerPi,
+    CosIntegerPiEven,
+    CosIntegerPiOdd,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SinCosIntegerPiRewrite {
+    pub rewritten: ExprId,
+    pub kind: SinCosIntegerPiKind,
+    pub n: num_bigint::BigInt,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -32,11 +40,75 @@ pub struct TrigOddEvenParityRewrite {
     pub kind: TrigOddEvenParityKind,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LegacyTrigEvalRewriteKind {
+    TableEval { fn_name: String },
+    ZeroEval { fn_name: String },
+    CosZero,
+    ArccosZero,
+    ArcsinOne,
+    ArccosOne,
+    ArctanOne,
+    ArcsinHalf,
+    ArccosHalf,
+    PiZero { fn_name: String },
+    CosPi,
+    SinPiOver2,
+    CosPiOver2,
+    TanPiOver2,
+    SinPiOver3,
+    CosPiOver3,
+    TanPiOver3,
+    PiOver4Trig { fn_name: String },
+    TanPiOver4,
+    SinPiOver6,
+    CosPiOver6,
+    TanPiOver6,
+    SinNegative,
+    CosNegative,
+    TanNegative,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LegacyTrigEvalRewrite {
+    pub rewritten: ExprId,
+    pub kind: LegacyTrigEvalRewriteKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PythagoreanIdentityRewriteKind {
+    Empty,
+    Standard,
+    Negated,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PythagoreanIdentityRewrite {
+    pub rewritten: ExprId,
+    pub kind: PythagoreanIdentityRewriteKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AngleSumDiffIdentityKind {
+    SinAdd,
+    SinSub,
+    SinDivAdd,
+    CosAdd,
+    CosSub,
+    CosDivAdd,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AngleSumDiffIdentityRewrite {
+    pub rewritten: ExprId,
+    pub kind: AngleSumDiffIdentityKind,
+}
+
 /// Rewrite exact values for `sin(n*pi)` and `cos(n*pi)` when `n` is integer.
 pub fn try_rewrite_sin_cos_integer_pi_expr(
     ctx: &mut Context,
     expr: ExprId,
-) -> Option<TrigCoreRewrite> {
+) -> Option<SinCosIntegerPiRewrite> {
     let (fn_id, args) = match ctx.get(expr) {
         Expr::Function(fn_id, args) => (*fn_id, args.clone()),
         _ => return None,
@@ -60,18 +132,23 @@ pub fn try_rewrite_sin_cos_integer_pi_expr(
     let n = k.to_integer();
 
     if is_sin {
-        return Some(TrigCoreRewrite {
+        return Some(SinCosIntegerPiRewrite {
             rewritten: ctx.num(0),
-            desc: format!("sin({}·π) = 0", n),
+            kind: SinCosIntegerPiKind::SinIntegerPi,
+            n,
         });
     }
 
     let is_even = &n % 2 == num_bigint::BigInt::from(0);
     let rewritten = if is_even { ctx.num(1) } else { ctx.num(-1) };
-    let result_str = if is_even { "1" } else { "-1" };
-    Some(TrigCoreRewrite {
+    Some(SinCosIntegerPiRewrite {
         rewritten,
-        desc: format!("cos({}·π) = {}", n, result_str),
+        kind: if is_even {
+            SinCosIntegerPiKind::CosIntegerPiEven
+        } else {
+            SinCosIntegerPiKind::CosIntegerPiOdd
+        },
+        n,
     })
 }
 
@@ -171,7 +248,7 @@ pub fn try_rewrite_trig_odd_even_parity_expr(
 pub fn try_rewrite_legacy_evaluate_trig_expr(
     ctx: &mut Context,
     expr: ExprId,
-) -> Option<TrigCoreRewrite> {
+) -> Option<LegacyTrigEvalRewrite> {
     let (fn_id, args) = match ctx.get(expr) {
         Expr::Function(fn_id, args) => (*fn_id, args.clone()),
         _ => return None,
@@ -190,9 +267,9 @@ pub fn try_rewrite_legacy_evaluate_trig_expr(
     };
     if let Some(f) = trig_fn {
         if let Some(result) = eval_trig_special(ctx, f, arg) {
-            return Some(TrigCoreRewrite {
+            return Some(LegacyTrigEvalRewrite {
                 rewritten: result,
-                desc: format!("{}(...) evaluated via table", name),
+                kind: LegacyTrigEvalRewriteKind::TableEval { fn_name: name },
             });
         }
     }
@@ -205,9 +282,9 @@ pub fn try_rewrite_legacy_evaluate_trig_expr(
     };
     if let Some(f) = inv_trig_fn {
         if let Some(result) = eval_inv_trig_special(ctx, f, arg) {
-            return Some(TrigCoreRewrite {
+            return Some(LegacyTrigEvalRewrite {
                 rewritten: result,
-                desc: format!("{}(...) evaluated via table", name),
+                kind: LegacyTrigEvalRewriteKind::TableEval { fn_name: name },
             });
         }
     }
@@ -216,23 +293,23 @@ pub fn try_rewrite_legacy_evaluate_trig_expr(
         if n.is_zero() {
             match name.as_str() {
                 "sin" | "tan" | "arcsin" | "arctan" => {
-                    return Some(TrigCoreRewrite {
+                    return Some(LegacyTrigEvalRewrite {
                         rewritten: ctx.num(0),
-                        desc: format!("{}(0) = 0", name),
+                        kind: LegacyTrigEvalRewriteKind::ZeroEval { fn_name: name },
                     });
                 }
                 "cos" => {
-                    return Some(TrigCoreRewrite {
+                    return Some(LegacyTrigEvalRewrite {
                         rewritten: ctx.num(1),
-                        desc: "cos(0) = 1".to_string(),
+                        kind: LegacyTrigEvalRewriteKind::CosZero,
                     });
                 }
                 "arccos" => {
                     let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
                     let two = ctx.num(2);
-                    return Some(TrigCoreRewrite {
+                    return Some(LegacyTrigEvalRewrite {
                         rewritten: ctx.add(Expr::Div(pi, two)),
-                        desc: "arccos(0) = pi/2".to_string(),
+                        kind: LegacyTrigEvalRewriteKind::ArccosZero,
                     });
                 }
                 _ => {}
@@ -242,23 +319,23 @@ pub fn try_rewrite_legacy_evaluate_trig_expr(
                 "arcsin" => {
                     let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
                     let two = ctx.num(2);
-                    return Some(TrigCoreRewrite {
+                    return Some(LegacyTrigEvalRewrite {
                         rewritten: ctx.add(Expr::Div(pi, two)),
-                        desc: "arcsin(1) = pi/2".to_string(),
+                        kind: LegacyTrigEvalRewriteKind::ArcsinOne,
                     });
                 }
                 "arccos" => {
-                    return Some(TrigCoreRewrite {
+                    return Some(LegacyTrigEvalRewrite {
                         rewritten: ctx.num(0),
-                        desc: "arccos(1) = 0".to_string(),
+                        kind: LegacyTrigEvalRewriteKind::ArccosOne,
                     });
                 }
                 "arctan" => {
                     let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
                     let four = ctx.num(4);
-                    return Some(TrigCoreRewrite {
+                    return Some(LegacyTrigEvalRewrite {
                         rewritten: ctx.add(Expr::Div(pi, four)),
-                        desc: "arctan(1) = pi/4".to_string(),
+                        kind: LegacyTrigEvalRewriteKind::ArctanOne,
                     });
                 }
                 _ => {}
@@ -268,17 +345,17 @@ pub fn try_rewrite_legacy_evaluate_trig_expr(
                 "arcsin" => {
                     let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
                     let six = ctx.num(6);
-                    return Some(TrigCoreRewrite {
+                    return Some(LegacyTrigEvalRewrite {
                         rewritten: ctx.add(Expr::Div(pi, six)),
-                        desc: "arcsin(1/2) = pi/6".to_string(),
+                        kind: LegacyTrigEvalRewriteKind::ArcsinHalf,
                     });
                 }
                 "arccos" => {
                     let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
                     let three = ctx.num(3);
-                    return Some(TrigCoreRewrite {
+                    return Some(LegacyTrigEvalRewrite {
                         rewritten: ctx.add(Expr::Div(pi, three)),
-                        desc: "arccos(1/2) = pi/3".to_string(),
+                        kind: LegacyTrigEvalRewriteKind::ArccosHalf,
                     });
                 }
                 _ => {}
@@ -289,15 +366,15 @@ pub fn try_rewrite_legacy_evaluate_trig_expr(
     if is_pi(ctx, arg) {
         match name.as_str() {
             "sin" | "tan" => {
-                return Some(TrigCoreRewrite {
+                return Some(LegacyTrigEvalRewrite {
                     rewritten: ctx.num(0),
-                    desc: format!("{}(pi) = 0", name),
+                    kind: LegacyTrigEvalRewriteKind::PiZero { fn_name: name },
                 });
             }
             "cos" => {
-                return Some(TrigCoreRewrite {
+                return Some(LegacyTrigEvalRewrite {
                     rewritten: ctx.num(-1),
-                    desc: "cos(pi) = -1".to_string(),
+                    kind: LegacyTrigEvalRewriteKind::CosPi,
                 });
             }
             _ => {}
@@ -307,21 +384,21 @@ pub fn try_rewrite_legacy_evaluate_trig_expr(
     if is_pi_over_n(ctx, arg, 2) {
         match name.as_str() {
             "sin" => {
-                return Some(TrigCoreRewrite {
+                return Some(LegacyTrigEvalRewrite {
                     rewritten: ctx.num(1),
-                    desc: "sin(pi/2) = 1".to_string(),
+                    kind: LegacyTrigEvalRewriteKind::SinPiOver2,
                 });
             }
             "cos" => {
-                return Some(TrigCoreRewrite {
+                return Some(LegacyTrigEvalRewrite {
                     rewritten: ctx.num(0),
-                    desc: "cos(pi/2) = 0".to_string(),
+                    kind: LegacyTrigEvalRewriteKind::CosPiOver2,
                 });
             }
             "tan" => {
-                return Some(TrigCoreRewrite {
+                return Some(LegacyTrigEvalRewrite {
                     rewritten: ctx.add(Expr::Constant(cas_ast::Constant::Undefined)),
-                    desc: "tan(pi/2) = undefined".to_string(),
+                    kind: LegacyTrigEvalRewriteKind::TanPiOver2,
                 });
             }
             _ => {}
@@ -337,17 +414,17 @@ pub fn try_rewrite_legacy_evaluate_trig_expr(
                 let half_exp = ctx.add(Expr::Div(one, two));
                 let sqrt3 = ctx.add(Expr::Pow(three, half_exp));
                 let two2 = ctx.num(2);
-                return Some(TrigCoreRewrite {
+                return Some(LegacyTrigEvalRewrite {
                     rewritten: ctx.add(Expr::Div(sqrt3, two2)),
-                    desc: "sin(π/3) = √3/2".to_string(),
+                    kind: LegacyTrigEvalRewriteKind::SinPiOver3,
                 });
             }
             "cos" => {
                 let one = ctx.num(1);
                 let two = ctx.num(2);
-                return Some(TrigCoreRewrite {
+                return Some(LegacyTrigEvalRewrite {
                     rewritten: ctx.add(Expr::Div(one, two)),
-                    desc: "cos(π/3) = 1/2".to_string(),
+                    kind: LegacyTrigEvalRewriteKind::CosPiOver3,
                 });
             }
             "tan" => {
@@ -355,9 +432,9 @@ pub fn try_rewrite_legacy_evaluate_trig_expr(
                 let one = ctx.num(1);
                 let two = ctx.num(2);
                 let half_exp = ctx.add(Expr::Div(one, two));
-                return Some(TrigCoreRewrite {
+                return Some(LegacyTrigEvalRewrite {
                     rewritten: ctx.add(Expr::Pow(three, half_exp)),
-                    desc: "tan(π/3) = √3".to_string(),
+                    kind: LegacyTrigEvalRewriteKind::TanPiOver3,
                 });
             }
             _ => {}
@@ -373,15 +450,15 @@ pub fn try_rewrite_legacy_evaluate_trig_expr(
                 let half_exp = ctx.add(Expr::Div(one, two2));
                 let sqrt2 = ctx.add(Expr::Pow(two, half_exp));
                 let two3 = ctx.num(2);
-                return Some(TrigCoreRewrite {
+                return Some(LegacyTrigEvalRewrite {
                     rewritten: ctx.add(Expr::Div(sqrt2, two3)),
-                    desc: format!("{}(π/4) = √2/2", name),
+                    kind: LegacyTrigEvalRewriteKind::PiOver4Trig { fn_name: name },
                 });
             }
             "tan" => {
-                return Some(TrigCoreRewrite {
+                return Some(LegacyTrigEvalRewrite {
                     rewritten: ctx.num(1),
-                    desc: "tan(π/4) = 1".to_string(),
+                    kind: LegacyTrigEvalRewriteKind::TanPiOver4,
                 });
             }
             _ => {}
@@ -393,9 +470,9 @@ pub fn try_rewrite_legacy_evaluate_trig_expr(
             "sin" => {
                 let one = ctx.num(1);
                 let two = ctx.num(2);
-                return Some(TrigCoreRewrite {
+                return Some(LegacyTrigEvalRewrite {
                     rewritten: ctx.add(Expr::Div(one, two)),
-                    desc: "sin(π/6) = 1/2".to_string(),
+                    kind: LegacyTrigEvalRewriteKind::SinPiOver6,
                 });
             }
             "cos" => {
@@ -405,9 +482,9 @@ pub fn try_rewrite_legacy_evaluate_trig_expr(
                 let half_exp = ctx.add(Expr::Div(one, two));
                 let sqrt3 = ctx.add(Expr::Pow(three, half_exp));
                 let two2 = ctx.num(2);
-                return Some(TrigCoreRewrite {
+                return Some(LegacyTrigEvalRewrite {
                     rewritten: ctx.add(Expr::Div(sqrt3, two2)),
-                    desc: "cos(π/6) = √3/2".to_string(),
+                    kind: LegacyTrigEvalRewriteKind::CosPiOver6,
                 });
             }
             "tan" => {
@@ -417,9 +494,9 @@ pub fn try_rewrite_legacy_evaluate_trig_expr(
                 let half_exp = ctx.add(Expr::Div(one, two));
                 let sqrt3 = ctx.add(Expr::Pow(three, half_exp));
                 let one2 = ctx.num(1);
-                return Some(TrigCoreRewrite {
+                return Some(LegacyTrigEvalRewrite {
                     rewritten: ctx.add(Expr::Div(one2, sqrt3)),
-                    desc: "tan(π/6) = 1/√3".to_string(),
+                    kind: LegacyTrigEvalRewriteKind::TanPiOver6,
                 });
             }
             _ => {}
@@ -430,22 +507,22 @@ pub fn try_rewrite_legacy_evaluate_trig_expr(
         match name.as_str() {
             "sin" => {
                 let sin_inner = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![inner]);
-                return Some(TrigCoreRewrite {
+                return Some(LegacyTrigEvalRewrite {
                     rewritten: ctx.add(Expr::Neg(sin_inner)),
-                    desc: "sin(-x) = -sin(x)".to_string(),
+                    kind: LegacyTrigEvalRewriteKind::SinNegative,
                 });
             }
             "cos" => {
-                return Some(TrigCoreRewrite {
+                return Some(LegacyTrigEvalRewrite {
                     rewritten: ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![inner]),
-                    desc: "cos(-x) = cos(x)".to_string(),
+                    kind: LegacyTrigEvalRewriteKind::CosNegative,
                 });
             }
             "tan" => {
                 let tan_inner = ctx.call_builtin(cas_ast::BuiltinFn::Tan, vec![inner]);
-                return Some(TrigCoreRewrite {
+                return Some(LegacyTrigEvalRewrite {
                     rewritten: ctx.add(Expr::Neg(tan_inner)),
-                    desc: "tan(-x) = -tan(x)".to_string(),
+                    kind: LegacyTrigEvalRewriteKind::TanNegative,
                 });
             }
             _ => {}
@@ -595,7 +672,7 @@ fn extract_pythagorean_trig_parts(
 pub fn try_rewrite_pythagorean_identity_add_expr(
     ctx: &mut Context,
     expr: ExprId,
-) -> Option<TrigCoreRewrite> {
+) -> Option<PythagoreanIdentityRewrite> {
     if !matches!(ctx.get(expr), Expr::Add(_, _)) {
         return None;
     }
@@ -647,9 +724,9 @@ pub fn try_rewrite_pythagorean_identity_add_expr(
             new_terms.push(result_coeff);
 
             if new_terms.is_empty() {
-                return Some(TrigCoreRewrite {
+                return Some(PythagoreanIdentityRewrite {
                     rewritten: ctx.num(0),
-                    desc: "Pythagorean Identity (empty)".to_string(),
+                    kind: PythagoreanIdentityRewriteKind::Empty,
                 });
             }
 
@@ -658,12 +735,12 @@ pub fn try_rewrite_pythagorean_identity_add_expr(
                 rewritten = ctx.add(Expr::Add(rewritten, term));
             }
 
-            let desc = if t1.is_negated {
-                "Pythagorean Identity (negated)".to_string()
+            let kind = if t1.is_negated {
+                PythagoreanIdentityRewriteKind::Negated
             } else {
-                "Pythagorean Identity".to_string()
+                PythagoreanIdentityRewriteKind::Standard
             };
-            return Some(TrigCoreRewrite { rewritten, desc });
+            return Some(PythagoreanIdentityRewrite { rewritten, kind });
         }
     }
 
@@ -755,7 +832,7 @@ pub fn should_block_angle_identity_expr(
 pub fn try_rewrite_angle_sum_diff_identity_expr(
     ctx: &mut Context,
     expr: ExprId,
-) -> Option<TrigCoreRewrite> {
+) -> Option<AngleSumDiffIdentityRewrite> {
     let Expr::Function(fn_id, args) = ctx.get(expr) else {
         return None;
     };
@@ -775,9 +852,9 @@ pub fn try_rewrite_angle_sum_diff_identity_expr(
                 let sin_b = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![rhs]);
                 let term2 = smart_mul(ctx, cos_a, sin_b);
 
-                return Some(TrigCoreRewrite {
+                return Some(AngleSumDiffIdentityRewrite {
                     rewritten: ctx.add(Expr::Add(term1, term2)),
-                    desc: "sin(a + b) -> sin(a)cos(b) + cos(a)sin(b)".to_string(),
+                    kind: AngleSumDiffIdentityKind::SinAdd,
                 });
             } else if let Some((lhs, rhs)) = as_sub(ctx, inner) {
                 let sin_a = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![lhs]);
@@ -788,9 +865,9 @@ pub fn try_rewrite_angle_sum_diff_identity_expr(
                 let sin_b = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![rhs]);
                 let term2 = smart_mul(ctx, cos_a, sin_b);
 
-                return Some(TrigCoreRewrite {
+                return Some(AngleSumDiffIdentityRewrite {
                     rewritten: ctx.add(Expr::Sub(term1, term2)),
-                    desc: "sin(a - b) -> sin(a)cos(b) - cos(a)sin(b)".to_string(),
+                    kind: AngleSumDiffIdentityKind::SinSub,
                 });
             } else if let Some((num, den)) = as_div(ctx, inner) {
                 if let Some((lhs, rhs)) = as_add(ctx, num) {
@@ -805,9 +882,9 @@ pub fn try_rewrite_angle_sum_diff_identity_expr(
                     let sin_b = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![b]);
                     let term2 = smart_mul(ctx, cos_a, sin_b);
 
-                    return Some(TrigCoreRewrite {
+                    return Some(AngleSumDiffIdentityRewrite {
                         rewritten: ctx.add(Expr::Add(term1, term2)),
-                        desc: "sin((a + b)/c) -> sin(a/c)cos(b/c) + cos(a/c)sin(b/c)".to_string(),
+                        kind: AngleSumDiffIdentityKind::SinDivAdd,
                     });
                 }
             }
@@ -822,9 +899,9 @@ pub fn try_rewrite_angle_sum_diff_identity_expr(
                 let sin_b = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![rhs]);
                 let term2 = smart_mul(ctx, sin_a, sin_b);
 
-                return Some(TrigCoreRewrite {
+                return Some(AngleSumDiffIdentityRewrite {
                     rewritten: ctx.add(Expr::Sub(term1, term2)),
-                    desc: "cos(a + b) -> cos(a)cos(b) - sin(a)sin(b)".to_string(),
+                    kind: AngleSumDiffIdentityKind::CosAdd,
                 });
             } else if let Some((lhs, rhs)) = as_sub(ctx, inner) {
                 let cos_a = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![lhs]);
@@ -835,9 +912,9 @@ pub fn try_rewrite_angle_sum_diff_identity_expr(
                 let sin_b = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![rhs]);
                 let term2 = smart_mul(ctx, sin_a, sin_b);
 
-                return Some(TrigCoreRewrite {
+                return Some(AngleSumDiffIdentityRewrite {
                     rewritten: ctx.add(Expr::Add(term1, term2)),
-                    desc: "cos(a - b) -> cos(a)cos(b) + sin(a)sin(b)".to_string(),
+                    kind: AngleSumDiffIdentityKind::CosSub,
                 });
             } else if let Some((num, den)) = as_div(ctx, inner) {
                 if let Some((lhs, rhs)) = as_add(ctx, num) {
@@ -852,9 +929,9 @@ pub fn try_rewrite_angle_sum_diff_identity_expr(
                     let sin_b = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![b]);
                     let term2 = smart_mul(ctx, sin_a, sin_b);
 
-                    return Some(TrigCoreRewrite {
+                    return Some(AngleSumDiffIdentityRewrite {
                         rewritten: ctx.add(Expr::Sub(term1, term2)),
-                        desc: "cos((a + b)/c) -> cos(a/c)cos(b/c) - sin(a/c)sin(b/c)".to_string(),
+                        kind: AngleSumDiffIdentityKind::CosDivAdd,
                     });
                 }
             }
@@ -936,7 +1013,7 @@ mod tests {
         let expr = parse("sin(x)^2 + cos(x)^2", &mut ctx).expect("parse");
         let rewrite = try_rewrite_pythagorean_identity_add_expr(&mut ctx, expr).expect("rewrite");
         assert_eq!(render(&ctx, rewrite.rewritten), "1");
-        assert_eq!(rewrite.desc, "Pythagorean Identity");
+        assert_eq!(rewrite.kind, PythagoreanIdentityRewriteKind::Standard);
     }
 
     #[test]
@@ -945,7 +1022,7 @@ mod tests {
         let expr = parse("-sin(x)^2 + -cos(x)^2", &mut ctx).expect("parse");
         let rewrite = try_rewrite_pythagorean_identity_add_expr(&mut ctx, expr).expect("rewrite");
         assert_eq!(render(&ctx, rewrite.rewritten), "-1");
-        assert_eq!(rewrite.desc, "Pythagorean Identity (negated)");
+        assert_eq!(rewrite.kind, PythagoreanIdentityRewriteKind::Negated);
     }
 
     #[test]

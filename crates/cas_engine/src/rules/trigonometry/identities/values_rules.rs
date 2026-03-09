@@ -2,6 +2,7 @@
 
 use crate::define_rule;
 use crate::rule::Rewrite;
+use crate::rules::trig_canonicalization::format_trig_canonical_rewrite_desc;
 use cas_math::trig_canonicalization_support::{
     try_rewrite_csc_cot_pythagorean_identity_expr, try_rewrite_sec_tan_pythagorean_identity_expr,
     try_rewrite_trig_quotient_div_expr, TrigCanonicalIdentityKind,
@@ -125,7 +126,11 @@ impl crate::rule::Rule for TanToSinCosRule {
             parent_ctx.immediate_parent(),
             parent_ctx.all_ancestors(),
         )?;
-        Some(crate::rule::Rewrite::new(plan.rewritten).desc(plan.desc))
+        Some(
+            crate::rule::Rewrite::new(plan.rewritten).desc(format_trig_canonical_rewrite_desc(
+                plan.kind.expect("fixed tan canonical desc"),
+            )),
+        )
     }
 
     fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
@@ -163,7 +168,11 @@ impl crate::rule::Rule for TrigQuotientRule {
         _parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<crate::rule::Rewrite> {
         let plan = try_rewrite_trig_quotient_div_expr(ctx, expr)?;
-        Some(crate::rule::Rewrite::new(plan.rewritten).desc(plan.desc))
+        Some(
+            crate::rule::Rewrite::new(plan.rewritten).desc(format_trig_canonical_rewrite_desc(
+                plan.kind.expect("fixed quotient canonical desc"),
+            )),
+        )
     }
 
     fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {

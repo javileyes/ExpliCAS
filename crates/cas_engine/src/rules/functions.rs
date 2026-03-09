@@ -11,7 +11,7 @@ use cas_math::abs_support::{
     try_rewrite_abs_quotient_identity_expr, try_rewrite_abs_sqrt_identity_expr,
     try_rewrite_abs_sub_normalize_expr, try_rewrite_abs_sum_nonnegative_expr,
     try_rewrite_evaluate_abs_expr, try_rewrite_sqrt_square_expr, try_unwrap_abs_arg,
-    value_domain_mode_from_flag, AbsAssumptionKind, AbsDomainRewriteKind,
+    value_domain_mode_from_flag, AbsAssumptionKind, AbsDomainRewriteKind, AbsFixedRewriteKind,
     SymbolicRootCancelRewriteKind,
 };
 use cas_math::root_forms::try_rewrite_odd_half_power_expr;
@@ -28,6 +28,19 @@ fn format_abs_domain_rewrite_desc(kind: AbsDomainRewriteKind) -> &'static str {
 fn format_symbolic_root_cancel_desc(kind: SymbolicRootCancelRewriteKind) -> &'static str {
     match kind {
         SymbolicRootCancelRewriteKind::AssumeNonNegative => "sqrt(x^n, n) = x (assuming x >= 0)",
+    }
+}
+
+fn format_abs_fixed_rewrite_desc(kind: AbsFixedRewriteKind) -> &'static str {
+    match kind {
+        AbsFixedRewriteKind::Idempotent => "||x|| = |x|",
+        AbsFixedRewriteKind::SqrtSquare => "sqrt(x^2) = |x|",
+        AbsFixedRewriteKind::SumNonnegative => "|x² + ...| = x² + ...",
+        AbsFixedRewriteKind::SubNormalize => "|a−b| = |b−a|",
+        AbsFixedRewriteKind::ProductIdentity => "|x|·|y| = |x·y|",
+        AbsFixedRewriteKind::QuotientIdentity => "|x| / |y| = |x / y|",
+        AbsFixedRewriteKind::SqrtIdentity => "|√x| = √x",
+        AbsFixedRewriteKind::ExpIdentity => "|e^x| = e^x",
     }
 }
 
@@ -217,7 +230,7 @@ define_rule!(
     "Simplify Square Root of Square",
     |ctx, expr| {
         let rewrite = try_rewrite_sqrt_square_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc(format_abs_fixed_rewrite_desc(rewrite.kind)))
     }
 );
 
@@ -325,7 +338,7 @@ define_rule!(
 // =============================================================================
 define_rule!(AbsIdempotentRule, "Abs Idempotent", |ctx, expr| {
     let rewrite = try_rewrite_abs_idempotent_expr(ctx, expr)?;
-    Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+    Some(Rewrite::new(rewrite.rewritten).desc(format_abs_fixed_rewrite_desc(rewrite.kind)))
 });
 
 // =============================================================================
@@ -365,7 +378,7 @@ define_rule!(
     PhaseMask::CORE | PhaseMask::TRANSFORM,
     |ctx, expr| {
         let rewrite = try_rewrite_abs_product_identity_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc(format_abs_fixed_rewrite_desc(rewrite.kind)))
     }
 );
 
@@ -380,7 +393,7 @@ define_rule!(
     PhaseMask::CORE | PhaseMask::TRANSFORM,
     |ctx, expr| {
         let rewrite = try_rewrite_abs_quotient_identity_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc(format_abs_fixed_rewrite_desc(rewrite.kind)))
     }
 );
 
@@ -390,7 +403,7 @@ define_rule!(
 // =============================================================================
 define_rule!(AbsSqrtRule, "Abs Of Sqrt", |ctx, expr| {
     let rewrite = try_rewrite_abs_sqrt_identity_expr(ctx, expr)?;
-    Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+    Some(Rewrite::new(rewrite.rewritten).desc(format_abs_fixed_rewrite_desc(rewrite.kind)))
 });
 
 // =============================================================================
@@ -399,7 +412,7 @@ define_rule!(AbsSqrtRule, "Abs Of Sqrt", |ctx, expr| {
 // =============================================================================
 define_rule!(AbsExpRule, "Abs Of Exp", |ctx, expr| {
     let rewrite = try_rewrite_abs_exp_identity_expr(ctx, expr)?;
-    Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+    Some(Rewrite::new(rewrite.rewritten).desc(format_abs_fixed_rewrite_desc(rewrite.kind)))
 });
 
 // =============================================================================
@@ -408,7 +421,7 @@ define_rule!(AbsExpRule, "Abs Of Exp", |ctx, expr| {
 // =============================================================================
 define_rule!(AbsSumOfSquaresRule, "Abs Of Sum Of Squares", |ctx, expr| {
     let rewrite = try_rewrite_abs_sum_nonnegative_expr(ctx, expr)?;
-    Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+    Some(Rewrite::new(rewrite.rewritten).desc(format_abs_fixed_rewrite_desc(rewrite.kind)))
 });
 
 // =============================================================================
@@ -427,7 +440,7 @@ define_rule!(
     Some(crate::target_kind::TargetKindSet::FUNCTION),
     |ctx, expr| {
         let rewrite = try_rewrite_abs_sub_normalize_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc(format_abs_fixed_rewrite_desc(rewrite.kind)))
     }
 );
 
@@ -436,13 +449,32 @@ define_rule!(
 // Extracts numeric factors from absolute value (both positive and negative).
 // Examples: |2u| → 2|u|,  |(-3)·sin(x)| → 3·|sin(x)|
 // =============================================================================
+fn format_abs_numeric_factor_desc(
+    kind: cas_math::abs_support::AbsNumericFactorRewriteKind,
+) -> &'static str {
+    match kind {
+        cas_math::abs_support::AbsNumericFactorRewriteKind::LeftPositive => {
+            "|k·x| = k·|x| for k > 0"
+        }
+        cas_math::abs_support::AbsNumericFactorRewriteKind::LeftNegative => {
+            "|(-k)·x| = |k|·|x| for k < 0"
+        }
+        cas_math::abs_support::AbsNumericFactorRewriteKind::RightPositive => {
+            "|x·k| = k·|x| for k > 0"
+        }
+        cas_math::abs_support::AbsNumericFactorRewriteKind::RightNegative => {
+            "|x·(-k)| = |k|·|x| for k < 0"
+        }
+    }
+}
+
 define_rule!(
     AbsPositiveFactorRule,
     "Abs Positive Factor",
     Some(crate::target_kind::TargetKindSet::FUNCTION),
     |ctx, expr| {
         let rewrite = try_rewrite_abs_numeric_factor_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        Some(Rewrite::new(rewrite.rewritten).desc(format_abs_numeric_factor_desc(rewrite.kind)))
     }
 );
 
