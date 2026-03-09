@@ -1,3 +1,5 @@
+mod common;
+
 use cas_engine::Simplifier;
 use cas_parser::parse;
 use criterion::{criterion_group, criterion_main, Criterion};
@@ -11,6 +13,7 @@ fn setup_bench(input_str: &str) -> (Simplifier, cas_ast::ExprId) {
 
 fn benchmark_parser(c: &mut Criterion) {
     let mut group = c.benchmark_group("parser");
+    common::configure_standard_group(&mut group);
 
     group.bench_function("parse_complex_poly", |b| {
         b.iter(|| {
@@ -24,6 +27,7 @@ fn benchmark_parser(c: &mut Criterion) {
 
 fn benchmark_polynomial_simplification(c: &mut Criterion) {
     let mut group = c.benchmark_group("polynomial");
+    common::configure_standard_group(&mut group);
 
     group.bench_function("expand_binomial_power_10", |b| {
         b.iter(|| {
@@ -49,7 +53,7 @@ fn benchmark_polynomial_simplification(c: &mut Criterion) {
 
 fn benchmark_trig_simplification(c: &mut Criterion) {
     let mut group = c.benchmark_group("trigonometry");
-
+    common::configure_standard_group(&mut group);
     group.sample_size(10);
     group.bench_function("pythagorean_identity_nested", |b| {
         b.iter(|| {
@@ -71,6 +75,7 @@ fn benchmark_trig_simplification(c: &mut Criterion) {
 
 fn benchmark_rational_simplification(c: &mut Criterion) {
     let mut group = c.benchmark_group("rational");
+    common::configure_standard_group(&mut group);
 
     group.bench_function("sum_fractions_10", |b| {
         b.iter(|| {
@@ -89,6 +94,7 @@ fn benchmark_rational_simplification(c: &mut Criterion) {
 
 fn benchmark_calculus_operations(c: &mut Criterion) {
     let mut group = c.benchmark_group("calculus");
+    common::configure_standard_group(&mut group);
 
     group.bench_function("diff_nested_trig_exp", |b| {
         b.iter(|| {
@@ -109,6 +115,7 @@ fn benchmark_calculus_operations(c: &mut Criterion) {
 
 fn benchmark_solver(c: &mut Criterion) {
     let mut group = c.benchmark_group("solver");
+    common::configure_standard_group(&mut group);
 
     group.bench_function("solve_quadratic", |b| {
         b.iter(|| {
@@ -122,6 +129,7 @@ fn benchmark_solver(c: &mut Criterion) {
 
 fn benchmark_stress(c: &mut Criterion) {
     let mut group = c.benchmark_group("stress");
+    common::configure_standard_group(&mut group);
     group.sample_size(10); // Lower sample size for slow tests
 
     group.bench_function("deeply_nested_poly", |b| {
@@ -136,6 +144,7 @@ fn benchmark_stress(c: &mut Criterion) {
 
 fn benchmark_individual_rules(c: &mut Criterion) {
     let mut group = c.benchmark_group("rules");
+    common::configure_standard_group(&mut group);
 
     // Fraction rules
     group.bench_function("add_fractions_simple", |b| {

@@ -1,3 +1,5 @@
+mod common;
+
 use std::hint::black_box;
 
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
@@ -27,7 +29,10 @@ fn bench_profile_build(c: &mut Criterion) {
         ..Default::default()
     };
 
-    c.bench_function("profile_build/uncached", |b| {
+    let mut group = c.benchmark_group("profile_build");
+    common::configure_standard_group(&mut group);
+
+    group.bench_function("uncached", |b| {
         b.iter(|| {
             // "uncached": crear un cache vacío equivale a "construir el perfil cada vez"
             let mut cache = ProfileCache::new();
@@ -36,7 +41,7 @@ fn bench_profile_build(c: &mut Criterion) {
         })
     });
 
-    c.bench_function("profile_build/cached_hit", |b| {
+    group.bench_function("cached_hit", |b| {
         let mut cache = ProfileCache::new();
         let _ = cache.get_or_build(&opts); // warm
         b.iter(|| {
@@ -44,6 +49,8 @@ fn bench_profile_build(c: &mut Criterion) {
             black_box(profile);
         })
     });
+
+    group.finish();
 }
 
 fn bench_simplify_cached_vs_uncached(c: &mut Criterion) {
@@ -81,6 +88,7 @@ fn bench_simplify_cached_vs_uncached(c: &mut Criterion) {
     let cached_profile = cached_cache.get_or_build(&opts);
 
     let mut group = c.benchmark_group("simplify_cached_vs_uncached");
+    common::configure_standard_group(&mut group);
 
     for (name, input) in cases {
         // 1) Cached
@@ -88,8 +96,7 @@ fn bench_simplify_cached_vs_uncached(c: &mut Criterion) {
             b.iter_batched(
                 || build_expr(input),
                 |(ctx, expr)| {
-                    let mut s = Simplifier::from_profile(cached_profile.clone());
-                    s.context = ctx;
+                    let mut s = Simplifier::from_profile_with_context(cached_profile.clone(), ctx);
                     let (out, _steps) = s.simplify(expr);
                     black_box(out);
                 },
@@ -107,8 +114,7 @@ fn bench_simplify_cached_vs_uncached(c: &mut Criterion) {
                     (profile, ctx, expr)
                 },
                 |(profile, ctx, expr)| {
-                    let mut s = Simplifier::from_profile(profile);
-                    s.context = ctx;
+                    let mut s = Simplifier::from_profile_with_context(profile, ctx);
                     let (out, _steps) = s.simplify(expr);
                     black_box(out);
                 },

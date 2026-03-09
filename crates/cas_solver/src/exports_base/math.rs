@@ -13,7 +13,7 @@ pub use cas_math::limit_types::{Approach, LimitOptions, PreSimplifyMode};
 pub use cas_math::pattern_marks;
 pub use cas_math::poly_store::{try_get_poly_result_term_count, try_render_poly_result};
 pub use cas_math::rationalize::{rationalize_denominator, RationalizeConfig, RationalizeResult};
-pub use cas_math::rationalize_policy::{AutoRationalizeLevel, RationalizeOutcome};
 pub use cas_math::telescoping_dirichlet::{
     try_dirichlet_kernel_identity as try_dirichlet_kernel_identity_pub, DirichletKernelResult,
 };
+pub use cas_solver_core::rationalize_policy::{AutoRationalizeLevel, RationalizeOutcome};

@@ -53,7 +53,12 @@ impl<'a> LocalSimplificationTransformer<'a> {
 
     /// Reconstruct the global expression by substituting `replacement` at the given path
     pub(super) fn reconstruct_at_path(&mut self, replacement: ExprId) -> ExprId {
-        let path = crate::step::pathsteps_to_expr_path(&self.current_path);
+        if self.current_path.is_empty() {
+            self.root_expr = replacement;
+            return replacement;
+        }
+
+        let path = crate::pathsteps_to_expr_path(&self.current_path);
         let new_root = cas_math::expr_path_rewrite::rewrite_at_expr_path_raw(
             self.context,
             self.root_expr,
@@ -73,18 +78,21 @@ impl<'a> LocalSimplificationTransformer<'a> {
         &mut self,
         rule: &dyn Rule,
         expr_id: ExprId,
-        rewrite: &crate::rule::Rewrite,
+        rewrite: crate::rule::Rewrite,
     ) -> ExprId {
         if self.collect_steps_enabled() {
-            let main_new_expr = rewrite.new_expr;
-            let main_description = &rewrite.description;
-            let main_before_local = rewrite.before_local;
-            let main_after_local = rewrite.after_local;
-            let main_assumptions = rewrite.assumption_events.clone();
-            let main_required = rewrite.required_conditions.clone();
-            let main_poly_proof = rewrite.poly_proof.clone();
-            let main_substeps = rewrite.substeps.clone();
-            let chained_rewrites = rewrite.chained.clone();
+            let crate::rule::Rewrite {
+                new_expr: main_new_expr,
+                description: main_description,
+                before_local: main_before_local,
+                after_local: main_after_local,
+                assumption_events: main_assumptions,
+                required_conditions: main_required,
+                poly_proof: main_poly_proof,
+                chained: chained_rewrites,
+                substeps: main_substeps,
+                budget_exempt: _,
+            } = rewrite;
 
             // Determine final result (last of chained, or main rewrite)
             let final_result = chained_rewrites
@@ -97,7 +105,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
 
             // Main step
             let mut step = Step::with_snapshots(
-                main_description,
+                main_description.as_ref(),
                 rule.name(),
                 expr_id,
                 main_new_expr,
@@ -138,40 +146,50 @@ impl<'a> LocalSimplificationTransformer<'a> {
             // Process chained rewrites sequentially
             let mut current = main_new_expr;
             for chain_rw in chained_rewrites {
-                let chain_global_before = self.reconstruct_at_path(current);
-                let chain_global_after = self.reconstruct_at_path(chain_rw.after);
+                let crate::rule::ChainedRewrite {
+                    after: chain_after,
+                    description: chain_description,
+                    before_local: chain_before_local,
+                    after_local: chain_after_local,
+                    required_conditions: chain_required_conditions,
+                    assumption_events: chain_assumption_events,
+                    poly_proof: chain_poly_proof,
+                    importance: chain_importance,
+                } = chain_rw;
+                let chain_global_before = self.root_expr;
+                let chain_global_after = self.reconstruct_at_path(chain_after);
 
                 let mut chain_step = Step::with_snapshots(
-                    &chain_rw.description,
+                    chain_description.as_ref(),
                     rule.name(),
                     current,
-                    chain_rw.after,
+                    chain_after,
                     self.current_path.clone(),
                     Some(self.context),
                     chain_global_before,
                     chain_global_after,
                 );
-                chain_step.importance = chain_rw.importance.unwrap_or_else(|| rule.importance());
+                chain_step.importance = chain_importance.unwrap_or_else(|| rule.importance());
                 {
                     let meta = chain_step.meta_mut();
-                    meta.before_local = chain_rw.before_local;
-                    meta.after_local = chain_rw.after_local;
-                    meta.assumption_events = chain_rw.assumption_events;
-                    meta.required_conditions = chain_rw.required_conditions;
-                    meta.poly_proof = chain_rw.poly_proof;
+                    meta.before_local = chain_before_local;
+                    meta.after_local = chain_after_local;
+                    meta.assumption_events = chain_assumption_events;
+                    meta.required_conditions = chain_required_conditions;
+                    meta.poly_proof = chain_poly_proof;
                     meta.is_chained = true;
                 }
                 self.steps.push(chain_step);
                 self.emit_rule_applied_event(
                     rule.name(),
                     current,
-                    chain_rw.after,
+                    chain_after,
                     Some(chain_global_before),
                     Some(chain_global_after),
                     true,
                 );
 
-                current = chain_rw.after;
+                current = chain_after;
             }
 
             final_result
@@ -187,7 +205,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                 false,
             );
             current_before = rewrite.new_expr;
-            for chained in &rewrite.chained {
+            for chained in rewrite.chained {
                 self.emit_rule_applied_event(
                     rule.name(),
                     current_before,

@@ -77,7 +77,7 @@ pub fn optimize_steps(steps: Vec<Step>) -> Vec<Step> {
             category: StepCategory::Canonicalize,
             soundness: SoundnessLabel::Equivalence,
             meta: Some(Box::new(StepMeta {
-                path: first.path().to_vec(),
+                path: first.path().iter().cloned().collect(),
                 after_str: last.after_str().map(|s| s.to_string()),
                 ..Default::default()
             })),

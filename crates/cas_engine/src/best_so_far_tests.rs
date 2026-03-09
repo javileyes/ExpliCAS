@@ -1,4 +1,5 @@
 use crate::best_so_far::{score_expr, BestSoFar, BestSoFarBudget, Score};
+use crate::Step;
 use cas_ast::Context;
 use cas_parser::parse;
 
@@ -62,7 +63,7 @@ fn test_budget_enforcement_via_consider() {
     let mut tracker_tight =
         BestSoFar::new(baseline, &[], &ctx, BestSoFarBudget { max_extra_nodes: 0 });
     tracker_tight.consider(candidate, &[], &ctx);
-    let (best_tight, _) = tracker_tight.into_parts();
+    let (best_tight, _) = tracker_tight.into_parts_from(&[]);
     assert_eq!(best_tight, baseline);
 
     // Relaxed budget: candidate can be selected.
@@ -75,6 +76,33 @@ fn test_budget_enforcement_via_consider() {
         },
     );
     tracker_relaxed.consider(candidate, &[], &ctx);
-    let (best_relaxed, _) = tracker_relaxed.into_parts();
+    let (best_relaxed, _) = tracker_relaxed.into_parts_from(&[]);
     assert_eq!(best_relaxed, candidate);
+}
+
+#[test]
+fn best_steps_are_materialized_from_prefix_only_once() {
+    let mut ctx = Context::new();
+    let baseline = parse("1/sqrt(x)", &mut ctx).expect("baseline parse should succeed");
+    let candidate = parse("sqrt(x)/x + 0", &mut ctx).expect("candidate parse should succeed");
+    let better = parse("sqrt(x)/x", &mut ctx).expect("better parse should succeed");
+
+    let step_a = Step::new("a", "A", baseline, candidate, vec![], Some(&ctx));
+    let step_b = Step::new("b", "B", candidate, better, vec![], Some(&ctx));
+    let step_c = Step::new("c", "C", better, baseline, vec![], Some(&ctx));
+
+    let mut tracker = BestSoFar::new(
+        baseline,
+        std::slice::from_ref(&step_a),
+        &ctx,
+        BestSoFarBudget {
+            max_extra_nodes: 16,
+        },
+    );
+    tracker.consider(better, &[step_a.clone(), step_b.clone()], &ctx);
+
+    let (best_expr, best_steps) = tracker.into_parts_from(&[step_a, step_b.clone(), step_c]);
+    assert_eq!(best_expr, better);
+    assert_eq!(best_steps.len(), 2);
+    assert_eq!(best_steps[1].rule_name, step_b.rule_name);
 }

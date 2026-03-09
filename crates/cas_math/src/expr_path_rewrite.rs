@@ -3,7 +3,7 @@
 //! This module centralizes "replace subtree at path" logic so runtime crates
 //! can reuse one implementation with either canonicalizing or raw node builders.
 
-use cas_ast::{Context, Expr, ExprId, ExprPath};
+use cas_ast::{Context, Expr, ExprId};
 
 /// Rewrite one subtree at `path` and rebuild ancestors using `add_expr`.
 ///
@@ -124,7 +124,7 @@ where
 pub fn rewrite_at_expr_path(
     ctx: &mut Context,
     root: ExprId,
-    path: &ExprPath,
+    path: &[u8],
     replacement: ExprId,
 ) -> ExprId {
     rewrite_at_expr_path_with(ctx, root, path, replacement, &mut |ctx, expr| ctx.add(expr))
@@ -134,7 +134,7 @@ pub fn rewrite_at_expr_path(
 pub fn rewrite_at_expr_path_raw(
     ctx: &mut Context,
     root: ExprId,
-    path: &ExprPath,
+    path: &[u8],
     replacement: ExprId,
 ) -> ExprId {
     rewrite_at_expr_path_with(ctx, root, path, replacement, &mut |ctx, expr| {

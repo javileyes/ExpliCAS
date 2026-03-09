@@ -11,13 +11,10 @@ fn build_expr_result_payload(
     max_chars: usize,
 ) -> EvalJsonResultPayload {
     let (result_str, truncated, char_count) =
-        crate::eval_json_stats::format_expr_limited_eval_json(ctx, result_expr, max_chars);
-    let stats = crate::eval_json_stats::expr_stats_eval_json(ctx, result_expr);
+        crate::eval_output_stats::format_limited_output_expr(ctx, result_expr, max_chars);
+    let stats = crate::eval_output_stats::expr_output_stats(ctx, result_expr);
     let hash = if truncated {
-        Some(crate::eval_json_stats::expr_hash_eval_json(
-            ctx,
-            result_expr,
-        ))
+        Some(crate::eval_output_stats::expr_output_hash(ctx, result_expr))
     } else {
         None
     };

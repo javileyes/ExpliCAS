@@ -8,6 +8,18 @@ use crate::rule::Rule;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
+pub(crate) const PHASE_SLOT_COUNT: usize = 4;
+
+#[inline]
+pub(crate) fn phase_index(phase: crate::phase::SimplifyPhase) -> usize {
+    match phase {
+        crate::phase::SimplifyPhase::Core => 0,
+        crate::phase::SimplifyPhase::Transform => 1,
+        crate::phase::SimplifyPhase::Rationalize => 2,
+        crate::phase::SimplifyPhase::PostCleanup => 3,
+    }
+}
+
 /// Key for profile cache - combines all options that affect rule selection
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ProfileKey {
@@ -33,8 +45,13 @@ impl ProfileKey {
 pub struct RuleProfile {
     /// Rules indexed by target type
     pub rules: HashMap<crate::target_kind::TargetKind, Vec<Arc<dyn Rule>>>,
+    /// Rules pre-filtered by simplification phase for hot-loop dispatch.
+    pub phase_rules:
+        [HashMap<crate::target_kind::TargetKind, Vec<Arc<dyn Rule>>>; PHASE_SLOT_COUNT],
     /// Global rules (apply to all expression types)
     pub global_rules: Vec<Arc<dyn Rule>>,
+    /// Global rules pre-filtered by simplification phase.
+    pub phase_global_rules: [Vec<Arc<dyn Rule>>; PHASE_SLOT_COUNT],
     /// Disabled rule names for this profile
     pub disabled_rules: HashSet<String>,
     /// The key that identifies this profile
@@ -58,16 +75,16 @@ impl ProfileCache {
     /// Get or build a profile for the given options.
     #[allow(clippy::arc_with_non_send_sync)] // Rules use Arc for shared ownership, not thread safety
     pub fn get_or_build(&mut self, opts: &EvalOptions) -> Arc<RuleProfile> {
+        use std::collections::hash_map::Entry;
+
         let key = ProfileKey::from_options(opts);
-
-        if let Some(profile) = self.profiles.get(&key) {
-            return Arc::clone(profile);
+        match self.profiles.entry(key) {
+            Entry::Occupied(entry) => Arc::clone(entry.get()),
+            Entry::Vacant(entry) => {
+                let profile = Arc::new(build_profile(opts));
+                Arc::clone(entry.insert(profile))
+            }
         }
-
-        // Build new profile
-        let profile = Arc::new(build_profile(opts));
-        self.profiles.insert(key, Arc::clone(&profile));
-        profile
     }
 
     /// Number of cached profiles.
@@ -94,13 +111,63 @@ fn build_profile(opts: &EvalOptions) -> RuleProfile {
     // Create a temporary simplifier to build the rules
     let key = ProfileKey::from_options(opts);
     let simplifier = Simplifier::with_profile(opts);
+    let rules = simplifier.get_rules_clone();
+    let global_rules = simplifier.get_global_rules_clone();
+
+    let disabled_rules = simplifier.get_disabled_rules_clone();
 
     RuleProfile {
-        rules: simplifier.get_rules_clone(),
-        global_rules: simplifier.get_global_rules_clone(),
-        disabled_rules: simplifier.get_disabled_rules_clone(),
+        phase_rules: build_phase_rules(&rules, &disabled_rules),
+        rules,
+        phase_global_rules: build_phase_global_rules(&global_rules, &disabled_rules),
+        global_rules,
+        disabled_rules,
         key,
     }
+}
+
+fn build_phase_rules(
+    rules: &HashMap<crate::target_kind::TargetKind, Vec<Arc<dyn Rule>>>,
+    disabled_rules: &HashSet<String>,
+) -> [HashMap<crate::target_kind::TargetKind, Vec<Arc<dyn Rule>>>; PHASE_SLOT_COUNT] {
+    std::array::from_fn(|slot| {
+        let phase = crate::phase::SimplifyPhase::all()[slot];
+        let phase_mask = phase.mask();
+        let mut filtered = HashMap::with_capacity(rules.len());
+
+        for (&target_kind, bucket) in rules {
+            let phase_bucket: Vec<_> = bucket
+                .iter()
+                .filter(|rule| {
+                    !disabled_rules.contains(rule.name())
+                        && rule.allowed_phases().contains(phase_mask)
+                })
+                .cloned()
+                .collect();
+            if !phase_bucket.is_empty() {
+                filtered.insert(target_kind, phase_bucket);
+            }
+        }
+
+        filtered
+    })
+}
+
+fn build_phase_global_rules(
+    global_rules: &[Arc<dyn Rule>],
+    disabled_rules: &HashSet<String>,
+) -> [Vec<Arc<dyn Rule>>; PHASE_SLOT_COUNT] {
+    std::array::from_fn(|slot| {
+        let phase = crate::phase::SimplifyPhase::all()[slot];
+        let phase_mask = phase.mask();
+        global_rules
+            .iter()
+            .filter(|rule| {
+                !disabled_rules.contains(rule.name()) && rule.allowed_phases().contains(phase_mask)
+            })
+            .cloned()
+            .collect()
+    })
 }
 
 impl std::fmt::Debug for dyn Rule {

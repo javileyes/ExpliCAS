@@ -30,9 +30,10 @@ impl Engine {
     ) -> Result<ActionResult, anyhow::Error> {
         let effective_opts = self.effective_options(options, resolved);
         let profile = self.profile_cache.get_or_build(&effective_opts);
-
-        let mut ctx_simplifier = Simplifier::from_profile(profile);
-        ctx_simplifier.context = std::mem::take(&mut self.simplifier.context);
+        let mut ctx_simplifier = Simplifier::from_profile_with_context(
+            profile,
+            std::mem::take(&mut self.simplifier.context),
+        );
 
         let mut simplify_opts = effective_opts.to_simplify_options();
 

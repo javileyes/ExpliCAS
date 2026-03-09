@@ -8,7 +8,6 @@ use super::simplifier::Simplifier;
 use super::transform::LocalSimplificationTransformer;
 use crate::step::Step;
 use cas_ast::{hold::strip_all_holds, ExprId};
-use std::collections::HashMap;
 
 /// Configuration for a simplification loop pass.
 ///
@@ -66,22 +65,41 @@ impl Simplifier {
         phase: crate::phase::SimplifyPhase,
     ) -> (ExprId, Vec<Step>) {
         // Create initial ParentContext with pattern marks
-        let initial_parent_ctx =
-            crate::parent_context::ParentContext::with_marks(pattern_marks.clone());
+        let shared_marks = std::rc::Rc::new(pattern_marks.clone());
+        let initial_parent_ctx = crate::parent_context::ParentContext::with_marks_rc(shared_marks);
+        let profile_fast_path = self.using_profile_fast_path().then(|| {
+            std::sync::Arc::clone(
+                self.profile
+                    .as_ref()
+                    .expect("profile fast path requires cached profile"),
+            )
+        });
+        let (rules, global_rules, disabled_rules, phase_prefiltered) =
+            if let Some(profile) = profile_fast_path.as_ref() {
+                let phase_idx = crate::profile_cache::phase_index(phase);
+                (
+                    &profile.phase_rules[phase_idx],
+                    &profile.phase_global_rules[phase_idx],
+                    &profile.disabled_rules,
+                    true,
+                )
+            } else {
+                (&self.rules, &self.global_rules, &self.disabled_rules, false)
+            };
         let mut step_listener = self.step_listener.take();
 
         let mut local_transformer = LocalSimplificationTransformer {
             context: &mut self.context,
-            rules: &self.rules,
-            global_rules: &self.global_rules,
-            disabled_rules: &self.disabled_rules,
+            rules,
+            global_rules,
+            phase_prefiltered,
+            disabled_rules,
             steps_mode: self.steps_mode,
             steps: Vec::new(),
             domain_warnings: Vec::new(),
-            cache: HashMap::new(),
-            current_path: Vec::new(),
+            cache: std::collections::HashMap::new(),
+            current_path: smallvec::SmallVec::new(),
             profiler: &mut self.profiler,
-            pattern_marks: pattern_marks.clone(),
             initial_parent_ctx,
             root_expr: expr_id,
             event_listener: step_listener.as_deref_mut(),
@@ -93,7 +111,7 @@ impl Simplifier {
             blocked_rules: std::collections::HashSet::new(),
             current_depth: 0,
             depth_overflow_warned: false,
-            ancestor_stack: Vec::new(),
+            ancestor_stack: smallvec::SmallVec::new(),
             // Budget tracking (unified)
             rewrite_count: 0,
             nodes_snap: 0,
@@ -220,9 +238,8 @@ impl Simplifier {
         let context_mode = config.context_mode;
         let autoexpand_binomials = config.autoexpand_binomials;
         let heuristic_poly = config.heuristic_poly;
-        let rules = &self.rules;
-        let global_rules = &self.global_rules;
         let steps_mode = self.steps_mode;
+        let shared_marks = std::rc::Rc::new(pattern_marks.clone());
 
         // Create initial ParentContext with pattern marks, expand_mode, auto-expand, domain_mode, inv_trig, value_domain, goal, simplify_purpose, and context_mode
         // V2.15: Reset domain inference call counter for regression testing
@@ -232,68 +249,82 @@ impl Simplifier {
         // This preserves inherited requires (e.g., x≥0 from sqrt) across all phases
         let initial_parent_ctx = if let Some(sticky_domain) = &self.sticky_implicit_domain {
             let sticky_root = self.sticky_root_expr.unwrap_or(expr_id);
-            crate::parent_context::ParentContext::with_expand_mode(
-                pattern_marks.clone(),
-                expand_mode,
-            )
-            .with_auto_expand_flag(
-                auto_expand,
-                if auto_expand {
-                    Some(expand_budget)
-                } else {
-                    None
-                },
-            )
-            .with_domain_mode(domain_mode)
-            .with_inv_trig(inv_trig)
-            .with_value_domain(value_domain)
-            .with_goal(goal)
-            .with_simplify_purpose(simplify_purpose)
-            .with_context_mode(context_mode)
-            .with_root_expr_only(sticky_root)
-            .with_implicit_domain(Some(sticky_domain.clone()))
-            .with_autoexpand_binomials(autoexpand_binomials)
-            .with_heuristic_poly(heuristic_poly)
+            crate::parent_context::ParentContext::with_expand_mode_rc(shared_marks, expand_mode)
+                .with_auto_expand_flag(
+                    auto_expand,
+                    if auto_expand {
+                        Some(expand_budget)
+                    } else {
+                        None
+                    },
+                )
+                .with_domain_mode(domain_mode)
+                .with_inv_trig(inv_trig)
+                .with_value_domain(value_domain)
+                .with_goal(goal)
+                .with_simplify_purpose(simplify_purpose)
+                .with_context_mode(context_mode)
+                .with_root_expr_only(sticky_root)
+                .with_implicit_domain(Some(sticky_domain.clone()))
+                .with_autoexpand_binomials(autoexpand_binomials)
+                .with_heuristic_poly(heuristic_poly)
         } else {
-            crate::parent_context::ParentContext::with_expand_mode(
-                pattern_marks.clone(),
-                expand_mode,
-            )
-            .with_auto_expand_flag(
-                auto_expand,
-                if auto_expand {
-                    Some(expand_budget)
-                } else {
-                    None
-                },
-            )
-            .with_domain_mode(domain_mode)
-            .with_inv_trig(inv_trig)
-            .with_value_domain(value_domain)
-            .with_goal(goal)
-            .with_simplify_purpose(simplify_purpose)
-            .with_context_mode(context_mode)
-            .with_root_expr(&self.context, expr_id)
-            .with_autoexpand_binomials(autoexpand_binomials)
-            .with_heuristic_poly(heuristic_poly)
+            crate::parent_context::ParentContext::with_expand_mode_rc(shared_marks, expand_mode)
+                .with_auto_expand_flag(
+                    auto_expand,
+                    if auto_expand {
+                        Some(expand_budget)
+                    } else {
+                        None
+                    },
+                )
+                .with_domain_mode(domain_mode)
+                .with_inv_trig(inv_trig)
+                .with_value_domain(value_domain)
+                .with_goal(goal)
+                .with_simplify_purpose(simplify_purpose)
+                .with_context_mode(context_mode)
+                .with_root_expr(&self.context, expr_id)
+                .with_autoexpand_binomials(autoexpand_binomials)
+                .with_heuristic_poly(heuristic_poly)
         };
 
         // Capture nodes_created BEFORE creating transformer (can't access while borrowed)
         let nodes_snap = self.context.stats().nodes_created;
         let mut step_listener = self.step_listener.take();
 
+        let profile_fast_path = self.using_profile_fast_path().then(|| {
+            std::sync::Arc::clone(
+                self.profile
+                    .as_ref()
+                    .expect("profile fast path requires cached profile"),
+            )
+        });
+        let (rules, global_rules, disabled_rules, phase_prefiltered) =
+            if let Some(profile) = profile_fast_path.as_ref() {
+                let phase_idx = crate::profile_cache::phase_index(phase);
+                (
+                    &profile.phase_rules[phase_idx],
+                    &profile.phase_global_rules[phase_idx],
+                    &profile.disabled_rules,
+                    true,
+                )
+            } else {
+                (&self.rules, &self.global_rules, &self.disabled_rules, false)
+            };
+
         let mut local_transformer = LocalSimplificationTransformer {
             context: &mut self.context,
             rules,
             global_rules,
-            disabled_rules: &self.disabled_rules,
+            phase_prefiltered,
+            disabled_rules,
             steps_mode,
             steps: Vec::new(),
             domain_warnings: Vec::new(),
-            cache: HashMap::new(),
-            current_path: Vec::new(),
+            cache: std::collections::HashMap::new(),
+            current_path: smallvec::SmallVec::new(),
             profiler: &mut self.profiler,
-            pattern_marks: pattern_marks.clone(),
             initial_parent_ctx,
             root_expr: expr_id,
             event_listener: step_listener.as_deref_mut(),
@@ -305,7 +336,7 @@ impl Simplifier {
             blocked_rules: std::collections::HashSet::new(),
             current_depth: 0,
             depth_overflow_warned: false,
-            ancestor_stack: Vec::new(),
+            ancestor_stack: smallvec::SmallVec::new(),
             // Budget tracking (unified)
             rewrite_count: 0,
             nodes_snap,

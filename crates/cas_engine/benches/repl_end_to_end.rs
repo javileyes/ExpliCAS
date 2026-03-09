@@ -1,6 +1,8 @@
 //! End-to-end REPL benchmark: parse → resolve → simplify → display
 //! Measures the full user-facing latency with and without ProfileCache
 
+mod common;
+
 use std::hint::black_box;
 
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
@@ -19,8 +21,7 @@ fn full_eval(profile_cache: &mut ProfileCache, opts: &EvalOptions, input: &str) 
     let expr = parse(input, &mut ctx).expect("parse failed");
 
     let profile = profile_cache.get_or_build(opts);
-    let mut simplifier = Simplifier::from_profile(profile);
-    simplifier.context = ctx;
+    let mut simplifier = Simplifier::from_profile_with_context(profile, ctx);
 
     let (result, _steps) = simplifier.simplify(expr);
 
@@ -45,8 +46,7 @@ fn full_eval_with_mode(
     let expr = parse(input, &mut ctx).expect("parse failed");
 
     let profile = profile_cache.get_or_build(opts);
-    let mut simplifier = Simplifier::from_profile(profile);
-    simplifier.context = ctx;
+    let mut simplifier = Simplifier::from_profile_with_context(profile, ctx);
     simplifier.set_steps_mode(steps_mode);
 
     let (result, steps) = simplifier.simplify(expr);
@@ -95,6 +95,7 @@ fn bench_repl_end_to_end(c: &mut Criterion) {
     };
 
     let mut group = c.benchmark_group("repl_full_eval");
+    common::configure_standard_group(&mut group);
 
     // Cached: persistent ProfileCache across all inputs
     group.bench_function("cached/batch_11_inputs", |b| {
@@ -121,6 +122,7 @@ fn bench_repl_end_to_end(c: &mut Criterion) {
 
     // Individual input benchmarks
     let mut individual = c.benchmark_group("repl_individual");
+    common::configure_standard_group(&mut individual);
 
     // Pre-warm cache
     let mut warm_cache = ProfileCache::new();
@@ -180,6 +182,7 @@ fn bench_steps_mode_comparison(c: &mut Criterion) {
     };
 
     let mut group = c.benchmark_group("steps_mode_comparison");
+    common::configure_standard_group(&mut group);
 
     // ========== BATCH BENCHMARKS ==========
     // StepsMode::On - batch

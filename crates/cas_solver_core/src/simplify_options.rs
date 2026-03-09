@@ -42,7 +42,7 @@ pub struct SimplifyOptions {
     /// Whether to run the Transform phase (distribution, expansion).
     pub enable_transform: bool,
     /// Rationalization policy (includes auto_level and budgets).
-    pub rationalize: cas_math::rationalize_policy::RationalizePolicy,
+    pub rationalize: crate::rationalize_policy::RationalizePolicy,
     /// Per-phase iteration budgets.
     pub budgets: crate::phase_budgets::PhaseBudgets,
     /// Whether to collect steps for timeline display.
@@ -61,7 +61,7 @@ impl Default for SimplifyOptions {
     fn default() -> Self {
         Self {
             enable_transform: true,
-            rationalize: cas_math::rationalize_policy::RationalizePolicy::default(),
+            rationalize: crate::rationalize_policy::RationalizePolicy::default(),
             budgets: crate::phase_budgets::PhaseBudgets::default(),
             collect_steps: true,
             expand_mode: false,
@@ -76,7 +76,7 @@ impl SimplifyOptions {
     /// Options for `expand()` command: Core -> Transform -> PostCleanup (no Rationalize).
     pub fn for_expand() -> Self {
         let mut opt = Self::default();
-        opt.rationalize.auto_level = cas_math::rationalize_policy::AutoRationalizeLevel::Off;
+        opt.rationalize.auto_level = crate::rationalize_policy::AutoRationalizeLevel::Off;
         opt.expand_mode = true;
         opt
     }
@@ -92,7 +92,7 @@ impl SimplifyOptions {
     /// Options for `simplify --no-rationalize`.
     pub fn no_rationalize() -> Self {
         let mut opt = Self::default();
-        opt.rationalize.auto_level = cas_math::rationalize_policy::AutoRationalizeLevel::Off;
+        opt.rationalize.auto_level = crate::rationalize_policy::AutoRationalizeLevel::Off;
         opt
     }
 

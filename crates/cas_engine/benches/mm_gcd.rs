@@ -9,13 +9,14 @@
 //! Note: Current Layer 2.5 tensor-grid GCD is limited to ~4 variables.
 //! For 7-var mm_gcd, a Zippel modular GCD would be needed.
 
+mod common;
+
 use cas_ast::Context;
 use cas_math::multipoly::{
     gcd_multivar_layer25, multipoly_from_expr, Layer25Budget, MultiPoly, PolyBudget,
 };
 use cas_parser::parse;
 use criterion::{criterion_group, criterion_main, Criterion};
-use std::time::Duration;
 
 /// Budget optimized for mm_gcd benchmark (larger than engine defaults)
 fn gcd_budget_mm() -> Layer25Budget {
@@ -181,11 +182,8 @@ fn bench_mm_gcd(c: &mut Criterion) {
         }
     };
 
-    // Configure for slow benchmarks
     let mut group = c.benchmark_group("mm_gcd");
-    group.sample_size(10);
-    group.measurement_time(Duration::from_secs(30));
-    group.warm_up_time(Duration::from_secs(3));
+    common::configure_slow_group(&mut group);
 
     // Benchmark 1: Multiplication only (always runs)
     println!("Running benchmark: mul_only (a*g + b*g)...");

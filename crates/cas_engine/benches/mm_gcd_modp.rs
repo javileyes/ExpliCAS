@@ -5,12 +5,14 @@
 //!
 //! Polynomials are constructed directly in Fp without going through CAS.
 
+mod common;
+
 use cas_math::gcd_zippel_modp::{budget_for_mm_gcd, gcd_zippel_modp_with_main};
 use cas_math::modp::neg_mod;
 use cas_math::multipoly_modp::{build_linear_pow_direct, MultiPolyModP};
 use criterion::{criterion_group, criterion_main, Criterion};
 use std::hint::black_box;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 /// Prime for modular arithmetic (10^9 + 7)
 const P: u64 = 1_000_000_007;
@@ -154,11 +156,8 @@ fn bench_mm_gcd_modp(c: &mut Criterion) {
         }
     };
 
-    // Configure benchmark
     let mut group = c.benchmark_group("mm_gcd_modp");
-    group.sample_size(10);
-    group.measurement_time(Duration::from_secs(30));
-    group.warm_up_time(Duration::from_secs(3));
+    common::configure_slow_group(&mut group);
 
     // Benchmark 1: Build polynomials only (using fast multinomial construction)
     println!("Running benchmark: build_only (construct a, b, g) mod p...");

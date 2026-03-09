@@ -16,39 +16,9 @@ impl<'a> LocalSimplificationTransformer<'a> {
     /// construction was duplicated inside both the specific-rules and global-rules loops,
     /// causing O(rules × nodes × ancestors) redundant work.
     fn build_parent_context(&self) -> crate::parent_context::ParentContext {
-        let mut ctx = if let Some(marks) = self.initial_parent_ctx.pattern_marks() {
-            crate::parent_context::ParentContext::with_marks(marks.clone())
-        } else {
-            crate::parent_context::ParentContext::root()
-        };
-        // Copy expand_mode (enables BinomialExpansionRule when Simplifier::expand() is called)
-        if self.initial_parent_ctx.is_expand_mode() {
-            ctx = ctx.with_expand_mode_flag(true);
-        }
-        // Copy auto_expand (enables AutoExpandPowSumRule)
-        if self.initial_parent_ctx.is_auto_expand() {
-            ctx = ctx
-                .with_auto_expand_flag(true, self.initial_parent_ctx.auto_expand_budget().cloned());
-        }
-        ctx = ctx.with_domain_mode(self.initial_parent_ctx.domain_mode());
-        ctx = ctx.with_inv_trig(self.initial_parent_ctx.inv_trig_policy());
-        ctx = ctx.with_value_domain(self.initial_parent_ctx.value_domain());
-        ctx = ctx.with_goal(self.initial_parent_ctx.goal());
-        if let Some(root) = self.initial_parent_ctx.root_expr() {
-            ctx = ctx.with_root_expr_only(root);
-        }
-        // Propagate context_mode and simplify_purpose for Solve mode blocking
-        ctx = ctx.with_context_mode(self.initial_parent_ctx.context_mode());
-        ctx = ctx.with_simplify_purpose(self.initial_parent_ctx.simplify_purpose());
-        // Propagate implicit_domain for domain-aware simplifications
-        ctx = ctx.with_implicit_domain(self.initial_parent_ctx.implicit_domain().cloned());
-        // Build ancestor chain from stack (for Div tracking)
-        for &ancestor in &self.ancestor_stack {
-            ctx = ctx.extend_with_div_check(ancestor, self.context);
-        }
-        ctx = ctx.with_autoexpand_binomials(self.initial_parent_ctx.autoexpand_binomials());
-        ctx = ctx.with_heuristic_poly(self.initial_parent_ctx.heuristic_poly());
-        ctx
+        self.initial_parent_ctx
+            .clone()
+            .with_runtime_ancestors(&self.ancestor_stack, self.context)
     }
 
     /// Returns `true` if the rule should be skipped due to disabled-list,
@@ -57,16 +27,18 @@ impl<'a> LocalSimplificationTransformer<'a> {
     /// `check_solve_safety`: `true` for specific rules, `false` for global rules
     /// (the original code only applied solve-safety filtering to specific rules).
     fn should_skip_rule(&mut self, rule: &dyn crate::rule::Rule, check_solve_safety: bool) -> bool {
-        if self.disabled_rules.contains(rule.name()) {
+        if !self.phase_prefiltered && self.disabled_rules.contains(rule.name()) {
             self.profiler
                 .record_rejected_disabled(self.current_phase, rule.name());
             return true;
         }
-        let phase_mask = self.current_phase.mask();
-        if !rule.allowed_phases().contains(phase_mask) {
-            self.profiler
-                .record_rejected_phase(self.current_phase, rule.name());
-            return true;
+        if !self.phase_prefiltered {
+            let phase_mask = self.current_phase.mask();
+            if !rule.allowed_phases().contains(phase_mask) {
+                self.profiler
+                    .record_rejected_phase(self.current_phase, rule.name());
+                return true;
+            }
         }
         if check_solve_safety {
             match self.simplify_purpose {
@@ -225,7 +197,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                             expr_id,
                             rewrite.new_expr
                         );
-                        expr_id = self.record_rewrite_step(rule.as_ref(), expr_id, &rewrite);
+                        expr_id = self.record_rewrite_step(rule.as_ref(), expr_id, rewrite);
 
                         // Budget tracking: count this rewrite (charged at end of pass)
                         self.rewrite_count += 1;
@@ -359,7 +331,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                         expr_id,
                         rewrite.new_expr
                     );
-                    expr_id = self.record_rewrite_step(rule.as_ref(), expr_id, &rewrite);
+                    expr_id = self.record_rewrite_step(rule.as_ref(), expr_id, rewrite);
 
                     // Budget tracking: count this rewrite (charged at end of pass)
                     self.rewrite_count += 1;

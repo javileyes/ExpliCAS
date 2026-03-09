@@ -1,5 +1,8 @@
 use cas_ast::{Context, ExprId};
+use smallvec::SmallVec;
 use std::rc::Rc;
+
+type AncestorStack = SmallVec<[ExprId; 8]>;
 
 /// ParentContext tracks the ancestor chain of an expression without holding a Context reference.
 /// Used by context-aware rules to detect special patterns like Pythagorean identities.
@@ -9,7 +12,7 @@ use std::rc::Rc;
 #[derive(Clone)]
 pub struct ParentContext {
     /// IDs of ancestor expressions, from closest to furthest
-    pub(crate) ancestors: Vec<ExprId>,
+    pub(crate) ancestors: AncestorStack,
     /// Pre-scanned pattern marks for context-aware guards (shared via Rc for O(1) clone)
     pub(crate) pattern_marks: Option<Rc<crate::pattern_marks::PatternMarks>>,
     /// Whether we're in "expand mode" - forces aggressive distribution/expansion
@@ -38,6 +41,8 @@ pub struct ParentContext {
     pub(crate) simplify_purpose: crate::SimplifyPurpose,
     /// Count of Div ancestors - used to guard trig expansions in quotients
     pub(crate) div_ancestor_count: usize,
+    /// True if any ancestor is a marked auto-expand context.
+    pub(crate) auto_expand_context_ancestor: bool,
     /// True if inside sin/cos/tan arg with large coeff (n>2), blocks trig expansion
     pub(crate) trig_large_coeff_protected: bool,
     /// V2.15.8: Auto-expand small binomial powers (education mode)
@@ -50,7 +55,7 @@ impl ParentContext {
     /// Create empty context for root expressions
     pub fn root() -> Self {
         Self {
-            ancestors: Vec::new(),
+            ancestors: AncestorStack::new(),
             pattern_marks: None,
             expand_mode: false,
             auto_expand: false,
@@ -65,6 +70,7 @@ impl ParentContext {
             context_mode: crate::options::ContextMode::default(),
             simplify_purpose: crate::SimplifyPurpose::default(),
             div_ancestor_count: 0,
+            auto_expand_context_ancestor: false,
             trig_large_coeff_protected: false,
             autoexpand_binomials: crate::options::AutoExpandBinomials::Off,
             heuristic_poly: crate::options::HeuristicPoly::On,
@@ -74,7 +80,7 @@ impl ParentContext {
     /// Create context with single parent
     pub fn with_parent(parent: ExprId) -> Self {
         Self {
-            ancestors: vec![parent],
+            ancestors: smallvec::smallvec![parent],
             pattern_marks: None,
             expand_mode: false,
             auto_expand: false,
@@ -89,6 +95,7 @@ impl ParentContext {
             context_mode: crate::options::ContextMode::default(),
             simplify_purpose: crate::SimplifyPurpose::default(),
             div_ancestor_count: 0,
+            auto_expand_context_ancestor: false,
             trig_large_coeff_protected: false,
             autoexpand_binomials: crate::options::AutoExpandBinomials::Off,
             heuristic_poly: crate::options::HeuristicPoly::On,
@@ -97,9 +104,14 @@ impl ParentContext {
 
     /// Create context with pattern marks
     pub fn with_marks(pattern_marks: crate::pattern_marks::PatternMarks) -> Self {
+        Self::with_marks_rc(Rc::new(pattern_marks))
+    }
+
+    /// Create context with shared pattern marks.
+    pub fn with_marks_rc(pattern_marks: Rc<crate::pattern_marks::PatternMarks>) -> Self {
         Self {
-            ancestors: Vec::new(),
-            pattern_marks: Some(Rc::new(pattern_marks)),
+            ancestors: AncestorStack::new(),
+            pattern_marks: Some(pattern_marks),
             expand_mode: false,
             auto_expand: false,
             auto_expand_budget: None,
@@ -113,6 +125,7 @@ impl ParentContext {
             context_mode: crate::options::ContextMode::default(),
             simplify_purpose: crate::SimplifyPurpose::default(),
             div_ancestor_count: 0,
+            auto_expand_context_ancestor: false,
             trig_large_coeff_protected: false,
             autoexpand_binomials: crate::options::AutoExpandBinomials::Off,
             heuristic_poly: crate::options::HeuristicPoly::On,
@@ -124,9 +137,17 @@ impl ParentContext {
         pattern_marks: crate::pattern_marks::PatternMarks,
         expand_mode: bool,
     ) -> Self {
+        Self::with_expand_mode_rc(Rc::new(pattern_marks), expand_mode)
+    }
+
+    /// Create context with shared pattern marks and expand_mode enabled.
+    pub fn with_expand_mode_rc(
+        pattern_marks: Rc<crate::pattern_marks::PatternMarks>,
+        expand_mode: bool,
+    ) -> Self {
         Self {
-            ancestors: Vec::new(),
-            pattern_marks: Some(Rc::new(pattern_marks)),
+            ancestors: AncestorStack::new(),
+            pattern_marks: Some(pattern_marks),
             expand_mode,
             auto_expand: false,
             auto_expand_budget: None,
@@ -140,6 +161,7 @@ impl ParentContext {
             context_mode: crate::options::ContextMode::default(),
             simplify_purpose: crate::SimplifyPurpose::default(),
             div_ancestor_count: 0,
+            auto_expand_context_ancestor: false,
             trig_large_coeff_protected: false,
             autoexpand_binomials: crate::options::AutoExpandBinomials::Off,
             heuristic_poly: crate::options::HeuristicPoly::On,
@@ -167,6 +189,7 @@ impl ParentContext {
             context_mode: self.context_mode,
             simplify_purpose: self.simplify_purpose,
             div_ancestor_count: self.div_ancestor_count,
+            auto_expand_context_ancestor: self.auto_expand_context_ancestor,
             trig_large_coeff_protected: self.trig_large_coeff_protected,
             autoexpand_binomials: self.autoexpand_binomials,
             heuristic_poly: self.heuristic_poly,
@@ -185,6 +208,10 @@ impl ParentContext {
 
     pub fn pattern_marks(&self) -> Option<&crate::pattern_marks::PatternMarks> {
         self.pattern_marks.as_deref()
+    }
+
+    pub fn pattern_marks_shared(&self) -> Option<Rc<crate::pattern_marks::PatternMarks>> {
+        self.pattern_marks.clone()
     }
 
     /// Check if we're in expand mode (aggressive distribution/expansion)
@@ -397,13 +424,7 @@ impl ParentContext {
     /// Check if we're inside an auto-expand context (marked Div/Sub where expansion helps)
     /// This is more robust than checking individual Pow nodes, as those may get rewritten.
     pub fn in_auto_expand_context(&self) -> bool {
-        if let Some(marks) = &self.pattern_marks {
-            self.ancestors
-                .iter()
-                .any(|id| marks.is_auto_expand_context(*id))
-        } else {
-            false
-        }
+        self.auto_expand_context_ancestor
     }
 
     /// Check if the given expr_id or any ancestor is in auto-expand context.
@@ -414,10 +435,7 @@ impl ParentContext {
             if marks.is_auto_expand_context(expr_id) {
                 return true;
             }
-            // Check ancestors
-            self.ancestors
-                .iter()
-                .any(|id| marks.is_auto_expand_context(*id))
+            self.auto_expand_context_ancestor
         } else {
             false
         }
@@ -454,6 +472,10 @@ impl ParentContext {
 
         // Check if the new parent is a Div
         let is_div = matches!(ctx.get(parent_id), Expr::Div(_, _));
+        let is_auto_expand_context = self
+            .pattern_marks
+            .as_ref()
+            .is_some_and(|marks| marks.is_auto_expand_context(parent_id));
 
         // Check if the new parent is sin/cos/tan(n*x) with |n| > 2
         // If so, set protection flag to block trig expansions for descendants
@@ -489,11 +511,54 @@ impl ParentContext {
             } else {
                 self.div_ancestor_count
             },
+            auto_expand_context_ancestor: self.auto_expand_context_ancestor
+                || is_auto_expand_context,
             // Once protected, stays protected (OR with current state)
             trig_large_coeff_protected: self.trig_large_coeff_protected || is_trig_large_coeff,
             autoexpand_binomials: self.autoexpand_binomials,
             heuristic_poly: self.heuristic_poly,
         }
+    }
+
+    /// Rebuild runtime ancestor-derived fields in a single pass.
+    pub(crate) fn with_runtime_ancestors(mut self, ancestors: &[ExprId], ctx: &Context) -> Self {
+        use cas_ast::Expr;
+
+        self.ancestors = ancestors.iter().copied().collect();
+        self.div_ancestor_count = 0;
+        self.auto_expand_context_ancestor = false;
+        self.trig_large_coeff_protected = false;
+
+        for &ancestor in ancestors {
+            if matches!(ctx.get(ancestor), Expr::Div(_, _)) {
+                self.div_ancestor_count += 1;
+            }
+
+            if !self.auto_expand_context_ancestor
+                && self
+                    .pattern_marks
+                    .as_ref()
+                    .is_some_and(|marks| marks.is_auto_expand_context(ancestor))
+            {
+                self.auto_expand_context_ancestor = true;
+            }
+
+            if self.trig_large_coeff_protected {
+                continue;
+            }
+
+            if let Expr::Function(fn_id, args) = ctx.get(ancestor) {
+                let name = ctx.sym_name(*fn_id);
+                if (name == "sin" || name == "cos" || name == "tan")
+                    && args.len() == 1
+                    && is_large_trig_coefficient(ctx, args[0])
+                {
+                    self.trig_large_coeff_protected = true;
+                }
+            }
+        }
+
+        self
     }
 }
 
@@ -526,4 +591,53 @@ fn is_large_trig_coefficient(ctx: &Context, expr: ExprId) -> bool {
         }
     }
     false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cas_parser::parse;
+
+    #[test]
+    fn with_marks_rc_reuses_shared_pattern_marks() {
+        let shared_marks = Rc::new(crate::pattern_marks::PatternMarks::new());
+        let ctx = ParentContext::with_marks_rc(shared_marks.clone());
+        let recovered = ctx
+            .pattern_marks_shared()
+            .expect("shared marks should be present");
+
+        assert!(Rc::ptr_eq(&shared_marks, &recovered));
+    }
+
+    #[test]
+    fn with_runtime_ancestors_matches_incremental_extension() {
+        let mut ast = Context::new();
+        let expr = parse("sin(3*x)/(a/b)", &mut ast).expect("parse should succeed");
+        let (outer_div, sin_expr) = match ast.get(expr) {
+            cas_ast::Expr::Div(left, _) => (expr, *left),
+            other => panic!("expected top-level division, got {other:?}"),
+        };
+
+        let base = ParentContext::with_marks_rc(Rc::new(crate::pattern_marks::PatternMarks::new()))
+            .with_expand_mode_flag(true);
+
+        let batched = base
+            .clone()
+            .with_runtime_ancestors(&[outer_div, sin_expr], &ast);
+        let incremental = base
+            .extend_with_div_check(outer_div, &ast)
+            .extend_with_div_check(sin_expr, &ast);
+
+        assert_eq!(batched.ancestors, incremental.ancestors);
+        assert_eq!(batched.div_ancestor_count, incremental.div_ancestor_count);
+        assert_eq!(
+            batched.in_auto_expand_context(),
+            incremental.in_auto_expand_context()
+        );
+        assert_eq!(
+            batched.is_trig_large_coeff_protected(),
+            incremental.is_trig_large_coeff_protected()
+        );
+        assert!(batched.is_expand_mode());
+    }
 }

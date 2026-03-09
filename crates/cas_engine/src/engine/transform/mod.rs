@@ -15,6 +15,7 @@ use crate::profiler::RuleProfiler;
 use crate::rule::Rule;
 use crate::step::Step;
 use cas_ast::{symbol::SymbolId, Context, Expr, ExprId};
+use smallvec::SmallVec;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -52,6 +53,7 @@ pub(super) struct LocalSimplificationTransformer<'a> {
     pub(super) context: &'a mut Context,
     pub(super) rules: &'a HashMap<crate::target_kind::TargetKind, Vec<Arc<dyn Rule>>>,
     pub(super) global_rules: &'a Vec<Arc<dyn Rule>>,
+    pub(super) phase_prefiltered: bool,
     pub(super) disabled_rules: &'a HashSet<String>,
 
     // ── Step recording & diagnostics ─────────────────────────────────────
@@ -62,9 +64,9 @@ pub(super) struct LocalSimplificationTransformer<'a> {
 
     // ── Traversal state ──────────────────────────────────────────────────
     pub(super) cache: HashMap<ExprId, ExprId>,
-    pub(super) current_path: Vec<crate::step::PathStep>,
+    pub(super) current_path: SmallVec<[crate::step::PathStep; 8]>,
     /// Stack of ancestor ExprIds for parent context propagation to rules
-    pub(super) ancestor_stack: Vec<ExprId>,
+    pub(super) ancestor_stack: SmallVec<[ExprId; 8]>,
     /// Current recursion depth for stack overflow prevention
     pub(super) current_depth: usize,
     /// Flag to track if we already warned about depth overflow (to avoid spamming)
@@ -77,8 +79,6 @@ pub(super) struct LocalSimplificationTransformer<'a> {
 
     // ── Rule context & filtering ─────────────────────────────────────────
     pub(super) profiler: &'a mut RuleProfiler,
-    #[allow(dead_code)]
-    pub(super) pattern_marks: crate::pattern_marks::PatternMarks, // For context-aware guards (used via initial_parent_ctx)
     pub(super) initial_parent_ctx: crate::parent_context::ParentContext, // Carries marks to rules
     /// Current phase of the simplification pipeline (controls which rules can run)
     pub(super) current_phase: crate::phase::SimplifyPhase,

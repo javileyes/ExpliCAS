@@ -100,9 +100,6 @@ pub(crate) use cas_math::pattern_scanner;
 pub use budget::{Budget, BudgetExceeded, BudgetScope, Metric, Operation, PassStats};
 pub use cas_math::expr_predicates::is_zero_expr as is_zero;
 pub use cas_math::rationalize::{rationalize_denominator, RationalizeConfig, RationalizeResult};
-pub use cas_math::rationalize_policy::{
-    AutoRationalizeLevel, RationalizeOutcome, RationalizeReason,
-};
 pub use cas_math::substitute::{
     substitute_power_aware, substitute_with_trace, SubstituteOptions, SubstituteTraceResult,
     SubstituteTraceStep,
@@ -131,6 +128,9 @@ pub use cas_solver_core::domain_policy::mode_allows_predicate;
 pub use cas_solver_core::domain_proof::Proof;
 pub use cas_solver_core::engine_events::{EngineEvent, StepListener};
 pub use cas_solver_core::eval_step_pipeline::to_display_eval_steps as to_display_steps;
+pub use cas_solver_core::rationalize_policy::{
+    AutoRationalizeLevel, RationalizeOutcome, RationalizeReason,
+};
 pub use cas_solver_core::solve_safety_policy::ConditionClass;
 pub use cas_solver_core::solve_safety_policy::RequirementDescriptorKind as RequirementDescriptor;
 pub use cas_solver_core::solve_safety_policy::SimplifyPurpose;

@@ -17,11 +17,13 @@ pub struct Simplifier {
     pub context: Context,
     pub(super) rules: HashMap<TargetKind, Vec<Arc<dyn Rule>>>,
     pub(super) global_rules: Vec<Arc<dyn Rule>>,
+    pub(super) use_profile_fast_path: bool,
     /// Steps collection mode (On/Off/Compact)
     pub steps_mode: StepsMode,
     pub allow_numerical_verification: bool,
     pub debug_mode: bool,
     pub(super) disabled_rules: HashSet<String>,
+    pub(super) profile: Option<std::sync::Arc<crate::profile_cache::RuleProfile>>,
     pub enable_polynomial_strategy: bool,
     pub profiler: RuleProfiler,
     /// Domain warnings from last simplify() call (side-channel for Off mode)
@@ -53,10 +55,12 @@ impl Simplifier {
             context: Context::new(),
             rules: HashMap::new(),
             global_rules: Vec::new(),
+            use_profile_fast_path: false,
             steps_mode: StepsMode::On,
             allow_numerical_verification: true,
             debug_mode: false,
             disabled_rules: HashSet::new(),
+            profile: None,
             enable_polynomial_strategy: true,
             profiler: RuleProfiler::new(false), // Disabled by default
             last_domain_warnings: Vec::new(),
@@ -98,10 +102,12 @@ impl Simplifier {
             context,
             rules: HashMap::new(),
             global_rules: Vec::new(),
+            use_profile_fast_path: false,
             steps_mode: StepsMode::On,
             allow_numerical_verification: true,
             debug_mode: false,
             disabled_rules: HashSet::new(),
+            profile: None,
             enable_polynomial_strategy: true,
             profiler: RuleProfiler::new(false),
             last_domain_warnings: Vec::new(),
@@ -156,14 +162,25 @@ impl Simplifier {
     /// Create a simplifier from a cached profile.
     /// This avoids rebuilding rules and is the preferred way when using ProfileCache.
     pub fn from_profile(profile: std::sync::Arc<crate::profile_cache::RuleProfile>) -> Self {
+        Self::from_profile_with_context(profile, Context::new())
+    }
+
+    /// Create a simplifier from a cached profile and an existing Context.
+    /// This avoids building a throwaway empty Context before swapping in parsed input.
+    pub fn from_profile_with_context(
+        profile: std::sync::Arc<crate::profile_cache::RuleProfile>,
+        context: Context,
+    ) -> Self {
         Self {
-            context: Context::new(),
-            rules: profile.rules.clone(),
-            global_rules: profile.global_rules.clone(),
+            context,
+            rules: HashMap::new(),
+            global_rules: Vec::new(),
+            use_profile_fast_path: true,
             steps_mode: StepsMode::On,
             allow_numerical_verification: true,
             debug_mode: false,
-            disabled_rules: profile.disabled_rules.clone(),
+            disabled_rules: HashSet::new(),
+            profile: Some(profile),
             enable_polynomial_strategy: true,
             profiler: RuleProfiler::new(false),
             last_domain_warnings: Vec::new(),
@@ -172,6 +189,51 @@ impl Simplifier {
             sticky_implicit_domain: None,
             step_listener: None,
         }
+    }
+
+    #[inline]
+    pub(super) fn using_profile_fast_path(&self) -> bool {
+        self.use_profile_fast_path && self.profile.is_some()
+    }
+
+    fn materialize_profile_rules(&mut self) {
+        if !self.using_profile_fast_path() {
+            return;
+        }
+
+        if let Some(profile) = self.profile.as_ref() {
+            self.rules = profile.rules.clone();
+            self.global_rules = profile.global_rules.clone();
+            self.disabled_rules = profile.disabled_rules.clone();
+        }
+        self.use_profile_fast_path = false;
+    }
+
+    fn active_rules(&self) -> &HashMap<TargetKind, Vec<Arc<dyn Rule>>> {
+        if self.using_profile_fast_path() {
+            if let Some(profile) = self.profile.as_ref() {
+                return &profile.rules;
+            }
+        }
+        &self.rules
+    }
+
+    fn active_global_rules(&self) -> &[Arc<dyn Rule>] {
+        if self.using_profile_fast_path() {
+            if let Some(profile) = self.profile.as_ref() {
+                return &profile.global_rules;
+            }
+        }
+        &self.global_rules
+    }
+
+    pub(super) fn active_disabled_rules(&self) -> &HashSet<String> {
+        if self.using_profile_fast_path() {
+            if let Some(profile) = self.profile.as_ref() {
+                return &profile.disabled_rules;
+            }
+        }
+        &self.disabled_rules
     }
 
     /// Backward-compatible getter: returns true if steps_mode is not Off
@@ -289,10 +351,12 @@ impl Simplifier {
     }
 
     pub fn disable_rule(&mut self, rule_name: &str) {
+        self.materialize_profile_rules();
         self.disabled_rules.insert(rule_name.to_string());
     }
 
     pub fn enable_rule(&mut self, rule_name: &str) {
+        self.materialize_profile_rules();
         self.disabled_rules.remove(rule_name);
     }
 
@@ -364,6 +428,7 @@ impl Simplifier {
     }
 
     pub fn add_rule(&mut self, rule: Box<dyn Rule>) {
+        self.materialize_profile_rules();
         let rule_rc: Arc<dyn Rule> = rule.into();
 
         if let Some(targets) = rule_rc.target_types() {
@@ -393,11 +458,11 @@ impl Simplifier {
     pub fn get_all_rule_names(&self) -> Vec<String> {
         let mut names = HashSet::new();
 
-        for rule in &self.global_rules {
+        for rule in self.active_global_rules() {
             names.insert(rule.name().to_string());
         }
 
-        for rules in self.rules.values() {
+        for rules in self.active_rules().values() {
             for rule in rules {
                 names.insert(rule.name().to_string());
             }
@@ -417,13 +482,15 @@ impl Simplifier {
     #[allow(clippy::panic)] // Intentional: debug-only invariant enforcement
     pub fn assert_unique_rule_names(&self) {
         use std::collections::HashSet;
+        let global_rules = self.active_global_rules();
+        let rules = self.active_rules();
 
         // Collect all rule names (deduplicating by name as we go)
         // A rule appearing in multiple buckets with the same name is OK
         // (e.g., LogContractionRule targets both Add and Sub)
         let mut seen_names: HashSet<&str> = HashSet::new();
 
-        for rule in &self.global_rules {
+        for rule in global_rules {
             let name = rule.name();
             if !seen_names.insert(name) {
                 // Same name seen again - but might be same rule in different bucket
@@ -436,7 +503,7 @@ impl Simplifier {
         let mut name_to_first_arc: std::collections::HashMap<&str, *const ()> =
             std::collections::HashMap::new();
 
-        for rule in &self.global_rules {
+        for rule in global_rules {
             let name = rule.name();
             let ptr = Arc::as_ptr(rule).cast::<()>();
             if let Some(&existing_ptr) = name_to_first_arc.get(name) {
@@ -451,7 +518,7 @@ impl Simplifier {
             }
         }
 
-        for rules in self.rules.values() {
+        for rules in rules.values() {
             for rule in rules {
                 let name = rule.name();
                 let ptr = Arc::as_ptr(rule).cast::<()>();
@@ -471,16 +538,16 @@ impl Simplifier {
 
     /// Get a clone of the rules map (for profile caching).
     pub fn get_rules_clone(&self) -> HashMap<TargetKind, Vec<Arc<dyn Rule>>> {
-        self.rules.clone()
+        self.active_rules().clone()
     }
 
     /// Get a clone of the global rules (for profile caching).
     pub fn get_global_rules_clone(&self) -> Vec<Arc<dyn Rule>> {
-        self.global_rules.clone()
+        self.active_global_rules().to_vec()
     }
 
     /// Get a clone of the disabled rules set (for profile caching).
     pub fn get_disabled_rules_clone(&self) -> HashSet<String> {
-        self.disabled_rules.clone()
+        self.active_disabled_rules().clone()
     }
 }

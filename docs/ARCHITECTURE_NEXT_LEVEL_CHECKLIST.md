@@ -47,18 +47,55 @@ Goal:
   they really build typed Rust models
 
 Checklist:
-- [ ] Audit `cas_solver/src/json/*`
-- [ ] Audit `cas_didactic/src/eval_json_*`
-- [ ] Mark each case as:
+- [x] Audit `cas_solver/src/json/*`
+- [x] Audit `cas_didactic/src/eval_json_*`
+- [x] Mark each case as:
   - `transport boundary`
   - `typed model builder`
   - `mixed`
-- [ ] Rename only the clearly mixed cases
-- [ ] Do not rename boundary modules that truly own wire/DTO assembly
+- [x] Rename only the clearly mixed cases
+- [x] Do not rename boundary modules that truly own wire/DTO assembly
 
 Done when:
 - internal naming no longer implies JSON when the module is not actually doing
   JSON transport work
+
+Current progress:
+- audited `cas_solver/src/json/*` as transport boundary
+  - keep:
+    - stateless JSON entry points
+    - envelope assembly
+    - API mappers
+    - substitute/eval command JSON wrappers
+- audited `cas_didactic/src/eval_json_*` as mixed typed-model builders
+  - renamed to:
+    - `step_payloads`
+    - `step_payload_render`
+  - rationale:
+    - they build `StepJson` DTOs and highlighted latex snippets
+    - they do not serialize JSON
+    - they are internal didactic presentation helpers, not outer transport
+- left `cas_solver/src/eval_json_*` open for narrower follow-up review
+  - many of those modules are still tightly tied to the `eval-json` command
+    boundary and should not be bulk-renamed without splitting by responsibility
+- narrowed the remaining `cas_solver` mixed area to presentation-only helpers
+  - renamed:
+    - `eval_json_presentation*` -> `eval_output_presentation*`
+  - rationale:
+    - they format strings/latex and build typed output DTO fragments
+    - they do not own request parsing, option decoding, wire assembly or
+      serialization
+- also renamed output metadata helpers:
+  - `eval_json_stats*` -> `eval_output_stats*`
+  - rationale:
+    - they compute typed `ExprStatsJson`, truncation metadata and stable hashes
+    - they do not perform transport serialization
+- keep as `eval-json` boundary modules for now:
+  - `eval_json_command_runtime*`
+  - `eval_json_input*`
+  - `eval_json_options*`
+  - `eval_json_finalize*`
+  - `eval_json_request_runtime`
 
 ### P0.2 Review `cas_session_core`
 
@@ -91,13 +128,13 @@ Goal:
 - only continue if a remaining candidate is clearly not math-pure
 
 Checklist:
-- [ ] Audit only modules still suspected to be rule-facing or user-facing
-- [ ] For each candidate, answer:
+- [x] Audit only modules still suspected to be rule-facing or user-facing
+- [x] For each candidate, answer:
   - is this deterministic reusable math?
   - does it mainly exist for one engine rule?
   - does it contain `desc`/policy/runtime packaging?
-- [ ] Move or clean up only the clearly engine-facing candidates
-- [ ] Stop as soon as remaining candidates become debatable
+- [x] Move or clean up only the clearly engine-facing candidates
+- [x] Stop as soon as remaining candidates become debatable
 
 Done when:
 - no obvious engine-facing helper remains in `cas_math`
@@ -112,6 +149,25 @@ Current progress:
     `cas_solver_core`
   - leaving them in `cas_math` blurred the boundary between pure math and
     didactic/runtime cleanup
+- moved `rationalize_policy` out of `cas_math` into `cas_solver_core`
+  - rationale:
+    - it is shared simplification configuration and outcome reporting
+    - it is consumed by `cas_solver_core`, `cas_engine` and `cas_solver`
+    - it does not implement algebraic transformation logic itself
+- moved `undefined_risk_policy_support` out of `cas_math` into `cas_solver_core`
+  - rationale:
+    - it is domain-policy gating for cancellation rewrites
+    - it does not perform symbolic algebra
+    - it was only serving runtime rule decisions in `cas_engine`
+- spot-checked the remaining suspicious families and stopped there:
+  - `fraction_univar_gcd_support` remains structural polynomial reduction with
+    domain policy intentionally delegated upward
+  - `trig_dyadic_policy_support` remains a math/domain gate, not runtime
+    packaging
+  - `poly_gcd_dispatch` remains a shared algorithm/mode selector with injected
+    callbacks, not solver-session wiring
+  - `undefined_risk_support` remains pure structural detection with caller
+    provided proof oracle
 - remaining suspects in `cas_math` are now the more debatable
   `*_support` families with mixed policy/description concerns; review should
   stop again before broad churn
@@ -161,7 +217,7 @@ Checklist:
 - [x] Integrate event stream into `/Users/javiergimenezmoya/developer/math/crates/cas_solver/src/timeline_solve_eval.rs`
 - [x] Keep public API unchanged
 - [x] Keep old path available while verifying parity
-- [ ] Validate HTML/output parity in `cas_didactic`
+- [x] Validate HTML/output parity in `cas_didactic`
 
 Done when:
 - `timeline_solve` can consume solve events without changing user-visible output
@@ -169,24 +225,33 @@ Done when:
 Current status:
 - implemented as a roundtrip `DisplaySolveSteps -> SolverEvent -> DisplaySolveSteps`
 - guarded by shape-preserving fallback to the original `DisplaySolveSteps`
-- suitable for architectural validation
-- not yet strong enough to claim full renderer parity
+- HTML + CLI parity coverage added in `/Users/javiergimenezmoya/developer/math/crates/cas_didactic/tests/solve_timeline_parity_tests.rs`
+- validated with `cargo test -p cas_didactic --test solve_timeline_parity_tests`
 
 ### P1.4 Stop-and-evaluate checkpoint
 
 Checklist:
-- [ ] Did event consumers become simpler?
-- [ ] Did the model reduce coupling in a meaningful way?
-- [x] Did it avoid touching fragile solve runtime paths?
+- [x] Confirm the event consumer did not become meaningfully simpler
+- [x] Confirm the coupling reduction is only an adapter seam, not a new boundary
+- [x] Confirm the experiment avoided fragile solve runtime paths
 
 Decision:
-- [ ] If yes, open a design step for native emission
-- [x] If no, stop here and keep the adapter layer only
+- [ ] Open a design step for native emission
+- [x] Stop here and keep the adapter layer only
 
 Current decision:
 - keep the derived `SolveStep <-> SolverEvent` adapter layer
 - do not open native solve event emission yet
 - revisit only if a concrete consumer shows clear payoff beyond `timeline_solve`
+
+Why:
+- `/Users/javiergimenezmoya/developer/math/crates/cas_solver/src/timeline_solve_eval.rs`
+  still solves into `DisplaySolveSteps` first and only then roundtrips through
+  `SolverEvent`
+- `/Users/javiergimenezmoya/developer/math/crates/cas_didactic/src/timeline/render_api.rs`
+  still renders `&[SolveStep]`, so the didactic boundary did not get narrower
+- the event model is useful as a stable core contract and test seam, but not
+  enough to justify native solve-runtime emission work
 
 ## Track 3: Optional Solve Observer/Event Phase 2
 
@@ -276,13 +341,13 @@ Done when:
 ## Suggested PR Order
 
 ### PR 1
-- [ ] `P0.1` transport naming audit/fixes, if any clear wins remain
+- [x] `P0.1` transport naming audit/fixes, if any clear wins remain
 
 ### PR 2
-- [ ] `P0.2` `cas_session_core` review and decision
+- [x] `P0.2` `cas_session_core` review and decision
 
 ### PR 3
-- [ ] `P0.3` final `cas_math` leak review, only for clearly engine-facing cases
+- [x] `P0.3` final `cas_math` leak review, only for clearly engine-facing cases
 
 ### PR 4
 - [x] `P1.1` add `SolverEvent` core model
@@ -291,13 +356,13 @@ Done when:
 - [x] `P1.2` add `SolveStep <-> SolverEvent` adapters
 
 ### PR 6
-- [x] `P1.3` integrate `timeline_solve` (minimal adapter path; renderer parity still pending)
+- [x] `P1.3` integrate `timeline_solve` and validate renderer parity
 
 ### PR 7
-- [ ] `P1.4` stop-and-evaluate checkpoint
+- [x] `P1.4` stop-and-evaluate checkpoint
 
 Only after PR 7:
-- [ ] decide whether to open `P2`
+- [x] decide whether to open `P2`
 - [ ] or shift to memory / `egg` exploration
 
 ## Explicit Do-Not-Do List
@@ -312,9 +377,9 @@ Only after PR 7:
 
 We stop this next-level architecture effort when:
 
-- [ ] no obvious domain leaks remain
-- [ ] solve-event Phase 1 has a clear yes/no outcome
-- [ ] any further work would require speculative redesign rather than bounded improvement
+- [x] no obvious domain leaks remain
+- [x] solve-event Phase 1 has a clear yes/no outcome
+- [x] any further work would require speculative redesign rather than bounded improvement
 
 At that point, the next step is not "more migration".
 It is either:

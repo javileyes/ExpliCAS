@@ -1,6 +1,6 @@
 use super::input::SetDisplayMode;
 use crate::eval_option_axes::{AutoExpandBinomials, HeuristicPoly, StepsMode};
-use cas_math::rationalize_policy::AutoRationalizeLevel;
+use crate::rationalize_policy::AutoRationalizeLevel;
 
 /// Normalized mutation plan for applying `set` changes.
 #[derive(Debug, Clone, PartialEq, Eq)]

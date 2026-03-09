@@ -5,7 +5,7 @@ use crate::{Simplifier, Step};
 use cas_ast::{BuiltinFn, Context, ExprId};
 use cas_math::poly_lowering;
 use cas_math::poly_store::clear_thread_local_store;
-use cas_math::rationalize_policy::AutoRationalizeLevel;
+use cas_solver_core::rationalize_policy::AutoRationalizeLevel;
 use std::collections::HashSet;
 
 fn to_math_auto_expand_budget(
@@ -390,13 +390,13 @@ impl Orchestrator {
             pipeline_stats.rationalize_level = Some(auto_level);
             if stats.changed {
                 pipeline_stats.rationalize_outcome =
-                    Some(cas_math::rationalize_policy::RationalizeOutcome::Applied);
+                    Some(cas_solver_core::rationalize_policy::RationalizeOutcome::Applied);
             } else {
                 // If enabled but didn't change, it was blocked for some reason
                 // We don't have detailed reason here; would need deeper integration
                 pipeline_stats.rationalize_outcome = Some(
-                    cas_math::rationalize_policy::RationalizeOutcome::NotApplied(
-                        cas_math::rationalize_policy::RationalizeReason::NoBinomialFound,
+                    cas_solver_core::rationalize_policy::RationalizeOutcome::NotApplied(
+                        cas_solver_core::rationalize_policy::RationalizeReason::NoBinomialFound,
                     ),
                 );
             }
@@ -409,8 +409,8 @@ impl Orchestrator {
         } else {
             pipeline_stats.rationalize_level = Some(AutoRationalizeLevel::Off);
             pipeline_stats.rationalize_outcome = Some(
-                cas_math::rationalize_policy::RationalizeOutcome::NotApplied(
-                    cas_math::rationalize_policy::RationalizeReason::PolicyDisabled,
+                cas_solver_core::rationalize_policy::RationalizeOutcome::NotApplied(
+                    cas_solver_core::rationalize_policy::RationalizeReason::PolicyDisabled,
                 ),
             );
         }
@@ -514,9 +514,9 @@ impl Orchestrator {
 
         // V2.15.25: Best-So-Far guard - use best if current is worse
         // After all processing, compare current to best seen during phases
-        let (best_expr, _best_steps) = best.into_parts();
+        let best_expr = best.best_expr();
         let current_score = crate::best_so_far::score_expr(&simplifier.context, current);
-        let best_score = crate::best_so_far::score_expr(&simplifier.context, best_expr);
+        let best_score = best.best_score();
 
         // V2.15.35: Skip rollback for explicit expand() calls
         // When user explicitly calls expand(), they want the expanded form even if "worse"

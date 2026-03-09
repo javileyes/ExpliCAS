@@ -3,6 +3,7 @@
 use crate::soundness_label::SoundnessLabel;
 use crate::step_types::{ImportanceLevel, PathStep, StepCategory, SubStep};
 use cas_ast::ExprId;
+use smallvec::SmallVec;
 
 /// Didactic metadata for a step.
 ///
@@ -11,7 +12,7 @@ use cas_ast::ExprId;
 #[derive(Debug, Clone, Default)]
 pub struct StepMeta {
     /// Path from root to the transformed node (kept for debugging/reference).
-    pub path: Vec<PathStep>,
+    pub path: SmallVec<[PathStep; 8]>,
     /// String representation of after (for display).
     pub after_str: Option<String>,
     /// Optional: specific pattern matched for "Rule: X -> Y" display.
@@ -143,26 +144,10 @@ impl Step {
         rule_name: &str,
         before: ExprId,
         after: ExprId,
-        path: Vec<PathStep>,
+        path: impl Into<SmallVec<[PathStep; 8]>>,
         context: Option<&cas_ast::Context>,
     ) -> Self {
-        let after_str = context.map(|ctx| {
-            let display_id = match ctx.get(after) {
-                cas_ast::Expr::Function(fn_id, args)
-                    if ctx.is_builtin(*fn_id, cas_ast::BuiltinFn::Hold) && args.len() == 1 =>
-                {
-                    args[0]
-                }
-                _ => after,
-            };
-            format!(
-                "{}",
-                cas_formatter::DisplayExpr {
-                    context: ctx,
-                    id: display_id
-                }
-            )
-        });
+        let path = path.into();
         Self {
             description: description.to_string(),
             rule_name: rule_name.to_string(),
@@ -175,7 +160,15 @@ impl Step {
             soundness: SoundnessLabel::Equivalence,
             meta: Some(Box::new(StepMeta {
                 path,
-                after_str,
+                after_str: context.map(|ctx| {
+                    format!(
+                        "{}",
+                        cas_formatter::DisplayExpr {
+                            context: ctx,
+                            id: after
+                        }
+                    )
+                }),
                 ..Default::default()
             })),
         }
@@ -204,7 +197,7 @@ impl Step {
         rule_name: &str,
         before: ExprId,
         after: ExprId,
-        path: Vec<PathStep>,
+        path: impl Into<SmallVec<[PathStep; 8]>>,
         context: Option<&cas_ast::Context>,
         global_before: ExprId,
         global_after: ExprId,

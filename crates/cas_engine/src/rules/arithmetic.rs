@@ -46,7 +46,7 @@ define_rule!(
         let pattern = match_mul_zero_pattern(ctx, expr)?;
         let other = pattern.other;
         let has_risk = crate::collect::has_undefined_risk(ctx, other);
-        let allowed = cas_math::undefined_risk_policy_support::allow_cancellation_with_undefined_risk_mode_flags(
+        let allowed = cas_solver_core::undefined_risk_policy_support::allow_cancellation_with_undefined_risk_mode_flags(
             matches!(parent_ctx.domain_mode(), crate::DomainMode::Assume),
             matches!(parent_ctx.domain_mode(), crate::DomainMode::Strict),
             has_risk,
@@ -154,7 +154,7 @@ define_rule!(
     |ctx, expr, parent_ctx| {
         let rewrite = try_rewrite_sub_self_zero_expr(ctx, expr)?;
         let allow =
-            cas_math::undefined_risk_policy_support::allow_cancellation_with_undefined_risk_mode_flags(
+            cas_solver_core::undefined_risk_policy_support::allow_cancellation_with_undefined_risk_mode_flags(
                 matches!(parent_ctx.domain_mode(), crate::DomainMode::Assume),
                 matches!(parent_ctx.domain_mode(), crate::DomainMode::Strict),
                 crate::collect::has_undefined_risk(ctx, rewrite.inner),
@@ -181,7 +181,7 @@ define_rule!(
 define_rule!(AddInverseRule, "Add Inverse", |ctx, expr, parent_ctx| {
     let rewrite = try_rewrite_add_inverse_zero_expr(ctx, expr)?;
     let allow =
-        cas_math::undefined_risk_policy_support::allow_cancellation_with_undefined_risk_mode_flags(
+        cas_solver_core::undefined_risk_policy_support::allow_cancellation_with_undefined_risk_mode_flags(
             matches!(parent_ctx.domain_mode(), crate::DomainMode::Assume),
             matches!(parent_ctx.domain_mode(), crate::DomainMode::Strict),
             crate::collect::has_undefined_risk(ctx, rewrite.inner),

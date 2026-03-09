@@ -232,7 +232,7 @@ pub struct BestSoFar {
     budget: BestSoFarBudget,
     best_expr: ExprId,
     best_score: Score,
-    best_steps: Vec<Step>,
+    best_steps_len: usize,
 }
 
 impl BestSoFar {
@@ -244,7 +244,7 @@ impl BestSoFar {
             budget,
             best_expr: input,
             best_score: score,
-            best_steps: steps.to_vec(),
+            best_steps_len: steps.len(),
         }
     }
 
@@ -267,12 +267,28 @@ impl BestSoFar {
         if cand_score < self.best_score {
             self.best_expr = cand_expr;
             self.best_score = cand_score;
-            self.best_steps = all_steps.to_vec();
+            self.best_steps_len = all_steps.len();
         }
     }
 
-    /// Extract the best expression and steps.
-    pub fn into_parts(self) -> (ExprId, Vec<Step>) {
-        (self.best_expr, self.best_steps)
+    /// Best expression seen so far.
+    #[inline]
+    pub fn best_expr(&self) -> ExprId {
+        self.best_expr
+    }
+
+    /// Score of the best expression seen so far.
+    #[inline]
+    pub fn best_score(&self) -> Score {
+        self.best_score
+    }
+
+    /// Materialize the best prefix of steps from the final accumulated list.
+    #[cfg(test)]
+    pub fn into_parts_from(self, all_steps: &[Step]) -> (ExprId, Vec<Step>) {
+        (
+            self.best_expr,
+            all_steps[..self.best_steps_len.min(all_steps.len())].to_vec(),
+        )
     }
 }

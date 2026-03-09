@@ -144,7 +144,6 @@ pub mod rational_canonicalization_support;
 pub mod rationalize;
 pub mod rationalize_binomial_surd_support;
 pub mod rationalize_diff_squares_support;
-pub mod rationalize_policy;
 pub mod rationalize_single_surd_support;
 pub mod reciprocal_sqrt_canon_support;
 pub mod root_den_rationalize_support;
@@ -182,7 +181,6 @@ pub mod trig_tan_triple_support;
 pub mod trig_value_detection_support;
 pub mod trig_values;
 pub mod trig_weierstrass_support;
-pub mod undefined_risk_policy_support;
 pub mod undefined_risk_support;
 pub mod unipoly_modp;
 

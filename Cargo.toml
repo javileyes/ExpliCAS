@@ -21,3 +21,10 @@ edition = "2021"
 rust-version = "1.88"
 license = "MIT"
 authors = ["Javier Gimenez Moya"]
+
+[profile.dev]
+# Large workspace test builds were being killed during debug linking on macOS.
+debug = 0
+
+[profile.test]
+debug = 0
