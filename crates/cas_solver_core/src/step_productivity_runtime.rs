@@ -36,7 +36,7 @@ where
     FDisplayNoop: FnMut(&Context, ExprId, ExprId) -> bool,
     FRecomposeMul: FnMut(&mut Context, ExprId, ExprId) -> ExprId,
 {
-    cas_math::step_productivity::filter_non_productive_steps_with(
+    crate::step_productivity::filter_non_productive_steps_with(
         ctx,
         original,
         steps,
@@ -63,7 +63,7 @@ where
 /// `Step`-specialized productivity filter used by runtime orchestrators.
 ///
 /// Keeps behavior stable with the historical engine implementation:
-/// - always-keep rules from `cas_math::step_rules`
+/// - always-keep rules from `cas_solver_core::step_rules`
 /// - display-noop detection via formatted before/after string equality
 /// - global rewrite via expr-path replacement.
 pub fn filter_non_productive_solver_steps_with_runtime_recompose_mul<FRecomposeMul>(
@@ -80,7 +80,7 @@ where
         original,
         steps,
         |step: &crate::step_model::Step| {
-            cas_math::step_rules::is_always_keep_step_rule_name(&step.rule_name)
+            crate::step_rules::is_always_keep_step_rule_name(&step.rule_name)
         },
         |step: &crate::step_model::Step| step.before,
         |step: &crate::step_model::Step| step.after,

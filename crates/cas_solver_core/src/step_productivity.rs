@@ -3,8 +3,8 @@
 //! Runtime crates can reuse this to remove no-op or semantically redundant
 //! steps while preserving didactically important ones.
 
-use crate::semantic_equality::SemanticEqualityChecker;
 use cas_ast::{Context, ExprId};
+use cas_math::semantic_equality::SemanticEqualityChecker;
 
 /// Filter out non-productive steps using caller-provided adapters.
 ///
@@ -77,7 +77,6 @@ where
 #[cfg(test)]
 mod tests {
     use super::filter_non_productive_steps_with;
-    use crate::expr_path_rewrite::rewrite_at_expr_path;
     use cas_ast::{Context, Expr, ExprId};
 
     #[derive(Clone)]
@@ -112,7 +111,12 @@ mod tests {
             |s| s.path.clone(),
             |_ctx, _before, _after| false,
             |ctx, root, path, replacement| {
-                rewrite_at_expr_path(ctx, root, &path.to_vec(), replacement)
+                cas_math::expr_path_rewrite::rewrite_at_expr_path(
+                    ctx,
+                    root,
+                    &path.to_vec(),
+                    replacement,
+                )
             },
         );
         assert!(out.is_empty());
@@ -142,7 +146,12 @@ mod tests {
             |s| s.path.clone(),
             |_ctx, _before, _after| false,
             |ctx, root, path, replacement| {
-                rewrite_at_expr_path(ctx, root, &path.to_vec(), replacement)
+                cas_math::expr_path_rewrite::rewrite_at_expr_path(
+                    ctx,
+                    root,
+                    &path.to_vec(),
+                    replacement,
+                )
             },
         );
         assert_eq!(out.len(), 1);

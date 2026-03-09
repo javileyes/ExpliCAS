@@ -1,4 +1,4 @@
-//! Shared rule-name heuristics for step post-processing.
+//! Shared rule-name heuristics for runtime step post-processing.
 
 /// Returns true when rule name corresponds to expansion.
 pub fn is_expansion_rule_name(name: &str) -> bool {

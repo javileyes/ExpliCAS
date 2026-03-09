@@ -1,14 +1,15 @@
 //! Runtime step optimization pipeline shared across integration crates.
 
 use crate::soundness_label::SoundnessLabel;
+use crate::step_absorption::{absorb_indices, find_absorption_indices_before_markers_with};
 use crate::step_model::{Step, StepMeta};
-use crate::step_types::{ImportanceLevel, StepCategory};
-use cas_ast::{Context, ExprId};
-use cas_math::step_optimize::optimize_steps_with_rules;
-use cas_math::step_rules::{
+use crate::step_optimize::optimize_steps_with_rules;
+use crate::step_rules::{
     is_canonicalization_rule_name, is_expansion_rule_name, is_mechanical_rule_name,
 };
-use cas_math::step_semantic::is_semantic_noop_without_didactic_steps;
+use crate::step_semantic::is_semantic_noop_without_didactic_steps;
+use crate::step_types::{ImportanceLevel, StepCategory};
+use cas_ast::{Context, ExprId};
 
 /// Result of step optimization with semantic analysis.
 #[derive(Debug)]
@@ -93,7 +94,7 @@ pub fn optimize_steps(steps: Vec<Step>) -> Vec<Step> {
 /// Uses a bounded look-back window and never absorbs medium/high-importance
 /// steps.
 pub fn find_steps_to_absorb_for_polyzero(steps: &[Step]) -> Vec<usize> {
-    cas_math::step_absorption::find_absorption_indices_before_markers_with(
+    find_absorption_indices_before_markers_with(
         steps,
         8, // Max steps to look back.
         |s| s.poly_proof().is_some(),
@@ -105,6 +106,6 @@ pub fn find_steps_to_absorb_for_polyzero(steps: &[Step]) -> Vec<usize> {
 /// Enhanced step optimization with polynomial identity absorption.
 pub fn optimize_steps_with_absorption(steps: Vec<Step>) -> Vec<Step> {
     let indices = find_steps_to_absorb_for_polyzero(&steps);
-    let filtered = cas_math::step_absorption::absorb_indices(steps, &indices);
+    let filtered = absorb_indices(steps, &indices);
     optimize_steps(filtered)
 }

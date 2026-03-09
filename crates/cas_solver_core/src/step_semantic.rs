@@ -1,7 +1,7 @@
 //! Semantic step-analysis helpers shared across runtime crates.
 
-use crate::semantic_equality::SemanticEqualityChecker;
 use cas_ast::{Context, ExprId};
+use cas_math::semantic_equality::SemanticEqualityChecker;
 
 /// Returns true when:
 /// - no caller-defined didactic step exists, and

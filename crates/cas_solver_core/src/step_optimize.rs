@@ -259,14 +259,17 @@ mod tests {
 
         let out = run(steps);
         assert_eq!(out.len(), 3);
+        assert_eq!(out[0].rule_name, "CanonicalizeSigns");
+        assert_eq!(out[1].rule_name, "CanonicalizeFractions");
+        assert_eq!(out[2].rule_name, "CanonicalizeTerms");
     }
 
     #[test]
-    fn filters_trivial_numeric_power_steps() {
+    fn drops_trivial_numeric_power_steps() {
         let steps = vec![
             step(
                 "Evaluate Numeric Power",
-                "1^7 -> 1",
+                "1^5 -> 1",
                 1,
                 1,
                 Some(1),

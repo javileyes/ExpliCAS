@@ -102,6 +102,20 @@ Checklist:
 Done when:
 - no obvious engine-facing helper remains in `cas_math`
 
+Current progress:
+- moved shared runtime `step_*` helpers (`step_rules`, `step_optimize`,
+  `step_absorption`, `step_productivity`, `step_semantic`) out of `cas_math`
+  into `cas_solver_core`
+- rationale:
+  - they operate on step/rule heuristics, not reusable algebra
+  - they already served runtime orchestration in `cas_engine` /
+    `cas_solver_core`
+  - leaving them in `cas_math` blurred the boundary between pure math and
+    didactic/runtime cleanup
+- remaining suspects in `cas_math` are now the more debatable
+  `*_support` families with mixed policy/description concerns; review should
+  stop again before broad churn
+
 ## Track 2: Solve Observer/Event Phase 1
 
 ### P1.1 Add minimal `SolverEvent` model
