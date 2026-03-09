@@ -1,4 +1,14 @@
-.PHONY: ci ci-release ci-msrv ci-quick lint test fmt clippy build-release lint-allowlist lint-budget lint-limits audit-utils lint-string-compares lint-no-panic-prod bench-clean bench-engine-fast bench-engine-fast-save bench-engine-fast-compare help
+.PHONY: ci ci-release ci-msrv ci-quick lint test fmt clippy build-release lint-allowlist lint-budget lint-limits audit-utils lint-string-compares lint-no-panic-prod bench-clean bench-engine-fast bench-engine-fast-save bench-engine-fast-compare bench-engine-fast-save-seq bench-engine-fast-compare-seq bench-engine-solve-hotspots-save bench-engine-solve-hotspots-compare bench-engine-solve-profile help
+
+SOLVE_HOTSPOT_FILTERS = \
+	solve_hotspots_cached/generic/difference_of_squares_fraction \
+	solve_hotspots_cached/generic/power_quotient_fraction \
+	solve_hotspots_cached/generic/binomial_square_fraction \
+	solve_eval_hotspots_cached/generic/difference_of_squares_fraction \
+	solve_eval_hotspots_cached/generic/power_quotient_fraction \
+	solve_eval_hotspots_cached/generic/binomial_square_fraction \
+	solve_hotspots_cached/generic/x_pow_0 \
+	solve_hotspots_cached/assume/x_pow_0
 
 help:
 	@echo "Targets:"
@@ -17,6 +27,16 @@ help:
 	@echo "                     -> save a named Criterion baseline"
 	@echo "  make bench-engine-fast-compare BENCH=profile_cache BASELINE=good [FILTER=...]"
 	@echo "                     -> compare against a named baseline without overwriting it"
+	@echo "  make bench-engine-fast-save-seq BENCH=profile_cache BASELINE=good FILTERS='a b c'"
+	@echo "                     -> save several named baselines sequentially"
+	@echo "  make bench-engine-fast-compare-seq BENCH=profile_cache BASELINE=good FILTERS='a b c'"
+	@echo "                     -> compare several filters sequentially"
+	@echo "  make bench-engine-solve-hotspots-save BASELINE=good"
+	@echo "                     -> save the curated solve hotspot suite sequentially"
+	@echo "  make bench-engine-solve-hotspots-compare BASELINE=good"
+	@echo "                     -> compare the curated solve hotspot suite sequentially"
+	@echo "  make bench-engine-solve-profile MODE=hotspots-generic FILTER=solve_hotspots_cached/generic/a_pow_x_over_a [DETAIL=1] [PROBE=1] [PROBE_ITERS=2000]"
+	@echo "                     -> run profile_cache with solve diagnostic env flags"
 	@echo "  make audit-utils   -> show canonical utilities registry + lint check"
 	@echo "  make test          -> cargo test (debug) only"
 	@echo "  make build-release -> cargo build --release only"
@@ -59,6 +79,41 @@ bench-engine-fast-compare:
 	@test -n "$(BENCH)" || { echo "Usage: make bench-engine-fast-compare BENCH=profile_cache BASELINE=good [FILTER=...]"; exit 1; }
 	@test -n "$(BASELINE)" || { echo "Missing BASELINE=..."; exit 1; }
 	CAS_BENCH_FAST=1 cargo bench -p cas_engine --bench $(BENCH) $(FILTER) -- --noplot --baseline $(BASELINE)
+
+bench-engine-fast-save-seq:
+	@test -n "$(BENCH)" || { echo "Usage: make bench-engine-fast-save-seq BENCH=profile_cache BASELINE=good FILTERS='a b c'"; exit 1; }
+	@test -n "$(BASELINE)" || { echo "Missing BASELINE=..."; exit 1; }
+	@test -n "$(FILTERS)" || { echo "Missing FILTERS='a b c'"; exit 1; }
+	@for filter in $(FILTERS); do \
+		echo "==> $$filter"; \
+		CAS_BENCH_FAST=1 cargo bench -p cas_engine --bench $(BENCH) $$filter -- --noplot --save-baseline $(BASELINE) || exit $$?; \
+	done
+
+bench-engine-fast-compare-seq:
+	@test -n "$(BENCH)" || { echo "Usage: make bench-engine-fast-compare-seq BENCH=profile_cache BASELINE=good FILTERS='a b c'"; exit 1; }
+	@test -n "$(BASELINE)" || { echo "Missing BASELINE=..."; exit 1; }
+	@test -n "$(FILTERS)" || { echo "Missing FILTERS='a b c'"; exit 1; }
+	@for filter in $(FILTERS); do \
+		echo "==> $$filter"; \
+		CAS_BENCH_FAST=1 cargo bench -p cas_engine --bench $(BENCH) $$filter -- --noplot --baseline $(BASELINE) || exit $$?; \
+	done
+
+bench-engine-solve-hotspots-save:
+	@$(MAKE) bench-engine-fast-save-seq BENCH=profile_cache BASELINE="$(BASELINE)" FILTERS="$(SOLVE_HOTSPOT_FILTERS)"
+
+bench-engine-solve-hotspots-compare:
+	@$(MAKE) bench-engine-fast-compare-seq BENCH=profile_cache BASELINE="$(BASELINE)" FILTERS="$(SOLVE_HOTSPOT_FILTERS)"
+
+bench-engine-solve-profile:
+	@test -n "$(MODE)" || { echo "Usage: make bench-engine-solve-profile MODE=hotspots-generic FILTER=solve_hotspots_cached/generic/a_pow_x_over_a [DETAIL=1] [PROBE=1] [PROBE_ITERS=2000]"; exit 1; }
+	@test -n "$(FILTER)" || { echo "Missing FILTER=..."; exit 1; }
+	CAS_BENCH_FAST=1 \
+	CAS_SOLVE_BENCH_PROFILE=1 \
+	CAS_SOLVE_BENCH_PROFILE_MODE=$(MODE) \
+	$(if $(DETAIL),CAS_SOLVE_BENCH_PROFILE_DETAIL=1,) \
+	$(if $(PROBE),CAS_SOLVE_BENCH_PROFILE_PROBE=1,) \
+	$(if $(PROBE_ITERS),CAS_SOLVE_BENCH_PROFILE_PROBE_ITERS=$(PROBE_ITERS),) \
+	cargo bench -p cas_engine --bench profile_cache $(FILTER) -- --noplot
 
 clippy:
 	cargo clippy --workspace --all-targets -- -D warnings

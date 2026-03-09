@@ -13,6 +13,11 @@ use crate::poly_compare::{poly_relation, SignRelation};
 use cas_ast::ordering::compare_expr;
 use cas_ast::{Context, Expr, ExprId};
 
+#[inline]
+fn expr_matches(ctx: &Context, lhs: ExprId, rhs: ExprId) -> bool {
+    lhs == rhs || compare_expr(ctx, lhs, rhs) == std::cmp::Ordering::Equal
+}
+
 #[derive(Debug, Clone)]
 pub struct CancelSameBasePowersRewrite {
     pub rewritten: ExprId,
@@ -63,7 +68,7 @@ pub fn try_rewrite_cancel_same_base_powers_div_expr(
     let (base_num, exp_num) = as_pow(ctx, num)?;
     let (base_den, exp_den) = as_pow(ctx, den)?;
 
-    if compare_expr(ctx, base_num, base_den) != std::cmp::Ordering::Equal {
+    if !expr_matches(ctx, base_num, base_den) {
         return None;
     }
 
@@ -135,11 +140,22 @@ pub fn try_rewrite_cancel_power_fraction_expr(
 ) -> Option<CancelPowerFractionRewrite> {
     let (num, den) = as_div(ctx, expr)?;
     let (base, exp) = as_pow(ctx, num)?;
-    let relation = poly_relation(ctx, base, den)?;
     let exp_val = as_i64(ctx, exp)?;
     if exp_val < 1 {
         return None;
     }
+
+    let relation = if expr_matches(ctx, base, den) {
+        SignRelation::Same
+    } else if let Expr::Neg(inner) = ctx.get(den) {
+        if expr_matches(ctx, base, *inner) {
+            SignRelation::Negated
+        } else {
+            poly_relation(ctx, base, den)?
+        }
+    } else {
+        poly_relation(ctx, base, den)?
+    };
 
     let base_result = if exp_val == 1 {
         ctx.num(1)

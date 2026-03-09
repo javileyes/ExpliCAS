@@ -6,12 +6,14 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use cas_ast::Context;
+use cas_ast::{Equation, RelOp, SolutionSet};
 use cas_parser::parse;
 
 use cas_engine::{
     BranchMode, ComplexMode, ContextMode, DomainMode, EvalConfig, EvalOptions, ProfileCache,
     Simplifier, SimplifyOptions, StepListener, StepsMode,
 };
+use cas_solver::{verify_solution_set, VerifySummary};
 use cas_solver_core::engine_events::EngineEvent;
 
 const SOLVE_PROFILE_FLAG: &str = "CAS_SOLVE_BENCH_PROFILE";
@@ -24,6 +26,27 @@ fn build_expr(input: &str) -> (Context, cas_ast::ExprId) {
     let mut ctx = Context::new();
     let id = parse(input, &mut ctx).expect("parse failed");
     (ctx, id)
+}
+
+fn build_equation_with_solutions(
+    lhs: &str,
+    rhs: &str,
+    var: &str,
+    solutions: &[&str],
+) -> (Simplifier, Equation, String, SolutionSet) {
+    let mut simplifier = Simplifier::with_default_rules();
+    let equation = Equation {
+        lhs: parse(lhs, &mut simplifier.context).expect("lhs parse failed"),
+        rhs: parse(rhs, &mut simplifier.context).expect("rhs parse failed"),
+        op: RelOp::Eq,
+    };
+    let solutions = SolutionSet::Discrete(
+        solutions
+            .iter()
+            .map(|expr| parse(expr, &mut simplifier.context).expect("solution parse failed"))
+            .collect(),
+    );
+    (simplifier, equation, var.to_string(), solutions)
 }
 
 fn solve_profile_mode_filter() -> Option<String> {
@@ -689,6 +712,11 @@ fn bench_solve_hotspots_cached(c: &mut Criterion) {
         ),
         ("generic/x_over_x", "x/x", tactic_generic.clone()),
         ("generic/exp_ln_x", "exp(ln(x))", tactic_generic.clone()),
+        (
+            "generic/log_power_base",
+            "log(x^2, x^6)",
+            tactic_generic.clone(),
+        ),
         ("generic/a_pow_x_over_a", "(a^x)/a", tactic_generic.clone()),
         ("generic/x_pow_0", "x^0", tactic_generic.clone()),
         (
@@ -698,6 +726,11 @@ fn bench_solve_hotspots_cached(c: &mut Criterion) {
         ),
         ("assume/x_over_x", "x/x", tactic_assume.clone()),
         ("assume/exp_ln_x", "exp(ln(x))", tactic_assume.clone()),
+        (
+            "assume/log_power_base",
+            "log(x^2, x^6)",
+            tactic_assume.clone(),
+        ),
         ("assume/a_pow_x_over_a", "(a^x)/a", tactic_assume.clone()),
         ("assume/x_pow_0", "x^0", tactic_assume.clone()),
     ];
@@ -895,12 +928,84 @@ fn bench_solve_eval_hotspots_cached(c: &mut Criterion) {
     group.finish();
 }
 
+fn bench_solve_prepass_inherited_steps_cached(c: &mut Criterion) {
+    let inputs = [
+        "(2*x + 2*y)/(4*x + 4*y)",
+        "(x^2 - y^2)/(x - y)",
+        "exp(ln(x))",
+        "(a^x)/a",
+        "x^0",
+    ];
+
+    let profile_opts = EvalOptions {
+        branch_mode: BranchMode::Strict,
+        complex_mode: ComplexMode::Auto,
+        steps_mode: StepsMode::On,
+        shared: cas_engine::SharedSemanticConfig {
+            context_mode: ContextMode::Solve,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+
+    let mut cache = ProfileCache::new();
+    let profile = cache.get_or_build(&profile_opts);
+
+    let mut group = c.benchmark_group("solve_prepass_inherited_steps_cached");
+    common::configure_standard_group(&mut group);
+
+    group.bench_function("steps_on_batch", |b| {
+        b.iter(|| {
+            let mut total_len = 0usize;
+            for input in &inputs {
+                let (ctx, expr) = build_expr(input);
+                let mut s = Simplifier::from_profile_with_context(profile.clone(), ctx);
+                s.set_steps_mode(StepsMode::On);
+                let out = s.simplify_for_solve(expr);
+                total_len ^= format!(
+                    "{}",
+                    cas_formatter::DisplayExpr {
+                        context: &s.context,
+                        id: out
+                    }
+                )
+                .len();
+            }
+            black_box(total_len)
+        })
+    });
+
+    group.finish();
+}
+
+fn bench_solver_verification_inherited_steps(c: &mut Criterion) {
+    let mut group = c.benchmark_group("solver_verification_inherited_steps");
+    common::configure_standard_group(&mut group);
+
+    group.bench_function("quadratic_two_roots_steps_on", |b| {
+        b.iter_batched(
+            || build_equation_with_solutions("x^2 - 5*x + 6", "0", "x", &["2", "3"]),
+            |(mut simplifier, equation, var, solutions)| {
+                simplifier.set_steps_mode(StepsMode::On);
+                let result = verify_solution_set(&mut simplifier, &equation, &var, &solutions);
+                let verified = matches!(result.summary, VerifySummary::AllVerified);
+                black_box(verified);
+            },
+            criterion::BatchSize::SmallInput,
+        )
+    });
+
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_profile_build,
     bench_simplify_cached_vs_uncached,
     bench_solve_modes_cached,
     bench_solve_hotspots_cached,
-    bench_solve_eval_hotspots_cached
+    bench_solve_eval_hotspots_cached,
+    bench_solve_prepass_inherited_steps_cached,
+    bench_solver_verification_inherited_steps
 );
 criterion_main!(benches);

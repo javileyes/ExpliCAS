@@ -85,6 +85,8 @@ pub struct Orchestrator {
     pub enable_polynomial_strategy: bool,
     /// Pre-scanned pattern marks for context-aware guards
     pub pattern_marks: crate::pattern_marks::PatternMarks,
+    /// Expr these marks were last computed for; reused when the tree is unchanged.
+    pub pattern_marks_expr: Option<ExprId>,
     /// Pipeline options (budgets, transform/rationalize control)
     pub options: SimplifyOptions,
 }
@@ -101,6 +103,7 @@ impl Orchestrator {
             max_iterations: 10,
             enable_polynomial_strategy: true,
             pattern_marks: crate::pattern_marks::PatternMarks::new(),
+            pattern_marks_expr: None,
             options: SimplifyOptions::default(),
         }
     }
@@ -137,35 +140,34 @@ impl Orchestrator {
         );
 
         for iter in 0..max_iters {
-            // Re-scan for patterns each iteration since expression may have changed
-            // This ensures marks are up-to-date for the current expression tree
-            self.pattern_marks = crate::pattern_marks::PatternMarks::new();
-            crate::pattern_scanner::scan_and_mark_patterns(
-                &simplifier.context,
-                current,
-                &mut self.pattern_marks,
-            );
-
-            // Auto-expand scanner: mark cancellation contexts (difference quotients)
-            // Only skip in Solve mode (which should never auto-expand to preserve structure)
-            // The scanner has its own strict budgets (n=2, base_terms<=3) so it's safe to always run
             let is_solve_mode =
                 self.options.shared.context_mode == crate::options::ContextMode::Solve;
+            if self.pattern_marks_expr != Some(current) {
+                self.pattern_marks = crate::pattern_marks::PatternMarks::new();
+                crate::pattern_scanner::scan_and_mark_patterns(
+                    &simplifier.context,
+                    current,
+                    &mut self.pattern_marks,
+                );
+
+                // Auto-expand scanner: mark cancellation contexts (difference quotients)
+                // Only skip in Solve mode (which should never auto-expand to preserve structure)
+                // The scanner has its own strict budgets (n=2, base_terms<=3) so it's safe to always run
+                if !is_solve_mode {
+                    let math_budget =
+                        to_math_auto_expand_budget(&self.options.shared.expand_budget);
+                    cas_math::auto_expand_scan::mark_auto_expand_candidates(
+                        &simplifier.context,
+                        current,
+                        &math_budget,
+                        &mut self.pattern_marks,
+                    );
+                }
+                self.pattern_marks_expr = Some(current);
+            }
             let global_auto_expand = self.options.shared.expand_policy
                 == crate::phase::ExpandPolicy::Auto
                 && !is_solve_mode;
-
-            // Always scan for cancellation contexts (unless in Solve mode)
-            // This enables Smart Expansion: auto-expand only when it leads to cancellation
-            if !is_solve_mode {
-                let math_budget = to_math_auto_expand_budget(&self.options.shared.expand_budget);
-                cas_math::auto_expand_scan::mark_auto_expand_candidates(
-                    &simplifier.context,
-                    current,
-                    &math_budget,
-                    &mut self.pattern_marks,
-                );
-            }
             let config = crate::engine::LoopConfig {
                 phase,
                 expand_mode: self.options.expand_mode,
@@ -278,13 +280,7 @@ impl Orchestrator {
         expr: ExprId,
         simplifier: &mut Simplifier,
     ) -> (ExprId, Vec<Step>, crate::phase::PipelineStats) {
-        // PRE-ANALYSIS: Scan for patterns
-        self.pattern_marks = crate::pattern_marks::PatternMarks::new();
-        crate::pattern_scanner::scan_and_mark_patterns(
-            &simplifier.context,
-            expr,
-            &mut self.pattern_marks,
-        );
+        self.pattern_marks_expr = None;
 
         // V2.15.8: Set sticky implicit domain from original input to propagate inherited requires
         // across all phases. This allows AbsNonNegativeSimplifyRule to see x≥0 from sqrt(x)

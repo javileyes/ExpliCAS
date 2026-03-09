@@ -8,11 +8,10 @@ use cas_math::infinity_support::{is_negative_literal, is_positive_literal};
 use cas_math::logarithm_inverse_support::{
     estimate_log_terms, log_auto_expand_emits_blocked_hint, log_auto_expand_mode_from_flags,
     log_auto_expand_needs_implicit_domain, log_exp_inverse_policy_mode_from_flags,
-    plan_exponential_log_inverse_policy, plan_log_auto_expand_positivity,
-    plan_log_exp_inverse_symbolic_policy, plan_log_power_base_numeric_policy,
-    try_match_log_exp_inverse_expr, try_rewrite_exponential_log_inverse_expr,
-    try_rewrite_log_inverse_power_expr, try_rewrite_log_power_base_numeric_expr,
-    try_rewrite_split_log_exponents_expr,
+    plan_log_auto_expand_positivity, plan_log_exp_inverse_symbolic_policy,
+    plan_log_power_base_numeric_policy, try_match_log_exp_inverse_expr,
+    try_rewrite_exponential_log_inverse_expr, try_rewrite_log_inverse_power_expr,
+    try_rewrite_log_power_base_numeric_expr, try_rewrite_split_log_exponents_expr,
 };
 use num_traits::Zero;
 use std::cmp::Ordering;
@@ -55,30 +54,21 @@ impl crate::rule::Rule for ExponentialLogRule {
         let planned = try_rewrite_exponential_log_inverse_expr(ctx, expr)?;
         let vd = parent_ctx.value_domain();
         let domain_mode = parent_ctx.domain_mode();
-        let positive = if domain_mode.is_strict() {
-            prove_positive(ctx, planned.positive_subject, vd)
+        let require_positive_subject = if domain_mode.is_strict() {
+            match prove_positive(ctx, planned.positive_subject, vd) {
+                Proof::Proven => false,
+                _ => return None,
+            }
         } else {
             prove_positive_literal_fast(ctx, planned.positive_subject).unwrap_or(Proof::Unknown)
+                != Proof::Proven
         };
-        let mode = log_exp_inverse_policy_mode_from_flags(
-            matches!(domain_mode, crate::DomainMode::Assume),
-            matches!(domain_mode, crate::DomainMode::Strict),
-        );
-        let policy = plan_exponential_log_inverse_policy(mode, positive == Proof::Proven);
 
-        match policy {
-            cas_math::logarithm_inverse_support::ExponentialLogInversePolicyPlan::Block => None,
-            cas_math::logarithm_inverse_support::ExponentialLogInversePolicyPlan::Rewrite {
-                require_positive_subject,
-            } => {
-                let mut rewrite = crate::rule::Rewrite::new(planned.rewritten).desc(planned.desc);
-                if require_positive_subject {
-                    rewrite =
-                        rewrite.requires(ImplicitCondition::Positive(planned.positive_subject));
-                }
-                Some(rewrite)
-            }
+        let mut rewrite = crate::rule::Rewrite::new(planned.rewritten).desc(planned.desc);
+        if require_positive_subject {
+            rewrite = rewrite.requires(ImplicitCondition::Positive(planned.positive_subject));
         }
+        Some(rewrite)
     }
 
     fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {

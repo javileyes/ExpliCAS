@@ -26,6 +26,7 @@ fn make_eq(simplifier: &mut Simplifier, lhs: &str, rhs: &str) -> Equation {
 
 mod prepass_tests {
     use super::*;
+    use cas_solver::StepsMode;
 
     /// CancelCommonFactorsRule should have NeedsCondition(Definability) solve_safety.
     /// This ensures it won't be applied in SolvePrepass mode.
@@ -124,6 +125,17 @@ mod prepass_tests {
             "Prepass must keep the fraction form when cancellation needs x != y, got: {}",
             result_str
         );
+    }
+
+    #[test]
+    fn prepass_restores_exact_steps_mode_after_invisible_run() {
+        let mut simplifier = Simplifier::with_default_rules();
+        simplifier.set_steps_mode(StepsMode::Compact);
+        let expr = parse_expr(&mut simplifier, "(x^2 - y^2)/(x - y)");
+
+        let _ = simplifier.simplify_for_solve(expr);
+
+        assert_eq!(simplifier.get_steps_mode(), StepsMode::Compact);
     }
 }
 

@@ -191,8 +191,11 @@ impl Simplifier {
     /// Blocks rules that could corrupt solution sets (those requiring assumptions).
     /// Steps are not collected (pre-pass is invisible to user).
     pub fn simplify_for_solve(&mut self, expr_id: ExprId) -> ExprId {
+        let previous_steps_mode = self.steps_mode;
+        self.steps_mode = crate::options::StepsMode::Off;
         let (result, _steps) =
             self.simplify_with_options(expr_id, crate::phase::SimplifyOptions::for_solve_prepass());
+        self.steps_mode = previous_steps_mode;
         result
     }
 

@@ -109,6 +109,34 @@ fn test_content_gcd_multivar_in_solve_generic_context_steps_off() {
     );
 }
 
+#[test]
+fn test_binomial_square_cancel_in_solve_generic_context_steps_off() {
+    let result = simplify_with_semantics_and_steps(
+        "(x^2 + 2*x*y + y^2) / (x + y)^2",
+        ContextMode::Solve,
+        DomainMode::Generic,
+        StepsMode::Off,
+    );
+    assert_eq!(
+        result, "1",
+        "solve-context generic eval should collapse the binomial-square fraction to 1 with steps off"
+    );
+}
+
+#[test]
+fn test_binomial_square_cancel_in_solve_strict_context_steps_off() {
+    let result = simplify_with_semantics_and_steps(
+        "(x^2 + 2*x*y + y^2) / (x + y)^2",
+        ContextMode::Solve,
+        DomainMode::Strict,
+        StepsMode::Off,
+    );
+    assert_eq!(
+        result, "1",
+        "solve-context strict eval should keep the same steps-off binomial-square result"
+    );
+}
+
 // =============================================================================
 // Monomial GCD Tests (Layer 1)
 // =============================================================================

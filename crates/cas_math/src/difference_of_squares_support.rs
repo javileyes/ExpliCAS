@@ -81,34 +81,43 @@ pub fn try_plan_difference_of_squares_division_expr(
     let a_minus_b_raw = ctx.add(Expr::Sub(a, b));
     let a_plus_b_raw = ctx.add(Expr::Add(a, b));
 
-    let den_poly = multipoly_from_expr(ctx, denominator, &budget).ok()?;
     let a_minus_b_poly = multipoly_from_expr(ctx, a_minus_b_raw, &budget).ok()?;
     let a_plus_b_poly = multipoly_from_expr(ctx, a_plus_b_raw, &budget).ok()?;
-
-    let den_match = if den_poly == a_minus_b_poly {
-        DenMatch::AMinusB
-    } else if den_poly == a_minus_b_poly.neg() {
-        DenMatch::BMinusA
-    } else if den_poly == a_plus_b_poly {
-        DenMatch::APlusB
-    } else if den_poly == a_plus_b_poly.neg() {
-        DenMatch::BPlusA
+    let exact_den_match = if denominator == a_minus_b_raw {
+        Some(DenMatch::AMinusB)
+    } else if denominator == a_plus_b_raw {
+        Some(DenMatch::APlusB)
     } else {
-        return None;
+        None
     };
 
-    let a_minus_b = if let Ok(p) = multipoly_from_expr(ctx, a_minus_b_raw, &budget) {
-        multipoly_to_expr(&p, ctx)
+    let den_match = if let Some(exact) = exact_den_match {
+        exact
     } else {
-        a_minus_b_raw
+        let den_poly = multipoly_from_expr(ctx, denominator, &budget).ok()?;
+        if den_poly == a_minus_b_poly {
+            DenMatch::AMinusB
+        } else if den_poly == a_minus_b_poly.neg() {
+            DenMatch::BMinusA
+        } else if den_poly == a_plus_b_poly {
+            DenMatch::APlusB
+        } else if den_poly == a_plus_b_poly.neg() {
+            DenMatch::BPlusA
+        } else {
+            return None;
+        }
     };
-    let a_plus_b = if let Ok(p) = multipoly_from_expr(ctx, a_plus_b_raw, &budget) {
-        multipoly_to_expr(&p, ctx)
-    } else {
-        a_plus_b_raw
-    };
-    let den_simplified = if let Ok(p) = multipoly_from_expr(ctx, denominator, &budget) {
-        multipoly_to_expr(&p, ctx)
+
+    let a_minus_b = multipoly_to_expr(&a_minus_b_poly, ctx);
+    let a_plus_b = multipoly_to_expr(&a_plus_b_poly, ctx);
+    let den_simplified = if exact_den_match.is_some() {
+        denominator
+    } else if matches!(den_match, DenMatch::BMinusA | DenMatch::BPlusA) {
+        match den_match {
+            DenMatch::BMinusA => ctx.add(Expr::Neg(a_minus_b)),
+            DenMatch::BPlusA => ctx.add(Expr::Neg(a_plus_b)),
+            _ => unreachable!(),
+        }
     } else {
         denominator
     };

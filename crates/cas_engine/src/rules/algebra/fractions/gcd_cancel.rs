@@ -238,6 +238,14 @@ define_rule!(
         // EARLY RETURN: didactic factorization/cancellation plans (ordered in cas_math).
         if let Some(plan) = try_plan_fraction_didactic_cancel(ctx, num, den) {
             use crate::ImplicitCondition;
+            if !trace_payloads_enabled && plan.local_after == num {
+                let one = ctx.num(1);
+                return Some(
+                    Rewrite::new(one)
+                        .requires(ImplicitCondition::NonZero(den))
+                        .requires(ImplicitCondition::NonZero(plan.local_after)),
+                );
+            }
             let rewrite = Rewrite::new(plan.rewritten)
                 .desc(plan.desc)
                 .requires(ImplicitCondition::NonZero(den));

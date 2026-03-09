@@ -3,7 +3,8 @@ use cas_formatter::DisplayExpr;
 use cas_math::tri_proof::TriProof;
 use cas_parser::parse;
 use cas_solver::{
-    solve, DomainMode, Proof as EngineProof, Simplifier, SolveDomainEnv, SolverOptions, ValueDomain,
+    solve, verify_solution_set, DomainMode, Proof as EngineProof, Simplifier, SolveDomainEnv,
+    SolverOptions, StepsMode, ValueDomain, VerifySummary,
 };
 
 // Helper to make equation from strings
@@ -219,6 +220,22 @@ fn test_solve_abs_inequality() {
     } else {
         panic!("Expected Continuous solution, got {:?}", result);
     }
+}
+
+#[test]
+fn test_verify_solution_set_restores_exact_steps_mode_after_hidden_simplify() {
+    let mut simplifier = Simplifier::with_default_rules();
+    let eq = make_eq(&mut simplifier.context, "x^2 - 5*x + 6", "0");
+    let solutions = SolutionSet::Discrete(vec![
+        parse("2", &mut simplifier.context).unwrap(),
+        parse("3", &mut simplifier.context).unwrap(),
+    ]);
+
+    simplifier.set_steps_mode(StepsMode::Compact);
+    let result = verify_solution_set(&mut simplifier, &eq, "x", &solutions);
+
+    assert!(matches!(result.summary, VerifySummary::AllVerified));
+    assert_eq!(simplifier.get_steps_mode(), StepsMode::Compact);
 }
 
 fn classify_for_test(

@@ -52,6 +52,11 @@ pub struct FractionDidacticCancelPlan {
     pub desc: String,
 }
 
+#[inline]
+fn expr_matches_poly(ctx: &Context, lhs: ExprId, rhs: ExprId) -> bool {
+    lhs == rhs || poly_eq(ctx, lhs, rhs)
+}
+
 /// Detect `(a^2 + 2ab + b^2)/(a+b)^2` and plan denominator expansion.
 pub fn try_plan_expand_binomial_square_in_den_for_cancel(
     ctx: &mut Context,
@@ -75,7 +80,7 @@ pub fn try_plan_expand_binomial_square_in_den_for_cancel(
     let middle_sum = ctx.add(Expr::Add(two_ab, b_sq));
     let expanded = ctx.add(Expr::Add(a_sq, middle_sum));
 
-    if !poly_eq(ctx, num, expanded) {
+    if !expr_matches_poly(ctx, num, expanded) {
         return None;
     }
 
@@ -197,7 +202,7 @@ pub fn try_plan_perfect_square_minus_in_num(
     let inner_sum = ctx.add(Expr::Add(neg_two_ab, b_sq));
     let expected_num = ctx.add(Expr::Add(a_sq, inner_sum));
 
-    if !poly_eq(ctx, num, expected_num) {
+    if !expr_matches_poly(ctx, num, expected_num) {
         return None;
     }
 
@@ -254,12 +259,12 @@ pub fn try_plan_sum_diff_of_cubes_in_num(
     };
 
     let den_is_a_minus_b = if let Some((da, db)) = as_sub(ctx, den) {
-        poly_eq(ctx, da, a) && poly_eq(ctx, db, b)
+        expr_matches_poly(ctx, da, a) && expr_matches_poly(ctx, db, b)
     } else if let Some((left, right)) = as_add(ctx, den) {
         if let Some(neg_inner) = as_neg(ctx, right) {
-            poly_eq(ctx, left, a) && poly_eq(ctx, neg_inner, b)
+            expr_matches_poly(ctx, left, a) && expr_matches_poly(ctx, neg_inner, b)
         } else if let Some(neg_inner) = as_neg(ctx, left) {
-            poly_eq(ctx, right, a) && poly_eq(ctx, neg_inner, b)
+            expr_matches_poly(ctx, right, a) && expr_matches_poly(ctx, neg_inner, b)
         } else {
             false
         }
@@ -271,8 +276,8 @@ pub fn try_plan_sum_diff_of_cubes_in_num(
         if as_neg(ctx, da).is_some() || as_neg(ctx, db).is_some() {
             false
         } else {
-            (poly_eq(ctx, da, a) && poly_eq(ctx, db, b))
-                || (poly_eq(ctx, da, b) && poly_eq(ctx, db, a))
+            (expr_matches_poly(ctx, da, a) && expr_matches_poly(ctx, db, b))
+                || (expr_matches_poly(ctx, da, b) && expr_matches_poly(ctx, db, a))
         }
     } else {
         false
@@ -339,7 +344,7 @@ pub fn try_plan_power_quotient_preserve_form(
         (den, None)
     };
 
-    if !poly_eq(ctx, num_base, den_base) {
+    if !expr_matches_poly(ctx, num_base, den_base) {
         return None;
     }
 
