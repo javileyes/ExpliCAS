@@ -24,8 +24,8 @@ impl<'a> LocalSimplificationTransformer<'a> {
     /// Returns `true` if the rule should be skipped due to disabled-list,
     /// phase mismatch, or (optionally) solve-safety constraints.
     ///
-    /// `check_solve_safety`: `true` for specific rules, `false` for global rules
-    /// (the original code only applied solve-safety filtering to specific rules).
+    /// `check_solve_safety`: set when the current solve mode must enforce
+    /// `rule.solve_safety()` for this dispatch bucket.
     fn should_skip_rule(&mut self, rule: &dyn crate::rule::Rule, check_solve_safety: bool) -> bool {
         if !self.phase_prefiltered && self.disabled_rules.contains(rule.name()) {
             self.profiler
@@ -41,7 +41,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
             }
         }
         if check_solve_safety {
-            match self.simplify_purpose {
+            match self.initial_parent_ctx.simplify_purpose() {
                 crate::SimplifyPurpose::Eval => {}
                 crate::SimplifyPurpose::SolvePrepass => {
                     if !safe_for_prepass(rule.solve_safety()) {
@@ -69,6 +69,13 @@ impl<'a> LocalSimplificationTransformer<'a> {
         loop {
             let mut changed = false;
             let target_kind = crate::target_kind::TargetKind::from_expr(self.context.get(expr_id));
+            let simplify_purpose = self.initial_parent_ctx.simplify_purpose();
+            let solve_safety_runtime_filter =
+                !matches!(simplify_purpose, crate::SimplifyPurpose::Eval);
+            let specific_rules_need_runtime_filter =
+                !self.phase_prefiltered || solve_safety_runtime_filter;
+            let global_rules_need_runtime_filter =
+                !self.phase_prefiltered || solve_safety_runtime_filter;
 
             // PERF: Build ParentContext ONCE per node, shared by all rules.
             // Previously this was rebuilt inside the rule loop (O(rules × nodes × ancestors)).
@@ -78,7 +85,9 @@ impl<'a> LocalSimplificationTransformer<'a> {
             // Try specific rules
             if let Some(specific_rules) = self.rules.get(&target_kind) {
                 for rule in specific_rules {
-                    if self.should_skip_rule(rule.as_ref(), true) {
+                    if specific_rules_need_runtime_filter
+                        && self.should_skip_rule(rule.as_ref(), true)
+                    {
                         continue;
                     }
 
@@ -279,7 +288,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
 
             // Try global rules
             for rule in self.global_rules {
-                if self.should_skip_rule(rule.as_ref(), false) {
+                if global_rules_need_runtime_filter && self.should_skip_rule(rule.as_ref(), true) {
                     continue;
                 }
 

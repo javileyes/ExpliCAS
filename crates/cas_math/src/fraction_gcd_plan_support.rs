@@ -3,13 +3,87 @@
 //! Produces structural rewrite plans (multivariate or univariate) while leaving
 //! domain-policy decisions to higher layers.
 
+use crate::expr_nary::{AddView, Sign};
 use crate::fraction_multivar_gcd::try_multivar_gcd;
 use crate::fraction_univar_gcd_support::{
     build_fraction_cancel_forms, try_univariate_fraction_gcd_reduction, FractionCancelForms,
 };
 use crate::multipoly::GcdLayer;
+use crate::trig_linear_support::extract_coef_and_base;
 use cas_ast::{collect_variables, Context, Expr, ExprId};
 use num_rational::BigRational;
+use num_traits::{One, Zero};
+
+fn signed_term_coeff_and_base(
+    ctx: &Context,
+    term: (ExprId, Sign),
+) -> Option<(BigRational, ExprId)> {
+    let (mut coeff, base) = extract_coef_and_base(ctx, term.0);
+    if coeff.is_zero() {
+        return None;
+    }
+    if term.1 == Sign::Neg {
+        coeff = -coeff;
+    }
+    Some((coeff, base))
+}
+
+fn try_structural_scalar_multiple_fraction_reduction(
+    ctx: &mut Context,
+    num: ExprId,
+    den: ExprId,
+) -> Option<(ExprId, ExprId, ExprId)> {
+    let num_view = AddView::from_expr(ctx, num);
+    let den_view = AddView::from_expr(ctx, den);
+    if num_view.terms.len() < 2 || num_view.terms.len() != den_view.terms.len() {
+        return None;
+    }
+
+    let mut den_terms: Vec<(BigRational, ExprId, bool)> = den_view
+        .terms
+        .into_iter()
+        .map(|term| signed_term_coeff_and_base(ctx, term).map(|(coeff, base)| (coeff, base, false)))
+        .collect::<Option<_>>()?;
+
+    let mut ratio: Option<BigRational> = None;
+    for term in num_view.terms {
+        let (num_coeff, num_base) = signed_term_coeff_and_base(ctx, term)?;
+        let Some((den_coeff, _, used)) =
+            den_terms.iter_mut().find(|(den_coeff, den_base, used)| {
+                !*used
+                    && !den_coeff.is_zero()
+                    && cas_ast::ordering::compare_expr(ctx, num_base, *den_base)
+                        == std::cmp::Ordering::Equal
+            })
+        else {
+            return None;
+        };
+        let candidate_ratio = den_coeff.clone() / num_coeff;
+        if candidate_ratio.is_zero() {
+            return None;
+        }
+        match &ratio {
+            Some(existing) if existing != &candidate_ratio => return None,
+            None => ratio = Some(candidate_ratio),
+            _ => {}
+        }
+        *used = true;
+    }
+
+    let ratio = ratio?;
+    if ratio.is_one() {
+        return None;
+    }
+
+    let result_ratio = BigRational::one() / ratio;
+    let new_num = ctx.add(Expr::Number(BigRational::from_integer(
+        result_ratio.numer().clone(),
+    )));
+    let new_den = ctx.add(Expr::Number(BigRational::from_integer(
+        result_ratio.denom().clone(),
+    )));
+    Some((new_num, new_den, num))
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FractionGcdRoute {
@@ -41,6 +115,21 @@ pub fn try_plan_fraction_gcd_rewrite(
     let vars = collect_variables(ctx, expr);
 
     if vars.len() > 1 {
+        if let Some((new_num, new_den, gcd_expr)) =
+            try_structural_scalar_multiple_fraction_reduction(ctx, num, den)
+        {
+            let forms = build_fraction_cancel_forms(ctx, new_num, new_den, gcd_expr);
+            return Some(FractionGcdRewritePlan {
+                route: FractionGcdRoute::Multivar {
+                    layer: GcdLayer::Layer1MonomialContent,
+                },
+                gcd_expr,
+                forms,
+                strict_partial_result: None,
+                strict_partial_numeric_gcd: None,
+            });
+        }
+
         let (new_num, new_den, gcd_expr, layer) = try_multivar_gcd(ctx, num, den)?;
         let forms = build_fraction_cancel_forms(ctx, new_num, new_den, gcd_expr);
         return Some(FractionGcdRewritePlan {
@@ -110,6 +199,24 @@ mod tests {
         ));
         let expected = parse("y+z", &mut ctx).expect("expected");
         assert!(poly_eq(&ctx, plan.forms.result_norm, expected));
+    }
+
+    #[test]
+    fn plan_multivar_structural_scalar_multiple_fast_path() {
+        let mut ctx = Context::new();
+        let expr = parse("(2*x + 2*y)/(4*y + 4*x)", &mut ctx).expect("parse");
+        let num = parse("2*x + 2*y", &mut ctx).expect("parse");
+        let den = parse("4*y + 4*x", &mut ctx).expect("parse");
+        let plan = try_plan_fraction_gcd_rewrite(&mut ctx, expr, num, den).expect("plan");
+        assert!(matches!(
+            plan.route,
+            FractionGcdRoute::Multivar {
+                layer: GcdLayer::Layer1MonomialContent
+            }
+        ));
+        let expected = parse("1/2", &mut ctx).expect("expected");
+        assert!(poly_eq(&ctx, plan.forms.result_norm, expected));
+        assert_eq!(plan.gcd_expr, num);
     }
 
     #[test]

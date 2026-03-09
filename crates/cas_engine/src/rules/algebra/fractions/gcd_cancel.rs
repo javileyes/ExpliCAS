@@ -6,7 +6,7 @@
 use super::didactic_factor_support::try_plan_fraction_didactic_cancel;
 use crate::define_rule;
 use crate::rule::{ChainedRewrite, Rewrite};
-use cas_ast::Context;
+use cas_ast::{Context, Expr, ExprId};
 use cas_math::fraction_gcd_plan_support::try_plan_fraction_gcd_rewrite;
 use cas_math::fraction_mul_div_support::{try_rewrite_simplify_mul_div_expr, MulDivRewriteKind};
 use cas_math::fraction_power_cancel_support::{
@@ -62,6 +62,25 @@ fn format_cancel_power_fraction_desc(kind: CancelPowerFractionRewriteKind) -> &'
     }
 }
 
+fn fast_variable_nonzero_decision(
+    ctx: &Context,
+    mode: crate::DomainMode,
+    expr: ExprId,
+) -> Option<crate::CancelDecision> {
+    if !mode.allows_unproven(crate::ConditionClass::Definability) {
+        return None;
+    }
+
+    if !matches!(ctx.get(expr), Expr::Variable(_)) {
+        return None;
+    }
+
+    Some(crate::CancelDecision::allow_with_keys(
+        "cancelled factor assumed nonzero",
+        smallvec::smallvec![crate::AssumptionKey::nonzero_key(ctx, expr)],
+    ))
+}
+
 // ========== Micro-API for safe Mul construction ==========
 // Use this instead of ctx.add(Expr::Mul(...)) in this file.
 
@@ -86,13 +105,16 @@ define_rule!(
 
         // DOMAIN GATE: need base ≠ 0 (derived from original denominator P^n ≠ 0)
         let domain_mode = parent_ctx.domain_mode();
-        let decision = crate::oracle_allows_with_hint(
-            ctx,
-            domain_mode,
-            parent_ctx.value_domain(),
-            &Predicate::NonZero(plan.nonzero_target),
-            "Cancel Same-Base Powers",
-        );
+        let decision = fast_variable_nonzero_decision(ctx, domain_mode, plan.nonzero_target)
+            .unwrap_or_else(|| {
+                crate::oracle_allows_with_hint(
+                    ctx,
+                    domain_mode,
+                    parent_ctx.value_domain(),
+                    &Predicate::NonZero(plan.nonzero_target),
+                    "Cancel Same-Base Powers",
+                )
+            });
 
         if !decision.allow {
             return None;
@@ -128,13 +150,16 @@ define_rule!(
 
         // DOMAIN GATE: In Strict mode, only cancel if den is provably non-zero
         let domain_mode = parent_ctx.domain_mode();
-        let decision = crate::oracle_allows_with_hint(
-            ctx,
-            domain_mode,
-            parent_ctx.value_domain(),
-            &Predicate::NonZero(plan.nonzero_target),
-            "Cancel Identical Numerator/Denominator",
-        );
+        let decision = fast_variable_nonzero_decision(ctx, domain_mode, plan.nonzero_target)
+            .unwrap_or_else(|| {
+                crate::oracle_allows_with_hint(
+                    ctx,
+                    domain_mode,
+                    parent_ctx.value_domain(),
+                    &Predicate::NonZero(plan.nonzero_target),
+                    "Cancel Identical Numerator/Denominator",
+                )
+            });
 
         if !decision.allow {
             // Strict mode + Unknown proof: don't simplify (e.g., x/x stays)
@@ -167,13 +192,16 @@ define_rule!(
 
         // DOMAIN GATE
         let domain_mode = parent_ctx.domain_mode();
-        let decision = crate::oracle_allows_with_hint(
-            ctx,
-            domain_mode,
-            parent_ctx.value_domain(),
-            &Predicate::NonZero(plan.nonzero_target),
-            "Cancel Power Fraction",
-        );
+        let decision = fast_variable_nonzero_decision(ctx, domain_mode, plan.nonzero_target)
+            .unwrap_or_else(|| {
+                crate::oracle_allows_with_hint(
+                    ctx,
+                    domain_mode,
+                    parent_ctx.value_domain(),
+                    &Predicate::NonZero(plan.nonzero_target),
+                    "Cancel Power Fraction",
+                )
+            });
 
         if !decision.allow {
             return None;

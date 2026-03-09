@@ -1,20 +1,125 @@
 mod common;
 
-use std::hint::black_box;
-
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
+use std::hint::black_box;
 
 use cas_ast::Context;
 use cas_parser::parse;
 
 use cas_engine::{
-    BranchMode, ComplexMode, ContextMode, EvalOptions, ProfileCache, Simplifier, StepsMode,
+    BranchMode, ComplexMode, ContextMode, DomainMode, EvalOptions, ProfileCache, Simplifier,
+    SimplifyOptions, StepsMode,
 };
+
+const SOLVE_PROFILE_FLAG: &str = "CAS_SOLVE_BENCH_PROFILE";
+const SOLVE_PROFILE_MODE_VAR: &str = "CAS_SOLVE_BENCH_PROFILE_MODE";
+const SOLVE_PROFILE_DETAIL_FLAG: &str = "CAS_SOLVE_BENCH_PROFILE_DETAIL";
 
 fn build_expr(input: &str) -> (Context, cas_ast::ExprId) {
     let mut ctx = Context::new();
     let id = parse(input, &mut ctx).expect("parse failed");
     (ctx, id)
+}
+
+fn solve_profile_mode_filter() -> Option<String> {
+    std::env::var(SOLVE_PROFILE_MODE_VAR)
+        .ok()
+        .map(|value| value.trim().to_ascii_lowercase())
+        .filter(|value| !value.is_empty())
+}
+
+fn should_emit_solve_profile(mode_name: &str) -> bool {
+    if !common::env_flag_enabled(SOLVE_PROFILE_FLAG) {
+        return false;
+    }
+
+    match solve_profile_mode_filter() {
+        Some(filter) => filter == mode_name,
+        None => true,
+    }
+}
+
+fn solve_profile_detail_enabled() -> bool {
+    common::env_flag_enabled(SOLVE_PROFILE_DETAIL_FLAG)
+}
+
+fn emit_solve_profile_snapshot(
+    mode_name: &str,
+    options: &SimplifyOptions,
+    inputs: &[&str],
+    mut make_simplifier: impl FnMut(Context) -> Simplifier,
+) {
+    if !should_emit_solve_profile(mode_name) {
+        return;
+    }
+
+    let mut total_len = 0usize;
+    let mut aggregate = cas_engine::RuleProfiler::new(true);
+    aggregate.enable_health();
+
+    for input in inputs {
+        let (ctx, expr) = build_expr(input);
+        let mut simplifier = make_simplifier(ctx);
+        simplifier.profiler.enable_health();
+        simplifier.profiler.clear_run();
+
+        let (out, _steps) = simplifier.simplify_with_options(expr, options.clone());
+        total_len ^= format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: &simplifier.context,
+                id: out
+            }
+        )
+        .len();
+
+        if solve_profile_detail_enabled() {
+            let rendered = format!(
+                "{}",
+                cas_formatter::DisplayExpr {
+                    context: &simplifier.context,
+                    id: out
+                }
+            );
+            println!("solve_profile_input[{mode_name}] input={input:?} output={rendered:?}");
+            for &phase in cas_engine::SimplifyPhase::all() {
+                let top = simplifier.profiler.top_applied_for_phase(phase, 5);
+                if top.is_empty() {
+                    continue;
+                }
+
+                let summary = top
+                    .into_iter()
+                    .map(|(rule, hits)| format!("{rule}={hits}"))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                println!("  {:?}: {}", phase, summary);
+            }
+        }
+
+        for &phase in cas_engine::SimplifyPhase::all() {
+            for (rule_name, hits) in simplifier.profiler.top_applied_for_phase(phase, usize::MAX) {
+                for _ in 0..hits {
+                    aggregate.record(phase, &rule_name);
+                }
+            }
+        }
+    }
+
+    println!("solve_profile[{mode_name}] total_output_len={total_len}");
+    for &phase in cas_engine::SimplifyPhase::all() {
+        let top = aggregate.top_applied_for_phase(phase, 5);
+        if top.is_empty() {
+            continue;
+        }
+
+        let summary = top
+            .into_iter()
+            .map(|(rule, hits)| format!("{rule}={hits}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        println!("  {:?}: {}", phase, summary);
+    }
 }
 
 fn bench_profile_build(c: &mut Criterion) {
@@ -126,9 +231,214 @@ fn bench_simplify_cached_vs_uncached(c: &mut Criterion) {
     group.finish();
 }
 
+fn bench_solve_modes_cached(c: &mut Criterion) {
+    let inputs = [
+        "(x^2 - y^2)/(x - y)",
+        "(2*x + 2*y)/(4*x + 4*y)",
+        "x/x",
+        "exp(ln(x))",
+        "(a^x)/a",
+        "x^0",
+    ];
+
+    let profile_opts = EvalOptions {
+        branch_mode: BranchMode::Strict,
+        complex_mode: ComplexMode::Auto,
+        steps_mode: StepsMode::Off,
+        shared: cas_engine::SharedSemanticConfig {
+            context_mode: ContextMode::Solve,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+
+    let mut cache = ProfileCache::new();
+    let profile = cache.get_or_build(&profile_opts);
+
+    let mut solve_prepass = SimplifyOptions::for_solve_prepass();
+    solve_prepass.shared.context_mode = ContextMode::Solve;
+
+    let mut tactic_strict = SimplifyOptions::for_solve_tactic(DomainMode::Strict);
+    tactic_strict.collect_steps = false;
+    tactic_strict.shared.context_mode = ContextMode::Solve;
+
+    let mut tactic_generic = SimplifyOptions::for_solve_tactic(DomainMode::Generic);
+    tactic_generic.collect_steps = false;
+    tactic_generic.shared.context_mode = ContextMode::Solve;
+
+    let mut tactic_assume = SimplifyOptions::for_solve_tactic(DomainMode::Assume);
+    tactic_assume.collect_steps = false;
+    tactic_assume.shared.context_mode = ContextMode::Solve;
+
+    let mut group = c.benchmark_group("solve_modes_cached");
+    common::configure_standard_group(&mut group);
+
+    emit_solve_profile_snapshot("prepass", &solve_prepass, &inputs, |ctx| {
+        Simplifier::from_profile_with_context(profile.clone(), ctx)
+    });
+    emit_solve_profile_snapshot("strict", &tactic_strict, &inputs, |ctx| {
+        Simplifier::from_profile_with_context(profile.clone(), ctx)
+    });
+    emit_solve_profile_snapshot("generic", &tactic_generic, &inputs, |ctx| {
+        Simplifier::from_profile_with_context(profile.clone(), ctx)
+    });
+    emit_solve_profile_snapshot("assume", &tactic_assume, &inputs, |ctx| {
+        Simplifier::from_profile_with_context(profile.clone(), ctx)
+    });
+
+    group.bench_function("solve_prepass_batch", |b| {
+        b.iter(|| {
+            let mut total_len = 0usize;
+            for input in &inputs {
+                let (ctx, expr) = build_expr(input);
+                let mut s = Simplifier::from_profile_with_context(profile.clone(), ctx);
+                let (out, _steps) = s.simplify_with_options(expr, solve_prepass.clone());
+                total_len ^= format!(
+                    "{}",
+                    cas_formatter::DisplayExpr {
+                        context: &s.context,
+                        id: out
+                    }
+                )
+                .len();
+            }
+            black_box(total_len)
+        })
+    });
+
+    group.bench_function("solve_tactic_strict_batch", |b| {
+        b.iter(|| {
+            let mut total_len = 0usize;
+            for input in &inputs {
+                let (ctx, expr) = build_expr(input);
+                let mut s = Simplifier::from_profile_with_context(profile.clone(), ctx);
+                let (out, _steps) = s.simplify_with_options(expr, tactic_strict.clone());
+                total_len ^= format!(
+                    "{}",
+                    cas_formatter::DisplayExpr {
+                        context: &s.context,
+                        id: out
+                    }
+                )
+                .len();
+            }
+            black_box(total_len)
+        })
+    });
+
+    group.bench_function("solve_tactic_generic_batch", |b| {
+        b.iter(|| {
+            let mut total_len = 0usize;
+            for input in &inputs {
+                let (ctx, expr) = build_expr(input);
+                let mut s = Simplifier::from_profile_with_context(profile.clone(), ctx);
+                let (out, _steps) = s.simplify_with_options(expr, tactic_generic.clone());
+                total_len ^= format!(
+                    "{}",
+                    cas_formatter::DisplayExpr {
+                        context: &s.context,
+                        id: out
+                    }
+                )
+                .len();
+            }
+            black_box(total_len)
+        })
+    });
+
+    group.bench_function("solve_tactic_assume_batch", |b| {
+        b.iter(|| {
+            let mut total_len = 0usize;
+            for input in &inputs {
+                let (ctx, expr) = build_expr(input);
+                let mut s = Simplifier::from_profile_with_context(profile.clone(), ctx);
+                let (out, _steps) = s.simplify_with_options(expr, tactic_assume.clone());
+                total_len ^= format!(
+                    "{}",
+                    cas_formatter::DisplayExpr {
+                        context: &s.context,
+                        id: out
+                    }
+                )
+                .len();
+            }
+            black_box(total_len)
+        })
+    });
+
+    group.finish();
+}
+
+fn bench_solve_hotspots_cached(c: &mut Criterion) {
+    let profile_opts = EvalOptions {
+        branch_mode: BranchMode::Strict,
+        complex_mode: ComplexMode::Auto,
+        steps_mode: StepsMode::Off,
+        shared: cas_engine::SharedSemanticConfig {
+            context_mode: ContextMode::Solve,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+
+    let mut cache = ProfileCache::new();
+    let profile = cache.get_or_build(&profile_opts);
+
+    let mut tactic_generic = SimplifyOptions::for_solve_tactic(DomainMode::Generic);
+    tactic_generic.collect_steps = false;
+    tactic_generic.shared.context_mode = ContextMode::Solve;
+
+    let mut tactic_assume = SimplifyOptions::for_solve_tactic(DomainMode::Assume);
+    tactic_assume.collect_steps = false;
+    tactic_assume.shared.context_mode = ContextMode::Solve;
+
+    let cases = [
+        (
+            "generic/scalar_multiple_fraction",
+            "(2*x + 2*y)/(4*x + 4*y)",
+            tactic_generic.clone(),
+        ),
+        ("generic/x_over_x", "x/x", tactic_generic.clone()),
+        ("generic/exp_ln_x", "exp(ln(x))", tactic_generic.clone()),
+        ("assume/x_over_x", "x/x", tactic_assume.clone()),
+        ("assume/exp_ln_x", "exp(ln(x))", tactic_assume.clone()),
+    ];
+
+    let mut group = c.benchmark_group("solve_hotspots_cached");
+    common::configure_standard_group(&mut group);
+
+    for (name, input, options) in cases {
+        let input = input;
+        let options = options.clone();
+        group.bench_function(name, |b| {
+            b.iter_batched(
+                || build_expr(input),
+                |(ctx, expr)| {
+                    let mut s = Simplifier::from_profile_with_context(profile.clone(), ctx);
+                    let (out, _steps) = s.simplify_with_options(expr, options.clone());
+                    let output_len = format!(
+                        "{}",
+                        cas_formatter::DisplayExpr {
+                            context: &s.context,
+                            id: out
+                        }
+                    )
+                    .len();
+                    black_box(output_len);
+                },
+                criterion::BatchSize::SmallInput,
+            )
+        });
+    }
+
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_profile_build,
-    bench_simplify_cached_vs_uncached
+    bench_simplify_cached_vs_uncached,
+    bench_solve_modes_cached,
+    bench_solve_hotspots_cached
 );
 criterion_main!(benches);

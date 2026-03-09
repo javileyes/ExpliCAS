@@ -102,6 +102,29 @@ mod prepass_tests {
             result_str
         );
     }
+
+    /// Prepass should not cancel fractions that require definability assumptions.
+    /// (x^2 - y^2)/(x - y) only simplifies to x + y when x != y is allowed.
+    #[test]
+    fn prepass_does_not_cancel_difference_of_squares_fraction() {
+        let mut simplifier = Simplifier::with_default_rules();
+        let expr = parse_expr(&mut simplifier, "(x^2 - y^2)/(x - y)");
+
+        let result = simplifier.simplify_for_solve(expr);
+        let result_str = format!(
+            "{}",
+            DisplayExpr {
+                context: &simplifier.context,
+                id: result,
+            }
+        );
+
+        assert!(
+            result_str.contains("/"),
+            "Prepass must keep the fraction form when cancellation needs x != y, got: {}",
+            result_str
+        );
+    }
 }
 
 mod solve_tactic_tests {
@@ -185,6 +208,30 @@ mod solve_tactic_tests {
         assert!(
             result_str.contains("ln"),
             "SolveTactic(Strict) must not apply any Analytic rules, got: {}",
+            result_str
+        );
+    }
+
+    /// Strict tactic should also block definability-based fraction cancellation.
+    #[test]
+    fn tactic_strict_does_not_cancel_difference_of_squares_fraction() {
+        let mut simplifier = Simplifier::with_default_rules();
+        let expr = parse_expr(&mut simplifier, "(x^2 - y^2)/(x - y)");
+
+        let opts = SimplifyOptions::for_solve_tactic(DomainMode::Strict);
+        let (result, _) = simplifier.simplify_with_options(expr, opts);
+
+        let result_str = format!(
+            "{}",
+            DisplayExpr {
+                context: &simplifier.context,
+                id: result,
+            }
+        );
+
+        assert!(
+            result_str.contains("/"),
+            "SolveTactic(Strict) must keep the fraction form when cancellation needs x != y, got: {}",
             result_str
         );
     }

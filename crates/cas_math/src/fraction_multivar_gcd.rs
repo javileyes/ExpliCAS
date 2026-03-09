@@ -18,6 +18,28 @@ fn gcd_rational_integers_only(a: BigRational, b: BigRational) -> BigRational {
     BigRational::one()
 }
 
+fn collapse_scalar_multiple_reduction(
+    p_num: &MultiPoly,
+    p_den: &MultiPoly,
+) -> Option<(MultiPoly, MultiPoly, MultiPoly)> {
+    if p_num.vars != p_den.vars || p_num.is_zero() || p_den.is_zero() {
+        return None;
+    }
+
+    let (num_content, num_primitive) = p_num.primitive_part();
+    let (den_content, den_primitive) = p_den.primitive_part();
+
+    if num_primitive != den_primitive {
+        return None;
+    }
+
+    Some((
+        MultiPoly::from_const(num_content),
+        MultiPoly::from_const(den_content),
+        num_primitive,
+    ))
+}
+
 /// Try to compute a non-trivial multivariate GCD for `num/den`.
 ///
 /// Returns:
@@ -116,6 +138,18 @@ pub fn try_multivar_gcd(
         gcd_poly = gcd_poly.mul_scalar(&content_gcd);
     }
 
+    let (p_num, p_den, gcd_poly) = if let Some((collapsed_num, collapsed_den, extra_gcd)) =
+        collapse_scalar_multiple_reduction(&p_num, &p_den)
+    {
+        (
+            collapsed_num,
+            collapsed_den,
+            gcd_poly.mul(&extra_gcd, &budget).ok()?,
+        )
+    } else {
+        (p_num, p_den, gcd_poly)
+    };
+
     let new_num = multipoly_to_expr(&p_num, ctx);
     let new_den = multipoly_to_expr(&p_den, ctx);
     let gcd_expr = multipoly_to_expr(&gcd_poly, ctx);
@@ -153,5 +187,23 @@ mod tests {
         let num = parse("x^2-1", &mut ctx).expect("parse num");
         let den = parse("x-1", &mut ctx).expect("parse den");
         assert!(try_multivar_gcd(&mut ctx, num, den).is_none());
+    }
+
+    #[test]
+    fn multivar_layer1_collapses_scalar_multiple_remainder() {
+        let mut ctx = Context::new();
+        let num = parse("2*x + 2*y", &mut ctx).expect("parse num");
+        let den = parse("4*x + 4*y", &mut ctx).expect("parse den");
+
+        let (new_num, new_den, gcd, layer) =
+            try_multivar_gcd(&mut ctx, num, den).expect("should extract");
+
+        assert_eq!(layer, GcdLayer::Layer1MonomialContent);
+        let expected_num = parse("1", &mut ctx).expect("parse expected_num");
+        let expected_den = parse("2", &mut ctx).expect("parse expected_den");
+        let expected_gcd = parse("2*(x+y)", &mut ctx).expect("parse expected_gcd");
+        assert!(poly_eq(&ctx, new_num, expected_num));
+        assert!(poly_eq(&ctx, new_den, expected_den));
+        assert!(poly_eq(&ctx, gcd, expected_gcd));
     }
 }

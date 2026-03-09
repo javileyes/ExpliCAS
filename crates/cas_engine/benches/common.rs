@@ -5,10 +5,14 @@ use std::time::Duration;
 
 const FAST_BENCH_FLAG: &str = "CAS_BENCH_FAST";
 
-fn fast_mode_enabled() -> bool {
-    std::env::var(FAST_BENCH_FLAG)
+pub fn env_flag_enabled(name: &str) -> bool {
+    std::env::var(name)
         .map(|value| matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
         .unwrap_or(false)
+}
+
+fn fast_mode_enabled() -> bool {
+    env_flag_enabled(FAST_BENCH_FLAG)
 }
 
 /// Configure a standard benchmark group.

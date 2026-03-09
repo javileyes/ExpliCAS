@@ -9,6 +9,8 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 pub(crate) const PHASE_SLOT_COUNT: usize = 4;
+type RuleBuckets = HashMap<crate::target_kind::TargetKind, Vec<Arc<dyn Rule>>>;
+type PhaseRuleBuckets = [RuleBuckets; PHASE_SLOT_COUNT];
 
 #[inline]
 pub(crate) fn phase_index(phase: crate::phase::SimplifyPhase) -> usize {
@@ -44,10 +46,9 @@ impl ProfileKey {
 #[allow(clippy::arc_with_non_send_sync)] // Rules are intentionally not Send+Sync for flexibility
 pub struct RuleProfile {
     /// Rules indexed by target type
-    pub rules: HashMap<crate::target_kind::TargetKind, Vec<Arc<dyn Rule>>>,
+    pub rules: RuleBuckets,
     /// Rules pre-filtered by simplification phase for hot-loop dispatch.
-    pub phase_rules:
-        [HashMap<crate::target_kind::TargetKind, Vec<Arc<dyn Rule>>>; PHASE_SLOT_COUNT],
+    pub phase_rules: PhaseRuleBuckets,
     /// Global rules (apply to all expression types)
     pub global_rules: Vec<Arc<dyn Rule>>,
     /// Global rules pre-filtered by simplification phase.
@@ -126,14 +127,11 @@ fn build_profile(opts: &EvalOptions) -> RuleProfile {
     }
 }
 
-fn build_phase_rules(
-    rules: &HashMap<crate::target_kind::TargetKind, Vec<Arc<dyn Rule>>>,
-    disabled_rules: &HashSet<String>,
-) -> [HashMap<crate::target_kind::TargetKind, Vec<Arc<dyn Rule>>>; PHASE_SLOT_COUNT] {
+fn build_phase_rules(rules: &RuleBuckets, disabled_rules: &HashSet<String>) -> PhaseRuleBuckets {
     std::array::from_fn(|slot| {
         let phase = crate::phase::SimplifyPhase::all()[slot];
         let phase_mask = phase.mask();
-        let mut filtered = HashMap::with_capacity(rules.len());
+        let mut filtered = RuleBuckets::with_capacity(rules.len());
 
         for (&target_kind, bucket) in rules {
             let phase_bucket: Vec<_> = bucket

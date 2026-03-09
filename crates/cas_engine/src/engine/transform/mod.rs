@@ -82,8 +82,6 @@ pub(super) struct LocalSimplificationTransformer<'a> {
     pub(super) initial_parent_ctx: crate::parent_context::ParentContext, // Carries marks to rules
     /// Current phase of the simplification pipeline (controls which rules can run)
     pub(super) current_phase: crate::phase::SimplifyPhase,
-    /// Purpose of simplification: controls which rules are filtered by solve_safety()
-    pub(super) simplify_purpose: crate::SimplifyPurpose,
 
     // ── Cycle detection ──────────────────────────────────────────────────
     /// Cycle detector for ping-pong detection (always-on as of V2.14.30)

@@ -13,16 +13,7 @@ use cas_math::expr_sub_like::{
     try_rewrite_normalize_binomial_order_expr,
 };
 use cas_math::root_forms::{try_rewrite_canonical_root_expr, CanonicalRootRewriteKind};
-
-define_rule!(
-    CanonicalizeNegationRule,
-    "Canonicalize Negation",
-    importance: crate::step::ImportanceLevel::Low,
-    |ctx, expr| {
-        let rewrite = try_rewrite_canonicalize_negation_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
-    }
-);
+use std::cmp::Ordering;
 
 define_rule!(CanonicalizeAddRule, "Canonicalize Addition", importance: crate::step::ImportanceLevel::Low, |ctx, expr| {
     let rewrite = try_rewrite_canonicalize_add_expr(ctx, expr)?;
@@ -127,20 +118,155 @@ define_rule!(
     }
 );
 
+fn is_explicit_negation_like(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> bool {
+    match ctx.get(expr) {
+        cas_ast::Expr::Neg(_) => true,
+        cas_ast::Expr::Mul(l, r) => {
+            let minus_one = num_rational::BigRational::from_integer((-1).into());
+            matches!(ctx.get(*l), cas_ast::Expr::Number(n) if *n == minus_one)
+                || matches!(ctx.get(*r), cas_ast::Expr::Number(n) if *n == minus_one)
+        }
+        _ => false,
+    }
+}
+
+fn is_implicit_negated_sub_like(ctx: &mut cas_ast::Context, expr: cas_ast::ExprId) -> bool {
+    if is_explicit_negation_like(ctx, expr) {
+        return false;
+    }
+
+    cas_math::expr_sub_like::extract_sub_like_pair(ctx, expr)
+        .is_some_and(|(a, b)| cas_ast::ordering::compare_expr(ctx, a, b) == Ordering::Less)
+}
+
+fn cosmetic_fraction_sign_cancel_gated_mode(
+    parent_ctx: &crate::parent_context::ParentContext,
+) -> bool {
+    match parent_ctx.simplify_purpose() {
+        crate::SimplifyPurpose::Eval => false,
+        crate::SimplifyPurpose::SolvePrepass => true,
+        crate::SimplifyPurpose::SolveTactic => {
+            matches!(parent_ctx.domain_mode(), crate::DomainMode::Strict)
+        }
+    }
+}
+
+fn is_cosmetic_double_implicit_neg_fraction(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> bool {
+    let cas_ast::Expr::Div(num, den) = ctx.get(expr) else {
+        return false;
+    };
+    let (num, den) = (*num, *den);
+
+    is_implicit_negated_sub_like(ctx, num) && is_implicit_negated_sub_like(ctx, den)
+}
+
+fn should_skip_cosmetic_fraction_sign_cancel(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+    parent_ctx: &crate::parent_context::ParentContext,
+) -> bool {
+    cosmetic_fraction_sign_cancel_gated_mode(parent_ctx)
+        && is_cosmetic_double_implicit_neg_fraction(ctx, expr)
+}
+
+fn should_skip_cosmetic_sub_negation_canonicalization(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+    parent_ctx: &crate::parent_context::ParentContext,
+) -> bool {
+    if !cosmetic_fraction_sign_cancel_gated_mode(parent_ctx) {
+        return false;
+    }
+    if !matches!(ctx.get(expr), cas_ast::Expr::Sub(_, _)) {
+        return false;
+    }
+
+    let Some(parent_id) = parent_ctx.immediate_parent() else {
+        return false;
+    };
+    let cas_ast::Expr::Div(num, den) = ctx.get(parent_id) else {
+        return false;
+    };
+    if *num != expr && *den != expr {
+        return false;
+    }
+
+    is_cosmetic_double_implicit_neg_fraction(ctx, parent_id)
+}
+
 // Rule: (-A)/(-B) → A/B - Cancel double negation in fractions
 // This handles cases like (1-√x)/(1-x) → (√x-1)/(x-1)
 // by recognizing that (1-√x) is the negation of (√x-1), etc.
 //
 // No loop risk: produces canonical order which won't match again.
-define_rule!(
-    CancelFractionSignsRule,
-    "Cancel Fraction Signs",
-    importance: crate::step::ImportanceLevel::Low,
-    |ctx, expr| {
+pub struct CancelFractionSignsRule;
+
+impl crate::rule::SimpleRule for CancelFractionSignsRule {
+    fn name(&self) -> &str {
+        "Cancel Fraction Signs"
+    }
+
+    fn apply_simple(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: cas_ast::ExprId,
+    ) -> Option<crate::rule::Rewrite> {
         let rewrite = try_rewrite_cancel_fraction_signs_expr(ctx, expr)?;
         Some(Rewrite::new(rewrite.rewritten).desc(format_cancel_fraction_signs_desc()))
     }
-);
+
+    fn apply_with_context(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: cas_ast::ExprId,
+        parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<crate::rule::Rewrite> {
+        if should_skip_cosmetic_fraction_sign_cancel(ctx, expr, parent_ctx) {
+            return None;
+        }
+        self.apply_simple(ctx, expr)
+    }
+
+    fn importance(&self) -> crate::step::ImportanceLevel {
+        crate::step::ImportanceLevel::Low
+    }
+}
+
+pub struct CanonicalizeNegationRule;
+
+impl crate::rule::SimpleRule for CanonicalizeNegationRule {
+    fn name(&self) -> &str {
+        "Canonicalize Negation"
+    }
+
+    fn apply_simple(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: cas_ast::ExprId,
+    ) -> Option<crate::rule::Rewrite> {
+        let rewrite = try_rewrite_canonicalize_negation_expr(ctx, expr)?;
+        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+    }
+
+    fn apply_with_context(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: cas_ast::ExprId,
+        parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<crate::rule::Rewrite> {
+        if should_skip_cosmetic_sub_negation_canonicalization(ctx, expr, parent_ctx) {
+            return None;
+        }
+        self.apply_simple(ctx, expr)
+    }
+
+    fn importance(&self) -> crate::step::ImportanceLevel {
+        crate::step::ImportanceLevel::Low
+    }
+}
 
 // Rule: (-k) * (...) * (a - b) → k * (...) * (b - a) when k > 0
 // This produces cleaner output like "1/2 * x * (√2 - 1)" instead of "-1/2 * x * (1 - √2)"

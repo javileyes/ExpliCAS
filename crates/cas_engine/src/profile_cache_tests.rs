@@ -2,6 +2,9 @@
 mod tests {
     use crate::options::{ContextMode, EvalOptions};
     use crate::profile_cache::ProfileCache;
+    use crate::DomainMode;
+    use cas_formatter::DisplayExpr;
+    use cas_parser::parse;
     use std::sync::Arc;
 
     struct TestVariableToYRule;
@@ -226,7 +229,6 @@ mod tests {
     #[test]
     fn test_from_profile_add_rule_materializes_cached_rules() {
         use crate::Simplifier;
-        use cas_formatter::DisplayExpr;
 
         let mut cache = ProfileCache::new();
         let opts = EvalOptions::default();
@@ -246,5 +248,145 @@ mod tests {
         );
 
         assert_eq!(result_str, "y");
+    }
+
+    #[test]
+    fn test_from_profile_solve_tactic_strict_keeps_runtime_solve_safety_filter() {
+        use crate::Simplifier;
+
+        let mut cache = ProfileCache::new();
+        let opts = EvalOptions {
+            shared: crate::phase::SharedSemanticConfig {
+                context_mode: ContextMode::Solve,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let profile = cache.get_or_build(&opts);
+
+        let mut simplifier = Simplifier::from_profile(profile);
+        let expr = parse("exp(ln(x))", &mut simplifier.context).expect("parse failed");
+
+        let mut solve_opts = crate::SimplifyOptions::for_solve_tactic(DomainMode::Strict);
+        solve_opts.shared.context_mode = ContextMode::Solve;
+
+        let (result, _) = simplifier.simplify_with_options(expr, solve_opts);
+        let result_str = format!(
+            "{}",
+            DisplayExpr {
+                context: &simplifier.context,
+                id: result
+            }
+        );
+
+        assert!(
+            result_str.contains("ln"),
+            "Solve strict cached profile must keep the logarithm unreduced, got: {}",
+            result_str
+        );
+    }
+
+    #[test]
+    fn test_from_profile_solve_tactic_assume_still_allows_intrinsic_analytic_rules() {
+        use crate::Simplifier;
+
+        let mut cache = ProfileCache::new();
+        let opts = EvalOptions {
+            shared: crate::phase::SharedSemanticConfig {
+                context_mode: ContextMode::Solve,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let profile = cache.get_or_build(&opts);
+
+        let mut simplifier = Simplifier::from_profile(profile);
+        let expr = parse("exp(ln(x))", &mut simplifier.context).expect("parse failed");
+
+        let mut solve_opts = crate::SimplifyOptions::for_solve_tactic(DomainMode::Assume);
+        solve_opts.shared.context_mode = ContextMode::Solve;
+
+        let (result, _) = simplifier.simplify_with_options(expr, solve_opts);
+        let result_str = format!(
+            "{}",
+            DisplayExpr {
+                context: &simplifier.context,
+                id: result
+            }
+        );
+
+        assert_eq!(result_str, "x");
+    }
+
+    #[test]
+    fn test_from_profile_solve_prepass_keeps_runtime_solve_safety_filter() {
+        use crate::Simplifier;
+
+        let mut cache = ProfileCache::new();
+        let opts = EvalOptions {
+            shared: crate::phase::SharedSemanticConfig {
+                context_mode: ContextMode::Solve,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let profile = cache.get_or_build(&opts);
+
+        let mut simplifier = Simplifier::from_profile(profile);
+        let expr = parse("exp(ln(x))", &mut simplifier.context).expect("parse failed");
+
+        let mut solve_opts = crate::SimplifyOptions::for_solve_prepass();
+        solve_opts.shared.context_mode = ContextMode::Solve;
+
+        let (result, _) = simplifier.simplify_with_options(expr, solve_opts);
+        let result_str = format!(
+            "{}",
+            DisplayExpr {
+                context: &simplifier.context,
+                id: result
+            }
+        );
+
+        assert!(
+            result_str.contains("ln"),
+            "Solve prepass cached profile must keep the logarithm unreduced, got: {}",
+            result_str
+        );
+    }
+
+    #[test]
+    fn test_from_profile_solve_tactic_strict_blocks_global_definability_cancellation() {
+        use crate::Simplifier;
+
+        let mut cache = ProfileCache::new();
+        let opts = EvalOptions {
+            shared: crate::phase::SharedSemanticConfig {
+                context_mode: ContextMode::Solve,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let profile = cache.get_or_build(&opts);
+
+        let mut simplifier = Simplifier::from_profile(profile);
+        let expr = parse("(x^2 - y^2)/(x - y)", &mut simplifier.context).expect("parse failed");
+
+        let mut solve_opts = crate::SimplifyOptions::for_solve_tactic(DomainMode::Strict);
+        solve_opts.shared.context_mode = ContextMode::Solve;
+
+        let (result, _) = simplifier.simplify_with_options(expr, solve_opts);
+        let result_str = format!(
+            "{}",
+            DisplayExpr {
+                context: &simplifier.context,
+                id: result
+            }
+        );
+
+        assert!(
+            result_str.contains("/"),
+            "Solve strict cached profile must keep fraction cancellation gated by x != y, got: {}",
+            result_str
+        );
     }
 }

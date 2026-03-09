@@ -4,6 +4,7 @@ use crate::rule::Rewrite;
 use cas_ast::{Context, Expr, ExprId};
 use cas_math::expr_extract::extract_log_base_argument_relaxed_view;
 use cas_math::expr_predicates::is_e_constant_expr;
+use cas_math::infinity_support::{is_negative_literal, is_positive_literal};
 use cas_math::logarithm_inverse_support::{
     estimate_log_terms, log_auto_expand_emits_blocked_hint, log_auto_expand_mode_from_flags,
     log_auto_expand_needs_implicit_domain, log_exp_inverse_policy_mode_from_flags,
@@ -13,7 +14,24 @@ use cas_math::logarithm_inverse_support::{
     try_rewrite_log_inverse_power_expr, try_rewrite_log_power_base_numeric_expr,
     try_rewrite_split_log_exponents_expr,
 };
+use num_traits::Zero;
 use std::cmp::Ordering;
+
+fn prove_positive_literal_fast(ctx: &Context, expr: ExprId) -> Option<crate::Proof> {
+    use crate::Proof;
+
+    if is_positive_literal(ctx, expr) {
+        return Some(Proof::Proven);
+    }
+    if is_negative_literal(ctx, expr) {
+        return Some(Proof::Disproven);
+    }
+
+    match ctx.get(expr) {
+        Expr::Number(n) if n.is_zero() => Some(Proof::Disproven),
+        _ => None,
+    }
+}
 
 /// Domain-aware rule for b^log(b, x) → x.
 /// Requires x > 0 (domain of log). Respects domain_mode.
@@ -36,8 +54,12 @@ impl crate::rule::Rule for ExponentialLogRule {
 
         let planned = try_rewrite_exponential_log_inverse_expr(ctx, expr)?;
         let vd = parent_ctx.value_domain();
-        let positive = prove_positive(ctx, planned.positive_subject, vd);
         let domain_mode = parent_ctx.domain_mode();
+        let positive = if domain_mode.is_strict() {
+            prove_positive(ctx, planned.positive_subject, vd)
+        } else {
+            prove_positive_literal_fast(ctx, planned.positive_subject).unwrap_or(Proof::Unknown)
+        };
         let mode = log_exp_inverse_policy_mode_from_flags(
             matches!(domain_mode, crate::DomainMode::Assume),
             matches!(domain_mode, crate::DomainMode::Strict),
@@ -205,10 +227,18 @@ impl crate::rule::Rule for LogPowerBaseRule {
             matches!(domain_mode, crate::DomainMode::Strict),
         );
         let one = ctx.num(1);
+        let base_positive_proven = if domain_mode.is_generic() {
+            matches!(
+                prove_positive_literal_fast(ctx, planned.base_core),
+                Some(Proof::Proven)
+            )
+        } else {
+            prove_positive(ctx, planned.base_core, vd) == Proof::Proven
+        };
         let policy = plan_log_power_base_numeric_policy(
             mode,
             vd == ValueDomain::ComplexEnabled,
-            prove_positive(ctx, planned.base_core, vd) == Proof::Proven,
+            base_positive_proven,
             compare_expr(ctx, planned.base_core, one) == Ordering::Equal,
         );
 

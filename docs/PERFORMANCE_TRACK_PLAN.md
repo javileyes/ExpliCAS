@@ -129,6 +129,64 @@ Recent validated win:
     the named baseline
   while the simplification metamorphic benchmark still held
   `numeric-only = 168`.
+- `apply_rules()` now decides once per node whether cached eval buckets still
+  need runtime filtering. In the common `phase_prefiltered + Eval` fast path,
+  both specific and global rule loops skip the per-rule `should_skip_rule(...)`
+  call entirely because phase/disabled filtering has already been handled by
+  the cached profile.
+- That bypass is intentionally limited to `Eval`: cached `SolvePrepass` and
+  `SolveTactic` flows still keep the runtime `solve_safety` gate for specific
+  rules, now covered by `profile_cache_tests`.
+- Validated with full Criterion runs against the named baseline `skip_eval_pre`:
+  - `repl_full_eval/cached/batch_11_inputs`: `2.016-2.048 ms`
+    with Criterion reporting about `4.9-7.1%` improvement
+  - `steps_mode_comparison/batch_11/steps_on`: `1.982-2.001 ms`
+    with Criterion reporting about `6.3-8.5%` improvement
+  - `profile_cache/simplify_cached_vs_uncached/cached/light/x_plus_1`:
+    `41.971-42.449 µs` with Criterion reporting about `2.9-5.4%` improvement
+  while `solve_safety_contract_tests` stayed green and the simplification
+  metamorphic benchmark still held `numeric-only = 168`.
+- The new per-input solve benchmark diagnostics showed that
+  `solve_modes_cached` in `SolvePrepass` / `SolveTactic(Strict)` was spending
+  its visible work on a single cosmetic path:
+  `(x^2 - y^2)/(x - y)` was being rewritten through `Sub -> Add(Neg)` and then
+  a sign-cancel canonicalization, even though strict/prepass intentionally
+  block the real fraction cancellation behind `x != y`.
+- `Canonicalize Negation` and `Cancel Fraction Signs` now skip that purely
+  cosmetic double-implicit-negation path only in `SolvePrepass` and
+  `SolveTactic(Strict)`, while still allowing explicit `(-A)/(-B)` cleanup and
+  keeping the generic/assume tactic behavior unchanged.
+- In fast local runs this improved the dedicated solve batches substantially:
+  - `solve_modes_cached/solve_tactic_strict_batch`: `457.79-469.56 µs`
+    with Criterion reporting about `15-18%` improvement
+  - `solve_modes_cached/solve_prepass_batch`: `457.24-469.97 µs`
+    with Criterion reporting about `15-18%` improvement
+  - `repl_full_eval/cached/batch_11_inputs` stayed statistically flat
+    (`2.177-2.269 ms`)
+  - `profile_cache/simplify_cached_vs_uncached/cached/light/x_plus_1` also
+    stayed statistically flat (`44.7-46.6 µs`)
+  while `solve_safety_contract_tests` and `canonicalization_tests` stayed green,
+  and the simplification metamorphic benchmark still held `numeric-only = 168`.
+- For `SolveTactic(Generic/Assume)`, the detailed profile then isolated a
+  different single hotspot: `(2*x + 2*y)/(4*x + 4*y)` was reaching `1/2` through
+  two full `Simplify Nested Fraction` applications because the multivariate
+  Layer-1 GCD path extracted only numeric content on the first pass.
+- `fraction_multivar_gcd` now collapses the remaining scalar-multiple case
+  immediately after Layer-1 reduction: when the reduced numerator and
+  denominator share the same primitive multivariate polynomial, the planner
+  folds that primitive into `gcd_expr` and returns the scalar ratio directly.
+- In fast local runs this improved the cached solve batches materially:
+  - `solve_modes_cached/solve_tactic_generic_batch`: `405.28-409.98 µs`
+    with Criterion reporting about `22-24%` improvement
+  - `solve_modes_cached/solve_tactic_assume_batch`: `406.54-437.99 µs`
+    with Criterion reporting about `21-25%` improvement
+  - `repl_full_eval/cached/batch_11_inputs`: `2.030-2.085 ms`
+    with Criterion reporting about `6-9%` improvement
+  - `profile_cache/simplify_cached_vs_uncached/cached/light/x_plus_1`:
+    `44.14-44.45 µs` with Criterion reporting about `1.4-3.8%` improvement
+  while the simplification metamorphic benchmark still held `numeric-only = 168`.
+- The detailed solve diagnostics now show only one `Simplify Nested Fraction`
+  hit for that generic/assume input instead of two.
 
 Recent rejected hypotheses:
 
@@ -159,6 +217,21 @@ Recent rejected hypotheses:
   theory, but measured runs stayed within noise and the change was reverted
 - pre-reserving a fixed `Vec<Step>` capacity in transformer construction also
   stayed within noise and was reverted
+- prefiltering cached `RuleProfile` buckets by solve-safety mode
+  (`SolvePrepass` / `SolveTactic`) regressed the new `solve_modes_cached`
+  benchmarks, especially `solve_tactic_assume_batch`, so it was reverted
+- caching `SolveSafety` sidecars alongside phase-filtered rule buckets stayed
+  flat on `solve_tactic_strict_batch` and regressed `solve_prepass_batch`
+  heavily, so it was reverted too
+- making the `Simplify Nested Fraction` factor-by-GCD description lazy under
+  `steps_off` also regressed `solve_modes_cached/*`, so it was reverted
+- replacing repeated `safe_for_*` calls with a precomputed transformer-local
+  solve-safety enum also came back flat-to-worse on `solve_modes_cached`, so it
+  was reverted
+- moving canonicalization rules into target-kind buckets also regressed the real
+  cached eval path; the extra specificity looked attractive, but it changed
+  rule ordering versus the global bucket and lost more in rewrite churn than it
+  saved in dispatch cost, so it was reverted
 
 Decision:
 
@@ -175,6 +248,51 @@ Fast local loop:
   `--save-baseline pathmap_pre`, and compare follow-up runs with
   `--baseline pathmap_pre` so reverted experiments do not contaminate the
   reference
+- use `profile_cache`'s `solve_modes_cached/*` benches when evaluating
+  `SolvePrepass` / `SolveTactic` ideas; eval-only benches were not a reliable
+  proxy for that path
+- use `profile_cache`'s `solve_hotspots_cached/*` benches when one input is
+  dominating the solve batch and the aggregate `solve_modes_cached/*` signal is
+  too noisy to trust
+- set `CAS_SOLVE_BENCH_PROFILE=1` to print top applied rules per phase before
+  running `solve_modes_cached/*`; optionally narrow it with
+  `CAS_SOLVE_BENCH_PROFILE_MODE=prepass|strict|generic|assume`
+- set `CAS_SOLVE_BENCH_PROFILE_DETAIL=1` together with
+  `CAS_SOLVE_BENCH_PROFILE=1` to print the per-input output and top applied
+  rules, which is more useful than aggregate counts when one expression is
+  dominating the solve batch
+- the current strict/prepass diagnostic is now clean for the blocked
+  difference-of-squares fraction case: the output stays as
+  `"(x^2 - y^2) / (x - y)"` with no visible rule hits
+- the current generic/assume diagnostic for `(2*x + 2*y)/(4*x + 4*y)` now
+  reaches `1/2` with a single visible `Simplify Nested Fraction` hit
+- current first diagnostic signal: `Simplify Nested Fraction` dominates the
+  visible rewrite mix in `solve_modes_cached/*`, with `Exponential-Log Inverse`
+  showing up in `generic` / `assume`
+- the dedicated `solve_hotspots_cached/*` bench now makes that split explicit:
+  `generic/x_over_x` and `generic/exp_ln_x` sit around `20-22 us`, while
+  `generic/scalar_multiple_fraction` is still around `151-153 us`; the next
+  meaningful solve ROI is therefore still in nested-fraction/polynomial work,
+  not in the smaller cancellation/log-inverse cases
+- `fraction_gcd_plan_support` now has an earlier structural fast path for the
+  scalar-multiple-additive case: when numerator and denominator are sums with
+  the same term bodies and only differ by a constant coefficient ratio, the
+  planner reduces directly to that scalar ratio without paying the full
+  `MultiPoly` conversion/GCD path
+- that fast path preserved the visible behavior of
+  `(2*x + 2*y)/(4*x + 4*y)` (`2` solve steps, same required condition
+  `4*x + 4*y != 0`) while moving the dedicated hotspot to about
+  `130-132 us` and the full `solve_tactic_generic_batch` to about
+  `375-382 us` in fast mode
+- retained two exact micro-fast-paths for that generic/assume batch:
+  non-strict `Exponential-Log Inverse` / generic `Log Power Base` now avoid
+  full positivity proof when policy only needs a cheap discharge, and
+  fraction-cancel rules skip the non-zero prover for bare variables because
+  `NonZero(x)` is guaranteed to stay `Unknown` outside `Strict`
+- measured outcome is modest but acceptable: `solve_tactic_generic_batch`
+  now lands around `391-398 us` in fast mode versus the prior `~405-410 us`
+  range, while `solve_tactic_assume_batch` stayed essentially flat/noisy at
+  `~404-426 us`
 
 ## Non-Goals
 

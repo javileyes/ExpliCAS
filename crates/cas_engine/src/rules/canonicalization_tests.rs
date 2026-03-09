@@ -2,6 +2,7 @@ use super::canonicalization::{
     CancelFractionSignsRule, CanonicalizeNegationRule, CanonicalizeRootRule,
 };
 use crate::rule::Rule;
+use crate::{DomainMode, SimplifyPurpose};
 use cas_ast::{Context, Expr};
 use cas_formatter::DisplayExpr;
 
@@ -191,4 +192,137 @@ fn test_cancel_fraction_signs_single_neg_den_unchanged() {
     );
 
     assert!(rewrite.is_none(), "Should NOT apply to a/(-b)");
+}
+
+#[test]
+fn test_cancel_fraction_signs_skips_implicit_sub_like_in_solve_prepass() {
+    let mut ctx = Context::new();
+    let x = ctx.var("x");
+    let y = ctx.var("y");
+    let two = ctx.num(2);
+    let x_sq = ctx.add(Expr::Pow(x, two));
+    let y_sq = ctx.add(Expr::Pow(y, two));
+    let num = ctx.add(Expr::Sub(x_sq, y_sq));
+    let den = ctx.add(Expr::Sub(x, y));
+    let expr = ctx.add(Expr::Div(num, den));
+
+    let rule = CancelFractionSignsRule;
+    let parent_ctx = crate::parent_context::ParentContext::root()
+        .with_simplify_purpose(SimplifyPurpose::SolvePrepass);
+    let rewrite = rule.apply(&mut ctx, expr, &parent_ctx);
+
+    assert!(
+        rewrite.is_none(),
+        "SolvePrepass should keep implicit subtraction orientation unchanged"
+    );
+}
+
+#[test]
+fn test_cancel_fraction_signs_skips_implicit_sub_like_in_strict_tactic() {
+    let mut ctx = Context::new();
+    let x = ctx.var("x");
+    let y = ctx.var("y");
+    let two = ctx.num(2);
+    let x_sq = ctx.add(Expr::Pow(x, two));
+    let y_sq = ctx.add(Expr::Pow(y, two));
+    let num = ctx.add(Expr::Sub(x_sq, y_sq));
+    let den = ctx.add(Expr::Sub(x, y));
+    let expr = ctx.add(Expr::Div(num, den));
+
+    let rule = CancelFractionSignsRule;
+    let parent_ctx = crate::parent_context::ParentContext::root()
+        .with_simplify_purpose(SimplifyPurpose::SolveTactic)
+        .with_domain_mode(DomainMode::Strict);
+    let rewrite = rule.apply(&mut ctx, expr, &parent_ctx);
+
+    assert!(
+        rewrite.is_none(),
+        "SolveTactic(Strict) should skip cosmetic sign cancellation on subtraction-like fractions"
+    );
+}
+
+#[test]
+fn test_cancel_fraction_signs_keeps_implicit_sub_like_in_generic_tactic() {
+    let mut ctx = Context::new();
+    let x = ctx.var("x");
+    let y = ctx.var("y");
+    let two = ctx.num(2);
+    let x_sq = ctx.add(Expr::Pow(x, two));
+    let y_sq = ctx.add(Expr::Pow(y, two));
+    let num = ctx.add(Expr::Sub(x_sq, y_sq));
+    let den = ctx.add(Expr::Sub(x, y));
+    let expr = ctx.add(Expr::Div(num, den));
+
+    let rule = CancelFractionSignsRule;
+    let parent_ctx = crate::parent_context::ParentContext::root()
+        .with_simplify_purpose(SimplifyPurpose::SolveTactic)
+        .with_domain_mode(DomainMode::Generic);
+    let rewrite = rule.apply(&mut ctx, expr, &parent_ctx);
+
+    assert!(
+        rewrite.is_some(),
+        "SolveTactic(Generic) should still allow sign canonicalization that can unlock cancellation"
+    );
+}
+
+#[test]
+fn test_cancel_fraction_signs_keeps_explicit_double_neg_in_strict_tactic() {
+    let mut ctx = Context::new();
+    let a = ctx.var("a");
+    let b = ctx.var("b");
+    let neg_a = ctx.add(Expr::Neg(a));
+    let neg_b = ctx.add(Expr::Neg(b));
+    let expr = ctx.add(Expr::Div(neg_a, neg_b));
+
+    let rule = CancelFractionSignsRule;
+    let parent_ctx = crate::parent_context::ParentContext::root()
+        .with_simplify_purpose(SimplifyPurpose::SolveTactic)
+        .with_domain_mode(DomainMode::Strict);
+    let rewrite = rule.apply(&mut ctx, expr, &parent_ctx);
+
+    assert!(
+        rewrite.is_some(),
+        "SolveTactic(Strict) should still cancel explicit double negation"
+    );
+}
+
+#[test]
+fn test_canonicalize_negation_skips_sub_children_of_cosmetic_fraction_in_solve_prepass() {
+    let mut ctx = Context::new();
+    let x = ctx.var("x");
+    let y = ctx.var("y");
+    let num = ctx.add(Expr::Sub(x, y));
+    let den = ctx.add(Expr::Sub(x, y));
+    let div = ctx.add(Expr::Div(num, den));
+
+    let rule = CanonicalizeNegationRule;
+    let parent_ctx = crate::parent_context::ParentContext::with_parent(div)
+        .with_simplify_purpose(SimplifyPurpose::SolvePrepass);
+    let rewrite = rule.apply(&mut ctx, num, &parent_ctx);
+
+    assert!(
+        rewrite.is_none(),
+        "SolvePrepass should skip Sub -> Add(-) canonicalization when it only feeds cosmetic fraction-sign rewriting"
+    );
+}
+
+#[test]
+fn test_canonicalize_negation_keeps_sub_children_outside_strict_solver_guard() {
+    let mut ctx = Context::new();
+    let x = ctx.var("x");
+    let y = ctx.var("y");
+    let num = ctx.add(Expr::Sub(x, y));
+    let den = ctx.add(Expr::Sub(x, y));
+    let div = ctx.add(Expr::Div(num, den));
+
+    let rule = CanonicalizeNegationRule;
+    let parent_ctx = crate::parent_context::ParentContext::with_parent(div)
+        .with_simplify_purpose(SimplifyPurpose::SolveTactic)
+        .with_domain_mode(DomainMode::Generic);
+    let rewrite = rule.apply(&mut ctx, num, &parent_ctx);
+
+    assert!(
+        rewrite.is_some(),
+        "Generic tactic should keep the canonical negation rewrite available"
+    );
 }

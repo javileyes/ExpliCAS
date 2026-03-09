@@ -173,17 +173,32 @@ impl<'a> LocalSimplificationTransformer<'a> {
     #[inline(never)]
     pub(super) fn transform_div(&mut self, id: ExprId, l: ExprId, r: ExprId) -> ExprId {
         // EARLY DETECTION: (A² - B²) / (A ± B) pattern
-        if let Some(early_result) = crate::rules::algebra::try_difference_of_squares_preorder(
-            self.context,
-            id,
-            l,
-            r,
-            self.collect_steps_enabled(),
-            &mut self.steps,
-            &self.current_path,
-        ) {
-            // Note: don't decrement depth here - transform_expr_recursive manages it
-            return self.transform_expr_recursive(early_result);
+        let allow_difference_of_squares_preorder = match self.initial_parent_ctx.simplify_purpose()
+        {
+            crate::SimplifyPurpose::Eval => true,
+            crate::SimplifyPurpose::SolvePrepass => false,
+            crate::SimplifyPurpose::SolveTactic => {
+                let domain_mode = self.initial_parent_ctx.domain_mode();
+                cas_solver_core::solve_safety_policy::safe_for_tactic_with_domain_flags(
+                    crate::SolveSafety::NeedsCondition(crate::ConditionClass::Definability),
+                    matches!(domain_mode, crate::DomainMode::Assume),
+                    matches!(domain_mode, crate::DomainMode::Strict),
+                )
+            }
+        };
+        if allow_difference_of_squares_preorder {
+            if let Some(early_result) = crate::rules::algebra::try_difference_of_squares_preorder(
+                self.context,
+                id,
+                l,
+                r,
+                self.collect_steps_enabled(),
+                &mut self.steps,
+                &self.current_path,
+            ) {
+                // Note: don't decrement depth here - transform_expr_recursive manages it
+                return self.transform_expr_recursive(early_result);
+            }
         }
 
         // Simplify children

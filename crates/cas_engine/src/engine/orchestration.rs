@@ -76,10 +76,9 @@ impl Simplifier {
         });
         let (rules, global_rules, disabled_rules, phase_prefiltered) =
             if let Some(profile) = profile_fast_path.as_ref() {
-                let phase_idx = crate::profile_cache::phase_index(phase);
                 (
-                    &profile.phase_rules[phase_idx],
-                    &profile.phase_global_rules[phase_idx],
+                    &profile.phase_rules[crate::profile_cache::phase_index(phase)],
+                    &profile.phase_global_rules[crate::profile_cache::phase_index(phase)],
                     &profile.disabled_rules,
                     true,
                 )
@@ -117,7 +116,6 @@ impl Simplifier {
             nodes_snap: 0,
             budget_op: crate::budget::Operation::SimplifyCore,
             stop_reason: None,
-            simplify_purpose: crate::SimplifyPurpose::default(),
             normalize_cache: std::collections::HashMap::new(),
         };
 
@@ -302,10 +300,9 @@ impl Simplifier {
         });
         let (rules, global_rules, disabled_rules, phase_prefiltered) =
             if let Some(profile) = profile_fast_path.as_ref() {
-                let phase_idx = crate::profile_cache::phase_index(phase);
                 (
-                    &profile.phase_rules[phase_idx],
-                    &profile.phase_global_rules[phase_idx],
+                    &profile.phase_rules[crate::profile_cache::phase_index(phase)],
+                    &profile.phase_global_rules[crate::profile_cache::phase_index(phase)],
                     &profile.disabled_rules,
                     true,
                 )
@@ -350,7 +347,6 @@ impl Simplifier {
                 }
             },
             stop_reason: None,
-            simplify_purpose,
             normalize_cache: std::collections::HashMap::new(),
         };
 
