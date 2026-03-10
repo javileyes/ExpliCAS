@@ -78,6 +78,17 @@ Current progress:
 - left `cas_solver/src/eval_json_*` open for narrower follow-up review
   - many of those modules are still tightly tied to the `eval-json` command
     boundary and should not be bulk-renamed without splitting by responsibility
+- renamed typed finalization helpers in `cas_solver`:
+  - `eval_json_finalize_expr` -> `eval_output_finalize_expr`
+  - `eval_json_finalize_nonexpr` -> `eval_output_finalize_nonexpr`
+  - `eval_json_finalize_input` -> `eval_output_finalize_input`
+  - `eval_json_finalize` -> `eval_output_finalize`
+  - `eval_json_finalize_wire` -> `eval_output_finalize_wire`
+  - rationale:
+    - they assemble typed `EvalJsonOutput` payload/context state
+    - they do not perform wire serialization
+    - they still build the current `EvalJsonOutput` DTO contract, but their own
+      naming is now output-oriented rather than transport-oriented
 - narrowed the remaining `cas_solver` mixed area to presentation-only helpers
   - renamed:
     - `eval_json_presentation*` -> `eval_output_presentation*`
@@ -90,12 +101,50 @@ Current progress:
   - rationale:
     - they compute typed `ExprStatsJson`, truncation metadata and stable hashes
     - they do not perform transport serialization
+- renamed the former `eval_json_input` subtree into a real neutral `eval_input`
+  module
+  - renamed internal request models/builders to:
+    - module `eval_json_input` -> `eval_input`
+    - test module `eval_json_input_tests` -> `eval_input_tests`
+    - `PreparedEvalRequest`
+    - `EvalNonSolveAction`
+    - `build_prepared_eval_request_for_input(...)`
+    - `detect_solve_variable_for_eval_request(...)`
+    - module `eval_json_input_variable` -> `eval_input_variable`
+    - module `eval_json_input_special` -> `eval_input_special`
+    - `parse_solve_input_as_equation_expr(...)` -> `parse_solve_input_for_eval_request(...)`
+    - module `eval_json_request_runtime` -> `eval_request_runtime`
+  - rationale:
+    - the outer `eval-json` command boundary stays in command/finalize modules
+    - input/request preparation itself now uses fully neutral naming because it
+      only parses/builds typed solver requests
 - keep as `eval-json` boundary modules for now:
-  - `eval_json_command_runtime*`
-  - `eval_json_input*`
-  - `eval_json_options*`
-  - `eval_json_finalize*`
-  - `eval_json_request_runtime`
+  - the former `eval_json_command_runtime` was renamed to neutral
+    `eval_command_runtime`
+    - public entrypoint renamed to `evaluate_eval_with_session(...)`
+    - rationale:
+      - it prepares and executes typed eval requests against a session
+      - it does not perform serialization or wire assembly itself
+      - it still consumes/returns `EvalJson*` API model DTOs because those are
+        the current outer contract, but the runtime orchestration no longer
+        encodes transport in its own naming
+  - inside `eval_command_runtime`, private orchestration structs/helpers use
+    neutral names (`PreparedEvalRun`, `CollectedEvalArtifacts`,
+    `prepare_eval_run`, `finalize_eval_run`, `collect_eval_artifacts`) because
+    they do not own wire concerns
+  - the former `eval_json_finalize*` was renamed to neutral
+    `eval_output_finalize*`
+    - private typed payload/build helpers use neutral names
+      (`EvalOutputResultPayload`, `build_eval_output`,
+      `build_eval_output_wire`, `build_eval_output_wire_value`,
+      `finalize_expr_like_eval_output`)
+    - rationale:
+      - they assemble native `EvalJsonOutput` data and wire reply fragments, but
+        they do not own JSON transport as a conceptual boundary anymore
+  - option-axis mapping moved out of `eval_json_options*` into neutral
+    `eval_option_axes*`, because it only maps string axes into typed
+    `EvalOptions` and does not own transport/wire concerns
+  - `eval_request_runtime`
 
 ### P0.2 Review `cas_session_core`
 

@@ -1,4 +1,5 @@
 use super::stateless_eval::evaluate_prepared_stateless_request;
+use crate::eval_input::build_prepared_eval_request_for_input;
 use crate::{Engine, EvalOptions};
 use cas_api_models::{EnvelopeEvalOptions, OutputEnvelope};
 
@@ -16,13 +17,12 @@ pub fn eval_str_to_output_envelope(expr: &str, opts: &EnvelopeEvalOptions) -> Ou
     let mut engine = Engine::new();
     let mut eval_options = EvalOptions::default();
     eval_options.shared.semantics.domain_mode =
-        crate::eval_json_options::domain_mode_from_str(&opts.domain);
+        crate::eval_option_axes::domain_mode_from_str(&opts.domain);
     eval_options.shared.semantics.value_domain =
-        crate::eval_json_options::value_domain_from_str(&opts.value_domain);
+        crate::eval_option_axes::value_domain_from_str(&opts.value_domain);
 
     let prepared =
-        match crate::build_eval_json_request_for_input(expr, &mut engine.simplifier.context, false)
-        {
+        match build_prepared_eval_request_for_input(expr, &mut engine.simplifier.context, false) {
             Ok(request) => request,
             Err(e) => {
                 return OutputEnvelope::eval_error(

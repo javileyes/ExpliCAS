@@ -3,9 +3,11 @@ use crate::expand::eager_eval_expand_calls;
 use crate::phase::{SimplifyOptions, SimplifyPhase};
 use crate::{Simplifier, Step};
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
+use cas_math::expr_nary::{AddView, MulView, Sign};
 use cas_math::poly_lowering;
 use cas_math::poly_store::clear_thread_local_store;
 use cas_solver_core::rationalize_policy::AutoRationalizeLevel;
+use num_rational::BigRational;
 use std::collections::HashSet;
 
 fn to_math_auto_expand_budget(
@@ -93,11 +95,92 @@ fn is_symbolic_atom(ctx: &Context, expr: ExprId) -> bool {
     matches!(ctx.get(expr), Expr::Variable(_) | Expr::Constant(_))
 }
 
-fn is_plain_symbolic_sum_after_core(ctx: &Context, expr: ExprId) -> bool {
+fn is_plain_symbolic_binomial_after_core(ctx: &Context, expr: ExprId) -> bool {
     match ctx.get(expr) {
-        Expr::Add(left, right) => is_symbolic_atom(ctx, *left) && is_symbolic_atom(ctx, *right),
+        Expr::Add(left, right) | Expr::Sub(left, right) => {
+            is_symbolic_atom(ctx, *left) && is_symbolic_atom(ctx, *right)
+        }
+        Expr::Neg(inner) => is_plain_symbolic_binomial_after_core(ctx, *inner),
         _ => false,
     }
+}
+
+fn square_of_symbolic_atom(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    let Expr::Pow(base, exp) = ctx.get(expr) else {
+        return None;
+    };
+    if !is_symbolic_atom(ctx, *base) {
+        return None;
+    }
+    match ctx.get(*exp) {
+        Expr::Number(n) if *n == BigRational::from_integer(2.into()) => Some(*base),
+        _ => None,
+    }
+}
+
+fn symbolic_cross_term_atoms(ctx: &Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
+    let view = MulView::from_expr(ctx, expr);
+    if view.factors.len() != 2 {
+        return None;
+    }
+    let left = view.factors[0];
+    let right = view.factors[1];
+    if is_symbolic_atom(ctx, left) && is_symbolic_atom(ctx, right) {
+        Some((left, right))
+    } else {
+        None
+    }
+}
+
+fn expr_eq(ctx: &Context, left: ExprId, right: ExprId) -> bool {
+    cas_ast::ordering::compare_expr(ctx, left, right) == std::cmp::Ordering::Equal
+}
+
+fn is_plain_symbolic_cube_trinomial_after_core(ctx: &Context, expr: ExprId) -> bool {
+    let terms = AddView::from_expr(ctx, expr).terms;
+    if terms.len() != 3 {
+        return false;
+    }
+
+    let mut square_bases = [None, None];
+    let mut square_count = 0usize;
+    let mut cross_atoms = None;
+
+    for (term, sign) in terms {
+        if sign == Sign::Pos {
+            if let Some(base) = square_of_symbolic_atom(ctx, term) {
+                if square_count >= square_bases.len() {
+                    return false;
+                }
+                square_bases[square_count] = Some(base);
+                square_count += 1;
+                continue;
+            }
+        }
+
+        if cross_atoms.is_none() {
+            if let Some((left, right)) = symbolic_cross_term_atoms(ctx, term) {
+                cross_atoms = Some((left, right));
+                continue;
+            }
+        }
+
+        return false;
+    }
+
+    let Some(left_square) = square_bases[0] else {
+        return false;
+    };
+    let Some(right_square) = square_bases[1] else {
+        return false;
+    };
+    let Some((cross_left, cross_right)) = cross_atoms else {
+        return false;
+    };
+
+    !expr_eq(ctx, left_square, right_square)
+        && ((expr_eq(ctx, left_square, cross_left) && expr_eq(ctx, right_square, cross_right))
+            || (expr_eq(ctx, left_square, cross_right) && expr_eq(ctx, right_square, cross_left)))
 }
 
 fn is_symbolic_power_over_same_atom_noop_after_core(ctx: &Context, expr: ExprId) -> bool {
@@ -250,6 +333,30 @@ impl Orchestrator {
 
             stats.rewrites_used += steps.len();
             all_steps.extend(steps);
+
+            // Hidden solve fast path: once Core collapses to a terminal value or a
+            // plain symbolic closed form, another full Core pass is only paying the
+            // fixed-point check. Later pipeline decisions are still made by the
+            // caller after this phase returns.
+            if phase == SimplifyPhase::Core
+                && !self.options.collect_steps
+                && is_solve_mode
+                && next != current
+                && (is_terminal_after_core(&simplifier.context, next)
+                    || is_plain_symbolic_binomial_after_core(&simplifier.context, next)
+                    || is_plain_symbolic_cube_trinomial_after_core(&simplifier.context, next))
+            {
+                current = next;
+                stats.iters_used = iter + 1;
+                tracing::debug!(
+                    target: "simplify",
+                    phase = %phase,
+                    iters = stats.iters_used,
+                    rewrites = stats.rewrites_used,
+                    "phase_early_exit_after_closed_form"
+                );
+                break;
+            }
 
             // Fixed point check
             if next == current {
@@ -442,7 +549,32 @@ impl Orchestrator {
             && is_solve_mode
             && !self.pattern_marks.has_root_in_denominator()
             && !self.pattern_marks.has_auto_expand_contexts()
-            && is_plain_symbolic_sum_after_core(&simplifier.context, current)
+            && is_plain_symbolic_binomial_after_core(&simplifier.context, current)
+        {
+            pipeline_stats.rationalize_level = Some(auto_level);
+            pipeline_stats.rationalize_outcome = Some(if auto_level != AutoRationalizeLevel::Off {
+                cas_solver_core::rationalize_policy::RationalizeOutcome::NotApplied(
+                    cas_solver_core::rationalize_policy::RationalizeReason::NoBinomialFound,
+                )
+            } else {
+                cas_solver_core::rationalize_policy::RationalizeOutcome::NotApplied(
+                    cas_solver_core::rationalize_policy::RationalizeReason::PolicyDisabled,
+                )
+            });
+            pipeline_stats.cycle_events =
+                cas_solver_core::cycle_event_registry::take_cycle_events();
+            simplifier.clear_sticky_implicit_domain();
+            return (current, all_steps, pipeline_stats);
+        }
+
+        // Same hidden solve fast path for exact cube outputs like
+        // `x^2 + y^2 +/- x*y`, which are already in their plain final form
+        // after Core and only pay late-phase overhead.
+        if !collect_steps
+            && is_solve_mode
+            && !self.pattern_marks.has_root_in_denominator()
+            && !self.pattern_marks.has_auto_expand_contexts()
+            && is_plain_symbolic_cube_trinomial_after_core(&simplifier.context, current)
         {
             pipeline_stats.rationalize_level = Some(auto_level);
             pipeline_stats.rationalize_outcome = Some(if auto_level != AutoRationalizeLevel::Off {

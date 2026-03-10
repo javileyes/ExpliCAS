@@ -232,6 +232,19 @@ mod tests {
     }
 
     #[test]
+    fn evaluates_root_factor_power() {
+        let mut ctx = Context::new();
+        let eight = ctx.num(8);
+        let one_third = ctx.rational(1, 3);
+        let expr = ctx.add(Expr::Pow(eight, one_third));
+        let rewrite = try_rewrite_evaluate_power_expr(&mut ctx, expr).expect("rewrite");
+        match ctx.get(rewrite.rewritten) {
+            Expr::Number(value) => assert_eq!(value.to_string(), "2"),
+            other => panic!("expected numeric rewrite, got {:?}", other),
+        }
+    }
+
+    #[test]
     fn rewrites_negative_base_power() {
         let mut ctx = Context::new();
         let expr = parse("(-x)^3", &mut ctx).expect("parse");

@@ -340,6 +340,22 @@ impl<'a> LocalSimplificationTransformer<'a> {
             }
         }
 
+        // Exact-shape hidden fast path for `(a^3 ± b^3)/(a±b)`. This avoids the
+        // child-recursion sign/canonicalization churn on the raw hotspot inputs
+        // without paying the broader planner cost that regressed earlier.
+        if allow_difference_of_squares_preorder
+            && !self.collect_steps_enabled()
+            && self.event_listener.is_none()
+            && self.current_phase == crate::SimplifyPhase::Core
+            && self.initial_parent_ctx.is_solve_context()
+        {
+            if let Some(early_result) =
+                crate::rules::algebra::try_exact_sum_diff_of_cubes_preorder(self.context, l, r)
+            {
+                return early_result;
+            }
+        }
+
         // Simplify children
         let new_l = self.transform_child_at(id, crate::step::PathStep::Left, l);
         let new_r = self.transform_child_at(id, crate::step::PathStep::Right, r);

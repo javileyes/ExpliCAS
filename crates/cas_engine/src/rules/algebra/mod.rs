@@ -39,6 +39,20 @@ pub mod poly_mul_modp;
 
 pub mod poly_stats;
 
+fn extract_cube_base(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> Option<cas_ast::ExprId> {
+    let cas_ast::Expr::Pow(base, exp) = ctx.get(expr) else {
+        return None;
+    };
+    let cas_ast::Expr::Number(n) = ctx.get(*exp) else {
+        return None;
+    };
+    if n.is_integer() && *n == num_rational::BigRational::from_integer(3.into()) {
+        Some(*base)
+    } else {
+        None
+    }
+}
+
 pub fn register(simplifier: &mut crate::Simplifier) {
     // Pre-order: Cancel cube root difference pattern BEFORE GCD/fraction rules
     // (x - b³) / (x^(2/3) + b·x^(1/3) + b²) → x^(1/3) - b
@@ -318,4 +332,53 @@ pub fn try_structural_scalar_multiple_preorder(
             ctx, num, den, false,
         )?;
     Some(plan.forms.result_norm)
+}
+
+/// Exact-shape pre-order detection of `(a^3 - b^3)/(a-b)` and `(a^3 + b^3)/(a+b)`.
+///
+/// This intentionally avoids algebraic equivalence checks and only handles the
+/// raw input shape, which keeps the guard cheap enough for the hidden hot path.
+pub fn try_exact_sum_diff_of_cubes_preorder(
+    ctx: &mut cas_ast::Context,
+    num: cas_ast::ExprId,
+    den: cas_ast::ExprId,
+) -> Option<cas_ast::ExprId> {
+    let (a, b, is_difference) = match ctx.get(num) {
+        cas_ast::Expr::Sub(left, right) => (
+            extract_cube_base(ctx, *left)?,
+            extract_cube_base(ctx, *right)?,
+            true,
+        ),
+        cas_ast::Expr::Add(left, right) => (
+            extract_cube_base(ctx, *left)?,
+            extract_cube_base(ctx, *right)?,
+            false,
+        ),
+        _ => return None,
+    };
+
+    match (is_difference, ctx.get(den)) {
+        (true, cas_ast::Expr::Sub(dl, dr))
+            if cas_ast::ordering::compare_expr(ctx, *dl, a) == std::cmp::Ordering::Equal
+                && cas_ast::ordering::compare_expr(ctx, *dr, b) == std::cmp::Ordering::Equal => {}
+        (false, cas_ast::Expr::Add(dl, dr))
+            if cas_ast::ordering::compare_expr(ctx, *dl, a) == std::cmp::Ordering::Equal
+                && cas_ast::ordering::compare_expr(ctx, *dr, b) == std::cmp::Ordering::Equal => {}
+        _ => return None,
+    }
+
+    let two_a = ctx.num(2);
+    let a_sq = ctx.add(cas_ast::Expr::Pow(a, two_a));
+    let two_b = ctx.num(2);
+    let b_sq = ctx.add(cas_ast::Expr::Pow(b, two_b));
+    let ab = cas_math::expr_rewrite::smart_mul(ctx, a, b);
+
+    let tail = if is_difference {
+        ctx.add(cas_ast::Expr::Add(b_sq, ab))
+    } else {
+        let neg_ab = ctx.add(cas_ast::Expr::Neg(ab));
+        ctx.add(cas_ast::Expr::Add(b_sq, neg_ab))
+    };
+
+    Some(ctx.add(cas_ast::Expr::Add(a_sq, tail)))
 }

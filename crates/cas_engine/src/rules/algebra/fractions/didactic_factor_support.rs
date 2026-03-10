@@ -85,7 +85,7 @@ pub fn try_plan_expand_binomial_square_in_den_for_cancel(
     let middle_sum = ctx.add(Expr::Add(two_ab, b_sq));
     let expanded = ctx.add(Expr::Add(a_sq, middle_sum));
 
-    if !expr_matches_poly(ctx, num, expanded) {
+    if num != expanded && !expr_matches_poly(ctx, num, expanded) {
         return None;
     }
 

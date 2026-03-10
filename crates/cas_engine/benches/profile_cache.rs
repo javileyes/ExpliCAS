@@ -678,6 +678,7 @@ fn bench_solve_hotspots_cached(c: &mut Criterion) {
         "(a^x)/a",
         "x^0",
     ];
+    let cube_inputs = ["(x^3 - y^3)/(x - y)", "(x^3 + y^3)/(x + y)"];
     let assume_inputs = generic_inputs;
 
     emit_solve_profile_snapshot(
@@ -706,6 +707,20 @@ fn bench_solve_hotspots_cached(c: &mut Criterion) {
         |_ctx, expr, simplifier| {
             print_no_hit_bucket_candidates(simplifier, &simplifier.context, expr);
             print_rule_probes(simplifier, &tactic_assume, expr);
+        },
+    );
+    emit_solve_profile_snapshot(
+        "hotspots-cubes",
+        &tactic_generic,
+        &cube_inputs,
+        |ctx| {
+            let mut simplifier = Simplifier::from_profile_with_context(profile.clone(), ctx);
+            simplifier.set_steps_mode(steps_mode);
+            simplifier
+        },
+        |_ctx, expr, simplifier| {
+            print_no_hit_bucket_candidates(simplifier, &simplifier.context, expr);
+            print_rule_probes(simplifier, &tactic_generic, expr);
         },
     );
 
@@ -1105,6 +1120,21 @@ fn bench_fraction_rule_direct(c: &mut Criterion) {
             "(x^2 - y^2)/(x - y)",
             DomainMode::Generic,
         ),
+        (
+            "apply/generic/binomial_square_fraction",
+            "(x^2 + 2*x*y + y^2)/(x + y)^2",
+            DomainMode::Generic,
+        ),
+        (
+            "apply/generic/difference_of_cubes_fraction",
+            "(x^3 - y^3)/(x - y)",
+            DomainMode::Generic,
+        ),
+        (
+            "apply/generic/sum_of_cubes_fraction",
+            "(x^3 + y^3)/(x + y)",
+            DomainMode::Generic,
+        ),
     ];
     let rule = SimplifyFractionRule;
 
@@ -1146,6 +1176,21 @@ fn bench_fraction_rule_direct(c: &mut Criterion) {
             "(a^x)/a",
             DomainMode::Generic,
         ),
+        (
+            "single_rule_engine/generic/difference_of_cubes_fraction",
+            "(x^3 - y^3)/(x - y)",
+            DomainMode::Generic,
+        ),
+        (
+            "single_rule_engine/generic/binomial_square_fraction",
+            "(x^2 + 2*x*y + y^2)/(x + y)^2",
+            DomainMode::Generic,
+        ),
+        (
+            "single_rule_engine/generic/sum_of_cubes_fraction",
+            "(x^3 + y^3)/(x + y)",
+            DomainMode::Generic,
+        ),
     ];
 
     for (name, input, domain_mode) in single_rule_cases {
@@ -1178,6 +1223,9 @@ fn bench_solve_phase_subset_cached(c: &mut Criterion) {
         ("scalar_multiple_fraction", "(2*x + 2*y)/(4*x + 4*y)"),
         ("a_pow_x_over_a", "(a^x)/a"),
         ("x_over_x", "x/x"),
+        ("binomial_square_fraction", "(x^2 + 2*x*y + y^2)/(x + y)^2"),
+        ("difference_of_cubes_fraction", "(x^3 - y^3)/(x - y)"),
+        ("sum_of_cubes_fraction", "(x^3 + y^3)/(x + y)"),
     ];
 
     let profile_opts = EvalOptions {

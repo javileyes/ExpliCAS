@@ -1456,3 +1456,260 @@ Those are valid projects, but not part of this performance track.
   - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math`
   - `cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_unified_benchmark -- --ignored --nocapture`
     keeps `numeric-only = 168`
+- retained a small exact-match shortcut in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/rules/algebra/fractions/didactic_factor_support.rs`
+  for the expanded-denominator planner used by
+  `(x^2 + 2*x*y + y^2)/(x + y)^2`
+- rationale:
+  - the planner already constructs the exact expanded form of `(a+b)^2`
+  - when the numerator is already exactly that expanded expression, the
+    polynomial matcher is unnecessary overhead
+- retained measurements against named baseline `binomial_expand_exact_pre`:
+  - `solve_hotspots_cached/generic/binomial_square_fraction`:
+    `97.470-99.248 us`, improvement about `1.3-4.4%`
+  - `solve_eval_hotspots_cached/generic/binomial_square_fraction`:
+    `94.878-96.370 us`, improved in absolute time but still within
+    Criterion noise on rerun
+- validation after the change:
+  - `cargo test -p cas_engine didactic_factor_support --lib`
+  - `cargo test -p cas_solver --test multivar_gcd_tests test_binomial_square_cancel_in_solve_generic_context_steps_off -- --exact`
+  - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math`
+  - `cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_unified_benchmark -- --ignored --nocapture`
+    keeps `numeric-only = 168`
+- rejected a hidden-path pre-order shortcut for
+  `(x^3 - y^3)/(x - y)` and `(x^3 + y^3)/(x + y)`
+- rationale:
+  - the dedicated cube hotspots improved strongly in isolation
+  - but the representative `solve_modes_cached/solve_tactic_generic_batch`
+    regressed against named baseline `cubes_exact_den_pre`, so the extra
+    `Div` guard cost did not pay for itself on the real batch
+- discarded measurements:
+  - `solve_hotspots_cached/generic/difference_of_cubes_fraction` improved
+    locally into roughly `190.84-192.75 us`
+  - `solve_hotspots_cached/generic/sum_of_cubes_fraction` stayed roughly flat
+    around `179.60-182.47 us`
+  - `solve_modes_cached/solve_tactic_generic_batch` regressed to
+    `124.86-125.80 us`, about `+6.0-7.7%`
+- tried and removed an exact raw-denominator shortcut inside
+  `try_plan_sum_diff_of_cubes_in_num(...)`
+- rationale:
+  - the `difference_of_squares` planner had benefited from skipping expensive
+    equivalence checks when the denominator was already exactly `A-B` / `A+B`
+  - the same idea looked plausible for `(a^3 - b^3)/(a-b)` and
+    `(a^3 + b^3)/(a+b)`, because the benchmark inputs already use exact raw
+    factors
+- discarded measurements against named baseline `cubes_exact_den_planner_pre`:
+  - `solve_hotspots_cached/generic/difference_of_cubes_fraction` stayed within
+    noise around `284.09-287.12 us`
+  - `solve_hotspots_cached/generic/sum_of_cubes_fraction` regressed to
+    `192.63-195.39 us`
+  - `solve_modes_cached/solve_tactic_generic_batch` stayed flat around
+    `118.77-119.70 us`
+- retained new cube instrumentation in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/benches/profile_cache.rs`
+  under:
+  - `fraction_rule_direct/apply/generic/difference_of_cubes_fraction`
+  - `fraction_rule_direct/apply/generic/sum_of_cubes_fraction`
+  - `fraction_rule_direct/single_rule_engine/generic/difference_of_cubes_fraction`
+  - `fraction_rule_direct/single_rule_engine/generic/sum_of_cubes_fraction`
+  - `solve_phase_subset_cached/difference_of_cubes_fraction/*`
+  - `solve_phase_subset_cached/sum_of_cubes_fraction/*`
+- current measurements from that instrumentation:
+  - `fraction_rule_direct/apply/generic/difference_of_cubes_fraction`:
+    `23.665-23.969 us`
+  - `fraction_rule_direct/apply/generic/sum_of_cubes_fraction`:
+    `5.4774-5.6330 us`
+  - `fraction_rule_direct/single_rule_engine/generic/difference_of_cubes_fraction`:
+    `64.419-64.922 us`
+  - `fraction_rule_direct/single_rule_engine/generic/sum_of_cubes_fraction`:
+    `29.063-29.573 us`
+  - `solve_phase_subset_cached/difference_of_cubes_fraction/generic/full`:
+    `286.54-290.42 us`
+  - `solve_phase_subset_cached/difference_of_cubes_fraction/generic/no_transform`:
+    `276.87-286.37 us`
+  - `solve_phase_subset_cached/difference_of_cubes_fraction/generic/no_transform_no_rationalize`:
+    `276.19-279.73 us`
+  - `solve_phase_subset_cached/sum_of_cubes_fraction/generic/full`:
+    `189.69-192.54 us`
+  - `solve_phase_subset_cached/sum_of_cubes_fraction/generic/no_transform`:
+    `182.33-188.76 us`
+  - `solve_phase_subset_cached/sum_of_cubes_fraction/generic/no_transform_no_rationalize`:
+    `180.94-182.65 us`
+- takeaway:
+  - the cube hotspots are not dominated by the didactic planner itself
+  - `SimplifyFractionRule::apply(...)` is only a small slice of the total cost,
+    especially for `sum_of_cubes`
+  - removing `Transform` and `Rationalize` trims only a modest tail, so the
+    remaining cost is still mostly inside the core solve loop / repeated rule
+    traversal rather than in the planner helper
+- retained a dedicated profiling mode
+  `CAS_SOLVE_BENCH_PROFILE_MODE=hotspots-cubes`
+- rationale:
+  - the generic hotspot profile had become dominated by smaller no-op cases and
+    did not include the cube fraction inputs
+  - a dedicated mode makes it possible to inspect event traces and top-applied
+    rules for `(x^3 - y^3)/(x - y)` and `(x^3 + y^3)/(x + y)` without mixing
+    them with unrelated hotspots
+- current detail snapshot from `hotspots-cubes`:
+  - `(x^3 - y^3)/(x - y)` still pays:
+    - `Canonicalize Negation=4`
+    - `Simplify Nested Fraction=2`
+    - `Cancel Fraction Signs=1`
+    - `Canonicalize Division=1`
+    - `Flip binomial under negative coefficient=1`
+  - `(x^3 + y^3)/(x + y)` stays simpler:
+    - `Simplify Nested Fraction=2`
+    - `Canonicalize Addition=1`
+  - no-hit `Div` bucket probes are cheap and not the dominant source of cost
+- tried and removed a local reorder in `try_plan_sum_diff_of_cubes_in_num(...)`
+  to build the sum case as `a² + b² - ab` in a more canonical order
+- discarded measurements against named baseline `sum_cube_canonical_pre`:
+  - `fraction_rule_direct/apply/generic/sum_of_cubes_fraction` stayed flat
+  - `fraction_rule_direct/single_rule_engine/generic/sum_of_cubes_fraction`
+    regressed to `28.985-29.439 us`
+  - `solve_hotspots_cached/generic/sum_of_cubes_fraction` stayed flat
+  - `solve_phase_subset_cached/sum_of_cubes_fraction/generic/full` regressed to
+    `192.76-194.61 us`
+  - `solve_modes_cached/solve_tactic_generic_batch` regressed to
+    `122.01-123.14 us`
+- retained a very narrow hidden-path pre-order shortcut in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/engine/transform/transform_helpers.rs`
+  backed by
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/rules/algebra/mod.rs`
+  for the exact raw shapes:
+  - `(a^3 - b^3)/(a-b)`
+  - `(a^3 + b^3)/(a+b)`
+- rationale:
+  - the cube hotspots were still dominated by child-recursion and sign /
+    canonicalization churn before `SimplifyFractionRule` could act at the root
+  - the earlier cube pre-order experiment regressed the batch because it used a
+    broader planner path; this version only matches the exact raw shape with a
+    cheap structural guard and returns the closed-form result directly
+- scope is intentionally narrow:
+  - solve context hidden path only
+  - `steps off` only
+  - no listener attached
+  - `Core` phase only
+  - exact denominator shapes only; no `poly_eq` or generalized algebraic
+    equivalence checks
+- retained measurements against named baseline `cubes_exact_den_planner_pre`:
+  - `solve_hotspots_cached/generic/difference_of_cubes_fraction`:
+    `140.62-141.72 us`, improvement about `50.1-50.9%`
+  - `solve_hotspots_cached/generic/sum_of_cubes_fraction`:
+    `128.13-129.28 us`, improvement about `31.4-33.0%`
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `120.91-124.73 us`, change stayed within Criterion noise
+- guardrails/validation after the change:
+  - `profile_cache_tests::test_from_profile_solve_tactic_difference_of_cubes_uses_exact_preorder_fast_path`
+  - `profile_cache_tests::test_from_profile_solve_tactic_sum_of_cubes_uses_exact_preorder_fast_path`
+  - `cargo test -p cas_engine profile_cache_tests --lib`
+  - `cargo test -p cas_solver --test multivar_gcd_tests
+    test_difference_of_cubes_cancel_in_solve_generic_context_steps_off -- --exact`
+  - `cargo test -p cas_solver --test multivar_gcd_tests
+    test_sum_of_cubes_cancel_in_solve_generic_context_steps_off -- --exact`
+  - `cargo test -p cas_solver --test multivar_gcd_tests
+    test_difference_of_cubes_cancel_in_solve_strict_context_steps_off -- --exact`
+  - `cargo test -p cas_solver --test multivar_gcd_tests
+    test_sum_of_cubes_cancel_in_solve_strict_context_steps_off -- --exact`
+  - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math`
+  - `cargo test --release -p cas_engine --test metamorphic_simplification_tests
+    metatest_unified_benchmark -- --ignored --nocapture`
+    keeps `numeric-only = 168`
+- retained a second hidden solve fast path in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs`
+  for the plain post-Core trinomial outputs of those cube rewrites
+- exact shape accepted:
+  - `a^2 + b^2 + a*b`
+  - `a^2 + b^2 - a*b`
+- rationale:
+  - after the exact raw cube pre-order, the remaining time was no longer in the
+    planner but in the late no-op phases of the pipeline
+  - these trinomials are already in their final plain form on the hidden solve
+    path, so `Transform`, `Rationalize`, `PostCleanup` and `BestSoFar` were just
+    fixed-cost overhead
+  - the guard is still narrow: only symbolic squares plus one symbolic cross
+    term, solve context, `steps off`, no listener, and no denominator-root /
+    auto-expand marks
+- retained measurements:
+  - compared against named baseline `cubes_exact_den_planner_pre`:
+    - `solve_hotspots_cached/generic/difference_of_cubes_fraction`:
+      `87.610-88.485 us`, improvement about `68.5-69.2%`
+    - `solve_hotspots_cached/generic/sum_of_cubes_fraction`:
+      `71.019-72.261 us`, improvement about `61.4-62.5%`
+  - current absolute measurements on the end-to-end eval path:
+    - `solve_eval_hotspots_cached/generic/difference_of_cubes_fraction`:
+      `87.147-89.438 us`
+    - `solve_eval_hotspots_cached/generic/sum_of_cubes_fraction`:
+      `70.325-72.858 us`
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `124.70-130.05 us`, Criterion reported no statistically significant change
+- guardrails tightened after the cut:
+  - `profile_cache_tests::test_from_profile_solve_tactic_difference_of_cubes_uses_exact_preorder_fast_path`
+    now expects `Transform/Rationalize/PostCleanup = 0`
+  - `profile_cache_tests::test_from_profile_solve_tactic_sum_of_cubes_uses_exact_preorder_fast_path`
+    now expects `Transform/Rationalize/PostCleanup = 0`
+- investigated the next hotspot `binomial_square_fraction` and kept only better
+  instrumentation, not a runtime change
+- added direct coverage in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/benches/profile_cache.rs`
+  for:
+  - `fraction_rule_direct/apply/generic/binomial_square_fraction`
+  - `fraction_rule_direct/single_rule_engine/generic/binomial_square_fraction`
+  - `solve_phase_subset_cached/binomial_square_fraction/generic/full`
+  - `solve_phase_subset_cached/binomial_square_fraction/generic/no_transform`
+  - `solve_phase_subset_cached/binomial_square_fraction/generic/no_transform_no_rationalize`
+- current measurements:
+  - `solve_hotspots_cached/generic/binomial_square_fraction`:
+    `101.99-103.71 us`
+  - `solve_eval_hotspots_cached/generic/binomial_square_fraction`:
+    `97.441-98.834 us`
+  - `fraction_rule_direct/apply/generic/binomial_square_fraction`:
+    `23.693-24.113 us`
+  - `fraction_rule_direct/single_rule_engine/generic/binomial_square_fraction`:
+    `37.070-38.265 us`
+  - `solve_phase_subset_cached/binomial_square_fraction/generic/full`:
+    `101.57-102.45 us`
+  - `solve_phase_subset_cached/binomial_square_fraction/generic/no_transform`:
+    `100.56-102.01 us`
+  - `solve_phase_subset_cached/binomial_square_fraction/generic/no_transform_no_rationalize`:
+    `101.94-103.28 us`
+- takeaway:
+  - `binomial_square_fraction` is not dominated by `Transform` or `Rationalize`
+  - the root rule itself is only a minority of the total cost
+  - the remaining time is living in the core solve loop / traversal around the
+    rule, not in the late pipeline tail
+- tried and removed a hidden-path root no-op preorder for the exact shape
+  `(a^2 + 2ab + b^2)/(a+b)^2`
+- discarded measurements against baseline `binomial_expand_exact_pre`:
+  - `solve_hotspots_cached/generic/binomial_square_fraction` regressed to
+    `103.30-104.00 us`
+  - `solve_modes_cached/solve_tactic_generic_batch` regressed to
+    `122.00-123.08 us`
+- conclusion:
+  - do not pursue a generic or root-preorder shortcut for this case
+  - if we come back to it, the next hypothesis should target the core traversal
+    around `SimplifyFractionRule`, not the planner helper and not late phases
+- retained a solve-hidden early exit inside `Core` phase in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs`
+- scope:
+  - only `Core`
+  - only `solve` context
+  - only `steps off`
+  - only after a pass that already changed the expression into:
+    - a terminal exact value
+    - a plain symbolic binomial
+    - a plain symbolic cube trinomial (`a^2 + b^2 ± a*b`)
+- rationale:
+  - several hot solve cases were already paying a second full `Core` pass only to
+    discover the fixed point after collapsing to their final closed form
+  - this cut removes that extra pass without changing later pipeline decisions
+- current absolute measurements after the change:
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `98.705-100.64 us`
+  - `solve_hotspots_cached/generic/x_over_x`:
+    `6.4083-6.6122 us`
+  - `solve_hotspots_cached/generic/difference_of_cubes_fraction`:
+    `42.438-43.140 us`
+- practical takeaway:
+  - the remaining good ROI is still in the `Core` solve loop, not in late
+    phases or in more planner-only tweaks
