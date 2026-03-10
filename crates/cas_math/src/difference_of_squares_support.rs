@@ -81,6 +81,25 @@ pub fn try_plan_difference_of_squares_division_expr(
     let a_minus_b_raw = ctx.add(Expr::Sub(a, b));
     let a_plus_b_raw = ctx.add(Expr::Add(a, b));
 
+    // Exact hidden-path hotspot: avoid polynomial conversion when the
+    // denominator is already the raw `A-B` / `A+B` factor.
+    if denominator == a_minus_b_raw || denominator == a_plus_b_raw {
+        let factored_numerator = ctx.add(Expr::Mul(a_minus_b_raw, a_plus_b_raw));
+        let intermediate = ctx.add(Expr::Div(factored_numerator, denominator));
+        let final_result = if denominator == a_minus_b_raw {
+            a_plus_b_raw
+        } else {
+            a_minus_b_raw
+        };
+        return Some(DifferenceOfSquaresDivisionPlan {
+            factored_numerator,
+            intermediate_with_orig_den: intermediate,
+            den_simplified: denominator,
+            intermediate,
+            final_result,
+        });
+    }
+
     let a_minus_b_poly = multipoly_from_expr(ctx, a_minus_b_raw, &budget).ok()?;
     let a_plus_b_poly = multipoly_from_expr(ctx, a_plus_b_raw, &budget).ok()?;
     let exact_den_match = if denominator == a_minus_b_raw {

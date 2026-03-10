@@ -7,6 +7,7 @@ use super::*;
 use cas_math::factoring_support::{
     try_rewrite_difference_of_squares_product_expr, DifferenceOfSquaresProductRewriteKind,
 };
+use cas_math::logarithm_inverse_support::try_rewrite_exponential_log_inverse_expr;
 use cas_math::pow_preorder_support::{try_plan_sqrt_square_pow_rewrite, SqrtSquarePowRewriteKind};
 
 fn format_difference_of_squares_product_desc(
@@ -30,6 +31,37 @@ fn format_sqrt_square_pow_plan(kind: SqrtSquarePowRewriteKind) -> (&'static str,
             ("sqrt(u * u) = |u|", "Simplify Square Root of Product")
         }
     }
+}
+
+fn is_symbolic_atom(ctx: &Context, expr: ExprId) -> bool {
+    matches!(ctx.get(expr), Expr::Variable(_) | Expr::Constant(_))
+}
+
+fn is_plain_symbolic_binomial(ctx: &Context, expr: ExprId) -> bool {
+    match ctx.get(expr) {
+        Expr::Add(left, right) | Expr::Sub(left, right) => {
+            is_symbolic_atom(ctx, *left) && is_symbolic_atom(ctx, *right)
+        }
+        Expr::Neg(inner) => is_plain_symbolic_binomial(ctx, *inner),
+        _ => false,
+    }
+}
+
+fn is_same_symbolic_atom_fraction(ctx: &Context, left: ExprId, right: ExprId) -> bool {
+    is_symbolic_atom(ctx, left)
+        && is_symbolic_atom(ctx, right)
+        && cas_ast::ordering::compare_expr(ctx, left, right) == std::cmp::Ordering::Equal
+}
+
+fn is_symbolic_power_over_same_atom_noop(ctx: &Context, left: ExprId, right: ExprId) -> bool {
+    let Expr::Pow(base, exp) = ctx.get(left) else {
+        return false;
+    };
+
+    is_symbolic_atom(ctx, *base)
+        && is_symbolic_atom(ctx, *exp)
+        && is_symbolic_atom(ctx, right)
+        && cas_ast::ordering::compare_expr(ctx, *base, right) == std::cmp::Ordering::Equal
 }
 
 impl<'a> LocalSimplificationTransformer<'a> {
@@ -91,6 +123,31 @@ impl<'a> LocalSimplificationTransformer<'a> {
     /// Extracted with #[inline(never)] to reduce stack frame size.
     #[inline(never)]
     pub(super) fn transform_pow(&mut self, id: ExprId, base: ExprId, exp: ExprId) -> ExprId {
+        let allow_hidden_solve_pow_preorder = !self.collect_steps_enabled()
+            && self.event_listener.is_none()
+            && self.current_phase == crate::SimplifyPhase::Core
+            && self.initial_parent_ctx.is_solve_context()
+            && !self.initial_parent_ctx.domain_mode().is_strict();
+        if allow_hidden_solve_pow_preorder {
+            if let Some(cas_math::power_identity_support::PowerIdentityPolicyPattern::PowZero {
+                base,
+                base_is_literal_zero: false,
+            }) = cas_math::power_identity_support::classify_power_identity_policy_pattern(
+                self.context,
+                id,
+            ) {
+                if is_symbolic_atom(self.context, base) {
+                    return self.context.num(1);
+                }
+            }
+
+            if let Some(rewrite) = try_rewrite_exponential_log_inverse_expr(self.context, id) {
+                if is_symbolic_atom(self.context, rewrite.rewritten) {
+                    return rewrite.rewritten;
+                }
+            }
+        }
+
         // EARLY DETECTION: sqrt-of-square pattern (u^2)^(1/2) -> |u|
         // Must check BEFORE recursing into children to prevent binomial expansion
         if let Some(plan) = try_plan_sqrt_square_pow_rewrite(self.context, base, exp) {
@@ -172,6 +229,56 @@ impl<'a> LocalSimplificationTransformer<'a> {
     /// Extracted with #[inline(never)] to reduce stack frame size.
     #[inline(never)]
     pub(super) fn transform_div(&mut self, id: ExprId, l: ExprId, r: ExprId) -> ExprId {
+        let allow_identical_atom_fraction_preorder = !self.collect_steps_enabled()
+            && self.event_listener.is_none()
+            && self.current_phase == crate::SimplifyPhase::Core
+            && self.initial_parent_ctx.is_solve_context()
+            && !self.initial_parent_ctx.domain_mode().is_strict()
+            && is_same_symbolic_atom_fraction(self.context, l, r);
+        if allow_identical_atom_fraction_preorder {
+            return self.context.num(1);
+        }
+
+        let allow_same_atom_power_noop_preorder = !self.collect_steps_enabled()
+            && self.event_listener.is_none()
+            && self.current_phase == crate::SimplifyPhase::Core
+            && self.initial_parent_ctx.is_solve_context()
+            && !self.initial_parent_ctx.domain_mode().is_strict()
+            && is_symbolic_power_over_same_atom_noop(self.context, l, r);
+        if allow_same_atom_power_noop_preorder {
+            return id;
+        }
+
+        let allow_scalar_multiple_preorder = !self.collect_steps_enabled()
+            && self.event_listener.is_none()
+            && self.current_phase == crate::SimplifyPhase::Core
+            && self.initial_parent_ctx.is_solve_context()
+            && match self.initial_parent_ctx.simplify_purpose() {
+                crate::SimplifyPurpose::Eval => {
+                    self.initial_parent_ctx.context_mode() == crate::options::ContextMode::Solve
+                }
+                crate::SimplifyPurpose::SolvePrepass => {
+                    cas_solver_core::solve_safety_policy::safe_for_prepass(
+                        crate::SolveSafety::NeedsCondition(crate::ConditionClass::Definability),
+                    )
+                }
+                crate::SimplifyPurpose::SolveTactic => {
+                    let domain_mode = self.initial_parent_ctx.domain_mode();
+                    cas_solver_core::solve_safety_policy::safe_for_tactic_with_domain_flags(
+                        crate::SolveSafety::NeedsCondition(crate::ConditionClass::Definability),
+                        matches!(domain_mode, crate::DomainMode::Assume),
+                        matches!(domain_mode, crate::DomainMode::Strict),
+                    )
+                }
+            };
+        if allow_scalar_multiple_preorder {
+            if let Some(early_result) =
+                crate::rules::algebra::try_structural_scalar_multiple_preorder(self.context, l, r)
+            {
+                return early_result;
+            }
+        }
+
         // EARLY DETECTION: (A² - B²) / (A ± B) pattern
         let allow_difference_of_squares_preorder = match self.initial_parent_ctx.simplify_purpose()
         {
@@ -196,7 +303,39 @@ impl<'a> LocalSimplificationTransformer<'a> {
                 &mut self.steps,
                 &self.current_path,
             ) {
+                if !self.collect_steps_enabled()
+                    && self.event_listener.is_none()
+                    && self.current_phase == crate::SimplifyPhase::Core
+                    && self.initial_parent_ctx.is_solve_context()
+                    && is_plain_symbolic_binomial(self.context, early_result)
+                {
+                    return early_result;
+                }
                 // Note: don't decrement depth here - transform_expr_recursive manages it
+                return self.transform_expr_recursive(early_result);
+            }
+        }
+
+        // Similar pre-order fast path for perfect-square-minus fractions, but only
+        // when no listener is attached so we don't widen the existing event-gap
+        // behavior beyond the hidden hot path.
+        if allow_difference_of_squares_preorder && self.event_listener.is_none() {
+            if let Some(early_result) = crate::rules::algebra::try_perfect_square_minus_preorder(
+                self.context,
+                id,
+                l,
+                r,
+                self.collect_steps_enabled(),
+                &mut self.steps,
+                &self.current_path,
+            ) {
+                if !self.collect_steps_enabled()
+                    && self.current_phase == crate::SimplifyPhase::Core
+                    && self.initial_parent_ctx.is_solve_context()
+                    && is_plain_symbolic_binomial(self.context, early_result)
+                {
+                    return early_result;
+                }
                 return self.transform_expr_recursive(early_result);
             }
         }

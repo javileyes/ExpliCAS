@@ -28,6 +28,21 @@ fn signed_term_coeff_and_base(
     Some((coeff, base))
 }
 
+fn ratio_to_fraction_exprs(ctx: &mut Context, ratio: BigRational) -> Option<(ExprId, ExprId)> {
+    if ratio.is_zero() || ratio.is_one() {
+        return None;
+    }
+
+    let result_ratio = BigRational::one() / ratio;
+    let new_num = ctx.add(Expr::Number(BigRational::from_integer(
+        result_ratio.numer().clone(),
+    )));
+    let new_den = ctx.add(Expr::Number(BigRational::from_integer(
+        result_ratio.denom().clone(),
+    )));
+    Some((new_num, new_den))
+}
+
 fn try_structural_scalar_multiple_fraction_reduction(
     ctx: &mut Context,
     num: ExprId,
@@ -72,17 +87,7 @@ fn try_structural_scalar_multiple_fraction_reduction(
     }
 
     let ratio = ratio?;
-    if ratio.is_one() {
-        return None;
-    }
-
-    let result_ratio = BigRational::one() / ratio;
-    let new_num = ctx.add(Expr::Number(BigRational::from_integer(
-        result_ratio.numer().clone(),
-    )));
-    let new_den = ctx.add(Expr::Number(BigRational::from_integer(
-        result_ratio.denom().clone(),
-    )));
+    let (new_num, new_den) = ratio_to_fraction_exprs(ctx, ratio)?;
     Some((new_num, new_den, num))
 }
 

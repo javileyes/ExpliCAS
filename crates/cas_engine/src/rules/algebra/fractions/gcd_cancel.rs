@@ -236,7 +236,8 @@ define_rule!(
         let trace_payloads_enabled = crate::rule::trace_payloads_enabled();
 
         // EARLY RETURN: didactic factorization/cancellation plans (ordered in cas_math).
-        if let Some(plan) = try_plan_fraction_didactic_cancel(ctx, num, den) {
+        if let Some(plan) = try_plan_fraction_didactic_cancel(ctx, num, den, trace_payloads_enabled)
+        {
             use crate::ImplicitCondition;
             if !trace_payloads_enabled && plan.local_after == num {
                 let one = ctx.num(1);
@@ -245,6 +246,16 @@ define_rule!(
                         .requires(ImplicitCondition::NonZero(den))
                         .requires(ImplicitCondition::NonZero(plan.local_after)),
                 );
+            }
+            if !trace_payloads_enabled {
+                if let Some(plain_rewritten) = plan.plain_rewritten {
+                    let mut rewrite =
+                        Rewrite::new(plain_rewritten).requires(ImplicitCondition::NonZero(den));
+                    if let Some(extra_nonzero) = plan.plain_extra_nonzero {
+                        rewrite = rewrite.requires(ImplicitCondition::NonZero(extra_nonzero));
+                    }
+                    return Some(rewrite);
+                }
             }
             let rewrite = Rewrite::new(plan.rewritten)
                 .desc(plan.desc)

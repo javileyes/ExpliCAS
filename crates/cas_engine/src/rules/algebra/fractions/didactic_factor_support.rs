@@ -27,6 +27,7 @@ pub struct DifferenceOfSquaresCancelPlan {
 pub struct PerfectSquareMinusCancelPlan {
     pub rewritten: ExprId,
     pub factored_numerator: ExprId,
+    pub cancelled_result: ExprId,
 }
 
 /// Plan for `(a^3 ± b^3)/(a±b)` factorization into `(a±b)(a^2 ∓ ab + b^2)/(a±b)`.
@@ -34,6 +35,7 @@ pub struct PerfectSquareMinusCancelPlan {
 pub struct SumDiffCubesCancelPlan {
     pub rewritten: ExprId,
     pub factored_numerator: ExprId,
+    pub cancelled_result: ExprId,
     pub desc: &'static str,
 }
 
@@ -49,6 +51,8 @@ pub struct PowerQuotientPreserveFormPlan {
 pub struct FractionDidacticCancelPlan {
     pub rewritten: ExprId,
     pub local_after: ExprId,
+    pub plain_rewritten: Option<ExprId>,
+    pub plain_extra_nonzero: Option<ExprId>,
     pub desc: String,
 }
 
@@ -62,6 +66,7 @@ pub fn try_plan_expand_binomial_square_in_den_for_cancel(
     ctx: &mut Context,
     num: ExprId,
     den: ExprId,
+    didactic_payloads_enabled: bool,
 ) -> Option<ExpandBinomialSquareDenCancelPlan> {
     let (base, exp) = as_pow(ctx, den)?;
     if as_i64(ctx, exp)? != 2 {
@@ -84,7 +89,11 @@ pub fn try_plan_expand_binomial_square_in_den_for_cancel(
         return None;
     }
 
-    let rewritten = ctx.add(Expr::Div(num, expanded));
+    let rewritten = if didactic_payloads_enabled {
+        ctx.add(Expr::Div(num, expanded))
+    } else {
+        ctx.num(1)
+    };
     Some(ExpandBinomialSquareDenCancelPlan {
         rewritten,
         expanded_denominator: expanded,
@@ -96,6 +105,7 @@ pub fn try_plan_difference_of_squares_in_num(
     ctx: &mut Context,
     num: ExprId,
     den: ExprId,
+    didactic_payloads_enabled: bool,
 ) -> Option<DifferenceOfSquaresCancelPlan> {
     let (a, b) = if let Some((left, right)) = as_sub(ctx, num) {
         let (a, exp_a) = as_pow(ctx, left)?;
@@ -158,11 +168,15 @@ pub fn try_plan_difference_of_squares_in_num(
 
     let a_minus_b = ctx.add(Expr::Sub(a, b));
     let a_plus_b = ctx.add(Expr::Add(a, b));
-    let factored_num = smart_mul(ctx, a_minus_b, a_plus_b);
     let rewritten = if den_matches_a_plus_b {
         a_minus_b
     } else {
         a_plus_b
+    };
+    let factored_num = if didactic_payloads_enabled {
+        smart_mul(ctx, a_minus_b, a_plus_b)
+    } else {
+        rewritten
     };
 
     Some(DifferenceOfSquaresCancelPlan {
@@ -176,6 +190,7 @@ pub fn try_plan_perfect_square_minus_in_num(
     ctx: &mut Context,
     num: ExprId,
     den: ExprId,
+    didactic_payloads_enabled: bool,
 ) -> Option<PerfectSquareMinusCancelPlan> {
     let (a, b) = if let Some((a, b)) = as_sub(ctx, den) {
         (a, b)
@@ -207,13 +222,19 @@ pub fn try_plan_perfect_square_minus_in_num(
     }
 
     let a_minus_b = ctx.add(Expr::Sub(a, b));
-    let exp_for_square = ctx.num(2);
-    let factored_num = ctx.add(Expr::Pow(a_minus_b, exp_for_square));
-    let rewritten = ctx.add(Expr::Div(factored_num, den));
+    let (factored_num, rewritten) = if didactic_payloads_enabled {
+        let exp_for_square = ctx.num(2);
+        let factored_num = ctx.add(Expr::Pow(a_minus_b, exp_for_square));
+        let rewritten = ctx.add(Expr::Div(factored_num, den));
+        (factored_num, rewritten)
+    } else {
+        (a_minus_b, a_minus_b)
+    };
 
     Some(PerfectSquareMinusCancelPlan {
         rewritten,
         factored_numerator: factored_num,
+        cancelled_result: a_minus_b,
     })
 }
 
@@ -222,6 +243,7 @@ pub fn try_plan_sum_diff_of_cubes_in_num(
     ctx: &mut Context,
     num: ExprId,
     den: ExprId,
+    didactic_payloads_enabled: bool,
 ) -> Option<SumDiffCubesCancelPlan> {
     let (a, b, is_difference) = if let Some((left, right)) = as_sub(ctx, num) {
         let (a, exp_a) = as_pow(ctx, left)?;
@@ -305,13 +327,18 @@ pub fn try_plan_sum_diff_of_cubes_in_num(
         ctx.add(Expr::Add(a_sq, inner))
     };
 
-    let linear_factor = if is_difference {
-        ctx.add(Expr::Sub(a, b))
+    let (factored_num, rewritten) = if didactic_payloads_enabled {
+        let linear_factor = if is_difference {
+            ctx.add(Expr::Sub(a, b))
+        } else {
+            ctx.add(Expr::Add(a, b))
+        };
+        let factored_num = smart_mul(ctx, linear_factor, result);
+        let rewritten = ctx.add(Expr::Div(factored_num, den));
+        (factored_num, rewritten)
     } else {
-        ctx.add(Expr::Add(a, b))
+        (result, result)
     };
-    let factored_num = smart_mul(ctx, linear_factor, result);
-    let rewritten = ctx.add(Expr::Div(factored_num, den));
 
     let desc = if is_difference {
         "Factor: a³ - b³ = (a-b)(a² + ab + b²)"
@@ -322,6 +349,7 @@ pub fn try_plan_sum_diff_of_cubes_in_num(
     Some(SumDiffCubesCancelPlan {
         rewritten,
         factored_numerator: factored_num,
+        cancelled_result: result,
         desc,
     })
 }
@@ -389,35 +417,51 @@ pub fn try_plan_fraction_didactic_cancel(
     ctx: &mut Context,
     num: ExprId,
     den: ExprId,
+    didactic_payloads_enabled: bool,
 ) -> Option<FractionDidacticCancelPlan> {
-    if let Some(plan) = try_plan_expand_binomial_square_in_den_for_cancel(ctx, num, den) {
+    if let Some(plan) =
+        try_plan_expand_binomial_square_in_den_for_cancel(ctx, num, den, didactic_payloads_enabled)
+    {
         return Some(FractionDidacticCancelPlan {
             rewritten: plan.rewritten,
             local_after: plan.expanded_denominator,
+            plain_rewritten: Some(ctx.num(1)),
+            plain_extra_nonzero: Some(plan.expanded_denominator),
             desc: "Expand: (a+b)² → a² + 2ab + b²".to_string(),
         });
     }
 
-    if let Some(plan) = try_plan_difference_of_squares_in_num(ctx, num, den) {
+    if let Some(plan) =
+        try_plan_difference_of_squares_in_num(ctx, num, den, didactic_payloads_enabled)
+    {
         return Some(FractionDidacticCancelPlan {
             rewritten: plan.rewritten,
             local_after: plan.factored_numerator,
+            plain_rewritten: None,
+            plain_extra_nonzero: None,
             desc: "Factor and cancel: a² - b² = (a-b)(a+b)".to_string(),
         });
     }
 
-    if let Some(plan) = try_plan_perfect_square_minus_in_num(ctx, num, den) {
+    if let Some(plan) =
+        try_plan_perfect_square_minus_in_num(ctx, num, den, didactic_payloads_enabled)
+    {
         return Some(FractionDidacticCancelPlan {
             rewritten: plan.rewritten,
             local_after: plan.factored_numerator,
+            plain_rewritten: Some(plan.cancelled_result),
+            plain_extra_nonzero: None,
             desc: "Recognize: a² - 2ab + b² = (a-b)²".to_string(),
         });
     }
 
-    if let Some(plan) = try_plan_sum_diff_of_cubes_in_num(ctx, num, den) {
+    if let Some(plan) = try_plan_sum_diff_of_cubes_in_num(ctx, num, den, didactic_payloads_enabled)
+    {
         return Some(FractionDidacticCancelPlan {
             rewritten: plan.rewritten,
             local_after: plan.factored_numerator,
+            plain_rewritten: Some(plan.cancelled_result),
+            plain_extra_nonzero: None,
             desc: plan.desc.to_string(),
         });
     }
@@ -426,6 +470,8 @@ pub fn try_plan_fraction_didactic_cancel(
         return Some(FractionDidacticCancelPlan {
             rewritten: plan.rewritten,
             local_after: plan.rewritten,
+            plain_rewritten: None,
+            plain_extra_nonzero: None,
             desc: plan.desc,
         });
     }
@@ -484,7 +530,7 @@ mod tests {
         let two4 = ctx.num(2);
         let den = ctx.add(Expr::Pow(base, two4));
 
-        let plan = try_plan_expand_binomial_square_in_den_for_cancel(&mut ctx, num, den)
+        let plan = try_plan_expand_binomial_square_in_den_for_cancel(&mut ctx, num, den, true)
             .expect("plan should exist");
         let expected = ctx.add(Expr::Div(num, plan.expanded_denominator));
         assert_eq!(
@@ -505,8 +551,8 @@ mod tests {
         let num = ctx.add(Expr::Sub(x_sq, y_sq));
         let den = ctx.add(Expr::Add(x, y));
 
-        let plan =
-            try_plan_difference_of_squares_in_num(&mut ctx, num, den).expect("plan should exist");
+        let plan = try_plan_difference_of_squares_in_num(&mut ctx, num, den, true)
+            .expect("plan should exist");
         let expected = ctx.add(Expr::Sub(x, y));
         assert_eq!(
             compare_expr(&ctx, plan.rewritten, expected),
@@ -531,8 +577,8 @@ mod tests {
         let num = ctx.add(Expr::Add(x_sq, rhs));
         let den = ctx.add(Expr::Sub(x, y));
 
-        let plan =
-            try_plan_perfect_square_minus_in_num(&mut ctx, num, den).expect("plan should exist");
+        let plan = try_plan_perfect_square_minus_in_num(&mut ctx, num, den, true)
+            .expect("plan should exist");
         let two4 = ctx.num(2);
         let x_minus_y = ctx.add(Expr::Sub(x, y));
         let num_expected = ctx.add(Expr::Pow(x_minus_y, two4));
@@ -556,7 +602,7 @@ mod tests {
         let den = ctx.add(Expr::Sub(x, y));
 
         let plan =
-            try_plan_sum_diff_of_cubes_in_num(&mut ctx, num, den).expect("plan should exist");
+            try_plan_sum_diff_of_cubes_in_num(&mut ctx, num, den, true).expect("plan should exist");
         let expected_desc = "Factor: a³ - b³ = (a-b)(a² + ab + b²)";
         assert_eq!(plan.desc, expected_desc);
 
@@ -607,7 +653,7 @@ mod tests {
         let two4 = ctx.num(2);
         let den = ctx.add(Expr::Pow(base, two4));
 
-        let plan = try_plan_fraction_didactic_cancel(&mut ctx, num, den).expect("plan");
+        let plan = try_plan_fraction_didactic_cancel(&mut ctx, num, den, true).expect("plan");
         assert_eq!(plan.desc, "Expand: (a+b)² → a² + 2ab + b²");
     }
 }

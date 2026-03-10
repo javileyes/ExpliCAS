@@ -5,14 +5,17 @@ use std::hint::black_box;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
+use cas_ast::views::RationalFnView;
 use cas_ast::Context;
-use cas_ast::{Equation, RelOp, SolutionSet};
+use cas_ast::{Equation, Expr, RelOp, SolutionSet};
 use cas_parser::parse;
 
+use cas_engine::rules::algebra::SimplifyFractionRule;
 use cas_engine::{
-    BranchMode, ComplexMode, ContextMode, DomainMode, EvalConfig, EvalOptions, ProfileCache,
+    BranchMode, ComplexMode, ContextMode, DomainMode, EvalConfig, EvalOptions, ProfileCache, Rule,
     Simplifier, SimplifyOptions, StepListener, StepsMode,
 };
+use cas_math::fraction_gcd_plan_support::try_plan_fraction_gcd_rewrite;
 use cas_solver::{verify_solution_set, VerifySummary};
 use cas_solver_core::engine_events::EngineEvent;
 
@@ -26,6 +29,15 @@ fn build_expr(input: &str) -> (Context, cas_ast::ExprId) {
     let mut ctx = Context::new();
     let id = parse(input, &mut ctx).expect("parse failed");
     (ctx, id)
+}
+
+fn build_div_expr(input: &str) -> (Context, cas_ast::ExprId, cas_ast::ExprId, cas_ast::ExprId) {
+    let (ctx, expr) = build_expr(input);
+    let (num, den) = match ctx.get(expr) {
+        Expr::Div(num, den) => (*num, *den),
+        other => panic!("expected division, got {other:?}"),
+    };
+    (ctx, expr, num, den)
 }
 
 fn build_equation_with_solutions(
@@ -150,11 +162,17 @@ fn build_probe_parent_ctx(
         .with_root_expr(ctx, expr)
 }
 
-fn print_no_hit_rule_probes(
-    simplifier: &Simplifier,
-    options: &SimplifyOptions,
+fn build_fraction_rule_parent_ctx(
+    ctx: &Context,
     expr: cas_ast::ExprId,
-) {
+    domain_mode: DomainMode,
+) -> cas_engine::ParentContext {
+    let mut opts = SimplifyOptions::for_solve_tactic(domain_mode);
+    opts.collect_steps = false;
+    build_probe_parent_ctx(ctx, expr, &opts)
+}
+
+fn print_rule_probes(simplifier: &Simplifier, options: &SimplifyOptions, expr: cas_ast::ExprId) {
     if !solve_profile_probe_enabled() {
         return;
     }
@@ -316,6 +334,8 @@ fn emit_solve_profile_snapshot(
                 println!("  (no rule hits)");
                 on_no_rule_hits(&simplifier.context, expr, &simplifier);
             }
+
+            print_rule_probes(&simplifier, options, expr);
         }
 
         for &phase in cas_engine::SimplifyPhase::all() {
@@ -671,7 +691,7 @@ fn bench_solve_hotspots_cached(c: &mut Criterion) {
         },
         |_ctx, expr, simplifier| {
             print_no_hit_bucket_candidates(simplifier, &simplifier.context, expr);
-            print_no_hit_rule_probes(simplifier, &tactic_generic, expr);
+            print_rule_probes(simplifier, &tactic_generic, expr);
         },
     );
     emit_solve_profile_snapshot(
@@ -685,7 +705,7 @@ fn bench_solve_hotspots_cached(c: &mut Criterion) {
         },
         |_ctx, expr, simplifier| {
             print_no_hit_bucket_candidates(simplifier, &simplifier.context, expr);
-            print_no_hit_rule_probes(simplifier, &tactic_assume, expr);
+            print_rule_probes(simplifier, &tactic_assume, expr);
         },
     );
 
@@ -698,6 +718,21 @@ fn bench_solve_hotspots_cached(c: &mut Criterion) {
         (
             "generic/difference_of_squares_fraction",
             "(x^2 - y^2)/(x - y)",
+            tactic_generic.clone(),
+        ),
+        (
+            "generic/perfect_square_minus_fraction",
+            "(x^2 - 2*x*y + y^2)/(x - y)",
+            tactic_generic.clone(),
+        ),
+        (
+            "generic/difference_of_cubes_fraction",
+            "(x^3 - y^3)/(x - y)",
+            tactic_generic.clone(),
+        ),
+        (
+            "generic/sum_of_cubes_fraction",
+            "(x^3 + y^3)/(x + y)",
             tactic_generic.clone(),
         ),
         (
@@ -827,6 +862,63 @@ fn bench_solve_eval_hotspots_cached(c: &mut Criterion) {
         ),
         (
             "eval-generic",
+            "generic/perfect_square_minus_fraction",
+            "(x^2 - 2*x*y + y^2)/(x - y)",
+            EvalOptions {
+                branch_mode: BranchMode::Strict,
+                complex_mode: ComplexMode::Auto,
+                steps_mode: StepsMode::Off,
+                shared: cas_engine::SharedSemanticConfig {
+                    context_mode: ContextMode::Solve,
+                    semantics: EvalConfig {
+                        domain_mode: DomainMode::Generic,
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        ),
+        (
+            "eval-generic",
+            "generic/difference_of_cubes_fraction",
+            "(x^3 - y^3)/(x - y)",
+            EvalOptions {
+                branch_mode: BranchMode::Strict,
+                complex_mode: ComplexMode::Auto,
+                steps_mode: StepsMode::Off,
+                shared: cas_engine::SharedSemanticConfig {
+                    context_mode: ContextMode::Solve,
+                    semantics: EvalConfig {
+                        domain_mode: DomainMode::Generic,
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        ),
+        (
+            "eval-generic",
+            "generic/sum_of_cubes_fraction",
+            "(x^3 + y^3)/(x + y)",
+            EvalOptions {
+                branch_mode: BranchMode::Strict,
+                complex_mode: ComplexMode::Auto,
+                steps_mode: StepsMode::Off,
+                shared: cas_engine::SharedSemanticConfig {
+                    context_mode: ContextMode::Solve,
+                    semantics: EvalConfig {
+                        domain_mode: DomainMode::Generic,
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        ),
+        (
+            "eval-generic",
             "generic/power_quotient_fraction",
             "x^4/x^2",
             EvalOptions {
@@ -928,6 +1020,227 @@ fn bench_solve_eval_hotspots_cached(c: &mut Criterion) {
     group.finish();
 }
 
+fn bench_fraction_gcd_planner_direct(c: &mut Criterion) {
+    let cases = [
+        (
+            "plain/scalar_multiple_fraction",
+            "(2*x + 2*y)/(4*x + 4*y)",
+            false,
+        ),
+        (
+            "trace/scalar_multiple_fraction",
+            "(2*x + 2*y)/(4*x + 4*y)",
+            true,
+        ),
+        ("plain/x_over_x", "x/x", false),
+        ("plain/a_pow_x_over_a", "(a^x)/a", false),
+        (
+            "plain/difference_of_squares_fraction",
+            "(x^2 - y^2)/(x - y)",
+            false,
+        ),
+    ];
+
+    let mut group = c.benchmark_group("fraction_gcd_planner_direct");
+    common::configure_standard_group(&mut group);
+
+    for (name, input, include_factored_form) in cases {
+        group.bench_function(name, |b| {
+            b.iter_batched(
+                || build_div_expr(input),
+                |(mut ctx, expr, num, den)| {
+                    let plan =
+                        try_plan_fraction_gcd_rewrite(&mut ctx, expr, num, den, include_factored_form);
+                    let metric = plan
+                        .map(|plan| {
+                            let route_score = match plan.route {
+                                cas_math::fraction_gcd_plan_support::FractionGcdRoute::StructuralScalarMultiple => 11usize,
+                                cas_math::fraction_gcd_plan_support::FractionGcdRoute::Multivar { .. } => 17usize,
+                                cas_math::fraction_gcd_plan_support::FractionGcdRoute::Univar => 23usize,
+                            };
+                            route_score ^ cas_formatter::render_expr(&ctx, plan.forms.result_norm).len()
+                        })
+                        .unwrap_or(0);
+                    black_box(metric);
+                },
+                criterion::BatchSize::SmallInput,
+            )
+        });
+    }
+
+    group.finish();
+}
+
+fn bench_fraction_rule_direct(c: &mut Criterion) {
+    let mut group = c.benchmark_group("fraction_rule_direct");
+    common::configure_standard_group(&mut group);
+
+    group.bench_function("rational_fn_view/scalar_multiple_fraction", |b| {
+        b.iter_batched(
+            || build_div_expr("(2*x + 2*y)/(4*x + 4*y)"),
+            |(mut ctx, expr, _num, _den)| {
+                let metric = RationalFnView::from(&mut ctx, expr)
+                    .map(|view| view.num.index() ^ view.den.index())
+                    .unwrap_or(0);
+                black_box(metric);
+            },
+            criterion::BatchSize::SmallInput,
+        )
+    });
+
+    let direct_cases = [
+        (
+            "apply/generic/scalar_multiple_fraction",
+            "(2*x + 2*y)/(4*x + 4*y)",
+            DomainMode::Generic,
+        ),
+        ("apply/generic/x_over_x", "x/x", DomainMode::Generic),
+        (
+            "apply/generic/a_pow_x_over_a",
+            "(a^x)/a",
+            DomainMode::Generic,
+        ),
+        (
+            "apply/generic/difference_of_squares_fraction",
+            "(x^2 - y^2)/(x - y)",
+            DomainMode::Generic,
+        ),
+    ];
+    let rule = SimplifyFractionRule;
+
+    for (name, input, domain_mode) in direct_cases {
+        group.bench_function(name, |b| {
+            b.iter_batched(
+                || build_div_expr(input),
+                |(mut ctx, expr, _num, _den)| {
+                    let parent_ctx = build_fraction_rule_parent_ctx(&ctx, expr, domain_mode);
+                    let metric = rule
+                        .apply(&mut ctx, expr, &parent_ctx)
+                        .map(|rw| {
+                            rw.new_expr.index()
+                                ^ rw.required_conditions.len()
+                                ^ rw.chained.len()
+                                ^ rw.substeps.len()
+                        })
+                        .unwrap_or(0);
+                    black_box(metric);
+                },
+                criterion::BatchSize::SmallInput,
+            )
+        });
+    }
+
+    let single_rule_cases = [
+        (
+            "single_rule_engine/generic/scalar_multiple_fraction",
+            "(2*x + 2*y)/(4*x + 4*y)",
+            DomainMode::Generic,
+        ),
+        (
+            "single_rule_engine/generic/x_over_x",
+            "x/x",
+            DomainMode::Generic,
+        ),
+        (
+            "single_rule_engine/generic/a_pow_x_over_a",
+            "(a^x)/a",
+            DomainMode::Generic,
+        ),
+    ];
+
+    for (name, input, domain_mode) in single_rule_cases {
+        group.bench_function(name, |b| {
+            b.iter_batched(
+                || {
+                    let mut simplifier = Simplifier::new();
+                    simplifier.add_rule(Box::new(SimplifyFractionRule));
+                    simplifier.set_steps_mode(StepsMode::Off);
+                    let expr = parse(input, &mut simplifier.context).expect("parse failed");
+                    let mut opts = SimplifyOptions::for_solve_tactic(domain_mode);
+                    opts.collect_steps = false;
+                    (simplifier, expr, opts)
+                },
+                |(mut simplifier, expr, opts)| {
+                    let (out, steps) = simplifier.simplify_with_options(expr, opts);
+                    let metric = out.index() ^ steps.len();
+                    black_box(metric);
+                },
+                criterion::BatchSize::SmallInput,
+            )
+        });
+    }
+
+    group.finish();
+}
+
+fn bench_solve_phase_subset_cached(c: &mut Criterion) {
+    let inputs = [
+        ("scalar_multiple_fraction", "(2*x + 2*y)/(4*x + 4*y)"),
+        ("a_pow_x_over_a", "(a^x)/a"),
+        ("x_over_x", "x/x"),
+    ];
+
+    let profile_opts = EvalOptions {
+        branch_mode: BranchMode::Strict,
+        complex_mode: ComplexMode::Auto,
+        steps_mode: StepsMode::Off,
+        shared: cas_engine::SharedSemanticConfig {
+            context_mode: ContextMode::Solve,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+
+    let mut cache = ProfileCache::new();
+    let profile = cache.get_or_build(&profile_opts);
+
+    let mut solve_generic_full = SimplifyOptions::for_solve_tactic(DomainMode::Generic);
+    solve_generic_full.collect_steps = false;
+    solve_generic_full.shared.context_mode = ContextMode::Solve;
+
+    let mut solve_generic_no_transform = solve_generic_full.clone();
+    solve_generic_no_transform.enable_transform = false;
+
+    let mut solve_generic_coreish = solve_generic_no_transform.clone();
+    solve_generic_coreish.rationalize.auto_level = cas_engine::AutoRationalizeLevel::Off;
+
+    let option_cases = [
+        ("generic/full", solve_generic_full),
+        ("generic/no_transform", solve_generic_no_transform),
+        ("generic/no_transform_no_rationalize", solve_generic_coreish),
+    ];
+
+    let mut group = c.benchmark_group("solve_phase_subset_cached");
+    common::configure_standard_group(&mut group);
+
+    for (input_name, input) in inputs {
+        for (opts_name, opts) in &option_cases {
+            let bench_name = format!("{input_name}/{opts_name}");
+            group.bench_function(BenchmarkId::from_parameter(bench_name), |b| {
+                b.iter_batched(
+                    || build_expr(input),
+                    |(ctx, expr)| {
+                        let mut simplifier =
+                            Simplifier::from_profile_with_context(profile.clone(), ctx);
+                        simplifier.set_steps_mode(StepsMode::Off);
+                        let (out, _steps, stats) =
+                            simplifier.simplify_with_stats(expr, opts.clone());
+                        let metric = out.index()
+                            ^ stats.core.iters_used
+                            ^ stats.transform.iters_used
+                            ^ stats.rationalize.iters_used
+                            ^ stats.post_cleanup.iters_used;
+                        black_box(metric);
+                    },
+                    criterion::BatchSize::SmallInput,
+                )
+            });
+        }
+    }
+
+    group.finish();
+}
+
 fn bench_solve_prepass_inherited_steps_cached(c: &mut Criterion) {
     let inputs = [
         "(2*x + 2*y)/(4*x + 4*y)",
@@ -1005,6 +1318,9 @@ criterion_group!(
     bench_solve_modes_cached,
     bench_solve_hotspots_cached,
     bench_solve_eval_hotspots_cached,
+    bench_fraction_gcd_planner_direct,
+    bench_fraction_rule_direct,
+    bench_solve_phase_subset_cached,
     bench_solve_prepass_inherited_steps_cached,
     bench_solver_verification_inherited_steps
 );

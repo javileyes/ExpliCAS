@@ -237,3 +237,85 @@ pub fn try_difference_of_squares_preorder(
     // Return FINAL result to prevent GCD from reprocessing
     Some(final_result)
 }
+
+/// Pre-order detection of `(A² - 2AB + B²) / (A - B)` pattern.
+/// Called before child recursion to preserve the numerator structure and skip
+/// the later didactic fraction pipeline in the plain hot path.
+#[allow(clippy::too_many_arguments)]
+pub fn try_perfect_square_minus_preorder(
+    ctx: &mut cas_ast::Context,
+    expr_id: cas_ast::ExprId,
+    num: cas_ast::ExprId,
+    den: cas_ast::ExprId,
+    collect_steps: bool,
+    steps: &mut Vec<crate::step::Step>,
+    current_path: &[crate::step::PathStep],
+) -> Option<cas_ast::ExprId> {
+    let plan = crate::rules::algebra::fractions::try_plan_perfect_square_minus_in_num(
+        ctx,
+        num,
+        den,
+        collect_steps,
+    )?;
+    let factored_num = plan.factored_numerator;
+    let intermediate = plan.rewritten;
+    let final_result = plan.cancelled_result;
+
+    if collect_steps {
+        let mut factor_step = crate::step::Step::new(
+            "Recognize: A² - 2AB + B² = (A-B)²",
+            "Pre-order Perfect Square Minus",
+            num,
+            factored_num,
+            current_path.to_vec(),
+            Some(ctx),
+        );
+        factor_step.before = expr_id;
+        factor_step.after = intermediate;
+        factor_step.global_before = Some(expr_id);
+        factor_step.global_after = Some(intermediate);
+        {
+            let meta = factor_step.meta_mut();
+            meta.before_local = Some(num);
+            meta.after_local = Some(factored_num);
+            meta.required_conditions
+                .push(crate::ImplicitCondition::NonZero(den));
+        }
+        factor_step.importance = crate::step::ImportanceLevel::High;
+        steps.push(factor_step);
+
+        let mut cancel_step = crate::step::Step::new(
+            "Cancel common factor",
+            "Pre-order Perfect Square Minus Cancel",
+            intermediate,
+            final_result,
+            current_path.to_vec(),
+            Some(ctx),
+        );
+        cancel_step.before = intermediate;
+        cancel_step.after = final_result;
+        cancel_step.global_before = Some(intermediate);
+        cancel_step.global_after = Some(final_result);
+        cancel_step.importance = crate::step::ImportanceLevel::High;
+        steps.push(cancel_step);
+    }
+
+    Some(final_result)
+}
+
+/// Pre-order detection of exact additive scalar-multiple fractions.
+///
+/// This is intentionally restricted to the plain hidden path (`steps off`,
+/// no listener) from the transformer, so it can return the fully normalized
+/// scalar result directly and skip the recursive traversal of both children.
+pub fn try_structural_scalar_multiple_preorder(
+    ctx: &mut cas_ast::Context,
+    num: cas_ast::ExprId,
+    den: cas_ast::ExprId,
+) -> Option<cas_ast::ExprId> {
+    let plan =
+        cas_math::fraction_gcd_plan_support::try_plan_structural_scalar_multiple_fraction_rewrite(
+            ctx, num, den, false,
+        )?;
+    Some(plan.forms.result_norm)
+}

@@ -862,3 +862,597 @@ Those are valid projects, but not part of this performance track.
 - both were worse on named-baseline compares for
   `generic/scalar_multiple_fraction` and `solve_tactic_generic_batch`, so they
   were intentionally reverted
+- retained a new `steps off` fast path for didactic fraction plans in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/rules/algebra/fractions/gcd_cancel.rs`
+  plus plan metadata in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/rules/algebra/fractions/didactic_factor_support.rs`
+- idea: when the didactic planner already knows the fully cancelled result for
+  perfect-square-minus and sum/difference-of-cubes fractions, return that final
+  expression directly in plain mode instead of emitting an intermediate
+  factored fraction and paying a second cancellation pass
+- added dedicated hotspots in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/benches/profile_cache.rs`
+  for:
+  - `generic/perfect_square_minus_fraction`
+  - `generic/difference_of_cubes_fraction`
+  - `generic/sum_of_cubes_fraction`
+  - and their `solve_eval_hotspots_cached/*` counterparts
+- measured against named baseline `didactic_plain_final_pre`:
+  - `solve_hotspots_cached/generic/perfect_square_minus_fraction`:
+    `179.46-181.09 us`, improvement about `2.1-4.1%`
+  - `solve_eval_hotspots_cached/generic/perfect_square_minus_fraction`:
+    `175.33-176.64 us`, improvement about `1.2-3.9%`
+  - `solve_hotspots_cached/generic/difference_of_cubes_fraction`:
+    `258.24-261.16 us`, improvement about `50.5-51.3%`
+  - `solve_eval_hotspots_cached/generic/difference_of_cubes_fraction`:
+    `250.56-253.68 us`, improvement about `50.6-51.9%`
+  - `solve_hotspots_cached/generic/sum_of_cubes_fraction`:
+    `204.39-206.31 us`, improvement about `40.4-43.7%`
+  - `solve_eval_hotspots_cached/generic/sum_of_cubes_fraction`:
+    `193.99-198.35 us`, improvement about `44.2-46.1%`
+- guardrails added in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_solver/tests/multivar_gcd_tests.rs`
+  for `steps off` solve-context outputs of the perfect-square-minus and
+  sum/difference-of-cubes fractions
+- `steps on` remains didactic: spot checks still show the intermediate
+  factorization/cancellation sequence in CLI JSON output
+- `metatest_unified_benchmark` stayed at `numeric-only = 168`
+- retained a follow-up optimization in the same didactic fraction planner family:
+  `try_plan_fraction_didactic_cancel(...)` now receives
+  `didactic_payloads_enabled`, and the sub-planners stop constructing unused
+  intermediate factored forms / `Div(...)` nodes when the plain `steps off`
+  path will return a final result directly anyway
+- for binomial-square cancellation, the plain path now returns `1` directly
+  while still preserving both existing `requires`:
+  `(x + y)^2 != 0` and `x^2 + y^2 + 2*x*y != 0`
+- measured against named baseline `binomial_early_return_pre`:
+  - `solve_hotspots_cached/generic/binomial_square_fraction`:
+    `98.475-100.05 us`, improvement about `4.9-12.5%`
+  - `solve_eval_hotspots_cached/generic/binomial_square_fraction`:
+    `96.544-97.953 us`, point improvement but below significance threshold
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `294.13-299.55 us`, improvement about `3.8-5.7%`
+- guardrail added in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_solver/tests/multivar_gcd_tests.rs`
+  to ensure the binomial-square `steps off` path still exposes both required
+  conditions through `required_conditions`
+- also re-measured the retained `didactic_payloads_enabled` change against the
+  older baseline `didactic_plain_final_pre`; the follow-up pruning of unused
+  didactic payloads improved the same family further:
+  - `solve_hotspots_cached/generic/perfect_square_minus_fraction`:
+    `169.05-172.07 us`, improvement about `7.9-9.7%`
+  - `solve_eval_hotspots_cached/generic/perfect_square_minus_fraction`:
+    `162.53-167.25 us`, improvement about `7.2-10.6%`
+  - `solve_hotspots_cached/generic/difference_of_cubes_fraction`:
+    `242.61-246.71 us`, improvement about `53.6-54.3%`
+  - `solve_eval_hotspots_cached/generic/difference_of_cubes_fraction`:
+    `231.97-234.11 us`, improvement about `54.4-55.6%`
+  - `solve_hotspots_cached/generic/sum_of_cubes_fraction`:
+    `194.54-195.95 us`, improvement about `45.1-46.7%`
+  - `solve_eval_hotspots_cached/generic/sum_of_cubes_fraction`:
+    `185.94-187.54 us`, improvement about `47.4-48.8%`
+- rejected two follow-up hypotheses after dedicated named-baseline compares:
+  - exact no-payload trinomial matcher for binomial / perfect-square planners:
+    regressed `solve_eval_hotspots_cached/generic/binomial_square_fraction`
+    and `solve_hotspots_cached/generic/perfect_square_minus_fraction`
+  - lazy cycle `HashSet` state (`None/One/Many`) in
+    `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs`:
+    no stable win on `a_pow_x_over_a`, `log_power_base`, or the solve batches
+- rejected another follow-up hypothesis after an explicit A/B baseline:
+  replacing static didactic fraction descriptions with borrowed
+  `Cow<'static, str>` regressed
+  `perfect_square_minus_fraction` and `difference_of_cubes_fraction`, so the
+  planner keeps the original `String` fields
+- retained a larger follow-up win on the same family instead:
+  `transform_div(...)` now has a pre-order fast path for
+  `(a^2 - 2ab + b^2) / (a - b)` when no engine listener is attached, mirroring
+  the existing difference-of-squares shortcut and bypassing the later
+  `Canonicalize* + Simplify Nested Fraction + Cancel Power Fraction` pipeline
+- measured against named baseline `didactic_desc_pre`:
+  - `solve_hotspots_cached/generic/perfect_square_minus_fraction`:
+    `91.068-95.137 us`, improvement about `41.8-45.8%`
+  - `solve_eval_hotspots_cached/generic/perfect_square_minus_fraction`:
+    `85.176-85.884 us`, improvement about `47.0-48.0%`
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `297.89-300.47 us`, no statistically significant change
+- added solver guardrails for the same expression with `steps on` in both
+  `generic` and `strict` domains so the new pre-order path is covered beyond
+  the existing `steps off` tests
+- explored the same pre-order idea for
+  `(a^3 - b^3)/(a-b)` and `(a^3 + b^3)/(a+b)` in the plain `steps off`
+  runtime, but rejected it after named-baseline compares:
+  hotspot benches improved strongly, yet
+  `solve_modes_cached/solve_tactic_generic_batch` regressed about `1.9-4.7%`
+  even after adding a shallow cube-shape prefilter on `Div`, so the runtime
+  change was reverted
+- retained only the stricter coverage added during that probe:
+  `multivar_gcd_tests` now also locks `difference_of_cubes` and `sum_of_cubes`
+  in `solve` + `strict` + `steps off`
+- rejected a root-shape gate in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_math/src/fraction_gcd_plan_support.rs`
+  that tried to skip the structural `scalar_multiple` planner for non-additive
+  fractions before building `AddView`
+- measured against named baseline `scalar_root_gate_pre`, it regressed all the
+  relevant probes:
+  - `solve_eval_hotspots_cached/generic/scalar_multiple_fraction` by about
+    `2.2-5.1%`
+  - `solve_hotspots_cached/generic/x_over_x` by about `1.7-3.9%`
+  - `solve_hotspots_cached/generic/a_pow_x_over_a` by about `3.8-5.3%`
+  - `solve_modes_cached/solve_tactic_generic_batch` by about `2.2-3.7%`
+- rejected another follow-up in the same planner:
+  a dedicated two-term fast path for the structural `scalar_multiple` case
+  looked plausible for `(2*x + 2*y)/(4*x + 4*y)` but regressed the broader
+  probes against `scalar_root_gate_pre`
+- measured regressions were roughly:
+  - `solve_eval_hotspots_cached/generic/scalar_multiple_fraction`:
+    `1.6-4.2%`
+  - `solve_hotspots_cached/generic/x_over_x`: `2.7-4.8%`
+  - `solve_hotspots_cached/generic/a_pow_x_over_a`: `2.8-4.1%`
+  - `solve_modes_cached/solve_tactic_generic_batch`: `3.8-5.1%`
+- added a direct planner bench in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/benches/profile_cache.rs`
+  under `fraction_gcd_planner_direct/*` to separate `try_plan_fraction_gcd_rewrite(...)`
+  cost from full engine/runtime cost
+- first measurements in fast mode:
+  - `plain/scalar_multiple_fraction`: `6.61-6.93 us`
+  - `trace/scalar_multiple_fraction`: `6.19-6.41 us`
+  - `plain/x_over_x`: `13.46-13.71 us`
+  - `plain/a_pow_x_over_a`: `3.47-3.68 us`
+  - `plain/difference_of_squares_fraction`: `81.69-82.75 us`
+- takeaway: the scalar-multiple planner itself is not the dominant hotspot in
+  the `~95-100 us` solve/eval path, so the next optimization pass should focus
+  on downstream engine work after planning rather than on more `AddView` /
+  planner micro-opts
+- added a second direct bench layer in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/benches/profile_cache.rs`
+  under `fraction_rule_direct/*` to split:
+  - `RationalFnView::from(...)`
+  - `SimplifyFractionRule::apply(...)`
+  - a minimal single-rule engine run with `steps off`
+- first measurements in fast mode:
+  - `rational_fn_view/scalar_multiple_fraction`: `2.967-3.116 us`
+  - `apply/generic/scalar_multiple_fraction`: `14.475-14.822 us`
+  - `apply/generic/x_over_x`: `13.120-13.356 us`
+  - `apply/generic/a_pow_x_over_a`: `3.465-3.611 us`
+  - `apply/generic/difference_of_squares_fraction`: `3.797-3.913 us`
+  - `single_rule_engine/generic/scalar_multiple_fraction`: `24.387-24.628 us`
+  - `single_rule_engine/generic/x_over_x`: `17.569-17.802 us`
+  - `single_rule_engine/generic/a_pow_x_over_a`: `8.975-9.119 us`
+- takeaway: for `scalar_multiple_fraction`, the planner (`~6.6 us`) plus
+  `RationalFnView` (`~3.0 us`) plus direct rule body (`~14.7 us`) still sit far
+  below the retained full hotspot (`~90-100 us`), so the next ROI is not inside
+  `fraction_gcd_plan_support` but in downstream orchestration / extra passes /
+  surrounding rule work on the solve path
+- upgraded the solve benchmark diagnostics in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/benches/profile_cache.rs`
+  so `CAS_SOLVE_BENCH_PROFILE_PROBE=1` can print bucket probes even when the
+  input does hit rules (not only on no-op cases)
+- that probe showed the remaining `Div` bucket rejects for
+  `generic/scalar_multiple_fraction` are all sub-microsecond
+  (`~0.003-0.118 us` in the top entries), so the missing cost was not in a
+  single expensive rejected rule
+- added `solve_phase_subset_cached/*` in the same bench file to isolate the
+  cost of late pipeline phases for `(2*x + 2*y)/(4*x + 4*y)`:
+  - before the runtime change:
+    - `generic/full`: `96.092-97.283 us`
+    - `generic/no_transform`: `96.815-97.979 us`
+    - `generic/no_transform_no_rationalize`: `94.415-97.020 us`
+- takeaway from that subset bench: `Transform`/`Rationalize` were not the
+  dominant fixed cost; the remaining waste sat in the generic late pipeline
+  after `Core`
+- retained a narrow runtime fast path in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs`:
+  after the `Core` phase, if `steps` are off and the result is already terminal
+  (`Number`, atom, or exact numeric `Div`), the pipeline now skips
+  `BestSoFar`, `Transform`, `Rationalize`, `PostCleanup`, and final collection
+  noise and returns immediately
+- measured after the change:
+  - `solve_phase_subset_cached/generic/full`:
+    `93.967-96.446 us`, improvement about `1.8-4.3%`
+  - `solve_phase_subset_cached/generic/no_transform`:
+    `89.973-91.921 us`, improvement about `4.3-6.5%`
+  - `solve_phase_subset_cached/generic/no_transform_no_rationalize`:
+    `89.772-91.464 us`, improvement about `3.7-7.6%`
+  - `solve_eval_hotspots_cached/generic/scalar_multiple_fraction`:
+    `87.877-89.008 us`, improvement about `4.2-5.8%`
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `267.27-269.78 us`, improvement about `6.9-7.6%`
+  - `solve_hotspots_cached/generic/x_over_x`:
+    `11.350-11.561 us`, improvement about `37.7-39.1%`
+- guardrails/validation after the runtime change:
+  - `multivar_gcd_tests` generic + strict `steps off` for the scalar-multiple
+    fraction still pass
+  - `domain_contract_tests::test_generic_x_div_x_simplifies_to_1` still passes
+  - `profile_cache_tests` still pass
+  - `metatest_unified_benchmark` stayed at `numeric-only = 168`
+- retained a follow-up orchestration optimization in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs`:
+  `BestSoFar` is now initialized lazily from the post-Core baseline instead of
+  unconditionally; if no later phase changes the expression, the pipeline no
+  longer pays the baseline scoring / `consider(...)` overhead
+- rationale: after the new terminal-after-Core fast path, the next visible
+  no-op/near-no-op solve cases were still spending fixed time in
+  `BestSoFar::new(...)` and final rollback bookkeeping even when
+  `Transform`/`Rationalize`/`PostCleanup` never changed the expression
+- measured after the change:
+  - `solve_hotspots_cached/generic/a_pow_x_over_a`:
+    `26.864-27.048 us`, improvement about `5.1-6.2%`
+  - `solve_hotspots_cached/generic/difference_of_squares_fraction`:
+    `57.470-58.300 us`, improvement about `1.0-3.1%`
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `270.24-271.39 us`, no statistically significant change
+- validation after the change:
+  - `domain_contract_tests::test_generic_x_div_x_simplifies_to_1`
+  - `multivar_gcd_tests::test_content_gcd_multivar_in_solve_generic_context_steps_off`
+  - `profile_cache_tests`
+  - `metatest_unified_benchmark` stayed at `numeric-only = 168`
+- rejected two more orchestration follow-ups after re-measuring and reverting:
+  - skipping final `collect_with_semantics(...)` when the root was not `Add/Sub`
+    looked semantically safe, but stayed within noise on
+    `solve_hotspots_cached/generic/a_pow_x_over_a`
+  - short-circuiting the final rollback block when `best_expr == current`
+    also stayed within noise on
+    `solve_hotspots_cached/generic/difference_of_squares_fraction` and on the
+    generic solve batch
+- takeaway: the next ROI is no longer in the epilogue (`final collect` /
+  rollback bookkeeping) but earlier in the no-op `Div` traversal itself
+- retained a targeted Rationalize-phase gate in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs`:
+  the phase now runs only when the pattern pre-scan proves there is at least
+  one root-like form somewhere inside a denominator subtree
+- implementation details:
+  - `PatternMarks` now carries a global `has_root_in_denominator` bit in
+    `/Users/javiergimenezmoya/developer/math/crates/cas_math/src/pattern_marks.rs`
+  - the existing linear pattern scan in
+    `/Users/javiergimenezmoya/developer/math/crates/cas_math/src/pattern_scanner.rs`
+    sets that bit while traversing denominator branches, so the runtime gate
+    does not add a second tree walk
+- retained measurements against baseline `rationalize_den_roots_pre`:
+  - `solve_phase_subset_cached/a_pow_x_over_a/generic/full`:
+    `23.097-23.537 us`, improvement about `10.3-12.2%`
+  - `solve_hotspots_cached/generic/a_pow_x_over_a`:
+    `23.561-24.418 us`, improvement about `10.1-12.5%`
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `265.40-267.22 us`, no statistically significant change
+- interpretation: skipping `Rationalize` was the right local fix for no-op
+  `Div` trees like `(a^x)/a`, but it is not a new batch-moving optimization
+- guardrails added:
+  - pattern-scan tests now cover positive / negative detection of denominator
+    roots
+  - `profile_cache_tests::test_from_profile_solve_tactic_skips_rationalize_without_denominator_roots`
+    fixes the contract that cached solve generic should keep
+    `stats.rationalize.iters_used == 0` for `(a^x)/a`
+- retained a second, narrower solve fast path in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs`:
+  after `Core`, if the plain solve path reaches the exact no-op shape
+  `atom^symbol / atom` (same atom on both sides), with no denominator roots and
+  no auto-expand contexts, the pipeline now returns immediately instead of
+  paying `Transform`, `Rationalize`, `PostCleanup`, final collect, and
+  `BestSoFar` setup
+- scope is intentionally narrow:
+  - solve context only
+  - `steps off` only
+  - only `Div(Pow(atom, symbol), atom)` where `atom` is a variable/constant and
+    the exponent is also a variable/constant
+  - this avoids turning the previous finding into a broad phase skip with shaky
+    algebraic assumptions
+- retained measurements:
+  - versus the immediately previous retained state:
+    - `solve_hotspots_cached/generic/a_pow_x_over_a` moved from
+      `23.561-24.418 us` to `12.046-12.212 us`
+    - `solve_phase_subset_cached/a_pow_x_over_a/generic/full` moved from
+      `23.097-23.537 us` to `12.401-12.775 us`
+    - `solve_modes_cached/solve_tactic_generic_batch` moved from
+      `265.40-267.22 us` to `247.25-249.39 us`
+  - against the older baseline `rationalize_den_roots_pre`, Criterion reported:
+    - `solve_phase_subset_cached/a_pow_x_over_a/generic/full`:
+      improvement about `51.7-53.3%`
+    - `solve_hotspots_cached/generic/a_pow_x_over_a`:
+      improvement about `54.3-55.2%`
+    - `solve_modes_cached/solve_tactic_generic_batch`:
+      improvement about `5.7-7.2%`
+- guardrails added:
+  - `profile_cache_tests::test_from_profile_solve_tactic_skips_late_phases_for_symbolic_power_over_same_atom`
+    fixes the contract that cached solve generic now keeps
+    `transform/rationalize/post_cleanup` at `0` iterations for `(a^x)/a`
+- retained a new pre-order fast path for exact additive scalar-multiple
+  fractions in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/engine/transform/transform_helpers.rs`
+  using the structural planner exposed from
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/rules/algebra/mod.rs`
+- rationale:
+  - the direct planner and direct rule benches had already shown that
+    `(2*x + 2*y)/(4*x + 4*y)` was no longer bottlenecked by the GCD planner
+    itself
+  - the remaining cost was the full bottom-up `Div` traversal of both children
+    before `Simplify Nested Fraction` could fire at the root
+  - the new fast path uses the exact structural planner up front and returns the
+    fully normalized scalar result immediately on the hidden path
+- scope is intentionally narrow:
+  - solve context only
+  - `steps off` only
+  - no listener attached
+  - `Core` phase only
+  - exact additive scalar-multiple fractions only, via
+    `try_plan_structural_scalar_multiple_fraction_rewrite(...)`
+- retained measurements against named baseline `scalar_preorder_pre`:
+  - `solve_hotspots_cached/generic/scalar_multiple_fraction`:
+    `13.224-13.440 us`, improvement about `85.7-86.3%`
+  - `solve_eval_hotspots_cached/generic/scalar_multiple_fraction`:
+    `12.700-12.940 us`, improvement about `85.7-86.1%`
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `168.43-175.37 us`, improvement about `30.6-32.5%`
+- interpretation:
+  - this confirms the remaining cost of the scalar-multiple hotspot was not in
+    `try_plan_fraction_gcd_rewrite(...)`, but in reaching the root rule through
+    the generic recursive traversal
+  - the pre-order path removes that traversal cost without widening the public
+    didactic/event surface
+- guardrails added:
+  - `profile_cache_tests::test_from_profile_solve_tactic_scalar_multiple_fraction_uses_preorder_fast_path`
+    fixes the contract that cached solve generic keeps the result `1/2`,
+    leaves late phases at `0`, and bypasses the normal rule-loop rewrite count
+  - `multivar_gcd_tests::test_content_gcd_multivar_in_solve_generic_context_steps_off_keeps_requires`
+    fixes the contract that the plain solve path still reports the denominator
+    requirement for the scalar-multiple fraction
+- validation after the change:
+  - `cargo test -p cas_engine profile_cache_tests --lib`
+  - `cargo test -p cas_solver --test multivar_gcd_tests
+    test_content_gcd_multivar_in_solve_generic_context_steps_off_keeps_requires -- --exact`
+  - `cargo test -p cas_solver --test multivar_gcd_tests
+    test_content_gcd_multivar_in_solve_generic_context_steps_off -- --exact`
+  - `cargo test -p cas_solver --test multivar_gcd_tests
+    test_content_gcd_multivar_in_solve_strict_context_steps_off -- --exact`
+  - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math`
+  - CLI spot-check: `eval --context solve --domain generic --steps on --format json '(2*x + 2*y)/(4*x + 4*y)'`
+    still returns `2` steps and required display `4·x + 4·y ≠ 0`
+  - `metatest_unified_benchmark` stayed at `numeric-only = 168`
+- retained a follow-up hidden-path optimization in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/engine/transform/transform_helpers.rs`
+  for the existing pre-order fraction shortcuts:
+  when `difference_of_squares` or `perfect_square_minus` already produce a
+  plain symbolic binomial result (`x + y`, `x - y`, etc.) on the solve
+  `steps off` path, the transformer now returns that result directly instead of
+  recursively re-simplifying it
+- rationale:
+  - the pre-order planners were already matching these patterns early, but the
+    hidden path still paid a second traversal of the already-final result
+  - on the real hotspots, that second traversal was pure fixed-cost overhead
+    because the result was just a symbolic `Add/Sub`
+- scope is intentionally narrow:
+  - solve context only
+  - `steps off` only
+  - no listener attached
+  - `Core` phase only
+  - result shape restricted to a symbolic `Add/Sub` (or negated one) whose
+    leaves are variables/constants
+- retained measurements against named baseline `div_plain_pre`:
+  - `solve_hotspots_cached/generic/difference_of_squares_fraction`:
+    `46.708-48.235 us`, improvement about `14.3-16.5%`
+  - `solve_eval_hotspots_cached/generic/difference_of_squares_fraction`:
+    `43.617-44.426 us`, improvement about `16.1-18.2%`
+  - `solve_hotspots_cached/generic/perfect_square_minus_fraction`:
+    `76.991-79.310 us`, improvement about `5.8-8.0%`
+  - `solve_eval_hotspots_cached/generic/perfect_square_minus_fraction`:
+    `71.788-72.456 us`, improvement about `6.6-8.8%`
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `157.25-158.90 us`, improvement about `4.9-8.2%`
+- interpretation:
+  - after the scalar-multiple pre-order shortcut, `difference_of_squares` had
+    become the next real batch-moving fraction hotspot
+  - this change confirms that a meaningful part of its remaining cost was not
+    the planner itself, but the extra post-plan recursion through an already
+    final `x ± y`
+- validation after the change:
+  - `cargo test -p cas_solver --test multivar_gcd_tests test_layer2_difference_of_squares -- --exact`
+  - `cargo test -p cas_solver --test multivar_gcd_tests test_perfect_square_minus_cancel_in_solve_generic_context_steps_off -- --exact`
+  - `cargo test -p cas_engine profile_cache_tests --lib`
+  - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math`
+  - `metatest_unified_benchmark` stayed at `numeric-only = 168`
+- retained a follow-up orchestration cut in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs`:
+  after `Core`, the plain solve path now exits early when the result is already
+  a symbolic sum of atoms like `x + y`
+- rationale:
+  - after the previous hidden-path pre-order optimization,
+    `difference_of_squares_fraction` still paid `Transform`, `Rationalize`,
+    `PostCleanup`, and the `BestSoFar` epilogue even though `Core` had already
+    finished at `x + y`
+  - that made `difference_of_squares` the next real batch-moving hotspot
+- scope is intentionally narrow:
+  - solve context only
+  - `steps off` only
+  - no denominator roots
+  - no auto-expand contexts
+  - result shape restricted to a plain symbolic `Add` of variables/constants
+  - deliberately does **not** include `Sub`, because the equivalent `x - y`
+    path (`perfect_square_minus`) did not show a stable improvement
+- retained measurements against named baseline `postcore_binomial_pre`:
+  - `solve_hotspots_cached/generic/difference_of_squares_fraction`:
+    `31.826-32.119 us`, improvement about `27.2-29.7%`
+  - `solve_eval_hotspots_cached/generic/difference_of_squares_fraction`:
+    `30.923-31.086 us`, improvement about `27.2-29.5%`
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `146.38-147.60 us`, improvement about `4.1-5.0%`
+- follow-up spot-check on the untouched subtraction case:
+  - `solve_hotspots_cached/generic/perfect_square_minus_fraction` rerun landed
+    in Criterion's noise band (`+0.5%..+2.6%`)
+  - `solve_eval_hotspots_cached/generic/perfect_square_minus_fraction` rerun
+    also stayed within noise (`+0.9%..+5.7%`)
+- guardrails added:
+  - `profile_cache_tests::test_from_profile_solve_tactic_plain_binomial_result_skips_late_phases`
+    fixes the contract that cached solve generic now keeps
+    `transform/rationalize/post_cleanup` at `0` for `(x^2 - y^2)/(x - y)`
+  - `multivar_gcd_tests::test_layer2_difference_of_squares_in_solve_generic_context_steps_off_keeps_requires`
+    fixes the contract that the plain solve path still reports the original
+    denominator requirement
+- validation after the change:
+  - `cargo test -p cas_engine profile_cache_tests --lib`
+  - `cargo test -p cas_solver --test multivar_gcd_tests
+    test_layer2_difference_of_squares_in_solve_generic_context_steps_off_keeps_requires -- --exact`
+  - `cargo test -p cas_solver --test solve_safety_contract_tests`
+  - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math`
+- retained another hidden-path pre-order cut in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/engine/transform/transform_helpers.rs`
+  for the exact `atom / atom` case used by `x/x`
+- rationale:
+  - after the batch-moving wins on scalar-multiple fractions and
+    `difference_of_squares`, `x/x` was still paying the full `Div` child walk
+    before `Cancel Identical Numerator/Denominator` could fire at the root
+  - for solve generic/assume, `x/x` is a narrow, stable definability rewrite
+    with a cheap structural predicate, so it is a good fit for the hidden
+    pre-order path
+- scope is intentionally narrow:
+  - solve context only
+  - `steps off` only
+  - no listener attached
+  - `Core` phase only
+  - non-strict domain modes only
+  - only exact `atom / atom` where both sides are the same variable/constant
+- retained measurements against named baseline `xoverx_preorder_pre`:
+  - `solve_hotspots_cached/generic/x_over_x`:
+    `8.4982-8.6397 us`, improvement about `26.6-28.9%`
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `137.91-139.09 us`, improvement about `2.0-3.0%`
+- validation after the change:
+  - `cargo test -p cas_engine profile_cache_tests --lib`
+  - `cargo test -p cas_solver --test domain_contract_tests test_strict_x_div_x_stays_unchanged -- --exact`
+  - CLI spot-check:
+    `eval --context solve --domain generic --steps off --format json 'x/x'`
+    still returns `1` with required display `x ≠ 0`
+  - `cargo test -p cas_solver --test solve_safety_contract_tests`
+  - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math`
+- retained a matching hidden-path pre-order cut in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/engine/transform/transform_helpers.rs`
+  for the `exp(ln(x)) -> x` shape
+- rationale:
+  - after the `x/x` shortcut, `exp(ln(x))` was still another small but steady
+    solve-generic hotspot paying the full `Pow` child traversal before
+    `Exponential-Log Inverse` could fire at the root
+  - unlike the more general `b^(c*log(b,x)) -> x^c` family, the plain
+    `exp(ln(x)) -> x` case collapses directly to an atom, so it fits the same
+    hidden pre-order strategy with limited surface area
+- scope is intentionally narrow:
+  - solve context only
+  - `steps off` only
+  - no listener attached
+  - `Core` phase only
+  - non-strict domain modes only
+  - only when the existing matcher rewrites directly to a symbolic atom
+- retained measurements against named baseline `expln_preorder_pre`:
+  - `solve_hotspots_cached/generic/exp_ln_x`:
+    `7.6321-7.7409 us`, improvement about `42.6-44.4%`
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `133.34-134.93 us`, improvement about `4.2-8.4%`
+- guardrails/validation after the change:
+  - `profile_cache_tests::test_from_profile_solve_tactic_exp_ln_atom_uses_preorder_fast_path`
+    fixes the contract that cached solve generic reaches `x` without late phases
+  - `cargo test -p cas_engine profile_cache_tests --lib`
+  - `cargo test -p cas_solver --test domain_contract_tests exp_ln_x_generic_emits_positive_require -- --exact`
+  - `cargo test -p cas_solver --test domain_contract_tests test_strict_exp_ln_x_stays_unchanged -- --exact`
+  - `cargo test -p cas_solver --test solve_safety_contract_tests`
+  - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math`
+- retained the same hidden-path pre-order strategy in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/engine/transform/transform_helpers.rs`
+  for the exact `atom^0 -> 1` case used by `x^0`
+- rationale:
+  - after the `x/x` and `exp(ln(x))` shortcuts, `x^0` was still a steady
+    solve-generic/assume hotspot paying the full `Pow` child walk before
+    `Identity Power` could fire at the root
+  - in solve generic/assume with `steps off`, the observable result is already
+    the bare `1` with no required display, so the same hidden pre-order pattern
+    applies cleanly
+- scope is intentionally narrow:
+  - solve context only
+  - `steps off` only
+  - no listener attached
+  - `Core` phase only
+  - non-strict domain modes only
+  - only exact `atom^0` where the base is a variable/constant
+- retained measurements against named baseline `xpow0_preorder_pre`:
+  - `solve_hotspots_cached/generic/x_pow_0`:
+    `9.0594-9.2470 us`, improvement about `32.4-35.0%`
+  - `solve_hotspots_cached/assume/x_pow_0`:
+    `8.9446-9.0989 us`, improvement about `33.8-35.5%`
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `126.05-127.80 us`, improvement about `0.9-3.3%`, still within
+    Criterion's noise threshold
+- guardrails/validation after the change:
+  - `profile_cache_tests::test_from_profile_solve_tactic_pow_zero_atom_uses_preorder_fast_path`
+    fixes the contract that cached solve generic reaches `1` without root-rule
+    rewrites or late phases
+  - `cargo test -p cas_engine profile_cache_tests --lib`
+  - `cargo test -p cas_solver --test domain_contract_tests test_strict_x_pow_0_stays_unchanged -- --exact`
+  - `cargo test -p cas_solver --test domain_assume_warnings_contract_tests assume_x_pow_0_simplifies_with_assumption -- --exact`
+  - `cargo test -p cas_solver --test assumption_key_contract_tests nonzero_emitted_for_zero_exponent -- --exact`
+  - CLI spot-check:
+    `eval --context solve --domain generic --steps off --format json 'x^0'`
+    still returns `1`
+  - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math`
+  - `cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_unified_benchmark -- --ignored --nocapture`
+    keeps `numeric-only = 168`
+- retained an exact-shape fast path in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_math/src/difference_of_squares_support.rs`
+  for the denominator cases that are already syntactically `A-B` or `A+B`
+- rationale:
+  - the cached solve hotspot `(x^2 - y^2)/(x - y)` was already bypassing the
+    rule loop, so the remaining cost was in the planner path itself
+  - the planner was still converting `A-B` and `A+B` to `MultiPoly` even when
+    the denominator already matched the raw factor exactly
+  - for the exact hidden hotspot, that polynomial work is unnecessary; the
+    final result and didactic intermediates are already known structurally
+- scope is intentionally narrow:
+  - only exact raw denominator matches `A-B` or `A+B`
+  - all reordered / sign-flipped / algebraically equivalent denominators still
+    go through the previous polynomial path unchanged
+- retained measurements against named baseline `diffsq_exact_pre`:
+  - `solve_hotspots_cached/generic/difference_of_squares_fraction`:
+    `25.859-26.924 us`, improvement about `12.9-15.3%`
+  - `solve_eval_hotspots_cached/generic/difference_of_squares_fraction`:
+    `24.708-25.153 us`, improvement about `13.8-15.7%`
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `123.14-124.46 us`, no statistically significant change
+  - note:
+    the batch benchmark here is diluted by parse/setup work that the dedicated
+    hotspot benches do not include, so this change is retained as a real local
+    win rather than a batch-moving one
+- validation after the change:
+  - `cargo test -p cas_math difference_of_squares_support --lib`
+  - `cargo test -p cas_solver --test multivar_gcd_tests test_layer2_difference_of_squares -- --exact`
+  - `cargo test -p cas_solver --test multivar_gcd_tests test_layer2_difference_of_squares_in_solve_generic_context_steps_off_keeps_requires -- --exact`
+  - `cargo test -p cas_engine profile_cache_tests --lib`
+  - `cargo test -p cas_solver --test solve_safety_contract_tests`
+  - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math`
+  - `cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_unified_benchmark -- --ignored --nocapture`
+    keeps `numeric-only = 168`
+- retained another hidden-path pre-order cut in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/engine/transform/transform_helpers.rs`
+  for the exact no-op shape `atom^atom / atom`
+- rationale:
+  - `(a^x)/a` was already skipping late phases after `Core`, but it was still
+    paying the full `Div` child walk inside `Core` even though the result stays
+    unchanged and no rule ever fires
+  - because both the base and exponent are already symbolic atoms in the hot
+    benchmark case, there is no profitable child simplification to do
+- scope is intentionally narrow:
+  - solve context only
+  - `steps off` only
+  - no listener attached
+  - `Core` phase only
+  - non-strict domain modes only
+  - only exact `atom^atom / atom` where numerator base and denominator match
+- retained measurements against named baseline `pow_over_same_atom_pre`:
+  - `solve_hotspots_cached/generic/a_pow_x_over_a`:
+    `6.8061-6.9345 us`, improvement about `43.9-45.6%`
+  - `solve_phase_subset_cached/a_pow_x_over_a/generic/full`:
+    `6.7557-6.8690 us`, improvement about `42.8-44.9%`
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `113.73-114.38 us`, improvement about `3.8-4.7%`
+- guardrails/validation after the change:
+  - `profile_cache_tests::test_from_profile_solve_tactic_skips_late_phases_for_symbolic_power_over_same_atom`
+    now also fixes `stats.core.rewrites_used == 0`
+  - `cargo test -p cas_engine profile_cache_tests --lib`
+  - `cargo test -p cas_solver --test solve_safety_contract_tests`
+  - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math`
+  - `cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_unified_benchmark -- --ignored --nocapture`
+    keeps `numeric-only = 168`

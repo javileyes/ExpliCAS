@@ -4,8 +4,12 @@
 
 use cas_ast::Context;
 use cas_parser::parse;
+use cas_session::SessionState;
 use cas_solver::Simplifier;
-use cas_solver::{BranchMode, ComplexMode, ContextMode, DomainMode, EvalOptions, StepsMode};
+use cas_solver::{
+    BranchMode, ComplexMode, ContextMode, DomainMode, Engine, EvalAction, EvalOptions, EvalRequest,
+    EvalResult, StepsMode,
+};
 
 /// Helper: simplify expression and return result string
 fn simplify(input: &str) -> String {
@@ -54,6 +58,48 @@ fn simplify_with_semantics_and_steps(
             id: result
         }
     )
+}
+
+fn simplify_with_semantics_and_steps_and_requires(
+    input: &str,
+    context_mode: ContextMode,
+    domain_mode: DomainMode,
+    steps_mode: StepsMode,
+) -> (String, Vec<String>) {
+    let mut engine = Engine::new();
+    let mut state = SessionState::new();
+
+    state.options_mut().branch_mode = BranchMode::Strict;
+    state.options_mut().complex_mode = ComplexMode::Auto;
+    state.options_mut().steps_mode = steps_mode;
+    state.options_mut().shared.context_mode = context_mode;
+    state.options_mut().shared.semantics.domain_mode = domain_mode;
+
+    let parsed = parse(input, &mut engine.simplifier.context).expect("Failed to parse");
+    let req = EvalRequest {
+        raw_input: input.to_string(),
+        parsed,
+        action: EvalAction::Simplify,
+        auto_store: false,
+    };
+
+    let output = engine.eval(&mut state, req).expect("eval failed");
+    let result = match &output.result {
+        EvalResult::Expr(expr) => format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: &engine.simplifier.context,
+                id: *expr
+            }
+        ),
+        other => panic!("unexpected eval result: {other:?}"),
+    };
+    let requires = output
+        .required_conditions
+        .iter()
+        .map(|cond| cond.display(&engine.simplifier.context))
+        .collect();
+    (result, requires)
 }
 
 // =============================================================================
@@ -110,6 +156,23 @@ fn test_content_gcd_multivar_in_solve_generic_context_steps_off() {
 }
 
 #[test]
+fn test_content_gcd_multivar_in_solve_generic_context_steps_off_keeps_requires() {
+    let (result, requires) = simplify_with_semantics_and_steps_and_requires(
+        "(2*x + 2*y) / (4*x + 4*y)",
+        ContextMode::Solve,
+        DomainMode::Generic,
+        StepsMode::Off,
+    );
+    assert_eq!(result, "1/2");
+    assert!(
+        requires
+            .iter()
+            .any(|message| message.contains("4 * x + 4 * y") && message.contains("0")),
+        "expected denominator require, got: {requires:?}"
+    );
+}
+
+#[test]
 fn test_binomial_square_cancel_in_solve_generic_context_steps_off() {
     let result = simplify_with_semantics_and_steps(
         "(x^2 + 2*x*y + y^2) / (x + y)^2",
@@ -134,6 +197,139 @@ fn test_binomial_square_cancel_in_solve_strict_context_steps_off() {
     assert_eq!(
         result, "1",
         "solve-context strict eval should keep the same steps-off binomial-square result"
+    );
+}
+
+#[test]
+fn test_binomial_square_cancel_in_solve_generic_context_steps_off_keeps_requires() {
+    let (result, requires) = simplify_with_semantics_and_steps_and_requires(
+        "(x^2 + 2*x*y + y^2) / (x + y)^2",
+        ContextMode::Solve,
+        DomainMode::Generic,
+        StepsMode::Off,
+    );
+    assert_eq!(result, "1");
+    assert!(
+        requires.iter().any(|message| message.contains("(x + y)^2")),
+        "expected original denominator require, got: {requires:?}"
+    );
+    assert!(
+        requires
+            .iter()
+            .any(|message| message.contains("x^2 + y^2 + 2")
+                && message.contains("x")
+                && message.contains("y")),
+        "expected expanded denominator require, got: {requires:?}"
+    );
+}
+
+#[test]
+fn test_perfect_square_minus_cancel_in_solve_generic_context_steps_off() {
+    let result = simplify_with_semantics_and_steps(
+        "(x^2 - 2*x*y + y^2) / (x - y)",
+        ContextMode::Solve,
+        DomainMode::Generic,
+        StepsMode::Off,
+    );
+    assert_eq!(
+        result, "x - y",
+        "solve-context generic eval should collapse the perfect-square-minus fraction with steps off"
+    );
+}
+
+#[test]
+fn test_perfect_square_minus_cancel_in_solve_generic_context_steps_on() {
+    let result = simplify_with_semantics(
+        "(x^2 - 2*x*y + y^2) / (x - y)",
+        ContextMode::Solve,
+        DomainMode::Generic,
+    );
+    assert_eq!(
+        result, "x - y",
+        "solve-context generic eval should keep the same perfect-square-minus result with steps on"
+    );
+}
+
+#[test]
+fn test_perfect_square_minus_cancel_in_solve_strict_context_steps_off() {
+    let result = simplify_with_semantics_and_steps(
+        "(x^2 - 2*x*y + y^2) / (x - y)",
+        ContextMode::Solve,
+        DomainMode::Strict,
+        StepsMode::Off,
+    );
+    assert_eq!(
+        result, "x - y",
+        "solve-context strict eval should keep the same perfect-square-minus result with steps off"
+    );
+}
+
+#[test]
+fn test_perfect_square_minus_cancel_in_solve_strict_context_steps_on() {
+    let result = simplify_with_semantics(
+        "(x^2 - 2*x*y + y^2) / (x - y)",
+        ContextMode::Solve,
+        DomainMode::Strict,
+    );
+    assert_eq!(
+        result, "x - y",
+        "solve-context strict eval should keep the same perfect-square-minus result with steps on"
+    );
+}
+
+#[test]
+fn test_difference_of_cubes_cancel_in_solve_generic_context_steps_off() {
+    let result = simplify_with_semantics_and_steps(
+        "(x^3 - y^3) / (x - y)",
+        ContextMode::Solve,
+        DomainMode::Generic,
+        StepsMode::Off,
+    );
+    assert_eq!(
+        result, "x^2 + y^2 + x * y",
+        "solve-context generic eval should collapse the difference-of-cubes fraction with steps off"
+    );
+}
+
+#[test]
+fn test_difference_of_cubes_cancel_in_solve_strict_context_steps_off() {
+    let result = simplify_with_semantics_and_steps(
+        "(x^3 - y^3) / (x - y)",
+        ContextMode::Solve,
+        DomainMode::Strict,
+        StepsMode::Off,
+    );
+    assert_eq!(
+        result, "x^2 + y^2 + x * y",
+        "solve-context strict eval should collapse the difference-of-cubes fraction with steps off"
+    );
+}
+
+#[test]
+fn test_sum_of_cubes_cancel_in_solve_generic_context_steps_off() {
+    let result = simplify_with_semantics_and_steps(
+        "(x^3 + y^3) / (x + y)",
+        ContextMode::Solve,
+        DomainMode::Generic,
+        StepsMode::Off,
+    );
+    assert_eq!(
+        result, "x^2 + y^2 - x * y",
+        "solve-context generic eval should collapse the sum-of-cubes fraction with steps off"
+    );
+}
+
+#[test]
+fn test_sum_of_cubes_cancel_in_solve_strict_context_steps_off() {
+    let result = simplify_with_semantics_and_steps(
+        "(x^3 + y^3) / (x + y)",
+        ContextMode::Solve,
+        DomainMode::Strict,
+        StepsMode::Off,
+    );
+    assert_eq!(
+        result, "x^2 + y^2 - x * y",
+        "solve-context strict eval should collapse the sum-of-cubes fraction with steps off"
     );
 }
 
@@ -189,6 +385,23 @@ fn test_layer2_difference_of_squares() {
             || result == "y + x",
         "Expected x+y, got: {}",
         result
+    );
+}
+
+#[test]
+fn test_layer2_difference_of_squares_in_solve_generic_context_steps_off_keeps_requires() {
+    let (result, requires) = simplify_with_semantics_and_steps_and_requires(
+        "(x^2 - y^2) / (x - y)",
+        ContextMode::Solve,
+        DomainMode::Generic,
+        StepsMode::Off,
+    );
+    assert!(result == "x + y" || result == "y + x");
+    assert!(
+        requires
+            .iter()
+            .any(|message| message.contains("x - y") && message.contains("0")),
+        "expected denominator require, got: {requires:?}"
     );
 }
 

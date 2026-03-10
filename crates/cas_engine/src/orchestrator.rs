@@ -2,7 +2,7 @@ use crate::best_so_far::{BestSoFar, BestSoFarBudget};
 use crate::expand::eager_eval_expand_calls;
 use crate::phase::{SimplifyOptions, SimplifyPhase};
 use crate::{Simplifier, Step};
-use cas_ast::{BuiltinFn, Context, ExprId};
+use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use cas_math::poly_lowering;
 use cas_math::poly_store::clear_thread_local_store;
 use cas_solver_core::rationalize_policy::AutoRationalizeLevel;
@@ -77,6 +77,42 @@ fn run_poly_gcd_modp_eager_pass(
             )
         },
     )
+}
+
+fn is_terminal_after_core(ctx: &Context, expr: ExprId) -> bool {
+    match ctx.get(expr) {
+        Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) => true,
+        Expr::Div(num, den) => {
+            matches!(ctx.get(*num), Expr::Number(_)) && matches!(ctx.get(*den), Expr::Number(_))
+        }
+        _ => false,
+    }
+}
+
+fn is_symbolic_atom(ctx: &Context, expr: ExprId) -> bool {
+    matches!(ctx.get(expr), Expr::Variable(_) | Expr::Constant(_))
+}
+
+fn is_plain_symbolic_sum_after_core(ctx: &Context, expr: ExprId) -> bool {
+    match ctx.get(expr) {
+        Expr::Add(left, right) => is_symbolic_atom(ctx, *left) && is_symbolic_atom(ctx, *right),
+        _ => false,
+    }
+}
+
+fn is_symbolic_power_over_same_atom_noop_after_core(ctx: &Context, expr: ExprId) -> bool {
+    let Expr::Div(num, den) = ctx.get(expr) else {
+        return false;
+    };
+    let Expr::Pow(base, exp) = ctx.get(*num) else {
+        return false;
+    };
+    if cas_ast::ordering::compare_expr(ctx, *base, *den) != std::cmp::Ordering::Equal {
+        return false;
+    }
+
+    matches!(ctx.get(*base), Expr::Variable(_) | Expr::Constant(_))
+        && matches!(ctx.get(*exp), Expr::Variable(_) | Expr::Constant(_))
 }
 
 pub struct Orchestrator {
@@ -354,9 +390,82 @@ impl Orchestrator {
         pipeline_stats.core = stats;
         pipeline_stats.total_rewrites += pipeline_stats.core.rewrites_used;
 
-        // Initialize BSF with post-Core state as baseline
-        // This ensures canonicalizations from Core are preserved
-        let mut best = BestSoFar::new(current, &all_steps, &simplifier.context, budget);
+        // Fast path: when Core already collapses to a terminal exact value and the
+        // caller is not collecting steps, later phases are pure fixed-cost noise.
+        if !collect_steps && is_terminal_after_core(&simplifier.context, current) {
+            pipeline_stats.rationalize_level = Some(auto_level);
+            pipeline_stats.rationalize_outcome = Some(if auto_level != AutoRationalizeLevel::Off {
+                cas_solver_core::rationalize_policy::RationalizeOutcome::NotApplied(
+                    cas_solver_core::rationalize_policy::RationalizeReason::NoBinomialFound,
+                )
+            } else {
+                cas_solver_core::rationalize_policy::RationalizeOutcome::NotApplied(
+                    cas_solver_core::rationalize_policy::RationalizeReason::PolicyDisabled,
+                )
+            });
+            pipeline_stats.cycle_events =
+                cas_solver_core::cycle_event_registry::take_cycle_events();
+            simplifier.clear_sticky_implicit_domain();
+            return (current, all_steps, pipeline_stats);
+        }
+
+        // Narrow solve fast path: symbolic atom^x / atom with no didactic work.
+        // Current solve generic/assume behavior leaves this unchanged, and the
+        // later phases are pure overhead on the plain result-only path.
+        let is_solve_mode = self.options.shared.context_mode == crate::options::ContextMode::Solve;
+        if !collect_steps
+            && is_solve_mode
+            && !self.pattern_marks.has_root_in_denominator()
+            && !self.pattern_marks.has_auto_expand_contexts()
+            && is_symbolic_power_over_same_atom_noop_after_core(&simplifier.context, current)
+        {
+            pipeline_stats.rationalize_level = Some(auto_level);
+            pipeline_stats.rationalize_outcome = Some(if auto_level != AutoRationalizeLevel::Off {
+                cas_solver_core::rationalize_policy::RationalizeOutcome::NotApplied(
+                    cas_solver_core::rationalize_policy::RationalizeReason::NoBinomialFound,
+                )
+            } else {
+                cas_solver_core::rationalize_policy::RationalizeOutcome::NotApplied(
+                    cas_solver_core::rationalize_policy::RationalizeReason::PolicyDisabled,
+                )
+            });
+            pipeline_stats.cycle_events =
+                cas_solver_core::cycle_event_registry::take_cycle_events();
+            simplifier.clear_sticky_implicit_domain();
+            return (current, all_steps, pipeline_stats);
+        }
+
+        // Another narrow solve fast path: after Core, symbolic sums like
+        // `x + y` do not benefit from later phases on the hidden
+        // result-only path.
+        if !collect_steps
+            && is_solve_mode
+            && !self.pattern_marks.has_root_in_denominator()
+            && !self.pattern_marks.has_auto_expand_contexts()
+            && is_plain_symbolic_sum_after_core(&simplifier.context, current)
+        {
+            pipeline_stats.rationalize_level = Some(auto_level);
+            pipeline_stats.rationalize_outcome = Some(if auto_level != AutoRationalizeLevel::Off {
+                cas_solver_core::rationalize_policy::RationalizeOutcome::NotApplied(
+                    cas_solver_core::rationalize_policy::RationalizeReason::NoBinomialFound,
+                )
+            } else {
+                cas_solver_core::rationalize_policy::RationalizeOutcome::NotApplied(
+                    cas_solver_core::rationalize_policy::RationalizeReason::PolicyDisabled,
+                )
+            });
+            pipeline_stats.cycle_events =
+                cas_solver_core::cycle_event_registry::take_cycle_events();
+            simplifier.clear_sticky_implicit_domain();
+            return (current, all_steps, pipeline_stats);
+        }
+
+        // Initialize BSF lazily from the post-Core baseline.
+        // Many solve hot paths stop changing after Core; deferring the score work
+        // avoids paying BSF overhead when later phases are pure no-ops.
+        let best_baseline_expr = current;
+        let best_baseline_steps_len = all_steps.len();
+        let mut best: Option<BestSoFar> = None;
 
         // Phase 2: Transform - Distribution, expansion (if enabled)
         if enable_transform {
@@ -370,11 +479,25 @@ impl Orchestrator {
             all_steps.extend(steps);
             pipeline_stats.transform = stats;
             pipeline_stats.total_rewrites += pipeline_stats.transform.rewrites_used;
-            best.consider(current, &all_steps, &simplifier.context);
+            if pipeline_stats.transform.changed {
+                let best_ref = best.get_or_insert_with(|| {
+                    BestSoFar::new(
+                        best_baseline_expr,
+                        &all_steps[..best_baseline_steps_len],
+                        &simplifier.context,
+                        budget,
+                    )
+                });
+                best_ref.consider(current, &all_steps, &simplifier.context);
+            }
         }
 
         // Phase 3: Rationalize - Auto-rationalization per policy
-        if auto_level != AutoRationalizeLevel::Off {
+        // Skip the whole phase when the pre-scan proves there is no root-like
+        // form anywhere inside a denominator subtree.
+        let should_run_rationalize =
+            auto_level != AutoRationalizeLevel::Off && self.pattern_marks.has_root_in_denominator();
+        if should_run_rationalize {
             let (next, steps, stats) = self.run_phase(
                 simplifier,
                 current,
@@ -401,14 +524,28 @@ impl Orchestrator {
             all_steps.extend(steps);
             pipeline_stats.rationalize = stats;
             pipeline_stats.total_rewrites += pipeline_stats.rationalize.rewrites_used;
-            best.consider(current, &all_steps, &simplifier.context);
+            if pipeline_stats.rationalize.changed {
+                let best_ref = best.get_or_insert_with(|| {
+                    BestSoFar::new(
+                        best_baseline_expr,
+                        &all_steps[..best_baseline_steps_len],
+                        &simplifier.context,
+                        budget,
+                    )
+                });
+                best_ref.consider(current, &all_steps, &simplifier.context);
+            }
         } else {
-            pipeline_stats.rationalize_level = Some(AutoRationalizeLevel::Off);
-            pipeline_stats.rationalize_outcome = Some(
+            pipeline_stats.rationalize_level = Some(auto_level);
+            pipeline_stats.rationalize_outcome = Some(if auto_level == AutoRationalizeLevel::Off {
                 cas_solver_core::rationalize_policy::RationalizeOutcome::NotApplied(
                     cas_solver_core::rationalize_policy::RationalizeReason::PolicyDisabled,
-                ),
-            );
+                )
+            } else {
+                cas_solver_core::rationalize_policy::RationalizeOutcome::NotApplied(
+                    cas_solver_core::rationalize_policy::RationalizeReason::NoBinomialFound,
+                )
+            });
         }
 
         // Phase 4: PostCleanup - Final cleanup
@@ -422,7 +559,17 @@ impl Orchestrator {
         all_steps.extend(steps);
         pipeline_stats.post_cleanup = stats;
         pipeline_stats.total_rewrites += pipeline_stats.post_cleanup.rewrites_used;
-        best.consider(current, &all_steps, &simplifier.context);
+        if pipeline_stats.post_cleanup.changed {
+            let best_ref = best.get_or_insert_with(|| {
+                BestSoFar::new(
+                    best_baseline_expr,
+                    &all_steps[..best_baseline_steps_len],
+                    &simplifier.context,
+                    budget,
+                )
+            });
+            best_ref.consider(current, &all_steps, &simplifier.context);
+        }
 
         // Log pipeline summary
         tracing::info!(
@@ -510,6 +657,9 @@ impl Orchestrator {
 
         // V2.15.25: Best-So-Far guard - use best if current is worse
         // After all processing, compare current to best seen during phases
+        let Some(best) = best else {
+            return (current, optimized_steps, pipeline_stats);
+        };
         let best_expr = best.best_expr();
         let current_score = crate::best_so_far::score_expr(&simplifier.context, current);
         let best_score = best.best_score();

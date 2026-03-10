@@ -15,8 +15,9 @@ use std::collections::HashSet;
 /// MUST NOT be mutated. All `mark_*` methods should only be called during the
 /// build phase, before wrapping in `Rc`.
 ///
-/// This pattern is critical for stack frame size: without `Rc`, cloning the 7
-/// `HashSet`s on every recursive call caused ~150KB frames and stack overflow.
+/// This pattern is critical for stack frame size: without `Rc`, cloning the
+/// internal `HashSet`s on every recursive call caused very large frames and
+/// stack overflow.
 /// With `Rc`, clone is O(1) and frames are safe at depth 50+.
 ///
 /// # Thread Safety
@@ -60,6 +61,10 @@ pub struct PatternMarks {
     /// Global flag: true if the expression contains sin(4t) - 4*sin(t)*cos(t)*(cos²-sin²) pattern.
     /// When true, distribution of a*(b-c)→ab-ac is blocked for sin/cos products to allow Sin4xIdentityZeroRule to fire.
     pub has_sin4x_identity_pattern: bool,
+    /// Global flag: true if any denominator subtree contains a root-like form.
+    /// Used to skip the Rationalize phase when the current tree cannot possibly
+    /// match any denominator rationalization rule.
+    pub has_root_in_denominator: bool,
 }
 
 impl PatternMarks {
@@ -76,6 +81,7 @@ impl PatternMarks {
             tan_double_angle_protected: HashSet::new(),
             has_tan_identity_pattern: false,
             has_sin4x_identity_pattern: false,
+            has_root_in_denominator: false,
         }
     }
 
@@ -126,6 +132,16 @@ impl PatternMarks {
     /// Check if any auto-expand contexts have been marked
     pub fn has_auto_expand_contexts(&self) -> bool {
         !self.auto_expand_contexts.is_empty()
+    }
+
+    /// Check if any denominator subtree contains a root-like form.
+    pub fn has_root_in_denominator(&self) -> bool {
+        self.has_root_in_denominator
+    }
+
+    /// Mark that a denominator subtree contains a root-like form.
+    pub fn mark_root_in_denominator(&mut self) {
+        self.has_root_in_denominator = true;
     }
 
     /// Check if an expression is protected as part of inverse-trig pattern

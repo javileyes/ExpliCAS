@@ -15,37 +15,66 @@ pub fn scan_and_mark_patterns(ctx: &Context, root: ExprId, marks: &mut PatternMa
     scan_recursive(ctx, root, marks);
 }
 
+fn is_root_like_node(ctx: &Context, expr_id: ExprId) -> bool {
+    match ctx.get(expr_id) {
+        Expr::Function(fn_id, args)
+            if (ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) && args.len() == 1)
+                || (ctx.is_builtin(*fn_id, BuiltinFn::Root) && args.len() == 2) =>
+        {
+            true
+        }
+        Expr::Pow(_, exp) => match ctx.get(*exp) {
+            Expr::Number(n) => !n.is_integer(),
+            Expr::Div(num, den) => {
+                matches!(ctx.get(*num), Expr::Number(n_num) if n_num.is_integer())
+                    && matches!(
+                        ctx.get(*den),
+                        Expr::Number(n_den)
+                            if n_den.is_integer()
+                                && *n_den.numer() != 1.into()
+                                && *n_den.numer() != (-1).into()
+                    )
+            }
+            _ => false,
+        },
+        _ => false,
+    }
+}
+
 /// Iterative post-order traversal using explicit stack.
 /// Visits all children before parent, then marks parent patterns.
 fn scan_recursive(ctx: &Context, root: ExprId, marks: &mut PatternMarks) {
     // Two stacks: work for traversal, process for post-order marking
-    let mut work_stack = vec![root];
+    let mut work_stack = vec![(root, false)];
     let mut process_stack = Vec::new();
 
     // First pass: collect all nodes for post-order processing
-    while let Some(expr_id) = work_stack.pop() {
+    while let Some((expr_id, in_denominator)) = work_stack.pop() {
         process_stack.push(expr_id);
+        if in_denominator && !marks.has_root_in_denominator() && is_root_like_node(ctx, expr_id) {
+            marks.mark_root_in_denominator();
+        }
 
         match ctx.get(expr_id) {
-            Expr::Add(l, r)
-            | Expr::Sub(l, r)
-            | Expr::Mul(l, r)
-            | Expr::Div(l, r)
-            | Expr::Pow(l, r) => {
-                work_stack.push(*l);
-                work_stack.push(*r);
+            Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Pow(l, r) => {
+                work_stack.push((*l, in_denominator));
+                work_stack.push((*r, in_denominator));
+            }
+            Expr::Div(l, r) => {
+                work_stack.push((*l, in_denominator));
+                work_stack.push((*r, true));
             }
             Expr::Neg(inner) | Expr::Hold(inner) => {
-                work_stack.push(*inner);
+                work_stack.push((*inner, in_denominator));
             }
             Expr::Function(_, args) => {
                 for &arg in args {
-                    work_stack.push(arg);
+                    work_stack.push((arg, in_denominator));
                 }
             }
             Expr::Matrix { data, .. } => {
                 for &elem in data {
-                    work_stack.push(elem);
+                    work_stack.push((elem, in_denominator));
                 }
             }
             _ => {}
@@ -712,5 +741,35 @@ mod tests {
             marks.is_inverse_trig_protected(sin_x),
             "sin(x) in arcsin(sin(x)) should be protected"
         );
+    }
+
+    #[test]
+    fn test_scan_marks_root_in_denominator() {
+        let mut ctx = Context::new();
+        let mut marks = PatternMarks::new();
+
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        let sqrt_two = ctx.call_builtin(cas_ast::BuiltinFn::Sqrt, vec![two]);
+        let expr = ctx.add(Expr::Div(one, sqrt_two));
+
+        scan_and_mark_patterns(&ctx, expr, &mut marks);
+
+        assert!(marks.has_root_in_denominator());
+    }
+
+    #[test]
+    fn test_scan_ignores_root_outside_denominator() {
+        let mut ctx = Context::new();
+        let mut marks = PatternMarks::new();
+
+        let two = ctx.num(2);
+        let sqrt_two = ctx.call_builtin(cas_ast::BuiltinFn::Sqrt, vec![two]);
+        let x = ctx.var("x");
+        let expr = ctx.add(Expr::Mul(sqrt_two, x));
+
+        scan_and_mark_patterns(&ctx, expr, &mut marks);
+
+        assert!(!marks.has_root_in_denominator());
     }
 }

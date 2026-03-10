@@ -10,6 +10,8 @@
 mod didactic_factor_support;
 mod gcd_cancel;
 
+pub(crate) use didactic_factor_support::try_plan_perfect_square_minus_in_num;
+
 // Re-export rules from gcd_cancel
 pub use gcd_cancel::{
     CancelIdenticalFractionRule, CancelPowerFractionRule, CancelPowersDivisionRule,
