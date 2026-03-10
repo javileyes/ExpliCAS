@@ -1,18 +1,18 @@
-use cas_api_models::{EvalJsonOutput, EvalJsonSessionRunConfig, StepJson};
+use cas_api_models::StepJson;
 use cas_solver_core::engine_events::EngineEvent;
 
-use super::PreparedEvalRun;
+use super::{EvalCommandOutput, EvalCommandRunConfig, PreparedEvalRun};
 
 mod collect;
 mod finalize;
 
 pub(super) fn finalize_eval_run<F>(
     engine: &mut crate::Engine,
-    config: EvalJsonSessionRunConfig<'_>,
+    config: EvalCommandRunConfig<'_>,
     collect_steps: F,
     prepared: PreparedEvalRun,
     total_us: u64,
-) -> Result<EvalJsonOutput, String>
+) -> Result<EvalCommandOutput, String>
 where
     F: Fn(&[crate::Step], &[EngineEvent], &cas_ast::Context, &str) -> Vec<StepJson>,
 {

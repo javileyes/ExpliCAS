@@ -1,14 +1,13 @@
 use std::time::Instant;
 
-use cas_api_models::EvalJsonSessionRunConfig;
 use cas_solver_core::engine_event_collector::EngineEventCollector;
 
-use super::PreparedEvalRun;
+use super::{EvalCommandRunConfig, PreparedEvalRun};
 
 pub(super) fn prepare_eval_run<S>(
     engine: &mut crate::Engine,
     session: &mut S,
-    config: &EvalJsonSessionRunConfig<'_>,
+    config: &EvalCommandRunConfig<'_>,
 ) -> Result<PreparedEvalRun, String>
 where
     S: crate::SolverEvalSession,

@@ -3,8 +3,13 @@ mod present;
 
 use std::time::Instant;
 
-use cas_api_models::{EvalJsonOutput, EvalJsonSessionRunConfig, StepJson};
+use cas_api_models::{EvalSessionRunConfig, StepJson};
 use cas_solver_core::engine_events::EngineEvent;
+
+use crate::eval_output_finalize::EvalOutputWire;
+
+pub(super) type EvalCommandRunConfig<'a> = EvalSessionRunConfig<'a>;
+pub(super) type EvalCommandOutput = EvalOutputWire;
 
 struct PreparedEvalRun {
     parsed_input: cas_ast::ExprId,
@@ -17,9 +22,9 @@ struct PreparedEvalRun {
 pub fn evaluate_eval_with_session<S, F>(
     engine: &mut crate::Engine,
     session: &mut S,
-    config: EvalJsonSessionRunConfig<'_>,
+    config: EvalCommandRunConfig<'_>,
     collect_steps: F,
-) -> Result<EvalJsonOutput, String>
+) -> Result<EvalCommandOutput, String>
 where
     S: crate::SolverEvalSession,
     F: Fn(&[crate::Step], &[EngineEvent], &cas_ast::Context, &str) -> Vec<StepJson>,

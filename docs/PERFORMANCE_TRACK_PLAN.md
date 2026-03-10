@@ -1189,7 +1189,7 @@ Those are valid projects, but not part of this performance track.
   - the pre-order path removes that traversal cost without widening the public
     didactic/event surface
 - guardrails added:
-  - `profile_cache_tests::test_from_profile_solve_tactic_scalar_multiple_fraction_uses_preorder_fast_path`
+  - `profile_cache_tests::test_from_profile_solve_tactic_scalar_multiple_fraction_uses_root_fast_path`
     fixes the contract that cached solve generic keeps the result `1/2`,
     leaves late phases at `0`, and bypasses the normal rule-loop rewrite count
   - `multivar_gcd_tests::test_content_gcd_multivar_in_solve_generic_context_steps_off_keeps_requires`
@@ -1904,6 +1904,169 @@ Those are valid projects, but not part of this performance track.
   - `cargo test -p cas_solver --test multivar_gcd_tests test_perfect_square_minus_cancel_in_solve_strict_context_steps_off -- --exact`
   - `cargo test -p cas_solver --test solve_safety_contract_tests`
   - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math`
+- retained a top-level hidden-solve root shortcut for exact structural
+  scalar-multiple fractions in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs`
+- scope:
+  - only with `steps off`
+  - only in solve mode
+  - only with no step listener attached
+  - gated by the same definability/solve-safety policy already used by the
+    transform-layer scalar-multiple preorder
+  - only before eager pre-passes and phase orchestration
+  - uses the existing exact structural planner
+    `try_structural_scalar_multiple_preorder(...)`
+- rationale:
+  - after the exact root cuts for perfect-square, cubes and
+    difference-of-squares, reranking put `scalar_multiple_fraction` back among
+    the most meaningful direct hotspots
+  - the retained transform-layer preorder already proved the planner itself was
+    safe and profitable, but the hidden solve pipeline still paid eager
+    pre-passes and the fixed phase setup before reaching that rule
+  - moving the same exact structural detection to the root of the hidden solve
+    path removes that fixed overhead while preserving the same normalized
+    result (`1/2`) and denominator requirement
+- retained measurements against baseline `top_level_scalar_pre`:
+  - `solve_hotspots_cached/generic/scalar_multiple_fraction`:
+    `6.8378-7.0891 us`, improvement `~36.3-38.7%`
+  - `solve_eval_hotspots_cached/generic/scalar_multiple_fraction`:
+    `6.8642-7.1335 us`, improvement `~34.7-37.3%`
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `78.783-79.957 us`, improvement `~2.1-3.7%`
+- validation:
+  - `cargo fmt --all`
+  - `cargo test -p cas_engine profile_cache_tests::tests::test_from_profile_solve_tactic_scalar_multiple_fraction_uses_root_fast_path --lib`
+  - `cargo test -p cas_solver --test multivar_gcd_tests test_content_gcd_multivar_in_solve_generic_context_steps_off_keeps_requires -- --exact`
+  - `cargo test -p cas_solver --test multivar_gcd_tests test_content_gcd_multivar_in_solve_strict_context_steps_off -- --exact`
+  - `cargo test -p cas_solver --test solve_safety_contract_tests`
+  - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math`
+  - `cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_unified_benchmark -- --ignored --nocapture`
+- retained a top-level hidden-solve root shortcut for exact
+  `perfect_square_minus` in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs`
+- scope:
+  - only with `steps off`
+  - only in solve mode
+  - only outside `Strict`
+  - only with no step listener attached
+  - only for the exact raw root shape `(a^2 - 2ab + b^2) / (a - b)`
+  - only before eager pre-passes and phase orchestration
+- rationale:
+  - the retained exact preorder already collapsed this hotspot cheaply once it
+    reached `Core`, but the layered benches showed the residual time was mostly
+    fixed overhead before and around the rule loop
+  - moving the same exact recognition to the root of the hidden solve pipeline
+    avoids `expand`, `poly_gcd_modp`, `poly_lower`, the full `Core` pass, and
+    all late phases for this one exact raw input class
+  - the gate stays intentionally narrow and listener-free so it does not widen
+    event gaps or add new fixed cost to unrelated `Div` inputs
+- retained measurements against baseline `top_level_perfect_square_pre`:
+  - `solve_hotspots_cached/generic/perfect_square_minus_fraction`:
+    `4.1405-4.3049 us`, improvement `~92.6-93.0%`
+  - `solve_eval_hotspots_cached/generic/perfect_square_minus_fraction`:
+    `4.1383-4.3260 us`, improvement `~92.3-92.8%`
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `94.119-95.080 us`, change within noise threshold
+- validation:
+  - `cargo fmt --all`
+  - `cargo test -p cas_engine profile_cache_tests::tests::test_from_profile_solve_tactic_perfect_square_minus_uses_exact_preorder_fast_path --lib`
+  - `cargo test -p cas_solver --test multivar_gcd_tests perfect_square_minus -- --nocapture`
+  - `cargo test -p cas_solver --test solve_safety_contract_tests`
+  - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math`
+- retained matching top-level hidden-solve root shortcuts for exact raw cube
+  fractions in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs`
+- scope:
+  - only with `steps off`
+  - only in solve mode
+  - only with no step listener attached
+  - only for the exact raw root shapes `(a^3 - b^3)/(a - b)` and
+    `(a^3 + b^3)/(a + b)`
+  - only before eager pre-passes and phase orchestration
+- rationale:
+  - after reranking on the new baseline, `difference_of_cubes_fraction`
+    became the clear next direct hotspot at about `~41 us`
+  - the retained exact cube preorder already made the `Core` phase cheap, but
+    the layered measurements still showed the residual time living mostly in
+    fixed solve-path overhead before and around that pass
+  - reusing the exact no-steps cube matcher at the root of the hidden solve
+    pipeline removes `expand`, `poly_gcd_modp`, `poly_lower`, the full `Core`
+    loop, and the late phases for those exact raw inputs, while keeping the
+    guard narrow enough to avoid adding fixed cost to unrelated `Div` nodes
+- retained measurements against baseline `top_level_cubes_pre`:
+  - `solve_hotspots_cached/generic/difference_of_cubes_fraction`:
+    `6.1946-6.3797 us`, improvement `~85.2-86.0%`
+  - `solve_hotspots_cached/generic/sum_of_cubes_fraction`:
+    `5.9704-6.1946 us`, improvement `~72.7-74.1%`
+  - `solve_eval_hotspots_cached/generic/difference_of_cubes_fraction`:
+    `6.0271-6.2036 us`, improvement `~85.3-86.0%`
+  - `solve_eval_hotspots_cached/generic/sum_of_cubes_fraction`:
+    `5.9798-6.2408 us`, improvement `~72.3-74.0%`
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `96.770-97.594 us`, no statistically significant change
+- validation:
+  - `cargo fmt --all`
+  - `cargo test -p cas_engine profile_cache_tests::tests::test_from_profile_solve_tactic_difference_of_cubes_uses_exact_preorder_fast_path --lib`
+  - `cargo test -p cas_engine profile_cache_tests::tests::test_from_profile_solve_tactic_sum_of_cubes_uses_exact_preorder_fast_path --lib`
+  - `cargo test -p cas_solver --test multivar_gcd_tests difference_of_cubes -- --nocapture`
+  - `cargo test -p cas_solver --test multivar_gcd_tests sum_of_cubes -- --nocapture`
+  - `cargo test -p cas_solver --test solve_safety_contract_tests`
+  - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math`
+- discarded a narrow exact `Pow/Pow` fast path inside
+  `/Users/javiergimenezmoya/developer/math/crates/cas_math/src/logarithm_inverse_support.rs`
+  for `try_rewrite_log_power_base_numeric_expr(...)`
+- rationale:
+  - the idea was to short-circuit the dominant exact shape `log(a^m, a^n)` and
+    avoid the generic `normalize_to_power(...)` path used for reciprocals and
+    mixed forms
+  - measured against a named baseline, it regressed both the direct hotspot and
+    the representative `generic/assume` solve batches, so it is not retained
+- measured result against baseline `log_power_exact_pre`:
+  - `solve_hotspots_cached/generic/log_power_base` regressed to
+    `24.435-24.915 us`
+  - `solve_hotspots_cached/assume/log_power_base` regressed to
+    `24.794-25.049 us`
+  - `solve_modes_cached/solve_tactic_generic_batch` regressed to
+    `96.002-98.137 us`
+  - `solve_modes_cached/solve_tactic_assume_batch` regressed to
+    `95.810-96.356 us`
+- takeaway:
+  - the hot path is not dominated by the generic normalize-to-power helper, so
+    future work on `log_power_base` should focus on rule/orchestration overhead
+    or domain-policy checks, not another local structural split
+- retained a top-level hidden-solve root shortcut for exact raw
+  `difference_of_squares` fractions in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs`
+- scope:
+  - only with `steps off`
+  - only in solve mode
+  - only outside `Strict`
+  - only with no step listener attached
+  - only for the exact raw root shapes `(a^2 - b^2)/(a - b)` and
+    `(a^2 - b^2)/(a + b)`
+  - only before eager pre-passes and phase orchestration
+- rationale:
+  - after the cube shortcuts landed, reranking put
+    `difference_of_squares_fraction` back near the top at about `~15 us`
+  - the retained pre-order rule already made `Core` itself cheap, but the
+    residual time still sat in the fixed hidden solve pipeline before and
+    around that phase
+  - moving the exact raw-shape match to the root of the hidden solve pipeline
+    removes `expand`, `poly_gcd_modp`, `poly_lower`, the full `Core` loop, and
+    the late phases for this one structurally exact input class
+- retained measurements against baseline `top_level_diffsq_pre`:
+  - `solve_hotspots_cached/generic/difference_of_squares_fraction`:
+    `4.0875-4.2679 us`, improvement `~73.2-75.1%`
+  - `solve_eval_hotspots_cached/generic/difference_of_squares_fraction`:
+    `4.0930-4.2961 us`, improvement `~72.9-74.5%`
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `83.404-85.456 us`, improvement `~12.3-14.8%`
+- validation:
+  - `cargo fmt --all`
+  - `cargo test -p cas_engine profile_cache_tests::tests::test_from_profile_solve_tactic_difference_of_squares_uses_root_fast_path --lib`
+  - `cargo test -p cas_solver --test multivar_gcd_tests test_layer2_difference_of_squares_in_solve_generic_context_steps_off_keeps_requires -- --exact`
+  - `cargo test -p cas_solver --test solve_safety_contract_tests`
+  - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math`
 - retained a narrow post-`Core` hidden-solve cut for power-quotient outputs in
   `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs`
 - scope:
@@ -1936,6 +2099,26 @@ Those are valid projects, but not part of this performance track.
   - `cargo test -p cas_solver --test multivar_gcd_tests test_power_quotient_cancel_in_solve_generic_context_steps_off_keeps_requires -- --exact`
   - `cargo test -p cas_solver --test solve_safety_contract_tests`
   - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math`
+- discarded a structural rewrite of the exact binomial/perfect-square hidden
+  matcher in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/engine/transform/transform_helpers.rs`
+- rationale:
+  - the idea was to avoid interning `a^2` / `b^2` and replace the tiny
+    multiset helper with direct structural classifiers (`square-of-a`,
+    `square-of-b`, `2ab`)
+  - the retained hidden fast path is already narrow; if this change did not
+    move the direct hotspot or the batch, the extra code shape was not worth it
+- measured result:
+  - `solve_hotspots_cached/generic/perfect_square_minus_fraction` stayed within
+    noise at `56.457-57.176 us`
+  - `solve_hotspots_cached/generic/binomial_square_fraction` stayed within noise
+    at `10.089-10.257 us`
+  - `solve_modes_cached/solve_tactic_generic_batch` stayed within noise at
+    `95.340-96.887 us`
+- takeaway:
+  - the remaining cost for these hidden binomial paths is not in that tiny
+    `a^2`/`b^2` matcher shape, so future work should stay on broader core-loop
+    overhead or higher-level pipeline cuts
 - discarded two follow-up experiments after measurement:
   - combined pre-scan for `expand` / `poly_gcd_modp` / `poly_result` before the
     three eager pre-passes in
@@ -2017,6 +2200,52 @@ Those are valid projects, but not part of this performance track.
 - validation:
   - `cargo fmt --all`
   - `cargo check -p cas_engine --benches`
+- discarded an exact `Pow/Pow` fast path inside `LogPowerBaseRule.apply(...)`
+  in `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/rules/logarithms/inverse.rs`
+- rationale:
+  - the idea was to bypass `normalize_to_power(...)` only for the hot exact
+    case `log(x^2, x^6)` while preserving the same domain-policy and `requires`
+    handling inside the rule
+  - measured against a named baseline, the narrower in-rule split still
+    regressed the generic hotspot and did not move the representative solve
+    batches enough to justify the extra branch
+- measured result against baseline `log_power_apply_exact_pre`:
+  - `solve_hotspots_cached/generic/log_power_base` regressed to
+    `24.815-25.779 us`
+  - `solve_hotspots_cached/assume/log_power_base` stayed effectively flat at
+    `24.623-25.083 us`
+  - `solve_modes_cached/solve_tactic_generic_batch` moved to
+    `78.183-78.677 us` (noise / slightly worse absolute)
+  - `solve_modes_cached/solve_tactic_assume_batch` stayed within noise at
+    `78.123-79.949 us`
+- takeaway:
+  - `log_power_base` is not paying enough in `normalize_to_power(...)` alone to
+    justify another local structural split in the rule body
+  - future work here should target broader orchestration or policy/proof cost,
+    not another exact-shape micro-fast-path
+- discarded changing `required_conditions` from `Vec` to `SmallVec<[...; 2]>`
+  in `Rewrite`, `ChainedRewrite` and `StepMeta`
+- rationale:
+  - most rewrites emit `0-2` required conditions, so replacing tiny heap-backed
+    vectors with inline storage looked like a plausible transversal win across
+    `power_quotient_fraction`, `log_power_base` and the fraction planners
+  - measured against a named baseline, the effect stayed inside noise or mixed
+    directions depending on the hotspot, so it does not justify widening that
+    type change through the shared runtime model
+- measured result against baseline `required_smallvec_pre`:
+  - `solve_hotspots_cached/generic/power_quotient_fraction`:
+    `22.145-22.512 us` (no statistically significant change)
+  - `solve_hotspots_cached/generic/log_power_base`:
+    `24.521-24.854 us` (no statistically significant change)
+  - `solve_hotspots_cached/generic/binomial_square_fraction`:
+    `10.329-10.628 us` (no statistically significant change)
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `78.981-79.879 us` (no statistically significant change)
+- takeaway:
+  - if there is any real gain here, it is smaller than the current benchmark
+    noise floor
+  - future transversal work should target costs with clearer signatures than
+    tiny `required_conditions` storage
 - retained a narrow post-`Transform` hidden-solve cut in
   `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs`
 - scope:

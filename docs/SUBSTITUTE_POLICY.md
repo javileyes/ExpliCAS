@@ -132,7 +132,7 @@ This is the solver-level compatibility API.
 ### Canonical App/Frontend Entry Point
 
 ```rust
-pub fn evaluate_substitute_json_canonical(
+pub fn evaluate_substitute_canonical(
     expr: &str,
     target: &str,
     replacement: &str,
@@ -180,4 +180,3 @@ Located in `crates/cas_solver/tests/substitute_json_contract_tests.rs`:
 - Steps schema v1
 - No `__hold` leak
 - Error path structure
-

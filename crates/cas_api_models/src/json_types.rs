@@ -443,16 +443,16 @@ impl EvalJsonOutput {
     }
 }
 
-/// Limit approach used by parsed eval-json special commands.
+/// Limit approach used by parsed eval special commands.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum EvalJsonLimitApproach {
+pub enum EvalLimitApproach {
     PosInfinity,
     NegInfinity,
 }
 
-/// Parsed special command forms accepted by eval-json input.
+/// Parsed special command forms accepted by eval input.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum EvalJsonSpecialCommand {
+pub enum EvalSpecialCommand {
     Solve {
         equation: String,
         var: String,
@@ -460,19 +460,19 @@ pub enum EvalJsonSpecialCommand {
     Limit {
         expr: String,
         var: String,
-        approach: EvalJsonLimitApproach,
+        approach: EvalLimitApproach,
     },
 }
 
-/// Parse special eval-json command forms:
+/// Parse special eval command forms:
 /// - `solve(equation, var)`
 /// - `limit(expr, var, approach)` or `lim(expr, var, approach)`
-pub fn parse_eval_json_special_command(input: &str) -> Option<EvalJsonSpecialCommand> {
+pub fn parse_eval_special_command(input: &str) -> Option<EvalSpecialCommand> {
     if let Some((equation, var)) = parse_solve_command(input) {
-        return Some(EvalJsonSpecialCommand::Solve { equation, var });
+        return Some(EvalSpecialCommand::Solve { equation, var });
     }
     if let Some((expr, var, approach)) = parse_limit_command(input) {
-        return Some(EvalJsonSpecialCommand::Limit {
+        return Some(EvalSpecialCommand::Limit {
             expr,
             var,
             approach,
@@ -516,7 +516,7 @@ fn parse_solve_command(input: &str) -> Option<(String, String)> {
     Some((equation_part.to_string(), variable_part.to_string()))
 }
 
-fn parse_limit_command(input: &str) -> Option<(String, String, EvalJsonLimitApproach)> {
+fn parse_limit_command(input: &str) -> Option<(String, String, EvalLimitApproach)> {
     let trimmed = input.trim();
     let lower = trimmed.to_lowercase();
     let prefix_len = if lower.starts_with("limit(") {
@@ -548,12 +548,12 @@ fn parse_limit_command(input: &str) -> Option<(String, String, EvalJsonLimitAppr
 
     let approach = if parts.len() == 3 {
         match parts[2].trim().to_lowercase().as_str() {
-            "inf" | "infinity" | "+inf" | "+infinity" => EvalJsonLimitApproach::PosInfinity,
-            "-inf" | "-infinity" => EvalJsonLimitApproach::NegInfinity,
+            "inf" | "infinity" | "+inf" | "+infinity" => EvalLimitApproach::PosInfinity,
+            "-inf" | "-infinity" => EvalLimitApproach::NegInfinity,
             _ => return None,
         }
     } else {
-        EvalJsonLimitApproach::PosInfinity
+        EvalLimitApproach::PosInfinity
     };
 
     Some((expr_str.to_string(), var_str.to_string(), approach))
@@ -580,9 +580,9 @@ fn split_by_comma_at_depth_0(s: &str) -> Vec<&str> {
     result
 }
 
-/// Configuration for session-backed eval-json execution.
+/// Configuration for session-backed eval execution.
 #[derive(Debug, Clone, Copy)]
-pub struct EvalJsonSessionRunConfig<'a> {
+pub struct EvalSessionRunConfig<'a> {
     pub expr: &'a str,
     pub auto_store: bool,
     pub max_chars: usize,
@@ -1445,8 +1445,8 @@ impl OutputEnvelope {
 #[cfg(test)]
 mod tests {
     use super::{
-        parse_eval_json_special_command, DomainJson, EngineJsonError, EngineJsonResponse,
-        ErrorJsonOutput, EvalJsonLimitApproach, EvalJsonOutput, EvalJsonOutputBuild, ExprStatsJson,
+        parse_eval_special_command, DomainJson, EngineJsonError, EngineJsonResponse,
+        ErrorJsonOutput, EvalJsonOutput, EvalJsonOutputBuild, EvalLimitApproach, ExprStatsJson,
         JsonRunOptions, LimitJsonResponse, OptionsJson, SemanticsJson, SubstituteJsonOptions,
         TimingsJson,
     };
@@ -1628,31 +1628,31 @@ mod tests {
     }
 
     #[test]
-    fn parse_eval_json_special_command_parses_solve_and_limit() {
-        let solve = parse_eval_json_special_command("solve((x+1)=0, x)").expect("solve");
+    fn parse_eval_special_command_parses_solve_and_limit() {
+        let solve = parse_eval_special_command("solve((x+1)=0, x)").expect("solve");
         assert_eq!(
             solve,
-            super::EvalJsonSpecialCommand::Solve {
+            super::EvalSpecialCommand::Solve {
                 equation: "(x+1)=0".to_string(),
                 var: "x".to_string()
             }
         );
 
-        let limit = parse_eval_json_special_command("limit((x^2+1)/x, x, -inf)").expect("limit");
+        let limit = parse_eval_special_command("limit((x^2+1)/x, x, -inf)").expect("limit");
         assert_eq!(
             limit,
-            super::EvalJsonSpecialCommand::Limit {
+            super::EvalSpecialCommand::Limit {
                 expr: "(x^2+1)/x".to_string(),
                 var: "x".to_string(),
-                approach: EvalJsonLimitApproach::NegInfinity,
+                approach: EvalLimitApproach::NegInfinity,
             }
         );
     }
 
     #[test]
-    fn parse_eval_json_special_command_rejects_invalid_forms() {
-        assert!(parse_eval_json_special_command("solve(x+1=0)").is_none());
-        assert!(parse_eval_json_special_command("limit(x, x, sideways)").is_none());
-        assert!(parse_eval_json_special_command("x + 1").is_none());
+    fn parse_eval_special_command_rejects_invalid_forms() {
+        assert!(parse_eval_special_command("solve(x+1=0)").is_none());
+        assert!(parse_eval_special_command("limit(x, x, sideways)").is_none());
+        assert!(parse_eval_special_command("x + 1").is_none());
     }
 }

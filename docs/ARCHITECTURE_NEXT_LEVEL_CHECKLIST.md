@@ -84,6 +84,12 @@ Current progress:
   - `eval_json_finalize_input` -> `eval_output_finalize_input`
   - `eval_json_finalize` -> `eval_output_finalize`
   - `eval_json_finalize_wire` -> `eval_output_finalize_wire`
+  - internal finalize/build runtime now aliases the wire DTO as
+    `EvalOutputWire` / `EvalOutputWireBuild` so `cas_solver` no longer drags
+    `EvalJsonOutput*` through local builder/finalizer signatures
+  - `eval_command_runtime` and `cas_session::eval_command::session` now use the
+    same local `EvalOutputWire` / `EvalCommandResult` aliases instead of
+    spelling `EvalJsonOutput` directly in runtime signatures
   - rationale:
     - they assemble typed `EvalJsonOutput` payload/context state
     - they do not perform wire serialization
@@ -153,11 +159,49 @@ Current progress:
       `evaluate_eval_command_with_session(...)`
     - `evaluate_eval_json_command_pretty_with_session(...)` ->
       `evaluate_eval_command_pretty_with_session(...)`
+    - canonical JSON-returning aliases were also neutralized:
+      - `evaluate_eval_json_canonical(...)` -> `evaluate_eval_canonical(...)`
+      - `evaluate_substitute_json_canonical(...)` ->
+        `evaluate_substitute_canonical(...)`
     - rationale:
       - it only orchestrates session load/run/save around typed eval requests
       - the actual wire boundary remains in the CLI/web entrypoints and API DTOs
       - `eval-json` stays as the product/command name, but not as the internal
         responsibility of the session runtime
+  - `cas_android_ffi` also neutralized its JNI-internal helper names:
+    - `eval_json_core(...)` -> `eval_core(...)`
+    - `substitute_json_core(...)` -> `substitute_core(...)`
+    - rationale:
+      - the exported JNI entry points remain `evalJson` / `substituteJson`
+      - the inner Rust helpers are just bridge cores around canonical session
+        calls and do not own transport naming
+  - residual helper/test naming was also cleaned where the responsibility is
+    already neutral:
+    - `eval_input_tests` now uses `build_prepared_eval_request_*` test names
+    - CLI local helper `eval_json_command_config(...)` ->
+      `eval_command_config(...)`
+    - inside the `cas_solver::json::eval` boundary, the private prep helper now
+      uses neutral naming too:
+      - `PreparedEvalRequestState` -> `PreparedStatelessEvalState`
+      - `prepare_eval_json_request(...)` ->
+        `prepare_stateless_eval_request(...)`
+      - local test `eval_json_session_ref_returns_invalid_input` ->
+        `eval_session_ref_returns_invalid_input`
+    - inside `cas_solver::eval_command_runtime`, DTO leaks are now aliased to
+      runtime-neutral names:
+      - `EvalSessionRunConfig` -> `EvalCommandRunConfig`
+      - `EvalJsonOutput` -> `EvalCommandOutput`
+      - rationale:
+        - the runtime still consumes API DTOs at the boundary
+        - but its own orchestration signatures now read as session/eval runtime,
+          not transport-specific code
+    - typed command DTOs in `cas_api_models` also dropped the transport prefix
+      where they are not wire payloads:
+      - `EvalJsonLimitApproach` -> `EvalLimitApproach`
+      - `EvalJsonSpecialCommand` -> `EvalSpecialCommand`
+      - `parse_eval_json_special_command(...)` ->
+        `parse_eval_special_command(...)`
+      - `EvalJsonSessionRunConfig` -> `EvalSessionRunConfig`
 
 ### P0.2 Review `cas_session_core`
 

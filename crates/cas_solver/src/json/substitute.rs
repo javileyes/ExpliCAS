@@ -9,7 +9,7 @@ use self::response::substitute_str_to_json_impl;
 ///
 /// This is the **solver-level canonical entry point** for JSON-returning
 /// stateless substitution. Frontends should normally go through
-/// `cas_session::evaluate_substitute_json_canonical`.
+/// `cas_session::evaluate_substitute_canonical`.
 ///
 /// # Arguments
 /// * `expr_str` - Expression string to substitute in

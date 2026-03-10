@@ -257,6 +257,11 @@ impl Simplifier {
         self.steps_mode
     }
 
+    #[inline]
+    pub(crate) fn has_step_listener(&self) -> bool {
+        self.step_listener.is_some()
+    }
+
     /// Set the steps collection mode directly
     pub fn set_steps_mode(&mut self, mode: StepsMode) {
         self.steps_mode = mode;

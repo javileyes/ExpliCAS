@@ -1,17 +1,15 @@
-use cas_api_models::{EvalJsonOutput, EvalJsonSessionRunConfig};
-
 use crate::eval_output_finalize::finalize_eval_output;
 use crate::eval_output_finalize_input::EvalOutputFinalizeInput;
 
 use super::collect::CollectedEvalArtifacts;
-use super::PreparedEvalRun;
+use super::{EvalCommandOutput, EvalCommandRunConfig, PreparedEvalRun};
 
 pub(super) fn finalize_eval_collected(
     engine: &mut crate::Engine,
-    config: EvalJsonSessionRunConfig<'_>,
+    config: EvalCommandRunConfig<'_>,
     prepared: PreparedEvalRun,
     collected: CollectedEvalArtifacts,
-) -> Result<EvalJsonOutput, String> {
+) -> Result<EvalCommandOutput, String> {
     finalize_eval_output(EvalOutputFinalizeInput {
         result: &prepared.output_view.result,
         ctx: &engine.simplifier.context,

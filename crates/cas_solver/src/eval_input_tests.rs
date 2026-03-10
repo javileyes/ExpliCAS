@@ -25,7 +25,7 @@ fn detect_solve_variable_falls_back_to_preferred_order() {
 }
 
 #[test]
-fn build_eval_json_request_wraps_equation_as_solve_variant() {
+fn build_prepared_eval_request_wraps_equation_as_solve_variant() {
     let mut ctx = cas_ast::Context::new();
     let prepared =
         crate::eval_input::build_prepared_eval_request_for_input("x + 1 = 0", &mut ctx, false)
@@ -43,7 +43,7 @@ fn build_eval_json_request_wraps_equation_as_solve_variant() {
 }
 
 #[test]
-fn build_eval_json_request_parses_limit_as_non_solve_action() {
+fn build_prepared_eval_request_parses_limit_as_non_solve_action() {
     let mut ctx = cas_ast::Context::new();
     let prepared = crate::eval_input::build_prepared_eval_request_for_input(
         "limit(x^2, x, +inf)",

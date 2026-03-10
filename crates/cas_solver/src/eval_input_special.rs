@@ -1,10 +1,10 @@
-use cas_api_models::EvalJsonLimitApproach;
+use cas_api_models::EvalLimitApproach;
 use cas_ast::ExprId;
 
-pub(crate) fn map_limit_approach(approach: EvalJsonLimitApproach) -> crate::Approach {
+pub(crate) fn map_limit_approach(approach: EvalLimitApproach) -> crate::Approach {
     match approach {
-        EvalJsonLimitApproach::PosInfinity => crate::Approach::PosInfinity,
-        EvalJsonLimitApproach::NegInfinity => crate::Approach::NegInfinity,
+        EvalLimitApproach::PosInfinity => crate::Approach::PosInfinity,
+        EvalLimitApproach::NegInfinity => crate::Approach::NegInfinity,
     }
 }
 

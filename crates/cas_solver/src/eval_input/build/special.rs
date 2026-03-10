@@ -1,5 +1,5 @@
 use crate::eval_input_special::{map_limit_approach, parse_solve_input_for_eval_request};
-use cas_api_models::EvalJsonSpecialCommand;
+use cas_api_models::EvalSpecialCommand;
 
 use super::super::types::{EvalNonSolveAction, PreparedEvalRequest};
 
@@ -7,10 +7,10 @@ pub(super) fn build_special_command_request(
     raw_input: &str,
     ctx: &mut cas_ast::Context,
     auto_store: bool,
-    command: EvalJsonSpecialCommand,
+    command: EvalSpecialCommand,
 ) -> Result<PreparedEvalRequest, String> {
     match command {
-        EvalJsonSpecialCommand::Solve { equation, var } => {
+        EvalSpecialCommand::Solve { equation, var } => {
             let parsed = parse_solve_input_for_eval_request(ctx, &equation)
                 .map_err(|e| format!("Parse error in solve equation: {e}"))?;
             Ok(PreparedEvalRequest::Solve {
@@ -20,7 +20,7 @@ pub(super) fn build_special_command_request(
                 auto_store,
             })
         }
-        EvalJsonSpecialCommand::Limit {
+        EvalSpecialCommand::Limit {
             expr,
             var,
             approach,

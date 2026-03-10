@@ -1,6 +1,5 @@
-use cas_api_models::{EvalJsonOutput, EvalJsonOutputBuild};
-
 use super::super::payload::EvalOutputResultPayload;
+use crate::eval_output_finalize::{EvalOutputWire, EvalOutputWireBuild};
 use crate::eval_output_finalize_input::EvalOutputFinalizeShared;
 
 pub(super) fn build_eval_output(
@@ -8,7 +7,7 @@ pub(super) fn build_eval_output(
     steps_count: usize,
     shared: EvalOutputFinalizeShared<'_>,
     wire: Option<serde_json::Value>,
-) -> EvalJsonOutput {
+) -> EvalOutputWire {
     let EvalOutputFinalizeShared {
         input,
         input_latex,
@@ -34,7 +33,7 @@ pub(super) fn build_eval_output(
         ..
     } = shared;
 
-    EvalJsonOutput::from_build(EvalJsonOutputBuild {
+    EvalOutputWire::from_build(EvalOutputWireBuild {
         input,
         input_latex,
         result_chars: payload.result_chars,

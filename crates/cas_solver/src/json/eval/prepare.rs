@@ -2,13 +2,13 @@ use crate::eval_input::PreparedEvalRequest;
 use crate::Engine;
 use cas_api_models::{BudgetJsonInfo, EngineJsonResponse, JsonRunOptions};
 
-pub(super) type PreparedEvalRequestState =
+pub(super) type PreparedStatelessEvalState =
     (JsonRunOptions, BudgetJsonInfo, Engine, PreparedEvalRequest);
 
-pub(super) fn prepare_eval_json_request(
+pub(super) fn prepare_stateless_eval_request(
     expr: &str,
     opts_json: &str,
-) -> Result<PreparedEvalRequestState, String> {
+) -> Result<PreparedStatelessEvalState, String> {
     let opts = super::options::parse_json_run_options(opts_json)?;
     let budget_info = super::options::build_budget_info(&opts);
 

@@ -1,6 +1,6 @@
-use cas_api_models::EvalJsonOutput;
 use cas_ast::ExprId;
 
+use crate::eval_output_finalize::EvalOutputWire;
 use crate::eval_output_finalize_expr::finalize_expr_like_eval_output;
 use crate::eval_output_finalize_input::{EvalOutputFinalizeContext, EvalOutputFinalizeInput};
 use crate::eval_output_finalize_nonexpr::{finalize_bool_output, finalize_solution_set_output};
@@ -15,7 +15,7 @@ fn expr_like_result_id(result: &crate::EvalResult) -> Option<ExprId> {
 
 pub(crate) fn finalize_eval_output(
     input: EvalOutputFinalizeInput<'_>,
-) -> Result<EvalJsonOutput, String> {
+) -> Result<EvalOutputWire, String> {
     let (
         EvalOutputFinalizeContext {
             result,

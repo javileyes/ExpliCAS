@@ -147,6 +147,159 @@ fn expr_eq(ctx: &Context, left: ExprId, right: ExprId) -> bool {
     cas_ast::ordering::compare_expr(ctx, left, right) == std::cmp::Ordering::Equal
 }
 
+fn multiset_matches_exact(ctx: &Context, actual: &[ExprId], expected: &[ExprId]) -> bool {
+    if actual.len() != expected.len() {
+        return false;
+    }
+
+    let mut used = [false; 3];
+    for wanted in expected {
+        let mut matched = false;
+        for (idx, candidate) in actual.iter().enumerate() {
+            if used[idx] {
+                continue;
+            }
+            if expr_eq(ctx, *candidate, *wanted) {
+                used[idx] = true;
+                matched = true;
+                break;
+            }
+        }
+        if !matched {
+            return false;
+        }
+    }
+
+    true
+}
+
+fn is_exact_two_ab_product(ctx: &mut Context, expr: ExprId, a: ExprId, b: ExprId) -> bool {
+    let view = MulView::from_expr(ctx, expr);
+    if view.factors.len() != 3 {
+        return false;
+    }
+
+    let two = ctx.num(2);
+    multiset_matches_exact(ctx, &view.factors, &[two, a, b])
+}
+
+fn try_hidden_solve_root_perfect_square_minus_shortcut(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ExprId> {
+    let Expr::Div(num, den) = ctx.get(expr) else {
+        return None;
+    };
+    let num = *num;
+    let den = *den;
+
+    let Expr::Sub(a, b) = ctx.get(den) else {
+        return None;
+    };
+    let a = *a;
+    let b = *b;
+
+    let terms = AddView::from_expr(ctx, num).terms;
+    if terms.len() != 3 {
+        return None;
+    }
+
+    let exp_two = ctx.num(2);
+    let a_sq = ctx.add(Expr::Pow(a, exp_two));
+    let exp_two_b = ctx.num(2);
+    let b_sq = ctx.add(Expr::Pow(b, exp_two_b));
+
+    let mut positives = [None, None];
+    let mut positive_count = 0usize;
+    let mut negative = None;
+
+    for (term, sign) in terms {
+        match sign {
+            Sign::Pos => {
+                if positive_count >= positives.len() {
+                    return None;
+                }
+                positives[positive_count] = Some(term);
+                positive_count += 1;
+            }
+            Sign::Neg => {
+                if negative.is_some() {
+                    return None;
+                }
+                negative = Some(term);
+            }
+        }
+    }
+
+    let (Some(left_pos), Some(right_pos), Some(negative_term)) =
+        (positives[0], positives[1], negative)
+    else {
+        return None;
+    };
+
+    if !multiset_matches_exact(ctx, &[left_pos, right_pos], &[a_sq, b_sq])
+        || !is_exact_two_ab_product(ctx, negative_term, a, b)
+    {
+        return None;
+    }
+
+    Some(den)
+}
+
+fn try_hidden_solve_root_difference_of_squares_shortcut(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ExprId> {
+    let Expr::Div(num, den) = ctx.get(expr) else {
+        return None;
+    };
+    let num = *num;
+    let den = *den;
+
+    let Expr::Sub(left, right) = ctx.get(num) else {
+        return None;
+    };
+    let left = *left;
+    let right = *right;
+    let a = square_of_symbolic_atom(ctx, left)?;
+    let b = square_of_symbolic_atom(ctx, right)?;
+
+    if expr_eq(ctx, a, b) {
+        return None;
+    }
+
+    match ctx.get(den) {
+        Expr::Sub(dl, dr) if expr_eq(ctx, *dl, a) && expr_eq(ctx, *dr, b) => {
+            Some(ctx.add(Expr::Add(a, b)))
+        }
+        Expr::Add(dl, dr) if expr_eq(ctx, *dl, a) && expr_eq(ctx, *dr, b) => {
+            Some(ctx.add(Expr::Sub(a, b)))
+        }
+        _ => None,
+    }
+}
+
+fn allow_hidden_solve_root_scalar_multiple_shortcut(opts: &SimplifyOptions) -> bool {
+    match opts.simplify_purpose {
+        crate::SimplifyPurpose::Eval => {
+            opts.shared.context_mode == crate::options::ContextMode::Solve
+        }
+        crate::SimplifyPurpose::SolvePrepass => {
+            cas_solver_core::solve_safety_policy::safe_for_prepass(
+                crate::SolveSafety::NeedsCondition(crate::ConditionClass::Definability),
+            )
+        }
+        crate::SimplifyPurpose::SolveTactic => {
+            let domain_mode = opts.shared.semantics.domain_mode;
+            cas_solver_core::solve_safety_policy::safe_for_tactic_with_domain_flags(
+                crate::SolveSafety::NeedsCondition(crate::ConditionClass::Definability),
+                matches!(domain_mode, crate::DomainMode::Assume),
+                matches!(domain_mode, crate::DomainMode::Strict),
+            )
+        }
+    }
+}
+
 fn is_plain_symbolic_cube_trinomial_after_core(ctx: &Context, expr: ExprId) -> bool {
     let terms = AddView::from_expr(ctx, expr).terms;
     if terms.len() != 3 {
@@ -452,6 +605,65 @@ impl Orchestrator {
 
         // Extract collect_steps early so pre-passes can skip Step construction
         let collect_steps = self.options.collect_steps;
+        let is_solve_mode = self.options.shared.context_mode == crate::options::ContextMode::Solve;
+
+        // Narrow hidden solve root shortcut: exact raw
+        // `(a^2 - 2ab + b^2) / (a - b)` can collapse to `a - b` before any
+        // eager pre-pass or phase work. Keep it limited to the no-steps,
+        // no-listener, non-strict solve path to avoid widening event gaps.
+        if !collect_steps
+            && is_solve_mode
+            && !self.options.shared.semantics.domain_mode.is_strict()
+            && !simplifier.has_step_listener()
+        {
+            if let Some(result) =
+                try_hidden_solve_root_difference_of_squares_shortcut(&mut simplifier.context, expr)
+            {
+                simplifier.clear_sticky_implicit_domain();
+                return (result, Vec::new(), crate::phase::PipelineStats::default());
+            }
+            if let Some(result) =
+                try_hidden_solve_root_perfect_square_minus_shortcut(&mut simplifier.context, expr)
+            {
+                simplifier.clear_sticky_implicit_domain();
+                return (result, Vec::new(), crate::phase::PipelineStats::default());
+            }
+        }
+
+        // Same hidden solve root shortcut for exact raw cube fractions.
+        // The cheaper exact matcher already exists in the algebra layer; calling
+        // it here avoids all eager pre-passes and the full Core loop on
+        // `(a^3 ± b^3)/(a ± b)` when we only need the plain result path.
+        if !collect_steps && is_solve_mode && !simplifier.has_step_listener() {
+            let div_parts = match simplifier.context.get(expr) {
+                Expr::Div(num, den) => Some((*num, *den)),
+                _ => None,
+            };
+            if allow_hidden_solve_root_scalar_multiple_shortcut(&self.options) {
+                if let Some((num, den)) = div_parts {
+                    if let Some(result) =
+                        crate::rules::algebra::try_structural_scalar_multiple_preorder(
+                            &mut simplifier.context,
+                            num,
+                            den,
+                        )
+                    {
+                        simplifier.clear_sticky_implicit_domain();
+                        return (result, Vec::new(), crate::phase::PipelineStats::default());
+                    }
+                }
+            }
+            if let Some((num, den)) = div_parts {
+                if let Some(result) = crate::rules::algebra::try_exact_sum_diff_of_cubes_preorder(
+                    &mut simplifier.context,
+                    num,
+                    den,
+                ) {
+                    simplifier.clear_sticky_implicit_domain();
+                    return (result, Vec::new(), crate::phase::PipelineStats::default());
+                }
+            }
+        }
 
         // PRE-PASS 1: Eager eval for expand() calls using fast mod-p path
         // This runs BEFORE any simplification to avoid budget exhaustion on huge arguments
@@ -510,8 +722,6 @@ impl Orchestrator {
         all_steps.extend(steps);
         pipeline_stats.core = stats;
         pipeline_stats.total_rewrites += pipeline_stats.core.rewrites_used;
-        let is_solve_mode = self.options.shared.context_mode == crate::options::ContextMode::Solve;
-
         // Fast path: when Core already collapses to a terminal exact value and the
         // caller is not collecting steps, later phases are pure fixed-cost noise.
         if !collect_steps && is_terminal_after_core(&simplifier.context, current) {

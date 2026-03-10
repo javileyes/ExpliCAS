@@ -15,7 +15,7 @@ mod success;
 ///
 /// This is the **solver-level canonical entry point** for JSON-returning
 /// stateless evaluation. Frontends should normally go through
-/// `cas_session::evaluate_eval_json_canonical`.
+/// `cas_session::evaluate_eval_canonical`.
 ///
 /// # Arguments
 /// * `expr` - Expression string to evaluate
@@ -34,7 +34,7 @@ mod success;
 /// ```
 pub fn eval_str_to_json(expr: &str, opts_json: &str) -> String {
     let (opts, budget_info, mut engine, prepared) =
-        match prepare::prepare_eval_json_request(expr, opts_json) {
+        match prepare::prepare_stateless_eval_request(expr, opts_json) {
             Ok(state) => state,
             Err(resp) => return resp,
         };

@@ -1,8 +1,7 @@
-use cas_api_models::EvalJsonOutput;
 use cas_ast::{Context, ExprId};
 use cas_formatter::LaTeXExpr;
 
-use crate::eval_output_finalize::{build_eval_output, EvalOutputResultPayload};
+use crate::eval_output_finalize::{build_eval_output, EvalOutputResultPayload, EvalOutputWire};
 use crate::eval_output_finalize_input::EvalOutputFinalizeShared;
 
 fn build_expr_result_payload(
@@ -46,7 +45,7 @@ pub(crate) fn finalize_expr_like_eval_output(
     result_expr: ExprId,
     max_chars: usize,
     shared: EvalOutputFinalizeShared<'_>,
-) -> EvalJsonOutput {
+) -> EvalOutputWire {
     let payload = build_expr_result_payload(ctx, result_expr, max_chars);
     let steps_count = shared.primary_steps_count();
 
