@@ -7,8 +7,8 @@ pub(crate) fn substitute_command_mode_str(mode: SubstituteCommandMode) -> &'stat
     }
 }
 
-/// Evaluate substitute subcommand in canonical JSON mode.
-pub fn evaluate_substitute_subcommand_json_canonical(
+/// Evaluate substitute subcommand in canonical wire mode.
+pub fn evaluate_substitute_subcommand_wire_canonical(
     expr: &str,
     target: &str,
     replacement: &str,

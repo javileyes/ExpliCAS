@@ -6,7 +6,7 @@ mod tests {
     };
 
     #[test]
-    fn evaluate_limit_subcommand_json_contract() {
+    fn evaluate_limit_subcommand_wire_contract() {
         let out = evaluate_limit_subcommand(
             "1/x",
             "x",
@@ -14,7 +14,7 @@ mod tests {
             LimitCommandPreSimplify::Safe,
             true,
         )
-        .expect("limit json");
+        .expect("limit wire");
 
         match out {
             LimitSubcommandOutput::Json(payload) => {

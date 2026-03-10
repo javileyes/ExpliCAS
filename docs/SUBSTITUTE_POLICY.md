@@ -173,7 +173,7 @@ calling solver JSON adapters directly.
 
 ### Contract Tests
 
-Located in `crates/cas_solver/tests/substitute_json_contract_tests.rs`:
+Located in `crates/cas_solver/tests/substitute_wire_contract_tests.rs`:
 - Schema version = 1
 - Request echo present
 - Options reflected

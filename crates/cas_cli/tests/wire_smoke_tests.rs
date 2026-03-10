@@ -1,4 +1,4 @@
-//! Smoke tests for wire model in eval-json output.
+//! Smoke tests for the eval wire model.
 //!
 //! Verifies that the wire field is present and correctly structured
 //! in JSON output from eval commands.
@@ -7,8 +7,8 @@ use assert_cmd::cargo;
 use serde_json::Value;
 use std::process::Command;
 
-/// Helper to run eval-json and parse the wire field
-fn eval_json_wire(expr: &str) -> Value {
+/// Helper to run eval and parse the wire field from the JSON output.
+fn eval_wire(expr: &str) -> Value {
     let output = Command::new(cargo::cargo_bin!("cas_cli"))
         .arg("eval")
         .arg(expr)
@@ -24,7 +24,7 @@ fn eval_json_wire(expr: &str) -> Value {
 
 #[test]
 fn test_wire_present_on_success() {
-    let wire = eval_json_wire("2+2");
+    let wire = eval_wire("2+2");
 
     // Wire should exist
     assert!(!wire.is_null(), "wire field should be present");
@@ -47,7 +47,7 @@ fn test_wire_present_on_success() {
 
 #[test]
 fn test_wire_output_message_present() {
-    let wire = eval_json_wire("3*4");
+    let wire = eval_wire("3*4");
 
     let messages = wire.get("messages").expect("messages should exist");
     let msgs = messages.as_array().unwrap();
@@ -115,7 +115,7 @@ fn test_wire_steps_summary_when_enabled() {
 #[test]
 fn test_wire_message_order() {
     // Test that messages appear in expected order: warn, info, output, steps
-    let wire = eval_json_wire("1/x"); // This might produce requires
+    let wire = eval_wire("1/x"); // This might produce requires
 
     let messages = wire.get("messages").expect("messages should exist");
     let msgs = messages.as_array().unwrap();
@@ -143,7 +143,7 @@ fn test_wire_message_order() {
 fn test_wire_schema_version_stable() {
     // Verify schema_version is exactly 1 (not changing unexpectedly)
     for expr in &["1+1", "x^2", "sin(pi/2)"] {
-        let wire = eval_json_wire(expr);
+        let wire = eval_wire(expr);
         assert_eq!(
             wire.get("schema_version"),
             Some(&Value::Number(1.into())),

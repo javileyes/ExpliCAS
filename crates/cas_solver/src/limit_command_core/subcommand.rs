@@ -6,9 +6,9 @@ pub fn evaluate_limit_subcommand_output(
     var: &str,
     approach: crate::Approach,
     presimplify: crate::PreSimplifyMode,
-    json_output: bool,
+    wire_output: bool,
 ) -> Result<LimitSubcommandEvalOutput, LimitSubcommandEvalError> {
-    if json_output {
+    if wire_output {
         return Ok(LimitSubcommandEvalOutput::Json(limit_str_to_json(
             expr,
             var,

@@ -24,8 +24,8 @@ pub fn run(args: EvalArgs) {
 
     match args.format {
         OutputFormat::Json => {
-            let json_args = crate::commands::eval_json::from_eval_args(expr.clone(), &args);
-            crate::commands::eval_json::run(json_args);
+            let wire_args = crate::commands::eval_json::from_eval_args(expr.clone(), &args);
+            crate::commands::eval_json::run(wire_args);
         }
         OutputFormat::Text => {
             let text_args = EvalArgs { expr, ..args };

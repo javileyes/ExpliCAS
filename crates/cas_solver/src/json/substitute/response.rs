@@ -1,15 +1,15 @@
 use cas_api_models::{
-    EngineJsonSubstep, SubstituteJsonOptions, SubstituteJsonResponse, SubstituteOptionsInner,
-    SubstituteOptionsJson, SubstituteRequestEcho,
+    EngineJsonSubstep, SubstituteJsonResponse, SubstituteOptionsInner, SubstituteOptionsJson,
+    SubstituteRequestEcho, SubstituteRunOptions,
 };
 
 use super::eval::eval_substitute_impl;
 
-pub fn substitute_str_to_json_impl(
+pub fn substitute_str_to_wire_impl(
     expr_str: &str,
     target_str: &str,
     with_str: &str,
-    opts: SubstituteJsonOptions,
+    opts: SubstituteRunOptions,
 ) -> String {
     let request = SubstituteRequestEcho {
         expr: expr_str.to_string(),
@@ -28,7 +28,7 @@ pub fn substitute_str_to_json_impl(
         Ok(eval) => eval,
         Err(issue) => {
             let resp = SubstituteJsonResponse::err(
-                issue.to_json_error(),
+                issue.to_wire_error(),
                 request.clone(),
                 options.clone(),
             );
@@ -36,7 +36,7 @@ pub fn substitute_str_to_json_impl(
         }
     };
 
-    let json_steps: Vec<EngineJsonSubstep> = eval
+    let wire_steps: Vec<EngineJsonSubstep> = eval
         .steps
         .into_iter()
         .map(|s| EngineJsonSubstep {
@@ -47,6 +47,6 @@ pub fn substitute_str_to_json_impl(
         })
         .collect();
 
-    let resp = SubstituteJsonResponse::ok(eval.result, request, options, json_steps);
+    let resp = SubstituteJsonResponse::ok(eval.result, request, options, wire_steps);
     resp.to_json_with_pretty(opts.pretty)
 }

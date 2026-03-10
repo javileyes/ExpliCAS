@@ -1,13 +1,13 @@
 use cas_api_models::{
     AssumptionRecord, BudgetJsonInfo, EngineJsonResponse, EngineJsonStep, EngineJsonWarning,
-    JsonRunOptions,
+    EvalRunOptions,
 };
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn build_success_json(
     engine: &mut crate::Engine,
     output_view: &crate::EvalOutputView,
-    opts: &JsonRunOptions,
+    opts: &EvalRunOptions,
     budget_info: BudgetJsonInfo,
     map_warnings: fn(&[crate::DomainWarning]) -> Vec<EngineJsonWarning>,
     map_assumptions: fn(&[crate::AssumptionRecord]) -> Vec<AssumptionRecord>,

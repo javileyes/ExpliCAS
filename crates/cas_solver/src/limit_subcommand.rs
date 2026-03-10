@@ -13,7 +13,7 @@ pub fn evaluate_limit_subcommand(
     var: &str,
     approach: LimitCommandApproach,
     presimplify: LimitCommandPreSimplify,
-    json_output: bool,
+    wire_output: bool,
 ) -> Result<LimitSubcommandOutput, String> {
     let approach = match approach {
         LimitCommandApproach::Infinity => crate::Approach::PosInfinity,
@@ -24,7 +24,7 @@ pub fn evaluate_limit_subcommand(
         LimitCommandPreSimplify::Safe => crate::PreSimplifyMode::Safe,
     };
 
-    match evaluate_limit_subcommand_output(expr, var, approach, presimplify, json_output) {
+    match evaluate_limit_subcommand_output(expr, var, approach, presimplify, wire_output) {
         Ok(LimitSubcommandEvalOutput::Json(out)) => Ok(LimitSubcommandOutput::Json(out)),
         Ok(LimitSubcommandEvalOutput::Text { result, warning }) => {
             Ok(LimitSubcommandOutput::Text { result, warning })

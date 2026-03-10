@@ -1904,6 +1904,106 @@ Those are valid projects, but not part of this performance track.
   - `cargo test -p cas_solver --test multivar_gcd_tests test_perfect_square_minus_cancel_in_solve_strict_context_steps_off -- --exact`
   - `cargo test -p cas_solver --test solve_safety_contract_tests`
   - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math`
+- retained a local fast equality check for the exact cubes preorder in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/rules/algebra/mod.rs`
+- scope:
+  - only inside `try_exact_sum_diff_of_cubes_preorder(...)`
+  - only for the raw denominator atom match in `(a^3 - b^3)/(a-b)` and
+    `(a^3 + b^3)/(a+b)`
+  - direct `ExprId` match first, then cheap `Variable`/`Constant`/`Number`
+    equality, and only then `compare_expr(...)`
+- rationale:
+  - the exact cubes root shortcut was already retained, but it still paid full
+    structural comparison for atom-like denominator matching
+  - on the current rerank, `difference_of_cubes_fraction` and
+    `sum_of_cubes_fraction` are still frequent enough inside
+    `solve_tactic_generic_batch` that shaving that fixed comparison cost moves
+    the representative batch even when the isolated hotspots stay within noise
+- retained measurements:
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `60.700-61.051 us`, improvement `~1.2-2.4%`
+  - `solve_hotspots_cached/generic/difference_of_cubes_fraction`:
+    `5.3401-5.5146 us`, lower in absolute terms but still within Criterion noise
+  - `solve_hotspots_cached/generic/sum_of_cubes_fraction`:
+    `5.2609-5.4558 us`, lower in absolute terms but still within Criterion noise
+- validation:
+  - `cargo fmt --all`
+  - `cargo test -p cas_engine profile_cache_tests::tests::test_from_profile_solve_tactic_difference_of_cubes_uses_exact_preorder_fast_path --lib`
+  - `cargo test -p cas_engine profile_cache_tests::tests::test_from_profile_solve_tactic_sum_of_cubes_uses_exact_preorder_fast_path --lib`
+  - `cargo test -p cas_solver --test multivar_gcd_tests difference_of_cubes -- --nocapture`
+  - `cargo test -p cas_solver --test multivar_gcd_tests sum_of_cubes -- --nocapture`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_engine --bench profile_cache 'solve_hotspots_cached/generic/(difference_of_cubes_fraction|sum_of_cubes_fraction)|solve_modes_cached/solve_tactic_generic_batch' -- --noplot`
+- retained a pipeline setup cut in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs`
+- scope:
+  - delay `set_sticky_implicit_domain(...)` until after the hidden solve root
+    shortcuts
+  - keep it enabled for the full phase pipeline exactly as before
+  - rely on final `diagnostics` to derive `required_conditions` from input/result
+    on the shortcut path, which it already does
+- rationale:
+  - the representative `solve` batches now spend most of their time in root
+    shortcuts (`x/x`, `x^0`, `exp(ln(x))`, `a^x/a`, scalar multiple fraction,
+    difference of squares)
+  - all of those cases were still paying an eager `infer_implicit_domain(...)`
+    through `set_sticky_implicit_domain(...)` even though they return before any
+    phase that consumes the sticky domain
+  - moving that setup behind the shortcuts removes a fixed-cost prelude from the
+    actual hot path without changing the final domain diagnostics
+- retained measurements:
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `59.850-61.425 us`, improvement `~1.5-3.6%`
+  - `solve_modes_cached/solve_tactic_assume_batch`:
+    `59.747-60.138 us`, improvement `~1.7-3.1%`
+  - direct shortcut hotspots (`scalar_multiple_fraction`, `difference_of_squares`,
+    `x/x`, `exp(ln(x))`, `a^x/a`, `x^0`) all moved down in absolute terms, with
+    individual reruns staying within expected Criterion noise
+- validation:
+  - `cargo fmt --all`
+  - `cargo test -p cas_engine profile_cache_tests --lib`
+  - `cargo test -p cas_solver --test solve_safety_contract_tests`
+  - `cargo run -q -p cas_cli -- eval --context solve --domain generic --steps off --format json 'x/x'`
+  - `cargo run -q -p cas_cli -- eval --context solve --domain generic --steps off --format json 'exp(ln(x))'`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_engine --bench profile_cache 'solve_modes_cached/solve_tactic_generic_batch|solve_modes_cached/solve_tactic_assume_batch|solve_hotspots_cached/generic/(scalar_multiple_fraction|difference_of_squares_fraction|x_over_x|exp_ln_x|a_pow_x_over_a|x_pow_0)|solve_hotspots_cached/assume/(x_over_x|x_pow_0)' -- --noplot`
+- retained a narrower root-dispatch ordering for exact cubes in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs`
+- scope:
+  - only on hidden solve root shortcuts for `Div`
+  - for `den = Add` or `den = Sub`, try the exact raw
+    `try_exact_sum_diff_of_cubes_preorder(...)` path before the unrelated
+    scalar-multiple / difference-of-squares / perfect-square-minus shortcuts
+- rationale:
+  - after the earlier exact cube shortcuts, the remaining cost for
+    `sum_of_cubes_fraction` and `difference_of_cubes_fraction` was mostly the
+    dispatcher paying several cheap-but-useless failed matchers before reaching
+    the cube handler
+  - the exact cube matcher is already narrow and raw-shape-only, so moving it
+    ahead of the unrelated branches cuts that dead work without widening the
+    root fast path surface
+- retained measurements:
+  - `solve_hotspots_cached/generic/difference_of_cubes_fraction`:
+    `5.2322-5.3896 us`, lower in absolute terms than the immediate pre-change
+    rerank (`5.3980-5.5630 us`)
+  - `solve_hotspots_cached/generic/sum_of_cubes_fraction`:
+    `5.0886-5.3141 us`, improvement `~10.5-16.5%`
+  - `solve_hotspots_cached/generic/scalar_multiple_fraction`:
+    `5.4282-5.5695 us`, no statistically significant change
+  - `solve_hotspots_cached/generic/difference_of_squares_fraction`:
+    `3.9495-4.1054 us`, no statistically significant change
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `60.046-60.697 us`, lower in absolute terms than the immediate pre-change
+    rerank (`60.794-61.729 us`) with Criterion still reporting noise-threshold
+    change
+- validation:
+  - `cargo fmt --all`
+  - `cargo test -p cas_engine profile_cache_tests::tests::test_from_profile_solve_tactic_difference_of_cubes_uses_exact_preorder_fast_path --lib`
+  - `cargo test -p cas_engine profile_cache_tests::tests::test_from_profile_solve_tactic_sum_of_cubes_uses_exact_preorder_fast_path --lib`
+  - `cargo test -p cas_solver --test multivar_gcd_tests difference_of_cubes -- --nocapture`
+  - `cargo test -p cas_solver --test multivar_gcd_tests sum_of_cubes -- --nocapture`
+  - `cargo test -p cas_solver --test solve_safety_contract_tests`
+  - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math`
+  - `cargo bench -p cas_engine --bench profile_cache "solve_hotspots_cached/generic/scalar_multiple_fraction|solve_hotspots_cached/generic/difference_of_squares_fraction|solve_hotspots_cached/generic/difference_of_cubes_fraction|solve_hotspots_cached/generic/sum_of_cubes_fraction|solve_modes_cached/solve_tactic_generic_batch" -- --noplot`
+  - `cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_unified_benchmark -- --ignored --nocapture`
 - retained a denominator-shape dispatch cut for hidden solve root shortcuts in
   `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs`
 - scope:
@@ -2723,6 +2823,31 @@ Those are valid projects, but not part of this performance track.
   - `cargo run -q -p cas_cli -- eval --context solve --domain generic --steps off --format json 'log(x^2, x^6)'`
   - `cargo run -q -p cas_cli -- eval --context solve --domain assume --steps off --format json 'log(x^2, x^6)'`
   - `cargo test -p cas_solver --test solve_safety_contract_tests`
+  - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math`
+- retained a smaller hidden-step payload for the `assume/log_power_base` root
+  shortcut in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs`
+- scope:
+  - only the hidden solve root shortcut for `log(a^m, a^n)` in `Assume`
+  - when a step is still needed to preserve `Positive(base_core)`, stop also
+    attaching `NonZero(base_expr - 1)` there
+- rationale:
+  - `x^2 - 1 != 0` is already preserved by diagnostics on this path; carrying it
+    again in the hidden `Step` was redundant metadata churn
+  - the shortcut still needs `x > 0` in `Assume`, so this is a narrow cleanup,
+    not a semantic change
+- retained measurements:
+  - `solve_hotspots_cached/assume/log_power_base`:
+    `5.5463-5.7169 us`, lower in absolute terms than the earlier rerank
+    (`5.7233-5.8579 us`) but still within Criterion noise
+  - `solve_modes_cached/solve_tactic_assume_batch`:
+    `60.714-61.068 us`, lower in absolute terms than the regressive run and back
+    inside the prior band
+- validation:
+  - `cargo fmt --all`
+  - `cargo test -p cas_engine profile_cache_tests::tests::test_from_profile_solve_tactic_log_power_base_uses_root_fast_path --lib`
+  - `cargo test -p cas_solver --test root_log_parity_tests log_power_base -- --nocapture`
+  - `cargo run -q -p cas_cli -- eval --context solve --domain assume --steps off --format json 'log(x^2, x^6)'`
   - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math`
 - retained a narrow post-`Transform` hidden-solve cut in
   `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs`

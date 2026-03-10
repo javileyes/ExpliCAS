@@ -46,7 +46,7 @@ fn test_eval_help_shows_budget_options() {
 
 /// Test that eval with --format json produces valid JSON with schema_version.
 #[test]
-fn test_eval_json_output_has_schema_version() {
+fn test_eval_wire_output_has_schema_version() {
     let output = cli()
         .args(["eval", "x+1", "--format", "json"])
         .output()
@@ -66,7 +66,7 @@ fn test_eval_json_output_has_schema_version() {
 
 /// Test that eval-json alias works (backward compatibility).
 #[test]
-fn test_eval_json_alias_works() {
+fn test_eval_json_alias_emits_wire_output() {
     let output = cli()
         .args(["eval-json", "2+2"])
         .output()

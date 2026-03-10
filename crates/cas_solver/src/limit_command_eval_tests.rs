@@ -41,7 +41,7 @@ mod tests {
     }
 
     #[test]
-    fn evaluate_limit_subcommand_output_json_mode_returns_payload() {
+    fn evaluate_limit_subcommand_output_wire_mode_returns_payload() {
         let out = evaluate_limit_subcommand_output(
             "(x^2+1)/(2*x^2-3)",
             "x",
@@ -49,14 +49,14 @@ mod tests {
             crate::PreSimplifyMode::Off,
             true,
         )
-        .expect("json output");
+        .expect("wire output");
 
         match out {
             LimitSubcommandEvalOutput::Json(payload) => {
                 let json: serde_json::Value = serde_json::from_str(&payload).expect("json");
                 assert_eq!(json["ok"], true);
             }
-            _ => panic!("expected json payload"),
+            _ => panic!("expected wire payload"),
         }
     }
 

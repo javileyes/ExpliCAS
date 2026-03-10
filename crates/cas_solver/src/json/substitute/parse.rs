@@ -16,7 +16,7 @@ pub struct SubstituteParseIssue {
 }
 
 impl SubstituteParseIssue {
-    pub fn to_json_error(&self) -> ApiEngineJsonError {
+    pub fn to_wire_error(&self) -> ApiEngineJsonError {
         let message = match self.field {
             ParseField::Expression => format!("Failed to parse expression: {}", self.error),
             ParseField::Target => format!("Failed to parse target: {}", self.error),

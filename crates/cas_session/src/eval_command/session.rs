@@ -4,8 +4,8 @@ use std::path::Path;
 
 /// Session-backed config for eval command orchestration.
 pub type EvalCommandConfig<'a> = cas_api_models::EvalSessionRunConfig<'a>;
-type EvalCommandWire = cas_api_models::EvalJsonOutput;
-type EvalCommandResult = Result<EvalCommandWire, String>;
+type EvalOutputWire = cas_api_models::EvalJsonOutput;
+type EvalCommandResult = Result<EvalOutputWire, String>;
 
 /// Evaluate `eval` using optional persisted session state.
 ///

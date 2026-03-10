@@ -171,6 +171,9 @@ Current progress:
       - the actual wire boundary remains in the CLI/web entrypoints and API DTOs
       - `eval-json` stays as the product/command name, but not as the internal
         responsibility of the session runtime
+    - the session runtime now also aliases the wire DTO locally as
+      `EvalOutputWire`, instead of spelling `EvalJsonOutput` directly through
+      `eval_command::session`
   - `cas_android_ffi` also neutralized its JNI-internal helper names:
     - `eval_json_core(...)` -> `eval_core(...)`
     - `substitute_json_core(...)` -> `substitute_core(...)`
@@ -178,6 +181,8 @@ Current progress:
       - the exported JNI entry points remain `evalJson` / `substituteJson`
       - the inner Rust helpers are just bridge cores around canonical session
         calls and do not own transport naming
+  - boundary-facing tests/helpers now also prefer `wire` naming when they
+    validate output contracts rather than the transport mechanism itself
   - residual helper/test naming was also cleaned where the responsibility is
     already neutral:
     - `eval_input_tests` now uses `build_prepared_eval_request_*` test names
@@ -190,6 +195,35 @@ Current progress:
         `envelope_json_command_tests` -> `envelope_wire_command_tests`
       - solver-side bridge contract tests were aligned too:
         `json_bridge_tests` -> `wire_bridge_tests`
+    - substitute canonical wrappers/tests were aligned too:
+      - module `substitute_subcommand_json` -> `substitute_subcommand_wire`
+      - `evaluate_substitute_subcommand_json_canonical(...)` ->
+        `evaluate_substitute_subcommand_wire_canonical(...)`
+      - `parse_substitute_json_text_lines(...)` ->
+        `parse_substitute_wire_text_lines(...)`
+      - integration test `substitute_json_contract_tests` ->
+        `substitute_wire_contract_tests`
+    - eval/substitute internal renderers were aligned too:
+      - `build_engine_json_steps(...)` -> `build_engine_wire_steps(...)`
+      - `substitute_str_to_json_impl(...)` ->
+        `substitute_str_to_wire_impl(...)`
+      - `SubstituteParseIssue::to_json_error(...)` ->
+        `to_wire_error(...)`
+    - CLI eval-json adapter naming was aligned too:
+      - `EvalJsonArgs` -> `EvalWireArgs`
+      - `EvalJsonLegacyArgs` -> `EvalWireLegacyArgs`
+      - `from_legacy_eval_json_args(...)` ->
+        `from_legacy_eval_wire_args(...)`
+    - the envelope/CLI bridge and subcommand toggles were aligned too:
+      - `EnvelopeJsonArgs` -> `EnvelopeWireArgs`
+      - internal `json_output` flags in limit/substitute subcommand bridges ->
+        `wire_output`
+    - internal parity/contract tests were aligned too where they verify the
+      wire layer rather than JSON serialization itself:
+      - `step_count_matches_between_text_and_json_renderers` ->
+        `step_count_matches_between_text_and_wire_renderers`
+      - `evaluate_limit_subcommand_output_json_mode_returns_payload` ->
+        `evaluate_limit_subcommand_output_wire_mode_returns_payload`
     - inside the `cas_solver::json::eval` boundary, the private prep helper now
       uses neutral naming too:
       - `PreparedEvalRequestState` -> `PreparedStatelessEvalState`
@@ -212,6 +246,8 @@ Current progress:
       - `parse_eval_json_special_command(...)` ->
         `parse_eval_special_command(...)`
       - `EvalJsonSessionRunConfig` -> `EvalSessionRunConfig`
+      - `JsonRunOptions` -> `EvalRunOptions`
+      - `SubstituteJsonOptions` -> `SubstituteRunOptions`
 
 ### P0.2 Review `cas_session_core`
 

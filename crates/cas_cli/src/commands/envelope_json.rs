@@ -6,7 +6,7 @@ use clap::Args;
 
 /// Arguments for envelope-json subcommand
 #[derive(Args, Debug)]
-pub struct EnvelopeJsonArgs {
+pub struct EnvelopeWireArgs {
     /// Expression to evaluate
     pub expr: String,
 
@@ -20,7 +20,7 @@ pub struct EnvelopeJsonArgs {
 }
 
 /// Run the envelope-json command
-pub fn run(args: EnvelopeJsonArgs) {
+pub fn run(args: EnvelopeWireArgs) {
     let output =
         cas_session::evaluate_envelope_wire_command(&args.expr, &args.domain, &args.value_domain);
     println!("{}", output);

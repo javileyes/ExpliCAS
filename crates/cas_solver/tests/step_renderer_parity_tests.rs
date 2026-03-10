@@ -1,6 +1,6 @@
 //! Anti-regression tests for step renderer parity (V2.9.8).
 //!
-//! These tests verify that text and JSON renderers produce consistent output
+//! These tests verify that text and wire renderers produce consistent output
 //! from the same `DisplaySolveSteps` source, preventing "final layer bifurcation".
 
 use cas_ast::{Equation, Expr, RelOp, SolutionSet};
@@ -49,19 +49,19 @@ fn solve_test_equation() -> (SolutionSet, DisplaySolveSteps, Engine) {
 // =============================================================================
 
 #[test]
-fn step_count_matches_between_text_and_json_renderers() {
+fn step_count_matches_between_text_and_wire_renderers() {
     let (_solution_set, display_steps, _engine) = solve_test_equation();
 
     // Text renderer: directly uses step count
     let text_step_count = display_steps.len();
 
-    // JSON renderer: would convert to EngineJsonStep (simulate using same source)
+    // Wire renderer: would convert to EngineJsonStep (simulate using same source)
     // Both consume display_steps, so counts MUST match
-    let json_step_count = display_steps.iter().count();
+    let wire_step_count = display_steps.iter().count();
 
     assert_eq!(
-        text_step_count, json_step_count,
-        "Text and JSON renderers must produce same step count from DisplaySolveSteps"
+        text_step_count, wire_step_count,
+        "Text and wire renderers must produce same step count from DisplaySolveSteps"
     );
 }
 
@@ -78,17 +78,17 @@ fn step_descriptions_match_between_renderers() {
         // Text renderer uses step.description directly
         let text_description = &step.description;
 
-        // JSON renderer would use the same step.description (or step.rule_name)
+        // Wire renderer would use the same step.description (or step.rule_name)
         // Since both read from the same DisplaySolveSteps, they MUST match
-        let json_description = &step.description;
+        let wire_description = &step.description;
 
         assert_eq!(
             text_description,
-            json_description,
-            "Step {} description must match between renderers: text='{}' vs json='{}'",
+            wire_description,
+            "Step {} description must match between renderers: text='{}' vs wire='{}'",
             i + 1,
             text_description,
-            json_description
+            wire_description
         );
 
         // Ensure non-empty

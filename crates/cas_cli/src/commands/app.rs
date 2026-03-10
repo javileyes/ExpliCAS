@@ -35,7 +35,7 @@ fn dispatch_command(command: Option<Command>) -> rustyline::Result<()> {
             Ok(())
         }
         Some(Command::EvalJson(args)) => {
-            let eval_args = crate::commands::eval_json::from_legacy_eval_json_args(args);
+            let eval_args = crate::commands::eval_json::from_legacy_eval_wire_args(args);
             crate::commands::eval_json::run(eval_args);
             Ok(())
         }

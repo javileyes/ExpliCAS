@@ -1,4 +1,4 @@
-//! Contract tests for substitute_str_to_json API.
+//! Wire-contract tests for substitute_str_to_json API.
 //!
 //! These tests verify the JSON contract for substitute operations:
 //! 1. Schema version is stable (v1)

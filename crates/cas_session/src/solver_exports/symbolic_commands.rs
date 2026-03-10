@@ -29,7 +29,7 @@ pub use cas_solver::{
     substitute_render_mode_from_display_mode,
 };
 pub use cas_solver::{
-    evaluate_substitute_subcommand, evaluate_substitute_subcommand_json_canonical,
+    evaluate_substitute_subcommand, evaluate_substitute_subcommand_wire_canonical,
 };
 pub use cas_solver::{
     evaluate_unary_command_lines, evaluate_unary_command_message,

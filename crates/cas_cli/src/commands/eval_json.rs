@@ -7,13 +7,13 @@ use std::path::PathBuf;
 use clap::Args;
 
 use crate::{
-    AssumeScopeArg, BranchArg, BudgetPreset, ConstFoldArg, DomainArg, EvalArgs, EvalJsonLegacyArgs,
+    AssumeScopeArg, BranchArg, BudgetPreset, ConstFoldArg, DomainArg, EvalArgs, EvalWireLegacyArgs,
     InvTrigArg, ValueDomainArg,
 };
 
 /// Arguments for eval-json subcommand
 #[derive(Args, Debug)]
-pub struct EvalJsonArgs {
+pub struct EvalWireArgs {
     /// Expression to evaluate
     pub expr: String,
 
@@ -83,8 +83,8 @@ pub struct EvalJsonArgs {
 }
 
 /// Build JSON args from the richer CLI `eval` args.
-pub fn from_eval_args(expr: String, args: &EvalArgs) -> EvalJsonArgs {
-    EvalJsonArgs {
+pub fn from_eval_args(expr: String, args: &EvalArgs) -> EvalWireArgs {
+    EvalWireArgs {
         expr,
         budget_preset: budget_preset_to_string(args.budget),
         strict: args.strict,
@@ -106,8 +106,8 @@ pub fn from_eval_args(expr: String, args: &EvalArgs) -> EvalJsonArgs {
 }
 
 /// Build JSON args from legacy `eval-json` CLI args.
-pub fn from_legacy_eval_json_args(args: EvalJsonLegacyArgs) -> EvalJsonArgs {
-    EvalJsonArgs {
+pub fn from_legacy_eval_wire_args(args: EvalWireLegacyArgs) -> EvalWireArgs {
+    EvalWireArgs {
         expr: args.expr,
         budget_preset: "standard".to_string(),
         strict: false,
@@ -179,7 +179,7 @@ fn assume_scope_arg_to_string(as_: AssumeScopeArg) -> String {
 }
 
 /// Run the eval-json command
-pub fn run(args: EvalJsonArgs) {
+pub fn run(args: EvalWireArgs) {
     // Set thread count if specified
     if let Some(n) = args.threads {
         std::env::set_var("RAYON_NUM_THREADS", n.to_string());
@@ -195,7 +195,7 @@ pub fn run(args: EvalJsonArgs) {
     println!("{}", output);
 }
 
-fn eval_command_config(args: &EvalJsonArgs) -> cas_session::EvalCommandConfig<'_> {
+fn eval_command_config(args: &EvalWireArgs) -> cas_session::EvalCommandConfig<'_> {
     cas_session::EvalCommandConfig {
         expr: &args.expr,
         auto_store: args.session.is_some(),

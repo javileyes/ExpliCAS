@@ -2,7 +2,7 @@ use crate::DisplayEvalSteps;
 use cas_api_models::EngineJsonStep;
 use cas_ast::hold::strip_all_holds;
 
-pub(super) fn build_engine_json_steps(
+pub(super) fn build_engine_wire_steps(
     ctx: &mut cas_ast::Context,
     steps: &DisplayEvalSteps,
     steps_enabled: bool,
@@ -13,11 +13,11 @@ pub(super) fn build_engine_json_steps(
 
     steps
         .iter()
-        .map(|step| build_engine_json_step(ctx, step))
+        .map(|step| build_engine_wire_step(ctx, step))
         .collect()
 }
 
-fn build_engine_json_step(ctx: &mut cas_ast::Context, step: &crate::Step) -> EngineJsonStep {
+fn build_engine_wire_step(ctx: &mut cas_ast::Context, step: &crate::Step) -> EngineJsonStep {
     EngineJsonStep {
         phase: "Simplify".to_string(),
         rule: step.rule_name.clone(),

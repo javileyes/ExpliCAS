@@ -53,6 +53,19 @@ fn extract_cube_base(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> Option<ca
     }
 }
 
+fn expr_eq_fast(ctx: &cas_ast::Context, left: cas_ast::ExprId, right: cas_ast::ExprId) -> bool {
+    if left == right {
+        return true;
+    }
+
+    match (ctx.get(left), ctx.get(right)) {
+        (cas_ast::Expr::Variable(a), cas_ast::Expr::Variable(b)) => a == b,
+        (cas_ast::Expr::Constant(a), cas_ast::Expr::Constant(b)) => a == b,
+        (cas_ast::Expr::Number(a), cas_ast::Expr::Number(b)) => a == b,
+        _ => cas_ast::ordering::compare_expr(ctx, left, right) == std::cmp::Ordering::Equal,
+    }
+}
+
 pub fn register(simplifier: &mut crate::Simplifier) {
     // Pre-order: Cancel cube root difference pattern BEFORE GCD/fraction rules
     // (x - b³) / (x^(2/3) + b·x^(1/3) + b²) → x^(1/3) - b
@@ -359,11 +372,9 @@ pub fn try_exact_sum_diff_of_cubes_preorder(
 
     match (is_difference, ctx.get(den)) {
         (true, cas_ast::Expr::Sub(dl, dr))
-            if cas_ast::ordering::compare_expr(ctx, *dl, a) == std::cmp::Ordering::Equal
-                && cas_ast::ordering::compare_expr(ctx, *dr, b) == std::cmp::Ordering::Equal => {}
+            if expr_eq_fast(ctx, *dl, a) && expr_eq_fast(ctx, *dr, b) => {}
         (false, cas_ast::Expr::Add(dl, dr))
-            if cas_ast::ordering::compare_expr(ctx, *dl, a) == std::cmp::Ordering::Equal
-                && cas_ast::ordering::compare_expr(ctx, *dr, b) == std::cmp::Ordering::Equal => {}
+            if expr_eq_fast(ctx, *dl, a) && expr_eq_fast(ctx, *dr, b) => {}
         _ => return None,
     }
 

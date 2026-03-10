@@ -1,12 +1,12 @@
 #[cfg(test)]
 mod tests {
     use crate::{
-        evaluate_substitute_subcommand, parse_substitute_json_text_lines, SubstituteCommandMode,
+        evaluate_substitute_subcommand, parse_substitute_wire_text_lines, SubstituteCommandMode,
         SubstituteSubcommandOutput,
     };
 
     #[test]
-    fn evaluate_substitute_subcommand_json_contract() {
+    fn evaluate_substitute_subcommand_wire_contract() {
         let out = evaluate_substitute_subcommand(
             "x^2+1",
             "x",
@@ -15,7 +15,7 @@ mod tests {
             false,
             true,
         )
-        .expect("substitute json");
+        .expect("substitute wire");
 
         match out {
             SubstituteSubcommandOutput::Json(payload) => {
@@ -47,9 +47,9 @@ mod tests {
     }
 
     #[test]
-    fn parse_substitute_json_text_lines_maps_error_message() {
+    fn parse_substitute_wire_text_lines_maps_error_message() {
         let payload = r#"{"ok":false,"error":{"message":"Parse error in target: bad token"}}"#;
-        let err = parse_substitute_json_text_lines(payload, false).expect_err("should fail");
+        let err = parse_substitute_wire_text_lines(payload, false).expect_err("should fail");
         assert_eq!(err, "Parse error in target: bad token");
     }
 }

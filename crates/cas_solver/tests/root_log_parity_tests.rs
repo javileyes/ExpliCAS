@@ -209,6 +209,58 @@ mod log_power_base {
             r
         );
     }
+
+    #[test]
+    fn log_x2_x6_assume_keeps_positive_and_nonzero_requires() {
+        let mut engine = Engine::new();
+        let mut state = SessionState::new();
+
+        state.options_mut().shared.semantics.value_domain = ValueDomain::RealOnly;
+        state.options_mut().shared.semantics.domain_mode = DomainMode::Assume;
+
+        let parsed = parse("log(x^2, x^6)", &mut engine.simplifier.context).expect("parse failed");
+        let req = EvalRequest {
+            raw_input: "log(x^2, x^6)".to_string(),
+            parsed,
+            action: EvalAction::Simplify,
+            auto_store: false,
+        };
+
+        let output = engine.eval(&mut state, req).expect("eval failed");
+
+        let has_positive_x = output.required_conditions.iter().any(|cond| {
+            matches!(
+                cond,
+                cas_solver::ImplicitCondition::Positive(id)
+                    if format!(
+                        "{}",
+                        DisplayExpr {
+                            context: &engine.simplifier.context,
+                            id: *id,
+                        }
+                    ) == "x"
+            )
+        });
+        let has_nonzero_x2_minus_1 = output.required_conditions.iter().any(|cond| {
+            matches!(
+                cond,
+                cas_solver::ImplicitCondition::NonZero(id)
+                    if format!(
+                        "{}",
+                        DisplayExpr {
+                            context: &engine.simplifier.context,
+                            id: *id,
+                        }
+                    ) == "x^2 - 1"
+            )
+        });
+
+        assert!(has_positive_x, "Expected x > 0 in required_conditions");
+        assert!(
+            has_nonzero_x2_minus_1,
+            "Expected x^2 - 1 != 0 in required_conditions"
+        );
+    }
 }
 
 // ============================================================================

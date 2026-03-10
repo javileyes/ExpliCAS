@@ -107,18 +107,18 @@ fn cli_domain_strict_numeric_still_works() {
 }
 
 // =============================================================================
-// JSON schema: domain field
+// Wire schema: domain field
 // =============================================================================
 
 #[test]
-fn cli_json_includes_domain_mode() {
+fn cli_wire_includes_domain_mode() {
     let (output, _code) = run_cli(&["eval-json", "x+x", "--domain", "strict"]);
     let json = parse_json(&output);
 
-    // Contract: JSON should include domain.mode field
+    // Contract: wire output should include domain.mode field
     assert!(
         json.get("domain").is_some(),
-        "JSON should have 'domain' field"
+        "wire output should have 'domain' field"
     );
     assert_eq!(
         json["domain"]["mode"], "strict",

@@ -8,10 +8,10 @@ pub fn render_eval_result(ctx: &mut cas_ast::Context, result: &EvalResult) -> St
     result::render_eval_result(ctx, result)
 }
 
-pub fn build_engine_json_steps(
+pub fn build_engine_wire_steps(
     ctx: &mut cas_ast::Context,
     steps: &DisplayEvalSteps,
     steps_enabled: bool,
 ) -> Vec<EngineJsonStep> {
-    steps::build_engine_json_steps(ctx, steps, steps_enabled)
+    steps::build_engine_wire_steps(ctx, steps, steps_enabled)
 }

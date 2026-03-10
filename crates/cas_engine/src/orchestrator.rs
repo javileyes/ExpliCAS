@@ -531,7 +531,7 @@ fn try_hidden_solve_root_log_power_base_shortcut(
 
     let cas_math::logarithm_inverse_support::LogPowerBasePolicyPlan::Rewrite {
         require_positive_base,
-        require_nonzero_base_minus_one,
+        require_nonzero_base_minus_one: _,
     } = policy
     else {
         return None;
@@ -553,11 +553,6 @@ fn try_hidden_solve_root_log_power_base_shortcut(
         if require_positive_base {
             meta.required_conditions
                 .push(ImplicitCondition::Positive(planned.base_core));
-        }
-        if require_nonzero_base_minus_one {
-            let base_minus_1 = ctx.add(Expr::Sub(planned.base_expr, one));
-            meta.required_conditions
-                .push(ImplicitCondition::NonZero(base_minus_1));
         }
     }
 
@@ -856,14 +851,6 @@ impl Orchestrator {
     ) -> (ExprId, Vec<Step>, crate::phase::PipelineStats) {
         self.pattern_marks_expr = None;
 
-        // V2.15.8: Set sticky implicit domain from original input to propagate inherited requires
-        // across all phases. This allows AbsNonNegativeSimplifyRule to see x≥0 from sqrt(x)
-        // even after the sqrt witness is consumed.
-        simplifier.set_sticky_implicit_domain(expr, self.options.shared.semantics.value_domain);
-
-        // Clear thread-local PolyStore before evaluation
-        clear_thread_local_store();
-
         // Clear cycle events from any previous pipeline run
         cas_solver_core::cycle_event_registry::clear_cycle_events();
 
@@ -893,7 +880,6 @@ impl Orchestrator {
                         self.options.shared.semantics.value_domain,
                     )
                 {
-                    simplifier.clear_sticky_implicit_domain();
                     return (
                         result,
                         shortcut_steps,
@@ -906,11 +892,9 @@ impl Orchestrator {
                 if let Some(result) =
                     try_hidden_solve_root_exp_ln_shortcut(&mut simplifier.context, expr)
                 {
-                    simplifier.clear_sticky_implicit_domain();
                     return (result, Vec::new(), crate::phase::PipelineStats::default());
                 }
                 if is_symbolic_pow_zero_root(&simplifier.context, expr) {
-                    simplifier.clear_sticky_implicit_domain();
                     return (
                         simplifier.context.num(1),
                         Vec::new(),
@@ -922,7 +906,6 @@ impl Orchestrator {
             if let Some((num, den)) = div_parts {
                 if !domain_is_strict {
                     if is_symbolic_power_over_same_atom_noop_root(&simplifier.context, expr) {
-                        simplifier.clear_sticky_implicit_domain();
                         return (expr, Vec::new(), crate::phase::PipelineStats::default());
                     }
                     match simplifier.context.get(den) {
@@ -934,7 +917,6 @@ impl Orchestrator {
                                         expr,
                                     )
                                 {
-                                    simplifier.clear_sticky_implicit_domain();
                                     return (
                                         result,
                                         Vec::new(),
@@ -948,7 +930,6 @@ impl Orchestrator {
                                 &mut simplifier.context,
                                 expr,
                             ) {
-                                simplifier.clear_sticky_implicit_domain();
                                 return (
                                     result,
                                     Vec::new(),
@@ -961,7 +942,6 @@ impl Orchestrator {
                                     expr,
                                     self.options.shared.semantics.domain_mode,
                                 ) {
-                                    simplifier.clear_sticky_implicit_domain();
                                     return (
                                         result,
                                         Vec::new(),
@@ -971,6 +951,19 @@ impl Orchestrator {
                             }
                         }
                         Expr::Add(_, _) => {
+                            if let Some(result) =
+                                crate::rules::algebra::try_exact_sum_diff_of_cubes_preorder(
+                                    &mut simplifier.context,
+                                    num,
+                                    den,
+                                )
+                            {
+                                return (
+                                    result,
+                                    Vec::new(),
+                                    crate::phase::PipelineStats::default(),
+                                );
+                            }
                             if allow_scalar_root {
                                 if let Some(result) =
                                     try_hidden_solve_root_exact_two_term_scalar_multiple_shortcut(
@@ -978,7 +971,6 @@ impl Orchestrator {
                                         expr,
                                     )
                                 {
-                                    simplifier.clear_sticky_implicit_domain();
                                     return (
                                         result,
                                         Vec::new(),
@@ -992,7 +984,6 @@ impl Orchestrator {
                                         den,
                                     )
                                 {
-                                    simplifier.clear_sticky_implicit_domain();
                                     return (
                                         result,
                                         Vec::new(),
@@ -1000,6 +991,8 @@ impl Orchestrator {
                                     );
                                 }
                             }
+                        }
+                        Expr::Sub(_, _) => {
                             if let Some(result) =
                                 crate::rules::algebra::try_exact_sum_diff_of_cubes_preorder(
                                     &mut simplifier.context,
@@ -1007,22 +1000,18 @@ impl Orchestrator {
                                     den,
                                 )
                             {
-                                simplifier.clear_sticky_implicit_domain();
                                 return (
                                     result,
                                     Vec::new(),
                                     crate::phase::PipelineStats::default(),
                                 );
                             }
-                        }
-                        Expr::Sub(_, _) => {
                             if let Some(result) =
                                 try_hidden_solve_root_difference_of_squares_shortcut(
                                     &mut simplifier.context,
                                     expr,
                                 )
                             {
-                                simplifier.clear_sticky_implicit_domain();
                                 return (
                                     result,
                                     Vec::new(),
@@ -1035,21 +1024,6 @@ impl Orchestrator {
                                     expr,
                                 )
                             {
-                                simplifier.clear_sticky_implicit_domain();
-                                return (
-                                    result,
-                                    Vec::new(),
-                                    crate::phase::PipelineStats::default(),
-                                );
-                            }
-                            if let Some(result) =
-                                crate::rules::algebra::try_exact_sum_diff_of_cubes_preorder(
-                                    &mut simplifier.context,
-                                    num,
-                                    den,
-                                )
-                            {
-                                simplifier.clear_sticky_implicit_domain();
                                 return (
                                     result,
                                     Vec::new(),
@@ -1062,6 +1036,14 @@ impl Orchestrator {
                 }
             }
         }
+
+        // Clear thread-local PolyStore before evaluation
+        clear_thread_local_store();
+
+        // V2.15.8: Set sticky implicit domain from original input to propagate inherited
+        // requires across the phase pipeline. Hidden solve root shortcuts above do not need it,
+        // because final diagnostics re-derive implicit conditions from input/result.
+        simplifier.set_sticky_implicit_domain(expr, self.options.shared.semantics.value_domain);
 
         // PRE-PASS 1: Eager eval for expand() calls using fast mod-p path
         // This runs BEFORE any simplification to avoid budget exhaustion on huge arguments

@@ -19,7 +19,7 @@ mod success;
 ///
 /// # Arguments
 /// * `expr` - Expression string to evaluate
-/// * `opts_json` - Options JSON string (see `JsonRunOptions`)
+/// * `opts_json` - Options JSON string (see `EvalRunOptions`)
 ///
 /// # Returns
 /// JSON string with `EngineJsonResponse` (schema v1).
@@ -57,7 +57,7 @@ pub fn eval_str_to_json(expr: &str, opts_json: &str) -> String {
         map_domain_warnings_to_engine_warnings,
         map_solver_assumptions_to_api_records,
         render::render_eval_result,
-        render::build_engine_json_steps,
+        render::build_engine_wire_steps,
     )
 }
 

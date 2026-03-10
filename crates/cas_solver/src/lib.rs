@@ -333,11 +333,11 @@ mod substitute_command_parse;
 mod substitute_command_tests;
 mod substitute_command_types;
 mod substitute_subcommand_eval;
-mod substitute_subcommand_json;
 #[cfg(test)]
 mod substitute_subcommand_tests;
 mod substitute_subcommand_text;
 mod substitute_subcommand_types;
+mod substitute_subcommand_wire;
 #[cfg(test)]
 mod substitute_tests;
 mod symbolic_transforms;

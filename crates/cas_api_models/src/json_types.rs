@@ -800,12 +800,12 @@ impl EngineJsonResponse {
 }
 
 // =============================================================================
-// Engine JSON input options
+// Engine eval input options
 // =============================================================================
 
-/// Options for JSON evaluation input.
+/// Parsed run options for eval operations.
 #[derive(Deserialize, Debug, Default, Clone)]
-pub struct JsonRunOptions {
+pub struct EvalRunOptions {
     /// Budget configuration
     #[serde(default)]
     pub budget: BudgetOpts,
@@ -845,19 +845,19 @@ fn default_mode() -> String {
     "best-effort".to_string()
 }
 
-impl JsonRunOptions {
+impl EvalRunOptions {
     pub fn requested_pretty(opts_json: &str) -> bool {
         opts_json.contains("\"pretty\":true")
     }
 }
 
 // =============================================================================
-// substitute-json types
+// substitute wire types
 // =============================================================================
 
-/// Options for substitute JSON operation.
+/// Parsed run options for substitute operations.
 #[derive(Deserialize, Debug, Clone)]
-pub struct SubstituteJsonOptions {
+pub struct SubstituteRunOptions {
     /// Substitution mode: "exact" or "power" (default: "power")
     #[serde(default = "default_substitute_mode")]
     pub mode: String,
@@ -869,7 +869,7 @@ pub struct SubstituteJsonOptions {
     pub pretty: bool,
 }
 
-impl Default for SubstituteJsonOptions {
+impl Default for SubstituteRunOptions {
     fn default() -> Self {
         Self {
             mode: "power".to_string(),
@@ -883,7 +883,7 @@ fn default_substitute_mode() -> String {
     "power".to_string()
 }
 
-impl SubstituteJsonOptions {
+impl SubstituteRunOptions {
     pub fn from_mode_flags(mode: &str, steps: bool, pretty: bool) -> Self {
         Self {
             mode: mode.to_string(),
@@ -1446,8 +1446,8 @@ impl OutputEnvelope {
 mod tests {
     use super::{
         parse_eval_special_command, DomainJson, EngineJsonError, EngineJsonResponse,
-        ErrorJsonOutput, EvalJsonOutput, EvalLimitApproach, EvalOutputBuild, ExprStatsJson,
-        JsonRunOptions, LimitJsonResponse, OptionsJson, SemanticsJson, SubstituteJsonOptions,
+        ErrorJsonOutput, EvalJsonOutput, EvalLimitApproach, EvalOutputBuild, EvalRunOptions,
+        ExprStatsJson, LimitJsonResponse, OptionsJson, SemanticsJson, SubstituteRunOptions,
         TimingsJson,
     };
 
@@ -1606,22 +1606,22 @@ mod tests {
     }
 
     #[test]
-    fn json_run_options_requested_pretty_detects_true_literal() {
-        assert!(JsonRunOptions::requested_pretty("{\"pretty\":true}"));
-        assert!(!JsonRunOptions::requested_pretty("{\"pretty\": false}"));
+    fn eval_run_options_requested_pretty_detects_true_literal() {
+        assert!(EvalRunOptions::requested_pretty("{\"pretty\":true}"));
+        assert!(!EvalRunOptions::requested_pretty("{\"pretty\": false}"));
     }
 
     #[test]
-    fn substitute_json_options_parse_optional_json_uses_defaults_on_invalid() {
-        let parsed = SubstituteJsonOptions::parse_optional_json(Some("{invalid"));
+    fn substitute_run_options_parse_optional_json_uses_defaults_on_invalid() {
+        let parsed = SubstituteRunOptions::parse_optional_json(Some("{invalid"));
         assert_eq!(parsed.mode, "power");
         assert!(!parsed.steps);
         assert!(!parsed.pretty);
     }
 
     #[test]
-    fn substitute_json_options_from_mode_flags_sets_fields() {
-        let parsed = SubstituteJsonOptions::from_mode_flags("exact", true, true);
+    fn substitute_run_options_from_mode_flags_sets_fields() {
+        let parsed = SubstituteRunOptions::from_mode_flags("exact", true, true);
         assert_eq!(parsed.mode, "exact");
         assert!(parsed.steps);
         assert!(parsed.pretty);
