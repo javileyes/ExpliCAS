@@ -1519,6 +1519,7 @@ pub fn try_rewrite_log_power_base_numeric_expr(
 
     let result_ratio = n.clone() / m.clone();
     let rewritten = ctx.add(Expr::Number(result_ratio.clone()));
+
     let m_disp = m.clone();
     let n_disp = n.clone();
     let desc = format!(

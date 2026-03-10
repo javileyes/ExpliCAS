@@ -1,5 +1,5 @@
 pub use crate::json::{
-    eval_str_to_json, eval_str_to_output_envelope, evaluate_envelope_json_command,
+    eval_str_to_json, eval_str_to_output_envelope, evaluate_envelope_wire_command,
     map_domain_warnings_to_engine_warnings, map_solver_assumptions_to_api_records,
     substitute_str_to_json,
 };

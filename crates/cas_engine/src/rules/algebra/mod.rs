@@ -367,18 +367,16 @@ pub fn try_exact_sum_diff_of_cubes_preorder(
         _ => return None,
     }
 
-    let two_a = ctx.num(2);
-    let a_sq = ctx.add(cas_ast::Expr::Pow(a, two_a));
-    let two_b = ctx.num(2);
-    let b_sq = ctx.add(cas_ast::Expr::Pow(b, two_b));
-    let ab = cas_math::expr_rewrite::smart_mul(ctx, a, b);
+    let two = ctx.num(2);
+    let a_sq = ctx.add_raw(cas_ast::Expr::Pow(a, two));
+    let b_sq = ctx.add_raw(cas_ast::Expr::Pow(b, two));
+    let ab = ctx.add_raw(cas_ast::Expr::Mul(a, b));
 
-    let tail = if is_difference {
-        ctx.add(cas_ast::Expr::Add(b_sq, ab))
+    if is_difference {
+        let sum_ab = ctx.add_raw(cas_ast::Expr::Add(a_sq, b_sq));
+        Some(ctx.add_raw(cas_ast::Expr::Add(sum_ab, ab)))
     } else {
-        let neg_ab = ctx.add(cas_ast::Expr::Neg(ab));
-        ctx.add(cas_ast::Expr::Add(b_sq, neg_ab))
-    };
-
-    Some(ctx.add(cas_ast::Expr::Add(a_sq, tail)))
+        let sum_ab = ctx.add_raw(cas_ast::Expr::Add(a_sq, b_sq));
+        Some(ctx.add_raw(cas_ast::Expr::Sub(sum_ab, ab)))
+    }
 }

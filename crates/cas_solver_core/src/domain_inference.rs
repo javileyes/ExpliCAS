@@ -15,6 +15,7 @@ use cas_math::expr_extract::{
 use cas_math::expr_predicates::{
     contains_variable, has_positivity_structure, is_even_root_exponent,
 };
+use num_traits::Zero;
 
 /// Result of domain delta check between input and output.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -376,6 +377,7 @@ fn infer_recursive(ctx: &Context, root: ExprId, domain: &mut ImplicitDomain) {
             }
             Expr::Div(num, den) => {
                 domain.add_nonzero(*den);
+                add_denominator_nonzero_implications(ctx, *den, domain);
                 stack.push(*num);
                 stack.push(*den);
             }
@@ -397,6 +399,30 @@ fn infer_recursive(ctx: &Context, root: ExprId, domain: &mut ImplicitDomain) {
             }
             Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
         }
+    }
+}
+
+fn add_denominator_nonzero_implications(
+    ctx: &Context,
+    denominator: ExprId,
+    domain: &mut ImplicitDomain,
+) {
+    let mut current = denominator;
+
+    loop {
+        let Expr::Pow(base, exp) = ctx.get(current) else {
+            return;
+        };
+        let Expr::Number(n) = ctx.get(*exp) else {
+            return;
+        };
+        if !n.is_integer() || *n <= num_rational::BigRational::zero() {
+            return;
+        }
+        if !matches!(ctx.get(*base), Expr::Number(_)) {
+            domain.add_nonzero(*base);
+        }
+        current = *base;
     }
 }
 
@@ -462,5 +488,20 @@ mod tests {
 
         assert!(derived.contains(&ImplicitCondition::Positive(rhs)));
         assert!(derived.contains(&ImplicitCondition::Positive(x)));
+    }
+
+    #[test]
+    fn infer_division_by_positive_integer_power_adds_base_nonzero() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        let x_squared = ctx.add(Expr::Pow(x, two));
+        let expr = ctx.add(Expr::Div(one, x_squared));
+
+        let domain = infer_implicit_domain(&ctx, expr, true);
+
+        assert!(domain.contains_nonzero(x_squared));
+        assert!(domain.contains_nonzero(x));
     }
 }

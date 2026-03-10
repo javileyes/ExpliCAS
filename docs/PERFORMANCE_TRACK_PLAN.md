@@ -1904,6 +1904,387 @@ Those are valid projects, but not part of this performance track.
   - `cargo test -p cas_solver --test multivar_gcd_tests test_perfect_square_minus_cancel_in_solve_strict_context_steps_off -- --exact`
   - `cargo test -p cas_solver --test solve_safety_contract_tests`
   - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math`
+- retained a denominator-shape dispatch cut for hidden solve root shortcuts in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs`
+- scope:
+  - only on the existing hidden solve root shortcut path for `Div`
+  - dispatches by denominator shape (`atom`, `Pow`, `Add`, `Sub`) before trying
+    shortcut families, instead of probing unrelated shortcuts in sequence
+- rationale:
+  - after the earlier root fast paths, the remaining batch cost was largely
+    dispatch overhead on just six solve inputs
+  - `difference_of_squares`, scalar-multiple fractions, `x/x`, `(a^x)/a`,
+    `x^0`, and `exp(ln(x))` do not need the same shortcut probes
+  - narrowing by denominator shape removes dead checks from the hot path
+    without changing semantics or widening any shortcut gate
+- retained measurements:
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `58.363-58.780 us`, improvement `~1.4-2.3%`
+  - `solve_hotspots_cached/generic/difference_of_squares_fraction`:
+    `3.8041-3.9199 us`, no significant change on rerun
+  - `solve_hotspots_cached/generic/x_over_x`:
+    `3.2905-3.4177 us`, no significant change on rerun
+- validation:
+  - `cargo test -p cas_engine profile_cache_tests --lib`
+  - `cargo test -p cas_solver --test solve_safety_contract_tests`
+  - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_engine --bench profile_cache 'solve_modes_cached/solve_tactic_generic_batch|solve_hotspots_cached/generic/difference_of_squares_fraction|solve_hotspots_cached/generic/x_over_x' -- --noplot`
+- retained a structural-domain win for `power_quotient` in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_solver_core/src/domain_inference.rs`
+  and `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs`
+- scope:
+  - `infer_implicit_domain(...)` now propagates `NonZero(base)` from input
+    denominators of the form `base^n` when `n` is a positive integer
+  - the hidden root shortcut for `P^m/P^n` in solve mode now returns directly,
+    without building a hidden `Step`
+- rationale:
+  - before this change, `x^4/x^2 -> x^2` still needed a hidden step to keep the
+    extra `x ≠ 0` require, because structural diagnostics only inferred
+    `x^2 ≠ 0`
+  - once input-domain inference learns that `x^2 ≠ 0` implies `x ≠ 0`, the
+    shortcut can behave like `x/x`: no hidden step, same visible requires
+- retained measurements:
+  - `solve_hotspots_cached/generic/power_quotient_fraction`:
+    `4.0082-4.1520 us`, improvement `~4.8-13.7%`
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `58.738-59.178 us`, improvement `~1.7-3.5%`
+- validation:
+  - `cargo test -p cas_solver_core domain_inference --lib`
+  - `cargo test -p cas_engine profile_cache_tests::tests::test_from_profile_solve_tactic_power_quotient_uses_root_fast_path --lib`
+  - `cargo test -p cas_solver --test multivar_gcd_tests test_power_quotient_cancel_in_solve_generic_context_steps_off_keeps_requires -- --exact`
+  - `cargo test -p cas_solver --test solve_safety_contract_tests`
+  - `cargo run -q -p cas_cli -- eval --context solve --domain generic --steps off --format json 'x^4/x^2'`
+  - `cargo run -q -p cas_cli -- eval --context solve --domain assume --steps off --format json 'x^4/x^2'`
+  - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math`
+  - `cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_unified_benchmark -- --ignored --nocapture`
+- retained a raw-node construction fast path for exact cubes in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/rules/algebra/mod.rs`
+- scope:
+  - only the exact preorder planner for `(a^3 - b^3)/(a-b)` and `(a^3 + b^3)/(a+b)`
+  - keeps the same rewritten forms as before
+  - replaces smart builders in the exact-result path with direct `add_raw(...)`
+    node construction
+- rationale:
+  - after the root shortcut removed most pipeline overhead, the remaining cost in
+    `difference_of_cubes_fraction` and `sum_of_cubes_fraction` still included
+    avoidable AST construction churn inside the exact cube result builder
+  - these results are already canonical for the exact fast path, so using
+    `add_raw(...)` avoids extra helper work without widening the rewrite surface
+- retained measurements against baseline `cubes_exact_id_pre`:
+  - `solve_hotspots_cached/generic/difference_of_cubes_fraction`:
+    `5.9418-6.3011 us`, improvement `~4.5-11.1%`
+  - `solve_hotspots_cached/generic/sum_of_cubes_fraction`:
+    `5.9373-6.1831 us`, improvement `~8.4-14.0%`
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `61.093-61.485 us`, lower in absolute terms but still within Criterion noise
+- validation:
+  - `cargo fmt --all`
+  - `cargo test -p cas_engine profile_cache_tests::tests::test_from_profile_solve_tactic_difference_of_cubes_uses_exact_preorder_fast_path --lib`
+  - `cargo test -p cas_engine profile_cache_tests::tests::test_from_profile_solve_tactic_sum_of_cubes_uses_exact_preorder_fast_path --lib`
+  - `cargo test -p cas_solver --test multivar_gcd_tests difference_of_cubes -- --nocapture`
+  - `cargo test -p cas_solver --test multivar_gcd_tests sum_of_cubes -- --nocapture`
+  - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math`
+  - `cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_unified_benchmark -- --ignored --nocapture`
+- retained a root-kind dispatch cut for hidden solve shortcuts in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs`
+- scope:
+  - only in the hidden solve path (`solve`, `steps off`, no listener)
+  - keeps the same shortcut set and the same strict/non-strict guards
+  - routes by top-level `Expr` kind (`Pow`, `Function`, `Div`) before trying
+    specialized root shortcuts
+- rationale:
+  - after adding many exact root shortcuts, the hot path was paying a fixed
+    chain of irrelevant pattern checks on every expression, plus a repeated
+    `Div` unpack in the second shortcut block
+  - dispatching by root kind removes that fixed overhead without widening
+    shortcut semantics; the retained win shows up in the representative batch,
+    not in any single hotspot
+- retained measurements:
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `61.491-62.352 us`, improvement `~0.9-2.8%`
+  - `solve_hotspots_cached/generic/scalar_multiple_fraction`:
+    `5.591-5.832 us`, within noise
+  - `solve_hotspots_cached/generic/difference_of_cubes_fraction`:
+    `6.011-6.237 us`, within noise
+  - `solve_hotspots_cached/generic/sum_of_cubes_fraction`:
+    `6.051-6.229 us`, within noise
+  - `solve_hotspots_cached/generic/log_power_base`:
+    `5.422-5.590 us`, within noise
+- validation:
+  - `cargo fmt --all`
+  - `cargo test -p cas_engine profile_cache_tests --lib`
+  - `cargo test -p cas_solver --test solve_safety_contract_tests`
+  - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math`
+  - `cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_unified_benchmark -- --ignored --nocapture`
+- retained a hidden-step description simplification for `assume/log_power_base`
+  in `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs`
+- scope:
+  - only the hidden solve root shortcut for numeric `log(a^m, a^n)`
+  - only the branch that still needs a hidden `Step` (for example `assume`,
+    where `Positive(base_core)` must still be preserved)
+  - replaces the formatted per-input narration with a static compact
+    description because the hidden step is not rendered in `steps off`
+- rationale:
+  - the shortcut still needs the hidden `Step` to preserve `x > 0` in
+    `assume`, so removing it entirely is not sound
+  - but formatting `"log(a^m, a^n) = n/m"` per input was pure overhead in the
+    hot path because that description is not surfaced when `steps` are off
+- retained measurements:
+  - `solve_hotspots_cached/assume/log_power_base`:
+    `5.7111-5.9032 us`, improvement `~3.5-8.9%`
+  - `solve_modes_cached/solve_tactic_assume_batch`:
+    `61.167-61.553 us`, lower in absolute terms, with Criterion marking the
+    change inside noise
+- validation:
+  - `cargo fmt --all`
+  - `cargo test -p cas_engine profile_cache_tests::tests::test_from_profile_solve_tactic_log_power_base_uses_root_fast_path --lib`
+  - `cargo test -p cas_solver --test root_log_parity_tests log_power_base::log_x2_x6_gives_3 -- --exact`
+  - `cargo test -p cas_solver --test solve_safety_contract_tests`
+  - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math`
+  - `cargo run -q -p cas_cli -- eval --context solve --domain assume --steps off --format json 'log(x^2, x^6)'`
+- retained a root hidden-solve shortcut for the exact binomial-square fraction
+  `(a^2 + 2ab + b^2)/(a+b)^2` in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs`
+- scope:
+  - only with `steps off`
+  - only in solve mode
+  - only with no step listener attached
+  - only outside `Strict`
+  - only for the exact raw root shape, with no hidden-step metadata
+- rationale:
+  - after reranking, `binomial_square_fraction` was still the hottest direct
+    generic solve case at about `10.125-10.410 us`
+  - an earlier attempt to preserve its `requires` through a hidden-required
+    channel regressed badly; the better version is to return `1` at the root
+    and let `eval::diagnostics` recover the denominator requirements from the
+    original input and output implicit domains
+  - that keeps the generic `requires` contract (`(x+y)^2 != 0` and
+    `x^2 + y^2 + 2*x*y != 0`) without paying prepasses or any phase-loop work
+- retained measurements:
+  - `solve_hotspots_cached/generic/binomial_square_fraction`:
+    `4.6276-4.7328 us`, improvement `~54.0-55.4%`
+  - `solve_eval_hotspots_cached/generic/binomial_square_fraction`:
+    `4.5868-4.7841 us`, improvement `~53.1-55.3%`
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `70.062-71.882 us`, improvement `~9.5-12.2%`
+- validation:
+  - `cargo fmt --all`
+  - `cargo test -p cas_engine profile_cache_tests::tests::test_from_profile_solve_tactic_binomial_square_uses_root_fast_path --lib`
+  - `cargo test -p cas_solver --test multivar_gcd_tests test_binomial_square_cancel_in_solve_generic_context_steps_off_keeps_requires -- --exact`
+  - `cargo test -p cas_solver --test multivar_gcd_tests test_binomial_square_cancel_in_solve_strict_context_steps_off -- --exact`
+  - `cargo run -q -p cas_cli -- eval --context solve --domain generic --steps off --format json '(x^2 + 2*x*y + y^2)/(x + y)^2'`
+  - `cargo test -p cas_solver --test solve_safety_contract_tests`
+  - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math`
+  - `cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_unified_benchmark -- --ignored --nocapture`
+- discarded a hidden-solve root shortcut for the exact binomial-square fraction
+  `(a^2 + 2ab + b^2)/(a+b)^2`
+- rationale:
+  - unlike `difference_of_squares`, this path must preserve two explicit
+    `requires` in `generic + steps off`: the original denominator and the
+    expanded numerator
+  - a root shortcut therefore needed to synthesize a hidden `Step` with both
+    `required_conditions`, and that metadata cost outweighed the saved pipeline
+    work
+- measured result against baseline `binomial_root_pre`:
+  - `solve_hotspots_cached/generic/binomial_square_fraction` regressed to
+    `23.753-24.164 us`
+  - `solve_eval_hotspots_cached/generic/binomial_square_fraction` regressed to
+    `23.574-23.718 us`
+  - `solve_modes_cached/solve_tactic_generic_batch` stayed effectively flat at
+    `78.372-78.760 us`
+- takeaway:
+  - for this case, the existing exact preorder inside the transformer is better
+    than a root-level shortcut if the latter has to manufacture hidden step
+    metadata just to preserve `requires`
+  - future work here should target a cheaper way to carry hidden
+    `required_conditions`, not another root bypass
+- retained a narrow hidden-solve root shortcut for the exact no-op
+  `(a^x)/a` case in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs`
+- scope:
+  - only with `steps off`
+  - only in solve mode
+  - only with no step listener
+  - only outside `Strict`
+  - only when the root expression is exactly `atom^symbolic_atom / atom`
+- rationale:
+  - this case is a true no-op in the result domain, already recognized later by
+    the transform layer, but it was still paying eager prepasses and the fixed
+    solve pipeline overhead before discovering that nothing changes
+  - unlike the discarded binomial root shortcut, this bypass does not need to
+    build hidden `Step` metadata, so the saved pipeline work translates into a
+    real end-to-end win
+- retained measurements against baseline `pow_same_atom_root_pre`:
+  - `solve_hotspots_cached/generic/a_pow_x_over_a`:
+    `3.2558-3.4323 us`, improvement `~52.7-56.4%`
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `72.822-73.287 us`, improvement `~5.5-6.8%`
+- validation:
+  - `cargo test -p cas_engine profile_cache_tests::tests::test_from_profile_solve_tactic_skips_late_phases_for_symbolic_power_over_same_atom --lib`
+  - `cargo run -q -p cas_cli -- eval --context solve --domain generic --steps off --format json '(a^x)/a'`
+  - `cargo test -p cas_solver --test solve_safety_contract_tests`
+  - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math`
+  - `cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_unified_benchmark -- --ignored --nocapture`
+    - `numeric-only = 168`
+- retained a narrow hidden-solve root shortcut for the exact symbolic `x^0`
+  case in `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs`
+- scope:
+  - only with `steps off`
+  - only in solve mode
+  - only with no step listener
+  - only outside `Strict`
+  - only when the root expression is exactly `symbolic_atom^0`
+- rationale:
+  - in `generic` and `assume`, `x^0` already returns `1` without public
+    `required_conditions`, so this is another case where the hidden solve path
+    was paying eager prepasses and the fixed pipeline tail just to rediscover a
+    trivial result
+  - unlike the discarded binomial root shortcut, this bypass does not need to
+    synthesize hidden step metadata or extra `requires`, so the saved pipeline
+    work survives in the benchmark signal
+- retained measurements against baseline `xpow0_root_pre`:
+  - `solve_hotspots_cached/generic/x_pow_0`:
+    `3.4772-3.6151 us`, improvement `~46.9-50.6%`
+  - `solve_hotspots_cached/assume/x_pow_0`:
+    `3.4655-3.6373 us`, improvement `~47.3-50.9%`
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `69.437-70.331 us`, small gain but within Criterion noise threshold
+  - `solve_modes_cached/solve_tactic_assume_batch`:
+    `69.336-69.941 us`, improvement `~2.6-4.4%`
+- validation:
+  - `cargo test -p cas_engine profile_cache_tests::tests::test_from_profile_solve_tactic_x_pow_0_uses_root_fast_path --lib`
+  - `cargo test -p cas_solver --test domain_contract_tests test_strict_x_pow_0_stays_unchanged -- --exact`
+  - `cargo test -p cas_solver --test domain_assume_warnings_contract_tests assume_x_pow_0_simplifies_with_assumption -- --exact`
+  - `cargo test -p cas_solver --test solve_safety_contract_tests`
+  - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math`
+  - `cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_unified_benchmark -- --ignored --nocapture`
+    - `numeric-only = 168`
+- retained a narrow hidden-solve root shortcut for the exact symbolic `x/x`
+  case in `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs`
+- scope:
+  - only with `steps off`
+  - only in solve mode
+  - only with no step listener
+  - only outside `Strict`
+  - only when the root expression is exactly `symbolic_atom / same_symbolic_atom`
+  - only under the same definability-policy gate already used by the hidden
+    scalar-multiple and power-quotient shortcuts
+- rationale:
+  - `x/x` already had a preorder fast path inside the transformer, but the
+    hidden solve route was still paying eager prepasses and the root pipeline
+    before reaching it
+  - unlike the discarded binomial root shortcut, this path needs only one
+    `NonZero(x)` requirement, so the compact hidden-step metadata stays cheaper
+    than the saved solve-pipeline overhead
+- retained measurements against baseline `xoverx_root_pre`:
+  - `solve_hotspots_cached/generic/x_over_x`:
+    `3.6091-3.7691 us`, improvement `~40.6-44.8%`
+  - `solve_hotspots_cached/assume/x_over_x`:
+    `3.6259-3.7653 us`, improvement `~40.6-44.5%`
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `65.976-67.956 us`, small gain but within Criterion noise threshold
+  - `solve_modes_cached/solve_tactic_assume_batch`:
+    `66.238-66.657 us`, improvement `~3.6-5.1%`
+- validation:
+  - `cargo test -p cas_engine profile_cache_tests::tests::test_from_profile_solve_tactic_identical_atom_fraction_uses_root_fast_path --lib`
+  - `cargo run -q -p cas_cli -- eval --context solve --domain generic --steps off --format json 'x/x'`
+  - `cargo run -q -p cas_cli -- eval --context solve --domain assume --steps off --format json 'x/x'`
+  - `cargo test -p cas_solver --test domain_contract_tests test_strict_x_div_x_stays_unchanged -- --exact`
+  - `cargo test -p cas_solver --test solve_safety_contract_tests`
+  - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math`
+  - `cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_unified_benchmark -- --ignored --nocapture`
+    - `numeric-only = 168`
+- retained a follow-up simplification of that `x/x` root shortcut:
+  removed the hidden compact `Step` and relied on structural diagnostics to keep
+  the visible `x ≠ 0` requirement
+- rationale:
+  - once the root shortcut existed, the single hidden `NonZero(x)` step was
+    redundant because `build_eval_diagnostics(...)` already derives the same
+    condition from the input implicit domain of `x/x`
+  - removing the hidden step cuts a little more overhead without changing the
+    user-visible contract in `generic` or `assume`
+- retained measurements against baseline `xoverx_hidden_step_pre`:
+  - `solve_hotspots_cached/generic/x_over_x`:
+    `3.3866-3.5506 us`, improvement `~0.7-9.1%` over the previous root shortcut
+  - `solve_hotspots_cached/assume/x_over_x`:
+    `3.3581-3.5200 us`, improvement `~1.1-10.3%`
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `65.175-67.370 us`, no statistically significant change
+  - `solve_modes_cached/solve_tactic_assume_batch`:
+    `65.088-65.663 us`, change within Criterion noise threshold but lower in
+    absolute time
+- validation:
+  - `cargo test -p cas_engine profile_cache_tests::tests::test_from_profile_solve_tactic_identical_atom_fraction_uses_root_fast_path --lib`
+  - `cargo run -q -p cas_cli -- eval --context solve --domain generic --steps off --format json 'x/x'`
+  - `cargo run -q -p cas_cli -- eval --context solve --domain assume --steps off --format json 'x/x'`
+  - `cargo test -p cas_solver --test solve_safety_contract_tests`
+- retained a tiny transversal fast path in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/engine/transform/transform_helpers.rs`
+  for the exact-shape matchers:
+  `multiset_matches_exact(...)` and the binomial-square term classifier now test
+  direct `ExprId` equality before falling back to `compare_expr(...)`
+- rationale:
+  - several root/preorder shortcuts normalize expressions into exactly the same
+    node ids they later compare structurally, so paying full `compare_expr(...)`
+    on every candidate was wasted work in the common exact-hit case
+  - the change is low risk because it only short-circuits the positive branch;
+    the structural fallback remains unchanged
+- retained measurements against baseline `exact_id_short_pre`:
+  - `solve_hotspots_cached/generic/binomial_square_fraction`:
+    `10.212-10.486 us`, improvement `~2.0-5.9%`
+  - `solve_hotspots_cached/generic/perfect_square_minus_fraction`:
+    no statistically significant change
+  - `solve_hotspots_cached/generic/difference_of_squares_fraction`:
+    no statistically significant change
+  - `solve_hotspots_cached/generic/difference_of_cubes_fraction`:
+    no statistically significant change
+  - `solve_hotspots_cached/generic/sum_of_cubes_fraction`:
+    no statistically significant change
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `65.848-66.399 us`, lower in absolute terms but still within Criterion noise
+- validation:
+  - `cargo test -p cas_engine profile_cache_tests::tests::test_from_profile_solve_tactic_binomial_square_uses_exact_preorder_fast_path --lib`
+  - `cargo test -p cas_solver --test multivar_gcd_tests test_binomial_square_cancel_in_solve_generic_context_steps_off_keeps_requires -- --exact`
+  - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math`
+  - `cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_unified_benchmark -- --ignored --nocapture`
+    - `numeric-only = 168`
+- retained a top-level hidden-solve root shortcut for exact same-base power
+  fractions in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs`
+- scope:
+  - only with `steps off`
+  - only in solve mode
+  - only outside `Strict`
+  - only with no step listener attached
+  - gated by the same definability/solve-safety policy already used by the
+    transformer path
+  - only for exact raw same-base power fractions handled by
+    `try_rewrite_cancel_same_base_powers_div_expr(...)`
+- rationale:
+  - `power_quotient_fraction` remained one of the largest direct hotspots after
+    the root cuts for scalar-multiple, perfect-square, cubes and
+    difference-of-squares
+  - a pure root bypass had been avoided because `x^4/x^2 -> x^2` carries
+    visible `requires`; synthesizing a single compact hidden step at the root
+    preserves those `requires` while still skipping eager pre-passes and the
+    whole phase pipeline
+  - this keeps the visible contract (`x ≠ 0`, `x^2 ≠ 0` in generic; `x^2 ≠ 0`
+    in strict because strict still uses the old path) and removes the fixed
+    hidden solve overhead around the rule
+- retained measurements against baseline `required_smallvec_pre`:
+  - `solve_hotspots_cached/generic/power_quotient_fraction`:
+    `4.2916-4.4442 us`, improvement `~80.6-81.8%`
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `77.431-80.493 us`, no statistically significant change
+  - `solve_eval_hotspots_cached/generic/power_quotient_fraction` baseline was
+    not present in that named snapshot; the absolute post-change run stays at
+    `x^2` with the same visible requires in CLI validation
+- validation:
+  - `cargo test -p cas_engine profile_cache_tests::tests::test_from_profile_solve_tactic_power_quotient_uses_root_fast_path --lib`
+  - `cargo test -p cas_solver --test multivar_gcd_tests test_power_quotient_cancel_in_solve_generic_context_steps_off_keeps_requires -- --exact`
+  - `cargo test -p cas_solver --test solve_safety_contract_tests`
+  - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math`
+  - `cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_unified_benchmark -- --ignored --nocapture`
 - retained a top-level hidden-solve root shortcut for exact structural
   scalar-multiple fractions in
   `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs`
@@ -2246,6 +2627,103 @@ Those are valid projects, but not part of this performance track.
     noise floor
   - future transversal work should target costs with clearer signatures than
     tiny `required_conditions` storage
+- retained a root hidden-solve shortcut for the exact `exp(ln(x)) -> x` case in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs`
+- scope:
+  - only with `steps off`
+  - only in solve mode
+  - only with no step listener attached
+  - only outside `Strict`
+  - only when the existing matcher already rewrites directly to a symbolic atom
+- rationale:
+  - after the latest reranking, `generic/exp_ln_x` was still a stable direct
+    hotspot at about `5.985-6.217 us`
+  - the hidden shortcut already existed inside the `Core` traversal, but that
+    still paid prepasses and pipeline setup before reaching the root `Pow`
+  - moving the same narrow rewrite to the pipeline root keeps the `x > 0`
+    contract through structural diagnostics and skips all hidden pipeline work
+- retained measurements:
+  - `solve_hotspots_cached/generic/exp_ln_x`:
+    `3.3241-3.4920 us`, improvement `~43.2-47.3%`
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `64.022-64.602 us`, improvement `~7.6-9.2%`
+- validation:
+  - `cargo fmt --all`
+  - `cargo test -p cas_engine profile_cache_tests::tests::test_from_profile_solve_tactic_exp_ln_atom_uses_root_fast_path --lib`
+  - `cargo test -p cas_solver --test domain_contract_tests exp_ln_x_generic_emits_positive_require -- --exact`
+  - `cargo test -p cas_solver --test domain_contract_tests test_strict_exp_ln_x_stays_unchanged -- --exact`
+  - `cargo run -q -p cas_cli -- eval --context solve --domain generic --steps off --format json 'exp(ln(x))'`
+  - `cargo test -p cas_solver --test solve_safety_contract_tests`
+  - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math`
+  - `cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_unified_benchmark -- --ignored --nocapture`
+- retained a narrower root hidden-solve shortcut for the exact two-term scalar
+  multiple fraction shape in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs`
+- scope:
+  - only with `steps off`
+  - only in solve mode
+  - only with no step listener attached
+  - only on the exact raw `Add/Add` two-term shape, before the existing
+    structural scalar-multiple planner
+  - keeps falling back to the previous generic root planner for all other
+    additive scalar-multiple cases
+- rationale:
+  - after the latest reranking, `scalar_multiple_fraction` was back on top at
+    about `6.901-7.156 us`
+  - the existing root shortcut still paid the full structural scalar-multiple
+    planner, and earlier attempts to speed up that planner globally had already
+    regressed unrelated `Div` paths
+  - a cheaper exact raw matcher for just the hot two-term case avoids widening
+    that regression surface while preserving the same generic `requires`
+    contract (`4*x + 4*y != 0`)
+- retained measurements:
+  - `solve_hotspots_cached/generic/scalar_multiple_fraction`:
+    `5.6568-5.8489 us`, about `16-20%` better vs the immediate pre-change rerank
+    (`6.9010-7.1560 us`)
+  - `solve_eval_hotspots_cached/generic/scalar_multiple_fraction`:
+    `5.7247-5.9199 us`, about `17-19%` better vs the immediate pre-change rerank
+    (`6.8642-7.1335 us`)
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `63.758-64.926 us`, lower in absolute terms but still within Criterion
+    noise
+- validation:
+  - `cargo fmt --all`
+  - `cargo test -p cas_engine profile_cache_tests::tests::test_from_profile_solve_tactic_scalar_multiple_fraction_uses_root_fast_path --lib`
+  - `cargo test -p cas_solver --test multivar_gcd_tests test_content_gcd_multivar_in_solve_generic_context_steps_off_keeps_requires -- --exact`
+  - `cargo run -q -p cas_cli -- eval --context solve --domain generic --steps off --format json '(2*x + 2*y)/(4*x + 4*y)'`
+  - `cargo test -p cas_solver --test solve_safety_contract_tests`
+  - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math`
+  - `cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_unified_benchmark -- --ignored --nocapture`
+- retained a narrower hidden-solve root shortcut path for `log_power_base` in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs`
+- scope:
+  - only on the existing root shortcut path for `log(a^m, a^n)`
+  - if the policy still needs `Positive(base)`, keep the old hidden-step path
+  - if the policy only needs the structural `base - 1 != 0` guard, return the
+    rewritten result directly and let `diagnostics` infer that require from the
+    input shape
+- rationale:
+  - for the generic hot case `log(x^2, x^6)`, the hidden step had become
+    redundant: the output already keeps `x^2 - 1 != 0` through structural
+    diagnostics, so building a hidden `Step` and `Vec` was unnecessary runtime
+    churn
+  - this keeps the `assume` path unchanged, because it still needs the explicit
+    `x > 0` requirement and therefore still goes through the old hidden-step
+    branch
+- retained measurements:
+  - `solve_hotspots_cached/generic/log_power_base`:
+    `5.4733-5.6699 us`, lower in absolute terms than the immediate pre-change
+    rerank (`5.6729-5.8476 us`) but still within Criterion noise
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `63.109-63.754 us`, also lower in absolute terms but still within noise
+- validation:
+  - `cargo fmt --all`
+  - `cargo test -p cas_engine profile_cache_tests::tests::test_from_profile_solve_tactic_log_power_base_uses_root_fast_path --lib`
+  - `cargo test -p cas_solver --test root_log_parity_tests log_power_base::log_x2_x6_gives_3 -- --exact`
+  - `cargo run -q -p cas_cli -- eval --context solve --domain generic --steps off --format json 'log(x^2, x^6)'`
+  - `cargo run -q -p cas_cli -- eval --context solve --domain assume --steps off --format json 'log(x^2, x^6)'`
+  - `cargo test -p cas_solver --test solve_safety_contract_tests`
+  - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math`
 - retained a narrow post-`Transform` hidden-solve cut in
   `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs`
 - scope:

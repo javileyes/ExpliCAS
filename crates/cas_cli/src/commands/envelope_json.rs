@@ -22,6 +22,6 @@ pub struct EnvelopeJsonArgs {
 /// Run the envelope-json command
 pub fn run(args: EnvelopeJsonArgs) {
     let output =
-        cas_session::evaluate_envelope_json_command(&args.expr, &args.domain, &args.value_domain);
+        cas_session::evaluate_envelope_wire_command(&args.expr, &args.domain, &args.value_domain);
     println!("{}", output);
 }

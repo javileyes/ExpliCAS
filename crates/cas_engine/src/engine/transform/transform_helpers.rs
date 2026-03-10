@@ -140,8 +140,9 @@ fn multiset_matches_exact(ctx: &Context, actual: &[ExprId], expected: &[ExprId])
             if used[idx] {
                 continue;
             }
-            if cas_ast::ordering::compare_expr(ctx, *candidate, *wanted)
-                == std::cmp::Ordering::Equal
+            if *candidate == *wanted
+                || cas_ast::ordering::compare_expr(ctx, *candidate, *wanted)
+                    == std::cmp::Ordering::Equal
             {
                 used[idx] = true;
                 matched = true;
@@ -192,7 +193,9 @@ fn is_exact_binomial_square_fraction_preorder(ctx: &mut Context, num: ExprId, de
     let mut squares = SmallVec::<[ExprId; 2]>::new();
     let mut middle = None;
     for term in terms {
-        if cas_ast::ordering::compare_expr(ctx, term, a_sq) == std::cmp::Ordering::Equal
+        if term == a_sq
+            || term == b_sq
+            || cas_ast::ordering::compare_expr(ctx, term, a_sq) == std::cmp::Ordering::Equal
             || cas_ast::ordering::compare_expr(ctx, term, b_sq) == std::cmp::Ordering::Equal
         {
             squares.push(term);

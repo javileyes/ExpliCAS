@@ -157,8 +157,6 @@ mod inspect_parse;
 mod inspect_runtime;
 mod inspect_types;
 mod json;
-#[cfg(test)]
-mod json_bridge_tests;
 mod limit_command;
 mod limit_command_core;
 mod limit_command_eval;
@@ -359,6 +357,8 @@ mod vars_command_display_tests;
 mod weierstrass_command;
 #[cfg(test)]
 mod weierstrass_command_tests;
+#[cfg(test)]
+mod wire_bridge_tests;
 
 /// Backward-compatible facade for former `cas_engine::strategies::substitute_expr` imports.
 pub mod strategies {

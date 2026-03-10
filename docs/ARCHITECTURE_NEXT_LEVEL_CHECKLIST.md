@@ -144,6 +144,9 @@ Current progress:
       (`EvalOutputResultPayload`, `build_eval_output`,
       `build_eval_output_wire`, `build_eval_output_wire_value`,
       `finalize_expr_like_eval_output`)
+    - the typed build input in `cas_api_models` was also neutralized from
+      `EvalJsonOutputBuild` to `EvalOutputBuild`; only the actual wire DTO keeps
+      the `EvalJsonOutput` name
     - rationale:
       - they assemble native `EvalJsonOutput` data and wire reply fragments, but
         they do not own JSON transport as a conceptual boundary anymore
@@ -180,6 +183,13 @@ Current progress:
     - `eval_input_tests` now uses `build_prepared_eval_request_*` test names
     - CLI local helper `eval_json_command_config(...)` ->
       `eval_command_config(...)`
+    - the envelope wire helper was neutralized:
+      - `evaluate_envelope_json_command(...)` ->
+        `evaluate_envelope_wire_command(...)`
+      - session-side test module renamed consistently:
+        `envelope_json_command_tests` -> `envelope_wire_command_tests`
+      - solver-side bridge contract tests were aligned too:
+        `json_bridge_tests` -> `wire_bridge_tests`
     - inside the `cas_solver::json::eval` boundary, the private prep helper now
       uses neutral naming too:
       - `PreparedEvalRequestState` -> `PreparedStatelessEvalState`

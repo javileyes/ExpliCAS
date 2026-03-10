@@ -359,7 +359,7 @@ pub struct EvalJsonOutput {
 }
 
 /// Inputs required to build a complete `EvalJsonOutput`.
-pub struct EvalJsonOutputBuild<'a> {
+pub struct EvalOutputBuild<'a> {
     pub input: &'a str,
     pub input_latex: Option<String>,
     pub result: String,
@@ -392,7 +392,7 @@ pub struct EvalJsonOutputBuild<'a> {
 }
 
 impl EvalJsonOutput {
-    pub fn from_build(parts: EvalJsonOutputBuild<'_>) -> Self {
+    pub fn from_build(parts: EvalOutputBuild<'_>) -> Self {
         Self {
             schema_version: SCHEMA_VERSION,
             ok: true,
@@ -1446,7 +1446,7 @@ impl OutputEnvelope {
 mod tests {
     use super::{
         parse_eval_special_command, DomainJson, EngineJsonError, EngineJsonResponse,
-        ErrorJsonOutput, EvalJsonOutput, EvalJsonOutputBuild, EvalLimitApproach, ExprStatsJson,
+        ErrorJsonOutput, EvalJsonOutput, EvalLimitApproach, EvalOutputBuild, ExprStatsJson,
         JsonRunOptions, LimitJsonResponse, OptionsJson, SemanticsJson, SubstituteJsonOptions,
         TimingsJson,
     };
@@ -1557,7 +1557,7 @@ mod tests {
 
     #[test]
     fn eval_json_output_from_build_sets_schema_and_budget_mode() {
-        let out = EvalJsonOutput::from_build(EvalJsonOutputBuild {
+        let out = EvalJsonOutput::from_build(EvalOutputBuild {
             input: "x+x",
             input_latex: None,
             result: "2*x".to_string(),

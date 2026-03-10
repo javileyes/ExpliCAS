@@ -4,10 +4,18 @@ use crate::phase::{SimplifyOptions, SimplifyPhase};
 use crate::{Simplifier, Step};
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use cas_math::expr_nary::{AddView, MulView, Sign};
+use cas_math::fraction_power_cancel_support::try_rewrite_cancel_same_base_powers_div_expr;
+use cas_math::infinity_support::{is_negative_literal, is_positive_literal};
+use cas_math::logarithm_inverse_support::{
+    log_exp_inverse_policy_mode_from_flags, plan_log_power_base_numeric_policy,
+    try_rewrite_exponential_log_inverse_expr, try_rewrite_log_power_base_numeric_expr,
+};
 use cas_math::poly_lowering;
 use cas_math::poly_store::clear_thread_local_store;
+use cas_math::trig_linear_support::extract_coef_and_base;
 use cas_solver_core::rationalize_policy::AutoRationalizeLevel;
 use num_rational::BigRational;
+use num_traits::Zero;
 use std::collections::HashSet;
 
 fn to_math_auto_expand_budget(
@@ -116,6 +124,37 @@ fn is_plain_symbolic_power_after_core(ctx: &Context, expr: ExprId) -> bool {
         )
 }
 
+fn is_symbolic_power_over_same_atom_noop_root(ctx: &Context, expr: ExprId) -> bool {
+    let Expr::Div(left, right) = ctx.get(expr) else {
+        return false;
+    };
+    let Expr::Pow(base, exp) = ctx.get(*left) else {
+        return false;
+    };
+
+    is_symbolic_atom(ctx, *base)
+        && matches!(ctx.get(*exp), Expr::Variable(_) | Expr::Constant(_))
+        && is_symbolic_atom(ctx, *right)
+        && expr_eq(ctx, *base, *right)
+}
+
+fn is_symbolic_pow_zero_root(ctx: &Context, expr: ExprId) -> bool {
+    let Expr::Pow(base, exp) = ctx.get(expr) else {
+        return false;
+    };
+
+    is_symbolic_atom(ctx, *base) && matches!(ctx.get(*exp), Expr::Number(n) if n.is_zero())
+}
+
+fn try_hidden_solve_root_exp_ln_shortcut(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    let rewrite = try_rewrite_exponential_log_inverse_expr(ctx, expr)?;
+    if is_symbolic_atom(ctx, rewrite.rewritten) {
+        Some(rewrite.rewritten)
+    } else {
+        None
+    }
+}
+
 fn square_of_symbolic_atom(ctx: &Context, expr: ExprId) -> Option<ExprId> {
     let Expr::Pow(base, exp) = ctx.get(expr) else {
         return None;
@@ -181,6 +220,74 @@ fn is_exact_two_ab_product(ctx: &mut Context, expr: ExprId, a: ExprId, b: ExprId
 
     let two = ctx.num(2);
     multiset_matches_exact(ctx, &view.factors, &[two, a, b])
+}
+
+fn try_hidden_solve_root_binomial_square_shortcut(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ExprId> {
+    let Expr::Div(num, den) = ctx.get(expr) else {
+        return None;
+    };
+    let num = *num;
+    let den = *den;
+
+    let Expr::Pow(base, exp) = ctx.get(den) else {
+        return None;
+    };
+    if !matches!(ctx.get(*exp), Expr::Number(n) if *n == BigRational::from_integer(2.into())) {
+        return None;
+    }
+    let Expr::Add(a, b) = ctx.get(*base) else {
+        return None;
+    };
+    let a = *a;
+    let b = *b;
+
+    let exp_two = ctx.num(2);
+    let a_sq = ctx.add(Expr::Pow(a, exp_two));
+    let exp_two_b = ctx.num(2);
+    let b_sq = ctx.add(Expr::Pow(b, exp_two_b));
+
+    let terms = AddView::from_expr(ctx, num).terms;
+    if terms.len() != 3 {
+        return None;
+    }
+
+    let mut squares = [None, None];
+    let mut squares_len = 0usize;
+    let mut middle = None;
+
+    for (term, sign) in terms {
+        if sign != Sign::Pos {
+            return None;
+        }
+
+        if expr_eq(ctx, term, a_sq) || expr_eq(ctx, term, b_sq) {
+            if squares_len >= squares.len() {
+                return None;
+            }
+            squares[squares_len] = Some(term);
+            squares_len += 1;
+        } else if middle.is_none() {
+            middle = Some(term);
+        } else {
+            return None;
+        }
+    }
+
+    let (Some(left_sq), Some(right_sq), Some(middle_term)) = (squares[0], squares[1], middle)
+    else {
+        return None;
+    };
+
+    if !multiset_matches_exact(ctx, &[left_sq, right_sq], &[a_sq, b_sq])
+        || !is_exact_two_ab_product(ctx, middle_term, a, b)
+    {
+        return None;
+    }
+
+    Some(ctx.num(1))
 }
 
 fn try_hidden_solve_root_perfect_square_minus_shortcut(
@@ -298,6 +405,163 @@ fn allow_hidden_solve_root_scalar_multiple_shortcut(opts: &SimplifyOptions) -> b
             )
         }
     }
+}
+
+fn prove_positive_literal_fast(ctx: &Context, expr: ExprId) -> Option<crate::Proof> {
+    use crate::Proof;
+
+    if is_positive_literal(ctx, expr) {
+        return Some(Proof::Proven);
+    }
+    if is_negative_literal(ctx, expr) {
+        return Some(Proof::Disproven);
+    }
+
+    match ctx.get(expr) {
+        Expr::Number(n) if n.is_zero() => Some(Proof::Disproven),
+        _ => None,
+    }
+}
+
+fn try_hidden_solve_root_power_quotient_shortcut(
+    ctx: &mut Context,
+    expr: ExprId,
+    _domain_mode: crate::DomainMode,
+) -> Option<ExprId> {
+    let plan = try_rewrite_cancel_same_base_powers_div_expr(ctx, expr)?;
+    Some(plan.rewritten)
+}
+
+fn try_hidden_solve_root_identical_atom_fraction_shortcut(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ExprId> {
+    let Expr::Div(num, den) = ctx.get(expr) else {
+        return None;
+    };
+    let num = *num;
+    let den = *den;
+
+    if !is_symbolic_atom(ctx, num) || !is_symbolic_atom(ctx, den) || !expr_eq(ctx, num, den) {
+        return None;
+    }
+
+    Some(ctx.num(1))
+}
+
+fn try_hidden_solve_root_exact_two_term_scalar_multiple_shortcut(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ExprId> {
+    let Expr::Div(num, den) = ctx.get(expr) else {
+        return None;
+    };
+    let (num_left, num_right) = match ctx.get(*num) {
+        Expr::Add(left, right) => (*left, *right),
+        _ => return None,
+    };
+    let (den_left, den_right) = match ctx.get(*den) {
+        Expr::Add(left, right) => (*left, *right),
+        _ => return None,
+    };
+
+    let (num_l_coeff, num_l_base) = extract_coef_and_base(ctx, num_left);
+    let (num_r_coeff, num_r_base) = extract_coef_and_base(ctx, num_right);
+    let (den_l_coeff, den_l_base) = extract_coef_and_base(ctx, den_left);
+    let (den_r_coeff, den_r_base) = extract_coef_and_base(ctx, den_right);
+
+    if num_l_coeff.is_zero()
+        || num_r_coeff.is_zero()
+        || den_l_coeff.is_zero()
+        || den_r_coeff.is_zero()
+    {
+        return None;
+    }
+
+    let ratio = if expr_eq(ctx, num_l_base, den_l_base) && expr_eq(ctx, num_r_base, den_r_base) {
+        let left_ratio = den_l_coeff / num_l_coeff;
+        let right_ratio = den_r_coeff / num_r_coeff;
+        if left_ratio != right_ratio || left_ratio.is_zero() {
+            return None;
+        }
+        left_ratio
+    } else if expr_eq(ctx, num_l_base, den_r_base) && expr_eq(ctx, num_r_base, den_l_base) {
+        let left_ratio = den_r_coeff / num_l_coeff;
+        let right_ratio = den_l_coeff / num_r_coeff;
+        if left_ratio != right_ratio || left_ratio.is_zero() {
+            return None;
+        }
+        left_ratio
+    } else {
+        return None;
+    };
+
+    let result_ratio = BigRational::from_integer(1.into()) / ratio;
+    Some(ctx.add(Expr::Number(result_ratio)))
+}
+
+fn try_hidden_solve_root_log_power_base_shortcut(
+    ctx: &mut Context,
+    expr: ExprId,
+    domain_mode: crate::DomainMode,
+    value_domain: crate::ValueDomain,
+) -> Option<(ExprId, Vec<Step>)> {
+    use crate::{ImplicitCondition, Proof};
+
+    let planned = try_rewrite_log_power_base_numeric_expr(ctx, expr)?;
+    let mode = log_exp_inverse_policy_mode_from_flags(
+        matches!(domain_mode, crate::DomainMode::Assume),
+        matches!(domain_mode, crate::DomainMode::Strict),
+    );
+    let one = ctx.num(1);
+    let base_positive_proven = if domain_mode.is_generic() {
+        matches!(
+            prove_positive_literal_fast(ctx, planned.base_core),
+            Some(Proof::Proven)
+        )
+    } else {
+        crate::prove_positive(ctx, planned.base_core, value_domain) == Proof::Proven
+    };
+    let policy = plan_log_power_base_numeric_policy(
+        mode,
+        value_domain == crate::ValueDomain::ComplexEnabled,
+        base_positive_proven,
+        cas_ast::ordering::compare_expr(ctx, planned.base_core, one) == std::cmp::Ordering::Equal,
+    );
+
+    let cas_math::logarithm_inverse_support::LogPowerBasePolicyPlan::Rewrite {
+        require_positive_base,
+        require_nonzero_base_minus_one,
+    } = policy
+    else {
+        return None;
+    };
+
+    if !require_positive_base {
+        return Some((planned.rewritten, Vec::new()));
+    }
+
+    let mut step = Step::new_compact(
+        "log(a^m, a^n) = n/m",
+        "Log Power Base",
+        expr,
+        planned.rewritten,
+    );
+    step.soundness = crate::SoundnessLabel::EquivalenceUnderIntroducedRequires;
+    {
+        let meta = step.meta_mut();
+        if require_positive_base {
+            meta.required_conditions
+                .push(ImplicitCondition::Positive(planned.base_core));
+        }
+        if require_nonzero_base_minus_one {
+            let base_minus_1 = ctx.add(Expr::Sub(planned.base_expr, one));
+            meta.required_conditions
+                .push(ImplicitCondition::NonZero(base_minus_1));
+        }
+    }
+
+    Some((planned.rewritten, vec![step]))
 }
 
 fn is_plain_symbolic_cube_trinomial_after_core(ctx: &Context, expr: ExprId) -> bool {
@@ -607,60 +871,194 @@ impl Orchestrator {
         let collect_steps = self.options.collect_steps;
         let is_solve_mode = self.options.shared.context_mode == crate::options::ContextMode::Solve;
 
-        // Narrow hidden solve root shortcut: exact raw
-        // `(a^2 - 2ab + b^2) / (a - b)` can collapse to `a - b` before any
-        // eager pre-pass or phase work. Keep it limited to the no-steps,
-        // no-listener, non-strict solve path to avoid widening event gaps.
-        if !collect_steps
-            && is_solve_mode
-            && !self.options.shared.semantics.domain_mode.is_strict()
-            && !simplifier.has_step_listener()
-        {
-            if let Some(result) =
-                try_hidden_solve_root_difference_of_squares_shortcut(&mut simplifier.context, expr)
-            {
-                simplifier.clear_sticky_implicit_domain();
-                return (result, Vec::new(), crate::phase::PipelineStats::default());
-            }
-            if let Some(result) =
-                try_hidden_solve_root_perfect_square_minus_shortcut(&mut simplifier.context, expr)
-            {
-                simplifier.clear_sticky_implicit_domain();
-                return (result, Vec::new(), crate::phase::PipelineStats::default());
-            }
-        }
-
-        // Same hidden solve root shortcut for exact raw cube fractions.
-        // The cheaper exact matcher already exists in the algebra layer; calling
-        // it here avoids all eager pre-passes and the full Core loop on
-        // `(a^3 ± b^3)/(a ± b)` when we only need the plain result path.
+        // Narrow hidden solve root shortcuts. Keep them limited to the
+        // no-steps, no-listener solve path and dispatch by root kind so we do
+        // not pay unrelated matchers on every expression.
         if !collect_steps && is_solve_mode && !simplifier.has_step_listener() {
-            let div_parts = match simplifier.context.get(expr) {
-                Expr::Div(num, den) => Some((*num, *den)),
-                _ => None,
+            let domain_is_strict = self.options.shared.semantics.domain_mode.is_strict();
+            let allow_scalar_root = allow_hidden_solve_root_scalar_multiple_shortcut(&self.options);
+            let (is_pow_root, is_function_root, div_parts) = match simplifier.context.get(expr) {
+                Expr::Pow(_, _) => (true, false, None),
+                Expr::Function(_, _) => (false, true, None),
+                Expr::Div(num, den) => (false, false, Some((*num, *den))),
+                _ => (false, false, None),
             };
-            if allow_hidden_solve_root_scalar_multiple_shortcut(&self.options) {
-                if let Some((num, den)) = div_parts {
-                    if let Some(result) =
-                        crate::rules::algebra::try_structural_scalar_multiple_preorder(
-                            &mut simplifier.context,
-                            num,
-                            den,
-                        )
-                    {
-                        simplifier.clear_sticky_implicit_domain();
-                        return (result, Vec::new(), crate::phase::PipelineStats::default());
-                    }
+
+            if is_function_root && !domain_is_strict {
+                if let Some((result, shortcut_steps)) =
+                    try_hidden_solve_root_log_power_base_shortcut(
+                        &mut simplifier.context,
+                        expr,
+                        self.options.shared.semantics.domain_mode,
+                        self.options.shared.semantics.value_domain,
+                    )
+                {
+                    simplifier.clear_sticky_implicit_domain();
+                    return (
+                        result,
+                        shortcut_steps,
+                        crate::phase::PipelineStats::default(),
+                    );
                 }
             }
-            if let Some((num, den)) = div_parts {
-                if let Some(result) = crate::rules::algebra::try_exact_sum_diff_of_cubes_preorder(
-                    &mut simplifier.context,
-                    num,
-                    den,
-                ) {
+
+            if is_pow_root && !domain_is_strict {
+                if let Some(result) =
+                    try_hidden_solve_root_exp_ln_shortcut(&mut simplifier.context, expr)
+                {
                     simplifier.clear_sticky_implicit_domain();
                     return (result, Vec::new(), crate::phase::PipelineStats::default());
+                }
+                if is_symbolic_pow_zero_root(&simplifier.context, expr) {
+                    simplifier.clear_sticky_implicit_domain();
+                    return (
+                        simplifier.context.num(1),
+                        Vec::new(),
+                        crate::phase::PipelineStats::default(),
+                    );
+                }
+            }
+
+            if let Some((num, den)) = div_parts {
+                if !domain_is_strict {
+                    if is_symbolic_power_over_same_atom_noop_root(&simplifier.context, expr) {
+                        simplifier.clear_sticky_implicit_domain();
+                        return (expr, Vec::new(), crate::phase::PipelineStats::default());
+                    }
+                    match simplifier.context.get(den) {
+                        Expr::Variable(_) | Expr::Constant(_) => {
+                            if allow_scalar_root {
+                                if let Some(result) =
+                                    try_hidden_solve_root_identical_atom_fraction_shortcut(
+                                        &mut simplifier.context,
+                                        expr,
+                                    )
+                                {
+                                    simplifier.clear_sticky_implicit_domain();
+                                    return (
+                                        result,
+                                        Vec::new(),
+                                        crate::phase::PipelineStats::default(),
+                                    );
+                                }
+                            }
+                        }
+                        Expr::Pow(_, _) => {
+                            if let Some(result) = try_hidden_solve_root_binomial_square_shortcut(
+                                &mut simplifier.context,
+                                expr,
+                            ) {
+                                simplifier.clear_sticky_implicit_domain();
+                                return (
+                                    result,
+                                    Vec::new(),
+                                    crate::phase::PipelineStats::default(),
+                                );
+                            }
+                            if allow_scalar_root {
+                                if let Some(result) = try_hidden_solve_root_power_quotient_shortcut(
+                                    &mut simplifier.context,
+                                    expr,
+                                    self.options.shared.semantics.domain_mode,
+                                ) {
+                                    simplifier.clear_sticky_implicit_domain();
+                                    return (
+                                        result,
+                                        Vec::new(),
+                                        crate::phase::PipelineStats::default(),
+                                    );
+                                }
+                            }
+                        }
+                        Expr::Add(_, _) => {
+                            if allow_scalar_root {
+                                if let Some(result) =
+                                    try_hidden_solve_root_exact_two_term_scalar_multiple_shortcut(
+                                        &mut simplifier.context,
+                                        expr,
+                                    )
+                                {
+                                    simplifier.clear_sticky_implicit_domain();
+                                    return (
+                                        result,
+                                        Vec::new(),
+                                        crate::phase::PipelineStats::default(),
+                                    );
+                                }
+                                if let Some(result) =
+                                    crate::rules::algebra::try_structural_scalar_multiple_preorder(
+                                        &mut simplifier.context,
+                                        num,
+                                        den,
+                                    )
+                                {
+                                    simplifier.clear_sticky_implicit_domain();
+                                    return (
+                                        result,
+                                        Vec::new(),
+                                        crate::phase::PipelineStats::default(),
+                                    );
+                                }
+                            }
+                            if let Some(result) =
+                                crate::rules::algebra::try_exact_sum_diff_of_cubes_preorder(
+                                    &mut simplifier.context,
+                                    num,
+                                    den,
+                                )
+                            {
+                                simplifier.clear_sticky_implicit_domain();
+                                return (
+                                    result,
+                                    Vec::new(),
+                                    crate::phase::PipelineStats::default(),
+                                );
+                            }
+                        }
+                        Expr::Sub(_, _) => {
+                            if let Some(result) =
+                                try_hidden_solve_root_difference_of_squares_shortcut(
+                                    &mut simplifier.context,
+                                    expr,
+                                )
+                            {
+                                simplifier.clear_sticky_implicit_domain();
+                                return (
+                                    result,
+                                    Vec::new(),
+                                    crate::phase::PipelineStats::default(),
+                                );
+                            }
+                            if let Some(result) =
+                                try_hidden_solve_root_perfect_square_minus_shortcut(
+                                    &mut simplifier.context,
+                                    expr,
+                                )
+                            {
+                                simplifier.clear_sticky_implicit_domain();
+                                return (
+                                    result,
+                                    Vec::new(),
+                                    crate::phase::PipelineStats::default(),
+                                );
+                            }
+                            if let Some(result) =
+                                crate::rules::algebra::try_exact_sum_diff_of_cubes_preorder(
+                                    &mut simplifier.context,
+                                    num,
+                                    den,
+                                )
+                            {
+                                simplifier.clear_sticky_implicit_domain();
+                                return (
+                                    result,
+                                    Vec::new(),
+                                    crate::phase::PipelineStats::default(),
+                                );
+                            }
+                        }
+                        _ => {}
+                    }
                 }
             }
         }

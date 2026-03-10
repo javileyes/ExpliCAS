@@ -17,7 +17,7 @@ mod config_command_apply_tests;
 #[cfg(test)]
 mod config_tests;
 #[cfg(test)]
-mod envelope_json_command_tests;
+mod envelope_wire_command_tests;
 mod eval_command;
 #[cfg(test)]
 mod eval_command_session_tests;
@@ -104,7 +104,7 @@ pub type SessionStore = cas_session_core::store::SessionStore<Diagnostics, Simpl
 pub use cas_engine::{Engine, Simplifier, Step};
 pub use cas_session_core::env;
 pub use cas_session_core::types::{CacheConfig, EntryId, EntryKind, RefMode, ResolveError};
-pub use cas_solver::evaluate_envelope_json_command;
+pub use cas_solver::evaluate_envelope_wire_command;
 pub use cas_solver::{
     build_eval_command_render_plan, evaluate_eval_command_output,
     evaluate_eval_text_simplify_with_session, EvalCommandError, EvalCommandOutput,

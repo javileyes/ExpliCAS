@@ -41,8 +41,8 @@ pub fn eval_str_to_output_envelope(expr: &str, opts: &EnvelopeEvalOptions) -> Ou
     build_success_envelope(expr, opts, &engine.simplifier.context, &output_view)
 }
 
-/// Stateless CLI helper for `envelope-json` command.
-pub fn evaluate_envelope_json_command(expr: &str, domain: &str, value_domain: &str) -> String {
+/// Stateless CLI helper for the envelope wire command.
+pub fn evaluate_envelope_wire_command(expr: &str, domain: &str, value_domain: &str) -> String {
     let opts = EnvelopeEvalOptions {
         domain: domain.to_string(),
         value_domain: value_domain.to_string(),
