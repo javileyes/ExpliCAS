@@ -238,6 +238,25 @@ fn test_perfect_square_minus_cancel_in_solve_generic_context_steps_off() {
 }
 
 #[test]
+fn test_power_quotient_cancel_in_solve_generic_context_steps_off_keeps_requires() {
+    let (result, requires) = simplify_with_semantics_and_steps_and_requires(
+        "x^4 / x^2",
+        ContextMode::Solve,
+        DomainMode::Generic,
+        StepsMode::Off,
+    );
+    assert_eq!(result, "x^2");
+    assert!(
+        requires.iter().any(|message| message.contains("x^2")),
+        "expected x^2 denominator require, got: {requires:?}"
+    );
+    assert!(
+        requires.iter().any(|message| message == "x ≠ 0"),
+        "expected base nonzero require, got: {requires:?}"
+    );
+}
+
+#[test]
 fn test_perfect_square_minus_cancel_in_solve_generic_context_steps_on() {
     let result = simplify_with_semantics(
         "(x^2 - 2*x*y + y^2) / (x - y)",

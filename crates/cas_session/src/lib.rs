@@ -18,11 +18,11 @@ mod config_command_apply_tests;
 mod config_tests;
 #[cfg(test)]
 mod envelope_json_command_tests;
+mod eval_command;
+#[cfg(test)]
+mod eval_command_session_tests;
 #[cfg(test)]
 mod eval_command_tests;
-mod eval_json_command;
-#[cfg(test)]
-mod eval_json_command_tests;
 mod eval_text_command;
 #[cfg(test)]
 mod history_tests;
@@ -119,9 +119,9 @@ pub use cas_solver_core::expand_policy::ExpandPolicy;
 pub use cas_solver_core::phase_stats::PipelineStats;
 pub use cas_solver_core::simplify_options::{SharedSemanticConfig, SimplifyOptions};
 pub use env::{is_reserved, substitute, substitute_with_shadow, Environment};
-pub use eval_json_command::{
-    evaluate_eval_json_command_pretty_with_session, evaluate_eval_json_command_with_session,
-    EvalJsonCommandConfig,
+pub use eval_command::{
+    evaluate_eval_command_pretty_with_session, evaluate_eval_command_with_session,
+    EvalCommandConfig,
 };
 pub use eval_text_command::evaluate_eval_text_command_with_session;
 pub use snapshot::SnapshotError;

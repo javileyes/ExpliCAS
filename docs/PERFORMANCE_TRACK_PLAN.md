@@ -1713,3 +1713,335 @@ Those are valid projects, but not part of this performance track.
 - practical takeaway:
   - the remaining good ROI is still in the `Core` solve loop, not in late
     phases or in more planner-only tweaks
+- reranked `solve_hotspots_cached/generic/*` after the retained hidden-`Core`
+  cuts to avoid optimizing stale leaders
+- current ordering:
+  - `binomial_square_fraction`: `96.066-96.723 us`
+  - `perfect_square_minus_fraction`: `78.893-81.936 us`
+  - `difference_of_cubes_fraction`: `40.897-41.288 us`
+  - `power_quotient_fraction`: `40.952-42.095 us`
+  - `log_power_base`: `24.238-24.549 us`
+  - `sum_of_cubes_fraction`: `22.640-23.052 us`
+  - `difference_of_squares_fraction`: `14.743-15.013 us`
+  - `scalar_multiple_fraction`: `10.696-10.991 us`
+  - `a_pow_x_over_a`: `7.1479-7.3147 us`
+  - `x_pow_0`: `6.7079-6.8364 us`
+  - `x_over_x`: `6.2308-6.3617 us`
+  - `exp_ln_x`: `5.8491-6.0340 us`
+- added a focused solve profile mode `hotspots-binomials` in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/benches/profile_cache.rs`
+  to inspect the remaining top family with rule-hit detail
+- diagnostic takeaway:
+  - `(x^2 + 2*x*y + y^2)/(x + y)^2` still hits `Canonicalize Multiplication`
+    before `Simplify Nested Fraction` and `Cancel Identical Numerator/Denominator`
+  - `(x^2 - 2*x*y + y^2)/(x - y)` also pays `Canonicalize Multiplication`, then
+    several sign/canonicalization rewrites before collapsing
+- retained a small-chain fast path in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_math/src/expr_nary.rs`
+  for `try_rewrite_canonicalize_mul_expr(...)`
+- scope:
+  - only 3-factor top-level `Mul` chains
+  - only commutative factors
+  - sorts or right-associates in-place without falling through `mul_leaves(...)`
+- validation:
+  - added directed coverage:
+    - `expr_nary::tests::test_canonicalize_mul_small_chain_sorts_three_factors`
+    - `expr_nary::tests::test_canonicalize_mul_small_chain_right_associates_sorted_chain`
+  - `cargo test -p cas_math expr_nary --lib`
+  - `cargo test -p cas_engine profile_cache_tests --lib`
+  - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math`
+- retained measurements:
+  - `solve_hotspots_cached/generic/binomial_square_fraction`:
+    `97.148-98.783 us` (slight regression)
+  - `solve_hotspots_cached/generic/perfect_square_minus_fraction`:
+    `75.987-78.507 us`, improvement `~2.9-5.4%`
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `91.048-94.230 us`, improvement `~6.6-8.6%`
+- decision:
+  - keep the change even though the isolated binomial hotspot regresses slightly,
+    because the representative batch improves clearly and the fast path is now
+    covered directly
+- retained a smaller win in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/rules/algebra/fractions/didactic_factor_support.rs`
+  by checking structural equality via `compare_expr(...) == Equal` before
+  falling back to `poly_eq(...)` in `expr_matches_poly(...)`
+- rationale:
+  - the remaining top hotspot family (`binomial_square_fraction`,
+    `perfect_square_minus_fraction`) was still paying polynomial comparison even
+    when the compared expressions were already structurally equal after earlier
+    canonicalization
+  - this narrows the cost inside the didactic fraction planner without adding a
+    new global gate in the transformer
+- retained measurements:
+  - `solve_hotspots_cached/generic/binomial_square_fraction`:
+    `88.680-90.631 us`, improvement `~1.7-4.5%`
+  - `solve_hotspots_cached/generic/perfect_square_minus_fraction`:
+    `74.464-78.198 us`, no significant change
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `87.104-87.668 us`, improvement `~3.4-5.2%`
+- validation:
+  - `cargo test -p cas_engine didactic_factor_support --lib`
+  - `cargo test -p cas_solver --test multivar_gcd_tests test_binomial_square_cancel_in_solve_generic_context_steps_off_keeps_requires -- --exact`
+  - `cargo test -p cas_engine profile_cache_tests --lib`
+  - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math`
+- re-tried a more explicit exact trinomial matcher inside
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/rules/algebra/fractions/didactic_factor_support.rs`
+  and dropped it again:
+  - `solve_hotspots_cached/generic/binomial_square_fraction`:
+    `89.954-90.860 us`, no statistically significant change
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `86.998-90.817 us`, no statistically significant change
+- retained a broader comparison-cost reduction instead:
+  `/Users/javiergimenezmoya/developer/math/crates/cas_ast/src/ordering.rs`
+  now uses `SmallVec<[(ExprId, ExprId); 8]>` inside `compare_expr(...)`
+  instead of allocating a heap `Vec` per comparison
+- rationale:
+  - `compare_expr(...)` is on the hot path of several retained optimizations:
+    didactic fraction planners, factor/power shortcuts, and the new
+    `canonicalize_mul_small_chain` fast path
+  - most comparisons are shallow, so keeping the work stack inline removes a
+    fixed allocator cost from a broad cross-section of solve hotspots
+- retained measurements:
+  - `solve_hotspots_cached/generic/binomial_square_fraction`:
+    `86.942-87.422 us`, improvement `~2.6-4.8%`
+  - `solve_hotspots_cached/generic/difference_of_cubes_fraction`:
+    `36.262-36.643 us`, improvement `~5.7-7.2%`
+  - `solve_hotspots_cached/generic/perfect_square_minus_fraction`:
+    `72.768-74.692 us`, no statistically significant change
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `86.441-87.118 us`, change within Criterion noise threshold but still lower
+    in absolute terms than the prior retained baseline
+- validation:
+  - `cargo test -p cas_ast --lib`
+  - `cargo test -p cas_engine profile_cache_tests --lib`
+  - `cargo test -p cas_solver --test multivar_gcd_tests test_binomial_square_cancel_in_solve_generic_context_steps_off_keeps_requires -- --exact`
+  - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math`
+- retained another solve-specific cut in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/rules/algebra/fractions/gcd_cancel.rs`:
+  `Cancel Identical Numerator/Denominator`, `Cancel Power Fraction`, and
+  `Cancel Same-Base Powers` now skip the oracle entirely whenever the current
+  domain mode already allows unproven definability. In those modes the rule
+  emits the existing `NonZero(expr)` assumption key directly and only `Strict`
+  still falls through to the prover-backed oracle.
+- rationale:
+  - this was already the effective policy for plain variables via the old
+    `fast_variable_nonzero_decision(...)`
+  - the hidden solve hotspots were still paying oracle/prover overhead for
+    non-atomic denominators such as `(x + y)^2` and `(x - y)`, even though
+    `Generic/Assume` were always going to accept them with a condition
+- retained measurements:
+  - `solve_hotspots_cached/generic/binomial_square_fraction`:
+    `86.295-87.498 us`, change within Criterion noise but lower in absolute terms
+  - `solve_hotspots_cached/generic/perfect_square_minus_fraction`:
+    `70.244-71.235 us`, change within Criterion noise but lower in absolute terms
+  - `solve_eval_hotspots_cached/generic/binomial_square_fraction`:
+    `81.423-85.783 us`, improvement `~15.5-18.1%`
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `84.821-88.509 us`, change within Criterion noise but lower in absolute terms
+- validation:
+  - `cargo test -p cas_solver --test multivar_gcd_tests test_binomial_square_cancel_in_solve_generic_context_steps_off_keeps_requires -- --exact`
+  - `cargo test -p cas_solver --test domain_contract_tests test_strict_x_div_x_stays_unchanged -- --exact`
+  - `cargo test -p cas_solver --test solve_safety_contract_tests`
+  - `cargo test -p cas_engine profile_cache_tests --lib`
+  - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math`
+- retained a narrow exact preorder for raw binomial-square fractions in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/engine/transform/transform_helpers.rs`
+- scope:
+  - only in the hidden solve path
+  - only with `steps off`
+  - only with no event listener
+  - only in `Core`
+  - only outside `Strict`
+  - only for the exact raw shape `(a^2 + 2ab + b^2) / (a + b)^2`
+- rationale:
+  - after the broader cuts, `binomial_square_fraction` was still the top direct
+    solve hotspot
+  - the remaining work was mostly traversal and rule dispatch around a case that
+    can be recognized exactly and collapsed to `1` without needing the full
+    rule/orchestration path
+  - keeping the gate exact avoids introducing cost to unrelated `Div` nodes or
+    weakening the strict-domain contract
+- retained measurements:
+  - `solve_hotspots_cached/generic/binomial_square_fraction`:
+    `9.1353-9.3533 us`, improvement `~89%`
+  - `solve_eval_hotspots_cached/generic/binomial_square_fraction`:
+    `8.7842-8.9835 us`, improvement `~89%`
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `84.811-85.409 us`, no statistically significant change
+- validation:
+  - `cargo test -p cas_engine profile_cache_tests --lib`
+  - `cargo test -p cas_solver --test multivar_gcd_tests test_binomial_square_cancel_in_solve_generic_context_steps_off_keeps_requires -- --exact`
+  - `cargo test -p cas_solver --test multivar_gcd_tests test_binomial_square_cancel_in_solve_strict_context_steps_off -- --exact`
+  - `cargo test -p cas_solver --test solve_safety_contract_tests`
+  - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math`
+- retained a matching exact preorder for raw perfect-square-minus fractions in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/engine/transform/transform_helpers.rs`
+- scope:
+  - only in the hidden solve path
+  - only with `steps off`
+  - only with no event listener
+  - only in `Core`
+  - only outside `Strict`
+  - only for the exact raw shape `(a^2 - 2ab + b^2) / (a - b)`
+- rationale:
+  - after the binomial-square cut, `perfect_square_minus_fraction` became the
+    next clear direct hotspot in the solve rerank
+  - the generic preorder still paid `expr_matches_poly(...)` and then left a
+    cheap trailing pass in the pipeline; the raw exact shape can be recognized
+    directly and collapsed to `a - b` before entering that path
+  - keeping the gate exact preserves the existing `Strict` behavior and avoids
+    adding a new fixed cost to unrelated `Div` nodes
+- retained measurements:
+  - `solve_hotspots_cached/generic/perfect_square_minus_fraction`:
+    `50.530-50.933 us`, improvement `~28-30%`
+  - `solve_eval_hotspots_cached/generic/perfect_square_minus_fraction`:
+    `48.091-48.494 us`, improvement `~69-70%`
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `87.375-88.654 us`, change within Criterion noise threshold
+- validation:
+  - `cargo test -p cas_engine profile_cache_tests --lib`
+  - `cargo test -p cas_solver --test multivar_gcd_tests test_perfect_square_minus_cancel_in_solve_generic_context_steps_off -- --exact`
+  - `cargo test -p cas_solver --test multivar_gcd_tests test_perfect_square_minus_cancel_in_solve_strict_context_steps_off -- --exact`
+  - `cargo test -p cas_solver --test solve_safety_contract_tests`
+  - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math`
+- retained a narrow post-`Core` hidden-solve cut for power-quotient outputs in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs`
+- scope:
+  - only with `steps off`
+  - only in solve mode
+  - only outside `Strict`
+  - only when the original input root is a fraction
+  - only when `Core` has already collapsed that fraction to a plain symbolic
+    power `atom^n`
+  - only when there are no denominator-root or auto-expand marks
+- rationale:
+  - the earlier broad “plain symbolic power” post-`Core` cut regressed the
+    wider solve workload because it fired on too many native power expressions
+  - `power_quotient_fraction` remained one of the direct hotspots, and its
+    layered benches showed the rule body was already cheap while the remaining
+    cost sat in fixed post-`Core` engine work
+  - restricting the cut to fraction-origin power results keeps the useful case
+    (`x^4/x^2 -> x^2`) without reopening the broader regression
+- retained measurements:
+  - `solve_hotspots_cached/generic/power_quotient_fraction`:
+    `21.988-22.503 us`, improvement `~46.7-47.9%`
+  - `solve_eval_hotspots_cached/generic/power_quotient_fraction`:
+    `20.630-20.947 us`, improvement `~21.6-22.9%`
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `95.575-96.407 us`, improvement `~2.3-5.1%`
+- validation:
+  - `cargo fmt --all`
+  - `cargo test -p cas_engine profile_cache_tests::tests::test_from_profile_solve_tactic_power_quotient_result_skips_late_phases --lib`
+  - `cargo test -p cas_engine profile_cache_tests --lib`
+  - `cargo test -p cas_solver --test multivar_gcd_tests test_power_quotient_cancel_in_solve_generic_context_steps_off_keeps_requires -- --exact`
+  - `cargo test -p cas_solver --test solve_safety_contract_tests`
+  - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math`
+- discarded two follow-up experiments after measurement:
+  - combined pre-scan for `expand` / `poly_gcd_modp` / `poly_result` before the
+    three eager pre-passes in
+    `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs`
+    - regressed `solve_hotspots_cached/generic/perfect_square_minus_fraction`
+      to `57.813-58.331 us`
+    - regressed `solve_eval_hotspots_cached/generic/perfect_square_minus_fraction`
+      to `53.491-54.394 us`
+    - regressed `solve_hotspots_cached/generic/power_quotient_fraction`
+      to `42.777-44.109 us`
+    - regressed `solve_modes_cached/solve_tactic_generic_batch`
+      to `95.217-95.725 us`
+    - takeaway: one generic scan is more expensive than the mostly-no-op eager
+      passes on the current solve workload
+  - widening the exact `perfect_square_minus` preorder to accept raw
+    `a + (-b)` denominators and normalize them to `a - b`
+    - left the direct hotspot within noise (`57.865-59.678 us`,
+      `54.210-54.862 us`)
+    - regressed `solve_modes_cached/solve_tactic_generic_batch`
+      to `99.704-102.34 us`
+    - takeaway: the extra branch work on every candidate `Div` costs more than
+      it saves on the current batch
+- extended `/Users/javiergimenezmoya/developer/math/crates/cas_engine/benches/profile_cache.rs`
+  so `power_quotient_fraction` is now covered in both `fraction_rule_direct/*`
+  and `solve_phase_subset_cached/*`
+- rationale:
+  - `power_quotient_fraction` became one of the next direct solve hotspots, but
+    it lacked the same layered visibility already available for scalar-multiple,
+    cubes, and binomial cases
+  - before opening another runtime fast path, the missing piece was knowing
+    whether the cost sat in `SimplifyFractionRule::apply(...)`, in the minimal
+    single-rule engine, or in the surrounding solve pipeline
+- retained measurements:
+  - `fraction_rule_direct/apply/generic/power_quotient_fraction`:
+    `3.6583-3.8001 us`
+  - `fraction_rule_direct/single_rule_engine/generic/power_quotient_fraction`:
+    `12.618-12.806 us`
+  - `solve_phase_subset_cached/power_quotient_fraction/generic/full`:
+    `38.914-39.296 us`
+  - `solve_phase_subset_cached/power_quotient_fraction/generic/no_transform`:
+    `36.161-36.829 us`
+  - `solve_phase_subset_cached/power_quotient_fraction/generic/no_transform_no_rationalize`:
+    `35.699-36.185 us`
+- takeaway:
+  - the direct rule body is already cheap; the remaining cost is broader engine
+    work around the rule, not just the power-cancel planner itself
+  - a follow-up post-`Core` cut for plain symbolic powers was tried and
+    discarded because it regressed the broader hotspot set, so it is not
+    retained
+- validation:
+  - `cargo check -p cas_engine --benches`
+  - `cargo test -p cas_solver --test multivar_gcd_tests test_power_quotient_cancel_in_solve_generic_context_steps_off_keeps_requires -- --exact`
+- extended `/Users/javiergimenezmoya/developer/math/crates/cas_engine/benches/profile_cache.rs`
+  so `perfect_square_minus_fraction` is now covered in both
+  `fraction_rule_direct/*` and `solve_phase_subset_cached/*`
+- rationale:
+  - after the exact preorder and the narrow post-`Transform` cut, the direct
+    hotspot still sat around `~50-56 us`, but it was no longer clear whether
+    the remaining cost lived in `SimplifyFractionRule`, in a minimal one-rule
+    engine, or in the surrounding solve pipeline
+  - adding the same layered visibility used for `power_quotient_fraction`
+    closes that gap and makes the next optimization target much clearer
+- retained measurements:
+  - `fraction_rule_direct/apply/generic/perfect_square_minus_fraction`:
+    `24.721-25.063 us`
+  - `fraction_rule_direct/single_rule_engine/generic/perfect_square_minus_fraction`:
+    `11.523-11.800 us`
+  - `solve_phase_subset_cached/perfect_square_minus_fraction/generic/full`:
+    `56.141-56.880 us`
+  - `solve_phase_subset_cached/perfect_square_minus_fraction/generic/no_transform`:
+    `54.285-54.754 us`
+  - `solve_phase_subset_cached/perfect_square_minus_fraction/generic/no_transform_no_rationalize`:
+    `53.665-54.121 us`
+- takeaway:
+  - the residual hotspot is not dominated by the rule body itself, and
+    `Transform`/`Rationalize` only account for a very small tail
+  - the next ROI is therefore not another exact matcher for this case, but
+    lower-level core-loop/traversal overhead or broader solve-path fixed costs
+- validation:
+  - `cargo fmt --all`
+  - `cargo check -p cas_engine --benches`
+- retained a narrow post-`Transform` hidden-solve cut in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs`
+- scope:
+  - only with `steps off`
+  - only in solve mode
+  - only when `Transform` actually changed the expression
+  - only when the new result is a plain symbolic binomial
+  - only when the pre-scan still proves there are no denominator roots and no
+    auto-expand contexts
+- rationale:
+  - the exact perfect-square-minus preorder removed the heavy matcher cost, but
+    the end-to-end `solve_eval` path still paid a small fixed late-phase tail
+  - a broader post-`Transform` cut regressed other paths; keeping the gate to
+    “transform changed into a plain binomial” preserves the useful part without
+    reintroducing that fixed overhead everywhere
+- retained measurements:
+  - `solve_hotspots_cached/generic/perfect_square_minus_fraction`:
+    `52.608-55.013 us`, no statistically significant change
+  - `solve_eval_hotspots_cached/generic/perfect_square_minus_fraction`:
+    `48.626-49.429 us`, improvement `~2.6-5.8%`
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `88.809-90.665 us`, change within Criterion noise threshold
+- validation:
+  - `cargo test -p cas_engine profile_cache_tests --lib`
+  - `cargo test -p cas_solver --test multivar_gcd_tests test_perfect_square_minus_cancel_in_solve_generic_context_steps_off -- --exact`
+  - `cargo test -p cas_solver --test multivar_gcd_tests test_perfect_square_minus_cancel_in_solve_strict_context_steps_off -- --exact`
+  - `cargo test -p cas_solver --test solve_safety_contract_tests`
+  - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math`

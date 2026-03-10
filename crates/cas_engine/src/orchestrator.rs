@@ -105,6 +105,17 @@ fn is_plain_symbolic_binomial_after_core(ctx: &Context, expr: ExprId) -> bool {
     }
 }
 
+fn is_plain_symbolic_power_after_core(ctx: &Context, expr: ExprId) -> bool {
+    let Expr::Pow(base, exp) = ctx.get(expr) else {
+        return false;
+    };
+    is_symbolic_atom(ctx, *base)
+        && matches!(
+            ctx.get(*exp),
+            Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_)
+        )
+}
+
 fn square_of_symbolic_atom(ctx: &Context, expr: ExprId) -> Option<ExprId> {
     let Expr::Pow(base, exp) = ctx.get(expr) else {
         return None;
@@ -344,7 +355,10 @@ impl Orchestrator {
                 && next != current
                 && (is_terminal_after_core(&simplifier.context, next)
                     || is_plain_symbolic_binomial_after_core(&simplifier.context, next)
-                    || is_plain_symbolic_cube_trinomial_after_core(&simplifier.context, next))
+                    || is_plain_symbolic_cube_trinomial_after_core(&simplifier.context, next)
+                    || (!self.options.shared.semantics.domain_mode.is_strict()
+                        && matches!(simplifier.context.get(current), Expr::Div(_, _))
+                        && is_plain_symbolic_power_after_core(&simplifier.context, next)))
             {
                 current = next;
                 stats.iters_used = iter + 1;
@@ -496,6 +510,7 @@ impl Orchestrator {
         all_steps.extend(steps);
         pipeline_stats.core = stats;
         pipeline_stats.total_rewrites += pipeline_stats.core.rewrites_used;
+        let is_solve_mode = self.options.shared.context_mode == crate::options::ContextMode::Solve;
 
         // Fast path: when Core already collapses to a terminal exact value and the
         // caller is not collecting steps, later phases are pure fixed-cost noise.
@@ -516,10 +531,33 @@ impl Orchestrator {
             return (current, all_steps, pipeline_stats);
         }
 
+        if !collect_steps
+            && is_solve_mode
+            && !self.options.shared.semantics.domain_mode.is_strict()
+            && matches!(simplifier.context.get(expr), Expr::Div(_, _))
+            && !self.pattern_marks.has_root_in_denominator()
+            && !self.pattern_marks.has_auto_expand_contexts()
+            && is_plain_symbolic_power_after_core(&simplifier.context, current)
+        {
+            pipeline_stats.rationalize_level = Some(auto_level);
+            pipeline_stats.rationalize_outcome = Some(if auto_level != AutoRationalizeLevel::Off {
+                cas_solver_core::rationalize_policy::RationalizeOutcome::NotApplied(
+                    cas_solver_core::rationalize_policy::RationalizeReason::NoBinomialFound,
+                )
+            } else {
+                cas_solver_core::rationalize_policy::RationalizeOutcome::NotApplied(
+                    cas_solver_core::rationalize_policy::RationalizeReason::PolicyDisabled,
+                )
+            });
+            pipeline_stats.cycle_events =
+                cas_solver_core::cycle_event_registry::take_cycle_events();
+            simplifier.clear_sticky_implicit_domain();
+            return (current, all_steps, pipeline_stats);
+        }
+
         // Narrow solve fast path: symbolic atom^x / atom with no didactic work.
         // Current solve generic/assume behavior leaves this unchanged, and the
         // later phases are pure overhead on the plain result-only path.
-        let is_solve_mode = self.options.shared.context_mode == crate::options::ContextMode::Solve;
         if !collect_steps
             && is_solve_mode
             && !self.pattern_marks.has_root_in_denominator()
@@ -622,6 +660,31 @@ impl Orchestrator {
                 });
                 best_ref.consider(current, &all_steps, &simplifier.context);
             }
+        }
+
+        // Narrow hidden solve fast path: if Transform lands on a plain symbolic
+        // binomial, later phases are fixed-cost overhead on the result-only path.
+        if !collect_steps
+            && is_solve_mode
+            && pipeline_stats.transform.changed
+            && !self.pattern_marks.has_root_in_denominator()
+            && !self.pattern_marks.has_auto_expand_contexts()
+            && is_plain_symbolic_binomial_after_core(&simplifier.context, current)
+        {
+            pipeline_stats.rationalize_level = Some(auto_level);
+            pipeline_stats.rationalize_outcome = Some(if auto_level != AutoRationalizeLevel::Off {
+                cas_solver_core::rationalize_policy::RationalizeOutcome::NotApplied(
+                    cas_solver_core::rationalize_policy::RationalizeReason::NoBinomialFound,
+                )
+            } else {
+                cas_solver_core::rationalize_policy::RationalizeOutcome::NotApplied(
+                    cas_solver_core::rationalize_policy::RationalizeReason::PolicyDisabled,
+                )
+            });
+            pipeline_stats.cycle_events =
+                cas_solver_core::cycle_event_registry::take_cycle_events();
+            simplifier.clear_sticky_implicit_domain();
+            return (current, all_steps, pipeline_stats);
         }
 
         // Phase 3: Rationalize - Auto-rationalization per policy

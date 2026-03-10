@@ -185,7 +185,7 @@ pub fn run(args: EvalJsonArgs) {
         std::env::set_var("RAYON_NUM_THREADS", n.to_string());
     }
 
-    let output = cas_session::evaluate_eval_json_command_pretty_with_session(
+    let output = cas_session::evaluate_eval_command_pretty_with_session(
         args.session.as_deref(),
         eval_json_command_config(&args),
         |steps, events, context, steps_mode| {
@@ -195,8 +195,8 @@ pub fn run(args: EvalJsonArgs) {
     println!("{}", output);
 }
 
-fn eval_json_command_config(args: &EvalJsonArgs) -> cas_session::EvalJsonCommandConfig<'_> {
-    cas_session::EvalJsonCommandConfig {
+fn eval_json_command_config(args: &EvalJsonArgs) -> cas_session::EvalCommandConfig<'_> {
+    cas_session::EvalCommandConfig {
         expr: &args.expr,
         auto_store: args.session.is_some(),
         max_chars: args.max_chars,

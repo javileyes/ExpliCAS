@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::eval_json_command::EvalJsonCommandConfig;
+    use crate::eval_command::EvalCommandConfig;
     use crate::SessionState;
 
     #[test]
@@ -10,7 +10,7 @@ mod tests {
         let out = cas_solver::evaluate_eval_with_session(
             &mut engine,
             &mut session,
-            EvalJsonCommandConfig {
+            EvalCommandConfig {
                 expr: "x + x",
                 auto_store: false,
                 max_chars: 2000,
@@ -30,7 +30,7 @@ mod tests {
             },
             |_steps, _events, _context, _steps_mode| Vec::new(),
         )
-        .expect("eval-json");
+        .expect("eval");
 
         assert!(out.ok);
         assert!(out.result.contains("2 * x"));

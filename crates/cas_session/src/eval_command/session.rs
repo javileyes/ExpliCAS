@@ -2,15 +2,15 @@ use cas_engine::Step;
 use cas_solver_core::engine_events::EngineEvent;
 use std::path::Path;
 
-/// Session-backed config for `eval-json` command orchestration.
-pub type EvalJsonCommandConfig<'a> = cas_api_models::EvalJsonSessionRunConfig<'a>;
+/// Session-backed config for eval command orchestration.
+pub type EvalCommandConfig<'a> = cas_api_models::EvalJsonSessionRunConfig<'a>;
 
-/// Evaluate `eval-json` using optional persisted session state.
+/// Evaluate `eval` using optional persisted session state.
 ///
 /// Keeps CLI/frontends thin by centralizing session load/run/save orchestration.
-pub fn evaluate_eval_json_command_with_session<F>(
+pub fn evaluate_eval_command_with_session<F>(
     session_path: Option<&Path>,
-    config: EvalJsonCommandConfig<'_>,
+    config: EvalCommandConfig<'_>,
     collect_steps: F,
 ) -> (
     Result<cas_api_models::EvalJsonOutput, String>,

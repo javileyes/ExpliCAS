@@ -592,6 +592,52 @@ fn build_right_assoc_mul(ctx: &mut Context, factors: &[ExprId]) -> Option<ExprId
     Some(out)
 }
 
+fn try_rewrite_canonicalize_mul_small_chain(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<CanonicalizeMulRewrite> {
+    let Expr::Mul(lhs, rhs) = ctx.get(expr) else {
+        return None;
+    };
+
+    let (a, b, c, is_left_assoc) = match (ctx.get(*lhs), ctx.get(*rhs)) {
+        (Expr::Mul(a, b), _) => (*a, *b, *rhs, true),
+        (_, Expr::Mul(b, c)) => (*lhs, *b, *c, false),
+        _ => return None,
+    };
+
+    if !ctx.is_mul_commutative(a) || !ctx.is_mul_commutative(b) || !ctx.is_mul_commutative(c) {
+        return None;
+    }
+
+    let mut factors = SmallVec::<[ExprId; 3]>::new();
+    factors.push(a);
+    factors.push(b);
+    factors.push(c);
+    let is_sorted = !factors
+        .windows(2)
+        .any(|w| cas_ast::ordering::compare_expr(ctx, w[0], w[1]) == std::cmp::Ordering::Greater);
+
+    if !is_sorted {
+        factors.sort_by(|x, y| cas_ast::ordering::compare_expr(ctx, *x, *y));
+        let rewritten = build_right_assoc_mul(ctx, &factors)?;
+        return Some(CanonicalizeMulRewrite {
+            rewritten,
+            kind: CanonicalizeMulRewriteKind::SortFactors,
+        });
+    }
+
+    if is_left_assoc {
+        let rewritten = build_right_assoc_mul(ctx, &factors)?;
+        return Some(CanonicalizeMulRewrite {
+            rewritten,
+            kind: CanonicalizeMulRewriteKind::RightAssociate,
+        });
+    }
+
+    None
+}
+
 /// Canonicalize top-level Add shape/order:
 /// - Sort terms when out of order.
 /// - Fix top-level left-associative shape to right-associative.
@@ -641,6 +687,10 @@ pub fn try_rewrite_canonicalize_mul_expr(
     let Expr::Mul(_, _) = ctx.get(expr) else {
         return None;
     };
+
+    if let Some(rewrite) = try_rewrite_canonicalize_mul_small_chain(ctx, expr) {
+        return Some(rewrite);
+    }
 
     let mut factors = mul_leaves(ctx, expr);
     if factors.iter().any(|f| !ctx.is_mul_commutative(*f)) {
@@ -948,6 +998,51 @@ mod tests {
         // Verify all original factors are present
         for factor in &factors {
             assert!(view.factors.iter().any(|f| f == factor));
+        }
+    }
+
+    #[test]
+    fn test_canonicalize_mul_small_chain_sorts_three_factors() {
+        let mut ctx = Context::new();
+        let a = ctx.var("a");
+        let b = ctx.var("b");
+        let c = ctx.var("c");
+
+        let ca = ctx.add_raw(Expr::Mul(c, a));
+        let expr = ctx.add_raw(Expr::Mul(ca, b));
+
+        let rewrite = try_rewrite_canonicalize_mul_expr(&mut ctx, expr).unwrap();
+        assert_eq!(rewrite.kind, CanonicalizeMulRewriteKind::SortFactors);
+
+        let view = MulView::from_expr(&ctx, rewrite.rewritten);
+        assert_eq!(view.factors.as_slice(), &[a, b, c]);
+    }
+
+    #[test]
+    fn test_canonicalize_mul_small_chain_right_associates_sorted_chain() {
+        let mut ctx = Context::new();
+        let a = ctx.var("a");
+        let b = ctx.var("b");
+        let c = ctx.var("c");
+
+        let ab = ctx.add_raw(Expr::Mul(a, b));
+        let expr = ctx.add_raw(Expr::Mul(ab, c));
+
+        let rewrite = try_rewrite_canonicalize_mul_expr(&mut ctx, expr).unwrap();
+        assert_eq!(rewrite.kind, CanonicalizeMulRewriteKind::RightAssociate);
+
+        match ctx.get(rewrite.rewritten) {
+            Expr::Mul(lhs, rhs) => {
+                assert_eq!(*lhs, a);
+                match ctx.get(*rhs) {
+                    Expr::Mul(inner_lhs, inner_rhs) => {
+                        assert_eq!(*inner_lhs, b);
+                        assert_eq!(*inner_rhs, c);
+                    }
+                    other => panic!("expected right-associated tail mul, got {other:?}"),
+                }
+            }
+            other => panic!("expected mul after canonicalization, got {other:?}"),
         }
     }
 }

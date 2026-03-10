@@ -58,7 +58,7 @@ pub struct FractionDidacticCancelPlan {
 
 #[inline]
 fn expr_matches_poly(ctx: &Context, lhs: ExprId, rhs: ExprId) -> bool {
-    lhs == rhs || poly_eq(ctx, lhs, rhs)
+    lhs == rhs || compare_expr(ctx, lhs, rhs) == Ordering::Equal || poly_eq(ctx, lhs, rhs)
 }
 
 /// Detect `(a^2 + 2ab + b^2)/(a+b)^2` and plan denominator expansion.

@@ -1,4 +1,5 @@
 use crate::{Constant, Context, Expr, ExprId};
+use smallvec::SmallVec;
 use std::cmp::Ordering;
 
 /// Iterative expression comparison using explicit stack.
@@ -6,7 +7,10 @@ use std::cmp::Ordering;
 pub fn compare_expr(context: &Context, a: ExprId, b: ExprId) -> Ordering {
     use Expr::*;
 
-    let mut stack: Vec<(ExprId, ExprId)> = vec![(a, b)];
+    // Most ordering comparisons are shallow; keep the work stack inline and
+    // avoid a heap allocation in the common case.
+    let mut stack: SmallVec<[(ExprId, ExprId); 8]> = SmallVec::new();
+    stack.push((a, b));
 
     while let Some((x, y)) = stack.pop() {
         if x == y {

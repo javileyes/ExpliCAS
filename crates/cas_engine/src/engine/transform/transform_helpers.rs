@@ -8,7 +8,9 @@ use cas_math::factoring_support::{
     try_rewrite_difference_of_squares_product_expr, DifferenceOfSquaresProductRewriteKind,
 };
 use cas_math::logarithm_inverse_support::try_rewrite_exponential_log_inverse_expr;
+use cas_math::numeric::as_i64;
 use cas_math::pow_preorder_support::{try_plan_sqrt_square_pow_rewrite, SqrtSquarePowRewriteKind};
+use smallvec::SmallVec;
 
 fn format_difference_of_squares_product_desc(
     kind: DifferenceOfSquaresProductRewriteKind,
@@ -62,6 +64,194 @@ fn is_symbolic_power_over_same_atom_noop(ctx: &Context, left: ExprId, right: Exp
         && is_symbolic_atom(ctx, *exp)
         && is_symbolic_atom(ctx, right)
         && cas_ast::ordering::compare_expr(ctx, *base, right) == std::cmp::Ordering::Equal
+}
+
+fn collect_positive_add_terms_3(
+    ctx: &Context,
+    expr: ExprId,
+    out: &mut SmallVec<[ExprId; 3]>,
+) -> bool {
+    match ctx.get(expr) {
+        Expr::Add(left, right) => {
+            collect_positive_add_terms_3(ctx, *left, out)
+                && collect_positive_add_terms_3(ctx, *right, out)
+        }
+        Expr::Sub(_, _) | Expr::Neg(_) => false,
+        _ => {
+            if out.len() == 3 {
+                return false;
+            }
+            out.push(expr);
+            true
+        }
+    }
+}
+
+fn collect_signed_add_terms_3(
+    ctx: &Context,
+    expr: ExprId,
+    positive: bool,
+    out: &mut SmallVec<[(ExprId, bool); 3]>,
+) -> bool {
+    match ctx.get(expr) {
+        Expr::Add(left, right) => {
+            collect_signed_add_terms_3(ctx, *left, positive, out)
+                && collect_signed_add_terms_3(ctx, *right, positive, out)
+        }
+        Expr::Sub(left, right) => {
+            collect_signed_add_terms_3(ctx, *left, positive, out)
+                && collect_signed_add_terms_3(ctx, *right, !positive, out)
+        }
+        Expr::Neg(inner) => collect_signed_add_terms_3(ctx, *inner, !positive, out),
+        _ => {
+            if out.len() == 3 {
+                return false;
+            }
+            out.push((expr, positive));
+            true
+        }
+    }
+}
+
+fn collect_mul_factors_3(ctx: &Context, expr: ExprId, out: &mut SmallVec<[ExprId; 3]>) -> bool {
+    match ctx.get(expr) {
+        Expr::Mul(left, right) => {
+            collect_mul_factors_3(ctx, *left, out) && collect_mul_factors_3(ctx, *right, out)
+        }
+        _ => {
+            if out.len() == 3 {
+                return false;
+            }
+            out.push(expr);
+            true
+        }
+    }
+}
+
+fn multiset_matches_exact(ctx: &Context, actual: &[ExprId], expected: &[ExprId]) -> bool {
+    if actual.len() != expected.len() {
+        return false;
+    }
+
+    let mut used = [false; 3];
+    for wanted in expected {
+        let mut matched = false;
+        for (idx, candidate) in actual.iter().enumerate() {
+            if used[idx] {
+                continue;
+            }
+            if cas_ast::ordering::compare_expr(ctx, *candidate, *wanted)
+                == std::cmp::Ordering::Equal
+            {
+                used[idx] = true;
+                matched = true;
+                break;
+            }
+        }
+        if !matched {
+            return false;
+        }
+    }
+
+    true
+}
+
+fn is_exact_two_ab_product(ctx: &mut Context, expr: ExprId, a: ExprId, b: ExprId) -> bool {
+    let mut factors = SmallVec::<[ExprId; 3]>::new();
+    if !collect_mul_factors_3(ctx, expr, &mut factors) || factors.len() != 3 {
+        return false;
+    }
+
+    let two = ctx.num(2);
+    multiset_matches_exact(ctx, &factors, &[two, a, b])
+}
+
+fn is_exact_binomial_square_fraction_preorder(ctx: &mut Context, num: ExprId, den: ExprId) -> bool {
+    let Expr::Pow(base, exp) = ctx.get(den) else {
+        return false;
+    };
+    if as_i64(ctx, *exp) != Some(2) {
+        return false;
+    }
+    let Expr::Add(a, b) = ctx.get(*base) else {
+        return false;
+    };
+    let a = *a;
+    let b = *b;
+
+    let exp_two = ctx.num(2);
+    let a_sq = ctx.add(Expr::Pow(a, exp_two));
+    let exp_two_b = ctx.num(2);
+    let b_sq = ctx.add(Expr::Pow(b, exp_two_b));
+
+    let mut terms = SmallVec::<[ExprId; 3]>::new();
+    if !collect_positive_add_terms_3(ctx, num, &mut terms) || terms.len() != 3 {
+        return false;
+    }
+
+    let mut squares = SmallVec::<[ExprId; 2]>::new();
+    let mut middle = None;
+    for term in terms {
+        if cas_ast::ordering::compare_expr(ctx, term, a_sq) == std::cmp::Ordering::Equal
+            || cas_ast::ordering::compare_expr(ctx, term, b_sq) == std::cmp::Ordering::Equal
+        {
+            squares.push(term);
+        } else if middle.is_none() {
+            middle = Some(term);
+        } else {
+            return false;
+        }
+    }
+
+    squares.len() == 2
+        && multiset_matches_exact(ctx, &squares, &[a_sq, b_sq])
+        && middle.is_some_and(|term| is_exact_two_ab_product(ctx, term, a, b))
+}
+
+fn try_exact_perfect_square_minus_fraction_preorder(
+    ctx: &mut Context,
+    num: ExprId,
+    den: ExprId,
+) -> Option<ExprId> {
+    let Expr::Sub(a, b) = ctx.get(den) else {
+        return None;
+    };
+    let a = *a;
+    let b = *b;
+
+    let exp_two = ctx.num(2);
+    let a_sq = ctx.add(Expr::Pow(a, exp_two));
+    let exp_two_b = ctx.num(2);
+    let b_sq = ctx.add(Expr::Pow(b, exp_two_b));
+
+    let mut terms = SmallVec::<[(ExprId, bool); 3]>::new();
+    if !collect_signed_add_terms_3(ctx, num, true, &mut terms) || terms.len() != 3 {
+        return None;
+    }
+
+    let mut positives = SmallVec::<[ExprId; 2]>::new();
+    let mut negative = None;
+    for (term, positive) in terms {
+        if positive {
+            if positives.len() == 2 {
+                return None;
+            }
+            positives.push(term);
+        } else if negative.is_none() {
+            negative = Some(term);
+        } else {
+            return None;
+        }
+    }
+
+    if positives.len() != 2
+        || !multiset_matches_exact(ctx, &positives, &[a_sq, b_sq])
+        || !negative.is_some_and(|term| is_exact_two_ab_product(ctx, term, a, b))
+    {
+        return None;
+    }
+
+    Some(den)
 }
 
 impl<'a> LocalSimplificationTransformer<'a> {
@@ -279,6 +469,17 @@ impl<'a> LocalSimplificationTransformer<'a> {
             }
         }
 
+        let allow_exact_binomial_square_preorder = !self.collect_steps_enabled()
+            && self.event_listener.is_none()
+            && self.current_phase == crate::SimplifyPhase::Core
+            && self.initial_parent_ctx.is_solve_context()
+            && !self.initial_parent_ctx.domain_mode().is_strict();
+        if allow_exact_binomial_square_preorder
+            && is_exact_binomial_square_fraction_preorder(self.context, l, r)
+        {
+            return self.context.num(1);
+        }
+
         // EARLY DETECTION: (A² - B²) / (A ± B) pattern
         let allow_difference_of_squares_preorder = match self.initial_parent_ctx.simplify_purpose()
         {
@@ -320,6 +521,18 @@ impl<'a> LocalSimplificationTransformer<'a> {
         // when no listener is attached so we don't widen the existing event-gap
         // behavior beyond the hidden hot path.
         if allow_difference_of_squares_preorder && self.event_listener.is_none() {
+            if !self.collect_steps_enabled()
+                && self.current_phase == crate::SimplifyPhase::Core
+                && self.initial_parent_ctx.is_solve_context()
+                && !self.initial_parent_ctx.domain_mode().is_strict()
+            {
+                if let Some(early_result) =
+                    try_exact_perfect_square_minus_fraction_preorder(self.context, l, r)
+                {
+                    return early_result;
+                }
+            }
+
             if let Some(early_result) = crate::rules::algebra::try_perfect_square_minus_preorder(
                 self.context,
                 id,

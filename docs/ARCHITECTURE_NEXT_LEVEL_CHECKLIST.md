@@ -145,6 +145,19 @@ Current progress:
     `eval_option_axes*`, because it only maps string axes into typed
     `EvalOptions` and does not own transport/wire concerns
   - `eval_request_runtime`
+  - `cas_session` also dropped transport naming for the session-backed eval
+    runner:
+    - module `eval_json_command` -> `eval_command`
+    - `EvalJsonCommandConfig` -> `EvalCommandConfig`
+    - `evaluate_eval_json_command_with_session(...)` ->
+      `evaluate_eval_command_with_session(...)`
+    - `evaluate_eval_json_command_pretty_with_session(...)` ->
+      `evaluate_eval_command_pretty_with_session(...)`
+    - rationale:
+      - it only orchestrates session load/run/save around typed eval requests
+      - the actual wire boundary remains in the CLI/web entrypoints and API DTOs
+      - `eval-json` stays as the product/command name, but not as the internal
+        responsibility of the session runtime
 
 ### P0.2 Review `cas_session_core`
 

@@ -6,7 +6,7 @@
 use super::didactic_factor_support::try_plan_fraction_didactic_cancel;
 use crate::define_rule;
 use crate::rule::{ChainedRewrite, Rewrite};
-use cas_ast::{Context, Expr, ExprId};
+use cas_ast::{Context, ExprId};
 use cas_math::fraction_gcd_plan_support::{try_plan_fraction_gcd_rewrite, FractionGcdRoute};
 use cas_math::fraction_mul_div_support::{try_rewrite_simplify_mul_div_expr, MulDivRewriteKind};
 use cas_math::fraction_power_cancel_support::{
@@ -62,16 +62,12 @@ fn format_cancel_power_fraction_desc(kind: CancelPowerFractionRewriteKind) -> &'
     }
 }
 
-fn fast_variable_nonzero_decision(
+fn fast_unproven_nonzero_decision(
     ctx: &Context,
     mode: crate::DomainMode,
     expr: ExprId,
 ) -> Option<crate::CancelDecision> {
     if !mode.allows_unproven(crate::ConditionClass::Definability) {
-        return None;
-    }
-
-    if !matches!(ctx.get(expr), Expr::Variable(_)) {
         return None;
     }
 
@@ -105,7 +101,7 @@ define_rule!(
 
         // DOMAIN GATE: need base ≠ 0 (derived from original denominator P^n ≠ 0)
         let domain_mode = parent_ctx.domain_mode();
-        let decision = fast_variable_nonzero_decision(ctx, domain_mode, plan.nonzero_target)
+        let decision = fast_unproven_nonzero_decision(ctx, domain_mode, plan.nonzero_target)
             .unwrap_or_else(|| {
                 crate::oracle_allows_with_hint(
                     ctx,
@@ -150,7 +146,7 @@ define_rule!(
 
         // DOMAIN GATE: In Strict mode, only cancel if den is provably non-zero
         let domain_mode = parent_ctx.domain_mode();
-        let decision = fast_variable_nonzero_decision(ctx, domain_mode, plan.nonzero_target)
+        let decision = fast_unproven_nonzero_decision(ctx, domain_mode, plan.nonzero_target)
             .unwrap_or_else(|| {
                 crate::oracle_allows_with_hint(
                     ctx,
@@ -192,7 +188,7 @@ define_rule!(
 
         // DOMAIN GATE
         let domain_mode = parent_ctx.domain_mode();
-        let decision = fast_variable_nonzero_decision(ctx, domain_mode, plan.nonzero_target)
+        let decision = fast_unproven_nonzero_decision(ctx, domain_mode, plan.nonzero_target)
             .unwrap_or_else(|| {
                 crate::oracle_allows_with_hint(
                     ctx,
