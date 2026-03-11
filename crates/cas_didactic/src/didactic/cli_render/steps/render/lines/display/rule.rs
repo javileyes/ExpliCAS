@@ -1,4 +1,4 @@
-use crate::cas_solver::Step;
+use crate::runtime::Step;
 use cas_ast::{Context, ExprId};
 
 pub(super) fn render_rule_with_scope_line(

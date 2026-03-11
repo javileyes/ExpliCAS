@@ -1,7 +1,8 @@
 use crate::ReplCore;
+use cas_solver::session_api::runtime::evaluate_eval_command_output;
 use cas_solver::{
-    EvalCommandError, EvalCommandOutput, ReplConfiguredRuntimeContext, ReplEvalRuntimeContext,
-    ReplRuntimeStateContext, ReplSimplifierRuntimeContext, Simplifier,
+    runtime::Simplifier, EvalCommandError, EvalCommandOutput, ReplConfiguredRuntimeContext,
+    ReplEvalRuntimeContext, ReplRuntimeStateContext, ReplSimplifierRuntimeContext,
 };
 use cas_solver_core::eval_options::EvalOptions;
 use cas_solver_core::phase_stats::PipelineStats;
@@ -17,7 +18,7 @@ impl ReplEvalRuntimeContext for ReplCore {
         debug_mode: bool,
     ) -> Result<EvalCommandOutput, EvalCommandError> {
         self.with_engine_and_state(|engine, state| {
-            crate::solver_exports::evaluate_eval_command_output(engine, state, line, debug_mode)
+            evaluate_eval_command_output(engine, state, line, debug_mode)
         })
     }
 

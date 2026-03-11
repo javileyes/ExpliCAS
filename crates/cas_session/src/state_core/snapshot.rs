@@ -1,7 +1,8 @@
 use std::path::Path;
 
 use super::SessionState;
-use crate::{snapshot::SessionSnapshot, SimplifyCacheKey, SnapshotError};
+use crate::snapshot::SnapshotError;
+use crate::{snapshot::SessionSnapshot, SimplifyCacheKey};
 
 impl SessionState {
     /// Restore context + state from a persisted snapshot.

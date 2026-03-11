@@ -1,6 +1,6 @@
 //! Android JNI bridge for ExpliCAS engine.
 //!
-//! Uses session-owned wire entry points with DTOs from `cas_api_models`.
+//! Uses stateless wire entry points from `cas_solver` with DTOs from `cas_api_models`.
 //! Schema version: 1
 //!
 //! # Safety
@@ -24,7 +24,7 @@ use jni::JNIEnv;
 
 // Wire DTOs for stable FFI fallback responses
 use cas_api_models::{BudgetWireInfo, EngineWireError, EngineWireResponse};
-use cas_session::solver_exports::evaluate_eval_wire;
+use cas_solver::wire::eval_str_to_wire as evaluate_eval_wire;
 
 // ============================================================================
 // JNI Entry Points
@@ -54,8 +54,8 @@ pub extern "system" fn Java_es_javiergimenez_explicas_CasNative_abiVersion(
 /// # Returns
 /// JSON string with schema_version: 1
 ///
-/// Uses `cas_session::solver_exports::evaluate_eval_wire` as the frontend
-/// stateless wire entry point.
+/// Uses `cas_solver::wire::eval_str_to_wire` as the direct stateless wire
+/// entry point.
 #[no_mangle]
 pub extern "system" fn Java_es_javiergimenez_explicas_CasNative_evalWire<'local>(
     mut env: JNIEnv<'local>,
@@ -101,7 +101,7 @@ fn internal_error_wire(message: &str) -> String {
     resp.to_json()
 }
 
-/// Core evaluation function - uses the session-facing stateless wire entry point.
+/// Core evaluation function - uses the direct stateless solver wire entry point.
 ///
 /// This is the testable inner function that doesn't require JNI.
 pub fn eval_core(env: &mut JNIEnv, expr: JString, opts_json: JString) -> String {
@@ -207,7 +207,7 @@ pub fn substitute_core(
 
 #[cfg(test)]
 mod tests {
-    use cas_session::solver_exports::evaluate_eval_wire;
+    use cas_solver::wire::eval_str_to_wire as evaluate_eval_wire;
     use serde_json::Value;
 
     fn parse_wire(s: &str) -> Value {

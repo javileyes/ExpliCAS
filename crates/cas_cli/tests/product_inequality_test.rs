@@ -1,5 +1,6 @@
 use cas_ast::{Equation, RelOp, SolutionSet};
-use cas_solver::{solve, Simplifier};
+use cas_solver::runtime::Simplifier;
+use cas_solver::solve;
 
 #[test]
 fn test_product_inequality_both_negative() {

@@ -17,8 +17,8 @@
 
 use cas_ast::SolutionSet;
 use cas_formatter::DisplayExpr;
-use cas_solver::DomainMode;
-use cas_solver::Engine;
+use cas_solver::runtime::DomainMode;
+use cas_solver::runtime::Engine;
 use cas_solver::{solve_with_display_steps, SolveBudget, SolverOptions};
 use cas_solver::{AssumeScope, ValueDomain};
 

@@ -1,5 +1,5 @@
 use super::TimelineStepSnapshots;
-use crate::cas_solver::Step;
+use crate::runtime::Step;
 use cas_ast::{Context, ExprId};
 
 pub(super) fn resolve_timeline_step_global_snapshots(
@@ -20,7 +20,7 @@ pub(super) fn resolve_timeline_step_global_snapshots(
         }
     });
     let global_after_expr = step.global_after.unwrap_or_else(|| {
-        crate::cas_solver::reconstruct_global_expr(
+        crate::runtime::reconstruct_global_expr(
             context,
             global_before_expr,
             step.path(),

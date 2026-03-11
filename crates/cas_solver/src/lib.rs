@@ -52,6 +52,7 @@ mod bindings_types;
 mod blocked_hint_format;
 mod budget_runtime_types;
 mod cancel_runtime;
+pub mod command_api;
 mod config_command_apply;
 mod config_command_eval;
 mod config_command_parse;
@@ -72,7 +73,6 @@ mod engine_event_display_steps;
 mod engine_runtime_types;
 mod equiv_command;
 mod equiv_format;
-mod error_runtime_types;
 mod eval_command_eval;
 mod eval_command_format;
 mod eval_command_format_metadata;
@@ -247,6 +247,7 @@ mod repl_steps_runtime;
 mod repl_steps_runtime_tests;
 mod rule_runtime_types;
 mod rules_runtime_types;
+pub mod runtime;
 mod semantics_command_eval;
 mod semantics_command_parse;
 #[cfg(test)]
@@ -273,6 +274,7 @@ mod semantics_view_format_axis;
 mod semantics_view_format_help;
 mod semantics_view_format_overview;
 mod semantics_view_types;
+pub mod session_api;
 mod set_command_apply;
 mod set_command_eval;
 mod set_command_format;
@@ -368,4 +370,5 @@ pub mod strategies {
 /// Backward-compatible facade for former `cas_engine::api::*` imports.
 pub mod api;
 
+pub use crate::runtime::*;
 pub use exports::*;

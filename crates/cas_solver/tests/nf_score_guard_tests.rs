@@ -7,7 +7,7 @@
 use cas_ast::{Context, Expr};
 use cas_formatter::DisplayExpr;
 use cas_parser::parse;
-use cas_solver::Simplifier;
+use cas_solver::runtime::Simplifier;
 
 /// Verify that 4^(1/2) simplifies to 2, even when exponent is Div form
 #[test]

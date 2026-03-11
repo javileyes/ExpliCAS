@@ -1,7 +1,7 @@
 mod normalize;
 mod render;
 
-use crate::cas_solver::ImplicitCondition;
+use crate::runtime::ImplicitCondition;
 use cas_ast::Context;
 
 pub(super) fn render_timeline_global_requires_html(

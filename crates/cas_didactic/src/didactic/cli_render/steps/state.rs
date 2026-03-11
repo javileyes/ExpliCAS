@@ -1,5 +1,5 @@
 use super::super::super::display_policy::CliSubstepsRenderState;
-use crate::cas_solver::Step;
+use crate::runtime::Step;
 use cas_ast::{Context, ExprId};
 
 pub(super) struct StepLoopState {
@@ -34,12 +34,7 @@ impl StepLoopState {
         self.current_root = if let Some(global_after) = step.global_after {
             global_after
         } else {
-            crate::cas_solver::reconstruct_global_expr(
-                ctx,
-                self.current_root,
-                step.path(),
-                step.after,
-            )
+            crate::runtime::reconstruct_global_expr(ctx, self.current_root, step.path(), step.after)
         };
     }
 }

@@ -1,7 +1,7 @@
 pub(super) mod lines;
 pub(super) mod visibility;
 
-use crate::cas_solver::Step;
+use crate::runtime::Step;
 use cas_ast::ExprId;
 
 pub(super) fn local_rule_expr_ids(step: &Step) -> (ExprId, ExprId) {

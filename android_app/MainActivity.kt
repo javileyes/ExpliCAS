@@ -24,7 +24,7 @@ import org.json.JSONObject
 /**
  * Demo Activity for ExpliCAS engine integration.
  * 
- * Uses JSON schema v1 from cas_engine::json.
+ * Uses wire schema v1 from cas_solver::wire.
  */
 class MainActivity : AppCompatActivity() {
 
@@ -116,8 +116,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Parse JSON response into structured result.
-     * Uses schema v1 from cas_engine::json.
+     * Parse wire response into structured result.
+     * Uses schema v1 from cas_solver::wire.
      */
     private fun evalAndParse(expr: String, preset: String, mode: String, steps: Boolean): EvalResult {
         val optsJson = """{"budget":{"preset":"$preset","mode":"$mode"},"steps":$steps}"""

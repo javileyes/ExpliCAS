@@ -6,7 +6,7 @@ use super::SolveTimelineHtml;
 impl<'a> SolveTimelineHtml<'a> {
     pub fn new(
         context: &'a mut cas_ast::Context,
-        steps: &'a [crate::cas_solver::SolveStep],
+        steps: &'a [crate::runtime::SolveStep],
         original_eq: &'a cas_ast::Equation,
         solution_set: &'a cas_ast::SolutionSet,
         var: &str,

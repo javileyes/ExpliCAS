@@ -18,7 +18,7 @@ fn test_session_snapshot_save_load() {
     store.push(crate::EntryKind::Expr(expr), "x + 1".to_string());
 
     let key = SimplifyCacheKey {
-        domain: crate::CacheDomainMode::Generic,
+        domain: crate::cache::CacheDomainMode::Generic,
         ruleset_rev: 1,
     };
 

@@ -7,8 +7,8 @@
 
 use cas_ast::Expr;
 use cas_session::SessionState;
-use cas_solver::Engine;
-use cas_solver::{EvalAction, EvalRequest};
+use cas_solver::runtime::Engine;
+use cas_solver::runtime::{EvalAction, EvalRequest};
 
 /// Helper to create eval request for expression
 fn make_simplify_request(engine: &mut Engine, expr_str: &str) -> EvalRequest {
@@ -247,7 +247,7 @@ fn session_propagated_no_assumed_blocked_contamination() {
     let mut state = SessionState::default();
 
     // Use Assume mode to generate assumed events
-    state.options_mut().shared.semantics.domain_mode = cas_solver::DomainMode::Assume;
+    state.options_mut().shared.semantics.domain_mode = cas_solver::runtime::DomainMode::Assume;
 
     // Step 1: Evaluate exp(ln(x)) in Assume mode
     // This should simplify to x and record Positive(x) as assumed
@@ -256,7 +256,7 @@ fn session_propagated_no_assumed_blocked_contamination() {
 
     // Verify we got an assumed event (or at least the simplification happened)
     let result1 = match &output1.result {
-        cas_solver::EvalResult::Expr(e) => cas_formatter::DisplayExpr {
+        cas_solver::runtime::EvalResult::Expr(e) => cas_formatter::DisplayExpr {
             context: &engine.simplifier.context,
             id: *e,
         }
@@ -284,7 +284,7 @@ fn session_propagated_no_assumed_blocked_contamination() {
 
     // For now, we verify that the result is correct
     let result2 = match &output2.result {
-        cas_solver::EvalResult::Expr(e) => cas_formatter::DisplayExpr {
+        cas_solver::runtime::EvalResult::Expr(e) => cas_formatter::DisplayExpr {
             context: &engine.simplifier.context,
             id: *e,
         }

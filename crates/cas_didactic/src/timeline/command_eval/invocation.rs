@@ -2,6 +2,7 @@ use super::super::cli_actions::timeline_cli_actions_from_render;
 use super::super::simplify::VerbosityLevel;
 use super::super::types::TimelineCliAction;
 use super::session;
+use cas_solver::session_api::types::TimelineCommandEvalError;
 
 pub fn extract_timeline_invocation_input(line: &str) -> &str {
     line.strip_prefix("timeline")
@@ -10,22 +11,22 @@ pub fn extract_timeline_invocation_input(line: &str) -> &str {
 }
 
 pub fn evaluate_timeline_invocation_cli_actions_with_session<S>(
-    engine: &mut crate::cas_solver::Engine,
+    engine: &mut crate::runtime::Engine,
     session: &mut S,
     line: &str,
-    eval_options: &crate::cas_solver::EvalOptions,
+    eval_options: &crate::runtime::EvalOptions,
     verbosity: VerbosityLevel,
-) -> Result<Vec<TimelineCliAction>, cas_session::solver_exports::TimelineCommandEvalError>
+) -> Result<Vec<TimelineCliAction>, TimelineCommandEvalError>
 where
-    S: crate::cas_solver::EvalSession<
-        Options = crate::cas_solver::EvalOptions,
-        Diagnostics = crate::cas_solver::Diagnostics,
+    S: crate::runtime::EvalSession<
+        Options = crate::runtime::EvalOptions,
+        Diagnostics = crate::runtime::Diagnostics,
     >,
-    S::Store: crate::cas_solver::EvalStore<
-        DomainMode = crate::cas_solver::DomainMode,
-        RequiredItem = crate::cas_solver::RequiredItem,
-        Step = crate::cas_solver::Step,
-        Diagnostics = crate::cas_solver::Diagnostics,
+    S::Store: crate::runtime::EvalStore<
+        DomainMode = crate::runtime::DomainMode,
+        RequiredItem = crate::runtime::RequiredItem,
+        Step = crate::runtime::Step,
+        Diagnostics = crate::runtime::Diagnostics,
     >,
 {
     let input = extract_timeline_invocation_input(line);

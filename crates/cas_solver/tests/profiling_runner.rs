@@ -23,7 +23,7 @@ use cas_solver::rules::trigonometry::{
     CanonicalizeTrigSquareRule, EvaluateTrigRule, PythagoreanIdentityRule,
     RecursiveTrigExpansionRule, TanToSinCosRule,
 };
-use cas_solver::Simplifier;
+use cas_solver::runtime::Simplifier;
 use std::collections::HashMap;
 
 fn create_full_simplifier() -> Simplifier {

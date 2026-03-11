@@ -5,7 +5,7 @@ use super::super::super::simplify_substeps::{
     render_timeline_domain_assumptions_html, render_timeline_enriched_substeps_html,
     render_timeline_rule_substeps_html, TimelineSubstepsRenderState,
 };
-use crate::cas_solver::Step;
+use crate::runtime::Step;
 use cas_ast::Context;
 use cas_formatter::{DisplayContext, StylePreferences};
 

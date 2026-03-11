@@ -1,7 +1,7 @@
-use cas_solver::{Engine, EvalAction, EvalOptions, EvalRequest};
+use cas_solver::runtime::{Engine, EvalAction, EvalOptions, EvalRequest};
 use cas_solver_core::engine_events::EngineEvent;
 
-fn eval_output_for(expr: &str) -> (Engine, cas_solver::EvalOutput) {
+fn eval_output_for(expr: &str) -> (Engine, cas_solver::runtime::EvalOutput) {
     let mut engine = Engine::new();
     let parsed = cas_parser::parse(expr, &mut engine.simplifier.context).expect("parse");
     let output = engine

@@ -1,7 +1,7 @@
 mod final_result;
 mod requires;
 
-use crate::cas_solver::ImplicitCondition;
+use crate::runtime::ImplicitCondition;
 use cas_ast::{Context, ExprId};
 use cas_formatter::{DisplayContext, StylePreferences};
 

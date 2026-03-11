@@ -1,6 +1,7 @@
 use cas_ast::{Constant, Equation, Expr, RelOp, SolutionSet};
 use cas_parser::parse;
-use cas_solver::{solve, Simplifier};
+use cas_solver::runtime::Simplifier;
+use cas_solver::solve;
 
 #[test]
 fn test_rational_inequality_undefined_debug() {

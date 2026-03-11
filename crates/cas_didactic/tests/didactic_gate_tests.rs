@@ -4,7 +4,7 @@
 
 use cas_ast::{Context, Expr};
 use cas_didactic::enrich_steps;
-use cas_solver::{ImportanceLevel, Step, StepCategory};
+use cas_solver::runtime::{ImportanceLevel, Step, StepCategory};
 
 /// Test: Steps marked as chained should NOT have GCD factorization substeps
 #[test]

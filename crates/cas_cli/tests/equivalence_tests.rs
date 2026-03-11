@@ -1,21 +1,25 @@
 use cas_ast::{Expr, ExprId};
 use cas_formatter::DisplayExpr;
 use cas_parser::parse;
-use cas_solver::rules::algebra::{ExpandRule, SimplifyFractionRule};
-use cas_solver::rules::arithmetic::{AddZeroRule, CombineConstantsRule, MulOneRule, MulZeroRule};
-use cas_solver::rules::canonicalization::{
+use cas_solver::runtime::rules::algebra::{ExpandRule, SimplifyFractionRule};
+use cas_solver::runtime::rules::arithmetic::{
+    AddZeroRule, CombineConstantsRule, MulOneRule, MulZeroRule,
+};
+use cas_solver::runtime::rules::canonicalization::{
     CanonicalizeAddRule, CanonicalizeMulRule, CanonicalizeNegationRule, CanonicalizeRootRule,
 };
-use cas_solver::rules::exponents::{
+use cas_solver::runtime::rules::exponents::{
     EvaluatePowerRule, IdentityPowerRule, PowerPowerRule, ProductPowerRule,
 };
-use cas_solver::rules::functions::EvaluateAbsRule;
-use cas_solver::rules::logarithms::{EvaluateLogRule, ExponentialLogRule};
-use cas_solver::rules::polynomial::{AnnihilationRule, CombineLikeTermsRule, DistributeRule};
-use cas_solver::rules::trigonometry::{
+use cas_solver::runtime::rules::functions::EvaluateAbsRule;
+use cas_solver::runtime::rules::logarithms::{EvaluateLogRule, ExponentialLogRule};
+use cas_solver::runtime::rules::polynomial::{
+    AnnihilationRule, CombineLikeTermsRule, DistributeRule,
+};
+use cas_solver::runtime::rules::trigonometry::{
     AngleIdentityRule, DoubleAngleRule, EvaluateTrigRule, PythagoreanIdentityRule, TanToSinCosRule,
 };
-use cas_solver::Simplifier;
+use cas_solver::runtime::Simplifier;
 use num_traits::Zero;
 
 fn create_full_simplifier() -> Simplifier {

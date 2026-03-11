@@ -14,7 +14,7 @@
 //!   cargo test --release -p cas_engine --test depth_stress_test -- --ignored --nocapture  # full sweep
 
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
-use cas_solver::Simplifier;
+use cas_solver::runtime::Simplifier;
 
 use std::collections::HashMap;
 use std::panic;

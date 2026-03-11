@@ -13,7 +13,7 @@
 //! - No expand contamination
 
 use cas_parser::parse;
-use cas_solver::Simplifier;
+use cas_solver::runtime::Simplifier;
 
 /// Helper: run poly_gcd_exact and get result string
 fn run_gcd_exact(a: &str, b: &str) -> (String, cas_ast::ExprId, cas_ast::Context) {

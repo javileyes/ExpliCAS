@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Lint: Eval Wire Entrypoint Enforcement
 #
-# This script ensures that CLI and FFI route eval wire through session-layer
-# entry points and do not call solver wire helpers directly.
+# This script ensures that eval wire uses the intended ownership boundary:
+# - CLI routes through the session command API
+# - FFI calls the direct stateless `cas_solver::wire` entrypoint
 
 set -euo pipefail
 
@@ -22,26 +23,26 @@ else
     ERRORS=$((ERRORS + 1))
 fi
 
-# 2) FFI must route through cas_session eval entrypoint.
-if grep -rq "evaluate_eval_wire" "$ROOT/crates/cas_android_ffi/src"; then
-    echo "✔ FFI routes eval wire via cas_session entrypoint"
+# 2) FFI must call the direct stateless solver wire entrypoint.
+if grep -rq "cas_solver::wire::eval_str_to_wire\\|use cas_solver::wire::eval_str_to_wire" "$ROOT/crates/cas_android_ffi/src"; then
+    echo "✔ FFI routes eval wire via cas_solver::wire"
 else
-    echo "✘ ERROR: FFI must call evaluate_eval_wire"
+    echo "✘ ERROR: FFI must call cas_solver::wire::eval_str_to_wire"
     ERRORS=$((ERRORS + 1))
 fi
 
-# 3) Frontends must not call solver-level JSON helper directly.
-if grep -rq "eval_str_to_wire" "$ROOT/crates/cas_cli/src" "$ROOT/crates/cas_android_ffi/src"; then
-    echo "✘ ERROR: Frontends must not call cas_solver::eval_str_to_wire directly"
+# 3) CLI must not bypass cas_session and call solver wire directly.
+if grep -rq "eval_str_to_wire" "$ROOT/crates/cas_cli/src"; then
+    echo "✘ ERROR: CLI must not call cas_solver::wire::eval_str_to_wire directly"
     ERRORS=$((ERRORS + 1))
 else
-    echo "✔ No direct cas_solver::eval_str_to_wire calls in frontends"
+    echo "✔ CLI does not call cas_solver::wire::eval_str_to_wire directly"
 fi
 
 if [ "$ERRORS" -gt 0 ]; then
     echo ""
     echo "FAILED: $ERRORS error(s) found"
-    echo "Eval wire must use cas_session entry points"
+    echo "Eval wire must use the expected ownership path"
     exit 1
 fi
 

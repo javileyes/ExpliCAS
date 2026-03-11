@@ -9,7 +9,7 @@
 //! Both have HoldAll semantics: children are NOT simplified.
 
 use cas_parser::parse;
-use cas_solver::Simplifier;
+use cas_solver::runtime::Simplifier;
 
 // =============================================================================
 // Section 1: HoldAll semantics - children should NOT be simplified

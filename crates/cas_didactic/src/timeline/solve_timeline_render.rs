@@ -3,7 +3,7 @@ mod steps;
 
 use super::solve_render::{render_solve_final_result_html, render_solve_step_html};
 use super::solve_solution_latex::render_solution_set_to_latex;
-use crate::cas_solver::SolveStep;
+use crate::runtime::SolveStep;
 use cas_ast::{Context, SolutionSet};
 
 pub(super) fn render_solve_timeline_body(

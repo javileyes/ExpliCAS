@@ -2,7 +2,7 @@ mod domain;
 mod enriched;
 mod rule;
 
-use crate::cas_solver::Step;
+use crate::runtime::Step;
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub(super) struct TimelineSubstepsRenderState {

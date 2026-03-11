@@ -1,16 +1,15 @@
 #[cfg(test)]
 mod tests {
-    use crate::solver_exports::{
-        apply_assignment, format_assignment_error_message, format_assignment_success_message,
-        format_let_assignment_parse_error_message, parse_let_assignment_input, AssignmentError,
-        LetAssignmentParseError, ParsedLetAssignment,
-    };
     use crate::SessionState;
+    #[allow(unused_imports)]
+    use cas_solver::session_api::{
+        formatting::*, options::*, runtime::*, session_support::*, symbolic_commands::*, types::*,
+    };
 
     #[test]
     fn apply_assignment_validates_name() {
         let mut state = SessionState::new();
-        let mut simplifier = cas_solver::Simplifier::with_default_rules();
+        let mut simplifier = cas_solver::runtime::Simplifier::with_default_rules();
         let err = apply_assignment(&mut state, &mut simplifier, "", "1", false).expect_err("err");
         assert_eq!(err, AssignmentError::EmptyName);
     }
@@ -18,7 +17,7 @@ mod tests {
     #[test]
     fn apply_assignment_stores_eager_value() {
         let mut state = SessionState::new();
-        let mut simplifier = cas_solver::Simplifier::with_default_rules();
+        let mut simplifier = cas_solver::runtime::Simplifier::with_default_rules();
         let id = apply_assignment(&mut state, &mut simplifier, "a", "x + x", false).expect("ok");
         let rendered = format!(
             "{}",
@@ -33,7 +32,7 @@ mod tests {
     #[test]
     fn apply_assignment_stores_lazy_formula() {
         let mut state = SessionState::new();
-        let mut simplifier = cas_solver::Simplifier::with_default_rules();
+        let mut simplifier = cas_solver::runtime::Simplifier::with_default_rules();
         let id = apply_assignment(&mut state, &mut simplifier, "a", "x + x", true).expect("ok");
         let rendered = format!(
             "{}",

@@ -1,22 +1,20 @@
-use crate::solver_exports::{
-    format_history_entry_inspection_lines, format_inspect_history_entry_error_message,
-    inspect_history_entry, inspect_history_entry_input, parse_history_entry_id,
-    HistoryEntryDetails, HistoryEntryInspection, HistoryExprInspection,
-    InspectHistoryEntryInputError, ParseHistoryEntryIdError,
-};
 use crate::SessionState;
+#[allow(unused_imports)]
+use cas_solver::session_api::{
+    formatting::*, options::*, runtime::*, session_support::*, symbolic_commands::*, types::*,
+};
 
 #[test]
 fn inspect_history_entry_reports_missing_id() {
     let mut state = SessionState::new();
-    let mut engine = cas_solver::Engine::new();
+    let mut engine = cas_solver::runtime::Engine::new();
     assert!(inspect_history_entry(&mut state, &mut engine, 999).is_none());
 }
 
 #[test]
 fn inspect_history_entry_expr_contains_parsed() {
     let mut state = SessionState::new();
-    let mut engine = cas_solver::Engine::new();
+    let mut engine = cas_solver::runtime::Engine::new();
     let expr = cas_parser::parse("x + x", &mut engine.simplifier.context).expect("parse");
     let id = state.history_push(crate::EntryKind::Expr(expr), "x + x".to_string());
 
@@ -44,7 +42,7 @@ fn parse_history_entry_id_rejects_invalid_token() {
 #[test]
 fn inspect_history_entry_input_reports_not_found() {
     let mut state = SessionState::new();
-    let mut engine = cas_solver::Engine::new();
+    let mut engine = cas_solver::runtime::Engine::new();
     let err =
         inspect_history_entry_input(&mut state, &mut engine, "#3").expect_err("expected not-found");
     assert_eq!(err, InspectHistoryEntryInputError::NotFound { id: 3 });

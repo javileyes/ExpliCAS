@@ -4,9 +4,9 @@
 //! returning results to users via JSON (CLI and FFI).
 
 use cas_parser::parse;
-use cas_solver::EvalOptions;
-use cas_solver::ExpandPolicy;
-use cas_solver::Simplifier;
+use cas_solver::runtime::EvalOptions;
+use cas_solver::runtime::ExpandPolicy;
+use cas_solver::runtime::Simplifier;
 
 /// Test that expand() result doesn't leak __hold in JSON/string output
 #[test]
@@ -50,7 +50,7 @@ fn test_expand_no_hold_leak() {
 #[test]
 fn test_autoexpand_no_hold_leak() {
     let opts = EvalOptions {
-        shared: cas_solver::SharedSemanticConfig {
+        shared: cas_solver::runtime::SharedSemanticConfig {
             expand_policy: ExpandPolicy::Auto,
             ..Default::default()
         },

@@ -5,7 +5,7 @@
 
 use cas_formatter::root_style::{ParseStyleSignals, StylePreferences};
 use cas_formatter::DisplayExprStyled;
-use cas_solver::Simplifier;
+use cas_solver::runtime::Simplifier;
 
 fn simplify_and_format(input: &str) -> String {
     let mut simplifier = Simplifier::new();

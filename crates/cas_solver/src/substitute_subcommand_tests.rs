@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::{
+    use crate::command_api::substitute::{
         evaluate_substitute_subcommand, parse_substitute_wire_text_lines, SubstituteCommandMode,
         SubstituteSubcommandOutput,
     };

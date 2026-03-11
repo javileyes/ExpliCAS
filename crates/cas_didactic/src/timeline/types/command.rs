@@ -1,4 +1,4 @@
-use crate::cas_solver::{DisplayEvalSteps, DisplaySolveSteps};
+use crate::runtime::{DisplayEvalSteps, DisplaySolveSteps};
 use cas_ast::{Equation, ExprId, SolutionSet};
 
 /// Simplify branch payload for CLI `timeline` rendering.

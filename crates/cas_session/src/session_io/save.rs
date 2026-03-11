@@ -2,7 +2,8 @@ use std::path::Path;
 
 use cas_engine::Engine;
 
-use crate::{SessionState, SimplifyCacheKey, SnapshotError};
+use crate::snapshot::SnapshotError;
+use crate::{SessionState, SimplifyCacheKey};
 
 /// Save session snapshot to disk.
 pub fn save_session(

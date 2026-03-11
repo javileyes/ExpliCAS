@@ -1,7 +1,7 @@
 mod frame;
 mod sections;
 
-use crate::cas_solver::Step;
+use crate::runtime::Step;
 use cas_formatter::html_escape;
 
 use super::simplify_highlights::TimelineRenderedStepMath;

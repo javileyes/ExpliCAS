@@ -10,7 +10,7 @@ use cas_solver::rules::canonicalization::{
 };
 use cas_solver::rules::polynomial::CombineLikeTermsRule;
 use cas_solver::rules::polynomial::DistributeRule;
-use cas_solver::Simplifier;
+use cas_solver::runtime::Simplifier;
 
 #[test]
 fn test_cyclic_identity() {

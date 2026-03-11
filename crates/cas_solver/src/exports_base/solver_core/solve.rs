@@ -1,5 +1,4 @@
 pub use cas_solver_core::const_fold_types::{ConstFoldMode, ConstFoldResult};
-pub use cas_solver_core::inverse_trig_policy::InverseTrigPolicy;
 pub use cas_solver_core::isolation_utils::contains_var;
 pub use cas_solver_core::solve_budget::SolveBudget;
 pub use cas_solver_core::solve_infer::infer_solve_variable;

@@ -20,7 +20,9 @@ pub fn format_unary_function_eval_lines(
                 step.rule_name
             ));
             if show_step_assumptions {
-                for assumption_line in crate::format_displayable_assumption_lines_for_step(step) {
+                for assumption_line in
+                    crate::assumption_format::format_displayable_assumption_lines_for_step(step)
+                {
                     lines.push(format!("   {assumption_line}"));
                 }
             }

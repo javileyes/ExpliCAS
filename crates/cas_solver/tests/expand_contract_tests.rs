@@ -6,7 +6,7 @@
 //! - expand_mode flag doesn't leak between evaluations
 
 use cas_parser::parse;
-use cas_solver::Simplifier;
+use cas_solver::runtime::Simplifier;
 use num_traits::ToPrimitive;
 
 /// Helper: check if expression is Pow(Add(...), exp)
@@ -165,7 +165,7 @@ fn test_solve_context_no_expansion() {
     use cas_solver::{ContextMode, EvalOptions};
 
     let opts = EvalOptions {
-        shared: cas_solver::SharedSemanticConfig {
+        shared: cas_solver::runtime::SharedSemanticConfig {
             context_mode: ContextMode::Solve,
             ..Default::default()
         },

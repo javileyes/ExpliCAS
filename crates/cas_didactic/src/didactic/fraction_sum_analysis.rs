@@ -3,7 +3,7 @@ mod probe;
 mod scan;
 mod types;
 
-use crate::cas_solver::Step;
+use crate::runtime::Step;
 use cas_ast::{Context, ExprId};
 
 use self::probe::find_fraction_sum_in_expr;

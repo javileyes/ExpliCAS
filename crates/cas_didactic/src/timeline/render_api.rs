@@ -1,6 +1,6 @@
 use super::simplify::{TimelineHtml, VerbosityLevel};
 use super::solve::SolveTimelineHtml;
-use crate::cas_solver::{SolveStep, Step};
+use crate::runtime::{SolveStep, Step};
 use cas_ast::{Context, Equation, ExprId, SolutionSet};
 
 /// Render full HTML for simplification timeline.

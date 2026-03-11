@@ -12,7 +12,7 @@
 //! - AbsExpRule: |e^x| → e^x
 //! - AbsSumOfSquaresRule: |x² + y²| → x² + y²
 
-use cas_solver::Simplifier;
+use cas_solver::runtime::Simplifier;
 
 /// Helper to simplify an expression and return the result as a string
 fn simplify(input: &str) -> String {

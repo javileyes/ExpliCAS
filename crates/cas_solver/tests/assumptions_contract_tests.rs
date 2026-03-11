@@ -257,7 +257,7 @@ fn legacy_string_parsing_whitelist() {
 /// Test: SimplifyOptions includes assumption_reporting
 #[test]
 fn simplify_options_has_assumption_reporting() {
-    use cas_solver::SimplifyOptions;
+    use cas_solver::runtime::SimplifyOptions;
 
     let opts = SimplifyOptions::default();
     // Default should be Off
@@ -267,7 +267,7 @@ fn simplify_options_has_assumption_reporting() {
 /// Test: EvalOptions includes assumption_reporting
 #[test]
 fn eval_options_has_assumption_reporting() {
-    use cas_solver::EvalOptions;
+    use cas_solver::runtime::EvalOptions;
 
     let opts = EvalOptions::default();
     // Default should be Off
@@ -277,10 +277,10 @@ fn eval_options_has_assumption_reporting() {
 /// Test: Options propagate through to_simplify_options
 #[test]
 fn options_propagation() {
-    use cas_solver::EvalOptions;
+    use cas_solver::runtime::EvalOptions;
 
     let eval_opts = EvalOptions {
-        shared: cas_solver::SharedSemanticConfig {
+        shared: cas_solver::runtime::SharedSemanticConfig {
             assumption_reporting: AssumptionReporting::Summary,
             ..Default::default()
         },

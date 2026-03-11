@@ -1,4 +1,28 @@
-use crate::{AssumptionEvent, AssumptionKind, Step};
+use crate::assumption_model::{AssumptionEvent, AssumptionKind};
+use crate::step_model::Step;
+
+/// Format displayable assumption events into compact single-line strings.
+///
+/// Output format: `"<icon> <label>: <message>"`.
+pub fn format_displayable_assumption_lines(events: &[AssumptionEvent]) -> Vec<String> {
+    events
+        .iter()
+        .filter(|event| event.kind.should_display())
+        .map(|event| {
+            format!(
+                "{} {}: {}",
+                event.kind.icon(),
+                event.kind.label(),
+                event.message
+            )
+        })
+        .collect()
+}
+
+/// Format displayable assumptions emitted by one step.
+pub fn format_displayable_assumption_lines_for_step(step: &Step) -> Vec<String> {
+    format_displayable_assumption_lines(step.assumption_events())
+}
 
 /// Group displayable assumption events by kind for compact timeline/HTML presentation.
 ///

@@ -17,7 +17,7 @@
 
 use cas_ast::{Context, Expr};
 use cas_formatter::DisplayExpr;
-use cas_solver::Simplifier;
+use cas_solver::runtime::Simplifier;
 use proptest::strategy::{Strategy, ValueTree};
 use proptest::test_runner::{Config, TestRunner};
 use std::collections::HashMap;
@@ -179,7 +179,7 @@ fn try_simplify(
 ) -> Result<
     (
         cas_ast::ExprId,
-        Vec<cas_solver::Step>,
+        Vec<cas_solver::runtime::Step>,
         HashMap<String, usize>,
     ),
     String,

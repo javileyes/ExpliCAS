@@ -1,4 +1,5 @@
-use crate::{snapshot::SessionSnapshot, state_core::SessionState, SimplifyCacheKey, SnapshotError};
+use crate::snapshot::SnapshotError;
+use crate::{snapshot::SessionSnapshot, state_core::SessionState, SimplifyCacheKey};
 
 impl SessionState {
     /// Build a serializable snapshot from the current state.

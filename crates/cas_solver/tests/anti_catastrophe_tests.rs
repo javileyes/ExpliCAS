@@ -4,7 +4,7 @@
 use cas_ast::Context;
 use cas_parser::parse;
 use cas_session::SessionState;
-use cas_solver::Simplifier;
+use cas_solver::runtime::Simplifier;
 use cas_solver::{BranchMode, ComplexMode, ContextMode, EvalOptions, StepsMode};
 
 /// Helper: simplify expression and return result string
@@ -13,7 +13,7 @@ fn simplify(input: &str) -> String {
         branch_mode: BranchMode::Strict,
         complex_mode: ComplexMode::Auto,
         steps_mode: StepsMode::On,
-        shared: cas_solver::SharedSemanticConfig {
+        shared: cas_solver::runtime::SharedSemanticConfig {
             context_mode: ContextMode::Standard,
             ..Default::default()
         },
@@ -311,7 +311,7 @@ fn simplify_with_steps(input: &str) -> Vec<String> {
         branch_mode: BranchMode::Strict,
         complex_mode: ComplexMode::Auto,
         steps_mode: StepsMode::On,
-        shared: cas_solver::SharedSemanticConfig {
+        shared: cas_solver::runtime::SharedSemanticConfig {
             context_mode: ContextMode::Standard,
             ..Default::default()
         },

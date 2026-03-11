@@ -1,4 +1,5 @@
 use crate::{CasConfig, ReplCore};
+use cas_solver::session_api::session_support::evaluate_and_apply_config_command;
 
 /// Apply a config command against REPL config + core runtime.
 ///
@@ -13,7 +14,7 @@ pub fn evaluate_and_apply_config_command_on_repl(
         line,
         config,
         core,
-        crate::solver_exports::evaluate_and_apply_config_command,
-        crate::sync_simplifier_with_cas_config,
+        evaluate_and_apply_config_command,
+        crate::config::sync_simplifier_with_cas_config,
     )
 }

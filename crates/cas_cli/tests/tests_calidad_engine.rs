@@ -6,7 +6,7 @@
 
 use cas_formatter::LaTeXExpr;
 use cas_parser::parse;
-use cas_solver::Simplifier;
+use cas_solver::runtime::Simplifier;
 
 /// Helper para simplificar una expresión y obtener su representación como string
 fn simplify_expr(input: &str) -> String {

@@ -1,20 +1,22 @@
 use cas_ast::{BoundType, Equation, RelOp, SolutionSet};
 use cas_formatter::DisplayExpr;
 use cas_parser::parse;
-use cas_solver::rules::algebra::SimplifyFractionRule;
-use cas_solver::rules::arithmetic::{AddZeroRule, CombineConstantsRule, MulOneRule};
-use cas_solver::rules::canonicalization::{
+use cas_solver::runtime::rules::algebra::SimplifyFractionRule;
+use cas_solver::runtime::rules::arithmetic::{AddZeroRule, CombineConstantsRule, MulOneRule};
+use cas_solver::runtime::rules::canonicalization::{
     CanonicalizeAddRule, CanonicalizeMulRule, CanonicalizeNegationRule, CanonicalizeRootRule,
 };
-use cas_solver::rules::exponents::{
+use cas_solver::runtime::rules::exponents::{
     EvaluatePowerRule, IdentityPowerRule, PowerPowerRule, ProductPowerRule,
 };
-use cas_solver::rules::functions::EvaluateAbsRule;
-use cas_solver::rules::logarithms::{EvaluateLogRule, ExponentialLogRule};
-use cas_solver::rules::polynomial::{AnnihilationRule, CombineLikeTermsRule, DistributeRule};
-use cas_solver::rules::trigonometry::{EvaluateTrigRule, PythagoreanIdentityRule};
+use cas_solver::runtime::rules::functions::EvaluateAbsRule;
+use cas_solver::runtime::rules::logarithms::{EvaluateLogRule, ExponentialLogRule};
+use cas_solver::runtime::rules::polynomial::{
+    AnnihilationRule, CombineLikeTermsRule, DistributeRule,
+};
+use cas_solver::runtime::rules::trigonometry::{EvaluateTrigRule, PythagoreanIdentityRule};
+use cas_solver::runtime::Simplifier;
 use cas_solver::solve;
-use cas_solver::Simplifier;
 
 fn create_simplifier() -> Simplifier {
     let mut simplifier = Simplifier::new();

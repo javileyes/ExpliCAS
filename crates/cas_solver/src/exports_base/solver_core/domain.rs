@@ -10,7 +10,6 @@ pub use cas_solver_core::domain_inference::{AnalyticExpansionResult, DomainDelta
 pub use cas_solver_core::domain_inference_counter::{
     get as infer_domain_calls_get, reset as infer_domain_calls_reset,
 };
-pub use cas_solver_core::domain_mode::DomainMode;
 pub use cas_solver_core::domain_normalization::{
     normalize_and_dedupe_conditions, normalize_condition, normalize_condition_expr,
     render_conditions_normalized,

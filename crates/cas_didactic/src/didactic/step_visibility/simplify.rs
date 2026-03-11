@@ -1,6 +1,6 @@
 use super::StepVisibility;
-use crate::cas_solver::Step;
 use crate::didactic::display_policy::StepDisplayMode;
+use crate::runtime::Step;
 
 pub(super) fn should_show_simplify_step(
     step: &Step,

@@ -4,20 +4,24 @@
 #![allow(unused_variables)]
 use cas_formatter::DisplayExpr;
 use cas_parser::parse;
-use cas_solver::rules::algebra::{
+use cas_solver::runtime::rules::algebra::{
     AddFractionsRule, CancelCommonFactorsRule, SimplifyFractionRule, SimplifyMulDivRule,
 };
-use cas_solver::rules::arithmetic::{AddZeroRule, CombineConstantsRule, MulOneRule, MulZeroRule};
-use cas_solver::rules::canonicalization::{
+use cas_solver::runtime::rules::arithmetic::{
+    AddZeroRule, CombineConstantsRule, MulOneRule, MulZeroRule,
+};
+use cas_solver::runtime::rules::canonicalization::{
     CanonicalizeAddRule, CanonicalizeMulRule, CanonicalizeNegationRule,
 };
-use cas_solver::rules::exponents::{
+use cas_solver::runtime::rules::exponents::{
     EvaluatePowerRule, IdentityPowerRule, PowerPowerRule, PowerProductRule, PowerQuotientRule,
     ProductPowerRule,
 };
-use cas_solver::rules::polynomial::{BinomialExpansionRule, CombineLikeTermsRule, DistributeRule};
-use cas_solver::rules::trigonometry::{AngleIdentityRule, TanToSinCosRule};
-use cas_solver::Simplifier;
+use cas_solver::runtime::rules::polynomial::{
+    BinomialExpansionRule, CombineLikeTermsRule, DistributeRule,
+};
+use cas_solver::runtime::rules::trigonometry::{AngleIdentityRule, TanToSinCosRule};
+use cas_solver::runtime::Simplifier;
 
 fn create_simplifier() -> Simplifier {
     let mut simplifier = Simplifier::new();

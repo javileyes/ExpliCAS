@@ -1,4 +1,5 @@
 use super::SessionState;
+use crate::env::Environment;
 use crate::{state_eval_store::SessionEvalStore, SessionStore};
 use cas_solver_core::eval_options::EvalOptions;
 
@@ -18,7 +19,7 @@ impl SessionState {
     pub fn new() -> Self {
         Self {
             store: SessionEvalStore::new(),
-            env: crate::Environment::new(),
+            env: Environment::new(),
             options: EvalOptions::default(),
         }
     }
@@ -27,7 +28,7 @@ impl SessionState {
     pub(crate) fn from_store(store: SessionStore) -> Self {
         Self {
             store: SessionEvalStore::from_store(store),
-            env: crate::Environment::new(),
+            env: Environment::new(),
             options: EvalOptions::default(),
         }
     }

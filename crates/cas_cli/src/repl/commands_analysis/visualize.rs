@@ -3,7 +3,7 @@ use super::*;
 impl Repl {
     pub(crate) fn handle_visualize_core(&mut self, line: &str) -> ReplReply {
         let output =
-            match cas_session::solver_exports::evaluate_visualize_invocation_output_on_repl_core(
+            match cas_solver::session_api::runtime::evaluate_visualize_invocation_output_on_repl_core(
                 &mut self.core,
                 line,
             ) {

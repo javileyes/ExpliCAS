@@ -1,5 +1,5 @@
 use cas_parser::parse;
-use cas_solver::Simplifier;
+use cas_solver::runtime::Simplifier;
 use std::time::Instant;
 
 fn setup_bench(input_str: &str) -> (Simplifier, cas_ast::ExprId) {

@@ -9,7 +9,7 @@ pub use cas_engine::*;
 pub use cas_math::expr_nary::{add_terms_signed, Sign};
 #[allow(unused_imports)]
 pub use cas_math::factor::factor;
-extern crate self as cas_solver;
+extern crate cas_engine as cas_solver;
 
 #[path = "../../cas_solver/tests/numeric_only_diagnostic.rs"]
 mod solver_numeric_only_diagnostic_tests;

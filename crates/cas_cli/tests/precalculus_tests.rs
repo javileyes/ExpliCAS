@@ -1,8 +1,8 @@
 use cas_ast::{BoundType, Equation, RelOp, SolutionSet};
 use cas_formatter::DisplayExpr;
 use cas_parser::parse;
+use cas_solver::runtime::Simplifier;
 use cas_solver::solve;
-use cas_solver::Simplifier;
 
 /// Crea un simplifier con las reglas por defecto
 fn create_simplifier() -> Simplifier {

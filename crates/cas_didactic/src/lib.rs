@@ -10,7 +10,7 @@ mod step_payload_render;
 mod step_payloads;
 pub mod timeline;
 
-pub(crate) use runtime_bridge as cas_solver;
+pub(crate) use runtime_bridge as runtime;
 
 pub use cas_engine::to_display_steps;
 pub use cas_engine::{DisplayEvalSteps, ImportanceLevel, PathStep, Step};

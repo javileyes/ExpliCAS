@@ -1,7 +1,7 @@
 mod path;
 mod rule;
 
-use crate::cas_solver::Step;
+use crate::runtime::Step;
 use cas_ast::Context;
 
 pub(super) struct RenderedStepWireLatex {

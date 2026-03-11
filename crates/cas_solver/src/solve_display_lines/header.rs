@@ -9,7 +9,7 @@ pub(super) fn push_solve_header_lines(
         .unwrap_or_default();
     lines.push(format!("{id_prefix}Solving for {var}..."));
 
-    lines.extend(crate::format_domain_warning_lines(
+    lines.extend(crate::assumption_format::format_domain_warning_lines(
         &output.domain_warnings,
         true,
         "⚠ ",

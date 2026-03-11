@@ -8,10 +8,10 @@
 
 use cas_ast::Context;
 use cas_parser::parse;
+use cas_solver::runtime::Simplifier;
+use cas_solver::runtime::SimplifyOptions;
 use cas_solver::AutoExpandBinomials;
 use cas_solver::HeuristicPoly;
-use cas_solver::Simplifier;
-use cas_solver::SimplifyOptions;
 
 /// Helper to simplify with specific heuristic_poly mode
 fn simplify_with_heuristic_poly(input: &str, mode: HeuristicPoly) -> String {
@@ -21,7 +21,7 @@ fn simplify_with_heuristic_poly(input: &str, mode: HeuristicPoly) -> String {
     simplifier.context = ctx;
 
     let opts = SimplifyOptions {
-        shared: cas_solver::SharedSemanticConfig {
+        shared: cas_solver::runtime::SharedSemanticConfig {
             heuristic_poly: mode,
             ..Default::default()
         },
@@ -53,7 +53,7 @@ fn simplify_with_mode(input: &str, mode: AutoExpandBinomials) -> String {
     };
 
     let opts = SimplifyOptions {
-        shared: cas_solver::SharedSemanticConfig {
+        shared: cas_solver::runtime::SharedSemanticConfig {
             autoexpand_binomials: mode,
             heuristic_poly: heuristic_mode,
             ..Default::default()

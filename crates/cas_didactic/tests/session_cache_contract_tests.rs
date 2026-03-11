@@ -6,8 +6,8 @@
 //! 3. The synthetic step has Medium importance (visible in timeline)
 
 use cas_session::SessionState;
-use cas_solver::ImportanceLevel;
-use cas_solver::{Engine, EvalAction, EvalRequest};
+use cas_solver::runtime::ImportanceLevel;
+use cas_solver::runtime::{Engine, EvalAction, EvalRequest};
 
 /// Helper: create request from expression string
 fn make_request(engine: &mut Engine, input: &str) -> EvalRequest {

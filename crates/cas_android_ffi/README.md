@@ -55,7 +55,7 @@ object CasNative {
 
 | Function | Parameters | Returns |
 |----------|------------|---------|
-| `abiVersion()` | none | `Int` (currently 1) |
+| `abiVersion()` | none | `Int` (currently 2) |
 | `evalWire(expr, optsJson)` | expression, options JSON | JSON response |
 
 ### Options JSON

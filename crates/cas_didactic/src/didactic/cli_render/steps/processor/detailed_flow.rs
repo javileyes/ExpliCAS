@@ -3,7 +3,7 @@ mod visible;
 use super::super::super::super::display_policy::CliSubstepsRenderState;
 use super::super::super::super::EnrichedStep;
 use super::super::state::StepLoopState;
-use crate::cas_solver::Step;
+use crate::runtime::Step;
 use cas_ast::Context;
 
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]

@@ -1,7 +1,7 @@
 use cas_formatter::DisplayExpr;
 use cas_parser::parse;
 use cas_solver::rules::algebra::AutomaticFactorRule;
-use cas_solver::Simplifier;
+use cas_solver::runtime::Simplifier;
 
 #[test]
 fn test_auto_factor_integration() {
@@ -46,7 +46,7 @@ fn test_auto_factor_vs_expand_loop() {
     // So loop should be broken.
 
     use cas_solver::rules::algebra::{AutomaticFactorRule, ExpandRule};
-    use cas_solver::Simplifier;
+    use cas_solver::runtime::Simplifier;
 
     let mut simplifier = Simplifier::with_default_rules();
     simplifier.add_rule(Box::new(AutomaticFactorRule));

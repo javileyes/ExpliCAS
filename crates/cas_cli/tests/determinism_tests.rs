@@ -5,7 +5,7 @@
 
 use cas_formatter::DisplayExpr;
 use cas_parser::parse;
-use cas_solver::Simplifier;
+use cas_solver::runtime::Simplifier;
 
 /// Test that rationalization produces identical output across 200 runs.
 /// This catches HashMap iteration order issues, non-stable sorting, etc.

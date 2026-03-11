@@ -22,7 +22,7 @@ pub(super) fn push_requires_section(
     config: crate::SolveCommandRenderConfig,
 ) {
     let result_expr_id = crate::requires_result_expr_anchor(&output.result, output.resolved);
-    let requires_lines = crate::format_diagnostics_requires_lines(
+    let requires_lines = crate::assumption_format::format_diagnostics_requires_lines(
         &mut simplifier.context,
         &output.diagnostics,
         Some(result_expr_id),

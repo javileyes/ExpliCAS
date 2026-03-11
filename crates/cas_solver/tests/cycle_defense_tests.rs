@@ -3,7 +3,7 @@
 //! Tests that verify the always-on cycle detection prevents infinite loops
 //! and terminates gracefully with BlockedHint emissions.
 
-use cas_solver::Simplifier;
+use cas_solver::runtime::Simplifier;
 
 /// Test that expressions that previously caused ping-pong cycles now terminate
 /// AND simplify correctly to x^(1/3) - 3.

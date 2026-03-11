@@ -13,7 +13,7 @@ impl Repl {
     /// Build the REPL prompt with mode indicators.
     /// Only shows indicators for non-default modes to keep prompt clean.
     pub(crate) fn build_prompt(&self) -> String {
-        cas_session::solver_exports::build_repl_prompt(&self.core)
+        cas_solver::session_api::runtime::build_repl_prompt(&self.core)
     }
 
     /// Converts function-style commands to command-style
@@ -21,6 +21,6 @@ impl Repl {
     ///   simplify(...) -> simplify x^2 + 1
     ///   solve(...) -> solve x + 2 = 5, x
     pub(crate) fn preprocess_function_syntax(&self, line: &str) -> String {
-        cas_session::solver_exports::preprocess_repl_function_syntax(line)
+        cas_solver::session_api::session_support::preprocess_repl_function_syntax(line)
     }
 }

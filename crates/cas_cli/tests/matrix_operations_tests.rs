@@ -1,7 +1,7 @@
 use cas_ast::Context;
 use cas_formatter::DisplayExpr;
 use cas_parser::parse;
-use cas_solver::Simplifier;
+use cas_solver::runtime::Simplifier;
 
 #[test]
 fn test_matrix_addition() {

@@ -7,7 +7,7 @@ use cas_ast::Context;
 use cas_formatter::LaTeXExpr;
 use cas_parser::parse;
 use cas_parser::parse_latex;
-use cas_solver::Simplifier;
+use cas_solver::runtime::Simplifier;
 
 /// Test that LaTeX output is reversible: parse → expr → latex → parse → latex should be stable
 fn assert_latex_reversible(latex: &str) {

@@ -2,7 +2,7 @@
 mod tests {
     use cas_formatter::DisplayExpr;
     use cas_parser::parse;
-    use cas_solver::Simplifier;
+    use cas_solver::runtime::Simplifier;
 
     #[test]
     fn test_repro_trig_identity_hidden() {

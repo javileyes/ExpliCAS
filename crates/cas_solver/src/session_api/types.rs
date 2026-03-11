@@ -1,6 +1,6 @@
 //! Solver command/output types re-exported for session clients.
 
-pub use cas_solver::{
+pub use crate::{
     EvalCommandError, EvalCommandOutput, EvalCommandRenderPlan, SolveCommandEvalOutput,
     TimelineCommandEvalOutput, TimelineSimplifyEvalOutput, TimelineSolveEvalOutput,
 };

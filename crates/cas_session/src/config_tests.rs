@@ -13,9 +13,9 @@ fn solver_toggle_round_trip_preserves_config_values() {
         canonicalize_trig_square: true,
         auto_factor: true,
     };
-    let toggles = crate::solver_toggle_config_from_cas_config(&config);
+    let toggles = crate::config::solver_toggle_config_from_cas_config(&config);
     config = crate::CasConfig::default();
-    crate::apply_solver_toggle_to_cas_config(&mut config, toggles);
+    crate::config::apply_solver_toggle_to_cas_config(&mut config, toggles);
     assert!(config.distribute);
     assert!(!config.expand_binomials);
     assert!(config.auto_factor);

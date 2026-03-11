@@ -3,7 +3,7 @@ use cas_didactic::{
     render_solve_timeline_cli_output, render_solve_timeline_html, TimelineCliRender,
     TimelineSolveCommandOutput,
 };
-use cas_solver::{
+use cas_solver::runtime::{
     DisplaySolveSteps, ImportanceLevel, Simplifier, SolveStep, SolveSubStep, SolverOptions,
 };
 use cas_solver_core::{display_steps::DisplaySteps, solver_events::SolverEvent};

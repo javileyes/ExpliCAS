@@ -5,7 +5,7 @@ use super::super::rationalization::generate_rationalization_substeps;
 use super::super::root_denesting::generate_root_denesting_substeps;
 use super::super::sum_three_cubes::generate_sum_three_cubes_substeps;
 use super::super::SubStep;
-use crate::cas_solver::Step;
+use crate::runtime::Step;
 use cas_ast::Context;
 
 pub(super) fn extend_step_specific_substeps(

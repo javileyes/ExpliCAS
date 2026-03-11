@@ -6,7 +6,7 @@ pub use cas_engine::{Engine, EvalOptions, ExpandPolicy, SharedSemanticConfig};
 pub mod phase {
     pub use cas_engine::SharedSemanticConfig;
 }
-extern crate self as cas_solver;
+extern crate cas_engine as cas_solver;
 
 #[path = "../../cas_solver/tests/rationalize_autoexpand_tests.rs"]
 mod solver_rationalize_autoexpand_tests;

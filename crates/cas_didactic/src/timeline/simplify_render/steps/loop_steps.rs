@@ -1,6 +1,6 @@
 use super::super::super::simplify_highlights::TimelineStepSnapshots;
 use super::super::super::simplify_substeps::TimelineSubstepsRenderState;
-use crate::cas_solver::Step;
+use crate::runtime::Step;
 use cas_ast::{Context, ExprId};
 use cas_formatter::{DisplayContext, StylePreferences};
 use std::collections::HashSet;

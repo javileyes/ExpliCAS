@@ -1,14 +1,14 @@
 #[cfg(test)]
 mod tests {
-    use crate::solver_exports::{
-        build_eval_command_render_plan, evaluate_eval_command_output,
-        evaluate_eval_text_simplify_with_session, EvalCommandError, EvalCommandOutput,
-    };
     use crate::{EvalDisplayMessageKind, EvalMetadataLines, EvalResultLine, SessionState};
+    #[allow(unused_imports)]
+    use cas_solver::session_api::{
+        formatting::*, options::*, runtime::*, session_support::*, symbolic_commands::*, types::*,
+    };
 
     #[test]
     fn evaluate_eval_command_output_success() {
-        let mut engine = cas_solver::Engine::new();
+        let mut engine = cas_solver::runtime::Engine::new();
         let mut session = SessionState::new();
         let out = match evaluate_eval_command_output(&mut engine, &mut session, "x + x", false) {
             Ok(out) => out,
@@ -20,7 +20,7 @@ mod tests {
 
     #[test]
     fn evaluate_eval_command_output_parse_error() {
-        let mut engine = cas_solver::Engine::new();
+        let mut engine = cas_solver::runtime::Engine::new();
         let mut session = SessionState::new();
         let err = match evaluate_eval_command_output(&mut engine, &mut session, "x +", false) {
             Ok(_) => panic!("expected parse error"),
@@ -64,7 +64,7 @@ mod tests {
 
     #[test]
     fn evaluate_eval_text_simplify_with_session_returns_rendered_result() {
-        let mut engine = cas_solver::Engine::new();
+        let mut engine = cas_solver::runtime::Engine::new();
         let mut session = SessionState::new();
         let out = match evaluate_eval_text_simplify_with_session(
             &mut engine,

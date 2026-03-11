@@ -1,10 +1,10 @@
-use crate::solver_exports::{
-    apply_autoexpand_command_on_repl_core, apply_context_command_on_repl_core,
-    apply_semantics_command_on_repl_core,
-};
 use crate::{
     evaluate_autoexpand_command_on_repl, evaluate_context_command_on_repl,
     evaluate_semantics_command_on_repl,
+};
+#[allow(unused_imports)]
+use cas_solver::session_api::{
+    formatting::*, options::*, runtime::*, session_support::*, symbolic_commands::*, types::*,
 };
 use cas_solver_core::domain_mode::DomainMode;
 use cas_solver_core::eval_option_axes::ContextMode;

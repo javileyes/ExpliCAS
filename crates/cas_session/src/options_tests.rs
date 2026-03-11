@@ -1,9 +1,10 @@
 #[cfg(test)]
 mod tests {
-    use crate::solver_exports::{
-        apply_solve_budget_command, format_solve_budget_command_message, SolveBudgetCommandResult,
-    };
     use crate::SessionState;
+    #[allow(unused_imports)]
+    use cas_solver::session_api::{
+        formatting::*, options::*, runtime::*, session_support::*, symbolic_commands::*, types::*,
+    };
 
     #[test]
     fn apply_solve_budget_command_reads_current_value() {

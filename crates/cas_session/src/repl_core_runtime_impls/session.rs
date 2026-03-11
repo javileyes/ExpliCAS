@@ -1,8 +1,9 @@
 use crate::{ReplCore, SessionState};
 use cas_solver::{
-    Engine, ReplEngineRuntimeContext, ReplSessionEngineRuntimeContext, ReplSessionRuntimeContext,
+    runtime::{Engine, Simplifier},
+    ReplEngineRuntimeContext, ReplSessionEngineRuntimeContext, ReplSessionRuntimeContext,
     ReplSessionSimplifierRuntimeContext, ReplSessionStateMutRuntimeContext,
-    ReplSessionViewRuntimeContext, Simplifier,
+    ReplSessionViewRuntimeContext,
 };
 
 impl ReplSessionRuntimeContext for ReplCore {

@@ -1,5 +1,5 @@
 use super::super::super::simplify_summary::render_timeline_global_requires_html;
-use crate::cas_solver::ImplicitCondition;
+use crate::runtime::ImplicitCondition;
 use cas_ast::Context;
 
 pub(super) fn render_requires_footer_html(

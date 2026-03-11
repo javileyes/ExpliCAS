@@ -1,7 +1,7 @@
 use cas_parser::parse;
-use cas_solver::solve;
 /// Diagnostic test: cycle and isolation failures
-use cas_solver::Simplifier;
+use cas_solver::runtime::Simplifier;
+use cas_solver::solve;
 
 fn solve_and_print(label: &str, eq_str: &str, var: &str) {
     let mut simplifier = Simplifier::with_default_rules();

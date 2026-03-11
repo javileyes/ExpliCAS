@@ -7,16 +7,19 @@
 
 use cas_ast::Context;
 use cas_parser::parse;
-use cas_solver::Simplifier;
+use cas_solver::runtime::Simplifier;
 use cas_solver::{BranchMode, ComplexMode, ContextMode, EvalOptions, StepsMode};
 
 /// Helper: simplify with given steps_mode and return (result_string, steps, steps_mode)
-fn simplify_with_mode(input: &str, mode: StepsMode) -> (String, Vec<cas_solver::Step>, StepsMode) {
+fn simplify_with_mode(
+    input: &str,
+    mode: StepsMode,
+) -> (String, Vec<cas_solver::runtime::Step>, StepsMode) {
     let opts = EvalOptions {
         branch_mode: BranchMode::Strict,
         complex_mode: ComplexMode::Auto,
         steps_mode: mode,
-        shared: cas_solver::SharedSemanticConfig {
+        shared: cas_solver::runtime::SharedSemanticConfig {
             context_mode: ContextMode::Standard,
             ..Default::default()
         },
@@ -180,13 +183,15 @@ fn determinism_off_mode() {
 // =============================================================================
 
 /// Helper: simplify with IntegratePrep context (triggers Morrie telescoping with domain_warning)
-fn simplify_morrie_with_mode(mode: StepsMode) -> (String, Vec<cas_solver::Step>, StepsMode) {
+fn simplify_morrie_with_mode(
+    mode: StepsMode,
+) -> (String, Vec<cas_solver::runtime::Step>, StepsMode) {
     // Use IntegratePrep context to enable CosProductTelescopingRule
     let opts = EvalOptions {
         branch_mode: BranchMode::Strict,
         complex_mode: ComplexMode::Auto,
         steps_mode: mode,
-        shared: cas_solver::SharedSemanticConfig {
+        shared: cas_solver::runtime::SharedSemanticConfig {
             context_mode: ContextMode::IntegratePrep,
             ..Default::default()
         },
@@ -252,7 +257,7 @@ fn warnings_survive_steps_off() {
         branch_mode: BranchMode::Strict,
         complex_mode: ComplexMode::Auto,
         steps_mode: StepsMode::Off,
-        shared: cas_solver::SharedSemanticConfig {
+        shared: cas_solver::runtime::SharedSemanticConfig {
             context_mode: ContextMode::IntegratePrep,
             ..Default::default()
         },

@@ -2,7 +2,7 @@ mod after;
 mod before;
 
 use super::super::renderers::{render_with_paths, render_with_single_path};
-use crate::cas_solver::Step;
+use crate::runtime::Step;
 use cas_ast::{Context, ExprPath};
 use cas_formatter::{DisplayContext, StylePreferences};
 

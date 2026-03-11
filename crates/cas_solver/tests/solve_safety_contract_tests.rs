@@ -8,7 +8,7 @@
 use cas_ast::{Equation, RelOp};
 use cas_formatter::DisplayExpr;
 use cas_parser::parse;
-use cas_solver::Simplifier;
+use cas_solver::runtime::Simplifier;
 
 /// Helper to parse an expression
 fn parse_expr(simplifier: &mut Simplifier, input: &str) -> cas_ast::ExprId {
@@ -26,7 +26,7 @@ fn make_eq(simplifier: &mut Simplifier, lhs: &str, rhs: &str) -> Equation {
 
 mod prepass_tests {
     use super::*;
-    use cas_solver::StepsMode;
+    use cas_solver::runtime::StepsMode;
 
     /// CancelCommonFactorsRule should have NeedsCondition(Definability) solve_safety.
     /// This ensures it won't be applied in SolvePrepass mode.
@@ -141,8 +141,8 @@ mod prepass_tests {
 
 mod solve_tactic_tests {
     use super::*;
-    use cas_solver::DomainMode;
-    use cas_solver::SimplifyOptions;
+    use cas_solver::runtime::DomainMode;
+    use cas_solver::runtime::SimplifyOptions;
 
     /// SolveTactic in Assume mode SHOULD allow Analytic rules.
     /// This test verifies that exp(ln(x)) simplifies to x in tactic mode.

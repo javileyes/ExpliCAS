@@ -2,7 +2,7 @@ mod focus;
 
 use super::super::TimelineStepSnapshots;
 use super::additive_render::{render_after_additive_focus, render_before_additive_focus};
-use crate::cas_solver::Step;
+use crate::runtime::Step;
 use cas_ast::Context;
 use cas_formatter::path::extract_add_terms;
 use cas_formatter::{DisplayContext, StylePreferences};

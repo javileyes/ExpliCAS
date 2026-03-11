@@ -1,4 +1,4 @@
-use cas_solver::Simplifier;
+use cas_solver::runtime::Simplifier;
 
 #[test]
 fn test_profiler() {

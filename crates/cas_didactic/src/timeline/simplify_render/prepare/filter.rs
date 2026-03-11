@@ -1,4 +1,4 @@
-use crate::cas_solver::Step;
+use crate::runtime::Step;
 use std::collections::HashSet;
 
 pub(super) fn collect_filtered_indices(filtered_steps: &[&Step]) -> HashSet<*const Step> {

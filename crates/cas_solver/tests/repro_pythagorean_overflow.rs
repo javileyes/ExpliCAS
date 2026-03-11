@@ -9,7 +9,7 @@
 //! The issue seems to be in how sin with power expressions are handled.
 
 use cas_parser::parse;
-use cas_solver::Simplifier;
+use cas_solver::runtime::Simplifier;
 
 /// Minimal reproduction of the stack overflow.
 /// Run with: cargo test -p cas_engine --test repro_pythagorean_overflow -- --nocapture

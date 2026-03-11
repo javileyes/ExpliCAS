@@ -9,7 +9,7 @@
 use cas_ast::{Context, Expr};
 use cas_formatter::DisplayExpr;
 use cas_parser::parse;
-use cas_solver::Simplifier;
+use cas_solver::runtime::Simplifier;
 
 /// Assert that `expr` simplifies to a value algebraically equivalent to `expected`.
 fn assert_simplify_equiv(expr: &str, expected: &str, msg: &str) {

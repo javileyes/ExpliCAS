@@ -6,7 +6,7 @@ mod standalone;
 
 use super::super::fraction_sum_analysis::FractionSumInfo;
 use super::super::SubStep;
-use crate::cas_solver::Step;
+use crate::runtime::Step;
 use cas_ast::{Context, ExprId};
 
 pub(super) fn extend_primary_fraction_sum_substeps(

@@ -5,7 +5,7 @@
 use cas_ast::Context;
 use cas_parser::parse;
 use cas_session::SessionState;
-use cas_solver::Simplifier;
+use cas_solver::runtime::Simplifier;
 use cas_solver::{
     BranchMode, ComplexMode, ContextMode, DomainMode, Engine, EvalAction, EvalOptions, EvalRequest,
     EvalResult, StepsMode,
@@ -34,7 +34,7 @@ fn simplify_with_semantics_and_steps(
         branch_mode: BranchMode::Strict,
         complex_mode: ComplexMode::Auto,
         steps_mode,
-        shared: cas_solver::SharedSemanticConfig {
+        shared: cas_solver::runtime::SharedSemanticConfig {
             context_mode,
             semantics: cas_solver::EvalConfig {
                 domain_mode,

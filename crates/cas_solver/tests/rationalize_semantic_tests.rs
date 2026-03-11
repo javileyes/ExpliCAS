@@ -4,7 +4,7 @@
 //! to the originals by evaluating both with numeric substitutions.
 
 use cas_ast::Context;
-use cas_solver::Simplifier;
+use cas_solver::runtime::Simplifier;
 
 /// Parse an expression and evaluate it numerically with x=val.
 fn parse_and_eval(input: &str, x_val: f64) -> f64 {

@@ -1,19 +1,19 @@
-use crate::solver_exports::{
-    apply_profile_command_on_repl_core, build_repl_prompt, clear_repl_profile_cache,
-    eval_options_from_repl_core, evaluate_profile_command_message_on_repl_core,
-    reset_repl_runtime_state,
-};
 use crate::{
     build_repl_core_with_config, reset_repl_core_full_with_config, reset_repl_core_with_config,
 };
+#[allow(unused_imports)]
+use cas_solver::session_api::{
+    formatting::*, options::*, runtime::*, session_support::*, symbolic_commands::*, types::*,
+};
 use cas_solver_core::eval_options::EvalOptions;
+use cas_solver_core::phase_stats::PipelineStats;
 
 #[test]
 fn reset_repl_runtime_state_clears_session_and_runtime_flags() {
     let mut core = crate::ReplCore::new();
     core.set_debug_mode(true);
     core.set_health_enabled(true);
-    core.set_last_stats(Some(crate::PipelineStats::default()));
+    core.set_last_stats(Some(PipelineStats::default()));
     core.set_last_health_report(Some("cached".to_string()));
 
     let expr = cas_parser::parse("x+1", &mut core.simplifier_mut().context).expect("parse");
@@ -34,7 +34,9 @@ fn reset_repl_runtime_state_clears_session_and_runtime_flags() {
 fn clear_repl_profile_cache_empties_cache() {
     let mut core = crate::ReplCore::new();
     if let Err(err) = core.with_engine_and_state(|engine, state| {
-        crate::solver_exports::evaluate_eval_command_output(engine, state, "x + x", false)
+        cas_solver::session_api::runtime::evaluate_eval_command_output(
+            engine, state, "x + x", false,
+        )
     }) {
         panic!("eval failed: {err:?}");
     }
@@ -73,7 +75,9 @@ fn reset_repl_core_with_config_resets_runtime_state() {
 fn reset_repl_core_full_with_config_clears_profile_cache() {
     let mut core = crate::ReplCore::new();
     if let Err(err) = core.with_engine_and_state(|engine, state| {
-        crate::solver_exports::evaluate_eval_command_output(engine, state, "x + x", false)
+        cas_solver::session_api::runtime::evaluate_eval_command_output(
+            engine, state, "x + x", false,
+        )
     }) {
         panic!("eval failed: {err:?}");
     }
@@ -91,7 +95,9 @@ fn build_repl_core_with_config_applies_toggle_sync() {
     };
     let mut core = build_repl_core_with_config(&config);
     let eval = core.with_engine_and_state(|engine, state| {
-        crate::solver_exports::evaluate_eval_command_output(engine, state, "(x+1)^2", false)
+        cas_solver::session_api::runtime::evaluate_eval_command_output(
+            engine, state, "(x+1)^2", false,
+        )
     });
     assert!(eval.is_ok());
 }

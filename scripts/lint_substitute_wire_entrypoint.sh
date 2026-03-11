@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Lint: Substitute Wire Entrypoint Enforcement
 #
-# This script ensures that CLI and FFI always use the
-# cas_session substitute wire entrypoint and don't hand-serialize JSON.
+# This script ensures that substitute wire uses the intended ownership boundary:
+# - CLI routes through `cas_solver::command_api::substitute`
+# - FFI calls the direct stateless `cas_solver::wire` entrypoint
 #
 # POLICY: Single source of truth for substitute wire API.
 # SEE: docs/SUBSTITUTE_POLICY.md
@@ -15,29 +16,17 @@ echo "=== Substitute Wire Entrypoint Enforcement ==="
 
 ERRORS=0
 
-# 1) CLI must route wire substitute through cas_session entrypoint
-#    Accepted paths:
-#    - direct call from CLI
-#    - CLI -> cas_session helper -> evaluate_substitute_wire
-if grep -rq "substitute_str_to_wire" "$ROOT/crates/cas_cli/src"; then
-    echo "✔ CLI uses substitute_str_to_wire (direct)"
-elif grep -rq "evaluate_substitute_subcommand" "$ROOT/crates/cas_cli/src" \
-    && grep -rq "evaluate_substitute_wire" "$ROOT/crates/cas_session/src"; then
-    echo "✔ CLI routes substitute wire via cas_session entrypoint"
+# 1) CLI must route substitute through command_api.
+if grep -rq "cas_solver::command_api::substitute::evaluate_substitute_subcommand\\|evaluate_substitute_subcommand" "$ROOT/crates/cas_cli/src"; then
+    echo "✔ CLI routes substitute via cas_solver::command_api::substitute"
 else
-    echo "✘ ERROR: CLI must call substitute wire path (direct or via cas_session)"
+    echo "✘ ERROR: CLI must call cas_solver::command_api::substitute"
     ERRORS=$((ERRORS + 1))
 fi
 
-# 2) FFI must call substitute wire path
-#    Accepted paths:
-#    - direct call to substitute_str_to_wire
-#    - call to cas_session wire wrapper
+# 2) FFI must call the direct wire path.
 if grep -rq "substitute_str_to_wire" "$ROOT/crates/cas_android_ffi/src"; then
     echo "✔ FFI uses substitute_str_to_wire (direct)"
-elif grep -rq "evaluate_substitute_wire" "$ROOT/crates/cas_android_ffi/src" \
-    && grep -rq "evaluate_substitute_wire" "$ROOT/crates/cas_session/src"; then
-    echo "✔ FFI routes substitute wire via cas_session entrypoint"
 else
     echo "✘ ERROR: FFI must call substitute wire path"
     ERRORS=$((ERRORS + 1))

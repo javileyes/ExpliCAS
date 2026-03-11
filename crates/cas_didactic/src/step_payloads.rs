@@ -2,7 +2,7 @@ mod build;
 mod events;
 mod prepare;
 
-use crate::cas_solver::Step;
+use crate::runtime::Step;
 use cas_api_models::StepWire;
 use cas_ast::Context;
 use cas_solver_core::engine_events::EngineEvent;

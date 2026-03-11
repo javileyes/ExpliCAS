@@ -27,7 +27,7 @@ pub fn timeline_cli_actions_to_reply(actions: Vec<TimelineCliAction>) -> ReplRep
 
 /// Convert a visualize command output into REPL actions.
 pub fn visualize_output_to_reply(
-    output: cas_session::solver_exports::VisualizeCommandOutput,
+    output: cas_solver::session_api::symbolic_commands::VisualizeCommandOutput,
 ) -> ReplReply {
     let mut reply = vec![ReplMsg::WriteFile {
         path: PathBuf::from(output.file_name),

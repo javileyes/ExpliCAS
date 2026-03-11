@@ -4,7 +4,7 @@
 
 use cas_ast::Expr;
 use cas_formatter::DisplayExpr;
-use cas_solver::Simplifier;
+use cas_solver::runtime::Simplifier;
 
 fn simplify_str(input: &str) -> String {
     let mut simplifier = Simplifier::with_default_rules();

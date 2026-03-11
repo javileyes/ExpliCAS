@@ -6,7 +6,7 @@
 
 use cas_ast::Context;
 use cas_parser::parse;
-use cas_solver::Simplifier;
+use cas_solver::runtime::Simplifier;
 use cas_solver::{EvalOptions, StepsMode};
 
 fn simplify(input: &str) -> String {
@@ -107,11 +107,11 @@ fn test_dyadic_cos_product_generic_symbolic_blocked() {
 /// In Assume mode with symbolic θ, the rule should apply with warning
 #[test]
 fn test_dyadic_cos_product_assume_symbolic_allowed() {
-    use cas_solver::DomainMode;
+    use cas_solver::runtime::DomainMode;
 
     let opts = EvalOptions {
         steps_mode: StepsMode::On,
-        shared: cas_solver::SharedSemanticConfig {
+        shared: cas_solver::runtime::SharedSemanticConfig {
             semantics: cas_solver::EvalConfig {
                 domain_mode: DomainMode::Assume,
                 ..Default::default()

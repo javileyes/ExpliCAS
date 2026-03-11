@@ -11,17 +11,17 @@
 //! - In Generic: silently
 
 use cas_formatter::display::DisplayExpr;
-use cas_solver::Simplifier;
+use cas_solver::runtime::Simplifier;
 
 /// Helper: simplify with Strict domain mode
 fn simplify_strict(input: &str) -> String {
     let mut simplifier = Simplifier::with_default_rules();
     let expr = cas_parser::parse(input, &mut simplifier.context).expect("parse failed");
 
-    let opts = cas_solver::SimplifyOptions {
-        shared: cas_solver::SharedSemanticConfig {
-            semantics: cas_solver::EvalConfig {
-                domain_mode: cas_solver::DomainMode::Strict,
+    let opts = cas_solver::runtime::SimplifyOptions {
+        shared: cas_solver::runtime::SharedSemanticConfig {
+            semantics: cas_solver::runtime::EvalConfig {
+                domain_mode: cas_solver::runtime::DomainMode::Strict,
                 ..Default::default()
             },
             ..Default::default()
@@ -44,10 +44,10 @@ fn simplify_assume(input: &str) -> String {
     let mut simplifier = Simplifier::with_default_rules();
     let expr = cas_parser::parse(input, &mut simplifier.context).expect("parse failed");
 
-    let opts = cas_solver::SimplifyOptions {
-        shared: cas_solver::SharedSemanticConfig {
-            semantics: cas_solver::EvalConfig {
-                domain_mode: cas_solver::DomainMode::Assume,
+    let opts = cas_solver::runtime::SimplifyOptions {
+        shared: cas_solver::runtime::SharedSemanticConfig {
+            semantics: cas_solver::runtime::EvalConfig {
+                domain_mode: cas_solver::runtime::DomainMode::Assume,
                 ..Default::default()
             },
             ..Default::default()

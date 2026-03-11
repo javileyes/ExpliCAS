@@ -2,7 +2,7 @@ use cas_formatter::DisplayExpr;
 use cas_parser::parse;
 use cas_solver::rules::algebra::FactorRule;
 use cas_solver::rules::polynomial::CombineLikeTermsRule;
-use cas_solver::Simplifier;
+use cas_solver::runtime::Simplifier;
 
 #[test]
 fn test_factor_rule_integration() {

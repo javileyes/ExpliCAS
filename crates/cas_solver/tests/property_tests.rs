@@ -1,5 +1,5 @@
 use cas_ast::{Context, Expr, ExprId};
-use cas_solver::Simplifier;
+use cas_solver::runtime::Simplifier;
 use proptest::prelude::*;
 use std::io::Write;
 

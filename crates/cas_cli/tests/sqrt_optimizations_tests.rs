@@ -1,6 +1,6 @@
 use cas_formatter::DisplayExpr;
 use cas_parser::parse;
-use cas_solver::Simplifier;
+use cas_solver::runtime::Simplifier;
 
 /// Helper para crear simplifier
 fn create_simplifier() -> Simplifier {

@@ -1,4 +1,4 @@
-use crate::cas_solver::{pathsteps_to_expr_path, Step};
+use crate::runtime::{pathsteps_to_expr_path, Step};
 use cas_ast::{Context, ExprPath};
 use cas_formatter::{DisplayContext, HighlightColor, StylePreferences};
 

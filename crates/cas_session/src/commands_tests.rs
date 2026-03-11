@@ -1,16 +1,8 @@
-use crate::solver_exports::{
-    apply_profile_cache_command, apply_profile_command, evaluate_assignment_command,
-    evaluate_assignment_command_message_with_simplifier, evaluate_clear_command_lines,
-    evaluate_delete_history_command_message, evaluate_history_command_lines,
-    evaluate_history_command_lines_with_context, evaluate_let_assignment_command,
-    evaluate_let_assignment_command_message_with_simplifier, evaluate_profile_cache_command_lines,
-    evaluate_solve_budget_command_message, evaluate_vars_command_lines,
-    evaluate_vars_command_lines_with_context, format_assignment_command_output_message,
-    format_profile_cache_command_lines, format_show_history_command_lines,
-    format_show_history_command_lines_with_context, parse_profile_command_input,
-    HistoryEntryDetails, HistoryEntryInspection, HistoryExprInspection, ProfileCommandInput,
-};
 use crate::SessionState;
+#[allow(unused_imports)]
+use cas_solver::session_api::{
+    formatting::*, options::*, runtime::*, session_support::*, symbolic_commands::*, types::*,
+};
 
 #[test]
 fn evaluate_vars_command_lines_empty() {
@@ -44,7 +36,7 @@ fn evaluate_history_command_lines_with_context_empty() {
 
 #[test]
 fn evaluate_profile_cache_command_lines_status() {
-    let mut engine = cas_solver::Engine::new();
+    let mut engine = cas_solver::runtime::Engine::new();
     let lines = evaluate_profile_cache_command_lines(&mut engine, "cache status");
     assert!(lines.iter().any(|line| line.contains("Profile Cache:")));
 }
@@ -120,7 +112,7 @@ fn format_show_history_command_lines_with_context_appends_metadata() {
 #[test]
 fn evaluate_assignment_command_success() {
     let mut state = SessionState::new();
-    let mut simplifier = cas_solver::Simplifier::with_default_rules();
+    let mut simplifier = cas_solver::runtime::Simplifier::with_default_rules();
     let out = evaluate_assignment_command(&mut state, &mut simplifier, "a", "x + x", true)
         .expect("assign");
 
@@ -138,7 +130,7 @@ fn evaluate_assignment_command_success() {
 #[test]
 fn evaluate_let_assignment_command_parse_error() {
     let mut state = SessionState::new();
-    let mut simplifier = cas_solver::Simplifier::with_default_rules();
+    let mut simplifier = cas_solver::runtime::Simplifier::with_default_rules();
     let err = evaluate_let_assignment_command(&mut state, &mut simplifier, "x + y")
         .expect_err("let parse error");
     assert!(err.contains("Usage:"));
@@ -147,7 +139,7 @@ fn evaluate_let_assignment_command_parse_error() {
 #[test]
 fn evaluate_assignment_command_message_with_simplifier_formats_success() {
     let mut state = SessionState::new();
-    let mut simplifier = cas_solver::Simplifier::with_default_rules();
+    let mut simplifier = cas_solver::runtime::Simplifier::with_default_rules();
     let out = evaluate_assignment_command_message_with_simplifier(
         &mut state,
         &mut simplifier,
@@ -162,7 +154,7 @@ fn evaluate_assignment_command_message_with_simplifier_formats_success() {
 #[test]
 fn evaluate_let_assignment_command_message_with_simplifier_formats_success() {
     let mut state = SessionState::new();
-    let mut simplifier = cas_solver::Simplifier::with_default_rules();
+    let mut simplifier = cas_solver::runtime::Simplifier::with_default_rules();
     let out = evaluate_let_assignment_command_message_with_simplifier(
         &mut state,
         &mut simplifier,
@@ -182,7 +174,7 @@ fn profile_command_parse_enable() {
 
 #[test]
 fn apply_profile_command_enable_and_disable_messages() {
-    let mut simplifier = cas_solver::Simplifier::with_default_rules();
+    let mut simplifier = cas_solver::runtime::Simplifier::with_default_rules();
     assert_eq!(
         apply_profile_command(&mut simplifier, "profile enable"),
         "Profiler enabled."
@@ -195,7 +187,7 @@ fn apply_profile_command_enable_and_disable_messages() {
 
 #[test]
 fn apply_profile_cache_command_status_and_format() {
-    let mut engine = cas_solver::Engine::new();
+    let mut engine = cas_solver::runtime::Engine::new();
     let result = apply_profile_cache_command(&mut engine, "cache status");
     let lines = format_profile_cache_command_lines(&result);
     assert_eq!(lines.len(), 1);

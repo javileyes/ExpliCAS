@@ -5,7 +5,7 @@ mod tests {
 
     #[test]
     fn evaluate_eval_with_session_runs() {
-        let mut engine = cas_solver::Engine::new();
+        let mut engine = cas_solver::runtime::Engine::new();
         let mut session = SessionState::new();
         let out = cas_solver::evaluate_eval_with_session(
             &mut engine,

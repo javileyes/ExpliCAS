@@ -11,7 +11,7 @@ pub fn format_history_eval_metadata_sections(
 
     if !required_conditions.is_empty() {
         lines.push("  ℹ️ Requires:".to_string());
-        lines.extend(crate::format_required_condition_lines(
+        lines.extend(crate::assumption_format::format_required_condition_lines(
             ctx,
             required_conditions,
             "    - ",
@@ -20,7 +20,7 @@ pub fn format_history_eval_metadata_sections(
 
     if !domain_warnings.is_empty() {
         lines.push("  ⚠ Assumed:".to_string());
-        lines.extend(crate::format_domain_warning_lines(
+        lines.extend(crate::assumption_format::format_domain_warning_lines(
             domain_warnings,
             false,
             "    - ",
@@ -29,7 +29,10 @@ pub fn format_history_eval_metadata_sections(
 
     if !blocked_hints.is_empty() {
         lines.push("  🚫 Blocked:".to_string());
-        lines.extend(crate::format_blocked_hint_lines(blocked_hints, "    - "));
+        lines.extend(crate::assumption_format::format_blocked_hint_lines(
+            blocked_hints,
+            "    - ",
+        ));
     }
 
     lines

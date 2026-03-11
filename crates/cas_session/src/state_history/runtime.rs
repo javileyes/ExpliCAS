@@ -64,9 +64,9 @@ impl cas_solver::InspectHistoryContext for SessionState {
 
     fn eval_for_inspect(
         &mut self,
-        engine: &mut cas_solver::Engine,
-        request: cas_solver::EvalRequest,
-    ) -> Result<cas_solver::EvalOutput, String> {
+        engine: &mut cas_solver::runtime::Engine,
+        request: cas_solver::runtime::EvalRequest,
+    ) -> Result<cas_solver::runtime::EvalOutput, String> {
         engine
             .eval(self, request)
             .map_err(|error| error.to_string())

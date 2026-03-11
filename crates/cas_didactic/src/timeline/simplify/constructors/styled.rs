@@ -1,7 +1,7 @@
 use super::super::super::simplify_init::build_simplify_timeline_init;
 use super::super::{TimelineHtml, VerbosityLevel};
 use super::build;
-use crate::cas_solver::Step;
+use crate::runtime::Step;
 use cas_ast::{Context, ExprId};
 
 impl<'a> TimelineHtml<'a> {

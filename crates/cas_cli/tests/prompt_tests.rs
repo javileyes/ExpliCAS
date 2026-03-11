@@ -3,8 +3,8 @@
 //! These tests verify that the prompt indicator format is stable and predictable,
 //! helping prevent UX regressions when multiple modes are active.
 
-use cas_solver::ExpandPolicy;
-use cas_solver::{BranchMode, ComplexMode, ContextMode, EvalOptions, StepsMode};
+use cas_solver::runtime::ExpandPolicy;
+use cas_solver::runtime::{BranchMode, ComplexMode, ContextMode, EvalOptions, StepsMode};
 
 /// Build prompt indicators string (pure function for testing).
 /// Mirrors the logic in Repl::build_prompt() without requiring a full Repl instance.
@@ -78,7 +78,7 @@ fn steps_compact_only() {
 #[test]
 fn context_integrate_only() {
     let opts = EvalOptions {
-        shared: cas_solver::SharedSemanticConfig {
+        shared: cas_solver::runtime::SharedSemanticConfig {
             context_mode: ContextMode::IntegratePrep,
             ..Default::default()
         },
@@ -108,7 +108,7 @@ fn complex_on_only() {
 #[test]
 fn autoexpand_on_only() {
     let opts = EvalOptions {
-        shared: cas_solver::SharedSemanticConfig {
+        shared: cas_solver::runtime::SharedSemanticConfig {
             expand_policy: ExpandPolicy::Auto,
             ..Default::default()
         },
@@ -121,7 +121,7 @@ fn autoexpand_on_only() {
 fn combined_steps_and_context() {
     let opts = EvalOptions {
         steps_mode: StepsMode::Off,
-        shared: cas_solver::SharedSemanticConfig {
+        shared: cas_solver::runtime::SharedSemanticConfig {
             context_mode: ContextMode::IntegratePrep,
             ..Default::default()
         },
@@ -139,7 +139,7 @@ fn combined_all_non_default() {
         steps_mode: StepsMode::Off,
         branch_mode: BranchMode::PrincipalBranch,
         complex_mode: ComplexMode::On,
-        shared: cas_solver::SharedSemanticConfig {
+        shared: cas_solver::runtime::SharedSemanticConfig {
             context_mode: ContextMode::IntegratePrep,
             expand_policy: ExpandPolicy::Auto,
             ..Default::default()
@@ -159,7 +159,7 @@ fn order_is_deterministic() {
         steps_mode: StepsMode::Compact,
         branch_mode: BranchMode::PrincipalBranch,
         complex_mode: ComplexMode::Off,
-        shared: cas_solver::SharedSemanticConfig {
+        shared: cas_solver::runtime::SharedSemanticConfig {
             context_mode: ContextMode::Solve,
             expand_policy: ExpandPolicy::Auto,
             ..Default::default()

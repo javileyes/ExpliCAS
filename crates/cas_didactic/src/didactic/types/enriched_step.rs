@@ -1,5 +1,5 @@
 use super::SubStep;
-use crate::cas_solver::Step;
+use crate::runtime::Step;
 
 /// An enriched step with optional sub-steps for didactic explanation
 #[derive(Debug, Clone)]

@@ -7,7 +7,7 @@ impl Repl {
         verbosity: Verbosity,
     ) -> ReplReply {
         let lines =
-            match cas_session::solver_exports::evaluate_full_simplify_command_lines_on_repl_core(
+            match cas_solver::session_api::runtime::evaluate_full_simplify_command_lines_on_repl_core(
                 &mut self.core,
                 line,
                 Self::set_display_mode_from_verbosity(verbosity),
@@ -17,7 +17,7 @@ impl Repl {
             };
 
         // Store health report for the `health` command (if health tracking is enabled).
-        cas_session::solver_exports::update_health_report_on_repl_core(&mut self.core);
+        cas_solver::session_api::runtime::update_health_report_on_repl_core(&mut self.core);
 
         reply_output(lines.join("\n"))
     }

@@ -3,7 +3,7 @@ use super::super::*;
 impl Repl {
     pub(crate) fn render_eval_plan_to_reply(
         &mut self,
-        plan: cas_session::solver_exports::EvalCommandRenderPlan,
+        plan: cas_solver::session_api::types::EvalCommandRenderPlan,
     ) -> ReplReply {
         let mut reply: ReplReply = vec![];
 

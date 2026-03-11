@@ -1,7 +1,12 @@
 //! Tests for session store and reference resolution.
 
 use cas_ast::ExprId;
-use cas_session::*;
+use cas_session::cache::{SimplifiedCache, SimplifyCacheKey};
+use cas_session::resolve_refs::{resolve_session_refs, resolve_session_refs_with_mode};
+use cas_session_core::types::{EntryKind, RefMode, ResolveError};
+use cas_solver_core::diagnostics_model::Diagnostics;
+
+type SessionStore = cas_session_core::store::SessionStore<Diagnostics, SimplifiedCache>;
 
 #[test]
 fn test_push_and_get() {
@@ -270,7 +275,7 @@ fn test_resolve_with_mode_cache_hit() {
 
     // Inject simplified cache: simplified = 5
     let simplified_five = ctx.num(5);
-    let cache_key = SimplifyCacheKey::from_context(cas_solver::DomainMode::Generic);
+    let cache_key = SimplifyCacheKey::from_context(cas_solver::runtime::DomainMode::Generic);
     let cache = SimplifiedCache {
         key: cache_key.clone(),
         expr: simplified_five,
@@ -338,7 +343,7 @@ fn test_resolve_with_mode_cache_miss_key_mismatch() {
 
     // Inject cache with different domain mode
     let simplified = ctx.num(5);
-    let cache_key_strict = SimplifyCacheKey::from_context(cas_solver::DomainMode::Strict);
+    let cache_key_strict = SimplifyCacheKey::from_context(cas_solver::runtime::DomainMode::Strict);
     let cache = SimplifiedCache {
         key: cache_key_strict,
         expr: simplified,
@@ -349,7 +354,8 @@ fn test_resolve_with_mode_cache_miss_key_mismatch() {
 
     // Resolve with Generic mode (different from Strict cache)
     let ref1 = ctx.add(Expr::SessionRef(1));
-    let cache_key_generic = SimplifyCacheKey::from_context(cas_solver::DomainMode::Generic);
+    let cache_key_generic =
+        SimplifyCacheKey::from_context(cas_solver::runtime::DomainMode::Generic);
 
     let result = resolve_session_refs_with_mode(
         &mut ctx,
@@ -383,7 +389,7 @@ fn test_resolve_with_mode_raw_mode() {
 
     // Inject cache
     let simplified = ctx.num(5);
-    let cache_key = SimplifyCacheKey::from_context(cas_solver::DomainMode::Generic);
+    let cache_key = SimplifyCacheKey::from_context(cas_solver::runtime::DomainMode::Generic);
     let cache = SimplifiedCache {
         key: cache_key.clone(),
         expr: simplified,
@@ -430,7 +436,7 @@ fn test_resolve_with_mode_tracks_ref_chain() {
 
     // Resolve #2
     let ref2 = ctx.add(Expr::SessionRef(2));
-    let cache_key = SimplifyCacheKey::from_context(cas_solver::DomainMode::Generic);
+    let cache_key = SimplifyCacheKey::from_context(cas_solver::runtime::DomainMode::Generic);
 
     let result = resolve_session_refs_with_mode(
         &mut ctx,

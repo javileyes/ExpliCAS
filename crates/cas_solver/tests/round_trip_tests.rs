@@ -12,7 +12,7 @@
 use cas_ast::{Context, ExprId};
 use cas_formatter::LaTeXExpr;
 use cas_parser::parse;
-use cas_solver::Simplifier;
+use cas_solver::runtime::Simplifier;
 use cas_solver::{eval_f64_checked, EvalCheckedError, EvalCheckedOptions};
 use std::collections::HashMap;
 use std::sync::mpsc;

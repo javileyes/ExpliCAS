@@ -12,8 +12,8 @@
 
 use cas_ast::{Context, Expr};
 use cas_parser::parse;
+use cas_solver::runtime::Simplifier;
 use cas_solver::ContextMode;
-use cas_solver::Simplifier;
 use cas_solver::{ExpandPolicy, SimplifyOptions};
 
 /// Helper to simplify an expression with given options

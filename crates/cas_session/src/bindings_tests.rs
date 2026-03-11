@@ -1,11 +1,10 @@
 #[cfg(test)]
 mod tests {
-    use crate::solver_exports::{
-        binding_overview_entries, clear_bindings_command, format_binding_overview_lines,
-        format_clear_bindings_result_lines, vars_empty_message, BindingOverviewEntry,
-        ClearBindingsResult,
-    };
     use crate::SessionState;
+    #[allow(unused_imports)]
+    use cas_solver::session_api::{
+        formatting::*, options::*, runtime::*, session_support::*, symbolic_commands::*, types::*,
+    };
 
     #[test]
     fn clear_bindings_command_all_mode() {

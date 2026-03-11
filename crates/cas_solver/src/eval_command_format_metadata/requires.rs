@@ -13,7 +13,7 @@ pub(super) fn format_requires_lines(
     }
 
     let result_expr = result::eval_result_expr(&output.result);
-    let rendered = crate::format_diagnostics_requires_lines(
+    let rendered = crate::assumption_format::format_diagnostics_requires_lines(
         context,
         &output.diagnostics,
         result_expr,

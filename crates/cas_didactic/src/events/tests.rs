@@ -22,7 +22,7 @@ fn collector_records_rule_applied_events() {
 
 #[test]
 fn collector_can_be_cloned_for_simplifier_listener() {
-    let mut simplifier = crate::cas_solver::Simplifier::with_default_rules();
+    let mut simplifier = crate::runtime::Simplifier::with_default_rules();
     let collector = EngineEventCollector::new();
     simplifier.set_step_listener(Some(Box::new(collector.clone())));
 

@@ -9,7 +9,7 @@ use self::fraction_sums::{
     extend_primary_fraction_sum_substeps, standalone_fraction_sum_substeps,
 };
 use super::{EnrichedStep, SubStep};
-use crate::cas_solver::Step;
+use crate::runtime::Step;
 use cas_ast::{Context, ExprId};
 
 /// Enrich a list of steps with didactic sub-steps

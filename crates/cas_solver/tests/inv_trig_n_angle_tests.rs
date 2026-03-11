@@ -10,7 +10,7 @@
 use cas_formatter::DisplayExpr;
 use cas_math::numeric_eval::eval_f64_with_substitution;
 use cas_parser::parse;
-use cas_solver::Simplifier;
+use cas_solver::runtime::Simplifier;
 
 /// Simplify an expression string and return the result as string.
 fn simplify_str(input: &str) -> String {

@@ -6,7 +6,7 @@
 /// like `(x^2)^(1/2) → x` (must stay as sqrt(x^2) or |x|).
 use cas_ast::Expr;
 use cas_formatter::DisplayExpr;
-use cas_solver::Simplifier;
+use cas_solver::runtime::Simplifier;
 
 fn simplify_display(input: &str) -> String {
     let mut simplifier = Simplifier::new();

@@ -1,5 +1,5 @@
 use super::super::super::super::*;
-use crate::cas_solver::to_display_steps;
+use crate::runtime::to_display_steps;
 use cas_ast::Context;
 
 #[test]

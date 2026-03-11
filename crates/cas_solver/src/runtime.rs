@@ -1,3 +1,5 @@
+//! Explicit public namespace for engine/runtime-facing solver APIs.
+
 pub use crate::budget_runtime_types::{Budget, BudgetExceeded, Metric, Operation, PassStats};
 pub use crate::display_eval_steps::DisplayEvalSteps;
 pub use crate::engine_runtime_types::{
@@ -5,7 +7,6 @@ pub use crate::engine_runtime_types::{
     EvalOptions, EvalOutput, EvalRequest, EvalResult, HeuristicPoly, RuleProfiler,
     SharedSemanticConfig, Simplifier, SimplifyOptions, StepsMode,
 };
-pub use crate::error_runtime_types::error;
 pub use crate::phase_runtime_types::{
     ExpandBudget, ExpandPolicy, PhaseBudgets, PhaseMask, PhaseStats, PipelineStats, SimplifyPhase,
 };
@@ -16,3 +17,6 @@ pub use crate::types::{
     DisplaySolveSteps, SolveCtx, SolveDiagnostics, SolveDomainEnv, SolveStep, SolveSubStep,
     SolverEvalSession, SolverEvalStore, SolverOptions, StatelessEvalSession,
 };
+pub use cas_solver_core::domain_mode::DomainMode;
+pub use cas_solver_core::eval_config::EvalConfig;
+pub use cas_solver_core::inverse_trig_policy::InverseTrigPolicy;

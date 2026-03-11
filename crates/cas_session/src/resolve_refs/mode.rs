@@ -1,11 +1,10 @@
-use cas_solver_core::diagnostics_model::Diagnostics;
+use cas_session_core::cache::ResolvedExpr;
+use cas_solver_core::diagnostics_model::{Diagnostics, RequiredItem};
 
 use super::plumbing::{
     mode_resolve_config, push_session_propagated_requirement, with_mode_resolution_plumbing,
 };
-use crate::{
-    EntryId, Environment, RefMode, ResolveError, ResolvedExpr, SessionStore, SimplifyCacheKey,
-};
+use crate::{env::Environment, EntryId, RefMode, ResolveError, SessionStore, SimplifyCacheKey};
 
 /// Resolve session refs with mode selection and cache checking.
 pub fn resolve_session_refs_with_mode(
@@ -14,7 +13,7 @@ pub fn resolve_session_refs_with_mode(
     store: &SessionStore,
     mode: RefMode,
     cache_key: &SimplifyCacheKey,
-) -> Result<ResolvedExpr, ResolveError> {
+) -> Result<ResolvedExpr<RequiredItem>, ResolveError> {
     with_mode_resolution_plumbing(store, |mut lookup, mut same, mut mark| {
         cas_session_core::resolve::resolve_session_refs_with_mode_lookup(
             ctx,
@@ -36,7 +35,7 @@ pub fn resolve_session_refs_with_mode_and_env(
     mode: RefMode,
     cache_key: &SimplifyCacheKey,
     env: &Environment,
-) -> Result<ResolvedExpr, ResolveError> {
+) -> Result<ResolvedExpr<RequiredItem>, ResolveError> {
     with_mode_resolution_plumbing(store, |mut lookup, mut same, mut mark| {
         cas_session_core::resolve::resolve_all_with_mode_lookup_and_env(
             ctx,

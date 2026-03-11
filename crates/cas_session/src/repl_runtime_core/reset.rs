@@ -8,7 +8,7 @@ pub fn reset_repl_core_with_config(core: &mut ReplCore, config: &CasConfig) {
         core,
         config,
         build_simplifier,
-        crate::sync_simplifier_with_cas_config,
+        crate::config::sync_simplifier_with_cas_config,
     );
 }
 
@@ -18,6 +18,6 @@ pub fn reset_repl_core_full_with_config(core: &mut ReplCore, config: &CasConfig)
         core,
         config,
         build_simplifier,
-        crate::sync_simplifier_with_cas_config,
+        crate::config::sync_simplifier_with_cas_config,
     );
 }

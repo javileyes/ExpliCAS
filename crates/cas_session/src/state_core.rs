@@ -1,5 +1,6 @@
 use cas_solver_core::eval_options::EvalOptions;
 
+use crate::env::Environment;
 use crate::state_eval_store::SessionEvalStore;
 
 mod constructors;
@@ -13,6 +14,6 @@ mod snapshot;
 #[derive(Default, Debug)]
 pub struct SessionState {
     pub(crate) store: SessionEvalStore,
-    pub(crate) env: crate::Environment,
+    pub(crate) env: Environment,
     pub(crate) options: EvalOptions,
 }

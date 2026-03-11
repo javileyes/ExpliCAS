@@ -17,7 +17,7 @@
 use cas_ast::Context;
 use cas_parser::parse;
 use cas_session::SessionState;
-use cas_solver::Simplifier;
+use cas_solver::runtime::Simplifier;
 
 /// Helper: simplify with default options (Generic mode)
 fn simplify_generic(input: &str) -> String {
@@ -39,10 +39,10 @@ fn simplify_strict(input: &str) -> String {
     let expr = parse(input, &mut simplifier.context).expect("parse failed");
 
     // Use Strict domain mode
-    let opts = cas_solver::SimplifyOptions {
-        shared: cas_solver::SharedSemanticConfig {
+    let opts = cas_solver::runtime::SimplifyOptions {
+        shared: cas_solver::runtime::SharedSemanticConfig {
             semantics: cas_solver::EvalConfig {
-                domain_mode: cas_solver::DomainMode::Strict,
+                domain_mode: cas_solver::runtime::DomainMode::Strict,
                 ..Default::default()
             },
             ..Default::default()
@@ -475,7 +475,7 @@ fn test_prove_positive_exp() {
 /// Helper: simplify with DomainMode and ValueDomain via Engine
 fn simplify_with_domain_value(
     input: &str,
-    domain: cas_solver::DomainMode,
+    domain: cas_solver::runtime::DomainMode,
     value: cas_solver::ValueDomain,
 ) -> (String, Vec<String>) {
     use cas_solver::{Engine, EvalAction, EvalRequest, EvalResult};
@@ -520,7 +520,7 @@ fn log_product_strict_no_expand_variables() {
     use cas_solver::ValueDomain;
     let (result, warnings) = simplify_with_domain_value(
         "ln(x*y)",
-        cas_solver::DomainMode::Strict,
+        cas_solver::runtime::DomainMode::Strict,
         ValueDomain::RealOnly,
     );
 
@@ -550,7 +550,7 @@ fn log_product_assume_no_auto_expand() {
     use cas_solver::ValueDomain;
     let (result, _warnings) = simplify_with_domain_value(
         "ln(x*y)",
-        cas_solver::DomainMode::Assume,
+        cas_solver::runtime::DomainMode::Assume,
         ValueDomain::RealOnly,
     );
 
@@ -569,7 +569,7 @@ fn log_product_complex_never_expands() {
     use cas_solver::ValueDomain;
     let (result, _) = simplify_with_domain_value(
         "ln(z*w)",
-        cas_solver::DomainMode::Assume,
+        cas_solver::runtime::DomainMode::Assume,
         ValueDomain::ComplexEnabled,
     );
 
@@ -588,7 +588,7 @@ fn log_product_provable_positive_no_auto_expand() {
     use cas_solver::ValueDomain;
     let (result, _warnings) = simplify_with_domain_value(
         "ln(2*pi)",
-        cas_solver::DomainMode::Strict,
+        cas_solver::runtime::DomainMode::Strict,
         ValueDomain::RealOnly,
     );
 
@@ -656,7 +656,7 @@ fn value_domain_real_no_gaussian_division() {
     use cas_solver::ValueDomain;
     let (result, _) = simplify_with_domain_value(
         "10/(3+4*i)",
-        cas_solver::DomainMode::Generic,
+        cas_solver::runtime::DomainMode::Generic,
         ValueDomain::RealOnly,
     );
 
@@ -675,7 +675,7 @@ fn value_domain_complex_gaussian_division() {
     use cas_solver::ValueDomain;
     let (result, _) = simplify_with_domain_value(
         "10/(3+4*i)",
-        cas_solver::DomainMode::Generic,
+        cas_solver::runtime::DomainMode::Generic,
         ValueDomain::ComplexEnabled,
     );
 
@@ -695,7 +695,7 @@ fn value_domain_real_no_i_squared() {
     use cas_solver::ValueDomain;
     let (result, _) = simplify_with_domain_value(
         "i*i",
-        cas_solver::DomainMode::Generic,
+        cas_solver::runtime::DomainMode::Generic,
         ValueDomain::RealOnly,
     );
 
@@ -713,7 +713,7 @@ fn value_domain_complex_i_squared() {
     use cas_solver::ValueDomain;
     let (result, _) = simplify_with_domain_value(
         "i*i",
-        cas_solver::DomainMode::Generic,
+        cas_solver::runtime::DomainMode::Generic,
         ValueDomain::ComplexEnabled,
     );
 
@@ -731,7 +731,7 @@ fn value_domain_real_no_i_power() {
     use cas_solver::ValueDomain;
     let (result, _) = simplify_with_domain_value(
         "i^2",
-        cas_solver::DomainMode::Generic,
+        cas_solver::runtime::DomainMode::Generic,
         ValueDomain::RealOnly,
     );
 
@@ -749,7 +749,7 @@ fn value_domain_complex_i_fourth() {
     use cas_solver::ValueDomain;
     let (result, _) = simplify_with_domain_value(
         "i^4",
-        cas_solver::DomainMode::Generic,
+        cas_solver::runtime::DomainMode::Generic,
         ValueDomain::ComplexEnabled,
     );
 
@@ -778,7 +778,7 @@ fn exp_ln_x_generic_emits_positive_require() {
     let mut state = SessionState::new();
 
     // Ensure Generic mode (default)
-    state.options_mut().shared.semantics.domain_mode = cas_solver::DomainMode::Generic;
+    state.options_mut().shared.semantics.domain_mode = cas_solver::runtime::DomainMode::Generic;
 
     let parsed =
         cas_parser::parse("exp(ln(x))", &mut engine.simplifier.context).expect("parse failed");
@@ -828,7 +828,7 @@ fn blocked_hint_exp_ln_5_no_hint() {
     let mut state = SessionState::new();
 
     // Ensure Generic mode
-    state.options_mut().shared.semantics.domain_mode = cas_solver::DomainMode::Generic;
+    state.options_mut().shared.semantics.domain_mode = cas_solver::runtime::DomainMode::Generic;
 
     let parsed =
         cas_parser::parse("exp(ln(5))", &mut engine.simplifier.context).expect("parse failed");
@@ -875,7 +875,7 @@ fn step_tracks_assumed_nonzero_in_generic() {
     let mut state = SessionState::new();
 
     // Ensure Generic mode
-    state.options_mut().shared.semantics.domain_mode = cas_solver::DomainMode::Generic;
+    state.options_mut().shared.semantics.domain_mode = cas_solver::runtime::DomainMode::Generic;
 
     let parsed =
         cas_parser::parse("(x*y)/x", &mut engine.simplifier.context).expect("parse failed");
@@ -924,7 +924,7 @@ fn step_tracks_assumed_positive_in_assume() {
     let mut state = SessionState::new();
 
     // Use Generic mode - now works with implicit requires
-    state.options_mut().shared.semantics.domain_mode = cas_solver::DomainMode::Generic;
+    state.options_mut().shared.semantics.domain_mode = cas_solver::runtime::DomainMode::Generic;
 
     let parsed =
         cas_parser::parse("exp(ln(x))", &mut engine.simplifier.context).expect("parse failed");
@@ -982,7 +982,7 @@ fn sqrt_conjugate_collapse_blocked_in_generic() {
     let mut state = SessionState::new();
 
     // Ensure Generic mode (default)
-    state.options_mut().shared.semantics.domain_mode = cas_solver::DomainMode::Generic;
+    state.options_mut().shared.semantics.domain_mode = cas_solver::runtime::DomainMode::Generic;
     state.options_mut().hints_enabled = true;
 
     // Expression: sqrt(x + sqrt(x^2 - 1)) * (x - sqrt(x^2 - 1))
@@ -998,7 +998,7 @@ fn sqrt_conjugate_collapse_blocked_in_generic() {
     let output = engine.eval(&mut state, req).expect("eval failed");
 
     let result_str = match &output.result {
-        cas_solver::EvalResult::Expr(e) => cas_formatter::DisplayExpr {
+        cas_solver::runtime::EvalResult::Expr(e) => cas_formatter::DisplayExpr {
             context: &engine.simplifier.context,
             id: *e,
         }
@@ -1040,7 +1040,7 @@ fn sqrt_conjugate_collapse_allowed_in_assume() {
     let mut state = SessionState::new();
 
     // Use Assume mode
-    state.options_mut().shared.semantics.domain_mode = cas_solver::DomainMode::Assume;
+    state.options_mut().shared.semantics.domain_mode = cas_solver::runtime::DomainMode::Assume;
 
     // Expression: sqrt(x + sqrt(x^2 - 1)) * (x - sqrt(x^2 - 1))
     let input = "sqrt(x + sqrt(x^2 - 1)) * (x - sqrt(x^2 - 1))";
@@ -1055,7 +1055,7 @@ fn sqrt_conjugate_collapse_allowed_in_assume() {
     let output = engine.eval(&mut state, req).expect("eval failed");
 
     let result_str = match &output.result {
-        cas_solver::EvalResult::Expr(e) => cas_formatter::DisplayExpr {
+        cas_solver::runtime::EvalResult::Expr(e) => cas_formatter::DisplayExpr {
             context: &engine.simplifier.context,
             id: *e,
         }
@@ -1094,7 +1094,7 @@ fn simplify_generic_with_required(input: &str) -> (String, Vec<String>) {
     let mut engine = Engine::new();
     let mut state = SessionState::new();
 
-    state.options_mut().shared.semantics.domain_mode = cas_solver::DomainMode::Generic;
+    state.options_mut().shared.semantics.domain_mode = cas_solver::runtime::DomainMode::Generic;
 
     let parsed = cas_parser::parse(input, &mut engine.simplifier.context).expect("parse failed");
     let req = EvalRequest {

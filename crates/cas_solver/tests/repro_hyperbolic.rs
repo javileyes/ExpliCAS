@@ -1,12 +1,12 @@
 use cas_parser::parse;
-use cas_solver::EvalOptions;
-use cas_solver::ExpandPolicy;
-use cas_solver::Simplifier;
+use cas_solver::runtime::EvalOptions;
+use cas_solver::runtime::ExpandPolicy;
+use cas_solver::runtime::Simplifier;
 
 /// Options with auto-expand enabled for identity tests
 fn opts_autoexpand() -> EvalOptions {
     EvalOptions {
-        shared: cas_solver::SharedSemanticConfig {
+        shared: cas_solver::runtime::SharedSemanticConfig {
             expand_policy: ExpandPolicy::Auto,
             ..Default::default()
         },

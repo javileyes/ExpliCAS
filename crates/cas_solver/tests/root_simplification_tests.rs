@@ -1,5 +1,5 @@
 use cas_formatter::DisplayExpr;
-use cas_solver::Simplifier;
+use cas_solver::runtime::Simplifier;
 
 fn test_simplify(input: &str, expected_part: &str) {
     let mut simplifier = Simplifier::with_default_rules();

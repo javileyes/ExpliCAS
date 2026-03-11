@@ -3,8 +3,10 @@ mod tests {
     use std::sync::Arc;
 
     use cas_ast::{Context, Expr};
+    use cas_engine::Step;
 
-    use crate::{CacheDomainMode, SimplifiedCache, SimplifyCacheKey, Step};
+    use crate::cache::CacheDomainMode;
+    use crate::{SimplifiedCache, SimplifyCacheKey};
 
     fn sample_step() -> Step {
         let mut ctx = Context::new();

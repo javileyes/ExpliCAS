@@ -78,6 +78,15 @@ mod numeric_property_tests;
 /// compatibility following semantic versioning.
 pub mod api;
 
+/// Compatibility runtime surface used by legacy integration tests that were
+/// migrated from `cas_solver` to `cas_engine`.
+pub mod runtime {
+    pub use crate::{
+        DomainMode, Engine, EvalOptions, EvalResult, ExpandPolicy, SharedSemanticConfig,
+        Simplifier, SimplifyOptions, Step, StepsMode,
+    };
+}
+
 pub mod error;
 #[cfg(test)]
 mod error_tests;
@@ -88,6 +97,7 @@ pub(crate) use cas_math::build;
 pub use cas_math::canonical_forms;
 pub use cas_math::expr_nary as nary;
 pub use cas_math::factor;
+pub use cas_math::factor::factor;
 pub use cas_math::pattern_marks;
 pub use cas_math::telescoping_dirichlet::DirichletKernelResult;
 
@@ -97,7 +107,10 @@ pub(crate) use cas_ast::visitors;
 pub use cas_formatter::visualizer;
 pub(crate) use cas_math::pattern_scanner;
 
+pub use api::solve;
 pub use budget::{Budget, BudgetExceeded, BudgetScope, Metric, Operation, PassStats};
+pub use cas_ast::ordering::compare_expr;
+pub use cas_math::expr_nary::{add_terms_signed, Sign};
 pub use cas_math::expr_predicates::is_zero_expr as is_zero;
 pub use cas_math::rationalize::{rationalize_denominator, RationalizeConfig, RationalizeResult};
 pub use cas_math::substitute::{

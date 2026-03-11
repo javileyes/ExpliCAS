@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::limit_subcommand::{
+    use crate::command_api::limit::{
         evaluate_limit_subcommand, LimitCommandApproach, LimitCommandPreSimplify,
         LimitSubcommandOutput,
     };

@@ -1,6 +1,6 @@
 use super::super::fraction_sum_analysis::FractionSumInfo;
 use super::super::{EnrichedStep, SubStep};
-use crate::cas_solver::Step;
+use crate::runtime::Step;
 use cas_ast::Context;
 
 pub(super) fn enrich_step_loop(

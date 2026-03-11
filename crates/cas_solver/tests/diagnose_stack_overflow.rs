@@ -3,7 +3,7 @@
 //! This test should be run with: cargo test --test diagnose_stack_overflow -- --nocapture
 
 use cas_parser::parse;
-use cas_solver::Simplifier;
+use cas_solver::runtime::Simplifier;
 
 /// Run the problematic expression with profiler to identify high-frequency rules
 #[test]

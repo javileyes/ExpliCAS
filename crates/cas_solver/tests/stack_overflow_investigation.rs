@@ -2,7 +2,7 @@
 // Run with: cargo test -p cas_engine --test stack_overflow_investigation -- --nocapture
 
 use cas_parser::parse;
-use cas_solver::Simplifier;
+use cas_solver::runtime::Simplifier;
 
 /// Simple LCG for deterministic random generation
 struct Lcg(u64);

@@ -1,8 +1,8 @@
 use cas_ast::{Expr, ExprId};
 use cas_formatter::DisplayExpr;
 use cas_parser::parse;
-use cas_solver::rules::arithmetic::{AddZeroRule, CombineConstantsRule, MulOneRule};
-use cas_solver::Simplifier;
+use cas_solver::runtime::rules::arithmetic::{AddZeroRule, CombineConstantsRule, MulOneRule};
+use cas_solver::runtime::Simplifier;
 // use cas_solver::solve; // Unused
 use num_traits::Zero;
 
@@ -15,8 +15,10 @@ fn create_full_simplifier() -> Simplifier {
     simplifier.add_rule(Box::new(CombineConstantsRule));
     // Add other rules as needed for a "full" simplifier
     // For this specific test, we'll add the rules relevant to root simplification
-    use cas_solver::rules::canonicalization::CanonicalizeRootRule;
-    use cas_solver::rules::exponents::{IdentityPowerRule, PowerPowerRule, ProductPowerRule};
+    use cas_solver::runtime::rules::canonicalization::CanonicalizeRootRule;
+    use cas_solver::runtime::rules::exponents::{
+        IdentityPowerRule, PowerPowerRule, ProductPowerRule,
+    };
     simplifier.add_rule(Box::new(CanonicalizeRootRule));
     simplifier.add_rule(Box::new(ProductPowerRule));
     simplifier.add_rule(Box::new(PowerPowerRule));
@@ -229,7 +231,9 @@ fn test_nested_simplification() {
 
 #[test]
 fn test_polynomial_simplification() {
-    use cas_solver::rules::polynomial::{AnnihilationRule, CombineLikeTermsRule, DistributeRule};
+    use cas_solver::runtime::rules::polynomial::{
+        AnnihilationRule, CombineLikeTermsRule, DistributeRule,
+    };
 
     let mut simplifier = Simplifier::new();
     simplifier.add_rule(Box::new(DistributeRule));
@@ -313,7 +317,9 @@ fn test_polynomial_simplification() {
 
 #[test]
 fn test_exponent_simplification() {
-    use cas_solver::rules::exponents::{IdentityPowerRule, PowerPowerRule, ProductPowerRule};
+    use cas_solver::runtime::rules::exponents::{
+        IdentityPowerRule, PowerPowerRule, ProductPowerRule,
+    };
 
     let mut simplifier = Simplifier::new();
     simplifier.add_rule(Box::new(ProductPowerRule));
@@ -547,11 +553,11 @@ fn test_root_simplification() {
 
 #[test]
 fn test_polynomial_factorization_integration() {
-    use cas_solver::rules::algebra::FactorRule;
-    use cas_solver::rules::arithmetic::{
+    use cas_solver::runtime::rules::algebra::FactorRule;
+    use cas_solver::runtime::rules::arithmetic::{
         AddZeroRule, CombineConstantsRule, MulOneRule, MulZeroRule,
     };
-    use cas_solver::rules::polynomial::CombineLikeTermsRule;
+    use cas_solver::runtime::rules::polynomial::CombineLikeTermsRule;
 
     let mut simplifier = Simplifier::new();
     simplifier.enable_polynomial_strategy = false; // Disable to avoid redundancy with FactorRule
@@ -668,8 +674,8 @@ fn test_polynomial_factorization_integration() {
 
 #[test]
 fn test_integration_command() {
-    use cas_solver::rules::arithmetic::CombineConstantsRule;
-    use cas_solver::rules::calculus::IntegrateRule;
+    use cas_solver::runtime::rules::arithmetic::CombineConstantsRule;
+    use cas_solver::runtime::rules::calculus::IntegrateRule;
 
     let mut simplifier = Simplifier::new();
     simplifier.add_rule(Box::new(IntegrateRule));
@@ -711,15 +717,17 @@ fn test_integration_command() {
 
 #[test]
 fn test_logarithm_simplification() {
-    use cas_solver::rules::arithmetic::{
+    use cas_solver::runtime::rules::arithmetic::{
         AddZeroRule, CombineConstantsRule, MulOneRule, MulZeroRule,
     };
-    use cas_solver::rules::canonicalization::{
+    use cas_solver::runtime::rules::canonicalization::{
         CanonicalizeAddRule, CanonicalizeMulRule, CanonicalizeNegationRule,
     };
-    use cas_solver::rules::exponents::EvaluatePowerRule;
-    use cas_solver::rules::logarithms::{EvaluateLogRule, ExponentialLogRule, LogExpansionRule};
-    use cas_solver::rules::polynomial::{CombineLikeTermsRule, DistributeRule};
+    use cas_solver::runtime::rules::exponents::EvaluatePowerRule;
+    use cas_solver::runtime::rules::logarithms::{
+        EvaluateLogRule, ExponentialLogRule, LogExpansionRule,
+    };
+    use cas_solver::runtime::rules::polynomial::{CombineLikeTermsRule, DistributeRule};
 
     let mut simplifier = Simplifier::new();
     simplifier.add_rule(Box::new(CanonicalizeNegationRule));
@@ -747,10 +755,10 @@ fn test_logarithm_simplification() {
     //       For even exponents like x^2, we get 2*ln(|x|) which doesn't cancel.
     let input1 = "ln(x^3 * y) - 3 * ln(x)";
     let expr1 = parse(input1, &mut simplifier.context).expect("Failed to parse");
-    let opts = cas_solver::SimplifyOptions {
-        shared: cas_solver::SharedSemanticConfig {
-            semantics: cas_solver::EvalConfig {
-                domain_mode: cas_solver::DomainMode::Assume,
+    let opts = cas_solver::runtime::SimplifyOptions {
+        shared: cas_solver::runtime::SharedSemanticConfig {
+            semantics: cas_solver::runtime::EvalConfig {
+                domain_mode: cas_solver::runtime::DomainMode::Assume,
                 ..Default::default()
             },
             ..Default::default()
@@ -826,10 +834,10 @@ fn test_logarithm_simplification() {
     let input3 = "exp(ln(x))";
     let expr3 = parse(input3, &mut simplifier.context).expect("Failed to parse");
     // Use Assume mode since Generic now blocks Analytic conditions (Positive)
-    let opts = cas_solver::SimplifyOptions {
-        shared: cas_solver::SharedSemanticConfig {
-            semantics: cas_solver::EvalConfig {
-                domain_mode: cas_solver::DomainMode::Assume,
+    let opts = cas_solver::runtime::SimplifyOptions {
+        shared: cas_solver::runtime::SharedSemanticConfig {
+            semantics: cas_solver::runtime::EvalConfig {
+                domain_mode: cas_solver::runtime::DomainMode::Assume,
                 ..Default::default()
             },
             ..Default::default()

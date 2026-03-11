@@ -3,7 +3,7 @@ mod expr;
 mod header;
 mod rule;
 
-use crate::cas_solver::Step;
+use crate::runtime::Step;
 use cas_ast::{Context, ExprId};
 
 pub(super) fn render_step_header(step_count: usize, step: &Step) -> String {

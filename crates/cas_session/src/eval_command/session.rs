@@ -18,7 +18,7 @@ pub fn evaluate_eval_command_with_session<F>(
 where
     F: Fn(&[Step], &[EngineEvent], &cas_ast::Context, &str) -> Vec<cas_api_models::StepWire>,
 {
-    crate::run_with_domain_session(session_path, config.domain, |engine, state| {
+    crate::session_io::run_with_domain_session(session_path, config.domain, |engine, state| {
         cas_solver::evaluate_eval_with_session(engine, state, config, |steps, events, ctx, mode| {
             collect_steps(steps, events, ctx, mode)
         })

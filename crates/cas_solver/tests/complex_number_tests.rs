@@ -7,8 +7,8 @@
 
 use cas_ast::Context;
 use cas_parser::parse;
-use cas_solver::ExpandPolicy;
-use cas_solver::Simplifier;
+use cas_solver::runtime::ExpandPolicy;
+use cas_solver::runtime::Simplifier;
 use cas_solver::{BranchMode, ComplexMode, ContextMode, EvalOptions, StepsMode};
 
 /// Helper: run simplification with given options and return result string
@@ -36,7 +36,7 @@ fn complex_on_opts() -> EvalOptions {
         branch_mode: BranchMode::Strict,
         complex_mode: ComplexMode::On,
         steps_mode: StepsMode::On,
-        shared: cas_solver::SharedSemanticConfig {
+        shared: cas_solver::runtime::SharedSemanticConfig {
             context_mode: ContextMode::Standard,
             semantics: cas_solver::EvalConfig {
                 value_domain: cas_solver::ValueDomain::ComplexEnabled,
@@ -52,7 +52,7 @@ fn complex_on_opts() -> EvalOptions {
 fn complex_on_autoexpand_opts() -> EvalOptions {
     let base = complex_on_opts();
     EvalOptions {
-        shared: cas_solver::SharedSemanticConfig {
+        shared: cas_solver::runtime::SharedSemanticConfig {
             expand_policy: ExpandPolicy::Auto,
             ..base.shared
         },
@@ -65,7 +65,7 @@ fn complex_off_opts() -> EvalOptions {
         branch_mode: BranchMode::Strict,
         complex_mode: ComplexMode::Off,
         steps_mode: StepsMode::On,
-        shared: cas_solver::SharedSemanticConfig {
+        shared: cas_solver::runtime::SharedSemanticConfig {
             context_mode: ContextMode::Standard,
             semantics: cas_solver::EvalConfig {
                 value_domain: cas_solver::ValueDomain::ComplexEnabled,
@@ -82,7 +82,7 @@ fn complex_auto_opts() -> EvalOptions {
         branch_mode: BranchMode::Strict,
         complex_mode: ComplexMode::Auto,
         steps_mode: StepsMode::On,
-        shared: cas_solver::SharedSemanticConfig {
+        shared: cas_solver::runtime::SharedSemanticConfig {
             context_mode: ContextMode::Standard,
             semantics: cas_solver::EvalConfig {
                 value_domain: cas_solver::ValueDomain::ComplexEnabled,

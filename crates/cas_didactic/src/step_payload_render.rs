@@ -2,7 +2,7 @@ mod path;
 mod rule;
 mod substeps;
 
-use crate::cas_solver::Step;
+use crate::runtime::Step;
 use cas_api_models::SubStepWire;
 use cas_ast::{ExprId, ExprPath};
 

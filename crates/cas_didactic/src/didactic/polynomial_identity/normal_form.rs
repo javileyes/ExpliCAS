@@ -2,8 +2,8 @@ mod comparison;
 mod conversion;
 
 use super::PolynomialProofData;
-use crate::cas_solver::Step;
 use crate::didactic::SubStep;
+use crate::runtime::Step;
 use cas_ast::Context;
 
 pub(super) fn generate_polynomial_identity_normal_form_substeps(

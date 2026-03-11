@@ -3,8 +3,8 @@
 
 use cas_ast::Context;
 use cas_parser::parse;
-use cas_solver::EvalOptions;
-use cas_solver::Simplifier;
+use cas_solver::runtime::EvalOptions;
+use cas_solver::runtime::Simplifier;
 
 struct StepInfo {
     description: String,

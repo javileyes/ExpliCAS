@@ -14,17 +14,17 @@
 //! This provides maximum simplification WITHOUT introducing domain assumptions.
 
 use cas_parser::parse;
-use cas_solver::Simplifier;
+use cas_solver::runtime::Simplifier;
 
 /// Helper: simplify with Strict domain mode
 fn simplify_strict(input: &str) -> String {
     let mut simplifier = Simplifier::with_default_rules();
     let expr = parse(input, &mut simplifier.context).expect("parse failed");
 
-    let opts = cas_solver::SimplifyOptions {
-        shared: cas_solver::SharedSemanticConfig {
+    let opts = cas_solver::runtime::SimplifyOptions {
+        shared: cas_solver::runtime::SharedSemanticConfig {
             semantics: cas_solver::EvalConfig {
-                domain_mode: cas_solver::DomainMode::Strict,
+                domain_mode: cas_solver::runtime::DomainMode::Strict,
                 ..Default::default()
             },
             ..Default::default()

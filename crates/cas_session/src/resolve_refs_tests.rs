@@ -2,10 +2,8 @@
 mod tests {
     use cas_ast::{Context, Expr};
 
-    use crate::{
-        resolve_session_refs, resolve_session_refs_with_env, CacheConfig, EntryKind, Environment,
-        SessionStore,
-    };
+    use crate::resolve_refs::{resolve_session_refs, resolve_session_refs_with_env};
+    use crate::{env::Environment, CacheConfig, EntryKind, SessionStore};
 
     fn store_with_expr_entry(expr: cas_ast::ExprId, raw: &str) -> (SessionStore, u64) {
         let mut store =

@@ -5,7 +5,7 @@
 
 use cas_ast::Context;
 use cas_didactic::{enrich_steps, EnrichedStep};
-use cas_solver::Engine;
+use cas_solver::runtime::Engine;
 
 /// Helper function to simplify expression and get enriched steps
 fn simplify_and_enrich(input: &str) -> (Context, Vec<EnrichedStep>) {

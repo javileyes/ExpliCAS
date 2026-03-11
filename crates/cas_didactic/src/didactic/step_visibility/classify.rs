@@ -1,5 +1,5 @@
 use super::StepVisibility;
-use crate::cas_solver::Step;
+use crate::runtime::Step;
 
 pub(super) fn step_matches_visibility(
     step: &Step,

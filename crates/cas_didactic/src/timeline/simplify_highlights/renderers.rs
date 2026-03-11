@@ -1,7 +1,7 @@
 mod local_change;
 mod paths;
 
-use crate::cas_solver::Step;
+use crate::runtime::Step;
 use cas_ast::{Context, ExprId, ExprPath};
 use cas_formatter::{DisplayContext, HighlightColor, PathHighlightConfig, StylePreferences};
 

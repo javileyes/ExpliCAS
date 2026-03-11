@@ -1,9 +1,8 @@
 #[cfg(test)]
 mod tests {
-    use crate::solver_exports::{
-        apply_set_command_plan_on_repl_core, evaluate_set_command_input,
-        evaluate_set_command_on_repl_core, set_command_state_for_repl_core, ReplSetMessageKind,
-        SetCommandResult, SetDisplayMode,
+    #[allow(unused_imports)]
+    use cas_solver::session_api::{
+        formatting::*, options::*, runtime::*, session_support::*, symbolic_commands::*, types::*,
     };
     use cas_solver_core::eval_option_axes::StepsMode;
 

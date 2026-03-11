@@ -27,8 +27,8 @@ mod test_utils;
 use cas_ast::{Context, ExprId};
 use cas_parser::parse;
 use cas_solver::eval_f64;
+use cas_solver::runtime::Simplifier;
 use cas_solver::EquivalenceResult;
-use cas_solver::Simplifier;
 use cas_solver::{eval_f64_checked, EvalCheckedError, EvalCheckedOptions};
 use std::collections::HashMap;
 use std::env;
@@ -2815,7 +2815,7 @@ fn run_csv_combination_tests(
                         };
 
                         // Use default budget — the thread-based 2s timeout prevents hangs
-                        let opts = cas_solver::SimplifyOptions::default();
+                        let opts = cas_solver::runtime::SimplifyOptions::default();
                         let mut combo_cycles: usize = 0;
 
                         let (mut e, _, stats_e) = simplifier.simplify_with_stats(exp_parsed, opts.clone());
@@ -3031,7 +3031,7 @@ fn run_csv_combination_tests(
                 let combo_start = std::time::Instant::now();
                 let mut inline_cycles: usize = 0;
                 let (exp_simplified, simp_simplified) = {
-                    let opts = cas_solver::SimplifyOptions::default();
+                    let opts = cas_solver::runtime::SimplifyOptions::default();
                     let (mut e, _, stats_e) =
                         simplifier.simplify_with_stats(exp_parsed, opts.clone());
                     inline_cycles += stats_e.cycle_events.len();
@@ -3730,9 +3730,9 @@ fn metatest_individual_identities_impl() {
     // Determine test mode from environment
     let use_assume_mode = env::var("METATEST_MODE").ok().as_deref() == Some("assume");
     let domain_mode = if use_assume_mode {
-        cas_solver::DomainMode::Assume
+        cas_solver::runtime::DomainMode::Assume
     } else {
-        cas_solver::DomainMode::Generic
+        cas_solver::runtime::DomainMode::Generic
     };
 
     eprintln!(
@@ -3797,8 +3797,8 @@ fn metatest_individual_identities_impl() {
         );
 
         // Simplify for display and numeric fallback
-        let opts = cas_solver::SimplifyOptions {
-            shared: cas_solver::SharedSemanticConfig {
+        let opts = cas_solver::runtime::SimplifyOptions {
+            shared: cas_solver::runtime::SharedSemanticConfig {
                 semantics: cas_solver::EvalConfig {
                     domain_mode,
                     ..Default::default()
@@ -4924,7 +4924,7 @@ fn run_substitution_tests() -> ComboMetrics {
                         }
                     };
 
-                    let opts = cas_solver::SimplifyOptions::default();
+                    let opts = cas_solver::runtime::SimplifyOptions::default();
                     let mut sub_cycles: usize = 0;
                     let (mut e, _, stats_e) =
                         simplifier.simplify_with_stats(exp_parsed, opts.clone());

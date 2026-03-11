@@ -1,6 +1,9 @@
 use cas_ast::ExprId;
 use cas_solver_core::diagnostics_model::Diagnostics;
 
+use crate::resolve_refs::{
+    resolve_session_refs_with_env, resolve_session_refs_with_mode_and_diagnostics,
+};
 use crate::{state_core::SessionState, ResolveError, SimplifyCacheKey};
 
 impl SessionState {
@@ -10,7 +13,7 @@ impl SessionState {
         ctx: &mut cas_ast::Context,
         expr: ExprId,
     ) -> Result<ExprId, ResolveError> {
-        crate::resolve_session_refs_with_env(ctx, expr, &self.store, &self.env)
+        resolve_session_refs_with_env(ctx, expr, &self.store, &self.env)
     }
 
     /// Resolve refs with inherited diagnostics and cache hit traces.
@@ -20,7 +23,7 @@ impl SessionState {
         expr: ExprId,
     ) -> Result<(ExprId, Diagnostics, Vec<u64>), ResolveError> {
         let cache_key = SimplifyCacheKey::from_context(self.options.shared.semantics.domain_mode);
-        crate::resolve_session_refs_with_mode_and_diagnostics(
+        resolve_session_refs_with_mode_and_diagnostics(
             ctx,
             expr,
             &self.store,

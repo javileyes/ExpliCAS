@@ -2,7 +2,7 @@ mod exponent;
 mod primary;
 
 use super::{FractionSumInfo, SubStep};
-use crate::cas_solver::Step;
+use crate::runtime::Step;
 use cas_ast::Context;
 
 pub(super) fn extend_primary_fraction_sum_substeps(

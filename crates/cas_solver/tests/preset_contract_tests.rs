@@ -3,8 +3,8 @@
 //! These tests verify that preset configurations are correctly defined.
 //! Note: Full behavior tests require REPL integration; these verify axes at config level.
 
+use cas_solver::runtime::DomainMode;
 use cas_solver::ConstFoldMode;
-use cas_solver::DomainMode;
 use cas_solver::{AssumeScope, BranchPolicy, EvalConfig, InverseTrigPolicy, ValueDomain};
 
 // ============================================================================

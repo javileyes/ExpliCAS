@@ -2,24 +2,25 @@ use super::super::super::cli_output::render_timeline_command_cli_output;
 use super::super::super::simplify::VerbosityLevel;
 use super::super::super::types::TimelineCliRender;
 use super::eval::evaluate_timeline_command_output_with_session;
+use cas_solver::session_api::types::TimelineCommandEvalError;
 
 pub fn evaluate_timeline_command_cli_render_with_session<S>(
-    engine: &mut crate::cas_solver::Engine,
+    engine: &mut crate::runtime::Engine,
     session: &mut S,
     input: &str,
-    eval_options: &crate::cas_solver::EvalOptions,
+    eval_options: &crate::runtime::EvalOptions,
     verbosity: VerbosityLevel,
-) -> Result<TimelineCliRender, cas_session::solver_exports::TimelineCommandEvalError>
+) -> Result<TimelineCliRender, TimelineCommandEvalError>
 where
-    S: crate::cas_solver::EvalSession<
-        Options = crate::cas_solver::EvalOptions,
-        Diagnostics = crate::cas_solver::Diagnostics,
+    S: crate::runtime::EvalSession<
+        Options = crate::runtime::EvalOptions,
+        Diagnostics = crate::runtime::Diagnostics,
     >,
-    S::Store: crate::cas_solver::EvalStore<
-        DomainMode = crate::cas_solver::DomainMode,
-        RequiredItem = crate::cas_solver::RequiredItem,
-        Step = crate::cas_solver::Step,
-        Diagnostics = crate::cas_solver::Diagnostics,
+    S::Store: crate::runtime::EvalStore<
+        DomainMode = crate::runtime::DomainMode,
+        RequiredItem = crate::runtime::RequiredItem,
+        Step = crate::runtime::Step,
+        Diagnostics = crate::runtime::Diagnostics,
     >,
 {
     let output =

@@ -1,5 +1,5 @@
 use super::SolveTimelineHtml;
-use crate::cas_solver::SolveStep;
+use crate::runtime::SolveStep;
 use cas_ast::{Context, Equation, SolutionSet};
 
 pub(super) fn build_solve_timeline_html<'a>(

@@ -6,7 +6,7 @@
 
 use cas_formatter::DisplayExpr;
 use cas_parser::parse;
-use cas_solver::Simplifier;
+use cas_solver::runtime::Simplifier;
 
 /// Helper: simplify an expression string and return the result as a string.
 fn simplify_str(input: &str) -> String {

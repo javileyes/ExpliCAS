@@ -1,6 +1,6 @@
 //! Test to verify step importance is correctly propagated from rules
-use cas_solver::ImportanceLevel;
-use cas_solver::Simplifier;
+use cas_solver::runtime::ImportanceLevel;
+use cas_solver::runtime::Simplifier;
 
 #[test]
 fn test_identity_property_steps_have_low_importance() {

@@ -1,6 +1,6 @@
 use cas_formatter::DisplayExpr;
 use cas_parser::parse;
-use cas_solver::Simplifier;
+use cas_solver::runtime::Simplifier;
 
 /// Debug test to trace what's happening with sec²-tan²-1
 /// Run with: RUST_LOG=cas_engine=debug cargo test -p cas_cli --test debug_sec_tan -- --nocapture

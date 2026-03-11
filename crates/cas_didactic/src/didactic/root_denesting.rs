@@ -6,7 +6,7 @@ use self::render::{
     build_apply_denesting_substep, build_denesting_delta_substep, build_identify_denesting_substep,
 };
 use super::SubStep;
-use crate::cas_solver::Step;
+use crate::runtime::Step;
 use cas_ast::Context;
 
 /// Generate sub-steps explaining root denesting process.

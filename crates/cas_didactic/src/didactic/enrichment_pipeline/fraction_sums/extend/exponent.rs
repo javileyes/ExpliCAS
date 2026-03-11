@@ -1,5 +1,5 @@
 use super::{FractionSumInfo, SubStep};
-use crate::cas_solver::Step;
+use crate::runtime::Step;
 use cas_ast::Context;
 
 pub(super) fn extend_exponent_fraction_sum_substeps(

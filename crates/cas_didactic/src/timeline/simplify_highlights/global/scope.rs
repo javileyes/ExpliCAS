@@ -2,7 +2,7 @@ mod focus_path;
 
 use super::additive::render_additive_focus_transition;
 use super::direct::render_direct_focus_transition;
-use crate::cas_solver::Step;
+use crate::runtime::Step;
 use crate::timeline::simplify_highlights::TimelineStepSnapshots;
 use cas_ast::{Context, ExprId};
 use cas_formatter::{DisplayContext, StylePreferences};

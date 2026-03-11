@@ -4,7 +4,7 @@
 //! PrincipalBranchInverseTrigRule is self-gated by inv_trig_policy().
 
 use cas_formatter::DisplayExpr;
-use cas_solver::{InverseTrigPolicy, Simplifier, SimplifyOptions};
+use cas_solver::runtime::{InverseTrigPolicy, Simplifier, SimplifyOptions};
 
 fn simplify_strict(input: &str) -> String {
     let mut simplifier = Simplifier::with_default_rules();
@@ -26,8 +26,8 @@ fn simplify_principal_branch(input: &str) -> (String, Vec<String>) {
     let expr = cas_parser::parse(input, &mut simplifier.context).expect("parse failed");
     // Set inv_trig = PrincipalValue to enable principal branch rules
     let opts = SimplifyOptions {
-        shared: cas_solver::SharedSemanticConfig {
-            semantics: cas_solver::EvalConfig {
+        shared: cas_solver::runtime::SharedSemanticConfig {
+            semantics: cas_solver::runtime::EvalConfig {
                 inv_trig: InverseTrigPolicy::PrincipalValue,
                 ..Default::default()
             },

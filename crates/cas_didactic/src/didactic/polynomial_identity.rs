@@ -3,7 +3,7 @@ mod normal_form;
 mod substitution;
 
 use super::SubStep;
-use crate::cas_solver::Step;
+use crate::runtime::Step;
 use cas_ast::Context;
 use cas_math::multipoly_display::{PolyNormalFormStats, PolynomialProofData};
 

@@ -2,7 +2,7 @@ mod analysis;
 mod render;
 
 use super::SubStep;
-use crate::cas_solver::Step;
+use crate::runtime::Step;
 use cas_ast::Context;
 
 /// Generate sub-steps explaining the Sum of Three Cubes identity.

@@ -1,4 +1,4 @@
-use crate::cas_solver::Step;
+use crate::runtime::Step;
 use cas_ast::{Context, Expr, ExprId};
 
 const GCD_PREFIX: &str = "Simplified fraction by GCD: ";

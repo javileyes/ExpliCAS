@@ -11,17 +11,17 @@
 //! would become `0` (defined everywhere).
 
 use cas_parser::parse;
-use cas_solver::Simplifier;
+use cas_solver::runtime::Simplifier;
 
 /// Helper: simplify with Strict domain mode
 fn simplify_strict(input: &str) -> (String, Vec<String>) {
     let mut simplifier = Simplifier::with_default_rules();
     let expr = parse(input, &mut simplifier.context).expect("parse failed");
 
-    let opts = cas_solver::SimplifyOptions {
-        shared: cas_solver::SharedSemanticConfig {
+    let opts = cas_solver::runtime::SimplifyOptions {
+        shared: cas_solver::runtime::SharedSemanticConfig {
             semantics: cas_solver::EvalConfig {
-                domain_mode: cas_solver::DomainMode::Strict,
+                domain_mode: cas_solver::runtime::DomainMode::Strict,
                 ..Default::default()
             },
             ..Default::default()
@@ -55,10 +55,10 @@ fn simplify_assume(input: &str) -> (String, Vec<String>) {
     let mut simplifier = Simplifier::with_default_rules();
     let expr = parse(input, &mut simplifier.context).expect("parse failed");
 
-    let opts = cas_solver::SimplifyOptions {
-        shared: cas_solver::SharedSemanticConfig {
+    let opts = cas_solver::runtime::SimplifyOptions {
+        shared: cas_solver::runtime::SharedSemanticConfig {
             semantics: cas_solver::EvalConfig {
-                domain_mode: cas_solver::DomainMode::Assume,
+                domain_mode: cas_solver::runtime::DomainMode::Assume,
                 ..Default::default()
             },
             ..Default::default()
@@ -91,10 +91,10 @@ fn simplify_generic(input: &str) -> (String, Vec<String>) {
     let mut simplifier = Simplifier::with_default_rules();
     let expr = parse(input, &mut simplifier.context).expect("parse failed");
 
-    let opts = cas_solver::SimplifyOptions {
-        shared: cas_solver::SharedSemanticConfig {
+    let opts = cas_solver::runtime::SimplifyOptions {
+        shared: cas_solver::runtime::SharedSemanticConfig {
             semantics: cas_solver::EvalConfig {
-                domain_mode: cas_solver::DomainMode::Generic,
+                domain_mode: cas_solver::runtime::DomainMode::Generic,
                 ..Default::default()
             },
             ..Default::default()

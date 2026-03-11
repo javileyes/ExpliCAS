@@ -8,10 +8,11 @@ pub(super) fn format_assumption_lines(
         return Vec::new();
     }
 
-    let assumed_conditions = crate::collect_assumed_conditions_from_steps(&output.steps);
+    let assumed_conditions =
+        crate::assumption_format::collect_assumed_conditions_from_steps(&output.steps);
     if assumed_conditions.is_empty() {
         Vec::new()
     } else {
-        crate::format_assumed_conditions_report_lines(&assumed_conditions)
+        crate::assumption_format::format_assumed_conditions_report_lines(&assumed_conditions)
     }
 }

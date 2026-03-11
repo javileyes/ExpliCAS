@@ -1,10 +1,10 @@
 #[cfg(test)]
 mod tests {
-    use crate::solver_exports::{
-        apply_steps_command_update_on_repl_core, steps_command_state_for_repl_core,
-        StepsDisplayMode,
+    #[allow(unused_imports)]
+    use cas_solver::session_api::{
+        formatting::*, options::*, runtime::*, session_support::*, symbolic_commands::*, types::*,
     };
-    use crate::StepsMode;
+    use cas_solver_core::eval_option_axes::StepsMode;
 
     #[test]
     fn steps_command_state_for_repl_core_reads_state() {

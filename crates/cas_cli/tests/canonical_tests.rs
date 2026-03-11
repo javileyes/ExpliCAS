@@ -10,7 +10,7 @@
 use cas_ast::{Context, Expr, ExprId};
 use cas_formatter::DisplayExpr;
 use cas_parser::parse;
-use cas_solver::Simplifier;
+use cas_solver::runtime::Simplifier;
 
 fn create_simplifier() -> Simplifier {
     let mut s = Simplifier::new();

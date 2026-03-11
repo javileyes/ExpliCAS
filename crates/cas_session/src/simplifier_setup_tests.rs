@@ -1,11 +1,11 @@
 #[cfg(test)]
 mod tests {
-    use crate::solver_exports::{
-        apply_simplifier_toggle_config, build_simplifier_with_rule_config,
-        set_simplifier_toggle_rule, SimplifierRuleConfig, SimplifierToggleConfig,
-    };
-    use crate::sync_simplifier_with_cas_config;
+    use crate::config::sync_simplifier_with_cas_config;
     use cas_formatter::DisplayExpr;
+    #[allow(unused_imports)]
+    use cas_solver::session_api::{
+        formatting::*, options::*, runtime::*, session_support::*, symbolic_commands::*, types::*,
+    };
 
     #[test]
     fn build_simplifier_with_rule_config_can_simplify_basic_expression() {

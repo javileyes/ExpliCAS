@@ -2,18 +2,18 @@
 mod engine_tests {
     use cas_formatter::DisplayExpr;
     use cas_parser::parse;
-    use cas_solver::Simplifier;
+    use cas_solver::runtime::Simplifier;
 
     fn create_standard_simplifier() -> Simplifier {
         let mut simplifier = Simplifier::new();
-        cas_solver::rules::canonicalization::register(&mut simplifier);
-        cas_solver::rules::arithmetic::register(&mut simplifier);
-        cas_solver::rules::algebra::register(&mut simplifier);
-        cas_solver::rules::trigonometry::register(&mut simplifier);
-        cas_solver::rules::logarithms::register(&mut simplifier);
-        cas_solver::rules::exponents::register(&mut simplifier);
-        cas_solver::rules::functions::register(&mut simplifier);
-        cas_solver::rules::polynomial::register(&mut simplifier);
+        cas_solver::runtime::rules::canonicalization::register(&mut simplifier);
+        cas_solver::runtime::rules::arithmetic::register(&mut simplifier);
+        cas_solver::runtime::rules::algebra::register(&mut simplifier);
+        cas_solver::runtime::rules::trigonometry::register(&mut simplifier);
+        cas_solver::runtime::rules::logarithms::register(&mut simplifier);
+        cas_solver::runtime::rules::exponents::register(&mut simplifier);
+        cas_solver::runtime::rules::functions::register(&mut simplifier);
+        cas_solver::runtime::rules::polynomial::register(&mut simplifier);
 
         // Ensure DistributeRule is present (it might be in polynomial::register, but let's be sure)
         // Actually, polynomial::register usually adds DistributeRule.

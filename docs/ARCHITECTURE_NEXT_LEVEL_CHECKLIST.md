@@ -68,6 +68,11 @@ Done when:
   JSON transport work
 
 Current progress:
+- `cas_solver` root also stopped owning stateless CLI-oriented command
+  entrypoints implicitly
+  - `limit` and `substitute` subcommand APIs now live under
+    `cas_solver::command_api::{limit, substitute}`
+  - CLI consumers were migrated to those owners instead of the crate root
 - audited `cas_solver/src/json/*` as transport boundary
   - current tree now lives at `cas_solver/src/wire/*`
   - keep:
@@ -214,16 +219,39 @@ Current progress:
   - `cas_session` root no longer acts as an implicit façade for solver-facing
     stateless helpers
     - `pub use solver_exports::*;` was removed from the crate root
-    - internal and integration tests were migrated to
-      `crate::solver_exports::...`
-    - solver-facing stateless eval helpers/types (`evaluate_eval_command_output`,
-      `evaluate_eval_text_simplify_with_session`, `build_eval_command_render_plan`,
-      `EvalCommandOutput`, `EvalCommandError`, `EvalCommandRenderPlan`) also now
-      live under `cas_session::solver_exports`
+    - `cas_session::solver_exports` was removed entirely
+    - consumers now use the explicit owner directly:
+      - `cas_solver::session_api::runtime::*`
+      - `cas_solver::session_api::options::*`
+      - `cas_solver::session_api::formatting::*`
+      - `cas_solver::session_api::session_support::*`
+      - `cas_solver::session_api::symbolic_commands::*`
+      - `cas_solver::session_api::types::*`
+    - internal and integration tests were migrated from
+      `crate::solver_exports::...` to `cas_solver::session_api::...`
+    - solver-facing stateless eval helpers/types now live under
+      `cas_solver::session_api::*`
+    - `cas_didactic` no longer consumes stateless session-facing APIs through
+      `cas_session`, and its production dependency on `cas_session` was dropped
+      in favor of direct `cas_solver::session_api::*` consumption
     - rationale:
       - `cas_session` root stays focused on session/repl/stateful flows
-      - solver passthroughs remain available, but only under an explicit
-        namespace that makes the ownership boundary visible
+      - solver session-facing passthroughs remain available, but only from the
+        crate that actually owns them
+  - `cas_session` root also stopped serving as a grab-bag namespace for
+    cache/resolution internals
+    - lower-level surfaces now live under explicit namespaces:
+      - `cas_session::cache::{...}`
+      - `cas_session::resolve_refs::{...}`
+    - integration tests were migrated away from `use cas_session::*`
+      toward `cas_session::cache`, `cas_session::resolve_refs`, and
+      `cas_session_core::{store,types}` where those types truly belong
+    - rationale:
+      - the root keeps session-facing concepts (`SessionState`, `ReplCore`,
+        session eval flows, config)
+      - lower-level store/cache/ref-resolution APIs remain available, but
+        behind names that reflect ownership instead of leaking through the
+        crate root
   - `cas_solver` root also stopped re-exporting direct stateless wire entrypoints
     from the crate root
     - `cas_solver::wire` is now the explicit namespace for:
@@ -236,6 +264,27 @@ Current progress:
       - the solver root keeps broad math/runtime ownership
       - transport/wire entrypoints are still public, but now live behind a
         boundary namespace instead of appearing as generic root APIs
+  - `cas_solver` root also stopped acting as the implicit public namespace for
+    engine/runtime-facing types
+    - `cas_solver::runtime` is now the explicit public namespace for:
+      - `Engine`, `Simplifier`, `EvalOptions`, `EvalRequest`, `EvalOutput`,
+        `EvalResult`, `EvalAction`
+      - `DisplayEvalSteps`, `Step`, `ImportanceLevel`
+      - `DisplaySolveSteps`, `SolveDiagnostics`, `SolveStep`, `SolveSubStep`,
+        `SolverOptions`, `StatelessEvalSession`
+      - semantic/runtime config types such as `EvalConfig`,
+        `SharedSemanticConfig`, `SimplifyOptions`, `BranchMode`,
+        `ContextMode`, `ComplexMode`, `StepsMode`, `ExpandPolicy`,
+        `InverseTrigPolicy`
+      - runtime rule namespace via `cas_solver::runtime::rules::*`
+    - workspace consumers/tests were migrated from `cas_solver::*` to
+      `cas_solver::runtime::*`
+    - the old duplicate internal layer `exports_base::runtime` was removed;
+      internal solver code now also uses the same `crate::runtime::*` seam
+    - rationale:
+      - the solver root stays focused on façade-level math/wire entrypoints
+      - runtime types still exist publicly, but now live behind a namespace
+        that makes ownership explicit instead of leaking through the crate root
   - `cas_android_ffi` also neutralized its JNI-internal helper names:
     - `eval_json_core(...)` -> `eval_core(...)`
     - `substitute_json_core(...)` -> `substitute_core(...)`
@@ -293,9 +342,28 @@ Current progress:
         `evaluate_envelope_wire_command`, `evaluate_limit_subcommand`,
         `evaluate_substitute_subcommand` are now consumed directly from
         `cas_solver` by CLI/FFI
+      - `cas_android_ffi` now depends directly on `cas_solver::wire` for eval
+        and substitute, and no longer depends on `cas_session`
       - rationale:
         - `cas_session` should own session/repl/stateful orchestration
         - stateless wire entrypoints belong to the solver facade
+    - `cas_didactic` runtime no longer depends on the `cas_solver` facade just
+      for neutral helpers:
+      - assumption display line/grouped formatting moved to `cas_solver_core`
+      - `reconstruct_global_expr(...)` moved to `cas_solver_core`
+      - `cas_didactic` keeps `cas_solver` only in `dev-dependencies` for
+        solver-backed tests
+      - those helpers were also dropped from the public `cas_solver` facade;
+        internal solver code now uses explicit module paths and contracts live
+        at `cas_solver_core`
+      - internal `cas_didactic/src/**` code now uses a local `crate::runtime`
+        seam instead of the misleading alias `crate::cas_solver`
+    - the same cleanup now applies to neutral assumption/domain reporting:
+      - required-condition, normalized-condition, domain-warning, blocked-hint
+        and diagnostics line formatters moved to `cas_solver_core`
+      - "assumptions used" collect/group/format helpers moved to
+        `cas_solver_core`
+      - `cas_session` now reexports these from core instead of `cas_solver`
     - internal parity/contract tests were aligned too where they verify the
       wire layer rather than JSON serialization itself:
       - former `step_count_matches_between_text_and_json_renderers` ->

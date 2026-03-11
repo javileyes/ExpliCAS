@@ -1,5 +1,5 @@
 use cas_ast::{Constant, Context, Expr};
-use cas_solver::Simplifier;
+use cas_solver::runtime::Simplifier;
 
 #[test]
 fn test_infinity_simplification() {

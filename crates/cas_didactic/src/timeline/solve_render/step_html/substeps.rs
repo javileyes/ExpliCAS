@@ -2,7 +2,7 @@ mod items;
 mod toggle;
 
 use super::super::render_equation_latex;
-use crate::cas_solver::SolveStep;
+use crate::runtime::SolveStep;
 use cas_ast::Context;
 
 pub(super) fn render_solve_substeps_html(

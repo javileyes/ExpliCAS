@@ -1,4 +1,4 @@
-use crate::cas_solver::Step;
+use crate::runtime::Step;
 use cas_formatter::html_escape;
 
 pub(super) fn render_timeline_rule_substeps_html(step: &Step) -> String {

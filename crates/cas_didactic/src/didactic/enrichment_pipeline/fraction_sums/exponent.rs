@@ -4,7 +4,7 @@ use super::super::super::fraction_sum_analysis::{
 };
 use super::super::super::SubStep;
 use super::extend;
-use crate::cas_solver::Step;
+use crate::runtime::Step;
 use cas_ast::Context;
 
 pub(super) fn extend_exponent_fraction_sum_substeps(

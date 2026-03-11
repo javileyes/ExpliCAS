@@ -6,9 +6,9 @@
 
 use cas_formatter::DisplayExpr;
 use cas_parser::parse;
-use cas_solver::Engine;
-use cas_solver::EvalOptions;
-use cas_solver::ExpandPolicy;
+use cas_solver::runtime::Engine;
+use cas_solver::runtime::EvalOptions;
+use cas_solver::runtime::ExpandPolicy;
 
 /// Test that auto-expand works within rationalization phase.
 /// Bug: (1+√2)² - 3 was left unexpanded after rationalization created it.
@@ -19,7 +19,7 @@ fn test_rationalize_with_autoexpand_expands_subexpressions() {
 
     // Setup: enable auto-expand
     let opts = EvalOptions {
-        shared: cas_solver::SharedSemanticConfig {
+        shared: cas_solver::runtime::SharedSemanticConfig {
             expand_policy: ExpandPolicy::Auto,
             ..Default::default()
         },
@@ -103,7 +103,7 @@ fn test_rationalize_respects_autoexpand_budget() {
 
     // Setup: auto-expand with restrictive budget
     let mut opts = EvalOptions {
-        shared: cas_solver::SharedSemanticConfig {
+        shared: cas_solver::runtime::SharedSemanticConfig {
             expand_policy: ExpandPolicy::Auto,
             ..Default::default()
         },

@@ -4,7 +4,7 @@
 //! without circular steps or unnecessary divisions.
 
 use cas_ast::{Equation, Expr, RelOp, SolutionSet};
-use cas_solver::Simplifier;
+use cas_solver::runtime::Simplifier;
 use cas_solver::{solve, SolveStep};
 
 // ============================================================================

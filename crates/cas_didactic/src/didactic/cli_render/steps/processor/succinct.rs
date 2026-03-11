@@ -1,6 +1,6 @@
 use super::super::render::lines::render_succinct_step_line;
 use super::super::state::StepLoopState;
-use crate::cas_solver::Step;
+use crate::runtime::Step;
 use cas_ast::Context;
 
 pub(super) fn render_succinct_step_lines(

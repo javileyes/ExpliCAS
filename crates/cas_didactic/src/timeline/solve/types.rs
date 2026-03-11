@@ -1,4 +1,4 @@
-use crate::cas_solver::SolveStep;
+use crate::runtime::SolveStep;
 use cas_ast::{Context, Equation, SolutionSet};
 
 /// Timeline HTML generator for equation solving steps

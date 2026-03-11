@@ -8,6 +8,6 @@ pub(crate) fn next_step_root(
     if let Some(global_after) = step.global_after {
         global_after
     } else {
-        crate::reconstruct_global_expr(ctx, current_root, step.path(), step.after)
+        crate::path_rewrite::reconstruct_global_expr(ctx, current_root, step.path(), step.after)
     }
 }

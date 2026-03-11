@@ -1,6 +1,6 @@
 use super::super::super::render::visibility::render_rule_visible_change;
 use super::super::super::state::StepLoopState;
-use crate::cas_solver::Step;
+use crate::runtime::Step;
 use cas_ast::Context;
 
 pub(super) fn extend_with_visible_rule_lines(
