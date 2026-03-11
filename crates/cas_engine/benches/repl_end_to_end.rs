@@ -413,7 +413,7 @@ fn bench_repl_stage_breakdown(c: &mut Criterion) {
         let _ = format_cache.get_or_build(&opts);
         let (format_ctx, result) =
             formatted_result_from_eval(&mut format_cache, &opts, input, StepsMode::On);
-        group.bench_function(&format!("format/{name}"), |b| {
+        group.bench_function(format!("format/{name}"), |b| {
             b.iter(|| {
                 black_box(format!(
                     "{}",

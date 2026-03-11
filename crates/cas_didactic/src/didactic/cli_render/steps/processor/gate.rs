@@ -2,8 +2,8 @@ use super::super::super::super::display_policy::StepDisplayMode;
 use super::super::super::super::step_visibility::should_show_simplify_step;
 use super::super::render::visibility::render_step_visible_change;
 use super::super::state::StepLoopState;
+use crate::cas_solver::Step;
 use cas_ast::Context;
-use cas_solver::Step;
 
 pub(super) fn begin_step_render(
     ctx: &mut Context,

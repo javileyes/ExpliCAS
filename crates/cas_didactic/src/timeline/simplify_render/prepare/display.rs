@@ -1,6 +1,6 @@
+use crate::cas_solver::Step;
 use cas_ast::{Context, ExprId};
 use cas_formatter::DisplayContext;
-use cas_solver::Step;
 
 pub(super) fn build_timeline_display_hints(
     context: &mut Context,

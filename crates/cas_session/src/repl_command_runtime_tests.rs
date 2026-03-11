@@ -1,4 +1,4 @@
-use crate::{
+use crate::solver_exports::{
     evaluate_assignment_command_message_on_repl_core, evaluate_clear_command_lines_on_repl_core,
     evaluate_delete_history_command_message_on_repl_core,
     evaluate_det_command_message_on_repl_core, evaluate_equiv_invocation_message_on_repl_core,
@@ -17,6 +17,7 @@ use crate::{
     evaluate_trace_command_message_on_repl_core, evaluate_transpose_command_message_on_repl_core,
     evaluate_vars_command_message_on_repl_core,
     evaluate_weierstrass_invocation_message_on_repl_core, profile_cache_len_on_repl_core,
+    SetDisplayMode,
 };
 
 #[test]
@@ -119,7 +120,7 @@ fn evaluate_unary_command_message_on_repl_core_runs_det() {
         &mut core,
         "det([[1,2],[3,4]])",
         "det",
-        crate::SetDisplayMode::Normal,
+        SetDisplayMode::Normal,
         true,
         true,
     )
@@ -134,7 +135,7 @@ fn evaluate_det_transpose_trace_wrappers_on_repl_core_run() {
     let det = evaluate_det_command_message_on_repl_core(
         &mut core,
         "det([[1,2],[3,4]])",
-        crate::SetDisplayMode::Normal,
+        SetDisplayMode::Normal,
     )
     .expect("det should evaluate");
     assert!(det.contains("Result:"));
@@ -142,7 +143,7 @@ fn evaluate_det_transpose_trace_wrappers_on_repl_core_run() {
     let transpose = evaluate_transpose_command_message_on_repl_core(
         &mut core,
         "transpose([[1,2],[3,4]])",
-        crate::SetDisplayMode::Normal,
+        SetDisplayMode::Normal,
     )
     .expect("transpose should evaluate");
     assert!(transpose.contains("Result:"));
@@ -150,7 +151,7 @@ fn evaluate_det_transpose_trace_wrappers_on_repl_core_run() {
     let trace = evaluate_trace_command_message_on_repl_core(
         &mut core,
         "trace([[1,2],[3,4]])",
-        crate::SetDisplayMode::Normal,
+        SetDisplayMode::Normal,
     )
     .expect("trace should evaluate");
     assert!(trace.contains("Result:"));
@@ -175,7 +176,7 @@ fn evaluate_solve_command_message_on_repl_core_runs() {
     let out = evaluate_solve_command_message_on_repl_core(
         &mut core,
         "solve x+2=5, x",
-        crate::SetDisplayMode::Normal,
+        SetDisplayMode::Normal,
     )
     .expect("solve");
     assert!(!out.trim().is_empty());
@@ -188,7 +189,7 @@ fn evaluate_solve_command_message_on_repl_core_reports_ambiguous_variables() {
     let err = evaluate_solve_command_message_on_repl_core(
         &mut core,
         "solve x+y=0",
-        crate::SetDisplayMode::Normal,
+        SetDisplayMode::Normal,
     )
     .expect_err("expected ambiguous-variable error");
     assert!(err.contains("ambiguous variables"));
@@ -200,7 +201,7 @@ fn evaluate_full_simplify_command_lines_on_repl_core_runs() {
     let lines = evaluate_full_simplify_command_lines_on_repl_core(
         &mut core,
         "simplify x + 0",
-        crate::SetDisplayMode::Normal,
+        SetDisplayMode::Normal,
     )
     .expect("simplify");
     assert!(lines.iter().any(|line| line.starts_with("Result:")));

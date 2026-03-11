@@ -1,8 +1,10 @@
 use super::CasConfig;
 
 /// Convert persisted CLI config into simplifier build-time rule config.
-pub fn solver_rule_config_from_cas_config(config: &CasConfig) -> crate::SimplifierRuleConfig {
-    crate::SimplifierRuleConfig {
+pub fn solver_rule_config_from_cas_config(
+    config: &CasConfig,
+) -> crate::solver_exports::SimplifierRuleConfig {
+    crate::solver_exports::SimplifierRuleConfig {
         distribute: config.distribute,
         expand_binomials: config.expand_binomials,
         factor_difference_squares: config.factor_difference_squares,
@@ -17,8 +19,10 @@ pub fn solver_rule_config_from_cas_config(config: &CasConfig) -> crate::Simplifi
 }
 
 /// Convert persisted CLI config into runtime simplifier toggles.
-pub fn solver_toggle_config_from_cas_config(config: &CasConfig) -> crate::SimplifierToggleConfig {
-    crate::SimplifierToggleConfig {
+pub fn solver_toggle_config_from_cas_config(
+    config: &CasConfig,
+) -> crate::solver_exports::SimplifierToggleConfig {
+    crate::solver_exports::SimplifierToggleConfig {
         distribute: config.distribute,
         expand_binomials: config.expand_binomials,
         distribute_constants: config.distribute_constants,
@@ -36,7 +40,7 @@ pub fn solver_toggle_config_from_cas_config(config: &CasConfig) -> crate::Simpli
 /// Apply runtime simplifier toggles back into persisted CLI config.
 pub fn apply_solver_toggle_to_cas_config(
     config: &mut CasConfig,
-    toggles: crate::SimplifierToggleConfig,
+    toggles: crate::solver_exports::SimplifierToggleConfig,
 ) {
     config.distribute = toggles.distribute;
     config.expand_binomials = toggles.expand_binomials;

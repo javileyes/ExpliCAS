@@ -2,7 +2,7 @@
 //!
 //! Ensures that simplification rules don't undo rationalization.
 
-use cas_solver::eval_str_to_wire;
+use cas_solver::wire::eval_str_to_wire;
 
 /// Test: 3/(2*sqrt(x)) should NOT produce negative fractional exponents
 /// This is the canonical contract test for the rationalization stability bug.

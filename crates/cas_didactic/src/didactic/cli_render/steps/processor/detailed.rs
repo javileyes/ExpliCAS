@@ -3,9 +3,9 @@ mod prelude;
 
 use super::super::super::super::display_policy::CliSubstepsRenderState;
 use super::super::state::StepLoopState;
+use crate::cas_solver::Step;
 use crate::EnrichedStep;
 use cas_ast::Context;
-use cas_solver::Step;
 
 pub(super) fn render_step_prelude(
     ctx: &mut Context,

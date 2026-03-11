@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::{eval_str_to_wire, substitute_str_to_wire};
+    use crate::wire::{eval_str_to_wire, substitute_str_to_wire};
 
     #[test]
     fn eval_wire_bridge_returns_valid_contract() {

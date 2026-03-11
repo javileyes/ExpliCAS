@@ -9,7 +9,7 @@ pub(crate) fn solve_steps_to_events(steps: &[crate::SolveStep]) -> Vec<SolveEven
         events.push(SolverEvent::StepProduced {
             description: step.description.clone(),
             equation_after: step.equation_after.clone(),
-            importance: step.importance.clone(),
+            importance: step.importance,
         });
 
         events.extend(
@@ -18,7 +18,7 @@ pub(crate) fn solve_steps_to_events(steps: &[crate::SolveStep]) -> Vec<SolveEven
                 .map(|substep| SolverEvent::SubstepProduced {
                     description: substep.description.clone(),
                     equation_after: substep.equation_after.clone(),
-                    importance: substep.importance.clone(),
+                    importance: substep.importance,
                 }),
         );
     }
@@ -49,7 +49,7 @@ pub(crate) fn events_to_solve_steps(events: &[SolveEvent]) -> Vec<crate::SolveSt
                 current_step = Some(crate::SolveStep::new(
                     description.clone(),
                     equation_after.clone(),
-                    importance.clone(),
+                    *importance,
                 ));
             }
             SolverEvent::SubstepProduced {
@@ -61,7 +61,7 @@ pub(crate) fn events_to_solve_steps(events: &[SolveEvent]) -> Vec<crate::SolveSt
                     step.substeps.push(crate::SolveSubStep::new(
                         description.clone(),
                         equation_after.clone(),
-                        importance.clone(),
+                        *importance,
                     ));
                 }
             }

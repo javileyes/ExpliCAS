@@ -1,5 +1,5 @@
+use crate::cas_solver::Step;
 use cas_formatter::html_escape;
-use cas_solver::Step;
 
 pub(super) fn render_timeline_rule_substeps_html(step: &Step) -> String {
     if step.substeps().is_empty() {

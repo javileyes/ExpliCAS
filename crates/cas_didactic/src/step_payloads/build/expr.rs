@@ -1,5 +1,5 @@
+use crate::cas_solver::Step;
 use cas_ast::Context;
-use cas_solver::Step;
 
 pub(super) struct RenderedStepWireExprs {
     pub(super) before: String,

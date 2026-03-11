@@ -241,7 +241,7 @@ fun parseResponse(json: String): EvalResponse {
 | `abiVersion` | `() -> Int` | Devuelve versión ABI (actualmente 1) |
 | `evalWire` | `(expr, opts) -> String` | Evalúa expresión, devuelve JSON |
 
-La JNI bridge usa `cas_solver::eval_str_to_wire(...)` directamente; no pasa
+La JNI bridge usa `cas_solver::wire::eval_str_to_wire(...)` directamente; no pasa
 por `cas_session`, porque este frente es completamente stateless.
 
 ### Options JSON

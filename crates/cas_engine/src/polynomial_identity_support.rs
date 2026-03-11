@@ -340,30 +340,32 @@ mod tests {
     #[test]
     fn proves_direct_polynomial_identity() {
         let mut ctx = Context::new();
-        let expr = parse("(x+1)^2 - (x^2 + 2*x + 1)", &mut ctx).expect("parse");
-        let plan = try_prove_polynomial_identity_zero_expr(&mut ctx, expr).expect("plan");
+        let expr = parse("(x+1)^2 - (x^2 + 2*x + 1)", &mut ctx).unwrap_or_else(|_| panic!("parse"));
+        let plan = try_prove_polynomial_identity_zero_expr(&mut ctx, expr)
+            .unwrap_or_else(|| panic!("plan"));
         assert_eq!(plan.kind, PolynomialIdentityProofKind::Direct);
     }
 
     #[test]
     fn rejects_non_identity() {
         let mut ctx = Context::new();
-        let expr = parse("(x+1)^2 - x^2", &mut ctx).expect("parse");
+        let expr = parse("(x+1)^2 - x^2", &mut ctx).unwrap_or_else(|_| panic!("parse"));
         assert!(try_prove_polynomial_identity_zero_expr(&mut ctx, expr).is_none());
     }
 
     #[test]
     fn proves_opaque_identity_by_substitution() {
         let mut ctx = Context::new();
-        let expr = parse("sin(x) + 1 - (sin(x) + 1)", &mut ctx).expect("parse");
-        let plan = try_prove_polynomial_identity_zero_expr(&mut ctx, expr).expect("plan");
+        let expr = parse("sin(x) + 1 - (sin(x) + 1)", &mut ctx).unwrap_or_else(|_| panic!("parse"));
+        let plan = try_prove_polynomial_identity_zero_expr(&mut ctx, expr)
+            .unwrap_or_else(|| panic!("plan"));
         assert_eq!(plan.kind, PolynomialIdentityProofKind::OpaqueSubstitution);
     }
 
     #[test]
     fn policy_max_nodes_blocks_large_expr() {
         let mut ctx = Context::new();
-        let expr = parse("(x+1)^2 - (x^2 + 2*x + 1)", &mut ctx).expect("parse");
+        let expr = parse("(x+1)^2 - (x^2 + 2*x + 1)", &mut ctx).unwrap_or_else(|_| panic!("parse"));
         let policy = PolynomialIdentityPolicy {
             max_nodes: 1,
             ..PolynomialIdentityPolicy::default()

@@ -1,5 +1,5 @@
+use crate::cas_solver::{DisplayEvalSteps, DisplaySolveSteps};
 use cas_ast::{Equation, ExprId, SolutionSet};
-use cas_solver::{DisplayEvalSteps, DisplaySolveSteps};
 
 /// Simplify branch payload for CLI `timeline` rendering.
 #[derive(Debug, Clone)]

@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::{evaluate_and_apply_config_command, ConfigCommandApplyOutput};
+    use crate::solver_exports::{evaluate_and_apply_config_command, ConfigCommandApplyOutput};
 
     #[test]
     fn evaluate_and_apply_config_command_updates_config_and_syncs() {

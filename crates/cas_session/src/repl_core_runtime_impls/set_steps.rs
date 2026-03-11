@@ -22,7 +22,12 @@ impl ReplSetRuntimeContext for ReplCore {
     fn apply_set_command_plan(&mut self, plan: &SetCommandPlan) -> SetCommandApplyEffects {
         let mut debug_mode = self.debug_mode();
         let effects = self.with_simplify_and_eval_options_mut(|simplify_options, eval_options| {
-            crate::apply_set_command_plan(plan, simplify_options, eval_options, &mut debug_mode)
+            crate::solver_exports::apply_set_command_plan(
+                plan,
+                simplify_options,
+                eval_options,
+                &mut debug_mode,
+            )
         });
         self.set_debug_mode(debug_mode);
 
@@ -44,7 +49,11 @@ impl ReplStepsRuntimeContext for ReplCore {
         set_steps_mode: Option<StepsMode>,
         set_display_mode: Option<StepsDisplayMode>,
     ) -> StepsCommandApplyEffects {
-        crate::apply_steps_command_update(set_steps_mode, set_display_mode, self.eval_options_mut())
+        crate::solver_exports::apply_steps_command_update(
+            set_steps_mode,
+            set_display_mode,
+            self.eval_options_mut(),
+        )
     }
 
     fn set_simplifier_steps_mode(&mut self, mode: StepsMode) {

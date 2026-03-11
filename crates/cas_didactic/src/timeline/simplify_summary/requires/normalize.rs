@@ -1,6 +1,6 @@
+use crate::cas_solver::{render_conditions_normalized, ImplicitCondition};
 use cas_ast::Context;
 use cas_formatter::html_escape;
-use cas_solver::{render_conditions_normalized, ImplicitCondition};
 
 pub(super) fn normalize_global_requires(
     context: &mut Context,

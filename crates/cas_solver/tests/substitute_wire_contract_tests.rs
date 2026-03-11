@@ -8,7 +8,7 @@
 //! 5. No __hold leak in result or steps
 //! 6. Error path produces correct error structure
 
-use cas_solver::substitute_str_to_wire;
+use cas_solver::wire::substitute_str_to_wire;
 
 fn parse_wire(payload: &str) -> serde_json::Value {
     serde_json::from_str(payload).unwrap()

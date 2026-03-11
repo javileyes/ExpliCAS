@@ -44,7 +44,7 @@ impl Repl {
                         break;
                     }
 
-                    for statement in cas_session::split_repl_statements(line) {
+                    for statement in cas_session::solver_exports::split_repl_statements(line) {
                         self.handle_command(statement);
                     }
                 }

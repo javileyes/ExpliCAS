@@ -1,7 +1,7 @@
 use super::{global, renderers, TimelineRenderedStepMath, TimelineStepSnapshots};
+use crate::cas_solver::Step;
 use cas_ast::Context;
 use cas_formatter::{DisplayContext, StylePreferences};
-use cas_solver::Step;
 
 pub(super) fn render_timeline_step_math(
     context: &Context,

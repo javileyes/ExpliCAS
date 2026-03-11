@@ -113,7 +113,7 @@ fn solve_steps_to_events(steps: &[SolveStep]) -> Vec<SolveEvent> {
 
     for step in steps {
         events.push(SolverEvent::StepProduced {
-            description: step.description.clone(),
+            description: step.description.to_string(),
             equation_after: step.equation_after.clone(),
             importance: step.importance,
         });
@@ -122,7 +122,7 @@ fn solve_steps_to_events(steps: &[SolveStep]) -> Vec<SolveEvent> {
             step.substeps
                 .iter()
                 .map(|substep| SolverEvent::SubstepProduced {
-                    description: substep.description.clone(),
+                    description: substep.description.to_string(),
                     equation_after: substep.equation_after.clone(),
                     importance: substep.importance,
                 }),

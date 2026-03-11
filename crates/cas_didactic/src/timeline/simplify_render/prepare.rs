@@ -1,9 +1,9 @@
 mod display;
 mod filter;
 
+use crate::cas_solver::Step;
 use cas_ast::{Context, ExprId};
 use cas_formatter::DisplayContext;
-use cas_solver::Step;
 use std::collections::HashSet;
 
 pub(super) const TIMELINE_CLOSING_HTML: &str = "    </div>\n";

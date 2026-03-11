@@ -2,8 +2,8 @@ mod analysis;
 mod render;
 
 use super::SubStep;
+use crate::cas_solver::Step;
 use cas_ast::Context;
-use cas_solver::Step;
 
 /// Generate sub-steps explaining the Sum of Three Cubes identity.
 pub(crate) fn generate_sum_three_cubes_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {

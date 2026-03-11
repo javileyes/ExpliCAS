@@ -24,7 +24,7 @@ pub fn evaluate_substitute_subcommand(
         "{{\"mode\":\"{}\",\"steps\":{},\"pretty\":false}}",
         mode, steps_enabled
     );
-    let payload = crate::substitute_str_to_wire(expr, target, replacement, Some(&opts));
+    let payload = crate::wire::substitute_str_to_wire(expr, target, replacement, Some(&opts));
     let lines = parse_substitute_wire_text_lines(&payload, steps_enabled)?;
     Ok(SubstituteSubcommandOutput::TextLines(lines))
 }

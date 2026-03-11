@@ -1,5 +1,5 @@
+use crate::cas_solver::Step;
 use cas_ast::Context;
-use cas_solver::Step;
 
 pub(super) fn render_step_rule_latex(context: &Context, step: &Step) -> String {
     let focus_before = step.before_local().unwrap_or(step.before);

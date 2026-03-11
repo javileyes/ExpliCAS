@@ -3,8 +3,8 @@ mod expr;
 mod header;
 mod rule;
 
+use crate::cas_solver::Step;
 use cas_ast::{Context, ExprId};
-use cas_solver::Step;
 
 pub(super) fn render_step_header(step_count: usize, step: &Step) -> String {
     header::render_step_header(step_count, step)

@@ -2,9 +2,9 @@ mod config;
 mod fallback;
 mod with_paths;
 
+use crate::cas_solver::Step;
 use cas_ast::{Context, ExprPath};
 use cas_formatter::{DisplayContext, HighlightColor, PathHighlightConfig, StylePreferences};
-use cas_solver::Step;
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn render_before_additive_focus(

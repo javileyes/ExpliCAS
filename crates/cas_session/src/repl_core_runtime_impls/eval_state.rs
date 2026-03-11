@@ -17,7 +17,7 @@ impl ReplEvalRuntimeContext for ReplCore {
         debug_mode: bool,
     ) -> Result<EvalCommandOutput, EvalCommandError> {
         self.with_engine_and_state(|engine, state| {
-            crate::evaluate_eval_command_output(engine, state, line, debug_mode)
+            crate::solver_exports::evaluate_eval_command_output(engine, state, line, debug_mode)
         })
     }
 

@@ -1,24 +1,25 @@
 #[cfg(test)]
 mod tests {
-    use crate::{
-        apply_set_command_plan_on_repl_core, evaluate_set_command_on_repl_core,
-        set_command_state_for_repl_core, ReplSetMessageKind,
+    use crate::solver_exports::{
+        apply_set_command_plan_on_repl_core, evaluate_set_command_input,
+        evaluate_set_command_on_repl_core, set_command_state_for_repl_core, ReplSetMessageKind,
+        SetCommandResult, SetDisplayMode,
     };
     use cas_solver_core::eval_option_axes::StepsMode;
 
     #[test]
     fn set_command_state_for_repl_core_reads_runtime() {
         let core = crate::ReplCore::new();
-        let state = set_command_state_for_repl_core(&core, crate::SetDisplayMode::Normal);
-        assert_eq!(state.display_mode, crate::SetDisplayMode::Normal);
+        let state = set_command_state_for_repl_core(&core, SetDisplayMode::Normal);
+        assert_eq!(state.display_mode, SetDisplayMode::Normal);
     }
 
     #[test]
     fn apply_set_command_plan_on_repl_core_applies_steps_mode() {
         let mut core = crate::ReplCore::new();
-        let state = set_command_state_for_repl_core(&core, crate::SetDisplayMode::Normal);
-        let plan = match crate::evaluate_set_command_input("set steps compact", state) {
-            crate::SetCommandResult::Apply { plan } => plan,
+        let state = set_command_state_for_repl_core(&core, SetDisplayMode::Normal);
+        let plan = match evaluate_set_command_input("set steps compact", state) {
+            SetCommandResult::Apply { plan } => plan,
             other => panic!("unexpected result: {other:?}"),
         };
         let effects = apply_set_command_plan_on_repl_core(&mut core, &plan);
@@ -32,9 +33,9 @@ mod tests {
         let out = evaluate_set_command_on_repl_core(
             "set steps verbose",
             &mut core,
-            crate::SetDisplayMode::Normal,
+            SetDisplayMode::Normal,
         );
         assert_eq!(out.message_kind, ReplSetMessageKind::Info);
-        assert_eq!(out.set_display_mode, Some(crate::SetDisplayMode::Verbose));
+        assert_eq!(out.set_display_mode, Some(SetDisplayMode::Verbose));
     }
 }

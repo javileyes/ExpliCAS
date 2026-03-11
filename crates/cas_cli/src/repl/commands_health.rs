@@ -2,7 +2,10 @@ use super::*;
 
 impl Repl {
     pub(crate) fn handle_health_core(&mut self, line: &str) -> ReplReply {
-        match cas_session::evaluate_health_command_message_on_repl_core(&mut self.core, line) {
+        match cas_session::solver_exports::evaluate_health_command_message_on_repl_core(
+            &mut self.core,
+            line,
+        ) {
             Ok(message) => reply_output(message),
             Err(message) => reply_output(message),
         }

@@ -7,9 +7,9 @@ mod scope;
 
 use self::scope::render_local_scope_transition;
 use super::TimelineStepSnapshots;
+use crate::cas_solver::Step;
 use cas_ast::Context;
 use cas_formatter::{DisplayContext, StylePreferences};
-use cas_solver::Step;
 
 pub(super) fn render_global_transition_latex(
     context: &Context,

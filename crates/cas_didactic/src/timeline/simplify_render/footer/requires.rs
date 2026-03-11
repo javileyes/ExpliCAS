@@ -1,6 +1,6 @@
 use super::super::super::simplify_summary::render_timeline_global_requires_html;
+use crate::cas_solver::ImplicitCondition;
 use cas_ast::Context;
-use cas_solver::ImplicitCondition;
 
 pub(super) fn render_requires_footer_html(
     context: &mut Context,

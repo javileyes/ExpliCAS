@@ -1,8 +1,8 @@
 use super::super::super::simplify_init::build_simplify_timeline_init;
 use super::super::{TimelineHtml, VerbosityLevel};
 use super::build;
+use crate::cas_solver::Step;
 use cas_ast::{Context, ExprId};
-use cas_solver::Step;
 
 impl<'a> TimelineHtml<'a> {
     /// Create a new TimelineHtml with style preferences derived from input string

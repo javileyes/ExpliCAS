@@ -1,6 +1,7 @@
 //! Session-facing solver helpers and support APIs.
 
 pub use cas_solver::evaluate_and_apply_config_command;
+pub use cas_solver::wire::eval_str_to_wire as evaluate_eval_wire;
 pub use cas_solver::{binding_overview_entries, clear_bindings_command};
 pub use cas_solver::{
     build_prompt_from_eval_options, parse_repl_command_input, preprocess_repl_function_syntax,

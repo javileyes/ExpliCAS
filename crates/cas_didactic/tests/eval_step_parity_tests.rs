@@ -302,11 +302,11 @@ fn eval_display_steps_are_immutable_after_creation() {
     // Multiple iterations should yield identical data
     let first_pass: Vec<_> = display_steps
         .iter()
-        .map(|s| (s.description.clone(), s.rule_name.clone()))
+        .map(|s| (s.description.to_string(), s.rule_name.to_string()))
         .collect();
     let second_pass: Vec<_> = display_steps
         .iter()
-        .map(|s| (s.description.clone(), s.rule_name.clone()))
+        .map(|s| (s.description.to_string(), s.rule_name.to_string()))
         .collect();
 
     assert_eq!(

@@ -1,5 +1,5 @@
+use crate::cas_solver::{infer_implicit_domain, ImplicitCondition, ValueDomain};
 use cas_ast::{Context, ExprId};
-use cas_solver::{infer_implicit_domain, ImplicitCondition, ValueDomain};
 
 pub(super) fn collect_timeline_global_requires(
     context: &mut Context,

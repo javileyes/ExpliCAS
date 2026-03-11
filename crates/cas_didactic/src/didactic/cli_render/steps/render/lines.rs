@@ -3,8 +3,8 @@ mod display;
 mod succinct;
 
 use super::local_rule_expr_ids;
+use crate::cas_solver::Step;
 use cas_ast::{Context, ExprId};
-use cas_solver::Step;
 
 pub(crate) fn render_succinct_step_line(
     ctx: &mut Context,

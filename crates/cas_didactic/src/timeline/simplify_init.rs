@@ -1,8 +1,8 @@
 mod requires;
 mod title;
 
+use crate::cas_solver::{ImplicitCondition, Step};
 use cas_ast::{Context, ExprId};
-use cas_solver::{ImplicitCondition, Step};
 
 pub(super) struct SimplifyTimelineInit {
     pub title: String,

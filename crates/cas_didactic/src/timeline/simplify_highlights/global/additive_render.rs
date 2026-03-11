@@ -2,9 +2,9 @@ mod after;
 mod before;
 
 use super::super::renderers::{render_with_paths, render_with_single_path};
+use crate::cas_solver::Step;
 use cas_ast::{Context, ExprPath};
 use cas_formatter::{DisplayContext, StylePreferences};
-use cas_solver::Step;
 
 pub(super) fn render_before_additive_focus(
     context: &Context,

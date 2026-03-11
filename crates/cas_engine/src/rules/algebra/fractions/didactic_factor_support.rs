@@ -531,7 +531,7 @@ mod tests {
         let den = ctx.add(Expr::Pow(base, two4));
 
         let plan = try_plan_expand_binomial_square_in_den_for_cancel(&mut ctx, num, den, true)
-            .expect("plan should exist");
+            .unwrap_or_else(|| panic!("plan should exist"));
         let expected = ctx.add(Expr::Div(num, plan.expanded_denominator));
         assert_eq!(
             compare_expr(&ctx, plan.rewritten, expected),
@@ -552,7 +552,7 @@ mod tests {
         let den = ctx.add(Expr::Add(x, y));
 
         let plan = try_plan_difference_of_squares_in_num(&mut ctx, num, den, true)
-            .expect("plan should exist");
+            .unwrap_or_else(|| panic!("plan should exist"));
         let expected = ctx.add(Expr::Sub(x, y));
         assert_eq!(
             compare_expr(&ctx, plan.rewritten, expected),
@@ -578,7 +578,7 @@ mod tests {
         let den = ctx.add(Expr::Sub(x, y));
 
         let plan = try_plan_perfect_square_minus_in_num(&mut ctx, num, den, true)
-            .expect("plan should exist");
+            .unwrap_or_else(|| panic!("plan should exist"));
         let two4 = ctx.num(2);
         let x_minus_y = ctx.add(Expr::Sub(x, y));
         let num_expected = ctx.add(Expr::Pow(x_minus_y, two4));
@@ -601,8 +601,8 @@ mod tests {
         let num = ctx.add(Expr::Sub(x_cubed, y_cubed));
         let den = ctx.add(Expr::Sub(x, y));
 
-        let plan =
-            try_plan_sum_diff_of_cubes_in_num(&mut ctx, num, den, true).expect("plan should exist");
+        let plan = try_plan_sum_diff_of_cubes_in_num(&mut ctx, num, den, true)
+            .unwrap_or_else(|| panic!("plan should exist"));
         let expected_desc = "Factor: a³ - b³ = (a-b)(a² + ab + b²)";
         assert_eq!(plan.desc, expected_desc);
 
@@ -624,8 +624,8 @@ mod tests {
         let num = ctx.add(Expr::Pow(x_minus_one, four));
         let den = ctx.add(Expr::Pow(x_minus_one, two));
 
-        let plan =
-            try_plan_power_quotient_preserve_form(&mut ctx, num, den).expect("plan should exist");
+        let plan = try_plan_power_quotient_preserve_form(&mut ctx, num, den)
+            .unwrap_or_else(|| panic!("plan should exist"));
         let expected = ctx.add(Expr::Pow(x_minus_one, two));
         assert_eq!(
             compare_expr(&ctx, plan.rewritten, expected),
@@ -653,7 +653,8 @@ mod tests {
         let two4 = ctx.num(2);
         let den = ctx.add(Expr::Pow(base, two4));
 
-        let plan = try_plan_fraction_didactic_cancel(&mut ctx, num, den, true).expect("plan");
+        let plan = try_plan_fraction_didactic_cancel(&mut ctx, num, den, true)
+            .unwrap_or_else(|| panic!("plan"));
         assert_eq!(plan.desc, "Expand: (a+b)² → a² + 2ab + b²");
     }
 }

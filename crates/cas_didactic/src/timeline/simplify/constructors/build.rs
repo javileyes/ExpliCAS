@@ -1,6 +1,6 @@
 use super::super::{TimelineHtml, VerbosityLevel};
+use crate::cas_solver::Step;
 use cas_ast::{Context, ExprId};
-use cas_solver::Step;
 
 #[allow(clippy::type_complexity)]
 pub(super) fn build_timeline_html<'a>(

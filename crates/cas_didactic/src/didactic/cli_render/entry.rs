@@ -1,6 +1,6 @@
 use super::StepDisplayMode;
+use crate::cas_solver::Step;
 use cas_ast::{Context, ExprId};
-use cas_solver::Step;
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn format_cli_simplification_steps(

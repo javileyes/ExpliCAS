@@ -27,7 +27,7 @@ mod success;
 ///
 /// # Example
 /// ```
-/// use cas_solver::eval_str_to_wire;
+/// use cas_solver::wire::eval_str_to_wire;
 ///
 /// let wire = eval_str_to_wire("x + x", r#"{"budget":{"preset":"cli"}}"#);
 /// assert!(wire.contains("\"ok\":true"));

@@ -1,8 +1,8 @@
 mod frame;
 mod sections;
 
+use crate::cas_solver::Step;
 use cas_formatter::html_escape;
-use cas_solver::Step;
 
 use super::simplify_highlights::TimelineRenderedStepMath;
 

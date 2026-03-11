@@ -1,10 +1,11 @@
 #[cfg(test)]
 mod tests {
-    use crate::{
+    use crate::solver_exports::{
         binding_overview_entries, clear_bindings_command, format_binding_overview_lines,
         format_clear_bindings_result_lines, vars_empty_message, BindingOverviewEntry,
-        ClearBindingsResult, SessionState,
+        ClearBindingsResult,
     };
+    use crate::SessionState;
 
     #[test]
     fn clear_bindings_command_all_mode() {

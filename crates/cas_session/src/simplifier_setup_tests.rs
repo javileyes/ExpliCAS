@@ -1,10 +1,10 @@
 #[cfg(test)]
 mod tests {
-    use crate::{
+    use crate::solver_exports::{
         apply_simplifier_toggle_config, build_simplifier_with_rule_config,
-        set_simplifier_toggle_rule, sync_simplifier_with_cas_config, SimplifierRuleConfig,
-        SimplifierToggleConfig,
+        set_simplifier_toggle_rule, SimplifierRuleConfig, SimplifierToggleConfig,
     };
+    use crate::sync_simplifier_with_cas_config;
     use cas_formatter::DisplayExpr;
 
     #[test]

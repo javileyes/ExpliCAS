@@ -1,11 +1,12 @@
 #[cfg(test)]
 mod tests {
-    use crate::{
+    use crate::solver_exports::{
         delete_history_entries, format_delete_history_error_message,
         format_delete_history_result_message, format_history_overview_lines, history_empty_message,
-        history_overview_entries, parse_history_ids, DeleteHistoryError, EntryKind,
-        HistoryOverviewEntry, HistoryOverviewKind, SessionState,
+        history_overview_entries, parse_history_ids, DeleteHistoryError, DeleteHistoryResult,
+        HistoryOverviewEntry, HistoryOverviewKind,
     };
+    use crate::{EntryKind, SessionState};
 
     #[test]
     fn parse_history_ids_accepts_hash_prefix() {
@@ -55,7 +56,7 @@ mod tests {
 
     #[test]
     fn format_delete_history_result_message_lists_ids() {
-        let message = format_delete_history_result_message(&crate::DeleteHistoryResult {
+        let message = format_delete_history_result_message(&DeleteHistoryResult {
             requested_ids: vec![1, 3],
             removed_count: 1,
         });

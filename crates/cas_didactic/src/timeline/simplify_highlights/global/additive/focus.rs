@@ -1,7 +1,7 @@
 use super::super::additive_search::collect_additive_focus_paths;
+use crate::cas_solver::{pathsteps_to_expr_path, Step};
 use cas_ast::{Context, ExprId, ExprPath};
 use cas_formatter::path::{diff_find_path_to_expr, navigate_to_subexpr};
-use cas_solver::{pathsteps_to_expr_path, Step};
 
 pub(super) fn collect_additive_focus_paths_with_scope(
     context: &Context,

@@ -6,8 +6,8 @@ mod standalone;
 
 use super::super::fraction_sum_analysis::FractionSumInfo;
 use super::super::SubStep;
+use crate::cas_solver::Step;
 use cas_ast::{Context, ExprId};
-use cas_solver::Step;
 
 pub(super) fn extend_primary_fraction_sum_substeps(
     sub_steps: &mut Vec<SubStep>,

@@ -3,9 +3,9 @@ mod math;
 mod renderers;
 mod snapshots;
 
+use crate::cas_solver::Step;
 use cas_ast::{Context, ExprId};
 use cas_formatter::{DisplayContext, StylePreferences};
-use cas_solver::Step;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct TimelineStepSnapshots {

@@ -1,9 +1,9 @@
 mod local_change;
 mod paths;
 
+use crate::cas_solver::Step;
 use cas_ast::{Context, ExprId, ExprPath};
 use cas_formatter::{DisplayContext, HighlightColor, PathHighlightConfig, StylePreferences};
-use cas_solver::Step;
 
 pub(super) fn render_local_change_latex(
     context: &Context,

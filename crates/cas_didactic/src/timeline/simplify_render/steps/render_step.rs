@@ -5,9 +5,9 @@ use super::super::super::simplify_substeps::{
     render_timeline_domain_assumptions_html, render_timeline_enriched_substeps_html,
     render_timeline_rule_substeps_html, TimelineSubstepsRenderState,
 };
+use crate::cas_solver::Step;
 use cas_ast::Context;
 use cas_formatter::{DisplayContext, StylePreferences};
-use cas_solver::Step;
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn render_timeline_step_block(

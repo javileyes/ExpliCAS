@@ -1,9 +1,9 @@
 use super::StepDisplayMode;
+use crate::cas_solver::Step;
 use cas_ast::ExprId;
-use cas_solver::Step;
 
 pub(super) fn format_cli_simplification_steps_with_simplifier(
-    simplifier: &mut cas_solver::Simplifier,
+    simplifier: &mut crate::cas_solver::Simplifier,
     expr: ExprId,
     steps: &[Step],
     style_signals: cas_formatter::root_style::ParseStyleSignals,

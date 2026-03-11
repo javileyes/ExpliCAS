@@ -3,9 +3,9 @@ mod render_step;
 
 use super::super::simplify_highlights::resolve_timeline_step_global_snapshots;
 use super::super::simplify_substeps::TimelineSubstepsRenderState;
+use crate::cas_solver::Step;
 use cas_ast::{Context, ExprId};
 use cas_formatter::{DisplayContext, StylePreferences};
-use cas_solver::Step;
 use std::collections::HashSet;
 
 #[allow(clippy::too_many_arguments)]

@@ -1,7 +1,7 @@
 use super::super::{display_expr, latex_expr, normal_form_summary, PolynomialProofData};
+use crate::cas_solver::Step;
 use crate::didactic::SubStep;
 use cas_ast::Context;
-use cas_solver::Step;
 
 pub(super) fn generate_normal_form_conversion_substeps(
     ctx: &Context,

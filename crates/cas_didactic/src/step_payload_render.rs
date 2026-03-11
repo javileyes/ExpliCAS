@@ -2,9 +2,9 @@ mod path;
 mod rule;
 mod substeps;
 
+use crate::cas_solver::Step;
 use cas_api_models::SubStepWire;
 use cas_ast::{ExprId, ExprPath};
-use cas_solver::Step;
 
 pub(crate) fn collect_step_payload_substeps(
     step: &Step,

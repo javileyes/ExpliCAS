@@ -1,8 +1,8 @@
 use super::super::renderers::render_with_single_path;
 use super::super::TimelineStepSnapshots;
+use crate::cas_solver::{pathsteps_to_expr_path, Step};
 use cas_ast::Context;
 use cas_formatter::{DisplayContext, HighlightColor, StylePreferences};
-use cas_solver::{pathsteps_to_expr_path, Step};
 
 pub(super) fn render_default_global_transition(
     context: &Context,

@@ -79,6 +79,6 @@ pub mod wire;
 mod core_tests;
 
 // Re-export core types for external use
+pub use cas_session::solver_exports::SetDisplayMode;
 pub use cas_session::ReplCore;
-pub use cas_session::SetDisplayMode;
 pub use output::{reply_output, CoreResult, ReplMsg, ReplReply, ReplReplyExt, UiDelta};

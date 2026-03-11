@@ -3,9 +3,9 @@ mod substituted;
 mod substitution_intro;
 
 use super::{display_expr, latex_expr, PolynomialProofData};
+use crate::cas_solver::Step;
 use crate::didactic::SubStep;
 use cas_ast::Context;
-use cas_solver::Step;
 
 pub(super) fn generate_polynomial_identity_substitution_substeps(
     ctx: &Context,

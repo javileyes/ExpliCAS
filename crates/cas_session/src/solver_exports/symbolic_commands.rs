@@ -1,5 +1,6 @@
 //! Symbolic command evaluation APIs re-exported for session clients.
 
+pub use cas_solver::wire::substitute_str_to_wire as evaluate_substitute_wire;
 pub use cas_solver::{
     evaluate_equiv_command_lines, evaluate_equiv_command_message, evaluate_equiv_invocation_message,
 };

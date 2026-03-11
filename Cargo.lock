@@ -167,6 +167,7 @@ name = "cas_android_ffi"
 version = "0.1.0"
 dependencies = [
  "cas_api_models",
+ "cas_session",
  "cas_solver",
  "jni",
  "serde_json",
@@ -225,6 +226,7 @@ version = "0.1.0"
 dependencies = [
  "cas_api_models",
  "cas_ast",
+ "cas_engine",
  "cas_formatter",
  "cas_math",
  "cas_parser",

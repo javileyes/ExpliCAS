@@ -41,22 +41,18 @@ fn build_event_step_payload(index: usize, event: &EngineEvent, ctx: &Context) ->
                         id: after_expr
                     }
                 ),
-                before_latex: format!(
-                    "{}",
-                    cas_formatter::LaTeXExpr {
-                        context: ctx,
-                        id: before_expr
-                    }
-                    .to_latex()
-                ),
-                after_latex: format!(
-                    "{}",
-                    cas_formatter::LaTeXExpr {
-                        context: ctx,
-                        id: after_expr
-                    }
-                    .to_latex()
-                ),
+                before_latex: cas_formatter::LaTeXExpr {
+                    context: ctx,
+                    id: before_expr,
+                }
+                .to_latex()
+                .to_string(),
+                after_latex: cas_formatter::LaTeXExpr {
+                    context: ctx,
+                    id: after_expr,
+                }
+                .to_latex()
+                .to_string(),
                 substeps: Vec::new(),
             })
         }

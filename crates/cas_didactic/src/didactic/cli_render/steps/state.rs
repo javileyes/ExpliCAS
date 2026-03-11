@@ -1,6 +1,6 @@
 use super::super::super::display_policy::CliSubstepsRenderState;
+use crate::cas_solver::Step;
 use cas_ast::{Context, ExprId};
-use cas_solver::Step;
 
 pub(super) struct StepLoopState {
     current_root: ExprId,
@@ -34,7 +34,12 @@ impl StepLoopState {
         self.current_root = if let Some(global_after) = step.global_after {
             global_after
         } else {
-            cas_solver::reconstruct_global_expr(ctx, self.current_root, step.path(), step.after)
+            crate::cas_solver::reconstruct_global_expr(
+                ctx,
+                self.current_root,
+                step.path(),
+                step.after,
+            )
         };
     }
 }

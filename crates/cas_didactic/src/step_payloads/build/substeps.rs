@@ -1,5 +1,5 @@
+use crate::cas_solver::Step;
 use cas_api_models::SubStepWire;
-use cas_solver::Step;
 
 pub(super) fn collect_step_wire_substeps(
     step: &Step,

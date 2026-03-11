@@ -1,7 +1,9 @@
 use crate::{CasConfig, ReplCore};
 
 fn build_repl_simplifier_from_config(config: &CasConfig) -> cas_engine::Simplifier {
-    crate::build_simplifier_with_rule_config(crate::solver_rule_config_from_cas_config(config))
+    crate::solver_exports::build_simplifier_with_rule_config(
+        crate::solver_rule_config_from_cas_config(config),
+    )
 }
 
 /// Build a `ReplCore` preconfigured from persisted CLI config.

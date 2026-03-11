@@ -3,9 +3,9 @@ mod normal_form;
 mod substitution;
 
 use super::SubStep;
+use crate::cas_solver::Step;
 use cas_ast::Context;
 use cas_math::multipoly_display::{PolyNormalFormStats, PolynomialProofData};
-use cas_solver::Step;
 
 /// Generate sub-steps explaining polynomial identity normalization (PolyZero airbag)
 pub(crate) fn generate_polynomial_identity_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {

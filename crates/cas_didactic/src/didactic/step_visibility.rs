@@ -6,8 +6,8 @@ mod simplify;
 mod types;
 
 use super::display_policy::StepDisplayMode;
+use crate::cas_solver::Step;
 use cas_ast::ExprId;
-use cas_solver::Step;
 
 pub(crate) use types::StepVisibility;
 

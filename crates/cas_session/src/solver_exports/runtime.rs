@@ -8,6 +8,7 @@ pub use cas_solver::apply_semantics_command_on_runtime as apply_semantics_comman
 pub use cas_solver::apply_set_command_plan_on_runtime as apply_set_command_plan_on_repl_core;
 pub use cas_solver::apply_solve_budget_command;
 pub use cas_solver::apply_steps_command_update_on_runtime as apply_steps_command_update_on_repl_core;
+pub use cas_solver::build_eval_command_render_plan;
 pub use cas_solver::build_repl_prompt_on_runtime as build_repl_prompt;
 pub use cas_solver::clean_result_output_line;
 pub use cas_solver::clear_repl_profile_cache_on_runtime as clear_repl_profile_cache;
@@ -21,7 +22,9 @@ pub use cas_solver::evaluate_delete_history_command_message;
 pub use cas_solver::evaluate_delete_history_command_message_on_runtime as evaluate_delete_history_command_message_on_repl_core;
 pub use cas_solver::evaluate_det_command_message_on_runtime as evaluate_det_command_message_on_repl_core;
 pub use cas_solver::evaluate_equiv_invocation_message_on_runtime as evaluate_equiv_invocation_message_on_repl_core;
+pub use cas_solver::evaluate_eval_command_output;
 pub use cas_solver::evaluate_eval_command_render_plan_on_runtime as evaluate_eval_command_render_plan_on_repl_core;
+pub use cas_solver::evaluate_eval_text_simplify_with_session;
 pub use cas_solver::evaluate_expand_command_render_plan_on_runtime as evaluate_expand_command_render_plan_on_repl_core;
 pub use cas_solver::evaluate_expand_log_invocation_message_on_runtime as evaluate_expand_log_invocation_message_on_repl_core;
 pub use cas_solver::evaluate_explain_invocation_message_on_runtime as evaluate_explain_invocation_message_on_repl_core;

@@ -5,12 +5,16 @@
 
 pub mod didactic;
 pub mod events;
+mod runtime_bridge;
 mod step_payload_render;
 mod step_payloads;
 pub mod timeline;
 
-pub use cas_solver::to_display_steps;
-pub use cas_solver::{pathsteps_to_expr_path, DisplayEvalSteps, ImportanceLevel, PathStep, Step};
+pub(crate) use runtime_bridge as cas_solver;
+
+pub use cas_engine::to_display_steps;
+pub use cas_engine::{DisplayEvalSteps, ImportanceLevel, PathStep, Step};
+pub use cas_solver_core::step_types::pathsteps_to_expr_path;
 pub use didactic::{
     build_cli_substeps_render_plan, build_timeline_substeps_render_plan, enrich_steps,
     format_cli_simplification_steps, format_cli_simplification_steps_with_simplifier,

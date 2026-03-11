@@ -1,5 +1,5 @@
 use super::SubStep;
-use cas_solver::Step;
+use crate::cas_solver::Step;
 
 /// An enriched step with optional sub-steps for didactic explanation
 #[derive(Debug, Clone)]

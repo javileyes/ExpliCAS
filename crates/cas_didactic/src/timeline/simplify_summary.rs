@@ -1,9 +1,9 @@
 mod final_result;
 mod requires;
 
+use crate::cas_solver::ImplicitCondition;
 use cas_ast::{Context, ExprId};
 use cas_formatter::{DisplayContext, StylePreferences};
-use cas_solver::ImplicitCondition;
 
 pub(super) fn render_timeline_final_result_html(
     context: &Context,

@@ -5,8 +5,8 @@ mod prepare;
 mod steps;
 
 use super::display_policy::StepDisplayMode;
+use crate::cas_solver::Step;
 use cas_ast::{Context, ExprId};
-use cas_solver::Step;
 
 /// Format simplification steps for CLI/REPL text output.
 ///
@@ -35,7 +35,7 @@ pub fn format_cli_simplification_steps(
 ///
 /// Keeps REPL frontends from reaching into `simplifier.context` directly.
 pub fn format_cli_simplification_steps_with_simplifier(
-    simplifier: &mut cas_solver::Simplifier,
+    simplifier: &mut crate::cas_solver::Simplifier,
     expr: ExprId,
     steps: &[Step],
     style_signals: cas_formatter::root_style::ParseStyleSignals,

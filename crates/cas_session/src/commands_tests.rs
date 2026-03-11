@@ -1,14 +1,16 @@
-use crate::{
+use crate::solver_exports::{
     apply_profile_cache_command, apply_profile_command, evaluate_assignment_command,
     evaluate_assignment_command_message_with_simplifier, evaluate_clear_command_lines,
     evaluate_delete_history_command_message, evaluate_history_command_lines,
     evaluate_history_command_lines_with_context, evaluate_let_assignment_command,
-    evaluate_let_assignment_command_message_with_simplifier, evaluate_vars_command_lines,
+    evaluate_let_assignment_command_message_with_simplifier, evaluate_profile_cache_command_lines,
+    evaluate_solve_budget_command_message, evaluate_vars_command_lines,
     evaluate_vars_command_lines_with_context, format_assignment_command_output_message,
     format_profile_cache_command_lines, format_show_history_command_lines,
     format_show_history_command_lines_with_context, parse_profile_command_input,
-    ProfileCommandInput, SessionState,
+    HistoryEntryDetails, HistoryEntryInspection, HistoryExprInspection, ProfileCommandInput,
 };
+use crate::SessionState;
 
 #[test]
 fn evaluate_vars_command_lines_empty() {
@@ -43,14 +45,14 @@ fn evaluate_history_command_lines_with_context_empty() {
 #[test]
 fn evaluate_profile_cache_command_lines_status() {
     let mut engine = cas_solver::Engine::new();
-    let lines = crate::evaluate_profile_cache_command_lines(&mut engine, "cache status");
+    let lines = evaluate_profile_cache_command_lines(&mut engine, "cache status");
     assert!(lines.iter().any(|line| line.contains("Profile Cache:")));
 }
 
 #[test]
 fn evaluate_solve_budget_command_message_returns_current_budget() {
     let mut state = SessionState::new();
-    let message = crate::evaluate_solve_budget_command_message(&mut state, "budget");
+    let message = evaluate_solve_budget_command_message(&mut state, "budget");
     assert!(message.contains("Solve budget"));
 }
 
@@ -70,11 +72,11 @@ fn evaluate_delete_history_command_message_for_invalid_ids() {
 
 #[test]
 fn format_show_history_command_lines_appends_metadata() {
-    let inspection = crate::HistoryEntryInspection {
+    let inspection = HistoryEntryInspection {
         id: 1,
         type_str: "Expression".to_string(),
         raw_text: "x+x".to_string(),
-        details: crate::HistoryEntryDetails::Expr(crate::HistoryExprInspection {
+        details: HistoryEntryDetails::Expr(HistoryExprInspection {
             parsed: cas_ast::ExprId::from_raw(1),
             resolved: None,
             simplified: None,
@@ -95,11 +97,11 @@ fn format_show_history_command_lines_appends_metadata() {
 fn format_show_history_command_lines_with_context_appends_metadata() {
     let mut ctx = cas_ast::Context::new();
     let parsed = cas_parser::parse("x + x", &mut ctx).expect("parse");
-    let inspection = crate::HistoryEntryInspection {
+    let inspection = HistoryEntryInspection {
         id: 1,
         type_str: "Expression".to_string(),
         raw_text: "x+x".to_string(),
-        details: crate::HistoryEntryDetails::Expr(crate::HistoryExprInspection {
+        details: HistoryEntryDetails::Expr(HistoryExprInspection {
             parsed,
             resolved: None,
             simplified: None,

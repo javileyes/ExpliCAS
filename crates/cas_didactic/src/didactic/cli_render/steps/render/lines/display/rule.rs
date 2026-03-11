@@ -1,5 +1,5 @@
+use crate::cas_solver::Step;
 use cas_ast::{Context, ExprId};
-use cas_solver::Step;
 
 pub(super) fn render_rule_with_scope_line(
     ctx: &mut Context,

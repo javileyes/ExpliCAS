@@ -1,3 +1,5 @@
+use cas_ast::hold::hold_name;
+
 /// Clean verbose artifacts from display strings for didactic CLI output.
 pub fn clean_display_string(s: &str) -> String {
     if !may_need_display_clean(s) {
@@ -5,12 +7,13 @@ pub fn clean_display_string(s: &str) -> String {
     }
 
     let mut result = s.to_owned();
+    let hold_pattern = hold_pattern();
 
     if may_need_unit_cleanup(&result) {
         clean_unit_patterns_in_place(&mut result);
     }
-    if result.contains("__hold(") {
-        strip_hold_wrappers_in_place(&mut result);
+    if result.contains(&hold_pattern) {
+        strip_hold_wrappers_in_place(&mut result, &hold_pattern);
     }
     if may_need_sign_cleanup(&result) {
         result = clean_sign_patterns(result);
@@ -20,7 +23,7 @@ pub fn clean_display_string(s: &str) -> String {
 }
 
 fn may_need_display_clean(s: &str) -> bool {
-    may_need_unit_cleanup(s) || s.contains("__hold(") || may_need_sign_cleanup(s)
+    may_need_unit_cleanup(s) || s.contains(&hold_pattern()) || may_need_sign_cleanup(s)
 }
 
 fn may_need_unit_cleanup(s: &str) -> bool {
@@ -110,9 +113,13 @@ fn clean_unit_patterns_in_place(result: &mut String) {
     }
 }
 
-fn strip_hold_wrappers_in_place(result: &mut String) {
-    while let Some(start) = result.find("__hold(") {
-        let content_start = start + 7;
+fn hold_pattern() -> String {
+    format!("{}(", hold_name())
+}
+
+fn strip_hold_wrappers_in_place(result: &mut String, hold_pattern: &str) {
+    while let Some(start) = result.find(hold_pattern) {
+        let content_start = start + hold_pattern.len();
         let mut depth = 1;
         let mut end = content_start;
         for (i, c) in result[content_start..].char_indices() {

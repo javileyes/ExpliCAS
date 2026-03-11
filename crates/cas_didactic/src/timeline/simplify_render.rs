@@ -3,18 +3,18 @@ mod prepare;
 mod shell;
 mod steps;
 
+use crate::cas_solver::ImplicitCondition;
 use cas_ast::{Context, ExprId};
-use cas_solver::ImplicitCondition;
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn render_timeline_filtered_enriched(
     context: &mut Context,
-    steps: &[cas_solver::Step],
+    steps: &[crate::cas_solver::Step],
     original_expr: ExprId,
     simplified_result: Option<ExprId>,
     global_requires: &[ImplicitCondition],
     style_prefs: &cas_formatter::root_style::StylePreferences,
-    filtered_steps: &[&cas_solver::Step],
+    filtered_steps: &[&crate::cas_solver::Step],
     enriched_steps: &[crate::didactic::EnrichedStep],
 ) -> String {
     let mut html = shell::open_timeline_html();

@@ -3,8 +3,8 @@ use super::super::super::render::lines::{
     render_rule_with_scope_line,
 };
 use super::super::super::state::StepLoopState;
+use crate::cas_solver::Step;
 use cas_ast::Context;
-use cas_solver::Step;
 
 pub(super) fn render_step_postrule(
     ctx: &mut Context,

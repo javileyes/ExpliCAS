@@ -2,8 +2,8 @@ mod items;
 mod toggle;
 
 use super::super::render_equation_latex;
+use crate::cas_solver::SolveStep;
 use cas_ast::Context;
-use cas_solver::SolveStep;
 
 pub(super) fn render_solve_substeps_html(
     context: &Context,

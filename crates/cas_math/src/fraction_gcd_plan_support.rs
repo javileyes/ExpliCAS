@@ -64,16 +64,12 @@ fn try_structural_scalar_multiple_fraction_reduction(
     let mut ratio: Option<BigRational> = None;
     for term in num_view.terms.iter().copied() {
         let (num_coeff, num_base) = signed_term_coeff_and_base(ctx, term)?;
-        let Some((den_coeff, _, used)) =
-            den_terms.iter_mut().find(|(den_coeff, den_base, used)| {
-                !*used
-                    && !den_coeff.is_zero()
-                    && cas_ast::ordering::compare_expr(ctx, num_base, *den_base)
-                        == std::cmp::Ordering::Equal
-            })
-        else {
-            return None;
-        };
+        let (den_coeff, _, used) = den_terms.iter_mut().find(|(den_coeff, den_base, used)| {
+            !*used
+                && !den_coeff.is_zero()
+                && cas_ast::ordering::compare_expr(ctx, num_base, *den_base)
+                    == std::cmp::Ordering::Equal
+        })?;
         let candidate_ratio = den_coeff.clone() / num_coeff;
         if candidate_ratio.is_zero() {
             return None;

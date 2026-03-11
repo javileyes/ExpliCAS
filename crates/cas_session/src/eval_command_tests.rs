@@ -1,10 +1,10 @@
 #[cfg(test)]
 mod tests {
-    use crate::{
+    use crate::solver_exports::{
         build_eval_command_render_plan, evaluate_eval_command_output,
         evaluate_eval_text_simplify_with_session, EvalCommandError, EvalCommandOutput,
-        EvalDisplayMessageKind, EvalMetadataLines, EvalResultLine, SessionState,
     };
+    use crate::{EvalDisplayMessageKind, EvalMetadataLines, EvalResultLine, SessionState};
 
     #[test]
     fn evaluate_eval_command_output_success() {

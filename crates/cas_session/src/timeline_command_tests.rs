@@ -1,6 +1,9 @@
 #[cfg(test)]
 mod tests {
-    use crate::{evaluate_timeline_command_with_session, SessionState, TimelineCommandEvalOutput};
+    use crate::solver_exports::{
+        evaluate_timeline_command_with_session, TimelineCommandEvalOutput,
+    };
+    use crate::SessionState;
     use cas_solver_core::eval_options::EvalOptions;
 
     #[test]

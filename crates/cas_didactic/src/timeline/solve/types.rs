@@ -1,5 +1,5 @@
+use crate::cas_solver::SolveStep;
 use cas_ast::{Context, Equation, SolutionSet};
-use cas_solver::SolveStep;
 
 /// Timeline HTML generator for equation solving steps
 pub struct SolveTimelineHtml<'a> {

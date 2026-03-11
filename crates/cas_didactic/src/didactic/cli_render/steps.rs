@@ -6,8 +6,8 @@ use self::processor::render_step_lines;
 use self::state::StepLoopState;
 use super::super::display_policy::StepDisplayMode;
 use super::super::enrich_steps;
+use crate::cas_solver::Step;
 use cas_ast::{Context, ExprId};
-use cas_solver::Step;
 
 pub(super) fn render_simplification_step_lines(
     ctx: &mut Context,

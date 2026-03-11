@@ -1,7 +1,7 @@
 use super::local_rule_expr_ids;
+use crate::cas_solver::Step;
 use cas_ast::Context;
 use cas_formatter::DisplayExprStyled;
-use cas_solver::Step;
 
 pub(crate) fn render_step_visible_change(
     ctx: &mut Context,

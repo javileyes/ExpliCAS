@@ -1,6 +1,6 @@
 use super::super::super::super::*;
+use crate::cas_solver::to_display_steps;
 use cas_ast::Context;
-use cas_solver::to_display_steps;
 
 #[test]
 fn render_timeline_command_cli_output_simplify_no_steps() {

@@ -324,7 +324,7 @@ fn simplify_with_steps(input: &str) -> Vec<String> {
     simplifier.context = ctx;
     let (_result, steps) = simplifier.simplify(expr);
 
-    steps.iter().map(|s| s.description.clone()).collect()
+    steps.iter().map(|s| s.description.to_string()).collect()
 }
 
 #[test]

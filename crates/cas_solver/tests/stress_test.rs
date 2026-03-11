@@ -194,7 +194,7 @@ fn try_simplify(
         // Extract rule counts from profiler
         let mut rule_counts = HashMap::new();
         for step in &steps {
-            *rule_counts.entry(step.rule_name.clone()).or_default() += 1;
+            *rule_counts.entry(step.rule_name.to_string()).or_default() += 1;
         }
 
         (result, steps, rule_counts, simplifier.context)

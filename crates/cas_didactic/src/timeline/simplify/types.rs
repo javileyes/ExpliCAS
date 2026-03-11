@@ -1,6 +1,6 @@
 use super::VerbosityLevel;
+use crate::cas_solver::{ImplicitCondition, Step};
 use cas_ast::{Context, ExprId};
-use cas_solver::{ImplicitCondition, Step};
 
 /// Timeline HTML generator - exports simplification steps to interactive HTML
 pub struct TimelineHtml<'a> {

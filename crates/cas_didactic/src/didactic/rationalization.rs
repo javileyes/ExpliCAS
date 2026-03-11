@@ -4,8 +4,8 @@ mod grouping;
 mod latex;
 mod product;
 
+use crate::cas_solver::Step;
 use cas_ast::{Context, ExprId};
-use cas_solver::Step;
 
 use super::SubStep;
 

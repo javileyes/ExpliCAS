@@ -1,9 +1,9 @@
+use crate::cas_solver::Step;
 use cas_ast::Context;
 use cas_formatter::{
     DisplayContext, HighlightColor, HighlightConfig, LaTeXExprHighlightedWithHints,
     StylePreferences,
 };
-use cas_solver::Step;
 
 pub(super) fn render_local_change_latex(
     context: &Context,

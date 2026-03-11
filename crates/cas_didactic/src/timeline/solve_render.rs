@@ -2,8 +2,8 @@ mod equation;
 mod final_result;
 mod step_html;
 
+use crate::cas_solver::SolveStep;
 use cas_ast::{Context, Equation, RelOp};
-use cas_solver::SolveStep;
 
 pub(super) fn render_equation_latex(context: &Context, equation: &Equation) -> String {
     equation::render_equation_latex(context, equation)

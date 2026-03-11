@@ -172,7 +172,7 @@ mod tests {
         let b = parse("b", &mut ctx).expect("parse b");
         let root = ctx.add_raw(Expr::Mul(a, b));
         let replacement = parse("x", &mut ctx).expect("parse replacement");
-        let rewritten = rewrite_at_expr_path_raw(&mut ctx, root, &vec![0], replacement);
+        let rewritten = rewrite_at_expr_path_raw(&mut ctx, root, &[0], replacement);
         assert!(matches!(ctx.get(rewritten), Expr::Mul(_, _)));
     }
 
@@ -181,7 +181,7 @@ mod tests {
         let mut ctx = Context::new();
         let root = parse("a+b", &mut ctx).expect("parse root");
         let replacement = parse("x", &mut ctx).expect("parse replacement");
-        let rewritten = rewrite_at_expr_path(&mut ctx, root, &vec![2], replacement);
+        let rewritten = rewrite_at_expr_path(&mut ctx, root, &[2], replacement);
         assert_eq!(rewritten, root);
     }
 

@@ -1,10 +1,11 @@
 #[cfg(test)]
 mod tests {
-    use crate::{
+    use crate::solver_exports::{
         apply_assignment, format_assignment_error_message, format_assignment_success_message,
         format_let_assignment_parse_error_message, parse_let_assignment_input, AssignmentError,
-        LetAssignmentParseError, ParsedLetAssignment, SessionState,
+        LetAssignmentParseError, ParsedLetAssignment,
     };
+    use crate::SessionState;
 
     #[test]
     fn apply_assignment_validates_name() {

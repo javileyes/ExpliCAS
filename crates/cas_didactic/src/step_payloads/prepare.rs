@@ -2,8 +2,8 @@ mod enrich;
 mod filter;
 mod mode;
 
+use crate::cas_solver::Step;
 use cas_ast::Context;
-use cas_solver::Step;
 
 pub(super) fn prepare_step_payloads(
     steps: &[Step],

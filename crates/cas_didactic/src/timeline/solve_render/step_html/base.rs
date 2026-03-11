@@ -1,5 +1,5 @@
+use crate::cas_solver::SolveStep;
 use cas_formatter::html_escape;
-use cas_solver::SolveStep;
 
 pub(super) const STEP_CLOSE_HTML: &str = "        </div>\n";
 

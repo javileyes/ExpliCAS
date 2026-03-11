@@ -1,6 +1,6 @@
 use super::super::super::super::*;
+use crate::cas_solver::Step;
 use cas_ast::{Context, Expr};
-use cas_solver::Step;
 
 #[test]
 fn test_html_generation() {

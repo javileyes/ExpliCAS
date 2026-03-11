@@ -246,7 +246,7 @@ fn simplify_with_steps(input: &str) -> (String, Vec<String>) {
         }
     );
 
-    let step_names: Vec<String> = steps.iter().map(|s| s.rule_name.clone()).collect();
+    let step_names: Vec<String> = steps.iter().map(|s| s.rule_name.to_string()).collect();
 
     (result_str, step_names)
 }

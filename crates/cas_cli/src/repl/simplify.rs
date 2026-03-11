@@ -6,17 +6,18 @@ impl Repl {
         line: &str,
         verbosity: Verbosity,
     ) -> ReplReply {
-        let lines = match cas_session::evaluate_full_simplify_command_lines_on_repl_core(
-            &mut self.core,
-            line,
-            Self::set_display_mode_from_verbosity(verbosity),
-        ) {
-            Ok(lines) => lines,
-            Err(error) => return reply_output(error),
-        };
+        let lines =
+            match cas_session::solver_exports::evaluate_full_simplify_command_lines_on_repl_core(
+                &mut self.core,
+                line,
+                Self::set_display_mode_from_verbosity(verbosity),
+            ) {
+                Ok(lines) => lines,
+                Err(error) => return reply_output(error),
+            };
 
         // Store health report for the `health` command (if health tracking is enabled).
-        cas_session::update_health_report_on_repl_core(&mut self.core);
+        cas_session::solver_exports::update_health_report_on_repl_core(&mut self.core);
 
         reply_output(lines.join("\n"))
     }

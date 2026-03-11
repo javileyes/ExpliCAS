@@ -1,8 +1,8 @@
 //! Solver command/output types re-exported for session clients.
 
 pub use cas_solver::{
-    SolveCommandEvalOutput, TimelineCommandEvalOutput, TimelineSimplifyEvalOutput,
-    TimelineSolveEvalOutput,
+    EvalCommandError, EvalCommandOutput, EvalCommandRenderPlan, SolveCommandEvalOutput,
+    TimelineCommandEvalOutput, TimelineSimplifyEvalOutput, TimelineSolveEvalOutput,
 };
 pub use cas_solver_core::health_runtime::{
     HealthCommandEvalOutput, HealthCommandInput, HealthStatusInput,

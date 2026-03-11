@@ -112,8 +112,9 @@ mod tests {
     #[test]
     fn rewrites_morrie_telescoping_product() {
         let mut ctx = Context::new();
-        let expr = parse("cos(x)*cos(2*x)*cos(4*x)", &mut ctx).expect("parse");
-        let rewrite = try_rewrite_cos_product_telescoping_expr(&mut ctx, expr).expect("rewrite");
+        let expr = parse("cos(x)*cos(2*x)*cos(4*x)", &mut ctx).unwrap_or_else(|_| panic!("parse"));
+        let rewrite = try_rewrite_cos_product_telescoping_expr(&mut ctx, expr)
+            .unwrap_or_else(|| panic!("rewrite"));
         let text = rendered(&ctx, rewrite.rewritten);
         assert!(text.contains("sin(8 * x)"));
         assert!(text.contains("8"));
@@ -123,7 +124,7 @@ mod tests {
     #[test]
     fn rejects_non_dyadic_multiplier_pattern() {
         let mut ctx = Context::new();
-        let expr = parse("cos(x)*cos(3*x)", &mut ctx).expect("parse");
+        let expr = parse("cos(x)*cos(3*x)", &mut ctx).unwrap_or_else(|_| panic!("parse"));
         assert!(try_rewrite_cos_product_telescoping_expr(&mut ctx, expr).is_none());
     }
 }

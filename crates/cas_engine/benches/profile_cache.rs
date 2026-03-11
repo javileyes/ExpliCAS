@@ -826,7 +826,6 @@ fn bench_solve_hotspots_cached(c: &mut Criterion) {
     common::configure_standard_group(&mut group);
 
     for (name, input, options) in cases {
-        let input = input;
         let options = options.clone();
         group.bench_function(name, |b| {
             b.iter_batched(

@@ -3,8 +3,8 @@ mod general;
 mod latex;
 mod structured;
 
+use crate::cas_solver::Step;
 use cas_ast::{Context, ExprId};
-use cas_solver::Step;
 
 use super::nested_fraction_analysis::classify_nested_fraction;
 use super::SubStep;

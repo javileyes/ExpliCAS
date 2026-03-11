@@ -3,8 +3,8 @@ mod visible;
 use super::super::super::super::display_policy::CliSubstepsRenderState;
 use super::super::super::super::EnrichedStep;
 use super::super::state::StepLoopState;
+use crate::cas_solver::Step;
 use cas_ast::Context;
-use cas_solver::Step;
 
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 pub(super) fn render_detailed_step_lines(

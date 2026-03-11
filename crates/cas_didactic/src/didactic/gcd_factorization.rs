@@ -4,8 +4,8 @@ mod factor;
 mod render;
 
 use super::SubStep;
+use crate::cas_solver::Step;
 use cas_ast::Context;
-use cas_solver::Step;
 
 /// Generate sub-steps explaining polynomial factorization and GCD cancellation.
 /// For example: `(x^2 - 4) / (2 + x)` shows:

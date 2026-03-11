@@ -4,10 +4,10 @@ use super::types::{
 
 /// Convert solver timeline evaluation output into didactic render payload.
 pub fn timeline_command_output_from_solver(
-    output: cas_session::TimelineCommandEvalOutput,
+    output: cas_session::solver_exports::TimelineCommandEvalOutput,
 ) -> TimelineCommandOutput {
     match output {
-        cas_session::TimelineCommandEvalOutput::Solve(out) => {
+        cas_session::solver_exports::TimelineCommandEvalOutput::Solve(out) => {
             TimelineCommandOutput::Solve(TimelineSolveCommandOutput {
                 equation: out.equation,
                 var: out.var,
@@ -15,7 +15,7 @@ pub fn timeline_command_output_from_solver(
                 display_steps: out.display_steps,
             })
         }
-        cas_session::TimelineCommandEvalOutput::Simplify {
+        cas_session::solver_exports::TimelineCommandEvalOutput::Simplify {
             expr_input,
             aggressive,
             output,

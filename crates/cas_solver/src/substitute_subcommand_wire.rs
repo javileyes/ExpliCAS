@@ -20,5 +20,5 @@ pub fn evaluate_substitute_subcommand_wire(
         "{{\"mode\":\"{}\",\"steps\":{},\"pretty\":true}}",
         mode, steps_enabled
     );
-    crate::substitute_str_to_wire(expr, target, replacement, Some(&opts))
+    crate::wire::substitute_str_to_wire(expr, target, replacement, Some(&opts))
 }

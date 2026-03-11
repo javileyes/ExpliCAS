@@ -494,7 +494,7 @@ fn test_power_tower_diagnostic() {
                     // Collect rule counts
                     let mut rule_counts: HashMap<String, usize> = HashMap::new();
                     for step in &steps {
-                        *rule_counts.entry(step.rule_name.clone()).or_default() += 1;
+                        *rule_counts.entry(step.rule_name.to_string()).or_default() += 1;
                     }
                     (steps.len(), out_nodes, elapsed, rule_counts)
                 }));

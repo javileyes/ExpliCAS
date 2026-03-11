@@ -15,6 +15,8 @@ pub fn evaluate_eval_text_command_with_session(
     auto_store: bool,
 ) -> (Result<String, String>, Option<String>, Option<String>) {
     crate::run_with_domain_session(session_path, domain, |engine, state| {
-        crate::evaluate_eval_text_simplify_with_session(engine, state, expr, auto_store)
+        crate::solver_exports::evaluate_eval_text_simplify_with_session(
+            engine, state, expr, auto_store,
+        )
     })
 }

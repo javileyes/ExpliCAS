@@ -56,7 +56,7 @@ mod snapshot;
 mod snapshot_store_convert;
 #[cfg(test)]
 mod snapshot_tests;
-mod solver_exports;
+pub mod solver_exports;
 mod state_bindings;
 mod state_core;
 mod state_eval_session;
@@ -92,7 +92,6 @@ pub use resolve_refs::{
 pub use session_io::{
     load_or_new_session, run_with_domain_session, run_with_session, save_session,
 };
-pub use solver_exports::*;
 pub type CacheHitEntryId = u64;
 
 pub type ResolvedExpr = cas_session_core::cache::ResolvedExpr<RequiredItem>;
@@ -102,11 +101,6 @@ pub type SessionStore = cas_session_core::store::SessionStore<Diagnostics, Simpl
 pub use cas_engine::{Engine, Simplifier, Step};
 pub use cas_session_core::env;
 pub use cas_session_core::types::{CacheConfig, EntryId, EntryKind, RefMode, ResolveError};
-pub use cas_solver::{
-    build_eval_command_render_plan, evaluate_eval_command_output,
-    evaluate_eval_text_simplify_with_session, EvalCommandError, EvalCommandOutput,
-    EvalCommandRenderPlan,
-};
 pub use cas_solver_core::eval_display_types::{
     EvalDisplayMessage, EvalDisplayMessageKind, EvalMetadataLines, EvalResultLine,
 };

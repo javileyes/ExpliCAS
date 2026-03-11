@@ -2,24 +2,28 @@ use super::super::super::command_projection::timeline_command_output_from_solver
 use super::super::super::types::TimelineCommandOutput;
 
 pub fn evaluate_timeline_command_output_with_session<S>(
-    engine: &mut cas_solver::Engine,
+    engine: &mut crate::cas_solver::Engine,
     session: &mut S,
     input: &str,
-    eval_options: &cas_solver::EvalOptions,
-) -> Result<TimelineCommandOutput, cas_session::TimelineCommandEvalError>
+    eval_options: &crate::cas_solver::EvalOptions,
+) -> Result<TimelineCommandOutput, cas_session::solver_exports::TimelineCommandEvalError>
 where
-    S: cas_solver::EvalSession<
-        Options = cas_solver::EvalOptions,
-        Diagnostics = cas_solver::Diagnostics,
+    S: crate::cas_solver::EvalSession<
+        Options = crate::cas_solver::EvalOptions,
+        Diagnostics = crate::cas_solver::Diagnostics,
     >,
-    S::Store: cas_solver::EvalStore<
-        DomainMode = cas_solver::DomainMode,
-        RequiredItem = cas_solver::RequiredItem,
-        Step = cas_solver::Step,
-        Diagnostics = cas_solver::Diagnostics,
+    S::Store: crate::cas_solver::EvalStore<
+        DomainMode = crate::cas_solver::DomainMode,
+        RequiredItem = crate::cas_solver::RequiredItem,
+        Step = crate::cas_solver::Step,
+        Diagnostics = crate::cas_solver::Diagnostics,
     >,
 {
-    let output =
-        cas_session::evaluate_timeline_command_with_session(engine, session, input, eval_options)?;
+    let output = cas_session::solver_exports::evaluate_timeline_command_with_session(
+        engine,
+        session,
+        input,
+        eval_options,
+    )?;
     Ok(timeline_command_output_from_solver(output))
 }

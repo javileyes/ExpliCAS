@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod tests {
-    use crate::{evaluate_show_command_lines, SessionState};
+    use crate::solver_exports::evaluate_show_command_lines;
+    use crate::SessionState;
 
     #[test]
     fn evaluate_show_command_lines_invalid_id_reports_error() {

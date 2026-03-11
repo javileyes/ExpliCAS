@@ -1,8 +1,10 @@
+use crate::solver_exports::{
+    apply_profile_command_on_repl_core, build_repl_prompt, clear_repl_profile_cache,
+    eval_options_from_repl_core, evaluate_profile_command_message_on_repl_core,
+    reset_repl_runtime_state,
+};
 use crate::{
-    apply_profile_command_on_repl_core, build_repl_core_with_config, build_repl_prompt,
-    clear_repl_profile_cache, eval_options_from_repl_core,
-    evaluate_profile_command_message_on_repl_core, reset_repl_core_full_with_config,
-    reset_repl_core_with_config, reset_repl_runtime_state,
+    build_repl_core_with_config, reset_repl_core_full_with_config, reset_repl_core_with_config,
 };
 use cas_solver_core::eval_options::EvalOptions;
 
@@ -32,7 +34,7 @@ fn reset_repl_runtime_state_clears_session_and_runtime_flags() {
 fn clear_repl_profile_cache_empties_cache() {
     let mut core = crate::ReplCore::new();
     if let Err(err) = core.with_engine_and_state(|engine, state| {
-        crate::evaluate_eval_command_output(engine, state, "x + x", false)
+        crate::solver_exports::evaluate_eval_command_output(engine, state, "x + x", false)
     }) {
         panic!("eval failed: {err:?}");
     }
@@ -71,7 +73,7 @@ fn reset_repl_core_with_config_resets_runtime_state() {
 fn reset_repl_core_full_with_config_clears_profile_cache() {
     let mut core = crate::ReplCore::new();
     if let Err(err) = core.with_engine_and_state(|engine, state| {
-        crate::evaluate_eval_command_output(engine, state, "x + x", false)
+        crate::solver_exports::evaluate_eval_command_output(engine, state, "x + x", false)
     }) {
         panic!("eval failed: {err:?}");
     }
@@ -89,7 +91,7 @@ fn build_repl_core_with_config_applies_toggle_sync() {
     };
     let mut core = build_repl_core_with_config(&config);
     let eval = core.with_engine_and_state(|engine, state| {
-        crate::evaluate_eval_command_output(engine, state, "(x+1)^2", false)
+        crate::solver_exports::evaluate_eval_command_output(engine, state, "(x+1)^2", false)
     });
     assert!(eval.is_ok());
 }

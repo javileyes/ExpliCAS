@@ -6,8 +6,8 @@ mod succinct;
 use super::super::super::display_policy::{render_cli_enriched_substeps_lines, StepDisplayMode};
 use super::super::super::EnrichedStep;
 use super::state::StepLoopState;
+use crate::cas_solver::Step;
 use cas_ast::Context;
-use cas_solver::Step;
 
 pub(super) fn render_step_lines(
     ctx: &mut Context,

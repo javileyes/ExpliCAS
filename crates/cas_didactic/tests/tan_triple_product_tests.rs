@@ -32,8 +32,8 @@ fn eval_with_steps(input: &str) -> (String, Vec<StepInfo>) {
     let step_infos: Vec<StepInfo> = steps
         .iter()
         .map(|s| StepInfo {
-            description: s.description.clone(),
-            rule_name: s.rule_name.clone(),
+            description: s.description.to_string(),
+            rule_name: s.rule_name.to_string(),
         })
         .collect();
 

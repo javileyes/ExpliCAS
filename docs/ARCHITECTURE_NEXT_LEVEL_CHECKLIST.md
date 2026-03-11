@@ -180,6 +180,11 @@ Current progress:
     layer
     - only `step_payloads` / `step_payload_render` remain, which matches their
       actual role as typed didactic builders
+    - source-internal didactic/timeline runtime now resolves `Step`,
+      `DisplayEvalSteps`, `Engine`, `EvalSession` and related eval types through
+      a local bridge backed by `cas_engine` / `cas_solver_core`
+      - `cas_solver` remains only for solver-specific helpers such as
+        `reconstruct_global_expr(...)` and grouped assumption-line formatting
   - the former root boundary module `cas_solver::json` now also matches that
     naming physically and logically as `cas_solver::wire`
     - directory `cas_solver/src/json` -> `cas_solver/src/wire`
@@ -206,6 +211,31 @@ Current progress:
     - the session runtime now also aliases the wire DTO locally as
       `EvalOutputWire`, instead of spelling `EvalJsonOutput` directly through
       `eval_command::session`
+  - `cas_session` root no longer acts as an implicit façade for solver-facing
+    stateless helpers
+    - `pub use solver_exports::*;` was removed from the crate root
+    - internal and integration tests were migrated to
+      `crate::solver_exports::...`
+    - solver-facing stateless eval helpers/types (`evaluate_eval_command_output`,
+      `evaluate_eval_text_simplify_with_session`, `build_eval_command_render_plan`,
+      `EvalCommandOutput`, `EvalCommandError`, `EvalCommandRenderPlan`) also now
+      live under `cas_session::solver_exports`
+    - rationale:
+      - `cas_session` root stays focused on session/repl/stateful flows
+      - solver passthroughs remain available, but only under an explicit
+        namespace that makes the ownership boundary visible
+  - `cas_solver` root also stopped re-exporting direct stateless wire entrypoints
+    from the crate root
+    - `cas_solver::wire` is now the explicit namespace for:
+      - `eval_str_to_wire(...)`
+      - `substitute_str_to_wire(...)`
+      - `evaluate_envelope_wire_command(...)`
+    - CLI, Android FFI, and contract tests were migrated to consume
+      `cas_solver::wire::*` directly
+    - rationale:
+      - the solver root keeps broad math/runtime ownership
+      - transport/wire entrypoints are still public, but now live behind a
+        boundary namespace instead of appearing as generic root APIs
   - `cas_android_ffi` also neutralized its JNI-internal helper names:
     - `eval_json_core(...)` -> `eval_core(...)`
     - `substitute_json_core(...)` -> `substitute_core(...)`

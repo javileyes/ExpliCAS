@@ -21,7 +21,10 @@ pub struct EnvelopeArgs {
 
 /// Run the envelope command.
 pub fn run(args: EnvelopeArgs) {
-    let output =
-        cas_solver::evaluate_envelope_wire_command(&args.expr, &args.domain, &args.value_domain);
+    let output = cas_solver::wire::evaluate_envelope_wire_command(
+        &args.expr,
+        &args.domain,
+        &args.value_domain,
+    );
     println!("{}", output);
 }

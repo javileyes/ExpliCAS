@@ -1,6 +1,6 @@
 use super::{PolynomialProofData, SubStep};
+use crate::cas_solver::Step;
 use cas_ast::Context;
-use cas_solver::Step;
 
 pub(super) fn build_substitution_intro_substep(
     ctx: &Context,

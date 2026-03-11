@@ -1,6 +1,6 @@
 use super::StepVisibility;
+use crate::cas_solver::Step;
 use cas_ast::ExprId;
-use cas_solver::Step;
 
 pub(super) fn clone_steps_matching_visibility(
     steps: &[Step],

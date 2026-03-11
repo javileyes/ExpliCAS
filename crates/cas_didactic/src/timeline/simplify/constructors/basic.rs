@@ -1,6 +1,6 @@
 use super::super::{TimelineHtml, VerbosityLevel};
+use crate::cas_solver::Step;
 use cas_ast::{Context, ExprId};
-use cas_solver::Step;
 
 impl<'a> TimelineHtml<'a> {
     pub fn new(

@@ -1,9 +1,10 @@
-use crate::SessionState;
-use crate::{
+use crate::solver_exports::{
     format_history_entry_inspection_lines, format_inspect_history_entry_error_message,
     inspect_history_entry, inspect_history_entry_input, parse_history_entry_id,
-    HistoryEntryDetails, InspectHistoryEntryInputError, ParseHistoryEntryIdError,
+    HistoryEntryDetails, HistoryEntryInspection, HistoryExprInspection,
+    InspectHistoryEntryInputError, ParseHistoryEntryIdError,
 };
+use crate::SessionState;
 
 #[test]
 fn inspect_history_entry_reports_missing_id() {
@@ -67,11 +68,11 @@ fn format_inspect_history_entry_error_message_not_found() {
 
 #[test]
 fn format_history_entry_inspection_lines_expr_includes_parsed() {
-    let inspection = crate::HistoryEntryInspection {
+    let inspection = HistoryEntryInspection {
         id: 1,
         type_str: "Expression".to_string(),
         raw_text: "x + x".to_string(),
-        details: crate::HistoryEntryDetails::Expr(crate::HistoryExprInspection {
+        details: HistoryEntryDetails::Expr(HistoryExprInspection {
             parsed: cas_ast::ExprId::from_raw(10),
             resolved: Some(cas_ast::ExprId::from_raw(11)),
             simplified: Some(cas_ast::ExprId::from_raw(12)),
@@ -89,11 +90,11 @@ fn format_history_entry_inspection_lines_expr_includes_parsed() {
 
 #[test]
 fn format_history_entry_inspection_lines_eq_includes_note() {
-    let inspection = crate::HistoryEntryInspection {
+    let inspection = HistoryEntryInspection {
         id: 2,
         type_str: "Equation".to_string(),
         raw_text: "x = y".to_string(),
-        details: crate::HistoryEntryDetails::Eq {
+        details: HistoryEntryDetails::Eq {
             lhs: cas_ast::ExprId::from_raw(20),
             rhs: cas_ast::ExprId::from_raw(21),
         },

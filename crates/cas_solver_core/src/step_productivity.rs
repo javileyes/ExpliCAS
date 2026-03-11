@@ -111,12 +111,7 @@ mod tests {
             |s| s.path.clone(),
             |_ctx, _before, _after| false,
             |ctx, root, path, replacement| {
-                cas_math::expr_path_rewrite::rewrite_at_expr_path(
-                    ctx,
-                    root,
-                    &path.to_vec(),
-                    replacement,
-                )
+                cas_math::expr_path_rewrite::rewrite_at_expr_path(ctx, root, path, replacement)
             },
         );
         assert!(out.is_empty());
@@ -146,12 +141,7 @@ mod tests {
             |s| s.path.clone(),
             |_ctx, _before, _after| false,
             |ctx, root, path, replacement| {
-                cas_math::expr_path_rewrite::rewrite_at_expr_path(
-                    ctx,
-                    root,
-                    &path.to_vec(),
-                    replacement,
-                )
+                cas_math::expr_path_rewrite::rewrite_at_expr_path(ctx, root, path, replacement)
             },
         );
         assert_eq!(out.len(), 1);

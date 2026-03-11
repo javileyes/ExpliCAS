@@ -10,22 +10,22 @@ pub fn extract_timeline_invocation_input(line: &str) -> &str {
 }
 
 pub fn evaluate_timeline_invocation_cli_actions_with_session<S>(
-    engine: &mut cas_solver::Engine,
+    engine: &mut crate::cas_solver::Engine,
     session: &mut S,
     line: &str,
-    eval_options: &cas_solver::EvalOptions,
+    eval_options: &crate::cas_solver::EvalOptions,
     verbosity: VerbosityLevel,
-) -> Result<Vec<TimelineCliAction>, cas_session::TimelineCommandEvalError>
+) -> Result<Vec<TimelineCliAction>, cas_session::solver_exports::TimelineCommandEvalError>
 where
-    S: cas_solver::EvalSession<
-        Options = cas_solver::EvalOptions,
-        Diagnostics = cas_solver::Diagnostics,
+    S: crate::cas_solver::EvalSession<
+        Options = crate::cas_solver::EvalOptions,
+        Diagnostics = crate::cas_solver::Diagnostics,
     >,
-    S::Store: cas_solver::EvalStore<
-        DomainMode = cas_solver::DomainMode,
-        RequiredItem = cas_solver::RequiredItem,
-        Step = cas_solver::Step,
-        Diagnostics = cas_solver::Diagnostics,
+    S::Store: crate::cas_solver::EvalStore<
+        DomainMode = crate::cas_solver::DomainMode,
+        RequiredItem = crate::cas_solver::RequiredItem,
+        Step = crate::cas_solver::Step,
+        Diagnostics = crate::cas_solver::Diagnostics,
     >,
 {
     let input = extract_timeline_invocation_input(line);

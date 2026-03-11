@@ -2,7 +2,10 @@ use super::*;
 
 impl Repl {
     pub(crate) fn handle_rationalize_core(&mut self, line: &str) -> ReplReply {
-        match cas_session::evaluate_rationalize_command_lines_on_repl_core(&mut self.core, line) {
+        match cas_session::solver_exports::evaluate_rationalize_command_lines_on_repl_core(
+            &mut self.core,
+            line,
+        ) {
             Ok(lines) => reply_output(lines.join("\n")),
             Err(message) => reply_output(message),
         }

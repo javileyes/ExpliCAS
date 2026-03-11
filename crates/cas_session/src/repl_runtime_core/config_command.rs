@@ -13,7 +13,7 @@ pub fn evaluate_and_apply_config_command_on_repl(
         line,
         config,
         core,
-        crate::evaluate_and_apply_config_command,
+        crate::solver_exports::evaluate_and_apply_config_command,
         crate::sync_simplifier_with_cas_config,
     )
 }

@@ -356,7 +356,7 @@ mod vars_command_display_tests;
 mod weierstrass_command;
 #[cfg(test)]
 mod weierstrass_command_tests;
-mod wire;
+pub mod wire;
 #[cfg(test)]
 mod wire_bridge_tests;
 

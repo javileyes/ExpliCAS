@@ -31,7 +31,7 @@ fn simplify_and_get_nested_focus(input: &str) -> Vec<(Option<String>, Option<Str
             let after_local = step
                 .after_local()
                 .map(|id| display(&simplifier.context, id));
-            (before_local, after_local, step.description.clone())
+            (before_local, after_local, step.description.to_string())
         })
         .collect()
 }
