@@ -34,7 +34,6 @@
 //! The Context initialization will automatically cache the new builtin.
 
 use crate::symbol::SymbolId;
-use std::collections::HashMap;
 
 /// Known built-in functions with cached SymbolIds.
 ///
@@ -191,6 +190,57 @@ impl BuiltinFn {
         }
     }
 
+    /// Resolve a builtin from its canonical textual name.
+    #[inline]
+    pub fn from_name(name: &str) -> Option<Self> {
+        match name {
+            "sin" => Some(BuiltinFn::Sin),
+            "cos" => Some(BuiltinFn::Cos),
+            "tan" => Some(BuiltinFn::Tan),
+            "sec" => Some(BuiltinFn::Sec),
+            "csc" => Some(BuiltinFn::Csc),
+            "cot" => Some(BuiltinFn::Cot),
+            "asin" => Some(BuiltinFn::Asin),
+            "acos" => Some(BuiltinFn::Acos),
+            "atan" => Some(BuiltinFn::Atan),
+            "asec" => Some(BuiltinFn::Asec),
+            "acsc" => Some(BuiltinFn::Acsc),
+            "acot" => Some(BuiltinFn::Acot),
+            "arcsin" => Some(BuiltinFn::Arcsin),
+            "arccos" => Some(BuiltinFn::Arccos),
+            "arctan" => Some(BuiltinFn::Arctan),
+            "arcsec" => Some(BuiltinFn::Arcsec),
+            "arccsc" => Some(BuiltinFn::Arccsc),
+            "arccot" => Some(BuiltinFn::Arccot),
+            "sinh" => Some(BuiltinFn::Sinh),
+            "cosh" => Some(BuiltinFn::Cosh),
+            "tanh" => Some(BuiltinFn::Tanh),
+            "asinh" => Some(BuiltinFn::Asinh),
+            "acosh" => Some(BuiltinFn::Acosh),
+            "atanh" => Some(BuiltinFn::Atanh),
+            "ln" => Some(BuiltinFn::Ln),
+            "log" => Some(BuiltinFn::Log),
+            "log2" => Some(BuiltinFn::Log2),
+            "log10" => Some(BuiltinFn::Log10),
+            "exp" => Some(BuiltinFn::Exp),
+            "sqrt" => Some(BuiltinFn::Sqrt),
+            "cbrt" => Some(BuiltinFn::Cbrt),
+            "root" => Some(BuiltinFn::Root),
+            "abs" => Some(BuiltinFn::Abs),
+            "sign" => Some(BuiltinFn::Sign),
+            "floor" => Some(BuiltinFn::Floor),
+            "ceil" => Some(BuiltinFn::Ceil),
+            "__hold" => Some(BuiltinFn::Hold),
+            "poly_result" => Some(BuiltinFn::PolyResult),
+            "expand" => Some(BuiltinFn::Expand),
+            "Equal" => Some(BuiltinFn::Equal),
+            "Less" => Some(BuiltinFn::Less),
+            "Greater" => Some(BuiltinFn::Greater),
+            "__eq__" => Some(BuiltinFn::Eq),
+            _ => None,
+        }
+    }
+
     /// Iterate over all builtin functions.
     #[inline]
     pub fn all() -> impl Iterator<Item = BuiltinFn> {
@@ -255,8 +305,6 @@ pub struct BuiltinIds {
     /// Cached SymbolIds, indexed by BuiltinFn discriminant.
     /// SymbolId(0) means "not yet initialized" (valid after init).
     ids: [SymbolId; BuiltinFn::COUNT],
-    /// Reverse map: SymbolId → BuiltinFn for O(1) lookup.
-    reverse: HashMap<SymbolId, BuiltinFn>,
     /// Whether the cache has been initialized
     initialized: bool,
 }
@@ -265,7 +313,6 @@ impl Default for BuiltinIds {
     fn default() -> Self {
         Self {
             ids: [0; BuiltinFn::COUNT],
-            reverse: HashMap::new(),
             initialized: false,
         }
     }
@@ -275,6 +322,22 @@ impl BuiltinIds {
     /// Create a new uninitialized cache.
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Create an initialized cache for the standard identity layout used by
+    /// `Context::new()`, where builtin `SymbolId`s match their enum indices.
+    pub fn initialized_identity() -> Self {
+        let mut ids = [0; BuiltinFn::COUNT];
+        let mut idx = 0;
+        while idx < BuiltinFn::COUNT {
+            ids[idx] = idx;
+            idx += 1;
+        }
+
+        Self {
+            ids,
+            initialized: true,
+        }
     }
 
     /// Check if the cache is initialized.
@@ -297,14 +360,25 @@ impl BuiltinIds {
     #[inline]
     pub fn set(&mut self, builtin: BuiltinFn, id: SymbolId) {
         self.ids[builtin as usize] = id;
-        self.reverse.insert(id, builtin);
     }
 
-    /// Reverse lookup: get the BuiltinFn for a SymbolId (O(1)).
+    /// Reverse lookup: get the BuiltinFn for a SymbolId.
+    ///
+    /// In the standard `Context::new()` layout this is O(1) because builtins are
+    /// interned first, in enum order, so their `SymbolId` matches the builtin
+    /// index. A tiny fallback scan keeps the helper correct for any unusual
+    /// non-identity layout.
     #[inline]
     pub fn lookup(&self, id: SymbolId) -> Option<BuiltinFn> {
         debug_assert!(self.initialized, "BuiltinIds not initialized");
-        self.reverse.get(&id).copied()
+        if id < BuiltinFn::COUNT && self.ids[id] == id {
+            return Some(ALL_BUILTINS[id]);
+        }
+
+        self.ids
+            .iter()
+            .position(|&cached_id| cached_id == id)
+            .map(|idx| ALL_BUILTINS[idx])
     }
 
     /// Mark as initialized.
@@ -352,5 +426,28 @@ mod tests {
         assert!(cache.is_initialized());
         assert_eq!(cache.get(BuiltinFn::Sin), 42);
         assert_eq!(cache.get(BuiltinFn::Cos), 43);
+    }
+
+    #[test]
+    fn test_builtin_ids_lookup_non_identity_fallback() {
+        let mut cache = BuiltinIds::new();
+        cache.set(BuiltinFn::Sin, 42);
+        cache.set(BuiltinFn::Cos, 43);
+        cache.mark_initialized();
+
+        assert_eq!(cache.lookup(42), Some(BuiltinFn::Sin));
+        assert_eq!(cache.lookup(43), Some(BuiltinFn::Cos));
+        assert_eq!(cache.lookup(999), None);
+    }
+
+    #[test]
+    fn test_builtin_ids_initialized_identity() {
+        let cache = BuiltinIds::initialized_identity();
+        assert!(cache.is_initialized());
+        assert_eq!(cache.get(BuiltinFn::Sin), BuiltinFn::Sin as SymbolId);
+        assert_eq!(
+            cache.lookup(BuiltinFn::Sqrt as SymbolId),
+            Some(BuiltinFn::Sqrt)
+        );
     }
 }

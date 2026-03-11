@@ -1,10 +1,11 @@
 use num_bigint::BigInt;
 use num_rational::BigRational;
-use std::collections::HashMap;
+use rustc_hash::{FxHashMap, FxHasher};
+use smallvec::SmallVec;
 use std::fmt;
-use std::hash::{DefaultHasher, Hash, Hasher};
+use std::hash::{Hash, Hasher};
 
-use crate::builtin::{BuiltinFn, BuiltinIds, ALL_BUILTINS};
+use crate::builtin::BuiltinFn;
 use crate::symbol::{SymbolId, SymbolTable};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -143,13 +144,11 @@ pub struct Context {
     /// Interner: maps hash to bucket of ExprIds with that hash.
     /// Using Vec<ExprId> instead of single ExprId to properly handle hash collisions
     /// without losing deduplication for expressions that share the same hash.
-    pub interner: HashMap<u64, Vec<ExprId>>,
+    pub interner: FxHashMap<u64, SmallVec<[ExprId; 1]>>,
     /// Symbol table for interned variable names
     pub symbols: SymbolTable,
     /// Statistics for budget tracking
     stats: ContextStats,
-    /// Cached SymbolIds for builtin functions (O(1) comparison)
-    builtins: BuiltinIds,
 }
 
 impl Default for Context {
@@ -159,34 +158,100 @@ impl Default for Context {
 }
 
 impl Context {
-    pub fn new() -> Self {
-        let builtin_capacity = BuiltinFn::COUNT + 8;
-        let mut ctx = Self {
-            // Most short-lived parse/eval contexts stay below a few dozen nodes.
-            nodes: Vec::with_capacity(32),
-            interner: HashMap::with_capacity(64),
-            symbols: SymbolTable::with_capacity(builtin_capacity),
-            stats: ContextStats::default(),
-            builtins: BuiltinIds::new(),
-        };
-        ctx.init_builtins();
-        ctx
+    #[inline]
+    fn expr_hash(&self, value: &Expr) -> u64 {
+        let mut hasher = FxHasher::default();
+        match value {
+            Expr::Number(n) => {
+                hasher.write_u8(0);
+                n.numer().hash(&mut hasher);
+                n.denom().hash(&mut hasher);
+            }
+            Expr::Constant(c) => {
+                hasher.write_u8(1);
+                let tag = match c {
+                    Constant::Pi => 0u8,
+                    Constant::E => 1,
+                    Constant::Infinity => 2,
+                    Constant::Undefined => 3,
+                    Constant::I => 4,
+                    Constant::Phi => 5,
+                };
+                hasher.write_u8(tag);
+            }
+            Expr::Variable(id) => {
+                hasher.write_u8(2);
+                hasher.write_usize(*id);
+            }
+            Expr::Add(l, r) => {
+                hasher.write_u8(3);
+                hasher.write_u32(l.0);
+                hasher.write_u32(r.0);
+            }
+            Expr::Sub(l, r) => {
+                hasher.write_u8(4);
+                hasher.write_u32(l.0);
+                hasher.write_u32(r.0);
+            }
+            Expr::Mul(l, r) => {
+                hasher.write_u8(5);
+                hasher.write_u32(l.0);
+                hasher.write_u32(r.0);
+            }
+            Expr::Div(l, r) => {
+                hasher.write_u8(6);
+                hasher.write_u32(l.0);
+                hasher.write_u32(r.0);
+            }
+            Expr::Pow(l, r) => {
+                hasher.write_u8(7);
+                hasher.write_u32(l.0);
+                hasher.write_u32(r.0);
+            }
+            Expr::Neg(inner) => {
+                hasher.write_u8(8);
+                hasher.write_u32(inner.0);
+            }
+            Expr::Function(name, args) => {
+                hasher.write_u8(9);
+                hasher.write_usize(*name);
+                hasher.write_usize(args.len());
+                for arg in args {
+                    hasher.write_u32(arg.0);
+                }
+            }
+            Expr::Matrix { rows, cols, data } => {
+                hasher.write_u8(10);
+                hasher.write_usize(*rows);
+                hasher.write_usize(*cols);
+                hasher.write_usize(data.len());
+                for item in data {
+                    hasher.write_u32(item.0);
+                }
+            }
+            Expr::SessionRef(id) => {
+                hasher.write_u8(11);
+                hasher.write_u64(*id);
+            }
+            Expr::Hold(inner) => {
+                hasher.write_u8(12);
+                hasher.write_u32(inner.0);
+            }
+        }
+        hasher.finish()
     }
 
-    /// Initialize builtin function ID cache.
-    ///
-    /// Called automatically by `new()`, but can be called manually if
-    /// Context was created some other way.
-    fn init_builtins(&mut self) {
-        if self.builtins.is_initialized() {
-            return;
+    pub fn new() -> Self {
+        let extra_symbol_capacity = 8;
+        let mut interner = FxHashMap::default();
+        interner.reserve(64);
+        Self {
+            // Most short-lived parse/eval contexts stay below a few dozen nodes.
+            nodes: Vec::with_capacity(32),
+            interner,
+            symbols: SymbolTable::with_capacity(extra_symbol_capacity),
+            stats: ContextStats::default(),
         }
-        for builtin in ALL_BUILTINS.iter().take(BuiltinFn::COUNT) {
-            // Initialize all builtins from ALL_BUILTINS array
-            let id = self.intern_symbol(builtin.name());
-            self.builtins.set(*builtin, id);
-        }
-        self.builtins.mark_initialized();
     }
 
     // =========================================================================
@@ -290,31 +355,55 @@ impl Context {
                 }
             }
             Expr::Add(l, r) => {
-                // Collect all additive terms (flatten nested Adds)
-                let mut terms = Vec::new();
-                self.collect_add_terms(l, &mut terms);
-                self.collect_add_terms(r, &mut terms);
-                // Sort terms: positive first, then by compare_expr
-                terms.sort_by(|a, b| self.compare_add_terms(*a, *b));
-                // Build right-associative tree: a + (b + (c + d))
-                self.build_balanced_add(&terms)
+                if !matches!(self.get(l), Expr::Add(_, _))
+                    && !matches!(self.get(r), Expr::Add(_, _))
+                {
+                    let (left, right) = if self.compare_add_terms(l, r).is_gt() {
+                        (r, l)
+                    } else {
+                        (l, r)
+                    };
+                    Expr::Add(left, right)
+                } else {
+                    // Collect all additive terms (flatten nested Adds)
+                    let mut terms = SmallVec::<[ExprId; 8]>::new();
+                    self.collect_add_terms(l, &mut terms);
+                    self.collect_add_terms(r, &mut terms);
+                    // Sort terms: positive first, then by compare_expr
+                    terms.sort_unstable_by(|a, b| self.compare_add_terms(*a, *b));
+                    // Build right-associative tree: a + (b + (c + d))
+                    self.build_balanced_add(&terms)
+                }
             }
             Expr::Mul(l, r) => {
+                let flat_binary = !matches!(self.get(l), Expr::Mul(_, _))
+                    && !matches!(self.get(r), Expr::Mul(_, _));
                 // Check if multiplication is non-commutative (e.g., contains matrices)
                 if !self.is_mul_commutative_pair(l, r) {
+                    if flat_binary {
+                        return self.add_raw(Expr::Mul(l, r));
+                    }
                     // Non-commutative: flatten for associativity but do NOT sort
-                    let mut factors = Vec::new();
+                    let mut factors = SmallVec::<[ExprId; 8]>::new();
                     self.collect_mul_factors(l, &mut factors);
                     self.collect_mul_factors(r, &mut factors);
                     // Rebuild balanced (preserves order) - returns ExprId directly
                     return self.build_balanced_mul(&factors);
                 } else {
+                    if flat_binary {
+                        let (left, right) = if crate::ordering::compare_expr(self, l, r).is_gt() {
+                            (r, l)
+                        } else {
+                            (l, r)
+                        };
+                        return self.add_raw(Expr::Mul(left, right));
+                    }
                     // Commutative: flatten + sort (using order_key to avoid recursive compare)
-                    let mut factors = Vec::new();
+                    let mut factors = SmallVec::<[ExprId; 8]>::new();
                     self.collect_mul_factors(l, &mut factors);
                     self.collect_mul_factors(r, &mut factors);
                     // Sort by structural comparison (balanced tree prevents deep recursion)
-                    factors.sort_by(|a, b| crate::ordering::compare_expr(self, *a, *b));
+                    factors.sort_unstable_by(|a, b| crate::ordering::compare_expr(self, *a, *b));
                     // Returns ExprId directly
                     return self.build_balanced_mul(&factors);
                 }
@@ -324,23 +413,7 @@ impl Context {
         };
 
         // Expression Interning: Deduplicate expressions
-        let mut hasher = DefaultHasher::new();
-        canonical_expr.hash(&mut hasher);
-        let hash = hasher.finish();
-
-        // Check if we already have this expression in the bucket
-        if let Some(bucket) = self.interner.get(&hash) {
-            // Search all entries in the bucket for an exact match
-            for &id in bucket {
-                if self.nodes[id.index()] == canonical_expr {
-                    return id; // Found existing expression
-                }
-            }
-            // Hash collision: same hash but different content
-            // We'll add to the bucket below
-        }
-
-        let index = self.nodes.len() as u32;
+        let hash = self.expr_hash(&canonical_expr);
 
         // Determine tag based on expression type
         let tag = match &canonical_expr {
@@ -355,6 +428,19 @@ impl Context {
             Expr::Function(_, _) | Expr::Matrix { .. } => ExprId::TAG_NARY,
         };
 
+        // Check if we already have this expression in the bucket
+        if let Some(bucket) = self.interner.get(&hash) {
+            // Search all entries in the bucket for an exact match
+            for &id in bucket {
+                if self.nodes[id.index()] == canonical_expr {
+                    return id; // Found existing expression
+                }
+            }
+            // Hash collision: same hash but different content
+            // We'll add to the bucket below
+        }
+
+        let index = self.nodes.len() as u32;
         let id = ExprId::new(index, tag);
         self.nodes.push(canonical_expr);
         self.stats.nodes_created += 1; // Track real creation (not cache hit)
@@ -373,9 +459,6 @@ impl Context {
     ///
     /// Unlike `add()`, this does NOT swap Mul/Add operands.
     pub fn add_raw(&mut self, expr: Expr) -> ExprId {
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
-
         // DEBUG: Catch Variables being created via add_raw (should use ctx.var() instead)
         debug_assert!(
             !matches!(expr, Expr::Variable(_)),
@@ -383,20 +466,7 @@ impl Context {
         );
 
         // Expression Interning: Deduplicate expressions
-        let mut hasher = DefaultHasher::new();
-        expr.hash(&mut hasher);
-        let hash = hasher.finish();
-
-        // Check if we already have this expression in the bucket
-        if let Some(bucket) = self.interner.get(&hash) {
-            for &id in bucket {
-                if self.nodes[id.index()] == expr {
-                    return id; // Found existing expression
-                }
-            }
-        }
-
-        let index = self.nodes.len() as u32;
+        let hash = self.expr_hash(&expr);
 
         let tag = match &expr {
             Expr::Number(_) => ExprId::TAG_NUMBER,
@@ -410,6 +480,16 @@ impl Context {
             Expr::Function(_, _) | Expr::Matrix { .. } => ExprId::TAG_NARY,
         };
 
+        // Check if we already have this expression in the bucket
+        if let Some(bucket) = self.interner.get(&hash) {
+            for &id in bucket {
+                if self.nodes[id.index()] == expr {
+                    return id; // Found existing expression
+                }
+            }
+        }
+
+        let index = self.nodes.len() as u32;
         let id = ExprId::new(index, tag);
         self.nodes.push(expr);
         self.stats.nodes_created += 1; // Track real creation (not cache hit)
@@ -419,8 +499,9 @@ impl Context {
     }
 
     /// Collect all additive terms by flattening nested Add (iterative)
-    fn collect_add_terms(&self, id: ExprId, terms: &mut Vec<ExprId>) {
-        let mut stack = vec![id];
+    fn collect_add_terms(&self, id: ExprId, terms: &mut SmallVec<[ExprId; 8]>) {
+        let mut stack = SmallVec::<[ExprId; 8]>::new();
+        stack.push(id);
         while let Some(current) = stack.pop() {
             match self.get(current) {
                 Expr::Add(l, r) => {
@@ -445,9 +526,10 @@ impl Context {
             2 => Expr::Add(terms[0], terms[1]),
             _ => {
                 // Build pairs bottom-up iteratively
-                let mut current: Vec<ExprId> = terms.to_vec();
+                let mut current: SmallVec<[ExprId; 8]> = terms.iter().copied().collect();
                 while current.len() > 2 {
-                    let mut next = Vec::with_capacity(current.len().div_ceil(2));
+                    let mut next =
+                        SmallVec::<[ExprId; 8]>::with_capacity(current.len().div_ceil(2));
                     let mut i = 0;
                     while i < current.len() {
                         if i + 1 < current.len() {
@@ -471,8 +553,9 @@ impl Context {
     }
 
     /// Collect all multiplicative factors by flattening nested Mul (iterative)
-    fn collect_mul_factors(&self, id: ExprId, factors: &mut Vec<ExprId>) {
-        let mut stack = vec![id];
+    fn collect_mul_factors(&self, id: ExprId, factors: &mut SmallVec<[ExprId; 8]>) {
+        let mut stack = SmallVec::<[ExprId; 8]>::new();
+        stack.push(id);
         while let Some(current) = stack.pop() {
             match self.get(current) {
                 Expr::Mul(l, r) => {
@@ -517,9 +600,10 @@ impl Context {
             2 => self.add_raw(Expr::Mul(factors[0], factors[1])),
             _ => {
                 // Build pairs bottom-up iteratively
-                let mut current: Vec<ExprId> = factors.to_vec();
+                let mut current: SmallVec<[ExprId; 8]> = factors.iter().copied().collect();
                 while current.len() > 2 {
-                    let mut next = Vec::with_capacity(current.len().div_ceil(2));
+                    let mut next =
+                        SmallVec::<[ExprId; 8]>::with_capacity(current.len().div_ceil(2));
                     let mut i = 0;
                     while i < current.len() {
                         if i + 1 < current.len() {
@@ -570,7 +654,8 @@ impl Context {
     /// - Could add function table to override (TODO: function result type overrides)
     pub fn mul_commutativity(&self, id: ExprId) -> MulCommutativity {
         // Iterative traversal - stack-safe for deep expressions
-        let mut stack = vec![id];
+        let mut stack = SmallVec::<[ExprId; 8]>::new();
+        stack.push(id);
         while let Some(current) = stack.pop() {
             match self.get(current) {
                 // Explicitly non-commutative types
@@ -677,7 +762,8 @@ impl Context {
 
     /// Get the cached SymbolId for a builtin function.
     ///
-    /// This is pre-computed at Context creation, so comparison is O(1).
+    /// In the standard `Context` layout builtins occupy the fixed logical prefix
+    /// of `SymbolId`, so this is a direct cast.
     ///
     /// # Example
     /// ```rust,ignore
@@ -686,7 +772,7 @@ impl Context {
     /// ```
     #[inline]
     pub fn builtin_id(&self, builtin: BuiltinFn) -> SymbolId {
-        self.builtins.get(builtin)
+        builtin as SymbolId
     }
 
     /// Check if an expression is a call to a specific builtin function.
@@ -738,7 +824,7 @@ impl Context {
     /// ```
     #[inline]
     pub fn builtin_of(&self, fn_id: SymbolId) -> Option<BuiltinFn> {
-        self.builtins.lookup(fn_id)
+        (fn_id < BuiltinFn::COUNT).then(|| crate::builtin::ALL_BUILTINS[fn_id])
     }
 
     /// Create a function call using a builtin.
@@ -908,6 +994,45 @@ mod tests {
         assert_eq!(
             xy, yx,
             "Scalar multiplication must canonicalize to same form"
+        );
+    }
+
+    #[test]
+    fn test_binary_add_fast_path_preserves_canonical_order() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+
+        let x_plus_one = ctx.add(Expr::Add(x, one));
+        let one_plus_x = ctx.add(Expr::Add(one, x));
+
+        assert_eq!(x_plus_one, one_plus_x);
+        assert_eq!(ctx.get(x_plus_one), &Expr::Add(one, x));
+    }
+
+    #[test]
+    fn test_binary_add_fast_path_keeps_positive_first() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let neg_y = ctx.add(Expr::Neg(y));
+
+        let x_minus_y = ctx.add(Expr::Add(x, neg_y));
+        let minus_y_plus_x = ctx.add(Expr::Add(neg_y, x));
+
+        assert_eq!(x_minus_y, minus_y_plus_x);
+        assert_eq!(ctx.get(x_minus_y), &Expr::Add(x, neg_y));
+    }
+
+    #[test]
+    fn test_context_new_preloads_builtin_identity_layout() {
+        let ctx = Context::new();
+        assert_eq!(ctx.builtin_id(BuiltinFn::Sin), BuiltinFn::Sin as SymbolId);
+        assert_eq!(ctx.builtin_id(BuiltinFn::Sqrt), BuiltinFn::Sqrt as SymbolId);
+        assert_eq!(ctx.sym_name(ctx.builtin_id(BuiltinFn::Hold)), "__hold");
+        assert_eq!(
+            ctx.builtin_of(ctx.builtin_id(BuiltinFn::Expand)),
+            Some(BuiltinFn::Expand)
         );
     }
 }

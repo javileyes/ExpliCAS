@@ -3750,3 +3750,619 @@ Those are valid projects, but not part of this performance track.
     shortcut
   - after this win, the next ROI should be another transversal reduction of
     eval setup/dispatch, or a stricter rerank before touching more local rules
+- retained another cross-cutting startup reduction in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_ast/src/symbol.rs`
+  and
+  `/Users/javiergimenezmoya/developer/math/crates/cas_ast/src/expression.rs`
+- rationale:
+  - after pre-reserving `Context`, the updated REPL breakdown still showed that
+    parse/setup was dominating or tying simplify for many of the remaining real
+    leaders
+  - `SymbolTable` was still paying owned `String` allocations and larger hash
+    map keys for every builtin and user symbol interned in each fresh context
+  - switching the symbol table to `SmolStr` cuts those tiny heap allocations
+    and shrinks key/value churn while preserving the same external API
+- retained change:
+  - `/Users/javiergimenezmoya/developer/math/crates/cas_ast/Cargo.toml`:
+    add `smol_str`
+  - `/Users/javiergimenezmoya/developer/math/crates/cas_ast/src/symbol.rs`:
+    `Vec<String>`/`HashMap<String, SymbolId>` →
+    `Vec<SmolStr>`/`HashMap<SmolStr, SymbolId>`
+- retained validation:
+  - `cargo test -p cas_ast --lib`
+  - `cargo test -p cas_engine profile_cache_tests --lib`
+  - `cargo test -p cas_solver --test solve_safety_contract_tests`
+  - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math -p cas_api_models -p cas_cli`
+  - `make bench-engine-repl-individual`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_engine --bench repl_end_to_end 'repl_full_eval/cached/batch_11_inputs' -- --noplot`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_engine --bench profile_cache 'solve_modes_cached/(solve_tactic_generic_batch|solve_tactic_assume_batch)' -- --noplot`
+  - `cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_unified_benchmark -- --ignored --nocapture`
+- measured outcome:
+  - `repl_full_eval/cached/batch_11_inputs`:
+    `133.25-133.69 us`, improvement `~23.7-24.9%`
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `32.931-33.181 us`, improvement `~36.9-37.9%`
+  - `solve_modes_cached/solve_tactic_assume_batch`:
+    `32.906-33.151 us`, improvement `~36.8-37.4%`
+  - full `repl_individual/cached/*` rerank improved sharply again, for
+    example:
+    - `00_x_+_1`: `3.4251-3.5117 us`
+    - `01_2_*_3_+_4`: `6.4373-6.4924 us`
+    - `03_sqrt(12*x^3)`: `8.4703-8.7189 us`
+    - `06_(2*x + 2*y)/(4*x + 4*y)`: `12.059-12.139 us`
+    - `08_((x+y)*(a+b))/((x+y)*(c+d))`: `9.6599-9.8305 us`
+  - metamorphic release stayed green with total `numeric-only = 164`
+- conclusion:
+  - this is a real baseline shift, not another local shortcut win
+  - after this change, the remaining ROI is even more likely to be in
+    dispatcher/setup costs or parser-side work, not in individual algebraic
+    rules
+- retained a parser-side reduction in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_parser/src/parser.rs`
+  and
+  `/Users/javiergimenezmoya/developer/math/crates/cas_parser/Cargo.toml`
+- rationale:
+  - after the `SmolStr` move in `SymbolTable`, parse/setup remained the next
+    best transversal place to probe
+  - the textual parser was still allocating owned `String`s for
+    `ParseNode::{Variable, Function}` and always lowering function names via
+    `ctx.call(...)`, even for builtins whose `SymbolId` is already cached
+  - switching those temporary names to `SmolStr` and lowering known builtins
+    through `ctx.call_builtin(...)` trims parser-side churn without changing the
+    public AST model
+- retained change:
+  - `ParseNode::Variable(String)` / `ParseNode::Function(String, ...)` →
+    `SmolStr`
+  - builtin names in the parser lower through `ctx.call_builtin(...)`
+  - added parser regression coverage for short and long inverse-trig names:
+    `asin(x)` and `arcsin(x)`
+- retained validation:
+  - `cargo test -p cas_parser --lib`
+  - `cargo test -p cas_solver --test solve_safety_contract_tests`
+  - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math -p cas_api_models -p cas_cli`
+  - `make bench-engine-repl-individual`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_engine --bench repl_end_to_end 'repl_full_eval/cached/batch_11_inputs' -- --noplot`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_engine --bench profile_cache 'solve_modes_cached/(solve_tactic_generic_batch|solve_tactic_assume_batch)' -- --noplot`
+  - smoke CLI for `asin(x)` and `arcsin(x)`
+- measured outcome:
+  - `repl_full_eval/cached/batch_11_inputs`:
+    `131.77-132.83 us`, better in absolute terms but statistically within noise
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `31.104-31.273 us`, improvement `~4.7-5.9%`
+  - `solve_modes_cached/solve_tactic_assume_batch`:
+    `31.122-31.267 us`, improvement `~5.2-6.2%`
+  - several parse-heavy REPL inputs also improved clearly:
+    - `02_sin(x)^2 + cos(x)^2`: `5.6460-5.7036 us`
+    - `03_sqrt(12*x^3)`: `8.1961-8.2793 us`
+    - `06_(2*x + 2*y)/(4*x + 4*y)`: `11.685-11.742 us`
+    - `08_((x+y)*(a+b))/((x+y)*(c+d))`: `8.1797-8.2219 us`
+- conclusion:
+  - worth keeping: it is semantically safe, improves the parser path in several
+    real inputs, and still moves the solve batch in the right direction
+  - but unlike the `SymbolTable` change, this is not a major baseline shift;
+    the next ROI is still likely to be another transversal setup/dispatcher cut
+- retained another AST startup/runtime reduction in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_ast/src/builtin.rs`
+- rationale:
+  - after the parser-side cleanup, the next fixed cost still paid in every
+    fresh `Context` was `BuiltinIds`
+  - the cache was building a per-context reverse `HashMap<SymbolId, BuiltinFn>`
+    even though the normal `Context::new()` path interns builtins first and in
+    enum order
+  - replacing that reverse map with:
+    - an O(1) identity-layout fast path (`id < COUNT && ids[id] == id`)
+    - a tiny fallback scan for any unusual non-identity layout
+    removes the map allocation and insert churn without losing correctness
+- retained change:
+  - `BuiltinIds` now stores only the fixed `ids` array plus `initialized`
+  - `lookup(id)` resolves directly from `ALL_BUILTINS[id]` in the common case,
+    with a fallback linear scan over the 43 builtin ids
+  - added regression coverage for non-identity fallback lookup
+- retained validation:
+  - `cargo test -p cas_ast --lib`
+  - `cargo test -p cas_engine profile_cache_tests --lib`
+  - `cargo test -p cas_solver --test solve_safety_contract_tests`
+  - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math -p cas_api_models -p cas_cli`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_engine --bench repl_end_to_end 'repl_full_eval/cached/batch_11_inputs' -- --noplot`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_engine --bench profile_cache 'solve_modes_cached/(solve_tactic_generic_batch|solve_tactic_assume_batch)' -- --noplot`
+  - `cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_unified_benchmark -- --ignored --nocapture`
+- measured outcome:
+  - `repl_full_eval/cached/batch_11_inputs`:
+    `117.19-118.44 us`, improvement `~10.7-12.1%`
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `24.775-25.124 us`, improvement `~18.8-20.7%`
+  - `solve_modes_cached/solve_tactic_assume_batch`:
+    `24.699-24.935 us`, improvement `~19.8-20.7%`
+  - metamorphic release stayed green with total `numeric-only = 164`
+- conclusion:
+  - this is another real baseline shift from trimming startup/runtime metadata,
+    not from adding a brittle algebraic shortcut
+  - the next ROI is still likely to be in transversal setup/dispatch costs,
+    but the remaining floor is now substantially lower
+- retained another AST startup reduction in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_ast/src/symbol.rs`,
+  `/Users/javiergimenezmoya/developer/math/crates/cas_ast/src/builtin.rs`, and
+  `/Users/javiergimenezmoya/developer/math/crates/cas_ast/src/expression.rs`
+- rationale:
+  - after removing the reverse `BuiltinIds` map, `Context::new()` was still
+    paying per-context startup churn by interning all builtin names one by one
+  - the normal layout is already fixed: builtins are always the prefix of a
+    fresh symbol table and their `SymbolId`s match `BuiltinFn` discriminants
+  - seeding that prefix directly lets `Context::new()` skip the whole
+    `intern_symbol(...)` loop and start with an already initialized builtin
+    cache
+- retained change:
+  - `SymbolTable::with_static_prefix(...)` preloads a fixed symbol prefix with
+    reserved extra capacity for user symbols
+  - `BuiltinIds::initialized_identity()` creates the standard identity-layout
+    cache without runtime setup work
+  - `Context::new()` now seeds builtin symbols and builtin ids directly instead
+    of calling `init_builtins()`
+  - added regression coverage for:
+    - `SymbolTable::with_static_prefix(...)`
+    - `BuiltinIds::initialized_identity()`
+    - `Context::new()` preserving the builtin identity layout
+- retained validation:
+  - `cargo fmt --all`
+  - `cargo test -p cas_ast --lib`
+  - `cargo test -p cas_engine profile_cache_tests --lib`
+  - `cargo test -p cas_solver --test solve_safety_contract_tests`
+  - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math -p cas_api_models -p cas_cli`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_engine --bench repl_end_to_end 'repl_full_eval/cached/batch_11_inputs' -- --noplot`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_engine --bench profile_cache 'solve_modes_cached/(solve_tactic_generic_batch|solve_tactic_assume_batch)' -- --noplot`
+  - `cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_unified_benchmark -- --ignored --nocapture`
+- measured outcome:
+  - `repl_full_eval/cached/batch_11_inputs`:
+    `116.72-117.59 us`, better in absolute terms but statistically within noise
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `23.586-24.076 us`, improvement `~4.5-7.2%`
+  - `solve_modes_cached/solve_tactic_assume_batch`:
+    `23.388-23.583 us`, improvement `~4.7-6.1%`
+  - metamorphic release stayed green with total `numeric-only = 164`
+- conclusion:
+  - worth keeping: it is a semantically boring startup cut that materially
+    improves the solve hot path without any contract drift
+  - the next ROI still points at transversal setup/dispatcher work, not at
+    another local algebraic shortcut
+- retained a stronger symbol-table startup reduction in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_ast/src/symbol.rs`,
+  `/Users/javiergimenezmoya/developer/math/crates/cas_ast/src/builtin.rs`,
+  `/Users/javiergimenezmoya/developer/math/crates/cas_ast/src/expression.rs`,
+  and
+  `/Users/javiergimenezmoya/developer/math/crates/cas_parser/src/parser.rs`
+- rationale:
+  - even after seeding builtin names directly, every fresh `Context` was still
+    paying to own a dynamic symbol-table prefix that is logically fixed
+  - builtin names do not need to live in `SymbolTable` storage at all:
+    they already have stable enum discriminants and a canonical static name
+  - moving builtins to a logical prefix means:
+    - `SymbolTable` stores only user-defined symbols
+    - builtin `SymbolId`s stay as `0..BuiltinFn::COUNT`
+    - `Context::new()` no longer allocates or fills builtin string/hash entries
+      of any kind
+  - centralizing builtin textual lookup in `BuiltinFn::from_name(...)` also
+    lets the parser reuse the same table instead of carrying its own duplicate
+    matcher
+- retained change:
+  - `SymbolTable::intern/get_id/resolve/len` now treat builtins as a fixed
+    logical prefix rather than dynamic entries
+  - `BuiltinFn::from_name(...)` is the canonical builtin text lookup
+  - `Context::new()` now starts with an empty dynamic symbol table plus
+    `BuiltinIds::initialized_identity()`
+  - the parser lowers known builtins through `BuiltinFn::from_name(...)`
+    instead of a duplicated local lookup helper
+- retained validation:
+  - `cargo fmt --all`
+  - `cargo test -p cas_ast --lib`
+  - `cargo test -p cas_parser --lib`
+  - `cargo test -p cas_engine profile_cache_tests --lib`
+  - `cargo test -p cas_solver --test solve_safety_contract_tests`
+  - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math -p cas_api_models -p cas_cli`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_engine --bench repl_end_to_end 'repl_full_eval/cached/batch_11_inputs' -- --noplot`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_engine --bench profile_cache 'solve_modes_cached/(solve_tactic_generic_batch|solve_tactic_assume_batch)' -- --noplot`
+  - `cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_unified_benchmark -- --ignored --nocapture`
+- measured outcome:
+  - `repl_full_eval/cached/batch_11_inputs`:
+    `105.66-106.31 us`, improvement `~8.5-10.0%`
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `18.022-18.186 us`, improvement `~22.4-24.1%`
+  - `solve_modes_cached/solve_tactic_assume_batch`:
+    `18.048-18.139 us`, improvement `~22.6-23.7%`
+  - metamorphic release stayed green with total `numeric-only = 164`
+- conclusion:
+  - this is another real baseline shift from eliminating fixed startup state,
+    not from another brittle shortcut
+  - after this change the remaining easy wins are even more likely to sit in
+    generic setup/dispatch and parser/runtime scaffolding, not in local algebra
+- retained another transversal startup reduction in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_ast/src/symbol.rs`,
+  `/Users/javiergimenezmoya/developer/math/crates/cas_ast/src/expression.rs`,
+  and `/Users/javiergimenezmoya/developer/math/crates/cas_ast/Cargo.toml`
+- rationale:
+  - once builtin symbols stopped living in the dynamic symbol table, the next
+    fixed cost still paid on every fresh context was standard `HashMap`
+    hashing in the two hottest startup structures:
+    - `SymbolTable.lookup`
+    - `Context.interner`
+  - both maps are hot, short-lived, and internal-only, so switching them to
+    `FxHashMap` is a good fit: lower hashing overhead with no semantic drift
+- retained change:
+  - add `rustc-hash` to `cas_ast`
+  - `SymbolTable.lookup` now uses `FxHashMap<SmolStr, SymbolId>`
+  - `Context.interner` now uses `FxHashMap<u64, Vec<ExprId>>`
+  - capacity reservation is preserved for both maps
+- retained validation:
+  - `cargo fmt --all`
+  - `cargo test -p cas_ast --lib`
+  - `cargo test -p cas_engine profile_cache_tests --lib`
+  - `cargo test -p cas_solver --test solve_safety_contract_tests`
+  - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math -p cas_api_models -p cas_cli`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_engine --bench repl_end_to_end 'repl_full_eval/cached/batch_11_inputs' -- --noplot`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_engine --bench profile_cache 'solve_modes_cached/(solve_tactic_generic_batch|solve_tactic_assume_batch)' -- --noplot`
+  - `cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_unified_benchmark -- --ignored --nocapture`
+- measured outcome:
+  - `repl_full_eval/cached/batch_11_inputs`:
+    `102.62-104.07 us`, improvement `~1.0-3.2%`
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `17.047-17.186 us`, improvement `~5.7-7.5%`
+  - `solve_modes_cached/solve_tactic_assume_batch`:
+    `16.788-17.097 us`, improvement `~7.2-8.8%`
+  - metamorphic release stayed green with total `numeric-only = 164`
+- conclusion:
+  - worth keeping: this keeps the current direction of removing setup/hash
+    overhead, and the solve path still responds strongly to it
+  - the next ROI still looks transversal, but the marginal returns are now
+    clearly smaller than the previous builtin/storage cuts
+- retained another interner-side setup reduction in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_ast/src/expression.rs`
+- rationale:
+  - after moving the interner storage to `FxHashMap`, the next fixed cost still
+    inside `Context::add/add_raw` was the expression hash itself
+  - those hashes are only used for bucket partitioning before an exact
+    structural equality check, so the engine does not need SipHash-grade
+    protection there
+  - switching the internal expression hash from `DefaultHasher` to `FxHasher`
+    trims that per-node cost without changing interning correctness
+- retained change:
+  - `Context::expr_hash(...)` now computes the interner key with `FxHasher`
+  - both `add(...)` and `add_raw(...)` reuse that helper
+- retained validation:
+  - `cargo fmt --all`
+  - `cargo test -p cas_ast --lib`
+  - `cargo test -p cas_engine profile_cache_tests --lib`
+  - `cargo test -p cas_solver --test solve_safety_contract_tests`
+  - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math -p cas_api_models -p cas_cli`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_engine --bench repl_end_to_end 'repl_full_eval/cached/batch_11_inputs' -- --noplot`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_engine --bench profile_cache 'solve_modes_cached/(solve_tactic_generic_batch|solve_tactic_assume_batch)' -- --noplot`
+  - `cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_unified_benchmark -- --ignored --nocapture`
+- measured outcome:
+  - `repl_full_eval/cached/batch_11_inputs`:
+    `99.917-100.65 us`, improvement `~2.5-4.7%`
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `16.403-16.919 us`, improvement `~2.3-4.6%`
+  - `solve_modes_cached/solve_tactic_assume_batch`:
+    `16.440-16.540 us`, improvement `~1.8-3.1%`
+  - metamorphic release stayed green with total `numeric-only = 164`
+- conclusion:
+  - worth keeping, but this is already a smaller step than the previous
+    builtins/`FxHashMap` cuts
+  - the remaining easy wins are now almost certainly in other transversal setup
+    costs, not in the interner path itself
+- retained another interner-side allocation cut in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_ast/src/expression.rs`
+- rationale:
+  - after lowering hash costs, the next fixed cost in the interner buckets was
+    the bucket container itself
+  - almost every interner bucket holds exactly one `ExprId`, but `Vec<ExprId>`
+    still pays a heap allocation in that common case
+  - switching buckets to `SmallVec<[ExprId; 1]>` removes that allocation while
+    keeping the same collision behavior for the rare multi-entry bucket
+- retained change:
+  - `Context.interner` now stores `FxHashMap<u64, SmallVec<[ExprId; 1]>>`
+  - all existing bucket logic (`get`, scan, `or_default().push(id)`) stays the
+    same semantically
+- retained validation:
+  - `cargo fmt --all`
+  - `cargo test -p cas_ast --lib`
+  - `cargo test -p cas_engine profile_cache_tests --lib`
+  - `cargo test -p cas_solver --test solve_safety_contract_tests`
+  - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math -p cas_api_models -p cas_cli`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_engine --bench repl_end_to_end 'repl_full_eval/cached/batch_11_inputs' -- --noplot`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_engine --bench profile_cache 'solve_modes_cached/(solve_tactic_generic_batch|solve_tactic_assume_batch)' -- --noplot`
+  - `cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_unified_benchmark -- --ignored --nocapture`
+- measured outcome:
+  - `repl_full_eval/cached/batch_11_inputs`:
+    `96.830-97.748 us`, improvement `~2.3-3.7%`
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `15.237-15.535 us`, improvement `~6.6-9.0%`
+  - `solve_modes_cached/solve_tactic_assume_batch`:
+    `15.318-15.407 us`, improvement `~6.3-7.5%`
+  - metamorphic release stayed green with total `numeric-only = 164`
+- conclusion:
+  - worth keeping: even at this stage the interner still had one last easy
+    allocation to remove
+  - after this, the remaining setup wins are likely to be even more diffuse and
+    need tighter measurement discipline than the last few cuts
+- discarded two follow-up hypotheses after measurement:
+  - moving builtin recognition into `cas_parser` `ParseNode::Function` regressed
+    both `repl_full_eval/cached/batch_11_inputs` and
+    `solve_modes_cached/solve_tactic_generic_batch`, so it was reverted
+  - shrinking `Context::new()` startup capacities (`nodes`, `interner`,
+    `symbols`) regressed `solve_tactic_assume_batch`, so it was reverted
+- retained another transversal allocation cut in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_ast/src/expression.rs`
+- rationale:
+  - after the interner bucket work, the next fixed cost still visible in both
+    `solve_tactic_*` and the standard REPL batch was temporary heap traffic
+    inside `Context::add(...)`
+  - the common case for canonicalization is still a very small number of `Add`
+    terms / `Mul` factors, but `Vec` was being allocated for:
+    - `terms` / `factors`
+    - the DFS stack in `collect_add_terms(...)` / `collect_mul_factors(...)`
+    - the `current` / `next` buffers in balanced rebuilds
+  - switching those temporaries to `SmallVec<[ExprId; 8]>` removes that heap
+    churn in the common small-expression case without changing canonicalization
+    semantics
+- retained change:
+  - `Context::add(...)` now uses `SmallVec<[ExprId; 8]>` for additive terms and
+    multiplicative factors
+  - `collect_add_terms(...)` / `collect_mul_factors(...)` now use
+    `SmallVec<[ExprId; 8]>` stacks
+  - `build_balanced_add(...)` / `build_balanced_mul(...)` now use
+    `SmallVec<[ExprId; 8]>` for their iterative `current` / `next` buffers
+- retained validation:
+  - `cargo fmt --all`
+  - `cargo test -p cas_ast --lib`
+  - `cargo test -p cas_engine profile_cache_tests --lib`
+  - `cargo test -p cas_solver --test solve_safety_contract_tests`
+  - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math -p cas_api_models -p cas_cli`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_engine --bench repl_end_to_end 'repl_full_eval/cached/batch_11_inputs' -- --noplot`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_engine --bench profile_cache 'solve_modes_cached/(solve_tactic_generic_batch|solve_tactic_assume_batch)' -- --noplot`
+  - `cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_unified_benchmark -- --ignored --nocapture`
+- measured outcome:
+  - `repl_full_eval/cached/batch_11_inputs`:
+    `96.048-97.616 us`, improvement `~2.5-5.5%`
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `14.819-14.995 us`, improvement `~3.8-5.4%`
+  - `solve_modes_cached/solve_tactic_assume_batch`:
+    `14.698-14.863 us`, improvement `~4.2-5.4%`
+  - metamorphic release stayed green with total `numeric-only = 164`
+- conclusion:
+  - worth keeping: this is a real transversal win, not another local shortcut
+  - the remaining gains are likely to come from similar fixed-cost reductions
+    in setup / canonicalization scaffolding, not from more rule-specific work
+- discarded follow-up micro-opts after measurement:
+  - collapsing `interner.get(...)` + `interner.entry(...)` into a single
+    `entry(...)` path in `Context::add/add_raw` did not improve the real
+    batches and slightly worsened `solve_tactic_generic_batch`, so it was
+    reverted
+  - rewriting `parse_identifier(...)` to scan bytes instead of chars also
+    stayed in noise on the real REPL batch and was reverted
+- retained another transversal setup reduction in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_ast/src/expression.rs`
+- rationale:
+  - after the `SmallVec` canonicalization cut, the next fixed cost still hit on
+    every new node was the interner hash itself
+  - `expr_hash(...)` was still delegating to the derived `Hash` impl for `Expr`,
+    which is generic and pays extra overhead per variant
+  - the interner only needs a good bucket key before an exact structural
+    equality check, so a hand-specialized `FxHasher` walk over `Expr` fields is
+    safe and cheaper
+- retained change:
+  - `Context::expr_hash(...)` is now specialized for `Expr`
+  - the hash writes a compact tag per variant plus the relevant ids / scalar
+    payloads directly:
+    - `ExprId` payloads as raw `u32`
+    - `SymbolId` / shape fields directly
+    - `BigRational` as `numer()` + `denom()`
+    - `Function` / `Matrix` arguments as direct id sequences
+- retained validation:
+  - `cargo fmt --all`
+  - `cargo test -p cas_ast --lib`
+  - `cargo test -p cas_engine profile_cache_tests --lib`
+  - `cargo test -p cas_solver --test solve_safety_contract_tests`
+  - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math -p cas_api_models -p cas_cli`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_engine --bench profile_cache 'solve_modes_cached/(solve_tactic_generic_batch|solve_tactic_assume_batch)' -- --noplot`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_engine --bench repl_end_to_end 'repl_full_eval/cached/batch_11_inputs' -- --noplot`
+  - `cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_unified_benchmark -- --ignored --nocapture`
+- measured outcome:
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `14.550-14.728 us`, improvement `~2.4-4.3%`
+  - `solve_modes_cached/solve_tactic_assume_batch`:
+    `14.444-14.513 us`, improvement `~2.7-3.7%`
+  - `repl_full_eval/cached/batch_11_inputs`:
+    `95.776-97.404 us`, better in absolute terms but within Criterion noise
+  - metamorphic release stayed green with total `numeric-only = 164`
+- conclusion:
+  - worth keeping: the signal is strong on the two solver batches and neutral
+    on the standard REPL path
+  - from here, the remaining easy wins still look transversal, but they are now
+    clearly in the low-single-digit range
+- retained another transversal canonicalization cut in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_ast/src/expression.rs`
+- rationale:
+  - after the `expr_hash(...)` specialization, the next setup cost still paid
+    on every commutativity check was the stack allocation inside
+    `mul_commutativity(...)`
+  - that traversal runs from `Context::add(...)` on many standard `Mul`
+    constructions, even when the subtree is tiny and purely scalar
+  - the common case is still a handful of ids, so `SmallVec<[ExprId; 8]>`
+    removes another fixed heap allocation without changing the traversal logic
+- retained change:
+  - `mul_commutativity(...)` now uses `SmallVec<[ExprId; 8]>` for its DFS stack
+    instead of `Vec<ExprId>`
+  - the traversal order and the function-scalar short-circuit stay unchanged
+- retained validation:
+  - `cargo fmt --all`
+  - `cargo test -p cas_ast --lib`
+  - `cargo test -p cas_engine profile_cache_tests --lib`
+  - `cargo test -p cas_solver --test solve_safety_contract_tests`
+  - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math -p cas_api_models -p cas_cli`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_engine --bench profile_cache 'solve_modes_cached/(solve_tactic_generic_batch|solve_tactic_assume_batch)' -- --noplot`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_engine --bench repl_end_to_end 'repl_full_eval/cached/batch_11_inputs' -- --noplot`
+  - `cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_unified_benchmark -- --ignored --nocapture`
+- measured outcome:
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `13.851-13.987 us`, improvement `~5.8-7.2%`
+  - `solve_modes_cached/solve_tactic_assume_batch`:
+    `13.824-13.896 us`, improvement `~1.7-4.3%`
+  - `repl_full_eval/cached/batch_11_inputs`:
+    `90.942-93.974 us`, improvement `~4.5-6.9%`
+  - metamorphic release stayed green with total `numeric-only = 164`
+- conclusion:
+  - worth keeping: this is another real fixed-cost win in setup/canonicalization
+    rather than a benchmark-local shortcut
+  - after this cut, the remaining opportunities in the AST still look
+    transversal, but they are becoming small enough that every attempt needs
+    batch-first validation
+- discarded follow-up hypothesis after measurement:
+  - adding a dedicated fast path cache for `Expr::Variable` /
+    `Expr::Constant` in `Context::add()` looked plausible on paper, but it left
+    `repl_full_eval/cached/batch_11_inputs` effectively flat and pushed
+    `solve_tactic_generic_batch` slightly worse (`14.737-14.968 us`), so it was
+    reverted
+- retained tooling improvement in `/Users/javiergimenezmoya/developer/math/Makefile`
+- rationale:
+  - at the current baseline, `solve_modes_cached/(solve_tactic_generic_batch|
+    solve_tactic_assume_batch)` is the main guardrail for transversal setup cuts
+  - running those filters by hand every time was repetitive and made it easier
+    to compare the wrong thing or skip the named-baseline discipline
+- retained change:
+  - added `make bench-engine-solve-batches`
+  - added `make bench-engine-solve-batches-save BASELINE=...`
+  - added `make bench-engine-solve-batches-compare BASELINE=...`
+- conclusion:
+  - worth keeping: it shortens the loop for the exact pair of benches that now
+    decides whether a transversal optimization is real enough to retain
+- retained another transversal setup cut in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_ast/src/expression.rs`
+- rationale:
+  - `ctx.builtin_of(...)` is still on a very hot path across trig, logarithm and
+    canonicalization helpers in both `cas_math` and `cas_engine`
+  - after the builtin-prefix work in the symbol table, runtime `Context`
+    instances always use the identity layout for builtin `SymbolId`s, so the
+    extra `BuiltinIds` indirection in `builtin_id()` / `builtin_of()` was pure
+    compatibility overhead
+- retained change:
+  - `Context::builtin_id(...)` now returns the builtin discriminant directly as
+    `SymbolId`
+  - `Context::builtin_of(...)` now does a direct prefix check
+    (`fn_id < BuiltinFn::COUNT`) and indexes `ALL_BUILTINS` directly
+  - the now-dead `builtins` field was removed from `Context` to keep the tree
+    warning-free
+- retained validation:
+  - `cargo fmt --all`
+  - `cargo test -p cas_ast --lib`
+  - `cargo test -p cas_engine profile_cache_tests --lib`
+  - `cargo test -p cas_solver --test solve_safety_contract_tests`
+  - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math -p cas_api_models -p cas_cli`
+  - `make bench-engine-solve-batches`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_engine --bench repl_end_to_end 'repl_full_eval/cached/batch_11_inputs' -- --noplot`
+- measured outcome:
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `13.887-14.239 us`, improvement `~0.6-2.7%`
+  - `solve_modes_cached/solve_tactic_assume_batch`:
+    `13.497-13.683 us`, improvement `~2.3-4.2%`
+  - `repl_full_eval/cached/batch_11_inputs`:
+    `91.521-95.055 us`, improvement `~1.7-4.8%`
+- discarded follow-up hypotheses after measurement:
+  - logical fixed-prefix ids for ASCII single-letter variables (`x`, `y`, `a`,
+    `b`, etc.) looked plausible, but they left `repl_full_eval` flat and
+    nudged `solve_tactic_generic_batch` slightly the wrong way, so they were
+    reverted
+  - switching `SymbolTable::intern()` to a raw-entry single lookup was also
+    discarded immediately because the current toolchain does not expose the API
+    on `FxHashMap` without another dependency/refactor
+- retained another transversal canonicalization cut in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_ast/src/expression.rs`
+- rationale:
+  - after the setup/interner cuts, a visible fixed cost still remained in
+    `Context::add()` for the common case of binary `Add` / `Mul` nodes that are
+    already flat
+  - those nodes were still going through `SmallVec + collect + sort + rebuild`,
+    even when the canonicalization decision was only “keep” or “swap” two ids
+  - many parse-heavy and simplify-heavy paths hit exactly that shape, so a
+    narrow fast path there is more valuable than another rule-local shortcut
+- retained change:
+  - `Expr::Add(l, r)` now takes a direct fast path when neither side is another
+    `Add`, using `compare_add_terms(...)` once and constructing the canonical
+    binary form directly
+  - `Expr::Mul(l, r)` now takes a direct fast path when neither side is another
+    `Mul`, using the existing commutativity guard and a single comparison in the
+    commutative case
+  - added focused regression tests for binary `Add` ordering and positive-first
+    behavior
+- retained validation:
+  - `cargo fmt --all`
+  - `cargo test -p cas_ast --lib`
+  - `cargo test -p cas_engine profile_cache_tests --lib`
+  - `cargo test -p cas_solver --test solve_safety_contract_tests`
+  - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math -p cas_api_models -p cas_cli`
+  - `make bench-engine-solve-batches`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_engine --bench repl_end_to_end 'repl_full_eval/cached/batch_11_inputs' -- --noplot`
+  - `cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_unified_benchmark -- --ignored --nocapture`
+- measured outcome:
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `13.711-13.805 us`, improvement `~1.3-3.5%`
+  - `solve_modes_cached/solve_tactic_assume_batch`:
+    `13.556-13.880 us`, no statistically significant change
+  - `repl_full_eval/cached/batch_11_inputs`:
+    `90.406-93.107 us`, no statistically significant change, but better in
+    absolute terms
+  - metamorphic release stayed green with total `numeric-only = 164`
+- conclusion:
+  - worth keeping: the change improves the main generic solve batch, stays
+    neutral elsewhere, and is semantically covered by both focused AST tests and
+    the metamorphic release suite
+- retained a small transversal canonicalization cut in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_ast/src/expression.rs`
+- rationale:
+  - after the binary `Add` / `Mul` fast path, the remaining fixed cost in
+    `Context::add()` still includes sorting of flattened term/factor lists
+  - those sorts do not require stability: equal keys are already identical
+    interned expressions, so `sort_unstable_by(...)` is semantically enough and
+    can shave a bit of overhead from the hot path
+- retained change:
+  - switched additive term sorting from `sort_by(...)` to
+    `sort_unstable_by(...)`
+  - switched commutative multiplicative factor sorting from `sort_by(...)` to
+    `sort_unstable_by(...)`
+- retained validation:
+  - `cargo fmt --all`
+  - `cargo test -p cas_ast --lib`
+  - `cargo test -p cas_engine profile_cache_tests --lib`
+  - `cargo test -p cas_solver --test solve_safety_contract_tests`
+  - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math -p cas_api_models -p cas_cli`
+  - `make bench-engine-solve-batches`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_engine --bench repl_end_to_end 'repl_full_eval/cached/batch_11_inputs' -- --noplot`
+  - `cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_unified_benchmark -- --ignored --nocapture`
+- measured outcome:
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `13.697-14.176 us`, no statistically significant change
+  - `solve_modes_cached/solve_tactic_assume_batch`:
+    `13.323-13.465 us`, improvement `~0.4-2.1%` and within Criterion noise
+    threshold
+  - `repl_full_eval/cached/batch_11_inputs`:
+    `89.112-90.161 us`, improvement `~1.6-3.5%`
+  - metamorphic release stayed green with total `numeric-only = 164`
+- conclusion:
+  - worth keeping: the win is small, but it is on a very hot transversal path,
+    the main REPL batch improves cleanly, and the change is semantically low
+    risk
+- discarded follow-up hypotheses after measurement:
+  - specializing `build_balanced_add(...)` / `build_balanced_mul(...)` for
+    arities `3` and `4` looked plausible, but it left
+    `solve_tactic_generic_batch` effectively flat and nudged both
+    `solve_tactic_assume_batch` and `repl_full_eval/cached/batch_11_inputs`
+    slightly the wrong way, so it was reverted
+  - adding a broad shallow fast path to `compare_expr(...)` regressed both
+    `solve_tactic_generic_batch` and `repl_full_eval/cached/batch_11_inputs`,
+    so it was reverted immediately
+  - adding only an atom-vs-atom fast path to `compare_expr(...)` also failed to
+    move the guardrail batches enough to justify the extra branching, so it was
+    reverted
+  - rewriting `Context::add()` / `add_raw()` to use a single `get_mut` lookup
+    on the interner bucket compiled cleanly, but left `solve_tactic_generic`
+    flat and made `solve_tactic_assume` drift worse, so it was reverted
+  - marking `Context::get()` as `#[inline]` was effectively flat on both solve
+    batches and on the REPL batch, so it was reverted to keep the tree minimal

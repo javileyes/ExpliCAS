@@ -1,4 +1,4 @@
-use cas_ast::{Constant, Context, Equation, Expr, ExprId, RelOp};
+use cas_ast::{BuiltinFn, Constant, Context, Equation, Expr, ExprId, RelOp};
 use nom::{
     branch::alt,
     bytes::complete::tag,
@@ -11,6 +11,7 @@ use nom::{
 use num_rational::BigRational;
 
 use num_bigint::BigInt;
+use smol_str::SmolStr;
 
 // ============================================================================
 // Unicode Math Helpers
@@ -89,14 +90,14 @@ fn parse_unicode_root_prefix(input: &str) -> Option<(u64, &str)> {
 enum ParseNode {
     Number(BigRational),
     Constant(Constant),
-    Variable(String),
+    Variable(SmolStr),
     Add(Box<ParseNode>, Box<ParseNode>),
     Sub(Box<ParseNode>, Box<ParseNode>),
     Mul(Box<ParseNode>, Box<ParseNode>),
     Div(Box<ParseNode>, Box<ParseNode>),
     Pow(Box<ParseNode>, Box<ParseNode>),
     Neg(Box<ParseNode>),
-    Function(String, Vec<ParseNode>),
+    Function(SmolStr, Vec<ParseNode>),
     Matrix(Vec<Vec<ParseNode>>), // 2D structure for validation during parsing
     SessionRef(u64),             // Reference to session history #id
 }
@@ -107,7 +108,7 @@ impl ParseNode {
             ParseNode::Number(n) => Ok(ctx.add(Expr::Number(n))),
             ParseNode::Constant(c) => Ok(ctx.add(Expr::Constant(c))),
             ParseNode::Variable(s) => {
-                let sym = ctx.intern_symbol(&s);
+                let sym = ctx.intern_symbol(s.as_str());
                 Ok(ctx.add(Expr::Variable(sym)))
             }
             ParseNode::Add(l, r) => {
@@ -144,7 +145,11 @@ impl ParseNode {
                 for a in args {
                     arg_ids.push(a.lower(ctx)?);
                 }
-                Ok(ctx.call(&name, arg_ids))
+                if let Some(builtin) = BuiltinFn::from_name(name.as_str()) {
+                    Ok(ctx.call_builtin(builtin, arg_ids))
+                } else {
+                    Ok(ctx.call(name.as_str(), arg_ids))
+                }
             }
             ParseNode::Matrix(rows) => {
                 // Flatten 2D structure to 1D for storage
@@ -367,7 +372,7 @@ fn parse_variable(input: &str) -> IResult<&str, ParseNode> {
         if s == "i" {
             ParseNode::Constant(Constant::I)
         } else {
-            ParseNode::Variable(s.to_string())
+            ParseNode::Variable(SmolStr::new(s))
         }
     })(input)
 }
@@ -418,7 +423,7 @@ fn parse_function(input: &str) -> IResult<&str, ParseNode> {
     // This allows consistent display and simplification of natural logarithms.
     // The simplification engine knows how to handle both ln() and log(e,) forms.
 
-    Ok((input, ParseNode::Function(name.to_string(), args)))
+    Ok((input, ParseNode::Function(SmolStr::new(name), args)))
 }
 
 fn parse_abs(input: &str) -> IResult<&str, ParseNode> {
@@ -430,7 +435,7 @@ fn parse_abs(input: &str) -> IResult<&str, ParseNode> {
     .map(|(next_input, expr)| {
         (
             next_input,
-            ParseNode::Function("abs".to_string(), vec![expr]),
+            ParseNode::Function(SmolStr::new("abs"), vec![expr]),
         )
     })
 }
@@ -539,7 +544,7 @@ fn parse_unicode_root(input: &str) -> IResult<&str, ParseNode> {
 
     Ok((
         remaining,
-        ParseNode::Function("sqrt".to_string(), vec![arg, index_node]),
+        ParseNode::Function(SmolStr::new("sqrt"), vec![arg, index_node]),
     ))
 }
 
@@ -576,7 +581,7 @@ fn parse_factorial(input: &str) -> IResult<&str, ParseNode> {
     let (input, with_factorial) = fold_many0(
         preceded(multispace0, tag("!")),
         move || atom.clone(),
-        |acc, _| ParseNode::Function("fact".to_string(), vec![acc]),
+        |acc, _| ParseNode::Function(SmolStr::new("fact"), vec![acc]),
     )(input)?;
 
     // Then check for superscript exponents (x⁶ → x^6)
@@ -655,7 +660,7 @@ fn parse_term(input: &str) -> IResult<&str, ParseNode> {
         |acc, (op, val)| match op {
             "*" | "·" => ParseNode::Mul(Box::new(acc), Box::new(val)),
             "/" => ParseNode::Div(Box::new(acc), Box::new(val)),
-            "mod" => ParseNode::Function("mod".to_string(), vec![acc, val]),
+            "mod" => ParseNode::Function(SmolStr::new("mod"), vec![acc, val]),
             _ => unreachable!(),
         },
     )(input)?;
@@ -1350,6 +1355,54 @@ mod tests {
             assert_eq!(*id, 5);
         } else {
             panic!("Expected SessionRef(5)");
+        }
+    }
+
+    #[test]
+    fn test_parse_short_inverse_trig_keeps_builtin_identity() {
+        let mut ctx = Context::new();
+        let e = parse("asin(x)", &mut ctx).unwrap();
+        if let Expr::Function(name, args) = ctx.get(e) {
+            assert_eq!(*name, ctx.builtin_id(BuiltinFn::Asin));
+            assert_eq!(args.len(), 1);
+        } else {
+            panic!("Expected Function(asin)");
+        }
+    }
+
+    #[test]
+    fn test_parse_long_inverse_trig_keeps_builtin_identity() {
+        let mut ctx = Context::new();
+        let e = parse("arcsin(x)", &mut ctx).unwrap();
+        if let Expr::Function(name, args) = ctx.get(e) {
+            assert_eq!(*name, ctx.builtin_id(BuiltinFn::Arcsin));
+            assert_eq!(args.len(), 1);
+        } else {
+            panic!("Expected Function(arcsin)");
+        }
+    }
+
+    #[test]
+    fn test_parse_abs_keeps_builtin_identity() {
+        let mut ctx = Context::new();
+        let e = parse("|x|", &mut ctx).unwrap();
+        if let Expr::Function(name, args) = ctx.get(e) {
+            assert_eq!(*name, ctx.builtin_id(BuiltinFn::Abs));
+            assert_eq!(args.len(), 1);
+        } else {
+            panic!("Expected Function(abs)");
+        }
+    }
+
+    #[test]
+    fn test_parse_sqrt_keeps_builtin_identity() {
+        let mut ctx = Context::new();
+        let e = parse("sqrt(x)", &mut ctx).unwrap();
+        if let Expr::Function(name, args) = ctx.get(e) {
+            assert_eq!(*name, ctx.builtin_id(BuiltinFn::Sqrt));
+            assert_eq!(args.len(), 1);
+        } else {
+            panic!("Expected Function(sqrt)");
         }
     }
 

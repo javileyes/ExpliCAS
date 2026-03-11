@@ -1,4 +1,6 @@
-.PHONY: ci ci-release ci-msrv ci-quick lint test fmt clippy build-release lint-allowlist lint-budget lint-limits audit-utils lint-string-compares lint-no-panic-prod bench-clean bench-engine-fast bench-engine-fast-save bench-engine-fast-compare bench-engine-fast-save-seq bench-engine-fast-compare-seq bench-engine-solve-hotspots-save bench-engine-solve-hotspots-compare bench-engine-solve-profile bench-engine-repl-breakdown bench-engine-repl-individual bench-engine-repl-individual-save bench-engine-repl-individual-compare bench-engine-repl-hotspots bench-engine-repl-hotspots-save bench-engine-repl-hotspots-compare bench-engine-standard-phase-subset bench-engine-root-direct help
+.PHONY: ci ci-release ci-msrv ci-quick lint test fmt clippy build-release lint-allowlist lint-budget lint-limits audit-utils lint-string-compares lint-no-panic-prod bench-clean bench-engine-fast bench-engine-fast-save bench-engine-fast-compare bench-engine-fast-save-seq bench-engine-fast-compare-seq bench-engine-solve-batches bench-engine-solve-batches-save bench-engine-solve-batches-compare bench-engine-solve-hotspots-save bench-engine-solve-hotspots-compare bench-engine-solve-profile bench-engine-repl-breakdown bench-engine-repl-individual bench-engine-repl-individual-save bench-engine-repl-individual-compare bench-engine-repl-hotspots bench-engine-repl-hotspots-save bench-engine-repl-hotspots-compare bench-engine-standard-phase-subset bench-engine-root-direct help
+
+SOLVE_BATCH_FILTER = solve_modes_cached/(solve_tactic_generic_batch|solve_tactic_assume_batch)
 
 SOLVE_HOTSPOT_FILTERS = \
 	solve_hotspots_cached/generic/difference_of_squares_fraction \
@@ -35,6 +37,12 @@ help:
 	@echo "                     -> save the curated solve hotspot suite sequentially"
 	@echo "  make bench-engine-solve-hotspots-compare BASELINE=good"
 	@echo "                     -> compare the curated solve hotspot suite sequentially"
+	@echo "  make bench-engine-solve-batches"
+	@echo "                     -> run the main solve_tactic generic/assume guardrail pair"
+	@echo "  make bench-engine-solve-batches-save BASELINE=good"
+	@echo "                     -> save a named baseline for the solve_tactic guardrail pair"
+	@echo "  make bench-engine-solve-batches-compare BASELINE=good"
+	@echo "                     -> compare the solve_tactic guardrail pair against a named baseline"
 	@echo "  make bench-engine-solve-profile MODE=hotspots-generic FILTER=solve_hotspots_cached/generic/a_pow_x_over_a [DETAIL=1] [PROBE=1] [PROBE_ITERS=2000]"
 	@echo "                     -> run profile_cache with solve diagnostic env flags"
 	@echo "  make bench-engine-repl-breakdown"
@@ -121,6 +129,17 @@ bench-engine-solve-hotspots-save:
 
 bench-engine-solve-hotspots-compare:
 	@$(MAKE) bench-engine-fast-compare-seq BENCH=profile_cache BASELINE="$(BASELINE)" FILTERS="$(SOLVE_HOTSPOT_FILTERS)"
+
+bench-engine-solve-batches:
+	CAS_BENCH_FAST=1 cargo bench -p cas_engine --bench profile_cache '$(SOLVE_BATCH_FILTER)' -- --noplot
+
+bench-engine-solve-batches-save:
+	@test -n "$(BASELINE)" || { echo "Missing BASELINE=..."; exit 1; }
+	CAS_BENCH_FAST=1 cargo bench -p cas_engine --bench profile_cache '$(SOLVE_BATCH_FILTER)' -- --noplot --save-baseline $(BASELINE)
+
+bench-engine-solve-batches-compare:
+	@test -n "$(BASELINE)" || { echo "Missing BASELINE=..."; exit 1; }
+	CAS_BENCH_FAST=1 cargo bench -p cas_engine --bench profile_cache '$(SOLVE_BATCH_FILTER)' -- --noplot --baseline $(BASELINE)
 
 bench-engine-solve-profile:
 	@test -n "$(MODE)" || { echo "Usage: make bench-engine-solve-profile MODE=hotspots-generic FILTER=solve_hotspots_cached/generic/a_pow_x_over_a [DETAIL=1] [PROBE=1] [PROBE_ITERS=2000]"; exit 1; }
