@@ -1,17 +1,17 @@
 //! substitute subcommand handler.
 //!
-//! Keeps CLI I/O and delegates canonical JSON/text logic to local command helpers.
+//! Keeps CLI I/O and delegates stateless wire/text logic to solver helpers.
 
 use crate::{OutputFormat, SubstituteArgs, SubstituteModeArg};
 
 /// Run the substitute command.
 pub fn run(args: SubstituteArgs) {
     let mode = match args.mode {
-        SubstituteModeArg::Exact => cas_session::SubstituteCommandMode::Exact,
-        SubstituteModeArg::Power => cas_session::SubstituteCommandMode::Power,
+        SubstituteModeArg::Exact => cas_solver::SubstituteCommandMode::Exact,
+        SubstituteModeArg::Power => cas_solver::SubstituteCommandMode::Power,
     };
 
-    let output = match cas_session::evaluate_substitute_subcommand(
+    let output = match cas_solver::evaluate_substitute_subcommand(
         &args.expr,
         &args.target,
         &args.replacement,
@@ -27,10 +27,10 @@ pub fn run(args: SubstituteArgs) {
     };
 
     match output {
-        cas_session::SubstituteSubcommandOutput::Wire(payload) => {
+        cas_solver::SubstituteSubcommandOutput::Wire(payload) => {
             println!("{}", payload);
         }
-        cas_session::SubstituteSubcommandOutput::TextLines(lines) => {
+        cas_solver::SubstituteSubcommandOutput::TextLines(lines) => {
             for line in lines {
                 println!("{}", line);
             }

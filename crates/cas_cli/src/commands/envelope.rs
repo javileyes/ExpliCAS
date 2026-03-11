@@ -1,6 +1,6 @@
 //! envelope command handler.
 //!
-//! Delegates envelope generation to `cas_session` and only handles CLI I/O.
+//! Delegates stateless envelope generation to `cas_solver` and only handles CLI I/O.
 
 use clap::Args;
 
@@ -22,6 +22,6 @@ pub struct EnvelopeArgs {
 /// Run the envelope command.
 pub fn run(args: EnvelopeArgs) {
     let output =
-        cas_session::evaluate_envelope_wire_command(&args.expr, &args.domain, &args.value_domain);
+        cas_solver::evaluate_envelope_wire_command(&args.expr, &args.domain, &args.value_domain);
     println!("{}", output);
 }

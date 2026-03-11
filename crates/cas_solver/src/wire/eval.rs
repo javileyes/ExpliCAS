@@ -15,7 +15,7 @@ mod success;
 ///
 /// This is the **solver-level direct entry point** for wire-returning
 /// stateless evaluation. Frontends should normally go through
-/// `cas_session::evaluate_eval_wire`.
+/// Stateless wire entrypoint for eval-style callers.
 ///
 /// # Arguments
 /// * `expr` - Expression string to evaluate

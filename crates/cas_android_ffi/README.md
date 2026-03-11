@@ -2,6 +2,9 @@
 
 Android JNI bridge for ExpliCAS engine. Provides a single function to evaluate expressions and return JSON results.
 
+The bridge calls `cas_solver` stateless wire entrypoints directly. It does not
+depend on `cas_session`.
+
 ## Building for Android
 
 ### Prerequisites

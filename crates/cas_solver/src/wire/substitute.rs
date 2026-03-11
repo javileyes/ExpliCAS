@@ -9,7 +9,7 @@ use self::response::substitute_str_to_wire_impl;
 ///
 /// This is the **solver-level direct entry point** for wire-returning
 /// stateless substitution. Frontends should normally go through
-/// `cas_session::evaluate_substitute_wire`.
+/// Stateless wire entrypoint for substitute-style callers.
 ///
 /// # Arguments
 /// * `expr_str` - Expression string to substitute in

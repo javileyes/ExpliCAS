@@ -28,9 +28,6 @@ pub use cas_solver::{
     list_health_suite_cases,
 };
 pub use cas_solver::{delete_history_entries, history_overview_entries};
-pub use cas_solver::{
-    eval_str_to_wire as evaluate_eval_wire, substitute_str_to_wire as evaluate_substitute_wire,
-};
 pub use cas_solver_core::config_command_types::{ConfigCommandInput, ConfigCommandResult};
 pub use cas_solver_core::config_runtime::ConfigCommandApplyOutput;
 pub use cas_solver_core::repl_command_types::ReplCommandInput;

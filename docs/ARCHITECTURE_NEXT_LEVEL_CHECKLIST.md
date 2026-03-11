@@ -198,10 +198,6 @@ Current progress:
       `evaluate_eval_command_with_session(...)`
     - `evaluate_eval_json_command_pretty_with_session(...)` ->
       `evaluate_eval_command_pretty_with_session(...)`
-    - wire-returning session entrypoints were also simplified:
-      - `evaluate_eval_json_canonical(...)` -> `evaluate_eval_wire(...)`
-      - `evaluate_substitute_json_canonical(...)` ->
-        `evaluate_substitute_wire(...)`
     - rationale:
       - it only orchestrates session load/run/save around typed eval requests
       - the actual wire boundary remains in the CLI/web entrypoints and API DTOs
@@ -216,8 +212,8 @@ Current progress:
     - rationale:
       - the exported JNI entry points were aligned too:
         `evalJson` / `substituteJson` -> `evalWire` / `substituteWire`
-      - the inner Rust helpers are just bridge cores around canonical session
-        calls and do not own transport naming
+      - the inner Rust helpers are direct bridge cores around solver-level
+        stateless wire entrypoints and do not own transport naming
     - boundary-facing tests/helpers now also prefer `wire` naming when they
       validate output contracts rather than the transport mechanism itself
   - residual helper/test naming was also cleaned where the responsibility is
@@ -262,6 +258,14 @@ Current progress:
       - `EnvelopeJsonArgs` -> `EnvelopeArgs`
       - internal `json_output` flags in limit/substitute subcommand bridges ->
         `wire_output`
+    - `cas_session` no longer fronts stateless wire passthroughs:
+      - `eval_str_to_wire`, `substitute_str_to_wire`,
+        `evaluate_envelope_wire_command`, `evaluate_limit_subcommand`,
+        `evaluate_substitute_subcommand` are now consumed directly from
+        `cas_solver` by CLI/FFI
+      - rationale:
+        - `cas_session` should own session/repl/stateful orchestration
+        - stateless wire entrypoints belong to the solver facade
     - internal parity/contract tests were aligned too where they verify the
       wire layer rather than JSON serialization itself:
       - former `step_count_matches_between_text_and_json_renderers` ->

@@ -129,10 +129,10 @@ pub fn substitute_str_to_wire(
 
 This is the solver-level compatibility API.
 
-### Canonical App/Frontend Entry Point
+### Canonical Stateless Entry Point
 
 ```rust
-pub fn evaluate_substitute_wire(
+pub fn substitute_str_to_wire(
     expr: &str,
     target: &str,
     replacement: &str,
@@ -140,10 +140,11 @@ pub fn evaluate_substitute_wire(
 ) -> String
 ```
 
-Defined in `crates/cas_session/src/solver_exports/session_support.rs`.
+Defined in `crates/cas_solver/src/wire/substitute.rs`.
 
-CLI/FFI/Android should call the **session-level wire entrypoint** (`cas_session`) rather than
-calling solver JSON adapters directly.
+CLI/FFI/Android should call the stateless solver-level wire entrypoint
+directly. `cas_session` should stay focused on session/stateful flows rather
+than acting as a passthrough for stateless wire helpers.
 
 ### Options
 
