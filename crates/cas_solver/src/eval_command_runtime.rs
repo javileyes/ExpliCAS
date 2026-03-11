@@ -3,7 +3,7 @@ mod present;
 
 use std::time::Instant;
 
-use cas_api_models::{EvalSessionRunConfig, StepJson};
+use cas_api_models::{EvalSessionRunConfig, StepWire};
 use cas_solver_core::engine_events::EngineEvent;
 
 use crate::eval_output_finalize::EvalOutputWire;
@@ -27,7 +27,7 @@ pub fn evaluate_eval_with_session<S, F>(
 ) -> Result<EvalCommandOutput, String>
 where
     S: crate::SolverEvalSession,
-    F: Fn(&[crate::Step], &[EngineEvent], &cas_ast::Context, &str) -> Vec<StepJson>,
+    F: Fn(&[crate::Step], &[EngineEvent], &cas_ast::Context, &str) -> Vec<StepWire>,
 {
     let total_start = Instant::now();
     let prepared = prepare::prepare_eval_run(engine, session, &config)?;

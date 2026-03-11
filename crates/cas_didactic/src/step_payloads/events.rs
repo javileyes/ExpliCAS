@@ -1,8 +1,8 @@
-use cas_api_models::StepJson;
+use cas_api_models::StepWire;
 use cas_ast::Context;
 use cas_solver_core::engine_events::EngineEvent;
 
-pub(super) fn collect_event_step_payloads(events: &[EngineEvent], ctx: &Context) -> Vec<StepJson> {
+pub(super) fn collect_event_step_payloads(events: &[EngineEvent], ctx: &Context) -> Vec<StepWire> {
     events
         .iter()
         .enumerate()
@@ -10,7 +10,7 @@ pub(super) fn collect_event_step_payloads(events: &[EngineEvent], ctx: &Context)
         .collect()
 }
 
-fn build_event_step_payload(index: usize, event: &EngineEvent, ctx: &Context) -> Option<StepJson> {
+fn build_event_step_payload(index: usize, event: &EngineEvent, ctx: &Context) -> Option<StepWire> {
     match event {
         EngineEvent::RuleApplied {
             rule_name,
@@ -23,7 +23,7 @@ fn build_event_step_payload(index: usize, event: &EngineEvent, ctx: &Context) ->
             let before_expr = global_before.unwrap_or(*before);
             let after_expr = global_after.unwrap_or(*after);
 
-            Some(StepJson {
+            Some(StepWire {
                 index,
                 rule: rule_name.clone(),
                 rule_latex: rule_name.clone(),

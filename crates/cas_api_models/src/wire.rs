@@ -6,7 +6,7 @@
 use cas_ast::Span;
 use serde::{Deserialize, Serialize};
 
-use crate::WarningJson;
+use crate::WarningWire;
 
 /// Current schema version for the wire format.
 pub const SCHEMA_VERSION: u32 = 1;
@@ -157,7 +157,7 @@ impl WireMsg {
     }
 }
 
-/// Build a wire envelope for eval-style JSON outputs.
+/// Build a wire envelope for eval-style wire outputs.
 ///
 /// Message order:
 /// 1. warnings
@@ -165,7 +165,7 @@ impl WireMsg {
 /// 3. result
 /// 4. steps summary (optional)
 pub fn build_eval_wire_reply(
-    warnings: &[WarningJson],
+    warnings: &[WarningWire],
     required_display: &[String],
     result: &str,
     result_latex: Option<&str>,
@@ -235,7 +235,7 @@ mod tests {
 
     #[test]
     fn build_eval_wire_reply_adds_expected_sections() {
-        let warnings = vec![WarningJson {
+        let warnings = vec![WarningWire {
             rule: "r1".to_string(),
             assumption: "a != 0".to_string(),
         }];

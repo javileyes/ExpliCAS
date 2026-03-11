@@ -497,6 +497,30 @@ impl<'a> LocalSimplificationTransformer<'a> {
                 )
             }
         };
+        if allow_difference_of_squares_preorder
+            && self.event_listener.is_none()
+            && !self.initial_parent_ctx.domain_mode().is_strict()
+        {
+            if let Some(early_result) =
+                crate::rules::algebra::try_exact_common_factor_mul_fraction_preorder(
+                    self.context,
+                    id,
+                    l,
+                    r,
+                    self.collect_steps_enabled(),
+                    &mut self.steps,
+                    &self.current_path,
+                )
+            {
+                if !self.collect_steps_enabled()
+                    && self.current_phase == crate::SimplifyPhase::Core
+                    && self.initial_parent_ctx.is_solve_context()
+                {
+                    return early_result;
+                }
+                return self.transform_expr_recursive(early_result);
+            }
+        }
         if allow_difference_of_squares_preorder {
             if let Some(early_result) = crate::rules::algebra::try_difference_of_squares_preorder(
                 self.context,

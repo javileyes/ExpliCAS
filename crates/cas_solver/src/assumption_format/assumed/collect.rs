@@ -12,7 +12,7 @@ pub(super) fn collect_assumed_conditions_from_steps(steps: &[Step]) -> Vec<(Stri
             if seen.insert(fp) {
                 result.push((
                     crate::assumption_condition_text(&event.key, &event.expr_display),
-                    step.rule_name.clone(),
+                    step.rule_name.to_string(),
                 ));
             }
         }

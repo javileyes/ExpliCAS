@@ -1,9 +1,9 @@
 use crate::eval_input::PreparedEvalRequest;
 use crate::Engine;
-use cas_api_models::{BudgetJsonInfo, EngineJsonResponse, EvalRunOptions};
+use cas_api_models::{BudgetWireInfo, EngineWireResponse, EvalRunOptions};
 
 pub(super) type PreparedStatelessEvalState =
-    (EvalRunOptions, BudgetJsonInfo, Engine, PreparedEvalRequest);
+    (EvalRunOptions, BudgetWireInfo, Engine, PreparedEvalRequest);
 
 pub(super) fn prepare_stateless_eval_request(
     expr: &str,
@@ -16,7 +16,7 @@ pub(super) fn prepare_stateless_eval_request(
     let prepared = match super::request::build_prepared_eval_request(expr, &mut engine) {
         Ok(request) => request,
         Err(error) => {
-            let resp = EngineJsonResponse::err(error, budget_info.clone());
+            let resp = EngineWireResponse::err(error, budget_info.clone());
             return Err(resp.to_json_with_pretty(opts.pretty));
         }
     };

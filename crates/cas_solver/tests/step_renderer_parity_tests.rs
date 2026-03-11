@@ -55,7 +55,7 @@ fn step_count_matches_between_text_and_wire_renderers() {
     // Text renderer: directly uses step count
     let text_step_count = display_steps.len();
 
-    // Wire renderer: would convert to EngineJsonStep (simulate using same source)
+    // Wire renderer: would convert to EngineWireStep (simulate using same source)
     // Both consume display_steps, so counts MUST match
     let wire_step_count = display_steps.iter().count();
 

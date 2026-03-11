@@ -7,7 +7,7 @@ fn map_non_solve_action(action: EvalNonSolveAction) -> crate::EvalAction {
     }
 }
 
-/// Evaluate one prepared eval-json request with any eval session implementation.
+/// Evaluate one prepared eval request with any eval session implementation.
 pub(crate) fn evaluate_prepared_request_with_session<S>(
     engine: &mut crate::Engine,
     session: &mut S,

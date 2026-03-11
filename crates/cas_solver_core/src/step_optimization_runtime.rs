@@ -67,8 +67,8 @@ pub fn optimize_steps(steps: Vec<Step>) -> Vec<Step> {
                 && step.description.contains("-> 1")
         },
         |first, last| Step {
-            description: "Canonicalization".to_string(),
-            rule_name: "Canonicalize".to_string(),
+            description: "Canonicalization".into(),
+            rule_name: "Canonicalize".into(),
             before: first.before,
             after: last.after,
             global_before: first.global_before,

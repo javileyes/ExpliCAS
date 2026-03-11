@@ -961,4 +961,390 @@ mod tests {
         assert_eq!(stats.rationalize.iters_used, 0);
         assert_eq!(stats.post_cleanup.iters_used, 0);
     }
+
+    #[test]
+    fn test_from_profile_standard_i_power_real_domain_uses_root_noop_fast_path() {
+        use crate::Simplifier;
+
+        let mut cache = ProfileCache::new();
+        let opts = EvalOptions {
+            shared: crate::phase::SharedSemanticConfig {
+                context_mode: ContextMode::Standard,
+                ..Default::default()
+            },
+            complex_mode: crate::ComplexMode::Auto,
+            steps_mode: StepsMode::On,
+            ..Default::default()
+        };
+        let profile = cache.get_or_build(&opts);
+
+        let mut simplifier = Simplifier::from_profile(profile);
+        let expr = parse("i^5", &mut simplifier.context).expect("parse failed");
+
+        let simplify_opts = opts.to_simplify_options();
+        let (result, steps, stats) = simplifier.simplify_with_stats(expr, simplify_opts);
+        let result_str = format!(
+            "{}",
+            DisplayExpr {
+                context: &simplifier.context,
+                id: result
+            }
+        );
+
+        assert_eq!(result_str, "i^5");
+        assert!(steps.is_empty());
+        assert_eq!(stats.core.iters_used, 0);
+        assert_eq!(stats.transform.iters_used, 0);
+        assert_eq!(stats.rationalize.iters_used, 0);
+        assert_eq!(stats.post_cleanup.iters_used, 0);
+    }
+
+    #[test]
+    fn test_from_profile_standard_gaussian_div_real_domain_uses_root_noop_fast_path() {
+        use crate::Simplifier;
+
+        let mut cache = ProfileCache::new();
+        let opts = EvalOptions {
+            shared: crate::phase::SharedSemanticConfig {
+                context_mode: ContextMode::Standard,
+                ..Default::default()
+            },
+            complex_mode: crate::ComplexMode::Auto,
+            steps_mode: StepsMode::On,
+            ..Default::default()
+        };
+        let profile = cache.get_or_build(&opts);
+
+        let mut simplifier = Simplifier::from_profile(profile);
+        let expr = parse("(3 + 4*i)/(1 + 2*i)", &mut simplifier.context).expect("parse failed");
+
+        let simplify_opts = opts.to_simplify_options();
+        let (result, steps, stats) = simplifier.simplify_with_stats(expr, simplify_opts);
+        let result_str = format!(
+            "{}",
+            DisplayExpr {
+                context: &simplifier.context,
+                id: result
+            }
+        );
+
+        assert_eq!(result_str, "(3 + 4 * i) / (1 + 2 * i)");
+        assert!(steps.is_empty());
+        assert_eq!(stats.core.iters_used, 0);
+        assert_eq!(stats.transform.iters_used, 0);
+        assert_eq!(stats.rationalize.iters_used, 0);
+        assert_eq!(stats.post_cleanup.iters_used, 0);
+    }
+
+    #[test]
+    fn test_from_profile_standard_common_factor_fraction_uses_root_fast_path() {
+        use crate::Simplifier;
+
+        let mut cache = ProfileCache::new();
+        let opts = EvalOptions {
+            shared: crate::phase::SharedSemanticConfig {
+                context_mode: ContextMode::Standard,
+                ..Default::default()
+            },
+            complex_mode: crate::ComplexMode::Auto,
+            steps_mode: StepsMode::On,
+            ..Default::default()
+        };
+        let profile = cache.get_or_build(&opts);
+
+        let mut simplifier = Simplifier::from_profile(profile);
+        let expr =
+            parse("((x+y)*(a+b))/((x+y)*(c+d))", &mut simplifier.context).expect("parse failed");
+
+        let simplify_opts = opts.to_simplify_options();
+        let (result, steps, stats) = simplifier.simplify_with_stats(expr, simplify_opts);
+        let result_str = format!(
+            "{}",
+            DisplayExpr {
+                context: &simplifier.context,
+                id: result
+            }
+        );
+
+        assert_eq!(result_str, "(a + b) / (c + d)");
+        assert_eq!(steps.len(), 1);
+        assert_eq!(steps[0].rule_name, "Pre-order Common Factor Cancel");
+        assert_eq!(stats.core.iters_used, 0);
+        assert_eq!(stats.transform.iters_used, 0);
+        assert_eq!(stats.rationalize.iters_used, 0);
+        assert_eq!(stats.post_cleanup.iters_used, 0);
+    }
+
+    #[test]
+    fn test_from_profile_standard_symbol_plus_literal_uses_root_noop_fast_path() {
+        use crate::Simplifier;
+
+        let mut cache = ProfileCache::new();
+        let opts = EvalOptions {
+            shared: crate::phase::SharedSemanticConfig {
+                context_mode: ContextMode::Standard,
+                ..Default::default()
+            },
+            complex_mode: crate::ComplexMode::Auto,
+            steps_mode: StepsMode::On,
+            ..Default::default()
+        };
+        let profile = cache.get_or_build(&opts);
+
+        let mut simplifier = Simplifier::from_profile(profile);
+        let expr = parse("x + 1", &mut simplifier.context).expect("parse failed");
+
+        let simplify_opts = opts.to_simplify_options();
+        let (result, steps, stats) = simplifier.simplify_with_stats(expr, simplify_opts);
+        let result_str = format!(
+            "{}",
+            DisplayExpr {
+                context: &simplifier.context,
+                id: result
+            }
+        );
+
+        assert_eq!(result_str, "x + 1");
+        assert!(steps.is_empty());
+        assert_eq!(stats.core.iters_used, 0);
+        assert_eq!(stats.transform.iters_used, 0);
+        assert_eq!(stats.rationalize.iters_used, 0);
+        assert_eq!(stats.post_cleanup.iters_used, 0);
+    }
+
+    #[test]
+    fn test_from_profile_standard_numeric_add_chain_uses_root_fast_path() {
+        use crate::Simplifier;
+
+        let mut cache = ProfileCache::new();
+        let opts = EvalOptions {
+            shared: crate::phase::SharedSemanticConfig {
+                context_mode: ContextMode::Standard,
+                ..Default::default()
+            },
+            complex_mode: crate::ComplexMode::Auto,
+            steps_mode: StepsMode::On,
+            ..Default::default()
+        };
+        let profile = cache.get_or_build(&opts);
+
+        let mut simplifier = Simplifier::from_profile(profile);
+        let expr = parse("2 * 3 + 4", &mut simplifier.context).expect("parse failed");
+
+        let simplify_opts = opts.to_simplify_options();
+        let (result, steps, stats) = simplifier.simplify_with_stats(expr, simplify_opts);
+        let result_str = format!(
+            "{}",
+            DisplayExpr {
+                context: &simplifier.context,
+                id: result
+            }
+        );
+
+        assert_eq!(result_str, "10");
+        assert_eq!(steps.len(), 2);
+        assert_eq!(steps[0].rule_name, "Combine Constants");
+        assert_eq!(steps[1].rule_name, "Combine Constants");
+        assert_eq!(stats.core.iters_used, 0);
+        assert_eq!(stats.transform.iters_used, 0);
+        assert_eq!(stats.rationalize.iters_used, 0);
+        assert_eq!(stats.post_cleanup.iters_used, 0);
+    }
+
+    #[test]
+    fn test_from_profile_standard_scalar_multiple_fraction_uses_root_fast_path() {
+        use crate::Simplifier;
+
+        let mut cache = ProfileCache::new();
+        let opts = EvalOptions {
+            shared: crate::phase::SharedSemanticConfig {
+                context_mode: ContextMode::Standard,
+                ..Default::default()
+            },
+            complex_mode: crate::ComplexMode::Auto,
+            steps_mode: StepsMode::On,
+            ..Default::default()
+        };
+        let profile = cache.get_or_build(&opts);
+
+        let mut simplifier = Simplifier::from_profile(profile);
+        let expr = parse("(2*x + 2*y)/(4*x + 4*y)", &mut simplifier.context).expect("parse failed");
+
+        let simplify_opts = opts.to_simplify_options();
+        let (result, steps, stats) = simplifier.simplify_with_stats(expr, simplify_opts);
+        let result_str = format!(
+            "{}",
+            DisplayExpr {
+                context: &simplifier.context,
+                id: result
+            }
+        );
+
+        assert_eq!(result_str, "1/2");
+        assert_eq!(steps.len(), 2);
+        assert_eq!(steps[0].rule_name, "Simplify Nested Fraction");
+        assert_eq!(steps[1].rule_name, "Simplify Nested Fraction");
+        assert_eq!(stats.core.iters_used, 0);
+        assert_eq!(stats.transform.iters_used, 0);
+        assert_eq!(stats.rationalize.iters_used, 0);
+        assert_eq!(stats.post_cleanup.iters_used, 0);
+    }
+
+    #[test]
+    fn test_from_profile_standard_difference_of_squares_uses_root_fast_path() {
+        use crate::Simplifier;
+
+        let mut cache = ProfileCache::new();
+        let opts = EvalOptions {
+            shared: crate::phase::SharedSemanticConfig {
+                context_mode: ContextMode::Standard,
+                ..Default::default()
+            },
+            complex_mode: crate::ComplexMode::Auto,
+            steps_mode: StepsMode::On,
+            ..Default::default()
+        };
+        let profile = cache.get_or_build(&opts);
+
+        let mut simplifier = Simplifier::from_profile(profile);
+        let expr = parse("(x^2 - y^2)/(x - y)", &mut simplifier.context).expect("parse failed");
+
+        let simplify_opts = opts.to_simplify_options();
+        let (result, steps, stats) = simplifier.simplify_with_stats(expr, simplify_opts);
+        let result_str = format!(
+            "{}",
+            DisplayExpr {
+                context: &simplifier.context,
+                id: result
+            }
+        );
+
+        assert!(result_str == "x + y" || result_str == "y + x");
+        assert_eq!(steps.len(), 2);
+        assert_eq!(steps[0].rule_name, "Pre-order Difference of Squares");
+        assert_eq!(steps[1].rule_name, "Pre-order Difference of Squares Cancel");
+        assert_eq!(stats.core.iters_used, 0);
+        assert_eq!(stats.transform.iters_used, 0);
+        assert_eq!(stats.rationalize.iters_used, 0);
+        assert_eq!(stats.post_cleanup.iters_used, 0);
+    }
+
+    #[test]
+    fn test_from_profile_standard_pythagorean_chain_uses_root_fast_path() {
+        use crate::Simplifier;
+
+        let mut cache = ProfileCache::new();
+        let opts = EvalOptions {
+            shared: crate::phase::SharedSemanticConfig {
+                context_mode: ContextMode::Standard,
+                ..Default::default()
+            },
+            complex_mode: crate::ComplexMode::Auto,
+            steps_mode: StepsMode::On,
+            ..Default::default()
+        };
+        let profile = cache.get_or_build(&opts);
+
+        let mut simplifier = Simplifier::from_profile(profile);
+        let expr = parse("sin(2*x + 1)^2 + cos(1 + 2*x)^2", &mut simplifier.context)
+            .expect("parse failed");
+
+        let simplify_opts = opts.to_simplify_options();
+        let (result, steps, stats) = simplifier.simplify_with_stats(expr, simplify_opts);
+        let result_str = format!(
+            "{}",
+            DisplayExpr {
+                context: &simplifier.context,
+                id: result
+            }
+        );
+
+        assert_eq!(result_str, "1");
+        assert_eq!(steps.len(), 1);
+        assert_eq!(steps[0].rule_name, "Pythagorean Chain Identity");
+        assert_eq!(stats.core.iters_used, 0);
+        assert_eq!(stats.transform.iters_used, 0);
+        assert_eq!(stats.rationalize.iters_used, 0);
+        assert_eq!(stats.post_cleanup.iters_used, 0);
+    }
+
+    #[test]
+    fn test_from_profile_standard_root_power_cancel_uses_root_fast_path() {
+        use crate::Simplifier;
+
+        let mut cache = ProfileCache::new();
+        let opts = EvalOptions {
+            shared: crate::phase::SharedSemanticConfig {
+                context_mode: ContextMode::Standard,
+                ..Default::default()
+            },
+            complex_mode: crate::ComplexMode::Auto,
+            steps_mode: StepsMode::On,
+            ..Default::default()
+        };
+        let profile = cache.get_or_build(&opts);
+
+        let mut simplifier = Simplifier::from_profile(profile);
+        let expr = parse("((5*x + 8)^2)^(1/2)", &mut simplifier.context).expect("parse failed");
+
+        let simplify_opts = opts.to_simplify_options();
+        let (result, steps, stats) = simplifier.simplify_with_stats(expr, simplify_opts);
+        let result_str = format!(
+            "{}",
+            DisplayExpr {
+                context: &simplifier.context,
+                id: result
+            }
+        );
+
+        assert_eq!(result_str, "|5 * x + 8|");
+        assert!(!steps.is_empty());
+        assert!(steps
+            .iter()
+            .any(|step| step.rule_name == "Root Power Cancel"));
+        assert_eq!(stats.core.iters_used, 0);
+        assert_eq!(stats.transform.iters_used, 0);
+        assert_eq!(stats.rationalize.iters_used, 0);
+        assert_eq!(stats.post_cleanup.iters_used, 0);
+    }
+
+    #[test]
+    fn test_from_profile_standard_extract_perfect_square_uses_root_fast_path() {
+        use crate::Simplifier;
+
+        let mut cache = ProfileCache::new();
+        let opts = EvalOptions {
+            shared: crate::phase::SharedSemanticConfig {
+                context_mode: ContextMode::Standard,
+                ..Default::default()
+            },
+            complex_mode: crate::ComplexMode::Auto,
+            steps_mode: StepsMode::On,
+            ..Default::default()
+        };
+        let profile = cache.get_or_build(&opts);
+
+        let mut simplifier = Simplifier::from_profile(profile);
+        let expr = parse("sqrt(12*x^3)", &mut simplifier.context).expect("parse failed");
+
+        let simplify_opts = opts.to_simplify_options();
+        let (result, steps, stats) = simplifier.simplify_with_stats(expr, simplify_opts);
+        let result_str = format!(
+            "{}",
+            DisplayExpr {
+                context: &simplifier.context,
+                id: result
+            }
+        );
+
+        assert!(result_str.contains("(3 * x^3)^(1/2)") || result_str.contains("(3·x^3)^(1/2)"));
+        assert!(!steps.is_empty());
+        assert!(steps
+            .iter()
+            .any(|step| step.rule_name == "Extract Perfect Square from Radicand"));
+        assert_eq!(stats.core.iters_used, 0);
+        assert_eq!(stats.transform.iters_used, 0);
+        assert_eq!(stats.rationalize.iters_used, 0);
+        assert_eq!(stats.post_cleanup.iters_used, 0);
+    }
 }

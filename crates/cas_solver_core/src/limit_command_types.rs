@@ -26,7 +26,7 @@ pub struct LimitCommandEvalOutput {
 /// Output payload for CLI-style `limit` subcommand execution.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LimitSubcommandEvalOutput {
-    Json(String),
+    Wire(String),
     Text {
         result: String,
         warning: Option<String>,

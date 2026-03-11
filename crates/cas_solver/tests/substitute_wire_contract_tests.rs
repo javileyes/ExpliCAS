@@ -1,6 +1,6 @@
-//! Wire-contract tests for substitute_str_to_json API.
+//! Wire-contract tests for substitute_str_to_wire API.
 //!
-//! These tests verify the JSON contract for substitute operations:
+//! These tests verify the wire contract for substitute operations:
 //! 1. Schema version is stable (v1)
 //! 2. Request echo is present and accurate
 //! 3. Options are reflected correctly
@@ -8,7 +8,11 @@
 //! 5. No __hold leak in result or steps
 //! 6. Error path produces correct error structure
 
-use cas_solver::substitute_str_to_json;
+use cas_solver::substitute_str_to_wire;
+
+fn parse_wire(payload: &str) -> serde_json::Value {
+    serde_json::from_str(payload).unwrap()
+}
 
 // ============================================================================
 // Schema & Structure Tests
@@ -16,22 +20,22 @@ use cas_solver::substitute_str_to_json;
 
 #[test]
 fn schema_version_is_one() {
-    let json = substitute_str_to_json("x^2 + 1", "x^2", "y", None);
-    let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+    let wire = substitute_str_to_wire("x^2 + 1", "x^2", "y", None);
+    let v = parse_wire(&wire);
     assert_eq!(v["schema_version"], 1);
 }
 
 #[test]
 fn ok_true_on_success() {
-    let json = substitute_str_to_json("x^2 + 1", "x^2", "y", None);
-    let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+    let wire = substitute_str_to_wire("x^2 + 1", "x^2", "y", None);
+    let v = parse_wire(&wire);
     assert_eq!(v["ok"], true);
 }
 
 #[test]
 fn result_present_on_success() {
-    let json = substitute_str_to_json("x^2 + 1", "x^2", "y", None);
-    let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+    let wire = substitute_str_to_wire("x^2 + 1", "x^2", "y", None);
+    let v = parse_wire(&wire);
     assert!(v["result"].is_string());
     assert!(v["result"].as_str().unwrap().contains("y"));
 }
@@ -42,8 +46,8 @@ fn result_present_on_success() {
 
 #[test]
 fn request_echo_present() {
-    let json = substitute_str_to_json("x^4 + 1", "x^2", "y", None);
-    let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+    let wire = substitute_str_to_wire("x^4 + 1", "x^2", "y", None);
+    let v = parse_wire(&wire);
 
     assert!(v["request"].is_object());
     assert_eq!(v["request"]["expr"], "x^4 + 1");
@@ -57,8 +61,8 @@ fn request_echo_present() {
 
 #[test]
 fn options_reflect_mode() {
-    let json = substitute_str_to_json("x^4 + 1", "x^2", "y", Some(r#"{"mode":"exact"}"#));
-    let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+    let wire = substitute_str_to_wire("x^4 + 1", "x^2", "y", Some(r#"{"mode":"exact"}"#));
+    let v = parse_wire(&wire);
 
     assert!(v["options"]["substitute"].is_object());
     assert_eq!(v["options"]["substitute"]["mode"], "exact");
@@ -66,16 +70,16 @@ fn options_reflect_mode() {
 
 #[test]
 fn options_default_is_power() {
-    let json = substitute_str_to_json("x^4 + 1", "x^2", "y", None);
-    let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+    let wire = substitute_str_to_wire("x^4 + 1", "x^2", "y", None);
+    let v = parse_wire(&wire);
 
     assert_eq!(v["options"]["substitute"]["mode"], "power");
 }
 
 #[test]
 fn options_reflect_steps_flag() {
-    let json = substitute_str_to_json("x^2 + 1", "x^2", "y", Some(r#"{"steps":true}"#));
-    let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+    let wire = substitute_str_to_wire("x^2 + 1", "x^2", "y", Some(r#"{"steps":true}"#));
+    let v = parse_wire(&wire);
 
     assert_eq!(v["options"]["substitute"]["steps"], true);
 }
@@ -86,8 +90,8 @@ fn options_reflect_steps_flag() {
 
 #[test]
 fn steps_present_when_requested() {
-    let json = substitute_str_to_json("x^4 + x^2 + 1", "x^2", "y", Some(r#"{"steps":true}"#));
-    let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+    let wire = substitute_str_to_wire("x^4 + x^2 + 1", "x^2", "y", Some(r#"{"steps":true}"#));
+    let v = parse_wire(&wire);
 
     assert!(v["steps"].is_array());
     let steps = v["steps"].as_array().unwrap();
@@ -96,8 +100,8 @@ fn steps_present_when_requested() {
 
 #[test]
 fn steps_have_required_fields() {
-    let json = substitute_str_to_json("x^2 + 1", "x^2", "y", Some(r#"{"steps":true}"#));
-    let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+    let wire = substitute_str_to_wire("x^2 + 1", "x^2", "y", Some(r#"{"steps":true}"#));
+    let v = parse_wire(&wire);
 
     let steps = v["steps"].as_array().unwrap();
     for step in steps {
@@ -109,8 +113,8 @@ fn steps_have_required_fields() {
 
 #[test]
 fn steps_rule_names_are_stable() {
-    let json = substitute_str_to_json("x^4 + x^2 + 1", "x^2", "y", Some(r#"{"steps":true}"#));
-    let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+    let wire = substitute_str_to_wire("x^4 + x^2 + 1", "x^2", "y", Some(r#"{"steps":true}"#));
+    let v = parse_wire(&wire);
 
     let steps = v["steps"].as_array().unwrap();
     let valid_rules = [
@@ -127,8 +131,8 @@ fn steps_rule_names_are_stable() {
 
 #[test]
 fn steps_before_not_equal_after() {
-    let json = substitute_str_to_json("x^4 + x^2 + 1", "x^2", "y", Some(r#"{"steps":true}"#));
-    let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+    let wire = substitute_str_to_wire("x^4 + x^2 + 1", "x^2", "y", Some(r#"{"steps":true}"#));
+    let v = parse_wire(&wire);
 
     let steps = v["steps"].as_array().unwrap();
     for step in steps {
@@ -144,8 +148,8 @@ fn steps_before_not_equal_after() {
 
 #[test]
 fn no_hold_leak_in_result() {
-    let json = substitute_str_to_json("x^4 + x^2 + 1", "x^2", "y", None);
-    let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+    let wire = substitute_str_to_wire("x^4 + x^2 + 1", "x^2", "y", None);
+    let v = parse_wire(&wire);
 
     let result = v["result"].as_str().unwrap();
     assert!(
@@ -157,8 +161,8 @@ fn no_hold_leak_in_result() {
 
 #[test]
 fn no_hold_leak_in_steps() {
-    let json = substitute_str_to_json("x^4 + x^2 + 1", "x^2", "y", Some(r#"{"steps":true}"#));
-    let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+    let wire = substitute_str_to_wire("x^4 + x^2 + 1", "x^2", "y", Some(r#"{"steps":true}"#));
+    let v = parse_wire(&wire);
 
     let steps = v["steps"].as_array().unwrap();
     for step in steps {
@@ -183,8 +187,8 @@ fn no_hold_leak_in_steps() {
 
 #[test]
 fn parse_error_has_correct_structure() {
-    let json = substitute_str_to_json("x^2 + 1", "invalid(((", "y", None);
-    let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+    let wire = substitute_str_to_wire("x^2 + 1", "invalid(((", "y", None);
+    let v = parse_wire(&wire);
 
     assert_eq!(v["ok"], false);
     assert!(v["error"].is_object());
@@ -195,8 +199,8 @@ fn parse_error_has_correct_structure() {
 
 #[test]
 fn error_still_has_request_echo() {
-    let json = substitute_str_to_json("x^2 + 1", "invalid(((", "y", None);
-    let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+    let wire = substitute_str_to_wire("x^2 + 1", "invalid(((", "y", None);
+    let v = parse_wire(&wire);
 
     // Even on error, request echo should be present for debugging
     assert!(v["request"].is_object());
@@ -210,8 +214,8 @@ fn error_still_has_request_echo() {
 
 #[test]
 fn power_mode_replaces_multiples() {
-    let json = substitute_str_to_json("x^4 + x^2 + 1", "x^2", "y", Some(r#"{"mode":"power"}"#));
-    let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+    let wire = substitute_str_to_wire("x^4 + x^2 + 1", "x^2", "y", Some(r#"{"mode":"power"}"#));
+    let v = parse_wire(&wire);
 
     let result = v["result"].as_str().unwrap();
     // x^4 should become y^2, x^2 should become y
@@ -221,8 +225,8 @@ fn power_mode_replaces_multiples() {
 
 #[test]
 fn exact_mode_only_replaces_exact() {
-    let json = substitute_str_to_json("x^4 + x^2 + 1", "x^2", "y", Some(r#"{"mode":"exact"}"#));
-    let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+    let wire = substitute_str_to_wire("x^4 + x^2 + 1", "x^2", "y", Some(r#"{"mode":"exact"}"#));
+    let v = parse_wire(&wire);
 
     let result = v["result"].as_str().unwrap();
     // x^4 should remain (not a multiple), x^2 should become y

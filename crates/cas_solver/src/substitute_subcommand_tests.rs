@@ -18,7 +18,7 @@ mod tests {
         .expect("substitute wire");
 
         match out {
-            SubstituteSubcommandOutput::Json(payload) => {
+            SubstituteSubcommandOutput::Wire(payload) => {
                 assert!(payload.contains("\"ok\""));
             }
             _ => panic!("expected json output"),

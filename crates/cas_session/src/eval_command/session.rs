@@ -4,7 +4,7 @@ use std::path::Path;
 
 /// Session-backed config for eval command orchestration.
 pub type EvalCommandConfig<'a> = cas_api_models::EvalSessionRunConfig<'a>;
-type EvalOutputWire = cas_api_models::EvalJsonOutput;
+type EvalOutputWire = cas_api_models::EvalWireOutput;
 type EvalCommandResult = Result<EvalOutputWire, String>;
 
 /// Evaluate `eval` using optional persisted session state.
@@ -16,7 +16,7 @@ pub fn evaluate_eval_command_with_session<F>(
     collect_steps: F,
 ) -> (EvalCommandResult, Option<String>, Option<String>)
 where
-    F: Fn(&[Step], &[EngineEvent], &cas_ast::Context, &str) -> Vec<cas_api_models::StepJson>,
+    F: Fn(&[Step], &[EngineEvent], &cas_ast::Context, &str) -> Vec<cas_api_models::StepWire>,
 {
     crate::run_with_domain_session(session_path, config.domain, |engine, state| {
         cas_solver::evaluate_eval_with_session(engine, state, config, |steps, events, ctx, mode| {

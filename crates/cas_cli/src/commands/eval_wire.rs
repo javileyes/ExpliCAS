@@ -1,6 +1,6 @@
-//! eval-json subcommand handler.
+//! eval-json alias handler.
 //!
-//! Evaluates a single expression and returns JSON output.
+//! Evaluates a single expression and returns wire output.
 
 use std::path::PathBuf;
 
@@ -11,7 +11,7 @@ use crate::{
     InvTrigArg, ValueDomainArg,
 };
 
-/// Arguments for eval-json subcommand
+/// Arguments for the eval wire bridge.
 #[derive(Args, Debug)]
 pub struct EvalWireArgs {
     /// Expression to evaluate
@@ -82,7 +82,7 @@ pub struct EvalWireArgs {
     pub session: Option<PathBuf>,
 }
 
-/// Build JSON args from the richer CLI `eval` args.
+/// Build wire args from the richer CLI `eval` args.
 pub fn from_eval_args(expr: String, args: &EvalArgs) -> EvalWireArgs {
     EvalWireArgs {
         expr,
@@ -105,7 +105,7 @@ pub fn from_eval_args(expr: String, args: &EvalArgs) -> EvalWireArgs {
     }
 }
 
-/// Build JSON args from legacy `eval-json` CLI args.
+/// Build wire args from the hidden `eval-json` alias.
 pub fn from_legacy_eval_wire_args(args: EvalWireLegacyArgs) -> EvalWireArgs {
     EvalWireArgs {
         expr: args.expr,
@@ -178,7 +178,7 @@ fn assume_scope_arg_to_string(as_: AssumeScopeArg) -> String {
     }
 }
 
-/// Run the eval-json command
+/// Run the eval wire bridge.
 pub fn run(args: EvalWireArgs) {
     // Set thread count if specified
     if let Some(n) = args.threads {

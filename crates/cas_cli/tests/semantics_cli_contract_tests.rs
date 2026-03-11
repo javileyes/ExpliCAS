@@ -1,9 +1,9 @@
 //! CLI contract tests for PR1.1 semantic flags.
 //!
-//! # Contract: Semantic Flags in JSON Output
+//! # Contract: Semantic Flags in Wire Output
 //!
 //! These tests verify that:
-//! 1. New flags are reflected in JSON semantics block
+//! 1. New flags are reflected in the wire semantics block
 //! 2. Defaults are correct (real/strict/principal)
 
 use serde_json::Value;
@@ -25,11 +25,11 @@ fn run_cli(args: &[&str]) -> (String, i32) {
     (stdout, code)
 }
 
-fn parse_json(s: &str) -> Value {
-    // Trim whitespace and find JSON content (in case of extra output)
+fn parse_wire(s: &str) -> Value {
+    // Trim whitespace and find wire JSON content (in case of extra output)
     let trimmed = s.trim();
     serde_json::from_str(trimmed)
-        .unwrap_or_else(|e| panic!("Failed to parse JSON: {} (error: {})", trimmed, e))
+        .unwrap_or_else(|e| panic!("Failed to parse wire JSON: {} (error: {})", trimmed, e))
 }
 
 // =============================================================================
@@ -39,20 +39,20 @@ fn parse_json(s: &str) -> Value {
 #[test]
 fn semantics_block_present_in_json() {
     let (output, _code) = run_cli(&["eval-json", "1+1"]);
-    let json = parse_json(&output);
+    let wire = parse_wire(&output);
 
     assert!(
-        json.get("semantics").is_some(),
-        "JSON should have 'semantics' field"
+        wire.get("semantics").is_some(),
+        "Wire output should have 'semantics' field"
     );
 }
 
 #[test]
 fn semantics_defaults_reflected() {
     let (output, _code) = run_cli(&["eval-json", "1+1"]);
-    let json = parse_json(&output);
+    let wire = parse_wire(&output);
 
-    let semantics = &json["semantics"];
+    let semantics = &wire["semantics"];
     assert_eq!(semantics["domain_mode"], "generic");
     assert_eq!(semantics["value_domain"], "real");
     assert_eq!(semantics["inv_trig"], "strict");
@@ -63,26 +63,26 @@ fn semantics_defaults_reflected() {
 #[test]
 fn value_domain_complex_reflected() {
     let (output, _code) = run_cli(&["eval-json", "1+1", "--value-domain", "complex"]);
-    let json = parse_json(&output);
+    let wire = parse_wire(&output);
 
-    assert_eq!(json["semantics"]["value_domain"], "complex");
+    assert_eq!(wire["semantics"]["value_domain"], "complex");
 }
 
 #[test]
 fn inv_trig_principal_reflected() {
     let (output, _code) = run_cli(&["eval-json", "1+1", "--inv-trig", "principal"]);
-    let json = parse_json(&output);
+    let wire = parse_wire(&output);
 
-    assert_eq!(json["semantics"]["inv_trig"], "principal");
+    assert_eq!(wire["semantics"]["inv_trig"], "principal");
 }
 
 #[test]
 fn domain_strict_with_semantics() {
     let (output, _code) = run_cli(&["eval-json", "1+1", "--domain", "strict"]);
-    let json = parse_json(&output);
+    let wire = parse_wire(&output);
 
-    assert_eq!(json["semantics"]["domain_mode"], "strict");
-    assert_eq!(json["domain"]["mode"], "strict");
+    assert_eq!(wire["semantics"]["domain_mode"], "strict");
+    assert_eq!(wire["domain"]["mode"], "strict");
 }
 
 // =============================================================================
@@ -92,10 +92,10 @@ fn domain_strict_with_semantics() {
 #[test]
 fn assume_scope_default_reflected() {
     let (output, _code) = run_cli(&["eval-json", "1+1"]);
-    let json = parse_json(&output);
+    let wire = parse_wire(&output);
 
     assert_eq!(
-        json["semantics"]["assume_scope"], "real",
+        wire["semantics"]["assume_scope"], "real",
         "assume_scope default should be 'real'"
     );
 }
@@ -103,11 +103,11 @@ fn assume_scope_default_reflected() {
 #[test]
 fn assume_scope_wildcard_flag_reflected() {
     let (output, _code) = run_cli(&["eval-json", "1+1", "--assume-scope", "wildcard"]);
-    let json = parse_json(&output);
+    let wire = parse_wire(&output);
 
     assert_eq!(
-        json["semantics"]["assume_scope"], "wildcard",
-        "--assume-scope wildcard should be reflected in JSON"
+        wire["semantics"]["assume_scope"], "wildcard",
+        "--assume-scope wildcard should be reflected in wire output"
     );
 }
 
@@ -125,11 +125,11 @@ fn assume_scope_flag_does_not_change_result() {
         "wildcard",
     ]);
 
-    let json1 = parse_json(&output1);
-    let json2 = parse_json(&output2);
+    let wire1 = parse_wire(&output1);
+    let wire2 = parse_wire(&output2);
 
     assert_eq!(
-        json1["result"], json2["result"],
+        wire1["result"], wire2["result"],
         "assume_scope flag should not change result (infra only)"
     );
 }

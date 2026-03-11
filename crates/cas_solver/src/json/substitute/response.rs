@@ -1,6 +1,6 @@
 use cas_api_models::{
-    EngineJsonSubstep, SubstituteJsonResponse, SubstituteOptionsInner, SubstituteOptionsJson,
-    SubstituteRequestEcho, SubstituteRunOptions,
+    EngineWireSubstep, SubstituteRequestEcho, SubstituteRunOptions, SubstituteWireOptions,
+    SubstituteWireOptionsInner, SubstituteWireResponse,
 };
 
 use super::eval::eval_substitute_impl;
@@ -17,8 +17,8 @@ pub fn substitute_str_to_wire_impl(
         with_expr: with_str.to_string(),
     };
 
-    let options = SubstituteOptionsJson {
-        substitute: SubstituteOptionsInner {
+    let options = SubstituteWireOptions {
+        substitute: SubstituteWireOptionsInner {
             mode: opts.mode.clone(),
             steps: opts.steps,
         },
@@ -27,7 +27,7 @@ pub fn substitute_str_to_wire_impl(
     let eval = match eval_substitute_impl(expr_str, target_str, with_str, &opts.mode, opts.steps) {
         Ok(eval) => eval,
         Err(issue) => {
-            let resp = SubstituteJsonResponse::err(
+            let resp = SubstituteWireResponse::err(
                 issue.to_wire_error(),
                 request.clone(),
                 options.clone(),
@@ -36,10 +36,10 @@ pub fn substitute_str_to_wire_impl(
         }
     };
 
-    let wire_steps: Vec<EngineJsonSubstep> = eval
+    let wire_steps: Vec<EngineWireSubstep> = eval
         .steps
         .into_iter()
-        .map(|s| EngineJsonSubstep {
+        .map(|s| EngineWireSubstep {
             rule: s.rule,
             before: s.before,
             after: s.after,
@@ -47,6 +47,6 @@ pub fn substitute_str_to_wire_impl(
         })
         .collect();
 
-    let resp = SubstituteJsonResponse::ok(eval.result, request, options, wire_steps);
+    let resp = SubstituteWireResponse::ok(eval.result, request, options, wire_steps);
     resp.to_json_with_pretty(opts.pretty)
 }

@@ -387,7 +387,7 @@ semantics set reporting trace   # Future: include step refs
 ### Phase 3 (PR-A3): Engine Wiring ✅
 - `Orchestrator.simplify_pipeline` collects from `Step.assumption_events`
 - `PipelineStats.assumptions` field
-- `EngineJsonResponse.assumptions` field
+- `EngineWireResponse.assumptions` field
 - REPL summary line in `do_simplify`
 
 ### Phase 4 (PR-A4): Structured Emission ✅
@@ -452,4 +452,3 @@ All 18 rules that previously emitted `domain_assumption` strings have been migra
 5. **Stable order**: Same input → same assumption order
 6. **Legacy parsing**: `from_legacy_string()` correctly infers kind
 7. **Options propagation**: EvalOptions → SimplifyOptions → Orchestrator
-

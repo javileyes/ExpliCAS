@@ -1,10 +1,10 @@
-//! envelope-json subcommand handler.
+//! envelope-json alias handler.
 //!
 //! Delegates envelope generation to `cas_session` and only handles CLI I/O.
 
 use clap::Args;
 
-/// Arguments for envelope-json subcommand
+/// Arguments for the envelope wire bridge.
 #[derive(Args, Debug)]
 pub struct EnvelopeWireArgs {
     /// Expression to evaluate
@@ -19,7 +19,7 @@ pub struct EnvelopeWireArgs {
     pub value_domain: String,
 }
 
-/// Run the envelope-json command
+/// Run the envelope wire bridge.
 pub fn run(args: EnvelopeWireArgs) {
     let output =
         cas_session::evaluate_envelope_wire_command(&args.expr, &args.domain, &args.value_domain);

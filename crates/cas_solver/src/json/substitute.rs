@@ -5,9 +5,9 @@ mod response;
 
 use self::response::substitute_str_to_wire_impl;
 
-/// Substitute an expression and return JSON response.
+/// Substitute an expression and return wire response.
 ///
-/// This is the **solver-level canonical entry point** for JSON-returning
+/// This is the **solver-level canonical entry point** for wire-returning
 /// stateless substitution. Frontends should normally go through
 /// `cas_session::evaluate_substitute_canonical`.
 ///
@@ -18,9 +18,9 @@ use self::response::substitute_str_to_wire_impl;
 /// * `opts_json` - Options JSON string (optional, see `SubstituteRunOptions`)
 ///
 /// # Returns
-/// JSON string with `SubstituteJsonResponse` (schema v1).
+/// Wire payload string with `SubstituteWireResponse` (schema v1).
 /// Always returns valid JSON, even on errors.
-pub fn substitute_str_to_json(
+pub fn substitute_str_to_wire(
     expr_str: &str,
     target_str: &str,
     with_str: &str,

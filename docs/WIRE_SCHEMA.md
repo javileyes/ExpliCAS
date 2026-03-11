@@ -150,4 +150,4 @@ expli eval "2+2" --format json | jq '.wire'
 
 - **Rust module**: `crates/cas_cli/src/repl/wire.rs`
 - **Conversion**: `From<ReplReply> for WireReply`
-- **JSON field**: `EvalJsonOutput.wire`
+- **Wire field**: `EvalWireOutput.wire`

@@ -15,7 +15,7 @@ pub enum LimitCommandPreSimplify {
 /// CLI-friendly output contract for `limit` subcommand.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LimitSubcommandOutput {
-    Json(String),
+    Wire(String),
     Text {
         result: String,
         warning: Option<String>,

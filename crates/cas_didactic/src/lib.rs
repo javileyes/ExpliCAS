@@ -9,14 +9,6 @@ mod step_payload_render;
 mod step_payloads;
 pub mod timeline;
 
-#[doc(hidden)]
-pub mod eval_json_steps {
-    pub use crate::step_payloads::{
-        collect_eval_json_steps, collect_eval_json_steps_with_events, collect_step_payloads,
-        collect_step_payloads_with_events,
-    };
-}
-
 pub use cas_solver::to_display_steps;
 pub use cas_solver::{pathsteps_to_expr_path, DisplayEvalSteps, ImportanceLevel, PathStep, Step};
 pub use didactic::{
@@ -26,10 +18,7 @@ pub use didactic::{
     CliSubstepsRenderPlan, EnrichedStep, StepDisplayMode, SubStep, TimelineSubstepsRenderPlan,
 };
 pub use events::EngineEventCollector;
-pub use step_payloads::{
-    collect_eval_json_steps, collect_eval_json_steps_with_events, collect_step_payloads,
-    collect_step_payloads_with_events,
-};
+pub use step_payloads::{collect_step_payloads, collect_step_payloads_with_events};
 pub use timeline::{
     evaluate_timeline_command_cli_render_with_session,
     evaluate_timeline_command_output_with_session,

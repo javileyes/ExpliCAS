@@ -2,14 +2,14 @@ mod path;
 mod rule;
 mod substeps;
 
-use cas_api_models::SubStepJson;
+use cas_api_models::SubStepWire;
 use cas_ast::{ExprId, ExprPath};
 use cas_solver::Step;
 
 pub(crate) fn collect_step_payload_substeps(
     step: &Step,
     enriched: &crate::didactic::EnrichedStep,
-) -> Vec<SubStepJson> {
+) -> Vec<SubStepWire> {
     substeps::collect_step_payload_substeps(step, enriched)
 }
 

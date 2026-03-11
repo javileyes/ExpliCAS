@@ -1,14 +1,14 @@
-use cas_api_models::SubStepJson;
+use cas_api_models::SubStepWire;
 use cas_solver::Step;
 
 pub(super) fn collect_step_payload_substeps(
     step: &Step,
     enriched: &crate::didactic::EnrichedStep,
-) -> Vec<SubStepJson> {
-    let mut substeps: Vec<SubStepJson> = step
+) -> Vec<SubStepWire> {
+    let mut substeps: Vec<SubStepWire> = step
         .substeps()
         .iter()
-        .map(|substep| SubStepJson {
+        .map(|substep| SubStepWire {
             title: substep.title.clone(),
             lines: substep.lines.clone(),
             before_latex: None,
@@ -17,7 +17,7 @@ pub(super) fn collect_step_payload_substeps(
         .collect();
 
     for substep in &enriched.sub_steps {
-        substeps.push(SubStepJson {
+        substeps.push(SubStepWire {
             title: substep.description.clone(),
             lines: vec![],
             before_latex: Some(render_substep_side(

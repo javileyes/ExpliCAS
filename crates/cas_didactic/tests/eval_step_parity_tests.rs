@@ -1,6 +1,6 @@
 //! Anti-regression tests for eval step renderer parity (V2.9.9).
 //!
-//! These tests verify that all renderers (REPL Text, Timeline HTML, JSON API)
+//! These tests verify that all renderers (REPL Text, Timeline HTML, wire API)
 //! produce consistent output from the same `DisplayEvalSteps` source,
 //! preventing "final layer bifurcation".
 //!
@@ -87,16 +87,16 @@ fn eval_step_count_matches_between_renderers() {
     // Timeline HTML renderer: uses &display_steps via Deref
     let timeline_step_count = display_steps.as_slice().len();
 
-    // JSON renderer: iterates over steps
-    let json_step_count = display_steps.iter().count();
+    // Wire renderer: iterates over steps
+    let wire_step_count = display_steps.iter().count();
 
     assert_eq!(
         text_step_count, timeline_step_count,
         "Text and Timeline renderers must produce same step count from DisplayEvalSteps"
     );
     assert_eq!(
-        text_step_count, json_step_count,
-        "Text and JSON renderers must produce same step count from DisplayEvalSteps"
+        text_step_count, wire_step_count,
+        "Text and wire renderers must produce same step count from DisplayEvalSteps"
     );
 }
 
@@ -115,8 +115,8 @@ fn eval_step_descriptions_match_between_renderers() {
         // Timeline renderer uses step.description for hover/expand
         let timeline_description = &step.description;
 
-        // JSON renderer uses step.description in EngineJsonStep
-        let json_description = &step.description;
+        // Wire renderer uses step.description in StepWire
+        let wire_description = &step.description;
 
         assert_eq!(
             text_description,
@@ -128,11 +128,11 @@ fn eval_step_descriptions_match_between_renderers() {
         );
         assert_eq!(
             text_description,
-            json_description,
-            "Step {} description must match: text='{}' vs json='{}'",
+            wire_description,
+            "Step {} description must match: text='{}' vs wire='{}'",
             i + 1,
             text_description,
-            json_description
+            wire_description
         );
     }
 }

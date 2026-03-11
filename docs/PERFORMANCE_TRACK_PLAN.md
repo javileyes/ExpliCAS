@@ -1904,6 +1904,123 @@ Those are valid projects, but not part of this performance track.
   - `cargo test -p cas_solver --test multivar_gcd_tests test_perfect_square_minus_cancel_in_solve_strict_context_steps_off -- --exact`
   - `cargo test -p cas_solver --test solve_safety_contract_tests`
   - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math`
+- retained a standard-context root no-op shortcut in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs`
+- scope:
+  - only in `ContextMode::Standard`
+  - only in `ValueDomain::RealOnly`
+  - only with no step listener attached
+  - only for exact roots that are guaranteed no-op while complex rewrites are
+    disabled:
+    - `i^n` with integer `n`
+    - Gaussian rational division `(a+bi)/(c+di)`
+- rationale:
+  - the standard REPL path was still paying the full simplify pipeline for
+    expressions that are intentionally left untouched in real mode and only
+    produce the later `Imaginary Usage Warning`
+  - the narrow root gate keeps complex-enabled semantics unchanged and avoids
+    touching mixed expressions where real-only simplification can still do useful
+    work in other subtrees
+- retained measurements:
+  - `simplify_cached_vs_uncached/cached/complex/i_power`:
+    `20.326-20.514 us`, materially lower in absolute terms than the prior
+    `~41 us` band and stable in reruns
+  - `simplify_cached_vs_uncached/cached/complex/gaussian_div`:
+    `135.02-136.18 us`, effectively flat in microbench reruns
+  - `repl_full_eval/cached/batch_11_inputs`:
+    `1.1808-1.1910 ms`, improvement `~3.4-6.0%`
+- validation:
+  - `cargo test -p cas_engine profile_cache_tests::tests::test_from_profile_standard_i_power_real_domain_uses_root_noop_fast_path --lib`
+  - `cargo test -p cas_engine profile_cache_tests::tests::test_from_profile_standard_gaussian_div_real_domain_uses_root_noop_fast_path --lib`
+  - `cargo test -p cas_solver --test complex_number_tests`
+  - `cargo run -q -p cas_cli -- eval 'i^5' --steps on --format json`
+  - `cargo run -q -p cas_cli -- eval '(3 + 4*i)/(1 + 2*i)' --steps on --format json`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_engine --bench profile_cache 'simplify_cached_vs_uncached/cached/(complex/gaussian_div|complex/i_power)' -- --noplot`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_engine --bench repl_end_to_end 'repl_full_eval/cached/batch_11_inputs' -- --noplot`
+- discarded a standard-context root shortcut for exact affine `sqrt(square)` in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs`
+- result:
+  - reverted
+- rationale:
+  - although the target case `((5*x + 8/3)*(5*x + 8/3))^(1/2)` looked like a
+    good candidate for an early exit, the narrower root shortcut still regressed
+    the real workload around it instead of helping
+- measured outcome before revert:
+  - `simplify_cached_vs_uncached/cached/heavy/abs_square`:
+    `187.20-188.47 us`, no significant win
+  - `simplify_cached_vs_uncached/cached/heavy/nested_root`:
+    `134.56-137.49 us`, regression `~1.2-4.1%`
+  - `repl_full_eval/cached/batch_11_inputs`:
+    `1.2177-1.2482 ms`, regression `~1.5-4.3%`
+- retained an exact `Mul/Mul` common-factor preorder for the standard path in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/rules/algebra/mod.rs`
+  and
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/engine/transform/transform_helpers.rs`
+- scope:
+  - exact raw shape only: `(F*A)/(F*B)`, `(A*F)/(F*B)`, `(F*A)/(B*F)`, `(A*F)/(B*F)`
+  - only outside `Strict`
+  - only with no listener attached
+  - integrated in the existing pre-order `Div` transform path, so it helps
+    standard `eval` / REPL with `steps on`
+- rationale:
+  - reranking `repl_individual/cached/*` showed
+    `((x+y)*(a+b))/((x+y)*(c+d))` as the clear dominant cached REPL input at
+    about `~650 us`
+  - that case already exposes the shared factor structurally, so paying the
+    full fraction-cancellation pipeline was unnecessary
+  - the narrow preorder removes the traversal cost while preserving the visible
+    behavior: one step, same result, and the same required conditions
+- retained measurements:
+  - `repl_individual/cached/08_((x+y)*(a+b))/((x+y)`:
+    `158.04-159.47 us`, improvement `~75.4-75.9%`
+  - `simplify_cached_vs_uncached/cached/gcd/layer25_multiparam`:
+    `152.78-154.81 us`, improvement `~76.0-76.7%`
+  - `repl_full_eval/cached/batch_11_inputs`:
+    `1.2446-1.2791 ms`, improvement `~23.9-25.7%`
+- validation:
+  - `cargo test -p cas_engine algebra::tests::test_exact_common_factor_mul_fraction_preorder --lib`
+  - `cargo test -p cas_solver --test anti_catastrophe_tests test_cancel_vs_gcd_structural_cancel_multiparam -- --exact`
+  - `cargo test -p cas_engine profile_cache_tests --lib`
+  - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math`
+  - `cargo run -q -p cas_cli -- eval '((x+y)*(a+b))/((x+y)*(c+d))' --steps on --format json`
+  - `cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_unified_benchmark -- --ignored --nocapture`
+- tried a narrower root dispatcher split for denominator-`Pow` cases in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs`,
+  but reverted it after a broader rerank
+- scope:
+  - only in the hidden `solve` root-shortcut path
+  - only for `Div(_, Pow(_, _))`
+  - if the numerator is `Pow`, try only the `power_quotient` shortcut
+  - if the numerator is `Add`, try only the exact `binomial_square` shortcut
+  - otherwise, skip both matchers
+- rationale:
+  - after the root fast paths landed, the dispatcher was still probing
+    irrelevant matchers on denominator-`Pow` expressions
+  - most notably, `x^4/x^2` still paid the `binomial_square` probe, and exact
+    binomial-square inputs still went through the power-quotient branch shape
+    checks
+  - tightening that branch by numerator shape removes dead matcher attempts
+    without changing any accepted shortcut shape
+- initial focused measurements:
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `60.230-60.581 us`, improvement `~1.0-3.0%`
+  - `solve_hotspots_cached/generic/power_quotient_fraction`:
+    `3.8677-3.9762 us`, no statistically significant change
+  - `solve_hotspots_cached/generic/binomial_square_fraction`:
+    `4.2923-4.5306 us`, no statistically significant change
+- broader rerank before keeping the change:
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `61.243-61.831 us`, regression `~1.9-3.3%`
+  - direct hotspots stayed inside noise
+- decision:
+  - reverted
+  - the focused win did not survive the wider rerank, so the current fast
+    benchmark frontier is too noisy to justify this extra branch split
+- validation:
+  - `cargo test -p cas_engine profile_cache_tests::tests::test_from_profile_solve_tactic_power_quotient_uses_root_fast_path --lib`
+  - `cargo test -p cas_engine profile_cache_tests::tests::test_from_profile_solve_tactic_binomial_square_uses_root_fast_path --lib`
+  - `cargo test -p cas_solver --test solve_safety_contract_tests`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_engine --bench profile_cache 'solve_modes_cached/solve_tactic_generic_batch|solve_hotspots_cached/generic/(power_quotient_fraction|binomial_square_fraction)' -- --noplot`
 - retained a local fast equality check for the exact cubes preorder in
   `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/rules/algebra/mod.rs`
 - scope:
@@ -2877,3 +2994,759 @@ Those are valid projects, but not part of this performance track.
   - `cargo test -p cas_solver --test multivar_gcd_tests test_perfect_square_minus_cancel_in_solve_strict_context_steps_off -- --exact`
   - `cargo test -p cas_solver --test solve_safety_contract_tests`
   - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math`
+- retained a stage-breakdown REPL benchmark in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/benches/repl_end_to_end.rs`
+  plus a convenience target in `/Users/javiergimenezmoya/developer/math/Makefile`
+- scope:
+  - new `repl_stage_breakdown/*` group
+  - splits representative REPL cases into `parse`, `simplify`, and `format`
+  - cases tracked:
+    - `heavy/nested_root`
+    - `heavy/abs_square`
+    - `complex/gaussian_div`
+  - make target:
+    - `make bench-engine-repl-breakdown`
+- rationale:
+  - the recent REPL experiments were still too blind: `repl_full_eval` mixed parse,
+    simplify, and format, so it was easy to overfit a local shortcut without
+    knowing where the remaining latency actually lived
+  - the split makes the next ROI obvious and avoids more no-op work on parse/render
+- retained measurements:
+  - `repl_stage_breakdown/parse/heavy/nested_root`:
+    `5.7482-5.8977 us`
+  - `repl_stage_breakdown/simplify/heavy/nested_root`:
+    `126.94-128.62 us`
+  - `repl_stage_breakdown/format/heavy/nested_root`:
+    `906.37-915.24 ns`
+  - `repl_stage_breakdown/parse/heavy/abs_square`:
+    `14.286-14.547 us`
+  - `repl_stage_breakdown/simplify/heavy/abs_square`:
+    `180.32-181.62 us`
+  - `repl_stage_breakdown/format/heavy/abs_square`:
+    `825.15-862.88 ns`
+  - `repl_stage_breakdown/parse/complex/gaussian_div`:
+    `7.1727-7.3482 us`
+  - `repl_stage_breakdown/simplify/complex/gaussian_div`:
+    `138.60-140.62 us`
+  - `repl_stage_breakdown/format/complex/gaussian_div`:
+    `1.1641-1.1979 us`
+- conclusion:
+  - parse and format are negligible on the current REPL hotspots
+  - the remaining work is overwhelmingly in `simplify`, especially
+    `abs_square`, `gaussian_div`, and `nested_root`
+- validation:
+  - `cargo fmt --all`
+  - `cargo check -p cas_engine --benches`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_engine --bench repl_end_to_end 'repl_stage_breakdown/(parse|simplify|format)/(heavy/nested_root|heavy/abs_square|complex/gaussian_div)' -- --noplot`
+- corrected a benchmark wiring bug in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/benches/repl_end_to_end.rs`
+- scope:
+  - `full_eval(...)`, `full_eval_with_mode(...)`, `simplify_only(...)`, and
+    `formatted_result_from_eval(...)` now call
+    `simplify_with_options(opts.to_simplify_options())`
+  - previously they built the profile from `EvalOptions`, but then called bare
+    `simplify(...)`, so parts of the REPL bench were not actually respecting the
+    intended `ContextMode` / semantic configuration
+- rationale:
+  - this was inflating or distorting several REPL numbers, especially the
+    standard real-domain complex no-op cases
+  - the retained standard shortcut for `i^n` / Gaussian division was already
+    correct in runtime, but the bench was not measuring it honestly
+- retained measurements after the fix:
+  - `repl_stage_breakdown/simplify/heavy/nested_root`:
+    `128.25-129.28 us`
+  - `repl_stage_breakdown/simplify/heavy/abs_square`:
+    `179.66-181.56 us`
+  - `repl_stage_breakdown/simplify/complex/gaussian_div`:
+    `3.2787-3.4919 us`
+  - `repl_full_eval/cached/batch_11_inputs`:
+    `1.0386-1.0717 ms`, improvement `~15-18%`
+  - `repl_individual/cached/05_i^5`:
+    `7.5635-7.6846 us`, improvement `~70%`
+- conclusion:
+  - the previous `~140 us` reading for standard `gaussian_div` was a bench bug,
+    not a real runtime regression
+  - after the fix, the dominant remaining REPL hotspots are `abs_square` and
+    `nested_root`
+- validation:
+  - `cargo fmt --all`
+  - `cargo check -p cas_engine --benches`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_engine --bench repl_end_to_end 'repl_stage_breakdown/simplify/(heavy/nested_root|heavy/abs_square|complex/gaussian_div)' -- --noplot`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_engine --bench repl_end_to_end 'repl_full_eval/cached/batch_11_inputs' -- --noplot`
+- retained a standard phase-subset benchmark in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/benches/profile_cache.rs`
+  plus a convenience target in `/Users/javiergimenezmoya/developer/math/Makefile`
+- scope:
+  - new `standard_phase_subset_cached/*` group
+  - tracks `standard/full`, `standard/no_transform`, and
+    `standard/no_transform_no_rationalize` for:
+    - `heavy/nested_root`
+    - `heavy/abs_square`
+    - `complex/gaussian_div`
+    - `complex/i_power`
+  - make target:
+    - `make bench-engine-standard-phase-subset`
+- retained measurements:
+  - `heavy/nested_root/standard/full`:
+    `128.98-129.84 us`
+  - `heavy/nested_root/standard/no_transform`:
+    `118.70-120.39 us`
+  - `heavy/nested_root/standard/no_transform_no_rationalize`:
+    `119.78-121.37 us`
+  - `heavy/abs_square/standard/full`:
+    `180.64-182.01 us`
+  - `heavy/abs_square/standard/no_transform`:
+    `169.40-171.74 us`
+  - `heavy/abs_square/standard/no_transform_no_rationalize`:
+    `174.05-175.66 us`
+  - `complex/gaussian_div/standard/full`:
+    `3.2325-3.3878 us`
+  - `complex/gaussian_div/standard/no_transform`:
+    `3.2473-3.4315 us`
+  - `complex/gaussian_div/standard/no_transform_no_rationalize`:
+    `3.2963-3.4704 us`
+- conclusion:
+  - `gaussian_div` is no longer a meaningful standard-path target
+  - `nested_root` and `abs_square` still have a real late-phase tail after
+    `Core`, so the next REPL ROI is more likely a narrow post-`Core` cut than
+    another root matcher
+- validation:
+  - `cargo fmt --all`
+  - `cargo check -p cas_engine --benches`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_engine --bench profile_cache 'standard_phase_subset_cached/(heavy/nested_root|heavy/abs_square|complex/gaussian_div)/(standard/full|standard/no_transform|standard/no_transform_no_rationalize)' -- --noplot`
+- discarded a cheaper boolean matcher plus a `simplify_with_stats(...)` early exit
+  for standard real-domain Gaussian no-op roots
+  in `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs`
+  and `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/engine/orchestration.rs`
+- rationale:
+  - the cheaper Gaussian matcher alone did not move `gaussian_div` or the REPL batch
+    materially
+  - lifting the shortcut above `Orchestrator` looked promising in theory, but the
+    measurements stayed flat or worse in the real REPL path
+- measured outcome before revert:
+  - `repl_stage_breakdown/simplify/complex/gaussian_div`:
+    `136.87-139.80 us` (matcher-only), then `140.90-142.67 us` (lifted shortcut)
+  - `repl_full_eval/cached/batch_11_inputs`:
+    `1.2104-1.2372 ms` (matcher-only), then `1.2608-1.2815 ms` (lifted shortcut)
+- discarded a narrow standard post-`Core` cut for affine
+  `sqrt(square) -> abs(...)` in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs`
+- rationale:
+  - the hidden standard path still needed one `Transform` iteration for the retained
+    `Root Power Cancel`, so the post-`Core` gate did not actually fire where intended
+  - the measured path regressed even in the best-case target `abs_square`, so there
+    was no case for keeping extra shape logic in `Orchestrator`
+- measured outcome before revert:
+  - `standard_phase_subset_cached/heavy/abs_square/standard/full`:
+    `198.13-203.97 us`, regression `~9.5-13.2%`
+  - `standard_phase_subset_cached/heavy/abs_square/standard/no_transform`:
+    `180.97-182.82 us`, regression `~5.1-8.2%`
+  - `repl_stage_breakdown/simplify/heavy/abs_square`:
+    `193.69-198.28 us`, regression `~7.0-9.9%`
+  - `repl_full_eval/cached/batch_11_inputs`:
+    `1.0886-1.1172 ms`, regression `~2.6-7.4%`
+- discarded a standard post-`Core` cut for `numeric * sqrt(...)` outputs after
+  `Extract Perfect Square from Radicand` in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs`
+- rationale:
+  - the shape looked like a clean `nested_root` candidate, but the retained `Core`
+    rewrite still left enough bookkeeping that the extra gate cost more than the
+    late-phase tail it was trying to remove
+  - the regression showed up both in the focused `nested_root` simplify bench and
+    in the phase-subset breakdown, so there was no reason to keep the shortcut
+- measured outcome before revert:
+  - `standard_phase_subset_cached/heavy/nested_root/standard/full`:
+    `136.09-138.32 us`, regression `~2.7-7.2%`
+  - `standard_phase_subset_cached/heavy/nested_root/standard/no_transform`:
+    `125.59-128.30 us`, regression `~2.1-5.0%`
+  - `repl_stage_breakdown/simplify/heavy/nested_root`:
+    `134.56-135.94 us`, regression `~4.2-6.5%`
+- discarded an early return inside the `sqrt(square)` preorder in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/engine/transform/transform_helpers.rs`
+  that skipped recursive transform when the generated `abs(...)` already looked canonical
+- rationale:
+  - the local `abs_square` subset looked roughly flat, but the full REPL batch regressed
+    clearly, so the shortcut was not robust enough to keep
+  - `abs(e^x)` remained semantically correct, but that was not enough to justify the
+    batch regression
+- measured outcome before revert:
+  - `standard_phase_subset_cached/heavy/abs_square/standard/full`:
+    `194.59-198.73 us`, only noise-level improvement
+  - `repl_stage_breakdown/simplify/heavy/abs_square`:
+    `196.47-200.66 us`, no meaningful improvement
+  - `repl_full_eval/cached/batch_11_inputs`:
+    `1.0928-1.1191 ms`, regression `~7.5-10.8%`
+- retained tooling:
+  - new Make target:
+    - `make bench-engine-repl-individual`
+  - purpose:
+    - rerank the actual 11 cached standard REPL inputs with one command before
+      attempting another micro-optimization
+- current rerank snapshot from `repl_individual/cached/*`:
+    - `08_((x+y)*(a+b))/((x+y)*(c+d))`: `157.21-161.11 us`
+    - `04_((5*x + 8)^2)^(1/2)`: `153.84-155.45 us`
+    - `03_sqrt(12*x^3)`: `137.86-139.61 us`
+    - `06_(2*x + 2*y)/(4*x + 4*y)`: `127.45-128.94 us`
+    - `10_sin(2*x + 1)^2 + cos(1 + 2*x)^2`: `80.374-81.163 us`
+- retained tooling:
+  - new Make target:
+    - `make bench-engine-repl-hotspots`
+  - purpose:
+    - rerun just the current top-5 cached standard REPL hotspots instead of the full
+      11-input rerank when checking whether a candidate change is worth a deeper run
+- discarded a canonical-form early return after
+  `try_exact_common_factor_mul_fraction_preorder(...)` in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/engine/transform/transform_helpers.rs`
+- rationale:
+  - the explicit common-factor fraction looked like the strongest standard-path
+    candidate, but skipping the recursive transform on the canonical `(a+b)/(c+d)`
+    result regressed the direct hotspot and did not move the batch
+  - the visible contract stayed correct (`1` step, same `required_conditions`), so
+    the regression was pure performance overhead from the extra canonical check
+- measured outcome before revert:
+  - `repl_individual/cached/08_((x+y)*(a+b))/((x+y)*(c+d))`:
+    `162.55-165.80 us`, regression `~2.3-4.6%`
+  - `simplify_cached_vs_uncached/cached/gcd/layer25_multiparam`:
+    `150.57-154.24 us`, no meaningful change
+  - `repl_full_eval/cached/batch_11_inputs`:
+    `1.0734-1.1029 ms`, no meaningful improvement
+- retained a standard root shortcut for exact common-factor `Mul/Mul` fractions in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs`
+- rationale:
+  - the standard REPL leader `((x+y)*(a+b))/((x+y)*(c+d))` was still paying the full
+    pipeline even though the common factor was already explicit at the root
+  - reusing `try_exact_common_factor_mul_fraction_preorder(...)` at the root keeps
+    the same visible contract (`1` step, same `required_conditions`) while removing
+    almost all orchestration cost from that path
+  - the gain shows up where it matters: the real REPL batch, not just a synthetic
+    cached gcd microbench
+- retained validation:
+  - focused checks:
+    - `cargo test -p cas_engine profile_cache_tests::tests::test_from_profile_standard_common_factor_fraction_uses_root_fast_path --lib`
+    - `cargo test -p cas_solver --test anti_catastrophe_tests test_cancel_vs_gcd_structural_cancel_multiparam -- --exact`
+  - smoke CLI:
+    - `cargo run -q -p cas_cli -- eval '((x+y)*(a+b))/((x+y)*(c+d))' --steps on --format json`
+    - output stays `(a + b) / (c + d)` with `1` step (`Pre-order Common Factor Cancel`)
+      and the same `required_conditions`
+- measured outcome:
+  - `repl_individual/cached/08_((x+y)*(a+b))/((x+y)*(c+d))`:
+    `15.119-15.281 us`, improvement `~2.7-4.8%`
+  - `repl_full_eval/cached/batch_11_inputs`:
+    `862.02-887.60 us`, improvement `~4.4-7.8%`
+  - `simplify_cached_vs_uncached/cached/gcd/layer25_multiparam`:
+    `150.31-152.84 us`, no meaningful change
+- retained a standard root shortcut for exact additive scalar-multiple fractions in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs`,
+  backed by a new preorder helper in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/rules/algebra/mod.rs`
+- rationale:
+  - the standard REPL hotspot `(2*x + 2*y)/(4*x + 4*y)` was still paying the full
+    pipeline even though the structural scalar-multiple planner already knew the
+    final answer at the root
+  - the retained version keeps the visible standard-path contract intact:
+    result still `1/2`, still `2` `Simplify Nested Fraction` steps, and the same
+    `required_conditions` in both `generic` and `strict`
+  - the win is large enough to move the real cached REPL batch materially
+- retained validation:
+  - focused check:
+    - `cargo test -p cas_engine profile_cache_tests::tests::test_from_profile_standard_scalar_multiple_fraction_uses_root_fast_path --lib`
+  - smoke CLI:
+    - `cargo run -q -p cas_cli -- eval '(2*x + 2*y)/(4*x + 4*y)' --steps on --format json`
+    - `cargo run -q -p cas_cli -- eval '(2*x + 2*y)/(4*x + 4*y)' --steps on --format json --domain strict`
+    - outputs stay `1/2` with `2` steps and `4·x + 4·y ≠ 0`
+- measured outcome:
+  - `repl_individual/cached/06_(2*x + 2*y)/(4*x + 4*y)`:
+    `21.473-22.287 us`, improvement `~83.2-83.6%`
+  - `repl_full_eval/cached/batch_11_inputs`:
+    `780.80-812.50 us`, improvement `~9.4-12.6%`
+- retained a standard root shortcut for the exact chain identity
+  `sin²(t) + cos²(t) -> 1` in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs`
+- rationale:
+  - the standard REPL hotspot `sin(2*x + 1)^2 + cos(1 + 2*x)^2` still paid the full
+    pipeline even though the root already matched `Pythagorean Chain Identity`
+  - lifting the existing `try_rewrite_pythagorean_chain_add_expr(...)` helper to the
+    root preserves the visible contract (`1` step, same rule name, no new requires)
+    while removing almost all orchestration cost from that path
+  - unlike the discarded `sqrt(square)` post-`Core` cuts, this shortcut is exact and
+    already returns the final canonical result directly
+- retained validation:
+  - focused check:
+    - `cargo test -p cas_engine profile_cache_tests::tests::test_from_profile_standard_pythagorean_chain_uses_root_fast_path --lib`
+  - smoke CLI:
+    - `cargo run -q -p cas_cli -- eval 'sin(2*x + 1)^2 + cos(1 + 2*x)^2' --steps on --format json`
+    - output stays `1` with `1` step (`Pythagorean Chain Identity`) and no `requires`
+- measured outcome:
+  - `repl_individual/cached/10_sin(2*x + 1)^2 + cos(1 + 2*x)^2`:
+    `14.714-14.872 us`, improvement `~81.3-81.6%`
+  - `repl_full_eval/cached/batch_11_inputs`:
+    `611.61-616.76 us`, improvement `~20.2-22.9%`
+- rejected a standard root shortcut for `sqrt(12*x^3)` in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs`
+- rationale:
+  - the shape looked like a good fit for reusing
+    `try_rewrite_extract_perfect_power_from_radicand_expr(...)` at the root,
+    limited to `steps off` and radicands of the form `Mul(Number, rest)`
+  - in measurement, the shortcut did skip the phase pipeline, but it still lost
+    against the retained tree on both the focused `nested_root` bench and the
+    full cached REPL batch, so it was reverted
+- measured outcome before revert:
+  - `repl_individual/cached/03_sqrt(12*x^3)`:
+    `146.97-148.49 us`, regression `~5.2-7.0%`
+  - `repl_stage_breakdown/simplify/heavy/nested_root`:
+    `139.32-141.62 us`, regression `~1.5-3.5%`
+  - `repl_full_eval/cached/batch_11_inputs`:
+    `665.40-676.92 us`, regression `~8.0-10.6%`
+- retained tooling:
+  - `make bench-engine-repl-hotspots-save BASELINE=good`
+  - `make bench-engine-repl-hotspots-compare BASELINE=good`
+  - `make bench-engine-repl-individual-save BASELINE=good`
+  - `make bench-engine-repl-individual-compare BASELINE=good`
+  - these run the current top-5 cached standard REPL hotspots under one named
+    Criterion baseline, or the full 11-input rerank under one named baseline,
+    so we can accept or reject future REPL shortcuts against a stable reference
+    instead of noisy reruns
+- rejected a micro-optimization in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_math/src/pow_preorder_support.rs`
+- rationale:
+  - swapping `ctx.call(\"abs\", ...)` for `ctx.call_builtin(BuiltinFn::Abs, ...)`
+    looked like a free win in the `sqrt(square)` planner, but the measured path
+    regressed both the focused `abs_square` input and the full cached REPL batch
+  - this confirms again that `04_((5*x + 8)^2)^(1/2)` is not responding well to
+    tiny local tweaks inside the planner; the next win there will need a more
+    structural hypothesis
+- measured outcome before revert:
+  - `repl_individual/cached/04_((5*x + 8)^2)^(1/2)`:
+    `161.89-166.00 us`, regression `~1.4-3.9%`
+  - `repl_full_eval/cached/batch_11_inputs`:
+    `647.41-672.65 us`, regression `~1.5-4.8%`
+- rejected a shape-split of the standard root dispatcher in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs`
+- rationale:
+  - routing standard `Div` roots by denominator shape (`Mul` -> common-factor,
+    `Add` -> scalar-multiple) looked like a safe cross-cutting way to skip dead
+    matcher calls
+  - in measurement the effect was not robust: the focused compare regressed
+    `04_((5*x + 8)^2)^(1/2)` and left the rest of the REPL hotspot suite flat,
+    so the change was reverted
+- measured outcome before revert:
+  - `repl_individual/cached/04_((5*x + 8)^2)^(1/2)`:
+    `157.87-161.35 us`, regression `~3.0-6.0%`
+  - `repl_individual/cached/03_sqrt(12*x^3)`:
+    within noise
+  - `repl_individual/cached/06_(2*x + 2*y)/(4*x + 4*y)`:
+    within noise
+  - `repl_individual/cached/08_((x+y)*(a+b))/((x+y)*(c+d))`:
+    within noise
+- retained tooling:
+  - `make bench-engine-root-direct`
+  - new `root_rule_direct/*` benches in
+    `/Users/javiergimenezmoya/developer/math/crates/cas_engine/benches/profile_cache.rs`
+    to isolate direct rule cost for the two remaining heavy standard root cases
+- rationale:
+  - `04_((5*x + 8)^2)^(1/2)` is handled by `Root Power Cancel`
+  - `03_sqrt(12*x^3)` is handled by `Extract Perfect Square from Radicand`
+  - after several failed shortcut attempts, the missing information was whether
+    the expensive part was the rule body itself or the engine/traversal around it
+  - the new direct benches separate `apply(rule)` from a `single_rule_engine`
+    simplifier with only that rule enabled, which is enough to tell whether the
+    next win should be inside the rule or in shared orchestration
+- measured outcome:
+  - `root_rule_direct/apply/standard/root_power_cancel_abs_square`:
+    `3.3281-3.5202 us`
+  - `root_rule_direct/single_rule_engine/standard/root_power_cancel_abs_square`:
+    `16.387-16.582 us`
+  - `root_rule_direct/apply/standard/extract_perfect_square_nested_root`:
+    `3.2607-3.3582 us`
+  - `root_rule_direct/single_rule_engine/standard/extract_perfect_square_nested_root`:
+    `9.9511-10.107 us`
+  - compared to the current standard path subset:
+    - `nested_root standard/full`: `129.58-134.38 us`
+    - `abs_square standard/full`: `181.21-187.50 us`
+- conclusion:
+  - both hotspots are dominated by engine/traversal cost, not by the root rule
+    body itself
+  - that makes more local rule-level tweaks a low-ROI path for `03/04`; the next
+    profitable work should target shared overhead in the standard pipeline, not
+    another micro-optimization inside `Root Power Cancel` or radicand extraction
+- retained a standard root shortcut for exact square-power cancellation in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs`
+- rationale:
+  - the real REPL leader `04_((5*x + 8)^2)^(1/2)` is a raw `Pow` root, not the
+    older affine-product variant used in the phase subset bench
+  - calling `RootPowCancelRule` directly at the root in standard mode is cheap
+    enough to bypass the full pipeline, while preserving the visible step
+    contract (`Root Power Cancel`) and final result `|5*x + 8|`
+  - the parallel attempt to do the same for `sqrt(12*x^3)` was removed again;
+    the retained win is only the `RootPowCancelRule` shortcut
+- retained validation:
+  - focused test:
+    - `cargo test -p cas_engine profile_cache_tests::tests::test_from_profile_standard_root_power_cancel_uses_root_fast_path --lib`
+  - smoke CLI:
+    - `cargo run -q -p cas_cli -- eval '((5*x + 8)^2)^(1/2)' --steps on --format json`
+- measured outcome:
+  - `repl_individual/cached/04_((5*x + 8)^2)^(1/2)`:
+    `15.511-15.641 us`, improvement `~89.8-90.1%`
+  - `repl_full_eval/cached/batch_11_inputs`:
+    `476.63-500.89 us`, improvement `~19.6-23.3%`
+- retained a standard root shortcut for exact square-root extraction in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs`
+- rationale:
+  - the remaining REPL leader `03_sqrt(12*x^3)` stays as a root `Function(sqrt, ...)`
+    long enough that the existing `Pow`-based rule path still pays the standard
+    engine loop around an otherwise cheap rewrite
+  - the retained shortcut normalizes `sqrt(...)` internally just enough to reuse
+    `try_rewrite_extract_perfect_power_from_radicand_expr(...)`, but still emits
+    exactly the visible contract the CLI already had: one step
+    `Extract Perfect Square from Radicand` and the same `requires`
+  - unlike the earlier rejected nested-root shortcut, this path is tightly scoped
+    to the exact `sqrt` root case and preserves the user-facing trace directly
+- retained validation:
+  - focused test:
+    - `cargo test -p cas_engine profile_cache_tests::tests::test_from_profile_standard_extract_perfect_square_uses_root_fast_path --lib`
+  - smoke CLI:
+    - `cargo run -q -p cas_cli -- eval 'sqrt(12*x^3)' --steps on --format json`
+- measured outcome:
+  - `repl_individual/cached/03_sqrt(12*x^3)`:
+    `14.121-14.221 us`, improvement `~90.2-90.3%`
+  - `repl_full_eval/cached/batch_11_inputs`:
+    `334.94-340.14 us`, improvement `~28.7-31.2%`
+- retained a transversal step-model optimization in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_solver_core/src/step_model.rs`
+- rationale:
+  - `Step::new(...)` was still materializing `after_str` eagerly through
+    `DisplayExpr`, even though the current repo barely consumes that cache
+    directly and the standard REPL bench ignores the step list entirely
+  - this was pure overhead on every `steps on` path, especially in the standard
+    cached REPL benchmark where many retained fast paths now spend more time
+    constructing `Step` metadata than rewriting the expression itself
+  - keeping the API stable and simply leaving `after_str` empty by default is
+    enough to remove that formatting cost without changing the visible
+    expression/result contracts
+- retained validation:
+  - `cargo test -p cas_engine step_tests --lib`
+  - `cargo test -p cas_didactic --test step_wire_tests`
+  - `cargo test -p cas_solver --test wire_contract_tests`
+  - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math -p cas_api_models -p cas_cli`
+- measured outcome:
+  - `repl_full_eval/cached/batch_11_inputs`:
+    first rerun was noisy, but a second isolated rerun settled at
+    `265.56-266.82 us`, improvement `~2.0-3.3%`
+  - `repl_individual/cached/03_sqrt(12*x^3)`:
+    `13.993-14.180 us`, improvement `~4.3-5.2%`
+  - `repl_individual/cached/04_((5*x + 8)^2)^(1/2)`:
+    `14.751-14.893 us`, improvement `~4.0-4.9%`
+  - `repl_individual/cached/06_(2*x + 2*y)/(4*x + 4*y)`:
+    `18.545-18.735 us`, improvement `~10.8-11.8%`
+  - `repl_individual/cached/07_(x^2 - y^2)/(x - y)`:
+    `12.404-12.509 us`, improvement `~2.8-3.7%`
+  - `repl_individual/cached/08_((x+y)*(a+b))/((x+y)*(c+d))`:
+    `14.732-14.800 us`, improvement `~2.2-2.9%`
+- updated rerank snapshot:
+  - current standard cached REPL leaders are no longer the algebraic shortcuts
+    that were previously dominating
+  - top absolute inputs are now:
+    - `00_x + 1`: `42.216-42.467 us`
+    - `01_2 * 3 + 4`: `38.767-39.013 us`
+    - `06_(2*x + 2*y)/(4*x + 4*y)`: `18.545-18.735 us`
+    - `04_((5*x + 8)^2)^(1/2)`: `14.751-14.893 us`
+    - `08_((x+y)*(a+b))/((x+y)*(c+d))`: `14.732-14.800 us`
+- conclusion:
+  - the next REPL-standard ROI is no longer another local algebraic shortcut
+  - the dominant cost has shifted toward fixed overhead on very light inputs,
+    so the next profitable work should be a transversal reduction in the
+    standard path (dispatcher / phase setup / parse-facing overhead), not
+    another case-by-case rewrite
+- retained a standard root no-op shortcut for simple symbolic additive forms in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs`
+- rationale:
+  - after the previous rerank, `repl_individual/cached/00_x_+_1` had become the
+    top standard REPL input by a wide margin, but it still produced zero visible
+    steps and no semantic change
+  - the retained guard is intentionally narrow: exact root `Add` with one
+    symbolic atom and one non-zero numeric literal, only in standard mode and
+    without listeners
+  - this lets the pipeline return immediately for cases like `x + 1` while
+    preserving the current visible contract (`x + 1`, `steps_count = 0`)
+- retained validation:
+  - focused test:
+    - `cargo test -p cas_engine profile_cache_tests::tests::test_from_profile_standard_symbol_plus_literal_uses_root_noop_fast_path --lib`
+  - smoke CLI:
+    - `cargo run -q -p cas_cli -- eval 'x + 1' --steps on --format json`
+- measured outcome:
+  - `repl_individual/cached/00_x_+_1`:
+    `8.2179-8.2495 us`, improvement `~80.5-80.8%`
+  - `repl_full_eval/cached/batch_11_inputs`:
+    `226.55-227.42 us`, improvement `~14.1-15.2%`
+- updated rerank implication:
+  - `x + 1` is no longer the dominant standard REPL cost
+  - the next obvious standard leader is now `01_2 * 3 + 4`, followed by the
+    remaining already-optimized algebraic inputs
+- retained a standard root shortcut for pure numeric add chains in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs`
+- rationale:
+  - after removing the `x + 1` overhead, `repl_individual/cached/01_2_*_3_+_4`
+    became the next clear leader of the standard REPL batch
+  - the current pipeline was paying two full iterations just to do
+    `2 * 3 -> 6` and then `6 + 4 -> 10`, even though both rewrites are pure
+    `Combine Constants`
+  - the retained shortcut is narrow: exact root `Add` with one numeric side and
+    the other side reducible by `try_rewrite_combine_constants_expr(...)` to a
+    number; it synthesizes the same visible two-step `Combine Constants`
+    sequence and exits before the standard phase pipeline
+- retained validation:
+  - focused test:
+    - `cargo test -p cas_engine profile_cache_tests::tests::test_from_profile_standard_numeric_add_chain_uses_root_fast_path --lib`
+  - smoke CLI:
+    - `cargo run -q -p cas_cli -- eval '2 * 3 + 4' --steps on --format json`
+- measured outcome:
+  - `repl_individual/cached/01_2_*_3_+_4`:
+    `12.923-12.973 us`, improvement `~67.0-68.6%`
+  - `repl_full_eval/cached/batch_11_inputs`:
+    `197.29-199.44 us`, improvement `~12.6-13.8%`
+- updated rerank implication:
+  - the standard REPL batch is now down below `200 us`
+  - the next obvious standard leaders are the already-optimized algebraic cases
+    around `~12-19 us`, with no single outlier remotely comparable to the old
+    `x + 1` / `2 * 3 + 4` overhead
+- retained a cheaper exact two-term scalar-multiple root shortcut for the
+  standard REPL path in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs`
+- rationale:
+  - after the light-input shortcuts, `06_(2*x + 2*y)/(4*x + 4*y)` had become the
+    top remaining leader of the standard cached REPL batch
+  - the existing standard root shortcut still paid the structural GCD planner in
+    order to reconstruct the two visible `Simplify Nested Fraction` steps
+  - the retained replacement handles only the exact two-term additive shape and
+    computes the scalar ratio directly; it still synthesizes the same visible
+    two-step trace and preserves the same `required_conditions`
+- retained validation:
+  - focused test:
+    - `cargo test -p cas_engine profile_cache_tests::tests::test_from_profile_standard_scalar_multiple_fraction_uses_root_fast_path --lib`
+  - smoke CLI:
+    - `cargo run -q -p cas_cli -- eval '(2*x + 2*y)/(4*x + 4*y)' --steps on --format json`
+- measured outcome:
+  - `repl_individual/cached/06_(2*x + 2*y)/(4*x + 4*y)`:
+    `17.051-17.116 us`, improvement `~7.6-8.2%`
+  - `repl_full_eval/cached/batch_11_inputs`:
+    `191.93-192.74 us`, improvement `~2.2-3.3%`
+- updated rerank implication:
+  - the standard REPL batch is now around `~192 us`
+  - there is no longer a single dominant standard input; the remaining leaders
+    are clustered in the low-to-mid teens, so the next profitable work is more
+    likely a transversal dispatcher/setup reduction than another case-specific
+    algebraic shortcut
+- retained a standard `Add`-root dispatcher reorder in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs`
+- rationale:
+  - even after the light-input shortcuts, the standard `Add` root path still
+    tried the pythagorean matcher before the cheap exact cases `x + 1` and
+    `2 * 3 + 4`
+  - those non-trig cases can never match the pythagorean identity, so the old
+    order was paying dead work on the new light leaders of the REPL batch
+  - reordering the exact no-op/numeric add-chain shortcuts before the trig
+    matcher is semantically neutral and cheap
+- retained validation:
+  - focused tests:
+    - `cargo test -p cas_engine profile_cache_tests::tests::test_from_profile_standard_symbol_plus_literal_uses_root_noop_fast_path --lib`
+    - `cargo test -p cas_engine profile_cache_tests::tests::test_from_profile_standard_numeric_add_chain_uses_root_fast_path --lib`
+    - `cargo test -p cas_engine profile_cache_tests::tests::test_from_profile_standard_pythagorean_chain_uses_root_fast_path --lib`
+- measured outcome:
+  - `repl_individual/cached/00_x_+_1`:
+    `7.7775-7.8302 us`, improvement `~5.8-6.6%`
+  - `repl_individual/cached/01_2_*_3_+_4`:
+    `11.131-11.179 us`, improvement `~12.8-13.7%`
+  - `repl_individual/cached/10_sin(2*x + 1)^2 + cos(1 + 2*x)^2`:
+    no statistically significant change
+  - `repl_full_eval/cached/batch_11_inputs`:
+    `191.54-193.09 us`, effectively flat / within noise
+- conclusion:
+  - the reorder is worth keeping because it is a clean no-regression cut on the
+    new light leaders
+  - but it also confirms that the remaining REPL-standard ROI is now highly
+    diluted: future wins are more likely to come from broader dispatcher/setup
+    reductions than from another local algebraic shortcut
+- retained a transversal pipeline-start reduction in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs`
+- rationale:
+  - `simplify_pipeline()` was clearing the thread-local cycle-event registry
+    before every run, even when the expression exited through one of the many
+    hidden root shortcuts and never entered the heavy phase pipeline
+  - delaying `clear_cycle_events()` until just before the real phase pipeline
+    keeps the semantics intact for full runs while removing fixed overhead from
+    hot early-return paths in both the standard REPL and solve cached batches
+- retained validation:
+  - focused tests:
+    - `cargo test -p cas_engine profile_cache_tests::tests::test_from_profile_standard_symbol_plus_literal_uses_root_noop_fast_path --lib`
+    - `cargo test -p cas_engine profile_cache_tests::tests::test_from_profile_standard_numeric_add_chain_uses_root_fast_path --lib`
+    - `cargo test -p cas_engine profile_cache_tests::tests::test_from_profile_solve_tactic_identical_atom_fraction_uses_root_fast_path --lib`
+    - `cargo test -p cas_engine profile_cache_tests::tests::test_from_profile_solve_tactic_exp_ln_atom_uses_root_fast_path --lib`
+  - full guardrail:
+    - `cargo test -p cas_engine profile_cache_tests --lib`
+- measured outcome:
+  - `repl_full_eval/cached/batch_11_inputs`:
+    `190.97-191.71 us`, slightly better in absolute terms and within noise
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `60.050-60.379 us`, improvement `~2.1-3.5%`
+  - `solve_modes_cached/solve_tactic_assume_batch`:
+    `60.065-60.353 us`, improvement `~1.2-2.5%`
+- conclusion:
+  - this is the kind of cross-cutting win that still pays off after most
+    algebraic hotspots have already been shortcut
+  - the remaining ROI is now more likely in similar setup/dispatcher costs than
+    in another narrowly scoped rewrite
+- discarded a deeper pipeline-start deferral in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs`
+- rationale:
+  - after the successful `clear_cycle_events()` delay, I also tried delaying
+    `self.pattern_marks_expr = None` until the heavy pipeline entry point
+  - that looked plausible on paper because the hidden root shortcuts also avoid
+    pattern scans, but unlike `clear_cycle_events()` it regressed the real
+    `assume` solve batch and gave no compensating REPL win
+- retained validation:
+  - focused tests:
+    - `cargo test -p cas_engine profile_cache_tests::tests::test_from_profile_standard_numeric_add_chain_uses_root_fast_path --lib`
+    - `cargo test -p cas_engine profile_cache_tests::tests::test_from_profile_solve_tactic_identical_atom_fraction_uses_root_fast_path --lib`
+  - measured before revert:
+    - `repl_full_eval/cached/batch_11_inputs`:
+      `193.87-197.44 us`, slightly worse and within noise
+    - `solve_modes_cached/solve_tactic_generic_batch`:
+      `60.356-61.874 us`, flat / within noise
+    - `solve_modes_cached/solve_tactic_assume_batch`:
+      `60.932-61.664 us`, regression `~1.8-3.3%`
+- conclusion:
+  - keep `clear_cycle_events()` delayed, but keep `pattern_marks_expr = None`
+    at the top of `simplify_pipeline()`
+- retained a low-risk step-allocation reduction across standard root shortcuts
+  plus compact small strings for `Step.description`/`Step.rule_name`
+- files:
+  - `/Users/javiergimenezmoya/developer/math/crates/cas_solver_core/src/step_model.rs`
+  - `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs`
+  - `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/rules/algebra/mod.rs`
+- rationale:
+  - the standard REPL batch is now dominated by cheap root shortcuts with
+    `steps on`, so a lot of remaining overhead is no longer algebraic work but
+    constructing tiny `Step`s
+  - `Step.description` / `Step.rule_name` now use `SmolStr`, avoiding heap for
+    the short static labels that dominate these paths
+  - root shortcuts with empty path and no extra metadata now use
+    `Step::new_compact(...)` instead of allocating a boxed `StepMeta`
+- retained validation:
+  - `cargo test -p cas_engine profile_cache_tests::tests::test_from_profile_standard_numeric_add_chain_uses_root_fast_path --lib`
+  - `cargo test -p cas_engine profile_cache_tests::tests::test_from_profile_standard_pythagorean_chain_uses_root_fast_path --lib`
+  - `cargo test -p cas_engine profile_cache_tests::tests::test_from_profile_standard_scalar_multiple_fraction_uses_root_fast_path --lib`
+  - `cargo test -p cas_engine profile_cache_tests::tests::test_from_profile_standard_common_factor_fraction_uses_root_fast_path --lib`
+  - `cargo test -p cas_didactic --test step_wire_tests`
+  - `cargo test -p cas_solver --test wire_contract_tests`
+- measured outcome:
+  - `repl_full_eval/cached/batch_11_inputs`:
+    `192.31-194.36 us`, slight improvement in absolute terms and within noise
+  - `repl_individual/cached/10_sin(2*x + 1)^2 + cos(1 + 2*x)^2`:
+    `14.488-14.598 us`, improvement `~1.0-2.4%`
+  - `repl_individual/cached/06_(2*x + 2*y)/(4*x + 4*y)`:
+    `17.107-17.213 us`, slightly better in absolute terms and within noise
+- conclusion:
+  - this is worth keeping because it is safe, cross-cutting, and helps the
+    steps-on hot path without changing visible contracts
+  - but the signal also confirms that the remaining REPL-standard ROI is now in
+    very small fixed costs, not in another large local algebraic rewrite
+- retained another standard `steps on` overhead reduction in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs`
+  and
+  `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/rules/algebra/mod.rs`
+- rationale:
+  - many of the remaining standard REPL leaders now exit through root shortcuts
+    with `steps on`
+  - for those root steps, `global_before/global_after` were redundant because
+    `before/after` already describe the full-root transition and the renderers
+    fall back to them when snapshots are absent
+  - removing those redundant snapshots cuts a small but real fixed cost from
+    the standard shortcuts without changing visible output
+- retained validation:
+  - focused tests:
+    - `cargo test -p cas_engine profile_cache_tests::tests::test_from_profile_standard_symbol_plus_literal_uses_root_noop_fast_path --lib`
+    - `cargo test -p cas_engine profile_cache_tests::tests::test_from_profile_standard_numeric_add_chain_uses_root_fast_path --lib`
+    - `cargo test -p cas_engine profile_cache_tests::tests::test_from_profile_standard_pythagorean_chain_uses_root_fast_path --lib`
+    - `cargo test -p cas_engine profile_cache_tests::tests::test_from_profile_standard_scalar_multiple_fraction_uses_root_fast_path --lib`
+    - `cargo test -p cas_engine profile_cache_tests::tests::test_from_profile_standard_common_factor_fraction_uses_root_fast_path --lib`
+  - contract coverage:
+    - `cargo test -p cas_didactic --test step_wire_tests`
+    - `cargo test -p cas_solver --test wire_contract_tests`
+  - regression check:
+    - `CAS_BENCH_FAST=1 cargo bench -p cas_engine --bench profile_cache 'solve_modes_cached/solve_tactic_generic_batch' -- --noplot`
+- measured outcome:
+  - `repl_full_eval/cached/batch_11_inputs`:
+    `189.35-190.71 us`, better in absolute terms and near significance
+  - `steps_mode_comparison/batch_11/steps_on`:
+    `189.68-191.24 us`, improvement `~1.8-3.5%`
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `60.238-60.544 us`, no regression
+  - focused standard inputs also moved down in absolute terms:
+    - `00_x_+_1`: `7.6577-7.7215 us`
+    - `06_(2*x + 2*y)/(4*x + 4*y)`: `16.810-16.967 us`
+    - `08_((x+y)*(a+b))/((x+y)*(c+d))`: `14.517-14.624 us`
+- conclusion:
+  - worth keeping: it is semantically neutral, keeps wire/timeline output
+    stable, and improves the steps-on batch that now dominates the standard
+    REPL profile
+- retained tooling improvement for the standard REPL breakdown:
+  - `/Users/javiergimenezmoya/developer/math/crates/cas_engine/benches/repl_end_to_end.rs`
+    now profiles the current real leaders instead of the older placeholder set
+  - `make bench-engine-repl-breakdown` now covers:
+    - `light/symbol_plus_literal`
+    - `light/numeric_add_chain`
+    - `heavy/nested_root`
+    - `heavy/abs_square`
+    - `gcd/scalar_multiple_fraction`
+    - `gcd/common_factor_fraction`
+    - `complex/gaussian_div`
+    - `trig/pythagorean_chain`
+- rationale:
+  - the old breakdown was still useful, but it no longer matched the actual
+    top inputs after the successive root shortcuts
+  - with the batch already down near `~190 us`, further work needs per-stage
+    visibility on the real remaining leaders rather than on historical cases
+- retained a cross-cutting REPL/solve improvement in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_ast/src/expression.rs`
+  and
+  `/Users/javiergimenezmoya/developer/math/crates/cas_ast/src/symbol.rs`
+- rationale:
+  - the updated `repl_stage_breakdown/*` showed that the remaining REPL
+    leaders were no longer dominated by individual algebraic rules
+  - for several standard inputs (`x + 1`, `2 * 3 + 4`, scalar/common-factor
+    fractions, the trig shortcut) `parse` was already as large as or larger
+    than `simplify`
+  - `Context::new()` was still paying cold allocations for `nodes`,
+    `interner`, and the builtin-filled `SymbolTable` on every eval
+  - pre-reserving small capacities (`nodes`, `interner`) plus
+    `SymbolTable::with_capacity(BuiltinFn::COUNT + 8)` removes that fixed
+    allocation churn without changing any rule/runtime behavior
+- retained validation:
+  - `cargo test -p cas_ast --lib`
+  - `cargo test -p cas_engine profile_cache_tests --lib`
+  - `cargo check -p cas_engine --benches -p cas_solver -p cas_session -p cas_didactic -p cas_math -p cas_api_models -p cas_cli`
+  - `make bench-engine-repl-individual`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_engine --bench repl_end_to_end 'repl_full_eval/cached/batch_11_inputs' -- --noplot`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_engine --bench profile_cache 'solve_modes_cached/(solve_tactic_generic_batch|solve_tactic_assume_batch)' -- --noplot`
+  - `cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_unified_benchmark -- --ignored --nocapture`
+- measured outcome:
+  - `repl_full_eval/cached/batch_11_inputs`:
+    `175.94-176.67 us`, improvement `~9.3-11.1%`
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `52.314-52.740 us`, improvement `~12.0-13.3%`
+  - `solve_modes_cached/solve_tactic_assume_batch`:
+    `52.349-52.801 us`, improvement `~11.4-12.5%`
+  - full `repl_individual/cached/*` rerank improved across the board, for
+    example:
+    - `00_x_+_1`: `6.6547-6.7187 us`
+    - `01_2_*_3_+_4`: `9.6477-9.7333 us`
+    - `03_sqrt(12*x^3)`: `11.603-11.684 us`
+    - `06_(2*x + 2*y)/(4*x + 4*y)`: `15.618-15.695 us`
+    - `08_((x+y)*(a+b))/((x+y)*(c+d))`: `13.362-13.466 us`
+  - metamorphic release stayed green with total `numeric-only = 164`
+- conclusion:
+  - this is the right kind of remaining optimization for the current state of
+    the engine: it cuts fixed startup cost instead of adding another brittle
+    shortcut
+  - after this win, the next ROI should be another transversal reduction of
+    eval setup/dispatch, or a stricter rerank before touching more local rules

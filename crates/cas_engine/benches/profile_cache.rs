@@ -10,7 +10,8 @@ use cas_ast::Context;
 use cas_ast::{Equation, Expr, RelOp, SolutionSet};
 use cas_parser::parse;
 
-use cas_engine::rules::algebra::SimplifyFractionRule;
+use cas_engine::rules::algebra::{ExtractPerfectSquareFromRadicandRule, SimplifyFractionRule};
+use cas_engine::rules::exponents::RootPowCancelRule;
 use cas_engine::{
     BranchMode, ComplexMode, ContextMode, DomainMode, EvalConfig, EvalOptions, ProfileCache, Rule,
     Simplifier, SimplifyOptions, StepListener, StepsMode,
@@ -169,6 +170,24 @@ fn build_fraction_rule_parent_ctx(
 ) -> cas_engine::ParentContext {
     let mut opts = SimplifyOptions::for_solve_tactic(domain_mode);
     opts.collect_steps = false;
+    build_probe_parent_ctx(ctx, expr, &opts)
+}
+
+fn build_standard_rule_parent_ctx(
+    ctx: &Context,
+    expr: cas_ast::ExprId,
+) -> cas_engine::ParentContext {
+    let opts = EvalOptions {
+        branch_mode: BranchMode::Strict,
+        complex_mode: ComplexMode::Auto,
+        steps_mode: StepsMode::On,
+        shared: cas_engine::SharedSemanticConfig {
+            context_mode: ContextMode::Standard,
+            ..Default::default()
+        },
+        ..Default::default()
+    }
+    .to_simplify_options();
     build_probe_parent_ctx(ctx, expr, &opts)
 }
 
@@ -1256,6 +1275,109 @@ fn bench_fraction_rule_direct(c: &mut Criterion) {
     group.finish();
 }
 
+fn bench_root_rule_direct(c: &mut Criterion) {
+    let mut group = c.benchmark_group("root_rule_direct");
+    common::configure_standard_group(&mut group);
+
+    let direct_cases = [
+        (
+            "apply/standard/root_power_cancel_abs_square",
+            "((5*x + 8)^2)^(1/2)",
+        ),
+        (
+            "apply/standard/extract_perfect_square_nested_root",
+            "sqrt(12*x^3)",
+        ),
+    ];
+
+    for (name, input) in direct_cases {
+        group.bench_function(name, |b| {
+            b.iter_batched(
+                || build_expr(input),
+                |(mut ctx, expr)| {
+                    let parent_ctx = build_standard_rule_parent_ctx(&ctx, expr);
+                    let metric = match name {
+                        "apply/standard/root_power_cancel_abs_square" => RootPowCancelRule
+                            .apply(&mut ctx, expr, &parent_ctx)
+                            .map(|rw| {
+                                rw.new_expr.index()
+                                    ^ rw.required_conditions.len()
+                                    ^ rw.chained.len()
+                                    ^ rw.substeps.len()
+                            })
+                            .unwrap_or(0),
+                        "apply/standard/extract_perfect_square_nested_root" => {
+                            ExtractPerfectSquareFromRadicandRule
+                                .apply(&mut ctx, expr, &parent_ctx)
+                                .map(|rw| {
+                                    rw.new_expr.index()
+                                        ^ rw.required_conditions.len()
+                                        ^ rw.chained.len()
+                                        ^ rw.substeps.len()
+                                })
+                                .unwrap_or(0)
+                        }
+                        _ => unreachable!(),
+                    };
+                    black_box(metric);
+                },
+                criterion::BatchSize::SmallInput,
+            )
+        });
+    }
+
+    let single_rule_cases = [
+        (
+            "single_rule_engine/standard/root_power_cancel_abs_square",
+            "((5*x + 8)^2)^(1/2)",
+            true,
+        ),
+        (
+            "single_rule_engine/standard/extract_perfect_square_nested_root",
+            "sqrt(12*x^3)",
+            false,
+        ),
+    ];
+
+    for (name, input, use_root_pow_cancel) in single_rule_cases {
+        group.bench_function(name, |b| {
+            b.iter_batched(
+                || {
+                    let mut simplifier = Simplifier::new();
+                    if use_root_pow_cancel {
+                        simplifier.add_rule(Box::new(RootPowCancelRule));
+                    } else {
+                        simplifier.add_rule(Box::new(ExtractPerfectSquareFromRadicandRule));
+                    }
+                    simplifier.set_steps_mode(StepsMode::Off);
+                    let expr = parse(input, &mut simplifier.context).expect("parse failed");
+                    let mut opts = EvalOptions {
+                        branch_mode: BranchMode::Strict,
+                        complex_mode: ComplexMode::Auto,
+                        steps_mode: StepsMode::On,
+                        shared: cas_engine::SharedSemanticConfig {
+                            context_mode: ContextMode::Standard,
+                            ..Default::default()
+                        },
+                        ..Default::default()
+                    }
+                    .to_simplify_options();
+                    opts.collect_steps = false;
+                    (simplifier, expr, opts)
+                },
+                |(mut simplifier, expr, opts)| {
+                    let (out, steps) = simplifier.simplify_with_options(expr, opts);
+                    let metric = out.index() ^ steps.len();
+                    black_box(metric);
+                },
+                criterion::BatchSize::SmallInput,
+            )
+        });
+    }
+
+    group.finish();
+}
+
 fn bench_solve_phase_subset_cached(c: &mut Criterion) {
     let inputs = [
         ("scalar_multiple_fraction", "(2*x + 2*y)/(4*x + 4*y)"),
@@ -1314,6 +1436,73 @@ fn bench_solve_phase_subset_cached(c: &mut Criterion) {
                         let mut simplifier =
                             Simplifier::from_profile_with_context(profile.clone(), ctx);
                         simplifier.set_steps_mode(StepsMode::Off);
+                        let (out, _steps, stats) =
+                            simplifier.simplify_with_stats(expr, opts.clone());
+                        let metric = out.index()
+                            ^ stats.core.iters_used
+                            ^ stats.transform.iters_used
+                            ^ stats.rationalize.iters_used
+                            ^ stats.post_cleanup.iters_used;
+                        black_box(metric);
+                    },
+                    criterion::BatchSize::SmallInput,
+                )
+            });
+        }
+    }
+
+    group.finish();
+}
+
+fn bench_standard_phase_subset_cached(c: &mut Criterion) {
+    let inputs = [
+        ("heavy/nested_root", "sqrt(12*x^3)"),
+        ("heavy/abs_square", "((5*x + 8/3)*(5*x + 8/3))^(1/2)"),
+        ("complex/gaussian_div", "(3 + 4*i)/(1 + 2*i)"),
+        ("complex/i_power", "i^5"),
+    ];
+
+    let profile_opts = EvalOptions {
+        branch_mode: BranchMode::Strict,
+        complex_mode: ComplexMode::Auto,
+        steps_mode: StepsMode::On,
+        shared: cas_engine::SharedSemanticConfig {
+            context_mode: ContextMode::Standard,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+
+    let mut cache = ProfileCache::new();
+    let profile = cache.get_or_build(&profile_opts);
+
+    let standard_full = profile_opts.to_simplify_options();
+
+    let mut standard_no_transform = standard_full.clone();
+    standard_no_transform.enable_transform = false;
+
+    let mut standard_coreish = standard_no_transform.clone();
+    standard_coreish.rationalize.auto_level = cas_engine::AutoRationalizeLevel::Off;
+
+    let option_cases = [
+        ("standard/full", standard_full),
+        ("standard/no_transform", standard_no_transform),
+        ("standard/no_transform_no_rationalize", standard_coreish),
+    ];
+
+    let mut group = c.benchmark_group("standard_phase_subset_cached");
+    common::configure_standard_group(&mut group);
+
+    for (input_name, input) in inputs {
+        for (opts_name, opts) in &option_cases {
+            let bench_name = format!("{input_name}/{opts_name}");
+            group.bench_function(BenchmarkId::from_parameter(bench_name), |b| {
+                b.iter_batched(
+                    || build_expr(input),
+                    |(ctx, expr)| {
+                        let mut simplifier =
+                            Simplifier::from_profile_with_context(profile.clone(), ctx);
+                        simplifier.set_steps_mode(StepsMode::On);
                         let (out, _steps, stats) =
                             simplifier.simplify_with_stats(expr, opts.clone());
                         let metric = out.index()
@@ -1411,7 +1600,9 @@ criterion_group!(
     bench_solve_eval_hotspots_cached,
     bench_fraction_gcd_planner_direct,
     bench_fraction_rule_direct,
+    bench_root_rule_direct,
     bench_solve_phase_subset_cached,
+    bench_standard_phase_subset_cached,
     bench_solve_prepass_inherited_steps_cached,
     bench_solver_verification_inherited_steps
 );

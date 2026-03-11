@@ -32,6 +32,14 @@ impl SymbolTable {
         Self::default()
     }
 
+    /// Create a symbol table with enough space for the expected symbol count.
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            strings: Vec::with_capacity(capacity),
+            lookup: HashMap::with_capacity(capacity),
+        }
+    }
+
     /// Intern a string, returning its SymbolId.
     ///
     /// If the string is already interned, returns the existing id.

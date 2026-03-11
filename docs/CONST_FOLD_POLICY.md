@@ -65,7 +65,7 @@ flowchart TD
     end
 
     subgraph Output
-        H[EngineJsonResponse]
+        H[EngineWireResponse]
     end
 
     A --> B --> C --> D

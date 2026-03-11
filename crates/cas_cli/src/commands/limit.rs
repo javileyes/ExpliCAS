@@ -23,7 +23,7 @@ pub fn run(args: LimitArgs) {
         presimplify,
         matches!(args.format, OutputFormat::Json),
     ) {
-        Ok(cas_session::LimitSubcommandOutput::Json(out)) => {
+        Ok(cas_session::LimitSubcommandOutput::Wire(out)) => {
             println!("{}", out);
         }
         Ok(cas_session::LimitSubcommandOutput::Text { result, warning }) => {

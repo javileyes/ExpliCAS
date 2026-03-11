@@ -105,7 +105,7 @@ Current progress:
 - also renamed output metadata helpers:
   - `eval_json_stats*` -> `eval_output_stats*`
   - rationale:
-    - they compute typed `ExprStatsJson`, truncation metadata and stable hashes
+    - they compute typed `ExprStatsWire`, truncation metadata and stable hashes
     - they do not perform transport serialization
 - renamed the former `eval_json_input` subtree into a real neutral `eval_input`
   module
@@ -153,6 +153,25 @@ Current progress:
   - option-axis mapping moved out of `eval_json_options*` into neutral
     `eval_option_axes*`, because it only maps string axes into typed
     `EvalOptions` and does not own transport/wire concerns
+  - the typed DTO crate itself was normalized from `json_types.rs` to
+    `wire_types.rs`
+    - internal typed models now consistently use `*Wire` naming
+      (`EvalWireOutput`, `EvalRunOptions`, `SubstituteWireResponse`,
+      `StepWire`, `WarningWire`, `LimitWireResponse`, etc.)
+    - rationale:
+      - these are stable typed wire models, not transport implementation code
+  - CLI/session/android adapters were also narrowed to `wire` naming wherever
+    the code is only bridging typed payloads
+    - `eval_json`/`envelope_json` internal command bridges -> `eval_wire` /
+      `envelope_wire`
+    - `eval_json_command*` and envelope contract tests in `cas_session` ->
+      `eval_command*` / `envelope_wire_command_tests`
+    - internal FFI helpers now use wire-oriented names for fallback payloads
+      and parsers
+  - `cas_didactic` no longer keeps the old `eval_json_steps` compatibility
+    layer
+    - only `step_payloads` / `step_payload_render` remain, which matches their
+      actual role as typed didactic builders
   - `eval_request_runtime`
   - `cas_session` also dropped transport naming for the session-backed eval
     runner:
@@ -203,6 +222,10 @@ Current progress:
         `parse_substitute_wire_text_lines(...)`
       - integration test `substitute_json_contract_tests` ->
         `substitute_wire_contract_tests`
+      - substitute wire DTOs were aligned too:
+        `EngineJsonSubstep` -> `EngineWireSubstep`,
+        `SubstituteOptionsJson` -> `SubstituteWireOptions`,
+        `SubstituteJsonResponse` -> `SubstituteWireResponse`
     - eval/substitute internal renderers were aligned too:
       - `build_engine_json_steps(...)` -> `build_engine_wire_steps(...)`
       - `substitute_str_to_json_impl(...)` ->
@@ -210,26 +233,86 @@ Current progress:
       - `SubstituteParseIssue::to_json_error(...)` ->
         `to_wire_error(...)`
     - CLI eval-json adapter naming was aligned too:
+      - module `eval_json` -> `eval_wire`
+      - hidden CLI variant `Command::EvalJson` -> `Command::EvalWire`
       - `EvalJsonArgs` -> `EvalWireArgs`
       - `EvalJsonLegacyArgs` -> `EvalWireLegacyArgs`
       - `from_legacy_eval_json_args(...)` ->
         `from_legacy_eval_wire_args(...)`
+      - hidden CLI variant `Command::EnvelopeJson` ->
+        `Command::EnvelopeWire`
     - the envelope/CLI bridge and subcommand toggles were aligned too:
+      - module `envelope_json` -> `envelope_wire`
       - `EnvelopeJsonArgs` -> `EnvelopeWireArgs`
       - internal `json_output` flags in limit/substitute subcommand bridges ->
         `wire_output`
     - internal parity/contract tests were aligned too where they verify the
       wire layer rather than JSON serialization itself:
-      - `step_count_matches_between_text_and_json_renderers` ->
+      - former `step_count_matches_between_text_and_json_renderers` ->
         `step_count_matches_between_text_and_wire_renderers`
       - `evaluate_limit_subcommand_output_json_mode_returns_payload` ->
         `evaluate_limit_subcommand_output_wire_mode_returns_payload`
+      - integration test `json_contract_tests` ->
+        `wire_contract_tests`
+      - CLI wire/domain contract suites now use `parse_wire(...)` and `wire`
+        locals instead of `parse_json(...)` / `json`
+      - stale witness-survival expectations in `cli_wire_contract_tests` were
+        updated to the current wire contract, which now surfaces denominator
+        and nonnegative requirements for `(x-y)/(sqrt(x)-sqrt(y))`
+    - engine wire DTO naming was aligned too:
+      - `EngineJsonWarning` -> `EngineWireWarning`
+      - `EngineJsonStep` -> `EngineWireStep`
+      - `EngineJsonError` -> `EngineWireError`
+      - `EngineJsonResponse` -> `EngineWireResponse`
+    - remaining leaf wire DTOs were aligned too:
+      - `ErrorJsonOutput` -> `ErrorWireOutput`
+      - `LimitJsonResponse` -> `LimitWireResponse`
+    - the main typed eval output model was aligned too:
+      - `EvalJsonOutput` -> `EvalWireOutput`
+    - canonical wire entrypoints and CLI-facing payload variants were aligned
+      too:
+      - `eval_str_to_json(...)` -> `eval_str_to_wire(...)`
+      - `substitute_str_to_json(...)` -> `substitute_str_to_wire(...)`
+      - `limit_str_to_json(...)` -> `limit_str_to_wire(...)`
+      - `SubstituteSubcommandOutput::Json` ->
+        `SubstituteSubcommandOutput::Wire`
+      - `LimitSubcommandEvalOutput::Json` ->
+        `LimitSubcommandEvalOutput::Wire`
+      - `LimitSubcommandOutput::Json` -> `LimitSubcommandOutput::Wire`
+      - lint/tooling script names were aligned too:
+        `lint_eval_json_canonical.sh` ->
+        `lint_eval_wire_canonical.sh`
+        `lint_substitute_json_canonical.sh` ->
+        `lint_substitute_wire_canonical.sh`
+    - eval metadata/support DTOs were aligned too:
+      - `ExprStatsJson` -> `ExprStatsWire`
+      - `TimingsJson` -> `TimingsWire`
+      - `DomainJson` -> `DomainWire`
+      - `OptionsJson` -> `OptionsWire`
+      - `SemanticsJson` -> `SemanticsWire`
+      - `BudgetJsonInfo` / `BudgetExceededJson` ->
+        `BudgetWireInfo` / `BudgetExceededWire`
+      - `SpanJson` -> `SpanWire`
+    - script/benchmark wire models were aligned too:
+      - `ScriptJsonOutput` -> `ScriptWireOutput`
+      - `MmGcdModpJsonOutput` -> `MmGcdModpWireOutput`
+    - the `cas_api_models` root file was aligned too:
+      - `src/json_types.rs` -> `src/wire_types.rs`
+    - eval/solve step DTOs were aligned too:
+      - `WarningJson` -> `WarningWire`
+      - `RequiredConditionJson` -> `RequiredConditionWire`
+      - `StepJson` / `SubStepJson` -> `StepWire` / `SubStepWire`
+      - `SolveStepJson` / `SolveSubStepJson` ->
+        `SolveStepWire` / `SolveSubStepWire`
+    - `cas_didactic` no longer carries the transitional `eval_json_steps`
+      wrapper module or the former `collect_eval_json_steps*` compatibility exports;
+      callers now use `collect_step_payloads*` directly
     - inside the `cas_solver::json::eval` boundary, the private prep helper now
       uses neutral naming too:
       - `PreparedEvalRequestState` -> `PreparedStatelessEvalState`
       - `prepare_eval_json_request(...)` ->
         `prepare_stateless_eval_request(...)`
-      - local test `eval_json_session_ref_returns_invalid_input` ->
+      - local test `eval_json_session_ref_returns_invalid_input` (former name) ->
         `eval_session_ref_returns_invalid_input`
     - inside `cas_solver::eval_command_runtime`, DTO leaks are now aliased to
       runtime-neutral names:

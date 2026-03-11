@@ -160,6 +160,9 @@ pub(crate) fn collect_domain_warnings(steps: &[crate::Step]) -> Vec<DomainWarnin
         },
         |event| event.message.clone(),
         |step| step.rule_name.clone(),
-        |message, rule_name| DomainWarning { message, rule_name },
+        |message, rule_name| DomainWarning {
+            message,
+            rule_name: rule_name.to_string(),
+        },
     )
 }

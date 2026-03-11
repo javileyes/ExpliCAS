@@ -1,4 +1,4 @@
-use cas_api_models::{LimitEvalError, LimitEvalResult, LimitJsonResponse};
+use cas_api_models::{LimitEvalError, LimitEvalResult, LimitWireResponse};
 use cas_formatter::DisplayExpr;
 
 pub(super) fn eval_limit_from_str(
@@ -34,7 +34,7 @@ pub(super) fn eval_limit_from_str(
     }
 }
 
-pub(super) fn limit_str_to_json(
+pub(super) fn limit_str_to_wire(
     expr: &str,
     var: &str,
     approach: crate::Approach,
@@ -42,9 +42,9 @@ pub(super) fn limit_str_to_json(
     pretty: bool,
 ) -> String {
     let response = match eval_limit_from_str(expr, var, approach, presimplify) {
-        Ok(limit_result) => LimitJsonResponse::ok(limit_result.result, limit_result.warning),
-        Err(LimitEvalError::Parse(message)) => LimitJsonResponse::parse_error(message),
-        Err(LimitEvalError::Limit(message)) => LimitJsonResponse::limit_error(message),
+        Ok(limit_result) => LimitWireResponse::ok(limit_result.result, limit_result.warning),
+        Err(LimitEvalError::Parse(message)) => LimitWireResponse::parse_error(message),
+        Err(LimitEvalError::Limit(message)) => LimitWireResponse::limit_error(message),
     };
 
     response.to_json_with_pretty(pretty)

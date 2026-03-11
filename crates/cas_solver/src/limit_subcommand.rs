@@ -25,7 +25,7 @@ pub fn evaluate_limit_subcommand(
     };
 
     match evaluate_limit_subcommand_output(expr, var, approach, presimplify, wire_output) {
-        Ok(LimitSubcommandEvalOutput::Json(out)) => Ok(LimitSubcommandOutput::Json(out)),
+        Ok(LimitSubcommandEvalOutput::Wire(out)) => Ok(LimitSubcommandOutput::Wire(out)),
         Ok(LimitSubcommandEvalOutput::Text { result, warning }) => {
             Ok(LimitSubcommandOutput::Text { result, warning })
         }

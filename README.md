@@ -909,6 +909,6 @@ See [docs/METAMORPHIC_TESTING.md](docs/METAMORPHIC_TESTING.md) for full document
     -   `strategies.rs`: Global state filtering for non-productive steps.
 -   `crates/cas_cli`: Command-line interface and interactive REPL.
     -   `src/repl/`: REPL modules — `commands_analysis.rs`, `commands_session.rs`, `commands_semantics.rs`, `commands_solve.rs`, `commands_algebra.rs`, `commands_system.rs`.
-    -   `src/commands/`: Batch commands (`eval_json.rs`).
+    -   `src/commands/`: Batch commands (`eval_wire.rs`, `envelope_wire.rs`).
 -   `crates/cas_android_ffi`: Android FFI bridge via JNI.
 -   `web/`: Web-based REPL frontend (HTML/JS/CSS).

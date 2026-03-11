@@ -1,6 +1,6 @@
 use crate::eval_input::PreparedEvalRequest;
 
-/// Evaluate one prepared eval-json request in stateless mode with provided options.
+/// Evaluate one prepared eval request in stateless mode with provided options.
 pub(super) fn evaluate_prepared_stateless_request(
     engine: &mut crate::Engine,
     options: crate::EvalOptions,

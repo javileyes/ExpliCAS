@@ -116,3 +116,35 @@ fn test_factor_perfect_square() {
     assert!(res.contains("x + 1") || res.contains("1 + x"));
     assert!(res.contains("^2") || res.contains("^ 2"));
 }
+
+#[test]
+fn test_exact_common_factor_mul_fraction_preorder() {
+    let mut ctx = Context::new();
+    let expr = parse("((x+y)*(a+b))/((x+y)*(c+d))", &mut ctx).unwrap();
+    let (num, den) = match ctx.get(expr) {
+        cas_ast::Expr::Div(num, den) => (*num, *den),
+        other => panic!("expected division, got {other:?}"),
+    };
+
+    let rewritten = try_exact_common_factor_mul_fraction_preorder(
+        &mut ctx,
+        expr,
+        num,
+        den,
+        false,
+        &mut Vec::new(),
+        &[],
+    )
+    .expect("expected exact common-factor preorder");
+
+    let res = format!(
+        "{}",
+        DisplayExpr {
+            context: &ctx,
+            id: rewritten
+        }
+    );
+    assert!(res.contains("a + b") || res.contains("b + a"));
+    assert!(res.contains("c + d") || res.contains("d + c"));
+    assert!(!res.contains("x + y"));
+}

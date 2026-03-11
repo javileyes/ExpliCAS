@@ -27,7 +27,7 @@ pub fn run(args: SubstituteArgs) {
     };
 
     match output {
-        cas_session::SubstituteSubcommandOutput::Json(payload) => {
+        cas_session::SubstituteSubcommandOutput::Wire(payload) => {
             println!("{}", payload);
         }
         cas_session::SubstituteSubcommandOutput::TextLines(lines) => {

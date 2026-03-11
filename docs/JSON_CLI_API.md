@@ -217,6 +217,6 @@ Planned additions:
 
 ## Files
 
-- `crates/cas_cli/src/commands/eval_json.rs` - eval-json implementation
-- `crates/cas_cli/src/json_types.rs` - JSON output structures
+- `crates/cas_cli/src/commands/eval_wire.rs` - eval-json wire bridge implementation
+- `crates/cas_api_models/src/wire_types.rs` - wire output structures
 - `crates/cas_cli/src/format.rs` - Truncation and stats utilities

@@ -39,6 +39,8 @@ pub mod poly_mul_modp;
 
 pub mod poly_stats;
 
+use num_traits::Zero;
+
 fn extract_cube_base(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> Option<cas_ast::ExprId> {
     let cas_ast::Expr::Pow(base, exp) = ctx.get(expr) else {
         return None;
@@ -64,6 +66,75 @@ fn expr_eq_fast(ctx: &cas_ast::Context, left: cas_ast::ExprId, right: cas_ast::E
         (cas_ast::Expr::Number(a), cas_ast::Expr::Number(b)) => a == b,
         _ => cas_ast::ordering::compare_expr(ctx, left, right) == std::cmp::Ordering::Equal,
     }
+}
+
+fn exact_common_mul_factor(
+    ctx: &cas_ast::Context,
+    num: cas_ast::ExprId,
+    den: cas_ast::ExprId,
+) -> Option<(cas_ast::ExprId, cas_ast::ExprId, cas_ast::ExprId)> {
+    let cas_ast::Expr::Mul(num_left, num_right) = ctx.get(num) else {
+        return None;
+    };
+    let cas_ast::Expr::Mul(den_left, den_right) = ctx.get(den) else {
+        return None;
+    };
+
+    let pairs = [
+        (*num_left, *num_right, *den_left, *den_right),
+        (*num_left, *num_right, *den_right, *den_left),
+        (*num_right, *num_left, *den_left, *den_right),
+        (*num_right, *num_left, *den_right, *den_left),
+    ];
+
+    for (common_num, other_num, common_den, other_den) in pairs {
+        if expr_eq_fast(ctx, common_num, common_den)
+            && !matches!(ctx.get(common_num), cas_ast::Expr::Number(n) if n.is_zero())
+        {
+            return Some((common_num, other_num, other_den));
+        }
+    }
+
+    None
+}
+
+/// Exact-shape pre-order detection of `(F*A)/(F*B)` or `(A*F)/(B*F)`.
+///
+/// This keeps the guard intentionally narrow: only raw top-level `Mul/Mul`
+/// forms with one exact common factor. It avoids paying the broader factor
+/// cancellation pipeline on the common REPL hotspot where the shared factor is
+/// already explicit.
+#[allow(clippy::too_many_arguments)]
+pub fn try_exact_common_factor_mul_fraction_preorder(
+    ctx: &mut cas_ast::Context,
+    expr_id: cas_ast::ExprId,
+    num: cas_ast::ExprId,
+    den: cas_ast::ExprId,
+    collect_steps: bool,
+    steps: &mut Vec<crate::step::Step>,
+    current_path: &[crate::step::PathStep],
+) -> Option<cas_ast::ExprId> {
+    let (_common, other_num, other_den) = exact_common_mul_factor(ctx, num, den)?;
+    let rewritten = ctx.add_raw(cas_ast::Expr::Div(other_num, other_den));
+
+    if collect_steps {
+        let mut cancel_step = crate::step::Step::new(
+            "Cancel common factor",
+            "Pre-order Common Factor Cancel",
+            expr_id,
+            rewritten,
+            current_path.to_vec(),
+            Some(ctx),
+        );
+        cancel_step.before = expr_id;
+        cancel_step.after = rewritten;
+        cancel_step.global_before = Some(expr_id);
+        cancel_step.global_after = Some(rewritten);
+        cancel_step.importance = crate::step::ImportanceLevel::High;
+        steps.push(cancel_step);
+    }
+
+    Some(rewritten)
 }
 
 pub fn register(simplifier: &mut crate::Simplifier) {
@@ -345,6 +416,126 @@ pub fn try_structural_scalar_multiple_preorder(
             ctx, num, den, false,
         )?;
     Some(plan.forms.result_norm)
+}
+
+fn collapse_numeric_fraction_result(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> cas_ast::ExprId {
+    let cas_ast::Expr::Div(num, den) = ctx.get(expr) else {
+        return expr;
+    };
+    let (cas_ast::Expr::Number(num), cas_ast::Expr::Number(den)) = (ctx.get(*num), ctx.get(*den))
+    else {
+        return expr;
+    };
+    if den.is_zero() {
+        return expr;
+    }
+    ctx.add(cas_ast::Expr::Number(num.clone() / den.clone()))
+}
+
+/// Exact pre-order detection of additive scalar-multiple fractions.
+///
+/// This variant can preserve the visible standard-path contract when
+/// `collect_steps` is enabled by synthesizing the same two-step
+/// `Simplify Nested Fraction` sequence the rule would otherwise emit.
+#[allow(clippy::too_many_arguments)]
+pub fn try_exact_scalar_multiple_fraction_preorder(
+    ctx: &mut cas_ast::Context,
+    expr_id: cas_ast::ExprId,
+    num: cas_ast::ExprId,
+    den: cas_ast::ExprId,
+    collect_steps: bool,
+    steps: &mut Vec<crate::step::Step>,
+    current_path: &[crate::step::PathStep],
+) -> Option<cas_ast::ExprId> {
+    let plan =
+        cas_math::fraction_gcd_plan_support::try_plan_structural_scalar_multiple_fraction_rewrite(
+            ctx,
+            num,
+            den,
+            collect_steps,
+        )?;
+    let final_result = collapse_numeric_fraction_result(ctx, plan.forms.result);
+
+    if collect_steps {
+        if let Some(factored_form_norm) = plan.forms.factored_form_norm {
+            let mut factor_step = if current_path.is_empty() {
+                crate::step::Step::new_compact(
+                    &format!(
+                        "Factor by GCD: {}",
+                        cas_formatter::render_expr(ctx, plan.gcd_expr)
+                    ),
+                    "Simplify Nested Fraction",
+                    expr_id,
+                    factored_form_norm,
+                )
+            } else {
+                crate::step::Step::new(
+                    &format!(
+                        "Factor by GCD: {}",
+                        cas_formatter::render_expr(ctx, plan.gcd_expr)
+                    ),
+                    "Simplify Nested Fraction",
+                    expr_id,
+                    factored_form_norm,
+                    current_path.to_vec(),
+                    Some(ctx),
+                )
+            };
+            factor_step.global_before = Some(expr_id);
+            factor_step.global_after = Some(factored_form_norm);
+            factor_step.importance = crate::step::ImportanceLevel::High;
+            steps.push(factor_step);
+
+            let mut cancel_step = if current_path.is_empty() {
+                crate::step::Step::new_compact(
+                    "Cancel common factor",
+                    "Simplify Nested Fraction",
+                    factored_form_norm,
+                    plan.forms.result_norm,
+                )
+            } else {
+                crate::step::Step::new(
+                    "Cancel common factor",
+                    "Simplify Nested Fraction",
+                    factored_form_norm,
+                    plan.forms.result_norm,
+                    current_path.to_vec(),
+                    Some(ctx),
+                )
+            };
+            cancel_step.global_before = Some(factored_form_norm);
+            cancel_step.global_after = Some(final_result);
+            cancel_step.importance = crate::step::ImportanceLevel::High;
+            steps.push(cancel_step);
+        } else {
+            let mut cancel_step = if current_path.is_empty() {
+                crate::step::Step::new_compact(
+                    "Cancel common factor",
+                    "Simplify Nested Fraction",
+                    expr_id,
+                    plan.forms.result_norm,
+                )
+            } else {
+                crate::step::Step::new(
+                    "Cancel common factor",
+                    "Simplify Nested Fraction",
+                    expr_id,
+                    plan.forms.result_norm,
+                    current_path.to_vec(),
+                    Some(ctx),
+                )
+            };
+            cancel_step.global_before = Some(expr_id);
+            cancel_step.global_after = Some(final_result);
+            cancel_step.importance = crate::step::ImportanceLevel::High;
+            steps.push(cancel_step);
+        }
+    }
+
+    Some(final_result)
 }
 
 /// Exact-shape pre-order detection of `(a^3 - b^3)/(a-b)` and `(a^3 + b^3)/(a+b)`.

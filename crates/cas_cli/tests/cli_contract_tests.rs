@@ -2,7 +2,7 @@
 //!
 //! These tests validate the CLI behavior including:
 //! - Help output shows correct commands
-//! - JSON output parsing and schema version
+//! - wire output parsing and schema version
 //! - Budget presets and strict mode
 
 use assert_cmd::cargo;
@@ -44,7 +44,7 @@ fn test_eval_help_shows_budget_options() {
         .stdout(predicate::str::contains("unlimited"));
 }
 
-/// Test that eval with --format json produces valid JSON with schema_version.
+/// Test that eval with --format json produces valid wire output with schema_version.
 #[test]
 fn test_eval_wire_output_has_schema_version() {
     let output = cli()
@@ -55,16 +55,16 @@ fn test_eval_wire_output_has_schema_version() {
     assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).unwrap();
-    let json: Value = serde_json::from_str(&stdout).expect("Invalid JSON output");
+    let wire: Value = serde_json::from_str(&stdout).expect("Invalid wire output");
 
-    assert_eq!(json["schema_version"], 1);
-    assert_eq!(json["ok"], true);
-    assert!(json["budget"].is_object());
-    assert_eq!(json["budget"]["preset"], "standard");
-    assert_eq!(json["budget"]["mode"], "best-effort");
+    assert_eq!(wire["schema_version"], 1);
+    assert_eq!(wire["ok"], true);
+    assert!(wire["budget"].is_object());
+    assert_eq!(wire["budget"]["preset"], "standard");
+    assert_eq!(wire["budget"]["mode"], "best-effort");
 }
 
-/// Test that eval-json alias works (backward compatibility).
+/// Test that the hidden eval-json alias still emits the same wire output.
 #[test]
 fn test_eval_json_alias_emits_wire_output() {
     let output = cli()
@@ -75,10 +75,10 @@ fn test_eval_json_alias_emits_wire_output() {
     assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).unwrap();
-    let json: Value = serde_json::from_str(&stdout).expect("Invalid JSON output");
+    let wire: Value = serde_json::from_str(&stdout).expect("Invalid wire output");
 
-    assert_eq!(json["ok"], true);
-    assert_eq!(json["result"], "4");
+    assert_eq!(wire["ok"], true);
+    assert_eq!(wire["result"], "4");
 }
 
 /// Test that budget presets can be selected.
@@ -92,9 +92,9 @@ fn test_eval_with_budget_preset() {
     assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).unwrap();
-    let json: Value = serde_json::from_str(&stdout).expect("Invalid JSON output");
+    let wire: Value = serde_json::from_str(&stdout).expect("Invalid wire output");
 
-    assert_eq!(json["budget"]["preset"], "small");
+    assert_eq!(wire["budget"]["preset"], "small");
 }
 
 /// Test that --strict flag sets mode to strict.
@@ -108,9 +108,9 @@ fn test_eval_strict_mode() {
     assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).unwrap();
-    let json: Value = serde_json::from_str(&stdout).expect("Invalid JSON output");
+    let wire: Value = serde_json::from_str(&stdout).expect("Invalid wire output");
 
-    assert_eq!(json["budget"]["mode"], "strict");
+    assert_eq!(wire["budget"]["mode"], "strict");
 }
 
 /// Test that text format output works.
@@ -141,12 +141,12 @@ fn test_eval_budget_exceeded_strict() {
         .expect("Failed to run CLI");
 
     let stdout = String::from_utf8(output.stdout).unwrap();
-    let json: Value = serde_json::from_str(&stdout).expect("Invalid JSON output");
+    let wire: Value = serde_json::from_str(&stdout).expect("Invalid wire output");
 
     // Either ok=false (error) OR result is unexpanded (didn't actually expand)
-    let ok = json["ok"].as_bool().unwrap_or(true);
-    let result = json["result"].as_str().unwrap_or("");
-    let exceeded = json["budget"]["exceeded"].is_object();
+    let ok = wire["ok"].as_bool().unwrap_or(true);
+    let result = wire["result"].as_str().unwrap_or("");
+    let exceeded = wire["budget"]["exceeded"].is_object();
 
     // Budget enforcement: either fails (ok=false), reports exceeded, or returns unexpanded
     let unexpanded = result.contains("^200") || result.contains("(a + b)^200");
@@ -158,7 +158,7 @@ fn test_eval_budget_exceeded_strict() {
     );
 
     // Verify mode is strict in response
-    assert_eq!(json["budget"]["mode"], "strict");
+    assert_eq!(wire["budget"]["mode"], "strict");
 }
 
 /// Test that budget exceeded with best-effort returns partial result.
@@ -180,12 +180,12 @@ fn test_eval_budget_exceeded_best_effort() {
     assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).unwrap();
-    let json: Value = serde_json::from_str(&stdout).expect("Invalid JSON output");
+    let wire: Value = serde_json::from_str(&stdout).expect("Invalid wire output");
 
     // Should succeed (ok=true) even if budget was reached
-    assert_eq!(json["ok"], true);
+    assert_eq!(wire["ok"], true);
     // Result should be non-empty (partial or unexpanded)
-    assert!(json["result"]
+    assert!(wire["result"]
         .as_str()
         .map(|s| !s.is_empty())
         .unwrap_or(false));

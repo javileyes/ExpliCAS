@@ -1,4 +1,4 @@
-use cas_api_models::ExprStatsJson;
+use cas_api_models::ExprStatsWire;
 use cas_ast::{Context, Expr, ExprId};
 
 fn count_add_terms(ctx: &Context, expr: ExprId) -> Option<usize> {
@@ -38,12 +38,12 @@ fn count_add_terms(ctx: &Context, expr: ExprId) -> Option<usize> {
 }
 
 /// Compute node/depth/term stats for output payloads.
-pub(crate) fn expr_output_stats(ctx: &Context, expr: ExprId) -> ExprStatsJson {
+pub(crate) fn expr_output_stats(ctx: &Context, expr: ExprId) -> ExprStatsWire {
     let (node_count, depth) = cas_ast::traversal::count_nodes_and_max_depth(ctx, expr);
     let term_count =
         crate::try_get_poly_result_term_count(ctx, expr).or_else(|| count_add_terms(ctx, expr));
 
-    ExprStatsJson {
+    ExprStatsWire {
         node_count,
         depth,
         term_count,

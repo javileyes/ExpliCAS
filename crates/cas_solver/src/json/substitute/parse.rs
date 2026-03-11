@@ -1,4 +1,4 @@
-use cas_api_models::{EngineJsonError as ApiEngineJsonError, SpanJson as ApiSpanJson};
+use cas_api_models::{EngineWireError as ApiEngineWireError, SpanWire as ApiSpanWire};
 use cas_ast::{Context, ExprId};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -12,17 +12,17 @@ pub enum ParseField {
 pub struct SubstituteParseIssue {
     pub field: ParseField,
     pub error: String,
-    pub span: Option<ApiSpanJson>,
+    pub span: Option<ApiSpanWire>,
 }
 
 impl SubstituteParseIssue {
-    pub fn to_wire_error(&self) -> ApiEngineJsonError {
+    pub fn to_wire_error(&self) -> ApiEngineWireError {
         let message = match self.field {
             ParseField::Expression => format!("Failed to parse expression: {}", self.error),
             ParseField::Target => format!("Failed to parse target: {}", self.error),
             ParseField::Replacement => format!("Failed to parse replacement: {}", self.error),
         };
-        ApiEngineJsonError::parse(message, self.span)
+        ApiEngineWireError::parse(message, self.span)
     }
 }
 
@@ -34,7 +34,7 @@ fn parse_component(
     cas_parser::parse(input, ctx).map_err(|e| SubstituteParseIssue {
         field,
         error: e.to_string(),
-        span: e.span().map(|s| ApiSpanJson {
+        span: e.span().map(|s| ApiSpanWire {
             start: s.start,
             end: s.end,
         }),

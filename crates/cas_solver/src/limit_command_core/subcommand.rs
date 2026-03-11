@@ -1,4 +1,4 @@
-use crate::limit_command_core::core::{eval_limit_from_str, limit_str_to_json};
+use crate::limit_command_core::core::{eval_limit_from_str, limit_str_to_wire};
 use crate::limit_command_types::{LimitSubcommandEvalError, LimitSubcommandEvalOutput};
 
 pub fn evaluate_limit_subcommand_output(
@@ -9,7 +9,7 @@ pub fn evaluate_limit_subcommand_output(
     wire_output: bool,
 ) -> Result<LimitSubcommandEvalOutput, LimitSubcommandEvalError> {
     if wire_output {
-        return Ok(LimitSubcommandEvalOutput::Json(limit_str_to_json(
+        return Ok(LimitSubcommandEvalOutput::Wire(limit_str_to_wire(
             expr,
             var,
             approach,

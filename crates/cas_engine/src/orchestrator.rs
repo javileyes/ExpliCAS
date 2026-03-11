@@ -3,6 +3,8 @@ use crate::expand::eager_eval_expand_calls;
 use crate::phase::{SimplifyOptions, SimplifyPhase};
 use crate::{Simplifier, Step};
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
+use cas_math::arithmetic_rule_support::try_rewrite_combine_constants_expr;
+use cas_math::build::mul2_raw;
 use cas_math::expr_nary::{AddView, MulView, Sign};
 use cas_math::fraction_power_cancel_support::try_rewrite_cancel_same_base_powers_div_expr;
 use cas_math::infinity_support::{is_negative_literal, is_positive_literal};
@@ -12,7 +14,11 @@ use cas_math::logarithm_inverse_support::{
 };
 use cas_math::poly_lowering;
 use cas_math::poly_store::clear_thread_local_store;
+use cas_math::root_forms::{
+    try_rewrite_canonical_root_expr, try_rewrite_extract_perfect_power_from_radicand_expr,
+};
 use cas_math::trig_linear_support::extract_coef_and_base;
+use cas_math::trig_power_identity_support::try_rewrite_pythagorean_chain_add_expr;
 use cas_solver_core::rationalize_policy::AutoRationalizeLevel;
 use num_rational::BigRational;
 use num_traits::Zero;
@@ -146,6 +152,15 @@ fn is_symbolic_pow_zero_root(ctx: &Context, expr: ExprId) -> bool {
     is_symbolic_atom(ctx, *base) && matches!(ctx.get(*exp), Expr::Number(n) if n.is_zero())
 }
 
+fn is_symbolic_atom_plus_nonzero_literal_root(ctx: &Context, expr: ExprId) -> bool {
+    let Expr::Add(left, right) = ctx.get(expr) else {
+        return false;
+    };
+    (is_symbolic_atom(ctx, *left) && matches!(ctx.get(*right), Expr::Number(n) if !n.is_zero()))
+        || (matches!(ctx.get(*left), Expr::Number(n) if !n.is_zero())
+            && is_symbolic_atom(ctx, *right))
+}
+
 fn try_hidden_solve_root_exp_ln_shortcut(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
     let rewrite = try_rewrite_exponential_log_inverse_expr(ctx, expr)?;
     if is_symbolic_atom(ctx, rewrite.rewritten) {
@@ -184,6 +199,119 @@ fn symbolic_cross_term_atoms(ctx: &Context, expr: ExprId) -> Option<(ExprId, Exp
 
 fn expr_eq(ctx: &Context, left: ExprId, right: ExprId) -> bool {
     cas_ast::ordering::compare_expr(ctx, left, right) == std::cmp::Ordering::Equal
+}
+
+fn build_root_shortcut_parent_ctx(
+    options: &crate::phase::SimplifyOptions,
+    ctx: &Context,
+    expr: ExprId,
+) -> crate::parent_context::ParentContext {
+    crate::parent_context::ParentContext::root()
+        .with_domain_mode(options.shared.semantics.domain_mode)
+        .with_value_domain(options.shared.semantics.value_domain)
+        .with_inv_trig(options.shared.semantics.inv_trig)
+        .with_goal(options.goal)
+        .with_context_mode(options.shared.context_mode)
+        .with_simplify_purpose(options.simplify_purpose)
+        .with_autoexpand_binomials(options.shared.autoexpand_binomials)
+        .with_heuristic_poly(options.shared.heuristic_poly)
+        .with_expand_mode_flag(options.expand_mode)
+        .with_root_expr(ctx, expr)
+}
+
+fn finish_standard_root_shortcut(
+    _ctx: &Context,
+    before: ExprId,
+    rewrite: crate::rule::Rewrite,
+    rule_name: &'static str,
+    collect_steps: bool,
+) -> (ExprId, Vec<Step>) {
+    let result = rewrite.new_expr;
+    let mut shortcut_steps = Vec::new();
+    if collect_steps {
+        let mut step = Step::new_compact(&rewrite.description, rule_name, before, result);
+        step.global_before = Some(before);
+        step.global_after = Some(result);
+        step.importance = crate::step::ImportanceLevel::High;
+        shortcut_steps.push(step);
+    }
+    (result, shortcut_steps)
+}
+
+fn try_standard_extract_perfect_square_root_shortcut(
+    ctx: &mut Context,
+    expr: ExprId,
+    collect_steps: bool,
+) -> Option<(ExprId, Vec<Step>)> {
+    let canonical = try_rewrite_canonical_root_expr(ctx, expr)?;
+    let extract = try_rewrite_extract_perfect_power_from_radicand_expr(ctx, canonical.rewritten)?;
+
+    let rewrite = crate::rule::Rewrite::new(extract.rewritten)
+        .desc("Extract perfect square from under radical");
+    Some(finish_standard_root_shortcut(
+        ctx,
+        expr,
+        rewrite,
+        "Extract Perfect Square from Radicand",
+        collect_steps,
+    ))
+}
+
+fn try_standard_numeric_add_chain_shortcut(
+    ctx: &mut Context,
+    expr: ExprId,
+    collect_steps: bool,
+) -> Option<(ExprId, Vec<Step>)> {
+    let Expr::Add(left, right) = ctx.get(expr) else {
+        return None;
+    };
+    let (path, number_side, reducible_side) = match (ctx.get(*left), ctx.get(*right)) {
+        (Expr::Number(_), _) => (crate::step::PathStep::Right, *left, *right),
+        (_, Expr::Number(_)) => (crate::step::PathStep::Left, *right, *left),
+        _ => return None,
+    };
+
+    let inner = try_rewrite_combine_constants_expr(ctx, reducible_side)?;
+    if !matches!(ctx.get(inner.rewritten), Expr::Number(_)) {
+        return None;
+    }
+
+    let after_inner = match path {
+        crate::step::PathStep::Left => ctx.add(Expr::Add(inner.rewritten, number_side)),
+        crate::step::PathStep::Right => ctx.add(Expr::Add(number_side, inner.rewritten)),
+        _ => unreachable!(),
+    };
+    let outer = try_rewrite_combine_constants_expr(ctx, after_inner)?;
+
+    let mut shortcut_steps = Vec::new();
+    if collect_steps {
+        let mut inner_step = Step::new(
+            &inner.description,
+            "Combine Constants",
+            reducible_side,
+            inner.rewritten,
+            vec![path.clone()],
+            Some(ctx),
+        );
+        inner_step.before = reducible_side;
+        inner_step.after = inner.rewritten;
+        inner_step.global_before = Some(expr);
+        inner_step.global_after = Some(after_inner);
+        shortcut_steps.push(inner_step);
+
+        let outer_step = Step::new_compact(
+            &outer.description,
+            "Combine Constants",
+            after_inner,
+            outer.rewritten,
+        );
+        let mut outer_step = outer_step;
+        outer_step.global_before = Some(after_inner);
+        outer_step.global_after = Some(outer.rewritten);
+        shortcut_steps.push(outer_step);
+    }
+
+    Some((outer.rewritten, shortcut_steps))
 }
 
 fn multiset_matches_exact(ctx: &Context, actual: &[ExprId], expected: &[ExprId]) -> bool {
@@ -500,6 +628,96 @@ fn try_hidden_solve_root_exact_two_term_scalar_multiple_shortcut(
     Some(ctx.add(Expr::Number(result_ratio)))
 }
 
+fn try_standard_exact_two_term_scalar_multiple_shortcut(
+    ctx: &mut Context,
+    expr: ExprId,
+    collect_steps: bool,
+) -> Option<(ExprId, Vec<Step>)> {
+    let Expr::Div(num, den) = ctx.get(expr) else {
+        return None;
+    };
+    let (num_left, num_right) = match ctx.get(*num) {
+        Expr::Add(left, right) => (*left, *right),
+        _ => return None,
+    };
+    let (den_left, den_right) = match ctx.get(*den) {
+        Expr::Add(left, right) => (*left, *right),
+        _ => return None,
+    };
+
+    let (num_l_coeff, num_l_base) = extract_coef_and_base(ctx, num_left);
+    let (num_r_coeff, num_r_base) = extract_coef_and_base(ctx, num_right);
+    let (den_l_coeff, den_l_base) = extract_coef_and_base(ctx, den_left);
+    let (den_r_coeff, den_r_base) = extract_coef_and_base(ctx, den_right);
+
+    if num_l_coeff.is_zero()
+        || num_r_coeff.is_zero()
+        || den_l_coeff.is_zero()
+        || den_r_coeff.is_zero()
+    {
+        return None;
+    }
+
+    let ratio = if expr_eq(ctx, num_l_base, den_l_base) && expr_eq(ctx, num_r_base, den_r_base) {
+        let left_ratio = den_l_coeff / num_l_coeff.clone();
+        let right_ratio = den_r_coeff / num_r_coeff.clone();
+        if left_ratio != right_ratio || left_ratio.is_zero() {
+            return None;
+        }
+        left_ratio
+    } else if expr_eq(ctx, num_l_base, den_r_base) && expr_eq(ctx, num_r_base, den_l_base) {
+        let left_ratio = den_r_coeff / num_l_coeff.clone();
+        let right_ratio = den_l_coeff / num_r_coeff.clone();
+        if left_ratio != right_ratio || left_ratio.is_zero() {
+            return None;
+        }
+        left_ratio
+    } else {
+        return None;
+    };
+
+    let common = ctx.add(Expr::Add(num_l_base, num_r_base));
+    let num_coeff_expr = ctx.add(Expr::Number(num_l_coeff.clone()));
+    let den_coeff_expr = ctx.add(Expr::Number((num_l_coeff * ratio.clone()).clone()));
+    let factored_num = mul2_raw(ctx, num_coeff_expr, common);
+    let factored_den = mul2_raw(ctx, den_coeff_expr, common);
+    let factored_form = ctx.add(Expr::Div(factored_num, factored_den));
+    let result = ctx.add(Expr::Number(BigRational::from_integer(1.into()) / ratio));
+
+    let mut shortcut_steps = Vec::new();
+    if collect_steps {
+        let mut factor_step = Step::new_compact(
+            &format!(
+                "Factor by GCD: {}",
+                cas_formatter::DisplayExpr {
+                    context: ctx,
+                    id: common
+                }
+            ),
+            "Simplify Nested Fraction",
+            expr,
+            factored_form,
+        );
+        factor_step.global_before = Some(expr);
+        factor_step.global_after = Some(factored_form);
+        factor_step.importance = crate::step::ImportanceLevel::High;
+        shortcut_steps.push(factor_step);
+
+        let mut cancel_step = Step::new_compact(
+            "Cancel common factor",
+            "Simplify Nested Fraction",
+            factored_form,
+            result,
+        );
+        cancel_step.global_before = Some(factored_form);
+        cancel_step.global_after = Some(result);
+        cancel_step.importance = crate::step::ImportanceLevel::High;
+        shortcut_steps.push(cancel_step);
+    }
+
+    Some((result, shortcut_steps))
+}
+
 fn try_hidden_solve_root_log_power_base_shortcut(
     ctx: &mut Context,
     expr: ExprId,
@@ -619,6 +837,38 @@ fn is_symbolic_power_over_same_atom_noop_after_core(ctx: &Context, expr: ExprId)
 
     matches!(ctx.get(*base), Expr::Variable(_) | Expr::Constant(_))
         && matches!(ctx.get(*exp), Expr::Variable(_) | Expr::Constant(_))
+}
+
+fn is_exact_gaussian_noop_component(ctx: &Context, expr: ExprId) -> bool {
+    match ctx.get(expr) {
+        Expr::Number(_) | Expr::Constant(cas_ast::Constant::I) => true,
+        Expr::Neg(inner) => is_exact_gaussian_noop_component(ctx, *inner),
+        Expr::Mul(left, right) => {
+            (matches!(ctx.get(*left), Expr::Number(_))
+                && matches!(ctx.get(*right), Expr::Constant(cas_ast::Constant::I)))
+                || (matches!(ctx.get(*left), Expr::Constant(cas_ast::Constant::I))
+                    && matches!(ctx.get(*right), Expr::Number(_)))
+        }
+        Expr::Add(left, right) | Expr::Sub(left, right) => {
+            is_exact_gaussian_noop_component(ctx, *left)
+                && is_exact_gaussian_noop_component(ctx, *right)
+        }
+        _ => false,
+    }
+}
+
+fn is_real_domain_complex_noop_root(ctx: &Context, expr: ExprId) -> bool {
+    match ctx.get(expr) {
+        Expr::Pow(base, exp) => {
+            matches!(ctx.get(*base), Expr::Constant(cas_ast::Constant::I))
+                && matches!(ctx.get(*exp), Expr::Number(n) if n.is_integer())
+        }
+        Expr::Div(num, den) => {
+            is_exact_gaussian_noop_component(ctx, *num)
+                && is_exact_gaussian_noop_component(ctx, *den)
+        }
+        _ => false,
+    }
 }
 
 pub struct Orchestrator {
@@ -849,18 +1099,177 @@ impl Orchestrator {
         expr: ExprId,
         simplifier: &mut Simplifier,
     ) -> (ExprId, Vec<Step>, crate::phase::PipelineStats) {
-        self.pattern_marks_expr = None;
-
-        // Clear cycle events from any previous pipeline run
-        cas_solver_core::cycle_event_registry::clear_cycle_events();
-
         // Extract collect_steps early so pre-passes can skip Step construction
         let collect_steps = self.options.collect_steps;
         let is_solve_mode = self.options.shared.context_mode == crate::options::ContextMode::Solve;
+        self.pattern_marks_expr = None;
 
         // Narrow hidden solve root shortcuts. Keep them limited to the
         // no-steps, no-listener solve path and dispatch by root kind so we do
         // not pay unrelated matchers on every expression.
+        if self.options.shared.context_mode == crate::options::ContextMode::Standard
+            && self.options.shared.semantics.value_domain == crate::semantics::ValueDomain::RealOnly
+            && !simplifier.has_step_listener()
+            && is_real_domain_complex_noop_root(&simplifier.context, expr)
+        {
+            return (expr, Vec::new(), crate::phase::PipelineStats::default());
+        }
+
+        if self.options.shared.context_mode == crate::options::ContextMode::Standard
+            && !simplifier.has_step_listener()
+        {
+            let mut shortcut_steps = Vec::new();
+            let add_root = matches!(simplifier.context.get(expr), Expr::Add(_, _));
+            let pow_root = matches!(simplifier.context.get(expr), Expr::Pow(_, _));
+            if add_root {
+                if is_symbolic_atom_plus_nonzero_literal_root(&simplifier.context, expr) {
+                    return (expr, Vec::new(), crate::phase::PipelineStats::default());
+                }
+                if let Some((result, shortcut_steps)) = try_standard_numeric_add_chain_shortcut(
+                    &mut simplifier.context,
+                    expr,
+                    collect_steps,
+                ) {
+                    return (
+                        result,
+                        shortcut_steps,
+                        crate::phase::PipelineStats::default(),
+                    );
+                }
+                if let Some(rewrite) =
+                    try_rewrite_pythagorean_chain_add_expr(&mut simplifier.context, expr)
+                {
+                    if collect_steps {
+                        let mut step = Step::new_compact(
+                            &rewrite.desc,
+                            "Pythagorean Chain Identity",
+                            expr,
+                            rewrite.rewritten,
+                        );
+                        step.global_before = Some(expr);
+                        step.global_after = Some(rewrite.rewritten);
+                        step.importance = crate::step::ImportanceLevel::High;
+                        shortcut_steps.push(step);
+                    }
+                    return (
+                        rewrite.rewritten,
+                        shortcut_steps,
+                        crate::phase::PipelineStats::default(),
+                    );
+                }
+            }
+
+            if matches!(simplifier.context.get(expr), Expr::Function(_, _)) {
+                if let Some((result, shortcut_steps)) =
+                    try_standard_extract_perfect_square_root_shortcut(
+                        &mut simplifier.context,
+                        expr,
+                        collect_steps,
+                    )
+                {
+                    return (
+                        result,
+                        shortcut_steps,
+                        crate::phase::PipelineStats::default(),
+                    );
+                }
+            }
+
+            if pow_root {
+                let parent_ctx =
+                    build_root_shortcut_parent_ctx(&self.options, &simplifier.context, expr);
+                let root_pow_cancel = crate::rules::exponents::RootPowCancelRule;
+                if let Some(rewrite) = crate::rule::Rule::apply(
+                    &root_pow_cancel,
+                    &mut simplifier.context,
+                    expr,
+                    &parent_ctx,
+                ) {
+                    let (result, shortcut_steps) = finish_standard_root_shortcut(
+                        &simplifier.context,
+                        expr,
+                        rewrite,
+                        "Root Power Cancel",
+                        collect_steps,
+                    );
+                    return (
+                        result,
+                        shortcut_steps,
+                        crate::phase::PipelineStats::default(),
+                    );
+                }
+            }
+
+            let div_parts = match simplifier.context.get(expr) {
+                Expr::Div(num, den) => Some((*num, *den)),
+                _ => None,
+            };
+            if let Some((num, den)) = div_parts {
+                if let Some(result) = crate::rules::algebra::try_difference_of_squares_preorder(
+                    &mut simplifier.context,
+                    expr,
+                    num,
+                    den,
+                    collect_steps,
+                    &mut shortcut_steps,
+                    &[],
+                ) {
+                    return (
+                        result,
+                        shortcut_steps,
+                        crate::phase::PipelineStats::default(),
+                    );
+                }
+                if let Some(result) =
+                    crate::rules::algebra::try_exact_common_factor_mul_fraction_preorder(
+                        &mut simplifier.context,
+                        expr,
+                        num,
+                        den,
+                        collect_steps,
+                        &mut shortcut_steps,
+                        &[],
+                    )
+                {
+                    return (
+                        result,
+                        shortcut_steps,
+                        crate::phase::PipelineStats::default(),
+                    );
+                }
+                if let Some((result, shortcut_steps)) =
+                    try_standard_exact_two_term_scalar_multiple_shortcut(
+                        &mut simplifier.context,
+                        expr,
+                        collect_steps,
+                    )
+                {
+                    return (
+                        result,
+                        shortcut_steps,
+                        crate::phase::PipelineStats::default(),
+                    );
+                }
+                if let Some(result) =
+                    crate::rules::algebra::try_exact_scalar_multiple_fraction_preorder(
+                        &mut simplifier.context,
+                        expr,
+                        num,
+                        den,
+                        collect_steps,
+                        &mut shortcut_steps,
+                        &[],
+                    )
+                {
+                    return (
+                        result,
+                        shortcut_steps,
+                        crate::phase::PipelineStats::default(),
+                    );
+                }
+            }
+        }
+
         if !collect_steps && is_solve_mode && !simplifier.has_step_listener() {
             let domain_is_strict = self.options.shared.semantics.domain_mode.is_strict();
             let allow_scalar_root = allow_hidden_solve_root_scalar_multiple_shortcut(&self.options);
@@ -1036,6 +1445,12 @@ impl Orchestrator {
                 }
             }
         }
+
+        // Clear cycle events only when we are about to enter the heavy phase
+        // pipeline. Hidden root shortcuts above do not register or consume
+        // cycle events, so clearing here avoids fixed overhead on the hot early
+        // return paths without changing final stats on full runs.
+        cas_solver_core::cycle_event_registry::clear_cycle_events();
 
         // Clear thread-local PolyStore before evaluation
         clear_thread_local_store();

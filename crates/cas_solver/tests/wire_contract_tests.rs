@@ -1,19 +1,19 @@
-//! JSON API contract tests.
+//! Wire API contract tests.
 //!
-//! These tests verify the stable JSON schema for CLI and FFI consumers.
+//! These tests verify the stable wire schema for CLI and FFI consumers.
 //! Breaking these tests = breaking external API.
 
 use cas_api_models::{
-    BudgetExceededJson, BudgetJsonInfo, EngineJsonError, EngineJsonResponse, SCHEMA_VERSION,
+    BudgetExceededWire, BudgetWireInfo, EngineWireError, EngineWireResponse, SCHEMA_VERSION,
 };
 use cas_solver::{BudgetExceeded, CasError, Metric, Operation};
 use serde_json::Value;
 
-fn parse_json(s: &str) -> Value {
-    serde_json::from_str(s).expect("valid JSON")
+fn parse_wire(s: &str) -> Value {
+    serde_json::from_str(s).expect("valid wire JSON")
 }
 
-fn engine_json_error_from_cas_error(e: &CasError) -> EngineJsonError {
+fn engine_wire_error_from_cas_error(e: &CasError) -> EngineWireError {
     let details = match e {
         CasError::BudgetExceeded(b) => serde_json::json!({
             "op": format!("{:?}", b.op),
@@ -31,7 +31,7 @@ fn engine_json_error_from_cas_error(e: &CasError) -> EngineJsonError {
         _ => serde_json::Value::Null,
     };
 
-    EngineJsonError {
+    EngineWireError {
         kind: e.kind(),
         code: e.code(),
         message: e.to_string(),
@@ -40,12 +40,12 @@ fn engine_json_error_from_cas_error(e: &CasError) -> EngineJsonError {
     }
 }
 
-fn engine_json_response_err(error: &CasError, budget: BudgetJsonInfo) -> EngineJsonResponse {
-    EngineJsonResponse::err(engine_json_error_from_cas_error(error), budget)
+fn engine_wire_response_err(error: &CasError, budget: BudgetWireInfo) -> EngineWireResponse {
+    EngineWireResponse::err(engine_wire_error_from_cas_error(error), budget)
 }
 
-fn budget_with_exceeded(mut budget: BudgetJsonInfo, b: &BudgetExceeded) -> BudgetJsonInfo {
-    budget.exceeded = Some(BudgetExceededJson {
+fn budget_with_exceeded(mut budget: BudgetWireInfo, b: &BudgetExceeded) -> BudgetWireInfo {
+    budget.exceeded = Some(BudgetExceededWire {
         op: format!("{:?}", b.op),
         metric: format!("{:?}", b.metric),
         used: b.used,
@@ -59,45 +59,45 @@ fn budget_with_exceeded(mut budget: BudgetJsonInfo, b: &BudgetExceeded) -> Budge
 // =============================================================================
 
 #[test]
-fn test_json_schema_version_is_1() {
+fn test_wire_schema_version_is_1() {
     assert_eq!(SCHEMA_VERSION, 1, "Schema version must be 1");
 }
 
 #[test]
-fn test_json_success_contract() {
-    let budget = BudgetJsonInfo::cli(true);
-    let resp = EngineJsonResponse::ok("x + 1".into(), budget);
-    let json = parse_json(&resp.to_json());
+fn test_wire_success_contract() {
+    let budget = BudgetWireInfo::cli(true);
+    let resp = EngineWireResponse::ok("x + 1".into(), budget);
+    let wire = parse_wire(&resp.to_json());
 
     // Required fields
-    assert_eq!(json["schema_version"], 1);
-    assert_eq!(json["ok"], true);
-    assert!(json["result"].is_string());
-    assert!(json["budget"].is_object());
+    assert_eq!(wire["schema_version"], 1);
+    assert_eq!(wire["ok"], true);
+    assert!(wire["result"].is_string());
+    assert!(wire["budget"].is_object());
 
     // Result content
-    assert_eq!(json["result"], "x + 1");
+    assert_eq!(wire["result"], "x + 1");
 
     // Budget structure
-    assert_eq!(json["budget"]["preset"], "cli");
-    assert_eq!(json["budget"]["mode"], "strict");
+    assert_eq!(wire["budget"]["preset"], "cli");
+    assert_eq!(wire["budget"]["mode"], "strict");
 }
 
 #[test]
-fn test_json_error_contract() {
-    let budget = BudgetJsonInfo::cli(true);
+fn test_wire_error_contract() {
+    let budget = BudgetWireInfo::cli(true);
     let err = CasError::DivisionByZero;
-    let resp = engine_json_response_err(&err, budget);
-    let json = parse_json(&resp.to_json());
+    let resp = engine_wire_response_err(&err, budget);
+    let wire = parse_wire(&resp.to_json());
 
     // Required fields
-    assert_eq!(json["schema_version"], 1);
-    assert_eq!(json["ok"], false);
-    assert!(json["error"].is_object());
-    assert!(json["budget"].is_object());
+    assert_eq!(wire["schema_version"], 1);
+    assert_eq!(wire["ok"], false);
+    assert!(wire["error"].is_object());
+    assert!(wire["budget"].is_object());
 
     // Error structure
-    let error = &json["error"];
+    let error = &wire["error"];
     assert!(error["kind"].is_string(), "error.kind must be string");
     assert!(error["code"].is_string(), "error.code must be string");
     assert!(error["message"].is_string(), "error.message must be string");
@@ -108,75 +108,75 @@ fn test_json_error_contract() {
 // =============================================================================
 
 #[test]
-fn test_json_parse_error_contract() {
+fn test_wire_parse_error_contract() {
     let err = CasError::ParseError("unexpected token".into());
-    let json_err = engine_json_error_from_cas_error(&err);
+    let wire_err = engine_wire_error_from_cas_error(&err);
 
     assert_eq!(
-        json_err.kind, "ParseError",
+        wire_err.kind, "ParseError",
         "ParseError kind must be stable"
     );
-    assert_eq!(json_err.code, "E_PARSE", "ParseError code must be stable");
+    assert_eq!(wire_err.code, "E_PARSE", "ParseError code must be stable");
 }
 
 #[test]
-fn test_json_domain_error_contract() {
+fn test_wire_domain_error_contract() {
     let err = CasError::DivisionByZero;
-    let json_err = engine_json_error_from_cas_error(&err);
+    let wire_err = engine_wire_error_from_cas_error(&err);
 
     assert_eq!(
-        json_err.kind, "DomainError",
+        wire_err.kind, "DomainError",
         "DivisionByZero kind must be DomainError"
     );
     assert_eq!(
-        json_err.code, "E_DIV_ZERO",
+        wire_err.code, "E_DIV_ZERO",
         "DivisionByZero code must be E_DIV_ZERO"
     );
 }
 
 #[test]
-fn test_json_budget_exceeded_contract() {
+fn test_wire_budget_exceeded_contract() {
     let budget_err = CasError::BudgetExceeded(BudgetExceeded {
         op: Operation::Expand,
         metric: Metric::TermsMaterialized,
         used: 150,
         limit: 100,
     });
-    let json_err = engine_json_error_from_cas_error(&budget_err);
+    let wire_err = engine_wire_error_from_cas_error(&budget_err);
 
     // Kind/code stability
-    assert_eq!(json_err.kind, "BudgetExceeded");
-    assert_eq!(json_err.code, "E_BUDGET");
+    assert_eq!(wire_err.kind, "BudgetExceeded");
+    assert_eq!(wire_err.code, "E_BUDGET");
 
     // Details structure
     assert!(
-        json_err.details.is_object(),
+        wire_err.details.is_object(),
         "BudgetExceeded must have details object"
     );
-    assert_eq!(json_err.details["used"], 150);
-    assert_eq!(json_err.details["limit"], 100);
-    assert!(json_err.details["op"].is_string());
-    assert!(json_err.details["metric"].is_string());
+    assert_eq!(wire_err.details["used"], 150);
+    assert_eq!(wire_err.details["limit"], 100);
+    assert!(wire_err.details["op"].is_string());
+    assert!(wire_err.details["metric"].is_string());
 }
 
 #[test]
-fn test_json_not_implemented_contract() {
+fn test_wire_not_implemented_contract() {
     let err = CasError::NotImplemented {
         feature: "matrix inverse".into(),
     };
-    let json_err = engine_json_error_from_cas_error(&err);
+    let wire_err = engine_wire_error_from_cas_error(&err);
 
-    assert_eq!(json_err.kind, "NotImplemented");
-    assert_eq!(json_err.code, "E_NOT_IMPL");
+    assert_eq!(wire_err.kind, "NotImplemented");
+    assert_eq!(wire_err.code, "E_NOT_IMPL");
 }
 
 #[test]
-fn test_json_internal_error_contract() {
+fn test_wire_internal_error_contract() {
     let err = CasError::InternalError("assertion failed".into());
-    let json_err = engine_json_error_from_cas_error(&err);
+    let wire_err = engine_wire_error_from_cas_error(&err);
 
-    assert_eq!(json_err.kind, "InternalError");
-    assert_eq!(json_err.code, "E_INTERNAL");
+    assert_eq!(wire_err.kind, "InternalError");
+    assert_eq!(wire_err.code, "E_INTERNAL");
 }
 
 // =============================================================================
@@ -184,7 +184,7 @@ fn test_json_internal_error_contract() {
 // =============================================================================
 
 #[test]
-fn test_json_kind_in_known_set() {
+fn test_wire_kind_in_known_set() {
     let valid_kinds = [
         "ParseError",
         "DomainError",
@@ -206,18 +206,18 @@ fn test_json_kind_in_known_set() {
     ];
 
     for e in errors {
-        let json_err = engine_json_error_from_cas_error(&e);
+        let wire_err = engine_wire_error_from_cas_error(&e);
         assert!(
-            valid_kinds.contains(&json_err.kind),
+            valid_kinds.contains(&wire_err.kind),
             "Unknown kind: {} for error {:?}",
-            json_err.kind,
+            wire_err.kind,
             e
         );
     }
 }
 
 #[test]
-fn test_json_code_prefix() {
+fn test_wire_code_prefix() {
     let errors: Vec<CasError> = vec![
         CasError::ParseError("x".into()),
         CasError::DivisionByZero,
@@ -226,11 +226,11 @@ fn test_json_code_prefix() {
     ];
 
     for e in errors {
-        let json_err = engine_json_error_from_cas_error(&e);
+        let wire_err = engine_wire_error_from_cas_error(&e);
         assert!(
-            json_err.code.starts_with("E_"),
+            wire_err.code.starts_with("E_"),
             "Code {} must start with E_",
-            json_err.code
+            wire_err.code
         );
     }
 }
@@ -240,28 +240,28 @@ fn test_json_code_prefix() {
 // =============================================================================
 
 #[test]
-fn test_json_no_hold_in_error_message() {
+fn test_wire_no_hold_in_error_message() {
     // Simulate an error that might accidentally contain __hold
     let err = CasError::SolverError("Cannot solve __hold(x)".into());
-    let json_err = engine_json_error_from_cas_error(&err);
+    let wire_err = engine_wire_error_from_cas_error(&err);
 
     // Note: This test documents that we SHOULD strip __hold from messages
     // In a real scenario, the engine should strip __hold before creating errors
     // For now, we just verify the structure is correct
-    assert!(json_err.message.contains("Cannot solve"));
+    assert!(wire_err.message.contains("Cannot solve"));
 }
 
 #[test]
-fn test_json_no_hold_in_result() {
-    // When using EngineJsonResponse::ok(), the caller is responsible for
+fn test_wire_no_hold_in_result() {
+    // When using EngineWireResponse::ok(), the caller is responsible for
     // ensuring result does not contain __hold (via strip_all_holds)
-    let budget = BudgetJsonInfo::cli(true);
+    let budget = BudgetWireInfo::cli(true);
     let result = "x + 1"; // Good result, no __hold
-    let resp = EngineJsonResponse::ok(result.into(), budget);
-    let json = parse_json(&resp.to_json());
+    let resp = EngineWireResponse::ok(result.into(), budget);
+    let wire = parse_wire(&resp.to_json());
 
     assert!(
-        !json["result"].as_str().unwrap().contains("__hold"),
+        !wire["result"].as_str().unwrap().contains("__hold"),
         "Result must not contain __hold"
     );
 }
@@ -271,40 +271,40 @@ fn test_json_no_hold_in_result() {
 // =============================================================================
 
 #[test]
-fn test_json_budget_strict_mode() {
-    let budget = BudgetJsonInfo::cli(true);
-    let resp = EngineJsonResponse::ok("x".into(), budget);
-    let json = parse_json(&resp.to_json());
+fn test_wire_budget_strict_mode() {
+    let budget = BudgetWireInfo::cli(true);
+    let resp = EngineWireResponse::ok("x".into(), budget);
+    let wire = parse_wire(&resp.to_json());
 
-    assert_eq!(json["budget"]["mode"], "strict");
+    assert_eq!(wire["budget"]["mode"], "strict");
 }
 
 #[test]
-fn test_json_budget_best_effort_mode() {
-    let budget = BudgetJsonInfo::cli(false);
-    let resp = EngineJsonResponse::ok("x".into(), budget);
-    let json = parse_json(&resp.to_json());
+fn test_wire_budget_best_effort_mode() {
+    let budget = BudgetWireInfo::cli(false);
+    let resp = EngineWireResponse::ok("x".into(), budget);
+    let wire = parse_wire(&resp.to_json());
 
-    assert_eq!(json["budget"]["mode"], "best-effort");
+    assert_eq!(wire["budget"]["mode"], "best-effort");
 }
 
 #[test]
-fn test_json_budget_exceeded_in_best_effort() {
+fn test_wire_budget_exceeded_in_best_effort() {
     let exceeded = BudgetExceeded {
         op: Operation::Expand,
         metric: Metric::TermsMaterialized,
         used: 200,
         limit: 100,
     };
-    let budget = budget_with_exceeded(BudgetJsonInfo::cli(false), &exceeded);
-    let resp = EngineJsonResponse::ok("partial result".into(), budget);
-    let json = parse_json(&resp.to_json());
+    let budget = budget_with_exceeded(BudgetWireInfo::cli(false), &exceeded);
+    let resp = EngineWireResponse::ok("partial result".into(), budget);
+    let wire = parse_wire(&resp.to_json());
 
     // ok=true because best-effort
-    assert_eq!(json["ok"], true);
+    assert_eq!(wire["ok"], true);
 
     // But budget.exceeded is present
-    assert!(json["budget"]["exceeded"].is_object());
-    assert_eq!(json["budget"]["exceeded"]["used"], 200);
-    assert_eq!(json["budget"]["exceeded"]["limit"], 100);
+    assert!(wire["budget"]["exceeded"].is_object());
+    assert_eq!(wire["budget"]["exceeded"]["used"], 200);
+    assert_eq!(wire["budget"]["exceeded"]["limit"], 100);
 }

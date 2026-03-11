@@ -34,13 +34,13 @@ fn dispatch_command(command: Option<Command>) -> rustyline::Result<()> {
             crate::commands::eval::run(args);
             Ok(())
         }
-        Some(Command::EvalJson(args)) => {
-            let eval_args = crate::commands::eval_json::from_legacy_eval_wire_args(args);
-            crate::commands::eval_json::run(eval_args);
+        Some(Command::EvalWire(args)) => {
+            let eval_args = crate::commands::eval_wire::from_legacy_eval_wire_args(args);
+            crate::commands::eval_wire::run(eval_args);
             Ok(())
         }
-        Some(Command::EnvelopeJson(args)) => {
-            crate::commands::envelope_json::run(args);
+        Some(Command::EnvelopeWire(args)) => {
+            crate::commands::envelope_wire::run(args);
             Ok(())
         }
         Some(Command::Limit(args)) => {

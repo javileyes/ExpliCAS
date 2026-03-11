@@ -1,7 +1,7 @@
-//! Canonical JSON API entry points for solver responses.
+//! Canonical wire API entry points for solver responses.
 //!
-//! This module provides stable, serializable JSON entry points for CLI and FFI consumers.
-//! All callsites should use these types to ensure consistent JSON schema.
+//! This module provides stable, serializable wire entry points for CLI and FFI consumers.
+//! All callsites should use these types to ensure consistent schema.
 //!
 //! # Schema Version
 //!
@@ -20,6 +20,6 @@ mod stateless_eval;
 mod substitute;
 
 pub use envelope::{eval_str_to_output_envelope, evaluate_envelope_wire_command};
-pub use eval::eval_str_to_json;
+pub use eval::eval_str_to_wire;
 pub use mappers::{map_domain_warnings_to_engine_warnings, map_solver_assumptions_to_api_records};
-pub use substitute::substitute_str_to_json;
+pub use substitute::substitute_str_to_wire;

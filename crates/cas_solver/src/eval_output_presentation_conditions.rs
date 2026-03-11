@@ -1,13 +1,13 @@
-use cas_api_models::{RequiredConditionJson, WarningJson};
+use cas_api_models::{RequiredConditionWire, WarningWire};
 use cas_ast::Context;
 use cas_formatter::DisplayExpr;
 
 pub(crate) fn collect_output_warnings(
     domain_warnings: &[crate::DomainWarning],
-) -> Vec<WarningJson> {
+) -> Vec<WarningWire> {
     domain_warnings
         .iter()
-        .map(|w| WarningJson {
+        .map(|w| WarningWire {
             rule: w.rule_name.clone(),
             assumption: w.message.clone(),
         })
@@ -17,7 +17,7 @@ pub(crate) fn collect_output_warnings(
 pub(crate) fn collect_output_required_conditions(
     required_conditions: &[crate::ImplicitCondition],
     ctx: &Context,
-) -> Vec<RequiredConditionJson> {
+) -> Vec<RequiredConditionWire> {
     required_conditions
         .iter()
         .map(|cond| {
@@ -31,7 +31,7 @@ pub(crate) fn collect_output_required_conditions(
                 id: expr_id,
             }
             .to_string();
-            RequiredConditionJson {
+            RequiredConditionWire {
                 kind: kind.to_string(),
                 expr_display: expr_str.clone(),
                 expr_canonical: expr_str,

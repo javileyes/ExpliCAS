@@ -52,7 +52,7 @@ mod tests {
         .expect("wire output");
 
         match out {
-            LimitSubcommandEvalOutput::Json(payload) => {
+            LimitSubcommandEvalOutput::Wire(payload) => {
                 let json: serde_json::Value = serde_json::from_str(&payload).expect("json");
                 assert_eq!(json["ok"], true);
             }

@@ -3,7 +3,7 @@ use super::mappers::{
 };
 use super::stateless_eval::evaluate_prepared_stateless_request;
 use crate::EvalOptions;
-use cas_api_models::{EngineJsonError, EngineJsonResponse};
+use cas_api_models::{EngineWireError, EngineWireResponse};
 
 mod options;
 mod prepare;
@@ -11,9 +11,9 @@ mod render;
 mod request;
 mod success;
 
-/// Evaluate an expression and return JSON response.
+/// Evaluate an expression and return wire response.
 ///
-/// This is the **solver-level canonical entry point** for JSON-returning
+/// This is the **solver-level canonical entry point** for wire-returning
 /// stateless evaluation. Frontends should normally go through
 /// `cas_session::evaluate_eval_canonical`.
 ///
@@ -22,17 +22,17 @@ mod success;
 /// * `opts_json` - Options JSON string (see `EvalRunOptions`)
 ///
 /// # Returns
-/// JSON string with `EngineJsonResponse` (schema v1).
+/// Wire payload string with `EngineWireResponse` (schema v1).
 /// Always returns valid JSON, even on errors.
 ///
 /// # Example
 /// ```
-/// use cas_solver::eval_str_to_json;
+/// use cas_solver::eval_str_to_wire;
 ///
-/// let json = eval_str_to_json("x + x", r#"{"budget":{"preset":"cli"}}"#);
-/// assert!(json.contains("\"ok\":true"));
+/// let wire = eval_str_to_wire("x + x", r#"{"budget":{"preset":"cli"}}"#);
+/// assert!(wire.contains("\"ok\":true"));
 /// ```
-pub fn eval_str_to_json(expr: &str, opts_json: &str) -> String {
+pub fn eval_str_to_wire(expr: &str, opts_json: &str) -> String {
     let (opts, budget_info, mut engine, prepared) =
         match prepare::prepare_stateless_eval_request(expr, opts_json) {
             Ok(state) => state,
@@ -43,13 +43,13 @@ pub fn eval_str_to_json(expr: &str, opts_json: &str) -> String {
         match evaluate_prepared_stateless_request(&mut engine, EvalOptions::default(), prepared) {
             Ok(view) => view,
             Err(e) => {
-                let error = EngineJsonError::from_eval_runtime_error(e.to_string());
-                let resp = EngineJsonResponse::err(error, budget_info);
+                let error = EngineWireError::from_eval_runtime_error(e.to_string());
+                let resp = EngineWireResponse::err(error, budget_info);
                 return resp.to_json_with_pretty(opts.pretty);
             }
         };
 
-    success::build_success_json(
+    success::build_success_wire(
         &mut engine,
         &output_view,
         &opts,

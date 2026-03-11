@@ -28,7 +28,7 @@ pub fn simplify_rhs_with_step_pairs(
 ) -> (ExprId, Vec<(String, ExprId)>) {
     let entries = sim_steps
         .into_iter()
-        .map(|step| (step.description, step.after))
+        .map(|step| (step.description.to_string(), step.after))
         .collect::<Vec<_>>();
     (simplified_rhs, entries)
 }

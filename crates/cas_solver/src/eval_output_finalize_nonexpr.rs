@@ -1,4 +1,4 @@
-use cas_api_models::ExprStatsJson;
+use cas_api_models::ExprStatsWire;
 use cas_ast::{Context, SolutionSet};
 
 use crate::eval_output_finalize::{build_eval_output, EvalOutputResultPayload, EvalOutputWire};
@@ -14,7 +14,7 @@ fn build_nonexpr_result_payload(
         result,
         result_truncated: false,
         result_latex,
-        stats: ExprStatsJson::default(),
+        stats: ExprStatsWire::default(),
         hash: None,
     }
 }

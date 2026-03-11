@@ -119,7 +119,7 @@ Reserved for budget integration. Not yet exposed in JSON.
 ### Solver Compatibility Entry Point
 
 ```rust
-pub fn substitute_str_to_json(
+pub fn substitute_str_to_wire(
     expr_str: &str,
     target_str: &str,
     with_str: &str,
@@ -140,7 +140,7 @@ pub fn evaluate_substitute_canonical(
 ) -> String
 ```
 
-Defined in `crates/cas_session/src/json_bridge.rs`.
+Defined in `crates/cas_session/src/solver_exports/session_support.rs`.
 
 CLI/FFI/Android should call the **session-level canonical bridge** (`cas_session`) rather than
 calling solver JSON adapters directly.

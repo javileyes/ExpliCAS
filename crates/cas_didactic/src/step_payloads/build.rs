@@ -2,22 +2,22 @@ mod expr;
 mod latex;
 mod substeps;
 
-use cas_api_models::StepJson;
+use cas_api_models::StepWire;
 use cas_ast::Context;
 
-pub(super) fn build_step_json(
+pub(super) fn build_step_wire(
     context: &Context,
     index: usize,
     enriched: &crate::didactic::EnrichedStep,
-) -> StepJson {
+) -> StepWire {
     let step = &enriched.base_step;
-    let rendered_exprs = expr::render_step_json_exprs(context, step);
-    let rendered_latex = latex::render_step_json_latex(context, step);
-    let substeps = substeps::collect_step_json_substeps(step, enriched);
+    let rendered_exprs = expr::render_step_wire_exprs(context, step);
+    let rendered_latex = latex::render_step_wire_latex(context, step);
+    let substeps = substeps::collect_step_wire_substeps(step, enriched);
 
-    StepJson {
+    StepWire {
         index,
-        rule: step.rule_name.clone(),
+        rule: step.rule_name.to_string(),
         rule_latex: rendered_latex.rule_latex,
         before: rendered_exprs.before,
         after: rendered_exprs.after,

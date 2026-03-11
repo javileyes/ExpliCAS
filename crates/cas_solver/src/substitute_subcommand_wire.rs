@@ -20,5 +20,5 @@ pub fn evaluate_substitute_subcommand_wire_canonical(
         "{{\"mode\":\"{}\",\"steps\":{},\"pretty\":true}}",
         mode, steps_enabled
     );
-    crate::substitute_str_to_json(expr, target, replacement, Some(&opts))
+    crate::substitute_str_to_wire(expr, target, replacement, Some(&opts))
 }

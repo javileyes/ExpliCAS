@@ -1,7 +1,7 @@
-use cas_api_models::{wire::build_eval_wire_reply, WarningJson};
+use cas_api_models::{wire::build_eval_wire_reply, WarningWire};
 
 pub(crate) fn build_eval_output_wire_value(
-    warnings: &[WarningJson],
+    warnings: &[WarningWire],
     required_display: &[String],
     result: &str,
     result_latex: Option<&str>,

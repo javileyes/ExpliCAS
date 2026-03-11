@@ -1,10 +1,10 @@
-//! JSON DTOs shared by CLI/FFI layers.
+//! Wire DTOs shared by CLI/FFI layers.
 //!
 //! This crate intentionally keeps transport models independent from engine internals.
 
 use serde::{Deserialize, Serialize};
 
-/// Stable schema version for JSON outputs.
+/// Stable schema version for wire outputs.
 pub const SCHEMA_VERSION: u8 = 1;
 
 fn serialization_fallback(pretty: bool, message: &str) -> String {
@@ -51,12 +51,12 @@ fn serialize_json<T: Serialize>(value: &T, pretty: bool) -> String {
 }
 
 // =============================================================================
-// Shared Eval JSON types
+// Shared Eval wire types
 // =============================================================================
 
 /// Expression statistics (node count, depth).
 #[derive(Serialize, Debug, Default)]
-pub struct ExprStatsJson {
+pub struct ExprStatsWire {
     pub node_count: usize,
     pub depth: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -65,7 +65,7 @@ pub struct ExprStatsJson {
 
 /// Timing breakdown in microseconds.
 #[derive(Serialize, Debug, Default)]
-pub struct TimingsJson {
+pub struct TimingsWire {
     pub parse_us: u64,
     pub simplify_us: u64,
     pub total_us: u64,
@@ -73,11 +73,11 @@ pub struct TimingsJson {
 
 /// Domain mode information.
 #[derive(Serialize, Debug, Default)]
-pub struct DomainJson {
+pub struct DomainWire {
     pub mode: String,
 }
 
-impl DomainJson {
+impl DomainWire {
     pub fn from_mode(mode: impl Into<String>) -> Self {
         Self { mode: mode.into() }
     }
@@ -85,7 +85,7 @@ impl DomainJson {
 
 /// Options used for evaluation.
 #[derive(Serialize, Debug, Default)]
-pub struct OptionsJson {
+pub struct OptionsWire {
     pub context_mode: String,
     pub branch_mode: String,
     pub expand_policy: String,
@@ -95,7 +95,7 @@ pub struct OptionsJson {
     pub const_fold: String,
 }
 
-impl OptionsJson {
+impl OptionsWire {
     #[allow(clippy::too_many_arguments)]
     pub fn from_eval_axes(
         context_mode: impl Into<String>,
@@ -118,9 +118,9 @@ impl OptionsJson {
     }
 }
 
-/// Complete semantics configuration in JSON output.
+/// Complete semantics configuration in wire output.
 #[derive(Serialize, Debug, Default)]
-pub struct SemanticsJson {
+pub struct SemanticsWire {
     pub domain_mode: String,
     pub value_domain: String,
     pub branch: String,
@@ -128,7 +128,7 @@ pub struct SemanticsJson {
     pub assume_scope: String,
 }
 
-impl SemanticsJson {
+impl SemanticsWire {
     pub fn from_eval_axes(
         domain_mode: impl Into<String>,
         value_domain: impl Into<String>,
@@ -148,15 +148,15 @@ impl SemanticsJson {
 
 /// A required condition (implicit domain constraint) from the input expression.
 #[derive(Serialize, Debug, Clone)]
-pub struct RequiredConditionJson {
+pub struct RequiredConditionWire {
     pub kind: String,
     pub expr_display: String,
     pub expr_canonical: String,
 }
 
-/// A simplification step for JSON output.
+/// A simplification step for wire output.
 #[derive(Serialize, Debug, Clone)]
-pub struct StepJson {
+pub struct StepWire {
     pub index: usize,
     pub rule: String,
     pub rule_latex: String,
@@ -165,12 +165,12 @@ pub struct StepJson {
     pub before_latex: String,
     pub after_latex: String,
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub substeps: Vec<SubStepJson>,
+    pub substeps: Vec<SubStepWire>,
 }
 
 /// A sub-step within a step for detailed explanations.
 #[derive(Serialize, Debug, Clone)]
-pub struct SubStepJson {
+pub struct SubStepWire {
     pub title: String,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub lines: Vec<String>,
@@ -180,9 +180,9 @@ pub struct SubStepJson {
     pub after_latex: Option<String>,
 }
 
-/// A solver step for equation-solving JSON output.
+/// A solver step for equation-solving wire output.
 #[derive(Serialize, Debug, Clone)]
-pub struct SolveStepJson {
+pub struct SolveStepWire {
     pub index: usize,
     pub description: String,
     pub equation: String,
@@ -190,12 +190,12 @@ pub struct SolveStepJson {
     pub relop: String,
     pub rhs_latex: String,
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub substeps: Vec<SolveSubStepJson>,
+    pub substeps: Vec<SolveSubStepWire>,
 }
 
 /// A sub-step within a solve step for detailed derivation.
 #[derive(Serialize, Debug, Clone)]
-pub struct SolveSubStepJson {
+pub struct SolveSubStepWire {
     pub index: String,
     pub description: String,
     pub equation: String,
@@ -206,28 +206,28 @@ pub struct SolveSubStepJson {
 
 /// A domain assumption warning with its source rule.
 #[derive(Serialize, Debug, Clone)]
-pub struct WarningJson {
+pub struct WarningWire {
     pub rule: String,
     pub assumption: String,
 }
 
 /// Warning payload used by engine-style response envelopes.
 #[derive(Serialize, Debug, Clone)]
-pub struct EngineJsonWarning {
+pub struct EngineWireWarning {
     pub kind: String,
     pub message: String,
 }
 
-/// Stable budget information for JSON responses.
+/// Stable budget information for wire responses.
 #[derive(Serialize, Debug, Default, Clone)]
-pub struct BudgetJsonInfo {
+pub struct BudgetWireInfo {
     pub preset: String,
     pub mode: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub exceeded: Option<BudgetExceededJson>,
+    pub exceeded: Option<BudgetExceededWire>,
 }
 
-impl BudgetJsonInfo {
+impl BudgetWireInfo {
     pub fn new(preset: impl Into<String>, strict: bool) -> Self {
         Self {
             preset: preset.into(),
@@ -249,12 +249,9 @@ impl BudgetJsonInfo {
     }
 }
 
-/// Backward-compatible alias.
-pub type BudgetJson = BudgetJsonInfo;
-
 /// Budget exceeded details.
 #[derive(Serialize, Debug, Clone)]
-pub struct BudgetExceededJson {
+pub struct BudgetExceededWire {
     pub op: String,
     pub metric: String,
     pub used: u64,
@@ -263,7 +260,7 @@ pub struct BudgetExceededJson {
 
 /// An error result with stable kind/code for API consumers.
 #[derive(Serialize, Debug)]
-pub struct ErrorJsonOutput {
+pub struct ErrorWireOutput {
     pub schema_version: u8,
     pub ok: bool,
     pub kind: String,
@@ -273,7 +270,7 @@ pub struct ErrorJsonOutput {
     pub input: Option<String>,
 }
 
-impl ErrorJsonOutput {
+impl ErrorWireOutput {
     pub fn new(error: impl Into<String>) -> Self {
         Self {
             schema_version: SCHEMA_VERSION,
@@ -324,9 +321,9 @@ impl ErrorJsonOutput {
     }
 }
 
-/// Result of evaluating a single expression via eval-json.
+/// Result of evaluating a single expression via the eval wire contract.
 #[derive(Serialize, Debug)]
-pub struct EvalJsonOutput {
+pub struct EvalWireOutput {
     pub schema_version: u8,
     pub ok: bool,
     pub input: String,
@@ -340,25 +337,25 @@ pub struct EvalJsonOutput {
     pub steps_mode: String,
     pub steps_count: usize,
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub steps: Vec<StepJson>,
+    pub steps: Vec<StepWire>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub solve_steps: Vec<SolveStepJson>,
-    pub warnings: Vec<WarningJson>,
-    pub required_conditions: Vec<RequiredConditionJson>,
+    pub solve_steps: Vec<SolveStepWire>,
+    pub warnings: Vec<WarningWire>,
+    pub required_conditions: Vec<RequiredConditionWire>,
     pub required_display: Vec<String>,
-    pub budget: BudgetJsonInfo,
-    pub domain: DomainJson,
-    pub stats: ExprStatsJson,
+    pub budget: BudgetWireInfo,
+    pub domain: DomainWire,
+    pub stats: ExprStatsWire,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hash: Option<String>,
-    pub timings_us: TimingsJson,
-    pub options: OptionsJson,
-    pub semantics: SemanticsJson,
+    pub timings_us: TimingsWire,
+    pub options: OptionsWire,
+    pub semantics: SemanticsWire,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub wire: Option<serde_json::Value>,
 }
 
-/// Inputs required to build a complete `EvalJsonOutput`.
+/// Inputs required to build a complete `EvalWireOutput`.
 pub struct EvalOutputBuild<'a> {
     pub input: &'a str,
     pub input_latex: Option<String>,
@@ -368,17 +365,17 @@ pub struct EvalOutputBuild<'a> {
     pub result_latex: Option<String>,
     pub steps_mode: &'a str,
     pub steps_count: usize,
-    pub steps: Vec<StepJson>,
-    pub solve_steps: Vec<SolveStepJson>,
-    pub warnings: Vec<WarningJson>,
-    pub required_conditions: Vec<RequiredConditionJson>,
+    pub steps: Vec<StepWire>,
+    pub solve_steps: Vec<SolveStepWire>,
+    pub warnings: Vec<WarningWire>,
+    pub required_conditions: Vec<RequiredConditionWire>,
     pub required_display: Vec<String>,
     pub budget_preset: &'a str,
     pub strict: bool,
     pub domain: &'a str,
-    pub stats: ExprStatsJson,
+    pub stats: ExprStatsWire,
     pub hash: Option<String>,
-    pub timings_us: TimingsJson,
+    pub timings_us: TimingsWire,
     pub context_mode: &'a str,
     pub branch_mode: &'a str,
     pub expand_policy: &'a str,
@@ -391,7 +388,7 @@ pub struct EvalOutputBuild<'a> {
     pub wire: Option<serde_json::Value>,
 }
 
-impl EvalJsonOutput {
+impl EvalWireOutput {
     pub fn from_build(parts: EvalOutputBuild<'_>) -> Self {
         Self {
             schema_version: SCHEMA_VERSION,
@@ -409,12 +406,12 @@ impl EvalJsonOutput {
             warnings: parts.warnings,
             required_conditions: parts.required_conditions,
             required_display: parts.required_display,
-            budget: BudgetJsonInfo::new(parts.budget_preset, parts.strict),
-            domain: DomainJson::from_mode(parts.domain),
+            budget: BudgetWireInfo::new(parts.budget_preset, parts.strict),
+            domain: DomainWire::from_mode(parts.domain),
             stats: parts.stats,
             hash: parts.hash,
             timings_us: parts.timings_us,
-            options: OptionsJson::from_eval_axes(
+            options: OptionsWire::from_eval_axes(
                 parts.context_mode,
                 parts.branch_mode,
                 parts.expand_policy,
@@ -423,7 +420,7 @@ impl EvalJsonOutput {
                 parts.domain,
                 parts.const_fold,
             ),
-            semantics: SemanticsJson::from_eval_axes(
+            semantics: SemanticsWire::from_eval_axes(
                 parts.domain,
                 parts.value_domain,
                 parts.complex_branch,
@@ -605,16 +602,16 @@ pub struct EvalSessionRunConfig<'a> {
 // Engine-style response DTOs (used by FFI fallback paths)
 // =============================================================================
 
-/// Source span for JSON serialization.
+/// Source span for wire serialization.
 #[derive(Serialize, Debug, Clone, Copy)]
-pub struct SpanJson {
+pub struct SpanWire {
     pub start: usize,
     pub end: usize,
 }
 
 /// A sub-step representing a rewrite in a subexpression.
 #[derive(Serialize, Debug, Clone)]
-pub struct EngineJsonSubstep {
+pub struct EngineWireSubstep {
     pub rule: String,
     pub before: String,
     pub after: String,
@@ -624,13 +621,13 @@ pub struct EngineJsonSubstep {
 
 /// A simplification step in a response.
 #[derive(Serialize, Debug, Clone)]
-pub struct EngineJsonStep {
+pub struct EngineWireStep {
     pub phase: String,
     pub rule: String,
     pub before: String,
     pub after: String,
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub substeps: Vec<EngineJsonSubstep>,
+    pub substeps: Vec<EngineWireSubstep>,
 }
 
 /// Assumption summary record for response payloads.
@@ -644,17 +641,17 @@ pub struct AssumptionRecord {
 
 /// Structured error in a response.
 #[derive(Serialize, Debug, Clone)]
-pub struct EngineJsonError {
+pub struct EngineWireError {
     pub kind: &'static str,
     pub code: &'static str,
     pub message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub span: Option<SpanJson>,
+    pub span: Option<SpanWire>,
     #[serde(default)]
     pub details: serde_json::Value,
 }
 
-impl EngineJsonError {
+impl EngineWireError {
     pub fn simple(kind: &'static str, code: &'static str, message: impl Into<String>) -> Self {
         Self {
             kind,
@@ -665,7 +662,7 @@ impl EngineJsonError {
         }
     }
 
-    pub fn parse(message: impl Into<String>, span: Option<SpanJson>) -> Self {
+    pub fn parse(message: impl Into<String>, span: Option<SpanWire>) -> Self {
         Self {
             kind: "ParseError",
             code: "E_PARSE",
@@ -687,7 +684,7 @@ impl EngineJsonError {
 
     pub fn session_ref_not_supported_for_stateless_eval() -> Self {
         Self::invalid_input(
-            "Session references (#N) are not supported in stateless eval_json mode",
+            "Session references (#N) are not supported in stateless eval mode",
             serde_json::json!({
                 "hint": "Use stateful Engine::eval with an EvalSession for #N references"
             }),
@@ -712,26 +709,26 @@ impl EngineJsonError {
     }
 }
 
-/// Unified JSON response for engine-like operations.
+/// Unified wire response for engine-like operations.
 #[derive(Serialize, Debug, Clone)]
-pub struct EngineJsonResponse {
+pub struct EngineWireResponse {
     pub schema_version: u8,
     pub ok: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub result: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<EngineJsonError>,
+    pub error: Option<EngineWireError>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub steps: Vec<EngineJsonStep>,
+    pub steps: Vec<EngineWireStep>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub warnings: Vec<EngineJsonWarning>,
+    pub warnings: Vec<EngineWireWarning>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub assumptions: Vec<AssumptionRecord>,
-    pub budget: BudgetJsonInfo,
+    pub budget: BudgetWireInfo,
 }
 
-impl EngineJsonResponse {
-    pub fn ok(result: String, budget: BudgetJsonInfo) -> Self {
+impl EngineWireResponse {
+    pub fn ok(result: String, budget: BudgetWireInfo) -> Self {
         Self {
             schema_version: SCHEMA_VERSION,
             ok: true,
@@ -746,8 +743,8 @@ impl EngineJsonResponse {
 
     pub fn ok_with_steps(
         result: String,
-        steps: Vec<EngineJsonStep>,
-        budget: BudgetJsonInfo,
+        steps: Vec<EngineWireStep>,
+        budget: BudgetWireInfo,
     ) -> Self {
         Self {
             schema_version: SCHEMA_VERSION,
@@ -761,7 +758,7 @@ impl EngineJsonResponse {
         }
     }
 
-    pub fn err(error: EngineJsonError, budget: BudgetJsonInfo) -> Self {
+    pub fn err(error: EngineWireError, budget: BudgetWireInfo) -> Self {
         Self {
             schema_version: SCHEMA_VERSION,
             ok: false,
@@ -776,12 +773,12 @@ impl EngineJsonResponse {
 
     pub fn invalid_options_json(error: impl Into<String>) -> Self {
         Self::err(
-            EngineJsonError::invalid_options_json(error),
-            BudgetJsonInfo::new("unknown", true),
+            EngineWireError::invalid_options_json(error),
+            BudgetWireInfo::new("unknown", true),
         )
     }
 
-    pub fn with_warning(mut self, warning: EngineJsonWarning) -> Self {
+    pub fn with_warning(mut self, warning: EngineWireWarning) -> Self {
         self.warnings.push(warning);
         self
     }
@@ -909,21 +906,21 @@ pub struct SubstituteRequestEcho {
     pub with_expr: String,
 }
 
-/// Options echo for substitute operations.
+/// Wire options echo for substitute operations.
 #[derive(Serialize, Debug, Clone)]
-pub struct SubstituteOptionsJson {
-    pub substitute: SubstituteOptionsInner,
+pub struct SubstituteWireOptions {
+    pub substitute: SubstituteWireOptionsInner,
 }
 
 #[derive(Serialize, Debug, Clone)]
-pub struct SubstituteOptionsInner {
+pub struct SubstituteWireOptionsInner {
     pub mode: String,
     pub steps: bool,
 }
 
-/// Substitute JSON response with request echo and options.
+/// Substitute wire response with request echo and options.
 #[derive(Serialize, Debug, Clone)]
-pub struct SubstituteJsonResponse {
+pub struct SubstituteWireResponse {
     /// Schema version for API stability
     pub schema_version: u8,
     /// True if operation succeeded
@@ -933,22 +930,22 @@ pub struct SubstituteJsonResponse {
     pub result: Option<String>,
     /// Error details (failure only)
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<EngineJsonError>,
+    pub error: Option<EngineWireError>,
     /// Request echo for reproducibility
     pub request: SubstituteRequestEcho,
     /// Options used
-    pub options: SubstituteOptionsJson,
+    pub options: SubstituteWireOptions,
     /// Substitution steps (if requested)
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub steps: Vec<EngineJsonSubstep>,
+    pub steps: Vec<EngineWireSubstep>,
 }
 
-impl SubstituteJsonResponse {
+impl SubstituteWireResponse {
     pub fn ok(
         result: String,
         request: SubstituteRequestEcho,
-        options: SubstituteOptionsJson,
-        steps: Vec<EngineJsonSubstep>,
+        options: SubstituteWireOptions,
+        steps: Vec<EngineWireSubstep>,
     ) -> Self {
         Self {
             schema_version: SCHEMA_VERSION,
@@ -962,9 +959,9 @@ impl SubstituteJsonResponse {
     }
 
     pub fn err(
-        error: EngineJsonError,
+        error: EngineWireError,
         request: SubstituteRequestEcho,
-        options: SubstituteOptionsJson,
+        options: SubstituteWireOptions,
     ) -> Self {
         Self {
             schema_version: SCHEMA_VERSION,
@@ -990,7 +987,7 @@ impl SubstituteJsonResponse {
     }
 }
 
-/// Substitution mode for typed non-JSON evaluation APIs.
+/// Substitution mode for typed substitution evaluation APIs.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SubstituteEvalMode {
     Exact,
@@ -1006,7 +1003,7 @@ impl SubstituteEvalMode {
     }
 }
 
-/// One substitution step for typed non-JSON evaluation APIs.
+/// One substitution step for typed substitution evaluation APIs.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SubstituteEvalStep {
     pub rule: String,
@@ -1015,7 +1012,7 @@ pub struct SubstituteEvalStep {
     pub note: Option<String>,
 }
 
-/// Result payload for typed non-JSON substitution evaluation.
+/// Result payload for typed substitution evaluation.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SubstituteEvalResult {
     pub result: String,
@@ -1042,23 +1039,23 @@ impl std::fmt::Display for SubstituteEvalError {
 
 impl std::error::Error for SubstituteEvalError {}
 
-/// Result payload for typed non-JSON limit evaluation.
+/// Result payload for typed limit evaluation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LimitEvalResult {
     pub result: String,
     pub warning: Option<String>,
 }
 
-/// Errors produced by typed non-JSON limit evaluation.
+/// Errors produced by typed limit evaluation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LimitEvalError {
     Parse(String),
     Limit(String),
 }
 
-/// Canonical JSON response for limit evaluation.
+/// Canonical wire response for limit evaluation.
 #[derive(Serialize, Debug, Clone, PartialEq, Eq)]
-pub struct LimitJsonResponse {
+pub struct LimitWireResponse {
     pub ok: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub result: Option<String>,
@@ -1070,7 +1067,7 @@ pub struct LimitJsonResponse {
     pub code: Option<&'static str>,
 }
 
-impl LimitJsonResponse {
+impl LimitWireResponse {
     pub fn ok(result: String, warning: Option<String>) -> Self {
         Self {
             ok: true,
@@ -1137,16 +1134,16 @@ impl LimitJsonResponse {
 }
 
 // =============================================================================
-// script-json types
+// script wire types
 // =============================================================================
 
-/// Result of processing a script via script-json.
+/// Result of processing a script via the script wire contract.
 #[derive(Serialize, Debug)]
-pub struct ScriptJsonOutput {
+pub struct ScriptWireOutput {
     pub ok: bool,
     pub lines: Vec<ScriptLineResult>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub final_result: Option<EvalJsonOutput>,
+    pub final_result: Option<EvalWireOutput>,
     pub total_time_us: u64,
 }
 
@@ -1158,18 +1155,18 @@ pub struct ScriptLineResult {
     /// "command" | "let" | "expr" | "empty" | "error"
     pub kind: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub output: Option<EvalJsonOutput>,
+    pub output: Option<EvalWireOutput>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }
 
 // =============================================================================
-// mm-gcd-modp-json types
+// mm-gcd-modp wire types
 // =============================================================================
 
-/// Result of running mm_gcd benchmark via mm-gcd-modp-json.
+/// Result of running mm_gcd benchmark via the mm-gcd-modp wire contract.
 #[derive(Serialize, Debug)]
-pub struct MmGcdModpJsonOutput {
+pub struct MmGcdModpWireOutput {
     pub ok: bool,
     pub modulus: u64,
     pub a_terms: usize,
@@ -1445,22 +1442,22 @@ impl OutputEnvelope {
 #[cfg(test)]
 mod tests {
     use super::{
-        parse_eval_special_command, DomainJson, EngineJsonError, EngineJsonResponse,
-        ErrorJsonOutput, EvalJsonOutput, EvalLimitApproach, EvalOutputBuild, EvalRunOptions,
-        ExprStatsJson, LimitJsonResponse, OptionsJson, SemanticsJson, SubstituteRunOptions,
-        TimingsJson,
+        parse_eval_special_command, DomainWire, EngineWireError, EngineWireResponse,
+        ErrorWireOutput, EvalLimitApproach, EvalOutputBuild, EvalRunOptions, EvalWireOutput,
+        ExprStatsWire, LimitWireResponse, OptionsWire, SemanticsWire, SubstituteRunOptions,
+        TimingsWire,
     };
 
     #[test]
-    fn domain_json_from_mode_sets_mode() {
-        let domain = DomainJson::from_mode("strict");
+    fn domain_wire_from_mode_sets_mode() {
+        let domain = DomainWire::from_mode("strict");
         assert_eq!(domain.mode, "strict");
     }
 
     #[test]
-    fn options_json_from_eval_axes_sets_all_fields() {
+    fn options_wire_from_eval_axes_sets_all_fields() {
         let options =
-            OptionsJson::from_eval_axes("auto", "strict", "off", "auto", "off", "generic", "safe");
+            OptionsWire::from_eval_axes("auto", "strict", "off", "auto", "off", "generic", "safe");
         assert_eq!(options.context_mode, "auto");
         assert_eq!(options.branch_mode, "strict");
         assert_eq!(options.expand_policy, "off");
@@ -1471,8 +1468,8 @@ mod tests {
     }
 
     #[test]
-    fn semantics_json_from_eval_axes_sets_all_fields() {
-        let semantics = SemanticsJson::from_eval_axes(
+    fn semantics_wire_from_eval_axes_sets_all_fields() {
+        let semantics = SemanticsWire::from_eval_axes(
             "assume",
             "complex",
             "principal",
@@ -1487,8 +1484,8 @@ mod tests {
     }
 
     #[test]
-    fn limit_json_response_ok_omits_error_and_code() {
-        let response = LimitJsonResponse::ok("1/2".to_string(), None);
+    fn limit_wire_response_ok_omits_error_and_code() {
+        let response = LimitWireResponse::ok("1/2".to_string(), None);
         let value: serde_json::Value = serde_json::from_str(&response.to_json()).expect("json");
         assert_eq!(value["ok"], true);
         assert_eq!(value["result"], "1/2");
@@ -1498,8 +1495,8 @@ mod tests {
     }
 
     #[test]
-    fn limit_json_response_parse_error_has_code_contract() {
-        let response = LimitJsonResponse::parse_error("Parse error: bad input");
+    fn limit_wire_response_parse_error_has_code_contract() {
+        let response = LimitWireResponse::parse_error("Parse error: bad input");
         let value: serde_json::Value = serde_json::from_str(&response.to_json()).expect("json");
         assert_eq!(value["ok"], false);
         assert_eq!(value["error"], "Parse error: bad input");
@@ -1508,8 +1505,8 @@ mod tests {
     }
 
     #[test]
-    fn engine_json_error_invalid_options_json_sets_contract_fields() {
-        let err = EngineJsonError::invalid_options_json("expected value");
+    fn engine_wire_error_invalid_options_json_sets_contract_fields() {
+        let err = EngineWireError::invalid_options_json("expected value");
         let value = serde_json::to_value(err).expect("serialize");
         assert_eq!(value["kind"], "InvalidInput");
         assert_eq!(value["code"], "E_INVALID_INPUT");
@@ -1517,8 +1514,8 @@ mod tests {
     }
 
     #[test]
-    fn engine_json_error_session_ref_not_supported_has_hint() {
-        let err = EngineJsonError::session_ref_not_supported_for_stateless_eval();
+    fn engine_wire_error_session_ref_not_supported_has_hint() {
+        let err = EngineWireError::session_ref_not_supported_for_stateless_eval();
         let value = serde_json::to_value(err).expect("serialize");
         assert_eq!(value["kind"], "InvalidInput");
         assert_eq!(value["code"], "E_INVALID_INPUT");
@@ -1533,31 +1530,31 @@ mod tests {
     }
 
     #[test]
-    fn engine_json_error_from_eval_runtime_error_maps_stateful_hint() {
-        let err = EngineJsonError::from_eval_runtime_error("requires stateful eval for #1");
+    fn engine_wire_error_from_eval_runtime_error_maps_stateful_hint() {
+        let err = EngineWireError::from_eval_runtime_error("requires stateful eval for #1");
         assert_eq!(err.kind, "InvalidInput");
         assert_eq!(err.code, "E_INVALID_INPUT");
     }
 
     #[test]
-    fn engine_json_error_from_eval_runtime_error_maps_internal_error() {
-        let err = EngineJsonError::from_eval_runtime_error("boom");
+    fn engine_wire_error_from_eval_runtime_error_maps_internal_error() {
+        let err = EngineWireError::from_eval_runtime_error("boom");
         assert_eq!(err.kind, "InternalError");
         assert_eq!(err.code, "E_INTERNAL");
         assert_eq!(err.message, "boom");
     }
 
     #[test]
-    fn error_json_output_from_eval_error_message_maps_parse_errors() {
-        let out = ErrorJsonOutput::from_eval_error_message("Parse error: bad token", "x+");
+    fn error_wire_output_from_eval_error_message_maps_parse_errors() {
+        let out = ErrorWireOutput::from_eval_error_message("Parse error: bad token", "x+");
         assert_eq!(out.kind, "ParseError");
         assert_eq!(out.code, "E_PARSE");
         assert_eq!(out.input.as_deref(), Some("x+"));
     }
 
     #[test]
-    fn eval_json_output_from_build_sets_schema_and_budget_mode() {
-        let out = EvalJsonOutput::from_build(EvalOutputBuild {
+    fn eval_wire_output_from_build_sets_schema_and_budget_mode() {
+        let out = EvalWireOutput::from_build(EvalOutputBuild {
             input: "x+x",
             input_latex: None,
             result: "2*x".to_string(),
@@ -1574,9 +1571,9 @@ mod tests {
             budget_preset: "cli",
             strict: true,
             domain: "generic",
-            stats: ExprStatsJson::default(),
+            stats: ExprStatsWire::default(),
             hash: None,
-            timings_us: TimingsJson::default(),
+            timings_us: TimingsWire::default(),
             context_mode: "auto",
             branch_mode: "principal",
             expand_policy: "off",
@@ -1595,8 +1592,8 @@ mod tests {
     }
 
     #[test]
-    fn engine_json_response_invalid_options_json_has_expected_contract() {
-        let out = EngineJsonResponse::invalid_options_json("bad value");
+    fn engine_wire_response_invalid_options_json_has_expected_contract() {
+        let out = EngineWireResponse::invalid_options_json("bad value");
         let value = serde_json::to_value(out).expect("serialize");
         assert_eq!(value["ok"], false);
         assert_eq!(value["error"]["kind"], "InvalidInput");

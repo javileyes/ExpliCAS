@@ -19,20 +19,20 @@ fn eval_output_for(expr: &str) -> (Engine, cas_solver::EvalOutput) {
 }
 
 #[test]
-fn eval_json_steps_off_mode_is_empty() {
+fn step_wire_off_mode_is_empty() {
     let (engine, output) = eval_output_for("x + x");
     let steps =
-        cas_didactic::collect_eval_json_steps(&output.steps, &engine.simplifier.context, "off");
+        cas_didactic::collect_step_payloads(&output.steps, &engine.simplifier.context, "off");
     assert!(steps.is_empty());
 }
 
 #[test]
-fn eval_json_steps_on_mode_matches_deterministically() {
+fn step_wire_on_mode_matches_deterministically() {
     let (engine, output) = eval_output_for("(x + 2) + (x + 3)");
     let first =
-        cas_didactic::collect_eval_json_steps(&output.steps, &engine.simplifier.context, "on");
+        cas_didactic::collect_step_payloads(&output.steps, &engine.simplifier.context, "on");
     let second =
-        cas_didactic::collect_eval_json_steps(&output.steps, &engine.simplifier.context, "on");
+        cas_didactic::collect_step_payloads(&output.steps, &engine.simplifier.context, "on");
     assert_eq!(first.len(), second.len());
     if let (Some(a), Some(b)) = (first.first(), second.first()) {
         assert_eq!(a.rule, b.rule);
@@ -42,13 +42,13 @@ fn eval_json_steps_on_mode_matches_deterministically() {
 }
 
 #[test]
-fn eval_json_steps_events_fallback_is_used_when_steps_are_missing() {
+fn step_wire_events_fallback_is_used_when_steps_are_missing() {
     let mut ctx = cas_ast::Context::new();
     let x = ctx.var("x");
     let zero = ctx.num(0);
     let before = ctx.add(cas_ast::Expr::Add(x, zero));
 
-    let steps = cas_didactic::collect_eval_json_steps_with_events(
+    let steps = cas_didactic::collect_step_payloads_with_events(
         &[],
         &[EngineEvent::RuleApplied {
             rule_name: "Additive Identity".to_string(),
@@ -69,10 +69,10 @@ fn eval_json_steps_events_fallback_is_used_when_steps_are_missing() {
 }
 
 #[test]
-fn eval_json_steps_events_fallback_respects_off_mode() {
+fn step_wire_events_fallback_respects_off_mode() {
     let mut ctx = cas_ast::Context::new();
     let x = ctx.var("x");
-    let steps = cas_didactic::collect_eval_json_steps_with_events(
+    let steps = cas_didactic::collect_step_payloads_with_events(
         &[],
         &[EngineEvent::RuleApplied {
             rule_name: "test".to_string(),

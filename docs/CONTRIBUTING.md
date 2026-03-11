@@ -41,7 +41,7 @@ When adding or modifying a rule that depends on any of these semantic axes:
 
 ### 2. Trazability
 - [ ] `Step.domain_assumption` documents assumptions (if any)
-- [ ] `EngineJsonWarning` emitted if result depends on non-universal convention
+- [ ] `EngineWireWarning` emitted if result depends on non-universal convention
 - [ ] Messages are user-readable: `"assuming x ≠ 0 for x/x → 1"`
 
 ### 3. Mode Contracts

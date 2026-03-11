@@ -4,6 +4,7 @@ use crate::soundness_label::SoundnessLabel;
 use crate::step_types::{ImportanceLevel, PathStep, StepCategory, SubStep};
 use cas_ast::ExprId;
 use smallvec::SmallVec;
+use smol_str::SmolStr;
 
 /// Didactic metadata for a step.
 ///
@@ -33,8 +34,8 @@ pub struct StepMeta {
 
 #[derive(Debug, Clone)]
 pub struct Step {
-    pub description: String,
-    pub rule_name: String,
+    pub description: SmolStr,
+    pub rule_name: SmolStr,
     /// The local expression before transformation.
     pub before: ExprId,
     /// The local expression after transformation.
@@ -145,12 +146,12 @@ impl Step {
         before: ExprId,
         after: ExprId,
         path: impl Into<SmallVec<[PathStep; 8]>>,
-        context: Option<&cas_ast::Context>,
+        _context: Option<&cas_ast::Context>,
     ) -> Self {
         let path = path.into();
         Self {
-            description: description.to_string(),
-            rule_name: rule_name.to_string(),
+            description: SmolStr::new(description),
+            rule_name: SmolStr::new(rule_name),
             before,
             after,
             global_before: None,
@@ -160,15 +161,6 @@ impl Step {
             soundness: SoundnessLabel::Equivalence,
             meta: Some(Box::new(StepMeta {
                 path,
-                after_str: context.map(|ctx| {
-                    format!(
-                        "{}",
-                        cas_formatter::DisplayExpr {
-                            context: ctx,
-                            id: after
-                        }
-                    )
-                }),
                 ..Default::default()
             })),
         }
@@ -177,8 +169,8 @@ impl Step {
     /// Create a compact step without display formatting (for StepsMode::Compact).
     pub fn new_compact(description: &str, rule_name: &str, before: ExprId, after: ExprId) -> Self {
         Self {
-            description: description.to_string(),
-            rule_name: rule_name.to_string(),
+            description: SmolStr::new(description),
+            rule_name: SmolStr::new(rule_name),
             before,
             after,
             global_before: None,

@@ -17,7 +17,7 @@ pub enum SubstituteCommandMode {
 /// CLI-friendly output contract for `substitute` subcommand.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SubstituteSubcommandOutput {
-    Json(String),
+    Wire(String),
     TextLines(Vec<String>),
 }
 

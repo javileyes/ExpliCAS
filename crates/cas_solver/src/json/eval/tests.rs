@@ -1,8 +1,8 @@
-use super::eval_str_to_json;
+use super::eval_str_to_wire;
 
 #[test]
 fn eval_session_ref_returns_invalid_input() {
-    let json = eval_str_to_json("#1 + x", "{}");
+    let json = eval_str_to_wire("#1 + x", "{}");
     let parsed: serde_json::Value = serde_json::from_str(&json).expect("json");
 
     assert_eq!(parsed["ok"], false);

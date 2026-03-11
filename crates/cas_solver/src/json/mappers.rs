@@ -1,12 +1,12 @@
 use crate::{AssumptionRecord, DomainWarning};
-use cas_api_models::{AssumptionRecord as ApiAssumptionRecord, EngineJsonWarning};
+use cas_api_models::{AssumptionRecord as ApiAssumptionRecord, EngineWireWarning};
 
 pub fn map_domain_warnings_to_engine_warnings(
     warnings: &[DomainWarning],
-) -> Vec<EngineJsonWarning> {
+) -> Vec<EngineWireWarning> {
     warnings
         .iter()
-        .map(|w| EngineJsonWarning {
+        .map(|w| EngineWireWarning {
             kind: "domain_assumption".to_string(),
             message: format!("{} (rule: {})", w.message, w.rule_name),
         })

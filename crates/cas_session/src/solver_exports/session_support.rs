@@ -29,8 +29,8 @@ pub use cas_solver::{
 };
 pub use cas_solver::{delete_history_entries, history_overview_entries};
 pub use cas_solver::{
-    eval_str_to_json as evaluate_eval_canonical,
-    substitute_str_to_json as evaluate_substitute_canonical,
+    eval_str_to_wire as evaluate_eval_canonical,
+    substitute_str_to_wire as evaluate_substitute_canonical,
 };
 pub use cas_solver_core::config_command_types::{ConfigCommandInput, ConfigCommandResult};
 pub use cas_solver_core::config_runtime::ConfigCommandApplyOutput;

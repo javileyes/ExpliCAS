@@ -5,7 +5,7 @@ mod common;
 
 use std::hint::black_box;
 
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion};
 
 use cas_ast::Context;
 use cas_formatter::DisplayExpr;
@@ -22,8 +22,9 @@ fn full_eval(profile_cache: &mut ProfileCache, opts: &EvalOptions, input: &str) 
 
     let profile = profile_cache.get_or_build(opts);
     let mut simplifier = Simplifier::from_profile_with_context(profile, ctx);
+    let simplify_opts = opts.to_simplify_options();
 
-    let (result, _steps) = simplifier.simplify(expr);
+    let (result, _steps) = simplifier.simplify_with_options(expr, simplify_opts);
 
     format!(
         "{}",
@@ -48,8 +49,9 @@ fn full_eval_with_mode(
     let profile = profile_cache.get_or_build(opts);
     let mut simplifier = Simplifier::from_profile_with_context(profile, ctx);
     simplifier.set_steps_mode(steps_mode);
+    let simplify_opts = opts.to_simplify_options();
 
-    let (result, steps) = simplifier.simplify(expr);
+    let (result, steps) = simplifier.simplify_with_options(expr, simplify_opts);
     let warnings = simplifier.take_domain_warnings(); // Consume to prevent optimization
 
     let display = format!(
@@ -60,6 +62,41 @@ fn full_eval_with_mode(
         }
     );
     (display, steps.len() + warnings.len())
+}
+
+fn simplify_only(
+    profile_cache: &mut ProfileCache,
+    opts: &EvalOptions,
+    ctx: Context,
+    expr: cas_ast::ExprId,
+    steps_mode: StepsMode,
+) -> (cas_ast::ExprId, usize) {
+    let profile = profile_cache.get_or_build(opts);
+    let mut simplifier = Simplifier::from_profile_with_context(profile, ctx);
+    simplifier.set_steps_mode(steps_mode);
+    let simplify_opts = opts.to_simplify_options();
+
+    let (result, steps) = simplifier.simplify_with_options(expr, simplify_opts);
+    let warnings = simplifier.take_domain_warnings();
+    (result, steps.len() + warnings.len())
+}
+
+fn formatted_result_from_eval(
+    profile_cache: &mut ProfileCache,
+    opts: &EvalOptions,
+    input: &str,
+    steps_mode: StepsMode,
+) -> (Context, cas_ast::ExprId) {
+    let mut ctx = Context::new();
+    let expr = parse(input, &mut ctx).expect("parse failed");
+
+    let profile = profile_cache.get_or_build(opts);
+    let mut simplifier = Simplifier::from_profile_with_context(profile, ctx);
+    simplifier.set_steps_mode(steps_mode);
+    let simplify_opts = opts.to_simplify_options();
+
+    let (result, _steps) = simplifier.simplify_with_options(expr, simplify_opts);
+    (simplifier.context, result)
 }
 
 fn bench_repl_end_to_end(c: &mut Criterion) {
@@ -315,5 +352,87 @@ fn bench_steps_mode_comparison(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, bench_repl_end_to_end, bench_steps_mode_comparison);
+fn bench_repl_stage_breakdown(c: &mut Criterion) {
+    let cases = [
+        ("light/symbol_plus_literal", "x + 1"),
+        ("light/numeric_add_chain", "2 * 3 + 4"),
+        ("heavy/nested_root", "sqrt(12*x^3)"),
+        ("heavy/abs_square", "((5*x + 8)^2)^(1/2)"),
+        ("gcd/scalar_multiple_fraction", "(2*x + 2*y)/(4*x + 4*y)"),
+        ("gcd/common_factor_fraction", "((x+y)*(a+b))/((x+y)*(c+d))"),
+        ("complex/gaussian_div", "(3 + 4*i)/(1 + 2*i)"),
+        ("trig/pythagorean_chain", "sin(2*x + 1)^2 + cos(1 + 2*x)^2"),
+    ];
+
+    let opts = EvalOptions {
+        branch_mode: BranchMode::Strict,
+        shared: cas_engine::SharedSemanticConfig {
+            context_mode: ContextMode::Standard,
+            ..Default::default()
+        },
+        complex_mode: ComplexMode::Auto,
+        steps_mode: StepsMode::On,
+        ..Default::default()
+    };
+
+    let mut group = c.benchmark_group("repl_stage_breakdown");
+    common::configure_standard_group(&mut group);
+
+    for (name, input) in cases {
+        group.bench_with_input(BenchmarkId::new("parse", name), &input, |b, input| {
+            b.iter_batched(
+                Context::new,
+                |mut ctx| black_box(parse(input, &mut ctx).expect("parse failed")),
+                BatchSize::SmallInput,
+            )
+        });
+
+        let mut simplify_cache = ProfileCache::new();
+        let _ = simplify_cache.get_or_build(&opts);
+        group.bench_with_input(BenchmarkId::new("simplify", name), &input, |b, input| {
+            b.iter_batched(
+                || {
+                    let mut ctx = Context::new();
+                    let expr = parse(input, &mut ctx).expect("parse failed");
+                    (ctx, expr)
+                },
+                |(ctx, expr)| {
+                    black_box(simplify_only(
+                        &mut simplify_cache,
+                        &opts,
+                        ctx,
+                        expr,
+                        StepsMode::On,
+                    ))
+                },
+                BatchSize::SmallInput,
+            )
+        });
+
+        let mut format_cache = ProfileCache::new();
+        let _ = format_cache.get_or_build(&opts);
+        let (format_ctx, result) =
+            formatted_result_from_eval(&mut format_cache, &opts, input, StepsMode::On);
+        group.bench_function(&format!("format/{name}"), |b| {
+            b.iter(|| {
+                black_box(format!(
+                    "{}",
+                    DisplayExpr {
+                        context: &format_ctx,
+                        id: result
+                    }
+                ))
+            })
+        });
+    }
+
+    group.finish();
+}
+
+criterion_group!(
+    benches,
+    bench_repl_end_to_end,
+    bench_steps_mode_comparison,
+    bench_repl_stage_breakdown
+);
 criterion_main!(benches);

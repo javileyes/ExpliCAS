@@ -2,8 +2,8 @@ pub fn parse_substitute_wire_text_lines(
     payload: &str,
     steps_enabled: bool,
 ) -> Result<Vec<String>, String> {
-    let value: serde_json::Value =
-        serde_json::from_str(payload).map_err(|e| format!("Invalid substitute JSON: {e}"))?;
+    let value: serde_json::Value = serde_json::from_str(payload)
+        .map_err(|e| format!("Invalid substitute wire payload: {e}"))?;
 
     let ok = value.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
     if !ok {
@@ -19,7 +19,7 @@ pub fn parse_substitute_wire_text_lines(
     let result = value
         .get("result")
         .and_then(|v| v.as_str())
-        .ok_or_else(|| "Missing result in substitute JSON".to_string())?;
+        .ok_or_else(|| "Missing result in substitute wire payload".to_string())?;
 
     let mut lines = Vec::new();
     if steps_enabled {

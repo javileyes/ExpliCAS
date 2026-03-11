@@ -1,4 +1,4 @@
-use cas_api_models::StepJson;
+use cas_api_models::StepWire;
 use cas_solver_core::engine_events::EngineEvent;
 
 use super::{EvalCommandOutput, EvalCommandRunConfig, PreparedEvalRun};
@@ -14,7 +14,7 @@ pub(super) fn finalize_eval_run<F>(
     total_us: u64,
 ) -> Result<EvalCommandOutput, String>
 where
-    F: Fn(&[crate::Step], &[EngineEvent], &cas_ast::Context, &str) -> Vec<StepJson>,
+    F: Fn(&[crate::Step], &[EngineEvent], &cas_ast::Context, &str) -> Vec<StepWire>,
 {
     let collected = collect::collect_eval_artifacts(
         &engine.simplifier.context,

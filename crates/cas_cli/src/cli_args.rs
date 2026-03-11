@@ -29,11 +29,11 @@ pub enum Command {
 
     /// Evaluate an expression and return JSON output (alias for: eval --format json)
     #[command(name = "eval-json", hide = true)]
-    EvalJson(EvalWireLegacyArgs),
+    EvalWire(EvalWireLegacyArgs),
 
     /// Evaluate and return stable OutputEnvelope V1 (for Android/FFI)
     #[command(name = "envelope-json")]
-    EnvelopeJson(crate::commands::envelope_json::EnvelopeWireArgs),
+    EnvelopeWire(crate::commands::envelope_wire::EnvelopeWireArgs),
 
     /// Compute the limit of an expression
     Limit(LimitArgs),

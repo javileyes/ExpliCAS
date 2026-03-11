@@ -1,7 +1,7 @@
 pub use crate::json::{
-    eval_str_to_json, eval_str_to_output_envelope, evaluate_envelope_wire_command,
+    eval_str_to_output_envelope, eval_str_to_wire, evaluate_envelope_wire_command,
     map_domain_warnings_to_engine_warnings, map_solver_assumptions_to_api_records,
-    substitute_str_to_json,
+    substitute_str_to_wire,
 };
 pub use crate::output_clean::clean_result_output_line;
 pub use crate::parse_error_render::{render_error_with_caret, render_parse_error};

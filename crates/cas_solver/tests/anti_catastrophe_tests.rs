@@ -186,6 +186,18 @@ fn test_cancel_vs_gcd_structural_cancel() {
 }
 
 #[test]
+fn test_cancel_vs_gcd_structural_cancel_multiparam() {
+    let result = simplify("((x+y)*(a+b))/((x+y)*(c+d))");
+    assert!(
+        (result.contains("a + b") || result.contains("b + a"))
+            && (result.contains("c + d") || result.contains("d + c"))
+            && !result.contains("x + y"),
+        "Should cancel (x+y), got: {}",
+        result
+    );
+}
+
+#[test]
 fn test_no_false_positive_sum_of_squares() {
     // x^2 + y^2 has NO common factors with x + y
     let result = simplify("(x^2 + y^2)/(x + y)");

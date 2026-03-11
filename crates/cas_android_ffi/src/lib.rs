@@ -1,11 +1,11 @@
 //! Android JNI bridge for ExpliCAS engine.
 //!
-//! Uses `cas_session` canonical JSON entry points with DTOs from `cas_api_models`.
+//! Uses `cas_session` canonical wire entry points with DTOs from `cas_api_models`.
 //! Schema version: 1
 //!
 //! # Safety
 //! - All panics are caught with `catch_unwind` to prevent crashes crossing FFI.
-//! - Always returns valid JSON, even on errors.
+//! - Always returns valid wire payloads, even on errors.
 //!
 //! # Usage from Kotlin
 //! ```kotlin
@@ -22,8 +22,8 @@ use jni::objects::{JClass, JString};
 use jni::sys::jstring;
 use jni::JNIEnv;
 
-// JSON DTOs for stable FFI fallback responses
-use cas_api_models::{BudgetJsonInfo, EngineJsonError, EngineJsonResponse};
+// Wire DTOs for stable FFI fallback responses
+use cas_api_models::{BudgetWireInfo, EngineWireError, EngineWireResponse};
 use cas_session::evaluate_eval_canonical;
 
 // ============================================================================
@@ -74,9 +74,9 @@ pub extern "system" fn Java_es_javiergimenez_explicas_CasNative_evalJson<'local>
             }
         }
         Err(_) => {
-            // Panic was caught - return stable error JSON
-            let json = internal_error_json("panic caught in native code");
-            match env.new_string(&json) {
+            // Panic was caught - return stable error wire payload
+            let wire = internal_error_wire("panic caught in native code");
+            match env.new_string(&wire) {
                 Ok(s) => s.into_raw(),
                 Err(_) => create_fallback_error(&mut env),
             }
@@ -86,17 +86,17 @@ pub extern "system" fn Java_es_javiergimenez_explicas_CasNative_evalJson<'local>
 
 /// Creates a hardcoded fallback error when everything else fails
 fn create_fallback_error(env: &mut JNIEnv) -> jstring {
-    let fallback = internal_error_json("JNI string allocation failed");
+    let fallback = internal_error_wire("JNI string allocation failed");
     env.new_string(fallback)
         .map(|s| s.into_raw())
         .unwrap_or(std::ptr::null_mut())
 }
 
-/// Create an internal error JSON response
-fn internal_error_json(message: &str) -> String {
-    let error = EngineJsonError::simple("InternalError", "E_INTERNAL", message);
-    let budget = BudgetJsonInfo::new("unknown", true);
-    let resp = EngineJsonResponse::err(error, budget);
+/// Create an internal error wire response
+fn internal_error_wire(message: &str) -> String {
+    let error = EngineWireError::simple("InternalError", "E_INTERNAL", message);
+    let budget = BudgetWireInfo::new("unknown", true);
+    let resp = EngineWireResponse::err(error, budget);
     resp.to_json()
 }
 
@@ -108,14 +108,14 @@ pub fn eval_core(env: &mut JNIEnv, expr: JString, opts_json: JString) -> String 
     let expr_str: String = match env.get_string(&expr) {
         Ok(s) => s.into(),
         Err(e) => {
-            return internal_error_json(&format!("Failed to read expr: {}", e));
+            return internal_error_wire(&format!("Failed to read expr: {}", e));
         }
     };
 
     let opts_str: String = match env.get_string(&opts_json) {
         Ok(s) => s.into(),
         Err(e) => {
-            return internal_error_json(&format!("Failed to read opts: {}", e));
+            return internal_error_wire(&format!("Failed to read opts: {}", e));
         }
     };
 
@@ -154,8 +154,8 @@ pub extern "system" fn Java_es_javiergimenez_explicas_CasNative_substituteJson<'
             Err(_) => create_fallback_error(&mut env),
         },
         Err(_) => {
-            let json = internal_error_json("panic caught in substitute");
-            match env.new_string(&json) {
+            let wire = internal_error_wire("panic caught in substitute");
+            match env.new_string(&wire) {
                 Ok(s) => s.into_raw(),
                 Err(_) => create_fallback_error(&mut env),
             }
@@ -173,17 +173,17 @@ pub fn substitute_core(
 ) -> String {
     let expr_str: String = match env.get_string(&expr) {
         Ok(s) => s.into(),
-        Err(e) => return internal_error_json(&format!("Failed to read expr: {}", e)),
+        Err(e) => return internal_error_wire(&format!("Failed to read expr: {}", e)),
     };
 
     let target_str: String = match env.get_string(&target) {
         Ok(s) => s.into(),
-        Err(e) => return internal_error_json(&format!("Failed to read target: {}", e)),
+        Err(e) => return internal_error_wire(&format!("Failed to read target: {}", e)),
     };
 
     let with_str: String = match env.get_string(&with_expr) {
         Ok(s) => s.into(),
-        Err(e) => return internal_error_json(&format!("Failed to read with: {}", e)),
+        Err(e) => return internal_error_wire(&format!("Failed to read with: {}", e)),
     };
 
     let opts_str: String = match env.get_string(&opts_json) {
@@ -209,14 +209,14 @@ mod tests {
     use cas_session::evaluate_eval_canonical;
     use serde_json::Value;
 
-    fn parse_json(s: &str) -> Value {
-        serde_json::from_str(s).expect("valid JSON")
+    fn parse_wire(s: &str) -> Value {
+        serde_json::from_str(s).expect("valid wire payload")
     }
 
     #[test]
     fn test_eval_success() {
         let json = evaluate_eval_canonical("x + x", "{}");
-        let v = parse_json(&json);
+        let v = parse_wire(&json);
 
         assert_eq!(v["schema_version"], 1);
         assert_eq!(v["ok"], true);
@@ -227,7 +227,7 @@ mod tests {
     #[test]
     fn test_eval_parse_error() {
         let json = evaluate_eval_canonical("(", "{}");
-        let v = parse_json(&json);
+        let v = parse_wire(&json);
 
         assert_eq!(v["schema_version"], 1);
         assert_eq!(v["ok"], false);
@@ -238,7 +238,7 @@ mod tests {
     #[test]
     fn test_eval_invalid_opts() {
         let json = evaluate_eval_canonical("x+1", "{invalid");
-        let v = parse_json(&json);
+        let v = parse_wire(&json);
 
         assert_eq!(v["schema_version"], 1);
         assert_eq!(v["ok"], false);
@@ -251,7 +251,7 @@ mod tests {
     fn test_opts_defaults() {
         // Empty opts should use defaults
         let json = evaluate_eval_canonical("2+2", "{}");
-        let v = parse_json(&json);
+        let v = parse_wire(&json);
 
         assert_eq!(v["ok"], true);
         assert_eq!(v["budget"]["preset"], "cli");
@@ -262,7 +262,7 @@ mod tests {
     fn test_opts_custom() {
         let json =
             evaluate_eval_canonical("2+2", r#"{"budget":{"preset":"small","mode":"strict"}}"#);
-        let v = parse_json(&json);
+        let v = parse_wire(&json);
 
         assert_eq!(v["ok"], true);
         assert_eq!(v["budget"]["preset"], "small");
@@ -273,7 +273,7 @@ mod tests {
     fn test_no_hold_leak() {
         // Expression that might internally use __hold
         let json = evaluate_eval_canonical("(x+1)^2 - (x+1)^2", "{}");
-        let v = parse_json(&json);
+        let v = parse_wire(&json);
 
         if let Some(result) = v["result"].as_str() {
             assert!(
@@ -287,7 +287,7 @@ mod tests {
     #[test]
     fn test_steps_mode() {
         let json = evaluate_eval_canonical("x + x", r#"{"steps":true}"#);
-        let v = parse_json(&json);
+        let v = parse_wire(&json);
 
         assert_eq!(v["ok"], true);
         // steps should be present (array, possibly empty)

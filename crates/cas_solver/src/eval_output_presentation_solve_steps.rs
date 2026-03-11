@@ -1,6 +1,6 @@
 mod equation;
 
-use cas_api_models::{SolveStepJson, SolveSubStepJson};
+use cas_api_models::{SolveStepWire, SolveSubStepWire};
 use cas_ast::Context;
 
 use self::equation::{relop_to_latex, render_equation_strings};
@@ -9,7 +9,7 @@ pub(crate) fn collect_output_solve_steps(
     solve_steps: &[crate::SolveStep],
     ctx: &Context,
     steps_mode: &str,
-) -> Vec<SolveStepJson> {
+) -> Vec<SolveStepWire> {
     if steps_mode != "on" {
         return vec![];
     }
@@ -29,14 +29,14 @@ pub(crate) fn collect_output_solve_steps(
         .map(|(i, step)| {
             let rendered = render_equation_strings(ctx, &step.equation_after);
 
-            let substeps: Vec<SolveSubStepJson> = step
+            let substeps: Vec<SolveSubStepWire> = step
                 .substeps
                 .iter()
                 .enumerate()
                 .map(|(j, ss)| {
                     let rendered = render_equation_strings(ctx, &ss.equation_after);
 
-                    SolveSubStepJson {
+                    SolveSubStepWire {
                         index: format!("{}.{}", i + 1, j + 1),
                         description: ss.description.clone(),
                         equation: rendered.equation,
@@ -47,7 +47,7 @@ pub(crate) fn collect_output_solve_steps(
                 })
                 .collect();
 
-            SolveStepJson {
+            SolveStepWire {
                 index: i + 1,
                 description: step.description.clone(),
                 equation: rendered.equation,

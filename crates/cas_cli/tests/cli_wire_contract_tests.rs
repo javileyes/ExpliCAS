@@ -24,8 +24,8 @@ fn run_cli(args: &[&str]) -> (String, i32) {
     (stdout, code)
 }
 
-fn parse_json(s: &str) -> Value {
-    serde_json::from_str(s).unwrap_or_else(|_| panic!("Failed to parse JSON: {}", s))
+fn parse_wire(s: &str) -> Value {
+    serde_json::from_str(s).unwrap_or_else(|_| panic!("Failed to parse wire payload: {}", s))
 }
 
 // =============================================================================
@@ -36,22 +36,22 @@ fn parse_json(s: &str) -> Value {
 #[ignore = "Uses cargo run internally, causing lock contention in CI"]
 fn test_eval_wire_success() {
     let (output, _code) = run_cli(&["eval-json", "2+2"]);
-    let json = parse_json(&output);
+    let wire = parse_wire(&output);
 
-    assert_eq!(json["schema_version"], 1);
-    assert_eq!(json["ok"], true);
-    assert!(json["result"].is_string());
+    assert_eq!(wire["schema_version"], 1);
+    assert_eq!(wire["ok"], true);
+    assert!(wire["result"].is_string());
 }
 
 #[test]
 #[ignore = "Uses cargo run internally, causing lock contention in CI"]
 fn test_eval_wire_success_has_budget() {
     let (output, _code) = run_cli(&["eval-json", "x+x"]);
-    let json = parse_json(&output);
+    let wire = parse_wire(&output);
 
-    assert!(json["budget"].is_object(), "Should have budget object");
-    assert!(json["budget"]["preset"].is_string());
-    assert!(json["budget"]["mode"].is_string());
+    assert!(wire["budget"].is_object(), "Should have budget object");
+    assert!(wire["budget"]["preset"].is_string());
+    assert!(wire["budget"]["mode"].is_string());
 }
 
 // =============================================================================
@@ -62,12 +62,12 @@ fn test_eval_wire_success_has_budget() {
 #[ignore = "Uses cargo run internally, causing lock contention in CI"]
 fn test_eval_wire_parse_error_has_kind_code() {
     let (output, _code) = run_cli(&["eval-json", "("]);
-    let json = parse_json(&output);
+    let wire = parse_wire(&output);
 
-    assert_eq!(json["ok"], false);
-    assert_eq!(json["kind"], "ParseError", "Should have kind=ParseError");
-    assert_eq!(json["code"], "E_PARSE", "Should have code=E_PARSE");
-    assert!(json["error"].is_string(), "Should have error message");
+    assert_eq!(wire["ok"], false);
+    assert_eq!(wire["kind"], "ParseError", "Should have kind=ParseError");
+    assert_eq!(wire["code"], "E_PARSE", "Should have code=E_PARSE");
+    assert!(wire["error"].is_string(), "Should have error message");
 }
 
 #[test]
@@ -75,7 +75,7 @@ fn test_eval_wire_parse_error_has_kind_code() {
 fn test_eval_wire_error_kind_in_known_set() {
     // Parse error
     let (output, _code) = run_cli(&["eval-json", "((("]);
-    let json = parse_json(&output);
+    let wire = parse_wire(&output);
 
     let valid_kinds = [
         "ParseError",
@@ -86,8 +86,8 @@ fn test_eval_wire_error_kind_in_known_set() {
         "InternalError",
     ];
 
-    if !json["ok"].as_bool().unwrap_or(true) {
-        let kind = json["kind"].as_str().unwrap_or("");
+    if !wire["ok"].as_bool().unwrap_or(true) {
+        let kind = wire["kind"].as_str().unwrap_or("");
         assert!(
             valid_kinds.contains(&kind),
             "Kind '{}' should be in known set",
@@ -100,10 +100,10 @@ fn test_eval_wire_error_kind_in_known_set() {
 #[ignore = "Uses cargo run internally, causing lock contention in CI"]
 fn test_eval_wire_error_code_starts_with_e() {
     let (output, _code) = run_cli(&["eval-json", "((("]);
-    let json = parse_json(&output);
+    let wire = parse_wire(&output);
 
-    if !json["ok"].as_bool().unwrap_or(true) {
-        let code = json["code"].as_str().unwrap_or("");
+    if !wire["ok"].as_bool().unwrap_or(true) {
+        let code = wire["code"].as_str().unwrap_or("");
         assert!(
             code.starts_with("E_"),
             "Code '{}' should start with E_",
@@ -121,9 +121,9 @@ fn test_eval_wire_error_code_starts_with_e() {
 fn test_eval_wire_no_hold_in_result() {
     // Complex expression that might internally use __hold
     let (output, _code) = run_cli(&["eval-json", "(x+1)^2 - (x+1)^2"]);
-    let json = parse_json(&output);
+    let wire = parse_wire(&output);
 
-    if let Some(result) = json["result"].as_str() {
+    if let Some(result) = wire["result"].as_str() {
         assert!(
             !result.contains("__hold"),
             "Result should not contain __hold: {}",
@@ -136,9 +136,9 @@ fn test_eval_wire_no_hold_in_result() {
 #[ignore = "Uses cargo run internally, causing lock contention in CI"]
 fn test_eval_wire_no_hold_in_error() {
     let (output, _code) = run_cli(&["eval-json", "((("]);
-    let json = parse_json(&output);
+    let wire = parse_wire(&output);
 
-    if let Some(error) = json["error"].as_str() {
+    if let Some(error) = wire["error"].as_str() {
         assert!(
             !error.contains("__hold"),
             "Error should not contain __hold: {}",
@@ -155,9 +155,9 @@ fn test_eval_wire_no_hold_in_error() {
 #[ignore = "Uses cargo run internally, causing lock contention in CI"]
 fn test_eval_wire_schema_version_is_1() {
     let (output, _code) = run_cli(&["eval-json", "1+1"]);
-    let json = parse_json(&output);
+    let wire = parse_wire(&output);
 
-    assert_eq!(json["schema_version"], 1, "Schema version must be 1");
+    assert_eq!(wire["schema_version"], 1, "Schema version must be 1");
 }
 
 // =============================================================================
@@ -169,22 +169,22 @@ fn test_eval_wire_schema_version_is_1() {
 #[ignore = "Uses cargo run internally, causing lock contention in CI"]
 fn test_ffi_mock_required_conditions_schema() {
     let (output, _code) = run_cli(&["eval-json", "sqrt(x)^2"]);
-    let json = parse_json(&output);
+    let wire = parse_wire(&output);
 
     // 1. schema_version present
     assert!(
-        json["schema_version"].is_u64(),
+        wire["schema_version"].is_u64(),
         "FFI contract: schema_version must be present and numeric"
     );
 
     // 2. required_conditions is array
     assert!(
-        json["required_conditions"].is_array(),
+        wire["required_conditions"].is_array(),
         "FFI contract: required_conditions must be an array"
     );
 
     // 3. At least one condition for sqrt(x)^2
-    let conditions = json["required_conditions"].as_array().unwrap();
+    let conditions = wire["required_conditions"].as_array().unwrap();
     assert!(
         !conditions.is_empty(),
         "FFI contract: sqrt(x)^2 should have required conditions"
@@ -207,23 +207,34 @@ fn test_ffi_mock_required_conditions_schema() {
 
     // 5. required_display is array of strings
     assert!(
-        json["required_display"].is_array(),
+        wire["required_display"].is_array(),
         "FFI contract: required_display must be an array"
     );
 }
 
-/// FFI MOCK: Validates witness survival - no false required conditions
+/// FFI MOCK: Validates that domain requirements surface in required_conditions
 #[test]
 #[ignore = "Uses cargo run internally, causing lock contention in CI"]
-fn test_ffi_mock_witness_survival_empty_required() {
+fn test_ffi_mock_domain_requirements_are_preserved() {
     let (output, _code) = run_cli(&["eval-json", "(x-y)/(sqrt(x)-sqrt(y))"]);
-    let json = parse_json(&output);
+    let wire = parse_wire(&output);
 
-    // Witness survival: sqrt survives in result, no required_conditions emitted
-    let conditions = json["required_conditions"].as_array().unwrap();
+    // Current contract: rationalization surfaces denominator/nonnegative requirements.
+    let conditions = wire["required_conditions"].as_array().unwrap();
     assert!(
-        conditions.is_empty(),
-        "FFI contract: witness survival means no x≥0 or y≥0 requirements"
+        conditions.len() >= 3,
+        "FFI contract: rationalization should surface denominator and sqrt requirements"
+    );
+
+    let kinds: Vec<_> = conditions
+        .iter()
+        .filter_map(|c| c["kind"].as_str())
+        .collect();
+    assert!(kinds.contains(&"NonZero"));
+    assert_eq!(
+        kinds.iter().filter(|kind| **kind == "NonNegative").count(),
+        2,
+        "FFI contract: should preserve x >= 0 and y >= 0"
     );
 }
 
@@ -236,16 +247,16 @@ fn test_ffi_mock_witness_survival_empty_required() {
 #[ignore = "Uses cargo run internally, causing lock contention in CI"]
 fn test_envelope_wire_v1_structure() {
     let (output, _code) = run_cli(&["envelope-json", "sqrt(x)^2"]);
-    let json = parse_json(&output);
+    let wire = parse_wire(&output);
 
     // Root envelope fields
-    assert_eq!(json["schema_version"], 1, "V1: schema_version must be 1");
-    assert!(json["engine"].is_object(), "V1: engine must be object");
-    assert_eq!(json["engine"]["name"], "ExpliCAS");
-    assert!(json["request"].is_object(), "V1: request must be object");
-    assert!(json["result"].is_object(), "V1: result must be object");
+    assert_eq!(wire["schema_version"], 1, "V1: schema_version must be 1");
+    assert!(wire["engine"].is_object(), "V1: engine must be object");
+    assert_eq!(wire["engine"]["name"], "ExpliCAS");
+    assert!(wire["request"].is_object(), "V1: request must be object");
+    assert!(wire["result"].is_object(), "V1: result must be object");
     assert!(
-        json["transparency"].is_object(),
+        wire["transparency"].is_object(),
         "V1: transparency must be object"
     );
 }
@@ -255,22 +266,22 @@ fn test_envelope_wire_v1_structure() {
 #[ignore = "Uses cargo run internally, causing lock contention in CI"]
 fn test_envelope_wire_result_eval() {
     let (output, _code) = run_cli(&["envelope-json", "2+2"]);
-    let json = parse_json(&output);
+    let wire = parse_wire(&output);
 
     assert_eq!(
-        json["result"]["kind"], "eval_result",
+        wire["result"]["kind"], "eval_result",
         "V1: result.kind for eval"
     );
     assert!(
-        json["result"]["value"].is_object(),
+        wire["result"]["value"].is_object(),
         "V1: result.value must exist"
     );
     assert!(
-        json["result"]["value"]["display"].is_string(),
+        wire["result"]["value"]["display"].is_string(),
         "V1: value.display"
     );
     assert!(
-        json["result"]["value"]["canonical"].is_string(),
+        wire["result"]["value"]["canonical"].is_string(),
         "V1: value.canonical"
     );
 }
@@ -280,9 +291,9 @@ fn test_envelope_wire_result_eval() {
 #[ignore = "Uses cargo run internally, causing lock contention in CI"]
 fn test_envelope_wire_transparency_requires() {
     let (output, _code) = run_cli(&["envelope-json", "sqrt(x)^2"]);
-    let json = parse_json(&output);
+    let wire = parse_wire(&output);
 
-    let transparency = &json["transparency"];
+    let transparency = &wire["transparency"];
     assert!(transparency["required_conditions"].is_array());
     assert!(transparency["assumptions_used"].is_array());
 
@@ -298,21 +309,27 @@ fn test_envelope_wire_transparency_requires() {
     assert!(first["expr_canonical"].is_string());
 }
 
-/// Validates witness survival in envelope format
+/// Validates transparency requirements in envelope format
 #[test]
 #[ignore = "Uses cargo run internally, causing lock contention in CI"]
-fn test_envelope_wire_witness_survival() {
+fn test_envelope_wire_transparency_preserves_domain_requirements() {
     let (output, _code) = run_cli(&["envelope-json", "(x-y)/(sqrt(x)-sqrt(y))"]);
-    let json = parse_json(&output);
+    let wire = parse_wire(&output);
 
-    let transparency = &json["transparency"];
+    let transparency = &wire["transparency"];
     let required = transparency["required_conditions"].as_array().unwrap();
     let assumed = transparency["assumptions_used"].as_array().unwrap();
 
     assert!(
-        required.is_empty(),
-        "V1: witness survival → no required_conditions"
+        required.len() >= 3,
+        "V1: transparency should preserve denominator and sqrt requirements"
     );
-    assert!(!assumed.is_empty(), "V1: should have assumptions_used");
-    assert_eq!(assumed[0]["kind"], "NonZero");
+    let kinds: Vec<_> = required.iter().filter_map(|c| c["kind"].as_str()).collect();
+    assert!(kinds.contains(&"NonZero"));
+    assert_eq!(
+        kinds.iter().filter(|kind| **kind == "NonNegative").count(),
+        2,
+        "V1: should preserve x >= 0 and y >= 0"
+    );
+    assert!(assumed.is_empty(), "V1: no assumptions_used expected here");
 }

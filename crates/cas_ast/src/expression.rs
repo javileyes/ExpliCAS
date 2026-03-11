@@ -160,10 +160,12 @@ impl Default for Context {
 
 impl Context {
     pub fn new() -> Self {
+        let builtin_capacity = BuiltinFn::COUNT + 8;
         let mut ctx = Self {
-            nodes: Vec::new(),
-            interner: HashMap::new(),
-            symbols: SymbolTable::new(),
+            // Most short-lived parse/eval contexts stay below a few dozen nodes.
+            nodes: Vec::with_capacity(32),
+            interner: HashMap::with_capacity(64),
+            symbols: SymbolTable::with_capacity(builtin_capacity),
             stats: ContextStats::default(),
             builtins: BuiltinIds::new(),
         };

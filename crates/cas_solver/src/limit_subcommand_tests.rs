@@ -17,7 +17,7 @@ mod tests {
         .expect("limit wire");
 
         match out {
-            LimitSubcommandOutput::Json(payload) => {
+            LimitSubcommandOutput::Wire(payload) => {
                 assert!(payload.contains("\"ok\""));
             }
             _ => panic!("expected json output"),

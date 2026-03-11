@@ -1,4 +1,4 @@
-.PHONY: ci ci-release ci-msrv ci-quick lint test fmt clippy build-release lint-allowlist lint-budget lint-limits audit-utils lint-string-compares lint-no-panic-prod bench-clean bench-engine-fast bench-engine-fast-save bench-engine-fast-compare bench-engine-fast-save-seq bench-engine-fast-compare-seq bench-engine-solve-hotspots-save bench-engine-solve-hotspots-compare bench-engine-solve-profile help
+.PHONY: ci ci-release ci-msrv ci-quick lint test fmt clippy build-release lint-allowlist lint-budget lint-limits audit-utils lint-string-compares lint-no-panic-prod bench-clean bench-engine-fast bench-engine-fast-save bench-engine-fast-compare bench-engine-fast-save-seq bench-engine-fast-compare-seq bench-engine-solve-hotspots-save bench-engine-solve-hotspots-compare bench-engine-solve-profile bench-engine-repl-breakdown bench-engine-repl-individual bench-engine-repl-individual-save bench-engine-repl-individual-compare bench-engine-repl-hotspots bench-engine-repl-hotspots-save bench-engine-repl-hotspots-compare bench-engine-standard-phase-subset bench-engine-root-direct help
 
 SOLVE_HOTSPOT_FILTERS = \
 	solve_hotspots_cached/generic/difference_of_squares_fraction \
@@ -37,6 +37,24 @@ help:
 	@echo "                     -> compare the curated solve hotspot suite sequentially"
 	@echo "  make bench-engine-solve-profile MODE=hotspots-generic FILTER=solve_hotspots_cached/generic/a_pow_x_over_a [DETAIL=1] [PROBE=1] [PROBE_ITERS=2000]"
 	@echo "                     -> run profile_cache with solve diagnostic env flags"
+	@echo "  make bench-engine-repl-breakdown"
+	@echo "                     -> run repl_end_to_end stage breakdown (parse/simplify/format)"
+	@echo "  make bench-engine-repl-individual"
+	@echo "                     -> rerank the 11 standard REPL batch inputs individually"
+	@echo "  make bench-engine-repl-individual-save BASELINE=good"
+	@echo "                     -> save a named baseline for the full 11-input REPL rerank"
+	@echo "  make bench-engine-repl-individual-compare BASELINE=good"
+	@echo "                     -> compare the full 11-input REPL rerank against a named baseline"
+	@echo "  make bench-engine-repl-hotspots"
+	@echo "                     -> run the current top-5 cached standard REPL hotspots"
+	@echo "  make bench-engine-repl-hotspots-save BASELINE=good"
+	@echo "                     -> save a named baseline for the current REPL hotspot suite"
+	@echo "  make bench-engine-repl-hotspots-compare BASELINE=good"
+	@echo "                     -> compare the current REPL hotspot suite against a named baseline"
+	@echo "  make bench-engine-standard-phase-subset"
+	@echo "                     -> run profile_cache standard phase subset breakdown"
+	@echo "  make bench-engine-root-direct"
+	@echo "                     -> run profile_cache direct root-rule benchmarks"
 	@echo "  make audit-utils   -> show canonical utilities registry + lint check"
 	@echo "  make test          -> cargo test (debug) only"
 	@echo "  make build-release -> cargo build --release only"
@@ -114,6 +132,37 @@ bench-engine-solve-profile:
 	$(if $(PROBE),CAS_SOLVE_BENCH_PROFILE_PROBE=1,) \
 	$(if $(PROBE_ITERS),CAS_SOLVE_BENCH_PROFILE_PROBE_ITERS=$(PROBE_ITERS),) \
 	cargo bench -p cas_engine --bench profile_cache $(FILTER) -- --noplot
+
+bench-engine-repl-breakdown:
+	CAS_BENCH_FAST=1 cargo bench -p cas_engine --bench repl_end_to_end 'repl_stage_breakdown/(parse|simplify|format)/(light/symbol_plus_literal|light/numeric_add_chain|heavy/nested_root|heavy/abs_square|gcd/scalar_multiple_fraction|gcd/common_factor_fraction|complex/gaussian_div|trig/pythagorean_chain)' -- --noplot
+
+bench-engine-repl-individual:
+	CAS_BENCH_FAST=1 cargo bench -p cas_engine --bench repl_end_to_end 'repl_individual/cached' -- --noplot
+
+bench-engine-repl-individual-save:
+	@test -n "$(BASELINE)" || { echo "Missing BASELINE=..."; exit 1; }
+	CAS_BENCH_FAST=1 cargo bench -p cas_engine --bench repl_end_to_end 'repl_individual/cached' -- --noplot --save-baseline $(BASELINE)
+
+bench-engine-repl-individual-compare:
+	@test -n "$(BASELINE)" || { echo "Missing BASELINE=..."; exit 1; }
+	CAS_BENCH_FAST=1 cargo bench -p cas_engine --bench repl_end_to_end 'repl_individual/cached' -- --noplot --baseline $(BASELINE)
+
+bench-engine-repl-hotspots:
+	CAS_BENCH_FAST=1 cargo bench -p cas_engine --bench repl_end_to_end 'repl_individual/cached/(03_|04_|06_|08_|10_)' -- --noplot
+
+bench-engine-repl-hotspots-save:
+	@test -n "$(BASELINE)" || { echo "Missing BASELINE=..."; exit 1; }
+	CAS_BENCH_FAST=1 cargo bench -p cas_engine --bench repl_end_to_end 'repl_individual/cached/(03_|04_|06_|08_|10_)' -- --noplot --save-baseline $(BASELINE)
+
+bench-engine-repl-hotspots-compare:
+	@test -n "$(BASELINE)" || { echo "Missing BASELINE=..."; exit 1; }
+	CAS_BENCH_FAST=1 cargo bench -p cas_engine --bench repl_end_to_end 'repl_individual/cached/(03_|04_|06_|08_|10_)' -- --noplot --baseline $(BASELINE)
+
+bench-engine-standard-phase-subset:
+	CAS_BENCH_FAST=1 cargo bench -p cas_engine --bench profile_cache 'standard_phase_subset_cached/(heavy/nested_root|heavy/abs_square|complex/gaussian_div)/(standard/full|standard/no_transform|standard/no_transform_no_rationalize)' -- --noplot
+
+bench-engine-root-direct:
+	CAS_BENCH_FAST=1 cargo bench -p cas_engine --bench profile_cache 'root_rule_direct' -- --noplot
 
 clippy:
 	cargo clippy --workspace --all-targets -- -D warnings
