@@ -1,5 +1,6 @@
 use num_bigint::BigInt;
 use num_rational::BigRational;
+use num_traits::ToPrimitive;
 use rustc_hash::{FxHashMap, FxHasher};
 use smallvec::SmallVec;
 use std::fmt;
@@ -164,8 +165,13 @@ impl Context {
         match value {
             Expr::Number(n) => {
                 hasher.write_u8(0);
-                n.numer().hash(&mut hasher);
-                n.denom().hash(&mut hasher);
+                if let (Some(num), Some(den)) = (n.numer().to_i64(), n.denom().to_i64()) {
+                    hasher.write_i64(num);
+                    hasher.write_i64(den);
+                } else {
+                    n.numer().hash(&mut hasher);
+                    n.denom().hash(&mut hasher);
+                }
             }
             Expr::Constant(c) => {
                 hasher.write_u8(1);

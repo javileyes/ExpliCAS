@@ -156,7 +156,6 @@ mod inspect_format;
 mod inspect_parse;
 mod inspect_runtime;
 mod inspect_types;
-mod json;
 mod limit_command;
 mod limit_command_core;
 mod limit_command_eval;
@@ -357,6 +356,7 @@ mod vars_command_display_tests;
 mod weierstrass_command;
 #[cfg(test)]
 mod weierstrass_command_tests;
+mod wire;
 #[cfg(test)]
 mod wire_bridge_tests;
 

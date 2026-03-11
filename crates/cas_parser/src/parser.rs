@@ -1,4 +1,4 @@
-use cas_ast::{BuiltinFn, Constant, Context, Equation, Expr, ExprId, RelOp};
+use cas_ast::{Constant, Context, Equation, Expr, ExprId, RelOp};
 use nom::{
     branch::alt,
     bytes::complete::tag,
@@ -145,11 +145,7 @@ impl ParseNode {
                 for a in args {
                     arg_ids.push(a.lower(ctx)?);
                 }
-                if let Some(builtin) = BuiltinFn::from_name(name.as_str()) {
-                    Ok(ctx.call_builtin(builtin, arg_ids))
-                } else {
-                    Ok(ctx.call(name.as_str(), arg_ids))
-                }
+                Ok(ctx.call(name.as_str(), arg_ids))
             }
             ParseNode::Matrix(rows) => {
                 // Flatten 2D structure to 1D for storage
@@ -292,48 +288,6 @@ fn parse_session_ref(input: &str) -> IResult<&str, ParseNode> {
     Ok((remaining, ParseNode::SessionRef(id)))
 }
 
-// Parser for constants with word boundary check
-// 'e', 'pi', 'infinity', 'undefined' should not match prefixes of longer identifiers
-fn parse_constant(input: &str) -> IResult<&str, ParseNode> {
-    // Helper: check if next char is alphanumeric (would indicate identifier, not constant)
-    fn is_word_boundary(remaining: &str) -> bool {
-        remaining
-            .chars()
-            .next()
-            .is_none_or(|c| !c.is_ascii_alphanumeric() && c != '_')
-    }
-
-    // Try 'infinity' first (longest match)
-    if input.starts_with("infinity") && is_word_boundary(&input[8..]) {
-        return Ok((&input[8..], ParseNode::Constant(Constant::Infinity)));
-    }
-
-    // Try 'undefined'
-    if input.starts_with("undefined") && is_word_boundary(&input[9..]) {
-        return Ok((&input[9..], ParseNode::Constant(Constant::Undefined)));
-    }
-
-    // Try 'pi'
-    if input.starts_with("pi") && is_word_boundary(&input[2..]) {
-        return Ok((&input[2..], ParseNode::Constant(Constant::Pi)));
-    }
-
-    // Try 'phi' (golden ratio)
-    if input.starts_with("phi") && is_word_boundary(&input[3..]) {
-        return Ok((&input[3..], ParseNode::Constant(Constant::Phi)));
-    }
-
-    // Try 'e' (must not be followed by alphanumeric)
-    if input.starts_with('e') && is_word_boundary(&input[1..]) {
-        return Ok((&input[1..], ParseNode::Constant(Constant::E)));
-    }
-
-    Err(nom::Err::Error(nom::error::Error::new(
-        input,
-        nom::error::ErrorKind::Tag,
-    )))
-}
-
 // Parser for identifiers (variable/function names)
 // Identifiers start with letter or underscore, then allow letters, digits, underscores
 // Examples: x, x1, theta3, _tmp, x_1
@@ -364,19 +318,6 @@ fn parse_identifier(input: &str) -> IResult<&str, &str> {
     Ok((&input[len..], &input[..len]))
 }
 
-// Parser for variables
-// Note: "i" (imaginary unit) is recognized as Constant::I, not a variable
-fn parse_variable(input: &str) -> IResult<&str, ParseNode> {
-    map(parse_identifier, |s: &str| {
-        // Recognize imaginary unit as constant
-        if s == "i" {
-            ParseNode::Constant(Constant::I)
-        } else {
-            ParseNode::Variable(SmolStr::new(s))
-        }
-    })(input)
-}
-
 // Parser for parentheses
 fn parse_parens(input: &str) -> IResult<&str, ParseNode> {
     delimited(
@@ -386,8 +327,8 @@ fn parse_parens(input: &str) -> IResult<&str, ParseNode> {
     )(input)
 }
 
-// Parser for function calls
-fn parse_function(input: &str) -> IResult<&str, ParseNode> {
+// Parse identifiers as either variable, constant, or function call.
+fn parse_identifier_atom(input: &str) -> IResult<&str, ParseNode> {
     let (after_name, name) = parse_identifier(input)?;
 
     // Detect ambiguous notation: sin²(u) — should be sin(u)^2
@@ -404,26 +345,40 @@ fn parse_function(input: &str) -> IResult<&str, ParseNode> {
         }
     }
 
-    let (input, _) = preceded(multispace0, tag("("))(after_name)?;
-    let (input, args) = separated_list0(preceded(multispace0, tag(",")), parse_expr)(input)?;
-    let (input, _) = preceded(multispace0, tag(")"))(input)?;
+    if let Ok((input, _)) =
+        preceded(multispace0::<_, nom::error::Error<&str>>, tag("("))(after_name)
+    {
+        let (input, args) = separated_list0(preceded(multispace0, tag(",")), parse_expr)(input)?;
+        let (input, _) = preceded(multispace0, tag(")"))(input)?;
 
-    // exp(x) -> e^x (canonical form for exponential)
-    if name == "exp" && args.len() == 1 {
-        return Ok((
-            input,
-            ParseNode::Pow(
-                Box::new(ParseNode::Constant(Constant::E)),
-                Box::new(args[0].clone()),
-            ),
-        ));
+        // exp(x) -> e^x (canonical form for exponential)
+        if name == "exp" && args.len() == 1 {
+            return Ok((
+                input,
+                ParseNode::Pow(
+                    Box::new(ParseNode::Constant(Constant::E)),
+                    Box::new(args[0].clone()),
+                ),
+            ));
+        }
+
+        // NOTE: ln(x) is preserved as ln(x) function, NOT converted to log(e, x).
+        // This allows consistent display and simplification of natural logarithms.
+        // The simplification engine knows how to handle both ln() and log(e,) forms.
+        return Ok((input, ParseNode::Function(SmolStr::new(name), args)));
     }
 
-    // NOTE: ln(x) is preserved as ln(x) function, NOT converted to log(e, x).
-    // This allows consistent display and simplification of natural logarithms.
-    // The simplification engine knows how to handle both ln() and log(e,) forms.
+    let node = match name {
+        "infinity" => ParseNode::Constant(Constant::Infinity),
+        "undefined" => ParseNode::Constant(Constant::Undefined),
+        "pi" => ParseNode::Constant(Constant::Pi),
+        "phi" => ParseNode::Constant(Constant::Phi),
+        "e" => ParseNode::Constant(Constant::E),
+        "i" => ParseNode::Constant(Constant::I),
+        _ => ParseNode::Variable(SmolStr::new(name)),
+    };
 
-    Ok((input, ParseNode::Function(SmolStr::new(name), args)))
+    Ok((after_name, node))
 }
 
 fn parse_abs(input: &str) -> IResult<&str, ParseNode> {
@@ -550,20 +505,29 @@ fn parse_unicode_root(input: &str) -> IResult<&str, ParseNode> {
 
 // Atom
 fn parse_atom(input: &str) -> IResult<&str, ParseNode> {
-    preceded(
-        multispace0,
-        alt((
-            parse_session_ref,  // #id references - try early to avoid # confusion
-            parse_unicode_root, // Unicode roots: √, ∛, ∜, ⁿ√
-            parse_number,
-            parse_function,
-            parse_constant,
-            parse_variable,
-            parse_matrix, // Try matrix before parens (since [ ] syntax)
-            parse_parens,
-            parse_abs,
-        )),
-    )(input)
+    let input = input.trim_start();
+    let Some(first) = input.chars().next() else {
+        return Err(nom::Err::Error(nom::error::Error::new(
+            input,
+            nom::error::ErrorKind::Eof,
+        )));
+    };
+
+    match first {
+        '#' => parse_session_ref(input),
+        '√' | '∛' | '∜' | '⁰' | '¹' | '²' | '³' | '⁴' | '⁵' | '⁶' | '⁷' | '⁸' | '⁹' => {
+            parse_unicode_root(input)
+        }
+        '0'..='9' | '.' => parse_number(input),
+        'A'..='Z' | 'a'..='z' | '_' => parse_identifier_atom(input),
+        '[' => parse_matrix(input),
+        '(' => parse_parens(input),
+        '|' => parse_abs(input),
+        _ => Err(nom::Err::Error(nom::error::Error::new(
+            input,
+            nom::error::ErrorKind::Tag,
+        ))),
+    }
 }
 
 // Factorial (Postfix) - Higher precedence than power?
@@ -900,6 +864,7 @@ pub fn parse_statement(input: &str, ctx: &mut Context) -> Result<Statement, Pars
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cas_ast::BuiltinFn;
     use cas_formatter::DisplayExpr;
 
     #[test]

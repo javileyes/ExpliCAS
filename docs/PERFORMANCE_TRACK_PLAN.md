@@ -4366,3 +4366,237 @@ Those are valid projects, but not part of this performance track.
     flat and made `solve_tactic_assume` drift worse, so it was reverted
   - marking `Context::get()` as `#[inline]` was effectively flat on both solve
     batches and on the REPL batch, so it was reverted to keep the tree minimal
+  - preloading numeric literals `0`, `1`, and `-1` inside `Context::new()`
+    regressed both solve guardrails and the REPL batch
+    (`solve_tactic_generic_batch` to `15.744-15.897 us`,
+    `solve_tactic_assume_batch` to `15.480-16.004 us`,
+    `repl_full_eval/cached/batch_11_inputs` to `96.685-98.304 us`), so it was
+    reverted even though the focused stats test passed
+- retained a small-number hash fast path in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_ast/src/expression.rs`
+- rationale:
+  - after the recent setup/interner wins, the remaining hot path still hashes a
+    large volume of tiny `BigRational` literals (`0`, `1`, `-1`, small
+    integers, and short rationals) during AST interning
+  - the generic `Hash` path for `BigInt`/`BigRational` is correct but heavier
+    than needed for the overwhelmingly common case where both numerator and
+    denominator fit in `i64`
+- retained change:
+  - `Context::expr_hash(...)` now hashes `Expr::Number` through a direct
+    `(i64, i64)` fast path when both `numer()` and `denom()` fit in `i64`,
+    falling back to the old `Hash` implementation for large rationals
+- retained validation:
+  - `cargo fmt --all`
+  - `cargo test -p cas_ast --lib`
+  - `cargo test -p cas_engine profile_cache_tests --lib`
+  - `cargo test -p cas_solver --test solve_safety_contract_tests`
+  - `make bench-engine-solve-batches`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_engine --bench repl_end_to_end 'repl_full_eval/cached/batch_11_inputs' -- --noplot`
+- measured outcome:
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `14.395-14.614 us`, improvement `~6.4-8.2%`
+  - `solve_modes_cached/solve_tactic_assume_batch`:
+    `13.999-14.226 us`, improvement `~8.2-10.9%`
+  - `repl_full_eval/cached/batch_11_inputs`:
+    `94.405-96.215 us`, improvement `~1.9-4.4%`
+- conclusion:
+  - worth keeping: the change is tiny, semantically safe because interning
+    still confirms by exact structural equality, and it gives a clean win on
+    the two solve guardrails plus a smaller but real win on the REPL batch
+- discarded follow-up hypothesis after measurement:
+  - packing binary node ids into a single `u64` write inside `expr_hash(...)`
+    left both solve guardrails and the REPL batch within noise
+    (`solve_tactic_generic_batch` `14.193-14.377 us`,
+    `solve_tactic_assume_batch` `14.052-14.152 us`,
+    `repl_full_eval/cached/batch_11_inputs` `94.029-95.881 us`), so it was
+    reverted
+  - switching local `MulBuilder` / `FractionParts` buffers in
+    `/Users/javiergimenezmoya/developer/math/crates/cas_ast/src/views.rs`
+    from `Vec` to `SmallVec` looked promising on paper, but it regressed the
+    REPL batch (`repl_full_eval/cached/batch_11_inputs` to
+    `98.018-99.242 us`) while leaving both solve guardrails flat, so it was
+    reverted
+- opened a cleaner frontend benchmark track in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_parser/benches/frontend_parse.rs`
+- rationale:
+  - the current `solve_tactic_*` and REPL batches are now fast enough that many
+    small AST/setup hypotheses bounce in and out of noise
+  - we needed a benchmark that isolates frontend setup and parse/lowering cost
+    without the engine pipeline mixed in, so we can decide whether the next ROI
+    is in `Context::new()`, textual parsing, or statement/equation lowering
+- retained tooling:
+  - new Criterion bench `frontend_parse` in `cas_parser` with:
+    - `frontend_parse/context/new`
+    - `frontend_parse/expr_batch/standard_8`
+    - `frontend_parse/statement_batch/solve_5`
+    - individual expression and statement parse cases
+  - new Make targets:
+    - `make bench-parser-frontend`
+    - `make bench-parser-frontend-save BASELINE=...`
+    - `make bench-parser-frontend-compare BASELINE=...`
+- retained validation:
+  - `cargo fmt --all`
+  - `cargo check -p cas_parser --benches`
+  - `cargo test -p cas_parser --lib`
+  - `make bench-parser-frontend`
+- initial snapshot:
+  - `frontend_parse/context/new`: `89.474-91.456 ns`
+  - `frontend_parse/expr_batch/standard_8`: `26.387-26.500 us`
+  - `frontend_parse/statement_batch/solve_5`: `8.980-9.081 us`
+  - direct expression parse leaders:
+    - `heavy/abs_square`: `5.606-5.657 us`
+    - `trig/pythagorean_chain`: `5.064-5.149 us`
+    - `gcd/scalar_multiple_fraction`: `4.547-4.598 us`
+    - `gcd/common_factor_fraction`: `3.997-4.127 us`
+    - `complex/gaussian_div`: `3.707-3.764 us`
+  - direct statement parse leaders:
+    - `solve/fraction_eq`: `3.512-3.603 us`
+    - `solve/trig_eq`: `2.415-2.476 us`
+    - `solve/linear_eq`: `1.641-1.685 us`
+    - `solve/quadratic_eq`: `1.566-1.617 us`
+    - `relation/strict_less`: `0.674-0.706 us`
+- conclusion:
+  - this is a cleaner next front than the current solve batch guardrails:
+    `Context::new()` is now tiny, so the next likely ROI in the frontend is
+    parser/lowering work on heavy expression forms (`abs_square`,
+    `pythagorean_chain`, fractional gcd shapes), not more AST context setup
+- retained a unified identifier parser path in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_parser/src/parser.rs`
+- rationale:
+  - the first focused parser bench showed a clean hotspot on
+    `statement/solve/fraction_eq`
+  - the old `parse_atom(...)` path re-scanned the same identifier up to three
+    times through `parse_function`, `parse_constant`, and `parse_variable`
+    before deciding what the token actually was
+- retained change:
+  - introduced `parse_identifier_atom(...)` so identifier-starting tokens are
+    classified in one pass as function call, constant, or variable
+  - kept the existing lowering contract and builtin identity tests unchanged
+- retained validation:
+  - `cargo fmt --all`
+  - `cargo test -p cas_parser --lib`
+  - `make bench-parser-frontend`
+  - `make bench-engine-solve-batches`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_engine --bench repl_end_to_end 'repl_full_eval/cached/batch_11_inputs' -- --noplot`
+- measured outcome:
+  - `frontend_parse/statement/solve/fraction_eq`:
+    `3.5407-3.6401 us`, improvement `~2.0-6.5%`
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `14.379-14.577 us`, effectively flat to slightly better in absolute terms
+  - `solve_modes_cached/solve_tactic_assume_batch`:
+    `13.992-14.117 us`, no regression
+  - `repl_full_eval/cached/batch_11_inputs`:
+    `95.437-96.984 us`, improvement `~1.8-3.7%`
+- conclusion:
+  - worth keeping: this removes duplicated frontend work at very low semantic
+    risk and improves the clean parser benchmark while still helping the real
+    REPL batch
+- retained a first-character dispatch in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_parser/src/parser.rs`
+- rationale:
+  - after collapsing identifier parsing, `parse_atom(...)` was still paying a
+    generic `alt(...)` chain even though the first byte already determines the
+    only plausible parser in the common ASCII cases
+- retained change:
+  - `parse_atom(...)` now dispatches directly by leading character to
+    `parse_number`, `parse_identifier_atom`, `parse_matrix`, `parse_parens`,
+    `parse_abs`, `parse_session_ref`, or `parse_unicode_root`
+  - reverted an intermediate manual `parse_relop(...)` experiment; only the
+    atom dispatch remains
+- retained validation:
+  - `cargo fmt --all`
+  - `cargo test -p cas_parser --lib`
+  - `make bench-parser-frontend`
+  - `make bench-engine-solve-batches`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_engine --bench repl_end_to_end 'repl_full_eval/cached/batch_11_inputs' -- --noplot`
+- measured outcome:
+  - `frontend_parse/expr_batch/standard_8`:
+    `25.832-26.365 us`, improvement `~1.9-4.2%`
+  - `frontend_parse/statement_batch/solve_5`:
+    `8.5848-8.6507 us`, improvement `~2.5-3.9%`
+  - direct parser wins:
+    - `gcd/common_factor_fraction`: `3.6664-3.7252 us`, improvement `~2.7-6.6%`
+    - `heavy/nested_root`: `2.4535-2.5307 us`, improvement `~1.5-8.6%`
+    - `heavy/abs_square`: `5.4822-5.5851 us`, improvement `~1.7-4.4%`
+    - `trig/pythagorean_chain`: `5.0360-5.1548 us`, improvement `~1.5-6.8%`
+  - engine guardrails:
+    - `solve_modes_cached/solve_tactic_generic_batch`:
+      `13.887-13.986 us`, improvement `~3.1-4.6%`
+    - `solve_modes_cached/solve_tactic_assume_batch`:
+      `13.751-13.871 us`, improvement `~1.4-2.7%`
+    - `repl_full_eval/cached/batch_11_inputs`:
+      `92.577-94.157 us`, improvement `~1.7-3.8%`
+- conclusion:
+  - worth keeping: this is the cleanest parser-side win of the new benchmark
+    track because it improves both isolated parser cost and the two engine
+    guardrails without relying on any domain-specific shortcut
+- discarded follow-up hypotheses after measurement:
+  - splitting parse nodes into `Function(...)` versus
+    `BuiltinFunction(BuiltinFn, ...)` regressed
+    `frontend_parse/statement/solve/fraction_eq` to `3.6737-3.7478 us` and did
+    not help the heavy expression leaders enough, so it was reverted
+  - rewriting `parse_number(...)` to a manual ASCII scanner regressed both
+    `frontend_parse/expr_batch/standard_8` (`26.680-27.104 us`) and
+    `frontend_parse/statement_batch/solve_5` (`9.0027-9.1193 us`), so it was
+    reverted
+  - rewriting `parse_relop(...)` as a manual prefix matcher did not produce a
+    robust enough win once the full parser bench reran, and it also nudged
+    unrelated microbenches the wrong way, so it was reverted
+- front status:
+  - this parser/lowering benchmark track is now reasonably resolved for the
+    current pass: the two clean wins are retained, the next hypotheses already
+    fall into mixed/noisy territory, and the right next move would be a
+    different benchmark front rather than more parser micro-tweaks
+- opened a formatter/frontend benchmark track in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_formatter/benches/frontend_render.rs`
+  with matching Make targets:
+  - `make bench-formatter-frontend`
+  - `make bench-formatter-frontend-save BASELINE=...`
+  - `make bench-formatter-frontend-compare BASELINE=...`
+- initial snapshot from that track showed the next clean renderer-side ROI:
+  - `frontend_render/display_expr_batch/standard_8`: `8.1027-8.2536 us`
+  - `frontend_render/styled_clean_batch/standard_8`: `18.574-18.755 us`
+  - `frontend_render/clean_only_batch/standard_8`: `11.369-11.489 us`
+  - on small/no-op cases, `clean_display_string(...)` dominated formatting:
+    - `light/x_plus_1`: `clean_only = 1.2457-1.2595 us`
+    - `light/numeric_add_chain`: `clean_only = 1.2619-1.2757 us`
+- retained a structural rewrite of
+  `/Users/javiergimenezmoya/developer/math/crates/cas_formatter/src/display_clean.rs`
+  instead of more regex/clone-heavy cleanup:
+  - fast-return when the string contains no unit, hold, or sign-cleanup
+    markers
+  - unit cleanup now only runs targeted replacements when the corresponding
+    substring exists, instead of cloning and `replace(...)`-ing blindly
+  - sign cleanup no longer uses regex and now runs as a single manual scan only
+    when a `+ -`, `- -`, `+-`, or `--` pattern is actually present
+- retained validation:
+  - `cargo fmt --all`
+  - `cargo test -p cas_formatter --lib`
+  - `cargo check -p cas_formatter --benches`
+  - `make bench-formatter-frontend`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_engine --bench repl_end_to_end 'repl_full_eval/cached/batch_11_inputs|repl_stage_breakdown/format/(light/symbol_plus_literal|light/numeric_add_chain|heavy/nested_root|heavy/abs_square|gcd/scalar_multiple_fraction|gcd/common_factor_fraction|complex/gaussian_div|trig/pythagorean_chain)' -- --noplot`
+- measured outcome:
+  - `frontend_render/styled_clean_batch/standard_8`:
+    `8.3628-8.4727 us`, improvement `~54%`
+  - `frontend_render/clean_only_batch/standard_8`:
+    `1.7734-1.7863 us`, improvement `~84%`
+  - direct `clean_only` wins:
+    - `light/x_plus_1`: `116.87-120.42 ns`, improvement `~90%`
+    - `light/numeric_add_chain`: `169.90-175.12 ns`, improvement `~86%`
+    - `gcd/scalar_multiple_fraction`: `239.65-248.44 ns`, improvement `~83%`
+    - `gcd/common_factor_fraction`: `253.84-260.08 ns`, improvement `~82%`
+    - `heavy/nested_root`: `186.98-191.53 ns`, improvement `~85%`
+    - `heavy/abs_square`: `194.77-198.86 ns`, improvement `~84%`
+    - `complex/gaussian_div`: `209.99-214.08 ns`, improvement `~83%`
+    - `trig/pythagorean_chain`: `249.13-254.73 ns`, improvement `~83%`
+  - `repl_full_eval/cached/batch_11_inputs`:
+    `89.426-90.219 us`, improvement `~2.4-4.2%`
+  - `repl_stage_breakdown/format/*` stayed mostly within noise, so the win is
+    real but isolated to the formatter/frontend microbench and not strong
+    enough to justify a longer renderer-specific push right now
+- front status:
+  - this formatter/render benchmark track is now reasonably resolved for the
+    current pass: the dominant cleanup cost was removed, the remaining broader
+    REPL formatting guardrail is already close to noise, and the next high-ROI
+    move should again be a different benchmark front rather than more
+    formatter-specific micro-tweaks

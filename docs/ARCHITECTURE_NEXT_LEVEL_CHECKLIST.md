@@ -47,7 +47,7 @@ Goal:
   they really build typed Rust models
 
 Checklist:
-- [x] Audit `cas_solver/src/json/*`
+- [x] Audit `cas_solver/src/json/*` (now `cas_solver/src/wire/*`)
 - [x] Audit `cas_didactic/src/eval_json_*`
 - [x] Mark each case as:
   - `transport boundary`
@@ -62,6 +62,7 @@ Done when:
 
 Current progress:
 - audited `cas_solver/src/json/*` as transport boundary
+  - current tree now lives at `cas_solver/src/wire/*`
   - keep:
     - stateless JSON entry points
     - envelope assembly
@@ -172,6 +173,15 @@ Current progress:
     layer
     - only `step_payloads` / `step_payload_render` remain, which matches their
       actual role as typed didactic builders
+  - the former root boundary module `cas_solver::json` now also matches that
+    naming physically and logically as `cas_solver::wire`
+    - directory `cas_solver/src/json` -> `cas_solver/src/wire`
+    - stale empty `eval_json_finalize_input/` directory removed
+    - solver exports now re-export from `crate::wire::*`
+    - rationale:
+      - the subtree still owns wire/DTO assembly
+      - it no longer implies JSON-specific transport implementation in the
+        crate root
   - `eval_request_runtime`
   - `cas_session` also dropped transport naming for the session-backed eval
     runner:
@@ -200,8 +210,8 @@ Current progress:
       - the exported JNI entry points remain `evalJson` / `substituteJson`
       - the inner Rust helpers are just bridge cores around canonical session
         calls and do not own transport naming
-  - boundary-facing tests/helpers now also prefer `wire` naming when they
-    validate output contracts rather than the transport mechanism itself
+    - boundary-facing tests/helpers now also prefer `wire` naming when they
+      validate output contracts rather than the transport mechanism itself
   - residual helper/test naming was also cleaned where the responsibility is
     already neutral:
     - `eval_input_tests` now uses `build_prepared_eval_request_*` test names
@@ -258,6 +268,8 @@ Current progress:
         locals instead of `parse_json(...)` / `json`
       - stale witness-survival expectations in `cli_wire_contract_tests` were
         updated to the current wire contract, which now surfaces denominator
+  - residual `eval-json` naming now only remains where it is the actual public
+    CLI alias / transport contract under test
         and nonnegative requirements for `(x-y)/(sqrt(x)-sqrt(y))`
     - engine wire DTO naming was aligned too:
       - `EngineJsonWarning` -> `EngineWireWarning`

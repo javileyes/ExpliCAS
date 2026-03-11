@@ -270,6 +270,8 @@ name = "cas_formatter"
 version = "0.1.0"
 dependencies = [
  "cas_ast",
+ "cas_parser",
+ "criterion",
  "num-bigint",
  "num-rational",
  "num-traits",
@@ -298,6 +300,7 @@ version = "0.1.0"
 dependencies = [
  "cas_ast",
  "cas_formatter",
+ "criterion",
  "nom",
  "num-bigint",
  "num-rational",

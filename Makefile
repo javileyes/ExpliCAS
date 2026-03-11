@@ -1,4 +1,4 @@
-.PHONY: ci ci-release ci-msrv ci-quick lint test fmt clippy build-release lint-allowlist lint-budget lint-limits audit-utils lint-string-compares lint-no-panic-prod bench-clean bench-engine-fast bench-engine-fast-save bench-engine-fast-compare bench-engine-fast-save-seq bench-engine-fast-compare-seq bench-engine-solve-batches bench-engine-solve-batches-save bench-engine-solve-batches-compare bench-engine-solve-hotspots-save bench-engine-solve-hotspots-compare bench-engine-solve-profile bench-engine-repl-breakdown bench-engine-repl-individual bench-engine-repl-individual-save bench-engine-repl-individual-compare bench-engine-repl-hotspots bench-engine-repl-hotspots-save bench-engine-repl-hotspots-compare bench-engine-standard-phase-subset bench-engine-root-direct help
+.PHONY: ci ci-release ci-msrv ci-quick lint test fmt clippy build-release lint-allowlist lint-budget lint-limits audit-utils lint-string-compares lint-no-panic-prod bench-clean bench-engine-fast bench-engine-fast-save bench-engine-fast-compare bench-engine-fast-save-seq bench-engine-fast-compare-seq bench-engine-solve-batches bench-engine-solve-batches-save bench-engine-solve-batches-compare bench-engine-solve-hotspots-save bench-engine-solve-hotspots-compare bench-engine-solve-profile bench-engine-repl-breakdown bench-engine-repl-individual bench-engine-repl-individual-save bench-engine-repl-individual-compare bench-engine-repl-hotspots bench-engine-repl-hotspots-save bench-engine-repl-hotspots-compare bench-engine-standard-phase-subset bench-engine-root-direct bench-parser-frontend bench-parser-frontend-save bench-parser-frontend-compare bench-formatter-frontend bench-formatter-frontend-save bench-formatter-frontend-compare help
 
 SOLVE_BATCH_FILTER = solve_modes_cached/(solve_tactic_generic_batch|solve_tactic_assume_batch)
 
@@ -63,6 +63,18 @@ help:
 	@echo "                     -> run profile_cache standard phase subset breakdown"
 	@echo "  make bench-engine-root-direct"
 	@echo "                     -> run profile_cache direct root-rule benchmarks"
+	@echo "  make bench-parser-frontend"
+	@echo "                     -> run parser/frontend setup+parse benchmarks"
+	@echo "  make bench-parser-frontend-save BASELINE=good"
+	@echo "                     -> save a named baseline for parser/frontend benchmarks"
+	@echo "  make bench-parser-frontend-compare BASELINE=good"
+	@echo "                     -> compare parser/frontend benchmarks against a named baseline"
+	@echo "  make bench-formatter-frontend"
+	@echo "                     -> run formatter/frontend render+clean benchmarks"
+	@echo "  make bench-formatter-frontend-save BASELINE=good"
+	@echo "                     -> save a named baseline for formatter/frontend benchmarks"
+	@echo "  make bench-formatter-frontend-compare BASELINE=good"
+	@echo "                     -> compare formatter/frontend benchmarks against a named baseline"
 	@echo "  make audit-utils   -> show canonical utilities registry + lint check"
 	@echo "  make test          -> cargo test (debug) only"
 	@echo "  make build-release -> cargo build --release only"
@@ -182,6 +194,28 @@ bench-engine-standard-phase-subset:
 
 bench-engine-root-direct:
 	CAS_BENCH_FAST=1 cargo bench -p cas_engine --bench profile_cache 'root_rule_direct' -- --noplot
+
+bench-parser-frontend:
+	CAS_BENCH_FAST=1 cargo bench -p cas_parser --bench frontend_parse -- --noplot
+
+bench-parser-frontend-save:
+	@test -n "$(BASELINE)" || { echo "Missing BASELINE=..."; exit 1; }
+	CAS_BENCH_FAST=1 cargo bench -p cas_parser --bench frontend_parse -- --noplot --save-baseline $(BASELINE)
+
+bench-parser-frontend-compare:
+	@test -n "$(BASELINE)" || { echo "Missing BASELINE=..."; exit 1; }
+	CAS_BENCH_FAST=1 cargo bench -p cas_parser --bench frontend_parse -- --noplot --baseline $(BASELINE)
+
+bench-formatter-frontend:
+	CAS_BENCH_FAST=1 cargo bench -p cas_formatter --bench frontend_render -- --noplot
+
+bench-formatter-frontend-save:
+	@test -n "$(BASELINE)" || { echo "Missing BASELINE=..."; exit 1; }
+	CAS_BENCH_FAST=1 cargo bench -p cas_formatter --bench frontend_render -- --noplot --save-baseline $(BASELINE)
+
+bench-formatter-frontend-compare:
+	@test -n "$(BASELINE)" || { echo "Missing BASELINE=..."; exit 1; }
+	CAS_BENCH_FAST=1 cargo bench -p cas_formatter --bench frontend_render -- --noplot --baseline $(BASELINE)
 
 clippy:
 	cargo clippy --workspace --all-targets -- -D warnings
