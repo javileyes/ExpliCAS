@@ -25,6 +25,13 @@ It is intentionally strict:
 
 ## Global Rules
 
+Premise for this migration stage:
+
+- The software is still pre-release.
+- Public API / CLI compatibility is not a constraint by itself.
+- Prefer the cleanest boundary and API shape, then update in-repo consumers,
+  tests, docs, web, and FFI to match.
+
 Before starting any item:
 
 - [ ] Confirm the item removes real coupling, not just visual disorder.
@@ -163,8 +170,8 @@ Current progress:
       - these are stable typed wire models, not transport implementation code
   - CLI/session/android adapters were also narrowed to `wire` naming wherever
     the code is only bridging typed payloads
-    - `eval_json`/`envelope_json` internal command bridges -> `eval_wire` /
-      `envelope_wire`
+    - `eval_json`/`envelope_json` internal command bridges -> `eval` /
+      `envelope`
     - `eval_json_command*` and envelope contract tests in `cas_session` ->
       `eval_command*` / `envelope_wire_command_tests`
     - internal FFI helpers now use wire-oriented names for fallback payloads
@@ -191,15 +198,15 @@ Current progress:
       `evaluate_eval_command_with_session(...)`
     - `evaluate_eval_json_command_pretty_with_session(...)` ->
       `evaluate_eval_command_pretty_with_session(...)`
-    - canonical JSON-returning aliases were also neutralized:
-      - `evaluate_eval_json_canonical(...)` -> `evaluate_eval_canonical(...)`
+    - wire-returning session entrypoints were also simplified:
+      - `evaluate_eval_json_canonical(...)` -> `evaluate_eval_wire(...)`
       - `evaluate_substitute_json_canonical(...)` ->
-        `evaluate_substitute_canonical(...)`
+        `evaluate_substitute_wire(...)`
     - rationale:
       - it only orchestrates session load/run/save around typed eval requests
       - the actual wire boundary remains in the CLI/web entrypoints and API DTOs
-      - `eval-json` stays as the product/command name, but not as the internal
-        responsibility of the session runtime
+      - after the pre-release CLI cleanup, the public CLI path is
+        `eval ... --format json`, not a separate `eval-json` command
     - the session runtime now also aliases the wire DTO locally as
       `EvalOutputWire`, instead of spelling `EvalJsonOutput` directly through
       `eval_command::session`
@@ -207,7 +214,8 @@ Current progress:
     - `eval_json_core(...)` -> `eval_core(...)`
     - `substitute_json_core(...)` -> `substitute_core(...)`
     - rationale:
-      - the exported JNI entry points remain `evalJson` / `substituteJson`
+      - the exported JNI entry points were aligned too:
+        `evalJson` / `substituteJson` -> `evalWire` / `substituteWire`
       - the inner Rust helpers are just bridge cores around canonical session
         calls and do not own transport naming
     - boundary-facing tests/helpers now also prefer `wire` naming when they
@@ -227,7 +235,7 @@ Current progress:
     - substitute canonical wrappers/tests were aligned too:
       - module `substitute_subcommand_json` -> `substitute_subcommand_wire`
       - `evaluate_substitute_subcommand_json_canonical(...)` ->
-        `evaluate_substitute_subcommand_wire_canonical(...)`
+        `evaluate_substitute_subcommand_wire(...)`
       - `parse_substitute_json_text_lines(...)` ->
         `parse_substitute_wire_text_lines(...)`
       - integration test `substitute_json_contract_tests` ->
@@ -242,18 +250,16 @@ Current progress:
         `substitute_str_to_wire_impl(...)`
       - `SubstituteParseIssue::to_json_error(...)` ->
         `to_wire_error(...)`
-    - CLI eval-json adapter naming was aligned too:
-      - module `eval_json` -> `eval_wire`
-      - hidden CLI variant `Command::EvalJson` -> `Command::EvalWire`
-      - `EvalJsonArgs` -> `EvalWireArgs`
-      - `EvalJsonLegacyArgs` -> `EvalWireLegacyArgs`
-      - `from_legacy_eval_json_args(...)` ->
-        `from_legacy_eval_wire_args(...)`
-      - hidden CLI variant `Command::EnvelopeJson` ->
-        `Command::EnvelopeWire`
+    - CLI/public command surface was simplified too:
+      - module `eval_json` -> `eval`, with wire rendering folded into the main
+        `eval` command module
+      - hidden legacy alias `eval-json` was removed
+      - public wire path is now `eval ... --format json`
+      - hidden legacy alias `envelope-json` was removed
+      - public envelope command is now `envelope`
     - the envelope/CLI bridge and subcommand toggles were aligned too:
-      - module `envelope_json` -> `envelope_wire`
-      - `EnvelopeJsonArgs` -> `EnvelopeWireArgs`
+      - module `envelope_json` -> `envelope`
+      - `EnvelopeJsonArgs` -> `EnvelopeArgs`
       - internal `json_output` flags in limit/substitute subcommand bridges ->
         `wire_output`
     - internal parity/contract tests were aligned too where they verify the
@@ -268,9 +274,9 @@ Current progress:
         locals instead of `parse_json(...)` / `json`
       - stale witness-survival expectations in `cli_wire_contract_tests` were
         updated to the current wire contract, which now surfaces denominator
-  - residual `eval-json` naming now only remains where it is the actual public
-    CLI alias / transport contract under test
         and nonnegative requirements for `(x-y)/(sqrt(x)-sqrt(y))`
+    - residual `eval-json` naming now only remains in historical notes/docs or
+      in true transport names like `to_json*` serializers and `opts_json`
     - engine wire DTO naming was aligned too:
       - `EngineJsonWarning` -> `EngineWireWarning`
       - `EngineJsonStep` -> `EngineWireStep`
@@ -293,9 +299,9 @@ Current progress:
       - `LimitSubcommandOutput::Json` -> `LimitSubcommandOutput::Wire`
       - lint/tooling script names were aligned too:
         `lint_eval_json_canonical.sh` ->
-        `lint_eval_wire_canonical.sh`
+        `lint_eval_wire_entrypoint.sh`
         `lint_substitute_json_canonical.sh` ->
-        `lint_substitute_wire_canonical.sh`
+        `lint_substitute_wire_entrypoint.sh`
     - eval metadata/support DTOs were aligned too:
       - `ExprStatsJson` -> `ExprStatsWire`
       - `TimingsJson` -> `TimingsWire`

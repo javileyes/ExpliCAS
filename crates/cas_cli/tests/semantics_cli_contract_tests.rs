@@ -38,7 +38,7 @@ fn parse_wire(s: &str) -> Value {
 
 #[test]
 fn semantics_block_present_in_json() {
-    let (output, _code) = run_cli(&["eval-json", "1+1"]);
+    let (output, _code) = run_cli(&["eval", "1+1", "--format", "json"]);
     let wire = parse_wire(&output);
 
     assert!(
@@ -49,7 +49,7 @@ fn semantics_block_present_in_json() {
 
 #[test]
 fn semantics_defaults_reflected() {
-    let (output, _code) = run_cli(&["eval-json", "1+1"]);
+    let (output, _code) = run_cli(&["eval", "1+1", "--format", "json"]);
     let wire = parse_wire(&output);
 
     let semantics = &wire["semantics"];
@@ -62,7 +62,14 @@ fn semantics_defaults_reflected() {
 
 #[test]
 fn value_domain_complex_reflected() {
-    let (output, _code) = run_cli(&["eval-json", "1+1", "--value-domain", "complex"]);
+    let (output, _code) = run_cli(&[
+        "eval",
+        "1+1",
+        "--format",
+        "json",
+        "--value-domain",
+        "complex",
+    ]);
     let wire = parse_wire(&output);
 
     assert_eq!(wire["semantics"]["value_domain"], "complex");
@@ -70,7 +77,7 @@ fn value_domain_complex_reflected() {
 
 #[test]
 fn inv_trig_principal_reflected() {
-    let (output, _code) = run_cli(&["eval-json", "1+1", "--inv-trig", "principal"]);
+    let (output, _code) = run_cli(&["eval", "1+1", "--format", "json", "--inv-trig", "principal"]);
     let wire = parse_wire(&output);
 
     assert_eq!(wire["semantics"]["inv_trig"], "principal");
@@ -78,7 +85,7 @@ fn inv_trig_principal_reflected() {
 
 #[test]
 fn domain_strict_with_semantics() {
-    let (output, _code) = run_cli(&["eval-json", "1+1", "--domain", "strict"]);
+    let (output, _code) = run_cli(&["eval", "1+1", "--format", "json", "--domain", "strict"]);
     let wire = parse_wire(&output);
 
     assert_eq!(wire["semantics"]["domain_mode"], "strict");
@@ -91,7 +98,7 @@ fn domain_strict_with_semantics() {
 
 #[test]
 fn assume_scope_default_reflected() {
-    let (output, _code) = run_cli(&["eval-json", "1+1"]);
+    let (output, _code) = run_cli(&["eval", "1+1", "--format", "json"]);
     let wire = parse_wire(&output);
 
     assert_eq!(
@@ -102,7 +109,14 @@ fn assume_scope_default_reflected() {
 
 #[test]
 fn assume_scope_wildcard_flag_reflected() {
-    let (output, _code) = run_cli(&["eval-json", "1+1", "--assume-scope", "wildcard"]);
+    let (output, _code) = run_cli(&[
+        "eval",
+        "1+1",
+        "--format",
+        "json",
+        "--assume-scope",
+        "wildcard",
+    ]);
     let wire = parse_wire(&output);
 
     assert_eq!(
@@ -115,10 +129,12 @@ fn assume_scope_wildcard_flag_reflected() {
 fn assume_scope_flag_does_not_change_result() {
     // Infrastructure-only: changing assume_scope should NOT change result
     // (behavior changes come in PR-SCOPE-3)
-    let (output1, _) = run_cli(&["eval-json", "x/x", "--domain", "generic"]);
+    let (output1, _) = run_cli(&["eval", "x/x", "--format", "json", "--domain", "generic"]);
     let (output2, _) = run_cli(&[
-        "eval-json",
+        "eval",
         "x/x",
+        "--format",
+        "json",
         "--domain",
         "generic",
         "--assume-scope",

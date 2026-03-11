@@ -12,7 +12,7 @@
 //! object CasNative {
 //!     init { System.loadLibrary("cas_android_ffi") }
 //!     external fun abiVersion(): Int
-//!     external fun evalJson(expr: String, optsJson: String): String
+//!     external fun evalWire(expr: String, optsJson: String): String
 //! }
 //! ```
 
@@ -24,7 +24,7 @@ use jni::JNIEnv;
 
 // Wire DTOs for stable FFI fallback responses
 use cas_api_models::{BudgetWireInfo, EngineWireError, EngineWireResponse};
-use cas_session::evaluate_eval_canonical;
+use cas_session::evaluate_eval_wire;
 
 // ============================================================================
 // JNI Entry Points
@@ -45,7 +45,7 @@ pub extern "system" fn Java_es_javiergimenez_explicas_CasNative_abiVersion(
     ABI_VERSION
 }
 
-/// JNI function: Java_es_javiergimenez_explicas_CasNative_evalJson
+/// JNI function: Java_es_javiergimenez_explicas_CasNative_evalWire
 ///
 /// # Arguments
 /// * `expr` - Expression string (e.g., "2+x^2/(sqrt(2)+3)")
@@ -54,9 +54,9 @@ pub extern "system" fn Java_es_javiergimenez_explicas_CasNative_abiVersion(
 /// # Returns
 /// JSON string with schema_version: 1
 ///
-/// Uses `cas_session::evaluate_eval_canonical` as the canonical entry point.
+/// Uses `cas_session::evaluate_eval_wire` as the direct wire entry point.
 #[no_mangle]
-pub extern "system" fn Java_es_javiergimenez_explicas_CasNative_evalJson<'local>(
+pub extern "system" fn Java_es_javiergimenez_explicas_CasNative_evalWire<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     expr: JString<'local>,
@@ -120,10 +120,10 @@ pub fn eval_core(env: &mut JNIEnv, expr: JString, opts_json: JString) -> String 
     };
 
     // 2. Use canonical eval function
-    evaluate_eval_canonical(&expr_str, &opts_str)
+    evaluate_eval_wire(&expr_str, &opts_str)
 }
 
-/// JNI function: Java_es_javiergimenez_explicas_CasNative_substituteJson
+/// JNI function: Java_es_javiergimenez_explicas_CasNative_substituteWire
 ///
 /// # Arguments
 /// * `expr` - Expression to substitute in
@@ -134,9 +134,9 @@ pub fn eval_core(env: &mut JNIEnv, expr: JString, opts_json: JString) -> String 
 /// # Returns
 /// JSON string with schema_version: 1
 ///
-/// Uses `cas_session::evaluate_substitute_canonical` which is the canonical entry point.
+/// Uses `cas_session::evaluate_substitute_wire` as the direct wire entry point.
 #[no_mangle]
-pub extern "system" fn Java_es_javiergimenez_explicas_CasNative_substituteJson<'local>(
+pub extern "system" fn Java_es_javiergimenez_explicas_CasNative_substituteWire<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     expr: JString<'local>,
@@ -197,7 +197,7 @@ pub fn substitute_core(
         Some(opts_str.as_str())
     };
 
-    cas_session::evaluate_substitute_canonical(&expr_str, &target_str, &with_str, opts)
+    cas_session::evaluate_substitute_wire(&expr_str, &target_str, &with_str, opts)
 }
 
 // ============================================================================
@@ -206,7 +206,7 @@ pub fn substitute_core(
 
 #[cfg(test)]
 mod tests {
-    use cas_session::evaluate_eval_canonical;
+    use cas_session::evaluate_eval_wire;
     use serde_json::Value;
 
     fn parse_wire(s: &str) -> Value {
@@ -215,7 +215,7 @@ mod tests {
 
     #[test]
     fn test_eval_success() {
-        let json = evaluate_eval_canonical("x + x", "{}");
+        let json = evaluate_eval_wire("x + x", "{}");
         let v = parse_wire(&json);
 
         assert_eq!(v["schema_version"], 1);
@@ -226,7 +226,7 @@ mod tests {
 
     #[test]
     fn test_eval_parse_error() {
-        let json = evaluate_eval_canonical("(", "{}");
+        let json = evaluate_eval_wire("(", "{}");
         let v = parse_wire(&json);
 
         assert_eq!(v["schema_version"], 1);
@@ -237,7 +237,7 @@ mod tests {
 
     #[test]
     fn test_eval_invalid_opts() {
-        let json = evaluate_eval_canonical("x+1", "{invalid");
+        let json = evaluate_eval_wire("x+1", "{invalid");
         let v = parse_wire(&json);
 
         assert_eq!(v["schema_version"], 1);
@@ -250,7 +250,7 @@ mod tests {
     #[test]
     fn test_opts_defaults() {
         // Empty opts should use defaults
-        let json = evaluate_eval_canonical("2+2", "{}");
+        let json = evaluate_eval_wire("2+2", "{}");
         let v = parse_wire(&json);
 
         assert_eq!(v["ok"], true);
@@ -260,8 +260,7 @@ mod tests {
 
     #[test]
     fn test_opts_custom() {
-        let json =
-            evaluate_eval_canonical("2+2", r#"{"budget":{"preset":"small","mode":"strict"}}"#);
+        let json = evaluate_eval_wire("2+2", r#"{"budget":{"preset":"small","mode":"strict"}}"#);
         let v = parse_wire(&json);
 
         assert_eq!(v["ok"], true);
@@ -272,7 +271,7 @@ mod tests {
     #[test]
     fn test_no_hold_leak() {
         // Expression that might internally use __hold
-        let json = evaluate_eval_canonical("(x+1)^2 - (x+1)^2", "{}");
+        let json = evaluate_eval_wire("(x+1)^2 - (x+1)^2", "{}");
         let v = parse_wire(&json);
 
         if let Some(result) = v["result"].as_str() {
@@ -286,7 +285,7 @@ mod tests {
 
     #[test]
     fn test_steps_mode() {
-        let json = evaluate_eval_canonical("x + x", r#"{"steps":true}"#);
+        let json = evaluate_eval_wire("x + x", r#"{"steps":true}"#);
         let v = parse_wire(&json);
 
         assert_eq!(v["ok"], true);

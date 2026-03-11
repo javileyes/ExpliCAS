@@ -15,7 +15,7 @@ fn cli() -> Command {
     Command::new(cargo::cargo_bin!("cas_cli"))
 }
 
-/// Test that help output shows expected commands (eval, repl) and hides aliases (eval-json).
+/// Test that help output shows the supported public commands.
 #[test]
 fn test_help_shows_correct_commands() {
     cli()
@@ -23,10 +23,9 @@ fn test_help_shows_correct_commands() {
         .assert()
         .success()
         .stdout(predicate::str::contains("eval"))
+        .stdout(predicate::str::contains("envelope"))
         .stdout(predicate::str::contains("repl"))
-        .stdout(predicate::str::contains("help"))
-        // eval-json should be hidden (not shown in help)
-        .stdout(predicate::str::contains("eval-json").not());
+        .stdout(predicate::str::contains("help"));
 }
 
 /// Test that eval command help shows budget options.
@@ -64,11 +63,11 @@ fn test_eval_wire_output_has_schema_version() {
     assert_eq!(wire["budget"]["mode"], "best-effort");
 }
 
-/// Test that the hidden eval-json alias still emits the same wire output.
+/// Test that eval can emit the stable wire output directly.
 #[test]
-fn test_eval_json_alias_emits_wire_output() {
+fn test_eval_emits_wire_output() {
     let output = cli()
-        .args(["eval-json", "2+2"])
+        .args(["eval", "2+2", "--format", "json"])
         .output()
         .expect("Failed to run CLI");
 

@@ -2,8 +2,8 @@
 
 ## Overview
 
-This document specifies the JSON API contract for `CasNative.evalJson()`.  
-Both CLI (`expli eval-json`) and FFI return this exact same schema.
+This document specifies the JSON API contract for `CasNative.evalWire()`.  
+Both CLI (`expli eval --format json`) and FFI return this exact same schema.
 
 **Schema Version**: `1` (stable)  
 **ABI Version**: `2`
@@ -15,7 +15,7 @@ Both CLI (`expli eval-json`) and FFI return this exact same schema.
 ### Function Signature
 
 ```kotlin
-external fun evalJson(expr: String, optsJson: String): String
+external fun evalWire(expr: String, optsJson: String): String
 ```
 
 ### Options JSON
@@ -372,7 +372,7 @@ if (resp.ok && resp.budget.exceeded != null) {
 ### Minimal (uses all defaults)
 
 ```kotlin
-CasNative.evalJson("x + x", "{}")
+CasNative.evalWire("x + x", "{}")
 // preset="cli", mode="best-effort", steps=false, pretty=false
 ```
 
@@ -421,12 +421,12 @@ class CasException(val error: EngineError) : Exception("${error.kind} (${error.c
 ```kotlin
 // Option A: Coroutine
 withContext(Dispatchers.Default) {
-    CasNative.evalJson(expr, opts)
+    CasNative.evalWire(expr, opts)
 }
 
 // Option B: Executor
 Executors.newSingleThreadExecutor().submit {
-    CasNative.evalJson(expr, opts)
+    CasNative.evalWire(expr, opts)
 }
 ```
 
@@ -473,7 +473,7 @@ Evaluate an expression within a session context.
 }
 ```
 
-**Response**: Same as CLI `eval-json`, plus:
+**Response**: Same as CLI `eval --format json`, plus:
 
 | Extra Field | Type | Description |
 |-------------|------|-------------|

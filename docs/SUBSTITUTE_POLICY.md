@@ -132,7 +132,7 @@ This is the solver-level compatibility API.
 ### Canonical App/Frontend Entry Point
 
 ```rust
-pub fn evaluate_substitute_canonical(
+pub fn evaluate_substitute_wire(
     expr: &str,
     target: &str,
     replacement: &str,
@@ -142,7 +142,7 @@ pub fn evaluate_substitute_canonical(
 
 Defined in `crates/cas_session/src/solver_exports/session_support.rs`.
 
-CLI/FFI/Android should call the **session-level canonical bridge** (`cas_session`) rather than
+CLI/FFI/Android should call the **session-level wire entrypoint** (`cas_session`) rather than
 calling solver JSON adapters directly.
 
 ### Options

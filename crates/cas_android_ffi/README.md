@@ -44,7 +44,7 @@ object CasNative {
     }
     
     external fun abiVersion(): Int
-    external fun evalJson(expr: String, optsJson: String): String
+    external fun evalWire(expr: String, optsJson: String): String
 }
 ```
 
@@ -53,7 +53,7 @@ object CasNative {
 | Function | Parameters | Returns |
 |----------|------------|---------|
 | `abiVersion()` | none | `Int` (currently 1) |
-| `evalJson(expr, optsJson)` | expression, options JSON | JSON response |
+| `evalWire(expr, optsJson)` | expression, options JSON | JSON response |
 
 ### Options JSON
 
@@ -161,7 +161,7 @@ import org.json.JSONObject
 
 fun evalAndExtractResult(expr: String): String {
     val opts = """{"budget":{"preset":"cli","mode":"best-effort"}}"""
-    val json = CasNative.evalJson(expr, opts)
+    val json = CasNative.evalWire(expr, opts)
     
     val obj = JSONObject(json)
     

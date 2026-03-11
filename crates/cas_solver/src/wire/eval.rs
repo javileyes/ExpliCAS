@@ -13,9 +13,9 @@ mod success;
 
 /// Evaluate an expression and return wire response.
 ///
-/// This is the **solver-level canonical entry point** for wire-returning
+/// This is the **solver-level direct entry point** for wire-returning
 /// stateless evaluation. Frontends should normally go through
-/// `cas_session::evaluate_eval_canonical`.
+/// `cas_session::evaluate_eval_wire`.
 ///
 /// # Arguments
 /// * `expr` - Expression string to evaluate

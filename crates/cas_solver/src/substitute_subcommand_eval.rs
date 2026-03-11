@@ -1,7 +1,7 @@
 use crate::substitute_subcommand_text::parse_substitute_wire_text_lines;
 use crate::substitute_subcommand_types::{SubstituteCommandMode, SubstituteSubcommandOutput};
 use crate::substitute_subcommand_wire::{
-    evaluate_substitute_subcommand_wire_canonical, substitute_command_mode_str,
+    evaluate_substitute_subcommand_wire, substitute_command_mode_str,
 };
 
 /// Evaluate substitute subcommand and map canonical wire/text contracts to CLI output.
@@ -14,13 +14,8 @@ pub fn evaluate_substitute_subcommand(
     wire_output: bool,
 ) -> Result<SubstituteSubcommandOutput, String> {
     if wire_output {
-        let out = evaluate_substitute_subcommand_wire_canonical(
-            expr,
-            target,
-            replacement,
-            mode,
-            steps_enabled,
-        );
+        let out =
+            evaluate_substitute_subcommand_wire(expr, target, replacement, mode, steps_enabled);
         return Ok(SubstituteSubcommandOutput::Wire(out));
     }
 

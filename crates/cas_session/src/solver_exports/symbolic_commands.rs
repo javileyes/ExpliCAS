@@ -28,9 +28,7 @@ pub use cas_solver::{
     format_substitute_eval_lines, format_substitute_parse_error_message,
     substitute_render_mode_from_display_mode,
 };
-pub use cas_solver::{
-    evaluate_substitute_subcommand, evaluate_substitute_subcommand_wire_canonical,
-};
+pub use cas_solver::{evaluate_substitute_subcommand, evaluate_substitute_subcommand_wire};
 pub use cas_solver::{
     evaluate_unary_command_lines, evaluate_unary_command_message,
     evaluate_unary_function_command_lines,

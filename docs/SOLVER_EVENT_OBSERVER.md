@@ -15,7 +15,7 @@ equation-aware event spine for `solve`, similar in spirit to the existing
 
 The current event system already works well for expression-oriented flows:
 
-- `eval-json`
+- `eval --format json`
 - `timeline_simplify`
 - `full_simplify`
 

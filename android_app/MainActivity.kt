@@ -121,7 +121,7 @@ class MainActivity : AppCompatActivity() {
      */
     private fun evalAndParse(expr: String, preset: String, mode: String, steps: Boolean): EvalResult {
         val optsJson = """{"budget":{"preset":"$preset","mode":"$mode"},"steps":$steps}"""
-        val json = CasNative.evalJson(expr, optsJson)
+        val json = CasNative.evalWire(expr, optsJson)
         val obj = JSONObject(json)
 
         val schemaVersion = obj.optInt("schema_version", 0)

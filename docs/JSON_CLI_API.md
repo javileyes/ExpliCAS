@@ -1,25 +1,25 @@
-# JSON CLI API
+# Wire CLI API
 
-The `cas_cli` supports a non-interactive JSON output mode for scripting, testing, and notebook integration (e.g., Google Colab). This API allows programmatic access to the CAS engine without flooding terminal output.
+The `cas_cli` supports a non-interactive wire/JSON output mode for scripting, testing, and notebook integration (e.g., Google Colab). This API allows programmatic access to the CAS engine without flooding terminal output.
 
 ## Quick Start
 
 ```bash
 # Evaluate an expression
-cas_cli eval-json "x^2 + 1"
+cas_cli eval "x^2 + 1" --format json
 
 # With options
-cas_cli eval-json "expand((x+1)^5)" --max-chars 500 --steps off
+cas_cli eval "expand((x+1)^5)" --format json --max-chars 500 --steps off
 ```
 
 ## Subcommands
 
-### `eval-json`
+### `eval --format json`
 
-Evaluates a single expression and returns structured JSON output.
+Evaluates a single expression and returns structured wire/JSON output.
 
 ```bash
-cas_cli eval-json <EXPR> [OPTIONS]
+cas_cli eval <EXPR> --format json [OPTIONS]
 ```
 
 **Arguments:**
@@ -41,16 +41,16 @@ cas_cli eval-json <EXPR> [OPTIONS]
 
 ```bash
 # Simple evaluation
-cas_cli eval-json "sin(pi/4)"
+cas_cli eval "sin(pi/4)" --format json
 
 # Polynomial GCD
-cas_cli eval-json "poly_gcd_exact(x^2-1, x^2-2*x+1)"
+cas_cli eval "poly_gcd_exact(x^2-1, x^2-2*x+1)" --format json
 
 # Expansion with truncation for large results
-cas_cli eval-json "expand((x+1)^10)" --max-chars 200
+cas_cli eval "expand((x+1)^10)" --format json --max-chars 200
 
 # With specific options
-cas_cli eval-json "atan(tan(x))" --branch principal --steps on
+cas_cli eval "atan(tan(x))" --format json --branch principal --steps on
 ```
 
 ## JSON Output Format
@@ -140,7 +140,7 @@ import subprocess
 
 # Simple evaluation
 def eval_expr(expr, **options):
-    cmd = ["./cas_cli", "eval-json", expr]
+    cmd = ["./cas_cli", "eval", expr, "--format", "json"]
     for k, v in options.items():
         cmd.extend([f"--{k.replace('_', '-')}", str(v)])
     result = subprocess.check_output(cmd, text=True)
@@ -171,7 +171,7 @@ The `--max-chars` option prevents terminal flooding for large expressions:
 
 ```bash
 # Large polynomial - safely truncated
-cas_cli eval-json "expand((x+1)^15)" --max-chars 100
+cas_cli eval "expand((x+1)^15)" --format json --max-chars 100
 ```
 
 ```json
@@ -189,10 +189,10 @@ For reproducible benchmarks or resource-constrained environments:
 
 ```bash
 # Single-threaded execution
-cas_cli eval-json "poly_gcd_exact(a, b)" --threads 1
+cas_cli eval "poly_gcd_exact(a, b)" --format json --threads 1
 
 # Limit to 4 threads
-cas_cli eval-json "expand((x+1)^10)" --threads 4
+cas_cli eval "expand((x+1)^10)" --format json --threads 4
 ```
 
 ## Backward Compatibility
@@ -204,19 +204,19 @@ The JSON API is additive - the interactive REPL continues to work as before:
 cas_cli
 cas_cli --no-pretty
 
-# JSON mode (explicit subcommand)
-cas_cli eval-json "..."
+# Wire mode (same eval command, explicit format)
+cas_cli eval "..." --format json
 ```
 
 ## Future Subcommands
 
 Planned additions:
 
-- **`script-json`**: Execute multi-line scripts from stdin
-- **`mm-gcd-modp-json`**: Run mm_gcd benchmark with JSON output
+- **`script` wire mode**: Execute multi-line scripts from stdin
+- **`mm-gcd-modp` wire mode**: Run mm_gcd benchmark with JSON output
 
 ## Files
 
-- `crates/cas_cli/src/commands/eval_wire.rs` - eval-json wire bridge implementation
+- `crates/cas_cli/src/commands/eval.rs` - eval command + wire-output path
 - `crates/cas_api_models/src/wire_types.rs` - wire output structures
 - `crates/cas_cli/src/format.rs` - Truncation and stats utilities

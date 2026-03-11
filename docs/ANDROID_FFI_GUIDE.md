@@ -157,7 +157,7 @@ object CasNative {
     external fun abiVersion(): Int
 
     /** Evalúa expresión y devuelve JSON */
-    external fun evalJson(expr: String, optsJson: String): String
+    external fun evalWire(expr: String, optsJson: String): String
 }
 ```
 
@@ -171,7 +171,7 @@ import org.json.JSONObject
 suspend fun evaluate(expr: String): String {
     return withContext(Dispatchers.Default) {
         val opts = """{"budget":{"preset":"cli","mode":"best-effort"}}"""
-        val json = CasNative.evalJson(expr, opts)
+        val json = CasNative.evalWire(expr, opts)
         
         val obj = JSONObject(json)
         if (obj.optBoolean("ok", true)) {
@@ -239,7 +239,7 @@ fun parseResponse(json: String): EvalResponse {
 | Función | Signature | Descripción |
 |---------|-----------|-------------|
 | `abiVersion` | `() -> Int` | Devuelve versión ABI (actualmente 1) |
-| `evalJson` | `(expr, opts) -> String` | Evalúa expresión, devuelve JSON |
+| `evalWire` | `(expr, opts) -> String` | Evalúa expresión, devuelve JSON |
 
 ### Options JSON
 
@@ -326,18 +326,18 @@ Los nombres de las funciones JNI deben coincidir exactamente con el package:
 
 ```
 Package: es.javiergimenez.explicas
-Función Rust: Java_es_javiergimenez_explicas_CasNative_evalJson
+Función Rust: Java_es_javiergimenez_explicas_CasNative_evalWire
 ```
 
 Si cambias el package, regenera el `.so` con los nombres correctos.
 
 ### App se congela al evaluar
 
-Asegúrate de llamar a `evalJson` fuera del hilo UI:
+Asegúrate de llamar a `evalWire` fuera del hilo UI:
 
 ```kotlin
 lifecycleScope.launch(Dispatchers.Default) {  // ← Background thread
-    val result = CasNative.evalJson(expr, opts)
+    val result = CasNative.evalWire(expr, opts)
     withContext(Dispatchers.Main) {  // ← Volver a UI
         textView.text = result
     }

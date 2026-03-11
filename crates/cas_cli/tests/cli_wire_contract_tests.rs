@@ -35,7 +35,7 @@ fn parse_wire(s: &str) -> Value {
 #[test]
 #[ignore = "Uses cargo run internally, causing lock contention in CI"]
 fn test_eval_wire_success() {
-    let (output, _code) = run_cli(&["eval-json", "2+2"]);
+    let (output, _code) = run_cli(&["eval", "2+2", "--format", "json"]);
     let wire = parse_wire(&output);
 
     assert_eq!(wire["schema_version"], 1);
@@ -46,7 +46,7 @@ fn test_eval_wire_success() {
 #[test]
 #[ignore = "Uses cargo run internally, causing lock contention in CI"]
 fn test_eval_wire_success_has_budget() {
-    let (output, _code) = run_cli(&["eval-json", "x+x"]);
+    let (output, _code) = run_cli(&["eval", "x+x", "--format", "json"]);
     let wire = parse_wire(&output);
 
     assert!(wire["budget"].is_object(), "Should have budget object");
@@ -61,7 +61,7 @@ fn test_eval_wire_success_has_budget() {
 #[test]
 #[ignore = "Uses cargo run internally, causing lock contention in CI"]
 fn test_eval_wire_parse_error_has_kind_code() {
-    let (output, _code) = run_cli(&["eval-json", "("]);
+    let (output, _code) = run_cli(&["eval", "(", "--format", "json"]);
     let wire = parse_wire(&output);
 
     assert_eq!(wire["ok"], false);
@@ -74,7 +74,7 @@ fn test_eval_wire_parse_error_has_kind_code() {
 #[ignore = "Uses cargo run internally, causing lock contention in CI"]
 fn test_eval_wire_error_kind_in_known_set() {
     // Parse error
-    let (output, _code) = run_cli(&["eval-json", "((("]);
+    let (output, _code) = run_cli(&["eval", "(((", "--format", "json"]);
     let wire = parse_wire(&output);
 
     let valid_kinds = [
@@ -99,7 +99,7 @@ fn test_eval_wire_error_kind_in_known_set() {
 #[test]
 #[ignore = "Uses cargo run internally, causing lock contention in CI"]
 fn test_eval_wire_error_code_starts_with_e() {
-    let (output, _code) = run_cli(&["eval-json", "((("]);
+    let (output, _code) = run_cli(&["eval", "(((", "--format", "json"]);
     let wire = parse_wire(&output);
 
     if !wire["ok"].as_bool().unwrap_or(true) {
@@ -120,7 +120,7 @@ fn test_eval_wire_error_code_starts_with_e() {
 #[ignore = "Uses cargo run internally, causing lock contention in CI"]
 fn test_eval_wire_no_hold_in_result() {
     // Complex expression that might internally use __hold
-    let (output, _code) = run_cli(&["eval-json", "(x+1)^2 - (x+1)^2"]);
+    let (output, _code) = run_cli(&["eval", "(x+1)^2 - (x+1)^2", "--format", "json"]);
     let wire = parse_wire(&output);
 
     if let Some(result) = wire["result"].as_str() {
@@ -135,7 +135,7 @@ fn test_eval_wire_no_hold_in_result() {
 #[test]
 #[ignore = "Uses cargo run internally, causing lock contention in CI"]
 fn test_eval_wire_no_hold_in_error() {
-    let (output, _code) = run_cli(&["eval-json", "((("]);
+    let (output, _code) = run_cli(&["eval", "(((", "--format", "json"]);
     let wire = parse_wire(&output);
 
     if let Some(error) = wire["error"].as_str() {
@@ -154,7 +154,7 @@ fn test_eval_wire_no_hold_in_error() {
 #[test]
 #[ignore = "Uses cargo run internally, causing lock contention in CI"]
 fn test_eval_wire_schema_version_is_1() {
-    let (output, _code) = run_cli(&["eval-json", "1+1"]);
+    let (output, _code) = run_cli(&["eval", "1+1", "--format", "json"]);
     let wire = parse_wire(&output);
 
     assert_eq!(wire["schema_version"], 1, "Schema version must be 1");
@@ -168,7 +168,7 @@ fn test_eval_wire_schema_version_is_1() {
 #[test]
 #[ignore = "Uses cargo run internally, causing lock contention in CI"]
 fn test_ffi_mock_required_conditions_schema() {
-    let (output, _code) = run_cli(&["eval-json", "sqrt(x)^2"]);
+    let (output, _code) = run_cli(&["eval", "sqrt(x)^2", "--format", "json"]);
     let wire = parse_wire(&output);
 
     // 1. schema_version present
@@ -216,7 +216,7 @@ fn test_ffi_mock_required_conditions_schema() {
 #[test]
 #[ignore = "Uses cargo run internally, causing lock contention in CI"]
 fn test_ffi_mock_domain_requirements_are_preserved() {
-    let (output, _code) = run_cli(&["eval-json", "(x-y)/(sqrt(x)-sqrt(y))"]);
+    let (output, _code) = run_cli(&["eval", "(x-y)/(sqrt(x)-sqrt(y))", "--format", "json"]);
     let wire = parse_wire(&output);
 
     // Current contract: rationalization surfaces denominator/nonnegative requirements.
@@ -246,7 +246,7 @@ fn test_ffi_mock_domain_requirements_are_preserved() {
 #[test]
 #[ignore = "Uses cargo run internally, causing lock contention in CI"]
 fn test_envelope_wire_v1_structure() {
-    let (output, _code) = run_cli(&["envelope-json", "sqrt(x)^2"]);
+    let (output, _code) = run_cli(&["envelope", "sqrt(x)^2"]);
     let wire = parse_wire(&output);
 
     // Root envelope fields
@@ -265,7 +265,7 @@ fn test_envelope_wire_v1_structure() {
 #[test]
 #[ignore = "Uses cargo run internally, causing lock contention in CI"]
 fn test_envelope_wire_result_eval() {
-    let (output, _code) = run_cli(&["envelope-json", "2+2"]);
+    let (output, _code) = run_cli(&["envelope", "2+2"]);
     let wire = parse_wire(&output);
 
     assert_eq!(
@@ -290,7 +290,7 @@ fn test_envelope_wire_result_eval() {
 #[test]
 #[ignore = "Uses cargo run internally, causing lock contention in CI"]
 fn test_envelope_wire_transparency_requires() {
-    let (output, _code) = run_cli(&["envelope-json", "sqrt(x)^2"]);
+    let (output, _code) = run_cli(&["envelope", "sqrt(x)^2"]);
     let wire = parse_wire(&output);
 
     let transparency = &wire["transparency"];
@@ -313,7 +313,7 @@ fn test_envelope_wire_transparency_requires() {
 #[test]
 #[ignore = "Uses cargo run internally, causing lock contention in CI"]
 fn test_envelope_wire_transparency_preserves_domain_requirements() {
-    let (output, _code) = run_cli(&["envelope-json", "(x-y)/(sqrt(x)-sqrt(y))"]);
+    let (output, _code) = run_cli(&["envelope", "(x-y)/(sqrt(x)-sqrt(y))"]);
     let wire = parse_wire(&output);
 
     let transparency = &wire["transparency"];

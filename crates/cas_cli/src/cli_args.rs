@@ -12,6 +12,7 @@ use clap::{Parser, Subcommand, ValueEnum};
     expli eval \"x^2 + 1\"                    Evaluate expression (text output)
     expli eval \"x^2 + 1\" --format json      Evaluate expression (JSON output)
     expli eval \"expand((x+1)^5)\" --budget small --format json
+    expli envelope \"x/x\" --domain generic   Evaluate and return OutputEnvelope V1
     expli limit \"(x^2+1)/(2*x^2-3)\" --var x --to infinity  Compute limit")]
 pub struct Cli {
     /// Use ASCII output (*, ^) instead of Unicode (·, ²)
@@ -27,13 +28,8 @@ pub enum Command {
     /// Evaluate an expression
     Eval(EvalArgs),
 
-    /// Evaluate an expression and return JSON output (alias for: eval --format json)
-    #[command(name = "eval-json", hide = true)]
-    EvalWire(EvalWireLegacyArgs),
-
     /// Evaluate and return stable OutputEnvelope V1 (for Android/FFI)
-    #[command(name = "envelope-json")]
-    EnvelopeWire(crate::commands::envelope_wire::EnvelopeWireArgs),
+    Envelope(crate::commands::envelope::EnvelopeArgs),
 
     /// Compute the limit of an expression
     Limit(LimitArgs),
@@ -235,7 +231,7 @@ pub struct EvalArgs {
     #[arg(long, default_value_t = false)]
     pub strict: bool,
 
-    /// Maximum characters in result output (JSON only, truncates if larger)
+    /// Maximum characters in result output (wire output only, truncates if larger)
     #[arg(long, default_value_t = 2000)]
     pub max_chars: usize,
 
@@ -291,50 +287,4 @@ pub struct EvalArgs {
     /// Enables `#N` references to work across multiple eval calls.
     #[arg(long)]
     pub session: Option<std::path::PathBuf>,
-}
-
-/// Legacy eval-json arguments (hidden, for backward compatibility).
-#[derive(clap::Args, Debug)]
-pub struct EvalWireLegacyArgs {
-    /// Expression to evaluate
-    pub expr: String,
-
-    #[arg(long, default_value_t = 2000)]
-    pub max_chars: usize,
-
-    #[arg(long, default_value = "off")]
-    pub steps: String,
-
-    #[arg(long, default_value = "auto")]
-    pub context: String,
-
-    #[arg(long, default_value = "strict")]
-    pub branch: String,
-
-    #[arg(long, default_value = "auto")]
-    pub complex: String,
-
-    #[arg(long, default_value = "off")]
-    pub autoexpand: String,
-
-    #[arg(long)]
-    pub threads: Option<usize>,
-
-    #[arg(long, value_enum, default_value_t = DomainArg::Generic)]
-    pub domain: DomainArg,
-
-    #[arg(long, value_enum, default_value_t = ValueDomainArg::Real)]
-    pub value_domain: ValueDomainArg,
-
-    #[arg(long, value_enum, default_value_t = InvTrigArg::Strict)]
-    pub inv_trig: InvTrigArg,
-
-    #[arg(long, value_enum, default_value_t = BranchArg::Principal)]
-    pub branch_policy: BranchArg,
-
-    #[arg(long, value_enum, default_value_t = ConstFoldArg::Off)]
-    pub const_fold: ConstFoldArg,
-
-    #[arg(long, value_enum, default_value_t = AssumeScopeArg::Real)]
-    pub assume_scope: AssumeScopeArg,
 }

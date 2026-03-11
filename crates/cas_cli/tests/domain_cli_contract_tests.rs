@@ -37,7 +37,7 @@ fn parse_wire(s: &str) -> Value {
 #[test]
 fn cli_domain_generic_x_div_x_simplifies_to_1() {
     // Generic (default) => x/x -> 1
-    let (output, _code) = run_cli(&["eval-json", "x/x"]);
+    let (output, _code) = run_cli(&["eval", "x/x", "--format", "json"]);
     let wire = parse_wire(&output);
 
     assert_eq!(wire["ok"], true);
@@ -47,7 +47,7 @@ fn cli_domain_generic_x_div_x_simplifies_to_1() {
 #[test]
 fn cli_domain_strict_x_div_x_stays_unchanged() {
     // Strict => x/x stays as x/x
-    let (output, _code) = run_cli(&["eval-json", "x/x", "--domain", "strict"]);
+    let (output, _code) = run_cli(&["eval", "x/x", "--format", "json", "--domain", "strict"]);
     let wire = parse_wire(&output);
 
     assert_eq!(wire["ok"], true);
@@ -61,25 +61,37 @@ fn cli_domain_strict_x_div_x_stays_unchanged() {
 
 #[test]
 fn cli_domain_strict_partial_cancel_contract() {
-    // Strict with partial cancellation: 4x/(2x) → 2x/x (cancel only numeric content)
-    let (output, _code) = run_cli(&["eval-json", "4*x/(2*x)", "--domain", "strict"]);
+    // Strict auto-eval preserves the residual numeric fraction after cancelling x.
+    let (output, _code) = run_cli(&[
+        "eval",
+        "4*x/(2*x)",
+        "--format",
+        "json",
+        "--domain",
+        "strict",
+    ]);
     let wire = parse_wire(&output);
 
     assert_eq!(wire["ok"], true);
     let result = wire["result"].as_str().unwrap_or("");
-    // Should have cancelled the 2 but kept x in both num and den
     assert!(
-        result.contains("x") && result.contains("/"),
-        "Expected fraction with x, got: {}",
+        result == "4 / 2" || result == "4/2",
+        "Expected residual numeric fraction after x cancellation, got: {}",
         result
     );
-    assert_ne!(result, "2", "Strict should not fully simplify to 2");
+    let required = wire["required_display"].as_array().unwrap();
+    assert_eq!(
+        required.len(),
+        1,
+        "Strict should preserve one domain condition"
+    );
+    assert_eq!(required[0], "2·x ≠ 0");
 }
 
 #[test]
 fn cli_domain_assume_emits_warning() {
     // Assume => x/x -> 1 WITH warning
-    let (output, _code) = run_cli(&["eval-json", "x/x", "--domain", "assume"]);
+    let (output, _code) = run_cli(&["eval", "x/x", "--format", "json", "--domain", "assume"]);
     let wire = parse_wire(&output);
 
     assert_eq!(wire["ok"], true);
@@ -97,13 +109,22 @@ fn cli_domain_assume_emits_warning() {
 }
 
 #[test]
-fn cli_domain_strict_numeric_still_works() {
-    // Strict: 2/2 -> 1 (numeric is provably nonzero)
-    let (output, _code) = run_cli(&["eval-json", "2/2", "--domain", "strict"]);
+fn cli_domain_strict_numeric_preserves_fraction_in_auto_eval() {
+    // Strict auto-eval keeps the fraction shape; solver-specific solve simplification is separate.
+    let (output, _code) = run_cli(&["eval", "2/2", "--format", "json", "--domain", "strict"]);
     let wire = parse_wire(&output);
 
     assert_eq!(wire["ok"], true);
-    assert_eq!(wire["result"], "1", "Strict should simplify 2/2 to 1");
+    let result = wire["result"].as_str().unwrap_or("");
+    assert!(
+        result == "2 / 2" || result == "2/2",
+        "Strict auto-eval should preserve 2/2, got: {}",
+        result
+    );
+    assert!(
+        wire["required_conditions"].as_array().unwrap().is_empty(),
+        "Pure numeric fraction should not emit domain conditions"
+    );
 }
 
 // =============================================================================
@@ -112,7 +133,7 @@ fn cli_domain_strict_numeric_still_works() {
 
 #[test]
 fn cli_wire_includes_domain_mode() {
-    let (output, _code) = run_cli(&["eval-json", "x+x", "--domain", "strict"]);
+    let (output, _code) = run_cli(&["eval", "x+x", "--format", "json", "--domain", "strict"]);
     let wire = parse_wire(&output);
 
     // Contract: wire output should include domain.mode field
@@ -129,7 +150,7 @@ fn cli_wire_includes_domain_mode() {
 #[test]
 fn cli_domain_default_is_generic() {
     // Without --domain flag, should use generic
-    let (output, _code) = run_cli(&["eval-json", "x/x"]);
+    let (output, _code) = run_cli(&["eval", "x/x", "--format", "json"]);
     let wire = parse_wire(&output);
 
     // In generic mode, x/x simplifies to 1

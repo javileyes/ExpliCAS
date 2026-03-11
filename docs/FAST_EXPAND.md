@@ -64,11 +64,11 @@ This allows `expand()` results to work seamlessly with other operations.
 
 ```bash
 # Fast multinomial expansion
-cargo run -p cas_cli --release -- eval-json "expand((1+x)^10)"
+cargo run -p cas_cli --release -- eval "expand((1+x)^10)" --format json
 # → 1 + x^10 + 10·x + 10·x^9 + 45·x^2 + 45·x^8 + 120·x^3 + 120·x^7 + 210·x^4 + 210·x^6 + 252·x^5
 
 # Exceeds budget (exp=20 > max_exp=12), falls back to no expansion
-cargo run -p cas_cli --release -- eval-json "expand((x+1)^20)"
+cargo run -p cas_cli --release -- eval "expand((x+1)^20)" --format json
 # → (1 + x)^20
 ```
 

@@ -8,7 +8,7 @@ package es.javiergimenez.explicas
  *
  * Usage:
  * ```kotlin
- * val result = CasNative.evalJson("x^2+1", """{"budget":{"preset":"cli"}}""")
+ * val result = CasNative.evalWire("x^2+1", """{"budget":{"preset":"cli"}}""")
  * val version = CasNative.abiVersion()
  * ```
  */
@@ -72,5 +72,5 @@ object CasNative {
      *
      * See docs/JSON_API_SPEC.md for full schema.
      */
-    external fun evalJson(expr: String, optsJson: String): String
+    external fun evalWire(expr: String, optsJson: String): String
 }
