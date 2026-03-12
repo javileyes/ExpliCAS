@@ -1183,6 +1183,10 @@ It is either:
   `Category`, `HealthCase`, `HealthLimits`, and `HealthCaseResult` directly
   from `cas_solver_core::{health_category, health_suite_models}` instead of a
   local pass-through wrapper tree.
+- `cas_solver/src/exports_base/settings/*` has also been folded into
+  [`exports_base/settings.rs`](/Users/javiergimenezmoya/developer/math/crates/cas_solver/src/exports_base/settings.rs),
+  so the internal root no longer bounces `semantics`, `show`, `set_command`,
+  `steps`, and `simplifier` through another layer of tiny wrapper modules.
 - dead passthrough wrappers in `exports_base/solver_core/` (`domain.rs`,
   `solve.rs`) have been removed; those items are now owned only by
   `cas_solver::api` / `cas_solver_core`, without orphan compatibility files.
