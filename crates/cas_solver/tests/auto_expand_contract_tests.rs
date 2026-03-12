@@ -12,9 +12,7 @@
 
 use cas_ast::{Context, Expr};
 use cas_parser::parse;
-use cas_solver::runtime::Simplifier;
-use cas_solver::ContextMode;
-use cas_solver::{ExpandPolicy, SimplifyOptions};
+use cas_solver::runtime::{ContextMode, ExpandPolicy, HeuristicPoly, Simplifier, SimplifyOptions};
 
 /// Helper to simplify an expression with given options
 fn simplify_with_opts(input: &str, opts: &SimplifyOptions) -> String {
@@ -47,7 +45,6 @@ fn simplify_auto(input: &str) -> String {
 
 /// Helper for Solve mode with auto-expand enabled (should still block)
 fn simplify_solve_with_auto(input: &str) -> String {
-    use cas_solver::HeuristicPoly;
     let mut opts = SimplifyOptions::default();
     opts.shared.expand_policy = ExpandPolicy::Auto;
     opts.shared.context_mode = ContextMode::Solve;

@@ -1,4 +1,4 @@
-use crate::ReplCore;
+use crate::repl_core::ReplCore;
 
 impl ReplCore {
     /// Clear engine profile cache.

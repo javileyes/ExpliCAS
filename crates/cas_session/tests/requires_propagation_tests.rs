@@ -6,7 +6,7 @@
 //! 3. Combined expressions inherit requires from all sub-expressions
 
 use cas_ast::Expr;
-use cas_session::SessionState;
+use cas_session::state_api::SessionState;
 use cas_solver::runtime::Engine;
 use cas_solver::runtime::{EvalAction, EvalRequest};
 
@@ -25,7 +25,7 @@ fn make_simplify_request(engine: &mut Engine, expr_str: &str) -> EvalRequest {
 /// Test: sqrt(x) produces x ≥ 0, and this propagates when reused
 #[test]
 fn requires_propagate_on_sqrt_reuse() {
-    use cas_solver::ImplicitCondition;
+    use cas_solver::api::ImplicitCondition;
 
     let mut engine = Engine::new();
     let mut state = SessionState::default();
@@ -33,7 +33,7 @@ fn requires_propagate_on_sqrt_reuse() {
     // Step 1: Evaluate sqrt(x) -> stored as #1
     let req1 = make_simplify_request(&mut engine, "sqrt(x)");
     let output1 = engine.eval(&mut state, req1).expect("eval should succeed");
-    let required1 = cas_solver::required_conditions_from_eval_output(&output1);
+    let required1 = cas_solver::runtime::required_conditions_from_eval_output(&output1);
 
     // Verify sqrt(x) has x ≥ 0 in requires
     let has_x_nonneg = required1.iter().any(|c| {
@@ -55,7 +55,7 @@ fn requires_propagate_on_sqrt_reuse() {
     // Parse "#1 + 4" which will resolve #1 -> sqrt(x)
     let req2 = make_simplify_request(&mut engine, "#1 + 4");
     let output2 = engine.eval(&mut state, req2).expect("eval should succeed");
-    let required2 = cas_solver::required_conditions_from_eval_output(&output2);
+    let required2 = cas_solver::runtime::required_conditions_from_eval_output(&output2);
 
     // Verify the reused expression still has x ≥ 0
     let has_x_nonneg_2 = required2.iter().any(|c| {
@@ -72,7 +72,7 @@ fn requires_propagate_on_sqrt_reuse() {
 /// Test: ln(y) produces y > 0, and this propagates when reused
 #[test]
 fn requires_propagate_on_ln_reuse() {
-    use cas_solver::ImplicitCondition;
+    use cas_solver::api::ImplicitCondition;
 
     let mut engine = Engine::new();
     let mut state = SessionState::default();
@@ -80,7 +80,7 @@ fn requires_propagate_on_ln_reuse() {
     // Step 1: Evaluate ln(y) -> stored as #1
     let req1 = make_simplify_request(&mut engine, "ln(y)");
     let output1 = engine.eval(&mut state, req1).expect("eval should succeed");
-    let required1 = cas_solver::required_conditions_from_eval_output(&output1);
+    let required1 = cas_solver::runtime::required_conditions_from_eval_output(&output1);
 
     // Verify ln(y) has y > 0 in requires
     let has_y_positive = required1.iter().any(|c| {
@@ -96,7 +96,7 @@ fn requires_propagate_on_ln_reuse() {
     // Step 2: Use #1 in composition: "#1 * 2"
     let req2 = make_simplify_request(&mut engine, "#1 * 2");
     let output2 = engine.eval(&mut state, req2).expect("eval should succeed");
-    let required2 = cas_solver::required_conditions_from_eval_output(&output2);
+    let required2 = cas_solver::runtime::required_conditions_from_eval_output(&output2);
 
     // Verify y > 0 propagates
     let has_y_positive_2 = required2.iter().any(|c| {
@@ -113,7 +113,7 @@ fn requires_propagate_on_ln_reuse() {
 /// Test: Combined expressions inherit requires from all sub-expressions
 #[test]
 fn requires_combine_from_multiple_sources() {
-    use cas_solver::ImplicitCondition;
+    use cas_solver::api::ImplicitCondition;
 
     let mut engine = Engine::new();
     let mut state = SessionState::default();
@@ -121,7 +121,7 @@ fn requires_combine_from_multiple_sources() {
     // Create sqrt(x) + ln(y) which should require both x ≥ 0 AND y > 0
     let req = make_simplify_request(&mut engine, "sqrt(x) + ln(y)");
     let output = engine.eval(&mut state, req).expect("eval should succeed");
-    let required = cas_solver::required_conditions_from_eval_output(&output);
+    let required = cas_solver::runtime::required_conditions_from_eval_output(&output);
 
     // Check for x ≥ 0
     let has_x_nonneg = required.iter().any(|c| {
@@ -150,7 +150,7 @@ fn requires_combine_from_multiple_sources() {
 /// Test: Division by variable produces x ≠ 0 requirement
 #[test]
 fn requires_nonzero_from_division() {
-    use cas_solver::ImplicitCondition;
+    use cas_solver::api::ImplicitCondition;
 
     let mut engine = Engine::new();
     let mut state = SessionState::default();
@@ -158,7 +158,7 @@ fn requires_nonzero_from_division() {
     // Create 1/x which should require x ≠ 0
     let req = make_simplify_request(&mut engine, "1/z");
     let output = engine.eval(&mut state, req).expect("eval should succeed");
-    let required = cas_solver::required_conditions_from_eval_output(&output);
+    let required = cas_solver::runtime::required_conditions_from_eval_output(&output);
 
     // Check for z ≠ 0
     let has_z_nonzero = required.iter().any(|c| {
@@ -183,7 +183,7 @@ fn requires_nonzero_from_division() {
 /// inherited with SessionPropagated added to their origins.
 #[test]
 fn session_propagated_origin_appears_on_reuse() {
-    use cas_solver::RequireOrigin;
+    use cas_solver::api::RequireOrigin;
 
     let mut engine = Engine::new();
     let mut state = SessionState::default();

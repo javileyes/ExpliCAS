@@ -1,4 +1,4 @@
-use crate::{EvalCommandError, EvalCommandOutput};
+use crate::command_api::eval::{EvalCommandError, EvalCommandOutput};
 
 /// Runtime context needed for REPL eval/expand render-plan orchestration.
 pub trait ReplEvalRuntimeContext {

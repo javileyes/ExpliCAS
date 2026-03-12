@@ -1,7 +1,8 @@
 //! Solver command/output types re-exported for session clients.
 
-pub use crate::{
-    EvalCommandError, EvalCommandOutput, EvalCommandRenderPlan, SolveCommandEvalOutput,
+pub use crate::command_api::eval::{EvalCommandError, EvalCommandOutput, EvalCommandRenderPlan};
+pub use crate::solve_command_eval_core::SolveCommandEvalOutput;
+pub use crate::timeline_types::{
     TimelineCommandEvalOutput, TimelineSimplifyEvalOutput, TimelineSolveEvalOutput,
 };
 pub use cas_solver_core::health_runtime::{

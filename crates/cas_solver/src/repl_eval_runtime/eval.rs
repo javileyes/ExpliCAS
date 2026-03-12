@@ -1,4 +1,6 @@
-use crate::{build_eval_command_render_plan, EvalCommandError, EvalCommandRenderPlan};
+use crate::command_api::eval::{
+    build_eval_command_render_plan, EvalCommandError, EvalCommandRenderPlan,
+};
 
 use super::ReplEvalRuntimeContext;
 

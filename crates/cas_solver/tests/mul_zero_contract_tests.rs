@@ -20,7 +20,7 @@ fn simplify_strict(input: &str) -> (String, Vec<String>) {
 
     let opts = cas_solver::runtime::SimplifyOptions {
         shared: cas_solver::runtime::SharedSemanticConfig {
-            semantics: cas_solver::EvalConfig {
+            semantics: cas_solver::runtime::EvalConfig {
                 domain_mode: cas_solver::runtime::DomainMode::Strict,
                 ..Default::default()
             },
@@ -57,7 +57,7 @@ fn simplify_assume(input: &str) -> (String, Vec<String>) {
 
     let opts = cas_solver::runtime::SimplifyOptions {
         shared: cas_solver::runtime::SharedSemanticConfig {
-            semantics: cas_solver::EvalConfig {
+            semantics: cas_solver::runtime::EvalConfig {
                 domain_mode: cas_solver::runtime::DomainMode::Assume,
                 ..Default::default()
             },
@@ -93,7 +93,7 @@ fn simplify_generic(input: &str) -> (String, Vec<String>) {
 
     let opts = cas_solver::runtime::SimplifyOptions {
         shared: cas_solver::runtime::SharedSemanticConfig {
-            semantics: cas_solver::EvalConfig {
+            semantics: cas_solver::runtime::EvalConfig {
                 domain_mode: cas_solver::runtime::DomainMode::Generic,
                 ..Default::default()
             },

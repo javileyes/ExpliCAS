@@ -7,9 +7,8 @@
 //! 4. i*i -> -1 only in ComplexEnabled
 
 use cas_ast::{Context, Expr};
-use cas_solver::Budget;
-use cas_solver::{fold_constants, ConstFoldMode, ConstFoldResult};
-use cas_solver::{EvalConfig, ValueDomain};
+use cas_solver::api::{fold_constants, ConstFoldMode, ConstFoldResult};
+use cas_solver::runtime::{Budget, EvalConfig, ValueDomain};
 use num_rational::BigRational;
 use num_traits::Zero;
 

@@ -8,8 +8,8 @@ pub fn build_request_info(expr: &str, opts: &EnvelopeEvalOptions) -> RequestInfo
     RequestInfo::eval(
         expr,
         RequestOptions {
-            domain_mode: opts.domain.clone(),
-            value_domain: opts.value_domain.clone(),
+            domain_mode: opts.domain.as_str().to_string(),
+            value_domain: opts.value_domain.as_str().to_string(),
             hints: true,
             explain: false,
         },

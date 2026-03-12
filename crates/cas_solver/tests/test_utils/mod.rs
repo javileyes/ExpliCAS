@@ -22,8 +22,7 @@
 use cas_ast::{Context, Expr, ExprId};
 use cas_formatter::DisplayExpr;
 use cas_parser::parse;
-use cas_solver::eval_f64;
-use cas_solver::is_zero;
+use cas_solver::api::{eval_f64, is_zero};
 use cas_solver::runtime::Simplifier;
 use std::collections::HashMap;
 

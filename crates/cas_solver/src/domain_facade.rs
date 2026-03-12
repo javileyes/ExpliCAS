@@ -48,6 +48,7 @@ pub fn domain_delta_check(
 }
 
 /// Convert solver path steps to a compact AST expression path.
+#[allow(dead_code)]
 pub fn pathsteps_to_expr_path(steps: &[crate::PathStep]) -> cas_ast::ExprPath {
     steps.iter().map(crate::PathStep::to_child_index).collect()
 }

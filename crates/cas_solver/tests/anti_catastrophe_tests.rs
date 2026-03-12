@@ -3,9 +3,10 @@
 
 use cas_ast::Context;
 use cas_parser::parse;
-use cas_session::SessionState;
-use cas_solver::runtime::Simplifier;
-use cas_solver::{BranchMode, ComplexMode, ContextMode, EvalOptions, StepsMode};
+use cas_session::state_api::SessionState;
+use cas_solver::runtime::{
+    BranchMode, ComplexMode, ContextMode, EvalOptions, Simplifier, StepsMode,
+};
 
 /// Helper: simplify expression and return result string
 fn simplify(input: &str) -> String {
@@ -216,13 +217,14 @@ fn test_no_false_positive_sum_of_squares() {
 /// Helper: simplify with ComplexEnabled value_domain (for tests involving i)
 /// Uses Engine.eval to ensure value_domain propagates correctly
 fn simplify_complex(input: &str) -> String {
-    use cas_solver::{Engine, EvalAction, EvalRequest, EvalResult};
+    use cas_solver::runtime::{Engine, EvalAction, EvalRequest, EvalResult};
 
     let mut engine = Engine::new();
     let mut state = SessionState::new();
 
     // Set ComplexEnabled for these tests
-    state.options_mut().shared.semantics.value_domain = cas_solver::ValueDomain::ComplexEnabled;
+    state.options_mut().shared.semantics.value_domain =
+        cas_solver::runtime::ValueDomain::ComplexEnabled;
 
     let parsed = parse(input, &mut engine.simplifier.context).expect("parse failed");
     let req = EvalRequest {

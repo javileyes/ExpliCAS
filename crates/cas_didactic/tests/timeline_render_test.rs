@@ -1,10 +1,10 @@
 //! Integration test to verify timeline step rendering
 use cas_didactic::{TimelineHtml, VerbosityLevel};
-use cas_session::SessionState;
+use cas_session::state_api::SessionState;
+use cas_solver::runtime::to_display_steps;
 use cas_solver::runtime::ImportanceLevel;
 use cas_solver::runtime::Simplifier;
 use cas_solver::runtime::{Engine, EvalAction, EvalRequest};
-use cas_solver::to_display_steps;
 
 #[test]
 fn test_timeline_renders_all_medium_importance_steps() {

@@ -6,8 +6,8 @@
 use cas_ast::Context;
 use cas_math::multinomial_expand::MultinomialExpandBudget;
 use cas_parser::parse;
-use cas_solver::expand_with_stats;
-use cas_solver::{Budget, Metric, Operation, PassStats};
+use cas_solver::api::expand_with_stats;
+use cas_solver::runtime::{Budget, Metric, Operation, PassStats};
 
 /// Test that expand pre-estimation catches explosive cases before materializing.
 ///

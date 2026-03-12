@@ -39,6 +39,14 @@ pub fn parse_legacy_session_ref(name: &str) -> Option<EntryId> {
     name[1..].parse::<EntryId>().ok()
 }
 
+fn root_session_ref_id(ctx: &Context, expr: ExprId) -> Option<EntryId> {
+    match ctx.get(expr) {
+        Expr::SessionRef(id) => Some(*id),
+        Expr::Variable(sym_id) => parse_legacy_session_ref(ctx.sym_name(*sym_id)),
+        _ => None,
+    }
+}
+
 /// Rewrite session references (`Expr::SessionRef` and legacy `Variable("#N")`)
 /// in an expression tree using the provided resolver callback.
 ///
@@ -54,22 +62,21 @@ pub fn rewrite_session_refs<E, F>(
 where
     F: FnMut(&mut Context, ExprId, EntryId) -> Result<ExprId, E>,
 {
-    let node = ctx.get(expr).clone();
-
-    match node {
-        Expr::SessionRef(id) => resolver(ctx, expr, id),
-        Expr::Variable(sym_id) => match parse_legacy_session_ref(ctx.sym_name(sym_id)) {
+    match ctx.get(expr) {
+        Expr::SessionRef(id) => resolver(ctx, expr, *id),
+        Expr::Variable(sym_id) => match parse_legacy_session_ref(ctx.sym_name(*sym_id)) {
             Some(id) => resolver(ctx, expr, id),
             None => Ok(expr),
         },
 
-        Expr::Add(l, r) => rewrite_binary(ctx, expr, l, r, Expr::Add, resolver),
-        Expr::Sub(l, r) => rewrite_binary(ctx, expr, l, r, Expr::Sub, resolver),
-        Expr::Mul(l, r) => rewrite_binary(ctx, expr, l, r, Expr::Mul, resolver),
-        Expr::Div(l, r) => rewrite_binary(ctx, expr, l, r, Expr::Div, resolver),
-        Expr::Pow(l, r) => rewrite_binary(ctx, expr, l, r, Expr::Pow, resolver),
+        Expr::Add(l, r) => rewrite_binary(ctx, expr, *l, *r, Expr::Add, resolver),
+        Expr::Sub(l, r) => rewrite_binary(ctx, expr, *l, *r, Expr::Sub, resolver),
+        Expr::Mul(l, r) => rewrite_binary(ctx, expr, *l, *r, Expr::Mul, resolver),
+        Expr::Div(l, r) => rewrite_binary(ctx, expr, *l, *r, Expr::Div, resolver),
+        Expr::Pow(l, r) => rewrite_binary(ctx, expr, *l, *r, Expr::Pow, resolver),
 
         Expr::Neg(inner) => {
+            let inner = *inner;
             let new_inner = rewrite_session_refs(ctx, inner, resolver)?;
             if new_inner == inner {
                 Ok(expr)
@@ -79,11 +86,13 @@ where
         }
 
         Expr::Function(name, args) => {
+            let name = *name;
+            let args = args.clone();
             let mut changed = false;
             let mut new_args = Vec::with_capacity(args.len());
-            for arg in &args {
-                let new_arg = rewrite_session_refs(ctx, *arg, resolver)?;
-                if new_arg != *arg {
+            for arg in args {
+                let new_arg = rewrite_session_refs(ctx, arg, resolver)?;
+                if new_arg != arg {
                     changed = true;
                 }
                 new_args.push(new_arg);
@@ -96,11 +105,14 @@ where
         }
 
         Expr::Matrix { rows, cols, data } => {
+            let rows = *rows;
+            let cols = *cols;
+            let data = data.clone();
             let mut changed = false;
             let mut new_data = Vec::with_capacity(data.len());
-            for elem in &data {
-                let new_elem = rewrite_session_refs(ctx, *elem, resolver)?;
-                if new_elem != *elem {
+            for elem in data {
+                let new_elem = rewrite_session_refs(ctx, elem, resolver)?;
+                if new_elem != elem {
                     changed = true;
                 }
                 new_data.push(new_elem);
@@ -117,6 +129,7 @@ where
         }
 
         Expr::Hold(inner) => {
+            let inner = *inner;
             let new_inner = rewrite_session_refs(ctx, inner, resolver)?;
             if new_inner == inner {
                 Ok(expr)
@@ -216,6 +229,16 @@ where
 {
     let mut cache: HashMap<EntryId, ExprId> = HashMap::new();
     let mut visiting: HashSet<EntryId> = HashSet::new();
+    if let Some(id) = root_session_ref_id(ctx, expr) {
+        return resolve_session_id_with_lookup(
+            ctx,
+            id,
+            lookup,
+            on_visit,
+            &mut cache,
+            &mut visiting,
+        );
+    }
     resolve_with_lookup_recursive(ctx, expr, lookup, on_visit, &mut cache, &mut visiting)
 }
 
@@ -398,6 +421,28 @@ where
 {
     if let Some(&cached) = memo.get(&expr) {
         return Ok(cached);
+    }
+
+    if let Some(id) = root_session_ref_id(ctx, expr) {
+        let result = resolve_mode_entry(
+            ctx,
+            expr,
+            id,
+            mode,
+            cache_key,
+            lookup,
+            same_requirement,
+            mark_session_propagated,
+            memo,
+            visiting,
+            requires,
+            used_cache,
+            ref_chain,
+            seen_hits,
+            cache_hits,
+        )?;
+        memo.insert(expr, result);
+        return Ok(result);
     }
 
     let result = rewrite_session_refs(ctx, expr, &mut |ctx, ref_expr_id, id| {

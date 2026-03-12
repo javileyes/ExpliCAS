@@ -8,8 +8,16 @@ mod steps;
 mod strategy;
 mod types;
 
-pub use self::eval::*;
-pub use self::parse::*;
-pub use self::steps::*;
-pub use self::strategy::*;
-pub use self::types::*;
+#[cfg_attr(not(test), allow(unused_imports))]
+pub(crate) use self::eval::evaluate_substitute_and_simplify;
+#[cfg_attr(not(test), allow(unused_imports))]
+pub(crate) use self::parse::parse_substitute_args;
+pub use self::steps::substitute_with_steps;
+pub use self::strategy::{
+    detect_substitute_strategy, substitute_auto, substitute_auto_with_strategy,
+    substitute_power_aware,
+};
+pub use self::types::{
+    SubstituteOptions, SubstituteParseError, SubstituteResult, SubstituteSimplifyEvalOutput,
+    SubstituteStep, SubstituteStrategy,
+};

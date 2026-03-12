@@ -3,11 +3,12 @@
 #![allow(dead_code)]
 #![allow(unused_variables)]
 use cas_parser::Statement;
-use cas_session::SessionState;
+use cas_session::state_api::SessionState;
 use cas_session_core::types::EntryKind;
-use cas_solver::{
-    evaluate_solve_command_with_session, parse_solve_command_input, Engine, EvalResult,
+use cas_solver::command_api::solve::{
+    evaluate_solve_command_with_session, parse_solve_command_input,
 };
+use cas_solver::runtime::{Engine, EvalResult};
 
 #[test]
 fn test_solve_session_ref() {

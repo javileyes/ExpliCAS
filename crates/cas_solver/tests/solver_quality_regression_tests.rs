@@ -6,7 +6,8 @@
 //! 3. Cubic roots don't cause simplification cycles
 
 use cas_ast::{Equation, Expr, RelOp, SolutionSet};
-use cas_solver::{solve, solve_with_display_steps, Simplifier, SolverOptions};
+use cas_solver::api::{solve, solve_with_display_steps};
+use cas_solver::runtime::{Simplifier, SolverOptions};
 
 // ============================================================================
 // Test 1: |2x+1| = 5 should have NO Requires

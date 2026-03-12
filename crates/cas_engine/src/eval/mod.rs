@@ -72,12 +72,18 @@ impl Engine {
     /// // Engine is ready to simplify expressions
     /// ```
     pub fn new() -> Self {
-        Self::with_simplifier(Simplifier::with_default_rules())
+        Self::with_simplifier(Simplifier::from_profile_with_context(
+            crate::profile_cache::default_rule_profile(),
+            cas_ast::Context::new(),
+        ))
     }
 
     /// Create an Engine with a pre-populated Context (for session restoration).
     pub fn with_context(context: cas_ast::Context) -> Self {
-        Self::with_simplifier(Simplifier::with_context(context))
+        Self::with_simplifier(Simplifier::from_profile_with_context(
+            crate::profile_cache::default_rule_profile(),
+            context,
+        ))
     }
 
     /// Number of cached rule profiles currently held by this engine.

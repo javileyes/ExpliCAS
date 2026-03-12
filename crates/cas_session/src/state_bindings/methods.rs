@@ -8,11 +8,19 @@ impl SessionState {
     }
 
     pub fn set_binding<S: Into<String>>(&mut self, name: S, expr: ExprId) {
-        self.env.set(name.into(), expr);
+        let name = name.into();
+        if self.env.get(&name) != Some(expr) {
+            self.dirty = true;
+            self.env.set(name, expr);
+        }
     }
 
     pub fn unset_binding(&mut self, name: &str) -> bool {
-        self.env.unset(name)
+        let changed = self.env.unset(name);
+        if changed {
+            self.dirty = true;
+        }
+        changed
     }
 
     pub fn bindings(&self) -> Vec<(String, ExprId)> {
@@ -28,13 +36,19 @@ impl SessionState {
     }
 
     pub fn clear_bindings(&mut self) {
-        self.env.clear_all();
+        if !self.env.is_empty() {
+            self.dirty = true;
+            self.env.clear_all();
+        }
     }
 
     /// Clear all session data (history + env bindings).
     /// Note: options are intentionally preserved.
     pub fn clear(&mut self) {
         self.store.clear();
-        self.env.clear_all();
+        if !self.env.is_empty() {
+            self.dirty = true;
+            self.env.clear_all();
+        }
     }
 }

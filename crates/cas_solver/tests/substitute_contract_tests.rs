@@ -8,7 +8,7 @@
 
 use cas_ast::{Context, Expr};
 use cas_parser::parse;
-use cas_solver::{substitute_power_aware, SubstituteOptions};
+use cas_solver::command_api::substitute::{substitute_power_aware, SubstituteOptions};
 
 /// Helper to parse expression
 fn parse_expr(ctx: &mut Context, s: &str) -> cas_ast::ExprId {

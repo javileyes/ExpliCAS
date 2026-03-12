@@ -1,4 +1,5 @@
-use crate::{evaluate_expand_wrapped_expression, EvalCommandRenderPlan};
+use crate::command_api::eval::EvalCommandRenderPlan;
+use crate::evaluate_expand_wrapped_expression;
 
 use super::{evaluate_eval_command_render_plan_on_runtime, ReplEvalRuntimeContext};
 

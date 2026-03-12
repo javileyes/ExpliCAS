@@ -13,9 +13,9 @@
 
 use cas_formatter::DisplayExpr;
 use cas_parser::parse;
-use cas_session::SessionState;
-use cas_solver::ValueDomain;
-use cas_solver::{DomainMode, Engine, EvalAction, EvalRequest, EvalResult};
+use cas_session::state_api::SessionState;
+use cas_solver::runtime::ValueDomain;
+use cas_solver::runtime::{DomainMode, Engine, EvalAction, EvalRequest, EvalResult};
 
 // ============================================================================
 // Test Infrastructure
@@ -231,7 +231,7 @@ mod log_power_base {
         let has_positive_x = output.required_conditions.iter().any(|cond| {
             matches!(
                 cond,
-                cas_solver::ImplicitCondition::Positive(id)
+                cas_solver::api::ImplicitCondition::Positive(id)
                     if format!(
                         "{}",
                         DisplayExpr {
@@ -244,7 +244,7 @@ mod log_power_base {
         let has_nonzero_x2_minus_1 = output.required_conditions.iter().any(|cond| {
             matches!(
                 cond,
-                cas_solver::ImplicitCondition::NonZero(id)
+                cas_solver::api::ImplicitCondition::NonZero(id)
                     if format!(
                         "{}",
                         DisplayExpr {

@@ -8,14 +8,14 @@ mod tests {
 
     #[test]
     fn set_command_state_for_repl_core_reads_runtime() {
-        let core = crate::ReplCore::new();
+        let core = crate::repl_core::ReplCore::new();
         let state = set_command_state_for_repl_core(&core, SetDisplayMode::Normal);
         assert_eq!(state.display_mode, SetDisplayMode::Normal);
     }
 
     #[test]
     fn apply_set_command_plan_on_repl_core_applies_steps_mode() {
-        let mut core = crate::ReplCore::new();
+        let mut core = crate::repl_core::ReplCore::new();
         let state = set_command_state_for_repl_core(&core, SetDisplayMode::Normal);
         let plan = match evaluate_set_command_input("set steps compact", state) {
             SetCommandResult::Apply { plan } => plan,
@@ -28,7 +28,7 @@ mod tests {
 
     #[test]
     fn evaluate_set_command_on_repl_core_applies_and_reports_display_mode() {
-        let mut core = crate::ReplCore::new();
+        let mut core = crate::repl_core::ReplCore::new();
         let out = evaluate_set_command_on_repl_core(
             "set steps verbose",
             &mut core,

@@ -265,7 +265,7 @@ fn test_structural_invariants() {
 
 #[test]
 fn test_n0_neg_number_normalized() {
-    use cas_solver::canonical_forms::normalize_core;
+    use cas_math::canonical_forms::normalize_core;
     use num_traits::Signed;
 
     let mut ctx = cas_ast::Context::new();

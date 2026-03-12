@@ -19,8 +19,8 @@ pub(super) fn build_engine_wire_steps(
 
 fn build_engine_wire_step(ctx: &mut cas_ast::Context, step: &crate::Step) -> EngineWireStep {
     EngineWireStep {
-        phase: "Simplify".to_string(),
-        rule: step.rule_name.to_string(),
+        phase: "Simplify".into(),
+        rule: step.rule_name.clone().into(),
         before: render_optional_expr(ctx, step.global_before).unwrap_or_default(),
         after: render_optional_expr(ctx, step.global_after).unwrap_or_default(),
         substeps: vec![],

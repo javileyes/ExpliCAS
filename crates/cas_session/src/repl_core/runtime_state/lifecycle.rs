@@ -1,4 +1,4 @@
-use crate::ReplCore;
+use crate::repl_core::ReplCore;
 use cas_engine::Simplifier;
 
 impl ReplCore {

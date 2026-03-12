@@ -16,6 +16,7 @@ mod config;
 mod config_command_apply_tests;
 #[cfg(test)]
 mod config_tests;
+pub mod eval_api;
 mod eval_command;
 #[cfg(test)]
 mod eval_command_session_tests;
@@ -28,6 +29,7 @@ mod history_tests;
 mod inspect_tests;
 #[cfg(test)]
 mod options_tests;
+pub mod repl_api;
 #[cfg(test)]
 mod repl_command_runtime_tests;
 #[cfg(test)]
@@ -56,6 +58,7 @@ mod snapshot;
 mod snapshot_store_convert;
 #[cfg(test)]
 mod snapshot_tests;
+pub mod state_api;
 mod state_bindings;
 mod state_core;
 mod state_eval_session;
@@ -70,28 +73,9 @@ mod store_cache_policy_tests;
 mod timeline_command_tests;
 
 pub(crate) use cache::{SimplifiedCache, SimplifyCacheKey};
-pub use config::CasConfig;
-pub use repl_core::ReplCore;
-pub use repl_runtime_core::{
-    build_repl_core_with_config, evaluate_and_apply_config_command_on_repl,
-    reset_repl_core_full_with_config, reset_repl_core_with_config,
-};
-pub use repl_semantics_runtime::{
-    evaluate_autoexpand_command_on_repl, evaluate_context_command_on_repl,
-    evaluate_semantics_command_on_repl,
-};
 pub type CacheHitEntryId = u64;
 
 pub(crate) type Entry = cas_session_core::store::Entry<Diagnostics, SimplifiedCache>;
 pub(crate) type SessionStore = cas_session_core::store::SessionStore<Diagnostics, SimplifiedCache>;
 pub use cas_session_core::env;
 pub(crate) use cas_session_core::types::{CacheConfig, EntryId, EntryKind, RefMode, ResolveError};
-pub use cas_solver_core::eval_display_types::{
-    EvalDisplayMessage, EvalDisplayMessageKind, EvalMetadataLines, EvalResultLine,
-};
-pub use eval_command::{
-    evaluate_eval_command_pretty_with_session, evaluate_eval_command_with_session,
-    EvalCommandConfig,
-};
-pub use eval_text_command::evaluate_eval_text_command_with_session;
-pub use state_core::SessionState;

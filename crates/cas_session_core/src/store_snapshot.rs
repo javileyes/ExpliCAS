@@ -95,8 +95,11 @@ where
         max_cached_steps: snapshot.cache_config.max_cached_steps,
         light_cache_threshold: snapshot.cache_config.light_cache_threshold,
     };
+    let entry_capacity = snapshot.entries.len();
+    let cache_order_capacity = snapshot.cache_order.len();
 
     let mut store = build_store(config);
+    store.reserve_for_restore(entry_capacity, cache_order_capacity);
 
     for entry in snapshot.entries {
         let restored = crate::store::Entry {

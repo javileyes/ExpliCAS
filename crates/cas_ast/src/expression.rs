@@ -260,6 +260,23 @@ impl Context {
         }
     }
 
+    /// Create a context sized for snapshot restore.
+    ///
+    /// Snapshot restore reconstructs nodes directly into the arena without
+    /// canonicalization, so the main win is avoiding repeated growth of the
+    /// node arena and symbol table.
+    pub fn with_restore_capacity(node_capacity: usize) -> Self {
+        let extra_symbol_capacity = node_capacity.saturating_div(4).clamp(8, 256);
+        let mut interner = FxHashMap::default();
+        interner.reserve(64);
+        Self {
+            nodes: Vec::with_capacity(node_capacity),
+            interner,
+            symbols: SymbolTable::with_capacity(extra_symbol_capacity),
+            stats: ContextStats::default(),
+        }
+    }
+
     // =========================================================================
     // Symbol interning API
     // =========================================================================

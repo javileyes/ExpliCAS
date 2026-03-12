@@ -4,9 +4,9 @@
 //! based on ValueDomain and DomainMode settings. See POLICY.md for details.
 
 use cas_ast::SolutionSet;
+use cas_solver::api::solve_with_display_steps;
 use cas_solver::runtime::Simplifier;
 use cas_solver::runtime::SolverOptions;
-use cas_solver::solve_with_display_steps;
 
 /// Helper to solve an equation string and return the solution set.
 fn solve_equation(eq_str: &str) -> Result<SolutionSet, cas_solver::runtime::CasError> {

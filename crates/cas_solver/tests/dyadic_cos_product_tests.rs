@@ -7,7 +7,7 @@
 use cas_ast::Context;
 use cas_parser::parse;
 use cas_solver::runtime::Simplifier;
-use cas_solver::{EvalOptions, StepsMode};
+use cas_solver::runtime::{EvalOptions, StepsMode};
 
 fn simplify(input: &str) -> String {
     let opts = EvalOptions {
@@ -112,7 +112,7 @@ fn test_dyadic_cos_product_assume_symbolic_allowed() {
     let opts = EvalOptions {
         steps_mode: StepsMode::On,
         shared: cas_solver::runtime::SharedSemanticConfig {
-            semantics: cas_solver::EvalConfig {
+            semantics: cas_solver::runtime::EvalConfig {
                 domain_mode: DomainMode::Assume,
                 ..Default::default()
             },
@@ -150,8 +150,8 @@ fn test_dyadic_cos_product_assume_symbolic_allowed() {
 /// sin(π/9) should be provably non-zero (1/9 is not an integer)
 #[test]
 fn test_prove_nonzero_sin_pi_over_9() {
-    use cas_solver::prove_nonzero;
-    use cas_solver::Proof;
+    use cas_solver::api::prove_nonzero;
+    use cas_solver::api::Proof;
 
     let mut ctx = Context::new();
     let pi = ctx.add(cas_ast::Expr::Constant(cas_ast::Constant::Pi));
@@ -169,8 +169,8 @@ fn test_prove_nonzero_sin_pi_over_9() {
 /// sin(π) should be provably zero (1 is an integer)
 #[test]
 fn test_prove_nonzero_sin_pi() {
-    use cas_solver::prove_nonzero;
-    use cas_solver::Proof;
+    use cas_solver::api::prove_nonzero;
+    use cas_solver::api::Proof;
 
     let mut ctx = Context::new();
     let pi = ctx.add(cas_ast::Expr::Constant(cas_ast::Constant::Pi));
@@ -186,8 +186,8 @@ fn test_prove_nonzero_sin_pi() {
 /// sin(18π/9) = sin(2π) should be provably zero (18/9 = 2 is an integer)
 #[test]
 fn test_prove_nonzero_sin_18pi_over_9() {
-    use cas_solver::prove_nonzero;
-    use cas_solver::Proof;
+    use cas_solver::api::prove_nonzero;
+    use cas_solver::api::Proof;
 
     let mut ctx = Context::new();
     let pi = ctx.add(cas_ast::Expr::Constant(cas_ast::Constant::Pi));
@@ -208,8 +208,8 @@ fn test_prove_nonzero_sin_18pi_over_9() {
 /// sin(a) with symbolic a should be Unknown
 #[test]
 fn test_prove_nonzero_sin_symbolic() {
-    use cas_solver::prove_nonzero;
-    use cas_solver::Proof;
+    use cas_solver::api::prove_nonzero;
+    use cas_solver::api::Proof;
 
     let mut ctx = Context::new();
     let a = ctx.var("a");

@@ -21,3 +21,8 @@ num-traits = "0.2"
 [dev-dependencies]
 cas_parser = { path = "../cas_parser" }
 cas_session = { path = "../cas_session", default-features = false }
+criterion = "0.5"
+
+[[bench]]
+name = "frontend_didactic"
+harness = false

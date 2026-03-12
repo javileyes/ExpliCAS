@@ -3,7 +3,7 @@ use std::path::Path;
 use cas_engine::Engine;
 
 use super::{load_or_new_session, save_session};
-use crate::{SessionState, SimplifyCacheKey};
+use crate::{state_core::SessionState, SimplifyCacheKey};
 
 /// Load session state, run an operation, and persist snapshot when a path is provided.
 ///
@@ -19,7 +19,7 @@ where
     let (mut engine, mut state, load_warning) = load_or_new_session(path, key);
     let result = run(&mut engine, &mut state);
     let save_warning = path.and_then(|snapshot_path| {
-        save_session(&engine, &state, snapshot_path, key)
+        save_session(&engine, &mut state, snapshot_path, key)
             .err()
             .map(|error| format!("Warning: Failed to save session: {}", error))
     });

@@ -1,6 +1,6 @@
 #[test]
 fn solver_toggle_round_trip_preserves_config_values() {
-    let mut config = crate::CasConfig {
+    let mut config = crate::config::CasConfig {
         distribute: true,
         expand_binomials: false,
         distribute_constants: false,
@@ -14,7 +14,7 @@ fn solver_toggle_round_trip_preserves_config_values() {
         auto_factor: true,
     };
     let toggles = crate::config::solver_toggle_config_from_cas_config(&config);
-    config = crate::CasConfig::default();
+    config = crate::config::CasConfig::default();
     crate::config::apply_solver_toggle_to_cas_config(&mut config, toggles);
     assert!(config.distribute);
     assert!(!config.expand_binomials);

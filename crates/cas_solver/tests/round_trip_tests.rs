@@ -12,8 +12,8 @@
 use cas_ast::{Context, ExprId};
 use cas_formatter::LaTeXExpr;
 use cas_parser::parse;
-use cas_solver::runtime::Simplifier;
-use cas_solver::{eval_f64_checked, EvalCheckedError, EvalCheckedOptions};
+use cas_solver::api::{eval_f64_checked, EvalCheckedError, EvalCheckedOptions};
+use cas_solver::runtime::{Budget, EvalConfig, Simplifier};
 use std::collections::HashMap;
 use std::sync::mpsc;
 use std::time::Duration;
@@ -28,13 +28,13 @@ fn simp_full(input: &str) -> Option<(ExprId, String, Simplifier)> {
     let mut s = Simplifier::with_default_rules();
     let e = parse(input, &mut s.context).ok()?;
     let (r, _) = s.simplify(e);
-    let cfg = cas_solver::EvalConfig::default();
-    let mut budget = cas_solver::Budget::preset_cli();
-    let r2 = if let Ok(res) = cas_solver::fold_constants(
+    let cfg = EvalConfig::default();
+    let mut budget = Budget::preset_cli();
+    let r2 = if let Ok(res) = cas_solver::api::fold_constants(
         &mut s.context,
         r,
         &cfg,
-        cas_solver::ConstFoldMode::Safe,
+        cas_solver::api::ConstFoldMode::Safe,
         &mut budget,
     ) {
         res.expr
@@ -52,13 +52,13 @@ fn simp_full(input: &str) -> Option<(ExprId, String, Simplifier)> {
 /// Simplify an ExprId within an existing Simplifier context.
 fn simp_expr(s: &mut Simplifier, expr: ExprId) -> ExprId {
     let (r, _) = s.simplify(expr);
-    let cfg = cas_solver::EvalConfig::default();
-    let mut budget = cas_solver::Budget::preset_cli();
-    if let Ok(res) = cas_solver::fold_constants(
+    let cfg = EvalConfig::default();
+    let mut budget = Budget::preset_cli();
+    if let Ok(res) = cas_solver::api::fold_constants(
         &mut s.context,
         r,
         &cfg,
-        cas_solver::ConstFoldMode::Safe,
+        cas_solver::api::ConstFoldMode::Safe,
         &mut budget,
     ) {
         res.expr
@@ -251,7 +251,7 @@ fn check_equiv_3tier(lhs: &str, rhs: &str, vars: &[&str], timeout: Duration) -> 
         let r = simp_expr(&mut s, rp);
 
         // Tier 1: NF convergence
-        if cas_solver::compare_expr(&s.context, l, r) == std::cmp::Ordering::Equal {
+        if cas_solver::runtime::compare_expr(&s.context, l, r) == std::cmp::Ordering::Equal {
             let _ = tx.send(EquivResult::NfConvergent);
             return;
         }
@@ -490,7 +490,7 @@ fn test_expand_simplify_one(input: &str, vars: &[&str], timeout: Duration) -> Eq
         }
 
         // Tier 1: NF convergence
-        if cas_solver::compare_expr(&s.context, a, c) == std::cmp::Ordering::Equal {
+        if cas_solver::runtime::compare_expr(&s.context, a, c) == std::cmp::Ordering::Equal {
             let _ = tx2.send(EquivResult::NfConvergent);
             return;
         }
@@ -568,17 +568,19 @@ fn test_factor_expand_one(input: &str, vars: &[&str], timeout: Duration) -> Opti
         let simplified = simp_expr(&mut s, e2);
 
         // f = factor(simplify(x))
-        let factored = cas_solver::factor(&mut s.context, simplified);
+        let factored = cas_math::factor::factor(&mut s.context, simplified);
 
         // Check if factor actually did something
-        if cas_solver::compare_expr(&s.context, factored, simplified) == std::cmp::Ordering::Equal {
+        if cas_solver::runtime::compare_expr(&s.context, factored, simplified)
+            == std::cmp::Ordering::Equal
+        {
             // factor() returned the same expression — skip this case
             let _ = tx.send(None);
             return;
         }
 
         // e = expand(factor(simplify(x)))
-        let expanded = cas_solver::expand(&mut s.context, factored);
+        let expanded = cas_solver::api::expand(&mut s.context, factored);
 
         // c = simplify(expand(factor(simplify(x))))
         let c = simp_expr(&mut s, expanded);
@@ -593,7 +595,7 @@ fn test_factor_expand_one(input: &str, vars: &[&str], timeout: Duration) -> Opti
         }
 
         // Tier 1: NF convergence
-        if cas_solver::compare_expr(&s.context, a, c) == std::cmp::Ordering::Equal {
+        if cas_solver::runtime::compare_expr(&s.context, a, c) == std::cmp::Ordering::Equal {
             let _ = tx.send(Some(EquivResult::NfConvergent));
             return;
         }

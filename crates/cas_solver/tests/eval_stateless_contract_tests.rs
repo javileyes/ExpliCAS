@@ -1,5 +1,5 @@
 use cas_parser::parse;
-use cas_solver::{Engine, EvalAction, EvalOptions, EvalRequest, EvalResult};
+use cas_solver::runtime::{Engine, EvalAction, EvalOptions, EvalRequest, EvalResult};
 
 #[test]
 fn eval_stateless_simplify_ignores_auto_store() {

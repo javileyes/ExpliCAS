@@ -13,9 +13,8 @@
 
 use cas_ast::SolutionSet;
 use cas_parser::{parse_statement, Statement};
-use cas_solver::{
-    solve_with_display_steps, DomainMode, ImplicitCondition, Simplifier, SolverOptions, ValueDomain,
-};
+use cas_solver::api::{solve_with_display_steps, ImplicitCondition};
+use cas_solver::runtime::{DomainMode, Simplifier, SolverOptions, ValueDomain};
 
 /// Solve an equation string in Strict mode, returning (SolutionSet, required conditions).
 fn solve_strict(eq_src: &str, var: &str) -> (SolutionSet, Vec<ImplicitCondition>, Simplifier) {
@@ -223,14 +222,14 @@ fn abs_constant_eq_var_must_not_include_negative() {
             // Must contain 2
             let has_two = vals.iter().any(|v| {
                 matches!(s.context.get(*v), cas_ast::Expr::Number(n)
-                    if *n == num_rational::BigRational::from_integer(2.into()))
+                    if n == &num_rational::BigRational::from_integer(2.into()))
             });
             assert!(has_two, "Expected x = 2 in solutions, got {:?}", sols);
 
             // Must NOT contain -2
             let has_neg_two = vals.iter().any(|v| {
                 matches!(s.context.get(*v), cas_ast::Expr::Number(n)
-                    if *n == num_rational::BigRational::from_integer((-2).into()))
+                    if n == &num_rational::BigRational::from_integer((-2).into()))
             });
             assert!(
                 !has_neg_two,

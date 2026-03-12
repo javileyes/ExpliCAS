@@ -9,7 +9,7 @@
 //! - Tighten as the engine stabilizes
 //! - On failure: print full diagnostics for debugging
 
-use cas_solver::{PipelineStats, Simplifier, SimplifyOptions};
+use cas_solver::runtime::{PipelineStats, Simplifier, SimplifyOptions};
 
 /// Helper to set up a health-monitored simplification and run asserts
 fn run_health_check(

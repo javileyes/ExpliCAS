@@ -1,7 +1,7 @@
 use cas_ast::Context;
-use cas_solver::{
-    AssumeScope, AssumptionEvent, DomainMode, EvalOptions, ImplicitCondition, SolveCtx,
-    SolveDomainEnv, SolverOptions, ValueDomain,
+use cas_solver::api::{AssumeScope, AssumptionEvent, ImplicitCondition};
+use cas_solver::runtime::{
+    DomainMode, EvalOptions, SolveCtx, SolveDomainEnv, SolverOptions, ValueDomain,
 };
 use cas_solver_core::log_domain::DomainModeKind;
 use cas_solver_core::solve_budget::SolveBudget;

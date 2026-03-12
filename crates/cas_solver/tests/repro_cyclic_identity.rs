@@ -4,12 +4,13 @@
 #![allow(unused_variables)]
 use cas_formatter::DisplayExpr;
 use cas_parser::parse;
-use cas_solver::rules::arithmetic::{AddZeroRule, CombineConstantsRule, MulOneRule, MulZeroRule};
-use cas_solver::rules::canonicalization::{
+use cas_solver::runtime::rules::arithmetic::{
+    AddZeroRule, CombineConstantsRule, MulOneRule, MulZeroRule,
+};
+use cas_solver::runtime::rules::canonicalization::{
     CanonicalizeAddRule, CanonicalizeMulRule, CanonicalizeNegationRule,
 };
-use cas_solver::rules::polynomial::CombineLikeTermsRule;
-use cas_solver::rules::polynomial::DistributeRule;
+use cas_solver::runtime::rules::polynomial::{CombineLikeTermsRule, DistributeRule};
 use cas_solver::runtime::Simplifier;
 
 #[test]

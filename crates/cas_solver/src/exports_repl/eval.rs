@@ -11,8 +11,7 @@ pub use crate::repl_simplifier_runtime::{
     evaluate_rationalize_command_lines_on_runtime,
     evaluate_substitute_invocation_user_message_on_runtime,
     evaluate_telescope_invocation_message_on_runtime, evaluate_trace_command_message_on_runtime,
-    evaluate_transpose_command_message_on_runtime, evaluate_unary_command_message_on_runtime,
-    evaluate_visualize_invocation_output_on_runtime,
+    evaluate_transpose_command_message_on_runtime, evaluate_visualize_invocation_output_on_runtime,
     evaluate_weierstrass_invocation_message_on_runtime, ReplSimplifierRuntimeContext,
 };
 pub use crate::repl_solve_runtime::{

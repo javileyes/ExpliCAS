@@ -4600,3 +4600,732 @@ Those are valid projects, but not part of this performance track.
     REPL formatting guardrail is already close to noise, and the next high-ROI
     move should again be a different benchmark front rather than more
     formatter-specific micro-tweaks
+- opened a session/frontend benchmark track in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_session/benches/frontend_session.rs`
+  with matching Make targets:
+  - `make bench-session-frontend`
+  - `make bench-session-frontend-save BASELINE=...`
+  - `make bench-session-frontend-compare BASELINE=...`
+- initial snapshot from that track:
+  - `frontend_session/repl/build/default`
+  - `frontend_session/eval_runtime/in_memory/*`
+  - `frontend_session/eval_wire/no_session/*`
+  - `frontend_session/eval_text/no_session/*`
+  - `frontend_session/eval_wire/persisted/light/x_plus_1`
+  - `frontend_session/eval_text/persisted/light/x_plus_1`
+- the intent of this track is to isolate session-owned overhead cleanly:
+  - pure REPL core construction
+  - in-memory engine+session eval, without `session_io`
+  - stateless-ish frontend wrappers with `session_path = None`
+  - persisted session load/save overhead with a non-empty session file
+- retained validation:
+  - `cargo fmt --all`
+  - `cargo test -p cas_session --lib`
+  - `cargo check -p cas_session --benches`
+  - `make bench-session-frontend`
+- initial snapshot from that track:
+  - `frontend_session/repl/build/default`:
+    `37.725-38.028 us`
+  - in-memory runtime only:
+    - `light/x_plus_1`: `56.108-57.224 us`
+    - `gcd/scalar_multiple_fraction`: `73.516-74.160 us`
+    - `trig/pythagorean_chain`: `69.433-70.134 us`
+  - session wrapper with `session_path = None`:
+    - `eval_wire/no_session/light/x_plus_1`: `73.686-74.031 us`
+    - `eval_text/no_session/light/x_plus_1`: `70.377-71.214 us`
+    - `eval_wire/no_session/gcd/scalar_multiple_fraction`: `91.557-92.663 us`
+    - `eval_text/no_session/gcd/scalar_multiple_fraction`: `80.088-81.322 us`
+    - `eval_wire/no_session/trig/pythagorean_chain`: `87.863-88.934 us`
+    - `eval_text/no_session/trig/pythagorean_chain`: `77.652-78.805 us`
+  - persisted session path (steady-state second run on a non-empty file):
+    - `eval_wire/persisted/light/x_plus_1`: `480.92-489.08 us`
+    - `eval_text/persisted/light/x_plus_1`: `462.48-467.75 us`
+- first conclusion:
+  - the new session frontend track is clean enough to steer follow-up work
+  - the dominant delta is now obvious:
+    - `repl/build/default` is cheap enough compared with end-to-end session eval
+    - `evaluate_eval_with_session(...)` itself is not the whole problem
+    - the big remaining cost sits in `session_io` / persisted load-save wrapper
+      rather than in solver runtime proper
+  - this makes `cas_session` a good next benchmark front if we want another
+    non-noisy optimization stream
+- retained runtime improvement in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_session/src/eval_command/session.rs`
+  and
+  `/Users/javiergimenezmoya/developer/math/crates/cas_session/src/eval_text_command.rs`:
+  - `session_path = None` now bypasses `session_io::run_with_domain_session(...)`
+    entirely and goes straight to fresh in-memory `Engine` + `SessionState`
+  - that removes wrapper overhead from the common no-session CLI/frontend path
+- retained persistence-side improvement in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_session_core/src/snapshot_io.rs`:
+  - snapshot load/save now use buffered `deserialize_from(...)` /
+    `serialize_into(...)` instead of materializing a full `Vec<u8>` first
+- measured outcome after both changes:
+  - `frontend_session/repl/build/default`:
+    `35.997-36.218 us`
+  - `frontend_session/eval_runtime/in_memory/light/x_plus_1`:
+    `55.647-57.421 us`
+  - `frontend_session/eval_wire/no_session/light/x_plus_1`:
+    `71.476-72.454 us`
+  - `frontend_session/eval_text/no_session/light/x_plus_1`:
+    `67.869-68.534 us`, clear improvement from `70.377-71.214 us`
+  - `frontend_session/eval_runtime/in_memory/gcd/scalar_multiple_fraction`:
+    `72.159-72.766 us`, improved from `73.516-74.160 us`
+  - `frontend_session/eval_wire/persisted/light/x_plus_1`:
+    `477.26-516.93 us`, better in absolute terms but still noisy
+  - `frontend_session/eval_text/persisted/light/x_plus_1`:
+    `441.03-446.60 us`, improvement from `462.48-467.75 us`
+- current conclusion for this track:
+  - the `no_session` bypass is worth keeping
+  - the buffered snapshot I/O change is also worth keeping
+  - the persisted path still has much larger cost than the in-memory/runtime
+    path, so the next serious ROI in `cas_session` would be session dirtiness /
+    selective persistence, not more micro-tweaks around wrapper setup
+- retained a dirtiness/selective-persistence cut in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_session/src/state_core.rs`,
+  `/Users/javiergimenezmoya/developer/math/crates/cas_session/src/state_eval_store/methods.rs`,
+  `/Users/javiergimenezmoya/developer/math/crates/cas_session/src/session_io/save.rs`,
+  `/Users/javiergimenezmoya/developer/math/crates/cas_session/src/eval_command_session_tests.rs`
+  and
+  `/Users/javiergimenezmoya/developer/math/crates/cas_session/benches/frontend_session.rs`
+- rationale:
+  - persisted eval paths were still rewriting the snapshot even when the
+    invocation was read-only (`auto_store = false`) and left session contents
+    unchanged
+  - `SessionState` had no dirty bit, and store-side mutations from
+    `Engine::eval` flowed through `SessionEvalStore`, so skipping save required
+    tracking both store writes and session metadata writes
+  - pure cache LRU touches are not user-visible state, so they should not force
+    snapshot persistence by themselves
+- retained changes:
+  - `SessionState` now tracks local dirtiness for `env` / `options`
+  - `SessionEvalStore` now tracks dirtiness for store mutations
+  - `session_io::save_session(...)` returns early when the session is clean
+  - `touch_cached(...)` no longer marks the session dirty
+  - added persisted `no_store` and `cache_hit/ref_1` benches to
+    `frontend_session`
+  - added regression tests asserting that persisted read-only evals do not
+    rewrite the snapshot file
+  - fixed the persisted frontend bench shape so the initial seeding run happens
+    in setup, not inside the measured closure
+  - added a persisted-load bypass in
+    `/Users/javiergimenezmoya/developer/math/crates/cas_session/src/eval_command/session.rs`
+    and
+    `/Users/javiergimenezmoya/developer/math/crates/cas_session/src/eval_text_command.rs`
+    for `auto_store = false` inputs without `#N` refs
+- retained validation:
+  - `cargo fmt --all`
+  - `cargo test -p cas_session eval_command_session_tests --lib`
+  - `cargo check -p cas_session --benches`
+  - `cargo check -p cas_session -p cas_solver -p cas_cli -p cas_android_ffi -p cas_didactic -p cas_api_models`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_session --bench frontend_session 'frontend_session/(eval_wire/persisted_no_store/(light/x_plus_1|cache_hit/ref_1)|eval_text/persisted_no_store/(light/x_plus_1|cache_hit/ref_1))' -- --noplot`
+- measured outcome:
+  - with the corrected steady-state bench:
+    - `frontend_session/eval_wire/persisted/light/x_plus_1`:
+      `299.61-326.81 us`
+    - `frontend_session/eval_text/persisted/light/x_plus_1`:
+      `294.16-305.33 us`
+    - `frontend_session/eval_wire/persisted_no_store/light/x_plus_1`:
+      `157.88-160.33 us`
+    - `frontend_session/eval_text/persisted_no_store/light/x_plus_1`:
+      `153.03-155.60 us`
+  - `frontend_session/eval_wire/persisted_no_store/cache_hit/ref_1`:
+    `343.03-372.51 us`
+  - `frontend_session/eval_text/persisted_no_store/cache_hit/ref_1`:
+    `332.57-359.75 us`
+  - compared to the corrected persisted auto-store path (`~294-327 us`), the
+    read-only persisted path without `#N` refs is now roughly half the cost
+- conclusion:
+  - worth keeping: this is the first `cas_session` persisted-path optimization
+    with a clear, behavior-safe ROI after the earlier load/save buffering work
+  - the remaining big cost in persisted session flows is now split:
+    - full snapshot save on real mutations
+    - full snapshot load for true `#N` / history-dependent reads
+  - anything beyond this likely requires coarser-grained selective persistence
+    or partial snapshot loading, not more micro-tweaks
+- opened a finer-grained frontend/render microtrack inside
+  `/Users/javiergimenezmoya/developer/math/crates/cas_session/benches/frontend_session.rs`
+  for:
+  - `frontend_session/eval_pretty/no_session/*`
+  - compared against existing `eval_wire/no_session/*` and
+    `eval_text/no_session/*`
+- rationale:
+  - `evaluate_eval_command_pretty_with_session(...)` in
+    `/Users/javiergimenezmoya/developer/math/crates/cas_session/src/eval_command/pretty.rs`
+    was eagerly allocating `config.expr.to_string()` even though only the error
+    branch needs the input string
+- retained cleanup:
+  - `evaluate_eval_command_pretty_with_session(...)` now keeps `config.expr` as
+    `&str` and only feeds that borrowed input into
+    `ErrorWireOutput::from_eval_error_message(...)`
+- measured outcome:
+  - `frontend_session/eval_pretty/no_session/light/x_plus_1`:
+    `71.544-72.390 us`
+  - `frontend_session/eval_pretty/no_session/gcd/scalar_multiple_fraction`:
+    `90.216-90.819 us`
+  - `frontend_session/eval_pretty/no_session/trig/pythagorean_chain`:
+    `86.325-87.251 us`
+- conclusion:
+  - the eager `to_string()` removal is correct cleanup and harmless, but the
+    `pretty` frontend path is now close enough to `wire` that it is not a
+    strong optimization stream by itself
+  - the next clean session-owned benchmark front should isolate snapshot I/O
+    rather than pretty rendering
+- opened a direct snapshot I/O microtrack in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_session_core/benches/snapshot_io.rs`
+  with matching Make targets:
+  - `make bench-session-snapshot-io`
+  - `make bench-session-snapshot-io-save BASELINE=...`
+  - `make bench-session-snapshot-io-compare BASELINE=...`
+- the bench measures `cas_session_core::snapshot_io::{save_bincode_atomic,
+  load_bincode}` directly on representative medium/large snapshot fixtures, so
+  serialization cost is isolated from `cas_session` runtime/load-save plumbing
+- retained improvement in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_session_core/src/snapshot_io.rs`:
+  - switched `BufReader::new(...)` / `BufWriter::new(...)` to
+    `with_capacity(64 * 1024, ...)`
+- retained validation:
+  - `cargo test -p cas_session_core --lib`
+  - `cargo check -p cas_session_core --benches`
+  - `make bench-session-snapshot-io`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_session --bench frontend_session 'frontend_session/(eval_wire/persisted/light/x_plus_1|eval_text/persisted/light/x_plus_1|eval_wire/persisted_no_store/light/x_plus_1|eval_text/persisted_no_store/light/x_plus_1)' -- --noplot`
+- measured outcome:
+  - direct `snapshot_io`:
+    - `save/medium`: `181.05-189.31 us` vs `185.22-203.35 us`
+    - `load/medium`: `96.143-101.56 us` vs `99.348-106.60 us`
+    - `save/large`: `184.85-191.48 us` vs `234.04-247.78 us`
+    - `load/large`: `103.06-108.69 us` vs `105.61-109.75 us`
+  - translated persisted frontend steady-state:
+    - `frontend_session/eval_wire/persisted/light/x_plus_1`:
+      `300.63-308.17 us`
+    - `frontend_session/eval_text/persisted/light/x_plus_1`:
+      `287.55-291.98 us`
+    - `frontend_session/eval_wire/persisted_no_store/light/x_plus_1`:
+      `157.67-159.96 us`
+    - `frontend_session/eval_text/persisted_no_store/light/x_plus_1`:
+      `151.55-154.50 us`
+- final conclusion for this subtrack:
+  - larger buffered snapshot I/O is worth keeping, especially on the save side
+  - the improvement does propagate to persisted `cas_session` paths, but the
+    remaining cost is now dominated by the unavoidable snapshot load/save work
+    itself rather than tiny buffer overheads
+  - further ROI in `cas_session` persistence now likely requires coarser
+    persistence design changes, not more micro-tweaks
+- opened a new clean wire/frontend benchmark track in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_api_models/benches/frontend_wire.rs`
+  with matching Make targets:
+  - `make bench-wire-frontend`
+  - `make bench-wire-frontend-save BASELINE=...`
+  - `make bench-wire-frontend-compare BASELINE=...`
+- this track isolates:
+  - `EvalWireOutput::from_build(...)`
+  - `EvalWireOutput::{to_json,to_json_pretty}(...)`
+  - `ErrorWireOutput::from_eval_error_message(...)`
+  - the small metadata DTO bundle (`BudgetWireInfo`, `DomainWire`,
+    `OptionsWire`, `SemanticsWire`, `EngineWireWarning`)
+- first useful snapshot from that bench:
+  - `build/light_success`: `629.96-633.93 ns`
+  - `serialize_json/light_success`: `559.60-569.91 ns`
+  - `serialize_pretty/light_success`: `703.65-713.14 ns`
+  - `build/heavy_success`: `1.4500-1.4715 us`
+  - `serialize_json/heavy_success`: `1.0322-1.0588 us`
+  - `serialize_pretty/heavy_success`: `1.3272-1.3561 us`
+  - `metadata_bundle`: `542.09-554.69 ns`
+- attempted optimization:
+  - moved short wire DTO labels/metadata (`kind`, `code`, `steps_mode`,
+    options/semantics/domain labels, rule labels, budget labels) to `SmolStr`
+    in `wire_types.rs`
+- measured outcome:
+  - direct microbench improved strongly in DTO construction:
+    - `build/light_success`: `402.05-409.02 ns` (`~35%` better)
+    - `build/heavy_success`: `1.2720-1.2826 us` (`~13%` better)
+    - `error_build/*`: `~50%` better
+    - `metadata_bundle`: `311.43-316.97 ns` (`~42%` better)
+  - but the real frontend guardrail regressed in
+    `frontend_session/eval_wire|eval_pretty/no_session/gcd/scalar_multiple_fraction`
+    and did not help enough elsewhere
+- retained conclusion:
+  - do **not** keep the `SmolStr` DTO rewrite in `cas_api_models`; it is a good
+    microbench win but a bad real-path tradeoff here
+  - do keep the new `frontend_wire` benchmark track, because it cleanly isolates
+    this layer and prevents re-opening the same false-positive optimization
+- opened a new clean stateless wire-entrypoint benchmark track in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_solver/benches/frontend_wire_eval.rs`
+  with matching Make targets:
+  - `make bench-solver-wire-eval`
+  - `make bench-solver-wire-eval-save BASELINE=...`
+  - `make bench-solver-wire-eval-compare BASELINE=...`
+- this track isolates `cas_solver::wire::eval_str_to_wire(...)` on:
+  - light/no-op input: `x + 1`
+  - a real algebraic case: `(2*x + 2*y)/(4*x + 4*y)`
+  - a trig identity case: `sin(2*x + 1)^2 + cos(1 + 2*x)^2`
+  - and compares compact/common `opts_json` payloads against semantically
+    equivalent spaced payloads
+- retained optimization in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_solver/src/wire/eval/options.rs`:
+  - `parse_eval_run_options(...)` now trims once, then fast-paths several common
+    exact compact shapes before falling back to `serde_json`:
+    - `{}`
+    - `{"pretty":true}`
+    - `{"steps":true}`
+    - the common default-budget shapes for `preset = cli`
+    - the exact strict-budget shapes for `preset = cli, mode = strict`
+- validation kept green:
+  - `cargo test -p cas_solver wire::eval::options::tests --lib`
+  - `cargo check -p cas_solver --benches`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_solver --bench frontend_wire_eval -- --noplot`
+- measured outcome:
+  - `light/x_plus_1`:
+    - `steps_compact`: `67.943-68.787 us`
+    - `steps_spaced`: `68.304-70.219 us`
+    - `budget_cli_compact`: `67.627-68.061 us`
+    - `budget_cli_spaced`: `67.765-68.360 us`
+  - `gcd/scalar_multiple_fraction`:
+    - `pretty_compact`: `81.428-84.247 us`
+    - `pretty_spaced`: `83.542-85.425 us`
+    - `steps_compact`: `85.226-85.827 us`
+    - `steps_spaced`: `85.762-88.100 us`
+  - `trig/pythagorean_chain`:
+    - `budget_strict_compact`: `77.083-77.611 us`
+    - `budget_strict_spaced`: `79.566-80.589 us`
+- retained conclusion:
+  - keep the new `frontend_wire_eval` benchmark track; it gives a clean guardrail
+    for stateless wire entrypoint work
+  - keep the compact-payload fast path for common option shapes: the signal is
+    not dramatic on every case, but it is consistently safe and measurably good
+    on heavier `steps` / `pretty` / `budget_strict` cases
+  - do **not** extrapolate it to a broad JSON-parser rewrite without a better
+    guardrail; this front is now instrumented well enough to reject noisy wins
+- opened a matching clean benchmark track for stateless substitute in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_solver/benches/frontend_wire_substitute.rs`
+  with Make targets:
+  - `make bench-solver-wire-substitute`
+  - `make bench-solver-wire-substitute-save BASELINE=...`
+  - `make bench-solver-wire-substitute-compare BASELINE=...`
+- retained optimization in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_api_models/src/wire_types.rs`:
+  - `SubstituteRunOptions::parse_optional_json(...)` now trims once and
+    fast-paths the common compact shapes before falling back to `serde_json`
+  - covered shapes include:
+    - `{}`
+    - `{"steps":true}`
+    - `{"mode":"exact"}`
+    - `{"mode":"power"}`
+    - `{"steps":true,"pretty":true}`
+- validation kept green:
+  - `cargo test -p cas_api_models substitute_run_options --lib`
+  - `cargo test -p cas_solver --test substitute_wire_contract_tests`
+  - `cargo check -p cas_solver --benches`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_solver --bench frontend_wire_substitute -- --noplot`
+- measured outcome:
+  - `light/simple_exact`:
+    - `none`: `3.1557-3.2142 us`
+    - `default_compact`: `3.0910-3.1130 us`
+    - `default_spaced`: `3.0992-3.1285 us`
+    - `exact_compact`: `3.0034-3.0223 us`
+    - `exact_spaced`: `3.0405-3.0652 us`
+    - `steps_compact`: `3.1581-3.1791 us`
+    - `steps_spaced`: `3.1846-3.2078 us`
+  - `light/power_aware`:
+    - `none`: `5.6310-5.7379 us`
+    - `default_compact`: `5.5675-5.6108 us`
+    - `default_spaced`: `5.5850-5.6382 us`
+    - `exact_compact`: `4.3376-4.3532 us`
+    - `exact_spaced`: `4.3473-4.3907 us`
+    - `steps_compact`: `5.7774-5.8309 us`
+    - `steps_spaced`: `5.8076-5.8620 us`
+- retained conclusion:
+  - keep the new `frontend_wire_substitute` benchmark track
+  - keep the compact-shape fast path in `SubstituteRunOptions`; the win is small
+    but clean, and the code is simple enough to justify it
+  - do **not** chase broader parser rewrites here without a higher-level
+    substitute frontend guardrail; the current direct track is enough to catch
+    regressions and most low-risk wins
+- opened a clean stateless `limit` frontend track in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_solver/benches/frontend_limit.rs`
+  with Make targets:
+  - `make bench-solver-limit`
+  - `make bench-solver-limit-save BASELINE=...`
+  - `make bench-solver-limit-compare BASELINE=...`
+- this track isolates `cas_solver::command_api::limit::evaluate_limit_subcommand(...)`
+  for both `wire_output = true` and `wire_output = false` on representative
+  inputs from the existing presimplify contracts:
+  - polynomial/rational at infinity
+  - safe subtraction cancel
+  - safe nested add-zero cleanup
+  - irrational constant
+- validation kept green:
+  - `cargo check -p cas_solver --benches`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_solver --bench frontend_limit -- --noplot`
+- first useful snapshot:
+  - `wire/light/rational_infinity`: `13.887-14.133 us`
+  - `text/light/rational_infinity`: `13.589-13.926 us`
+  - `wire/safe/subtraction_cancel`: `1.1395-1.1512 us`
+  - `text/safe/subtraction_cancel`: `1.0845-1.0975 us`
+  - `wire/safe/nested_add_zero`: `4.3921-4.4608 us`
+  - `text/safe/nested_add_zero`: `4.2953-4.3326 us`
+  - `wire/safe/irrational_constant`: `3.0318-3.0785 us`
+  - `text/safe/irrational_constant`: `2.9687-3.0601 us`
+- retained conclusion:
+  - keep the new `frontend_limit` benchmark track
+  - `limit` stateless is already cheap enough that wire serialization overhead is
+    only a small fraction of total cost; there is no compelling micro-opt to keep
+    here right now
+  - the next ROI is **not** another tweak in `limit`; this track is mainly a
+    guardrail to prevent future churn on a path that is already near the noise floor
+- opened a clean `cas_cli` parse/frontend track in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_cli/benches/frontend_cli.rs`
+  with Make targets:
+  - `make bench-cli-frontend`
+  - `make bench-cli-frontend-save BASELINE=...`
+  - `make bench-cli-frontend-compare BASELINE=...`
+- the track isolates `Cli::try_parse_from(...)` on representative public command
+  lines:
+  - `eval` text/light
+  - `eval --format json` on scalar-multiple GCD
+  - `limit --format json`
+  - `substitute --format json`
+  - `envelope`
+- retained cleanup + win:
+  - removed the legacy public alias `--budget cli` from `BudgetPreset` in
+    `/Users/javiergimenezmoya/developer/math/crates/cas_cli/src/cli_args.rs`
+    and made `standard` the only canonical default
+  - aligned the mapping in
+    `/Users/javiergimenezmoya/developer/math/crates/cas_cli/src/commands/eval.rs`
+    and the user docs in
+    `/Users/javiergimenezmoya/developer/math/docs/BUDGET_POLICY.md`
+- validation kept green:
+  - `cargo check -p cas_cli --benches`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_cli --bench frontend_cli -- --noplot`
+  - `cargo test -p cas_cli --test cli_contract_tests test_eval_rejects_legacy_cli_budget_alias -- --exact`
+- useful snapshot after removing the alias:
+  - `frontend_cli/parse/eval/text/light`: `21.249-21.911 us`
+  - `frontend_cli/parse/eval/json/gcd`: `23.229-23.679 us`
+  - `frontend_cli/parse/limit/json`: `18.329-18.464 us`
+  - `frontend_cli/parse/substitute/json`: `18.029-18.431 us`
+  - `frontend_cli/parse/envelope/basic`: `15.931-16.128 us`
+- retained conclusion:
+  - keep the new `frontend_cli` benchmark track
+  - keep the public API simplification removing `--budget cli`; it slightly
+    improves CLI parse and removes one more legacy branch from the public surface
+  - do not chase deeper `clap` micro-opts here yet; the track is valuable mainly
+    as a guardrail and as evidence that API simplification can move parse costs a bit
+- additional retained cleanup:
+  - `EvalArgs` in `/Users/javiergimenezmoya/developer/math/crates/cas_cli/src/cli_args.rs`
+    now uses `ValueEnum` for `steps/context/branch/complex/autoexpand` instead of
+    raw `String`s, and `/Users/javiergimenezmoya/developer/math/crates/cas_cli/src/commands/eval.rs`
+    maps them explicitly to the stable string axis values expected by
+    `EvalCommandConfig`
+- additional retained cleanup:
+  - `/Users/javiergimenezmoya/developer/math/crates/cas_api_models/src/wire_types.rs`
+    now types the `EvalSessionRunConfig` axes
+    `steps/context/branch/expand/complex/budget/domain/const_fold/value_domain/complex_branch/inv_trig/assume_scope`
+    with shared enums plus `as_str()` adapters
+  - `/Users/javiergimenezmoya/developer/math/crates/cas_solver/src/eval_command_runtime/*.rs`
+    consume those typed axes and only lower to strings at the boundary that still
+    needs stable wire labels
+  - `/Users/javiergimenezmoya/developer/math/crates/cas_solver/src/eval_option_axes/*.rs`
+    now consumes the same typed enums directly; the intermediate string parsing
+    layer was removed from runtime option application
+- measured outcome:
+  - parse stayed effectively flat on `frontend_cli`; this is a structural cleanup,
+    not a performance win, but it is worth keeping because it removes stringly-typed
+    parsing from the public CLI surface
+- opened a clean didactic/frontend track in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_didactic/benches/frontend_didactic.rs`
+  with Make targets:
+  - `make bench-didactic-frontend`
+  - `make bench-didactic-frontend-save BASELINE=...`
+  - `make bench-didactic-frontend-compare BASELINE=...`
+- the track isolates:
+  - `collect_step_payloads(...)`
+  - simplify HTML rendering
+  - simplify CLI rendering
+  - solve HTML rendering
+  - solve CLI rendering
+- retained win:
+  - `/Users/javiergimenezmoya/developer/math/crates/cas_formatter/src/latex_clean.rs`
+    now fast-returns from `clean_latex_identities(...)` when the input does not
+    contain any of the unit-multiplication cleanup patterns
+  - rationale: the didactic HTML/CLI renderers always passed the full document
+    through LaTeX cleanup, but most rendered pages did not contain any cleanup
+    candidates, so the previous path paid the full clone/replace loop for nothing
+- validation kept green:
+  - `cargo test -p cas_formatter --lib`
+  - `cargo check -p cas_didactic --benches`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_didactic --bench frontend_didactic -- --noplot`
+- measured outcome against the initial `frontend_didactic` baseline:
+  - `step_payloads/*` stayed essentially flat
+  - `simplify_html_normal/gcd/scalar_multiple_fraction`: `49.513-50.920 us`
+    (`~48%` better)
+  - `simplify_cli_normal/gcd/scalar_multiple_fraction`: `49.967-50.540 us`
+    (`~47-48%` better)
+  - `simplify_html_normal/trig/pythagorean_chain`: `35.532-36.577 us`
+    (`~55-57%` better)
+  - `simplify_cli_normal/trig/pythagorean_chain`: `35.645-36.061 us`
+    (`~55%` better)
+  - `simplify_html_normal/heavy/nested_root`: `40.105-41.253 us`
+    (`~53-55%` better)
+  - `simplify_cli_normal/heavy/nested_root`: `40.568-40.834 us`
+    (`~52%` better)
+  - `solve_html/linear/real_solver`: `24.944-25.184 us`
+    (`~61%` better)
+  - `solve_cli/linear/real_solver`: `25.566-26.057 us`
+    (`~60%` better)
+  - `solve_html/linear/substeps_fixture`: `27.095-27.499 us`
+    (`~60%` better)
+  - `solve_cli/linear/substeps_fixture`: `27.355-27.702 us`
+    (`~60%` better)
+- retained conclusion:
+  - keep the new `frontend_didactic` benchmark track
+  - keep the `clean_latex_identities(...)` fast-reject; this is a real, broad
+    win for didactic rendering with negligible risk
+  - this didactic subtrack is now reasonably resolved; the next ROI is no longer
+    in renderer cleanup but in some other frontend/stateful area
+
+- opened a clean session-reference resolution track in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_session_core/benches/resolve_frontend.rs`
+  with Make targets:
+  - `make bench-session-resolve-frontend`
+  - `make bench-session-resolve-frontend-save BASELINE=...`
+  - `make bench-session-resolve-frontend-compare BASELINE=...`
+- the track isolates:
+  - `rewrite_session_refs(...)`
+  - `resolve_session_refs_with_lookup(...)`
+  - legacy `"#N"` variable resolution
+  - `resolve_all_with_mode_lookup_and_env(...)`
+- retained win:
+  - `/Users/javiergimenezmoya/developer/math/crates/cas_session_core/src/resolve.rs`
+    no longer clones the whole `Expr` at the start of `rewrite_session_refs(...)`
+  - binary/unary/session-ref cases now copy only the small payload they need, and
+    `Function`/`Matrix` clone only their arg/data vectors
+  - rationale: the previous implementation paid a full `Expr` clone even for the
+    common cases `SessionRef`, `Variable("#N")`, `Add`, `Mul`, `Neg`, `Hold`
+- validation kept green:
+  - `cargo test -p cas_session_core --lib`
+  - `cargo check -p cas_session_core --benches`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_session_core --bench resolve_frontend -- --noplot`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_session --bench frontend_session 'frontend_session/(eval_wire/persisted_no_store/cache_hit/ref_1|eval_text/persisted_no_store/cache_hit/ref_1)' -- --noplot`
+- measured outcome:
+  - `resolve_frontend/rewrite/explicit_add`: `560.35-591.16 ns`
+  - `resolve_frontend/resolve_lookup/explicit_add`: `614.64-640.34 ns`
+  - `resolve_frontend/resolve_lookup/legacy_var`: `598.44-658.20 ns`
+  - `resolve_frontend/resolve_lookup/deep_chain`: `505.75-529.68 ns`
+  - `resolve_frontend/resolve_mode/raw_env`: `1.2236-1.2715 us`
+  - real persisted cache-hit path:
+    - `frontend_session/eval_wire/persisted_no_store/cache_hit/ref_1`:
+      `170.07-174.05 us`, improvement `~4.7-9.5%`
+    - `frontend_session/eval_text/persisted_no_store/cache_hit/ref_1`:
+      `163.75-167.99 us`, flat to slightly better
+- retained conclusion:
+  - keep the new `resolve_frontend` benchmark track
+  - keep the `rewrite_session_refs(...)` no-whole-node-clone change
+  - this resolves the question of where `#N` time still goes: resolution itself is
+    in the sub-microsecond/low-microsecond range, so the next ROI in persisted
+    session paths is no longer inside resolver recursion but in higher-level load/
+    state management
+
+- retained follow-up:
+  - `/Users/javiergimenezmoya/developer/math/crates/cas_session_core/src/resolve.rs`
+    now also fast-paths root `Expr::SessionRef(id)` and legacy root `Variable("#N")`
+    in `resolve_session_refs_with_lookup_on_visit(...)` and
+    `resolve_with_mode_recursive(...)`, bypassing `rewrite_session_refs(...)`
+    when the entire expression is already a single session reference
+  - rationale: the real persisted cache-hit path for `#1` hits exactly this shape
+- validation kept green:
+  - `cargo test -p cas_session_core --lib`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_session_core --bench resolve_frontend -- --noplot`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_session --bench frontend_session 'frontend_session/(eval_wire/persisted_no_store/cache_hit/ref_1|eval_text/persisted_no_store/cache_hit/ref_1)' -- --noplot`
+- measured outcome:
+  - `resolve_frontend/*` stayed essentially within noise
+  - real persisted cache-hit path improved or stayed flat:
+    - `eval_wire/persisted_no_store/cache_hit/ref_1`: `168.45-171.39 us`
+      (better in absolute terms, borderline significance)
+    - `eval_text/persisted_no_store/cache_hit/ref_1`: `165.65-170.86 us`
+      (flat)
+- retained conclusion:
+  - keep the root-session-ref fast path because it is simple, localized and at
+    least non-regressing on the real path that motivated it
+  - the main value remains the new `resolve_frontend` track; the next serious ROI
+    in persisted sessions is still above the resolver layer
+
+- opened a clean snapshot-restore track in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_session_core/benches/snapshot_restore.rs`
+  with Make targets:
+  - `make bench-session-snapshot-restore`
+  - `make bench-session-snapshot-restore-save BASELINE=...`
+  - `make bench-session-snapshot-restore-compare BASELINE=...`
+- the track isolates:
+  - `ContextSnapshot::into_context()`
+  - `restore_store_from_snapshot_with(...)`
+  - combined restore bundle (`context + store`) as proxy for
+    `SessionSnapshot::into_parts()`
+- retained wins:
+  - `/Users/javiergimenezmoya/developer/math/crates/cas_ast/src/expression.rs`
+    adds `Context::with_restore_capacity(...)` so snapshot restore preallocates
+    the node arena and symbol table instead of always starting from
+    `Context::new()`
+  - `/Users/javiergimenezmoya/developer/math/crates/cas_session_core/src/store.rs`
+    adds `SessionStore::reserve_for_restore(...)`, used from
+    `/Users/javiergimenezmoya/developer/math/crates/cas_session_core/src/store_snapshot.rs`
+    before bulk restore of entries/cache order
+  - `/Users/javiergimenezmoya/developer/math/crates/cas_session_core/src/context_snapshot.rs`
+    now parses snapshot rationals through a small-number fast path
+    (`i64/i64`) before falling back to generic `BigInt` parsing
+- important correction:
+  - the first version of the benchmark accidentally reused the same parsed
+    expressions across multipliers, so `ContextSnapshot` stayed almost constant
+  - the retained fixture now generates per-batch variable names (`x{n}`, `y{n}`,
+    etc.) so `context/medium` and `context/large` actually measure growing
+    restore workloads
+- validation kept green:
+  - `cargo test -p cas_session_core --lib`
+  - `cargo check -p cas_session_core --benches -p cas_session`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_session_core --bench snapshot_restore -- --noplot`
+- measured outcome after the retained fixes:
+  - `snapshot_restore/context/medium`: `5.2842-5.4704 us`
+    (`~5-9%` better than the previous retained iteration)
+  - `snapshot_restore/store/medium`: `1.0303-1.0646 us`
+    (flat)
+  - `snapshot_restore/bundle/medium`: `6.4722-6.8900 us`
+    (`~18%` better in the center estimate)
+  - `snapshot_restore/context/large`: `17.100-18.214 us`
+    (better in absolute terms; significance borderline)
+  - `snapshot_restore/store/large`: `3.9173-3.9885 us`
+    (flat)
+  - `snapshot_restore/bundle/large`: `20.655-22.960 us`
+    (better in absolute terms; significance borderline)
+- retained conclusion:
+  - keep the new `snapshot_restore` benchmark track
+  - keep the restore-capacity constructor and the small-rational parse fast path
+  - store restore is no longer the interesting bottleneck here; the remaining
+    cost is mostly in `ContextSnapshot::into_context()`
+  - this subtrack is now reasonably resolved; the next ROI in persisted session
+    paths is more likely in higher-level load/state strategy than in more
+    low-level snapshot restore micro-tweaks
+
+### Session snapshot load: header-first incompatibility short-circuit
+
+- objective:
+  - isolate `SessionState::load_compatible_snapshot(...)` and verify whether
+    incompatible snapshots are still paying most of the deserialization cost
+- retained benchmark track:
+  - `/Users/javiergimenezmoya/developer/math/crates/cas_session/benches/snapshot_load.rs`
+  - `make bench-session-snapshot-load`
+  - `make bench-session-snapshot-load-save BASELINE=...`
+  - `make bench-session-snapshot-load-compare BASELINE=...`
+- retained implementation:
+  - `/Users/javiergimenezmoya/developer/math/crates/cas_session/src/state_core/snapshot.rs`
+    now opens one bincode reader, deserializes only the snapshot header first,
+    returns `Ok(None)` immediately on magic/version/cache-key mismatch, and
+    only then deserializes `ContextSnapshot` and `SessionStoreSnapshot`
+  - `/Users/javiergimenezmoya/developer/math/crates/cas_session/src/snapshot_tests.rs`
+    now fixes the contract with an incompatible-header + corrupt-payload test,
+    proving the loader does not attempt to read the payload on mismatch
+  - `/Users/javiergimenezmoya/developer/math/crates/cas_session_core/src/snapshot_io.rs`
+    already provided the shared `open_bincode_reader(...)` /
+    `load_bincode_from_reader(...)` seam this change uses
+- validation kept green:
+  - `cargo test -p cas_session snapshot_tests --lib`
+  - `cargo check -p cas_session --benches`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_session --bench snapshot_load -- --noplot`
+- measured outcome after the retained fix:
+  - `snapshot_load/compatible/medium`: `94.675-101.99 us`
+  - `snapshot_load/incompatible/medium`: `86.450-90.101 us`
+    (better in absolute terms; significance still borderline)
+  - `snapshot_load/compatible/large`: `123.87-128.55 us`
+  - `snapshot_load/incompatible/large`: `84.261-88.086 us`
+    (Criterion reported `~12-19%` improvement)
+- retained conclusion:
+  - keep the new `snapshot_load` benchmark track
+  - keep the header-first loader; it removes payload work from the incompatible
+    path exactly where the benchmark showed wasted time
+  - the remaining ROI in persisted-session load is no longer in compatibility
+    checking; it is now higher up in session load/state strategy
+
+### Session phase breakdown: restored `Engine::with_context(...)`
+
+- objective:
+  - isolate the three visible phases of a persisted cache-hit eval:
+    snapshot load, `Engine::with_context(...)`, and the already-loaded
+    `evaluate_eval_with_session(...)` run
+- retained benchmark support:
+  - `/Users/javiergimenezmoya/developer/math/crates/cas_session/benches/frontend_session.rs`
+    now also measures:
+    - `session_phase/load_or_new/persisted/cache_hit_seed`
+    - `session_phase/engine_with_context/cache_hit_seed`
+    - `session_phase/run_loaded/cache_hit/ref_1`
+  - `make bench-session-phase-breakdown`
+- retained implementation:
+  - `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/profile_cache.rs`
+    exposes `default_rule_profile()` as a thread-local cached default
+    `RuleProfile`
+  - `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/eval/mod.rs`
+    now builds `Engine::new()` and `Engine::with_context(...)` from that cached
+    default profile via `Simplifier::from_profile_with_context(...)` instead of
+    re-registering the default rules every time
+- validation kept green:
+  - `cargo check -p cas_engine --benches -p cas_session -p cas_solver -p cas_cli -p cas_didactic -p cas_math -p cas_api_models`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_session --bench frontend_session 'frontend_session/session_phase/engine_with_context/cache_hit_seed' -- --noplot`
+  - `make bench-engine-solve-batches`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_engine --bench repl_end_to_end 'repl_full_eval/cached/batch_11_inputs' -- --noplot`
+  - `cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_unified_benchmark -- --ignored --nocapture`
+- measured outcome after the retained fix:
+  - `frontend_session/session_phase/load_or_new/persisted/cache_hit_seed`:
+    `88.247-96.047 us`
+  - `frontend_session/session_phase/engine_with_context/cache_hit_seed`:
+    `81.035-91.353 us`
+    (Criterion reported `~13-21%` improvement)
+  - `frontend_session/session_phase/run_loaded/cache_hit/ref_1`:
+    `131.08-134.78 us`
+  - `solve_modes_cached/solve_tactic_generic_batch`:
+    `13.680-13.802 us`
+  - `solve_modes_cached/solve_tactic_assume_batch`:
+    `13.793-13.895 us`
+  - `repl_full_eval/cached/batch_11_inputs`:
+    `93.369-94.175 us`
+  - simplification metamorphic benchmark remained stable at `numeric-only = 164`
+- retained conclusion:
+  - keep the new session phase-breakdown track
+  - keep the cached default rule profile for `Engine::new()` /
+    `Engine::with_context(...)`
+  - the next ROI in persisted session cache-hit flows is no longer in restored
+    engine construction; it is now either in the loaded run itself or higher up
+    in overall session strategy
+
+### Session eval runtime: skip `EngineEventCollector` when `steps = off`
+
+- objective:
+  - remove fixed runtime overhead from `evaluate_eval_with_session(...)` in
+    the dominant `steps = off` paths (`no_session`, persisted read-only, and
+    cache-hit session eval) without changing `raw_steps_count`,
+    `required_conditions`, or any `steps = on` behavior
+- retained implementation:
+  - `/Users/javiergimenezmoya/developer/math/crates/cas_solver/src/eval_command_runtime/prepare.rs`
+    now installs `EngineEventCollector` and replaces the step listener only
+    when `config.steps_mode != EvalStepsMode::Off`
+  - when steps are off, `PreparedEvalRun.events` now stays empty by
+    construction and the simplifier listener is left untouched
+  - `/Users/javiergimenezmoya/developer/math/crates/cas_session/src/eval_command_session_tests.rs`
+    adds a guardrail asserting that `steps = on` still collects engine events
+- validation kept green:
+  - `cargo test -p cas_session eval_command_session_tests --lib`
+  - `cargo check -p cas_session --benches -p cas_solver -p cas_cli -p cas_api_models`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_session --bench frontend_session 'frontend_session/(eval_wire/no_session/light/x_plus_1|eval_wire/persisted_no_store/light/x_plus_1|session_phase/run_loaded/cache_hit/ref_1)' -- --noplot`
+- measured outcome after the retained fix:
+  - `frontend_session/eval_wire/no_session/light/x_plus_1`:
+    `43.929-44.414 us`
+    (Criterion reported `~38-40%` improvement)
+  - `frontend_session/eval_wire/persisted_no_store/light/x_plus_1`:
+    `138.93-143.60 us`
+    (Criterion reported `~11-15%` improvement)
+  - `frontend_session/session_phase/run_loaded/cache_hit/ref_1`:
+    `129.89-133.02 us`
+    (no statistically significant change)
+- retained conclusion:
+  - keep the conditional collector install; it pays for itself strongly in
+    the dominant stateless/read-only paths and is neutral in the loaded
+    cache-hit run
+  - the next ROI in persisted session eval no longer looks like event
+    collection; it is now higher up in load/state strategy or in another
+    isolated frontend path

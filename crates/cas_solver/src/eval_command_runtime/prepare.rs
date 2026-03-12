@@ -1,5 +1,6 @@
 use std::time::Instant;
 
+use cas_api_models::EvalStepsMode;
 use cas_solver_core::engine_event_collector::EngineEventCollector;
 
 use super::{EvalCommandRunConfig, PreparedEvalRun};
@@ -37,15 +38,22 @@ where
     let parsed_input = req.parsed();
     let parse_us = parse_start.elapsed().as_micros() as u64;
 
-    let collector = EngineEventCollector::new();
-    let previous_listener = engine
-        .simplifier
-        .replace_step_listener(Some(Box::new(collector.clone())));
+    let (collector, previous_listener) = if matches!(config.steps_mode, EvalStepsMode::Off) {
+        (None, None)
+    } else {
+        let collector = EngineEventCollector::new();
+        let previous_listener = engine
+            .simplifier
+            .replace_step_listener(Some(Box::new(collector.clone())));
+        (Some(collector), Some(previous_listener))
+    };
 
     let simplify_start = Instant::now();
     let output_view_result =
         crate::eval_request_runtime::evaluate_prepared_request_with_session(engine, session, req);
-    let _ = engine.simplifier.replace_step_listener(previous_listener);
+    if let Some(previous_listener) = previous_listener {
+        let _ = engine.simplifier.replace_step_listener(previous_listener);
+    }
     let output_view = output_view_result?;
     let simplify_us = simplify_start.elapsed().as_micros() as u64;
 
@@ -54,6 +62,8 @@ where
         parse_us,
         simplify_us,
         output_view,
-        events: collector.into_events(),
+        events: collector
+            .map(EngineEventCollector::into_events)
+            .unwrap_or_default(),
     })
 }

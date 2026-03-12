@@ -7,7 +7,7 @@ pub fn map_domain_warnings_to_engine_warnings(
     warnings
         .iter()
         .map(|w| EngineWireWarning {
-            kind: "domain_assumption".to_string(),
+            kind: "domain_assumption".into(),
             message: format!("{} (rule: {})", w.message, w.rule_name),
         })
         .collect()

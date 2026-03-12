@@ -1,4 +1,4 @@
-.PHONY: ci ci-release ci-msrv ci-quick lint test fmt clippy build-release lint-allowlist lint-budget lint-limits audit-utils lint-string-compares lint-no-panic-prod bench-clean bench-engine-fast bench-engine-fast-save bench-engine-fast-compare bench-engine-fast-save-seq bench-engine-fast-compare-seq bench-engine-solve-batches bench-engine-solve-batches-save bench-engine-solve-batches-compare bench-engine-solve-hotspots-save bench-engine-solve-hotspots-compare bench-engine-solve-profile bench-engine-repl-breakdown bench-engine-repl-individual bench-engine-repl-individual-save bench-engine-repl-individual-compare bench-engine-repl-hotspots bench-engine-repl-hotspots-save bench-engine-repl-hotspots-compare bench-engine-standard-phase-subset bench-engine-root-direct bench-parser-frontend bench-parser-frontend-save bench-parser-frontend-compare bench-formatter-frontend bench-formatter-frontend-save bench-formatter-frontend-compare help
+.PHONY: ci ci-release ci-msrv ci-quick lint test fmt clippy build-release lint-allowlist lint-budget lint-limits audit-utils lint-string-compares lint-no-panic-prod bench-clean bench-engine-fast bench-engine-fast-save bench-engine-fast-compare bench-engine-fast-save-seq bench-engine-fast-compare-seq bench-engine-solve-batches bench-engine-solve-batches-save bench-engine-solve-batches-compare bench-engine-solve-hotspots-save bench-engine-solve-hotspots-compare bench-engine-solve-profile bench-engine-repl-breakdown bench-engine-repl-individual bench-engine-repl-individual-save bench-engine-repl-individual-compare bench-engine-repl-hotspots bench-engine-repl-hotspots-save bench-engine-repl-hotspots-compare bench-engine-standard-phase-subset bench-engine-root-direct bench-parser-frontend bench-parser-frontend-save bench-parser-frontend-compare bench-formatter-frontend bench-formatter-frontend-save bench-formatter-frontend-compare bench-session-frontend bench-session-frontend-save bench-session-frontend-compare bench-session-phase-breakdown bench-session-snapshot-io bench-session-snapshot-io-save bench-session-snapshot-io-compare bench-session-snapshot-restore bench-session-snapshot-restore-save bench-session-snapshot-restore-compare bench-session-snapshot-load bench-session-snapshot-load-save bench-session-snapshot-load-compare bench-session-store-lookup bench-session-store-lookup-save bench-session-store-lookup-compare bench-session-resolve-frontend bench-session-resolve-frontend-save bench-session-resolve-frontend-compare bench-wire-frontend bench-wire-frontend-save bench-wire-frontend-compare bench-solver-wire-eval bench-solver-wire-eval-save bench-solver-wire-eval-compare bench-solver-wire-substitute bench-solver-wire-substitute-save bench-solver-wire-substitute-compare bench-solver-limit bench-solver-limit-save bench-solver-limit-compare bench-cli-frontend bench-cli-frontend-save bench-cli-frontend-compare bench-didactic-frontend bench-didactic-frontend-save bench-didactic-frontend-compare help
 
 SOLVE_BATCH_FILTER = solve_modes_cached/(solve_tactic_generic_batch|solve_tactic_assume_batch)
 
@@ -75,6 +75,80 @@ help:
 	@echo "                     -> save a named baseline for formatter/frontend benchmarks"
 	@echo "  make bench-formatter-frontend-compare BASELINE=good"
 	@echo "                     -> compare formatter/frontend benchmarks against a named baseline"
+	@echo "  make bench-session-frontend"
+	@echo "                     -> run stateful cas_session frontend benchmarks"
+	@echo "  make bench-session-frontend-save BASELINE=good"
+	@echo "                     -> save a named baseline for session/frontend benchmarks"
+	@echo "  make bench-session-frontend-compare BASELINE=good"
+	@echo "                     -> compare session/frontend benchmarks against a named baseline"
+	@echo "  make bench-session-phase-breakdown"
+	@echo "                     -> run persisted session phase breakdown (load/build/run)"
+	@echo "  make bench-session-snapshot-io"
+	@echo "                     -> run direct session snapshot load/save benchmarks"
+	@echo "  make bench-session-snapshot-io-save BASELINE=good"
+	@echo "                     -> save a named baseline for snapshot I/O benchmarks"
+	@echo "  make bench-session-snapshot-io-compare BASELINE=good"
+	@echo "                     -> compare snapshot I/O benchmarks against a named baseline"
+	@echo "  make bench-session-snapshot-restore"
+	@echo "                     -> run direct snapshot restore (context/store/bundle) benchmarks"
+	@echo "  make bench-session-snapshot-restore-save BASELINE=good"
+	@echo "                     -> save a named baseline for snapshot restore benchmarks"
+	@echo "  make bench-session-snapshot-restore-compare BASELINE=good"
+	@echo "                     -> compare snapshot restore benchmarks against a named baseline"
+	@echo "  make bench-session-snapshot-load"
+	@echo "                     -> run compatible/incompatible session snapshot load benchmarks"
+	@echo "  make bench-session-snapshot-load-save BASELINE=good"
+	@echo "                     -> save a named baseline for snapshot load benchmarks"
+	@echo "  make bench-session-snapshot-load-compare BASELINE=good"
+	@echo "                     -> compare snapshot load benchmarks against a named baseline"
+	@echo "  make bench-session-store-lookup"
+	@echo "                     -> run direct session store lookup benchmarks"
+	@echo "  make bench-session-store-lookup-save BASELINE=good"
+	@echo "                     -> save a named baseline for session store lookup benches"
+	@echo "  make bench-session-store-lookup-compare BASELINE=good"
+	@echo "                     -> compare session store lookup benches against a named baseline"
+	@echo "  make bench-session-resolve-frontend"
+	@echo "                     -> run direct session reference-resolution benchmarks"
+	@echo "  make bench-session-resolve-frontend-save BASELINE=good"
+	@echo "                     -> save a named baseline for session resolution benches"
+	@echo "  make bench-session-resolve-frontend-compare BASELINE=good"
+	@echo "                     -> compare session resolution benches against a named baseline"
+	@echo "  make bench-wire-frontend"
+	@echo "                     -> run direct wire DTO build+serialize benchmarks"
+	@echo "  make bench-wire-frontend-save BASELINE=good"
+	@echo "                     -> save a named baseline for wire frontend benchmarks"
+	@echo "  make bench-wire-frontend-compare BASELINE=good"
+	@echo "                     -> compare wire frontend benchmarks against a named baseline"
+	@echo "  make bench-solver-wire-eval"
+	@echo "                     -> run direct cas_solver wire eval entrypoint benchmarks"
+	@echo "  make bench-solver-wire-eval-save BASELINE=good"
+	@echo "                     -> save a named baseline for solver wire eval benchmarks"
+	@echo "  make bench-solver-wire-eval-compare BASELINE=good"
+	@echo "                     -> compare solver wire eval benchmarks against a named baseline"
+	@echo "  make bench-solver-wire-substitute"
+	@echo "                     -> run direct cas_solver wire substitute entrypoint benchmarks"
+	@echo "  make bench-solver-wire-substitute-save BASELINE=good"
+	@echo "                     -> save a named baseline for solver wire substitute benchmarks"
+	@echo "  make bench-solver-wire-substitute-compare BASELINE=good"
+	@echo "                     -> compare solver wire substitute benchmarks against a named baseline"
+	@echo "  make bench-solver-limit"
+	@echo "                     -> run direct cas_solver stateless limit entrypoint benchmarks"
+	@echo "  make bench-solver-limit-save BASELINE=good"
+	@echo "                     -> save a named baseline for solver limit benchmarks"
+	@echo "  make bench-solver-limit-compare BASELINE=good"
+	@echo "                     -> compare solver limit benchmarks against a named baseline"
+	@echo "  make bench-cli-frontend"
+	@echo "                     -> run direct CLI clap/frontend parse benchmarks"
+	@echo "  make bench-cli-frontend-save BASELINE=good"
+	@echo "                     -> save a named baseline for CLI frontend benchmarks"
+	@echo "  make bench-cli-frontend-compare BASELINE=good"
+	@echo "                     -> compare CLI frontend benchmarks against a named baseline"
+	@echo "  make bench-didactic-frontend"
+	@echo "                     -> run direct cas_didactic payload/timeline render benchmarks"
+	@echo "  make bench-didactic-frontend-save BASELINE=good"
+	@echo "                     -> save a named baseline for didactic/frontend benchmarks"
+	@echo "  make bench-didactic-frontend-compare BASELINE=good"
+	@echo "                     -> compare didactic/frontend benchmarks against a named baseline"
 	@echo "  make audit-utils   -> show canonical utilities registry + lint check"
 	@echo "  make test          -> cargo test (debug) only"
 	@echo "  make build-release -> cargo build --release only"
@@ -216,6 +290,141 @@ bench-formatter-frontend-save:
 bench-formatter-frontend-compare:
 	@test -n "$(BASELINE)" || { echo "Missing BASELINE=..."; exit 1; }
 	CAS_BENCH_FAST=1 cargo bench -p cas_formatter --bench frontend_render -- --noplot --baseline $(BASELINE)
+
+bench-session-frontend:
+	CAS_BENCH_FAST=1 cargo bench -p cas_session --bench frontend_session -- --noplot
+
+bench-session-frontend-save:
+	@test -n "$(BASELINE)" || { echo "Missing BASELINE=..."; exit 1; }
+	CAS_BENCH_FAST=1 cargo bench -p cas_session --bench frontend_session -- --noplot --save-baseline $(BASELINE)
+
+bench-session-frontend-compare:
+	@test -n "$(BASELINE)" || { echo "Missing BASELINE=..."; exit 1; }
+	CAS_BENCH_FAST=1 cargo bench -p cas_session --bench frontend_session -- --noplot --baseline $(BASELINE)
+
+bench-session-phase-breakdown:
+	CAS_BENCH_FAST=1 cargo bench -p cas_session --bench frontend_session 'frontend_session/session_phase/(load_or_new/persisted/cache_hit_seed|engine_with_context/cache_hit_seed|run_loaded/cache_hit/ref_1)' -- --noplot
+
+bench-session-snapshot-io:
+	CAS_BENCH_FAST=1 cargo bench -p cas_session_core --bench snapshot_io -- --noplot
+
+bench-session-snapshot-io-save:
+	@test -n "$(BASELINE)" || { echo "Missing BASELINE=..."; exit 1; }
+	CAS_BENCH_FAST=1 cargo bench -p cas_session_core --bench snapshot_io -- --noplot --save-baseline $(BASELINE)
+
+bench-session-snapshot-io-compare:
+	@test -n "$(BASELINE)" || { echo "Missing BASELINE=..."; exit 1; }
+	CAS_BENCH_FAST=1 cargo bench -p cas_session_core --bench snapshot_io -- --noplot --baseline $(BASELINE)
+
+bench-session-snapshot-restore:
+	CAS_BENCH_FAST=1 cargo bench -p cas_session_core --bench snapshot_restore -- --noplot
+
+bench-session-snapshot-restore-save:
+	@test -n "$(BASELINE)" || { echo "Missing BASELINE=..."; exit 1; }
+	CAS_BENCH_FAST=1 cargo bench -p cas_session_core --bench snapshot_restore -- --noplot --save-baseline $(BASELINE)
+
+bench-session-snapshot-restore-compare:
+	@test -n "$(BASELINE)" || { echo "Missing BASELINE=..."; exit 1; }
+	CAS_BENCH_FAST=1 cargo bench -p cas_session_core --bench snapshot_restore -- --noplot --baseline $(BASELINE)
+
+bench-session-snapshot-load:
+	CAS_BENCH_FAST=1 cargo bench -p cas_session --bench snapshot_load -- --noplot
+
+bench-session-snapshot-load-save:
+	@test -n "$(BASELINE)" || { echo "Missing BASELINE=..."; exit 1; }
+	CAS_BENCH_FAST=1 cargo bench -p cas_session --bench snapshot_load -- --noplot --save-baseline $(BASELINE)
+
+bench-session-snapshot-load-compare:
+	@test -n "$(BASELINE)" || { echo "Missing BASELINE=..."; exit 1; }
+	CAS_BENCH_FAST=1 cargo bench -p cas_session --bench snapshot_load -- --noplot --baseline $(BASELINE)
+
+bench-session-store-lookup:
+	CAS_BENCH_FAST=1 cargo bench -p cas_session_core --bench store_lookup -- --noplot
+
+bench-session-store-lookup-save:
+	@test -n "$(BASELINE)" || { echo "Missing BASELINE=..."; exit 1; }
+	CAS_BENCH_FAST=1 cargo bench -p cas_session_core --bench store_lookup -- --noplot --save-baseline $(BASELINE)
+
+bench-session-store-lookup-compare:
+	@test -n "$(BASELINE)" || { echo "Missing BASELINE=..."; exit 1; }
+	CAS_BENCH_FAST=1 cargo bench -p cas_session_core --bench store_lookup -- --noplot --baseline $(BASELINE)
+
+bench-session-resolve-frontend:
+	CAS_BENCH_FAST=1 cargo bench -p cas_session_core --bench resolve_frontend -- --noplot
+
+bench-session-resolve-frontend-save:
+	@test -n "$(BASELINE)" || { echo "Missing BASELINE=..."; exit 1; }
+	CAS_BENCH_FAST=1 cargo bench -p cas_session_core --bench resolve_frontend -- --noplot --save-baseline $(BASELINE)
+
+bench-session-resolve-frontend-compare:
+	@test -n "$(BASELINE)" || { echo "Missing BASELINE=..."; exit 1; }
+	CAS_BENCH_FAST=1 cargo bench -p cas_session_core --bench resolve_frontend -- --noplot --baseline $(BASELINE)
+
+bench-wire-frontend:
+	CAS_BENCH_FAST=1 cargo bench -p cas_api_models --bench frontend_wire -- --noplot
+
+bench-wire-frontend-save:
+	@test -n "$(BASELINE)" || { echo "Missing BASELINE=..."; exit 1; }
+	CAS_BENCH_FAST=1 cargo bench -p cas_api_models --bench frontend_wire -- --noplot --save-baseline $(BASELINE)
+
+bench-wire-frontend-compare:
+	@test -n "$(BASELINE)" || { echo "Missing BASELINE=..."; exit 1; }
+	CAS_BENCH_FAST=1 cargo bench -p cas_api_models --bench frontend_wire -- --noplot --baseline $(BASELINE)
+
+bench-solver-wire-eval:
+	CAS_BENCH_FAST=1 cargo bench -p cas_solver --bench frontend_wire_eval -- --noplot
+
+bench-solver-wire-eval-save:
+	@test -n "$(BASELINE)" || { echo "Missing BASELINE=..."; exit 1; }
+	CAS_BENCH_FAST=1 cargo bench -p cas_solver --bench frontend_wire_eval -- --noplot --save-baseline $(BASELINE)
+
+bench-solver-wire-eval-compare:
+	@test -n "$(BASELINE)" || { echo "Missing BASELINE=..."; exit 1; }
+	CAS_BENCH_FAST=1 cargo bench -p cas_solver --bench frontend_wire_eval -- --noplot --baseline $(BASELINE)
+
+bench-solver-wire-substitute:
+	CAS_BENCH_FAST=1 cargo bench -p cas_solver --bench frontend_wire_substitute -- --noplot
+
+bench-solver-wire-substitute-save:
+	@test -n "$(BASELINE)" || { echo "Missing BASELINE=..."; exit 1; }
+	CAS_BENCH_FAST=1 cargo bench -p cas_solver --bench frontend_wire_substitute -- --noplot --save-baseline $(BASELINE)
+
+bench-solver-wire-substitute-compare:
+	@test -n "$(BASELINE)" || { echo "Missing BASELINE=..."; exit 1; }
+	CAS_BENCH_FAST=1 cargo bench -p cas_solver --bench frontend_wire_substitute -- --noplot --baseline $(BASELINE)
+
+bench-solver-limit:
+	CAS_BENCH_FAST=1 cargo bench -p cas_solver --bench frontend_limit -- --noplot
+
+bench-solver-limit-save:
+	@test -n "$(BASELINE)" || { echo "Missing BASELINE=..."; exit 1; }
+	CAS_BENCH_FAST=1 cargo bench -p cas_solver --bench frontend_limit -- --noplot --save-baseline $(BASELINE)
+
+bench-solver-limit-compare:
+	@test -n "$(BASELINE)" || { echo "Missing BASELINE=..."; exit 1; }
+	CAS_BENCH_FAST=1 cargo bench -p cas_solver --bench frontend_limit -- --noplot --baseline $(BASELINE)
+
+bench-cli-frontend:
+	CAS_BENCH_FAST=1 cargo bench -p cas_cli --bench frontend_cli -- --noplot
+
+bench-cli-frontend-save:
+	@test -n "$(BASELINE)" || { echo "Missing BASELINE=..."; exit 1; }
+	CAS_BENCH_FAST=1 cargo bench -p cas_cli --bench frontend_cli -- --noplot --save-baseline $(BASELINE)
+
+bench-cli-frontend-compare:
+	@test -n "$(BASELINE)" || { echo "Missing BASELINE=..."; exit 1; }
+	CAS_BENCH_FAST=1 cargo bench -p cas_cli --bench frontend_cli -- --noplot --baseline $(BASELINE)
+
+bench-didactic-frontend:
+	CAS_BENCH_FAST=1 cargo bench -p cas_didactic --bench frontend_didactic -- --noplot
+
+bench-didactic-frontend-save:
+	@test -n "$(BASELINE)" || { echo "Missing BASELINE=..."; exit 1; }
+	CAS_BENCH_FAST=1 cargo bench -p cas_didactic --bench frontend_didactic -- --noplot --save-baseline $(BASELINE)
+
+bench-didactic-frontend-compare:
+	@test -n "$(BASELINE)" || { echo "Missing BASELINE=..."; exit 1; }
+	CAS_BENCH_FAST=1 cargo bench -p cas_didactic --bench frontend_didactic -- --noplot --baseline $(BASELINE)
 
 clippy:
 	cargo clippy --workspace --all-targets -- -D warnings

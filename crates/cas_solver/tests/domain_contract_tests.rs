@@ -16,7 +16,7 @@
 
 use cas_ast::Context;
 use cas_parser::parse;
-use cas_session::SessionState;
+use cas_session::state_api::SessionState;
 use cas_solver::runtime::Simplifier;
 
 /// Helper: simplify with default options (Generic mode)
@@ -41,7 +41,7 @@ fn simplify_strict(input: &str) -> String {
     // Use Strict domain mode
     let opts = cas_solver::runtime::SimplifyOptions {
         shared: cas_solver::runtime::SharedSemanticConfig {
-            semantics: cas_solver::EvalConfig {
+            semantics: cas_solver::runtime::EvalConfig {
                 domain_mode: cas_solver::runtime::DomainMode::Strict,
                 ..Default::default()
             },
@@ -280,8 +280,8 @@ fn test_strict_x_plus_y_div_x_plus_y_stays_unchanged() {
 
 #[test]
 fn test_prove_nonzero_numbers() {
-    use cas_solver::prove_nonzero;
-    use cas_solver::Proof;
+    use cas_solver::api::prove_nonzero;
+    use cas_solver::api::Proof;
 
     let mut ctx = Context::new();
 
@@ -301,8 +301,8 @@ fn test_prove_nonzero_numbers() {
 
 #[test]
 fn test_prove_nonzero_constants() {
-    use cas_solver::prove_nonzero;
-    use cas_solver::Proof;
+    use cas_solver::api::prove_nonzero;
+    use cas_solver::api::Proof;
 
     let mut ctx = Context::new();
 
@@ -317,8 +317,8 @@ fn test_prove_nonzero_constants() {
 
 #[test]
 fn test_prove_nonzero_variables() {
-    use cas_solver::prove_nonzero;
-    use cas_solver::Proof;
+    use cas_solver::api::prove_nonzero;
+    use cas_solver::api::Proof;
 
     let mut ctx = Context::new();
 
@@ -331,8 +331,8 @@ fn test_prove_nonzero_variables() {
 
 #[test]
 fn test_prove_nonzero_products() {
-    use cas_solver::prove_nonzero;
-    use cas_solver::Proof;
+    use cas_solver::api::prove_nonzero;
+    use cas_solver::api::Proof;
 
     let mut ctx = Context::new();
 
@@ -360,9 +360,9 @@ fn test_prove_nonzero_products() {
 
 #[test]
 fn test_prove_positive_numbers() {
-    use cas_solver::prove_positive;
-    use cas_solver::Proof;
-    use cas_solver::ValueDomain;
+    use cas_solver::api::prove_positive;
+    use cas_solver::api::Proof;
+    use cas_solver::runtime::ValueDomain;
 
     let mut ctx = Context::new();
     let vd = ValueDomain::RealOnly; // Use RealOnly for these basic tests
@@ -378,9 +378,9 @@ fn test_prove_positive_numbers() {
 
 #[test]
 fn test_prove_positive_constants() {
-    use cas_solver::prove_positive;
-    use cas_solver::Proof;
-    use cas_solver::ValueDomain;
+    use cas_solver::api::prove_positive;
+    use cas_solver::api::Proof;
+    use cas_solver::runtime::ValueDomain;
 
     let mut ctx = Context::new();
     let vd = ValueDomain::RealOnly;
@@ -396,9 +396,9 @@ fn test_prove_positive_constants() {
 
 #[test]
 fn test_prove_positive_products() {
-    use cas_solver::prove_positive;
-    use cas_solver::Proof;
-    use cas_solver::ValueDomain;
+    use cas_solver::api::prove_positive;
+    use cas_solver::api::Proof;
+    use cas_solver::runtime::ValueDomain;
 
     let mut ctx = Context::new();
     let vd = ValueDomain::RealOnly;
@@ -419,9 +419,9 @@ fn test_prove_positive_products() {
 
 #[test]
 fn test_prove_positive_exp() {
-    use cas_solver::prove_positive;
-    use cas_solver::Proof;
-    use cas_solver::ValueDomain;
+    use cas_solver::api::prove_positive;
+    use cas_solver::api::Proof;
+    use cas_solver::runtime::ValueDomain;
 
     let mut ctx = Context::new();
 
@@ -476,9 +476,9 @@ fn test_prove_positive_exp() {
 fn simplify_with_domain_value(
     input: &str,
     domain: cas_solver::runtime::DomainMode,
-    value: cas_solver::ValueDomain,
+    value: cas_solver::runtime::ValueDomain,
 ) -> (String, Vec<String>) {
-    use cas_solver::{Engine, EvalAction, EvalRequest, EvalResult};
+    use cas_solver::runtime::{Engine, EvalAction, EvalRequest, EvalResult};
 
     let mut engine = Engine::new();
     let mut state = SessionState::new();
@@ -517,7 +517,7 @@ fn simplify_with_domain_value(
 /// CONTRACT: ln(x*y) does NOT expand in Strict mode (variables not provably positive)
 #[test]
 fn log_product_strict_no_expand_variables() {
-    use cas_solver::ValueDomain;
+    use cas_solver::runtime::ValueDomain;
     let (result, warnings) = simplify_with_domain_value(
         "ln(x*y)",
         cas_solver::runtime::DomainMode::Strict,
@@ -547,7 +547,7 @@ fn log_product_strict_no_expand_variables() {
 /// This test verifies that automatic simplification does NOT expand logs.
 #[test]
 fn log_product_assume_no_auto_expand() {
-    use cas_solver::ValueDomain;
+    use cas_solver::runtime::ValueDomain;
     let (result, _warnings) = simplify_with_domain_value(
         "ln(x*y)",
         cas_solver::runtime::DomainMode::Assume,
@@ -566,7 +566,7 @@ fn log_product_assume_no_auto_expand() {
 /// CONTRACT: ln(z*w) does NOT expand in Complex domain (branch cut safety)
 #[test]
 fn log_product_complex_never_expands() {
-    use cas_solver::ValueDomain;
+    use cas_solver::runtime::ValueDomain;
     let (result, _) = simplify_with_domain_value(
         "ln(z*w)",
         cas_solver::runtime::DomainMode::Assume,
@@ -585,7 +585,7 @@ fn log_product_complex_never_expands() {
 /// LogExpansionRule is now opt-in via the `expand_log` command.
 #[test]
 fn log_product_provable_positive_no_auto_expand() {
-    use cas_solver::ValueDomain;
+    use cas_solver::runtime::ValueDomain;
     let (result, _warnings) = simplify_with_domain_value(
         "ln(2*pi)",
         cas_solver::runtime::DomainMode::Strict,
@@ -653,7 +653,7 @@ fn same_denom_mixed_cancellation() {
 /// (i is treated as an ordinary symbol, not the imaginary unit)
 #[test]
 fn value_domain_real_no_gaussian_division() {
-    use cas_solver::ValueDomain;
+    use cas_solver::runtime::ValueDomain;
     let (result, _) = simplify_with_domain_value(
         "10/(3+4*i)",
         cas_solver::runtime::DomainMode::Generic,
@@ -672,7 +672,7 @@ fn value_domain_real_no_gaussian_division() {
 /// CONTRACT: In ComplexEnabled mode, 10/(3+4i) IS Gaussian rationalized
 #[test]
 fn value_domain_complex_gaussian_division() {
-    use cas_solver::ValueDomain;
+    use cas_solver::runtime::ValueDomain;
     let (result, _) = simplify_with_domain_value(
         "10/(3+4*i)",
         cas_solver::runtime::DomainMode::Generic,
@@ -692,7 +692,7 @@ fn value_domain_complex_gaussian_division() {
 /// CONTRACT: In RealOnly mode, i*i does NOT simplify to -1
 #[test]
 fn value_domain_real_no_i_squared() {
-    use cas_solver::ValueDomain;
+    use cas_solver::runtime::ValueDomain;
     let (result, _) = simplify_with_domain_value(
         "i*i",
         cas_solver::runtime::DomainMode::Generic,
@@ -710,7 +710,7 @@ fn value_domain_real_no_i_squared() {
 /// CONTRACT: In ComplexEnabled mode, i*i simplifies to -1
 #[test]
 fn value_domain_complex_i_squared() {
-    use cas_solver::ValueDomain;
+    use cas_solver::runtime::ValueDomain;
     let (result, _) = simplify_with_domain_value(
         "i*i",
         cas_solver::runtime::DomainMode::Generic,
@@ -728,7 +728,7 @@ fn value_domain_complex_i_squared() {
 /// CONTRACT: In RealOnly mode, i^2 does NOT simplify to -1
 #[test]
 fn value_domain_real_no_i_power() {
-    use cas_solver::ValueDomain;
+    use cas_solver::runtime::ValueDomain;
     let (result, _) = simplify_with_domain_value(
         "i^2",
         cas_solver::runtime::DomainMode::Generic,
@@ -746,7 +746,7 @@ fn value_domain_real_no_i_power() {
 /// CONTRACT: In ComplexEnabled mode, i^4 simplifies to 1
 #[test]
 fn value_domain_complex_i_fourth() {
-    use cas_solver::ValueDomain;
+    use cas_solver::runtime::ValueDomain;
     let (result, _) = simplify_with_domain_value(
         "i^4",
         cas_solver::runtime::DomainMode::Generic,
@@ -772,7 +772,7 @@ fn value_domain_complex_i_fourth() {
 /// Similar to how sqrt(x)^2 → x with requires x ≥ 0.
 #[test]
 fn exp_ln_x_generic_emits_positive_require() {
-    use cas_solver::{Engine, EvalAction, EvalRequest, EvalResult};
+    use cas_solver::runtime::{Engine, EvalAction, EvalRequest, EvalResult};
 
     let mut engine = Engine::new();
     let mut state = SessionState::new();
@@ -822,7 +822,7 @@ fn exp_ln_x_generic_emits_positive_require() {
 /// CONTRACT: exp(ln(5)) in Generic mode does NOT emit hint (5 is provably positive)
 #[test]
 fn blocked_hint_exp_ln_5_no_hint() {
-    use cas_solver::{Engine, EvalAction, EvalRequest, EvalResult};
+    use cas_solver::runtime::{Engine, EvalAction, EvalRequest, EvalResult};
 
     let mut engine = Engine::new();
     let mut state = SessionState::new();
@@ -869,7 +869,7 @@ fn blocked_hint_exp_ln_5_no_hint() {
 /// This tests the "proven vs assumed" feature for timeline transparency.
 #[test]
 fn step_tracks_assumed_nonzero_in_generic() {
-    use cas_solver::{Engine, EvalAction, EvalRequest, EvalResult};
+    use cas_solver::runtime::{Engine, EvalAction, EvalRequest, EvalResult};
 
     let mut engine = Engine::new();
     let mut state = SessionState::new();
@@ -903,7 +903,7 @@ fn step_tracks_assumed_nonzero_in_generic() {
     let has_nonzero_assumption = output.steps.iter().any(|step| {
         step.assumption_events()
             .iter()
-            .any(|event| matches!(event.key, cas_solver::AssumptionKey::NonZero { .. }))
+            .any(|event| matches!(event.key, cas_solver::api::AssumptionKey::NonZero { .. }))
     });
 
     assert!(
@@ -918,7 +918,7 @@ fn step_tracks_assumed_nonzero_in_generic() {
 /// This tests the "implicit domain requirement" pattern where ln(x) already implies x > 0.
 #[test]
 fn step_tracks_assumed_positive_in_assume() {
-    use cas_solver::{Engine, EvalAction, EvalRequest, EvalResult};
+    use cas_solver::runtime::{Engine, EvalAction, EvalRequest, EvalResult};
 
     let mut engine = Engine::new();
     let mut state = SessionState::new();
@@ -976,7 +976,7 @@ fn step_tracks_assumed_positive_in_assume() {
 /// The rule requires NonNegative condition (Analytic), which is blocked in Generic.
 #[test]
 fn sqrt_conjugate_collapse_blocked_in_generic() {
-    use cas_solver::{Engine, EvalAction, EvalRequest};
+    use cas_solver::runtime::{Engine, EvalAction, EvalRequest};
 
     let mut engine = Engine::new();
     let mut state = SessionState::new();
@@ -1034,7 +1034,7 @@ fn sqrt_conjugate_collapse_blocked_in_generic() {
 /// CONTRACT: In Assume mode, sqrt conjugate product CAN collapse with assumption recorded
 #[test]
 fn sqrt_conjugate_collapse_allowed_in_assume() {
-    use cas_solver::{Engine, EvalAction, EvalRequest};
+    use cas_solver::runtime::{Engine, EvalAction, EvalRequest};
 
     let mut engine = Engine::new();
     let mut state = SessionState::new();
@@ -1068,9 +1068,12 @@ fn sqrt_conjugate_collapse_allowed_in_assume() {
     // The key is that if it DOES collapse, there should be a NonNegative assumption
 
     let has_nonnegative_assumption = output.steps.iter().any(|step| {
-        step.assumption_events()
-            .iter()
-            .any(|event| matches!(event.key, cas_solver::AssumptionKey::NonNegative { .. }))
+        step.assumption_events().iter().any(|event| {
+            matches!(
+                event.key,
+                cas_solver::api::AssumptionKey::NonNegative { .. }
+            )
+        })
     });
 
     // If the expression was collapsed, we should see NonNegative assumption
@@ -1089,7 +1092,7 @@ fn sqrt_conjugate_collapse_allowed_in_assume() {
 
 /// Helper: simplify with Generic mode and extract required_conditions
 fn simplify_generic_with_required(input: &str) -> (String, Vec<String>) {
-    use cas_solver::{Engine, EvalAction, EvalRequest, EvalResult};
+    use cas_solver::runtime::{Engine, EvalAction, EvalRequest, EvalResult};
 
     let mut engine = Engine::new();
     let mut state = SessionState::new();

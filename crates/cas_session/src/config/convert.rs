@@ -55,5 +55,5 @@ pub fn sync_simplifier_with_cas_config(
     config: &CasConfig,
 ) {
     let toggles = solver_toggle_config_from_cas_config(config);
-    cas_solver::apply_simplifier_toggle_config(simplifier, toggles);
+    cas_solver::session_api::options::apply_simplifier_toggle_config(simplifier, toggles);
 }

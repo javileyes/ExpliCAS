@@ -1,10 +1,11 @@
 use std::path::Path;
 
 use super::{SessionSnapshot, SnapshotError};
-use crate::snapshot_store_convert::{
-    session_store_snapshot_from_store, session_store_snapshot_into_store,
-};
+use crate::snapshot_store_convert::session_store_snapshot_from_store;
 use crate::SimplifyCacheKey;
+
+#[cfg(test)]
+use crate::snapshot_store_convert::session_store_snapshot_into_store;
 
 impl SessionSnapshot {
     pub const MAGIC: [u8; 8] = *b"EXPLICAS";
@@ -22,10 +23,12 @@ impl SessionSnapshot {
         }
     }
 
+    #[cfg(test)]
     pub fn is_compatible(&self, key: &SimplifyCacheKey) -> bool {
         self.header.is_valid_with(Self::MAGIC, Self::VERSION) && &self.header.cache_key == key
     }
 
+    #[cfg(test)]
     pub fn load(path: &Path) -> Result<Self, SnapshotError> {
         cas_session_core::snapshot_io::load_bincode(path)
     }
@@ -36,6 +39,7 @@ impl SessionSnapshot {
     }
 
     /// Extract Context and SessionStore from snapshot.
+    #[cfg(test)]
     pub fn into_parts(self) -> (cas_ast::Context, crate::SessionStore) {
         (
             self.context.into_context(),

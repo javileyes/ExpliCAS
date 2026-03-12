@@ -258,7 +258,7 @@ cat expressions.txt | expli eval --format json
 cargo run -p cas_cli --release -- eval "expand((a+b)^200)" --budget small
 
 # Use CLI defaults (larger limits)
-cargo run -p cas_cli --release -- eval "expand((a+b)^10)" --budget cli
+cargo run -p cas_cli --release -- eval "expand((a+b)^10)" --budget standard
 
 # No limits (use with caution)
 cargo run -p cas_cli --release -- eval "expr" --budget unlimited

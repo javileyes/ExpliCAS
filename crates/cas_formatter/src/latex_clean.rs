@@ -5,6 +5,16 @@ pub fn clean_latex_identities(latex: &str) -> String {
     use regex::Regex;
     use std::sync::LazyLock;
 
+    // Most rendered outputs do not contain unit-multiplication cleanup patterns.
+    // Avoid cloning and iterative replacement on the common fast path.
+    if !latex.contains("\\cdot 1")
+        && !latex.contains("1 \\cdot ")
+        && !latex.contains("\\frac{1}{1}")
+        && !latex.contains("\\cdot \\frac{1}{")
+    {
+        return latex.to_string();
+    }
+
     // Compiled once, reused across all calls
     static RE_MULT_UNIT_FRAC: LazyLock<Regex> = LazyLock::new(|| {
         Regex::new(r"(\d+)\s*\\cdot\s*\\frac\{1\}\{([^}]+)\}").expect("valid regex literal")

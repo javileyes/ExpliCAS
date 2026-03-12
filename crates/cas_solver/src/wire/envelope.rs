@@ -16,10 +16,15 @@ use self::success::build_success_envelope;
 pub fn eval_str_to_output_envelope(expr: &str, opts: &EnvelopeEvalOptions) -> OutputEnvelope {
     let mut engine = Engine::new();
     let mut eval_options = EvalOptions::default();
-    eval_options.shared.semantics.domain_mode =
-        crate::eval_option_axes::domain_mode_from_str(&opts.domain);
-    eval_options.shared.semantics.value_domain =
-        crate::eval_option_axes::value_domain_from_str(&opts.value_domain);
+    eval_options.shared.semantics.domain_mode = match opts.domain {
+        cas_api_models::EvalDomainMode::Strict => crate::DomainMode::Strict,
+        cas_api_models::EvalDomainMode::Generic => crate::DomainMode::Generic,
+        cas_api_models::EvalDomainMode::Assume => crate::DomainMode::Assume,
+    };
+    eval_options.shared.semantics.value_domain = match opts.value_domain {
+        cas_api_models::EvalValueDomain::Complex => crate::ValueDomain::ComplexEnabled,
+        cas_api_models::EvalValueDomain::Real => crate::ValueDomain::RealOnly,
+    };
 
     let prepared =
         match build_prepared_eval_request_for_input(expr, &mut engine.simplifier.context, false) {
@@ -42,10 +47,14 @@ pub fn eval_str_to_output_envelope(expr: &str, opts: &EnvelopeEvalOptions) -> Ou
 }
 
 /// Stateless CLI helper for the envelope wire command.
-pub fn evaluate_envelope_wire_command(expr: &str, domain: &str, value_domain: &str) -> String {
+pub fn evaluate_envelope_wire_command(
+    expr: &str,
+    domain: cas_api_models::EvalDomainMode,
+    value_domain: cas_api_models::EvalValueDomain,
+) -> String {
     let opts = EnvelopeEvalOptions {
-        domain: domain.to_string(),
-        value_domain: value_domain.to_string(),
+        domain,
+        value_domain,
     };
     eval_str_to_output_envelope(expr, &opts).to_json_pretty()
 }

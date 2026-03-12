@@ -5,7 +5,7 @@
 //! 2. Multiple cache hits are aggregated into a single step
 //! 3. The synthetic step has Medium importance (visible in timeline)
 
-use cas_session::SessionState;
+use cas_session::state_api::SessionState;
 use cas_solver::runtime::ImportanceLevel;
 use cas_solver::runtime::{Engine, EvalAction, EvalRequest};
 

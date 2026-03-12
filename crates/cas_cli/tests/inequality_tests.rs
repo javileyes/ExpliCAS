@@ -1,6 +1,7 @@
 use cas_ast::{BoundType, Equation, RelOp, SolutionSet};
 use cas_formatter::DisplayExpr;
 use cas_parser::parse;
+use cas_solver::api::solve;
 use cas_solver::runtime::rules::algebra::SimplifyFractionRule;
 use cas_solver::runtime::rules::arithmetic::{AddZeroRule, CombineConstantsRule, MulOneRule};
 use cas_solver::runtime::rules::canonicalization::{
@@ -16,7 +17,6 @@ use cas_solver::runtime::rules::polynomial::{
 };
 use cas_solver::runtime::rules::trigonometry::{EvaluateTrigRule, PythagoreanIdentityRule};
 use cas_solver::runtime::Simplifier;
-use cas_solver::solve;
 
 fn create_simplifier() -> Simplifier {
     let mut simplifier = Simplifier::new();

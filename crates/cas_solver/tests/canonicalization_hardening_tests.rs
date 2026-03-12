@@ -174,12 +174,12 @@ fn cancel_idempotent() {
     let rhs = ctx.add(Expr::Add(b, c));
 
     // First cancellation: (a+b+c) vs (b+c) → a vs 0, cancelled=2
-    let cr1 = cas_solver::cancel_common_additive_terms(&mut ctx, lhs, rhs)
+    let cr1 = cas_solver::api::cancel_common_additive_terms(&mut ctx, lhs, rhs)
         .expect("first cancel should fire");
     assert_eq!(cr1.cancelled_count, 2);
 
     // Second cancellation: a vs 0 → nothing to cancel
-    let cr2 = cas_solver::cancel_common_additive_terms(&mut ctx, cr1.new_lhs, cr1.new_rhs);
+    let cr2 = cas_solver::api::cancel_common_additive_terms(&mut ctx, cr1.new_lhs, cr1.new_rhs);
     assert!(
         cr2.is_none(),
         "Idempotency violation: second cancel should be None, but cancelled {} terms",
@@ -201,7 +201,7 @@ fn cancel_symmetric_count() {
     let rhs = ctx.add(Expr::Add(b, c));
 
     // Forward: (a+b+c) vs (b+c)
-    let cr_fwd = cas_solver::cancel_common_additive_terms(&mut ctx, lhs, rhs)
+    let cr_fwd = cas_solver::api::cancel_common_additive_terms(&mut ctx, lhs, rhs)
         .expect("forward cancel should fire");
 
     // Reverse: (b+c) vs (a+b+c)
@@ -216,7 +216,7 @@ fn cancel_symmetric_count() {
     let c2r = ctx2.var("c");
     let rhs2 = ctx2.add(Expr::Add(b2r, c2r));
 
-    let cr_rev = cas_solver::cancel_common_additive_terms(&mut ctx2, rhs2, lhs2)
+    let cr_rev = cas_solver::api::cancel_common_additive_terms(&mut ctx2, rhs2, lhs2)
         .expect("reverse cancel should fire");
 
     assert_eq!(

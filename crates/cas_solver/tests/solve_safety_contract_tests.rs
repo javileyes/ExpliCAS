@@ -26,15 +26,15 @@ fn make_eq(simplifier: &mut Simplifier, lhs: &str, rhs: &str) -> Equation {
 
 mod prepass_tests {
     use super::*;
+    use cas_solver::runtime::rules;
     use cas_solver::runtime::StepsMode;
 
     /// CancelCommonFactorsRule should have NeedsCondition(Definability) solve_safety.
     /// This ensures it won't be applied in SolvePrepass mode.
     #[test]
     fn cancel_common_factors_rule_marked_correctly() {
-        use cas_solver::rules::algebra::fractions::CancelCommonFactorsRule;
-        use cas_solver::RuleSolveSafetyExt;
-        use cas_solver::SolveSafety;
+        use cas_solver::api::{RuleSolveSafetyExt, SolveSafety};
+        use rules::algebra::fractions::CancelCommonFactorsRule;
 
         let rule = CancelCommonFactorsRule;
         let safety = rule.solve_safety_model();
@@ -56,9 +56,8 @@ mod prepass_tests {
     /// SimplifyFractionRule should also have NeedsCondition(Definability).
     #[test]
     fn simplify_fraction_rule_marked_correctly() {
-        use cas_solver::rules::algebra::fractions::SimplifyFractionRule;
-        use cas_solver::RuleSolveSafetyExt;
-        use cas_solver::SolveSafety;
+        use cas_solver::api::{RuleSolveSafetyExt, SolveSafety};
+        use rules::algebra::fractions::SimplifyFractionRule;
 
         let rule = SimplifyFractionRule;
         let safety = rule.solve_safety_model();
@@ -81,7 +80,7 @@ mod prepass_tests {
     fn prepass_does_not_expand_log() {
         let mut simplifier = Simplifier::with_default_rules();
         // Add the LogExpansionRule (it's not registered by default)
-        simplifier.add_rule(Box::new(cas_solver::rules::logarithms::LogExpansionRule));
+        simplifier.add_rule(Box::new(rules::logarithms::LogExpansionRule));
 
         let expr = parse_expr(&mut simplifier, "ln(x*y)");
 
@@ -260,7 +259,7 @@ mod solver_tests {
         let mut simplifier = Simplifier::with_default_rules();
         let eq = make_eq(&mut simplifier, "0^x", "0");
 
-        let result = cas_solver::solve(&eq, "x", &mut simplifier);
+        let result = cas_solver::api::solve(&eq, "x", &mut simplifier);
 
         match result {
             Ok((solution, _steps)) => {
@@ -301,7 +300,7 @@ mod solver_tests {
         let mut simplifier = Simplifier::with_default_rules();
         let eq = make_eq(&mut simplifier, "a^x", "a");
 
-        let result = cas_solver::solve(&eq, "x", &mut simplifier);
+        let result = cas_solver::api::solve(&eq, "x", &mut simplifier);
 
         match result {
             Ok((solution, _steps)) => match solution {
@@ -332,7 +331,7 @@ mod solver_tests {
         let mut simplifier = Simplifier::with_default_rules();
         let eq = make_eq(&mut simplifier, "2*x + 3", "7");
 
-        let result = cas_solver::solve(&eq, "x", &mut simplifier);
+        let result = cas_solver::api::solve(&eq, "x", &mut simplifier);
 
         match result {
             Ok((solution, _steps)) => match solution {
@@ -362,8 +361,7 @@ mod solver_tests {
 /// as NeedsCondition. If these tests fail, a dangerous rule was added
 /// without proper SolveSafety classification.
 mod guardrail_tests {
-    use cas_solver::RuleSolveSafetyExt;
-    use cas_solver::SolveSafety;
+    use cas_solver::api::{RuleSolveSafetyExt, SolveSafety};
 
     /// Helper macro for SimpleRule implementations
     macro_rules! assert_simple_not_always {
@@ -394,11 +392,11 @@ mod guardrail_tests {
     /// All Definability rules must be marked
     #[test]
     fn definability_rules_marked() {
-        use cas_solver::rules::algebra::fractions::{
+        use cas_solver::runtime::rules::algebra::fractions::{
             CancelCommonFactorsRule, QuotientOfPowersRule, SimplifyFractionRule,
         };
-        use cas_solver::rules::arithmetic::{DivZeroRule, MulZeroRule};
-        use cas_solver::rules::exponents::IdentityPowerRule;
+        use cas_solver::runtime::rules::arithmetic::{DivZeroRule, MulZeroRule};
+        use cas_solver::runtime::rules::exponents::IdentityPowerRule;
 
         assert_simple_not_always!(CancelCommonFactorsRule, "CancelCommonFactorsRule");
         assert_simple_not_always!(SimplifyFractionRule, "SimplifyFractionRule");
@@ -411,10 +409,10 @@ mod guardrail_tests {
     /// All Analytic rules with SimpleRule impl
     #[test]
     fn analytic_simplerule_marked() {
-        use cas_solver::rules::exponents::PowerPowerRule;
-        use cas_solver::rules::hyperbolic::HyperbolicCompositionRule;
-        use cas_solver::rules::logarithms::{LogInversePowerRule, SplitLogExponentsRule};
-        use cas_solver::rules::trig_inverse_expansion::TrigInverseExpansionRule;
+        use cas_solver::runtime::rules::exponents::PowerPowerRule;
+        use cas_solver::runtime::rules::hyperbolic::HyperbolicCompositionRule;
+        use cas_solver::runtime::rules::logarithms::{LogInversePowerRule, SplitLogExponentsRule};
+        use cas_solver::runtime::rules::trig_inverse_expansion::TrigInverseExpansionRule;
 
         assert_simple_not_always!(LogInversePowerRule, "LogInversePowerRule");
         assert_simple_not_always!(SplitLogExponentsRule, "SplitLogExponentsRule");
@@ -426,7 +424,7 @@ mod guardrail_tests {
     /// All Analytic rules with manual Rule impl
     #[test]
     fn analytic_rule_manual_marked() {
-        use cas_solver::rules::logarithms::{ExponentialLogRule, LogExpansionRule};
+        use cas_solver::runtime::rules::logarithms::{ExponentialLogRule, LogExpansionRule};
 
         assert_rule_not_always!(LogExpansionRule, "LogExpansionRule");
         assert_rule_not_always!(ExponentialLogRule, "ExponentialLogRule");

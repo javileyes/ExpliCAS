@@ -18,7 +18,7 @@ where
 {
     let collected = collect::collect_eval_artifacts(
         &engine.simplifier.context,
-        config.steps_mode,
+        config.steps_mode.as_str(),
         &prepared,
         total_us,
         collect_steps,

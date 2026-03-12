@@ -3,7 +3,7 @@ use cas_formatter::DisplayExpr;
 use cas_parser::parse;
 use cas_solver::runtime::rules::arithmetic::{AddZeroRule, CombineConstantsRule, MulOneRule};
 use cas_solver::runtime::Simplifier;
-// use cas_solver::solve; // Unused
+// use cas_solver::api::solve; // Unused
 use num_traits::Zero;
 
 // Helper function to create a simplifier with a common set of rules for testing

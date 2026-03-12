@@ -1,5 +1,5 @@
 use cas_ast::Context;
-use cas_solver::AssumptionEvent;
+use cas_solver::api::AssumptionEvent;
 use cas_solver_core::assumption_display::{
     format_displayable_assumption_lines_for_step,
     format_displayable_assumption_lines_grouped_for_step,

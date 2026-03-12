@@ -71,9 +71,9 @@ mod tests {
     #[test]
     fn sync_simplifier_with_cas_config_applies_toggles() {
         let mut simplifier = build_simplifier_with_rule_config(SimplifierRuleConfig::default());
-        let config = crate::CasConfig {
+        let config = crate::config::CasConfig {
             distribute: true,
-            ..crate::CasConfig::default()
+            ..crate::config::CasConfig::default()
         };
         sync_simplifier_with_cas_config(&mut simplifier, &config);
         assert!(!simplifier

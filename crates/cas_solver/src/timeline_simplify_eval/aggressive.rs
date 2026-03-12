@@ -13,7 +13,7 @@ pub(super) fn evaluate_timeline_simplify_aggressive(
         let parsed_expr = cas_parser::parse(input.trim(), &mut temp_simplifier.context)
             .map_err(|e| crate::TimelineSimplifyEvalError::Parse(e.to_string()))?;
         let (simplified_expr, steps) = temp_simplifier.simplify(parsed_expr);
-        let mut steps = crate::to_display_steps(steps);
+        let mut steps = crate::runtime::to_display_steps(steps);
         if steps.is_empty() {
             let fallback_steps =
                 crate::engine_event_display_steps::build_display_eval_steps_from_events(

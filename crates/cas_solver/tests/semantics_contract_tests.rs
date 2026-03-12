@@ -10,8 +10,8 @@
 //! 3. sqrt(-1) behavior unchanged (RealOnly)
 //! 4. Inverse trig unchanged (Strict)
 
-use cas_session::SessionState;
-use cas_solver::{
+use cas_session::state_api::SessionState;
+use cas_solver::runtime::{
     BranchPolicy, DomainMode, EvalConfig, InverseTrigPolicy, SimplifyOptions, ValueDomain,
 };
 
@@ -48,7 +48,7 @@ fn simplify_options_includes_new_axes() {
 fn x_div_x_simplifies_with_default_config() {
     use cas_formatter::DisplayExpr;
     use cas_parser::parse;
-    use cas_solver::{Engine, EvalAction, EvalRequest, EvalResult};
+    use cas_solver::runtime::{Engine, EvalAction, EvalRequest, EvalResult};
 
     let mut engine = Engine::new();
     let mut state = SessionState::new();
@@ -122,7 +122,7 @@ fn eval_config_constructors_consistent() {
 
 #[test]
 fn parent_context_has_new_accessors() {
-    use cas_solver::ParentContext;
+    use cas_solver::runtime::ParentContext;
 
     let ctx = ParentContext::root();
 
@@ -135,7 +135,7 @@ fn parent_context_has_new_accessors() {
 #[test]
 fn parent_context_extend_preserves_semantics() {
     use cas_ast::Context;
-    use cas_solver::ParentContext;
+    use cas_solver::runtime::ParentContext;
 
     let mut ast_ctx = Context::new();
     let parent_id = ast_ctx.num(42);

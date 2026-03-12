@@ -7,8 +7,7 @@
 
 use cas_formatter::root_style::{ParseStyleSignals, StylePreferences};
 use cas_formatter::DisplayExprStyled;
-use cas_solver::runtime::Simplifier;
-use cas_solver::Orchestrator;
+use cas_solver::runtime::{Orchestrator, Simplifier};
 
 fn simplify_with_pipeline(input: &str) -> String {
     let mut simplifier = Simplifier::new();

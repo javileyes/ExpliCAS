@@ -6,16 +6,14 @@
 //! 3. Required conditions propagate correctly to the output
 
 use cas_ast::{Equation, Expr, RelOp, SolutionSet};
-use cas_solver::{
-    solve_with_display_steps, DomainMode, ImplicitCondition, Simplifier, SolveBudget,
-    SolverOptions, ValueDomain,
-};
+use cas_solver::api::{solve_with_display_steps, AssumeScope, ImplicitCondition, SolveBudget};
+use cas_solver::runtime::{DomainMode, Simplifier, SolverOptions, ValueDomain};
 
 fn make_solver_opts(mode: DomainMode) -> SolverOptions {
     SolverOptions {
         value_domain: ValueDomain::RealOnly,
         domain_mode: mode,
-        assume_scope: cas_solver::AssumeScope::Real,
+        assume_scope: AssumeScope::Real,
         budget: SolveBudget::default(),
         ..Default::default()
     }

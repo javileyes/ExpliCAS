@@ -208,7 +208,7 @@ fn semantic_cancel_str(lhs_str: &str, rhs_str: &str) -> String {
     let (lhs_s, _) = s.simplify(lhs);
     let (rhs_s, _) = s.simplify(rhs);
     // Run semantic cancel (includes Phase B expansion)
-    if let Some(cr) = cas_solver::cancel_additive_terms_semantic(&mut s, lhs_s, rhs_s) {
+    if let Some(cr) = cas_solver::api::cancel_additive_terms_semantic(&mut s, lhs_s, rhs_s) {
         // Build new_lhs - new_rhs and simplify
         let diff = s.context.add(Expr::Sub(cr.new_lhs, cr.new_rhs));
         let (result, _) = s.simplify(diff);

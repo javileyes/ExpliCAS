@@ -29,7 +29,7 @@ impl cas_solver_core::history_runtime::HistoryOverviewContext for SessionState {
     }
 }
 
-impl cas_solver::InspectHistoryContext for SessionState {
+impl cas_solver::session_api::session_support::InspectHistoryContext for SessionState {
     fn history_entry_raw(
         &self,
         id: u64,

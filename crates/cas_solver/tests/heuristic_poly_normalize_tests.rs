@@ -8,10 +8,7 @@
 
 use cas_ast::Context;
 use cas_parser::parse;
-use cas_solver::runtime::Simplifier;
-use cas_solver::runtime::SimplifyOptions;
-use cas_solver::AutoExpandBinomials;
-use cas_solver::HeuristicPoly;
+use cas_solver::runtime::{AutoExpandBinomials, HeuristicPoly, Simplifier, SimplifyOptions};
 
 /// Helper to simplify with specific heuristic_poly mode
 fn simplify_with_heuristic_poly(input: &str, mode: HeuristicPoly) -> String {

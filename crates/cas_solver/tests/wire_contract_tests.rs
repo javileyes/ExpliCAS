@@ -6,7 +6,7 @@
 use cas_api_models::{
     BudgetExceededWire, BudgetWireInfo, EngineWireError, EngineWireResponse, SCHEMA_VERSION,
 };
-use cas_solver::{BudgetExceeded, CasError, Metric, Operation};
+use cas_solver::runtime::{BudgetExceeded, CasError, Metric, Operation};
 use serde_json::Value;
 
 fn parse_wire(s: &str) -> Value {

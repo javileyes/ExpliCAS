@@ -10,7 +10,8 @@
 //! ```
 
 use cas_parser::parse;
-use cas_solver::{solve, Engine, Simplifier};
+use cas_solver::api::solve;
+use cas_solver::runtime::{Engine, Simplifier};
 use std::panic::catch_unwind;
 use std::path::PathBuf;
 

@@ -1,4 +1,4 @@
-use crate::{CasConfig, ReplCore};
+use crate::{config::CasConfig, repl_core::ReplCore};
 
 use super::sync::sync_config_to_core;
 
@@ -8,7 +8,7 @@ pub fn evaluate_autoexpand_command_on_repl(
     core: &mut ReplCore,
     config: &CasConfig,
 ) -> String {
-    cas_solver::evaluate_autoexpand_command_with_config_sync_on_runtime(
+    cas_solver::session_api::runtime::evaluate_autoexpand_command_with_config_sync_on_runtime(
         line,
         core,
         config,

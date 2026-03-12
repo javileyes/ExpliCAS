@@ -4,6 +4,7 @@ use super::{
 };
 
 /// Parse, substitute, and simplify REPL-style `subst` input.
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn evaluate_substitute_and_simplify(
     simplifier: &mut crate::Simplifier,
     input: &str,

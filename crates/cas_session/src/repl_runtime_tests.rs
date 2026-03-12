@@ -1,4 +1,4 @@
-use crate::{
+use crate::repl_api::{
     build_repl_core_with_config, reset_repl_core_full_with_config, reset_repl_core_with_config,
 };
 #[allow(unused_imports)]
@@ -10,7 +10,7 @@ use cas_solver_core::phase_stats::PipelineStats;
 
 #[test]
 fn reset_repl_runtime_state_clears_session_and_runtime_flags() {
-    let mut core = crate::ReplCore::new();
+    let mut core = crate::repl_core::ReplCore::new();
     core.set_debug_mode(true);
     core.set_health_enabled(true);
     core.set_last_stats(Some(PipelineStats::default()));
@@ -32,7 +32,7 @@ fn reset_repl_runtime_state_clears_session_and_runtime_flags() {
 
 #[test]
 fn clear_repl_profile_cache_empties_cache() {
-    let mut core = crate::ReplCore::new();
+    let mut core = crate::repl_core::ReplCore::new();
     if let Err(err) = core.with_engine_and_state(|engine, state| {
         cas_solver::session_api::runtime::evaluate_eval_command_output(
             engine, state, "x + x", false,
@@ -48,24 +48,24 @@ fn clear_repl_profile_cache_empties_cache() {
 
 #[test]
 fn apply_profile_command_on_repl_core_accepts_show() {
-    let mut core = crate::ReplCore::new();
+    let mut core = crate::repl_core::ReplCore::new();
     let out = apply_profile_command_on_repl_core(&mut core, "profile");
     assert!(!out.trim().is_empty());
 }
 
 #[test]
 fn evaluate_profile_command_message_on_repl_core_accepts_show() {
-    let mut core = crate::ReplCore::new();
+    let mut core = crate::repl_core::ReplCore::new();
     let out = evaluate_profile_command_message_on_repl_core(&mut core, "profile");
     assert!(!out.trim().is_empty());
 }
 
 #[test]
 fn reset_repl_core_with_config_resets_runtime_state() {
-    let mut core = crate::ReplCore::new();
+    let mut core = crate::repl_core::ReplCore::new();
     core.set_debug_mode(true);
     core.set_health_enabled(true);
-    let config = crate::CasConfig::default();
+    let config = crate::config::CasConfig::default();
     reset_repl_core_with_config(&mut core, &config);
     assert!(!core.debug_mode());
     assert!(!core.health_enabled());
@@ -73,7 +73,7 @@ fn reset_repl_core_with_config_resets_runtime_state() {
 
 #[test]
 fn reset_repl_core_full_with_config_clears_profile_cache() {
-    let mut core = crate::ReplCore::new();
+    let mut core = crate::repl_core::ReplCore::new();
     if let Err(err) = core.with_engine_and_state(|engine, state| {
         cas_solver::session_api::runtime::evaluate_eval_command_output(
             engine, state, "x + x", false,
@@ -82,16 +82,16 @@ fn reset_repl_core_full_with_config_clears_profile_cache() {
         panic!("eval failed: {err:?}");
     }
     assert_eq!(core.profile_cache_len(), 1);
-    let config = crate::CasConfig::default();
+    let config = crate::config::CasConfig::default();
     reset_repl_core_full_with_config(&mut core, &config);
     assert_eq!(core.profile_cache_len(), 0);
 }
 
 #[test]
 fn build_repl_core_with_config_applies_toggle_sync() {
-    let config = crate::CasConfig {
+    let config = crate::config::CasConfig {
         distribute: true,
-        ..crate::CasConfig::default()
+        ..crate::config::CasConfig::default()
     };
     let mut core = build_repl_core_with_config(&config);
     let eval = core.with_engine_and_state(|engine, state| {
@@ -104,14 +104,14 @@ fn build_repl_core_with_config_applies_toggle_sync() {
 
 #[test]
 fn build_repl_prompt_returns_default_prompt() {
-    let core = crate::ReplCore::new();
+    let core = crate::repl_core::ReplCore::new();
     let prompt = build_repl_prompt(&core);
     assert_eq!(prompt, "> ");
 }
 
 #[test]
 fn eval_options_from_repl_core_clones_default_options() {
-    let core = crate::ReplCore::new();
+    let core = crate::repl_core::ReplCore::new();
     let options = eval_options_from_repl_core(&core);
     assert_eq!(options.steps_mode, EvalOptions::default().steps_mode);
     assert_eq!(

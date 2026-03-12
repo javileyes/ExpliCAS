@@ -1,10 +1,12 @@
 #[cfg(test)]
 mod tests {
-    use crate::{
-        evaluate_eval_command_output, evaluate_eval_command_render_plan_on_runtime,
-        evaluate_expand_command_render_plan_on_runtime, profile_cache_len_on_runtime, Engine,
-        EvalCommandError, EvalCommandOutput, ReplEvalRuntimeContext,
+    use crate::session_api::runtime::{
+        evaluate_eval_command_output, evaluate_eval_command_render_plan_on_repl_core,
+        evaluate_expand_command_render_plan_on_repl_core, profile_cache_len_on_repl_core,
+        ReplEvalRuntimeContext,
     };
+    use crate::session_api::types::{EvalCommandError, EvalCommandOutput};
+    use crate::Engine;
 
     struct MockReplEvalRuntime {
         engine: Engine,
@@ -51,8 +53,8 @@ mod tests {
     #[test]
     fn evaluate_eval_command_render_plan_on_runtime_returns_result() {
         let mut runtime = MockReplEvalRuntime::new();
-        let plan =
-            evaluate_eval_command_render_plan_on_runtime(&mut runtime, "2+2", false).expect("plan");
+        let plan = evaluate_eval_command_render_plan_on_repl_core(&mut runtime, "2+2", false)
+            .expect("plan");
         assert!(plan.result_message.is_some());
     }
 
@@ -60,7 +62,7 @@ mod tests {
     fn evaluate_expand_command_render_plan_on_runtime_handles_expand() {
         let mut runtime = MockReplEvalRuntime::new();
         let plan =
-            evaluate_expand_command_render_plan_on_runtime(&mut runtime, "expand (x+1)^2", false)
+            evaluate_expand_command_render_plan_on_repl_core(&mut runtime, "expand (x+1)^2", false)
                 .expect("plan");
         assert!(plan.result_message.is_some());
     }
@@ -68,6 +70,6 @@ mod tests {
     #[test]
     fn profile_cache_len_on_runtime_reads_value() {
         let runtime = MockReplEvalRuntime::new();
-        assert_eq!(profile_cache_len_on_runtime(&runtime), 0);
+        assert_eq!(profile_cache_len_on_repl_core(&runtime), 0);
     }
 }

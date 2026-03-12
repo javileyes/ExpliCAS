@@ -89,18 +89,15 @@ impl ContextSnapshot {
 
     pub fn into_context(self) -> cas_ast::Context {
         use cas_ast::{Context, Expr, ExprId};
-        use num_bigint::BigInt;
-        use num_rational::BigRational;
 
-        let mut ctx = Context::new();
+        let node_capacity = self.nodes.len();
+        let mut ctx = Context::with_restore_capacity(node_capacity);
 
         // Reconstruct nodes in the same order to preserve ExprId stability.
         for node in self.nodes {
             let expr = match node {
                 ExprNodeSnapshot::Number { num, den } => {
-                    let n: BigInt = num.parse().unwrap_or_default();
-                    let d: BigInt = den.parse().unwrap_or_else(|_| BigInt::from(1));
-                    Expr::Number(BigRational::new(n, d))
+                    Expr::Number(parse_snapshot_rational(&num, &den))
                 }
                 ExprNodeSnapshot::Constant(c) => Expr::Constant(c.into()),
                 ExprNodeSnapshot::Variable(s) => Expr::Variable(ctx.intern_symbol(&s)),
@@ -128,6 +125,19 @@ impl ContextSnapshot {
 
         ctx
     }
+}
+
+fn parse_snapshot_rational(num: &str, den: &str) -> num_rational::BigRational {
+    use num_bigint::BigInt;
+    use num_rational::BigRational;
+
+    if let (Ok(n), Ok(d)) = (num.parse::<i64>(), den.parse::<i64>()) {
+        return BigRational::new(BigInt::from(n), BigInt::from(d));
+    }
+
+    let n: BigInt = num.parse().unwrap_or_default();
+    let d: BigInt = den.parse().unwrap_or_else(|_| BigInt::from(1));
+    BigRational::new(n, d)
 }
 
 impl From<&cas_ast::Constant> for ConstantSnapshot {

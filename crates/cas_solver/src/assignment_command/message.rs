@@ -14,6 +14,7 @@ pub fn format_assignment_command_output_message(
 }
 
 /// Evaluate assignment command pieces and return formatted user-facing message.
+#[allow(dead_code)]
 pub fn evaluate_assignment_command_message_with<F, R>(
     name: &str,
     expr_str: &str,
@@ -31,6 +32,7 @@ where
 }
 
 /// Evaluate `let ...` command tail and return formatted user-facing message.
+#[allow(dead_code)]
 pub fn evaluate_let_assignment_command_message_with<F, R>(
     input: &str,
     apply_assignment: F,

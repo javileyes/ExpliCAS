@@ -1,5 +1,5 @@
 pub use crate::symbolic_transforms::{apply_weierstrass_recursive, expand_log_recursive};
-pub use crate::telescoping::{telescope, TelescopingResult, TelescopingStep};
+pub use crate::telescoping::{TelescopingResult, TelescopingStep};
 pub use crate::unary_command_eval::{
     evaluate_unary_command_lines, evaluate_unary_command_message,
     evaluate_unary_function_command_lines,

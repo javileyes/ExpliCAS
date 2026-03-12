@@ -1,14 +1,15 @@
 use cas_formatter::DisplayExpr;
 use cas_parser::parse;
+use cas_solver::runtime::rules;
 use cas_solver::runtime::Simplifier;
 
 #[test]
 fn test_expand_rule_integration() {
     let mut simplifier = Simplifier::new();
-    cas_solver::rules::algebra::register(&mut simplifier);
-    cas_solver::rules::polynomial::register(&mut simplifier); // For CombineLikeTerms
-    cas_solver::rules::arithmetic::register(&mut simplifier);
-    cas_solver::rules::exponents::register(&mut simplifier);
+    rules::algebra::register(&mut simplifier);
+    rules::polynomial::register(&mut simplifier); // For CombineLikeTerms
+    rules::arithmetic::register(&mut simplifier);
+    rules::exponents::register(&mut simplifier);
 
     // Test expand(a*(b+c))
     let expr = parse("expand(a * (b + c))", &mut simplifier.context).unwrap();
@@ -30,10 +31,10 @@ fn test_expand_rule_integration() {
 #[test]
 fn test_expand_binomial_integration() {
     let mut simplifier = Simplifier::new();
-    cas_solver::rules::algebra::register(&mut simplifier);
-    cas_solver::rules::polynomial::register(&mut simplifier);
-    cas_solver::rules::arithmetic::register(&mut simplifier);
-    cas_solver::rules::exponents::register(&mut simplifier);
+    rules::algebra::register(&mut simplifier);
+    rules::polynomial::register(&mut simplifier);
+    rules::arithmetic::register(&mut simplifier);
+    rules::exponents::register(&mut simplifier);
 
     // Disable polynomial strategy to prevent re-factoring
     simplifier.enable_polynomial_strategy = false;

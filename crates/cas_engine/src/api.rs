@@ -72,6 +72,13 @@ pub use cas_ast::BoundType;
 // Stable Types from cas_engine::solver
 // =============================================================================
 
+pub use crate::cancel_runtime::cancel_additive_terms_semantic;
+pub use crate::const_fold::{fold_constants, ConstFoldMode, ConstFoldResult};
+pub use crate::helpers::{prove_nonzero, prove_positive};
+pub use cas_math::evaluator_f64::{
+    eval_f64, eval_f64_checked, EvalCheckedError, EvalCheckedOptions,
+};
+pub use cas_math::expr_predicates::is_zero_expr as is_zero;
 /// Budget for conditional branching in solver.
 /// Controls how many branches can be created (anti-explosion).
 pub use cas_solver_core::solve_budget::SolveBudget;
@@ -106,6 +113,87 @@ pub fn solve(
         SolverOptions::default(),
         crate::solve_core_runtime::solve_inner,
     )
+}
+
+pub use crate::expand::{expand, expand_with_stats};
+pub use crate::implicit_domain::{
+    derive_requires_from_equation, domain_delta_check, infer_domain_calls_get,
+    infer_domain_calls_reset, infer_implicit_domain,
+};
+pub use cas_solver_core::assume_scope::AssumeScope;
+pub use cas_solver_core::assumption_model::{
+    AssumptionCollector, AssumptionEvent, AssumptionKey, AssumptionKind, AssumptionRecord,
+};
+pub use cas_solver_core::assumption_reporting::AssumptionReporting;
+pub use cas_solver_core::branch_policy::BranchPolicy;
+pub use cas_solver_core::cancel_common_terms::{cancel_common_additive_terms, CancelResult};
+pub use cas_solver_core::const_fold_types::{
+    ConstFoldMode as SolverConstFoldMode, ConstFoldResult as SolverConstFoldResult,
+};
+pub use cas_solver_core::domain_assumption_classification::classify_assumption;
+pub use cas_solver_core::domain_condition::{ImplicitCondition, ImplicitDomain};
+pub use cas_solver_core::domain_context::DomainContext;
+pub use cas_solver_core::domain_facts_model::{FactStrength, Predicate};
+pub use cas_solver_core::domain_inference::DomainDelta;
+pub use cas_solver_core::domain_normalization::{
+    normalize_and_dedupe_conditions, normalize_condition, normalize_condition_expr,
+    render_conditions_normalized,
+};
+pub use cas_solver_core::domain_oracle_model::DomainOracle;
+pub use cas_solver_core::domain_proof::Proof;
+pub use cas_solver_core::equivalence::EquivalenceResult;
+
+/// Default oracle backed by local predicate proof runtime.
+pub struct StandardOracle<'a> {
+    inner: cas_solver_core::standard_oracle::StandardOracle<'a>,
+}
+
+impl<'a> StandardOracle<'a> {
+    /// Create a new oracle with the given context and semantic configuration.
+    pub fn new(
+        ctx: &'a cas_ast::Context,
+        mode: crate::DomainMode,
+        value_domain: crate::ValueDomain,
+    ) -> Self {
+        Self {
+            inner: cas_solver_core::standard_oracle::StandardOracle::new(
+                ctx,
+                mode,
+                value_domain,
+                cas_solver_core::proof_runtime_bound_runtime::prove_nonzero_with_runtime_proof_simplifier::<crate::engine::Simplifier>,
+                cas_solver_core::proof_runtime_bound_runtime::prove_positive_with_runtime_proof_simplifier::<crate::engine::Simplifier>,
+                cas_solver_core::proof_runtime_bound_runtime::prove_nonnegative_with_runtime_proof_simplifier::<crate::engine::Simplifier>,
+            ),
+        }
+    }
+
+    #[inline]
+    pub fn mode(&self) -> crate::DomainMode {
+        self.inner.mode()
+    }
+
+    #[inline]
+    pub fn value_domain(&self) -> crate::ValueDomain {
+        self.inner.value_domain()
+    }
+}
+
+impl cas_solver_core::domain_oracle_model::DomainOracle for StandardOracle<'_> {
+    type Decision = cas_solver_core::domain_cancel_decision::CancelDecision;
+
+    fn query(
+        &self,
+        pred: &cas_solver_core::domain_facts_model::Predicate,
+    ) -> cas_solver_core::domain_facts_model::FactStrength {
+        self.inner.query(pred)
+    }
+
+    fn allows(
+        &self,
+        pred: &cas_solver_core::domain_facts_model::Predicate,
+    ) -> cas_solver_core::domain_cancel_decision::CancelDecision {
+        self.inner.allows(pred)
+    }
 }
 
 /// Solve an equation with explicit options, returning display-ready steps.

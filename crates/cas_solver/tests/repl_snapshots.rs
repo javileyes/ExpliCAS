@@ -17,10 +17,10 @@
 
 use cas_ast::SolutionSet;
 use cas_formatter::DisplayExpr;
+use cas_solver::api::{solve_with_display_steps, SolveBudget};
 use cas_solver::runtime::DomainMode;
 use cas_solver::runtime::Engine;
-use cas_solver::{solve_with_display_steps, SolveBudget, SolverOptions};
-use cas_solver::{AssumeScope, ValueDomain};
+use cas_solver::runtime::{AssumeScope, SolverOptions, ValueDomain};
 
 /// Helper to solve an equation and format the result as a snapshot-friendly string
 fn solve_and_format(eq_str: &str, var: &str, budget: usize, mode: DomainMode) -> String {

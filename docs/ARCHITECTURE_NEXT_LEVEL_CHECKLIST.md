@@ -279,12 +279,141 @@ Current progress:
       - runtime rule namespace via `cas_solver::runtime::rules::*`
     - workspace consumers/tests were migrated from `cas_solver::*` to
       `cas_solver::runtime::*`
+    - full integration test compilation now also passes with the new ownership:
+      `cargo test -p cas_solver --tests --no-run`
+    - the remaining legitimate root-facing items are façade/domain APIs such as
+      `solve(...)`, `solve_with_display_steps(...)`, `Proof`, and
+      `VerifySummary`, not technical runtime plumbing
     - the old duplicate internal layer `exports_base::runtime` was removed;
       internal solver code now also uses the same `crate::runtime::*` seam
     - rationale:
       - the solver root stays focused on façade-level math/wire entrypoints
       - runtime types still exist publicly, but now live behind a namespace
         that makes ownership explicit instead of leaking through the crate root
+  - `cas_solver` root also stopped re-exporting session/stateful runtime
+    adapters that conceptually belong to `session_api::runtime` or `runtime`
+    - `cas_solver::session_api::runtime` is now the explicit owner for:
+      - `evaluate_eval_with_session(...)`
+      - `build_runtime_with_config(...)`
+      - `reset_runtime_with_config(...)`
+      - `reset_runtime_full_with_config(...)`
+      - `evaluate_and_apply_config_command_on_runtime(...)`
+      - `evaluate_context_command_with_config_sync_on_runtime(...)`
+      - `evaluate_autoexpand_command_with_config_sync_on_runtime(...)`
+      - `evaluate_semantics_command_with_config_sync_on_runtime(...)`
+      - runtime context traits such as
+        `ReplConfiguredRuntimeContext`,
+        `ReplEvalRuntimeContext`,
+        `ReplRuntimeStateContext`,
+        `ReplSimplifierRuntimeContext`
+    - `cas_solver::runtime` is now the explicit owner for eval-output/runtime
+      adapters such as:
+      - `required_conditions_from_eval_output(...)`
+      - `to_display_steps(...)`
+    - `cas_session` and `cas_didactic` consumers were migrated accordingly,
+      and a workspace grep no longer finds these helpers used via
+      `cas_solver::*` root
+    - rationale:
+      - the root keeps façade/domain APIs (`solve`, `verify`, etc.)
+      - stateful/session runtime helpers and eval-output adapters remain
+        public, but only from the namespaces that truly own them
+  - remaining root leaks around session/config/history ownership were also
+    closed
+    - `cas_solver::session_api::runtime` is now the owner for
+      `evaluate_unary_command_message_on_runtime(...)`
+    - `cas_solver::session_api::session_support` is now the owner for
+      `InspectHistoryContext`
+    - `cas_solver::session_api::options` is the owner consumed by `cas_session`
+      for `apply_simplifier_toggle_config(...)`
+    - after these migrations, a workspace grep outside `cas_solver` no longer
+      finds non-legitimate `cas_solver::*` root imports beyond:
+      - `api::*`
+      - `runtime::*`
+      - `wire::*`
+      - `session_api::*`
+      - `command_api::*`
+      - `math::*`
+      - façade/domain APIs such as `solve(...)`, `verify_*`, `expand(...)`
+    - rationale:
+      - the root is no longer acting as a technical grab-bag namespace
+      - the remaining root-facing APIs are intentional façade/domain entrypoints
+  - façade/domain solver APIs also now have an explicit owner namespace
+    - `cas_solver::api` is now the intended owner for:
+      - `solve(...)`
+      - `solve_with_display_steps(...)`
+      - `expand(...)`
+      - `telescope(...)`
+      - `prepare_timeline_solve_equation(...)`
+      - domain/proof-facing types such as
+        `ImplicitCondition`, `RequireOrigin`, `Proof`,
+        `VerifyResult`, `VerifyStatus`, `VerifySummary`
+    - workspace consumers and `cas_solver` integration tests were migrated to
+      `cas_solver::api::*`
+    - the root no longer re-exports `solve`, `solve_with_display_steps`,
+      `expand`, or `telescope`
+    - rationale:
+      - façade/domain entrypoints stay public, but behind a namespace that
+        makes their ownership explicit instead of mixing them with every other
+        root-level export
+  - remaining session-facing runtime/option traits were also moved behind the
+    explicit owner namespaces
+    - `cas_solver::session_api::runtime` now re-exports:
+      - `ReplHealthRuntimeContext`
+      - `ReplSemanticsRuntimeContext`
+      - `ReplSolveRuntimeContext`
+      - `ReplEngineRuntimeContext`
+      - `ReplSessionRuntimeContext`
+      - `ReplSessionViewRuntimeContext`
+      - `ReplSessionStateMutRuntimeContext`
+      - `ReplSessionSimplifierRuntimeContext`
+      - `ReplSessionEngineRuntimeContext`
+      - `EvalCommandError`
+      - `EvalCommandOutput`
+    - `cas_solver::session_api::options` now re-exports:
+      - `ReplSetRuntimeContext`
+      - `ReplStepsRuntimeContext`
+      - `SetCommandApplyEffects`
+      - `SetCommandPlan`
+      - `SetCommandState`
+      - `SetDisplayMode`
+      - `StepsCommandApplyEffects`
+      - `StepsDisplayMode`
+    - `cas_session` runtime impls were migrated to consume those owners
+      directly instead of pulling them from `cas_solver::*` root
+    - rationale:
+      - the root of `cas_solver` no longer acts as the implicit namespace for
+        REPL/session plumbing
+  - the last remaining root imports in external crates were also removed
+    - `cas_cli` now consumes math façade helpers such as `eval_f64(...)` and
+      `is_zero(...)` from `cas_solver::api::*`
+    - a workspace grep across `cas_cli`, `cas_session`, `cas_didactic`, and
+      `cas_android_ffi` no longer finds `use cas_solver::{...}` root imports
+    - rationale:
+      - external consumers now rely only on explicit owner namespaces
+        (`api`, `runtime`, `wire`, `session_api`, `command_api`, `math`)
+  - math-facing helpers also now have an explicit owner namespace
+    - `cas_solver::math` is now the intended owner for:
+      - `canonical_forms::*`
+      - `pattern_marks::*`
+    - the last remaining external consumers were migrated away from
+      `cas_solver::canonical_forms::*` / `cas_solver::pattern_marks::*`
+    - rationale:
+      - math utility surfaces stay public when useful, but behind a namespace
+        that makes their ownership explicit instead of leaking through the root
+  - ownership is now guarded by CI
+    - `scripts/lint_solver_namespace_ownership.sh` rejects non-legitimate
+      `cas_solver::*` root imports in consumer crates
+    - the allowed public ownership surfaces are:
+      - `cas_solver::api::*`
+      - `cas_solver::runtime::*`
+      - `cas_solver::wire::*`
+      - `cas_solver::session_api::*`
+      - `cas_solver::command_api::*`
+      - removed root-level `cas_solver::math::*`
+      - removed root-level `cas_solver::strategies::*`
+    - rationale:
+      - the ownership split is no longer only a convention or grep habit; it
+        is enforced automatically in CI
   - `cas_android_ffi` also neutralized its JNI-internal helper names:
     - `eval_json_core(...)` -> `eval_core(...)`
     - `substitute_json_core(...)` -> `substitute_core(...)`
@@ -427,6 +556,26 @@ Current progress:
     - `cas_didactic` no longer carries the transitional `eval_json_steps`
       wrapper module or the former `collect_eval_json_steps*` compatibility exports;
       callers now use `collect_step_payloads*` directly
+    - stateless eval command entrypoints/types now live under
+      `cas_solver::command_api::eval`
+      - `evaluate_eval_command_output(...)`
+      - `build_eval_command_render_plan(...)`
+      - `evaluate_eval_text_simplify_with_session(...)`
+      - `EvalCommandError`, `EvalCommandOutput`, `EvalCommandRenderPlan`
+      - `EvalDisplayMessage*`, `EvalMetadataLines`, `EvalResultLine`
+      - `session_api::{runtime,types}` now re-export from that owner instead of
+        reaching into `eval_command_*` directly
+      - the root `cas_solver` facade no longer re-exports those eval command
+        types/entrypoints through `exports_commands/eval/core.rs`
+    - the `substitute` command path also stopped duplicating its internal
+      contracts:
+      - `SubstituteSimplifyEvalOutput` now has a single owner in
+        `cas_solver::substitute::types`
+      - `SubstituteParseError` now has a single owner in
+        `cas_solver_core::substitute_command_types`
+      - `substitute_command_eval` now reuses the real
+        `evaluate_substitute_and_simplify(...)` evaluator instead of keeping a
+        second copy of the same parse/substitute/simplify flow
     - inside the `cas_solver::json::eval` boundary, the private prep helper now
       uses neutral naming too:
       - `PreparedEvalRequestState` -> `PreparedStatelessEvalState`
@@ -742,3 +891,18 @@ It is either:
 - a dedicated performance program
 - a dedicated solver-event architecture program
 - or no further architecture change at all
+- `cas_session` public ownership is now explicit: REPL/session entrypoints live under `cas_session::repl_api`, eval/session rendering under `cas_session::eval_api`, and mutable session state under `cas_session::state_api`; the crate root no longer acts as a catch-all public facade for those flows.
+- inside `cas_session` itself, the crate root no longer acts as an internal hub
+  for `CasConfig`, `ReplCore`, or `SessionState`; module code now imports those
+  owners directly from `config`, `repl_core`, and `state_core`.
+- `cas_cli::EvalArgs` is no longer stringly-typed for `steps/context/branch/complex/autoexpand`; those axes are now explicit `ValueEnum`s, so CLI parsing and downstream mapping no longer depend on ad-hoc string contracts.
+- `cas_api_models::EvalSessionRunConfig` now carries typed enums for
+  `steps/context/branch/expand/complex/budget/domain/const_fold/value_domain/complex_branch/inv_trig/assume_scope`,
+  so the `cas_cli -> cas_session -> cas_solver` eval path no longer reintroduces
+  stringly-typed axes immediately after parse.
+- `cas_api_models::EnvelopeEvalOptions` now uses the same typed domain/value-domain
+  enums, so the stateless `cas_cli -> cas_solver::wire` envelope path no longer
+  reintroduces stringly-typed axes either.
+- `cas_solver::eval_option_axes` now also consumes those shared enums directly;
+  the intermediate `enum -> &str -> parse -> enum` bridge was removed, so the
+  eval path stays typed until the final wire-label boundary.

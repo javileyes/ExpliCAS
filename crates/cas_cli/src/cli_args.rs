@@ -49,6 +49,50 @@ pub enum OutputFormat {
     Json,
 }
 
+/// Steps mode for eval command
+#[derive(ValueEnum, Debug, Clone, Copy, Default)]
+pub enum StepsArg {
+    #[default]
+    Off,
+    On,
+    Compact,
+}
+
+/// Context mode for eval command
+#[derive(ValueEnum, Debug, Clone, Copy, Default)]
+pub enum ContextArg {
+    #[default]
+    Auto,
+    Standard,
+    Solve,
+    Integrate,
+}
+
+/// Branch mode for eval command
+#[derive(ValueEnum, Debug, Clone, Copy, Default)]
+pub enum EvalBranchArg {
+    #[default]
+    Strict,
+    Principal,
+}
+
+/// Complex evaluation mode for eval command
+#[derive(ValueEnum, Debug, Clone, Copy, Default)]
+pub enum ComplexModeArg {
+    #[default]
+    Auto,
+    On,
+    Off,
+}
+
+/// Autoexpand policy for eval command
+#[derive(ValueEnum, Debug, Clone, Copy, Default)]
+pub enum AutoexpandArg {
+    #[default]
+    Off,
+    Auto,
+}
+
 /// Budget preset for resource limits
 ///
 /// Presets only control numeric limits, NOT error handling mode.
@@ -60,9 +104,6 @@ pub enum BudgetPreset {
     /// Standard limits for interactive use (50k rewrites, 250k nodes)
     #[default]
     Standard,
-    /// Alias for 'standard' (deprecated, use --budget standard)
-    #[value(hide = true)]
-    Cli,
     /// No limits (use with caution)
     Unlimited,
 }
@@ -224,7 +265,7 @@ pub struct EvalArgs {
     pub format: OutputFormat,
 
     /// Budget preset for resource limits
-    #[arg(long, value_enum, default_value_t = BudgetPreset::Cli)]
+    #[arg(long, value_enum, default_value_t = BudgetPreset::Standard)]
     pub budget: BudgetPreset,
 
     /// Strict mode: fail with error on budget exceeded (default: best-effort)
@@ -236,24 +277,24 @@ pub struct EvalArgs {
     pub max_chars: usize,
 
     /// Steps mode: on, off, compact
-    #[arg(long, default_value = "off")]
-    pub steps: String,
+    #[arg(long, value_enum, default_value_t = StepsArg::Off)]
+    pub steps: StepsArg,
 
     /// Context mode: auto, standard, solve, integrate
-    #[arg(long, default_value = "auto")]
-    pub context: String,
+    #[arg(long, value_enum, default_value_t = ContextArg::Auto)]
+    pub context: ContextArg,
 
     /// Branch mode: strict, principal
-    #[arg(long, default_value = "strict")]
-    pub branch: String,
+    #[arg(long, value_enum, default_value_t = EvalBranchArg::Strict)]
+    pub branch: EvalBranchArg,
 
     /// Complex mode: auto, on, off
-    #[arg(long, default_value = "auto")]
-    pub complex: String,
+    #[arg(long, value_enum, default_value_t = ComplexModeArg::Auto)]
+    pub complex: ComplexModeArg,
 
     /// Expand policy: off, auto
-    #[arg(long, default_value = "off")]
-    pub autoexpand: String,
+    #[arg(long, value_enum, default_value_t = AutoexpandArg::Off)]
+    pub autoexpand: AutoexpandArg,
 
     /// Number of threads for parallel processing
     #[arg(long)]

@@ -31,7 +31,7 @@ use cas_solver::runtime::Simplifier;
 use cas_ast::{BoundType, Equation, Expr, ExprId, RelOp, SolutionSet};
 use cas_formatter::DisplayExpr;
 use cas_parser::parse;
-use cas_solver::solve;
+use cas_solver::api::solve;
 use num_traits::Zero;
 
 fn create_full_simplifier() -> Simplifier {
@@ -762,7 +762,7 @@ fn test_torture_12_solver_singularity() {
         cas_parser::parse_statement("(x^2 - 1) / (x - 1) = 2", &mut simplifier.context).unwrap();
 
     if let cas_parser::Statement::Equation(eq) = stmt {
-        let result = cas_solver::solve(&eq, "x", &mut simplifier);
+        let result = cas_solver::api::solve(&eq, "x", &mut simplifier);
 
         match result {
             Ok((SolutionSet::Empty, _)) => (), // Correct

@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod tests {
-    use crate::{EvalDisplayMessageKind, EvalMetadataLines, EvalResultLine, SessionState};
+    use crate::eval_api::{EvalDisplayMessageKind, EvalMetadataLines, EvalResultLine};
+    use crate::state_api::SessionState;
     #[allow(unused_imports)]
     use cas_solver::session_api::{
         formatting::*, options::*, runtime::*, session_support::*, symbolic_commands::*, types::*,
@@ -38,7 +39,7 @@ mod tests {
         let output = EvalCommandOutput {
             resolved_expr: expr,
             style_signals: cas_formatter::root_style::ParseStyleSignals::default(),
-            steps: cas_solver::to_display_steps(Vec::new()),
+            steps: cas_solver::runtime::to_display_steps(Vec::new()),
             stored_entry_line: Some("#1: 2".to_string()),
             metadata: EvalMetadataLines {
                 warning_lines: vec!["warn".to_string()],

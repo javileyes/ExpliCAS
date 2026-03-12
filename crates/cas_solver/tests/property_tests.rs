@@ -217,8 +217,8 @@ proptest! {
     fn test_normalize_core_idempotent(re in strategies::arb_recursive_expr()) {
         let (mut ctx, expr) = strategies::to_context(re);
 
-        let n1 = cas_solver::canonical_forms::normalize_core(&mut ctx, expr);
-        let n2 = cas_solver::canonical_forms::normalize_core(&mut ctx, n1);
+        let n1 = cas_math::canonical_forms::normalize_core(&mut ctx, expr);
+        let n2 = cas_math::canonical_forms::normalize_core(&mut ctx, n1);
 
         let d1 = cas_formatter::DisplayExpr { context: &ctx, id: n1 };
         let d2 = cas_formatter::DisplayExpr { context: &ctx, id: n2 };
@@ -229,7 +229,7 @@ proptest! {
     #[test]
     fn test_normalize_core_no_neg_number(re in strategies::arb_recursive_expr()) {
         let (mut ctx, expr) = strategies::to_context(re);
-        let normalized = cas_solver::canonical_forms::normalize_core(&mut ctx, expr);
+        let normalized = cas_math::canonical_forms::normalize_core(&mut ctx, expr);
 
         fn check_no_neg_number(ctx: &Context, id: ExprId) -> bool {
             match ctx.get(id) {
@@ -255,7 +255,7 @@ proptest! {
     #[test]
     fn test_normalize_core_no_double_neg(re in strategies::arb_recursive_expr()) {
         let (mut ctx, expr) = strategies::to_context(re);
-        let normalized = cas_solver::canonical_forms::normalize_core(&mut ctx, expr);
+        let normalized = cas_math::canonical_forms::normalize_core(&mut ctx, expr);
 
         fn check_no_double_neg(ctx: &Context, id: ExprId) -> bool {
             match ctx.get(id) {
@@ -351,8 +351,8 @@ proptest! {
         let (mut ctx1, expr1) = strategies::to_context(re.clone());
         let (mut ctx2, expr2) = strategies::to_context(re);
 
-        let n1 = cas_solver::canonical_forms::normalize_core(&mut ctx1, expr1);
-        let n2 = cas_solver::canonical_forms::normalize_core(&mut ctx2, expr2);
+        let n1 = cas_math::canonical_forms::normalize_core(&mut ctx1, expr1);
+        let n2 = cas_math::canonical_forms::normalize_core(&mut ctx2, expr2);
 
         let d1 = cas_formatter::DisplayExpr { context: &ctx1, id: n1 };
         let d2 = cas_formatter::DisplayExpr { context: &ctx2, id: n2 };
@@ -365,8 +365,8 @@ proptest! {
     #[test]
     fn test_normalize_core_mul_sorted(re in strategies::arb_recursive_expr()) {
         let (mut ctx, expr) = strategies::to_context(re);
-        let n1 = cas_solver::canonical_forms::normalize_core(&mut ctx, expr);
-        let n2 = cas_solver::canonical_forms::normalize_core(&mut ctx, n1);
+        let n1 = cas_math::canonical_forms::normalize_core(&mut ctx, expr);
+        let n2 = cas_math::canonical_forms::normalize_core(&mut ctx, n1);
 
         // Idempotence check implies consistent sorting
         let d1 = cas_formatter::DisplayExpr { context: &ctx, id: n1 };
@@ -379,7 +379,7 @@ proptest! {
     #[test]
     fn test_normalize_core_no_nested_pow(re in strategies::arb_recursive_expr()) {
         let (mut ctx, expr) = strategies::to_context(re);
-        let normalized = cas_solver::canonical_forms::normalize_core(&mut ctx, expr);
+        let normalized = cas_math::canonical_forms::normalize_core(&mut ctx, expr);
 
         fn is_integer_number(ctx: &Context, id: ExprId) -> bool {
             if let Expr::Number(n) = ctx.get(id) {
@@ -422,8 +422,8 @@ proptest! {
         let (mut ctx1, expr1) = strategies::to_context(re.clone());
         let (mut ctx2, expr2) = strategies::to_context(re);
 
-        let n1 = cas_solver::canonical_forms::normalize_core(&mut ctx1, expr1);
-        let n2 = cas_solver::canonical_forms::normalize_core(&mut ctx2, expr2);
+        let n1 = cas_math::canonical_forms::normalize_core(&mut ctx1, expr1);
+        let n2 = cas_math::canonical_forms::normalize_core(&mut ctx2, expr2);
 
         let d1 = cas_formatter::DisplayExpr { context: &ctx1, id: n1 };
         let d2 = cas_formatter::DisplayExpr { context: &ctx2, id: n2 };
@@ -447,8 +447,8 @@ proptest! {
         let zero = ctx.num(0);
         let expr_plus_zero = ctx.add(Expr::Add(expr, zero));
 
-        let n1 = cas_solver::canonical_forms::normalize_core(&mut ctx, expr_plus_zero);
-        let n2 = cas_solver::canonical_forms::normalize_core(&mut ctx, expr);
+        let n1 = cas_math::canonical_forms::normalize_core(&mut ctx, expr_plus_zero);
+        let n2 = cas_math::canonical_forms::normalize_core(&mut ctx, expr);
 
         // After normalize_core, e+0 should be structurally simplified
         // Note: normalize_core may not remove +0, but simplify should
@@ -470,8 +470,8 @@ proptest! {
         let one = ctx.num(1);
         let expr_times_one = ctx.add(Expr::Mul(expr, one));
 
-        let n1 = cas_solver::canonical_forms::normalize_core(&mut ctx, expr_times_one);
-        let n2 = cas_solver::canonical_forms::normalize_core(&mut ctx, expr);
+        let n1 = cas_math::canonical_forms::normalize_core(&mut ctx, expr_times_one);
+        let n2 = cas_math::canonical_forms::normalize_core(&mut ctx, expr);
 
         let mut simplifier = Simplifier::with_default_rules();
         simplifier.context = ctx;

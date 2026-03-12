@@ -1,8 +1,9 @@
 use std::path::Path;
 
 use cas_engine::Engine;
+use cas_session_core::snapshot_error::SnapshotError;
 
-use crate::{SessionState, SimplifyCacheKey};
+use crate::{state_core::SessionState, SimplifyCacheKey};
 
 /// Load a compatible session snapshot if available, otherwise create a fresh engine/state.
 ///
@@ -16,10 +17,6 @@ pub fn load_or_new_session(
         return (Engine::new(), SessionState::new(), None);
     };
 
-    if !path.exists() {
-        return (Engine::new(), SessionState::new(), None);
-    }
-
     match SessionState::load_compatible_snapshot(path, key) {
         Ok(Some((ctx, state))) => (Engine::with_context(ctx), state, None),
         Ok(None) => (
@@ -27,6 +24,9 @@ pub fn load_or_new_session(
             SessionState::new(),
             Some("Session snapshot incompatible, starting fresh".to_string()),
         ),
+        Err(SnapshotError::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => {
+            (Engine::new(), SessionState::new(), None)
+        }
         Err(error) => (
             Engine::new(),
             SessionState::new(),

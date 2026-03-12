@@ -2,17 +2,17 @@
 mod tests {
     use cas_formatter::DisplayExpr;
     use cas_parser::parse;
-    use cas_solver::runtime::Simplifier;
+    use cas_solver::runtime::{rules, Simplifier};
 
     #[test]
     fn test_repro_trig_identity_hidden() {
         let mut simplifier = Simplifier::new();
-        cas_solver::rules::algebra::register(&mut simplifier);
-        cas_solver::rules::polynomial::register(&mut simplifier);
-        cas_solver::rules::arithmetic::register(&mut simplifier);
-        cas_solver::rules::exponents::register(&mut simplifier);
-        cas_solver::rules::trigonometry::register(&mut simplifier);
-        cas_solver::rules::canonicalization::register(&mut simplifier);
+        rules::algebra::register(&mut simplifier);
+        rules::polynomial::register(&mut simplifier);
+        rules::arithmetic::register(&mut simplifier);
+        rules::exponents::register(&mut simplifier);
+        rules::trigonometry::register(&mut simplifier);
+        rules::canonicalization::register(&mut simplifier);
 
         // sin(x)^4 - cos(x)^4 - (sin(x)^2 - cos(x)^2)
         // This SHOULD simplify to 0 via: sin^4 - cos^4 = (sin^2-cos^2) (using sin²+cos²=1)

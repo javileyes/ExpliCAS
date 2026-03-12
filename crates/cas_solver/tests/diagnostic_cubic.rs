@@ -1,7 +1,7 @@
 use cas_parser::parse;
+use cas_solver::api::solve;
 /// Diagnostic test: understand why x^3 - x = 0 + T1 identities → non-discrete
 use cas_solver::runtime::Simplifier;
-use cas_solver::solve;
 
 fn solve_and_print(label: &str, eq_str: &str, var: &str) {
     let mut simplifier = Simplifier::with_default_rules();

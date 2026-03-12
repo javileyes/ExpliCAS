@@ -5,8 +5,8 @@
 
 use cas_ast::{Context, Expr};
 use cas_formatter::DisplayExpr;
+use cas_solver::runtime::to_display_steps;
 use cas_solver::runtime::Simplifier;
-use cas_solver::to_display_steps;
 
 /// Helper to get display string for an ExprId
 fn display(ctx: &Context, id: cas_ast::ExprId) -> String {

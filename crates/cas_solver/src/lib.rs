@@ -112,8 +112,11 @@ mod eval_output_stats_metrics;
 mod eval_output_stats_tests;
 mod eval_request_runtime;
 mod exports;
+#[allow(unused_imports)]
 mod exports_base;
+#[allow(unused_imports)]
 mod exports_commands;
+#[allow(unused_imports)]
 mod exports_repl;
 mod full_simplify_command;
 mod full_simplify_display;
@@ -193,6 +196,7 @@ mod path_rewrite;
 #[cfg(test)]
 mod path_rewrite_tests;
 mod phase_runtime_types;
+#[allow(dead_code)]
 mod pipeline_display;
 #[cfg(test)]
 mod pipeline_display_tests;
@@ -313,6 +317,7 @@ mod solve_input_types;
 mod solve_render_config;
 mod solve_safety;
 mod solve_verify_display;
+#[allow(unused_imports)]
 mod solver_entrypoints;
 mod solver_entrypoints_eval;
 mod solver_entrypoints_proof_verify;
@@ -326,7 +331,7 @@ mod steps_command_parse;
 #[cfg(test)]
 mod steps_command_tests;
 mod steps_command_types;
-pub mod substitute;
+mod substitute;
 mod substitute_command_eval;
 mod substitute_command_format;
 mod substitute_command_parse;
@@ -362,13 +367,14 @@ pub mod wire;
 #[cfg(test)]
 mod wire_bridge_tests;
 
-/// Backward-compatible facade for former `cas_engine::strategies::substitute_expr` imports.
-pub mod strategies {
-    pub use cas_ast::substitute_expr_by_id as substitute_expr;
-}
-
 /// Backward-compatible facade for former `cas_engine::api::*` imports.
 pub mod api;
 
-pub use crate::runtime::*;
-pub use exports::*;
+pub(crate) use crate::api::{
+    infer_solve_variable, solve_with_display_steps, telescope, ConditionClass, ConstFoldMode,
+    ConstFoldResult, Diagnostics, DomainDelta, DomainWarning, ImplicitCondition, ImplicitDomain,
+    Proof, RequireOrigin, RequiredItem, RequiresDisplayLevel, VerifyResult, VerifyStatus,
+    VerifySummary,
+};
+pub(crate) use crate::runtime::*;
+pub(crate) use exports::*;

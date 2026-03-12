@@ -12,14 +12,14 @@ type SolveEvent = SolverEvent<Equation, ImportanceLevel>;
 
 fn solve_timeline_output(input: &str, var: &str) -> (Context, TimelineSolveCommandOutput) {
     let mut simplifier = Simplifier::with_default_rules();
-    let (equation, var) = cas_solver::prepare_timeline_solve_equation(
+    let (equation, var) = cas_solver::api::prepare_timeline_solve_equation(
         &mut simplifier.context,
         input,
         Some(var.to_string()),
     )
     .expect("prepare timeline solve equation");
 
-    let (solution_set, display_steps, _) = cas_solver::solve_with_display_steps(
+    let (solution_set, display_steps, _) = cas_solver::api::solve_with_display_steps(
         &equation,
         &var,
         &mut simplifier,
@@ -45,20 +45,26 @@ fn solve_timeline_output(input: &str, var: &str) -> (Context, TimelineSolveComma
 
 fn sample_timeline_output_with_substeps() -> (Context, TimelineSolveCommandOutput) {
     let mut context = Context::new();
-    let (equation, var) = cas_solver::prepare_timeline_solve_equation(
+    let (equation, var) = cas_solver::api::prepare_timeline_solve_equation(
         &mut context,
         "2*x + 3 = 7",
         Some("x".to_string()),
     )
     .expect("prepare sample solve equation");
-    let reduced_equation =
-        cas_solver::prepare_timeline_solve_equation(&mut context, "2*x = 4", Some("x".to_string()))
-            .expect("prepare reduced equation")
-            .0;
-    let solved_equation =
-        cas_solver::prepare_timeline_solve_equation(&mut context, "x = 2", Some("x".to_string()))
-            .expect("prepare solved equation")
-            .0;
+    let reduced_equation = cas_solver::api::prepare_timeline_solve_equation(
+        &mut context,
+        "2*x = 4",
+        Some("x".to_string()),
+    )
+    .expect("prepare reduced equation")
+    .0;
+    let solved_equation = cas_solver::api::prepare_timeline_solve_equation(
+        &mut context,
+        "x = 2",
+        Some("x".to_string()),
+    )
+    .expect("prepare solved equation")
+    .0;
 
     let display_steps = DisplaySteps(vec![
         SolveStep::new(

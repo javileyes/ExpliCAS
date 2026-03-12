@@ -1,5 +1,5 @@
 use super::ReplCore;
-use crate::SessionState;
+use crate::state_core::SessionState;
 use cas_engine::{Engine, Simplifier};
 use cas_solver_core::simplify_options::SimplifyOptions;
 

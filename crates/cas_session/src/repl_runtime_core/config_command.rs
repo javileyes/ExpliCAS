@@ -1,4 +1,4 @@
-use crate::{CasConfig, ReplCore};
+use crate::{config::CasConfig, repl_core::ReplCore};
 use cas_solver::session_api::session_support::evaluate_and_apply_config_command;
 
 /// Apply a config command against REPL config + core runtime.
@@ -10,7 +10,7 @@ pub fn evaluate_and_apply_config_command_on_repl(
     config: &mut CasConfig,
     core: &mut ReplCore,
 ) -> String {
-    cas_solver::evaluate_and_apply_config_command_on_runtime(
+    cas_solver::session_api::runtime::evaluate_and_apply_config_command_on_runtime(
         line,
         config,
         core,

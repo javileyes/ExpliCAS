@@ -8,14 +8,14 @@ mod tests {
 
     #[test]
     fn steps_command_state_for_repl_core_reads_state() {
-        let core = crate::ReplCore::new();
+        let core = crate::repl_core::ReplCore::new();
         let state = steps_command_state_for_repl_core(&core, StepsDisplayMode::Normal);
         assert_eq!(state.display_mode, StepsDisplayMode::Normal);
     }
 
     #[test]
     fn apply_steps_command_update_on_repl_core_updates_engine_and_options() {
-        let mut core = crate::ReplCore::new();
+        let mut core = crate::repl_core::ReplCore::new();
         let effects = apply_steps_command_update_on_repl_core(
             &mut core,
             Some(StepsMode::Compact),

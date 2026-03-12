@@ -12,7 +12,7 @@
 //! - `InvTrigPrincipalRange`: Argument in principal range of inverse trig function
 
 use cas_parser::parse;
-use cas_solver::{DomainMode, InverseTrigPolicy, Simplifier, SimplifyOptions, Step};
+use cas_solver::runtime::{DomainMode, InverseTrigPolicy, Simplifier, SimplifyOptions, Step};
 
 /// Helper: simplify with options and return steps
 fn simplify_with_assume_steps(input: &str) -> Vec<Step> {
@@ -22,7 +22,7 @@ fn simplify_with_assume_steps(input: &str) -> Vec<Step> {
 
     let opts = SimplifyOptions {
         shared: cas_solver::runtime::SharedSemanticConfig {
-            semantics: cas_solver::EvalConfig {
+            semantics: cas_solver::runtime::EvalConfig {
                 domain_mode: DomainMode::Assume,
                 ..Default::default()
             },
@@ -44,7 +44,7 @@ fn simplify_with_principal_inv_trig(input: &str) -> Vec<Step> {
 
     let opts = SimplifyOptions {
         shared: cas_solver::runtime::SharedSemanticConfig {
-            semantics: cas_solver::EvalConfig {
+            semantics: cas_solver::runtime::EvalConfig {
                 domain_mode: DomainMode::Generic,
                 inv_trig: InverseTrigPolicy::PrincipalValue,
                 ..Default::default()
@@ -141,7 +141,7 @@ fn positive_emitted_for_zero_base_power() {
 /// We use Simplifier::new() to avoid LogContractionRule which would undo the expansion.
 #[test]
 fn positive_emitted_for_log_product_expansion() {
-    use cas_solver::rules::logarithms::LogExpansionRule;
+    use cas_solver::runtime::rules::logarithms::LogExpansionRule;
 
     // Create simplifier with ONLY LogExpansionRule (no LogContractionRule which would undo it)
     let mut simplifier = Simplifier::new();
@@ -151,7 +151,7 @@ fn positive_emitted_for_log_product_expansion() {
     let expr = parse("ln(x*y)", &mut simplifier.context).expect("parse failed");
     let opts = SimplifyOptions {
         shared: cas_solver::runtime::SharedSemanticConfig {
-            semantics: cas_solver::EvalConfig {
+            semantics: cas_solver::runtime::EvalConfig {
                 domain_mode: DomainMode::Assume,
                 ..Default::default()
             },
@@ -192,7 +192,7 @@ fn positive_emitted_for_exp_ln_inverse() {
 
     let opts = SimplifyOptions {
         shared: cas_solver::runtime::SharedSemanticConfig {
-            semantics: cas_solver::EvalConfig {
+            semantics: cas_solver::runtime::EvalConfig {
                 domain_mode: DomainMode::Generic,
                 ..Default::default()
             },
@@ -238,7 +238,7 @@ fn no_assumption_for_log_exp_inverse() {
 
     let opts = SimplifyOptions {
         shared: cas_solver::runtime::SharedSemanticConfig {
-            semantics: cas_solver::EvalConfig {
+            semantics: cas_solver::runtime::EvalConfig {
                 domain_mode: DomainMode::Generic,
                 ..Default::default()
             },

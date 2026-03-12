@@ -2,9 +2,9 @@ use cas_ast::{BoundType, Context, Equation, Expr, RelOp, SolutionSet};
 use cas_formatter::DisplayExpr;
 use cas_math::tri_proof::TriProof;
 use cas_parser::parse;
-use cas_solver::{
-    solve, verify_solution_set, DomainMode, Proof as EngineProof, Simplifier, SolveDomainEnv,
-    SolverOptions, StepsMode, ValueDomain, VerifySummary,
+use cas_solver::api::{solve, verify_solution_set, Proof as EngineProof, VerifySummary};
+use cas_solver::runtime::{
+    DomainMode, Simplifier, SolveDomainEnv, SolverOptions, StepsMode, ValueDomain,
 };
 
 // Helper to make equation from strings
@@ -67,12 +67,14 @@ fn test_solve_pow() {
     // x^2 = 4 -> x = 4^(1/2)
     let mut simplifier = Simplifier::new();
     let eq = make_eq(&mut simplifier.context, "x^2", "4");
-    simplifier.add_rule(Box::new(cas_solver::rules::exponents::EvaluatePowerRule));
     simplifier.add_rule(Box::new(
-        cas_solver::rules::canonicalization::CanonicalizeNegationRule,
+        cas_solver::runtime::rules::exponents::EvaluatePowerRule,
     ));
     simplifier.add_rule(Box::new(
-        cas_solver::rules::arithmetic::CombineConstantsRule,
+        cas_solver::runtime::rules::canonicalization::CanonicalizeNegationRule,
+    ));
+    simplifier.add_rule(Box::new(
+        cas_solver::runtime::rules::arithmetic::CombineConstantsRule,
     ));
     simplifier.set_collect_steps(true);
     let (result, _) = solve(&eq, "x", &mut simplifier).unwrap();
@@ -258,7 +260,7 @@ fn classify_for_test(
             matches!(mode, DomainMode::Strict),
         ),
         &SolveDomainEnv::default(),
-        |core_ctx, expr| match cas_solver::prove_positive(core_ctx, expr, opts.value_domain) {
+        |core_ctx, expr| match cas_solver::api::prove_positive(core_ctx, expr, opts.value_domain) {
             EngineProof::Proven | EngineProof::ProvenImplicit => TriProof::Proven,
             EngineProof::Disproven => TriProof::Disproven,
             EngineProof::Unknown => TriProof::Unknown,

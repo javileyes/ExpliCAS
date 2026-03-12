@@ -9,7 +9,7 @@ pub(crate) fn evaluate_rationalize_command_input(
     let parsed_expr = cas_parser::parse(input, &mut simplifier.context)
         .map_err(|e| RationalizeCommandEvalError::Parse(format!("{:?}", e)))?;
     let normalized_expr =
-        crate::canonical_forms::normalize_core(&mut simplifier.context, parsed_expr);
+        cas_math::canonical_forms::normalize_core(&mut simplifier.context, parsed_expr);
     let config = crate::RationalizeConfig::default();
     let rationalized =
         crate::rationalize_denominator(&mut simplifier.context, normalized_expr, &config);

@@ -1,18 +1,11 @@
 use cas_ast::ExprId;
 
 pub use cas_math::substitute::SubstituteOptions;
-
-/// Parse/eval errors for `subst <expr>, <target>, <replacement>`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SubstituteParseError {
-    InvalidArity,
-    Expression(String),
-    Target(String),
-    Replacement(String),
-}
+pub use cas_solver_core::substitute_command_types::SubstituteParseError;
 
 /// Evaluated payload for REPL-style `subst` followed by simplify.
 #[derive(Debug, Clone)]
+#[cfg_attr(not(test), allow(dead_code))]
 pub struct SubstituteSimplifyEvalOutput {
     pub simplified_expr: ExprId,
     pub strategy: SubstituteStrategy,

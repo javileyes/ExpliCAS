@@ -27,5 +27,11 @@ anyhow = "1.0"
 
 [dev-dependencies]
 assert_cmd = "2.0"
+criterion = "0.7.0"
 predicates = "3.0"
 num-traits = "0.2"
+cas_math = { path = "../cas_math" }
+
+[[bench]]
+name = "frontend_cli"
+harness = false

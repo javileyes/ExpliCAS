@@ -1,4 +1,5 @@
-use cas_solver::{ConditionClass, DomainMode, Provenance, SolveSafety};
+use cas_solver::api::{ConditionClass, Provenance, SolveSafety};
+use cas_solver::runtime::DomainMode;
 
 #[test]
 fn test_always_safe_everywhere() {
@@ -120,7 +121,7 @@ fn test_descriptor_distinguishes_intrinsic_from_introduced() {
 
 #[test]
 fn test_assumption_record_shape_stable() {
-    let record = cas_solver::AssumptionRecord {
+    let record = cas_solver_core::assumption_model::AssumptionRecord {
         kind: "nonzero".to_string(),
         expr: "x".to_string(),
         message: "x != 0".to_string(),

@@ -1,6 +1,7 @@
 use cas_ast::{Equation, RelOp};
 use cas_parser::parse;
-use cas_solver::{solve_with_display_steps, Simplifier, SolverOptions};
+use cas_solver::api::solve_with_display_steps;
+use cas_solver::runtime::{Simplifier, SolverOptions};
 
 fn parse_eq(simplifier: &mut Simplifier, lhs: &str, rhs: &str) -> Equation {
     Equation {

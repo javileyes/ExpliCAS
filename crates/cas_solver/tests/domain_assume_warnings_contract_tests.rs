@@ -10,7 +10,7 @@
 //! This provides "best effort" simplification with audit trail.
 
 use cas_parser::parse;
-use cas_solver::{Simplifier, Step};
+use cas_solver::runtime::{Simplifier, Step};
 
 /// Helper: check if step has any assumption_events
 fn step_has_assumption(step: &Step) -> bool {
@@ -25,7 +25,7 @@ fn simplify_assume_with_steps(input: &str) -> (String, Vec<Step>) {
 
     let opts = cas_solver::runtime::SimplifyOptions {
         shared: cas_solver::runtime::SharedSemanticConfig {
-            semantics: cas_solver::EvalConfig {
+            semantics: cas_solver::runtime::EvalConfig {
                 domain_mode: cas_solver::runtime::DomainMode::Assume,
                 ..Default::default()
             },

@@ -17,7 +17,7 @@ use cas_engine::{
     Simplifier, SimplifyOptions, StepListener, StepsMode,
 };
 use cas_math::fraction_gcd_plan_support::try_plan_fraction_gcd_rewrite;
-use cas_solver::{verify_solution_set, VerifySummary};
+use cas_solver::api::{verify_solution_set, VerifySummary};
 use cas_solver_core::engine_events::EngineEvent;
 
 const SOLVE_PROFILE_FLAG: &str = "CAS_SOLVE_BENCH_PROFILE";

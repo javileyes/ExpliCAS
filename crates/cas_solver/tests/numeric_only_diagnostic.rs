@@ -14,7 +14,7 @@
 use cas_ast::{Context, Expr, ExprId};
 use cas_formatter::DisplayExpr;
 use cas_parser::parse;
-use cas_solver::compare_expr;
+use cas_solver::runtime::compare_expr;
 use cas_solver::runtime::Simplifier;
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -568,22 +568,22 @@ fn numeric_only_root_cause_analysis() {
                     let mut e_final = e;
                     let mut s_final = s;
                     {
-                        let cfg = cas_solver::EvalConfig::default();
-                        let mut budget = cas_solver::Budget::preset_cli();
-                        if let Ok(r) = cas_solver::fold_constants(
+                        let cfg = cas_solver::runtime::EvalConfig::default();
+                        let mut budget = cas_solver::runtime::Budget::preset_cli();
+                        if let Ok(r) = cas_solver::api::fold_constants(
                             &mut simp.context,
                             e_final,
                             &cfg,
-                            cas_solver::ConstFoldMode::Safe,
+                            cas_solver::api::ConstFoldMode::Safe,
                             &mut budget,
                         ) {
                             e_final = r.expr;
                         }
-                        if let Ok(r) = cas_solver::fold_constants(
+                        if let Ok(r) = cas_solver::api::fold_constants(
                             &mut simp.context,
                             s_final,
                             &cfg,
-                            cas_solver::ConstFoldMode::Safe,
+                            cas_solver::api::ConstFoldMode::Safe,
                             &mut budget,
                         ) {
                             s_final = r.expr;
@@ -601,13 +601,13 @@ fn numeric_only_root_cause_analysis() {
                     let d = simp.context.add(Expr::Sub(e_final, s_final));
                     let (mut diff, _) = simp.simplify(d);
                     {
-                        let cfg = cas_solver::EvalConfig::default();
-                        let mut budget = cas_solver::Budget::preset_cli();
-                        if let Ok(r) = cas_solver::fold_constants(
+                        let cfg = cas_solver::runtime::EvalConfig::default();
+                        let mut budget = cas_solver::runtime::Budget::preset_cli();
+                        if let Ok(r) = cas_solver::api::fold_constants(
                             &mut simp.context,
                             diff,
                             &cfg,
-                            cas_solver::ConstFoldMode::Safe,
+                            cas_solver::api::ConstFoldMode::Safe,
                             &mut budget,
                         ) {
                             diff = r.expr;

@@ -48,8 +48,8 @@ fn simplify_expand(input: &str) -> (String, cas_ast::ExprId, cas_ast::Context) {
     let mut simplifier = Simplifier::with_default_rules();
     let expr = parse(input, &mut simplifier.context).expect("parse failed");
 
-    // Use cas_solver::expand() directly like REPL does
-    let expanded = cas_solver::expand(&mut simplifier.context, expr);
+    // Use cas_solver::api::expand() directly like REPL does
+    let expanded = cas_solver::api::expand(&mut simplifier.context, expr);
     // Then simplify to clean up
     let (result, _) = simplifier.simplify(expanded);
 
@@ -162,7 +162,7 @@ fn test_standard_negative_exponent() {
 /// Test 5: ContextMode::Solve no activa expansión
 #[test]
 fn test_solve_context_no_expansion() {
-    use cas_solver::{ContextMode, EvalOptions};
+    use cas_solver::runtime::{ContextMode, EvalOptions};
 
     let opts = EvalOptions {
         shared: cas_solver::runtime::SharedSemanticConfig {
@@ -269,10 +269,10 @@ fn test_expand_negative_exponent_preserved() {
 /// Test 9: Expand mode doesn't contaminate subsequent Standard evaluations
 #[test]
 fn test_expand_no_contamination() {
-    // First: expand using cas_solver::expand() directly
+    // First: expand using cas_solver::api::expand() directly
     let mut simplifier = Simplifier::with_default_rules();
     let expr1 = parse("(x+1)^3", &mut simplifier.context).expect("parse failed");
-    let expanded_raw = cas_solver::expand(&mut simplifier.context, expr1);
+    let expanded_raw = cas_solver::api::expand(&mut simplifier.context, expr1);
     let (expanded_result, _) = simplifier.simplify(expanded_raw);
     let expanded_str = format!(
         "{}",

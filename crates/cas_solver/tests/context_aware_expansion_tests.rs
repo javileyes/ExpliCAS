@@ -32,7 +32,7 @@ fn solve_str(lhs_str: &str, rhs_str: &str) -> String {
         rhs,
         op: cas_ast::RelOp::Eq,
     };
-    match cas_solver::solve(&eq, "x", &mut s) {
+    match cas_solver::api::solve(&eq, "x", &mut s) {
         Ok((solution, _steps)) => format!("{:?}", solution),
         Err(e) => format!("Error: {:?}", e),
     }

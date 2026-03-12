@@ -4,9 +4,9 @@
 //! from the same `DisplaySolveSteps` source, preventing "final layer bifurcation".
 
 use cas_ast::{Equation, Expr, RelOp, SolutionSet};
-use cas_solver::{
-    solve_with_display_steps, AssumeScope, DisplaySolveSteps, DomainMode, Engine, ImportanceLevel,
-    SolverOptions, ValueDomain,
+use cas_solver::api::solve_with_display_steps;
+use cas_solver::runtime::{
+    AssumeScope, DisplaySolveSteps, DomainMode, Engine, ImportanceLevel, SolverOptions, ValueDomain,
 };
 
 // =============================================================================

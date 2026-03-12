@@ -13,7 +13,17 @@ impl SessionState {
     }
 
     pub fn options_mut(&mut self) -> &mut EvalOptions {
+        self.dirty = true;
         &mut self.options
+    }
+
+    pub(crate) fn is_dirty(&self) -> bool {
+        self.dirty || self.store.is_dirty()
+    }
+
+    pub(crate) fn mark_clean(&mut self) {
+        self.dirty = false;
+        self.store.mark_clean();
     }
 
     pub fn new() -> Self {
@@ -21,6 +31,7 @@ impl SessionState {
             store: SessionEvalStore::new(),
             env: Environment::new(),
             options: EvalOptions::default(),
+            dirty: false,
         }
     }
 
@@ -30,6 +41,7 @@ impl SessionState {
             store: SessionEvalStore::from_store(store),
             env: Environment::new(),
             options: EvalOptions::default(),
+            dirty: false,
         }
     }
 }

@@ -1,4 +1,5 @@
-use crate::{inspect_history_entry_input, Engine, HistoryEntryInspection, InspectHistoryContext};
+use crate::inspect_runtime::InspectHistoryContext;
+use crate::{inspect_history_entry_input, Engine, HistoryEntryInspection};
 
 /// Context required to evaluate `show` command from a stateful layer.
 pub trait ShowCommandContext {

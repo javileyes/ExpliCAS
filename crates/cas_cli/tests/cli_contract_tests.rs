@@ -96,6 +96,16 @@ fn test_eval_with_budget_preset() {
     assert_eq!(wire["budget"]["preset"], "small");
 }
 
+/// Test that the legacy "cli" budget alias is no longer accepted.
+#[test]
+fn test_eval_rejects_legacy_cli_budget_alias() {
+    cli()
+        .args(["eval", "x+1", "--budget", "cli"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("invalid value 'cli'"));
+}
+
 /// Test that --strict flag sets mode to strict.
 #[test]
 fn test_eval_strict_mode() {

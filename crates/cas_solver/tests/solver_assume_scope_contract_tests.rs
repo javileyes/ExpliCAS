@@ -4,10 +4,8 @@
 //! based on the AssumeScope semantic axis.
 
 use cas_ast::{Equation, Expr, RelOp, SolutionSet};
-use cas_solver::{
-    solve_with_display_steps, AssumeScope, DomainMode, Engine, SolveBudget, SolverOptions,
-    ValueDomain,
-};
+use cas_solver::api::{solve_with_display_steps, AssumeScope, SolveBudget};
+use cas_solver::runtime::{DomainMode, Engine, SolverOptions, ValueDomain};
 
 fn make_opts(mode: DomainMode, scope: AssumeScope) -> SolverOptions {
     SolverOptions {

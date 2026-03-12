@@ -13,7 +13,7 @@
 //! - Assume: All conditions
 
 use cas_parser::parse;
-use cas_solver::{DomainMode, Simplifier, SimplifyOptions};
+use cas_solver::runtime::{DomainMode, Simplifier, SimplifyOptions};
 
 /// Helper: simplify with specific DomainMode
 fn simplify_with_mode(input: &str, mode: DomainMode) -> String {
@@ -22,7 +22,7 @@ fn simplify_with_mode(input: &str, mode: DomainMode) -> String {
 
     let opts = SimplifyOptions {
         shared: cas_solver::runtime::SharedSemanticConfig {
-            semantics: cas_solver::EvalConfig {
+            semantics: cas_solver::runtime::EvalConfig {
                 domain_mode: mode,
                 ..Default::default()
             },

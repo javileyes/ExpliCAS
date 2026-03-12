@@ -7,7 +7,7 @@ mod tests {
 
     #[test]
     fn evaluate_and_apply_config_command_updates_config_and_syncs() {
-        let mut config = crate::CasConfig::default();
+        let mut config = crate::config::CasConfig::default();
         let out = evaluate_and_apply_config_command("config enable distribute", &mut config);
         assert_eq!(
             out,

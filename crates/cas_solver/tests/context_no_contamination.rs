@@ -5,9 +5,9 @@
 
 use cas_ast::Context;
 use cas_parser::parse;
-use cas_solver::runtime::Simplifier;
-use cas_solver::runtime::Step;
-use cas_solver::{BranchMode, ComplexMode, ContextMode, EvalOptions, StepsMode};
+use cas_solver::runtime::{
+    BranchMode, ComplexMode, ContextMode, EvalOptions, Simplifier, Step, StepsMode,
+};
 
 /// Helper: run simplification with given options and return (result_string, steps)
 fn run_simplify(input: &str, opts: &EvalOptions) -> (String, Vec<Step>) {
@@ -281,8 +281,7 @@ fn test_priority_ordering_50_before_0() {
 // =============================================================================
 
 use cas_ast::ExprId;
-use cas_solver::ParentContext;
-use cas_solver::{Rewrite, Rule};
+use cas_solver::runtime::{ParentContext, Rewrite, Rule};
 
 /// Test rule that matches only value 999 and rewrites to marker
 struct OneTimeMarkerRule {
@@ -300,8 +299,8 @@ impl Rule for OneTimeMarkerRule {
         self.priority
     }
 
-    fn target_types(&self) -> Option<cas_solver::target_kind::TargetKindSet> {
-        Some(cas_solver::target_kind::TargetKindSet::NUMBER)
+    fn target_types(&self) -> Option<cas_ast::TargetKindSet> {
+        Some(cas_ast::TargetKindSet::NUMBER)
     }
 
     fn apply(

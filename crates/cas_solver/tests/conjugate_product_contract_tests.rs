@@ -2,13 +2,13 @@
 
 use cas_ast::Context;
 use cas_parser::parse;
-use cas_solver::compare_expr;
+use cas_solver::runtime::compare_expr;
 use std::cmp::Ordering;
 
 /// Debug test to verify structural equality of terms.
 #[test]
 fn test_conjugate_compare_terms() {
-    use cas_solver::{add_terms_signed, Sign};
+    use cas_math::expr_nary::{add_terms_signed, Sign};
 
     let mut ctx = Context::new();
 

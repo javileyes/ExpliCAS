@@ -1,9 +1,9 @@
 #[cfg(test)]
 mod tests {
-    use crate::{
+    use crate::runtime::{EvalOptions, PipelineStats, Simplifier};
+    use crate::session_api::runtime::{
         build_runtime_with_config, reset_runtime_full_with_config, reset_runtime_with_config,
-        EvalOptions, PipelineStats, ReplConfiguredRuntimeContext, ReplRuntimeStateContext,
-        ReplSimplifierRuntimeContext, Simplifier,
+        ReplConfiguredRuntimeContext, ReplRuntimeStateContext, ReplSimplifierRuntimeContext,
     };
 
     #[derive(Clone, Copy)]

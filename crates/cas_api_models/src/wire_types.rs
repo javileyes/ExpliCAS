@@ -578,24 +578,223 @@ fn split_by_comma_at_depth_0(s: &str) -> Vec<&str> {
 }
 
 /// Configuration for session-backed eval execution.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum EvalStepsMode {
+    On,
+    #[default]
+    Off,
+    Compact,
+}
+
+impl EvalStepsMode {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::On => "on",
+            Self::Off => "off",
+            Self::Compact => "compact",
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum EvalContextMode {
+    #[default]
+    Auto,
+    Standard,
+    Solve,
+    Integrate,
+}
+
+impl EvalContextMode {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::Standard => "standard",
+            Self::Solve => "solve",
+            Self::Integrate => "integrate",
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum EvalBranchMode {
+    #[default]
+    Strict,
+    Principal,
+}
+
+impl EvalBranchMode {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Strict => "strict",
+            Self::Principal => "principal",
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum EvalExpandPolicy {
+    #[default]
+    Off,
+    Auto,
+}
+
+impl EvalExpandPolicy {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Off => "off",
+            Self::Auto => "auto",
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum EvalComplexMode {
+    #[default]
+    Auto,
+    On,
+    Off,
+}
+
+impl EvalComplexMode {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::On => "on",
+            Self::Off => "off",
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum EvalBudgetPreset {
+    Small,
+    #[default]
+    Standard,
+    Unlimited,
+}
+
+impl EvalBudgetPreset {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Small => "small",
+            Self::Standard => "standard",
+            Self::Unlimited => "unlimited",
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum EvalDomainMode {
+    Strict,
+    #[default]
+    Generic,
+    Assume,
+}
+
+impl EvalDomainMode {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Strict => "strict",
+            Self::Generic => "generic",
+            Self::Assume => "assume",
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum EvalConstFoldMode {
+    #[default]
+    Off,
+    Safe,
+}
+
+impl EvalConstFoldMode {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Off => "off",
+            Self::Safe => "safe",
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum EvalValueDomain {
+    #[default]
+    Real,
+    Complex,
+}
+
+impl EvalValueDomain {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Real => "real",
+            Self::Complex => "complex",
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum EvalInvTrigPolicy {
+    #[default]
+    Strict,
+    Principal,
+}
+
+impl EvalInvTrigPolicy {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Strict => "strict",
+            Self::Principal => "principal",
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum EvalAssumeScope {
+    #[default]
+    Real,
+    Wildcard,
+}
+
+impl EvalAssumeScope {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Real => "real",
+            Self::Wildcard => "wildcard",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct EvalSessionRunConfig<'a> {
     pub expr: &'a str,
     pub auto_store: bool,
     pub max_chars: usize,
-    pub steps_mode: &'a str,
-    pub budget_preset: &'a str,
+    pub steps_mode: EvalStepsMode,
+    pub budget_preset: EvalBudgetPreset,
     pub strict: bool,
-    pub domain: &'a str,
-    pub context_mode: &'a str,
-    pub branch_mode: &'a str,
-    pub expand_policy: &'a str,
-    pub complex_mode: &'a str,
-    pub const_fold: &'a str,
-    pub value_domain: &'a str,
-    pub complex_branch: &'a str,
-    pub inv_trig: &'a str,
-    pub assume_scope: &'a str,
+    pub domain: EvalDomainMode,
+    pub context_mode: EvalContextMode,
+    pub branch_mode: EvalBranchMode,
+    pub expand_policy: EvalExpandPolicy,
+    pub complex_mode: EvalComplexMode,
+    pub const_fold: EvalConstFoldMode,
+    pub value_domain: EvalValueDomain,
+    pub complex_branch: EvalBranchMode,
+    pub inv_trig: EvalInvTrigPolicy,
+    pub assume_scope: EvalAssumeScope,
 }
 
 // =============================================================================
@@ -891,9 +1090,56 @@ impl SubstituteRunOptions {
 
     pub fn parse_optional_json(opts_json: Option<&str>) -> Self {
         match opts_json {
-            Some(json) => serde_json::from_str(json).unwrap_or_default(),
+            Some(json) => {
+                let trimmed = json.trim();
+                parse_substitute_run_options_fast(trimmed)
+                    .unwrap_or_else(|| serde_json::from_str(trimmed).unwrap_or_default())
+            }
             None => Self::default(),
         }
+    }
+}
+
+fn parse_substitute_run_options_fast(opts_json: &str) -> Option<SubstituteRunOptions> {
+    match opts_json {
+        ""
+        | "{}"
+        | r#"{"mode":"power"}"#
+        | r#"{"pretty":false}"#
+        | r#"{"steps":false}"#
+        | r#"{"steps":false,"pretty":false}"#
+        | r#"{"pretty":false,"steps":false}"#
+        | r#"{"mode":"power","steps":false}"#
+        | r#"{"steps":false,"mode":"power"}"#
+        | r#"{"mode":"power","pretty":false}"#
+        | r#"{"pretty":false,"mode":"power"}"# => Some(SubstituteRunOptions::default()),
+        r#"{"steps":true}"# => Some(SubstituteRunOptions {
+            steps: true,
+            ..SubstituteRunOptions::default()
+        }),
+        r#"{"pretty":true}"# => Some(SubstituteRunOptions {
+            pretty: true,
+            ..SubstituteRunOptions::default()
+        }),
+        r#"{"mode":"exact"}"# => Some(SubstituteRunOptions {
+            mode: "exact".to_string(),
+            ..SubstituteRunOptions::default()
+        }),
+        r#"{"mode":"exact","steps":true}"# | r#"{"steps":true,"mode":"exact"}"# => {
+            Some(SubstituteRunOptions {
+                mode: "exact".to_string(),
+                steps: true,
+                ..SubstituteRunOptions::default()
+            })
+        }
+        r#"{"steps":true,"pretty":true}"# | r#"{"pretty":true,"steps":true}"# => {
+            Some(SubstituteRunOptions {
+                steps: true,
+                pretty: true,
+                ..SubstituteRunOptions::default()
+            })
+        }
+        _ => None,
     }
 }
 
@@ -1243,15 +1489,15 @@ pub struct RequestOptions {
 /// Options accepted by envelope eval entrypoints.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct EnvelopeEvalOptions {
-    pub domain: String,
-    pub value_domain: String,
+    pub domain: EvalDomainMode,
+    pub value_domain: EvalValueDomain,
 }
 
 impl Default for EnvelopeEvalOptions {
     fn default() -> Self {
         Self {
-            domain: "generic".to_string(),
-            value_domain: "real".to_string(),
+            domain: EvalDomainMode::Generic,
+            value_domain: EvalValueDomain::Real,
         }
     }
 }
@@ -1612,6 +1858,24 @@ mod tests {
     fn substitute_run_options_parse_optional_json_uses_defaults_on_invalid() {
         let parsed = SubstituteRunOptions::parse_optional_json(Some("{invalid"));
         assert_eq!(parsed.mode, "power");
+        assert!(!parsed.steps);
+        assert!(!parsed.pretty);
+    }
+
+    #[test]
+    fn substitute_run_options_parse_optional_json_fast_paths_common_shapes() {
+        let parsed = SubstituteRunOptions::parse_optional_json(Some("{}"));
+        assert_eq!(parsed.mode, "power");
+        assert!(!parsed.steps);
+        assert!(!parsed.pretty);
+
+        let parsed = SubstituteRunOptions::parse_optional_json(Some(r#"{"steps":true}"#));
+        assert_eq!(parsed.mode, "power");
+        assert!(parsed.steps);
+        assert!(!parsed.pretty);
+
+        let parsed = SubstituteRunOptions::parse_optional_json(Some(r#"{"mode":"exact"}"#));
+        assert_eq!(parsed.mode, "exact");
         assert!(!parsed.steps);
         assert!(!parsed.pretty);
     }

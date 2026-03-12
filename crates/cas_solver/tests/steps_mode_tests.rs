@@ -7,8 +7,9 @@
 
 use cas_ast::Context;
 use cas_parser::parse;
-use cas_solver::runtime::Simplifier;
-use cas_solver::{BranchMode, ComplexMode, ContextMode, EvalOptions, StepsMode};
+use cas_solver::runtime::{
+    BranchMode, ComplexMode, ContextMode, EvalOptions, Simplifier, StepsMode,
+};
 
 /// Helper: simplify with given steps_mode and return (result_string, steps, steps_mode)
 fn simplify_with_mode(

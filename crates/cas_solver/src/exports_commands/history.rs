@@ -32,7 +32,6 @@ pub use crate::inspect_format::{
 pub use crate::inspect_parse::parse_history_entry_id;
 pub use crate::inspect_runtime::{
     inspect_history_entry, inspect_history_entry_input, HistoryInspectEntryRaw,
-    InspectHistoryContext,
 };
 pub use crate::inspect_types::{
     HistoryEntryDetails, HistoryEntryInspection, HistoryExprInspection,

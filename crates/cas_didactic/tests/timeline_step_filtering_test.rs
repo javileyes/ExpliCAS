@@ -1,7 +1,7 @@
 //! Test to verify timeline step filtering for atan expression
+use cas_solver::runtime::to_display_steps;
 use cas_solver::runtime::ImportanceLevel;
 use cas_solver::runtime::Simplifier;
-use cas_solver::to_display_steps;
 
 #[test]
 fn test_atan_expression_step_importance() {

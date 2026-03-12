@@ -2,8 +2,8 @@
 //! Tests solving for one variable while treating others as parameters
 
 use cas_ast::{Equation, RelOp, SolutionSet};
+use cas_solver::api::solve;
 use cas_solver::runtime::Simplifier;
-use cas_solver::solve;
 
 // ============================================================================
 // LEVEL 1: Basic Linear Multivariable

@@ -18,3 +18,20 @@ bincode = "1"
 [dev-dependencies]
 cas_parser = { path = "../cas_parser" }
 tempfile = "3"
+criterion = "0.7.0"
+
+[[bench]]
+name = "snapshot_io"
+harness = false
+
+[[bench]]
+name = "store_lookup"
+harness = false
+
+[[bench]]
+name = "resolve_frontend"
+harness = false
+
+[[bench]]
+name = "snapshot_restore"
+harness = false

@@ -4,8 +4,8 @@ mod tests {
 
     #[test]
     fn evaluate_and_apply_config_command_on_repl_reports_status() {
-        let mut config = crate::CasConfig::default();
-        let mut core = crate::ReplCore::new();
+        let mut config = crate::config::CasConfig::default();
+        let mut core = crate::repl_core::ReplCore::new();
         let out =
             evaluate_and_apply_config_command_on_repl("config status", &mut config, &mut core);
         assert!(!out.trim().is_empty());

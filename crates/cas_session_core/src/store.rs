@@ -3,6 +3,9 @@
 //! This module is engine-agnostic and can be reused by multiple frontends.
 
 use crate::types::{CacheConfig, EntryId, EntryKind};
+use std::collections::HashMap;
+
+const LINEAR_LOOKUP_THRESHOLD: usize = 64;
 
 fn default_cache_steps_len<C>(_cache: &C) -> usize {
     0
@@ -52,6 +55,7 @@ impl<D, C> Entry<D, C> {
 pub struct SessionStore<Diagnostics, CacheValue> {
     next_id: EntryId,
     entries: Vec<Entry<Diagnostics, CacheValue>>,
+    entry_index: HashMap<EntryId, usize>,
     /// LRU tracking for cached entries (most recent at back).
     cache_order: std::collections::VecDeque<EntryId>,
     /// Cache memory configuration.
@@ -71,6 +75,14 @@ impl<D: Default, C> Default for SessionStore<D, C> {
 }
 
 impl<D: Default, C> SessionStore<D, C> {
+    fn index_for_id(&self, id: EntryId) -> Option<usize> {
+        if self.entries.len() <= LINEAR_LOOKUP_THRESHOLD {
+            self.entries.iter().position(|e| e.id == id)
+        } else {
+            self.entry_index.get(&id).copied()
+        }
+    }
+
     /// Create a new empty session store.
     pub fn new() -> Self {
         Self::with_cache_config(CacheConfig::default())
@@ -94,12 +106,20 @@ impl<D: Default, C> SessionStore<D, C> {
         Self {
             next_id: 1,
             entries: Vec::new(),
+            entry_index: HashMap::new(),
             cache_order: std::collections::VecDeque::new(),
             cache_config: config,
             cached_steps_count: 0,
             cache_steps_len,
             cache_apply_light,
         }
+    }
+
+    /// Reserve backing storage ahead of bulk restore from snapshot.
+    pub fn reserve_for_restore(&mut self, entry_capacity: usize, cache_order_capacity: usize) {
+        self.entries.reserve(entry_capacity);
+        self.entry_index.reserve(entry_capacity);
+        self.cache_order.reserve(cache_order_capacity);
     }
 
     /// Get cache statistics `(cached_entries, total_steps)`.
@@ -128,22 +148,27 @@ impl<D: Default, C> SessionStore<D, C> {
             diagnostics,
             simplified: None,
         });
+        self.entry_index.insert(id, self.entries.len() - 1);
         id
     }
 
     /// Get an entry by ID.
     pub fn get(&self, id: EntryId) -> Option<&Entry<D, C>> {
-        self.entries.iter().find(|e| e.id == id)
+        self.index_for_id(id).map(|idx| &self.entries[idx])
     }
 
     /// Remove entries by IDs (IDs are never reused).
     pub fn remove(&mut self, ids: &[EntryId]) {
         self.entries.retain(|e| !ids.contains(&e.id));
+        self.rebuild_entry_index();
     }
 
     /// Clear all entries (IDs are still never reused).
     pub fn clear(&mut self) {
         self.entries.clear();
+        self.entry_index.clear();
+        self.cache_order.clear();
+        self.cached_steps_count = 0;
     }
 
     /// Get all entries.
@@ -173,8 +198,8 @@ impl<D: Default, C> SessionStore<D, C> {
 
     /// Update diagnostics for an entry.
     pub fn update_diagnostics(&mut self, id: EntryId, diagnostics: D) {
-        if let Some(entry) = self.entries.iter_mut().find(|e| e.id == id) {
-            entry.diagnostics = diagnostics;
+        if let Some(idx) = self.index_for_id(id) {
+            self.entries[idx].diagnostics = diagnostics;
         }
     }
 
@@ -203,11 +228,24 @@ impl<D: Default, C> SessionStore<D, C> {
             self.cached_steps_count += cache_steps_len(cache);
         }
         self.entries.push(entry);
+        let idx = self.entries.len() - 1;
+        let id = self.entries[idx].id;
+        self.entry_index.insert(id, idx);
     }
 
     /// Restore the LRU cache order from snapshot.
     pub fn restore_cache_order(&mut self, order: Vec<EntryId>) {
         self.cache_order = order.into_iter().collect();
+    }
+
+    fn rebuild_entry_index(&mut self) {
+        self.entry_index.clear();
+        self.entry_index.extend(
+            self.entries
+                .iter()
+                .enumerate()
+                .map(|(idx, entry)| (entry.id, idx)),
+        );
     }
 }
 
@@ -226,7 +264,8 @@ impl<D: Default, C> SessionStore<D, C> {
         let mut simplified = simplified.into();
         simplified = cache_apply_light(simplified, self.cache_config.light_cache_threshold);
 
-        if let Some(entry) = self.entries.iter_mut().find(|e| e.id == id) {
+        if let Some(idx) = self.index_for_id(id) {
+            let entry = &mut self.entries[idx];
             let old_steps = entry.simplified.as_ref().map(cache_steps_len).unwrap_or(0);
             let new_steps = cache_steps_len(&simplified);
 
@@ -242,7 +281,8 @@ impl<D: Default, C> SessionStore<D, C> {
 
     /// Touch a cached entry to mark it as recently used (for LRU).
     pub fn touch_cached(&mut self, id: EntryId) {
-        if let Some(entry) = self.entries.iter().find(|e| e.id == id) {
+        if let Some(idx) = self.index_for_id(id) {
+            let entry = &self.entries[idx];
             if entry.simplified.is_some() {
                 self.cache_order.retain(|&eid| eid != id);
                 self.cache_order.push_back(id);
@@ -263,7 +303,8 @@ impl<D: Default, C> SessionStore<D, C> {
             }
 
             if let Some(oldest_id) = self.cache_order.pop_front() {
-                if let Some(entry) = self.entries.iter_mut().find(|e| e.id == oldest_id) {
+                if let Some(idx) = self.index_for_id(oldest_id) {
+                    let entry = &mut self.entries[idx];
                     if let Some(cache) = entry.simplified.take() {
                         self.cached_steps_count = self
                             .cached_steps_count

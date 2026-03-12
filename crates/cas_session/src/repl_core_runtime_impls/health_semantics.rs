@@ -1,7 +1,7 @@
-use crate::ReplCore;
-use cas_solver::{
-    runtime::Simplifier, ReplHealthRuntimeContext, ReplSemanticsRuntimeContext,
-    ReplSolveRuntimeContext,
+use crate::repl_core::ReplCore;
+use cas_solver::runtime::Simplifier;
+use cas_solver::session_api::runtime::{
+    ReplHealthRuntimeContext, ReplSemanticsRuntimeContext, ReplSolveRuntimeContext,
 };
 use cas_solver_core::eval_options::EvalOptions;
 use cas_solver_core::phase_stats::PipelineStats;

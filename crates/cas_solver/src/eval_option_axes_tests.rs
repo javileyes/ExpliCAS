@@ -8,16 +8,16 @@ mod tests {
         apply_eval_option_axes(
             &mut opts,
             EvalOptionAxes {
-                context: "solve",
-                branch: "principal",
-                complex: "on",
-                autoexpand: "auto",
-                steps: "compact",
-                domain: "strict",
-                value_domain: "complex",
-                inv_trig: "principal",
-                complex_branch: "principal",
-                assume_scope: "wildcard",
+                context: cas_api_models::EvalContextMode::Solve,
+                branch: cas_api_models::EvalBranchMode::Principal,
+                complex: cas_api_models::EvalComplexMode::On,
+                autoexpand: cas_api_models::EvalExpandPolicy::Auto,
+                steps: cas_api_models::EvalStepsMode::Compact,
+                domain: cas_api_models::EvalDomainMode::Strict,
+                value_domain: cas_api_models::EvalValueDomain::Complex,
+                inv_trig: cas_api_models::EvalInvTrigPolicy::Principal,
+                complex_branch: cas_api_models::EvalBranchMode::Principal,
+                assume_scope: cas_api_models::EvalAssumeScope::Wildcard,
             },
         );
 

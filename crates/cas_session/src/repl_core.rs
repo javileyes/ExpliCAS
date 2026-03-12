@@ -6,7 +6,7 @@ mod accessors;
 mod constructors;
 mod runtime_state;
 
-use crate::SessionState;
+use crate::state_core::SessionState;
 use cas_engine::Engine;
 use cas_solver_core::phase_stats::PipelineStats;
 use cas_solver_core::simplify_options::SimplifyOptions;

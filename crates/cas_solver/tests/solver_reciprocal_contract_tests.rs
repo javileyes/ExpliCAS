@@ -5,7 +5,8 @@
 //! 2. "Take reciprocal"
 
 use cas_ast::{Equation, Expr, RelOp, SolutionSet};
-use cas_solver::{solve, Simplifier, SolveStep};
+use cas_solver::api::solve;
+use cas_solver::runtime::{Simplifier, SolveStep};
 
 /// Build equation 1/R = 1/R1 + 1/R2 and solve for R
 fn solve_parallel_resistors() -> (SolutionSet, Vec<SolveStep>, Simplifier) {

@@ -4,7 +4,7 @@ impl Repl {
     pub fn new() -> Self {
         let config = CasConfig::load();
         Self {
-            core: cas_session::build_repl_core_with_config(&config),
+            core: cas_session::repl_api::build_repl_core_with_config(&config),
             verbosity: Verbosity::Normal,
             config,
         }

@@ -23,14 +23,12 @@
 use cas_ast::{Context, Equation, Expr, ExprId, RelOp, SolutionSet};
 use cas_formatter::DisplayExpr;
 use cas_parser::parse;
-use cas_solver::api::{solve, verify_solution_set, VerifyResult, VerifyStatus, VerifySummary};
-use cas_solver::eval_f64;
-use cas_solver::ValueDomain;
-use cas_solver::{
-    derive_requires_from_equation, domain_delta_check, infer_implicit_domain, DomainDelta,
-    ImplicitCondition, ImplicitDomain,
+use cas_solver::api::{
+    derive_requires_from_equation, domain_delta_check, eval_f64, infer_implicit_domain, solve,
+    verify_solution_set, DomainDelta, DomainOracle, FactStrength, ImplicitCondition,
+    ImplicitDomain, Predicate, StandardOracle, VerifyResult, VerifyStatus, VerifySummary,
 };
-use cas_solver::{DomainMode, DomainOracle, FactStrength, Predicate, Simplifier, StandardOracle};
+use cas_solver::runtime::{CasError, DomainMode, Simplifier, ValueDomain};
 use std::collections::HashMap;
 use std::env;
 use std::fs;
@@ -1495,23 +1493,19 @@ fn eq_domains_semantically_same(ctx: &Context, d0: &ImplicitDomain, d1: &Implici
 }
 
 /// Classify a solver error as either an expected limitation (Incomplete) or a real error.
-fn classify_solver_error(e: &cas_solver::CasError, _phase: &str) -> S2Outcome {
+fn classify_solver_error(e: &CasError, _phase: &str) -> S2Outcome {
     match e {
-        cas_solver::CasError::IsolationError(_, _) => {
-            S2Outcome::Incomplete(IncompleteReason::Isolation)
-        }
-        cas_solver::CasError::SolverError(s) if s.contains("Maximum solver recursion depth") => {
+        CasError::IsolationError(_, _) => S2Outcome::Incomplete(IncompleteReason::Isolation),
+        CasError::SolverError(s) if s.contains("Maximum solver recursion depth") => {
             S2Outcome::Incomplete(IncompleteReason::MaxDepth)
         }
-        cas_solver::CasError::SolverError(s)
-            if s.contains("Continuous solution in factor split") =>
-        {
+        CasError::SolverError(s) if s.contains("Continuous solution in factor split") => {
             S2Outcome::Incomplete(IncompleteReason::ContinuousSolution)
         }
-        cas_solver::CasError::SolverError(s) if s.contains("currently only supports discrete") => {
+        CasError::SolverError(s) if s.contains("currently only supports discrete") => {
             S2Outcome::Incomplete(IncompleteReason::SubstitutionNonDiscrete)
         }
-        cas_solver::CasError::SolverError(s) if s.contains("Cycle detected") => {
+        CasError::SolverError(s) if s.contains("Cycle detected") => {
             S2Outcome::Incomplete(IncompleteReason::CycleDetected)
         }
         _ => S2Outcome::Error(format!("{:?}", e)),

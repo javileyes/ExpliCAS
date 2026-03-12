@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::{EntryKind, SessionState};
+    use crate::{state_core::SessionState, EntryKind};
     #[allow(unused_imports)]
     use cas_solver::session_api::{
         formatting::*, options::*, runtime::*, session_support::*, symbolic_commands::*, types::*,

@@ -7,9 +7,10 @@
 
 use cas_ast::Context;
 use cas_parser::parse;
-use cas_solver::runtime::ExpandPolicy;
-use cas_solver::runtime::Simplifier;
-use cas_solver::{BranchMode, ComplexMode, ContextMode, EvalOptions, StepsMode};
+use cas_solver::runtime::{
+    BranchMode, ComplexMode, ContextMode, EvalConfig, EvalOptions, ExpandPolicy, Simplifier,
+    StepsMode, ValueDomain,
+};
 
 /// Helper: run simplification with given options and return result string
 fn simplify_with(input: &str, opts: &EvalOptions) -> String {
@@ -38,8 +39,8 @@ fn complex_on_opts() -> EvalOptions {
         steps_mode: StepsMode::On,
         shared: cas_solver::runtime::SharedSemanticConfig {
             context_mode: ContextMode::Standard,
-            semantics: cas_solver::EvalConfig {
-                value_domain: cas_solver::ValueDomain::ComplexEnabled,
+            semantics: EvalConfig {
+                value_domain: ValueDomain::ComplexEnabled,
                 ..Default::default()
             },
             ..Default::default()
@@ -67,8 +68,8 @@ fn complex_off_opts() -> EvalOptions {
         steps_mode: StepsMode::On,
         shared: cas_solver::runtime::SharedSemanticConfig {
             context_mode: ContextMode::Standard,
-            semantics: cas_solver::EvalConfig {
-                value_domain: cas_solver::ValueDomain::ComplexEnabled,
+            semantics: EvalConfig {
+                value_domain: ValueDomain::ComplexEnabled,
                 ..Default::default()
             },
             ..Default::default()
@@ -84,8 +85,8 @@ fn complex_auto_opts() -> EvalOptions {
         steps_mode: StepsMode::On,
         shared: cas_solver::runtime::SharedSemanticConfig {
             context_mode: ContextMode::Standard,
-            semantics: cas_solver::EvalConfig {
-                value_domain: cas_solver::ValueDomain::ComplexEnabled,
+            semantics: EvalConfig {
+                value_domain: ValueDomain::ComplexEnabled,
                 ..Default::default()
             },
             ..Default::default()

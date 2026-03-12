@@ -4,7 +4,7 @@
 //! and reporting across different modes and configurations.
 
 use cas_ast::Context;
-use cas_solver::{AssumptionCollector, AssumptionEvent, AssumptionReporting};
+use cas_solver::api::{AssumptionCollector, AssumptionEvent, AssumptionReporting};
 
 /// Test 1: Default Off does not collect or report assumptions
 #[test]
@@ -213,7 +213,7 @@ fn legacy_string_parsing() {
 /// Strings matching multiple patterns will use the first match.
 #[test]
 fn legacy_string_parsing_whitelist() {
-    use cas_solver::AssumptionEvent;
+    use cas_solver::api::AssumptionEvent;
 
     // Known domain_assumption strings and their expected kinds
     // Note: strings containing "≠ 0" or "!= 0" will always be nonzero
@@ -297,18 +297,21 @@ fn options_propagation() {
 #[test]
 fn assumption_event_from_engine_type() {
     let event = AssumptionEvent {
-        key: cas_solver::AssumptionKey::Positive {
+        key: cas_solver::api::AssumptionKey::Positive {
             expr_fingerprint: 12345,
         },
         expr_display: "x".to_string(),
         message: "x > 0".to_string(),
-        kind: cas_solver::AssumptionKind::RequiresIntroduced,
+        kind: cas_solver::api::AssumptionKind::RequiresIntroduced,
         expr_id: None,
     };
 
     assert_eq!(event.key.kind(), "positive");
     assert_eq!(event.expr_display, "x");
     assert_eq!(event.message, "x > 0");
-    assert_eq!(event.kind, cas_solver::AssumptionKind::RequiresIntroduced);
+    assert_eq!(
+        event.kind,
+        cas_solver::api::AssumptionKind::RequiresIntroduced
+    );
     assert_eq!(event.expr_id, None);
 }

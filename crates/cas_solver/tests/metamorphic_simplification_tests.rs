@@ -26,10 +26,10 @@ mod test_utils;
 
 use cas_ast::{Context, ExprId};
 use cas_parser::parse;
-use cas_solver::eval_f64;
+use cas_solver::api::{
+    eval_f64, eval_f64_checked, EquivalenceResult, EvalCheckedError, EvalCheckedOptions,
+};
 use cas_solver::runtime::Simplifier;
-use cas_solver::EquivalenceResult;
-use cas_solver::{eval_f64_checked, EvalCheckedError, EvalCheckedOptions};
 use std::collections::HashMap;
 use std::env;
 use std::fs::{self, File, OpenOptions};
@@ -419,7 +419,7 @@ fn check_symbolic_equiv_bucket_aware(
     let (exp_simplified, _) = simplifier.simplify(exp_expr);
     let (simp_simplified, _) = simplifier.simplify(simp_expr);
 
-    if cas_solver::compare_expr(&simplifier.context, exp_simplified, simp_simplified)
+    if cas_solver::runtime::compare_expr(&simplifier.context, exp_simplified, simp_simplified)
         == std::cmp::Ordering::Equal
     {
         return SymbolicResult::Pass;
@@ -2825,19 +2825,19 @@ fn run_csv_combination_tests(
 
                         // Post-process: fold_constants to match CLI eval_simplify behavior
                         {
-                            let cfg = cas_solver::EvalConfig::default();
-                            let mut budget = cas_solver::Budget::preset_cli();
-                            if let Ok(r) = cas_solver::fold_constants(&mut simplifier.context, e, &cfg, cas_solver::ConstFoldMode::Safe, &mut budget) {
+                            let cfg = cas_solver::runtime::EvalConfig::default();
+                            let mut budget = cas_solver::runtime::Budget::preset_cli();
+                            if let Ok(r) = cas_solver::api::fold_constants(&mut simplifier.context, e, &cfg, cas_solver::api::ConstFoldMode::Safe, &mut budget) {
                                 e = r.expr;
                             }
-                            if let Ok(r) = cas_solver::fold_constants(&mut simplifier.context, s, &cfg, cas_solver::ConstFoldMode::Safe, &mut budget) {
+                            if let Ok(r) = cas_solver::api::fold_constants(&mut simplifier.context, s, &cfg, cas_solver::api::ConstFoldMode::Safe, &mut budget) {
                                 s = r.expr;
                             }
                         }
 
                         // Check 1: NF convergence
                         let nf_match =
-                            cas_solver::compare_expr(&simplifier.context, e, s)
+                            cas_solver::runtime::compare_expr(&simplifier.context, e, s)
                                 == std::cmp::Ordering::Equal;
 
                         if nf_match {
@@ -2852,9 +2852,9 @@ fn run_csv_combination_tests(
                             let mut sq = Simplifier::with_default_rules();
                             if let Ok(qp) = parse(&q_str, &mut sq.context) {
                                 let (mut qr, _) = sq.simplify(qp);
-                                let cfg = cas_solver::EvalConfig::default();
-                                let mut budget = cas_solver::Budget::preset_cli();
-                                if let Ok(r) = cas_solver::fold_constants(&mut sq.context, qr, &cfg, cas_solver::ConstFoldMode::Safe, &mut budget) {
+                                let cfg = cas_solver::runtime::EvalConfig::default();
+                                let mut budget = cas_solver::runtime::Budget::preset_cli();
+                                if let Ok(r) = cas_solver::api::fold_constants(&mut sq.context, qr, &cfg, cas_solver::api::ConstFoldMode::Safe, &mut budget) {
                                     qr = r.expr;
                                 }
                                 let target = num_rational::BigRational::from_integer(1.into());
@@ -2871,9 +2871,9 @@ fn run_csv_combination_tests(
                             let mut sd = Simplifier::with_default_rules();
                             if let Ok(dp) = parse(&d_str, &mut sd.context) {
                                 let (mut dr, _) = sd.simplify(dp);
-                                let cfg = cas_solver::EvalConfig::default();
-                                let mut budget = cas_solver::Budget::preset_cli();
-                                if let Ok(r) = cas_solver::fold_constants(&mut sd.context, dr, &cfg, cas_solver::ConstFoldMode::Safe, &mut budget) {
+                                let cfg = cas_solver::runtime::EvalConfig::default();
+                                let mut budget = cas_solver::runtime::Budget::preset_cli();
+                                if let Ok(r) = cas_solver::api::fold_constants(&mut sd.context, dr, &cfg, cas_solver::api::ConstFoldMode::Safe, &mut budget) {
                                     dr = r.expr;
                                 }
                                 let zero = num_rational::BigRational::from_integer(0.into());
@@ -2891,9 +2891,9 @@ fn run_csv_combination_tests(
                             let mut sd = Simplifier::with_default_rules();
                             if let Ok(dp) = parse(&d_str, &mut sd.context) {
                                 let (mut dr, _) = sd.expand(dp);
-                                let cfg = cas_solver::EvalConfig::default();
-                                let mut budget = cas_solver::Budget::preset_cli();
-                                if let Ok(r) = cas_solver::fold_constants(&mut sd.context, dr, &cfg, cas_solver::ConstFoldMode::Safe, &mut budget) {
+                                let cfg = cas_solver::runtime::EvalConfig::default();
+                                let mut budget = cas_solver::runtime::Budget::preset_cli();
+                                if let Ok(r) = cas_solver::api::fold_constants(&mut sd.context, dr, &cfg, cas_solver::api::ConstFoldMode::Safe, &mut budget) {
                                     dr = r.expr;
                                 }
                                 let zero = num_rational::BigRational::from_integer(0.into());
@@ -3037,13 +3037,13 @@ fn run_csv_combination_tests(
                     inline_cycles += stats_e.cycle_events.len();
                     // Post-process: fold_constants to match CLI eval_simplify behavior
                     {
-                        let cfg = cas_solver::EvalConfig::default();
-                        let mut budget = cas_solver::Budget::preset_cli();
-                        if let Ok(r) = cas_solver::fold_constants(
+                        let cfg = cas_solver::runtime::EvalConfig::default();
+                        let mut budget = cas_solver::runtime::Budget::preset_cli();
+                        if let Ok(r) = cas_solver::api::fold_constants(
                             &mut simplifier.context,
                             e,
                             &cfg,
-                            cas_solver::ConstFoldMode::Safe,
+                            cas_solver::api::ConstFoldMode::Safe,
                             &mut budget,
                         ) {
                             e = r.expr;
@@ -3055,13 +3055,13 @@ fn run_csv_combination_tests(
                     let (mut s, _, stats_s) = simplifier.simplify_with_stats(simp_parsed, opts);
                     inline_cycles += stats_s.cycle_events.len();
                     {
-                        let cfg = cas_solver::EvalConfig::default();
-                        let mut budget = cas_solver::Budget::preset_cli();
-                        if let Ok(r) = cas_solver::fold_constants(
+                        let cfg = cas_solver::runtime::EvalConfig::default();
+                        let mut budget = cas_solver::runtime::Budget::preset_cli();
+                        if let Ok(r) = cas_solver::api::fold_constants(
                             &mut simplifier.context,
                             s,
                             &cfg,
-                            cas_solver::ConstFoldMode::Safe,
+                            cas_solver::api::ConstFoldMode::Safe,
                             &mut budget,
                         ) {
                             s = r.expr;
@@ -3074,9 +3074,11 @@ fn run_csv_combination_tests(
                 }
 
                 // Check 1: Normal form convergence (exact structural match)
-                let nf_match =
-                    cas_solver::compare_expr(&simplifier.context, exp_simplified, simp_simplified)
-                        == std::cmp::Ordering::Equal;
+                let nf_match = cas_solver::runtime::compare_expr(
+                    &simplifier.context,
+                    exp_simplified,
+                    simp_simplified,
+                ) == std::cmp::Ordering::Equal;
 
                 if nf_match {
                     return ("nf", String::new(), String::new(), inline_cycles);
@@ -3089,13 +3091,13 @@ fn run_csv_combination_tests(
                     let mut sd = Simplifier::with_default_rules();
                     if let Ok(dp) = parse(&diff_str, &mut sd.context) {
                         let (mut dr, _) = sd.simplify(dp);
-                        let cfg = cas_solver::EvalConfig::default();
-                        let mut budget = cas_solver::Budget::preset_cli();
-                        if let Ok(r) = cas_solver::fold_constants(
+                        let cfg = cas_solver::runtime::EvalConfig::default();
+                        let mut budget = cas_solver::runtime::Budget::preset_cli();
+                        if let Ok(r) = cas_solver::api::fold_constants(
                             &mut sd.context,
                             dr,
                             &cfg,
-                            cas_solver::ConstFoldMode::Safe,
+                            cas_solver::api::ConstFoldMode::Safe,
                             &mut budget,
                         ) {
                             dr = r.expr;
@@ -3111,13 +3113,13 @@ fn run_csv_combination_tests(
                         .add(cas_ast::Expr::Sub(exp_simplified, simp_simplified));
                     let (mut ds, _) = simplifier.simplify(d);
                     {
-                        let cfg = cas_solver::EvalConfig::default();
-                        let mut budget = cas_solver::Budget::preset_cli();
-                        if let Ok(r) = cas_solver::fold_constants(
+                        let cfg = cas_solver::runtime::EvalConfig::default();
+                        let mut budget = cas_solver::runtime::Budget::preset_cli();
+                        if let Ok(r) = cas_solver::api::fold_constants(
                             &mut simplifier.context,
                             ds,
                             &cfg,
-                            cas_solver::ConstFoldMode::Safe,
+                            cas_solver::api::ConstFoldMode::Safe,
                             &mut budget,
                         ) {
                             ds = r.expr;
@@ -3799,7 +3801,7 @@ fn metatest_individual_identities_impl() {
         // Simplify for display and numeric fallback
         let opts = cas_solver::runtime::SimplifyOptions {
             shared: cas_solver::runtime::SharedSemanticConfig {
-                semantics: cas_solver::EvalConfig {
+                semantics: cas_solver::runtime::EvalConfig {
                     domain_mode,
                     ..Default::default()
                 },
@@ -4935,22 +4937,22 @@ fn run_substitution_tests() -> ComboMetrics {
 
                     // Post-process: fold_constants
                     {
-                        let cfg = cas_solver::EvalConfig::default();
-                        let mut budget = cas_solver::Budget::preset_cli();
-                        if let Ok(r) = cas_solver::fold_constants(
+                        let cfg = cas_solver::runtime::EvalConfig::default();
+                        let mut budget = cas_solver::runtime::Budget::preset_cli();
+                        if let Ok(r) = cas_solver::api::fold_constants(
                             &mut simplifier.context,
                             e,
                             &cfg,
-                            cas_solver::ConstFoldMode::Safe,
+                            cas_solver::api::ConstFoldMode::Safe,
                             &mut budget,
                         ) {
                             e = r.expr;
                         }
-                        if let Ok(r) = cas_solver::fold_constants(
+                        if let Ok(r) = cas_solver::api::fold_constants(
                             &mut simplifier.context,
                             s,
                             &cfg,
-                            cas_solver::ConstFoldMode::Safe,
+                            cas_solver::api::ConstFoldMode::Safe,
                             &mut budget,
                         ) {
                             s = r.expr;
@@ -4958,7 +4960,7 @@ fn run_substitution_tests() -> ComboMetrics {
                     }
 
                     // Check 1: NF convergence
-                    let nf_match = cas_solver::compare_expr(&simplifier.context, e, s)
+                    let nf_match = cas_solver::runtime::compare_expr(&simplifier.context, e, s)
                         == std::cmp::Ordering::Equal;
                     if nf_match {
                         let _ = tx.send(Some(("nf".to_string(), String::new(), sub_cycles)));
@@ -4971,13 +4973,13 @@ fn run_substitution_tests() -> ComboMetrics {
                         let mut sd = Simplifier::with_default_rules();
                         if let Ok(dp) = parse(&d_str, &mut sd.context) {
                             let (mut dr, _) = sd.simplify(dp);
-                            let cfg = cas_solver::EvalConfig::default();
-                            let mut budget = cas_solver::Budget::preset_cli();
-                            if let Ok(r) = cas_solver::fold_constants(
+                            let cfg = cas_solver::runtime::EvalConfig::default();
+                            let mut budget = cas_solver::runtime::Budget::preset_cli();
+                            if let Ok(r) = cas_solver::api::fold_constants(
                                 &mut sd.context,
                                 dr,
                                 &cfg,
-                                cas_solver::ConstFoldMode::Safe,
+                                cas_solver::api::ConstFoldMode::Safe,
                                 &mut budget,
                             ) {
                                 dr = r.expr;
@@ -5002,13 +5004,13 @@ fn run_substitution_tests() -> ComboMetrics {
                         let mut sd = Simplifier::with_default_rules();
                         if let Ok(dp) = parse(&d_str, &mut sd.context) {
                             let (mut dr, _) = sd.expand(dp);
-                            let cfg = cas_solver::EvalConfig::default();
-                            let mut budget = cas_solver::Budget::preset_cli();
-                            if let Ok(r) = cas_solver::fold_constants(
+                            let cfg = cas_solver::runtime::EvalConfig::default();
+                            let mut budget = cas_solver::runtime::Budget::preset_cli();
+                            if let Ok(r) = cas_solver::api::fold_constants(
                                 &mut sd.context,
                                 dr,
                                 &cfg,
-                                cas_solver::ConstFoldMode::Safe,
+                                cas_solver::api::ConstFoldMode::Safe,
                                 &mut budget,
                             ) {
                                 dr = r.expr;
@@ -5033,13 +5035,13 @@ fn run_substitution_tests() -> ComboMetrics {
                     {
                         let d = simplifier.context.add(cas_ast::Expr::Sub(e, s));
                         let (mut ds, _) = simplifier.simplify(d);
-                        let cfg = cas_solver::EvalConfig::default();
-                        let mut budget = cas_solver::Budget::preset_cli();
-                        if let Ok(r) = cas_solver::fold_constants(
+                        let cfg = cas_solver::runtime::EvalConfig::default();
+                        let mut budget = cas_solver::runtime::Budget::preset_cli();
+                        if let Ok(r) = cas_solver::api::fold_constants(
                             &mut simplifier.context,
                             ds,
                             &cfg,
-                            cas_solver::ConstFoldMode::Safe,
+                            cas_solver::api::ConstFoldMode::Safe,
                             &mut budget,
                         ) {
                             ds = r.expr;

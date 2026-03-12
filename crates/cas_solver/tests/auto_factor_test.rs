@@ -1,6 +1,6 @@
 use cas_formatter::DisplayExpr;
 use cas_parser::parse;
-use cas_solver::rules::algebra::AutomaticFactorRule;
+use cas_solver::runtime::rules::algebra::AutomaticFactorRule;
 use cas_solver::runtime::Simplifier;
 
 #[test]
@@ -12,7 +12,9 @@ fn test_auto_factor_integration() {
     simplifier.disable_rule("Expand Polynomial");
     simplifier.disable_rule("Binomial Expansion");
     simplifier.disable_rule("Distributive Property"); // Disable aggressive distribution
-    simplifier.add_rule(Box::new(cas_solver::rules::algebra::ConservativeExpandRule));
+    simplifier.add_rule(Box::new(
+        cas_solver::runtime::rules::algebra::ConservativeExpandRule,
+    ));
     simplifier.add_rule(Box::new(AutomaticFactorRule));
 
     // x^2 + 2x + 1 should factor to (x+1)^2
@@ -45,7 +47,7 @@ fn test_auto_factor_vs_expand_loop() {
     // So AutomaticFactorRule should REJECT x(x+1) because it's not strictly smaller.
     // So loop should be broken.
 
-    use cas_solver::rules::algebra::{AutomaticFactorRule, ExpandRule};
+    use cas_solver::runtime::rules::algebra::{AutomaticFactorRule, ExpandRule};
     use cas_solver::runtime::Simplifier;
 
     let mut simplifier = Simplifier::with_default_rules();

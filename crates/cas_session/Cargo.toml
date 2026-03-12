@@ -30,3 +30,12 @@ anyhow = "1.0.100"
 [dev-dependencies]
 cas_parser = { path = "../cas_parser" }
 tempfile = "3"
+criterion = "0.7.0"
+
+[[bench]]
+name = "frontend_session"
+harness = false
+
+[[bench]]
+name = "snapshot_load"
+harness = false

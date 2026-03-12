@@ -6,8 +6,8 @@
 //!
 //! Fix: DistributeRule now skips when a factor is 1 (visual no-op).
 
+use cas_solver::runtime::to_display_steps;
 use cas_solver::runtime::Simplifier;
-use cas_solver::to_display_steps;
 
 #[test]
 fn distribute_step_must_not_be_visually_noop() {

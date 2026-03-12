@@ -5,6 +5,7 @@
 
 use crate::options::{BranchMode, ComplexMode, ContextMode, EvalOptions};
 use crate::rule::Rule;
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -102,6 +103,18 @@ impl ProfileCache {
     pub fn clear(&mut self) {
         self.profiles.clear();
     }
+}
+
+#[allow(clippy::arc_with_non_send_sync)] // Rules are intentionally not Send+Sync for flexibility
+pub fn default_rule_profile() -> Arc<RuleProfile> {
+    thread_local! {
+        static DEFAULT_RULE_PROFILE: RefCell<Option<Arc<RuleProfile>>> = const { RefCell::new(None) };
+    }
+
+    DEFAULT_RULE_PROFILE.with(|slot| {
+        let mut slot = slot.borrow_mut();
+        Arc::clone(slot.get_or_insert_with(|| Arc::new(build_profile(&EvalOptions::default()))))
+    })
 }
 
 /// Build a RuleProfile for the given options.

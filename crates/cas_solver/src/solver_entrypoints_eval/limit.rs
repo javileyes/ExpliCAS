@@ -8,6 +8,7 @@ pub struct LimitResult {
     /// The computed limit expression (or residual `limit(...)` when unresolved).
     pub expr: cas_ast::ExprId,
     /// Steps emitted by limit evaluation (when requested).
+    #[allow(dead_code)]
     pub steps: Vec<Step>,
     /// Warning emitted when limit cannot be determined safely.
     pub warning: Option<String>,

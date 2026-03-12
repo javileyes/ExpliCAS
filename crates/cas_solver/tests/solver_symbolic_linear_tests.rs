@@ -5,7 +5,8 @@
 //! - Guard: 1-y ≠ 0
 
 use cas_ast::{Equation, Expr, RelOp, SolutionSet};
-use cas_solver::{solve, Simplifier, SolveStep};
+use cas_solver::api::solve;
+use cas_solver::runtime::{Simplifier, SolveStep};
 
 /// Build and solve (x-1)/(x+1) = y for x
 fn solve_symbolic_linear() -> (SolutionSet, Vec<SolveStep>, Simplifier) {

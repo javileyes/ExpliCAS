@@ -81,10 +81,38 @@ pub mod api;
 /// Compatibility runtime surface used by legacy integration tests that were
 /// migrated from `cas_solver` to `cas_engine`.
 pub mod runtime {
+    pub use crate::rules;
     pub use crate::{
-        DomainMode, Engine, EvalOptions, EvalResult, ExpandPolicy, SharedSemanticConfig,
-        Simplifier, SimplifyOptions, Step, StepsMode,
+        compare_expr, BranchMode, Budget, CasError, ComplexMode, ContextMode, DomainMode, Engine,
+        EvalAction, EvalOptions, EvalRequest, EvalResult, ExpandPolicy, Metric, Operation,
+        Orchestrator, ParentContext, PassStats, PipelineStats, Rewrite, Rule, RuleProfiler,
+        SharedSemanticConfig, Simplifier, SimplifyOptions, Step, StepsMode,
     };
+    pub use cas_solver_core::{
+        assume_scope::AssumeScope,
+        branch_policy::BranchPolicy,
+        eval_config::EvalConfig,
+        eval_options::{AutoExpandBinomials, HeuristicPoly},
+        inverse_trig_policy::InverseTrigPolicy,
+        value_domain::ValueDomain,
+    };
+}
+
+/// Compatibility command API surface used by legacy integration tests that were
+/// migrated from `cas_solver` to `cas_engine`.
+pub mod command_api {
+    pub mod substitute {
+        pub use cas_math::substitute::{
+            substitute_power_aware, substitute_with_trace, SubstituteOptions, SubstituteTraceResult,
+        };
+    }
+}
+
+/// Compatibility math facade used by legacy integration tests that were
+/// migrated from `cas_solver` to `cas_engine`.
+pub mod math {
+    pub use crate::canonical_forms;
+    pub use crate::{add_terms_signed, Sign};
 }
 
 pub mod error;

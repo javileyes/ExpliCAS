@@ -16,4 +16,5 @@ pub struct SessionState {
     pub(crate) store: SessionEvalStore,
     pub(crate) env: Environment,
     pub(crate) options: EvalOptions,
+    pub(crate) dirty: bool,
 }

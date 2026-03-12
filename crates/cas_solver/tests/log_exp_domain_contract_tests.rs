@@ -31,9 +31,9 @@
 
 use cas_formatter::DisplayExpr;
 use cas_parser::parse;
-use cas_session::SessionState;
-use cas_solver::ValueDomain;
-use cas_solver::{DomainMode, Engine, EvalAction, EvalRequest, EvalResult};
+use cas_session::state_api::SessionState;
+use cas_solver::runtime::ValueDomain;
+use cas_solver::runtime::{DomainMode, Engine, EvalAction, EvalRequest, EvalResult};
 
 // ============================================================================
 // Test Infrastructure

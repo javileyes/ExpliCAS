@@ -3,8 +3,14 @@
 //! Handles stdin/arg expression sourcing and routes to wire/text handlers.
 
 use crate::{
-    AssumeScopeArg, BranchArg, BudgetPreset, ConstFoldArg, DomainArg, EvalArgs, InvTrigArg,
-    OutputFormat, ValueDomainArg,
+    AssumeScopeArg, AutoexpandArg, BranchArg, BudgetPreset, ComplexModeArg, ConstFoldArg,
+    ContextArg, DomainArg, EvalArgs, EvalBranchArg, InvTrigArg, OutputFormat, StepsArg,
+    ValueDomainArg,
+};
+use cas_api_models::{
+    EvalAssumeScope, EvalBranchMode, EvalBudgetPreset, EvalComplexMode, EvalConstFoldMode,
+    EvalContextMode, EvalDomainMode, EvalExpandPolicy, EvalInvTrigPolicy, EvalStepsMode,
+    EvalValueDomain,
 };
 
 /// Run the eval command (JSON or text output).
@@ -37,7 +43,7 @@ pub fn run(args: EvalArgs) {
 }
 
 fn run_wire(expr: &str, args: &EvalArgs) {
-    let output = cas_session::evaluate_eval_command_pretty_with_session(
+    let output = cas_session::eval_api::evaluate_eval_command_pretty_with_session(
         args.session.as_deref(),
         eval_command_config(expr, args),
         |steps, events, context, steps_mode| {
@@ -50,74 +56,113 @@ fn run_wire(expr: &str, args: &EvalArgs) {
 fn eval_command_config<'a>(
     expr: &'a str,
     args: &'a EvalArgs,
-) -> cas_session::EvalCommandConfig<'a> {
-    cas_session::EvalCommandConfig {
+) -> cas_session::eval_api::EvalCommandConfig<'a> {
+    cas_session::eval_api::EvalCommandConfig {
         expr,
         auto_store: args.session.is_some(),
         max_chars: args.max_chars,
-        steps_mode: &args.steps,
+        steps_mode: steps_mode(args.steps),
         budget_preset: budget_preset(args.budget),
         strict: args.strict,
         domain: domain_mode(args.domain),
-        context_mode: &args.context,
-        branch_mode: &args.branch,
-        expand_policy: &args.autoexpand,
-        complex_mode: &args.complex,
+        context_mode: context_mode(args.context),
+        branch_mode: eval_branch_mode(args.branch),
+        expand_policy: autoexpand_mode(args.autoexpand),
+        complex_mode: complex_mode(args.complex),
         const_fold: const_fold_mode(args.const_fold),
         value_domain: value_domain(args.value_domain),
-        complex_branch: branch_mode_arg(args.complex_branch),
+        complex_branch: complex_branch_mode(args.complex_branch),
         inv_trig: inv_trig_mode(args.inv_trig),
         assume_scope: assume_scope(args.assume_scope),
     }
 }
 
-fn budget_preset(preset: BudgetPreset) -> &'static str {
+fn budget_preset(preset: BudgetPreset) -> EvalBudgetPreset {
     match preset {
-        BudgetPreset::Small => "small",
-        BudgetPreset::Standard | BudgetPreset::Cli => "standard",
-        BudgetPreset::Unlimited => "unlimited",
+        BudgetPreset::Small => EvalBudgetPreset::Small,
+        BudgetPreset::Standard => EvalBudgetPreset::Standard,
+        BudgetPreset::Unlimited => EvalBudgetPreset::Unlimited,
     }
 }
 
-fn domain_mode(domain: DomainArg) -> &'static str {
+fn steps_mode(mode: StepsArg) -> EvalStepsMode {
+    match mode {
+        StepsArg::Off => EvalStepsMode::Off,
+        StepsArg::On => EvalStepsMode::On,
+        StepsArg::Compact => EvalStepsMode::Compact,
+    }
+}
+
+fn context_mode(mode: ContextArg) -> EvalContextMode {
+    match mode {
+        ContextArg::Auto => EvalContextMode::Auto,
+        ContextArg::Standard => EvalContextMode::Standard,
+        ContextArg::Solve => EvalContextMode::Solve,
+        ContextArg::Integrate => EvalContextMode::Integrate,
+    }
+}
+
+fn eval_branch_mode(mode: EvalBranchArg) -> EvalBranchMode {
+    match mode {
+        EvalBranchArg::Strict => EvalBranchMode::Strict,
+        EvalBranchArg::Principal => EvalBranchMode::Principal,
+    }
+}
+
+fn autoexpand_mode(mode: AutoexpandArg) -> EvalExpandPolicy {
+    match mode {
+        AutoexpandArg::Off => EvalExpandPolicy::Off,
+        AutoexpandArg::Auto => EvalExpandPolicy::Auto,
+    }
+}
+
+fn domain_mode(domain: DomainArg) -> EvalDomainMode {
     match domain {
-        DomainArg::Strict => "strict",
-        DomainArg::Generic => "generic",
-        DomainArg::Assume => "assume",
+        DomainArg::Strict => EvalDomainMode::Strict,
+        DomainArg::Generic => EvalDomainMode::Generic,
+        DomainArg::Assume => EvalDomainMode::Assume,
     }
 }
 
-fn value_domain(vd: ValueDomainArg) -> &'static str {
+fn value_domain(vd: ValueDomainArg) -> EvalValueDomain {
     match vd {
-        ValueDomainArg::Real => "real",
-        ValueDomainArg::Complex => "complex",
+        ValueDomainArg::Real => EvalValueDomain::Real,
+        ValueDomainArg::Complex => EvalValueDomain::Complex,
     }
 }
 
-fn inv_trig_mode(mode: InvTrigArg) -> &'static str {
+fn inv_trig_mode(mode: InvTrigArg) -> EvalInvTrigPolicy {
     match mode {
-        InvTrigArg::Strict => "strict",
-        InvTrigArg::Principal => "principal",
+        InvTrigArg::Strict => EvalInvTrigPolicy::Strict,
+        InvTrigArg::Principal => EvalInvTrigPolicy::Principal,
     }
 }
 
-fn branch_mode_arg(mode: BranchArg) -> &'static str {
+fn complex_branch_mode(mode: BranchArg) -> EvalBranchMode {
     match mode {
-        BranchArg::Principal => "principal",
+        BranchArg::Principal => EvalBranchMode::Principal,
     }
 }
 
-fn const_fold_mode(mode: ConstFoldArg) -> &'static str {
+fn complex_mode(mode: ComplexModeArg) -> EvalComplexMode {
     match mode {
-        ConstFoldArg::Off => "off",
-        ConstFoldArg::Safe => "safe",
+        ComplexModeArg::Auto => EvalComplexMode::Auto,
+        ComplexModeArg::On => EvalComplexMode::On,
+        ComplexModeArg::Off => EvalComplexMode::Off,
     }
 }
 
-fn assume_scope(scope: AssumeScopeArg) -> &'static str {
+fn const_fold_mode(mode: ConstFoldArg) -> EvalConstFoldMode {
+    match mode {
+        ConstFoldArg::Off => EvalConstFoldMode::Off,
+        ConstFoldArg::Safe => EvalConstFoldMode::Safe,
+    }
+}
+
+fn assume_scope(scope: AssumeScopeArg) -> EvalAssumeScope {
     match scope {
-        AssumeScopeArg::Real => "real",
-        AssumeScopeArg::Wildcard => "wildcard",
+        AssumeScopeArg::Real => EvalAssumeScope::Real,
+        AssumeScopeArg::Wildcard => EvalAssumeScope::Wildcard,
     }
 }
 

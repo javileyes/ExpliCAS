@@ -23,7 +23,7 @@ fn simplify_strict(input: &str) -> String {
 
     let opts = cas_solver::runtime::SimplifyOptions {
         shared: cas_solver::runtime::SharedSemanticConfig {
-            semantics: cas_solver::EvalConfig {
+            semantics: cas_solver::runtime::EvalConfig {
                 domain_mode: cas_solver::runtime::DomainMode::Strict,
                 ..Default::default()
             },

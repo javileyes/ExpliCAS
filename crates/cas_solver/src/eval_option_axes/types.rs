@@ -1,14 +1,14 @@
-/// Stringly option axes accepted by eval entry points.
+/// Typed option axes accepted by eval entry points.
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct EvalOptionAxes<'a> {
-    pub context: &'a str,
-    pub branch: &'a str,
-    pub complex: &'a str,
-    pub autoexpand: &'a str,
-    pub steps: &'a str,
-    pub domain: &'a str,
-    pub value_domain: &'a str,
-    pub inv_trig: &'a str,
-    pub complex_branch: &'a str,
-    pub assume_scope: &'a str,
+pub(crate) struct EvalOptionAxes {
+    pub context: cas_api_models::EvalContextMode,
+    pub branch: cas_api_models::EvalBranchMode,
+    pub complex: cas_api_models::EvalComplexMode,
+    pub autoexpand: cas_api_models::EvalExpandPolicy,
+    pub steps: cas_api_models::EvalStepsMode,
+    pub domain: cas_api_models::EvalDomainMode,
+    pub value_domain: cas_api_models::EvalValueDomain,
+    pub inv_trig: cas_api_models::EvalInvTrigPolicy,
+    pub complex_branch: cas_api_models::EvalBranchMode,
+    pub assume_scope: cas_api_models::EvalAssumeScope,
 }
