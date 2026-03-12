@@ -22,7 +22,7 @@ pub fn reset_repl_runtime_state_on_runtime<C: ReplRuntimeStateContext>(context: 
 
 /// Build REPL prompt text from current runtime state.
 pub fn build_repl_prompt_on_runtime<C: ReplRuntimeStateContext>(context: &C) -> String {
-    crate::build_prompt_from_eval_options(context.eval_options())
+    crate::prompt_display::build_prompt_from_eval_options(context.eval_options())
 }
 
 /// Clone current eval options from runtime state.

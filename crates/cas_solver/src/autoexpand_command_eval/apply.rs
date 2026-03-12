@@ -1,7 +1,7 @@
 mod eval;
 mod runtime;
 
-use crate::autoexpand_command_types::{
+use cas_solver_core::autoexpand_command_types::{
     AutoexpandCommandApplyOutput, AutoexpandCommandResult, AutoexpandCommandState,
 };
 

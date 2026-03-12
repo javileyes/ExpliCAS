@@ -2,10 +2,10 @@
 //!
 //! Keeps CLI I/O and delegates stateless computation to `cas_solver`.
 
+use super::output::CommandOutput;
 use crate::{ApproachArg, LimitArgs, OutputFormat, PreSimplifyArg};
 
-/// Run the limit command.
-pub fn run(args: LimitArgs) {
+pub(crate) fn render(args: LimitArgs) -> Result<CommandOutput, String> {
     let approach = match args.to {
         ApproachArg::Infinity => cas_solver::command_api::limit::LimitCommandApproach::Infinity,
         ApproachArg::NegInfinity => {
@@ -26,17 +26,15 @@ pub fn run(args: LimitArgs) {
         matches!(args.format, OutputFormat::Json),
     ) {
         Ok(cas_solver::command_api::limit::LimitSubcommandOutput::Wire(out)) => {
-            println!("{}", out);
+            Ok(CommandOutput::from_stdout(out))
         }
         Ok(cas_solver::command_api::limit::LimitSubcommandOutput::Text { result, warning }) => {
-            println!("{}", result);
+            let mut output = CommandOutput::from_stdout(result);
             if let Some(warning) = warning {
-                eprintln!("Warning: {}", warning);
+                output.push_stderr_line(format!("Warning: {}", warning));
             }
+            Ok(output)
         }
-        Err(message) => {
-            eprintln!("{}", message);
-            std::process::exit(1);
-        }
+        Err(message) => Err(message),
     }
 }

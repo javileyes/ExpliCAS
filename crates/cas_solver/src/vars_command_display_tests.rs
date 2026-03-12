@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod tests {
-    use crate::{evaluate_vars_command_lines, BindingOverviewEntry};
+    use crate::session_api::bindings::BindingOverviewEntry;
+    use crate::vars_command_display::evaluate_vars_command_lines;
 
     #[test]
     fn evaluate_vars_command_lines_empty_message() {

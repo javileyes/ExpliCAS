@@ -1,4 +1,4 @@
-use crate::BindingOverviewEntry;
+use cas_solver_core::session_runtime::BindingOverviewEntry;
 
 use super::render::evaluate_vars_command_lines;
 

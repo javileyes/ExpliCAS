@@ -7,5 +7,5 @@ mod steps;
 
 pub use expand::{expand, expand_with_stats};
 pub use fold::fold_constants;
-pub use limit::{limit, LimitResult};
+pub use limit::limit;
 pub use steps::to_display_steps;

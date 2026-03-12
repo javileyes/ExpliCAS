@@ -1,7 +1,8 @@
 #[cfg(test)]
 mod tests {
-    use crate::{
-        binding_overview_entries, clear_bindings_command, BindingsContext, ClearBindingsResult,
+    use crate::bindings_command::BindingsContext;
+    use crate::session_api::bindings::{
+        binding_overview_entries, clear_bindings_command, ClearBindingsResult,
     };
 
     #[derive(Default)]

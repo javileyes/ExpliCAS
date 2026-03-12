@@ -1,5 +1,5 @@
 use crate::health_command_format::health_usage_message;
-use crate::health_command_types::HealthCommandInput;
+use cas_solver_core::health_runtime::HealthCommandInput;
 
 use super::parse::parse_health_command_input;
 

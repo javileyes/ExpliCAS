@@ -15,6 +15,15 @@ where
 {
     let parsed = cas_parser::parse(expr, &mut engine.simplifier.context)
         .map_err(|e| format!("Parse error: {}", e))?;
+    if let Some(hit) = session
+        .try_direct_cached_eval(&mut engine.simplifier.context, parsed, auto_store)
+        .map_err(|e| format!("Error: {}", e))?
+    {
+        return Ok(format_eval_result_text(
+            &engine.simplifier.context,
+            &crate::EvalResult::Expr(hit.resolved),
+        ));
+    }
     let req = crate::EvalRequest {
         raw_input: expr.to_string(),
         parsed,

@@ -80,5 +80,5 @@ mod core_tests;
 
 // Re-export core types for external use
 pub use cas_session::repl_api::ReplCore;
-pub use cas_solver::session_api::options::SetDisplayMode;
+pub use cas_solver::session_api::settings::SetDisplayMode;
 pub use output::{reply_output, CoreResult, ReplMsg, ReplReply, ReplReplyExt, UiDelta};

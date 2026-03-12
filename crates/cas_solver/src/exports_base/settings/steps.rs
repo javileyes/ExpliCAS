@@ -4,7 +4,7 @@ pub use crate::steps_command_format::{
     format_steps_display_set_message, format_steps_unknown_mode_message,
 };
 pub use crate::steps_command_parse::parse_steps_command_input;
-pub use crate::steps_command_types::{
+pub use cas_solver_core::steps_command_types::{
     StepsCommandApplyEffects, StepsCommandInput, StepsCommandResult, StepsCommandState,
     StepsDisplayMode,
 };

@@ -13,7 +13,7 @@ use self::common::build_request_info;
 use self::success::build_success_envelope;
 
 /// Stateless envelope evaluation used by application wrappers.
-pub fn eval_str_to_output_envelope(expr: &str, opts: &EnvelopeEvalOptions) -> OutputEnvelope {
+fn eval_str_to_output_envelope(expr: &str, opts: &EnvelopeEvalOptions) -> OutputEnvelope {
     let mut engine = Engine::new();
     let mut eval_options = EvalOptions::default();
     eval_options.shared.semantics.domain_mode = match opts.domain {

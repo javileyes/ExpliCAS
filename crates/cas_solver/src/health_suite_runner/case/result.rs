@@ -1,6 +1,5 @@
-use crate::health_suite_types::{HealthCase, HealthCaseResult};
-
 use super::stats::HealthRunStats;
+use cas_solver_core::health_suite_models::{HealthCase, HealthCaseResult};
 
 pub(super) fn build_case_result(
     case: &HealthCase,

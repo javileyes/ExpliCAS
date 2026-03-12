@@ -2,10 +2,10 @@
 //!
 //! Handles parse/eval flow for text mode and optional session persistence.
 
+use super::output::CommandOutput;
 use crate::{DomainArg, EvalArgs};
 
-/// Run eval command in text mode.
-pub fn run(args: &EvalArgs) {
+pub(crate) fn render(args: &EvalArgs) -> Result<CommandOutput, String> {
     let domain = match args.domain {
         DomainArg::Strict => "strict",
         DomainArg::Generic => "generic",
@@ -19,19 +19,16 @@ pub fn run(args: &EvalArgs) {
             &args.expr,
             args.session.is_some(),
         );
-    if let Some(warning) = load_warning {
-        eprintln!("{}", warning);
-    }
+    let mut output = CommandOutput::default();
+    output.stderr_lines.extend(load_warning);
 
     match result {
-        Ok(result_str) => println!("{}", result_str),
-        Err(message) => {
-            eprintln!("{}", message);
-            std::process::exit(1);
-        }
+        Ok(result_str) => output.stdout = result_str,
+        Err(message) => return Err(message),
     }
 
     if let Some(warning) = save_warning {
-        eprintln!("{}", warning);
+        output.push_stderr_line(warning);
     }
+    Ok(output)
 }

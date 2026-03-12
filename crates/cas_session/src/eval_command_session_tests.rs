@@ -17,7 +17,7 @@ mod tests {
     fn evaluate_eval_with_session_runs() {
         let mut engine = cas_solver::runtime::Engine::new();
         let mut session = SessionState::new();
-        let out = cas_solver::session_api::runtime::evaluate_eval_with_session(
+        let out = cas_solver::session_api::eval::evaluate_eval_with_session(
             &mut engine,
             &mut session,
             EvalCommandConfig {
@@ -52,7 +52,7 @@ mod tests {
         let mut session = SessionState::new();
         let step_count = Cell::new(0usize);
 
-        let out = cas_solver::session_api::runtime::evaluate_eval_with_session(
+        let out = cas_solver::session_api::eval::evaluate_eval_with_session(
             &mut engine,
             &mut session,
             EvalCommandConfig {
@@ -145,6 +145,130 @@ mod tests {
         assert_eq!(
             before, after,
             "persisted cache-hit eval should skip snapshot rewrite"
+        );
+    }
+
+    #[test]
+    fn persisted_cache_hit_eval_preserves_result() {
+        let dir = tempdir().expect("tempdir");
+        let path = dir.path().join("session.bin");
+
+        let first = crate::eval_command::evaluate_eval_command_with_session(
+            Some(&path),
+            EvalCommandConfig {
+                expr: "x/x",
+                auto_store: true,
+                max_chars: 2000,
+                steps_mode: EvalStepsMode::Off,
+                budget_preset: EvalBudgetPreset::Standard,
+                strict: false,
+                domain: EvalDomainMode::Generic,
+                context_mode: EvalContextMode::Auto,
+                branch_mode: EvalBranchMode::Strict,
+                expand_policy: EvalExpandPolicy::Off,
+                complex_mode: EvalComplexMode::Auto,
+                const_fold: EvalConstFoldMode::Off,
+                value_domain: EvalValueDomain::Real,
+                complex_branch: cas_api_models::EvalBranchMode::Principal,
+                inv_trig: EvalInvTrigPolicy::Strict,
+                assume_scope: EvalAssumeScope::Real,
+            },
+            |_steps, _events, _context, _steps_mode| Vec::new(),
+        );
+        assert!(first.0.is_ok(), "seed eval should succeed");
+
+        let second = crate::eval_command::evaluate_eval_command_with_session(
+            Some(&path),
+            EvalCommandConfig {
+                expr: "#1",
+                auto_store: false,
+                max_chars: 2000,
+                steps_mode: EvalStepsMode::Off,
+                budget_preset: EvalBudgetPreset::Standard,
+                strict: false,
+                domain: EvalDomainMode::Generic,
+                context_mode: EvalContextMode::Auto,
+                branch_mode: EvalBranchMode::Strict,
+                expand_policy: EvalExpandPolicy::Off,
+                complex_mode: EvalComplexMode::Auto,
+                const_fold: EvalConstFoldMode::Off,
+                value_domain: EvalValueDomain::Real,
+                complex_branch: cas_api_models::EvalBranchMode::Principal,
+                inv_trig: EvalInvTrigPolicy::Strict,
+                assume_scope: EvalAssumeScope::Real,
+            },
+            |_steps, _events, _context, _steps_mode| Vec::new(),
+        );
+
+        let output = second.0.expect("cache-hit eval should succeed");
+        assert_eq!(output.result, "1");
+    }
+
+    #[test]
+    fn persisted_cache_hit_eval_preserves_required_conditions_for_direct_ref() {
+        let dir = tempdir().expect("tempdir");
+        let path = dir.path().join("session.bin");
+
+        let first = crate::eval_command::evaluate_eval_command_with_session(
+            Some(&path),
+            EvalCommandConfig {
+                expr: "sqrt(x)",
+                auto_store: true,
+                max_chars: 2000,
+                steps_mode: EvalStepsMode::Off,
+                budget_preset: EvalBudgetPreset::Standard,
+                strict: false,
+                domain: EvalDomainMode::Generic,
+                context_mode: EvalContextMode::Auto,
+                branch_mode: EvalBranchMode::Strict,
+                expand_policy: EvalExpandPolicy::Off,
+                complex_mode: EvalComplexMode::Auto,
+                const_fold: EvalConstFoldMode::Off,
+                value_domain: EvalValueDomain::Real,
+                complex_branch: cas_api_models::EvalBranchMode::Principal,
+                inv_trig: EvalInvTrigPolicy::Strict,
+                assume_scope: EvalAssumeScope::Real,
+            },
+            |_steps, _events, _context, _steps_mode| Vec::new(),
+        );
+        assert!(first.0.is_ok(), "seed eval should succeed");
+
+        let second = crate::eval_command::evaluate_eval_command_with_session(
+            Some(&path),
+            EvalCommandConfig {
+                expr: "#1",
+                auto_store: false,
+                max_chars: 2000,
+                steps_mode: EvalStepsMode::Off,
+                budget_preset: EvalBudgetPreset::Standard,
+                strict: false,
+                domain: EvalDomainMode::Generic,
+                context_mode: EvalContextMode::Auto,
+                branch_mode: EvalBranchMode::Strict,
+                expand_policy: EvalExpandPolicy::Off,
+                complex_mode: EvalComplexMode::Auto,
+                const_fold: EvalConstFoldMode::Off,
+                value_domain: EvalValueDomain::Real,
+                complex_branch: cas_api_models::EvalBranchMode::Principal,
+                inv_trig: EvalInvTrigPolicy::Strict,
+                assume_scope: EvalAssumeScope::Real,
+            },
+            |_steps, _events, _context, _steps_mode| Vec::new(),
+        );
+
+        let output = second.0.expect("cache-hit eval should succeed");
+        assert!(
+            output.result == "sqrt(x)" || output.result == "x^(1/2)",
+            "expected direct cached ref to preserve sqrt semantics, got {:?}",
+            output.result
+        );
+        assert!(
+            output
+                .required_display
+                .iter()
+                .any(|cond| cond.contains("x") && (cond.contains(">= 0") || cond.contains("≥ 0"))),
+            "expected inherited required condition for sqrt(x), got {:?}",
+            output.required_display
         );
     }
 }

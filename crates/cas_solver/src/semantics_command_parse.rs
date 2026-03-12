@@ -1,7 +1,7 @@
 mod axis;
 mod route;
 
-use crate::semantics_command_types::SemanticsCommandInput;
+use cas_solver_core::semantics_command_types::SemanticsCommandInput;
 
 /// Parse a full `semantics ...` command line.
 pub fn parse_semantics_command_input(line: &str) -> SemanticsCommandInput {

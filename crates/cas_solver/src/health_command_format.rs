@@ -2,7 +2,7 @@ mod category;
 mod report;
 mod usage;
 
-use crate::health_command_types::HealthStatusInput;
+use cas_solver_core::health_runtime::HealthStatusInput;
 
 pub fn format_health_usage_message(category_names: &str) -> String {
     self::usage::format_health_usage_message(category_names)

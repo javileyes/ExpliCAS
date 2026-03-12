@@ -12,6 +12,10 @@ fn can_skip_persisted_session_state(expr: &str, auto_store: bool) -> bool {
     !auto_store && !expr.contains('#')
 }
 
+fn should_use_read_only_persisted_session(expr: &str, auto_store: bool) -> bool {
+    !auto_store && expr.contains('#')
+}
+
 /// Evaluate `eval` using optional persisted session state.
 ///
 /// Keeps CLI/frontends thin by centralizing session load/run/save orchestration.
@@ -26,7 +30,7 @@ where
     if session_path.is_none() || can_skip_persisted_session_state(config.expr, config.auto_store) {
         let mut engine = Engine::new();
         let mut state = crate::state_core::SessionState::new();
-        let output = cas_solver::session_api::runtime::evaluate_eval_with_session(
+        let output = cas_solver::session_api::eval::evaluate_eval_with_session(
             &mut engine,
             &mut state,
             config,
@@ -35,11 +39,26 @@ where
         return (output, None, None);
     }
 
+    if should_use_read_only_persisted_session(config.expr, config.auto_store) {
+        return crate::session_io::run_read_only_with_domain_session(
+            session_path,
+            config.domain.as_str(),
+            |engine, state| {
+                cas_solver::session_api::eval::evaluate_eval_with_session(
+                    engine,
+                    state,
+                    config,
+                    |steps, events, ctx, mode| collect_steps(steps, events, ctx, mode),
+                )
+            },
+        );
+    }
+
     crate::session_io::run_with_domain_session(
         session_path,
         config.domain.as_str(),
         |engine, state| {
-            cas_solver::session_api::runtime::evaluate_eval_with_session(
+            cas_solver::session_api::eval::evaluate_eval_with_session(
                 engine,
                 state,
                 config,

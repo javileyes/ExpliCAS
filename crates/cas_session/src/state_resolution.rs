@@ -4,7 +4,8 @@ use cas_solver_core::diagnostics_model::Diagnostics;
 use crate::resolve_refs::{
     resolve_session_refs_with_env, resolve_session_refs_with_mode_and_diagnostics,
 };
-use crate::{state_core::SessionState, ResolveError, SimplifyCacheKey};
+use crate::{cache::SimplifyCacheKey, state_core::SessionState};
+use cas_session_core::types::ResolveError;
 
 impl SessionState {
     /// Resolve session refs (`#N`) and environment bindings with current state.

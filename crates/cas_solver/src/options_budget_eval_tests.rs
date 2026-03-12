@@ -1,8 +1,9 @@
 #[cfg(test)]
 mod tests {
-    use crate::{
+    use crate::options_budget_eval::SolveBudgetContext;
+    use crate::session_api::budget::SolveBudgetCommandResult;
+    use crate::session_api::budget::{
         apply_solve_budget_command, evaluate_solve_budget_command_message,
-        SolveBudgetCommandResult, SolveBudgetContext,
     };
 
     #[derive(Debug, Default)]

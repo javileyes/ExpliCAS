@@ -7,13 +7,13 @@ impl SessionState {
 
     pub fn history_push<S: Into<String>>(
         &mut self,
-        kind: crate::EntryKind,
+        kind: cas_session_core::types::EntryKind,
         raw_text: S,
-    ) -> crate::EntryId {
+    ) -> cas_session_core::types::EntryId {
         self.store.push(kind, raw_text.into())
     }
 
-    pub fn history_get(&self, id: crate::EntryId) -> Option<&crate::Entry> {
+    pub fn history_get(&self, id: cas_session_core::types::EntryId) -> Option<&crate::Entry> {
         self.store.get(id)
     }
 
@@ -21,7 +21,7 @@ impl SessionState {
         self.store.len()
     }
 
-    pub fn history_remove(&mut self, ids: &[crate::EntryId]) {
+    pub fn history_remove(&mut self, ids: &[cas_session_core::types::EntryId]) {
         self.store.remove(ids);
     }
 }

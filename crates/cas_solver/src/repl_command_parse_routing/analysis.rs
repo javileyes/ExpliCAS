@@ -1,4 +1,4 @@
-use crate::repl_command_types::ReplCommandInput;
+use cas_solver_core::repl_command_types::ReplCommandInput;
 
 pub(crate) fn try_parse_analysis_command(line: &str) -> Option<ReplCommandInput<'_>> {
     if line == "equiv" || line.starts_with("equiv ") {

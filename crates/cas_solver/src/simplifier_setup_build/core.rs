@@ -4,11 +4,9 @@ use crate::rules::logarithms::{EvaluateLogRule, ExponentialLogRule, SplitLogExpo
 use crate::rules::trigonometry::{
     AngleIdentityRule, DoubleAngleRule, EvaluateTrigRule, PythagoreanIdentityRule, TanToSinCosRule,
 };
+use cas_solver_core::simplifier_config::SimplifierRuleConfig;
 
-pub(super) fn add_core_rules(
-    simplifier: &mut crate::Simplifier,
-    config: &crate::SimplifierRuleConfig,
-) {
+pub(super) fn add_core_rules(simplifier: &mut crate::Simplifier, config: &SimplifierRuleConfig) {
     simplifier.add_rule(Box::new(crate::rules::functions::AbsSquaredRule));
     simplifier.add_rule(Box::new(EvaluateTrigRule));
     simplifier.add_rule(Box::new(PythagoreanIdentityRule));

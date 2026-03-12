@@ -2,6 +2,7 @@
 //!
 //! Delegates stateless envelope generation to `cas_solver` and only handles CLI I/O.
 
+use super::output::CommandOutput;
 use crate::cli_args::{DomainArg, ValueDomainArg};
 use cas_api_models::{EvalDomainMode, EvalValueDomain};
 use clap::Args;
@@ -21,14 +22,12 @@ pub struct EnvelopeArgs {
     pub value_domain: ValueDomainArg,
 }
 
-/// Run the envelope command.
-pub fn run(args: EnvelopeArgs) {
-    let output = cas_solver::wire::evaluate_envelope_wire_command(
+pub(crate) fn render(args: EnvelopeArgs) -> CommandOutput {
+    CommandOutput::from_stdout(cas_solver::wire::evaluate_envelope_wire_command(
         &args.expr,
         domain_mode(args.domain),
         value_domain(args.value_domain),
-    );
-    println!("{}", output);
+    ))
 }
 
 fn domain_mode(domain: DomainArg) -> EvalDomainMode {

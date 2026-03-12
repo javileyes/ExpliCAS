@@ -1,10 +1,9 @@
 #[cfg(test)]
 mod tests {
     use crate::runtime::Simplifier;
-    use crate::session_api::runtime::{
-        evaluate_and_apply_config_command_on_runtime, ReplSimplifierRuntimeContext,
-    };
-    use crate::session_api::session_support::ConfigCommandApplyOutput;
+    use crate::session_api::config::evaluate_and_apply_config_command_on_runtime;
+    use crate::session_api::config::ConfigCommandApplyOutput;
+    use crate::session_api::simplifier::ReplSimplifierRuntimeContext;
 
     #[derive(Default)]
     struct MockConfig {

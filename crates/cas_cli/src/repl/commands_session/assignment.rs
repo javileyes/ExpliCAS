@@ -3,7 +3,7 @@ use super::*;
 impl Repl {
     pub(crate) fn handle_budget_command_core(&mut self, line: &str) -> ReplReply {
         reply_output(
-            cas_solver::session_api::runtime::evaluate_solve_budget_command_message_on_repl_core(
+            cas_solver::session_api::budget::evaluate_solve_budget_command_message_on_repl_core(
                 &mut self.core,
                 line,
             ),
@@ -12,7 +12,7 @@ impl Repl {
 
     /// Handle "let <name> = <expr>" (eager) or "let <name> := <expr>" (lazy) command
     pub(crate) fn handle_let_command_core(&mut self, rest: &str) -> ReplReply {
-        match cas_solver::session_api::runtime::evaluate_let_assignment_command_message_on_repl_core(
+        match cas_solver::session_api::bindings::evaluate_let_assignment_command_message_on_repl_core(
             &mut self.core,
             rest,
         ) {
@@ -30,7 +30,7 @@ impl Repl {
         expr_str: &str,
         lazy: bool,
     ) -> ReplReply {
-        match cas_solver::session_api::runtime::evaluate_assignment_command_message_on_repl_core(
+        match cas_solver::session_api::bindings::evaluate_assignment_command_message_on_repl_core(
             &mut self.core,
             name,
             expr_str,

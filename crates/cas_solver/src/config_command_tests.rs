@@ -1,9 +1,10 @@
 #[cfg(test)]
 mod tests {
-    use crate::{
+    use crate::session_api::config::{
         evaluate_config_command, parse_config_command_input, ConfigCommandInput,
         ConfigCommandResult,
     };
+    use cas_solver_core::simplifier_config::SimplifierToggleConfig;
 
     #[test]
     fn parse_config_command_input_reads_enable_rule() {
@@ -38,7 +39,7 @@ mod tests {
 
     #[test]
     fn evaluate_config_command_set_rule_applies_toggle_config() {
-        let toggles = crate::SimplifierToggleConfig::default();
+        let toggles = SimplifierToggleConfig::default();
         let result = evaluate_config_command("config enable distribute", toggles);
         match result {
             ConfigCommandResult::ApplyToggleConfig { toggles, message } => {
@@ -51,7 +52,7 @@ mod tests {
 
     #[test]
     fn evaluate_config_command_list_formats_message() {
-        let toggles = crate::SimplifierToggleConfig::default();
+        let toggles = SimplifierToggleConfig::default();
         let result = evaluate_config_command("config list", toggles);
         match result {
             ConfigCommandResult::ShowList { message } => {
@@ -63,7 +64,7 @@ mod tests {
 
     #[test]
     fn evaluate_config_command_invalid_usage_returns_error() {
-        let toggles = crate::SimplifierToggleConfig::default();
+        let toggles = SimplifierToggleConfig::default();
         let result = evaluate_config_command("config", toggles);
         assert!(matches!(result, ConfigCommandResult::Error { .. }));
     }

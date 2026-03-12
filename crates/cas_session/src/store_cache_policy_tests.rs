@@ -6,7 +6,7 @@ mod tests {
     use cas_engine::Step;
 
     use crate::cache::CacheDomainMode;
-    use crate::{SimplifiedCache, SimplifyCacheKey};
+    use crate::cache::{SimplifiedCache, SimplifyCacheKey};
 
     fn sample_step() -> Step {
         let mut ctx = Context::new();

@@ -1,7 +1,6 @@
+use crate::profile_cache_command::evaluate_profile_cache_command_lines;
 use crate::profile_cache_command::ProfileCacheStore;
-use crate::{
-    evaluate_profile_cache_command_lines, evaluate_show_command_lines, ShowCommandContext,
-};
+use crate::show_command::{evaluate_show_command_lines, ShowCommandContext};
 
 use super::{ReplEngineRuntimeContext, ReplSessionEngineRuntimeContext};
 

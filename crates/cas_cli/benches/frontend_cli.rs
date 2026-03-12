@@ -5,17 +5,37 @@ use std::hint::black_box;
 use clap::Parser;
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 
+#[path = "../src/commands/dispatch.rs"]
+pub mod dispatch;
 #[path = "../src/commands/envelope.rs"]
 pub mod envelope;
+#[path = "../src/commands/eval.rs"]
+pub mod eval;
+#[path = "../src/commands/eval_text.rs"]
+pub mod eval_text;
+#[path = "../src/commands/limit.rs"]
+pub mod limit;
+#[path = "../src/commands/output.rs"]
+pub mod output;
+#[path = "../src/commands/substitute.rs"]
+pub mod substitute;
 
 pub mod commands {
+    pub use super::dispatch;
     pub use super::envelope;
+    pub use super::eval;
+    pub use super::eval_text;
+    pub use super::limit;
+    pub use super::output;
+    pub use super::substitute;
 }
 
 #[path = "../src/cli_args.rs"]
 mod cli_args;
 
-use cli_args::Cli;
+pub use cli_args::*;
+
+use cli_args::Cli as BenchCli;
 
 fn bench_frontend_cli(c: &mut Criterion) {
     let cases: [(&str, &[&str]); 5] = [
@@ -83,7 +103,18 @@ fn bench_frontend_cli(c: &mut Criterion) {
 
     for (name, argv) in cases {
         group.bench_with_input(BenchmarkId::new("parse", name), &argv, |b, argv| {
-            b.iter(|| black_box(Cli::try_parse_from(*argv).expect("cli parse failed")));
+            b.iter(|| black_box(BenchCli::try_parse_from(*argv).expect("cli parse failed")));
+        });
+        group.bench_with_input(BenchmarkId::new("parse_render", name), &argv, |b, argv| {
+            b.iter(|| {
+                let cli = BenchCli::try_parse_from(*argv).expect("cli parse failed");
+                let command = cli.command.expect("command");
+                black_box(
+                    commands::dispatch::render_command(command)
+                        .expect("render failed")
+                        .map_or_else(String::new, |output| output.stdout),
+                )
+            });
         });
     }
 

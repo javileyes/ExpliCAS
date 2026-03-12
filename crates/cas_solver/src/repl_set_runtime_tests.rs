@@ -1,10 +1,12 @@
 #[cfg(test)]
 mod tests {
+    use crate::repl_set_runtime::{
+        apply_set_command_plan_on_runtime, evaluate_set_command_on_runtime,
+        set_command_state_for_runtime, ReplSetRuntimeContext,
+    };
     use crate::{
-        apply_set_command_plan, apply_set_command_plan_on_runtime, evaluate_set_command_input,
-        evaluate_set_command_on_runtime, set_command_state_for_runtime, EvalOptions,
-        ReplSetRuntimeContext, SetCommandApplyEffects, SetCommandPlan, SetCommandState,
-        SetDisplayMode, Simplifier, SimplifyOptions,
+        apply_set_command_plan, evaluate_set_command_input, EvalOptions, SetCommandApplyEffects,
+        SetCommandPlan, SetCommandState, SetDisplayMode, Simplifier, SimplifyOptions,
     };
 
     struct MockReplSetRuntime {

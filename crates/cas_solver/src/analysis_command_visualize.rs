@@ -1,4 +1,5 @@
 use cas_ast::Context;
+use cas_formatter::visualizer;
 
 use crate::{VisualizeCommandOutput, VisualizeEvalError};
 
@@ -16,7 +17,7 @@ pub fn evaluate_visualize_command_dot(
 ) -> Result<String, VisualizeEvalError> {
     let parsed_expr = cas_parser::parse(input.trim(), ctx)
         .map_err(|e| VisualizeEvalError::Parse(e.to_string()))?;
-    let mut viz = crate::visualizer::AstVisualizer::new(ctx);
+    let mut viz = visualizer::AstVisualizer::new(ctx);
     Ok(viz.to_dot(parsed_expr))
 }
 

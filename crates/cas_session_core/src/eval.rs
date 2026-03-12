@@ -43,6 +43,19 @@ pub trait EvalSession {
         ctx: &mut Context,
         expr: ExprId,
     ) -> anyhow::Result<(ExprId, Self::Diagnostics, Vec<u64>)>;
+
+    /// Optional fast path for direct cached eval of a root `#N` reference.
+    ///
+    /// Default sessions return `None` and fall back to the regular
+    /// resolve + engine dispatch path.
+    fn try_direct_cached_eval(
+        &mut self,
+        _ctx: &mut Context,
+        _expr: ExprId,
+        _auto_store: bool,
+    ) -> anyhow::Result<Option<DirectCachedEval<Self::Diagnostics>>> {
+        Ok(None)
+    }
 }
 
 /// Inputs resolved against session/environment for a single eval request.
@@ -52,6 +65,13 @@ pub struct ResolvedEvalInput<Diagnostics> {
     pub inherited_diagnostics: Diagnostics,
     pub cache_hits: Vec<u64>,
     pub resolved_equiv_other: Option<ExprId>,
+}
+
+/// Optional direct cached-eval payload for pure session-reference lookups.
+#[derive(Debug)]
+pub struct DirectCachedEval<Diagnostics> {
+    pub resolved: ExprId,
+    pub inherited_diagnostics: Diagnostics,
 }
 
 /// Input options for resolve + pre-dispatch preparation.

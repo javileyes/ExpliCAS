@@ -3,9 +3,7 @@ mod tests {
     use crate::eval_api::{EvalDisplayMessageKind, EvalMetadataLines, EvalResultLine};
     use crate::state_api::SessionState;
     #[allow(unused_imports)]
-    use cas_solver::session_api::{
-        formatting::*, options::*, runtime::*, session_support::*, symbolic_commands::*, types::*,
-    };
+    use cas_solver::session_api::{assumptions::*, eval::*, runtime::*, simplifier::*};
 
     #[test]
     fn evaluate_eval_command_output_success() {

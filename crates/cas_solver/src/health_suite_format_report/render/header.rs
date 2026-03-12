@@ -1,4 +1,4 @@
-use crate::health_suite_types::Category;
+use cas_solver_core::health_category::Category;
 
 pub(super) fn push_report_header(report: &mut String, category: Option<Category>) {
     let header = match category {

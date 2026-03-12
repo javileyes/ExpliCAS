@@ -2,9 +2,7 @@
 mod tests {
     use crate::state_core::SessionState;
     #[allow(unused_imports)]
-    use cas_solver::session_api::{
-        formatting::*, options::*, runtime::*, session_support::*, symbolic_commands::*, types::*,
-    };
+    use cas_solver::session_api::{assumptions::*, history::*, runtime::*, simplifier::*};
 
     #[test]
     fn evaluate_show_command_lines_invalid_id_reports_error() {

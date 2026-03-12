@@ -1,4 +1,4 @@
-use crate::health_suite_types::HealthCase;
+use cas_solver_core::health_suite_models::HealthCase;
 
 use super::shared::policy_case;
 

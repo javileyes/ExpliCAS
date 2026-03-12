@@ -1,4 +1,4 @@
-use crate::config_command_types::ConfigCommandInput;
+use cas_solver_core::config_command_types::ConfigCommandInput;
 
 /// Parse raw `config ...` command input.
 pub fn parse_config_command_input(line: &str) -> ConfigCommandInput {

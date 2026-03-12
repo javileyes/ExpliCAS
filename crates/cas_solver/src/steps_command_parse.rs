@@ -1,4 +1,4 @@
-use crate::steps_command_types::{StepsCommandInput, StepsDisplayMode};
+use cas_solver_core::steps_command_types::{StepsCommandInput, StepsDisplayMode};
 
 /// Parse raw `steps ...` command input.
 pub fn parse_steps_command_input(line: &str) -> StepsCommandInput {

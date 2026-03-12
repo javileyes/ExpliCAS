@@ -1,4 +1,5 @@
-use crate::{evaluate_config_command, ConfigCommandResult};
+use crate::config_command_eval::evaluate_config_command;
+use cas_solver_core::config_command_types::ConfigCommandResult;
 pub use cas_solver_core::config_runtime::{ConfigCommandApplyContext, ConfigCommandApplyOutput};
 
 /// Evaluate and apply `config` command effects against generic mutable config state.

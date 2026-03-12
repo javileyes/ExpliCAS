@@ -5,7 +5,7 @@ pub fn apply_profile_command_on_runtime<C: ReplSimplifierRuntimeContext>(
     context: &mut C,
     line: &str,
 ) -> String {
-    crate::apply_profile_command(context.simplifier_mut(), line)
+    crate::profile_command::apply_profile_command(context.simplifier_mut(), line)
 }
 
 /// Evaluate `profile` command and return user-facing message.

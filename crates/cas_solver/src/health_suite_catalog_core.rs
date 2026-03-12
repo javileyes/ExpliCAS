@@ -7,7 +7,7 @@ mod rationalization;
 mod roots;
 mod transform;
 
-use crate::health_suite_types::HealthCase;
+use cas_solver_core::health_suite_models::HealthCase;
 
 use self::baseline::baseline_cases;
 use self::expansion::expansion_cases;

@@ -1,11 +1,12 @@
-use crate::substitute_command_types::{SubstituteEvalOutput, SubstituteRenderMode};
+use crate::substitute::SubstituteSimplifyEvalOutput;
+use cas_solver_core::substitute_command_types::SubstituteRenderMode;
 
 use super::super::filter::should_render_substitute_step;
 
 pub(super) fn append_step_lines(
     lines: &mut Vec<String>,
     context: &cas_ast::Context,
-    output: &SubstituteEvalOutput,
+    output: &SubstituteSimplifyEvalOutput,
     mode: SubstituteRenderMode,
 ) {
     if mode == SubstituteRenderMode::None || output.steps.is_empty() {

@@ -1,9 +1,9 @@
 use cas_ast::ExprId;
+use cas_solver_core::assignment_command_types::AssignmentCommandOutput;
 
 use crate::{format_assignment_success_message, AssignmentError};
 
 use super::eval::{evaluate_assignment_command_with, evaluate_let_assignment_command_with};
-use super::types::AssignmentCommandOutput;
 
 /// Format assignment output payload once caller rendered the expression.
 pub fn format_assignment_command_output_message(

@@ -1,7 +1,7 @@
 mod list;
 mod run;
 
-use crate::health_command_types::HealthStatusInput;
+use cas_solver_core::health_runtime::HealthStatusInput;
 
 pub fn evaluate_health_status_lines(
     simplifier: &mut crate::Simplifier,

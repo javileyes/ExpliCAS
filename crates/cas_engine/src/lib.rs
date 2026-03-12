@@ -118,6 +118,8 @@ pub mod math {
 pub mod error;
 #[cfg(test)]
 mod error_tests;
+
+pub use crate::profile_cache::{default_rule_profile, rule_profile_from_simplifier, RuleProfile};
 #[macro_use]
 pub mod macros;
 

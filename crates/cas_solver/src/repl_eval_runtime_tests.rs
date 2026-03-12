@@ -1,11 +1,11 @@
 #[cfg(test)]
 mod tests {
-    use crate::session_api::runtime::{
+    use crate::session_api::eval::{
         evaluate_eval_command_output, evaluate_eval_command_render_plan_on_repl_core,
         evaluate_expand_command_render_plan_on_repl_core, profile_cache_len_on_repl_core,
         ReplEvalRuntimeContext,
     };
-    use crate::session_api::types::{EvalCommandError, EvalCommandOutput};
+    use crate::session_api::eval::{EvalCommandError, EvalCommandOutput};
     use crate::Engine;
 
     struct MockReplEvalRuntime {

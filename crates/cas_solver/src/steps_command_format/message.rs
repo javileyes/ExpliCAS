@@ -1,4 +1,4 @@
-use crate::steps_command_types::StepsDisplayMode;
+use cas_solver_core::steps_command_types::StepsDisplayMode;
 
 use super::labels::{steps_display_mode_label, steps_mode_label};
 

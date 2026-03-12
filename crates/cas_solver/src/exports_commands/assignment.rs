@@ -14,4 +14,6 @@ pub use crate::assignment_format::{
     format_let_assignment_parse_error_message,
 };
 pub use crate::assignment_parse::{let_assignment_usage_message, parse_let_assignment_input};
-pub use crate::assignment_types::{AssignmentError, LetAssignmentParseError, ParsedLetAssignment};
+pub use cas_solver_core::assignment_command_types::{
+    AssignmentError, LetAssignmentParseError, ParsedLetAssignment,
+};

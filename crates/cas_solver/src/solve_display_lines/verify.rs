@@ -12,7 +12,7 @@ pub(super) fn push_solution_verification_lines(
 
     if let crate::EvalResult::SolutionSet(solution_set) = &output.result {
         if let Some(eq) = original_equation {
-            let verify_result = crate::verify_solution_set(simplifier, eq, var, solution_set);
+            let verify_result = crate::api::verify_solution_set(simplifier, eq, var, solution_set);
             lines.extend(crate::format_verify_summary_lines(
                 &simplifier.context,
                 var,

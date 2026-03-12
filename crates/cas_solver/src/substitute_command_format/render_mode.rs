@@ -1,4 +1,4 @@
-use crate::substitute_command_types::SubstituteRenderMode;
+use cas_solver_core::substitute_command_types::SubstituteRenderMode;
 
 /// Convert REPL display mode into substitute render mode.
 pub fn substitute_render_mode_from_display_mode(

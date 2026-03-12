@@ -3,7 +3,7 @@ use std::path::Path;
 use cas_engine::Engine;
 use cas_session_core::snapshot_error::SnapshotError;
 
-use crate::{state_core::SessionState, SimplifyCacheKey};
+use crate::{cache::SimplifyCacheKey, state_core::SessionState};
 
 /// Load a compatible session snapshot if available, otherwise create a fresh engine/state.
 ///

@@ -1,4 +1,4 @@
-use crate::context_command_types::{ContextCommandApplyOutput, ContextCommandResult};
+use cas_solver_core::context_command_types::{ContextCommandApplyOutput, ContextCommandResult};
 
 /// Apply context mode into eval options, returning whether mode changed.
 pub fn apply_context_mode_to_options(

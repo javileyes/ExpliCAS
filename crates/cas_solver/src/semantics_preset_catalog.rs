@@ -1,4 +1,4 @@
-use crate::semantics_preset_types::SemanticsPreset;
+use cas_solver_core::semantics_preset_types::SemanticsPreset;
 
 const SEMANTICS_PRESETS: [SemanticsPreset; 4] = [
     SemanticsPreset {

@@ -2,7 +2,7 @@ use std::fs::File;
 use std::io::{BufWriter, Write};
 
 use crate::snapshot::SessionSnapshot;
-use crate::{state_core::SessionState, SessionStore, SimplifyCacheKey};
+use crate::{cache::SimplifyCacheKey, state_core::SessionState, SessionStore};
 use cas_session_core::snapshot_header::SnapshotHeader;
 use tempfile::tempdir;
 
@@ -19,7 +19,10 @@ fn test_session_snapshot_save_load() {
 
     // Create a session store with an entry
     let mut store = SessionStore::new();
-    store.push(crate::EntryKind::Expr(expr), "x + 1".to_string());
+    store.push(
+        cas_session_core::types::EntryKind::Expr(expr),
+        "x + 1".to_string(),
+    );
 
     let key = SimplifyCacheKey {
         domain: crate::cache::CacheDomainMode::Generic,

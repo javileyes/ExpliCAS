@@ -77,7 +77,7 @@ fn bench_frontend_session(c: &mut Criterion) {
                     },
                     |(mut engine, mut state, config)| {
                         black_box(
-                            cas_solver::session_api::runtime::evaluate_eval_with_session(
+                            cas_solver::session_api::eval::evaluate_eval_with_session(
                                 &mut engine,
                                 &mut state,
                                 config,
@@ -347,14 +347,36 @@ fn bench_frontend_session(c: &mut Criterion) {
                 ((tmp, session_path), Engine::with_context(context), state)
             },
             |(_seed, mut engine, mut state)| {
-                black_box(
-                    cas_solver::session_api::runtime::evaluate_eval_with_session(
-                        &mut engine,
-                        &mut state,
-                        eval_config("#1", false),
-                        no_steps,
-                    ),
+                black_box(cas_solver::session_api::eval::evaluate_eval_with_session(
+                    &mut engine,
+                    &mut state,
+                    eval_config("#1", false),
+                    no_steps,
+                ))
+            },
+            BatchSize::SmallInput,
+        )
+    });
+
+    group.bench_function("session_phase/save_snapshot/dirty_seed", |b| {
+        b.iter_batched(
+            || {
+                let tmp = tempdir().expect("tempdir failed");
+                let session_path = tmp.path().join("session.toml");
+                let mut engine = Engine::new();
+                let mut state = SessionState::new();
+                let _ = cas_solver::session_api::eval::evaluate_eval_with_session(
+                    &mut engine,
+                    &mut state,
+                    eval_config("x + 1", true),
+                    no_steps,
                 )
+                .expect("seed eval failed");
+                let key = cas_session::cache::SimplifyCacheKey::from_domain_flag("generic");
+                (tmp, session_path, key, engine, state)
+            },
+            |(_tmp, session_path, key, engine, state)| {
+                black_box(state.save_snapshot(&engine.simplifier.context, &session_path, key))
             },
             BatchSize::SmallInput,
         )

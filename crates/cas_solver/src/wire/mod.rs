@@ -19,7 +19,6 @@ mod mappers;
 mod stateless_eval;
 mod substitute;
 
-pub use envelope::{eval_str_to_output_envelope, evaluate_envelope_wire_command};
+pub use envelope::evaluate_envelope_wire_command;
 pub use eval::eval_str_to_wire;
-pub use mappers::{map_domain_warnings_to_engine_warnings, map_solver_assumptions_to_api_records};
 pub use substitute::substitute_str_to_wire;

@@ -1,4 +1,4 @@
-use super::types::ProfileCommandInput;
+use cas_solver_core::profile_command_types::ProfileCommandInput;
 
 /// Parse raw `profile ...` command input.
 pub fn parse_profile_command_input(line: &str) -> ProfileCommandInput {

@@ -1,9 +1,10 @@
+use crate::substitute::SubstituteSimplifyEvalOutput;
 use crate::substitute_command_parse::split_by_comma_ignoring_parens;
-use crate::substitute_command_types::{SubstituteEvalOutput, SubstituteRenderMode};
+use cas_solver_core::substitute_command_types::SubstituteRenderMode;
 
 pub(super) fn build_header_lines(
     input: &str,
-    output: &SubstituteEvalOutput,
+    output: &SubstituteSimplifyEvalOutput,
     mode: SubstituteRenderMode,
 ) -> Vec<String> {
     let display_parts = split_by_comma_ignoring_parens(input);

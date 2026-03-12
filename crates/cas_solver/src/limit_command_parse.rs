@@ -1,4 +1,5 @@
-use crate::limit_command_types::LimitCommandInput;
+use cas_math::limit_types::{Approach, PreSimplifyMode};
+use cas_solver_core::limit_command_types::LimitCommandInput;
 
 fn split_by_comma_ignoring_parens(s: &str) -> Vec<&str> {
     let mut parts = Vec::new();
@@ -32,14 +33,14 @@ pub fn parse_limit_command_input(rest: &str) -> LimitCommandInput<'_> {
     let mode = parts.get(3).copied().unwrap_or("off").trim();
 
     let approach = if dir.contains("-infinity") || dir.contains("-inf") {
-        crate::Approach::NegInfinity
+        Approach::NegInfinity
     } else {
-        crate::Approach::PosInfinity
+        Approach::PosInfinity
     };
     let presimplify = if mode.eq_ignore_ascii_case("safe") {
-        crate::PreSimplifyMode::Safe
+        PreSimplifyMode::Safe
     } else {
-        crate::PreSimplifyMode::Off
+        PreSimplifyMode::Off
     };
 
     LimitCommandInput {

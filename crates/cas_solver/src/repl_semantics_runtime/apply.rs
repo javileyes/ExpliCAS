@@ -7,7 +7,10 @@ pub fn apply_context_command_on_runtime<C: ReplSemanticsRuntimeContext>(
     line: &str,
     context: &mut C,
 ) -> ReplSemanticsApplyOutput {
-    let applied = crate::evaluate_and_apply_context_command(line, context.eval_options_mut());
+    let applied = crate::context_command_eval::evaluate_and_apply_context_command(
+        line,
+        context.eval_options_mut(),
+    );
     if applied.rebuild_simplifier {
         context.rebuild_simplifier_from_profile();
     }
@@ -22,7 +25,10 @@ pub fn apply_autoexpand_command_on_runtime<C: ReplSemanticsRuntimeContext>(
     line: &str,
     context: &mut C,
 ) -> ReplSemanticsApplyOutput {
-    let applied = crate::evaluate_and_apply_autoexpand_command(line, context.eval_options_mut());
+    let applied = crate::autoexpand_command_eval::evaluate_and_apply_autoexpand_command(
+        line,
+        context.eval_options_mut(),
+    );
     if applied.rebuild_simplifier {
         context.rebuild_simplifier_from_profile();
     }

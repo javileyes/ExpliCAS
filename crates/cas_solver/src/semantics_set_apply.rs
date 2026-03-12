@@ -1,5 +1,5 @@
-use crate::semantics_set_parse::evaluate_semantics_set_args;
-use crate::semantics_set_types::{semantics_set_state_from_options, SemanticsSetState};
+use crate::semantics_set_parse_apply::evaluate_semantics_set_args;
+use cas_solver_core::semantics_set_types::{semantics_set_state_from_options, SemanticsSetState};
 
 /// Apply semantic state to both simplifier options and runtime eval options.
 pub fn apply_semantics_set_state_to_options(

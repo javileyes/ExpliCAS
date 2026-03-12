@@ -2,8 +2,9 @@ mod case;
 mod cycle;
 mod suite;
 
-use crate::health_suite_types::{Category, HealthCaseResult};
 use crate::Simplifier;
+use cas_solver_core::health_category::Category;
+use cas_solver_core::health_suite_models::HealthCaseResult;
 
 #[allow(dead_code)]
 pub fn run_suite(simplifier: &mut Simplifier) -> Vec<HealthCaseResult> {

@@ -16,10 +16,10 @@ impl cas_solver_core::history_runtime::HistoryOverviewContext for SessionState {
             .iter()
             .map(|entry| {
                 let kind = match entry.kind {
-                    crate::EntryKind::Expr(expr) => {
+                    cas_session_core::types::EntryKind::Expr(expr) => {
                         cas_solver_core::history_runtime::HistoryEntryKindRaw::Expr(expr)
                     }
-                    crate::EntryKind::Eq { lhs, rhs } => {
+                    cas_session_core::types::EntryKind::Eq { lhs, rhs } => {
                         cas_solver_core::history_runtime::HistoryEntryKindRaw::Eq { lhs, rhs }
                     }
                 };
@@ -29,17 +29,17 @@ impl cas_solver_core::history_runtime::HistoryOverviewContext for SessionState {
     }
 }
 
-impl cas_solver::session_api::session_support::InspectHistoryContext for SessionState {
+impl cas_solver::session_api::history::InspectHistoryContext for SessionState {
     fn history_entry_raw(
         &self,
         id: u64,
     ) -> Option<cas_solver_core::history_runtime::HistoryInspectEntryRaw> {
         self.history_get(id).map(|entry| {
             let kind = match entry.kind {
-                crate::EntryKind::Expr(expr) => {
+                cas_session_core::types::EntryKind::Expr(expr) => {
                     cas_solver_core::history_runtime::HistoryEntryKindRaw::Expr(expr)
                 }
-                crate::EntryKind::Eq { lhs, rhs } => {
+                cas_session_core::types::EntryKind::Eq { lhs, rhs } => {
                     cas_solver_core::history_runtime::HistoryEntryKindRaw::Eq { lhs, rhs }
                 }
             };

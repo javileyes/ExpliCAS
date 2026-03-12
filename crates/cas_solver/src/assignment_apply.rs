@@ -1,5 +1,4 @@
 mod apply;
-mod context;
 
 pub use apply::apply_assignment_with_context;
-pub use context::AssignmentApplyContext;
+pub use cas_solver_core::session_runtime::AssignmentApplyContext;

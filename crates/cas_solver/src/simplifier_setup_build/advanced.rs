@@ -8,10 +8,11 @@ use crate::rules::polynomial::{
     AnnihilationRule, BinomialExpansionRule, CombineLikeTermsRule, DistributeRule,
 };
 use crate::rules::trigonometry::AngleConsistencyRule;
+use cas_solver_core::simplifier_config::SimplifierRuleConfig;
 
 pub(super) fn add_advanced_rules(
     simplifier: &mut crate::Simplifier,
-    config: &crate::SimplifierRuleConfig,
+    config: &SimplifierRuleConfig,
 ) {
     simplifier.add_rule(Box::new(crate::rules::algebra::NestedFractionRule));
     simplifier.add_rule(Box::new(crate::rules::algebra::AddFractionsRule));

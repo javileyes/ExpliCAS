@@ -3,7 +3,7 @@ use crate::repl_api::{
 };
 #[allow(unused_imports)]
 use cas_solver::session_api::{
-    formatting::*, options::*, runtime::*, session_support::*, symbolic_commands::*, types::*,
+    assumptions::*, lifecycle::*, profile::*, runtime::*, simplifier::*,
 };
 use cas_solver_core::eval_options::EvalOptions;
 use cas_solver_core::phase_stats::PipelineStats;
@@ -18,7 +18,7 @@ fn reset_repl_runtime_state_clears_session_and_runtime_flags() {
 
     let expr = cas_parser::parse("x+1", &mut core.simplifier_mut().context).expect("parse");
     core.state_mut()
-        .history_push(crate::EntryKind::Expr(expr), "x+1");
+        .history_push(cas_session_core::types::EntryKind::Expr(expr), "x+1");
     assert_eq!(core.state().history_len(), 1);
 
     reset_repl_runtime_state(&mut core);
@@ -34,9 +34,7 @@ fn reset_repl_runtime_state_clears_session_and_runtime_flags() {
 fn clear_repl_profile_cache_empties_cache() {
     let mut core = crate::repl_core::ReplCore::new();
     if let Err(err) = core.with_engine_and_state(|engine, state| {
-        cas_solver::session_api::runtime::evaluate_eval_command_output(
-            engine, state, "x + x", false,
-        )
+        cas_solver::session_api::eval::evaluate_eval_command_output(engine, state, "x + x", false)
     }) {
         panic!("eval failed: {err:?}");
     }
@@ -75,9 +73,7 @@ fn reset_repl_core_with_config_resets_runtime_state() {
 fn reset_repl_core_full_with_config_clears_profile_cache() {
     let mut core = crate::repl_core::ReplCore::new();
     if let Err(err) = core.with_engine_and_state(|engine, state| {
-        cas_solver::session_api::runtime::evaluate_eval_command_output(
-            engine, state, "x + x", false,
-        )
+        cas_solver::session_api::eval::evaluate_eval_command_output(engine, state, "x + x", false)
     }) {
         panic!("eval failed: {err:?}");
     }
@@ -95,9 +91,7 @@ fn build_repl_core_with_config_applies_toggle_sync() {
     };
     let mut core = build_repl_core_with_config(&config);
     let eval = core.with_engine_and_state(|engine, state| {
-        cas_solver::session_api::runtime::evaluate_eval_command_output(
-            engine, state, "(x+1)^2", false,
-        )
+        cas_solver::session_api::eval::evaluate_eval_command_output(engine, state, "(x+1)^2", false)
     });
     assert!(eval.is_ok());
 }

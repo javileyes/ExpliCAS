@@ -55,3 +55,8 @@ pub use cas_solver_core::{
 pub use crate::solver_entrypoints_proof_verify::{
     prove_nonzero, prove_positive, verify_solution, verify_solution_set,
 };
+
+/// Number-theory helpers exposed by the solver facade.
+pub mod number_theory {
+    pub use crate::solver_number_theory::{compute_gcd, explain_gcd, GcdResult};
+}

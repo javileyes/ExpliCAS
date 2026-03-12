@@ -1,4 +1,4 @@
-use crate::health_command_types::HealthStatusInput;
+use cas_solver_core::health_runtime::HealthStatusInput;
 
 pub(super) fn resolve_health_category_filter<T, E, F>(
     status: &HealthStatusInput,

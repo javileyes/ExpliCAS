@@ -1,5 +1,5 @@
 use crate::substitute_command_parse::substitute_usage_message;
-use crate::substitute_command_types::SubstituteParseError;
+use cas_solver_core::substitute_command_types::SubstituteParseError;
 
 /// Format substitute parse errors into user-facing messages.
 pub fn format_substitute_parse_error_message(error: &SubstituteParseError) -> String {

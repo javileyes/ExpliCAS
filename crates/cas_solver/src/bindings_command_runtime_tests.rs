@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod tests {
-    use crate::{
+    use crate::bindings_command::BindingsContext;
+    use crate::bindings_command_runtime::{
         evaluate_clear_bindings_command_lines, evaluate_vars_command_lines_from_bindings,
-        BindingsContext,
     };
 
     #[derive(Default)]

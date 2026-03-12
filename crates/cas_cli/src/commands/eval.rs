@@ -2,6 +2,7 @@
 //!
 //! Handles stdin/arg expression sourcing and routes to wire/text handlers.
 
+use super::output::CommandOutput;
 use crate::{
     AssumeScopeArg, AutoexpandArg, BranchArg, BudgetPreset, ComplexModeArg, ConstFoldArg,
     ContextArg, DomainArg, EvalArgs, EvalBranchArg, InvTrigArg, OutputFormat, StepsArg,
@@ -13,12 +14,10 @@ use cas_api_models::{
     EvalValueDomain,
 };
 
-/// Run the eval command (JSON or text output).
-pub fn run(args: EvalArgs) {
+pub(crate) fn render(mut args: EvalArgs) -> Result<CommandOutput, String> {
     let expr = read_expr_or_stdin(&args.expr);
     if expr.is_empty() {
-        eprintln!("Error: No expression provided");
-        std::process::exit(1);
+        return Err("Error: No expression provided".to_string());
     }
 
     if let Some(n) = args.threads {
@@ -31,26 +30,24 @@ pub fn run(args: EvalArgs) {
         "Using budget preset"
     );
 
+    args.expr = expr;
+
     match args.format {
-        OutputFormat::Json => {
-            run_wire(&expr, &args);
-        }
-        OutputFormat::Text => {
-            let text_args = EvalArgs { expr, ..args };
-            crate::commands::eval_text::run(&text_args);
-        }
+        OutputFormat::Json => Ok(render_wire(&args)),
+        OutputFormat::Text => crate::commands::eval_text::render(&args),
     }
 }
 
-fn run_wire(expr: &str, args: &EvalArgs) {
-    let output = cas_session::eval_api::evaluate_eval_command_pretty_with_session(
-        args.session.as_deref(),
-        eval_command_config(expr, args),
-        |steps, events, context, steps_mode| {
-            cas_didactic::collect_step_payloads_with_events(steps, events, context, steps_mode)
-        },
-    );
-    println!("{}", output);
+fn render_wire(args: &EvalArgs) -> CommandOutput {
+    CommandOutput::from_stdout(
+        cas_session::eval_api::evaluate_eval_command_pretty_with_session(
+            args.session.as_deref(),
+            eval_command_config(&args.expr, args),
+            |steps, events, context, steps_mode| {
+                cas_didactic::collect_step_payloads_with_events(steps, events, context, steps_mode)
+            },
+        ),
+    )
 }
 
 fn eval_command_config<'a>(

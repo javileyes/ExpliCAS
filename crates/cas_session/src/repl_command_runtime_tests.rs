@@ -1,6 +1,7 @@
 #[allow(unused_imports)]
 use cas_solver::session_api::{
-    formatting::*, options::*, runtime::*, session_support::*, symbolic_commands::*, types::*,
+    algebra::*, analysis::*, assumptions::*, bindings::*, budget::*, eval::*, health::*,
+    history::*, linear_algebra::*, profile::*, runtime::*, settings::*, simplifier::*, solve::*,
 };
 
 #[test]
@@ -99,7 +100,7 @@ fn evaluate_profile_cache_command_lines_on_repl_core_clear_empties_cache() {
 #[test]
 fn evaluate_unary_command_message_on_repl_core_runs_det() {
     let mut core = crate::repl_core::ReplCore::new();
-    let out = cas_solver::session_api::runtime::evaluate_unary_command_message_on_runtime(
+    let out = cas_solver::session_api::simplifier::evaluate_unary_command_message_on_runtime(
         &mut core,
         "det([[1,2],[3,4]])",
         "det",

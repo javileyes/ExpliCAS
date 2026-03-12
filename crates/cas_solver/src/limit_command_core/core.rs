@@ -1,11 +1,12 @@
 use cas_api_models::{LimitEvalError, LimitEvalResult, LimitWireResponse};
 use cas_formatter::DisplayExpr;
+use cas_math::limit_types::{Approach, LimitOptions, PreSimplifyMode};
 
 pub(super) fn eval_limit_from_str(
     expr: &str,
     var: &str,
-    approach: crate::Approach,
-    presimplify: crate::PreSimplifyMode,
+    approach: Approach,
+    presimplify: PreSimplifyMode,
 ) -> Result<LimitEvalResult, LimitEvalError> {
     let mut ctx = cas_ast::Context::new();
     let parsed = cas_parser::parse(expr, &mut ctx)
@@ -13,12 +14,19 @@ pub(super) fn eval_limit_from_str(
 
     let var_id = ctx.var(var);
     let mut budget = crate::Budget::new();
-    let opts = crate::LimitOptions {
+    let opts = LimitOptions {
         presimplify,
         ..Default::default()
     };
 
-    match crate::limit(&mut ctx, parsed, var_id, approach, &opts, &mut budget) {
+    match crate::solver_entrypoints_eval::limit(
+        &mut ctx,
+        parsed,
+        var_id,
+        approach,
+        &opts,
+        &mut budget,
+    ) {
         Ok(limit_result) => {
             let result = DisplayExpr {
                 context: &ctx,
@@ -37,8 +45,8 @@ pub(super) fn eval_limit_from_str(
 pub(super) fn limit_str_to_wire(
     expr: &str,
     var: &str,
-    approach: crate::Approach,
-    presimplify: crate::PreSimplifyMode,
+    approach: Approach,
+    presimplify: PreSimplifyMode,
     pretty: bool,
 ) -> String {
     let response = match eval_limit_from_str(expr, var, approach, presimplify) {

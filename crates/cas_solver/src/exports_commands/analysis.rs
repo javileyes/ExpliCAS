@@ -22,9 +22,6 @@ pub use crate::analysis_command_parse::{
     extract_equiv_command_tail, extract_explain_command_tail, extract_substitute_command_tail,
     extract_visualize_command_tail,
 };
-pub use crate::analysis_command_types::{
-    ExplainCommandEvalError, ExplainGcdEvalOutput, VisualizeCommandOutput, VisualizeEvalError,
-};
 pub use crate::analysis_command_visualize::{
     evaluate_visualize_command_dot, evaluate_visualize_command_output,
     evaluate_visualize_invocation_output,
@@ -41,3 +38,6 @@ pub use crate::equiv_format::{
     format_equivalence_result_lines, format_expr_pair_parse_error_message,
 };
 pub use cas_solver_core::analysis_command_types::ParseExprPairError;
+pub use cas_solver_core::analysis_command_types::{
+    ExplainCommandEvalError, ExplainGcdEvalOutput, VisualizeCommandOutput, VisualizeEvalError,
+};

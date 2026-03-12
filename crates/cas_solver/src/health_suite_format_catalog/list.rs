@@ -1,4 +1,5 @@
-use crate::health_suite_types::{Category, HealthCase};
+use cas_solver_core::health_category::Category;
+use cas_solver_core::health_suite_models::HealthCase;
 
 pub(super) fn list_suite_cases(suite: Vec<HealthCase>) -> String {
     let mut output = format!("Available health cases ({}):\n", suite.len());

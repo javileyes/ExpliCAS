@@ -3,6 +3,7 @@
 use crate::limit_command_eval::{
     evaluate_limit_subcommand_output, format_limit_subcommand_error, LimitSubcommandEvalOutput,
 };
+use cas_math::limit_types::{Approach, PreSimplifyMode};
 pub use cas_solver_core::limit_subcommand_types::{
     LimitCommandApproach, LimitCommandPreSimplify, LimitSubcommandOutput,
 };
@@ -16,12 +17,12 @@ pub fn evaluate_limit_subcommand(
     wire_output: bool,
 ) -> Result<LimitSubcommandOutput, String> {
     let approach = match approach {
-        LimitCommandApproach::Infinity => crate::Approach::PosInfinity,
-        LimitCommandApproach::NegInfinity => crate::Approach::NegInfinity,
+        LimitCommandApproach::Infinity => Approach::PosInfinity,
+        LimitCommandApproach::NegInfinity => Approach::NegInfinity,
     };
     let presimplify = match presimplify {
-        LimitCommandPreSimplify::Off => crate::PreSimplifyMode::Off,
-        LimitCommandPreSimplify::Safe => crate::PreSimplifyMode::Safe,
+        LimitCommandPreSimplify::Off => PreSimplifyMode::Off,
+        LimitCommandPreSimplify::Safe => PreSimplifyMode::Safe,
     };
 
     match evaluate_limit_subcommand_output(expr, var, approach, presimplify, wire_output) {

@@ -1,9 +1,12 @@
 #[cfg(test)]
 mod tests {
+    use crate::repl_steps_runtime::{
+        apply_steps_command_update_on_runtime, steps_command_state_for_runtime,
+        ReplStepsRuntimeContext,
+    };
     use crate::{
-        apply_steps_command_update, apply_steps_command_update_on_runtime,
-        steps_command_state_for_runtime, EvalOptions, ReplStepsRuntimeContext, Simplifier,
-        StepsCommandApplyEffects, StepsDisplayMode, StepsMode,
+        apply_steps_command_update, EvalOptions, Simplifier, StepsCommandApplyEffects,
+        StepsDisplayMode, StepsMode,
     };
 
     struct MockReplStepsRuntime {

@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
-    use crate::path_rewrite::reconstruct_global_expr;
     use cas_ast::{Context, Expr};
+    use cas_solver_core::path_rewrite::reconstruct_global_expr;
 
     #[test]
     fn reconstruct_replaces_right_add_branch() {

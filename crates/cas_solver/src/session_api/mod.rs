@@ -1,8 +1,21 @@
 //! Explicit session/repl-facing API namespace for consumers like `cas_session`.
 
-pub mod formatting;
-pub mod options;
+pub mod algebra;
+pub mod analysis;
+pub mod assumptions;
+pub mod bindings;
+pub mod budget;
+pub mod config;
+pub mod eval;
+pub mod health;
+pub mod history;
+pub mod lifecycle;
+pub mod linear_algebra;
+pub mod profile;
+pub mod repl;
 pub mod runtime;
-pub mod session_support;
-pub mod symbolic_commands;
-pub mod types;
+pub mod settings;
+pub mod simplifier;
+pub mod solve;
+pub mod substitute;
+pub mod timeline;

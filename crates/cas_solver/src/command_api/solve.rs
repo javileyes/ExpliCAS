@@ -21,7 +21,9 @@ pub use crate::solve_input_parse_parse::{
 pub use crate::solve_input_parse_prepare::{
     prepare_solve_expr_and_var, prepare_timeline_solve_equation, resolve_solve_var,
 };
-pub use crate::solve_input_types::{SolveCommandInput, SolvePrepareError, TimelineCommandInput};
 pub use crate::solve_render_config::{
     solve_render_config_from_eval_options, SolveCommandRenderConfig, SolveDisplayMode,
+};
+pub use cas_solver_core::solve_command_types::{
+    SolveCommandInput, SolvePrepareError, TimelineCommandInput,
 };

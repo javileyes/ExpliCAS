@@ -1,5 +1,6 @@
 //! CLI app orchestration (startup + command dispatch).
 
+use super::output::CommandOutput;
 use crate::{repl::Repl, Cli, Command};
 
 /// Run the CLI application from parsed arguments.
@@ -30,25 +31,32 @@ fn init_tracing() {
 
 fn dispatch_command(command: Option<Command>) -> rustyline::Result<()> {
     match command {
-        Some(Command::Eval(args)) => {
-            crate::commands::eval::run(args);
-            Ok(())
-        }
-        Some(Command::Envelope(args)) => {
-            crate::commands::envelope::run(args);
-            Ok(())
-        }
-        Some(Command::Limit(args)) => {
-            crate::commands::limit::run(args);
-            Ok(())
-        }
-        Some(Command::Substitute(args)) => {
-            crate::commands::substitute::run(args);
-            Ok(())
-        }
-        Some(Command::Repl) | None => {
+        Some(command) => match crate::commands::dispatch::render_command(command) {
+            Ok(Some(output)) => {
+                print_rendered(output);
+                Ok(())
+            }
+            Ok(None) => {
+                let mut repl = Repl::new();
+                repl.run()
+            }
+            Err(message) => exit_with_error(message),
+        },
+        None => {
             let mut repl = Repl::new();
             repl.run()
         }
     }
+}
+
+fn print_rendered(output: CommandOutput) {
+    println!("{}", output.stdout);
+    for line in output.stderr_lines {
+        eprintln!("{}", line);
+    }
+}
+
+fn exit_with_error(message: String) -> ! {
+    eprintln!("{}", message);
+    std::process::exit(1);
 }

@@ -6,7 +6,6 @@
 use crate::builtin::{BuiltinFn, ALL_BUILTINS};
 use rustc_hash::FxHashMap;
 use smol_str::SmolStr;
-
 /// Unique identifier for an interned symbol (variable name).
 ///
 /// Using usize for direct Vec indexing without casts.

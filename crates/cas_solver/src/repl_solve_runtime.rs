@@ -6,7 +6,7 @@ use crate::SetDisplayMode;
 
 /// Runtime context needed by solve/full-simplify REPL command adapters.
 pub trait ReplSolveRuntimeContext:
-    crate::ReplSessionSimplifierRuntimeContext<State: crate::SolverEvalSession>
+    crate::repl_session_runtime::ReplSessionSimplifierRuntimeContext<State: crate::SolverEvalSession>
 {
     fn debug_mode(&self) -> bool;
 }

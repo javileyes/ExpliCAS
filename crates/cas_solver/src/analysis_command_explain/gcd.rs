@@ -24,7 +24,7 @@ pub fn evaluate_explain_command_lines(
             found: args.len(),
         });
     }
-    let result = crate::number_theory::explain_gcd(ctx, args[0], args[1]);
+    let result = crate::api::number_theory::explain_gcd(ctx, args[0], args[1]);
     Ok(crate::format_explain_gcd_eval_lines(
         ctx,
         input,

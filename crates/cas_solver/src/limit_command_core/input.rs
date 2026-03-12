@@ -1,6 +1,6 @@
 use crate::limit_command_core::core::eval_limit_from_str;
 use crate::limit_command_parse::parse_limit_command_input;
-use crate::limit_command_types::{LimitCommandEvalError, LimitCommandEvalOutput};
+use cas_solver_core::limit_command_types::{LimitCommandEvalError, LimitCommandEvalOutput};
 
 pub fn evaluate_limit_command_input(
     input: &str,

@@ -1,6 +1,6 @@
-use crate::ClearBindingsResult;
+use cas_solver_core::session_runtime::ClearBindingsResult;
 
-use super::context::BindingsContext;
+use super::BindingsContext;
 
 /// Apply a `clear` command over session bindings.
 ///

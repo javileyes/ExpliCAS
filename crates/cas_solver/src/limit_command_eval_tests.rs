@@ -1,10 +1,12 @@
 #[cfg(test)]
 mod tests {
+    use cas_math::limit_types::{Approach, PreSimplifyMode};
+
     use crate::limit_command_eval::{
         evaluate_limit_command_input, evaluate_limit_subcommand_output,
         format_limit_subcommand_error, parse_limit_command_input,
     };
-    use crate::limit_command_types::{
+    use cas_solver_core::limit_command_types::{
         LimitCommandEvalError, LimitSubcommandEvalError, LimitSubcommandEvalOutput,
     };
 
@@ -13,8 +15,8 @@ mod tests {
         let parsed = parse_limit_command_input("x^2");
         assert_eq!(parsed.expr, "x^2");
         assert_eq!(parsed.var, "x");
-        assert_eq!(parsed.approach, crate::Approach::PosInfinity);
-        assert_eq!(parsed.presimplify, crate::PreSimplifyMode::Off);
+        assert_eq!(parsed.approach, Approach::PosInfinity);
+        assert_eq!(parsed.presimplify, PreSimplifyMode::Off);
     }
 
     #[test]
@@ -22,8 +24,8 @@ mod tests {
         let parsed = parse_limit_command_input("(x^2+1)/(2*x^2-3), t, -infinity, safe");
         assert_eq!(parsed.expr, "(x^2+1)/(2*x^2-3)");
         assert_eq!(parsed.var, "t");
-        assert_eq!(parsed.approach, crate::Approach::NegInfinity);
-        assert_eq!(parsed.presimplify, crate::PreSimplifyMode::Safe);
+        assert_eq!(parsed.approach, Approach::NegInfinity);
+        assert_eq!(parsed.presimplify, PreSimplifyMode::Safe);
     }
 
     #[test]
@@ -36,7 +38,7 @@ mod tests {
     fn evaluate_limit_command_input_computes_basic_limit() {
         let out = evaluate_limit_command_input("x^2, x, infinity").expect("limit eval");
         assert_eq!(out.var, "x");
-        assert_eq!(out.approach, crate::Approach::PosInfinity);
+        assert_eq!(out.approach, Approach::PosInfinity);
         assert!(!out.result.is_empty());
     }
 
@@ -45,8 +47,8 @@ mod tests {
         let out = evaluate_limit_subcommand_output(
             "(x^2+1)/(2*x^2-3)",
             "x",
-            crate::Approach::PosInfinity,
-            crate::PreSimplifyMode::Off,
+            Approach::PosInfinity,
+            PreSimplifyMode::Off,
             true,
         )
         .expect("wire output");
@@ -65,8 +67,8 @@ mod tests {
         let err = evaluate_limit_subcommand_output(
             "sin(",
             "x",
-            crate::Approach::PosInfinity,
-            crate::PreSimplifyMode::Off,
+            Approach::PosInfinity,
+            PreSimplifyMode::Off,
             false,
         )
         .expect_err("parse error");

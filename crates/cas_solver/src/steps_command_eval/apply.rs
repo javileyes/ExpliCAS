@@ -1,4 +1,4 @@
-use crate::steps_command_types::{StepsCommandApplyEffects, StepsDisplayMode};
+use cas_solver_core::steps_command_types::{StepsCommandApplyEffects, StepsDisplayMode};
 
 /// Apply `steps` update fields into eval options and return external effects.
 pub fn apply_steps_command_update(

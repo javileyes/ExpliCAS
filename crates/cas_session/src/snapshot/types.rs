@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::cache::SimplifyCacheKey;
 use crate::snapshot_store_convert::SessionStoreSnapshot as StoreSnapshotCore;
-use crate::SimplifyCacheKey;
 use cas_session_core::snapshot_header::SnapshotHeader;
 
 pub(super) type SessionSnapshotHeader = SnapshotHeader<SimplifyCacheKey>;

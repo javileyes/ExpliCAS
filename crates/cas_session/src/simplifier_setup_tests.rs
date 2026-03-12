@@ -3,9 +3,7 @@ mod tests {
     use crate::config::sync_simplifier_with_cas_config;
     use cas_formatter::DisplayExpr;
     #[allow(unused_imports)]
-    use cas_solver::session_api::{
-        formatting::*, options::*, runtime::*, session_support::*, symbolic_commands::*, types::*,
-    };
+    use cas_solver::session_api::{assumptions::*, runtime::*, simplifier::*};
 
     #[test]
     fn build_simplifier_with_rule_config_can_simplify_basic_expression() {

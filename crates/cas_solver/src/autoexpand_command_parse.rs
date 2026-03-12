@@ -1,4 +1,4 @@
-use crate::autoexpand_command_types::AutoexpandCommandInput;
+use cas_solver_core::autoexpand_command_types::AutoexpandCommandInput;
 
 /// Parse raw `autoexpand ...` command input.
 pub fn parse_autoexpand_command_input(line: &str) -> AutoexpandCommandInput {

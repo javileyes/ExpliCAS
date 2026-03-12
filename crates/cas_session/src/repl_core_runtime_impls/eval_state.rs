@@ -1,10 +1,10 @@
 use crate::repl_core::ReplCore;
 use cas_solver::runtime::Simplifier;
-use cas_solver::session_api::runtime::{
-    evaluate_eval_command_output, ReplConfiguredRuntimeContext, ReplEvalRuntimeContext,
-    ReplRuntimeStateContext, ReplSimplifierRuntimeContext,
+use cas_solver::session_api::eval::{
+    evaluate_eval_command_output, EvalCommandError, EvalCommandOutput, ReplEvalRuntimeContext,
 };
-use cas_solver::session_api::types::{EvalCommandError, EvalCommandOutput};
+use cas_solver::session_api::runtime::{ReplConfiguredRuntimeContext, ReplRuntimeStateContext};
+use cas_solver::session_api::simplifier::ReplSimplifierRuntimeContext;
 use cas_solver_core::eval_options::EvalOptions;
 use cas_solver_core::phase_stats::PipelineStats;
 

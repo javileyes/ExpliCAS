@@ -3,7 +3,7 @@ use crate::semantics_preset_format::{
     format_semantics_preset_application_lines, format_semantics_preset_help_lines,
     format_semantics_preset_list_lines,
 };
-use crate::semantics_preset_types::{
+use cas_solver_core::semantics_preset_types::{
     SemanticsPresetApplication, SemanticsPresetApplyError, SemanticsPresetCommandOutput,
 };
 

@@ -10,9 +10,6 @@ pub use crate::health_command_messages::{
     health_disable_message, health_enable_message,
 };
 pub use crate::health_command_parse::{evaluate_health_command_input, parse_health_command_input};
-pub use crate::health_command_types::{
-    HealthCommandEvalOutput, HealthCommandInput, HealthStatusInput,
-};
 pub use crate::health_suite_format_catalog::{
     category_names as health_suite_category_names, list_cases as list_health_suite_cases,
 };
@@ -21,4 +18,7 @@ pub use crate::health_suite_format_report::{
     format_report_filtered as format_health_suite_report_filtered,
 };
 pub use crate::health_suite_runner::run_suite_filtered as run_health_suite_filtered;
-pub use crate::health_suite_types::Category as HealthSuiteCategory;
+pub use cas_solver_core::health_category::Category as HealthSuiteCategory;
+pub use cas_solver_core::health_runtime::{
+    HealthCommandEvalOutput, HealthCommandInput, HealthStatusInput,
+};

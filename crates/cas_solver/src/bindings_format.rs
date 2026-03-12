@@ -1,4 +1,4 @@
-use crate::bindings_types::{BindingOverviewEntry, ClearBindingsResult};
+use cas_solver_core::session_runtime::{BindingOverviewEntry, ClearBindingsResult};
 
 /// Message used when no variables exist.
 pub fn vars_empty_message() -> &'static str {

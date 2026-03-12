@@ -4,7 +4,7 @@ mod domain;
 mod inv_trig;
 mod value;
 
-use crate::semantics_view_types::SemanticsViewState;
+use cas_solver_core::semantics_view_types::SemanticsViewState;
 
 pub(super) fn format_evaluation_axis_lines(state: &SemanticsViewState, axis: &str) -> Vec<String> {
     match axis {

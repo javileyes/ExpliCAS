@@ -5242,6 +5242,49 @@ Those are valid projects, but not part of this performance track.
     path exactly where the benchmark showed wasted time
   - the remaining ROI in persisted-session load is no longer in compatibility
     checking; it is now higher up in session load/state strategy
+  - do not keep the separate `bincode::DefaultOptions::with_fixint_encoding()`
+    snapshot format experiment: it improved `snapshot_load/incompatible/*` and
+    `snapshot_io/save/large` in absolute terms, but it did not produce a clean
+    win in `frontend_session/eval_* / persisted*`, so the format/version churn
+    was reverted
+
+### Session snapshot build/store isolation
+
+- objective:
+  - isolate the remaining `save_snapshot/dirty_seed` cost by separating:
+    - `ContextSnapshot::from_context(...)`
+    - `SessionStoreSnapshot` build
+    - the full persisted save path
+- retained benchmark support:
+  - `/Users/javiergimenezmoya/developer/math/crates/cas_session_core/benches/snapshot_build.rs`
+  - `/Users/javiergimenezmoya/developer/math/crates/cas_session_core/benches/snapshot_store_build.rs`
+  - `make bench-session-snapshot-build`
+  - `make bench-session-snapshot-store-build`
+- validation kept green:
+  - `cargo test -p cas_ast --lib`
+  - `cargo test -p cas_session_core --lib`
+  - `cargo check -p cas_session_core --benches -p cas_session`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_session_core --bench snapshot_build -- --noplot`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_session_core --bench snapshot_store_build -- --noplot`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_session --bench frontend_session 'frontend_session/session_phase/save_snapshot/dirty_seed' -- --noplot`
+- measured snapshot on the retained baselines:
+  - `snapshot_build/context/medium`: `5.1544-5.5391 us`
+  - `snapshot_build/context/large`: `16.578-17.161 us`
+  - `snapshot_store_build/store/medium`: `2.4361-2.4650 us`
+  - `snapshot_store_build/store/large`: `9.3486-9.4129 us`
+  - `frontend_session/session_phase/save_snapshot/dirty_seed`:
+    `184.45-189.48 us`
+- retained conclusion:
+  - keep the new `snapshot_build` and `snapshot_store_build` tracks
+  - do not keep the `SmolStr` snapshot-node experiment in
+    `/Users/javiergimenezmoya/developer/math/crates/cas_session_core/src/context_snapshot.rs`:
+    it regressed `snapshot_build/context/*` by `~20-36%` and left
+    `save_snapshot/dirty_seed` flat
+  - do not keep the manual `Vec::with_capacity + push` rewrite in
+    `/Users/javiergimenezmoya/developer/math/crates/cas_session_core/src/store_snapshot.rs`:
+    it left `save_snapshot/dirty_seed` flat, so the churn was reverted
+  - the remaining ROI in persisted save is no longer in these inner DTO build
+    helpers; it is higher up in save strategy/state persistence
 
 ### Session phase breakdown: restored `Engine::with_context(...)`
 
@@ -5329,3 +5372,119 @@ Those are valid projects, but not part of this performance track.
   - the next ROI in persisted session eval no longer looks like event
     collection; it is now higher up in load/state strategy or in another
     isolated frontend path
+
+### Session eval runtime: bypass `dispatch_eval_action(...)` for direct `#N` cache hits
+
+- objective:
+  - cut the loaded-session cache-hit path for direct root refs like `#1`
+    without changing the visible contract of persisted read-only eval
+  - keep the fast path extremely narrow:
+    - `EvalAction::Simplify`
+    - direct root session ref (`Expr::SessionRef` or legacy `Variable("#N")`)
+    - `steps = off`
+    - `cache_hit_step.is_some()`
+- retained implementation:
+  - `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/eval/dispatch.rs`
+    now detects that shape before `dispatch_eval_action(...)` and goes
+    straight to `build_output(...)` with:
+    - `EvalResult::Expr(resolved)`
+    - the existing synthetic cache-hit step
+    - empty domain warnings / solve payloads
+  - `/Users/javiergimenezmoya/developer/math/crates/cas_session/src/eval_command_session_tests.rs`
+    now guards the observable contract that a persisted cache-hit eval of `#1`
+    still succeeds and preserves the cached result
+- validation kept green:
+  - `cargo test -p cas_session eval_command_session_tests --lib`
+  - `cargo check -p cas_engine -p cas_session -p cas_solver -p cas_cli -p cas_api_models`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_session --bench frontend_session 'frontend_session/(eval_wire/persisted_no_store/cache_hit/ref_1|eval_text/persisted_no_store/cache_hit/ref_1|session_phase/run_loaded/cache_hit/ref_1)' -- --noplot`
+- measured outcome after the retained fix:
+  - `frontend_session/eval_wire/persisted_no_store/cache_hit/ref_1`:
+    `97.401-102.67 us`
+    (Criterion reported `~39-43%` improvement)
+  - `frontend_session/eval_text/persisted_no_store/cache_hit/ref_1`:
+    `132.20-135.04 us`
+    (Criterion reported `~16-19%` improvement)
+  - `frontend_session/session_phase/run_loaded/cache_hit/ref_1`:
+    `86.436-92.874 us`
+    (Criterion reported `~29-35%` improvement)
+- retained notes:
+  - persisted snapshots still do not serialize cached `requires`, so this
+    fast path intentionally preserves the current observable persisted
+    contract rather than trying to “repair” it implicitly
+  - with this cut in place, the cache-hit run is no longer the dominant ROI
+    inside persisted session eval
+
+### REPL build: reuse cached default rule profile in `build_simplifier_with_rule_config(...)`
+
+- objective:
+  - cut the fixed setup cost of `build_repl_core_with_config(...)` now that the
+    stateful session frontend exposes `frontend_session/repl/build/default`
+    cleanly
+  - avoid rebuilding the full default rule set before layering the extra
+    session/CLI rule portfolio on top
+- retained implementation:
+  - `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/lib.rs`
+    now reexports `default_rule_profile()` from the engine profile cache
+  - `/Users/javiergimenezmoya/developer/math/crates/cas_solver/src/simplifier_setup_build.rs`
+    now seeds `build_simplifier_with_rule_config(...)` from
+    `Simplifier::from_profile(cas_engine::default_rule_profile())`
+    instead of `Simplifier::with_default_rules()`
+  - the existing `core::add_core_rules(...)` / `advanced::add_advanced_rules(...)`
+    layering remains unchanged, so the behavioral contract stays the same
+- validation kept green:
+  - `cargo test -p cas_session simplifier_setup_tests --lib`
+  - `cargo test -p cas_session repl_runtime_tests --lib`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_session --bench frontend_session 'frontend_session/repl/build/default' -- --noplot`
+- measured outcome after the retained fix:
+  - `frontend_session/repl/build/default`:
+    `9.5133-9.5673 us`
+    (Criterion reported `~72.8-73.3%` improvement)
+- retained conclusion:
+  - keep the cached-profile seed for `build_simplifier_with_rule_config(...)`;
+    this is a large win on the one stateful session frontend path that still
+    had obvious fixed setup cost
+  - this also reinforces the ownership story: the default engine rule portfolio
+    should come from the engine profile cache, with `cas_solver` only layering
+    its extra session/CLI-specific rules on top
+
+### CLI frontend: centralize non-REPL `render` dispatch and validate `parse_render/*`
+
+- objective:
+  - stop duplicating non-REPL command dispatch between the real CLI app and the
+    `frontend_cli` benchmark
+  - make `parse_render/*` measure the same render seam that the binary uses for
+    `eval`, `envelope`, `limit`, and `substitute`
+- retained implementation:
+  - `/Users/javiergimenezmoya/developer/math/crates/cas_cli/src/commands/dispatch.rs`
+    now owns `render_command(...)` for non-REPL commands
+  - `/Users/javiergimenezmoya/developer/math/crates/cas_cli/src/commands/app.rs`
+    now delegates to that owner instead of open-coding the same match
+  - `/Users/javiergimenezmoya/developer/math/crates/cas_cli/benches/frontend_cli.rs`
+    now calls the same `render_command(...)` path instead of maintaining a
+    second local dispatcher
+  - the old per-command `run(...)` / `print_rendered(...)` wrappers in
+    `eval`, `eval_text`, `envelope`, `limit`, and `substitute` were removed;
+    the seam is now `render(...)` only
+- validation kept green:
+  - `cargo check -p cas_cli --benches`
+  - `cargo test -p cas_cli --tests --no-run`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_cli --bench frontend_cli -- --noplot`
+- measured outcome after the retained cleanup:
+  - the benchmark stays stable; all `parse_render/*` cases are now within noise
+    against their baseline, which is the expected result for a structural
+    centralization rather than a runtime optimization
+  - representative ranges after the retained change:
+    - `frontend_cli/parse_render/eval/text/light`:
+      `63.576-64.080 us`
+    - `frontend_cli/parse_render/eval/json/gcd`:
+      `88.452-91.771 us`
+    - `frontend_cli/parse_render/limit/json`:
+      `34.311-34.754 us`
+    - `frontend_cli/parse_render/substitute/json`:
+      `25.343-25.719 us`
+    - `frontend_cli/parse_render/envelope/basic`:
+      `78.965-81.481 us`
+- retained conclusion:
+  - keep the centralized dispatch seam; it removes duplication and makes the
+    frontend bench trustworthy without forcing another round of micro-opts on
+    the CLI layer

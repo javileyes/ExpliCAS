@@ -35,3 +35,11 @@ harness = false
 [[bench]]
 name = "snapshot_restore"
 harness = false
+
+[[bench]]
+name = "snapshot_build"
+harness = false
+
+[[bench]]
+name = "snapshot_store_build"
+harness = false

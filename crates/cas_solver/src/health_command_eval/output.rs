@@ -1,7 +1,7 @@
 use crate::health_command_messages::{
     health_clear_message, health_disable_message, health_enable_message,
 };
-use crate::health_command_types::HealthCommandEvalOutput;
+use cas_solver_core::health_runtime::HealthCommandEvalOutput;
 
 pub(super) fn build_show_last_output(lines: Vec<String>) -> HealthCommandEvalOutput {
     HealthCommandEvalOutput {

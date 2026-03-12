@@ -36,6 +36,16 @@ fn build_cache_hit_step(
     step
 }
 
+fn is_direct_session_ref_input(ctx: &cas_ast::Context, expr: ExprId) -> bool {
+    match ctx.get(expr) {
+        cas_ast::Expr::SessionRef(_) => true,
+        cas_ast::Expr::Variable(sym_id) => {
+            cas_session_core::resolve::parse_legacy_session_ref(ctx.sym_name(*sym_id)).is_some()
+        }
+        _ => false,
+    }
+}
+
 fn resolve_prepare_config(req: &EvalRequest) -> cas_session_core::eval::ResolvePrepareConfig {
     cas_session_core::eval::ResolvePrepareConfig {
         parsed: req.parsed,
@@ -91,7 +101,6 @@ impl Engine {
             resolve_prepare_config(&req),
             build_cache_hit_step,
         )?;
-
         let options = session.options().clone();
         self.eval_with_parts(session, &options, req, prepared)
     }
@@ -125,6 +134,28 @@ impl Engine {
             resolved_equiv_other,
             cache_hit_step,
         } = prepared;
+
+        if matches!(&req.action, EvalAction::Simplify)
+            && matches!(options.steps_mode, crate::options::StepsMode::Off)
+            && is_direct_session_ref_input(&self.simplifier.context, req.parsed)
+            && cache_hit_step.is_some()
+        {
+            return self.build_output(
+                stored_id,
+                req.parsed,
+                resolved,
+                EvalResult::Expr(resolved),
+                Vec::new(),
+                vec![cache_hit_step.expect("checked above")],
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+                inherited_diagnostics,
+                session.store_mut(),
+                options,
+            );
+        }
 
         // 3. Dispatch Action -> produce EvalResult
         let (

@@ -4,7 +4,7 @@ impl Repl {
     /// Handle "vars" command - list all variable bindings
     pub(crate) fn handle_vars_command_core(&self) -> ReplReply {
         reply_output(
-            cas_solver::session_api::runtime::evaluate_vars_command_message_on_repl_core(
+            cas_solver::session_api::bindings::evaluate_vars_command_message_on_repl_core(
                 &self.core,
             ),
         )
@@ -13,7 +13,7 @@ impl Repl {
     /// Handle "history" or "list" command - show session history
     pub(crate) fn handle_history_command_core(&self) -> ReplReply {
         reply_output(
-            cas_solver::session_api::runtime::evaluate_history_command_message_on_repl_core(
+            cas_solver::session_api::history::evaluate_history_command_message_on_repl_core(
                 &self.core,
             ),
         )
@@ -21,7 +21,7 @@ impl Repl {
 
     /// Handle "show #id" command - show details of a specific entry
     pub(crate) fn handle_show_command_core(&mut self, line: &str) -> ReplReply {
-        match cas_solver::session_api::runtime::evaluate_show_command_lines_on_repl_core(
+        match cas_solver::session_api::history::evaluate_show_command_lines_on_repl_core(
             &mut self.core,
             line,
         ) {
@@ -33,7 +33,7 @@ impl Repl {
     /// Handle "del #id [#id...]" command - delete session entries
     pub(crate) fn handle_del_command_core(&mut self, line: &str) -> ReplReply {
         reply_output(
-            cas_solver::session_api::runtime::evaluate_delete_history_command_message_on_repl_core(
+            cas_solver::session_api::history::evaluate_delete_history_command_message_on_repl_core(
                 &mut self.core,
                 line,
             ),
@@ -43,7 +43,7 @@ impl Repl {
     /// Handle "clear" or "clear <names>" command
     pub(crate) fn handle_clear_command_core(&mut self, line: &str) -> ReplReply {
         output::reply_output_lines(
-            cas_solver::session_api::runtime::evaluate_clear_command_lines_on_repl_core(
+            cas_solver::session_api::bindings::evaluate_clear_command_lines_on_repl_core(
                 &mut self.core,
                 line,
             ),

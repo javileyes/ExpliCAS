@@ -117,6 +117,26 @@ pub fn default_rule_profile() -> Arc<RuleProfile> {
     })
 }
 
+#[allow(clippy::arc_with_non_send_sync)] // Rules are intentionally not Send+Sync for flexibility
+pub fn rule_profile_from_simplifier(
+    simplifier: &crate::Simplifier,
+    opts: &EvalOptions,
+) -> Arc<RuleProfile> {
+    let key = ProfileKey::from_options(opts);
+    let rules = simplifier.get_rules_clone();
+    let global_rules = simplifier.get_global_rules_clone();
+    let disabled_rules = simplifier.get_disabled_rules_clone();
+
+    Arc::new(RuleProfile {
+        phase_rules: build_phase_rules(&rules, &disabled_rules),
+        rules,
+        phase_global_rules: build_phase_global_rules(&global_rules, &disabled_rules),
+        global_rules,
+        disabled_rules,
+        key,
+    })
+}
+
 /// Build a RuleProfile for the given options.
 /// This mirrors the logic in Simplifier::with_profile but captures the result.
 fn build_profile(opts: &EvalOptions) -> RuleProfile {

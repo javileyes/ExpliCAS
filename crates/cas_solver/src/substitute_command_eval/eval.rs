@@ -1,6 +1,6 @@
 use crate::substitute::{evaluate_substitute_and_simplify, SubstituteOptions};
 use crate::substitute_command_format::format_substitute_eval_lines;
-use crate::substitute_command_types::{SubstituteParseError, SubstituteRenderMode};
+use cas_solver_core::substitute_command_types::{SubstituteParseError, SubstituteRenderMode};
 
 /// Evaluate and format a `subst` command for CLI display.
 pub fn evaluate_substitute_command_lines(

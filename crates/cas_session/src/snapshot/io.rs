@@ -1,8 +1,8 @@
 use std::path::Path;
 
 use super::{SessionSnapshot, SnapshotError};
+use crate::cache::SimplifyCacheKey;
 use crate::snapshot_store_convert::session_store_snapshot_from_store;
-use crate::SimplifyCacheKey;
 
 #[cfg(test)]
 use crate::snapshot_store_convert::session_store_snapshot_into_store;

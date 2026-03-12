@@ -1,5 +1,5 @@
-use crate::EntryKind;
 use cas_session_core::store_snapshot::EntryKindSnapshot;
+use cas_session_core::types::EntryKind;
 
 pub(crate) fn snapshot_entry_kind(kind: &EntryKind) -> EntryKindSnapshot {
     match kind {

@@ -1,6 +1,6 @@
-use crate::BindingOverviewEntry;
+use cas_solver_core::session_runtime::BindingOverviewEntry;
 
-use super::context::BindingsContext;
+use super::BindingsContext;
 
 /// Return a stable, presentation-friendly view of bindings.
 pub fn binding_overview_entries<C: BindingsContext>(context: &C) -> Vec<BindingOverviewEntry> {

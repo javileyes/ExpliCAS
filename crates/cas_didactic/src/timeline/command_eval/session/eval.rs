@@ -1,7 +1,8 @@
 use super::super::super::command_projection::timeline_command_output_from_solver;
 use super::super::super::types::TimelineCommandOutput;
-use cas_solver::session_api::runtime::evaluate_timeline_command_with_session;
-use cas_solver::session_api::types::TimelineCommandEvalError;
+use cas_solver::session_api::timeline::{
+    evaluate_timeline_command_with_session, TimelineCommandEvalError,
+};
 
 pub fn evaluate_timeline_command_output_with_session<S>(
     engine: &mut crate::runtime::Engine,

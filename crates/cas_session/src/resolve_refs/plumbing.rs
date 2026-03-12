@@ -1,6 +1,7 @@
 use cas_solver_core::diagnostics_model::{Diagnostics, RequireOrigin, RequiredItem};
 
-use crate::{env::Environment, Entry, EntryId, RefMode, SessionStore, SimplifyCacheKey};
+use crate::{cache::SimplifyCacheKey, env::Environment, Entry, SessionStore};
+use cas_session_core::types::{EntryId, RefMode};
 
 fn mode_entry_from_store_entry(
     entry: &Entry,

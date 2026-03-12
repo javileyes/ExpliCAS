@@ -1,5 +1,5 @@
-use crate::health_suite_types::HealthCase;
 use crate::SimplifyPhase;
+use cas_solver_core::health_suite_models::HealthCase;
 
 pub(super) fn failure_reason_for_case(
     case: &HealthCase,

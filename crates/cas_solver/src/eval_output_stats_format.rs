@@ -1,5 +1,6 @@
 use cas_ast::{Context, ExprId};
 use cas_formatter::DisplayExpr;
+use cas_math::poly_store::try_render_poly_result;
 
 /// Render expression for output with max length truncation.
 pub(crate) fn format_limited_output_expr(
@@ -7,7 +8,7 @@ pub(crate) fn format_limited_output_expr(
     expr: ExprId,
     max_chars: usize,
 ) -> (String, bool, usize) {
-    if let Some(poly_str) = crate::try_render_poly_result(ctx, expr) {
+    if let Some(poly_str) = try_render_poly_result(ctx, expr) {
         let len = poly_str.chars().count();
         if len <= max_chars {
             return (poly_str, false, len);

@@ -1,5 +1,5 @@
 use super::CasConfig;
-use cas_solver::session_api::formatting::{SimplifierRuleConfig, SimplifierToggleConfig};
+use cas_solver::session_api::simplifier::{SimplifierRuleConfig, SimplifierToggleConfig};
 
 /// Convert persisted CLI config into simplifier build-time rule config.
 pub fn solver_rule_config_from_cas_config(config: &CasConfig) -> SimplifierRuleConfig {
@@ -55,5 +55,5 @@ pub fn sync_simplifier_with_cas_config(
     config: &CasConfig,
 ) {
     let toggles = solver_toggle_config_from_cas_config(config);
-    cas_solver::session_api::options::apply_simplifier_toggle_config(simplifier, toggles);
+    cas_solver::session_api::simplifier::apply_simplifier_toggle_config(simplifier, toggles);
 }

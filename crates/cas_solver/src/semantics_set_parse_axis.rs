@@ -2,7 +2,7 @@ mod evaluation;
 mod reporting;
 mod solve;
 
-use crate::semantics_set_types::SemanticsSetState;
+use cas_solver_core::semantics_set_types::SemanticsSetState;
 
 pub(crate) fn set_semantic_axis(
     state: &mut SemanticsSetState,

@@ -1,4 +1,4 @@
-use crate::context_command_types::ContextCommandInput;
+use cas_solver_core::context_command_types::ContextCommandInput;
 
 /// Parse raw `context ...` command input.
 pub fn parse_context_command_input(line: &str) -> ContextCommandInput {

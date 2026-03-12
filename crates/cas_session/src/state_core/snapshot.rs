@@ -4,9 +4,9 @@ use cas_session_core::snapshot_header::SnapshotHeader;
 use cas_session_core::snapshot_io::{load_bincode_from_reader, open_bincode_reader};
 
 use super::SessionState;
+use crate::cache::SimplifyCacheKey;
 use crate::snapshot::{ContextSnapshot, SessionSnapshot, SnapshotError};
 use crate::snapshot_store_convert::{session_store_snapshot_into_store, SessionStoreSnapshot};
-use crate::SimplifyCacheKey;
 
 impl SessionState {
     /// Load a snapshot from disk and restore it only if compatible with `cache_key`.

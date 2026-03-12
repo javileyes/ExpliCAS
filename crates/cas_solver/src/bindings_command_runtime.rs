@@ -1,6 +1,7 @@
-use crate::{
-    binding_overview_entries, clear_bindings_command, evaluate_vars_command_lines,
-    evaluate_vars_command_lines_with_context, format_clear_bindings_result_lines, BindingsContext,
+use crate::bindings_command::{binding_overview_entries, clear_bindings_command, BindingsContext};
+use crate::bindings_format::format_clear_bindings_result_lines;
+use crate::vars_command_display::{
+    evaluate_vars_command_lines, evaluate_vars_command_lines_with_context,
 };
 
 /// Evaluate `clear` command and return output lines.

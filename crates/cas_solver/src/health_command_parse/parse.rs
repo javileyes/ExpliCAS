@@ -1,4 +1,4 @@
-use crate::health_command_types::HealthCommandInput;
+use cas_solver_core::health_runtime::HealthCommandInput;
 
 use super::status::parse_health_status_input;
 

@@ -1,4 +1,4 @@
-use crate::steps_command_types::StepsDisplayMode;
+use cas_solver_core::steps_command_types::StepsDisplayMode;
 
 pub(super) fn steps_mode_label(mode: crate::StepsMode) -> &'static str {
     match mode {

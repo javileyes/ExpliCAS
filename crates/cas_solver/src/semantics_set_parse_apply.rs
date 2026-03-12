@@ -1,5 +1,5 @@
 use crate::semantics_set_parse_axis::set_semantic_axis;
-use crate::semantics_set_types::SemanticsSetState;
+use cas_solver_core::semantics_set_types::SemanticsSetState;
 
 /// Parse and apply arguments from `semantics set ...`.
 pub fn evaluate_semantics_set_args(

@@ -1,5 +1,5 @@
 use super::parse::parse_profile_command_input;
-use super::types::{ProfileCommandInput, ProfileCommandResult};
+use cas_solver_core::profile_command_types::{ProfileCommandInput, ProfileCommandResult};
 
 /// Evaluate a `profile` command into effect + message.
 pub fn evaluate_profile_command_input(line: &str) -> ProfileCommandResult {

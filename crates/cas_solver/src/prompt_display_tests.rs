@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::build_prompt_from_eval_options;
+    use crate::prompt_display::build_prompt_from_eval_options;
 
     #[test]
     fn build_prompt_from_eval_options_default_is_plain_prompt() {

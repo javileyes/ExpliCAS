@@ -1,6 +1,7 @@
 use crate::rationalize_command_types::{
     RationalizeCommandEvalError, RationalizeCommandEvalOutput, RationalizeCommandOutcome,
 };
+use cas_math::rationalize::{rationalize_denominator, RationalizeConfig, RationalizeResult};
 
 pub(crate) fn evaluate_rationalize_command_input(
     simplifier: &mut crate::Simplifier,
@@ -10,15 +11,14 @@ pub(crate) fn evaluate_rationalize_command_input(
         .map_err(|e| RationalizeCommandEvalError::Parse(format!("{:?}", e)))?;
     let normalized_expr =
         cas_math::canonical_forms::normalize_core(&mut simplifier.context, parsed_expr);
-    let config = crate::RationalizeConfig::default();
-    let rationalized =
-        crate::rationalize_denominator(&mut simplifier.context, normalized_expr, &config);
+    let config = RationalizeConfig::default();
+    let rationalized = rationalize_denominator(&mut simplifier.context, normalized_expr, &config);
     let outcome = match rationalized {
-        crate::RationalizeResult::Success(expr) => {
+        RationalizeResult::Success(expr) => {
             RationalizeCommandOutcome::Success(simplifier.simplify(expr).0)
         }
-        crate::RationalizeResult::NotApplicable => RationalizeCommandOutcome::NotApplicable,
-        crate::RationalizeResult::BudgetExceeded => RationalizeCommandOutcome::BudgetExceeded,
+        RationalizeResult::NotApplicable => RationalizeCommandOutcome::NotApplicable,
+        RationalizeResult::BudgetExceeded => RationalizeCommandOutcome::BudgetExceeded,
     };
     Ok(RationalizeCommandEvalOutput {
         normalized_expr,

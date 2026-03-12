@@ -1,6 +1,6 @@
 use cas_ast::{Expr, ExprId};
 
-use crate::assignment_apply::context::AssignmentApplyContext;
+use crate::assignment_apply::AssignmentApplyContext;
 use crate::{AssignmentError, Simplifier};
 
 fn unwrap_hold_top(ctx: &cas_ast::Context, expr: ExprId) -> ExprId {

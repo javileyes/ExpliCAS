@@ -218,15 +218,66 @@ Current progress:
       `eval_command::session`
   - `cas_session` root no longer acts as an implicit façade for solver-facing
     stateless helpers
+  - removed the redundant `simplifier_setup_types` bridge in `cas_solver`
+    - `SimplifierRuleConfig` / `SimplifierToggleConfig` now come directly from
+      `cas_solver_core::simplifier_config`
+    - `set_simplifier_toggle_rule(...)` now belongs to
+      `simplifier_setup_toggle`, which is the actual owner of toggle
+      application/update behavior
+    - rationale:
+      - the old module only duplicated core types plus a single local helper
+      - deleting it removes another fake ownership layer from `cas_solver`
+  - removed the redundant `substitute_subcommand_types` bridge in `cas_solver`
+    - `SubstituteCommandMode` / `SubstituteSubcommandOutput` now come directly
+      from `cas_solver_core::substitute_command_types`
+    - `command_api::substitute` reexports them from the owner real instead of a
+      local pass-through module
+  - removed the redundant `limit_command_types` bridge in `cas_solver`
+    - `LimitCommandInput` / `Limit*Eval*` types now come directly from
+      `cas_solver_core::limit_command_types`
+    - `limit_command_eval` reexports them from the owner real instead of a
+      local pass-through module
+  - removed the redundant `analysis_command_types` bridge in `cas_solver`
+    - analysis/equiv/visualize-facing error and output types now come directly
+      from `cas_solver_core::analysis_command_types`
+    - `exports_commands::analysis` reexports them from the owner real instead
+      of a local pass-through module
+  - removed the redundant `health_command_types` bridge in `cas_solver`
+    - `HealthCommandInput` / `HealthCommandEvalOutput` / `HealthStatusInput`
+      now come directly from `cas_solver_core::health_runtime`
+    - `exports_commands::health` and the local health runtime/format/parse
+      modules now point to the owner real instead of a local pass-through
+  - removed the redundant `steps_command_types` bridge in `cas_solver`
+    - `StepsCommand*` / `StepsDisplayMode` now come directly from
+      `cas_solver_core::steps_command_types`
+    - both `session_api::settings` and `exports_base::settings::steps` now
+      reexport them from the owner real instead of a local pass-through
+  - removed the redundant `set_command_types` bridge in `cas_solver`
+    - `SetCommand*` / `SetDisplayMode` now come directly from
+      `cas_solver_core::set_command_types`
+    - both `session_api::settings` and `exports_base::settings::set_command`
+      now reexport them from the owner real instead of a local pass-through
+  - removed the redundant `history_types` / `inspect_types` bridges in
+    `cas_solver`
+    - history/inspect-facing models now come directly from
+      `cas_solver_core::history_models`
+    - `exports_commands::history` and local history formatting now point to the
+      owner real instead of local pass-through modules
     - `pub use solver_exports::*;` was removed from the crate root
     - `cas_session::solver_exports` was removed entirely
     - consumers now use the explicit owner directly:
       - `cas_solver::session_api::runtime::*`
-      - `cas_solver::session_api::options::*`
-      - `cas_solver::session_api::formatting::*`
-      - `cas_solver::session_api::session_support::*`
-      - `cas_solver::session_api::symbolic_commands::*`
-      - `cas_solver::session_api::types::*`
+      - `cas_solver::session_api::settings::*`
+      - `cas_solver::session_api::simplifier::*`
+      - `cas_solver::session_api::assumptions::*`
+      - `cas_solver::session_api::solve::*`
+      - `cas_solver::session_api::eval::*`
+    - `cas_solver::session_api::formatting` was removed entirely
+      - analysis-facing parsing/formatting moved to
+        `cas_solver::session_api::analysis::*`
+      - semantics-facing view/help formatting moved to
+        `cas_solver::session_api::settings::*`
+      - parse-error rendering moved to `cas_solver::session_api::repl::*`
     - internal and integration tests were migrated from
       `crate::solver_exports::...` to `cas_solver::session_api::...`
     - solver-facing stateless eval helpers/types now live under
@@ -319,11 +370,11 @@ Current progress:
         public, but only from the namespaces that truly own them
   - remaining root leaks around session/config/history ownership were also
     closed
-    - `cas_solver::session_api::runtime` is now the owner for
+    - `cas_solver::session_api::simplifier` is now the owner for
       `evaluate_unary_command_message_on_runtime(...)`
     - `cas_solver::session_api::session_support` is now the owner for
       `InspectHistoryContext`
-    - `cas_solver::session_api::options` is the owner consumed by `cas_session`
+    - `cas_solver::session_api::simplifier` is the owner consumed by `cas_session`
       for `apply_simplifier_toggle_config(...)`
     - after these migrations, a workspace grep outside `cas_solver` no longer
       finds non-legitimate `cas_solver::*` root imports beyond:
@@ -357,8 +408,167 @@ Current progress:
         root-level export
   - remaining session-facing runtime/option traits were also moved behind the
     explicit owner namespaces
-    - `cas_solver::session_api::runtime` now re-exports:
+    - `cas_solver::session_api::health` now owns the health-facing surface:
       - `ReplHealthRuntimeContext`
+      - `evaluate_health_command_message_on_repl_core(...)`
+      - `update_health_report_on_repl_core(...)`
+      - `HealthCommandInput`
+      - `HealthStatusInput`
+      - `HealthCommandEvalOutput`
+      - `HealthSuiteCategory`
+      - health formatting/messages/catalog/report helpers
+    - `cas_solver::session_api::history` now owns the history/inspect-facing surface:
+      - `evaluate_history_command_message_on_repl_core(...)`
+      - `evaluate_show_command_lines_on_repl_core(...)`
+      - `evaluate_delete_history_command_message_on_repl_core(...)`
+      - `evaluate_history_command_lines(...)`
+      - `evaluate_history_command_lines_with_context(...)`
+      - `delete_history_entries(...)`
+      - `history_overview_entries(...)`
+      - `InspectHistoryContext`
+      - history/inspect parse/format helpers
+      - `DeleteHistory*`, `HistoryOverview*`, `HistoryEntry*`,
+        `InspectHistoryEntryInputError`, `ParseHistoryEntryIdError`
+    - `cas_solver::session_api::config` now owns the config-command surface:
+      - `evaluate_and_apply_config_command(...)`
+      - `evaluate_and_apply_config_command_on_runtime(...)`
+      - `evaluate_config_command(...)`
+      - `parse_config_command_input(...)`
+      - `config_*_usage_message(...)`
+      - `ConfigCommandInput`, `ConfigCommandResult`, `ConfigCommandApplyOutput`
+    - `cas_solver::session_api::bindings` now owns the assignment/bindings-facing
+      surface:
+      - `apply_assignment(...)`
+      - `evaluate_assignment_command_message_on_repl_core(...)`
+      - `evaluate_let_assignment_command_message_on_repl_core(...)`
+      - `evaluate_vars_command_message_on_repl_core(...)`
+      - `evaluate_clear_command_lines_on_repl_core(...)`
+      - `evaluate_assignment_command(...)`
+      - `evaluate_let_assignment_command(...)`
+      - `evaluate_vars_command_lines(...)`
+      - `evaluate_vars_command_lines_with_context(...)`
+      - `clear_bindings_command(...)`
+      - assignment/bindings parse/format helpers
+      - `AssignmentCommandOutput`, `AssignmentError`, `LetAssignmentParseError`,
+        `ParsedLetAssignment`, `BindingOverviewEntry`, `ClearBindingsResult`
+    - `cas_solver::session_api::budget` now owns the solve-budget-facing
+      surface:
+      - `apply_solve_budget_command(...)`
+      - `evaluate_solve_budget_command_message(...)`
+      - `evaluate_solve_budget_command_message_on_repl_core(...)`
+      - `format_solve_budget_command_message(...)`
+      - `SolveBudgetCommandResult`
+    - `cas_solver::session_api::settings` now owns the settings-facing
+      surface:
+      - `evaluate_set_command_on_repl_core(...)`
+      - `set_command_state_for_repl_core(...)`
+      - `apply_set_command_plan_on_repl_core(...)`
+      - `evaluate_steps_command_input(...)`
+      - `steps_command_state_for_repl_core(...)`
+      - `apply_steps_command_update_on_repl_core(...)`
+      - `evaluate_context_*`
+      - `evaluate_autoexpand_*`
+      - `evaluate_semantics_*`
+      - `evaluate_*_with_config_sync_on_runtime(...)`
+      - `ReplSetRuntimeContext`, `ReplStepsRuntimeContext`,
+        `ReplSemanticsRuntimeContext`
+      - `ReplSetCommandOutput`, `ReplSetMessageKind`
+      - `Set*`, `Steps*`, `Context*`, `Autoexpand*`, `SemanticsPreset*`,
+        `SemanticsSet*` command/state/apply types
+    - `cas_solver::session_api::eval` now owns the eval-facing session
+      surface:
+      - `evaluate_eval_with_session(...)`
+      - `evaluate_eval_command_output(...)`
+      - `evaluate_eval_text_simplify_with_session(...)`
+      - `evaluate_eval_command_render_plan_on_repl_core(...)`
+      - `evaluate_expand_command_render_plan_on_repl_core(...)`
+      - `EvalCommandError`, `EvalCommandOutput`, `EvalCommandRenderPlan`
+    - `cas_solver::session_api::lifecycle` now owns the REPL/session
+      lifecycle-facing surface:
+      - `build_runtime_with_config(...)`
+      - `reset_runtime_with_config(...)`
+      - `reset_runtime_full_with_config(...)`
+      - `build_repl_prompt(...)`
+      - `eval_options_from_repl_core(...)`
+      - `clear_repl_profile_cache(...)`
+      - `reset_repl_runtime_state(...)`
+    - `cas_solver::session_api::profile` now owns the profile/profile-cache
+      surface:
+      - `evaluate_profile_cache_command_lines_on_repl_core(...)`
+      - `evaluate_profile_command_message_on_repl_core(...)`
+      - `apply_profile_command_on_repl_core(...)`
+      - profile/profile-cache parse/apply/format helpers
+      - `ProfileCacheCommandResult`, `ProfileCommandInput`, `ProfileCommandResult`
+    - `cas_solver::session_api::assumptions` now owns the assumptions-facing
+      surface:
+      - `format_assumption_records_summary(...)`
+      - `filter_blocked_hints_for_eval(...)`
+      - `format_eval_blocked_hints_lines(...)`
+      - `format_solve_assumption_and_blocked_sections(...)`
+      - `format_blocked_hint_lines(...)`
+      - `format_diagnostics_requires_lines(...)`
+      - `format_domain_warning_lines(...)`
+      - `format_normalized_condition_lines(...)`
+      - `format_required_condition_lines(...)`
+      - `collect_assumed_conditions_from_steps(...)`
+      - `format_assumed_conditions_report_lines(...)`
+      - `group_assumed_conditions_by_rule(...)`
+      - `SolveAssumptionSectionConfig`
+    - `cas_solver::session_api::analysis` now owns the analysis-facing
+      surface:
+      - `evaluate_equiv_*`
+      - `evaluate_explain_*`
+      - `evaluate_visualize_*`
+      - `format_explain_command_error_message(...)`
+      - `format_visualize_command_error_message(...)`
+      - `ExplainCommandEvalError`, `ExplainGcdEvalOutput`,
+        `VisualizeCommandOutput`, `VisualizeEvalError`
+    - `cas_solver::session_api::linear_algebra` now owns the
+      linear-algebra-facing surface:
+      - `evaluate_det_command_message_on_repl_core(...)`
+      - `evaluate_trace_command_message_on_repl_core(...)`
+      - `evaluate_transpose_command_message_on_repl_core(...)`
+      - `evaluate_linear_system_command_message_on_repl_core(...)`
+      - `evaluate_linear_system_command_message(...)`
+    - `cas_solver::session_api::algebra` now owns the algebra-facing
+      surface:
+      - `evaluate_expand_log_*`
+      - `evaluate_telescope_*`
+      - `evaluate_weierstrass_*`
+      - `evaluate_rationalize_command_lines*`
+      - algebra parse/usage helpers for expand/telescope/weierstrass
+    - `cas_solver::session_api::substitute` now owns the substitute-facing
+      surface:
+      - `evaluate_substitute_*`
+      - `evaluate_substitute_invocation_user_message_on_repl_core(...)`
+      - `format_substitute_eval_lines(...)`
+      - `format_substitute_parse_error_message(...)`
+      - `substitute_render_mode_from_display_mode(...)`
+      - `SubstituteRenderMode`
+    - `cas_solver::session_api::repl` now owns the REPL-facing parse/preprocess
+      surface:
+      - `build_prompt_from_eval_options(...)`
+      - `parse_repl_command_input(...)`
+      - `preprocess_repl_function_syntax(...)`
+      - `split_repl_statements(...)`
+      - `ReplCommandInput`
+    - `cas_solver::session_api::timeline` now owns the timeline-facing session
+      surface:
+      - `evaluate_timeline_command_with_session(...)`
+      - `format_timeline_command_error_message(...)`
+      - `TimelineCommandInput`
+      - `TimelineCommandEvalError`
+    - `cas_solver::session_api::solve` now owns the solve/full-simplify-facing
+      REPL surface:
+      - `evaluate_solve_command_message_on_repl_core(...)`
+      - `evaluate_full_simplify_command_lines_on_repl_core(...)`
+      - `format_solve_command_eval_lines(...)`
+      - `TimelineSimplifyEvalError`
+      - `TimelineSolveEvalError`
+      - `TimelineCommandEvalOutput`
+      - `TimelineSimplifyEvalOutput`
+      - `TimelineSolveEvalOutput`
+    - `cas_solver::session_api::runtime` now re-exports:
       - `ReplSemanticsRuntimeContext`
       - `ReplSolveRuntimeContext`
       - `ReplEngineRuntimeContext`
@@ -369,7 +579,7 @@ Current progress:
       - `ReplSessionEngineRuntimeContext`
       - `EvalCommandError`
       - `EvalCommandOutput`
-    - `cas_solver::session_api::options` now re-exports:
+    - `cas_solver::session_api::settings` now re-exports:
       - `ReplSetRuntimeContext`
       - `ReplStepsRuntimeContext`
       - `SetCommandApplyEffects`
@@ -378,6 +588,13 @@ Current progress:
       - `SetDisplayMode`
       - `StepsCommandApplyEffects`
       - `StepsDisplayMode`
+    - `cas_solver::session_api::simplifier` now re-exports:
+      - `ReplSimplifierRuntimeContext`
+      - `SimplifierRuleConfig`
+      - `SimplifierToggleConfig`
+      - `build_simplifier_with_rule_config(...)`
+      - `apply_simplifier_toggle_config(...)`
+      - `set_simplifier_toggle_rule(...)`
     - `cas_session` runtime impls were migrated to consume those owners
       directly instead of pulling them from `cas_solver::*` root
     - rationale:
@@ -895,6 +1112,10 @@ It is either:
 - inside `cas_session` itself, the crate root no longer acts as an internal hub
   for `CasConfig`, `ReplCore`, or `SessionState`; module code now imports those
   owners directly from `config`, `repl_core`, and `state_core`.
+- inside `cas_session`, the crate root also no longer reexports internal
+  support types like `SimplifyCacheKey`, `SimplifiedCache`, `EntryKind`,
+  `EntryId`, `ResolveError`, or `CacheConfig`; module code now points directly
+  to `cache::*` or `cas_session_core::types::*`.
 - `cas_cli::EvalArgs` is no longer stringly-typed for `steps/context/branch/complex/autoexpand`; those axes are now explicit `ValueEnum`s, so CLI parsing and downstream mapping no longer depend on ad-hoc string contracts.
 - `cas_api_models::EvalSessionRunConfig` now carries typed enums for
   `steps/context/branch/expand/complex/budget/domain/const_fold/value_domain/complex_branch/inv_trig/assume_scope`,
@@ -906,3 +1127,66 @@ It is either:
 - `cas_solver::eval_option_axes` now also consumes those shared enums directly;
   the intermediate `enum -> &str -> parse -> enum` bridge was removed, so the
   eval path stays typed until the final wire-label boundary.
+- `cas_solver/src/exports.rs` has been removed; the crate root now wires
+  directly to `exports_base`, `exports_commands`, and `exports_repl` instead of
+  keeping an extra internal hub layer.
+- `cas_solver/src/repl_command_types.rs` has been removed; REPL parsing now
+  uses `cas_solver_core::repl_command_types::ReplCommandInput` directly instead
+  of a local pass-through wrapper.
+- `cas_solver/src/exports_repl/session.rs` has been removed; the root no longer
+  reexports REPL session/runtime helpers through an extra wrapper layer, and
+  internal users now point to `repl_session_runtime` or `session_api::runtime`
+  directly.
+- `cas_solver/src/repl_set_types.rs` has been removed; `ReplSetCommandOutput`
+  and `ReplSetMessageKind` now come straight from
+  `cas_solver_core::repl_set_types` or `cas_solver::session_api::settings`
+  instead of a local pass-through module.
+- `cas_solver/src/session_api/symbolic_commands.rs` and
+  `cas_solver/src/session_api/types.rs` have been removed; their residual
+  surface now lives under the thematic owners `session_api::solve`,
+  `session_api::settings`, `session_api::simplifier`, and `session_api::eval`
+  instead of two mixed grab-bags.
+- `cas_solver/src/bindings_types.rs`, `config_command_types.rs`,
+  `options_budget_types.rs`, and `semantics_command_types.rs` have been
+  removed; those types now come directly from `cas_solver_core` or the local
+  owner modules instead of trivial pass-through wrappers.
+- `cas_solver/src/substitute_command_types.rs` has also been removed; the
+  substitute command now uses `cas_solver_core::substitute_command_types` and
+  `cas_solver::substitute::SubstituteSimplifyEvalOutput` directly instead of a
+  local pass-through types wrapper.
+- `cas_solver/src/autoexpand_command_types.rs`,
+  `context_command_types.rs`, `semantics_preset_types.rs`, and
+  `semantics_set_types.rs` have also been removed; the autoexpand/context/
+  semantics flows now import those models directly from `cas_solver_core`
+  instead of going through local pass-through wrappers.
+- `cas_solver/src/assignment_command/types.rs` and
+  `profile_command/types.rs` have also been removed; assignment/profile command
+  flows now import those models directly from `cas_solver_core` instead of
+  local pass-through wrappers.
+- `cas_solver/src/semantics_set_parse.rs` has also been removed; callers now
+  use `semantics_set_parse_apply::evaluate_semantics_set_args` directly instead
+  of a one-line forwarding wrapper.
+- `cas_solver/src/solve_backend.rs` and `solve_backend_active.rs` have also
+  been removed; solve dispatch now points directly to
+  `solve_backend_contract` and `solve_backend_local`.
+- `cas_solver/src/assignment_apply/context.rs`,
+  `bindings_command/context.rs`, `inspect_runtime/raw.rs`, and
+  `path_rewrite.rs` have also been removed; those parent modules now reexport
+  or consume their `cas_solver_core` owners directly instead of keeping
+  single-item wrapper leaves.
+- `cas_solver/src/assignment_types.rs`, `semantics_view_types.rs`, and
+  `solve_input_types.rs` have also been removed; assignment parsing/formatting,
+  semantics view formatting, and solve command façades now import those models
+  directly from `cas_solver_core` instead of trivial local wrappers.
+- `cas_solver/src/health_suite_types.rs` and its submodules have also been
+  removed; the health suite catalog/runner/reporting path now imports
+  `Category`, `HealthCase`, `HealthLimits`, and `HealthCaseResult` directly
+  from `cas_solver_core::{health_category, health_suite_models}` instead of a
+  local pass-through wrapper tree.
+- dead passthrough wrappers in `exports_base/solver_core/` (`domain.rs`,
+  `solve.rs`) have been removed; those items are now owned only by
+  `cas_solver::api` / `cas_solver_core`, without orphan compatibility files.
+- `cas_cli` non-REPL commands now have a single render owner in
+  `commands::dispatch`; `app.rs` and the `frontend_cli` benchmark both route
+  through the same dispatch seam instead of maintaining duplicate command
+  matches.

@@ -1,4 +1,7 @@
-use crate::{SessionStore, SimplifiedCache, SimplifyCacheKey};
+use crate::{
+    cache::{SimplifiedCache, SimplifyCacheKey},
+    SessionStore,
+};
 use cas_session_core::store_snapshot::{
     SessionStoreSnapshot as CoreSessionStoreSnapshot, SimplifiedCacheSnapshot,
 };

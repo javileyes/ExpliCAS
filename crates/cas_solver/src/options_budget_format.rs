@@ -1,4 +1,4 @@
-use crate::options_budget_types::SolveBudgetCommandResult;
+use cas_solver_core::session_runtime::SolveBudgetCommandResult;
 
 /// Format a `budget` command result as a user-facing message.
 pub fn format_solve_budget_command_message(result: &SolveBudgetCommandResult) -> String {

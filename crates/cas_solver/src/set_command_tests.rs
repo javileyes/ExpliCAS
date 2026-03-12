@@ -1,5 +1,7 @@
 #[cfg(test)]
 mod tests {
+    use cas_solver_core::rationalize_policy::AutoRationalizeLevel;
+
     use crate::{
         apply_set_command_plan, evaluate_set_command_input, format_set_help_text,
         parse_set_command_input, SetCommandApplyEffects, SetCommandInput, SetCommandResult,
@@ -9,7 +11,7 @@ mod tests {
     fn state() -> SetCommandState {
         SetCommandState {
             transform: true,
-            rationalize: crate::AutoRationalizeLevel::Level15,
+            rationalize: AutoRationalizeLevel::Level15,
             heuristic_poly: crate::HeuristicPoly::Off,
             autoexpand_binomials: crate::AutoExpandBinomials::Off,
             steps_mode: crate::StepsMode::On,
@@ -77,7 +79,7 @@ mod tests {
 
         let plan = crate::SetCommandPlan {
             set_transform: Some(false),
-            set_rationalize: Some(crate::AutoRationalizeLevel::Level1),
+            set_rationalize: Some(AutoRationalizeLevel::Level1),
             set_heuristic_poly: Some(crate::HeuristicPoly::On),
             set_autoexpand_binomials: Some(crate::AutoExpandBinomials::On),
             set_steps_mode: Some(crate::StepsMode::Compact),
@@ -104,7 +106,7 @@ mod tests {
         assert!(!simplify_options.enable_transform);
         assert_eq!(
             simplify_options.rationalize.auto_level,
-            crate::AutoRationalizeLevel::Level1
+            AutoRationalizeLevel::Level1
         );
         assert_eq!(
             simplify_options.shared.heuristic_poly,

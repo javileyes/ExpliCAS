@@ -1,4 +1,5 @@
-use crate::{format_solve_budget_command_message, SolveBudgetCommandResult};
+use crate::options_budget_format::format_solve_budget_command_message;
+use cas_solver_core::session_runtime::SolveBudgetCommandResult;
 pub use cas_solver_core::session_runtime::SolveBudgetContext;
 
 /// Apply a `budget` command:

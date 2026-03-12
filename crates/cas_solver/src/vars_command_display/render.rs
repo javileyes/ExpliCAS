@@ -1,4 +1,5 @@
-use crate::{format_binding_overview_lines, vars_empty_message, BindingOverviewEntry};
+use crate::bindings_format::{format_binding_overview_lines, vars_empty_message};
+use cas_solver_core::session_runtime::BindingOverviewEntry;
 
 /// Evaluate `vars` command lines using an expression renderer callback.
 pub fn evaluate_vars_command_lines<F>(

@@ -1,5 +1,6 @@
 use cas_api_models::ExprStatsWire;
 use cas_ast::{Context, Expr, ExprId};
+use cas_math::poly_store::try_get_poly_result_term_count;
 
 fn count_add_terms(ctx: &Context, expr: ExprId) -> Option<usize> {
     let inner_expr = match ctx.get(expr) {
@@ -41,7 +42,7 @@ fn count_add_terms(ctx: &Context, expr: ExprId) -> Option<usize> {
 pub(crate) fn expr_output_stats(ctx: &Context, expr: ExprId) -> ExprStatsWire {
     let (node_count, depth) = cas_ast::traversal::count_nodes_and_max_depth(ctx, expr);
     let term_count =
-        crate::try_get_poly_result_term_count(ctx, expr).or_else(|| count_add_terms(ctx, expr));
+        try_get_poly_result_term_count(ctx, expr).or_else(|| count_add_terms(ctx, expr));
 
     ExprStatsWire {
         node_count,

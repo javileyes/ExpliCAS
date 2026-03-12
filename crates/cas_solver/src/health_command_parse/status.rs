@@ -1,4 +1,4 @@
-use crate::health_command_types::HealthStatusInput;
+use cas_solver_core::health_runtime::HealthStatusInput;
 
 pub(super) fn parse_health_status_input(parts: &[&str]) -> HealthStatusInput {
     let opts: Vec<&str> = parts.iter().skip(2).copied().collect();

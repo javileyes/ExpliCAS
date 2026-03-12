@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use crate::runtime::{EvalOptions, ExpandPolicy, Simplifier, SimplifyOptions};
-    use crate::session_api::runtime::{
+    use crate::session_api::settings::{
         apply_autoexpand_command_on_repl_core, apply_context_command_on_repl_core,
         apply_semantics_command_on_repl_core, evaluate_autoexpand_command_on_repl_core,
         evaluate_autoexpand_command_with_config_sync_on_runtime,

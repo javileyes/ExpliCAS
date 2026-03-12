@@ -1,4 +1,4 @@
-use crate::autoexpand_command_types::AutoexpandBudgetView;
+use cas_solver_core::autoexpand_command_types::AutoexpandBudgetView;
 
 /// Format status output for `autoexpand`.
 pub fn format_autoexpand_current_message(

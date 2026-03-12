@@ -1,65 +1,98 @@
 use super::types::EvalOptionAxes;
 
 fn axes_match_current_options(opts: &crate::EvalOptions, axes: EvalOptionAxes) -> bool {
-    let context = match opts.shared.context_mode {
-        crate::ContextMode::Standard => cas_api_models::EvalContextMode::Standard,
-        crate::ContextMode::Solve => cas_api_models::EvalContextMode::Solve,
-        crate::ContextMode::IntegratePrep => cas_api_models::EvalContextMode::Integrate,
-        crate::ContextMode::Auto => cas_api_models::EvalContextMode::Auto,
-    };
-
-    let branch = match opts.branch_mode {
-        crate::BranchMode::PrincipalBranch => cas_api_models::EvalBranchMode::Principal,
-        crate::BranchMode::Strict => cas_api_models::EvalBranchMode::Strict,
-    };
-
-    let complex = match opts.complex_mode {
-        crate::ComplexMode::On => cas_api_models::EvalComplexMode::On,
-        crate::ComplexMode::Off => cas_api_models::EvalComplexMode::Off,
-        crate::ComplexMode::Auto => cas_api_models::EvalComplexMode::Auto,
-    };
-
-    let steps = match opts.steps_mode {
-        crate::StepsMode::On => cas_api_models::EvalStepsMode::On,
-        crate::StepsMode::Compact => cas_api_models::EvalStepsMode::Compact,
-        crate::StepsMode::Off => cas_api_models::EvalStepsMode::Off,
-    };
-
-    let autoexpand = match opts.shared.expand_policy {
-        crate::ExpandPolicy::Auto => cas_api_models::EvalExpandPolicy::Auto,
-        crate::ExpandPolicy::Off => cas_api_models::EvalExpandPolicy::Off,
-    };
-
-    let domain = match opts.shared.semantics.domain_mode {
-        crate::DomainMode::Strict => cas_api_models::EvalDomainMode::Strict,
-        crate::DomainMode::Generic => cas_api_models::EvalDomainMode::Generic,
-        crate::DomainMode::Assume => cas_api_models::EvalDomainMode::Assume,
-    };
-
-    let inv_trig = match opts.shared.semantics.inv_trig {
-        crate::InverseTrigPolicy::PrincipalValue => cas_api_models::EvalInvTrigPolicy::Principal,
-        crate::InverseTrigPolicy::Strict => cas_api_models::EvalInvTrigPolicy::Strict,
-    };
-
-    let value_domain = match opts.shared.semantics.value_domain {
-        crate::ValueDomain::ComplexEnabled => cas_api_models::EvalValueDomain::Complex,
-        crate::ValueDomain::RealOnly => cas_api_models::EvalValueDomain::Real,
-    };
-
-    let assume_scope = match opts.shared.semantics.assume_scope {
-        crate::AssumeScope::Wildcard => cas_api_models::EvalAssumeScope::Wildcard,
-        crate::AssumeScope::Real => cas_api_models::EvalAssumeScope::Real,
-    };
-
-    context == axes.context
-        && branch == axes.branch
-        && complex == axes.complex
-        && steps == axes.steps
-        && autoexpand == axes.autoexpand
-        && domain == axes.domain
-        && inv_trig == axes.inv_trig
-        && value_domain == axes.value_domain
-        && assume_scope == axes.assume_scope
+    matches!(
+        (opts.shared.context_mode, axes.context),
+        (
+            crate::ContextMode::Standard,
+            cas_api_models::EvalContextMode::Standard
+        ) | (
+            crate::ContextMode::Solve,
+            cas_api_models::EvalContextMode::Solve
+        ) | (
+            crate::ContextMode::IntegratePrep,
+            cas_api_models::EvalContextMode::Integrate
+        ) | (
+            crate::ContextMode::Auto,
+            cas_api_models::EvalContextMode::Auto
+        )
+    ) && matches!(
+        (opts.branch_mode, axes.branch),
+        (
+            crate::BranchMode::PrincipalBranch,
+            cas_api_models::EvalBranchMode::Principal
+        ) | (
+            crate::BranchMode::Strict,
+            cas_api_models::EvalBranchMode::Strict
+        )
+    ) && matches!(
+        (opts.complex_mode, axes.complex),
+        (crate::ComplexMode::On, cas_api_models::EvalComplexMode::On)
+            | (
+                crate::ComplexMode::Off,
+                cas_api_models::EvalComplexMode::Off
+            )
+            | (
+                crate::ComplexMode::Auto,
+                cas_api_models::EvalComplexMode::Auto
+            )
+    ) && matches!(
+        (opts.steps_mode, axes.steps),
+        (crate::StepsMode::On, cas_api_models::EvalStepsMode::On)
+            | (
+                crate::StepsMode::Compact,
+                cas_api_models::EvalStepsMode::Compact
+            )
+            | (crate::StepsMode::Off, cas_api_models::EvalStepsMode::Off)
+    ) && matches!(
+        (opts.shared.expand_policy, axes.autoexpand),
+        (
+            crate::ExpandPolicy::Auto,
+            cas_api_models::EvalExpandPolicy::Auto
+        ) | (
+            crate::ExpandPolicy::Off,
+            cas_api_models::EvalExpandPolicy::Off
+        )
+    ) && matches!(
+        (opts.shared.semantics.domain_mode, axes.domain),
+        (
+            crate::DomainMode::Strict,
+            cas_api_models::EvalDomainMode::Strict
+        ) | (
+            crate::DomainMode::Generic,
+            cas_api_models::EvalDomainMode::Generic
+        ) | (
+            crate::DomainMode::Assume,
+            cas_api_models::EvalDomainMode::Assume
+        )
+    ) && matches!(
+        (opts.shared.semantics.inv_trig, axes.inv_trig),
+        (
+            crate::InverseTrigPolicy::PrincipalValue,
+            cas_api_models::EvalInvTrigPolicy::Principal
+        ) | (
+            crate::InverseTrigPolicy::Strict,
+            cas_api_models::EvalInvTrigPolicy::Strict
+        )
+    ) && matches!(
+        (opts.shared.semantics.value_domain, axes.value_domain),
+        (
+            crate::ValueDomain::ComplexEnabled,
+            cas_api_models::EvalValueDomain::Complex
+        ) | (
+            crate::ValueDomain::RealOnly,
+            cas_api_models::EvalValueDomain::Real
+        )
+    ) && matches!(
+        (opts.shared.semantics.assume_scope, axes.assume_scope),
+        (
+            crate::AssumeScope::Wildcard,
+            cas_api_models::EvalAssumeScope::Wildcard
+        ) | (
+            crate::AssumeScope::Real,
+            cas_api_models::EvalAssumeScope::Real
+        )
+    )
 }
 
 /// Apply typed eval option axes onto `EvalOptions`.

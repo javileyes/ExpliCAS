@@ -4,7 +4,7 @@ impl Repl {
     /// Handle the 'expand' command for aggressive polynomial expansion
     /// Uses the engine `expand()` path which distributes without educational guards
     pub(crate) fn handle_expand_core(&mut self, line: &str) -> ReplReply {
-        match cas_solver::session_api::runtime::evaluate_expand_command_render_plan_on_repl_core(
+        match cas_solver::session_api::eval::evaluate_expand_command_render_plan_on_repl_core(
             &mut self.core,
             line,
             self.verbosity == Verbosity::None,
@@ -18,7 +18,7 @@ impl Repl {
     /// Expands ln(xy) → ln(x) + ln(y), ln(x/y) → ln(x) - ln(y), ln(x^n) → n*ln(x)
     pub(crate) fn handle_expand_log_core(&mut self, line: &str) -> ReplReply {
         let message =
-            match cas_solver::session_api::runtime::evaluate_expand_log_invocation_message_on_repl_core(
+            match cas_solver::session_api::algebra::evaluate_expand_log_invocation_message_on_repl_core(
                 &mut self.core,
                 line,
             ) {

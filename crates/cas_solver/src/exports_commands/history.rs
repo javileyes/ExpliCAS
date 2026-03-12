@@ -20,9 +20,6 @@ pub use crate::history_parse::parse_history_ids;
 pub use crate::history_show_format::{
     format_show_history_command_lines, format_show_history_command_lines_with_context,
 };
-pub use crate::history_types::{
-    DeleteHistoryError, DeleteHistoryResult, HistoryOverviewEntry, HistoryOverviewKind,
-};
 pub use crate::input_parse_common::{
     parse_statement_or_session_ref, rsplit_ignoring_parens, statement_to_expr_id,
 };
@@ -33,7 +30,10 @@ pub use crate::inspect_parse::parse_history_entry_id;
 pub use crate::inspect_runtime::{
     inspect_history_entry, inspect_history_entry_input, HistoryInspectEntryRaw,
 };
-pub use crate::inspect_types::{
+pub use cas_solver_core::history_models::{
+    DeleteHistoryError, DeleteHistoryResult, HistoryOverviewEntry, HistoryOverviewKind,
+};
+pub use cas_solver_core::history_models::{
     HistoryEntryDetails, HistoryEntryInspection, HistoryExprInspection,
     InspectHistoryEntryInputError, ParseHistoryEntryIdError,
 };

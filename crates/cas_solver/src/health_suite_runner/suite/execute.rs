@@ -1,5 +1,5 @@
-use crate::health_suite_types::{HealthCase, HealthCaseResult};
 use crate::Simplifier;
+use cas_solver_core::health_suite_models::{HealthCase, HealthCaseResult};
 
 use super::super::case::run_case;
 

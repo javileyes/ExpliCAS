@@ -1,6 +1,7 @@
 use cas_solver_core::diagnostics_model::Diagnostics;
 
-use crate::{env::Environment, EntryId, ResolveError, SessionStore};
+use crate::{env::Environment, SessionStore};
+use cas_session_core::types::{EntryId, ResolveError};
 
 /// Resolve all `Expr::SessionRef` in an expression tree.
 pub fn resolve_session_refs(

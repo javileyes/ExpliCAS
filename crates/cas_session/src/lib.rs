@@ -72,10 +72,9 @@ mod store_cache_policy_tests;
 #[cfg(test)]
 mod timeline_command_tests;
 
-pub(crate) use cache::{SimplifiedCache, SimplifyCacheKey};
 pub type CacheHitEntryId = u64;
 
-pub(crate) type Entry = cas_session_core::store::Entry<Diagnostics, SimplifiedCache>;
-pub(crate) type SessionStore = cas_session_core::store::SessionStore<Diagnostics, SimplifiedCache>;
+pub(crate) type Entry = cas_session_core::store::Entry<Diagnostics, cache::SimplifiedCache>;
+pub(crate) type SessionStore =
+    cas_session_core::store::SessionStore<Diagnostics, cache::SimplifiedCache>;
 pub use cas_session_core::env;
-pub(crate) use cas_session_core::types::{CacheConfig, EntryId, EntryKind, RefMode, ResolveError};

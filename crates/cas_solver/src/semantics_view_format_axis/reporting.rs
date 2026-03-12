@@ -1,4 +1,4 @@
-use crate::semantics_view_types::SemanticsViewState;
+use cas_solver_core::semantics_view_types::SemanticsViewState;
 
 pub(super) fn format_reporting_axis_lines(state: &SemanticsViewState, axis: &str) -> Vec<String> {
     let mut lines = Vec::new();

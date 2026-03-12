@@ -1,4 +1,4 @@
-use crate::substitute_command_types::SubstituteRenderMode;
+use cas_solver_core::substitute_command_types::SubstituteRenderMode;
 
 pub(super) fn should_render_substitute_step(
     step: &crate::Step,

@@ -4,7 +4,8 @@ use cas_solver_core::diagnostics_model::{Diagnostics, RequiredItem};
 use super::plumbing::{
     mode_resolve_config, push_session_propagated_requirement, with_mode_resolution_plumbing,
 };
-use crate::{env::Environment, EntryId, RefMode, ResolveError, SessionStore, SimplifyCacheKey};
+use crate::{cache::SimplifyCacheKey, env::Environment, SessionStore};
+use cas_session_core::types::{EntryId, RefMode, ResolveError};
 
 /// Resolve session refs with mode selection and cache checking.
 pub fn resolve_session_refs_with_mode(

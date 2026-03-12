@@ -31,7 +31,7 @@ pub fn derive_requires_from_equation(
         rhs,
         existing,
         vd == crate::ValueDomain::RealOnly,
-        |ctx, expr| crate::prove_positive(ctx, expr, vd),
+        |ctx, expr| crate::api::prove_positive(ctx, expr, vd),
     )
 }
 

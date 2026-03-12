@@ -5,7 +5,7 @@ use cas_solver_core::diagnostics_model::{Diagnostics, RequiredItem};
 use cas_solver_core::domain_mode::DomainMode;
 
 use super::SessionEvalStore;
-use crate::SimplifyCacheKey;
+use crate::cache::SimplifyCacheKey;
 
 impl EvalStore for SessionEvalStore {
     type DomainMode = DomainMode;
@@ -14,11 +14,14 @@ impl EvalStore for SessionEvalStore {
     type Diagnostics = Diagnostics;
 
     fn push_raw_expr(&mut self, expr: ExprId, raw_input: String) -> u64 {
-        self.push(crate::EntryKind::Expr(expr), raw_input)
+        self.push(cas_session_core::types::EntryKind::Expr(expr), raw_input)
     }
 
     fn push_raw_equation(&mut self, lhs: ExprId, rhs: ExprId, raw_input: String) -> u64 {
-        self.push(crate::EntryKind::Eq { lhs, rhs }, raw_input)
+        self.push(
+            cas_session_core::types::EntryKind::Eq { lhs, rhs },
+            raw_input,
+        )
     }
 
     fn touch_cached(&mut self, entry_id: u64) {
@@ -39,7 +42,7 @@ impl EvalStore for SessionEvalStore {
     ) {
         self.update_simplified(
             id,
-            crate::SimplifiedCache {
+            crate::cache::SimplifiedCache {
                 key: SimplifyCacheKey::from_context(domain),
                 expr,
                 requires,

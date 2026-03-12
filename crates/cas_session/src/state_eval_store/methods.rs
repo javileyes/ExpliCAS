@@ -30,7 +30,11 @@ impl SessionEvalStore {
         self.dirty = false;
     }
 
-    pub(crate) fn push(&mut self, kind: crate::EntryKind, raw_text: String) -> u64 {
+    pub(crate) fn push(
+        &mut self,
+        kind: cas_session_core::types::EntryKind,
+        raw_text: String,
+    ) -> u64 {
         self.dirty = true;
         self.store.push(kind, raw_text)
     }
@@ -55,7 +59,7 @@ impl SessionEvalStore {
         self.store.update_diagnostics(id, diagnostics);
     }
 
-    pub(crate) fn update_simplified(&mut self, id: u64, simplified: crate::SimplifiedCache) {
+    pub(crate) fn update_simplified(&mut self, id: u64, simplified: crate::cache::SimplifiedCache) {
         self.dirty = true;
         self.store.update_simplified(id, simplified);
     }

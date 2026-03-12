@@ -2,8 +2,9 @@ mod execute;
 mod select;
 
 use crate::health_suite_catalog::default_suite;
-use crate::health_suite_types::{Category, HealthCaseResult};
 use crate::Simplifier;
+use cas_solver_core::health_category::Category;
+use cas_solver_core::health_suite_models::HealthCaseResult;
 
 /// Run entire suite and return all results
 #[allow(dead_code)]

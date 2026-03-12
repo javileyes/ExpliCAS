@@ -1,4 +1,4 @@
-use crate::health_suite_types::HealthCaseResult;
+use cas_solver_core::health_suite_models::HealthCaseResult;
 
 pub(super) fn append_failure_details(
     report: &mut String,

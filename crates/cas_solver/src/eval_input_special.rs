@@ -1,10 +1,11 @@
 use cas_api_models::EvalLimitApproach;
 use cas_ast::ExprId;
+use cas_math::limit_types::Approach;
 
-pub(crate) fn map_limit_approach(approach: EvalLimitApproach) -> crate::Approach {
+pub(crate) fn map_limit_approach(approach: EvalLimitApproach) -> Approach {
     match approach {
-        EvalLimitApproach::PosInfinity => crate::Approach::PosInfinity,
-        EvalLimitApproach::NegInfinity => crate::Approach::NegInfinity,
+        EvalLimitApproach::PosInfinity => Approach::PosInfinity,
+        EvalLimitApproach::NegInfinity => Approach::NegInfinity,
     }
 }
 

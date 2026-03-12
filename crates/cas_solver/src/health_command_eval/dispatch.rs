@@ -1,7 +1,7 @@
 use crate::health_command_format::format_health_report_lines;
 use crate::health_command_messages::clear_health_profiler;
 use crate::health_command_parse::evaluate_health_command_input;
-use crate::health_command_types::{HealthCommandEvalOutput, HealthCommandInput};
+use cas_solver_core::health_runtime::{HealthCommandEvalOutput, HealthCommandInput};
 
 use super::{output, status::evaluate_health_status_lines};
 

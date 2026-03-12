@@ -44,3 +44,7 @@ harness = false
 [[bench]]
 name = "frontend_limit"
 harness = false
+
+[[bench]]
+name = "frontend_repl_parse"
+harness = false

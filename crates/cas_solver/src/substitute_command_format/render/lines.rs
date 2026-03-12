@@ -1,13 +1,14 @@
 mod header;
 mod step_lines;
 
-use crate::substitute_command_types::{SubstituteEvalOutput, SubstituteRenderMode};
+use crate::substitute::SubstituteSimplifyEvalOutput;
+use cas_solver_core::substitute_command_types::SubstituteRenderMode;
 
 /// Format substitute command eval output into display lines.
 pub fn format_substitute_eval_lines(
     context: &cas_ast::Context,
     input: &str,
-    output: &SubstituteEvalOutput,
+    output: &SubstituteSimplifyEvalOutput,
     mode: SubstituteRenderMode,
 ) -> Vec<String> {
     let mut lines = header::build_header_lines(input, output, mode);

@@ -1,4 +1,4 @@
-use crate::health_suite_types::HealthCaseResult;
+use cas_solver_core::health_suite_models::HealthCaseResult;
 
 pub fn count_results(results: &[HealthCaseResult]) -> (usize, usize) {
     let passed = results.iter().filter(|r| r.passed).count();

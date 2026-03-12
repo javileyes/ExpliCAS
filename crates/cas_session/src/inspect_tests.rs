@@ -1,8 +1,6 @@
 use crate::state_core::SessionState;
 #[allow(unused_imports)]
-use cas_solver::session_api::{
-    formatting::*, options::*, runtime::*, session_support::*, symbolic_commands::*, types::*,
-};
+use cas_solver::session_api::{assumptions::*, history::*, runtime::*, simplifier::*};
 
 #[test]
 fn inspect_history_entry_reports_missing_id() {
@@ -16,7 +14,10 @@ fn inspect_history_entry_expr_contains_parsed() {
     let mut state = SessionState::new();
     let mut engine = cas_solver::runtime::Engine::new();
     let expr = cas_parser::parse("x + x", &mut engine.simplifier.context).expect("parse");
-    let id = state.history_push(crate::EntryKind::Expr(expr), "x + x".to_string());
+    let id = state.history_push(
+        cas_session_core::types::EntryKind::Expr(expr),
+        "x + x".to_string(),
+    );
 
     let inspected = inspect_history_entry(&mut state, &mut engine, id).expect("entry");
     match inspected.details {

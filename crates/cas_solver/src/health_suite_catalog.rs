@@ -1,6 +1,6 @@
 use crate::health_suite_catalog_core::core_suite;
 use crate::health_suite_catalog_stress::{policy_suite, stress_suite};
-use crate::health_suite_types::HealthCase;
+use cas_solver_core::health_suite_models::HealthCase;
 
 /// The default health suite.
 pub fn default_suite() -> Vec<HealthCase> {

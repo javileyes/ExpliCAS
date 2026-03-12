@@ -1,4 +1,5 @@
-use crate::{CacheConfig, SessionStore, SimplifiedCache};
+use crate::{cache::SimplifiedCache, SessionStore};
+use cas_session_core::types::CacheConfig;
 
 pub(crate) fn simplify_cache_steps_len(cache: &SimplifiedCache) -> usize {
     cache.steps.as_ref().map(|s| s.len()).unwrap_or(0)

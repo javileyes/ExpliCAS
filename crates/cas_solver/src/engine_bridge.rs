@@ -5,6 +5,5 @@
 
 use cas_engine as engine;
 
-pub use engine::rules;
 pub use engine::Simplifier;
 pub use engine::{Engine, Orchestrator, ParentContext, Rewrite, Rule, RuleProfiler, SimpleRule};

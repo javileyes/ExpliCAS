@@ -3,7 +3,7 @@ use crate::steps_command_format::{
     format_steps_display_set_message, format_steps_unknown_mode_message,
 };
 use crate::steps_command_parse::parse_steps_command_input;
-use crate::steps_command_types::{
+use cas_solver_core::steps_command_types::{
     StepsCommandInput, StepsCommandResult, StepsCommandState, StepsDisplayMode,
 };
 
