@@ -299,6 +299,9 @@ Current progress:
     - lower-level surfaces now live under explicit namespaces:
       - `cas_session::cache::{...}`
       - `cas_session::resolve_refs::{...}`
+    - `cas_session::resolve_refs` now owns both the basic and mode-aware
+      resolution surface directly; the local `basic.rs` / `mode.rs`
+      passthroughs were removed
     - integration tests were migrated away from `use cas_session::*`
       toward `cas_session::cache`, `cas_session::resolve_refs`, and
       `cas_session_core::{store,types}` where those types truly belong
