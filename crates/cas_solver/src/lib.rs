@@ -39,7 +39,6 @@ mod autoexpand_command_parse;
 #[cfg(test)]
 mod autoexpand_command_tests;
 mod bindings_command;
-mod bindings_command_runtime;
 #[cfg(test)]
 mod bindings_command_runtime_tests;
 #[cfg(test)]
@@ -116,7 +115,6 @@ mod health_suite_runner;
 mod history_command_display;
 #[cfg(test)]
 mod history_command_display_tests;
-mod history_command_runtime;
 #[cfg(test)]
 mod history_command_runtime_tests;
 mod history_delete;
@@ -465,11 +463,6 @@ pub(crate) use crate::history_command_display::{
     evaluate_history_command_lines, evaluate_history_command_lines_with_context,
 };
 #[allow(unused_imports)]
-pub(crate) use crate::history_command_runtime::{
-    evaluate_history_command_lines_from_history,
-    evaluate_history_command_lines_from_history_with_context,
-};
-#[allow(unused_imports)]
 pub(crate) use crate::history_delete::{
     delete_history_entries, evaluate_delete_history_command_message, HistoryDeleteContext,
 };
@@ -500,10 +493,6 @@ pub(crate) use crate::inspect_format::{
 };
 #[allow(unused_imports)]
 pub(crate) use crate::inspect_parse::parse_history_entry_id;
-#[allow(unused_imports)]
-pub(crate) use crate::inspect_runtime::{
-    inspect_history_entry, inspect_history_entry_input, HistoryInspectEntryRaw,
-};
 #[allow(unused_imports)]
 pub(crate) use crate::limit_command_core::{
     evaluate_limit_command_input, evaluate_limit_subcommand_output, format_limit_subcommand_error,

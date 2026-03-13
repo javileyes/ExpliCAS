@@ -11,7 +11,6 @@ pub mod eval;
 pub mod health;
 pub mod history;
 pub mod lifecycle;
-pub mod linear_algebra;
 pub mod profile;
 pub mod repl;
 pub mod session;

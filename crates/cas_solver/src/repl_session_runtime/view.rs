@@ -1,7 +1,7 @@
 use crate::bindings_command::BindingsContext;
-use crate::bindings_command_runtime::evaluate_vars_command_lines_from_bindings_with_context;
-use crate::history_command_runtime::evaluate_history_command_lines_from_history_with_context;
 use crate::history_overview::HistoryOverviewContext;
+use crate::session_api::bindings::evaluate_vars_command_lines_with_context;
+use crate::session_api::history::evaluate_history_command_lines_with_context;
 
 use super::ReplSessionViewRuntimeContext;
 
@@ -11,11 +11,8 @@ where
     C: ReplSessionViewRuntimeContext,
     C::State: BindingsContext,
 {
-    evaluate_vars_command_lines_from_bindings_with_context(
-        context.state(),
-        context.simplifier_context(),
-    )
-    .join("\n")
+    evaluate_vars_command_lines_with_context(context.state(), context.simplifier_context())
+        .join("\n")
 }
 
 /// Render `history` command output using runtime state/context.
@@ -24,9 +21,6 @@ where
     C: ReplSessionViewRuntimeContext,
     C::State: HistoryOverviewContext,
 {
-    evaluate_history_command_lines_from_history_with_context(
-        context.state(),
-        context.simplifier_context(),
-    )
-    .join("\n")
+    evaluate_history_command_lines_with_context(context.state(), context.simplifier_context())
+        .join("\n")
 }

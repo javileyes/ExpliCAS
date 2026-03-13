@@ -1,9 +1,10 @@
 #[cfg(test)]
 mod tests {
     use crate::{
-        evaluate_history_command_lines_from_history,
-        evaluate_history_command_lines_from_history_with_context, HistoryEntryKindRaw,
-        HistoryEntryRaw, HistoryOverviewContext,
+        session_api::history::{
+            evaluate_history_command_lines, evaluate_history_command_lines_with_context,
+        },
+        HistoryEntryKindRaw, HistoryEntryRaw, HistoryOverviewContext,
     };
 
     struct TestHistoryContext;
@@ -19,9 +20,8 @@ mod tests {
 
     #[test]
     fn evaluate_history_command_lines_from_history_renders_entries() {
-        let lines = evaluate_history_command_lines_from_history(&TestHistoryContext, |id| {
-            format!("E{}", id.index())
-        });
+        let lines =
+            evaluate_history_command_lines(&TestHistoryContext, |id| format!("E{}", id.index()));
         assert_eq!(lines[0], "Session history (1 entries):");
         assert_eq!(lines[1], "  #1   [Expr] E10");
     }
@@ -39,7 +39,7 @@ mod tests {
                 }]
             }
         }
-        let lines = evaluate_history_command_lines_from_history_with_context(&Ctx(x), &ast_context);
+        let lines = evaluate_history_command_lines_with_context(&Ctx(x), &ast_context);
         assert_eq!(lines[0], "Session history (1 entries):");
         assert_eq!(lines[1], "  #1   [Expr] x");
     }

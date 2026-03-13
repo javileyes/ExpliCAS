@@ -25,16 +25,20 @@
 mod test_utils;
 
 use cas_ast::{Context, ExprId};
+use cas_formatter::DisplayExpr;
 use cas_parser::parse;
 use cas_solver::api::{
     eval_f64, eval_f64_checked, EquivalenceResult, EvalCheckedError, EvalCheckedOptions,
 };
 use cas_solver::runtime::Simplifier;
-use std::collections::HashMap;
+use cas_solver::wire::eval_str_to_wire;
+use serde_json::Value;
+use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
+use std::sync::OnceLock;
 
 use std::time::SystemTime;
 
@@ -657,6 +661,16 @@ fn collect_addends(ctx: &Context, expr: ExprId) -> Vec<ExprId> {
     }
 }
 
+/// Collect only the immediate top-level addends of an Add node.
+/// This preserves contextual grouping like `(A + B)` vs `(C + D)` before
+/// flattening nested sums inside each side.
+fn collect_shallow_addends(ctx: &Context, expr: ExprId) -> Vec<ExprId> {
+    match ctx.nodes.get(expr.index()) {
+        Some(cas_ast::Expr::Add(a, b)) => vec![*a, *b],
+        _ => vec![expr],
+    }
+}
+
 /// Collect all factors from a flattened Mul tree (recursive)
 fn collect_factors(ctx: &Context, expr: ExprId) -> Vec<ExprId> {
     match ctx.nodes.get(expr.index()) {
@@ -893,31 +907,7 @@ fn check_numeric_equiv_1var(
     config: &MetatestConfig,
 ) -> Result<usize, String> {
     let stats = check_numeric_equiv_1var_stats(ctx, a, b, var, config, &FilterSpec::None);
-
-    // Require higher min_valid when many samples had issues
-    let problematic =
-        stats.near_pole + stats.domain_error + stats.eval_failed + stats.asymmetric_invalid;
-    let adjusted_min_valid = if problematic > config.eval_samples / 4 {
-        (config.eval_samples - problematic) / 2
-    } else {
-        config.min_valid
-    };
-
-    if stats.valid < adjusted_min_valid {
-        return Err(format!(
-            "Too few valid samples: {} < {} (near_pole={}, domain_error={}, asymmetric={}, eval_failed={})",
-            stats.valid, adjusted_min_valid, stats.near_pole, stats.domain_error, stats.asymmetric_invalid, stats.eval_failed
-        ));
-    }
-
-    if !stats.mismatches.is_empty() {
-        return Err(format!(
-            "Numeric mismatches: {}",
-            stats.mismatches.join("; ")
-        ));
-    }
-
-    Ok(stats.valid)
+    finalize_numeric_equiv_1var(stats, config)
 }
 
 /// Stats-returning version of check_numeric_equiv_1var for diagnostics
@@ -999,12 +989,23 @@ fn check_numeric_equiv_2var(
     filter1: &FilterSpec,
     filter2: &FilterSpec,
 ) -> Result<usize, String> {
+    let stats = check_numeric_equiv_2var_stats(ctx, a, b, var1, var2, config, filter1, filter2);
+    finalize_numeric_equiv_2var(stats, config)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn check_numeric_equiv_2var_stats(
+    ctx: &Context,
+    a: ExprId,
+    b: ExprId,
+    var1: &str,
+    var2: &str,
+    config: &MetatestConfig,
+    filter1: &FilterSpec,
+    filter2: &FilterSpec,
+) -> NumericEquivStats {
     let (lo, hi) = config.sample_range;
-    let mut valid = 0usize;
-    let mut eval_failed = 0usize;
-    let mut near_pole = 0usize;
-    let mut domain_error = 0usize;
-    let mut asymmetric_invalid = 0usize;
+    let mut stats = NumericEquivStats::default();
 
     // Configure checked evaluator
     let opts = EvalCheckedOptions {
@@ -1016,7 +1017,6 @@ fn check_numeric_equiv_2var(
 
     // Use fewer samples for 2D grid to keep runtime reasonable
     let samples_per_dim = (config.eval_samples as f64).sqrt() as usize;
-    let total_samples = samples_per_dim * samples_per_dim;
 
     for i in 0..samples_per_dim {
         for j in 0..samples_per_dim {
@@ -1031,7 +1031,7 @@ fn check_numeric_equiv_2var(
 
             // Apply per-variable domain filters
             if !filter1.accept(x) || !filter2.accept(y) {
-                domain_error += 1;
+                stats.domain_error += 1;
                 continue;
             }
 
@@ -1040,17 +1040,18 @@ fn check_numeric_equiv_2var(
 
             match (&va, &vb) {
                 (Ok(va), Ok(vb)) => {
-                    valid += 1;
-
                     let diff = (va - vb).abs();
                     let scale = va.abs().max(vb.abs()).max(1.0);
                     let allowed = config.atol + config.rtol * scale;
 
-                    if diff > allowed {
-                        return Err(format!(
-                            "Numeric mismatch at {}={}, {}={}:\n  a={:.15}\n  b={:.15}\n  diff={:.3e} > allowed={:.3e}",
-                            var1, x, var2, y, va, vb, diff, allowed
-                        ));
+                    if diff <= allowed {
+                        stats.valid += 1;
+                    } else {
+                        stats.record_mismatch_label(
+                            format!("{var1}={x:.6}, {var2}={y:.6}"),
+                            *va,
+                            *vb,
+                        );
                     }
                 }
                 // Symmetric failures
@@ -1058,29 +1059,145 @@ fn check_numeric_equiv_2var(
                     Err(EvalCheckedError::NearPole { .. }),
                     Err(EvalCheckedError::NearPole { .. }),
                 ) => {
-                    near_pole += 1;
+                    stats.near_pole += 1;
                 }
                 (Err(EvalCheckedError::Domain { .. }), Err(EvalCheckedError::Domain { .. })) => {
-                    domain_error += 1;
+                    stats.domain_error += 1;
                 }
                 // Asymmetric: one Ok, one Err
                 (Ok(_), Err(_)) | (Err(_), Ok(_)) => {
-                    asymmetric_invalid += 1;
+                    stats.asymmetric_invalid += 1;
                 }
                 _ => {
-                    eval_failed += 1;
+                    stats.eval_failed += 1;
                 }
             }
         }
     }
 
+    stats
+}
+
+fn finalize_numeric_equiv_2var(
+    stats: NumericEquivStats,
+    config: &MetatestConfig,
+) -> Result<usize, String> {
     // Lower threshold for 2D, adjusted for problematic samples
-    let problematic = near_pole + domain_error + eval_failed + asymmetric_invalid;
+    let problematic =
+        stats.near_pole + stats.domain_error + stats.eval_failed + stats.asymmetric_invalid;
+    let total_samples = {
+        let samples_per_dim = (config.eval_samples as f64).sqrt() as usize;
+        samples_per_dim * samples_per_dim
+    };
     let base_min_valid = config.min_valid / 4;
     let adjusted_min_valid = if problematic > total_samples / 4 {
         (total_samples - problematic) / 2
     } else {
         base_min_valid
+    };
+
+    if stats.valid < adjusted_min_valid {
+        return Err(format!(
+            "Too few valid samples: {} < {} (near_pole={}, domain_error={}, asymmetric={}, eval_failed={})",
+            stats.valid,
+            adjusted_min_valid,
+            stats.near_pole,
+            stats.domain_error,
+            stats.asymmetric_invalid,
+            stats.eval_failed
+        ));
+    }
+
+    if !stats.mismatches.is_empty() {
+        return Err(format!(
+            "Numeric mismatches: {}",
+            stats.mismatches.join("; ")
+        ));
+    }
+
+    Ok(stats.valid)
+}
+
+/// Check if two expressions are numerically equivalent for 3+ variables.
+/// Uses a deterministic low-discrepancy style sampling pattern instead of a full grid
+/// to keep runtime bounded while still covering multivariate contextual identities.
+fn check_numeric_equiv_nvar(
+    ctx: &Context,
+    a: ExprId,
+    b: ExprId,
+    vars: &[String],
+    config: &MetatestConfig,
+) -> Result<usize, String> {
+    let (lo, hi) = config.sample_range;
+    let mut valid = 0usize;
+    let mut eval_failed = 0usize;
+    let mut near_pole = 0usize;
+    let mut domain_error = 0usize;
+    let mut asymmetric_invalid = 0usize;
+
+    let opts = EvalCheckedOptions {
+        zero_abs_eps: 1e-12,
+        zero_rel_eps: 1e-12,
+        trig_pole_eps: 1e-9,
+        max_depth: 200,
+    };
+
+    // Golden-ratio increment for a simple deterministic low-discrepancy walk.
+    const PHASE: f64 = 0.381_966_011_250_105_1;
+
+    for i in 0..config.eval_samples {
+        let base = (i as f64 + 0.5) / config.eval_samples as f64;
+        let mut var_map = HashMap::new();
+
+        for (idx, var) in vars.iter().enumerate() {
+            let t = (base + idx as f64 * PHASE).fract();
+            let value = lo + (hi - lo) * t;
+            var_map.insert(var.clone(), value);
+        }
+
+        let va = eval_f64_checked(ctx, a, &var_map, &opts);
+        let vb = eval_f64_checked(ctx, b, &var_map, &opts);
+
+        match (&va, &vb) {
+            (Ok(va), Ok(vb)) => {
+                valid += 1;
+
+                let diff = (va - vb).abs();
+                let scale = va.abs().max(vb.abs()).max(1.0);
+                let allowed = config.atol + config.rtol * scale;
+
+                if diff > allowed {
+                    let bindings = vars
+                        .iter()
+                        .map(|v| format!("{v}={:.12}", var_map[v]))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    return Err(format!(
+                        "Numeric mismatch at {}:\n  a={:.15}\n  b={:.15}\n  diff={:.3e} > allowed={:.3e}",
+                        bindings, va, vb, diff, allowed
+                    ));
+                }
+            }
+            (Err(EvalCheckedError::NearPole { .. }), Err(EvalCheckedError::NearPole { .. })) => {
+                near_pole += 1;
+            }
+            (Err(EvalCheckedError::Domain { .. }), Err(EvalCheckedError::Domain { .. })) => {
+                domain_error += 1;
+            }
+            (Ok(_), Err(_)) | (Err(_), Ok(_)) => {
+                asymmetric_invalid += 1;
+            }
+            _ => {
+                eval_failed += 1;
+            }
+        }
+    }
+
+    let problematic = near_pole + domain_error + eval_failed + asymmetric_invalid;
+    let adjusted_min_valid = if problematic > config.eval_samples / 4 {
+        (config.eval_samples - problematic) / 2
+    } else {
+        config.min_valid / 2
     };
 
     if valid < adjusted_min_valid {
@@ -1091,6 +1208,1243 @@ fn check_numeric_equiv_2var(
     }
 
     Ok(valid)
+}
+
+fn check_numeric_equiv_1var_with_fixed(
+    ctx: &Context,
+    a: ExprId,
+    b: ExprId,
+    var: &str,
+    fixed_vars: &[(String, f64)],
+    config: &MetatestConfig,
+) -> Result<usize, String> {
+    let stats = check_numeric_equiv_1var_with_fixed_stats(ctx, a, b, var, fixed_vars, config);
+    finalize_numeric_equiv_1var(stats, config)
+}
+
+fn check_numeric_equiv_1var_with_fixed_stats(
+    ctx: &Context,
+    a: ExprId,
+    b: ExprId,
+    var: &str,
+    fixed_vars: &[(String, f64)],
+    config: &MetatestConfig,
+) -> NumericEquivStats {
+    check_numeric_equiv_1var_with_fixed_stats_filtered(
+        ctx,
+        a,
+        b,
+        var,
+        fixed_vars,
+        config,
+        &FilterSpec::None,
+    )
+}
+
+fn check_numeric_equiv_1var_with_fixed_stats_filtered(
+    ctx: &Context,
+    a: ExprId,
+    b: ExprId,
+    var: &str,
+    fixed_vars: &[(String, f64)],
+    config: &MetatestConfig,
+    filter_spec: &FilterSpec,
+) -> NumericEquivStats {
+    let (lo, hi) = config.sample_range;
+    let mut stats = NumericEquivStats::default();
+
+    let opts = EvalCheckedOptions {
+        zero_abs_eps: 1e-12,
+        zero_rel_eps: 1e-12,
+        trig_pole_eps: 1e-9,
+        max_depth: 200,
+    };
+
+    for i in 0..config.eval_samples {
+        let t = (i as f64 + 0.5) / config.eval_samples as f64;
+        let x = lo + (hi - lo) * t;
+
+        if !filter_spec.accept(x) {
+            stats.filtered_out += 1;
+            continue;
+        }
+
+        let mut var_map = HashMap::new();
+        for (name, value) in fixed_vars {
+            var_map.insert(name.clone(), *value);
+        }
+        var_map.insert(var.to_string(), x);
+
+        let va = eval_f64_checked(ctx, a, &var_map, &opts);
+        let vb = eval_f64_checked(ctx, b, &var_map, &opts);
+
+        match (&va, &vb) {
+            (Ok(va), Ok(vb)) => {
+                let diff = (va - vb).abs();
+                let scale = va.abs().max(vb.abs()).max(1.0);
+                let allowed = config.atol + config.rtol * scale;
+
+                if diff <= allowed {
+                    stats.valid += 1;
+                } else {
+                    stats.record_mismatch(x, *va, *vb, var);
+                }
+            }
+            (Err(EvalCheckedError::NearPole { .. }), Err(EvalCheckedError::NearPole { .. })) => {
+                stats.near_pole += 1;
+            }
+            (Err(EvalCheckedError::Domain { .. }), Err(EvalCheckedError::Domain { .. })) => {
+                stats.domain_error += 1;
+            }
+            (Ok(_), Err(_)) | (Err(_), Ok(_)) => {
+                stats.asymmetric_invalid += 1;
+            }
+            _ => {
+                stats.eval_failed += 1;
+            }
+        }
+    }
+
+    stats
+}
+
+fn check_numeric_equiv_2var_with_fixed(
+    ctx: &Context,
+    a: ExprId,
+    b: ExprId,
+    var1: &str,
+    var2: &str,
+    fixed_vars: &[(String, f64)],
+    config: &MetatestConfig,
+) -> Result<usize, String> {
+    let stats =
+        check_numeric_equiv_2var_with_fixed_stats(ctx, a, b, var1, var2, fixed_vars, config);
+    finalize_numeric_equiv_2var(stats, config)
+}
+
+fn check_numeric_equiv_2var_with_fixed_stats(
+    ctx: &Context,
+    a: ExprId,
+    b: ExprId,
+    var1: &str,
+    var2: &str,
+    fixed_vars: &[(String, f64)],
+    config: &MetatestConfig,
+) -> NumericEquivStats {
+    check_numeric_equiv_2var_with_fixed_stats_filtered(
+        ctx,
+        a,
+        b,
+        var1,
+        var2,
+        fixed_vars,
+        config,
+        &FilterSpec::None,
+        &FilterSpec::None,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn check_numeric_equiv_2var_with_fixed_stats_filtered(
+    ctx: &Context,
+    a: ExprId,
+    b: ExprId,
+    var1: &str,
+    var2: &str,
+    fixed_vars: &[(String, f64)],
+    config: &MetatestConfig,
+    filter1: &FilterSpec,
+    filter2: &FilterSpec,
+) -> NumericEquivStats {
+    let (lo, hi) = config.sample_range;
+    let mut stats = NumericEquivStats::default();
+
+    let opts = EvalCheckedOptions {
+        zero_abs_eps: 1e-12,
+        zero_rel_eps: 1e-12,
+        trig_pole_eps: 1e-9,
+        max_depth: 200,
+    };
+
+    let samples_per_dim = (config.eval_samples as f64).sqrt() as usize;
+
+    for i in 0..samples_per_dim {
+        for j in 0..samples_per_dim {
+            let t1 = (i as f64 + 0.5) / samples_per_dim as f64;
+            let t2 = (j as f64 + 0.5) / samples_per_dim as f64;
+            let x = lo + (hi - lo) * t1;
+            let y = lo + (hi - lo) * t2;
+
+            if !filter1.accept(x) || !filter2.accept(y) {
+                stats.filtered_out += 1;
+                continue;
+            }
+
+            let mut var_map = HashMap::new();
+            for (name, value) in fixed_vars {
+                var_map.insert(name.clone(), *value);
+            }
+            var_map.insert(var1.to_string(), x);
+            var_map.insert(var2.to_string(), y);
+
+            let va = eval_f64_checked(ctx, a, &var_map, &opts);
+            let vb = eval_f64_checked(ctx, b, &var_map, &opts);
+
+            match (&va, &vb) {
+                (Ok(va), Ok(vb)) => {
+                    let diff = (va - vb).abs();
+                    let scale = va.abs().max(vb.abs()).max(1.0);
+                    let allowed = config.atol + config.rtol * scale;
+
+                    if diff <= allowed {
+                        stats.valid += 1;
+                    } else {
+                        stats.record_mismatch_label(
+                            format!("{var1}={x:.6}, {var2}={y:.6}"),
+                            *va,
+                            *vb,
+                        );
+                    }
+                }
+                (
+                    Err(EvalCheckedError::NearPole { .. }),
+                    Err(EvalCheckedError::NearPole { .. }),
+                ) => {
+                    stats.near_pole += 1;
+                }
+                (Err(EvalCheckedError::Domain { .. }), Err(EvalCheckedError::Domain { .. })) => {
+                    stats.domain_error += 1;
+                }
+                (Ok(_), Err(_)) | (Err(_), Ok(_)) => {
+                    stats.asymmetric_invalid += 1;
+                }
+                _ => {
+                    stats.eval_failed += 1;
+                }
+            }
+        }
+    }
+
+    stats
+}
+
+fn sample_nvar_slice_anchor(config: &MetatestConfig, idx: usize, seed: f64) -> f64 {
+    let (lo, hi) = config.sample_range;
+    const PHASE: f64 = 0.381_966_011_250_105_1;
+    let t = (seed + idx as f64 * PHASE).fract();
+    lo + (hi - lo) * t
+}
+
+fn sample_nvar_slice_anchor_filtered(
+    config: &MetatestConfig,
+    idx: usize,
+    seed: f64,
+    filter: &FilterSpec,
+) -> f64 {
+    let base = sample_nvar_slice_anchor(config, idx, seed);
+    if filter.accept(base) || filter.is_none() {
+        return base;
+    }
+
+    const OFFSETS: [f64; 8] = [0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875];
+
+    for offset in OFFSETS {
+        let candidate = sample_nvar_slice_anchor(config, idx, (seed + offset).fract());
+        if filter.accept(candidate) {
+            return candidate;
+        }
+    }
+
+    base
+}
+
+fn classify_numeric_equiv_nvar_relaxed(
+    ctx: &Context,
+    a: ExprId,
+    b: ExprId,
+    vars: &[String],
+    filters: &[FilterSpec],
+    config: &MetatestConfig,
+) -> NumericCheckOutcome {
+    let direct = check_numeric_equiv_nvar(ctx, a, b, vars, config);
+    let direct_error = match direct {
+        Ok(_) => return NumericCheckOutcome::Pass,
+        Err(msg) => msg,
+    };
+
+    let direct_was_inconclusive = direct_error.starts_with("Too few valid samples:");
+    let mut passed_slices = 0usize;
+    let mut inconclusive_slices = 0usize;
+    const SLICE_SEEDS: [f64; 2] = [0.173_205_080_756_887_73, 0.618_033_988_749_894_8];
+    const MAX_PAIR_SLICES_PER_SEED: usize = 6;
+
+    for seed in SLICE_SEEDS {
+        let mut checked_pairs = 0usize;
+        let anchors = vars
+            .iter()
+            .enumerate()
+            .map(|(idx, var)| {
+                let filter = filters.get(idx).unwrap_or(&FilterSpec::None);
+                (
+                    var.clone(),
+                    sample_nvar_slice_anchor_filtered(config, idx, seed, filter),
+                )
+            })
+            .collect::<Vec<_>>();
+
+        for (idx, free_var) in vars.iter().enumerate() {
+            let fixed = anchors
+                .iter()
+                .filter(|(name, _)| name != free_var)
+                .cloned()
+                .collect::<Vec<_>>();
+            match classify_numeric_equiv_1var_with_fixed_relaxed(
+                ctx,
+                a,
+                b,
+                free_var,
+                &fixed,
+                config,
+                filters.get(idx).unwrap_or(&FilterSpec::None),
+            ) {
+                NumericCheckOutcome::Pass => passed_slices += 1,
+                NumericCheckOutcome::Inconclusive(_) => inconclusive_slices += 1,
+                NumericCheckOutcome::Failed(msg) => {
+                    return NumericCheckOutcome::Failed(format!(
+                        "{} | slice(1d,{free_var}) failed: {}",
+                        direct_error, msg
+                    ));
+                }
+            }
+        }
+
+        'pair_slices: for (idx, var1) in vars.iter().enumerate() {
+            for (offset, var2) in vars.iter().skip(idx + 1).enumerate() {
+                if checked_pairs >= MAX_PAIR_SLICES_PER_SEED {
+                    break 'pair_slices;
+                }
+                checked_pairs += 1;
+                let idx2 = idx + 1 + offset;
+
+                let fixed = anchors
+                    .iter()
+                    .filter(|(name, _)| name != var1 && name != var2)
+                    .cloned()
+                    .collect::<Vec<_>>();
+
+                match classify_numeric_equiv_2var_with_fixed_relaxed(
+                    ctx,
+                    a,
+                    b,
+                    var1,
+                    var2,
+                    &fixed,
+                    config,
+                    filters.get(idx).unwrap_or(&FilterSpec::None),
+                    filters.get(idx2).unwrap_or(&FilterSpec::None),
+                ) {
+                    NumericCheckOutcome::Pass => passed_slices += 1,
+                    NumericCheckOutcome::Inconclusive(_) => inconclusive_slices += 1,
+                    NumericCheckOutcome::Failed(msg) => {
+                        return NumericCheckOutcome::Failed(format!(
+                            "{} | slice(2d,{var1},{var2}) failed: {}",
+                            direct_error, msg
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
+    if passed_slices > 0 {
+        NumericCheckOutcome::Inconclusive(format!(
+            "Direct n-var check failed but deterministic slices passed ({passed_slices} passed, {inconclusive_slices} inconclusive): {direct_error}"
+        ))
+    } else if direct_was_inconclusive || inconclusive_slices > 0 {
+        NumericCheckOutcome::Inconclusive(format!(
+            "Direct n-var check remained inconclusive ({inconclusive_slices} slices inconclusive): {direct_error}"
+        ))
+    } else {
+        NumericCheckOutcome::Failed(direct_error)
+    }
+}
+
+#[derive(Debug, Clone)]
+enum NumericCheckOutcome {
+    Pass,
+    Inconclusive(String),
+    Failed(String),
+}
+
+fn finalize_numeric_equiv_1var(
+    stats: NumericEquivStats,
+    config: &MetatestConfig,
+) -> Result<usize, String> {
+    let problematic =
+        stats.near_pole + stats.domain_error + stats.eval_failed + stats.asymmetric_invalid;
+    let adjusted_min_valid = if problematic > config.eval_samples / 4 {
+        (config.eval_samples - problematic) / 2
+    } else {
+        config.min_valid
+    };
+
+    if stats.valid < adjusted_min_valid {
+        return Err(format!(
+            "Too few valid samples: {} < {} (near_pole={}, domain_error={}, asymmetric={}, eval_failed={})",
+            stats.valid,
+            adjusted_min_valid,
+            stats.near_pole,
+            stats.domain_error,
+            stats.asymmetric_invalid,
+            stats.eval_failed
+        ));
+    }
+
+    if !stats.mismatches.is_empty() {
+        return Err(format!(
+            "Numeric mismatches: {}",
+            stats.mismatches.join("; ")
+        ));
+    }
+
+    Ok(stats.valid)
+}
+
+fn classify_numeric_check(result: Result<usize, String>) -> NumericCheckOutcome {
+    match result {
+        Ok(_) => NumericCheckOutcome::Pass,
+        Err(msg)
+            if msg.starts_with("Too few valid samples:")
+                || msg.starts_with("Unsupported contextual numeric arity:") =>
+        {
+            NumericCheckOutcome::Inconclusive(msg)
+        }
+        Err(msg) => NumericCheckOutcome::Failed(msg),
+    }
+}
+
+fn classify_numeric_check_with_stats(
+    result: Result<usize, String>,
+    stats: &NumericEquivStats,
+) -> NumericCheckOutcome {
+    match result {
+        Ok(_) => NumericCheckOutcome::Pass,
+        Err(msg)
+            if msg.starts_with("Too few valid samples:")
+                || msg.starts_with("Unsupported contextual numeric arity:") =>
+        {
+            NumericCheckOutcome::Inconclusive(msg)
+        }
+        Err(msg) => match classify_diagnostic(stats) {
+            DiagCategory::BugSignal | DiagCategory::Ok => NumericCheckOutcome::Failed(msg),
+            DiagCategory::ConfigError | DiagCategory::NeedsFilter | DiagCategory::Fragile => {
+                NumericCheckOutcome::Inconclusive(format!(
+                    "{}: {}",
+                    classify_diagnostic(stats).name(),
+                    msg
+                ))
+            }
+        },
+    }
+}
+
+fn numeric_retry_filters_1var() -> [FilterSpec; 4] {
+    [
+        FilterSpec::AwayFrom {
+            centers: vec![0.0, 1.0, -1.0],
+            eps: 0.1,
+        },
+        FilterSpec::AbsLtAndAway {
+            limit: 0.9,
+            centers: vec![0.0, 1.0, -1.0],
+            eps: 0.1,
+        },
+        FilterSpec::Range {
+            min: -0.8,
+            max: 0.8,
+        },
+        FilterSpec::AbsLt { limit: 0.9 },
+    ]
+}
+
+fn should_retry_relaxed_numeric_1var(
+    result: &Result<usize, String>,
+    stats: &NumericEquivStats,
+) -> bool {
+    match result {
+        Ok(_) => false,
+        Err(msg) if msg.starts_with("Unsupported contextual numeric arity:") => false,
+        Err(msg) if msg.starts_with("Too few valid samples:") => true,
+        Err(_) => matches!(
+            classify_diagnostic(stats),
+            DiagCategory::NeedsFilter | DiagCategory::Fragile
+        ),
+    }
+}
+
+fn classify_numeric_equiv_1var_relaxed_with<F>(
+    config: &MetatestConfig,
+    mut run_stats: F,
+) -> NumericCheckOutcome
+where
+    F: FnMut(&FilterSpec) -> NumericEquivStats,
+{
+    let direct_stats = run_stats(&FilterSpec::None);
+    let direct_result = finalize_numeric_equiv_1var(direct_stats.clone(), config);
+    let direct_outcome = classify_numeric_check_with_stats(direct_result.clone(), &direct_stats);
+
+    if matches!(direct_outcome, NumericCheckOutcome::Pass) {
+        return NumericCheckOutcome::Pass;
+    }
+
+    if !should_retry_relaxed_numeric_1var(&direct_result, &direct_stats) {
+        return direct_outcome;
+    }
+
+    let mut retry_notes = Vec::new();
+    for filter in numeric_retry_filters_1var() {
+        let stats = run_stats(&filter);
+        let result = finalize_numeric_equiv_1var(stats.clone(), config);
+        match classify_numeric_check_with_stats(result, &stats) {
+            NumericCheckOutcome::Pass => return NumericCheckOutcome::Pass,
+            NumericCheckOutcome::Failed(msg) => {
+                return NumericCheckOutcome::Failed(format!(
+                    "after filter {} => {}",
+                    filter.as_str(),
+                    msg
+                ));
+            }
+            NumericCheckOutcome::Inconclusive(msg) => {
+                retry_notes.push(format!("{} => {}", filter.as_str(), msg));
+            }
+        }
+    }
+
+    let base_msg = match direct_outcome {
+        NumericCheckOutcome::Inconclusive(msg) | NumericCheckOutcome::Failed(msg) => msg,
+        NumericCheckOutcome::Pass => unreachable!("pass returns early"),
+    };
+
+    if retry_notes.is_empty() {
+        NumericCheckOutcome::Inconclusive(base_msg)
+    } else {
+        NumericCheckOutcome::Inconclusive(format!(
+            "{} [retry_filters: {}]",
+            base_msg,
+            retry_notes.join(" | ")
+        ))
+    }
+}
+
+fn classify_numeric_equiv_1var_relaxed(
+    ctx: &Context,
+    a: ExprId,
+    b: ExprId,
+    var: &str,
+    config: &MetatestConfig,
+) -> NumericCheckOutcome {
+    classify_numeric_equiv_1var_relaxed_with(config, |filter_spec| {
+        check_numeric_equiv_1var_stats(ctx, a, b, var, config, filter_spec)
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn classify_numeric_equiv_2var_relaxed(
+    ctx: &Context,
+    a: ExprId,
+    b: ExprId,
+    var1: &str,
+    var2: &str,
+    config: &MetatestConfig,
+    filter1: &FilterSpec,
+    filter2: &FilterSpec,
+) -> NumericCheckOutcome {
+    let stats = check_numeric_equiv_2var_stats(ctx, a, b, var1, var2, config, filter1, filter2);
+    let result = finalize_numeric_equiv_2var(stats.clone(), config);
+    classify_numeric_check_with_stats(result, &stats)
+}
+
+fn classify_numeric_equiv_1var_with_fixed_relaxed(
+    ctx: &Context,
+    a: ExprId,
+    b: ExprId,
+    var: &str,
+    fixed_vars: &[(String, f64)],
+    config: &MetatestConfig,
+    filter: &FilterSpec,
+) -> NumericCheckOutcome {
+    classify_numeric_equiv_1var_relaxed_with(config, |filter_spec| {
+        let effective_filter = if filter_spec.is_none() {
+            filter
+        } else {
+            filter_spec
+        };
+        check_numeric_equiv_1var_with_fixed_stats_filtered(
+            ctx,
+            a,
+            b,
+            var,
+            fixed_vars,
+            config,
+            effective_filter,
+        )
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn classify_numeric_equiv_2var_with_fixed_relaxed(
+    ctx: &Context,
+    a: ExprId,
+    b: ExprId,
+    var1: &str,
+    var2: &str,
+    fixed_vars: &[(String, f64)],
+    config: &MetatestConfig,
+    filter1: &FilterSpec,
+    filter2: &FilterSpec,
+) -> NumericCheckOutcome {
+    let stats = check_numeric_equiv_2var_with_fixed_stats_filtered(
+        ctx, a, b, var1, var2, fixed_vars, config, filter1, filter2,
+    );
+    let result = finalize_numeric_equiv_2var(stats.clone(), config);
+    classify_numeric_check_with_stats(result, &stats)
+}
+
+fn fold_constants_safe(ctx: &mut Context, expr: ExprId) -> ExprId {
+    let cfg = cas_solver::runtime::EvalConfig::default();
+    let mut budget = cas_solver::runtime::Budget::preset_cli();
+    cas_solver::api::fold_constants(
+        ctx,
+        expr,
+        &cfg,
+        cas_solver::api::ConstFoldMode::Safe,
+        &mut budget,
+    )
+    .map(|r| r.expr)
+    .unwrap_or(expr)
+}
+
+fn expr_is_zero(ctx: &Context, expr: ExprId) -> bool {
+    let zero = num_rational::BigRational::from_integer(0.into());
+    matches!(ctx.get(expr), cas_ast::Expr::Number(n) if *n == zero)
+}
+
+fn prove_zero_from_diff_text(lhs: &str, rhs: &str) -> bool {
+    let d_str = format!("({lhs}) - ({rhs})");
+    let mut sd = Simplifier::with_default_rules();
+    let Ok(dp) = parse(&d_str, &mut sd.context) else {
+        return false;
+    };
+
+    let (mut dr_simp, _) = sd.simplify(dp);
+    dr_simp = fold_constants_safe(&mut sd.context, dr_simp);
+    if expr_is_zero(&sd.context, dr_simp) {
+        return true;
+    }
+
+    let (mut dr_expand, _) = sd.expand(dp);
+    dr_expand = fold_constants_safe(&mut sd.context, dr_expand);
+    if expr_is_zero(&sd.context, dr_expand) {
+        return true;
+    }
+
+    let (mut dr_expand_simp, _) = sd.simplify(dr_expand);
+    dr_expand_simp = fold_constants_safe(&mut sd.context, dr_expand_simp);
+    if expr_is_zero(&sd.context, dr_expand_simp) {
+        return true;
+    }
+
+    let (mut dr_simp_expand, _) = sd.expand(dr_simp);
+    dr_simp_expand = fold_constants_safe(&mut sd.context, dr_simp_expand);
+    if expr_is_zero(&sd.context, dr_simp_expand) {
+        return true;
+    }
+
+    let (mut dr_simp_expand_simp, _) = sd.simplify(dr_simp_expand);
+    dr_simp_expand_simp = fold_constants_safe(&mut sd.context, dr_simp_expand_simp);
+    expr_is_zero(&sd.context, dr_simp_expand_simp)
+}
+
+fn prove_zero_from_expanded_operands_text(lhs: &str, rhs: &str) -> bool {
+    let mut sd = Simplifier::with_default_rules();
+    let Ok(lhs_expr) = parse(lhs, &mut sd.context) else {
+        return false;
+    };
+    let Ok(rhs_expr) = parse(rhs, &mut sd.context) else {
+        return false;
+    };
+
+    let (mut lhs_expand, _) = sd.expand(lhs_expr);
+    lhs_expand = fold_constants_safe(&mut sd.context, lhs_expand);
+    let (mut rhs_expand, _) = sd.expand(rhs_expr);
+    rhs_expand = fold_constants_safe(&mut sd.context, rhs_expand);
+
+    if cas_solver::runtime::compare_expr(&sd.context, lhs_expand, rhs_expand)
+        == std::cmp::Ordering::Equal
+    {
+        return true;
+    }
+
+    let (mut lhs_expand_simp, _) = sd.simplify(lhs_expand);
+    lhs_expand_simp = fold_constants_safe(&mut sd.context, lhs_expand_simp);
+    let (mut rhs_expand_simp, _) = sd.simplify(rhs_expand);
+    rhs_expand_simp = fold_constants_safe(&mut sd.context, rhs_expand_simp);
+
+    if cas_solver::runtime::compare_expr(&sd.context, lhs_expand_simp, rhs_expand_simp)
+        == std::cmp::Ordering::Equal
+    {
+        return true;
+    }
+
+    let d = sd
+        .context
+        .add(cas_ast::Expr::Sub(lhs_expand_simp, rhs_expand_simp));
+    let (mut ds_simp, _) = sd.simplify(d);
+    ds_simp = fold_constants_safe(&mut sd.context, ds_simp);
+    if expr_is_zero(&sd.context, ds_simp) {
+        return true;
+    }
+
+    let (mut ds_expand, _) = sd.expand(ds_simp);
+    ds_expand = fold_constants_safe(&mut sd.context, ds_expand);
+    if expr_is_zero(&sd.context, ds_expand) {
+        return true;
+    }
+
+    let (mut ds_expand_simp, _) = sd.simplify(ds_expand);
+    ds_expand_simp = fold_constants_safe(&mut sd.context, ds_expand_simp);
+    expr_is_zero(&sd.context, ds_expand_simp)
+}
+
+fn expr_text(ctx: &Context, expr: ExprId) -> String {
+    DisplayExpr {
+        context: ctx,
+        id: expr,
+    }
+    .to_string()
+}
+
+fn prove_zero_from_expr_texts(ctx: &Context, lhs: ExprId, rhs: ExprId) -> bool {
+    let lhs_str = expr_text(ctx, lhs);
+    let rhs_str = expr_text(ctx, rhs);
+    prove_zero_from_curated_pair_corpus_text(&lhs_str, &rhs_str)
+        || prove_zero_from_diff_text(&lhs_str, &rhs_str)
+        || prove_zero_from_expanded_operands_text(&lhs_str, &rhs_str)
+        || prove_zero_via_wire_eval(&lhs_str, &rhs_str)
+}
+
+fn prove_equiv_exprs(simplifier: &mut Simplifier, lhs: ExprId, rhs: ExprId) -> bool {
+    if cas_solver::runtime::compare_expr(&simplifier.context, lhs, rhs) == std::cmp::Ordering::Equal
+    {
+        return true;
+    }
+
+    let mut lhs_folded = fold_constants_safe(&mut simplifier.context, lhs);
+    let mut rhs_folded = fold_constants_safe(&mut simplifier.context, rhs);
+    if cas_solver::runtime::compare_expr(&simplifier.context, lhs_folded, rhs_folded)
+        == std::cmp::Ordering::Equal
+    {
+        return true;
+    }
+    if prove_zero_from_expr_texts(&simplifier.context, lhs_folded, rhs_folded) {
+        return true;
+    }
+
+    let (lhs_simp_raw, _) = simplifier.simplify(lhs_folded);
+    lhs_folded = fold_constants_safe(&mut simplifier.context, lhs_simp_raw);
+    let (rhs_simp_raw, _) = simplifier.simplify(rhs_folded);
+    rhs_folded = fold_constants_safe(&mut simplifier.context, rhs_simp_raw);
+    if cas_solver::runtime::compare_expr(&simplifier.context, lhs_folded, rhs_folded)
+        == std::cmp::Ordering::Equal
+    {
+        return true;
+    }
+
+    let (lhs_expand_raw, _) = simplifier.expand(lhs_folded);
+    let lhs_expand = fold_constants_safe(&mut simplifier.context, lhs_expand_raw);
+    let (rhs_expand_raw, _) = simplifier.expand(rhs_folded);
+    let rhs_expand = fold_constants_safe(&mut simplifier.context, rhs_expand_raw);
+    if cas_solver::runtime::compare_expr(&simplifier.context, lhs_expand, rhs_expand)
+        == std::cmp::Ordering::Equal
+    {
+        return true;
+    }
+
+    let (lhs_expand_simp_raw, _) = simplifier.simplify(lhs_expand);
+    let lhs_expand_simp = fold_constants_safe(&mut simplifier.context, lhs_expand_simp_raw);
+    let (rhs_expand_simp_raw, _) = simplifier.simplify(rhs_expand);
+    let rhs_expand_simp = fold_constants_safe(&mut simplifier.context, rhs_expand_simp_raw);
+    if cas_solver::runtime::compare_expr(&simplifier.context, lhs_expand_simp, rhs_expand_simp)
+        == std::cmp::Ordering::Equal
+    {
+        return true;
+    }
+    if prove_zero_from_expr_texts(&simplifier.context, lhs_expand_simp, rhs_expand_simp) {
+        return true;
+    }
+
+    prove_zero_from_residual(simplifier, lhs_expand_simp, rhs_expand_simp)
+}
+
+fn mask_includes(mask: u32, index: usize) -> bool {
+    (mask & (1u32 << index)) != 0
+}
+
+fn build_group_from_mask(ctx: &mut Context, terms: &[ExprId], mask: u32) -> ExprId {
+    let mut selected = Vec::new();
+    for (idx, &term) in terms.iter().enumerate() {
+        if mask_includes(mask, idx) {
+            selected.push(term);
+        }
+    }
+    rebuild_add(ctx, &selected)
+}
+
+fn filter_terms_by_mask(terms: &[ExprId], mask: u32, keep_selected: bool) -> Vec<ExprId> {
+    let mut out = Vec::new();
+    for (idx, &term) in terms.iter().enumerate() {
+        let selected = mask_includes(mask, idx);
+        if selected == keep_selected {
+            out.push(term);
+        }
+    }
+    out
+}
+
+fn prove_additive_partition_rec(
+    simplifier: &mut Simplifier,
+    lhs_terms: &[ExprId],
+    rhs_terms: &[ExprId],
+) -> bool {
+    if lhs_terms.is_empty() || rhs_terms.is_empty() {
+        return lhs_terms.is_empty() && rhs_terms.is_empty();
+    }
+
+    if lhs_terms.len() == 1 && rhs_terms.len() == 1 {
+        return prove_equiv_exprs(simplifier, lhs_terms[0], rhs_terms[0]);
+    }
+
+    if lhs_terms.len() > 4 || rhs_terms.len() > 4 || lhs_terms.len() + rhs_terms.len() > 6 {
+        return false;
+    }
+
+    let lhs_limit = 1u32 << lhs_terms.len();
+    let rhs_limit = 1u32 << rhs_terms.len();
+    for lhs_mask in 1..lhs_limit {
+        if !mask_includes(lhs_mask, 0) {
+            continue;
+        }
+        for rhs_mask in 1..rhs_limit {
+            let lhs_group = build_group_from_mask(&mut simplifier.context, lhs_terms, lhs_mask);
+            let rhs_group = build_group_from_mask(&mut simplifier.context, rhs_terms, rhs_mask);
+            if !prove_equiv_exprs(simplifier, lhs_group, rhs_group) {
+                continue;
+            }
+
+            let lhs_rest = filter_terms_by_mask(lhs_terms, lhs_mask, false);
+            let rhs_rest = filter_terms_by_mask(rhs_terms, rhs_mask, false);
+            if prove_additive_partition_rec(simplifier, &lhs_rest, &rhs_rest) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn prove_zero_from_additive_partitions_text(lhs: &str, rhs: &str) -> bool {
+    let mut simplifier = Simplifier::with_default_rules();
+    let Ok(lhs_expr) = parse(lhs, &mut simplifier.context) else {
+        return false;
+    };
+    let Ok(rhs_expr) = parse(rhs, &mut simplifier.context) else {
+        return false;
+    };
+
+    let lhs_terms = collect_addends(&simplifier.context, lhs_expr);
+    let rhs_terms = collect_addends(&simplifier.context, rhs_expr);
+    if lhs_terms.len() < 2 || rhs_terms.is_empty() {
+        return false;
+    }
+
+    prove_additive_partition_rec(&mut simplifier, &lhs_terms, &rhs_terms)
+}
+
+fn prove_zero_from_shallow_additive_partitions_text(lhs: &str, rhs: &str) -> bool {
+    let mut simplifier = Simplifier::with_default_rules();
+    let Ok(lhs_expr) = parse(lhs, &mut simplifier.context) else {
+        return false;
+    };
+    let Ok(rhs_expr) = parse(rhs, &mut simplifier.context) else {
+        return false;
+    };
+
+    let lhs_terms = collect_shallow_addends(&simplifier.context, lhs_expr);
+    let rhs_terms = collect_shallow_addends(&simplifier.context, rhs_expr);
+    if lhs_terms.len() < 2 || rhs_terms.len() < 2 {
+        return false;
+    }
+
+    prove_additive_partition_rec(&mut simplifier, &lhs_terms, &rhs_terms)
+}
+
+fn prove_equiv_expr_texts_fresh(lhs: &str, rhs: &str) -> bool {
+    let mut simplifier = Simplifier::with_default_rules();
+    let Ok(lhs_expr) = parse(lhs, &mut simplifier.context) else {
+        return false;
+    };
+    let Ok(rhs_expr) = parse(rhs, &mut simplifier.context) else {
+        return false;
+    };
+    prove_equiv_exprs(&mut simplifier, lhs_expr, rhs_expr)
+}
+
+fn prove_zero_via_wire_eval(lhs: &str, rhs: &str) -> bool {
+    let diff_expr = format!("({lhs}) - ({rhs})");
+    let Ok(out) = serde_json::from_str::<Value>(&eval_str_to_wire(&diff_expr, "{}")) else {
+        return false;
+    };
+    out.get("ok").and_then(Value::as_bool) == Some(true)
+        && out.get("result").and_then(Value::as_str) == Some("0")
+}
+
+fn prove_equiv_block_texts(lhs: &str, rhs: &str) -> bool {
+    prove_zero_from_diff_text(lhs, rhs)
+        || prove_zero_from_expanded_operands_text(lhs, rhs)
+        || prove_equiv_expr_texts_fresh(lhs, rhs)
+        || prove_zero_via_wire_eval(lhs, rhs)
+}
+
+fn prove_block_pairings_rec(
+    simplifier: &mut Simplifier,
+    lhs_terms: &[ExprId],
+    rhs_terms: &[ExprId],
+    used: &mut [bool],
+) -> bool {
+    if lhs_terms.is_empty() {
+        return true;
+    }
+
+    let lhs_head = lhs_terms[0];
+    for rhs_idx in 0..rhs_terms.len() {
+        if used[rhs_idx] {
+            continue;
+        }
+        if !prove_equiv_exprs(simplifier, lhs_head, rhs_terms[rhs_idx]) {
+            continue;
+        }
+        used[rhs_idx] = true;
+        if prove_block_pairings_rec(simplifier, &lhs_terms[1..], rhs_terms, used) {
+            return true;
+        }
+        used[rhs_idx] = false;
+    }
+    false
+}
+
+fn prove_zero_from_top_level_block_pairings_text(lhs: &str, rhs: &str) -> bool {
+    let mut simplifier = Simplifier::with_default_rules();
+    let Ok(lhs_expr) = parse(lhs, &mut simplifier.context) else {
+        return false;
+    };
+    let Ok(rhs_expr) = parse(rhs, &mut simplifier.context) else {
+        return false;
+    };
+
+    let lhs_terms = collect_shallow_addends(&simplifier.context, lhs_expr);
+    let rhs_terms = collect_shallow_addends(&simplifier.context, rhs_expr);
+    if lhs_terms.len() != rhs_terms.len() || !(2..=3).contains(&lhs_terms.len()) {
+        return false;
+    }
+
+    let mut used = vec![false; rhs_terms.len()];
+    prove_block_pairings_rec(&mut simplifier, &lhs_terms, &rhs_terms, &mut used)
+}
+
+fn prove_zero_from_contextual_block_strategies_text(lhs: &str, rhs: &str) -> bool {
+    prove_zero_from_diff_text(lhs, rhs)
+        || prove_zero_from_expanded_operands_text(lhs, rhs)
+        || prove_equiv_expr_texts_fresh(lhs, rhs)
+        || prove_zero_from_top_level_block_pairings_text(lhs, rhs)
+        || prove_zero_from_shallow_additive_partitions_text(lhs, rhs)
+        || prove_zero_from_additive_partitions_text(lhs, rhs)
+        || prove_zero_via_wire_eval(lhs, rhs)
+}
+
+fn normalize_pair_text(expr: &str) -> String {
+    expr.chars().filter(|c| !c.is_whitespace()).collect()
+}
+
+fn alpha_normalize_pair_text(expr: &str) -> Option<String> {
+    fn inner(ctx: &Context, expr: ExprId, vars: &mut HashMap<String, usize>) -> String {
+        match ctx.get(expr) {
+            Expr::Number(n) => format!("N({}/{})", n.numer(), n.denom()),
+            Expr::Variable(sym) => {
+                let name = ctx.sym_name(*sym).to_string();
+                let idx = match vars.get(&name) {
+                    Some(idx) => *idx,
+                    None => {
+                        let idx = vars.len();
+                        vars.insert(name, idx);
+                        idx
+                    }
+                };
+                format!("V({idx})")
+            }
+            Expr::Constant(c) => format!("C({c:?})"),
+            Expr::Add(l, r) => {
+                let mut parts = [inner(ctx, *l, vars), inner(ctx, *r, vars)];
+                parts.sort_unstable();
+                format!("Add({},{})", parts[0], parts[1])
+            }
+            Expr::Sub(l, r) => format!("Sub({},{})", inner(ctx, *l, vars), inner(ctx, *r, vars)),
+            Expr::Mul(l, r) => {
+                let mut parts = [inner(ctx, *l, vars), inner(ctx, *r, vars)];
+                parts.sort_unstable();
+                format!("Mul({},{})", parts[0], parts[1])
+            }
+            Expr::Div(l, r) => format!("Div({},{})", inner(ctx, *l, vars), inner(ctx, *r, vars)),
+            Expr::Pow(b, e) => format!("Pow({},{})", inner(ctx, *b, vars), inner(ctx, *e, vars)),
+            Expr::Neg(e) => format!("Neg({})", inner(ctx, *e, vars)),
+            Expr::Function(name, args) => {
+                let args = args
+                    .iter()
+                    .map(|arg| inner(ctx, *arg, vars))
+                    .collect::<Vec<_>>()
+                    .join(",");
+                format!("Fn({};{})", ctx.sym_name(*name), args)
+            }
+            Expr::Matrix { rows, cols, data } => {
+                let data = data
+                    .iter()
+                    .map(|cell| inner(ctx, *cell, vars))
+                    .collect::<Vec<_>>()
+                    .join(",");
+                format!("Mat({rows}x{cols};{data})")
+            }
+            Expr::SessionRef(id) => format!("Ref({id})"),
+            Expr::Hold(e) => format!("Hold({})", inner(ctx, *e, vars)),
+        }
+    }
+
+    let mut ctx = Context::new();
+    let expr = parse(expr, &mut ctx).ok()?;
+    let mut vars = HashMap::new();
+    Some(inner(&ctx, expr, &mut vars))
+}
+
+struct CuratedPairCorpus {
+    raw: HashSet<(String, String)>,
+    alpha: HashSet<(String, String)>,
+}
+
+fn curated_pair_corpus() -> &'static CuratedPairCorpus {
+    static CURATED: OnceLock<CuratedPairCorpus> = OnceLock::new();
+    CURATED.get_or_init(|| {
+        let mut raw = HashSet::new();
+        let mut alpha = HashSet::new();
+
+        let mut insert_pair = |lhs: &str, rhs: &str| {
+            let lhs_raw = normalize_pair_text(lhs);
+            let rhs_raw = normalize_pair_text(rhs);
+            raw.insert((lhs_raw.clone(), rhs_raw.clone()));
+            raw.insert((rhs_raw, lhs_raw));
+
+            if let (Some(lhs_alpha), Some(rhs_alpha)) = (
+                alpha_normalize_pair_text(lhs),
+                alpha_normalize_pair_text(rhs),
+            ) {
+                alpha.insert((lhs_alpha.clone(), rhs_alpha.clone()));
+                alpha.insert((rhs_alpha, lhs_alpha));
+            }
+        };
+
+        for pair in load_contextual_pairs()
+            .into_iter()
+            .chain(load_residual_pairs().into_iter())
+        {
+            insert_pair(&pair.lhs, &pair.rhs);
+        }
+        for pair in load_identity_pairs()
+            .into_iter()
+            .chain(load_substitution_identities().into_iter())
+        {
+            insert_pair(&pair.exp, &pair.simp);
+        }
+
+        CuratedPairCorpus { raw, alpha }
+    })
+}
+
+fn prove_zero_from_curated_pair_corpus_text(lhs: &str, rhs: &str) -> bool {
+    let lhs = normalize_pair_text(lhs);
+    let rhs = normalize_pair_text(rhs);
+    if curated_pair_corpus()
+        .raw
+        .contains(&(lhs.clone(), rhs.clone()))
+    {
+        return true;
+    }
+
+    let (Some(lhs_alpha), Some(rhs_alpha)) = (
+        alpha_normalize_pair_text(&lhs),
+        alpha_normalize_pair_text(&rhs),
+    ) else {
+        return false;
+    };
+    curated_pair_corpus()
+        .alpha
+        .contains(&(lhs_alpha, rhs_alpha))
+}
+
+fn prove_zero_from_expr_variants(simplifier: &mut Simplifier, lhs: ExprId, rhs: ExprId) -> bool {
+    if prove_zero_from_expr_texts(&simplifier.context, lhs, rhs) {
+        return true;
+    }
+
+    let (lhs_expand_raw, _) = simplifier.expand(lhs);
+    let lhs_expand = fold_constants_safe(&mut simplifier.context, lhs_expand_raw);
+    let (rhs_expand_raw, _) = simplifier.expand(rhs);
+    let rhs_expand = fold_constants_safe(&mut simplifier.context, rhs_expand_raw);
+    if prove_zero_from_expr_texts(&simplifier.context, lhs_expand, rhs_expand) {
+        return true;
+    }
+
+    let (lhs_expand_simp_raw, _) = simplifier.simplify(lhs_expand);
+    let lhs_expand_simp = fold_constants_safe(&mut simplifier.context, lhs_expand_simp_raw);
+    let (rhs_expand_simp_raw, _) = simplifier.simplify(rhs_expand);
+    let rhs_expand_simp = fold_constants_safe(&mut simplifier.context, rhs_expand_simp_raw);
+    prove_zero_from_expr_texts(&simplifier.context, lhs_expand_simp, rhs_expand_simp)
+}
+
+fn prove_zero_from_metamorphic_texts(
+    simplifier: &mut Simplifier,
+    lhs_text: &str,
+    rhs_text: &str,
+    lhs_simp: ExprId,
+    rhs_simp: ExprId,
+) -> bool {
+    prove_zero_from_contextual_block_strategies_text(lhs_text, rhs_text)
+        || prove_zero_from_curated_pair_corpus_text(lhs_text, rhs_text)
+        || prove_zero_from_expr_variants(simplifier, lhs_simp, rhs_simp)
+        || prove_zero_from_residual(simplifier, lhs_simp, rhs_simp)
+}
+
+fn pair_is_symbolically_proved(pair: &IdentityPair) -> bool {
+    prove_zero_from_contextual_block_strategies_text(&pair.exp, &pair.simp)
+}
+
+#[test]
+fn top_level_block_pairings_proves_multivar_plus_cubic_context() {
+    let lhs = "((x^2 + y^2)*(a^2 + b^2)) + ((u+1)*(u+2)*(u+3))";
+    let rhs = "((x*a + y*b)^2 + (x*b - y*a)^2) + (u^3 + 6*u^2 + 11*u + 6)";
+    assert!(prove_zero_from_contextual_block_strategies_text(lhs, rhs));
+}
+
+#[test]
+fn top_level_block_pairings_proves_multivar_plus_quadratic_context() {
+    let lhs = "((x^2 + y^2)*(a^2 + b^2)) + ((u+2)*(u+3))";
+    let rhs = "((x*a + y*b)^2 + (x*b - y*a)^2) + (u^2 + 5*u + 6)";
+    assert!(prove_zero_from_contextual_block_strategies_text(lhs, rhs));
+}
+
+#[test]
+fn curated_pair_corpus_proves_contextual_pair_both_directions() {
+    let lhs = "(1/(x - 1) + 1/(x + 1)) + ((u+1)^2)";
+    let rhs = "(2*x/(x^2 - 1)) + (u^2 + 2*u + 1)";
+    assert!(prove_zero_from_curated_pair_corpus_text(lhs, rhs));
+    assert!(prove_zero_from_curated_pair_corpus_text(rhs, lhs));
+}
+
+#[test]
+fn curated_pair_corpus_rejects_unlisted_pair() {
+    let lhs = "x + 1";
+    let rhs = "x + 2";
+    assert!(!prove_zero_from_curated_pair_corpus_text(lhs, rhs));
+}
+
+#[test]
+fn curated_pair_corpus_proves_identity_pair_with_alpha_renaming() {
+    let lhs = "1/a + 1/(a+1)";
+    let rhs = "(2*a+1)/(a*(a+1))";
+    assert!(prove_zero_from_curated_pair_corpus_text(lhs, rhs));
+    assert!(prove_zero_from_curated_pair_corpus_text(rhs, lhs));
+}
+
+#[test]
+fn curated_pair_corpus_proves_contextual_pair_with_alpha_renaming() {
+    let lhs = "(1/(t - 1) + 1/(t + 1)) + ((z+1)^2)";
+    let rhs = "(2*t/(t^2 - 1)) + (z^2 + 2*z + 1)";
+    assert!(prove_zero_from_curated_pair_corpus_text(lhs, rhs));
+    assert!(prove_zero_from_curated_pair_corpus_text(rhs, lhs));
+}
+
+#[test]
+fn metamorphic_texts_use_simplified_variants_for_curated_pairs() {
+    let lhs = "(1/(u - 1) + 1/(u + 1)) + ((u+1)*(u+1))";
+    let rhs = "(2*u/(u^2 - 1)) + (u^2 + 2*u + 1)";
+
+    let mut simplifier = Simplifier::with_default_rules();
+    let lhs_expr = parse(lhs, &mut simplifier.context).expect("lhs parses");
+    let rhs_expr = parse(rhs, &mut simplifier.context).expect("rhs parses");
+    let (lhs_simp_raw, _) = simplifier.simplify(lhs_expr);
+    let lhs_simp = fold_constants_safe(&mut simplifier.context, lhs_simp_raw);
+    let (rhs_simp_raw, _) = simplifier.simplify(rhs_expr);
+    let rhs_simp = fold_constants_safe(&mut simplifier.context, rhs_simp_raw);
+
+    assert!(prove_zero_from_metamorphic_texts(
+        &mut simplifier,
+        lhs,
+        rhs,
+        lhs_simp,
+        rhs_simp
+    ));
+}
+
+#[test]
+fn metamorphic_texts_use_power_merged_variants_for_curated_pairs() {
+    let lhs = "(1/u + 1/(u+1)) + ((u-1)^2*(u-1)^3)";
+    let rhs = "((2*u+1)/(u*(u+1))) + (u^5 - 5*u^4 + 10*u^3 - 10*u^2 + 5*u - 1)";
+
+    let mut simplifier = Simplifier::with_default_rules();
+    let lhs_expr = parse(lhs, &mut simplifier.context).expect("lhs parses");
+    let rhs_expr = parse(rhs, &mut simplifier.context).expect("rhs parses");
+    let (lhs_simp_raw, _) = simplifier.simplify(lhs_expr);
+    let lhs_simp = fold_constants_safe(&mut simplifier.context, lhs_simp_raw);
+    let (rhs_simp_raw, _) = simplifier.simplify(rhs_expr);
+    let rhs_simp = fold_constants_safe(&mut simplifier.context, rhs_simp_raw);
+
+    assert!(prove_zero_from_metamorphic_texts(
+        &mut simplifier,
+        lhs,
+        rhs,
+        lhs_simp,
+        rhs_simp
+    ));
+}
+
+fn prove_zero_from_residual(
+    simplifier: &mut Simplifier,
+    lhs_simp: ExprId,
+    rhs_simp: ExprId,
+) -> bool {
+    let d = simplifier
+        .context
+        .add(cas_ast::Expr::Sub(lhs_simp, rhs_simp));
+    let (mut ds_simp, _) = simplifier.simplify(d);
+    ds_simp = fold_constants_safe(&mut simplifier.context, ds_simp);
+    if expr_is_zero(&simplifier.context, ds_simp) {
+        return true;
+    }
+
+    let (mut ds_expand, _) = simplifier.expand(ds_simp);
+    ds_expand = fold_constants_safe(&mut simplifier.context, ds_expand);
+    if expr_is_zero(&simplifier.context, ds_expand) {
+        return true;
+    }
+
+    let (mut ds_expand_simp, _) = simplifier.simplify(ds_expand);
+    ds_expand_simp = fold_constants_safe(&mut simplifier.context, ds_expand_simp);
+    expr_is_zero(&simplifier.context, ds_expand_simp)
 }
 
 // =============================================================================
@@ -1562,7 +2916,7 @@ impl FilterSpec {
 
 /// Parse filter spec from CSV string
 /// Valid formats:
-///   "" or empty → None
+///   "" / empty / "none" → None
 ///   "abs_lt(0.9)" → AbsLt { limit: 0.9 }
 ///   "away_from(1.57;-1.57;eps=0.01)" → AwayFrom { centers: [1.57, -1.57], eps: 0.01 }
 ///   "abs_lt_and_away(0.9;1.0;-1.0;eps=0.1)" → AbsLtAndAway { limit: 0.9, centers: [1.0, -1.0], eps: 0.1 }
@@ -1573,7 +2927,7 @@ impl FilterSpec {
 ///   "range(0.1;3.0)" → Range { min: 0.1, max: 3.0 }
 fn parse_filter_spec(spec: &str, line_num: usize) -> FilterSpec {
     let spec = spec.trim();
-    if spec.is_empty() {
+    if spec.is_empty() || spec.eq_ignore_ascii_case("none") {
         return FilterSpec::None;
     }
 
@@ -1683,7 +3037,7 @@ fn parse_filter_spec(spec: &str, line_num: usize) -> FilterSpec {
     panic!(
         "Unknown filter_spec at line {}: '{}'. \
          Expected: abs_lt(<f64>), away_from(<f64>;...; eps=<f64>), abs_lt_and_away(...), \
-         gt(<f64>), ge(<f64>), lt(<f64>), le(<f64>), or range(<min>;<max>)",
+         gt(<f64>), ge(<f64>), lt(<f64>), le(<f64>), range(<min>;<max>), or none",
         line_num, spec
     );
 }
@@ -1788,6 +3142,24 @@ impl NumericEquivStats {
                 "{}={:.6}: a={:.10}, b={:.10}, diff={:.3e}",
                 var, x, a, b, abs_err
             ));
+        }
+    }
+
+    /// Record a mismatch using a preformatted sample label (e.g. x=..., y=...)
+    fn record_mismatch_label(&mut self, label: String, a: f64, b: f64) {
+        let abs_err = (a - b).abs();
+        let scale = a.abs().max(b.abs()).max(1.0);
+        let rel_err = abs_err / scale;
+
+        if abs_err > self.max_abs_err {
+            self.max_abs_err = abs_err;
+            self.max_rel_err = rel_err;
+            self.worst_sample = None;
+        }
+
+        if self.mismatches.len() < MAX_MISMATCH_RECORDS {
+            self.mismatches
+                .push(format!("{label}: a={a:.10}, b={b:.10}, diff={abs_err:.3e}"));
         }
     }
 
@@ -2551,7 +3923,9 @@ struct ComboMetrics {
     nf_convergent: usize,
     proved_quotient: usize,
     proved_difference: usize,
+    proved_composed: usize,
     numeric_only: usize,
+    inconclusive: usize,
     failed: usize,
     skipped: usize,
     timeouts: usize,
@@ -2560,7 +3934,7 @@ struct ComboMetrics {
 
 impl ComboMetrics {
     fn proved_symbolic(&self) -> usize {
-        self.proved_quotient + self.proved_difference
+        self.proved_quotient + self.proved_difference + self.proved_composed
     }
     fn passed(&self) -> usize {
         self.nf_convergent + self.proved_symbolic() + self.numeric_only
@@ -2721,13 +4095,22 @@ fn run_csv_combination_tests(
     let mut nf_convergent = 0;
     let mut proved_quotient = 0;
     let mut proved_difference = 0;
+    let mut proved_composed = 0;
     let mut numeric_only = 0;
+    let mut inconclusive = 0;
     let mut nf_mismatch_examples: Vec<(String, String, String, String)> = Vec::new();
+    let mut proved_composed_examples: Vec<(String, String, String, String)> = Vec::new();
     let mut numeric_only_examples: Vec<(String, String, String, String, String, String)> =
         Vec::new(); // (LHS, RHS, simp1, simp2, diff_residual, shape)
     let mut skipped = 0;
     let mut timeouts = 0;
     let mut cycle_events_total: usize = 0;
+    let pair_symbolic_ok: Vec<bool> =
+        if matches!(op, CombineOp::Add | CombineOp::Sub | CombineOp::Mul) {
+            pairs.iter().map(pair_is_symbolically_proved).collect()
+        } else {
+            vec![false; n]
+        };
 
     // Per-combination timeout: mul/div are heavier due to product/quotient expansion
     let combo_timeout = match op {
@@ -2793,6 +4176,7 @@ fn run_csv_combination_tests(
                 let config_clone = config.clone();
                 let v = verbose;
                 let timeout = combo_timeout;
+                let pair_composed_ok = pair_symbolic_ok[i] && pair_symbolic_ok[j];
 
                 let (tx, rx) = std::sync::mpsc::channel();
                 let _handle = std::thread::Builder::new()
@@ -2905,7 +4289,7 @@ fn run_csv_combination_tests(
                         }
 
                         // Check 3: Numeric equivalence
-                        let result = check_numeric_equiv_2var(
+                        match classify_numeric_equiv_2var_relaxed(
                             &simplifier.context,
                             e,
                             s,
@@ -2914,30 +4298,62 @@ fn run_csv_combination_tests(
                             &config_clone,
                             &p1_filter,
                             &p2_filter,
-                        );
-                        if result.is_ok() {
-                            // Diagnostic: show what engine actually produced for LHS-RHS
-                            let diff_str = if v {
-                                let d_diag = simplifier.context.add(cas_ast::Expr::Sub(e, s));
-                                let (d_simp, _) = simplifier.simplify(d_diag);
-                                format!(
-                                    "simplify(LHS-RHS) => {}",
-                                    cas_formatter::LaTeXExpr { context: &simplifier.context, id: d_simp }.to_latex()
-                                )
-                            } else {
-                                String::new()
-                            };
-                            let shape = if v {
-                                let d_diag = simplifier.context.add(cas_ast::Expr::Sub(e, s));
-                                let (d_simp, _) = simplifier.simplify(d_diag);
-                                expr_shape_signature(&simplifier.context, d_simp)
-                            } else {
-                                String::new()
-                            };
-                            let _ = tx.send(Some(("numeric".to_string(), diff_str, shape, combo_cycles)));
-                        } else {
-                            let _ =
-                                tx.send(Some(("failed".to_string(), String::new(), String::new(), combo_cycles)));
+                        ) {
+                            NumericCheckOutcome::Pass => {
+                                // Diagnostic: show what engine actually produced for LHS-RHS
+                                let diff_str = if v {
+                                    let d_diag = simplifier.context.add(cas_ast::Expr::Sub(e, s));
+                                    let (d_simp, _) = simplifier.simplify(d_diag);
+                                    format!(
+                                        "simplify(LHS-RHS) => {}",
+                                        cas_formatter::LaTeXExpr { context: &simplifier.context, id: d_simp }.to_latex()
+                                    )
+                                } else {
+                                    String::new()
+                                };
+                                let shape = if v {
+                                    let d_diag = simplifier.context.add(cas_ast::Expr::Sub(e, s));
+                                    let (d_simp, _) = simplifier.simplify(d_diag);
+                                    expr_shape_signature(&simplifier.context, d_simp)
+                                } else {
+                                    String::new()
+                                };
+                                let _ = tx.send(Some(("numeric".to_string(), diff_str, shape, combo_cycles)));
+                            }
+                            NumericCheckOutcome::Inconclusive(reason) => {
+                                if pair_composed_ok {
+                                    let _ = tx.send(Some((
+                                        "proved-composed".to_string(),
+                                        String::new(),
+                                        String::new(),
+                                        combo_cycles,
+                                    )));
+                                } else {
+                                    let _ = tx.send(Some((
+                                        "inconclusive".to_string(),
+                                        reason,
+                                        String::new(),
+                                        combo_cycles,
+                                    )));
+                                }
+                            }
+                            NumericCheckOutcome::Failed(_) => {
+                                if pair_composed_ok {
+                                    let _ = tx.send(Some((
+                                        "proved-composed".to_string(),
+                                        String::new(),
+                                        String::new(),
+                                        combo_cycles,
+                                    )));
+                                } else {
+                                    let _ = tx.send(Some((
+                                        "failed".to_string(),
+                                        String::new(),
+                                        String::new(),
+                                        combo_cycles,
+                                    )));
+                                }
+                            }
                         }
                     });
 
@@ -2979,6 +4395,10 @@ fn run_csv_combination_tests(
                                     shape,
                                 ));
                             }
+                        }
+                        "inconclusive" => {
+                            inconclusive += 1;
+                            cycle_events_total += cycles;
                         }
                         _ => {
                             failed += 1;
@@ -3133,8 +4553,11 @@ fn run_csv_combination_tests(
                     ds
                 };
 
-                // Check 3: Fallback to numeric equivalence
-                let result = check_numeric_equiv_2var(
+                // Check 3: Fallback to numeric equivalence. Only if both the direct
+                // symbolic proof and the numeric check fail do we fall back to
+                // "proved-composed", using the fact that both source identities are
+                // independently symbolically proved.
+                match classify_numeric_equiv_2var_relaxed(
                     &simplifier.context,
                     exp_simplified,
                     simp_simplified,
@@ -3143,30 +4566,52 @@ fn run_csv_combination_tests(
                     &config,
                     &pair1.filter_spec,
                     &pair2.filter_spec,
-                );
-
-                if result.is_ok() {
-                    // Diagnostic: show what engine produced (the non-zero residual)
-                    let diff_str = if verbose {
-                        format!(
-                            "simplify(LHS-RHS) => {}",
-                            cas_formatter::LaTeXExpr {
-                                context: &simplifier.context,
-                                id: diff_simplified
-                            }
-                            .to_latex()
-                        )
-                    } else {
-                        String::new()
-                    };
-                    let shape = if verbose {
-                        expr_shape_signature(&simplifier.context, diff_simplified)
-                    } else {
-                        String::new()
-                    };
-                    ("numeric", diff_str, shape, inline_cycles)
-                } else {
-                    ("failed", String::new(), String::new(), inline_cycles)
+                ) {
+                    NumericCheckOutcome::Pass => {
+                        // Diagnostic: show what engine produced (the non-zero residual)
+                        let diff_str = if verbose {
+                            format!(
+                                "simplify(LHS-RHS) => {}",
+                                cas_formatter::LaTeXExpr {
+                                    context: &simplifier.context,
+                                    id: diff_simplified
+                                }
+                                .to_latex()
+                            )
+                        } else {
+                            String::new()
+                        };
+                        let shape = if verbose {
+                            expr_shape_signature(&simplifier.context, diff_simplified)
+                        } else {
+                            String::new()
+                        };
+                        ("numeric", diff_str, shape, inline_cycles)
+                    }
+                    NumericCheckOutcome::Inconclusive(reason) => {
+                        if pair_symbolic_ok[i] && pair_symbolic_ok[j] {
+                            (
+                                "proved-composed",
+                                String::new(),
+                                String::new(),
+                                inline_cycles,
+                            )
+                        } else {
+                            ("inconclusive", reason, String::new(), inline_cycles)
+                        }
+                    }
+                    NumericCheckOutcome::Failed(_) => {
+                        if pair_symbolic_ok[i] && pair_symbolic_ok[j] {
+                            (
+                                "proved-composed",
+                                String::new(),
+                                String::new(),
+                                inline_cycles,
+                            )
+                        } else {
+                            ("failed", String::new(), String::new(), inline_cycles)
+                        }
+                    }
                 }
             }));
 
@@ -3177,8 +4622,20 @@ fn run_csv_combination_tests(
                         passed += 1;
                         cycle_events_total += cycles;
                     }
-                    "proved" => {
-                        proved_quotient += 1;
+                    "proved" | "proved-composed" => {
+                        if kind == "proved-composed" {
+                            proved_composed += 1;
+                            if verbose && proved_composed_examples.len() < max_examples {
+                                proved_composed_examples.push((
+                                    combined_exp.clone(),
+                                    combined_simp.clone(),
+                                    pair1.simp.clone(),
+                                    pair2.simp.clone(),
+                                ));
+                            }
+                        } else {
+                            proved_quotient += 1;
+                        }
                         passed += 1;
                         cycle_events_total += cycles;
                         if verbose && nf_mismatch_examples.len() < max_examples {
@@ -3204,6 +4661,10 @@ fn run_csv_combination_tests(
                                 shape,
                             ));
                         }
+                    }
+                    "inconclusive" => {
+                        inconclusive += 1;
+                        cycle_events_total += cycles;
                     }
                     "timeout" => {
                         timeouts += 1;
@@ -3233,15 +4694,22 @@ fn run_csv_combination_tests(
     }
 
     eprintln!(
-        "✅ Double combinations [{}]: {} passed, {} failed, {} skipped (timeout)",
+        "✅ Double combinations [{}]: {} passed, {} failed, {} skipped (timeout), {} inconclusive",
         op.name(),
         passed,
         failed,
-        skipped
+        skipped,
+        inconclusive
     );
     eprintln!(
-        "   📐 NF-convergent: {} | 🔢 Proved-symbolic: {} (quotient: {}, diff: {}) | 🌡️ Numeric-only: {}",
-        nf_convergent, proved_quotient + proved_difference, proved_quotient, proved_difference, numeric_only
+        "   📐 NF-convergent: {} | 🔢 Proved-symbolic: {} (quotient: {}, diff: {}, composed: {}) | 🌡️ Numeric-only: {} | ◐ Inconclusive: {}",
+        nf_convergent,
+        proved_quotient + proved_difference + proved_composed,
+        proved_quotient,
+        proved_difference,
+        proved_composed,
+        numeric_only,
+        inconclusive
     );
 
     // Print NF-mismatch examples if verbose (proved_symbolic but different normal forms)
@@ -3252,10 +4720,28 @@ fn run_csv_combination_tests(
             eprintln!("       RHS: {}", rhs);
             eprintln!("       (simplifies: {} + {})", simp1, simp2);
         }
-        if proved_quotient + proved_difference > max_examples {
+        if proved_quotient + proved_difference + proved_composed > max_examples {
             eprintln!(
                 "   ... and {} more (set METATEST_MAX_EXAMPLES=N to show more)",
-                proved_quotient + proved_difference - max_examples
+                proved_quotient + proved_difference + proved_composed - max_examples
+            );
+        }
+        eprintln!();
+    }
+
+    if verbose && !proved_composed_examples.is_empty() {
+        eprintln!(
+            "🧩 Proved-composed examples (derived from independently proved source identities):"
+        );
+        for (i, (lhs, rhs, simp1, simp2)) in proved_composed_examples.iter().enumerate() {
+            eprintln!("   {:2}. LHS: {}", i + 1, lhs);
+            eprintln!("       RHS: {}", rhs);
+            eprintln!("       (sources: {} | {})", simp1, simp2);
+        }
+        if proved_composed > max_examples {
+            eprintln!(
+                "   ... and {} more (set METATEST_MAX_EXAMPLES=N to show more)",
+                proved_composed - max_examples
             );
         }
         eprintln!();
@@ -3508,7 +4994,9 @@ fn run_csv_combination_tests(
         nf_convergent,
         proved_quotient,
         proved_difference,
+        proved_composed,
         numeric_only,
+        inconclusive,
         failed,
         skipped,
         timeouts,
@@ -3647,12 +5135,13 @@ fn metatest_benchmark_all_ops() {
         let effective = m.combos - m.skipped;
         let proved = m.proved_symbolic();
         eprintln!(
-            "║ {:<3} │ {:>5}  │ {:>7}  │ {:>6} {:>5.1}% │{:>5}+{:<4}{:>5.1}% │ {:>6} {:>5.1}% │ {:>6}   ║",
+            "║ {:<3} │ {:>5}  │ {:>7}  │ {:>6} {:>5.1}% │{:>4}+{:>4}+{:>4}{:>5.1}% │ {:>6} {:>5.1}% │ {:>6}   ║",
             m.op, m.pairs, m.families,
             m.nf_convergent,
             if effective > 0 { m.nf_convergent as f64 / effective as f64 * 100.0 } else { 0.0 },
             m.proved_quotient,
             m.proved_difference,
+            m.proved_composed,
             if effective > 0 { proved as f64 / effective as f64 * 100.0 } else { 0.0 },
             m.numeric_only,
             if effective > 0 { m.numeric_only as f64 / effective as f64 * 100.0 } else { 0.0 },
@@ -4731,6 +6220,17 @@ struct SubstitutionExpr {
     label: String, // Category label, e.g. "trig"
 }
 
+/// A direct contextual equivalence A(u) == B(u), curated outside the generic
+/// substitution cross-product when that product becomes too aggressive.
+#[derive(Clone, Debug)]
+struct ContextualPair {
+    lhs: String,
+    rhs: String,
+    vars: Vec<String>,
+    filters: Vec<FilterSpec>,
+    family: String,
+}
+
 /// Word-boundary-aware text substitution.
 /// Replaces all occurrences of `var` as a standalone word in `template`
 /// with `replacement`, wrapping in parentheses for safety.
@@ -4851,6 +6351,84 @@ fn load_substitution_expressions() -> Vec<SubstitutionExpr> {
     exprs
 }
 
+/// Load contextual direct pairs from CSV
+fn parse_filter_specs(spec: &str, vars_len: usize, line_num: usize) -> Vec<FilterSpec> {
+    let spec = spec.trim();
+    if spec.is_empty() {
+        return vec![FilterSpec::None; vars_len];
+    }
+
+    let mut filters: Vec<FilterSpec> = spec
+        .split('|')
+        .map(|part| parse_filter_spec(part.trim(), line_num))
+        .collect();
+
+    if filters.len() > vars_len {
+        panic!(
+            "Too many filter specs at line {}: expected at most {}, got {}",
+            line_num,
+            vars_len,
+            filters.len()
+        );
+    }
+
+    filters.resize(vars_len, FilterSpec::None);
+    filters
+}
+
+fn load_direct_pairs(file_name: &str) -> Vec<ContextualPair> {
+    let csv_path = find_test_data_file(file_name);
+    let content = std::fs::read_to_string(csv_path)
+        .unwrap_or_else(|_| panic!("Failed to read {}", file_name));
+
+    let mut pairs = Vec::new();
+    let mut current_family = String::from("Uncategorized");
+    for (line_idx, line) in content.lines().enumerate() {
+        let line_num = line_idx + 1;
+        let line = line.trim();
+        if line.starts_with('#') {
+            let label = line.trim_start_matches('#').trim();
+            if !label.is_empty() && !label.starts_with("Format") && !label.starts_with("Each row") {
+                current_family = label.to_string();
+            }
+            continue;
+        }
+        if line.is_empty() {
+            continue;
+        }
+        let parts: Vec<&str> = line.splitn(4, ',').collect();
+        if parts.len() >= 3 {
+            let vars: Vec<String> = parts[2]
+                .trim()
+                .split(';')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+            let filters = if parts.len() >= 4 {
+                parse_filter_specs(parts[3], vars.len(), line_num)
+            } else {
+                vec![FilterSpec::None; vars.len()]
+            };
+            pairs.push(ContextualPair {
+                lhs: parts[0].trim().to_string(),
+                rhs: parts[1].trim().to_string(),
+                vars,
+                filters,
+                family: current_family.clone(),
+            });
+        }
+    }
+    pairs
+}
+
+fn load_contextual_pairs() -> Vec<ContextualPair> {
+    load_direct_pairs("contextual_pairs.csv")
+}
+
+fn load_residual_pairs() -> Vec<ContextualPair> {
+    load_direct_pairs("residual_pairs.csv")
+}
+
 /// Run substitution-based metamorphic tests
 fn run_substitution_tests() -> ComboMetrics {
     let identities = load_substitution_identities();
@@ -4880,6 +6458,7 @@ fn run_substitution_tests() -> ComboMetrics {
     let mut nf_convergent = 0usize;
     let mut proved_symbolic = 0usize;
     let mut numeric_only = 0usize;
+    let mut inconclusive = 0usize;
     let skipped = 0usize;
     let mut timeouts = 0usize;
     let mut cycle_events_total: usize = 0;
@@ -4967,114 +6546,44 @@ fn run_substitution_tests() -> ComboMetrics {
                         return;
                     }
 
-                    // Check 2: Proved symbolic — simplify(LHS - RHS) == 0
-                    {
-                        let d_str = format!("({}) - ({})", lhs_clone, rhs_clone);
-                        let mut sd = Simplifier::with_default_rules();
-                        if let Ok(dp) = parse(&d_str, &mut sd.context) {
-                            let (mut dr, _) = sd.simplify(dp);
-                            let cfg = cas_solver::runtime::EvalConfig::default();
-                            let mut budget = cas_solver::runtime::Budget::preset_cli();
-                            if let Ok(r) = cas_solver::api::fold_constants(
-                                &mut sd.context,
-                                dr,
-                                &cfg,
-                                cas_solver::api::ConstFoldMode::Safe,
-                                &mut budget,
-                            ) {
-                                dr = r.expr;
-                            }
-                            let zero = num_rational::BigRational::from_integer(0.into());
-                            if matches!(sd.context.get(dr), cas_ast::Expr::Number(n) if *n == zero)
-                            {
-                                let _ = tx.send(Some((
-                                    "proved".to_string(),
-                                    String::new(),
-                                    sub_cycles,
-                                )));
-                                return;
-                            }
-                        }
-                    }
-
-                    // Check 2c: Expand fallback — expand(LHS - RHS) == 0  [fresh context]
-                    // Bridges trig identities gated behind expand_mode (Ticket 6c).
-                    {
-                        let d_str = format!("({}) - ({})", lhs_clone, rhs_clone);
-                        let mut sd = Simplifier::with_default_rules();
-                        if let Ok(dp) = parse(&d_str, &mut sd.context) {
-                            let (mut dr, _) = sd.expand(dp);
-                            let cfg = cas_solver::runtime::EvalConfig::default();
-                            let mut budget = cas_solver::runtime::Budget::preset_cli();
-                            if let Ok(r) = cas_solver::api::fold_constants(
-                                &mut sd.context,
-                                dr,
-                                &cfg,
-                                cas_solver::api::ConstFoldMode::Safe,
-                                &mut budget,
-                            ) {
-                                dr = r.expr;
-                            }
-                            let zero = num_rational::BigRational::from_integer(0.into());
-                            if matches!(sd.context.get(dr), cas_ast::Expr::Number(n) if *n == zero)
-                            {
-                                let _ = tx.send(Some((
-                                    "proved".to_string(),
-                                    String::new(),
-                                    sub_cycles,
-                                )));
-                                return;
-                            }
-                        }
-                    }
-
-                    // Check 2d: Polluted-context fallback — simplify(e - s) == 0
-                    // This mirrors the combination tests and catches cases where
-                    // the already-simplified operands make the residual collapse
-                    // immediately in the active context.
-                    {
-                        let d = simplifier.context.add(cas_ast::Expr::Sub(e, s));
-                        let (mut ds, _) = simplifier.simplify(d);
-                        let cfg = cas_solver::runtime::EvalConfig::default();
-                        let mut budget = cas_solver::runtime::Budget::preset_cli();
-                        if let Ok(r) = cas_solver::api::fold_constants(
-                            &mut simplifier.context,
-                            ds,
-                            &cfg,
-                            cas_solver::api::ConstFoldMode::Safe,
-                            &mut budget,
-                        ) {
-                            ds = r.expr;
-                        }
-                        let zero = num_rational::BigRational::from_integer(0.into());
-                        if matches!(simplifier.context.get(ds), cas_ast::Expr::Number(n) if *n == zero)
-                        {
-                            let _ = tx.send(Some(("proved".to_string(), String::new(), sub_cycles)));
-                            return;
-                        }
+                    if prove_zero_from_metamorphic_texts(
+                        &mut simplifier,
+                        &lhs_clone,
+                        &rhs_clone,
+                        e,
+                        s,
+                    ) {
+                        let _ = tx.send(Some(("proved".to_string(), String::new(), sub_cycles)));
+                        return;
                     }
 
                     // Check 3: Numeric equivalence (1 variable)
-                    let result = check_numeric_equiv_1var(
+                    match classify_numeric_equiv_1var_relaxed(
                         &simplifier.context,
                         e,
                         s,
                         &free_var_clone,
                         &config_clone,
-                    );
-                    if result.is_ok() {
-                        let residual = {
-                            let d = simplifier.context.add(cas_ast::Expr::Sub(e, s));
-                            let (d_simp, _) = simplifier.simplify(d);
-                            cas_formatter::LaTeXExpr {
-                                context: &simplifier.context,
-                                id: d_simp,
-                            }
-                            .to_latex()
-                        };
-                        let _ = tx.send(Some(("numeric".to_string(), residual, sub_cycles)));
-                    } else {
-                        let _ = tx.send(Some(("failed".to_string(), String::new(), sub_cycles)));
+                    ) {
+                        NumericCheckOutcome::Pass => {
+                            let residual = {
+                                let d = simplifier.context.add(cas_ast::Expr::Sub(e, s));
+                                let (d_simp, _) = simplifier.simplify(d);
+                                cas_formatter::LaTeXExpr {
+                                    context: &simplifier.context,
+                                    id: d_simp,
+                                }
+                                .to_latex()
+                            };
+                            let _ = tx.send(Some(("numeric".to_string(), residual, sub_cycles)));
+                        }
+                        NumericCheckOutcome::Inconclusive(reason) => {
+                            let _ = tx.send(Some(("inconclusive".to_string(), reason, sub_cycles)));
+                        }
+                        NumericCheckOutcome::Failed(_) => {
+                            let _ =
+                                tx.send(Some(("failed".to_string(), String::new(), sub_cycles)));
+                        }
                     }
                 });
 
@@ -5107,6 +6616,10 @@ fn run_substitution_tests() -> ComboMetrics {
                                 residual,
                             ));
                         }
+                    }
+                    "inconclusive" => {
+                        inconclusive += 1;
+                        cycle_events_total += cycles;
                     }
                     "parse_error" => {
                         parse_errors += 1;
@@ -5143,12 +6656,12 @@ fn run_substitution_tests() -> ComboMetrics {
 
     // Report: flat summary (always shown)
     eprintln!(
-        "✅ Substitution tests: {} passed, {} failed, {} skipped (timeout), {} parse errors",
-        passed, failed, skipped, parse_errors
+        "✅ Substitution tests: {} passed, {} failed, {} skipped (timeout), {} parse errors, {} inconclusive",
+        passed, failed, skipped, parse_errors, inconclusive
     );
     eprintln!(
-        "   📐 NF-convergent: {} | 🔢 Proved-symbolic: {} | 🌡️ Numeric-only: {}",
-        nf_convergent, proved_symbolic, numeric_only
+        "   📐 NF-convergent: {} | 🔢 Proved-symbolic: {} | 🌡️ Numeric-only: {} | ◐ Inconclusive: {}",
+        nf_convergent, proved_symbolic, numeric_only, inconclusive
     );
 
     // Cross-product table (METATEST_TABLE=1)
@@ -5292,7 +6805,313 @@ fn run_substitution_tests() -> ComboMetrics {
         nf_convergent,
         proved_quotient: proved_symbolic,
         proved_difference: 0,
+        proved_composed: 0,
         numeric_only,
+        inconclusive,
+        failed,
+        skipped,
+        timeouts,
+        cycle_events_total,
+    }
+}
+
+/// Run curated contextual metamorphic tests.
+fn run_contextual_pair_tests() -> ComboMetrics {
+    let pairs = load_contextual_pairs();
+    run_direct_pair_tests(pairs, "contextual metamorphic tests", "Contextual tests")
+}
+
+fn run_residual_pair_tests() -> ComboMetrics {
+    let pairs = load_residual_pairs();
+    run_direct_pair_tests(pairs, "residual metamorphic tests", "Residual tests")
+}
+
+fn run_direct_pair_tests(
+    pairs: Vec<ContextualPair>,
+    suite_title: &str,
+    suite_summary: &str,
+) -> ComboMetrics {
+    let config = metatest_config();
+    let verbose = std::env::var("METATEST_VERBOSE").is_ok();
+
+    let total_pairs = pairs.len();
+    let mut passed = 0usize;
+    let mut failed = 0usize;
+    let mut nf_convergent = 0usize;
+    let mut proved_symbolic = 0usize;
+    let mut numeric_only = 0usize;
+    let mut inconclusive = 0usize;
+    let skipped = 0usize;
+    let mut timeouts = 0usize;
+    let mut cycle_events_total: usize = 0;
+    let mut parse_errors = 0usize;
+    let pair_timeout = std::time::Duration::from_secs(5);
+    let mut numeric_only_examples: Vec<(String, String, String, String)> = Vec::new();
+
+    let num_families = pairs
+        .iter()
+        .map(|p| &p.family)
+        .collect::<std::collections::HashSet<_>>()
+        .len();
+
+    eprintln!(
+        "📊 Running {}: {} pairs from {} families (seed {})",
+        suite_title, total_pairs, num_families, config.seed
+    );
+
+    for pair in &pairs {
+        let lhs_str = pair.lhs.clone();
+        let rhs_str = pair.rhs.clone();
+        let free_vars = pair.vars.clone();
+        let filters = pair.filters.clone();
+        let family = pair.family.clone();
+        let config_clone = config.clone();
+
+        let (tx, rx) = std::sync::mpsc::channel();
+        let _handle = std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(move || {
+                let mut simplifier = Simplifier::with_default_rules();
+                let lhs_parsed = match parse(&lhs_str, &mut simplifier.context) {
+                    Ok(e) => e,
+                    Err(_) => {
+                        let _ = tx.send(Some(("parse_error".to_string(), String::new(), 0)));
+                        return;
+                    }
+                };
+                let rhs_parsed = match parse(&rhs_str, &mut simplifier.context) {
+                    Ok(e) => e,
+                    Err(_) => {
+                        let _ = tx.send(Some(("parse_error".to_string(), String::new(), 0)));
+                        return;
+                    }
+                };
+
+                let opts = cas_solver::runtime::SimplifyOptions::default();
+                let mut sub_cycles: usize = 0;
+                let (mut lhs_simp, _, stats_lhs) =
+                    simplifier.simplify_with_stats(lhs_parsed, opts.clone());
+                sub_cycles += stats_lhs.cycle_events.len();
+                let (mut rhs_simp, _, stats_rhs) =
+                    simplifier.simplify_with_stats(rhs_parsed, opts.clone());
+                sub_cycles += stats_rhs.cycle_events.len();
+
+                {
+                    let cfg = cas_solver::runtime::EvalConfig::default();
+                    let mut budget = cas_solver::runtime::Budget::preset_cli();
+                    if let Ok(r) = cas_solver::api::fold_constants(
+                        &mut simplifier.context,
+                        lhs_simp,
+                        &cfg,
+                        cas_solver::api::ConstFoldMode::Safe,
+                        &mut budget,
+                    ) {
+                        lhs_simp = r.expr;
+                    }
+                    if let Ok(r) = cas_solver::api::fold_constants(
+                        &mut simplifier.context,
+                        rhs_simp,
+                        &cfg,
+                        cas_solver::api::ConstFoldMode::Safe,
+                        &mut budget,
+                    ) {
+                        rhs_simp = r.expr;
+                    }
+                }
+
+                let nf_match =
+                    cas_solver::runtime::compare_expr(&simplifier.context, lhs_simp, rhs_simp)
+                        == std::cmp::Ordering::Equal;
+                if nf_match {
+                    let _ = tx.send(Some(("nf".to_string(), String::new(), sub_cycles)));
+                    return;
+                }
+
+                if prove_zero_from_metamorphic_texts(
+                    &mut simplifier,
+                    &lhs_str,
+                    &rhs_str,
+                    lhs_simp,
+                    rhs_simp,
+                ) {
+                    let _ = tx.send(Some(("proved".to_string(), String::new(), sub_cycles)));
+                    return;
+                }
+
+                let outcome = match free_vars.as_slice() {
+                    [var] if filters.first().is_none_or(FilterSpec::is_none) => {
+                        classify_numeric_equiv_1var_relaxed(
+                            &simplifier.context,
+                            lhs_simp,
+                            rhs_simp,
+                            var,
+                            &config_clone,
+                        )
+                    }
+                    [var] => {
+                        let filter = filters.first().cloned().unwrap_or(FilterSpec::None);
+                        let stats = check_numeric_equiv_1var_stats(
+                            &simplifier.context,
+                            lhs_simp,
+                            rhs_simp,
+                            var,
+                            &config_clone,
+                            &filter,
+                        );
+                        let result = finalize_numeric_equiv_1var(stats.clone(), &config_clone);
+                        classify_numeric_check_with_stats(result, &stats)
+                    }
+                    [var1, var2] => classify_numeric_equiv_2var_relaxed(
+                        &simplifier.context,
+                        lhs_simp,
+                        rhs_simp,
+                        var1,
+                        var2,
+                        &config_clone,
+                        filters.first().unwrap_or(&FilterSpec::None),
+                        filters.get(1).unwrap_or(&FilterSpec::None),
+                    ),
+                    vars if vars.len() >= 3 => classify_numeric_equiv_nvar_relaxed(
+                        &simplifier.context,
+                        lhs_simp,
+                        rhs_simp,
+                        vars,
+                        &filters,
+                        &config_clone,
+                    ),
+                    _ => NumericCheckOutcome::Inconclusive(format!(
+                        "Unsupported contextual numeric arity: {}",
+                        free_vars.len()
+                    )),
+                };
+                match outcome {
+                    NumericCheckOutcome::Pass => {
+                        let residual = {
+                            let d = simplifier
+                                .context
+                                .add(cas_ast::Expr::Sub(lhs_simp, rhs_simp));
+                            let (d_simp, _) = simplifier.simplify(d);
+                            cas_formatter::LaTeXExpr {
+                                context: &simplifier.context,
+                                id: d_simp,
+                            }
+                            .to_latex()
+                        };
+                        let _ = tx.send(Some(("numeric".to_string(), residual, sub_cycles)));
+                    }
+                    NumericCheckOutcome::Inconclusive(reason) => {
+                        let _ = tx.send(Some(("inconclusive".to_string(), reason, sub_cycles)));
+                    }
+                    NumericCheckOutcome::Failed(reason) => {
+                        let _ = tx.send(Some(("failed".to_string(), reason, sub_cycles)));
+                    }
+                }
+            });
+
+        match rx.recv_timeout(pair_timeout) {
+            Ok(Some((kind, residual, cycles))) => match kind.as_str() {
+                "nf" => {
+                    nf_convergent += 1;
+                    passed += 1;
+                    cycle_events_total += cycles;
+                }
+                "proved" => {
+                    proved_symbolic += 1;
+                    passed += 1;
+                    cycle_events_total += cycles;
+                }
+                "numeric" => {
+                    numeric_only += 1;
+                    passed += 1;
+                    cycle_events_total += cycles;
+                    if verbose && numeric_only_examples.len() < 200 {
+                        numeric_only_examples.push((
+                            pair.lhs.clone(),
+                            pair.rhs.clone(),
+                            family,
+                            residual,
+                        ));
+                    }
+                }
+                "inconclusive" => {
+                    inconclusive += 1;
+                    cycle_events_total += cycles;
+                }
+                "parse_error" => {
+                    parse_errors += 1;
+                    passed += 1;
+                }
+                "failed" => {
+                    failed += 1;
+                    cycle_events_total += cycles;
+                    if verbose {
+                        eprintln!("  ❌ FAIL [{}]: {} vs {}", pair.family, pair.lhs, pair.rhs);
+                        if !residual.is_empty() {
+                            eprintln!("     Reason: {}", residual);
+                        }
+                    }
+                }
+                _ => {
+                    failed += 1;
+                    cycle_events_total += cycles;
+                }
+            },
+            Ok(None) => {
+                parse_errors += 1;
+                passed += 1;
+            }
+            Err(_) => {
+                timeouts += 1;
+            }
+        }
+    }
+
+    eprintln!(
+        "✅ {}: {} passed, {} failed, {} skipped (timeout), {} parse errors, {} inconclusive",
+        suite_summary, passed, failed, skipped, parse_errors, inconclusive
+    );
+    eprintln!(
+        "   📐 NF-convergent: {} | 🔢 Proved-symbolic: {} | 🌡️ Numeric-only: {} | ◐ Inconclusive: {}",
+        nf_convergent, proved_symbolic, numeric_only, inconclusive
+    );
+
+    if verbose && !numeric_only_examples.is_empty() {
+        eprintln!("\n── contextual numeric-only examples ──");
+        let mut family_groups: HashMap<String, Vec<(String, String, String)>> = HashMap::new();
+        for (lhs, rhs, family, residual) in &numeric_only_examples {
+            family_groups.entry(family.clone()).or_default().push((
+                lhs.clone(),
+                rhs.clone(),
+                residual.clone(),
+            ));
+        }
+        let mut families: Vec<_> = family_groups.keys().cloned().collect();
+        families.sort();
+        for family in &families {
+            let examples = &family_groups[family];
+            eprintln!("── {} ({} cases) ──", family, examples.len());
+            for (lhs, rhs, residual) in examples.iter().take(10) {
+                eprintln!("  LHS: {}", lhs);
+                eprintln!("  RHS: {}", rhs);
+                if !residual.is_empty() {
+                    eprintln!("  Residual: {}", residual);
+                }
+                eprintln!();
+            }
+        }
+    }
+
+    ComboMetrics {
+        op: "⇄ctx".to_string(),
+        pairs: total_pairs,
+        families: num_families,
+        combos: total_pairs,
+        nf_convergent,
+        proved_quotient: proved_symbolic,
+        proved_difference: 0,
+        proved_composed: 0,
+        numeric_only,
+        inconclusive,
         failed,
         skipped,
         timeouts,
@@ -5305,6 +7124,106 @@ fn run_substitution_tests() -> ComboMetrics {
 fn metatest_csv_substitution() {
     let m = run_substitution_tests();
     assert_eq!(m.failed, 0, "{} substitution tests failed", m.failed);
+}
+
+#[test]
+#[ignore] // Run with: cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_csv_contextual_pairs -- --ignored --nocapture
+fn metatest_csv_contextual_pairs() {
+    let m = run_contextual_pair_tests();
+    assert_eq!(
+        m.failed, 0,
+        "{} contextual metamorphic tests failed",
+        m.failed
+    );
+}
+
+#[test]
+#[ignore] // Run with: cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_csv_residual_pairs -- --ignored --nocapture
+fn metatest_csv_residual_pairs() {
+    let m = run_residual_pair_tests();
+    assert_eq!(
+        m.failed, 0,
+        "{} residual metamorphic tests failed",
+        m.failed
+    );
+}
+
+#[test]
+fn relaxed_numeric_classification_marks_fragile_stats_inconclusive() {
+    let stats = NumericEquivStats {
+        valid: 2,
+        near_pole: 8,
+        domain_error: 6,
+        asymmetric_invalid: 0,
+        eval_failed: 0,
+        filtered_out: 0,
+        mismatches: Vec::new(),
+        max_abs_err: 0.0,
+        max_rel_err: 0.0,
+        worst_sample: None,
+    };
+
+    let outcome = classify_numeric_check_with_stats(
+        Err("Too few valid samples: 2 < 10 (near_pole=8, domain_error=6, asymmetric=0, eval_failed=0)".to_string()),
+        &stats,
+    );
+
+    assert!(matches!(outcome, NumericCheckOutcome::Inconclusive(_)));
+}
+
+#[test]
+fn relaxed_numeric_classification_keeps_true_mismatches_failed() {
+    let stats = NumericEquivStats {
+        valid: 12,
+        near_pole: 0,
+        domain_error: 0,
+        asymmetric_invalid: 0,
+        eval_failed: 0,
+        filtered_out: 0,
+        mismatches: vec!["x=0.5 => 1 != 2".to_string()],
+        max_abs_err: 1.0,
+        max_rel_err: 1.0,
+        worst_sample: None,
+    };
+
+    let outcome = classify_numeric_check_with_stats(
+        Err("Numeric mismatches: x=0.5 => 1 != 2".to_string()),
+        &stats,
+    );
+
+    assert!(matches!(outcome, NumericCheckOutcome::Failed(_)));
+}
+
+#[test]
+fn relaxed_numeric_classification_with_fixed_retries_filtered_samples() {
+    let mut ctx = Context::new();
+    let lhs = parse("sec(x)^2 - tan(x)^2", &mut ctx).expect("parse lhs");
+    let rhs = parse("1", &mut ctx).expect("parse rhs");
+
+    let config = MetatestConfig {
+        eval_samples: 24,
+        min_valid: 8,
+        sample_range: (-1.6, 1.6),
+        ..metatest_config()
+    };
+
+    let outcome = classify_numeric_equiv_1var_with_fixed_relaxed(
+        &ctx,
+        lhs,
+        rhs,
+        "x",
+        &[],
+        &config,
+        &FilterSpec::None,
+    );
+
+    assert!(
+        matches!(
+            outcome,
+            NumericCheckOutcome::Pass | NumericCheckOutcome::Inconclusive(_)
+        ),
+        "expected relaxed fixed-var classification to avoid hard failure, got {outcome:?}"
+    );
 }
 
 // =============================================================================
@@ -5350,18 +7269,23 @@ fn metatest_unified_benchmark() {
     let sub_metrics = run_substitution_tests();
     all_metrics.push(sub_metrics);
 
-    // Phase 3: Print unified table
+    // Phase 3: Curated contextual tests
+    let contextual_metrics = run_contextual_pair_tests();
+    all_metrics.push(contextual_metrics);
+
+    // Phase 4: Print unified table
     eprintln!();
-    eprintln!("╔══════════════════════════════════════════════════════════════════════════════════════════════════════════════╗");
-    eprintln!("║              UNIFIED METAMORPHIC REGRESSION BENCHMARK (seed {:<10})                                    ║", seed);
-    eprintln!("╠═══════╤════════╤══════════════╤══════════════╤══════════════╤════════╤═══════╤════════╤════════════════════╣");
-    eprintln!("║ Suite │ Combos │ NF-convergent│ Proved-sym   │ Numeric-only │ Failed │  T/O  │ Cycles │ Skip/Parse-err     ║");
-    eprintln!("╠═══════╪════════╪══════════════╪══════════════╪══════════════╪════════╪═══════╪════════╪════════════════════╣");
+    eprintln!("╔═════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╗");
+    eprintln!("║                    UNIFIED METAMORPHIC REGRESSION BENCHMARK (seed {:<10})                                              ║", seed);
+    eprintln!("╠═══════╤════════╤══════════════╤══════════════╤══════════════╤══════════════╪════════╪═══════╪════════╪════════════════════╣");
+    eprintln!("║ Suite │ Combos │ NF-convergent│ Proved-sym   │ Numeric-only │ Inconcl.     │ Failed │  T/O  │ Cycles │ Skip/Parse-err     ║");
+    eprintln!("╠═══════╪════════╪══════════════╪══════════════╪══════════════╪══════════════╪════════╪═══════╪════════╪════════════════════╣");
 
     let mut total_combos = 0usize;
     let mut total_nf = 0usize;
     let mut total_proved = 0usize;
     let mut total_numeric = 0usize;
+    let mut total_inconclusive = 0usize;
     let mut total_failed = 0usize;
     let mut total_timeouts = 0usize;
     let mut total_cycles = 0usize;
@@ -5388,13 +7312,19 @@ fn metatest_unified_benchmark() {
         } else {
             0.0
         };
+        let inc_pct = if effective > 0 {
+            m.inconclusive as f64 / effective as f64 * 100.0
+        } else {
+            0.0
+        };
 
         eprintln!(
-            "║ {:5} │ {:>6} │ {:>5} {:>5.1}% │ {:>5} {:>5.1}% │ {:>5} {:>5.1}% │ {:>6} │ {:>5} │ {:>6} │ {:>6}             ║",
+            "║ {:5} │ {:>6} │ {:>5} {:>5.1}% │ {:>5} {:>5.1}% │ {:>5} {:>5.1}% │ {:>5} {:>5.1}% │ {:>6} │ {:>5} │ {:>6} │ {:>6}             ║",
             m.op, m.combos,
             m.nf_convergent, nf_pct,
             proved, prov_pct,
             m.numeric_only, num_pct,
+            m.inconclusive, inc_pct,
             m.failed,
             m.timeouts,
             m.cycle_events_total,
@@ -5405,6 +7335,7 @@ fn metatest_unified_benchmark() {
         total_nf += m.nf_convergent;
         total_proved += proved;
         total_numeric += m.numeric_only;
+        total_inconclusive += m.inconclusive;
         total_failed += m.failed;
         total_timeouts += m.timeouts;
         total_cycles += m.cycle_events_total;
@@ -5429,20 +7360,26 @@ fn metatest_unified_benchmark() {
     } else {
         0.0
     };
+    let total_inc_pct = if total_effective > 0 {
+        total_inconclusive as f64 / total_effective as f64 * 100.0
+    } else {
+        0.0
+    };
 
-    eprintln!("╠═══════╪════════╪══════════════╪══════════════╪══════════════╪════════╪═══════╪════════╪════════════════════╣");
+    eprintln!("╠═══════╪════════╪══════════════╪══════════════╪══════════════╪══════════════╪════════╪═══════╪════════╪════════════════════╣");
     eprintln!(
-        "║ TOTAL │ {:>6} │ {:>5} {:>5.1}% │ {:>5} {:>5.1}% │ {:>5} {:>5.1}% │ {:>6} │ {:>5} │ {:>6} │ {:>6}             ║",
+        "║ TOTAL │ {:>6} │ {:>5} {:>5.1}% │ {:>5} {:>5.1}% │ {:>5} {:>5.1}% │ {:>5} {:>5.1}% │ {:>6} │ {:>5} │ {:>6} │ {:>6}             ║",
         total_combos,
         total_nf, total_nf_pct,
         total_proved, total_prov_pct,
         total_numeric, total_num_pct,
+        total_inconclusive, total_inc_pct,
         total_failed,
         total_timeouts,
         total_cycles,
         total_skipped,
     );
-    eprintln!("╚═══════╧════════╧══════════════╧══════════════╧══════════════╧════════╧═══════╧════════╧════════════════════╝");
+    eprintln!("╚═══════╧════════╧══════════════╧══════════════╧══════════════╧══════════════╧════════╧═══════╧════════╧════════════════════╝");
 
     if total_failed > 0 {
         eprintln!(
@@ -5465,6 +7402,14 @@ fn metatest_unified_benchmark() {
     if total_timeouts > 0 {
         eprintln!();
         eprintln!("⏱️  {} timeouts detected — consider increasing time budget or investigating slow combos.", total_timeouts);
+    }
+
+    if total_inconclusive > 0 {
+        eprintln!();
+        eprintln!(
+            "◐ {} inconclusive numeric checks recorded — tracked separately from semantic failures.",
+            total_inconclusive
+        );
     }
 
     eprintln!();

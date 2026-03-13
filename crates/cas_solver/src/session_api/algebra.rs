@@ -11,11 +11,16 @@ pub use crate::algebra_command_parse::{
     parse_expand_log_invocation_input, parse_telescope_invocation_input, telescope_usage_message,
     wrap_expand_eval_expression,
 };
+pub use crate::linear_system_command_entry::evaluate_linear_system_command_message;
 pub use crate::rationalize_command::evaluate_rationalize_command_lines;
 pub use crate::repl_simplifier_runtime::{
+    evaluate_det_command_message_on_runtime as evaluate_det_command_message_on_repl_core,
     evaluate_expand_log_invocation_message_on_runtime as evaluate_expand_log_invocation_message_on_repl_core,
+    evaluate_linear_system_command_message_on_runtime as evaluate_linear_system_command_message_on_repl_core,
     evaluate_rationalize_command_lines_on_runtime as evaluate_rationalize_command_lines_on_repl_core,
     evaluate_telescope_invocation_message_on_runtime as evaluate_telescope_invocation_message_on_repl_core,
+    evaluate_trace_command_message_on_runtime as evaluate_trace_command_message_on_repl_core,
+    evaluate_transpose_command_message_on_runtime as evaluate_transpose_command_message_on_repl_core,
     evaluate_weierstrass_invocation_message_on_runtime as evaluate_weierstrass_invocation_message_on_repl_core,
 };
 pub use crate::weierstrass_command::{

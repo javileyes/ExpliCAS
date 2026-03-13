@@ -1,7 +1,7 @@
 use crate::bindings_command::BindingsContext;
-use crate::bindings_command_runtime::evaluate_clear_bindings_command_lines;
 use crate::history_delete::{evaluate_delete_history_command_message, HistoryDeleteContext};
 use crate::options_budget_eval::{evaluate_solve_budget_command_message, SolveBudgetContext};
+use crate::session_api::bindings::evaluate_clear_command_lines;
 
 use super::ReplSessionStateMutRuntimeContext;
 
@@ -11,7 +11,7 @@ where
     C: ReplSessionStateMutRuntimeContext,
     C::State: BindingsContext,
 {
-    evaluate_clear_bindings_command_lines(context.state_mut(), line)
+    evaluate_clear_command_lines(context.state_mut(), line)
 }
 
 /// Evaluate `del` command message against runtime state.

@@ -533,17 +533,15 @@ Current progress:
       - `format_visualize_command_error_message(...)`
       - `ExplainCommandEvalError`, `ExplainGcdEvalOutput`,
         `VisualizeCommandOutput`, `VisualizeEvalError`
-    - `cas_solver::session_api::linear_algebra` now owns the
-      linear-algebra-facing surface:
+    - `cas_solver::session_api::algebra` now owns the algebra-facing
+      surface:
+      - `evaluate_expand_log_*`
+      - `evaluate_telescope_*`
       - `evaluate_det_command_message_on_repl_core(...)`
       - `evaluate_trace_command_message_on_repl_core(...)`
       - `evaluate_transpose_command_message_on_repl_core(...)`
       - `evaluate_linear_system_command_message_on_repl_core(...)`
       - `evaluate_linear_system_command_message(...)`
-    - `cas_solver::session_api::algebra` now owns the algebra-facing
-      surface:
-      - `evaluate_expand_log_*`
-      - `evaluate_telescope_*`
       - `evaluate_weierstrass_*`
       - `evaluate_rationalize_command_lines*`
       - algebra parse/usage helpers for expand/telescope/weierstrass
@@ -1360,3 +1358,7 @@ It is either:
 - `cas_session::{state_api,eval_api,repl_api}` simplified to `cas_session::{state,eval,repl}` to remove legacy `_api` surface names.
 - `cas_session::eval` now owns the eval command surface directly; the internal `eval_command.rs` hub was removed.
 - `cas_didactic` now reexports the canonical `cas_solver_core::engine_event_collector::EngineEventCollector` directly from its crate root; the old local `events` wrapper and dead collector/listener leftovers were removed.
+- `show_command` now consumes `session_api::history` directly; the old
+  `inspect_runtime` leak through the `cas_solver` root is gone, so inspect
+  ownership is consistently thematic instead of split between a root alias and
+  the history API.

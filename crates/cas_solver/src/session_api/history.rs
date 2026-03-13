@@ -1,7 +1,7 @@
 //! History/inspect/session-facing API re-exported for session clients.
 
-pub use crate::history_command_runtime::evaluate_history_command_lines_from_history as evaluate_history_command_lines;
-pub use crate::history_command_runtime::evaluate_history_command_lines_from_history_with_context as evaluate_history_command_lines_with_context;
+use crate::history_overview::HistoryOverviewContext;
+
 pub use crate::history_delete::delete_history_entries;
 pub use crate::history_delete::evaluate_delete_history_command_message;
 pub use crate::history_format::{
@@ -32,3 +32,25 @@ pub use cas_solver_core::history_models::{
     HistoryExprInspection, HistoryOverviewEntry, HistoryOverviewKind,
     InspectHistoryEntryInputError, ParseHistoryEntryIdError,
 };
+
+/// Evaluate `history` command lines using an expression renderer callback.
+pub fn evaluate_history_command_lines<C, F>(context: &C, render_expr: F) -> Vec<String>
+where
+    C: HistoryOverviewContext,
+    F: FnMut(cas_ast::ExprId) -> String,
+{
+    let entries = history_overview_entries(context);
+    crate::evaluate_history_command_lines(&entries, render_expr)
+}
+
+/// Evaluate `history` command lines using an explicit AST context.
+pub fn evaluate_history_command_lines_with_context<C>(
+    context: &C,
+    ast_context: &cas_ast::Context,
+) -> Vec<String>
+where
+    C: HistoryOverviewContext,
+{
+    let entries = history_overview_entries(context);
+    crate::evaluate_history_command_lines_with_context(&entries, ast_context)
+}

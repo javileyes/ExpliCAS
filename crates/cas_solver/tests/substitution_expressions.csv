@@ -27,6 +27,18 @@ sin(u)^2,u,composed
 cos(2*u),u,composed
 sqrt(u^2 + 1),u,composed
 1/(u^2 + 1),u,composed
+1/u + 1/(u+1),u,rational_ctx
+1/(u - 1) + 1/(u + 1),u,rational_ctx
+1/sqrt(u),u,root_ctx
+
+# Context-heavy substitutions that frequently generate high-arity residuals are
+# intentionally tested in `contextual_pairs.csv`, not in the global substitution
+# corpus. That keeps the global CSV combination suite focused on base identities
+# while preserving stronger directed coverage for:
+# - (u + 1)^2, (u + 1/2)^2, (u + 2)^2, u^2 + 2*u
+# - u^6 - 1, u^3 + u^2 + u + 1, (u + 1)*(u + 2)*(u + 3)
+# - exp(u)/(exp(u) + 1) + 1/(exp(u) + 1)
+# - sin(u) + sin(3*u)
 
 # Rational
 u/(u + 1),u,rational
@@ -51,4 +63,3 @@ u^3 + 1,u,poly
 # Hyperbolic
 sinh(u),u,hyp
 cosh(u),u,hyp
-

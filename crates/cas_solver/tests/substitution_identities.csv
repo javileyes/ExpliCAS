@@ -88,9 +88,11 @@ cos(x)^2 - sin(x)^2,cos(2*x),x,g
 sin(x) + sin(-x),0,x,g
 cos(x) + cos(-x),2*cos(x),x,g
 sin(x)*cos(x),sin(2*x)/2,x,g
+sin(x) + sin(3*x),2*sin(2*x)*cos(x),x,g
 
 # Pythagorean Extended
 1 + tan(x)^2,1/cos(x)^2,x,g
+sec(x)^2 - tan(x)^2,1,x,g
 sin(x)^4 + cos(x)^4,1 - 2*sin(x)^2*cos(x)^2,x,g
 (sin(x) + cos(x))^2,1 + sin(2*x),x,g
 
@@ -121,6 +123,7 @@ x^4 - 1,(x^2 - 1)*(x^2 + 1),x,g
 
 # Rational Simplification
 x/(x+1) + 1/(x+1),1,x,g
+(1/(x - 1)) + (1/(x + 1)),2*x/(x^2 - 1),x,g
 (x^2 - 4)/(x + 2),x - 2,x,g
 (x^2 + 2*x + 1)/(x + 1),x + 1,x,g
 
@@ -164,15 +167,21 @@ cos(arctan(x)),1/sqrt(1 + x^2),x,g
 sinh(2*x),2*sinh(x)*cosh(x),x,g
 cosh(-x),cosh(x),x,g
 sinh(-x),-sinh(x),x,g
+tanh(2*x),2*tanh(x)/(1 + tanh(x)^2),x,g
 
 # Polynomial / GCF
 x*(x + 1),x^2 + x,x,g
 x^3 - x,x*(x - 1)*(x + 1),x,g
+x^3 + x^2 + x + 1,(x + 1)*(x^2 + 1),x,g
+((x + 1)*(x + 2)*(x + 3)),x^3 + 6*x^2 + 11*x + 6,x,g
+((x - 1)^5),x^5 - 5*x^4 + 10*x^3 - 10*x^2 + 5*x - 1,x,g
+x^6 - 1,(x^2 + x + 1)*(x^2 - x + 1)*(x + 1)*(x - 1),x,g
 3*(x + 2),3*x + 6,x,g
 (2*x + 1)^2,4*x^2 + 4*x + 1,x,g
 
 # Rational
 x/(x + 1) + 1/(x + 1),1,x,g
+(1/(x - 1)) + (1/(x + 1)),2*x/(x^2 - 1),x,g
 (x^2 - 4)/(x + 2),x - 2,x,g
 (x^2 + 2*x)/(x + 2),x,x,g
 (x - 1)/(x^2 - 1),1/(x + 1),x,g
@@ -196,4 +205,3 @@ sinh(-x),-sinh(x),x,g
 
 # Trinomial factoring under substitution
 x^2 + 5*x + 6,(x+2)*(x+3),x,g
-
