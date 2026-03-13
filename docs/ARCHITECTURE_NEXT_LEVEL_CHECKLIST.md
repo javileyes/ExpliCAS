@@ -253,12 +253,12 @@ Current progress:
   - removed the redundant `steps_command_types` bridge in `cas_solver`
     - `StepsCommand*` / `StepsDisplayMode` now come directly from
       `cas_solver_core::steps_command_types`
-    - both `session_api::settings` and `exports_base::settings::steps` now
+    - both `session_api::environment` and `exports_base::settings::steps` now
       reexport them from the owner real instead of a local pass-through
   - removed the redundant `set_command_types` bridge in `cas_solver`
     - `SetCommand*` / `SetDisplayMode` now come directly from
       `cas_solver_core::set_command_types`
-    - both `session_api::settings` and `exports_base::settings::set_command`
+    - both `session_api::environment` and `exports_base::settings::set_command`
       now reexport them from the owner real instead of a local pass-through
   - removed the redundant `history_types` / `inspect_types` bridges in
     `cas_solver`
@@ -272,7 +272,7 @@ Current progress:
     - `cas_session::solver_exports` was removed entirely
     - consumers now use the explicit owner directly:
       - `cas_solver::session_api::runtime::*`
-      - `cas_solver::session_api::settings::*`
+      - `cas_solver::session_api::environment::*`
       - `cas_solver::session_api::simplifier::*`
       - `cas_solver::session_api::assumptions::*`
       - `cas_solver::session_api::solve::*`
@@ -281,7 +281,7 @@ Current progress:
       - analysis-facing parsing/formatting moved to
         `cas_solver::session_api::analysis::*`
       - semantics-facing view/help formatting moved to
-        `cas_solver::session_api::settings::*`
+        `cas_solver::session_api::environment::*`
       - parse-error rendering moved to `cas_solver::session_api::repl::*`
     - internal and integration tests were migrated from
       `crate::solver_exports::...` to `cas_solver::session_api::...`
@@ -470,7 +470,7 @@ Current progress:
       - `ReplSetRuntimeContext`
       - `ReplSetCommandOutput`, `ReplSetMessageKind`
       - `Set*` command/state/apply types
-    - `cas_solver::session_api::settings` now owns the settings-facing
+    - `cas_solver::session_api::environment` now owns the environment-facing
       surface:
       - `evaluate_steps_command_input(...)`
       - `steps_command_state_for_repl_core(...)`
@@ -590,24 +590,23 @@ Current progress:
       - `TimelineCommandEvalOutput`
       - `TimelineSimplifyEvalOutput`
       - `TimelineSolveEvalOutput`
-    - `cas_solver::session_api::runtime` now re-exports:
-      - `ReplSemanticsRuntimeContext`
-      - `ReplSolveRuntimeContext`
+    - `cas_solver::session_api::lifecycle` now re-exports:
+      - `ReplConfiguredRuntimeContext`
+      - `ReplRuntimeStateContext`
+    - `cas_solver::session_api::session` now re-exports:
       - `ReplEngineRuntimeContext`
       - `ReplSessionRuntimeContext`
       - `ReplSessionViewRuntimeContext`
       - `ReplSessionStateMutRuntimeContext`
       - `ReplSessionSimplifierRuntimeContext`
       - `ReplSessionEngineRuntimeContext`
-      - `EvalCommandError`
-      - `EvalCommandOutput`
     - `cas_solver::session_api::set` now re-exports:
       - `ReplSetRuntimeContext`
       - `SetCommandApplyEffects`
       - `SetCommandPlan`
       - `SetCommandState`
       - `SetDisplayMode`
-    - `cas_solver::session_api::settings` now re-exports only settings
+    - `cas_solver::session_api::environment` now re-exports only environment/config
       families:
       - `Context*`
       - `Autoexpand*`
@@ -809,8 +808,8 @@ Current progress:
       - `evaluate_eval_text_simplify_with_session(...)`
       - `EvalCommandError`, `EvalCommandOutput`, `EvalCommandRenderPlan`
       - `EvalDisplayMessage*`, `EvalMetadataLines`, `EvalResultLine`
-      - `session_api::{runtime,types}` now re-export from that owner instead of
-        reaching into `eval_command_*` directly
+      - `session_api::eval` now owns that surface directly instead of reaching
+        into `eval_command_*`
       - the root `cas_solver` facade no longer re-exports those eval command
         types/entrypoints through `exports_commands/eval/core.rs`
     - the `substitute` command path also stopped duplicating its internal
@@ -1141,6 +1140,9 @@ It is either:
 - inside `cas_session` itself, the crate root no longer acts as an internal hub
   for `CasConfig`, `ReplCore`, or `SessionState`; module code now imports those
   owners directly from `config`, `repl_core`, and `state_core`.
+- `cas_session::state_core` now also owns bindings/history behavior directly;
+  `state_bindings` and `state_history` were folded away because they were only
+  extension impls over `SessionState` and trait adapters for the same owner.
 - inside `cas_session`, the crate root also no longer reexports internal
   support types like `SimplifyCacheKey`, `SimplifiedCache`, `EntryKind`,
   `EntryId`, `ResolveError`, or `CacheConfig`; module code now points directly
@@ -1164,16 +1166,16 @@ It is either:
   of a local pass-through wrapper.
 - `cas_solver/src/exports_repl/session.rs` has been removed; the root no longer
   reexports REPL session/runtime helpers through an extra wrapper layer, and
-  internal users now point to `repl_session_runtime` or `session_api::runtime`
-  directly.
+  internal users now point to `repl_session_runtime`, `session_api::lifecycle`,
+  or `session_api::session` directly.
 - `cas_solver/src/repl_set_types.rs` has been removed; `ReplSetCommandOutput`
   and `ReplSetMessageKind` now come straight from
-  `cas_solver_core::repl_set_types` or `cas_solver::session_api::settings`
+  `cas_solver_core::repl_set_types` or `cas_solver::session_api::environment`
   instead of a local pass-through module.
 - `cas_solver/src/session_api/symbolic_commands.rs` and
   `cas_solver/src/session_api/types.rs` have been removed; their residual
   surface now lives under the thematic owners `session_api::solve`,
-  `session_api::settings`, `session_api::steps`,
+  `session_api::environment`, `session_api::steps`,
   `session_api::simplifier`, and `session_api::eval`
   instead of two mixed grab-bags.
 - `cas_solver/src/bindings_types.rs`, `config_command_types.rs`,
@@ -1290,8 +1292,9 @@ It is either:
 - `cas_solver/src/timeline_types.rs` has been removed; timeline eval output
   types now live under [`session_api/timeline.rs`](/Users/javiergimenezmoya/developer/math/crates/cas_solver/src/session_api/timeline.rs),
   which is their natural session-facing owner.
-- `cas_solver/src/eval_command_types.rs` has been removed; eval command types
-  now live directly under
+- `cas_solver/src/eval_command_types.rs` and the transitional
+  `cas_solver/src/eval_command_types/*` folder have been removed; eval command
+  types now live directly under
   [`command_api/eval.rs`](/Users/javiergimenezmoya/developer/math/crates/cas_solver/src/command_api/eval.rs),
   which is the natural stateless owner of `EvalCommand*`.
 - `cas_solver/src/eval_command_format.rs`,

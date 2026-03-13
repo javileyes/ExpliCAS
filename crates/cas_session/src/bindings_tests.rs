@@ -2,7 +2,7 @@
 mod tests {
     use crate::state_core::SessionState;
     #[allow(unused_imports)]
-    use cas_solver::session_api::{assumptions::*, bindings::*, runtime::*, simplifier::*};
+    use cas_solver::session_api::{assumptions::*, bindings::*, simplifier::*};
 
     #[test]
     fn clear_bindings_command_all_mode() {

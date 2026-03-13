@@ -51,15 +51,10 @@ mod show_command_tests;
 #[cfg(test)]
 mod simplifier_setup_tests;
 mod snapshot;
-mod snapshot_store_convert;
 #[cfg(test)]
 mod snapshot_tests;
-pub mod state;
-mod state_bindings;
 mod state_core;
 mod state_eval_session;
-mod state_eval_store;
-mod state_history;
 mod state_persistence;
 mod state_resolution;
 mod store_cache_policy;
@@ -74,3 +69,4 @@ pub(crate) type Entry = cas_session_core::store::Entry<Diagnostics, cache::Simpl
 pub(crate) type SessionStore =
     cas_session_core::store::SessionStore<Diagnostics, cache::SimplifiedCache>;
 pub use cas_session_core::env;
+pub use state_core::SessionState;

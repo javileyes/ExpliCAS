@@ -3,7 +3,7 @@ mod tests {
     use crate::state_core::SessionState;
     use cas_session_core::types::EntryKind;
     #[allow(unused_imports)]
-    use cas_solver::session_api::{assumptions::*, history::*, runtime::*, simplifier::*};
+    use cas_solver::session_api::{assumptions::*, history::*, simplifier::*};
 
     #[test]
     fn parse_history_ids_accepts_hash_prefix() {

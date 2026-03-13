@@ -1,9 +1,9 @@
 #[cfg(test)]
 mod tests {
     use crate::eval::{EvalDisplayMessageKind, EvalMetadataLines, EvalResultLine};
-    use crate::state::SessionState;
+    use crate::SessionState;
     #[allow(unused_imports)]
-    use cas_solver::session_api::{assumptions::*, eval::*, runtime::*, simplifier::*};
+    use cas_solver::session_api::{assumptions::*, eval::*, simplifier::*};
 
     #[test]
     fn evaluate_eval_command_output_success() {

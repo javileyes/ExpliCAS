@@ -1,4 +1,4 @@
-//! Settings command/session-facing API re-exported for session clients.
+//! Environment command/session-facing API re-exported for session clients.
 
 pub use crate::autoexpand_command_eval::{
     apply_autoexpand_policy_to_options, autoexpand_budget_view_from_options,

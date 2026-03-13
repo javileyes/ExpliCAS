@@ -13,7 +13,7 @@
 
 use cas_formatter::DisplayExpr;
 use cas_parser::parse;
-use cas_session::state::SessionState;
+use cas_session::SessionState;
 use cas_solver::runtime::ValueDomain;
 use cas_solver::runtime::{DomainMode, Engine, EvalAction, EvalRequest, EvalResult};
 

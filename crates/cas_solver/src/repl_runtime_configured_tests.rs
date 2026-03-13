@@ -3,8 +3,8 @@ mod tests {
     use crate::runtime::{EvalOptions, PipelineStats, Simplifier};
     use crate::session_api::lifecycle::{
         build_runtime_with_config, reset_runtime_full_with_config, reset_runtime_with_config,
+        ReplConfiguredRuntimeContext, ReplRuntimeStateContext,
     };
-    use crate::session_api::runtime::{ReplConfiguredRuntimeContext, ReplRuntimeStateContext};
     use crate::session_api::simplifier::ReplSimplifierRuntimeContext;
 
     #[derive(Clone, Copy)]

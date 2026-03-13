@@ -2,10 +2,9 @@ use std::path::Path;
 
 use super::{SessionSnapshot, SnapshotError};
 use crate::cache::SimplifyCacheKey;
-use crate::snapshot_store_convert::session_store_snapshot_from_store;
 
 #[cfg(test)]
-use crate::snapshot_store_convert::session_store_snapshot_into_store;
+use super::session_store_snapshot_into_store;
 
 impl SessionSnapshot {
     pub const MAGIC: [u8; 8] = *b"EXPLICAS";
@@ -19,7 +18,7 @@ impl SessionSnapshot {
         Self {
             header: super::SessionSnapshotHeader::new(Self::MAGIC, Self::VERSION, cache_key),
             context: super::ContextSnapshot::from_context(context),
-            session: session_store_snapshot_from_store(session),
+            session: super::session_store_snapshot_from_store(session),
         }
     }
 

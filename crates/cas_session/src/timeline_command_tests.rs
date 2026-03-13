@@ -2,7 +2,7 @@
 mod tests {
     use crate::state_core::SessionState;
     #[allow(unused_imports)]
-    use cas_solver::session_api::{assumptions::*, runtime::*, simplifier::*, timeline::*};
+    use cas_solver::session_api::{assumptions::*, simplifier::*, timeline::*};
     use cas_solver_core::eval_options::EvalOptions;
 
     #[test]

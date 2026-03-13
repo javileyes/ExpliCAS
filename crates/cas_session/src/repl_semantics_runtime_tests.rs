@@ -3,7 +3,7 @@ use crate::repl::{
     evaluate_semantics_command_on_repl,
 };
 #[allow(unused_imports)]
-use cas_solver::session_api::{assumptions::*, settings::*, simplifier::*};
+use cas_solver::session_api::{assumptions::*, environment::*, simplifier::*};
 use cas_solver_core::domain_mode::DomainMode;
 use cas_solver_core::eval_option_axes::ContextMode;
 use cas_solver_core::expand_policy::ExpandPolicy;

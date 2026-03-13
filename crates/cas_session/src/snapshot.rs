@@ -4,15 +4,23 @@
 //! The snapshot contains the complete Context (arena) and SessionStore,
 //! allowing `#N` references and cached results to survive process restarts.
 
+#[path = "snapshot_store_convert/cache.rs"]
+mod cache;
+#[path = "snapshot_store_convert/entry_kind.rs"]
+mod entry_kind;
 mod io;
 
 use serde::{Deserialize, Serialize};
 
 use crate::cache::SimplifyCacheKey;
-use crate::snapshot_store_convert::SessionStoreSnapshot as StoreSnapshotCore;
 pub use cas_session_core::context_snapshot::ContextSnapshot;
 pub use cas_session_core::snapshot_error::SnapshotError;
 use cas_session_core::snapshot_header::SnapshotHeader;
+
+pub(crate) use cache::{
+    session_store_snapshot_from_store, session_store_snapshot_into_store,
+    SessionStoreSnapshot as StoreSnapshotCore,
+};
 
 pub(super) type SessionSnapshotHeader = SnapshotHeader<SimplifyCacheKey>;
 pub type SessionStoreSnapshot = StoreSnapshotCore;

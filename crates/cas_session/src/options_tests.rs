@@ -2,7 +2,7 @@
 mod tests {
     use crate::state_core::SessionState;
     #[allow(unused_imports)]
-    use cas_solver::session_api::{assumptions::*, budget::*, runtime::*, simplifier::*};
+    use cas_solver::session_api::{assumptions::*, budget::*, simplifier::*};
 
     #[test]
     fn apply_solve_budget_command_reads_current_value() {

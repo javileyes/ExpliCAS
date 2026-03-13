@@ -1,6 +1,6 @@
 use crate::{repl_core::ReplCore, state_core::SessionState};
 use cas_solver::runtime::{Engine, Simplifier};
-use cas_solver::session_api::runtime::{
+use cas_solver::session_api::session::{
     ReplEngineRuntimeContext, ReplSessionEngineRuntimeContext, ReplSessionRuntimeContext,
     ReplSessionSimplifierRuntimeContext, ReplSessionStateMutRuntimeContext,
     ReplSessionViewRuntimeContext,

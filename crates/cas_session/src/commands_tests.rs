@@ -1,7 +1,7 @@
 use crate::state_core::SessionState;
 #[allow(unused_imports)]
 use cas_solver::session_api::{
-    assumptions::*, bindings::*, budget::*, history::*, profile::*, runtime::*, simplifier::*,
+    assumptions::*, bindings::*, budget::*, history::*, profile::*, simplifier::*,
 };
 
 #[test]

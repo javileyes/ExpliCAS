@@ -6,7 +6,7 @@
 //! 3. Combined expressions inherit requires from all sub-expressions
 
 use cas_ast::Expr;
-use cas_session::state::SessionState;
+use cas_session::SessionState;
 use cas_solver::runtime::Engine;
 use cas_solver::runtime::{EvalAction, EvalRequest};
 

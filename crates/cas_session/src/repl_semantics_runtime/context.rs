@@ -8,7 +8,7 @@ pub fn evaluate_context_command_on_repl(
     core: &mut ReplCore,
     config: &CasConfig,
 ) -> String {
-    cas_solver::session_api::settings::evaluate_context_command_with_config_sync_on_runtime(
+    cas_solver::session_api::environment::evaluate_context_command_with_config_sync_on_runtime(
         line,
         core,
         config,

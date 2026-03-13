@@ -1,6 +1,6 @@
-use super::SessionState;
+use super::{SessionEvalStore, SessionState};
 use crate::env::Environment;
-use crate::{state_eval_store::SessionEvalStore, SessionStore};
+use crate::SessionStore;
 use cas_solver_core::eval_options::EvalOptions;
 
 impl SessionState {

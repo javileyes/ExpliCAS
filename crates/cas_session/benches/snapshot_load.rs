@@ -9,7 +9,7 @@ use cas_api_models::{
 };
 use cas_session::cache::SimplifyCacheKey;
 use cas_session::eval::evaluate_eval_command_with_session;
-use cas_session::state::SessionState;
+use cas_session::SessionState;
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use tempfile::tempdir;
 

@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::session_api::settings::{
+    use crate::session_api::environment::{
         apply_context_mode_to_options, evaluate_and_apply_context_command,
         evaluate_context_command_input, format_context_current_message, format_context_set_message,
         parse_context_command_input, ContextCommandInput, ContextCommandResult,

@@ -2,9 +2,7 @@ use crate::repl::{
     build_repl_core_with_config, reset_repl_core_full_with_config, reset_repl_core_with_config,
 };
 #[allow(unused_imports)]
-use cas_solver::session_api::{
-    assumptions::*, lifecycle::*, profile::*, runtime::*, simplifier::*,
-};
+use cas_solver::session_api::{assumptions::*, lifecycle::*, profile::*, simplifier::*};
 use cas_solver_core::eval_options::EvalOptions;
 use cas_solver_core::phase_stats::PipelineStats;
 

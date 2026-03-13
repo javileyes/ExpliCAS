@@ -3,7 +3,7 @@
 
 use cas_ast::Context;
 use cas_parser::parse;
-use cas_session::state::SessionState;
+use cas_session::SessionState;
 use cas_solver::runtime::{
     BranchMode, ComplexMode, ContextMode, EvalOptions, Simplifier, StepsMode,
 };

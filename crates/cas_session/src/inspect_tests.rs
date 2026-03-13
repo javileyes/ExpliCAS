@@ -1,6 +1,6 @@
 use crate::state_core::SessionState;
 #[allow(unused_imports)]
-use cas_solver::session_api::{assumptions::*, history::*, runtime::*, simplifier::*};
+use cas_solver::session_api::{assumptions::*, history::*, simplifier::*};
 
 #[test]
 fn inspect_history_entry_reports_missing_id() {

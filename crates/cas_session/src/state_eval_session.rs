@@ -6,7 +6,7 @@ use cas_session_core::{
 use cas_solver_core::diagnostics_model::{Diagnostics, RequireOrigin};
 use cas_solver_core::eval_options::EvalOptions;
 
-use crate::{state_core::SessionState, state_eval_store::SessionEvalStore};
+use crate::state_core::{SessionEvalStore, SessionState};
 
 impl EvalSession for SessionState {
     type Store = SessionEvalStore;
