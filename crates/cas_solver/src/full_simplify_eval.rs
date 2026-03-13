@@ -1,10 +1,16 @@
 mod error;
 mod eval;
-mod types;
 
+use cas_ast::ExprId;
 pub use error::{format_full_simplify_eval_error_message, FullSimplifyEvalError};
 pub use eval::evaluate_full_simplify_input_with_resolver;
-pub use types::FullSimplifyEvalOutput;
+
+#[derive(Debug, Clone)]
+pub struct FullSimplifyEvalOutput {
+    pub resolved_expr: ExprId,
+    pub simplified_expr: ExprId,
+    pub steps: Vec<crate::Step>,
+}
 
 #[cfg(test)]
 mod tests {

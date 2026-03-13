@@ -3,7 +3,7 @@ mod row;
 use cas_ast::{Context, ExprId};
 use num_rational::BigRational;
 
-use super::super::types::LinearSystemError;
+use super::super::LinearSystemError;
 
 pub(crate) fn build_augmented_matrix(
     ctx: &Context,

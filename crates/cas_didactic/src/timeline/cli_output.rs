@@ -3,7 +3,7 @@ mod simplify;
 mod solve;
 
 use super::simplify::VerbosityLevel;
-use super::types::{TimelineCliRender, TimelineCommandOutput};
+use super::{TimelineCliRender, TimelineCommandOutput};
 
 pub use self::simplify::render_simplify_timeline_cli_output;
 pub use self::solve::render_solve_timeline_cli_output;

@@ -1,4 +1,4 @@
-use crate::linear_system_command_types::LinearSystemSpecError;
+use crate::linear_system_command_parse::LinearSystemSpecError;
 
 pub(super) fn parse_linear_system_vars(
     var_parts: &[&str],

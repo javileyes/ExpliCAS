@@ -1,7 +1,7 @@
 use cas_formatter::root_style::ParseStyleSignals;
 
+use crate::command_api::eval::EvalCommandError;
 use crate::eval_command_request::build_simplify_eval_request_from_statement;
-use crate::eval_command_types::EvalCommandError;
 
 pub(super) fn build_eval_request(
     engine: &mut crate::Engine,

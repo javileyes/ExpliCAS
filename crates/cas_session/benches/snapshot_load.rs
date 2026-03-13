@@ -8,8 +8,8 @@ use cas_api_models::{
     EvalStepsMode, EvalValueDomain, StepWire,
 };
 use cas_session::cache::SimplifyCacheKey;
-use cas_session::eval_api::evaluate_eval_command_with_session;
-use cas_session::state_api::SessionState;
+use cas_session::eval::evaluate_eval_command_with_session;
+use cas_session::state::SessionState;
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use tempfile::tempdir;
 

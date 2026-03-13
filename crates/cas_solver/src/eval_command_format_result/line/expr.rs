@@ -1,6 +1,6 @@
 use cas_ast::{Expr, ExprId};
 
-use crate::eval_command_types::EvalResultLine;
+use crate::command_api::eval::EvalResultLine;
 
 pub(super) fn format_expr_result_line(
     context: &cas_ast::Context,

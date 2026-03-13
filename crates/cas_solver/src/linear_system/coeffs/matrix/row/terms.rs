@@ -2,7 +2,7 @@ use cas_math::multipoly::MultiPoly;
 use num_rational::BigRational;
 use num_traits::Zero;
 
-use super::super::super::super::types::LinearSystemError;
+use super::super::super::super::LinearSystemError;
 use super::super::super::shared::{non_linear_degree_error, unexpected_variable_error};
 
 pub(super) fn extract_linear_terms(

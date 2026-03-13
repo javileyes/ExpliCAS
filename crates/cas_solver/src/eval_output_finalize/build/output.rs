@@ -1,4 +1,6 @@
+#[path = "output/build.rs"]
 mod build;
+#[path = "output/wire.rs"]
 mod wire;
 
 use super::payload::EvalOutputResultPayload;

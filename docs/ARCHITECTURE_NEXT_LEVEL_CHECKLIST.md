@@ -235,18 +235,21 @@ Current progress:
   - removed the redundant `limit_command_types` bridge in `cas_solver`
     - `LimitCommandInput` / `Limit*Eval*` types now come directly from
       `cas_solver_core::limit_command_types`
-    - `limit_command_eval` reexports them from the owner real instead of a
-      local pass-through module
+    - `command_api::limit`, `limit_command_core`, and `limit_command_parse`
+      now point to the owner real instead of a local pass-through module
   - removed the redundant `analysis_command_types` bridge in `cas_solver`
     - analysis/equiv/visualize-facing error and output types now come directly
       from `cas_solver_core::analysis_command_types`
-    - `exports_commands::analysis` reexports them from the owner real instead
-      of a local pass-through module
+    - the command façade now reexports them from the owner real in
+      [`lib.rs`](/Users/javiergimenezmoya/developer/math/crates/cas_solver/src/lib.rs)
+      instead of a local pass-through module
   - removed the redundant `health_command_types` bridge in `cas_solver`
     - `HealthCommandInput` / `HealthCommandEvalOutput` / `HealthStatusInput`
       now come directly from `cas_solver_core::health_runtime`
-    - `exports_commands::health` and the local health runtime/format/parse
-      modules now point to the owner real instead of a local pass-through
+    - the command façade in
+      [`lib.rs`](/Users/javiergimenezmoya/developer/math/crates/cas_solver/src/lib.rs)
+      and the local health runtime/format/parse modules now point to the owner
+      real instead of a local pass-through
   - removed the redundant `steps_command_types` bridge in `cas_solver`
     - `StepsCommand*` / `StepsDisplayMode` now come directly from
       `cas_solver_core::steps_command_types`
@@ -261,8 +264,10 @@ Current progress:
     `cas_solver`
     - history/inspect-facing models now come directly from
       `cas_solver_core::history_models`
-    - `exports_commands::history` and local history formatting now point to the
-      owner real instead of local pass-through modules
+    - the command façade in
+      [`lib.rs`](/Users/javiergimenezmoya/developer/math/crates/cas_solver/src/lib.rs)
+      and local history formatting now point to the owner real instead of
+      local pass-through modules
     - `pub use solver_exports::*;` was removed from the crate root
     - `cas_session::solver_exports` was removed entirely
     - consumers now use the explicit owner directly:
@@ -458,11 +463,15 @@ Current progress:
       - `evaluate_solve_budget_command_message_on_repl_core(...)`
       - `format_solve_budget_command_message(...)`
       - `SolveBudgetCommandResult`
-    - `cas_solver::session_api::settings` now owns the settings-facing
-      surface:
+    - `cas_solver::session_api::set` now owns the `set`-facing surface:
       - `evaluate_set_command_on_repl_core(...)`
       - `set_command_state_for_repl_core(...)`
       - `apply_set_command_plan_on_repl_core(...)`
+      - `ReplSetRuntimeContext`
+      - `ReplSetCommandOutput`, `ReplSetMessageKind`
+      - `Set*` command/state/apply types
+    - `cas_solver::session_api::settings` now owns the settings-facing
+      surface:
       - `evaluate_steps_command_input(...)`
       - `steps_command_state_for_repl_core(...)`
       - `apply_steps_command_update_on_repl_core(...)`
@@ -470,10 +479,8 @@ Current progress:
       - `evaluate_autoexpand_*`
       - `evaluate_semantics_*`
       - `evaluate_*_with_config_sync_on_runtime(...)`
-      - `ReplSetRuntimeContext`, `ReplStepsRuntimeContext`,
-        `ReplSemanticsRuntimeContext`
-      - `ReplSetCommandOutput`, `ReplSetMessageKind`
-      - `Set*`, `Steps*`, `Context*`, `Autoexpand*`, `SemanticsPreset*`,
+      - `ReplStepsRuntimeContext`, `ReplSemanticsRuntimeContext`
+      - `Steps*`, `Context*`, `Autoexpand*`, `SemanticsPreset*`,
         `SemanticsSet*` command/state/apply types
     - `cas_solver::session_api::eval` now owns the eval-facing session
       surface:
@@ -552,6 +559,21 @@ Current progress:
       - `preprocess_repl_function_syntax(...)`
       - `split_repl_statements(...)`
       - `ReplCommandInput`
+    - `cas_session::repl` now owns the public session-side REPL façade
+      directly:
+      - `build_repl_core_with_config(...)`
+      - `evaluate_and_apply_config_command_on_repl(...)`
+      - `reset_repl_core_with_config(...)`
+      - `reset_repl_core_full_with_config(...)`
+      - `evaluate_autoexpand_command_on_repl(...)`
+      - `evaluate_context_command_on_repl(...)`
+      - `evaluate_semantics_command_on_repl(...)`
+    - `cas_session::eval` now owns the public session-side eval façade
+      directly:
+      - `evaluate_eval_command_with_session(...)`
+      - `evaluate_eval_command_pretty_with_session(...)`
+      - `evaluate_eval_text_command_with_session(...)`
+      - `EvalCommandConfig`
     - `cas_solver::session_api::timeline` now owns the timeline-facing session
       surface:
       - `evaluate_timeline_command_with_session(...)`
@@ -579,13 +601,20 @@ Current progress:
       - `ReplSessionEngineRuntimeContext`
       - `EvalCommandError`
       - `EvalCommandOutput`
-    - `cas_solver::session_api::settings` now re-exports:
+    - `cas_solver::session_api::set` now re-exports:
       - `ReplSetRuntimeContext`
-      - `ReplStepsRuntimeContext`
       - `SetCommandApplyEffects`
       - `SetCommandPlan`
       - `SetCommandState`
       - `SetDisplayMode`
+    - `cas_solver::session_api::settings` now re-exports only settings
+      families:
+      - `Context*`
+      - `Autoexpand*`
+      - `SemanticsPreset*`
+      - `SemanticsSet*`
+    - `cas_solver::session_api::steps` now re-exports:
+      - `ReplStepsRuntimeContext`
       - `StepsCommandApplyEffects`
       - `StepsDisplayMode`
     - `cas_solver::session_api::simplifier` now re-exports:
@@ -1108,7 +1137,7 @@ It is either:
 - a dedicated performance program
 - a dedicated solver-event architecture program
 - or no further architecture change at all
-- `cas_session` public ownership is now explicit: REPL/session entrypoints live under `cas_session::repl_api`, eval/session rendering under `cas_session::eval_api`, and mutable session state under `cas_session::state_api`; the crate root no longer acts as a catch-all public facade for those flows.
+- `cas_session` public ownership is now explicit: REPL/session entrypoints live under `cas_session::repl`, eval/session rendering under `cas_session::eval`, and mutable session state under `cas_session::state`; the crate root no longer acts as a catch-all public facade for those flows.
 - inside `cas_session` itself, the crate root no longer acts as an internal hub
   for `CasConfig`, `ReplCore`, or `SessionState`; module code now imports those
   owners directly from `config`, `repl_core`, and `state_core`.
@@ -1144,7 +1173,8 @@ It is either:
 - `cas_solver/src/session_api/symbolic_commands.rs` and
   `cas_solver/src/session_api/types.rs` have been removed; their residual
   surface now lives under the thematic owners `session_api::solve`,
-  `session_api::settings`, `session_api::simplifier`, and `session_api::eval`
+  `session_api::settings`, `session_api::steps`,
+  `session_api::simplifier`, and `session_api::eval`
   instead of two mixed grab-bags.
 - `cas_solver/src/bindings_types.rs`, `config_command_types.rs`,
   `options_budget_types.rs`, and `semantics_command_types.rs` have been
@@ -1154,6 +1184,10 @@ It is either:
   substitute command now uses `cas_solver_core::substitute_command_types` and
   `cas_solver::substitute::SubstituteSimplifyEvalOutput` directly instead of a
   local pass-through types wrapper.
+- `cas_solver/src/rationalize_command_types.rs` has also been removed; the
+  `rationalize` command now owns its usage string, typed error, outcome, and
+  eval output directly in `rationalize_command.rs` instead of a dedicated
+  pass-through types file.
 - `cas_solver/src/autoexpand_command_types.rs`,
   `context_command_types.rs`, `semantics_preset_types.rs`, and
   `semantics_set_types.rs` have also been removed; the autoexpand/context/
@@ -1163,6 +1197,17 @@ It is either:
   `profile_command/types.rs` have also been removed; assignment/profile command
   flows now import those models directly from `cas_solver_core` instead of
   local pass-through wrappers.
+- `cas_solver/src/profile_cache_command/types.rs` has also been removed; the
+  cache command now owns its local `ProfileCacheCommandInput` in
+  `profile_cache_command.rs` and reexports `ProfileCacheCommandResult`
+  directly from `cas_solver_core`.
+- `cas_solver/src/full_simplify_eval/types.rs` and
+  `full_simplify_display/types.rs` have also been removed; those tiny local
+  owners now live directly in `full_simplify_eval.rs` and
+  `full_simplify_display.rs` instead of an extra `types.rs` layer.
+- `cas_solver/src/eval_output_finalize_input/types.rs` has also been removed;
+  the root of `eval_output_finalize_input` now reexports `context`, `input`,
+  and `shared` directly instead of through another wrapper layer.
 - `cas_solver/src/semantics_set_parse.rs` has also been removed; callers now
   use `semantics_set_parse_apply::evaluate_semantics_set_args` directly instead
   of a one-line forwarding wrapper.
@@ -1183,14 +1228,129 @@ It is either:
   `Category`, `HealthCase`, `HealthLimits`, and `HealthCaseResult` directly
   from `cas_solver_core::{health_category, health_suite_models}` instead of a
   local pass-through wrapper tree.
-- `cas_solver/src/exports_base/settings/*` has also been folded into
-  [`exports_base/settings.rs`](/Users/javiergimenezmoya/developer/math/crates/cas_solver/src/exports_base/settings.rs),
+- `cas_solver/src/exports_base/settings/*` has also been folded directly into
+  [`lib.rs`](/Users/javiergimenezmoya/developer/math/crates/cas_solver/src/lib.rs),
   so the internal root no longer bounces `semantics`, `show`, `set_command`,
   `steps`, and `simplifier` through another layer of tiny wrapper modules.
+- `cas_solver/src/exports_base/solve/*` has also been folded directly into
+  [`lib.rs`](/Users/javiergimenezmoya/developer/math/crates/cas_solver/src/lib.rs),
+  so `solve`, `substitute`, `timeline`, and transform-facing exports now hang
+  from the root owner instead of another wrapper tree.
+- the root-level `exports_base.rs` hub has also been removed; `lib.rs` now
+  wires directly to its folded `settings` surface, its folded `solve`
+  surface, and
+  its folded `solver_core` surface
+  without another intermediary hub, and that solve/solver-core bridge now
+  exports only the root surface still used by the crate.
+- local `types.rs` wrappers in
+  [`solve_render_config.rs`](/Users/javiergimenezmoya/developer/math/crates/cas_solver/src/solve_render_config.rs),
+  [`eval_input.rs`](/Users/javiergimenezmoya/developer/math/crates/cas_solver/src/eval_input.rs),
+  and
+  [`eval_option_axes.rs`](/Users/javiergimenezmoya/developer/math/crates/cas_solver/src/eval_option_axes.rs)
+  have also been folded into their root modules, so those seams now own their
+  tiny request/config types directly instead of bouncing through sibling
+  `types.rs` files.
+- [`solve_command_eval_core/eval.rs`](/Users/javiergimenezmoya/developer/math/crates/cas_solver/src/solve_command_eval_core/eval.rs)
+  now owns `SolveSessionExecution` directly; the local
+  `solve_command_eval_core/eval/types.rs` wrapper has been removed.
+- [`substitute.rs`](/Users/javiergimenezmoya/developer/math/crates/cas_solver/src/substitute.rs)
+  now owns `SubstituteSimplifyEvalOutput`, `SubstituteStep`,
+  `SubstituteResult`, and `SubstituteStrategy` directly; the local
+  `substitute/types.rs` wrapper has been removed.
+- [`linear_system.rs`](/Users/javiergimenezmoya/developer/math/crates/cas_solver/src/linear_system.rs)
+  now owns `LinearSystemError`, `LinSolveResult`, and
+  `with_equation_index(...)` directly; the local `linear_system/types.rs`
+  wrapper has been removed.
+- [`snapshot.rs`](/Users/javiergimenezmoya/developer/math/crates/cas_session/src/snapshot.rs)
+  now owns `SessionSnapshot`, `SessionSnapshotHeader`, and
+  `SessionStoreSnapshot` directly; the local `snapshot/types.rs` wrapper has
+  been removed.
+- [`fraction_sum_analysis.rs`](/Users/javiergimenezmoya/developer/math/crates/cas_didactic/src/didactic/fraction_sum_analysis.rs)
+  now owns `FractionSumInfo` directly; the local
+  `fraction_sum_analysis/types.rs` wrapper has been removed.
+- [`timeline/mod.rs`](/Users/javiergimenezmoya/developer/math/crates/cas_didactic/src/timeline/mod.rs)
+  now owns `TimelineCliAction`, `TimelineCliRender`, and the timeline command
+  output types directly; the local `timeline/types.rs` wrapper has been
+  removed.
+- [`step_visibility.rs`](/Users/javiergimenezmoya/developer/math/crates/cas_didactic/src/didactic/step_visibility.rs)
+  now owns `StepVisibility` directly, and the local
+  `step_visibility/types.rs` wrapper has been removed.
+- [`plans.rs`](/Users/javiergimenezmoya/developer/math/crates/cas_didactic/src/didactic/display_policy/plans.rs)
+  now owns `CliSubstepsRenderPlan` and `TimelineSubstepsRenderPlan` directly;
+  the local `display_policy/plans/types.rs` wrapper has been removed.
+- [`timeline/simplify.rs`](/Users/javiergimenezmoya/developer/math/crates/cas_didactic/src/timeline/simplify.rs)
+  now owns `TimelineHtml` directly, and the local
+  `timeline/simplify/types.rs` wrapper has been removed.
+- [`timeline/solve.rs`](/Users/javiergimenezmoya/developer/math/crates/cas_didactic/src/timeline/solve.rs)
+  now owns `SolveTimelineHtml` directly, and the local
+  `timeline/solve/types.rs` wrapper has been removed.
+- [`didactic/mod.rs`](/Users/javiergimenezmoya/developer/math/crates/cas_didactic/src/didactic/mod.rs)
+  now owns `EnrichedStep` and `SubStep` directly via its leaf modules, and the
+  local `didactic/types.rs` wrapper has been removed.
+- `cas_solver/src/timeline_types.rs` has been removed; timeline eval output
+  types now live under [`session_api/timeline.rs`](/Users/javiergimenezmoya/developer/math/crates/cas_solver/src/session_api/timeline.rs),
+  which is their natural session-facing owner.
+- `cas_solver/src/eval_command_types.rs` has been removed; eval command types
+  now live directly under
+  [`command_api/eval.rs`](/Users/javiergimenezmoya/developer/math/crates/cas_solver/src/command_api/eval.rs),
+  which is the natural stateless owner of `EvalCommand*`.
+- `cas_solver/src/eval_command_format.rs`,
+  `cas_solver/src/eval_output_presentation_solution.rs`, and
+  `cas_solver/src/eval_output_presentation_solve.rs` have been removed; their
+  tiny reexport-only surfaces now point directly at the real owners
+  ([`eval_command_format_metadata.rs`](/Users/javiergimenezmoya/developer/math/crates/cas_solver/src/eval_command_format_metadata.rs),
+  [`eval_command_format_result.rs`](/Users/javiergimenezmoya/developer/math/crates/cas_solver/src/eval_command_format_result.rs),
+  [`eval_output_presentation_solution_display.rs`](/Users/javiergimenezmoya/developer/math/crates/cas_solver/src/eval_output_presentation_solution_display.rs),
+  [`eval_output_presentation_solution_latex.rs`](/Users/javiergimenezmoya/developer/math/crates/cas_solver/src/eval_output_presentation_solution_latex.rs),
+  [`eval_output_presentation_input.rs`](/Users/javiergimenezmoya/developer/math/crates/cas_solver/src/eval_output_presentation_input.rs),
+  and
+  [`eval_output_presentation_solve_steps.rs`](/Users/javiergimenezmoya/developer/math/crates/cas_solver/src/eval_output_presentation_solve_steps.rs))
+  instead of bouncing through wrapper modules.
+- `cas_solver/src/linear_system_command_types.rs` has been removed; parse-facing
+  linear-system types now live under
+  [`linear_system_command_parse.rs`](/Users/javiergimenezmoya/developer/math/crates/cas_solver/src/linear_system_command_parse.rs)
+  and eval-facing command output/error now live under
+  [`linear_system_command_eval.rs`](/Users/javiergimenezmoya/developer/math/crates/cas_solver/src/linear_system_command_eval.rs),
+  which are their natural owners.
+- `cas_solver/src/types.rs` has been removed; its façade aliases are now wired
+  directly from [`api.rs`](/Users/javiergimenezmoya/developer/math/crates/cas_solver/src/api.rs),
+  [`runtime.rs`](/Users/javiergimenezmoya/developer/math/crates/cas_solver/src/runtime.rs),
+  and the leaf modules under
+  [`src/types/`](/Users/javiergimenezmoya/developer/math/crates/cas_solver/src/types),
+  instead of going through another internal hub.
 - dead passthrough wrappers in `exports_base/solver_core/` (`domain.rs`,
   `solve.rs`) have been removed; those items are now owned only by
   `cas_solver::api` / `cas_solver_core`, without orphan compatibility files.
+- the remaining pure passthroughs under the former `exports_base/solver_core`
+  surface have also been folded directly into
+  [`lib.rs`](/Users/javiergimenezmoya/developer/math/crates/cas_solver/src/lib.rs);
+  the subwrappers
+  `solver_core/runtime.rs` and `solver_core/assumptions.rs` are gone, so the
+  bridge no longer hides those core-owned items behind another nested layer.
 - `cas_cli` non-REPL commands now have a single render owner in
   `commands::dispatch`; `app.rs` and the `frontend_cli` benchmark both route
   through the same dispatch seam instead of maintaining duplicate command
   matches.
+- `cas_solver/src/exports_commands/output.rs` has been folded into
+  [`lib.rs`](/Users/javiergimenezmoya/developer/math/crates/cas_solver/src/lib.rs);
+  façade-level output helpers (`clean_result_output_line`, parse error render,
+  and pipeline display) now hang directly from the root internal façade owner
+  instead of another passthrough submodule.
+- `cas_solver/src/exports_commands/assumptions.rs` has also been folded into
+  [`lib.rs`](/Users/javiergimenezmoya/developer/math/crates/cas_solver/src/lib.rs);
+  assumption-summary and blocked-hint façade helpers now hang directly from
+  the root internal façade owner instead of another tiny passthrough file.
+- the remaining thematic passthroughs under
+  [`lib.rs`](/Users/javiergimenezmoya/developer/math/crates/cas_solver/src/lib.rs)
+  have also been folded into that root internal owner; the wrapper files
+  `exports_commands/{assignment,analysis,health,history}.rs` are gone, so the
+  command façade no longer bounces those surfaces through another layer of
+  purely mechanical reexports.
+- `cas_solver/src/engine_bridge.rs` has been removed; `cas_solver::runtime`
+  now reexports `Engine`, `Simplifier`, `Rule`, `Rewrite`, `Orchestrator`,
+  `ParentContext` and related runtime types directly from
+  `cas_engine`, instead of hiding that ownership behind a one-file passthrough
+  module.
+- `cas_session::{state_api,eval_api,repl_api}` simplified to `cas_session::{state,eval,repl}` to remove legacy `_api` surface names.
+- `cas_session::eval` now owns the eval command surface directly; the internal `eval_command.rs` hub was removed.
+- `cas_didactic` now reexports the canonical `cas_solver_core::engine_event_collector::EngineEventCollector` directly from its crate root; the old local `events` wrapper and dead collector/listener leftovers were removed.

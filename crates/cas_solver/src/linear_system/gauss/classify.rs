@@ -1,7 +1,7 @@
 use num_rational::BigRational;
 use num_traits::Zero;
 
-use super::super::types::LinSolveResult;
+use super::super::LinSolveResult;
 
 pub(super) fn classify_reduced_system(
     matrix: &[Vec<BigRational>],

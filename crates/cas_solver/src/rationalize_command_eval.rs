@@ -1,4 +1,4 @@
-use crate::rationalize_command_types::{
+use crate::rationalize_command::{
     RationalizeCommandEvalError, RationalizeCommandEvalOutput, RationalizeCommandOutcome,
 };
 use cas_math::rationalize::{rationalize_denominator, RationalizeConfig, RationalizeResult};

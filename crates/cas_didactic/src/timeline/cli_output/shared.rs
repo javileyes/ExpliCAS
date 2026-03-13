@@ -1,4 +1,4 @@
-use super::super::types::TimelineCliRender;
+use super::super::TimelineCliRender;
 use super::{TIMELINE_HTML_FILE, TIMELINE_OPEN_HINT_MESSAGE};
 
 pub(super) fn render_no_steps(lines: Vec<String>) -> TimelineCliRender {

@@ -4,7 +4,7 @@ use num_rational::BigRational;
 use num_traits::Zero;
 
 use super::coeffs::LinearCoeffs;
-use super::types::LinearSystemError;
+use super::LinearSystemError;
 
 pub(crate) fn solve_2x2_cramer(
     coeffs1: &LinearCoeffs,

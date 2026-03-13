@@ -3,7 +3,7 @@ use cas_math::multipoly::PolyBudget;
 use num_rational::BigRational;
 use num_traits::Zero;
 
-use super::super::super::types::LinearSystemError;
+use super::super::super::LinearSystemError;
 use super::super::shared::{build_linear_poly, non_linear_degree_error, unexpected_variable_error};
 use super::LinearCoeffs;
 

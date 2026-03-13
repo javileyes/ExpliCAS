@@ -10,7 +10,7 @@
 //! 3. sqrt(-1) behavior unchanged (RealOnly)
 //! 4. Inverse trig unchanged (Strict)
 
-use cas_session::state_api::SessionState;
+use cas_session::state::SessionState;
 use cas_solver::runtime::{
     BranchPolicy, DomainMode, EvalConfig, InverseTrigPolicy, SimplifyOptions, ValueDomain,
 };

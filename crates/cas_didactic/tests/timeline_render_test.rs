@@ -1,6 +1,6 @@
 //! Integration test to verify timeline step rendering
 use cas_didactic::{TimelineHtml, VerbosityLevel};
-use cas_session::state_api::SessionState;
+use cas_session::state::SessionState;
 use cas_solver::runtime::to_display_steps;
 use cas_solver::runtime::ImportanceLevel;
 use cas_solver::runtime::Simplifier;

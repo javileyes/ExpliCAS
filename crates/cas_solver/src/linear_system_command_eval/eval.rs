@@ -1,9 +1,9 @@
 use cas_ast::Context;
 
-use crate::linear_system_command_parse::parse_linear_system_spec;
-use crate::linear_system_command_types::{
+use crate::linear_system_command_eval::{
     LinearSystemCommandEvalError, LinearSystemCommandEvalOutput,
 };
+use crate::linear_system_command_parse::parse_linear_system_spec;
 
 use super::solve::solve_linear_system_spec;
 

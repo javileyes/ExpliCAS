@@ -1,11 +1,13 @@
 #[cfg(test)]
 mod tests {
-    use crate::SubstituteParseError;
-    use crate::{
+    use crate::substitute_command_eval::{
         evaluate_substitute_command_lines, evaluate_substitute_invocation_lines,
-        format_substitute_parse_error_message, substitute_render_mode_from_display_mode,
-        SubstituteRenderMode,
+        evaluate_substitute_invocation_message, evaluate_substitute_invocation_user_message,
     };
+    use crate::substitute_command_format::{
+        format_substitute_parse_error_message, substitute_render_mode_from_display_mode,
+    };
+    use cas_solver_core::substitute_command_types::{SubstituteParseError, SubstituteRenderMode};
 
     #[test]
     fn substitute_render_mode_maps_from_set_display_mode() {
@@ -48,7 +50,7 @@ mod tests {
     #[test]
     fn evaluate_substitute_invocation_message_joins_lines() {
         let mut simplifier = crate::Simplifier::with_default_rules();
-        let message = crate::evaluate_substitute_invocation_message(
+        let message = evaluate_substitute_invocation_message(
             &mut simplifier,
             "subst x^2 + x, x, 3",
             crate::SetDisplayMode::Normal,
@@ -60,7 +62,7 @@ mod tests {
     #[test]
     fn evaluate_substitute_invocation_user_message_formats_parse_errors() {
         let mut simplifier = crate::Simplifier::with_default_rules();
-        let message = crate::evaluate_substitute_invocation_user_message(
+        let message = evaluate_substitute_invocation_user_message(
             &mut simplifier,
             "subst x^2 + x",
             crate::SetDisplayMode::Normal,

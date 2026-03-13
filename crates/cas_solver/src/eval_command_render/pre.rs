@@ -1,4 +1,4 @@
-use crate::eval_command_types::{EvalDisplayMessage, EvalDisplayMessageKind};
+use crate::command_api::eval::{EvalDisplayMessage, EvalDisplayMessageKind};
 
 pub(super) fn build_pre_messages(
     stored_entry_line: Option<String>,

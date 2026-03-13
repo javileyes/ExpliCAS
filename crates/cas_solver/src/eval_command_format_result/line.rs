@@ -4,7 +4,7 @@ mod scalar;
 use cas_ast::ExprId;
 use cas_formatter::root_style::ParseStyleSignals;
 
-use crate::eval_command_types::EvalResultLine;
+use crate::command_api::eval::EvalResultLine;
 
 pub(super) fn format_eval_result_line(
     context: &cas_ast::Context,

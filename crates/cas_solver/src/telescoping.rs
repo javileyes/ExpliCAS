@@ -2,7 +2,7 @@
 
 use cas_ast::{Context, ExprId};
 
-pub use cas_solver_core::telescoping_runtime::{TelescopingResult, TelescopingStep};
+pub use cas_solver_core::telescoping_runtime::TelescopingResult;
 
 /// Attempt to prove an identity using telescoping strategy.
 pub fn telescope(ctx: &mut Context, expr: ExprId) -> TelescopingResult {

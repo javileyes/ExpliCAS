@@ -1,4 +1,4 @@
-use crate::eval_command_types::EvalResultLine;
+use crate::command_api::eval::EvalResultLine;
 
 pub(super) fn format_solution_set_result_line(
     context: &cas_ast::Context,

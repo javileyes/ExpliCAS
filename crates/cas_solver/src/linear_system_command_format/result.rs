@@ -3,7 +3,7 @@ mod unique;
 
 use cas_ast::Context;
 
-use crate::linear_system_command_types::LinearSystemCommandEvalOutput;
+use crate::linear_system_command_eval::LinearSystemCommandEvalOutput;
 
 pub(crate) fn format_linear_system_result_message(
     ctx: &mut Context,

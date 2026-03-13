@@ -8,8 +8,8 @@ mod tests {
         EvalValueDomain,
     };
 
-    use crate::eval_api::evaluate_eval_text_command_with_session;
-    use crate::eval_command::EvalCommandConfig;
+    use crate::eval::evaluate_eval_text_command_with_session;
+    use crate::eval::EvalCommandConfig;
     use crate::state_core::SessionState;
     use tempfile::tempdir;
 
@@ -153,7 +153,7 @@ mod tests {
         let dir = tempdir().expect("tempdir");
         let path = dir.path().join("session.bin");
 
-        let first = crate::eval_command::evaluate_eval_command_with_session(
+        let first = crate::eval::evaluate_eval_command_with_session(
             Some(&path),
             EvalCommandConfig {
                 expr: "x/x",
@@ -177,7 +177,7 @@ mod tests {
         );
         assert!(first.0.is_ok(), "seed eval should succeed");
 
-        let second = crate::eval_command::evaluate_eval_command_with_session(
+        let second = crate::eval::evaluate_eval_command_with_session(
             Some(&path),
             EvalCommandConfig {
                 expr: "#1",
@@ -209,7 +209,7 @@ mod tests {
         let dir = tempdir().expect("tempdir");
         let path = dir.path().join("session.bin");
 
-        let first = crate::eval_command::evaluate_eval_command_with_session(
+        let first = crate::eval::evaluate_eval_command_with_session(
             Some(&path),
             EvalCommandConfig {
                 expr: "sqrt(x)",
@@ -233,7 +233,7 @@ mod tests {
         );
         assert!(first.0.is_ok(), "seed eval should succeed");
 
-        let second = crate::eval_command::evaluate_eval_command_with_session(
+        let second = crate::eval::evaluate_eval_command_with_session(
             Some(&path),
             EvalCommandConfig {
                 expr: "#1",

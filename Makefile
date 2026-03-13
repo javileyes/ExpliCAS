@@ -1,4 +1,4 @@
-.PHONY: ci ci-release ci-msrv ci-quick lint test fmt clippy build-release lint-allowlist lint-budget lint-limits audit-utils lint-string-compares lint-no-panic-prod bench-clean bench-engine-fast bench-engine-fast-save bench-engine-fast-compare bench-engine-fast-save-seq bench-engine-fast-compare-seq bench-engine-solve-batches bench-engine-solve-batches-save bench-engine-solve-batches-compare bench-engine-solve-hotspots-save bench-engine-solve-hotspots-compare bench-engine-solve-profile bench-engine-repl-breakdown bench-engine-repl-individual bench-engine-repl-individual-save bench-engine-repl-individual-compare bench-engine-repl-hotspots bench-engine-repl-hotspots-save bench-engine-repl-hotspots-compare bench-engine-standard-phase-subset bench-engine-root-direct bench-parser-frontend bench-parser-frontend-save bench-parser-frontend-compare bench-formatter-frontend bench-formatter-frontend-save bench-formatter-frontend-compare bench-session-frontend bench-session-frontend-save bench-session-frontend-compare bench-session-phase-breakdown bench-session-snapshot-io bench-session-snapshot-io-save bench-session-snapshot-io-compare bench-session-snapshot-restore bench-session-snapshot-restore-save bench-session-snapshot-restore-compare bench-session-snapshot-build bench-session-snapshot-build-save bench-session-snapshot-build-compare bench-session-snapshot-store-build bench-session-snapshot-store-build-save bench-session-snapshot-store-build-compare bench-session-snapshot-load bench-session-snapshot-load-save bench-session-snapshot-load-compare bench-session-store-lookup bench-session-store-lookup-save bench-session-store-lookup-compare bench-session-resolve-frontend bench-session-resolve-frontend-save bench-session-resolve-frontend-compare bench-wire-frontend bench-wire-frontend-save bench-wire-frontend-compare bench-solver-wire-eval bench-solver-wire-eval-save bench-solver-wire-eval-compare bench-solver-wire-substitute bench-solver-wire-substitute-save bench-solver-wire-substitute-compare bench-solver-limit bench-solver-limit-save bench-solver-limit-compare bench-cli-frontend bench-cli-frontend-save bench-cli-frontend-compare bench-didactic-frontend bench-didactic-frontend-save bench-didactic-frontend-compare help
+.PHONY: ci ci-release ci-msrv ci-quick lint test fmt clippy build-release lint-allowlist lint-budget lint-limits audit-utils lint-string-compares lint-no-panic-prod bench-clean bench-engine-fast bench-engine-fast-save bench-engine-fast-compare bench-engine-fast-save-seq bench-engine-fast-compare-seq bench-engine-solve-batches bench-engine-solve-batches-save bench-engine-solve-batches-compare bench-engine-solve-hotspots-save bench-engine-solve-hotspots-compare bench-engine-solve-profile bench-engine-repl-breakdown bench-engine-repl-individual bench-engine-repl-individual-save bench-engine-repl-individual-compare bench-engine-repl-hotspots bench-engine-repl-hotspots-save bench-engine-repl-hotspots-compare bench-engine-standard-phase-subset bench-engine-root-direct bench-parser-frontend bench-parser-frontend-save bench-parser-frontend-compare bench-formatter-frontend bench-formatter-frontend-save bench-formatter-frontend-compare bench-session-frontend bench-session-frontend-save bench-session-frontend-compare bench-session-phase-breakdown bench-session-snapshot-io bench-session-snapshot-io-save bench-session-snapshot-io-compare bench-session-snapshot-restore bench-session-snapshot-restore-save bench-session-snapshot-restore-compare bench-session-snapshot-build bench-session-snapshot-build-save bench-session-snapshot-build-compare bench-session-snapshot-store-build bench-session-snapshot-store-build-save bench-session-snapshot-store-build-compare bench-session-snapshot-load bench-session-snapshot-load-save bench-session-snapshot-load-compare bench-session-store-lookup bench-session-store-lookup-save bench-session-store-lookup-compare bench-session-resolve-frontend bench-session-resolve-frontend-save bench-session-resolve-frontend-compare bench-wire-frontend bench-wire-frontend-save bench-wire-frontend-compare bench-solver-wire-eval bench-solver-wire-eval-save bench-solver-wire-eval-compare bench-solver-wire-substitute bench-solver-wire-substitute-save bench-solver-wire-substitute-compare bench-solver-limit bench-solver-limit-save bench-solver-limit-compare bench-cli-frontend bench-cli-frontend-save bench-cli-frontend-compare bench-cli-repl-wire bench-cli-repl-wire-save bench-cli-repl-wire-compare bench-didactic-frontend bench-didactic-frontend-save bench-didactic-frontend-compare help
 
 SOLVE_BATCH_FILTER = solve_modes_cached/(solve_tactic_generic_batch|solve_tactic_assume_batch)
 
@@ -155,6 +155,12 @@ help:
 	@echo "                     -> save a named baseline for CLI frontend benchmarks"
 	@echo "  make bench-cli-frontend-compare BASELINE=good"
 	@echo "                     -> compare CLI frontend benchmarks against a named baseline"
+	@echo "  make bench-cli-repl-wire"
+	@echo "                     -> run direct REPL reply -> wire conversion benchmarks"
+	@echo "  make bench-cli-repl-wire-save BASELINE=good"
+	@echo "                     -> save a named baseline for REPL wire benchmarks"
+	@echo "  make bench-cli-repl-wire-compare BASELINE=good"
+	@echo "                     -> compare REPL wire benchmarks against a named baseline"
 	@echo "  make bench-didactic-frontend"
 	@echo "                     -> run direct cas_didactic payload/timeline render benchmarks"
 	@echo "  make bench-didactic-frontend-save BASELINE=good"
@@ -448,6 +454,17 @@ bench-cli-frontend-save:
 bench-cli-frontend-compare:
 	@test -n "$(BASELINE)" || { echo "Missing BASELINE=..."; exit 1; }
 	CAS_BENCH_FAST=1 cargo bench -p cas_cli --bench frontend_cli -- --noplot --baseline $(BASELINE)
+
+bench-cli-repl-wire:
+	CAS_BENCH_FAST=1 cargo bench -p cas_cli --bench frontend_repl_wire -- --noplot
+
+bench-cli-repl-wire-save:
+	@test -n "$(BASELINE)" || { echo "Missing BASELINE=..."; exit 1; }
+	CAS_BENCH_FAST=1 cargo bench -p cas_cli --bench frontend_repl_wire -- --noplot --save-baseline $(BASELINE)
+
+bench-cli-repl-wire-compare:
+	@test -n "$(BASELINE)" || { echo "Missing BASELINE=..."; exit 1; }
+	CAS_BENCH_FAST=1 cargo bench -p cas_cli --bench frontend_repl_wire -- --noplot --baseline $(BASELINE)
 
 bench-didactic-frontend:
 	CAS_BENCH_FAST=1 cargo bench -p cas_didactic --bench frontend_didactic -- --noplot

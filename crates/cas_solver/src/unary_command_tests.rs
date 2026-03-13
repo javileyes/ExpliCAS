@@ -1,7 +1,9 @@
 #[test]
 fn evaluate_unary_function_command_lines_runs() {
+    use crate::unary_command_eval::evaluate_unary_function_command_lines;
+
     let mut simplifier = crate::Simplifier::with_default_rules();
-    let lines = crate::evaluate_unary_function_command_lines(
+    let lines = evaluate_unary_function_command_lines(
         &mut simplifier,
         "trace",
         "[[1,2],[3,4]]",
@@ -14,8 +16,10 @@ fn evaluate_unary_function_command_lines_runs() {
 
 #[test]
 fn evaluate_unary_command_lines_trims_command_prefix() {
+    use crate::unary_command_eval::evaluate_unary_command_lines;
+
     let mut simplifier = crate::Simplifier::with_default_rules();
-    let lines = crate::evaluate_unary_command_lines(
+    let lines = evaluate_unary_command_lines(
         &mut simplifier,
         "trace [[1,2],[3,4]]",
         "trace",
@@ -31,8 +35,10 @@ fn evaluate_unary_command_lines_trims_command_prefix() {
 
 #[test]
 fn evaluate_unary_command_message_joins_lines() {
+    use crate::unary_command_eval::evaluate_unary_command_message;
+
     let mut simplifier = crate::Simplifier::with_default_rules();
-    let message = crate::evaluate_unary_command_message(
+    let message = evaluate_unary_command_message(
         &mut simplifier,
         "trace [[1,2],[3,4]]",
         "trace",

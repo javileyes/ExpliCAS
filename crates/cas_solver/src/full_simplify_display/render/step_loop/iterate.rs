@@ -1,8 +1,8 @@
 use super::super::super::steps::{
     next_step_root, push_detailed_step_lines, push_succinct_step_line,
 };
-use super::super::super::types::FullSimplifyDisplayMode;
 use super::super::super::visibility::should_show_simplify_step;
+use super::super::super::FullSimplifyDisplayMode;
 
 pub(super) fn append_step_loop_lines(
     lines: &mut Vec<String>,

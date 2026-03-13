@@ -1,4 +1,4 @@
-use crate::repl_api::{
+use crate::repl::{
     build_repl_core_with_config, reset_repl_core_full_with_config, reset_repl_core_with_config,
 };
 #[allow(unused_imports)]

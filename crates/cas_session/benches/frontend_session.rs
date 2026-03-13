@@ -7,12 +7,12 @@ use cas_api_models::{
     EvalContextMode, EvalDomainMode, EvalExpandPolicy, EvalInvTrigPolicy, EvalSessionRunConfig,
     EvalStepsMode, EvalValueDomain, StepWire,
 };
-use cas_session::eval_api::{
+use cas_session::eval::{
     evaluate_eval_command_pretty_with_session, evaluate_eval_command_with_session,
     evaluate_eval_text_command_with_session,
 };
-use cas_session::repl_api::{build_repl_core_with_config, CasConfig};
-use cas_session::state_api::SessionState;
+use cas_session::repl::{build_repl_core_with_config, CasConfig};
+use cas_session::state::SessionState;
 use cas_solver::runtime::Engine;
 use criterion::{criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion};
 use tempfile::tempdir;
@@ -290,12 +290,10 @@ fn bench_frontend_session(c: &mut Criterion) {
             },
             |(_tmp, session_path)| {
                 let key = cas_session::cache::SimplifyCacheKey::from_domain_flag("generic");
-                black_box(
-                    cas_session::state_api::SessionState::load_compatible_snapshot(
-                        &session_path,
-                        &key,
-                    ),
-                )
+                black_box(cas_session::state::SessionState::load_compatible_snapshot(
+                    &session_path,
+                    &key,
+                ))
             },
             BatchSize::SmallInput,
         )
@@ -313,12 +311,9 @@ fn bench_frontend_session(c: &mut Criterion) {
                 );
                 let key = cas_session::cache::SimplifyCacheKey::from_domain_flag("generic");
                 let (context, _state) =
-                    cas_session::state_api::SessionState::load_compatible_snapshot(
-                        &session_path,
-                        &key,
-                    )
-                    .expect("load compatible snapshot")
-                    .expect("compatible snapshot");
+                    cas_session::state::SessionState::load_compatible_snapshot(&session_path, &key)
+                        .expect("load compatible snapshot")
+                        .expect("compatible snapshot");
                 ((tmp, session_path), context)
             },
             |(_seed, context)| black_box(Engine::with_context(context)),
@@ -338,12 +333,9 @@ fn bench_frontend_session(c: &mut Criterion) {
                 );
                 let key = cas_session::cache::SimplifyCacheKey::from_domain_flag("generic");
                 let (context, state) =
-                    cas_session::state_api::SessionState::load_compatible_snapshot(
-                        &session_path,
-                        &key,
-                    )
-                    .expect("load compatible snapshot")
-                    .expect("compatible snapshot");
+                    cas_session::state::SessionState::load_compatible_snapshot(&session_path, &key)
+                        .expect("load compatible snapshot")
+                        .expect("compatible snapshot");
                 ((tmp, session_path), Engine::with_context(context), state)
             },
             |(_seed, mut engine, mut state)| {

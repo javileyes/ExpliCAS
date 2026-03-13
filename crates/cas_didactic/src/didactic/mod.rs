@@ -37,6 +37,8 @@
 
 mod cli_render;
 mod display_policy;
+#[path = "types/enriched_step.rs"]
+mod enriched_step;
 mod enrichment_pipeline;
 mod fraction_steps;
 mod fraction_sum_analysis;
@@ -49,8 +51,9 @@ mod rationalization;
 mod root_denesting;
 mod shared_numeric;
 mod step_visibility;
+#[path = "types/substep.rs"]
+mod substep;
 mod sum_three_cubes;
-mod types;
 
 pub use cli_render::{
     format_cli_simplification_steps, format_cli_simplification_steps_with_simplifier,
@@ -59,6 +62,7 @@ pub use display_policy::{
     build_cli_substeps_render_plan, build_timeline_substeps_render_plan, classify_sub_steps,
     CliSubstepsRenderPlan, StepDisplayMode, SubStepClassification, TimelineSubstepsRenderPlan,
 };
+pub use enriched_step::EnrichedStep;
 pub use enrichment_pipeline::{enrich_steps, get_standalone_substeps};
 pub use latex_plain_text::latex_to_plain_text;
 pub(crate) use shared_numeric::{
@@ -69,7 +73,7 @@ pub(crate) use step_visibility::{
     StepVisibility,
 };
 pub use step_visibility::{is_high_or_higher_step, is_medium_or_higher_step};
-pub use types::{EnrichedStep, SubStep};
+pub use substep::SubStep;
 
 #[cfg(test)]
 mod tests;

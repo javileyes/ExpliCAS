@@ -1,4 +1,4 @@
-use crate::eval_command_types::{EvalCommandError, EvalCommandEvalView};
+use crate::command_api::eval::{EvalCommandError, EvalCommandEvalView};
 
 pub(super) fn execute_eval_request<S>(
     engine: &mut crate::Engine,

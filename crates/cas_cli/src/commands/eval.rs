@@ -40,7 +40,7 @@ pub(crate) fn render(mut args: EvalArgs) -> Result<CommandOutput, String> {
 
 fn render_wire(args: &EvalArgs) -> CommandOutput {
     CommandOutput::from_stdout(
-        cas_session::eval_api::evaluate_eval_command_pretty_with_session(
+        cas_session::eval::evaluate_eval_command_pretty_with_session(
             args.session.as_deref(),
             eval_command_config(&args.expr, args),
             |steps, events, context, steps_mode| {
@@ -53,8 +53,8 @@ fn render_wire(args: &EvalArgs) -> CommandOutput {
 fn eval_command_config<'a>(
     expr: &'a str,
     args: &'a EvalArgs,
-) -> cas_session::eval_api::EvalCommandConfig<'a> {
-    cas_session::eval_api::EvalCommandConfig {
+) -> cas_session::eval::EvalCommandConfig<'a> {
+    cas_session::eval::EvalCommandConfig {
         expr,
         auto_store: args.session.is_some(),
         max_chars: args.max_chars,

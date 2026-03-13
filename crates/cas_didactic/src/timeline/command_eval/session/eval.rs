@@ -1,5 +1,5 @@
 use super::super::super::command_projection::timeline_command_output_from_solver;
-use super::super::super::types::TimelineCommandOutput;
+use super::super::super::TimelineCommandOutput;
 use cas_solver::session_api::timeline::{
     evaluate_timeline_command_with_session, TimelineCommandEvalError,
 };

@@ -16,30 +16,26 @@ mod config;
 mod config_command_apply_tests;
 #[cfg(test)]
 mod config_tests;
-pub mod eval_api;
-mod eval_command;
+pub mod eval;
 #[cfg(test)]
 mod eval_command_session_tests;
 #[cfg(test)]
 mod eval_command_tests;
-mod eval_text_command;
 #[cfg(test)]
 mod history_tests;
 #[cfg(test)]
 mod inspect_tests;
 #[cfg(test)]
 mod options_tests;
-pub mod repl_api;
+pub mod repl;
 #[cfg(test)]
 mod repl_command_runtime_tests;
 #[cfg(test)]
 mod repl_config_runtime_tests;
 mod repl_core;
 mod repl_core_runtime_impls;
-mod repl_runtime_core;
 #[cfg(test)]
 mod repl_runtime_tests;
-mod repl_semantics_runtime;
 #[cfg(test)]
 mod repl_semantics_runtime_tests;
 #[cfg(test)]
@@ -58,7 +54,7 @@ mod snapshot;
 mod snapshot_store_convert;
 #[cfg(test)]
 mod snapshot_tests;
-pub mod state_api;
+pub mod state;
 mod state_bindings;
 mod state_core;
 mod state_eval_session;

@@ -1,5 +1,5 @@
+use crate::rationalize_command::{RationalizeCommandEvalError, RationalizeCommandOutcome};
 use crate::rationalize_command_eval::evaluate_rationalize_command_input;
-use crate::rationalize_command_types::{RationalizeCommandEvalError, RationalizeCommandOutcome};
 
 #[test]
 fn evaluate_rationalize_command_lines_empty_input_returns_usage() {

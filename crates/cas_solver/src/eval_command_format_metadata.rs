@@ -3,7 +3,7 @@ mod hints;
 mod requires;
 mod warnings;
 
-use crate::eval_command_types::{EvalCommandEvalView, EvalMetadataLines};
+use crate::command_api::eval::{EvalCommandEvalView, EvalMetadataLines};
 
 pub(crate) fn format_eval_metadata_lines(
     context: &mut cas_ast::Context,

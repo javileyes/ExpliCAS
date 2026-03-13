@@ -1,6 +1,6 @@
 use super::parse::parse_profile_cache_command_input;
 use super::store::ProfileCacheStore;
-use super::types::{ProfileCacheCommandInput, ProfileCacheCommandResult};
+use super::{ProfileCacheCommandInput, ProfileCacheCommandResult};
 
 /// Apply a `cache` command line to an engine profile cache.
 pub fn apply_profile_cache_command<E: ProfileCacheStore>(

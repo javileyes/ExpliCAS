@@ -35,3 +35,7 @@ cas_math = { path = "../cas_math" }
 [[bench]]
 name = "frontend_cli"
 harness = false
+
+[[bench]]
+name = "frontend_repl_wire"
+harness = false

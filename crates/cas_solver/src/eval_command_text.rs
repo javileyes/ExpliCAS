@@ -1,4 +1,4 @@
-use crate::eval_command_format::format_eval_result_text;
+use crate::eval_command_format_result::format_eval_result_text;
 
 /// Evaluate plain text simplification input and return final rendered result.
 ///

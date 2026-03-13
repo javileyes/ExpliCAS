@@ -5,7 +5,7 @@ impl Repl {
     /// Core: handle set command, returns CoreResult with UI delta for verbosity changes
     pub(crate) fn handle_set_command_core(&mut self, line: &str) -> CoreResult {
         let mut ui_delta = UiDelta::default();
-        let out = cas_solver::session_api::settings::evaluate_set_command_on_repl_core(
+        let out = cas_solver::session_api::set::evaluate_set_command_on_repl_core(
             line,
             &mut self.core,
             Self::set_display_mode_from_verbosity(self.verbosity),
@@ -14,10 +14,10 @@ impl Repl {
             ui_delta.verbosity = Some(Self::verbosity_from_set_display_mode(display));
         }
         let reply = match out.message_kind {
-            cas_solver::session_api::settings::ReplSetMessageKind::Output => {
+            cas_solver::session_api::set::ReplSetMessageKind::Output => {
                 vec![ReplMsg::output(out.message)]
             }
-            cas_solver::session_api::settings::ReplSetMessageKind::Info => {
+            cas_solver::session_api::set::ReplSetMessageKind::Info => {
                 vec![ReplMsg::info(out.message)]
             }
         };

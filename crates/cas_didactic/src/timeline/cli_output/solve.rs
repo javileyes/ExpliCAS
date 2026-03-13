@@ -2,7 +2,7 @@ use super::super::render_api::render_solve_timeline_html;
 use super::super::solve_result_display::{
     format_timeline_solve_no_steps_message, format_timeline_solve_result_line,
 };
-use super::super::types::{TimelineCliRender, TimelineSolveCommandOutput};
+use super::super::{TimelineCliRender, TimelineSolveCommandOutput};
 use super::shared::{render_html, render_no_steps};
 use cas_ast::Context;
 

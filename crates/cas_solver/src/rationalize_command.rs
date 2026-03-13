@@ -3,7 +3,27 @@
 use crate::rationalize_command_eval::evaluate_rationalize_command_input;
 use crate::rationalize_command_format::format_rationalize_eval_lines;
 use crate::rationalize_command_parse::parse_rationalize_input;
-use crate::rationalize_command_types::{RationalizeCommandEvalError, RATIONALIZE_USAGE_MESSAGE};
+
+pub(crate) const RATIONALIZE_USAGE_MESSAGE: &str = "Usage: rationalize <expr>\n\
+                 Example: rationalize 1/(1 + sqrt(2) + sqrt(3))";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RationalizeCommandOutcome {
+    Success(cas_ast::ExprId),
+    NotApplicable,
+    BudgetExceeded,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum RationalizeCommandEvalError {
+    Parse(String),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct RationalizeCommandEvalOutput {
+    pub(crate) normalized_expr: cas_ast::ExprId,
+    pub(crate) outcome: RationalizeCommandOutcome,
+}
 
 /// Evaluate `rationalize` command and return final display lines.
 pub fn evaluate_rationalize_command_lines(

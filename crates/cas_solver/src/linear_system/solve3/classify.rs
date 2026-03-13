@@ -1,7 +1,7 @@
 use num_rational::BigRational;
 
 use super::super::coeffs::LinearCoeffs3;
-use super::super::types::LinearSystemError;
+use super::super::LinearSystemError;
 
 pub(super) fn classify_degenerate_3x3(
     c1: &LinearCoeffs3,

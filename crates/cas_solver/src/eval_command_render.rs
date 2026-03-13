@@ -2,14 +2,14 @@ mod post;
 mod pre;
 mod result;
 
-use crate::eval_command_types::{EvalCommandOutput, EvalCommandRenderPlan};
+use crate::command_api::eval::{EvalCommandOutput, EvalCommandRenderPlan};
 
 /// Convert an eval output payload into an ordered rendering plan.
 pub fn build_eval_command_render_plan(
     output: EvalCommandOutput,
     verbosity_is_none: bool,
 ) -> EvalCommandRenderPlan {
-    let crate::eval_command_types::EvalCommandOutput {
+    let crate::command_api::eval::EvalCommandOutput {
         resolved_expr,
         style_signals,
         steps,

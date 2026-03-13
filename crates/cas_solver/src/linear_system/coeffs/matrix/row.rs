@@ -3,7 +3,7 @@ mod terms;
 use cas_ast::{Context, ExprId};
 use cas_math::multipoly::PolyBudget;
 
-use super::super::super::types::LinearSystemError;
+use super::super::super::LinearSystemError;
 use super::super::shared::build_linear_poly;
 
 pub(super) fn extract_linear_row(

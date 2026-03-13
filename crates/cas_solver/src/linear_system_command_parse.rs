@@ -4,8 +4,30 @@ mod split;
 mod vars;
 
 use cas_ast::Context;
+use cas_ast::{ExprId, RelOp};
 
-use crate::linear_system_command_types::{LinearSystemSpec, LinearSystemSpecError};
+#[derive(Debug, Clone)]
+pub(crate) struct LinearSystemSpec {
+    pub(crate) exprs: Vec<ExprId>,
+    pub(crate) vars: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum LinearSystemSpecError {
+    InvalidPartCount,
+    InvalidVariableName { name: String },
+    ParseEquation { position: usize, message: String },
+    ExpectedEquation { position: usize, input: String },
+    UnsupportedRelation,
+}
+
+pub(crate) fn ensure_equation_relation(op: RelOp) -> Result<(), LinearSystemSpecError> {
+    if op == RelOp::Eq {
+        Ok(())
+    } else {
+        Err(LinearSystemSpecError::UnsupportedRelation)
+    }
+}
 
 pub(crate) fn parse_linear_system_spec(
     ctx: &mut Context,

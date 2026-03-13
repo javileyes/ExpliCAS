@@ -1,6 +1,4 @@
-use super::types::{
-    TimelineCommandOutput, TimelineSimplifyCommandOutput, TimelineSolveCommandOutput,
-};
+use super::{TimelineCommandOutput, TimelineSimplifyCommandOutput, TimelineSolveCommandOutput};
 use cas_solver::session_api::timeline::TimelineCommandEvalOutput;
 
 /// Convert solver timeline evaluation output into didactic render payload.

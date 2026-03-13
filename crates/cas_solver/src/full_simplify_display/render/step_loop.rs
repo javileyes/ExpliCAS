@@ -1,7 +1,7 @@
 mod iterate;
 mod prepare;
 
-use super::super::types::FullSimplifyDisplayMode;
+use super::super::FullSimplifyDisplayMode;
 
 pub(super) fn append_full_simplify_step_lines(
     lines: &mut Vec<String>,

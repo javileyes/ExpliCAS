@@ -9,13 +9,13 @@ impl Repl {
 
         for message in plan.pre_messages {
             match message.kind {
-                cas_session::eval_api::EvalDisplayMessageKind::Output => {
+                cas_session::eval::EvalDisplayMessageKind::Output => {
                     reply.push(ReplMsg::output(message.text))
                 }
-                cas_session::eval_api::EvalDisplayMessageKind::Warn => {
+                cas_session::eval::EvalDisplayMessageKind::Warn => {
                     reply.push(ReplMsg::warn(message.text))
                 }
-                cas_session::eval_api::EvalDisplayMessageKind::Info => {
+                cas_session::eval::EvalDisplayMessageKind::Info => {
                     reply.push(ReplMsg::info(message.text))
                 }
             }

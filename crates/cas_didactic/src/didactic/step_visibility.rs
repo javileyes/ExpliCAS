@@ -3,13 +3,18 @@ mod clone;
 mod importance;
 mod matches;
 mod simplify;
-mod types;
 
 use super::display_policy::StepDisplayMode;
 use crate::runtime::Step;
 use cas_ast::ExprId;
 
-pub(crate) use types::StepVisibility;
+/// Shared visibility policy for step-oriented didactic frontends.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum StepVisibility {
+    All,
+    MediumOrHigher,
+    HighOrHigher,
+}
 
 pub(crate) fn step_matches_visibility(step: &Step, visibility: StepVisibility) -> bool {
     matches::step_matches_visibility(

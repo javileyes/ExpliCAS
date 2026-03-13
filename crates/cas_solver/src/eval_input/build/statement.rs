@@ -1,6 +1,6 @@
 use crate::eval_input_variable::detect_solve_variable_for_eval_request;
 
-use super::super::types::{EvalNonSolveAction, PreparedEvalRequest};
+use super::super::{EvalNonSolveAction, PreparedEvalRequest};
 
 pub(super) fn build_statement_request(
     raw_input: &str,

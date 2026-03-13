@@ -2,7 +2,7 @@ use cas_ast::ExprId;
 use cas_solver_core::engine_event_collector::EngineEventCollector;
 use cas_solver_core::engine_events::EngineEvent;
 
-use super::{error::FullSimplifyEvalError, types::FullSimplifyEvalOutput};
+use super::{error::FullSimplifyEvalError, FullSimplifyEvalOutput};
 
 pub fn evaluate_full_simplify_input_with_resolver<F>(
     simplifier: &mut crate::Simplifier,

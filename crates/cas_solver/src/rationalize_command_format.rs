@@ -1,4 +1,4 @@
-use crate::rationalize_command_types::RationalizeCommandOutcome;
+use crate::rationalize_command::RationalizeCommandOutcome;
 
 pub(crate) fn format_rationalize_eval_lines(
     context: &cas_ast::Context,

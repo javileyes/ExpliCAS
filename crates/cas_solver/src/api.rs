@@ -4,17 +4,16 @@ pub use crate::command_api::solve::prepare_timeline_solve_equation;
 pub use crate::domain_facade::{
     derive_requires_from_equation, domain_delta_check, infer_implicit_domain,
 };
+pub use crate::runtime_aliases::{DisplaySolveSteps, SolveDiagnostics, SolveStep, SolveSubStep};
 pub use crate::solve_safety::{RequirementDescriptor, RuleSolveSafetyExt, SolveSafety};
 pub use crate::solver_entrypoints_eval::{expand, expand_with_stats, fold_constants};
 pub use crate::solver_entrypoints_proof_verify::{
     cancel_additive_terms_semantic, cancel_common_additive_terms, CancelResult,
 };
 pub use crate::solver_entrypoints_solve::{solve, solve_with_display_steps};
+pub use crate::solver_options::SolverOptions;
 pub use crate::standard_oracle::{oracle_allows_with_hint, StandardOracle};
 pub use crate::telescoping::telescope;
-pub use crate::types::{
-    DisplaySolveSteps, SolveDiagnostics, SolveStep, SolveSubStep, SolverOptions,
-};
 pub use cas_ast::{
     BoundType, Case, ConditionPredicate, ConditionSet, Interval, SolutionSet, SolveResult,
 };

@@ -1,6 +1,6 @@
 use cas_ast::{Context, Expr};
 
-use crate::linear_system_command_types::{ensure_equation_relation, LinearSystemSpecError};
+use crate::linear_system_command_parse::{ensure_equation_relation, LinearSystemSpecError};
 
 pub(super) fn parse_linear_system_exprs(
     ctx: &mut Context,

@@ -1,13 +1,21 @@
 mod detect;
 mod probe;
 mod scan;
-mod types;
 
 use crate::runtime::Step;
 use cas_ast::{Context, ExprId};
+use num_rational::BigRational;
 
 use self::probe::find_fraction_sum_in_expr;
-pub(crate) use self::types::FractionSumInfo;
+
+/// Information about a fraction sum that was computed.
+#[derive(Debug)]
+pub(crate) struct FractionSumInfo {
+    /// The fractions that were summed.
+    pub fractions: Vec<BigRational>,
+    /// The result of the sum.
+    pub result: BigRational,
+}
 
 /// Find all fraction sums in an expression tree.
 pub(crate) fn find_all_fraction_sums(ctx: &Context, expr: ExprId) -> Vec<FractionSumInfo> {

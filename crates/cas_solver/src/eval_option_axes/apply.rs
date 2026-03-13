@@ -1,4 +1,4 @@
-use super::types::EvalOptionAxes;
+use super::EvalOptionAxes;
 
 fn axes_match_current_options(opts: &crate::EvalOptions, axes: EvalOptionAxes) -> bool {
     matches!(

@@ -2,7 +2,7 @@ mod extract;
 
 use cas_ast::{Context, ExprId};
 
-use super::super::types::LinearSystemError;
+use super::super::LinearSystemError;
 use num_rational::BigRational;
 
 /// Linear coefficients for equation `a*x + b*y + c*z + d = 0` (3 variables).

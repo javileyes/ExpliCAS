@@ -5488,3 +5488,45 @@ Those are valid projects, but not part of this performance track.
   - keep the centralized dispatch seam; it removes duplication and makes the
     frontend bench trustworthy without forcing another round of micro-opts on
     the CLI layer
+
+### CLI REPL wire frontend: isolate `ReplReply -> WireReply` and stop optimizing it blindly
+
+- objective:
+  - isolate the cost of converting REPL output messages into wire payloads so we
+    can tell whether that seam is worth further optimization
+  - avoid spending time on a path that may already be well below the noise floor
+- retained implementation:
+  - `/Users/javiergimenezmoya/developer/math/crates/cas_cli/benches/frontend_repl_wire.rs`
+    now benchmarks `wire_reply_from_repl(...)` directly for four representative
+    reply shapes:
+    - `light/output_only`
+    - `light/mixed_messages`
+    - `io/file_actions`
+    - `io/full_reply`
+  - `/Users/javiergimenezmoya/developer/math/Makefile` now exposes:
+    - `make bench-cli-repl-wire`
+    - `make bench-cli-repl-wire-save BASELINE=...`
+    - `make bench-cli-repl-wire-compare BASELINE=...`
+  - the bench reuses the real implementation from
+    `/Users/javiergimenezmoya/developer/math/crates/cas_cli/src/repl/wire/convert.rs`
+    through a local shim, so it measures the same seam used by the app
+- validation kept green:
+  - `cargo check -p cas_cli --benches`
+  - `CAS_BENCH_FAST=1 cargo bench -p cas_cli --bench frontend_repl_wire -- --noplot`
+- measured snapshot:
+  - `frontend_repl_wire/convert/light/output_only`:
+    `47.918-49.992 ns`
+  - `frontend_repl_wire/convert/light/mixed_messages`:
+    `161.34-165.82 ns`
+  - `frontend_repl_wire/convert/io/file_actions`:
+    `115.79-119.47 ns`
+  - `frontend_repl_wire/convert/io/full_reply`:
+    `232.79-236.95 ns`
+  - `frontend_repl_wire/convert_serialize/io/full_reply`:
+    `500.32-509.72 ns`
+- retained conclusion:
+  - keep the new benchmark as a clean guardrail, but do not chase more micro-opt
+    work here for now
+  - the conversion seam is tiny compared with the other frontends we have
+    isolated, so further work on `wire_reply_from_repl(...)` is unlikely to move
+    any user-visible path in a meaningful way

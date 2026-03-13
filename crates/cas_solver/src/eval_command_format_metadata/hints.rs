@@ -1,4 +1,4 @@
-use crate::eval_command_types::EvalCommandEvalView;
+use crate::command_api::eval::EvalCommandEvalView;
 
 pub(super) fn format_hint_lines(
     context: &mut cas_ast::Context,

@@ -1,4 +1,4 @@
-use super::types::{TimelineCliAction, TimelineCliRender};
+use super::{TimelineCliAction, TimelineCliRender};
 
 /// Convert timeline render output into primitive CLI actions.
 pub fn timeline_cli_actions_from_render(render: TimelineCliRender) -> Vec<TimelineCliAction> {

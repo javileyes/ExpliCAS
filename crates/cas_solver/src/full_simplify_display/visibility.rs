@@ -1,6 +1,6 @@
 mod unchanged;
 
-use super::types::FullSimplifyDisplayMode;
+use super::FullSimplifyDisplayMode;
 
 pub(super) fn should_show_simplify_step(step: &crate::Step, mode: FullSimplifyDisplayMode) -> bool {
     match mode {

@@ -1,6 +1,6 @@
 use super::super::cli_actions::timeline_cli_actions_from_render;
 use super::super::simplify::VerbosityLevel;
-use super::super::types::TimelineCliAction;
+use super::super::TimelineCliAction;
 use super::session;
 use cas_solver::session_api::timeline::TimelineCommandEvalError;
 

@@ -1,4 +1,6 @@
+#[path = "solver_options/convert.rs"]
 mod convert;
+#[path = "solver_options/defaults.rs"]
 mod defaults;
 
 /// Options for solver operations, containing semantic context.

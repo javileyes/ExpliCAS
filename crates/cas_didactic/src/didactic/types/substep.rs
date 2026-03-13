@@ -1,3 +1,4 @@
+#[path = "substep/methods.rs"]
 mod methods;
 
 /// A synthetic sub-step that explains a hidden operation

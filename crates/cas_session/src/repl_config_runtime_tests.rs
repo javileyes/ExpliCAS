@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::repl_runtime_core::evaluate_and_apply_config_command_on_repl;
+    use crate::repl::evaluate_and_apply_config_command_on_repl;
 
     #[test]
     fn evaluate_and_apply_config_command_on_repl_reports_status() {

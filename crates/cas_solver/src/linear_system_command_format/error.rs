@@ -1,4 +1,5 @@
-use crate::linear_system_command_types::{LinearSystemCommandEvalError, LinearSystemSpecError};
+use crate::linear_system_command_eval::LinearSystemCommandEvalError;
+use crate::linear_system_command_parse::LinearSystemSpecError;
 
 fn format_not_linear_reply(message: &str) -> String {
     let with_prefix = |detail: &str| {

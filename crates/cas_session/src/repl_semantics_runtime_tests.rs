@@ -1,4 +1,4 @@
-use crate::repl_api::{
+use crate::repl::{
     evaluate_autoexpand_command_on_repl, evaluate_context_command_on_repl,
     evaluate_semantics_command_on_repl,
 };

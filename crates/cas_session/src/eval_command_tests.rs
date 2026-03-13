@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
-    use crate::eval_api::{EvalDisplayMessageKind, EvalMetadataLines, EvalResultLine};
-    use crate::state_api::SessionState;
+    use crate::eval::{EvalDisplayMessageKind, EvalMetadataLines, EvalResultLine};
+    use crate::state::SessionState;
     #[allow(unused_imports)]
     use cas_solver::session_api::{assumptions::*, eval::*, runtime::*, simplifier::*};
 

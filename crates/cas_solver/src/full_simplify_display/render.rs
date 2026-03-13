@@ -2,7 +2,7 @@ mod prepare;
 mod result;
 mod step_loop;
 
-use super::types::FullSimplifyDisplayMode;
+use super::FullSimplifyDisplayMode;
 
 /// Format full simplify output lines according to display mode.
 pub fn format_full_simplify_eval_lines(

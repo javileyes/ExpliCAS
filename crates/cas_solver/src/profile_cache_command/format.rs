@@ -1,4 +1,4 @@
-use super::types::ProfileCacheCommandResult;
+use super::ProfileCacheCommandResult;
 
 /// Render a `cache` command result into output lines for UI/frontends.
 pub fn format_profile_cache_command_lines(result: &ProfileCacheCommandResult) -> Vec<String> {

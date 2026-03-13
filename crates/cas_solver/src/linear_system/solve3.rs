@@ -5,7 +5,7 @@ use num_rational::BigRational;
 use num_traits::Zero;
 
 use super::coeffs::LinearCoeffs3;
-use super::types::LinearSystemError;
+use super::LinearSystemError;
 
 pub(crate) fn solve_3x3_cramer(
     c1: &LinearCoeffs3,

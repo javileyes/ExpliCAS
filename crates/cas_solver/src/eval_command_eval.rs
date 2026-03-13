@@ -2,7 +2,7 @@ mod execute;
 mod output;
 mod prepare;
 
-use crate::eval_command_types::{EvalCommandError, EvalCommandOutput};
+use crate::command_api::eval::{EvalCommandError, EvalCommandOutput};
 
 /// Evaluate full REPL `eval` input and prepare display payload.
 pub fn evaluate_eval_command_output<S>(

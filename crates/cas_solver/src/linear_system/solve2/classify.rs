@@ -1,6 +1,6 @@
 use num_rational::BigRational;
 
-use super::super::types::LinearSystemError;
+use super::super::LinearSystemError;
 
 pub(super) fn classify_degenerate_2x2(
     a1: &BigRational,

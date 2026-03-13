@@ -1,7 +1,7 @@
 use cas_ast::{Context, ExprId};
 use cas_math::multipoly::{multipoly_from_expr, PolyBudget};
 
-use super::super::types::LinearSystemError;
+use super::super::LinearSystemError;
 
 pub(super) fn build_linear_poly(
     ctx: &Context,

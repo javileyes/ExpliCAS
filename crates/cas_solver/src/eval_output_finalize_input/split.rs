@@ -1,4 +1,4 @@
-use super::types::{EvalOutputFinalizeContext, EvalOutputFinalizeInput, EvalOutputFinalizeShared};
+use super::{EvalOutputFinalizeContext, EvalOutputFinalizeInput, EvalOutputFinalizeShared};
 
 impl<'a> EvalOutputFinalizeInput<'a> {
     pub(crate) fn split(self) -> (EvalOutputFinalizeContext<'a>, EvalOutputFinalizeShared<'a>) {

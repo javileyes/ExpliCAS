@@ -1,7 +1,7 @@
 use crate::eval_input_special::{map_limit_approach, parse_solve_input_for_eval_request};
 use cas_api_models::EvalSpecialCommand;
 
-use super::super::types::{EvalNonSolveAction, PreparedEvalRequest};
+use super::super::{EvalNonSolveAction, PreparedEvalRequest};
 
 pub(super) fn build_special_command_request(
     raw_input: &str,

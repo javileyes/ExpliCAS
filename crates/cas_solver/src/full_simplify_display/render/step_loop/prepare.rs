@@ -1,4 +1,4 @@
-use super::super::super::types::FullSimplifyDisplayMode;
+use super::super::super::FullSimplifyDisplayMode;
 
 pub(super) fn prepare_step_lines(
     lines: &mut Vec<String>,

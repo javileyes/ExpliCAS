@@ -17,7 +17,7 @@ impl SessionSnapshot {
         cache_key: SimplifyCacheKey,
     ) -> Self {
         Self {
-            header: super::types::SessionSnapshotHeader::new(Self::MAGIC, Self::VERSION, cache_key),
+            header: super::SessionSnapshotHeader::new(Self::MAGIC, Self::VERSION, cache_key),
             context: super::ContextSnapshot::from_context(context),
             session: session_store_snapshot_from_store(session),
         }

@@ -4,7 +4,7 @@ mod error;
 mod lines;
 mod parse;
 
-use crate::limit_command_eval::evaluate_limit_command_input;
+use crate::limit_command_core::evaluate_limit_command_input;
 
 /// Evaluate `limit` command input and return final display lines.
 pub fn evaluate_limit_command_lines(line: &str) -> Result<Vec<String>, String> {

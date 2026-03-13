@@ -1,6 +1,6 @@
 use super::super::render_api::render_simplify_timeline_html;
 use super::super::simplify::VerbosityLevel;
-use super::super::types::{TimelineCliRender, TimelineSimplifyCommandOutput};
+use super::super::{TimelineCliRender, TimelineSimplifyCommandOutput};
 use super::shared::{render_html, render_no_steps};
 use super::{timeline_simplify_info_lines, TIMELINE_NO_STEPS_MESSAGE};
 use cas_ast::Context;

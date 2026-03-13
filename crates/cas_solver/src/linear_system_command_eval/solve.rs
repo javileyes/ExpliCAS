@@ -1,6 +1,6 @@
 use cas_ast::Context;
 
-use crate::linear_system_command_types::LinearSystemSpec;
+use crate::linear_system_command_parse::LinearSystemSpec;
 
 pub(super) fn solve_linear_system_spec(
     ctx: &Context,

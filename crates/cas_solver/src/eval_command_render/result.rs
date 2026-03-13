@@ -1,4 +1,4 @@
-use crate::eval_command_types::{EvalDisplayMessage, EvalDisplayMessageKind, EvalResultLine};
+use crate::command_api::eval::{EvalDisplayMessage, EvalDisplayMessageKind, EvalResultLine};
 
 pub(super) fn build_result_message(
     result_line: Option<EvalResultLine>,

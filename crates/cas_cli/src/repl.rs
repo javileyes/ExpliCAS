@@ -1,4 +1,4 @@
-use cas_session::repl_api::CasConfig;
+use cas_session::repl::CasConfig;
 use rustyline::error::ReadlineError;
 
 use crate::completer::CasHelper;
@@ -79,6 +79,6 @@ pub mod wire;
 mod core_tests;
 
 // Re-export core types for external use
-pub use cas_session::repl_api::ReplCore;
-pub use cas_solver::session_api::settings::SetDisplayMode;
+pub use cas_session::repl::ReplCore;
+pub use cas_solver::session_api::set::SetDisplayMode;
 pub use output::{reply_output, CoreResult, ReplMsg, ReplReply, ReplReplyExt, UiDelta};

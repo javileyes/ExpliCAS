@@ -13,7 +13,7 @@ pub(crate) fn render(args: &EvalArgs) -> Result<CommandOutput, String> {
     };
 
     let (result, load_warning, save_warning) =
-        cas_session::eval_api::evaluate_eval_text_command_with_session(
+        cas_session::eval::evaluate_eval_text_command_with_session(
             args.session.as_deref(),
             domain,
             &args.expr,

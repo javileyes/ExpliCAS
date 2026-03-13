@@ -16,6 +16,6 @@ pub(crate) fn extract_linear_coeffs(
     expr: ExprId,
     var_x: &str,
     var_y: &str,
-) -> Result<LinearCoeffs, super::super::types::LinearSystemError> {
+) -> Result<LinearCoeffs, super::super::LinearSystemError> {
     extract::extract_linear_coeffs(ctx, expr, var_x, var_y)
 }

@@ -6,7 +6,7 @@ use cas_ast::{Context, ExprId};
 use num_rational::BigRational;
 
 use super::coeffs::build_augmented_matrix;
-use super::types::{LinSolveResult, LinearSystemError};
+use super::{LinSolveResult, LinearSystemError};
 
 #[allow(clippy::needless_range_loop)]
 fn gauss_solve(mut matrix: Vec<Vec<BigRational>>, n: usize) -> LinSolveResult {

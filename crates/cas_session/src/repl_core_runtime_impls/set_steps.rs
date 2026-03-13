@@ -1,8 +1,11 @@
 use crate::repl_core::ReplCore;
-use cas_solver::session_api::settings::{apply_set_command_plan, apply_steps_command_update};
-use cas_solver::session_api::settings::{
-    ReplSetRuntimeContext, ReplStepsRuntimeContext, SetCommandApplyEffects, SetCommandPlan,
-    SetCommandState, SetDisplayMode, StepsCommandApplyEffects, StepsDisplayMode,
+use cas_solver::session_api::set::apply_set_command_plan;
+use cas_solver::session_api::set::{
+    ReplSetRuntimeContext, SetCommandApplyEffects, SetCommandPlan, SetCommandState, SetDisplayMode,
+};
+use cas_solver::session_api::steps::apply_steps_command_update;
+use cas_solver::session_api::steps::{
+    ReplStepsRuntimeContext, StepsCommandApplyEffects, StepsDisplayMode,
 };
 use cas_solver_core::eval_option_axes::StepsMode;
 

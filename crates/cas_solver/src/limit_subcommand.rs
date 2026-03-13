@@ -1,9 +1,8 @@
 //! Stateless CLI-subcommand helpers for `limit`.
 
-use crate::limit_command_eval::{
-    evaluate_limit_subcommand_output, format_limit_subcommand_error, LimitSubcommandEvalOutput,
-};
+use crate::limit_command_core::{evaluate_limit_subcommand_output, format_limit_subcommand_error};
 use cas_math::limit_types::{Approach, PreSimplifyMode};
+use cas_solver_core::limit_command_types::LimitSubcommandEvalOutput;
 pub use cas_solver_core::limit_subcommand_types::{
     LimitCommandApproach, LimitCommandPreSimplify, LimitSubcommandOutput,
 };

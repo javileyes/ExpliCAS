@@ -1,4 +1,4 @@
-use super::types::ProfileCacheCommandInput;
+use super::ProfileCacheCommandInput;
 
 pub(super) fn parse_profile_cache_command_input(line: &str) -> ProfileCacheCommandInput {
     let args: Vec<&str> = line.split_whitespace().collect();

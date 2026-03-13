@@ -1,7 +1,8 @@
 #[allow(unused_imports)]
 use cas_solver::session_api::{
     algebra::*, analysis::*, assumptions::*, bindings::*, budget::*, eval::*, health::*,
-    history::*, linear_algebra::*, profile::*, runtime::*, settings::*, simplifier::*, solve::*,
+    history::*, linear_algebra::*, profile::*, runtime::*, set::*, settings::*, simplifier::*,
+    solve::*,
 };
 
 #[test]

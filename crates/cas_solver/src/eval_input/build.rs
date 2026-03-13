@@ -3,7 +3,7 @@ mod statement;
 
 use cas_api_models::parse_eval_special_command;
 
-use super::types::PreparedEvalRequest;
+use super::PreparedEvalRequest;
 
 /// Build a typed eval request as a solver-owned action enum.
 pub fn build_prepared_eval_request_for_input(

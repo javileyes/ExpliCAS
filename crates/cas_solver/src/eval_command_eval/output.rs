@@ -1,9 +1,8 @@
 use cas_formatter::root_style::ParseStyleSignals;
 
-use crate::eval_command_format::{
-    format_eval_metadata_lines, format_eval_result_line, format_eval_stored_entry_line,
-};
-use crate::eval_command_types::{EvalCommandEvalView, EvalCommandOutput};
+use crate::command_api::eval::{EvalCommandEvalView, EvalCommandOutput};
+use crate::eval_command_format_metadata::format_eval_metadata_lines;
+use crate::eval_command_format_result::{format_eval_result_line, format_eval_stored_entry_line};
 
 pub(super) fn build_eval_command_output(
     context: &mut cas_ast::Context,

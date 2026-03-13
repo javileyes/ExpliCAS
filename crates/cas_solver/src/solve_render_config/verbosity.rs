@@ -1,4 +1,4 @@
-use super::types::{SolveCommandRenderConfig, SolveDisplayMode};
+use super::{SolveCommandRenderConfig, SolveDisplayMode};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct SolveStepVerbosity {
