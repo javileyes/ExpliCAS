@@ -1,11 +1,27 @@
-# Curated Strategy 2 contracts: equation,solve_var,identity_exp,identity_simp,expected,family
-# expected: ok | domain-changed | incomplete
+# Curated Strategy 2 contracts: equation,solve_var,identity_exp,identity_simp,expected,expected_detail_contains,family
+# expected: ok | ok-symbolic | ok-numeric | ok-partial | domain-changed | incomplete
+# expected_detail_contains: optional substring checked against the detailed outcome; use `any` to skip
 
 # Safe transforms that should preserve the solve result under the current harness
-2*x + 3 = 7,x,1/x + 1/(x+1),(2*x+1)/(x*(x+1)),ok,rational_safe
-x^2 - 5*x + 6 = 0,x,1/(x - 1) + 1/(x + 1),2*x/(x^2 - 1),ok,rational_safe
-F = m*a,a,sec(x)^2 - tan(x)^2,1,ok,tier0_trig_safe
+2*x + 3 = 7,x,1/x + 1/(x+1),(2*x+1)/(x*(x+1)),ok-symbolic,any,rational_safe
+x^2 - 5*x + 6 = 0,x,1/(x - 1) + 1/(x + 1),2*x/(x^2 - 1),ok-symbolic,any,rational_safe
+F = m*a,a,sec(x)^2 - tan(x)^2,1,ok-numeric,original needs numeric,tier0_trig_safe
+2^x = 8,x,x^2 + 2*x,x*(x+2),ok-symbolic,any,exp_tier1_polynomial_safe
+|x| = 3,x,-(-x),x,ok-symbolic,any,abs_tier1_negneg_safe
+a*x + b = 0,x,x^2 + 2*x + 1,(x+1)^2,ok-numeric,original needs numeric,linear_parametric_tier1_square_safe
+E = m*c^2,m,tan(pi/6),1/sqrt(3),ok-numeric,transformed needs numeric,applied_tier0_constant_trig_numeric
+E = m*c^2,m,256^(1/4),4,ok-numeric,both need numeric,applied_tier0_constant_root_numeric
+E = m*c^2,m,(x^2 - 9)/(x + 3),x - 3,ok-partial,transformed non-discrete,applied_tier0_rational_cancel_partial
+E = m*c^2,m,1/(x - 1) + 1/(x + 1),2*x/(x^2 - 1),ok-partial,transformed non-discrete,applied_tier0_rational_recompose_partial
 
 # Domain-sensitive transforms that should be classified honestly as domain-changed
-x^2 - 4*x + 4 = y,x,cos(2*arcsin(x)),1 - 2*x^2,domain-changed,inverse_trig_domain
-(x - 2)*(x + 3) = 0,x,x^(1/2)*x^(1/3),x^(5/6),domain-changed,fractional_power_domain
+x^2 - 4*x + 4 = y,x,cos(2*arcsin(x)),1 - 2*x^2,domain-changed,identity bounded inverse-trig domain differs,inverse_trig_domain
+(x - 2)*(x + 3) = 0,x,x^(1/2)*x^(1/3),x^(5/6),domain-changed,identity requires ge(0.0),fractional_power_domain
+x^3 - x = 0,x,e^(ln(x)),x,domain-changed,domain contracted,exp_log_domain_contraction
+x^3 - x = 0,x,(x^2 - 1)/(x + 1),x - 1,domain-changed,domain contracted,rational_cancel_domain_contraction
+exp(x) = 1,x,1/(1+x^(1/3)),(1-x^(1/3)+x^(2/3))/(1+x),domain-changed,identity requires ge(0.0),cuberoot_rational_domain
+a*x + b = 0,x,x^(ln(y)/ln(x)),y,domain-changed,identity domain differs,log_power_identity_domain
+3*x^2 + 6*x = 0,x,tan(x/2),(1 - cos(x))/sin(x),domain-changed,identity domain differs,half_angle_domain
+3*x^2 + 6*x = 0,x,1/x + 1/(x+1),(2*x+1)/(x*(x+1)),domain-changed,identity domain differs,rational_recomposition_domain
+(x + 1)*(x - 1) = 0,x,sqrt(x^3),x*sqrt(x),domain-changed,identity requires ge(0.0),radical_cubic_domain
+|2*x + 1| = 5,x,x^(ln(y)/ln(x)),y,domain-changed,domain contracted,log_power_identity_abs_domain

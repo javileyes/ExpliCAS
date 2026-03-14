@@ -1550,14 +1550,48 @@ impl CrossSubstituteOutcome {
 }
 
 /// Result of a Strategy 2 test case
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum PartialVerifiedReason {
+    Original,
+    Transformed,
+    Both,
+}
+
+impl PartialVerifiedReason {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Original => "original non-discrete",
+            Self::Transformed => "transformed non-discrete",
+            Self::Both => "both non-discrete",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum NumericVerifiedReason {
+    Original,
+    Transformed,
+    Both,
+}
+
+impl NumericVerifiedReason {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Original => "original needs numeric",
+            Self::Transformed => "transformed needs numeric",
+            Self::Both => "both need numeric",
+        }
+    }
+}
+
 #[derive(Debug)]
 enum S2Outcome {
     /// Cross-substitution verified symbolically
     OkSymbolic,
     /// Cross-substitution verified numerically
-    OkNumeric,
+    OkNumeric(NumericVerifiedReason),
     /// Non-discrete solution but discrete parts pass cross-substitution
-    OkPartialVerified,
+    OkPartialVerified(PartialVerifiedReason),
     /// Solver couldn't fully solve — not a correctness bug
     Incomplete(IncompleteReason),
     /// Cross-substitution failed, but identity or equation domain differs
@@ -1581,6 +1615,10 @@ struct S2Results {
     errors: usize,
     timeouts: usize,
     total: usize,
+    /// Per-reason breakdown of OkNumeric outcomes
+    ok_numeric_reasons: std::collections::HashMap<NumericVerifiedReason, usize>,
+    /// Per-reason breakdown of OkPartial outcomes
+    ok_partial_reasons: std::collections::HashMap<PartialVerifiedReason, usize>,
     /// Per-reason breakdown of Incomplete outcomes
     incomplete_reasons: std::collections::HashMap<IncompleteReason, usize>,
     /// Top identity offenders: identity index → incomplete count
@@ -1601,6 +1639,8 @@ impl S2Results {
             errors: 0,
             timeouts: 0,
             total: 0,
+            ok_numeric_reasons: std::collections::HashMap::new(),
+            ok_partial_reasons: std::collections::HashMap::new(),
             incomplete_reasons: std::collections::HashMap::new(),
             identity_offenders: std::collections::HashMap::new(),
             family_offenders: std::collections::HashMap::new(),
@@ -1611,8 +1651,14 @@ impl S2Results {
         self.total += 1;
         match outcome {
             S2Outcome::OkSymbolic => self.ok_symbolic += 1,
-            S2Outcome::OkNumeric => self.ok_numeric += 1,
-            S2Outcome::OkPartialVerified => self.ok_partial += 1,
+            S2Outcome::OkNumeric(reason) => {
+                self.ok_numeric += 1;
+                *self.ok_numeric_reasons.entry(*reason).or_insert(0) += 1;
+            }
+            S2Outcome::OkPartialVerified(reason) => {
+                self.ok_partial += 1;
+                *self.ok_partial_reasons.entry(*reason).or_insert(0) += 1;
+            }
             S2Outcome::Incomplete(_) => self.incomplete += 1,
             S2Outcome::DomainChanged(_) => self.domain_changed += 1,
             S2Outcome::Mismatch(_) => self.mismatches += 1,
@@ -1837,7 +1883,13 @@ fn run_s2_case(eq_entry: &EquationEntry, identity: &S2Identity) -> S2Outcome {
             let has_discrete_0 = matches!(&set0, SolutionSet::Discrete(v) if !v.is_empty());
             let has_discrete_1 = matches!(&set1, SolutionSet::Discrete(v) if !v.is_empty());
             if has_discrete_0 || has_discrete_1 {
-                S2Outcome::OkPartialVerified
+                let reason = match (s0_discrete, s1_discrete) {
+                    (true, false) => PartialVerifiedReason::Transformed,
+                    (false, true) => PartialVerifiedReason::Original,
+                    (false, false) => PartialVerifiedReason::Both,
+                    (true, true) => unreachable!("partial branch requires a non-discrete side"),
+                };
+                S2Outcome::OkPartialVerified(reason)
             } else {
                 S2Outcome::Incomplete(IncompleteReason::NonDiscrete)
             }
@@ -1845,7 +1897,8 @@ fn run_s2_case(eq_entry: &EquationEntry, identity: &S2Identity) -> S2Outcome {
     }
 
     // Both discrete — full cross-verification
-    let mut any_numeric = false;
+    let mut numeric_on_orig_solutions = false;
+    let mut numeric_on_transformed_solutions = false;
     let mut any_numeric_inconclusive = false;
 
     // S0 solutions must satisfy trans_eq
@@ -1867,7 +1920,7 @@ fn run_s2_case(eq_entry: &EquationEntry, identity: &S2Identity) -> S2Outcome {
                         sol,
                     ) {
                         NumericVerifyResult::Verified(_) => {
-                            any_numeric = true;
+                            numeric_on_orig_solutions = true;
                         }
                         NumericVerifyResult::Inconclusive => {
                             any_numeric_inconclusive = true;
@@ -1908,7 +1961,7 @@ fn run_s2_case(eq_entry: &EquationEntry, identity: &S2Identity) -> S2Outcome {
                         sol,
                     ) {
                         NumericVerifyResult::Verified(_) => {
-                            any_numeric = true;
+                            numeric_on_transformed_solutions = true;
                         }
                         NumericVerifyResult::Inconclusive => {
                             any_numeric_inconclusive = true;
@@ -1956,8 +2009,14 @@ fn run_s2_case(eq_entry: &EquationEntry, identity: &S2Identity) -> S2Outcome {
 
     if any_numeric_inconclusive {
         S2Outcome::Incomplete(IncompleteReason::NumericInconclusive)
-    } else if any_numeric {
-        S2Outcome::OkNumeric
+    } else if numeric_on_orig_solutions || numeric_on_transformed_solutions {
+        let reason = match (numeric_on_orig_solutions, numeric_on_transformed_solutions) {
+            (true, false) => NumericVerifiedReason::Original,
+            (false, true) => NumericVerifiedReason::Transformed,
+            (true, true) => NumericVerifiedReason::Both,
+            (false, false) => unreachable!("numeric branch requires at least one numeric side"),
+        };
+        S2Outcome::OkNumeric(reason)
     } else {
         S2Outcome::OkSymbolic
     }
@@ -2033,12 +2092,16 @@ struct S2ContractCase {
     identity_exp: String,
     identity_simp: String,
     expected: S2ContractExpectation,
+    expected_detail_contains: Option<String>,
     family: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum S2ContractExpectation {
     Ok,
+    OkSymbolic,
+    OkNumeric,
+    OkPartial,
     DomainChanged,
     Incomplete,
 }
@@ -2047,6 +2110,9 @@ impl S2ContractExpectation {
     fn from_str(s: &str) -> Self {
         match s.trim().to_lowercase().as_str() {
             "ok" => Self::Ok,
+            "ok-symbolic" | "ok_symbolic" => Self::OkSymbolic,
+            "ok-numeric" | "ok_numeric" => Self::OkNumeric,
+            "ok-partial" | "ok_partial" => Self::OkPartial,
             "domain-changed" => Self::DomainChanged,
             "incomplete" => Self::Incomplete,
             other => panic!(
@@ -2059,6 +2125,9 @@ impl S2ContractExpectation {
     fn label(self) -> &'static str {
         match self {
             Self::Ok => "ok",
+            Self::OkSymbolic => "ok-symbolic",
+            Self::OkNumeric => "ok-numeric",
+            Self::OkPartial => "ok-partial",
             Self::DomainChanged => "domain-changed",
             Self::Incomplete => "incomplete",
         }
@@ -2068,8 +2137,11 @@ impl S2ContractExpectation {
         match self {
             Self::Ok => matches!(
                 outcome,
-                S2Outcome::OkSymbolic | S2Outcome::OkNumeric | S2Outcome::OkPartialVerified
+                S2Outcome::OkSymbolic | S2Outcome::OkNumeric(_) | S2Outcome::OkPartialVerified(_)
             ),
+            Self::OkSymbolic => matches!(outcome, S2Outcome::OkSymbolic),
+            Self::OkNumeric => matches!(outcome, S2Outcome::OkNumeric(_)),
+            Self::OkPartial => matches!(outcome, S2Outcome::OkPartialVerified(_)),
             Self::DomainChanged => matches!(outcome, S2Outcome::DomainChanged(_)),
             Self::Incomplete => matches!(outcome, S2Outcome::Incomplete(_)),
         }
@@ -2099,7 +2171,7 @@ fn load_s2_contract_cases() -> Vec<S2ContractCase> {
             continue;
         }
 
-        let parts: Vec<&str> = line.splitn(6, ',').collect();
+        let parts: Vec<&str> = line.splitn(7, ',').collect();
         if parts.len() < 5 {
             panic!(
                 "equation_transform_contract_cases.csv line {}: expected at least 5 fields, got {}. Line: '{}'",
@@ -2115,8 +2187,18 @@ fn load_s2_contract_cases() -> Vec<S2ContractCase> {
             identity_exp: parts[2].trim().to_string(),
             identity_simp: parts[3].trim().to_string(),
             expected: S2ContractExpectation::from_str(parts[4]),
-            family: if parts.len() > 5 {
-                parts[5].trim().to_string()
+            expected_detail_contains: if parts.len() > 5 {
+                let value = parts[5].trim();
+                if value.is_empty() || value.eq_ignore_ascii_case("any") {
+                    None
+                } else {
+                    Some(value.to_string())
+                }
+            } else {
+                None
+            },
+            family: if parts.len() > 6 {
+                parts[6].trim().to_string()
             } else {
                 "unknown".to_string()
             },
@@ -2173,7 +2255,23 @@ fn run_s2_transform_contract_tests() -> S2ContractMetrics {
         };
 
         let outcome = normalize_s2_outcome(&eq_entry, &identity, run_s2_case(&eq_entry, &identity));
-        let passed = case.expected.matches(&outcome);
+        let detail = match &outcome {
+            S2Outcome::OkSymbolic => "ok-symbolic".to_string(),
+            S2Outcome::OkNumeric(reason) => format!("ok-numeric [{}]", reason.label()),
+            S2Outcome::OkPartialVerified(reason) => {
+                format!("ok-partial [{}]", reason.label())
+            }
+            S2Outcome::Incomplete(reason) => format!("incomplete: {}", reason),
+            S2Outcome::DomainChanged(msg) => format!("domain-changed: {}", msg),
+            S2Outcome::Mismatch(msg) => format!("mismatch: {}", msg),
+            S2Outcome::Error(msg) => format!("error: {}", msg),
+            S2Outcome::Timeout => "timeout".to_string(),
+        };
+        let detail_matches = case
+            .expected_detail_contains
+            .as_ref()
+            .is_none_or(|needle| detail.contains(needle));
+        let passed = case.expected.matches(&outcome) && detail_matches;
 
         if passed {
             metrics.passed += 1;
@@ -2182,15 +2280,10 @@ fn run_s2_transform_contract_tests() -> S2ContractMetrics {
         }
 
         if verbose || !passed {
-            let detail = match &outcome {
-                S2Outcome::OkSymbolic => "ok-symbolic".to_string(),
-                S2Outcome::OkNumeric => "ok-numeric".to_string(),
-                S2Outcome::OkPartialVerified => "ok-partial".to_string(),
-                S2Outcome::Incomplete(reason) => format!("incomplete: {}", reason),
-                S2Outcome::DomainChanged(msg) => format!("domain-changed: {}", msg),
-                S2Outcome::Mismatch(msg) => format!("mismatch: {}", msg),
-                S2Outcome::Error(msg) => format!("error: {}", msg),
-                S2Outcome::Timeout => "timeout".to_string(),
+            let expected_label = if let Some(needle) = &case.expected_detail_contains {
+                format!("{} [{}]", case.expected.label(), needle)
+            } else {
+                case.expected.label().to_string()
             };
             eprintln!(
                 "  {} {:>3}. [{}] {} + ({} ≡ {}) — expected {}, got {}",
@@ -2200,7 +2293,7 @@ fn run_s2_transform_contract_tests() -> S2ContractMetrics {
                 truncate(&case.equation_str, 24),
                 truncate(&case.identity_exp, 18),
                 truncate(&case.identity_simp, 18),
-                case.expected.label(),
+                expected_label,
                 detail
             );
         }
@@ -4181,8 +4274,10 @@ fn run_strategy2(verbose: bool) -> S2Results {
         if should_print {
             let (sym, detail) = match &outcome {
                 S2Outcome::OkSymbolic => ("✓", "symbolic".into()),
-                S2Outcome::OkNumeric => ("≈", "numeric".into()),
-                S2Outcome::OkPartialVerified => ("◐", "partial-verified".into()),
+                S2Outcome::OkNumeric(reason) => ("≈", format!("numeric [{}]", reason.label())),
+                S2Outcome::OkPartialVerified(reason) => {
+                    ("◐", format!("partial-verified [{}]", reason.label()))
+                }
                 S2Outcome::Incomplete(reason) => ("⚠", format!("incomplete: {}", reason)),
                 S2Outcome::DomainChanged(msg) => ("D", format!("domain-changed: {}", msg)),
                 S2Outcome::Mismatch(msg) => ("✗", format!("MISMATCH: {}", msg)),
@@ -4219,6 +4314,26 @@ fn run_strategy2(verbose: bool) -> S2Results {
         results.domain_changed, results.mismatches, results.errors, results.timeouts
     );
     eprintln!("  └─────────────────────────────────────────────────────────────────┘");
+
+    if results.ok_numeric > 0 {
+        eprintln!();
+        eprintln!("  ≈ Numeric breakdown:");
+        let mut numeric_reasons: Vec<_> = results.ok_numeric_reasons.iter().collect();
+        numeric_reasons.sort_by(|a, b| b.1.cmp(a.1));
+        for (reason, count) in numeric_reasons {
+            eprintln!("    {:>3}× {}", count, reason.label());
+        }
+    }
+
+    if results.ok_partial > 0 {
+        eprintln!();
+        eprintln!("  ◐ Partial breakdown:");
+        let mut partial_reasons: Vec<_> = results.ok_partial_reasons.iter().collect();
+        partial_reasons.sort_by(|a, b| b.1.cmp(a.1));
+        for (reason, count) in partial_reasons {
+            eprintln!("    {:>3}× {}", count, reason.label());
+        }
+    }
 
     // --- Incomplete cross-tab ---
     if results.incomplete > 0 {

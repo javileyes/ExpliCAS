@@ -4,20 +4,29 @@
 # ln(exp(.)) across semantic axes
 ln(exp(x)),real,strict,exact,x
 ln(exp(x)),real,generic,exact,x
+ln(exp(x)),complex,strict,contains_all,ln
 ln(exp(x)),complex,generic,contains_all,ln
 ln(exp(x)),complex,assume,contains_all,ln
 ln(exp(3)),complex,strict,exact,3
+ln(exp(3)),complex,generic,exact,3
+ln(exp(3)),complex,assume,exact,3
 
 # exp(ln(.)) across semantic axes
 exp(ln(x)),real,strict,contains_all,ln
 exp(ln(x)),real,generic,exact,x
 exp(ln(x)),complex,strict,contains_all,ln
 exp(ln(x)),complex,generic,exact,x
+exp(ln(x)),complex,assume,exact,x
+exp(ln(5)),complex,strict,exact,5
+exp(ln(5)),complex,generic,exact,5
+exp(ln(5)),complex,assume,exact,5
 
 # symbolic log base
 log(b, b^x),real,strict,contains_all,log
 log(b, b^x),real,generic,contains_all,log
 log(b, b^x),real,assume,exact,x
+log(b, b^(x + 1)),real,assume,exact,x + 1
+log(b, b^(2*x)),real,assume,exact,2 * x
 log(2, 2^x),real,strict,exact,x
 
 # composed behavior
@@ -27,3 +36,12 @@ exp(ln(x)) + ln(exp(x)),complex,generic,contains_all,ln;e^
 # multivariate/log-product closure
 ln(a^2 * b^3) - 2*ln(a) - 3*ln(b),real,generic,exact,0
 ln(a^2 * b^3) - 2*ln(a) - 3*ln(b),real,assume,exact,0
+
+# Complex-enabled const-fold behavior
+sqrt(-1),complex,strict,exact,(-1)^(1/2)
+(-1)^(1/2),complex,strict,exact,(-1)^(1/2)
+i^2,real,generic,contains_all,i
+i^2,complex,generic,exact,-1
+i^4,real,generic,contains_all,i
+i^4,complex,generic,exact,1
+i*i,complex,strict,exact,-1

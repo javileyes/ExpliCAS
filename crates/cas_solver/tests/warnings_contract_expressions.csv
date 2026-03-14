@@ -5,6 +5,8 @@
 log(b, b^x),assume,yes
 log(b, b^(x + 1)),assume,yes
 log(b, b^(2*x)),assume,yes
+i^2,generic,yes
+i^4,generic,yes
 
 # Expressions that should stay warning-free
 ln(exp(x)),strict,no

@@ -335,9 +335,30 @@ Estado:
 - La misma suite ya incluye al menos un positivo real de `warning_present`:
   - `log(b, b^x)` en `RealOnly + Assume`
   - además de warning, conserva `b - 1 ≠ 0` como `required_condition`
+- La cobertura útil de esa familia ya no se limita a la forma base:
+  - `log(b, b^(x + 1))`
+  - `log(b, b^(2*x))`
+  - ambos en `RealOnly + Assume`, con `warning_present` y `requires_present`
 - La matriz por ejes ya cubre también un caso multivariante útil de producto logarítmico:
   - `ln(a^2 * b^3) - 2*ln(a) - 3*ln(b)` en `RealOnly + Generic/Assume`
   - preserva `required_conditions` y no introduce `warnings`
+- Y ahora cubre también semántica compleja estable sin warnings espurios:
+  - `sqrt(-1)`
+  - `(-1)^(1/2)`
+  - `i*i`
+  - en `ComplexEnabled + Strict`, con `requires_absent` y `warning_absent`
+- La matriz semántica ya recoge también varios controles numéricos y de composición
+  en complejo que antes solo estaban fijados por tests contractuales unitarios:
+  - `ln(exp(x))` en `ComplexEnabled + Strict/Generic/Assume`
+  - `exp(ln(x))` en `ComplexEnabled + Strict/Generic/Assume`
+  - `ln(exp(3))` y `exp(ln(5))` en `ComplexEnabled`
+  - `i^2` e `i^4` en `RealOnly` vs `ComplexEnabled`
+  - con la semántica real del simplificador completo, no la del const-fold aislado
+- Hallazgo útil de esta ampliación:
+  - en `RealOnly + Generic`, `i^2` e `i^4` no solo quedan sin colapsar
+  - además emiten un warning estable de "activa complex" a través de `domain_warnings`
+  - por eso esa familia ya queda fijada también en `warnings_contract_expressions.csv`
+    y `transparency_signal_contract_expressions.csv`
 - La suite de trazabilidad cubre ya dos familias estructuradas que no pasan bien por `domain_warnings`:
   - `nonzero`, `positive`, `defined` y `nonnegative` en `DomainMode::Assume`
   - `principal_range` en `InverseTrigPolicy::PrincipalValue`
@@ -368,6 +389,9 @@ Estado:
   - cuándo `ln(exp(x))` debe simplificar o preservarse
   - cuándo `exp(ln(x))` debe simplificar o preservarse
   - cuándo `log(b, b^x)` debe bloquear o simplificar
+  - y también variantes afines/lineales `log(b, b^(x + 1))`, `log(b, b^(2*x))`
+  - además de constantes complejas estables del simplificador completo
+    (`sqrt(-1) -> (-1)^(1/2)`, `(-1)^(1/2) -> (-1)^(1/2)`, `i*i -> -1`)
   - y algunos casos compuestos/multivariantes (`2 * x`, `0`)
   - exige además que una segunda simplificación no rompa ese comportamiento esperado
 - La suite distingue:
@@ -382,6 +406,58 @@ Estado:
 - Esa suite fija dos clases de comportamiento del harness de ecuaciones:
   - transformaciones seguras que deben quedar en `ok`
   - transformaciones con contracción real de dominio que deben reclasificarse como `domain-changed`, no como `mismatch`
+- La parte `ok` ya no depende solo de identidades tier-0:
+  - también cubre transforms tier-1 globales sobre la misma variable (`-(-x)`, `x^2+2*x`, `(x+1)^2`)
+  - con familias `exp`, `abs` y `linear_parametric`
+- Además, los contratos curados de Strategy 2 ya distinguen fuerza de validación:
+  - `ok-symbolic`
+  - `ok-numeric`
+  - `ok-partial`
+- Eso evita que `ok` tape degradaciones del harness o del solver entre cierre simbólico y fallback numérico.
+- La suite ya fija también casos reales de `ok-partial` del benchmark:
+  - sobre `E = m*c^2`
+  - con identidades tier-0 racionales que mantienen corrección pero vuelven no discreta la forma transformada
+- Eso deja cubierto que el bucket `partial-verified` no existe solo en el benchmark agregado.
+- Además, `ok-partial` ya expone razón estructurada:
+  - `transformed non-discrete`
+  - `original non-discrete`
+  - `both non-discrete`
+- Los primeros contratos curados de `ok-partial` ya fijan explícitamente `transformed non-discrete`.
+- `ok-numeric` también expone ya razón estructurada:
+  - `original needs numeric`
+  - `transformed needs numeric`
+  - `both need numeric`
+- Los dos primeros contratos curados `ok-numeric` quedan fijados hoy como `original needs numeric`.
+- La suite curada ya cubre además los otros dos subtipos reales vistos en benchmark:
+  - `transformed needs numeric`
+  - `both need numeric`
+- Con esto, `ok-numeric` deja de tener buckets semánticos sin representación curada.
+- El benchmark agregado de Strategy 2 ya imprime también breakdown por razón para:
+  - `ok-numeric`
+  - `ok-partial`
+- Eso hace visible si la salud global depende sobre todo de:
+  - fallback numérico en el original
+  - fallback numérico en el transformado
+  - o resultados parcialmente verificados por no discreción
+- Y `domain-changed` ya no queda opaco dentro de la suite curada:
+  - los casos estables fijan también un fragmento de razón esperada
+  - por ejemplo `domain contracted`, `identity domain differs` o `identity requires ge(0.0)`
+- Eso permite detectar degradaciones honestas de clasificación, no solo mismatches duros.
+- Ya cubre además dos residuos reales del benchmark agregado de Strategy 2:
+  - `x^3 - x = 0` con `e^(ln(x)) ≡ x`
+  - `x^3 - x = 0` con `((x^2 - 1)/(x + 1)) ≡ x - 1`
+- y ahora también:
+  - `exp(x) = 1` con `1/(1+x^(1/3)) ≡ (1-x^(1/3)+x^(2/3))/(1+x)`
+  - `a*x + b = 0` con `x^(ln(y)/ln(x)) ≡ y`
+- y además ya absorbe tres residuos recurrentes más del benchmark:
+  - `3*x^2 + 6*x = 0` con `tan(x/2) ≡ (1 - cos(x))/sin(x)`
+  - `3*x^2 + 6*x = 0` con `1/x + 1/(x+1) ≡ (2*x+1)/(x*(x+1))`
+  - `(x + 1)*(x - 1) = 0` con `sqrt(x^3) ≡ x*sqrt(x)`
+- y también la variante `abs` del mismo patrón log-exponencial:
+  - `|2*x + 1| = 5` con `x^(ln(y)/ln(x)) ≡ y`
+- Todo este bloque fija explícitamente que una pérdida de soluciones por
+  contracción/cancelación de dominio debe quedar en `domain-changed`, no en
+  `mismatch`.
 - Existe además una suite pequeña de preservación de `SolutionSet` coarse kind en ecuaciones:
   - `/Users/javiergimenezmoya/developer/math/crates/cas_solver/tests/equation_solution_kind_contract_cases.csv`
   - `/Users/javiergimenezmoya/developer/math/crates/cas_solver/tests/metamorphic_equation_tests.rs`
@@ -402,13 +478,11 @@ Estado:
   - `1^x = 1` debe seguir en `allreals`
   - `1^x = 5` debe seguir en `empty`
   - `2^x = -5` debe seguir en `empty`
-- Nota de borde ya observada:
-  - `2^x = 0` sí queda cubierto por tests dedicados del solver como `Empty`
-  - pero al inyectar una identidad tier-0 sin simplificar (`sec(t)^2 - tan(t)^2 = 1`),
-    el solve path puede reclasificar la ecuación transformada como `Conditional`
-    por el parámetro extra de la identidad
-  - por ahora no se fija como contrato estricto de `solution_kind`; conviene tratarlo
-    como edge de simplificación previa, no como invariante robusta del harness
+  - `2^x = 8` debe seguir en `discrete`
+- La advertencia de borde sobre `2^x = 0` sigue aplicando: incluso con una
+  identidad tier-0 aparentemente inocua, la forma transformada puede caer a
+  `Conditional`, así que sigue siendo mejor tratarla como edge del harness y
+  dejarla cubierta por tests dedicados del solver, no por `solution_kind`.
 - Existe también una primera suite explícita de preservación de `required_conditions` en ecuaciones:
   - `/Users/javiergimenezmoya/developer/math/crates/cas_solver/tests/equation_required_contract_cases.csv`
   - `/Users/javiergimenezmoya/developer/math/crates/cas_solver/tests/metamorphic_equation_tests.rs`
@@ -521,9 +595,13 @@ Estado:
 - Esa suite fija que identidades tier-0 inofensivas no rompan señales didácticas
   mínimas de rutas ya estabilizadas, hoy:
   - activación de `quadratic formula`
+  - preservación de una resta de aislamiento y un `divide both sides by`
+    en una ruta lineal básica (`y = 2*x + 1`)
   - presencia de `collect` en `linear collect`
   - presencia de `collect terms in x` en la factorización de términos semejantes
     (`a*x + b*x = c`)
+  - preservación de `multiply both sides by x + 1` y `collect terms in x`
+    en la ruta lineal fraccional (`(x-1)/(x+1) = y`)
   - preservación de `take log base e of both sides`
     en la ruta `log-linear` (`2^x = y`)
   - preservación de `combine fractions` y `reciprocal` en la ruta recíproca
@@ -532,6 +610,7 @@ Estado:
     en la descomposición de aislamiento de denominador (`P*V/T = n*R`)
 - La suite ya soporta además ausencia correcta de pasos malos vía keywords
   prohibidas (`!keyword`) en el mismo CSV. Hoy fija también:
+  - ausencia de `subtract p*r*t` en `A = P + P*r*t`
   - ausencia de `isolate denominator` en las rutas `reciprocal` e `ideal gas`
   - ausencia de `divide both sides by k` en `y = k*x/(x+c)`
 - Las rutas más sensibles al wording fino siguen fuera del metamórfico; la suite

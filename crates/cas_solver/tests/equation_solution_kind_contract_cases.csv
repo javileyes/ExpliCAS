@@ -7,6 +7,7 @@ x^2 + 1 = 0,x,generic,real,sec(t)^2 - tan(t)^2,1,empty,empty,empty_safe
 1^x = 1,x,generic,real,sin(t)^2 + cos(t)^2,1,allreals,allreals,base_one_all_reals_safe
 1^x = 5,x,generic,real,sec(t)^2 - tan(t)^2,1,empty,empty,base_one_empty_safe
 2^x = -5,x,generic,real,sin(t)^2 + cos(t)^2,1,empty,empty,positive_base_negative_rhs_empty_safe
+2^x = 8,x,generic,real,sin(t)^2 + cos(t)^2,1,discrete,discrete,positive_base_literal_discrete_safe
 
 # Solver mode/scope contracts should also survive a harmless tier-0 identity
 2^x = y,x,strict,real,sec(t)^2 - tan(t)^2,1,conditional,conditional,strict_conditional_safe

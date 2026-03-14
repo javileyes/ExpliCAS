@@ -4,6 +4,8 @@
 # Warnings surfaced through output.domain_warnings
 log(b, b^x),assume,yes
 log(b, b^(x + 1)),assume,yes
+i^2,generic,yes
+i^4,generic,yes
 
 # Transparency surfaced only through step.assumption_events()
 0 * 1/(x+1),assume,yes

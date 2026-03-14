@@ -21,6 +21,8 @@ exp(ln(x)),complex,assume,yes,no
 log(b, b^x),real,strict,no,no
 log(b, b^x),real,generic,no,no
 log(b, b^x),real,assume,yes,yes
+log(b, b^(x + 1)),real,assume,yes,yes
+log(b, b^(2*x)),real,assume,yes,yes
 
 # Log-product expansion with symbolic positivity carried by input logs
 ln(a^2 * b^3) - 2*ln(a) - 3*ln(b),real,generic,yes,no
@@ -29,3 +31,17 @@ ln(a^2 * b^3) - 2*ln(a) - 3*ln(b),real,assume,yes,no
 # Numeric safe controls
 ln(exp(3)),real,strict,no,no
 ln(exp(3)),complex,strict,no,no
+ln(exp(3)),complex,generic,no,no
+ln(exp(3)),complex,assume,no,no
+exp(ln(5)),complex,strict,no,no
+exp(ln(5)),complex,generic,no,no
+exp(ln(5)),complex,assume,no,no
+
+# Complex-enabled const-fold controls
+sqrt(-1),complex,strict,no,no
+(-1)^(1/2),complex,strict,no,no
+i^2,real,generic,no,yes
+i^2,complex,generic,no,no
+i^4,real,generic,no,yes
+i^4,complex,generic,no,no
+i*i,complex,strict,no,no
