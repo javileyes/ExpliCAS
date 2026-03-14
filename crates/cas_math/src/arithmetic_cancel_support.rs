@@ -35,13 +35,15 @@ pub fn match_add_inverse_expr(ctx: &Context, expr: ExprId) -> Option<ExprId> {
         return None;
     };
 
+    let checker = SemanticEqualityChecker::new(ctx);
+
     if let Expr::Neg(neg_inner) = ctx.get(*r) {
-        if *neg_inner == *l {
+        if *neg_inner == *l || checker.are_equal(*neg_inner, *l) {
             return Some(*l);
         }
     }
     if let Expr::Neg(neg_inner) = ctx.get(*l) {
-        if *neg_inner == *r {
+        if *neg_inner == *r || checker.are_equal(*neg_inner, *r) {
             return Some(*r);
         }
     }
@@ -98,6 +100,17 @@ mod tests {
 
         let expr2 = parse("(-a)+a", &mut ctx).expect("parse");
         assert!(match_add_inverse_expr(&ctx, expr2).is_some());
+    }
+
+    #[test]
+    fn detects_add_inverse_with_semantically_equal_trig_wrappers() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "sin((2*u + 1)/(u*(u+1))) + (-sin((2*u + 1)/(u^2 + u)))",
+            &mut ctx,
+        )
+        .expect("parse");
+        assert!(match_add_inverse_expr(&ctx, expr).is_some());
     }
 
     #[test]

@@ -10,8 +10,8 @@ use cas_solver::runtime::rules::canonicalization::{
     CanonicalizeRootRule,
 };
 use cas_solver::runtime::rules::exponents::{
-    EvaluatePowerRule, IdentityPowerRule, PowerPowerRule, PowerProductRule, PowerQuotientRule,
-    ProductPowerRule,
+    EvaluatePowerRule, IdentityPowerRule, NegativeExponentNormalizationRule, PowerPowerRule,
+    PowerProductRule, PowerQuotientRule, ProductPowerRule,
 };
 use cas_solver::runtime::rules::functions::EvaluateAbsRule;
 use cas_solver::runtime::rules::grouping::CollectRule;
@@ -65,6 +65,9 @@ fn create_full_simplifier() -> Simplifier {
         cas_solver::runtime::rules::trigonometry::DoubleAngleRule,
     ));
     simplifier.add_rule(Box::new(
+        cas_solver::runtime::rules::trigonometry::TrigHalfAngleSquaresRule,
+    ));
+    simplifier.add_rule(Box::new(
         cas_solver::runtime::rules::trigonometry::TrigPhaseShiftRule,
     ));
     simplifier.add_rule(Box::new(
@@ -86,6 +89,7 @@ fn create_full_simplifier() -> Simplifier {
     simplifier.add_rule(Box::new(PowerProductRule));
     simplifier.add_rule(Box::new(PowerQuotientRule));
     simplifier.add_rule(Box::new(IdentityPowerRule));
+    simplifier.add_rule(Box::new(NegativeExponentNormalizationRule));
     simplifier.add_rule(Box::new(
         cas_solver::runtime::rules::exponents::NegativeBasePowerRule,
     ));
@@ -1010,6 +1014,28 @@ fn test_nested_reciprocal_sqrt_simplification() {
 }
 
 #[test]
+fn test_negative_reciprocal_root_cubic_factoring_identity_simplification() {
+    let mut simplifier = Simplifier::with_default_rules();
+
+    // (1/sqrt(u))^3 + 1 - ((1/sqrt(u) + 1) * (((u+1)/u) - 1/sqrt(u))) -> 0
+    //
+    // The runtime often reaches the mixed form ((u+1)/u) - u^(-1/2) instead of
+    // a clean polynomial in t = u^(-1/2). The opaque-root proof prepass should
+    // now split (u+1)/u into 1 + 1/u and close the same cubic identity.
+    let input = "(1/sqrt(u))^3 + 1 - (((1/sqrt(u))+1)*(((u+1)/u) - (1/sqrt(u))))";
+    let expr = parse(input, &mut simplifier.context).unwrap();
+    let (res, _) = simplifier.simplify(expr);
+    let output = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: res
+        }
+    );
+    assert_eq!(output, "0");
+}
+
+#[test]
 fn test_additive_common_square_factor_under_sqrt() {
     let mut simplifier = Simplifier::with_default_rules();
 
@@ -1019,6 +1045,134 @@ fn test_additive_common_square_factor_under_sqrt() {
     // The sqrt simplifier should now extract the common square factor directly
     // from the additive radicand.
     let input = "sqrt(4*x^2 + 4) - 2*sqrt(x^2 + 1)";
+    let expr = parse(input, &mut simplifier.context).unwrap();
+    let (res, _) = simplifier.simplify(expr);
+    let output = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: res
+        }
+    );
+    assert_eq!(output, "0");
+}
+
+#[test]
+fn test_abs_additive_common_factor_simplification() {
+    let mut simplifier = Simplifier::with_default_rules();
+
+    // abs(2*(x + pi)) - 2*abs(x + pi) -> 0
+    //
+    // The inner product may already be expanded to 2*x + 2*pi. The abs
+    // simplifier should still recover the common positive factor.
+    let input = "abs(2*(x + pi)) - 2*abs(x + pi)";
+    let expr = parse(input, &mut simplifier.context).unwrap();
+    let (res, _) = simplifier.simplify(expr);
+    let output = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: res
+        }
+    );
+    assert_eq!(output, "0");
+}
+
+#[test]
+fn test_abs_global_negative_sum_simplification() {
+    let mut simplifier = Simplifier::with_default_rules();
+
+    // abs(-(x^3 + 1)) - abs(x^3 + 1) -> 0
+    //
+    // After normalization this often appears as a fully negative Add chain
+    // rather than a neat Neg wrapper. The abs simplifier should still factor
+    // out the global sign.
+    let input = "abs(-(x^3 + 1)) - abs(x^3 + 1)";
+    let expr = parse(input, &mut simplifier.context).unwrap();
+    let (res, _) = simplifier.simplify(expr);
+    let output = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: res
+        }
+    );
+    assert_eq!(output, "0");
+}
+
+#[test]
+fn test_abs_rational_difference_normalization() {
+    let mut simplifier = Simplifier::with_default_rules();
+
+    // abs((x/(x+1)) - 1) - abs(1/(x+1)) -> 0
+    //
+    // The left side simplifies through a negative reciprocal. Abs should drop
+    // that global sign and converge to the same normalized residual as the RHS.
+    let input = "abs((x/(x + 1)) - 1) - abs(1/(x + 1))";
+    let expr = parse(input, &mut simplifier.context).unwrap();
+    let (res, _) = simplifier.simplify(expr);
+    let output = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: res
+        }
+    );
+    assert_eq!(output, "0");
+}
+
+#[test]
+fn test_abs_scalar_left_rational_difference_normalization() {
+    let mut simplifier = Simplifier::with_default_rules();
+
+    // abs(1 - x/(x+1)) - abs(1/(x+1)) -> 0
+    //
+    // Scalar-left forms are mirror images of the already-normalized rational
+    // difference, and should canonicalize to the same residual inside abs.
+    let input = "abs(1 - (x/(x + 1))) - abs(1/(x + 1))";
+    let expr = parse(input, &mut simplifier.context).unwrap();
+    let (res, _) = simplifier.simplify(expr);
+    let output = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: res
+        }
+    );
+    assert_eq!(output, "0");
+}
+
+#[test]
+fn test_abs_scalar_left_shifted_rational_difference_normalization() {
+    let mut simplifier = Simplifier::with_default_rules();
+
+    // abs(1 - (x-1)/(x+1)) - 2*abs(1/(x+1)) -> 0
+    //
+    // This is the same mirror issue, but with an extra factor 2 exposed after
+    // rational normalization. Abs should not leave the scalar-left form behind.
+    let input = "abs(1 - ((x - 1)/(x + 1))) - 2*abs(1/(x + 1))";
+    let expr = parse(input, &mut simplifier.context).unwrap();
+    let (res, _) = simplifier.simplify(expr);
+    let output = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: res
+        }
+    );
+    assert_eq!(output, "0");
+}
+
+#[test]
+fn test_abs_odd_power_magnitude_canonicalization() {
+    let mut simplifier = Simplifier::with_default_rules();
+
+    // abs(x)^3 - x^2*abs(x) -> 0
+    //
+    // This canonical form is useful for downstream polynomial identities under
+    // substitution because it exposes the even-power part as a plain factor
+    // while preserving one magnitude atom.
+    let input = "abs(x)^3 - x^2*abs(x)";
     let expr = parse(input, &mut simplifier.context).unwrap();
     let (res, _) = simplifier.simplify(expr);
     let output = format!(
@@ -1107,6 +1261,74 @@ fn test_collapsed_root_cubic_factoring_identity_simplification() {
     // (x^2 + 1)^(3/2) as t^3 internally instead of inventing a second opaque atom.
     let input =
         "(sqrt(x^2 + 1))^3 + 1 - (((sqrt(x^2 + 1))+1)*((sqrt(x^2 + 1))^2 - sqrt(x^2 + 1) + 1))";
+    let expr = parse(input, &mut simplifier.context).unwrap();
+    let (res, _) = simplifier.simplify(expr);
+    let output = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: res
+        }
+    );
+    assert_eq!(output, "0");
+}
+
+#[test]
+fn test_poly_high_cubic_factoring_identity_simplification() {
+    let mut simplifier = Simplifier::with_default_rules();
+
+    // (u^3)^3 + 1 - ((u^3 + 1) * ((u^3)^2 - u^3 + 1)) -> 0
+    //
+    // This is the same algebraic identity as t^3 + 1 = (t + 1)(t^2 - t + 1)
+    // with t = u^3. The polynomial identity detector should now admit the
+    // resulting degree-9 univariate normal form directly.
+    let input = "(u^3)^3 + 1 - (((u^3)+1)*((u^3)^2 - (u^3) + 1))";
+    let expr = parse(input, &mut simplifier.context).unwrap();
+    let (res, _) = simplifier.simplify(expr);
+    let output = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: res
+        }
+    );
+    assert_eq!(output, "0");
+}
+
+#[test]
+fn test_rational_atom_binomial_identity_simplification() {
+    let mut simplifier = Simplifier::with_default_rules();
+
+    // ((u/(u+1))+1)^4 - ((u/(u+1))^4 + 4*(u/(u+1))^3 + 6*(u/(u+1))^2 + 4*(u/(u+1)) + 1) -> 0
+    //
+    // The bottom-up simplifier used to normalize children into a bulky rational
+    // residual before PolynomialIdentityZeroRule had a chance to see the exact
+    // binomial identity in the opaque rational atom t = u/(u+1).
+    let input =
+        "((u/(u + 1))+1)^4 - ((u/(u + 1))^4 + 4*(u/(u + 1))^3 + 6*(u/(u + 1))^2 + 4*(u/(u + 1)) + 1)";
+    let expr = parse(input, &mut simplifier.context).unwrap();
+    let (res, _) = simplifier.simplify(expr);
+    let output = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: res
+        }
+    );
+    assert_eq!(output, "0");
+}
+
+#[test]
+fn test_poly_high_degree_eighteen_factoring_identity_simplification() {
+    let mut simplifier = Simplifier::with_default_rules();
+
+    // (u^3)^6 - 1 -> ((u^3)^2 + u^3 + 1) * ((u^3)^2 - u^3 + 1) * (u^3 + 1) * (u^3 - 1)
+    //
+    // The raw metamorphic canary still contains this exact t^6 - 1 factorization
+    // with t = u^3. The direct polynomial proof should now handle the resulting
+    // degree-18 univariate identity without falling back to numeric-only.
+    let input =
+        "(u^3)^6 - 1 - (((u^3)^2 + (u^3) + 1)*((u^3)^2 - (u^3) + 1)*((u^3) + 1)*((u^3) - 1))";
     let expr = parse(input, &mut simplifier.context).unwrap();
     let (res, _) = simplifier.simplify(expr);
     let output = format!(
@@ -1218,4 +1440,28 @@ fn test_policy_a_expand_expands_binomial_products() {
         "expand should NOT preserve product form, got: {}",
         output
     );
+}
+
+#[test]
+fn test_sin_double_angle_additive_shift_equivalence() {
+    let mut simplifier = create_full_simplifier();
+    let input = parse("sin(2*x + 2*pi)", &mut simplifier.context).unwrap();
+    let expected = parse("2*sin(x + pi)*cos(x + pi)", &mut simplifier.context).unwrap();
+    assert_equivalent(&mut simplifier, input, expected);
+}
+
+#[test]
+fn test_trig_half_angle_square_rational_context_equivalence() {
+    let mut simplifier = create_full_simplifier();
+    let input = parse("2*sin((1/u + 1/(u+1))/2)^2", &mut simplifier.context).unwrap();
+    let expected = parse("1 - cos((1/u + 1/(u+1)))", &mut simplifier.context).unwrap();
+    assert_equivalent(&mut simplifier, input, expected);
+}
+
+#[test]
+fn test_exp_negative_symbolic_exponent_reciprocal_equivalence() {
+    let mut simplifier = create_full_simplifier();
+    let input = parse("exp(-(arctan(u)))", &mut simplifier.context).unwrap();
+    let expected = parse("1/exp(arctan(u))", &mut simplifier.context).unwrap();
+    assert_equivalent(&mut simplifier, input, expected);
 }

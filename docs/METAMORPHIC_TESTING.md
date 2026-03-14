@@ -1033,6 +1033,125 @@ METATEST_VERBOSE=1 cargo test --release -p cas_engine \
     -- --ignored --nocapture
 ```
 
+### Structural Substitution: Curated vs Raw
+
+Además del umbrella general `⇄sub`, el repo mantiene una variante estructural
+agresiva con dos lecturas distintas:
+
+- `metatest_csv_substitution_structural`
+  - **suite curada**
+  - usa los filtros declarados en
+    [/Users/javiergimenezmoya/developer/math/crates/cas_solver/tests/substitution_structural_expressions.csv](/Users/javiergimenezmoya/developer/math/crates/cas_solver/tests/substitution_structural_expressions.csv)
+  - permite los shortcuts curados del harness:
+    - `contextual_block_strategies`
+    - `curated_pair_corpus`
+  - objetivo: regresión estable y mantenible para CI
+
+- `metatest_csv_substitution_structural_raw`
+  - **pressure test**
+  - usa el mismo corpus `112 × 12 = 1344 combos`
+  - pero ignora filtros positivos y desactiva esos shortcuts curados
+  - objetivo: conservar un "canary" de debilidad simbólica real del motor
+  - mantiene solo vías que siguen pasando por el motor:
+    - prueba directa sobre los textos originales (`diff/expand/wire eval`)
+    - prueba sobre variantes simplificadas/expandidas sin `curated_pair_corpus`
+    - cierre desde residual simbólico
+
+Comandos recomendados:
+
+```bash
+# Curated regression suite
+cargo test --release -p cas_engine \
+    --test metamorphic_simplification_tests metatest_csv_substitution_structural \
+    -- --ignored --exact --nocapture
+
+# Raw pressure suite
+cargo test --release -p cas_engine \
+    --test metamorphic_simplification_tests metatest_csv_substitution_structural_raw \
+    -- --ignored --exact --nocapture
+```
+
+Métrica real actual:
+
+| Suite | Combos | NF | Proved-symbolic | Numeric-only |
+|-------|--------|----|-----------------|--------------|
+| `structural curated` | 1344 | 948 | 396 | 0 |
+| `structural raw` | 1344 | 963 | 345 | 36 |
+
+Interpretación:
+
+- si falla la suite **curated**, normalmente has roto una regresión ya conocida o
+  has degradado semántica/harness que queríamos estable
+- si sube `numeric-only` en la suite **raw**, has perdido fuerza simbólica real o
+  has dejado de cerrar casos que antes el motor sí absorbía
+- mejora reciente visible en la suite **raw**:
+  - el harness `raw` ya reconoce cierres reales que solo viven en el path
+    original del motor y que antes se perdían al simplificar ambos lados
+    demasiado pronto
+  - ejemplo rescatado: el binomio racional
+    `((u/(u+1))+1)^4 ≡ (u/(u+1))^4 + 4*(u/(u+1))^3 + 6*(u/(u+1))^2 + 4*(u/(u+1)) + 1`
+    ahora cuenta como `proved-symbolic` en `raw`
+  - el motor ya cierra varios casos de `abs(...)` que antes caían en
+    `numeric-only` por perder factor o signo global tras la expansión
+  - ejemplos: `|2*(u+pi)|`, `|2*(u^3+1)|`, `|-(u^3+1)|`,
+    `|(u/(u+1)) - 1|`, `|1 - (u/(u+1))|`, `|1 - ((u-1)/(u+1))|`
+  - además, `|x|^(2k+1)` ya converge a la forma canónica `x^(2k)·|x|` sin
+    romper el camino educativo de logaritmos (`ln(|x|^3) -> 3·ln(|x|)`)
+  - el `PolynomialIdentityZeroRule` ahora también cierra identidades exactas
+    de `t = u^3` que antes se quedaban fuera por presupuesto:
+    - `t^3 + 1 = (t + 1)(t^2 - t + 1)`
+    - `t^6 - 1 = (t^2 + t + 1)(t^2 - t + 1)(t + 1)(t - 1)`
+    con `t = u^3`
+  - además, la misma familia de prueba opaca ya cierra mejor raíces
+    recíprocas negativas en el path real de `simplify/eval`:
+    - ahora se normalizan también divisiones aditivas simples como
+      `(u+1)/u -> 1 + 1/u` antes de sustituir `t = u^(-1/2)`
+    - ejemplo ya fijado en producto:
+      `(1/sqrt(u))^3 + 1 - ((1/sqrt(u) + 1)*(((u+1)/u) - 1/sqrt(u))) -> 0`
+    - esa mejora baja `root_ctx` en el canary raw de `13` a `11`
+  - la detección relajada de multi-angle ya reconoce también:
+    - formas aditivas con factor compartido como `2*x + 2*pi`
+    - formas con coeficiente entero divisible como `4*u/(u^2-1)`
+  - eso rescata cierres reales del motor en el canary `raw` y deja una
+    regresión visible en el path estándar para:
+    - `sin(2*x + 2*pi) = 2*sin(x + pi)*cos(x + pi)`
+  - la parte hiperbólica equivalente queda hoy fijada en `cas_math` unit tests,
+    no en `torture_tests`, porque ese full simplifier concreto no monta todavía
+    la regla hiperbólica de doble ángulo
+  - impacto medido del canary raw tras esta mejora:
+    - `NF: 946 -> 952`
+    - `Proved-symbolic: 355 -> 352`
+    - `Numeric-only: 43 -> 40`
+  - lectura correcta:
+    - no sube solo `proved-symbolic`; parte de la mejora entra por
+      convergencia directa (`NF`)
+    - el residual total baja sobre todo en `phase (2 -> 1)` y `poly_high (2 -> 1)`
+  - el detector de half-angle ya reconoce también formas racionales donde el
+    factor `2` está absorbido en el denominador:
+    - `(2*u + 1)/(2*u*(u + 1)) -> ((2*u + 1)/(u*(u + 1)))/2`
+    - con eso, `TrigHalfAngleSquaresRule` ya entra en el path estándar para
+      contextos racionales antes invisibles
+  - impacto medido de esta mejora:
+    - `NF: 952 -> 954`
+    - `Numeric-only: 40 -> 38`
+    - `rational_ctx: 10 -> 8`
+  - la normalización de exponentes negativos ahora cubre también `e^(-x)` con
+    exponente simbólico, no solo exponentes enteros negativos
+  - eso ya cierra por vía exacta:
+    - `exp(-(arctan(u))) = 1/exp(arctan(u))`
+    - `exp(-(arcsin(u))) = 1/exp(arcsin(u))`
+  - impacto medido de esta mejora:
+    - `NF: 954 -> 963`
+    - `Numeric-only: 38 -> 36`
+    - `inv_trig: 6 -> 4`
+    - `arctan(u): 4 -> 3`
+    - `arcsin(u): 2 -> 1`
+- lectura actual del canary:
+  - el peso ya no está en `poly_high`; ahora los offenders principales son
+    `rational_ctx`, `root_ctx`, `|u|` y varios residuales trig/racionales
+    exactos bajo contexto racional
+- no son duplicadas: responden a dos preguntas distintas
+
 ### Cross-Product Table (METATEST_TABLE=1)
 
 Con la variable `METATEST_TABLE=1`, el test imprime una tabla de cobertura:

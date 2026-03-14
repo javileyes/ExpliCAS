@@ -65,6 +65,26 @@ fn test_simplify_fraction_2() {
 }
 
 #[test]
+fn test_simplify_fraction_grouped_sub_denominator() {
+    let mut ctx = Context::new();
+    let rule = SimplifyFractionRule;
+    let expr = parse("(x^4 - 1) / (x^3 - x^2 + x - 1)", &mut ctx).unwrap();
+    let rewrite = rule
+        .apply(
+            &mut ctx,
+            expr,
+            &crate::parent_context::ParentContext::root(),
+        )
+        .unwrap();
+    let expected = parse("x + 1", &mut ctx).unwrap();
+    assert!(cas_math::poly_compare::poly_eq(
+        &ctx,
+        rewrite.final_expr(),
+        expected
+    ));
+}
+
+#[test]
 fn test_factor_difference_squares() {
     let mut ctx = Context::new();
     let rule = FactorRule;
@@ -147,4 +167,23 @@ fn test_exact_common_factor_mul_fraction_preorder() {
     assert!(res.contains("a + b") || res.contains("b + a"));
     assert!(res.contains("c + d") || res.contains("d + c"));
     assert!(!res.contains("x + y"));
+}
+
+#[test]
+fn test_symmetric_reciprocal_sum_rule() {
+    let mut ctx = Context::new();
+    let rule = SymmetricReciprocalSumRule;
+
+    let expr = parse("1/(x-1) + 1/(x+1)", &mut ctx).unwrap();
+    let expected = parse("2*x/(x^2 - 1)", &mut ctx).unwrap();
+    let rewrite = rule
+        .apply(
+            &mut ctx,
+            expr,
+            &crate::parent_context::ParentContext::root(),
+        )
+        .unwrap();
+
+    let checker = cas_math::semantic_equality::SemanticEqualityChecker::new(&ctx);
+    assert!(checker.are_equal(rewrite.new_expr, expected));
 }

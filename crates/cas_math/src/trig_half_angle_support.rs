@@ -1,3 +1,4 @@
+use crate::expr_nary::mul_leaves;
 use cas_ast::ordering::compare_expr;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use std::cmp::Ordering;
@@ -58,6 +59,42 @@ pub fn is_half_angle(ctx: &Context, arg: ExprId) -> Option<ExprId> {
     }
 }
 
+fn is_half_angle_relaxed(ctx: &mut Context, arg: ExprId) -> Option<ExprId> {
+    if let Some(inner) = is_half_angle(ctx, arg) {
+        return Some(inner);
+    }
+
+    let Expr::Div(num, den) = ctx.get(arg).clone() else {
+        return None;
+    };
+    let factors = mul_leaves(ctx, den);
+    let mut removed_two = false;
+    let mut remaining = Vec::with_capacity(factors.len());
+    for factor in factors {
+        if !removed_two
+            && matches!(
+                ctx.get(factor),
+                Expr::Number(n) if *n == num_rational::BigRational::from_integer(2.into())
+            )
+        {
+            removed_two = true;
+            continue;
+        }
+        remaining.push(factor);
+    }
+    if !removed_two {
+        return None;
+    }
+    if remaining.is_empty() {
+        return Some(num);
+    }
+    let mut rebuilt_den = remaining[0];
+    for &factor in remaining.iter().skip(1) {
+        rebuilt_den = ctx.add(Expr::Mul(rebuilt_den, factor));
+    }
+    Some(ctx.add(Expr::Div(num, rebuilt_den)))
+}
+
 /// Check if `expr` is `tan(u/2)` and return `u`.
 pub fn extract_tan_half_angle(ctx: &Context, expr: ExprId) -> Option<ExprId> {
     if let Expr::Function(fn_id, args) = ctx.get(expr) {
@@ -77,6 +114,22 @@ pub fn extract_trig_half_angle(ctx: &Context, expr: ExprId) -> Option<(ExprId, b
             let is_cos = matches!(builtin, Some(BuiltinFn::Cos));
             if is_sin || is_cos {
                 if let Some(full_angle) = is_half_angle(ctx, args[0]) {
+                    return Some((full_angle, is_sin));
+                }
+            }
+        }
+    }
+    None
+}
+
+fn extract_trig_half_angle_relaxed(ctx: &mut Context, expr: ExprId) -> Option<(ExprId, bool)> {
+    if let Expr::Function(fn_id, args) = ctx.get(expr) {
+        if args.len() == 1 {
+            let builtin = ctx.builtin_of(*fn_id);
+            let is_sin = matches!(builtin, Some(BuiltinFn::Sin));
+            let is_cos = matches!(builtin, Some(BuiltinFn::Cos));
+            if is_sin || is_cos {
+                if let Some(full_angle) = is_half_angle_relaxed(ctx, args[0]) {
                     return Some((full_angle, is_sin));
                 }
             }
@@ -190,7 +243,7 @@ pub fn try_rewrite_cot_half_angle_difference_expr(
             let t_half = &cot_terms[i];
             let t_full = &cot_terms[j];
 
-            let Some(full_angle) = is_half_angle(ctx, t_half.arg) else {
+            let Some(full_angle) = is_half_angle_relaxed(ctx, t_half.arg) else {
                 continue;
             };
             if compare_expr(ctx, full_angle, t_full.arg) != Ordering::Equal {
@@ -292,7 +345,7 @@ pub fn try_rewrite_hyperbolic_half_angle_squares_expr(
         return None;
     }
 
-    let x = is_half_angle(ctx, args[0])?;
+    let x = is_half_angle_relaxed(ctx, args[0])?;
     let cosh_x = ctx.call_builtin(BuiltinFn::Cosh, vec![x]);
     let one = ctx.num(1);
     let half = ctx.add(Expr::Number(num_rational::BigRational::new(
@@ -333,11 +386,11 @@ pub fn try_rewrite_trig_half_angle_squares_expr(
         if *n != num_rational::BigRational::from_integer(2.into()) {
             return None;
         }
-        extract_trig_half_angle(ctx, *base)
+        extract_trig_half_angle_relaxed(ctx, *base)
     } else if let Expr::Mul(l, r) = ctx.get(expr) {
         let (l, r) = (*l, *r);
-        if let Some((angle_l, is_sin_l)) = extract_trig_half_angle(ctx, l) {
-            if let Some((angle_r, is_sin_r)) = extract_trig_half_angle(ctx, r) {
+        if let Some((angle_l, is_sin_l)) = extract_trig_half_angle_relaxed(ctx, l) {
+            if let Some((angle_r, is_sin_r)) = extract_trig_half_angle_relaxed(ctx, r) {
                 if is_sin_l == is_sin_r && compare_expr(ctx, angle_l, angle_r) == Ordering::Equal {
                     Some((angle_l, is_sin_l))
                 } else {
@@ -408,6 +461,18 @@ mod tests {
                 is_half_angle(&ctx, mul).expect("mul half-angle"),
                 x
             ),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn is_half_angle_recognizes_factor_two_in_denominator() {
+        let mut ctx = Context::new();
+        let expr = parse("(2*u + 1)/(2*u*(u + 1))", &mut ctx).expect("expr");
+        let expected = parse("(2*u + 1)/(u*(u + 1))", &mut ctx).expect("expected");
+        let got = is_half_angle_relaxed(&mut ctx, expr).expect("factored half-angle");
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, got, expected),
             std::cmp::Ordering::Equal
         );
     }
@@ -514,6 +579,24 @@ mod tests {
             }
         );
         assert_eq!(rewritten_str, "1/2 * (cos(x) + 1)");
+    }
+
+    #[test]
+    fn rewrites_trig_half_angle_square_for_rational_context() {
+        let mut ctx = Context::new();
+        let expr = parse("sin((2*u + 1)/(2*u*(u + 1)))^2", &mut ctx).expect("expr");
+        let rewrite = try_rewrite_trig_half_angle_squares_expr(&mut ctx, expr).expect("rewrite");
+        let rewritten_str = format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: &ctx,
+                id: rewrite.rewritten
+            }
+        );
+        assert_eq!(
+            rewritten_str,
+            "1/2 * (1 - cos((2 * u + 1) / (u * (u + 1))))"
+        );
     }
 
     #[test]

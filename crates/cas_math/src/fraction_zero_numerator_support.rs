@@ -13,7 +13,12 @@ where
 {
     let pass1 = expand(ctx, numerator);
     let pass2 = expand(ctx, pass1);
-    crate::numeric_eval::numeric_poly_zero_check(ctx, pass2)
+    if crate::numeric_eval::numeric_poly_zero_check(ctx, pass2) {
+        return true;
+    }
+
+    let zero = ctx.num(0);
+    crate::poly_compare::poly_eq(ctx, pass2, zero)
 }
 
 /// Build canonical `0` or `0/den` expression depending on variable presence in denominator.
@@ -46,6 +51,13 @@ mod tests {
             num,
             crate::expand_ops::expand
         ));
+    }
+
+    #[test]
+    fn detects_zero_via_poly_eq_without_needing_expand() {
+        let mut ctx = Context::new();
+        let num = parse("u*(u+1) - (u^2 + u)", &mut ctx).expect("parse");
+        assert!(numerator_simplifies_to_zero_with(&mut ctx, num, |_, e| e));
     }
 
     #[test]

@@ -338,6 +338,91 @@ Estado:
   - `Numeric-only: 0`
   - la semántica de dominio del último caso no se ha borrado: queda fijada por
     una unitaria específica fuera del umbrella estructural
+- Para no perder el "canary" del motor, ya existe además un runner paralelo de
+  presión cruda:
+  - `metatest_csv_substitution_structural_raw`
+  - usa el mismo producto `112 identities × 12 substitutions = 1344 combos`
+  - pero **desactiva los dos mecanismos de curación más fuertes**:
+    - ignora los filtros declarados en
+      `/Users/javiergimenezmoya/developer/math/crates/cas_solver/tests/substitution_structural_expressions.csv`
+    - no usa los shortcuts de harness `contextual_block_strategies` ni
+      `curated_pair_corpus` dentro de la prueba simbólica previa al fallback
+      numérico
+  - mantiene solo las vías que aún pasan por el motor:
+    - prueba directa de textos originales vía `diff/expand/wire eval`
+    - `prove_zero_from_expr_variants(...)`, pero sin `curated_pair_corpus`
+    - `prove_zero_from_residual(...)`
+  - resultado medido actual:
+    - `Structural substitution (curated)`: `NF=948`, `Proved-symbolic=396`,
+      `Numeric-only=0`
+    - `Structural substitution (raw pressure)`: `NF=963`,
+      `Proved-symbolic=345`, `Numeric-only=36`
+  - mejora retenida reciente del canary raw:
+    - ya no pierde cierres simbólicos reales que solo viven en el path
+      original del motor antes de simplificar ambos lados
+    - ejemplo rescatado: el binomio racional
+      `((u/(u+1))+1)^4 ≡ (u/(u+1))^4 + 4*(u/(u+1))^3 + 6*(u/(u+1))^2 + 4*(u/(u+1)) + 1)`
+  - mejora real retenida en motor desde este runner raw:
+    - `AbsPositiveFactorRule` ya recupera factor numérico común y signo global
+      aunque el interior de `abs(...)` llegue expandido o como cociente con
+      numerador negativo
+    - eso ha cerrado por vía simbólica casos tipo:
+      - `|2*(u + pi)| -> 2*|u + pi|`
+      - `|2*(u^3 + 1)| -> 2*|u^3 + 1|`
+      - `|-(u^3 + 1)| -> |u^3 + 1|`
+      - `|(u/(u+1)) - 1| -> |1/(u+1)|`
+    - además, la forma canónica `|x|^(2k+1) -> x^(2k)*|x|` ya está retenida
+      sin romper la vía didáctica de logaritmos (`ln(|x|^3) -> 3*ln(|x|)`)
+    - `PolynomialIdentityZeroRule` ya admite el presupuesto suficiente para
+      cerrar identidades exactas de `t = u^3` que antes se quedaban fuera por
+      grado total 9/18
+    - `AbsSubNormalizeRule` ya normaliza también formas escalar-izquierda como
+      `|1 - u/(u+1)|`, que ahora convergen a la misma forma que
+      `|(u/(u+1)) - 1|`
+    - la prueba polinómica opaca para raíces recíprocas negativas ya normaliza
+      también divisiones aditivas simples tipo `(u+1)/u = 1 + 1/u` antes de
+      sustituir `t = u^(-1/2)`, así que el path real de `simplify/eval` ya
+      cierra identidades cúbicas como:
+      - `(1/sqrt(u))^3 + 1 = ((1/sqrt(u))+1)*(((u+1)/u) - (1/sqrt(u)))`
+      - esto baja el peso de `root_ctx` en el canary raw de `13` a `11`
+    - la extracción relajada de multi-angle ya reconoce también:
+      - formas aditivas con factor compartido como `2*x + 2*pi`
+      - formas con coeficiente entero divisible como `4*u/(u^2 - 1)`
+    - eso ya da cierres reales del motor en el canary raw y deja una regresión
+      visible en el path estándar para:
+      - `sin(2*x + 2*pi) = 2*sin(x + pi)*cos(x + pi)`
+    - la variante hiperbólica equivalente queda fijada hoy en `cas_math`
+      unit tests; no en `torture_tests`, porque ese full simplifier concreto
+      no monta todavía la regla hiperbólica de doble ángulo
+    - impacto medido:
+      - `raw pressure`: `Numeric-only 43 -> 40`
+      - el cambio entra mezclado por `NF` y `proved-symbolic`:
+        `NF 946 -> 952`, `Proved-symbolic 355 -> 352`
+      - buckets visibles: `phase 2 -> 1`, `poly_high 2 -> 1`
+    - el detector de half-angle ya reconoce también formas donde el `2`
+      está absorbido en el denominador racional
+    - eso permite que `TrigHalfAngleSquaresRule` rescate casos como:
+      - `2*sin((1/u + 1/(u+1))/2)^2 = 1 - cos(1/u + 1/(u+1))`
+    - impacto medido:
+      - `raw pressure`: `Numeric-only 40 -> 38`
+      - `NF 952 -> 954`
+      - `rational_ctx 10 -> 8`
+    - la normalización de exponentes negativos ya cubre también `e^(-x)` con
+      exponente simbólico, no solo enteros negativos
+    - eso cierra por vía exacta:
+      - `exp(-(arctan(u))) = 1/exp(arctan(u))`
+      - `exp(-(arcsin(u))) = 1/exp(arcsin(u))`
+    - impacto medido:
+      - `raw pressure`: `Numeric-only 38 -> 36`
+      - `NF 954 -> 963`
+      - `inv_trig 6 -> 4`
+  - lectura práctica:
+    - la suite curada sirve como regresión mantenible y estable para CI
+    - la suite raw sirve como "pressure test" para detectar debilidad simbólica
+      que la curación ya ha absorbido
+    - tras estas mejoras, la presión real queda mucho más concentrada en:
+      `rational_ctx`, `root_ctx`, `|u|` y algunos residuales trig/racionales
+      exactos; `poly_high` ya no es el cuello de botella principal
 - Ambas están conectadas al harness de simplificación y tienen runners dedicados en:
   - `/Users/javiergimenezmoya/developer/math/crates/cas_solver/tests/metamorphic_simplification_tests.rs`
 - La suite contextual general se mantiene como umbrella suite; las nuevas temáticas sirven para aislar mejor familias recurrentes sin meterlas todas en el corpus global.

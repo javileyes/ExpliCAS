@@ -9,13 +9,13 @@ use cas_ast::{Constant, Context, Expr, ExprId};
 use num_traits::{Signed, ToPrimitive, Zero};
 use std::cmp::Ordering;
 
-fn extract_positive_rational_exponent(ctx: &Context, exp: ExprId) -> Option<(u32, u32)> {
+fn extract_signed_rational_exponent(ctx: &Context, exp: ExprId) -> Option<(i32, u32)> {
     match ctx.get(exp) {
         Expr::Number(n) => {
-            if n.is_zero() || n.is_negative() {
+            if n.is_zero() {
                 return None;
             }
-            let numer = n.numer().to_u32()?;
+            let numer = n.numer().to_i32()?;
             let denom = n.denom().to_u32()?;
             Some((numer, denom))
         }
@@ -26,28 +26,43 @@ fn extract_positive_rational_exponent(ctx: &Context, exp: ExprId) -> Option<(u32
             if !num_n.is_integer()
                 || !den_n.is_integer()
                 || num_n.is_zero()
-                || num_n.is_negative()
                 || den_n.is_zero()
                 || den_n.is_negative()
             {
                 return None;
             }
-            Some((num_n.to_integer().to_u32()?, den_n.to_integer().to_u32()?))
+            Some((num_n.to_integer().to_i32()?, den_n.to_integer().to_u32()?))
+        }
+        Expr::Neg(inner) => {
+            let (numer, denom) = extract_signed_rational_exponent(ctx, *inner)?;
+            Some((-numer, denom))
         }
         _ => None,
     }
 }
 
+fn extract_positive_rational_exponent(ctx: &Context, exp: ExprId) -> Option<(u32, u32)> {
+    let (numer, denom) = extract_signed_rational_exponent(ctx, exp)?;
+    if numer <= 0 {
+        return None;
+    }
+    Some((numer as u32, denom))
+}
+
 fn is_noninteger_rational_exponent(ctx: &Context, exp: ExprId) -> bool {
-    let Some((numer, denom)) = extract_positive_rational_exponent(ctx, exp) else {
+    let Some((numer, denom)) = extract_signed_rational_exponent(ctx, exp) else {
         return false;
     };
-    numer % denom != 0
+    numer.unsigned_abs() % denom != 0
 }
 
 fn is_opaque_power_atom(ctx: &Context, base: ExprId, exp: ExprId) -> bool {
     !matches!(ctx.get(base), Expr::Constant(Constant::E))
         && is_noninteger_rational_exponent(ctx, exp)
+}
+
+fn is_opaque_constant_atom(c: &Constant) -> bool {
+    matches!(c, Constant::Pi | Constant::E | Constant::Phi)
 }
 
 pub fn extract_opaque_reciprocal_power_base(ctx: &Context, expr: ExprId) -> Option<(ExprId, u32)> {
@@ -66,6 +81,25 @@ pub fn extract_opaque_reciprocal_power_base(ctx: &Context, expr: ExprId) -> Opti
     }
 }
 
+pub fn extract_opaque_negative_reciprocal_power_base(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<(ExprId, u32)> {
+    let Expr::Pow(base, exp) = ctx.get(expr) else {
+        return None;
+    };
+    if matches!(ctx.get(*base), Expr::Constant(Constant::E)) {
+        return None;
+    }
+
+    let (numer, denom) = extract_signed_rational_exponent(ctx, *exp)?;
+    if numer == -1 && denom >= 2 {
+        Some((*base, denom))
+    } else {
+        None
+    }
+}
+
 pub fn extract_opaque_rational_power_atom(
     ctx: &Context,
     expr: ExprId,
@@ -78,6 +112,23 @@ pub fn extract_opaque_rational_power_atom(
     }
     let (numer, denom) = extract_positive_rational_exponent(ctx, *exp)?;
     if numer % denom == 0 {
+        return None;
+    }
+    Some((*base, numer, denom))
+}
+
+pub fn extract_opaque_signed_rational_power_atom(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<(ExprId, i32, u32)> {
+    let Expr::Pow(base, exp) = ctx.get(expr) else {
+        return None;
+    };
+    if matches!(ctx.get(*base), Expr::Constant(Constant::E)) {
+        return None;
+    }
+    let (numer, denom) = extract_signed_rational_exponent(ctx, *exp)?;
+    if numer == 0 || numer.unsigned_abs() % denom == 0 {
         return None;
     }
     Some((*base, numer, denom))
@@ -142,11 +193,78 @@ fn is_polynomial_candidate_inner(
 /// Collect all function calls under `expr` up to `max_depth`.
 pub fn collect_function_calls(ctx: &Context, expr: ExprId, max_depth: usize) -> Vec<ExprId> {
     let mut out = Vec::new();
-    collect_function_calls_inner(ctx, expr, &mut out, 0, max_depth);
+    collect_function_calls_inner(ctx, expr, &mut out, 0, max_depth, 18);
     out
 }
 
+pub fn collect_function_calls_with_pow_limit(
+    ctx: &Context,
+    expr: ExprId,
+    max_depth: usize,
+    max_pow_exp: u32,
+) -> Vec<ExprId> {
+    let mut out = Vec::new();
+    collect_function_calls_inner(ctx, expr, &mut out, 0, max_depth, max_pow_exp);
+    out
+}
+
+fn is_opaque_rational_atom(
+    ctx: &Context,
+    expr: ExprId,
+    depth: usize,
+    max_depth: usize,
+    max_pow_exp: u32,
+) -> bool {
+    let Expr::Div(num, den) = ctx.get(expr) else {
+        return false;
+    };
+    if matches!(ctx.get(*den), Expr::Number(_)) {
+        return false;
+    }
+    is_polynomial_candidate_inner(ctx, *num, depth + 1, max_depth, max_pow_exp)
+        && is_polynomial_candidate_inner(ctx, *den, depth + 1, max_depth, max_pow_exp)
+}
+
 fn collect_function_calls_inner(
+    ctx: &Context,
+    expr: ExprId,
+    out: &mut Vec<ExprId>,
+    depth: usize,
+    max_depth: usize,
+    max_pow_exp: u32,
+) {
+    if depth > max_depth {
+        return;
+    }
+    match ctx.get(expr) {
+        Expr::Function(_, _) => out.push(expr),
+        Expr::Pow(base, exp) if is_opaque_power_atom(ctx, *base, *exp) => out.push(expr),
+        Expr::Div(_, _) if is_opaque_rational_atom(ctx, expr, depth, max_depth, max_pow_exp) => {
+            out.push(expr)
+        }
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
+            collect_function_calls_inner(ctx, *l, out, depth + 1, max_depth, max_pow_exp);
+            collect_function_calls_inner(ctx, *r, out, depth + 1, max_depth, max_pow_exp);
+        }
+        Expr::Pow(base, exp) => {
+            collect_function_calls_inner(ctx, *base, out, depth + 1, max_depth, max_pow_exp);
+            collect_function_calls_inner(ctx, *exp, out, depth + 1, max_depth, max_pow_exp);
+        }
+        Expr::Neg(inner) => {
+            collect_function_calls_inner(ctx, *inner, out, depth + 1, max_depth, max_pow_exp)
+        }
+        _ => {}
+    }
+}
+
+/// Collect supported opaque constants under `expr` up to `max_depth`.
+pub fn collect_constant_atoms(ctx: &Context, expr: ExprId, max_depth: usize) -> Vec<ExprId> {
+    let mut out = Vec::new();
+    collect_constant_atoms_inner(ctx, expr, &mut out, 0, max_depth);
+    out
+}
+
+fn collect_constant_atoms_inner(
     ctx: &Context,
     expr: ExprId,
     out: &mut Vec<ExprId>,
@@ -157,17 +275,28 @@ fn collect_function_calls_inner(
         return;
     }
     match ctx.get(expr) {
-        Expr::Function(_, _) => out.push(expr),
-        Expr::Pow(base, exp) if is_opaque_power_atom(ctx, *base, *exp) => out.push(expr),
-        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) => {
-            collect_function_calls_inner(ctx, *l, out, depth + 1, max_depth);
-            collect_function_calls_inner(ctx, *r, out, depth + 1, max_depth);
+        Expr::Constant(c) if is_opaque_constant_atom(c) => out.push(expr),
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
+            collect_constant_atoms_inner(ctx, *l, out, depth + 1, max_depth);
+            collect_constant_atoms_inner(ctx, *r, out, depth + 1, max_depth);
         }
         Expr::Pow(base, exp) => {
-            collect_function_calls_inner(ctx, *base, out, depth + 1, max_depth);
-            collect_function_calls_inner(ctx, *exp, out, depth + 1, max_depth);
+            collect_constant_atoms_inner(ctx, *base, out, depth + 1, max_depth);
+            collect_constant_atoms_inner(ctx, *exp, out, depth + 1, max_depth);
         }
-        Expr::Neg(inner) => collect_function_calls_inner(ctx, *inner, out, depth + 1, max_depth),
+        Expr::Function(_, args) => {
+            for &arg in args {
+                collect_constant_atoms_inner(ctx, arg, out, depth + 1, max_depth);
+            }
+        }
+        Expr::Neg(inner) | Expr::Hold(inner) => {
+            collect_constant_atoms_inner(ctx, *inner, out, depth + 1, max_depth);
+        }
+        Expr::Matrix { data, .. } => {
+            for &entry in data {
+                collect_constant_atoms_inner(ctx, entry, out, depth + 1, max_depth);
+            }
+        }
         _ => {}
     }
 }
@@ -456,6 +585,24 @@ mod tests {
     }
 
     #[test]
+    fn function_call_collection_includes_simple_rational_atoms() {
+        let mut ctx = Context::new();
+        let expr = parse("(u/(u+1)) + 1/(u-1)", &mut ctx).expect("parse");
+        let calls = collect_function_calls_with_pow_limit(&ctx, expr, 8, 18);
+        let unique = dedup_expr_ids(&ctx, &calls);
+        assert_eq!(unique.len(), 2);
+    }
+
+    #[test]
+    fn constant_atom_collection_and_dedup() {
+        let mut ctx = Context::new();
+        let expr = parse("x + pi + e + pi", &mut ctx).expect("parse");
+        let constants = collect_constant_atoms(&ctx, expr, 6);
+        let unique = dedup_expr_ids(&ctx, &constants);
+        assert_eq!(unique.len(), 2);
+    }
+
+    #[test]
     fn exponential_base_detection() {
         let mut ctx = Context::new();
         let expr = parse("e^(3*u) + e^u + e^(2*u)", &mut ctx).expect("parse");
@@ -494,5 +641,27 @@ mod tests {
         let expected = parse("x^2 + 1", &mut ctx).expect("expected");
         assert_eq!(compare_expr(&ctx, base, expected), Ordering::Equal);
         assert_eq!((numer, denom), (3, 2));
+    }
+
+    #[test]
+    fn extracts_negative_reciprocal_power_base_for_root_atom() {
+        let mut ctx = Context::new();
+        let expr = parse("u^(-1/2)", &mut ctx).expect("parse");
+        let (base, idx) =
+            extract_opaque_negative_reciprocal_power_base(&ctx, expr).expect("root atom");
+        let expected = parse("u", &mut ctx).expect("expected");
+        assert_eq!(compare_expr(&ctx, base, expected), Ordering::Equal);
+        assert_eq!(idx, 2);
+    }
+
+    #[test]
+    fn extracts_signed_rational_power_atom_for_negative_multiple() {
+        let mut ctx = Context::new();
+        let expr = parse("u^(-3/2)", &mut ctx).expect("parse");
+        let (base, numer, denom) =
+            extract_opaque_signed_rational_power_atom(&ctx, expr).expect("atom");
+        let expected = parse("u", &mut ctx).expect("expected");
+        assert_eq!(compare_expr(&ctx, base, expected), Ordering::Equal);
+        assert_eq!((numer, denom), (-3, 2));
     }
 }

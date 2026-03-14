@@ -1,7 +1,8 @@
 use cas_ast::ordering::compare_expr;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use num_integer::Integer;
-use num_traits::Signed;
+use num_rational::BigRational;
+use num_traits::{One, Signed, Zero};
 
 /// Extract the inner argument of `abs(x)`, returning `Some(x)` when expression
 /// is an absolute value call.
@@ -339,6 +340,40 @@ pub fn try_rewrite_abs_power_even_expr(ctx: &mut Context, expr: ExprId) -> Optio
     })
 }
 
+/// Rewrite `|x|^n -> x^(n-1) * |x|` for odd integer `n >= 3`.
+pub fn try_rewrite_abs_power_odd_magnitude_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<AbsRewrite> {
+    let Expr::Pow(base, exp) = ctx.get(expr) else {
+        return None;
+    };
+    let (base, exp) = (*base, *exp);
+    let inner = try_unwrap_abs_arg(ctx, base)?;
+    let Expr::Number(n) = ctx.get(exp) else {
+        return None;
+    };
+    if !n.is_integer() {
+        return None;
+    }
+
+    let n_int = n.to_integer();
+    if !n_int.is_positive() || n_int.is_even() || n_int <= 1.into() {
+        return None;
+    }
+
+    let even_exp = ctx.add(Expr::Number(n.clone() - BigRational::one()));
+    let even_factor = ctx.add(Expr::Pow(inner, even_exp));
+    let abs_inner = ctx.call_builtin(BuiltinFn::Abs, vec![inner]);
+    let rewritten = ctx.add(Expr::Mul(even_factor, abs_inner));
+
+    let even_power_text = n_int.clone() - 1;
+    Some(AbsRewrite {
+        rewritten,
+        desc: format!("|x|^{} = x^{} * |x|", n_int, even_power_text),
+    })
+}
+
 /// Rewrite `sqrt(x^2) -> |x|` and `(x^2)^(1/2) -> |x|`.
 pub fn try_rewrite_sqrt_square_expr(ctx: &mut Context, expr: ExprId) -> Option<AbsFixedRewrite> {
     let inner = if let Expr::Function(fn_id, args) = ctx.get(expr) {
@@ -438,7 +473,12 @@ pub fn try_rewrite_abs_sub_normalize_expr(
         return None;
     }
 
-    if compare_expr(ctx, a, b) != std::cmp::Ordering::Greater {
+    let left_is_scalar_atom = matches!(ctx.get(a), Expr::Number(_) | Expr::Constant(_));
+    let right_is_scalar_atom = matches!(ctx.get(b), Expr::Number(_) | Expr::Constant(_));
+    let prefers_swapped = compare_expr(ctx, a, b) == std::cmp::Ordering::Greater
+        || (left_is_scalar_atom && !right_is_scalar_atom);
+
+    if !prefers_swapped {
         return None;
     }
 
@@ -570,16 +610,116 @@ pub fn try_rewrite_abs_exp_identity_expr(ctx: &Context, expr: ExprId) -> Option<
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AbsNumericFactorRewriteKind {
-    LeftPositive,
-    LeftNegative,
-    RightPositive,
-    RightNegative,
+    Positive,
+    Negative,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AbsNumericFactorRewrite {
     pub rewritten: ExprId,
     pub kind: AbsNumericFactorRewriteKind,
+}
+
+fn is_numeric_one(ctx: &Context, expr: ExprId) -> bool {
+    matches!(ctx.get(expr), Expr::Number(n) if n.is_one())
+}
+
+fn extract_abs_constant_factor(ctx: &mut Context, expr: ExprId) -> Option<(BigRational, ExprId)> {
+    match ctx.get(expr).clone() {
+        Expr::Number(n) => Some((n, ctx.num(1))),
+        Expr::Neg(inner) => {
+            if let Some((factor, core)) = extract_abs_constant_factor(ctx, inner) {
+                Some((-factor, core))
+            } else {
+                Some((-BigRational::one(), inner))
+            }
+        }
+        Expr::Mul(_, _) => {
+            let mut factor = BigRational::one();
+            let mut non_numeric = Vec::new();
+
+            for term in crate::expr_nary::mul_factors(ctx, expr) {
+                if let Expr::Number(n) = ctx.get(term) {
+                    factor *= n.clone();
+                } else {
+                    non_numeric.push(term);
+                }
+            }
+
+            if factor.is_one() {
+                return None;
+            }
+
+            if non_numeric.is_empty() {
+                return Some((factor, ctx.num(1)));
+            }
+
+            non_numeric.sort_by(|a, b| compare_expr(ctx, *a, *b));
+            let mut core = non_numeric[0];
+            for &term in &non_numeric[1..] {
+                core = ctx.add(Expr::Mul(core, term));
+            }
+            Some((factor, core))
+        }
+        Expr::Div(num, den) => {
+            if let Some((factor, core_num)) = extract_abs_constant_factor(ctx, num) {
+                let core = ctx.add(Expr::Div(core_num, den));
+                return Some((factor, core));
+            }
+
+            if let Some((factor, core_den)) = extract_abs_constant_factor(ctx, den) {
+                if factor.is_zero() {
+                    return None;
+                }
+                let core = if is_numeric_one(ctx, core_den) {
+                    num
+                } else {
+                    ctx.add(Expr::Div(num, core_den))
+                };
+                return Some((BigRational::one() / factor, core));
+            }
+
+            None
+        }
+        _ => None,
+    }
+}
+
+fn extract_abs_common_additive_factor(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(BigRational, ExprId)> {
+    let terms = crate::expr_nary::add_terms_signed(ctx, expr);
+    if terms.len() < 2 {
+        return None;
+    }
+
+    let mut common_factor: Option<BigRational> = None;
+    let mut reduced_terms = Vec::with_capacity(terms.len());
+
+    for (term, sign) in terms {
+        let (mut factor, core) =
+            extract_abs_constant_factor(ctx, term).unwrap_or_else(|| (BigRational::one(), term));
+        if matches!(sign, crate::expr_nary::Sign::Neg) {
+            factor = -factor;
+        }
+
+        match &common_factor {
+            Some(existing) if *existing != factor => return None,
+            Some(_) => {}
+            None => common_factor = Some(factor.clone()),
+        }
+
+        reduced_terms.push(core);
+    }
+
+    let factor = common_factor?;
+    if factor.is_one() {
+        return None;
+    }
+
+    let core = crate::expr_nary::build_balanced_add(ctx, &reduced_terms);
+    Some((factor, core))
 }
 
 /// Rewrite `|k*x|`/`|x*k|` by extracting numeric factors:
@@ -590,52 +730,28 @@ pub fn try_rewrite_abs_numeric_factor_expr(
     expr: ExprId,
 ) -> Option<AbsNumericFactorRewrite> {
     let abs_arg = try_unwrap_abs_arg(ctx, expr)?;
-    let Expr::Mul(l, r) = ctx.get(abs_arg) else {
+    let (factor, core) = extract_abs_common_additive_factor(ctx, abs_arg)
+        .or_else(|| extract_abs_constant_factor(ctx, abs_arg))?;
+
+    if factor.is_one() || is_numeric_one(ctx, core) {
         return None;
+    }
+
+    let abs_core = ctx.call_builtin(BuiltinFn::Abs, vec![core]);
+    let kind = if factor.is_negative() {
+        AbsNumericFactorRewriteKind::Negative
+    } else {
+        AbsNumericFactorRewriteKind::Positive
     };
-    let (l, r) = (*l, *r);
 
-    if let Expr::Number(n) = ctx.get(l) {
-        if n.is_positive() {
-            let abs_r = ctx.call_builtin(BuiltinFn::Abs, vec![r]);
-            let result = ctx.add(Expr::Mul(l, abs_r));
-            return Some(AbsNumericFactorRewrite {
-                rewritten: result,
-                kind: AbsNumericFactorRewriteKind::LeftPositive,
-            });
-        }
-        if n.is_negative() {
-            let abs_k = ctx.add(Expr::Number(n.abs()));
-            let abs_r = ctx.call_builtin(BuiltinFn::Abs, vec![r]);
-            let result = ctx.add(Expr::Mul(abs_k, abs_r));
-            return Some(AbsNumericFactorRewrite {
-                rewritten: result,
-                kind: AbsNumericFactorRewriteKind::LeftNegative,
-            });
-        }
-    }
+    let rewritten = if factor.abs().is_one() {
+        abs_core
+    } else {
+        let abs_factor = ctx.add(Expr::Number(factor.abs()));
+        ctx.add(Expr::Mul(abs_factor, abs_core))
+    };
 
-    if let Expr::Number(n) = ctx.get(r) {
-        if n.is_positive() {
-            let abs_l = ctx.call_builtin(BuiltinFn::Abs, vec![l]);
-            let result = ctx.add(Expr::Mul(r, abs_l));
-            return Some(AbsNumericFactorRewrite {
-                rewritten: result,
-                kind: AbsNumericFactorRewriteKind::RightPositive,
-            });
-        }
-        if n.is_negative() {
-            let abs_k = ctx.add(Expr::Number(n.abs()));
-            let abs_l = ctx.call_builtin(BuiltinFn::Abs, vec![l]);
-            let result = ctx.add(Expr::Mul(abs_k, abs_l));
-            return Some(AbsNumericFactorRewrite {
-                rewritten: result,
-                kind: AbsNumericFactorRewriteKind::RightNegative,
-            });
-        }
-    }
-
-    None
+    Some(AbsNumericFactorRewrite { rewritten, kind })
 }
 
 /// Returns true when an expression is provably non-negative via structural rules.
@@ -675,13 +791,15 @@ mod tests {
         try_rewrite_abs_even_power_expr, try_rewrite_abs_exp_identity_expr,
         try_rewrite_abs_idempotent_expr, try_rewrite_abs_numeric_factor_expr,
         try_rewrite_abs_odd_power_expr, try_rewrite_abs_power_even_expr,
-        try_rewrite_abs_product_expr, try_rewrite_abs_product_identity_expr,
-        try_rewrite_abs_quotient_expr, try_rewrite_abs_quotient_identity_expr,
-        try_rewrite_abs_sqrt_identity_expr, try_rewrite_abs_sub_normalize_expr,
-        try_rewrite_abs_sum_nonnegative_expr, try_rewrite_evaluate_abs_expr,
-        try_rewrite_sqrt_square_expr, try_unwrap_abs_arg, value_domain_mode_from_flag,
-        AbsDomainMode, AbsFixedRewriteKind, AbsNumericFactorRewriteKind, ValueDomainMode,
+        try_rewrite_abs_power_odd_magnitude_expr, try_rewrite_abs_product_expr,
+        try_rewrite_abs_product_identity_expr, try_rewrite_abs_quotient_expr,
+        try_rewrite_abs_quotient_identity_expr, try_rewrite_abs_sqrt_identity_expr,
+        try_rewrite_abs_sub_normalize_expr, try_rewrite_abs_sum_nonnegative_expr,
+        try_rewrite_evaluate_abs_expr, try_rewrite_sqrt_square_expr, try_unwrap_abs_arg,
+        value_domain_mode_from_flag, AbsDomainMode, AbsFixedRewriteKind,
+        AbsNumericFactorRewriteKind, ValueDomainMode,
     };
+    use cas_ast::ordering::compare_expr;
     use cas_ast::{BuiltinFn, Context, Expr};
 
     #[test]
@@ -876,22 +994,65 @@ mod tests {
         let right_neg =
             try_rewrite_abs_numeric_factor_expr(&mut ctx, right_neg).expect("right_neg");
 
-        assert!(matches!(
-            left_pos.kind,
-            AbsNumericFactorRewriteKind::LeftPositive | AbsNumericFactorRewriteKind::RightPositive
-        ));
-        assert!(matches!(
-            right_pos.kind,
-            AbsNumericFactorRewriteKind::LeftPositive | AbsNumericFactorRewriteKind::RightPositive
-        ));
-        assert!(matches!(
-            left_neg.kind,
-            AbsNumericFactorRewriteKind::LeftNegative | AbsNumericFactorRewriteKind::RightNegative
-        ));
-        assert!(matches!(
-            right_neg.kind,
-            AbsNumericFactorRewriteKind::LeftNegative | AbsNumericFactorRewriteKind::RightNegative
-        ));
+        assert_eq!(left_pos.kind, AbsNumericFactorRewriteKind::Positive);
+        assert_eq!(right_pos.kind, AbsNumericFactorRewriteKind::Positive);
+        assert_eq!(left_neg.kind, AbsNumericFactorRewriteKind::Negative);
+        assert_eq!(right_neg.kind, AbsNumericFactorRewriteKind::Negative);
+    }
+
+    #[test]
+    fn rewrites_abs_numeric_factor_from_additive_common_factor() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let two = ctx.num(2);
+        let one = ctx.num(1);
+        let two_x = ctx.add(Expr::Mul(two, x));
+        let inner = ctx.add(Expr::Add(two_x, two));
+        let abs_inner = ctx.call_builtin(BuiltinFn::Abs, vec![inner]);
+
+        let rewrite = try_rewrite_abs_numeric_factor_expr(&mut ctx, abs_inner).expect("rewrite");
+        assert_eq!(rewrite.kind, AbsNumericFactorRewriteKind::Positive);
+
+        let x_plus_one = ctx.add(Expr::Add(x, one));
+        let abs_x_plus_one = ctx.call_builtin(BuiltinFn::Abs, vec![x_plus_one]);
+        let expected = ctx.add(Expr::Mul(two, abs_x_plus_one));
+        assert_eq!(rewrite.rewritten, expected);
+    }
+
+    #[test]
+    fn rewrites_abs_numeric_factor_from_global_negative_sum() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let neg_x = ctx.add(Expr::Neg(x));
+        let neg_one = ctx.num(-1);
+        let inner = ctx.add(Expr::Add(neg_x, neg_one));
+        let abs_inner = ctx.call_builtin(BuiltinFn::Abs, vec![inner]);
+
+        let rewrite = try_rewrite_abs_numeric_factor_expr(&mut ctx, abs_inner).expect("rewrite");
+        assert_eq!(rewrite.kind, AbsNumericFactorRewriteKind::Negative);
+
+        let x_plus_one = ctx.add(Expr::Add(x, one));
+        let expected = ctx.call_builtin(BuiltinFn::Abs, vec![x_plus_one]);
+        assert_eq!(rewrite.rewritten, expected);
+    }
+
+    #[test]
+    fn rewrites_abs_numeric_factor_from_negative_fraction() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let neg_one = ctx.num(-1);
+        let denom = ctx.add(Expr::Add(x, one));
+        let inner = ctx.add(Expr::Div(neg_one, denom));
+        let abs_inner = ctx.call_builtin(BuiltinFn::Abs, vec![inner]);
+
+        let rewrite = try_rewrite_abs_numeric_factor_expr(&mut ctx, abs_inner).expect("rewrite");
+        assert_eq!(rewrite.kind, AbsNumericFactorRewriteKind::Negative);
+
+        let reciprocal = ctx.add(Expr::Div(one, denom));
+        let expected = ctx.call_builtin(BuiltinFn::Abs, vec![reciprocal]);
+        assert_eq!(rewrite.rewritten, expected);
     }
 
     #[test]
@@ -967,6 +1128,21 @@ mod tests {
     }
 
     #[test]
+    fn rewrites_abs_power_odd_magnitude() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let abs_x = ctx.call_builtin(BuiltinFn::Abs, vec![x]);
+        let three = ctx.num(3);
+        let expr = ctx.add(Expr::Pow(abs_x, three));
+
+        let rewrite = try_rewrite_abs_power_odd_magnitude_expr(&mut ctx, expr).expect("rewrite");
+        let two = ctx.num(2);
+        let x_sq = ctx.add(Expr::Pow(x, two));
+        let expected = ctx.add(Expr::Mul(x_sq, abs_x));
+        assert_eq!(rewrite.rewritten, expected);
+    }
+
+    #[test]
     fn rewrites_sqrt_square_forms() {
         let mut ctx = Context::new();
         let x = ctx.var("x");
@@ -1018,6 +1194,16 @@ mod tests {
         };
         assert!(ctx.is_builtin(*fn_id, BuiltinFn::Abs));
         assert_eq!(args.len(), 1);
+
+        let parsed = cas_parser::parse("abs(1 - x/(x+1))", &mut ctx).expect("fractional parse");
+        let rewrite3 =
+            try_rewrite_abs_sub_normalize_expr(&mut ctx, parsed).expect("fractional rewrite");
+        assert_eq!(rewrite3.kind, AbsFixedRewriteKind::SubNormalize);
+        let expected = cas_parser::parse("abs(x/(x+1) - 1)", &mut ctx).expect("expected parse");
+        assert_eq!(
+            compare_expr(&ctx, rewrite3.rewritten, expected),
+            std::cmp::Ordering::Equal
+        );
     }
 
     #[test]

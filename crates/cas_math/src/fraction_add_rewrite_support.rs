@@ -6,7 +6,9 @@ use crate::fraction_add_heuristics_support::{
     assess_fraction_add_simplification, should_accept_fraction_add_rewrite,
     FractionAddAcceptanceInput,
 };
-use crate::fraction_trig_add_policy_support::should_allow_numeric_fraction_add_rewrite;
+use crate::fraction_trig_add_policy_support::{
+    should_allow_numeric_fraction_add_rewrite, should_block_general_fraction_add_rewrite,
+};
 use crate::fraction_zero_numerator_support::{
     build_zero_or_zero_over_den, numerator_simplifies_to_zero_with,
 };
@@ -88,6 +90,10 @@ where
 
     let rewritten = ctx.add(Expr::Div(new_num, common_den));
     let new_complexity = count_nodes(ctx, rewritten);
+
+    if should_block_general_fraction_add_rewrite(ctx, input.l, input.r, input.inside_trig) {
+        return None;
+    }
 
     if matches!(ctx.get(d1), Expr::Number(_))
         && matches!(ctx.get(d2), Expr::Number(_))
@@ -203,6 +209,34 @@ mod tests {
         let d1 = parse("1", &mut ctx).expect("parse");
         let n2 = parse("pi", &mut ctx).expect("parse");
         let d2 = parse("6", &mut ctx).expect("parse");
+        let plan = plan_add_fraction_rewrite_with(
+            &mut ctx,
+            AddFractionRewriteInput {
+                expr,
+                l,
+                r,
+                n1,
+                d1,
+                n2,
+                d2,
+                same_sign: true,
+                inside_trig: true,
+            },
+            crate::expand_ops::expand,
+        );
+        assert!(plan.is_none());
+    }
+
+    #[test]
+    fn blocks_general_symbol_plus_pi_inside_trig() {
+        let mut ctx = Context::new();
+        let expr = parse("1/x + 1/(x+1) + pi", &mut ctx).expect("parse");
+        let l = parse("1/x + 1/(x+1)", &mut ctx).expect("parse");
+        let r = parse("pi", &mut ctx).expect("parse");
+        let n1 = parse("2*x + 1", &mut ctx).expect("parse");
+        let d1 = parse("x*(x+1)", &mut ctx).expect("parse");
+        let n2 = parse("pi", &mut ctx).expect("parse");
+        let d2 = parse("1", &mut ctx).expect("parse");
         let plan = plan_add_fraction_rewrite_with(
             &mut ctx,
             AddFractionRewriteInput {

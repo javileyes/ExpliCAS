@@ -339,6 +339,15 @@ impl Rewrite {
         self
     }
 
+    /// Final effective expression of this rewrite after all chained rewrites.
+    #[must_use]
+    pub fn final_expr(&self) -> ExprId {
+        self.chained
+            .last()
+            .map(|rewrite| rewrite.after)
+            .unwrap_or(self.new_expr)
+    }
+
     /// Add an educational sub-step explaining rule application (V2.14.45).
     /// These are metadata only - don't participate in the rewrite loop.
     ///

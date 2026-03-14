@@ -49,10 +49,11 @@ fn test_sqrt_binomial_squared() {
 
     // Debe contener valor absoluto
     assert!(result_str.contains('|'));
-    // Should be optimized (before was many steps with expansion)
+    // Should stay reasonably compact. The runtime now records a few extra
+    // didactic chained rewrites that were previously skipped.
     assert!(
-        steps.len() < 10,
-        "Expected < 10 steps, got {} steps",
+        steps.len() < 16,
+        "Expected < 16 steps, got {} steps",
         steps.len()
     );
 }

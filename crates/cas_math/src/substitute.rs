@@ -255,7 +255,7 @@ fn substitute_inner(
     steps: &mut Vec<(String, ExprId, ExprId, Option<String>)>,
 ) -> ExprId {
     // 1) Exact structural match (highest priority)
-    if node == target {
+    if compare_expr(ctx, node, target) == Ordering::Equal {
         steps.push(("SubstituteExact".to_string(), node, replacement, None));
         return replacement;
     }
@@ -540,6 +540,25 @@ mod tests {
         // Should contain y but not x
         assert!(contains_var(&ctx, result, "y"), "Expected y in result");
         assert!(!contains_var(&ctx, result, "x"), "Expected no x in result");
+    }
+
+    #[test]
+    fn test_exact_substitution_uses_structural_match_not_expr_id_only() {
+        let mut ctx = Context::new();
+        let expr = parse_expr(&mut ctx, "(u/(u+1)) + (u/(u+1))");
+        let target = parse_expr(&mut ctx, "u/(u+1)");
+        let replacement = parse_expr(&mut ctx, "t");
+
+        let result = substitute_power_aware(
+            &mut ctx,
+            expr,
+            target,
+            replacement,
+            SubstituteOptions::exact(),
+        );
+
+        assert!(contains_var(&ctx, result, "t"), "Expected t in result");
+        assert!(!contains_var(&ctx, result, "u"), "Expected no u in result");
     }
 
     #[test]

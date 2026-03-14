@@ -899,16 +899,21 @@ fn step_tracks_assumed_nonzero_in_generic() {
     };
     assert_eq!(result_str, "y", "(x*y)/x should simplify to y");
 
-    // Check that at least one step has assumption_events with NonZero(x)
-    let has_nonzero_assumption = output.steps.iter().any(|step| {
+    // Check either the historical assumption event path or the normalized
+    // required_conditions path.
+    let has_nonzero_assumption_event = output.steps.iter().any(|step| {
         step.assumption_events()
             .iter()
             .any(|event| matches!(event.key, cas_solver::api::AssumptionKey::NonZero { .. }))
     });
+    let has_nonzero_required = output.required_conditions.iter().any(|cond| {
+        let display = cond.display(&engine.simplifier.context);
+        display.contains("x") && display.contains("≠ 0")
+    });
 
     assert!(
-        has_nonzero_assumption,
-        "At least one step should have NonZero assumption event for x"
+        has_nonzero_assumption_event || has_nonzero_required,
+        "Expected NonZero(x) either as assumption_event or required_condition"
     );
 }
 

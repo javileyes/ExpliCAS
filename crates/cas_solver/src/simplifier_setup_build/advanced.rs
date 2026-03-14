@@ -6,6 +6,7 @@ use crate::rules::exponents::{
 use crate::rules::number_theory::NumberTheoryRule;
 use crate::rules::polynomial::{
     AnnihilationRule, BinomialExpansionRule, CombineLikeTermsRule, DistributeRule,
+    PolynomialIdentityZeroRule, SqrtPerfectSquareRule,
 };
 use crate::rules::trigonometry::AngleConsistencyRule;
 use cas_solver_core::simplifier_config::SimplifierRuleConfig;
@@ -15,6 +16,7 @@ pub(super) fn add_advanced_rules(
     config: &SimplifierRuleConfig,
 ) {
     simplifier.add_rule(Box::new(crate::rules::algebra::NestedFractionRule));
+    simplifier.add_rule(Box::new(crate::rules::algebra::SymmetricReciprocalSumRule));
     simplifier.add_rule(Box::new(crate::rules::algebra::AddFractionsRule));
     simplifier.add_rule(Box::new(crate::rules::algebra::SimplifyMulDivRule));
     if config.rationalize_denominator {
@@ -37,6 +39,8 @@ pub(super) fn add_advanced_rules(
     if config.auto_factor {
         simplifier.add_rule(Box::new(crate::rules::algebra::AutomaticFactorRule));
     }
+    simplifier.add_rule(Box::new(SqrtPerfectSquareRule));
+    simplifier.add_rule(Box::new(PolynomialIdentityZeroRule));
 
     simplifier.add_rule(Box::new(AngleConsistencyRule));
     // Kept duplicated intentionally to preserve current behavior.

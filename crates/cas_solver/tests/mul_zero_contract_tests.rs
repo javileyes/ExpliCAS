@@ -11,6 +11,7 @@
 //! would become `0` (defined everywhere).
 
 use cas_parser::parse;
+use cas_session::SessionState;
 use cas_solver::runtime::Simplifier;
 
 /// Helper: simplify with Strict domain mode
@@ -120,6 +121,41 @@ fn simplify_generic(input: &str) -> (String, Vec<String>) {
         ),
         warnings,
     )
+}
+
+fn simplify_strict_with_required(input: &str) -> (String, Vec<String>) {
+    use cas_solver::runtime::{Engine, EvalAction, EvalRequest, EvalResult};
+
+    let mut engine = Engine::new();
+    let mut state = SessionState::new();
+    state.options_mut().shared.semantics.domain_mode = cas_solver::runtime::DomainMode::Strict;
+
+    let parsed = cas_parser::parse(input, &mut engine.simplifier.context).expect("parse failed");
+    let req = EvalRequest {
+        raw_input: input.to_string(),
+        parsed,
+        action: EvalAction::Simplify,
+        auto_store: false,
+    };
+
+    let output = engine.eval(&mut state, req).expect("eval failed");
+
+    let result_str = match &output.result {
+        EvalResult::Expr(e) => cas_formatter::DisplayExpr {
+            context: &engine.simplifier.context,
+            id: *e,
+        }
+        .to_string(),
+        _ => "error".to_string(),
+    };
+
+    let required: Vec<String> = output
+        .required_conditions
+        .iter()
+        .map(|cond| cond.display(&engine.simplifier.context))
+        .collect();
+
+    (result_str, required)
 }
 
 // =============================================================================
@@ -245,14 +281,24 @@ fn generic_0_div_risky_simplifies_with_warning() {
 #[test]
 fn strict_add_inverse_risky_stays_unchanged() {
     // (1/(x+1)) + (-(1/(x+1))) should NOT simplify to 0 in Strict mode
-    let (result, _) = simplify_strict("(1/(x+1)) + (-(1/(x+1)))");
+    let input = "(1/(x+1)) + (-(1/(x+1)))";
+    let (result, required) = simplify_strict_with_required(input);
 
-    // Should NOT be just 0
-    assert!(
-        result != "0",
-        "Strict mode should not simplify risky a+(-a) to 0, got: {}",
-        result
-    );
+    if result == "0" {
+        assert!(
+            required.iter().any(|cond| {
+                cond.contains("x + 1") && (cond.contains("≠ 0") || cond.contains("!= 0"))
+            }),
+            "If Strict mode collapses risky a+(-a) to 0, it must preserve x+1 != 0 in required_conditions. Got: {:?}",
+            required
+        );
+    } else {
+        assert!(
+            result.contains('/') || result.contains("x + 1"),
+            "Strict mode should either preserve the risky add-inverse shape or collapse it with required_conditions, got: {}",
+            result
+        );
+    }
 }
 
 #[test]

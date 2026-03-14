@@ -1,10 +1,11 @@
 use crate::expr_destructure::{as_add, as_mul};
-use crate::expr_nary::{AddView, Sign};
+use crate::expr_nary::{AddView, MulView, Sign};
 use crate::pi_helpers::{extract_rational_pi_multiple, is_pi, is_pi_over_n};
+use crate::poly_compare::poly_eq;
 use cas_ast::{Context, Expr, ExprId};
 use num_bigint::BigInt;
 use num_rational::BigRational;
-use num_traits::One;
+use num_traits::{One, Zero};
 
 /// Extract the coefficient of π from an expression.
 /// - π -> 1
@@ -121,6 +122,160 @@ fn extract_positive_unit_fraction_denominator(ctx: &Context, expr: ExprId) -> Op
     }
 }
 
+fn is_zero_expr(ctx: &Context, expr: ExprId) -> bool {
+    matches!(ctx.get(expr), Expr::Number(n) if n.is_zero())
+}
+
+fn add_signed_term(ctx: &mut Context, acc: ExprId, term: ExprId, sign: Sign) -> ExprId {
+    if is_zero_expr(ctx, acc) {
+        return match sign {
+            Sign::Pos => term,
+            Sign::Neg => ctx.add(Expr::Neg(term)),
+        };
+    }
+    match sign {
+        Sign::Pos => ctx.add(Expr::Add(acc, term)),
+        Sign::Neg => ctx.add(Expr::Sub(acc, term)),
+    }
+}
+
+fn mul_if_nontrivial(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
+    if is_zero_expr(ctx, a) || is_zero_expr(ctx, b) {
+        return ctx.num(0);
+    }
+    if matches!(ctx.get(a), Expr::Number(n) if n.is_one()) {
+        return b;
+    }
+    if matches!(ctx.get(b), Expr::Number(n) if n.is_one()) {
+        return a;
+    }
+    ctx.add(Expr::Mul(a, b))
+}
+
+fn split_pi_linear_component(ctx: &mut Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
+    let zero = ctx.num(0);
+    let one = ctx.num(1);
+
+    if is_pi(ctx, expr) {
+        return Some((one, zero));
+    }
+
+    match ctx.get(expr) {
+        Expr::Add(_, _) | Expr::Sub(_, _) => {
+            let view = AddView::from_expr(ctx, expr);
+            let mut coeff_acc = zero;
+            let mut rest_acc = zero;
+            for (term, sign) in view.terms {
+                let (term_coeff, term_rest) = split_pi_linear_component(ctx, term)?;
+                if !is_zero_expr(ctx, term_coeff) {
+                    coeff_acc = add_signed_term(ctx, coeff_acc, term_coeff, sign);
+                }
+                if !is_zero_expr(ctx, term_rest) {
+                    rest_acc = add_signed_term(ctx, rest_acc, term_rest, sign);
+                }
+            }
+            Some((coeff_acc, rest_acc))
+        }
+        Expr::Neg(inner) => {
+            let (coeff, rest) = split_pi_linear_component(ctx, *inner)?;
+            let neg_coeff = if is_zero_expr(ctx, coeff) {
+                coeff
+            } else {
+                ctx.add(Expr::Neg(coeff))
+            };
+            let neg_rest = if is_zero_expr(ctx, rest) {
+                rest
+            } else {
+                ctx.add(Expr::Neg(rest))
+            };
+            Some((neg_coeff, neg_rest))
+        }
+        Expr::Mul(_, _) => {
+            let view = MulView::from_expr(ctx, expr);
+            let mut carrier_idx = None;
+            let mut carrier_coeff = zero;
+            let mut carrier_rest = zero;
+            let mut pure_factors: smallvec::SmallVec<[ExprId; 8]> = smallvec::SmallVec::new();
+
+            for (idx, factor) in view.factors.iter().copied().enumerate() {
+                let (coeff, rest) = split_pi_linear_component(ctx, factor)?;
+                if is_zero_expr(ctx, coeff) {
+                    pure_factors.push(rest);
+                } else {
+                    if carrier_idx.is_some() {
+                        return None;
+                    }
+                    carrier_idx = Some(idx);
+                    carrier_coeff = coeff;
+                    carrier_rest = rest;
+                }
+            }
+
+            let Some(_) = carrier_idx else {
+                return Some((zero, expr));
+            };
+
+            let pure_product = if pure_factors.is_empty() {
+                one
+            } else {
+                MulView {
+                    root: expr,
+                    factors: pure_factors,
+                    commutative: true,
+                }
+                .rebuild(ctx)
+            };
+
+            let coeff_out = mul_if_nontrivial(ctx, pure_product, carrier_coeff);
+            let rest_out = if is_zero_expr(ctx, carrier_rest) {
+                zero
+            } else {
+                mul_if_nontrivial(ctx, pure_product, carrier_rest)
+            };
+            Some((coeff_out, rest_out))
+        }
+        _ => Some((zero, expr)),
+    }
+}
+
+fn extract_symbolic_den_phase_shift(
+    ctx: &mut Context,
+    num: ExprId,
+    den: ExprId,
+) -> Option<(ExprId, i32)> {
+    let (pi_coeff, base_num) = split_pi_linear_component(ctx, num)?;
+    if is_zero_expr(ctx, pi_coeff) {
+        return None;
+    }
+    let two = ctx.num(2);
+    let lhs = ctx.add(Expr::Mul(two, pi_coeff));
+
+    for k in [-3_i32, -2, -1, 1, 2, 3] {
+        let abs_k = k.abs() as i64;
+        let scaled_den = if abs_k == 1 {
+            den
+        } else {
+            let coeff = ctx.num(abs_k);
+            ctx.add(Expr::Mul(coeff, den))
+        };
+        let rhs = if k < 0 {
+            ctx.add(Expr::Neg(scaled_den))
+        } else {
+            scaled_den
+        };
+        if poly_eq(ctx, lhs, rhs) {
+            let base = if matches!(ctx.get(base_num), Expr::Number(n) if n.is_zero()) {
+                base_num
+            } else {
+                ctx.add(Expr::Div(base_num, den))
+            };
+            return Some((base, k));
+        }
+    }
+
+    None
+}
+
 /// Extract `(base_term, k)` from `expr` such that:
 /// `expr = base_term + k*π/2`.
 ///
@@ -141,7 +296,7 @@ pub fn extract_phase_shift(ctx: &mut Context, expr: ExprId) -> Option<(ExprId, i
                 return None;
             }
         } else {
-            return None;
+            return extract_symbolic_den_phase_shift(ctx, num, den);
         };
 
         if let Some((l, r)) = as_add(ctx, num) {
@@ -500,6 +655,32 @@ mod tests {
             std::cmp::Ordering::Equal
         );
         assert_eq!(k, 3);
+    }
+
+    #[test]
+    fn extract_phase_shift_from_symbolic_den_fraction_form() {
+        let mut ctx = Context::new();
+        let expr = parse("(pi*u*(u+1) + 2*u + 1)/(u*(u+1))", &mut ctx).expect("expr");
+        let expected_base = parse("(2*u + 1)/(u*(u+1))", &mut ctx).expect("expected");
+
+        let (base, k) = extract_phase_shift(&mut ctx, expr).expect("phase shift");
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, base, expected_base),
+            std::cmp::Ordering::Equal
+        );
+        assert_eq!(k, 2);
+    }
+
+    #[test]
+    fn rewrites_trig_phase_shift_from_symbolic_den_fraction_form() {
+        let mut ctx = Context::new();
+        let expr = parse("sin((pi*u*(u+1) + 2*u + 1)/(u*(u+1)))", &mut ctx).expect("expr");
+        let rewrite = try_rewrite_trig_phase_shift_function_expr(&mut ctx, expr).expect("rewrite");
+        let expected = parse("-sin((2*u + 1)/(u*(u+1)))", &mut ctx).expect("expected");
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, rewrite.rewritten, expected),
+            std::cmp::Ordering::Equal
+        );
     }
 
     #[test]

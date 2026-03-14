@@ -7,12 +7,12 @@ use cas_math::abs_support::{
     try_plan_symbolic_root_cancel_rewrite, try_rewrite_abs_even_power_expr,
     try_rewrite_abs_exp_identity_expr, try_rewrite_abs_idempotent_expr,
     try_rewrite_abs_numeric_factor_expr, try_rewrite_abs_odd_power_expr,
-    try_rewrite_abs_power_even_expr, try_rewrite_abs_product_identity_expr,
-    try_rewrite_abs_quotient_identity_expr, try_rewrite_abs_sqrt_identity_expr,
-    try_rewrite_abs_sub_normalize_expr, try_rewrite_abs_sum_nonnegative_expr,
-    try_rewrite_evaluate_abs_expr, try_rewrite_sqrt_square_expr, try_unwrap_abs_arg,
-    value_domain_mode_from_flag, AbsAssumptionKind, AbsDomainRewriteKind, AbsFixedRewriteKind,
-    SymbolicRootCancelRewriteKind,
+    try_rewrite_abs_power_even_expr, try_rewrite_abs_power_odd_magnitude_expr,
+    try_rewrite_abs_product_identity_expr, try_rewrite_abs_quotient_identity_expr,
+    try_rewrite_abs_sqrt_identity_expr, try_rewrite_abs_sub_normalize_expr,
+    try_rewrite_abs_sum_nonnegative_expr, try_rewrite_evaluate_abs_expr,
+    try_rewrite_sqrt_square_expr, try_unwrap_abs_arg, value_domain_mode_from_flag,
+    AbsAssumptionKind, AbsDomainRewriteKind, AbsFixedRewriteKind, SymbolicRootCancelRewriteKind,
 };
 use cas_math::root_forms::try_rewrite_odd_half_power_expr;
 
@@ -213,6 +213,44 @@ impl crate::rule::Rule for AbsSquaredRule {
         }
 
         let rewrite = try_rewrite_abs_power_even_expr(ctx, expr)?;
+        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+    }
+
+    fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
+        Some(crate::target_kind::TargetKindSet::POW)
+    }
+
+    fn allowed_phases(&self) -> PhaseMask {
+        PhaseMask::CORE | PhaseMask::TRANSFORM | PhaseMask::RATIONALIZE
+    }
+}
+
+/// AbsPowerOddMagnitudeRule: |x|^(2k+1) → x^(2k)·|x|
+///
+/// This canonical form exposes the even-power part as a plain polynomial
+/// factor while preserving one magnitude atom. As with AbsSquaredRule, skip
+/// under ln/log so logarithm-specific rules can keep the didactic |x|^n form.
+pub struct AbsPowerOddMagnitudeRule;
+
+impl crate::rule::Rule for AbsPowerOddMagnitudeRule {
+    fn name(&self) -> &str {
+        "Abs Odd Power Canonicalize"
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: cas_ast::ExprId,
+        parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<crate::rule::Rewrite> {
+        if parent_ctx
+            .immediate_parent()
+            .is_some_and(|parent_id| is_ln_or_log_call(ctx, parent_id))
+        {
+            return None;
+        }
+
+        let rewrite = try_rewrite_abs_power_odd_magnitude_expr(ctx, expr)?;
         Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
     }
 
@@ -453,17 +491,9 @@ fn format_abs_numeric_factor_desc(
     kind: cas_math::abs_support::AbsNumericFactorRewriteKind,
 ) -> &'static str {
     match kind {
-        cas_math::abs_support::AbsNumericFactorRewriteKind::LeftPositive => {
-            "|k·x| = k·|x| for k > 0"
-        }
-        cas_math::abs_support::AbsNumericFactorRewriteKind::LeftNegative => {
+        cas_math::abs_support::AbsNumericFactorRewriteKind::Positive => "|k·x| = k·|x| for k > 0",
+        cas_math::abs_support::AbsNumericFactorRewriteKind::Negative => {
             "|(-k)·x| = |k|·|x| for k < 0"
-        }
-        cas_math::abs_support::AbsNumericFactorRewriteKind::RightPositive => {
-            "|x·k| = k·|x| for k > 0"
-        }
-        cas_math::abs_support::AbsNumericFactorRewriteKind::RightNegative => {
-            "|x·(-k)| = |k|·|x| for k < 0"
         }
     }
 }
@@ -490,6 +520,7 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(AbsPositiveSimplifyRule)); // V2.14.20: |x| -> x when x > 0
     simplifier.add_rule(Box::new(AbsNonNegativeSimplifyRule)); // |x| -> x when x >= 0 (from sqrt requirements)
     simplifier.add_rule(Box::new(AbsSquaredRule));
+    simplifier.add_rule(Box::new(AbsPowerOddMagnitudeRule)); // |x|^(2k+1) -> x^(2k)*|x|
     simplifier.add_rule(Box::new(AbsIdempotentRule)); // ||x|| → |x|
     simplifier.add_rule(Box::new(AbsOfEvenPowerRule)); // |x^2k| → x^2k
     simplifier.add_rule(Box::new(AbsPowOddIntegerRule)); // |x^n| → |x|^n (odd n)

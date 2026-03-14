@@ -350,10 +350,11 @@ fn test_layer2_heuristic_labeling() {
     let has_layer2 = descriptions.iter().any(|d| d.contains("Layer 2"));
     let has_gcd = descriptions.iter().any(|d| d.contains("GCD"));
     let has_factor = descriptions.iter().any(|d| d.contains("Factor"));
-    // Either Layer 2, GCD, or Factor step is valid
+    let has_cancel = descriptions.iter().any(|d| d.contains("Cancel"));
+    // Either Layer 2, GCD, Factor, or direct cancel step is valid.
     assert!(
-        has_layer2 || has_gcd || has_factor,
-        "Should have Layer 2, GCD, or Factor step for diff of squares, got: {:?}",
+        has_layer2 || has_gcd || has_factor || has_cancel,
+        "Should have Layer 2, GCD, Factor, or Cancel step for diff of squares, got: {:?}",
         descriptions
     );
 }

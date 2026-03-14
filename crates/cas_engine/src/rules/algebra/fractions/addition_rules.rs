@@ -13,6 +13,7 @@ use cas_math::fraction_add_rewrite_support::{
 };
 use cas_math::fraction_add_rule_support::{
     try_plan_fold_add_into_fraction_rewrite, try_plan_sub_term_matches_denom_rewrite,
+    try_plan_symmetric_reciprocal_sum_rewrite,
 };
 use cas_math::fraction_pair_guard_support::{
     should_block_add_fraction_pair, should_block_sub_fraction_pair, AddFractionPairGuardInput,
@@ -129,6 +130,18 @@ define_rule!(
         });
         let plan = try_plan_sub_term_matches_denom_rewrite(ctx, expr, inside_trig)?;
         Some(Rewrite::new(plan.rewritten).desc(format_sub_term_matches_denom_desc()))
+    }
+);
+
+define_rule!(
+    SymmetricReciprocalSumRule,
+    "Combine Symmetric Reciprocals",
+    |ctx, expr| {
+        let plan = try_plan_symmetric_reciprocal_sum_rewrite(ctx, expr)?;
+        Some(
+            Rewrite::new(plan.rewritten)
+                .desc("Common denominator: 1/(a-1) + 1/(a+1) -> 2*a/(a^2 - 1)"),
+        )
     }
 );
 

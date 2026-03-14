@@ -145,6 +145,73 @@ fn extract_exact_int_factor(
     None
 }
 
+fn build_scaled_inner(context: &mut Context, factor: i64, inner: ExprId) -> ExprId {
+    if factor == 1 {
+        inner
+    } else {
+        let coeff = context.num(factor);
+        context.add(Expr::Mul(coeff, inner))
+    }
+}
+
+fn extract_divisible_int_factor(
+    context: &mut Context,
+    term: ExprId,
+    target: i64,
+) -> Option<(bool, ExprId)> {
+    debug_assert!(target > 0, "target must be a positive integer");
+
+    if let Expr::Neg(inner) = context.get(term) {
+        return extract_divisible_int_factor(context, *inner, target).map(|(sign, id)| (!sign, id));
+    }
+
+    if let Expr::Number(n) = context.get(term) {
+        if n.is_integer() {
+            let val = n.to_integer().to_i64()?;
+            let abs = val.abs();
+            if abs >= target && abs % target == 0 {
+                let quotient = abs / target;
+                let inner = context.num(quotient);
+                return Some((val >= 0, inner));
+            }
+        }
+    }
+
+    if let Expr::Mul(lhs, rhs) = context.get(term).clone() {
+        if let Expr::Number(n) = context.get(lhs) {
+            if n.is_integer() {
+                let val = n.to_integer().to_i64()?;
+                let abs = val.abs();
+                if abs >= target && abs % target == 0 {
+                    let quotient = abs / target;
+                    let inner = build_scaled_inner(context, quotient, rhs);
+                    return Some((val >= 0, inner));
+                }
+            }
+        }
+        if let Expr::Number(n) = context.get(rhs) {
+            if n.is_integer() {
+                let val = n.to_integer().to_i64()?;
+                let abs = val.abs();
+                if abs >= target && abs % target == 0 {
+                    let quotient = abs / target;
+                    let inner = build_scaled_inner(context, quotient, lhs);
+                    return Some((val >= 0, inner));
+                }
+            }
+        }
+    }
+
+    if let Expr::Div(num, den) = context.get(term).clone() {
+        if let Some((sign, inner_num)) = extract_divisible_int_factor(context, num, target) {
+            let inner = context.add(Expr::Div(inner_num, den));
+            return Some((sign, inner));
+        }
+    }
+
+    None
+}
+
 /// Extract inner variable from `±target * x` pattern for any small positive integer `target`.
 ///
 /// Returns `Some((is_positive, inner))` if the expression matches:
@@ -207,6 +274,19 @@ pub fn extract_int_multiple(
         }
     }
     None
+}
+
+/// Relaxed variant of [`extract_int_multiple`] that also supports:
+/// - additive forms sharing the factor `target`
+/// - divisible integer coefficients like `4*x` for `target=2` (returns `2*x`)
+/// - simple fraction forms like `(4*x)/y` for `target=2` (returns `(2*x)/y`)
+pub fn extract_int_multiple_relaxed(
+    context: &mut Context,
+    expr: ExprId,
+    target: i64,
+) -> Option<(bool, ExprId)> {
+    extract_int_multiple_additive(context, expr, target)
+        .or_else(|| extract_divisible_int_factor(context, expr, target))
 }
 
 /// Like [`extract_int_multiple`] but also handles **additive** forms where
@@ -292,11 +372,23 @@ pub fn extract_double_angle_arg(context: &Context, expr: ExprId) -> Option<ExprI
     extract_int_multiple(context, expr, 2).and_then(|(positive, inner)| positive.then_some(inner))
 }
 
+#[inline]
+pub fn extract_double_angle_arg_relaxed(context: &mut Context, expr: ExprId) -> Option<ExprId> {
+    extract_int_multiple_relaxed(context, expr, 2)
+        .and_then(|(positive, inner)| positive.then_some(inner))
+}
+
 /// Extract inner variable from `3*x` pattern (for triple angle identities).
 /// Backward-compatible wrapper around [`extract_int_multiple`].
 #[inline]
 pub fn extract_triple_angle_arg(context: &Context, expr: ExprId) -> Option<ExprId> {
     extract_int_multiple(context, expr, 3).and_then(|(positive, inner)| positive.then_some(inner))
+}
+
+#[inline]
+pub fn extract_triple_angle_arg_relaxed(context: &mut Context, expr: ExprId) -> Option<ExprId> {
+    extract_int_multiple_relaxed(context, expr, 3)
+        .and_then(|(positive, inner)| positive.then_some(inner))
 }
 
 /// Extract inner variable from `5*x` pattern (for quintuple angle identities).
@@ -373,5 +465,51 @@ fn flatten_mul_recursive(ctx: &mut Context, expr: ExprId, factors: &mut Vec<Expr
         _ => {
             factors.push(expr);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        extract_double_angle_arg_relaxed, extract_int_multiple_relaxed,
+        extract_triple_angle_arg_relaxed,
+    };
+    use cas_ast::ordering::compare_expr;
+    use cas_ast::Context;
+    use cas_parser::parse;
+    use std::cmp::Ordering;
+
+    #[test]
+    fn relaxed_multiple_extracts_additive_double_angle() {
+        let mut ctx = Context::new();
+        let expr = parse("2*x + 2*pi", &mut ctx).expect("expr");
+        let expected = parse("x + pi", &mut ctx).expect("expected");
+        let got = extract_double_angle_arg_relaxed(&mut ctx, expr).expect("rewrite");
+        assert_eq!(compare_expr(&ctx, got, expected), Ordering::Equal);
+    }
+
+    #[test]
+    fn relaxed_multiple_extracts_divisible_factor_through_division() {
+        let mut ctx = Context::new();
+        let expr = parse("4*u/(u^2 - 1)", &mut ctx).expect("expr");
+        let expected = parse("2*u/(u^2 - 1)", &mut ctx).expect("expected");
+        let got = extract_double_angle_arg_relaxed(&mut ctx, expr).expect("rewrite");
+        assert_eq!(compare_expr(&ctx, got, expected), Ordering::Equal);
+    }
+
+    #[test]
+    fn relaxed_multiple_extracts_additive_triple_angle() {
+        let mut ctx = Context::new();
+        let expr = parse("3*u^3 + 3", &mut ctx).expect("expr");
+        let expected = parse("u^3 + 1", &mut ctx).expect("expected");
+        let got = extract_triple_angle_arg_relaxed(&mut ctx, expr).expect("rewrite");
+        assert_eq!(compare_expr(&ctx, got, expected), Ordering::Equal);
+    }
+
+    #[test]
+    fn relaxed_multiple_rejects_non_multiple() {
+        let mut ctx = Context::new();
+        let expr = parse("3*u/(u^2 - 1)", &mut ctx).expect("expr");
+        assert!(extract_int_multiple_relaxed(&mut ctx, expr, 2).is_none());
     }
 }

@@ -163,8 +163,14 @@ fn combine_like_terms_variable_cancellation_focus() {
         .any(|(_, _, after_local, _)| after_local.as_deref() == Some("0"));
 
     assert!(
-        has_zero_result || steps.is_empty() || steps.iter().any(|(r, _, _, _)| r == "Add Inverse" || r == "Subtraction Self-Cancel"),
-        "x - x should have a step showing → 0, or be handled by Add Inverse/Subtraction Self-Cancel. Steps: {:?}",
+        has_zero_result
+            || steps.is_empty()
+            || steps.iter().any(|(r, _, _, _)| {
+                r == "Add Inverse"
+                    || r == "Subtraction Self-Cancel"
+                    || r == "Polynomial Identity"
+            }),
+        "x - x should have a step showing → 0, or be handled by Add Inverse/Subtraction Self-Cancel/Polynomial Identity. Steps: {:?}",
         steps
     );
 }
@@ -267,10 +273,13 @@ fn non_regression_complex_fraction_simplification_pipeline() {
         rule_names
     );
 
-    // Should have "Combine Like Terms" step
+    // The final cancellation route may surface as Combine Like Terms, a direct
+    // self-cancel, or a polynomial-identity zero proof depending on the engine path.
     assert!(
-        rule_names.contains(&"Combine Like Terms"),
-        "Should apply 'Combine Like Terms' rule, got: {:?}",
+        rule_names.contains(&"Combine Like Terms")
+            || rule_names.contains(&"Subtraction Self-Cancel")
+            || rule_names.contains(&"Polynomial Identity"),
+        "Should apply a visible cancellation rule, got: {:?}",
         rule_names
     );
 }

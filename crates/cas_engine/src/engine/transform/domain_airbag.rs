@@ -45,8 +45,13 @@ impl<'a> LocalSimplificationTransformer<'a> {
 
         use crate::{check_analytic_expansion, AnalyticExpansionResult, ImplicitCondition};
 
-        let expansion =
-            check_analytic_expansion(self.context, self.root_expr, expr_id, rewrite.new_expr, vd);
+        let expansion = check_analytic_expansion(
+            self.context,
+            self.root_expr,
+            expr_id,
+            rewrite.final_expr(),
+            vd,
+        );
 
         if let AnalyticExpansionResult::WouldExpand { dropped, sources } = expansion {
             let outcome = cas_solver_core::domain_airbag_policy::apply_domain_airbag_policy(

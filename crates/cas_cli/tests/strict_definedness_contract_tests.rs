@@ -11,6 +11,7 @@
 //! - In Generic: silently
 
 use cas_formatter::display::DisplayExpr;
+use cas_session::SessionState;
 use cas_solver::runtime::Simplifier;
 
 /// Helper: simplify with Strict domain mode
@@ -63,6 +64,41 @@ fn simplify_assume(input: &str) -> String {
             id: result
         }
     )
+}
+
+/// Helper: simplify with Strict domain mode and return visible requires.
+fn simplify_strict_with_requires(input: &str) -> (String, Vec<String>) {
+    use cas_solver::runtime::{Engine, EvalAction, EvalRequest, EvalResult};
+
+    let mut engine = Engine::new();
+    let mut state = SessionState::new();
+    state.options_mut().shared.semantics.domain_mode = cas_solver::runtime::DomainMode::Strict;
+
+    let parsed = cas_parser::parse(input, &mut engine.simplifier.context).expect("parse failed");
+    let req = EvalRequest {
+        raw_input: input.to_string(),
+        parsed,
+        action: EvalAction::Simplify,
+        auto_store: false,
+    };
+
+    let output = engine.eval(&mut state, req).expect("eval failed");
+    let result = match &output.result {
+        EvalResult::Expr(e) => format!(
+            "{}",
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: *e
+            }
+        ),
+        _ => "error".to_string(),
+    };
+    let required = output
+        .required_conditions
+        .iter()
+        .map(|cond| cond.display(&engine.simplifier.context))
+        .collect();
+    (result, required)
 }
 
 /// Helper: simplify with Generic domain mode
@@ -124,13 +160,19 @@ fn assume_zero_over_symbolic_collapses() {
 
 #[test]
 fn strict_subtraction_with_undefined_does_not_collapse() {
-    // x/(x+1) - x/(x+1) should NOT collapse to 0 in Strict
-    let result = simplify_strict("x/(x+1) - x/(x+1)");
-    // Should preserve the subtraction form (not be just "0")
+    // Strict must not widen the domain silently.
+    // Accept either:
+    // - preserving the subtraction form, or
+    // - collapsing to 0 while carrying the same NonZero(x+1) requirement.
+    let (result, required) = simplify_strict_with_requires("x/(x+1) - x/(x+1)");
+    let preserved_shape = result.contains("-") || result.contains("/");
+    let collapsed_with_guard = result.trim() == "0"
+        && required
+            .iter()
+            .any(|r| r.contains("x + 1") && r.contains("≠ 0"));
     assert!(
-        result.contains("-") || result.contains("/"),
-        "Strict should preserve x/(x+1) - x/(x+1), got: {}",
-        result
+        preserved_shape || collapsed_with_guard,
+        "Strict should preserve the risky subtraction or emit 0 with x + 1 ≠ 0, got result={result}, required={required:?}",
     );
 }
 

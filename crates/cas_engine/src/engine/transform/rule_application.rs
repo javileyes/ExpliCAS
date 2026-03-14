@@ -92,6 +92,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                     }
 
                     if let Some(mut rewrite) = rule.apply(self.context, expr_id, &parent_ctx) {
+                        let final_expr = rewrite.final_expr();
                         // Check semantic equality - skip if no real change
                         // EXCEPTION: Didactic rules should always generate steps
                         // even if result is semantically equivalent (e.g., sqrt(12) → 2*√3)
@@ -101,7 +102,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                         if !is_didactic_rule {
                             use cas_math::semantic_equality::SemanticEqualityChecker;
                             let checker = SemanticEqualityChecker::new(self.context);
-                            if checker.are_equal(expr_id, rewrite.new_expr) {
+                            if checker.are_equal(expr_id, final_expr) {
                                 debug!(
                                     "{}[DEBUG] Rule '{}' produced semantically equal result, skipping",
                                     self.indent(),
@@ -126,7 +127,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                             && cas_math::expr_complexity::rewrite_worsens_too_much(
                                 self.context,
                                 expr_id,
-                                rewrite.new_expr,
+                                final_expr,
                                 30,  // max_growth_abs
                                 1.5, // max_growth_ratio
                             )
@@ -156,7 +157,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                                 cas_math::expr_nf_scoring::count_all_nodes(self.context, expr_id);
                             let after = cas_math::expr_nf_scoring::count_all_nodes(
                                 self.context,
-                                rewrite.new_expr,
+                                final_expr,
                             );
                             after as i64 - before as i64
                         } else {
@@ -179,7 +180,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                                 );
                                 let node_count_after = cas_math::expr_complexity::node_count_tree(
                                     self.context,
-                                    rewrite.new_expr,
+                                    final_expr,
                                 );
                                 let _ = writeln!(
                                     f,
@@ -204,7 +205,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                             self.indent(),
                             rule.name(),
                             expr_id,
-                            rewrite.new_expr
+                            final_expr
                         );
                         expr_id = self.record_rewrite_step(rule.as_ref(), expr_id, rewrite);
 
@@ -294,8 +295,9 @@ impl<'a> LocalSimplificationTransformer<'a> {
 
                 // PERF: Reuse the parent_ctx built once per apply_rules() call
                 if let Some(mut rewrite) = rule.apply(self.context, expr_id, &parent_ctx) {
+                    let final_expr = rewrite.final_expr();
                     // Fast path: if rewrite produces identical ExprId, skip entirely
-                    if rewrite.new_expr == expr_id {
+                    if final_expr == expr_id {
                         continue;
                     }
 
@@ -307,12 +309,12 @@ impl<'a> LocalSimplificationTransformer<'a> {
                     if !is_didactic_rule {
                         use cas_math::semantic_equality::SemanticEqualityChecker;
                         let checker = SemanticEqualityChecker::new(self.context);
-                        if checker.are_equal(expr_id, rewrite.new_expr) {
+                        if checker.are_equal(expr_id, final_expr) {
                             // Provably equal - only accept if it improves normal form
                             if !cas_math::expr_nf_scoring::nf_score_after_is_better(
                                 self.context,
                                 expr_id,
-                                rewrite.new_expr,
+                                final_expr,
                             ) {
                                 continue; // Skip - no improvement
                             }
@@ -338,7 +340,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                         self.indent(),
                         rule.name(),
                         expr_id,
-                        rewrite.new_expr
+                        final_expr
                     );
                     expr_id = self.record_rewrite_step(rule.as_ref(), expr_id, rewrite);
 

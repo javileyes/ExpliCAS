@@ -50,14 +50,19 @@ fn test_identity_property_steps_have_low_importance() {
     }
 }
 
-/// Regression test: Auto Expand Power Sum step should be visible in Sub context
+/// Regression test: a visible cancellation step should appear in Sub context.
 ///
-/// Bug: (x^2+y^2+2xy) - (x+y)^2 was showing expanded form in CombineLikeTerms "Before"
-/// but the expansion step (Auto Expand Power Sum) was invisible because:
+/// Historically, `(x^2+y^2+2xy) - (x+y)^2` needed an explicit
+/// `Auto Expand Power Sum` step before cancellation. The current engine may
+/// instead close the identity directly via `Polynomial Identity`.
+///
+/// The contract we care about is that the user sees at least one didactically
+/// relevant step for the cancellation in Sub context.
+///
+/// Prior bug: `(x^2+y^2+2xy) - (x+y)^2` was showing expanded form in a later
+/// step "Before" but the actual visible cancellation trigger was missing because:
 /// 1. engine.rs didn't track Sub in ancestor_stack (now fixed)
 /// 2. AutoExpandPowSumRule couldn't see Sub parent, so in_auto_expand_context() was false
-///
-/// This test ensures the expansion step appears before Combine Like Terms.
 #[test]
 fn test_auto_expand_step_visible_in_sub_context() {
     let mut simplifier = Simplifier::with_default_rules();
@@ -74,11 +79,15 @@ fn test_auto_expand_step_visible_in_sub_context() {
         .iter()
         .filter(|s| s.rule_name == "Auto Expand Power Sum")
         .collect();
+    let poly_identity_steps: Vec<_> = steps
+        .iter()
+        .filter(|s| s.rule_name == "Polynomial Identity")
+        .collect();
 
-    // There should be at least one Auto Expand step
+    // There should be at least one visible cancellation route.
     assert!(
-        !expand_steps.is_empty(),
-        "Expected at least one 'Auto Expand Power Sum' step in Sub context. \
+        !expand_steps.is_empty() || !poly_identity_steps.is_empty(),
+        "Expected at least one visible cancellation step in Sub context. \
          Available steps: {:?}",
         steps.iter().map(|s| &s.rule_name).collect::<Vec<_>>()
     );
@@ -93,17 +102,19 @@ fn test_auto_expand_step_visible_in_sub_context() {
         .iter()
         .position(|s| s.rule_name == "Auto Expand Power Sum");
 
-    // Auto Expand should appear BEFORE Combine Like Terms
-    if let (Some(expand_pos), Some(combine_pos)) = (expand_idx, combine_idx) {
-        assert!(
-            expand_pos < combine_pos,
-            "Auto Expand Power Sum (at {}) should appear before Combine Like Terms (at {})",
-            expand_pos,
-            combine_pos
-        );
+    // Auto Expand should appear BEFORE Combine Like Terms when that path is taken.
+    if !expand_steps.is_empty() {
+        if let (Some(expand_pos), Some(combine_pos)) = (expand_idx, combine_idx) {
+            assert!(
+                expand_pos < combine_pos,
+                "Auto Expand Power Sum (at {}) should appear before Combine Like Terms (at {})",
+                expand_pos,
+                combine_pos
+            );
+        }
     }
 
-    // The expand step should have Medium importance (didactically important)
+    // The expand step should have Medium importance when that route is used.
     for step in &expand_steps {
         assert_eq!(
             step.importance,

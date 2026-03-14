@@ -270,6 +270,18 @@ mod tests {
     }
 
     #[test]
+    fn plan_univar_fraction_reduction_for_grouped_sub_denominator() {
+        let mut ctx = Context::new();
+        let expr = parse("(x^4 - 1)/(x^3 - x^2 + x - 1)", &mut ctx).expect("parse");
+        let num = parse("x^4 - 1", &mut ctx).expect("parse");
+        let den = parse("x^3 - x^2 + x - 1", &mut ctx).expect("parse");
+        let plan = try_plan_fraction_gcd_rewrite(&mut ctx, expr, num, den, true).expect("plan");
+        assert!(matches!(plan.route, FractionGcdRoute::Univar));
+        let expected = parse("x + 1", &mut ctx).expect("expected");
+        assert!(poly_eq(&ctx, plan.forms.result_norm, expected));
+    }
+
+    #[test]
     fn no_plan_when_gcd_trivial() {
         let mut ctx = Context::new();
         let expr = parse("(x+1)/(x+2)", &mut ctx).expect("parse");

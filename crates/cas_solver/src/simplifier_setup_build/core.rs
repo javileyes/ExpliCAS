@@ -1,8 +1,9 @@
-use crate::rules::exponents::EvaluatePowerRule;
+use crate::rules::exponents::{EvaluatePowerRule, NegativeExponentNormalizationRule};
 use crate::rules::grouping::CollectRule;
 use crate::rules::logarithms::{EvaluateLogRule, ExponentialLogRule, SplitLogExponentsRule};
 use crate::rules::trigonometry::{
     AngleIdentityRule, DoubleAngleRule, EvaluateTrigRule, PythagoreanIdentityRule, TanToSinCosRule,
+    TrigHalfAngleSquaresRule,
 };
 use cas_solver_core::simplifier_config::SimplifierRuleConfig;
 
@@ -17,6 +18,7 @@ pub(super) fn add_core_rules(simplifier: &mut crate::Simplifier, config: &Simpli
     if config.trig_double_angle {
         simplifier.add_rule(Box::new(DoubleAngleRule));
     }
+    simplifier.add_rule(Box::new(TrigHalfAngleSquaresRule));
     if config.canonicalize_trig_square {
         simplifier.add_rule(Box::new(
             crate::rules::trigonometry::CanonicalizeTrigSquareRule,
@@ -29,6 +31,7 @@ pub(super) fn add_core_rules(simplifier: &mut crate::Simplifier, config: &Simpli
     simplifier.add_rule(Box::new(crate::rules::algebra::ConservativeExpandRule));
     simplifier.add_rule(Box::new(crate::rules::algebra::FactorRule));
     simplifier.add_rule(Box::new(CollectRule));
+    simplifier.add_rule(Box::new(NegativeExponentNormalizationRule));
     // Kept duplicated intentionally to preserve current behavior.
     simplifier.add_rule(Box::new(EvaluatePowerRule));
     simplifier.add_rule(Box::new(EvaluatePowerRule));

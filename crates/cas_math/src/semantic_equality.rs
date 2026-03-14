@@ -175,8 +175,13 @@ impl<'a> SemanticEqualityChecker<'a> {
                     let val2 = num2 / den2;
                     return val1 == val2;
                 }
-                // Structurally compare
-                self.are_equal(*n1, *n2) && self.are_equal(*d1, *d2)
+                // Keep the fallback narrow: for rational wrappers we accept
+                // polynomially equivalent numerators/denominators, but we do
+                // not cross-multiply arbitrary fractions because that would
+                // also collapse domain-sensitive identities like x/x == 1.
+                (self.are_equal(*n1, *n2) || crate::poly_compare::poly_eq(self.context, *n1, *n2))
+                    && (self.are_equal(*d1, *d2)
+                        || crate::poly_compare::poly_eq(self.context, *d1, *d2))
             }
 
             // Recursive structural checks for compound expressions
@@ -351,6 +356,39 @@ mod tests {
 
         let checker = SemanticEqualityChecker::new(&ctx);
         assert!(checker.are_equal(pow1, pow2));
+    }
+
+    #[test]
+    fn test_division_equality_with_polynomial_denominator_forms() {
+        let mut ctx = Context::new();
+
+        let div1 = cas_parser::parse("(2*u + 1)/(u*(u+1))", &mut ctx).expect("parse div1");
+        let div2 = cas_parser::parse("(2*u + 1)/(u^2 + u)", &mut ctx).expect("parse div2");
+
+        let checker = SemanticEqualityChecker::new(&ctx);
+        assert!(checker.are_equal(div1, div2));
+    }
+
+    #[test]
+    fn test_function_wrapper_equality_with_polynomial_denominator_forms() {
+        let mut ctx = Context::new();
+
+        let expr1 = cas_parser::parse("sin((2*u + 1)/(u*(u+1)))", &mut ctx).expect("parse expr1");
+        let expr2 = cas_parser::parse("sin((2*u + 1)/(u^2 + u))", &mut ctx).expect("parse expr2");
+
+        let checker = SemanticEqualityChecker::new(&ctx);
+        assert!(checker.are_equal(expr1, expr2));
+    }
+
+    #[test]
+    fn test_division_equality_does_not_cross_multiply_domain_sensitive_identity() {
+        let mut ctx = Context::new();
+
+        let div_expr = cas_parser::parse("x/x", &mut ctx).expect("parse div");
+        let one = cas_parser::parse("1", &mut ctx).expect("parse one");
+
+        let checker = SemanticEqualityChecker::new(&ctx);
+        assert!(!checker.are_equal(div_expr, one));
     }
 
     #[test]

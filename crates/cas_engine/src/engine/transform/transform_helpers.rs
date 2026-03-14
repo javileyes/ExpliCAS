@@ -35,6 +35,22 @@ fn format_sqrt_square_pow_plan(kind: SqrtSquarePowRewriteKind) -> (&'static str,
     }
 }
 
+fn polynomial_identity_preorder_desc(
+    kind: crate::polynomial_identity_support::PolynomialIdentityProofKind,
+) -> &'static str {
+    match kind {
+        crate::polynomial_identity_support::PolynomialIdentityProofKind::Direct => {
+            "Polynomial identity: normalize and cancel to 0"
+        }
+        crate::polynomial_identity_support::PolynomialIdentityProofKind::OpaqueSubstitution => {
+            "Polynomial identity (opaque substitution): cancel to 0"
+        }
+        crate::polynomial_identity_support::PolynomialIdentityProofKind::OpaqueRootRelation => {
+            "Polynomial identity (opaque root relation): cancel to 0"
+        }
+    }
+}
+
 fn is_symbolic_atom(ctx: &Context, expr: ExprId) -> bool {
     matches!(ctx.get(expr), Expr::Variable(_) | Expr::Constant(_))
 }
@@ -268,6 +284,36 @@ impl<'a> LocalSimplificationTransformer<'a> {
         r: ExprId,
         op: BinaryOp,
     ) -> ExprId {
+        // PRE-ORDER: For Add/Sub, try exact polynomial-identity closure before
+        // children are simplified. The bottom-up pipeline can otherwise
+        // normalize opaque rational/root atoms into bulky residual fractions
+        // that the same proof helper would have closed immediately.
+        if matches!(op, BinaryOp::Add | BinaryOp::Sub)
+            && matches!(
+                self.current_phase,
+                crate::phase::SimplifyPhase::Core
+                    | crate::phase::SimplifyPhase::Transform
+                    | crate::phase::SimplifyPhase::PostCleanup
+            )
+            && !self.initial_parent_ctx.is_solve_context()
+        {
+            if let Some(plan) =
+                crate::polynomial_identity_support::try_prove_polynomial_identity_zero_expr(
+                    self.context,
+                    id,
+                )
+            {
+                let zero = self.context.num(0);
+                self.record_step(
+                    polynomial_identity_preorder_desc(plan.kind),
+                    "Polynomial Identity",
+                    id,
+                    zero,
+                );
+                return zero;
+            }
+        }
+
         // PRE-ORDER: For Mul, detect conjugate pairs in the factor chain BEFORE
         // child simplification. This prevents canonicalization (sqrt→Pow) from
         // breaking structural matching, and prevents DistributeRule from splitting

@@ -9,7 +9,7 @@ use crate::trig_dyadic_policy_support::{
     decide_dyadic_sin_nonzero_policy, DyadicSinNonzeroPolicyDecision,
 };
 use crate::trig_roots_flatten::{
-    extract_double_angle_arg, extract_quintuple_angle_arg, extract_triple_angle_arg,
+    extract_double_angle_arg_relaxed, extract_quintuple_angle_arg, extract_triple_angle_arg_relaxed,
 };
 use crate::trig_sum_product_support::extract_trig_arg;
 use cas_ast::ordering::compare_expr;
@@ -77,7 +77,7 @@ pub fn try_rewrite_triple_angle_expr(
         _ => return None,
     };
 
-    let inner_var = extract_triple_angle_arg(ctx, arg)?;
+    let inner_var = extract_triple_angle_arg_relaxed(ctx, arg)?;
     if !is_trivial_angle(ctx, inner_var) {
         return None;
     }
@@ -152,7 +152,7 @@ pub fn try_rewrite_double_angle_function_expr(
         _ => return None,
     };
 
-    let inner_var = extract_double_angle_arg(ctx, args[0])?;
+    let inner_var = extract_double_angle_arg_relaxed(ctx, args[0])?;
     if is_multiple_angle(ctx, inner_var) {
         return None;
     }
@@ -1120,6 +1120,55 @@ mod tests {
     use super::*;
     use cas_parser::parse;
 
+    fn matches_any_expected_arg(ctx: &Context, arg: ExprId, expected: &[ExprId]) -> bool {
+        expected
+            .iter()
+            .any(|candidate| compare_expr(ctx, arg, *candidate) == Ordering::Equal)
+    }
+
+    fn assert_double_angle_product(
+        ctx: &Context,
+        two: ExprId,
+        expr: ExprId,
+        lhs_builtin: BuiltinFn,
+        rhs_builtin: BuiltinFn,
+        expected_args: &[ExprId],
+    ) {
+        let Expr::Mul(lhs, rhs) = ctx.get(expr) else {
+            panic!("expected outer multiplication");
+        };
+        let inner_mul = if *lhs == two {
+            *rhs
+        } else if *rhs == two {
+            *lhs
+        } else {
+            panic!("expected numeric factor 2");
+        };
+
+        let Expr::Mul(m1, m2) = ctx.get(inner_mul) else {
+            panic!("expected inner multiplication");
+        };
+        let Expr::Function(fn1, args1) = ctx.get(*m1) else {
+            panic!("expected builtin factor");
+        };
+        let Expr::Function(fn2, args2) = ctx.get(*m2) else {
+            panic!("expected builtin factor");
+        };
+        assert_eq!(args1.len(), 1);
+        assert_eq!(args2.len(), 1);
+        let builtins_match = (ctx.builtin_of(*fn1) == Some(lhs_builtin)
+            && ctx.builtin_of(*fn2) == Some(rhs_builtin))
+            || (ctx.builtin_of(*fn1) == Some(rhs_builtin)
+                && ctx.builtin_of(*fn2) == Some(lhs_builtin));
+        assert!(
+            builtins_match,
+            "expected {:?}/{:?} factors",
+            lhs_builtin, rhs_builtin
+        );
+        assert!(matches_any_expected_arg(ctx, args1[0], expected_args));
+        assert!(matches_any_expected_arg(ctx, args2[0], expected_args));
+    }
+
     #[test]
     fn trivial_angle_detection_handles_basic_shapes() {
         let mut ctx = Context::new();
@@ -1173,6 +1222,26 @@ mod tests {
         let mut ctx = Context::new();
         let expr = parse("sin(2*(8*x))", &mut ctx).expect("expr");
         assert!(try_rewrite_double_angle_function_expr(&mut ctx, expr).is_none());
+    }
+
+    #[test]
+    fn double_angle_rewrite_matches_additive_shift_argument() {
+        let mut ctx = Context::new();
+        let two = ctx.num(2);
+        let expr = parse("sin(2*x + 2*pi)", &mut ctx).expect("expr");
+        let rewrite = try_rewrite_double_angle_function_expr(&mut ctx, expr).expect("rewrite");
+        let expected = [
+            parse("x + pi", &mut ctx).expect("expected"),
+            parse("pi + x", &mut ctx).expect("expected variant"),
+        ];
+        assert_double_angle_product(
+            &ctx,
+            two,
+            rewrite.rewritten,
+            BuiltinFn::Sin,
+            BuiltinFn::Cos,
+            &expected,
+        );
     }
 
     #[test]

@@ -2655,6 +2655,12 @@ fn prove_zero_from_expanded_operands_text(lhs: &str, rhs: &str) -> bool {
     expr_is_zero(&sd.context, ds_expand_simp)
 }
 
+fn prove_zero_from_engine_texts(lhs: &str, rhs: &str) -> bool {
+    prove_zero_from_diff_text(lhs, rhs)
+        || prove_zero_from_expanded_operands_text(lhs, rhs)
+        || prove_zero_via_wire_eval(lhs, rhs)
+}
+
 fn expr_text(ctx: &Context, expr: ExprId) -> String {
     DisplayExpr {
         context: ctx,
@@ -2667,9 +2673,13 @@ fn prove_zero_from_expr_texts(ctx: &Context, lhs: ExprId, rhs: ExprId) -> bool {
     let lhs_str = expr_text(ctx, lhs);
     let rhs_str = expr_text(ctx, rhs);
     prove_zero_from_curated_pair_corpus_text(&lhs_str, &rhs_str)
-        || prove_zero_from_diff_text(&lhs_str, &rhs_str)
-        || prove_zero_from_expanded_operands_text(&lhs_str, &rhs_str)
-        || prove_zero_via_wire_eval(&lhs_str, &rhs_str)
+        || prove_zero_from_engine_texts(&lhs_str, &rhs_str)
+}
+
+fn prove_zero_from_expr_texts_uncurated(ctx: &Context, lhs: ExprId, rhs: ExprId) -> bool {
+    let lhs_str = expr_text(ctx, lhs);
+    let rhs_str = expr_text(ctx, rhs);
+    prove_zero_from_engine_texts(&lhs_str, &rhs_str)
 }
 
 fn prove_equiv_exprs(simplifier: &mut Simplifier, lhs: ExprId, rhs: ExprId) -> bool {
@@ -3062,14 +3072,83 @@ fn prove_zero_from_metamorphic_texts(
     lhs_simp: ExprId,
     rhs_simp: ExprId,
 ) -> bool {
-    prove_zero_from_contextual_block_strategies_text(lhs_text, rhs_text)
-        || prove_zero_from_curated_pair_corpus_text(lhs_text, rhs_text)
-        || prove_zero_from_expr_variants(simplifier, lhs_simp, rhs_simp)
-        || prove_zero_from_residual(simplifier, lhs_simp, rhs_simp)
+    prove_zero_from_metamorphic_texts_with_flavor(
+        simplifier,
+        lhs_text,
+        rhs_text,
+        lhs_simp,
+        rhs_simp,
+        MetamorphicProofFlavor::Curated,
+    )
 }
 
 fn pair_is_symbolically_proved(pair: &IdentityPair) -> bool {
     prove_zero_from_contextual_block_strategies_text(&pair.exp, &pair.simp)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MetamorphicProofFlavor {
+    Curated,
+    RawPressure,
+}
+
+fn prove_zero_from_expr_variants_with_flavor(
+    simplifier: &mut Simplifier,
+    lhs: ExprId,
+    rhs: ExprId,
+    flavor: MetamorphicProofFlavor,
+) -> bool {
+    let prove_expr_texts = |ctx: &Context, lhs: ExprId, rhs: ExprId| match flavor {
+        MetamorphicProofFlavor::Curated => prove_zero_from_expr_texts(ctx, lhs, rhs),
+        MetamorphicProofFlavor::RawPressure => prove_zero_from_expr_texts_uncurated(ctx, lhs, rhs),
+    };
+
+    if prove_expr_texts(&simplifier.context, lhs, rhs) {
+        return true;
+    }
+
+    let (lhs_expand_raw, _) = simplifier.expand(lhs);
+    let lhs_expand = fold_constants_safe(&mut simplifier.context, lhs_expand_raw);
+    let (rhs_expand_raw, _) = simplifier.expand(rhs);
+    let rhs_expand = fold_constants_safe(&mut simplifier.context, rhs_expand_raw);
+    if prove_expr_texts(&simplifier.context, lhs_expand, rhs_expand) {
+        return true;
+    }
+
+    let (lhs_expand_simp_raw, _) = simplifier.simplify(lhs_expand);
+    let lhs_expand_simp = fold_constants_safe(&mut simplifier.context, lhs_expand_simp_raw);
+    let (rhs_expand_simp_raw, _) = simplifier.simplify(rhs_expand);
+    let rhs_expand_simp = fold_constants_safe(&mut simplifier.context, rhs_expand_simp_raw);
+    if prove_expr_texts(&simplifier.context, lhs_expand_simp, rhs_expand_simp) {
+        return true;
+    }
+
+    prove_zero_from_residual(simplifier, lhs_expand_simp, rhs_expand_simp)
+}
+
+fn prove_zero_from_metamorphic_texts_with_flavor(
+    simplifier: &mut Simplifier,
+    lhs_text: &str,
+    rhs_text: &str,
+    lhs_simp: ExprId,
+    rhs_simp: ExprId,
+    flavor: MetamorphicProofFlavor,
+) -> bool {
+    match flavor {
+        MetamorphicProofFlavor::Curated => {
+            prove_zero_from_contextual_block_strategies_text(lhs_text, rhs_text)
+                || prove_zero_from_curated_pair_corpus_text(lhs_text, rhs_text)
+                || prove_zero_from_expr_variants_with_flavor(simplifier, lhs_simp, rhs_simp, flavor)
+                || prove_zero_from_residual(simplifier, lhs_simp, rhs_simp)
+        }
+        // Pressure mode intentionally skips harness-level curated shortcuts.
+        // It keeps only proof paths that still go through the engine itself.
+        MetamorphicProofFlavor::RawPressure => {
+            prove_zero_from_engine_texts(lhs_text, rhs_text)
+                || prove_zero_from_expr_variants_with_flavor(simplifier, lhs_simp, rhs_simp, flavor)
+                || prove_zero_from_residual(simplifier, lhs_simp, rhs_simp)
+        }
+    }
 }
 
 #[test]
@@ -3158,6 +3237,83 @@ fn metamorphic_texts_use_power_merged_variants_for_curated_pairs() {
         rhs,
         lhs_simp,
         rhs_simp
+    ));
+}
+
+#[test]
+fn raw_pressure_proof_skips_curated_pair_shortcuts() {
+    let lhs = "sec((1/(u - 1) + 1/(u + 1)))^2 - tan((1/(u - 1) + 1/(u + 1)))^2";
+    let rhs = "1";
+
+    assert!(prove_zero_from_curated_pair_corpus_text(lhs, rhs));
+    assert!(!prove_zero_from_engine_texts(lhs, rhs));
+
+    let mut simplifier = Simplifier::with_default_rules();
+    let lhs_expr = parse(lhs, &mut simplifier.context).expect("lhs parses");
+    let rhs_expr = parse(rhs, &mut simplifier.context).expect("rhs parses");
+    let (lhs_simp_raw, _) = simplifier.simplify(lhs_expr);
+    let lhs_simp = fold_constants_safe(&mut simplifier.context, lhs_simp_raw);
+    let (rhs_simp_raw, _) = simplifier.simplify(rhs_expr);
+    let rhs_simp = fold_constants_safe(&mut simplifier.context, rhs_simp_raw);
+
+    assert!(!prove_zero_from_metamorphic_texts_with_flavor(
+        &mut simplifier,
+        lhs,
+        rhs,
+        lhs_simp,
+        rhs_simp,
+        MetamorphicProofFlavor::RawPressure
+    ));
+}
+
+#[test]
+fn raw_pressure_proof_skips_contextual_block_shortcuts() {
+    let lhs = "((x^2 + y^2)*(a^2 + b^2)) + (sec((1/(u - 1) + 1/(u + 1)))^2 - tan((1/(u - 1) + 1/(u + 1)))^2)";
+    let rhs = "((x*a + y*b)^2 + (x*b - y*a)^2) + 1";
+
+    assert!(prove_zero_from_contextual_block_strategies_text(lhs, rhs));
+
+    let mut simplifier = Simplifier::with_default_rules();
+    let lhs_expr = parse(lhs, &mut simplifier.context).expect("lhs parses");
+    let rhs_expr = parse(rhs, &mut simplifier.context).expect("rhs parses");
+    let (lhs_simp_raw, _) = simplifier.simplify(lhs_expr);
+    let lhs_simp = fold_constants_safe(&mut simplifier.context, lhs_simp_raw);
+    let (rhs_simp_raw, _) = simplifier.simplify(rhs_expr);
+    let rhs_simp = fold_constants_safe(&mut simplifier.context, rhs_simp_raw);
+
+    assert!(!prove_zero_from_metamorphic_texts_with_flavor(
+        &mut simplifier,
+        lhs,
+        rhs,
+        lhs_simp,
+        rhs_simp,
+        MetamorphicProofFlavor::RawPressure
+    ));
+}
+
+#[test]
+fn raw_pressure_proof_can_use_original_engine_texts() {
+    let lhs = "((u/(u + 1))+1)^4";
+    let rhs = "(u/(u + 1))^4 + 4*(u/(u + 1))^3 + 6*(u/(u + 1))^2 + 4*(u/(u + 1)) + 1";
+
+    assert!(!prove_zero_from_curated_pair_corpus_text(lhs, rhs));
+    assert!(prove_zero_from_engine_texts(lhs, rhs));
+
+    let mut simplifier = Simplifier::with_default_rules();
+    let lhs_expr = parse(lhs, &mut simplifier.context).expect("lhs parses");
+    let rhs_expr = parse(rhs, &mut simplifier.context).expect("rhs parses");
+    let (lhs_simp_raw, _) = simplifier.simplify(lhs_expr);
+    let lhs_simp = fold_constants_safe(&mut simplifier.context, lhs_simp_raw);
+    let (rhs_simp_raw, _) = simplifier.simplify(rhs_expr);
+    let rhs_simp = fold_constants_safe(&mut simplifier.context, rhs_simp_raw);
+
+    assert!(prove_zero_from_metamorphic_texts_with_flavor(
+        &mut simplifier,
+        lhs,
+        rhs,
+        lhs_simp,
+        rhs_simp,
+        MetamorphicProofFlavor::RawPressure
     ));
 }
 
@@ -11828,11 +11984,38 @@ fn run_assumption_trace_contract_tests() -> AssumptionTraceContractMetrics {
     metrics
 }
 
+fn substitution_filters_for_mode(
+    sub: &SubstitutionExpr,
+    use_declared_filters: bool,
+) -> Vec<FilterSpec> {
+    if use_declared_filters {
+        return sub.filters.clone();
+    }
+
+    vec![FilterSpec::None; sub.filters.len().max(1)]
+}
+
 /// Run substitution-based metamorphic tests
 fn run_substitution_tests_with(
     substitutions: Vec<SubstitutionExpr>,
     suite_label: &str,
     suite_op: &str,
+) -> ComboMetrics {
+    run_substitution_tests_with_mode(
+        substitutions,
+        suite_label,
+        suite_op,
+        MetamorphicProofFlavor::Curated,
+        true,
+    )
+}
+
+fn run_substitution_tests_with_mode(
+    substitutions: Vec<SubstitutionExpr>,
+    suite_label: &str,
+    suite_op: &str,
+    proof_flavor: MetamorphicProofFlavor,
+    use_declared_filters: bool,
 ) -> ComboMetrics {
     let identities = load_substitution_identities();
     let config = metatest_config();
@@ -11884,13 +12067,14 @@ fn run_substitution_tests_with(
             let lhs_str = text_substitute(&identity.exp, id_var, &sub.expr);
             let rhs_str = text_substitute(&identity.simp, id_var, &sub.expr);
             let free_var = sub.var.clone();
-            let filters = sub.filters.clone();
+            let filters = substitution_filters_for_mode(sub, use_declared_filters);
 
             let lhs_clone = lhs_str.clone();
             let rhs_clone = rhs_str.clone();
             let config_clone = config.clone();
             let free_var_clone = free_var.clone();
             let filters_clone = filters.clone();
+            let proof_flavor_clone = proof_flavor;
 
             let (tx, rx) = std::sync::mpsc::channel();
             let _handle = std::thread::Builder::new()
@@ -11968,12 +12152,13 @@ fn run_substitution_tests_with(
                         return;
                     }
 
-                    if prove_zero_from_metamorphic_texts(
+                    if prove_zero_from_metamorphic_texts_with_flavor(
                         &mut simplifier,
                         &lhs_clone,
                         &rhs_clone,
                         e,
                         s,
+                        proof_flavor_clone,
                     ) {
                         let _ = tx.send(Some((
                             "proved".to_string(),
@@ -12300,6 +12485,16 @@ fn run_structural_substitution_tests() -> ComboMetrics {
         load_structural_substitution_expressions(),
         "Structural substitution",
         "⇄sub+",
+    )
+}
+
+fn run_structural_substitution_tests_raw() -> ComboMetrics {
+    run_substitution_tests_with_mode(
+        load_structural_substitution_expressions(),
+        "Structural substitution (raw pressure)",
+        "⇄sub+raw",
+        MetamorphicProofFlavor::RawPressure,
+        false,
     )
 }
 
@@ -12800,12 +12995,23 @@ fn metatest_csv_substitution() {
 }
 
 #[test]
-#[ignore] // Run with: cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_csv_substitution_structural -- --include-ignored
+#[ignore] // Run with: cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_csv_substitution_structural -- --ignored --exact --nocapture
 fn metatest_csv_substitution_structural() {
     let m = run_structural_substitution_tests();
     assert_eq!(
         m.failed, 0,
         "{} structural substitution tests failed",
+        m.failed
+    );
+}
+
+#[test]
+#[ignore] // Run with: cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_csv_substitution_structural_raw -- --ignored --exact --nocapture
+fn metatest_csv_substitution_structural_raw() {
+    let m = run_structural_substitution_tests_raw();
+    assert_eq!(
+        m.failed, 0,
+        "{} raw structural substitution tests failed",
         m.failed
     );
 }
@@ -13395,6 +13601,19 @@ fn load_structural_substitution_expressions_parses_optional_filters() {
 
     assert_eq!(root_ctx.filters.len(), 1);
     assert_eq!(root_ctx.filters[0].as_str(), "gt(0.1)");
+}
+
+#[test]
+fn substitution_filters_for_raw_mode_strip_declared_filters() {
+    let substitutions = load_structural_substitution_expressions();
+    let root_ctx = substitutions
+        .iter()
+        .find(|sub| sub.label == "root_ctx")
+        .expect("root_ctx substitution");
+
+    let raw_filters = substitution_filters_for_mode(root_ctx, false);
+    assert_eq!(raw_filters.len(), 1);
+    assert!(raw_filters[0].is_none());
 }
 
 #[test]

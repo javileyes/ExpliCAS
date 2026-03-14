@@ -1,5 +1,5 @@
 use crate::expr_predicates::{is_one_expr, is_two_expr};
-use crate::trig_roots_flatten::{extract_double_angle_arg, extract_triple_angle_arg};
+use crate::trig_roots_flatten::{extract_double_angle_arg_relaxed, extract_triple_angle_arg};
 use cas_ast::ordering::compare_expr;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use std::cmp::Ordering;
@@ -266,18 +266,20 @@ pub fn try_rewrite_hyperbolic_double_angle_sub_chain(
         return None;
     }
 
-    let find_cosh_double = |terms: &[ExprId]| -> Option<(usize, ExprId)> {
-        for (i, &t) in terms.iter().enumerate() {
-            if let Expr::Function(fn_id, args) = ctx.get(t) {
-                if ctx.builtin_of(*fn_id) == Some(BuiltinFn::Cosh) && args.len() == 1 {
-                    if let Some(x) = extract_double_angle_arg(ctx, args[0]) {
-                        return Some((i, x));
-                    }
+    let mut cosh_double = None;
+    for (i, &t) in terms.iter().enumerate() {
+        if let Expr::Function(fn_id, args) = ctx.get(t) {
+            if ctx.builtin_of(*fn_id) == Some(BuiltinFn::Cosh) && args.len() == 1 {
+                if let Some(x) = extract_double_angle_arg_relaxed(ctx, args[0]) {
+                    cosh_double = Some((i, x));
+                    break;
                 }
             }
+            if cosh_double.is_some() {
+                break;
+            }
         }
-        None
-    };
+    }
 
     let as_neg_hyp_squared = |e: ExprId| -> Option<(ExprId, bool)> {
         if let Expr::Neg(inner) = ctx.get(e) {
@@ -299,7 +301,7 @@ pub fn try_rewrite_hyperbolic_double_angle_sub_chain(
         None
     };
 
-    let (cosh_idx, x_arg) = find_cosh_double(&terms)?;
+    let (cosh_idx, x_arg) = cosh_double?;
 
     let mut neg_cosh_idx = None;
     let mut neg_sinh_idx = None;
@@ -507,7 +509,7 @@ pub fn try_rewrite_sinh_double_angle_expansion(ctx: &mut Context, expr: ExprId) 
         return None;
     }
 
-    let x = extract_double_angle_arg(ctx, args[0])?;
+    let x = extract_double_angle_arg_relaxed(ctx, args[0])?;
     let two = ctx.num(2);
     let sinh_x = ctx.call_builtin(BuiltinFn::Sinh, vec![x]);
     let cosh_x = ctx.call_builtin(BuiltinFn::Cosh, vec![x]);
@@ -536,7 +538,7 @@ pub fn try_rewrite_tanh_double_angle_expansion(ctx: &mut Context, expr: ExprId) 
         return None;
     }
 
-    let x = extract_double_angle_arg(ctx, args[0])?;
+    let x = extract_double_angle_arg_relaxed(ctx, args[0])?;
     let two = ctx.num(2);
     let one = ctx.num(1);
     let tanh_x = ctx.call_builtin(BuiltinFn::Tanh, vec![x]);
@@ -777,8 +779,69 @@ mod tests {
         HyperbolicTripleAngleRewriteKind, RecognizeHyperbolicFromExpRewriteKind,
         SinhCoshToExpRewriteKind,
     };
-    use cas_ast::{BuiltinFn, Context, Expr};
+    use cas_ast::ordering::compare_expr;
+    use cas_ast::{BuiltinFn, Context, Expr, ExprId};
     use cas_formatter::render_expr;
+    use cas_parser::parse;
+    use std::cmp::Ordering;
+
+    fn matches_any_expected_arg(ctx: &Context, arg: ExprId, expected: &[ExprId]) -> bool {
+        expected
+            .iter()
+            .any(|candidate| compare_expr(ctx, arg, *candidate) == Ordering::Equal)
+    }
+
+    fn assert_two_builtin_product_with_shared_arg(
+        ctx: &Context,
+        two: ExprId,
+        expr: ExprId,
+        lhs_builtin: BuiltinFn,
+        rhs_builtin: BuiltinFn,
+        expected_args: &[ExprId],
+    ) {
+        let Expr::Mul(lhs, rhs) = ctx.get(expr) else {
+            panic!("expected outer multiplication");
+        };
+        let inner_mul = if *lhs == two {
+            *rhs
+        } else if *rhs == two {
+            *lhs
+        } else {
+            panic!("expected numeric factor 2");
+        };
+
+        let Expr::Mul(m1, m2) = ctx.get(inner_mul) else {
+            panic!("expected inner multiplication");
+        };
+        let (f1, f2) = (*m1, *m2);
+        let Expr::Function(fn1, args1) = ctx.get(f1) else {
+            panic!("expected builtin factor");
+        };
+        let Expr::Function(fn2, args2) = ctx.get(f2) else {
+            panic!("expected builtin factor");
+        };
+        assert_eq!(args1.len(), 1);
+        assert_eq!(args2.len(), 1);
+        let builtins_match = (ctx.builtin_of(*fn1) == Some(lhs_builtin)
+            && ctx.builtin_of(*fn2) == Some(rhs_builtin))
+            || (ctx.builtin_of(*fn1) == Some(rhs_builtin)
+                && ctx.builtin_of(*fn2) == Some(lhs_builtin));
+        assert!(
+            builtins_match,
+            "expected {:?}/{:?} factors",
+            lhs_builtin, rhs_builtin
+        );
+        assert!(
+            matches_any_expected_arg(ctx, args1[0], expected_args),
+            "unexpected first argument: {}",
+            render_expr(ctx, args1[0])
+        );
+        assert!(
+            matches_any_expected_arg(ctx, args2[0], expected_args),
+            "unexpected second argument: {}",
+            render_expr(ctx, args2[0])
+        );
+    }
 
     #[test]
     fn detects_cosh2_minus_sinh2() {
@@ -1030,6 +1093,46 @@ mod tests {
         assert_eq!(
             rewrite.kind,
             HyperbolicIdentityRewriteKind::SinhDoubleAngleExpansion
+        );
+    }
+
+    #[test]
+    fn rewrites_sinh_double_angle_expansion_for_additive_argument() {
+        let mut ctx = Context::new();
+        let two = ctx.num(2);
+        let expr = parse("sinh(2*x + 2*pi)", &mut ctx).expect("expr");
+        let expected = [
+            parse("x + pi", &mut ctx).expect("expected"),
+            parse("pi + x", &mut ctx).expect("expected variant"),
+        ];
+        let rewrite = try_rewrite_sinh_double_angle_expansion(&mut ctx, expr).expect("rewrite");
+        assert_two_builtin_product_with_shared_arg(
+            &ctx,
+            two,
+            rewrite,
+            BuiltinFn::Sinh,
+            BuiltinFn::Cosh,
+            &expected,
+        );
+    }
+
+    #[test]
+    fn rewrites_sinh_double_angle_expansion_for_divisible_rational_argument() {
+        let mut ctx = Context::new();
+        let two = ctx.num(2);
+        let expr = parse("sinh(4*u/(u^2 - 1))", &mut ctx).expect("expr");
+        let expected = [
+            parse("2*u/(u^2 - 1)", &mut ctx).expect("expected"),
+            parse("(u*2)/(u^2 - 1)", &mut ctx).expect("expected variant"),
+        ];
+        let rewrite = try_rewrite_sinh_double_angle_expansion(&mut ctx, expr).expect("rewrite");
+        assert_two_builtin_product_with_shared_arg(
+            &ctx,
+            two,
+            rewrite,
+            BuiltinFn::Sinh,
+            BuiltinFn::Cosh,
+            &expected,
         );
     }
 

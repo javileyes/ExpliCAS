@@ -58,6 +58,17 @@ pub fn try_rewrite_negative_exponent_normalization_expr(
             });
         }
     }
+    if matches!(ctx.get(base), Expr::Constant(c) if *c == cas_ast::Constant::E) {
+        if let Some(inner_exp) = as_neg(ctx, exp) {
+            let one = ctx.num(1);
+            let pos_pow = ctx.add(Expr::Pow(base, inner_exp));
+            let rewritten = ctx.add(Expr::Div(one, pos_pow));
+            return Some(PowerEvalStaticRewrite {
+                rewritten,
+                kind: PowerEvalStaticRewriteKind::NegativeExponentNormalization,
+            });
+        }
+    }
     None
 }
 
