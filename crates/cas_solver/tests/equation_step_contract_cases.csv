@@ -1,3 +1,8 @@
 # equation_str,solve_var,domain_mode,assume_scope,identity_exp,identity_simp,expected_keywords,family
 x^2 - 4 = 0,x,generic,real,sin(t)^2 + cos(t)^2 - 1,0,quadratic formula,quadratic_didactic
 A = P + P*r*t,P,generic,real,sin(t)^2 + cos(t)^2 - 1,0,collect,linear_collect_didactic
+2^x = y,x,assume,real,sec(t)^2 - tan(t)^2 - 1,0,take log base e of both sides,log_linear_didactic
+1/R = 1/R1 + 1/R2,R,generic,real,sin(t)^2 + cos(t)^2 - 1,0,combine fractions;reciprocal;!isolate denominator,reciprocal_didactic
+P*V/T = n*R,T,generic,real,sec(t)^2 - tan(t)^2 - 1,0,multiply both sides by t;divide both sides by;!isolate denominator,ideal_gas_didactic
+y = k*x/(x+c),x,generic,real,sin(t)^2 + cos(t)^2 - 1,0,collect;!divide both sides by k,michaelis_menten_didactic
+a*x + b*x = c,x,generic,real,sec(t)^2 - tan(t)^2 - 1,0,collect terms in x,combine_like_terms_didactic

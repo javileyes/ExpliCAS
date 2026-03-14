@@ -2,6 +2,7 @@
 2^x = y,x,assume,real,sin(t)^2 + cos(t)^2 - 1,0,positive(y),assume_rhs_positive
 b^x = 5,x,assume,real,sec(t)^2 - tan(t)^2 - 1,0,positive(b),assume_base_positive
 b^x = y,x,assume,real,sin(t)^2 + cos(t)^2 - 1,0,positive(b);positive(y),assume_base_rhs_positive
+2^x = sqrt(y),x,generic,real,sec(t)^2 - tan(t)^2 - 1,0,none,log_linear_sqrt_rhs_no_assumed
 (x-1)/(x+1) = y,x,generic,real,sin(t)^2 + cos(t)^2 - 1,0,none,symbolic_linear_no_assumed
 A = P + P*r*t,P,generic,real,sec(t)^2 - tan(t)^2 - 1,0,none,linear_collect_no_assumed
 1/R = 1/R1 + 1/R2,R,generic,real,sin(t)^2 + cos(t)^2 - 1,0,none,reciprocal_no_assumed

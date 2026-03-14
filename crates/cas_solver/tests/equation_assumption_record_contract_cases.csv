@@ -3,6 +3,7 @@
 b^x = 5,x,assume,real,sec(t)^2 - tan(t)^2 - 1,0,positive(b),assume_record_base_positive
 b^x = y,x,assume,real,sin(t)^2 + cos(t)^2 - 1,0,positive(b);positive(y),assume_record_base_rhs_positive
 2^x = 8,x,generic,real,sec(t)^2 - tan(t)^2 - 1,0,none,assume_record_none
+2^x = sqrt(y),x,generic,real,sin(t)^2 + cos(t)^2 - 1,0,none,log_linear_sqrt_rhs_record_none
 (x-1)/(x+1) = y,x,generic,real,sin(t)^2 + cos(t)^2 - 1,0,none,symbolic_linear_record_none
 A = P + P*r*t,P,generic,real,sec(t)^2 - tan(t)^2 - 1,0,none,linear_collect_record_none
 1/R = 1/R1 + 1/R2,R,generic,real,sin(t)^2 + cos(t)^2 - 1,0,none,reciprocal_record_none

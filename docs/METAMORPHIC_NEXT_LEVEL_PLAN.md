@@ -422,6 +422,10 @@ Estado:
   - esas rutas sí pueden tener un suelo mínimo estable de `required_conditions`
     ligado a denominadores de entrada (`nonzero(x + 1)`, `nonzero(R)`, `nonzero(R1)`,
     `nonzero(R2)`), aunque no surfacen warnings ni transparencia educativa.
+  - La variante `log-linear` con testigo de dominio en el RHS (`2^x = sqrt(y)`)
+    sí queda bien fijada en `required/assumed/warnings/transparency`, pero no en
+    `solution_kind`: la ecuación transformada puede reclasificarse a `Conditional`
+    por el parámetro extra de la identidad tier-0.
 - Existe además una suite explícita de preservación de señales de asunción del solver:
   - `/Users/javiergimenezmoya/developer/math/crates/cas_solver/tests/equation_assumption_contract_cases.csv`
   - `/Users/javiergimenezmoya/developer/math/crates/cas_solver/tests/metamorphic_equation_tests.rs`
@@ -429,7 +433,8 @@ Estado:
   `diagnostics.assumed` en caminos exponenciales que sí introducen suposiciones
   reales del solver, como `positive(base)` y `positive(rhs)` en modo `Assume`.
 - La ampliación actual añade también casos de ausencia correcta en familias
-  `conditional` del solver (`symbolic_linear`, `linear_collect`, `reciprocal`),
+  `conditional` del solver (`symbolic_linear`, `linear_collect`, `reciprocal`,
+  `log-linear` con `sqrt(y)`),
   para fijar que esas rutas no empiecen a emitir `diagnostics.assumed` espurios.
 - Además, la rama `wildcard residual` (`(-2)^x = y` en `Assume + Wildcard`) ya
   queda fijada como ausencia correcta en este canal: no introduce
@@ -443,7 +448,8 @@ Estado:
   que consumen UI/wire del solver (`positive(y)`, `positive(b)`, etc.), no solo
   el stream detallado de `diagnostics.assumed`.
 - También cubre ya ausencia correcta de `assumed_records` en familias
-  `conditional` donde el solver no debería inventar metadata agregada nueva.
+  `conditional` donde el solver no debería inventar metadata agregada nueva,
+  incluida la variante `2^x = sqrt(y)`.
 - La misma idea ya cubre también `wildcard residual`: no debe inventar
   `assumed_records` agregados solo por caer en residual.
 - Existe además una suite explícita de `warning preservation` del solver en el
@@ -453,8 +459,11 @@ Estado:
 - Como el solve path hoy no llena `domain_warnings`, esta suite fija el canal real
   que ve el usuario: la línea `⚠ Assumptions:` derivada de `solver_assumptions`
   bajo `AssumptionReporting::Summary`, y su ausencia correcta con `Off`.
+- Ya cubre positivos reales tanto de `positive(rhs)` como de `positive(base)` en
+  rutas exponenciales (`2^x = y`, `b^x = 5`, `b^x = y`).
 - La ampliación actual fija además ausencia correcta de esta cabecera visible en
-  familias `conditional` limpias (`symbolic_linear`, `linear_collect`, `reciprocal`).
+  familias `conditional` limpias (`symbolic_linear`, `linear_collect`, `reciprocal`,
+  `2^x = sqrt(y)`).
 - También fija ya ausencia correcta de `⚠ Assumptions:` en `wildcard residual`:
   hoy la transparencia de esa ruta entra por steps (`complex/preset`), no por la
   cabecera agregada de asunciones.
@@ -464,9 +473,16 @@ Estado:
 - Esa suite fija la sección `ℹ️ Assumptions used:` en render de `solve` con
   `debug_mode=true` y `AssumptionReporting::Trace`, verificando presencia o
   ausencia de bullets estables sin depender del orden fino de pasos.
+- Ya cubre positivos reales tanto de `rhs` como de `base` en esa sección:
+  `y > 0`, `b > 0` y el caso combinado `b > 0; y > 0`.
 - La ampliación actual añade también casos de ausencia correcta de esa sección en
   familias `conditional` limpias, para que un tier-0 inocuo no active trazas de
   asunción donde no debería.
+- La variante `2^x = sqrt(y)` no se fija aquí como invariante robusta:
+  bajo la ecuación transformada, el solve path puede surfacing un bullet ligado
+  al testigo `sqrt(y)` aunque la ecuación original no lo haga. Se mantiene
+  cubierta en `required/assumed/warnings/transparency`, pero no en
+  `assumption_section`.
 - Esa ausencia correcta cubre ya también `wildcard residual`: el solver puede
   surfacing transparencia educativa sin poblar la sección detallada
   `ℹ️ Assumptions used:`.
@@ -483,7 +499,8 @@ Estado:
   ausencia de señal visible cuando el solver cae en `needs-complex`, en especial
   en `Assume + Wildcard` con residual guiado por “complex/preset”.
 - La ampliación actual fija además ausencia correcta de esa señal en familias
-  `conditional`/`reciprocal` que no necesitan ayuda educativa de dominio.
+  `conditional`/`reciprocal` que no necesitan ayuda educativa de dominio,
+  incluida la ruta `2^x = sqrt(y)`.
 - Esa suite convive ahora con una cobertura más completa de `wildcard residual`:
   la señal visible `complex/preset` sigue siendo el canal correcto, mientras que
   `required/assumed/warnings/assumption section` permanecen ausentes.
@@ -505,18 +522,38 @@ Estado:
   mínimas de rutas ya estabilizadas, hoy:
   - activación de `quadratic formula`
   - presencia de `collect` en `linear collect`
-- Las rutas más sensibles al wording o al orden fino de pasos, como la recíproca,
-  se dejan por ahora fuera del metamórfico y siguen cubiertas por tests dedicados.
+  - presencia de `collect terms in x` en la factorización de términos semejantes
+    (`a*x + b*x = c`)
+  - preservación de `take log base e of both sides`
+    en la ruta `log-linear` (`2^x = y`)
+  - preservación de `combine fractions` y `reciprocal` en la ruta recíproca
+    (`1/R = 1/R1 + 1/R2`)
+  - preservación de `multiply both sides by t` y `divide both sides by`
+    en la descomposición de aislamiento de denominador (`P*V/T = n*R`)
+- La suite ya soporta además ausencia correcta de pasos malos vía keywords
+  prohibidas (`!keyword`) en el mismo CSV. Hoy fija también:
+  - ausencia de `isolate denominator` en las rutas `reciprocal` e `ideal gas`
+  - ausencia de `divide both sides by k` en `y = k*x/(x+c)`
+- Las rutas más sensibles al wording fino siguen fuera del metamórfico; la suite
+  de `steps` fija solo keywords pedagógicas gruesas y ausencias claras, no
+  secuencias exactas completas.
 - Existe además una primera suite explícita de contratos curados para Strategy 3 (pares equivalentes):
   - `/Users/javiergimenezmoya/developer/math/crates/cas_solver/tests/equation_pair_contract_cases.csv`
   - `/Users/javiergimenezmoya/developer/math/crates/cas_solver/tests/metamorphic_equation_tests.rs`
 - Esa suite fija:
+  - familias básicas del corpus general también en modo curado:
+    - `2*x = 6` ↔ `6 = 2*x`
+    - `x - 2 = 5` ↔ `3*(x - 2) = 15`
+    - `x = 5` ↔ `x + 3 = 8`
   - el par paramétrico `y = 2*x + 1` ↔ `y - 1 = 2*x` como regresión verificada
   - el par `a*x = b` ↔ `x = b/a` como caso que hoy sigue necesitando `numeric fallback`
   - y además familias solver más ricas:
     - `A = P + P*r*t` ↔ `A = P*(1 + r*t)`
+    - `a*x + b*x = c` ↔ `x*(a+b) = c`
     - `(x-1)/(x+1) = y` ↔ `x - 1 = y*(x + 1)`
     - `1/R = 1/R1 + 1/R2` ↔ `R = (R1*R2)/(R1+R2)`
+    - `x^2 - 6*x = -9` ↔ `x^2 - 6*x + 9 = 0`
+    - `|x| = 3` ↔ `|x| - 3 = 0`
 - Ya existe además un runner agregado de contratos de ecuaciones:
   - `metatest_equation_contract_suites`
 - El harness principal de ecuaciones ya está endurecido:

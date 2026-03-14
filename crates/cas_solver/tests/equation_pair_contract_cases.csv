@@ -3,14 +3,22 @@
 # Parametric pair that previously failed only in debug due to a stale canonical-shape assertion
 y = 2*x + 1,y - 1 = 2*x,x,verified,parametric_rearrange
 
+# Basic corpus families should also stay verified in the curated runner
+2*x = 6,6 = 2*x,x,verified,swap_basic
+x - 2 = 5,3*(x - 2) = 15,x,verified,scale_basic
+x = 5,x + 3 = 8,x,verified,add_both_basic
+
 # Parametric pair that currently needs numeric fallback rather than full symbolic closure
 a*x = b,x = b/a,x,numeric,parametric_numeric
 
 # Simple structural pair that should stay fully verified
 x^2 - 5*x + 6 = 0,(x - 2)*(x - 3) = 0,x,verified,factor_expand
+x^2 - 6*x = -9,x^2 - 6*x + 9 = 0,x,verified,move_terms_complete_square
+|x| = 3,|x| - 3 = 0,x,verified,abs_equiv
 
 # Linear-collect family should preserve solver behavior across equivalent rewrites
 A = P + P*r*t,A = P*(1 + r*t),P,verified,linear_collect_factor
+a*x + b*x = c,x*(a+b) = c,x,verified,combine_like_terms_factor
 
 # Symbolic linear family should stay equivalent across rearrangement
 (x-1)/(x+1) = y,x - 1 = y*(x + 1),x,verified,symbolic_linear_rearrange

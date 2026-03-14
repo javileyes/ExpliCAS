@@ -1,8 +1,10 @@
 # equation_str,solve_var,domain_mode,assume_scope,assumption_reporting,identity_exp,identity_simp,expected_warning_items,family
 2^x = y,x,assume,real,summary,sin(t)^2 + cos(t)^2 - 1,0,positive(y),summary_warning_rhs_positive
+b^x = 5,x,assume,real,summary,sin(t)^2 + cos(t)^2 - 1,0,positive(b),summary_warning_base_positive
 b^x = y,x,assume,real,summary,sec(t)^2 - tan(t)^2 - 1,0,positive(b);positive(y),summary_warning_base_rhs_positive
 2^x = y,x,assume,real,off,sin(t)^2 + cos(t)^2 - 1,0,none,summary_warning_off_suppresses
 2^x = 8,x,generic,real,summary,sec(t)^2 - tan(t)^2 - 1,0,none,summary_warning_absent_clean
+2^x = sqrt(y),x,generic,real,summary,sin(t)^2 + cos(t)^2 - 1,0,none,summary_warning_sqrt_rhs_absent
 (x-1)/(x+1) = y,x,generic,real,summary,sin(t)^2 + cos(t)^2 - 1,0,none,symbolic_linear_warning_absent
 A = P + P*r*t,P,generic,real,summary,sec(t)^2 - tan(t)^2 - 1,0,none,linear_collect_warning_absent
 1/R = 1/R1 + 1/R2,R,generic,real,summary,sin(t)^2 + cos(t)^2 - 1,0,none,reciprocal_warning_absent

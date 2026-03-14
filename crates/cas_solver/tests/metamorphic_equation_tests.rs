@@ -2422,7 +2422,8 @@ struct EquationStepContractCase {
     assume_scope: AssumeScope,
     identity_exp: String,
     identity_simp: String,
-    expected_keywords: Vec<String>,
+    required_keywords: Vec<String>,
+    forbidden_keywords: Vec<String>,
     family: String,
 }
 
@@ -2951,11 +2952,19 @@ fn load_equation_step_contract_cases() -> Vec<EquationStepContractCase> {
             );
         }
 
-        let expected_keywords = parts[6]
+        let mut required_keywords = Vec::new();
+        let mut forbidden_keywords = Vec::new();
+        for token in parts[6]
             .split(';')
-            .map(|s| s.trim().to_string())
+            .map(|s| s.trim())
             .filter(|s| !s.is_empty())
-            .collect();
+        {
+            if let Some(rest) = token.strip_prefix('!') {
+                forbidden_keywords.push(rest.trim().to_ascii_lowercase());
+            } else {
+                required_keywords.push(token.to_ascii_lowercase());
+            }
+        }
 
         cases.push(EquationStepContractCase {
             equation_str: parts[0].trim().to_string(),
@@ -2964,7 +2973,8 @@ fn load_equation_step_contract_cases() -> Vec<EquationStepContractCase> {
             assume_scope: parse_contract_assume_scope(parts[3]),
             identity_exp: parts[4].trim().to_string(),
             identity_simp: parts[5].trim().to_string(),
-            expected_keywords,
+            required_keywords,
+            forbidden_keywords,
             family: if parts.len() > 7 {
                 parts[7].trim().to_string()
             } else {
@@ -3952,10 +3962,17 @@ fn run_equation_step_contract_tests() -> EquationStepContractMetrics {
         );
 
         let passed = match (&orig_steps, &trans_steps) {
-            (Ok(orig), Ok(trans)) => case.expected_keywords.iter().all(|kw| {
-                orig.iter().any(|step| step.contains(kw))
-                    && trans.iter().any(|step| step.contains(kw))
-            }),
+            (Ok(orig), Ok(trans)) => {
+                let required_ok = case.required_keywords.iter().all(|kw| {
+                    orig.iter().any(|step| step.contains(kw))
+                        && trans.iter().any(|step| step.contains(kw))
+                });
+                let forbidden_ok = case.forbidden_keywords.iter().all(|kw| {
+                    !orig.iter().any(|step| step.contains(kw))
+                        && !trans.iter().any(|step| step.contains(kw))
+                });
+                required_ok && forbidden_ok
+            }
             _ => false,
         };
 
@@ -3980,7 +3997,10 @@ fn run_equation_step_contract_tests() -> EquationStepContractMetrics {
                 i + 1,
                 truncate(&case.family, 18),
                 truncate(&case.equation_str, 26),
-                case.expected_keywords,
+                format!(
+                    "required={:?} forbidden={:?}",
+                    case.required_keywords, case.forbidden_keywords
+                ),
                 truncate(&orig_detail, 28),
                 truncate(&trans_detail, 28),
             );
