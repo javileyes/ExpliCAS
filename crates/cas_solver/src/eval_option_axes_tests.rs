@@ -11,6 +11,7 @@ mod tests {
                 context: cas_api_models::EvalContextMode::Solve,
                 branch: cas_api_models::EvalBranchMode::Principal,
                 complex: cas_api_models::EvalComplexMode::On,
+                const_fold: cas_api_models::EvalConstFoldMode::Safe,
                 autoexpand: cas_api_models::EvalExpandPolicy::Auto,
                 steps: cas_api_models::EvalStepsMode::Compact,
                 domain: cas_api_models::EvalDomainMode::Strict,
@@ -24,6 +25,7 @@ mod tests {
         assert_eq!(opts.shared.context_mode, crate::ContextMode::Solve);
         assert_eq!(opts.branch_mode, crate::BranchMode::PrincipalBranch);
         assert_eq!(opts.complex_mode, crate::ComplexMode::On);
+        assert_eq!(opts.const_fold, crate::ConstFoldMode::Safe);
         assert_eq!(opts.shared.expand_policy, crate::ExpandPolicy::Auto);
         assert_eq!(opts.steps_mode, crate::StepsMode::Compact);
         assert_eq!(opts.shared.semantics.domain_mode, crate::DomainMode::Strict);

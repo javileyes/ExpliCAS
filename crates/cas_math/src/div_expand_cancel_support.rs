@@ -6,7 +6,13 @@
 use crate::expandable_pattern_support::contains_expandable_small_depth;
 use crate::expr_complexity::node_count_tree;
 use crate::expr_destructure::as_div;
-use crate::multipoly::{multipoly_from_expr, PolyBudget};
+use crate::fraction_factors::{
+    build_fraction_from_factor_vectors, decompose_fraction_like_factors,
+};
+use crate::multipoly::{multipoly_from_expr, multipoly_to_expr, PolyBudget};
+use crate::opaque_atoms::{
+    extract_opaque_rational_power_atom, extract_opaque_reciprocal_power_base,
+};
 use crate::opaque_function_calls_support::{
     collect_function_calls_limited, match_shared_calls_structural,
 };
@@ -44,11 +50,119 @@ pub struct DivExpandToCancelRewrite {
     pub kind: DivExpandToCancelKind,
 }
 
+fn mk_pow_u32(ctx: &mut Context, base: ExprId, exp: u32) -> ExprId {
+    if exp == 1 {
+        base
+    } else {
+        let exp_expr = ctx.num(exp as i64);
+        ctx.add(Expr::Pow(base, exp_expr))
+    }
+}
+
+fn replace_root_family_with_temp(
+    ctx: &mut Context,
+    expr: ExprId,
+    root_base: ExprId,
+    root_index: u32,
+    temp_var: ExprId,
+) -> ExprId {
+    if compare_expr(ctx, expr, root_base) == Ordering::Equal {
+        return mk_pow_u32(ctx, temp_var, root_index);
+    }
+
+    if let Some((base_expr, numer, denom)) = extract_opaque_rational_power_atom(ctx, expr) {
+        if denom == root_index && compare_expr(ctx, base_expr, root_base) == Ordering::Equal {
+            return mk_pow_u32(ctx, temp_var, numer);
+        }
+    }
+
+    match ctx.get(expr).clone() {
+        Expr::Add(l, r) => {
+            let new_l = replace_root_family_with_temp(ctx, l, root_base, root_index, temp_var);
+            let new_r = replace_root_family_with_temp(ctx, r, root_base, root_index, temp_var);
+            if new_l == l && new_r == r {
+                expr
+            } else {
+                ctx.add(Expr::Add(new_l, new_r))
+            }
+        }
+        Expr::Sub(l, r) => {
+            let new_l = replace_root_family_with_temp(ctx, l, root_base, root_index, temp_var);
+            let new_r = replace_root_family_with_temp(ctx, r, root_base, root_index, temp_var);
+            if new_l == l && new_r == r {
+                expr
+            } else {
+                ctx.add(Expr::Sub(new_l, new_r))
+            }
+        }
+        Expr::Mul(l, r) => {
+            let new_l = replace_root_family_with_temp(ctx, l, root_base, root_index, temp_var);
+            let new_r = replace_root_family_with_temp(ctx, r, root_base, root_index, temp_var);
+            if new_l == l && new_r == r {
+                expr
+            } else {
+                ctx.add(Expr::Mul(new_l, new_r))
+            }
+        }
+        Expr::Div(l, r) => {
+            let new_l = replace_root_family_with_temp(ctx, l, root_base, root_index, temp_var);
+            let new_r = replace_root_family_with_temp(ctx, r, root_base, root_index, temp_var);
+            if new_l == l && new_r == r {
+                expr
+            } else {
+                ctx.add(Expr::Div(new_l, new_r))
+            }
+        }
+        Expr::Pow(base, exp) => {
+            let new_base =
+                replace_root_family_with_temp(ctx, base, root_base, root_index, temp_var);
+            let new_exp = replace_root_family_with_temp(ctx, exp, root_base, root_index, temp_var);
+            if new_base == base && new_exp == exp {
+                expr
+            } else {
+                ctx.add(Expr::Pow(new_base, new_exp))
+            }
+        }
+        Expr::Neg(inner) => {
+            let new_inner =
+                replace_root_family_with_temp(ctx, inner, root_base, root_index, temp_var);
+            if new_inner == inner {
+                expr
+            } else {
+                ctx.add(Expr::Neg(new_inner))
+            }
+        }
+        Expr::Function(kind, args) => {
+            let new_args: Vec<_> = args
+                .iter()
+                .map(|&arg| {
+                    replace_root_family_with_temp(ctx, arg, root_base, root_index, temp_var)
+                })
+                .collect();
+            if new_args == args {
+                expr
+            } else {
+                ctx.add(Expr::Function(kind, new_args))
+            }
+        }
+        _ => expr,
+    }
+}
+
 fn is_leaf_like(ctx: &Context, expr: ExprId) -> bool {
     matches!(
         ctx.get(expr),
         Expr::Variable(_) | Expr::Number(_) | Expr::Constant(_)
     )
+}
+
+fn as_fraction_like_num_den(ctx: &mut Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
+    if let Some(pair) = as_div(ctx, expr) {
+        return Some(pair);
+    }
+    let (num_factors, den_factors) = decompose_fraction_like_factors(ctx, expr)?;
+    let rebuilt = build_fraction_from_factor_vectors(ctx, &num_factors, &den_factors);
+    as_div(ctx, rebuilt)
 }
 
 /// True when both numerator and denominator are simple leaf-like atoms.
@@ -113,6 +227,14 @@ pub fn poly_equality_if_convertible(
     Some(p_num == p_den)
 }
 
+fn try_exact_poly_quotient_expr(ctx: &mut Context, num: ExprId, den: ExprId) -> Option<ExprId> {
+    let budget = default_div_expand_cancel_poly_budget();
+    let p_num = multipoly_from_expr(ctx, num, &budget).ok()?;
+    let p_den = multipoly_from_expr(ctx, den, &budget).ok()?;
+    let quotient = p_num.div_exact(&p_den)?;
+    Some(multipoly_to_expr(&quotient, ctx))
+}
+
 /// Replace matched shared function calls with fresh temporary variables.
 pub fn prepare_opaque_shared_substitution(
     ctx: &mut Context,
@@ -133,6 +255,23 @@ pub fn prepare_opaque_shared_substitution(
         };
         substituted_num = substitute_power_aware(ctx, substituted_num, *num_call, temp_var, opts);
         substituted_den = substitute_power_aware(ctx, substituted_den, *den_call, temp_var, opts);
+        if let Some((root_base, root_index)) = extract_opaque_reciprocal_power_base(ctx, *num_call)
+        {
+            substituted_num = replace_root_family_with_temp(
+                ctx,
+                substituted_num,
+                root_base,
+                root_index,
+                temp_var,
+            );
+            substituted_den = replace_root_family_with_temp(
+                ctx,
+                substituted_den,
+                root_base,
+                root_index,
+                temp_var,
+            );
+        }
         temp_vars.push((*num_call, temp_var));
     }
 
@@ -186,6 +325,30 @@ where
 
     let sub_frac = local_ctx.add(Expr::Div(plan.substituted_num, plan.substituted_den));
     let (mut simplified_ctx, simplified) = simplify_sub_fraction(&local_ctx, sub_frac)?;
+    if let Some(quotient_expr) = try_exact_poly_quotient_expr(
+        &mut simplified_ctx,
+        plan.substituted_num,
+        plan.substituted_den,
+    ) {
+        let final_result =
+            substitute_back_opaque_temps(&mut simplified_ctx, quotient_expr, &plan.temp_vars);
+        return Some((simplified_ctx, final_result));
+    }
+
+    let simplified_div_parts = match simplified_ctx.get(simplified) {
+        Expr::Div(simplified_num, simplified_den) => Some((*simplified_num, *simplified_den)),
+        _ => None,
+    };
+    if let Some((simplified_num, simplified_den)) = simplified_div_parts {
+        if let Some(quotient_expr) =
+            try_exact_poly_quotient_expr(&mut simplified_ctx, simplified_num, simplified_den)
+        {
+            let final_result =
+                substitute_back_opaque_temps(&mut simplified_ctx, quotient_expr, &plan.temp_vars);
+            return Some((simplified_ctx, final_result));
+        }
+    }
+
     if matches!(simplified_ctx.get(simplified), Expr::Div(_, _)) {
         return None;
     }
@@ -280,7 +443,7 @@ where
     FExpand: FnMut(&mut Context, ExprId) -> ExprId,
     FStrategy2: FnMut(Context, ExprId, ExprId) -> Option<(Context, ExprId, ExprId)>,
 {
-    let (num, den) = as_div(ctx, expr)?;
+    let (num, den) = as_fraction_like_num_den(ctx, expr)?;
 
     if both_sides_leaf_like(ctx, num, den) {
         return None;
@@ -396,6 +559,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cas_ast::ordering::compare_expr;
     use cas_formatter::render_expr;
     use cas_parser::parse;
 
@@ -556,5 +720,37 @@ mod tests {
         .expect("expected poly equality rewrite");
         assert_eq!(result.kind, DivExpandToCancelKind::ExpandedEquality);
         assert_eq!(render_expr(&ctx, result.rewritten), "1");
+    }
+
+    #[test]
+    fn opaque_substitution_strategy_extracts_exact_poly_quotient() {
+        let mut ctx = Context::new();
+        let num = parse("((x^2 + 1)^(1/2))^2 + 2*(x^2 + 1)^(1/2)", &mut ctx).expect("parse num");
+        let den = parse("(x^2 + 1)^(1/2) + 2", &mut ctx).expect("parse den");
+        let result = try_opaque_substitution_cancel_with(&ctx, num, den, 4, 3, |base_ctx, frac| {
+            Some((base_ctx.clone(), frac))
+        })
+        .expect("opaque quotient");
+        let expected = parse("(x^2 + 1)^(1/2)", &mut ctx).expect("expected");
+        assert_eq!(
+            compare_expr(&result.0, result.1, expected),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn opaque_substitution_strategy_extracts_exact_poly_quotient_from_collapsed_root_base() {
+        let mut ctx = Context::new();
+        let num = parse("x^2 + 1 + 2*(x^2 + 1)^(1/2)", &mut ctx).expect("parse num");
+        let den = parse("(x^2 + 1)^(1/2) + 2", &mut ctx).expect("parse den");
+        let result = try_opaque_substitution_cancel_with(&ctx, num, den, 4, 3, |base_ctx, frac| {
+            Some((base_ctx.clone(), frac))
+        })
+        .expect("opaque quotient");
+        let expected = parse("(x^2 + 1)^(1/2)", &mut ctx).expect("expected");
+        assert_eq!(
+            compare_expr(&result.0, result.1, expected),
+            std::cmp::Ordering::Equal
+        );
     }
 }

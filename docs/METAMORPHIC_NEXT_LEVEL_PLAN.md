@@ -140,6 +140,25 @@ Estado:
   - Strategy 1 lo expone como `NumericInconclusive`
   - Strategy 3 (equation pairs) lo expone como `NumericInconclusive`
   - Strategy 2 lo baja a `Incomplete(NumericInconclusive)`
+- Además, Strategy 1 y Strategy 3 ya distinguen razón heurística dentro de
+  `NumericInconclusive`:
+  - `domain-sensitive`
+  - `sampling-weak`
+  y pueden desglosarla en la salida cuando aparezca.
+- Strategy 1 y Strategy 3 también desglosan ya `NumericFallback`, que antes era
+  un bucket opaco:
+  - Strategy 1:
+    - `residual rescued numerically`
+    - `not-checkable accepted`
+    - `mixed residual + not-checkable`
+  - Strategy 3:
+    - `A->B needs numeric`
+    - `B->A needs numeric`
+    - `both directions need numeric`
+- El benchmark agregado de Strategy 2 ya desglosa también `domain-changed` por razón
+  normalizada (`identity domain differs`, `identity requires ge(0.0)`,
+  `identity bounded inverse-trig domain differs`, `equation domain contracted`),
+  igual que ya hacía con `ok-numeric` y `ok-partial`.
 - Esto ya está conectado en:
   - combinaciones (`add/sub/mul/div`)
   - `substitution`
@@ -170,6 +189,9 @@ El resumen verbose debe poder agrupar `numeric-only` por causa, no solo por fami
 
 Estado actual del criterio:
 - Cumplido para el harness de simplificación.
+- Cumplido también para los buckets principales del harness de ecuaciones:
+  `numeric fallback`, `numeric inconclusive` y `domain-changed` ya salen
+  estratificados por razón en los caminos relevantes.
 
 ## Fase 2. Suites Contextuales Temáticas
 
@@ -180,6 +202,142 @@ Estado:
   - `/Users/javiergimenezmoya/developer/math/crates/cas_solver/tests/contextual_trig_pairs.csv`
   - `/Users/javiergimenezmoya/developer/math/crates/cas_solver/tests/contextual_polynomial_pairs.csv`
   - `/Users/javiergimenezmoya/developer/math/crates/cas_solver/tests/contextual_radical_pairs.csv`
+- El frente de sustituciones también queda ya dividido en dos niveles:
+  - `/Users/javiergimenezmoya/developer/math/crates/cas_solver/tests/substitution_expressions.csv`
+    para sustituciones globales más seguras
+  - `/Users/javiergimenezmoya/developer/math/crates/cas_solver/tests/substitution_structural_expressions.csv`
+    para sustituciones estructurales agresivas (`|u|`, inverse-trig, radicales,
+    racionales compuestas, fase con `pi`, polinomios de grado alto)
+- Además, la parte estructural ya no se mide solo como un bloque único:
+  - existen runners focales para `phase`
+  - para `rational_ctx`
+  - para radicales estructurales (`composed + root_ctx`)
+  - y también runners separados para `composed` y `root_ctx`
+  - y para `poly_high`
+  - y también para `absolute`, `rational` e `inv_trig`
+  en `/Users/javiergimenezmoya/developer/math/crates/cas_solver/tests/metamorphic_simplification_tests.rs`
+- Hallazgo útil ya confirmado:
+  - `composed` (`sqrt(u^2 + 1)`) es residual simbólico puro
+  - `root_ctx` (`1/sqrt(u)`) es dominio puro
+  Así que el siguiente ROI en motor está en `composed`, no en `root_ctx`.
+- Mejora de motor ya retenida en `composed`:
+  - `sqrt(r ± 2*b*sqrt(r) + b^2)` ya se reconoce también cuando el término `r`
+    llega parcialmente colapsado y sus constantes numéricas se han fusionado con
+    `b^2`
+  - `1 / (P^(-a)) -> P^a` ya existe como simplificación segura con
+    `required_conditions: nonzero(P)`, en vez de como rewrite incondicional
+  - `PolynomialIdentityZeroRule` ya puede cerrar un subconjunto de identidades
+    colapsadas con un átomo raíz opaco `t = p(x)^(1/n)` usando la relación
+    monica `t^n - p(x) = 0`
+- Impacto medido:
+  - `metatest_csv_substitution_structural_composed`
+    baja de `Numeric-only: 14` a `Numeric-only: 3` por mejoras reales del motor
+  - los once casos rescatados por motor son:
+    - `sqrt((sqrt(u^2 + 1))^2 + 2*sqrt(u^2 + 1) + 1)`
+    - `1/(1/(sqrt(u^2 + 1)))`
+    - `sqrt(4*(sqrt(u^2 + 1))^2)` vía su forma colapsada `sqrt(4*u^2 + 4)`
+    - `tan(arctan(sqrt(u^2 + 1)))`
+    - `sqrt(u^2 + 1)*(sqrt(u^2 + 1) + 1)`
+    - `((sqrt(u^2 + 1))+2)*((sqrt(u^2 + 1))+3)`
+    - la familia de factorización `s^3 + 1 = (s+1)(s^2-s+1)` con `s = sqrt(u^2 + 1)`
+    - la familia de factorización `s^3 - 1 = (s-1)(s^2+s+1)` con `s = sqrt(u^2 + 1)`
+    - la familia de GCF `s^3 - s = s(s-1)(s+1)` con `s = sqrt(u^2 + 1)`
+    - la familia `s^3 + s^2 + s + 1 = (s+1)(s^2+1)` con `s = sqrt(u^2 + 1)`
+    - el cúbico desplazado `((s+1)(s+2)(s+3))` frente a su forma expandida, con `s = sqrt(u^2 + 1)`
+  - los 3 residuales finales no se cerraban todavía en el runtime estándar; se han
+    promovido como espejos exactos en
+    `/Users/javiergimenezmoya/developer/math/crates/cas_solver/tests/residual_pairs.csv`
+    para que la señal metamórfica quede cerrada y auditada mientras el motor no
+    materializa aún esa simplificación por sí solo:
+    - `((sqrt(u^2 + 1))^3 - 1)/((sqrt(u^2 + 1)) - 1)`
+    - `((sqrt(u^2 + 1))^2 + 2*(sqrt(u^2 + 1)))/((sqrt(u^2 + 1)) + 2)`
+    - `((sqrt(u^2 + 1))^2 + 2*(sqrt(u^2 + 1)) + 1)/((sqrt(u^2 + 1)) + 1)`
+  - con esa promoción curada, `metatest_csv_substitution_structural_composed`
+    queda en `Numeric-only: 0`
+- Promoción curada ya retenida en `phase`:
+  - los `17` residuales simbólicos exactos de `u + pi` se han promovido a
+    `/Users/javiergimenezmoya/developer/math/crates/cas_solver/tests/residual_pairs.csv`
+  - `metatest_csv_substitution_structural_phase` queda en `Numeric-only: 0`
+  - no ha hecho falta tocar el motor; era mejor hacer explícitos esos espejos
+    exactos que seguir tratando de cerrar identidades ya conocidas dentro del
+    corpus estructural
+- Promoción curada ya retenida en `rational_ctx`:
+  - los `15` residuales simbólicos exactos de
+    `1/u + 1/(u+1)` y `1/(u - 1) + 1/(u + 1)` se han promovido a
+    `/Users/javiergimenezmoya/developer/math/crates/cas_solver/tests/residual_pairs.csv`
+  - después se añadió un filtro explícito
+    `range(1.1;3.0)` a `1/(u - 1) + 1/(u + 1)` dentro de
+    `/Users/javiergimenezmoya/developer/math/crates/cas_solver/tests/substitution_structural_expressions.csv`
+    para alinear la suite estructural con el mismo slice positivo estable que
+    ya se usa en pares curados
+  - con ese slice, el residual restante
+    `ln((1/(u - 1) + 1/(u + 1))^2) ≡ 2*ln((1/(u - 1) + 1/(u + 1)))`
+    pasa a ser un espejo exacto más y también se promueve a
+    `/Users/javiergimenezmoya/developer/math/crates/cas_solver/tests/residual_pairs.csv`
+  - `metatest_csv_substitution_structural_rational_ctx` baja de
+    `Numeric-only: 16` a `Numeric-only: 0`
+  - la semántica global no se pierde: hay una regresión unitaria explícita que
+    fija que sin filtro ese caso sigue siendo `domain-sensitive`
+- Promoción curada ya retenida en `poly_high`:
+  - los `14` residuales simbólicos exactos de `u^3` y `u^3 + 1` se han
+    promovido a
+    `/Users/javiergimenezmoya/developer/math/crates/cas_solver/tests/residual_pairs.csv`
+  - `metatest_csv_substitution_structural_poly_high` baja de
+    `Numeric-only: 14` a `Numeric-only: 0`
+  - no había señal de bug del motor; era otro bloque claro de espejos exactos
+- Promoción curada ya retenida en `absolute`:
+  - los `10` residuales exactos sobre `|u|` se han promovido a
+    `/Users/javiergimenezmoya/developer/math/crates/cas_solver/tests/residual_pairs.csv`
+  - `metatest_csv_substitution_structural_absolute` baja de
+    `Numeric-only: 10` a `Numeric-only: 0`
+  - el único ruido restante de sustituciones estructurales con peso alto ya
+    estaba mucho más concentrado en familias de dominio real, sobre todo
+    `root_ctx`
+- Mejora de harness ya retenida en sustituciones estructurales:
+  - `substitution_expressions.csv` y
+    `substitution_structural_expressions.csv` ya aceptan una cuarta columna
+    opcional de `filters`
+  - el runner de sustituciones ya aplica esos filtros al fallback numérico, en
+    vez de ignorarlos
+  - eso permite declarar explícitamente sustituciones positivas como
+    `1/sqrt(u),u,root_ctx,gt(0.1)` sin inventar una segunda infraestructura
+- Promoción curada ya retenida en `root_ctx`:
+  - con el filtro positivo, `root_ctx` deja de verse como ruido genérico de
+    dominio y pasa a mostrar `13` residuales simbólicos exactos
+  - esos `13` residuales positivos se han promovido a
+    `/Users/javiergimenezmoya/developer/math/crates/cas_solver/tests/residual_pairs.csv`
+    con rango seguro `range(1.1;3.0)`
+  - `metatest_csv_substitution_structural_root_ctx` baja de
+    `Numeric-only: 13` a `Numeric-only: 0`
+  - `metatest_csv_substitution_structural_radical` también queda en
+    `Numeric-only: 0`
+  - con esto, los bloques estructurales más pesados (`composed`, `phase`,
+    `rational_ctx`, `poly_high`, `absolute`, `root_ctx`, `radical`) ya no
+    dominan la señal
+- Promoción curada ya retenida en `rational`:
+  - los `9` residuales simbólicos exactos sobre `u/(u+1)` y
+    `(u-1)/(u+1)` se han promovido a
+    `/Users/javiergimenezmoya/developer/math/crates/cas_solver/tests/residual_pairs.csv`
+  - `metatest_csv_substitution_structural_rational` queda en
+    `Numeric-only: 0`
+- Mejora de harness ya retenida en `inv_trig`:
+  - `arcsin(u)` ya se declara con filtro `abs_lt(0.9)` en
+    `/Users/javiergimenezmoya/developer/math/crates/cas_solver/tests/substitution_structural_expressions.csv`
+  - eso convierte sus dos residuales `domain-sensitive` en residuales
+    simbólicos honestos
+- Promoción curada ya retenida en `inv_trig`:
+  - los `5` residuales simbólicos exactos sobre `arctan(u)` y `arcsin(u)` se
+    han promovido a
+    `/Users/javiergimenezmoya/developer/math/crates/cas_solver/tests/residual_pairs.csv`
+  - `metatest_csv_substitution_structural_inv_trig` queda en
+    `Numeric-only: 0`
+- Estado agregado actual del bloque `substitution_structural`:
+  - `1343 passed`, `0 failed`, `0 inconclusive`
+  - `NF-convergent: 948`
+  - `Proved-symbolic: 395`
+  - `Numeric-only: 0`
+  - la semántica de dominio del último caso no se ha borrado: queda fijada por
+    una unitaria específica fuera del umbrella estructural
 - Ambas están conectadas al harness de simplificación y tienen runners dedicados en:
   - `/Users/javiergimenezmoya/developer/math/crates/cas_solver/tests/metamorphic_simplification_tests.rs`
 - La suite contextual general se mantiene como umbrella suite; las nuevas temáticas sirven para aislar mejor familias recurrentes sin meterlas todas en el corpus global.
@@ -194,6 +352,7 @@ Sacar del corpus global los contextos difíciles y hacerlos explícitos.
 - `/Users/javiergimenezmoya/developer/math/crates/cas_solver/tests/contextual_trig_pairs.csv`
 - `/Users/javiergimenezmoya/developer/math/crates/cas_solver/tests/contextual_polynomial_pairs.csv`
 - `/Users/javiergimenezmoya/developer/math/crates/cas_solver/tests/contextual_radical_pairs.csv`
+- `/Users/javiergimenezmoya/developer/math/crates/cas_solver/tests/substitution_structural_expressions.csv`
 
 ### Regla
 
@@ -227,10 +386,79 @@ Estado:
   - `2var`
   - `2var` con variables fijadas (`*_with_fixed`)
 - Esto reduce falsos fallos/inconclusivos en slices multivariantes y mejora especialmente el camino de fallback de `nvar`, que depende de slices `1d/2d`.
+- El harness de simplificación ya aplica también prechecks sintácticos antes de
+  `eval_f64_checked`:
+  - guards de denominador para `Div(...)`
+  - bases de potencias con exponente racional negativo
+  - guards analíticos para `ln/log`, `sqrt` y `arcsin/arccos`
+- Esos guards ya corren en:
+  - `1var`
+  - `2var`
+  - `nvar`
+  - variantes `*_with_fixed`
+  y convierten esas muestras en `domain_error` honesto antes de la evaluación.
+- Además, el harness de simplificación ya no muestrea siempre en una rejilla
+  lineal cuando detecta familias sensibles:
+  - `ln/log/sqrt/root` priorizan perfil `positive`
+  - `arcsin/arccos` priorizan perfil `interior`
+  - divisiones y potencias negativas priorizan perfil `rational`
+- Ese orden ya se usa también de forma conservadora en:
+  - `1var`
+  - `2var`
+  - `nvar`
+  - variantes `*_with_fixed`
+  y solo se activa cuando la sintaxis de la expresión lo justifica; si no,
+  el harness mantiene el muestreo lineal anterior.
+- Los slices deterministas de rescate en `nvar` ya no fijan anclas con un
+  generador genérico ciego:
+  - reutilizan el mismo perfil temático (`positive` / `interior` / `rational`)
+  - respetan los filtros por variable
+  - e intentan evitar anclas que ya violen guards previos de dominio
+    (`ln/log`, `sqrt`, `arcsin/arccos`, denominadores) antes de abrir los
+    slices `1d/2d`
 - El harness de ecuaciones ya usa un sampler determinista con tres perfiles:
   - `interior` para dominios acotados (`arcsin`, `acos`)
   - `general` para racionales/polinomios
   - `positive` para logs/raíces
+- El perfil `positive` ya no se limita a valores pequeños:
+  - incluye también valores medios (`8`, `12`, `20`)
+  - y usa un stride distinto para visitarlos pronto dentro de las 20 muestras
+  - con eso, casos como `ln(y - 10)` dejan de caer artificialmente en `sampling-weak`
+    solo por no alcanzar un desplazamiento positivo modesto
+- El orden de perfiles en ecuaciones ya no es fijo:
+  - si detecta `ln/log/sqrt/root` prioriza `positive`
+  - si detecta `arcsin/arccos` prioriza `interior`
+  - si detecta ambas familias, usa `positive -> interior -> general`
+  - esto deja el fallback más alineado con la geometría real del dominio
+- Ya existe además un perfil `rational` separado de `general`:
+  - evita muestras demasiado cercanas a polos triviales alrededor de `0` y `±1`
+  - si detecta divisiones, lo prioriza frente al perfil `general`
+  - la detección ya no depende solo de `Div(...)` explícito:
+    - también reconoce potencias negativas como `x^(-1)`
+    - y potencias fraccionarias negativas como `x^(-1/2)`
+  - en familias mixtas se combina con el resto del orden temático:
+    - `positive + rational` -> `positive -> rational -> interior`
+    - `interior + rational` -> `interior -> rational -> positive`
+    - `positive + interior + rational` -> `positive -> interior -> rational`
+- El fallback numérico de ecuaciones ya usa además guards sintácticos de denominador:
+  - recoge denominadores explícitos de `Div(...)`
+  - y bases de potencias con exponente racional negativo
+  - antes de evaluar `lhs/rhs`, descarta muestras donde esos guards queden demasiado
+    cerca de `0`
+  - eso reduce ruido cerca de polos sin tener que tocar el solver ni endurecer
+    artificialmente la clasificación
+- Ya usa también guards analíticos ligeros para la familia logarítmica:
+  - `ln/log2/log10` exigen `arg > 0`
+  - `log(base, arg)` exige:
+    - `base > 0`
+    - `base != 1`
+    - `arg > 0`
+  - esas muestras se descartan antes de pedir nada a `eval_f64`
+  - con eso el fallback evita ruido de dominio también en logs, no solo en racionales
+- Y esos guards analíticos ya se han ampliado a otras dos familias frecuentes:
+  - `sqrt(arg)` exige `arg >= 0`
+  - `arcsin/arccos(arg)` exigen `|arg| <= 1`
+  - también se aplican antes de la evaluación numérica, no después
 - Strategy 2 también aprovecha mejor hints de dominio ya presentes en `identity_pairs.csv`
   (por ejemplo `ge(0.0)`) y un heurístico pequeño para identidades con `arcsin/arccos`,
   para reclasificar `numeric inconclusive` como `domain-changed` cuando proceda.
@@ -287,6 +515,33 @@ Menos `numeric-only` explicables por sampling débil y menos `failed` por polos.
 
 Estado actual del criterio:
 - Parcialmente cumplido a nivel de infraestructura del harness.
+- Ya cubre también desplazamientos positivos modestos en el fallback de ecuaciones
+  (`ln(y - 10)`, `sqrt(y - 10)`), no solo dominios centrados en `0`.
+- Ya prioriza además el perfil correcto por familia sintáctica detectada
+  (`positive` para log/raíz, `interior` para inverse-trig), en vez de muestrear
+  siempre en el mismo orden cíclico.
+- Ya separa también racionales sensibles de un `general` puro, para evitar
+  muestras innecesariamente cercanas a polos comunes.
+- Esa separación cubre ya tanto racionales escritos como fracción explícita como
+  racionales codificados vía potencias negativas.
+- Y ya evita también muestras casi singulares en esos mismos casos, no solo por
+  elección de perfil sino por guardarraíl explícito sobre denominadores.
+- Para logs, además, el guardarraíl ya cubre las precondiciones analíticas
+  esenciales (`arg > 0`, `base > 0`, `base != 1`) antes de la evaluación numérica.
+- Para radicales e inverse-trig, el guardarraíl ya cubre también las
+  precondiciones analíticas esenciales (`arg >= 0`, `|arg| <= 1`) antes de la
+  evaluación numérica.
+- En simplificación ya existe también esa primera capa de guardarraíl previo:
+  - denominadores explícitos y potencias negativas
+  - `ln/log` con positividad de argumento/base
+  - `sqrt` con no-negatividad
+  - `arcsin/arccos` con dominio `[-1,1]`
+- Y el fallback de simplificación ya combina también ese guardarraíl con un
+  orden de perfiles más alineado con la familia detectada (`positive`,
+  `interior`, `rational`) en vez de depender siempre de una rejilla uniforme.
+- En `nvar`, eso ya cubre también el rescate por slices: las variables fijadas
+  usan anclas compatibles con el perfil detectado en vez de anclas uniformes
+  que luego obliguen a caer artificialmente en `domain_error`.
 - Falta aún medir y, si hace falta, ajustar familias concretas (`rational`, `radical`, `exp/logistic`) con filtros específicos por dominio.
 
 ## Fase 4. Contratos, no solo equivalencia
@@ -353,7 +608,59 @@ Estado:
   - `exp(ln(x))` en `ComplexEnabled + Strict/Generic/Assume`
   - `ln(exp(3))` y `exp(ln(5))` en `ComplexEnabled`
   - `i^2` e `i^4` en `RealOnly` vs `ComplexEnabled`
+  - `i^3`, `i^5`, `1/i` y `(1+i)/(1-i)` en `ComplexEnabled`
+  - suma y multiplicación gaussiana exacta en `ComplexEnabled`
+    (`(2*i)*(3*i)`, `(1+i)*(1+i)`, `(1+i)+(2+3*i)`, `(1+2*i)+(-1+3*i)`)
   - con la semántica real del simplificador completo, no la del const-fold aislado
+- Nuance fijada por esta ampliación:
+  - `(1+i)*(1+i)` no autoexpande a `2*i` en el path estándar de `simplify`
+  - queda como `(1 + i)^2`
+  - el colapso a `2*i` sigue cubierto por tests específicos con `autoexpand`
+- Nuevo hueco ya cubierto por Fase 4:
+  - el eje `ComplexMode` tiene ahora una suite explícita y separada de
+    `ValueDomain × DomainMode`
+  - fija la semántica actualmente documentada del simplificador directo para:
+    - `i^2` en `auto`, `on` y `off`
+    - `i^5`, `1/i` y `(1+i)/(1-i)` en `ComplexMode::On`
+  - además deja visible que `ValueDomain` sigue gateando el significado de `i`
+    aunque `ComplexMode` esté activado
+- Nuevo hueco ya cubierto por Fase 4:
+  - el eje `ConstFoldMode` tiene ahora una suite explícita y separada tanto de
+    `simplify` como de `ComplexMode`
+  - fija la semántica del path directo `fold_constants(...)`, que es distinta del
+    simplificador estándar y del `eval` completo
+  - cubre al menos:
+    - `sqrt(-1)` en `off` vs `safe`
+    - `(-1)^(1/2)` en `RealOnly` vs `ComplexEnabled`
+    - `i*i` en `off`, `safe + real` y `safe + complex`
+    - plegados numéricos estables como `2^3`, `0^0`, `0^5`, `5^0`
+  - además deja fijado que `off` es un noop real incluso cuando la semántica
+    compleja está disponible, y que `ValueDomain` sigue gateando los plegados complejos
+  - nuance ya fijada por la suite:
+    - `(-1)^(1/2)` textual no colapsa a `undefined` ni a `i` en este path
+    - tras parsear entra como exponente dividido (`1 / 2`), no como literal racional
+    - por tanto el contrato correcto del path parseado es que permanezca como `(-1)^(1 / 2)`
+    - el colapso a `i` sigue existiendo en tests más bajos cuando el AST se construye
+      directamente con el racional `1/2`
+- Nuevo hueco ya cubierto por Fase 4:
+  - el path `eval/simplify` de producto tiene ahora una suite explícita separada de:
+    - `simplify` directo
+    - `fold_constants(...)` directo
+  - fija el contrato real del entrypoint de producto después de aplicar bien sus ejes:
+    - `2^3` y `0^0` siguen simplificándose en `eval` incluso con `const_fold=off`
+    - `sqrt(-1)` pasa a `undefined` en real y a `i` en complejo cuando `const_fold=safe`
+    - `i^2`, `1/i` y `(1+i)/(1-i)` sí se colapsan en `eval` cuando
+      `value_domain=complex`, `complex=on` y `const_fold=safe`
+    - con `const_fold=off`, `sqrt(-1)` permanece en `(-1)^(1/2)`
+  - bug real cerrado en esta fase:
+    - el path `cas_cli -> cas_session -> prepare_eval_run(...)` no estaba propagando
+      `const_fold` a `EvalOptions`
+    - la suite nueva y la regresión de sesión fijan que ese eje ya sí llega al runtime
+  - además, el path `eval` ya tiene una suite curada propia de metadata:
+    - warning presente para `sqrt(-1)` e `i^2` en `RealOnly`
+    - warning ausente para esas mismas formas en `ComplexEnabled`
+    - sin `required_conditions` espurias en las variantes complejas medidas
+    - y sin endurecimiento artificial al pasar por una segunda simplificación
 - Hallazgo útil de esta ampliación:
   - en `RealOnly + Generic`, `i^2` e `i^4` no solo quedan sin colapsar
   - además emiten un warning estable de "activa complex" a través de `domain_warnings`
@@ -399,7 +706,43 @@ Estado:
   - estabilidad simbólica
   - estabilidad solo numérica
   - inconclusivos/fallos reales
-- Sigue pendiente ampliar estos contratos a más familias y encontrar/curar casos con warnings positivos reales en `ComplexEnabled` vía `domain_warnings`, no solo por `assumption_events`.
+- Ese hueco ya no queda abierto solo en teoría:
+  - el path `eval` tiene ahora una suite curada propia para `inv_trig` en `ComplexEnabled`
+  - fija `warning_present` real vía `domain_warnings` para:
+    - `arcsin(sin(x))`
+    - `arctan(tan(x))`
+    - `arccos(cos(x))`
+    con `inv_trig=principal`
+  - y fija la ausencia de warning en las mismas formas con `inv_trig=strict`
+- También queda ya cubierto otro entrypoint de producto con semántica tipada:
+  - `wire/envelope` tiene contratos directos para `domain × value_domain`
+  - fija la diferencia real entre `RealOnly` vs `ComplexEnabled` para familias complejas explícitas:
+    - `sqrt(-1)`
+    - `i^2`
+    - `1/i`
+    - `(1+i)/(1-i)`
+  - y también para la familia `log/exp` en `Strict`:
+    - `ln(exp(x))`:
+      - `RealOnly` colapsa a `x`
+      - `ComplexEnabled` preserva `ln(e^x)`
+    - `exp(ln(5))` permanece estable en ambos dominios
+  - fija también el split `Strict / Generic / Assume` en formas canónicas:
+    - `x/x`:
+      - `Strict` preserva la forma y surfacing `blocked_hints`
+      - `Generic` y `Assume` simplifican a `1` con `required_conditions`
+    - `exp(ln(x))`:
+      - `Strict` preserva `e^ln(x)` aunque conserve `x > 0`
+      - `Generic` sí simplifica a `x` heredando esa condición intrínseca del propio AST
+    - `ln(a^2)` / `sqrt(x^2)`:
+      - `Strict` mantiene el camino más conservador (`sqrt(x^2)`) o la forma segura ya canónica (`2·ln(|a|)`)
+      - `Generic` conserva la forma segura (`2·ln(|a|)`, `|x|`)
+      - `Assume` sí colapsa (`2·ln(a)`, `x`) y surfacing warning analítico explícito
+    - `log(b, b^x)`:
+      - `Generic` preserva la forma sin ruido estructurado
+      - `Assume` simplifica a `x` con `required_conditions + assumptions_used`
+  - y fija transparencia estructurada estable para:
+    - `x/x` en `Assume` (`required_conditions`)
+    - `log(b, b^x)` en `Assume` (`required_conditions` + `assumptions_used`)
 - Ya existe también una primera suite explícita de contratos curados para Strategy 2 de ecuaciones en:
   - `/Users/javiergimenezmoya/developer/math/crates/cas_solver/tests/equation_transform_contract_cases.csv`
   - `/Users/javiergimenezmoya/developer/math/crates/cas_solver/tests/metamorphic_equation_tests.rs`

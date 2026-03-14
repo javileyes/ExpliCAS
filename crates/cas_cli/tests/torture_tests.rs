@@ -966,6 +966,160 @@ fn test_log_sqrt_simplification() {
 }
 
 #[test]
+fn test_collapsed_root_square_simplification() {
+    let mut simplifier = Simplifier::with_default_rules();
+
+    // sqrt((sqrt(x^2 + 1))^2 + 2*sqrt(x^2 + 1) + 1) - |sqrt(x^2 + 1) + 1| -> 0
+    //
+    // The inner (sqrt(...))^2 collapses early to x^2 + 1, so the root matcher
+    // must still recognize the resulting shape:
+    //   sqrt((x^2 + 1) + 2*sqrt(x^2 + 1) + 1) = |sqrt(x^2 + 1) + 1|
+    let input = "sqrt((sqrt(x^2 + 1))^2 + 2*sqrt(x^2 + 1) + 1) - abs(sqrt(x^2 + 1) + 1)";
+    let expr = parse(input, &mut simplifier.context).unwrap();
+    let (res, _) = simplifier.simplify(expr);
+    let output = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: res
+        }
+    );
+    assert_eq!(output, "0");
+}
+
+#[test]
+fn test_nested_reciprocal_sqrt_simplification() {
+    let mut simplifier = Simplifier::with_default_rules();
+
+    // 1 / (1 / sqrt(x^2 + 1)) - sqrt(x^2 + 1) -> 0
+    //
+    // The inner reciprocal sqrt canonicalizes to (x^2 + 1)^(-1/2). The fraction
+    // cleanup path must still recover the positive half-power while preserving
+    // the original nonzero-domain requirement on the base.
+    let input = "1/(1/(sqrt(x^2 + 1))) - sqrt(x^2 + 1)";
+    let expr = parse(input, &mut simplifier.context).unwrap();
+    let (res, _) = simplifier.simplify(expr);
+    let output = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: res
+        }
+    );
+    assert_eq!(output, "0");
+}
+
+#[test]
+fn test_additive_common_square_factor_under_sqrt() {
+    let mut simplifier = Simplifier::with_default_rules();
+
+    // sqrt(4*x^2 + 4) - 2*sqrt(x^2 + 1) -> 0
+    //
+    // This is the collapsed form that appears after (sqrt(x^2+1))^2 -> x^2+1.
+    // The sqrt simplifier should now extract the common square factor directly
+    // from the additive radicand.
+    let input = "sqrt(4*x^2 + 4) - 2*sqrt(x^2 + 1)";
+    let expr = parse(input, &mut simplifier.context).unwrap();
+    let (res, _) = simplifier.simplify(expr);
+    let output = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: res
+        }
+    );
+    assert_eq!(output, "0");
+}
+
+#[test]
+fn test_tan_arctan_of_structural_sqrt_simplification() {
+    let mut simplifier = Simplifier::with_default_rules();
+
+    // tan(arctan(sqrt(x^2 + 1))) - sqrt(x^2 + 1) -> 0
+    //
+    // TanToSinCos must not expand the outer tan before the direct inverse-trig
+    // composition rule has a chance to fire at the root.
+    let input = "tan(arctan(sqrt(x^2 + 1))) - sqrt(x^2 + 1)";
+    let expr = parse(input, &mut simplifier.context).unwrap();
+    let (res, _) = simplifier.simplify(expr);
+    let output = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: res
+        }
+    );
+    assert_eq!(output, "0");
+}
+
+#[test]
+fn test_collapsed_root_gcf_identity_simplification() {
+    let mut simplifier = Simplifier::with_default_rules();
+
+    // sqrt(x^2 + 1) * (sqrt(x^2 + 1) + 1) - ((sqrt(x^2 + 1))^2 + sqrt(x^2 + 1)) -> 0
+    //
+    // After early square collapse, the residual becomes a polynomial identity
+    // modulo t^2 = x^2 + 1 with t = sqrt(x^2 + 1). PolynomialIdentityZeroRule
+    // should now close that identity symbolically.
+    let input = "sqrt(x^2 + 1)*(sqrt(x^2 + 1) + 1) - ((sqrt(x^2 + 1))^2 + sqrt(x^2 + 1))";
+    let expr = parse(input, &mut simplifier.context).unwrap();
+    let (res, _) = simplifier.simplify(expr);
+    let output = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: res
+        }
+    );
+    assert_eq!(output, "0");
+}
+
+#[test]
+fn test_collapsed_root_trinomial_factoring_identity_simplification() {
+    let mut simplifier = Simplifier::with_default_rules();
+
+    // ((sqrt(x^2 + 1))+2)*((sqrt(x^2 + 1))+3) - ((sqrt(x^2 + 1))^2 + 5*sqrt(x^2 + 1) + 6) -> 0
+    //
+    // One side keeps t^2, the other side arrives collapsed as x^2 + 1, so the
+    // proof must use the same opaque-root relation as the simpler GCF case.
+    let input =
+        "((sqrt(x^2 + 1))+2)*((sqrt(x^2 + 1))+3) - ((sqrt(x^2 + 1))^2 + 5*sqrt(x^2 + 1) + 6)";
+    let expr = parse(input, &mut simplifier.context).unwrap();
+    let (res, _) = simplifier.simplify(expr);
+    let output = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: res
+        }
+    );
+    assert_eq!(output, "0");
+}
+
+#[test]
+fn test_collapsed_root_cubic_factoring_identity_simplification() {
+    let mut simplifier = Simplifier::with_default_rules();
+
+    // (sqrt(x^2 + 1))^3 + 1 - ((sqrt(x^2 + 1) + 1) * ((sqrt(x^2 + 1))^2 - sqrt(x^2 + 1) + 1)) -> 0
+    //
+    // The residual mixes t^3 with a collapsed t^2 -> x^2 + 1 term. The proof
+    // should reuse the same root atom t = sqrt(x^2 + 1) and interpret
+    // (x^2 + 1)^(3/2) as t^3 internally instead of inventing a second opaque atom.
+    let input =
+        "(sqrt(x^2 + 1))^3 + 1 - (((sqrt(x^2 + 1))+1)*((sqrt(x^2 + 1))^2 - sqrt(x^2 + 1) + 1))";
+    let expr = parse(input, &mut simplifier.context).unwrap();
+    let (res, _) = simplifier.simplify(expr);
+    let output = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: res
+        }
+    );
+    assert_eq!(output, "0");
+}
+
+#[test]
 fn test_trig_power_simplification() {
     // Use default_rules which has all necessary rules for this test
     // create_full_simplifier has a custom subset that doesn't fully simplify

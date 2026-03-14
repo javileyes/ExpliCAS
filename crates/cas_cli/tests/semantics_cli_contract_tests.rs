@@ -149,3 +149,106 @@ fn assume_scope_flag_does_not_change_result() {
         "assume_scope flag should not change result (infra only)"
     );
 }
+
+// =============================================================================
+// ConstFold + Complex semantics regression tests
+// =============================================================================
+
+#[test]
+fn const_fold_safe_complex_sqrt_negative_reaches_cli_runtime() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "sqrt(-1)",
+        "--format",
+        "json",
+        "--value-domain",
+        "complex",
+        "--complex",
+        "on",
+        "--const-fold",
+        "safe",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["options"]["const_fold"], "safe");
+    assert_eq!(wire["semantics"]["value_domain"], "complex");
+    assert_eq!(wire["result"], "i");
+    assert_eq!(
+        wire["warnings"].as_array().map(Vec::len),
+        Some(0),
+        "complex+safe should not emit imaginary-usage warning"
+    );
+}
+
+#[test]
+fn const_fold_safe_real_sqrt_negative_keeps_warning_contract() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "sqrt(-1)",
+        "--format",
+        "json",
+        "--value-domain",
+        "real",
+        "--complex",
+        "on",
+        "--const-fold",
+        "safe",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["options"]["const_fold"], "safe");
+    assert_eq!(wire["semantics"]["value_domain"], "real");
+    assert_eq!(wire["result"], "undefined");
+
+    let warnings = wire["warnings"].as_array().expect("warnings array");
+    assert_eq!(warnings.len(), 1, "real+safe should emit one warning");
+    assert_eq!(warnings[0]["rule"], "Imaginary Usage Warning");
+}
+
+#[test]
+fn const_fold_safe_complex_i_squared_reaches_cli_runtime() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "i^2",
+        "--format",
+        "json",
+        "--value-domain",
+        "complex",
+        "--complex",
+        "on",
+        "--const-fold",
+        "safe",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["options"]["const_fold"], "safe");
+    assert_eq!(wire["semantics"]["value_domain"], "complex");
+    assert_eq!(wire["result"], "-1");
+}
+
+#[test]
+fn complex_principal_inv_trig_warning_surfaces_in_cli_wire() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "arcsin(sin(x))",
+        "--format",
+        "json",
+        "--value-domain",
+        "complex",
+        "--inv-trig",
+        "principal",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["semantics"]["value_domain"], "complex");
+    assert_eq!(wire["semantics"]["inv_trig"], "principal");
+    assert_eq!(wire["result"], "x");
+
+    let warnings = wire["warnings"].as_array().expect("warnings array");
+    assert_eq!(
+        warnings.len(),
+        1,
+        "principal inverse-trig should emit one warning"
+    );
+    assert_eq!(warnings[0]["rule"], "Principal Branch Inverse Trig");
+}

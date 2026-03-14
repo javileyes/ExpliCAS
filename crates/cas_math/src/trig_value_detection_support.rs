@@ -241,6 +241,9 @@ pub fn should_block_tan_to_sin_cos_expr(
         return true;
     }
     if let Some(tan_arg) = as_fn1(ctx, expr, "tan") {
+        if crate::trig_canonicalization_support::is_inverse_trig_function_call(ctx, tan_arg) {
+            return true;
+        }
         return should_block_tan_to_sin_cos_for_arg(ctx, tan_arg);
     }
     false
@@ -384,6 +387,15 @@ mod tests {
             tan_x,
             None,
             Some(parent),
+            &[]
+        ));
+
+        let tan_arctan_x = cas_parser::parse("tan(arctan(x))", &mut ctx).expect("tan(arctan(x))");
+        assert!(should_block_tan_to_sin_cos_expr(
+            &ctx,
+            tan_arctan_x,
+            None,
+            None,
             &[]
         ));
     }

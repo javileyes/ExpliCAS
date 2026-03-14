@@ -42,6 +42,14 @@ fn simplify_and_eval(input: &str, var: &str, val: f64) -> (String, Option<f64>) 
     (result_str, numeric)
 }
 
+fn perf_guard_budget_secs() -> u64 {
+    if cfg!(debug_assertions) {
+        5
+    } else {
+        2
+    }
+}
+
 // =============================================================================
 // Arctan known identities (n=2, 3)
 // =============================================================================
@@ -628,7 +636,9 @@ fn budget_exempt_scoping_guards() {
 #[test]
 fn perf_n10_completes_under_budget() {
     // Ensure that the heaviest cases (n=10) don't create accidental O(n²) blowups.
-    // Budget: each must complete in under 2 seconds (generous for CI).
+    // In debug CI we allow a wider budget to absorb instrumentation overhead,
+    // while release/local perf runs still keep the tighter 2s guardrail.
+    let budget_secs = perf_guard_budget_secs();
     let cases = [
         "sin(10*arctan(t))",
         "cos(10*arccos(t))",
@@ -641,10 +651,11 @@ fn perf_n10_completes_under_budget() {
         let elapsed = start.elapsed();
 
         assert!(
-            elapsed.as_secs() < 2,
-            "'{}' took {:?} (>2s budget). Possible simplification blowup. Result: '{}'",
+            elapsed.as_secs() < budget_secs,
+            "'{}' took {:?} (>{}s budget). Possible simplification blowup. Result: '{}'",
             input,
             elapsed,
+            budget_secs,
             &result[..result.len().min(100)]
         );
 
@@ -782,6 +793,7 @@ fn negative_tan_acos_n4_is_negated() {
 
 #[test]
 fn perf_tan_n10_completes() {
+    let budget_secs = perf_guard_budget_secs();
     let cases = ["tan(10*arcsin(t))", "tan(10*arccos(t))"];
 
     for input in &cases {
@@ -790,10 +802,11 @@ fn perf_tan_n10_completes() {
         let elapsed = start.elapsed();
 
         assert!(
-            elapsed.as_secs() < 2,
-            "'{}' took {:?} (>2s budget). Result: '{}'",
+            elapsed.as_secs() < budget_secs,
+            "'{}' took {:?} (>{}s budget). Result: '{}'",
             input,
             elapsed,
+            budget_secs,
             &result[..result.len().min(100)]
         );
 

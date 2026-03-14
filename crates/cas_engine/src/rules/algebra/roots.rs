@@ -22,6 +22,9 @@ fn format_simplify_square_root_desc(kind: SimplifySquareRootRewriteKind) -> &'st
     match kind {
         SimplifySquareRootRewriteKind::PerfectSquare => "Simplify perfect square root",
         SimplifySquareRootRewriteKind::SquareRootFactors => "Simplify square root factors",
+        SimplifySquareRootRewriteKind::AdditiveCommonFactor => {
+            "Extract common square factor from additive radicand"
+        }
     }
 }
 

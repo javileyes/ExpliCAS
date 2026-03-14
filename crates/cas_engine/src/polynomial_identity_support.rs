@@ -1,19 +1,24 @@
 //! Structural support for proving polynomial identities equal to zero.
 
+use cas_ast::ordering::compare_expr;
 use cas_ast::{Constant, Context, Expr, ExprId};
 use cas_math::multipoly::{MultiPoly, PolyBudget};
 use cas_math::multipoly_display::PolynomialProofData;
 use cas_math::opaque_atoms::{
-    collect_exp_exponents, collect_function_calls, dedup_expr_ids, find_exp_base,
+    collect_exp_exponents, collect_function_calls, dedup_expr_ids,
+    extract_opaque_rational_power_atom, extract_opaque_reciprocal_power_base, find_exp_base,
     is_polynomial_candidate, substitute_exp_atoms,
 };
 use cas_math::poly_convert::try_multipoly_from_expr_with_var_limit;
 use cas_math::substitute::{substitute_power_aware, SubstituteOptions};
+use num_rational::BigRational;
+use num_traits::{One, Zero};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PolynomialIdentityProofKind {
     Direct,
     OpaqueSubstitution,
+    OpaqueRootRelation,
 }
 
 #[derive(Debug, Clone)]
@@ -84,11 +89,7 @@ pub fn try_prove_polynomial_identity_zero_with_policy(
     let poly = match poly_opt {
         Some(poly) => poly,
         None => {
-            let proof = try_opaque_zero(ctx, expr, policy)?;
-            return Some(PolynomialIdentityZeroPlan {
-                kind: PolynomialIdentityProofKind::OpaqueSubstitution,
-                proof_data: proof,
-            });
+            return try_opaque_zero(ctx, expr, policy);
         }
     };
 
@@ -116,11 +117,74 @@ fn expr_to_multipoly(
     Some(poly)
 }
 
+fn try_reduce_by_reciprocal_power_relation(
+    poly: &MultiPoly,
+    opaque_var_name: &str,
+    root_index: u32,
+    base_poly: &MultiPoly,
+    budget: &PolyBudget,
+) -> Option<MultiPoly> {
+    let mut all_vars = poly.vars.clone();
+    for var in &base_poly.vars {
+        if !all_vars.iter().any(|existing| existing == var) {
+            all_vars.push(var.clone());
+        }
+    }
+
+    let t_idx = all_vars.iter().position(|v| v == opaque_var_name)?;
+    let mut current = poly.align_vars(&all_vars);
+    let base_aligned = base_poly.align_vars(&all_vars);
+    if base_aligned.degree_in(t_idx) != 0 {
+        return None;
+    }
+
+    let mut relation_map = base_aligned.neg().to_map();
+    let mut root_mono = vec![0; all_vars.len()];
+    root_mono[t_idx] = root_index;
+    let entry = relation_map
+        .entry(root_mono)
+        .or_insert_with(BigRational::zero);
+    *entry = entry.clone() + BigRational::one();
+    let relation = MultiPoly::from_map(all_vars.clone(), relation_map);
+
+    let mut reduction_steps = 0usize;
+    loop {
+        let candidate_idx = current
+            .terms
+            .iter()
+            .enumerate()
+            .filter(|(_, (_, mono))| mono[t_idx] >= root_index)
+            .max_by_key(|(_, (_, mono))| mono[t_idx])
+            .map(|(idx, _)| idx);
+
+        let Some(idx) = candidate_idx else {
+            break;
+        };
+
+        let (coeff, mono) = current.terms[idx].clone();
+        let mut q_mono = mono;
+        q_mono[t_idx] -= root_index;
+
+        let shifted = relation.mul_monomial(&q_mono).ok()?.mul_scalar(&coeff);
+        current = current.sub(&shifted).ok()?;
+
+        reduction_steps += 1;
+        if reduction_steps > 256
+            || current.num_terms() > budget.max_terms.saturating_mul(8)
+            || current.total_degree() > budget.max_total_degree.saturating_mul(8)
+        {
+            return None;
+        }
+    }
+
+    Some(current)
+}
+
 fn try_opaque_zero(
     ctx: &mut Context,
     expr: ExprId,
     policy: &PolynomialIdentityPolicy,
-) -> Option<PolynomialProofData> {
+) -> Option<PolynomialIdentityZeroPlan> {
     let calls = collect_function_calls(ctx, expr, policy.max_atoms);
     let unique_calls = dedup_expr_ids(ctx, &calls);
 
@@ -147,6 +211,7 @@ fn try_opaque_zero(
     let mut sub_expr = expr;
     let mut substitutions: Vec<(String, ExprId)> = Vec::new();
     let mut atom_idx = 0;
+    let mut reciprocal_power_relations: Vec<(usize, ExprId, u32)> = Vec::new();
 
     if let Some(base) = exp_base {
         let temp_name = format!("__opq{}", atom_idx);
@@ -166,6 +231,59 @@ fn try_opaque_zero(
     }
 
     for &call_id in &unique_calls {
+        if extract_opaque_reciprocal_power_base(ctx, call_id).is_none() {
+            continue;
+        }
+        let temp_name = format!("__opq{}", atom_idx);
+        let temp_var = tmp_ctx.var(&temp_name);
+        sub_expr = substitute_power_aware(
+            &mut tmp_ctx,
+            sub_expr,
+            call_id,
+            temp_var,
+            SubstituteOptions {
+                power_aware: true,
+                ..Default::default()
+            },
+        );
+        if let Some((base_expr, root_index)) = extract_opaque_reciprocal_power_base(ctx, call_id) {
+            reciprocal_power_relations.push((atom_idx, base_expr, root_index));
+        }
+        substitutions.push((display_name(atom_idx), call_id));
+        atom_idx += 1;
+    }
+
+    for &call_id in &unique_calls {
+        if extract_opaque_reciprocal_power_base(ctx, call_id).is_some() {
+            continue;
+        }
+        if let Some((base_expr, numer, denom)) = extract_opaque_rational_power_atom(ctx, call_id) {
+            if let Some((root_atom_idx, _, _)) =
+                reciprocal_power_relations
+                    .iter()
+                    .find(|(_, rel_base, root_index)| {
+                        *root_index == denom
+                            && compare_expr(ctx, *rel_base, base_expr) == std::cmp::Ordering::Equal
+                    })
+            {
+                let root_var = tmp_ctx.var(&format!("__opq{}", root_atom_idx));
+                let replacement = if numer == 1 {
+                    root_var
+                } else {
+                    let numer_expr = tmp_ctx.num(numer as i64);
+                    tmp_ctx.add(Expr::Pow(root_var, numer_expr))
+                };
+                sub_expr = substitute_power_aware(
+                    &mut tmp_ctx,
+                    sub_expr,
+                    call_id,
+                    replacement,
+                    SubstituteOptions::exact(),
+                );
+                continue;
+            }
+        }
+
         let temp_name = format!("__opq{}", atom_idx);
         let temp_var = tmp_ctx.var(&temp_name);
         sub_expr = substitute_power_aware(
@@ -190,9 +308,32 @@ fn try_opaque_zero(
         &policy.poly_budget,
         policy.var_limit,
     )?;
-    if !poly.is_zero() {
+    let proof_kind = if poly.is_zero() {
+        PolynomialIdentityProofKind::OpaqueSubstitution
+    } else if reciprocal_power_relations.len() == 1 {
+        let (opaque_atom_idx, base_expr, root_index) = &reciprocal_power_relations[0];
+        let mut base_vars = Vec::new();
+        let base_poly = expr_to_multipoly(
+            &tmp_ctx,
+            *base_expr,
+            &mut base_vars,
+            &policy.poly_budget,
+            policy.var_limit,
+        )?;
+        let reduced = try_reduce_by_reciprocal_power_relation(
+            &poly,
+            &format!("__opq{}", opaque_atom_idx),
+            *root_index,
+            &base_poly,
+            &policy.poly_budget,
+        )?;
+        if !reduced.is_zero() {
+            return None;
+        }
+        PolynomialIdentityProofKind::OpaqueRootRelation
+    } else {
         return None;
-    }
+    };
 
     let mut display_expr = expr;
     let mut disp_idx = 0;
@@ -211,6 +352,54 @@ fn try_opaque_zero(
     }
 
     for &call_id in &unique_calls {
+        if extract_opaque_reciprocal_power_base(ctx, call_id).is_none() {
+            continue;
+        }
+        let disp_var = ctx.var(&display_name(disp_idx));
+        display_expr = substitute_power_aware(
+            ctx,
+            display_expr,
+            call_id,
+            disp_var,
+            SubstituteOptions {
+                power_aware: true,
+                ..Default::default()
+            },
+        );
+        disp_idx += 1;
+    }
+
+    for &call_id in &unique_calls {
+        if extract_opaque_reciprocal_power_base(ctx, call_id).is_some() {
+            continue;
+        }
+        if let Some((base_expr, numer, denom)) = extract_opaque_rational_power_atom(ctx, call_id) {
+            if let Some((root_atom_idx, _, _)) =
+                reciprocal_power_relations
+                    .iter()
+                    .find(|(_, rel_base, root_index)| {
+                        *root_index == denom
+                            && compare_expr(ctx, *rel_base, base_expr) == std::cmp::Ordering::Equal
+                    })
+            {
+                let root_var = ctx.var(&display_name(*root_atom_idx));
+                let replacement = if numer == 1 {
+                    root_var
+                } else {
+                    let numer_expr = ctx.num(numer as i64);
+                    ctx.add(Expr::Pow(root_var, numer_expr))
+                };
+                display_expr = substitute_power_aware(
+                    ctx,
+                    display_expr,
+                    call_id,
+                    replacement,
+                    SubstituteOptions::exact(),
+                );
+                continue;
+            }
+        }
+
         let disp_var = ctx.var(&display_name(disp_idx));
         display_expr = substitute_power_aware(
             ctx,
@@ -240,7 +429,7 @@ fn try_opaque_zero(
     let expanded_form_expr =
         cas_math::multipoly_display::expand_additive_terms(ctx, display_expr, &display_vars);
 
-    let mut proof = PolynomialProofData {
+    let mut proof_data = PolynomialProofData {
         monomials: 0,
         degree: 0,
         vars: display_vars,
@@ -250,8 +439,11 @@ fn try_opaque_zero(
         rhs_stats: None,
         opaque_substitutions: Vec::new(),
     };
-    proof.opaque_substitutions = substitutions;
-    Some(proof)
+    proof_data.opaque_substitutions = substitutions;
+    Some(PolynomialIdentityZeroPlan {
+        kind: proof_kind,
+        proof_data,
+    })
 }
 
 fn build_direct_identity_proof_data(
@@ -360,6 +552,45 @@ mod tests {
         let plan = try_prove_polynomial_identity_zero_expr(&mut ctx, expr)
             .unwrap_or_else(|| panic!("plan"));
         assert_eq!(plan.kind, PolynomialIdentityProofKind::OpaqueSubstitution);
+    }
+
+    #[test]
+    fn proves_opaque_fractional_power_identity_by_substitution() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "(x^2 + 1)^(1/2)*((x^2 + 1)^(1/2) + 1) - (((x^2 + 1)^(1/2))^2 + (x^2 + 1)^(1/2))",
+            &mut ctx,
+        )
+        .unwrap_or_else(|_| panic!("parse"));
+        let plan = try_prove_polynomial_identity_zero_expr(&mut ctx, expr)
+            .unwrap_or_else(|| panic!("plan"));
+        assert_eq!(plan.kind, PolynomialIdentityProofKind::OpaqueSubstitution);
+    }
+
+    #[test]
+    fn proves_collapsed_root_base_identity_by_relation() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "(x^2 + 1)^(1/2)*((x^2 + 1)^(1/2) + 1) - ((x^2 + 1)^(1/2) + x^2 + 1)",
+            &mut ctx,
+        )
+        .unwrap_or_else(|_| panic!("parse"));
+        let plan = try_prove_polynomial_identity_zero_expr(&mut ctx, expr)
+            .unwrap_or_else(|| panic!("plan"));
+        assert_eq!(plan.kind, PolynomialIdentityProofKind::OpaqueRootRelation);
+    }
+
+    #[test]
+    fn proves_collapsed_root_cubic_identity_by_relation() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "(x^2 + 1)^(3/2) + 1 - (((x^2 + 1)^(1/2) + 1)*(x^2 + 2 - (x^2 + 1)^(1/2)))",
+            &mut ctx,
+        )
+        .unwrap_or_else(|_| panic!("parse"));
+        let plan = try_prove_polynomial_identity_zero_expr(&mut ctx, expr)
+            .unwrap_or_else(|| panic!("plan"));
+        assert_eq!(plan.kind, PolynomialIdentityProofKind::OpaqueRootRelation);
     }
 
     #[test]

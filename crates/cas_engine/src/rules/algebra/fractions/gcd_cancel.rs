@@ -11,7 +11,8 @@ use cas_math::fraction_gcd_plan_support::{try_plan_fraction_gcd_rewrite, Fractio
 use cas_math::fraction_mul_div_support::{try_rewrite_simplify_mul_div_expr, MulDivRewriteKind};
 use cas_math::fraction_power_cancel_support::{
     try_rewrite_cancel_identical_fraction_expr, try_rewrite_cancel_power_fraction_expr,
-    try_rewrite_cancel_same_base_powers_div_expr, CancelIdenticalFractionRewriteKind,
+    try_rewrite_cancel_same_base_powers_div_expr,
+    try_rewrite_collapse_reciprocal_negative_power_expr, CancelIdenticalFractionRewriteKind,
     CancelPowerFractionRewriteKind, CancelSameBasePowersRewriteKind,
 };
 use cas_math::nested_fraction_support::try_rewrite_simplify_nested_fraction_expr;
@@ -60,6 +61,10 @@ fn format_cancel_power_fraction_desc(kind: CancelPowerFractionRewriteKind) -> &'
         CancelPowerFractionRewriteKind::SameSign => "Cancel: P^n/P -> P^(n-1)",
         CancelPowerFractionRewriteKind::NegatedDenominator => "Cancel: P^n/(-P) -> -P^(n-1)",
     }
+}
+
+fn format_collapse_reciprocal_negative_power_desc() -> &'static str {
+    "Cancel: 1/P^(-a) -> P^a"
 }
 
 fn fast_unproven_nonzero_decision(
@@ -206,6 +211,44 @@ define_rule!(
         Some(
             Rewrite::new(plan.rewritten)
                 .desc(format_cancel_power_fraction_desc(plan.kind))
+                .local(expr, plan.rewritten)
+                .requires(ImplicitCondition::NonZero(plan.nonzero_target))
+                .assume_all(decision.assumption_events(ctx, plan.nonzero_target)),
+        )
+    }
+);
+
+define_rule!(
+    CollapseReciprocalNegativePowerRule,
+    "Collapse Reciprocal Negative Power",
+    solve_safety: crate::SolveSafety::NeedsCondition(
+        crate::ConditionClass::Definability
+    ),
+    |ctx, expr, parent_ctx| {
+        use crate::ImplicitCondition;
+        use crate::Predicate;
+
+        let plan = try_rewrite_collapse_reciprocal_negative_power_expr(ctx, expr)?;
+
+        let domain_mode = parent_ctx.domain_mode();
+        let decision = fast_unproven_nonzero_decision(ctx, domain_mode, plan.nonzero_target)
+            .unwrap_or_else(|| {
+                crate::oracle_allows_with_hint(
+                    ctx,
+                    domain_mode,
+                    parent_ctx.value_domain(),
+                    &Predicate::NonZero(plan.nonzero_target),
+                    "Collapse Reciprocal Negative Power",
+                )
+            });
+
+        if !decision.allow {
+            return None;
+        }
+
+        Some(
+            Rewrite::new(plan.rewritten)
+                .desc(format_collapse_reciprocal_negative_power_desc())
                 .local(expr, plan.rewritten)
                 .requires(ImplicitCondition::NonZero(plan.nonzero_target))
                 .assume_all(decision.assumption_events(ctx, plan.nonzero_target)),

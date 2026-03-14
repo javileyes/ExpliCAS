@@ -7,10 +7,6 @@
 sin(u),u,trig
 cos(u),u,trig
 
-# Inverse Trigonometric
-arctan(u),u,inv_trig
-arcsin(u),u,inv_trig
-
 # Polynomial
 u^2 + 1,u,poly
 u^2 - 1,u,poly
@@ -25,40 +21,25 @@ ln(u),u,exp_log
 # Composed / Nested
 sin(u)^2,u,composed
 cos(2*u),u,composed
-sqrt(u^2 + 1),u,composed
 1/(u^2 + 1),u,composed
-1/u + 1/(u+1),u,rational_ctx
-1/(u - 1) + 1/(u + 1),u,rational_ctx
-1/sqrt(u),u,root_ctx
 
-# Context-heavy substitutions that frequently generate high-arity residuals are
-# intentionally tested in `contextual_pairs.csv`, not in the global substitution
-# corpus. That keeps the global CSV combination suite focused on base identities
-# while preserving stronger directed coverage for:
-# - (u + 1)^2, (u + 1/2)^2, (u + 2)^2, u^2 + 2*u
-# - u^6 - 1, u^3 + u^2 + u + 1, (u + 1)*(u + 2)*(u + 3)
-# - exp(u)/(exp(u) + 1) + 1/(exp(u) + 1)
-# - sin(u) + sin(3*u)
+# Context-heavy substitutions that frequently generate structural residuals now
+# live in `substitution_structural_expressions.csv`, not in the global
+# substitution corpus. That keeps the global suite focused on broadly reusable
+# substitutions while preserving dedicated coverage for inverse-trig, radicals,
+# absolute value, rational compositions and phase-shifted substitutions.
 
 # Rational
-u/(u + 1),u,rational
-(u - 1)/(u + 1),u,rational
 
 # Simple Transforms
 -u,u,simple
 2*u,u,simple
-u + pi,u,simple
-
-# Absolute Value
-|u|,u,absolute
 
 # Shifted
 u - 1,u,shifted
 1 - u,u,shifted
 
 # Higher-Degree Polynomial
-u^3,u,poly
-u^3 + 1,u,poly
 
 # Hyperbolic
 sinh(u),u,hyp

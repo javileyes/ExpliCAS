@@ -58,6 +58,9 @@ impl crate::rule::Rule for PolynomialIdentityZeroRule {
             PolynomialIdentityProofKind::OpaqueSubstitution => {
                 "Polynomial identity (opaque substitution): cancel to 0"
             }
+            PolynomialIdentityProofKind::OpaqueRootRelation => {
+                "Polynomial identity (opaque root relation): cancel to 0"
+            }
         };
         Some(Rewrite::new(zero).desc(desc).poly_proof(plan.proof_data))
     }

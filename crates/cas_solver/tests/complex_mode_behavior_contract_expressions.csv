@@ -1,0 +1,13 @@
+# Complex Mode Behavior Contract Corpus
+# Format: expr,value_domain,complex_mode,match_kind,expected
+
+# Complex mode semantics already documented by direct simplifier tests
+i^2,complex,auto,exact,-1
+i^2,complex,on,exact,-1
+i^2,complex,off,exact,-1
+i^5,complex,on,exact,i
+1/i,complex,on,exact,-i
+(1+i)/(1-i),complex,on,exact,i
+
+# ValueDomain still gates the meaning of i
+i^2,real,on,contains_all,i

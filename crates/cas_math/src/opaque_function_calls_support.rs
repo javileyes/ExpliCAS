@@ -1,5 +1,6 @@
 //! Helpers for collecting and pairing function-call subexpressions.
 
+use crate::opaque_atoms::extract_opaque_reciprocal_power_base;
 use cas_ast::ordering::compare_expr;
 use cas_ast::{Context, Expr, ExprId};
 use std::cmp::Ordering;
@@ -27,6 +28,9 @@ fn collect_calls_recursive(
     }
     match ctx.get(expr) {
         Expr::Function(_, _) => out.push(expr),
+        Expr::Pow(_, _) if extract_opaque_reciprocal_power_base(ctx, expr).is_some() => {
+            out.push(expr)
+        }
         Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
             collect_calls_recursive(ctx, *l, out, depth + 1, max_depth);
             collect_calls_recursive(ctx, *r, out, depth + 1, max_depth);
@@ -83,6 +87,17 @@ mod tests {
         let mut ctx = Context::new();
         let left_expr = parse("sin(x)+cos(y)", &mut ctx).expect("parse left");
         let right_expr = parse("cos(y)+tan(z)", &mut ctx).expect("parse right");
+        let left = collect_function_calls_limited(&ctx, left_expr, 4);
+        let right = collect_function_calls_limited(&ctx, right_expr, 4);
+        let shared = match_shared_calls_structural(&ctx, &left, &right, 3);
+        assert_eq!(shared.len(), 1);
+    }
+
+    #[test]
+    fn collects_shared_root_like_pow_atoms() {
+        let mut ctx = Context::new();
+        let left_expr = parse("(x^2 + 1)^(1/2) + 1", &mut ctx).expect("parse left");
+        let right_expr = parse("((x^2 + 1)^(1/2)) - 1", &mut ctx).expect("parse right");
         let left = collect_function_calls_limited(&ctx, left_expr, 4);
         let right = collect_function_calls_limited(&ctx, right_expr, 4);
         let shared = match_shared_calls_structural(&ctx, &left, &right, 3);

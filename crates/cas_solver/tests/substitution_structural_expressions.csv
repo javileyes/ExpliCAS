@@ -1,0 +1,29 @@
+# Structural Substitution Expressions for Metamorphic Testing
+# Format: expr,var,label[,filters]
+# These substitutions are intentionally more aggressive than the global corpus
+# and are tracked in a dedicated suite so they don't dominate the signal of
+# `substitution_expressions.csv`.
+
+# Inverse Trigonometric
+arctan(u),u,inv_trig
+arcsin(u),u,inv_trig,abs_lt(0.9)
+
+# Composed / Nested
+sqrt(u^2 + 1),u,composed
+1/u + 1/(u+1),u,rational_ctx
+1/(u - 1) + 1/(u + 1),u,rational_ctx,range(1.1;3.0)
+1/sqrt(u),u,root_ctx,gt(0.1)
+
+# Rational
+u/(u + 1),u,rational
+(u - 1)/(u + 1),u,rational
+
+# High-degree polynomial contexts
+u^3,u,poly_high
+u^3 + 1,u,poly_high
+
+# Phase / shift
+u + pi,u,phase
+
+# Absolute Value
+|u|,u,absolute

@@ -20,7 +20,8 @@
 #![allow(dead_code)]
 #![allow(unused_imports)]
 
-use cas_ast::{Context, Equation, Expr, ExprId, RelOp, SolutionSet};
+use cas_ast::views::as_rational_const;
+use cas_ast::{BuiltinFn, Context, Equation, Expr, ExprId, RelOp, SolutionSet};
 use cas_formatter::{display_transforms::ScopeTag, DisplayExpr};
 use cas_parser::parse;
 use cas_solver::api::{
@@ -33,6 +34,7 @@ use cas_solver::command_api::solve::{evaluate_solve_command_lines_with_session, 
 use cas_solver::runtime::{
     CasError, DomainMode, EvalOptions, Simplifier, SolverOptions, StatelessEvalSession, ValueDomain,
 };
+use num_traits::Signed;
 use std::collections::HashMap;
 use std::env;
 use std::fs;
@@ -72,6 +74,7 @@ const ATOL: f64 = 1e-8;
 
 /// Relative tolerance for numeric equivalence
 const RTOL: f64 = 1e-6;
+const NUMERIC_DENOM_GUARD_ATOL: f64 = 1e-8;
 
 /// Interior samples that stay well inside common bounded domains like arcsin/acos.
 const NUMERIC_INTERIOR_VALUES: [f64; 10] = [
@@ -84,7 +87,30 @@ const NUMERIC_GENERAL_VALUES: [f64; 12] = [
 ];
 
 /// Positive samples for logs, roots and other positivity-sensitive contexts.
-const NUMERIC_POSITIVE_VALUES: [f64; 10] = [0.1, 0.2, 0.35, 0.5, 0.8, 1.0, 1.5, 2.0, 3.0, 5.0];
+/// Includes medium values so shifted domains like `ln(y - 10)` are still reachable.
+const NUMERIC_POSITIVE_VALUES: [f64; 13] = [
+    0.1, 0.2, 0.35, 0.5, 0.8, 1.0, 1.5, 2.0, 3.0, 5.0, 8.0, 12.0, 20.0,
+];
+
+/// Rational-friendly samples that stay away from the most common poles around 0 and +/-1.
+const NUMERIC_RATIONAL_VALUES: [f64; 12] = [
+    -5.0, -3.5, -2.5, -1.5, -0.5, -0.2, 0.2, 0.5, 1.5, 2.5, 3.5, 5.0,
+];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum NumericSampleProfile {
+    Interior,
+    General,
+    Positive,
+    Rational,
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+struct NumericSamplingFeatures {
+    bounded_inverse_trig: bool,
+    positivity_sensitive: bool,
+    rational_sensitive: bool,
+}
 
 fn is_verbose() -> bool {
     env::var("METATEST_VERBOSE")
@@ -92,16 +118,291 @@ fn is_verbose() -> bool {
         .unwrap_or(false)
 }
 
-fn numeric_sample_value(sample_idx: usize, var_idx: usize) -> f64 {
-    let profile = sample_idx % 3;
+fn numeric_sample_value(
+    profile_order: &[NumericSampleProfile; 3],
+    sample_idx: usize,
+    var_idx: usize,
+) -> f64 {
+    let profile = profile_order[sample_idx % profile_order.len()];
     let round = sample_idx / 3;
-    let values: &[f64] = match profile {
-        0 => &NUMERIC_INTERIOR_VALUES,
-        1 => &NUMERIC_GENERAL_VALUES,
-        _ => &NUMERIC_POSITIVE_VALUES,
+    let (values, step, var_step): (&[f64], usize, usize) = match profile {
+        NumericSampleProfile::Interior => (&NUMERIC_INTERIOR_VALUES, 7, 13),
+        NumericSampleProfile::General => (&NUMERIC_GENERAL_VALUES, 7, 13),
+        NumericSampleProfile::Positive => (&NUMERIC_POSITIVE_VALUES, 4, 11),
+        NumericSampleProfile::Rational => (&NUMERIC_RATIONAL_VALUES, 5, 9),
     };
-    let idx = (round * 7 + var_idx * 13) % values.len();
+    let idx = (round * step + var_idx * var_step) % values.len();
     values[idx]
+}
+
+fn collect_numeric_sampling_features(
+    ctx: &Context,
+    expr: ExprId,
+    features: &mut NumericSamplingFeatures,
+) {
+    match ctx.get(expr) {
+        Expr::Add(a, b) | Expr::Sub(a, b) | Expr::Mul(a, b) => {
+            collect_numeric_sampling_features(ctx, *a, features);
+            collect_numeric_sampling_features(ctx, *b, features);
+        }
+        Expr::Div(a, b) => {
+            features.rational_sensitive = true;
+            collect_numeric_sampling_features(ctx, *a, features);
+            collect_numeric_sampling_features(ctx, *b, features);
+        }
+        Expr::Pow(base, exp) => {
+            if let Some(exp_q) = as_rational_const(ctx, *exp, 4) {
+                if exp_q.is_negative() {
+                    features.rational_sensitive = true;
+                }
+                if !exp_q.is_integer() {
+                    features.positivity_sensitive = true;
+                }
+            } else if matches!(ctx.get(*exp), Expr::Div(_, _)) {
+                features.positivity_sensitive = true;
+            }
+            collect_numeric_sampling_features(ctx, *base, features);
+            collect_numeric_sampling_features(ctx, *exp, features);
+        }
+        Expr::Neg(a) | Expr::Hold(a) => {
+            collect_numeric_sampling_features(ctx, *a, features);
+        }
+        Expr::Function(fn_id, args) => {
+            if ctx.is_builtin(*fn_id, BuiltinFn::Ln)
+                || ctx.is_builtin(*fn_id, BuiltinFn::Log)
+                || ctx.is_builtin(*fn_id, BuiltinFn::Log2)
+                || ctx.is_builtin(*fn_id, BuiltinFn::Log10)
+                || ctx.is_builtin(*fn_id, BuiltinFn::Sqrt)
+                || ctx.is_builtin(*fn_id, BuiltinFn::Cbrt)
+                || ctx.is_builtin(*fn_id, BuiltinFn::Root)
+            {
+                features.positivity_sensitive = true;
+            }
+            if ctx.is_builtin(*fn_id, BuiltinFn::Asin)
+                || ctx.is_builtin(*fn_id, BuiltinFn::Acos)
+                || ctx.is_builtin(*fn_id, BuiltinFn::Arcsin)
+                || ctx.is_builtin(*fn_id, BuiltinFn::Arccos)
+            {
+                features.bounded_inverse_trig = true;
+            }
+            for arg in args {
+                collect_numeric_sampling_features(ctx, *arg, features);
+            }
+        }
+        Expr::Matrix { data, .. } => {
+            for d in data {
+                collect_numeric_sampling_features(ctx, *d, features);
+            }
+        }
+        Expr::Variable(_) | Expr::Number(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
+    }
+}
+
+fn choose_numeric_sample_profile_order(
+    ctx: &Context,
+    equation: &Equation,
+    solution: ExprId,
+) -> [NumericSampleProfile; 3] {
+    let mut features = NumericSamplingFeatures::default();
+    collect_numeric_sampling_features(ctx, equation.lhs, &mut features);
+    collect_numeric_sampling_features(ctx, equation.rhs, &mut features);
+    collect_numeric_sampling_features(ctx, solution, &mut features);
+
+    if features.positivity_sensitive && features.bounded_inverse_trig {
+        [
+            NumericSampleProfile::Positive,
+            NumericSampleProfile::Interior,
+            if features.rational_sensitive {
+                NumericSampleProfile::Rational
+            } else {
+                NumericSampleProfile::General
+            },
+        ]
+    } else if features.positivity_sensitive {
+        [
+            NumericSampleProfile::Positive,
+            if features.rational_sensitive {
+                NumericSampleProfile::Rational
+            } else {
+                NumericSampleProfile::General
+            },
+            NumericSampleProfile::Interior,
+        ]
+    } else if features.bounded_inverse_trig {
+        [
+            NumericSampleProfile::Interior,
+            if features.rational_sensitive {
+                NumericSampleProfile::Rational
+            } else {
+                NumericSampleProfile::General
+            },
+            NumericSampleProfile::Positive,
+        ]
+    } else if features.rational_sensitive {
+        [
+            NumericSampleProfile::Rational,
+            NumericSampleProfile::General,
+            NumericSampleProfile::Positive,
+        ]
+    } else {
+        [
+            NumericSampleProfile::General,
+            NumericSampleProfile::Interior,
+            NumericSampleProfile::Positive,
+        ]
+    }
+}
+
+fn collect_numeric_denominator_guards(ctx: &Context, expr: ExprId, guards: &mut Vec<ExprId>) {
+    match ctx.get(expr) {
+        Expr::Add(a, b) | Expr::Sub(a, b) | Expr::Mul(a, b) => {
+            collect_numeric_denominator_guards(ctx, *a, guards);
+            collect_numeric_denominator_guards(ctx, *b, guards);
+        }
+        Expr::Div(a, b) => {
+            guards.push(*b);
+            collect_numeric_denominator_guards(ctx, *a, guards);
+            collect_numeric_denominator_guards(ctx, *b, guards);
+        }
+        Expr::Pow(base, exp) => {
+            if let Some(exp_q) = as_rational_const(ctx, *exp, 4) {
+                if exp_q.is_negative() {
+                    guards.push(*base);
+                }
+                collect_numeric_denominator_guards(ctx, *base, guards);
+            } else {
+                collect_numeric_denominator_guards(ctx, *base, guards);
+                collect_numeric_denominator_guards(ctx, *exp, guards);
+            }
+        }
+        Expr::Neg(a) | Expr::Hold(a) => {
+            collect_numeric_denominator_guards(ctx, *a, guards);
+        }
+        Expr::Function(_, args) => {
+            for arg in args {
+                collect_numeric_denominator_guards(ctx, *arg, guards);
+            }
+        }
+        Expr::Matrix { data, .. } => {
+            for d in data {
+                collect_numeric_denominator_guards(ctx, *d, guards);
+            }
+        }
+        Expr::Variable(_) | Expr::Number(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
+    }
+}
+
+fn near_numeric_guard_zero(ctx: &Context, guard: ExprId, var_map: &HashMap<String, f64>) -> bool {
+    match eval_f64(ctx, guard, var_map) {
+        Some(v) if v.is_finite() => v.abs() <= NUMERIC_DENOM_GUARD_ATOL,
+        _ => true,
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum NumericAnalyticGuardKind {
+    Positive,
+    NonNegative,
+    NotOne,
+    UnitInterval,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct NumericAnalyticGuard {
+    expr: ExprId,
+    kind: NumericAnalyticGuardKind,
+}
+
+fn collect_numeric_analytic_guards(
+    ctx: &Context,
+    expr: ExprId,
+    guards: &mut Vec<NumericAnalyticGuard>,
+) {
+    match ctx.get(expr) {
+        Expr::Add(a, b) | Expr::Sub(a, b) | Expr::Mul(a, b) | Expr::Div(a, b) | Expr::Pow(a, b) => {
+            collect_numeric_analytic_guards(ctx, *a, guards);
+            collect_numeric_analytic_guards(ctx, *b, guards);
+        }
+        Expr::Neg(a) | Expr::Hold(a) => {
+            collect_numeric_analytic_guards(ctx, *a, guards);
+        }
+        Expr::Function(fn_id, args) => {
+            if (ctx.is_builtin(*fn_id, BuiltinFn::Ln)
+                || ctx.is_builtin(*fn_id, BuiltinFn::Log2)
+                || ctx.is_builtin(*fn_id, BuiltinFn::Log10))
+                && !args.is_empty()
+            {
+                guards.push(NumericAnalyticGuard {
+                    expr: args[0],
+                    kind: NumericAnalyticGuardKind::Positive,
+                });
+            }
+
+            if ctx.is_builtin(*fn_id, BuiltinFn::Log) {
+                if let Some(&base) = args.first() {
+                    guards.push(NumericAnalyticGuard {
+                        expr: base,
+                        kind: NumericAnalyticGuardKind::Positive,
+                    });
+                    guards.push(NumericAnalyticGuard {
+                        expr: base,
+                        kind: NumericAnalyticGuardKind::NotOne,
+                    });
+                }
+                if args.len() > 1 {
+                    guards.push(NumericAnalyticGuard {
+                        expr: args[1],
+                        kind: NumericAnalyticGuardKind::Positive,
+                    });
+                }
+            }
+
+            if ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) && !args.is_empty() {
+                guards.push(NumericAnalyticGuard {
+                    expr: args[0],
+                    kind: NumericAnalyticGuardKind::NonNegative,
+                });
+            }
+
+            if (ctx.is_builtin(*fn_id, BuiltinFn::Asin)
+                || ctx.is_builtin(*fn_id, BuiltinFn::Acos)
+                || ctx.is_builtin(*fn_id, BuiltinFn::Arcsin)
+                || ctx.is_builtin(*fn_id, BuiltinFn::Arccos))
+                && !args.is_empty()
+            {
+                guards.push(NumericAnalyticGuard {
+                    expr: args[0],
+                    kind: NumericAnalyticGuardKind::UnitInterval,
+                });
+            }
+
+            for arg in args {
+                collect_numeric_analytic_guards(ctx, *arg, guards);
+            }
+        }
+        Expr::Matrix { data, .. } => {
+            for d in data {
+                collect_numeric_analytic_guards(ctx, *d, guards);
+            }
+        }
+        Expr::Variable(_) | Expr::Number(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
+    }
+}
+
+fn violates_numeric_analytic_guard(
+    ctx: &Context,
+    guard: NumericAnalyticGuard,
+    var_map: &HashMap<String, f64>,
+) -> bool {
+    match eval_f64(ctx, guard.expr, var_map) {
+        Some(v) if v.is_finite() => match guard.kind {
+            NumericAnalyticGuardKind::Positive => v <= NUMERIC_DENOM_GUARD_ATOL,
+            NumericAnalyticGuardKind::NonNegative => v < -NUMERIC_DENOM_GUARD_ATOL,
+            NumericAnalyticGuardKind::NotOne => (v - 1.0).abs() <= NUMERIC_DENOM_GUARD_ATOL,
+            NumericAnalyticGuardKind::UnitInterval => v.abs() > 1.0 + NUMERIC_DENOM_GUARD_ATOL,
+        },
+        _ => true,
+    }
 }
 
 // =============================================================================
@@ -276,8 +577,20 @@ fn numeric_verify_solution(
         .collect();
 
     let mut valid = 0;
-    let mut _domain_errors = 0;
+    let mut domain_errors = 0;
+    let mut solution_eval_successes = 0;
     let mut mismatches = 0;
+    let profile_order = choose_numeric_sample_profile_order(ctx, equation, solution);
+    let mut solution_guards = Vec::new();
+    let mut equation_guards = Vec::new();
+    let mut solution_analytic_guards = Vec::new();
+    let mut equation_analytic_guards = Vec::new();
+    collect_numeric_denominator_guards(ctx, solution, &mut solution_guards);
+    collect_numeric_denominator_guards(ctx, equation.lhs, &mut equation_guards);
+    collect_numeric_denominator_guards(ctx, equation.rhs, &mut equation_guards);
+    collect_numeric_analytic_guards(ctx, solution, &mut solution_analytic_guards);
+    collect_numeric_analytic_guards(ctx, equation.lhs, &mut equation_analytic_guards);
+    collect_numeric_analytic_guards(ctx, equation.rhs, &mut equation_analytic_guards);
 
     // If no other variables, single evaluation
     let sample_count = if other_vars.is_empty() {
@@ -291,23 +604,43 @@ fn numeric_verify_solution(
 
         // First, evaluate the solution expression with current other-var values
         for (j, var) in other_vars.iter().enumerate() {
-            // Deterministic, domain-aware profiles:
-            // interior values for bounded domains, mixed-sign general values,
-            // and positivity-friendly values for logs/roots.
-            let val = numeric_sample_value(i, j);
+            let val = numeric_sample_value(&profile_order, i, j);
             var_map.insert(var.clone(), val);
+        }
+
+        if solution_guards
+            .iter()
+            .any(|guard| near_numeric_guard_zero(ctx, *guard, &var_map))
+            || solution_analytic_guards
+                .iter()
+                .any(|guard| violates_numeric_analytic_guard(ctx, *guard, &var_map))
+        {
+            domain_errors += 1;
+            continue;
         }
 
         // Evaluate the solution expression to get a number for solve_var
         let sol_val = match eval_f64(ctx, solution, &var_map) {
             Some(v) if v.is_finite() => v,
             _ => {
-                _domain_errors += 1;
+                domain_errors += 1;
                 continue;
             }
         };
+        solution_eval_successes += 1;
 
         var_map.insert(solve_var.to_string(), sol_val);
+
+        if equation_guards
+            .iter()
+            .any(|guard| near_numeric_guard_zero(ctx, *guard, &var_map))
+            || equation_analytic_guards
+                .iter()
+                .any(|guard| violates_numeric_analytic_guard(ctx, *guard, &var_map))
+        {
+            domain_errors += 1;
+            continue;
+        }
 
         // Evaluate lhs and rhs
         let lhs_val = eval_f64(ctx, equation.lhs, &var_map);
@@ -325,7 +658,7 @@ fn numeric_verify_solution(
                 }
             }
             _ => {
-                _domain_errors += 1;
+                domain_errors += 1;
             }
         }
     }
@@ -334,8 +667,10 @@ fn numeric_verify_solution(
         NumericVerifyResult::Failed
     } else if valid > 0 {
         NumericVerifyResult::Verified(valid)
+    } else if other_vars.is_empty() || solution_eval_successes > 0 || domain_errors == 0 {
+        NumericVerifyResult::Inconclusive(NumericInconclusiveReason::DomainSensitive)
     } else {
-        NumericVerifyResult::Inconclusive
+        NumericVerifyResult::Inconclusive(NumericInconclusiveReason::SamplingWeak)
     }
 }
 
@@ -346,7 +681,80 @@ enum NumericVerifyResult {
     /// Solution failed numeric check
     Failed,
     /// Could not evaluate (all domain errors)
-    Inconclusive,
+    Inconclusive(NumericInconclusiveReason),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum NumericInconclusiveReason {
+    DomainSensitive,
+    SamplingWeak,
+}
+
+impl NumericInconclusiveReason {
+    fn label(self) -> &'static str {
+        match self {
+            Self::DomainSensitive => "domain-sensitive",
+            Self::SamplingWeak => "sampling-weak",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum EqNumericFallbackReason {
+    ResidualOnly,
+    NotCheckableOnly,
+    MixedResidualAndNotCheckable,
+}
+
+impl EqNumericFallbackReason {
+    fn label(self) -> &'static str {
+        match self {
+            Self::ResidualOnly => "residual rescued numerically",
+            Self::NotCheckableOnly => "not-checkable accepted",
+            Self::MixedResidualAndNotCheckable => "mixed residual + not-checkable",
+        }
+    }
+}
+
+fn classify_eq_numeric_fallback_reason(
+    saw_numeric_residual: bool,
+    saw_not_checkable: bool,
+) -> EqNumericFallbackReason {
+    match (saw_numeric_residual, saw_not_checkable) {
+        (true, false) => EqNumericFallbackReason::ResidualOnly,
+        (false, true) => EqNumericFallbackReason::NotCheckableOnly,
+        (true, true) => EqNumericFallbackReason::MixedResidualAndNotCheckable,
+        (false, false) => unreachable!("numeric fallback requires at least one fallback source"),
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum PairNumericFallbackReason {
+    AtoB,
+    BtoA,
+    BothDirections,
+}
+
+impl PairNumericFallbackReason {
+    fn label(self) -> &'static str {
+        match self {
+            Self::AtoB => "A->B needs numeric",
+            Self::BtoA => "B->A needs numeric",
+            Self::BothDirections => "both directions need numeric",
+        }
+    }
+}
+
+fn classify_pair_numeric_fallback_reason(
+    numeric_a_to_b: bool,
+    numeric_b_to_a: bool,
+) -> PairNumericFallbackReason {
+    match (numeric_a_to_b, numeric_b_to_a) {
+        (true, false) => PairNumericFallbackReason::AtoB,
+        (false, true) => PairNumericFallbackReason::BtoA,
+        (true, true) => PairNumericFallbackReason::BothDirections,
+        (false, false) => unreachable!("pair numeric fallback requires at least one direction"),
+    }
 }
 
 fn make_solver_opts(mode: DomainMode, scope: AssumeScope) -> SolverOptions {
@@ -369,6 +777,326 @@ fn numeric_verify_solution_finds_interior_multivar_samples() {
         NumericVerifyResult::Verified(valid) => assert!(valid > 0),
         other => panic!("expected numeric verification to succeed, got {:?}", other),
     }
+}
+
+#[test]
+fn numeric_verify_solution_finds_shifted_positive_multivar_samples() {
+    let mut ctx = Context::new();
+    let equation = parse_equation_str(&mut ctx, "x = ln(y - 10) - ln(y - 10)").unwrap();
+    let solution = parse("0", &mut ctx).unwrap();
+
+    match numeric_verify_solution(&ctx, &equation, "x", solution) {
+        NumericVerifyResult::Verified(valid) => assert!(valid > 0),
+        other => panic!(
+            "expected numeric verification to find shifted positive samples, got {:?}",
+            other
+        ),
+    }
+}
+
+#[test]
+fn numeric_verify_solution_classifies_single_point_domain_as_domain_sensitive() {
+    let mut ctx = Context::new();
+    let equation = parse_equation_str(&mut ctx, "x = sqrt(-1)").unwrap();
+    let solution = parse("sqrt(-1)", &mut ctx).unwrap();
+
+    match numeric_verify_solution(&ctx, &equation, "x", solution) {
+        NumericVerifyResult::Inconclusive(NumericInconclusiveReason::DomainSensitive) => {}
+        other => panic!("expected domain-sensitive inconclusive, got {:?}", other),
+    }
+}
+
+#[test]
+fn numeric_verify_solution_classifies_multivar_sampler_miss_as_sampling_weak() {
+    let mut ctx = Context::new();
+    let equation = parse_equation_str(&mut ctx, "x = ln(y - 1000)").unwrap();
+    let solution = parse("ln(y - 1000)", &mut ctx).unwrap();
+
+    match numeric_verify_solution(&ctx, &equation, "x", solution) {
+        NumericVerifyResult::Inconclusive(NumericInconclusiveReason::SamplingWeak) => {}
+        other => panic!("expected sampling-weak inconclusive, got {:?}", other),
+    }
+}
+
+#[test]
+fn numeric_verify_solution_classifies_post_solution_domain_failures_as_domain_sensitive() {
+    let mut ctx = Context::new();
+    let equation = parse_equation_str(&mut ctx, "x = sqrt(y - 1000) - sqrt(y - 1000)").unwrap();
+    let solution = parse("0", &mut ctx).unwrap();
+
+    match numeric_verify_solution(&ctx, &equation, "x", solution) {
+        NumericVerifyResult::Inconclusive(NumericInconclusiveReason::DomainSensitive) => {}
+        other => panic!("expected domain-sensitive inconclusive, got {:?}", other),
+    }
+}
+
+#[test]
+fn classify_eq_numeric_fallback_reason_variants() {
+    assert_eq!(
+        classify_eq_numeric_fallback_reason(true, false),
+        EqNumericFallbackReason::ResidualOnly
+    );
+    assert_eq!(
+        classify_eq_numeric_fallback_reason(false, true),
+        EqNumericFallbackReason::NotCheckableOnly
+    );
+    assert_eq!(
+        classify_eq_numeric_fallback_reason(true, true),
+        EqNumericFallbackReason::MixedResidualAndNotCheckable
+    );
+}
+
+#[test]
+fn classify_pair_numeric_fallback_reason_variants() {
+    assert_eq!(
+        classify_pair_numeric_fallback_reason(true, false),
+        PairNumericFallbackReason::AtoB
+    );
+    assert_eq!(
+        classify_pair_numeric_fallback_reason(false, true),
+        PairNumericFallbackReason::BtoA
+    );
+    assert_eq!(
+        classify_pair_numeric_fallback_reason(true, true),
+        PairNumericFallbackReason::BothDirections
+    );
+}
+
+#[test]
+fn choose_numeric_sample_profile_order_prioritizes_positive_for_logs() {
+    let mut ctx = Context::new();
+    let equation = parse_equation_str(&mut ctx, "x = ln(y - 10)").unwrap();
+    let solution = parse("ln(y - 10)", &mut ctx).unwrap();
+
+    let order = choose_numeric_sample_profile_order(&ctx, &equation, solution);
+    assert_eq!(
+        order,
+        [
+            NumericSampleProfile::Positive,
+            NumericSampleProfile::General,
+            NumericSampleProfile::Interior,
+        ]
+    );
+}
+
+#[test]
+fn choose_numeric_sample_profile_order_prioritizes_interior_for_inverse_trig() {
+    let mut ctx = Context::new();
+    let equation = parse_equation_str(&mut ctx, "x = cos(2*arcsin(y))").unwrap();
+    let solution = parse("cos(2*arcsin(y))", &mut ctx).unwrap();
+
+    let order = choose_numeric_sample_profile_order(&ctx, &equation, solution);
+    assert_eq!(
+        order,
+        [
+            NumericSampleProfile::Interior,
+            NumericSampleProfile::General,
+            NumericSampleProfile::Positive,
+        ]
+    );
+}
+
+#[test]
+fn choose_numeric_sample_profile_order_prioritizes_rational_profile() {
+    let mut ctx = Context::new();
+    let equation = parse_equation_str(&mut ctx, "x = 1/(y - 1)").unwrap();
+    let solution = parse("1/(y - 1)", &mut ctx).unwrap();
+
+    let order = choose_numeric_sample_profile_order(&ctx, &equation, solution);
+    assert_eq!(
+        order,
+        [
+            NumericSampleProfile::Rational,
+            NumericSampleProfile::General,
+            NumericSampleProfile::Positive,
+        ]
+    );
+}
+
+#[test]
+fn choose_numeric_sample_profile_order_combines_positive_and_inverse_trig() {
+    let mut ctx = Context::new();
+    let equation = parse_equation_str(&mut ctx, "x = ln(1 - arcsin(y))").unwrap();
+    let solution = parse("ln(1 - arcsin(y))", &mut ctx).unwrap();
+
+    let order = choose_numeric_sample_profile_order(&ctx, &equation, solution);
+    assert_eq!(
+        order,
+        [
+            NumericSampleProfile::Positive,
+            NumericSampleProfile::Interior,
+            NumericSampleProfile::General,
+        ]
+    );
+}
+
+#[test]
+fn choose_numeric_sample_profile_order_combines_positive_and_rational() {
+    let mut ctx = Context::new();
+    let equation = parse_equation_str(&mut ctx, "x = ln(1/(y - 1))").unwrap();
+    let solution = parse("ln(1/(y - 1))", &mut ctx).unwrap();
+
+    let order = choose_numeric_sample_profile_order(&ctx, &equation, solution);
+    assert_eq!(
+        order,
+        [
+            NumericSampleProfile::Positive,
+            NumericSampleProfile::Rational,
+            NumericSampleProfile::Interior,
+        ]
+    );
+}
+
+#[test]
+fn choose_numeric_sample_profile_order_detects_negative_power_as_rational() {
+    let mut ctx = Context::new();
+    let equation = parse_equation_str(&mut ctx, "x = (y - 1)^(-1)").unwrap();
+    let solution = parse("(y - 1)^(-1)", &mut ctx).unwrap();
+
+    let order = choose_numeric_sample_profile_order(&ctx, &equation, solution);
+    assert_eq!(
+        order,
+        [
+            NumericSampleProfile::Rational,
+            NumericSampleProfile::General,
+            NumericSampleProfile::Positive,
+        ]
+    );
+}
+
+#[test]
+fn choose_numeric_sample_profile_order_detects_negative_fractional_power_as_positive_and_rational()
+{
+    let mut ctx = Context::new();
+    let equation = parse_equation_str(&mut ctx, "x = (y - 1)^(-1/2)").unwrap();
+    let solution = parse("(y - 1)^(-1/2)", &mut ctx).unwrap();
+
+    let order = choose_numeric_sample_profile_order(&ctx, &equation, solution);
+    assert_eq!(
+        order,
+        [
+            NumericSampleProfile::Positive,
+            NumericSampleProfile::Rational,
+            NumericSampleProfile::Interior,
+        ]
+    );
+}
+
+#[test]
+fn collect_numeric_denominator_guards_finds_division_denominator() {
+    let mut ctx = Context::new();
+    let expr = parse("1/(y - 1)", &mut ctx).unwrap();
+    let mut guards = Vec::new();
+    collect_numeric_denominator_guards(&ctx, expr, &mut guards);
+
+    assert_eq!(guards.len(), 1);
+
+    let mut at_pole = HashMap::new();
+    at_pole.insert("y".to_string(), 1.0);
+    assert!(near_numeric_guard_zero(&ctx, guards[0], &at_pole));
+
+    let mut away = HashMap::new();
+    away.insert("y".to_string(), 3.0);
+    assert!(!near_numeric_guard_zero(&ctx, guards[0], &away));
+}
+
+#[test]
+fn collect_numeric_denominator_guards_finds_negative_power_base() {
+    let mut ctx = Context::new();
+    let expr = parse("(y - 1)^(-1/2)", &mut ctx).unwrap();
+    let mut guards = Vec::new();
+    collect_numeric_denominator_guards(&ctx, expr, &mut guards);
+
+    assert_eq!(guards.len(), 1);
+
+    let mut at_pole = HashMap::new();
+    at_pole.insert("y".to_string(), 1.0);
+    assert!(near_numeric_guard_zero(&ctx, guards[0], &at_pole));
+}
+
+#[test]
+fn collect_numeric_analytic_guards_finds_ln_argument_guard() {
+    let mut ctx = Context::new();
+    let expr = parse("ln(y - 1)", &mut ctx).unwrap();
+    let mut guards = Vec::new();
+    collect_numeric_analytic_guards(&ctx, expr, &mut guards);
+
+    assert_eq!(guards.len(), 1);
+    assert_eq!(guards[0].kind, NumericAnalyticGuardKind::Positive);
+
+    let mut bad = HashMap::new();
+    bad.insert("y".to_string(), 1.0);
+    assert!(violates_numeric_analytic_guard(&ctx, guards[0], &bad));
+
+    let mut good = HashMap::new();
+    good.insert("y".to_string(), 3.0);
+    assert!(!violates_numeric_analytic_guard(&ctx, guards[0], &good));
+}
+
+#[test]
+fn collect_numeric_analytic_guards_finds_log_base_and_arg_guards() {
+    let mut ctx = Context::new();
+    let expr = parse("log(y, y - 1)", &mut ctx).unwrap();
+    let mut guards = Vec::new();
+    collect_numeric_analytic_guards(&ctx, expr, &mut guards);
+
+    assert_eq!(guards.len(), 3);
+    assert!(guards
+        .iter()
+        .any(|g| g.kind == NumericAnalyticGuardKind::Positive));
+    assert!(guards
+        .iter()
+        .any(|g| g.kind == NumericAnalyticGuardKind::NotOne));
+
+    let mut bad_base = HashMap::new();
+    bad_base.insert("y".to_string(), 1.0);
+    assert!(guards
+        .iter()
+        .any(|g| violates_numeric_analytic_guard(&ctx, *g, &bad_base)));
+
+    let mut good = HashMap::new();
+    good.insert("y".to_string(), 2.0);
+    assert!(guards
+        .iter()
+        .all(|g| !violates_numeric_analytic_guard(&ctx, *g, &good)));
+}
+
+#[test]
+fn collect_numeric_analytic_guards_finds_sqrt_nonnegative_guard() {
+    let mut ctx = Context::new();
+    let expr = parse("sqrt(y - 1)", &mut ctx).unwrap();
+    let mut guards = Vec::new();
+    collect_numeric_analytic_guards(&ctx, expr, &mut guards);
+
+    assert_eq!(guards.len(), 1);
+    assert_eq!(guards[0].kind, NumericAnalyticGuardKind::NonNegative);
+
+    let mut bad = HashMap::new();
+    bad.insert("y".to_string(), 0.0);
+    assert!(violates_numeric_analytic_guard(&ctx, guards[0], &bad));
+
+    let mut good = HashMap::new();
+    good.insert("y".to_string(), 3.0);
+    assert!(!violates_numeric_analytic_guard(&ctx, guards[0], &good));
+}
+
+#[test]
+fn collect_numeric_analytic_guards_finds_inverse_trig_unit_interval_guard() {
+    let mut ctx = Context::new();
+    let expr = parse("arcsin(y/2)", &mut ctx).unwrap();
+    let mut guards = Vec::new();
+    collect_numeric_analytic_guards(&ctx, expr, &mut guards);
+
+    assert_eq!(guards.len(), 1);
+    assert_eq!(guards[0].kind, NumericAnalyticGuardKind::UnitInterval);
+
+    let mut bad = HashMap::new();
+    bad.insert("y".to_string(), 3.0);
+    assert!(violates_numeric_analytic_guard(&ctx, guards[0], &bad));
+
+    let mut good = HashMap::new();
+    good.insert("y".to_string(), 1.0);
+    assert!(!violates_numeric_analytic_guard(&ctx, guards[0], &good));
 }
 
 /// Collect all variable names from an expression
@@ -410,9 +1138,9 @@ enum EqTestOutcome {
     /// All solutions verified (symbolically or numerically)
     Verified,
     /// Some verified symbolically, rest verified numerically
-    NumericFallback,
+    NumericFallback(EqNumericFallbackReason),
     /// Numeric fallback could not validate at least one residual solution
-    NumericInconclusive,
+    NumericInconclusive(NumericInconclusiveReason),
     /// Solution type not checkable (interval, AllReals, etc.)
     NotCheckable,
     /// Empty solution set (expected or not)
@@ -464,8 +1192,8 @@ impl FamilyMetrics {
         self.total += 1;
         match outcome {
             EqTestOutcome::Verified => self.verified += 1,
-            EqTestOutcome::NumericFallback => self.numeric_fallback += 1,
-            EqTestOutcome::NumericInconclusive => self.numeric_inconclusive += 1,
+            EqTestOutcome::NumericFallback(_) => self.numeric_fallback += 1,
+            EqTestOutcome::NumericInconclusive(_) => self.numeric_inconclusive += 1,
             EqTestOutcome::NotCheckable => self.not_checkable += 1,
             EqTestOutcome::EmptyResult => self.empty += 1,
             EqTestOutcome::SolverError(_) => self.solver_error += 1,
@@ -571,7 +1299,9 @@ fn verify_equation(entry: &EquationEntry) -> EqTestOutcome {
             // Try numeric fallback for unverified solutions
             let mut all_verified = true;
             let mut any_numeric = false;
-            let mut any_numeric_inconclusive = false;
+            let mut any_numeric_inconclusive = None;
+            let mut saw_numeric_residual = false;
+            let mut saw_not_checkable = false;
             let mut fail_detail = String::new();
 
             for (sol_expr, status) in &verify_result.solutions {
@@ -590,6 +1320,7 @@ fn verify_equation(entry: &EquationEntry) -> EqTestOutcome {
                         ) {
                             NumericVerifyResult::Verified(_) => {
                                 any_numeric = true;
+                                saw_numeric_residual = true;
                             }
                             NumericVerifyResult::Failed => {
                                 all_verified = false;
@@ -601,24 +1332,28 @@ fn verify_equation(entry: &EquationEntry) -> EqTestOutcome {
                                 fail_detail =
                                     format!("Solution {} failed verification: {}", sol_str, reason);
                             }
-                            NumericVerifyResult::Inconclusive => {
-                                any_numeric_inconclusive = true;
+                            NumericVerifyResult::Inconclusive(reason) => {
+                                any_numeric_inconclusive = Some(reason);
                             }
                         }
                     }
                     VerifyStatus::NotCheckable { reason: _ } => {
                         // Count as not checkable, not a failure
                         any_numeric = true;
+                        saw_not_checkable = true;
                     }
                 }
             }
 
             if !all_verified {
                 EqTestOutcome::Failed(fail_detail)
-            } else if any_numeric_inconclusive {
-                EqTestOutcome::NumericInconclusive
+            } else if let Some(reason) = any_numeric_inconclusive {
+                EqTestOutcome::NumericInconclusive(reason)
             } else if any_numeric {
-                EqTestOutcome::NumericFallback
+                EqTestOutcome::NumericFallback(classify_eq_numeric_fallback_reason(
+                    saw_numeric_residual,
+                    saw_not_checkable,
+                ))
             } else {
                 EqTestOutcome::Verified
             }
@@ -681,9 +1416,9 @@ enum PairOutcome {
     /// Both solved, solutions cross-verified
     Verified,
     /// Solutions verified numerically
-    NumericFallback,
+    NumericFallback(PairNumericFallbackReason),
     /// Numeric fallback could not validate at least one solution
-    NumericInconclusive,
+    NumericInconclusive(NumericInconclusiveReason),
     /// Solutions don't match
     Mismatch(String),
     /// One or both couldn't solve
@@ -736,8 +1471,9 @@ fn verify_equation_pair(pair: &EquationPair) -> PairOutcome {
 
     // Cross-verification: solutions of A must satisfy B and vice versa
     let mut all_ok = true;
-    let mut any_numeric = false;
-    let mut any_numeric_inconclusive = false;
+    let mut numeric_a_to_b = false;
+    let mut numeric_b_to_a = false;
+    let mut any_numeric_inconclusive = None;
     let mut fail_msg = String::new();
 
     // Check solutions of A satisfy B
@@ -755,7 +1491,7 @@ fn verify_equation_pair(pair: &EquationPair) -> PairOutcome {
                     // Numeric fallback
                     match numeric_verify_solution(&simplifier.context, &eq_b, &pair.solve_var, sol)
                     {
-                        NumericVerifyResult::Verified(_) => any_numeric = true,
+                        NumericVerifyResult::Verified(_) => numeric_a_to_b = true,
                         NumericVerifyResult::Failed => {
                             all_ok = false;
                             let s = DisplayExpr {
@@ -765,7 +1501,9 @@ fn verify_equation_pair(pair: &EquationPair) -> PairOutcome {
                             .to_string();
                             fail_msg = format!("Solution {} of A does not satisfy B", s);
                         }
-                        NumericVerifyResult::Inconclusive => any_numeric_inconclusive = true,
+                        NumericVerifyResult::Inconclusive(reason) => {
+                            any_numeric_inconclusive = Some(reason);
+                        }
                     }
                 }
             }
@@ -791,7 +1529,7 @@ fn verify_equation_pair(pair: &EquationPair) -> PairOutcome {
                             &pair.solve_var,
                             sol,
                         ) {
-                            NumericVerifyResult::Verified(_) => any_numeric = true,
+                            NumericVerifyResult::Verified(_) => numeric_b_to_a = true,
                             NumericVerifyResult::Failed => {
                                 all_ok = false;
                                 let s = DisplayExpr {
@@ -801,8 +1539,8 @@ fn verify_equation_pair(pair: &EquationPair) -> PairOutcome {
                                 .to_string();
                                 fail_msg = format!("Solution {} of B does not satisfy A", s);
                             }
-                            NumericVerifyResult::Inconclusive => {
-                                any_numeric_inconclusive = true;
+                            NumericVerifyResult::Inconclusive(reason) => {
+                                any_numeric_inconclusive = Some(reason);
                             }
                         }
                     }
@@ -826,10 +1564,13 @@ fn verify_equation_pair(pair: &EquationPair) -> PairOutcome {
 
     if !all_ok {
         PairOutcome::Mismatch(fail_msg)
-    } else if any_numeric_inconclusive {
-        PairOutcome::NumericInconclusive
-    } else if any_numeric {
-        PairOutcome::NumericFallback
+    } else if let Some(reason) = any_numeric_inconclusive {
+        PairOutcome::NumericInconclusive(reason)
+    } else if numeric_a_to_b || numeric_b_to_a {
+        PairOutcome::NumericFallback(classify_pair_numeric_fallback_reason(
+            numeric_a_to_b,
+            numeric_b_to_a,
+        ))
     } else {
         PairOutcome::Verified
     }
@@ -915,6 +1656,57 @@ fn print_strategy1_table(families: &[FamilyMetrics]) {
     }
 }
 
+fn print_numeric_inconclusive_breakdown(
+    title: &str,
+    reasons: &std::collections::HashMap<NumericInconclusiveReason, usize>,
+) {
+    if reasons.is_empty() {
+        return;
+    }
+
+    eprintln!();
+    eprintln!("  ? {}:", title);
+    let mut items: Vec<_> = reasons.iter().collect();
+    items.sort_by(|a, b| b.1.cmp(a.1));
+    for (reason, count) in items {
+        eprintln!("    {:>3}× {}", count, reason.label());
+    }
+}
+
+fn print_eq_numeric_fallback_breakdown(
+    title: &str,
+    reasons: &std::collections::HashMap<EqNumericFallbackReason, usize>,
+) {
+    if reasons.is_empty() {
+        return;
+    }
+
+    eprintln!();
+    eprintln!("  ≈ {}:", title);
+    let mut items: Vec<_> = reasons.iter().collect();
+    items.sort_by(|a, b| b.1.cmp(a.1));
+    for (reason, count) in items {
+        eprintln!("    {:>3}× {}", count, reason.label());
+    }
+}
+
+fn print_pair_numeric_fallback_breakdown(
+    title: &str,
+    reasons: &std::collections::HashMap<PairNumericFallbackReason, usize>,
+) {
+    if reasons.is_empty() {
+        return;
+    }
+
+    eprintln!();
+    eprintln!("  ≈ {}:", title);
+    let mut items: Vec<_> = reasons.iter().collect();
+    items.sort_by(|a, b| b.1.cmp(a.1));
+    for (reason, count) in items {
+        eprintln!("    {:>3}× {}", count, reason.label());
+    }
+}
+
 fn truncate(s: &str, max: usize) -> String {
     if s.len() <= max {
         s.to_string()
@@ -951,6 +1743,9 @@ fn metatest_equation_solution_verification() {
     let mut family_metrics: HashMap<String, FamilyMetrics> = HashMap::new();
     let mut total_failed = 0usize;
     let mut total_errors = 0usize;
+    let mut numeric_fallback_reasons: HashMap<EqNumericFallbackReason, usize> = HashMap::new();
+    let mut numeric_inconclusive_reasons: HashMap<NumericInconclusiveReason, usize> =
+        HashMap::new();
 
     for (i, entry) in entries.iter().enumerate() {
         let start = Instant::now();
@@ -964,8 +1759,8 @@ fn metatest_equation_solution_verification() {
 
         let symbol = match &outcome {
             EqTestOutcome::Verified => "✓",
-            EqTestOutcome::NumericFallback => "≈",
-            EqTestOutcome::NumericInconclusive => "?",
+            EqTestOutcome::NumericFallback(_) => "≈",
+            EqTestOutcome::NumericInconclusive(_) => "?",
             EqTestOutcome::NotCheckable => "ℹ",
             EqTestOutcome::EmptyResult => "∅",
             EqTestOutcome::Failed(_) => "✗",
@@ -990,6 +1785,16 @@ fn metatest_equation_solution_verification() {
             total_errors += 1;
         }
 
+        match &outcome {
+            EqTestOutcome::NumericFallback(reason) => {
+                *numeric_fallback_reasons.entry(*reason).or_insert(0) += 1;
+            }
+            EqTestOutcome::NumericInconclusive(reason) => {
+                *numeric_inconclusive_reasons.entry(*reason).or_insert(0) += 1;
+            }
+            _ => {}
+        }
+
         if verbose
             || !matches!(
                 &outcome,
@@ -998,8 +1803,12 @@ fn metatest_equation_solution_verification() {
         {
             let detail = match &outcome {
                 EqTestOutcome::Verified => "verified".to_string(),
-                EqTestOutcome::NumericFallback => "numeric fallback".to_string(),
-                EqTestOutcome::NumericInconclusive => "numeric inconclusive".to_string(),
+                EqTestOutcome::NumericFallback(reason) => {
+                    format!("numeric fallback [{}]", reason.label())
+                }
+                EqTestOutcome::NumericInconclusive(reason) => {
+                    format!("numeric inconclusive [{}]", reason.label())
+                }
                 EqTestOutcome::NotCheckable => "not checkable".to_string(),
                 EqTestOutcome::EmptyResult => "empty/expected".to_string(),
                 EqTestOutcome::Failed(msg) => format!("FAILED: {}", msg),
@@ -1032,6 +1841,14 @@ fn metatest_equation_solution_verification() {
         .collect();
 
     print_strategy1_table(&metrics);
+    print_eq_numeric_fallback_breakdown(
+        "Strategy 1 numeric-fallback breakdown",
+        &numeric_fallback_reasons,
+    );
+    print_numeric_inconclusive_breakdown(
+        "Strategy 1 numeric-inconclusive breakdown",
+        &numeric_inconclusive_reasons,
+    );
 
     // Assert no hard failures
     assert_eq!(
@@ -1063,7 +1880,10 @@ fn metatest_equation_pair_equivalence() {
 
     let mut verified = 0usize;
     let mut numeric = 0usize;
+    let mut numeric_fallback_reasons: HashMap<PairNumericFallbackReason, usize> = HashMap::new();
     let mut numeric_inconclusive = 0usize;
+    let mut numeric_inconclusive_reasons: HashMap<NumericInconclusiveReason, usize> =
+        HashMap::new();
     let mut mismatch = 0usize;
     let mut errors = 0usize;
 
@@ -1077,13 +1897,15 @@ fn metatest_equation_pair_equivalence() {
                 verified += 1;
                 ("✓", "cross-verified".to_string())
             }
-            PairOutcome::NumericFallback => {
+            PairOutcome::NumericFallback(reason) => {
                 numeric += 1;
-                ("≈", "numeric fallback".to_string())
+                *numeric_fallback_reasons.entry(*reason).or_insert(0) += 1;
+                ("≈", format!("numeric fallback [{}]", reason.label()))
             }
-            PairOutcome::NumericInconclusive => {
+            PairOutcome::NumericInconclusive(reason) => {
                 numeric_inconclusive += 1;
-                ("?", "numeric inconclusive".to_string())
+                *numeric_inconclusive_reasons.entry(*reason).or_insert(0) += 1;
+                ("?", format!("numeric inconclusive [{}]", reason.label()))
             }
             PairOutcome::Mismatch(msg) => {
                 mismatch += 1;
@@ -1127,6 +1949,14 @@ fn metatest_equation_pair_equivalence() {
         mismatch,
         errors,
     );
+    print_pair_numeric_fallback_breakdown(
+        "Strategy 3 numeric-fallback breakdown",
+        &numeric_fallback_reasons,
+    );
+    print_numeric_inconclusive_breakdown(
+        "Strategy 3 numeric-inconclusive breakdown",
+        &numeric_inconclusive_reasons,
+    );
 
     assert_eq!(
         mismatch, 0,
@@ -1166,6 +1996,9 @@ fn metatest_equation_benchmark() {
 
     let mut family_metrics: HashMap<String, FamilyMetrics> = HashMap::new();
     let mut total_failures = 0usize;
+    let mut s1_numeric_fallback_reasons: HashMap<EqNumericFallbackReason, usize> = HashMap::new();
+    let mut s1_numeric_inconclusive_reasons: HashMap<NumericInconclusiveReason, usize> =
+        HashMap::new();
     let total_start = Instant::now();
 
     for (i, entry) in entries.iter().enumerate() {
@@ -1175,6 +2008,16 @@ fn metatest_equation_benchmark() {
             .entry(entry.family.clone())
             .or_insert_with(|| FamilyMetrics::new(&entry.family));
         fm.record(&outcome);
+
+        match &outcome {
+            EqTestOutcome::NumericFallback(reason) => {
+                *s1_numeric_fallback_reasons.entry(*reason).or_insert(0) += 1;
+            }
+            EqTestOutcome::NumericInconclusive(reason) => {
+                *s1_numeric_inconclusive_reasons.entry(*reason).or_insert(0) += 1;
+            }
+            _ => {}
+        }
 
         if matches!(
             &outcome,
@@ -1217,17 +2060,38 @@ fn metatest_equation_benchmark() {
         .collect();
 
     print_strategy1_table(&metrics);
+    print_eq_numeric_fallback_breakdown(
+        "Strategy 1 numeric-fallback breakdown",
+        &s1_numeric_fallback_reasons,
+    );
+    print_numeric_inconclusive_breakdown(
+        "Strategy 1 numeric-inconclusive breakdown",
+        &s1_numeric_inconclusive_reasons,
+    );
 
     // Run Strategy 3
     let pairs = load_equation_pairs();
     if !pairs.is_empty() {
         eprintln!();
         eprintln!("--- Strategy 3: Equivalent Pairs ---");
+        let mut s3_verified = 0usize;
+        let mut s3_numeric = 0usize;
         let mut s3_mismatch = 0usize;
         let mut s3_errors = 0usize;
+        let mut s3_numeric_fallback_reasons: HashMap<PairNumericFallbackReason, usize> =
+            HashMap::new();
+        let mut s3_numeric_inconclusive_reasons: HashMap<NumericInconclusiveReason, usize> =
+            HashMap::new();
         for (i, pair) in pairs.iter().enumerate() {
             let outcome = verify_equation_pair(pair);
             match &outcome {
+                PairOutcome::Verified => {
+                    s3_verified += 1;
+                }
+                PairOutcome::NumericFallback(reason) => {
+                    s3_numeric += 1;
+                    *s3_numeric_fallback_reasons.entry(*reason).or_insert(0) += 1;
+                }
                 PairOutcome::Mismatch(msg) => {
                     s3_mismatch += 1;
                     eprintln!(
@@ -1267,14 +2131,26 @@ fn metatest_equation_benchmark() {
                         pair.eq_b
                     );
                 }
-                _ => {}
+                PairOutcome::NumericInconclusive(reason) => {
+                    *s3_numeric_inconclusive_reasons.entry(*reason).or_insert(0) += 1;
+                }
             }
         }
         eprintln!(
-            "Pairs: {} total, {} mismatches, {} errors",
+            "Pairs: {} total, {} verified, {} numeric, {} mismatches, {} errors",
             pairs.len(),
+            s3_verified,
+            s3_numeric,
             s3_mismatch,
             s3_errors
+        );
+        print_pair_numeric_fallback_breakdown(
+            "Strategy 3 numeric-fallback breakdown",
+            &s3_numeric_fallback_reasons,
+        );
+        print_numeric_inconclusive_breakdown(
+            "Strategy 3 numeric-inconclusive breakdown",
+            &s3_numeric_inconclusive_reasons,
         );
         total_failures += s3_mismatch + s3_errors;
     }
@@ -1619,6 +2495,8 @@ struct S2Results {
     ok_numeric_reasons: std::collections::HashMap<NumericVerifiedReason, usize>,
     /// Per-reason breakdown of OkPartial outcomes
     ok_partial_reasons: std::collections::HashMap<PartialVerifiedReason, usize>,
+    /// Per-reason breakdown of DomainChanged outcomes
+    domain_changed_reasons: std::collections::HashMap<String, usize>,
     /// Per-reason breakdown of Incomplete outcomes
     incomplete_reasons: std::collections::HashMap<IncompleteReason, usize>,
     /// Top identity offenders: identity index → incomplete count
@@ -1641,6 +2519,7 @@ impl S2Results {
             total: 0,
             ok_numeric_reasons: std::collections::HashMap::new(),
             ok_partial_reasons: std::collections::HashMap::new(),
+            domain_changed_reasons: std::collections::HashMap::new(),
             incomplete_reasons: std::collections::HashMap::new(),
             identity_offenders: std::collections::HashMap::new(),
             family_offenders: std::collections::HashMap::new(),
@@ -1660,7 +2539,13 @@ impl S2Results {
                 *self.ok_partial_reasons.entry(*reason).or_insert(0) += 1;
             }
             S2Outcome::Incomplete(_) => self.incomplete += 1,
-            S2Outcome::DomainChanged(_) => self.domain_changed += 1,
+            S2Outcome::DomainChanged(msg) => {
+                self.domain_changed += 1;
+                *self
+                    .domain_changed_reasons
+                    .entry(normalize_domain_changed_reason(msg))
+                    .or_insert(0) += 1;
+            }
             S2Outcome::Mismatch(_) => self.mismatches += 1,
             S2Outcome::Error(_) => self.errors += 1,
             S2Outcome::Timeout => self.timeouts += 1,
@@ -1681,6 +2566,24 @@ impl S2Results {
             .entry(eq_family.to_string())
             .or_insert(0) += 1;
     }
+}
+
+fn normalize_domain_changed_reason(msg: &str) -> String {
+    if let Some(start) = msg.rfind('[') {
+        if msg.ends_with(']') && start + 1 < msg.len() - 1 {
+            return msg[start + 1..msg.len() - 1].to_string();
+        }
+    }
+
+    if msg.contains("domain contracted") {
+        return "equation domain contracted".to_string();
+    }
+
+    if let Some((_, tail)) = msg.split_once(" + ") {
+        return tail.trim().to_string();
+    }
+
+    msg.trim().to_string()
 }
 
 /// Check if an ImplicitCondition is semantically redundant (always true in ℝ).
@@ -1922,7 +2825,7 @@ fn run_s2_case(eq_entry: &EquationEntry, identity: &S2Identity) -> S2Outcome {
                         NumericVerifyResult::Verified(_) => {
                             numeric_on_orig_solutions = true;
                         }
-                        NumericVerifyResult::Inconclusive => {
+                        NumericVerifyResult::Inconclusive(_) => {
                             any_numeric_inconclusive = true;
                         }
                         NumericVerifyResult::Failed => {
@@ -1963,7 +2866,7 @@ fn run_s2_case(eq_entry: &EquationEntry, identity: &S2Identity) -> S2Outcome {
                         NumericVerifyResult::Verified(_) => {
                             numeric_on_transformed_solutions = true;
                         }
-                        NumericVerifyResult::Inconclusive => {
+                        NumericVerifyResult::Inconclusive(_) => {
                             any_numeric_inconclusive = true;
                         }
                         NumericVerifyResult::Failed => {
@@ -2050,7 +2953,7 @@ fn cross_substitute_discrete_into(
                 NumericVerifyResult::Verified(_) => {
                     outcome = outcome.merge(CrossSubstituteOutcome::Numeric);
                 }
-                NumericVerifyResult::Inconclusive => {
+                NumericVerifyResult::Inconclusive(_) => {
                     outcome = outcome.merge(CrossSubstituteOutcome::Inconclusive);
                 }
                 NumericVerifyResult::Failed => return CrossSubstituteOutcome::Failed,
@@ -2561,7 +3464,7 @@ impl PairContractExpectation {
     fn matches(self, outcome: &PairOutcome) -> bool {
         match self {
             Self::Verified => matches!(outcome, PairOutcome::Verified),
-            Self::Numeric => matches!(outcome, PairOutcome::NumericFallback),
+            Self::Numeric => matches!(outcome, PairOutcome::NumericFallback(_)),
         }
     }
 }
@@ -4140,8 +5043,12 @@ fn run_equation_pair_contract_tests() -> EquationPairContractMetrics {
         if verbose || !passed {
             let detail = match &outcome {
                 PairOutcome::Verified => "verified".to_string(),
-                PairOutcome::NumericFallback => "numeric".to_string(),
-                PairOutcome::NumericInconclusive => "numeric-inconclusive".to_string(),
+                PairOutcome::NumericFallback(reason) => {
+                    format!("numeric [{}]", reason.label())
+                }
+                PairOutcome::NumericInconclusive(reason) => {
+                    format!("numeric-inconclusive [{}]", reason.label())
+                }
                 PairOutcome::Mismatch(msg) => format!("mismatch: {}", msg),
                 PairOutcome::SolverFailed(msg) => format!("solver: {}", msg),
                 PairOutcome::ParseError(msg) => format!("parse: {}", msg),
@@ -4332,6 +5239,16 @@ fn run_strategy2(verbose: bool) -> S2Results {
         partial_reasons.sort_by(|a, b| b.1.cmp(a.1));
         for (reason, count) in partial_reasons {
             eprintln!("    {:>3}× {}", count, reason.label());
+        }
+    }
+
+    if results.domain_changed > 0 {
+        eprintln!();
+        eprintln!("  D Domain-changed breakdown:");
+        let mut domain_reasons: Vec<_> = results.domain_changed_reasons.iter().collect();
+        domain_reasons.sort_by(|a, b| b.1.cmp(a.1));
+        for (reason, count) in domain_reasons {
+            eprintln!("    {:>3}× {}", count, reason);
         }
     }
 

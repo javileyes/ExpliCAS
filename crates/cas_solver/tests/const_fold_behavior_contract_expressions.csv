@@ -1,0 +1,24 @@
+# Const-Fold Behavior Contract Corpus
+# Format: expr,value_domain,const_fold_mode,match_kind,expected
+
+# Off mode remains a true no-op
+sqrt(-1),complex,off,contains_all,sqrt
+2^3,real,off,exact,2^3
+i*i,complex,off,contains_all,i
+
+# Safe mode in RealOnly
+sqrt(-1),real,safe,exact,undefined
+sqrt(4),real,safe,exact,2
+(-1)^(1/2),real,safe,exact,(-1)^(1 / 2)
+2^3,real,safe,exact,8
+0^0,real,safe,exact,undefined
+0^5,real,safe,exact,0
+5^0,real,safe,exact,1
+
+# Safe mode in ComplexEnabled
+sqrt(-1),complex,safe,contains_all,i
+(-1)^(1/2),complex,safe,exact,(-1)^(1 / 2)
+i*i,complex,safe,exact,-1
+
+# ValueDomain still gates complex folding
+i*i,real,safe,contains_all,i

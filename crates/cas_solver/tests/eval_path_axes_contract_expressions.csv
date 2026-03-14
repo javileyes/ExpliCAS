@@ -1,0 +1,14 @@
+# Eval Path Axes Contract Corpus
+# Format: expr,value_domain,mode,complex_mode,const_fold_mode,expect_requires,expect_warning
+
+# Imaginary warning gating on eval path
+sqrt(-1),real,generic,on,safe,no,yes
+sqrt(-1),complex,generic,on,safe,no,no
+sqrt(-1),complex,generic,on,off,no,no
+i^2,real,generic,on,safe,no,yes
+i^2,real,generic,on,off,no,yes
+i^2,complex,generic,on,safe,no,no
+
+# Complex results without extra metadata
+1/i,complex,generic,on,safe,no,no
+(1+i)/(1-i),complex,generic,on,safe,no,no

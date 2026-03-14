@@ -88,6 +88,40 @@ mod tests {
     }
 
     #[test]
+    fn evaluate_eval_with_session_applies_const_fold_mode_from_config() {
+        let mut engine = cas_solver::runtime::Engine::new();
+        let mut session = SessionState::new();
+
+        let out = cas_solver::session_api::eval::evaluate_eval_with_session(
+            &mut engine,
+            &mut session,
+            EvalCommandConfig {
+                expr: "sqrt(-1)",
+                auto_store: false,
+                max_chars: 2000,
+                steps_mode: EvalStepsMode::Off,
+                budget_preset: EvalBudgetPreset::Standard,
+                strict: false,
+                domain: EvalDomainMode::Generic,
+                context_mode: EvalContextMode::Auto,
+                branch_mode: EvalBranchMode::Strict,
+                expand_policy: EvalExpandPolicy::Off,
+                complex_mode: EvalComplexMode::On,
+                const_fold: EvalConstFoldMode::Safe,
+                value_domain: EvalValueDomain::Complex,
+                complex_branch: cas_api_models::EvalBranchMode::Principal,
+                inv_trig: EvalInvTrigPolicy::Strict,
+                assume_scope: EvalAssumeScope::Real,
+            },
+            |_steps, _events, _context, _steps_mode| Vec::new(),
+        )
+        .expect("eval");
+
+        assert!(out.ok);
+        assert_eq!(out.result, "i");
+    }
+
+    #[test]
     fn persisted_no_store_eval_does_not_resave_snapshot() {
         let dir = tempdir().expect("tempdir");
         let path = dir.path().join("session.bin");

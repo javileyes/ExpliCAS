@@ -6,8 +6,82 @@
 
 use cas_ast::ordering::compare_expr;
 use cas_ast::{Constant, Context, Expr, ExprId};
-use num_traits::{Signed, ToPrimitive};
+use num_traits::{Signed, ToPrimitive, Zero};
 use std::cmp::Ordering;
+
+fn extract_positive_rational_exponent(ctx: &Context, exp: ExprId) -> Option<(u32, u32)> {
+    match ctx.get(exp) {
+        Expr::Number(n) => {
+            if n.is_zero() || n.is_negative() {
+                return None;
+            }
+            let numer = n.numer().to_u32()?;
+            let denom = n.denom().to_u32()?;
+            Some((numer, denom))
+        }
+        Expr::Div(num, den) => {
+            let (Expr::Number(num_n), Expr::Number(den_n)) = (ctx.get(*num), ctx.get(*den)) else {
+                return None;
+            };
+            if !num_n.is_integer()
+                || !den_n.is_integer()
+                || num_n.is_zero()
+                || num_n.is_negative()
+                || den_n.is_zero()
+                || den_n.is_negative()
+            {
+                return None;
+            }
+            Some((num_n.to_integer().to_u32()?, den_n.to_integer().to_u32()?))
+        }
+        _ => None,
+    }
+}
+
+fn is_noninteger_rational_exponent(ctx: &Context, exp: ExprId) -> bool {
+    let Some((numer, denom)) = extract_positive_rational_exponent(ctx, exp) else {
+        return false;
+    };
+    numer % denom != 0
+}
+
+fn is_opaque_power_atom(ctx: &Context, base: ExprId, exp: ExprId) -> bool {
+    !matches!(ctx.get(base), Expr::Constant(Constant::E))
+        && is_noninteger_rational_exponent(ctx, exp)
+}
+
+pub fn extract_opaque_reciprocal_power_base(ctx: &Context, expr: ExprId) -> Option<(ExprId, u32)> {
+    let Expr::Pow(base, exp) = ctx.get(expr) else {
+        return None;
+    };
+    if matches!(ctx.get(*base), Expr::Constant(Constant::E)) {
+        return None;
+    }
+
+    let (numer, denom) = extract_positive_rational_exponent(ctx, *exp)?;
+    if numer == 1 && denom >= 2 {
+        Some((*base, denom))
+    } else {
+        None
+    }
+}
+
+pub fn extract_opaque_rational_power_atom(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<(ExprId, u32, u32)> {
+    let Expr::Pow(base, exp) = ctx.get(expr) else {
+        return None;
+    };
+    if matches!(ctx.get(*base), Expr::Constant(Constant::E)) {
+        return None;
+    }
+    let (numer, denom) = extract_positive_rational_exponent(ctx, *exp)?;
+    if numer % denom == 0 {
+        return None;
+    }
+    Some((*base, numer, denom))
+}
 
 /// Quick check: expression is polynomial-like up to configured limits.
 pub fn is_polynomial_candidate(
@@ -41,6 +115,9 @@ fn is_polynomial_candidate_inner(
             is_polynomial_candidate_inner(ctx, *inner, depth + 1, max_depth, max_pow_exp)
         }
         Expr::Pow(base, exp) => {
+            if is_opaque_power_atom(ctx, *base, *exp) {
+                return true;
+            }
             if let Expr::Number(n) = ctx.get(*exp) {
                 if n.is_integer() && !n.is_negative() {
                     if let Some(e) = n.to_integer().to_u32() {
@@ -81,6 +158,7 @@ fn collect_function_calls_inner(
     }
     match ctx.get(expr) {
         Expr::Function(_, _) => out.push(expr),
+        Expr::Pow(base, exp) if is_opaque_power_atom(ctx, *base, *exp) => out.push(expr),
         Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) => {
             collect_function_calls_inner(ctx, *l, out, depth + 1, max_depth);
             collect_function_calls_inner(ctx, *r, out, depth + 1, max_depth);
@@ -358,9 +436,20 @@ mod tests {
     }
 
     #[test]
+    fn polynomial_candidate_handles_opaque_fractional_power_atoms() {
+        let mut ctx = Context::new();
+        let ok = parse(
+            "((x^2 + 1)^(1/2) + 1)^2 - ((x^2 + 1) + 2*(x^2 + 1)^(1/2) + 1)",
+            &mut ctx,
+        )
+        .expect("parse ok");
+        assert!(is_polynomial_candidate(&ctx, ok, 30, 6));
+    }
+
+    #[test]
     fn function_call_collection_and_dedup() {
         let mut ctx = Context::new();
-        let expr = parse("sin(x)+sin(x)+cos(x)", &mut ctx).expect("parse");
+        let expr = parse("sin(x) + (x^2 + 1)^(1/2) + (x^2 + 1)^(1/2)", &mut ctx).expect("parse");
         let calls = collect_function_calls(&ctx, expr, 6);
         let unique = dedup_expr_ids(&ctx, &calls);
         assert_eq!(unique.len(), 2);
@@ -385,5 +474,25 @@ mod tests {
         let out = substitute_exp_atoms(&mut ctx, expr, base, t, 30, 6);
         let expected = parse("t^2 + 3*t + 5", &mut ctx).expect("expected");
         assert_eq!(compare_expr(&ctx, out, expected), Ordering::Equal);
+    }
+
+    #[test]
+    fn extracts_reciprocal_power_base_for_root_atom() {
+        let mut ctx = Context::new();
+        let expr = parse("(x^2 + 1)^(1/2)", &mut ctx).expect("parse");
+        let (base, idx) = extract_opaque_reciprocal_power_base(&ctx, expr).expect("root atom");
+        let expected = parse("x^2 + 1", &mut ctx).expect("expected");
+        assert_eq!(compare_expr(&ctx, base, expected), Ordering::Equal);
+        assert_eq!(idx, 2);
+    }
+
+    #[test]
+    fn extracts_rational_power_atom_for_root_multiple() {
+        let mut ctx = Context::new();
+        let expr = parse("(x^2 + 1)^(3/2)", &mut ctx).expect("parse");
+        let (base, numer, denom) = extract_opaque_rational_power_atom(&ctx, expr).expect("atom");
+        let expected = parse("x^2 + 1", &mut ctx).expect("expected");
+        assert_eq!(compare_expr(&ctx, base, expected), Ordering::Equal);
+        assert_eq!((numer, denom), (3, 2));
     }
 }

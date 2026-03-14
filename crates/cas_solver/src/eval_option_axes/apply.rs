@@ -37,6 +37,15 @@ fn axes_match_current_options(opts: &crate::EvalOptions, axes: EvalOptionAxes) -
                 cas_api_models::EvalComplexMode::Auto
             )
     ) && matches!(
+        (opts.const_fold, axes.const_fold),
+        (
+            crate::ConstFoldMode::Off,
+            cas_api_models::EvalConstFoldMode::Off
+        ) | (
+            crate::ConstFoldMode::Safe,
+            cas_api_models::EvalConstFoldMode::Safe
+        )
+    ) && matches!(
         (opts.steps_mode, axes.steps),
         (crate::StepsMode::On, cas_api_models::EvalStepsMode::On)
             | (
@@ -117,6 +126,11 @@ pub(crate) fn apply_eval_option_axes(opts: &mut crate::EvalOptions, axes: EvalOp
         cas_api_models::EvalComplexMode::On => crate::ComplexMode::On,
         cas_api_models::EvalComplexMode::Off => crate::ComplexMode::Off,
         cas_api_models::EvalComplexMode::Auto => crate::ComplexMode::Auto,
+    };
+
+    opts.const_fold = match axes.const_fold {
+        cas_api_models::EvalConstFoldMode::Off => crate::ConstFoldMode::Off,
+        cas_api_models::EvalConstFoldMode::Safe => crate::ConstFoldMode::Safe,
     };
 
     opts.steps_mode = match axes.steps {

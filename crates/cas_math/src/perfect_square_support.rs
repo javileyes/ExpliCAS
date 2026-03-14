@@ -133,33 +133,8 @@ pub fn try_match_perfect_square_trinomial(
                 None
             };
 
-            let mut effective_neg_mid = sign_mid == Sign::Neg;
-            let mut effective_mid = term_mid;
-
-            if let Expr::Mul(l, r) = ctx.get(effective_mid) {
-                let (l, r) = (*l, *r);
-                if let Expr::Number(n) = ctx.get(l) {
-                    if n.is_negative() {
-                        let abs_n = ctx.add(Expr::Number(-n.clone()));
-                        effective_mid = ctx.add(Expr::Mul(abs_n, r));
-                        effective_neg_mid = !effective_neg_mid;
-                    }
-                } else if let Expr::Number(n) = ctx.get(r) {
-                    if n.is_negative() {
-                        let abs_n = ctx.add(Expr::Number(-n.clone()));
-                        effective_mid = ctx.add(Expr::Mul(l, abs_n));
-                        effective_neg_mid = !effective_neg_mid;
-                    }
-                }
-            } else if let Expr::Number(n) = ctx.get(effective_mid) {
-                if n.is_negative() {
-                    effective_mid = ctx.add(Expr::Number(-n.clone()));
-                    effective_neg_mid = !effective_neg_mid;
-                }
-            } else if let Expr::Neg(inner) = ctx.get(effective_mid) {
-                effective_mid = *inner;
-                effective_neg_mid = !effective_neg_mid;
-            }
+            let (effective_mid, effective_neg_mid) =
+                normalize_signed_multiplicative_term(ctx, term_mid, sign_mid);
 
             if !check_middle_term_2ab(ctx, effective_mid, a, b, &b_val) {
                 continue;
@@ -168,6 +143,172 @@ pub fn try_match_perfect_square_trinomial(
             return Some((a, b, effective_neg_mid));
         }
     }
+    None
+}
+
+fn normalize_signed_multiplicative_term(
+    ctx: &mut Context,
+    term: ExprId,
+    sign: crate::expr_nary::Sign,
+) -> (ExprId, bool) {
+    let mut effective_neg = sign == crate::expr_nary::Sign::Neg;
+    let mut effective = term;
+
+    if let Expr::Mul(l, r) = ctx.get(effective) {
+        let (l, r) = (*l, *r);
+        if let Expr::Number(n) = ctx.get(l) {
+            if n.is_negative() {
+                let abs_n = ctx.add(Expr::Number(-n.clone()));
+                effective = ctx.add(Expr::Mul(abs_n, r));
+                effective_neg = !effective_neg;
+            }
+        } else if let Expr::Number(n) = ctx.get(r) {
+            if n.is_negative() {
+                let abs_n = ctx.add(Expr::Number(-n.clone()));
+                effective = ctx.add(Expr::Mul(l, abs_n));
+                effective_neg = !effective_neg;
+            }
+        }
+    } else if let Expr::Number(n) = ctx.get(effective) {
+        if n.is_negative() {
+            effective = ctx.add(Expr::Number(-n.clone()));
+            effective_neg = !effective_neg;
+        }
+    } else if let Expr::Neg(inner) = ctx.get(effective) {
+        effective = *inner;
+        effective_neg = !effective_neg;
+    }
+
+    (effective, effective_neg)
+}
+
+fn find_sqrt_like_factors(ctx: &Context, term: ExprId) -> Vec<ExprId> {
+    let mut factors = Vec::new();
+    if crate::root_forms::extract_square_root_base(ctx, term).is_some() {
+        factors.push(term);
+    }
+    for factor in crate::expr_nary::mul_factors(ctx, term) {
+        if crate::root_forms::extract_square_root_base(ctx, factor).is_some()
+            && !factors
+                .iter()
+                .any(|existing| compare_expr(ctx, *existing, factor) == Ordering::Equal)
+        {
+            factors.push(factor);
+        }
+    }
+    factors
+}
+
+fn multiset_matches_exprs(ctx: &Context, left: &[ExprId], right: &[ExprId]) -> bool {
+    if left.len() != right.len() {
+        return false;
+    }
+
+    let mut used = vec![false; right.len()];
+    for lhs in left {
+        let mut matched = false;
+        for (idx, rhs) in right.iter().enumerate() {
+            if used[idx] {
+                continue;
+            }
+            if compare_expr(ctx, *lhs, *rhs) == Ordering::Equal {
+                used[idx] = true;
+                matched = true;
+                break;
+            }
+        }
+        if !matched {
+            return false;
+        }
+    }
+
+    true
+}
+
+fn split_positive_additive_parts(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<(Vec<ExprId>, BigRational)> {
+    use crate::expr_nary::{AddView, Sign};
+
+    let mut symbolic = Vec::new();
+    let mut numeric = BigRational::zero();
+
+    for (term, sign) in AddView::from_expr(ctx, expr).terms {
+        if sign != Sign::Pos {
+            return None;
+        }
+        match ctx.get(term) {
+            Expr::Number(n) => numeric += n.clone(),
+            _ => symbolic.push(term),
+        }
+    }
+
+    Some((symbolic, numeric))
+}
+
+fn try_match_collapsed_sqrt_square_trinomial(
+    ctx: &mut Context,
+    arg: ExprId,
+) -> Option<(ExprId, ExprId, bool)> {
+    use crate::expr_nary::{AddView, Sign};
+
+    let terms = AddView::from_expr(ctx, arg).terms;
+    if terms.len() != 3 {
+        return None;
+    }
+
+    for mid_idx in 0..3 {
+        let (term_mid, sign_mid) = terms[mid_idx];
+        let other_idxs: Vec<_> = (0..3).filter(|idx| *idx != mid_idx).collect();
+        let (left_term, left_sign) = terms[other_idxs[0]];
+        let (right_term, right_sign) = terms[other_idxs[1]];
+        if left_sign != Sign::Pos || right_sign != Sign::Pos {
+            continue;
+        }
+
+        let positive_sum = ctx.add(Expr::Add(left_term, right_term));
+        let (effective_mid, effective_neg_mid) =
+            normalize_signed_multiplicative_term(ctx, term_mid, sign_mid);
+
+        for a in find_sqrt_like_factors(ctx, effective_mid) {
+            let Some(root_base) = crate::root_forms::extract_square_root_base(ctx, a) else {
+                continue;
+            };
+            let Some((sum_symbolic, sum_numeric)) =
+                split_positive_additive_parts(ctx, positive_sum)
+            else {
+                continue;
+            };
+            let Some((root_symbolic, root_numeric)) = split_positive_additive_parts(ctx, root_base)
+            else {
+                continue;
+            };
+            if !multiset_matches_exprs(ctx, &sum_symbolic, &root_symbolic) {
+                continue;
+            }
+
+            let delta = sum_numeric - root_numeric;
+            if delta <= BigRational::zero() {
+                continue;
+            }
+
+            let delta_expr = ctx.add(Expr::Number(delta));
+            let Some(b) = extract_square_root_of_term(ctx, delta_expr) else {
+                continue;
+            };
+            let b_val = if let Expr::Number(bn) = ctx.get(b) {
+                Some(bn.clone())
+            } else {
+                None
+            };
+
+            if check_middle_term_2ab(ctx, effective_mid, a, b, &b_val) {
+                return Some((a, b, effective_neg_mid));
+            }
+        }
+    }
+
     None
 }
 
@@ -200,7 +341,8 @@ pub fn try_rewrite_sqrt_perfect_square_expr(
         _ => return None,
     };
 
-    let (a, b, is_sub) = try_match_perfect_square_trinomial(ctx, arg)?;
+    let (a, b, is_sub) = try_match_perfect_square_trinomial(ctx, arg)
+        .or_else(|| try_match_collapsed_sqrt_square_trinomial(ctx, arg))?;
     let inner = if is_sub {
         ctx.add(Expr::Sub(a, b))
     } else {
@@ -373,6 +515,28 @@ mod tests {
         let mut ctx = Context::new();
         let expr = cas_parser::parse("sqrt(x^2 + 2*x*y + y^2)", &mut ctx).expect("parse");
         let expected = cas_parser::parse("abs(x + y)", &mut ctx).expect("expected");
+        let rw = try_rewrite_sqrt_perfect_square_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(compare_expr(&ctx, rw.rewritten, expected), Ordering::Equal);
+    }
+
+    #[test]
+    fn match_collapsed_sqrt_square_trinomial_symbolic() {
+        let mut ctx = Context::new();
+        let expr = cas_parser::parse("x^2 + 2*sqrt(x^2 + 1) + 2", &mut ctx).expect("parse");
+        let (a, b, is_sub) =
+            try_match_collapsed_sqrt_square_trinomial(&mut ctx, expr).expect("match");
+        let expected_a = cas_parser::parse("sqrt(x^2 + 1)", &mut ctx).expect("expected a");
+        let expected_b = cas_parser::parse("1", &mut ctx).expect("expected b");
+        assert!(!is_sub);
+        assert_eq!(compare_expr(&ctx, a, expected_a), Ordering::Equal);
+        assert_eq!(compare_expr(&ctx, b, expected_b), Ordering::Equal);
+    }
+
+    #[test]
+    fn rewrite_sqrt_perfect_square_expr_collapsed_root_square() {
+        let mut ctx = Context::new();
+        let expr = cas_parser::parse("sqrt(x^2 + 2*sqrt(x^2 + 1) + 2)", &mut ctx).expect("parse");
+        let expected = cas_parser::parse("abs(sqrt(x^2 + 1) + 1)", &mut ctx).expect("expected");
         let rw = try_rewrite_sqrt_perfect_square_expr(&mut ctx, expr).expect("rewrite");
         assert_eq!(compare_expr(&ctx, rw.rewritten, expected), Ordering::Equal);
     }

@@ -1,0 +1,17 @@
+# Eval Path Behavior Contract Corpus
+# Format: expr,value_domain,mode,complex_mode,const_fold_mode,match_kind,expected
+
+# Real constants still simplify on the eval path even with const_fold=off
+2^3,real,generic,auto,off,exact,8
+2^3,real,generic,auto,safe,exact,8
+0^0,real,generic,auto,off,exact,undefined
+0^0,real,generic,auto,safe,exact,undefined
+
+# Complex behavior on eval path respects const_fold and value_domain
+sqrt(-1),real,generic,on,safe,exact,undefined
+sqrt(-1),complex,generic,on,off,exact,(-1)^(1/2)
+sqrt(-1),complex,generic,on,safe,exact,i
+i^2,real,generic,on,safe,exact,i^2
+i^2,complex,generic,on,safe,exact,-1
+1/i,complex,generic,on,safe,exact,-i
+(1+i)/(1-i),complex,generic,on,safe,exact,i

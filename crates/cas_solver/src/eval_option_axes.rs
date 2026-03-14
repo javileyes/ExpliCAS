@@ -10,6 +10,7 @@ pub(crate) struct EvalOptionAxes {
     pub context: cas_api_models::EvalContextMode,
     pub branch: cas_api_models::EvalBranchMode,
     pub complex: cas_api_models::EvalComplexMode,
+    pub const_fold: cas_api_models::EvalConstFoldMode,
     pub autoexpand: cas_api_models::EvalExpandPolicy,
     pub steps: cas_api_models::EvalStepsMode,
     pub domain: cas_api_models::EvalDomainMode,

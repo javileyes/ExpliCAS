@@ -1,5 +1,6 @@
 //! Root-shape helpers over AST expressions.
 
+use crate::numeric::gcd_rational;
 use crate::perfect_square_support::rational_sqrt;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use num_bigint::BigInt;
@@ -66,6 +67,139 @@ pub struct SimplifySquareRootRewrite {
 pub enum SimplifySquareRootRewriteKind {
     PerfectSquare,
     SquareRootFactors,
+    AdditiveCommonFactor,
+}
+
+fn get_integer_coefficient_for_root_add(ctx: &Context, term: ExprId) -> Option<BigRational> {
+    match ctx.get(term) {
+        Expr::Number(n) => {
+            if n.is_integer() {
+                Some(n.clone())
+            } else {
+                None
+            }
+        }
+        Expr::Mul(l, r) => {
+            if let Expr::Number(n) = ctx.get(*l) {
+                if n.is_integer() {
+                    return Some(n.clone());
+                }
+            }
+            if let Expr::Number(n) = ctx.get(*r) {
+                if n.is_integer() {
+                    return Some(n.clone());
+                }
+            }
+            Some(BigRational::from_integer(1.into()))
+        }
+        Expr::Neg(inner) => get_integer_coefficient_for_root_add(ctx, *inner).map(|v| -v),
+        _ => Some(BigRational::from_integer(1.into())),
+    }
+}
+
+fn divide_root_add_term_by_rational(
+    ctx: &mut Context,
+    term: ExprId,
+    divisor: &BigRational,
+) -> ExprId {
+    match ctx.get(term) {
+        Expr::Number(n) => {
+            let divided = n / divisor;
+            ctx.add(Expr::Number(divided))
+        }
+        Expr::Mul(a, b) => {
+            let (a, b) = (*a, *b);
+            if let Expr::Number(n) = ctx.get(a) {
+                let divided = n / divisor;
+                if divided.is_one() {
+                    return b;
+                }
+                let num = ctx.add(Expr::Number(divided));
+                return ctx.add_raw(Expr::Mul(num, b));
+            }
+            if let Expr::Number(n) = ctx.get(b) {
+                let divided = n / divisor;
+                if divided.is_one() {
+                    return a;
+                }
+                let num = ctx.add(Expr::Number(divided));
+                return ctx.add_raw(Expr::Mul(a, num));
+            }
+            term
+        }
+        Expr::Neg(inner) => {
+            let divided = divide_root_add_term_by_rational(ctx, *inner, divisor);
+            ctx.add(Expr::Neg(divided))
+        }
+        _ => term,
+    }
+}
+
+fn rebuild_add_from_signed_terms(
+    ctx: &mut Context,
+    terms: &[(ExprId, crate::expr_nary::Sign)],
+) -> Option<ExprId> {
+    use crate::expr_nary::Sign;
+
+    let mut iter = terms.iter();
+    let (first_expr, first_sign) = iter.next().copied()?;
+    let mut acc = if first_sign == Sign::Pos {
+        first_expr
+    } else {
+        ctx.add(Expr::Neg(first_expr))
+    };
+
+    for (expr, sign) in iter.copied() {
+        acc = match sign {
+            Sign::Pos => ctx.add(Expr::Add(acc, expr)),
+            Sign::Neg => ctx.add(Expr::Sub(acc, expr)),
+        };
+    }
+    Some(acc)
+}
+
+fn try_rewrite_extract_additive_common_square_factor_expr(
+    ctx: &mut Context,
+    arg: ExprId,
+) -> Option<ExprId> {
+    use crate::expr_nary::AddView;
+
+    let terms = AddView::from_expr(ctx, arg).terms;
+    if terms.len() < 2 {
+        return None;
+    }
+
+    let mut gcd: Option<BigRational> = None;
+    for (term, _) in &terms {
+        let coef = get_integer_coefficient_for_root_add(ctx, *term)?;
+        let coef_abs = coef.abs();
+        if coef_abs.is_zero() {
+            continue;
+        }
+        gcd = Some(match gcd {
+            None => coef_abs,
+            Some(current) => gcd_rational(current, coef_abs),
+        });
+    }
+
+    let gcd = gcd?;
+    if !gcd.is_integer() || gcd <= BigRational::from_integer(1.into()) {
+        return None;
+    }
+    let sqrt_gcd = rational_sqrt(&gcd)?;
+    if !sqrt_gcd.is_integer() || sqrt_gcd <= BigRational::from_integer(1.into()) {
+        return None;
+    }
+
+    let mut new_terms = Vec::with_capacity(terms.len());
+    for (term, sign) in terms {
+        let divided = divide_root_add_term_by_rational(ctx, term, &gcd);
+        new_terms.push((divided, sign));
+    }
+    let inner = rebuild_add_from_signed_terms(ctx, &new_terms)?;
+    let coeff_expr = ctx.add(Expr::Number(sqrt_gcd));
+    let sqrt_inner = ctx.call_builtin(BuiltinFn::Sqrt, vec![inner]);
+    Some(ctx.add(Expr::Mul(coeff_expr, sqrt_inner)))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -488,6 +622,13 @@ pub fn try_rewrite_simplify_square_root_expr(
                 }
             }
         }
+    }
+
+    if let Some(rewritten) = try_rewrite_extract_additive_common_square_factor_expr(ctx, arg) {
+        return Some(SimplifySquareRootRewrite {
+            rewritten,
+            kind: SimplifySquareRootRewriteKind::AdditiveCommonFactor,
+        });
     }
 
     let factors = poly.factor_rational_roots();
@@ -1751,5 +1892,17 @@ mod tests {
         let mut ctx = Context::new();
         let expr = parse("sqrt(x^2 + 1)", &mut ctx).expect("expr");
         assert!(try_rewrite_simplify_square_root_expr(&mut ctx, expr).is_none());
+    }
+
+    #[test]
+    fn simplify_square_root_rewrite_extracts_additive_common_square_factor() {
+        let mut ctx = Context::new();
+        let expr = parse("sqrt(4*x^2 + 4)", &mut ctx).expect("expr");
+        let expected = parse("2*sqrt(x^2 + 1)", &mut ctx).expect("expected");
+        let rewrite = try_rewrite_simplify_square_root_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, rewrite.rewritten, expected),
+            std::cmp::Ordering::Equal
+        );
     }
 }

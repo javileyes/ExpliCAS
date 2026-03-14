@@ -7,7 +7,9 @@ pub fn is_expansion_rule_name(name: &str) -> bool {
 
 /// Returns true when a step rule should always be kept for didactic reasons.
 pub fn is_always_keep_step_rule_name(name: &str) -> bool {
-    name == "Sum Exponents" || name == "Evaluate Numeric Power"
+    name == "Sum Exponents"
+        || name == "Evaluate Numeric Power"
+        || name == "Expand to Cancel Fraction"
 }
 
 /// Returns true when rule name corresponds to canonicalization/reordering.
@@ -73,6 +75,7 @@ mod tests {
     fn name_classifiers_cover_expected_cases() {
         assert!(is_expansion_rule_name("Expand"));
         assert!(is_always_keep_step_rule_name("Sum Exponents"));
+        assert!(is_always_keep_step_rule_name("Expand to Cancel Fraction"));
         assert!(is_canonicalization_rule_name("Canonicalize Terms"));
         assert!(is_mechanical_rule_name("Combine Like Terms"));
         assert!(!is_mechanical_rule_name("Quadratic Formula"));

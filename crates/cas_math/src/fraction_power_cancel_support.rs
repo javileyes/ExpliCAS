@@ -12,6 +12,7 @@ use crate::numeric::as_i64;
 use crate::poly_compare::{poly_relation, SignRelation};
 use cas_ast::ordering::compare_expr;
 use cas_ast::{Context, Expr, ExprId};
+use num_traits::{One, Signed};
 
 #[inline]
 fn expr_matches(ctx: &Context, lhs: ExprId, rhs: ExprId) -> bool {
@@ -57,6 +58,12 @@ pub struct CancelPowerFractionRewrite {
 pub enum CancelPowerFractionRewriteKind {
     SameSign,
     NegatedDenominator,
+}
+
+#[derive(Debug, Clone)]
+pub struct CollapseReciprocalNegativePowerRewrite {
+    pub rewritten: ExprId,
+    pub nonzero_target: ExprId,
 }
 
 /// Try to rewrite `P^m / P^n` into a simpler power form (integer exponents).
@@ -181,11 +188,50 @@ pub fn try_rewrite_cancel_power_fraction_expr(
     })
 }
 
+/// Try to rewrite `1 / (P^(-a))` into `P^a`.
+///
+/// This requires `P != 0` to preserve the original domain, so callers should
+/// attach an explicit nonzero condition when using the rewrite in generic/assume
+/// modes.
+pub fn try_rewrite_collapse_reciprocal_negative_power_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<CollapseReciprocalNegativePowerRewrite> {
+    let (num, den) = as_div(ctx, expr)?;
+    let Expr::Number(numerator) = ctx.get(num) else {
+        return None;
+    };
+    if !numerator.is_one() {
+        return None;
+    }
+
+    let (base, exp) = as_pow(ctx, den)?;
+    let Expr::Number(exp_num) = ctx.get(exp) else {
+        return None;
+    };
+    if !exp_num.is_negative() {
+        return None;
+    }
+
+    let positive_exp = ctx.add(Expr::Number(-exp_num.clone()));
+    let rewritten = if matches!(ctx.get(positive_exp), Expr::Number(n) if n.is_one()) {
+        base
+    } else {
+        ctx.add(Expr::Pow(base, positive_exp))
+    };
+
+    Some(CollapseReciprocalNegativePowerRewrite {
+        rewritten,
+        nonzero_target: base,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         try_rewrite_cancel_identical_fraction_expr, try_rewrite_cancel_power_fraction_expr,
         try_rewrite_cancel_same_base_powers_div_expr,
+        try_rewrite_collapse_reciprocal_negative_power_expr,
     };
     use crate::poly_compare::poly_eq;
     use cas_ast::ordering::compare_expr;
@@ -255,5 +301,36 @@ mod tests {
         let mut ctx = Context::new();
         let expr = parse("(a^x)/a", &mut ctx).expect("parse");
         assert!(try_rewrite_cancel_power_fraction_expr(&mut ctx, expr).is_none());
+    }
+
+    #[test]
+    fn collapse_reciprocal_negative_power_rewrites_fractional_exponent() {
+        let mut ctx = Context::new();
+        let x = parse("x", &mut ctx).expect("x");
+        let neg_half = ctx.add(Expr::Number(num_rational::BigRational::new(
+            (-1).into(),
+            2.into(),
+        )));
+        let pow = ctx.add(Expr::Pow(x, neg_half));
+        let one = ctx.num(1);
+        let expr = ctx.add(Expr::Div(one, pow));
+        let rw =
+            try_rewrite_collapse_reciprocal_negative_power_expr(&mut ctx, expr).expect("rewrite");
+        let pos_half = ctx.add(Expr::Number(num_rational::BigRational::new(
+            1.into(),
+            2.into(),
+        )));
+        let expected = ctx.add(Expr::Pow(x, pos_half));
+        assert_eq!(compare_expr(&ctx, rw.rewritten, expected), Ordering::Equal);
+    }
+
+    #[test]
+    fn collapse_reciprocal_negative_power_rewrites_integer_exponent() {
+        let mut ctx = Context::new();
+        let expr = parse("1/(x^(-1))", &mut ctx).expect("parse");
+        let rw =
+            try_rewrite_collapse_reciprocal_negative_power_expr(&mut ctx, expr).expect("rewrite");
+        let expected = parse("x", &mut ctx).expect("expected");
+        assert_eq!(compare_expr(&ctx, rw.rewritten, expected), Ordering::Equal);
     }
 }

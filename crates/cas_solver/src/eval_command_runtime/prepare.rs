@@ -88,6 +88,7 @@ where
             context: config.context_mode,
             branch: config.branch_mode,
             complex: config.complex_mode,
+            const_fold: config.const_fold,
             autoexpand: config.expand_policy,
             steps: config.steps_mode,
             domain: config.domain,

@@ -24,7 +24,8 @@
 
 mod test_utils;
 
-use cas_ast::{Context, ExprId};
+use cas_ast::views::as_rational_const;
+use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use cas_formatter::DisplayExpr;
 use cas_parser::parse;
 use cas_session::SessionState;
@@ -33,6 +34,7 @@ use cas_solver::api::{
 };
 use cas_solver::runtime::{Engine, EvalAction, EvalRequest, EvalResult, Simplifier};
 use cas_solver::wire::eval_str_to_wire;
+use num_traits::Signed;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::env;
@@ -176,8 +178,6 @@ struct MetatestConfig {
 // =============================================================================
 // Shape Signature Analysis (for Top-N pattern identification)
 // =============================================================================
-
-use cas_ast::Expr;
 
 /// Generate a stable shape signature from an expression.
 /// Collapses literals to NUM, variables to SYM, and marks negative exponents.
@@ -898,6 +898,358 @@ fn shuffle_expr_seeded(ctx: &mut Context, expr: ExprId, seed: u64) -> ExprId {
 // Numeric Equivalence Check
 // =============================================================================
 
+const NUMERIC_DENOM_GUARD_ATOL: f64 = 1e-8;
+const NUMERIC_INTERIOR_VALUES: [f64; 10] = [
+    -0.9, -0.75, -0.5, -0.25, -0.125, 0.125, 0.25, 0.5, 0.75, 0.9,
+];
+const NUMERIC_GENERAL_VALUES: [f64; 12] = [
+    -4.0, -2.5, -1.5, -0.75, -0.25, 0.25, 0.75, 1.5, 2.5, 4.0, 0.1, 5.0,
+];
+const NUMERIC_POSITIVE_VALUES: [f64; 13] = [
+    0.1, 0.2, 0.35, 0.5, 0.8, 1.0, 1.5, 2.0, 3.0, 5.0, 8.0, 12.0, 20.0,
+];
+const NUMERIC_RATIONAL_VALUES: [f64; 12] = [
+    -5.0, -3.5, -2.5, -1.5, -0.5, -0.2, 0.2, 0.5, 1.5, 2.5, 3.5, 5.0,
+];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum NumericSampleProfile {
+    Interior,
+    General,
+    Positive,
+    Rational,
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+struct NumericSamplingFeatures {
+    bounded_inverse_trig: bool,
+    positivity_sensitive: bool,
+    rational_sensitive: bool,
+}
+
+fn numeric_sample_value(
+    profile_order: &[NumericSampleProfile; 3],
+    sample_idx: usize,
+    var_idx: usize,
+) -> f64 {
+    let profile = profile_order[sample_idx % profile_order.len()];
+    let round = sample_idx / profile_order.len();
+    let (values, step, var_step): (&[f64], usize, usize) = match profile {
+        NumericSampleProfile::Interior => (&NUMERIC_INTERIOR_VALUES, 7, 13),
+        NumericSampleProfile::General => (&NUMERIC_GENERAL_VALUES, 7, 13),
+        NumericSampleProfile::Positive => (&NUMERIC_POSITIVE_VALUES, 4, 11),
+        NumericSampleProfile::Rational => (&NUMERIC_RATIONAL_VALUES, 5, 9),
+    };
+    let idx = (round * step + var_idx * var_step) % values.len();
+    values[idx]
+}
+
+fn collect_numeric_sampling_features(
+    ctx: &Context,
+    expr: ExprId,
+    features: &mut NumericSamplingFeatures,
+) {
+    match ctx.get(expr) {
+        Expr::Add(a, b) | Expr::Sub(a, b) | Expr::Mul(a, b) => {
+            collect_numeric_sampling_features(ctx, *a, features);
+            collect_numeric_sampling_features(ctx, *b, features);
+        }
+        Expr::Div(a, b) => {
+            features.rational_sensitive = true;
+            collect_numeric_sampling_features(ctx, *a, features);
+            collect_numeric_sampling_features(ctx, *b, features);
+        }
+        Expr::Pow(base, exp) => {
+            if let Some(exp_q) = as_rational_const(ctx, *exp, 4) {
+                if exp_q.is_negative() {
+                    features.rational_sensitive = true;
+                }
+                if !exp_q.is_integer() {
+                    features.positivity_sensitive = true;
+                }
+            } else if matches!(ctx.get(*exp), Expr::Div(_, _)) {
+                features.positivity_sensitive = true;
+            }
+            collect_numeric_sampling_features(ctx, *base, features);
+            collect_numeric_sampling_features(ctx, *exp, features);
+        }
+        Expr::Neg(a) | Expr::Hold(a) => {
+            collect_numeric_sampling_features(ctx, *a, features);
+        }
+        Expr::Function(fn_id, args) => {
+            if ctx.is_builtin(*fn_id, BuiltinFn::Ln)
+                || ctx.is_builtin(*fn_id, BuiltinFn::Log)
+                || ctx.is_builtin(*fn_id, BuiltinFn::Log2)
+                || ctx.is_builtin(*fn_id, BuiltinFn::Log10)
+                || ctx.is_builtin(*fn_id, BuiltinFn::Sqrt)
+                || ctx.is_builtin(*fn_id, BuiltinFn::Cbrt)
+                || ctx.is_builtin(*fn_id, BuiltinFn::Root)
+            {
+                features.positivity_sensitive = true;
+            }
+            if ctx.is_builtin(*fn_id, BuiltinFn::Asin)
+                || ctx.is_builtin(*fn_id, BuiltinFn::Acos)
+                || ctx.is_builtin(*fn_id, BuiltinFn::Arcsin)
+                || ctx.is_builtin(*fn_id, BuiltinFn::Arccos)
+            {
+                features.bounded_inverse_trig = true;
+            }
+            for arg in args {
+                collect_numeric_sampling_features(ctx, *arg, features);
+            }
+        }
+        Expr::Matrix { data, .. } => {
+            for d in data {
+                collect_numeric_sampling_features(ctx, *d, features);
+            }
+        }
+        Expr::Variable(_) | Expr::Number(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
+    }
+}
+
+fn choose_numeric_sample_profile_order_exprs(
+    ctx: &Context,
+    a: ExprId,
+    b: ExprId,
+) -> Option<[NumericSampleProfile; 3]> {
+    let mut features = NumericSamplingFeatures::default();
+    collect_numeric_sampling_features(ctx, a, &mut features);
+    collect_numeric_sampling_features(ctx, b, &mut features);
+
+    if !(features.positivity_sensitive
+        || features.bounded_inverse_trig
+        || features.rational_sensitive)
+    {
+        return None;
+    }
+
+    Some(
+        if features.positivity_sensitive && features.bounded_inverse_trig {
+            [
+                NumericSampleProfile::Positive,
+                NumericSampleProfile::Interior,
+                if features.rational_sensitive {
+                    NumericSampleProfile::Rational
+                } else {
+                    NumericSampleProfile::General
+                },
+            ]
+        } else if features.positivity_sensitive {
+            [
+                NumericSampleProfile::Positive,
+                if features.rational_sensitive {
+                    NumericSampleProfile::Rational
+                } else {
+                    NumericSampleProfile::General
+                },
+                NumericSampleProfile::Interior,
+            ]
+        } else if features.bounded_inverse_trig {
+            [
+                NumericSampleProfile::Interior,
+                if features.rational_sensitive {
+                    NumericSampleProfile::Rational
+                } else {
+                    NumericSampleProfile::General
+                },
+                NumericSampleProfile::Positive,
+            ]
+        } else if features.rational_sensitive {
+            [
+                NumericSampleProfile::Rational,
+                NumericSampleProfile::General,
+                NumericSampleProfile::Positive,
+            ]
+        } else {
+            [
+                NumericSampleProfile::General,
+                NumericSampleProfile::Interior,
+                NumericSampleProfile::Positive,
+            ]
+        },
+    )
+}
+
+fn collect_numeric_denominator_guards(ctx: &Context, expr: ExprId, guards: &mut Vec<ExprId>) {
+    match ctx.get(expr) {
+        Expr::Add(a, b) | Expr::Sub(a, b) | Expr::Mul(a, b) => {
+            collect_numeric_denominator_guards(ctx, *a, guards);
+            collect_numeric_denominator_guards(ctx, *b, guards);
+        }
+        Expr::Div(a, b) => {
+            guards.push(*b);
+            collect_numeric_denominator_guards(ctx, *a, guards);
+            collect_numeric_denominator_guards(ctx, *b, guards);
+        }
+        Expr::Pow(base, exp) => {
+            if let Some(exp_q) = as_rational_const(ctx, *exp, 4) {
+                if exp_q.is_negative() {
+                    guards.push(*base);
+                }
+                collect_numeric_denominator_guards(ctx, *base, guards);
+            } else {
+                collect_numeric_denominator_guards(ctx, *base, guards);
+                collect_numeric_denominator_guards(ctx, *exp, guards);
+            }
+        }
+        Expr::Neg(a) | Expr::Hold(a) => {
+            collect_numeric_denominator_guards(ctx, *a, guards);
+        }
+        Expr::Function(_, args) => {
+            for arg in args {
+                collect_numeric_denominator_guards(ctx, *arg, guards);
+            }
+        }
+        Expr::Matrix { data, .. } => {
+            for d in data {
+                collect_numeric_denominator_guards(ctx, *d, guards);
+            }
+        }
+        Expr::Variable(_) | Expr::Number(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
+    }
+}
+
+fn near_numeric_guard_zero(ctx: &Context, guard: ExprId, var_map: &HashMap<String, f64>) -> bool {
+    match eval_f64(ctx, guard, var_map) {
+        Some(v) if v.is_finite() => v.abs() <= NUMERIC_DENOM_GUARD_ATOL,
+        _ => true,
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum NumericAnalyticGuardKind {
+    Positive,
+    NonNegative,
+    NotOne,
+    UnitInterval,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct NumericAnalyticGuard {
+    expr: ExprId,
+    kind: NumericAnalyticGuardKind,
+}
+
+fn collect_numeric_analytic_guards(
+    ctx: &Context,
+    expr: ExprId,
+    guards: &mut Vec<NumericAnalyticGuard>,
+) {
+    match ctx.get(expr) {
+        Expr::Add(a, b) | Expr::Sub(a, b) | Expr::Mul(a, b) | Expr::Div(a, b) | Expr::Pow(a, b) => {
+            collect_numeric_analytic_guards(ctx, *a, guards);
+            collect_numeric_analytic_guards(ctx, *b, guards);
+        }
+        Expr::Neg(a) | Expr::Hold(a) => {
+            collect_numeric_analytic_guards(ctx, *a, guards);
+        }
+        Expr::Function(fn_id, args) => {
+            if (ctx.is_builtin(*fn_id, BuiltinFn::Ln)
+                || ctx.is_builtin(*fn_id, BuiltinFn::Log2)
+                || ctx.is_builtin(*fn_id, BuiltinFn::Log10))
+                && !args.is_empty()
+            {
+                guards.push(NumericAnalyticGuard {
+                    expr: args[0],
+                    kind: NumericAnalyticGuardKind::Positive,
+                });
+            }
+
+            if ctx.is_builtin(*fn_id, BuiltinFn::Log) {
+                if let Some(&base) = args.first() {
+                    guards.push(NumericAnalyticGuard {
+                        expr: base,
+                        kind: NumericAnalyticGuardKind::Positive,
+                    });
+                    guards.push(NumericAnalyticGuard {
+                        expr: base,
+                        kind: NumericAnalyticGuardKind::NotOne,
+                    });
+                }
+                if args.len() > 1 {
+                    guards.push(NumericAnalyticGuard {
+                        expr: args[1],
+                        kind: NumericAnalyticGuardKind::Positive,
+                    });
+                }
+            }
+
+            if ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) && !args.is_empty() {
+                guards.push(NumericAnalyticGuard {
+                    expr: args[0],
+                    kind: NumericAnalyticGuardKind::NonNegative,
+                });
+            }
+
+            if (ctx.is_builtin(*fn_id, BuiltinFn::Asin)
+                || ctx.is_builtin(*fn_id, BuiltinFn::Acos)
+                || ctx.is_builtin(*fn_id, BuiltinFn::Arcsin)
+                || ctx.is_builtin(*fn_id, BuiltinFn::Arccos))
+                && !args.is_empty()
+            {
+                guards.push(NumericAnalyticGuard {
+                    expr: args[0],
+                    kind: NumericAnalyticGuardKind::UnitInterval,
+                });
+            }
+
+            for arg in args {
+                collect_numeric_analytic_guards(ctx, *arg, guards);
+            }
+        }
+        Expr::Matrix { data, .. } => {
+            for d in data {
+                collect_numeric_analytic_guards(ctx, *d, guards);
+            }
+        }
+        Expr::Variable(_) | Expr::Number(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
+    }
+}
+
+fn violates_numeric_analytic_guard(
+    ctx: &Context,
+    guard: NumericAnalyticGuard,
+    var_map: &HashMap<String, f64>,
+) -> bool {
+    match eval_f64(ctx, guard.expr, var_map) {
+        Some(v) if v.is_finite() => match guard.kind {
+            NumericAnalyticGuardKind::Positive => v <= NUMERIC_DENOM_GUARD_ATOL,
+            NumericAnalyticGuardKind::NonNegative => v < -NUMERIC_DENOM_GUARD_ATOL,
+            NumericAnalyticGuardKind::NotOne => (v - 1.0).abs() <= NUMERIC_DENOM_GUARD_ATOL,
+            NumericAnalyticGuardKind::UnitInterval => v.abs() > 1.0 + NUMERIC_DENOM_GUARD_ATOL,
+        },
+        _ => true,
+    }
+}
+
+fn collect_numeric_precheck_guards(
+    ctx: &Context,
+    a: ExprId,
+    b: ExprId,
+) -> (Vec<ExprId>, Vec<NumericAnalyticGuard>) {
+    let mut denom_guards = Vec::new();
+    let mut analytic_guards = Vec::new();
+    collect_numeric_denominator_guards(ctx, a, &mut denom_guards);
+    collect_numeric_denominator_guards(ctx, b, &mut denom_guards);
+    collect_numeric_analytic_guards(ctx, a, &mut analytic_guards);
+    collect_numeric_analytic_guards(ctx, b, &mut analytic_guards);
+    (denom_guards, analytic_guards)
+}
+
+fn sample_violates_numeric_precheck_guards(
+    ctx: &Context,
+    denom_guards: &[ExprId],
+    analytic_guards: &[NumericAnalyticGuard],
+    var_map: &HashMap<String, f64>,
+) -> bool {
+    denom_guards
+        .iter()
+        .any(|guard| near_numeric_guard_zero(ctx, *guard, var_map))
+        || analytic_guards
+            .iter()
+            .any(|guard| violates_numeric_analytic_guard(ctx, *guard, var_map))
+}
+
 /// Check if two expressions are numerically equivalent for 1 variable.
 /// Returns Ok(valid_count) or Err(message).
 fn check_numeric_equiv_1var(
@@ -922,6 +1274,8 @@ fn check_numeric_equiv_1var_stats(
 ) -> NumericEquivStats {
     let (lo, hi) = config.sample_range;
     let mut stats = NumericEquivStats::default();
+    let (denom_guards, analytic_guards) = collect_numeric_precheck_guards(ctx, a, b);
+    let profile_order = choose_numeric_sample_profile_order_exprs(ctx, a, b);
 
     // Configure checked evaluator with near-pole detection
     let opts = EvalCheckedOptions {
@@ -932,8 +1286,12 @@ fn check_numeric_equiv_1var_stats(
     };
 
     for i in 0..config.eval_samples {
-        let t = (i as f64 + 0.5) / config.eval_samples as f64;
-        let x = lo + (hi - lo) * t;
+        let x = if let Some(order) = profile_order {
+            numeric_sample_value(&order, i, 0)
+        } else {
+            let t = (i as f64 + 0.5) / config.eval_samples as f64;
+            lo + (hi - lo) * t
+        };
 
         // Apply filter if specified
         if !filter_spec.accept(x) {
@@ -943,6 +1301,11 @@ fn check_numeric_equiv_1var_stats(
 
         let mut var_map = HashMap::new();
         var_map.insert(var.to_string(), x);
+
+        if sample_violates_numeric_precheck_guards(ctx, &denom_guards, &analytic_guards, &var_map) {
+            stats.domain_error += 1;
+            continue;
+        }
 
         let va = eval_f64_checked(ctx, a, &var_map, &opts);
         let vb = eval_f64_checked(ctx, b, &var_map, &opts);
@@ -1007,6 +1370,8 @@ fn check_numeric_equiv_2var_stats(
 ) -> NumericEquivStats {
     let (lo, hi) = config.sample_range;
     let mut stats = NumericEquivStats::default();
+    let (denom_guards, analytic_guards) = collect_numeric_precheck_guards(ctx, a, b);
+    let profile_order = choose_numeric_sample_profile_order_exprs(ctx, a, b);
 
     // Configure checked evaluator
     let opts = EvalCheckedOptions {
@@ -1021,10 +1386,16 @@ fn check_numeric_equiv_2var_stats(
 
     for i in 0..samples_per_dim {
         for j in 0..samples_per_dim {
-            let t1 = (i as f64 + 0.5) / samples_per_dim as f64;
-            let t2 = (j as f64 + 0.5) / samples_per_dim as f64;
-            let x = lo + (hi - lo) * t1;
-            let y = lo + (hi - lo) * t2;
+            let (x, y) = if let Some(order) = profile_order {
+                (
+                    numeric_sample_value(&order, i, 0),
+                    numeric_sample_value(&order, j, 1),
+                )
+            } else {
+                let t1 = (i as f64 + 0.5) / samples_per_dim as f64;
+                let t2 = (j as f64 + 0.5) / samples_per_dim as f64;
+                (lo + (hi - lo) * t1, lo + (hi - lo) * t2)
+            };
 
             let mut var_map = HashMap::new();
             var_map.insert(var1.to_string(), x);
@@ -1032,6 +1403,16 @@ fn check_numeric_equiv_2var_stats(
 
             // Apply per-variable domain filters
             if !filter1.accept(x) || !filter2.accept(y) {
+                stats.domain_error += 1;
+                continue;
+            }
+
+            if sample_violates_numeric_precheck_guards(
+                ctx,
+                &denom_guards,
+                &analytic_guards,
+                &var_map,
+            ) {
                 stats.domain_error += 1;
                 continue;
             }
@@ -1142,6 +1523,8 @@ fn check_numeric_equiv_nvar(
         trig_pole_eps: 1e-9,
         max_depth: 200,
     };
+    let (denom_guards, analytic_guards) = collect_numeric_precheck_guards(ctx, a, b);
+    let profile_order = choose_numeric_sample_profile_order_exprs(ctx, a, b);
 
     // Golden-ratio increment for a simple deterministic low-discrepancy walk.
     const PHASE: f64 = 0.381_966_011_250_105_1;
@@ -1151,9 +1534,18 @@ fn check_numeric_equiv_nvar(
         let mut var_map = HashMap::new();
 
         for (idx, var) in vars.iter().enumerate() {
-            let t = (base + idx as f64 * PHASE).fract();
-            let value = lo + (hi - lo) * t;
+            let value = if let Some(order) = profile_order {
+                numeric_sample_value(&order, i + idx, idx)
+            } else {
+                let t = (base + idx as f64 * PHASE).fract();
+                lo + (hi - lo) * t
+            };
             var_map.insert(var.clone(), value);
+        }
+
+        if sample_violates_numeric_precheck_guards(ctx, &denom_guards, &analytic_guards, &var_map) {
+            domain_error += 1;
+            continue;
         }
 
         let va = eval_f64_checked(ctx, a, &var_map, &opts);
@@ -1253,6 +1645,8 @@ fn check_numeric_equiv_1var_with_fixed_stats_filtered(
 ) -> NumericEquivStats {
     let (lo, hi) = config.sample_range;
     let mut stats = NumericEquivStats::default();
+    let (denom_guards, analytic_guards) = collect_numeric_precheck_guards(ctx, a, b);
+    let profile_order = choose_numeric_sample_profile_order_exprs(ctx, a, b);
 
     let opts = EvalCheckedOptions {
         zero_abs_eps: 1e-12,
@@ -1262,8 +1656,12 @@ fn check_numeric_equiv_1var_with_fixed_stats_filtered(
     };
 
     for i in 0..config.eval_samples {
-        let t = (i as f64 + 0.5) / config.eval_samples as f64;
-        let x = lo + (hi - lo) * t;
+        let x = if let Some(order) = profile_order {
+            numeric_sample_value(&order, i, 0)
+        } else {
+            let t = (i as f64 + 0.5) / config.eval_samples as f64;
+            lo + (hi - lo) * t
+        };
 
         if !filter_spec.accept(x) {
             stats.filtered_out += 1;
@@ -1275,6 +1673,11 @@ fn check_numeric_equiv_1var_with_fixed_stats_filtered(
             var_map.insert(name.clone(), *value);
         }
         var_map.insert(var.to_string(), x);
+
+        if sample_violates_numeric_precheck_guards(ctx, &denom_guards, &analytic_guards, &var_map) {
+            stats.domain_error += 1;
+            continue;
+        }
 
         let va = eval_f64_checked(ctx, a, &var_map, &opts);
         let vb = eval_f64_checked(ctx, b, &var_map, &opts);
@@ -1359,6 +1762,8 @@ fn check_numeric_equiv_2var_with_fixed_stats_filtered(
 ) -> NumericEquivStats {
     let (lo, hi) = config.sample_range;
     let mut stats = NumericEquivStats::default();
+    let (denom_guards, analytic_guards) = collect_numeric_precheck_guards(ctx, a, b);
+    let profile_order = choose_numeric_sample_profile_order_exprs(ctx, a, b);
 
     let opts = EvalCheckedOptions {
         zero_abs_eps: 1e-12,
@@ -1371,10 +1776,16 @@ fn check_numeric_equiv_2var_with_fixed_stats_filtered(
 
     for i in 0..samples_per_dim {
         for j in 0..samples_per_dim {
-            let t1 = (i as f64 + 0.5) / samples_per_dim as f64;
-            let t2 = (j as f64 + 0.5) / samples_per_dim as f64;
-            let x = lo + (hi - lo) * t1;
-            let y = lo + (hi - lo) * t2;
+            let (x, y) = if let Some(order) = profile_order {
+                (
+                    numeric_sample_value(&order, i, 0),
+                    numeric_sample_value(&order, j, 1),
+                )
+            } else {
+                let t1 = (i as f64 + 0.5) / samples_per_dim as f64;
+                let t2 = (j as f64 + 0.5) / samples_per_dim as f64;
+                (lo + (hi - lo) * t1, lo + (hi - lo) * t2)
+            };
 
             if !filter1.accept(x) || !filter2.accept(y) {
                 stats.filtered_out += 1;
@@ -1387,6 +1798,16 @@ fn check_numeric_equiv_2var_with_fixed_stats_filtered(
             }
             var_map.insert(var1.to_string(), x);
             var_map.insert(var2.to_string(), y);
+
+            if sample_violates_numeric_precheck_guards(
+                ctx,
+                &denom_guards,
+                &analytic_guards,
+                &var_map,
+            ) {
+                stats.domain_error += 1;
+                continue;
+            }
 
             let va = eval_f64_checked(ctx, a, &var_map, &opts);
             let vb = eval_f64_checked(ctx, b, &var_map, &opts);
@@ -1429,7 +1850,17 @@ fn check_numeric_equiv_2var_with_fixed_stats_filtered(
     stats
 }
 
-fn sample_nvar_slice_anchor(config: &MetatestConfig, idx: usize, seed: f64) -> f64 {
+fn sample_nvar_slice_anchor(
+    config: &MetatestConfig,
+    idx: usize,
+    seed: f64,
+    profile_order: Option<&[NumericSampleProfile; 3]>,
+) -> f64 {
+    if let Some(order) = profile_order {
+        let seed_slot = ((seed * 1024.0).abs() as usize) % 97;
+        return numeric_sample_value(order, seed_slot + idx * 3, idx);
+    }
+
     let (lo, hi) = config.sample_range;
     const PHASE: f64 = 0.381_966_011_250_105_1;
     let t = (seed + idx as f64 * PHASE).fract();
@@ -1441,8 +1872,9 @@ fn sample_nvar_slice_anchor_filtered(
     idx: usize,
     seed: f64,
     filter: &FilterSpec,
+    profile_order: Option<&[NumericSampleProfile; 3]>,
 ) -> f64 {
-    let base = sample_nvar_slice_anchor(config, idx, seed);
+    let base = sample_nvar_slice_anchor(config, idx, seed, profile_order);
     if filter.accept(base) || filter.is_none() {
         return base;
     }
@@ -1450,13 +1882,73 @@ fn sample_nvar_slice_anchor_filtered(
     const OFFSETS: [f64; 8] = [0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875];
 
     for offset in OFFSETS {
-        let candidate = sample_nvar_slice_anchor(config, idx, (seed + offset).fract());
+        let candidate =
+            sample_nvar_slice_anchor(config, idx, (seed + offset).fract(), profile_order);
         if filter.accept(candidate) {
             return candidate;
         }
     }
 
     base
+}
+
+fn build_nvar_slice_anchors(
+    ctx: &Context,
+    a: ExprId,
+    b: ExprId,
+    vars: &[String],
+    filters: &[FilterSpec],
+    config: &MetatestConfig,
+    seed: f64,
+) -> Vec<(String, f64)> {
+    let profile_order = choose_numeric_sample_profile_order_exprs(ctx, a, b);
+    let (denom_guards, analytic_guards) = collect_numeric_precheck_guards(ctx, a, b);
+    const OFFSETS: [f64; 6] = [0.0, 0.125, 0.25, 0.375, 0.5, 0.75];
+
+    for offset in OFFSETS {
+        let effective_seed = (seed + offset).fract();
+        let anchors = vars
+            .iter()
+            .enumerate()
+            .map(|(idx, var)| {
+                let filter = filters.get(idx).unwrap_or(&FilterSpec::None);
+                (
+                    var.clone(),
+                    sample_nvar_slice_anchor_filtered(
+                        config,
+                        idx,
+                        effective_seed,
+                        filter,
+                        profile_order.as_ref(),
+                    ),
+                )
+            })
+            .collect::<Vec<_>>();
+
+        let var_map = anchors.iter().cloned().collect::<HashMap<String, f64>>();
+
+        if !sample_violates_numeric_precheck_guards(ctx, &denom_guards, &analytic_guards, &var_map)
+        {
+            return anchors;
+        }
+    }
+
+    vars.iter()
+        .enumerate()
+        .map(|(idx, var)| {
+            let filter = filters.get(idx).unwrap_or(&FilterSpec::None);
+            (
+                var.clone(),
+                sample_nvar_slice_anchor_filtered(
+                    config,
+                    idx,
+                    seed,
+                    filter,
+                    profile_order.as_ref(),
+                ),
+            )
+        })
+        .collect()
 }
 
 fn classify_numeric_equiv_nvar_relaxed(
@@ -1481,17 +1973,7 @@ fn classify_numeric_equiv_nvar_relaxed(
 
     for seed in SLICE_SEEDS {
         let mut checked_pairs = 0usize;
-        let anchors = vars
-            .iter()
-            .enumerate()
-            .map(|(idx, var)| {
-                let filter = filters.get(idx).unwrap_or(&FilterSpec::None);
-                (
-                    var.clone(),
-                    sample_nvar_slice_anchor_filtered(config, idx, seed, filter),
-                )
-            })
-            .collect::<Vec<_>>();
+        let anchors = build_nvar_slice_anchors(ctx, a, b, vars, filters, config, seed);
 
         for (idx, free_var) in vars.iter().enumerate() {
             let fixed = anchors
@@ -1869,6 +2351,8 @@ fn check_numeric_equiv_2var_with_fixed_stats_retry_filters(
 ) -> NumericEquivStats {
     let (lo, hi) = config.sample_range;
     let mut stats = NumericEquivStats::default();
+    let (denom_guards, analytic_guards) = collect_numeric_precheck_guards(ctx, a, b);
+    let profile_order = choose_numeric_sample_profile_order_exprs(ctx, a, b);
 
     let opts = EvalCheckedOptions {
         zero_abs_eps: 1e-12,
@@ -1881,10 +2365,16 @@ fn check_numeric_equiv_2var_with_fixed_stats_retry_filters(
 
     for i in 0..samples_per_dim {
         for j in 0..samples_per_dim {
-            let t1 = (i as f64 + 0.5) / samples_per_dim as f64;
-            let t2 = (j as f64 + 0.5) / samples_per_dim as f64;
-            let x = lo + (hi - lo) * t1;
-            let y = lo + (hi - lo) * t2;
+            let (x, y) = if let Some(order) = profile_order {
+                (
+                    numeric_sample_value(&order, i, 0),
+                    numeric_sample_value(&order, j, 1),
+                )
+            } else {
+                let t1 = (i as f64 + 0.5) / samples_per_dim as f64;
+                let t2 = (j as f64 + 0.5) / samples_per_dim as f64;
+                (lo + (hi - lo) * t1, lo + (hi - lo) * t2)
+            };
 
             if !(base_filter1.accept(x)
                 && retry_filter1.accept(x)
@@ -1901,6 +2391,16 @@ fn check_numeric_equiv_2var_with_fixed_stats_retry_filters(
             }
             var_map.insert(var1.to_string(), x);
             var_map.insert(var2.to_string(), y);
+
+            if sample_violates_numeric_precheck_guards(
+                ctx,
+                &denom_guards,
+                &analytic_guards,
+                &var_map,
+            ) {
+                stats.domain_error += 1;
+                continue;
+            }
 
             let va = eval_f64_checked(ctx, a, &var_map, &opts);
             let vb = eval_f64_checked(ctx, b, &var_map, &opts);
@@ -6845,9 +7345,10 @@ fn test_transform_identity(
 /// A substitution expression to plug into identity variables
 #[derive(Clone, Debug)]
 struct SubstitutionExpr {
-    expr: String,  // The expression to substitute, e.g. "sin(u)"
-    var: String,   // The free variable after substitution, e.g. "u"
-    label: String, // Category label, e.g. "trig"
+    expr: String,             // The expression to substitute, e.g. "sin(u)"
+    var: String,              // The free variable after substitution, e.g. "u"
+    label: String,            // Category label, e.g. "trig"
+    filters: Vec<FilterSpec>, // Optional numeric-domain filters for the free vars
 }
 
 /// A direct contextual equivalence A(u) == B(u), curated outside the generic
@@ -6913,6 +7414,58 @@ struct SemanticBehaviorContractExpr {
     value_domain: cas_solver::runtime::ValueDomain,
     mode: cas_solver::runtime::DomainMode,
     expectation: SemanticBehaviorExpectation,
+    family: String,
+}
+
+#[derive(Debug, Clone)]
+struct ComplexModeBehaviorContractExpr {
+    expr: String,
+    value_domain: cas_solver::runtime::ValueDomain,
+    complex_mode: cas_solver::runtime::ComplexMode,
+    expectation: SemanticBehaviorExpectation,
+    family: String,
+}
+
+#[derive(Debug, Clone)]
+struct ConstFoldBehaviorContractExpr {
+    expr: String,
+    value_domain: cas_solver::runtime::ValueDomain,
+    const_fold_mode: cas_solver::api::ConstFoldMode,
+    expectation: SemanticBehaviorExpectation,
+    family: String,
+}
+
+#[derive(Debug, Clone)]
+struct EvalPathBehaviorContractExpr {
+    expr: String,
+    value_domain: cas_solver::runtime::ValueDomain,
+    mode: cas_solver::runtime::DomainMode,
+    complex_mode: cas_solver::runtime::ComplexMode,
+    const_fold_mode: cas_solver::api::ConstFoldMode,
+    expectation: SemanticBehaviorExpectation,
+    family: String,
+}
+
+#[derive(Debug, Clone)]
+struct EvalPathAxesContractExpr {
+    expr: String,
+    value_domain: cas_solver::runtime::ValueDomain,
+    mode: cas_solver::runtime::DomainMode,
+    complex_mode: cas_solver::runtime::ComplexMode,
+    const_fold_mode: cas_solver::api::ConstFoldMode,
+    expect_requires: bool,
+    expect_warning: bool,
+    family: String,
+}
+
+#[derive(Debug, Clone)]
+struct EvalPathInvTrigAxesContractExpr {
+    expr: String,
+    value_domain: cas_solver::runtime::ValueDomain,
+    mode: cas_solver::runtime::DomainMode,
+    inv_trig: cas_solver::runtime::InverseTrigPolicy,
+    expect_requires: bool,
+    expect_warning: bool,
     family: String,
 }
 
@@ -7040,27 +7593,54 @@ fn load_substitution_identities() -> Vec<IdentityPair> {
 }
 
 /// Load substitution expressions from CSV
-fn load_substitution_expressions() -> Vec<SubstitutionExpr> {
-    let csv_path = find_test_data_file("substitution_expressions.csv");
-    let content =
-        std::fs::read_to_string(csv_path).expect("Failed to read substitution_expressions.csv");
+fn load_substitution_expressions_from(filename: &str) -> Vec<SubstitutionExpr> {
+    let csv_path = find_test_data_file(filename);
+    let content = std::fs::read_to_string(&csv_path)
+        .unwrap_or_else(|_| panic!("Failed to read {}", filename));
 
     let mut exprs = Vec::new();
-    for line in content.lines() {
+    for (line_idx, line) in content.lines().enumerate() {
+        let line_num = line_idx + 1;
         let line = line.trim();
         if line.starts_with('#') || line.is_empty() {
             continue;
         }
-        let parts: Vec<&str> = line.split(',').collect();
+        let parts: Vec<&str> = line.splitn(4, ',').collect();
         if parts.len() >= 3 {
+            let var = parts[1].trim().to_string();
+            let filters = if parts.len() >= 4 {
+                parse_filter_specs(parts[3], 1, line_num)
+            } else {
+                vec![FilterSpec::None]
+            };
             exprs.push(SubstitutionExpr {
                 expr: parts[0].trim().to_string(),
-                var: parts[1].trim().to_string(),
+                var,
                 label: parts[2].trim().to_string(),
+                filters,
             });
         }
     }
     exprs
+}
+
+fn load_substitution_expressions() -> Vec<SubstitutionExpr> {
+    load_substitution_expressions_from("substitution_expressions.csv")
+}
+
+fn load_structural_substitution_expressions() -> Vec<SubstitutionExpr> {
+    load_substitution_expressions_from("substitution_structural_expressions.csv")
+}
+
+fn filter_substitutions_by_labels(
+    substitutions: Vec<SubstitutionExpr>,
+    labels: &[&str],
+) -> Vec<SubstitutionExpr> {
+    let allowed: std::collections::HashSet<&str> = labels.iter().copied().collect();
+    substitutions
+        .into_iter()
+        .filter(|sub| allowed.contains(sub.label.as_str()))
+        .collect()
 }
 
 /// Load contextual direct pairs from CSV
@@ -7297,6 +7877,52 @@ fn parse_value_domain_label(
             "{} line {}: invalid value domain '{}'",
             csv_name, line_num, other
         ),
+    }
+}
+
+fn parse_complex_mode_label(
+    label: &str,
+    csv_name: &str,
+    line_num: usize,
+) -> cas_solver::runtime::ComplexMode {
+    match label.trim().to_lowercase().as_str() {
+        "auto" => cas_solver::runtime::ComplexMode::Auto,
+        "off" => cas_solver::runtime::ComplexMode::Off,
+        "on" => cas_solver::runtime::ComplexMode::On,
+        other => panic!(
+            "{} line {}: invalid complex mode '{}'",
+            csv_name, line_num, other
+        ),
+    }
+}
+
+fn complex_mode_label(mode: cas_solver::runtime::ComplexMode) -> &'static str {
+    match mode {
+        cas_solver::runtime::ComplexMode::Auto => "auto",
+        cas_solver::runtime::ComplexMode::Off => "off",
+        cas_solver::runtime::ComplexMode::On => "on",
+    }
+}
+
+fn parse_const_fold_mode_label(
+    label: &str,
+    csv_name: &str,
+    line_num: usize,
+) -> cas_solver::api::ConstFoldMode {
+    match label.trim().to_lowercase().as_str() {
+        "off" => cas_solver::api::ConstFoldMode::Off,
+        "safe" => cas_solver::api::ConstFoldMode::Safe,
+        other => panic!(
+            "{} line {}: invalid const-fold mode '{}'",
+            csv_name, line_num, other
+        ),
+    }
+}
+
+fn const_fold_mode_label(mode: cas_solver::api::ConstFoldMode) -> &'static str {
+    match mode {
+        cas_solver::api::ConstFoldMode::Off => "off",
+        cas_solver::api::ConstFoldMode::Safe => "safe",
     }
 }
 
@@ -7575,6 +8201,392 @@ fn load_semantic_behavior_contract_expressions() -> Vec<SemanticBehaviorContract
     exprs
 }
 
+fn load_complex_mode_behavior_contract_expressions() -> Vec<ComplexModeBehaviorContractExpr> {
+    let csv_path = find_test_data_file("complex_mode_behavior_contract_expressions.csv");
+    let content = std::fs::read_to_string(csv_path)
+        .expect("Failed to read complex_mode_behavior_contract_expressions.csv");
+
+    let mut exprs = Vec::new();
+    let mut current_family = String::from("Uncategorized");
+    for (line_idx, line) in content.lines().enumerate() {
+        let line_num = line_idx + 1;
+        let line = line.trim();
+        if line.starts_with('#') {
+            let label = line.trim_start_matches('#').trim();
+            if !label.is_empty()
+                && !label.starts_with("Format")
+                && !label.starts_with("Expressions")
+            {
+                current_family = label.to_string();
+            }
+            continue;
+        }
+        if line.is_empty() {
+            continue;
+        }
+
+        let parts: Vec<&str> = line.rsplitn(5, ',').collect();
+        if parts.len() != 5 {
+            panic!(
+                "complex_mode_behavior_contract_expressions.csv line {}: expected expr,value_domain,complex_mode,match_kind,expected. Line: '{}'",
+                line_num, line
+            );
+        }
+
+        let expr = parts[4].trim().to_string();
+        let value_domain = parse_value_domain_label(
+            parts[3],
+            "complex_mode_behavior_contract_expressions.csv",
+            line_num,
+        );
+        let complex_mode = parse_complex_mode_label(
+            parts[2],
+            "complex_mode_behavior_contract_expressions.csv",
+            line_num,
+        );
+        let expectation = match parts[1].trim().to_lowercase().as_str() {
+            "exact" => SemanticBehaviorExpectation::Exact(parts[0].trim().to_string()),
+            "contains_all" => SemanticBehaviorExpectation::ContainsAll(
+                parts[0]
+                    .split(';')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect(),
+            ),
+            other => panic!(
+                "complex_mode_behavior_contract_expressions.csv line {}: invalid match_kind '{}'",
+                line_num, other
+            ),
+        };
+
+        exprs.push(ComplexModeBehaviorContractExpr {
+            expr,
+            value_domain,
+            complex_mode,
+            expectation,
+            family: current_family.clone(),
+        });
+    }
+
+    exprs
+}
+
+fn load_const_fold_behavior_contract_expressions() -> Vec<ConstFoldBehaviorContractExpr> {
+    let csv_path = find_test_data_file("const_fold_behavior_contract_expressions.csv");
+    let content = std::fs::read_to_string(csv_path)
+        .expect("Failed to read const_fold_behavior_contract_expressions.csv");
+
+    let mut exprs = Vec::new();
+    let mut current_family = String::from("Uncategorized");
+    for (line_idx, line) in content.lines().enumerate() {
+        let line_num = line_idx + 1;
+        let line = line.trim();
+        if line.starts_with('#') {
+            let label = line.trim_start_matches('#').trim();
+            if !label.is_empty()
+                && !label.starts_with("Format")
+                && !label.starts_with("Expressions")
+            {
+                current_family = label.to_string();
+            }
+            continue;
+        }
+        if line.is_empty() {
+            continue;
+        }
+
+        let parts: Vec<&str> = line.rsplitn(5, ',').collect();
+        if parts.len() != 5 {
+            panic!(
+                "const_fold_behavior_contract_expressions.csv line {}: expected expr,value_domain,const_fold_mode,match_kind,expected. Line: '{}'",
+                line_num, line
+            );
+        }
+
+        let expr = parts[4].trim().to_string();
+        let value_domain = parse_value_domain_label(
+            parts[3],
+            "const_fold_behavior_contract_expressions.csv",
+            line_num,
+        );
+        let const_fold_mode = parse_const_fold_mode_label(
+            parts[2],
+            "const_fold_behavior_contract_expressions.csv",
+            line_num,
+        );
+        let expectation = match parts[1].trim().to_lowercase().as_str() {
+            "exact" => SemanticBehaviorExpectation::Exact(parts[0].trim().to_string()),
+            "contains_all" => SemanticBehaviorExpectation::ContainsAll(
+                parts[0]
+                    .split(';')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect(),
+            ),
+            other => panic!(
+                "const_fold_behavior_contract_expressions.csv line {}: invalid match_kind '{}'",
+                line_num, other
+            ),
+        };
+
+        exprs.push(ConstFoldBehaviorContractExpr {
+            expr,
+            value_domain,
+            const_fold_mode,
+            expectation,
+            family: current_family.clone(),
+        });
+    }
+
+    exprs
+}
+
+fn load_eval_path_behavior_contract_expressions() -> Vec<EvalPathBehaviorContractExpr> {
+    let csv_path = find_test_data_file("eval_path_behavior_contract_expressions.csv");
+    let content = std::fs::read_to_string(csv_path)
+        .expect("Failed to read eval_path_behavior_contract_expressions.csv");
+
+    let mut exprs = Vec::new();
+    let mut current_family = String::from("Uncategorized");
+    for (line_idx, line) in content.lines().enumerate() {
+        let line_num = line_idx + 1;
+        let line = line.trim();
+        if line.starts_with('#') {
+            let label = line.trim_start_matches('#').trim();
+            if !label.is_empty()
+                && !label.starts_with("Format")
+                && !label.starts_with("Expressions")
+            {
+                current_family = label.to_string();
+            }
+            continue;
+        }
+        if line.is_empty() {
+            continue;
+        }
+
+        let parts: Vec<&str> = line.rsplitn(7, ',').collect();
+        if parts.len() != 7 {
+            panic!(
+                "eval_path_behavior_contract_expressions.csv line {}: expected expr,value_domain,mode,complex_mode,const_fold_mode,match_kind,expected. Line: '{}'",
+                line_num, line
+            );
+        }
+
+        let expr = parts[6].trim().to_string();
+        let value_domain = parse_value_domain_label(
+            parts[5],
+            "eval_path_behavior_contract_expressions.csv",
+            line_num,
+        );
+        let mode = parse_domain_mode_label(
+            parts[4],
+            "eval_path_behavior_contract_expressions.csv",
+            line_num,
+        );
+        let complex_mode = parse_complex_mode_label(
+            parts[3],
+            "eval_path_behavior_contract_expressions.csv",
+            line_num,
+        );
+        let const_fold_mode = parse_const_fold_mode_label(
+            parts[2],
+            "eval_path_behavior_contract_expressions.csv",
+            line_num,
+        );
+        let expectation = match parts[1].trim().to_lowercase().as_str() {
+            "exact" => SemanticBehaviorExpectation::Exact(parts[0].trim().to_string()),
+            "contains_all" => SemanticBehaviorExpectation::ContainsAll(
+                parts[0]
+                    .split(';')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect(),
+            ),
+            other => panic!(
+                "eval_path_behavior_contract_expressions.csv line {}: invalid match_kind '{}'",
+                line_num, other
+            ),
+        };
+
+        exprs.push(EvalPathBehaviorContractExpr {
+            expr,
+            value_domain,
+            mode,
+            complex_mode,
+            const_fold_mode,
+            expectation,
+            family: current_family.clone(),
+        });
+    }
+
+    exprs
+}
+
+fn load_eval_path_axes_contract_expressions() -> Vec<EvalPathAxesContractExpr> {
+    let csv_path = find_test_data_file("eval_path_axes_contract_expressions.csv");
+    let content = std::fs::read_to_string(csv_path)
+        .expect("Failed to read eval_path_axes_contract_expressions.csv");
+
+    let mut exprs = Vec::new();
+    let mut current_family = String::from("Uncategorized");
+    for (line_idx, line) in content.lines().enumerate() {
+        let line_num = line_idx + 1;
+        let line = line.trim();
+        if line.starts_with('#') {
+            let label = line.trim_start_matches('#').trim();
+            if !label.is_empty()
+                && !label.starts_with("Format")
+                && !label.starts_with("Expressions")
+            {
+                current_family = label.to_string();
+            }
+            continue;
+        }
+        if line.is_empty() {
+            continue;
+        }
+
+        let parts: Vec<&str> = line.rsplitn(7, ',').collect();
+        if parts.len() != 7 {
+            panic!(
+                "eval_path_axes_contract_expressions.csv line {}: expected expr,value_domain,mode,complex_mode,const_fold_mode,expect_requires,expect_warning. Line: '{}'",
+                line_num, line
+            );
+        }
+
+        let expr = parts[6].trim().to_string();
+        let value_domain = parse_value_domain_label(
+            parts[5],
+            "eval_path_axes_contract_expressions.csv",
+            line_num,
+        );
+        let mode = parse_domain_mode_label(
+            parts[4],
+            "eval_path_axes_contract_expressions.csv",
+            line_num,
+        );
+        let complex_mode = parse_complex_mode_label(
+            parts[3],
+            "eval_path_axes_contract_expressions.csv",
+            line_num,
+        );
+        let const_fold_mode = parse_const_fold_mode_label(
+            parts[2],
+            "eval_path_axes_contract_expressions.csv",
+            line_num,
+        );
+        let expect_requires = match parts[1].trim().to_lowercase().as_str() {
+            "yes" | "true" => true,
+            "no" | "false" => false,
+            other => panic!(
+                "eval_path_axes_contract_expressions.csv line {}: invalid expect_requires '{}'",
+                line_num, other
+            ),
+        };
+        let expect_warning = match parts[0].trim().to_lowercase().as_str() {
+            "yes" | "true" => true,
+            "no" | "false" => false,
+            other => panic!(
+                "eval_path_axes_contract_expressions.csv line {}: invalid expect_warning '{}'",
+                line_num, other
+            ),
+        };
+
+        exprs.push(EvalPathAxesContractExpr {
+            expr,
+            value_domain,
+            mode,
+            complex_mode,
+            const_fold_mode,
+            expect_requires,
+            expect_warning,
+            family: current_family.clone(),
+        });
+    }
+
+    exprs
+}
+
+fn load_eval_path_inv_trig_axes_contract_expressions() -> Vec<EvalPathInvTrigAxesContractExpr> {
+    let csv_path = find_test_data_file("eval_path_inv_trig_axes_contract_expressions.csv");
+    let content = std::fs::read_to_string(csv_path)
+        .expect("Failed to read eval_path_inv_trig_axes_contract_expressions.csv");
+
+    let mut exprs = Vec::new();
+    let mut current_family = String::from("Uncategorized");
+    for (line_idx, line) in content.lines().enumerate() {
+        let line_num = line_idx + 1;
+        let line = line.trim();
+        if line.starts_with('#') {
+            let label = line.trim_start_matches('#').trim();
+            if !label.is_empty()
+                && !label.starts_with("Format")
+                && !label.starts_with("Expressions")
+            {
+                current_family = label.to_string();
+            }
+            continue;
+        }
+        if line.is_empty() {
+            continue;
+        }
+
+        let parts: Vec<&str> = line.rsplitn(6, ',').collect();
+        if parts.len() != 6 {
+            panic!(
+                "eval_path_inv_trig_axes_contract_expressions.csv line {}: expected expr,value_domain,mode,inv_trig,expect_requires,expect_warning. Line: '{}'",
+                line_num, line
+            );
+        }
+
+        let expr = parts[5].trim().to_string();
+        let value_domain = parse_value_domain_label(
+            parts[4],
+            "eval_path_inv_trig_axes_contract_expressions.csv",
+            line_num,
+        );
+        let mode = parse_domain_mode_label(
+            parts[3],
+            "eval_path_inv_trig_axes_contract_expressions.csv",
+            line_num,
+        );
+        let inv_trig = parse_inv_trig_policy_label(
+            parts[2],
+            "eval_path_inv_trig_axes_contract_expressions.csv",
+            line_num,
+        );
+        let expect_requires = match parts[1].trim().to_lowercase().as_str() {
+            "yes" | "true" => true,
+            "no" | "false" => false,
+            other => panic!(
+                "eval_path_inv_trig_axes_contract_expressions.csv line {}: invalid expect_requires '{}'",
+                line_num, other
+            ),
+        };
+        let expect_warning = match parts[0].trim().to_lowercase().as_str() {
+            "yes" | "true" => true,
+            "no" | "false" => false,
+            other => panic!(
+                "eval_path_inv_trig_axes_contract_expressions.csv line {}: invalid expect_warning '{}'",
+                line_num, other
+            ),
+        };
+
+        exprs.push(EvalPathInvTrigAxesContractExpr {
+            expr,
+            value_domain,
+            mode,
+            inv_trig,
+            expect_requires,
+            expect_warning,
+            family: current_family.clone(),
+        });
+    }
+
+    exprs
+}
+
 fn load_requires_mode_contract_expressions() -> Vec<RequiresModeContractExpr> {
     let csv_path = find_test_data_file("requires_mode_contract_expressions.csv");
     let content = std::fs::read_to_string(csv_path)
@@ -7837,6 +8849,239 @@ fn simplify_with_metadata_on_axes(
     })
 }
 
+fn simplify_with_complex_mode_behavior(
+    input: &str,
+    value_domain: cas_solver::runtime::ValueDomain,
+    complex_mode: cas_solver::runtime::ComplexMode,
+) -> Result<String, String> {
+    let mut ctx = Context::new();
+    let expr =
+        parse(input, &mut ctx).map_err(|e| format!("parse failed for '{}': {:?}", input, e))?;
+
+    let opts = cas_solver::runtime::EvalOptions {
+        complex_mode,
+        shared: cas_solver::runtime::SharedSemanticConfig {
+            context_mode: cas_solver::runtime::ContextMode::Standard,
+            semantics: cas_solver::runtime::EvalConfig {
+                value_domain,
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+
+    let mut simplifier = cas_solver::runtime::Simplifier::with_profile(&opts);
+    simplifier.context = ctx;
+    let simplify_opts = opts.to_simplify_options();
+    let (result, _steps) = simplifier.simplify_with_options(expr, simplify_opts);
+
+    Ok(format!(
+        "{}",
+        cas_formatter::DisplayExpr {
+            context: &simplifier.context,
+            id: result
+        }
+    ))
+}
+
+fn fold_with_const_fold_behavior(
+    input: &str,
+    value_domain: cas_solver::runtime::ValueDomain,
+    const_fold_mode: cas_solver::api::ConstFoldMode,
+) -> Result<String, String> {
+    let mut ctx = Context::new();
+    let expr =
+        parse(input, &mut ctx).map_err(|e| format!("parse failed for '{}': {:?}", input, e))?;
+
+    let cfg = cas_solver::runtime::EvalConfig {
+        value_domain,
+        ..Default::default()
+    };
+    let mut budget = cas_solver::runtime::Budget::preset_unlimited();
+    let result =
+        cas_solver::api::fold_constants(&mut ctx, expr, &cfg, const_fold_mode, &mut budget)
+            .map_err(|e| format!("const_fold failed for '{}': {:?}", input, e))?;
+
+    Ok(format!(
+        "{}",
+        cas_formatter::DisplayExpr {
+            context: &ctx,
+            id: result.expr
+        }
+    ))
+}
+
+fn simplify_with_eval_path_behavior(
+    input: &str,
+    mode: cas_solver::runtime::DomainMode,
+    value_domain: cas_solver::runtime::ValueDomain,
+    complex_mode: cas_solver::runtime::ComplexMode,
+    const_fold_mode: cas_solver::api::ConstFoldMode,
+) -> Result<String, String> {
+    let mut engine = Engine::new();
+    let mut state = SessionState::new();
+    state.options_mut().shared.semantics.domain_mode = mode;
+    state.options_mut().shared.semantics.value_domain = value_domain;
+    state.options_mut().complex_mode = complex_mode;
+    state.options_mut().const_fold = const_fold_mode;
+
+    let parsed = parse(input, &mut engine.simplifier.context)
+        .map_err(|e| format!("parse failed for '{}': {:?}", input, e))?;
+    let req = EvalRequest {
+        raw_input: input.to_string(),
+        parsed,
+        action: EvalAction::Simplify,
+        auto_store: false,
+    };
+
+    let output = engine
+        .eval(&mut state, req)
+        .map_err(|e| format!("eval failed for '{}': {:?}", input, e))?;
+
+    let result = match &output.result {
+        EvalResult::Expr(e) => DisplayExpr {
+            context: &engine.simplifier.context,
+            id: *e,
+        }
+        .to_string(),
+        other => {
+            return Err(format!(
+                "unexpected eval result for '{}': {:?}",
+                input, other
+            ));
+        }
+    };
+
+    Ok(result)
+}
+
+fn simplify_with_eval_path_metadata(
+    input: &str,
+    mode: cas_solver::runtime::DomainMode,
+    value_domain: cas_solver::runtime::ValueDomain,
+    complex_mode: cas_solver::runtime::ComplexMode,
+    const_fold_mode: cas_solver::api::ConstFoldMode,
+) -> Result<SimplifyMetadata, String> {
+    let mut engine = Engine::new();
+    let mut state = SessionState::new();
+    state.options_mut().shared.semantics.domain_mode = mode;
+    state.options_mut().shared.semantics.value_domain = value_domain;
+    state.options_mut().complex_mode = complex_mode;
+    state.options_mut().const_fold = const_fold_mode;
+
+    let parsed = parse(input, &mut engine.simplifier.context)
+        .map_err(|e| format!("parse failed for '{}': {:?}", input, e))?;
+    let req = EvalRequest {
+        raw_input: input.to_string(),
+        parsed,
+        action: EvalAction::Simplify,
+        auto_store: false,
+    };
+
+    let output = engine
+        .eval(&mut state, req)
+        .map_err(|e| format!("eval failed for '{}': {:?}", input, e))?;
+
+    let result = match &output.result {
+        EvalResult::Expr(e) => DisplayExpr {
+            context: &engine.simplifier.context,
+            id: *e,
+        }
+        .to_string(),
+        other => {
+            return Err(format!(
+                "unexpected eval result for '{}': {:?}",
+                input, other
+            ));
+        }
+    };
+
+    let mut required: Vec<String> = output
+        .required_conditions
+        .iter()
+        .map(|cond| cond.display(&engine.simplifier.context))
+        .collect();
+    required.sort();
+    required.dedup();
+
+    let mut warnings: Vec<String> = output
+        .domain_warnings
+        .iter()
+        .map(|w| w.message.clone())
+        .collect();
+    warnings.sort();
+    warnings.dedup();
+
+    Ok(SimplifyMetadata {
+        result,
+        required,
+        warnings,
+    })
+}
+
+fn simplify_with_eval_path_metadata_and_inv_trig(
+    input: &str,
+    mode: cas_solver::runtime::DomainMode,
+    value_domain: cas_solver::runtime::ValueDomain,
+    inv_trig: cas_solver::runtime::InverseTrigPolicy,
+) -> Result<SimplifyMetadata, String> {
+    let mut engine = Engine::new();
+    let mut state = SessionState::new();
+    state.options_mut().shared.semantics.domain_mode = mode;
+    state.options_mut().shared.semantics.value_domain = value_domain;
+    state.options_mut().shared.semantics.inv_trig = inv_trig;
+
+    let parsed = parse(input, &mut engine.simplifier.context)
+        .map_err(|e| format!("parse failed for '{}': {:?}", input, e))?;
+    let req = EvalRequest {
+        raw_input: input.to_string(),
+        parsed,
+        action: EvalAction::Simplify,
+        auto_store: false,
+    };
+
+    let output = engine
+        .eval(&mut state, req)
+        .map_err(|e| format!("eval failed for '{}': {:?}", input, e))?;
+
+    let result = match &output.result {
+        EvalResult::Expr(e) => DisplayExpr {
+            context: &engine.simplifier.context,
+            id: *e,
+        }
+        .to_string(),
+        other => {
+            return Err(format!(
+                "unexpected eval result for '{}': {:?}",
+                input, other
+            ));
+        }
+    };
+
+    let mut required: Vec<String> = output
+        .required_conditions
+        .iter()
+        .map(|cond| cond.display(&engine.simplifier.context))
+        .collect();
+    required.sort();
+    required.dedup();
+
+    let mut warnings: Vec<String> = output
+        .domain_warnings
+        .iter()
+        .map(|w| w.message.clone())
+        .collect();
+    warnings.sort();
+    warnings.dedup();
+
+    Ok(SimplifyMetadata {
+        result,
+        required,
+        warnings,
+    })
+}
+
 fn simplify_with_assumption_trace(
     input: &str,
     mode: cas_solver::runtime::DomainMode,
@@ -8047,6 +9292,12 @@ struct SemanticBehaviorContractMetrics {
     failed: usize,
     parse_errors: usize,
 }
+
+type ComplexModeBehaviorContractMetrics = SemanticBehaviorContractMetrics;
+type ConstFoldBehaviorContractMetrics = SemanticBehaviorContractMetrics;
+type EvalPathBehaviorContractMetrics = SemanticBehaviorContractMetrics;
+type EvalPathAxesContractMetrics = SemanticAxesContractMetrics;
+type EvalPathInvTrigAxesContractMetrics = SemanticAxesContractMetrics;
 
 #[derive(Default)]
 struct RequiresModeContractMetrics {
@@ -9132,6 +10383,886 @@ fn run_semantic_behavior_contract_tests() -> SemanticBehaviorContractMetrics {
     metrics
 }
 
+fn run_complex_mode_behavior_contract_tests() -> ComplexModeBehaviorContractMetrics {
+    let cases = load_complex_mode_behavior_contract_expressions();
+    let verbose = std::env::var("METATEST_VERBOSE").is_ok();
+    let mut metrics = ComplexModeBehaviorContractMetrics {
+        total: cases.len(),
+        ..Default::default()
+    };
+    let mut failures: Vec<String> = Vec::new();
+    let mut relaxed_examples: Vec<String> = Vec::new();
+
+    eprintln!(
+        "📊 Running complex-mode behavior contracts: {} expressions from {} families",
+        cases.len(),
+        cases
+            .iter()
+            .map(|c| &c.family)
+            .collect::<std::collections::HashSet<_>>()
+            .len()
+    );
+
+    for case in &cases {
+        let first = match simplify_with_complex_mode_behavior(
+            &case.expr,
+            case.value_domain,
+            case.complex_mode,
+        ) {
+            Ok(v) => v,
+            Err(err) => {
+                metrics.parse_errors += 1;
+                failures.push(format!(
+                    "[{}|{}|{}] {} — {}",
+                    case.family,
+                    value_domain_label(case.value_domain),
+                    complex_mode_label(case.complex_mode),
+                    case.expr,
+                    err
+                ));
+                continue;
+            }
+        };
+
+        let second =
+            match simplify_with_complex_mode_behavior(&first, case.value_domain, case.complex_mode)
+            {
+                Ok(v) => v,
+                Err(err) => {
+                    metrics.parse_errors += 1;
+                    failures.push(format!(
+                        "[{}|{}|{}] {} -> '{}' reparsed failed: {}",
+                        case.family,
+                        value_domain_label(case.value_domain),
+                        complex_mode_label(case.complex_mode),
+                        case.expr,
+                        first,
+                        err
+                    ));
+                    continue;
+                }
+            };
+
+        let expected_ok = semantic_behavior_matches(&case.expectation, &first);
+        let second_ok = semantic_behavior_matches(&case.expectation, &second);
+
+        if !expected_ok {
+            metrics.failed += 1;
+            failures.push(format!(
+                "[{}|{}|{}] {} — expected {}, got '{}'",
+                case.family,
+                value_domain_label(case.value_domain),
+                complex_mode_label(case.complex_mode),
+                case.expr,
+                semantic_behavior_label(&case.expectation),
+                first
+            ));
+            continue;
+        }
+
+        if !second_ok {
+            metrics.failed += 1;
+            failures.push(format!(
+                "[{}|{}|{}] {} — second simplify broke behavior: first='{}', second='{}', expected {}",
+                case.family,
+                value_domain_label(case.value_domain),
+                complex_mode_label(case.complex_mode),
+                case.expr,
+                first,
+                second,
+                semantic_behavior_label(&case.expectation)
+            ));
+            continue;
+        }
+
+        if first == second {
+            metrics.exact_preserved += 1;
+        } else {
+            metrics.relaxed_preserved += 1;
+            if verbose && relaxed_examples.len() < 10 {
+                relaxed_examples.push(format!(
+                    "[{}|{}|{}] {} — result '{}' -> '{}'",
+                    case.family,
+                    value_domain_label(case.value_domain),
+                    complex_mode_label(case.complex_mode),
+                    case.expr,
+                    first,
+                    second
+                ));
+            }
+        }
+    }
+
+    eprintln!(
+        "✅ Complex-mode behavior contracts: exact={} relaxed={} failed={} parse={}",
+        metrics.exact_preserved, metrics.relaxed_preserved, metrics.failed, metrics.parse_errors
+    );
+
+    if verbose && !relaxed_examples.is_empty() {
+        eprintln!("\nℹ️ complex-mode behavior relaxed-preserved examples:");
+        for example in relaxed_examples.iter().take(10) {
+            eprintln!("  {}", example);
+        }
+    }
+
+    if !failures.is_empty() {
+        eprintln!("\n🚨 complex-mode behavior failures:");
+        for failure in failures.iter().take(10) {
+            eprintln!("  {}", failure);
+        }
+    }
+
+    metrics
+}
+
+fn run_const_fold_behavior_contract_tests() -> ConstFoldBehaviorContractMetrics {
+    let cases = load_const_fold_behavior_contract_expressions();
+    let verbose = std::env::var("METATEST_VERBOSE").is_ok();
+    let mut metrics = ConstFoldBehaviorContractMetrics {
+        total: cases.len(),
+        ..Default::default()
+    };
+    let mut failures: Vec<String> = Vec::new();
+    let mut relaxed_examples: Vec<String> = Vec::new();
+
+    eprintln!(
+        "📊 Running const-fold behavior contracts: {} expressions from {} families",
+        cases.len(),
+        cases
+            .iter()
+            .map(|c| &c.family)
+            .collect::<std::collections::HashSet<_>>()
+            .len()
+    );
+
+    for case in &cases {
+        let first = match fold_with_const_fold_behavior(
+            &case.expr,
+            case.value_domain,
+            case.const_fold_mode,
+        ) {
+            Ok(v) => v,
+            Err(err) => {
+                metrics.parse_errors += 1;
+                failures.push(format!(
+                    "[{}|{}|{}] {} — {}",
+                    case.family,
+                    value_domain_label(case.value_domain),
+                    const_fold_mode_label(case.const_fold_mode),
+                    case.expr,
+                    err
+                ));
+                continue;
+            }
+        };
+
+        let second =
+            match fold_with_const_fold_behavior(&first, case.value_domain, case.const_fold_mode) {
+                Ok(v) => v,
+                Err(err) => {
+                    metrics.parse_errors += 1;
+                    failures.push(format!(
+                        "[{}|{}|{}] {} -> '{}' reparsed failed: {}",
+                        case.family,
+                        value_domain_label(case.value_domain),
+                        const_fold_mode_label(case.const_fold_mode),
+                        case.expr,
+                        first,
+                        err
+                    ));
+                    continue;
+                }
+            };
+
+        let expected_ok = semantic_behavior_matches(&case.expectation, &first);
+        let second_ok = semantic_behavior_matches(&case.expectation, &second);
+
+        if !expected_ok {
+            metrics.failed += 1;
+            failures.push(format!(
+                "[{}|{}|{}] {} — expected {}, got '{}'",
+                case.family,
+                value_domain_label(case.value_domain),
+                const_fold_mode_label(case.const_fold_mode),
+                case.expr,
+                semantic_behavior_label(&case.expectation),
+                first
+            ));
+            continue;
+        }
+
+        if !second_ok {
+            metrics.failed += 1;
+            failures.push(format!(
+                "[{}|{}|{}] {} — second const_fold broke behavior: first='{}', second='{}', expected {}",
+                case.family,
+                value_domain_label(case.value_domain),
+                const_fold_mode_label(case.const_fold_mode),
+                case.expr,
+                first,
+                second,
+                semantic_behavior_label(&case.expectation)
+            ));
+            continue;
+        }
+
+        if first == second {
+            metrics.exact_preserved += 1;
+        } else {
+            metrics.relaxed_preserved += 1;
+            if verbose && relaxed_examples.len() < 10 {
+                relaxed_examples.push(format!(
+                    "[{}|{}|{}] {} — result '{}' -> '{}'",
+                    case.family,
+                    value_domain_label(case.value_domain),
+                    const_fold_mode_label(case.const_fold_mode),
+                    case.expr,
+                    first,
+                    second
+                ));
+            }
+        }
+    }
+
+    eprintln!(
+        "✅ Const-fold behavior contracts: exact={} relaxed={} failed={} parse={}",
+        metrics.exact_preserved, metrics.relaxed_preserved, metrics.failed, metrics.parse_errors
+    );
+
+    if verbose && !relaxed_examples.is_empty() {
+        eprintln!("\nℹ️ const-fold behavior relaxed-preserved examples:");
+        for example in relaxed_examples.iter().take(10) {
+            eprintln!("  {}", example);
+        }
+    }
+
+    if !failures.is_empty() {
+        eprintln!("\n🚨 const-fold behavior failures:");
+        for failure in failures.iter().take(10) {
+            eprintln!("  {}", failure);
+        }
+    }
+
+    metrics
+}
+
+fn run_eval_path_behavior_contract_tests() -> EvalPathBehaviorContractMetrics {
+    let cases = load_eval_path_behavior_contract_expressions();
+    let verbose = std::env::var("METATEST_VERBOSE").is_ok();
+    let mut metrics = EvalPathBehaviorContractMetrics {
+        total: cases.len(),
+        ..Default::default()
+    };
+    let mut failures: Vec<String> = Vec::new();
+    let mut relaxed_examples: Vec<String> = Vec::new();
+
+    eprintln!(
+        "📊 Running eval-path behavior contracts: {} expressions from {} families",
+        cases.len(),
+        cases
+            .iter()
+            .map(|c| &c.family)
+            .collect::<std::collections::HashSet<_>>()
+            .len()
+    );
+
+    for case in &cases {
+        let first = match simplify_with_eval_path_behavior(
+            &case.expr,
+            case.mode,
+            case.value_domain,
+            case.complex_mode,
+            case.const_fold_mode,
+        ) {
+            Ok(v) => v,
+            Err(err) => {
+                metrics.parse_errors += 1;
+                failures.push(format!(
+                    "[{}|{}|{}|{}|{}] {} — {}",
+                    case.family,
+                    value_domain_label(case.value_domain),
+                    domain_mode_label(case.mode),
+                    complex_mode_label(case.complex_mode),
+                    const_fold_mode_label(case.const_fold_mode),
+                    case.expr,
+                    err
+                ));
+                continue;
+            }
+        };
+
+        let second = match simplify_with_eval_path_behavior(
+            &first,
+            case.mode,
+            case.value_domain,
+            case.complex_mode,
+            case.const_fold_mode,
+        ) {
+            Ok(v) => v,
+            Err(err) => {
+                metrics.parse_errors += 1;
+                failures.push(format!(
+                    "[{}|{}|{}|{}|{}] {} -> '{}' reparsed failed: {}",
+                    case.family,
+                    value_domain_label(case.value_domain),
+                    domain_mode_label(case.mode),
+                    complex_mode_label(case.complex_mode),
+                    const_fold_mode_label(case.const_fold_mode),
+                    case.expr,
+                    first,
+                    err
+                ));
+                continue;
+            }
+        };
+
+        let expected_ok = semantic_behavior_matches(&case.expectation, &first);
+        let second_ok = semantic_behavior_matches(&case.expectation, &second);
+
+        if !expected_ok {
+            metrics.failed += 1;
+            failures.push(format!(
+                "[{}|{}|{}|{}|{}] {} — expected {}, got '{}'",
+                case.family,
+                value_domain_label(case.value_domain),
+                domain_mode_label(case.mode),
+                complex_mode_label(case.complex_mode),
+                const_fold_mode_label(case.const_fold_mode),
+                case.expr,
+                semantic_behavior_label(&case.expectation),
+                first
+            ));
+            continue;
+        }
+
+        if !second_ok {
+            metrics.failed += 1;
+            failures.push(format!(
+                "[{}|{}|{}|{}|{}] {} — second eval simplify broke behavior: first='{}', second='{}', expected {}",
+                case.family,
+                value_domain_label(case.value_domain),
+                domain_mode_label(case.mode),
+                complex_mode_label(case.complex_mode),
+                const_fold_mode_label(case.const_fold_mode),
+                case.expr,
+                first,
+                second,
+                semantic_behavior_label(&case.expectation)
+            ));
+            continue;
+        }
+
+        if first == second {
+            metrics.exact_preserved += 1;
+        } else {
+            metrics.relaxed_preserved += 1;
+            if verbose && relaxed_examples.len() < 10 {
+                relaxed_examples.push(format!(
+                    "[{}|{}|{}|{}|{}] {} — result '{}' -> '{}'",
+                    case.family,
+                    value_domain_label(case.value_domain),
+                    domain_mode_label(case.mode),
+                    complex_mode_label(case.complex_mode),
+                    const_fold_mode_label(case.const_fold_mode),
+                    case.expr,
+                    first,
+                    second
+                ));
+            }
+        }
+    }
+
+    eprintln!(
+        "✅ Eval-path behavior contracts: exact={} relaxed={} failed={} parse={}",
+        metrics.exact_preserved, metrics.relaxed_preserved, metrics.failed, metrics.parse_errors
+    );
+
+    if verbose && !relaxed_examples.is_empty() {
+        eprintln!("\nℹ️ eval-path behavior relaxed-preserved examples:");
+        for example in relaxed_examples.iter().take(10) {
+            eprintln!("  {}", example);
+        }
+    }
+
+    if !failures.is_empty() {
+        eprintln!("\n🚨 eval-path behavior failures:");
+        for failure in failures.iter().take(10) {
+            eprintln!("  {}", failure);
+        }
+    }
+
+    metrics
+}
+
+fn run_eval_path_axes_contract_tests() -> EvalPathAxesContractMetrics {
+    let cases = load_eval_path_axes_contract_expressions();
+    let verbose = std::env::var("METATEST_VERBOSE").is_ok();
+    let mut metrics = EvalPathAxesContractMetrics {
+        total: cases.len(),
+        ..Default::default()
+    };
+    let mut failures: Vec<String> = Vec::new();
+    let mut relaxed_examples: Vec<String> = Vec::new();
+
+    eprintln!(
+        "📊 Running eval-path axes contracts: {} expressions from {} families",
+        cases.len(),
+        cases
+            .iter()
+            .map(|c| &c.family)
+            .collect::<std::collections::HashSet<_>>()
+            .len()
+    );
+
+    for case in &cases {
+        let first = match simplify_with_eval_path_metadata(
+            &case.expr,
+            case.mode,
+            case.value_domain,
+            case.complex_mode,
+            case.const_fold_mode,
+        ) {
+            Ok(v) => v,
+            Err(err) => {
+                metrics.parse_errors += 1;
+                failures.push(format!(
+                    "[{}|{}|{}|{}|{}] {} — {}",
+                    case.family,
+                    value_domain_label(case.value_domain),
+                    domain_mode_label(case.mode),
+                    complex_mode_label(case.complex_mode),
+                    const_fold_mode_label(case.const_fold_mode),
+                    case.expr,
+                    err
+                ));
+                continue;
+            }
+        };
+
+        let second = match simplify_with_eval_path_metadata(
+            &first.result,
+            case.mode,
+            case.value_domain,
+            case.complex_mode,
+            case.const_fold_mode,
+        ) {
+            Ok(v) => v,
+            Err(err) => {
+                metrics.parse_errors += 1;
+                failures.push(format!(
+                    "[{}|{}|{}|{}|{}] {} -> '{}' reparsed failed: {}",
+                    case.family,
+                    value_domain_label(case.value_domain),
+                    domain_mode_label(case.mode),
+                    complex_mode_label(case.complex_mode),
+                    const_fold_mode_label(case.const_fold_mode),
+                    case.expr,
+                    first.result,
+                    err
+                ));
+                continue;
+            }
+        };
+
+        let mut case_failed = false;
+        if case.expect_requires {
+            if first.required.is_empty() {
+                metrics.failed += 1;
+                failures.push(format!(
+                    "[{}|{}|{}|{}|{}] {} — expected requires, got none",
+                    case.family,
+                    value_domain_label(case.value_domain),
+                    domain_mode_label(case.mode),
+                    complex_mode_label(case.complex_mode),
+                    const_fold_mode_label(case.const_fold_mode),
+                    case.expr
+                ));
+                case_failed = true;
+            } else {
+                metrics.expected_requires_present += 1;
+            }
+        } else if first.required.is_empty() {
+            metrics.expected_requires_absent += 1;
+        } else {
+            metrics.failed += 1;
+            failures.push(format!(
+                "[{}|{}|{}|{}|{}] {} — unexpected requires: {:?}",
+                case.family,
+                value_domain_label(case.value_domain),
+                domain_mode_label(case.mode),
+                complex_mode_label(case.complex_mode),
+                const_fold_mode_label(case.const_fold_mode),
+                case.expr,
+                first.required
+            ));
+            case_failed = true;
+        }
+
+        if case.expect_warning {
+            if first.warnings.is_empty() {
+                metrics.failed += 1;
+                failures.push(format!(
+                    "[{}|{}|{}|{}|{}] {} — expected warning, got none",
+                    case.family,
+                    value_domain_label(case.value_domain),
+                    domain_mode_label(case.mode),
+                    complex_mode_label(case.complex_mode),
+                    const_fold_mode_label(case.const_fold_mode),
+                    case.expr
+                ));
+                case_failed = true;
+            } else {
+                metrics.expected_warning_present += 1;
+            }
+        } else if first.warnings.is_empty() {
+            metrics.expected_warning_absent += 1;
+        } else {
+            metrics.failed += 1;
+            failures.push(format!(
+                "[{}|{}|{}|{}|{}] {} — unexpected warnings: {:?}",
+                case.family,
+                value_domain_label(case.value_domain),
+                domain_mode_label(case.mode),
+                complex_mode_label(case.complex_mode),
+                const_fold_mode_label(case.const_fold_mode),
+                case.expr,
+                first.warnings
+            ));
+            case_failed = true;
+        }
+
+        let first_required: std::collections::HashSet<_> = first.required.iter().cloned().collect();
+        let second_required: std::collections::HashSet<_> =
+            second.required.iter().cloned().collect();
+        let first_warnings: std::collections::HashSet<_> = first.warnings.iter().cloned().collect();
+        let second_warnings: std::collections::HashSet<_> =
+            second.warnings.iter().cloned().collect();
+
+        let introduced_requires: Vec<_> = second_required
+            .difference(&first_required)
+            .cloned()
+            .collect();
+        let introduced_warnings: Vec<_> = second_warnings
+            .difference(&first_warnings)
+            .cloned()
+            .collect();
+
+        if !introduced_requires.is_empty() {
+            metrics.failed += 1;
+            failures.push(format!(
+                "[{}|{}|{}|{}|{}] {} — introduced requires: {:?} (first={:?}, second={:?})",
+                case.family,
+                value_domain_label(case.value_domain),
+                domain_mode_label(case.mode),
+                complex_mode_label(case.complex_mode),
+                const_fold_mode_label(case.const_fold_mode),
+                case.expr,
+                introduced_requires,
+                first.required,
+                second.required
+            ));
+            case_failed = true;
+        }
+
+        if !introduced_warnings.is_empty() {
+            metrics.failed += 1;
+            failures.push(format!(
+                "[{}|{}|{}|{}|{}] {} — introduced warnings: {:?} (first={:?}, second={:?})",
+                case.family,
+                value_domain_label(case.value_domain),
+                domain_mode_label(case.mode),
+                complex_mode_label(case.complex_mode),
+                const_fold_mode_label(case.const_fold_mode),
+                case.expr,
+                introduced_warnings,
+                first.warnings,
+                second.warnings
+            ));
+            case_failed = true;
+        }
+
+        if !case_failed {
+            if first.required == second.required && first.warnings == second.warnings {
+                metrics.exact_preserved += 1;
+            } else {
+                metrics.relaxed_preserved += 1;
+                if verbose && relaxed_examples.len() < 10 {
+                    relaxed_examples.push(format!(
+                        "[{}|{}|{}|{}|{}] {} — requires {:?} -> {:?}, warnings {:?} -> {:?}",
+                        case.family,
+                        value_domain_label(case.value_domain),
+                        domain_mode_label(case.mode),
+                        complex_mode_label(case.complex_mode),
+                        const_fold_mode_label(case.const_fold_mode),
+                        case.expr,
+                        first.required,
+                        second.required,
+                        first.warnings,
+                        second.warnings
+                    ));
+                }
+            }
+        }
+    }
+
+    eprintln!(
+        "✅ Eval-path axes contracts: exact={} relaxed={} requires_present={} requires_absent={} warning_present={} warning_absent={} failed={} parse={}",
+        metrics.exact_preserved,
+        metrics.relaxed_preserved,
+        metrics.expected_requires_present,
+        metrics.expected_requires_absent,
+        metrics.expected_warning_present,
+        metrics.expected_warning_absent,
+        metrics.failed,
+        metrics.parse_errors
+    );
+
+    if verbose && !relaxed_examples.is_empty() {
+        eprintln!("\nℹ️ eval-path axes relaxed-preserved examples:");
+        for example in relaxed_examples.iter().take(10) {
+            eprintln!("  {}", example);
+        }
+    }
+
+    if !failures.is_empty() {
+        eprintln!("\n🚨 eval-path axes failures:");
+        for failure in failures.iter().take(10) {
+            eprintln!("  {}", failure);
+        }
+    }
+
+    metrics
+}
+
+fn run_eval_path_inv_trig_axes_contract_tests() -> EvalPathInvTrigAxesContractMetrics {
+    let cases = load_eval_path_inv_trig_axes_contract_expressions();
+    let verbose = std::env::var("METATEST_VERBOSE").is_ok();
+    let mut metrics = EvalPathInvTrigAxesContractMetrics {
+        total: cases.len(),
+        ..Default::default()
+    };
+    let mut failures: Vec<String> = Vec::new();
+    let mut relaxed_examples: Vec<String> = Vec::new();
+
+    eprintln!(
+        "📊 Running eval-path inv-trig axes contracts: {} expressions from {} families",
+        cases.len(),
+        cases
+            .iter()
+            .map(|c| &c.family)
+            .collect::<std::collections::HashSet<_>>()
+            .len()
+    );
+
+    for case in &cases {
+        let first = match simplify_with_eval_path_metadata_and_inv_trig(
+            &case.expr,
+            case.mode,
+            case.value_domain,
+            case.inv_trig,
+        ) {
+            Ok(v) => v,
+            Err(err) => {
+                metrics.parse_errors += 1;
+                failures.push(format!(
+                    "[{}|{}|{}|{}] {} — {}",
+                    case.family,
+                    value_domain_label(case.value_domain),
+                    domain_mode_label(case.mode),
+                    inv_trig_policy_label(case.inv_trig),
+                    case.expr,
+                    err
+                ));
+                continue;
+            }
+        };
+
+        let second = match simplify_with_eval_path_metadata_and_inv_trig(
+            &first.result,
+            case.mode,
+            case.value_domain,
+            case.inv_trig,
+        ) {
+            Ok(v) => v,
+            Err(err) => {
+                metrics.parse_errors += 1;
+                failures.push(format!(
+                    "[{}|{}|{}|{}] {} -> '{}' reparsed failed: {}",
+                    case.family,
+                    value_domain_label(case.value_domain),
+                    domain_mode_label(case.mode),
+                    inv_trig_policy_label(case.inv_trig),
+                    case.expr,
+                    first.result,
+                    err
+                ));
+                continue;
+            }
+        };
+
+        let mut case_failed = false;
+        if case.expect_requires {
+            if first.required.is_empty() {
+                metrics.failed += 1;
+                failures.push(format!(
+                    "[{}|{}|{}|{}] {} — expected requires, got none",
+                    case.family,
+                    value_domain_label(case.value_domain),
+                    domain_mode_label(case.mode),
+                    inv_trig_policy_label(case.inv_trig),
+                    case.expr
+                ));
+                case_failed = true;
+            } else {
+                metrics.expected_requires_present += 1;
+            }
+        } else if first.required.is_empty() {
+            metrics.expected_requires_absent += 1;
+        } else {
+            metrics.failed += 1;
+            failures.push(format!(
+                "[{}|{}|{}|{}] {} — unexpected requires: {:?}",
+                case.family,
+                value_domain_label(case.value_domain),
+                domain_mode_label(case.mode),
+                inv_trig_policy_label(case.inv_trig),
+                case.expr,
+                first.required
+            ));
+            case_failed = true;
+        }
+
+        if case.expect_warning {
+            if first.warnings.is_empty() {
+                metrics.failed += 1;
+                failures.push(format!(
+                    "[{}|{}|{}|{}] {} — expected warning, got none",
+                    case.family,
+                    value_domain_label(case.value_domain),
+                    domain_mode_label(case.mode),
+                    inv_trig_policy_label(case.inv_trig),
+                    case.expr
+                ));
+                case_failed = true;
+            } else {
+                metrics.expected_warning_present += 1;
+            }
+        } else if first.warnings.is_empty() {
+            metrics.expected_warning_absent += 1;
+        } else {
+            metrics.failed += 1;
+            failures.push(format!(
+                "[{}|{}|{}|{}] {} — unexpected warnings: {:?}",
+                case.family,
+                value_domain_label(case.value_domain),
+                domain_mode_label(case.mode),
+                inv_trig_policy_label(case.inv_trig),
+                case.expr,
+                first.warnings
+            ));
+            case_failed = true;
+        }
+
+        let first_required: std::collections::HashSet<_> = first.required.iter().cloned().collect();
+        let second_required: std::collections::HashSet<_> =
+            second.required.iter().cloned().collect();
+        let first_warnings: std::collections::HashSet<_> = first.warnings.iter().cloned().collect();
+        let second_warnings: std::collections::HashSet<_> =
+            second.warnings.iter().cloned().collect();
+
+        let introduced_requires: Vec<_> = second_required
+            .difference(&first_required)
+            .cloned()
+            .collect();
+        let introduced_warnings: Vec<_> = second_warnings
+            .difference(&first_warnings)
+            .cloned()
+            .collect();
+
+        if !introduced_requires.is_empty() {
+            metrics.failed += 1;
+            failures.push(format!(
+                "[{}|{}|{}|{}] {} — introduced requires: {:?} (first={:?}, second={:?})",
+                case.family,
+                value_domain_label(case.value_domain),
+                domain_mode_label(case.mode),
+                inv_trig_policy_label(case.inv_trig),
+                case.expr,
+                introduced_requires,
+                first.required,
+                second.required
+            ));
+            case_failed = true;
+        }
+
+        if !introduced_warnings.is_empty() {
+            metrics.failed += 1;
+            failures.push(format!(
+                "[{}|{}|{}|{}] {} — introduced warnings: {:?} (first={:?}, second={:?})",
+                case.family,
+                value_domain_label(case.value_domain),
+                domain_mode_label(case.mode),
+                inv_trig_policy_label(case.inv_trig),
+                case.expr,
+                introduced_warnings,
+                first.warnings,
+                second.warnings
+            ));
+            case_failed = true;
+        }
+
+        if !case_failed {
+            if first.required == second.required && first.warnings == second.warnings {
+                metrics.exact_preserved += 1;
+            } else {
+                metrics.relaxed_preserved += 1;
+                if verbose && relaxed_examples.len() < 10 {
+                    relaxed_examples.push(format!(
+                        "[{}|{}|{}|{}] {} — requires {:?} -> {:?}, warnings {:?} -> {:?}",
+                        case.family,
+                        value_domain_label(case.value_domain),
+                        domain_mode_label(case.mode),
+                        inv_trig_policy_label(case.inv_trig),
+                        case.expr,
+                        first.required,
+                        second.required,
+                        first.warnings,
+                        second.warnings
+                    ));
+                }
+            }
+        }
+    }
+
+    eprintln!(
+        "✅ Eval-path inv-trig axes contracts: exact={} relaxed={} requires_present={} requires_absent={} warning_present={} warning_absent={} failed={} parse={}",
+        metrics.exact_preserved,
+        metrics.relaxed_preserved,
+        metrics.expected_requires_present,
+        metrics.expected_requires_absent,
+        metrics.expected_warning_present,
+        metrics.expected_warning_absent,
+        metrics.failed,
+        metrics.parse_errors
+    );
+
+    if verbose && !relaxed_examples.is_empty() {
+        eprintln!("\nℹ️ eval-path inv-trig axes relaxed-preserved examples:");
+        for example in relaxed_examples.iter().take(10) {
+            eprintln!("  {}", example);
+        }
+    }
+
+    if !failures.is_empty() {
+        eprintln!("\n🚨 eval-path inv-trig axes failures:");
+        for failure in failures.iter().take(10) {
+            eprintln!("  {}", failure);
+        }
+    }
+
+    metrics
+}
+
 fn run_requires_mode_contract_tests() -> RequiresModeContractMetrics {
     let cases = load_requires_mode_contract_expressions();
     let verbose = std::env::var("METATEST_VERBOSE").is_ok();
@@ -9698,9 +11829,12 @@ fn run_assumption_trace_contract_tests() -> AssumptionTraceContractMetrics {
 }
 
 /// Run substitution-based metamorphic tests
-fn run_substitution_tests() -> ComboMetrics {
+fn run_substitution_tests_with(
+    substitutions: Vec<SubstitutionExpr>,
+    suite_label: &str,
+    suite_op: &str,
+) -> ComboMetrics {
     let identities = load_substitution_identities();
-    let substitutions = load_substitution_expressions();
     let config = metatest_config();
     let verbose = std::env::var("METATEST_VERBOSE").is_ok();
     let show_table = std::env::var("METATEST_TABLE").is_ok();
@@ -9713,7 +11847,8 @@ fn run_substitution_tests() -> ComboMetrics {
 
     let total_combos = identities.len() * substitutions.len();
     eprintln!(
-        "📊 Running substitution metamorphic tests: {} identities × {} substitutions = {} combos (seed {})",
+        "📊 Running {} metamorphic tests: {} identities × {} substitutions = {} combos (seed {})",
+        suite_label,
         identities.len(),
         substitutions.len(),
         total_combos,
@@ -9732,6 +11867,8 @@ fn run_substitution_tests() -> ComboMetrics {
     let mut cycle_events_total: usize = 0;
     let mut parse_errors = 0usize;
     let mut numeric_only_causes: HashMap<String, usize> = HashMap::new();
+    let mut numeric_only_by_label: HashMap<String, usize> = HashMap::new();
+    let mut numeric_only_by_expr: HashMap<String, usize> = HashMap::new();
     let mut numeric_only_examples: Vec<(String, String, String, String, String)> = Vec::new();
 
     // Cross-product table data: (family, sub_label) → (nf, proved, numeric, failed)
@@ -9747,11 +11884,13 @@ fn run_substitution_tests() -> ComboMetrics {
             let lhs_str = text_substitute(&identity.exp, id_var, &sub.expr);
             let rhs_str = text_substitute(&identity.simp, id_var, &sub.expr);
             let free_var = sub.var.clone();
+            let filters = sub.filters.clone();
 
             let lhs_clone = lhs_str.clone();
             let rhs_clone = rhs_str.clone();
             let config_clone = config.clone();
             let free_var_clone = free_var.clone();
+            let filters_clone = filters.clone();
 
             let (tx, rx) = std::sync::mpsc::channel();
             let _handle = std::thread::Builder::new()
@@ -9846,11 +11985,12 @@ fn run_substitution_tests() -> ComboMetrics {
                     }
 
                     // Check 3: Numeric equivalence (1 variable)
-                    match classify_numeric_equiv_1var_relaxed(
+                    match classify_numeric_equiv_for_vars(
                         &simplifier.context,
                         e,
                         s,
-                        &free_var_clone,
+                        std::slice::from_ref(&free_var_clone),
+                        &filters_clone,
                         &config_clone,
                     ) {
                         NumericCheckOutcome::Pass => {
@@ -9864,13 +12004,13 @@ fn run_substitution_tests() -> ComboMetrics {
                                 .to_latex()
                             };
                             let shape = expr_shape_signature(&simplifier.context, d_simp);
-                            let cause = numeric_only_cause_for_1var(
+                            let cause = numeric_only_cause_for_vars(
                                 &simplifier.context,
                                 e,
                                 s,
-                                &free_var_clone,
+                                std::slice::from_ref(&free_var_clone),
+                                &filters_clone,
                                 &config_clone,
-                                &FilterSpec::None,
                                 &shape,
                             )
                             .label()
@@ -9918,6 +12058,8 @@ fn run_substitution_tests() -> ComboMetrics {
                         passed += 1;
                         cycle_events_total += cycles;
                         *numeric_only_causes.entry(cause.clone()).or_default() += 1;
+                        *numeric_only_by_label.entry(sub.label.clone()).or_default() += 1;
+                        *numeric_only_by_expr.entry(sub.expr.clone()).or_default() += 1;
                         cell_data.entry(cell_key).or_insert((0, 0, 0, 0)).2 += 1;
                         if verbose && numeric_only_examples.len() < 200 {
                             numeric_only_examples.push((
@@ -9968,8 +12110,8 @@ fn run_substitution_tests() -> ComboMetrics {
 
     // Report: flat summary (always shown)
     eprintln!(
-        "✅ Substitution tests: {} passed, {} failed, {} skipped (timeout), {} parse errors, {} inconclusive",
-        passed, failed, skipped, parse_errors, inconclusive
+        "✅ {} tests: {} passed, {} failed, {} skipped (timeout), {} parse errors, {} inconclusive",
+        suite_label, passed, failed, skipped, parse_errors, inconclusive
     );
     eprintln!(
         "   📐 NF-convergent: {} | 🔢 Proved-symbolic: {} | 🌡️ Numeric-only: {} | ◐ Inconclusive: {}",
@@ -9977,6 +12119,22 @@ fn run_substitution_tests() -> ComboMetrics {
     );
     if verbose && numeric_only > 0 {
         print_numeric_only_cause_breakdown(&numeric_only_causes);
+        if !numeric_only_by_label.is_empty() {
+            eprintln!("   🧪 Numeric-only by substitution label:");
+            let mut sorted: Vec<_> = numeric_only_by_label.iter().collect();
+            sorted.sort_by(|a, b| b.1.cmp(a.1).then_with(|| a.0.cmp(b.0)));
+            for (label, count) in sorted {
+                eprintln!("      - {}: {}", label, count);
+            }
+        }
+        if !numeric_only_by_expr.is_empty() {
+            eprintln!("   🧬 Numeric-only by substitution expr:");
+            let mut sorted: Vec<_> = numeric_only_by_expr.iter().collect();
+            sorted.sort_by(|a, b| b.1.cmp(a.1).then_with(|| a.0.cmp(b.0)));
+            for (expr, count) in sorted.into_iter().take(12) {
+                eprintln!("      - {}: {}", expr, count);
+            }
+        }
     }
 
     // Cross-product table (METATEST_TABLE=1)
@@ -10116,7 +12274,7 @@ fn run_substitution_tests() -> ComboMetrics {
         .len();
 
     ComboMetrics {
-        op: "⇄sub".to_string(),
+        op: suite_op.to_string(),
         pairs: identities.len(),
         families: num_families,
         combos: total_combos,
@@ -10131,6 +12289,96 @@ fn run_substitution_tests() -> ComboMetrics {
         timeouts,
         cycle_events_total,
     }
+}
+
+fn run_substitution_tests() -> ComboMetrics {
+    run_substitution_tests_with(load_substitution_expressions(), "Substitution", "⇄sub")
+}
+
+fn run_structural_substitution_tests() -> ComboMetrics {
+    run_substitution_tests_with(
+        load_structural_substitution_expressions(),
+        "Structural substitution",
+        "⇄sub+",
+    )
+}
+
+fn run_structural_phase_substitution_tests() -> ComboMetrics {
+    run_substitution_tests_with(
+        filter_substitutions_by_labels(load_structural_substitution_expressions(), &["phase"]),
+        "Structural substitution (phase)",
+        "⇄sub+.phase",
+    )
+}
+
+fn run_structural_radical_substitution_tests() -> ComboMetrics {
+    run_substitution_tests_with(
+        filter_substitutions_by_labels(
+            load_structural_substitution_expressions(),
+            &["composed", "root_ctx"],
+        ),
+        "Structural substitution (radical)",
+        "⇄sub+.rad",
+    )
+}
+
+fn run_structural_poly_high_substitution_tests() -> ComboMetrics {
+    run_substitution_tests_with(
+        filter_substitutions_by_labels(load_structural_substitution_expressions(), &["poly_high"]),
+        "Structural substitution (poly-high)",
+        "⇄sub+.poly",
+    )
+}
+
+fn run_structural_rational_ctx_substitution_tests() -> ComboMetrics {
+    run_substitution_tests_with(
+        filter_substitutions_by_labels(
+            load_structural_substitution_expressions(),
+            &["rational_ctx"],
+        ),
+        "Structural substitution (rational-ctx)",
+        "⇄sub+.ratctx",
+    )
+}
+
+fn run_structural_composed_substitution_tests() -> ComboMetrics {
+    run_substitution_tests_with(
+        filter_substitutions_by_labels(load_structural_substitution_expressions(), &["composed"]),
+        "Structural substitution (composed)",
+        "⇄sub+.cmp",
+    )
+}
+
+fn run_structural_root_ctx_substitution_tests() -> ComboMetrics {
+    run_substitution_tests_with(
+        filter_substitutions_by_labels(load_structural_substitution_expressions(), &["root_ctx"]),
+        "Structural substitution (root-ctx)",
+        "⇄sub+.root",
+    )
+}
+
+fn run_structural_absolute_substitution_tests() -> ComboMetrics {
+    run_substitution_tests_with(
+        filter_substitutions_by_labels(load_structural_substitution_expressions(), &["absolute"]),
+        "Structural substitution (absolute)",
+        "⇄sub+.abs",
+    )
+}
+
+fn run_structural_rational_substitution_tests() -> ComboMetrics {
+    run_substitution_tests_with(
+        filter_substitutions_by_labels(load_structural_substitution_expressions(), &["rational"]),
+        "Structural substitution (rational)",
+        "⇄sub+.rat",
+    )
+}
+
+fn run_structural_inv_trig_substitution_tests() -> ComboMetrics {
+    run_substitution_tests_with(
+        filter_substitutions_by_labels(load_structural_substitution_expressions(), &["inv_trig"]),
+        "Structural substitution (inv-trig)",
+        "⇄sub+.inv",
+    )
 }
 
 /// Run curated contextual metamorphic tests.
@@ -10552,6 +12800,116 @@ fn metatest_csv_substitution() {
 }
 
 #[test]
+#[ignore] // Run with: cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_csv_substitution_structural -- --include-ignored
+fn metatest_csv_substitution_structural() {
+    let m = run_structural_substitution_tests();
+    assert_eq!(
+        m.failed, 0,
+        "{} structural substitution tests failed",
+        m.failed
+    );
+}
+
+#[test]
+#[ignore] // Run with: cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_csv_substitution_structural_phase -- --include-ignored
+fn metatest_csv_substitution_structural_phase() {
+    let m = run_structural_phase_substitution_tests();
+    assert_eq!(
+        m.failed, 0,
+        "{} structural phase substitution tests failed",
+        m.failed
+    );
+}
+
+#[test]
+#[ignore] // Run with: cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_csv_substitution_structural_radical -- --include-ignored
+fn metatest_csv_substitution_structural_radical() {
+    let m = run_structural_radical_substitution_tests();
+    assert_eq!(
+        m.failed, 0,
+        "{} structural radical substitution tests failed",
+        m.failed
+    );
+}
+
+#[test]
+#[ignore] // Run with: cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_csv_substitution_structural_composed -- --include-ignored
+fn metatest_csv_substitution_structural_composed() {
+    let m = run_structural_composed_substitution_tests();
+    assert_eq!(
+        m.failed, 0,
+        "{} structural composed substitution tests failed",
+        m.failed
+    );
+}
+
+#[test]
+#[ignore] // Run with: cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_csv_substitution_structural_root_ctx -- --include-ignored
+fn metatest_csv_substitution_structural_root_ctx() {
+    let m = run_structural_root_ctx_substitution_tests();
+    assert_eq!(
+        m.failed, 0,
+        "{} structural root-ctx substitution tests failed",
+        m.failed
+    );
+}
+
+#[test]
+#[ignore] // Run with: cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_csv_substitution_structural_poly_high -- --include-ignored
+fn metatest_csv_substitution_structural_poly_high() {
+    let m = run_structural_poly_high_substitution_tests();
+    assert_eq!(
+        m.failed, 0,
+        "{} structural poly-high substitution tests failed",
+        m.failed
+    );
+}
+
+#[test]
+#[ignore] // Run with: cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_csv_substitution_structural_rational_ctx -- --include-ignored
+fn metatest_csv_substitution_structural_rational_ctx() {
+    let m = run_structural_rational_ctx_substitution_tests();
+    assert_eq!(
+        m.failed, 0,
+        "{} structural rational-ctx substitution tests failed",
+        m.failed
+    );
+}
+
+#[test]
+#[ignore] // Run with: cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_csv_substitution_structural_absolute -- --include-ignored
+fn metatest_csv_substitution_structural_absolute() {
+    let m = run_structural_absolute_substitution_tests();
+    assert_eq!(
+        m.failed, 0,
+        "{} structural absolute substitution tests failed",
+        m.failed
+    );
+}
+
+#[test]
+#[ignore] // Run with: cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_csv_substitution_structural_rational -- --include-ignored
+fn metatest_csv_substitution_structural_rational() {
+    let m = run_structural_rational_substitution_tests();
+    assert_eq!(
+        m.failed, 0,
+        "{} structural rational substitution tests failed",
+        m.failed
+    );
+}
+
+#[test]
+#[ignore] // Run with: cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_csv_substitution_structural_inv_trig -- --include-ignored
+fn metatest_csv_substitution_structural_inv_trig() {
+    let m = run_structural_inv_trig_substitution_tests();
+    assert_eq!(
+        m.failed, 0,
+        "{} structural inv-trig substitution tests failed",
+        m.failed
+    );
+}
+
+#[test]
 #[ignore] // Run with: cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_csv_contextual_pairs -- --ignored --nocapture
 fn metatest_csv_contextual_pairs() {
     let m = run_contextual_pair_tests();
@@ -10695,6 +13053,82 @@ fn metatest_simplify_semantic_behavior_contracts() {
 }
 
 #[test]
+#[ignore] // Run with: cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_simplify_complex_mode_behavior_contracts -- --ignored --nocapture
+fn metatest_simplify_complex_mode_behavior_contracts() {
+    let m = run_complex_mode_behavior_contract_tests();
+    assert_eq!(
+        m.failed, 0,
+        "{} complex-mode behavior contracts failed",
+        m.failed
+    );
+    assert_eq!(
+        m.parse_errors, 0,
+        "{} complex-mode behavior contract expressions failed to parse/eval",
+        m.parse_errors
+    );
+}
+
+#[test]
+#[ignore] // Run with: cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_simplify_const_fold_behavior_contracts -- --ignored --nocapture
+fn metatest_simplify_const_fold_behavior_contracts() {
+    let m = run_const_fold_behavior_contract_tests();
+    assert_eq!(
+        m.failed, 0,
+        "{} const-fold behavior contracts failed",
+        m.failed
+    );
+    assert_eq!(
+        m.parse_errors, 0,
+        "{} const-fold behavior contract expressions failed to parse/eval",
+        m.parse_errors
+    );
+}
+
+#[test]
+#[ignore] // Run with: cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_simplify_eval_path_behavior_contracts -- --ignored --nocapture
+fn metatest_simplify_eval_path_behavior_contracts() {
+    let m = run_eval_path_behavior_contract_tests();
+    assert_eq!(
+        m.failed, 0,
+        "{} eval-path behavior contracts failed",
+        m.failed
+    );
+    assert_eq!(
+        m.parse_errors, 0,
+        "{} eval-path behavior contract expressions failed to parse/eval",
+        m.parse_errors
+    );
+}
+
+#[test]
+#[ignore] // Run with: cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_simplify_eval_path_axes_contracts -- --ignored --nocapture
+fn metatest_simplify_eval_path_axes_contracts() {
+    let m = run_eval_path_axes_contract_tests();
+    assert_eq!(m.failed, 0, "{} eval-path axes contracts failed", m.failed);
+    assert_eq!(
+        m.parse_errors, 0,
+        "{} eval-path axes contract expressions failed to parse/eval",
+        m.parse_errors
+    );
+}
+
+#[test]
+#[ignore] // Run with: cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_simplify_eval_path_inv_trig_axes_contracts -- --ignored --nocapture
+fn metatest_simplify_eval_path_inv_trig_axes_contracts() {
+    let m = run_eval_path_inv_trig_axes_contract_tests();
+    assert_eq!(
+        m.failed, 0,
+        "{} eval-path inv-trig axes contracts failed",
+        m.failed
+    );
+    assert_eq!(
+        m.parse_errors, 0,
+        "{} eval-path inv-trig axes contract expressions failed to parse/eval",
+        m.parse_errors
+    );
+}
+
+#[test]
 #[ignore] // Run with: cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_simplify_requires_mode_contracts -- --ignored --nocapture
 fn metatest_simplify_requires_mode_contracts() {
     let m = run_requires_mode_contract_tests();
@@ -10747,18 +13181,28 @@ fn metatest_simplify_phase4_contract_suites() {
     let transparency = run_transparency_signal_contract_tests();
     let branch_transparency = run_branch_transparency_contract_tests();
     let semantic_behavior = run_semantic_behavior_contract_tests();
+    let complex_mode_behavior = run_complex_mode_behavior_contract_tests();
+    let const_fold_behavior = run_const_fold_behavior_contract_tests();
+    let eval_path_behavior = run_eval_path_behavior_contract_tests();
+    let eval_path_axes = run_eval_path_axes_contract_tests();
+    let eval_path_inv_trig_axes = run_eval_path_inv_trig_axes_contract_tests();
     let requires_mode = run_requires_mode_contract_tests();
     let semantic_axes = run_semantic_axes_contract_tests();
     let assumption_trace = run_assumption_trace_contract_tests();
 
     eprintln!(
-        "\n📦 Phase 4 contract summary: idempotence={} requires={} warnings={} transparency={} branch_transparency={} semantic_behavior={} requires_mode={} semantic_axes={} assumption_trace={}",
+        "\n📦 Phase 4 contract summary: idempotence={} requires={} warnings={} transparency={} branch_transparency={} semantic_behavior={} complex_mode_behavior={} const_fold_behavior={} eval_path_behavior={} eval_path_axes={} eval_path_inv_trig_axes={} requires_mode={} semantic_axes={} assumption_trace={}",
         idempotence.total,
         requires.total,
         warnings.total,
         transparency.total,
         branch_transparency.total,
         semantic_behavior.total,
+        complex_mode_behavior.total,
+        const_fold_behavior.total,
+        eval_path_behavior.total,
+        eval_path_axes.total,
+        eval_path_inv_trig_axes.total,
         requires_mode.total,
         semantic_axes.total,
         assumption_trace.total
@@ -10836,6 +13280,61 @@ fn metatest_simplify_phase4_contract_suites() {
     );
 
     assert_eq!(
+        complex_mode_behavior.failed, 0,
+        "{} complex_mode_behavior contracts failed",
+        complex_mode_behavior.failed
+    );
+    assert_eq!(
+        complex_mode_behavior.parse_errors, 0,
+        "{} complex_mode_behavior contract parse errors",
+        complex_mode_behavior.parse_errors
+    );
+
+    assert_eq!(
+        const_fold_behavior.failed, 0,
+        "{} const_fold_behavior contracts failed",
+        const_fold_behavior.failed
+    );
+    assert_eq!(
+        const_fold_behavior.parse_errors, 0,
+        "{} const_fold_behavior contract parse errors",
+        const_fold_behavior.parse_errors
+    );
+
+    assert_eq!(
+        eval_path_behavior.failed, 0,
+        "{} eval_path_behavior contracts failed",
+        eval_path_behavior.failed
+    );
+    assert_eq!(
+        eval_path_behavior.parse_errors, 0,
+        "{} eval_path_behavior contract parse errors",
+        eval_path_behavior.parse_errors
+    );
+
+    assert_eq!(
+        eval_path_axes.failed, 0,
+        "{} eval_path_axes contracts failed",
+        eval_path_axes.failed
+    );
+    assert_eq!(
+        eval_path_axes.parse_errors, 0,
+        "{} eval_path_axes contract parse errors",
+        eval_path_axes.parse_errors
+    );
+
+    assert_eq!(
+        eval_path_inv_trig_axes.failed, 0,
+        "{} eval_path_inv_trig_axes contracts failed",
+        eval_path_inv_trig_axes.failed
+    );
+    assert_eq!(
+        eval_path_inv_trig_axes.parse_errors, 0,
+        "{} eval_path_inv_trig_axes contract parse errors",
+        eval_path_inv_trig_axes.parse_errors
+    );
+
+    assert_eq!(
         requires_mode.failed, 0,
         "{} requires_mode contracts failed",
         requires_mode.failed
@@ -10867,6 +13366,256 @@ fn metatest_simplify_phase4_contract_suites() {
         "{} assumption_trace contract parse errors",
         assumption_trace.parse_errors
     );
+}
+
+#[test]
+fn choose_numeric_sample_profile_order_prioritizes_positive_for_logs() {
+    let mut ctx = Context::new();
+    let lhs = parse("ln(x-1)", &mut ctx).expect("parse lhs");
+    let rhs = parse("0", &mut ctx).expect("parse rhs");
+
+    let order = choose_numeric_sample_profile_order_exprs(&ctx, lhs, rhs);
+    assert_eq!(
+        order,
+        Some([
+            NumericSampleProfile::Positive,
+            NumericSampleProfile::General,
+            NumericSampleProfile::Interior,
+        ])
+    );
+}
+
+#[test]
+fn load_structural_substitution_expressions_parses_optional_filters() {
+    let substitutions = load_structural_substitution_expressions();
+    let root_ctx = substitutions
+        .into_iter()
+        .find(|sub| sub.label == "root_ctx")
+        .expect("root_ctx substitution");
+
+    assert_eq!(root_ctx.filters.len(), 1);
+    assert_eq!(root_ctx.filters[0].as_str(), "gt(0.1)");
+}
+
+#[test]
+fn rational_ctx_log_square_rule_is_domain_sensitive_without_filter() {
+    let mut simplifier = Simplifier::with_default_rules();
+    let lhs = parse("ln((1/(u - 1) + 1/(u + 1))^2)", &mut simplifier.context).expect("lhs");
+    let rhs = parse("2*ln((1/(u - 1) + 1/(u + 1)))", &mut simplifier.context).expect("rhs");
+
+    let (lhs_simp, _) = simplifier.simplify(lhs);
+    let (rhs_simp, _) = simplifier.simplify(rhs);
+    let diff = simplifier
+        .context
+        .add(cas_ast::Expr::Sub(lhs_simp, rhs_simp));
+    let (diff_simp, _) = simplifier.simplify(diff);
+    let residual_shape = expr_shape_signature(&simplifier.context, diff_simp);
+
+    let cause = numeric_only_cause_for_vars(
+        &simplifier.context,
+        lhs_simp,
+        rhs_simp,
+        &[String::from("u")],
+        &[FilterSpec::None],
+        &metatest_config(),
+        &residual_shape,
+    );
+
+    assert!(matches!(cause, NumericOnlyCause::DomainSensitive));
+
+    let outcome = classify_numeric_equiv_for_vars(
+        &simplifier.context,
+        lhs_simp,
+        rhs_simp,
+        &[String::from("u")],
+        &[FilterSpec::Range { min: 1.1, max: 3.0 }],
+        &metatest_config(),
+    );
+    assert!(matches!(outcome, NumericCheckOutcome::Pass));
+}
+
+#[test]
+fn choose_numeric_sample_profile_order_prioritizes_interior_for_inverse_trig() {
+    let mut ctx = Context::new();
+    let lhs = parse("arcsin(x/2)", &mut ctx).expect("parse lhs");
+    let rhs = parse("0", &mut ctx).expect("parse rhs");
+
+    let order = choose_numeric_sample_profile_order_exprs(&ctx, lhs, rhs);
+    assert_eq!(
+        order,
+        Some([
+            NumericSampleProfile::Interior,
+            NumericSampleProfile::Rational,
+            NumericSampleProfile::Positive,
+        ])
+    );
+}
+
+#[test]
+fn choose_numeric_sample_profile_order_prioritizes_rational_for_negative_power() {
+    let mut ctx = Context::new();
+    let lhs = parse("(x-1)^(-1/2)", &mut ctx).expect("parse lhs");
+    let rhs = parse("0", &mut ctx).expect("parse rhs");
+
+    let order = choose_numeric_sample_profile_order_exprs(&ctx, lhs, rhs);
+    assert_eq!(
+        order,
+        Some([
+            NumericSampleProfile::Positive,
+            NumericSampleProfile::Rational,
+            NumericSampleProfile::Interior,
+        ])
+    );
+}
+
+#[test]
+fn build_nvar_slice_anchors_prefers_positive_domain_when_needed() {
+    let mut ctx = Context::new();
+    let lhs = parse("exp(ln(x)+ln(y))+z", &mut ctx).expect("parse lhs");
+    let rhs = parse("x*y+z", &mut ctx).expect("parse rhs");
+    let vars = vec!["x".to_string(), "y".to_string(), "z".to_string()];
+    let filters = vec![FilterSpec::None, FilterSpec::None, FilterSpec::None];
+    let anchors = build_nvar_slice_anchors(
+        &ctx,
+        lhs,
+        rhs,
+        &vars,
+        &filters,
+        &metatest_config(),
+        0.173_205_080_756_887_73,
+    );
+
+    let map = anchors.into_iter().collect::<HashMap<String, f64>>();
+    assert!(
+        map["x"] > 0.0,
+        "expected x anchor to be positive, got {}",
+        map["x"]
+    );
+    assert!(
+        map["y"] > 0.0,
+        "expected y anchor to be positive, got {}",
+        map["y"]
+    );
+}
+
+#[test]
+fn build_nvar_slice_anchors_respects_filters_with_profiles() {
+    let mut ctx = Context::new();
+    let lhs = parse("arcsin(x/2)+y+z", &mut ctx).expect("parse lhs");
+    let rhs = parse("arcsin(x/2)+y+z", &mut ctx).expect("parse rhs");
+    let vars = vec!["x".to_string(), "y".to_string(), "z".to_string()];
+    let filters = vec![
+        FilterSpec::Range {
+            min: -0.5,
+            max: 0.5,
+        },
+        FilterSpec::None,
+        FilterSpec::None,
+    ];
+    let anchors = build_nvar_slice_anchors(
+        &ctx,
+        lhs,
+        rhs,
+        &vars,
+        &filters,
+        &metatest_config(),
+        0.618_033_988_749_894_8,
+    );
+    let map = anchors.into_iter().collect::<HashMap<String, f64>>();
+
+    assert!(
+        (-0.5..=0.5).contains(&map["x"]),
+        "expected filtered x anchor inside [-0.5,0.5], got {}",
+        map["x"]
+    );
+}
+
+#[test]
+fn collect_numeric_denominator_guards_finds_division_denominator() {
+    let mut ctx = Context::new();
+    let expr = parse("1/(x-1)", &mut ctx).expect("parse expr");
+    let mut guards = Vec::new();
+    collect_numeric_denominator_guards(&ctx, expr, &mut guards);
+    assert_eq!(guards.len(), 1);
+
+    let mut bad = HashMap::new();
+    bad.insert("x".to_string(), 1.0);
+    assert!(near_numeric_guard_zero(&ctx, guards[0], &bad));
+
+    let mut good = HashMap::new();
+    good.insert("x".to_string(), 3.0);
+    assert!(!near_numeric_guard_zero(&ctx, guards[0], &good));
+}
+
+#[test]
+fn collect_numeric_denominator_guards_finds_negative_power_base() {
+    let mut ctx = Context::new();
+    let expr = parse("(x-1)^(-1/2)", &mut ctx).expect("parse expr");
+    let mut guards = Vec::new();
+    collect_numeric_denominator_guards(&ctx, expr, &mut guards);
+    assert_eq!(guards.len(), 1);
+
+    let mut bad = HashMap::new();
+    bad.insert("x".to_string(), 1.0);
+    assert!(near_numeric_guard_zero(&ctx, guards[0], &bad));
+
+    let mut good = HashMap::new();
+    good.insert("x".to_string(), 3.0);
+    assert!(!near_numeric_guard_zero(&ctx, guards[0], &good));
+}
+
+#[test]
+fn collect_numeric_analytic_guards_finds_ln_argument_guard() {
+    let mut ctx = Context::new();
+    let expr = parse("ln(x-1)", &mut ctx).expect("parse expr");
+    let mut guards = Vec::new();
+    collect_numeric_analytic_guards(&ctx, expr, &mut guards);
+    assert_eq!(guards.len(), 1);
+    assert_eq!(guards[0].kind, NumericAnalyticGuardKind::Positive);
+
+    let mut bad = HashMap::new();
+    bad.insert("x".to_string(), 1.0);
+    assert!(violates_numeric_analytic_guard(&ctx, guards[0], &bad));
+
+    let mut good = HashMap::new();
+    good.insert("x".to_string(), 3.0);
+    assert!(!violates_numeric_analytic_guard(&ctx, guards[0], &good));
+}
+
+#[test]
+fn collect_numeric_analytic_guards_finds_sqrt_nonnegative_guard() {
+    let mut ctx = Context::new();
+    let expr = parse("sqrt(x-1)", &mut ctx).expect("parse expr");
+    let mut guards = Vec::new();
+    collect_numeric_analytic_guards(&ctx, expr, &mut guards);
+    assert_eq!(guards.len(), 1);
+    assert_eq!(guards[0].kind, NumericAnalyticGuardKind::NonNegative);
+
+    let mut bad = HashMap::new();
+    bad.insert("x".to_string(), 0.0);
+    assert!(violates_numeric_analytic_guard(&ctx, guards[0], &bad));
+
+    let mut good = HashMap::new();
+    good.insert("x".to_string(), 3.0);
+    assert!(!violates_numeric_analytic_guard(&ctx, guards[0], &good));
+}
+
+#[test]
+fn collect_numeric_analytic_guards_finds_inverse_trig_unit_interval_guard() {
+    let mut ctx = Context::new();
+    let expr = parse("arcsin(x/2)", &mut ctx).expect("parse expr");
+    let mut guards = Vec::new();
+    collect_numeric_analytic_guards(&ctx, expr, &mut guards);
+    assert_eq!(guards.len(), 1);
+    assert_eq!(guards[0].kind, NumericAnalyticGuardKind::UnitInterval);
+
+    let mut bad = HashMap::new();
+    bad.insert("x".to_string(), 3.0);
+    assert!(violates_numeric_analytic_guard(&ctx, guards[0], &bad));
+
+    let mut good = HashMap::new();
+    good.insert("x".to_string(), 1.0);
+    assert!(!violates_numeric_analytic_guard(&ctx, guards[0], &good));
 }
 
 #[test]
@@ -11021,6 +13770,8 @@ fn metatest_unified_benchmark() {
     // Phase 2: Substitution tests
     let sub_metrics = run_substitution_tests();
     all_metrics.push(sub_metrics);
+    let structural_sub_metrics = run_structural_substitution_tests();
+    all_metrics.push(structural_sub_metrics);
 
     // Phase 3: Curated contextual tests
     let contextual_metrics = run_contextual_pair_tests();

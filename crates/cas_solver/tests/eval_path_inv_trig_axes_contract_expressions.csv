@@ -1,0 +1,12 @@
+# Eval Path Inverse-Trig Axes Contract Corpus
+# Format: expr,value_domain,mode,inv_trig,expect_requires,expect_warning
+
+# ComplexEnabled principal inverse-trig should surface domain_warnings
+arcsin(sin(x)),complex,generic,principal,no,yes
+arctan(tan(x)),complex,generic,principal,no,yes
+arccos(cos(x)),complex,generic,principal,no,yes
+
+# Strict inverse-trig should remain warning-free on the same path
+arcsin(sin(x)),complex,generic,strict,no,no
+arctan(tan(x)),complex,generic,strict,no,no
+arccos(cos(x)),complex,generic,strict,no,no

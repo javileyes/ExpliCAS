@@ -149,6 +149,8 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(CancelIdenticalFractionRule));
     // Step 2 variant: Cancel P^n/P → P^(n-1) (for perfect squares and similar)
     simplifier.add_rule(Box::new(CancelPowerFractionRule));
+    // Reciprocal cleanup: 1 / P^(-a) → P^a, preserving domain via nonzero(P)
+    simplifier.add_rule(Box::new(CollapseReciprocalNegativePowerRule));
     simplifier.add_rule(Box::new(SimplifyFractionRule));
     simplifier.add_rule(Box::new(NestedFractionRule));
     simplifier.add_rule(Box::new(SimplifyMulDivRule));
@@ -159,6 +161,9 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(CombineSameDenominatorFractionsRule));
     // Distribute numeric denominator into sums: (2x+4)/2 → x+2
     simplifier.add_rule(Box::new(DivScalarIntoAddRule));
+    // Try opaque/polynomial quotient cancellation before rationalization destroys
+    // simple shared-root quotients like (t^2+2t)/(t+2).
+    simplifier.add_rule(Box::new(DivExpandToCancelRule));
     // Compact rationalization rules (Level 0, 1) - should apply first
     simplifier.add_rule(Box::new(RationalizeSingleSurdRule));
     simplifier.add_rule(Box::new(RationalizeBinomialSurdRule));
@@ -174,7 +179,6 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(DivExpandNumForCancelRule)); // Expand Mul(X, Add(...)) in Div numerator when shared factors exist
     simplifier.add_rule(Box::new(DivAddSymmetricFactorRule)); // Cancel common factor from Add/Add fraction
     simplifier.add_rule(Box::new(QuotientOfPowersRule));
-    simplifier.add_rule(Box::new(DivExpandToCancelRule)); // Expand Mul(Add,Add) in Div to enable cancellation
     simplifier.add_rule(Box::new(CancelNthRootBinomialFactorRule)); // (x+1)/(x^(1/3)+1) → x^(2/3)-x^(1/3)+1
     simplifier.add_rule(Box::new(SqrtConjugateCollapseRule)); // sqrt(A)*B → sqrt(B) when A*B=1
     simplifier.add_rule(Box::new(RootDenestingRule));
