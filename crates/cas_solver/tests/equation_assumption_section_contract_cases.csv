@@ -1,0 +1,10 @@
+# equation_str,solve_var,domain_mode,assume_scope,assumption_reporting,identity_exp,identity_simp,expected_section_items,family
+2^x = y,x,assume,real,trace,sin(t)^2 + cos(t)^2 - 1,0,ℹ️ Assumptions used:;y > 0,trace_section_rhs_positive
+b^x = y,x,assume,real,trace,sec(t)^2 - tan(t)^2 - 1,0,ℹ️ Assumptions used:;b > 0;y > 0,trace_section_base_rhs_positive
+2^x = y,x,assume,real,off,sin(t)^2 + cos(t)^2 - 1,0,none,trace_section_off_suppresses
+2^x = 8,x,generic,real,trace,sec(t)^2 - tan(t)^2 - 1,0,none,trace_section_absent_clean
+(x-1)/(x+1) = y,x,generic,real,trace,sin(t)^2 + cos(t)^2 - 1,0,none,symbolic_linear_trace_absent
+A = P + P*r*t,P,generic,real,trace,sec(t)^2 - tan(t)^2 - 1,0,none,linear_collect_trace_absent
+1/R = 1/R1 + 1/R2,R,generic,real,trace,sin(t)^2 + cos(t)^2 - 1,0,none,reciprocal_trace_absent
+(-2)^x = y,x,assume,wildcard,trace,sec(t)^2 - tan(t)^2 - 1,0,none,wildcard_residual_trace_absent
+(a^x - b)*(x - 1) = 0,x,generic,real,trace,sin(t)^2 + cos(t)^2 - 1,0,a > 0,nested_product_zero_generic_trace_log_base_requirement

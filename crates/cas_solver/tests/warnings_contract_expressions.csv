@@ -1,0 +1,17 @@
+# Warnings Preservation Contract Corpus
+# Format: expr,mode,expect_warning
+
+# Expressions that should emit warnings in Assume mode
+log(b, b^x),assume,yes
+log(b, b^(x + 1)),assume,yes
+log(b, b^(2*x)),assume,yes
+
+# Expressions that should stay warning-free
+ln(exp(x)),strict,no
+ln(exp(x)),generic,no
+ln(exp(x)),assume,no
+exp(ln(x)),generic,no
+exp(ln(x)),assume,no
+ln(exp(3)),strict,no
+sqrt(4)^2,generic,no
+x + 1,generic,no

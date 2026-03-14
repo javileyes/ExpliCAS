@@ -1,0 +1,24 @@
+# Contextual Radical Metamorphic Pairs
+# Format: lhs,rhs,vars[,filters]
+
+# Root / inverse-root identities
+1/sqrt(u),sqrt(u)/u,u,gt(0.1)
+(1/sqrt(u)) + (sin(u) + sin(3*u)),(sqrt(u)/u) + (2*sin(2*u)*cos(u)),u,range(0.1;3.0)
+(1/sqrt(x)) + (sin(u) + sin(3*u)),(sqrt(x)/x) + (2*sin(2*u)*cos(u)),x;u,gt(0.1)|range(-1.2;1.2)
+
+# Exact radical constants in context
+sqrt(64),8,u
+cos(2*pi/5),(sqrt(5) - 1)/4,u
+cos(3*pi/8),sqrt(2 - sqrt(2))/2,u
+
+# Quadratic-root lifted identities
+((-b + sqrt(b^2 - 4*a*c))/(2*a)) + ((2*u+1)/(u^2+u)),((-b + sqrt(b^2 - 4*a*c))/(2*a)) + (1/u + 1/(u+1)),a;b;c;u,none|none|none|range(0.1;3.0)
+((-b + sqrt(b^2 - 4*a*c))/(2*a)) + (1/(u - 1) + 1/(u + 1)),((-b + sqrt(b^2 - 4*a*c))/(2*a)) + (2*u/(u^2 - 1)),a;b;c;u,none|none|none|range(1.1;3.0)
+((-b + sqrt(b^2 - 4*a*c))/(2*a)) + (exp(u)/(exp(u) + 1) + 1/(exp(u) + 1)),((-b + sqrt(b^2 - 4*a*c))/(2*a)) + (1),a;b;c;u,none|none|none|none
+((-b + sqrt(b^2 - 4*a*c))/(2*a)) + (sin(u)^2*cos(u)^2),((-b + sqrt(b^2 - 4*a*c))/(2*a)) + (sin(2*u)^2/4),a;b;c;u,none|none|none|range(-1.2;1.2)
+((-b + sqrt(b^2 - 4*a*c))/(2*a)) + (sin(u) + sin(3*u)),((-b + sqrt(b^2 - 4*a*c))/(2*a)) + (2*sin(2*u)*cos(u)),a;b;c;u,none|none|none|range(-1.2;1.2)
+
+# Radical constants inside rational contexts
+(1/u + 1/(u+1)) + (sqrt(64)),((2*u+1)/(u*(u+1))) + (8),u,range(0.1;3.0)
+(1/u + 1/(u+1)) + (1/sqrt(u)),((2*u+1)/(u*(u+1))) + (sqrt(u)/u),u,range(0.1;3.0)
+((-b + sqrt(b^2 - 4*a*c))/(2*a)) + (1/sqrt(u)),((-b + sqrt(b^2 - 4*a*c))/(2*a)) + (sqrt(u)/u),a;b;c;u,none|none|none|gt(0.1)

@@ -1,0 +1,17 @@
+# Branch Transparency Contract Corpus
+# Format: expr,mode,inv_trig,expect_signal
+
+# Principal-branch rewrites should surface a visible branch-choice signal
+arctan(tan(x)),strict,principal,yes
+arcsin(sin(x)),generic,principal,yes
+arccos(cos(x)),generic,principal,yes
+arctan(tan(y)),assume,principal,yes
+
+# Strict inv_trig policy should not surface branch-choice transparency
+arctan(tan(x)),generic,strict,no
+arcsin(sin(x)),generic,strict,no
+arccos(cos(x)),generic,strict,no
+
+# Safe compositions remain signal-free even in principal mode
+tan(arctan(x)),generic,principal,no
+sin(arcsin(x)),generic,principal,no

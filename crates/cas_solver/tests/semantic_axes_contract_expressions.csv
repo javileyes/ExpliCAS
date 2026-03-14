@@ -1,0 +1,31 @@
+# Semantic Axes Contract Corpus
+# Format: expr,value_domain,mode,expect_requires,expect_warning
+
+# ln(exp(.)) across value_domain and mode
+ln(exp(x)),real,strict,yes,no
+ln(exp(x)),real,generic,yes,no
+ln(exp(x)),real,assume,yes,no
+ln(exp(x)),complex,strict,yes,no
+ln(exp(x)),complex,generic,yes,no
+ln(exp(x)),complex,assume,yes,no
+
+# exp(ln(.)) across value_domain and mode
+exp(ln(x)),real,strict,yes,no
+exp(ln(x)),real,generic,yes,no
+exp(ln(x)),real,assume,yes,no
+exp(ln(x)),complex,strict,yes,no
+exp(ln(x)),complex,generic,yes,no
+exp(ln(x)),complex,assume,yes,no
+
+# Symbolic log base across domain modes
+log(b, b^x),real,strict,no,no
+log(b, b^x),real,generic,no,no
+log(b, b^x),real,assume,yes,yes
+
+# Log-product expansion with symbolic positivity carried by input logs
+ln(a^2 * b^3) - 2*ln(a) - 3*ln(b),real,generic,yes,no
+ln(a^2 * b^3) - 2*ln(a) - 3*ln(b),real,assume,yes,no
+
+# Numeric safe controls
+ln(exp(3)),real,strict,no,no
+ln(exp(3)),complex,strict,no,no

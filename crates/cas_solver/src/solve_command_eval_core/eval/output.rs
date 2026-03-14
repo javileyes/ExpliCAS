@@ -1,5 +1,25 @@
 use super::{super::diagnostics::build_solve_command_diagnostics, SolveSessionExecution};
 
+fn normalize_solver_assumption_records(
+    simplifier: &mut crate::Simplifier,
+    records: Vec<crate::AssumptionRecord>,
+) -> Vec<crate::AssumptionRecord> {
+    records
+        .into_iter()
+        .map(|mut record| {
+            if let Ok(expr_id) = cas_parser::parse(&record.expr, &mut simplifier.context) {
+                let (normalized_id, _) = simplifier.simplify(expr_id);
+                record.expr = cas_formatter::DisplayExpr {
+                    context: &simplifier.context,
+                    id: normalized_id,
+                }
+                .to_string();
+            }
+            record
+        })
+        .collect()
+}
+
 pub(super) fn finalize_solve_eval_output<S>(
     session: &mut S,
     simplifier: &mut crate::Simplifier,
@@ -35,7 +55,10 @@ where
         if execution.eval_options.shared.assumption_reporting == crate::AssumptionReporting::Off {
             vec![]
         } else {
-            execution.solve_diagnostics.assumed_records.clone()
+            normalize_solver_assumption_records(
+                simplifier,
+                execution.solve_diagnostics.assumed_records.clone(),
+            )
         };
 
     crate::EvalOutputView {

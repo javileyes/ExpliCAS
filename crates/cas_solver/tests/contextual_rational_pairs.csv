@@ -1,0 +1,31 @@
+# Contextual Rational Metamorphic Pairs
+# Format: lhs,rhs,vars[,filters]
+
+# Rational plus polynomial context
+(1/(u - 1) + 1/(u + 1)) + (u^2 + 2*u + 1),(2*u/(u^2 - 1)) + ((u+1)^2),u,range(1.1;3.0)
+(1/(u - 1) + 1/(u + 1)) + ((u+2)^2),(2*u/(u^2 - 1)) + (u^2 + 4*u + 4),u,range(1.1;3.0)
+(1/(u - 1) + 1/(u + 1)) + ((u-1)^5),(2*u/(u^2 - 1)) + (u^5 - 5*u^4 + 10*u^3 - 10*u^2 + 5*u - 1),u,range(1.1;3.0)
+(1/(u - 1) + 1/(u + 1)) + ((u+1)*(u+2)*(u+3)),(2*u/(u^2 - 1)) + (u^3 + 6*u^2 + 11*u + 6),u,range(1.1;3.0)
+(1/(u - 1) + 1/(u + 1)) + (u^6 - 1),(2*u/(u^2 - 1)) + ((u^2+u+1)*(u^2-u+1)*(u+1)*(u-1)),u,range(1.1;3.0)
+(1/(u - 1) + 1/(u + 1)) + (exp(u)/(exp(u) + 1) + 1/(exp(u) + 1)),(2*u/(u^2 - 1)) + (1),u,range(1.1;3.0)
+
+# Rational plus nested transforms
+(1/u + 1/(u+1)) + (u^2 + 2*u),((2*u+1)/(u*(u+1))) + (u*(u+2)),u,range(0.1;3.0)
+(1/u + 1/(u+1)) + ((u+1)^2),((2*u+1)/(u*(u+1))) + (u^2 + 2*u + 1),u,range(0.1;3.0)
+(1/u + 1/(u+1)) + ((u-1)^5),((2*u+1)/(u*(u+1))) + (u^5 - 5*u^4 + 10*u^3 - 10*u^2 + 5*u - 1),u,range(0.1;3.0)
+(1/u + 1/(u+1)) + (u^3 + u^2 + u + 1),((2*u+1)/(u*(u+1))) + ((u+1)*(u^2+1)),u,range(0.1;3.0)
+(1/u + 1/(u+1)) + (1/sqrt(u)),((2*u+1)/(u*(u+1))) + (sqrt(u)/u),u,range(0.1;3.0)
+(1/u + 1/(u+1)) + (exp(u)/(exp(u) + 1) + 1/(exp(u) + 1)),((2*u+1)/(u*(u+1))) + (1),u,range(0.1;3.0)
+
+# Bivariate rational coverage
+(1/x + 1/(x+1)) + ((u-1)^5),((2*x+1)/(x*(x+1))) + (u^5 - 5*u^4 + 10*u^3 - 10*u^2 + 5*u - 1),x;u,range(0.1;3.0)|none
+(1/x + 1/(x+1)) + (u^3 + u^2 + u + 1),((2*x+1)/(x*(x+1))) + ((u+1)*(u^2+1)),x;u,range(0.1;3.0)|none
+(1/(x - 1) + 1/(x + 1)) + ((u+1)^2),(2*x/(x^2 - 1)) + (u^2 + 2*u + 1),x;u,range(1.1;3.0)|none
+(1/(x - 1) + 1/(x + 1)) + ((u-1)^5),(2*x/(x^2 - 1)) + (u^5 - 5*u^4 + 10*u^3 - 10*u^2 + 5*u - 1),x;u,range(1.1;3.0)|none
+(1/(x - 1) + 1/(x + 1)) + (u^6 - 1),(2*x/(x^2 - 1)) + ((u^2+u+1)*(u^2-u+1)*(u+1)*(u-1)),x;u,range(1.1;3.0)|none
+(1/(x - 1) + 1/(x + 1)) + (exp(u)/(exp(u) + 1) + 1/(exp(u) + 1)),(2*x/(x^2 - 1)) + (1),x;u,range(1.1;3.0)|none
+
+# Lifted rational identities in quadratic-root context
+((-b + sqrt(b^2 - 4*a*c))/(2*a)) + ((2*u+1)/(u^2+u)),((-b + sqrt(b^2 - 4*a*c))/(2*a)) + (1/u + 1/(u+1)),a;b;c;u,none|none|none|range(0.1;3.0)
+((-b + sqrt(b^2 - 4*a*c))/(2*a)) + (1/(u - 1) + 1/(u + 1)),((-b + sqrt(b^2 - 4*a*c))/(2*a)) + (2*u/(u^2 - 1)),a;b;c;u,none|none|none|range(1.1;3.0)
+((-b + sqrt(b^2 - 4*a*c))/(2*a)) + (exp(u)/(exp(u) + 1) + 1/(exp(u) + 1)),((-b + sqrt(b^2 - 4*a*c))/(2*a)) + (1),a;b;c;u,none|none|none|none

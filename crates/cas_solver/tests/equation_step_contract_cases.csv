@@ -1,0 +1,3 @@
+# equation_str,solve_var,domain_mode,assume_scope,identity_exp,identity_simp,expected_keywords,family
+x^2 - 4 = 0,x,generic,real,sin(t)^2 + cos(t)^2 - 1,0,quadratic formula,quadratic_didactic
+A = P + P*r*t,P,generic,real,sin(t)^2 + cos(t)^2 - 1,0,collect,linear_collect_didactic

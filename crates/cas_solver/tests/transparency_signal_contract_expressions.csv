@@ -1,0 +1,18 @@
+# Transparency Signal Contract Corpus
+# Format: expr,mode,expect_signal
+
+# Warnings surfaced through output.domain_warnings
+log(b, b^x),assume,yes
+log(b, b^(x + 1)),assume,yes
+
+# Transparency surfaced only through step.assumption_events()
+0 * 1/(x+1),assume,yes
+0 * 1/(x+1),generic,yes
+0 / (x+1),generic,yes
+
+# Stable controls with no transparency signal
+ln(exp(x)),strict,no
+ln(exp(x)),generic,no
+exp(ln(x)),assume,no
+0 * 5,generic,no
+x + 1,generic,no

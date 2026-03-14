@@ -1,0 +1,19 @@
+# Mode-Aware Required Conditions Preservation Contract Corpus
+# Format: expr,mode,expect_requires
+
+# Generic mode should emit implicit requires for these simplifications
+sqrt(x)^2,generic,yes
+exp(ln(x)),generic,yes
+log(x^2, x^6),generic,yes
+
+# Assume mode should also preserve requires when the rewrite is allowed
+log(x^2, x^6),assume,yes
+
+# Strict mode may still carry explicit requires metadata for domain-sensitive forms
+sqrt(x)^2,strict,yes
+exp(ln(x)),strict,yes
+ln(exp(x)),strict,yes
+
+# Strict mode should stay require-free for provably safe numeric cases
+sqrt(4)^2,strict,no
+ln(exp(3)),strict,no

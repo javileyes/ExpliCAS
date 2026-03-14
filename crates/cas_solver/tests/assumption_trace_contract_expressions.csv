@@ -1,0 +1,19 @@
+# Assumption Trace Contract Corpus
+# Format: expr,mode,inv_trig,expected_kind
+
+# Assume-mode nonzero assumptions
+x/x,assume,strict,nonzero
+x^0,assume,strict,nonzero
+0^x,assume,strict,positive
+0*(1/x),assume,strict,defined
+sqrt(x)*sqrt(y),assume,strict,nonnegative
+
+# Principal inverse trig assumptions
+arcsin(sin(x)),generic,principal,principal_range
+arctan(tan(x)),generic,principal,principal_range
+arccos(cos(x)),generic,principal,principal_range
+
+# Controls: no structured assumptions expected
+ln(exp(x)),strict,strict,none
+exp(ln(x)),generic,strict,none
+arctan(tan(x)),generic,strict,none

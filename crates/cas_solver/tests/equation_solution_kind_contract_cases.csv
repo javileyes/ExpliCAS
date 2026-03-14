@@ -1,0 +1,21 @@
+# equation,solve_var,domain_mode,assume_scope,identity_exp,identity_simp,expected_orig,expected_trans,family
+
+# Safe tier-0 transforms should preserve coarse solution kind
+F = m*a,a,generic,real,sec(t)^2 - tan(t)^2,1,discrete,discrete,tier0_discrete_safe
+E = m*c^2,m,generic,real,sin(t)^2 + cos(t)^2,1,discrete,discrete,tier0_trig_safe_2
+x^2 + 1 = 0,x,generic,real,sec(t)^2 - tan(t)^2,1,empty,empty,empty_safe
+1^x = 1,x,generic,real,sin(t)^2 + cos(t)^2,1,allreals,allreals,base_one_all_reals_safe
+1^x = 5,x,generic,real,sec(t)^2 - tan(t)^2,1,empty,empty,base_one_empty_safe
+2^x = -5,x,generic,real,sin(t)^2 + cos(t)^2,1,empty,empty,positive_base_negative_rhs_empty_safe
+
+# Solver mode/scope contracts should also survive a harmless tier-0 identity
+2^x = y,x,strict,real,sec(t)^2 - tan(t)^2,1,conditional,conditional,strict_conditional_safe
+(-2)^x = 5,x,assume,wildcard,sec(t)^2 - tan(t)^2,1,residual,residual,wildcard_residual_safe
+
+# Curated solver families from dedicated tests should keep their coarse kind too
+(x-1)/(x+1) = y,x,generic,real,sin(t)^2 + cos(t)^2,1,conditional,conditional,symbolic_linear_conditional_safe
+A = P + P*r*t,P,generic,real,sec(t)^2 - tan(t)^2,1,conditional,conditional,linear_collect_conditional_safe
+1/R = 1/R1 + 1/R2,R,generic,real,sin(t)^2 + cos(t)^2,1,conditional,conditional,reciprocal_conditional_safe
+(-2)^x = y,x,assume,wildcard,sin(t)^2 + cos(t)^2,1,residual,residual,wildcard_residual_symbolic_rhs_safe
+(a^x - b)*(x - 1) = 0,x,assume,real,sec(t)^2 - tan(t)^2,1,discrete,discrete,nested_product_zero_assume_discrete
+(a^x - b)*(x - 1) = 0,x,generic,real,sin(t)^2 + cos(t)^2,1,residual,residual,nested_product_zero_generic_residual

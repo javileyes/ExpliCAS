@@ -27,10 +27,11 @@ mod test_utils;
 use cas_ast::{Context, ExprId};
 use cas_formatter::DisplayExpr;
 use cas_parser::parse;
+use cas_session::SessionState;
 use cas_solver::api::{
     eval_f64, eval_f64_checked, EquivalenceResult, EvalCheckedError, EvalCheckedOptions,
 };
-use cas_solver::runtime::Simplifier;
+use cas_solver::runtime::{Engine, EvalAction, EvalRequest, EvalResult, Simplifier};
 use cas_solver::wire::eval_str_to_wire;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -1667,7 +1668,63 @@ fn numeric_retry_filters_1var() -> [FilterSpec; 4] {
     ]
 }
 
+fn numeric_retry_filters_2var() -> [(FilterSpec, FilterSpec); 4] {
+    [
+        (
+            FilterSpec::AwayFrom {
+                centers: vec![0.0, 1.0, -1.0],
+                eps: 0.1,
+            },
+            FilterSpec::AwayFrom {
+                centers: vec![0.0, 1.0, -1.0],
+                eps: 0.1,
+            },
+        ),
+        (
+            FilterSpec::AbsLtAndAway {
+                limit: 0.9,
+                centers: vec![0.0, 1.0, -1.0],
+                eps: 0.1,
+            },
+            FilterSpec::AbsLtAndAway {
+                limit: 0.9,
+                centers: vec![0.0, 1.0, -1.0],
+                eps: 0.1,
+            },
+        ),
+        (
+            FilterSpec::Range {
+                min: -0.8,
+                max: 0.8,
+            },
+            FilterSpec::Range {
+                min: -0.8,
+                max: 0.8,
+            },
+        ),
+        (
+            FilterSpec::AbsLt { limit: 0.9 },
+            FilterSpec::AbsLt { limit: 0.9 },
+        ),
+    ]
+}
+
 fn should_retry_relaxed_numeric_1var(
+    result: &Result<usize, String>,
+    stats: &NumericEquivStats,
+) -> bool {
+    match result {
+        Ok(_) => false,
+        Err(msg) if msg.starts_with("Unsupported contextual numeric arity:") => false,
+        Err(msg) if msg.starts_with("Too few valid samples:") => true,
+        Err(_) => matches!(
+            classify_diagnostic(stats),
+            DiagCategory::NeedsFilter | DiagCategory::Fragile
+        ),
+    }
+}
+
+fn should_retry_relaxed_numeric_2var(
     result: &Result<usize, String>,
     stats: &NumericEquivStats,
 ) -> bool {
@@ -1736,6 +1793,156 @@ where
     }
 }
 
+fn classify_numeric_equiv_2var_relaxed_with<F>(
+    config: &MetatestConfig,
+    mut run_stats: F,
+) -> NumericCheckOutcome
+where
+    F: FnMut(&FilterSpec, &FilterSpec) -> NumericEquivStats,
+{
+    let direct_stats = run_stats(&FilterSpec::None, &FilterSpec::None);
+    let direct_result = finalize_numeric_equiv_2var(direct_stats.clone(), config);
+    let direct_outcome = classify_numeric_check_with_stats(direct_result.clone(), &direct_stats);
+
+    if matches!(direct_outcome, NumericCheckOutcome::Pass) {
+        return NumericCheckOutcome::Pass;
+    }
+
+    if !should_retry_relaxed_numeric_2var(&direct_result, &direct_stats) {
+        return direct_outcome;
+    }
+
+    let mut retry_notes = Vec::new();
+    for (filter1, filter2) in numeric_retry_filters_2var() {
+        let stats = run_stats(&filter1, &filter2);
+        let result = finalize_numeric_equiv_2var(stats.clone(), config);
+        match classify_numeric_check_with_stats(result, &stats) {
+            NumericCheckOutcome::Pass => return NumericCheckOutcome::Pass,
+            NumericCheckOutcome::Failed(msg) => {
+                return NumericCheckOutcome::Failed(format!(
+                    "after filters ({}, {}) => {}",
+                    filter1.as_str(),
+                    filter2.as_str(),
+                    msg
+                ));
+            }
+            NumericCheckOutcome::Inconclusive(msg) => {
+                retry_notes.push(format!(
+                    "({}, {}) => {}",
+                    filter1.as_str(),
+                    filter2.as_str(),
+                    msg
+                ));
+            }
+        }
+    }
+
+    let base_msg = match direct_outcome {
+        NumericCheckOutcome::Inconclusive(msg) | NumericCheckOutcome::Failed(msg) => msg,
+        NumericCheckOutcome::Pass => unreachable!("pass returns early"),
+    };
+
+    if retry_notes.is_empty() {
+        NumericCheckOutcome::Inconclusive(base_msg)
+    } else {
+        NumericCheckOutcome::Inconclusive(format!(
+            "{} [retry_filters: {}]",
+            base_msg,
+            retry_notes.join(" | ")
+        ))
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn check_numeric_equiv_2var_with_fixed_stats_retry_filters(
+    ctx: &Context,
+    a: ExprId,
+    b: ExprId,
+    var1: &str,
+    var2: &str,
+    fixed_vars: &[(String, f64)],
+    config: &MetatestConfig,
+    base_filter1: &FilterSpec,
+    base_filter2: &FilterSpec,
+    retry_filter1: &FilterSpec,
+    retry_filter2: &FilterSpec,
+) -> NumericEquivStats {
+    let (lo, hi) = config.sample_range;
+    let mut stats = NumericEquivStats::default();
+
+    let opts = EvalCheckedOptions {
+        zero_abs_eps: 1e-12,
+        zero_rel_eps: 1e-12,
+        trig_pole_eps: 1e-9,
+        max_depth: 200,
+    };
+
+    let samples_per_dim = (config.eval_samples as f64).sqrt() as usize;
+
+    for i in 0..samples_per_dim {
+        for j in 0..samples_per_dim {
+            let t1 = (i as f64 + 0.5) / samples_per_dim as f64;
+            let t2 = (j as f64 + 0.5) / samples_per_dim as f64;
+            let x = lo + (hi - lo) * t1;
+            let y = lo + (hi - lo) * t2;
+
+            if !(base_filter1.accept(x)
+                && retry_filter1.accept(x)
+                && base_filter2.accept(y)
+                && retry_filter2.accept(y))
+            {
+                stats.filtered_out += 1;
+                continue;
+            }
+
+            let mut var_map = HashMap::new();
+            for (name, value) in fixed_vars {
+                var_map.insert(name.clone(), *value);
+            }
+            var_map.insert(var1.to_string(), x);
+            var_map.insert(var2.to_string(), y);
+
+            let va = eval_f64_checked(ctx, a, &var_map, &opts);
+            let vb = eval_f64_checked(ctx, b, &var_map, &opts);
+
+            match (&va, &vb) {
+                (Ok(va), Ok(vb)) => {
+                    let diff = (va - vb).abs();
+                    let scale = va.abs().max(vb.abs()).max(1.0);
+                    let allowed = config.atol + config.rtol * scale;
+
+                    if diff <= allowed {
+                        stats.valid += 1;
+                    } else {
+                        stats.record_mismatch_label(
+                            format!("{var1}={x:.6}, {var2}={y:.6}"),
+                            *va,
+                            *vb,
+                        );
+                    }
+                }
+                (
+                    Err(EvalCheckedError::NearPole { .. }),
+                    Err(EvalCheckedError::NearPole { .. }),
+                ) => {
+                    stats.near_pole += 1;
+                }
+                (Err(EvalCheckedError::Domain { .. }), Err(EvalCheckedError::Domain { .. })) => {
+                    stats.domain_error += 1;
+                }
+                (Ok(_), Err(_)) | (Err(_), Ok(_)) => {
+                    stats.asymmetric_invalid += 1;
+                }
+                _ => {
+                    stats.eval_failed += 1;
+                }
+            }
+        }
+    }
+
+    stats
+}
+
 fn classify_numeric_equiv_1var_relaxed(
     ctx: &Context,
     a: ExprId,
@@ -1759,9 +1966,25 @@ fn classify_numeric_equiv_2var_relaxed(
     filter1: &FilterSpec,
     filter2: &FilterSpec,
 ) -> NumericCheckOutcome {
-    let stats = check_numeric_equiv_2var_stats(ctx, a, b, var1, var2, config, filter1, filter2);
-    let result = finalize_numeric_equiv_2var(stats.clone(), config);
-    classify_numeric_check_with_stats(result, &stats)
+    classify_numeric_equiv_2var_relaxed_with(config, |retry_filter1, retry_filter2| {
+        if retry_filter1.is_none() && retry_filter2.is_none() {
+            check_numeric_equiv_2var_stats(ctx, a, b, var1, var2, config, filter1, filter2)
+        } else {
+            check_numeric_equiv_2var_with_fixed_stats_retry_filters(
+                ctx,
+                a,
+                b,
+                var1,
+                var2,
+                &[],
+                config,
+                filter1,
+                filter2,
+                retry_filter1,
+                retry_filter2,
+            )
+        }
+    })
 }
 
 fn classify_numeric_equiv_1var_with_fixed_relaxed(
@@ -1803,11 +2026,27 @@ fn classify_numeric_equiv_2var_with_fixed_relaxed(
     filter1: &FilterSpec,
     filter2: &FilterSpec,
 ) -> NumericCheckOutcome {
-    let stats = check_numeric_equiv_2var_with_fixed_stats_filtered(
-        ctx, a, b, var1, var2, fixed_vars, config, filter1, filter2,
-    );
-    let result = finalize_numeric_equiv_2var(stats.clone(), config);
-    classify_numeric_check_with_stats(result, &stats)
+    classify_numeric_equiv_2var_relaxed_with(config, |retry_filter1, retry_filter2| {
+        if retry_filter1.is_none() && retry_filter2.is_none() {
+            check_numeric_equiv_2var_with_fixed_stats_filtered(
+                ctx, a, b, var1, var2, fixed_vars, config, filter1, filter2,
+            )
+        } else {
+            check_numeric_equiv_2var_with_fixed_stats_retry_filters(
+                ctx,
+                a,
+                b,
+                var1,
+                var2,
+                fixed_vars,
+                config,
+                filter1,
+                filter2,
+                retry_filter1,
+                retry_filter2,
+            )
+        }
+    })
 }
 
 fn fold_constants_safe(ctx: &mut Context, expr: ExprId) -> ExprId {
@@ -2495,6 +2734,146 @@ fn alpha_rename(expr: &str, from: &str, to: &str) -> String {
     }
 
     result
+}
+
+fn alpha_rename_many(expr: &str, renames: &[(String, String)]) -> String {
+    let mut result = expr.to_string();
+    let staged: Vec<(String, String, String)> = renames
+        .iter()
+        .enumerate()
+        .map(|(idx, (from, to))| (from.clone(), format!("__tmp_var_{idx}__"), to.clone()))
+        .collect();
+
+    for (from, temp, _) in &staged {
+        result = alpha_rename(&result, from, temp);
+    }
+
+    for (_, temp, to) in &staged {
+        result = alpha_rename(&result, temp, to);
+    }
+
+    result
+}
+
+fn identity_filters(pair: &IdentityPair) -> Vec<FilterSpec> {
+    pair.vars
+        .iter()
+        .enumerate()
+        .map(|(idx, _)| {
+            if idx == 0 {
+                pair.filter_spec.clone()
+            } else {
+                FilterSpec::None
+            }
+        })
+        .collect()
+}
+
+fn fresh_combination_vars(count: usize, used: &mut HashSet<String>) -> Vec<String> {
+    const POOL: [&str; 12] = ["u", "v", "w", "p", "q", "r", "s", "t", "m", "n", "i", "j"];
+
+    let mut vars = Vec::with_capacity(count);
+    let mut next_suffix = 0usize;
+
+    while vars.len() < count {
+        let candidate = if next_suffix < POOL.len() {
+            POOL[next_suffix].to_string()
+        } else {
+            format!("u{}", next_suffix - POOL.len())
+        };
+        next_suffix += 1;
+        if used.insert(candidate.clone()) {
+            vars.push(candidate);
+        }
+    }
+
+    vars
+}
+
+fn rename_identity_for_combination(
+    pair: &IdentityPair,
+    used: &mut HashSet<String>,
+) -> (String, String, Vec<String>, Vec<FilterSpec>) {
+    let renamed_vars = fresh_combination_vars(pair.vars.len(), used);
+    let renames: Vec<(String, String)> = pair
+        .vars
+        .iter()
+        .cloned()
+        .zip(renamed_vars.iter().cloned())
+        .collect();
+
+    (
+        alpha_rename_many(&pair.exp, &renames),
+        alpha_rename_many(&pair.simp, &renames),
+        renamed_vars,
+        identity_filters(pair),
+    )
+}
+
+fn classify_numeric_equiv_for_vars(
+    ctx: &Context,
+    a: ExprId,
+    b: ExprId,
+    vars: &[String],
+    filters: &[FilterSpec],
+    config: &MetatestConfig,
+) -> NumericCheckOutcome {
+    match vars {
+        [] => NumericCheckOutcome::Inconclusive("No free vars for numeric check".to_string()),
+        [var] => classify_numeric_equiv_1var_relaxed_with(config, |retry_filter| {
+            let effective = if retry_filter.is_none() {
+                filters.first().unwrap_or(&FilterSpec::None)
+            } else {
+                retry_filter
+            };
+            check_numeric_equiv_1var_stats(ctx, a, b, var, config, effective)
+        }),
+        [var1, var2] => classify_numeric_equiv_2var_relaxed(
+            ctx,
+            a,
+            b,
+            var1,
+            var2,
+            config,
+            filters.first().unwrap_or(&FilterSpec::None),
+            filters.get(1).unwrap_or(&FilterSpec::None),
+        ),
+        _ => classify_numeric_equiv_nvar_relaxed(ctx, a, b, vars, filters, config),
+    }
+}
+
+fn numeric_only_cause_for_vars(
+    ctx: &Context,
+    a: ExprId,
+    b: ExprId,
+    vars: &[String],
+    filters: &[FilterSpec],
+    config: &MetatestConfig,
+    residual_shape: &str,
+) -> NumericOnlyCause {
+    match vars {
+        [var] => numeric_only_cause_for_1var(
+            ctx,
+            a,
+            b,
+            var,
+            config,
+            filters.first().unwrap_or(&FilterSpec::None),
+            residual_shape,
+        ),
+        [var1, var2] => numeric_only_cause_for_2var(
+            ctx,
+            a,
+            b,
+            var1,
+            var2,
+            config,
+            filters.first().unwrap_or(&FilterSpec::None),
+            filters.get(1).unwrap_or(&FilterSpec::None),
+            residual_shape,
+        ),
+        many => classify_numeric_only_cause(None, many.len(), residual_shape),
+    }
 }
 
 /// Assert that combining two identity pairs preserves equivalence.
@@ -3307,6 +3686,93 @@ fn classify_diagnostic(stats: &NumericEquivStats) -> DiagCategory {
     DiagCategory::Ok
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+enum NumericOnlyCause {
+    DomainSensitive,
+    SamplingWeak,
+    MultivarContext,
+    SymbolicResidual,
+}
+
+impl NumericOnlyCause {
+    fn label(&self) -> &'static str {
+        match self {
+            NumericOnlyCause::DomainSensitive => "domain-sensitive",
+            NumericOnlyCause::SamplingWeak => "sampling-weak",
+            NumericOnlyCause::MultivarContext => "multivar-context",
+            NumericOnlyCause::SymbolicResidual => "symbolic-residual",
+        }
+    }
+}
+
+fn classify_numeric_only_cause(
+    stats: Option<&NumericEquivStats>,
+    free_var_count: usize,
+    residual_shape: &str,
+) -> NumericOnlyCause {
+    if let Some(stats) = stats {
+        match classify_diagnostic(stats) {
+            DiagCategory::NeedsFilter => return NumericOnlyCause::DomainSensitive,
+            DiagCategory::Fragile | DiagCategory::ConfigError | DiagCategory::BugSignal => {
+                return NumericOnlyCause::SamplingWeak;
+            }
+            DiagCategory::Ok => {}
+        }
+    }
+
+    if free_var_count >= 2 {
+        return NumericOnlyCause::MultivarContext;
+    }
+
+    if shape_has_div(residual_shape) || shape_has_neg_exp(residual_shape) {
+        return NumericOnlyCause::SymbolicResidual;
+    }
+
+    NumericOnlyCause::SymbolicResidual
+}
+
+fn numeric_only_cause_for_1var(
+    ctx: &Context,
+    a: ExprId,
+    b: ExprId,
+    var: &str,
+    config: &MetatestConfig,
+    filter: &FilterSpec,
+    residual_shape: &str,
+) -> NumericOnlyCause {
+    let stats = check_numeric_equiv_1var_stats(ctx, a, b, var, config, filter);
+    classify_numeric_only_cause(Some(&stats), 1, residual_shape)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn numeric_only_cause_for_2var(
+    ctx: &Context,
+    a: ExprId,
+    b: ExprId,
+    var1: &str,
+    var2: &str,
+    config: &MetatestConfig,
+    filter1: &FilterSpec,
+    filter2: &FilterSpec,
+    residual_shape: &str,
+) -> NumericOnlyCause {
+    let stats = check_numeric_equiv_2var_stats(ctx, a, b, var1, var2, config, filter1, filter2);
+    classify_numeric_only_cause(Some(&stats), 2, residual_shape)
+}
+
+fn print_numeric_only_cause_breakdown(counts: &HashMap<String, usize>) {
+    if counts.is_empty() {
+        return;
+    }
+
+    eprintln!("   🧭 Numeric-only by cause:");
+    let mut sorted: Vec<_> = counts.iter().collect();
+    sorted.sort_by(|a, b| b.1.cmp(a.1).then_with(|| a.0.cmp(b.0)));
+    for (cause, count) in sorted {
+        eprintln!("      - {}: {}", cause, count);
+    }
+}
+
 // =============================================================================
 // JSONL Baseline System (Phase 2)
 // =============================================================================
@@ -4098,10 +4564,11 @@ fn run_csv_combination_tests(
     let mut proved_composed = 0;
     let mut numeric_only = 0;
     let mut inconclusive = 0;
+    let mut numeric_only_causes: HashMap<String, usize> = HashMap::new();
     let mut nf_mismatch_examples: Vec<(String, String, String, String)> = Vec::new();
     let mut proved_composed_examples: Vec<(String, String, String, String)> = Vec::new();
-    let mut numeric_only_examples: Vec<(String, String, String, String, String, String)> =
-        Vec::new(); // (LHS, RHS, simp1, simp2, diff_residual, shape)
+    let mut numeric_only_examples: Vec<(String, String, String, String, String, String, String)> =
+        Vec::new(); // (LHS, RHS, simp1, simp2, diff_residual, shape, cause)
     let mut skipped = 0;
     let mut timeouts = 0;
     let mut cycle_events_total: usize = 0;
@@ -4158,9 +4625,13 @@ fn run_csv_combination_tests(
                 continue;
             }
 
-            // Alpha-rename pair2
-            let pair2_exp = alpha_rename(&pair2.exp, &pair2.vars[0], "u");
-            let pair2_simp = alpha_rename(&pair2.simp, &pair2.vars[0], "u");
+            let mut used_vars: HashSet<String> = pair1.vars.iter().cloned().collect();
+            let (pair2_exp, pair2_simp, pair2_vars, pair2_filters) =
+                rename_identity_for_combination(pair2, &mut used_vars);
+            let mut combined_vars = pair1.vars.clone();
+            combined_vars.extend(pair2_vars.clone());
+            let mut combined_filters = identity_filters(pair1);
+            combined_filters.extend(pair2_filters.clone());
 
             let combined_exp = format!("({}) {} ({})", pair1.exp, op.symbol(), pair2_exp);
             let combined_simp = format!("({}) {} ({})", pair1.simp, op.symbol(), pair2_simp);
@@ -4170,9 +4641,8 @@ fn run_csv_combination_tests(
             if op.is_multiplicative() {
                 let exp_clone = combined_exp.clone();
                 let simp_clone = combined_simp.clone();
-                let p1_var = pair1.vars[0].clone();
-                let p1_filter = pair1.filter_spec.clone();
-                let p2_filter = pair2.filter_spec.clone();
+                let combo_vars = combined_vars.clone();
+                let combo_filters = combined_filters.clone();
                 let config_clone = config.clone();
                 let v = verbose;
                 let timeout = combo_timeout;
@@ -4225,7 +4695,13 @@ fn run_csv_combination_tests(
                                 == std::cmp::Ordering::Equal;
 
                         if nf_match {
-                            let _ = tx.send(Some(("nf".to_string(), String::new(), String::new(), combo_cycles)));
+                            let _ = tx.send(Some((
+                                "nf".to_string(),
+                                String::new(),
+                                String::new(),
+                                String::new(),
+                                combo_cycles,
+                            )));
                             return;
                         }
 
@@ -4243,7 +4719,13 @@ fn run_csv_combination_tests(
                                 }
                                 let target = num_rational::BigRational::from_integer(1.into());
                                 if matches!(sq.context.get(qr), cas_ast::Expr::Number(n) if *n == target) {
-                                    let _ = tx.send(Some(("proved-q".to_string(), String::new(), String::new(), combo_cycles)));
+                                    let _ = tx.send(Some((
+                                        "proved-q".to_string(),
+                                        String::new(),
+                                        String::new(),
+                                        String::new(),
+                                        combo_cycles,
+                                    )));
                                     return;
                                 }
                             }
@@ -4262,7 +4744,13 @@ fn run_csv_combination_tests(
                                 }
                                 let zero = num_rational::BigRational::from_integer(0.into());
                                 if matches!(sd.context.get(dr), cas_ast::Expr::Number(n) if *n == zero) {
-                                    let _ = tx.send(Some(("proved-d".to_string(), String::new(), String::new(), combo_cycles)));
+                                    let _ = tx.send(Some((
+                                        "proved-d".to_string(),
+                                        String::new(),
+                                        String::new(),
+                                        String::new(),
+                                        combo_cycles,
+                                    )));
                                     return;
                                 }
                             }
@@ -4282,22 +4770,43 @@ fn run_csv_combination_tests(
                                 }
                                 let zero = num_rational::BigRational::from_integer(0.into());
                                 if matches!(sd.context.get(dr), cas_ast::Expr::Number(n) if *n == zero) {
-                                    let _ = tx.send(Some(("proved-d".to_string(), String::new(), String::new(), combo_cycles)));
+                                    let _ = tx.send(Some((
+                                        "proved-d".to_string(),
+                                        String::new(),
+                                        String::new(),
+                                        String::new(),
+                                        combo_cycles,
+                                    )));
                                     return;
                                 }
                             }
                         }
 
+                        if prove_zero_from_metamorphic_texts(
+                            &mut simplifier,
+                            &exp_clone,
+                            &simp_clone,
+                            e,
+                            s,
+                        ) {
+                            let _ = tx.send(Some((
+                                "proved-d".to_string(),
+                                String::new(),
+                                String::new(),
+                                String::new(),
+                                combo_cycles,
+                            )));
+                            return;
+                        }
+
                         // Check 3: Numeric equivalence
-                        match classify_numeric_equiv_2var_relaxed(
+                        match classify_numeric_equiv_for_vars(
                             &simplifier.context,
                             e,
                             s,
-                            &p1_var,
-                            "u",
+                            &combo_vars,
+                            &combo_filters,
                             &config_clone,
-                            &p1_filter,
-                            &p2_filter,
                         ) {
                             NumericCheckOutcome::Pass => {
                                 // Diagnostic: show what engine actually produced for LHS-RHS
@@ -4318,12 +4827,30 @@ fn run_csv_combination_tests(
                                 } else {
                                     String::new()
                                 };
-                                let _ = tx.send(Some(("numeric".to_string(), diff_str, shape, combo_cycles)));
+                                let cause = numeric_only_cause_for_vars(
+                                    &simplifier.context,
+                                    e,
+                                    s,
+                                    &combo_vars,
+                                    &combo_filters,
+                                    &config_clone,
+                                    &shape,
+                                )
+                                .label()
+                                .to_string();
+                                let _ = tx.send(Some((
+                                    "numeric".to_string(),
+                                    diff_str,
+                                    shape,
+                                    cause,
+                                    combo_cycles,
+                                )));
                             }
                             NumericCheckOutcome::Inconclusive(reason) => {
                                 if pair_composed_ok {
                                     let _ = tx.send(Some((
                                         "proved-composed".to_string(),
+                                        String::new(),
                                         String::new(),
                                         String::new(),
                                         combo_cycles,
@@ -4332,6 +4859,7 @@ fn run_csv_combination_tests(
                                     let _ = tx.send(Some((
                                         "inconclusive".to_string(),
                                         reason,
+                                        String::new(),
                                         String::new(),
                                         combo_cycles,
                                     )));
@@ -4343,11 +4871,13 @@ fn run_csv_combination_tests(
                                         "proved-composed".to_string(),
                                         String::new(),
                                         String::new(),
+                                        String::new(),
                                         combo_cycles,
                                     )));
                                 } else {
                                     let _ = tx.send(Some((
                                         "failed".to_string(),
+                                        String::new(),
                                         String::new(),
                                         String::new(),
                                         combo_cycles,
@@ -4358,7 +4888,7 @@ fn run_csv_combination_tests(
                     });
 
                 match rx.recv_timeout(timeout) {
-                    Ok(Some((kind, diff_str, shape, cycles))) => match kind.as_str() {
+                    Ok(Some((kind, diff_str, shape, cause, cycles))) => match kind.as_str() {
                         "nf" => {
                             nf_convergent += 1;
                             passed += 1;
@@ -4385,6 +4915,7 @@ fn run_csv_combination_tests(
                             numeric_only += 1;
                             passed += 1;
                             cycle_events_total += cycles;
+                            *numeric_only_causes.entry(cause.clone()).or_default() += 1;
                             if verbose {
                                 numeric_only_examples.push((
                                     combined_exp.clone(),
@@ -4393,6 +4924,7 @@ fn run_csv_combination_tests(
                                     pair2.simp.clone(),
                                     diff_str,
                                     shape,
+                                    cause,
                                 ));
                             }
                         }
@@ -4441,11 +4973,11 @@ fn run_csv_combination_tests(
                 let mut simplifier = Simplifier::with_default_rules();
                 let exp_parsed = match parse(&combined_exp, &mut simplifier.context) {
                     Ok(e) => e,
-                    Err(_) => return ("skip", String::new(), String::new(), 0),
+                    Err(_) => return ("skip", String::new(), String::new(), String::new(), 0),
                 };
                 let simp_parsed = match parse(&combined_simp, &mut simplifier.context) {
                     Ok(e) => e,
-                    Err(_) => return ("skip", String::new(), String::new(), 0),
+                    Err(_) => return ("skip", String::new(), String::new(), String::new(), 0),
                 };
 
                 let combo_start = std::time::Instant::now();
@@ -4470,7 +5002,13 @@ fn run_csv_combination_tests(
                         }
                     }
                     if combo_start.elapsed() > combo_timeout {
-                        return ("timeout", String::new(), String::new(), inline_cycles);
+                        return (
+                            "timeout",
+                            String::new(),
+                            String::new(),
+                            String::new(),
+                            inline_cycles,
+                        );
                     }
                     let (mut s, _, stats_s) = simplifier.simplify_with_stats(simp_parsed, opts);
                     inline_cycles += stats_s.cycle_events.len();
@@ -4490,7 +5028,13 @@ fn run_csv_combination_tests(
                     (e, s)
                 };
                 if combo_start.elapsed() > combo_timeout {
-                    return ("timeout", String::new(), String::new(), inline_cycles);
+                    return (
+                        "timeout",
+                        String::new(),
+                        String::new(),
+                        String::new(),
+                        inline_cycles,
+                    );
                 }
 
                 // Check 1: Normal form convergence (exact structural match)
@@ -4501,7 +5045,13 @@ fn run_csv_combination_tests(
                 ) == std::cmp::Ordering::Equal;
 
                 if nf_match {
-                    return ("nf", String::new(), String::new(), inline_cycles);
+                    return (
+                        "nf",
+                        String::new(),
+                        String::new(),
+                        String::new(),
+                        inline_cycles,
+                    );
                 }
 
                 // Check 2: Proved symbolic — simplify(LHS - RHS) == 0  [fresh context]
@@ -4524,7 +5074,13 @@ fn run_csv_combination_tests(
                         }
                         let zero = num_rational::BigRational::from_integer(0.into());
                         if matches!(sd.context.get(dr), cas_ast::Expr::Number(n) if *n == zero) {
-                            return ("proved", String::new(), String::new(), inline_cycles);
+                            return (
+                                "proved",
+                                String::new(),
+                                String::new(),
+                                String::new(),
+                                inline_cycles,
+                            );
                         }
                     }
                     // Also try with the polluted simplifier (same context that simplified LHS/RHS)
@@ -4548,24 +5104,44 @@ fn run_csv_combination_tests(
                     let target_value = num_rational::BigRational::from_integer(0.into());
                     if matches!(simplifier.context.get(ds), cas_ast::Expr::Number(n) if *n == target_value)
                     {
-                        return ("proved", String::new(), String::new(), inline_cycles);
+                        return (
+                            "proved",
+                            String::new(),
+                            String::new(),
+                            String::new(),
+                            inline_cycles,
+                        );
                     }
                     ds
                 };
+
+                if prove_zero_from_metamorphic_texts(
+                    &mut simplifier,
+                    &combined_exp,
+                    &combined_simp,
+                    exp_simplified,
+                    simp_simplified,
+                ) {
+                    return (
+                        "proved",
+                        String::new(),
+                        String::new(),
+                        String::new(),
+                        inline_cycles,
+                    );
+                }
 
                 // Check 3: Fallback to numeric equivalence. Only if both the direct
                 // symbolic proof and the numeric check fail do we fall back to
                 // "proved-composed", using the fact that both source identities are
                 // independently symbolically proved.
-                match classify_numeric_equiv_2var_relaxed(
+                match classify_numeric_equiv_for_vars(
                     &simplifier.context,
                     exp_simplified,
                     simp_simplified,
-                    &pair1.vars[0],
-                    "u",
+                    &combined_vars,
+                    &combined_filters,
                     &config,
-                    &pair1.filter_spec,
-                    &pair2.filter_spec,
                 ) {
                     NumericCheckOutcome::Pass => {
                         // Diagnostic: show what engine produced (the non-zero residual)
@@ -4586,7 +5162,18 @@ fn run_csv_combination_tests(
                         } else {
                             String::new()
                         };
-                        ("numeric", diff_str, shape, inline_cycles)
+                        let cause = numeric_only_cause_for_vars(
+                            &simplifier.context,
+                            exp_simplified,
+                            simp_simplified,
+                            &combined_vars,
+                            &combined_filters,
+                            &config,
+                            &shape,
+                        )
+                        .label()
+                        .to_string();
+                        ("numeric", diff_str, shape, cause, inline_cycles)
                     }
                     NumericCheckOutcome::Inconclusive(reason) => {
                         if pair_symbolic_ok[i] && pair_symbolic_ok[j] {
@@ -4594,10 +5181,17 @@ fn run_csv_combination_tests(
                                 "proved-composed",
                                 String::new(),
                                 String::new(),
+                                String::new(),
                                 inline_cycles,
                             )
                         } else {
-                            ("inconclusive", reason, String::new(), inline_cycles)
+                            (
+                                "inconclusive",
+                                reason,
+                                String::new(),
+                                String::new(),
+                                inline_cycles,
+                            )
                         }
                     }
                     NumericCheckOutcome::Failed(_) => {
@@ -4606,17 +5200,24 @@ fn run_csv_combination_tests(
                                 "proved-composed",
                                 String::new(),
                                 String::new(),
+                                String::new(),
                                 inline_cycles,
                             )
                         } else {
-                            ("failed", String::new(), String::new(), inline_cycles)
+                            (
+                                "failed",
+                                String::new(),
+                                String::new(),
+                                String::new(),
+                                inline_cycles,
+                            )
                         }
                     }
                 }
             }));
 
             match combo_result {
-                Ok((kind, diff_str, shape, cycles)) => match kind {
+                Ok((kind, diff_str, shape, cause, cycles)) => match kind {
                     "nf" => {
                         nf_convergent += 1;
                         passed += 1;
@@ -4651,6 +5252,7 @@ fn run_csv_combination_tests(
                         numeric_only += 1;
                         passed += 1;
                         cycle_events_total += cycles;
+                        *numeric_only_causes.entry(cause.clone()).or_default() += 1;
                         if verbose {
                             numeric_only_examples.push((
                                 combined_exp.clone(),
@@ -4659,6 +5261,7 @@ fn run_csv_combination_tests(
                                 pair2.simp.clone(),
                                 diff_str,
                                 shape,
+                                cause,
                             ));
                         }
                     }
@@ -4711,6 +5314,9 @@ fn run_csv_combination_tests(
         numeric_only,
         inconclusive
     );
+    if verbose && numeric_only > 0 {
+        print_numeric_only_cause_breakdown(&numeric_only_causes);
+    }
 
     // Print NF-mismatch examples if verbose (proved_symbolic but different normal forms)
     if verbose && !nf_mismatch_examples.is_empty() {
@@ -4750,11 +5356,12 @@ fn run_csv_combination_tests(
     // Print numeric-only examples if verbose
     if verbose && !numeric_only_examples.is_empty() {
         eprintln!("🌡️ Numeric-only examples (no symbolic proof found):");
-        for (i, (lhs, rhs, _simp1, _simp2, diff_residual, _shape)) in
+        for (i, (lhs, rhs, _simp1, _simp2, diff_residual, _shape, cause)) in
             numeric_only_examples.iter().take(max_examples).enumerate()
         {
             eprintln!("   {:2}. LHS: {}", i + 1, lhs);
             eprintln!("       RHS: {}", rhs);
+            eprintln!("       Cause: {}", cause);
             eprintln!("       simplify(LHS-RHS): {}", diff_residual);
         }
         if numeric_only > max_examples {
@@ -4768,7 +5375,7 @@ fn run_csv_combination_tests(
         // Family classifier for numeric-only cases - stores expressions per family
         let mut family_examples: HashMap<&str, Vec<(String, String)>> = HashMap::new();
 
-        for (lhs, rhs, _, _, _, _) in &numeric_only_examples {
+        for (lhs, rhs, _, _, _, _, _) in &numeric_only_examples {
             let combined = format!("{} {}", lhs, rhs);
             let expr_pair = (lhs.clone(), rhs.clone());
 
@@ -4829,7 +5436,7 @@ fn run_csv_combination_tests(
         eprintln!("📈 Top-N Shape Analysis (residual patterns):");
         let mut shape_counts: HashMap<String, (usize, String)> = HashMap::new(); // shape -> (count, example_diff)
 
-        for (_lhs, _rhs, _, _, diff_residual, shape) in &numeric_only_examples {
+        for (_lhs, _rhs, _, _, diff_residual, shape, _) in &numeric_only_examples {
             let entry = shape_counts
                 .entry(shape.clone())
                 .or_insert((0, diff_residual.clone()));
@@ -4885,6 +5492,10 @@ fn run_csv_combination_tests(
     if include_triples && n >= 3 {
         let mut triple_passed = 0;
         let mut triple_failed = 0;
+        let mut triple_inconclusive = 0;
+        let mut triple_nf = 0;
+        let mut triple_proved = 0;
+        let mut triple_numeric = 0;
         let triple_limit = 100; // Limit to avoid explosion
         let mut triple_count = 0;
 
@@ -4899,11 +5510,17 @@ fn run_csv_combination_tests(
                     let pair2 = &pairs[j];
                     let pair3 = &pairs[k];
 
-                    // Alpha-rename
-                    let pair2_exp = alpha_rename(&pair2.exp, &pair2.vars[0], "u");
-                    let pair2_simp = alpha_rename(&pair2.simp, &pair2.vars[0], "u");
-                    let pair3_exp = alpha_rename(&pair3.exp, &pair3.vars[0], "v");
-                    let pair3_simp = alpha_rename(&pair3.simp, &pair3.vars[0], "v");
+                    let mut used_vars: HashSet<String> = pair1.vars.iter().cloned().collect();
+                    let (pair2_exp, pair2_simp, pair2_vars, pair2_filters) =
+                        rename_identity_for_combination(pair2, &mut used_vars);
+                    let (pair3_exp, pair3_simp, pair3_vars, pair3_filters) =
+                        rename_identity_for_combination(pair3, &mut used_vars);
+                    let mut combined_vars = pair1.vars.clone();
+                    combined_vars.extend(pair2_vars);
+                    combined_vars.extend(pair3_vars);
+                    let mut combined_filters = identity_filters(pair1);
+                    combined_filters.extend(pair2_filters);
+                    combined_filters.extend(pair3_filters);
 
                     let combined_exp = format!(
                         "(({}) {} ({})) {} ({})",
@@ -4932,47 +5549,56 @@ fn run_csv_combination_tests(
                         Err(_) => continue,
                     };
 
-                    let (exp_simplified, _) = simplifier.simplify(exp_parsed);
-                    let (simp_simplified, _) = simplifier.simplify(simp_parsed);
+                    let (exp_simplified_raw, _) = simplifier.simplify(exp_parsed);
+                    let exp_simplified =
+                        fold_constants_safe(&mut simplifier.context, exp_simplified_raw);
+                    let (simp_simplified_raw, _) = simplifier.simplify(simp_parsed);
+                    let simp_simplified =
+                        fold_constants_safe(&mut simplifier.context, simp_simplified_raw);
 
-                    // 3-var check: sample at a few points
-                    let (lo, hi) = config.sample_range;
-                    let mut valid = true;
-                    for test_val in [0.5, 1.0, 1.5, 2.0] {
-                        let t = (test_val - lo) / (hi - lo);
-                        let x_val = lo + (hi - lo) * t.clamp(0.0, 1.0);
-
-                        let mut var_map = HashMap::new();
-                        var_map.insert(pair1.vars[0].clone(), x_val);
-                        var_map.insert("u".to_string(), x_val * 1.1);
-                        var_map.insert("v".to_string(), x_val * 0.9);
-
-                        let va = eval_f64(&simplifier.context, exp_simplified, &var_map);
-                        let vb = eval_f64(&simplifier.context, simp_simplified, &var_map);
-
-                        match (va, vb) {
-                            (Some(va), Some(vb))
-                                if !va.is_nan()
-                                    && !vb.is_nan()
-                                    && !va.is_infinite()
-                                    && !vb.is_infinite() =>
-                            {
-                                let diff = (va - vb).abs();
-                                let scale = va.abs().max(vb.abs()).max(1.0);
-                                let allowed = config.atol + config.rtol * scale;
-                                if diff > allowed {
-                                    valid = false;
-                                    break;
-                                }
-                            }
-                            _ => {}
-                        }
+                    if cas_solver::runtime::compare_expr(
+                        &simplifier.context,
+                        exp_simplified,
+                        simp_simplified,
+                    ) == std::cmp::Ordering::Equal
+                    {
+                        triple_nf += 1;
+                        triple_passed += 1;
+                        triple_count += 1;
+                        continue;
                     }
 
-                    if valid {
+                    if prove_zero_from_metamorphic_texts(
+                        &mut simplifier,
+                        &combined_exp,
+                        &combined_simp,
+                        exp_simplified,
+                        simp_simplified,
+                    ) {
+                        triple_proved += 1;
                         triple_passed += 1;
-                    } else {
-                        triple_failed += 1;
+                        triple_count += 1;
+                        continue;
+                    }
+
+                    match classify_numeric_equiv_for_vars(
+                        &simplifier.context,
+                        exp_simplified,
+                        simp_simplified,
+                        &combined_vars,
+                        &combined_filters,
+                        &config,
+                    ) {
+                        NumericCheckOutcome::Pass => {
+                            triple_numeric += 1;
+                            triple_passed += 1;
+                        }
+                        NumericCheckOutcome::Inconclusive(_) => {
+                            triple_inconclusive += 1;
+                        }
+                        NumericCheckOutcome::Failed(_) => {
+                            triple_failed += 1;
+                        }
                     }
 
                     triple_count += 1;
@@ -4981,8 +5607,12 @@ fn run_csv_combination_tests(
         }
 
         eprintln!(
-            "✅ Triple combinations: {} passed, {} failed (of {} tested)",
-            triple_passed, triple_failed, triple_count
+            "✅ Triple combinations: {} passed, {} failed, {} inconclusive (of {} tested)",
+            triple_passed, triple_failed, triple_inconclusive, triple_count
+        );
+        eprintln!(
+            "   📐 Triple NF-convergent: {} | 🔢 Triple Proved-symbolic: {} | 🌡️ Triple Numeric-only: {}",
+            triple_nf, triple_proved, triple_numeric
         );
     }
 
@@ -6231,6 +6861,88 @@ struct ContextualPair {
     family: String,
 }
 
+#[derive(Clone, Debug)]
+struct IdempotenceExpr {
+    expr: String,
+    vars: Vec<String>,
+    filters: Vec<FilterSpec>,
+    family: String,
+}
+
+#[derive(Clone, Debug)]
+struct RequiresContractExpr {
+    expr: String,
+    expect_requires: bool,
+    family: String,
+}
+
+#[derive(Debug, Clone)]
+struct WarningsContractExpr {
+    expr: String,
+    mode: cas_solver::runtime::DomainMode,
+    expect_warning: bool,
+    family: String,
+}
+
+#[derive(Debug, Clone)]
+struct TransparencySignalContractExpr {
+    expr: String,
+    mode: cas_solver::runtime::DomainMode,
+    expect_signal: bool,
+    family: String,
+}
+
+#[derive(Debug, Clone)]
+struct BranchTransparencyContractExpr {
+    expr: String,
+    mode: cas_solver::runtime::DomainMode,
+    inv_trig: cas_solver::runtime::InverseTrigPolicy,
+    expect_signal: bool,
+    family: String,
+}
+
+#[derive(Debug, Clone)]
+enum SemanticBehaviorExpectation {
+    Exact(String),
+    ContainsAll(Vec<String>),
+}
+
+#[derive(Debug, Clone)]
+struct SemanticBehaviorContractExpr {
+    expr: String,
+    value_domain: cas_solver::runtime::ValueDomain,
+    mode: cas_solver::runtime::DomainMode,
+    expectation: SemanticBehaviorExpectation,
+    family: String,
+}
+
+#[derive(Debug, Clone)]
+struct RequiresModeContractExpr {
+    expr: String,
+    mode: cas_solver::runtime::DomainMode,
+    expect_requires: bool,
+    family: String,
+}
+
+#[derive(Debug, Clone)]
+struct SemanticAxesContractExpr {
+    expr: String,
+    value_domain: cas_solver::runtime::ValueDomain,
+    mode: cas_solver::runtime::DomainMode,
+    expect_requires: bool,
+    expect_warning: bool,
+    family: String,
+}
+
+#[derive(Debug, Clone)]
+struct AssumptionTraceContractExpr {
+    expr: String,
+    mode: cas_solver::runtime::DomainMode,
+    inv_trig: cas_solver::runtime::InverseTrigPolicy,
+    expected_kind: Option<String>,
+    family: String,
+}
+
 /// Word-boundary-aware text substitution.
 /// Replaces all occurrences of `var` as a standalone word in `template`
 /// with `replacement`, wrapping in parentheses for safety.
@@ -6425,8 +7137,2564 @@ fn load_contextual_pairs() -> Vec<ContextualPair> {
     load_direct_pairs("contextual_pairs.csv")
 }
 
+fn load_contextual_rational_pairs() -> Vec<ContextualPair> {
+    load_direct_pairs("contextual_rational_pairs.csv")
+}
+
+fn load_contextual_trig_pairs() -> Vec<ContextualPair> {
+    load_direct_pairs("contextual_trig_pairs.csv")
+}
+
+fn load_contextual_polynomial_pairs() -> Vec<ContextualPair> {
+    load_direct_pairs("contextual_polynomial_pairs.csv")
+}
+
+fn load_contextual_radical_pairs() -> Vec<ContextualPair> {
+    load_direct_pairs("contextual_radical_pairs.csv")
+}
+
 fn load_residual_pairs() -> Vec<ContextualPair> {
     load_direct_pairs("residual_pairs.csv")
+}
+
+fn load_idempotence_expressions() -> Vec<IdempotenceExpr> {
+    let csv_path = find_test_data_file("idempotence_expressions.csv");
+    let content =
+        std::fs::read_to_string(csv_path).expect("Failed to read idempotence_expressions.csv");
+
+    let mut exprs = Vec::new();
+    let mut current_family = String::from("Uncategorized");
+    for (line_idx, line) in content.lines().enumerate() {
+        let line_num = line_idx + 1;
+        let line = line.trim();
+        if line.starts_with('#') {
+            let label = line.trim_start_matches('#').trim();
+            if !label.is_empty() && !label.starts_with("Format") && !label.starts_with("Goal:") {
+                current_family = label.to_string();
+            }
+            continue;
+        }
+        if line.is_empty() {
+            continue;
+        }
+
+        let parts: Vec<&str> = line.splitn(3, ',').collect();
+        if parts.len() < 2 {
+            panic!(
+                "idempotence_expressions.csv line {}: expected at least expr,vars. Line: '{}'",
+                line_num, line
+            );
+        }
+
+        let vars: Vec<String> = parts[1]
+            .trim()
+            .split(';')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        let filters = if parts.len() >= 3 {
+            parse_filter_specs(parts[2], vars.len(), line_num)
+        } else {
+            vec![FilterSpec::None; vars.len()]
+        };
+
+        exprs.push(IdempotenceExpr {
+            expr: parts[0].trim().to_string(),
+            vars,
+            filters,
+            family: current_family.clone(),
+        });
+    }
+
+    exprs
+}
+
+fn load_requires_contract_expressions() -> Vec<RequiresContractExpr> {
+    let csv_path = find_test_data_file("requires_contract_expressions.csv");
+    let content = std::fs::read_to_string(csv_path)
+        .expect("Failed to read requires_contract_expressions.csv");
+
+    let mut exprs = Vec::new();
+    let mut current_family = String::from("Uncategorized");
+    for (line_idx, line) in content.lines().enumerate() {
+        let line_num = line_idx + 1;
+        let line = line.trim();
+        if line.starts_with('#') {
+            let label = line.trim_start_matches('#').trim();
+            if !label.is_empty()
+                && !label.starts_with("Format")
+                && !label.starts_with("Expressions")
+            {
+                current_family = label.to_string();
+            }
+            continue;
+        }
+        if line.is_empty() {
+            continue;
+        }
+
+        let parts: Vec<&str> = line.rsplitn(2, ',').collect();
+        if parts.len() != 2 {
+            panic!(
+                "requires_contract_expressions.csv line {}: expected expr,expect_requires. Line: '{}'",
+                line_num, line
+            );
+        }
+
+        let expr = parts[1].trim().to_string();
+        let expect_requires = match parts[0].trim().to_lowercase().as_str() {
+            "yes" | "true" => true,
+            "no" | "false" => false,
+            other => panic!(
+                "requires_contract_expressions.csv line {}: invalid expect_requires '{}'",
+                line_num, other
+            ),
+        };
+
+        exprs.push(RequiresContractExpr {
+            expr,
+            expect_requires,
+            family: current_family.clone(),
+        });
+    }
+
+    exprs
+}
+
+fn parse_domain_mode_label(
+    label: &str,
+    csv_name: &str,
+    line_num: usize,
+) -> cas_solver::runtime::DomainMode {
+    match label.trim().to_lowercase().as_str() {
+        "generic" => cas_solver::runtime::DomainMode::Generic,
+        "strict" => cas_solver::runtime::DomainMode::Strict,
+        "assume" => cas_solver::runtime::DomainMode::Assume,
+        other => panic!(
+            "{} line {}: invalid domain mode '{}'",
+            csv_name, line_num, other
+        ),
+    }
+}
+
+fn domain_mode_label(mode: cas_solver::runtime::DomainMode) -> &'static str {
+    match mode {
+        cas_solver::runtime::DomainMode::Generic => "generic",
+        cas_solver::runtime::DomainMode::Strict => "strict",
+        cas_solver::runtime::DomainMode::Assume => "assume",
+    }
+}
+
+fn parse_value_domain_label(
+    label: &str,
+    csv_name: &str,
+    line_num: usize,
+) -> cas_solver::runtime::ValueDomain {
+    match label.trim().to_lowercase().as_str() {
+        "real" | "realonly" => cas_solver::runtime::ValueDomain::RealOnly,
+        "complex" | "complexenabled" => cas_solver::runtime::ValueDomain::ComplexEnabled,
+        other => panic!(
+            "{} line {}: invalid value domain '{}'",
+            csv_name, line_num, other
+        ),
+    }
+}
+
+fn value_domain_label(value_domain: cas_solver::runtime::ValueDomain) -> &'static str {
+    match value_domain {
+        cas_solver::runtime::ValueDomain::RealOnly => "real",
+        cas_solver::runtime::ValueDomain::ComplexEnabled => "complex",
+    }
+}
+
+fn parse_inv_trig_policy_label(
+    label: &str,
+    csv_name: &str,
+    line_num: usize,
+) -> cas_solver::runtime::InverseTrigPolicy {
+    match label.trim().to_lowercase().as_str() {
+        "strict" => cas_solver::runtime::InverseTrigPolicy::Strict,
+        "principal" | "principalvalue" => cas_solver::runtime::InverseTrigPolicy::PrincipalValue,
+        other => panic!(
+            "{} line {}: invalid inverse trig policy '{}'",
+            csv_name, line_num, other
+        ),
+    }
+}
+
+fn inv_trig_policy_label(value: cas_solver::runtime::InverseTrigPolicy) -> &'static str {
+    match value {
+        cas_solver::runtime::InverseTrigPolicy::Strict => "strict",
+        cas_solver::runtime::InverseTrigPolicy::PrincipalValue => "principal",
+    }
+}
+
+fn load_warnings_contract_expressions() -> Vec<WarningsContractExpr> {
+    let csv_path = find_test_data_file("warnings_contract_expressions.csv");
+    let content = std::fs::read_to_string(csv_path)
+        .expect("Failed to read warnings_contract_expressions.csv");
+
+    let mut exprs = Vec::new();
+    let mut current_family = String::from("Uncategorized");
+    for (line_idx, line) in content.lines().enumerate() {
+        let line_num = line_idx + 1;
+        let line = line.trim();
+        if line.starts_with('#') {
+            let label = line.trim_start_matches('#').trim();
+            if !label.is_empty()
+                && !label.starts_with("Format")
+                && !label.starts_with("Expressions")
+            {
+                current_family = label.to_string();
+            }
+            continue;
+        }
+        if line.is_empty() {
+            continue;
+        }
+
+        let parts: Vec<&str> = line.rsplitn(3, ',').collect();
+        if parts.len() != 3 {
+            panic!(
+                "warnings_contract_expressions.csv line {}: expected expr,mode,expect_warning. Line: '{}'",
+                line_num, line
+            );
+        }
+
+        let expr = parts[2].trim().to_string();
+        let mode = parse_domain_mode_label(parts[1], "warnings_contract_expressions.csv", line_num);
+        let expect_warning = match parts[0].trim().to_lowercase().as_str() {
+            "yes" | "true" => true,
+            "no" | "false" => false,
+            other => panic!(
+                "warnings_contract_expressions.csv line {}: invalid expect_warning '{}'",
+                line_num, other
+            ),
+        };
+
+        exprs.push(WarningsContractExpr {
+            expr,
+            mode,
+            expect_warning,
+            family: current_family.clone(),
+        });
+    }
+
+    exprs
+}
+
+fn load_transparency_signal_contract_expressions() -> Vec<TransparencySignalContractExpr> {
+    let csv_path = find_test_data_file("transparency_signal_contract_expressions.csv");
+    let content = std::fs::read_to_string(csv_path)
+        .expect("Failed to read transparency_signal_contract_expressions.csv");
+
+    let mut exprs = Vec::new();
+    let mut current_family = String::from("Uncategorized");
+    for (line_idx, line) in content.lines().enumerate() {
+        let line_num = line_idx + 1;
+        let line = line.trim();
+        if line.starts_with('#') {
+            let label = line.trim_start_matches('#').trim();
+            if !label.is_empty()
+                && !label.starts_with("Format")
+                && !label.starts_with("Expressions")
+            {
+                current_family = label.to_string();
+            }
+            continue;
+        }
+        if line.is_empty() {
+            continue;
+        }
+
+        let parts: Vec<&str> = line.rsplitn(3, ',').collect();
+        if parts.len() != 3 {
+            panic!(
+                "transparency_signal_contract_expressions.csv line {}: expected expr,mode,expect_signal. Line: '{}'",
+                line_num, line
+            );
+        }
+
+        let expr = parts[2].trim().to_string();
+        let mode = parse_domain_mode_label(
+            parts[1],
+            "transparency_signal_contract_expressions.csv",
+            line_num,
+        );
+        let expect_signal = match parts[0].trim().to_lowercase().as_str() {
+            "yes" | "true" => true,
+            "no" | "false" => false,
+            other => panic!(
+                "transparency_signal_contract_expressions.csv line {}: invalid expect_signal '{}'",
+                line_num, other
+            ),
+        };
+
+        exprs.push(TransparencySignalContractExpr {
+            expr,
+            mode,
+            expect_signal,
+            family: current_family.clone(),
+        });
+    }
+
+    exprs
+}
+
+fn load_branch_transparency_contract_expressions() -> Vec<BranchTransparencyContractExpr> {
+    let csv_path = find_test_data_file("branch_transparency_contract_expressions.csv");
+    let content = std::fs::read_to_string(csv_path)
+        .expect("Failed to read branch_transparency_contract_expressions.csv");
+
+    let mut exprs = Vec::new();
+    let mut current_family = String::from("Uncategorized");
+    for (line_idx, line) in content.lines().enumerate() {
+        let line_num = line_idx + 1;
+        let line = line.trim();
+        if line.starts_with('#') {
+            let label = line.trim_start_matches('#').trim();
+            if !label.is_empty()
+                && !label.starts_with("Format")
+                && !label.starts_with("Expressions")
+            {
+                current_family = label.to_string();
+            }
+            continue;
+        }
+        if line.is_empty() {
+            continue;
+        }
+
+        let parts: Vec<&str> = line.rsplitn(4, ',').collect();
+        if parts.len() != 4 {
+            panic!(
+                "branch_transparency_contract_expressions.csv line {}: expected expr,mode,inv_trig,expect_signal. Line: '{}'",
+                line_num, line
+            );
+        }
+
+        let expr = parts[3].trim().to_string();
+        let mode = parse_domain_mode_label(
+            parts[2],
+            "branch_transparency_contract_expressions.csv",
+            line_num,
+        );
+        let inv_trig = parse_inv_trig_policy_label(
+            parts[1],
+            "branch_transparency_contract_expressions.csv",
+            line_num,
+        );
+        let expect_signal = match parts[0].trim().to_lowercase().as_str() {
+            "yes" | "true" => true,
+            "no" | "false" => false,
+            other => panic!(
+                "branch_transparency_contract_expressions.csv line {}: invalid expect_signal '{}'",
+                line_num, other
+            ),
+        };
+
+        exprs.push(BranchTransparencyContractExpr {
+            expr,
+            mode,
+            inv_trig,
+            expect_signal,
+            family: current_family.clone(),
+        });
+    }
+
+    exprs
+}
+
+fn load_semantic_behavior_contract_expressions() -> Vec<SemanticBehaviorContractExpr> {
+    let csv_path = find_test_data_file("semantic_behavior_contract_expressions.csv");
+    let content = std::fs::read_to_string(csv_path)
+        .expect("Failed to read semantic_behavior_contract_expressions.csv");
+
+    let mut exprs = Vec::new();
+    let mut current_family = String::from("Uncategorized");
+    for (line_idx, line) in content.lines().enumerate() {
+        let line_num = line_idx + 1;
+        let line = line.trim();
+        if line.starts_with('#') {
+            let label = line.trim_start_matches('#').trim();
+            if !label.is_empty()
+                && !label.starts_with("Format")
+                && !label.starts_with("Expressions")
+            {
+                current_family = label.to_string();
+            }
+            continue;
+        }
+        if line.is_empty() {
+            continue;
+        }
+
+        let parts: Vec<&str> = line.rsplitn(5, ',').collect();
+        if parts.len() != 5 {
+            panic!(
+                "semantic_behavior_contract_expressions.csv line {}: expected expr,value_domain,mode,match_kind,expected. Line: '{}'",
+                line_num, line
+            );
+        }
+
+        let expr = parts[4].trim().to_string();
+        let value_domain = parse_value_domain_label(
+            parts[3],
+            "semantic_behavior_contract_expressions.csv",
+            line_num,
+        );
+        let mode = parse_domain_mode_label(
+            parts[2],
+            "semantic_behavior_contract_expressions.csv",
+            line_num,
+        );
+        let expectation = match parts[1].trim().to_lowercase().as_str() {
+            "exact" => SemanticBehaviorExpectation::Exact(parts[0].trim().to_string()),
+            "contains_all" => SemanticBehaviorExpectation::ContainsAll(
+                parts[0]
+                    .split(';')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect(),
+            ),
+            other => panic!(
+                "semantic_behavior_contract_expressions.csv line {}: invalid match_kind '{}'",
+                line_num, other
+            ),
+        };
+
+        exprs.push(SemanticBehaviorContractExpr {
+            expr,
+            value_domain,
+            mode,
+            expectation,
+            family: current_family.clone(),
+        });
+    }
+
+    exprs
+}
+
+fn load_requires_mode_contract_expressions() -> Vec<RequiresModeContractExpr> {
+    let csv_path = find_test_data_file("requires_mode_contract_expressions.csv");
+    let content = std::fs::read_to_string(csv_path)
+        .expect("Failed to read requires_mode_contract_expressions.csv");
+
+    let mut exprs = Vec::new();
+    let mut current_family = String::from("Uncategorized");
+    for (line_idx, line) in content.lines().enumerate() {
+        let line_num = line_idx + 1;
+        let line = line.trim();
+        if line.starts_with('#') {
+            let label = line.trim_start_matches('#').trim();
+            if !label.is_empty()
+                && !label.starts_with("Format")
+                && !label.starts_with("Expressions")
+            {
+                current_family = label.to_string();
+            }
+            continue;
+        }
+        if line.is_empty() {
+            continue;
+        }
+
+        let parts: Vec<&str> = line.rsplitn(3, ',').collect();
+        if parts.len() != 3 {
+            panic!(
+                "requires_mode_contract_expressions.csv line {}: expected expr,mode,expect_requires. Line: '{}'",
+                line_num, line
+            );
+        }
+
+        let expr = parts[2].trim().to_string();
+        let mode =
+            parse_domain_mode_label(parts[1], "requires_mode_contract_expressions.csv", line_num);
+        let expect_requires = match parts[0].trim().to_lowercase().as_str() {
+            "yes" | "true" => true,
+            "no" | "false" => false,
+            other => panic!(
+                "requires_mode_contract_expressions.csv line {}: invalid expect_requires '{}'",
+                line_num, other
+            ),
+        };
+
+        exprs.push(RequiresModeContractExpr {
+            expr,
+            mode,
+            expect_requires,
+            family: current_family.clone(),
+        });
+    }
+
+    exprs
+}
+
+fn load_semantic_axes_contract_expressions() -> Vec<SemanticAxesContractExpr> {
+    let csv_path = find_test_data_file("semantic_axes_contract_expressions.csv");
+    let content = std::fs::read_to_string(csv_path)
+        .expect("Failed to read semantic_axes_contract_expressions.csv");
+
+    let mut exprs = Vec::new();
+    let mut current_family = String::from("Uncategorized");
+    for (line_idx, line) in content.lines().enumerate() {
+        let line_num = line_idx + 1;
+        let line = line.trim();
+        if line.starts_with('#') {
+            let label = line.trim_start_matches('#').trim();
+            if !label.is_empty()
+                && !label.starts_with("Format")
+                && !label.starts_with("Expressions")
+            {
+                current_family = label.to_string();
+            }
+            continue;
+        }
+        if line.is_empty() {
+            continue;
+        }
+
+        let parts: Vec<&str> = line.rsplitn(5, ',').collect();
+        if parts.len() != 5 {
+            panic!(
+                "semantic_axes_contract_expressions.csv line {}: expected expr,value_domain,mode,expect_requires,expect_warning. Line: '{}'",
+                line_num, line
+            );
+        }
+
+        let expr = parts[4].trim().to_string();
+        let value_domain =
+            parse_value_domain_label(parts[3], "semantic_axes_contract_expressions.csv", line_num);
+        let mode =
+            parse_domain_mode_label(parts[2], "semantic_axes_contract_expressions.csv", line_num);
+        let expect_requires = match parts[1].trim().to_lowercase().as_str() {
+            "yes" | "true" => true,
+            "no" | "false" => false,
+            other => panic!(
+                "semantic_axes_contract_expressions.csv line {}: invalid expect_requires '{}'",
+                line_num, other
+            ),
+        };
+        let expect_warning = match parts[0].trim().to_lowercase().as_str() {
+            "yes" | "true" => true,
+            "no" | "false" => false,
+            other => panic!(
+                "semantic_axes_contract_expressions.csv line {}: invalid expect_warning '{}'",
+                line_num, other
+            ),
+        };
+
+        exprs.push(SemanticAxesContractExpr {
+            expr,
+            value_domain,
+            mode,
+            expect_requires,
+            expect_warning,
+            family: current_family.clone(),
+        });
+    }
+
+    exprs
+}
+
+fn load_assumption_trace_contract_expressions() -> Vec<AssumptionTraceContractExpr> {
+    let csv_path = find_test_data_file("assumption_trace_contract_expressions.csv");
+    let content = std::fs::read_to_string(csv_path)
+        .expect("Failed to read assumption_trace_contract_expressions.csv");
+
+    let mut exprs = Vec::new();
+    let mut current_family = String::from("Uncategorized");
+    for (line_idx, line) in content.lines().enumerate() {
+        let line_num = line_idx + 1;
+        let line = line.trim();
+        if line.starts_with('#') {
+            let label = line.trim_start_matches('#').trim();
+            if !label.is_empty()
+                && !label.starts_with("Format")
+                && !label.starts_with("Expressions")
+            {
+                current_family = label.to_string();
+            }
+            continue;
+        }
+        if line.is_empty() {
+            continue;
+        }
+
+        let parts: Vec<&str> = line.rsplitn(4, ',').collect();
+        if parts.len() != 4 {
+            panic!(
+                "assumption_trace_contract_expressions.csv line {}: expected expr,mode,inv_trig,expected_kind. Line: '{}'",
+                line_num, line
+            );
+        }
+
+        let expr = parts[3].trim().to_string();
+        let mode = parse_domain_mode_label(
+            parts[2],
+            "assumption_trace_contract_expressions.csv",
+            line_num,
+        );
+        let inv_trig = parse_inv_trig_policy_label(
+            parts[1],
+            "assumption_trace_contract_expressions.csv",
+            line_num,
+        );
+        let expected_kind = match parts[0].trim().to_lowercase().as_str() {
+            "none" | "" => None,
+            other => Some(other.to_string()),
+        };
+
+        exprs.push(AssumptionTraceContractExpr {
+            expr,
+            mode,
+            inv_trig,
+            expected_kind,
+            family: current_family.clone(),
+        });
+    }
+
+    exprs
+}
+
+#[derive(Debug, Default)]
+struct SimplifyMetadata {
+    result: String,
+    required: Vec<String>,
+    warnings: Vec<String>,
+}
+
+#[derive(Debug, Default)]
+struct SimplifyTraceMetadata {
+    result: String,
+    assumption_kinds: Vec<String>,
+}
+
+#[derive(Debug, Default)]
+struct SimplifyTransparencyMetadata {
+    result: String,
+    warnings: Vec<String>,
+    assumption_signals: Vec<String>,
+}
+
+fn simplify_with_metadata_on_axes(
+    input: &str,
+    mode: cas_solver::runtime::DomainMode,
+    value_domain: cas_solver::runtime::ValueDomain,
+) -> Result<SimplifyMetadata, String> {
+    let mut engine = Engine::new();
+    let mut state = SessionState::new();
+    state.options_mut().shared.semantics.domain_mode = mode;
+    state.options_mut().shared.semantics.value_domain = value_domain;
+
+    let parsed = parse(input, &mut engine.simplifier.context)
+        .map_err(|e| format!("parse failed for '{}': {:?}", input, e))?;
+    let req = EvalRequest {
+        raw_input: input.to_string(),
+        parsed,
+        action: EvalAction::Simplify,
+        auto_store: false,
+    };
+
+    let output = engine
+        .eval(&mut state, req)
+        .map_err(|e| format!("eval failed for '{}': {:?}", input, e))?;
+
+    let result = match &output.result {
+        EvalResult::Expr(e) => DisplayExpr {
+            context: &engine.simplifier.context,
+            id: *e,
+        }
+        .to_string(),
+        other => {
+            return Err(format!(
+                "unexpected eval result for '{}': {:?}",
+                input, other
+            ));
+        }
+    };
+
+    let mut required: Vec<String> = output
+        .required_conditions
+        .iter()
+        .map(|cond| cond.display(&engine.simplifier.context))
+        .collect();
+    required.sort();
+    required.dedup();
+
+    let mut warnings: Vec<String> = output
+        .domain_warnings
+        .iter()
+        .map(|w| w.message.clone())
+        .collect();
+    warnings.sort();
+    warnings.dedup();
+
+    Ok(SimplifyMetadata {
+        result,
+        required,
+        warnings,
+    })
+}
+
+fn simplify_with_assumption_trace(
+    input: &str,
+    mode: cas_solver::runtime::DomainMode,
+    inv_trig: cas_solver::runtime::InverseTrigPolicy,
+) -> Result<SimplifyTraceMetadata, String> {
+    let mut engine = Engine::new();
+    let mut state = SessionState::new();
+    state.options_mut().shared.semantics.domain_mode = mode;
+    state.options_mut().shared.semantics.inv_trig = inv_trig;
+
+    let parsed = parse(input, &mut engine.simplifier.context)
+        .map_err(|e| format!("parse failed for '{}': {:?}", input, e))?;
+    let req = EvalRequest {
+        raw_input: input.to_string(),
+        parsed,
+        action: EvalAction::Simplify,
+        auto_store: false,
+    };
+
+    let output = engine
+        .eval(&mut state, req)
+        .map_err(|e| format!("eval failed for '{}': {:?}", input, e))?;
+
+    let result = match &output.result {
+        EvalResult::Expr(e) => DisplayExpr {
+            context: &engine.simplifier.context,
+            id: *e,
+        }
+        .to_string(),
+        other => {
+            return Err(format!(
+                "unexpected eval result for '{}': {:?}",
+                input, other
+            ));
+        }
+    };
+
+    let mut assumption_kinds: Vec<String> = output
+        .steps
+        .iter()
+        .flat_map(|step| step.assumption_events().iter())
+        .map(|event| event.key.kind().to_string())
+        .collect();
+    assumption_kinds.sort();
+    assumption_kinds.dedup();
+
+    Ok(SimplifyTraceMetadata {
+        result,
+        assumption_kinds,
+    })
+}
+
+fn simplify_with_transparency_metadata(
+    input: &str,
+    mode: cas_solver::runtime::DomainMode,
+) -> Result<SimplifyTransparencyMetadata, String> {
+    simplify_with_transparency_metadata_with_inv_trig(
+        input,
+        mode,
+        cas_solver::runtime::InverseTrigPolicy::Strict,
+    )
+}
+
+fn simplify_with_transparency_metadata_with_inv_trig(
+    input: &str,
+    mode: cas_solver::runtime::DomainMode,
+    inv_trig: cas_solver::runtime::InverseTrigPolicy,
+) -> Result<SimplifyTransparencyMetadata, String> {
+    let mut engine = Engine::new();
+    let mut state = SessionState::new();
+    state.options_mut().shared.semantics.domain_mode = mode;
+    state.options_mut().shared.semantics.inv_trig = inv_trig;
+
+    let parsed = parse(input, &mut engine.simplifier.context)
+        .map_err(|e| format!("parse failed for '{}': {:?}", input, e))?;
+    let req = EvalRequest {
+        raw_input: input.to_string(),
+        parsed,
+        action: EvalAction::Simplify,
+        auto_store: false,
+    };
+
+    let output = engine
+        .eval(&mut state, req)
+        .map_err(|e| format!("eval failed for '{}': {:?}", input, e))?;
+
+    let result = match &output.result {
+        EvalResult::Expr(e) => DisplayExpr {
+            context: &engine.simplifier.context,
+            id: *e,
+        }
+        .to_string(),
+        other => {
+            return Err(format!(
+                "unexpected eval result for '{}': {:?}",
+                input, other
+            ));
+        }
+    };
+
+    let mut warnings: Vec<String> = output
+        .domain_warnings
+        .iter()
+        .map(|w| w.message.clone())
+        .collect();
+    warnings.sort();
+    warnings.dedup();
+
+    let mut assumption_signals: Vec<String> = output
+        .steps
+        .iter()
+        .flat_map(|step| step.assumption_events().iter())
+        .filter(|event| {
+            event.kind.should_display()
+                || matches!(
+                    event.kind,
+                    cas_solver::api::AssumptionKind::DerivedFromRequires
+                )
+        })
+        .map(|event| {
+            format!(
+                "{}|{}|{}",
+                event.kind.label(),
+                event.key.kind(),
+                event.message
+            )
+        })
+        .collect();
+    assumption_signals.sort();
+    assumption_signals.dedup();
+
+    Ok(SimplifyTransparencyMetadata {
+        result,
+        warnings,
+        assumption_signals,
+    })
+}
+
+fn simplify_with_metadata_in_domain(
+    input: &str,
+    mode: cas_solver::runtime::DomainMode,
+) -> Result<SimplifyMetadata, String> {
+    simplify_with_metadata_on_axes(input, mode, cas_solver::runtime::ValueDomain::RealOnly)
+}
+
+fn simplify_generic_with_metadata(input: &str) -> Result<SimplifyMetadata, String> {
+    simplify_with_metadata_on_axes(
+        input,
+        cas_solver::runtime::DomainMode::Generic,
+        cas_solver::runtime::ValueDomain::RealOnly,
+    )
+}
+
+#[derive(Default)]
+struct IdempotenceMetrics {
+    total: usize,
+    exact_stable: usize,
+    symbolic_stable: usize,
+    numeric_stable: usize,
+    inconclusive: usize,
+    failed: usize,
+    parse_errors: usize,
+    timeouts: usize,
+    numeric_causes: HashMap<String, usize>,
+}
+
+#[derive(Default)]
+struct RequiresContractMetrics {
+    total: usize,
+    exact_preserved: usize,
+    relaxed_preserved: usize,
+    expected_requires_present: usize,
+    failed: usize,
+    parse_errors: usize,
+}
+
+#[derive(Default)]
+struct WarningsContractMetrics {
+    total: usize,
+    exact_preserved: usize,
+    relaxed_preserved: usize,
+    expected_warning_present: usize,
+    expected_warning_absent: usize,
+    failed: usize,
+    parse_errors: usize,
+}
+
+#[derive(Default)]
+struct TransparencySignalContractMetrics {
+    total: usize,
+    exact_preserved: usize,
+    relaxed_preserved: usize,
+    expected_signal_present: usize,
+    expected_signal_absent: usize,
+    warning_channel_present: usize,
+    assumption_channel_present: usize,
+    failed: usize,
+    parse_errors: usize,
+}
+
+type BranchTransparencyContractMetrics = TransparencySignalContractMetrics;
+
+#[derive(Default)]
+struct SemanticBehaviorContractMetrics {
+    total: usize,
+    exact_preserved: usize,
+    relaxed_preserved: usize,
+    failed: usize,
+    parse_errors: usize,
+}
+
+#[derive(Default)]
+struct RequiresModeContractMetrics {
+    total: usize,
+    exact_preserved: usize,
+    relaxed_preserved: usize,
+    expected_requires_present: usize,
+    expected_requires_absent: usize,
+    failed: usize,
+    parse_errors: usize,
+}
+
+#[derive(Default)]
+struct SemanticAxesContractMetrics {
+    total: usize,
+    exact_preserved: usize,
+    relaxed_preserved: usize,
+    expected_requires_present: usize,
+    expected_requires_absent: usize,
+    expected_warning_present: usize,
+    expected_warning_absent: usize,
+    failed: usize,
+    parse_errors: usize,
+}
+
+#[derive(Default)]
+struct AssumptionTraceContractMetrics {
+    total: usize,
+    exact_preserved: usize,
+    relaxed_preserved: usize,
+    expected_present: usize,
+    expected_absent: usize,
+    failed: usize,
+    parse_errors: usize,
+}
+
+fn run_idempotence_contract_tests() -> IdempotenceMetrics {
+    let cases = load_idempotence_expressions();
+    let config = metatest_config();
+    let verbose = std::env::var("METATEST_VERBOSE").is_ok();
+    let timeout = std::time::Duration::from_secs(5);
+
+    let mut metrics = IdempotenceMetrics {
+        total: cases.len(),
+        ..Default::default()
+    };
+    let mut numeric_examples: Vec<(String, String, String, String)> = Vec::new();
+    let mut failed_examples: Vec<(String, String, String)> = Vec::new();
+
+    eprintln!(
+        "📊 Running simplify idempotence contracts: {} expressions from {} families",
+        cases.len(),
+        cases
+            .iter()
+            .map(|c| &c.family)
+            .collect::<std::collections::HashSet<_>>()
+            .len()
+    );
+
+    for case in &cases {
+        let expr_text = case.expr.clone();
+        let vars = case.vars.clone();
+        let filters = case.filters.clone();
+        let family = case.family.clone();
+        let config_clone = config.clone();
+
+        let (tx, rx) = std::sync::mpsc::channel();
+        let _handle = std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(move || {
+                let mut simplifier = Simplifier::with_default_rules();
+                let parsed = match parse(&expr_text, &mut simplifier.context) {
+                    Ok(e) => e,
+                    Err(_) => {
+                        let _ = tx.send(("parse_error".to_string(), String::new(), String::new()));
+                        return;
+                    }
+                };
+
+                let (simp1_raw, _) = simplifier.simplify(parsed);
+                let simp1 = fold_constants_safe(&mut simplifier.context, simp1_raw);
+                let (simp2_raw, _) = simplifier.simplify(simp1);
+                let simp2 = fold_constants_safe(&mut simplifier.context, simp2_raw);
+
+                let exact = cas_solver::runtime::compare_expr(&simplifier.context, simp1, simp2)
+                    == std::cmp::Ordering::Equal;
+                if exact {
+                    let _ = tx.send(("exact".to_string(), String::new(), String::new()));
+                    return;
+                }
+
+                let simp1_text = DisplayExpr {
+                    context: &simplifier.context,
+                    id: simp1,
+                }
+                .to_string();
+                let simp2_text = DisplayExpr {
+                    context: &simplifier.context,
+                    id: simp2,
+                }
+                .to_string();
+
+                if prove_zero_from_metamorphic_texts(
+                    &mut simplifier,
+                    &simp1_text,
+                    &simp2_text,
+                    simp1,
+                    simp2,
+                ) {
+                    let _ = tx.send(("symbolic".to_string(), String::new(), String::new()));
+                    return;
+                }
+
+                let diff_expr = simplifier.context.add(cas_ast::Expr::Sub(simp1, simp2));
+                let (diff_simp_raw, _) = simplifier.simplify(diff_expr);
+                let diff_simp = fold_constants_safe(&mut simplifier.context, diff_simp_raw);
+                let diff_render = cas_formatter::LaTeXExpr {
+                    context: &simplifier.context,
+                    id: diff_simp,
+                }
+                .to_latex();
+                let diff_shape = expr_shape_signature(&simplifier.context, diff_simp);
+
+                match classify_numeric_equiv_for_vars(
+                    &simplifier.context,
+                    simp1,
+                    simp2,
+                    &vars,
+                    &filters,
+                    &config_clone,
+                ) {
+                    NumericCheckOutcome::Pass => {
+                        let cause = numeric_only_cause_for_vars(
+                            &simplifier.context,
+                            simp1,
+                            simp2,
+                            &vars,
+                            &filters,
+                            &config_clone,
+                            &diff_shape,
+                        )
+                        .label()
+                        .to_string();
+                        let _ = tx.send(("numeric".to_string(), diff_render, cause));
+                    }
+                    NumericCheckOutcome::Inconclusive(reason) => {
+                        let _ = tx.send(("inconclusive".to_string(), reason, String::new()));
+                    }
+                    NumericCheckOutcome::Failed(reason) => {
+                        let _ = tx.send(("failed".to_string(), reason, String::new()));
+                    }
+                }
+            });
+
+        match rx.recv_timeout(timeout) {
+            Ok((kind, detail, cause)) => match kind.as_str() {
+                "exact" => metrics.exact_stable += 1,
+                "symbolic" => metrics.symbolic_stable += 1,
+                "numeric" => {
+                    metrics.numeric_stable += 1;
+                    *metrics.numeric_causes.entry(cause.clone()).or_default() += 1;
+                    if verbose && numeric_examples.len() < 20 {
+                        numeric_examples.push((case.expr.clone(), family, detail, cause));
+                    }
+                }
+                "inconclusive" => {
+                    metrics.inconclusive += 1;
+                    if verbose {
+                        eprintln!(
+                            "  ◐ INCONCLUSIVE [{}]: {} — {}",
+                            case.family, case.expr, detail
+                        );
+                    }
+                }
+                "failed" => {
+                    metrics.failed += 1;
+                    failed_examples.push((case.expr.clone(), family, detail));
+                }
+                "parse_error" => {
+                    metrics.parse_errors += 1;
+                }
+                _ => {
+                    metrics.failed += 1;
+                    failed_examples.push((
+                        case.expr.clone(),
+                        family,
+                        format!("unexpected result kind: {}", kind),
+                    ));
+                }
+            },
+            Err(_) => {
+                metrics.timeouts += 1;
+            }
+        }
+    }
+
+    eprintln!(
+        "✅ Idempotence contracts: exact={} symbolic={} numeric={} inconclusive={} failed={} parse={} timeout={}",
+        metrics.exact_stable,
+        metrics.symbolic_stable,
+        metrics.numeric_stable,
+        metrics.inconclusive,
+        metrics.failed,
+        metrics.parse_errors,
+        metrics.timeouts
+    );
+
+    if metrics.numeric_stable > 0 {
+        print_numeric_only_cause_breakdown(&metrics.numeric_causes);
+    }
+
+    if verbose && !numeric_examples.is_empty() {
+        eprintln!("\n── idempotence numeric-only examples ──");
+        for (expr, family, residual, cause) in numeric_examples.iter().take(10) {
+            eprintln!("  Expr [{}]: {}", family, expr);
+            eprintln!("  Cause: {}", cause);
+            if !residual.is_empty() {
+                eprintln!("  Residual: {}", residual);
+            }
+            eprintln!();
+        }
+    }
+
+    if !failed_examples.is_empty() {
+        eprintln!("\n🚨 idempotence failures:");
+        for (expr, family, detail) in failed_examples.iter().take(10) {
+            eprintln!("  [{}] {} — {}", family, expr, detail);
+        }
+    }
+
+    metrics
+}
+
+fn run_requires_contract_tests() -> RequiresContractMetrics {
+    let cases = load_requires_contract_expressions();
+    let verbose = std::env::var("METATEST_VERBOSE").is_ok();
+    let mut metrics = RequiresContractMetrics {
+        total: cases.len(),
+        ..Default::default()
+    };
+    let mut failures: Vec<String> = Vec::new();
+    let mut relaxed_examples: Vec<String> = Vec::new();
+
+    eprintln!(
+        "📊 Running required_conditions contracts: {} expressions from {} families",
+        cases.len(),
+        cases
+            .iter()
+            .map(|c| &c.family)
+            .collect::<std::collections::HashSet<_>>()
+            .len()
+    );
+
+    for case in &cases {
+        let first = match simplify_generic_with_metadata(&case.expr) {
+            Ok(v) => v,
+            Err(err) => {
+                metrics.parse_errors += 1;
+                failures.push(format!("[{}] {} — {}", case.family, case.expr, err));
+                continue;
+            }
+        };
+
+        let second = match simplify_generic_with_metadata(&first.result) {
+            Ok(v) => v,
+            Err(err) => {
+                metrics.parse_errors += 1;
+                failures.push(format!(
+                    "[{}] {} -> '{}' reparsed failed: {}",
+                    case.family, case.expr, first.result, err
+                ));
+                continue;
+            }
+        };
+
+        if case.expect_requires && !first.required.is_empty() {
+            metrics.expected_requires_present += 1;
+        }
+
+        let mut case_failed = false;
+        if case.expect_requires && first.required.is_empty() {
+            metrics.failed += 1;
+            failures.push(format!(
+                "[{}] {} — expected requires, got none",
+                case.family, case.expr
+            ));
+            case_failed = true;
+        }
+
+        let first_required: std::collections::HashSet<_> = first.required.iter().cloned().collect();
+        let second_required: std::collections::HashSet<_> =
+            second.required.iter().cloned().collect();
+        let first_warnings: std::collections::HashSet<_> = first.warnings.iter().cloned().collect();
+        let second_warnings: std::collections::HashSet<_> =
+            second.warnings.iter().cloned().collect();
+
+        let introduced_requires: Vec<_> = second_required
+            .difference(&first_required)
+            .cloned()
+            .collect();
+        let introduced_warnings: Vec<_> = second_warnings
+            .difference(&first_warnings)
+            .cloned()
+            .collect();
+
+        if !introduced_requires.is_empty() {
+            metrics.failed += 1;
+            failures.push(format!(
+                "[{}] {} — introduced requires: {:?} (first={:?}, second={:?})",
+                case.family, case.expr, introduced_requires, first.required, second.required
+            ));
+            case_failed = true;
+        }
+
+        if !introduced_warnings.is_empty() {
+            metrics.failed += 1;
+            failures.push(format!(
+                "[{}] {} — introduced warnings: {:?} (first={:?}, second={:?})",
+                case.family, case.expr, introduced_warnings, first.warnings, second.warnings
+            ));
+            case_failed = true;
+        }
+
+        if !case_failed {
+            if first.required == second.required && first.warnings == second.warnings {
+                metrics.exact_preserved += 1;
+            } else {
+                metrics.relaxed_preserved += 1;
+                if verbose && relaxed_examples.len() < 10 {
+                    relaxed_examples.push(format!(
+                        "[{}] {} — requires {:?} -> {:?}, warnings {:?} -> {:?}",
+                        case.family,
+                        case.expr,
+                        first.required,
+                        second.required,
+                        first.warnings,
+                        second.warnings
+                    ));
+                }
+            }
+        } else if verbose {
+            eprintln!("  ❌ [{}] {}", case.family, case.expr);
+        }
+    }
+
+    eprintln!(
+        "✅ Requires contracts: exact={} relaxed={} expected_requires_present={}/{} failed={} parse={}",
+        metrics.exact_preserved,
+        metrics.relaxed_preserved,
+        metrics.expected_requires_present,
+        cases.iter().filter(|c| c.expect_requires).count(),
+        metrics.failed,
+        metrics.parse_errors
+    );
+
+    if verbose && !relaxed_examples.is_empty() {
+        eprintln!("\nℹ️ requires contract relaxed-preserved examples:");
+        for example in relaxed_examples.iter().take(10) {
+            eprintln!("  {}", example);
+        }
+    }
+
+    if !failures.is_empty() {
+        eprintln!("\n🚨 requires contract failures:");
+        for failure in failures.iter().take(10) {
+            eprintln!("  {}", failure);
+        }
+    }
+
+    metrics
+}
+
+fn run_warnings_contract_tests() -> WarningsContractMetrics {
+    let cases = load_warnings_contract_expressions();
+    let verbose = std::env::var("METATEST_VERBOSE").is_ok();
+    let mut metrics = WarningsContractMetrics {
+        total: cases.len(),
+        ..Default::default()
+    };
+    let mut failures: Vec<String> = Vec::new();
+    let mut relaxed_examples: Vec<String> = Vec::new();
+
+    eprintln!(
+        "📊 Running warnings contracts: {} expressions from {} families",
+        cases.len(),
+        cases
+            .iter()
+            .map(|c| &c.family)
+            .collect::<std::collections::HashSet<_>>()
+            .len()
+    );
+
+    for case in &cases {
+        let first = match simplify_with_metadata_in_domain(&case.expr, case.mode) {
+            Ok(v) => v,
+            Err(err) => {
+                metrics.parse_errors += 1;
+                failures.push(format!(
+                    "[{}|{}] {} — {}",
+                    case.family,
+                    domain_mode_label(case.mode),
+                    case.expr,
+                    err
+                ));
+                continue;
+            }
+        };
+
+        let second = match simplify_with_metadata_in_domain(&first.result, case.mode) {
+            Ok(v) => v,
+            Err(err) => {
+                metrics.parse_errors += 1;
+                failures.push(format!(
+                    "[{}|{}] {} -> '{}' reparsed failed: {}",
+                    case.family,
+                    domain_mode_label(case.mode),
+                    case.expr,
+                    first.result,
+                    err
+                ));
+                continue;
+            }
+        };
+
+        let mut case_failed = false;
+        if case.expect_warning {
+            if first.warnings.is_empty() {
+                metrics.failed += 1;
+                failures.push(format!(
+                    "[{}|{}] {} — expected warning, got none",
+                    case.family,
+                    domain_mode_label(case.mode),
+                    case.expr
+                ));
+                case_failed = true;
+            } else {
+                metrics.expected_warning_present += 1;
+            }
+        } else if first.warnings.is_empty() {
+            metrics.expected_warning_absent += 1;
+        } else {
+            metrics.failed += 1;
+            failures.push(format!(
+                "[{}|{}] {} — unexpected warnings: {:?}",
+                case.family,
+                domain_mode_label(case.mode),
+                case.expr,
+                first.warnings
+            ));
+            case_failed = true;
+        }
+
+        let first_warnings: std::collections::HashSet<_> = first.warnings.iter().cloned().collect();
+        let second_warnings: std::collections::HashSet<_> =
+            second.warnings.iter().cloned().collect();
+        let introduced_warnings: Vec<_> = second_warnings
+            .difference(&first_warnings)
+            .cloned()
+            .collect();
+
+        if !introduced_warnings.is_empty() {
+            metrics.failed += 1;
+            failures.push(format!(
+                "[{}|{}] {} — introduced warnings: {:?} (first={:?}, second={:?})",
+                case.family,
+                domain_mode_label(case.mode),
+                case.expr,
+                introduced_warnings,
+                first.warnings,
+                second.warnings
+            ));
+            case_failed = true;
+        }
+
+        if !case_failed {
+            if first.warnings == second.warnings {
+                metrics.exact_preserved += 1;
+            } else {
+                metrics.relaxed_preserved += 1;
+                if verbose && relaxed_examples.len() < 10 {
+                    relaxed_examples.push(format!(
+                        "[{}|{}] {} — warnings {:?} -> {:?}",
+                        case.family,
+                        domain_mode_label(case.mode),
+                        case.expr,
+                        first.warnings,
+                        second.warnings
+                    ));
+                }
+            }
+        } else if verbose {
+            eprintln!(
+                "  ❌ [{}|{}] {}",
+                case.family,
+                domain_mode_label(case.mode),
+                case.expr
+            );
+        }
+    }
+
+    eprintln!(
+        "✅ Warnings contracts: exact={} relaxed={} expected_warning_present={} expected_warning_absent={} failed={} parse={}",
+        metrics.exact_preserved,
+        metrics.relaxed_preserved,
+        metrics.expected_warning_present,
+        metrics.expected_warning_absent,
+        metrics.failed,
+        metrics.parse_errors
+    );
+
+    if verbose && !relaxed_examples.is_empty() {
+        eprintln!("\nℹ️ warnings contract relaxed-preserved examples:");
+        for example in relaxed_examples.iter().take(10) {
+            eprintln!("  {}", example);
+        }
+    }
+
+    if !failures.is_empty() {
+        eprintln!("\n🚨 warnings contract failures:");
+        for failure in failures.iter().take(10) {
+            eprintln!("  {}", failure);
+        }
+    }
+
+    metrics
+}
+
+fn run_transparency_signal_contract_tests() -> TransparencySignalContractMetrics {
+    let cases = load_transparency_signal_contract_expressions();
+    let verbose = std::env::var("METATEST_VERBOSE").is_ok();
+    let mut metrics = TransparencySignalContractMetrics {
+        total: cases.len(),
+        ..Default::default()
+    };
+    let mut failures: Vec<String> = Vec::new();
+    let mut relaxed_examples: Vec<String> = Vec::new();
+
+    eprintln!(
+        "📊 Running transparency-signal contracts: {} expressions from {} families",
+        cases.len(),
+        cases
+            .iter()
+            .map(|c| &c.family)
+            .collect::<std::collections::HashSet<_>>()
+            .len()
+    );
+
+    for case in &cases {
+        let first = match simplify_with_transparency_metadata(&case.expr, case.mode) {
+            Ok(v) => v,
+            Err(err) => {
+                metrics.parse_errors += 1;
+                failures.push(format!(
+                    "[{}|{}] {} — {}",
+                    case.family,
+                    domain_mode_label(case.mode),
+                    case.expr,
+                    err
+                ));
+                continue;
+            }
+        };
+
+        let second = match simplify_with_transparency_metadata(&first.result, case.mode) {
+            Ok(v) => v,
+            Err(err) => {
+                metrics.parse_errors += 1;
+                failures.push(format!(
+                    "[{}|{}] {} -> '{}' reparsed failed: {}",
+                    case.family,
+                    domain_mode_label(case.mode),
+                    case.expr,
+                    first.result,
+                    err
+                ));
+                continue;
+            }
+        };
+
+        let has_signal = !first.warnings.is_empty() || !first.assumption_signals.is_empty();
+        let mut case_failed = false;
+        if case.expect_signal {
+            if !has_signal {
+                metrics.failed += 1;
+                failures.push(format!(
+                    "[{}|{}] {} — expected transparency signal, got none",
+                    case.family,
+                    domain_mode_label(case.mode),
+                    case.expr
+                ));
+                case_failed = true;
+            } else {
+                metrics.expected_signal_present += 1;
+                if !first.warnings.is_empty() {
+                    metrics.warning_channel_present += 1;
+                }
+                if !first.assumption_signals.is_empty() {
+                    metrics.assumption_channel_present += 1;
+                }
+            }
+        } else if !has_signal {
+            metrics.expected_signal_absent += 1;
+        } else {
+            metrics.failed += 1;
+            failures.push(format!(
+                "[{}|{}] {} — unexpected transparency signals: warnings={:?}, assumptions={:?}",
+                case.family,
+                domain_mode_label(case.mode),
+                case.expr,
+                first.warnings,
+                first.assumption_signals
+            ));
+            case_failed = true;
+        }
+
+        let first_warnings: std::collections::HashSet<_> = first.warnings.iter().cloned().collect();
+        let second_warnings: std::collections::HashSet<_> =
+            second.warnings.iter().cloned().collect();
+        let introduced_warnings: Vec<_> = second_warnings
+            .difference(&first_warnings)
+            .cloned()
+            .collect();
+
+        let first_assumptions: std::collections::HashSet<_> =
+            first.assumption_signals.iter().cloned().collect();
+        let second_assumptions: std::collections::HashSet<_> =
+            second.assumption_signals.iter().cloned().collect();
+        let introduced_assumptions: Vec<_> = second_assumptions
+            .difference(&first_assumptions)
+            .cloned()
+            .collect();
+
+        if !introduced_warnings.is_empty() {
+            metrics.failed += 1;
+            failures.push(format!(
+                "[{}|{}] {} — introduced warnings: {:?} (first={:?}, second={:?})",
+                case.family,
+                domain_mode_label(case.mode),
+                case.expr,
+                introduced_warnings,
+                first.warnings,
+                second.warnings
+            ));
+            case_failed = true;
+        }
+
+        if !introduced_assumptions.is_empty() {
+            metrics.failed += 1;
+            failures.push(format!(
+                "[{}|{}] {} — introduced assumption-signals: {:?} (first={:?}, second={:?})",
+                case.family,
+                domain_mode_label(case.mode),
+                case.expr,
+                introduced_assumptions,
+                first.assumption_signals,
+                second.assumption_signals
+            ));
+            case_failed = true;
+        }
+
+        if !case_failed {
+            if first.warnings == second.warnings
+                && first.assumption_signals == second.assumption_signals
+            {
+                metrics.exact_preserved += 1;
+            } else {
+                metrics.relaxed_preserved += 1;
+                if verbose && relaxed_examples.len() < 10 {
+                    relaxed_examples.push(format!(
+                        "[{}|{}] {} — warnings {:?} -> {:?}, assumptions {:?} -> {:?}",
+                        case.family,
+                        domain_mode_label(case.mode),
+                        case.expr,
+                        first.warnings,
+                        second.warnings,
+                        first.assumption_signals,
+                        second.assumption_signals
+                    ));
+                }
+            }
+        } else if verbose {
+            eprintln!(
+                "  ❌ [{}|{}] {}",
+                case.family,
+                domain_mode_label(case.mode),
+                case.expr
+            );
+        }
+    }
+
+    eprintln!(
+        "✅ Transparency-signal contracts: exact={} relaxed={} signal_present={} signal_absent={} warning_channel={} assumption_channel={} failed={} parse={}",
+        metrics.exact_preserved,
+        metrics.relaxed_preserved,
+        metrics.expected_signal_present,
+        metrics.expected_signal_absent,
+        metrics.warning_channel_present,
+        metrics.assumption_channel_present,
+        metrics.failed,
+        metrics.parse_errors
+    );
+
+    if verbose && !relaxed_examples.is_empty() {
+        eprintln!("\nℹ️ transparency-signal relaxed-preserved examples:");
+        for example in relaxed_examples.iter().take(10) {
+            eprintln!("  {}", example);
+        }
+    }
+
+    if !failures.is_empty() {
+        eprintln!("\n🚨 transparency-signal failures:");
+        for failure in failures.iter().take(10) {
+            eprintln!("  {}", failure);
+        }
+    }
+
+    metrics
+}
+
+fn run_branch_transparency_contract_tests() -> BranchTransparencyContractMetrics {
+    let cases = load_branch_transparency_contract_expressions();
+    let verbose = std::env::var("METATEST_VERBOSE").is_ok();
+    let mut metrics = BranchTransparencyContractMetrics {
+        total: cases.len(),
+        ..Default::default()
+    };
+    let mut failures: Vec<String> = Vec::new();
+    let mut relaxed_examples: Vec<String> = Vec::new();
+
+    eprintln!(
+        "📊 Running branch-transparency contracts: {} expressions from {} families",
+        cases.len(),
+        cases
+            .iter()
+            .map(|c| &c.family)
+            .collect::<std::collections::HashSet<_>>()
+            .len()
+    );
+
+    for case in &cases {
+        let first = match simplify_with_transparency_metadata_with_inv_trig(
+            &case.expr,
+            case.mode,
+            case.inv_trig,
+        ) {
+            Ok(v) => v,
+            Err(err) => {
+                metrics.parse_errors += 1;
+                failures.push(format!(
+                    "[{}|{}|{}] {} — {}",
+                    case.family,
+                    domain_mode_label(case.mode),
+                    inv_trig_policy_label(case.inv_trig),
+                    case.expr,
+                    err
+                ));
+                continue;
+            }
+        };
+
+        let second = match simplify_with_transparency_metadata_with_inv_trig(
+            &first.result,
+            case.mode,
+            case.inv_trig,
+        ) {
+            Ok(v) => v,
+            Err(err) => {
+                metrics.parse_errors += 1;
+                failures.push(format!(
+                    "[{}|{}|{}] {} -> '{}' reparsed failed: {}",
+                    case.family,
+                    domain_mode_label(case.mode),
+                    inv_trig_policy_label(case.inv_trig),
+                    case.expr,
+                    first.result,
+                    err
+                ));
+                continue;
+            }
+        };
+
+        let first_branch_assumptions: Vec<String> = first
+            .assumption_signals
+            .iter()
+            .filter(|signal| signal.starts_with("Branch|"))
+            .cloned()
+            .collect();
+        let second_branch_assumptions: Vec<String> = second
+            .assumption_signals
+            .iter()
+            .filter(|signal| signal.starts_with("Branch|"))
+            .cloned()
+            .collect();
+
+        let has_signal = !first.warnings.is_empty() || !first_branch_assumptions.is_empty();
+        let mut case_failed = false;
+        if case.expect_signal {
+            if !has_signal {
+                metrics.failed += 1;
+                failures.push(format!(
+                    "[{}|{}|{}] {} — expected branch transparency signal, got none",
+                    case.family,
+                    domain_mode_label(case.mode),
+                    inv_trig_policy_label(case.inv_trig),
+                    case.expr
+                ));
+                case_failed = true;
+            } else {
+                metrics.expected_signal_present += 1;
+                if !first.warnings.is_empty() {
+                    metrics.warning_channel_present += 1;
+                }
+                if !first_branch_assumptions.is_empty() {
+                    metrics.assumption_channel_present += 1;
+                }
+            }
+        } else if !has_signal {
+            metrics.expected_signal_absent += 1;
+        } else {
+            metrics.failed += 1;
+            failures.push(format!(
+                "[{}|{}|{}] {} — unexpected branch transparency signals: warnings={:?}, assumptions={:?}",
+                case.family,
+                domain_mode_label(case.mode),
+                inv_trig_policy_label(case.inv_trig),
+                case.expr,
+                first.warnings,
+                first_branch_assumptions
+            ));
+            case_failed = true;
+        }
+
+        let first_warnings: std::collections::HashSet<_> = first.warnings.iter().cloned().collect();
+        let second_warnings: std::collections::HashSet<_> =
+            second.warnings.iter().cloned().collect();
+        let introduced_warnings: Vec<_> = second_warnings
+            .difference(&first_warnings)
+            .cloned()
+            .collect();
+
+        let first_assumptions: std::collections::HashSet<_> =
+            first_branch_assumptions.iter().cloned().collect();
+        let second_assumptions: std::collections::HashSet<_> =
+            second_branch_assumptions.iter().cloned().collect();
+        let introduced_assumptions: Vec<_> = second_assumptions
+            .difference(&first_assumptions)
+            .cloned()
+            .collect();
+
+        if !introduced_warnings.is_empty() {
+            metrics.failed += 1;
+            failures.push(format!(
+                "[{}|{}|{}] {} — introduced warnings: {:?} (first={:?}, second={:?})",
+                case.family,
+                domain_mode_label(case.mode),
+                inv_trig_policy_label(case.inv_trig),
+                case.expr,
+                introduced_warnings,
+                first.warnings,
+                second.warnings
+            ));
+            case_failed = true;
+        }
+
+        if !introduced_assumptions.is_empty() {
+            metrics.failed += 1;
+            failures.push(format!(
+                "[{}|{}|{}] {} — introduced branch assumption-signals: {:?} (first={:?}, second={:?})",
+                case.family,
+                domain_mode_label(case.mode),
+                inv_trig_policy_label(case.inv_trig),
+                case.expr,
+                introduced_assumptions,
+                first_branch_assumptions,
+                second_branch_assumptions
+            ));
+            case_failed = true;
+        }
+
+        if !case_failed {
+            if first.warnings == second.warnings
+                && first_branch_assumptions == second_branch_assumptions
+            {
+                metrics.exact_preserved += 1;
+            } else {
+                metrics.relaxed_preserved += 1;
+                if verbose && relaxed_examples.len() < 10 {
+                    relaxed_examples.push(format!(
+                        "[{}|{}|{}] {} — warnings {:?} -> {:?}, assumptions {:?} -> {:?}",
+                        case.family,
+                        domain_mode_label(case.mode),
+                        inv_trig_policy_label(case.inv_trig),
+                        case.expr,
+                        first.warnings,
+                        second.warnings,
+                        first_branch_assumptions,
+                        second_branch_assumptions
+                    ));
+                }
+            }
+        } else if verbose {
+            eprintln!(
+                "  ❌ [{}|{}|{}] {}",
+                case.family,
+                domain_mode_label(case.mode),
+                inv_trig_policy_label(case.inv_trig),
+                case.expr
+            );
+        }
+    }
+
+    eprintln!(
+        "✅ Branch-transparency contracts: exact={} relaxed={} signal_present={} signal_absent={} warning_channel={} assumption_channel={} failed={} parse={}",
+        metrics.exact_preserved,
+        metrics.relaxed_preserved,
+        metrics.expected_signal_present,
+        metrics.expected_signal_absent,
+        metrics.warning_channel_present,
+        metrics.assumption_channel_present,
+        metrics.failed,
+        metrics.parse_errors
+    );
+
+    if verbose && !relaxed_examples.is_empty() {
+        eprintln!("\nℹ️ branch-transparency relaxed-preserved examples:");
+        for example in relaxed_examples.iter().take(10) {
+            eprintln!("  {}", example);
+        }
+    }
+
+    if !failures.is_empty() {
+        eprintln!("\n🚨 branch-transparency failures:");
+        for failure in failures.iter().take(10) {
+            eprintln!("  {}", failure);
+        }
+    }
+
+    metrics
+}
+
+fn semantic_behavior_matches(expectation: &SemanticBehaviorExpectation, actual: &str) -> bool {
+    match expectation {
+        SemanticBehaviorExpectation::Exact(expected) => actual == expected,
+        SemanticBehaviorExpectation::ContainsAll(needles) => {
+            needles.iter().all(|needle| actual.contains(needle))
+        }
+    }
+}
+
+fn semantic_behavior_label(expectation: &SemanticBehaviorExpectation) -> String {
+    match expectation {
+        SemanticBehaviorExpectation::Exact(expected) => format!("exact '{}'", expected),
+        SemanticBehaviorExpectation::ContainsAll(parts) => {
+            format!("contains_all {:?}", parts)
+        }
+    }
+}
+
+fn run_semantic_behavior_contract_tests() -> SemanticBehaviorContractMetrics {
+    let cases = load_semantic_behavior_contract_expressions();
+    let verbose = std::env::var("METATEST_VERBOSE").is_ok();
+    let mut metrics = SemanticBehaviorContractMetrics {
+        total: cases.len(),
+        ..Default::default()
+    };
+    let mut failures: Vec<String> = Vec::new();
+    let mut relaxed_examples: Vec<String> = Vec::new();
+
+    eprintln!(
+        "📊 Running semantic-behavior contracts: {} expressions from {} families",
+        cases.len(),
+        cases
+            .iter()
+            .map(|c| &c.family)
+            .collect::<std::collections::HashSet<_>>()
+            .len()
+    );
+
+    for case in &cases {
+        let first = match simplify_with_metadata_on_axes(&case.expr, case.mode, case.value_domain) {
+            Ok(v) => v,
+            Err(err) => {
+                metrics.parse_errors += 1;
+                failures.push(format!(
+                    "[{}|{}|{}] {} — {}",
+                    case.family,
+                    value_domain_label(case.value_domain),
+                    domain_mode_label(case.mode),
+                    case.expr,
+                    err
+                ));
+                continue;
+            }
+        };
+
+        let second =
+            match simplify_with_metadata_on_axes(&first.result, case.mode, case.value_domain) {
+                Ok(v) => v,
+                Err(err) => {
+                    metrics.parse_errors += 1;
+                    failures.push(format!(
+                        "[{}|{}|{}] {} -> '{}' reparsed failed: {}",
+                        case.family,
+                        value_domain_label(case.value_domain),
+                        domain_mode_label(case.mode),
+                        case.expr,
+                        first.result,
+                        err
+                    ));
+                    continue;
+                }
+            };
+
+        let expected_ok = semantic_behavior_matches(&case.expectation, &first.result);
+        let second_ok = semantic_behavior_matches(&case.expectation, &second.result);
+
+        if !expected_ok {
+            metrics.failed += 1;
+            failures.push(format!(
+                "[{}|{}|{}] {} — expected {}, got '{}'",
+                case.family,
+                value_domain_label(case.value_domain),
+                domain_mode_label(case.mode),
+                case.expr,
+                semantic_behavior_label(&case.expectation),
+                first.result
+            ));
+            continue;
+        }
+
+        if !second_ok {
+            metrics.failed += 1;
+            failures.push(format!(
+                "[{}|{}|{}] {} — second simplify broke behavior: first='{}', second='{}', expected {}",
+                case.family,
+                value_domain_label(case.value_domain),
+                domain_mode_label(case.mode),
+                case.expr,
+                first.result,
+                second.result,
+                semantic_behavior_label(&case.expectation)
+            ));
+            continue;
+        }
+
+        if first.result == second.result {
+            metrics.exact_preserved += 1;
+        } else {
+            metrics.relaxed_preserved += 1;
+            if verbose && relaxed_examples.len() < 10 {
+                relaxed_examples.push(format!(
+                    "[{}|{}|{}] {} — result '{}' -> '{}'",
+                    case.family,
+                    value_domain_label(case.value_domain),
+                    domain_mode_label(case.mode),
+                    case.expr,
+                    first.result,
+                    second.result
+                ));
+            }
+        }
+    }
+
+    eprintln!(
+        "✅ Semantic-behavior contracts: exact={} relaxed={} failed={} parse={}",
+        metrics.exact_preserved, metrics.relaxed_preserved, metrics.failed, metrics.parse_errors
+    );
+
+    if verbose && !relaxed_examples.is_empty() {
+        eprintln!("\nℹ️ semantic-behavior relaxed-preserved examples:");
+        for example in relaxed_examples.iter().take(10) {
+            eprintln!("  {}", example);
+        }
+    }
+
+    if !failures.is_empty() {
+        eprintln!("\n🚨 semantic-behavior failures:");
+        for failure in failures.iter().take(10) {
+            eprintln!("  {}", failure);
+        }
+    }
+
+    metrics
+}
+
+fn run_requires_mode_contract_tests() -> RequiresModeContractMetrics {
+    let cases = load_requires_mode_contract_expressions();
+    let verbose = std::env::var("METATEST_VERBOSE").is_ok();
+    let mut metrics = RequiresModeContractMetrics {
+        total: cases.len(),
+        ..Default::default()
+    };
+    let mut failures: Vec<String> = Vec::new();
+    let mut relaxed_examples: Vec<String> = Vec::new();
+
+    eprintln!(
+        "📊 Running mode-aware required_conditions contracts: {} expressions from {} families",
+        cases.len(),
+        cases
+            .iter()
+            .map(|c| &c.family)
+            .collect::<std::collections::HashSet<_>>()
+            .len()
+    );
+
+    for case in &cases {
+        let first = match simplify_with_metadata_in_domain(&case.expr, case.mode) {
+            Ok(v) => v,
+            Err(err) => {
+                metrics.parse_errors += 1;
+                failures.push(format!(
+                    "[{}|{}] {} — {}",
+                    case.family,
+                    domain_mode_label(case.mode),
+                    case.expr,
+                    err
+                ));
+                continue;
+            }
+        };
+
+        let second = match simplify_with_metadata_in_domain(&first.result, case.mode) {
+            Ok(v) => v,
+            Err(err) => {
+                metrics.parse_errors += 1;
+                failures.push(format!(
+                    "[{}|{}] {} -> '{}' reparsed failed: {}",
+                    case.family,
+                    domain_mode_label(case.mode),
+                    case.expr,
+                    first.result,
+                    err
+                ));
+                continue;
+            }
+        };
+
+        let mut case_failed = false;
+        if case.expect_requires {
+            if first.required.is_empty() {
+                metrics.failed += 1;
+                failures.push(format!(
+                    "[{}|{}] {} — expected requires, got none",
+                    case.family,
+                    domain_mode_label(case.mode),
+                    case.expr
+                ));
+                case_failed = true;
+            } else {
+                metrics.expected_requires_present += 1;
+            }
+        } else if first.required.is_empty() {
+            metrics.expected_requires_absent += 1;
+        } else {
+            metrics.failed += 1;
+            failures.push(format!(
+                "[{}|{}] {} — unexpected requires: {:?}",
+                case.family,
+                domain_mode_label(case.mode),
+                case.expr,
+                first.required
+            ));
+            case_failed = true;
+        }
+
+        let first_required: std::collections::HashSet<_> = first.required.iter().cloned().collect();
+        let second_required: std::collections::HashSet<_> =
+            second.required.iter().cloned().collect();
+        let first_warnings: std::collections::HashSet<_> = first.warnings.iter().cloned().collect();
+        let second_warnings: std::collections::HashSet<_> =
+            second.warnings.iter().cloned().collect();
+
+        let introduced_requires: Vec<_> = second_required
+            .difference(&first_required)
+            .cloned()
+            .collect();
+        let introduced_warnings: Vec<_> = second_warnings
+            .difference(&first_warnings)
+            .cloned()
+            .collect();
+
+        if !introduced_requires.is_empty() {
+            metrics.failed += 1;
+            failures.push(format!(
+                "[{}|{}] {} — introduced requires: {:?} (first={:?}, second={:?})",
+                case.family,
+                domain_mode_label(case.mode),
+                case.expr,
+                introduced_requires,
+                first.required,
+                second.required
+            ));
+            case_failed = true;
+        }
+
+        if !introduced_warnings.is_empty() {
+            metrics.failed += 1;
+            failures.push(format!(
+                "[{}|{}] {} — introduced warnings: {:?} (first={:?}, second={:?})",
+                case.family,
+                domain_mode_label(case.mode),
+                case.expr,
+                introduced_warnings,
+                first.warnings,
+                second.warnings
+            ));
+            case_failed = true;
+        }
+
+        if !case_failed {
+            if first.required == second.required && first.warnings == second.warnings {
+                metrics.exact_preserved += 1;
+            } else {
+                metrics.relaxed_preserved += 1;
+                if verbose && relaxed_examples.len() < 10 {
+                    relaxed_examples.push(format!(
+                        "[{}|{}] {} — requires {:?} -> {:?}, warnings {:?} -> {:?}",
+                        case.family,
+                        domain_mode_label(case.mode),
+                        case.expr,
+                        first.required,
+                        second.required,
+                        first.warnings,
+                        second.warnings
+                    ));
+                }
+            }
+        } else if verbose {
+            eprintln!(
+                "  ❌ [{}|{}] {}",
+                case.family,
+                domain_mode_label(case.mode),
+                case.expr
+            );
+        }
+    }
+
+    eprintln!(
+        "✅ Mode-aware requires contracts: exact={} relaxed={} expected_requires_present={} expected_requires_absent={} failed={} parse={}",
+        metrics.exact_preserved,
+        metrics.relaxed_preserved,
+        metrics.expected_requires_present,
+        metrics.expected_requires_absent,
+        metrics.failed,
+        metrics.parse_errors
+    );
+
+    if verbose && !relaxed_examples.is_empty() {
+        eprintln!("\nℹ️ mode-aware requires relaxed-preserved examples:");
+        for example in relaxed_examples.iter().take(10) {
+            eprintln!("  {}", example);
+        }
+    }
+
+    if !failures.is_empty() {
+        eprintln!("\n🚨 mode-aware requires failures:");
+        for failure in failures.iter().take(10) {
+            eprintln!("  {}", failure);
+        }
+    }
+
+    metrics
+}
+
+fn run_semantic_axes_contract_tests() -> SemanticAxesContractMetrics {
+    let cases = load_semantic_axes_contract_expressions();
+    let verbose = std::env::var("METATEST_VERBOSE").is_ok();
+    let mut metrics = SemanticAxesContractMetrics {
+        total: cases.len(),
+        ..Default::default()
+    };
+    let mut failures: Vec<String> = Vec::new();
+    let mut relaxed_examples: Vec<String> = Vec::new();
+
+    eprintln!(
+        "📊 Running semantic-axes contracts: {} expressions from {} families",
+        cases.len(),
+        cases
+            .iter()
+            .map(|c| &c.family)
+            .collect::<std::collections::HashSet<_>>()
+            .len()
+    );
+
+    for case in &cases {
+        let first = match simplify_with_metadata_on_axes(&case.expr, case.mode, case.value_domain) {
+            Ok(v) => v,
+            Err(err) => {
+                metrics.parse_errors += 1;
+                failures.push(format!(
+                    "[{}|{}|{}] {} — {}",
+                    case.family,
+                    value_domain_label(case.value_domain),
+                    domain_mode_label(case.mode),
+                    case.expr,
+                    err
+                ));
+                continue;
+            }
+        };
+
+        let second =
+            match simplify_with_metadata_on_axes(&first.result, case.mode, case.value_domain) {
+                Ok(v) => v,
+                Err(err) => {
+                    metrics.parse_errors += 1;
+                    failures.push(format!(
+                        "[{}|{}|{}] {} -> '{}' reparsed failed: {}",
+                        case.family,
+                        value_domain_label(case.value_domain),
+                        domain_mode_label(case.mode),
+                        case.expr,
+                        first.result,
+                        err
+                    ));
+                    continue;
+                }
+            };
+
+        let mut case_failed = false;
+        if case.expect_requires {
+            if first.required.is_empty() {
+                metrics.failed += 1;
+                failures.push(format!(
+                    "[{}|{}|{}] {} — expected requires, got none",
+                    case.family,
+                    value_domain_label(case.value_domain),
+                    domain_mode_label(case.mode),
+                    case.expr
+                ));
+                case_failed = true;
+            } else {
+                metrics.expected_requires_present += 1;
+            }
+        } else if first.required.is_empty() {
+            metrics.expected_requires_absent += 1;
+        } else {
+            metrics.failed += 1;
+            failures.push(format!(
+                "[{}|{}|{}] {} — unexpected requires: {:?}",
+                case.family,
+                value_domain_label(case.value_domain),
+                domain_mode_label(case.mode),
+                case.expr,
+                first.required
+            ));
+            case_failed = true;
+        }
+
+        if case.expect_warning {
+            if first.warnings.is_empty() {
+                metrics.failed += 1;
+                failures.push(format!(
+                    "[{}|{}|{}] {} — expected warning, got none",
+                    case.family,
+                    value_domain_label(case.value_domain),
+                    domain_mode_label(case.mode),
+                    case.expr
+                ));
+                case_failed = true;
+            } else {
+                metrics.expected_warning_present += 1;
+            }
+        } else if first.warnings.is_empty() {
+            metrics.expected_warning_absent += 1;
+        } else {
+            metrics.failed += 1;
+            failures.push(format!(
+                "[{}|{}|{}] {} — unexpected warnings: {:?}",
+                case.family,
+                value_domain_label(case.value_domain),
+                domain_mode_label(case.mode),
+                case.expr,
+                first.warnings
+            ));
+            case_failed = true;
+        }
+
+        let first_required: std::collections::HashSet<_> = first.required.iter().cloned().collect();
+        let second_required: std::collections::HashSet<_> =
+            second.required.iter().cloned().collect();
+        let first_warnings: std::collections::HashSet<_> = first.warnings.iter().cloned().collect();
+        let second_warnings: std::collections::HashSet<_> =
+            second.warnings.iter().cloned().collect();
+
+        let introduced_requires: Vec<_> = second_required
+            .difference(&first_required)
+            .cloned()
+            .collect();
+        let introduced_warnings: Vec<_> = second_warnings
+            .difference(&first_warnings)
+            .cloned()
+            .collect();
+
+        if !introduced_requires.is_empty() {
+            metrics.failed += 1;
+            failures.push(format!(
+                "[{}|{}|{}] {} — introduced requires: {:?} (first={:?}, second={:?})",
+                case.family,
+                value_domain_label(case.value_domain),
+                domain_mode_label(case.mode),
+                case.expr,
+                introduced_requires,
+                first.required,
+                second.required
+            ));
+            case_failed = true;
+        }
+
+        if !introduced_warnings.is_empty() {
+            metrics.failed += 1;
+            failures.push(format!(
+                "[{}|{}|{}] {} — introduced warnings: {:?} (first={:?}, second={:?})",
+                case.family,
+                value_domain_label(case.value_domain),
+                domain_mode_label(case.mode),
+                case.expr,
+                introduced_warnings,
+                first.warnings,
+                second.warnings
+            ));
+            case_failed = true;
+        }
+
+        if !case_failed {
+            if first.required == second.required && first.warnings == second.warnings {
+                metrics.exact_preserved += 1;
+            } else {
+                metrics.relaxed_preserved += 1;
+                if verbose && relaxed_examples.len() < 10 {
+                    relaxed_examples.push(format!(
+                        "[{}|{}|{}] {} — requires {:?} -> {:?}, warnings {:?} -> {:?}",
+                        case.family,
+                        value_domain_label(case.value_domain),
+                        domain_mode_label(case.mode),
+                        case.expr,
+                        first.required,
+                        second.required,
+                        first.warnings,
+                        second.warnings
+                    ));
+                }
+            }
+        } else if verbose {
+            eprintln!(
+                "  ❌ [{}|{}|{}] {}",
+                case.family,
+                value_domain_label(case.value_domain),
+                domain_mode_label(case.mode),
+                case.expr
+            );
+        }
+    }
+
+    eprintln!(
+        "✅ Semantic-axes contracts: exact={} relaxed={} requires_present={} requires_absent={} warning_present={} warning_absent={} failed={} parse={}",
+        metrics.exact_preserved,
+        metrics.relaxed_preserved,
+        metrics.expected_requires_present,
+        metrics.expected_requires_absent,
+        metrics.expected_warning_present,
+        metrics.expected_warning_absent,
+        metrics.failed,
+        metrics.parse_errors
+    );
+
+    if verbose && !relaxed_examples.is_empty() {
+        eprintln!("\nℹ️ semantic-axes relaxed-preserved examples:");
+        for example in relaxed_examples.iter().take(10) {
+            eprintln!("  {}", example);
+        }
+    }
+
+    if !failures.is_empty() {
+        eprintln!("\n🚨 semantic-axes failures:");
+        for failure in failures.iter().take(10) {
+            eprintln!("  {}", failure);
+        }
+    }
+
+    metrics
+}
+
+fn run_assumption_trace_contract_tests() -> AssumptionTraceContractMetrics {
+    let cases = load_assumption_trace_contract_expressions();
+    let verbose = std::env::var("METATEST_VERBOSE").is_ok();
+    let mut metrics = AssumptionTraceContractMetrics {
+        total: cases.len(),
+        ..Default::default()
+    };
+    let mut failures: Vec<String> = Vec::new();
+    let mut relaxed_examples: Vec<String> = Vec::new();
+
+    eprintln!(
+        "📊 Running assumption trace contracts: {} expressions from {} families",
+        cases.len(),
+        cases
+            .iter()
+            .map(|c| &c.family)
+            .collect::<std::collections::HashSet<_>>()
+            .len()
+    );
+
+    for case in &cases {
+        let first = match simplify_with_assumption_trace(&case.expr, case.mode, case.inv_trig) {
+            Ok(v) => v,
+            Err(err) => {
+                metrics.parse_errors += 1;
+                failures.push(format!(
+                    "[{}|{}|{}] {} — {}",
+                    case.family,
+                    domain_mode_label(case.mode),
+                    inv_trig_policy_label(case.inv_trig),
+                    case.expr,
+                    err
+                ));
+                continue;
+            }
+        };
+
+        let second = match simplify_with_assumption_trace(&first.result, case.mode, case.inv_trig) {
+            Ok(v) => v,
+            Err(err) => {
+                metrics.parse_errors += 1;
+                failures.push(format!(
+                    "[{}|{}|{}] {} -> '{}' reparsed failed: {}",
+                    case.family,
+                    domain_mode_label(case.mode),
+                    inv_trig_policy_label(case.inv_trig),
+                    case.expr,
+                    first.result,
+                    err
+                ));
+                continue;
+            }
+        };
+
+        let mut case_failed = false;
+        match &case.expected_kind {
+            Some(kind) => {
+                if !first.assumption_kinds.iter().any(|k| k == kind) {
+                    metrics.failed += 1;
+                    failures.push(format!(
+                        "[{}|{}|{}] {} — expected assumption kind '{}', got {:?}",
+                        case.family,
+                        domain_mode_label(case.mode),
+                        inv_trig_policy_label(case.inv_trig),
+                        case.expr,
+                        kind,
+                        first.assumption_kinds
+                    ));
+                    case_failed = true;
+                } else {
+                    metrics.expected_present += 1;
+                }
+            }
+            None => {
+                if first.assumption_kinds.is_empty() {
+                    metrics.expected_absent += 1;
+                } else {
+                    metrics.failed += 1;
+                    failures.push(format!(
+                        "[{}|{}|{}] {} — unexpected assumption kinds {:?}",
+                        case.family,
+                        domain_mode_label(case.mode),
+                        inv_trig_policy_label(case.inv_trig),
+                        case.expr,
+                        first.assumption_kinds
+                    ));
+                    case_failed = true;
+                }
+            }
+        }
+
+        let first_kinds: std::collections::HashSet<_> =
+            first.assumption_kinds.iter().cloned().collect();
+        let second_kinds: std::collections::HashSet<_> =
+            second.assumption_kinds.iter().cloned().collect();
+        let introduced_kinds: Vec<_> = second_kinds.difference(&first_kinds).cloned().collect();
+
+        if !introduced_kinds.is_empty() {
+            metrics.failed += 1;
+            failures.push(format!(
+                "[{}|{}|{}] {} — introduced assumption kinds {:?} (first={:?}, second={:?})",
+                case.family,
+                domain_mode_label(case.mode),
+                inv_trig_policy_label(case.inv_trig),
+                case.expr,
+                introduced_kinds,
+                first.assumption_kinds,
+                second.assumption_kinds
+            ));
+            case_failed = true;
+        }
+
+        if !case_failed {
+            if first.assumption_kinds == second.assumption_kinds {
+                metrics.exact_preserved += 1;
+            } else {
+                metrics.relaxed_preserved += 1;
+                if verbose && relaxed_examples.len() < 10 {
+                    relaxed_examples.push(format!(
+                        "[{}|{}|{}] {} — assumption kinds {:?} -> {:?}",
+                        case.family,
+                        domain_mode_label(case.mode),
+                        inv_trig_policy_label(case.inv_trig),
+                        case.expr,
+                        first.assumption_kinds,
+                        second.assumption_kinds
+                    ));
+                }
+            }
+        } else if verbose {
+            eprintln!(
+                "  ❌ [{}|{}|{}] {}",
+                case.family,
+                domain_mode_label(case.mode),
+                inv_trig_policy_label(case.inv_trig),
+                case.expr
+            );
+        }
+    }
+
+    eprintln!(
+        "✅ Assumption trace contracts: exact={} relaxed={} expected_present={} expected_absent={} failed={} parse={}",
+        metrics.exact_preserved,
+        metrics.relaxed_preserved,
+        metrics.expected_present,
+        metrics.expected_absent,
+        metrics.failed,
+        metrics.parse_errors
+    );
+
+    if verbose && !relaxed_examples.is_empty() {
+        eprintln!("\nℹ️ assumption trace relaxed-preserved examples:");
+        for example in relaxed_examples.iter().take(10) {
+            eprintln!("  {}", example);
+        }
+    }
+
+    if !failures.is_empty() {
+        eprintln!("\n🚨 assumption trace failures:");
+        for failure in failures.iter().take(10) {
+            eprintln!("  {}", failure);
+        }
+    }
+
+    metrics
 }
 
 /// Run substitution-based metamorphic tests
@@ -6463,8 +9731,8 @@ fn run_substitution_tests() -> ComboMetrics {
     let mut timeouts = 0usize;
     let mut cycle_events_total: usize = 0;
     let mut parse_errors = 0usize;
-
-    let mut numeric_only_examples: Vec<(String, String, String, String)> = Vec::new();
+    let mut numeric_only_causes: HashMap<String, usize> = HashMap::new();
+    let mut numeric_only_examples: Vec<(String, String, String, String, String)> = Vec::new();
 
     // Cross-product table data: (family, sub_label) → (nf, proved, numeric, failed)
     let mut cell_data: HashMap<(String, String), (usize, usize, usize, usize)> = HashMap::new();
@@ -6493,14 +9761,24 @@ fn run_substitution_tests() -> ComboMetrics {
                     let exp_parsed = match parse(&lhs_clone, &mut simplifier.context) {
                         Ok(e) => e,
                         Err(_) => {
-                            let _ = tx.send(Some(("parse_error".to_string(), String::new(), 0)));
+                            let _ = tx.send(Some((
+                                "parse_error".to_string(),
+                                String::new(),
+                                String::new(),
+                                0,
+                            )));
                             return;
                         }
                     };
                     let simp_parsed = match parse(&rhs_clone, &mut simplifier.context) {
                         Ok(e) => e,
                         Err(_) => {
-                            let _ = tx.send(Some(("parse_error".to_string(), String::new(), 0)));
+                            let _ = tx.send(Some((
+                                "parse_error".to_string(),
+                                String::new(),
+                                String::new(),
+                                0,
+                            )));
                             return;
                         }
                     };
@@ -6542,7 +9820,12 @@ fn run_substitution_tests() -> ComboMetrics {
                     let nf_match = cas_solver::runtime::compare_expr(&simplifier.context, e, s)
                         == std::cmp::Ordering::Equal;
                     if nf_match {
-                        let _ = tx.send(Some(("nf".to_string(), String::new(), sub_cycles)));
+                        let _ = tx.send(Some((
+                            "nf".to_string(),
+                            String::new(),
+                            String::new(),
+                            sub_cycles,
+                        )));
                         return;
                     }
 
@@ -6553,7 +9836,12 @@ fn run_substitution_tests() -> ComboMetrics {
                         e,
                         s,
                     ) {
-                        let _ = tx.send(Some(("proved".to_string(), String::new(), sub_cycles)));
+                        let _ = tx.send(Some((
+                            "proved".to_string(),
+                            String::new(),
+                            String::new(),
+                            sub_cycles,
+                        )));
                         return;
                     }
 
@@ -6566,23 +9854,45 @@ fn run_substitution_tests() -> ComboMetrics {
                         &config_clone,
                     ) {
                         NumericCheckOutcome::Pass => {
+                            let d = simplifier.context.add(cas_ast::Expr::Sub(e, s));
+                            let (d_simp, _) = simplifier.simplify(d);
                             let residual = {
-                                let d = simplifier.context.add(cas_ast::Expr::Sub(e, s));
-                                let (d_simp, _) = simplifier.simplify(d);
                                 cas_formatter::LaTeXExpr {
                                     context: &simplifier.context,
                                     id: d_simp,
                                 }
                                 .to_latex()
                             };
-                            let _ = tx.send(Some(("numeric".to_string(), residual, sub_cycles)));
+                            let shape = expr_shape_signature(&simplifier.context, d_simp);
+                            let cause = numeric_only_cause_for_1var(
+                                &simplifier.context,
+                                e,
+                                s,
+                                &free_var_clone,
+                                &config_clone,
+                                &FilterSpec::None,
+                                &shape,
+                            )
+                            .label()
+                            .to_string();
+                            let _ =
+                                tx.send(Some(("numeric".to_string(), residual, cause, sub_cycles)));
                         }
                         NumericCheckOutcome::Inconclusive(reason) => {
-                            let _ = tx.send(Some(("inconclusive".to_string(), reason, sub_cycles)));
+                            let _ = tx.send(Some((
+                                "inconclusive".to_string(),
+                                reason,
+                                String::new(),
+                                sub_cycles,
+                            )));
                         }
                         NumericCheckOutcome::Failed(_) => {
-                            let _ =
-                                tx.send(Some(("failed".to_string(), String::new(), sub_cycles)));
+                            let _ = tx.send(Some((
+                                "failed".to_string(),
+                                String::new(),
+                                String::new(),
+                                sub_cycles,
+                            )));
                         }
                     }
                 });
@@ -6590,7 +9900,7 @@ fn run_substitution_tests() -> ComboMetrics {
             let cell_key = (identity.family.clone(), sub.label.clone());
 
             match rx.recv_timeout(combo_timeout) {
-                Ok(Some((kind, residual, cycles))) => match kind.as_str() {
+                Ok(Some((kind, residual, cause, cycles))) => match kind.as_str() {
                     "nf" => {
                         nf_convergent += 1;
                         passed += 1;
@@ -6607,6 +9917,7 @@ fn run_substitution_tests() -> ComboMetrics {
                         numeric_only += 1;
                         passed += 1;
                         cycle_events_total += cycles;
+                        *numeric_only_causes.entry(cause.clone()).or_default() += 1;
                         cell_data.entry(cell_key).or_insert((0, 0, 0, 0)).2 += 1;
                         if verbose && numeric_only_examples.len() < 200 {
                             numeric_only_examples.push((
@@ -6614,6 +9925,7 @@ fn run_substitution_tests() -> ComboMetrics {
                                 rhs_str.clone(),
                                 identity.family.clone(),
                                 residual,
+                                cause,
                             ));
                         }
                     }
@@ -6663,6 +9975,9 @@ fn run_substitution_tests() -> ComboMetrics {
         "   📐 NF-convergent: {} | 🔢 Proved-symbolic: {} | 🌡️ Numeric-only: {} | ◐ Inconclusive: {}",
         nf_convergent, proved_symbolic, numeric_only, inconclusive
     );
+    if verbose && numeric_only > 0 {
+        print_numeric_only_cause_breakdown(&numeric_only_causes);
+    }
 
     // Cross-product table (METATEST_TABLE=1)
     if show_table {
@@ -6766,12 +10081,14 @@ fn run_substitution_tests() -> ComboMetrics {
     if verbose && !numeric_only_examples.is_empty() {
         eprintln!("\n── numeric-only examples ──");
         // Group by family
-        let mut family_groups: HashMap<String, Vec<(String, String, String)>> = HashMap::new();
-        for (lhs, rhs, family, residual) in &numeric_only_examples {
+        let mut family_groups: HashMap<String, Vec<(String, String, String, String)>> =
+            HashMap::new();
+        for (lhs, rhs, family, residual, cause) in &numeric_only_examples {
             family_groups.entry(family.clone()).or_default().push((
                 lhs.clone(),
                 rhs.clone(),
                 residual.clone(),
+                cause.clone(),
             ));
         }
         let mut families: Vec<_> = family_groups.keys().cloned().collect();
@@ -6779,9 +10096,10 @@ fn run_substitution_tests() -> ComboMetrics {
         for family in &families {
             let examples = &family_groups[family];
             eprintln!("── {} ({} cases) ──", family, examples.len());
-            for (lhs, rhs, residual) in examples.iter().take(10) {
+            for (lhs, rhs, residual, cause) in examples.iter().take(10) {
                 eprintln!("  LHS: {}", lhs);
                 eprintln!("  RHS: {}", rhs);
+                eprintln!("  Cause: {}", cause);
                 if !residual.is_empty() {
                     eprintln!("  Residual: {}", residual);
                 }
@@ -6821,6 +10139,42 @@ fn run_contextual_pair_tests() -> ComboMetrics {
     run_direct_pair_tests(pairs, "contextual metamorphic tests", "Contextual tests")
 }
 
+fn run_contextual_rational_pair_tests() -> ComboMetrics {
+    let pairs = load_contextual_rational_pairs();
+    run_direct_pair_tests(
+        pairs,
+        "contextual rational metamorphic tests",
+        "Contextual rational tests",
+    )
+}
+
+fn run_contextual_trig_pair_tests() -> ComboMetrics {
+    let pairs = load_contextual_trig_pairs();
+    run_direct_pair_tests(
+        pairs,
+        "contextual trig metamorphic tests",
+        "Contextual trig tests",
+    )
+}
+
+fn run_contextual_polynomial_pair_tests() -> ComboMetrics {
+    let pairs = load_contextual_polynomial_pairs();
+    run_direct_pair_tests(
+        pairs,
+        "contextual polynomial metamorphic tests",
+        "Contextual polynomial tests",
+    )
+}
+
+fn run_contextual_radical_pair_tests() -> ComboMetrics {
+    let pairs = load_contextual_radical_pairs();
+    run_direct_pair_tests(
+        pairs,
+        "contextual radical metamorphic tests",
+        "Contextual radical tests",
+    )
+}
+
 fn run_residual_pair_tests() -> ComboMetrics {
     let pairs = load_residual_pairs();
     run_direct_pair_tests(pairs, "residual metamorphic tests", "Residual tests")
@@ -6846,7 +10200,8 @@ fn run_direct_pair_tests(
     let mut cycle_events_total: usize = 0;
     let mut parse_errors = 0usize;
     let pair_timeout = std::time::Duration::from_secs(5);
-    let mut numeric_only_examples: Vec<(String, String, String, String)> = Vec::new();
+    let mut numeric_only_causes: HashMap<String, usize> = HashMap::new();
+    let mut numeric_only_examples: Vec<(String, String, String, String, String)> = Vec::new();
 
     let num_families = pairs
         .iter()
@@ -6875,14 +10230,24 @@ fn run_direct_pair_tests(
                 let lhs_parsed = match parse(&lhs_str, &mut simplifier.context) {
                     Ok(e) => e,
                     Err(_) => {
-                        let _ = tx.send(Some(("parse_error".to_string(), String::new(), 0)));
+                        let _ = tx.send(Some((
+                            "parse_error".to_string(),
+                            String::new(),
+                            String::new(),
+                            0,
+                        )));
                         return;
                     }
                 };
                 let rhs_parsed = match parse(&rhs_str, &mut simplifier.context) {
                     Ok(e) => e,
                     Err(_) => {
-                        let _ = tx.send(Some(("parse_error".to_string(), String::new(), 0)));
+                        let _ = tx.send(Some((
+                            "parse_error".to_string(),
+                            String::new(),
+                            String::new(),
+                            0,
+                        )));
                         return;
                     }
                 };
@@ -6923,7 +10288,12 @@ fn run_direct_pair_tests(
                     cas_solver::runtime::compare_expr(&simplifier.context, lhs_simp, rhs_simp)
                         == std::cmp::Ordering::Equal;
                 if nf_match {
-                    let _ = tx.send(Some(("nf".to_string(), String::new(), sub_cycles)));
+                    let _ = tx.send(Some((
+                        "nf".to_string(),
+                        String::new(),
+                        String::new(),
+                        sub_cycles,
+                    )));
                     return;
                 }
 
@@ -6934,7 +10304,12 @@ fn run_direct_pair_tests(
                     lhs_simp,
                     rhs_simp,
                 ) {
-                    let _ = tx.send(Some(("proved".to_string(), String::new(), sub_cycles)));
+                    let _ = tx.send(Some((
+                        "proved".to_string(),
+                        String::new(),
+                        String::new(),
+                        sub_cycles,
+                    )));
                     return;
                 }
 
@@ -6997,19 +10372,61 @@ fn run_direct_pair_tests(
                             }
                             .to_latex()
                         };
-                        let _ = tx.send(Some(("numeric".to_string(), residual, sub_cycles)));
+                        let shape = {
+                            let d = simplifier
+                                .context
+                                .add(cas_ast::Expr::Sub(lhs_simp, rhs_simp));
+                            let (d_simp, _) = simplifier.simplify(d);
+                            expr_shape_signature(&simplifier.context, d_simp)
+                        };
+                        let cause = match free_vars.as_slice() {
+                            [var] => numeric_only_cause_for_1var(
+                                &simplifier.context,
+                                lhs_simp,
+                                rhs_simp,
+                                var,
+                                &config_clone,
+                                filters.first().unwrap_or(&FilterSpec::None),
+                                &shape,
+                            ),
+                            [var1, var2] => numeric_only_cause_for_2var(
+                                &simplifier.context,
+                                lhs_simp,
+                                rhs_simp,
+                                var1,
+                                var2,
+                                &config_clone,
+                                filters.first().unwrap_or(&FilterSpec::None),
+                                filters.get(1).unwrap_or(&FilterSpec::None),
+                                &shape,
+                            ),
+                            vars => classify_numeric_only_cause(None, vars.len(), &shape),
+                        }
+                        .label()
+                        .to_string();
+                        let _ = tx.send(Some(("numeric".to_string(), residual, cause, sub_cycles)));
                     }
                     NumericCheckOutcome::Inconclusive(reason) => {
-                        let _ = tx.send(Some(("inconclusive".to_string(), reason, sub_cycles)));
+                        let _ = tx.send(Some((
+                            "inconclusive".to_string(),
+                            reason,
+                            String::new(),
+                            sub_cycles,
+                        )));
                     }
                     NumericCheckOutcome::Failed(reason) => {
-                        let _ = tx.send(Some(("failed".to_string(), reason, sub_cycles)));
+                        let _ = tx.send(Some((
+                            "failed".to_string(),
+                            reason,
+                            String::new(),
+                            sub_cycles,
+                        )));
                     }
                 }
             });
 
         match rx.recv_timeout(pair_timeout) {
-            Ok(Some((kind, residual, cycles))) => match kind.as_str() {
+            Ok(Some((kind, residual, cause, cycles))) => match kind.as_str() {
                 "nf" => {
                     nf_convergent += 1;
                     passed += 1;
@@ -7024,12 +10441,14 @@ fn run_direct_pair_tests(
                     numeric_only += 1;
                     passed += 1;
                     cycle_events_total += cycles;
+                    *numeric_only_causes.entry(cause.clone()).or_default() += 1;
                     if verbose && numeric_only_examples.len() < 200 {
                         numeric_only_examples.push((
                             pair.lhs.clone(),
                             pair.rhs.clone(),
                             family,
                             residual,
+                            cause,
                         ));
                     }
                 }
@@ -7074,15 +10493,20 @@ fn run_direct_pair_tests(
         "   📐 NF-convergent: {} | 🔢 Proved-symbolic: {} | 🌡️ Numeric-only: {} | ◐ Inconclusive: {}",
         nf_convergent, proved_symbolic, numeric_only, inconclusive
     );
+    if verbose && numeric_only > 0 {
+        print_numeric_only_cause_breakdown(&numeric_only_causes);
+    }
 
     if verbose && !numeric_only_examples.is_empty() {
         eprintln!("\n── contextual numeric-only examples ──");
-        let mut family_groups: HashMap<String, Vec<(String, String, String)>> = HashMap::new();
-        for (lhs, rhs, family, residual) in &numeric_only_examples {
+        let mut family_groups: HashMap<String, Vec<(String, String, String, String)>> =
+            HashMap::new();
+        for (lhs, rhs, family, residual, cause) in &numeric_only_examples {
             family_groups.entry(family.clone()).or_default().push((
                 lhs.clone(),
                 rhs.clone(),
                 residual.clone(),
+                cause.clone(),
             ));
         }
         let mut families: Vec<_> = family_groups.keys().cloned().collect();
@@ -7090,9 +10514,10 @@ fn run_direct_pair_tests(
         for family in &families {
             let examples = &family_groups[family];
             eprintln!("── {} ({} cases) ──", family, examples.len());
-            for (lhs, rhs, residual) in examples.iter().take(10) {
+            for (lhs, rhs, residual, cause) in examples.iter().take(10) {
                 eprintln!("  LHS: {}", lhs);
                 eprintln!("  RHS: {}", rhs);
+                eprintln!("  Cause: {}", cause);
                 if !residual.is_empty() {
                     eprintln!("  Residual: {}", residual);
                 }
@@ -7138,6 +10563,38 @@ fn metatest_csv_contextual_pairs() {
 }
 
 #[test]
+#[ignore] // Run with: cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_csv_contextual_rational_pairs -- --ignored --nocapture
+fn metatest_csv_contextual_rational_pairs() {
+    let m = run_contextual_rational_pair_tests();
+    assert_eq!(m.failed, 0, "{} contextual rational tests failed", m.failed);
+}
+
+#[test]
+#[ignore] // Run with: cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_csv_contextual_trig_pairs -- --ignored --nocapture
+fn metatest_csv_contextual_trig_pairs() {
+    let m = run_contextual_trig_pair_tests();
+    assert_eq!(m.failed, 0, "{} contextual trig tests failed", m.failed);
+}
+
+#[test]
+#[ignore] // Run with: cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_csv_contextual_polynomial_pairs -- --ignored --nocapture
+fn metatest_csv_contextual_polynomial_pairs() {
+    let m = run_contextual_polynomial_pair_tests();
+    assert_eq!(
+        m.failed, 0,
+        "{} contextual polynomial tests failed",
+        m.failed
+    );
+}
+
+#[test]
+#[ignore] // Run with: cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_csv_contextual_radical_pairs -- --ignored --nocapture
+fn metatest_csv_contextual_radical_pairs() {
+    let m = run_contextual_radical_pair_tests();
+    assert_eq!(m.failed, 0, "{} contextual radical tests failed", m.failed);
+}
+
+#[test]
 #[ignore] // Run with: cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_csv_residual_pairs -- --ignored --nocapture
 fn metatest_csv_residual_pairs() {
     let m = run_residual_pair_tests();
@@ -7145,6 +10602,270 @@ fn metatest_csv_residual_pairs() {
         m.failed, 0,
         "{} residual metamorphic tests failed",
         m.failed
+    );
+}
+
+#[test]
+#[ignore] // Run with: cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_simplify_idempotence_contracts -- --ignored --nocapture
+fn metatest_simplify_idempotence_contracts() {
+    let m = run_idempotence_contract_tests();
+    assert_eq!(m.failed, 0, "{} idempotence contracts failed", m.failed);
+    assert_eq!(
+        m.parse_errors, 0,
+        "{} idempotence expressions failed to parse",
+        m.parse_errors
+    );
+    assert_eq!(
+        m.timeouts, 0,
+        "{} idempotence contracts timed out",
+        m.timeouts
+    );
+}
+
+#[test]
+#[ignore] // Run with: cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_simplify_requires_contracts -- --ignored --nocapture
+fn metatest_simplify_requires_contracts() {
+    let m = run_requires_contract_tests();
+    assert_eq!(m.failed, 0, "{} requires contracts failed", m.failed);
+    assert_eq!(
+        m.parse_errors, 0,
+        "{} requires contract expressions failed to parse/eval",
+        m.parse_errors
+    );
+}
+
+#[test]
+#[ignore] // Run with: cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_simplify_warnings_contracts -- --ignored --nocapture
+fn metatest_simplify_warnings_contracts() {
+    let m = run_warnings_contract_tests();
+    assert_eq!(m.failed, 0, "{} warnings contracts failed", m.failed);
+    assert_eq!(
+        m.parse_errors, 0,
+        "{} warnings contract expressions failed to parse/eval",
+        m.parse_errors
+    );
+}
+
+#[test]
+#[ignore] // Run with: cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_simplify_transparency_signal_contracts -- --ignored --nocapture
+fn metatest_simplify_transparency_signal_contracts() {
+    let m = run_transparency_signal_contract_tests();
+    assert_eq!(
+        m.failed, 0,
+        "{} transparency-signal contracts failed",
+        m.failed
+    );
+    assert_eq!(
+        m.parse_errors, 0,
+        "{} transparency-signal contract expressions failed to parse/eval",
+        m.parse_errors
+    );
+}
+
+#[test]
+#[ignore] // Run with: cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_simplify_branch_transparency_contracts -- --ignored --nocapture
+fn metatest_simplify_branch_transparency_contracts() {
+    let m = run_branch_transparency_contract_tests();
+    assert_eq!(
+        m.failed, 0,
+        "{} branch-transparency contracts failed",
+        m.failed
+    );
+    assert_eq!(
+        m.parse_errors, 0,
+        "{} branch-transparency contract expressions failed to parse/eval",
+        m.parse_errors
+    );
+}
+
+#[test]
+#[ignore] // Run with: cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_simplify_semantic_behavior_contracts -- --ignored --nocapture
+fn metatest_simplify_semantic_behavior_contracts() {
+    let m = run_semantic_behavior_contract_tests();
+    assert_eq!(
+        m.failed, 0,
+        "{} semantic-behavior contracts failed",
+        m.failed
+    );
+    assert_eq!(
+        m.parse_errors, 0,
+        "{} semantic-behavior contract expressions failed to parse/eval",
+        m.parse_errors
+    );
+}
+
+#[test]
+#[ignore] // Run with: cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_simplify_requires_mode_contracts -- --ignored --nocapture
+fn metatest_simplify_requires_mode_contracts() {
+    let m = run_requires_mode_contract_tests();
+    assert_eq!(
+        m.failed, 0,
+        "{} mode-aware requires contracts failed",
+        m.failed
+    );
+    assert_eq!(
+        m.parse_errors, 0,
+        "{} mode-aware requires contract expressions failed to parse/eval",
+        m.parse_errors
+    );
+}
+
+#[test]
+#[ignore] // Run with: cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_simplify_semantic_axes_contracts -- --ignored --nocapture
+fn metatest_simplify_semantic_axes_contracts() {
+    let m = run_semantic_axes_contract_tests();
+    assert_eq!(m.failed, 0, "{} semantic-axes contracts failed", m.failed);
+    assert_eq!(
+        m.parse_errors, 0,
+        "{} semantic-axes contract expressions failed to parse/eval",
+        m.parse_errors
+    );
+}
+
+#[test]
+#[ignore] // Run with: cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_simplify_assumption_trace_contracts -- --ignored --nocapture
+fn metatest_simplify_assumption_trace_contracts() {
+    let m = run_assumption_trace_contract_tests();
+    assert_eq!(
+        m.failed, 0,
+        "{} assumption trace contracts failed",
+        m.failed
+    );
+    assert_eq!(
+        m.parse_errors, 0,
+        "{} assumption trace contract expressions failed to parse/eval",
+        m.parse_errors
+    );
+}
+
+#[test]
+#[ignore] // Run with: cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_simplify_phase4_contract_suites -- --ignored --nocapture
+fn metatest_simplify_phase4_contract_suites() {
+    let idempotence = run_idempotence_contract_tests();
+    let requires = run_requires_contract_tests();
+    let warnings = run_warnings_contract_tests();
+    let transparency = run_transparency_signal_contract_tests();
+    let branch_transparency = run_branch_transparency_contract_tests();
+    let semantic_behavior = run_semantic_behavior_contract_tests();
+    let requires_mode = run_requires_mode_contract_tests();
+    let semantic_axes = run_semantic_axes_contract_tests();
+    let assumption_trace = run_assumption_trace_contract_tests();
+
+    eprintln!(
+        "\n📦 Phase 4 contract summary: idempotence={} requires={} warnings={} transparency={} branch_transparency={} semantic_behavior={} requires_mode={} semantic_axes={} assumption_trace={}",
+        idempotence.total,
+        requires.total,
+        warnings.total,
+        transparency.total,
+        branch_transparency.total,
+        semantic_behavior.total,
+        requires_mode.total,
+        semantic_axes.total,
+        assumption_trace.total
+    );
+
+    assert_eq!(
+        idempotence.failed, 0,
+        "{} idempotence contracts failed",
+        idempotence.failed
+    );
+    assert_eq!(
+        idempotence.parse_errors, 0,
+        "{} idempotence contract parse errors",
+        idempotence.parse_errors
+    );
+    assert_eq!(
+        idempotence.timeouts, 0,
+        "{} idempotence contract timeouts",
+        idempotence.timeouts
+    );
+
+    assert_eq!(
+        requires.failed, 0,
+        "{} requires contracts failed",
+        requires.failed
+    );
+    assert_eq!(
+        requires.parse_errors, 0,
+        "{} requires contract parse errors",
+        requires.parse_errors
+    );
+
+    assert_eq!(
+        warnings.failed, 0,
+        "{} warnings contracts failed",
+        warnings.failed
+    );
+    assert_eq!(
+        warnings.parse_errors, 0,
+        "{} warnings contract parse errors",
+        warnings.parse_errors
+    );
+
+    assert_eq!(
+        transparency.failed, 0,
+        "{} transparency contracts failed",
+        transparency.failed
+    );
+    assert_eq!(
+        transparency.parse_errors, 0,
+        "{} transparency contract parse errors",
+        transparency.parse_errors
+    );
+
+    assert_eq!(
+        branch_transparency.failed, 0,
+        "{} branch_transparency contracts failed",
+        branch_transparency.failed
+    );
+    assert_eq!(
+        branch_transparency.parse_errors, 0,
+        "{} branch_transparency contract parse errors",
+        branch_transparency.parse_errors
+    );
+
+    assert_eq!(
+        semantic_behavior.failed, 0,
+        "{} semantic_behavior contracts failed",
+        semantic_behavior.failed
+    );
+    assert_eq!(
+        semantic_behavior.parse_errors, 0,
+        "{} semantic_behavior contract parse errors",
+        semantic_behavior.parse_errors
+    );
+
+    assert_eq!(
+        requires_mode.failed, 0,
+        "{} requires_mode contracts failed",
+        requires_mode.failed
+    );
+    assert_eq!(
+        requires_mode.parse_errors, 0,
+        "{} requires_mode contract parse errors",
+        requires_mode.parse_errors
+    );
+
+    assert_eq!(
+        semantic_axes.failed, 0,
+        "{} semantic_axes contracts failed",
+        semantic_axes.failed
+    );
+    assert_eq!(
+        semantic_axes.parse_errors, 0,
+        "{} semantic_axes contract parse errors",
+        semantic_axes.parse_errors
+    );
+
+    assert_eq!(
+        assumption_trace.failed, 0,
+        "{} assumption_trace contracts failed",
+        assumption_trace.failed
+    );
+    assert_eq!(
+        assumption_trace.parse_errors, 0,
+        "{} assumption_trace contract parse errors",
+        assumption_trace.parse_errors
     );
 }
 
@@ -7226,6 +10947,38 @@ fn relaxed_numeric_classification_with_fixed_retries_filtered_samples() {
     );
 }
 
+#[test]
+fn relaxed_numeric_classification_2var_retries_sampling_weak_cases() {
+    let config = metatest_config();
+    let mut calls = 0usize;
+
+    let outcome = classify_numeric_equiv_2var_relaxed_with(&config, |_filter1, _filter2| {
+        calls += 1;
+        if calls == 1 {
+            NumericEquivStats {
+                valid: 1,
+                near_pole: 24,
+                domain_error: 18,
+                asymmetric_invalid: 0,
+                eval_failed: 0,
+                filtered_out: 0,
+                mismatches: Vec::new(),
+                max_abs_err: 0.0,
+                max_rel_err: 0.0,
+                worst_sample: None,
+            }
+        } else {
+            NumericEquivStats {
+                valid: 8,
+                ..Default::default()
+            }
+        }
+    });
+
+    assert!(matches!(outcome, NumericCheckOutcome::Pass));
+    assert!(calls > 1, "expected relaxed 2var classification to retry");
+}
+
 // =============================================================================
 // UNIFIED REGRESSION BENCHMARK: all operations + substitution in one scorecard
 // =============================================================================
@@ -7272,6 +11025,14 @@ fn metatest_unified_benchmark() {
     // Phase 3: Curated contextual tests
     let contextual_metrics = run_contextual_pair_tests();
     all_metrics.push(contextual_metrics);
+    let contextual_rational_metrics = run_contextual_rational_pair_tests();
+    all_metrics.push(contextual_rational_metrics);
+    let contextual_trig_metrics = run_contextual_trig_pair_tests();
+    all_metrics.push(contextual_trig_metrics);
+    let contextual_polynomial_metrics = run_contextual_polynomial_pair_tests();
+    all_metrics.push(contextual_polynomial_metrics);
+    let contextual_radical_metrics = run_contextual_radical_pair_tests();
+    all_metrics.push(contextual_radical_metrics);
 
     // Phase 4: Print unified table
     eprintln!();

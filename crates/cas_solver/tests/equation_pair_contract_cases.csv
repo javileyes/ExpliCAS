@@ -1,0 +1,19 @@
+# eq_a,eq_b,solve_var,expected,family
+
+# Parametric pair that previously failed only in debug due to a stale canonical-shape assertion
+y = 2*x + 1,y - 1 = 2*x,x,verified,parametric_rearrange
+
+# Parametric pair that currently needs numeric fallback rather than full symbolic closure
+a*x = b,x = b/a,x,numeric,parametric_numeric
+
+# Simple structural pair that should stay fully verified
+x^2 - 5*x + 6 = 0,(x - 2)*(x - 3) = 0,x,verified,factor_expand
+
+# Linear-collect family should preserve solver behavior across equivalent rewrites
+A = P + P*r*t,A = P*(1 + r*t),P,verified,linear_collect_factor
+
+# Symbolic linear family should stay equivalent across rearrangement
+(x-1)/(x+1) = y,x - 1 = y*(x + 1),x,verified,symbolic_linear_rearrange
+
+# Reciprocal family often still needs numeric fallback rather than full symbolic closure
+1/R = 1/R1 + 1/R2,R = (R1*R2)/(R1+R2),R,numeric,reciprocal_numeric

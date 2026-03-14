@@ -1,0 +1,16 @@
+# Required Conditions Preservation Contract Corpus
+# Format: expr,expect_requires
+
+# Expressions that should carry implicit requires in Generic mode
+sqrt(x)^2,yes
+exp(ln(x)),yes
+(x-y)/(sqrt(x)-sqrt(y)),yes
+log(x^2, x^6),yes
+1/(1/x),yes
+sqrt(x^3),yes
+x^(1/2)*x^(1/3),yes
+
+# Expressions that should stay require-free
+sqrt(4)^2,no
+x + 1,no
+sin(3*x) + 1,no

@@ -1,0 +1,12 @@
+# equation,solve_var,domain_mode,assume_scope,identity_exp,identity_simp,expected_required,family
+
+# Safe tier-0 transforms must preserve exact required_conditions signatures
+2^x = y,x,assume,real,sin(t)^2 + cos(t)^2,1,positive(y),assume_positive_rhs
+2^x = sqrt(y),x,generic,real,sec(t)^2 - tan(t)^2,1,nonnegative(y),generic_sqrt_rhs
+2^x = 5,x,strict,real,sin(t)^2 + cos(t)^2,1,none,strict_literal_rhs
+x = 1,x,generic,real,sec(t)^2 - tan(t)^2,1,none,trivial_equation
+(x-1)/(x+1) = y,x,generic,real,sin(t)^2 + cos(t)^2,1,nonzero(x + 1),symbolic_linear_input_denominator_required
+A = P + P*r*t,P,generic,real,sec(t)^2 - tan(t)^2,1,none,linear_collect_no_global_required
+1/R = 1/R1 + 1/R2,R,generic,real,sin(t)^2 + cos(t)^2,1,nonzero(R);nonzero(R1);nonzero(R2),reciprocal_input_denominator_required
+(-2)^x = y,x,assume,wildcard,sec(t)^2 - tan(t)^2,1,none,wildcard_residual_no_required
+(a^x - b)*(x - 1) = 0,x,generic,real,sin(t)^2 + cos(t)^2,1,none,nested_product_zero_generic_no_required

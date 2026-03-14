@@ -1,0 +1,29 @@
+# Semantic Behavior Contract Corpus
+# Format: expr,value_domain,mode,match_kind,expected
+
+# ln(exp(.)) across semantic axes
+ln(exp(x)),real,strict,exact,x
+ln(exp(x)),real,generic,exact,x
+ln(exp(x)),complex,generic,contains_all,ln
+ln(exp(x)),complex,assume,contains_all,ln
+ln(exp(3)),complex,strict,exact,3
+
+# exp(ln(.)) across semantic axes
+exp(ln(x)),real,strict,contains_all,ln
+exp(ln(x)),real,generic,exact,x
+exp(ln(x)),complex,strict,contains_all,ln
+exp(ln(x)),complex,generic,exact,x
+
+# symbolic log base
+log(b, b^x),real,strict,contains_all,log
+log(b, b^x),real,generic,contains_all,log
+log(b, b^x),real,assume,exact,x
+log(2, 2^x),real,strict,exact,x
+
+# composed behavior
+exp(ln(x)) + ln(exp(x)),real,generic,exact,2 * x
+exp(ln(x)) + ln(exp(x)),complex,generic,contains_all,ln;e^
+
+# multivariate/log-product closure
+ln(a^2 * b^3) - 2*ln(a) - 3*ln(b),real,generic,exact,0
+ln(a^2 * b^3) - 2*ln(a) - 3*ln(b),real,assume,exact,0

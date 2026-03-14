@@ -1,0 +1,27 @@
+# Contextual Polynomial Metamorphic Pairs
+# Format: lhs,rhs,vars[,filters]
+
+# Polynomial expansion / factorization
+(u+1)^2,u^2 + 2*u + 1,u
+(u+2)^2,u^2 + 4*u + 4,u
+(u-1)^5,u^5 - 5*u^4 + 10*u^3 - 10*u^2 + 5*u - 1,u
+u^3 + u^2 + u + 1,(u+1)*(u^2+1),u
+u^6 - 1,(u^2+u+1)*(u^2-u+1)*(u+1)*(u-1),u
+(u+1)*(u+2)*(u+3),u^3 + 6*u^2 + 11*u + 6,u
+(9*u^2 - 6*u + 1),(3*u - 1)^2,u
+(u^4 + 4*u^2 + 4),(u^2 + 2)^2,u
+
+# Polynomial identities in additive context
+(1/u + 1/(u+1)) + ((u+1)^2),((2*u+1)/(u*(u+1))) + (u^2 + 2*u + 1),u,range(0.1;3.0)
+(1/u + 1/(u+1)) + (u^3 + u^2 + u + 1),((2*u+1)/(u*(u+1))) + ((u+1)*(u^2+1)),u,range(0.1;3.0)
+(1/(u - 1) + 1/(u + 1)) + ((u+1)*(u+2)*(u+3)),(2*u/(u^2 - 1)) + (u^3 + 6*u^2 + 11*u + 6),u,range(1.1;3.0)
+(1/(u - 1) + 1/(u + 1)) + (u^6 - 1),(2*u/(u^2 - 1)) + ((u^2+u+1)*(u^2-u+1)*(u+1)*(u-1)),u,range(1.1;3.0)
+
+# Multivariate algebraic coverage
+((x^2 + y^2)*(a^2 + b^2)) + ((u+1)*(u+2)*(u+3)),((x*a + y*b)^2 + (x*b - y*a)^2) + (u^3 + 6*u^2 + 11*u + 6),x;y;a;b;u
+((x^2 + y^2)*(a^2 + b^2)) + (u^3 + y^3),((x*a + y*b)^2 + (x*b - y*a)^2) + ((u+y)*(u^2 - u*y + y^2)),x;y;a;b;u
+((x^2 + y^2)*(a^2 + b^2)) + (u^3 - 1),((x*a + y*b)^2 + (x*b - y*a)^2) + ((u-1)*(u^2 + u + 1)),x;y;a;b;u
+((x^2 + y^2)*(a^2 + b^2)) + ((u-1)^5),((x*a + y*b)^2 + (x*b - y*a)^2) + (u^5 - 5*u^4 + 10*u^3 - 10*u^2 + 5*u - 1),x;y;a;b;u
+((x^2 + y^2)*(a^2 + b^2)) + ((u+2)*(u+3)),((x*a + y*b)^2 + (x*b - y*a)^2) + (u^2 + 5*u + 6),x;y;a;b;u
+((x^2 + y^2)*(a^2 + b^2)) + (u^6 - 1),((x*a + y*b)^2 + (x*b - y*a)^2) + ((u^2+u+1)*(u^2-u+1)*(u+1)*(u-1)),x;y;a;b;u
+((x^2 + y^2)*(a^2 + b^2)) + (u^3 + u^2 + u + 1),((x*a + y*b)^2 + (x*b - y*a)^2) + ((u+1)*(u^2+1)),x;y;a;b;u

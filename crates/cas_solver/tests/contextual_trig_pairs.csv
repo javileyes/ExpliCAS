@@ -1,0 +1,31 @@
+# Contextual Trig Metamorphic Pairs
+# Format: lhs,rhs,vars[,filters]
+
+# Trig identity in additive context
+(sec(u)^2 - tan(u)^2) + ((u+1/2)^2),(1) + (u^2 + u + 1/4),u,range(-1.2;1.2)
+(sec(u)^2 - tan(u)^2) + ((u-1)^5),(1) + (u^5 - 5*u^4 + 10*u^3 - 10*u^2 + 5*u - 1),u,range(-1.2;1.2)
+(sec(u)^2 - tan(u)^2) + ((u+2)^2),(1) + (u^2 + 4*u + 4),u,range(-1.2;1.2)
+(sec(u)^2 - tan(u)^2) + (u^3 + u^2 + u + 1),(1) + ((u+1)*(u^2+1)),u,range(-1.2;1.2)
+
+# Trig sum context
+(1/sqrt(u)) + (sin(u) + sin(3*u)),(sqrt(u)/u) + (2*sin(2*u)*cos(u)),u,range(0.1;3.0)
+(sin(pi/6)) + (sin(u) + sin(3*u)),(1/2) + (2*sin(2*u)*cos(u)),u
+(sin(5*pi/6)) + (exp(u)/(exp(u) + 1) + 1/(exp(u) + 1)),(1/2) + (1),u
+(cos(3*pi/8)) + (sin(u) + sin(3*u)),(sqrt(2 - sqrt(2))/2) + (2*sin(2*u)*cos(u)),u
+(cos(2*pi/5)) + (sin(u) + sin(3*u)),((sqrt(5) - 1)/4) + (2*sin(2*u)*cos(u)),u
+
+# Mixed bivariate trig coverage
+(sec(x)^2 - tan(x)^2) + ((u+1/2)^2),(1) + (u^2 + u + 1/4),x;u,range(-1.2;1.2)|none
+(sec(x)^2 - tan(x)^2) + ((u-1)^5),(1) + (u^5 - 5*u^4 + 10*u^3 - 10*u^2 + 5*u - 1),x;u,range(-1.2;1.2)|none
+(sec(x)^2 - tan(x)^2) + ((u+2)^2),(1) + (u^2 + 4*u + 4),x;u,range(-1.2;1.2)|none
+(1/sqrt(x)) + (sin(u) + sin(3*u)),(sqrt(x)/x) + (2*sin(2*u)*cos(u)),x;u,gt(0.1)|range(-1.2;1.2)
+
+# Tanh / double-angle style coverage
+(9*x^2 - 6*x + 1) + (tanh(2*u)),((3*x - 1)^2) + (2*tanh(u)/(1 + tanh(u)^2)),x;u
+(x^4 + 4*x^2 + 4) + (tanh(2*u)),((x^2 + 2)^2) + (2*tanh(u)/(1 + tanh(u)^2)),x;u
+(9*u^2 - 6*u + 1) + (tanh(2*v)),((3*u - 1)^2) + (2*tanh(v)/(1 + tanh(v)^2)),u;v
+(u^4 + 4*u^2 + 4) + (tanh(2*v)),((u^2 + 2)^2) + (2*tanh(v)/(1 + tanh(v)^2)),u;v
+
+# Lifted trig identities in quadratic-root context
+((-b + sqrt(b^2 - 4*a*c))/(2*a)) + (sin(u)^2*cos(u)^2),((-b + sqrt(b^2 - 4*a*c))/(2*a)) + (sin(2*u)^2/4),a;b;c;u,none|none|none|range(-1.2;1.2)
+((-b + sqrt(b^2 - 4*a*c))/(2*a)) + (sin(u) + sin(3*u)),((-b + sqrt(b^2 - 4*a*c))/(2*a)) + (2*sin(2*u)*cos(u)),a;b;c;u,none|none|none|range(-1.2;1.2)

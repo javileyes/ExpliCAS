@@ -1,0 +1,5 @@
+# equation_str,solve_var,domain_mode,assume_scope,identity_exp,identity_simp,expected_scopes,family
+x^2 - 4 = 0,x,generic,real,sin(t)^2 + cos(t)^2 - 1,0,rule(QuadraticFormula),quadratic_scope_simple
+x^2 - 4*x + 4 = y,x,generic,real,sec(t)^2 - tan(t)^2 - 1,0,rule(QuadraticFormula),quadratic_scope_parametric
+2*x + 3 = 7,x,generic,real,sin(t)^2 + cos(t)^2 - 1,0,none,linear_no_quadratic_scope
+y = 2*x + 1,x,generic,real,sec(t)^2 - tan(t)^2 - 1,0,none,linear_parametric_no_scope

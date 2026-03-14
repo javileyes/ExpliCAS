@@ -1,0 +1,9 @@
+# equation_str,solve_var,domain_mode,assume_scope,identity_exp,identity_simp,expected_signal,family
+(-2)^x = 5,x,assume,wildcard,sin(t)^2 + cos(t)^2 - 1,0,yes,wildcard_needs_complex
+(-2)^x = y,x,assume,wildcard,sec(t)^2 - tan(t)^2 - 1,0,yes,wildcard_symbolic_rhs
+2^x = 8,x,generic,real,sin(t)^2 + cos(t)^2 - 1,0,no,clean_positive_base
+2^x = y,x,assume,real,sec(t)^2 - tan(t)^2 - 1,0,no,assume_real_clean
+(x-1)/(x+1) = y,x,generic,real,sin(t)^2 + cos(t)^2 - 1,0,no,symbolic_linear_no_transparency
+A = P + P*r*t,P,generic,real,sec(t)^2 - tan(t)^2 - 1,0,no,linear_collect_no_transparency
+1/R = 1/R1 + 1/R2,R,generic,real,sin(t)^2 + cos(t)^2 - 1,0,no,reciprocal_no_transparency
+(a^x - b)*(x - 1) = 0,x,generic,real,sec(t)^2 - tan(t)^2 - 1,0,no,nested_product_zero_generic_no_transparency
