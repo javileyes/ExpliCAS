@@ -43,6 +43,24 @@ fn build_prepared_eval_request_wraps_equation_as_solve_variant() {
 }
 
 #[test]
+fn build_prepared_eval_request_preserves_not_equal_relation() {
+    let mut ctx = cas_ast::Context::new();
+    let prepared =
+        crate::eval_input::build_prepared_eval_request_for_input("x != 0", &mut ctx, false)
+            .expect("request");
+
+    match prepared {
+        crate::eval_input::PreparedEvalRequest::Solve {
+            original_equation, ..
+        } => {
+            let original_equation = original_equation.expect("equation should be preserved");
+            assert_eq!(original_equation.op, cas_ast::RelOp::Neq);
+        }
+        _ => panic!("expected solve variant"),
+    }
+}
+
+#[test]
 fn build_prepared_eval_request_parses_limit_as_non_solve_action() {
     let mut ctx = cas_ast::Context::new();
     let prepared = crate::eval_input::build_prepared_eval_request_for_input(

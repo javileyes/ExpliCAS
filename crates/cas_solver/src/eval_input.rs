@@ -18,6 +18,7 @@ pub enum PreparedEvalRequest {
     Solve {
         raw_input: String,
         parsed: cas_ast::ExprId,
+        original_equation: Option<cas_ast::Equation>,
         var: String,
         auto_store: bool,
     },

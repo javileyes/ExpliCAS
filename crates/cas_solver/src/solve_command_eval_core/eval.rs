@@ -19,6 +19,7 @@ pub(crate) fn evaluate_solve_parsed_with_session<S>(
     session: &mut S,
     raw_input: String,
     parsed_expr: cas_ast::ExprId,
+    original_equation: Option<&cas_ast::Equation>,
     var: &str,
     auto_store: bool,
 ) -> Result<crate::EvalOutputView, String>
@@ -30,6 +31,7 @@ where
         session,
         raw_input,
         parsed_expr,
+        original_equation,
         var,
         auto_store,
     )?;
@@ -60,6 +62,7 @@ where
         session,
         prepared.raw_input.clone(),
         prepared.parsed_expr,
+        prepared.original_equation.as_ref(),
         &prepared.var,
         prepared.auto_store,
     )

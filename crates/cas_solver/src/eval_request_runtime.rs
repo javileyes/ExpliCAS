@@ -20,6 +20,7 @@ where
         PreparedEvalRequest::Solve {
             raw_input,
             parsed,
+            original_equation,
             var,
             auto_store,
         } => crate::solve_command_eval_core::evaluate_solve_parsed_with_session(
@@ -27,6 +28,7 @@ where
             session,
             raw_input,
             parsed,
+            original_equation.as_ref(),
             &var,
             auto_store,
         ),

@@ -11,11 +11,12 @@ pub(super) fn build_special_command_request(
 ) -> Result<PreparedEvalRequest, String> {
     match command {
         EvalSpecialCommand::Solve { equation, var } => {
-            let parsed = parse_solve_input_for_eval_request(ctx, &equation)
+            let (parsed, original_equation) = parse_solve_input_for_eval_request(ctx, &equation)
                 .map_err(|e| format!("Parse error in solve equation: {e}"))?;
             Ok(PreparedEvalRequest::Solve {
                 raw_input: raw_input.to_string(),
                 parsed,
+                original_equation,
                 var,
                 auto_store,
             })

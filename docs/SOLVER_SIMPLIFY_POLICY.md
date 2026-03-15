@@ -198,28 +198,31 @@ The solver should be **above** `strict/generic/assume` and produce **conditional
 
 #### 1. Unified `ConditionPredicate`
 
-Extend `AssumptionKey` as a logical object, not just event:
+Current guard vocabulary, aligned with the runtime implementation:
 
 ```rust
 pub enum ConditionPredicate {
-    // Existing (from AssumptionKey)
     NonZero(ExprId),
     Positive(ExprId),
     NonNegative(ExprId),
     Defined(ExprId),
     InvTrigPrincipalRange(ExprId),
-    
-    // V2.0 Phase 2: specialized equality (cheap, no general algebra)
+
+    // Specialized equality predicates used by the current solver
     EqZero(ExprId),
-    NeZero(ExprId),
     EqOne(ExprId),
-    NeOne(ExprId),
-    
-    // V2.0 Phase 3+: general equality (optional, later)
+
+    // Optional later extension, still intentionally out of scope
     // Eq(ExprId, ExprId),
     // Ne(ExprId, ExprId),
 }
 ```
+
+Historical note:
+- older design notes used extra negative-equality predicates
+- the current implementation does not use those predicates
+- "otherwise" branches are represented structurally, not by introducing
+  explicit negative-equality predicates
 
 #### 2. `ConditionSet`
 
@@ -273,15 +276,22 @@ When a technique requires `cond` and it's `Unknown`:
 
 #### Phase 2: Case splits for cheap constants
 
-Only split on `EqZero`, `EqOne`, `NeZero`, `NeOne`:
+Only split on `EqZero` and `EqOne`, with an explicit remaining
+`otherwise` branch when needed:
 - `a^x = a` → 3 cases (a=0, a=1, otherwise)
 - Very educational, controlled branching
 
 #### Phase 3: Condition simplification (3 cheap rules)
 
-1. **Contradictions**: `EqZero(a)` ∧ `NeZero(a)` → eliminate case
+1. **Contradictions**:
+   - `EqZero(a)` ∧ `NonZero(a)` → eliminate case
+   - `EqZero(a)` ∧ `Positive(a)` → eliminate case
+   - `EqZero(a)` ∧ `EqOne(a)` → eliminate case
 2. **Subsumption**: if `when = True` and more specific cases exist → keep both or prefer specific
-3. **Proven/Disproven**: if `prove_nonzero(a) = Proven` → remove `NeZero(a)` from guards (redundant)
+3. **Proven/Disproven**:
+   - if `prove_nonzero(a) = Proven` → remove `NonZero(a)` from guards
+   - `Positive(a)` implies `NonZero(a)` and `NonNegative(a)`
+   - `EqOne(a)` implies `Positive(a)`, `NonNegative(a)`, and `NonZero(a)`
 
 ---
 
@@ -304,4 +314,4 @@ Unresolved: none (all cases covered)
 - Arbitrary Boolean logic in conditions
 - Automatic periodic trig solutions (infinite branches)
 - Complex-domain branch tracking
-- `Eq(expr, expr)` general — start with `EqZero`/`EqOne` only
+- `Eq(expr, expr)` general — start with `EqZero` / `EqOne` only

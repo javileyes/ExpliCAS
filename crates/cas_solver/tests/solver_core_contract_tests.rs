@@ -1,10 +1,15 @@
-use cas_ast::{BoundType, Context, Equation, Expr, RelOp, SolutionSet};
+use cas_ast::{
+    BoundType, Case, ConditionPredicate, ConditionSet, Constant, Context, Equation, Expr, RelOp,
+    SolutionSet,
+};
 use cas_formatter::DisplayExpr;
 use cas_math::tri_proof::TriProof;
 use cas_parser::parse;
 use cas_solver::api::{solve, verify_solution_set, Proof as EngineProof, VerifySummary};
+use cas_solver::command_api::solve::{evaluate_solve_command_lines_with_session, SolveDisplayMode};
 use cas_solver::runtime::{
-    DomainMode, Simplifier, SolveDomainEnv, SolverOptions, StepsMode, ValueDomain,
+    DomainMode, EvalOptions, Simplifier, SolveDomainEnv, SolverOptions, StatelessEvalSession,
+    StepsMode, ValueDomain,
 };
 
 // Helper to make equation from strings
@@ -238,6 +243,392 @@ fn test_verify_solution_set_restores_exact_steps_mode_after_hidden_simplify() {
 
     assert!(matches!(result.summary, VerifySummary::AllVerified));
     assert_eq!(simplifier.get_steps_mode(), StepsMode::Compact);
+}
+
+#[test]
+fn test_verify_solution_set_non_discrete_positive_interval_needs_sampling_with_guard_hint() {
+    let mut simplifier = Simplifier::with_default_rules();
+    let eq = make_eq(&mut simplifier.context, "ln(x)", "ln(x)");
+    let zero = simplifier.context.num(0);
+    let inf = simplifier.context.add(Expr::Constant(Constant::Infinity));
+    let solutions = SolutionSet::Continuous(cas_ast::Interval {
+        min: zero,
+        min_type: BoundType::Open,
+        max: inf,
+        max_type: BoundType::Open,
+    });
+
+    let result = verify_solution_set(&mut simplifier, &eq, "x", &solutions);
+
+    assert!(matches!(result.summary, VerifySummary::NeedsSampling));
+    assert_eq!(
+        result.guard_description.as_deref(),
+        Some("verification requires numeric sampling (solution set matches guard `x > 0`)")
+    );
+}
+
+#[test]
+fn test_verify_solution_set_negative_interval_needs_sampling_with_guard_hint() {
+    let mut simplifier = Simplifier::with_default_rules();
+    let eq = make_eq(&mut simplifier.context, "x", "x");
+    let zero = simplifier.context.num(0);
+    let inf = simplifier.context.add(Expr::Constant(Constant::Infinity));
+    let neg_inf = simplifier.context.add(Expr::Neg(inf));
+    let solutions = SolutionSet::Continuous(cas_ast::Interval {
+        min: neg_inf,
+        min_type: BoundType::Open,
+        max: zero,
+        max_type: BoundType::Open,
+    });
+
+    let result = verify_solution_set(&mut simplifier, &eq, "x", &solutions);
+
+    assert!(matches!(result.summary, VerifySummary::NeedsSampling));
+    assert_eq!(
+        result.guard_description.as_deref(),
+        Some("verification requires numeric sampling (solution set matches guard `x < 0`)")
+    );
+}
+
+#[test]
+fn test_verify_solution_set_nonpositive_interval_needs_sampling_with_guard_hint() {
+    let mut simplifier = Simplifier::with_default_rules();
+    let eq = make_eq(&mut simplifier.context, "x", "x");
+    let zero = simplifier.context.num(0);
+    let inf = simplifier.context.add(Expr::Constant(Constant::Infinity));
+    let neg_inf = simplifier.context.add(Expr::Neg(inf));
+    let solutions = SolutionSet::Continuous(cas_ast::Interval {
+        min: neg_inf,
+        min_type: BoundType::Open,
+        max: zero,
+        max_type: BoundType::Closed,
+    });
+
+    let result = verify_solution_set(&mut simplifier, &eq, "x", &solutions);
+
+    assert!(matches!(result.summary, VerifySummary::NeedsSampling));
+    assert_eq!(
+        result.guard_description.as_deref(),
+        Some("verification requires numeric sampling (solution set matches guard `x <= 0`)")
+    );
+}
+
+#[test]
+fn test_verify_solution_set_nonzero_union_needs_sampling_with_guard_hint() {
+    let mut simplifier = Simplifier::with_default_rules();
+    let eq = make_eq(&mut simplifier.context, "x/x", "1");
+    let zero = simplifier.context.num(0);
+    let inf = simplifier.context.add(Expr::Constant(Constant::Infinity));
+    let neg_inf = simplifier.context.add(Expr::Neg(inf));
+    let solutions = SolutionSet::Union(vec![
+        cas_ast::Interval {
+            min: neg_inf,
+            min_type: BoundType::Open,
+            max: zero,
+            max_type: BoundType::Open,
+        },
+        cas_ast::Interval {
+            min: zero,
+            min_type: BoundType::Open,
+            max: inf,
+            max_type: BoundType::Open,
+        },
+    ]);
+
+    let result = verify_solution_set(&mut simplifier, &eq, "x", &solutions);
+
+    assert!(matches!(result.summary, VerifySummary::NeedsSampling));
+    assert_eq!(
+        result.guard_description.as_deref(),
+        Some("verification requires numeric sampling (solution set matches guard `x != 0`)")
+    );
+}
+
+#[test]
+fn test_verify_solution_set_guarded_non_discrete_conditional_is_verified_under_guard() {
+    let mut simplifier = Simplifier::with_default_rules();
+    let eq = make_eq(&mut simplifier.context, "x/x", "1");
+    let x = parse("x", &mut simplifier.context).unwrap();
+    let solutions = SolutionSet::Conditional(vec![
+        Case::new(
+            ConditionSet::single(ConditionPredicate::NonZero(x)),
+            SolutionSet::AllReals,
+        ),
+        Case::new(ConditionSet::empty(), SolutionSet::Empty),
+    ]);
+
+    let result = verify_solution_set(&mut simplifier, &eq, "x", &solutions);
+
+    assert!(matches!(result.summary, VerifySummary::VerifiedUnderGuard));
+    assert_eq!(
+        result.guard_description.as_deref(),
+        Some("verified symbolically under guard (1 guarded non-discrete branch)")
+    );
+}
+
+#[test]
+fn test_verify_solution_set_plain_all_reals_stays_not_checkable() {
+    let mut simplifier = Simplifier::with_default_rules();
+    let eq = make_eq(&mut simplifier.context, "x", "x");
+    let solutions = SolutionSet::AllReals;
+
+    let result = verify_solution_set(&mut simplifier, &eq, "x", &solutions);
+
+    assert!(matches!(result.summary, VerifySummary::NotCheckable));
+    assert_eq!(
+        result.guard_description.as_deref(),
+        Some("not checkable (infinite set: all reals)")
+    );
+}
+
+#[test]
+fn test_verify_solution_set_failed_discrete_solution_can_surface_counterexample_hint() {
+    let mut simplifier = Simplifier::with_default_rules();
+    let eq = make_eq(&mut simplifier.context, "a*x", "1");
+    let wrong_solution = parse("1", &mut simplifier.context).unwrap();
+    let solutions = SolutionSet::Discrete(vec![wrong_solution]);
+
+    let result = verify_solution_set(&mut simplifier, &eq, "x", &solutions);
+
+    assert!(matches!(result.summary, VerifySummary::NoneVerified));
+    match &result.solutions[0].1 {
+        cas_solver::api::VerifyStatus::Unverifiable {
+            counterexample_hint,
+            ..
+        } => {
+            assert_eq!(
+                counterexample_hint.as_deref(),
+                Some("counterexample hint: a=0 gives residual -1")
+            );
+        }
+        other => panic!("expected unverifiable status, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_verify_solution_set_suppresses_counterexample_hint_for_log_sensitive_residual() {
+    let mut simplifier = Simplifier::with_default_rules();
+    let eq = make_eq(&mut simplifier.context, "ln(a*x)", "1");
+    let wrong_solution = parse("1", &mut simplifier.context).unwrap();
+    let solutions = SolutionSet::Discrete(vec![wrong_solution]);
+
+    let result = verify_solution_set(&mut simplifier, &eq, "x", &solutions);
+
+    assert!(matches!(result.summary, VerifySummary::NoneVerified));
+    match &result.solutions[0].1 {
+        cas_solver::api::VerifyStatus::Unverifiable {
+            counterexample_hint,
+            ..
+        } => {
+            assert_eq!(counterexample_hint, &None);
+        }
+        other => panic!("expected unverifiable status, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_solve_check_session_render_surfaces_verified_under_guard_line() {
+    let mut simplifier = Simplifier::with_default_rules();
+    let mut eval_options = EvalOptions::solve();
+    eval_options.budget.max_branches = 2;
+    eval_options.shared.semantics.domain_mode = DomainMode::Strict;
+    let mut session = StatelessEvalSession::new(eval_options.clone());
+
+    let lines = evaluate_solve_command_lines_with_session(
+        &mut simplifier,
+        &mut session,
+        "solve --check a^x = a, x",
+        &eval_options,
+        SolveDisplayMode::None,
+        false,
+    )
+    .expect("solve command should render");
+
+    assert!(
+        lines.iter().any(|line| {
+            line.contains("some non-discrete branches require numeric sampling")
+                || line.contains("remain not checkable")
+        }),
+        "lines: {:?}",
+        lines
+    );
+}
+
+#[test]
+fn test_solve_check_session_render_surfaces_all_verified_summary() {
+    let mut simplifier = Simplifier::with_default_rules();
+    let eval_options = EvalOptions::solve();
+    let mut session = StatelessEvalSession::new(eval_options.clone());
+
+    let lines = evaluate_solve_command_lines_with_session(
+        &mut simplifier,
+        &mut session,
+        "solve --check x^2 = 1, x",
+        &eval_options,
+        SolveDisplayMode::None,
+        false,
+    )
+    .expect("solve command should render");
+
+    assert!(
+        lines
+            .iter()
+            .any(|line| { line.contains("✓ All solutions verified") }),
+        "lines: {:?}",
+        lines
+    );
+}
+
+#[test]
+fn test_solve_check_session_render_surfaces_all_reals_not_checkable_note() {
+    let mut simplifier = Simplifier::with_default_rules();
+    let eval_options = EvalOptions::solve();
+    let mut session = StatelessEvalSession::new(eval_options.clone());
+
+    let lines = evaluate_solve_command_lines_with_session(
+        &mut simplifier,
+        &mut session,
+        "solve --check x = x, x",
+        &eval_options,
+        SolveDisplayMode::None,
+        false,
+    )
+    .expect("solve command should render");
+
+    assert!(
+        lines
+            .iter()
+            .any(|line| { line.contains("not checkable (infinite set: all reals)") }),
+        "lines: {:?}",
+        lines
+    );
+}
+
+#[test]
+fn test_solve_check_session_render_surfaces_needs_sampling_guard_hint_for_interval() {
+    let mut simplifier = Simplifier::with_default_rules();
+    let eval_options = EvalOptions::solve();
+    let mut session = StatelessEvalSession::new(eval_options.clone());
+
+    let lines = evaluate_solve_command_lines_with_session(
+        &mut simplifier,
+        &mut session,
+        "solve --check 0^x = 0, x",
+        &eval_options,
+        SolveDisplayMode::None,
+        false,
+    )
+    .expect("solve command should render");
+
+    assert!(
+        lines.iter().any(|line| {
+            line.contains("verification requires numeric sampling") && line.contains("x > 0")
+        }),
+        "lines: {:?}",
+        lines
+    );
+}
+
+#[test]
+fn test_solve_check_session_render_surfaces_needs_sampling_guard_hint_for_union() {
+    let mut simplifier = Simplifier::with_default_rules();
+    let eval_options = EvalOptions::solve();
+    let mut session = StatelessEvalSession::new(eval_options.clone());
+
+    let lines = evaluate_solve_command_lines_with_session(
+        &mut simplifier,
+        &mut session,
+        "solve --check x != 0, x",
+        &eval_options,
+        SolveDisplayMode::None,
+        false,
+    )
+    .expect("solve command should render");
+
+    assert!(
+        lines.iter().any(|line| {
+            line.contains("verification requires numeric sampling") && line.contains("x != 0")
+        }),
+        "lines: {:?}",
+        lines
+    );
+}
+
+#[test]
+fn test_solve_check_session_render_surfaces_needs_sampling_guard_hint_for_negative_interval() {
+    let mut simplifier = Simplifier::with_default_rules();
+    let eval_options = EvalOptions::solve();
+    let mut session = StatelessEvalSession::new(eval_options.clone());
+
+    let lines = evaluate_solve_command_lines_with_session(
+        &mut simplifier,
+        &mut session,
+        "solve --check x < 0, x",
+        &eval_options,
+        SolveDisplayMode::None,
+        false,
+    )
+    .expect("solve command should render");
+
+    assert!(
+        lines.iter().any(|line| {
+            line.contains("verification requires numeric sampling") && line.contains("x < 0")
+        }),
+        "lines: {:?}",
+        lines
+    );
+}
+
+#[test]
+fn test_solve_check_session_render_surfaces_needs_sampling_guard_hint_for_nonpositive_interval() {
+    let mut simplifier = Simplifier::with_default_rules();
+    let eval_options = EvalOptions::solve();
+    let mut session = StatelessEvalSession::new(eval_options.clone());
+
+    let lines = evaluate_solve_command_lines_with_session(
+        &mut simplifier,
+        &mut session,
+        "solve --check x <= 0, x",
+        &eval_options,
+        SolveDisplayMode::None,
+        false,
+    )
+    .expect("solve command should render");
+
+    assert!(
+        lines.iter().any(|line| {
+            line.contains("verification requires numeric sampling") && line.contains("x <= 0")
+        }),
+        "lines: {:?}",
+        lines
+    );
+}
+
+#[test]
+fn test_solve_check_session_render_surfaces_non_discrete_note_for_mixed_conditional_solution() {
+    let mut simplifier = Simplifier::with_default_rules();
+    let mut eval_options = EvalOptions::solve();
+    eval_options.budget.max_branches = 2;
+    eval_options.shared.semantics.domain_mode = DomainMode::Strict;
+    let mut session = StatelessEvalSession::new(eval_options.clone());
+
+    let lines = evaluate_solve_command_lines_with_session(
+        &mut simplifier,
+        &mut session,
+        "solve --check a^x = a, x",
+        &eval_options,
+        SolveDisplayMode::None,
+        false,
+    )
+    .expect("solve command should render");
+
+    assert!(
+        lines
+            .iter()
+            .any(|line| { line.contains("✓ x = 1 verified") }),
+        "lines: {:?}",
+        lines
+    );
 }
 
 fn classify_for_test(

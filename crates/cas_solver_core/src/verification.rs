@@ -1,4 +1,4 @@
-use cas_ast::{Equation, ExprId, SolutionSet};
+use cas_ast::{Case, ConditionPredicate, Equation, ExprId, SolutionSet};
 
 /// Result of verifying a single solution.
 #[derive(Debug, Clone)]
@@ -11,6 +11,8 @@ pub enum VerifyStatus {
         residual: ExprId,
         /// Human-readable reason.
         reason: String,
+        /// Optional concrete probe showing a residual counterexample.
+        counterexample_hint: Option<String>,
     },
     /// Solution type not checkable (intervals, AllReals, residual).
     NotCheckable {
@@ -26,6 +28,10 @@ pub enum VerifySummary {
     AllVerified,
     /// Some solutions verified, some not.
     PartiallyVerified,
+    /// A non-discrete solution is justified symbolically by explicit guards.
+    VerifiedUnderGuard,
+    /// Verification would require numeric sampling for non-discrete solutions.
+    NeedsSampling,
     /// No solutions verified.
     NoneVerified,
     /// Solution type not checkable.
@@ -48,7 +54,8 @@ pub struct VerifyResult {
 /// Verify a solution set using a callback for each discrete candidate.
 ///
 /// The callback is invoked only for `SolutionSet::Discrete` entries.
-/// Non-discrete sets are mapped to `NotCheckable` summaries.
+/// Non-discrete sets are mapped to `NeedsSampling` or `NotCheckable`
+/// summaries depending on how actionable the verification request is.
 pub fn verify_solution_set_with<F>(solutions: &SolutionSet, verify_discrete: &mut F) -> VerifyResult
 where
     F: FnMut(ExprId) -> VerifyStatus,
@@ -104,14 +111,18 @@ where
 
         SolutionSet::Continuous(_interval) => VerifyResult {
             solutions: vec![],
-            summary: VerifySummary::NotCheckable,
-            guard_description: Some("not checkable (continuous interval)".to_string()),
+            summary: VerifySummary::NeedsSampling,
+            guard_description: Some(
+                "verification requires numeric sampling (continuous interval)".to_string(),
+            ),
         },
 
         SolutionSet::Union(_intervals) => VerifyResult {
             solutions: vec![],
-            summary: VerifySummary::NotCheckable,
-            guard_description: Some("not checkable (union of intervals)".to_string()),
+            summary: VerifySummary::NeedsSampling,
+            guard_description: Some(
+                "verification requires numeric sampling (union of intervals)".to_string(),
+            ),
         },
 
         SolutionSet::Residual(_expr) => VerifyResult {
@@ -121,8 +132,17 @@ where
         },
 
         SolutionSet::Conditional(cases) => {
+            if let Some(description) = classify_guard_verified_conditional(cases) {
+                return VerifyResult {
+                    solutions: vec![],
+                    summary: VerifySummary::VerifiedUnderGuard,
+                    guard_description: Some(description),
+                };
+            }
+
             let mut all_results = Vec::new();
             let mut has_verified = false;
+            let mut has_needs_sampling = false;
             let mut has_not_checkable = false;
 
             for case in cases {
@@ -132,6 +152,12 @@ where
                 match case_result.summary {
                     VerifySummary::AllVerified | VerifySummary::PartiallyVerified => {
                         has_verified = true;
+                    }
+                    VerifySummary::VerifiedUnderGuard => {
+                        has_verified = true;
+                    }
+                    VerifySummary::NeedsSampling => {
+                        has_needs_sampling = true;
                     }
                     VerifySummary::NotCheckable => {
                         has_not_checkable = true;
@@ -144,8 +170,12 @@ where
 
             VerifyResult {
                 solutions: all_results,
-                summary: conditional_summary(has_verified, has_not_checkable),
-                guard_description: None,
+                summary: conditional_summary(has_verified, has_needs_sampling, has_not_checkable),
+                guard_description: conditional_guard_description(
+                    has_verified,
+                    has_needs_sampling,
+                    has_not_checkable,
+                ),
             }
         }
     }
@@ -349,6 +379,7 @@ where
         VerifyStatus::Unverifiable {
             residual: strict_result,
             reason: format!("residual: {}", render_expr(state, strict_result)),
+            counterexample_hint: None,
         }
     }
 }
@@ -405,6 +436,59 @@ where
     )
 }
 
+fn classify_guard_verified_conditional(cases: &[Case]) -> Option<String> {
+    if cases.is_empty() {
+        return None;
+    }
+
+    let mut guarded_branch_count = 0usize;
+
+    for case in cases {
+        if case.then.residual.is_some() {
+            return None;
+        }
+
+        match &case.then.solutions {
+            SolutionSet::AllReals | SolutionSet::Continuous(_) | SolutionSet::Union(_) => {
+                if case.when.is_empty() || !simple_guard_set(case.when.predicates()) {
+                    return None;
+                }
+                guarded_branch_count += 1;
+            }
+            SolutionSet::Empty => {
+                if !case.when.is_empty() && !simple_guard_set(case.when.predicates()) {
+                    return None;
+                }
+            }
+            SolutionSet::Discrete(_) | SolutionSet::Residual(_) | SolutionSet::Conditional(_) => {
+                return None;
+            }
+        }
+    }
+
+    if guarded_branch_count == 0 {
+        return None;
+    }
+
+    Some(format!(
+        "verified symbolically under guard ({} guarded non-discrete branch{})",
+        guarded_branch_count,
+        if guarded_branch_count == 1 { "" } else { "es" }
+    ))
+}
+
+fn simple_guard_set(predicates: &[ConditionPredicate]) -> bool {
+    !predicates.is_empty()
+        && predicates.iter().all(|pred| {
+            matches!(
+                pred,
+                ConditionPredicate::NonZero(_)
+                    | ConditionPredicate::Positive(_)
+                    | ConditionPredicate::NonNegative(_)
+            )
+        })
+}
+
 /// Compute summary for discrete verification outcomes.
 pub fn discrete_summary(total: usize, verified_count: usize) -> VerifySummary {
     if total == 0 {
@@ -419,15 +503,46 @@ pub fn discrete_summary(total: usize, verified_count: usize) -> VerifySummary {
 }
 
 /// Compute summary for aggregated conditional verification outcomes.
-pub fn conditional_summary(has_verified: bool, has_not_checkable: bool) -> VerifySummary {
-    if has_verified && !has_not_checkable {
+pub fn conditional_summary(
+    has_verified: bool,
+    has_needs_sampling: bool,
+    has_not_checkable: bool,
+) -> VerifySummary {
+    if has_verified && !has_needs_sampling && !has_not_checkable {
         VerifySummary::AllVerified
     } else if has_verified {
         VerifySummary::PartiallyVerified
+    } else if has_needs_sampling {
+        VerifySummary::NeedsSampling
     } else if has_not_checkable {
         VerifySummary::NotCheckable
     } else {
         VerifySummary::NoneVerified
+    }
+}
+
+fn conditional_guard_description(
+    has_verified: bool,
+    has_needs_sampling: bool,
+    has_not_checkable: bool,
+) -> Option<String> {
+    if has_verified && has_needs_sampling && has_not_checkable {
+        Some(
+            "some non-discrete branches require numeric sampling and others remain not checkable"
+                .to_string(),
+        )
+    } else if has_verified && has_needs_sampling {
+        Some("some non-discrete branches require numeric sampling".to_string())
+    } else if has_verified && has_not_checkable {
+        Some("some non-discrete branches remain not checkable".to_string())
+    } else if has_needs_sampling && has_not_checkable {
+        Some("verification requires numeric sampling for some non-discrete branches".to_string())
+    } else if has_needs_sampling {
+        Some("verification requires numeric sampling for non-discrete branches".to_string())
+    } else if has_not_checkable {
+        Some("solution type not checkable in non-discrete branches".to_string())
+    } else {
+        None
     }
 }
 
@@ -448,18 +563,157 @@ mod tests {
 
     #[test]
     fn test_conditional_summary() {
-        assert_eq!(conditional_summary(true, false), VerifySummary::AllVerified);
         assert_eq!(
-            conditional_summary(true, true),
+            conditional_summary(true, false, false),
+            VerifySummary::AllVerified
+        );
+        assert_eq!(
+            conditional_summary(true, false, true),
             VerifySummary::PartiallyVerified
         );
         assert_eq!(
-            conditional_summary(false, true),
+            conditional_summary(true, true, false),
+            VerifySummary::PartiallyVerified
+        );
+        assert_eq!(
+            conditional_summary(false, true, false),
+            VerifySummary::NeedsSampling
+        );
+        assert_eq!(
+            conditional_summary(false, false, true),
             VerifySummary::NotCheckable
         );
         assert_eq!(
-            conditional_summary(false, false),
+            conditional_summary(false, false, false),
             VerifySummary::NoneVerified
+        );
+    }
+
+    #[test]
+    fn test_verify_solution_set_with_simple_guarded_all_reals_is_verified_under_guard() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let set = SolutionSet::Conditional(vec![Case::new(
+            cas_ast::ConditionSet::single(cas_ast::ConditionPredicate::NonNegative(x)),
+            SolutionSet::AllReals,
+        )]);
+        let mut verify = |_id: ExprId| VerifyStatus::Verified;
+
+        let result = verify_solution_set_with(&set, &mut verify);
+        assert_eq!(result.summary, VerifySummary::VerifiedUnderGuard);
+        assert_eq!(
+            result.guard_description.as_deref(),
+            Some("verified symbolically under guard (1 guarded non-discrete branch)")
+        );
+    }
+
+    #[test]
+    fn test_verify_solution_set_with_simple_guarded_conditional_and_empty_else_is_verified_under_guard(
+    ) {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let set = SolutionSet::Conditional(vec![
+            Case::new(
+                cas_ast::ConditionSet::single(cas_ast::ConditionPredicate::NonZero(x)),
+                SolutionSet::AllReals,
+            ),
+            Case::new(cas_ast::ConditionSet::empty(), SolutionSet::Empty),
+        ]);
+        let mut verify = |_id: ExprId| VerifyStatus::Verified;
+
+        let result = verify_solution_set_with(&set, &mut verify);
+        assert_eq!(result.summary, VerifySummary::VerifiedUnderGuard);
+        assert_eq!(
+            result.guard_description.as_deref(),
+            Some("verified symbolically under guard (1 guarded non-discrete branch)")
+        );
+    }
+
+    #[test]
+    fn test_verify_solution_set_with_eq_guard_does_not_claim_verified_under_guard() {
+        let mut ctx = Context::new();
+        let a = ctx.var("a");
+        let set = SolutionSet::Conditional(vec![Case::new(
+            cas_ast::ConditionSet::single(cas_ast::ConditionPredicate::EqOne(a)),
+            SolutionSet::AllReals,
+        )]);
+        let mut verify = |_id: ExprId| VerifyStatus::Verified;
+
+        let result = verify_solution_set_with(&set, &mut verify);
+        assert_eq!(result.summary, VerifySummary::NotCheckable);
+    }
+
+    #[test]
+    fn test_verify_solution_set_with_continuous_requires_sampling() {
+        use cas_ast::{BoundType, Interval};
+
+        let mut ctx = Context::new();
+        let zero = ctx.num(0);
+        let one = ctx.num(1);
+        let set = SolutionSet::Continuous(Interval {
+            min: zero,
+            min_type: BoundType::Open,
+            max: one,
+            max_type: BoundType::Closed,
+        });
+        let mut verify = |_id: ExprId| VerifyStatus::Verified;
+
+        let result = verify_solution_set_with(&set, &mut verify);
+        assert_eq!(result.summary, VerifySummary::NeedsSampling);
+        assert_eq!(
+            result.guard_description.as_deref(),
+            Some("verification requires numeric sampling (continuous interval)")
+        );
+    }
+
+    #[test]
+    fn test_verify_solution_set_with_union_requires_sampling() {
+        use cas_ast::{BoundType, Interval};
+
+        let mut ctx = Context::new();
+        let zero = ctx.num(0);
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        let three = ctx.num(3);
+        let set = SolutionSet::Union(vec![
+            Interval {
+                min: zero,
+                min_type: BoundType::Closed,
+                max: one,
+                max_type: BoundType::Open,
+            },
+            Interval {
+                min: two,
+                min_type: BoundType::Open,
+                max: three,
+                max_type: BoundType::Closed,
+            },
+        ]);
+        let mut verify = |_id: ExprId| VerifyStatus::Verified;
+
+        let result = verify_solution_set_with(&set, &mut verify);
+        assert_eq!(result.summary, VerifySummary::NeedsSampling);
+        assert_eq!(
+            result.guard_description.as_deref(),
+            Some("verification requires numeric sampling (union of intervals)")
+        );
+    }
+
+    #[test]
+    fn conditional_guard_description_keeps_non_discrete_note_when_discrete_branches_verify() {
+        assert_eq!(
+            conditional_guard_description(true, true, true).as_deref(),
+            Some(
+                "some non-discrete branches require numeric sampling and others remain not checkable"
+            )
+        );
+        assert_eq!(
+            conditional_guard_description(true, true, false).as_deref(),
+            Some("some non-discrete branches require numeric sampling")
+        );
+        assert_eq!(
+            conditional_guard_description(true, false, true).as_deref(),
+            Some("some non-discrete branches remain not checkable")
         );
     }
 
@@ -571,8 +825,11 @@ mod tests {
             status,
             VerifyStatus::Unverifiable {
                 residual,
-                reason
-            } if residual == one && reason.starts_with("residual: expr:")
+                reason,
+                counterexample_hint
+            } if residual == one
+                && reason.starts_with("residual: expr:")
+                && counterexample_hint.is_none()
         ));
         assert_eq!(substitute_calls, 1);
     }
@@ -812,9 +1069,14 @@ mod tests {
         );
 
         match status {
-            VerifyStatus::Unverifiable { residual, reason } => {
+            VerifyStatus::Unverifiable {
+                residual,
+                reason,
+                counterexample_hint,
+            } => {
                 assert_eq!(residual, two);
                 assert!(reason.contains("residual: expr#"));
+                assert!(counterexample_hint.is_none());
             }
             other => panic!("expected unverifiable, got {other:?}"),
         }

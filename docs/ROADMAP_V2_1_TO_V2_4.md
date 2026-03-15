@@ -1,180 +1,291 @@
-# Roadmap V2.1 → V2.4: Education-First Solver Evolution
+# Roadmap V2.1 -> V2.4: Status Refresh
 
-> **Primary user**: Professor (reliable, explainable, presentable outputs with cases)  
-> **Secondary**: Student (understands "why", clear guards, verification, steps)  
-> **Tertiary**: Integrator (stable API, serialization, contracts/regression)
-
----
-
-## V2.1 — API/UX Stability & Polish
-
-### Issue #1: Output polishing — `otherwise:` without "if" ✅
-**Labels**: `ux`, `printer`
-
-Natural reading in console/timeline.
-
-**Done when**:
-- [x] REPL prints `otherwise: ...` (no `if` prefix)
-- [x] LaTeX uses `\text{otherwise}` without `if` prefix
-- [x] Snapshot tests include `otherwise:` format
+> Status refresh: 2026-03-15
+>
+> This file is no longer a speculative roadmap. It is the current triage view of
+> the original V2.1 -> V2.4 plan: what is done, what is still worth doing, and
+> what was superseded by the current design.
+>
+> Current conclusion: the roadmap is functionally complete for the conservative
+> scope retained here.
 
 ---
 
-### Issue #2: REPL "iconic" snapshots (UX regression) ✅
-**Labels**: `tests`, `ux`
+## Summary
 
-Detect experience breakage instantly.
+### Closed
 
-**Implemented set (8 tests)**:
-1. `solve a^x=a, x` with budget=2 (Conditional 3 cases) ✅
-2. `solve a^x=a, x` with budget=1 (fallback to {1}) ✅
-3. `solve 0^x=0, x` (interval x>0) ✅
-4. `solve 2^x=8, x` (x = ln(8)/ln(2)) ✅
-5. `solve x^2-4=0, x` (quadratic: {-2, 2}) ✅
-6. `solve x+2=5, x` (simple linear: {3}) ✅
-7. `solve 2*x=10, x` (linear mult: {5}) ✅
-8. `solve a^x=a^2, x` (equal bases: {2}) ✅
+- Issue #1: output polish for `otherwise:` is done.
+- Issue #2: REPL iconic snapshots are done.
+- Issue #3: explain mode is done.
+- Issue #4: stable solver API is done.
+- Issue #5: `solve --check` exists and is stable.
+- Issue #6: non-discrete verification states are done for the narrow,
+  conservative scope defined here.
+- Issue #10: clear denominators with guards is done.
 
-**Done when**:
-- [x] Deterministic snapshots (no IDs/noise)
-- [x] `cargo test` runs them
-- [x] Docs in test file: "how to update snapshots"
+### Remaining work inside this roadmap
 
----
+- none for the conservative scope retained here
 
-### Issue #3: "Explain mode" for solve (compact summary) ✅
-**Labels**: `edu`, `ux`
+### Superseded by the current design
 
-Already have assumptions/hints/timeline; need a "professor mode" compact view.
+- Issue #8 and Issue #9, as written, are outdated.
+- The current guard model uses `NonZero`, `Positive`, `NonNegative`,
+  `EqZero`, `EqOne`, not `NeZero` / `NeOne`.
+- Part of the intended simplification work already exists in the current
+  `ConditionSet` implementation.
 
-**Done when**:
-- [x] `explain on|off` command toggles explain mode
-- [x] On `solve`, prints:
-  - "Assumptions used" (if any) - dedup, stable order
-  - "Blocked simplifications" (if any) - with contextual tip
-- [x] Correct dedup, stable order
+### Separate track, not this roadmap
 
----
-
-### Issue #4: Stable results API (for integrators) ✅
-**Labels**: `api`, `ffi`
-
-What you show in console = what you export.
-
-**Done when**:
-- [x] `cas_engine::api` module re-exports stable types:
-  - `SolveResult`, `SolutionSet`, `Case`, `ConditionSet`, `ConditionPredicate`
-  - `SolveBudget`, `SolverOptions`
-  - `solve`, `solve_with_options`
-  - `DisplayExpr`, `LaTeXExpr`
-- [x] Stable API documented in api.rs
-- [x] 10 compile tests in `public_api_contract.rs`
+- Metamorphic benchmark hardening, `numeric-only` reduction, `domain-frontier`
+  classification and `safe-window` mirrors now live in:
+  - [METAMORPHIC_NEXT_LEVEL_PLAN.md](/Users/javiergimenezmoya/developer/math/docs/METAMORPHIC_NEXT_LEVEL_PLAN.md)
+  - [METAMORPHIC_TESTING.md](/Users/javiergimenezmoya/developer/math/docs/METAMORPHIC_TESTING.md)
+- Performance guardrails for pathological simplification cases are now tracked
+  by repro/bench tests and CI contracts, not by this V2.1 -> V2.4 roadmap.
 
 ---
 
-## V2.3 — Solution Verification (Educational Gold)
+## Closed Foundation
 
-### Issue #5: `solve --check` (solution verification) ✅
-**Labels**: `solver`, `edu`
+### Issue #1: `otherwise:` output polish
 
-Confidence + didactic tool.
+Status: done.
 
-**Minimal design**: Verify by substitution in original equation, simplify with `Strict`, evaluate if result is `True/0` or residual.
+Evidence:
+- console and display use `otherwise:` without the extra `if`
+- REPL snapshots cover the format
 
-**Done when**:
-- [x] Command: `solve --check ...` or `semantics set solve check on`
-- [x] For each solution/case:
-  - Prints `✓ verified` or `⚠ unverifiable` + reason
-- [x] Handles AllReals/Intervals with "not checkable" message
+### Issue #2: REPL iconic snapshots
 
----
+Status: done.
 
-### Issue #6: Verification for intervals/sets
-**Labels**: `solver`, `edu`
+Evidence:
+- the iconic solver cases are snapshotted and stable
+- snapshot tests run in CI
 
-Solver already returns intervals (`(0,∞)`), etc.
+### Issue #3: explain mode
 
-**Done when**:
-- [ ] When verifying `x ∈ (0,∞)`, prints:
-  - "verified symbolically under guard" if possible
-  - or "requires numeric sampling" if not ready yet
-- [ ] Doesn't lie: if it can't verify, marks as unverifiable
+Status: done.
 
----
+Evidence:
+- `explain on|off` exists
+- solve output already surfaces:
+  - assumptions used
+  - blocked simplifications
 
-### Issue #7: "Counterexample hint" basic (only on failure)
-**Labels**: `edu`, `solver`
+### Issue #4: stable solver API
 
-Super educational: "this solution fails if…"
+Status: done.
 
-**Done when**:
-- [ ] If a solution doesn't verify in Strict, attempts to find simple counterexample (only typical literals: 0,1,2,-1 if applicable) and shows it
-- [ ] If none found, doesn't invent one
+Evidence:
+- stable exports are re-exported from the public API
+- compile-contract tests exist for the exposed types
 
----
+### Issue #5: `solve --check`
 
-## V2.2 — Expressive Predicates & Guards
+Status: done for discrete solutions.
 
-### Issue #8: Add `NeZero/NeOne` + basic simplification
-**Labels**: `solver`, `guards`
+What exists today:
+- one-shot `solve --check ...`
+- semantic toggle for solve checking
+- stable verified / unverifiable / not-checkable display
 
-**Done when**:
-- [ ] `ConditionPredicate` includes `NeZero/NeOne`
-- [ ] `ConditionSet::simplify()`:
-  - `EqZero` + `NeZero` ⇒ contradiction
-  - `EqOne` + `NeOne` ⇒ contradiction
-  - `NeOne` doesn't eliminate anything yet (but allows clean guards)
-- [ ] Snapshots updated if prints change
+What is intentionally not counted as done here:
+- symbolic verification of intervals, unions, and all-reals branches
 
----
+### Issue #10: clear denominators with guards
 
-### Issue #9: Cheap extra implications (guard quality)
-**Labels**: `solver`, `guards`
+Status: done.
 
-**Done when**:
-- [ ] Safe rules (RealOnly):
-  - `EqOne(x) ⇒ Positive(x)` (if deciding to assume 1>0 as numeric)
-  - `Positive(x) ⇒ NeZero(x)` (redundancy)
-- [ ] All with simplification tests
+Evidence:
+- denominator guards are preserved in the solve result
+- rational-equation classroom cases are covered by contract tests
 
 ---
 
-## V2.4 — New Solve Strategies (with Safety Net)
+## Active Backlog
 
-### Issue #10: Didactic strategy — clear denominators with guards ✅
-**Labels**: `solver`, `edu`
+## Issue #6: Verification for non-discrete solution sets
 
-Typical classroom rational equations.
+Status: done for the current conservative scope.
 
-Example: `(x^2-1)/(x-1)=0` → guard `x≠1` and solve `x+1=0`.
-Example: `(x*y)/x=0, x` → guard `x≠0` and result is AllReals (when y=0).
+Why it still matters:
+- today, non-discrete outputs are mapped directly to `NotCheckable`
+- that is honest, but educationally incomplete
 
-**Done when**:
-- [x] Strategy "clear denominators":
-  - Extracts denominators containing solve variable
-  - Produces Conditional with guards `den≠0`
-  - Doesn't lose exclusions
-- [x] 3 contract tests for denominator guard behavior
+Current behavior:
+- `AllReals` -> `not checkable (infinite set: all reals)`
+- `Continuous` -> `verification requires numeric sampling`, with native guard
+  hints for simple interval families such as ``x > 0`` / ``x >= 0``
+- `Union` -> `verification requires numeric sampling`, with native guard hints
+  for simple unions such as ``x != 0``
+- simple conditional non-discrete branches with explicit guards
+  (`NonZero`, `Positive`, `NonNegative`) can already surface as
+  `verified symbolically under guard`
+- mixed conditional outputs no longer hide non-discrete branches when one
+  discrete branch verifies: `solve --check` now keeps an explicit note such as
+  `some non-discrete branches require numeric sampling`
+- solver/API contract tests now cover:
+  - intervals coming from positivity guards
+  - unions of intervals
+  - conditional branches with non-discrete `then`
+  - the fallback `AllReals -> not checkable`
+
+Done when:
+- [x] solve checking can distinguish:
+  - `verified symbolically under guard`
+  - `requires numeric sampling`
+  - `not checkable`
+- [x] it never overclaims verification
+- [x] coverage exists for:
+  - intervals coming from positivity guards
+  - unions of intervals
+  - conditional branches with non-discrete `then`
+
+Recommended scope:
+- start narrow
+- only prove guarded non-discrete cases when the solver already has enough
+  structural information to justify the branch
+- do not attempt general quantified proof machinery
+
+Intentionally out of scope:
+- general quantified proof for arbitrary intervals and unions
+- turning every native interval into `verified under guard`
+- symbolic coverage claims without an explicit guard-shaped justification
+
+## Issue #7: Counterexample hint on failed verification
+
+Status: done for the current conservative scope.
+
+Why it still matters:
+- today, failed discrete verification tells the truth, but does not help the
+  student understand why
+
+What exists today:
+- failed discrete verification can attach a tiny counterexample hint when the
+  substituted residual still depends on free parameters
+- the probe set is intentionally tiny and deterministic: `0`, `1`, `2`, `-1`
+- undefined and non-finite probes are skipped instead of being reported as
+  evidence
+- branch/domain-sensitive residuals with explicit `log`, `sqrt`, or
+  inverse-trig structure are conservatively excluded from counterexample hints
+- when a concrete probe is found, the verification display surfaces it inline
+  under the failed solution
+- when no probe is found, nothing is invented
+- solver/render contract coverage exists both at verification-summary level and
+  at `solve` render/session level
+
+Done when:
+- [x] on a failed discrete verification, the solver tries a tiny counterexample
+  search over simple literals such as `0`, `1`, `2`, `-1` when applicable
+- [x] if a counterexample is found, the UI surfaces it as a hint
+- [x] if none is found, nothing is invented
+- [x] tests cover:
+  - a real counterexample found
+  - no counterexample found
+  - branch/domain-sensitive cases where probing must be suppressed
+
+Recommended scope:
+- only for discrete failures
+- only for small literal probes
+- no symbolic search tree
+
+What is still missing:
+- a broader search strategy, if we ever want hints beyond tiny deterministic
+  literals
+- any policy expansion beyond the current conservative suppression set
+
+Priority:
+- lower than Issue #6
+- best done after the verification result model for non-discrete sets is
+  cleaned up
 
 ---
 
-## Focus Notes
+## Superseded / Rewrite Required
 
-- In education, most important is **output stability** and **honesty** (if can't verify, say so)
-- V2.4 only after `--check`, so each new strategy comes with safety net
-- Run `make ci` before any merge
+## Issue #8: `NeZero / NeOne`
+
+Status: obsolete as written.
+
+Why it is outdated:
+- the real implementation uses `NonZero`, not `NeZero`
+- the guard system already contains:
+  - `NonZero`
+  - `Positive`
+  - `NonNegative`
+  - `EqZero`
+  - `EqOne`
+
+What already exists:
+- redundancy simplification:
+  - `Positive(x) -> NonZero(x)`
+  - `EqOne(x) -> NonZero(x)`
+- contradiction detection:
+  - `EqZero(x)` with `NonZero(x)`
+  - `EqZero(x)` with `Positive(x)`
+  - `EqZero(x)` with `EqOne(x)`
+
+What remains worth deciding:
+- [ ] explicitly decide whether `NeOne` is ever needed at all
+- [x] if not, update design docs to stop referencing it
+- [ ] if yes, justify a concrete user-facing use case before adding it
+
+Pragmatic recommendation:
+- do not implement `NeZero` / `NeOne` just to satisfy the old roadmap wording
+- refresh the docs around the actual current guard vocabulary instead
+
+## Issue #9: Extra guard implications
+
+Status: partially done, partially still open as a policy choice.
+
+Already done:
+- `Positive(x) -> NonZero(x)`
+- `EqOne(x) -> NonZero(x)`
+- `EqOne(x) -> Positive(x)`
+- `EqOne(x) -> NonNegative(x)`
+
+Still open only if we want it:
+- none for the currently retained real-only guard model
+
+Pragmatic recommendation:
+- treat this as a small polish task on the guard model
+- not as a major roadmap item
 
 ---
 
-## Suggested Order
+## Post-Roadmap Follow-up
 
-1. **Issue #1** (5 min) — `otherwise:` polish
-2. **Issue #2** (1-2h) — Snapshots infrastructure
-3. **Issue #3** (1h) — Explain mode
-4. **Issue #4** (30 min) — API stability
-5. **Issue #5** (2-3h) — `--check` verification
-6. **Issue #6** (1h) — Interval verification
-7. **Issue #7** (1h) — Counterexample hints
-8. **Issue #8** (1h) — `NeZero/NeOne`
-9. **Issue #9** (30 min) — Implications
-10. **Issue #10** (2h) — Clear denominators strategy
+What still makes sense after closing this roadmap:
+
+1. Optional: one small extra implication if it proves pedagogically useful.
+2. Optional: broader counterexample-hint search, but only if we accept a less
+   conservative policy.
+3. Ongoing verification/guards backlog now lives in:
+   [ROADMAP_POST_V2_4_VERIFICATION_GUARDS.md](/Users/javiergimenezmoya/developer/math/docs/ROADMAP_POST_V2_4_VERIFICATION_GUARDS.md)
+
+---
+
+## Definition Of Done For This Roadmap
+
+This roadmap can be considered complete when:
+
+- discrete solve checking remains stable
+- non-discrete solve checking no longer collapses everything into
+  `not checkable`
+- failed discrete checks can optionally provide a basic counterexample hint
+- the documentation no longer refers to guard predicates that the codebase
+  does not actually use
+
+Current status against that definition:
+
+- [x] discrete solve checking remains stable
+- [x] non-discrete solve checking no longer collapses everything into
+  `not checkable`
+- [x] failed discrete checks can provide a conservative counterexample hint
+- [x] the active documentation is fully refreshed away from the old guard
+  naming (historical references remain only in this roadmap note)
+
+That makes this roadmap complete for the conservative scope retained here.

@@ -840,14 +840,37 @@ Those are valid projects, but not part of this performance track.
   - `/Users/javiergimenezmoya/developer/math/crates/cas_solver/tests/solve_safety_contract_tests.rs`
     now checks that `simplify_for_solve()` restores `StepsMode::Compact`
   - `metatest_unified_benchmark` stayed at `numeric-only = 168`
-- added a new solver-internal verification micro-bench in
+- added a solver-internal verification guardrail group in
   `/Users/javiergimenezmoya/developer/math/crates/cas_engine/benches/profile_cache.rs`:
-  `solver_verification_inherited_steps/quadratic_two_roots_steps_on`
-- current saved baseline for that path is roughly `113.23-114.38 us`
+  `solver_verification_inherited_steps/*`, currently covering:
+  - `quadratic_two_roots_steps_on`
+  - `failed_discrete_with_hint_steps_on`
+  - `failed_discrete_log_hint_suppressed_steps_on`
+  - `needs_sampling_positive_interval_steps_on`
+  - `needs_sampling_nonzero_union_steps_on`
+- the verification guardrail is now reproducible directly through:
+  - `make bench-engine-verification`
+  - `make bench-engine-verification-save BASELINE=...`
+  - `make bench-engine-verification-compare BASELINE=...`
+- the earlier saved baseline for the original quadratic path was roughly
+  `113.23-114.38 us`
 - also added a contract guard in
   `/Users/javiergimenezmoya/developer/math/crates/cas_solver/tests/solver_core_contract_tests.rs`
   to ensure `verify_solution_set(...)` preserves the caller's exact
   `StepsMode`
+- and a cheap structural regression guard in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_solver/tests/repro_bench.rs`
+  for the same `quadratic_two_roots_steps_on` family, so obvious node-growth
+  regressions trip normal test runs without requiring a Criterion compare first
+- verification guardrail baseline is now named explicitly:
+  `verification_guardrails_post_v24`
+- immediate compare against that named baseline showed:
+  - `quadratic_two_roots_steps_on`: no change detected
+  - `failed_discrete_with_hint_steps_on`: change remained within noise threshold
+  - the other three verification paths: no change detected
+- conclusion: the earlier local regression marker on the anonymous Criterion
+  baseline was stale-reference noise rather than a reproduced verification-path
+  slowdown
 - tried two runtime optimizations on top of that bench and removed both:
   - forcing `StepsMode::Off` inside the runtime adapter for
     `runtime_simplify_with_options_expr(...)`
@@ -5298,7 +5321,14 @@ Those are valid projects, but not part of this performance track.
     - `session_phase/load_or_new/persisted/cache_hit_seed`
     - `session_phase/engine_with_context/cache_hit_seed`
     - `session_phase/run_loaded/cache_hit/ref_1`
+    - `session_phase_text/run_loaded/cache_hit/ref_1`
+    - `session_phase/save_snapshot/dirty_seed`
   - `make bench-session-phase-breakdown`
+  - `make bench-session-phase-breakdown-save BASELINE=...`
+  - `make bench-session-phase-breakdown-compare BASELINE=...`
+  - `make bench-session-save-breakdown`
+  - `make bench-session-save-breakdown-save BASELINE=...`
+  - `make bench-session-save-breakdown-compare BASELINE=...`
 - retained implementation:
   - `/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/profile_cache.rs`
     exposes `default_rule_profile()` as a thread-local cached default
@@ -5328,8 +5358,235 @@ Those are valid projects, but not part of this performance track.
   - `repl_full_eval/cached/batch_11_inputs`:
     `93.369-94.175 us`
   - simplification metamorphic benchmark remained stable at `numeric-only = 164`
+- named baseline `session_phase_breakdown_post_v24` is now the current
+  reproducible reference for this phase split
+- immediate compare against that named baseline showed no statistically
+  significant change in any of the three phases:
+  - `load_or_new/persisted/cache_hit_seed`: no change detected
+  - `engine_with_context/cache_hit_seed`: no change detected
+  - `run_loaded/cache_hit/ref_1`: no change detected
+- follow-up isolation on the text path showed:
+  - `session_phase_text/run_loaded/cache_hit/ref_1`:
+    `92.141-99.559 us`
+- expanded four-phase baseline is now also named explicitly:
+  `session_phase_breakdown_text_post_v24`
+- immediate compare against that expanded named baseline showed no statistically
+  significant change in any of the four measured phases
+- expanded five-phase baseline is now also named explicitly:
+  `session_phase_breakdown_full_post_v24`
+- immediate compare against that full named baseline again showed no
+  statistically significant change in any measured phase, including save
+- save-specific breakdown is now also named explicitly:
+  `session_save_breakdown_post_v24`
+- immediate compare against that save-specific named baseline showed:
+  - `frontend_session/session_phase/save_snapshot/dirty_seed`:
+    `184.94-191.38 us`, improved by about `5.5%`
+  - `snapshot_build/context/*`: no statistically significant change
+  - `snapshot_store_build/store/*`: no statistically significant change
+  - `snapshot_io/save/medium`: improved by about `8.2%`
+  - `snapshot_io/save/large`: within noise threshold
+- save-specific granular breakdown is now also named explicitly:
+  `session_save_breakdown_granular_post_v24`
+- the granular split now measures:
+  - `snapshot_io/serialize/*`
+  - `snapshot_io/save_direct/*`
+  - `snapshot_io/save_prebuilt/*`
+  - `snapshot_io/save/*`
+- measured snapshot on that granular retained baseline:
+  - `snapshot_io/serialize/medium`: `947.82-954.25 ns`
+  - `snapshot_io/serialize/large`: `2.4179-2.4410 us`
+  - `snapshot_io/save_direct/medium`: `141.70-145.78 us`
+  - `snapshot_io/save_direct/large`: `143.78-146.70 us`
+  - `snapshot_io/save_prebuilt/medium`: `193.43-211.60 us`
+  - `snapshot_io/save_prebuilt/large`: `189.43-209.70 us`
+  - `snapshot_io/save/medium`: `192.40-203.15 us`
+  - `snapshot_io/save/large`: `194.37-198.20 us`
+- immediate compare against that granular named baseline showed:
+  - `snapshot_io/save_direct/*`: no statistically significant change
+  - `snapshot_io/save_prebuilt/*`: no statistically significant change
+  - `snapshot_io/save/*`: within noise threshold / no statistically
+    significant change
+  - `snapshot_io/serialize/*`: within noise threshold
+- save-specific atomic-detail breakdown is now also named explicitly:
+  `session_save_breakdown_atomic_detail_post_v24`
+- the atomic-detail split now measures:
+  - `snapshot_io/save_direct/*`
+  - `snapshot_io/save_tmp_only/*`
+  - `snapshot_io/rename_only/*`
+  - `snapshot_io/save_prebuilt/*`
+  - `snapshot_io/save/*`
+- measured snapshot on that atomic-detail retained baseline:
+  - `snapshot_io/save_direct/medium`: `142.79-143.77 us`
+  - `snapshot_io/save_direct/large`: `141.85-144.28 us`
+  - `snapshot_io/save_tmp_only/medium`: `143.45-151.56 us`
+  - `snapshot_io/save_tmp_only/large`: `145.83-149.77 us`
+  - `snapshot_io/rename_only/medium`: `132.62-140.46 us`
+  - `snapshot_io/rename_only/large`: `141.48-144.63 us`
+  - `snapshot_io/save_prebuilt/medium`: `194.00-209.32 us`
+  - `snapshot_io/save_prebuilt/large`: `187.77-199.45 us`
+  - `snapshot_io/save/medium`: `190.26-194.42 us`
+  - `snapshot_io/save/large`: `198.55-201.75 us`
+- immediate compare against that atomic-detail named baseline showed:
+  - `snapshot_io/save_direct/*`: no statistically significant change
+  - `snapshot_io/save_prebuilt/*`: no statistically significant change, with
+    one favorable local drift on `medium`
+  - `snapshot_io/save/*`: no statistically significant change / within noise
+    threshold
+  - `snapshot_io/save_tmp_only/*` and `snapshot_io/rename_only/*`: still a bit
+    noisier, but they stayed in the same `~140-155 us` practical band
+- measured snapshot for the added save phase:
+  - `session_phase/save_snapshot/dirty_seed`:
+    `195.64-210.40 us`
+- practical read:
+  - the already-loaded direct `#1` text path is essentially in the same band as
+    the already-loaded wire path, so the remaining ROI is not in the thin
+    `evaluate_eval_text_simplify_with_session(...)` parse/render seam for this
+    cache-hit case
+  - by contrast, `save_snapshot/dirty_seed` still sits well above the
+    `~85-105 us` load/build/run phases, so the clearest remaining ROI in this
+    persisted-session subtrack is again save/state persistence rather than the
+    already-loaded eval path
+  - inside that save path, the dominant cost is still in the persisted I/O
+    layer, not in `snapshot_build/context/*` or `snapshot_store_build/store/*`,
+    which remain an order of magnitude smaller
+  - the new granular split narrows that further: `bincode` serialization itself
+    is tiny compared with the persisted `write + flush + rename` path, so the
+    next real ROI is in file-system persistence strategy, not in snapshot
+    object serialization
+  - the atomic-detail split narrows that one step further: `save_direct`,
+    `save_tmp_only`, and `rename_only` all land in the same `~140-155 us`
+    band, while `save_prebuilt` / `save` land around `~190-200 us`
+  - so the atomic overhead is not “a cheap rename on top of a direct write”;
+    it behaves like two file-system operations of the same order of magnitude,
+    which explains why the current atomic-replace path stays materially above
+    direct write
+  - importantly, the current helper is still `write + flush + rename`; it does
+    not call `sync_all` on the tmp file or the parent directory, so these
+    numbers describe atomic replace / visibility semantics, not fully durable
+    crash-consistent persistence
+- save-specific overwrite-existing breakdown is now also named explicitly:
+  `session_save_overwrite_session_post_v24`,
+  `session_save_overwrite_remove_post_v24`, and
+  `session_save_overwrite_direct_post_v24`, and
+  `session_save_overwrite_mutation_post_v24`
+- durability-oriented lower-bound split is now also named explicitly:
+  `session_save_durability_sync_post_v24`
+- retained benchmark support:
+  - `make bench-session-save-overwrite-breakdown`
+  - `make bench-session-save-overwrite-breakdown-save BASELINE=...`
+  - `make bench-session-save-overwrite-breakdown-compare BASELINE=...`
+  - `make bench-session-save-durability-breakdown`
+  - `make bench-session-save-durability-breakdown-save BASELINE=...`
+  - `make bench-session-save-durability-breakdown-compare BASELINE=...`
+- that overwrite-specific split measures:
+  - `frontend_session/session_phase/save_snapshot/overwrite_dirty_seed`
+  - `frontend_session/session_phase/save_snapshot/overwrite_after_mutation_seed`
+  - `snapshot_io/save_direct_overwrite_existing/*`
+  - `snapshot_io/save_prebuilt/*`
+  - `snapshot_io/save_prebuilt_overwrite_existing/*`
+  - `snapshot_io/rename_only/*`
+  - `snapshot_io/rename_only_overwrite_existing/*`
+  - `snapshot_io/remove_existing_only/*`
+- the durability-oriented split measures:
+  - `snapshot_io/save_prebuilt/*`
+  - `snapshot_io/save_prebuilt_tmp_file_synced/*`
+  - `snapshot_io/save_prebuilt_overwrite_existing/*`
+  - `snapshot_io/save_prebuilt_tmp_file_synced_overwrite_existing/*`
+- measured snapshot on the retained overwrite baseline:
+  - `frontend_session/session_phase/save_snapshot/overwrite_dirty_seed`:
+    `234.75-239.23 us`
+  - `frontend_session/session_phase/save_snapshot/overwrite_after_mutation_seed`:
+    `224.30-233.04 us`
+  - `snapshot_io/save_direct_overwrite_existing/medium`: `123.13-148.29 us`
+  - `snapshot_io/save_direct_overwrite_existing/large`: `122.91-128.26 us`
+  - `snapshot_io/save_prebuilt/medium`: `192.59-196.82 us`
+  - `snapshot_io/save_prebuilt/large`: `192.53-196.41 us`
+  - `snapshot_io/save_prebuilt_overwrite_existing/medium`: `226.65-233.75 us`
+  - `snapshot_io/save_prebuilt_overwrite_existing/large`: `231.87-234.33 us`
+  - `snapshot_io/rename_only/medium`: `141.63-147.78 us`
+  - `snapshot_io/rename_only/large`: `137.94-148.16 us`
+  - `snapshot_io/rename_only_overwrite_existing/medium`: `174.66-182.51 us`
+  - `snapshot_io/rename_only_overwrite_existing/large`: `174.89-183.46 us`
+  - `snapshot_io/remove_existing_only/medium`: `82.638-90.115 us`
+  - `snapshot_io/remove_existing_only/large`: `81.898-90.083 us`
+- immediate compare against that overwrite baseline showed:
+  - `frontend_session/session_phase/save_snapshot/overwrite_dirty_seed`: no
+    statistically significant change (`231.41-239.63 us`)
+  - `frontend_session/session_phase/save_snapshot/overwrite_after_mutation_seed`:
+    change within noise threshold (`226.86-236.36 us`)
+  - `save_direct_overwrite_existing/*`: no statistically significant change /
+    within noise threshold
+  - `save_prebuilt/*`: no statistically significant change except one local
+    favorable drift on `medium`
+  - `save_prebuilt_overwrite_existing/*`: no statistically significant change
+  - `rename_only_overwrite_existing/*`: no statistically significant change
+    except one local unfavorable drift on `large`
+  - `remove_existing_only/*`: no statistically significant change / within
+    noise threshold, apart from minor local drift on `medium`
+- measured snapshot on the retained durability baseline:
+  - `snapshot_io/save_prebuilt/medium`: `187.68-196.34 us`
+  - `snapshot_io/save_prebuilt/large`: `192.16-199.64 us`
+  - `snapshot_io/save_prebuilt_tmp_file_synced/medium`: `5.2312-5.5362 ms`
+  - `snapshot_io/save_prebuilt_tmp_file_synced/large`: `5.3294-5.6942 ms`
+  - `snapshot_io/save_prebuilt_overwrite_existing/medium`: `235.64-260.58 us`
+  - `snapshot_io/save_prebuilt_overwrite_existing/large`: `225.09-228.70 us`
+  - `snapshot_io/save_prebuilt_tmp_file_synced_overwrite_existing/medium`:
+    `5.0080-5.5271 ms`
+  - `snapshot_io/save_prebuilt_tmp_file_synced_overwrite_existing/large`:
+    `5.4558-7.0322 ms`
+- immediate compare against that durability baseline showed:
+  - `save_prebuilt/*`: no statistically significant change
+  - `save_prebuilt_tmp_file_synced/*`: stable; one local drift on `medium`
+    still stays in the same `~5.5 ms` band
+  - `save_prebuilt_overwrite_existing/*`: stable overall; one favorable local
+    drift on `medium`
+  - `save_prebuilt_tmp_file_synced_overwrite_existing/*`: high variance but no
+    change outside noise except one local drift on `medium`
+- practical read:
+  - overwriting an existing snapshot is materially more expensive than writing
+    to a fresh target
+  - the end-to-end session-layer overwrite bench lands in the same `~235-245 us`
+    band as the core overwrite-specific save path, so the premium is not an
+    artifact of the lower-level micro-bench; it is visible in the product path
+  - the new `overwrite_after_mutation_seed` bench lands in essentially the same
+    `~225-240 us` band, so the overwrite premium is not limited to identical
+    resaves; it persists for genuinely dirty resaves after a real session
+    mutation
+  - if atomic replace were traded away, `save_direct_overwrite_existing/*`
+    gives a practical lower bound for that policy: about `~123-128 us`, versus
+    `~227-234 us` for the current atomic-replace overwrite path
+  - if stronger durability were required instead, even the partial lower bound
+    “sync tmp file, then rename” already lands around `~5.2-6.0 ms`, before
+    any parent-directory sync; that is roughly one order of magnitude beyond
+    the current overwrite cost
+  - most of that extra cost shows up already in
+    `rename_only_overwrite_existing/*`, so the relevant distinction is not just
+    “atomic vs direct”, but also “rename into empty target vs rename over an
+    existing file”
+  - `remove_existing_only/*` lands around `~85-90 us`, so the overwrite
+    premium is not just a cheap unlink; it is a combination of removing the old
+    target plus the replacement/rename path that follows
+  - that matters because the real persisted-session path is usually the
+    overwrite case, not the first-write case
 - retained conclusion:
   - keep the new session phase-breakdown track
+  - keep the new `make bench-session-save-breakdown*` track and its named
+    baselines `session_save_breakdown_post_v24` and
+    `session_save_breakdown_granular_post_v24` and
+    `session_save_breakdown_atomic_detail_post_v24`
+  - keep the new overwrite-specific track and baselines
+    `session_save_overwrite_session_post_v24` and
+    `session_save_overwrite_remove_post_v24` and
+    `session_save_overwrite_direct_post_v24` and
+    `session_save_overwrite_mutation_post_v24`
+  - keep the new durability split and baseline
+    `session_save_durability_sync_post_v24`
+  - do not change default session persistence away from atomic replace based
+    only on this measurement; treat `save_direct` as diagnostic-only until
+    there is a product-level decision on visibility semantics vs latency
+  - also do not relabel the current path as “fully durable”: the `sync` split
+    shows that stronger persistence semantics would cost milliseconds, not
+    microseconds
   - keep the cached default rule profile for `Engine::new()` /
     `Engine::with_context(...)`
   - the next ROI in persisted session cache-hit flows is no longer in restored

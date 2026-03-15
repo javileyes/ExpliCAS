@@ -3,7 +3,7 @@ use nom::{
     branch::alt,
     bytes::complete::tag,
     character::complete::multispace0,
-    combinator::map,
+    combinator::{map, not, peek},
     multi::{fold_many0, separated_list0},
     sequence::{delimited, pair, preceded},
     IResult,
@@ -543,7 +543,7 @@ fn parse_factorial(input: &str) -> IResult<&str, ParseNode> {
 
     // First handle factorials
     let (input, with_factorial) = fold_many0(
-        preceded(multispace0, tag("!")),
+        preceded(multispace0, preceded(tag("!"), not(peek(tag("="))))),
         move || atom.clone(),
         |acc, _| ParseNode::Function(SmolStr::new("fact"), vec![acc]),
     )(input)?;
@@ -959,6 +959,39 @@ mod tests {
             ),
             "2 * x + 1"
         );
+    }
+
+    #[test]
+    fn test_parse_not_equal_does_not_consume_factorial_prefix() {
+        let mut ctx = Context::new();
+        let stmt = parse_statement("x != 0", &mut ctx).unwrap();
+
+        match stmt {
+            Statement::Equation(eq) => {
+                assert_eq!(eq.op, RelOp::Neq);
+                assert_eq!(
+                    format!(
+                        "{}",
+                        DisplayExpr {
+                            context: &ctx,
+                            id: eq.lhs
+                        }
+                    ),
+                    "x"
+                );
+                assert_eq!(
+                    format!(
+                        "{}",
+                        DisplayExpr {
+                            context: &ctx,
+                            id: eq.rhs
+                        }
+                    ),
+                    "0"
+                );
+            }
+            other => panic!("expected equation statement, got {:?}", other),
+        }
     }
 
     #[test]

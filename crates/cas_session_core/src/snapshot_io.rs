@@ -29,6 +29,23 @@ pub fn load_bincode<T: DeserializeOwned>(path: &Path) -> Result<T, SnapshotError
     load_bincode_from_reader(&mut reader)
 }
 
+/// Serialize one bincode payload into an owned byte buffer.
+pub fn encode_bincode<T: Serialize>(value: &T) -> Result<Vec<u8>, SnapshotError> {
+    Ok(bincode::serialize(value)?)
+}
+
+/// Save a prebuilt bincode payload atomically: write temp file then rename.
+pub fn save_bincode_bytes_atomic(bytes: &[u8], path: &Path) -> Result<(), SnapshotError> {
+    let tmp = tmp_path(path);
+    let file = fs::File::create(&tmp)?;
+    let mut writer = BufWriter::with_capacity(SNAPSHOT_IO_BUFFER_CAPACITY, file);
+    writer.write_all(bytes)?;
+    writer.flush()?;
+    drop(writer);
+    fs::rename(&tmp, path)?;
+    Ok(())
+}
+
 /// Save one bincode payload atomically: write temp file then rename.
 pub fn save_bincode_atomic<T: Serialize>(value: &T, path: &Path) -> Result<(), SnapshotError> {
     let tmp = tmp_path(path);

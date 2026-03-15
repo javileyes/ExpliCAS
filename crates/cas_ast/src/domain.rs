@@ -167,6 +167,8 @@ impl ConditionSet {
     ///
     /// Rules:
     /// - Positive(x) implies NonZero(x) → remove NonZero
+    /// - EqOne(x) implies Positive(x) → remove Positive
+    /// - EqOne(x) implies NonNegative(x) → remove NonNegative
     /// - NonNegative(x) implies Defined(x) (for sqrt) → remove Defined
     /// - Duplicate predicates removed (already handled by dedup)
     pub fn simplify(&self) -> ConditionSet {
@@ -193,6 +195,18 @@ impl ConditionSet {
                     }
                     // EqOne(x) implies NonZero(x)
                     (ConditionPredicate::EqOne(e1), ConditionPredicate::NonZero(e2))
+                        if e1 == e2 =>
+                    {
+                        true
+                    }
+                    // EqOne(x) implies Positive(x)
+                    (ConditionPredicate::EqOne(e1), ConditionPredicate::Positive(e2))
+                        if e1 == e2 =>
+                    {
+                        true
+                    }
+                    // EqOne(x) implies NonNegative(x)
+                    (ConditionPredicate::EqOne(e1), ConditionPredicate::NonNegative(e2))
                         if e1 == e2 =>
                     {
                         true

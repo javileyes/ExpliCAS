@@ -14,6 +14,7 @@ use cas_session::eval::{
 use cas_session::repl::{build_repl_core_with_config, CasConfig};
 use cas_session::SessionState;
 use cas_solver::runtime::Engine;
+use cas_solver::session_api::eval::evaluate_eval_text_simplify_with_session;
 use criterion::{criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion};
 use tempfile::tempdir;
 
@@ -350,6 +351,36 @@ fn bench_frontend_session(c: &mut Criterion) {
         )
     });
 
+    group.bench_function("session_phase_text/run_loaded/cache_hit/ref_1", |b| {
+        b.iter_batched(
+            || {
+                let tmp = tempdir().expect("tempdir failed");
+                let session_path = tmp.path().join("session.toml");
+                let _ = evaluate_eval_text_command_with_session(
+                    Some(&session_path),
+                    "generic",
+                    "x + 1",
+                    true,
+                );
+                let key = cas_session::cache::SimplifyCacheKey::from_domain_flag("generic");
+                let (context, state) =
+                    cas_session::SessionState::load_compatible_snapshot(&session_path, &key)
+                        .expect("load compatible snapshot")
+                        .expect("compatible snapshot");
+                ((tmp, session_path), Engine::with_context(context), state)
+            },
+            |(_seed, mut engine, mut state)| {
+                black_box(evaluate_eval_text_simplify_with_session(
+                    &mut engine,
+                    &mut state,
+                    "#1",
+                    false,
+                ))
+            },
+            BatchSize::SmallInput,
+        )
+    });
+
     group.bench_function("session_phase/save_snapshot/dirty_seed", |b| {
         b.iter_batched(
             || {
@@ -373,6 +404,70 @@ fn bench_frontend_session(c: &mut Criterion) {
             BatchSize::SmallInput,
         )
     });
+
+    group.bench_function("session_phase/save_snapshot/overwrite_dirty_seed", |b| {
+        b.iter_batched(
+            || {
+                let tmp = tempdir().expect("tempdir failed");
+                let session_path = tmp.path().join("session.toml");
+                let mut engine = Engine::new();
+                let mut state = SessionState::new();
+                let _ = cas_solver::session_api::eval::evaluate_eval_with_session(
+                    &mut engine,
+                    &mut state,
+                    eval_config("x + 1", true),
+                    no_steps,
+                )
+                .expect("seed eval failed");
+                let key = cas_session::cache::SimplifyCacheKey::from_domain_flag("generic");
+                state
+                    .save_snapshot(&engine.simplifier.context, &session_path, key.clone())
+                    .expect("seed snapshot save failed");
+                (tmp, session_path, key, engine, state)
+            },
+            |(_tmp, session_path, key, engine, state)| {
+                black_box(state.save_snapshot(&engine.simplifier.context, &session_path, key))
+            },
+            BatchSize::SmallInput,
+        )
+    });
+
+    group.bench_function(
+        "session_phase/save_snapshot/overwrite_after_mutation_seed",
+        |b| {
+            b.iter_batched(
+                || {
+                    let tmp = tempdir().expect("tempdir failed");
+                    let session_path = tmp.path().join("session.toml");
+                    let mut engine = Engine::new();
+                    let mut state = SessionState::new();
+                    let _ = cas_solver::session_api::eval::evaluate_eval_with_session(
+                        &mut engine,
+                        &mut state,
+                        eval_config("x + 1", true),
+                        no_steps,
+                    )
+                    .expect("seed eval failed");
+                    let key = cas_session::cache::SimplifyCacheKey::from_domain_flag("generic");
+                    state
+                        .save_snapshot(&engine.simplifier.context, &session_path, key.clone())
+                        .expect("seed snapshot save failed");
+                    let _ = cas_solver::session_api::eval::evaluate_eval_with_session(
+                        &mut engine,
+                        &mut state,
+                        eval_config("x + 2", true),
+                        no_steps,
+                    )
+                    .expect("mutation eval failed");
+                    (tmp, session_path, key, engine, state)
+                },
+                |(_tmp, session_path, key, engine, state)| {
+                    black_box(state.save_snapshot(&engine.simplifier.context, &session_path, key))
+                },
+                BatchSize::SmallInput,
+            )
+        },
+    );
 
     group.finish();
 }

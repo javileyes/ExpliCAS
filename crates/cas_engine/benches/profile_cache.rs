@@ -7,7 +7,7 @@ use std::time::Instant;
 
 use cas_ast::views::RationalFnView;
 use cas_ast::Context;
-use cas_ast::{Equation, Expr, RelOp, SolutionSet};
+use cas_ast::{BoundType, Constant, Equation, Expr, Interval, RelOp, SolutionSet};
 use cas_parser::parse;
 
 use cas_engine::rules::algebra::{ExtractPerfectSquareFromRadicandRule, SimplifyFractionRule};
@@ -17,7 +17,7 @@ use cas_engine::{
     Simplifier, SimplifyOptions, StepListener, StepsMode,
 };
 use cas_math::fraction_gcd_plan_support::try_plan_fraction_gcd_rewrite;
-use cas_solver::api::{verify_solution_set, VerifySummary};
+use cas_solver::api::{verify_solution_set, VerifyStatus, VerifySummary};
 use cas_solver_core::engine_events::EngineEvent;
 
 const SOLVE_PROFILE_FLAG: &str = "CAS_SOLVE_BENCH_PROFILE";
@@ -60,6 +60,60 @@ fn build_equation_with_solutions(
             .collect(),
     );
     (simplifier, equation, var.to_string(), solutions)
+}
+
+fn build_equation_with_solution_set(
+    lhs: &str,
+    rhs: &str,
+    var: &str,
+    build_solutions: impl FnOnce(&mut Simplifier) -> SolutionSet,
+) -> (Simplifier, Equation, String, SolutionSet) {
+    let mut simplifier = Simplifier::with_default_rules();
+    let equation = Equation {
+        lhs: parse(lhs, &mut simplifier.context).expect("lhs parse failed"),
+        rhs: parse(rhs, &mut simplifier.context).expect("rhs parse failed"),
+        op: RelOp::Eq,
+    };
+    let solutions = build_solutions(&mut simplifier);
+    (simplifier, equation, var.to_string(), solutions)
+}
+
+fn build_positive_interval_case(
+    lhs: &str,
+    rhs: &str,
+    var: &str,
+) -> (Simplifier, Equation, String, SolutionSet) {
+    build_equation_with_solution_set(lhs, rhs, var, |simplifier| {
+        let zero = simplifier.context.num(0);
+        let infinity = simplifier.context.add(Expr::Constant(Constant::Infinity));
+        SolutionSet::Continuous(Interval::open(zero, infinity))
+    })
+}
+
+fn build_nonzero_union_case(
+    lhs: &str,
+    rhs: &str,
+    var: &str,
+) -> (Simplifier, Equation, String, SolutionSet) {
+    build_equation_with_solution_set(lhs, rhs, var, |simplifier| {
+        let zero = simplifier.context.num(0);
+        let infinity = simplifier.context.add(Expr::Constant(Constant::Infinity));
+        let neg_infinity = simplifier.context.add(Expr::Neg(infinity));
+        SolutionSet::Union(vec![
+            Interval {
+                min: neg_infinity,
+                min_type: BoundType::Open,
+                max: zero,
+                max_type: BoundType::Open,
+            },
+            Interval {
+                min: zero,
+                min_type: BoundType::Open,
+                max: infinity,
+                max_type: BoundType::Open,
+            },
+        ])
+    })
 }
 
 fn solve_profile_mode_filter() -> Option<String> {
@@ -1582,6 +1636,76 @@ fn bench_solver_verification_inherited_steps(c: &mut Criterion) {
                 let result = verify_solution_set(&mut simplifier, &equation, &var, &solutions);
                 let verified = matches!(result.summary, VerifySummary::AllVerified);
                 black_box(verified);
+            },
+            criterion::BatchSize::SmallInput,
+        )
+    });
+
+    group.bench_function("failed_discrete_with_hint_steps_on", |b| {
+        b.iter_batched(
+            || build_equation_with_solutions("a*x", "1", "x", &["1"]),
+            |(mut simplifier, equation, var, solutions)| {
+                simplifier.set_steps_mode(StepsMode::On);
+                let result = verify_solution_set(&mut simplifier, &equation, &var, &solutions);
+                let has_hint = matches!(
+                    result.solutions.first(),
+                    Some((
+                        _,
+                        VerifyStatus::Unverifiable {
+                            counterexample_hint: Some(_),
+                            ..
+                        }
+                    ))
+                );
+                black_box(has_hint);
+            },
+            criterion::BatchSize::SmallInput,
+        )
+    });
+
+    group.bench_function("failed_discrete_log_hint_suppressed_steps_on", |b| {
+        b.iter_batched(
+            || build_equation_with_solutions("ln(a*x)", "1", "x", &["1"]),
+            |(mut simplifier, equation, var, solutions)| {
+                simplifier.set_steps_mode(StepsMode::On);
+                let result = verify_solution_set(&mut simplifier, &equation, &var, &solutions);
+                let hint_suppressed = matches!(
+                    result.solutions.first(),
+                    Some((
+                        _,
+                        VerifyStatus::Unverifiable {
+                            counterexample_hint: None,
+                            ..
+                        }
+                    ))
+                );
+                black_box(hint_suppressed);
+            },
+            criterion::BatchSize::SmallInput,
+        )
+    });
+
+    group.bench_function("needs_sampling_positive_interval_steps_on", |b| {
+        b.iter_batched(
+            || build_positive_interval_case("0^x", "0", "x"),
+            |(mut simplifier, equation, var, solutions)| {
+                simplifier.set_steps_mode(StepsMode::On);
+                let result = verify_solution_set(&mut simplifier, &equation, &var, &solutions);
+                let needs_sampling = matches!(result.summary, VerifySummary::NeedsSampling);
+                black_box(needs_sampling);
+            },
+            criterion::BatchSize::SmallInput,
+        )
+    });
+
+    group.bench_function("needs_sampling_nonzero_union_steps_on", |b| {
+        b.iter_batched(
+            || build_nonzero_union_case("x", "0", "x"),
+            |(mut simplifier, equation, var, solutions)| {
+                simplifier.set_steps_mode(StepsMode::On);
+                let result = verify_solution_set(&mut simplifier, &equation, &var, &solutions);
+                let needs_sampling = matches!(result.summary, VerifySummary::NeedsSampling);
+                black_box(needs_sampling);
             },
             criterion::BatchSize::SmallInput,
         )

@@ -1,9 +1,14 @@
+use std::fs;
 use std::hint::black_box;
+use std::io::{BufWriter, Write};
+use std::path::Path;
 
 use cas_ast::Context;
 use cas_parser::parse;
 use cas_session_core::context_snapshot::ContextSnapshot;
-use cas_session_core::snapshot_io::{load_bincode, save_bincode_atomic};
+use cas_session_core::snapshot_io::{
+    encode_bincode, load_bincode, save_bincode_atomic, save_bincode_bytes_atomic,
+};
 use cas_session_core::store_snapshot::{
     CacheConfigSnapshot, EntryKindSnapshot, EntrySnapshot, SessionStoreSnapshot,
     SimplifiedCacheSnapshot,
@@ -80,12 +85,260 @@ fn build_fixture(multiplier: usize) -> SnapshotFixture {
     }
 }
 
+fn save_bytes_direct(bytes: &[u8], path: &Path) {
+    let file = fs::File::create(path).expect("create direct snapshot");
+    let mut writer = BufWriter::with_capacity(
+        cas_session_core::snapshot_io::SNAPSHOT_IO_BUFFER_CAPACITY,
+        file,
+    );
+    writer.write_all(bytes).expect("write direct snapshot");
+    writer.flush().expect("flush direct snapshot");
+}
+
+fn save_bytes_direct_and_sync(bytes: &[u8], path: &Path) {
+    let file = fs::File::create(path).expect("create synced snapshot");
+    let mut writer = BufWriter::with_capacity(
+        cas_session_core::snapshot_io::SNAPSHOT_IO_BUFFER_CAPACITY,
+        file,
+    );
+    writer.write_all(bytes).expect("write synced snapshot");
+    writer.flush().expect("flush synced snapshot");
+    let file = writer.into_inner().expect("extract synced snapshot file");
+    file.sync_all().expect("sync snapshot file");
+}
+
+fn save_bytes_to_tmp_only(bytes: &[u8], path: &Path) {
+    let tmp = cas_session_core::snapshot_io::tmp_path(path);
+    save_bytes_direct(bytes, &tmp);
+}
+
+fn save_bytes_atomic_with_synced_tmp(bytes: &[u8], path: &Path) {
+    let tmp = cas_session_core::snapshot_io::tmp_path(path);
+    save_bytes_direct_and_sync(bytes, &tmp);
+    fs::rename(&tmp, path).expect("rename synced tmp snapshot");
+}
+
 fn bench_snapshot_io(c: &mut Criterion) {
     let mut group = c.benchmark_group("snapshot_io");
     configure_group(&mut group);
 
     for (name, multiplier) in [("medium", 8usize), ("large", 32usize)] {
         let fixture = build_fixture(multiplier);
+
+        group.bench_with_input(
+            BenchmarkId::new("serialize", name),
+            &fixture,
+            |b, fixture| b.iter(|| black_box(encode_bincode(fixture).unwrap())),
+        );
+
+        group.bench_with_input(
+            BenchmarkId::new("save_prebuilt", name),
+            &fixture,
+            |b, fixture| {
+                b.iter_batched(
+                    || {
+                        let tmp = tempdir().expect("tempdir failed");
+                        let path = tmp.path().join("session.bin");
+                        let bytes = encode_bincode(fixture).expect("encode snapshot");
+                        (tmp, path, bytes)
+                    },
+                    |(_tmp, path, bytes)| {
+                        save_bincode_bytes_atomic(&bytes, &path).unwrap();
+                        black_box(())
+                    },
+                    BatchSize::SmallInput,
+                )
+            },
+        );
+
+        group.bench_with_input(
+            BenchmarkId::new("save_prebuilt_tmp_file_synced", name),
+            &fixture,
+            |b, fixture| {
+                b.iter_batched(
+                    || {
+                        let tmp = tempdir().expect("tempdir failed");
+                        let path = tmp.path().join("session.bin");
+                        let bytes = encode_bincode(fixture).expect("encode snapshot");
+                        (tmp, path, bytes)
+                    },
+                    |(_tmp, path, bytes)| {
+                        save_bytes_atomic_with_synced_tmp(&bytes, &path);
+                        black_box(())
+                    },
+                    BatchSize::SmallInput,
+                )
+            },
+        );
+
+        group.bench_with_input(
+            BenchmarkId::new("save_direct", name),
+            &fixture,
+            |b, fixture| {
+                b.iter_batched(
+                    || {
+                        let tmp = tempdir().expect("tempdir failed");
+                        let path = tmp.path().join("session.bin");
+                        let bytes = encode_bincode(fixture).expect("encode snapshot");
+                        (tmp, path, bytes)
+                    },
+                    |(_tmp, path, bytes)| {
+                        save_bytes_direct(&bytes, &path);
+                        black_box(())
+                    },
+                    BatchSize::SmallInput,
+                )
+            },
+        );
+
+        group.bench_with_input(
+            BenchmarkId::new("save_direct_overwrite_existing", name),
+            &fixture,
+            |b, fixture| {
+                b.iter_batched(
+                    || {
+                        let tmp = tempdir().expect("tempdir failed");
+                        let path = tmp.path().join("session.bin");
+                        let bytes = encode_bincode(fixture).expect("encode snapshot");
+                        save_bytes_direct(&bytes, &path);
+                        (tmp, path, bytes)
+                    },
+                    |(_tmp, path, bytes)| {
+                        save_bytes_direct(&bytes, &path);
+                        black_box(())
+                    },
+                    BatchSize::SmallInput,
+                )
+            },
+        );
+
+        group.bench_with_input(
+            BenchmarkId::new("save_tmp_only", name),
+            &fixture,
+            |b, fixture| {
+                b.iter_batched(
+                    || {
+                        let tmp = tempdir().expect("tempdir failed");
+                        let path = tmp.path().join("session.bin");
+                        let bytes = encode_bincode(fixture).expect("encode snapshot");
+                        (tmp, path, bytes)
+                    },
+                    |(_tmp, path, bytes)| {
+                        save_bytes_to_tmp_only(&bytes, &path);
+                        black_box(())
+                    },
+                    BatchSize::SmallInput,
+                )
+            },
+        );
+
+        group.bench_with_input(
+            BenchmarkId::new("rename_only", name),
+            &fixture,
+            |b, fixture| {
+                b.iter_batched(
+                    || {
+                        let tmp = tempdir().expect("tempdir failed");
+                        let path = tmp.path().join("session.bin");
+                        let tmp_path = cas_session_core::snapshot_io::tmp_path(&path);
+                        let bytes = encode_bincode(fixture).expect("encode snapshot");
+                        save_bytes_direct(&bytes, &tmp_path);
+                        (tmp, tmp_path, path)
+                    },
+                    |(_tmp, tmp_path, path)| {
+                        fs::rename(&tmp_path, &path).expect("rename atomic snapshot");
+                        black_box(())
+                    },
+                    BatchSize::SmallInput,
+                )
+            },
+        );
+
+        group.bench_with_input(
+            BenchmarkId::new("save_prebuilt_overwrite_existing", name),
+            &fixture,
+            |b, fixture| {
+                b.iter_batched(
+                    || {
+                        let tmp = tempdir().expect("tempdir failed");
+                        let path = tmp.path().join("session.bin");
+                        let bytes = encode_bincode(fixture).expect("encode snapshot");
+                        save_bytes_direct(&bytes, &path);
+                        (tmp, path, bytes)
+                    },
+                    |(_tmp, path, bytes)| {
+                        save_bincode_bytes_atomic(&bytes, &path).unwrap();
+                        black_box(())
+                    },
+                    BatchSize::SmallInput,
+                )
+            },
+        );
+
+        group.bench_with_input(
+            BenchmarkId::new("save_prebuilt_tmp_file_synced_overwrite_existing", name),
+            &fixture,
+            |b, fixture| {
+                b.iter_batched(
+                    || {
+                        let tmp = tempdir().expect("tempdir failed");
+                        let path = tmp.path().join("session.bin");
+                        let bytes = encode_bincode(fixture).expect("encode snapshot");
+                        save_bytes_direct(&bytes, &path);
+                        (tmp, path, bytes)
+                    },
+                    |(_tmp, path, bytes)| {
+                        save_bytes_atomic_with_synced_tmp(&bytes, &path);
+                        black_box(())
+                    },
+                    BatchSize::SmallInput,
+                )
+            },
+        );
+
+        group.bench_with_input(
+            BenchmarkId::new("rename_only_overwrite_existing", name),
+            &fixture,
+            |b, fixture| {
+                b.iter_batched(
+                    || {
+                        let tmp = tempdir().expect("tempdir failed");
+                        let path = tmp.path().join("session.bin");
+                        let tmp_path = cas_session_core::snapshot_io::tmp_path(&path);
+                        let bytes = encode_bincode(fixture).expect("encode snapshot");
+                        save_bytes_direct(&bytes, &path);
+                        save_bytes_direct(&bytes, &tmp_path);
+                        (tmp, tmp_path, path)
+                    },
+                    |(_tmp, tmp_path, path)| {
+                        fs::rename(&tmp_path, &path).expect("rename over existing snapshot");
+                        black_box(())
+                    },
+                    BatchSize::SmallInput,
+                )
+            },
+        );
+
+        group.bench_with_input(
+            BenchmarkId::new("remove_existing_only", name),
+            &fixture,
+            |b, fixture| {
+                b.iter_batched(
+                    || {
+                        let tmp = tempdir().expect("tempdir failed");
+                        let path = tmp.path().join("session.bin");
+                        let bytes = encode_bincode(fixture).expect("encode snapshot");
+                        save_bytes_direct(&bytes, &path);
+                        (tmp, path)
+                    },
+                    |(_tmp, path)| {
+                        fs::remove_file(&path).expect("remove existing snapshot");
+                        black_box(())
+                    },
+                    BatchSize::SmallInput,
+                )
+            },
+        );
 
         group.bench_with_input(BenchmarkId::new("save", name), &fixture, |b, fixture| {
             b.iter_batched(

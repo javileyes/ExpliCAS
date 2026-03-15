@@ -22,6 +22,9 @@ use cas_solver::api::{
     SolveResult,
     SolverOptions,
 };
+use cas_solver::session_api::solve::{
+    format_verify_summary_lines, format_verify_summary_lines_with_hints,
+};
 
 /// Test that SolutionSet variants are accessible
 #[test]
@@ -82,6 +85,13 @@ fn test_solve_functions_exist() {
     // Just verify they're callable signatures by storing function pointers
     let _ = solve as fn(&_, &str, &mut _) -> _;
     let _ = solve_with_display_steps as fn(&_, &str, &mut _, _) -> _;
+}
+
+/// Test that public verification formatters are importable
+#[test]
+fn test_verify_formatter_functions_exist() {
+    let _ = format_verify_summary_lines as fn(&_, &str, &_, &str) -> _;
+    let _ = format_verify_summary_lines_with_hints as fn(&_, &str, &_, &str, bool) -> _;
 }
 
 /// Test that display wrappers are accessible

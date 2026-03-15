@@ -12913,7 +12913,6 @@ fn run_substitution_tests_with_mode(
     let mut numeric_only = 0usize;
     let mut inconclusive = 0usize;
     let mut inconclusive_causes: HashMap<String, usize> = HashMap::new();
-    let skipped = 0usize;
     let mut timeouts = 0usize;
     let mut cycle_events_total: usize = 0;
     let mut parse_errors = 0usize;
@@ -13480,7 +13479,7 @@ fn run_substitution_tests_with_mode(
         numeric_only,
         inconclusive,
         failed,
-        skipped,
+        skipped: parse_errors,
         timeouts,
         cycle_events_total,
         known_symbolic_residuals: symbolic_tracker_count,
@@ -13688,7 +13687,11 @@ fn run_direct_pair_tests_with_frontier_policy(
     let mut timeouts = 0usize;
     let mut cycle_events_total: usize = 0;
     let mut parse_errors = 0usize;
-    let pair_timeout = std::time::Duration::from_secs(5);
+    let pair_timeout = if cfg!(debug_assertions) {
+        std::time::Duration::from_secs(10)
+    } else {
+        std::time::Duration::from_secs(5)
+    };
     let mut numeric_only_causes: HashMap<String, usize> = HashMap::new();
     let mut numeric_only_examples: Vec<(String, String, String, String, String)> = Vec::new();
     let mut domain_frontier_examples: Vec<(String, String, String)> = Vec::new();
@@ -14048,8 +14051,8 @@ fn run_direct_pair_tests_with_frontier_policy(
     }
 
     eprintln!(
-        "✅ {}: {} passed, {} failed, {} skipped (timeout), {} parse errors, {} inconclusive",
-        suite_summary, passed, failed, skipped, parse_errors, inconclusive
+        "✅ {}: {} passed, {} failed, {} timed out, {} parse errors, {} inconclusive",
+        suite_summary, passed, failed, timeouts, parse_errors, inconclusive
     );
     eprintln!(
         "   📐 NF-convergent: {} | 🔢 Proved-symbolic: {} | 🌡️ Numeric-only: {} | ◐ Inconclusive: {}",

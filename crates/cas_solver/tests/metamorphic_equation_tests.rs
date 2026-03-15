@@ -1292,9 +1292,9 @@ fn verify_equation(entry: &EquationEntry) -> EqTestOutcome {
         verify_solution_set(&mut simplifier, &equation, &entry.solve_var, &solution_set);
 
     match verify_result.summary {
-        VerifySummary::AllVerified => EqTestOutcome::Verified,
+        VerifySummary::AllVerified | VerifySummary::VerifiedUnderGuard => EqTestOutcome::Verified,
         VerifySummary::Empty => EqTestOutcome::EmptyResult,
-        VerifySummary::NotCheckable => EqTestOutcome::NotCheckable,
+        VerifySummary::NeedsSampling | VerifySummary::NotCheckable => EqTestOutcome::NotCheckable,
         VerifySummary::PartiallyVerified | VerifySummary::NoneVerified => {
             // Try numeric fallback for unverified solutions
             let mut all_verified = true;
@@ -1310,6 +1310,7 @@ fn verify_equation(entry: &EquationEntry) -> EqTestOutcome {
                     VerifyStatus::Unverifiable {
                         residual: _,
                         reason,
+                        ..
                     } => {
                         // Numeric fallback
                         match numeric_verify_solution(
@@ -1486,7 +1487,7 @@ fn verify_equation_pair(pair: &EquationPair) -> PairOutcome {
                 &SolutionSet::Discrete(vec![sol]),
             );
             match verify.summary {
-                VerifySummary::AllVerified => {}
+                VerifySummary::AllVerified | VerifySummary::VerifiedUnderGuard => {}
                 _ => {
                     // Numeric fallback
                     match numeric_verify_solution(&simplifier.context, &eq_b, &pair.solve_var, sol)
@@ -1521,7 +1522,7 @@ fn verify_equation_pair(pair: &EquationPair) -> PairOutcome {
                     &SolutionSet::Discrete(vec![sol]),
                 );
                 match verify.summary {
-                    VerifySummary::AllVerified => {}
+                    VerifySummary::AllVerified | VerifySummary::VerifiedUnderGuard => {}
                     _ => {
                         match numeric_verify_solution(
                             &simplifier.context,
@@ -2814,7 +2815,7 @@ fn run_s2_case(eq_entry: &EquationEntry, identity: &S2Identity) -> S2Outcome {
                 &SolutionSet::Discrete(vec![sol]),
             );
             match verify.summary {
-                VerifySummary::AllVerified => {}
+                VerifySummary::AllVerified | VerifySummary::VerifiedUnderGuard => {}
                 _ => {
                     match numeric_verify_solution(
                         &simplifier.context,
@@ -2855,7 +2856,7 @@ fn run_s2_case(eq_entry: &EquationEntry, identity: &S2Identity) -> S2Outcome {
                 &SolutionSet::Discrete(vec![sol]),
             );
             match verify.summary {
-                VerifySummary::AllVerified => {}
+                VerifySummary::AllVerified | VerifySummary::VerifiedUnderGuard => {}
                 _ => {
                     match numeric_verify_solution(
                         &simplifier.context,
@@ -2948,7 +2949,7 @@ fn cross_substitute_discrete_into(
             &SolutionSet::Discrete(vec![sol]),
         );
         match verify.summary {
-            VerifySummary::AllVerified => {}
+            VerifySummary::AllVerified | VerifySummary::VerifiedUnderGuard => {}
             _ => match numeric_verify_solution(&simplifier.context, target_eq, var, sol) {
                 NumericVerifyResult::Verified(_) => {
                     outcome = outcome.merge(CrossSubstituteOutcome::Numeric);

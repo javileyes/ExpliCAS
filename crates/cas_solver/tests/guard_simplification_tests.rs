@@ -54,6 +54,52 @@ fn simplify_eqone_implies_nonzero() {
     );
 }
 
+#[test]
+fn simplify_eqone_implies_positive() {
+    let mut ctx = Context::new();
+    let x = ctx.var("x");
+
+    let set = ConditionSet::from_predicates(vec![
+        ConditionPredicate::EqOne(x),
+        ConditionPredicate::Positive(x),
+    ]);
+
+    let simplified = set.simplify();
+
+    assert_eq!(
+        simplified.predicates().len(),
+        1,
+        "Should remove redundant Positive"
+    );
+    assert!(
+        matches!(simplified.predicates()[0], ConditionPredicate::EqOne(_)),
+        "Should keep EqOne"
+    );
+}
+
+#[test]
+fn simplify_eqone_implies_nonnegative() {
+    let mut ctx = Context::new();
+    let x = ctx.var("x");
+
+    let set = ConditionSet::from_predicates(vec![
+        ConditionPredicate::EqOne(x),
+        ConditionPredicate::NonNegative(x),
+    ]);
+
+    let simplified = set.simplify();
+
+    assert_eq!(
+        simplified.predicates().len(),
+        1,
+        "Should remove redundant NonNegative"
+    );
+    assert!(
+        matches!(simplified.predicates()[0], ConditionPredicate::EqOne(_)),
+        "Should keep EqOne"
+    );
+}
+
 // =============================================================================
 // Phase 3B: Contradiction detection
 // =============================================================================

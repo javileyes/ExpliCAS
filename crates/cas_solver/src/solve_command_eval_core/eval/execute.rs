@@ -5,6 +5,7 @@ pub(super) fn solve_parsed_with_session<S>(
     session: &mut S,
     raw_input: String,
     parsed_expr: cas_ast::ExprId,
+    original_equation: Option<&cas_ast::Equation>,
     var: &str,
     auto_store: bool,
 ) -> Result<SolveSessionExecution, String>
@@ -28,10 +29,13 @@ where
         &resolved_input.cache_hits,
     );
 
-    let eq_to_solve = cas_solver_core::solve_entry::equation_from_expr_or_zero(
+    let mut eq_to_solve = cas_solver_core::solve_entry::equation_from_expr_or_zero(
         &mut simplifier.context,
         resolved_input.resolved,
     );
+    if let Some(original_equation) = original_equation {
+        eq_to_solve.op = original_equation.op.clone();
+    }
     let eval_options = session.options().clone();
     let solver_opts = crate::SolverOptions::from_eval_options(&eval_options);
 

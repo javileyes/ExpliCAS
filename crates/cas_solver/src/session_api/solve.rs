@@ -10,7 +10,9 @@ pub use crate::solve_command_errors::{
 };
 pub use crate::solve_command_eval_core::SolveCommandEvalOutput;
 pub use crate::solve_display_lines::format_solve_command_eval_lines;
-pub use crate::solve_verify_display::format_verify_summary_lines;
+pub use crate::solve_verify_display::{
+    format_verify_summary_lines, format_verify_summary_lines_with_hints,
+};
 pub use cas_solver_core::solve_command_types::{
     SolveCommandEvalError, SolveCommandInput, SolvePrepareError,
 };

@@ -16,6 +16,7 @@ pub(super) fn build_statement_request(
             Ok(PreparedEvalRequest::Solve {
                 raw_input: raw_input.to_string(),
                 parsed,
+                original_equation: Some(eq),
                 var,
                 auto_store,
             })
