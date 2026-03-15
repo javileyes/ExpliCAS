@@ -1,13 +1,13 @@
-use cas_solver_core::autoexpand_command_types::AutoexpandBudgetView;
+use cas_api_models::{AutoexpandBudgetView, EvalExpandPolicy};
 
 /// Format status output for `autoexpand`.
 pub fn format_autoexpand_current_message(
-    policy: crate::ExpandPolicy,
+    policy: EvalExpandPolicy,
     budget: AutoexpandBudgetView,
 ) -> String {
     let policy_str = match policy {
-        crate::ExpandPolicy::Off => "off",
-        crate::ExpandPolicy::Auto => "on",
+        EvalExpandPolicy::Off => "off",
+        EvalExpandPolicy::Auto => "on",
     };
     format!(
         "Auto-expand: {}\n\
@@ -23,17 +23,17 @@ pub fn format_autoexpand_current_message(
 
 /// Format feedback after applying an auto-expand policy.
 pub fn format_autoexpand_set_message(
-    policy: crate::ExpandPolicy,
+    policy: EvalExpandPolicy,
     budget: AutoexpandBudgetView,
 ) -> String {
     match policy {
-        crate::ExpandPolicy::Auto => format!(
+        EvalExpandPolicy::Auto => format!(
             "Auto-expand: on\n\
                Budget: pow<={}, base_terms<={}, gen_terms<={}, vars<={}\n\
                ⚠️ Expands small (sum)^n patterns automatically.",
             budget.max_pow_exp, budget.max_base_terms, budget.max_generated_terms, budget.max_vars
         ),
-        crate::ExpandPolicy::Off => {
+        EvalExpandPolicy::Off => {
             "Auto-expand: off\n  Polynomial expansions require explicit expand().".to_string()
         }
     }

@@ -229,17 +229,18 @@ Current progress:
       - deleting it removes another fake ownership layer from `cas_solver`
   - removed the redundant `substitute_subcommand_types` bridge in `cas_solver`
     - `SubstituteCommandMode` / `SubstituteSubcommandOutput` now come directly
-      from `cas_solver_core::substitute_command_types`
+      from `cas_api_models::commands::substitute`
     - `command_api::substitute` reexports them from the owner real instead of a
       local pass-through module
   - removed the redundant `limit_command_types` bridge in `cas_solver`
-    - `LimitCommandInput` / `Limit*Eval*` types now come directly from
-      `cas_solver_core::limit_command_types`
+    - borrowed `LimitCommandInput` now lives locally in
+      `cas_solver::limit_command_parse_types`
+    - owned `Limit*Eval*` types now come from `cas_api_models::commands::limit`
     - `command_api::limit`, `limit_command_core`, and `limit_command_parse`
-      now point to the owner real instead of a local pass-through module
+      now point to the real owners instead of a local/core pass-through module
   - removed the redundant `analysis_command_types` bridge in `cas_solver`
     - analysis/equiv/visualize-facing error and output types now come directly
-      from `cas_solver_core::analysis_command_types`
+      from `cas_api_models::commands::analysis`
     - the command façade now reexports them from the owner real in
       [`lib.rs`](/Users/javiergimenezmoya/developer/math/crates/cas_solver/src/lib.rs)
       instead of a local pass-through module
@@ -252,14 +253,14 @@ Current progress:
       real instead of a local pass-through
   - removed the redundant `steps_command_types` bridge in `cas_solver`
     - `StepsCommand*` / `StepsDisplayMode` now come directly from
-      `cas_solver_core::steps_command_types`
+      `cas_api_models::commands::steps`
     - both `session_api::environment` and `exports_base::settings::steps` now
       reexport them from the owner real instead of a local pass-through
   - removed the redundant `set_command_types` bridge in `cas_solver`
-    - `SetCommand*` / `SetDisplayMode` now come directly from
-      `cas_solver_core::set_command_types`
-    - both `session_api::environment` and `exports_base::settings::set_command`
-      now reexport them from the owner real instead of a local pass-through
+    - `SetCommand*` / `SetDisplayMode` now live directly in
+      `cas_solver::set_command_types`
+    - `session_api::set` now reexports them from the local owner real instead
+      of going through `cas_solver_core`
   - removed the redundant `history_types` / `inspect_types` bridges in
     `cas_solver`
     - history/inspect-facing models now come directly from
@@ -532,7 +533,8 @@ Current progress:
       - `format_explain_command_error_message(...)`
       - `format_visualize_command_error_message(...)`
       - `ExplainCommandEvalError`, `ExplainGcdEvalOutput`,
-        `VisualizeCommandOutput`, `VisualizeEvalError`
+        `ParseExprPairError`, `VisualizeCommandOutput`,
+        `VisualizeEvalError`
     - `cas_solver::session_api::algebra` now owns the algebra-facing
       surface:
       - `evaluate_expand_log_*`
@@ -818,7 +820,7 @@ Current progress:
       - `SubstituteSimplifyEvalOutput` now has a single owner in
         `cas_solver::substitute::types`
       - `SubstituteParseError` now has a single owner in
-        `cas_solver_core::substitute_command_types`
+        `cas_api_models::commands::substitute`
       - `substitute_command_eval` now reuses the real
         `evaluate_substitute_and_simplify(...)` evaluator instead of keeping a
         second copy of the same parse/substitute/simplify flow
@@ -1162,17 +1164,16 @@ It is either:
 - `cas_solver/src/exports.rs` has been removed; the crate root now wires
   directly to `exports_base`, `exports_commands`, and `exports_repl` instead of
   keeping an extra internal hub layer.
-- `cas_solver/src/repl_command_types.rs` has been removed; REPL parsing now
-  uses `cas_solver_core::repl_command_types::ReplCommandInput` directly instead
-  of a local pass-through wrapper.
+- `cas_solver/src/repl_command_types.rs` is now the owner of
+  `ReplCommandInput`; REPL parsing no longer depends on
+  `cas_solver_core::repl_command_types`.
 - `cas_solver/src/exports_repl/session.rs` has been removed; the root no longer
   reexports REPL session/runtime helpers through an extra wrapper layer, and
   internal users now point to `repl_session_runtime`, `session_api::lifecycle`,
   or `session_api::session` directly.
-- `cas_solver/src/repl_set_types.rs` has been removed; `ReplSetCommandOutput`
-  and `ReplSetMessageKind` now come straight from
-  `cas_solver_core::repl_set_types` or `cas_solver::session_api::environment`
-  instead of a local pass-through module.
+- `cas_solver/src/repl_set_types.rs` now owns `ReplSetCommandOutput` and
+  `ReplSetMessageKind` directly; the REPL/session-facing surface no longer
+  depends on `cas_solver_core::repl_set_types`.
 - `cas_solver/src/session_api/symbolic_commands.rs` and
   `cas_solver/src/session_api/types.rs` have been removed; their residual
   surface now lives under the thematic owners `session_api::solve`,
@@ -1181,21 +1182,28 @@ It is either:
   instead of two mixed grab-bags.
 - `cas_solver/src/bindings_types.rs`, `config_command_types.rs`,
   `options_budget_types.rs`, and `semantics_command_types.rs` have been
-  removed; those types now come directly from `cas_solver_core` or the local
-  owner modules instead of trivial pass-through wrappers.
+  removed; those types now come directly from `cas_solver_core`,
+  `cas_api_models`, or the local owner modules instead of trivial pass-through
+  wrappers.
+  For `config`, the neutral `ConfigCommandInput` / `ConfigCommandResult` live
+  in `cas_api_models::commands::config`, while `ConfigCommandApplyOutput`
+  stays in `cas_solver_core::config_runtime`.
 - `cas_solver/src/substitute_command_types.rs` has also been removed; the
-  substitute command now uses `cas_solver_core::substitute_command_types` and
+  substitute command now uses `cas_api_models::commands::substitute` and
   `cas_solver::substitute::SubstituteSimplifyEvalOutput` directly instead of a
   local pass-through types wrapper.
 - `cas_solver/src/rationalize_command_types.rs` has also been removed; the
   `rationalize` command now owns its usage string, typed error, outcome, and
   eval output directly in `rationalize_command.rs` instead of a dedicated
   pass-through types file.
-- `cas_solver/src/autoexpand_command_types.rs`,
-  `context_command_types.rs`, `semantics_preset_types.rs`, and
-  `semantics_set_types.rs` have also been removed; the autoexpand/context/
-  semantics flows now import those models directly from `cas_solver_core`
-  instead of going through local pass-through wrappers.
+- `cas_solver/src/autoexpand_command_types.rs` and
+  `context_command_types.rs` have also been removed; the autoexpand/context
+  flows now import those models directly from `cas_api_models` instead of
+  going through local pass-through wrappers.
+- `cas_solver/src/semantics_preset_types.rs` and
+  `semantics_set_types.rs` now own the preset/set models directly; the
+  semantics preset/set flows no longer depend on
+  `cas_solver_core::{semantics_preset_types, semantics_set_types}`.
 - `cas_solver/src/assignment_command/types.rs` and
   `profile_command/types.rs` have also been removed; assignment/profile command
   flows now import those models directly from `cas_solver_core` instead of
@@ -1222,10 +1230,13 @@ It is either:
   `path_rewrite.rs` have also been removed; those parent modules now reexport
   or consume their `cas_solver_core` owners directly instead of keeping
   single-item wrapper leaves.
-- `cas_solver/src/assignment_types.rs`, `semantics_view_types.rs`, and
-  `solve_input_types.rs` have also been removed; assignment parsing/formatting,
-  semantics view formatting, and solve command façades now import those models
-  directly from `cas_solver_core` instead of trivial local wrappers.
+- `cas_solver/src/assignment_types.rs` and `solve_input_types.rs` have also
+  been removed; assignment parsing/formatting and solve command façades now
+  import those models directly from `cas_solver_core` instead of trivial local
+  wrappers.
+- `cas_solver/src/semantics_view_types.rs` now owns the semantics view models
+  directly, so the view-formatting surface no longer depends on
+  `cas_solver_core::semantics_view_types`.
 - `cas_solver/src/health_suite_types.rs` and its submodules have also been
   removed; the health suite catalog/runner/reporting path now imports
   `Category`, `HealthCase`, `HealthLimits`, and `HealthCaseResult` directly

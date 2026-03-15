@@ -1,4 +1,4 @@
-use cas_solver_core::limit_command_types::LimitSubcommandEvalError;
+use cas_api_models::LimitSubcommandEvalError;
 
 pub fn format_limit_subcommand_error(error: &LimitSubcommandEvalError) -> String {
     match error {

@@ -1,5 +1,7 @@
 #[cfg(test)]
 mod tests {
+    use cas_api_models::EvalExpandPolicy;
+
     use crate::session_api::environment::{
         apply_autoexpand_policy_to_options, autoexpand_budget_view_from_options,
         evaluate_and_apply_autoexpand_command, evaluate_autoexpand_command_input,
@@ -21,13 +23,13 @@ mod tests {
     fn parse_autoexpand_command_input_reads_on_mode() {
         assert_eq!(
             parse_autoexpand_command_input("autoexpand on"),
-            AutoexpandCommandInput::SetPolicy(crate::ExpandPolicy::Auto)
+            AutoexpandCommandInput::SetPolicy(EvalExpandPolicy::Auto)
         );
     }
 
     #[test]
     fn format_autoexpand_current_message_contains_budget() {
-        let text = format_autoexpand_current_message(crate::ExpandPolicy::Off, budget());
+        let text = format_autoexpand_current_message(EvalExpandPolicy::Off, budget());
         assert!(text.contains("Auto-expand: off"));
         assert!(text.contains("pow<=6"));
     }
@@ -50,13 +52,13 @@ mod tests {
     #[test]
     fn evaluate_autoexpand_command_input_set_policy_returns_message() {
         let state = AutoexpandCommandState {
-            policy: crate::ExpandPolicy::Off,
+            policy: EvalExpandPolicy::Off,
             budget: budget(),
         };
         let out = evaluate_autoexpand_command_input("autoexpand on", state);
         match out {
             AutoexpandCommandResult::SetPolicy { policy, message } => {
-                assert_eq!(policy, crate::ExpandPolicy::Auto);
+                assert_eq!(policy, EvalExpandPolicy::Auto);
                 assert!(message.contains("Auto-expand: on"));
             }
             other => panic!("unexpected output: {other:?}"),
@@ -69,11 +71,11 @@ mod tests {
         eval_options.shared.expand_policy = crate::ExpandPolicy::Off;
 
         assert!(!apply_autoexpand_policy_to_options(
-            crate::ExpandPolicy::Off,
+            EvalExpandPolicy::Off,
             &mut eval_options
         ));
         assert!(apply_autoexpand_policy_to_options(
-            crate::ExpandPolicy::Auto,
+            EvalExpandPolicy::Auto,
             &mut eval_options
         ));
         assert_eq!(eval_options.shared.expand_policy, crate::ExpandPolicy::Auto);

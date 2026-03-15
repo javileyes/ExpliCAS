@@ -1,4 +1,4 @@
-use cas_solver_core::assignment_command_types::{LetAssignmentParseError, ParsedLetAssignment};
+use crate::assignment_parse_types::{LetAssignmentParseError, ParsedLetAssignment};
 
 /// Usage message for `let` assignment command.
 pub fn let_assignment_usage_message() -> &'static str {

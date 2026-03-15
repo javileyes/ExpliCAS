@@ -1,6 +1,6 @@
 use crate::limit_command_core::core::{eval_limit_from_str, limit_str_to_wire};
+use cas_api_models::{LimitSubcommandEvalError, LimitSubcommandEvalOutput};
 use cas_math::limit_types::{Approach, PreSimplifyMode};
-use cas_solver_core::limit_command_types::{LimitSubcommandEvalError, LimitSubcommandEvalOutput};
 
 pub fn evaluate_limit_subcommand_output(
     expr: &str,

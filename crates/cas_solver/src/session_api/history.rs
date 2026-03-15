@@ -9,6 +9,11 @@ pub use crate::history_format::{
     format_history_overview_lines, history_empty_message,
 };
 pub use crate::history_metadata_format::format_history_eval_metadata_sections;
+pub use crate::history_models::{
+    DeleteHistoryError, DeleteHistoryResult, HistoryEntryDetails, HistoryEntryInspection,
+    HistoryExprInspection, HistoryOverviewEntry, HistoryOverviewKind,
+    InspectHistoryEntryInputError, ParseHistoryEntryIdError,
+};
 pub use crate::history_overview::history_overview_entries;
 pub use crate::history_parse::parse_history_ids;
 pub use crate::history_show_format::{
@@ -27,11 +32,6 @@ pub use crate::repl_session_runtime::{
     evaluate_show_command_lines_on_runtime as evaluate_show_command_lines_on_repl_core,
 };
 pub use crate::show_command::evaluate_show_command_lines;
-pub use cas_solver_core::history_models::{
-    DeleteHistoryError, DeleteHistoryResult, HistoryEntryDetails, HistoryEntryInspection,
-    HistoryExprInspection, HistoryOverviewEntry, HistoryOverviewKind,
-    InspectHistoryEntryInputError, ParseHistoryEntryIdError,
-};
 
 /// Evaluate `history` command lines using an expression renderer callback.
 pub fn evaluate_history_command_lines<C, F>(context: &C, render_expr: F) -> Vec<String>

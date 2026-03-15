@@ -20,6 +20,6 @@ impl TimelineHtml<'_> {
             &render_data.filtered_steps,
             &render_data.enriched_steps,
         );
-        document::render_simplify_timeline_document(&self.title, &body)
+        document::render_simplify_timeline_document(self.title.as_str(), body.as_str())
     }
 }

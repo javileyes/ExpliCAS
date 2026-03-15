@@ -1,8 +1,8 @@
+use crate::repl_set_types::{ReplSetCommandOutput, ReplSetMessageKind};
 use crate::{
     evaluate_set_command_input, SetCommandApplyEffects, SetCommandPlan, SetCommandResult,
     SetCommandState, SetDisplayMode,
 };
-use cas_solver_core::repl_set_types::{ReplSetCommandOutput, ReplSetMessageKind};
 
 /// Runtime context needed by `set` command orchestration.
 pub trait ReplSetRuntimeContext {

@@ -4,7 +4,7 @@ mod rationalization;
 mod roots;
 mod shared;
 
-use cas_solver_core::health_suite_models::HealthCase;
+use crate::health_suite_models::HealthCase;
 
 pub(crate) fn stress_suite() -> Vec<HealthCase> {
     let mut suite = Vec::new();

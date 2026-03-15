@@ -1,5 +1,6 @@
 #[cfg(test)]
 mod tests {
+    use cas_api_models::EvalStepsMode;
     #[allow(unused_imports)]
     use cas_solver::session_api::{assumptions::*, steps::*};
     use cas_solver_core::eval_option_axes::StepsMode;
@@ -16,10 +17,10 @@ mod tests {
         let mut core = crate::repl_core::ReplCore::new();
         let effects = apply_steps_command_update_on_repl_core(
             &mut core,
-            Some(StepsMode::Compact),
+            Some(EvalStepsMode::Compact),
             Some(StepsDisplayMode::Succinct),
         );
-        assert_eq!(effects.set_steps_mode, Some(StepsMode::Compact));
+        assert_eq!(effects.set_steps_mode, Some(EvalStepsMode::Compact));
         assert_eq!(effects.set_display_mode, Some(StepsDisplayMode::Succinct));
         assert_eq!(core.eval_options().steps_mode, StepsMode::Compact);
     }

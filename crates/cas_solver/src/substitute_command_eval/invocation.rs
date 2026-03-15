@@ -2,7 +2,7 @@ use crate::substitute_command_eval::eval::evaluate_substitute_command_lines;
 use crate::substitute_command_format::{
     format_substitute_parse_error_message, substitute_render_mode_from_display_mode,
 };
-use cas_solver_core::substitute_command_types::SubstituteParseError;
+use cas_api_models::SubstituteParseError;
 
 /// Evaluate full `subst ...` invocation line and return cleaned display lines.
 pub fn evaluate_substitute_invocation_lines(

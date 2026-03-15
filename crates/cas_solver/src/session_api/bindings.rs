@@ -16,6 +16,7 @@ pub use crate::assignment_format::{
     format_let_assignment_parse_error_message,
 };
 pub use crate::assignment_parse::{let_assignment_usage_message, parse_let_assignment_input};
+pub use crate::assignment_parse_types::{LetAssignmentParseError, ParsedLetAssignment};
 pub use crate::bindings_command::{binding_overview_entries, clear_bindings_command};
 pub use crate::bindings_format::{
     format_binding_overview_lines, format_clear_bindings_result_lines, vars_empty_message,
@@ -24,9 +25,7 @@ pub use crate::repl_session_runtime::evaluate_assignment_command_message_on_runt
 pub use crate::repl_session_runtime::evaluate_clear_command_lines_on_runtime as evaluate_clear_command_lines_on_repl_core;
 pub use crate::repl_session_runtime::evaluate_let_assignment_command_message_on_runtime as evaluate_let_assignment_command_message_on_repl_core;
 pub use crate::repl_session_runtime::evaluate_vars_command_message_on_runtime as evaluate_vars_command_message_on_repl_core;
-pub use cas_solver_core::assignment_command_types::{
-    AssignmentCommandOutput, AssignmentError, LetAssignmentParseError, ParsedLetAssignment,
-};
+pub use cas_api_models::{AssignmentCommandOutput, AssignmentError};
 pub use cas_solver_core::session_runtime::{BindingOverviewEntry, ClearBindingsResult};
 
 /// Evaluate `clear` command and return output lines.

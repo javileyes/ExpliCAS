@@ -16,6 +16,6 @@ pub use crate::substitute_command_format::{
 pub use crate::substitute_subcommand_eval::evaluate_substitute_subcommand;
 pub use crate::substitute_subcommand_text::parse_substitute_wire_text_lines;
 pub use crate::substitute_subcommand_wire::evaluate_substitute_subcommand_wire;
-pub use cas_solver_core::substitute_command_types::{
+pub use cas_api_models::{
     SubstituteCommandMode, SubstituteParseError, SubstituteRenderMode, SubstituteSubcommandOutput,
 };

@@ -1,13 +1,4 @@
-pub(super) const FINAL_RESULT_CSS: &str = r#"
-        .final-result {
-            background: linear-gradient(135deg, var(--final-bg-start), var(--final-bg-end));
-            padding: 20px;
-            text-align: center;
-            color: white;
-            border-radius: 10px;
-            margin-top: 30px;
-            font-size: 1.2em;
-            box-shadow: 0 4px 12px var(--final-shadow);
-            transition: background 0.3s ease;
-        }
-"#;
+pub(super) const FINAL_RESULT_CSS: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/assets/timeline/page_theme_css/components/final_result.css"
+));

@@ -1,4 +1,4 @@
-use cas_solver_core::semantics_view_types::SemanticsViewState;
+use crate::SemanticsViewState;
 
 pub(super) fn format_evaluation_overview_lines(state: &SemanticsViewState) -> Vec<String> {
     let domain = match state.domain_mode {

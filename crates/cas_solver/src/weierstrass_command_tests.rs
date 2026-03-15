@@ -5,7 +5,7 @@ mod tests {
         evaluate_weierstrass_command_lines, evaluate_weierstrass_invocation_lines,
         evaluate_weierstrass_invocation_message, parse_weierstrass_invocation_input,
     };
-    use cas_solver_core::solve_command_types::{SolveCommandEvalError, SolvePrepareError};
+    use cas_api_models::{SolveCommandEvalError, SolvePrepareError};
 
     #[test]
     fn parse_weierstrass_invocation_input_reads_tail() {

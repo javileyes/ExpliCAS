@@ -1,19 +1,4 @@
-pub(super) const SOLVE_TIMELINE_SUBSTEPS_SCRIPT: &str = r#"    <script>
-        function toggleSubsteps(id) {
-            const container = document.getElementById(id);
-            const toggle = document.querySelector(`[onclick*="${id}"]`);
-            if (container.classList.contains('visible')) {
-                container.classList.remove('visible');
-                toggle.classList.remove('expanded');
-                toggle.querySelector('span:last-child').textContent = 'Show derivation (' + container.children.length + ' steps)';
-            } else {
-                container.classList.add('visible');
-                toggle.classList.add('expanded');
-                toggle.querySelector('span:last-child').textContent = 'Hide derivation';
-                if (window.MathJax) {
-                    MathJax.typeset([container]);
-                }
-            }
-        }
-    </script>
-"#;
+pub(super) const SOLVE_TIMELINE_SUBSTEPS_SCRIPT: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/assets/timeline/solve_page/substeps_script.html"
+));

@@ -1,4 +1,4 @@
-use cas_solver_core::substitute_command_types::SubstituteCommandMode;
+use cas_api_models::SubstituteCommandMode;
 
 pub(crate) fn substitute_command_mode_str(mode: SubstituteCommandMode) -> &'static str {
     match mode {

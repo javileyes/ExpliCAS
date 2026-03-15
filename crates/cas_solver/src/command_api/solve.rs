@@ -24,6 +24,4 @@ pub use crate::solve_input_parse_prepare::{
 pub use crate::solve_render_config::{
     solve_render_config_from_eval_options, SolveCommandRenderConfig, SolveDisplayMode,
 };
-pub use cas_solver_core::solve_command_types::{
-    SolveCommandInput, SolvePrepareError, TimelineCommandInput,
-};
+pub use cas_api_models::{SolveCommandInput, SolvePrepareError, TimelineCommandInput};

@@ -1,8 +1,8 @@
 mod eval;
 mod runtime;
 
-use cas_solver_core::autoexpand_command_types::{
-    AutoexpandCommandApplyOutput, AutoexpandCommandResult, AutoexpandCommandState,
+use cas_api_models::{
+    AutoexpandCommandApplyOutput, AutoexpandCommandResult, AutoexpandCommandState, EvalExpandPolicy,
 };
 
 /// Evaluate an `autoexpand` command into policy changes + message.
@@ -15,7 +15,7 @@ pub fn evaluate_autoexpand_command_input(
 
 /// Apply autoexpand policy into eval options, returning whether policy changed.
 pub fn apply_autoexpand_policy_to_options(
-    policy: crate::ExpandPolicy,
+    policy: EvalExpandPolicy,
     eval_options: &mut crate::EvalOptions,
 ) -> bool {
     runtime::apply_autoexpand_policy_to_options(policy, eval_options)

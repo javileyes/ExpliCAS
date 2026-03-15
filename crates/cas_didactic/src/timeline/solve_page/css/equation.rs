@@ -1,12 +1,4 @@
-pub(super) const EQUATION_CSS: &str = r#"
-    .equation {
-        background: var(--equation-bg);
-        padding: 15px;
-        border-radius: 8px;
-        text-align: center;
-        font-size: 1.2em;
-        transition: background 0.3s ease;
-        overflow-x: auto;
-        max-width: 100%;
-    }
-"#;
+pub(super) const EQUATION_CSS: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/assets/timeline/solve_page/css/equation.css"
+));

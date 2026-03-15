@@ -6,25 +6,41 @@ pub(super) fn render_timeline_rule_substeps_html(step: &Step) -> String {
         return String::new();
     }
 
-    let mut details_html = String::from(
-        r#"<details class="substeps-details" open>
-                    <summary>Pasos didácticos</summary>
-                    <div class="substeps-content">"#,
-    );
+    let mut content_html = String::new();
     for substep in step.substeps() {
-        details_html.push_str(&format!(
-            r#"<div class="substep">
-                            <strong>[{}]</strong>"#,
-            html_escape(&substep.title)
-        ));
+        let mut lines_html = String::new();
         for line in &substep.lines {
-            details_html.push_str(&format!(
-                r#"<div class="substep-line">• {}</div>"#,
-                html_escape(line)
+            let line_html = html_escape(line);
+            lines_html.push_str(&super::super::render_template::render_static_template(
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/assets/timeline/simplify_render/rule_substep_line.html"
+                )),
+                &[("__LINE__", line_html.as_str())],
             ));
         }
-        details_html.push_str("</div>");
+        let title_html = html_escape(&substep.title);
+        content_html.push_str(&super::super::render_template::render_static_template(
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/assets/timeline/simplify_render/rule_substep_item.html"
+            )),
+            &[
+                ("__TITLE__", title_html.as_str()),
+                ("__LINES__", lines_html.as_str()),
+            ],
+        ));
     }
-    details_html.push_str("</div></details>");
-    details_html
+
+    super::super::render_template::render_static_template(
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/assets/timeline/simplify_render/substeps_details.html"
+        )),
+        &[
+            ("__OPEN_ATTR__", " open"),
+            ("__SUMMARY__", "Pasos didácticos"),
+            ("__CONTENT__", content_html.as_str()),
+        ],
+    )
 }

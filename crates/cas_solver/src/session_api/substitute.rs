@@ -9,4 +9,4 @@ pub use crate::substitute_command_format::{
     format_substitute_eval_lines, format_substitute_parse_error_message,
     substitute_render_mode_from_display_mode,
 };
-pub use cas_solver_core::substitute_command_types::SubstituteRenderMode;
+pub use cas_api_models::SubstituteRenderMode;

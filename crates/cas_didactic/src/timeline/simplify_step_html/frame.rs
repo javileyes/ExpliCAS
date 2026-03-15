@@ -9,21 +9,21 @@ pub(super) fn render_step_frame(
     after_html: &str,
     domain_html: &str,
 ) -> String {
-    format!(
-        r#"            <div class="step">
-                <div class="step-number">{}</div>
-                <div class="step-content">
-                    <h3>{}</h3>
-                    {}{}{}{}{}{}                </div>
-            </div>
-"#,
-        step_number,
-        step_title,
-        before_html,
-        sub_steps_html,
-        rule_html,
-        rule_substeps_html,
-        after_html,
-        domain_html
+    let step_number_text = step_number.to_string();
+    super::super::render_template::render_static_template(
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/assets/timeline/simplify_render/step_frame.html"
+        )),
+        &[
+            ("__STEP_NUMBER__", step_number_text.as_str()),
+            ("__STEP_TITLE__", step_title),
+            ("__BEFORE_HTML__", before_html),
+            ("__SUB_STEPS_HTML__", sub_steps_html),
+            ("__RULE_HTML__", rule_html),
+            ("__RULE_SUBSTEPS_HTML__", rule_substeps_html),
+            ("__AFTER_HTML__", after_html),
+            ("__DOMAIN_HTML__", domain_html),
+        ],
     )
 }

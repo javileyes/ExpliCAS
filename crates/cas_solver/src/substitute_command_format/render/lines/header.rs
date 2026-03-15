@@ -1,6 +1,6 @@
 use crate::substitute::SubstituteSimplifyEvalOutput;
 use crate::substitute_command_parse::split_by_comma_ignoring_parens;
-use cas_solver_core::substitute_command_types::SubstituteRenderMode;
+use cas_api_models::SubstituteRenderMode;
 
 pub(super) fn build_header_lines(
     input: &str,

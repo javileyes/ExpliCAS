@@ -1,5 +1,7 @@
 #[cfg(test)]
 mod tests {
+    use cas_api_models::EvalContextMode;
+
     use crate::session_api::environment::{
         apply_context_mode_to_options, evaluate_and_apply_context_command,
         evaluate_context_command_input, format_context_current_message, format_context_set_message,
@@ -10,7 +12,7 @@ mod tests {
     fn parse_context_command_input_reads_solve() {
         assert_eq!(
             parse_context_command_input("context solve"),
-            ContextCommandInput::SetMode(crate::ContextMode::Solve)
+            ContextCommandInput::SetMode(EvalContextMode::Solve)
         );
     }
 
@@ -36,7 +38,7 @@ mod tests {
         let out = evaluate_context_command_input("context solve", crate::ContextMode::Auto);
         match out {
             ContextCommandResult::SetMode { mode, message } => {
-                assert_eq!(mode, crate::ContextMode::Solve);
+                assert_eq!(mode, EvalContextMode::Solve);
                 assert!(message.contains("Context: solve"));
             }
             other => panic!("unexpected result: {other:?}"),
@@ -49,11 +51,11 @@ mod tests {
         eval_options.shared.context_mode = crate::ContextMode::Auto;
 
         assert!(!apply_context_mode_to_options(
-            crate::ContextMode::Auto,
+            EvalContextMode::Auto,
             &mut eval_options
         ));
         assert!(apply_context_mode_to_options(
-            crate::ContextMode::Solve,
+            EvalContextMode::Solve,
             &mut eval_options
         ));
         assert_eq!(eval_options.shared.context_mode, crate::ContextMode::Solve);

@@ -22,11 +22,11 @@ pub(super) fn collect_step_payload_substeps(
             lines: vec![],
             before_latex: Some(render_substep_side(
                 substep.before_latex.clone(),
-                &substep.before_expr,
+                substep.before_expr.as_str(),
             )),
             after_latex: Some(render_substep_side(
                 substep.after_latex.clone(),
-                &substep.after_expr,
+                substep.after_expr.as_str(),
             )),
         });
     }

@@ -1,6 +1,6 @@
 use crate::limit_command_core::core::eval_limit_from_str;
 use crate::limit_command_parse::parse_limit_command_input;
-use cas_solver_core::limit_command_types::{LimitCommandEvalError, LimitCommandEvalOutput};
+use cas_api_models::{LimitCommandApproach, LimitCommandEvalError, LimitCommandEvalOutput};
 
 pub fn evaluate_limit_command_input(
     input: &str,
@@ -14,7 +14,7 @@ pub fn evaluate_limit_command_input(
     match eval_limit_from_str(parsed.expr, parsed.var, parsed.approach, parsed.presimplify) {
         Ok(limit_result) => Ok(LimitCommandEvalOutput {
             var: parsed.var.to_string(),
-            approach: parsed.approach,
+            approach: limit_command_approach_from_runtime(parsed.approach),
             result: limit_result.result,
             warning: limit_result.warning,
         }),
@@ -24,5 +24,14 @@ pub fn evaluate_limit_command_input(
         Err(cas_api_models::LimitEvalError::Limit(message)) => {
             Err(LimitCommandEvalError::Limit(message))
         }
+    }
+}
+
+fn limit_command_approach_from_runtime(
+    approach: cas_math::limit_types::Approach,
+) -> LimitCommandApproach {
+    match approach {
+        cas_math::limit_types::Approach::PosInfinity => LimitCommandApproach::Infinity,
+        cas_math::limit_types::Approach::NegInfinity => LimitCommandApproach::NegInfinity,
     }
 }

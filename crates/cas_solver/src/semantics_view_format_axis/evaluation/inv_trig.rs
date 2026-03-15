@@ -1,4 +1,4 @@
-use cas_solver_core::semantics_view_types::SemanticsViewState;
+use crate::SemanticsViewState;
 
 pub(super) fn format_inv_trig_axis_lines(state: &SemanticsViewState) -> Vec<String> {
     let current = match state.inv_trig {

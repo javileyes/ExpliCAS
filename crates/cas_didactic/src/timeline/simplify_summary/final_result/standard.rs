@@ -1,3 +1,4 @@
+use crate::timeline::render_template;
 use cas_ast::{Context, ExprId};
 use cas_formatter::{
     DisplayContext, PathHighlightConfig, PathHighlightedLatexRenderer, StylePreferences,
@@ -19,17 +20,11 @@ pub(super) fn render_standard_final_result_html(
     }
     .to_latex();
 
-    let mut html = String::from(
-        r#"        </div>
-        <div class="final-result">
-            \(\textbf{Final Result:}\)
-            \["#,
-    );
-    html.push_str(&final_expr);
-    html.push_str(
-        r#"\]
-        </div>
-"#,
-    );
-    html
+    render_template::render_static_template(
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/assets/timeline/simplify_render/final_result_standard.html"
+        )),
+        &[("__FINAL_EXPR__", final_expr.as_str())],
+    )
 }

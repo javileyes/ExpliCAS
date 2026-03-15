@@ -1,4 +1,4 @@
-use cas_solver_core::semantics_set_types::SemanticsSetState;
+use crate::SemanticsSetState;
 
 pub(super) fn set_reporting_axis(
     state: &mut SemanticsSetState,

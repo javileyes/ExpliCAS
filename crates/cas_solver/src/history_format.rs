@@ -1,6 +1,4 @@
-use cas_solver_core::history_models::{
-    DeleteHistoryError, DeleteHistoryResult, HistoryOverviewEntry, HistoryOverviewKind,
-};
+use crate::{DeleteHistoryError, DeleteHistoryResult, HistoryOverviewEntry, HistoryOverviewKind};
 
 /// Message used when there are no history entries to list.
 pub fn history_empty_message() -> &'static str {

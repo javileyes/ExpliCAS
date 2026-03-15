@@ -1,4 +1,4 @@
-use cas_solver_core::health_suite_models::{HealthCase, HealthCaseResult};
+use crate::health_suite_models::{HealthCase, HealthCaseResult};
 
 pub(super) fn parse_error_result(case: &HealthCase, error: String) -> HealthCaseResult {
     HealthCaseResult {

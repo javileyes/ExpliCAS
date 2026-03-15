@@ -2,8 +2,8 @@ mod lines;
 mod render;
 mod summary;
 
-use cas_solver_core::health_category::Category;
-use cas_solver_core::health_suite_models::HealthCaseResult;
+use crate::health_category::Category;
+use crate::health_suite_models::HealthCaseResult;
 
 #[allow(dead_code)]
 pub fn format_report(results: &[HealthCaseResult]) -> String {

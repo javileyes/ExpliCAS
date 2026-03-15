@@ -1,23 +1,4 @@
-pub(super) const DETAILS_ITEM_CSS: &str = r#"
-        .substep {
-            padding: 8px 0;
-            border-bottom: 1px dashed var(--substep-border);
-        }
-        .substep:last-child {
-            border-bottom: none;
-        }
-        .substep-desc {
-            font-weight: 500;
-            color: var(--substep-desc-color);
-            display: block;
-            margin-bottom: 5px;
-            transition: color 0.3s ease;
-        }
-        .substep-math {
-            padding: 5px 10px;
-            background: var(--substep-math-bg);
-            border-radius: 4px;
-            text-align: center;
-            transition: background 0.3s ease;
-        }
-"#;
+pub(super) const DETAILS_ITEM_CSS: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/assets/timeline/simplify_page/css/details/item.css"
+));

@@ -2,7 +2,7 @@ mod algebra;
 mod analysis;
 mod session;
 
-use cas_solver_core::repl_command_types::ReplCommandInput;
+use crate::repl_command_types::ReplCommandInput;
 
 pub(crate) fn parse_repl_command_routing(line: &str) -> ReplCommandInput<'_> {
     if let Some(command) = session::try_parse_session_command(line) {

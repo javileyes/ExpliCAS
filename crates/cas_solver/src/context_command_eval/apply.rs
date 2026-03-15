@@ -1,14 +1,15 @@
-use cas_solver_core::context_command_types::{ContextCommandApplyOutput, ContextCommandResult};
+use cas_api_models::{ContextCommandApplyOutput, ContextCommandResult, EvalContextMode};
 
 /// Apply context mode into eval options, returning whether mode changed.
 pub fn apply_context_mode_to_options(
-    mode: crate::ContextMode,
+    mode: EvalContextMode,
     eval_options: &mut crate::EvalOptions,
 ) -> bool {
-    if eval_options.shared.context_mode == mode {
+    let runtime_mode = context_mode_from_eval(mode);
+    if eval_options.shared.context_mode == runtime_mode {
         return false;
     }
-    eval_options.shared.context_mode = mode;
+    eval_options.shared.context_mode = runtime_mode;
     true
 }
 
@@ -30,5 +31,14 @@ pub fn evaluate_and_apply_context_command(
             message,
             rebuild_simplifier: false,
         },
+    }
+}
+
+fn context_mode_from_eval(mode: EvalContextMode) -> crate::ContextMode {
+    match mode {
+        EvalContextMode::Auto => crate::ContextMode::Auto,
+        EvalContextMode::Standard => crate::ContextMode::Standard,
+        EvalContextMode::Solve => crate::ContextMode::Solve,
+        EvalContextMode::Integrate => crate::ContextMode::IntegratePrep,
     }
 }

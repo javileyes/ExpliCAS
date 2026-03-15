@@ -12,7 +12,11 @@ pub(super) fn render_solve_timeline_body(
     solution_set: &SolutionSet,
     var: &str,
 ) -> String {
-    let mut html = String::from("        <div class=\"timeline\">\n");
+    let mut html = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/assets/timeline/solve_render/timeline_open.html"
+    ))
+    .to_string();
 
     html.push_str(&steps::render_solve_timeline_steps(
         context,

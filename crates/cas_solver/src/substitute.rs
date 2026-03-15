@@ -16,9 +16,9 @@ pub use self::strategy::{
     detect_substitute_strategy, substitute_auto, substitute_auto_with_strategy,
     substitute_power_aware,
 };
+pub use cas_api_models::SubstituteParseError;
 use cas_ast::ExprId;
 pub use cas_math::substitute::SubstituteOptions;
-pub use cas_solver_core::substitute_command_types::SubstituteParseError;
 
 /// Evaluated payload for REPL-style `subst` followed by simplify.
 #[derive(Debug, Clone)]

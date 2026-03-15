@@ -1,11 +1,9 @@
 //! Stateless CLI-subcommand helpers for `limit`.
 
 use crate::limit_command_core::{evaluate_limit_subcommand_output, format_limit_subcommand_error};
+use cas_api_models::LimitSubcommandEvalOutput;
+pub use cas_api_models::{LimitCommandApproach, LimitCommandPreSimplify, LimitSubcommandOutput};
 use cas_math::limit_types::{Approach, PreSimplifyMode};
-use cas_solver_core::limit_command_types::LimitSubcommandEvalOutput;
-pub use cas_solver_core::limit_subcommand_types::{
-    LimitCommandApproach, LimitCommandPreSimplify, LimitSubcommandOutput,
-};
 
 /// Evaluate limit subcommand and map solver contracts to CLI-friendly output.
 pub fn evaluate_limit_subcommand(

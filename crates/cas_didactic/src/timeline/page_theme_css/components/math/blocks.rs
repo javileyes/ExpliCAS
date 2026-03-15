@@ -1,22 +1,4 @@
-pub(super) const MATH_BLOCKS_CSS: &str = r#"
-        .math-block {
-            background: var(--math-bg);
-            border-radius: 8px;
-            padding: 12px;
-            margin: 10px 0;
-            overflow-x: auto;
-            border: 1px solid var(--math-border);
-        }
-        .math-before {
-            border-left: 4px solid var(--math-before-border);
-            background: var(--math-before-bg);
-        }
-        .math-after {
-            border-left: 4px solid var(--math-after-border);
-            background: var(--math-after-bg);
-        }
-        .local-change {
-            background: var(--local-change-bg);
-            border: 1px dashed var(--content-border);
-        }
-"#;
+pub(super) const MATH_BLOCKS_CSS: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/assets/timeline/page_theme_css/components/math/blocks.css"
+));

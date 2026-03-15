@@ -2,7 +2,7 @@ mod header;
 mod step_lines;
 
 use crate::substitute::SubstituteSimplifyEvalOutput;
-use cas_solver_core::substitute_command_types::SubstituteRenderMode;
+use cas_api_models::SubstituteRenderMode;
 
 /// Format substitute command eval output into display lines.
 pub fn format_substitute_eval_lines(

@@ -2,9 +2,7 @@ use crate::substitute_subcommand_text::parse_substitute_wire_text_lines;
 use crate::substitute_subcommand_wire::{
     evaluate_substitute_subcommand_wire, substitute_command_mode_str,
 };
-use cas_solver_core::substitute_command_types::{
-    SubstituteCommandMode, SubstituteSubcommandOutput,
-};
+use cas_api_models::{SubstituteCommandMode, SubstituteSubcommandOutput};
 
 /// Evaluate substitute subcommand and map canonical wire/text contracts to CLI output.
 pub fn evaluate_substitute_subcommand(

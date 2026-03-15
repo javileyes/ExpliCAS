@@ -1,4 +1,4 @@
-use cas_solver_core::health_suite_models::HealthCase;
+use crate::health_suite_models::HealthCase;
 
 use super::shared::stress_case;
 

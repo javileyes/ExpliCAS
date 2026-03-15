@@ -27,6 +27,9 @@ pub(super) fn render_solve_substeps_html(
         ));
     }
 
-    html.push_str("            </div>\n");
+    html.push_str(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/assets/timeline/solve_render/substeps_close.html"
+    )));
     html
 }

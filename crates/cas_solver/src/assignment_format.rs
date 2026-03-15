@@ -1,5 +1,6 @@
 use crate::assignment_parse::let_assignment_usage_message;
-use cas_solver_core::assignment_command_types::{AssignmentError, LetAssignmentParseError};
+use crate::assignment_parse_types::LetAssignmentParseError;
+use cas_api_models::AssignmentError;
 
 /// Format a `let` parse error as a user-facing message.
 pub fn format_let_assignment_parse_error_message(error: &LetAssignmentParseError) -> String {

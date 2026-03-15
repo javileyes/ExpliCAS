@@ -1,5 +1,5 @@
+use cas_api_models::AssignmentCommandOutput;
 use cas_ast::ExprId;
-use cas_solver_core::assignment_command_types::AssignmentCommandOutput;
 
 use crate::{format_assignment_success_message, AssignmentError};
 

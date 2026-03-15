@@ -1,11 +1,10 @@
-use cas_math::limit_types::Approach;
-
 use crate::LimitCommandEvalOutput;
+use cas_api_models::LimitCommandApproach;
 
 pub(super) fn format_limit_command_eval_lines(output: &LimitCommandEvalOutput) -> Vec<String> {
     let dir_disp = match output.approach {
-        Approach::PosInfinity => "+∞",
-        Approach::NegInfinity => "-∞",
+        LimitCommandApproach::Infinity => "+∞",
+        LimitCommandApproach::NegInfinity => "-∞",
     };
     let mut lines = vec![format!(
         "lim_{{{}→{}}} = {}",

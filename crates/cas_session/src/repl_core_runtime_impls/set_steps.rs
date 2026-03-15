@@ -1,4 +1,5 @@
 use crate::repl_core::ReplCore;
+use cas_api_models::EvalStepsMode;
 use cas_solver::session_api::set::apply_set_command_plan;
 use cas_solver::session_api::set::{
     ReplSetRuntimeContext, SetCommandApplyEffects, SetCommandPlan, SetCommandState, SetDisplayMode,
@@ -39,13 +40,17 @@ impl ReplSetRuntimeContext for ReplCore {
 }
 
 impl ReplStepsRuntimeContext for ReplCore {
-    fn steps_mode_current(&self) -> StepsMode {
-        self.eval_options().steps_mode
+    fn steps_mode_current(&self) -> EvalStepsMode {
+        match self.eval_options().steps_mode {
+            StepsMode::On => EvalStepsMode::On,
+            StepsMode::Off => EvalStepsMode::Off,
+            StepsMode::Compact => EvalStepsMode::Compact,
+        }
     }
 
     fn apply_steps_effects_to_eval_options(
         &mut self,
-        set_steps_mode: Option<StepsMode>,
+        set_steps_mode: Option<EvalStepsMode>,
         set_display_mode: Option<StepsDisplayMode>,
     ) -> StepsCommandApplyEffects {
         apply_steps_command_update(set_steps_mode, set_display_mode, self.eval_options_mut())

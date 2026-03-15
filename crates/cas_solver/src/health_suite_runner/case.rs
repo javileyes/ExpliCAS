@@ -3,8 +3,8 @@ mod result;
 mod stats;
 mod thresholds;
 
+use crate::health_suite_models::{HealthCase, HealthCaseResult};
 use crate::{Simplifier, SimplifyOptions};
-use cas_solver_core::health_suite_models::{HealthCase, HealthCaseResult};
 
 use super::cycle::detect_cycle;
 

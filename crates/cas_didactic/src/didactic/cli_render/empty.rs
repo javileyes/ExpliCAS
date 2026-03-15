@@ -18,8 +18,8 @@ pub(super) fn render_empty_simplification_lines(
             if !sub.before_expr.is_empty() {
                 lines.push(format!(
                     "     {} → {}",
-                    latex_to_plain_text(&sub.before_expr),
-                    latex_to_plain_text(&sub.after_expr)
+                    latex_to_plain_text(sub.before_expr.as_str()),
+                    latex_to_plain_text(sub.after_expr.as_str())
                 ));
             }
         }

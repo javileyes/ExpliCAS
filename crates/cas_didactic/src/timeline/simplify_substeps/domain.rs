@@ -8,9 +8,11 @@ pub(super) fn render_timeline_domain_assumptions_html(step: &Step) -> String {
     }
 
     let parts: Vec<String> = grouped_lines.iter().map(|line| html_escape(line)).collect();
-    format!(
-        r#"                    <div class="domain-assumptions">{}</div>
-"#,
-        parts.join("<br/>")
+    super::super::render_template::render_static_template(
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/assets/timeline/simplify_render/domain_assumptions.html"
+        )),
+        &[("__GROUPED_LINES__", &parts.join("<br/>"))],
     )
 }

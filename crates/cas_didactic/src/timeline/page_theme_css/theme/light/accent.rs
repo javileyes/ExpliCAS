@@ -1,23 +1,4 @@
-pub(super) const ACCENT_CSS: &str = r#"
-        :root.light {
-            --bg-gradient-start: #667eea;
-            --bg-gradient-end: #764ba2;
-            --title-color: #333;
-            --subtitle-color: #666;
-            --timeline-line-start: #667eea;
-            --timeline-line-end: #764ba2;
-            --step-border: #667eea;
-            --step-dot-bg: #667eea;
-            --step-number-color: #667eea;
-            --content-h3-color: #667eea;
-            --math-border: #667eea;
-            --math-before-border: #ff9800;
-            --math-after-border: #4caf50;
-            --rule-color: #667eea;
-            --rule-name-color: #764ba2;
-            --footer-color: white;
-            --substeps-summary-color: #ef6c00;
-            --substeps-summary-hover: #e65100;
-            --warning-color: #856404;
-        }
-"#;
+pub(super) const ACCENT_CSS: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/assets/timeline/page_theme_css/theme/light/accent.css"
+));

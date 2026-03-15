@@ -137,6 +137,10 @@ Instead:
 - add explicit role documentation
 - treat rename as a separate, optional cleanup track
 
+For the concrete low-risk move list that we actually want to follow, see:
+
+- `/Users/javiergimenezmoya/developer/math/docs/ARCHITECTURE_BOUNDARY_CLEANUP_BACKLOG.md`
+
 ### A2. Purify `cas_math`
 
 #### Goal

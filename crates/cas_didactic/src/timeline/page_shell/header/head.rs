@@ -6,21 +6,18 @@ pub(super) fn render_timeline_page_head(
     common_css: &str,
     extra_css: &str,
 ) -> String {
-    format!(
-        r#"<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{}: {}</title>
-    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
-    <style>{}{}
-    </style>
-</head>
-"#,
-        html_escape(page_title_prefix),
-        html_escape(title),
-        common_css,
-        extra_css,
+    let page_title_prefix_html = html_escape(page_title_prefix);
+    let title_html = html_escape(title);
+    super::super::super::render_template::render_static_template(
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/assets/timeline/page_shell/header/head.html"
+        )),
+        &[
+            ("__PAGE_TITLE_PREFIX__", page_title_prefix_html.as_str()),
+            ("__TITLE__", title_html.as_str()),
+            ("__COMMON_CSS__", common_css),
+            ("__EXTRA_CSS__", extra_css),
+        ],
     )
 }

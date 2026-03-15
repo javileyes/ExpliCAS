@@ -1,5 +1,5 @@
 use crate::substitute::SubstituteSimplifyEvalOutput;
-use cas_solver_core::substitute_command_types::SubstituteRenderMode;
+use cas_api_models::SubstituteRenderMode;
 
 use super::super::filter::should_render_substitute_step;
 

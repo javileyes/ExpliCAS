@@ -1,7 +1,7 @@
 mod evaluation;
 mod reporting;
 
-use cas_solver_core::semantics_view_types::SemanticsViewState;
+use crate::SemanticsViewState;
 
 /// Format all semantic axis settings.
 pub fn format_semantics_overview_lines(state: &SemanticsViewState) -> Vec<String> {

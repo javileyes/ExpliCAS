@@ -1,4 +1,4 @@
-use cas_solver_core::repl_command_types::ReplCommandInput;
+use crate::repl_command_types::ReplCommandInput;
 
 pub(crate) fn parse_repl_command_early(line: &str) -> Option<ReplCommandInput<'_>> {
     if line.starts_with("help") {

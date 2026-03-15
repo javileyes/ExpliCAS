@@ -2,7 +2,7 @@ mod diagnostics;
 mod eval;
 mod prepare;
 
-pub use cas_solver_core::solve_command_types::SolveCommandEvalError;
+pub use cas_api_models::SolveCommandEvalError;
 
 pub(crate) struct PreparedSolveEvalRequest {
     pub raw_input: String,

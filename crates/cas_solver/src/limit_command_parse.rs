@@ -1,5 +1,5 @@
+use crate::limit_command_parse_types::LimitCommandInput;
 use cas_math::limit_types::{Approach, PreSimplifyMode};
-use cas_solver_core::limit_command_types::LimitCommandInput;
 
 fn split_by_comma_ignoring_parens(s: &str) -> Vec<&str> {
     let mut parts = Vec::new();

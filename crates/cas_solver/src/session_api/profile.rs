@@ -12,5 +12,4 @@ pub use crate::repl_simplifier_runtime::{
     apply_profile_command_on_runtime as apply_profile_command_on_repl_core,
     evaluate_profile_command_message_on_runtime as evaluate_profile_command_message_on_repl_core,
 };
-pub use cas_solver_core::profile_cache_command_types::ProfileCacheCommandResult;
-pub use cas_solver_core::profile_command_types::{ProfileCommandInput, ProfileCommandResult};
+pub use cas_api_models::{ProfileCacheCommandResult, ProfileCommandInput, ProfileCommandResult};

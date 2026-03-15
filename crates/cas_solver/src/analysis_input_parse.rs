@@ -1,7 +1,7 @@
 //! Parsing helpers for analysis-style pair inputs (`<expr1>, <expr2>`).
 
+use cas_api_models::ParseExprPairError;
 use cas_ast::{Context, ExprId};
-use cas_solver_core::analysis_command_types::ParseExprPairError;
 
 fn parse_expr_or_equation_as_expr(ctx: &mut Context, input: &str) -> Result<ExprId, String> {
     let stmt = crate::input_parse_common::parse_statement_or_session_ref(ctx, input)?;

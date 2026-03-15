@@ -32,7 +32,7 @@ impl Repl {
 
     fn apply_steps_command_result_update(
         &mut self,
-        set_steps_mode: Option<cas_solver::runtime::StepsMode>,
+        set_steps_mode: Option<cas_api_models::EvalStepsMode>,
         set_display_mode: Option<cas_solver::session_api::steps::StepsDisplayMode>,
     ) {
         let effects = cas_solver::session_api::steps::apply_steps_command_update_on_repl_core(

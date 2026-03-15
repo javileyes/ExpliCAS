@@ -32,6 +32,7 @@ mod assignment_command_runtime_tests;
 mod assignment_command_tests;
 mod assignment_format;
 mod assignment_parse;
+mod assignment_parse_types;
 mod assumption_format;
 mod autoexpand_command_eval;
 mod autoexpand_command_format;
@@ -100,6 +101,7 @@ mod eval_request_runtime;
 mod full_simplify_command;
 mod full_simplify_display;
 mod full_simplify_eval;
+pub(crate) mod health_category;
 mod health_command_eval;
 mod health_command_format;
 mod health_command_messages;
@@ -111,6 +113,7 @@ mod health_suite_catalog_core;
 mod health_suite_catalog_stress;
 mod health_suite_format_catalog;
 mod health_suite_format_report;
+pub(crate) mod health_suite_models;
 mod health_suite_runner;
 mod history_command_display;
 #[cfg(test)]
@@ -124,6 +127,7 @@ mod history_format;
 mod history_metadata_format;
 #[cfg(test)]
 mod history_metadata_format_tests;
+mod history_models;
 mod history_overview;
 #[cfg(test)]
 mod history_overview_tests;
@@ -138,6 +142,7 @@ mod limit_command_core;
 #[cfg(test)]
 mod limit_command_eval_tests;
 mod limit_command_parse;
+mod limit_command_parse_types;
 #[cfg(test)]
 mod limit_command_tests;
 mod limit_subcommand;
@@ -185,6 +190,7 @@ mod repl_command_parse_routing;
 mod repl_command_preprocess;
 #[cfg(test)]
 mod repl_command_routing_tests;
+mod repl_command_types;
 mod repl_config_runtime;
 #[cfg(test)]
 mod repl_config_runtime_tests;
@@ -207,6 +213,7 @@ mod repl_session_runtime;
 mod repl_set_runtime;
 #[cfg(test)]
 mod repl_set_runtime_tests;
+mod repl_set_types;
 mod repl_simplifier_runtime;
 #[cfg(test)]
 mod repl_simplifier_runtime_tests;
@@ -229,6 +236,7 @@ mod semantics_preset_apply;
 mod semantics_preset_catalog;
 mod semantics_preset_format;
 mod semantics_preset_labels;
+mod semantics_preset_types;
 #[cfg(test)]
 mod semantics_presets_tests;
 mod semantics_set_apply;
@@ -236,10 +244,12 @@ mod semantics_set_parse_apply;
 mod semantics_set_parse_axis;
 #[cfg(test)]
 mod semantics_set_tests;
+mod semantics_set_types;
 mod semantics_view_format;
 mod semantics_view_format_axis;
 mod semantics_view_format_help;
 mod semantics_view_format_overview;
+mod semantics_view_types;
 pub mod session_api;
 mod set_command_apply;
 mod set_command_eval;
@@ -250,6 +260,7 @@ mod set_command_options_steps;
 mod set_command_parse;
 #[cfg(test)]
 mod set_command_tests;
+mod set_command_types;
 mod show_command;
 #[cfg(test)]
 mod show_command_tests;
@@ -387,6 +398,8 @@ pub(crate) use crate::assignment_parse::{
     let_assignment_usage_message, parse_let_assignment_input,
 };
 #[allow(unused_imports)]
+pub(crate) use crate::assignment_parse_types::{LetAssignmentParseError, ParsedLetAssignment};
+#[allow(unused_imports)]
 pub(crate) use crate::assumption_format::format_assumption_records_summary;
 #[allow(unused_imports)]
 pub(crate) use crate::blocked_hint_format::{
@@ -428,6 +441,8 @@ pub(crate) use crate::full_simplify_eval::{
     FullSimplifyEvalError, FullSimplifyEvalOutput,
 };
 #[allow(unused_imports)]
+pub(crate) use crate::health_category::Category as HealthSuiteCategory;
+#[allow(unused_imports)]
 pub(crate) use crate::health_command_eval::{
     evaluate_health_command, evaluate_health_status_lines,
 };
@@ -457,6 +472,8 @@ pub(crate) use crate::health_suite_format_report::{
     format_report_filtered as format_health_suite_report_filtered,
 };
 #[allow(unused_imports)]
+pub(crate) use crate::health_suite_models::{HealthCase, HealthCaseResult, HealthLimits};
+#[allow(unused_imports)]
 pub(crate) use crate::health_suite_runner::run_suite_filtered as run_health_suite_filtered;
 #[allow(unused_imports)]
 pub(crate) use crate::history_command_display::{
@@ -473,6 +490,15 @@ pub(crate) use crate::history_format::{
 };
 #[allow(unused_imports)]
 pub(crate) use crate::history_metadata_format::format_history_eval_metadata_sections;
+#[allow(unused_imports)]
+pub(crate) use crate::history_models::{
+    DeleteHistoryError, DeleteHistoryResult, HistoryOverviewEntry, HistoryOverviewKind,
+};
+#[allow(unused_imports)]
+pub(crate) use crate::history_models::{
+    HistoryEntryDetails, HistoryEntryInspection, HistoryExprInspection,
+    InspectHistoryEntryInputError, ParseHistoryEntryIdError,
+};
 #[allow(unused_imports)]
 pub(crate) use crate::history_overview::{
     history_overview_entries, HistoryEntryKindRaw, HistoryEntryRaw, HistoryOverviewContext,
@@ -500,6 +526,8 @@ pub(crate) use crate::limit_command_core::{
 #[allow(unused_imports)]
 pub(crate) use crate::limit_command_parse::parse_limit_command_input;
 #[allow(unused_imports)]
+pub(crate) use crate::limit_command_parse_types::LimitCommandInput;
+#[allow(unused_imports)]
 pub(crate) use crate::linear_system::{
     solve_2x2_linear_system, solve_3x3_linear_system, solve_nxn_linear_system, LinSolveResult,
     LinearSystemError,
@@ -524,6 +552,8 @@ pub(crate) use crate::repl_command_parse::parse_repl_command_input;
 pub(crate) use crate::repl_command_preprocess::{
     preprocess_repl_function_syntax, split_repl_statements,
 };
+#[allow(unused_imports)]
+pub(crate) use crate::repl_command_types::ReplCommandInput;
 #[allow(unused_imports)]
 pub(crate) use crate::repl_eval_runtime::{
     evaluate_eval_command_render_plan_on_runtime, evaluate_expand_command_render_plan_on_runtime,
@@ -583,6 +613,11 @@ pub(crate) use crate::semantics_preset_format::{
     format_semantics_preset_list_lines,
 };
 #[allow(unused_imports)]
+pub(crate) use crate::semantics_preset_types::{
+    SemanticsPreset, SemanticsPresetApplication, SemanticsPresetApplyError,
+    SemanticsPresetCommandOutput, SemanticsPresetState,
+};
+#[allow(unused_imports)]
 pub(crate) use crate::semantics_set_apply::{
     apply_semantics_set_args_to_options, apply_semantics_set_state_to_options,
     evaluate_semantics_set_args_to_overview_lines,
@@ -590,9 +625,15 @@ pub(crate) use crate::semantics_set_apply::{
 #[allow(unused_imports)]
 pub(crate) use crate::semantics_set_parse_apply::evaluate_semantics_set_args;
 #[allow(unused_imports)]
+pub(crate) use crate::semantics_set_types::{semantics_set_state_from_options, SemanticsSetState};
+#[allow(unused_imports)]
 pub(crate) use crate::semantics_view_format::{
     format_semantics_axis_lines, format_semantics_overview_lines,
     format_semantics_unknown_subcommand_message, semantics_help_message,
+};
+#[allow(unused_imports)]
+pub(crate) use crate::semantics_view_types::{
+    semantics_view_state_from_options, SemanticsViewState,
 };
 #[allow(unused_imports)]
 pub(crate) use crate::session_api::timeline::{
@@ -607,6 +648,11 @@ pub(crate) use crate::set_command_eval::evaluate_set_command_input;
 pub(crate) use crate::set_command_format::{format_set_help_text, format_set_option_value};
 #[allow(unused_imports)]
 pub(crate) use crate::set_command_parse::parse_set_command_input;
+#[allow(unused_imports)]
+pub(crate) use crate::set_command_types::{
+    SetCommandApplyEffects, SetCommandInput, SetCommandPlan, SetCommandResult, SetCommandState,
+    SetDisplayMode,
+};
 #[allow(unused_imports)]
 pub(crate) use crate::show_command::{
     evaluate_show_command_lines, evaluate_show_command_lines_with, ShowCommandContext,
@@ -673,17 +719,29 @@ pub(crate) use crate::unary_display::format_unary_function_eval_lines;
 #[allow(unused_imports)]
 pub(crate) use crate::weierstrass_command::evaluate_weierstrass_invocation_message;
 #[allow(unused_imports)]
-pub(crate) use cas_session_core::eval::{EvalSession, EvalStore};
+pub(crate) use cas_api_models::AssignmentError;
 #[allow(unused_imports)]
-pub(crate) use cas_solver_core::analysis_command_types::ParseExprPairError;
+pub(crate) use cas_api_models::ParseExprPairError;
 #[allow(unused_imports)]
-pub(crate) use cas_solver_core::analysis_command_types::{
+pub(crate) use cas_api_models::{
     ExplainCommandEvalError, ExplainGcdEvalOutput, VisualizeCommandOutput, VisualizeEvalError,
 };
 #[allow(unused_imports)]
-pub(crate) use cas_solver_core::assignment_command_types::{
-    AssignmentError, LetAssignmentParseError, ParsedLetAssignment,
+pub(crate) use cas_api_models::{
+    LimitCommandEvalError, LimitCommandEvalOutput, LimitSubcommandEvalError,
+    LimitSubcommandEvalOutput,
 };
+#[allow(unused_imports)]
+pub(crate) use cas_api_models::{SemanticsCommandInput, SemanticsCommandOutput};
+#[allow(unused_imports)]
+pub(crate) use cas_api_models::{SolveCommandInput, SolvePrepareError, TimelineCommandInput};
+#[allow(unused_imports)]
+pub(crate) use cas_api_models::{
+    StepsCommandApplyEffects, StepsCommandInput, StepsCommandResult, StepsCommandState,
+    StepsDisplayMode,
+};
+#[allow(unused_imports)]
+pub(crate) use cas_session_core::eval::{EvalSession, EvalStore};
 #[allow(unused_imports)]
 pub(crate) use cas_solver_core::assumption_model::AssumptionRecord;
 #[allow(unused_imports)]
@@ -701,57 +759,8 @@ pub(crate) use cas_solver_core::blocked_hint_store::{register_blocked_hint, take
 #[allow(unused_imports)]
 pub(crate) use cas_solver_core::equivalence::EquivalenceResult;
 #[allow(unused_imports)]
-pub(crate) use cas_solver_core::health_category::Category as HealthSuiteCategory;
-#[allow(unused_imports)]
 pub(crate) use cas_solver_core::health_runtime::{
     HealthCommandEvalOutput, HealthCommandInput, HealthStatusInput,
 };
 #[allow(unused_imports)]
-pub(crate) use cas_solver_core::history_models::{
-    DeleteHistoryError, DeleteHistoryResult, HistoryOverviewEntry, HistoryOverviewKind,
-};
-#[allow(unused_imports)]
-pub(crate) use cas_solver_core::history_models::{
-    HistoryEntryDetails, HistoryEntryInspection, HistoryExprInspection,
-    InspectHistoryEntryInputError, ParseHistoryEntryIdError,
-};
-#[allow(unused_imports)]
-pub(crate) use cas_solver_core::limit_command_types::{
-    LimitCommandEvalError, LimitCommandEvalOutput, LimitCommandInput, LimitSubcommandEvalError,
-    LimitSubcommandEvalOutput,
-};
-#[allow(unused_imports)]
-pub(crate) use cas_solver_core::repl_command_types::ReplCommandInput;
-#[allow(unused_imports)]
-pub(crate) use cas_solver_core::semantics_command_types::{
-    SemanticsCommandInput, SemanticsCommandOutput,
-};
-#[allow(unused_imports)]
-pub(crate) use cas_solver_core::semantics_preset_types::{
-    SemanticsPreset, SemanticsPresetApplication, SemanticsPresetApplyError,
-    SemanticsPresetCommandOutput, SemanticsPresetState,
-};
-#[allow(unused_imports)]
-pub(crate) use cas_solver_core::semantics_set_types::{
-    semantics_set_state_from_options, SemanticsSetState,
-};
-#[allow(unused_imports)]
-pub(crate) use cas_solver_core::semantics_view_types::{
-    semantics_view_state_from_options, SemanticsViewState,
-};
-#[allow(unused_imports)]
-pub(crate) use cas_solver_core::set_command_types::{
-    SetCommandApplyEffects, SetCommandInput, SetCommandPlan, SetCommandResult, SetCommandState,
-    SetDisplayMode,
-};
-#[allow(unused_imports)]
 pub(crate) use cas_solver_core::simplifier_config::{SimplifierRuleConfig, SimplifierToggleConfig};
-#[allow(unused_imports)]
-pub(crate) use cas_solver_core::solve_command_types::{
-    SolveCommandInput, SolvePrepareError, TimelineCommandInput,
-};
-#[allow(unused_imports)]
-pub(crate) use cas_solver_core::steps_command_types::{
-    StepsCommandApplyEffects, StepsCommandInput, StepsCommandResult, StepsCommandState,
-    StepsDisplayMode,
-};

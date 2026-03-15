@@ -1,5 +1,5 @@
 use crate::semantics_command_parse::axis::is_axis_subcommand;
-use cas_solver_core::semantics_command_types::SemanticsCommandInput;
+use cas_api_models::SemanticsCommandInput;
 
 pub(super) fn parse_semantics_command_args(args: &[&str]) -> SemanticsCommandInput {
     match args.get(1) {

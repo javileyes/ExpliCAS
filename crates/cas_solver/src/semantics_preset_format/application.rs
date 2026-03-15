@@ -2,7 +2,7 @@ use crate::semantics_preset_labels::{
     branch_policy_label, const_fold_mode_label, domain_mode_label, inverse_trig_policy_label,
     value_domain_label,
 };
-use cas_solver_core::semantics_preset_types::{SemanticsPresetApplication, SemanticsPresetState};
+use crate::{SemanticsPresetApplication, SemanticsPresetState};
 
 pub fn format_semantics_preset_application_lines(
     current: SemanticsPresetState,

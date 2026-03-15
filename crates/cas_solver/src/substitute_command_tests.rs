@@ -7,7 +7,7 @@ mod tests {
     use crate::substitute_command_format::{
         format_substitute_parse_error_message, substitute_render_mode_from_display_mode,
     };
-    use cas_solver_core::substitute_command_types::{SubstituteParseError, SubstituteRenderMode};
+    use cas_api_models::{SubstituteParseError, SubstituteRenderMode};
 
     #[test]
     fn substitute_render_mode_maps_from_set_display_mode() {

@@ -1,5 +1,5 @@
-use cas_solver_core::health_category::Category;
-use cas_solver_core::health_suite_models::HealthCaseResult;
+use crate::health_category::Category;
+use crate::health_suite_models::HealthCaseResult;
 
 use super::super::lines::push_detailed_result_line;
 use super::super::summary::append_summary;

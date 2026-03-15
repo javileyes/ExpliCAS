@@ -1,5 +1,7 @@
 #[cfg(test)]
 mod tests {
+    use cas_api_models::EvalStepsMode;
+
     use crate::{
         apply_steps_command_update, evaluate_steps_command_input, format_steps_current_message,
         format_steps_unknown_mode_message, parse_steps_command_input, StepsCommandApplyEffects,
@@ -10,7 +12,7 @@ mod tests {
     fn parse_steps_command_input_reads_compact() {
         assert_eq!(
             parse_steps_command_input("steps compact"),
-            StepsCommandInput::SetCollectionMode(crate::StepsMode::Compact)
+            StepsCommandInput::SetCollectionMode(EvalStepsMode::Compact)
         );
     }
 
@@ -39,14 +41,14 @@ mod tests {
     #[test]
     fn evaluate_steps_command_input_off_disables_collection_and_display() {
         let state = StepsCommandState {
-            steps_mode: crate::StepsMode::On,
+            steps_mode: EvalStepsMode::On,
             display_mode: StepsDisplayMode::Normal,
         };
         let out = evaluate_steps_command_input("steps off", state);
         assert_eq!(
             out,
             StepsCommandResult::Update {
-                set_steps_mode: Some(crate::StepsMode::Off),
+                set_steps_mode: Some(EvalStepsMode::Off),
                 set_display_mode: Some(StepsDisplayMode::None),
                 message: "Steps: off\n  ⚡ Steps disabled (faster). Warnings still enabled."
                     .to_string(),
@@ -57,7 +59,7 @@ mod tests {
     #[test]
     fn evaluate_steps_command_input_show_current_renders_message() {
         let state = StepsCommandState {
-            steps_mode: crate::StepsMode::Compact,
+            steps_mode: EvalStepsMode::Compact,
             display_mode: StepsDisplayMode::Succinct,
         };
         let out = evaluate_steps_command_input("steps", state);
@@ -77,7 +79,7 @@ mod tests {
             ..crate::EvalOptions::default()
         };
         let effects = apply_steps_command_update(
-            Some(crate::StepsMode::Compact),
+            Some(EvalStepsMode::Compact),
             Some(StepsDisplayMode::Succinct),
             &mut eval_options,
         );
@@ -85,7 +87,7 @@ mod tests {
         assert_eq!(
             effects,
             StepsCommandApplyEffects {
-                set_steps_mode: Some(crate::StepsMode::Compact),
+                set_steps_mode: Some(EvalStepsMode::Compact),
                 set_display_mode: Some(StepsDisplayMode::Succinct),
             }
         );
@@ -98,7 +100,7 @@ mod tests {
             ..crate::EvalOptions::default()
         };
         let effects = apply_steps_command_update(
-            Some(crate::StepsMode::On),
+            Some(EvalStepsMode::On),
             Some(StepsDisplayMode::Verbose),
             &mut eval_options,
         );

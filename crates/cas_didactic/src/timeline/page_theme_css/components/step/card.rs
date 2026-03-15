@@ -1,27 +1,4 @@
-pub(super) const STEP_CARD_CSS: &str = r#"
-        .step {
-            background: var(--step-bg);
-            border-radius: 10px;
-            padding: 15px 20px;
-            margin-bottom: 20px;
-            position: relative;
-            border-left: 4px solid var(--step-border);
-            transition: transform 0.2s, box-shadow 0.2s, background 0.3s ease;
-        }
-        .step:hover {
-            transform: translateX(5px);
-            box-shadow: 0 4px 20px var(--step-hover-shadow);
-        }
-        .step::before {
-            content: '';
-            position: absolute;
-            left: -23px;
-            top: 20px;
-            width: 12px;
-            height: 12px;
-            background: var(--step-dot-bg);
-            border-radius: 50%;
-            border: 3px solid var(--step-dot-border);
-            transition: background 0.3s ease;
-        }
-"#;
+pub(super) const STEP_CARD_CSS: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/assets/timeline/page_theme_css/components/step/card.css"
+));

@@ -1,5 +1,5 @@
 use super::eval::evaluate_profile_command_input;
-use cas_solver_core::profile_command_types::ProfileCommandResult;
+use cas_api_models::ProfileCommandResult;
 
 /// Apply a `profile` command directly to a simplifier and return user-facing text.
 pub fn apply_profile_command(simplifier: &mut crate::Simplifier, line: &str) -> String {

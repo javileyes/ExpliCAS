@@ -17,16 +17,22 @@ pub(super) fn render_timeline_enriched_substeps_html(
     }
 
     policy::update_enriched_substeps_state(&render_plan, state);
+    let summary = render_plan.header;
 
-    let mut details_html = format!(
-        r#"<details class="substeps-details">
-                            <summary>{}</summary>
-                            <div class="substeps-content">"#,
-        render_plan.header
-    );
+    let mut content_html = String::new();
     for sub in &enriched.sub_steps {
-        details_html.push_str(&item::render_enriched_substep(sub));
+        content_html.push_str(&item::render_enriched_substep(sub));
     }
-    details_html.push_str("</div></details>");
-    details_html
+
+    super::super::render_template::render_static_template(
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/assets/timeline/simplify_render/substeps_details.html"
+        )),
+        &[
+            ("__OPEN_ATTR__", ""),
+            ("__SUMMARY__", summary),
+            ("__CONTENT__", content_html.as_str()),
+        ],
+    )
 }

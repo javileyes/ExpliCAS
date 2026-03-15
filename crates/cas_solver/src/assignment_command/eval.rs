@@ -4,7 +4,7 @@ use crate::{
     format_assignment_error_message, format_let_assignment_parse_error_message,
     parse_let_assignment_input, AssignmentError,
 };
-use cas_solver_core::assignment_command_types::AssignmentCommandOutput;
+use cas_api_models::AssignmentCommandOutput;
 
 /// Evaluate assignment command pieces and return a typed output payload.
 pub fn evaluate_assignment_command_with<F>(

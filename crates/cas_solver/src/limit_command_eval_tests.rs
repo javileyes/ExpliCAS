@@ -1,5 +1,9 @@
 #[cfg(test)]
 mod tests {
+    use cas_api_models::{
+        LimitCommandApproach, LimitCommandEvalError, LimitSubcommandEvalError,
+        LimitSubcommandEvalOutput,
+    };
     use cas_math::limit_types::{Approach, PreSimplifyMode};
 
     use crate::limit_command_core::{
@@ -7,9 +11,6 @@ mod tests {
         format_limit_subcommand_error,
     };
     use crate::limit_command_parse::parse_limit_command_input;
-    use cas_solver_core::limit_command_types::{
-        LimitCommandEvalError, LimitSubcommandEvalError, LimitSubcommandEvalOutput,
-    };
 
     #[test]
     fn parse_limit_command_input_defaults_var_and_direction() {
@@ -39,7 +40,7 @@ mod tests {
     fn evaluate_limit_command_input_computes_basic_limit() {
         let out = evaluate_limit_command_input("x^2, x, infinity").expect("limit eval");
         assert_eq!(out.var, "x");
-        assert_eq!(out.approach, Approach::PosInfinity);
+        assert_eq!(out.approach, LimitCommandApproach::Infinity);
         assert!(!out.result.is_empty());
     }
 

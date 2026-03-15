@@ -1,15 +1,4 @@
-pub(super) const DETAILS_DOMAIN_REQUIRES_CSS: &str = r#"
-        .domain-requires {
-            margin-top: 10px;
-            padding: 8px 12px;
-            background: rgba(33, 150, 243, 0.15);
-            border: 1px solid rgba(33, 150, 243, 0.4);
-            border-radius: 6px;
-            color: #64b5f6;
-            font-size: 0.9em;
-            transition: background 0.3s ease, color 0.3s ease;
-        }
-        .domain-requires::before {
-            content: 'ℹ️ ';
-        }
-"#;
+pub(super) const DETAILS_DOMAIN_REQUIRES_CSS: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/assets/timeline/simplify_page/css/details/domain/requires.css"
+));

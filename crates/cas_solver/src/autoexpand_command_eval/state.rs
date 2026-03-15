@@ -1,4 +1,4 @@
-use cas_solver_core::autoexpand_command_types::AutoexpandBudgetView;
+use cas_api_models::AutoexpandBudgetView;
 
 /// Build an autoexpand budget view from eval options.
 pub fn autoexpand_budget_view_from_options(

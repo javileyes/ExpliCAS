@@ -3,9 +3,7 @@ use crate::semantics_preset_format::{
     format_semantics_preset_application_lines, format_semantics_preset_help_lines,
     format_semantics_preset_list_lines,
 };
-use cas_solver_core::semantics_preset_types::{
-    SemanticsPresetApplication, SemanticsPresetApplyError, SemanticsPresetCommandOutput,
-};
+use crate::{SemanticsPresetApplication, SemanticsPresetApplyError, SemanticsPresetCommandOutput};
 
 use super::state::{
     apply_semantics_preset_state_to_options, semantics_preset_state_from_options, state_from_preset,

@@ -3,9 +3,7 @@ use crate::autoexpand_command_format::{
     format_autoexpand_unknown_mode_message,
 };
 use crate::autoexpand_command_parse::parse_autoexpand_command_input;
-use cas_solver_core::autoexpand_command_types::{
-    AutoexpandCommandInput, AutoexpandCommandResult, AutoexpandCommandState,
-};
+use cas_api_models::{AutoexpandCommandInput, AutoexpandCommandResult, AutoexpandCommandState};
 
 pub(super) fn evaluate_autoexpand_command_input(
     line: &str,

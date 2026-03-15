@@ -1,16 +1,4 @@
-pub(super) const SUBSTEP_ITEM_CSS: &str = r#"
-        .substep {
-            margin-bottom: 10px;
-            padding-left: 8px;
-            border-left: 3px solid var(--substep-border);
-        }
-        .substep-desc {
-            color: var(--substep-desc-color);
-            margin-bottom: 6px;
-        }
-        .substep-math {
-            background: var(--substep-math-bg);
-            padding: 8px;
-            border-radius: 6px;
-        }
-"#;
+pub(super) const SUBSTEP_ITEM_CSS: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/assets/timeline/page_theme_css/components/substeps/item.css"
+));

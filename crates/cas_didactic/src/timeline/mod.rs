@@ -17,6 +17,7 @@ mod page_theme_css;
 #[path = "types/render.rs"]
 mod render;
 mod render_api;
+mod render_template;
 mod simplify;
 mod simplify_highlights;
 mod simplify_init;

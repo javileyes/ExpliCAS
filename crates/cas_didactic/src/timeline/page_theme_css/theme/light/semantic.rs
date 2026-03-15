@@ -1,11 +1,4 @@
-pub(super) const SEMANTIC_CSS: &str = r#"
-        :root.light {
-            --description-color: #666;
-            --math-strong-color: #666;
-            --final-bg-start: #4caf50;
-            --final-bg-end: #45a049;
-            --final-shadow: rgba(76, 175, 80, 0.3);
-            --substep-desc-color: #795548;
-            --text-color: #333;
-        }
-"#;
+pub(super) const SEMANTIC_CSS: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/assets/timeline/page_theme_css/theme/light/semantic.css"
+));

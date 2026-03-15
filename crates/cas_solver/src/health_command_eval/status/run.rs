@@ -1,8 +1,8 @@
+use crate::health_category::Category;
 use crate::health_command_format::{
     format_health_failed_tests_warning_line, format_health_status_running_message,
     resolve_health_category_filter,
 };
-use cas_solver_core::health_category::Category;
 use cas_solver_core::health_runtime::HealthStatusInput;
 
 pub(super) fn run_health_status_lines(

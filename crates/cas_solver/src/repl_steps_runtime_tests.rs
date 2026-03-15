@@ -1,5 +1,7 @@
 #[cfg(test)]
 mod tests {
+    use cas_api_models::EvalStepsMode;
+
     use crate::repl_steps_runtime::{
         apply_steps_command_update_on_runtime, steps_command_state_for_runtime,
         ReplStepsRuntimeContext,
@@ -24,13 +26,17 @@ mod tests {
     }
 
     impl ReplStepsRuntimeContext for MockReplStepsRuntime {
-        fn steps_mode_current(&self) -> StepsMode {
-            self.eval_options.steps_mode
+        fn steps_mode_current(&self) -> EvalStepsMode {
+            match self.eval_options.steps_mode {
+                StepsMode::On => EvalStepsMode::On,
+                StepsMode::Off => EvalStepsMode::Off,
+                StepsMode::Compact => EvalStepsMode::Compact,
+            }
         }
 
         fn apply_steps_effects_to_eval_options(
             &mut self,
-            set_steps_mode: Option<StepsMode>,
+            set_steps_mode: Option<EvalStepsMode>,
             set_display_mode: Option<StepsDisplayMode>,
         ) -> StepsCommandApplyEffects {
             apply_steps_command_update(set_steps_mode, set_display_mode, &mut self.eval_options)
@@ -45,7 +51,7 @@ mod tests {
     fn steps_command_state_for_runtime_reads_mode() {
         let runtime = MockReplStepsRuntime::new();
         let state = steps_command_state_for_runtime(&runtime, StepsDisplayMode::Normal);
-        assert_eq!(state.steps_mode, StepsMode::On);
+        assert_eq!(state.steps_mode, EvalStepsMode::On);
     }
 
     #[test]
@@ -53,10 +59,10 @@ mod tests {
         let mut runtime = MockReplStepsRuntime::new();
         let effects = apply_steps_command_update_on_runtime(
             &mut runtime,
-            Some(StepsMode::Off),
+            Some(EvalStepsMode::Off),
             Some(StepsDisplayMode::Succinct),
         );
-        assert_eq!(effects.set_steps_mode, Some(StepsMode::Off));
+        assert_eq!(effects.set_steps_mode, Some(EvalStepsMode::Off));
         assert_eq!(effects.set_display_mode, Some(StepsDisplayMode::Succinct));
         assert_eq!(runtime.eval_options.steps_mode, StepsMode::Off);
     }

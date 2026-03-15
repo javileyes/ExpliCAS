@@ -13,6 +13,4 @@ pub use crate::solve_display_lines::format_solve_command_eval_lines;
 pub use crate::solve_verify_display::{
     format_verify_summary_lines, format_verify_summary_lines_with_hints,
 };
-pub use cas_solver_core::solve_command_types::{
-    SolveCommandEvalError, SolveCommandInput, SolvePrepareError,
-};
+pub use cas_api_models::{SolveCommandEvalError, SolveCommandInput, SolvePrepareError};

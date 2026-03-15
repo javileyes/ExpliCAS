@@ -1,5 +1,5 @@
-use cas_solver_core::health_category::Category;
-use cas_solver_core::health_suite_models::{HealthCase, HealthLimits};
+use crate::health_category::Category;
+use crate::health_suite_models::{HealthCase, HealthLimits};
 
 pub(super) fn powers_cases() -> Vec<HealthCase> {
     vec![HealthCase {

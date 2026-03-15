@@ -1,4 +1,4 @@
-use cas_solver_core::health_suite_models::HealthCaseResult;
+use crate::health_suite_models::HealthCaseResult;
 
 use super::super::lines::push_basic_result_line;
 use super::super::summary::append_summary;

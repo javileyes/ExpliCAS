@@ -4,7 +4,7 @@ mod parse;
 mod store;
 
 pub use apply::apply_profile_cache_command;
-pub use cas_solver_core::profile_cache_command_types::ProfileCacheCommandResult;
+pub use cas_api_models::ProfileCacheCommandResult;
 pub use format::format_profile_cache_command_lines;
 pub use store::ProfileCacheStore;
 

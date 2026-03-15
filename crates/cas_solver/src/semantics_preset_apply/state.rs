@@ -1,4 +1,4 @@
-use cas_solver_core::semantics_preset_types::{SemanticsPreset, SemanticsPresetState};
+use crate::{SemanticsPreset, SemanticsPresetState};
 
 /// Build a preset-state snapshot from simplifier + eval options.
 pub fn semantics_preset_state_from_options(
