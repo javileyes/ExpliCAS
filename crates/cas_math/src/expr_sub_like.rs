@@ -2,6 +2,46 @@ use cas_ast::{Context, Expr, ExprId};
 use num_traits::{Signed, Zero};
 use std::cmp::Ordering;
 
+fn peel_negative_multiplicative_term(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    match ctx.get(expr).clone() {
+        Expr::Neg(inner) => Some(inner),
+        Expr::Mul(l, r) => {
+            if let Expr::Number(n) = ctx.get(l) {
+                if n.is_negative() {
+                    let abs_n = ctx.add(Expr::Number(-n.clone()));
+                    return Some(if abs_n == ctx.num(1) {
+                        r
+                    } else {
+                        ctx.add(Expr::Mul(abs_n, r))
+                    });
+                }
+            }
+            if let Expr::Number(n) = ctx.get(r) {
+                if n.is_negative() {
+                    let abs_n = ctx.add(Expr::Number(-n.clone()));
+                    return Some(if abs_n == ctx.num(1) {
+                        l
+                    } else {
+                        ctx.add(Expr::Mul(l, abs_n))
+                    });
+                }
+            }
+            None
+        }
+        Expr::Div(num, den) => {
+            match (
+                peel_negative_multiplicative_term(ctx, num),
+                peel_negative_multiplicative_term(ctx, den),
+            ) {
+                (Some(new_num), None) => Some(ctx.add(Expr::Div(new_num, den))),
+                (None, Some(new_den)) => Some(ctx.add(Expr::Div(num, new_den))),
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
 /// Extract a semantic subtraction pair `(a, b)` from subtraction-like syntax.
 ///
 /// Supported forms:
@@ -10,6 +50,7 @@ use std::cmp::Ordering;
 /// - `Add(Neg(b), a)`
 /// - `Add(a, Number(-k))` (rewritten as `(a, k)`)
 /// - `Add(Number(-k), a)` (rewritten as `(a, k)`)
+/// - `Add(a, Mul(-k, t))` / `Add(Mul(-k, t), a)` (rewritten as `(a, k*t)`)
 pub fn extract_sub_like_pair(ctx: &mut Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
     match ctx.get(expr) {
         Expr::Sub(a, b) => Some((*a, *b)),
@@ -33,8 +74,10 @@ pub fn extract_sub_like_pair(ctx: &mut Context, expr: ExprId) -> Option<(ExprId,
                 } else {
                     None
                 }
+            } else if let Some(pos_term) = peel_negative_multiplicative_term(ctx, r) {
+                Some((l, pos_term))
             } else {
-                None
+                peel_negative_multiplicative_term(ctx, l).map(|pos_term| (r, pos_term))
             }
         }
         _ => None,
@@ -541,6 +584,22 @@ mod tests {
         assert_eq!(a2, x);
         assert!(matches!(ctx.get(b1), Expr::Number(n) if n == &three));
         assert!(matches!(ctx.get(b2), Expr::Number(n) if n == &three));
+    }
+
+    #[test]
+    fn extracts_sub_pair_from_add_negative_scaled_term_forms() {
+        let mut ctx = Context::new();
+        let left = cas_parser::parse("1 - 2*x/(x^2 - 1)", &mut ctx).expect("left parse");
+        let (a, b) = extract_sub_like_pair(&mut ctx, left).expect("left");
+        assert!(
+            matches!(ctx.get(a), Expr::Number(n) if *n == num_rational::BigRational::from_integer(1.into()))
+        );
+
+        let expected = cas_parser::parse("2*x/(x^2 - 1)", &mut ctx).expect("expected parse");
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, b, expected),
+            Ordering::Equal
+        );
     }
 
     #[test]

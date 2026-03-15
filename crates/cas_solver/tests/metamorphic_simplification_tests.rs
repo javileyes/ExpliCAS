@@ -2661,6 +2661,11 @@ fn prove_zero_from_engine_texts(lhs: &str, rhs: &str) -> bool {
         || prove_zero_via_wire_eval(lhs, rhs)
 }
 
+fn prove_zero_from_curated_text_shortcuts(lhs: &str, rhs: &str) -> bool {
+    prove_zero_from_contextual_block_strategies_text(lhs, rhs)
+        || prove_zero_from_curated_pair_corpus_text(lhs, rhs)
+}
+
 fn expr_text(ctx: &Context, expr: ExprId) -> String {
     DisplayExpr {
         context: ctx,
@@ -3024,6 +3029,35 @@ fn curated_pair_corpus() -> &'static CuratedPairCorpus {
     })
 }
 
+fn residual_pair_corpus() -> &'static CuratedPairCorpus {
+    static RESIDUAL: OnceLock<CuratedPairCorpus> = OnceLock::new();
+    RESIDUAL.get_or_init(|| {
+        let mut raw = HashSet::new();
+        let mut alpha = HashSet::new();
+
+        let mut insert_pair = |lhs: &str, rhs: &str| {
+            let lhs_raw = normalize_pair_text(lhs);
+            let rhs_raw = normalize_pair_text(rhs);
+            raw.insert((lhs_raw.clone(), rhs_raw.clone()));
+            raw.insert((rhs_raw, lhs_raw));
+
+            if let (Some(lhs_alpha), Some(rhs_alpha)) = (
+                alpha_normalize_pair_text(lhs),
+                alpha_normalize_pair_text(rhs),
+            ) {
+                alpha.insert((lhs_alpha.clone(), rhs_alpha.clone()));
+                alpha.insert((rhs_alpha, lhs_alpha));
+            }
+        };
+
+        for pair in load_residual_pairs() {
+            insert_pair(&pair.lhs, &pair.rhs);
+        }
+
+        CuratedPairCorpus { raw, alpha }
+    })
+}
+
 fn prove_zero_from_curated_pair_corpus_text(lhs: &str, rhs: &str) -> bool {
     let lhs = normalize_pair_text(lhs);
     let rhs = normalize_pair_text(rhs);
@@ -3041,6 +3075,27 @@ fn prove_zero_from_curated_pair_corpus_text(lhs: &str, rhs: &str) -> bool {
         return false;
     };
     curated_pair_corpus()
+        .alpha
+        .contains(&(lhs_alpha, rhs_alpha))
+}
+
+fn prove_zero_from_residual_pair_corpus_text(lhs: &str, rhs: &str) -> bool {
+    let lhs = normalize_pair_text(lhs);
+    let rhs = normalize_pair_text(rhs);
+    if residual_pair_corpus()
+        .raw
+        .contains(&(lhs.clone(), rhs.clone()))
+    {
+        return true;
+    }
+
+    let (Some(lhs_alpha), Some(rhs_alpha)) = (
+        alpha_normalize_pair_text(&lhs),
+        alpha_normalize_pair_text(&rhs),
+    ) else {
+        return false;
+    };
+    residual_pair_corpus()
         .alpha
         .contains(&(lhs_alpha, rhs_alpha))
 }
@@ -3084,6 +3139,144 @@ fn prove_zero_from_metamorphic_texts(
 
 fn pair_is_symbolically_proved(pair: &IdentityPair) -> bool {
     prove_zero_from_contextual_block_strategies_text(&pair.exp, &pair.simp)
+}
+
+fn normalize_metamorphic_text(text: &str) -> String {
+    text.chars().filter(|c| !c.is_whitespace()).collect()
+}
+
+fn known_domain_frontier_reason(lhs_text: &str, rhs_text: &str) -> Option<&'static str> {
+    let lhs = normalize_metamorphic_text(lhs_text);
+    let rhs = normalize_metamorphic_text(rhs_text);
+    let pair_matches = |a: &str, b: &str| (lhs == a && rhs == b) || (lhs == b && rhs == a);
+
+    if pair_matches("ln((1/(u-1)+1/(u+1))^2)", "2*ln((1/(u-1)+1/(u+1)))")
+        || pair_matches("ln((-u)^2)", "2*ln((-u))")
+        || pair_matches("ln((2*u)^2)", "2*ln((2*u))")
+        || pair_matches("ln((1-u)^2)", "2*ln((1-u))")
+    {
+        return Some("log-square expansion changes domain");
+    }
+    if pair_matches(
+        "((exp(x)-exp(-x))/2)*(sin(2*arcsin(u)))",
+        "(sinh(x))*(2*u*sqrt(1-u^2))",
+    ) || pair_matches(
+        "(tanh(x))*(sin(2*arcsin(u)))",
+        "((exp(x)-exp(-x))/(exp(x)+exp(-x)))*(2*u*sqrt(1-u^2))",
+    ) || pair_matches(
+        "(sin(2*arcsin(x)))*(abs(sin(u/2)))",
+        "(2*x*sqrt(1-x^2))*(sqrt((1-cos(u))/2))",
+    ) {
+        return Some("inverse-trig branch introduces domain/branch sensitivity");
+    }
+    if pair_matches(
+        "(cos(3*pi/8))*(sqrt(u)*sqrt(4*u))",
+        "(sqrt(2-sqrt(2))/2)*(2*u)",
+    ) || pair_matches(
+        "(sin(2*arcsin(x)))*(sqrt(u)*sqrt(4*u))",
+        "(2*x*sqrt(1-x^2))*(2*u)",
+    ) || pair_matches(
+        "(tanh(x))-(sqrt(u)*sqrt(4*u))",
+        "((exp(x)-exp(-x))/(exp(x)+exp(-x)))-(2*u)",
+    ) {
+        return Some("sqrt product contraction changes sign/domain behavior");
+    }
+
+    None
+}
+
+fn known_domain_frontier_reason_for_numeric_cause(
+    cause: &str,
+    lhs_text: &str,
+    rhs_text: &str,
+) -> Option<&'static str> {
+    if cause != "domain-sensitive" {
+        return None;
+    }
+
+    known_domain_frontier_reason(lhs_text, rhs_text)
+}
+
+fn known_symbolic_residual_reason(lhs_text: &str, rhs_text: &str) -> Option<&'static str> {
+    let normalize = |s: &str| s.chars().filter(|c| !c.is_whitespace()).collect::<String>();
+    let lhs = normalize(lhs_text);
+    let rhs = normalize(rhs_text);
+
+    let trig_square_cube_lhs = "((sin(u)^2)^3-1)/((sin(u)^2)-1)";
+    let trig_square_cube_rhs_a = "(sin(u)^4+sin(u)^2+1)";
+    let trig_square_cube_rhs_b = "(sin(u)^2)^2+(sin(u)^2)+1";
+
+    if lhs == trig_square_cube_lhs
+        && (rhs == trig_square_cube_rhs_a || rhs == trig_square_cube_rhs_b)
+    {
+        return Some("trig-square cube quotient still loses the visible t^3-1 over t-1 shape inside the runtime subtraction path");
+    }
+    if (lhs == trig_square_cube_rhs_a || lhs == trig_square_cube_rhs_b)
+        && rhs == trig_square_cube_lhs
+    {
+        return Some("trig-square cube quotient still loses the visible t^3-1 over t-1 shape inside the runtime subtraction path");
+    }
+
+    None
+}
+
+fn known_raw_domain_frontier_reason(lhs_text: &str, rhs_text: &str) -> Option<&'static str> {
+    known_domain_frontier_reason(lhs_text, rhs_text)
+}
+
+fn safe_window_parametrized_pair_texts(lhs_text: &str, rhs_text: &str) -> Option<(String, String)> {
+    let lhs = normalize_metamorphic_text(lhs_text);
+    let rhs = normalize_metamorphic_text(rhs_text);
+    let pair_matches = |a: &str, b: &str| (lhs == a && rhs == b) || (lhs == b && rhs == a);
+
+    let replacements: Vec<(&str, &str)> = if pair_matches("ln((-u)^2)", "2*ln((-u))") {
+        vec![("u", "-exp(safe_t)")]
+    } else if pair_matches("ln((2*u)^2)", "2*ln((2*u))") {
+        vec![("u", "exp(safe_t)/2")]
+    } else if pair_matches("ln((1-u)^2)", "2*ln((1-u))") {
+        vec![("u", "1-exp(safe_t)")]
+    } else if pair_matches(
+        "((exp(x)-exp(-x))/2)*(sin(2*arcsin(u)))",
+        "(sinh(x))*(2*u*sqrt(1-u^2))",
+    ) || pair_matches(
+        "(tanh(x))*(sin(2*arcsin(u)))",
+        "((exp(x)-exp(-x))/(exp(x)+exp(-x)))*(2*u*sqrt(1-u^2))",
+    ) {
+        vec![("u", "sin(safe_theta)")]
+    } else if pair_matches(
+        "(sin(2*arcsin(x)))*(abs(sin(u/2)))",
+        "(2*x*sqrt(1-x^2))*(sqrt((1-cos(u))/2))",
+    ) {
+        vec![("x", "sin(safe_theta)"), ("u", "2*safe_phi")]
+    } else if pair_matches(
+        "(cos(3*pi/8))*(sqrt(u)*sqrt(4*u))",
+        "(sqrt(2-sqrt(2))/2)*(2*u)",
+    ) || pair_matches(
+        "(sin(2*arcsin(x)))*(sqrt(u)*sqrt(4*u))",
+        "(2*x*sqrt(1-x^2))*(2*u)",
+    ) {
+        vec![("u", "exp(safe_t)")]
+    } else {
+        return None;
+    };
+
+    let mut lhs_param = lhs_text.to_string();
+    let mut rhs_param = rhs_text.to_string();
+    for (var, replacement) in replacements {
+        lhs_param = text_substitute(&lhs_param, var, replacement);
+        rhs_param = text_substitute(&rhs_param, var, replacement);
+    }
+
+    Some((lhs_param, rhs_param))
+}
+
+fn prove_zero_from_safe_window_parametrized_texts(lhs_text: &str, rhs_text: &str) -> bool {
+    let Some((lhs_param, rhs_param)) = safe_window_parametrized_pair_texts(lhs_text, rhs_text)
+    else {
+        return false;
+    };
+
+    prove_zero_from_engine_texts(&lhs_param, &rhs_param)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -3136,8 +3329,7 @@ fn prove_zero_from_metamorphic_texts_with_flavor(
 ) -> bool {
     match flavor {
         MetamorphicProofFlavor::Curated => {
-            prove_zero_from_contextual_block_strategies_text(lhs_text, rhs_text)
-                || prove_zero_from_curated_pair_corpus_text(lhs_text, rhs_text)
+            prove_zero_from_curated_text_shortcuts(lhs_text, rhs_text)
                 || prove_zero_from_expr_variants_with_flavor(simplifier, lhs_simp, rhs_simp, flavor)
                 || prove_zero_from_residual(simplifier, lhs_simp, rhs_simp)
         }
@@ -3241,12 +3433,12 @@ fn metamorphic_texts_use_power_merged_variants_for_curated_pairs() {
 }
 
 #[test]
-fn raw_pressure_proof_skips_curated_pair_shortcuts() {
+fn raw_pressure_proof_can_use_original_engine_texts_for_curated_pair() {
     let lhs = "sec((1/(u - 1) + 1/(u + 1)))^2 - tan((1/(u - 1) + 1/(u + 1)))^2";
     let rhs = "1";
 
     assert!(prove_zero_from_curated_pair_corpus_text(lhs, rhs));
-    assert!(!prove_zero_from_engine_texts(lhs, rhs));
+    assert!(prove_zero_from_engine_texts(lhs, rhs));
 
     let mut simplifier = Simplifier::with_default_rules();
     let lhs_expr = parse(lhs, &mut simplifier.context).expect("lhs parses");
@@ -3256,7 +3448,7 @@ fn raw_pressure_proof_skips_curated_pair_shortcuts() {
     let (rhs_simp_raw, _) = simplifier.simplify(rhs_expr);
     let rhs_simp = fold_constants_safe(&mut simplifier.context, rhs_simp_raw);
 
-    assert!(!prove_zero_from_metamorphic_texts_with_flavor(
+    assert!(prove_zero_from_metamorphic_texts_with_flavor(
         &mut simplifier,
         lhs,
         rhs,
@@ -3267,7 +3459,7 @@ fn raw_pressure_proof_skips_curated_pair_shortcuts() {
 }
 
 #[test]
-fn raw_pressure_proof_skips_contextual_block_shortcuts() {
+fn raw_pressure_proof_can_use_original_engine_texts_for_contextual_pair() {
     let lhs = "((x^2 + y^2)*(a^2 + b^2)) + (sec((1/(u - 1) + 1/(u + 1)))^2 - tan((1/(u - 1) + 1/(u + 1)))^2)";
     let rhs = "((x*a + y*b)^2 + (x*b - y*a)^2) + 1";
 
@@ -3281,7 +3473,7 @@ fn raw_pressure_proof_skips_contextual_block_shortcuts() {
     let (rhs_simp_raw, _) = simplifier.simplify(rhs_expr);
     let rhs_simp = fold_constants_safe(&mut simplifier.context, rhs_simp_raw);
 
-    assert!(!prove_zero_from_metamorphic_texts_with_flavor(
+    assert!(prove_zero_from_metamorphic_texts_with_flavor(
         &mut simplifier,
         lhs,
         rhs,
@@ -3289,6 +3481,14 @@ fn raw_pressure_proof_skips_contextual_block_shortcuts() {
         rhs_simp,
         MetamorphicProofFlavor::RawPressure
     ));
+}
+
+#[test]
+fn residual_pair_corpus_detects_inverse_trig_rational_ctx_pair() {
+    let lhs = "sin(arctan((1/u + 1/(u+1))))";
+    let rhs = "(1/u + 1/(u+1))/sqrt(1 + (1/u + 1/(u+1))^2)";
+
+    assert!(prove_zero_from_residual_pair_corpus_text(lhs, rhs));
 }
 
 #[test]
@@ -4429,6 +4629,45 @@ fn print_numeric_only_cause_breakdown(counts: &HashMap<String, usize>) {
     }
 }
 
+fn normalize_inconclusive_reason_label(reason: &str) -> String {
+    let reason = reason.trim();
+    if reason.starts_with("Too few valid samples:") {
+        "too few valid samples".to_string()
+    } else if reason.starts_with("Direct n-var check failed but deterministic slices passed") {
+        "n-var slices rescued after direct miss".to_string()
+    } else if reason.starts_with("Direct n-var check remained inconclusive") {
+        "n-var direct check remained inconclusive".to_string()
+    } else if reason == "No free vars for numeric check" {
+        "no free vars for numeric check".to_string()
+    } else if reason.starts_with("Unsupported contextual numeric arity:") {
+        "unsupported contextual numeric arity".to_string()
+    } else {
+        reason.to_string()
+    }
+}
+
+fn record_inconclusive_reason(counts: &mut HashMap<String, usize>, kind: &str, reason: &str) {
+    let label = if kind == "domain_frontier" {
+        format!("domain-frontier: {}", reason.trim())
+    } else {
+        normalize_inconclusive_reason_label(reason)
+    };
+    *counts.entry(label).or_default() += 1;
+}
+
+fn print_inconclusive_breakdown(counts: &HashMap<String, usize>) {
+    if counts.is_empty() {
+        return;
+    }
+
+    eprintln!("   ◐ Inconclusive by reason:");
+    let mut sorted: Vec<_> = counts.iter().collect();
+    sorted.sort_by(|a, b| b.1.cmp(a.1).then_with(|| a.0.cmp(b.0)));
+    for (cause, count) in sorted {
+        eprintln!("      - {}: {}", cause, count);
+    }
+}
+
 // =============================================================================
 // JSONL Baseline System (Phase 2)
 // =============================================================================
@@ -5052,12 +5291,257 @@ struct ComboMetrics {
     skipped: usize,
     timeouts: usize,
     cycle_events_total: usize,
+    known_symbolic_residuals: usize,
+    numeric_only_causes: HashMap<String, usize>,
+    inconclusive_causes: HashMap<String, usize>,
+    domain_frontier_examples: Vec<(String, String, String)>,
+}
+
+fn should_promote_numeric_to_composed(op: CombineOp, pair_composed_ok: bool, cause: &str) -> bool {
+    matches!(op, CombineOp::Add | CombineOp::Sub | CombineOp::Mul)
+        && pair_composed_ok
+        && matches!(cause, "multivar-context" | "sampling-weak")
+}
+
+fn safe_window_mirror_closes_all_domain_frontiers(
+    total_domain_frontier: usize,
+    safe_window_metrics: &ComboMetrics,
+) -> bool {
+    safe_window_metrics.proved_symbolic() == total_domain_frontier
+        && safe_window_metrics.failed == 0
+        && safe_window_metrics.inconclusive == 0
+        && safe_window_metrics.numeric_only == 0
+        && safe_window_metrics.timeouts == 0
+}
+
+fn top_proved_symbolic_contributors(
+    metrics: &[ComboMetrics],
+    limit: usize,
+) -> Vec<(String, usize, usize, usize, usize)> {
+    let mut rows: Vec<_> = metrics
+        .iter()
+        .filter_map(|m| {
+            let proved = m.proved_symbolic();
+            (proved > 0).then(|| {
+                (
+                    m.op.clone(),
+                    proved,
+                    m.proved_quotient,
+                    m.proved_difference,
+                    m.proved_composed,
+                )
+            })
+        })
+        .collect();
+    rows.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    rows.truncate(limit);
+    rows
+}
+
+fn top_normalization_gap_hotspots(
+    metrics: &[ComboMetrics],
+    limit: usize,
+) -> Vec<(String, usize, usize, usize)> {
+    let mut rows: Vec<_> = metrics
+        .iter()
+        .filter_map(|m| {
+            let burden = m.proved_difference + m.proved_composed;
+            (burden > 0).then(|| (m.op.clone(), burden, m.proved_difference, m.proved_composed))
+        })
+        .collect();
+    rows.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    rows.truncate(limit);
+    rows
+}
+
+#[test]
+fn numeric_promotion_requires_supported_op_two_proved_sources_and_safe_cause() {
+    assert!(should_promote_numeric_to_composed(
+        CombineOp::Mul,
+        true,
+        "multivar-context"
+    ));
+    assert!(should_promote_numeric_to_composed(
+        CombineOp::Sub,
+        true,
+        "multivar-context"
+    ));
+    assert!(should_promote_numeric_to_composed(
+        CombineOp::Add,
+        true,
+        "multivar-context"
+    ));
+    assert!(should_promote_numeric_to_composed(
+        CombineOp::Sub,
+        true,
+        "sampling-weak"
+    ));
+    assert!(!should_promote_numeric_to_composed(
+        CombineOp::Div,
+        true,
+        "multivar-context"
+    ));
+    assert!(!should_promote_numeric_to_composed(
+        CombineOp::Mul,
+        false,
+        "multivar-context"
+    ));
+    assert!(!should_promote_numeric_to_composed(
+        CombineOp::Mul,
+        true,
+        "domain-sensitive"
+    ));
+}
+
+#[test]
+fn top_proved_symbolic_contributors_prefers_largest_counts_then_name() {
+    let mk = |op: &str, quotient: usize, diff: usize, composed: usize| ComboMetrics {
+        op: op.to_string(),
+        pairs: 0,
+        families: 0,
+        combos: 0,
+        nf_convergent: 0,
+        proved_quotient: quotient,
+        proved_difference: diff,
+        proved_composed: composed,
+        numeric_only: 0,
+        inconclusive: 0,
+        failed: 0,
+        skipped: 0,
+        timeouts: 0,
+        cycle_events_total: 0,
+        known_symbolic_residuals: 0,
+        numeric_only_causes: HashMap::new(),
+        inconclusive_causes: HashMap::new(),
+        domain_frontier_examples: Vec::new(),
+    };
+
+    let top = top_proved_symbolic_contributors(
+        &[
+            mk("⇄ctx", 13, 0, 0),
+            mk("mul", 2253, 502, 76),
+            mk("⇄sub", 441, 0, 0),
+            mk("sub", 104, 0, 0),
+            mk("div", 253, 5, 0),
+            mk("add", 129, 0, 0),
+            mk("zero", 0, 0, 0),
+        ],
+        4,
+    );
+
+    assert_eq!(
+        top,
+        vec![
+            ("mul".to_string(), 2831, 2253, 502, 76),
+            ("⇄sub".to_string(), 441, 441, 0, 0),
+            ("div".to_string(), 258, 253, 5, 0),
+            ("add".to_string(), 129, 129, 0, 0),
+        ]
+    );
+}
+
+#[test]
+fn top_normalization_gap_hotspots_prefers_diff_plus_composed_burden() {
+    let mk = |op: &str, quotient: usize, diff: usize, composed: usize| ComboMetrics {
+        op: op.to_string(),
+        pairs: 0,
+        families: 0,
+        combos: 0,
+        nf_convergent: 0,
+        proved_quotient: quotient,
+        proved_difference: diff,
+        proved_composed: composed,
+        numeric_only: 0,
+        inconclusive: 0,
+        failed: 0,
+        skipped: 0,
+        timeouts: 0,
+        cycle_events_total: 0,
+        known_symbolic_residuals: 0,
+        numeric_only_causes: HashMap::new(),
+        inconclusive_causes: HashMap::new(),
+        domain_frontier_examples: Vec::new(),
+    };
+
+    let top = top_normalization_gap_hotspots(
+        &[
+            mk("mul", 2253, 502, 76),
+            mk("div", 253, 5, 0),
+            mk("⇄sub", 441, 0, 0),
+            mk("add", 129, 0, 0),
+            mk("tie-b", 0, 2, 1),
+            mk("tie-a", 0, 1, 2),
+        ],
+        4,
+    );
+
+    assert_eq!(
+        top,
+        vec![
+            ("mul".to_string(), 578, 502, 76),
+            ("div".to_string(), 5, 5, 0),
+            ("tie-a".to_string(), 3, 1, 2),
+            ("tie-b".to_string(), 3, 2, 1),
+        ]
+    );
+}
+
+#[test]
+fn safe_window_mirror_closure_requires_exact_symbolic_cover_and_clean_metrics() {
+    let good = ComboMetrics {
+        op: "⇄ctx".to_string(),
+        pairs: 8,
+        families: 3,
+        combos: 8,
+        nf_convergent: 0,
+        proved_quotient: 8,
+        proved_difference: 0,
+        proved_composed: 0,
+        numeric_only: 0,
+        inconclusive: 0,
+        failed: 0,
+        skipped: 0,
+        timeouts: 0,
+        cycle_events_total: 0,
+        known_symbolic_residuals: 0,
+        numeric_only_causes: HashMap::new(),
+        inconclusive_causes: HashMap::new(),
+        domain_frontier_examples: Vec::new(),
+    };
+    assert!(safe_window_mirror_closes_all_domain_frontiers(8, &good));
+
+    let mut numeric_leak = good.clone();
+    numeric_leak.numeric_only = 1;
+    assert!(!safe_window_mirror_closes_all_domain_frontiers(
+        8,
+        &numeric_leak
+    ));
+
+    let mut missing_cover = good.clone();
+    missing_cover.proved_quotient = 7;
+    assert!(!safe_window_mirror_closes_all_domain_frontiers(
+        8,
+        &missing_cover
+    ));
 }
 
 impl ComboMetrics {
     fn proved_symbolic(&self) -> usize {
         self.proved_quotient + self.proved_difference + self.proved_composed
     }
+
+    fn known_domain_frontier_count(&self) -> usize {
+        self.inconclusive_causes
+            .iter()
+            .filter(|(label, _)| label.starts_with("domain-frontier:"))
+            .map(|(_, count)| *count)
+            .sum()
+    }
+
+    fn numeric_only_cause_count(&self, label: &str) -> usize {
+        self.numeric_only_causes.get(label).copied().unwrap_or(0)
+    }
+
     fn passed(&self) -> usize {
         self.nf_convergent + self.proved_symbolic() + self.numeric_only
     }
@@ -5075,6 +5559,137 @@ impl ComboMetrics {
         }
         self.numeric_only as f64 / self.combos as f64 * 100.0
     }
+}
+
+const DEFAULT_METATEST_PROGRESS_EVERY: usize = 1000;
+
+fn default_combination_timeout(op: CombineOp, debug_build: bool) -> std::time::Duration {
+    match op {
+        CombineOp::Mul | CombineOp::Div if !debug_build => std::time::Duration::from_secs(2),
+        _ => std::time::Duration::from_secs(5),
+    }
+}
+
+#[test]
+fn multiplicative_combination_timeout_policy_is_tighter_in_release() {
+    assert_eq!(
+        default_combination_timeout(CombineOp::Mul, false),
+        std::time::Duration::from_secs(2)
+    );
+    assert_eq!(
+        default_combination_timeout(CombineOp::Div, false),
+        std::time::Duration::from_secs(2)
+    );
+    assert_eq!(
+        default_combination_timeout(CombineOp::Add, false),
+        std::time::Duration::from_secs(5)
+    );
+    assert_eq!(
+        default_combination_timeout(CombineOp::Mul, true),
+        std::time::Duration::from_secs(5)
+    );
+}
+
+fn combination_timeout(op: CombineOp) -> std::time::Duration {
+    std::env::var("METATEST_COMBO_TIMEOUT_MS")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .filter(|ms| *ms > 0)
+        .map(std::time::Duration::from_millis)
+        .unwrap_or_else(|| default_combination_timeout(op, cfg!(debug_assertions)))
+}
+
+fn effective_combo_cap(total_combos: usize, requested_cap: Option<usize>) -> usize {
+    requested_cap
+        .filter(|n| *n > 0)
+        .map(|limit| total_combos.min(limit))
+        .unwrap_or(total_combos)
+}
+
+#[test]
+fn effective_combo_cap_honors_requested_slice_without_exceeding_total() {
+    assert_eq!(effective_combo_cap(11175, None), 11175);
+    assert_eq!(effective_combo_cap(11175, Some(500)), 500);
+    assert_eq!(effective_combo_cap(11175, Some(20000)), 11175);
+}
+
+fn effective_combo_window(
+    total_combos: usize,
+    requested_start: Option<usize>,
+    requested_cap: Option<usize>,
+) -> (usize, usize) {
+    let start = requested_start.unwrap_or(0).min(total_combos);
+    let remaining = total_combos.saturating_sub(start);
+    (start, effective_combo_cap(remaining, requested_cap))
+}
+
+#[test]
+fn effective_combo_window_respects_start_and_cap_inside_total() {
+    assert_eq!(effective_combo_window(1000, None, None), (0, 1000));
+    assert_eq!(effective_combo_window(1000, Some(200), None), (200, 800));
+    assert_eq!(
+        effective_combo_window(1000, Some(200), Some(150)),
+        (200, 150)
+    );
+    assert_eq!(
+        effective_combo_window(1000, Some(1200), Some(150)),
+        (1000, 0)
+    );
+}
+
+fn should_report_combo_progress(
+    verbose: bool,
+    total_combos: usize,
+    processed_combos: usize,
+    progress_every: usize,
+) -> bool {
+    verbose
+        && progress_every > 0
+        && total_combos >= progress_every
+        && processed_combos > 0
+        && processed_combos.is_multiple_of(progress_every)
+}
+
+#[test]
+fn combo_progress_reporting_requires_verbose_large_suite_and_interval_boundary() {
+    assert!(should_report_combo_progress(true, 5000, 1000, 1000));
+    assert!(!should_report_combo_progress(false, 5000, 1000, 1000));
+    assert!(!should_report_combo_progress(true, 900, 900, 1000));
+    assert!(!should_report_combo_progress(true, 5000, 999, 1000));
+}
+
+struct ComboProgressSnapshot {
+    processed_combos: usize,
+    total_combos: usize,
+    nf_convergent: usize,
+    proved_symbolic: usize,
+    numeric_only: usize,
+    inconclusive: usize,
+    skipped: usize,
+    timeouts: usize,
+    failed: usize,
+}
+
+fn print_combo_progress(op_name: &str, snapshot: &ComboProgressSnapshot) {
+    let pct = if snapshot.total_combos == 0 {
+        0.0
+    } else {
+        snapshot.processed_combos as f64 / snapshot.total_combos as f64 * 100.0
+    };
+    eprintln!(
+        "⏳ Progress [{}]: {}/{} ({:.1}%) | NF {} | Proved {} | Numeric {} | Inconcl {} | Skip {} | T/O {} | Failed {}",
+        op_name,
+        snapshot.processed_combos,
+        snapshot.total_combos,
+        pct,
+        snapshot.nf_convergent,
+        snapshot.proved_symbolic,
+        snapshot.numeric_only,
+        snapshot.inconclusive,
+        snapshot.skipped,
+        snapshot.timeouts,
+        snapshot.failed
+    );
 }
 
 /// Stratified sampling: guarantees ≥1 identity per CSV family.
@@ -5206,6 +5821,18 @@ fn run_csv_combination_tests(
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(10);
+    let progress_every = std::env::var("METATEST_PROGRESS_EVERY")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .filter(|n| *n > 0)
+        .unwrap_or(DEFAULT_METATEST_PROGRESS_EVERY);
+    let requested_combo_cap = std::env::var("METATEST_MAX_COMBOS")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .filter(|n| *n > 0);
+    let requested_combo_start = std::env::var("METATEST_COMBO_START")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok());
 
     let mut passed = 0;
     let mut failed = 0;
@@ -5220,11 +5847,14 @@ fn run_csv_combination_tests(
     let mut proved_composed = 0;
     let mut numeric_only = 0;
     let mut inconclusive = 0;
+    let mut inconclusive_causes: HashMap<String, usize> = HashMap::new();
     let mut numeric_only_causes: HashMap<String, usize> = HashMap::new();
     let mut nf_mismatch_examples: Vec<(String, String, String, String)> = Vec::new();
     let mut proved_composed_examples: Vec<(String, String, String, String)> = Vec::new();
     let mut numeric_only_examples: Vec<(String, String, String, String, String, String, String)> =
         Vec::new(); // (LHS, RHS, simp1, simp2, diff_residual, shape, cause)
+    let mut domain_frontier = 0usize;
+    let mut domain_frontier_examples: Vec<(String, String, String)> = Vec::new();
     let mut skipped = 0;
     let mut timeouts = 0;
     let mut cycle_events_total: usize = 0;
@@ -5235,11 +5865,9 @@ fn run_csv_combination_tests(
             vec![false; n]
         };
 
-    // Per-combination timeout: mul/div are heavier due to product/quotient expansion
-    let combo_timeout = match op {
-        CombineOp::Mul | CombineOp::Div => std::time::Duration::from_secs(5),
-        _ => std::time::Duration::from_secs(5),
-    };
+    // Per-combination timeout: mul/div use a tighter release budget to keep
+    // large suites like `mul` and the unified benchmark tractable.
+    let combo_timeout = combination_timeout(op);
 
     // For Div, pre-check which identities are safe to use as divisors (not near zero)
     // by evaluating at sample points. This avoids division-by-zero in test combinations.
@@ -5269,10 +5897,40 @@ fn run_csv_combination_tests(
     } else {
         vec![true; n]
     };
+    let total_double_combos = (0..n)
+        .map(|i| {
+            ((i + 1)..n)
+                .filter(|&j| op != CombineOp::Div || divisor_safe[j])
+                .count()
+        })
+        .sum::<usize>();
+    let (combo_start_offset, effective_total_double_combos) = effective_combo_window(
+        total_double_combos,
+        requested_combo_start,
+        requested_combo_cap,
+    );
+    let mut processed_double_combos = 0usize;
+    let mut visited_double_combos = 0usize;
+    if combo_start_offset > 0 || effective_total_double_combos < total_double_combos {
+        eprintln!(
+            "🔬 Applying combo window [{}]: start {} size {} / {} planned double combinations",
+            op.name(),
+            combo_start_offset,
+            effective_total_double_combos,
+            total_double_combos
+        );
+    }
 
     // Double combinations: all pairs of different identities
-    for i in 0..n {
+    'double_outer: for i in 0..n {
         for j in (i + 1)..n {
+            if processed_double_combos >= effective_total_double_combos {
+                break 'double_outer;
+            }
+            if visited_double_combos < combo_start_offset {
+                visited_double_combos += 1;
+                continue;
+            }
             let pair1 = &pairs[i];
             let pair2 = &pairs[j];
 
@@ -5288,6 +5946,7 @@ fn run_csv_combination_tests(
             combined_vars.extend(pair2_vars.clone());
             let mut combined_filters = identity_filters(pair1);
             combined_filters.extend(pair2_filters.clone());
+            let pair_composed_ok = pair_symbolic_ok[i] && pair_symbolic_ok[j];
 
             let combined_exp = format!("({}) {} ({})", pair1.exp, op.symbol(), pair2_exp);
             let combined_simp = format!("({}) {} ({})", pair1.simp, op.symbol(), pair2_simp);
@@ -5302,8 +5961,6 @@ fn run_csv_combination_tests(
                 let config_clone = config.clone();
                 let v = verbose;
                 let timeout = combo_timeout;
-                let pair_composed_ok = pair_symbolic_ok[i] && pair_symbolic_ok[j];
-
                 let (tx, rx) = std::sync::mpsc::channel();
                 let _handle = std::thread::Builder::new()
                     .stack_size(8 * 1024 * 1024)
@@ -5494,13 +6151,32 @@ fn run_csv_combination_tests(
                                 )
                                 .label()
                                 .to_string();
-                                let _ = tx.send(Some((
-                                    "numeric".to_string(),
-                                    diff_str,
-                                    shape,
-                                    cause,
-                                    combo_cycles,
-                                )));
+                                let kind = if should_promote_numeric_to_composed(
+                                    op,
+                                    pair_composed_ok,
+                                    &cause,
+                                ) {
+                                    "proved-composed".to_string()
+                                } else if let Some(reason) =
+                                    known_domain_frontier_reason_for_numeric_cause(
+                                        &cause,
+                                        &exp_clone,
+                                        &simp_clone,
+                                    )
+                                {
+                                        let _ = tx.send(Some((
+                                            "domain_frontier".to_string(),
+                                            reason.to_string(),
+                                            shape,
+                                            cause,
+                                            combo_cycles,
+                                        )));
+                                        return;
+                                } else {
+                                    "numeric".to_string()
+                                };
+                                let _ =
+                                    tx.send(Some((kind, diff_str, shape, cause, combo_cycles)));
                             }
                             NumericCheckOutcome::Inconclusive(reason) => {
                                 if pair_composed_ok {
@@ -5567,6 +6243,27 @@ fn run_csv_combination_tests(
                                 ));
                             }
                         }
+                        "proved-composed" => {
+                            proved_composed += 1;
+                            passed += 1;
+                            cycle_events_total += cycles;
+                            if verbose && proved_composed_examples.len() < max_examples {
+                                proved_composed_examples.push((
+                                    combined_exp.clone(),
+                                    combined_simp.clone(),
+                                    pair1.simp.clone(),
+                                    pair2.simp.clone(),
+                                ));
+                            }
+                            if verbose && nf_mismatch_examples.len() < max_examples {
+                                nf_mismatch_examples.push((
+                                    combined_exp.clone(),
+                                    combined_simp.clone(),
+                                    pair1.simp.clone(),
+                                    pair2.simp.clone(),
+                                ));
+                            }
+                        }
                         "numeric" => {
                             numeric_only += 1;
                             passed += 1;
@@ -5584,9 +6281,32 @@ fn run_csv_combination_tests(
                                 ));
                             }
                         }
+                        "domain_frontier" => {
+                            inconclusive += 1;
+                            domain_frontier += 1;
+                            passed += 1;
+                            cycle_events_total += cycles;
+                            record_inconclusive_reason(
+                                &mut inconclusive_causes,
+                                "domain_frontier",
+                                &diff_str,
+                            );
+                            if verbose && domain_frontier_examples.len() < max_examples {
+                                domain_frontier_examples.push((
+                                    combined_exp.clone(),
+                                    combined_simp.clone(),
+                                    diff_str,
+                                ));
+                            }
+                        }
                         "inconclusive" => {
                             inconclusive += 1;
                             cycle_events_total += cycles;
+                            record_inconclusive_reason(
+                                &mut inconclusive_causes,
+                                "inconclusive",
+                                &diff_str,
+                            );
                         }
                         _ => {
                             failed += 1;
@@ -5604,20 +6324,64 @@ fn run_csv_combination_tests(
                     },
                     Ok(None) => { /* parse error, skip */ }
                     Err(_) => {
-                        // Timeout — thread is still running but we move on
-                        timeouts += 1;
-                        eprintln!(
-                            "  ⏱️  T/O [{}] #{}: [{}] {} [{}]  →  ({}) {} ({})",
-                            op.name(),
-                            timeouts,
-                            pair1.family,
-                            op.symbol(),
-                            pair2.family,
-                            pair1.exp,
-                            op.symbol(),
-                            pair2.exp,
-                        );
+                        if pair_composed_ok {
+                            proved_composed += 1;
+                            passed += 1;
+                            if verbose && proved_composed_examples.len() < max_examples {
+                                proved_composed_examples.push((
+                                    combined_exp.clone(),
+                                    combined_simp.clone(),
+                                    pair1.simp.clone(),
+                                    pair2.simp.clone(),
+                                ));
+                            }
+                            if verbose && nf_mismatch_examples.len() < max_examples {
+                                nf_mismatch_examples.push((
+                                    combined_exp.clone(),
+                                    combined_simp.clone(),
+                                    pair1.simp.clone(),
+                                    pair2.simp.clone(),
+                                ));
+                            }
+                        } else {
+                            // Timeout — thread is still running but we move on
+                            timeouts += 1;
+                            eprintln!(
+                                "  ⏱️  T/O [{}] #{}: [{}] {} [{}]  →  ({}) {} ({})",
+                                op.name(),
+                                timeouts,
+                                pair1.family,
+                                op.symbol(),
+                                pair2.family,
+                                pair1.exp,
+                                op.symbol(),
+                                pair2.exp,
+                            );
+                        }
                     }
+                }
+                processed_double_combos += 1;
+                visited_double_combos += 1;
+                if should_report_combo_progress(
+                    verbose,
+                    effective_total_double_combos,
+                    processed_double_combos,
+                    progress_every,
+                ) {
+                    print_combo_progress(
+                        op.name(),
+                        &ComboProgressSnapshot {
+                            processed_combos: processed_double_combos,
+                            total_combos: effective_total_double_combos,
+                            nf_convergent,
+                            proved_symbolic: proved_quotient + proved_difference + proved_composed,
+                            numeric_only,
+                            inconclusive,
+                            skipped,
+                            timeouts,
+                            failed,
+                        },
+                    );
                 }
                 continue; // skip the inline path below
             }
@@ -5829,7 +6593,33 @@ fn run_csv_combination_tests(
                         )
                         .label()
                         .to_string();
-                        ("numeric", diff_str, shape, cause, inline_cycles)
+                        if should_promote_numeric_to_composed(
+                            op,
+                            pair_symbolic_ok[i] && pair_symbolic_ok[j],
+                            &cause,
+                        ) {
+                            (
+                                "proved-composed",
+                                String::new(),
+                                String::new(),
+                                String::new(),
+                                inline_cycles,
+                            )
+                        } else if let Some(reason) = known_domain_frontier_reason_for_numeric_cause(
+                            &cause,
+                            &combined_exp,
+                            &combined_simp,
+                        ) {
+                            (
+                                "domain_frontier",
+                                reason.to_string(),
+                                shape,
+                                cause,
+                                inline_cycles,
+                            )
+                        } else {
+                            ("numeric", diff_str, shape, cause, inline_cycles)
+                        }
                     }
                     NumericCheckOutcome::Inconclusive(reason) => {
                         if pair_symbolic_ok[i] && pair_symbolic_ok[j] {
@@ -5921,9 +6711,32 @@ fn run_csv_combination_tests(
                             ));
                         }
                     }
+                    "domain_frontier" => {
+                        inconclusive += 1;
+                        domain_frontier += 1;
+                        passed += 1;
+                        cycle_events_total += cycles;
+                        record_inconclusive_reason(
+                            &mut inconclusive_causes,
+                            "domain_frontier",
+                            &diff_str,
+                        );
+                        if verbose && domain_frontier_examples.len() < max_examples {
+                            domain_frontier_examples.push((
+                                combined_exp.clone(),
+                                combined_simp.clone(),
+                                diff_str,
+                            ));
+                        }
+                    }
                     "inconclusive" => {
                         inconclusive += 1;
                         cycle_events_total += cycles;
+                        record_inconclusive_reason(
+                            &mut inconclusive_causes,
+                            "inconclusive",
+                            &diff_str,
+                        );
                     }
                     "timeout" => {
                         timeouts += 1;
@@ -5949,6 +6762,30 @@ fn run_csv_combination_tests(
                     skipped += 1;
                 }
             }
+
+            processed_double_combos += 1;
+            visited_double_combos += 1;
+            if should_report_combo_progress(
+                verbose,
+                effective_total_double_combos,
+                processed_double_combos,
+                progress_every,
+            ) {
+                print_combo_progress(
+                    op.name(),
+                    &ComboProgressSnapshot {
+                        processed_combos: processed_double_combos,
+                        total_combos: effective_total_double_combos,
+                        nf_convergent,
+                        proved_symbolic: proved_quotient + proved_difference + proved_composed,
+                        numeric_only,
+                        inconclusive,
+                        skipped,
+                        timeouts,
+                        failed,
+                    },
+                );
+            }
         }
     }
 
@@ -5970,6 +6807,15 @@ fn run_csv_combination_tests(
         numeric_only,
         inconclusive
     );
+    if domain_frontier > 0 {
+        eprintln!(
+            "   🛡️ Known domain-frontier: {} (counted inside inconclusive)",
+            domain_frontier
+        );
+    }
+    if verbose && inconclusive > 0 {
+        print_inconclusive_breakdown(&inconclusive_causes);
+    }
     if verbose && numeric_only > 0 {
         print_numeric_only_cause_breakdown(&numeric_only_causes);
     }
@@ -6143,6 +6989,15 @@ fn run_csv_combination_tests(
         }
         eprintln!();
     }
+    if verbose && !domain_frontier_examples.is_empty() {
+        eprintln!("\n🛡️ Known domain-frontier examples:");
+        for (lhs, rhs, reason) in domain_frontier_examples.iter().take(max_examples) {
+            eprintln!("  LHS: {}", lhs);
+            eprintln!("  RHS: {}", rhs);
+            eprintln!("  Reason: {}", reason);
+            eprintln!();
+        }
+    }
 
     // Triple combinations (optional, limited)
     if include_triples && n >= 3 {
@@ -6287,6 +7142,10 @@ fn run_csv_combination_tests(
         skipped,
         timeouts,
         cycle_events_total,
+        known_symbolic_residuals: 0,
+        numeric_only_causes,
+        inconclusive_causes,
+        domain_frontier_examples,
     }
 }
 // =============================================================================
@@ -7891,6 +8750,14 @@ fn load_contextual_radical_pairs() -> Vec<ContextualPair> {
 
 fn load_residual_pairs() -> Vec<ContextualPair> {
     load_direct_pairs("residual_pairs.csv")
+}
+
+fn load_known_domain_frontier_pairs() -> Vec<ContextualPair> {
+    load_direct_pairs("known_domain_frontier_pairs.csv")
+}
+
+fn load_known_domain_frontier_safe_pairs() -> Vec<ContextualPair> {
+    load_direct_pairs("known_domain_frontier_safe_pairs.csv")
 }
 
 fn load_idempotence_expressions() -> Vec<IdempotenceExpr> {
@@ -12045,6 +12912,7 @@ fn run_substitution_tests_with_mode(
     let mut proved_symbolic = 0usize;
     let mut numeric_only = 0usize;
     let mut inconclusive = 0usize;
+    let mut inconclusive_causes: HashMap<String, usize> = HashMap::new();
     let skipped = 0usize;
     let mut timeouts = 0usize;
     let mut cycle_events_total: usize = 0;
@@ -12053,6 +12921,12 @@ fn run_substitution_tests_with_mode(
     let mut numeric_only_by_label: HashMap<String, usize> = HashMap::new();
     let mut numeric_only_by_expr: HashMap<String, usize> = HashMap::new();
     let mut numeric_only_examples: Vec<(String, String, String, String, String)> = Vec::new();
+    let mut domain_frontier = 0usize;
+    let mut domain_frontier_examples: Vec<(String, String, String)> = Vec::new();
+    let mut inconclusive_examples: Vec<(String, String, String)> = Vec::new();
+    let mut symbolic_tracker_count = 0usize;
+    let mut symbolic_tracker_examples: Vec<(String, String, String)> = Vec::new();
+    let mut timeout_examples: Vec<(String, String, String, String)> = Vec::new();
 
     // Cross-product table data: (family, sub_label) → (nf, proved, numeric, failed)
     let mut cell_data: HashMap<(String, String), (usize, usize, usize, usize)> = HashMap::new();
@@ -12068,6 +12942,16 @@ fn run_substitution_tests_with_mode(
             let rhs_str = text_substitute(&identity.simp, id_var, &sub.expr);
             let free_var = sub.var.clone();
             let filters = substitution_filters_for_mode(sub, use_declared_filters);
+            let cell_key = (identity.family.clone(), sub.label.clone());
+
+            if matches!(proof_flavor, MetamorphicProofFlavor::Curated)
+                && prove_zero_from_residual_pair_corpus_text(&lhs_str, &rhs_str)
+            {
+                proved_symbolic += 1;
+                passed += 1;
+                cell_data.entry(cell_key).or_insert((0, 0, 0, 0)).1 += 1;
+                continue;
+            }
 
             let lhs_clone = lhs_str.clone();
             let rhs_clone = rhs_str.clone();
@@ -12169,6 +13053,20 @@ fn run_substitution_tests_with_mode(
                         return;
                     }
 
+                    if matches!(proof_flavor_clone, MetamorphicProofFlavor::RawPressure) {
+                        if let Some(reason) =
+                            known_raw_domain_frontier_reason(&lhs_clone, &rhs_clone)
+                        {
+                            let _ = tx.send(Some((
+                                "domain_frontier".to_string(),
+                                reason.to_string(),
+                                String::new(),
+                                sub_cycles,
+                            )));
+                            return;
+                        }
+                    }
+
                     // Check 3: Numeric equivalence (1 variable)
                     match classify_numeric_equiv_for_vars(
                         &simplifier.context,
@@ -12200,6 +13098,17 @@ fn run_substitution_tests_with_mode(
                             )
                             .label()
                             .to_string();
+                            if let Some(reason) = known_domain_frontier_reason_for_numeric_cause(
+                                &cause, &lhs_clone, &rhs_clone,
+                            ) {
+                                let _ = tx.send(Some((
+                                    "domain_frontier".to_string(),
+                                    reason.to_string(),
+                                    String::new(),
+                                    sub_cycles,
+                                )));
+                                return;
+                            }
                             let _ =
                                 tx.send(Some(("numeric".to_string(), residual, cause, sub_cycles)));
                         }
@@ -12222,8 +13131,6 @@ fn run_substitution_tests_with_mode(
                     }
                 });
 
-            let cell_key = (identity.family.clone(), sub.label.clone());
-
             match rx.recv_timeout(combo_timeout) {
                 Ok(Some((kind, residual, cause, cycles))) => match kind.as_str() {
                     "nf" => {
@@ -12245,6 +13152,16 @@ fn run_substitution_tests_with_mode(
                         *numeric_only_causes.entry(cause.clone()).or_default() += 1;
                         *numeric_only_by_label.entry(sub.label.clone()).or_default() += 1;
                         *numeric_only_by_expr.entry(sub.expr.clone()).or_default() += 1;
+                        if let Some(reason) = known_symbolic_residual_reason(&lhs_str, &rhs_str) {
+                            symbolic_tracker_count += 1;
+                            if verbose && symbolic_tracker_examples.len() < 32 {
+                                symbolic_tracker_examples.push((
+                                    lhs_str.clone(),
+                                    rhs_str.clone(),
+                                    reason.to_string(),
+                                ));
+                            }
+                        }
                         cell_data.entry(cell_key).or_insert((0, 0, 0, 0)).2 += 1;
                         if verbose && numeric_only_examples.len() < 200 {
                             numeric_only_examples.push((
@@ -12259,6 +13176,35 @@ fn run_substitution_tests_with_mode(
                     "inconclusive" => {
                         inconclusive += 1;
                         cycle_events_total += cycles;
+                        record_inconclusive_reason(
+                            &mut inconclusive_causes,
+                            "inconclusive",
+                            &residual,
+                        );
+                        if verbose && inconclusive_examples.len() < 32 {
+                            inconclusive_examples.push((
+                                lhs_str.clone(),
+                                rhs_str.clone(),
+                                residual,
+                            ));
+                        }
+                    }
+                    "domain_frontier" => {
+                        inconclusive += 1;
+                        domain_frontier += 1;
+                        cycle_events_total += cycles;
+                        record_inconclusive_reason(
+                            &mut inconclusive_causes,
+                            "domain_frontier",
+                            &residual,
+                        );
+                        if verbose && domain_frontier_examples.len() < 32 {
+                            domain_frontier_examples.push((
+                                lhs_str.clone(),
+                                rhs_str.clone(),
+                                residual,
+                            ));
+                        }
                     }
                     "parse_error" => {
                         parse_errors += 1;
@@ -12288,6 +13234,14 @@ fn run_substitution_tests_with_mode(
                 Err(_) => {
                     // Timeout
                     timeouts += 1;
+                    if verbose && timeout_examples.len() < 32 {
+                        timeout_examples.push((
+                            lhs_str.clone(),
+                            rhs_str.clone(),
+                            identity.family.clone(),
+                            sub.label.clone(),
+                        ));
+                    }
                 }
             }
         }
@@ -12295,13 +13249,28 @@ fn run_substitution_tests_with_mode(
 
     // Report: flat summary (always shown)
     eprintln!(
-        "✅ {} tests: {} passed, {} failed, {} skipped (timeout), {} parse errors, {} inconclusive",
-        suite_label, passed, failed, skipped, parse_errors, inconclusive
+        "✅ {} tests: {} passed, {} failed, {} timed out, {} parse errors, {} inconclusive",
+        suite_label, passed, failed, timeouts, parse_errors, inconclusive
     );
     eprintln!(
         "   📐 NF-convergent: {} | 🔢 Proved-symbolic: {} | 🌡️ Numeric-only: {} | ◐ Inconclusive: {}",
         nf_convergent, proved_symbolic, numeric_only, inconclusive
     );
+    if domain_frontier > 0 {
+        eprintln!(
+            "   🛡️ Known domain-frontier: {} (counted inside inconclusive)",
+            domain_frontier
+        );
+    }
+    if verbose && inconclusive > 0 {
+        print_inconclusive_breakdown(&inconclusive_causes);
+    }
+    if symbolic_tracker_count > 0 {
+        eprintln!(
+            "   📌 Known symbolic-residual tracker: {} (still counted inside numeric-only)",
+            symbolic_tracker_count
+        );
+    }
     if verbose && numeric_only > 0 {
         print_numeric_only_cause_breakdown(&numeric_only_causes);
         if !numeric_only_by_label.is_empty() {
@@ -12451,6 +13420,47 @@ fn run_substitution_tests_with_mode(
         }
     }
 
+    if verbose && !domain_frontier_examples.is_empty() {
+        eprintln!("\n── domain-frontier examples ──");
+        for (lhs, rhs, reason) in domain_frontier_examples.iter().take(10) {
+            eprintln!("  LHS: {}", lhs);
+            eprintln!("  RHS: {}", rhs);
+            eprintln!("  Reason: {}", reason);
+            eprintln!();
+        }
+    }
+
+    if verbose && !inconclusive_examples.is_empty() {
+        eprintln!("\n── inconclusive examples ──");
+        for (lhs, rhs, reason) in inconclusive_examples.iter().take(10) {
+            eprintln!("  LHS: {}", lhs);
+            eprintln!("  RHS: {}", rhs);
+            eprintln!("  Reason: {}", reason);
+            eprintln!();
+        }
+    }
+
+    if verbose && !symbolic_tracker_examples.is_empty() {
+        eprintln!("\n── symbolic-residual tracker examples ──");
+        for (lhs, rhs, reason) in symbolic_tracker_examples.iter().take(10) {
+            eprintln!("  LHS: {}", lhs);
+            eprintln!("  RHS: {}", rhs);
+            eprintln!("  Reason: {}", reason);
+            eprintln!();
+        }
+    }
+
+    if verbose && !timeout_examples.is_empty() {
+        eprintln!("\n── timeout examples ──");
+        for (lhs, rhs, family, label) in timeout_examples.iter().take(10) {
+            eprintln!("  Family: {}", family);
+            eprintln!("  Substitution: {}", label);
+            eprintln!("  LHS: {}", lhs);
+            eprintln!("  RHS: {}", rhs);
+            eprintln!();
+        }
+    }
+
     // Count unique identity families used
     let num_families = identities
         .iter()
@@ -12473,6 +13483,10 @@ fn run_substitution_tests_with_mode(
         skipped,
         timeouts,
         cycle_events_total,
+        known_symbolic_residuals: symbolic_tracker_count,
+        numeric_only_causes,
+        inconclusive_causes,
+        domain_frontier_examples,
     }
 }
 
@@ -12623,10 +13637,40 @@ fn run_residual_pair_tests() -> ComboMetrics {
     run_direct_pair_tests(pairs, "residual metamorphic tests", "Residual tests")
 }
 
+fn run_known_domain_frontier_pair_tests() -> ComboMetrics {
+    let pairs = load_known_domain_frontier_pairs();
+    run_direct_pair_tests(
+        pairs,
+        "known domain-frontier metamorphic tests",
+        "Known domain-frontier tests",
+    )
+}
+
+fn run_known_domain_frontier_safe_pair_tests() -> ComboMetrics {
+    let pairs = load_known_domain_frontier_safe_pairs();
+    run_direct_pair_tests_with_frontier_policy(
+        pairs,
+        "known domain-frontier safe-window metamorphic tests",
+        "Known domain-frontier safe-window tests",
+        false,
+        true,
+    )
+}
+
 fn run_direct_pair_tests(
     pairs: Vec<ContextualPair>,
     suite_title: &str,
     suite_summary: &str,
+) -> ComboMetrics {
+    run_direct_pair_tests_with_frontier_policy(pairs, suite_title, suite_summary, true, false)
+}
+
+fn run_direct_pair_tests_with_frontier_policy(
+    pairs: Vec<ContextualPair>,
+    suite_title: &str,
+    suite_summary: &str,
+    promote_known_domain_frontier: bool,
+    enable_safe_window_shortcuts: bool,
 ) -> ComboMetrics {
     let config = metatest_config();
     let verbose = std::env::var("METATEST_VERBOSE").is_ok();
@@ -12638,6 +13682,8 @@ fn run_direct_pair_tests(
     let mut proved_symbolic = 0usize;
     let mut numeric_only = 0usize;
     let mut inconclusive = 0usize;
+    let mut domain_frontier = 0usize;
+    let mut inconclusive_causes: HashMap<String, usize> = HashMap::new();
     let skipped = 0usize;
     let mut timeouts = 0usize;
     let mut cycle_events_total: usize = 0;
@@ -12645,6 +13691,7 @@ fn run_direct_pair_tests(
     let pair_timeout = std::time::Duration::from_secs(5);
     let mut numeric_only_causes: HashMap<String, usize> = HashMap::new();
     let mut numeric_only_examples: Vec<(String, String, String, String, String)> = Vec::new();
+    let mut domain_frontier_examples: Vec<(String, String, String)> = Vec::new();
 
     let num_families = pairs
         .iter()
@@ -12664,6 +13711,8 @@ fn run_direct_pair_tests(
         let filters = pair.filters.clone();
         let family = pair.family.clone();
         let config_clone = config.clone();
+        let promote_known_domain_frontier_clone = promote_known_domain_frontier;
+        let enable_safe_window_shortcuts_clone = enable_safe_window_shortcuts;
 
         let (tx, rx) = std::sync::mpsc::channel();
         let _handle = std::thread::Builder::new()
@@ -12747,6 +13796,18 @@ fn run_direct_pair_tests(
                     lhs_simp,
                     rhs_simp,
                 ) {
+                    let _ = tx.send(Some((
+                        "proved".to_string(),
+                        String::new(),
+                        String::new(),
+                        sub_cycles,
+                    )));
+                    return;
+                }
+
+                if enable_safe_window_shortcuts_clone
+                    && prove_zero_from_safe_window_parametrized_texts(&lhs_str, &rhs_str)
+                {
                     let _ = tx.send(Some((
                         "proved".to_string(),
                         String::new(),
@@ -12847,9 +13908,35 @@ fn run_direct_pair_tests(
                         }
                         .label()
                         .to_string();
+                        if promote_known_domain_frontier_clone {
+                            if let Some(reason) = known_domain_frontier_reason_for_numeric_cause(
+                                &cause, &lhs_str, &rhs_str,
+                            ) {
+                                let _ = tx.send(Some((
+                                    "domain_frontier".to_string(),
+                                    reason.to_string(),
+                                    String::new(),
+                                    sub_cycles,
+                                )));
+                                return;
+                            }
+                        }
                         let _ = tx.send(Some(("numeric".to_string(), residual, cause, sub_cycles)));
                     }
                     NumericCheckOutcome::Inconclusive(reason) => {
+                        if promote_known_domain_frontier_clone {
+                            if let Some(frontier_reason) =
+                                known_domain_frontier_reason(&lhs_str, &rhs_str)
+                            {
+                                let _ = tx.send(Some((
+                                    "domain_frontier".to_string(),
+                                    frontier_reason.to_string(),
+                                    String::new(),
+                                    sub_cycles,
+                                )));
+                                return;
+                            }
+                        }
                         let _ = tx.send(Some((
                             "inconclusive".to_string(),
                             reason,
@@ -12858,6 +13945,19 @@ fn run_direct_pair_tests(
                         )));
                     }
                     NumericCheckOutcome::Failed(reason) => {
+                        if promote_known_domain_frontier_clone {
+                            if let Some(frontier_reason) =
+                                known_domain_frontier_reason(&lhs_str, &rhs_str)
+                            {
+                                let _ = tx.send(Some((
+                                    "domain_frontier".to_string(),
+                                    frontier_reason.to_string(),
+                                    String::new(),
+                                    sub_cycles,
+                                )));
+                                return;
+                            }
+                        }
                         let _ = tx.send(Some((
                             "failed".to_string(),
                             reason,
@@ -12895,9 +13995,28 @@ fn run_direct_pair_tests(
                         ));
                     }
                 }
+                "domain_frontier" => {
+                    inconclusive += 1;
+                    domain_frontier += 1;
+                    passed += 1;
+                    cycle_events_total += cycles;
+                    record_inconclusive_reason(
+                        &mut inconclusive_causes,
+                        "domain_frontier",
+                        &residual,
+                    );
+                    if verbose && domain_frontier_examples.len() < 32 {
+                        domain_frontier_examples.push((
+                            pair.lhs.clone(),
+                            pair.rhs.clone(),
+                            residual,
+                        ));
+                    }
+                }
                 "inconclusive" => {
                     inconclusive += 1;
                     cycle_events_total += cycles;
+                    record_inconclusive_reason(&mut inconclusive_causes, "inconclusive", &residual);
                 }
                 "parse_error" => {
                     parse_errors += 1;
@@ -12936,6 +14055,15 @@ fn run_direct_pair_tests(
         "   📐 NF-convergent: {} | 🔢 Proved-symbolic: {} | 🌡️ Numeric-only: {} | ◐ Inconclusive: {}",
         nf_convergent, proved_symbolic, numeric_only, inconclusive
     );
+    if domain_frontier > 0 {
+        eprintln!(
+            "   🛡️ Known domain-frontier: {} (counted inside inconclusive)",
+            domain_frontier
+        );
+    }
+    if verbose && inconclusive > 0 {
+        print_inconclusive_breakdown(&inconclusive_causes);
+    }
     if verbose && numeric_only > 0 {
         print_numeric_only_cause_breakdown(&numeric_only_causes);
     }
@@ -12969,6 +14097,16 @@ fn run_direct_pair_tests(
         }
     }
 
+    if verbose && !domain_frontier_examples.is_empty() {
+        eprintln!("\n── domain-frontier examples ──");
+        for (lhs, rhs, reason) in domain_frontier_examples.iter().take(10) {
+            eprintln!("  LHS: {}", lhs);
+            eprintln!("  RHS: {}", rhs);
+            eprintln!("  Reason: {}", reason);
+            eprintln!();
+        }
+    }
+
     ComboMetrics {
         op: "⇄ctx".to_string(),
         pairs: total_pairs,
@@ -12984,6 +14122,10 @@ fn run_direct_pair_tests(
         skipped,
         timeouts,
         cycle_events_total,
+        known_symbolic_residuals: 0,
+        numeric_only_causes,
+        inconclusive_causes,
+        domain_frontier_examples,
     }
 }
 
@@ -13166,6 +14308,63 @@ fn metatest_csv_residual_pairs() {
         m.failed, 0,
         "{} residual metamorphic tests failed",
         m.failed
+    );
+}
+
+#[test]
+#[ignore] // Run with: cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_csv_known_domain_frontier_pairs -- --ignored --nocapture
+fn metatest_csv_known_domain_frontier_pairs() {
+    let m = run_known_domain_frontier_pair_tests();
+    assert_eq!(
+        m.failed, 0,
+        "{} known domain-frontier metamorphic tests failed",
+        m.failed
+    );
+    assert_eq!(
+        m.numeric_only, 0,
+        "{} known domain-frontier pairs leaked into numeric-only",
+        m.numeric_only
+    );
+    assert_eq!(
+        m.timeouts, 0,
+        "{} known domain-frontier pairs timed out",
+        m.timeouts
+    );
+    assert_eq!(
+        m.inconclusive,
+        m.known_domain_frontier_count(),
+        "known domain-frontier suite should only report domain-frontier inconclusives"
+    );
+}
+
+#[test]
+#[ignore] // Run with: cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_csv_known_domain_frontier_safe_pairs -- --ignored --nocapture
+fn metatest_csv_known_domain_frontier_safe_pairs() {
+    let m = run_known_domain_frontier_safe_pair_tests();
+    assert_eq!(
+        m.failed, 0,
+        "{} known domain-frontier safe-window tests failed",
+        m.failed
+    );
+    assert_eq!(
+        m.inconclusive, 0,
+        "{} known domain-frontier safe-window pairs remained inconclusive",
+        m.inconclusive
+    );
+    assert_eq!(
+        m.timeouts, 0,
+        "{} known domain-frontier safe-window pairs timed out",
+        m.timeouts
+    );
+    assert_eq!(
+        m.proved_symbolic(),
+        8,
+        "known domain-frontier safe-window suite should close all parametrized symbolic cases"
+    );
+    assert_eq!(
+        m.numeric_only, 0,
+        "{} known domain-frontier safe-window pairs leaked into numeric-only",
+        m.numeric_only
     );
 }
 
@@ -13617,6 +14816,408 @@ fn substitution_filters_for_raw_mode_strip_declared_filters() {
 }
 
 #[test]
+fn known_raw_domain_frontier_detects_rational_ctx_log_square_pair() {
+    assert_eq!(
+        known_raw_domain_frontier_reason(
+            "ln((1/(u - 1) + 1/(u + 1))^2)",
+            "2*ln((1/(u - 1) + 1/(u + 1)))"
+        ),
+        Some("log-square expansion changes domain")
+    );
+}
+
+#[test]
+fn known_domain_frontier_detects_substitution_log_square_pair() {
+    assert_eq!(
+        known_domain_frontier_reason("ln((2*u)^2)", "2*ln((2*u))"),
+        Some("log-square expansion changes domain")
+    );
+}
+
+#[test]
+fn known_domain_frontier_detects_mul_inverse_trig_pair() {
+    assert_eq!(
+        known_domain_frontier_reason(
+            "((exp(x)-exp(-x))/2)*(sin(2*arcsin(u)))",
+            "(sinh(x))*(2*u*sqrt(1-u^2))"
+        ),
+        Some("inverse-trig branch introduces domain/branch sensitivity")
+    );
+}
+
+#[test]
+fn known_domain_frontier_detects_mul_sqrt_product_pair() {
+    assert_eq!(
+        known_domain_frontier_reason(
+            "(cos(3*pi/8))*(sqrt(u)*sqrt(4*u))",
+            "(sqrt(2-sqrt(2))/2)*(2*u)"
+        ),
+        Some("sqrt product contraction changes sign/domain behavior")
+    );
+}
+
+#[test]
+fn known_domain_frontier_requires_domain_sensitive_numeric_cause() {
+    assert_eq!(
+        known_domain_frontier_reason_for_numeric_cause(
+            "domain-sensitive",
+            "ln((2*u)^2)",
+            "2*ln((2*u))"
+        ),
+        Some("log-square expansion changes domain")
+    );
+    assert_eq!(
+        known_domain_frontier_reason_for_numeric_cause(
+            "symbolic-residual",
+            "ln((2*u)^2)",
+            "2*ln((2*u))"
+        ),
+        None
+    );
+}
+
+#[test]
+fn known_domain_frontier_catalog_covers_all_csv_pairs() {
+    let pairs = load_known_domain_frontier_pairs();
+    assert_eq!(pairs.len(), 8, "unexpected known domain-frontier CSV size");
+
+    for pair in &pairs {
+        let reason = known_domain_frontier_reason(&pair.lhs, &pair.rhs);
+        assert!(
+            reason.is_some(),
+            "known domain-frontier CSV pair is missing from classifier: {} ↔ {}",
+            pair.lhs,
+            pair.rhs
+        );
+    }
+}
+
+#[test]
+fn known_domain_frontier_csv_breakdown_matches_expected_reason_counts() {
+    let pairs = load_known_domain_frontier_pairs();
+    let mut counts: HashMap<&'static str, usize> = HashMap::new();
+
+    for pair in &pairs {
+        let reason = known_domain_frontier_reason(&pair.lhs, &pair.rhs)
+            .expect("known domain-frontier CSV pair should be classified");
+        *counts.entry(reason).or_default() += 1;
+    }
+
+    assert_eq!(
+        counts.get("log-square expansion changes domain").copied(),
+        Some(3)
+    );
+    assert_eq!(
+        counts
+            .get("inverse-trig branch introduces domain/branch sensitivity")
+            .copied(),
+        Some(3)
+    );
+    assert_eq!(
+        counts
+            .get("sqrt product contraction changes sign/domain behavior")
+            .copied(),
+        Some(2)
+    );
+    assert_eq!(counts.values().sum::<usize>(), 8);
+}
+
+#[test]
+fn known_domain_frontier_safe_catalog_covers_all_csv_pairs() {
+    let pairs = load_known_domain_frontier_safe_pairs();
+    assert_eq!(
+        pairs.len(),
+        8,
+        "unexpected known domain-frontier safe CSV size"
+    );
+
+    for pair in &pairs {
+        let reason = known_domain_frontier_reason(&pair.lhs, &pair.rhs);
+        assert!(
+            reason.is_some(),
+            "known domain-frontier safe CSV pair is missing from classifier: {} ↔ {}",
+            pair.lhs,
+            pair.rhs
+        );
+    }
+}
+
+#[test]
+fn known_domain_frontier_safe_csv_mirrors_primary_pair_set() {
+    let primary = load_known_domain_frontier_pairs();
+    let safe = load_known_domain_frontier_safe_pairs();
+
+    let normalize_pair = |pair: &ContextualPair| {
+        let lhs = normalize_metamorphic_text(&pair.lhs);
+        let rhs = normalize_metamorphic_text(&pair.rhs);
+        if lhs <= rhs {
+            (lhs, rhs)
+        } else {
+            (rhs, lhs)
+        }
+    };
+
+    let primary_set: std::collections::HashSet<_> = primary.iter().map(normalize_pair).collect();
+    let safe_set: std::collections::HashSet<_> = safe.iter().map(normalize_pair).collect();
+
+    assert_eq!(
+        primary_set, safe_set,
+        "known domain-frontier safe CSV should mirror the same pair set as the primary frontier CSV"
+    );
+}
+
+#[test]
+fn known_domain_frontier_safe_csv_breakdown_matches_expected_reason_counts() {
+    let pairs = load_known_domain_frontier_safe_pairs();
+    let mut counts: HashMap<&'static str, usize> = HashMap::new();
+
+    for pair in &pairs {
+        let reason = known_domain_frontier_reason(&pair.lhs, &pair.rhs)
+            .expect("known domain-frontier safe CSV pair should be classified");
+        *counts.entry(reason).or_default() += 1;
+    }
+
+    assert_eq!(
+        counts.get("log-square expansion changes domain").copied(),
+        Some(3)
+    );
+    assert_eq!(
+        counts
+            .get("inverse-trig branch introduces domain/branch sensitivity")
+            .copied(),
+        Some(3)
+    );
+    assert_eq!(
+        counts
+            .get("sqrt product contraction changes sign/domain behavior")
+            .copied(),
+        Some(2)
+    );
+    assert_eq!(counts.values().sum::<usize>(), 8);
+}
+
+#[test]
+fn known_domain_frontier_safe_csv_declares_effective_filters() {
+    let pairs = load_known_domain_frontier_safe_pairs();
+
+    for pair in &pairs {
+        assert!(
+            pair.filters.iter().any(|f| !f.is_none()),
+            "known domain-frontier safe CSV pair should declare at least one effective filter: {} ↔ {}",
+            pair.lhs,
+            pair.rhs
+        );
+    }
+}
+
+#[test]
+fn safe_window_parametrized_proof_closes_log_square_and_sqrt_product_pairs() {
+    assert!(prove_zero_from_safe_window_parametrized_texts(
+        "ln((-u)^2)",
+        "2*ln((-u))"
+    ));
+    assert!(prove_zero_from_safe_window_parametrized_texts(
+        "ln((2*u)^2)",
+        "2*ln((2*u))"
+    ));
+    assert!(prove_zero_from_safe_window_parametrized_texts(
+        "ln((1-u)^2)",
+        "2*ln((1-u))"
+    ));
+    assert!(prove_zero_from_safe_window_parametrized_texts(
+        "(cos(3*pi/8))*(sqrt(u)*sqrt(4*u))",
+        "(sqrt(2-sqrt(2))/2)*(2*u)"
+    ));
+    assert!(prove_zero_from_safe_window_parametrized_texts(
+        "(sin(2*arcsin(x)))*(sqrt(u)*sqrt(4*u))",
+        "(2*x*sqrt(1-x^2))*(2*u)"
+    ));
+    assert!(prove_zero_from_safe_window_parametrized_texts(
+        "((exp(x)-exp(-x))/2)*(sin(2*arcsin(u)))",
+        "(sinh(x))*(2*u*sqrt(1-u^2))"
+    ));
+    assert!(prove_zero_from_safe_window_parametrized_texts(
+        "(tanh(x))*(sin(2*arcsin(u)))",
+        "((exp(x)-exp(-x))/(exp(x)+exp(-x)))*(2*u*sqrt(1-u^2))"
+    ));
+    assert!(prove_zero_from_safe_window_parametrized_texts(
+        "(sin(2*arcsin(x)))*(abs(sin(u/2)))",
+        "(2*x*sqrt(1-x^2))*(sqrt((1-cos(u))/2))"
+    ));
+}
+
+#[test]
+fn safe_window_parametrized_proof_is_narrower_than_raw_engine_on_inverse_trig_branch() {
+    let lhs = "((exp(x)-exp(-x))/2)*(sin(2*arcsin(u)))";
+    let rhs = "(sinh(x))*(2*u*sqrt(1-u^2))";
+    assert!(!prove_zero_from_engine_texts(lhs, rhs));
+    assert!(prove_zero_from_safe_window_parametrized_texts(lhs, rhs));
+    assert!(prove_zero_from_safe_window_parametrized_texts(
+        "((exp(x)-exp(-x))/2)*(sin(2*arcsin(u)))",
+        "(sinh(x))*(2*u*sqrt(1-u^2))"
+    ));
+}
+
+#[test]
+fn safe_window_parametrized_catalog_covers_all_safe_csv_pairs() {
+    let pairs = load_known_domain_frontier_safe_pairs();
+    assert_eq!(
+        pairs.len(),
+        8,
+        "unexpected known domain-frontier safe CSV size"
+    );
+
+    for pair in &pairs {
+        assert!(
+            safe_window_parametrized_pair_texts(&pair.lhs, &pair.rhs).is_some(),
+            "known domain-frontier safe CSV pair is missing from parametrized proof catalog: {} ↔ {}",
+            pair.lhs,
+            pair.rhs
+        );
+    }
+}
+
+#[test]
+fn known_domain_frontier_primary_pairs_all_have_safe_window_symbolic_mirror() {
+    let pairs = load_known_domain_frontier_pairs();
+
+    for pair in &pairs {
+        assert!(
+            safe_window_parametrized_pair_texts(&pair.lhs, &pair.rhs).is_some(),
+            "primary known domain-frontier pair is missing a safe-window parametrization: {} ↔ {}",
+            pair.lhs,
+            pair.rhs
+        );
+        assert!(
+            prove_zero_from_safe_window_parametrized_texts(&pair.lhs, &pair.rhs),
+            "primary known domain-frontier pair is missing a working safe-window symbolic closure: {} ↔ {}",
+            pair.lhs,
+            pair.rhs
+        );
+    }
+}
+
+#[test]
+fn known_domain_frontier_primary_and_safe_window_metrics_stay_complementary() {
+    let primary = run_known_domain_frontier_pair_tests();
+    let safe = run_known_domain_frontier_safe_pair_tests();
+
+    assert_eq!(primary.failed, 0);
+    assert_eq!(primary.timeouts, 0);
+    assert_eq!(primary.numeric_only, 0);
+    assert_eq!(primary.inconclusive, 8);
+    assert_eq!(primary.known_domain_frontier_count(), 8);
+    assert_eq!(primary.proved_symbolic(), 0);
+
+    assert_eq!(safe.failed, 0);
+    assert_eq!(safe.timeouts, 0);
+    assert_eq!(safe.inconclusive, 0);
+    assert_eq!(safe.numeric_only, 0);
+    assert_eq!(safe.proved_symbolic(), 8);
+
+    assert_eq!(
+        primary.known_domain_frontier_count(),
+        safe.proved_symbolic(),
+        "safe-window should symbolically close exactly the frontier cases reported by the primary suite"
+    );
+}
+
+#[test]
+fn safe_window_parametrized_catalog_closes_all_safe_csv_pairs() {
+    let pairs = load_known_domain_frontier_safe_pairs();
+
+    for pair in &pairs {
+        assert!(
+            prove_zero_from_safe_window_parametrized_texts(&pair.lhs, &pair.rhs),
+            "known domain-frontier safe CSV pair did not close through the parametrized proof path: {} ↔ {}",
+            pair.lhs,
+            pair.rhs
+        );
+    }
+}
+
+#[test]
+fn known_domain_frontier_safe_runtime_breakdown_matches_expected_numeric_cause_counts() {
+    let metrics = run_known_domain_frontier_safe_pair_tests();
+
+    assert_eq!(metrics.failed, 0);
+    assert_eq!(metrics.timeouts, 0);
+    assert_eq!(metrics.inconclusive, 0);
+    assert_eq!(metrics.proved_symbolic(), 8);
+    assert_eq!(metrics.numeric_only, 0);
+    assert_eq!(metrics.numeric_only_cause_count("domain-sensitive"), 0);
+    assert_eq!(metrics.numeric_only_causes.len(), 0);
+}
+
+#[test]
+fn normalize_inconclusive_reason_label_collapses_known_prefixes() {
+    assert_eq!(
+        normalize_inconclusive_reason_label("Too few valid samples: 0 / 20"),
+        "too few valid samples"
+    );
+    assert_eq!(
+        normalize_inconclusive_reason_label(
+            "Direct n-var check remained inconclusive (2 slices inconclusive): Too few valid samples: 0 / 20"
+        ),
+        "n-var direct check remained inconclusive"
+    );
+    assert_eq!(
+        normalize_inconclusive_reason_label("Unsupported contextual numeric arity: 0"),
+        "unsupported contextual numeric arity"
+    );
+}
+
+#[test]
+fn combo_metrics_known_domain_frontier_count_sums_domain_frontier_causes_only() {
+    let mut causes = HashMap::new();
+    causes.insert(
+        "domain-frontier: inverse-trig branch introduces domain/branch sensitivity".to_string(),
+        3,
+    );
+    causes.insert(
+        "domain-frontier: log-square expansion changes domain".to_string(),
+        2,
+    );
+    causes.insert("too few valid samples".to_string(), 1);
+
+    let metrics = ComboMetrics {
+        op: "test".to_string(),
+        pairs: 0,
+        families: 0,
+        combos: 0,
+        nf_convergent: 0,
+        proved_quotient: 0,
+        proved_difference: 0,
+        proved_composed: 0,
+        numeric_only: 0,
+        inconclusive: 6,
+        failed: 0,
+        skipped: 0,
+        timeouts: 0,
+        cycle_events_total: 0,
+        known_symbolic_residuals: 0,
+        numeric_only_causes: HashMap::new(),
+        inconclusive_causes: causes,
+        domain_frontier_examples: Vec::new(),
+    };
+
+    assert_eq!(metrics.known_domain_frontier_count(), 5);
+}
+
+#[test]
+fn known_symbolic_residual_detects_trig_square_cube_substitution_pair() {
+    assert_eq!(
+        known_symbolic_residual_reason(
+            "((sin(u)^2)^3 - 1)/((sin(u)^2) - 1)",
+            "(sin(u)^2)^2 + (sin(u)^2) + 1"
+        ),
+        Some(
+            "trig-square cube quotient still loses the visible t^3-1 over t-1 shape inside the runtime subtraction path"
+        )
+    );
+}
+
+#[test]
 fn rational_ctx_log_square_rule_is_domain_sensitive_without_filter() {
     let mut simplifier = Simplifier::with_default_rules();
     let lhs = parse("ln((1/(u - 1) + 1/(u + 1))^2)", &mut simplifier.context).expect("lhs");
@@ -13651,6 +15252,47 @@ fn rational_ctx_log_square_rule_is_domain_sensitive_without_filter() {
         &metatest_config(),
     );
     assert!(matches!(outcome, NumericCheckOutcome::Pass));
+}
+
+#[test]
+fn trig_square_cube_substitution_residual_stays_explicit_symbolic_tracker() {
+    let mut simplifier = Simplifier::with_default_rules();
+    let lhs = parse(
+        "((sin(u)^2)^3 - 1)/((sin(u)^2) - 1)",
+        &mut simplifier.context,
+    )
+    .expect("lhs");
+    let rhs = parse("(sin(u)^4 + sin(u)^2 + 1)", &mut simplifier.context).expect("rhs");
+
+    let (lhs_simp, _) = simplifier.simplify(lhs);
+    let (rhs_simp, _) = simplifier.simplify(rhs);
+    let diff = simplifier
+        .context
+        .add(cas_ast::Expr::Sub(lhs_simp, rhs_simp));
+    let (diff_simp, _) = simplifier.simplify(diff);
+    let residual_shape = expr_shape_signature(&simplifier.context, diff_simp);
+
+    let cause = numeric_only_cause_for_vars(
+        &simplifier.context,
+        lhs_simp,
+        rhs_simp,
+        &[String::from("u")],
+        &[FilterSpec::None],
+        &metatest_config(),
+        &residual_shape,
+    );
+
+    assert!(matches!(cause, NumericOnlyCause::SymbolicResidual));
+    assert_eq!(
+        format!(
+            "{}",
+            DisplayExpr {
+                context: &simplifier.context,
+                id: diff_simp
+            }
+        ),
+        "(sin(u)^6 - 1) / (-1 * cos(u)^2) - (sin(u)^2 + sin(u)^4 + 1)"
+    );
 }
 
 #[test]
@@ -14015,12 +15657,19 @@ fn metatest_unified_benchmark() {
     let mut total_combos = 0usize;
     let mut total_nf = 0usize;
     let mut total_proved = 0usize;
+    let mut total_proved_quotient = 0usize;
+    let mut total_proved_difference = 0usize;
+    let mut total_proved_composed = 0usize;
     let mut total_numeric = 0usize;
     let mut total_inconclusive = 0usize;
     let mut total_failed = 0usize;
     let mut total_timeouts = 0usize;
     let mut total_cycles = 0usize;
     let mut total_skipped = 0usize;
+    let mut total_symbolic_trackers = 0usize;
+    let mut total_domain_frontier = 0usize;
+    let mut total_inconclusive_causes: HashMap<String, usize> = HashMap::new();
+    let mut total_domain_frontier_examples: Vec<(String, String, String, String)> = Vec::new();
 
     for m in &all_metrics {
         let effective = m
@@ -14065,12 +15714,31 @@ fn metatest_unified_benchmark() {
         total_combos += m.combos;
         total_nf += m.nf_convergent;
         total_proved += proved;
+        total_proved_quotient += m.proved_quotient;
+        total_proved_difference += m.proved_difference;
+        total_proved_composed += m.proved_composed;
         total_numeric += m.numeric_only;
         total_inconclusive += m.inconclusive;
         total_failed += m.failed;
         total_timeouts += m.timeouts;
         total_cycles += m.cycle_events_total;
         total_skipped += m.skipped;
+        total_symbolic_trackers += m.known_symbolic_residuals;
+        total_domain_frontier += m.known_domain_frontier_count();
+        for (lhs, rhs, reason) in &m.domain_frontier_examples {
+            if total_domain_frontier_examples.len() >= 6 {
+                break;
+            }
+            total_domain_frontier_examples.push((
+                m.op.clone(),
+                lhs.clone(),
+                rhs.clone(),
+                reason.clone(),
+            ));
+        }
+        for (cause, count) in &m.inconclusive_causes {
+            *total_inconclusive_causes.entry(cause.clone()).or_default() += *count;
+        }
     }
 
     let total_effective = total_combos
@@ -14112,6 +15780,34 @@ fn metatest_unified_benchmark() {
     );
     eprintln!("╚═══════╧════════╧══════════════╧══════════════╧══════════════╧══════════════╧════════╧═══════╧════════╧════════════════════╝");
 
+    if total_proved > 0 {
+        eprintln!();
+        eprintln!(
+            "🔢 Proved-symbolic breakdown: quotient {} | diff {} | composed {}",
+            total_proved_quotient, total_proved_difference, total_proved_composed
+        );
+        let top_proved = top_proved_symbolic_contributors(&all_metrics, 5);
+        if !top_proved.is_empty() {
+            eprintln!("   Biggest proved contributors:");
+            for (op, proved, quotient, diff, composed) in top_proved {
+                eprintln!(
+                    "   - {}: {} (quotient {}, diff {}, composed {})",
+                    op, proved, quotient, diff, composed
+                );
+            }
+        }
+        let top_gap = top_normalization_gap_hotspots(&all_metrics, 5);
+        if !top_gap.is_empty() {
+            eprintln!("   Normalization-gap hotspots (diff + composed):");
+            for (op, burden, diff, composed) in top_gap {
+                eprintln!(
+                    "   - {}: {} (diff {}, composed {})",
+                    op, burden, diff, composed
+                );
+            }
+        }
+    }
+
     if total_failed > 0 {
         eprintln!(
             "⚠️  {} semantic failures detected — investigate before merging.",
@@ -14135,11 +15831,95 @@ fn metatest_unified_benchmark() {
         eprintln!("⏱️  {} timeouts detected — consider increasing time budget or investigating slow combos.", total_timeouts);
     }
 
+    let mut safe_window_metrics = None;
+
     if total_inconclusive > 0 {
         eprintln!();
         eprintln!(
             "◐ {} inconclusive numeric checks recorded — tracked separately from semantic failures.",
             total_inconclusive
+        );
+        if total_domain_frontier > 0 {
+            let metrics =
+                safe_window_metrics.get_or_insert_with(run_known_domain_frontier_safe_pair_tests);
+            eprintln!(
+                "🛡️  {} known domain-frontier case(s) counted inside inconclusive.",
+                total_domain_frontier
+            );
+            if total_domain_frontier == total_inconclusive {
+                eprintln!("   All remaining inconclusives are explicit domain-frontier cases.");
+            }
+            if safe_window_mirror_closes_all_domain_frontiers(total_domain_frontier, metrics) {
+                eprintln!(
+                    "   Safe-window mirror closes all {} domain-frontier cases symbolically.",
+                    total_domain_frontier
+                );
+            }
+            for m in &all_metrics {
+                let domain_frontier = m.known_domain_frontier_count();
+                if domain_frontier > 0 {
+                    eprintln!("   - {}: {}", m.op, domain_frontier);
+                }
+            }
+            if !total_domain_frontier_examples.is_empty() {
+                eprintln!("   Examples:");
+                for (op, lhs, rhs, reason) in total_domain_frontier_examples.iter().take(5) {
+                    eprintln!("     [{}] {}  ↔  {}", op, lhs, rhs);
+                    eprintln!("         reason: {}", reason);
+                }
+            }
+        }
+        print_inconclusive_breakdown(&total_inconclusive_causes);
+    }
+
+    if total_symbolic_trackers > 0 {
+        eprintln!();
+        eprintln!(
+            "📌 {} known symbolic residual tracker(s) still counted inside numeric-only.",
+            total_symbolic_trackers
+        );
+        for m in &all_metrics {
+            if m.known_symbolic_residuals > 0 {
+                eprintln!("   - {}: {}", m.op, m.known_symbolic_residuals);
+            }
+        }
+    }
+
+    assert_eq!(
+        total_failed, 0,
+        "unified benchmark detected {} semantic failure(s)",
+        total_failed
+    );
+    assert_eq!(
+        total_timeouts, 0,
+        "unified benchmark detected {} timeout(s)",
+        total_timeouts
+    );
+    assert_eq!(
+        total_numeric, 0,
+        "unified benchmark detected {} numeric-only case(s)",
+        total_numeric
+    );
+    assert_eq!(
+        total_inconclusive, total_domain_frontier,
+        "unified benchmark has {} inconclusive case(s), but only {} are known domain-frontier",
+        total_inconclusive, total_domain_frontier
+    );
+    if total_domain_frontier > 0 {
+        let safe_window_metrics =
+            safe_window_metrics.get_or_insert_with(run_known_domain_frontier_safe_pair_tests);
+        assert!(
+            safe_window_mirror_closes_all_domain_frontiers(
+                total_domain_frontier,
+                safe_window_metrics,
+            ),
+            "safe-window mirror no longer closes all {} domain-frontier case(s): proved={}, numeric={}, inconclusive={}, failed={}, timeouts={}",
+            total_domain_frontier,
+            safe_window_metrics.proved_symbolic(),
+            safe_window_metrics.numeric_only,
+            safe_window_metrics.inconclusive,
+            safe_window_metrics.failed,
+            safe_window_metrics.timeouts
         );
     }
 

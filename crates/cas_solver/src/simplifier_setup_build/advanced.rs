@@ -19,6 +19,9 @@ pub(super) fn add_advanced_rules(
     simplifier.add_rule(Box::new(crate::rules::algebra::SymmetricReciprocalSumRule));
     simplifier.add_rule(Box::new(crate::rules::algebra::AddFractionsRule));
     simplifier.add_rule(Box::new(crate::rules::algebra::SimplifyMulDivRule));
+    simplifier.add_rule(Box::new(
+        crate::rules::algebra::ReciprocalDifferenceOfSquaresRule,
+    ));
     if config.rationalize_denominator {
         simplifier.add_rule(Box::new(crate::rules::algebra::RationalizeDenominatorRule));
     }

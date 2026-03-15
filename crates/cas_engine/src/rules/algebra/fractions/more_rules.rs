@@ -6,6 +6,7 @@ use crate::rule::Rewrite;
 use cas_math::difference_product_rule_support::{
     try_rewrite_absorb_negation_into_difference_expr, try_rewrite_canonical_difference_product_expr,
 };
+use cas_math::expr_destructure::as_div;
 use cas_math::rationalize_binomial_surd_support::try_rewrite_rationalize_binomial_surd_expr;
 
 // ========== Binomial Conjugate Rationalization (Level 1) ==========
@@ -21,6 +22,45 @@ define_rule!(
     None,
     PhaseMask::RATIONALIZE,
     |ctx, expr| {
+        fn format_div_expand_cancel_desc(
+            kind: cas_math::div_expand_cancel_support::DivExpandToCancelKind,
+        ) -> &'static str {
+            match kind {
+                cas_math::div_expand_cancel_support::DivExpandToCancelKind::OpaqueSubstitution => {
+                    "Polynomial division with opaque substitution"
+                }
+                cas_math::div_expand_cancel_support::DivExpandToCancelKind::ExpandedEquality => {
+                    "Expanded numerator equals denominator"
+                }
+            }
+        }
+
+        if let Some(exact_quotient) = cas_math::div_expand_cancel_support::try_rewrite_div_expand_to_cancel_expr_with_thread_guards(
+            ctx,
+            expr,
+            |base_ctx, sub_frac| {
+                let mut simplifier = crate::Simplifier::with_default_rules();
+                simplifier.context = base_ctx.clone();
+                let (simplified, _) = simplifier.simplify(sub_frac);
+                Some((simplifier.context, simplified))
+            },
+            crate::expand::expand,
+            |expanded_ctx, expanded_num, expanded_den| {
+                let mut simplifier = crate::Simplifier::with_default_rules();
+                simplifier.context = expanded_ctx;
+                let (simplified_num, _) = simplifier.simplify(expanded_num);
+                let (simplified_den, _) = simplifier.simplify(expanded_den);
+                Some((simplifier.context, simplified_num, simplified_den))
+            },
+        ) {
+            let mut rewrite = Rewrite::new(exact_quotient.rewritten)
+                .desc(format_div_expand_cancel_desc(exact_quotient.kind));
+            if let Some((_, den)) = as_div(ctx, expr) {
+                rewrite = rewrite.requires(crate::ImplicitCondition::NonZero(den));
+            }
+            return Some(rewrite);
+        }
+
         let rewritten = try_rewrite_rationalize_binomial_surd_expr(ctx, expr)?;
         let desc = format_rationalize_binomial_surd_desc(ctx, rewritten);
         Some(Rewrite::new(rewritten.rewritten).desc(desc))

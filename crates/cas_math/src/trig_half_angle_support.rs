@@ -1,6 +1,8 @@
 use crate::expr_nary::mul_leaves;
 use cas_ast::ordering::compare_expr;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
+use num_rational::BigRational;
+use num_traits::One;
 use std::cmp::Ordering;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -67,32 +69,110 @@ fn is_half_angle_relaxed(ctx: &mut Context, arg: ExprId) -> Option<ExprId> {
     let Expr::Div(num, den) = ctx.get(arg).clone() else {
         return None;
     };
-    let factors = mul_leaves(ctx, den);
+    if let Some(reduced_den) = try_remove_factor_two(ctx, den) {
+        return Some(ctx.add(Expr::Div(num, reduced_den)));
+    }
+
+    None
+}
+
+fn try_remove_factor_two(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    if let Some(reduced_mul) = try_remove_factor_two_from_mul(ctx, expr) {
+        return Some(reduced_mul);
+    }
+    try_remove_factor_two_from_add(ctx, expr)
+}
+
+fn try_remove_factor_two_from_mul(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    let factors = mul_leaves(ctx, expr);
     let mut removed_two = false;
     let mut remaining = Vec::with_capacity(factors.len());
     for factor in factors {
         if !removed_two
-            && matches!(
-                ctx.get(factor),
-                Expr::Number(n) if *n == num_rational::BigRational::from_integer(2.into())
-            )
+            && matches!(ctx.get(factor), Expr::Number(n) if *n == BigRational::from_integer(2.into()))
         {
             removed_two = true;
             continue;
         }
         remaining.push(factor);
     }
+
     if !removed_two {
         return None;
     }
+
     if remaining.is_empty() {
-        return Some(num);
+        return Some(ctx.num(1));
     }
+
     let mut rebuilt_den = remaining[0];
     for &factor in remaining.iter().skip(1) {
         rebuilt_den = ctx.add(Expr::Mul(rebuilt_den, factor));
     }
-    Some(ctx.add(Expr::Div(num, rebuilt_den)))
+    Some(rebuilt_den)
+}
+
+fn try_divide_term_by_two(ctx: &mut Context, term: ExprId) -> Option<ExprId> {
+    match ctx.get(term).clone() {
+        Expr::Number(n) => Some(ctx.add(Expr::Number(n / BigRational::from_integer(2.into())))),
+        Expr::Neg(inner) => {
+            let reduced = try_divide_term_by_two(ctx, inner)?;
+            Some(ctx.add(Expr::Neg(reduced)))
+        }
+        Expr::Mul(_, _) => {
+            let factors = mul_leaves(ctx, term);
+            let mut reduced_factors = Vec::with_capacity(factors.len());
+            let mut divided = false;
+            for factor in factors {
+                if !divided {
+                    if let Expr::Number(n) = ctx.get(factor) {
+                        let reduced = n.clone() / BigRational::from_integer(2.into());
+                        if reduced.is_one() {
+                            divided = true;
+                            continue;
+                        }
+                        reduced_factors.push(ctx.add(Expr::Number(reduced)));
+                        divided = true;
+                        continue;
+                    }
+                }
+                reduced_factors.push(factor);
+            }
+
+            if !divided {
+                return None;
+            }
+            if reduced_factors.is_empty() {
+                return Some(ctx.num(1));
+            }
+
+            let mut rebuilt = reduced_factors[0];
+            for &factor in reduced_factors.iter().skip(1) {
+                rebuilt = ctx.add(Expr::Mul(rebuilt, factor));
+            }
+            Some(rebuilt)
+        }
+        _ => None,
+    }
+}
+
+fn try_remove_factor_two_from_add(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    let terms = crate::expr_nary::add_terms_signed(ctx, expr);
+    if terms.len() < 2 {
+        return None;
+    }
+
+    let mut rebuilt_terms = Vec::with_capacity(terms.len());
+    for (term, sign) in terms {
+        let reduced = try_divide_term_by_two(ctx, term)?;
+        let signed = match sign {
+            crate::expr_nary::Sign::Pos => reduced,
+            crate::expr_nary::Sign::Neg => ctx.add(Expr::Neg(reduced)),
+        };
+        rebuilt_terms.push(signed);
+    }
+
+    Some(crate::expr_nary::build_balanced_add(ctx, &rebuilt_terms))
 }
 
 /// Check if `expr` is `tan(u/2)` and return `u`.
@@ -471,6 +551,30 @@ mod tests {
         let expr = parse("(2*u + 1)/(2*u*(u + 1))", &mut ctx).expect("expr");
         let expected = parse("(2*u + 1)/(u*(u + 1))", &mut ctx).expect("expected");
         let got = is_half_angle_relaxed(&mut ctx, expr).expect("factored half-angle");
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, got, expected),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn is_half_angle_recognizes_common_two_in_additive_denominator() {
+        let mut ctx = Context::new();
+        let expr = parse("u/(2*u + 2)", &mut ctx).expect("expr");
+        let expected = parse("u/(u + 1)", &mut ctx).expect("expected");
+        let got = is_half_angle_relaxed(&mut ctx, expr).expect("additive half-angle");
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, got, expected),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn is_half_angle_recognizes_common_two_in_signed_additive_denominator() {
+        let mut ctx = Context::new();
+        let expr = parse("(u - 1)/(2*u + 2)", &mut ctx).expect("expr");
+        let expected = parse("(u - 1)/(u + 1)", &mut ctx).expect("expected");
+        let got = is_half_angle_relaxed(&mut ctx, expr).expect("signed additive half-angle");
         assert_eq!(
             cas_ast::ordering::compare_expr(&ctx, got, expected),
             std::cmp::Ordering::Equal

@@ -6,11 +6,14 @@
 //! - WeierstrassCosIdentityZeroRule: cos(x) - (1-tan²(x/2))/(1+tan²(x/2)) → 0
 //! - Sin4xIdentityZeroRule: sin(4t) - 4*sin(t)*cos(t)*(cos²(t)-sin²(t)) → 0
 //! - TanDifferenceIdentityZeroRule: tan(a-b) - (tan(a)-tan(b))/(1+tan(a)*tan(b)) → 0
+//! - SinSumTripleIdentityZeroRule: sin(t)+sin(3t) - 2*sin(2t)*cos(t) → 0
+//! - CosTripleIdentityZeroRule: cos(3t) - (4*cos(t)^3 - 3*cos(t)) → 0
 
 use crate::rule::Rewrite;
 use cas_ast::ExprId;
 use cas_math::trig_identity_zero_support::{
-    try_rewrite_sin4x_identity_zero_expr, try_rewrite_tan_difference_identity_zero_expr,
+    try_rewrite_cos_triple_identity_zero_expr, try_rewrite_sin4x_identity_zero_expr,
+    try_rewrite_sin_sum_triple_identity_zero_expr, try_rewrite_tan_difference_identity_zero_expr,
     IdentityZeroRewriteKind,
 };
 use cas_math::trig_weierstrass_support::{
@@ -27,6 +30,8 @@ fn format_identity_zero_desc(kind: IdentityZeroRewriteKind) -> &'static str {
         }
         IdentityZeroRewriteKind::TanDifference => "tan(a-b) = (tan(a)-tan(b))/(1+tan(a)·tan(b))",
         IdentityZeroRewriteKind::Sin4x => "sin(4t) = 4·sin(t)·cos(t)·(cos²(t)-sin²(t))",
+        IdentityZeroRewriteKind::SinSumTriple => "sin(t) + sin(3t) = 2·sin(2t)·cos(t)",
+        IdentityZeroRewriteKind::CosTriple => "cos(3t) = 4·cos(t)^3 - 3·cos(t)",
     }
 }
 
@@ -165,6 +170,66 @@ impl crate::rule::Rule for TanDifferenceIdentityZeroRule {
 
     fn priority(&self) -> i32 {
         200 // Run before tan→sin/cos expansion
+    }
+
+    fn importance(&self) -> crate::step::ImportanceLevel {
+        crate::step::ImportanceLevel::High
+    }
+}
+
+pub struct SinSumTripleIdentityZeroRule;
+
+impl crate::rule::Rule for SinSumTripleIdentityZeroRule {
+    fn name(&self) -> &str {
+        "Sin Sum Triple Identity Zero"
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: ExprId,
+        _parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<Rewrite> {
+        let rewrite = try_rewrite_sin_sum_triple_identity_zero_expr(ctx, expr)?;
+        Some(Rewrite::new(ctx.num(0)).desc(format_identity_zero_desc(rewrite.kind)))
+    }
+
+    fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
+        Some(crate::target_kind::TargetKindSet::ADD_SUB)
+    }
+
+    fn priority(&self) -> i32 {
+        200
+    }
+
+    fn importance(&self) -> crate::step::ImportanceLevel {
+        crate::step::ImportanceLevel::High
+    }
+}
+
+pub struct CosTripleIdentityZeroRule;
+
+impl crate::rule::Rule for CosTripleIdentityZeroRule {
+    fn name(&self) -> &str {
+        "Cos Triple Identity Zero"
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: ExprId,
+        _parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<Rewrite> {
+        let rewrite = try_rewrite_cos_triple_identity_zero_expr(ctx, expr)?;
+        Some(Rewrite::new(ctx.num(0)).desc(format_identity_zero_desc(rewrite.kind)))
+    }
+
+    fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
+        Some(crate::target_kind::TargetKindSet::ADD_SUB)
+    }
+
+    fn priority(&self) -> i32 {
+        200
     }
 
     fn importance(&self) -> crate::step::ImportanceLevel {

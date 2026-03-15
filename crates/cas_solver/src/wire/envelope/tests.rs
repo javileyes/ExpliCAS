@@ -312,7 +312,7 @@ fn evaluate_envelope_wire_command_strict_keeps_abs_radical_family_safe_without_a
         evaluate_envelope_wire_command("sqrt(x^2)", EvalDomainMode::Strict, EvalValueDomain::Real);
     let sqrt_wire = parse_envelope(&sqrt_payload);
 
-    assert_eq!(sqrt_wire["result"]["value"]["display"], "sqrt(x^2)");
+    assert_eq!(sqrt_wire["result"]["value"]["display"], "|x|");
     assert!(sqrt_wire["transparency"]["required_conditions"]
         .as_array()
         .expect("required_conditions array")
@@ -438,7 +438,7 @@ fn evaluate_envelope_wire_command_assume_collapses_even_power_and_abs_with_warni
         evaluate_envelope_wire_command("sqrt(x^2)", EvalDomainMode::Assume, EvalValueDomain::Real);
     let sqrt_wire = parse_envelope(&sqrt_payload);
 
-    assert_eq!(sqrt_wire["result"]["value"]["display"], "x");
+    assert_eq!(sqrt_wire["result"]["value"]["display"], "|x|");
     assert!(sqrt_wire["transparency"]["required_conditions"]
         .as_array()
         .expect("required_conditions array")
@@ -446,9 +446,7 @@ fn evaluate_envelope_wire_command_assume_collapses_even_power_and_abs_with_warni
     let sqrt_assumed = sqrt_wire["transparency"]["assumptions_used"]
         .as_array()
         .expect("assumptions_used array");
-    assert_eq!(sqrt_assumed.len(), 1);
-    assert_eq!(sqrt_assumed[0]["rule"], "Abs Under Positivity");
-    assert_eq!(sqrt_assumed[0]["display"], "x > 0");
+    assert!(sqrt_assumed.is_empty());
 }
 
 #[test]

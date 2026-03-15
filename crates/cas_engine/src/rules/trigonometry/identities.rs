@@ -58,8 +58,8 @@ pub use half_angle_phase_rules::{
 
 mod identity_zero_rules;
 pub use identity_zero_rules::{
-    Sin4xIdentityZeroRule, TanDifferenceIdentityZeroRule, WeierstrassCosIdentityZeroRule,
-    WeierstrassSinIdentityZeroRule,
+    CosTripleIdentityZeroRule, Sin4xIdentityZeroRule, SinSumTripleIdentityZeroRule,
+    TanDifferenceIdentityZeroRule, WeierstrassCosIdentityZeroRule, WeierstrassSinIdentityZeroRule,
 };
 
 mod tan_half_angle_rules;

@@ -10,7 +10,9 @@
 mod didactic_factor_support;
 mod gcd_cancel;
 
-pub(crate) use didactic_factor_support::try_plan_perfect_square_minus_in_num;
+pub(crate) use didactic_factor_support::{
+    try_plan_perfect_square_minus_in_num, try_plan_sum_diff_of_cubes_in_num,
+};
 
 // Re-export rules from gcd_cancel
 pub use gcd_cancel::{
@@ -55,7 +57,7 @@ pub use more_rules::{
 pub use rationalize::{
     DivAddCommonFactorFromDenRule, DivAddSymmetricFactorRule, DivDenFactorOutRule,
     DivExpandNumForCancelRule, DivExpandToCancelRule, FactorBasedLCDRule,
-    PullConstantFromFractionRule, QuotientOfPowersRule,
+    PullConstantFromFractionRule, QuotientOfPowersRule, ReciprocalDifferenceOfSquaresRule,
 };
 pub use small_rules::DivScalarIntoAddRule;
 pub use small_rules::RationalizeSingleSurdRule;

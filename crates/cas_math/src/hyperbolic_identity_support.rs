@@ -1137,6 +1137,26 @@ mod tests {
     }
 
     #[test]
+    fn rewrites_sinh_double_angle_expansion_for_expanded_linear_argument() {
+        let mut ctx = Context::new();
+        let two = ctx.num(2);
+        let expr = parse("sinh(4*u + 6)", &mut ctx).expect("expr");
+        let expected = [
+            parse("2*u + 3", &mut ctx).expect("expected"),
+            parse("3 + 2*u", &mut ctx).expect("expected variant"),
+        ];
+        let rewrite = try_rewrite_sinh_double_angle_expansion(&mut ctx, expr).expect("rewrite");
+        assert_two_builtin_product_with_shared_arg(
+            &ctx,
+            two,
+            rewrite,
+            BuiltinFn::Sinh,
+            BuiltinFn::Cosh,
+            &expected,
+        );
+    }
+
+    #[test]
     fn rewrites_tanh_double_angle_expansion() {
         let mut ctx = Context::new();
         let x = ctx.var("x");

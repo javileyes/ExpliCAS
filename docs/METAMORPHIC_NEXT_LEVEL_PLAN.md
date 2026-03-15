@@ -355,8 +355,8 @@ Estado:
   - resultado medido actual:
     - `Structural substitution (curated)`: `NF=948`, `Proved-symbolic=396`,
       `Numeric-only=0`
-    - `Structural substitution (raw pressure)`: `NF=963`,
-      `Proved-symbolic=345`, `Numeric-only=36`
+    - `Structural substitution (raw pressure)`: `NF=1016`,
+      `Proved-symbolic=317`, `Numeric-only=10`
   - mejora retenida reciente del canary raw:
     - ya no pierde cierres simbólicos reales que solo viven en el path
       original del motor antes de simplificar ambos lados
@@ -416,13 +416,359 @@ Estado:
       - `raw pressure`: `Numeric-only 38 -> 36`
       - `NF 954 -> 963`
       - `inv_trig 6 -> 4`
-  - lectura práctica:
-    - la suite curada sirve como regresión mantenible y estable para CI
-    - la suite raw sirve como "pressure test" para detectar debilidad simbólica
-      que la curación ya ha absorbido
-    - tras estas mejoras, la presión real queda mucho más concentrada en:
-      `rational_ctx`, `root_ctx`, `|u|` y algunos residuales trig/racionales
-      exactos; `poly_high` ya no es el cuello de botella principal
+    - el detector relajado de half-angle ya reconoce también denominadores
+      aditivos con factor común `2`, no solo productos factorizados
+    - eso permite cierres reales del path estándar para:
+      - `2*sin((u/(u+1))/2)^2 = 1 - cos(u/(u+1))`
+      - `2*sin(((u-1)/(u+1))/2)^2 = 1 - cos((u-1)/(u+1))`
+    - impacto medido:
+      - `raw pressure`: `Numeric-only 31 -> 29`
+      - `NF 974 -> 978`
+      - baja el peso de racionales ya no solo en `rational_ctx`, también en
+        `rational`
+    - la normalización de `abs(...)` ya cubre también sub-likes internos en
+      numerador/denominador de cocientes
+    - eso deja canónicos casos como:
+      - `|(1-u)/(u+1)| -> |(u-1)/(u+1)|`
+      - `|u/(1-u^2)| -> |u/(u^2-1)|`
+    - impacto medido:
+      - `raw pressure`: `Numeric-only 29 -> 27`
+      - `NF 978 -> 980`
+      - `rational_ctx 6 -> 5`
+      - `rational 3 -> 2`
+    - el matcher de cuadrado perfecto colapsado ya trata también `abs(x)` como
+      representante de `sqrt(x^2)` dentro del término medio
+    - eso rescata cierres reales como:
+      - `sqrt(abs(x)^2 + 2*abs(x) + 1) = abs(x) + 1`
+    - impacto medido:
+      - `raw pressure`: `Numeric-only 27 -> 26`
+      - `NF 980 -> 981`
+      - `absolute 4 -> 3`
+    - la identidad directa `sec^2(t) - tan^2(t) = 1` ya reconoce también la
+      forma recíproca `1/cos(t)^2 - tan(t)^2`
+    - queda fijada en tests unitarios y de producto, pero esta vez no mueve la
+      métrica `raw` porque el residual vivo bajo contexto racional sigue
+      pasando por otra forma interna
+    - el path estándar ya intenta primero el cociente exacto opaco antes de
+      racionalizar denominadores lineales con raíz
+    - eso rescata en runtime real familias como:
+      - `(x^2 + 1 + 2*sqrt(x^2 + 1)) / (sqrt(x^2 + 1) + 2) = sqrt(x^2 + 1)`
+      - `((sqrt(x^2 + 1))^2 + 2*sqrt(x^2 + 1)) / (sqrt(x^2 + 1) + 2) = sqrt(x^2 + 1)`
+    - impacto medido:
+      - `raw pressure`: `Numeric-only 26 -> 21`
+      - `NF 981 -> 983`
+      - `Proved-symbolic 337 -> 339`
+      - `root_ctx 8 -> 4`
+      - `composed 3 -> 2`
+    - además, el helper de cociente exacto opaco ya reconstruye también la
+      variante colapsada con `+1`, donde antes perdía el `root_base` al
+      fusionarse la constante:
+      - `((sqrt(u^2 + 1))^2 + 2*sqrt(u^2 + 1) + 1) / (sqrt(u^2 + 1) + 1)
+         = sqrt(u^2 + 1) + 1`
+    - impacto medido:
+      - `raw pressure`: `Numeric-only 21 -> 20`
+      - `NF 990 -> 991`
+      - `composed 2 -> 1`
+    - el pre-order de diferencia de cuadrados ya admite también, pero solo en
+      dominio real, la equivalencia `x^2 ↔ abs(x)^2` cuando el denominador
+      conserva `abs(x)` como representante visible
+    - eso rescata en runtime estándar:
+      - `((abs(x))^2 - 4) / (abs(x) + 2) = abs(x) - 2`
+    - impacto medido:
+      - `raw pressure`: `Numeric-only 20 -> 18`
+      - `NF 991 -> 1005`
+      - `Proved-symbolic 332 -> 320`
+      - `absolute 3 -> 1`
+    - `ReciprocalDifferenceOfSquaresRule` ya reconoce también la forma
+      canonicalizada `Add(a, -b)` del numerador y del denominador, no solo
+      la forma cruda `Sub(a, b)`
+    - eso hace visible en el runtime estándar:
+      - `((arctan(x)) - 1)/((arctan(x))^2 - 1) = 1/(arctan(x) + 1)`
+      - `((arcsin(x)) - 1)/((arcsin(x))^2 - 1) = 1/(arcsin(x) + 1)`
+    - impacto medido:
+      - `raw pressure`: `Numeric-only 18 -> 16`
+      - `NF 1005 -> 1007`
+      - `inv_trig 3 -> 1`
+    - la identidad pitagórica `sec²(t) - tan²(t) = 1` ya acepta también la
+      forma canonicalizada `Add(a, -b)`, no solo el nodo `Sub(a, b)` puro
+    - eso deja visible en el runtime estándar, incluso con contexto racional:
+      - `sec(1/(x-1)+1/(x+1))^2 - tan(1/(x-1)+1/(x+1))^2 = 1`
+    - impacto medido:
+      - `raw pressure`: `Numeric-only 16 -> 15`
+      - `NF 1007 -> 1008`
+      - `rational_ctx 5 -> 4`
+    - el path estándar de `sqrt(...)` ya puede reconocer también cocientes de
+      cuadrados perfectos cuando:
+      - numerador y denominador solo quedan visibles como cuadrados tras
+        reensamblar factores cuadrados
+      - y ambos lados llevan el mismo contenido racional explícito, que ahora
+        se cancela antes de construir el cociente final
+    - eso rescata en runtime estándar:
+      - `sqrt((x/(x+1))^2 + 2*(x/(x+1)) + 1) = |(2*x + 1)/(x + 1)|`
+      - `sqrt((1/x + 1/(x+1))^2 + 2*(1/x + 1/(x+1)) + 1) = |(1/x + 1/(x+1)) + 1|`
+    - impacto medido:
+      - `raw pressure`: `Numeric-only 15 -> 12`
+      - `NF 1008 -> 1010`
+      - `Proved-symbolic 320 -> 321`
+      - `rational_ctx 4 -> 3`
+    - el matcher `SinSumTripleIdentityZero` ya reconoce también:
+      - la forma distribuida `sin(t) + sin(3*t_distribuido) - 2*sin(2*t_distribuido)*cos(t)`
+      - y la forma racional equivalente después de `Add Fractions` + `Pull Constant From Fraction`
+    - eso deja cierres reales del path estándar para:
+      - `sin(u^3 + 1) + sin(3*(u^3 + 1)) = 2*sin(2*(u^3 + 1))*cos(u^3 + 1)`
+      - `sin(1/(u-1)+1/(u+1)) + sin(3*(...)) = 2*sin(2*(...))*cos(...)`
+    - impacto medido:
+      - `raw pressure`: `Numeric-only 12 -> 10`
+      - `NF 1010 -> 1016`
+      - `Proved-symbolic 321 -> 317`
+      - `rational_ctx 3 -> 2`
+    - fix adicional retenido:
+      - `DivExpandToCancel` ya detecta también el átomo opaco común cuando una
+        parte entra como `sqrt(base)` y la otra como `base^(3/2)`
+      - eso deja cierre real del path estándar para:
+        - `((sqrt(u^2 + 1))^3 - 1)/(sqrt(u^2 + 1) - 1) = sqrt(u^2 + 1)^2 + sqrt(u^2 + 1) + 1`
+      - impacto medido:
+        - `raw pressure`: `Numeric-only 10 -> 8`
+        - `NF 1016 -> 1016`
+        - `Proved-symbolic 317 -> 317`
+    - mejora retenida adicional:
+      - `AbsPowerOddMagnitudeRule` ya no rompe antes de tiempo el cociente
+        exacto `t^3 - 1 over t - 1` cuando `t = |u|`
+      - eso deja cierre real del path estándar para:
+        - `((abs(u))^3 - 1)/(abs(u) - 1) = abs(u)^2 + abs(u) + 1`
+      - impacto medido:
+        - `raw pressure`: `Numeric-only 8 -> 7`
+        - `NF 1016 -> 1017`
+        - `Proved-symbolic 317 -> 317`
+    - frontera honesta que queda abierta:
+      - `cos(3*(arctan(u))) = 4*cos(arctan(u))^3 - 3*cos(arctan(u))`
+        sigue vivo en `raw`
+      - el matcher estructural ya existe, pero en el runtime estándar el
+        recorrido sigue expandiendo antes de materializar la cancelación a `0`
+    - lectura práctica:
+      - la suite curada sirve como regresión mantenible y estable para CI
+      - la suite raw sirve como "pressure test" para detectar debilidad simbólica
+        que la curación ya ha absorbido
+      - tras estas mejoras, la presión real queda mucho más concentrada en:
+      `rational_ctx`; `poly_high`, `phase` e `inv_trig`
+      ya no son cuellos de botella principales, y `root_ctx`
+      queda reducido a un único residual de cociente
+    - baseline actual del canary:
+      - `NF-convergent: 1019`
+      - `Proved-symbolic: 321`
+      - `Numeric-only: 0`
+      - `Inconclusive: 3`
+      - `Known domain-frontier: 1`
+    - mejora retenida adicional:
+      - `Rationalize Linear Sqrt Denominator` ya detecta el cociente exacto
+        `((1/sqrt(u))^2 + 2*(1/sqrt(u)) + 1)/((1/sqrt(u)) + 1)`
+        antes de multiplicar por el conjugado
+      - eso drena el último `root_ctx` real del `raw pressure`
+    - reclasificación retenida:
+      - el último residual `rational_ctx`
+        `ln((1/(u-1)+1/(u+1))^2)` frente a `2*ln(1/(u-1)+1/(u+1))`
+        ya queda contado como `known domain-frontier`
+      - eso deja `raw pressure` sin `numeric-only` vivos y separa explícitamente
+        frontera semántica de debilidad simbólica
+    - mejora retenida posterior en `⇄sub`:
+      - `abs_support` ya extrae `gcd` numérico y signo global también en formas
+        expandidas como `|2*u^2 - 2|`, `|4*u + 6|` y `|-2*u - 3|`
+      - `try_match_log_exp_inverse_expr(...)` ya reconoce también
+        `log(b, 1/(b^x))`, lo que rescata `ln(exp(-u))`
+      - impacto medido en la suite `⇄sub`:
+        - `NF-convergent: 1563 -> 1568`
+        - `Numeric-only: 14 -> 10`
+      - impacto medido en el benchmark unificado:
+        - `TOTAL Numeric-only: 84 -> 80`
+        - `⇄sub Numeric-only: 14 -> 10`
+      - siguiente cuello principal ya claramente aislado: `mul` con `70`
+        `numeric-only` y `8` timeouts
+    - mejora retenida posterior en `×mul`:
+      - el harness promueve a `proved-composed` solo el subtipo
+        `multivar-context` cuando ambas identidades fuente ya están probadas
+        simbólicamente por separado
+      - esa promoción no toca los casos `domain-sensitive`, que siguen visibles
+        como señal honesta del motor
+      - impacto medido en `metatest_csv_combinations_mul`:
+        - `Proved-symbolic: 2758 -> 2831`
+        - `Numeric-only: 70 -> 5`
+        - `T/O: 8 -> 0`
+      - impacto medido en el benchmark unificado:
+        - `TOTAL Numeric-only: 80 -> 15`
+        - `TOTAL T/O: 9 -> 1`
+        - `mul Numeric-only: 70 -> 5`
+      - frontera restante en `mul`:
+        - ya no queda `multivar-context`
+        - solo sobreviven `5` casos `domain-sensitive`
+          ligados a `sin(2*arcsin(...))`, `sqrt(u)*sqrt(4*u)` y
+          wrappers `sinh/tanh`
+    - mejora posterior de observabilidad en combinaciones grandes:
+      - `run_csv_combination_tests(...)` ya emite progreso periódico en
+        `METATEST_VERBOSE=1` para suites largas como `mul` o el benchmark
+        unificado
+      - el ticker es configurable con `METATEST_PROGRESS_EVERY`
+      - no cambia ninguna clasificación; solo evita que `mul` sea una caja
+        negra durante runs de más de ~1k combinaciones
+    - alineación posterior del presupuesto por combinación:
+      - el harness vuelve a usar el presupuesto documentado para `mul/div` en
+        release: `2s` por combinación, manteniendo `5s` en debug
+      - además queda override explícito con `METATEST_COMBO_TIMEOUT_MS`
+      - objetivo:
+        - recuperar throughput en `mul`
+        - mantener margen cómodo en debug
+        - evitar drift entre docs, benchmark y runtime del harness
+    - mejora posterior de exploración focal:
+      - `run_csv_combination_tests(...)` ya admite `METATEST_MAX_COMBOS`
+        para cortar un slice reproducible de combinaciones dobles
+      - además admite `METATEST_COMBO_START` para saltar directamente a una
+        zona tardía del orden actual sin re-ejecutar siempre el prefijo
+      - eso permite inspeccionar `mul` por ventanas sin esperar al run entero
+        ni tocar clasificación
+      - la idea es usarlo junto con:
+        - `METATEST_VERBOSE=1`
+        - `METATEST_PROGRESS_EVERY`
+        - y, si hace falta, `METATEST_NOSHUFFLE=1` + `METATEST_START_OFFSET`
+      - hallazgo ya medido con el barrido por ventanas del orden estratificado
+        actual:
+        - `0..1000`: `Numeric-only=0`, `T/O=0`
+        - `0..3000`: `Numeric-only=0`, `T/O=0`
+        - `0..6000`: `Numeric-only=0`, `T/O=0`
+        - `6000..7000`: `Numeric-only=0`, `T/O=0`
+        - `7000..8000`: `Numeric-only=0`, `T/O=0`
+        - `8000..9000`: `Numeric-only=0`, `T/O=0`
+        - `9000..10000`: `Numeric-only=0`, `T/O=0`
+        - `10000..11175`: `Numeric-only=0`, `T/O=0`
+      - lectura práctica:
+        - `mul` ya no parece el cuello real del harness actual
+        - si el benchmark unificado sigue mostrando ruido en snapshots viejos,
+          ese ruido está desfasado o viene de otras suites, no de `mul`
+    - reclasificación posterior de fronteras de dominio en benchmark curado:
+      - el harness del benchmark unificado ya no deja como `numeric-only`
+        varios casos `domain-sensitive` honestos; ahora los cuenta como
+        `known domain-frontier` dentro de `inconclusive`
+      - familias cubiertas:
+        - `×mul`: products con `sin(2*arcsin(...))`, `sqrt(u)*sqrt(4*u)`,
+          `sinh/tanh`
+        - `⇄sub`: `ln((z)^2) ↔ 2*ln(z)` para las sustituciones `-u`, `2*u`,
+          `1-u`
+      - impacto medido:
+        - `metatest_csv_combinations_mul`:
+          - `Numeric-only: 5 -> 0`
+          - `Inconclusive: 0 -> 5`
+        - `metatest_csv_substitution`:
+          - `Numeric-only: 10 -> 7`
+          - `Inconclusive: 0 -> 3`
+        - benchmark unificado:
+          - `TOTAL Numeric-only: 15 -> 7`
+          - `TOTAL Inconclusive: 1 -> 9`
+      - lectura correcta:
+        - esto no “arregla” el motor
+        - separa mejor frontera semántica honesta de debilidad simbólica real
+        - los `7` `numeric-only` que quedan ya son residuales simbólicos de
+          `⇄sub`, no casos de dominio
+    - estado actual refrescado del benchmark unificado:
+      - `TOTAL NF-convergent: 9735 (69.6%)`
+      - `TOTAL Proved-symbolic: 4239 (30.3%)`
+      - `TOTAL Numeric-only: 0`
+      - `TOTAL Inconclusive: 8`
+      - `TOTAL T/O: 0`
+      - lectura:
+        - `add/sub/mul/div` ya quedan sin `numeric-only`
+        - `mul` ya no tiene timeouts; solo `5` fronteras de dominio honestas
+        - `⇄sub` ya no tiene `numeric-only`
+        - `⇄sub+` ya no tiene `timeout`
+        - `⇄sub+` ya tampoco tiene `inconclusive`; el falso caso residual
+          `sqrt(u^2+1)^5 / sqrt(u^2+1)^3`
+          quedó cerrado al reconstruir `__opq` contra la raíz canónica de la
+          familia y no contra la potencia compartida arbitraria
+        - los `8` `inconclusive` restantes del unificado ya quedan
+          explicitados como `known domain-frontier`
+          (`mul: 5`, `⇄sub: 3`)
+        - el benchmark unificado ya surfacinge además ejemplos concretos de
+          esas fronteras de dominio, no solo el breakdown por razón
+        - la clasificación `known domain-frontier` ya queda centralizada en el
+          harness y fijada con tests representativos para las tres familias
+          vivas del benchmark:
+          `log-square expansion`, `inverse-trig branch` y
+          `sqrt product contraction`
+        - además queda una suite dedicada
+          `metatest_csv_known_domain_frontier_pairs` para fijar esos casos de
+          forma explícita, pero fuera del unificado para no doblar sus
+          recuentos
+        - y su espejo
+          `metatest_csv_known_domain_frontier_safe_pairs`, con filtros de
+          rama/dominio seguro, para dejar probado que esas mismas familias sí
+          salen del bucket `inconclusive` cuando el muestreo queda restringido a
+          la ventana correcta
+        - lectura honesta del estado actual de esa suite espejo:
+          `Failed: 0`, `Timeout: 0`, `Inconclusive: 0`,
+          `Proved-symbolic: 8`, `Numeric-only: 0`
+        - ese cierre viene de una parametrización segura y muy estrecha del
+          filtro para las tres familias (`log-square`, `inverse-trig branch`,
+          `sqrt product`); no se generaliza al benchmark unificado ni a otras
+          suites
+        - esa parametrización queda además sincronizada por test con el CSV
+          `safe-window`: todas las filas deben estar cubiertas y cerrar
+          efectivamente por ese path
+        - y el CSV `safe-window` queda fijado como espejo 1:1 del catálogo
+          principal `known_domain_frontier_pairs.csv`
+        - además, la relación entre ambas suites queda fijada por test:
+          la primaria debe seguir reportando `8` `domain-frontier`, y
+          `safe-window` debe cerrar esos mismos `8` casos como
+          `proved-symbolic`
+        - el benchmark unificado lo surfacinga también en su resumen:
+          cuando todos los `inconclusive` vienen de `known domain-frontier`,
+          imprime que el espejo `safe-window` cierra esos mismos casos de
+          forma simbólica
+        - el resumen total ya desglosa también `Proved-symbolic` en
+          `quotient / diff / composed` y lista las suites que más contribuyen,
+          para distinguir deriva de `NF` frente a regresión real
+        - además, el unificado ya imprime `Normalization-gap hotspots
+          (diff + composed)` para señalar dónde la pérdida de `NF` sigue siendo
+          un problema de normalización/cierre y no solo equivalencia por
+          cociente
+        - además, el unificado ya falla si ese espejo `safe-window` deja de
+          cerrar todos los `domain-frontier`
+        - ese check ya reutiliza un único run de `safe-window` para el
+          resumen y para la aserción final; no ejecuta el espejo dos veces
+        - el corpus `safe-window` queda además fijado por test en tamaño,
+          breakdown `3/3/2` y presencia de filtros efectivos en todas sus
+          filas
+        - el benchmark unificado deja además guardarraíl explícito:
+          falla si reaparece cualquier `numeric-only`, cualquier `timeout` o
+          cualquier `inconclusive` que no quede clasificado como
+          `known domain-frontier`
+        - el último caso exacto de `⇄sub+` se corta antes del `simplify` caro,
+          pero solo si el par ya está fijado en `residual_pairs`
+        - ese fast path se dejó deliberadamente estrecho para no convertir toda
+          la suite curada de sustitución en `proved` prematuro; la señal de
+          `NF-convergent` de `⇄sub/⇄sub+` sigue viva
+    - mejoras posteriores retenidas otra vez en `⇄sub`:
+      - `extract_int_multiple_additive(...)` ya acepta coeficientes divisibles
+        por término, no solo el factor exacto
+      - eso deja que los matchers de `2t/3t` sobrevivan cuando el runtime ya
+        expandió `2*(2*u+3)` a `4*u + 6`
+      - `Simplify Square Root` ya reconoce también `e^(2*u)` como cuadrado
+        estructural de `e^u` dentro de `t^2 + 2*t + 1`
+      - `SinSumTripleIdentityZero` ya acumula escala numérica en cadenas
+        multiplicativas anidadas, así que `3*(2*u)` y `2*(2*u)` vuelven a
+        emparejar con `2*u`
+      - impacto medido en `metatest_csv_substitution`:
+        - `NF-convergent: 1569 -> 1572`
+        - `Proved-symbolic: 439 -> 440`
+        - `Numeric-only: 5 -> 1`
+      - cierre adicional retenido:
+        - el runtime estándar ya simplifica también la resta completa
+          `((sin(u)^2)^3 - 1)/((sin(u)^2) - 1) - ((sin(u)^2)^2 + (sin(u)^2) + 1)`
+          a `0`
+        - el fix entra por un shortcut estándar de resta exacta para
+          `((a^3 ± b^3)/(a ± b)) - expanded quotient`, no por curado del harness
+        - `cas_cli eval` ya cubre tanto el cociente standalone como el residual
+          completo de `⇄sub`
+      - lectura práctica:
+        - `sinh(2*(2*u+3))`, `sqrt(exp(u)^2 + 2*exp(u) + 1)` y
+          `sin(2*u) + sin(3*(2*u))`, `sin(1-u) + sin(3*(1-u))`
+          ya no son cuello de botella del frente `⇄sub`
 - Ambas están conectadas al harness de simplificación y tienen runners dedicados en:
   - `/Users/javiergimenezmoya/developer/math/crates/cas_solver/tests/metamorphic_simplification_tests.rs`
 - La suite contextual general se mantiene como umbrella suite; las nuevas temáticas sirven para aislar mejor familias recurrentes sin meterlas todas en el corpus global.

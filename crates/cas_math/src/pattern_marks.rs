@@ -61,6 +61,12 @@ pub struct PatternMarks {
     /// Global flag: true if the expression contains sin(4t) - 4*sin(t)*cos(t)*(cos²-sin²) pattern.
     /// When true, distribution of a*(b-c)→ab-ac is blocked for sin/cos products to allow Sin4xIdentityZeroRule to fire.
     pub has_sin4x_identity_pattern: bool,
+    /// Global flag: true if the expression contains sin(t)+sin(3t)-2*sin(2t)*cos(t) pattern.
+    /// When true, high-order trig expansion is blocked so the identity-zero rule can fire first.
+    pub has_sin_sum_triple_identity_pattern: bool,
+    /// Global flag: true if the expression contains cos(3t)-(4*cos(t)^3-3*cos(t)) pattern.
+    /// When true, high-order trig expansion is blocked so the identity-zero rule can fire first.
+    pub has_cos_triple_identity_pattern: bool,
     /// Global flag: true if any denominator subtree contains a root-like form.
     /// Used to skip the Rationalize phase when the current tree cannot possibly
     /// match any denominator rationalization rule.
@@ -81,6 +87,8 @@ impl PatternMarks {
             tan_double_angle_protected: HashSet::new(),
             has_tan_identity_pattern: false,
             has_sin4x_identity_pattern: false,
+            has_sin_sum_triple_identity_pattern: false,
+            has_cos_triple_identity_pattern: false,
             has_root_in_denominator: false,
         }
     }

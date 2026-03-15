@@ -154,6 +154,17 @@ fn build_scaled_inner(context: &mut Context, factor: i64, inner: ExprId) -> Expr
     }
 }
 
+fn extract_relaxed_int_factor(
+    context: &mut Context,
+    term: ExprId,
+    target_big: &num_bigint::BigInt,
+    neg_target_big: &num_bigint::BigInt,
+    target: i64,
+) -> Option<(bool, ExprId)> {
+    extract_exact_int_factor(context, term, target_big, neg_target_big)
+        .or_else(|| extract_divisible_int_factor(context, term, target))
+}
+
 fn extract_divisible_int_factor(
     context: &mut Context,
     term: ExprId,
@@ -327,8 +338,10 @@ pub fn extract_int_multiple_additive(
     };
 
     // Extract factor from each term
-    let (l_sign, l_inner) = extract_exact_int_factor(context, lhs, &target_big, &neg_target_big)?;
-    let (r_sign, r_inner) = extract_exact_int_factor(context, rhs, &target_big, &neg_target_big)?;
+    let (l_sign, l_inner) =
+        extract_relaxed_int_factor(context, lhs, &target_big, &neg_target_big, target)?;
+    let (r_sign, r_inner) =
+        extract_relaxed_int_factor(context, rhs, &target_big, &neg_target_big, target)?;
 
     // Replace sentinel Number(±target) with 1 for bare-constant terms
     let one = context.num(1);
@@ -484,6 +497,15 @@ mod tests {
         let mut ctx = Context::new();
         let expr = parse("2*x + 2*pi", &mut ctx).expect("expr");
         let expected = parse("x + pi", &mut ctx).expect("expected");
+        let got = extract_double_angle_arg_relaxed(&mut ctx, expr).expect("rewrite");
+        assert_eq!(compare_expr(&ctx, got, expected), Ordering::Equal);
+    }
+
+    #[test]
+    fn relaxed_multiple_extracts_additive_double_angle_from_divisible_terms() {
+        let mut ctx = Context::new();
+        let expr = parse("4*u + 6", &mut ctx).expect("expr");
+        let expected = parse("2*u + 3", &mut ctx).expect("expected");
         let got = extract_double_angle_arg_relaxed(&mut ctx, expr).expect("rewrite");
         assert_eq!(compare_expr(&ctx, got, expected), Ordering::Equal);
     }

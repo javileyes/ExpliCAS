@@ -14,7 +14,7 @@ pub use inverse::{
 pub(crate) use properties::expand_logs_with_assumptions;
 pub use properties::{
     LogAbsPowerRule, LogAbsSimplifyRule, LogChainProductRule, LogEvenPowerWithChainedAbsRule,
-    LogExpansionRule,
+    LogExpansionRule, LogReciprocalEvenPowerRule,
 };
 
 use crate::define_rule;
@@ -160,6 +160,10 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     // V2.14.20: LogEvenPowerWithChainedAbsRule handles ln(x^even) with ChainedRewrite
     // Has higher priority (10) than EvaluateLogRule (0) so matches first
     simplifier.add_rule(Box::new(LogEvenPowerWithChainedAbsRule));
+
+    // ln(1/x^(2k)) -> -ln(x^(2k)) in real domain, preserving intrinsic nonzero(x)
+    // Must run before LogPerfectSquareRule, otherwise `ln(1/x^2)` drifts to `2*ln(|1/x|)`.
+    simplifier.add_rule(Box::new(LogReciprocalEvenPowerRule));
 
     // LogPerfectSquareRule: ln(A² ± 2AB + B²) → 2·ln(|A ± B|)
     // Factor perfect-square trinomials inside log arguments (e.g. u⁴+2u²+1 → (u²+1)²)

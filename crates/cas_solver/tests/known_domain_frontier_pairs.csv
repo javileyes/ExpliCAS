@@ -1,0 +1,18 @@
+# Known Domain-Frontier Metamorphic Pairs
+# Explicit tracker suite for equivalences that are mathematically related but
+# intentionally preserve different domain/branch behavior in the runtime path.
+# Format: lhs,rhs,vars[,filters]
+
+# Log-square expansion changes domain
+ln((-u)^2),2*ln((-u)),u
+ln((2*u)^2),2*ln((2*u)),u
+ln((1-u)^2),2*ln((1-u)),u
+
+# Inverse-trig branch introduces domain/branch sensitivity
+((exp(x)-exp(-x))/2)*(sin(2*arcsin(u))),(sinh(x))*(2*u*sqrt(1-u^2)),x;u
+(tanh(x))*(sin(2*arcsin(u))),((exp(x)-exp(-x))/(exp(x)+exp(-x)))*(2*u*sqrt(1-u^2)),x;u
+(sin(2*arcsin(x)))*(abs(sin(u/2))),(2*x*sqrt(1-x^2))*(sqrt((1-cos(u))/2)),x;u
+
+# Sqrt product contraction changes sign/domain behavior
+(cos(3*pi/8))*(sqrt(u)*sqrt(4*u)),(sqrt(2-sqrt(2))/2)*(2*u),u
+(sin(2*arcsin(x)))*(sqrt(u)*sqrt(4*u)),(2*x*sqrt(1-x^2))*(2*u),x;u

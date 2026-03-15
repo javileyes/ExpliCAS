@@ -25,6 +25,9 @@ fn format_simplify_square_root_desc(kind: SimplifySquareRootRewriteKind) -> &'st
         SimplifySquareRootRewriteKind::AdditiveCommonFactor => {
             "Extract common square factor from additive radicand"
         }
+        SimplifySquareRootRewriteKind::QuotientOfSquares => {
+            "Simplify square root of quotient of squares"
+        }
     }
 }
 

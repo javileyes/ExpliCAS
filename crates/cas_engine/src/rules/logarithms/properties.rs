@@ -5,7 +5,8 @@ use cas_math::logarithm_inverse_support::{
     log_exp_inverse_policy_mode_from_flags, plan_log_abs_simplify_policy,
     plan_log_even_power_policy, try_plan_log_even_power_abs_expr, try_rewrite_log_abs_power_expr,
     try_rewrite_log_abs_simplify_expr, try_rewrite_log_chain_product_expr,
-    try_rewrite_log_mul_div_expansion_expr, LogChainProductRewriteKind,
+    try_rewrite_log_mul_div_expansion_expr, try_rewrite_log_reciprocal_even_power_expr,
+    LogChainProductRewriteKind,
 };
 
 /// Domain-aware expansion rule for log products/quotients.
@@ -226,6 +227,53 @@ impl crate::rule::Rule for LogEvenPowerWithChainedAbsRule {
 
     fn priority(&self) -> i32 {
         10 // Higher priority than EvaluateLogRule (default 0)
+    }
+
+    fn importance(&self) -> crate::step::ImportanceLevel {
+        crate::step::ImportanceLevel::Medium
+    }
+}
+
+/// Real-domain intrinsic rewrite:
+/// - `log(1/x^(2k)) -> -log(x^(2k))`
+///
+/// The reciprocal even power inside the logarithm already implies `x != 0`,
+/// so the positivity of `x^(2k)` is inherited rather than newly assumed.
+pub struct LogReciprocalEvenPowerRule;
+
+impl crate::rule::Rule for LogReciprocalEvenPowerRule {
+    fn name(&self) -> &str {
+        "Log Reciprocal Even Power"
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: ExprId,
+        parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<crate::rule::Rewrite> {
+        if parent_ctx.value_domain() == crate::semantics::ValueDomain::ComplexEnabled {
+            return None;
+        }
+
+        let planned = try_rewrite_log_reciprocal_even_power_expr(ctx, expr)?;
+        Some(
+            Rewrite::new(planned.rewritten)
+                .desc(planned.desc)
+                .requires(crate::ImplicitCondition::NonZero(planned.inner_subject)),
+        )
+    }
+
+    fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
+        Some(crate::target_kind::TargetKindSet::FUNCTION)
+    }
+
+    fn priority(&self) -> i32 {
+        9
+    }
+
+    fn solve_safety(&self) -> crate::SolveSafety {
+        crate::SolveSafety::IntrinsicCondition(crate::ConditionClass::Analytic)
     }
 
     fn importance(&self) -> crate::step::ImportanceLevel {

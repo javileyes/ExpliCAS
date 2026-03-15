@@ -234,6 +234,11 @@ pub fn should_block_high_order_trig_expansion_expr(
     if block_on_sin4x_pattern && marks.is_some_and(|m| m.has_sin4x_identity_pattern) {
         return true;
     }
+    if marks
+        .is_some_and(|m| m.has_sin_sum_triple_identity_pattern || m.has_cos_triple_identity_pattern)
+    {
+        return true;
+    }
     is_inside_trig_sum_quotient_with_ancestors(ctx, ancestors)
 }
 

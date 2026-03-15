@@ -24,6 +24,141 @@ pub enum IdentityZeroRewriteKind {
     WeierstrassCos,
     TanDifference,
     Sin4x,
+    SinSumTriple,
+    CosTriple,
+}
+
+fn extract_n_times_base(ctx: &Context, expr: ExprId, n: i64) -> Option<ExprId> {
+    let Expr::Mul(l, r) = ctx.get(expr) else {
+        return None;
+    };
+    let expected = num_rational::BigRational::from_integer(n.into());
+    if let Expr::Number(k) = ctx.get(*l) {
+        if *k == expected {
+            return Some(*r);
+        }
+    }
+    if let Expr::Number(k) = ctx.get(*r) {
+        if *k == expected {
+            return Some(*l);
+        }
+    }
+    None
+}
+
+fn extract_simple_numeric_mul(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<(num_rational::BigRational, ExprId)> {
+    let Expr::Mul(l, r) = ctx.get(expr) else {
+        return None;
+    };
+    if let Expr::Number(k) = ctx.get(*l) {
+        return Some((k.clone(), *r));
+    }
+    if let Expr::Number(k) = ctx.get(*r) {
+        return Some((k.clone(), *l));
+    }
+    None
+}
+
+fn extract_numeric_scale_factors(
+    ctx: &Context,
+    expr: ExprId,
+) -> (num_rational::BigRational, Vec<ExprId>) {
+    use num_rational::BigRational;
+
+    match ctx.get(expr) {
+        Expr::Neg(inner) => {
+            let (coeff, factors) = extract_numeric_scale_factors(ctx, *inner);
+            (-coeff, factors)
+        }
+        Expr::Mul(_, _) => {
+            let mut coeff = BigRational::from_integer(1.into());
+            let mut factors = Vec::new();
+            for factor in mul_leaves(ctx, expr) {
+                if let Expr::Number(n) = ctx.get(factor) {
+                    coeff *= n.clone();
+                } else {
+                    factors.push(factor);
+                }
+            }
+            (coeff, factors)
+        }
+        Expr::Number(n) => (n.clone(), Vec::new()),
+        _ => (BigRational::from_integer(1.into()), vec![expr]),
+    }
+}
+
+fn factor_multisets_match(ctx: &Context, left: &[ExprId], right: &[ExprId]) -> bool {
+    if left.len() != right.len() {
+        return false;
+    }
+
+    let mut used = vec![false; right.len()];
+    for lhs in left {
+        let mut matched = false;
+        for (idx, rhs) in right.iter().enumerate() {
+            if used[idx] {
+                continue;
+            }
+            if compare_expr(ctx, *lhs, *rhs) == std::cmp::Ordering::Equal {
+                used[idx] = true;
+                matched = true;
+                break;
+            }
+        }
+        if !matched {
+            return false;
+        }
+    }
+    true
+}
+
+fn expr_is_n_times_of(ctx: &Context, expr: ExprId, base: ExprId, n: i64) -> bool {
+    if n == 1 {
+        return compare_expr(ctx, expr, base) == std::cmp::Ordering::Equal;
+    }
+
+    let (expr_coeff, expr_factors) = extract_numeric_scale_factors(ctx, expr);
+    let (base_coeff, base_factors) = extract_numeric_scale_factors(ctx, base);
+    if factor_multisets_match(ctx, &expr_factors, &base_factors)
+        && expr_coeff == base_coeff * num_rational::BigRational::from_integer(n.into())
+    {
+        return true;
+    }
+
+    if let Some(extracted) = extract_n_times_base(ctx, expr, n) {
+        return compare_expr(ctx, extracted, base) == std::cmp::Ordering::Equal;
+    }
+
+    match (ctx.get(expr), ctx.get(base)) {
+        (Expr::Number(en), Expr::Number(bn)) => {
+            *en == bn.clone() * num_rational::BigRational::from_integer(n.into())
+        }
+        (Expr::Mul(_, _), Expr::Mul(_, _)) => {
+            let Some((ek, erest)) = extract_simple_numeric_mul(ctx, expr) else {
+                return false;
+            };
+            let Some((bk, brest)) = extract_simple_numeric_mul(ctx, base) else {
+                return false;
+            };
+            compare_expr(ctx, erest, brest) == std::cmp::Ordering::Equal
+                && ek == bk * num_rational::BigRational::from_integer(n.into())
+        }
+        (Expr::Add(el, er), Expr::Add(bl, br)) => {
+            (expr_is_n_times_of(ctx, *el, *bl, n) && expr_is_n_times_of(ctx, *er, *br, n))
+                || (expr_is_n_times_of(ctx, *el, *br, n) && expr_is_n_times_of(ctx, *er, *bl, n))
+        }
+        (Expr::Sub(el, er), Expr::Sub(bl, br)) => {
+            expr_is_n_times_of(ctx, *el, *bl, n) && expr_is_n_times_of(ctx, *er, *br, n)
+        }
+        (Expr::Div(enum_, eden), Expr::Div(bnum, bden)) => {
+            compare_expr(ctx, *eden, *bden) == std::cmp::Ordering::Equal
+                && expr_is_n_times_of(ctx, *enum_, *bnum, n)
+        }
+        _ => false,
+    }
 }
 
 fn is_trig_squared_t(ctx: &Context, expr: ExprId, trig: BuiltinFn, t: ExprId) -> bool {
@@ -342,6 +477,144 @@ pub fn try_rewrite_sin4x_identity_zero_expr(
     })
 }
 
+fn match_sin_sum_triple_identity_pair(ctx: &Context, lhs: ExprId, rhs: ExprId) -> bool {
+    let Expr::Add(l, r) = ctx.get(lhs) else {
+        return false;
+    };
+    let (l, r) = (*l, *r);
+    let Some(l_arg) = extract_trig_arg(ctx, l, BuiltinFn::Sin.name()) else {
+        return false;
+    };
+    let Some(r_arg) = extract_trig_arg(ctx, r, BuiltinFn::Sin.name()) else {
+        return false;
+    };
+
+    let t = if expr_is_n_times_of(ctx, l_arg, r_arg, 3) {
+        r_arg
+    } else if expr_is_n_times_of(ctx, r_arg, l_arg, 3) {
+        l_arg
+    } else {
+        return false;
+    };
+
+    let factors = mul_leaves(ctx, rhs);
+    if factors.len() != 3 {
+        return false;
+    }
+
+    let mut has_two = false;
+    let mut has_sin_2t = false;
+    let mut has_cos_t = false;
+    for factor in factors {
+        if let Expr::Number(n) = ctx.get(factor) {
+            if *n == num_rational::BigRational::from_integer(2.into()) {
+                has_two = true;
+                continue;
+            }
+        }
+        if let Some(arg) = extract_trig_arg(ctx, factor, BuiltinFn::Sin.name()) {
+            if expr_is_n_times_of(ctx, arg, t, 2) {
+                has_sin_2t = true;
+                continue;
+            }
+        }
+        if let Some(arg) = extract_trig_arg(ctx, factor, BuiltinFn::Cos.name()) {
+            if compare_expr(ctx, arg, t) == std::cmp::Ordering::Equal {
+                has_cos_t = true;
+                continue;
+            }
+        }
+    }
+
+    has_two && has_sin_2t && has_cos_t
+}
+
+pub fn match_sin_sum_triple_identity_zero_expr(ctx: &Context, expr: ExprId) -> bool {
+    let Some((left, right)) = extract_sub_like(ctx, expr) else {
+        return false;
+    };
+    match_sin_sum_triple_identity_pair(ctx, left, right)
+        || match_sin_sum_triple_identity_pair(ctx, right, left)
+}
+
+pub fn try_rewrite_sin_sum_triple_identity_zero_expr(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<IdentityZeroRewrite> {
+    if !match_sin_sum_triple_identity_zero_expr(ctx, expr) {
+        return None;
+    }
+    Some(IdentityZeroRewrite {
+        kind: IdentityZeroRewriteKind::SinSumTriple,
+    })
+}
+
+fn is_cos_power_t(ctx: &Context, expr: ExprId, t: ExprId, n: i64) -> bool {
+    let Some((base, exp)) = as_pow(ctx, expr) else {
+        return false;
+    };
+    let Expr::Number(k) = ctx.get(exp) else {
+        return false;
+    };
+    if *k != num_rational::BigRational::from_integer(n.into()) {
+        return false;
+    }
+    let Some(arg) = extract_trig_arg(ctx, base, BuiltinFn::Cos.name()) else {
+        return false;
+    };
+    compare_expr(ctx, arg, t) == std::cmp::Ordering::Equal
+}
+
+fn match_cos_triple_identity_pair(ctx: &Context, lhs: ExprId, rhs: ExprId) -> bool {
+    let Some(lhs_arg) = extract_trig_arg(ctx, lhs, BuiltinFn::Cos.name()) else {
+        return false;
+    };
+    let Some(t) = extract_n_times_base(ctx, lhs_arg, 3) else {
+        return false;
+    };
+
+    let Some((left, right)) = extract_sub_like(ctx, rhs) else {
+        return false;
+    };
+
+    let left_matches = if let Some(term) = extract_n_times_base(ctx, left, 4) {
+        is_cos_power_t(ctx, term, t, 3)
+    } else {
+        false
+    };
+    let right_matches = if let Some(term) = extract_n_times_base(ctx, right, 3) {
+        if let Some(arg) = extract_trig_arg(ctx, term, BuiltinFn::Cos.name()) {
+            compare_expr(ctx, arg, t) == std::cmp::Ordering::Equal
+        } else {
+            false
+        }
+    } else {
+        false
+    };
+
+    left_matches && right_matches
+}
+
+pub fn match_cos_triple_identity_zero_expr(ctx: &Context, expr: ExprId) -> bool {
+    let Some((left, right)) = extract_sub_like(ctx, expr) else {
+        return false;
+    };
+    match_cos_triple_identity_pair(ctx, left, right)
+        || match_cos_triple_identity_pair(ctx, right, left)
+}
+
+pub fn try_rewrite_cos_triple_identity_zero_expr(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<IdentityZeroRewrite> {
+    if !match_cos_triple_identity_zero_expr(ctx, expr) {
+        return None;
+    }
+    Some(IdentityZeroRewrite {
+        kind: IdentityZeroRewriteKind::CosTriple,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -419,5 +692,100 @@ mod tests {
         let expr = parse("sin(4*t) - 4*sin(t)*cos(t)*(cos(t)^2-sin(t)^2)", &mut ctx).expect("expr");
         let rewrite = try_rewrite_sin4x_identity_zero_expr(&ctx, expr).expect("rewrite");
         assert_eq!(rewrite.kind, IdentityZeroRewriteKind::Sin4x);
+    }
+
+    #[test]
+    fn matches_sin_sum_triple_identity_zero_variants() {
+        let mut ctx = Context::new();
+        let expr1 = parse("sin(t) + sin(3*t) - 2*sin(2*t)*cos(t)", &mut ctx).expect("expr1");
+        let expr2 = parse("2*sin(2*t)*cos(t) - (sin(3*t) + sin(t))", &mut ctx).expect("expr2");
+        let wrong = parse("sin(t) + sin(3*u) - 2*sin(2*t)*cos(t)", &mut ctx).expect("wrong");
+
+        assert!(match_sin_sum_triple_identity_zero_expr(&ctx, expr1));
+        assert!(match_sin_sum_triple_identity_zero_expr(&ctx, expr2));
+        assert!(!match_sin_sum_triple_identity_zero_expr(&ctx, wrong));
+    }
+
+    #[test]
+    fn sin_sum_triple_identity_zero_rewrite_plan_matches() {
+        let mut ctx = Context::new();
+        let expr = parse("sin(t) + sin(3*t) - 2*sin(2*t)*cos(t)", &mut ctx).expect("expr");
+        let rewrite = try_rewrite_sin_sum_triple_identity_zero_expr(&ctx, expr).expect("rewrite");
+        assert_eq!(rewrite.kind, IdentityZeroRewriteKind::SinSumTriple);
+    }
+
+    #[test]
+    fn matches_sin_sum_triple_identity_zero_with_rational_context() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "sin((1/(x - 1) + 1/(x + 1))) + sin(3*(1/(x - 1) + 1/(x + 1))) - 2*sin(2*(1/(x - 1) + 1/(x + 1)))*cos((1/(x - 1) + 1/(x + 1)))",
+            &mut ctx,
+        )
+        .expect("expr");
+        assert!(match_sin_sum_triple_identity_zero_expr(&ctx, expr));
+    }
+
+    #[test]
+    fn matches_sin_sum_triple_identity_zero_after_distributing_scalar_over_sum() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "sin(u^3 + 1) + sin(3*u^3 + 3) - 2*sin(2*u^3 + 2)*cos(u^3 + 1)",
+            &mut ctx,
+        )
+        .expect("expr");
+        assert!(match_sin_sum_triple_identity_zero_expr(&ctx, expr));
+    }
+
+    #[test]
+    fn matches_sin_sum_triple_identity_zero_after_fraction_scalar_pullout() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "sin((u*2)/(u^2 - 1)) + sin((u*6)/(u^2 - 1)) - 2*sin((u*4)/(u^2 - 1))*cos((u*2)/(u^2 - 1))",
+            &mut ctx,
+        )
+        .expect("expr");
+        assert!(match_sin_sum_triple_identity_zero_expr(&ctx, expr));
+    }
+
+    #[test]
+    fn matches_sin_sum_triple_identity_zero_with_nested_scaled_argument() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "sin(2*u) + sin(3*(2*u)) - 2*sin(2*(2*u))*cos(2*u)",
+            &mut ctx,
+        )
+        .expect("expr");
+        assert!(match_sin_sum_triple_identity_zero_expr(&ctx, expr));
+    }
+
+    #[test]
+    fn matches_cos_triple_identity_zero_variants() {
+        let mut ctx = Context::new();
+        let expr1 = parse("cos(3*t) - (4*cos(t)^3 - 3*cos(t))", &mut ctx).expect("expr1");
+        let expr2 = parse("(4*cos(t)^3 - 3*cos(t)) - cos(3*t)", &mut ctx).expect("expr2");
+        let wrong = parse("cos(3*t) - (4*cos(u)^3 - 3*cos(u))", &mut ctx).expect("wrong");
+
+        assert!(match_cos_triple_identity_zero_expr(&ctx, expr1));
+        assert!(match_cos_triple_identity_zero_expr(&ctx, expr2));
+        assert!(!match_cos_triple_identity_zero_expr(&ctx, wrong));
+    }
+
+    #[test]
+    fn cos_triple_identity_zero_rewrite_plan_matches() {
+        let mut ctx = Context::new();
+        let expr = parse("cos(3*t) - (4*cos(t)^3 - 3*cos(t))", &mut ctx).expect("expr");
+        let rewrite = try_rewrite_cos_triple_identity_zero_expr(&ctx, expr).expect("rewrite");
+        assert_eq!(rewrite.kind, IdentityZeroRewriteKind::CosTriple);
+    }
+
+    #[test]
+    fn matches_cos_triple_identity_zero_with_arctan() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "cos(3*arctan(x)) - (4*cos(arctan(x))^3 - 3*cos(arctan(x)))",
+            &mut ctx,
+        )
+        .expect("expr");
+        assert!(match_cos_triple_identity_zero_expr(&ctx, expr));
     }
 }

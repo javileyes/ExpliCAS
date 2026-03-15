@@ -6,6 +6,8 @@ use crate::polynomial::Polynomial;
 use cas_ast::{collect_variables, Context, Expr, ExprId};
 use num_traits::{One, Zero};
 
+const MAX_NONSIMPLIFYING_FRACTION_ADD_GROWTH_COMPLEXITY: usize = 64;
+
 #[derive(Debug, Clone, Copy)]
 pub struct FractionAddAcceptanceInput {
     pub n1: ExprId,
@@ -68,7 +70,9 @@ pub fn should_accept_fraction_add_rewrite(
 
     let both_simple_numerators =
         is_simple_number_abs_leq(ctx, input.n1, 2) && is_simple_number_abs_leq(ctx, input.n2, 2);
+    let bounded_growth = input.old_complexity <= MAX_NONSIMPLIFYING_FRACTION_ADD_GROWTH_COMPLEXITY;
     let allow_growth = growth_ok
+        && bounded_growth
         && !input.opposite_denom
         && !input.same_denom
         && (input.same_sign || both_simple_numerators);
@@ -202,6 +206,48 @@ mod tests {
                 does_simplify: false,
                 is_proper: false,
                 same_sign: false,
+            }
+        ));
+    }
+
+    #[test]
+    fn acceptance_rejects_large_nonsimplifying_growth_even_when_same_sign() {
+        let mut ctx = Context::new();
+        let n1 = parse("x+3", &mut ctx).expect("parse");
+        let n2 = parse("x+5", &mut ctx).expect("parse");
+        assert!(!should_accept_fraction_add_rewrite(
+            &ctx,
+            FractionAddAcceptanceInput {
+                n1,
+                n2,
+                old_complexity: 79,
+                new_complexity: 103,
+                opposite_denom: false,
+                same_denom: false,
+                does_simplify: false,
+                is_proper: false,
+                same_sign: true,
+            }
+        ));
+    }
+
+    #[test]
+    fn acceptance_still_allows_small_same_sign_growth() {
+        let mut ctx = Context::new();
+        let n1 = parse("1", &mut ctx).expect("parse");
+        let n2 = parse("1", &mut ctx).expect("parse");
+        assert!(should_accept_fraction_add_rewrite(
+            &ctx,
+            FractionAddAcceptanceInput {
+                n1,
+                n2,
+                old_complexity: 11,
+                new_complexity: 15,
+                opposite_denom: false,
+                same_denom: false,
+                does_simplify: false,
+                is_proper: false,
+                same_sign: true,
             }
         ));
     }

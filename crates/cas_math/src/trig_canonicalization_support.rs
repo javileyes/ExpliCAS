@@ -348,6 +348,17 @@ pub fn is_function_squared(ctx: &Context, expr: ExprId, fname: &str) -> Option<E
     }
 }
 
+fn is_reciprocal_function_squared(ctx: &Context, expr: ExprId, fname: &str) -> Option<ExprId> {
+    let Expr::Div(num, den) = ctx.get(expr) else {
+        return None;
+    };
+    if !is_one_expr(ctx, *num) {
+        return None;
+    }
+
+    is_function_squared(ctx, *den, fname)
+}
+
 /// Check if two expressions form a reciprocal trig pair with shared argument.
 pub fn check_reciprocal_pair(
     ctx: &Context,
@@ -585,13 +596,12 @@ pub fn try_rewrite_trig_quotient_div_expr(
 }
 
 pub fn try_rewrite_sec_tan_pythagorean_expr(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
-    let Expr::Sub(l, r) = ctx.get(expr) else {
-        return None;
-    };
+    let (l, r) = crate::expr_sub_like::extract_sub_like_pair(ctx, expr)?;
 
     let (Some(sec_arg), Some(tan_arg)) = (
-        is_function_squared(ctx, *l, "sec"),
-        is_function_squared(ctx, *r, "tan"),
+        is_function_squared(ctx, l, "sec")
+            .or_else(|| is_reciprocal_function_squared(ctx, l, "cos")),
+        is_function_squared(ctx, r, "tan"),
     ) else {
         return None;
     };
@@ -615,13 +625,12 @@ pub fn try_rewrite_sec_tan_pythagorean_identity_expr(
 }
 
 pub fn try_rewrite_csc_cot_pythagorean_expr(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
-    let Expr::Sub(l, r) = ctx.get(expr) else {
-        return None;
-    };
+    let (l, r) = crate::expr_sub_like::extract_sub_like_pair(ctx, expr)?;
 
     let (Some(csc_arg), Some(cot_arg)) = (
-        is_function_squared(ctx, *l, "csc"),
-        is_function_squared(ctx, *r, "cot"),
+        is_function_squared(ctx, l, "csc")
+            .or_else(|| is_reciprocal_function_squared(ctx, l, "sin")),
+        is_function_squared(ctx, r, "cot"),
     ) else {
         return None;
     };
@@ -949,6 +958,14 @@ mod tests {
     fn rewrites_sec_tan_identity_to_one() {
         let mut ctx = Context::new();
         let expr = parse("sec(x)^2 - tan(x)^2", &mut ctx).expect("parse");
+        let rewritten = try_rewrite_sec_tan_pythagorean_expr(&mut ctx, expr).expect("rewrite");
+        assert!(is_one_expr(&ctx, rewritten));
+    }
+
+    #[test]
+    fn rewrites_reciprocal_cos_tan_identity_to_one() {
+        let mut ctx = Context::new();
+        let expr = parse("1/cos(x)^2 - tan(x)^2", &mut ctx).expect("parse");
         let rewritten = try_rewrite_sec_tan_pythagorean_expr(&mut ctx, expr).expect("rewrite");
         assert!(is_one_expr(&ctx, rewritten));
     }

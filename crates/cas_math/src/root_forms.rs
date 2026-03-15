@@ -1,7 +1,10 @@
 //! Root-shape helpers over AST expressions.
 
+use crate::abs_support::try_unwrap_abs_arg;
 use crate::numeric::gcd_rational;
-use crate::perfect_square_support::rational_sqrt;
+use crate::perfect_square_support::{extract_square_root_of_term, rational_sqrt};
+use crate::sqrt_square_support::{detect_sqrt_square_pattern, SqrtSquarePattern};
+use cas_ast::ordering::compare_expr;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use num_bigint::BigInt;
 use num_integer::Integer;
@@ -68,6 +71,7 @@ pub enum SimplifySquareRootRewriteKind {
     PerfectSquare,
     SquareRootFactors,
     AdditiveCommonFactor,
+    QuotientOfSquares,
 }
 
 fn get_integer_coefficient_for_root_add(ctx: &Context, term: ExprId) -> Option<BigRational> {
@@ -536,7 +540,10 @@ pub fn try_rewrite_extract_perfect_power_from_radicand_expr(
         ctx.add(Expr::Mul(new_coeff_expr, rest))
     };
     let new_root = ctx.add(Expr::Pow(new_radicand, exp_id));
-    let rewritten = ctx.add(Expr::Mul(k_expr, new_root));
+    let simplified_root = try_rewrite_simplify_square_root_expr(ctx, new_root)
+        .map(|rewrite| rewrite.rewritten)
+        .unwrap_or(new_root);
+    let rewritten = ctx.add(Expr::Mul(k_expr, simplified_root));
 
     Some(ExtractPerfectPowerFromRadicandRewrite {
         rewritten,
@@ -571,6 +578,31 @@ pub fn try_rewrite_simplify_square_root_expr(
         },
         _ => None,
     }?;
+
+    if let Expr::Div(num, den) = ctx.get(arg).clone() {
+        if let (Some(num_abs), Some(den_abs)) = (
+            try_extract_abs_of_square_base(ctx, num),
+            try_extract_abs_of_square_base(ctx, den),
+        ) {
+            let num_inner = try_unwrap_abs_arg(ctx, num_abs)?;
+            let den_inner = try_unwrap_abs_arg(ctx, den_abs)?;
+            let (num_inner, den_inner) =
+                normalize_common_rational_content_in_quotient(ctx, num_inner, den_inner);
+            let quotient = ctx.add(Expr::Div(num_inner, den_inner));
+            let rewritten = ctx.call_builtin(BuiltinFn::Abs, vec![quotient]);
+            return Some(SimplifySquareRootRewrite {
+                rewritten,
+                kind: SimplifySquareRootRewriteKind::QuotientOfSquares,
+            });
+        }
+    }
+
+    if let Some(rewritten) = try_extract_abs_of_square_factorized_base(ctx, arg) {
+        return Some(SimplifySquareRootRewrite {
+            rewritten,
+            kind: SimplifySquareRootRewriteKind::PerfectSquare,
+        });
+    }
 
     match ctx.get(arg) {
         Expr::Add(_, _) | Expr::Sub(_, _) => {}
@@ -667,6 +699,708 @@ pub fn try_rewrite_simplify_square_root_expr(
         rewritten,
         kind: SimplifySquareRootRewriteKind::SquareRootFactors,
     })
+}
+
+fn try_extract_abs_of_square_factorized_base(ctx: &mut Context, base: ExprId) -> Option<ExprId> {
+    if let Some(pattern) = detect_sqrt_square_pattern(ctx, base) {
+        let arg = match pattern {
+            SqrtSquarePattern::PowSquare { arg } | SqrtSquarePattern::RepeatedMul { arg } => arg,
+        };
+        return Some(ctx.call_builtin(BuiltinFn::Abs, vec![arg]));
+    }
+
+    if let Some(root) = extract_square_root_of_term(ctx, base) {
+        return Some(ctx.call_builtin(BuiltinFn::Abs, vec![root]));
+    }
+
+    if let Some(rewritten) = try_extract_abs_of_reciprocal_square_base(ctx, base) {
+        return Some(rewritten);
+    }
+
+    if let Some(rewritten) = try_extract_abs_of_generic_shifted_unit_square(ctx, base) {
+        return Some(rewritten);
+    }
+
+    if let Some(rewritten) = try_extract_abs_of_combined_shifted_unit_square(ctx, base) {
+        return Some(rewritten);
+    }
+
+    if let Some(rewritten) = try_extract_abs_of_univariate_square_polynomial(ctx, base) {
+        return Some(rewritten);
+    }
+
+    let factored = crate::factor::factor(ctx, base);
+    if factored != base {
+        if let Some(pattern) = detect_sqrt_square_pattern(ctx, factored) {
+            let arg = match pattern {
+                SqrtSquarePattern::PowSquare { arg } | SqrtSquarePattern::RepeatedMul { arg } => {
+                    arg
+                }
+            };
+            return Some(ctx.call_builtin(BuiltinFn::Abs, vec![arg]));
+        }
+        if let Some(root) = extract_square_root_of_term(ctx, factored) {
+            return Some(ctx.call_builtin(BuiltinFn::Abs, vec![root]));
+        }
+        if let Some(rewritten) = try_extract_abs_of_reciprocal_square_base(ctx, factored) {
+            return Some(rewritten);
+        }
+        if let Some(rewritten) = try_extract_abs_of_generic_shifted_unit_square(ctx, factored) {
+            return Some(rewritten);
+        }
+        if let Some(rewritten) = try_extract_abs_of_combined_shifted_unit_square(ctx, factored) {
+            return Some(rewritten);
+        }
+        if let Some(rewritten) = try_extract_abs_of_univariate_square_polynomial(ctx, factored) {
+            return Some(rewritten);
+        }
+    }
+
+    None
+}
+
+fn try_extract_linear_two_times_candidate(ctx: &Context, term: ExprId) -> Option<ExprId> {
+    let Expr::Mul(left, right) = ctx.get(term) else {
+        return None;
+    };
+    match (ctx.get(*left), ctx.get(*right)) {
+        (Expr::Number(n), _) if *n == BigRational::from_integer(2.into()) => Some(*right),
+        (_, Expr::Number(n)) if *n == BigRational::from_integer(2.into()) => Some(*left),
+        _ => None,
+    }
+}
+
+fn square_term_matches_candidate(
+    ctx: &mut Context,
+    square_term: ExprId,
+    candidate: ExprId,
+) -> bool {
+    use std::cmp::Ordering;
+    fn expr_eq(ctx: &Context, left: ExprId, right: ExprId) -> bool {
+        compare_expr(ctx, left, right) == Ordering::Equal
+    }
+
+    if let Some(pattern) = detect_sqrt_square_pattern(ctx, square_term) {
+        let arg = match pattern {
+            SqrtSquarePattern::PowSquare { arg } | SqrtSquarePattern::RepeatedMul { arg } => arg,
+        };
+        if expr_eq(&*ctx, arg, candidate) {
+            return true;
+        }
+    }
+
+    let two = ctx.num(2);
+    let candidate_sq = ctx.add(Expr::Pow(candidate, two));
+    if expr_eq(&*ctx, square_term, candidate_sq) {
+        return true;
+    }
+
+    if let (Some(square_arg), Some(candidate_arg)) = (
+        crate::expr_extract::extract_exp_argument(&*ctx, square_term),
+        crate::expr_extract::extract_exp_argument(&*ctx, candidate),
+    ) {
+        if let Some(inner) =
+            crate::trig_roots_flatten::extract_double_angle_arg_relaxed(ctx, square_arg)
+        {
+            if expr_eq(&*ctx, inner, candidate_arg) {
+                return true;
+            }
+        }
+    }
+
+    match ctx.get(candidate).clone() {
+        Expr::Div(num, den) => {
+            let one = ctx.num(1);
+            if expr_eq(&*ctx, num, one) {
+                if let Some(radicand) = extract_square_root_base(ctx, den) {
+                    let reciprocal_num = ctx.num(1);
+                    let reciprocal = ctx.add(Expr::Div(reciprocal_num, radicand));
+                    if expr_eq(&*ctx, square_term, reciprocal) {
+                        return true;
+                    }
+                    let neg_one = ctx.add(Expr::Number(BigRational::from_integer((-1).into())));
+                    let inverse_pow = ctx.add(Expr::Pow(radicand, neg_one));
+                    if expr_eq(&*ctx, square_term, inverse_pow) {
+                        return true;
+                    }
+                }
+            }
+        }
+        Expr::Pow(base, exp) => match ctx.get(exp) {
+            Expr::Number(n) if *n == BigRational::new((-1).into(), 2.into()) => {
+                let reciprocal_num = ctx.num(1);
+                let reciprocal = ctx.add(Expr::Div(reciprocal_num, base));
+                if expr_eq(&*ctx, square_term, reciprocal) {
+                    return true;
+                }
+                let neg_one = ctx.add(Expr::Number(BigRational::from_integer((-1).into())));
+                let inverse_pow = ctx.add(Expr::Pow(base, neg_one));
+                if expr_eq(&*ctx, square_term, inverse_pow) {
+                    return true;
+                }
+            }
+            _ => {}
+        },
+        _ => {}
+    }
+
+    false
+}
+
+fn try_extract_abs_of_reciprocal_square_base(ctx: &mut Context, base: ExprId) -> Option<ExprId> {
+    let one = ctx.num(1);
+    match ctx.get(base).clone() {
+        Expr::Div(num, den) if compare_expr(&*ctx, num, one) == std::cmp::Ordering::Equal => {
+            let sqrt_den = ctx.call_builtin(BuiltinFn::Sqrt, vec![den]);
+            let reciprocal = ctx.add(Expr::Div(one, sqrt_den));
+            Some(ctx.call_builtin(BuiltinFn::Abs, vec![reciprocal]))
+        }
+        Expr::Pow(inner, exp) => match ctx.get(exp) {
+            Expr::Number(n) if *n == BigRational::from_integer((-1).into()) => {
+                let sqrt_inner = ctx.call_builtin(BuiltinFn::Sqrt, vec![inner]);
+                let reciprocal = ctx.add(Expr::Div(one, sqrt_inner));
+                Some(ctx.call_builtin(BuiltinFn::Abs, vec![reciprocal]))
+            }
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn try_extract_abs_of_generic_shifted_unit_square(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ExprId> {
+    use crate::expr_nary::{AddView, Sign};
+
+    let terms = AddView::from_expr(ctx, expr).terms;
+    if terms.len() != 3 {
+        return None;
+    }
+
+    let mut square_term = None;
+    let mut linear = None;
+    let mut constant_one = false;
+
+    for (term, sign) in terms {
+        if sign == Sign::Pos && matches!(ctx.get(term), Expr::Number(n) if n.is_one()) {
+            if constant_one {
+                return None;
+            }
+            constant_one = true;
+            continue;
+        }
+
+        if let Some(candidate) = try_extract_linear_two_times_candidate(ctx, term) {
+            if linear.is_some() {
+                return None;
+            }
+            linear = Some((candidate, sign));
+            continue;
+        }
+
+        if sign == Sign::Pos {
+            if square_term.is_some() {
+                return None;
+            }
+            square_term = Some(term);
+            continue;
+        }
+
+        return None;
+    }
+
+    let (candidate, sign) = linear?;
+    let square_term = square_term?;
+    if !constant_one || !square_term_matches_candidate(ctx, square_term, candidate) {
+        return None;
+    }
+
+    let one = ctx.num(1);
+    let inner = match sign {
+        Sign::Pos => ctx.add(Expr::Add(candidate, one)),
+        Sign::Neg => ctx.add(Expr::Sub(candidate, one)),
+    };
+    Some(ctx.call_builtin(BuiltinFn::Abs, vec![inner]))
+}
+
+fn combined_one_plus_square_term_matches_candidate(
+    ctx: &mut Context,
+    term: ExprId,
+    candidate: ExprId,
+) -> bool {
+    let Expr::Div(num, den) = ctx.get(term).clone() else {
+        return false;
+    };
+
+    let one = ctx.num(1);
+    let reciprocal = ctx.add(Expr::Div(one, den));
+    if !square_term_matches_candidate(ctx, reciprocal, candidate) {
+        let neg_one = ctx.add(Expr::Number(BigRational::from_integer((-1).into())));
+        let inverse_pow = ctx.add(Expr::Pow(den, neg_one));
+        if !square_term_matches_candidate(ctx, inverse_pow, candidate) {
+            return false;
+        }
+    }
+
+    let expected_num = ctx.add(Expr::Add(den, one));
+    compare_expr(&*ctx, num, expected_num) == std::cmp::Ordering::Equal
+}
+
+fn try_extract_abs_of_combined_shifted_unit_square(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ExprId> {
+    use crate::expr_nary::{AddView, Sign};
+
+    let terms = AddView::from_expr(ctx, expr).terms;
+    if terms.len() != 2 {
+        return None;
+    }
+
+    for idx in 0..2 {
+        let (linear_term, linear_sign) = terms[idx];
+        let (combined_term, combined_sign) = terms[1 - idx];
+        if combined_sign != Sign::Pos {
+            continue;
+        }
+
+        let Some(candidate) = try_extract_linear_two_times_candidate(ctx, linear_term) else {
+            continue;
+        };
+        if !combined_one_plus_square_term_matches_candidate(ctx, combined_term, candidate) {
+            continue;
+        }
+
+        let one = ctx.num(1);
+        let inner = match linear_sign {
+            Sign::Pos => ctx.add(Expr::Add(candidate, one)),
+            Sign::Neg => ctx.add(Expr::Sub(candidate, one)),
+        };
+        return Some(ctx.call_builtin(BuiltinFn::Abs, vec![inner]));
+    }
+
+    None
+}
+
+fn try_extract_abs_of_square_base(ctx: &mut Context, base: ExprId) -> Option<ExprId> {
+    if let Some(rewritten) = try_extract_abs_of_square_factorized_base(ctx, base) {
+        return Some(rewritten);
+    }
+
+    let sqrt_expr = ctx.call_builtin(BuiltinFn::Sqrt, vec![base]);
+    let rewrite = try_rewrite_simplify_square_root_expr(ctx, sqrt_expr)?;
+    try_unwrap_abs_arg(ctx, rewrite.rewritten)?;
+    Some(rewrite.rewritten)
+}
+
+fn normalize_common_rational_content_in_quotient(
+    ctx: &mut Context,
+    num: ExprId,
+    den: ExprId,
+) -> (ExprId, ExprId) {
+    use crate::polynomial::Polynomial;
+    use num_traits::{One, Zero};
+
+    let vars_num = cas_ast::collect_variables(ctx, num);
+    let vars_den = cas_ast::collect_variables(ctx, den);
+    if vars_num.len() != 1 || vars_den.len() != 1 || vars_num != vars_den {
+        return (num, den);
+    }
+
+    let Some(var) = vars_num.iter().next() else {
+        return (num, den);
+    };
+
+    let Ok(num_poly) = Polynomial::from_expr(ctx, num, var) else {
+        return (num, den);
+    };
+    let Ok(den_poly) = Polynomial::from_expr(ctx, den, var) else {
+        return (num, den);
+    };
+
+    let rational_content = |poly: &Polynomial| -> BigRational {
+        let mut gcd_num = None::<BigInt>;
+        let mut lcm_den = BigInt::from(1);
+        for coeff in &poly.coeffs {
+            if coeff.is_zero() {
+                continue;
+            }
+            let numer = coeff.numer().abs().clone();
+            let denom = coeff.denom().clone();
+            gcd_num = Some(match gcd_num {
+                Some(existing) => existing.gcd(&numer),
+                None => numer,
+            });
+            lcm_den = lcm_den.lcm(&denom);
+        }
+
+        match gcd_num {
+            Some(g) => BigRational::new(g, lcm_den),
+            None => BigRational::zero(),
+        }
+    };
+
+    let num_content = rational_content(&num_poly);
+    let den_content = rational_content(&den_poly);
+    if num_content.is_zero() || den_content.is_zero() {
+        return (num, den);
+    }
+
+    let mut new_num_poly = num_poly.clone();
+    let mut new_den_poly = den_poly.clone();
+    let mut changed = false;
+
+    let common = if num_content.abs() == den_content.abs() {
+        num_content.abs()
+    } else {
+        gcd_rational(num_content.abs(), den_content.abs())
+    };
+    if !common.is_zero() && !common.is_one() {
+        new_num_poly = new_num_poly.div_scalar(&common);
+        new_den_poly = new_den_poly.div_scalar(&common);
+        changed = true;
+    }
+
+    if new_den_poly.leading_coeff() < BigRational::zero() {
+        new_num_poly = new_num_poly.neg();
+        new_den_poly = new_den_poly.neg();
+        changed = true;
+    }
+
+    if !changed {
+        return (num, den);
+    }
+
+    (new_num_poly.to_expr(ctx), new_den_poly.to_expr(ctx))
+}
+
+fn try_extract_abs_of_univariate_square_polynomial(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ExprId> {
+    use crate::expr_nary::{AddView, Sign};
+    use crate::expr_rewrite::smart_mul;
+    use crate::polynomial::Polynomial;
+
+    fn build_mul(ctx: &mut Context, factors: Vec<ExprId>) -> ExprId {
+        let mut iter = factors.into_iter();
+        let Some(first) = iter.next() else {
+            return ctx.num(1);
+        };
+        iter.fold(first, |acc, factor| ctx.add(Expr::Mul(acc, factor)))
+    }
+
+    fn build_signed_add(ctx: &mut Context, terms: &[(ExprId, Sign)]) -> ExprId {
+        let mut iter = terms.iter();
+        let Some((first_term, first_sign)) = iter.next() else {
+            return ctx.num(0);
+        };
+        let mut acc = if *first_sign == Sign::Neg {
+            ctx.add(Expr::Neg(*first_term))
+        } else {
+            *first_term
+        };
+        for (term, sign) in iter {
+            acc = if *sign == Sign::Neg {
+                ctx.add(Expr::Sub(acc, *term))
+            } else {
+                ctx.add(Expr::Add(acc, *term))
+            };
+        }
+        acc
+    }
+
+    fn compare_signed_term_multiset(
+        ctx: &Context,
+        left: &[(ExprId, Sign)],
+        right: &[(ExprId, Sign)],
+    ) -> bool {
+        fn terms_match(ctx: &Context, left: ExprId, right: ExprId) -> bool {
+            if cas_ast::ordering::compare_expr(ctx, left, right) == std::cmp::Ordering::Equal {
+                return true;
+            }
+
+            let left_factors = crate::expr_nary::mul_factors(ctx, left);
+            let right_factors = crate::expr_nary::mul_factors(ctx, right);
+            if left_factors.len() != right_factors.len() {
+                return false;
+            }
+
+            let mut used = vec![false; right_factors.len()];
+            for left_factor in left_factors {
+                let mut matched = false;
+                for (idx, right_factor) in right_factors.iter().enumerate() {
+                    if used[idx] {
+                        continue;
+                    }
+                    if cas_ast::ordering::compare_expr(ctx, left_factor, *right_factor)
+                        == std::cmp::Ordering::Equal
+                    {
+                        used[idx] = true;
+                        matched = true;
+                        break;
+                    }
+                }
+                if !matched {
+                    return false;
+                }
+            }
+
+            true
+        }
+
+        if left.len() != right.len() {
+            return false;
+        }
+
+        let mut used = vec![false; right.len()];
+        for (left_term, left_sign) in left {
+            let mut matched = false;
+            for (idx, (right_term, right_sign)) in right.iter().enumerate() {
+                if used[idx] || left_sign != right_sign {
+                    continue;
+                }
+                if terms_match(ctx, *left_term, *right_term) {
+                    used[idx] = true;
+                    matched = true;
+                    break;
+                }
+            }
+            if !matched {
+                return false;
+            }
+        }
+
+        true
+    }
+
+    fn extract_term_degree_in_var(
+        ctx: &mut Context,
+        term: ExprId,
+        var: &str,
+    ) -> Option<(u32, ExprId)> {
+        let mut degree = 0u32;
+        let mut coeff_factors = Vec::new();
+
+        for factor in crate::expr_nary::mul_factors(ctx, term) {
+            match ctx.get(factor) {
+                Expr::Variable(sym_id) if ctx.sym_name(*sym_id) == var => {
+                    degree = degree.checked_add(1)?;
+                }
+                Expr::Pow(base, exp) => match (ctx.get(*base), ctx.get(*exp)) {
+                    (Expr::Variable(sym_id), Expr::Number(n))
+                        if ctx.sym_name(*sym_id) == var
+                            && n.is_integer()
+                            && *n >= BigRational::zero() =>
+                    {
+                        let power: u32 = n.to_integer().try_into().ok()?;
+                        degree = degree.checked_add(power)?;
+                    }
+                    _ => {
+                        if cas_ast::collect_variables(ctx, factor).contains(var) {
+                            return None;
+                        }
+                        coeff_factors.push(factor);
+                    }
+                },
+                _ => {
+                    if cas_ast::collect_variables(ctx, factor).contains(var) {
+                        return None;
+                    }
+                    coeff_factors.push(factor);
+                }
+            }
+        }
+
+        Some((degree, build_mul(ctx, coeff_factors)))
+    }
+
+    fn try_extract_abs_of_symbolic_shifted_unit_square(
+        ctx: &mut Context,
+        expr: ExprId,
+        var: &str,
+        var_expr: ExprId,
+    ) -> Option<ExprId> {
+        let mut quadratic_terms = Vec::new();
+        let mut linear_terms = Vec::new();
+        let mut constant_terms = Vec::new();
+
+        for (term, sign) in AddView::from_expr(ctx, expr).terms {
+            let (degree, coeff) = extract_term_degree_in_var(ctx, term, var)?;
+            match degree {
+                2 => quadratic_terms.push((coeff, sign)),
+                1 => linear_terms.push((term, sign)),
+                0 => constant_terms.push((term, sign)),
+                _ => return None,
+            }
+        }
+
+        if quadratic_terms.len() != 1 {
+            return None;
+        }
+        let (quadratic_coeff, quadratic_sign) = quadratic_terms[0];
+        let one = ctx.num(1);
+        if quadratic_sign != Sign::Pos
+            || cas_ast::ordering::compare_expr(ctx, quadratic_coeff, one)
+                != std::cmp::Ordering::Equal
+        {
+            return None;
+        }
+
+        let constant_expr = build_signed_add(ctx, &constant_terms);
+        let (lhs, rhs, rhs_is_sub) =
+            crate::perfect_square_support::try_match_perfect_square_trinomial(ctx, constant_expr)?;
+        let shift = if rhs_is_sub {
+            ctx.add(Expr::Sub(lhs, rhs))
+        } else {
+            ctx.add(Expr::Add(lhs, rhs))
+        };
+
+        let two = ctx.num(2);
+        let mut expected_same = Vec::new();
+        let mut expected_negated = Vec::new();
+        for (term, sign) in AddView::from_expr(ctx, shift).terms {
+            let var_term = smart_mul(ctx, var_expr, term);
+            let expected = smart_mul(ctx, two, var_term);
+            expected_same.push((expected, sign));
+            expected_negated.push((
+                expected,
+                if sign == Sign::Pos {
+                    Sign::Neg
+                } else {
+                    Sign::Pos
+                },
+            ));
+        }
+
+        let inner = if compare_signed_term_multiset(ctx, &linear_terms, &expected_same) {
+            ctx.add(Expr::Add(var_expr, shift))
+        } else if compare_signed_term_multiset(ctx, &linear_terms, &expected_negated) {
+            ctx.add(Expr::Sub(var_expr, shift))
+        } else {
+            return None;
+        };
+
+        Some(ctx.call_builtin(BuiltinFn::Abs, vec![inner]))
+    }
+
+    let vars = cas_ast::collect_variables(ctx, expr);
+    if vars.len() != 1 {
+        return None;
+    }
+    let var = vars.iter().next()?;
+    let var_expr = ctx.var(var);
+
+    if let Some(rewritten) =
+        try_extract_abs_of_symbolic_shifted_unit_square(ctx, expr, var, var_expr)
+    {
+        return Some(rewritten);
+    }
+
+    let poly = Polynomial::from_expr(ctx, expr, var).ok()?;
+
+    if poly.degree() == 2 && poly.coeffs.len() >= 3 {
+        let a = poly.coeffs.get(2).cloned();
+        let b = poly.coeffs.get(1).cloned();
+        let c = poly.coeffs.first().cloned();
+        if let (Some(a), Some(b), Some(c)) = (a, b, c) {
+            let four = BigRational::from_integer(4.into());
+            let discriminant = b.clone() * b.clone() - four * a.clone() * c.clone();
+            if discriminant.is_zero() {
+                if let (Some(d), Some(_)) = (rational_sqrt(&a), rational_sqrt(&c)) {
+                    let two = BigRational::from_integer(2.into());
+                    let e = if d.is_zero() {
+                        rational_sqrt(&c).unwrap_or_else(BigRational::zero)
+                    } else {
+                        b.clone() / (two * d.clone())
+                    };
+
+                    let d_expr = ctx.add(Expr::Number(d.clone()));
+                    let e_expr = ctx.add(Expr::Number(e.clone()));
+                    let one = BigRational::from_integer(1.into());
+                    let dx = if d == one {
+                        var_expr
+                    } else {
+                        smart_mul(ctx, d_expr, var_expr)
+                    };
+                    let linear = if e.is_zero() {
+                        dx
+                    } else {
+                        ctx.add(Expr::Add(dx, e_expr))
+                    };
+                    return Some(ctx.call_builtin(BuiltinFn::Abs, vec![linear]));
+                }
+            }
+        }
+    }
+
+    if poly.degree() == 4 && poly.coeffs.len() >= 5 {
+        let a2 = poly.coeffs.get(4).cloned()?;
+        let b2 = poly.coeffs.get(3).cloned()?;
+        let c2 = poly.coeffs.get(2).cloned()?;
+        let d2 = poly.coeffs.get(1).cloned()?;
+        let e2 = poly.coeffs.first().cloned()?;
+        let two = BigRational::from_integer(2.into());
+        let a = rational_sqrt(&a2)?;
+        let c_abs = rational_sqrt(&e2)?;
+
+        let c_candidates = if c_abs.is_zero() {
+            vec![c_abs]
+        } else {
+            vec![c_abs.clone(), -c_abs]
+        };
+
+        for c in c_candidates {
+            let b = if a.is_zero() {
+                continue;
+            } else {
+                b2.clone() / (two.clone() * a.clone())
+            };
+            if d2 != two.clone() * b.clone() * c.clone() {
+                continue;
+            }
+            if c2 != b.clone() * b.clone() + two.clone() * a.clone() * c.clone() {
+                continue;
+            }
+
+            let mut terms = Vec::new();
+            if !a.is_zero() {
+                let a_expr = ctx.add(Expr::Number(a.clone()));
+                let two_expr = ctx.num(2);
+                let x_sq = ctx.add(Expr::Pow(var_expr, two_expr));
+                terms.push(if a == BigRational::from_integer(1.into()) {
+                    x_sq
+                } else {
+                    smart_mul(ctx, a_expr, x_sq)
+                });
+            }
+            if !b.is_zero() {
+                let b_expr = ctx.add(Expr::Number(b.clone()));
+                terms.push(if b == BigRational::from_integer(1.into()) {
+                    var_expr
+                } else if b == BigRational::from_integer((-1).into()) {
+                    ctx.add(Expr::Neg(var_expr))
+                } else {
+                    smart_mul(ctx, b_expr, var_expr)
+                });
+            }
+            if !c.is_zero() {
+                terms.push(ctx.add(Expr::Number(c.clone())));
+            }
+            if terms.is_empty() {
+                continue;
+            }
+
+            let mut inner = terms[0];
+            for term in terms.into_iter().skip(1) {
+                inner = ctx.add(Expr::Add(inner, term));
+            }
+            return Some(ctx.call_builtin(BuiltinFn::Abs, vec![inner]));
+        }
+    }
+
+    None
 }
 
 fn split_linear_surd(
@@ -1888,6 +2622,42 @@ mod tests {
     }
 
     #[test]
+    fn simplify_square_root_rewrite_root_ctx_shifted_unit_square() {
+        let mut ctx = Context::new();
+        let expr = parse("sqrt((1/sqrt(u))^2 + 2*(1/sqrt(u)) + 1)", &mut ctx).expect("expr");
+        let expected = parse("abs((1/sqrt(u)) + 1)", &mut ctx).expect("expected");
+        let rewrite = try_rewrite_simplify_square_root_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, rewrite.rewritten, expected),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn simplify_square_root_rewrite_symbolic_phase_shift_linear() {
+        let mut ctx = Context::new();
+        let expr = parse("sqrt(pi^2 + u^2 + 2*u + 2*pi*u + 1 + 2*pi)", &mut ctx).expect("expr");
+        let expected = parse("abs(u + pi + 1)", &mut ctx).expect("expected");
+        let rewrite = try_rewrite_simplify_square_root_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, rewrite.rewritten, expected),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn simplify_square_root_rewrite_exp_shifted_unit_square() {
+        let mut ctx = Context::new();
+        let expr = parse("sqrt(e^(2*u) + 2*e^u + 1)", &mut ctx).expect("expr");
+        let expected = parse("abs(e^u + 1)", &mut ctx).expect("expected");
+        let rewrite = try_rewrite_simplify_square_root_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, rewrite.rewritten, expected),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
     fn simplify_square_root_rewrite_rejects_non_perfect_square_poly() {
         let mut ctx = Context::new();
         let expr = parse("sqrt(x^2 + 1)", &mut ctx).expect("expr");
@@ -1899,6 +2669,34 @@ mod tests {
         let mut ctx = Context::new();
         let expr = parse("sqrt(4*x^2 + 4)", &mut ctx).expect("expr");
         let expected = parse("2*sqrt(x^2 + 1)", &mut ctx).expect("expected");
+        let rewrite = try_rewrite_simplify_square_root_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, rewrite.rewritten, expected),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn simplify_square_root_rewrite_extracts_quotient_of_perfect_squares() {
+        let mut ctx = Context::new();
+        let expr = parse("sqrt((4*x^2 + 4*x + 1)/(x^2 + 2*x + 1))", &mut ctx).expect("expr");
+        let expected = parse("abs((2*x + 1)/(x + 1))", &mut ctx).expect("expected");
+        let rewrite = try_rewrite_simplify_square_root_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, rewrite.rewritten, expected),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn simplify_square_root_rewrite_extracts_factored_quotient_of_squares() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "sqrt((x^4 + 6*x^3 + 11*x^2 + 6*x + 1)/(x^4 + 2*x^3 + x^2))",
+            &mut ctx,
+        )
+        .expect("expr");
+        let expected = parse("abs((x^2 + 3*x + 1)/(x^2 + x))", &mut ctx).expect("expected");
         let rewrite = try_rewrite_simplify_square_root_expr(&mut ctx, expr).expect("rewrite");
         assert_eq!(
             cas_ast::ordering::compare_expr(&ctx, rewrite.rewritten, expected),

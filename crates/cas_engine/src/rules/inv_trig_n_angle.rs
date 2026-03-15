@@ -40,6 +40,7 @@
 use cas_math::inv_trig_n_angle_support::{
     try_plan_n_angle_acos_expr, try_plan_n_angle_asin_expr, try_plan_n_angle_atan_expr,
 };
+use cas_math::trig_identity_zero_support::match_cos_triple_identity_zero_expr;
 
 use crate::define_rule;
 use crate::rule::Rewrite;
@@ -74,6 +75,11 @@ define_rule!(
         crate::ConditionClass::Definability
     ),
     |ctx, expr, _parent_ctx| {
+        if _parent_ctx.has_ancestor_matching(ctx, |ctx, ancestor| {
+            match_cos_triple_identity_zero_expr(ctx, ancestor)
+        }) {
+            return None;
+        }
         let plan =
             try_plan_n_angle_atan_expr(ctx, expr, MAX_N, MAX_INNER_NODES, MAX_OUTPUT_NODES)?;
         Some(

@@ -1,7 +1,9 @@
 use super::*;
+use crate::parent_context::ParentContext;
 use crate::rule::Rule;
 use cas_ast::Context;
 use cas_formatter::DisplayExpr;
+use cas_parser::parse;
 use num_bigint::BigInt;
 use num_rational::BigRational;
 
@@ -66,4 +68,24 @@ fn test_cancel_cube_root_difference_basic() {
         "Result should contain cube root of x: got {}",
         result_str
     );
+}
+
+#[test]
+fn test_cancel_sum_diff_cubes_fraction_trig_square_cube() {
+    let mut ctx = Context::new();
+    let expr = parse("((sin(u)^2)^3 - 1)/((sin(u)^2) - 1)", &mut ctx)
+        .unwrap_or_else(|err| panic!("parse expr: {err}"));
+    let rule = CancelSumDiffCubesFractionRule;
+    let parent_ctx = ParentContext::root().with_domain_mode(crate::DomainMode::Generic);
+    let rewrite = rule
+        .apply(&mut ctx, expr, &parent_ctx)
+        .unwrap_or_else(|| panic!("rewrite"));
+    let output = format!(
+        "{}",
+        DisplayExpr {
+            context: &ctx,
+            id: rewrite.new_expr
+        }
+    );
+    assert_eq!(output, "1 + sin(u)^2 + sin(u)^4");
 }

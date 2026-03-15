@@ -1,13 +1,18 @@
 //! Structural planning helpers for `(A^2 - B^2) / (A ± B)` rewrites.
 
+use crate::abs_support::try_unwrap_abs_arg;
 use crate::multipoly::{multipoly_from_expr, multipoly_to_expr, PolyBudget};
+use crate::perfect_square_support::rational_sqrt;
+use cas_ast::ordering::compare_expr;
 use cas_ast::{Context, Expr, ExprId};
+use std::cmp::Ordering;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DifferenceOfSquaresDivisionPolicy {
     pub max_terms: usize,
     pub max_total_degree: u32,
     pub max_pow_exp: u32,
+    pub allow_abs_square_equiv: bool,
 }
 
 impl Default for DifferenceOfSquaresDivisionPolicy {
@@ -16,12 +21,21 @@ impl Default for DifferenceOfSquaresDivisionPolicy {
             max_terms: 50,
             max_total_degree: 6,
             max_pow_exp: 4,
+            allow_abs_square_equiv: false,
         }
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum DenMatch {
+    AMinusB,
+    APlusB,
+    BMinusA,
+    BPlusA,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ReciprocalNumeratorMatch {
     AMinusB,
     APlusB,
     BMinusA,
@@ -37,6 +51,11 @@ pub struct DifferenceOfSquaresDivisionPlan {
     pub final_result: ExprId,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ReciprocalDifferenceOfSquaresPlan {
+    pub final_result: ExprId,
+}
+
 /// Plan rewrite for `(A² - B²) / (A ± B)` style expressions.
 ///
 /// Returns `None` when shape/polynomial checks do not match.
@@ -49,16 +68,16 @@ pub fn try_plan_difference_of_squares_division_expr(
     // Numerator must match A² - B²:
     // - Sub(Pow(A,2), Pow(B,2))
     // - Add(Pow(A,2), Neg(Pow(B,2)))
-    let (a, b) = match ctx.get(numerator) {
+    let (a, b) = match ctx.get(numerator).clone() {
         Expr::Sub(left, right) => {
-            let a_opt = extract_squared_base(ctx, *left)?;
-            let b_opt = extract_squared_base(ctx, *right)?;
+            let a_opt = extract_squared_base(ctx, left)?;
+            let b_opt = extract_squared_base(ctx, right)?;
             (a_opt, b_opt)
         }
         Expr::Add(left, right) => {
-            let a_opt = extract_squared_base(ctx, *left)?;
-            if let Expr::Neg(inner) = ctx.get(*right) {
-                let b_opt = extract_squared_base(ctx, *inner)?;
+            let a_opt = extract_squared_base(ctx, left)?;
+            if let Expr::Neg(inner) = ctx.get(right).clone() {
+                let b_opt = extract_squared_base(ctx, inner)?;
                 (a_opt, b_opt)
             } else {
                 return None;
@@ -90,6 +109,27 @@ pub fn try_plan_difference_of_squares_division_expr(
             a_plus_b_raw
         } else {
             a_minus_b_raw
+        };
+        return Some(DifferenceOfSquaresDivisionPlan {
+            factored_numerator,
+            intermediate_with_orig_den: intermediate,
+            den_simplified: denominator,
+            intermediate,
+            final_result,
+        });
+    }
+
+    if let Some((rep_a, rep_b, den_match)) =
+        match_denominator_pair(ctx, denominator, a, b, policy.allow_abs_square_equiv)
+    {
+        let a_minus_b = ctx.add(Expr::Sub(rep_a, rep_b));
+        let a_plus_b = ctx.add(Expr::Add(rep_a, rep_b));
+        let factored_numerator = ctx.add(Expr::Mul(a_minus_b, a_plus_b));
+        let intermediate = ctx.add(Expr::Div(factored_numerator, denominator));
+        let final_result = match den_match {
+            DenMatch::AMinusB => a_plus_b,
+            DenMatch::BMinusA => ctx.add(Expr::Neg(a_plus_b)),
+            DenMatch::APlusB | DenMatch::BPlusA => a_minus_b,
         };
         return Some(DifferenceOfSquaresDivisionPlan {
             factored_numerator,
@@ -160,7 +200,64 @@ pub fn try_plan_difference_of_squares_division_expr(
     })
 }
 
-fn extract_squared_base(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+/// Plan rewrite for `(A ± B) / (A² - B²)` style expressions.
+pub fn try_plan_reciprocal_difference_of_squares_expr(
+    ctx: &mut Context,
+    numerator: ExprId,
+    denominator: ExprId,
+) -> Option<ReciprocalDifferenceOfSquaresPlan> {
+    let (a, b, den_sign) = match ctx.get(denominator).clone() {
+        Expr::Sub(left, right) => {
+            let a = extract_squared_base(ctx, left)?;
+            let b = extract_squared_base(ctx, right)?;
+            (a, b, 1_i32)
+        }
+        Expr::Add(left, right) => {
+            if let Expr::Neg(inner) = ctx.get(right).clone() {
+                let a = extract_squared_base(ctx, left)?;
+                let b = extract_squared_base(ctx, inner)?;
+                (a, b, 1_i32)
+            } else if let Some(b) = extract_negative_squared_base(ctx, right) {
+                let a = extract_squared_base(ctx, left)?;
+                (a, b, 1_i32)
+            } else if let Expr::Neg(inner) = ctx.get(left).clone() {
+                let a = extract_squared_base(ctx, inner)?;
+                let b = extract_squared_base(ctx, right)?;
+                (a, b, -1_i32)
+            } else if let Some(a) = extract_negative_squared_base(ctx, left) {
+                let b = extract_squared_base(ctx, right)?;
+                (a, b, -1_i32)
+            } else {
+                return None;
+            }
+        }
+        _ => return None,
+    };
+
+    let num_match = match_additive_pair(ctx, numerator, a, b)?;
+    let a_minus_b = ctx.add(Expr::Sub(a, b));
+    let a_plus_b = ctx.add(Expr::Add(a, b));
+
+    let (result_den, result_sign) = match num_match {
+        ReciprocalNumeratorMatch::AMinusB => (a_plus_b, den_sign),
+        ReciprocalNumeratorMatch::BMinusA => (a_plus_b, -den_sign),
+        ReciprocalNumeratorMatch::APlusB | ReciprocalNumeratorMatch::BPlusA => {
+            (a_minus_b, den_sign)
+        }
+    };
+
+    let one = ctx.num(1);
+    let reciprocal = ctx.add(Expr::Div(one, result_den));
+    let final_result = if result_sign < 0 {
+        ctx.add(Expr::Neg(reciprocal))
+    } else {
+        reciprocal
+    };
+
+    Some(ReciprocalDifferenceOfSquaresPlan { final_result })
+}
+
+fn extract_squared_base(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
     if let Expr::Pow(base, exp) = ctx.get(expr) {
         if let Expr::Number(n) = ctx.get(*exp) {
             if n.is_integer() && *n == num_rational::BigRational::from_integer(2.into()) {
@@ -168,12 +265,167 @@ fn extract_squared_base(ctx: &Context, expr: ExprId) -> Option<ExprId> {
             }
         }
     }
+    if let Expr::Number(n) = ctx.get(expr) {
+        if let Some(root) = rational_sqrt(n) {
+            return Some(ctx.add(Expr::Number(root)));
+        }
+    }
     None
+}
+
+fn extract_negative_squared_base(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    if let Expr::Neg(inner) = ctx.get(expr).clone() {
+        return extract_squared_base(ctx, inner);
+    }
+    if let Expr::Number(n) = ctx.get(expr) {
+        let negated = -n.clone();
+        let root = rational_sqrt(&negated)?;
+        return Some(ctx.add(Expr::Number(root)));
+    }
+    None
+}
+
+fn square_base_equivalent(
+    ctx: &Context,
+    lhs: ExprId,
+    rhs: ExprId,
+    allow_abs_square_equiv: bool,
+) -> bool {
+    if compare_expr(ctx, lhs, rhs) == Ordering::Equal {
+        return true;
+    }
+    if !allow_abs_square_equiv {
+        return false;
+    }
+    match (try_unwrap_abs_arg(ctx, lhs), try_unwrap_abs_arg(ctx, rhs)) {
+        (Some(inner), _) if compare_expr(ctx, inner, rhs) == Ordering::Equal => true,
+        (_, Some(inner)) if compare_expr(ctx, lhs, inner) == Ordering::Equal => true,
+        (Some(left_inner), Some(right_inner)) => {
+            compare_expr(ctx, left_inner, right_inner) == Ordering::Equal
+        }
+        _ => false,
+    }
+}
+
+fn match_denominator_pair(
+    ctx: &Context,
+    expr: ExprId,
+    a: ExprId,
+    b: ExprId,
+    allow_abs_square_equiv: bool,
+) -> Option<(ExprId, ExprId, DenMatch)> {
+    match ctx.get(expr) {
+        Expr::Sub(left, right) => {
+            if square_base_equivalent(ctx, *left, a, allow_abs_square_equiv)
+                && square_base_equivalent(ctx, *right, b, allow_abs_square_equiv)
+            {
+                Some((*left, *right, DenMatch::AMinusB))
+            } else if square_base_equivalent(ctx, *left, b, allow_abs_square_equiv)
+                && square_base_equivalent(ctx, *right, a, allow_abs_square_equiv)
+            {
+                Some((*right, *left, DenMatch::BMinusA))
+            } else {
+                None
+            }
+        }
+        Expr::Add(left, right) => {
+            if square_base_equivalent(ctx, *left, a, allow_abs_square_equiv)
+                && square_base_equivalent(ctx, *right, b, allow_abs_square_equiv)
+            {
+                Some((*left, *right, DenMatch::APlusB))
+            } else if square_base_equivalent(ctx, *left, a, allow_abs_square_equiv)
+                && matches_neg_equivalent(ctx, *right, b)
+            {
+                Some((*left, b, DenMatch::AMinusB))
+            } else if square_base_equivalent(ctx, *left, b, allow_abs_square_equiv)
+                && square_base_equivalent(ctx, *right, a, allow_abs_square_equiv)
+            {
+                Some((*right, *left, DenMatch::BPlusA))
+            } else if square_base_equivalent(ctx, *left, b, allow_abs_square_equiv)
+                && matches_neg_equivalent(ctx, *right, a)
+            {
+                Some((a, *left, DenMatch::BMinusA))
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
+fn match_additive_pair(
+    ctx: &Context,
+    expr: ExprId,
+    a: ExprId,
+    b: ExprId,
+) -> Option<ReciprocalNumeratorMatch> {
+    match ctx.get(expr) {
+        Expr::Sub(left, right) => {
+            if compare_expr(ctx, *left, a) == Ordering::Equal
+                && compare_expr(ctx, *right, b) == Ordering::Equal
+            {
+                Some(ReciprocalNumeratorMatch::AMinusB)
+            } else if compare_expr(ctx, *left, b) == Ordering::Equal
+                && compare_expr(ctx, *right, a) == Ordering::Equal
+            {
+                Some(ReciprocalNumeratorMatch::BMinusA)
+            } else {
+                None
+            }
+        }
+        Expr::Add(left, right) => {
+            if compare_expr(ctx, *left, a) == Ordering::Equal
+                && matches_neg_equivalent(ctx, *right, b)
+            {
+                return Some(ReciprocalNumeratorMatch::AMinusB);
+            }
+            if compare_expr(ctx, *left, b) == Ordering::Equal
+                && matches_neg_equivalent(ctx, *right, a)
+            {
+                return Some(ReciprocalNumeratorMatch::BMinusA);
+            }
+            if matches_neg_equivalent(ctx, *left, a)
+                && compare_expr(ctx, *right, b) == Ordering::Equal
+            {
+                return Some(ReciprocalNumeratorMatch::BMinusA);
+            }
+            if matches_neg_equivalent(ctx, *left, b)
+                && compare_expr(ctx, *right, a) == Ordering::Equal
+            {
+                return Some(ReciprocalNumeratorMatch::AMinusB);
+            }
+            if compare_expr(ctx, *left, a) == Ordering::Equal
+                && compare_expr(ctx, *right, b) == Ordering::Equal
+            {
+                Some(ReciprocalNumeratorMatch::APlusB)
+            } else if compare_expr(ctx, *left, b) == Ordering::Equal
+                && compare_expr(ctx, *right, a) == Ordering::Equal
+            {
+                Some(ReciprocalNumeratorMatch::BPlusA)
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
+fn matches_neg_equivalent(ctx: &Context, expr: ExprId, target: ExprId) -> bool {
+    if let Expr::Neg(inner) = ctx.get(expr) {
+        return compare_expr(ctx, *inner, target) == Ordering::Equal;
+    }
+    match (ctx.get(expr), ctx.get(target)) {
+        (Expr::Number(lhs), Expr::Number(rhs)) => lhs == &(-rhs.clone()),
+        _ => false,
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{try_plan_difference_of_squares_division_expr, DifferenceOfSquaresDivisionPolicy};
+    use super::{
+        try_plan_difference_of_squares_division_expr,
+        try_plan_reciprocal_difference_of_squares_expr, DifferenceOfSquaresDivisionPolicy,
+    };
     use cas_ast::{Context, Expr};
     use cas_parser::parse;
 
@@ -224,6 +476,73 @@ mod tests {
     fn rejects_non_matching_denominator() {
         let mut ctx = Context::new();
         let expr = parse("(x^2 - 1) / (x + 2)", &mut ctx).expect("parse");
+        let (num, den) = match ctx.get(expr) {
+            Expr::Div(n, d) => (*n, *d),
+            other => panic!("expected div, got {other:?}"),
+        };
+        let plan = try_plan_difference_of_squares_division_expr(
+            &mut ctx,
+            num,
+            den,
+            DifferenceOfSquaresDivisionPolicy::default(),
+        );
+        assert!(plan.is_none());
+    }
+
+    #[test]
+    fn plans_reciprocal_difference_of_squares_with_opaque_atom() {
+        let mut ctx = Context::new();
+        let expr = parse("(arctan(u) - 1) / (arctan(u)^2 - 1)", &mut ctx).expect("parse");
+        let (num, den) = match ctx.get(expr) {
+            Expr::Div(n, d) => (*n, *d),
+            other => panic!("expected div, got {other:?}"),
+        };
+        let plan =
+            try_plan_reciprocal_difference_of_squares_expr(&mut ctx, num, den).expect("plan");
+        let rendered = cas_formatter::render_expr(&ctx, plan.final_result);
+        assert_eq!(rendered, "1 / (arctan(u) + 1)");
+    }
+
+    #[test]
+    fn plans_reciprocal_difference_of_squares_with_canonicalized_add_neg_numerator() {
+        let mut ctx = Context::new();
+        let expr = parse("(arctan(u) + (-1)) / (arctan(u)^2 + (-1))", &mut ctx).expect("parse");
+        let (num, den) = match ctx.get(expr) {
+            Expr::Div(n, d) => (*n, *d),
+            other => panic!("expected div, got {other:?}"),
+        };
+        let plan =
+            try_plan_reciprocal_difference_of_squares_expr(&mut ctx, num, den).expect("plan");
+        let rendered = cas_formatter::render_expr(&ctx, plan.final_result);
+        assert_eq!(rendered, "1 / (arctan(u) + 1)");
+    }
+
+    #[test]
+    fn plans_difference_of_squares_with_abs_denominator_when_allowed() {
+        let mut ctx = Context::new();
+        let expr = parse("(u^2 - 4) / (abs(u) + 2)", &mut ctx).expect("parse");
+        let (num, den) = match ctx.get(expr) {
+            Expr::Div(n, d) => (*n, *d),
+            other => panic!("expected div, got {other:?}"),
+        };
+        let plan = try_plan_difference_of_squares_division_expr(
+            &mut ctx,
+            num,
+            den,
+            DifferenceOfSquaresDivisionPolicy {
+                allow_abs_square_equiv: true,
+                ..DifferenceOfSquaresDivisionPolicy::default()
+            },
+        )
+        .expect("plan");
+        let rendered = cas_formatter::render_expr(&ctx, plan.final_result);
+        assert_eq!(rendered, "|u| - 2");
+    }
+
+    #[test]
+    fn rejects_difference_of_squares_with_abs_denominator_when_disallowed() {
+        let mut ctx = Context::new();
+        let expr = parse("(u^2 - 4) / (abs(u) + 2)", &mut ctx).expect("parse");
         let (num, den) = match ctx.get(expr) {
             Expr::Div(n, d) => (*n, *d),
             other => panic!("expected div, got {other:?}"),

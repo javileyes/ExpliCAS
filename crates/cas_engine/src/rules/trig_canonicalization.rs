@@ -98,7 +98,7 @@ define_rule!(
 define_rule!(
     SecTanPythagoreanRule,
     "sec²(x) - tan²(x) = 1",
-    Some(crate::target_kind::TargetKindSet::SUB),
+    Some(crate::target_kind::TargetKindSet::SUB | crate::target_kind::TargetKindSet::ADD),
     |ctx, expr| {
         let rewrite = try_rewrite_sec_tan_pythagorean_identity_expr(ctx, expr)?;
         Some(
@@ -111,7 +111,7 @@ define_rule!(
 define_rule!(
     CscCotPythagoreanRule,
     "csc²(x) - cot²(x) = 1",
-    Some(crate::target_kind::TargetKindSet::SUB),
+    Some(crate::target_kind::TargetKindSet::SUB | crate::target_kind::TargetKindSet::ADD),
     |ctx, expr| {
         let rewrite = try_rewrite_csc_cot_pythagorean_identity_expr(ctx, expr)?;
         Some(

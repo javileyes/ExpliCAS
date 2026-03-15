@@ -26,12 +26,12 @@ use cas_solver::runtime::rules::polynomial::{
 use cas_solver::runtime::rules::trigonometry::{
     EvaluateTrigRule, PythagoreanIdentityRule, RecursiveTrigExpansionRule, TanToSinCosRule,
 };
-use cas_solver::runtime::Simplifier;
+use cas_solver::runtime::{Simplifier, SolverOptions};
 
 use cas_ast::{BoundType, Equation, Expr, ExprId, RelOp, SolutionSet};
 use cas_formatter::DisplayExpr;
 use cas_parser::parse;
-use cas_solver::api::solve;
+use cas_solver::api::{solve, solve_with_display_steps};
 use num_traits::Zero;
 
 fn create_full_simplifier() -> Simplifier {
@@ -245,28 +245,36 @@ fn test_trig_identity_hidden() {
 
 #[test]
 fn test_algebraic_labyrinth() {
+    use cas_session::SessionState;
+    use cas_solver::runtime::{Engine, EvalAction, EvalRequest, EvalResult};
+
     // ln(e^3) + (sin(x) + cos(x))^2 - sin(2*x) - (x^3 - 8)/(x - 2) + x^2 + 2*x
     // Expected: 0
     let input = "ln(e^3) + (sin(x) + cos(x))^2 - sin(2*x) - (x^3 - 8)/(x - 2) + x^2 + 2*x";
-    let mut simplifier = create_full_simplifier();
+    let mut engine = Engine::new();
+    let mut state = SessionState::new();
 
-    // All necessary rules are now in create_full_simplifier()
-    // - DoubleAngleRule for sin(2x)
-    // - BinomialExpansionRule for (sin+cos)^2
-    // - DistributeRule for negative sign
-    // - Log/Trig/Poly rules
-
-    // Use expand() method which now correctly propagates expand_mode
-    let expr = parse(input, &mut simplifier.context).unwrap();
-    let (simplified, _) = simplifier.expand(expr);
-
-    let result_str = format!(
-        "{}",
-        DisplayExpr {
-            context: &simplifier.context,
-            id: simplified
-        }
-    );
+    let parsed = parse(input, &mut engine.simplifier.context).unwrap();
+    let req = EvalRequest {
+        raw_input: input.to_string(),
+        parsed,
+        action: EvalAction::Simplify,
+        auto_store: false,
+    };
+    let output = engine.eval(&mut state, req).expect("eval failed");
+    let result_str = match output.result {
+        EvalResult::Expr(expr) => format!(
+            "{}",
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: expr
+            }
+        ),
+        other => panic!(
+            "Unexpected eval result for algebraic labyrinth: {:?}",
+            other
+        ),
+    };
     assert_eq!(result_str, "0", "Failed on: {}", input);
 }
 
@@ -760,24 +768,53 @@ fn test_torture_11_polynomial_stress() {
 fn test_torture_12_solver_singularity() {
     // 12. El "Agujero en la Gráfica"
     // (x^2 - 1) / (x - 1) = 2
-    // Should be No Solution because x=1 makes denominator zero.
+    // Sound outcomes:
+    // - Empty / Discrete(empty)
+    // - Conditional
+    // - Discrete {1} only if the original denominator guard survives in
+    //   required_conditions.
     let mut simplifier = create_full_simplifier();
     let stmt =
         cas_parser::parse_statement("(x^2 - 1) / (x - 1) = 2", &mut simplifier.context).unwrap();
 
     if let cas_parser::Statement::Equation(eq) = stmt {
-        let result = cas_solver::api::solve(&eq, "x", &mut simplifier);
+        let result = solve_with_display_steps(&eq, "x", &mut simplifier, SolverOptions::default());
 
         match result {
-            Ok((SolutionSet::Empty, _)) => (), // Correct
-            Ok((SolutionSet::Discrete(sols), _)) => {
-                // If it returns x=1, check if it's valid (it shouldn't be)
+            Ok((SolutionSet::Empty, _, _)) => (),
+            Ok((SolutionSet::Conditional(cases), _, _)) => {
+                assert!(
+                    !cases.is_empty(),
+                    "Conditional solve should carry at least one guarded case"
+                );
+            }
+            Ok((SolutionSet::Discrete(sols), _, diagnostics)) => {
+                let required: Vec<String> = diagnostics
+                    .required
+                    .iter()
+                    .map(|cond| cond.display(&simplifier.context))
+                    .collect();
+                let has_original_den_guard = required
+                    .iter()
+                    .any(|r| r.contains("x - 1") && (r.contains("≠ 0") || r.contains("!= 0")));
+
                 let one = simplifier.context.num(1);
+                if sols.is_empty() {
+                    return;
+                }
                 for sol in sols {
                     if simplifier.are_equivalent(sol, one) {
-                        panic!("FALLO GRAVE: El solver devolvió x=1, que indefine la ecuación original (división por cero).");
+                        assert!(
+                            has_original_den_guard,
+                            "UNSOUND: solver returned x=1 without preserving x - 1 != 0. required={required:?}"
+                        );
+                        return;
                     }
                 }
+                panic!(
+                    "Resultado discreto inesperado para singularidad: {:?}",
+                    required
+                );
             }
             _ => panic!("Resultado inesperado para singularidad: {:?}", result),
         }
@@ -1101,6 +1138,48 @@ fn test_abs_global_negative_sum_simplification() {
 }
 
 #[test]
+fn test_abs_expanded_positive_factor_shortcut() {
+    let mut simplifier = Simplifier::with_default_rules();
+
+    // abs(2*(u^2 - 1)) - 2*abs(u^2 - 1) -> 0
+    //
+    // The runtime used to distribute inside abs and stop at |2*u^2 - 2|. The
+    // top-level abs shortcut should now rescue the positive factor first.
+    let input = "abs(2*(u^2 - 1)) - 2*abs(u^2 - 1)";
+    let expr = parse(input, &mut simplifier.context).unwrap();
+    let (res, _) = simplifier.simplify(expr);
+    let output = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: res
+        }
+    );
+    assert_eq!(output, "0");
+}
+
+#[test]
+fn test_abs_global_negative_linear_sum_shortcut() {
+    let mut simplifier = Simplifier::with_default_rules();
+
+    // abs(-(2*u + 3)) - abs(2*u + 3) -> 0
+    //
+    // The runtime should evaluate the outer negation at the abs root before
+    // expanding to |-2*u - 3|.
+    let input = "abs(-(2*u + 3)) - abs(2*u + 3)";
+    let expr = parse(input, &mut simplifier.context).unwrap();
+    let (res, _) = simplifier.simplify(expr);
+    let output = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: res
+        }
+    );
+    assert_eq!(output, "0");
+}
+
+#[test]
 fn test_abs_rational_difference_normalization() {
     let mut simplifier = Simplifier::with_default_rules();
 
@@ -1123,23 +1202,35 @@ fn test_abs_rational_difference_normalization() {
 
 #[test]
 fn test_abs_scalar_left_rational_difference_normalization() {
-    let mut simplifier = Simplifier::with_default_rules();
+    use cas_session::SessionState;
+    use cas_solver::runtime::{Engine, EvalAction, EvalRequest, EvalResult};
 
-    // abs(1 - x/(x+1)) - abs(1/(x+1)) -> 0
-    //
-    // Scalar-left forms are mirror images of the already-normalized rational
-    // difference, and should canonicalize to the same residual inside abs.
     let input = "abs(1 - (x/(x + 1))) - abs(1/(x + 1))";
-    let expr = parse(input, &mut simplifier.context).unwrap();
-    let (res, _) = simplifier.simplify(expr);
-    let output = format!(
-        "{}",
-        DisplayExpr {
-            context: &simplifier.context,
-            id: res
-        }
-    );
-    assert_eq!(output, "0");
+    let mut engine = Engine::new();
+    let mut state = SessionState::new();
+
+    let parsed = parse(input, &mut engine.simplifier.context).unwrap();
+    let req = EvalRequest {
+        raw_input: input.to_string(),
+        parsed,
+        action: EvalAction::Simplify,
+        auto_store: false,
+    };
+    let output = engine.eval(&mut state, req).expect("eval failed");
+    let result_str = match output.result {
+        EvalResult::Expr(expr) => format!(
+            "{}",
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: expr
+            }
+        ),
+        other => panic!(
+            "Unexpected eval result for abs scalar-left normalization: {:?}",
+            other
+        ),
+    };
+    assert_eq!(result_str, "0");
 }
 
 #[test]
@@ -1186,6 +1277,467 @@ fn test_abs_odd_power_magnitude_canonicalization() {
 }
 
 #[test]
+fn test_abs_quotient_inner_sign_normalization() {
+    let mut simplifier = Simplifier::with_default_rules();
+
+    // abs((1-x)/(x+1)) - abs((x-1)/(x+1)) -> 0
+    //
+    // Inside abs, swapping a preferred sub-like numerator only changes a
+    // global sign. The runtime should normalize that quotient shape.
+    let input = "abs((1 - x)/(x + 1)) - abs((x - 1)/(x + 1))";
+    let expr = parse(input, &mut simplifier.context).unwrap();
+    let (res, _) = simplifier.simplify(expr);
+    let output = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: res
+        }
+    );
+    assert_eq!(output, "0");
+}
+
+#[test]
+fn test_abs_quotient_inner_denominator_sign_normalization() {
+    let mut simplifier = Simplifier::with_default_rules();
+
+    // abs(x/(1-x^2)) - abs(x/(x^2-1)) -> 0
+    //
+    // This is the same quotient-local sign issue, but in the denominator.
+    let input = "abs(x/(1 - x^2)) - abs(x/(x^2 - 1))";
+    let expr = parse(input, &mut simplifier.context).unwrap();
+    let (res, _) = simplifier.simplify(expr);
+    let output = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: res
+        }
+    );
+    assert_eq!(output, "0");
+}
+
+#[test]
+fn test_abs_difference_of_squares_quotient_cancellation() {
+    let mut simplifier = Simplifier::with_default_rules();
+
+    // ((abs(x))^2 - 4)/(abs(x) + 2) - (abs(x) - 2) -> 0
+    //
+    // In real mode, x^2 and abs(x)^2 represent the same square factor. The
+    // standard runtime should still expose the difference-of-squares cancel.
+    let input = "((abs(x))^2 - 4)/(abs(x) + 2) - (abs(x) - 2)";
+    let expr = parse(input, &mut simplifier.context).unwrap();
+    let (res, _) = simplifier.simplify(expr);
+    let output = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: res
+        }
+    );
+    assert_eq!(output, "0");
+}
+
+#[test]
+fn test_abs_cube_quotient_exact_cancellation() {
+    let mut simplifier = Simplifier::with_default_rules();
+
+    // ((abs(u))^3 - 1)/(abs(u) - 1) - (abs(u)^2 + abs(u) + 1) -> 0
+    //
+    // Keep the odd abs power intact inside this quotient so the exact
+    // t^3 - 1 over t - 1 path can fire before odd-power canonicalization.
+    let input = "((abs(u))^3 - 1)/(abs(u) - 1) - (abs(u)^2 + abs(u) + 1)";
+    let expr = parse(input, &mut simplifier.context).unwrap();
+    let (res, _) = simplifier.simplify(expr);
+    let output = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: res
+        }
+    );
+    assert_eq!(output, "0");
+}
+
+#[test]
+fn test_arctan_reciprocal_difference_of_squares_cancellation() {
+    let mut simplifier = Simplifier::with_default_rules();
+
+    // ((arctan(x)) - 1)/((arctan(x))^2 - 1) - 1/(arctan(x) + 1) -> 0
+    let input = "((arctan(x)) - 1)/((arctan(x))^2 - 1) - 1/(arctan(x) + 1)";
+    let expr = parse(input, &mut simplifier.context).unwrap();
+    let (res, _) = simplifier.simplify(expr);
+    let output = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: res
+        }
+    );
+    assert_eq!(output, "0");
+}
+
+#[test]
+fn test_arcsin_reciprocal_difference_of_squares_cancellation() {
+    let mut simplifier = Simplifier::with_default_rules();
+
+    // ((arcsin(x)) - 1)/((arcsin(x))^2 - 1) - 1/(arcsin(x) + 1) -> 0
+    let input = "((arcsin(x)) - 1)/((arcsin(x))^2 - 1) - 1/(arcsin(x) + 1)";
+    let expr = parse(input, &mut simplifier.context).unwrap();
+    let (res, _) = simplifier.simplify(expr);
+    let output = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: res
+        }
+    );
+    assert_eq!(output, "0");
+}
+
+#[test]
+fn test_rational_context_sec_tan_pythagorean_identity() {
+    let mut simplifier = Simplifier::with_default_rules();
+
+    // sec(1/(x-1)+1/(x+1))^2 - tan(1/(x-1)+1/(x+1))^2 -> 1
+    let input = "sec((1/(x - 1) + 1/(x + 1)))^2 - tan((1/(x - 1) + 1/(x + 1)))^2 - 1";
+    let expr = parse(input, &mut simplifier.context).unwrap();
+    let (res, _) = simplifier.simplify(expr);
+    let output = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: res
+        }
+    );
+    assert_eq!(output, "0");
+}
+
+#[test]
+fn test_sqrt_of_rational_perfect_square_quotient() {
+    let mut simplifier = Simplifier::with_default_rules();
+
+    // sqrt((x/(x+1))^2 + 2*(x/(x+1)) + 1) - abs((2*x+1)/(x+1)) -> 0
+    let input = "sqrt((x/(x + 1))^2 + 2*(x/(x + 1)) + 1) - abs((2*x + 1)/(x + 1))";
+    let expr = parse(input, &mut simplifier.context).unwrap();
+    let (res, _) = simplifier.simplify(expr);
+    let output = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: res
+        }
+    );
+    assert_eq!(output, "0");
+}
+
+#[test]
+fn test_sqrt_of_expanded_rational_perfect_square_quotient() {
+    let mut simplifier = Simplifier::with_default_rules();
+
+    // sqrt((1/x + 1/(x+1))^2 + 2*(1/x + 1/(x+1)) + 1) - abs((1/x + 1/(x+1)) + 1) -> 0
+    let input = "sqrt((1/x + 1/(x + 1))^2 + 2*(1/x + 1/(x + 1)) + 1) - abs((1/x + 1/(x + 1)) + 1)";
+    let expr = parse(input, &mut simplifier.context).unwrap();
+    let (res, _) = simplifier.simplify(expr);
+    let output = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: res
+        }
+    );
+    assert_eq!(output, "0");
+}
+
+#[test]
+fn test_sqrt_of_expanded_symmetric_rational_perfect_square_quotient() {
+    let mut simplifier = Simplifier::with_default_rules();
+
+    // sqrt((1/(x-1) + 1/(x+1))^2 + 2*(1/(x-1) + 1/(x+1)) + 1) - abs((1/(x-1) + 1/(x+1)) + 1) -> 0
+    let input = "sqrt((1/(x - 1) + 1/(x + 1))^2 + 2*(1/(x - 1) + 1/(x + 1)) + 1) - abs((1/(x - 1) + 1/(x + 1)) + 1)";
+    let expr = parse(input, &mut simplifier.context).unwrap();
+    let (res, _) = simplifier.simplify(expr);
+    let output = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: res
+        }
+    );
+    assert_eq!(output, "0");
+}
+
+#[test]
+fn test_sqrt_of_root_ctx_shifted_unit_square() {
+    let mut simplifier = Simplifier::with_default_rules();
+
+    // sqrt((1/sqrt(u))^2 + 2*(1/sqrt(u)) + 1) - |1/sqrt(u) + 1| -> 0
+    //
+    // The standard runtime used to simplify the squared term first and lose the
+    // exact t^2 + 2t + 1 shape for t = 1/sqrt(u). The root shortcut should now
+    // close this directly to the exact abs(...) form.
+    let input = "sqrt((1/sqrt(u))^2 + 2*(1/sqrt(u)) + 1) - abs(1/sqrt(u) + 1)";
+    let expr = parse(input, &mut simplifier.context).unwrap();
+    let (res, _) = simplifier.simplify(expr);
+    let output = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: res
+        }
+    );
+    assert_eq!(output, "0");
+}
+
+#[test]
+fn test_sqrt_of_root_ctx_scaled_square() {
+    let mut simplifier = Simplifier::with_default_rules();
+
+    // sqrt(4*(1/sqrt(u))^2) - |2/sqrt(u)| -> 0
+    //
+    // After extracting the numeric square factor, the inner sqrt should still
+    // close to abs(1/sqrt(u)) in the same standard runtime path.
+    let input = "sqrt(4*(1/sqrt(u))^2) - abs(2/sqrt(u))";
+    let expr = parse(input, &mut simplifier.context).unwrap();
+    let (res, _) = simplifier.simplify(expr);
+    let output = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: res
+        }
+    );
+    assert_eq!(output, "0");
+}
+
+#[test]
+fn test_root_ctx_shifted_unit_square_exact_quotient() {
+    let mut simplifier = Simplifier::with_default_rules();
+
+    // ((1/sqrt(u))^2 + 2*(1/sqrt(u)) + 1)/((1/sqrt(u)) + 1) - ((1/sqrt(u)) + 1) -> 0
+    //
+    // The standard runtime should prefer the exact quotient before conjugate
+    // rationalization, otherwise this falls into a domain-equivalent residual.
+    let input = "(((1/sqrt(u))^2 + 2*(1/sqrt(u)) + 1)/((1/sqrt(u)) + 1)) - ((1/sqrt(u)) + 1)";
+    let expr = parse(input, &mut simplifier.context).unwrap();
+    let (res, _) = simplifier.simplify(expr);
+    let output = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: res
+        }
+    );
+    assert_eq!(output, "0");
+}
+
+#[test]
+fn test_sqrt_collapsed_abs_square_trinomial_simplification() {
+    let mut simplifier = Simplifier::with_default_rules();
+
+    // sqrt(abs(x)^2 + 2*abs(x) + 1) - (abs(x) + 1) -> 0
+    //
+    // The middle term carries abs(x) instead of an explicit sqrt. The perfect
+    // square matcher should still recover the collapsed square and simplify.
+    let input = "sqrt(abs(x)^2 + 2*abs(x) + 1) - (abs(x) + 1)";
+    let expr = parse(input, &mut simplifier.context).unwrap();
+    let (res, _) = simplifier.simplify(expr);
+    let output = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: res
+        }
+    );
+    assert_eq!(output, "0");
+}
+
+#[test]
+fn test_sqrt_symbolic_phase_shift_trinomial_simplification() {
+    let mut simplifier = Simplifier::with_default_rules();
+
+    // sqrt((u + pi)^2 + 2*(u + pi) + 1) - abs(u + pi + 1) -> 0
+    //
+    // The standard runtime expands (u + pi)^2 first. The square-root rewrite
+    // still needs to recover the symbolic phase shift from the expanded monic
+    // quadratic and close to the exact abs(...) form.
+    let input = "sqrt((u + pi)^2 + 2*(u + pi) + 1) - abs(u + pi + 1)";
+    let expr = parse(input, &mut simplifier.context).unwrap();
+    let (res, _) = simplifier.simplify(expr);
+    let output = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: res
+        }
+    );
+    assert_eq!(output, "0");
+}
+
+#[test]
+fn test_sqrt_exp_shifted_unit_square_simplification() {
+    let mut simplifier = Simplifier::with_default_rules();
+
+    // sqrt(exp(u)^2 + 2*exp(u) + 1) - (exp(u) + 1) -> 0
+    //
+    // The square term usually arrives as e^(2*u), not as an explicit (e^u)^2.
+    // The standard root shortcut should still recover the shifted unit square,
+    // produce abs(e^u + 1), and let nonnegativity close it to e^u + 1.
+    let input = "sqrt(exp(u)^2 + 2*exp(u) + 1) - (exp(u) + 1)";
+    let expr = parse(input, &mut simplifier.context).unwrap();
+    let (res, _) = simplifier.simplify(expr);
+    let output = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: res
+        }
+    );
+    assert_eq!(output, "0");
+}
+
+#[test]
+fn test_cos_triple_arctan_identity_zero() {
+    let mut simplifier = Simplifier::with_default_rules();
+
+    // cos(3*arctan(u)) - (4*cos(arctan(u))^3 - 3*cos(arctan(u))) -> 0
+    //
+    // The exact triple-angle identity should win before the inverse-atan
+    // composition rule expands the individual cosine children into radical
+    // denominators.
+    let input = "cos(3*(arctan(u))) - (4*cos((arctan(u)))^3 - 3*cos((arctan(u))))";
+    let expr = parse(input, &mut simplifier.context).unwrap();
+    let (res, _) = simplifier.simplify(expr);
+    let output = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: res
+        }
+    );
+    assert_eq!(output, "0");
+}
+
+#[test]
+fn test_ln_reciprocal_exp_inverse_simplification() {
+    let mut simplifier = Simplifier::with_default_rules();
+
+    // ln(exp(-u)) + u -> 0
+    //
+    // After canonicalizing exp(-u) to 1/e^u, the log-exp inverse matcher should
+    // still recognize the reciprocal exponential and close exactly to -u.
+    let input = "ln(exp((-u))) + u";
+    let expr = parse(input, &mut simplifier.context).unwrap();
+    let (res, _) = simplifier.simplify(expr);
+    let output = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: res
+        }
+    );
+    assert_eq!(output, "0");
+}
+
+#[test]
+fn test_ln_reciprocal_even_power_simplification() {
+    let mut simplifier = Simplifier::with_default_rules();
+
+    let input = "ln(1/(u^2)) + ln(u^2)";
+    let expr = parse(input, &mut simplifier.context).unwrap();
+    let (res, _) = simplifier.simplify(expr);
+    let output = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: res
+        }
+    );
+    assert_eq!(output, "0");
+}
+
+#[test]
+fn test_ln_reciprocal_even_power_function_base_simplification() {
+    let mut simplifier = Simplifier::with_default_rules();
+
+    let input = "ln(1/(sin(u)^2)) + ln(sin(u)^2)";
+    let expr = parse(input, &mut simplifier.context).unwrap();
+    let (res, _) = simplifier.simplify(expr);
+    let output = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: res
+        }
+    );
+    assert_eq!(output, "0");
+}
+
+#[test]
+fn test_reciprocal_sec_tan_pythagorean_identity() {
+    let mut simplifier = Simplifier::with_default_rules();
+
+    // 1/cos(x)^2 - tan(x)^2 - 1 -> 0
+    //
+    // The direct Pythagorean sec/tan rule should also recognize the reciprocal
+    // secant form after canonicalization has lowered sec(x)^2 to 1/cos(x)^2.
+    let input = "1/cos(x)^2 - tan(x)^2 - 1";
+    let expr = parse(input, &mut simplifier.context).unwrap();
+    let (res, _) = simplifier.simplify(expr);
+    let output = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: res
+        }
+    );
+    assert_eq!(output, "0");
+}
+
+#[test]
+fn test_builtin_sqrt_collapsed_root_quotient_cancellation() {
+    let mut simplifier = Simplifier::with_default_rules();
+
+    // ((sqrt(x^2+1))^2 + 2*sqrt(x^2+1))/(sqrt(x^2+1)+2) - sqrt(x^2+1) -> 0
+    //
+    // The exact-quotient path should treat builtin sqrt the same way it already
+    // treats canonical ( ... )^(1/2) roots.
+    let input = "((sqrt(x^2 + 1))^2 + 2*sqrt(x^2 + 1))/(sqrt(x^2 + 1) + 2) - sqrt(x^2 + 1)";
+    let expr = parse(input, &mut simplifier.context).unwrap();
+    let (res, _) = simplifier.simplify(expr);
+    let output = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: res
+        }
+    );
+    assert_eq!(output, "0");
+}
+
+#[test]
+fn test_builtin_sqrt_canonical_root_cube_quotient_cancellation() {
+    let mut simplifier = Simplifier::with_default_rules();
+
+    // ((sqrt(u^2+1))^3 - 1)/(sqrt(u^2+1)-1) - (sqrt(u^2+1)^2 + sqrt(u^2+1) + 1) -> 0
+    //
+    // The exact-quotient path must also see canonical rational-power variants
+    // like (u^2+1)^(3/2), not only explicit sqrt(...) nodes on both sides.
+    let input =
+        "((sqrt(u^2 + 1))^3 - 1)/(sqrt(u^2 + 1) - 1) - (sqrt(u^2 + 1)^2 + sqrt(u^2 + 1) + 1)";
+    let expr = parse(input, &mut simplifier.context).unwrap();
+    let (res, _) = simplifier.simplify(expr);
+    let output = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: res
+        }
+    );
+    assert_eq!(output, "0");
+}
+
+#[test]
 fn test_tan_arctan_of_structural_sqrt_simplification() {
     let mut simplifier = Simplifier::with_default_rules();
 
@@ -1194,6 +1746,69 @@ fn test_tan_arctan_of_structural_sqrt_simplification() {
     // TanToSinCos must not expand the outer tan before the direct inverse-trig
     // composition rule has a chance to fire at the root.
     let input = "tan(arctan(sqrt(x^2 + 1))) - sqrt(x^2 + 1)";
+    let expr = parse(input, &mut simplifier.context).unwrap();
+    let (res, _) = simplifier.simplify(expr);
+    let output = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: res
+        }
+    );
+    assert_eq!(output, "0");
+}
+
+#[test]
+fn test_sin_sum_triple_identity_after_distributing_scalar_over_sum() {
+    let mut simplifier = Simplifier::with_default_rules();
+
+    // sin(u^3 + 1) + sin(3*(u^3 + 1)) - 2*sin(2*(u^3 + 1))*cos(u^3 + 1) -> 0
+    //
+    // After distributive normalization, the identity matcher must still
+    // recognize t, 2t and 3t when the scalars have been pushed into the sum.
+    let input = "sin(u^3 + 1) + sin(3*(u^3 + 1)) - 2*sin(2*(u^3 + 1))*cos(u^3 + 1)";
+    let expr = parse(input, &mut simplifier.context).unwrap();
+    let (res, _) = simplifier.simplify(expr);
+    let output = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: res
+        }
+    );
+    assert_eq!(output, "0");
+}
+
+#[test]
+fn test_sin_sum_triple_identity_with_rational_context() {
+    let mut simplifier = Simplifier::with_default_rules();
+
+    // sin(r) + sin(3*r) - 2*sin(2*r)*cos(r) -> 0 with r = 1/(x-1)+1/(x+1)
+    //
+    // The identity should still close after fraction addition/pull-constant
+    // rewrites reshape r, 2r and 3r into equivalent rational forms.
+    let input = "sin((1/(x - 1) + 1/(x + 1))) + sin(3*(1/(x - 1) + 1/(x + 1))) - 2*sin(2*(1/(x - 1) + 1/(x + 1)))*cos((1/(x - 1) + 1/(x + 1)))";
+    let expr = parse(input, &mut simplifier.context).unwrap();
+    let (res, _) = simplifier.simplify(expr);
+    let output = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: res
+        }
+    );
+    assert_eq!(output, "0");
+}
+
+#[test]
+fn test_sin_sum_triple_identity_with_nested_scaled_argument() {
+    let mut simplifier = Simplifier::with_default_rules();
+
+    // sin(2*u) + sin(3*(2*u)) - 2*sin(2*(2*u))*cos(2*u) -> 0
+    //
+    // The identity matcher should accumulate numeric scale across nested
+    // multiplicative chains, not only direct 3*t / 2*t wrappers.
+    let input = "sin(2*u) + sin(3*(2*u)) - 2*sin(2*(2*u))*cos(2*u)";
     let expr = parse(input, &mut simplifier.context).unwrap();
     let (res, _) = simplifier.simplify(expr);
     let output = format!(

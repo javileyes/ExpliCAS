@@ -10,6 +10,131 @@ use cas_math::arithmetic_rule_support::{
 };
 use cas_math::arithmetic_zero_support::{match_div_zero_numerator_pattern, match_mul_zero_pattern};
 
+fn canonicalize_nested_integer_powers(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> cas_ast::ExprId {
+    let rebuilt = match ctx.get(expr).clone() {
+        Expr::Add(lhs, rhs) => {
+            let lhs = canonicalize_nested_integer_powers(ctx, lhs);
+            let rhs = canonicalize_nested_integer_powers(ctx, rhs);
+            ctx.add(Expr::Add(lhs, rhs))
+        }
+        Expr::Sub(lhs, rhs) => {
+            let lhs = canonicalize_nested_integer_powers(ctx, lhs);
+            let rhs = canonicalize_nested_integer_powers(ctx, rhs);
+            ctx.add(Expr::Sub(lhs, rhs))
+        }
+        Expr::Mul(lhs, rhs) => {
+            let lhs = canonicalize_nested_integer_powers(ctx, lhs);
+            let rhs = canonicalize_nested_integer_powers(ctx, rhs);
+            ctx.add(Expr::Mul(lhs, rhs))
+        }
+        Expr::Div(lhs, rhs) => {
+            let lhs = canonicalize_nested_integer_powers(ctx, lhs);
+            let rhs = canonicalize_nested_integer_powers(ctx, rhs);
+            ctx.add(Expr::Div(lhs, rhs))
+        }
+        Expr::Pow(base, exp) => {
+            let base = canonicalize_nested_integer_powers(ctx, base);
+            let exp = canonicalize_nested_integer_powers(ctx, exp);
+            let pow = ctx.add(Expr::Pow(base, exp));
+            cas_math::rational_canonicalization_support::try_rewrite_nested_pow_canonical_expr(
+                ctx, pow,
+            )
+            .map(|rewrite| rewrite.rewritten)
+            .unwrap_or(pow)
+        }
+        Expr::Neg(inner) => {
+            let inner = canonicalize_nested_integer_powers(ctx, inner);
+            ctx.add(Expr::Neg(inner))
+        }
+        Expr::Function(name, args) => {
+            let args = args
+                .into_iter()
+                .map(|arg| canonicalize_nested_integer_powers(ctx, arg))
+                .collect();
+            ctx.add(Expr::Function(name, args))
+        }
+        Expr::Matrix { rows, cols, data } => {
+            let data = data
+                .into_iter()
+                .map(|arg| canonicalize_nested_integer_powers(ctx, arg))
+                .collect();
+            ctx.add(Expr::Matrix { rows, cols, data })
+        }
+        Expr::Hold(inner) => {
+            let inner = canonicalize_nested_integer_powers(ctx, inner);
+            ctx.add(Expr::Hold(inner))
+        }
+        Expr::SessionRef(id) => ctx.add(Expr::SessionRef(id)),
+        Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) => expr,
+    };
+
+    if rebuilt == expr {
+        expr
+    } else {
+        rebuilt
+    }
+}
+
+fn collect_add_terms(
+    ctx: &cas_ast::Context,
+    expr: cas_ast::ExprId,
+    out: &mut Vec<cas_ast::ExprId>,
+) {
+    match ctx.get(expr) {
+        Expr::Add(lhs, rhs) => {
+            collect_add_terms(ctx, *lhs, out);
+            collect_add_terms(ctx, *rhs, out);
+        }
+        _ => out.push(expr),
+    }
+}
+
+fn exprs_equal_up_to_add_term_order(
+    ctx: &cas_ast::Context,
+    lhs: cas_ast::ExprId,
+    rhs: cas_ast::ExprId,
+) -> bool {
+    let mut lhs_terms = Vec::new();
+    let mut rhs_terms = Vec::new();
+    collect_add_terms(ctx, lhs, &mut lhs_terms);
+    collect_add_terms(ctx, rhs, &mut rhs_terms);
+    if lhs_terms.len() != rhs_terms.len() {
+        return false;
+    }
+
+    let mut lhs_terms: Vec<_> = lhs_terms
+        .into_iter()
+        .map(|term| {
+            format!(
+                "{}",
+                cas_formatter::DisplayExpr {
+                    context: ctx,
+                    id: term
+                }
+            )
+        })
+        .collect();
+    let mut rhs_terms: Vec<_> = rhs_terms
+        .into_iter()
+        .map(|term| {
+            format!(
+                "{}",
+                cas_formatter::DisplayExpr {
+                    context: ctx,
+                    id: term
+                }
+            )
+        })
+        .collect();
+
+    lhs_terms.sort();
+    rhs_terms.sort();
+    lhs_terms == rhs_terms
+}
+
 define_rule!(
     AddZeroRule,
     "Identity Property of Addition",
@@ -167,6 +292,59 @@ define_rule!(
     }
 );
 
+define_rule!(
+    SubtractExpandedSumDiffCubesQuotientRule,
+    "Subtract Expanded Sum/Difference of Cubes Quotient",
+    priority: 500,
+    |ctx, expr, parent_ctx| {
+        use crate::{ImplicitCondition, Predicate};
+
+        let (lhs, rhs) = match ctx.get(expr) {
+            Expr::Sub(lhs, rhs) => (*lhs, *rhs),
+            Expr::Add(lhs, rhs) => match (ctx.get(*lhs), ctx.get(*rhs)) {
+                (_, Expr::Neg(inner)) => (*lhs, *inner),
+                (Expr::Neg(inner), _) => (*rhs, *inner),
+                _ => return None,
+            },
+            _ => return None,
+        };
+
+        let (num, den) = match ctx.get(lhs) {
+            Expr::Div(num, den) => (*num, *den),
+            _ => return None,
+        };
+
+        let decision = crate::oracle_allows_with_hint(
+            ctx,
+            parent_ctx.domain_mode(),
+            parent_ctx.value_domain(),
+            &Predicate::NonZero(den),
+            "Subtract Expanded Sum/Difference of Cubes Quotient",
+        );
+        if !decision.allow {
+            return None;
+        }
+
+        let plan = crate::rules::algebra::fractions::try_plan_sum_diff_of_cubes_in_num(
+            ctx, num, den, false,
+        )?;
+
+        let cancelled = canonicalize_nested_integer_powers(ctx, plan.cancelled_result);
+        let rhs = canonicalize_nested_integer_powers(ctx, rhs);
+        if !(cas_math::expr_domain::exprs_equivalent(ctx, cancelled, rhs)
+            || exprs_equal_up_to_add_term_order(ctx, cancelled, rhs))
+        {
+            return None;
+        }
+
+        Some(
+            Rewrite::new(ctx.num(0))
+                .desc("((a^3 ± b^3)/(a ± b)) - expanded quotient = 0")
+                .requires(ImplicitCondition::NonZero(den)),
+        )
+    }
+);
+
 // AddInverseRule: a + (-a) = 0
 // Domain Mode Policy: Like other cancellation rules, we must respect domain_mode
 // because if `a` can be undefined (e.g., x/(x+1) when x=-1), then a + (-a)
@@ -195,6 +373,107 @@ define_rule!(AddInverseRule, "Add Inverse", |ctx, expr, parent_ctx| {
     // Adding "a is defined" here is redundant and clutters the output.
     Some(Rewrite::new(rewrite.rewritten).desc("a + (-a) = 0"))
 });
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        canonicalize_nested_integer_powers, exprs_equal_up_to_add_term_order, SubSelfToZeroRule,
+        SubtractExpandedSumDiffCubesQuotientRule,
+    };
+    use crate::parent_context::ParentContext;
+    use crate::rule::Rule;
+    use crate::DomainMode;
+    use cas_ast::{Context, Expr};
+    use cas_formatter::DisplayExpr;
+    use cas_parser::parse;
+
+    #[test]
+    fn subtraction_self_cancel_rule_matches_abs_sub_mirror_in_generic() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "abs((2*u)/(u^2 - 1) - 1) - abs(1 - 2*u/(u^2 - 1))",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rule = SubSelfToZeroRule;
+        let rewrite = rule
+            .apply(&mut ctx, expr, &parent_ctx)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "0"
+        );
+    }
+
+    #[test]
+    fn subtract_expanded_sum_diff_cubes_quotient_rule_matches_trig_square_cube_residual() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "((sin(u)^2)^3 - 1)/((sin(u)^2) - 1) - ((sin(u)^2)^2 + (sin(u)^2) + 1)",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let (lhs, rhs) = match ctx.get(expr) {
+            Expr::Sub(lhs, rhs) => (*lhs, *rhs),
+            Expr::Add(lhs, rhs) => match (ctx.get(*lhs), ctx.get(*rhs)) {
+                (_, Expr::Neg(inner)) => (*lhs, *inner),
+                (Expr::Neg(inner), _) => (*rhs, *inner),
+                _ => panic!("unexpected add form"),
+            },
+            other => panic!("unexpected root: {other:?}"),
+        };
+        let (num, den) = match ctx.get(lhs) {
+            Expr::Div(num, den) => (*num, *den),
+            other => panic!("unexpected lhs: {other:?}"),
+        };
+        let plan = crate::rules::algebra::fractions::try_plan_sum_diff_of_cubes_in_num(
+            &mut ctx, num, den, false,
+        )
+        .unwrap_or_else(|| panic!("plan"));
+        let cancelled = canonicalize_nested_integer_powers(&mut ctx, plan.cancelled_result);
+        let rhs = canonicalize_nested_integer_powers(&mut ctx, rhs);
+        assert!(
+            cas_math::expr_domain::exprs_equivalent(&ctx, cancelled, rhs)
+                || exprs_equal_up_to_add_term_order(&ctx, cancelled, rhs),
+            "cancelled={} rhs={}",
+            DisplayExpr {
+                context: &ctx,
+                id: cancelled
+            },
+            DisplayExpr {
+                context: &ctx,
+                id: rhs
+            }
+        );
+
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rule = SubtractExpandedSumDiffCubesQuotientRule;
+        let rewrite = rule
+            .apply(&mut ctx, expr, &parent_ctx)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "0"
+        );
+    }
+}
 
 // Simplify sums of fractions in exponents: x^(1/2 + 1/3) → x^(5/6)
 // This makes the fraction sum visible as a step in the timeline.
@@ -234,6 +513,7 @@ define_rule!(
 pub fn register(simplifier: &mut crate::Simplifier) {
     // High-priority short-circuit rules first
     simplifier.add_rule(Box::new(SubSelfToZeroRule)); // priority 500: before expansion
+    simplifier.add_rule(Box::new(SubtractExpandedSumDiffCubesQuotientRule));
 
     simplifier.add_rule(Box::new(AddZeroRule));
     simplifier.add_rule(Box::new(MulOneRule));

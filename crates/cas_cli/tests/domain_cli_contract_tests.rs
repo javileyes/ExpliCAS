@@ -15,8 +15,7 @@ use serde_json::Value;
 use std::process::Command;
 
 fn run_cli(args: &[&str]) -> (String, i32) {
-    let output = Command::new("cargo")
-        .args(["run", "-p", "cas_cli", "--quiet", "--"])
+    let output = Command::new(env!("CARGO_BIN_EXE_cas_cli"))
         .args(args)
         .output()
         .expect("Failed to execute command");

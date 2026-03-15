@@ -1,0 +1,18 @@
+# Known Domain-Frontier Safe Pairs
+# Same semantic families as known_domain_frontier_pairs.csv, but with filters
+# that pin the numeric checks inside a domain/branch-safe window.
+# Format: lhs,rhs,vars[,filters]
+
+# Log-square expansion changes domain, fixed on the positive branch
+ln((-u)^2),2*ln((-u)),u,lt(-0.1)
+ln((2*u)^2),2*ln((2*u)),u,gt(0.1)
+ln((1-u)^2),2*ln((1-u)),u,lt(0.8)
+
+# Inverse-trig branch introduces domain/branch sensitivity, fixed on the real interior
+((exp(x)-exp(-x))/2)*(sin(2*arcsin(u))),(sinh(x))*(2*u*sqrt(1-u^2)),x;u,none|abs_lt_and_away(0.9;1.0;-1.0;eps=0.1)
+(tanh(x))*(sin(2*arcsin(u))),((exp(x)-exp(-x))/(exp(x)+exp(-x)))*(2*u*sqrt(1-u^2)),x;u,none|abs_lt_and_away(0.9;1.0;-1.0;eps=0.1)
+(sin(2*arcsin(x)))*(abs(sin(u/2))),(2*x*sqrt(1-x^2))*(sqrt((1-cos(u))/2)),x;u,abs_lt_and_away(0.9;1.0;-1.0;eps=0.1)|range(-1.2;1.2)
+
+# Sqrt product contraction changes sign/domain behavior, fixed on positive reals
+(cos(3*pi/8))*(sqrt(u)*sqrt(4*u)),(sqrt(2-sqrt(2))/2)*(2*u),u,gt(0.1)
+(sin(2*arcsin(x)))*(sqrt(u)*sqrt(4*u)),(2*x*sqrt(1-x^2))*(2*u),x;u,abs_lt_and_away(0.9;1.0;-1.0;eps=0.1)|gt(0.1)

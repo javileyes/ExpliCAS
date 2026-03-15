@@ -573,6 +573,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                 id,
                 l,
                 r,
+                self.initial_parent_ctx.value_domain() == crate::semantics::ValueDomain::RealOnly,
                 self.collect_steps_enabled(),
                 &mut self.steps,
                 &self.current_path,

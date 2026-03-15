@@ -16,6 +16,7 @@ use cas_math::poly_lowering;
 use cas_math::poly_store::clear_thread_local_store;
 use cas_math::root_forms::{
     try_rewrite_canonical_root_expr, try_rewrite_extract_perfect_power_from_radicand_expr,
+    try_rewrite_simplify_square_root_expr, SimplifySquareRootRewriteKind,
 };
 use cas_math::trig_linear_support::extract_coef_and_base;
 use cas_math::trig_power_identity_support::try_rewrite_pythagorean_chain_add_expr;
@@ -236,6 +237,138 @@ fn finish_standard_root_shortcut(
         shortcut_steps.push(step);
     }
     (result, shortcut_steps)
+}
+
+fn format_standard_simplify_square_root_shortcut_desc(
+    kind: SimplifySquareRootRewriteKind,
+) -> &'static str {
+    match kind {
+        SimplifySquareRootRewriteKind::PerfectSquare => "Simplify perfect square root",
+        SimplifySquareRootRewriteKind::SquareRootFactors => "Simplify square root factors",
+        SimplifySquareRootRewriteKind::AdditiveCommonFactor => {
+            "Extract common square factor from additive radicand"
+        }
+        SimplifySquareRootRewriteKind::QuotientOfSquares => {
+            "Simplify square root of quotient of squares"
+        }
+    }
+}
+
+fn try_standard_simplify_square_root_shortcut(
+    ctx: &mut Context,
+    expr: ExprId,
+    collect_steps: bool,
+) -> Option<(ExprId, Vec<Step>)> {
+    let rewrite = try_rewrite_simplify_square_root_expr(ctx, expr)?;
+    let rewrite = crate::rule::Rewrite::new(rewrite.rewritten).desc(
+        format_standard_simplify_square_root_shortcut_desc(rewrite.kind),
+    );
+    Some(finish_standard_root_shortcut(
+        ctx,
+        expr,
+        rewrite,
+        "Simplify Square Root",
+        collect_steps,
+    ))
+}
+
+fn try_standard_abs_shortcut(
+    options: &crate::phase::SimplifyOptions,
+    ctx: &mut Context,
+    expr: ExprId,
+    collect_steps: bool,
+) -> Option<(ExprId, Vec<Step>)> {
+    let Expr::Function(fn_id, _) = ctx.get(expr) else {
+        return None;
+    };
+    if !ctx.is_builtin(*fn_id, BuiltinFn::Abs) {
+        return None;
+    }
+
+    let parent_ctx = build_root_shortcut_parent_ctx(options, ctx, expr);
+
+    let evaluate = crate::rules::functions::EvaluateAbsRule;
+    if let Some(rewrite) = crate::rule::Rule::apply(&evaluate, ctx, expr, &parent_ctx) {
+        return Some(finish_standard_root_shortcut(
+            ctx,
+            expr,
+            rewrite,
+            "Evaluate Absolute Value",
+            collect_steps,
+        ));
+    }
+
+    let numeric_factor = crate::rules::functions::AbsPositiveFactorRule;
+    if let Some(rewrite) = crate::rule::Rule::apply(&numeric_factor, ctx, expr, &parent_ctx) {
+        return Some(finish_standard_root_shortcut(
+            ctx,
+            expr,
+            rewrite,
+            "Abs Positive Factor",
+            collect_steps,
+        ));
+    }
+
+    let sub_normalize = crate::rules::functions::AbsSubNormalizeRule;
+    if let Some(rewrite) = crate::rule::Rule::apply(&sub_normalize, ctx, expr, &parent_ctx) {
+        return Some(finish_standard_root_shortcut(
+            ctx,
+            expr,
+            rewrite,
+            "Abs Sub Normalize",
+            collect_steps,
+        ));
+    }
+
+    let quotient_sub_normalize = crate::rules::functions::AbsQuotientSubNormalizeRule;
+    if let Some(rewrite) = crate::rule::Rule::apply(&quotient_sub_normalize, ctx, expr, &parent_ctx)
+    {
+        return Some(finish_standard_root_shortcut(
+            ctx,
+            expr,
+            rewrite,
+            "Abs Quotient Sub Normalize",
+            collect_steps,
+        ));
+    }
+
+    None
+}
+
+fn try_standard_sub_self_cancel_shortcut(
+    options: &crate::phase::SimplifyOptions,
+    ctx: &mut Context,
+    expr: ExprId,
+    collect_steps: bool,
+) -> Option<(ExprId, Vec<Step>)> {
+    let parent_ctx = build_root_shortcut_parent_ctx(options, ctx, expr);
+    let rule = crate::rules::arithmetic::SubSelfToZeroRule;
+    let rewrite = crate::rule::Rule::apply(&rule, ctx, expr, &parent_ctx)?;
+    Some(finish_standard_root_shortcut(
+        ctx,
+        expr,
+        rewrite,
+        "Subtraction Self-Cancel",
+        collect_steps,
+    ))
+}
+
+fn try_standard_subtract_expanded_sum_diff_cubes_quotient_shortcut(
+    options: &crate::phase::SimplifyOptions,
+    ctx: &mut Context,
+    expr: ExprId,
+    collect_steps: bool,
+) -> Option<(ExprId, Vec<Step>)> {
+    let parent_ctx = build_root_shortcut_parent_ctx(options, ctx, expr);
+    let rule = crate::rules::arithmetic::SubtractExpandedSumDiffCubesQuotientRule;
+    let rewrite = crate::rule::Rule::apply(&rule, ctx, expr, &parent_ctx)?;
+    Some(finish_standard_root_shortcut(
+        ctx,
+        expr,
+        rewrite,
+        "Subtract Expanded Sum/Difference of Cubes Quotient",
+        collect_steps,
+    ))
 }
 
 fn try_standard_extract_perfect_square_root_shortcut(
@@ -1120,7 +1253,38 @@ impl Orchestrator {
         {
             let mut shortcut_steps = Vec::new();
             let add_root = matches!(simplifier.context.get(expr), Expr::Add(_, _));
+            let sub_root = matches!(simplifier.context.get(expr), Expr::Sub(_, _));
             let pow_root = matches!(simplifier.context.get(expr), Expr::Pow(_, _));
+            if add_root || sub_root {
+                if let Some((result, shortcut_steps)) =
+                    try_standard_subtract_expanded_sum_diff_cubes_quotient_shortcut(
+                        &self.options,
+                        &mut simplifier.context,
+                        expr,
+                        collect_steps,
+                    )
+                {
+                    return (
+                        result,
+                        shortcut_steps,
+                        crate::phase::PipelineStats::default(),
+                    );
+                }
+            }
+            if sub_root {
+                if let Some((result, shortcut_steps)) = try_standard_sub_self_cancel_shortcut(
+                    &self.options,
+                    &mut simplifier.context,
+                    expr,
+                    collect_steps,
+                ) {
+                    return (
+                        result,
+                        shortcut_steps,
+                        crate::phase::PipelineStats::default(),
+                    );
+                }
+            }
             if add_root {
                 if is_symbolic_atom_plus_nonzero_literal_root(&simplifier.context, expr) {
                     return (expr, Vec::new(), crate::phase::PipelineStats::default());
@@ -1160,6 +1324,29 @@ impl Orchestrator {
             }
 
             if matches!(simplifier.context.get(expr), Expr::Function(_, _)) {
+                if let Some((result, shortcut_steps)) = try_standard_abs_shortcut(
+                    &self.options,
+                    &mut simplifier.context,
+                    expr,
+                    collect_steps,
+                ) {
+                    return (
+                        result,
+                        shortcut_steps,
+                        crate::phase::PipelineStats::default(),
+                    );
+                }
+                if let Some((result, shortcut_steps)) = try_standard_simplify_square_root_shortcut(
+                    &mut simplifier.context,
+                    expr,
+                    collect_steps,
+                ) {
+                    return (
+                        result,
+                        shortcut_steps,
+                        crate::phase::PipelineStats::default(),
+                    );
+                }
                 if let Some((result, shortcut_steps)) =
                     try_standard_extract_perfect_square_root_shortcut(
                         &mut simplifier.context,
@@ -1206,6 +1393,23 @@ impl Orchestrator {
             };
             if let Some((num, den)) = div_parts {
                 if let Some(result) = crate::rules::algebra::try_difference_of_squares_preorder(
+                    &mut simplifier.context,
+                    expr,
+                    num,
+                    den,
+                    self.options.shared.semantics.value_domain
+                        == crate::semantics::ValueDomain::RealOnly,
+                    collect_steps,
+                    &mut shortcut_steps,
+                    &[],
+                ) {
+                    return (
+                        result,
+                        shortcut_steps,
+                        crate::phase::PipelineStats::default(),
+                    );
+                }
+                if let Some(result) = crate::rules::algebra::try_sum_diff_of_cubes_preorder(
                     &mut simplifier.context,
                     expr,
                     num,

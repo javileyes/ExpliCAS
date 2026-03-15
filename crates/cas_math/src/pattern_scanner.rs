@@ -2,7 +2,8 @@ use crate::expr_predicates::{is_half_expr, is_two_expr};
 use crate::pattern_marks::PatternMarks;
 use crate::trig_contraction_support::match_tan_double_angle_contraction_arg;
 use crate::trig_identity_zero_support::{
-    match_sin4x_identity_zero_expr, match_tan_difference_identity_expr,
+    match_cos_triple_identity_zero_expr, match_sin4x_identity_zero_expr,
+    match_sin_sum_triple_identity_zero_expr, match_tan_difference_identity_expr,
 };
 use crate::trig_pattern_detection::{
     is_cot_squared, is_csc_squared, is_sec_squared, is_tan_squared,
@@ -91,6 +92,8 @@ fn scan_recursive(ctx: &Context, root: ExprId, marks: &mut PatternMarks) {
         check_and_mark_tan_triple_product_pattern(ctx, expr_id, marks);
         check_and_mark_tan_difference_identity_pattern(ctx, expr_id, marks);
         check_and_mark_sin4x_identity_pattern(ctx, expr_id, marks);
+        check_and_mark_sin_sum_triple_identity_pattern(ctx, expr_id, marks);
+        check_and_mark_cos_triple_identity_pattern(ctx, expr_id, marks);
         check_and_mark_tan_double_angle_pattern(ctx, expr_id, marks);
     }
 }
@@ -548,6 +551,26 @@ fn check_and_mark_sin4x_identity_pattern(ctx: &Context, expr_id: ExprId, marks: 
     }
 }
 
+fn check_and_mark_sin_sum_triple_identity_pattern(
+    ctx: &Context,
+    expr_id: ExprId,
+    marks: &mut PatternMarks,
+) {
+    if match_sin_sum_triple_identity_zero_expr(ctx, expr_id) {
+        marks.has_sin_sum_triple_identity_pattern = true;
+    }
+}
+
+fn check_and_mark_cos_triple_identity_pattern(
+    ctx: &Context,
+    expr_id: ExprId,
+    marks: &mut PatternMarks,
+) {
+    if match_cos_triple_identity_zero_expr(ctx, expr_id) {
+        marks.has_cos_triple_identity_pattern = true;
+    }
+}
+
 /// Detect 2·tan(t)/(1 - tan²(t)) patterns.
 /// Mark tan(t) nodes for protection so TanToSinCosRule won't expand them,
 /// allowing TanDoubleAngleContractionRule to fire.
@@ -771,5 +794,37 @@ mod tests {
         scan_and_mark_patterns(&ctx, expr, &mut marks);
 
         assert!(!marks.has_root_in_denominator());
+    }
+
+    #[test]
+    fn test_scan_marks_sin_sum_triple_identity_pattern() {
+        let mut ctx = Context::new();
+        let mut marks = PatternMarks::new();
+
+        let expr = cas_parser::parse(
+            "sin((1/(x - 1) + 1/(x + 1))) + sin(3*(1/(x - 1) + 1/(x + 1))) - 2*sin(2*(1/(x - 1) + 1/(x + 1)))*cos((1/(x - 1) + 1/(x + 1)))",
+            &mut ctx,
+        )
+        .expect("expr");
+
+        scan_and_mark_patterns(&ctx, expr, &mut marks);
+
+        assert!(marks.has_sin_sum_triple_identity_pattern);
+    }
+
+    #[test]
+    fn test_scan_marks_cos_triple_identity_pattern() {
+        let mut ctx = Context::new();
+        let mut marks = PatternMarks::new();
+
+        let expr = cas_parser::parse(
+            "cos(3*arctan(x)) - (4*cos(arctan(x))^3 - 3*cos(arctan(x)))",
+            &mut ctx,
+        )
+        .expect("expr");
+
+        scan_and_mark_patterns(&ctx, expr, &mut marks);
+
+        assert!(marks.has_cos_triple_identity_pattern);
     }
 }

@@ -1,6 +1,7 @@
 use crate::define_rule;
 use crate::rule::Rewrite;
 use cas_ast::{Context, Expr, ExprId};
+use cas_math::expr_destructure::as_div;
 use cas_math::root_den_rationalize_support::RootDenRationalizeRewriteKind;
 use num_traits::One;
 
@@ -22,11 +23,64 @@ define_rule!(
     RationalizeLinearSqrtDenRule,
     "Rationalize Linear Sqrt Denominator",
     |ctx, expr| {
-        let rewrite =
+        fn format_div_expand_cancel_desc(
+            kind: cas_math::div_expand_cancel_support::DivExpandToCancelKind,
+        ) -> &'static str {
+            match kind {
+                cas_math::div_expand_cancel_support::DivExpandToCancelKind::OpaqueSubstitution => {
+                    "Polynomial division with opaque substitution"
+                }
+                cas_math::div_expand_cancel_support::DivExpandToCancelKind::ExpandedEquality => {
+                    "Expanded numerator equals denominator"
+                }
+            }
+        }
+
+        if let Some(exact_quotient) = cas_math::div_expand_cancel_support::try_rewrite_div_expand_to_cancel_expr_with_thread_guards(
+            ctx,
+            expr,
+            |base_ctx, sub_frac| {
+                let mut simplifier = crate::Simplifier::with_default_rules();
+                simplifier.context = base_ctx.clone();
+                let (simplified, _) = simplifier.simplify(sub_frac);
+                Some((simplifier.context, simplified))
+            },
+            crate::expand::expand,
+            |expanded_ctx, expanded_num, expanded_den| {
+                let mut simplifier = crate::Simplifier::with_default_rules();
+                simplifier.context = expanded_ctx;
+                let (simplified_num, _) = simplifier.simplify(expanded_num);
+                let (simplified_den, _) = simplifier.simplify(expanded_den);
+                Some((simplifier.context, simplified_num, simplified_den))
+            },
+        ) {
+            let mut rewrite = Rewrite::new(exact_quotient.rewritten)
+                .desc(format_div_expand_cancel_desc(exact_quotient.kind));
+            if let Some((_, den)) = as_div(ctx, expr) {
+                rewrite = rewrite.requires(crate::ImplicitCondition::NonZero(den));
+            }
+            return Some(rewrite);
+        }
+
+        let rewrite = cas_math::root_den_rationalize_support::try_rewrite_shifted_unit_square_over_linear_sqrt_den_expr(
+            ctx, expr,
+        )
+        .or_else(|| {
             cas_math::root_den_rationalize_support::try_rewrite_rationalize_linear_sqrt_den_expr(
                 ctx, expr,
-            )?;
-        Some(Rewrite::new(rewrite.rewritten).desc(format_root_den_rationalize_desc(rewrite.kind)))
+            )
+        })?;
+        let mut out =
+            Rewrite::new(rewrite.rewritten).desc(format_root_den_rationalize_desc(rewrite.kind));
+        if matches!(
+            rewrite.kind,
+            RootDenRationalizeRewriteKind::ShiftedUnitSquareExactQuotient
+        ) {
+            if let Some((_, den)) = as_div(ctx, expr) {
+                out = out.requires(crate::ImplicitCondition::NonZero(den));
+            }
+        }
+        Some(out)
     }
 );
 
@@ -79,6 +133,9 @@ define_rule!(
 
 fn format_root_den_rationalize_desc(kind: RootDenRationalizeRewriteKind) -> &'static str {
     match kind {
+        RootDenRationalizeRewriteKind::ShiftedUnitSquareExactQuotient => {
+            "Cancel exact shifted square before rationalizing"
+        }
         RootDenRationalizeRewriteKind::LinearSqrtDen => "Rationalize: multiply by conjugate",
         RootDenRationalizeRewriteKind::SumOfSqrtsDen => {
             "Rationalize: (sqrt(p)±sqrt(q)) multiply by conjugate"
@@ -339,5 +396,64 @@ impl crate::rule::Rule for ReciprocalSqrtCanonRule {
 
     fn importance(&self) -> crate::step::ImportanceLevel {
         crate::step::ImportanceLevel::Low
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::RationalizeLinearSqrtDenRule;
+    use crate::parent_context::ParentContext;
+    use crate::rule::Rule;
+    use crate::DomainMode;
+    use cas_ast::ordering::compare_expr;
+    use cas_ast::Context;
+    use cas_formatter::DisplayExpr;
+    use cas_parser::parse;
+
+    #[test]
+    fn rationalize_linear_sqrt_den_prefers_exact_quotient_plus_one() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "(u^2 + 2*(u^2 + 1)^(1/2) + 2)/((u^2 + 1)^(1/2) + 1)",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("parse expr: {err}"));
+        let rule = RationalizeLinearSqrtDenRule;
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rewrite = rule
+            .apply(&mut ctx, expr, &parent_ctx)
+            .unwrap_or_else(|| panic!("rewrite"));
+        let rendered = format!(
+            "{}",
+            DisplayExpr {
+                context: &ctx,
+                id: rewrite.new_expr
+            }
+        );
+        assert!(
+            rendered == "(u^2 + 1)^(1/2) + 1"
+                || rendered == "1 + (u^2 + 1)^(1/2)"
+                || rendered == "sqrt(u^2 + 1) + 1"
+                || rendered == "1 + sqrt(u^2 + 1)",
+            "unexpected exact-quotient rewrite: {rendered}"
+        );
+    }
+
+    #[test]
+    fn rationalize_linear_sqrt_den_prefers_root_ctx_exact_quotient() {
+        let mut ctx = Context::new();
+        let expr = parse("(2*sqrt(u) + u + 1)/(sqrt(u) + u)", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse expr: {err}"));
+        let rule = RationalizeLinearSqrtDenRule;
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rewrite = rule
+            .apply(&mut ctx, expr, &parent_ctx)
+            .unwrap_or_else(|| panic!("rewrite"));
+        let expected =
+            parse("1/sqrt(u) + 1", &mut ctx).unwrap_or_else(|err| panic!("expected: {err}"));
+        assert_eq!(
+            compare_expr(&ctx, rewrite.new_expr, expected),
+            std::cmp::Ordering::Equal
+        );
     }
 }

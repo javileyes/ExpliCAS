@@ -528,6 +528,13 @@ pub struct LogPerfectSquareRewrite {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LogReciprocalEvenPowerRewrite {
+    pub rewritten: ExprId,
+    pub inner_subject: ExprId,
+    pub desc: &'static str,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LogEvenPowerAbsPlan {
     pub inner_base: ExprId,
     pub exponent: ExprId,
@@ -1099,6 +1106,53 @@ pub fn try_rewrite_log_perfect_square_expr(
     None
 }
 
+/// Rewrite reciprocal even-power log arguments:
+/// - `ln(1/(x^(2k))) -> -ln(x^(2k))`
+/// - `log(b, 1/(x^(2k))) -> -log(b, x^(2k))`
+///
+/// This is sound in the real domain because `1/(x^(2k))` being defined inside
+/// the logarithm already implies `x != 0`, hence `x^(2k) > 0`.
+pub fn try_rewrite_log_reciprocal_even_power_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<LogReciprocalEvenPowerRewrite> {
+    let (base, arg) = extract_log_base_argument(ctx, expr)?;
+
+    let Expr::Div(num, den) = ctx.get(arg).clone() else {
+        return None;
+    };
+    let one = ctx.num(1);
+    if cas_ast::ordering::compare_expr(ctx, num, one) != Ordering::Equal {
+        return None;
+    }
+
+    let (inner_subject, exponent) = as_pow(ctx, den)?;
+    let Expr::Number(n) = ctx.get(exponent) else {
+        return None;
+    };
+    let n = n.clone();
+    if !n.is_integer() {
+        return None;
+    }
+    let int_val = n.to_integer();
+    let two: num_bigint::BigInt = 2.into();
+    if int_val <= 0.into() || (&int_val % &two) != 0.into() {
+        return None;
+    }
+
+    if cas_ast::ordering::compare_expr(ctx, inner_subject, base) == Ordering::Equal {
+        return None;
+    }
+
+    let rewritten_log = make_log_expr(ctx, base, den);
+    let rewritten = ctx.add(Expr::Neg(rewritten_log));
+    Some(LogReciprocalEvenPowerRewrite {
+        rewritten,
+        inner_subject,
+        desc: "log(1/x^(2k)) = -log(x^(2k))",
+    })
+}
+
 /// Plan `log(base, x^(even))` rewrite candidates:
 /// - with absolute value: `even * log(base, |x|)`
 /// - without absolute value: `even * log(base, x)`
@@ -1453,21 +1507,42 @@ pub fn try_match_log_exp_inverse_expr(
     expr: ExprId,
 ) -> Option<LogExpInverseMatch> {
     let (base, arg) = extract_log_base_argument(ctx, expr)?;
-    let (pow_base, pow_exp) = as_pow(ctx, arg)?;
+    let (pow_base, pow_exp, reciprocal) = if let Some((pow_base, pow_exp)) = as_pow(ctx, arg) {
+        (pow_base, pow_exp, false)
+    } else if let Expr::Div(num, den) = ctx.get(arg).clone() {
+        let one = ctx.num(1);
+        if cas_ast::ordering::compare_expr(ctx, num, one) != Ordering::Equal {
+            return None;
+        }
+        let (pow_base, pow_exp) = as_pow(ctx, den)?;
+        (pow_base, pow_exp, true)
+    } else {
+        return None;
+    };
 
     if cas_ast::ordering::compare_expr(ctx, pow_base, base) != Ordering::Equal {
         return None;
     }
 
+    let rewritten_exp = if reciprocal {
+        ctx.add(Expr::Neg(pow_exp))
+    } else {
+        pow_exp
+    };
+
     if matches!(ctx.get(pow_exp), Expr::Number(_)) {
         Some(LogExpInverseMatch::Numeric {
-            rewritten: pow_exp,
-            desc: "log(b, b^n) = n",
+            rewritten: rewritten_exp,
+            desc: if reciprocal {
+                "log(b, 1/(b^n)) = -n"
+            } else {
+                "log(b, b^n) = n"
+            },
         })
     } else {
         Some(LogExpInverseMatch::Symbolic {
             base,
-            exponent: pow_exp,
+            exponent: rewritten_exp,
         })
     }
 }
@@ -2333,15 +2408,56 @@ mod tests {
         let mut ctx = Context::new();
         let numeric = parse("log(b, b^2)", &mut ctx).expect("numeric");
         let symbolic = parse("log(b, b^x)", &mut ctx).expect("symbolic");
+        let reciprocal_numeric = parse("log(b, 1/(b^2))", &mut ctx).expect("reciprocal numeric");
+        let reciprocal_symbolic = parse("log(b, 1/(b^x))", &mut ctx).expect("reciprocal symbolic");
 
         let numeric_match = try_match_log_exp_inverse_expr(&mut ctx, numeric).expect("numeric");
         let symbolic_match = try_match_log_exp_inverse_expr(&mut ctx, symbolic).expect("symbolic");
+        let reciprocal_numeric_match = try_match_log_exp_inverse_expr(&mut ctx, reciprocal_numeric)
+            .expect("reciprocal numeric");
+        let reciprocal_symbolic_match =
+            try_match_log_exp_inverse_expr(&mut ctx, reciprocal_symbolic)
+                .expect("reciprocal symbolic");
 
         assert!(matches!(numeric_match, LogExpInverseMatch::Numeric { .. }));
         assert!(matches!(
             symbolic_match,
             LogExpInverseMatch::Symbolic { .. }
         ));
+        assert!(matches!(
+            reciprocal_numeric_match,
+            LogExpInverseMatch::Numeric { .. }
+        ));
+        assert!(matches!(
+            reciprocal_symbolic_match,
+            LogExpInverseMatch::Symbolic { .. }
+        ));
+    }
+
+    #[test]
+    fn rewrites_log_reciprocal_even_power_expr() {
+        let mut ctx = Context::new();
+        let expr = parse("ln(1/(u^2))", &mut ctx).expect("expr");
+        let expected = parse("-ln(u^2)", &mut ctx).expect("expected");
+        let rewrite = try_rewrite_log_reciprocal_even_power_expr(&mut ctx, expr).expect("rewrite");
+
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, rewrite.rewritten, expected),
+            Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn rewrites_log_reciprocal_even_power_expr_for_function_base() {
+        let mut ctx = Context::new();
+        let expr = parse("ln(1/(sin(u)^2))", &mut ctx).expect("expr");
+        let expected = parse("-ln(sin(u)^2)", &mut ctx).expect("expected");
+        let rewrite = try_rewrite_log_reciprocal_even_power_expr(&mut ctx, expr).expect("rewrite");
+
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, rewrite.rewritten, expected),
+            Ordering::Equal
+        );
     }
 
     #[test]

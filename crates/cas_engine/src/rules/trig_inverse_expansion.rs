@@ -1,5 +1,6 @@
 use crate::define_rule;
 use crate::rule::Rewrite;
+use cas_math::trig_identity_zero_support::match_cos_triple_identity_zero_expr;
 use cas_math::trig_inverse_expansion_support::{
     try_rewrite_trig_inverse_composition_expr, TrigInverseExpansionKind,
 };
@@ -14,6 +15,11 @@ define_rule!(
         crate::ConditionClass::Analytic
     ),
     |ctx, expr, _parent_ctx| {
+        if _parent_ctx.has_ancestor_matching(ctx, |ctx, ancestor| {
+            match_cos_triple_identity_zero_expr(ctx, ancestor)
+        }) {
+            return None;
+        }
         let rewrite = try_rewrite_trig_inverse_composition_expr(ctx, expr)?;
         Some(Rewrite::new(rewrite.rewritten).desc(format_trig_inverse_expansion_desc(
             rewrite.kind,

@@ -141,6 +141,7 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     // Pre-order: Cancel cube root difference pattern BEFORE GCD/fraction rules
     // (x - b³) / (x^(2/3) + b·x^(1/3) + b²) → x^(1/3) - b
     simplifier.add_rule(Box::new(CancelCubeRootDifferenceRule));
+    simplifier.add_rule(Box::new(CancelSumDiffCubesFractionRule));
 
     // V2.14.35: Ultra-light P^m/P^n → P^(m-n) rule (shallow ExprId comparison)
     // Must fire BEFORE heavier fraction rules to avoid stack overflow on large powers
@@ -165,6 +166,8 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     // Try opaque/polynomial quotient cancellation before rationalization destroys
     // simple shared-root quotients like (t^2+2t)/(t+2).
     simplifier.add_rule(Box::new(DivExpandToCancelRule));
+    // Mirror cancellation for (A±B)/(A^2-B^2) before denominator rationalization/factoring.
+    simplifier.add_rule(Box::new(ReciprocalDifferenceOfSquaresRule));
     // Compact rationalization rules (Level 0, 1) - should apply first
     simplifier.add_rule(Box::new(RationalizeSingleSurdRule));
     simplifier.add_rule(Box::new(RationalizeBinomialSurdRule));
@@ -252,6 +255,7 @@ pub fn try_difference_of_squares_preorder(
     expr_id: cas_ast::ExprId,
     num: cas_ast::ExprId,
     den: cas_ast::ExprId,
+    allow_abs_square_equiv: bool,
     collect_steps: bool,
     steps: &mut Vec<crate::step::Step>,
     current_path: &[crate::step::PathStep],
@@ -261,7 +265,10 @@ pub fn try_difference_of_squares_preorder(
             ctx,
             num,
             den,
-            cas_math::difference_of_squares_support::DifferenceOfSquaresDivisionPolicy::default(),
+            cas_math::difference_of_squares_support::DifferenceOfSquaresDivisionPolicy {
+                allow_abs_square_equiv,
+                ..cas_math::difference_of_squares_support::DifferenceOfSquaresDivisionPolicy::default()
+            },
         )?;
     let factored_num = plan.factored_numerator;
     let intermediate_with_orig_den = plan.intermediate_with_orig_den;
@@ -390,6 +397,72 @@ pub fn try_perfect_square_minus_preorder(
         let mut cancel_step = crate::step::Step::new(
             "Cancel common factor",
             "Pre-order Perfect Square Minus Cancel",
+            intermediate,
+            final_result,
+            current_path.to_vec(),
+            Some(ctx),
+        );
+        cancel_step.before = intermediate;
+        cancel_step.after = final_result;
+        cancel_step.global_before = Some(intermediate);
+        cancel_step.global_after = Some(final_result);
+        cancel_step.importance = crate::step::ImportanceLevel::High;
+        steps.push(cancel_step);
+    }
+
+    Some(final_result)
+}
+
+/// Pre-order detection of `(A^3 - B^3)/(A-B)` or `(A^3 + B^3)/(A+B)`.
+///
+/// This runs before recursive child simplification so denominator rewrites like
+/// `sin(x)^2 - 1 -> -cos(x)^2` do not destroy the visible common factor first.
+#[allow(clippy::too_many_arguments)]
+pub fn try_sum_diff_of_cubes_preorder(
+    ctx: &mut cas_ast::Context,
+    expr_id: cas_ast::ExprId,
+    num: cas_ast::ExprId,
+    den: cas_ast::ExprId,
+    collect_steps: bool,
+    steps: &mut Vec<crate::step::Step>,
+    current_path: &[crate::step::PathStep],
+) -> Option<cas_ast::ExprId> {
+    let plan = crate::rules::algebra::fractions::try_plan_sum_diff_of_cubes_in_num(
+        ctx,
+        num,
+        den,
+        collect_steps,
+    )?;
+    let factored_num = plan.factored_numerator;
+    let intermediate = plan.rewritten;
+    let final_result = plan.cancelled_result;
+
+    if collect_steps {
+        let mut factor_step = crate::step::Step::new(
+            plan.desc,
+            "Pre-order Sum/Difference of Cubes",
+            num,
+            factored_num,
+            current_path.to_vec(),
+            Some(ctx),
+        );
+        factor_step.before = expr_id;
+        factor_step.after = intermediate;
+        factor_step.global_before = Some(expr_id);
+        factor_step.global_after = Some(intermediate);
+        {
+            let meta = factor_step.meta_mut();
+            meta.before_local = Some(num);
+            meta.after_local = Some(factored_num);
+            meta.required_conditions
+                .push(crate::ImplicitCondition::NonZero(den));
+        }
+        factor_step.importance = crate::step::ImportanceLevel::High;
+        steps.push(factor_step);
+
+        let mut cancel_step = crate::step::Step::new(
+            "Cancel common factor",
+            "Pre-order Sum/Difference of Cubes Cancel",
             intermediate,
             final_result,
             current_path.to_vec(),

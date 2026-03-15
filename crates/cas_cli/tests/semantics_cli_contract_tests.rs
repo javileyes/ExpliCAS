@@ -227,6 +227,136 @@ fn const_fold_safe_complex_i_squared_reaches_cli_runtime() {
 }
 
 #[test]
+fn subtraction_self_cancel_shortcut_handles_abs_sub_mirror_runtime_shape() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "abs((2*u)/(u^2 - 1) - 1) - abs(1 - 2*u/(u^2 - 1))",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 1);
+
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps[0]["rule"], "Subtraction Self-Cancel");
+}
+
+#[test]
+fn standalone_trig_square_cube_quotient_reaches_cli_eval_path() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((sin(u)^2)^3 - 1)/((sin(u)^2) - 1)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "1 + sin(u)^2 + sin(u)^2^2");
+
+    let required = wire["required_display"]
+        .as_array()
+        .expect("required_display");
+    assert!(
+        required
+            .iter()
+            .filter_map(|item| item.as_str())
+            .any(|item| item == "sin(u)^2 - 1 ≠ 0"),
+        "expected denominator condition in required_display"
+    );
+}
+
+#[test]
+fn same_root_family_power_quotient_reaches_cli_eval_path_exactly() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "(sqrt(x^2 + 1)^5)/(sqrt(x^2 + 1)^3)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "x^2 + 1");
+
+    let required = wire["required_display"]
+        .as_array()
+        .expect("required_display");
+    assert!(
+        required
+            .iter()
+            .filter_map(|item| item.as_str())
+            .any(|item| item == "sqrt(x^2 + 1)^3 ≠ 0"),
+        "expected original denominator condition in required_display"
+    );
+}
+
+#[test]
+fn trig_square_cube_substitution_difference_reaches_cli_eval_path() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((sin(u)^2)^3 - 1)/((sin(u)^2) - 1) - ((sin(u)^2)^2 + (sin(u)^2) + 1)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+
+    let required = wire["required_display"]
+        .as_array()
+        .expect("required_display");
+    assert!(
+        required
+            .iter()
+            .filter_map(|item| item.as_str())
+            .any(|item| item == "sin(u)^2 - 1 ≠ 0"),
+        "expected denominator condition in required_display"
+    );
+}
+
+#[test]
+fn root_ctx_exact_quotient_survives_runtime_before_conjugate_rationalization() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((1/sqrt(u))^2 + 2*(1/sqrt(u)) + 1)/((1/sqrt(u)) + 1)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "u^(-1/2) + 1");
+
+    let steps = wire["steps"].as_array().expect("steps array");
+    let exact_step = steps
+        .iter()
+        .find(|step| step["rule"] == "Rationalize Linear Sqrt Denominator")
+        .expect("exact quotient step");
+    assert_eq!(exact_step["after"], "1 / u^(1/2) + 1");
+
+    let required = wire["required_display"]
+        .as_array()
+        .expect("required display");
+    assert!(
+        required
+            .iter()
+            .filter_map(|item| item.as_str())
+            .any(|item| item == "u^(1/2) + u ≠ 0"),
+        "runtime should preserve the original transformed denominator guard"
+    );
+}
+
+#[test]
 fn complex_principal_inv_trig_warning_surfaces_in_cli_wire() {
     let (output, _code) = run_cli(&[
         "eval",

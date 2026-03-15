@@ -1,8 +1,43 @@
 use cas_ast::ordering::compare_expr;
-use cas_ast::{Context, Expr, ExprId};
+use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use num_rational::BigRational;
 use num_traits::{Signed, Zero};
 use std::cmp::Ordering;
+
+fn extract_square_root_of_simple_term(ctx: &mut Context, term: ExprId) -> Option<ExprId> {
+    if let Expr::Pow(base, exp) = ctx.get(term) {
+        let (base, exp) = (*base, *exp);
+        if let Expr::Number(n) = ctx.get(exp) {
+            let n = n.clone();
+            if n.is_integer() {
+                let int_val = n.to_integer();
+                let two: num_bigint::BigInt = 2.into();
+                if &int_val % &two == 0.into() && int_val > 0.into() {
+                    let half_exp = &int_val / &two;
+                    let half_exp_rat = BigRational::from_integer(half_exp);
+                    if half_exp_rat == BigRational::from_integer(1.into()) {
+                        return Some(base);
+                    }
+                    let half_exp_id = ctx.add(Expr::Number(half_exp_rat));
+                    return Some(ctx.add(Expr::Pow(base, half_exp_id)));
+                }
+            }
+        }
+        return None;
+    }
+
+    if let Expr::Number(n) = ctx.get(term) {
+        if n.is_integer() && *n > BigRational::zero() {
+            let int_val = n.to_integer();
+            let root = int_val.sqrt();
+            if &root * &root == int_val {
+                return Some(ctx.add(Expr::Number(BigRational::from_integer(root))));
+            }
+        }
+    }
+
+    None
+}
 
 /// Try to compute the square root of a rational number.
 /// Returns `Some(√r)` only when numerator and denominator are perfect squares.
@@ -38,53 +73,22 @@ pub fn rational_sqrt(r: &BigRational) -> Option<BigRational> {
 /// - `Mul(n, Pow(base, 2k))` with perfect-square integer `n` -> `sqrt(n) * base^k`
 /// - `Number(n)` with perfect-square integer `n` -> `sqrt(n)`
 pub fn extract_square_root_of_term(ctx: &mut Context, term: ExprId) -> Option<ExprId> {
-    if let Expr::Pow(base, exp) = ctx.get(term) {
-        let (base, exp) = (*base, *exp);
-        if let Expr::Number(n) = ctx.get(exp) {
-            let n = n.clone();
-            if n.is_integer() {
-                let int_val = n.to_integer();
-                let two: num_bigint::BigInt = 2.into();
-                if &int_val % &two == 0.into() && int_val > 0.into() {
-                    let half_exp = &int_val / &two;
-                    let half_exp_rat = BigRational::from_integer(half_exp);
-                    if half_exp_rat == BigRational::from_integer(1.into()) {
-                        return Some(base);
-                    }
-                    let half_exp_id = ctx.add(Expr::Number(half_exp_rat));
-                    return Some(ctx.add(Expr::Pow(base, half_exp_id)));
-                }
-            }
-        }
-        return None;
+    if let Some(root) = extract_square_root_of_simple_term(ctx, term) {
+        return Some(root);
     }
 
-    if let Expr::Mul(l, r) = ctx.get(term) {
-        let (l, r) = (*l, *r);
-        for (maybe_coeff, maybe_pow) in [(l, r), (r, l)] {
-            if let Expr::Number(coeff) = ctx.get(maybe_coeff) {
-                if coeff.is_integer() && *coeff > BigRational::from_integer(0.into()) {
-                    let coeff_int = coeff.to_integer();
-                    let coeff_root = coeff_int.sqrt();
-                    if &coeff_root * &coeff_root == coeff_int {
-                        if let Some(pow_root) = extract_square_root_of_term(ctx, maybe_pow) {
-                            let root_num =
-                                ctx.add(Expr::Number(BigRational::from_integer(coeff_root)));
-                            return Some(ctx.add(Expr::Mul(root_num, pow_root)));
-                        }
-                    }
-                }
+    if matches!(ctx.get(term), Expr::Mul(_, _)) {
+        let factors = crate::expr_nary::mul_factors(ctx, term);
+        if factors.len() >= 2 {
+            let mut roots = Vec::with_capacity(factors.len());
+            for factor in factors {
+                roots.push(extract_square_root_of_term(ctx, factor)?);
             }
-        }
-    }
 
-    if let Expr::Number(n) = ctx.get(term) {
-        if n.is_integer() && *n > BigRational::zero() {
-            let int_val = n.to_integer();
-            let root = int_val.sqrt();
-            if &root * &root == int_val {
-                return Some(ctx.add(Expr::Number(BigRational::from_integer(root))));
-            }
+            let mut iter = roots.into_iter();
+            let first = iter.next()?;
+            let product = iter.fold(first, |acc, factor| ctx.add(Expr::Mul(acc, factor)));
+            return Some(product);
         }
     }
 
@@ -182,13 +186,19 @@ fn normalize_signed_multiplicative_term(
     (effective, effective_neg)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CollapsedSquareLikeBase {
+    Existing(ExprId),
+    AbsArg(ExprId),
+}
+
 fn find_sqrt_like_factors(ctx: &Context, term: ExprId) -> Vec<ExprId> {
     let mut factors = Vec::new();
-    if crate::root_forms::extract_square_root_base(ctx, term).is_some() {
+    if extract_collapsed_square_like_base(ctx, term).is_some() {
         factors.push(term);
     }
     for factor in crate::expr_nary::mul_factors(ctx, term) {
-        if crate::root_forms::extract_square_root_base(ctx, factor).is_some()
+        if extract_collapsed_square_like_base(ctx, factor).is_some()
             && !factors
                 .iter()
                 .any(|existing| compare_expr(ctx, *existing, factor) == Ordering::Equal)
@@ -197,6 +207,24 @@ fn find_sqrt_like_factors(ctx: &Context, term: ExprId) -> Vec<ExprId> {
         }
     }
     factors
+}
+
+fn extract_collapsed_square_like_base(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<CollapsedSquareLikeBase> {
+    if let Some(base) = crate::root_forms::extract_square_root_base(ctx, expr) {
+        return Some(CollapsedSquareLikeBase::Existing(base));
+    }
+
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return None;
+    };
+    if !ctx.is_builtin(*fn_id, BuiltinFn::Abs) || args.len() != 1 {
+        return None;
+    }
+
+    Some(CollapsedSquareLikeBase::AbsArg(args[0]))
 }
 
 fn multiset_matches_exprs(ctx: &Context, left: &[ExprId], right: &[ExprId]) -> bool {
@@ -272,8 +300,15 @@ fn try_match_collapsed_sqrt_square_trinomial(
             normalize_signed_multiplicative_term(ctx, term_mid, sign_mid);
 
         for a in find_sqrt_like_factors(ctx, effective_mid) {
-            let Some(root_base) = crate::root_forms::extract_square_root_base(ctx, a) else {
+            let Some(root_base_kind) = extract_collapsed_square_like_base(ctx, a) else {
                 continue;
+            };
+            let root_base = match root_base_kind {
+                CollapsedSquareLikeBase::Existing(base) => base,
+                CollapsedSquareLikeBase::AbsArg(inner) => {
+                    let two = ctx.num(2);
+                    ctx.add(Expr::Pow(inner, two))
+                }
             };
             let Some((sum_symbolic, sum_numeric)) =
                 split_positive_additive_parts(ctx, positive_sum)
@@ -493,6 +528,15 @@ mod tests {
     }
 
     #[test]
+    fn extract_square_root_of_term_handles_product_of_square_factors() {
+        let mut ctx = Context::new();
+        let expr = cas_parser::parse("x^2*(x+1)^2", &mut ctx).expect("parse");
+        let got = extract_square_root_of_term(&mut ctx, expr).expect("root");
+        let expected = cas_parser::parse("x*(x+1)", &mut ctx).expect("parse expected");
+        assert_eq!(compare_expr(&ctx, got, expected), Ordering::Equal);
+    }
+
+    #[test]
     fn match_perfect_square_trinomial_symbolic() {
         let mut ctx = Context::new();
         let expr = cas_parser::parse("x^2 + 2*x*y + y^2", &mut ctx).expect("parse");
@@ -537,6 +581,24 @@ mod tests {
         let mut ctx = Context::new();
         let expr = cas_parser::parse("sqrt(x^2 + 2*sqrt(x^2 + 1) + 2)", &mut ctx).expect("parse");
         let expected = cas_parser::parse("abs(sqrt(x^2 + 1) + 1)", &mut ctx).expect("expected");
+        let rw = try_rewrite_sqrt_perfect_square_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(compare_expr(&ctx, rw.rewritten, expected), Ordering::Equal);
+    }
+
+    #[test]
+    fn rewrite_sqrt_perfect_square_expr_collapsed_abs_square() {
+        let mut ctx = Context::new();
+        let expr = cas_parser::parse("sqrt(x^2 + 2*abs(x) + 1)", &mut ctx).expect("parse");
+        let expected = cas_parser::parse("abs(abs(x) + 1)", &mut ctx).expect("expected");
+        let rw = try_rewrite_sqrt_perfect_square_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(compare_expr(&ctx, rw.rewritten, expected), Ordering::Equal);
+    }
+
+    #[test]
+    fn rewrite_sqrt_perfect_square_expr_phase_shift_linear() {
+        let mut ctx = Context::new();
+        let expr = cas_parser::parse("sqrt((u + pi)^2 + 2*(u + pi) + 1)", &mut ctx).expect("parse");
+        let expected = cas_parser::parse("abs(u + pi + 1)", &mut ctx).expect("expected");
         let rw = try_rewrite_sqrt_perfect_square_expr(&mut ctx, expr).expect("rewrite");
         assert_eq!(compare_expr(&ctx, rw.rewritten, expected), Ordering::Equal);
     }

@@ -24,16 +24,18 @@ fn format_angle_consistency_desc(kind: TrigMultiAngleRewriteKind) -> &'static st
 use super::contraction_rules::SquareDoubleAngleContractionRule;
 use super::{
     AngleIdentityRule, AngleSumFractionToTanRule, Cos2xAdditiveContractionRule,
-    CotHalfAngleDifferenceRule, CscCotPythagoreanRule, DoubleAngleContractionRule, DoubleAngleRule,
-    HalfAngleTangentRule, HyperbolicTanhPythRule, PythagoreanIdentityRule, QuintupleAngleRule,
-    RecursiveTrigExpansionRule, SecTanPythagoreanRule, Sin4xIdentityZeroRule, SinCosIntegerPiRule,
-    SinCosQuarticSumRule, SinCosSumQuotientRule, SinSupplementaryAngleRule,
-    TanDifferenceIdentityZeroRule, TanDifferenceRule, TanDoubleAngleContractionRule,
-    TanToSinCosRule, TanTripleProductRule, TrigHiddenCubicIdentityRule, TrigOddEvenParityRule,
-    TrigQuotientRule, TrigSumToProductRule, TripleAngleRule, WeierstrassContractionRule,
-    WeierstrassCosIdentityZeroRule, WeierstrassSinIdentityZeroRule,
+    CosTripleIdentityZeroRule, CotHalfAngleDifferenceRule, CscCotPythagoreanRule,
+    DoubleAngleContractionRule, DoubleAngleRule, HalfAngleTangentRule, HyperbolicTanhPythRule,
+    PythagoreanIdentityRule, QuintupleAngleRule, RecursiveTrigExpansionRule, SecTanPythagoreanRule,
+    Sin4xIdentityZeroRule, SinCosIntegerPiRule, SinCosQuarticSumRule, SinCosSumQuotientRule,
+    SinSupplementaryAngleRule, TanDifferenceIdentityZeroRule, TanDifferenceRule,
+    TanDoubleAngleContractionRule, TanToSinCosRule, TanTripleProductRule,
+    TrigHiddenCubicIdentityRule, TrigOddEvenParityRule, TrigQuotientRule, TrigSumToProductRule,
+    TripleAngleRule, WeierstrassContractionRule, WeierstrassCosIdentityZeroRule,
+    WeierstrassSinIdentityZeroRule,
 };
 // Import migration Phase 1-3 rules
+use super::SinSumTripleIdentityZeroRule;
 use super::{GeneralizedSinCosContractionRule, HyperbolicHalfAngleSquaresRule, TrigPhaseShiftRule};
 
 // =============================================================================
@@ -133,6 +135,8 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     // These recognize exact identity forms and short-circuit to 0
     simplifier.add_rule(Box::new(Sin4xIdentityZeroRule));
     simplifier.add_rule(Box::new(TanDifferenceIdentityZeroRule));
+    simplifier.add_rule(Box::new(SinSumTripleIdentityZeroRule));
+    simplifier.add_rule(Box::new(CosTripleIdentityZeroRule));
 
     // PRE-ORDER: Evaluate sin(n·π) = 0 and cos(n·π) = (-1)^n BEFORE any expansion
     // This prevents unnecessary triple/double angle expansions on integer multiples of π

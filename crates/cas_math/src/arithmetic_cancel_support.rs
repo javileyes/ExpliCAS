@@ -3,6 +3,30 @@
 use crate::semantic_equality::SemanticEqualityChecker;
 use cas_ast::{Context, Expr, ExprId};
 
+fn extract_abs_sub_like_pair(ctx: &Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return None;
+    };
+    if !ctx.is_builtin(*fn_id, cas_ast::BuiltinFn::Abs) || args.len() != 1 {
+        return None;
+    }
+
+    let mut scratch = ctx.clone();
+    crate::expr_sub_like::extract_sub_like_pair(&mut scratch, args[0])
+}
+
+fn match_abs_sub_mirror_expr(ctx: &Context, lhs: ExprId, rhs: ExprId) -> bool {
+    let Some((l1, l2)) = extract_abs_sub_like_pair(ctx, lhs) else {
+        return false;
+    };
+    let Some((r1, r2)) = extract_abs_sub_like_pair(ctx, rhs) else {
+        return false;
+    };
+
+    let checker = SemanticEqualityChecker::new(ctx);
+    checker.are_equal(l1, r2) && checker.are_equal(l2, r1)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ArithmeticCancelRewrite {
     pub rewritten: ExprId,
@@ -16,6 +40,10 @@ pub fn match_sub_self_semantic_expr(ctx: &Context, expr: ExprId) -> Option<ExprI
     let Expr::Sub(lhs, rhs) = ctx.get(expr) else {
         return None;
     };
+
+    if match_abs_sub_mirror_expr(ctx, *lhs, *rhs) {
+        return Some(*lhs);
+    }
 
     let checker = SemanticEqualityChecker::new(ctx);
     if checker.are_equal(*lhs, *rhs) {
@@ -38,11 +66,17 @@ pub fn match_add_inverse_expr(ctx: &Context, expr: ExprId) -> Option<ExprId> {
     let checker = SemanticEqualityChecker::new(ctx);
 
     if let Expr::Neg(neg_inner) = ctx.get(*r) {
+        if match_abs_sub_mirror_expr(ctx, *neg_inner, *l) {
+            return Some(*l);
+        }
         if *neg_inner == *l || checker.are_equal(*neg_inner, *l) {
             return Some(*l);
         }
     }
     if let Expr::Neg(neg_inner) = ctx.get(*l) {
+        if match_abs_sub_mirror_expr(ctx, *neg_inner, *r) {
+            return Some(*r);
+        }
         if *neg_inner == *r || checker.are_equal(*neg_inner, *r) {
             return Some(*r);
         }
@@ -93,6 +127,28 @@ mod tests {
     }
 
     #[test]
+    fn detects_sub_self_with_abs_sub_mirror_forms() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "abs((1/(x - 1) + 1/(x + 1)) - 1) - abs(1 - (1/(x - 1) + 1/(x + 1)))",
+            &mut ctx,
+        )
+        .expect("parse");
+        assert!(match_sub_self_semantic_expr(&ctx, expr).is_some());
+    }
+
+    #[test]
+    fn detects_sub_self_with_abs_sub_mirror_runtime_shape() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "abs((2*x)/(x^2 - 1) - 1) - abs(1 - 2*x/(x^2 - 1))",
+            &mut ctx,
+        )
+        .expect("parse");
+        assert!(match_sub_self_semantic_expr(&ctx, expr).is_some());
+    }
+
+    #[test]
     fn detects_add_inverse_both_orders() {
         let mut ctx = Context::new();
         let expr1 = parse("a+(-a)", &mut ctx).expect("parse");
@@ -100,6 +156,17 @@ mod tests {
 
         let expr2 = parse("(-a)+a", &mut ctx).expect("parse");
         assert!(match_add_inverse_expr(&ctx, expr2).is_some());
+    }
+
+    #[test]
+    fn detects_add_inverse_with_abs_sub_mirror_forms() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "abs((2*x)/(x^2 - 1) - 1) + (-abs(1 - 2*x/(x^2 - 1)))",
+            &mut ctx,
+        )
+        .expect("parse");
+        assert!(match_add_inverse_expr(&ctx, expr).is_some());
     }
 
     #[test]

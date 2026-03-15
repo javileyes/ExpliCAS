@@ -1,3 +1,4 @@
+use crate::numeric::gcd_rational;
 use cas_ast::ordering::compare_expr;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use num_integer::Integer;
@@ -27,6 +28,7 @@ pub enum AbsFixedRewriteKind {
     SqrtSquare,
     SumNonnegative,
     SubNormalize,
+    QuotientSubNormalize,
     ProductIdentity,
     QuotientIdentity,
     SqrtIdentity,
@@ -475,8 +477,13 @@ pub fn try_rewrite_abs_sub_normalize_expr(
 
     let left_is_scalar_atom = matches!(ctx.get(a), Expr::Number(_) | Expr::Constant(_));
     let right_is_scalar_atom = matches!(ctx.get(b), Expr::Number(_) | Expr::Constant(_));
-    let prefers_swapped = compare_expr(ctx, a, b) == std::cmp::Ordering::Greater
-        || (left_is_scalar_atom && !right_is_scalar_atom);
+    let prefers_swapped = if left_is_scalar_atom && !right_is_scalar_atom {
+        true
+    } else if !left_is_scalar_atom && right_is_scalar_atom {
+        false
+    } else {
+        compare_expr(ctx, a, b) == std::cmp::Ordering::Greater
+    };
 
     if !prefers_swapped {
         return None;
@@ -487,6 +494,84 @@ pub fn try_rewrite_abs_sub_normalize_expr(
     Some(AbsFixedRewrite {
         rewritten,
         kind: AbsFixedRewriteKind::SubNormalize,
+    })
+}
+
+fn try_normalize_sub_like_sign(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    let (a, b) = crate::expr_sub_like::extract_sub_like_pair(ctx, expr)?;
+    let left_is_scalar_atom = matches!(ctx.get(a), Expr::Number(_) | Expr::Constant(_));
+    let right_is_scalar_atom = matches!(ctx.get(b), Expr::Number(_) | Expr::Constant(_));
+    let left_contains_right = expr_contains_structural(ctx, a, b);
+    let right_contains_left = expr_contains_structural(ctx, b, a);
+    let prefers_swapped = if right_contains_left && !left_contains_right {
+        true
+    } else if left_contains_right && !right_contains_left {
+        false
+    } else if left_is_scalar_atom && !right_is_scalar_atom {
+        true
+    } else if !left_is_scalar_atom && right_is_scalar_atom {
+        false
+    } else {
+        compare_expr(ctx, a, b) == std::cmp::Ordering::Greater
+    };
+    if !prefers_swapped {
+        return None;
+    }
+    Some(ctx.add(Expr::Sub(b, a)))
+}
+
+fn expr_contains_structural(ctx: &Context, haystack: ExprId, needle: ExprId) -> bool {
+    if haystack == needle || compare_expr(ctx, haystack, needle).is_eq() {
+        return true;
+    }
+
+    match ctx.get(haystack) {
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
+            expr_contains_structural(ctx, *l, needle) || expr_contains_structural(ctx, *r, needle)
+        }
+        Expr::Pow(base, exp) => {
+            expr_contains_structural(ctx, *base, needle)
+                || expr_contains_structural(ctx, *exp, needle)
+        }
+        Expr::Neg(inner) => expr_contains_structural(ctx, *inner, needle),
+        Expr::Function(_, args) => args
+            .iter()
+            .any(|arg| expr_contains_structural(ctx, *arg, needle)),
+        _ => false,
+    }
+}
+
+/// Rewrite `|(a-b)/c| -> |(b-a)/c|` and `|a/(b-c)| -> |a/(c-b)|`.
+///
+/// This is a quotient-local counterpart of [`try_rewrite_abs_sub_normalize_expr`].
+/// The sign flip happens inside `abs(...)`, so the quotient remains equivalent.
+pub fn try_rewrite_abs_quotient_sub_normalize_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<AbsFixedRewrite> {
+    let abs_arg = try_unwrap_abs_arg(ctx, expr)?;
+    let Expr::Div(num, den) = ctx.get(abs_arg).clone() else {
+        return None;
+    };
+
+    if !crate::expr_complexity::dedup_node_count_within(ctx, num, 20)
+        || !crate::expr_complexity::dedup_node_count_within(ctx, den, 20)
+        || !crate::expr_complexity::dedup_node_count_within(ctx, expr, 60)
+    {
+        return None;
+    }
+
+    let new_num = try_normalize_sub_like_sign(ctx, num).unwrap_or(num);
+    let new_den = try_normalize_sub_like_sign(ctx, den).unwrap_or(den);
+    if new_num == num && new_den == den {
+        return None;
+    }
+
+    let quotient = ctx.add(Expr::Div(new_num, new_den));
+    let rewritten = ctx.call_builtin(BuiltinFn::Abs, vec![quotient]);
+    Some(AbsFixedRewrite {
+        rewritten,
+        kind: AbsFixedRewriteKind::QuotientSubNormalize,
     })
 }
 
@@ -694,8 +779,9 @@ fn extract_abs_common_additive_factor(
         return None;
     }
 
-    let mut common_factor: Option<BigRational> = None;
-    let mut reduced_terms = Vec::with_capacity(terms.len());
+    let mut gcd_abs: Option<BigRational> = None;
+    let mut all_negative = true;
+    let mut signed_parts = Vec::with_capacity(terms.len());
 
     for (term, sign) in terms {
         let (mut factor, core) =
@@ -703,19 +789,36 @@ fn extract_abs_common_additive_factor(
         if matches!(sign, crate::expr_nary::Sign::Neg) {
             factor = -factor;
         }
-
-        match &common_factor {
-            Some(existing) if *existing != factor => return None,
-            Some(_) => {}
-            None => common_factor = Some(factor.clone()),
+        if !factor.is_negative() {
+            all_negative = false;
         }
-
-        reduced_terms.push(core);
+        gcd_abs = Some(match gcd_abs {
+            Some(current) => gcd_rational(current, factor.abs()),
+            None => factor.abs(),
+        });
+        signed_parts.push((factor, core));
     }
 
-    let factor = common_factor?;
+    let gcd_abs = gcd_abs?;
+    let factor = if all_negative { -gcd_abs } else { gcd_abs };
     if factor.is_one() {
         return None;
+    }
+
+    let mut reduced_terms = Vec::with_capacity(signed_parts.len());
+    for (signed_factor, core) in signed_parts {
+        let reduced_factor = signed_factor / factor.clone();
+        let reduced_term = if reduced_factor.is_one() {
+            core
+        } else if reduced_factor == BigRational::from_integer((-1).into()) {
+            ctx.add(Expr::Neg(core))
+        } else if is_numeric_one(ctx, core) {
+            ctx.add(Expr::Number(reduced_factor))
+        } else {
+            let factor_expr = ctx.add(Expr::Number(reduced_factor));
+            ctx.add(Expr::Mul(factor_expr, core))
+        };
+        reduced_terms.push(reduced_term);
     }
 
     let core = crate::expr_nary::build_balanced_add(ctx, &reduced_terms);
@@ -793,14 +896,15 @@ mod tests {
         try_rewrite_abs_odd_power_expr, try_rewrite_abs_power_even_expr,
         try_rewrite_abs_power_odd_magnitude_expr, try_rewrite_abs_product_expr,
         try_rewrite_abs_product_identity_expr, try_rewrite_abs_quotient_expr,
-        try_rewrite_abs_quotient_identity_expr, try_rewrite_abs_sqrt_identity_expr,
-        try_rewrite_abs_sub_normalize_expr, try_rewrite_abs_sum_nonnegative_expr,
-        try_rewrite_evaluate_abs_expr, try_rewrite_sqrt_square_expr, try_unwrap_abs_arg,
-        value_domain_mode_from_flag, AbsDomainMode, AbsFixedRewriteKind,
-        AbsNumericFactorRewriteKind, ValueDomainMode,
+        try_rewrite_abs_quotient_identity_expr, try_rewrite_abs_quotient_sub_normalize_expr,
+        try_rewrite_abs_sqrt_identity_expr, try_rewrite_abs_sub_normalize_expr,
+        try_rewrite_abs_sum_nonnegative_expr, try_rewrite_evaluate_abs_expr,
+        try_rewrite_sqrt_square_expr, try_unwrap_abs_arg, value_domain_mode_from_flag,
+        AbsDomainMode, AbsFixedRewriteKind, AbsNumericFactorRewriteKind, ValueDomainMode,
     };
     use cas_ast::ordering::compare_expr;
     use cas_ast::{BuiltinFn, Context, Expr};
+    use cas_formatter::DisplayExpr;
 
     #[test]
     fn classifies_basic_nonnegative_forms() {
@@ -1020,6 +1124,36 @@ mod tests {
     }
 
     #[test]
+    fn rewrites_abs_numeric_factor_from_expanded_positive_add() {
+        let mut ctx = Context::new();
+        let parsed = cas_parser::parse("abs(2*x^2 - 2)", &mut ctx).expect("expanded parse");
+        let rewrite = try_rewrite_abs_numeric_factor_expr(&mut ctx, parsed).expect("rewrite");
+        let rendered = format!(
+            "{}",
+            DisplayExpr {
+                context: &ctx,
+                id: rewrite.rewritten
+            }
+        );
+        assert!(
+            rendered == "2 * |x^2 - 1|" || rendered == "2 * |1 - x^2|",
+            "unexpected rendered rewrite: {rendered}"
+        );
+    }
+
+    #[test]
+    fn rewrites_abs_numeric_factor_from_expanded_linear_add() {
+        let mut ctx = Context::new();
+        let parsed = cas_parser::parse("abs(4*x + 6)", &mut ctx).expect("expanded parse");
+        let rewrite = try_rewrite_abs_numeric_factor_expr(&mut ctx, parsed).expect("rewrite");
+        let expected = cas_parser::parse("2*abs(2*x + 3)", &mut ctx).expect("expected");
+        assert_eq!(
+            compare_expr(&ctx, rewrite.rewritten, expected),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
     fn rewrites_abs_numeric_factor_from_global_negative_sum() {
         let mut ctx = Context::new();
         let x = ctx.var("x");
@@ -1035,6 +1169,18 @@ mod tests {
         let x_plus_one = ctx.add(Expr::Add(x, one));
         let expected = ctx.call_builtin(BuiltinFn::Abs, vec![x_plus_one]);
         assert_eq!(rewrite.rewritten, expected);
+    }
+
+    #[test]
+    fn rewrites_abs_numeric_factor_from_expanded_global_negative_sum() {
+        let mut ctx = Context::new();
+        let parsed = cas_parser::parse("abs(-2*x - 3)", &mut ctx).expect("expanded parse");
+        let rewrite = try_rewrite_abs_numeric_factor_expr(&mut ctx, parsed).expect("rewrite");
+        let expected = cas_parser::parse("abs(2*x + 3)", &mut ctx).expect("expected");
+        assert_eq!(
+            compare_expr(&ctx, rewrite.rewritten, expected),
+            std::cmp::Ordering::Equal
+        );
     }
 
     #[test]
@@ -1202,6 +1348,82 @@ mod tests {
         let expected = cas_parser::parse("abs(x/(x+1) - 1)", &mut ctx).expect("expected parse");
         assert_eq!(
             compare_expr(&ctx, rewrite3.rewritten, expected),
+            std::cmp::Ordering::Equal
+        );
+
+        let scaled =
+            cas_parser::parse("abs(1 - 2*x/(x^2 - 1))", &mut ctx).expect("scaled fractional parse");
+        let scaled_rewrite = try_rewrite_abs_sub_normalize_expr(&mut ctx, scaled)
+            .expect("scaled fractional rewrite");
+        let scaled_expected =
+            cas_parser::parse("abs(2*x/(x^2 - 1) - 1)", &mut ctx).expect("scaled expected parse");
+        assert_eq!(
+            compare_expr(&ctx, scaled_rewrite.rewritten, scaled_expected),
+            std::cmp::Ordering::Equal
+        );
+
+        let symmetric =
+            cas_parser::parse("abs(1 - (1/(u - 1) + 1/(u + 1)))", &mut ctx).expect("symmetric");
+        let symmetric_rewrite =
+            try_rewrite_abs_sub_normalize_expr(&mut ctx, symmetric).expect("symmetric rewrite");
+        let symmetric_expected = cas_parser::parse("abs((1/(u - 1) + 1/(u + 1)) - 1)", &mut ctx)
+            .expect("symmetric expected");
+        assert_eq!(
+            compare_expr(&ctx, symmetric_rewrite.rewritten, symmetric_expected),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn rewrites_abs_quotient_inner_sub_normalize() {
+        let mut ctx = Context::new();
+
+        let parsed = cas_parser::parse("abs((1 - x)/(x + 1))", &mut ctx).expect("fractional parse");
+        let rewrite = try_rewrite_abs_quotient_sub_normalize_expr(&mut ctx, parsed)
+            .expect("quotient rewrite");
+        assert_eq!(rewrite.kind, AbsFixedRewriteKind::QuotientSubNormalize);
+        let expected = cas_parser::parse("abs((x - 1)/(x + 1))", &mut ctx).expect("expected parse");
+        assert_eq!(
+            compare_expr(&ctx, rewrite.rewritten, expected),
+            std::cmp::Ordering::Equal
+        );
+
+        let den_parsed = cas_parser::parse("abs(x/(1 - x^2))", &mut ctx).expect("den parse");
+        let den_rewrite = try_rewrite_abs_quotient_sub_normalize_expr(&mut ctx, den_parsed)
+            .expect("den quotient rewrite");
+        let den_expected = cas_parser::parse("abs(x/(x^2 - 1))", &mut ctx).expect("den expected");
+        assert_eq!(
+            compare_expr(&ctx, den_rewrite.rewritten, den_expected),
+            std::cmp::Ordering::Equal
+        );
+
+        let stable =
+            cas_parser::parse("abs((x^2 + 2*x - 1)/(x^2 - 1))", &mut ctx).expect("stable parse");
+        assert!(try_rewrite_abs_quotient_sub_normalize_expr(&mut ctx, stable).is_none());
+
+        let flipped =
+            cas_parser::parse("abs((1 - x^2 - 2*x)/(1 - x^2))", &mut ctx).expect("flipped parse");
+        let flipped_rewrite = try_rewrite_abs_quotient_sub_normalize_expr(&mut ctx, flipped)
+            .expect("flipped quotient rewrite");
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: flipped_rewrite.rewritten
+                }
+            ),
+            "|(2 * x - (1 - x^2)) / (x^2 - 1)|"
+        );
+
+        let nested =
+            cas_parser::parse("abs((x - (x + 1))/(x + 1))", &mut ctx).expect("nested parse");
+        let nested_rewrite = try_rewrite_abs_quotient_sub_normalize_expr(&mut ctx, nested)
+            .expect("nested quotient rewrite");
+        let nested_expected =
+            cas_parser::parse("abs(((x + 1) - x)/(x + 1))", &mut ctx).expect("nested expected");
+        assert_eq!(
+            compare_expr(&ctx, nested_rewrite.rewritten, nested_expected),
             std::cmp::Ordering::Equal
         );
     }

@@ -61,6 +61,34 @@ fn expr_matches_poly(ctx: &Context, lhs: ExprId, rhs: ExprId) -> bool {
     lhs == rhs || compare_expr(ctx, lhs, rhs) == Ordering::Equal || poly_eq(ctx, lhs, rhs)
 }
 
+fn try_extract_cube_factor_base(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    if let Some((base, exp)) = as_pow(ctx, expr) {
+        let exp_val = as_i64(ctx, exp)?;
+        if exp_val > 0 && exp_val % 3 == 0 {
+            let reduced = exp_val / 3;
+            if reduced == 1 {
+                return Some(base);
+            }
+            let reduced_expr = ctx.num(reduced);
+            return Some(ctx.add(Expr::Pow(base, reduced_expr)));
+        }
+    }
+
+    if let Expr::Number(n) = ctx.get(expr) {
+        let root = cas_math::root_forms::rational_cbrt_exact(n)?;
+        if root == BigRational::from_integer(1.into()) {
+            return Some(ctx.num(1));
+        }
+        if root == BigRational::from_integer((-1).into()) {
+            return Some(ctx.num(-1));
+        }
+        let root_expr = ctx.add(Expr::Number(root));
+        return Some(root_expr);
+    }
+
+    None
+}
+
 /// Detect `(a^2 + 2ab + b^2)/(a+b)^2` and plan denominator expansion.
 pub fn try_plan_expand_binomial_square_in_den_for_cancel(
     ctx: &mut Context,
@@ -246,34 +274,17 @@ pub fn try_plan_sum_diff_of_cubes_in_num(
     didactic_payloads_enabled: bool,
 ) -> Option<SumDiffCubesCancelPlan> {
     let (a, b, is_difference) = if let Some((left, right)) = as_sub(ctx, num) {
-        let (a, exp_a) = as_pow(ctx, left)?;
-        if as_i64(ctx, exp_a)? != 3 {
-            return None;
-        }
-
-        let (b, exp_b) = as_pow(ctx, right)?;
-        if as_i64(ctx, exp_b)? != 3 {
-            return None;
-        }
-
+        let a = try_extract_cube_factor_base(ctx, left)?;
+        let b = try_extract_cube_factor_base(ctx, right)?;
         (a, b, true)
     } else if let Some((left, right)) = as_add(ctx, num) {
-        let (a, exp_a) = as_pow(ctx, left)?;
-        if as_i64(ctx, exp_a)? != 3 {
-            return None;
-        }
+        let a = try_extract_cube_factor_base(ctx, left)?;
 
         if let Some(neg_inner) = as_neg(ctx, right) {
-            let (b, exp_b) = as_pow(ctx, neg_inner)?;
-            if as_i64(ctx, exp_b)? != 3 {
-                return None;
-            }
+            let b = try_extract_cube_factor_base(ctx, neg_inner)?;
             (a, b, true)
         } else {
-            let (b, exp_b) = as_pow(ctx, right)?;
-            if as_i64(ctx, exp_b)? != 3 {
-                return None;
-            }
+            let b = try_extract_cube_factor_base(ctx, right)?;
             (a, b, false)
         }
     } else {
@@ -509,6 +520,7 @@ mod tests {
     };
     use cas_ast::ordering::compare_expr;
     use cas_ast::{Context, Expr};
+    use cas_formatter::DisplayExpr;
     use std::cmp::Ordering;
 
     #[test]
@@ -610,6 +622,27 @@ mod tests {
         assert_eq!(
             compare_expr(&ctx, plan.rewritten, expected),
             Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn plans_sum_diff_of_cubes_in_num_for_collapsed_trig_square_cube() {
+        let mut ctx = Context::new();
+        let num = cas_parser::parse("sin(u)^6 - 1", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse num: {err}"));
+        let den = cas_parser::parse("sin(u)^2 - 1", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse den: {err}"));
+        let plan = try_plan_sum_diff_of_cubes_in_num(&mut ctx, num, den, false)
+            .unwrap_or_else(|| panic!("plan should exist"));
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: plan.cancelled_result
+                }
+            ),
+            "1 + sin(u)^2 + sin(u)^2^2"
         );
     }
 

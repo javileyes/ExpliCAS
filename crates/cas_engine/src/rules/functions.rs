@@ -1,6 +1,7 @@
 use crate::define_rule;
 use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
+use cas_ast::{Context, Expr, ExprId};
 use cas_math::abs_support::{
     abs_domain_mode_from_flags, abs_needs_implicit_domain_check, is_ln_or_log_call,
     try_plan_abs_nonnegative_rewrite, try_plan_abs_positive_rewrite,
@@ -9,10 +10,11 @@ use cas_math::abs_support::{
     try_rewrite_abs_numeric_factor_expr, try_rewrite_abs_odd_power_expr,
     try_rewrite_abs_power_even_expr, try_rewrite_abs_power_odd_magnitude_expr,
     try_rewrite_abs_product_identity_expr, try_rewrite_abs_quotient_identity_expr,
-    try_rewrite_abs_sqrt_identity_expr, try_rewrite_abs_sub_normalize_expr,
-    try_rewrite_abs_sum_nonnegative_expr, try_rewrite_evaluate_abs_expr,
-    try_rewrite_sqrt_square_expr, try_unwrap_abs_arg, value_domain_mode_from_flag,
-    AbsAssumptionKind, AbsDomainRewriteKind, AbsFixedRewriteKind, SymbolicRootCancelRewriteKind,
+    try_rewrite_abs_quotient_sub_normalize_expr, try_rewrite_abs_sqrt_identity_expr,
+    try_rewrite_abs_sub_normalize_expr, try_rewrite_abs_sum_nonnegative_expr,
+    try_rewrite_evaluate_abs_expr, try_rewrite_sqrt_square_expr, try_unwrap_abs_arg,
+    value_domain_mode_from_flag, AbsAssumptionKind, AbsDomainRewriteKind, AbsFixedRewriteKind,
+    SymbolicRootCancelRewriteKind,
 };
 use cas_math::root_forms::try_rewrite_odd_half_power_expr;
 
@@ -37,10 +39,32 @@ fn format_abs_fixed_rewrite_desc(kind: AbsFixedRewriteKind) -> &'static str {
         AbsFixedRewriteKind::SqrtSquare => "sqrt(x^2) = |x|",
         AbsFixedRewriteKind::SumNonnegative => "|x² + ...| = x² + ...",
         AbsFixedRewriteKind::SubNormalize => "|a−b| = |b−a|",
+        AbsFixedRewriteKind::QuotientSubNormalize => "|(a−b)/c| = |(b−a)/c|",
         AbsFixedRewriteKind::ProductIdentity => "|x|·|y| = |x·y|",
         AbsFixedRewriteKind::QuotientIdentity => "|x| / |y| = |x / y|",
         AbsFixedRewriteKind::SqrtIdentity => "|√x| = √x",
         AbsFixedRewriteKind::ExpIdentity => "|e^x| = e^x",
+    }
+}
+
+fn expr_contains_structural(ctx: &Context, haystack: ExprId, needle: ExprId) -> bool {
+    if haystack == needle || cas_ast::ordering::compare_expr(ctx, haystack, needle).is_eq() {
+        return true;
+    }
+
+    match ctx.get(haystack) {
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
+            expr_contains_structural(ctx, *l, needle) || expr_contains_structural(ctx, *r, needle)
+        }
+        Expr::Pow(base, exp) => {
+            expr_contains_structural(ctx, *base, needle)
+                || expr_contains_structural(ctx, *exp, needle)
+        }
+        Expr::Neg(inner) => expr_contains_structural(ctx, *inner, needle),
+        Expr::Function(_, args) => args
+            .iter()
+            .any(|arg| expr_contains_structural(ctx, *arg, needle)),
+        _ => false,
     }
 }
 
@@ -248,6 +272,30 @@ impl crate::rule::Rule for AbsPowerOddMagnitudeRule {
             .is_some_and(|parent_id| is_ln_or_log_call(ctx, parent_id))
         {
             return None;
+        }
+
+        let Expr::Pow(abs_base, _) = ctx.get(expr) else {
+            return None;
+        };
+        let abs_base = *abs_base;
+        let _ = try_unwrap_abs_arg(ctx, abs_base)?;
+
+        for &ancestor in parent_ctx.all_ancestors() {
+            let Expr::Div(num, den) = ctx.get(ancestor) else {
+                continue;
+            };
+            if !expr_contains_structural(ctx, *num, expr) {
+                continue;
+            }
+            let den_has_shared_abs = cas_math::expr_sub_like::extract_sub_like_pair(ctx, *den)
+                .map(|(a, b)| {
+                    expr_contains_structural(ctx, a, abs_base)
+                        || expr_contains_structural(ctx, b, abs_base)
+                })
+                .unwrap_or(false);
+            if den_has_shared_abs {
+                return None;
+            }
         }
 
         let rewrite = try_rewrite_abs_power_odd_magnitude_expr(ctx, expr)?;
@@ -476,8 +524,20 @@ define_rule!(
     AbsSubNormalizeRule,
     "Abs Sub Normalize",
     Some(crate::target_kind::TargetKindSet::FUNCTION),
+    PhaseMask::POST,
     |ctx, expr| {
         let rewrite = try_rewrite_abs_sub_normalize_expr(ctx, expr)?;
+        Some(Rewrite::new(rewrite.rewritten).desc(format_abs_fixed_rewrite_desc(rewrite.kind)))
+    }
+);
+
+define_rule!(
+    AbsQuotientSubNormalizeRule,
+    "Abs Quotient Sub Normalize",
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
+    PhaseMask::POST,
+    |ctx, expr| {
+        let rewrite = try_rewrite_abs_quotient_sub_normalize_expr(ctx, expr)?;
         Some(Rewrite::new(rewrite.rewritten).desc(format_abs_fixed_rewrite_desc(rewrite.kind)))
     }
 );
@@ -530,6 +590,7 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(AbsExpRule)); // |e^x| → e^x
     simplifier.add_rule(Box::new(AbsSumOfSquaresRule)); // |x² + y²| → x² + y²
     simplifier.add_rule(Box::new(AbsSubNormalizeRule)); // |a-b| → |b-a| (canonical)
+    simplifier.add_rule(Box::new(AbsQuotientSubNormalizeRule)); // |(a-b)/c| → |(b-a)/c|
     simplifier.add_rule(Box::new(AbsPositiveFactorRule)); // |k·x| → k·|x| for k > 0
     simplifier.add_rule(Box::new(EvaluateMetaFunctionsRule)); // Make simplify/factor/expand transparent
 }

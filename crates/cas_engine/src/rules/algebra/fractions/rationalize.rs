@@ -243,3 +243,127 @@ define_rule!(
         Some(Rewrite::new(rewrite.rewritten).desc(format_div_expand_cancel_desc(rewrite.kind)))
     }
 );
+
+define_rule!(
+    ReciprocalDifferenceOfSquaresRule,
+    "Reciprocal Difference of Squares",
+    solve_safety: crate::SolveSafety::NeedsCondition(
+        crate::ConditionClass::Definability
+    ),
+    |ctx, expr, parent_ctx| {
+        use crate::Predicate;
+
+        let (num, den) = cas_math::expr_destructure::as_div(ctx, expr)?;
+        let plan = cas_math::difference_of_squares_support::try_plan_reciprocal_difference_of_squares_expr(
+            ctx,
+            num,
+            den,
+        )?;
+
+        let decision = crate::oracle_allows_with_hint(
+            ctx,
+            parent_ctx.domain_mode(),
+            parent_ctx.value_domain(),
+            &Predicate::NonZero(den),
+            "Reciprocal Difference of Squares",
+        );
+        if !decision.allow {
+            return None;
+        }
+
+        Some(
+            Rewrite::new(plan.final_result)
+                .requires(crate::ImplicitCondition::NonZero(den))
+                .desc("(A-B)/(A^2-B^2) = 1/(A+B)"),
+        )
+    }
+);
+
+#[cfg(test)]
+mod tests {
+    use crate::parent_context::ParentContext;
+    use crate::rule::Rule;
+    use crate::rules::algebra::ReciprocalDifferenceOfSquaresRule;
+    use crate::DomainMode;
+    use cas_ast::ordering::compare_expr;
+    use cas_ast::Context;
+    use cas_formatter::DisplayExpr;
+    use cas_parser::parse;
+
+    #[test]
+    fn div_expand_to_cancel_rule_rewrites_collapsed_root_quotient_before_rationalize() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "(x^2 + 1 + 2*(x^2 + 1)^(1/2))/((x^2 + 1)^(1/2) + 2)",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("parse expr: {err}"));
+        let rewrite =
+            cas_math::div_expand_cancel_support::try_rewrite_div_expand_to_cancel_expr_with_thread_guards(
+                &mut ctx,
+                expr,
+                |base_ctx, sub_frac| {
+                    let mut simplifier = crate::Simplifier::with_default_rules();
+                    simplifier.context = base_ctx.clone();
+                    let (simplified, _) = simplifier.simplify(sub_frac);
+                    Some((simplifier.context, simplified))
+                },
+                crate::expand::expand,
+                |expanded_ctx, expanded_num, expanded_den| {
+                    let mut simplifier = crate::Simplifier::with_default_rules();
+                    simplifier.context = expanded_ctx;
+                    let (simplified_num, _) = simplifier.simplify(expanded_num);
+                    let (simplified_den, _) = simplifier.simplify(expanded_den);
+                    Some((simplifier.context, simplified_num, simplified_den))
+                },
+            )
+            .unwrap_or_else(|| panic!("rewrite"));
+        let rendered = format!(
+            "{}",
+            DisplayExpr {
+                context: &ctx,
+                id: rewrite.rewritten
+            }
+        );
+        assert!(
+            rendered == "(x^2 + 1)^(1/2)" || rendered == "sqrt(x^2 + 1)",
+            "unexpected collapsed-root quotient rewrite: {rendered}"
+        );
+    }
+
+    #[test]
+    fn reciprocal_difference_of_squares_rule_rewrites_arctan_in_generic() {
+        let mut ctx = Context::new();
+        let expr = parse("(arctan(u) - 1)/(arctan(u)^2 - 1)", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse expr: {err}"));
+        let rule = ReciprocalDifferenceOfSquaresRule;
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rewrite = rule
+            .apply(&mut ctx, expr, &parent_ctx)
+            .unwrap_or_else(|| panic!("rewrite"));
+        let expected =
+            parse("1/(arctan(u) + 1)", &mut ctx).unwrap_or_else(|err| panic!("expected: {err}"));
+        assert_eq!(
+            compare_expr(&ctx, rewrite.new_expr, expected),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn reciprocal_difference_of_squares_rule_rewrites_arcsin_in_generic() {
+        let mut ctx = Context::new();
+        let expr = parse("(arcsin(u) - 1)/(arcsin(u)^2 - 1)", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse expr: {err}"));
+        let rule = ReciprocalDifferenceOfSquaresRule;
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rewrite = rule
+            .apply(&mut ctx, expr, &parent_ctx)
+            .unwrap_or_else(|| panic!("rewrite"));
+        let expected =
+            parse("1/(arcsin(u) + 1)", &mut ctx).unwrap_or_else(|err| panic!("expected: {err}"));
+        assert_eq!(
+            compare_expr(&ctx, rewrite.new_expr, expected),
+            std::cmp::Ordering::Equal
+        );
+    }
+}
