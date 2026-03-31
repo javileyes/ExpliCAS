@@ -87,3 +87,39 @@ fn step_wire_events_fallback_respects_off_mode() {
     );
     assert!(steps.is_empty());
 }
+
+#[test]
+fn step_wire_substeps_preserve_math_latex_for_rationalization_example() {
+    let (engine, output) = eval_output_for("1 / (sqrt(x) - 1) - (sqrt(x) + 1) / (x - 1)");
+    let steps =
+        cas_didactic::collect_step_payloads(&output.steps, &engine.simplifier.context, "on");
+
+    let all_substep_math: Vec<&str> = steps
+        .iter()
+        .flat_map(|step| step.substeps.iter())
+        .flat_map(|substep| {
+            [
+                substep.before_latex.as_deref(),
+                substep.after_latex.as_deref(),
+            ]
+        })
+        .flatten()
+        .collect();
+
+    assert!(
+        !all_substep_math.is_empty(),
+        "expected didactic substeps for rationalization example"
+    );
+    assert!(
+        all_substep_math
+            .iter()
+            .any(|latex| latex.contains("\\frac") || latex.contains("\\sqrt")),
+        "expected math-like didactic substep content, got: {all_substep_math:?}"
+    );
+    assert!(
+        all_substep_math
+            .iter()
+            .all(|latex| !latex.starts_with("\\text{\\frac") && !latex.starts_with("\\text{\\sqrt")),
+        "didactic wire payload should not wrap math latex in \\\\text{{...}}: {all_substep_math:?}"
+    );
+}
