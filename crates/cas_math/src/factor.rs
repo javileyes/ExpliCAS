@@ -200,7 +200,78 @@ pub fn factor_difference_squares(ctx: &mut Context, expr: ExprId) -> Option<Expr
 /// Factors Sophie Germain identity: a^4 + 4b^4 = (a² + 2ab + 2b²)(a² - 2ab + 2b²)
 /// Example: x^4 + 64 = x^4 + 4·16 = x^4 + 4·2^4 → (x² + 4x + 8)(x² - 4x + 8)
 pub fn factor_sophie_germain(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
-    // Match a^4 + k where k = 4b^4 for some integer b
+    fn pow_four_base(ctx: &Context, term: ExprId) -> Option<ExprId> {
+        match ctx.get(term) {
+            Expr::Pow(base, exp) => match ctx.get(*exp) {
+                Expr::Number(n) if n.is_integer() && *n.numer() == 4.into() => Some(*base),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    fn four_times_fourth_power_base(ctx: &mut Context, term: ExprId) -> Option<ExprId> {
+        match ctx.get(term).clone() {
+            Expr::Mul(l, r) => {
+                let left_is_four = matches!(ctx.get(l), Expr::Number(n) if n.is_integer() && *n.numer() == 4.into());
+                let right_is_four = matches!(ctx.get(r), Expr::Number(n) if n.is_integer() && *n.numer() == 4.into());
+                if left_is_four {
+                    return pow_four_base(ctx, r);
+                }
+                if right_is_four {
+                    return pow_four_base(ctx, l);
+                }
+                None
+            }
+            Expr::Number(n) => {
+                if !n.is_integer() || !n.is_positive() {
+                    return None;
+                }
+                let k = n.numer().to_i64()?;
+                if k % 4 != 0 {
+                    return None;
+                }
+                let b4 = k / 4;
+                let b_f64 = (b4 as f64).powf(0.25);
+                let b_int = b_f64.round() as i64;
+                if b_int.pow(4) != b4 {
+                    return None;
+                }
+                Some(ctx.num(b_int))
+            }
+            _ => None,
+        }
+    }
+
+    fn build_sophie_germain_factors(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
+        let two = ctx.num(2);
+        let a_sq = ctx.add(Expr::Pow(a, two));
+
+        let (two_ab, two_b_sq) = match ctx.get(b).clone() {
+            Expr::Number(n) if n.is_integer() && n.is_positive() => {
+                if let Some(b_val) = n.numer().to_i64() {
+                    let two_b = ctx.num(2 * b_val);
+                    let two_b_sq = ctx.num(2 * b_val * b_val);
+                    (mul2_raw(ctx, two_b, a), two_b_sq)
+                } else {
+                    let b_sq = ctx.add(Expr::Pow(b, two));
+                    let ab = mul2_raw(ctx, a, b);
+                    (mul2_raw(ctx, two, ab), mul2_raw(ctx, two, b_sq))
+                }
+            }
+            _ => {
+                let b_sq = ctx.add(Expr::Pow(b, two));
+                let ab = mul2_raw(ctx, a, b);
+                (mul2_raw(ctx, two, ab), mul2_raw(ctx, two, b_sq))
+            }
+        };
+
+        let common = ctx.add(Expr::Add(a_sq, two_b_sq));
+        let factor1 = ctx.add(Expr::Add(common, two_ab));
+        let factor2 = ctx.add(Expr::Sub(common, two_ab));
+        mul2_raw(ctx, factor1, factor2)
+    }
+
     let expr_data = ctx.get(expr).clone();
 
     let (left, right) = match expr_data {
@@ -208,82 +279,19 @@ pub fn factor_sophie_germain(ctx: &mut Context, expr: ExprId) -> Option<ExprId> 
         _ => return None,
     };
 
-    // Helper: check if one term is a^4 and other is 4b^4
-    fn try_match(ctx: &Context, term_pow: ExprId, term_num: ExprId) -> Option<(ExprId, i64)> {
-        // Check if term_pow is a^4
-        let a = match ctx.get(term_pow) {
-            Expr::Pow(base, exp) => {
-                if let Expr::Number(n) = ctx.get(*exp) {
-                    if n.is_integer() && *n.numer() == 4.into() {
-                        *base
-                    } else {
-                        return None;
-                    }
-                } else {
-                    return None;
-                }
-            }
-            _ => return None,
-        };
-
-        // Check if term_num is 4b^4 for integer b
-        if let Expr::Number(n) = ctx.get(term_num) {
-            if !n.is_integer() || !n.is_positive() {
-                return None;
-            }
-            let k = n.numer().to_i64()?;
-
-            // k = 4·b^4, so k must be divisible by 4
-            if k % 4 != 0 {
-                return None;
-            }
-            let b4 = k / 4;
-
-            // Check if b4 is a perfect 4th power
-            let b_f64 = (b4 as f64).powf(0.25);
-            let b_int = b_f64.round() as i64;
-            if b_int.pow(4) != b4 {
-                return None;
-            }
-
-            return Some((a, b_int));
-        }
-        None
+    fn try_match(
+        ctx: &mut Context,
+        term_pow: ExprId,
+        term_other: ExprId,
+    ) -> Option<(ExprId, ExprId)> {
+        Some((
+            pow_four_base(ctx, term_pow)?,
+            four_times_fourth_power_base(ctx, term_other)?,
+        ))
     }
 
-    // Try both orders: (a^4, k) or (k, a^4)
-    let (a, b_val) = try_match(ctx, left, right).or_else(|| try_match(ctx, right, left))?;
-
-    // Now build: (a² + 2ab + 2b²)(a² - 2ab + 2b²)
-    // V2.14.33: Pre-compute numeric values to produce simplified output
-    // e.g., for b=2: b²=4, 2b²=8, 2b=4 → (x²+4x+8)(x²-4x+8)
-    let b_squared = b_val * b_val; // e.g., 4
-    let two_b_squared = 2 * b_squared; // e.g., 8
-    let two_b = 2 * b_val; // e.g., 4
-
-    let two = ctx.num(2);
-
-    // a²
-    let a_sq = ctx.add(Expr::Pow(a, two));
-
-    // 2b² as a number
-    let two_b_sq_num = ctx.num(two_b_squared);
-
-    // 2b·a = (2b)·a as coefficient * variable
-    let two_b_expr = ctx.num(two_b);
-    let two_ab = mul2_raw(ctx, two_b_expr, a);
-
-    // a² + 2b² (common part)
-    let a_sq_plus_2b_sq = ctx.add(Expr::Add(a_sq, two_b_sq_num));
-
-    // First factor: a² + 2ab + 2b² = (a² + 2b²) + 2ab
-    let factor1 = ctx.add(Expr::Add(a_sq_plus_2b_sq, two_ab));
-
-    // Second factor: a² - 2ab + 2b² = (a² + 2b²) - 2ab
-    let factor2 = ctx.add(Expr::Sub(a_sq_plus_2b_sq, two_ab));
-
-    // Result: factor1 * factor2
-    Some(mul2_raw(ctx, factor1, factor2))
+    let (a, b) = try_match(ctx, left, right).or_else(|| try_match(ctx, right, left))?;
+    Some(build_sophie_germain_factors(ctx, a, b))
 }
 
 /// Factors perfect square trinomials: a² ± 2ab + b² = (a ± b)²
@@ -546,6 +554,24 @@ mod tests {
         let expr = parse("a^3*(b-c) + b^3*(c-a) + c^3*(a-b)", &mut ctx).unwrap();
         let res = factor(&mut ctx, expr);
         let expected = parse("(a-b)*(a-c)*(b-c)*(a+b+c)", &mut ctx).unwrap();
+        assert!(poly_eq(&ctx, res, expected));
+    }
+
+    #[test]
+    fn test_factor_sophie_germain_symbolic() {
+        let mut ctx = Context::new();
+        let expr = parse("x^4 + 4*y^4", &mut ctx).unwrap();
+        let res = factor(&mut ctx, expr);
+        let expected = parse("(x^2 - 2*x*y + 2*y^2)*(x^2 + 2*x*y + 2*y^2)", &mut ctx).unwrap();
+        assert!(poly_eq(&ctx, res, expected));
+    }
+
+    #[test]
+    fn test_factor_sophie_germain_numeric_still_simplifies_coefficients() {
+        let mut ctx = Context::new();
+        let expr = parse("x^4 + 64", &mut ctx).unwrap();
+        let res = factor(&mut ctx, expr);
+        let expected = parse("(x^2 - 4*x + 8)*(x^2 + 4*x + 8)", &mut ctx).unwrap();
         assert!(poly_eq(&ctx, res, expected));
     }
 }

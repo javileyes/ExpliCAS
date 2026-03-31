@@ -3366,6 +3366,14 @@ fn engine_proves_alternating_cubic_vandermonde_identity() {
 }
 
 #[test]
+fn engine_proves_sophie_germain_symbolic_identity() {
+    let lhs = "x^4 + 4*y^4";
+    let rhs = "(x^2 - 2*x*y + 2*y^2)*(x^2 + 2*x*y + 2*y^2)";
+    assert!(prove_zero_from_engine_texts(lhs, rhs));
+    assert!(prove_zero_from_engine_texts(rhs, lhs));
+}
+
+#[test]
 fn curated_pair_corpus_proves_contextual_pair_both_directions() {
     let lhs = "(1/(x - 1) + 1/(x + 1)) + ((u+1)^2)";
     let rhs = "(2*x/(x^2 - 1)) + (u^2 + 2*u + 1)";

@@ -51,3 +51,25 @@ fn test_factor_perfect_square_integration() {
     assert!(res.contains("^ 2") || res.contains("^2"));
     assert!(!res.contains("factor"));
 }
+
+#[test]
+fn test_factor_sophie_germain_symbolic_integration() {
+    let mut simplifier = Simplifier::new();
+    simplifier.add_rule(Box::new(FactorRule));
+    simplifier.add_rule(Box::new(CombineLikeTermsRule));
+
+    let expr = parse("factor(x^4 + 4*y^4)", &mut simplifier.context).unwrap();
+    let (simplified, _) = simplifier.simplify(expr);
+    let res = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: simplified
+        }
+    );
+    println!("Result: {}", res);
+    assert!(res.contains("x^2"));
+    assert!(res.contains("y^2"));
+    assert!(res.contains("2 * x * y") || res.contains("2*x*y"));
+    assert!(!res.contains("factor"));
+}
