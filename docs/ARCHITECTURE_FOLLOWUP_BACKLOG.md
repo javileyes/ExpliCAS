@@ -102,7 +102,7 @@ Do not do:
 ### 4. Measured Runtime R&D Only
 
 Status:
-- optional, benchmark-gated
+- done for current scope (no active experiment)
 
 Candidates:
 - listener overhead in hot paths
@@ -112,10 +112,21 @@ Candidates:
 Rule:
 - no mainline architecture churn without a benchmark-backed reason
 
+Current execution note:
+- `/Users/javiergimenezmoya/developer/math/docs/MEASURED_RUNTIME_RD_BACKLOG.md`
+
+Current state:
+- the listener-overhead experiment is closed and rejected for retention
+- no second runtime experiment should be opened without a fresh measured
+  hotspot hypothesis
+
 ## Suggested Execution Order
 
-1. Optional didactic rendering Phase 2 cleanup
-2. Any runtime R&D behind its own benchmark/prototype track
+1. If architecture follow-up continues, open a fresh measured-runtime R&D
+   experiment only with a new benchmark-backed hypothesis.
+2. Reuse
+   `/Users/javiergimenezmoya/developer/math/docs/MEASURED_RUNTIME_RD_BACKLOG.md`
+   as the execution template and experiment log.
 
 ## Stop Condition
 

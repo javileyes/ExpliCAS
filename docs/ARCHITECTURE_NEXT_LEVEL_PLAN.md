@@ -50,14 +50,16 @@ Status update:
 - Phase A should now be read as historical context plus closure rationale, not
   as an open execution stream
 - the optional didactic rendering Phase 2 cleanup is complete
-- the next useful work is narrower:
-  - solver-event Phase 2 design-only decision
-  - session persistence strategy decision
-  - benchmark-gated runtime R&D
+- the runtime R&D listener experiment has been closed without retention
+- no benchmark-gated runtime experiment is currently open
 
 For the concrete follow-up list, see:
 
 - `/Users/javiergimenezmoya/developer/math/docs/ARCHITECTURE_FOLLOWUP_BACKLOG.md`
+
+For the runtime experiment record/template, see:
+
+- `/Users/javiergimenezmoya/developer/math/docs/MEASURED_RUNTIME_RD_BACKLOG.md`
 
 ### High-priority work
 

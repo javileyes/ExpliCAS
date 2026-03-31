@@ -1,7 +1,9 @@
 mod common;
 
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
+use std::cell::Cell;
 use std::hint::black_box;
+use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
@@ -18,6 +20,7 @@ use cas_engine::{
 };
 use cas_math::fraction_gcd_plan_support::try_plan_fraction_gcd_rewrite;
 use cas_solver::api::{verify_solution_set, VerifyStatus, VerifySummary};
+use cas_solver_core::engine_event_collector::EngineEventCollector;
 use cas_solver_core::engine_events::EngineEvent;
 
 const SOLVE_PROFILE_FLAG: &str = "CAS_SOLVE_BENCH_PROFILE";
@@ -315,6 +318,83 @@ impl StepListener for BenchCapturingListener {
             .expect("bench listener sink poisoned")
             .push(event.clone());
     }
+}
+
+#[derive(Clone)]
+struct BenchCountingListener {
+    sink: Rc<Cell<usize>>,
+}
+
+impl BenchCountingListener {
+    fn new(sink: Rc<Cell<usize>>) -> Self {
+        Self { sink }
+    }
+}
+
+impl StepListener for BenchCountingListener {
+    fn on_event(&mut self, event: &EngineEvent) {
+        let EngineEvent::RuleApplied { rule_name, .. } = event;
+        self.sink.set(self.sink.get() ^ (rule_name.len() + 1));
+    }
+}
+
+enum BenchListenerMode {
+    None,
+    Counting,
+    Collector,
+}
+
+fn bench_listener_overhead_metric(
+    profile: &std::sync::Arc<cas_engine::RuleProfile>,
+    inputs: &[&str],
+    steps_mode: StepsMode,
+    listener_mode: BenchListenerMode,
+) -> usize {
+    let mut total_metric = 0usize;
+
+    for input in inputs {
+        let (ctx, expr) = build_expr(input);
+        let mut simplifier = Simplifier::from_profile_with_context(profile.clone(), ctx);
+        simplifier.set_steps_mode(steps_mode);
+
+        let mut collector = None;
+        let mut counting_sink = None;
+
+        match listener_mode {
+            BenchListenerMode::None => {}
+            BenchListenerMode::Counting => {
+                let sink = Rc::new(Cell::new(0usize));
+                simplifier
+                    .set_step_listener(Some(Box::new(BenchCountingListener::new(sink.clone()))));
+                counting_sink = Some(sink);
+            }
+            BenchListenerMode::Collector => {
+                let sink = EngineEventCollector::new();
+                simplifier.set_step_listener(Some(Box::new(sink.clone())));
+                collector = Some(sink);
+            }
+        }
+
+        let out = simplifier.simplify_for_solve(expr);
+        total_metric ^= format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: &simplifier.context,
+                id: out
+            }
+        )
+        .len();
+
+        if let Some(sink) = counting_sink {
+            total_metric ^= sink.get();
+        }
+
+        if let Some(sink) = collector {
+            total_metric ^= sink.into_events().len();
+        }
+    }
+
+    total_metric
 }
 
 fn emit_solve_profile_snapshot(
@@ -1714,6 +1794,70 @@ fn bench_solver_verification_inherited_steps(c: &mut Criterion) {
     group.finish();
 }
 
+fn bench_listener_overhead_solve_prepass(c: &mut Criterion) {
+    let inputs = [
+        "(2*x + 2*y)/(4*x + 4*y)",
+        "(x^2 - y^2)/(x - y)",
+        "exp(ln(x))",
+        "(a^x)/a",
+        "x^0",
+    ];
+
+    let profile_opts = EvalOptions {
+        branch_mode: BranchMode::Strict,
+        complex_mode: ComplexMode::Auto,
+        steps_mode: StepsMode::On,
+        shared: cas_engine::SharedSemanticConfig {
+            context_mode: ContextMode::Solve,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+
+    let mut cache = ProfileCache::new();
+    let profile = cache.get_or_build(&profile_opts);
+
+    let mut group = c.benchmark_group("listener_overhead_solve_prepass");
+    common::configure_standard_group(&mut group);
+
+    for (steps_name, steps_mode) in [("steps_off", StepsMode::Off), ("steps_on", StepsMode::On)] {
+        group.bench_function(format!("{steps_name}/no_listener"), |b| {
+            b.iter(|| {
+                black_box(bench_listener_overhead_metric(
+                    &profile,
+                    &inputs,
+                    steps_mode,
+                    BenchListenerMode::None,
+                ))
+            })
+        });
+
+        group.bench_function(format!("{steps_name}/counting_listener"), |b| {
+            b.iter(|| {
+                black_box(bench_listener_overhead_metric(
+                    &profile,
+                    &inputs,
+                    steps_mode,
+                    BenchListenerMode::Counting,
+                ))
+            })
+        });
+
+        group.bench_function(format!("{steps_name}/collector_listener"), |b| {
+            b.iter(|| {
+                black_box(bench_listener_overhead_metric(
+                    &profile,
+                    &inputs,
+                    steps_mode,
+                    BenchListenerMode::Collector,
+                ))
+            })
+        });
+    }
+
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_profile_build,
@@ -1727,6 +1871,7 @@ criterion_group!(
     bench_solve_phase_subset_cached,
     bench_standard_phase_subset_cached,
     bench_solve_prepass_inherited_steps_cached,
-    bench_solver_verification_inherited_steps
+    bench_solver_verification_inherited_steps,
+    bench_listener_overhead_solve_prepass
 );
 criterion_main!(benches);
