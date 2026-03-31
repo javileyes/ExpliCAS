@@ -20,7 +20,7 @@ fn simplify_and_enrich(input: &str) -> (Context, Vec<EnrichedStep>) {
     (engine.simplifier.context.clone(), enriched)
 }
 
-/// Verify that P1 pattern (1/(a + 1/b)) generates exactly 2 sub-steps
+/// Verify that P1 pattern (1/(a + 1/b)) generates at least one human sub-step
 #[test]
 fn nested_fraction_p1_generates_substeps() {
     let (_, enriched) = simplify_and_enrich("1/(1 + 1/x)");
@@ -36,11 +36,20 @@ fn nested_fraction_p1_generates_substeps() {
     assert!(nested.is_some(), "Should have complex fraction step");
     let step = nested.unwrap();
 
-    // Should have exactly 2 sub-steps (combine denominator + invert)
+    // The modern didactic narrative may collapse the old two-phase explanation
+    // into a single direct inversion step if the denominator sum was already
+    // explained by a previous simplification step.
     assert_eq!(
         step.sub_steps.len(),
-        2,
-        "P1 pattern should have 2 sub-steps: {:?}",
+        1,
+        "P1 pattern should now keep a single direct sub-step: {:?}",
+        step.sub_steps
+    );
+    assert!(
+        step.sub_steps[0]
+            .description
+            .contains("Dividir entre una fracción equivale a invertirla"),
+        "P1 pattern should explain inversion directly: {:?}",
         step.sub_steps
     );
 }
@@ -83,7 +92,7 @@ fn multiple_nested_fractions_all_enriched() {
     );
 }
 
-/// Verify sub-steps contain expected descriptions for common denominator
+/// Verify sub-steps contain the direct inversion explanation
 #[test]
 fn substeps_contain_denominator_explanation() {
     let (_, enriched) = simplify_and_enrich("1/(1 + 1/x)");
@@ -95,20 +104,14 @@ fn substeps_contain_denominator_explanation() {
     assert!(nested.is_some(), "Should find nested fraction step");
     let step = nested.unwrap();
 
-    // Sub-steps should mention common denominator (or simplification)
-    // V2.15.8: After AddFractionsRule enhancement, the flow may be different -
-    // the denominator is combined first by AddFractionsRule, so the sub-steps
-    // may not include explicit "inversion" step anymore.
-    let has_denominator_or_simplify = step.sub_steps.iter().any(|s| {
-        s.description.contains("denominador")
-            || s.description.contains("denominator")
-            || s.description.contains("Simplificar")
-            || s.description.contains("simplif")
+    let has_direct_inversion_explanation = step.sub_steps.iter().any(|s| {
+        s.description
+            .contains("Dividir entre una fracción equivale a invertirla")
     });
 
     assert!(
-        has_denominator_or_simplify,
-        "Should have sub-step about common denominator or simplification. Sub-steps: {:?}",
+        has_direct_inversion_explanation,
+        "Should have a direct sub-step about inverting the nested fraction. Sub-steps: {:?}",
         step.sub_steps
     );
 }

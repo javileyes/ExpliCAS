@@ -37,26 +37,16 @@ fn generate_common_factor_cancel_substeps(ctx: &Context, step: &Step) -> Vec<Sub
     };
 
     let factor_display = display_expr(ctx, common_factor);
-    let factor_latex = latex_expr(ctx, common_factor);
     let before_display = display_expr(ctx, before);
     let before_latex = latex_expr(ctx, before);
 
-    vec![
-        SubStep::new(
-            format!("El factor comun {} aparece arriba y abajo", factor_display),
-            before_display.clone(),
-            format!("Cancelar {}", factor_display),
-        )
-        .with_before_latex(before_latex.clone())
-        .with_after_latex(format!("\\text{{Cancelar }} {}", factor_latex)),
-        SubStep::new(
-            format!("Al cancelar {}, queda la fraccion restante", factor_display),
-            before_display,
-            display_expr(ctx, after),
-        )
-        .with_before_latex(before_latex)
-        .with_after_latex(latex_expr(ctx, after)),
-    ]
+    vec![SubStep::new(
+        format!("Como {} aparece arriba y abajo, se cancela", factor_display),
+        before_display,
+        display_expr(ctx, after),
+    )
+    .with_before_latex(before_latex)
+    .with_after_latex(latex_expr(ctx, after))]
 }
 
 fn generate_difference_of_squares_cancel_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
@@ -168,26 +158,13 @@ fn generate_subtraction_self_cancel_substeps(ctx: &Context, step: &Step) -> Vec<
     let Expr::Sub(left, right) = ctx.get(before) else {
         return Vec::new();
     };
-    if left != right {
+    if left != right || after == before {
         return Vec::new();
     }
-
-    vec![
-        SubStep::new(
-            "Los dos términos ya son el mismo",
-            display_expr(ctx, before),
-            display_expr(ctx, *left),
-        )
-        .with_before_latex(latex_expr(ctx, before))
-        .with_after_latex(latex_expr(ctx, *left)),
-        SubStep::new(
-            "Restar algo consigo mismo da 0",
-            display_expr(ctx, before),
-            display_expr(ctx, after),
-        )
-        .with_before_latex(latex_expr(ctx, before))
-        .with_after_latex(latex_expr(ctx, after)),
-    ]
+    let _ = (left, right);
+    // The human-visible step title plus the direct local change already explain this move.
+    // Adding micro-substeps like "the two terms are the same" only creates didactic noise.
+    Vec::new()
 }
 
 fn generate_cancel_reciprocal_exponents_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {

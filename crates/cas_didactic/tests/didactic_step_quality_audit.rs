@@ -312,13 +312,9 @@ fn didactic_step_quality_priority_cases_use_multiphase_human_narratives() {
                 "Cambiar el signo para formar el conjugado",
                 "Multiplicar numerador y denominador por ese conjugado",
                 "En el denominador aparece una diferencia de cuadrados",
-                "Restar algo consigo mismo da 0",
             ],
         ),
-        (
-            "cancel_factors_fraction",
-            &["factor comun x", "Al cancelar x"],
-        ),
+        ("cancel_factors_fraction", &["se cancela"]),
         (
             "difference_of_squares_quotient",
             &["diferencia de cuadrados", "Ahora se cancela el factor"],
@@ -396,6 +392,17 @@ fn didactic_step_quality_priority_cases_make_cli_narrative_less_magic() {
         rationalize_cli
     );
     assert!(
+        rationalize_cli.contains("x - 1^2"),
+        "rationalize_linear_root CLI narrative should humanize the difference-of-squares substep as x - 1^2, got:\n{}",
+        rationalize_cli
+    );
+    assert!(
+        !rationalize_cli.contains("x - ((-1))^2")
+            && !rationalize_cli.contains("x - (-1)^2"),
+        "rationalize_linear_root CLI narrative should avoid showing -1 squared inside the didactic substep, got:\n{}",
+        rationalize_cli
+    );
+    assert!(
         !rationalize_cli.contains("Cambio local: sqrt(x) + 1 -> sqrt(x) + 1")
             && !rationalize_cli.contains("Cambio local: (sqrt(x) + 1) -> sqrt(x) + 1")
             && !rationalize_cli.contains("Rule: (sqrt(x) + 1) -> sqrt(x) + 1"),
@@ -417,9 +424,25 @@ fn didactic_step_quality_priority_cases_make_cli_narrative_less_magic() {
     assert!(
         !rationalize_cli.contains("\n2. 1 * x = x")
             && !rationalize_cli.contains("\n2. Evaluate literal power")
-            && !rationalize_cli.contains("\n3. a - a = 0"),
+            && !rationalize_cli.contains("\n3. a - a = 0")
+            && !rationalize_cli.contains("Los dos términos ya son el mismo")
+            && !rationalize_cli.contains("Restar algo consigo mismo da 0"),
         "rationalize_linear_root CLI narrative should use human headers instead of formula-like labels when a clearer title exists, got:\n{}",
         rationalize_cli
+    );
+    let self_cancel_step = rationalize_artifact
+        .wire_steps
+        .iter()
+        .find(|step| step.rule == "Restar dos expresiones iguales")
+        .expect("missing self-cancel wire step in rationalize_linear_root");
+    assert!(
+        self_cancel_step.substeps.is_empty(),
+        "rationalize_linear_root self-cancel step should stay direct without tautological substeps, got {:?}",
+        self_cancel_step
+            .substeps
+            .iter()
+            .map(|substep| substep.title.as_str())
+            .collect::<Vec<_>>()
     );
 
     let cube_case = cases
@@ -503,6 +526,17 @@ fn didactic_step_quality_priority_cases_make_cli_narrative_less_magic() {
     assert!(
         !nested_fraction_cli.contains("\n2. Simplify nested fraction"),
         "nested_fraction_one_over_sum CLI narrative should avoid English fallback descriptions when a humanized title exists, got:\n{}",
+        nested_fraction_cli
+    );
+    assert!(
+        !nested_fraction_cli.contains("Identificar la fracción anidada en el denominador")
+            && !nested_fraction_cli.contains("Simplificar: 1/(a/b) = b/a"),
+        "nested_fraction_one_over_sum CLI narrative should avoid preparatory fraction-inversion micro-steps when one direct explanation is enough, got:\n{}",
+        nested_fraction_cli
+    );
+    assert!(
+        nested_fraction_cli.contains("Dividir entre una fracción equivale a invertirla"),
+        "nested_fraction_one_over_sum CLI narrative should explain the inversion directly, got:\n{}",
         nested_fraction_cli
     );
 

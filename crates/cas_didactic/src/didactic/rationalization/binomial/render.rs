@@ -1,5 +1,12 @@
 use crate::didactic::SubStep;
 
+fn humanize_even_literal_square(input: &str) -> String {
+    input
+        .replace("{(-1)}^{2}", "1^{2}")
+        .replace("((-1))^2", "1^2")
+        .replace("(-1)^2", "1^2")
+}
+
 pub(super) fn build_binomial_conjugate_substep(
     denominator_latex: &str,
     conjugate: &str,
@@ -38,6 +45,7 @@ pub(super) fn build_binomial_product_substep(
     after_num_latex: &str,
     after_den_latex: &str,
 ) -> SubStep {
+    let after_den_latex = humanize_even_literal_square(after_den_latex);
     SubStep::new(
         "En el denominador aparece una diferencia de cuadrados",
         format!(

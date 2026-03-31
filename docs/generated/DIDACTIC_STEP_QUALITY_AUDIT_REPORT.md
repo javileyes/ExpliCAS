@@ -8,12 +8,12 @@ Command: `cargo test -p cas_didactic --test didactic_step_quality_audit didactic
 
 | id | category | steps | wire substeps | flags |
 | --- | --- | ---: | ---: | --- |
-| `rationalize_linear_root` | `rationalization` | 6 | 5 | none |
-| `nested_fraction_one_over_sum` | `nested_fraction` | 2 | 3 | none |
-| `nested_fraction_fraction_over_sum` | `nested_fraction` | 2 | 3 | none |
+| `rationalize_linear_root` | `rationalization` | 6 | 3 | none |
+| `nested_fraction_one_over_sum` | `nested_fraction` | 2 | 2 | none |
+| `nested_fraction_fraction_over_sum` | `nested_fraction` | 2 | 2 | none |
 | `combine_like_terms_basic` | `combine` | 2 | 1 | none |
 | `same_denominator_fraction_focus` | `fractions` | 2 | 2 | none |
-| `cancel_factors_fraction` | `cancellation` | 1 | 2 | none |
+| `cancel_factors_fraction` | `cancellation` | 1 | 1 | none |
 | `difference_of_squares_quotient` | `quotient` | 1 | 2 | none |
 | `pythagorean_identity` | `trig` | 1 | 1 | none |
 | `inverse_trig_identity` | `inverse_trig` | 5 | 2 | none |
@@ -27,7 +27,7 @@ Command: `cargo test -p cas_didactic --test didactic_step_quality_audit didactic
 - Focus: `web_substeps_latex_and_human_explanation`
 - Final result: `0`
 - Step count: `6`
-- Wire substep count: `5`
+- Wire substep count: `3`
 - Flags: none
 
 ### CLI Step By Step
@@ -42,7 +42,7 @@ Steps:
       → Multiplicar numerador y denominador por ese conjugado
         (1)/(sqrt(x) - 1) → ((1)  ·  (sqrt(x) + 1))/((sqrt(x) - 1)  ·  (sqrt(x) + 1))
       → En el denominador aparece una diferencia de cuadrados
-        ((1)  ·  (sqrt(x) + 1))/((sqrt(x) - 1)  ·  (sqrt(x) + 1)) → (sqrt(x) + 1)/(x - ((-1))^2)
+        ((1)  ·  (sqrt(x) + 1))/((sqrt(x) - 1)  ·  (sqrt(x) + 1)) → (sqrt(x) + 1)/(x - 1^2)
    Cambio local: 1 / (sqrt(x) - 1) -> (sqrt(x) + 1) / (x - (-1)^(2))
    After: (sqrt(x) + 1) / (x - (-1)^(2)) - (sqrt(x) + 1) / (x - 1)
 2. Calcular potencia numérica
@@ -53,10 +53,6 @@ Steps:
    After: (sqrt(x) + 1) / (x - 1) - (sqrt(x) + 1) / (x - 1)
 3. Restar dos expresiones iguales
    Before: (sqrt(x) + 1) / (x - 1) - (sqrt(x) + 1) / (x - 1)
-      → Los dos términos ya son el mismo
-        (sqrt(x) + 1)/(x - 1) - (sqrt(x) + 1)/(x - 1) → (sqrt(x) + 1)/(x - 1)
-      → Restar algo consigo mismo da 0
-        (sqrt(x) + 1)/(x - 1) - (sqrt(x) + 1)/(x - 1) → 0
    Cambio local: (sqrt(x) + 1) / (x - 1) - (sqrt(x) + 1) / (x - 1) -> 0
    After: 0
 ```
@@ -77,19 +73,13 @@ Steps:
         - after_latex: `\frac{(1) \cdot (\sqrt{x} + 1)}{(\sqrt{x} - 1) \cdot (\sqrt{x} + 1)}`
      3. `En el denominador aparece una diferencia de cuadrados`
         - before_latex: `\frac{(1) \cdot (\sqrt{x} + 1)}{(\sqrt{x} - 1) \cdot (\sqrt{x} + 1)}`
-        - after_latex: `\frac{\sqrt{x} + 1}{x - {(-1)}^{2}}`
+        - after_latex: `\frac{\sqrt{x} + 1}{x - 1^{2}}`
 2. `Restar dos expresiones iguales`
    - before: `(sqrt(x) + 1)/(x - 1) - (sqrt(x) + 1)/(x - 1)`
    - after: `0`
    - before_latex: `{\color{red}{\frac{1 + \sqrt{x}}{x - 1} - \frac{1 + \sqrt{x}}{x - 1}}}`
    - after_latex: `{\color{green}{0}}`
-   - substeps:
-     1. `Los dos términos ya son el mismo`
-        - before_latex: `\frac{\sqrt{x} + 1}{x - 1} - \frac{\sqrt{x} + 1}{x - 1}`
-        - after_latex: `\frac{\sqrt{x} + 1}{x - 1}`
-     2. `Restar algo consigo mismo da 0`
-        - before_latex: `\frac{\sqrt{x} + 1}{x - 1} - \frac{\sqrt{x} + 1}{x - 1}`
-        - after_latex: `0`
+   - substeps: none
 
 ## nested_fraction_one_over_sum (nested_fraction)
 
@@ -97,7 +87,7 @@ Steps:
 - Focus: `narrate_common_denominator_without_magic`
 - Final result: `x * y / (x + y)`
 - Step count: `2`
-- Wire substep count: `3`
+- Wire substep count: `2`
 - Flags: none
 
 ### CLI Step By Step
@@ -106,6 +96,7 @@ Steps:
 Steps:
 1. Sumar fracciones
    Before: 1 / (1 / x + 1 / y)
+   [Simplificación de fracción compleja]
       → Juntar todo en una sola fracción
         (1)/(x) + (1)/(y) → (x + y)/(x ·  y)
    Cambio local: 1 / x + 1 / y -> (x + y) / (x * y)
@@ -113,9 +104,7 @@ Steps:
 2. Simplificar fracción anidada
    Before: 1 / ((x + y) / (x * y))
    [Simplificación de fracción compleja]
-      → Identificar la fracción anidada en el denominador
-        (1)/(... + (x + y)/(x ·  y)) → Multiplicar por  x ·  y
-      → Simplificar: 1/(a/b) = b/a
+      → Dividir entre una fracción equivale a invertirla
         (1)/((x + y)/(x ·  y)) → (x ·  y)/(x + y)
    Cambio local: 1 / ((x + y) / (x * y)) -> x * y / (x + y)
    After: x * y / (x + y)
@@ -138,10 +127,7 @@ Steps:
    - before_latex: `{\color{red}{\frac{1}{\frac{x + y}{x\cdot y}}}}`
    - after_latex: `{\color{green}{\frac{x\cdot y}{x + y}}}`
    - substeps:
-     1. `Identificar la fracción anidada en el denominador`
-        - before_latex: `\frac{1}{\text{...} + \frac{x + y}{x\cdot y}}`
-        - after_latex: `\text{Multiplicar por } x\cdot y`
-     2. `Simplificar: 1/(a/b) = b/a`
+     1. `Dividir entre una fracción equivale a invertirla`
         - before_latex: `\frac{1}{\frac{x + y}{x\cdot y}}`
         - after_latex: `\frac{x\cdot y}{x + y}`
 
@@ -151,7 +137,7 @@ Steps:
 - Focus: `explain_inner_fraction_then_outer_division`
 - Final result: `y * z / (x * y + x * z)`
 - Step count: `2`
-- Wire substep count: `3`
+- Wire substep count: `2`
 - Flags: none
 
 ### CLI Step By Step
@@ -160,6 +146,7 @@ Steps:
 Steps:
 1. Sumar fracciones
    Before: 1 / x / (1 / y + 1 / z)
+   [Simplificación de fracción compleja]
       → Juntar todo en una sola fracción
         (1)/(y) + (1)/(z) → (y + z)/(y ·  z)
    Cambio local: 1 / y + 1 / z -> (y + z) / (y * z)
@@ -167,9 +154,7 @@ Steps:
 2. Simplificar fracción anidada
    Before: 1 / x / ((y + z) / (y * z))
    [Simplificación de fracción compleja]
-      → Identificar la fracción anidada en el denominador
-        ((1)/(x))/(... + (y + z)/(y ·  z)) → Multiplicar por  y ·  z
-      → Simplificar: 1/(a/b) = b/a
+      → Dividir entre una fracción equivale a invertirla
         ((1)/(x))/((y + z)/(y ·  z)) → (y ·  z)/((y + z) ·  x)
    Cambio local: 1 / x / ((y + z) / (y * z)) -> y * z / ((y + z) * x)
    After: y * z / ((y + z) * x)
@@ -192,10 +177,7 @@ Steps:
    - before_latex: `{\color{red}{\frac{\frac{1}{x}}{\frac{y + z}{y\cdot z}}}}`
    - after_latex: `{\color{green}{\frac{y\cdot z}{(y + z)\cdot x}}}`
    - substeps:
-     1. `Identificar la fracción anidada en el denominador`
-        - before_latex: `\frac{\frac{1}{x}}{\text{...} + \frac{y + z}{y\cdot z}}`
-        - after_latex: `\text{Multiplicar por } y\cdot z`
-     2. `Simplificar: 1/(a/b) = b/a`
+     1. `Dividir entre una fracción equivale a invertirla`
         - before_latex: `\frac{\frac{1}{x}}{\frac{y + z}{y\cdot z}}`
         - after_latex: `\frac{y\cdot z}{(y + z)\cdot x}`
 
@@ -258,6 +240,7 @@ Steps:
    After: b / d + (a + d) / d
 2. Sumar fracciones
    Before: b / d + (a + d) / d
+   [Simplificación de fracción compleja]
       → Juntar todo en una sola fracción
         (b)/(d) + (a + d)/(d) → (a + b + d)/(d)
    Cambio local: b / d + (a + d) / d -> (a + b + d) / d
@@ -291,7 +274,7 @@ Steps:
 - Focus: `show_factorization_and_cancellation`
 - Final result: `1/2`
 - Step count: `1`
-- Wire substep count: `2`
+- Wire substep count: `1`
 - Flags: none
 
 ### CLI Step By Step
@@ -300,9 +283,7 @@ Steps:
 Steps:
 1. Cancelar factor común
    Before: 2 * x / (4 * x)
-      → El factor comun x aparece arriba y abajo
-        (2 ·  x)/(4 ·  x) → Cancelar  x
-      → Al cancelar x, queda la fraccion restante
+      → Como x aparece arriba y abajo, se cancela
         (2 ·  x)/(4 ·  x) → (2)/(4)
    Cambio local: 2 * x / (4 * x) -> 2 / 4
    After: 2 / 4
@@ -316,10 +297,7 @@ Steps:
    - before_latex: `{\color{red}{\frac{2\cdot x}{4\cdot x}}}`
    - after_latex: `{\color{green}{\frac{2}{4}}}`
    - substeps:
-     1. `El factor comun x aparece arriba y abajo`
-        - before_latex: `\frac{2\cdot x}{4\cdot x}`
-        - after_latex: `\text{Cancelar } x`
-     2. `Al cancelar x, queda la fraccion restante`
+     1. `Como x aparece arriba y abajo, se cancela`
         - before_latex: `\frac{2\cdot x}{4\cdot x}`
         - after_latex: `\frac{2}{4}`
 
@@ -338,6 +316,7 @@ Steps:
 Steps:
 1. Cancelar factor común
    Before: (x + 1) * (x - 1) / (x - 1)
+   [Factorización de polinomios]
       → Reescribir el numerador como diferencia de cuadrados
         x^2 - 1 → (x + 1) ·  (x - 1)
       → Ahora se cancela el factor x - 1

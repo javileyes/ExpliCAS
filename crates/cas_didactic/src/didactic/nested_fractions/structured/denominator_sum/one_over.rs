@@ -16,14 +16,14 @@ pub(super) fn generate_one_over_sum_substeps(
         let intermediate_str = extract_combined_fraction_str(ctx, *den);
 
         sub_steps.push(SubStep {
-            description: "Combinar términos del denominador (denominador común)".to_string(),
+            description: "Primero simplificar la suma del denominador".to_string(),
             before_expr: den_str.clone(),
             after_expr: intermediate_str.clone(),
             before_latex: None,
             after_latex: None,
         });
         sub_steps.push(SubStep {
-            description: "Invertir la fracción: 1/(a/b) = b/a".to_string(),
+            description: "Dividir entre una fracción equivale a invertirla".to_string(),
             before_expr: format!("\\frac{{1}}{{{}}}", intermediate_str),
             after_expr: nested_fraction_latex(ctx, hints, after_expr),
             before_latex: None,

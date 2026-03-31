@@ -16,14 +16,17 @@ pub(super) fn generate_fraction_over_sum_substeps(
         let den_str = nested_fraction_latex(ctx, hints, *den);
 
         sub_steps.push(SubStep {
-            description: "Combinar términos del denominador (denominador común)".to_string(),
+            description: "Primero simplificar la suma del denominador".to_string(),
             before_expr: den_str,
             after_expr: extract_combined_fraction_str(ctx, *den),
             before_latex: None,
             after_latex: None,
         });
         sub_steps.push(SubStep {
-            description: format!("Multiplicar {} por el denominador interno", num_str),
+            description: format!(
+                "Dividir {} entre una fracción equivale a multiplicar por su recíproco",
+                num_str
+            ),
             before_expr: nested_fraction_latex(ctx, hints, before_expr),
             after_expr: nested_fraction_latex(ctx, hints, after_expr),
             before_latex: None,

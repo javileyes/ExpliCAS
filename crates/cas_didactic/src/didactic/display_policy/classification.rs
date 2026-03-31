@@ -11,24 +11,31 @@ pub struct SubStepClassification {
 
 /// Classify a sub-step block by its didactic content.
 pub fn classify_sub_steps(sub_steps: &[SubStep]) -> SubStepClassification {
+    let descriptions: Vec<String> = sub_steps
+        .iter()
+        .map(|s| s.description.to_lowercase())
+        .collect();
+
     SubStepClassification {
-        has_fraction_sum: sub_steps.iter().any(|s| {
-            s.description.contains("common denominator")
-                || s.description.contains("Sum the fractions")
+        has_fraction_sum: descriptions.iter().any(|s| {
+            s.contains("common denominator")
+                || s.contains("sum the fractions")
+                || s.contains("denominador común")
+                || s.contains("sumar fracciones")
         }),
-        has_factorization: sub_steps.iter().any(|s| {
-            s.description.contains("Cancel common factor") || s.description.contains("Factor")
+        has_factorization: descriptions
+            .iter()
+            .any(|s| s.contains("cancel common factor") || s.contains("factor")),
+        has_nested_fraction: descriptions.iter().any(|s| {
+            s.contains("combinar términos")
+                || s.contains("invertir la fracción")
+                || s.contains("invertirla")
+                || s.contains("recíproco")
+                || s.contains("fracción")
+                || s.contains("denominador")
         }),
-        has_nested_fraction: sub_steps.iter().any(|s| {
-            s.description.contains("Combinar términos")
-                || s.description.contains("Invertir la fracción")
-                || s.description.contains("denominadores internos")
-                || s.description.contains("Invertir")
-                || s.description.contains("denominador")
-        }),
-        has_polynomial_identity: sub_steps.iter().any(|s| {
-            s.description.contains("forma normal polinómica")
-                || s.description.contains("Cancelar términos semejantes")
+        has_polynomial_identity: descriptions.iter().any(|s| {
+            s.contains("forma normal polinómica") || s.contains("cancelar términos semejantes")
         }),
     }
 }

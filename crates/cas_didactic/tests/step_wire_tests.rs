@@ -191,8 +191,8 @@ fn step_wire_common_factor_cancel_names_the_factor_and_the_result() {
         .expect("expected common factor cancel step");
 
     assert!(
-        step.substeps.len() >= 2,
-        "expected a two-phase didactic narrative, got: {:?}",
+        !step.substeps.is_empty(),
+        "expected a direct didactic explanation, got: {:?}",
         step.substeps
             .iter()
             .map(|substep| &substep.title)
@@ -201,18 +201,22 @@ fn step_wire_common_factor_cancel_names_the_factor_and_the_result() {
     assert!(
         step.substeps
             .iter()
-            .any(|substep| substep.title.contains("factor comun x")),
-        "expected a substep that names the canceled factor, got: {:?}",
+            .any(|substep| substep.title.contains("x aparece arriba y abajo")
+                || substep.title.contains("x") && substep.title.contains("se cancela")),
+        "expected a direct substep that names the canceled factor, got: {:?}",
         step.substeps
             .iter()
             .map(|substep| &substep.title)
             .collect::<Vec<_>>()
     );
     assert!(
-        step.substeps
-            .iter()
-            .any(|substep| substep.title.contains("Al cancelar x")),
-        "expected a substep that explains the remaining fraction, got: {:?}",
+        step.substeps.iter().any(|substep| {
+            substep
+                .after_latex
+                .as_deref()
+                .is_some_and(|after| after.contains("\\frac{2}{4}") || after.contains("2 / 4"))
+        }),
+        "expected the direct substep to end in the remaining fraction, got: {:?}",
         step.substeps
             .iter()
             .map(|substep| &substep.title)
@@ -362,10 +366,18 @@ fn step_wire_rationalization_explains_conjugate_then_multiply_then_simplify() {
         step.substeps[2].title,
         "En el denominador aparece una diferencia de cuadrados"
     );
+    assert!(
+        step.substeps[2]
+            .after_latex
+            .as_deref()
+            .is_some_and(|latex| latex.contains("x - 1^{2}") && !latex.contains("{(-1)}^{2}")),
+        "expected the didactic difference-of-squares substep to humanize the square as 1^2, got: {:?}",
+        step.substeps[2].after_latex
+    );
 }
 
 #[test]
-fn step_wire_rationalization_self_cancel_explains_why_the_difference_is_zero() {
+fn step_wire_rationalization_self_cancel_stays_direct_without_tautological_substeps() {
     let (engine, output) = eval_output_for("1 / (sqrt(x) - 1) - (sqrt(x) + 1) / (x - 1)");
     let steps =
         cas_didactic::collect_step_payloads(&output.steps, &engine.simplifier.context, "on");
@@ -376,15 +388,13 @@ fn step_wire_rationalization_self_cancel_explains_why_the_difference_is_zero() {
         .expect("expected subtraction self-cancel step");
 
     assert!(
-        step.substeps.len() >= 2,
-        "expected a two-phase self-cancel narrative, got: {:?}",
+        step.substeps.is_empty(),
+        "self-cancel step should stay direct without tautological substeps, got: {:?}",
         step.substeps
             .iter()
             .map(|substep| &substep.title)
             .collect::<Vec<_>>()
     );
-    assert_eq!(step.substeps[0].title, "Los dos términos ya son el mismo");
-    assert_eq!(step.substeps[1].title, "Restar algo consigo mismo da 0");
 }
 
 #[test]
