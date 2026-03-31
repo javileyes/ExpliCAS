@@ -617,4 +617,24 @@ mod log_product_expansion {
             r.result
         );
     }
+
+    #[test]
+    fn unary_log_product_contraction_generic_simplifies_to_zero() {
+        let r = simplify_with_config(
+            "log(x^3) + log(y^2) - log(x^3 * y^2)",
+            ValueDomain::RealOnly,
+            DomainMode::Generic,
+        );
+
+        assert_eq!(
+            r.result, "0",
+            "Generic: log(x^3) + log(y^2) - log(x^3*y^2) should simplify to 0, got: {}",
+            r.result
+        );
+        assert!(
+            !r.has_warning,
+            "Generic: no warning expected for unary log product contraction, got: {:?}",
+            r.warning_messages
+        );
+    }
 }

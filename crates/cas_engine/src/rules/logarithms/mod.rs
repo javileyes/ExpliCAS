@@ -115,7 +115,9 @@ impl crate::rule::Rule for LogContractionRule {
             cas_math::logarithm_inverse_support::try_rewrite_log_contraction_expr(ctx, expr)?;
         Some(
             crate::rule::Rewrite::new(rewrite.rewritten)
-                .desc(format_log_contraction_desc(rewrite.kind)),
+                .desc(format_log_contraction_desc(rewrite.kind))
+                .assume(crate::AssumptionEvent::positive(ctx, rewrite.positive_lhs))
+                .assume(crate::AssumptionEvent::positive(ctx, rewrite.positive_rhs)),
         )
     }
 

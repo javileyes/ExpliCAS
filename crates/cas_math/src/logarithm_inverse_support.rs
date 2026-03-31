@@ -1,9 +1,9 @@
 use crate::expr_destructure::{as_add, as_div, as_mul, as_pow};
 use crate::expr_extract::{
     extract_log_base_argument, extract_log_base_argument_relaxed_view,
-    extract_log_base_argument_view,
+    extract_log_base_argument_view, log10_base_sentinel,
 };
-use crate::expr_nary::MulView;
+use crate::expr_nary::{add_terms_signed, build_balanced_add, MulView, Sign};
 use crate::expr_predicates::is_e_constant_expr;
 use crate::expr_rewrite::smart_mul;
 use crate::perfect_square_support::{
@@ -376,6 +376,8 @@ pub struct LnEDivRewrite {
 pub struct LogContractionRewrite {
     pub rewritten: ExprId,
     pub kind: LogContractionRewriteKind,
+    pub positive_lhs: ExprId,
+    pub positive_rhs: ExprId,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -712,10 +714,11 @@ pub fn plan_log_power_base_numeric_policy(
 /// - `base == e` => `ln(arg)`
 /// - otherwise => `log(base, arg)`
 pub fn make_log_expr(ctx: &mut Context, base: ExprId, arg: ExprId) -> ExprId {
-    // Sentinel reserved by engine layer for base-10 log.
-    let sentinel_log10 = ExprId::from_raw(u32::MAX - 1);
-    if base == sentinel_log10 {
+    if is_log10_base_expr(ctx, base) {
         return ctx.call_builtin(BuiltinFn::Log, vec![arg]);
+    }
+    if base == ln_base_sentinel() {
+        return ctx.call_builtin(BuiltinFn::Ln, vec![arg]);
     }
     if is_e_constant_expr(ctx, base) {
         ctx.call_builtin(BuiltinFn::Ln, vec![arg])
@@ -730,21 +733,28 @@ pub fn ln_base_sentinel() -> ExprId {
     ExprId::from_raw(u32::MAX)
 }
 
+#[inline]
+fn is_log10_base_expr(ctx: &Context, base: ExprId) -> bool {
+    if base == log10_base_sentinel() {
+        return true;
+    }
+    if base == ln_base_sentinel() {
+        return false;
+    }
+    matches!(
+        ctx.get(base),
+        Expr::Number(n) if n.is_integer() && n.to_integer() == 10.into()
+    )
+}
+
 /// Extract `(base, argument)` from a log expression.
 ///
 /// Returns:
 /// - `(ln_base_sentinel(), arg)` for `ln(arg)`
 /// - `(base, arg)` for `log(base, arg)`
 pub fn try_extract_log_parts(ctx: &Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
-    let Expr::Function(fn_id, args) = ctx.get(expr) else {
-        return None;
-    };
-
-    match ctx.builtin_of(*fn_id) {
-        Some(BuiltinFn::Ln) if args.len() == 1 => Some((ln_base_sentinel(), args[0])),
-        Some(BuiltinFn::Log) if args.len() == 2 => Some((args[0], args[1])),
-        _ => None,
-    }
+    let (base_opt, arg) = extract_log_base_argument_relaxed_view(ctx, expr)?;
+    Some((base_opt.unwrap_or_else(ln_base_sentinel), arg))
 }
 
 /// Compare two expressions for logarithm-base matching semantics.
@@ -759,6 +769,10 @@ pub fn exprs_match_for_logs(ctx: &Context, e1: ExprId, e2: ExprId) -> bool {
     }
     if e2 == sentinel {
         return is_e_constant_expr(ctx, e1);
+    }
+
+    if is_log10_base_expr(ctx, e1) && is_log10_base_expr(ctx, e2) {
+        return true;
     }
 
     if e1 == e2 {
@@ -780,6 +794,10 @@ pub fn bases_equal_for_logs(ctx: &Context, base_l: ExprId, base_r: ExprId) -> bo
     }
     if base_r == sentinel {
         return is_e_constant_expr(ctx, base_l);
+    }
+
+    if is_log10_base_expr(ctx, base_l) && is_log10_base_expr(ctx, base_r) {
+        return true;
     }
 
     if base_l == base_r {
@@ -875,47 +893,69 @@ pub fn try_rewrite_log_contraction_expr(
     ctx: &mut Context,
     expr: ExprId,
 ) -> Option<LogContractionRewrite> {
-    match ctx.get(expr) {
-        Expr::Add(lhs, rhs) => {
-            let (lhs, rhs) = (*lhs, *rhs);
-            let (base_l, arg_l) = try_extract_log_parts(ctx, lhs)?;
-            let (base_r, arg_r) = try_extract_log_parts(ctx, rhs)?;
-            if !bases_equal_for_logs(ctx, base_l, base_r) {
-                return None;
-            }
-
-            let product = ctx.add(Expr::Mul(arg_l, arg_r));
-            let rewritten = if base_l == ln_base_sentinel() {
-                ctx.call_builtin(BuiltinFn::Ln, vec![product])
-            } else {
-                make_log_expr(ctx, base_l, product)
-            };
-            Some(LogContractionRewrite {
-                rewritten,
-                kind: LogContractionRewriteKind::Add,
-            })
-        }
-        Expr::Sub(lhs, rhs) => {
-            let (lhs, rhs) = (*lhs, *rhs);
-            let (base_l, arg_l) = try_extract_log_parts(ctx, lhs)?;
-            let (base_r, arg_r) = try_extract_log_parts(ctx, rhs)?;
-            if !bases_equal_for_logs(ctx, base_l, base_r) {
-                return None;
-            }
-
-            let quotient = ctx.add(Expr::Div(arg_l, arg_r));
-            let rewritten = if base_l == ln_base_sentinel() {
-                ctx.call_builtin(BuiltinFn::Ln, vec![quotient])
-            } else {
-                make_log_expr(ctx, base_l, quotient)
-            };
-            Some(LogContractionRewrite {
-                rewritten,
-                kind: LogContractionRewriteKind::Sub,
-            })
-        }
-        _ => None,
+    let terms = add_terms_signed(ctx, expr);
+    if terms.len() < 2 {
+        return None;
     }
+
+    for i in 0..terms.len() {
+        let (lhs_term, lhs_sign) = terms[i];
+        if lhs_sign != Sign::Pos {
+            continue;
+        }
+        let Some((base_l, arg_l)) = try_extract_log_parts(ctx, lhs_term) else {
+            continue;
+        };
+
+        for j in (i + 1)..terms.len() {
+            let (rhs_term, rhs_sign) = terms[j];
+            let Some((base_r, arg_r)) = try_extract_log_parts(ctx, rhs_term) else {
+                continue;
+            };
+            if !bases_equal_for_logs(ctx, base_l, base_r) {
+                continue;
+            }
+
+            let (combined_arg, kind) = match rhs_sign {
+                Sign::Pos => (
+                    ctx.add(Expr::Mul(arg_l, arg_r)),
+                    LogContractionRewriteKind::Add,
+                ),
+                Sign::Neg => (
+                    ctx.add(Expr::Div(arg_l, arg_r)),
+                    LogContractionRewriteKind::Sub,
+                ),
+            };
+
+            let combined_log = make_log_expr(ctx, base_l, combined_arg);
+            let mut rebuilt_terms = terms.clone();
+            rebuilt_terms[i] = (combined_log, Sign::Pos);
+            rebuilt_terms.remove(j);
+
+            let rebuilt_terms: smallvec::SmallVec<[ExprId; 8]> = rebuilt_terms
+                .into_iter()
+                .map(|(term, sign)| match sign {
+                    Sign::Pos => term,
+                    Sign::Neg => ctx.add(Expr::Neg(term)),
+                })
+                .collect();
+
+            let rewritten = if rebuilt_terms.len() == 1 {
+                rebuilt_terms[0]
+            } else {
+                build_balanced_add(ctx, &rebuilt_terms)
+            };
+
+            return Some(LogContractionRewrite {
+                rewritten,
+                kind,
+                positive_lhs: arg_l,
+                positive_rhs: arg_r,
+            });
+        }
+    }
+
+    None
 }
 
 /// Expand one-step logarithm product/quotient:
@@ -1698,8 +1738,7 @@ pub fn try_expand_log_auto_rule_expr(
                 ctx.add(Expr::Constant(Constant::E))
             }
             Expr::Function(fn_id, _) if ctx.is_builtin(*fn_id, BuiltinFn::Log) => {
-                // `log(x)` base-10 sentinel used by engine/parser bridge.
-                ExprId::from_raw(u32::MAX - 1)
+                log10_base_sentinel()
             }
             _ => return None,
         },
@@ -1789,11 +1828,9 @@ pub fn expand_logs_collect_positive_assumptions(
                     Some(BuiltinFn::Ln) | Some(BuiltinFn::Log)
                 ) =>
             {
-                // Sentinel reserved by engine/parser bridge for base-10 `log(x)`.
-                let sentinel_log10 = ExprId::from_raw(u32::MAX - 1);
                 let builtin = ctx.builtin_of(name);
                 let (base, arg) = if builtin == Some(BuiltinFn::Log) && args.len() == 1 {
-                    (sentinel_log10, args[0])
+                    (log10_base_sentinel(), args[0])
                 } else if let Some((base, arg)) = extract_log_base_argument(ctx, expr) {
                     (base, arg)
                 } else {
@@ -2275,6 +2312,7 @@ mod tests {
         let b = ctx.var("b");
         let ln_x = ctx.call_builtin(BuiltinFn::Ln, vec![x]);
         let log_bx = ctx.call_builtin(BuiltinFn::Log, vec![b, x]);
+        let log_x = ctx.call_builtin(BuiltinFn::Log, vec![x]);
 
         let (ln_base, ln_arg) = try_extract_log_parts(&ctx, ln_x).expect("ln parts");
         assert_eq!(ln_base, ln_base_sentinel());
@@ -2283,6 +2321,10 @@ mod tests {
         let (log_base, log_arg) = try_extract_log_parts(&ctx, log_bx).expect("log parts");
         assert_eq!(log_base, b);
         assert_eq!(log_arg, x);
+
+        let (unary_log_base, unary_log_arg) = try_extract_log_parts(&ctx, log_x).expect("log(x)");
+        assert_eq!(unary_log_base, log10_base_sentinel());
+        assert_eq!(unary_log_arg, x);
     }
 
     #[test]
@@ -2302,6 +2344,32 @@ mod tests {
 
         assert_eq!(add_rw.kind, LogContractionRewriteKind::Add);
         assert_eq!(sub_rw.kind, LogContractionRewriteKind::Sub);
+        assert_eq!(add_rw.positive_lhs, x);
+        assert_eq!(add_rw.positive_rhs, y);
+        assert_eq!(sub_rw.positive_lhs, x);
+        assert_eq!(sub_rw.positive_rhs, y);
+    }
+
+    #[test]
+    fn contracts_unary_log_additive_chain_with_product_term() {
+        let mut ctx = Context::new();
+        let expr = parse("log(x^3) + log(y^2) - log(x^3*y^2)", &mut ctx).expect("expr");
+        let expected_log = parse("log(x^3*y^2)", &mut ctx).expect("expected log");
+
+        let rw = try_rewrite_log_contraction_expr(&mut ctx, expr).expect("contraction");
+        assert_eq!(rw.kind, LogContractionRewriteKind::Add);
+        let terms = add_terms_signed(&ctx, rw.rewritten);
+        assert_eq!(terms.len(), 2);
+        assert_eq!(terms[0].1, Sign::Pos);
+        assert_eq!(terms[1].1, Sign::Neg);
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, terms[0].0, expected_log),
+            Ordering::Equal
+        );
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, terms[1].0, expected_log),
+            Ordering::Equal
+        );
     }
 
     #[test]
