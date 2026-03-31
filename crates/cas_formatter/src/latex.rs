@@ -329,4 +329,28 @@ mod tests {
         };
         assert_eq!(latex.to_latex(), "b\\cdot {a}^{3} - c\\cdot {a}^{3}");
     }
+
+    #[test]
+    fn test_latex_sub_does_not_parenthesize_simple_product_rhs() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let two = ctx.num(2);
+        let x_sq = ctx.add(Expr::Pow(x, two));
+        let y_sq = ctx.add(Expr::Pow(y, two));
+        let two_y_sq = ctx.add(Expr::Mul(two, y_sq));
+        let two_x = ctx.add(Expr::Mul(two, x));
+        let two_x_y = ctx.add(Expr::Mul(two_x, y));
+        let lhs = ctx.add(Expr::Add(x_sq, two_y_sq));
+        let expr = ctx.add(Expr::Sub(lhs, two_x_y));
+
+        let latex = LaTeXExpr {
+            context: &ctx,
+            id: expr,
+        };
+        assert_eq!(
+            latex.to_latex(),
+            "{x}^{2} + 2\\cdot {y}^{2} - 2\\cdot x\\cdot y"
+        );
+    }
 }

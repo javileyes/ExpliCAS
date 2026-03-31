@@ -21,6 +21,9 @@ pub fn clean_display_string(s: &str) -> String {
     if may_need_sign_cleanup(&result) {
         result = clean_sign_patterns(result);
     }
+    if may_need_whitespace_cleanup(&result) {
+        result = collapse_repeated_whitespace(result);
+    }
 
     result
 }
@@ -30,6 +33,7 @@ fn may_need_display_clean(s: &str) -> bool {
         || may_need_subtractive_paren_cleanup(s)
         || s.contains(&hold_pattern())
         || may_need_sign_cleanup(s)
+        || may_need_whitespace_cleanup(s)
 }
 
 fn may_need_unit_cleanup(s: &str) -> bool {
@@ -47,6 +51,10 @@ fn may_need_sign_cleanup(s: &str) -> bool {
 
 fn may_need_subtractive_paren_cleanup(s: &str) -> bool {
     s.contains('-') && s.contains('(')
+}
+
+fn may_need_whitespace_cleanup(s: &str) -> bool {
+    s.contains("  ") || s.contains('\n') || s.contains('\t')
 }
 
 fn replace_in_place(result: &mut String, from: &str, to: &str) -> bool {
@@ -185,6 +193,25 @@ fn clean_simple_subtractive_parens_in_place(result: &mut String) {
             cursor = close + 1;
         }
     }
+}
+
+fn collapse_repeated_whitespace(input: String) -> String {
+    let mut out = String::with_capacity(input.len());
+    let mut last_was_space = false;
+
+    for ch in input.chars() {
+        if ch.is_whitespace() {
+            if !last_was_space {
+                out.push(' ');
+                last_was_space = true;
+            }
+        } else {
+            out.push(ch);
+            last_was_space = false;
+        }
+    }
+
+    out.trim().to_string()
 }
 
 fn hold_pattern() -> String {
@@ -334,8 +361,18 @@ mod tests {
             clean_display_string(
                 "factor(a ·  c^3 + b ·  a^3 + c ·  b^3 - (a ·  b^3) - (c ·  a^3) - (c^3 ·  b))"
             ),
-            "factor(a ·  c^3 + b ·  a^3 + c ·  b^3 - a ·  b^3 - c ·  a^3 - c^3 ·  b)"
+            "factor(a · c^3 + b · a^3 + c · b^3 - a · b^3 - c · a^3 - c^3 · b)"
         );
         assert_eq!(clean_display_string("a - (b + c)"), "a - (b + c)");
+    }
+
+    #[test]
+    fn collapses_repeated_whitespace() {
+        assert_eq!(
+            clean_display_string(
+                "(x^2 + 2 ·  y^2 + 2 ·  x ·  y) ·  (x^2 + 2 ·  y^2 - 2 ·  x ·  y)"
+            ),
+            "(x^2 + 2 · y^2 + 2 · x · y) · (x^2 + 2 · y^2 - 2 · x · y)"
+        );
     }
 }

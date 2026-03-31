@@ -291,7 +291,7 @@ pub trait LaTeXRenderer {
         let right = if matches!(r_expr, Expr::Add(_, _) | Expr::Sub(_, _)) {
             format!("({})", self.expr_to_latex(r, false))
         } else {
-            self.expr_to_latex(r, true)
+            self.expr_to_latex(r, false)
         };
         format!("{} - {}", left, right)
     }

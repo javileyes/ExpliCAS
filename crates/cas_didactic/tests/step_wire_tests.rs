@@ -180,6 +180,34 @@ fn step_wire_path_latex_renders_human_subtractive_products_for_factor_example() 
 }
 
 #[test]
+fn step_wire_sophie_germain_after_text_and_latex_stay_human() {
+    let (engine, output) = eval_output_for("factor(x^4 + 4*y^4)");
+    let steps =
+        cas_didactic::collect_step_payloads(&output.steps, &engine.simplifier.context, "on");
+
+    let step = steps
+        .iter()
+        .find(|step| step.rule == "Factor Polynomial")
+        .expect("expected factor step");
+
+    assert!(
+        !step.after.contains("  "),
+        "expected no repeated spaces in human after text, got: {}",
+        step.after
+    );
+    assert!(
+        step.after == "(x^2 + 2 · y^2 + 2 · x · y) · (x^2 + 2 · y^2 - 2 · x · y)",
+        "expected tightened human spacing, got: {}",
+        step.after
+    );
+    assert!(
+        !step.after_latex.contains("- (2\\cdot x\\cdot y)"),
+        "resulting latex should not parenthesize the final simple product: {}",
+        step.after_latex
+    );
+}
+
+#[test]
 fn step_wire_uses_human_visible_rule_titles() {
     let (engine, output) = eval_output_for("1 / (sqrt(x) - 1) - (sqrt(x) + 1) / (x - 1)");
     let steps =
