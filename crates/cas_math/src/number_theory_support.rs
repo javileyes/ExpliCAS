@@ -1,4 +1,5 @@
 use crate::poly_gcd_mode::GcdMode;
+use cas_ast::ordering::compare_expr;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use num_bigint::BigInt;
 use num_integer::Integer;
@@ -13,6 +14,12 @@ pub enum NumberTheoryDispatch {
         rhs: ExprId,
         mode: GcdMode,
     },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ConsecutiveFactorialRatioRewrite {
+    pub rewritten: ExprId,
+    pub inherited_nonzero: ExprId,
 }
 
 /// Simple number-theory rewrite produced from a named function call.
@@ -157,6 +164,37 @@ pub fn dispatch_number_theory_call(
     }
 
     None
+}
+
+fn extract_factorial_call_arg(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    match ctx.get(expr) {
+        Expr::Function(fn_id, args)
+            if args.len() == 1 && matches!(ctx.sym_name(*fn_id), "fact" | "factorial") =>
+        {
+            Some(args[0])
+        }
+        _ => None,
+    }
+}
+
+pub fn try_rewrite_consecutive_factorial_ratio_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ConsecutiveFactorialRatioRewrite> {
+    let (num, den) = crate::expr_destructure::as_div(ctx, expr)?;
+    let num_arg = extract_factorial_call_arg(ctx, num)?;
+    let den_arg = extract_factorial_call_arg(ctx, den)?;
+
+    let one = ctx.num(1);
+    let den_plus_one = ctx.add(Expr::Add(den_arg, one));
+    if compare_expr(ctx, num_arg, den_plus_one) != std::cmp::Ordering::Equal {
+        return None;
+    }
+
+    Some(ConsecutiveFactorialRatioRewrite {
+        rewritten: num_arg,
+        inherited_nonzero: den,
+    })
 }
 
 /// Check if expression contains a `poly_result(...)` reference.
@@ -660,5 +698,47 @@ mod tests {
             }
             NumberTheoryDispatch::Simple(_) => panic!("expected poly gcd fallback"),
         }
+    }
+
+    #[test]
+    fn rewrites_consecutive_factorial_ratio() {
+        let mut ctx = Context::new();
+        let expr = parse("(n + 1)! / n!", &mut ctx).expect("parse");
+        let expected = parse("n + 1", &mut ctx).expect("expected");
+        let expected_den = parse("n!", &mut ctx).expect("den");
+
+        let rewrite =
+            try_rewrite_consecutive_factorial_ratio_expr(&mut ctx, expr).expect("rewrite");
+
+        assert_eq!(
+            compare_expr(&ctx, rewrite.rewritten, expected),
+            std::cmp::Ordering::Equal
+        );
+        assert_eq!(
+            compare_expr(&ctx, rewrite.inherited_nonzero, expected_den),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn rewrites_named_factorial_ratio() {
+        let mut ctx = Context::new();
+        let expr = parse("factorial(1 + n) / factorial(n)", &mut ctx).expect("parse");
+        let expected = parse("n + 1", &mut ctx).expect("expected");
+
+        let rewrite =
+            try_rewrite_consecutive_factorial_ratio_expr(&mut ctx, expr).expect("rewrite");
+
+        assert_eq!(
+            compare_expr(&ctx, rewrite.rewritten, expected),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn does_not_rewrite_nonconsecutive_factorial_ratio() {
+        let mut ctx = Context::new();
+        let expr = parse("(n + 2)! / n!", &mut ctx).expect("parse");
+        assert!(try_rewrite_consecutive_factorial_ratio_expr(&mut ctx, expr).is_none());
     }
 }
