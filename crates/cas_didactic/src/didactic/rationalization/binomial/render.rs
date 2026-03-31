@@ -1,17 +1,34 @@
 use crate::didactic::SubStep;
 
 pub(super) fn build_binomial_conjugate_substep(
+    denominator_latex: &str,
+    conjugate: &str,
+) -> SubStep {
+    SubStep::new(
+        "Cambiar el signo para formar el conjugado",
+        denominator_latex,
+        conjugate,
+    )
+    .with_before_latex(denominator_latex)
+    .with_after_latex(conjugate)
+}
+
+pub(super) fn build_binomial_multiply_both_sides_substep(
     numerator_latex: &str,
     denominator_latex: &str,
     conjugate: &str,
 ) -> SubStep {
-    SubStep {
-        description: "Denominador binomial con radical".to_string(),
-        before_expr: format!("\\frac{{{}}}{{{}}}", numerator_latex, denominator_latex),
-        after_expr: format!("\\text{{Conjugado: }} {}", conjugate),
-        before_latex: None,
-        after_latex: None,
-    }
+    SubStep::new(
+        "Multiplicar numerador y denominador por ese conjugado",
+        format!("({numerator_latex})/({denominator_latex})"),
+        format!(
+            "(({numerator_latex}) · ({conjugate}))/(({denominator_latex}) · ({conjugate}))"
+        ),
+    )
+    .with_before_latex(format!("\\frac{{{numerator_latex}}}{{{denominator_latex}}}"))
+    .with_after_latex(format!(
+        "\\frac{{({numerator_latex}) \\cdot ({conjugate})}}{{({denominator_latex}) \\cdot ({conjugate})}}"
+    ))
 }
 
 pub(super) fn build_binomial_product_substep(
@@ -21,14 +38,15 @@ pub(super) fn build_binomial_product_substep(
     after_num_latex: &str,
     after_den_latex: &str,
 ) -> SubStep {
-    SubStep {
-        description: "(a+b)(a-b) = a² - b²".to_string(),
-        before_expr: format!(
-            "\\frac{{({}) \\cdot ({})}}{{{}  \\cdot ({})}}",
-            numerator_latex, conjugate, denominator_latex, conjugate
+    SubStep::new(
+        "En el denominador aparece una diferencia de cuadrados",
+        format!(
+            "(({numerator_latex}) · ({conjugate}))/(({denominator_latex}) · ({conjugate}))"
         ),
-        after_expr: format!("\\frac{{{}}}{{{}}}", after_num_latex, after_den_latex),
-        before_latex: None,
-        after_latex: None,
-    }
+        format!("({after_num_latex})/({after_den_latex})"),
+    )
+    .with_before_latex(format!(
+        "\\frac{{({numerator_latex}) \\cdot ({conjugate})}}{{({denominator_latex}) \\cdot ({conjugate})}}"
+    ))
+    .with_after_latex(format!("\\frac{{{after_num_latex}}}{{{after_den_latex}}}"))
 }

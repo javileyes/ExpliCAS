@@ -109,4 +109,14 @@ fn test_atan_expression_step_importance() {
         !shown_in_normal.is_empty(),
         "Normal verbosity should show at least one Medium+ step"
     );
+    assert!(
+        shown_in_normal
+            .iter()
+            .all(|s| s.rule_name != "Canonicalize Trig Function Names" && s.rule_name != "Canonicalize"),
+        "Normal verbosity should absorb preparatory canonicalization steps into the inverse-tan narrative, got {:?}",
+        shown_in_normal
+            .iter()
+            .map(|s| (s.rule_name.as_str(), s.description.as_str()))
+            .collect::<Vec<_>>()
+    );
 }

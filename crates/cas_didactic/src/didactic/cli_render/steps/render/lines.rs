@@ -30,7 +30,7 @@ pub(crate) fn render_rule_with_scope_line(
     ctx: &mut Context,
     step: &Step,
     style_prefs: &cas_formatter::root_style::StylePreferences,
-) -> String {
+) -> Option<String> {
     display::render_rule_with_scope_line(ctx, step, style_prefs, local_rule_expr_ids)
 }
 

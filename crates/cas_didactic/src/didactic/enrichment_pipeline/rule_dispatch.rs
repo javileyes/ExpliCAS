@@ -1,4 +1,6 @@
+use super::super::focused_rule_substeps::generate_focused_rule_substeps;
 use super::super::gcd_factorization::generate_gcd_factorization_substeps;
+use super::super::generic_rule_substeps::generate_generic_rule_substeps;
 use super::super::nested_fractions::generate_nested_fraction_substeps;
 use super::super::polynomial_identity::generate_polynomial_identity_substeps;
 use super::super::rationalization::generate_rationalization_substeps;
@@ -35,6 +37,14 @@ pub(super) fn extend_step_specific_substeps(
 
     if step.rule_name.contains("Root Denesting") {
         sub_steps.extend(generate_root_denesting_substeps(ctx, step));
+    }
+
+    if sub_steps.is_empty() {
+        sub_steps.extend(generate_focused_rule_substeps(ctx, step));
+    }
+
+    if sub_steps.is_empty() {
+        sub_steps.extend(generate_generic_rule_substeps(ctx, step));
     }
 }
 

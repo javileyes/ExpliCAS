@@ -37,6 +37,14 @@ pub(crate) fn infer_original_expr_for_steps(steps: &[Step]) -> Option<ExprId> {
     clone::infer_original_expr_for_steps(steps)
 }
 
+pub(crate) fn should_absorb_preparatory_step_at(
+    steps: &[Step],
+    index: usize,
+    visibility: StepVisibility,
+) -> bool {
+    clone::should_absorb_preparatory_step_at(steps, index, visibility)
+}
+
 pub(crate) fn should_show_simplify_step(step: &Step, mode: StepDisplayMode) -> bool {
     simplify::should_show_simplify_step(step, mode, step_matches_visibility)
 }

@@ -12,7 +12,10 @@ pub(super) fn render_step_postrule(
     style_prefs: &cas_formatter::root_style::StylePreferences,
     state: &mut StepLoopState,
 ) -> Vec<String> {
-    let mut lines = vec![render_rule_with_scope_line(ctx, step, style_prefs)];
+    let mut lines = Vec::new();
+    if let Some(rule_line) = render_rule_with_scope_line(ctx, step, style_prefs) {
+        lines.push(rule_line);
+    }
     lines.extend(render_engine_substeps_lines(step));
 
     state.advance(ctx, step);

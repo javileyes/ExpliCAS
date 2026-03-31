@@ -14,9 +14,10 @@ pub(super) fn generate_binomial_rationalization_substeps(
         let num_latex = rationalization_latex(ctx, hints, *num);
         let den_latex = rationalization_latex(ctx, hints, *den);
         let conjugate = conjugate::build_binomial_conjugate(ctx, *den, &den_latex, hints);
-        let mut sub_steps = vec![render::build_binomial_conjugate_substep(
-            &num_latex, &den_latex, &conjugate,
-        )];
+        let mut sub_steps = vec![
+            render::build_binomial_conjugate_substep(&den_latex, &conjugate),
+            render::build_binomial_multiply_both_sides_substep(&num_latex, &den_latex, &conjugate),
+        ];
 
         if let Expr::Div(new_num, new_den) = ctx.get(after) {
             let after_num_latex = rationalization_latex(ctx, hints, *new_num);

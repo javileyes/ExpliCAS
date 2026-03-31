@@ -1,0 +1,13 @@
+id,category,expr,focus
+rationalize_linear_root,rationalization,1 / (sqrt(x) - 1) - (sqrt(x) + 1) / (x - 1),web_substeps_latex_and_human_explanation
+nested_fraction_one_over_sum,nested_fraction,1/(1/x + 1/y),narrate_common_denominator_without_magic
+nested_fraction_fraction_over_sum,nested_fraction,(1/x)/(1/y + 1/z),explain_inner_fraction_then_outer_division
+combine_like_terms_basic,combine,2*x + 3*x + 0,avoid_noop_and_show_collection
+same_denominator_fraction_focus,fractions,1 + a/d + b/d,focus_only_on_fraction_part
+cancel_factors_fraction,cancellation,(2*x)/(4*x),show_factorization_and_cancellation
+difference_of_squares_quotient,quotient,(x^2 - 1)/(x - 1),factor_then_cancel_exactly
+pythagorean_identity,trig,sin(x)^2 + cos(x)^2,avoid_identity_as_magic_jump
+inverse_trig_identity,inverse_trig,atan(3) + (atan(1/3) - pi/2),show_known_identity_clearly
+polynomial_expansion_cancel,polynomial,(a+b)^2 - a^2 - 2*a*b,expansion_and_collection_should_be_readable
+perfect_square_root,radicals,sqrt(x^2 + 2*x + 1),show_square_pattern_and_abs
+cube_quotient_radical,quotient,((sqrt(x))^3 - 1)/(sqrt(x) - 1),show_exact_quotient_reason

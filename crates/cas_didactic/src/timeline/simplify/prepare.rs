@@ -15,7 +15,16 @@ pub(super) fn prepare_timeline_render_data<'a>(
 ) -> TimelineRenderData<'a> {
     let filtered_steps = steps
         .iter()
-        .filter(|step| crate::didactic::step_matches_visibility(step, verbosity.step_visibility()))
+        .enumerate()
+        .filter(|(index, step)| {
+            crate::didactic::step_matches_visibility(step, verbosity.step_visibility())
+                && !crate::didactic::should_absorb_preparatory_step_at(
+                    steps,
+                    *index,
+                    verbosity.step_visibility(),
+                )
+        })
+        .map(|(_, step)| step)
         .collect();
     let enriched_steps = crate::didactic::enrich_steps(context, original_expr, steps.to_vec());
 

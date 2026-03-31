@@ -2,6 +2,8 @@ use cas_api_models::StepWire;
 use cas_ast::Context;
 use cas_solver_core::engine_events::EngineEvent;
 
+use super::build::render_human_expr;
+
 pub(super) fn collect_event_step_payloads(events: &[EngineEvent], ctx: &Context) -> Vec<StepWire> {
     events
         .iter()
@@ -25,22 +27,10 @@ fn build_event_step_payload(index: usize, event: &EngineEvent, ctx: &Context) ->
 
             Some(StepWire {
                 index,
-                rule: rule_name.clone(),
+                rule: crate::didactic::visible_rule_name(rule_name).to_string(),
                 rule_latex: rule_name.clone(),
-                before: format!(
-                    "{}",
-                    cas_formatter::DisplayExpr {
-                        context: ctx,
-                        id: before_expr
-                    }
-                ),
-                after: format!(
-                    "{}",
-                    cas_formatter::DisplayExpr {
-                        context: ctx,
-                        id: after_expr
-                    }
-                ),
+                before: render_human_expr(ctx, before_expr),
+                after: render_human_expr(ctx, after_expr),
                 before_latex: cas_formatter::LaTeXExpr {
                     context: ctx,
                     id: before_expr,

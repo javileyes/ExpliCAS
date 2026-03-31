@@ -1,5 +1,6 @@
 mod add_terms;
 mod binomial;
+mod exact_quotient;
 mod grouping;
 mod latex;
 mod product;
@@ -16,6 +17,17 @@ pub(crate) fn generate_rationalization_substeps(ctx: &Context, step: &Step) -> V
 
     let before = step.before_local().unwrap_or(step.before);
     let after = step.after_local().unwrap_or(step.after);
+
+    if step
+        .description
+        .contains("Polynomial division with opaque substitution")
+    {
+        let exact_quotient =
+            exact_quotient::generate_exact_cube_quotient_substeps(ctx, before, after, &hints);
+        if !exact_quotient.is_empty() {
+            return exact_quotient;
+        }
+    }
 
     if step.description.contains("group") {
         return grouping::generate_grouped_rationalization_substeps(ctx, before, after, &hints);

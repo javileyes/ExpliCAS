@@ -23,7 +23,7 @@ pub(super) fn render_rule_with_scope_line(
     step: &Step,
     style_prefs: &cas_formatter::root_style::StylePreferences,
     local_rule_expr_ids: fn(&Step) -> (ExprId, ExprId),
-) -> String {
+) -> Option<String> {
     rule::render_rule_with_scope_line(
         ctx,
         step,

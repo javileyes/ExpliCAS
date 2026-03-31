@@ -11,7 +11,7 @@ pub(super) fn replace_last_fraction(
     }
     let (denominator, denominator_end) = find_balanced_braces(after_numerator)?;
     let total_end = start + 5 + numerator_end + 1 + denominator_end + 1;
-    let replacement = format!("({}/{})", numerator, denominator);
+    let replacement = format!("({})/({})", numerator, denominator);
     Some(format!(
         "{}{}{}",
         &value[..start],

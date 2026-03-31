@@ -10,11 +10,19 @@ pub(super) fn render_cli_enriched_substeps_lines(
     }
     for sub in &enriched_step.sub_steps {
         lines.push(format!("      → {}", sub.description));
-        if !sub.before_expr.is_empty() {
+        let before = sub
+            .before_latex
+            .as_deref()
+            .unwrap_or(sub.before_expr.as_str());
+        let after = sub
+            .after_latex
+            .as_deref()
+            .unwrap_or(sub.after_expr.as_str());
+        if !before.is_empty() {
             lines.push(format!(
                 "        {} → {}",
-                latex_to_plain_text(sub.before_expr.as_str()),
-                latex_to_plain_text(sub.after_expr.as_str())
+                latex_to_plain_text(before),
+                latex_to_plain_text(after)
             ));
         }
     }

@@ -5,6 +5,8 @@ mod substeps;
 use cas_api_models::StepWire;
 use cas_ast::Context;
 
+pub(super) use expr::render_human_expr;
+
 pub(super) fn build_step_wire(
     context: &Context,
     index: usize,
@@ -17,7 +19,8 @@ pub(super) fn build_step_wire(
 
     StepWire {
         index,
-        rule: step.rule_name.to_string(),
+        rule: crate::didactic::visible_rule_name_for_step(&step.rule_name, &step.description)
+            .to_string(),
         rule_latex: rendered_latex.rule_latex,
         before: rendered_exprs.before,
         after: rendered_exprs.after,

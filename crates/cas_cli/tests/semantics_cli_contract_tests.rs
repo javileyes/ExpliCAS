@@ -242,7 +242,7 @@ fn subtraction_self_cancel_shortcut_handles_abs_sub_mirror_runtime_shape() {
     assert_eq!(wire["steps_count"], 1);
 
     let steps = wire["steps"].as_array().expect("steps array");
-    assert_eq!(steps[0]["rule"], "Subtraction Self-Cancel");
+    assert_eq!(steps[0]["rule"], "Restar dos expresiones iguales");
 }
 
 #[test]
@@ -340,9 +340,9 @@ fn root_ctx_exact_quotient_survives_runtime_before_conjugate_rationalization() {
     let steps = wire["steps"].as_array().expect("steps array");
     let exact_step = steps
         .iter()
-        .find(|step| step["rule"] == "Rationalize Linear Sqrt Denominator")
+        .find(|step| step["rule"] == "Racionalizar el denominador")
         .expect("exact quotient step");
-    assert_eq!(exact_step["after"], "1 / u^(1/2) + 1");
+    assert_eq!(exact_step["after"], "(1)/(sqrt(u)) + 1");
 
     let required = wire["required_display"]
         .as_array()

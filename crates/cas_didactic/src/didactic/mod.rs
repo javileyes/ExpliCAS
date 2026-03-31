@@ -40,9 +40,11 @@ mod display_policy;
 #[path = "types/enriched_step.rs"]
 mod enriched_step;
 mod enrichment_pipeline;
+mod focused_rule_substeps;
 mod fraction_steps;
 mod fraction_sum_analysis;
 mod gcd_factorization;
+mod generic_rule_substeps;
 mod latex_plain_text;
 mod nested_fraction_analysis;
 mod nested_fractions;
@@ -54,6 +56,7 @@ mod step_visibility;
 #[path = "types/substep.rs"]
 mod substep;
 mod sum_three_cubes;
+mod visible_rule_names;
 
 pub use cli_render::{
     format_cli_simplification_steps, format_cli_simplification_steps_with_simplifier,
@@ -69,11 +72,14 @@ pub(crate) use shared_numeric::{
     collect_add_terms, format_fraction, lcm_bigint, try_as_fraction, IsOne,
 };
 pub(crate) use step_visibility::{
-    clone_steps_matching_visibility, infer_original_expr_for_steps, step_matches_visibility,
-    StepVisibility,
+    clone_steps_matching_visibility, infer_original_expr_for_steps,
+    should_absorb_preparatory_step_at, step_matches_visibility, StepVisibility,
 };
 pub use step_visibility::{is_high_or_higher_step, is_medium_or_higher_step};
 pub use substep::SubStep;
+pub(crate) use visible_rule_names::{
+    visible_rule_name, visible_rule_name_for_step, visible_step_description,
+};
 
 #[cfg(test)]
 mod tests;
