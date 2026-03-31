@@ -122,3 +122,69 @@ fn test_path_highlight_root_node() {
     let latex = renderer.to_latex();
     assert_eq!(latex, "{\\color{green}{x}}");
 }
+
+#[test]
+fn test_path_highlight_renders_negative_mul_factor_as_subtraction() {
+    let mut ctx = Context::new();
+    let a = ctx.var("a");
+    let b = ctx.var("b");
+    let c = ctx.var("c");
+    let three = ctx.num(3);
+    let a3 = ctx.add(Expr::Pow(a, three));
+    let left = ctx.add(Expr::Mul(a3, b));
+    let neg_c = ctx.add(Expr::Neg(c));
+    let right = ctx.add(Expr::Mul(a3, neg_c));
+    let expr = ctx.add(Expr::Add(left, right));
+
+    let mut config = PathHighlightConfig::new();
+    config.add(vec![], HighlightColor::Green);
+
+    let renderer = PathHighlightedLatexRenderer {
+        context: &ctx,
+        id: expr,
+        path_highlights: &config,
+        hints: None,
+        style_prefs: None,
+    };
+
+    let latex = renderer.to_latex();
+    assert!(
+        latex.contains("\\color{green}") && latex.contains(" - "),
+        "expected highlighted subtraction, got: {latex}"
+    );
+    assert!(
+        !latex.contains("\\cdot -c"),
+        "negative factor should not stay inside a product: {latex}"
+    );
+}
+
+#[test]
+fn test_path_highlight_does_not_parenthesize_simple_subtracted_product() {
+    let mut ctx = Context::new();
+    let x = ctx.var("x");
+    let a = ctx.var("a");
+    let b = ctx.var("b");
+    let product = ctx.add(Expr::Mul(a, b));
+    let expr = ctx.add(Expr::Sub(x, product));
+
+    let mut config = PathHighlightConfig::new();
+    config.add(vec![1], HighlightColor::Red);
+
+    let renderer = PathHighlightedLatexRenderer {
+        context: &ctx,
+        id: expr,
+        path_highlights: &config,
+        hints: None,
+        style_prefs: None,
+    };
+
+    let latex = renderer.to_latex();
+    assert!(
+        latex.contains("x - {\\color{red}{a\\cdot b}}"),
+        "expected direct subtraction of the highlighted product, got: {latex}"
+    );
+    assert!(
+        !latex.contains("- ({\\color{red}{a\\cdot b}})"),
+        "simple product should not be wrapped in subtraction parentheses: {latex}"
+    );
+}

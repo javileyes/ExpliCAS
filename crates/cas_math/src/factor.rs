@@ -1,4 +1,5 @@
 use crate::build::mul2_raw;
+use crate::poly_compare::poly_eq;
 use crate::polynomial::Polynomial;
 use crate::trig_roots_flatten::{get_square_root, get_trig_arg, is_trig_pow};
 use cas_ast::ordering::compare_expr;
@@ -15,17 +16,23 @@ pub fn factor(ctx: &mut Context, expr: ExprId) -> ExprId {
         return res;
     }
 
-    // 2. Try difference of squares
+    // 2. Try the alternating cubic Vandermonde identity:
+    // a^3(b-c) + b^3(c-a) + c^3(a-b) = (a-b)(a-c)(b-c)(a+b+c)
+    if let Some(res) = factor_alternating_cubic_vandermonde(ctx, expr) {
+        return res;
+    }
+
+    // 3. Try difference of squares
     if let Some(res) = factor_difference_squares(ctx, expr) {
         return res;
     }
 
-    // 3. Try Sophie Germain identity: a^4 + 4b^4 = (a² + 2ab + 2b²)(a² - 2ab + 2b²)
+    // 4. Try Sophie Germain identity: a^4 + 4b^4 = (a² + 2ab + 2b²)(a² - 2ab + 2b²)
     if let Some(res) = factor_sophie_germain(ctx, expr) {
         return res;
     }
 
-    // 4. Try perfect square trinomial: a² ± 2ab + b² = (a ± b)²
+    // 5. Try perfect square trinomial: a² ± 2ab + b² = (a ± b)²
     if let Some(res) = factor_perfect_square_trinomial(ctx, expr) {
         return res;
     }
@@ -37,6 +44,42 @@ pub fn factor(ctx: &mut Context, expr: ExprId) -> ExprId {
     // Let's stick to top-level for now, or maybe recurse if it's a product/sum?
 
     expr
+}
+
+/// Factors the alternating cubic Vandermonde identity:
+/// `a^3(b-c) + b^3(c-a) + c^3(a-b) = (a-b)(a-c)(b-c)(a+b+c)`.
+///
+/// This matcher is intentionally narrow: it recognizes the 3-variable
+/// alternating quartic up to algebraic expansion/reordering, without trying to
+/// be a full multivariate factorizer.
+pub fn factor_alternating_cubic_vandermonde(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    let vars = cas_ast::collect_variables(ctx, expr);
+    if vars.len() != 3 {
+        return None;
+    }
+
+    let mut vars: Vec<_> = vars.into_iter().collect();
+    vars.sort();
+
+    let a = ctx.var(&vars[0]);
+    let b = ctx.var(&vars[1]);
+    let c = ctx.var(&vars[2]);
+
+    let a_minus_b = ctx.add(Expr::Sub(a, b));
+    let a_minus_c = ctx.add(Expr::Sub(a, c));
+    let b_minus_c = ctx.add(Expr::Sub(b, c));
+    let a_plus_b = ctx.add(Expr::Add(a, b));
+    let a_plus_b_plus_c = ctx.add(Expr::Add(a_plus_b, c));
+
+    let left = mul2_raw(ctx, a_minus_b, a_minus_c);
+    let right = mul2_raw(ctx, b_minus_c, a_plus_b_plus_c);
+    let factored = mul2_raw(ctx, left, right);
+
+    if poly_eq(ctx, expr, factored) {
+        Some(factored)
+    } else {
+        None
+    }
 }
 
 /// Factors a polynomial expression using rational roots.
@@ -495,5 +538,14 @@ mod tests {
         // Canonical ordering may reorder the terms, accept various forms
         assert!(str_res.contains("sin(x)") && str_res.contains("cos(x)"));
         assert!(str_res.matches("-").count() >= 1 && str_res.matches("+").count() >= 1);
+    }
+
+    #[test]
+    fn test_factor_alternating_cubic_vandermonde() {
+        let mut ctx = Context::new();
+        let expr = parse("a^3*(b-c) + b^3*(c-a) + c^3*(a-b)", &mut ctx).unwrap();
+        let res = factor(&mut ctx, expr);
+        let expected = parse("(a-b)*(a-c)*(b-c)*(a+b+c)", &mut ctx).unwrap();
+        assert!(poly_eq(&ctx, res, expected));
     }
 }

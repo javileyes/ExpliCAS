@@ -138,6 +138,40 @@ fn test_factor_perfect_square() {
 }
 
 #[test]
+fn test_factor_multivar_alternating_cubic_vandermonde() {
+    let mut ctx = Context::new();
+    let rule = FactorRule;
+    let expr = parse("factor(a^3*(b-c) + b^3*(c-a) + c^3*(a-b))", &mut ctx).unwrap();
+    let expected = parse("(a-b)*(a-c)*(b-c)*(a+b+c)", &mut ctx).unwrap();
+    let rewrite = rule
+        .apply(
+            &mut ctx,
+            expr,
+            &crate::parent_context::ParentContext::root(),
+        )
+        .unwrap();
+    let actual = cas_ast::hold::unwrap_hold(&ctx, rewrite.final_expr());
+    assert!(cas_math::poly_compare::poly_eq(&ctx, actual, expected));
+}
+
+#[test]
+fn test_automatic_factor_multivar_alternating_cubic_vandermonde() {
+    let mut ctx = Context::new();
+    let rule = AutomaticFactorRule;
+    let expr = parse("a*c^3 + b*a^3 + c*b^3 - a*b^3 - b*c^3 - c*a^3", &mut ctx).unwrap();
+    let expected = parse("(a-b)*(a-c)*(b-c)*(a+b+c)", &mut ctx).unwrap();
+    let rewrite = rule
+        .apply(
+            &mut ctx,
+            expr,
+            &crate::parent_context::ParentContext::root(),
+        )
+        .unwrap();
+    let actual = cas_ast::hold::unwrap_hold(&ctx, rewrite.final_expr());
+    assert!(cas_math::poly_compare::poly_eq(&ctx, actual, expected));
+}
+
+#[test]
 fn test_exact_common_factor_mul_fraction_preorder() {
     let mut ctx = Context::new();
     let expr = parse("((x+y)*(a+b))/((x+y)*(c+d))", &mut ctx).unwrap();

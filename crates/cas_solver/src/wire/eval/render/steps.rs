@@ -33,12 +33,12 @@ fn render_optional_expr(
 ) -> Option<String> {
     expr.map(|id| {
         let clean = strip_all_holds(ctx, id);
-        format!(
+        cas_formatter::clean_display_string(&format!(
             "{}",
             cas_formatter::DisplayExpr {
                 context: ctx,
                 id: clean
             }
-        )
+        ))
     })
 }

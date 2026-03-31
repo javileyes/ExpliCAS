@@ -13,11 +13,11 @@ pub(super) fn render_eval_result(ctx: &mut cas_ast::Context, result: &EvalResult
 
 fn render_expr(ctx: &mut cas_ast::Context, id: cas_ast::ExprId) -> String {
     let clean = strip_all_holds(ctx, id);
-    format!(
+    cas_formatter::clean_display_string(&format!(
         "{}",
         cas_formatter::DisplayExpr {
             context: ctx,
             id: clean
         }
-    )
+    ))
 }

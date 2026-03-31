@@ -46,6 +46,9 @@ fn format_automatic_factor_desc(kind: AutomaticFactorRewriteKind) -> &'static st
     match kind {
         AutomaticFactorRewriteKind::ReducedSize => "Automatic Factorization (Reduced Size)",
         AutomaticFactorRewriteKind::DiffSquares => "Automatic Factorization (Diff Squares)",
+        AutomaticFactorRewriteKind::AlternatingCubicVandermonde => {
+            "Automatic Factorization (Alternating Cubic Vandermonde)"
+        }
     }
 }
 

@@ -78,6 +78,7 @@ pub enum FactorDifferenceSquaresNaryRewriteKind {
 pub enum AutomaticFactorRewriteKind {
     ReducedSize,
     DiffSquares,
+    AlternatingCubicVandermonde,
 }
 
 /// Rewrite conjugate products:
@@ -462,6 +463,19 @@ pub fn try_rewrite_automatic_factor_expr(
         }
     }
 
+    if let Some(vandermonde) = crate::factor::factor_alternating_cubic_vandermonde(ctx, expr) {
+        if vandermonde != expr {
+            let old_count = count_nodes(ctx, expr);
+            let new_count = count_nodes(ctx, vandermonde);
+            if new_count < old_count {
+                return Some(AutomaticFactorRewrite {
+                    rewritten: vandermonde,
+                    kind: AutomaticFactorRewriteKind::AlternatingCubicVandermonde,
+                });
+            }
+        }
+    }
+
     None
 }
 
@@ -471,7 +485,7 @@ mod tests {
         try_rewrite_automatic_factor_expr, try_rewrite_difference_of_squares_product_expr,
         try_rewrite_factor_common_integer_from_add_expr,
         try_rewrite_factor_difference_squares_nary_expr, try_rewrite_factor_function_expr,
-        try_rewrite_sum_three_cubes_zero_expr,
+        try_rewrite_sum_three_cubes_zero_expr, AutomaticFactorRewriteKind,
     };
     use cas_ast::{BuiltinFn, Context, Expr};
     use cas_parser::parse;
@@ -548,5 +562,22 @@ mod tests {
         let expr = ctx.add_raw(Expr::Add(sin_sq, neg_cos_sq));
         let rewrite = try_rewrite_automatic_factor_expr(&mut ctx, expr);
         assert!(rewrite.is_none());
+    }
+
+    #[test]
+    fn automatic_factor_support_rewrites_alternating_cubic_vandermonde() {
+        let mut ctx = Context::new();
+        let expr = parse("a*c^3 + b*a^3 + c*b^3 - a*b^3 - b*c^3 - c*a^3", &mut ctx).expect("parse");
+        let rewrite = try_rewrite_automatic_factor_expr(&mut ctx, expr).expect("rewrite");
+        let expected = parse("(a-b)*(a-c)*(b-c)*(a+b+c)", &mut ctx).expect("parse expected");
+        assert!(crate::poly_compare::poly_eq(
+            &ctx,
+            rewrite.rewritten,
+            expected
+        ));
+        assert_eq!(
+            rewrite.kind,
+            AutomaticFactorRewriteKind::AlternatingCubicVandermonde
+        );
     }
 }

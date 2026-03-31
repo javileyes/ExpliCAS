@@ -12,6 +12,9 @@ pub fn clean_display_string(s: &str) -> String {
     if may_need_unit_cleanup(&result) {
         clean_unit_patterns_in_place(&mut result);
     }
+    if may_need_subtractive_paren_cleanup(&result) {
+        clean_simple_subtractive_parens_in_place(&mut result);
+    }
     if result.contains(&hold_pattern) {
         strip_hold_wrappers_in_place(&mut result, &hold_pattern);
     }
@@ -23,7 +26,10 @@ pub fn clean_display_string(s: &str) -> String {
 }
 
 fn may_need_display_clean(s: &str) -> bool {
-    may_need_unit_cleanup(s) || s.contains(&hold_pattern()) || may_need_sign_cleanup(s)
+    may_need_unit_cleanup(s)
+        || may_need_subtractive_paren_cleanup(s)
+        || s.contains(&hold_pattern())
+        || may_need_sign_cleanup(s)
 }
 
 fn may_need_unit_cleanup(s: &str) -> bool {
@@ -37,6 +43,10 @@ fn may_need_unit_cleanup(s: &str) -> bool {
 
 fn may_need_sign_cleanup(s: &str) -> bool {
     s.contains("+ -") || s.contains("- -") || s.contains("+-") || s.contains("--")
+}
+
+fn may_need_subtractive_paren_cleanup(s: &str) -> bool {
+    s.contains('-') && s.contains('(')
 }
 
 fn replace_in_place(result: &mut String, from: &str, to: &str) -> bool {
@@ -109,6 +119,70 @@ fn clean_unit_patterns_in_place(result: &mut String) {
 
         if !changed {
             break;
+        }
+    }
+}
+
+fn clean_simple_subtractive_parens_in_place(result: &mut String) {
+    let mut cursor = 0usize;
+    while cursor < result.len() {
+        let mut open = None;
+        let chars: Vec<(usize, char)> = result[cursor..].char_indices().collect();
+        for i in 0..chars.len() {
+            let (_minus_off, ch) = chars[i];
+            if ch != '-' {
+                continue;
+            }
+            let mut j = i + 1;
+            while j < chars.len() && chars[j].1.is_whitespace() {
+                j += 1;
+            }
+            if j < chars.len() && chars[j].1 == '(' {
+                open = Some(cursor + chars[j].0);
+                break;
+            }
+        }
+
+        let Some(open) = open else {
+            break;
+        };
+
+        let mut depth = 0i32;
+        let mut close = None;
+        for (offset, ch) in result[open..].char_indices() {
+            match ch {
+                '(' => depth += 1,
+                ')' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        close = Some(open + offset);
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        let Some(close) = close else {
+            break;
+        };
+        let inner_len = close - open - 1;
+        let is_simple = {
+            let inner = &result[open + 1..close];
+            !inner.contains('(')
+                && !inner.contains(')')
+                && !inner.contains(" + ")
+                && !inner.contains(" - ")
+                && !inner.contains("+ ")
+                && !inner.contains("- ")
+        };
+
+        if is_simple {
+            result.replace_range(close..=close, "");
+            result.replace_range(open..=open, "");
+            cursor = open + inner_len;
+        } else {
+            cursor = close + 1;
         }
     }
 }
@@ -248,5 +322,20 @@ mod tests {
     fn cleans_compact_sign_patterns_without_regex() {
         assert_eq!(clean_sign_patterns("x+-y".to_string()), "x-y");
         assert_eq!(clean_sign_patterns("x--y".to_string()), "x+y");
+    }
+
+    #[test]
+    fn cleans_simple_subtractive_parens() {
+        assert_eq!(
+            clean_display_string("a * c^3 + b * a^3 - (a * b^3) - (c * a^3)"),
+            "a * c^3 + b * a^3 - a * b^3 - c * a^3"
+        );
+        assert_eq!(
+            clean_display_string(
+                "factor(a ·  c^3 + b ·  a^3 + c ·  b^3 - (a ·  b^3) - (c ·  a^3) - (c^3 ·  b))"
+            ),
+            "factor(a ·  c^3 + b ·  a^3 + c ·  b^3 - a ·  b^3 - c ·  a^3 - c^3 ·  b)"
+        );
+        assert_eq!(clean_display_string("a - (b + c)"), "a - (b + c)");
     }
 }

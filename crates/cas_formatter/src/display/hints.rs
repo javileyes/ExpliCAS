@@ -1,9 +1,10 @@
 //! `DisplayExprWithHints`: Display with rendering hints (roots, fractions, etc.)
 
 use crate::{Constant, Context, Expr, ExprId};
+use num_traits::Zero;
 use std::fmt;
 
-use super::expr::{check_negative, collect_add_terms, precedence};
+use super::expr::{check_negative, collect_signed_add_terms, direct_negative_factor, precedence};
 use super::mul_symbol;
 use super::ordering::{cmp_term_for_display, FractionDisplayView};
 use super::unicode_root_prefix;
@@ -64,56 +65,31 @@ impl<'a> DisplayExprWithHints<'a> {
             Expr::Variable(sym_id) => write!(f, "{}", self.context.sym_name(*sym_id)),
             Expr::Add(_, _) => {
                 // Flatten Add chain to handle mixed signs gracefully
-                let mut terms = collect_add_terms(self.context, id);
+                let mut terms = collect_signed_add_terms(self.context, id);
 
                 // Sort by degree (descending) then sign (positive first) for polynomial order
-                terms.sort_by(|a, b| cmp_term_for_display(self.context, *a, *b));
+                terms.sort_by(|a, b| cmp_term_for_display(self.context, a.id, b.id));
 
                 for (i, term) in terms.iter().enumerate() {
-                    let (is_neg, _, _) = check_negative(self.context, *term);
+                    let raw_is_neg = check_negative(self.context, term.id).0;
+                    let is_neg = term.invert_sign ^ raw_is_neg;
 
                     if i == 0 {
-                        // First term: print as is
-                        self.fmt_internal(f, *term)?;
+                        if is_neg {
+                            write!(f, "-")?;
+                            self.fmt_term_absolute(f, term.id, &num_rational::BigRational::zero())?;
+                        } else if term.invert_sign && raw_is_neg {
+                            self.fmt_term_absolute(f, term.id, &num_rational::BigRational::zero())?;
+                        } else {
+                            self.fmt_internal(f, term.id)?;
+                        }
                     } else if is_neg {
                         // Print " - " then absolute value
                         write!(f, " - ")?;
-                        // Extract positive part
-                        match self.context.get(*term) {
-                            Expr::Neg(inner) => {
-                                // Add parentheses when inner is Add/Sub to preserve grouping
-                                // The "-" has already been printed above, so just print abs value
-                                let inner_is_add_sub = matches!(
-                                    self.context.get(*inner),
-                                    Expr::Add(_, _) | Expr::Sub(_, _)
-                                );
-                                if inner_is_add_sub {
-                                    write!(f, "(")?;
-                                    self.fmt_internal(f, *inner)?;
-                                    write!(f, ")")?;
-                                } else {
-                                    self.fmt_internal(f, *inner)?;
-                                }
-                            }
-                            Expr::Number(n) => {
-                                write!(f, "{}", -n)?;
-                            }
-                            Expr::Mul(a, b) => {
-                                if let Expr::Number(n) = self.context.get(*a) {
-                                    let pos_n = -n;
-                                    write!(f, "{} * ", pos_n)?;
-                                    self.fmt_internal(f, *b)?;
-                                } else {
-                                    self.fmt_internal(f, *term)?;
-                                }
-                            }
-                            _ => {
-                                self.fmt_internal(f, *term)?;
-                            }
-                        }
+                        self.fmt_term_absolute(f, term.id, &num_rational::BigRational::zero())?;
                     } else {
                         write!(f, " + ")?;
-                        self.fmt_internal(f, *term)?;
+                        self.fmt_internal(f, term.id)?;
                     }
                 }
                 Ok(())
@@ -196,6 +172,24 @@ impl<'a> DisplayExprWithHints<'a> {
                 let lhs_prec = precedence(self.context, *l);
                 let rhs_prec = precedence(self.context, *r);
                 let op_prec = 2; // Mul precedence
+
+                let left_neg = direct_negative_factor(self.context, *l);
+                let right_neg = direct_negative_factor(self.context, *r);
+                match (left_neg, right_neg) {
+                    (Some((inner, coeff)), None) => {
+                        write!(f, "-")?;
+                        self.fmt_abs_factor(f, inner, coeff)?;
+                        write!(f, "{}", mul_symbol())?;
+                        return self.fmt_abs_factor(f, *r, None);
+                    }
+                    (None, Some((inner, coeff))) => {
+                        write!(f, "-")?;
+                        self.fmt_abs_factor(f, *l, None)?;
+                        write!(f, "{}", mul_symbol())?;
+                        return self.fmt_abs_factor(f, inner, coeff);
+                    }
+                    _ => {}
+                }
 
                 if lhs_prec < op_prec {
                     write!(f, "(")?;
@@ -436,12 +430,20 @@ impl<'a> DisplayExprWithHints<'a> {
 
             // Mul(Number(n < 0), rest) -> |n| * rest
             Expr::Mul(l, r) => {
-                if let Expr::Number(n) = self.context.get(*l) {
-                    if n < zero {
-                        let abs_n = -n;
-                        write!(f, "{} * ", abs_n)?;
-                        return self.fmt_internal(f, *r);
+                let left_neg = direct_negative_factor(self.context, *l);
+                let right_neg = direct_negative_factor(self.context, *r);
+                match (left_neg, right_neg) {
+                    (Some((inner, coeff)), None) => {
+                        self.fmt_abs_factor(f, inner, coeff)?;
+                        write!(f, "{}", mul_symbol())?;
+                        return self.fmt_abs_factor(f, *r, None);
                     }
+                    (None, Some((inner, coeff))) => {
+                        self.fmt_abs_factor(f, *l, None)?;
+                        write!(f, "{}", mul_symbol())?;
+                        return self.fmt_abs_factor(f, inner, coeff);
+                    }
+                    _ => {}
                 }
                 // Not a negative-leading mul, print as-is
                 self.fmt_internal(f, id)
@@ -449,6 +451,25 @@ impl<'a> DisplayExprWithHints<'a> {
 
             // Everything else as-is
             _ => self.fmt_internal(f, id),
+        }
+    }
+
+    fn fmt_abs_factor(
+        &self,
+        f: &mut fmt::Formatter<'_>,
+        id: ExprId,
+        coeff: Option<num_rational::BigRational>,
+    ) -> fmt::Result {
+        if let Some(coeff) = coeff {
+            return write!(f, "{}", coeff);
+        }
+        let prec = precedence(self.context, id);
+        if prec < 2 {
+            write!(f, "(")?;
+            self.fmt_internal(f, id)?;
+            write!(f, ")")
+        } else {
+            self.fmt_internal(f, id)
         }
     }
 }

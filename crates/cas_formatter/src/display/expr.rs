@@ -32,228 +32,42 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
             },
             Expr::Variable(sym_id) => write!(f, "{}", self.context.sym_name(*sym_id)),
             Expr::Add(_, _) => {
-                // Flatten Add chain to handle mixed signs gracefully
-                let mut terms = collect_add_terms(self.context, self.id);
+                // Flatten Add/Sub chain to handle mixed signs gracefully
+                let mut terms = collect_signed_add_terms(self.context, self.id);
 
                 // Unified canonical ordering: polynomial degree descending + compare_expr fallback
-                terms.sort_by(|a, b| cmp_term_for_display(self.context, *a, *b));
+                terms.sort_by(|a, b| cmp_term_for_display(self.context, a.id, b.id));
 
-                // Separate into positive and negative terms
-                let mut pos_terms: Vec<ExprId> = Vec::new();
-                let mut neg_terms: Vec<ExprId> = Vec::new(); // Store the inner (positive) part
-
-                for term in &terms {
-                    let (is_neg, _, _) = check_negative(self.context, *term);
-                    if is_neg {
-                        // Extract the positive inner part
-                        match self.context.get(*term) {
-                            Expr::Neg(inner) => neg_terms.push(*inner),
-                            Expr::Number(_n) => {
-                                // For negative numbers, we'll handle specially
-                                neg_terms.push(*term); // Keep as-is, strip_neg will handle
-                            }
-                            Expr::Mul(a, _) => {
-                                if let Expr::Number(n) = self.context.get(*a) {
-                                    if n < &num_rational::BigRational::zero() {
-                                        neg_terms.push(*term);
-                                    }
-                                }
-                            }
-                            _ => neg_terms.push(*term),
-                        }
-                    } else {
-                        pos_terms.push(*term);
-                    }
-                }
-
-                // Human-friendly grouping: if ≥2 negatives, group as pos - (neg1 + neg2 + ...)
-                if !pos_terms.is_empty() && neg_terms.len() >= 2 {
-                    // Print positive sum
-                    for (i, term) in pos_terms.iter().enumerate() {
-                        if i > 0 {
-                            write!(f, " + ")?;
-                        }
-                        write!(
-                            f,
-                            "{}",
-                            DisplayExpr {
-                                context: self.context,
-                                id: *term
-                            }
-                        )?;
-                    }
-
-                    // Print grouped negatives: - (n1 + n2 + ...)
-                    write!(f, " - (")?;
-                    for (i, term) in neg_terms.iter().enumerate() {
-                        if i > 0 {
-                            write!(f, " + ")?;
-                        }
-                        // Print the positive version of each negative term
-                        match self.context.get(*term) {
-                            Expr::Neg(inner) => {
-                                write!(
-                                    f,
-                                    "{}",
-                                    DisplayExpr {
-                                        context: self.context,
-                                        id: *inner
-                                    }
-                                )?;
-                            }
-                            Expr::Number(n) => {
-                                write!(f, "{}", -n)?;
-                            }
-                            Expr::Mul(a, b) => {
-                                if let Expr::Number(n) = self.context.get(*a) {
-                                    if n < &num_rational::BigRational::zero() {
-                                        let pos_n = -n;
-                                        write!(f, "{}{}", pos_n, mul_symbol())?;
-                                        write!(
-                                            f,
-                                            "{}",
-                                            DisplayExpr {
-                                                context: self.context,
-                                                id: *b
-                                            }
-                                        )?;
-                                    } else {
-                                        write!(
-                                            f,
-                                            "{}",
-                                            DisplayExpr {
-                                                context: self.context,
-                                                id: *term
-                                            }
-                                        )?;
-                                    }
-                                } else {
-                                    write!(
-                                        f,
-                                        "{}",
-                                        DisplayExpr {
-                                            context: self.context,
-                                            id: *term
-                                        }
-                                    )?;
-                                }
-                            }
-                            _ => {
-                                write!(
-                                    f,
-                                    "{}",
-                                    DisplayExpr {
-                                        context: self.context,
-                                        id: *term
-                                    }
-                                )?;
-                            }
-                        }
-                    }
-                    write!(f, ")")?;
-                    return Ok(());
-                }
-
-                // Fallback: original behavior for 0 or 1 negative
-                // cmp_term_for_display already handles degree+sign ordering, use terms directly
-                let sorted_terms = terms;
-
-                for (i, term) in sorted_terms.iter().enumerate() {
-                    let (is_neg, _, _) = check_negative(self.context, *term);
+                for (i, term) in terms.iter().enumerate() {
+                    let raw_is_neg = check_negative(self.context, term.id).0;
+                    let is_neg = term.invert_sign ^ raw_is_neg;
 
                     if i == 0 {
-                        write!(
-                            f,
-                            "{}",
-                            DisplayExpr {
-                                context: self.context,
-                                id: *term
-                            }
-                        )?;
+                        if is_neg {
+                            write!(f, "-")?;
+                            format_term_absolute(f, self.context, term.id)?;
+                        } else if term.invert_sign && raw_is_neg {
+                            format_term_absolute(f, self.context, term.id)?;
+                        } else {
+                            write!(
+                                f,
+                                "{}",
+                                DisplayExpr {
+                                    context: self.context,
+                                    id: term.id
+                                }
+                            )?;
+                        }
                     } else if is_neg {
                         write!(f, " - ")?;
-                        match self.context.get(*term) {
-                            Expr::Neg(inner) => {
-                                let inner_is_add_sub = matches!(
-                                    self.context.get(*inner),
-                                    Expr::Add(_, _) | Expr::Sub(_, _)
-                                );
-                                if inner_is_add_sub {
-                                    write!(
-                                        f,
-                                        "({})",
-                                        DisplayExpr {
-                                            context: self.context,
-                                            id: *inner
-                                        }
-                                    )?;
-                                } else {
-                                    write!(
-                                        f,
-                                        "{}",
-                                        DisplayExpr {
-                                            context: self.context,
-                                            id: *inner
-                                        }
-                                    )?;
-                                }
-                            }
-                            Expr::Number(n) => {
-                                write!(f, "{}", -n)?;
-                            }
-                            Expr::Mul(a, b) => {
-                                if let Expr::Number(n) = self.context.get(*a) {
-                                    let pos_n = -n;
-                                    let b_prec = precedence(self.context, *b);
-                                    write!(f, "{} * ", pos_n)?;
-                                    if b_prec < 2 {
-                                        write!(
-                                            f,
-                                            "({})",
-                                            DisplayExpr {
-                                                context: self.context,
-                                                id: *b
-                                            }
-                                        )?;
-                                    } else {
-                                        write!(
-                                            f,
-                                            "{}",
-                                            DisplayExpr {
-                                                context: self.context,
-                                                id: *b
-                                            }
-                                        )?;
-                                    }
-                                } else {
-                                    write!(
-                                        f,
-                                        "{}",
-                                        DisplayExpr {
-                                            context: self.context,
-                                            id: *term
-                                        }
-                                    )?;
-                                }
-                            }
-                            _ => {
-                                write!(
-                                    f,
-                                    "{}",
-                                    DisplayExpr {
-                                        context: self.context,
-                                        id: *term
-                                    }
-                                )?;
-                            }
-                        }
+                        format_term_absolute(f, self.context, term.id)?;
                     } else {
                         write!(
                             f,
                             " + {}",
                             DisplayExpr {
                                 context: self.context,
-                                id: *term
+                                id: term.id
                             }
                         )?;
                     }
@@ -339,6 +153,32 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
                             return format_factors(f, self.context, &frac.den);
                         }
                     }
+                }
+
+                let left_neg = direct_negative_factor(self.context, *l);
+                let right_neg = direct_negative_factor(self.context, *r);
+                match (left_neg, right_neg) {
+                    (Some((inner, coeff)), None) => {
+                        write!(f, "-")?;
+                        format_mul_absolute(
+                            f,
+                            self.context,
+                            RenderFactor::Direct(inner, coeff),
+                            RenderFactor::Expr(*r),
+                        )?;
+                        return Ok(());
+                    }
+                    (None, Some((inner, coeff))) => {
+                        write!(f, "-")?;
+                        format_mul_absolute(
+                            f,
+                            self.context,
+                            RenderFactor::Expr(*l),
+                            RenderFactor::Direct(inner, coeff),
+                        )?;
+                        return Ok(());
+                    }
+                    _ => {}
                 }
 
                 let lhs_prec = precedence(self.context, *l);
@@ -739,19 +579,34 @@ pub(super) fn precedence(ctx: &Context, id: ExprId) -> i32 {
     }
 }
 
-pub(super) fn collect_add_terms(ctx: &Context, id: ExprId) -> Vec<ExprId> {
+#[derive(Clone, Copy)]
+pub(super) struct SignedAddTerm {
+    pub id: ExprId,
+    pub invert_sign: bool,
+}
+
+pub(super) fn collect_signed_add_terms(ctx: &Context, id: ExprId) -> Vec<SignedAddTerm> {
     let mut terms = Vec::new();
-    collect_add_terms_recursive(ctx, id, &mut terms);
+    collect_signed_add_terms_recursive(ctx, id, false, &mut terms);
     terms
 }
 
-fn collect_add_terms_recursive(ctx: &Context, id: ExprId, terms: &mut Vec<ExprId>) {
+fn collect_signed_add_terms_recursive(
+    ctx: &Context,
+    id: ExprId,
+    invert_sign: bool,
+    terms: &mut Vec<SignedAddTerm>,
+) {
     match ctx.get(id) {
         Expr::Add(l, r) => {
-            collect_add_terms_recursive(ctx, *l, terms);
-            collect_add_terms_recursive(ctx, *r, terms);
+            collect_signed_add_terms_recursive(ctx, *l, invert_sign, terms);
+            collect_signed_add_terms_recursive(ctx, *r, invert_sign, terms);
         }
-        _ => terms.push(id),
+        Expr::Sub(l, r) => {
+            collect_signed_add_terms_recursive(ctx, *l, invert_sign, terms);
+            collect_signed_add_terms_recursive(ctx, *r, !invert_sign, terms);
+        }
+        _ => terms.push(SignedAddTerm { id, invert_sign }),
     }
 }
 
@@ -769,21 +624,127 @@ pub(super) fn check_negative(
             }
         }
         Expr::Mul(a, b) => {
-            // Check left factor for negative number
-            if let Expr::Number(n) = ctx.get(*a) {
-                if *n < num_rational::BigRational::zero() {
-                    return (true, None, Some(n.clone()));
+            let left_neg = direct_negative_factor(ctx, *a);
+            let right_neg = direct_negative_factor(ctx, *b);
+            match (left_neg, right_neg) {
+                (Some((_inner, coeff)), None) | (None, Some((_inner, coeff))) => {
+                    (true, None, coeff)
                 }
+                _ => (false, None, None),
             }
-            // Check right factor for negative number (in case of canonicalization order)
-            if let Expr::Number(n) = ctx.get(*b) {
-                if *n < num_rational::BigRational::zero() {
-                    return (true, None, Some(n.clone()));
-                }
-            }
-            (false, None, None)
         }
         _ => (false, None, None),
+    }
+}
+
+pub(super) fn direct_negative_factor(
+    ctx: &Context,
+    id: ExprId,
+) -> Option<(ExprId, Option<BigRational>)> {
+    match ctx.get(id) {
+        Expr::Neg(inner) => Some((*inner, None)),
+        Expr::Number(n) if *n < num_rational::BigRational::zero() => Some((id, Some((-n).clone()))),
+        _ => None,
+    }
+}
+
+pub(super) fn format_term_absolute(
+    f: &mut fmt::Formatter<'_>,
+    ctx: &Context,
+    id: ExprId,
+) -> fmt::Result {
+    match ctx.get(id) {
+        Expr::Neg(inner) => {
+            let inner_is_add_sub = matches!(ctx.get(*inner), Expr::Add(_, _) | Expr::Sub(_, _));
+            if inner_is_add_sub {
+                write!(
+                    f,
+                    "({})",
+                    DisplayExpr {
+                        context: ctx,
+                        id: *inner
+                    }
+                )
+            } else {
+                write!(
+                    f,
+                    "{}",
+                    DisplayExpr {
+                        context: ctx,
+                        id: *inner
+                    }
+                )
+            }
+        }
+        Expr::Number(n) if *n < num_rational::BigRational::zero() => write!(f, "{}", -n),
+        Expr::Mul(a, b) => {
+            let left_neg = direct_negative_factor(ctx, *a);
+            let right_neg = direct_negative_factor(ctx, *b);
+            match (left_neg, right_neg) {
+                (Some((inner, coeff)), None) => format_mul_absolute(
+                    f,
+                    ctx,
+                    RenderFactor::Direct(inner, coeff),
+                    RenderFactor::Expr(*b),
+                ),
+                (None, Some((inner, coeff))) => format_mul_absolute(
+                    f,
+                    ctx,
+                    RenderFactor::Expr(*a),
+                    RenderFactor::Direct(inner, coeff),
+                ),
+                _ => write!(f, "{}", DisplayExpr { context: ctx, id }),
+            }
+        }
+        _ => write!(f, "{}", DisplayExpr { context: ctx, id }),
+    }
+}
+
+enum RenderFactor {
+    Expr(ExprId),
+    Direct(ExprId, Option<BigRational>),
+}
+
+fn format_mul_absolute(
+    f: &mut fmt::Formatter<'_>,
+    ctx: &Context,
+    left: RenderFactor,
+    right: RenderFactor,
+) -> fmt::Result {
+    format_abs_factor(f, ctx, left)?;
+    write!(f, "{}", mul_symbol())?;
+    format_abs_factor(f, ctx, right)
+}
+
+fn format_abs_factor(
+    f: &mut fmt::Formatter<'_>,
+    ctx: &Context,
+    factor: RenderFactor,
+) -> fmt::Result {
+    match factor {
+        RenderFactor::Direct(_inner, Some(coeff)) => write!(f, "{}", coeff),
+        RenderFactor::Direct(inner, None) | RenderFactor::Expr(inner) => {
+            let prec = precedence(ctx, inner);
+            if prec < 2 {
+                write!(
+                    f,
+                    "({})",
+                    DisplayExpr {
+                        context: ctx,
+                        id: inner
+                    }
+                )
+            } else {
+                write!(
+                    f,
+                    "{}",
+                    DisplayExpr {
+                        context: ctx,
+                        id: inner
+                    }
+                )
+            }
+        }
     }
 }
 

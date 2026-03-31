@@ -309,4 +309,24 @@ mod tests {
         };
         assert_eq!(latex.to_latex(), "a + b - (c + d)");
     }
+
+    #[test]
+    fn test_latex_add_renders_negative_mul_factor_as_subtraction() {
+        let mut ctx = Context::new();
+        let a = ctx.var("a");
+        let b = ctx.var("b");
+        let c = ctx.var("c");
+        let three = ctx.num(3);
+        let a3 = ctx.add(Expr::Pow(a, three));
+        let neg_c = ctx.add(Expr::Neg(c));
+        let left = ctx.add(Expr::Mul(a3, b));
+        let right = ctx.add(Expr::Mul(a3, neg_c));
+        let expr = ctx.add(Expr::Add(left, right));
+
+        let latex = LaTeXExpr {
+            context: &ctx,
+            id: expr,
+        };
+        assert_eq!(latex.to_latex(), "b\\cdot {a}^{3} - c\\cdot {a}^{3}");
+    }
 }

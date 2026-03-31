@@ -147,6 +147,39 @@ fn step_wire_humanizes_root_notation_in_before_after_text() {
 }
 
 #[test]
+fn step_wire_path_latex_renders_human_subtractive_products_for_factor_example() {
+    let (engine, output) = eval_output_for("factor(a^3*(b - c) + b^3*(c - a) + c^3*(a - b))");
+    let steps =
+        cas_didactic::collect_step_payloads(&output.steps, &engine.simplifier.context, "on");
+
+    let first_distribute = steps
+        .iter()
+        .find(|step| step.rule == "Distributive Property")
+        .expect("expected distributive step");
+    let factor_step = steps
+        .iter()
+        .find(|step| step.rule == "Factor Polynomial")
+        .expect("expected factor polynomial step");
+
+    let first_after_latex = first_distribute.after_latex.as_str();
+    assert!(
+        first_after_latex.contains("{a}^{3}\\cdot b - {a}^{3}\\cdot c"),
+        "expected human subtraction in highlighted latex, got: {first_after_latex}"
+    );
+    assert!(
+        !first_after_latex.contains("\\cdot -c"),
+        "highlighted latex should not keep the negative factor inside the product: {first_after_latex}"
+    );
+
+    let factor_before_latex = factor_step.before_latex.as_str();
+    assert!(
+        !factor_before_latex.contains("- (a\\cdot {b}^{3})")
+            && !factor_before_latex.contains("- ({c}^{3}\\cdot b)"),
+        "simple subtracted products should not be wrapped in parentheses: {factor_before_latex}"
+    );
+}
+
+#[test]
 fn step_wire_uses_human_visible_rule_titles() {
     let (engine, output) = eval_output_for("1 / (sqrt(x) - 1) - (sqrt(x) + 1) / (x - 1)");
     let steps =

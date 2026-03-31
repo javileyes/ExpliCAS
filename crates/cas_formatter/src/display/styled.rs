@@ -3,7 +3,7 @@
 use crate::{Constant, Context, Expr, ExprId};
 use std::fmt;
 
-use super::expr::{check_negative, collect_add_terms, precedence};
+use super::expr::{check_negative, collect_signed_add_terms, direct_negative_factor, precedence};
 use super::mul_symbol;
 use super::ordering::cmp_term_for_display;
 use super::{is_pretty_output, number_to_superscript, unicode_root_prefix};
@@ -106,22 +106,30 @@ impl<'a> DisplayExprStyled<'a> {
 
             Expr::Add(_, _) => {
                 // Collect terms and display with proper signs
-                let mut terms = collect_add_terms(self.context, id);
+                let mut terms = collect_signed_add_terms(self.context, id);
 
                 // Sort by degree (descending) then sign (positive first) for polynomial order
                 // cmp_term_for_display combines both criteria
-                terms.sort_by(|a, b| cmp_term_for_display(self.context, *a, *b));
+                terms.sort_by(|a, b| cmp_term_for_display(self.context, a.id, b.id));
 
                 for (i, term) in terms.iter().enumerate() {
-                    let (is_neg, _, _) = check_negative(self.context, *term);
+                    let raw_is_neg = check_negative(self.context, term.id).0;
+                    let is_neg = term.invert_sign ^ raw_is_neg;
                     if i == 0 {
-                        self.fmt_internal(f, *term)?;
+                        if is_neg {
+                            write!(f, "-")?;
+                            self.fmt_term_abs(f, term.id)?;
+                        } else if term.invert_sign && raw_is_neg {
+                            self.fmt_term_abs(f, term.id)?;
+                        } else {
+                            self.fmt_internal(f, term.id)?;
+                        }
                     } else if is_neg {
                         write!(f, " - ")?;
-                        self.fmt_term_abs(f, *term)?;
+                        self.fmt_term_abs(f, term.id)?;
                     } else {
                         write!(f, " + ")?;
-                        self.fmt_internal(f, *term)?;
+                        self.fmt_internal(f, term.id)?;
                     }
                 }
                 Ok(())
@@ -210,6 +218,24 @@ impl<'a> DisplayExprStyled<'a> {
                 if crate::views::has_all_negative_terms(self.context, *l) {
                     write!(f, "-")?;
                     return self.fmt_mul_positive(f, *r, *l);
+                }
+
+                let left_neg = direct_negative_factor(self.context, *l);
+                let right_neg = direct_negative_factor(self.context, *r);
+                match (left_neg, right_neg) {
+                    (Some((inner, coeff)), None) => {
+                        write!(f, "-")?;
+                        self.fmt_abs_factor(f, inner, coeff)?;
+                        write!(f, "{}", mul_symbol())?;
+                        return self.fmt_abs_factor(f, *r, None);
+                    }
+                    (None, Some((inner, coeff))) => {
+                        write!(f, "-")?;
+                        self.fmt_abs_factor(f, *l, None)?;
+                        write!(f, "{}", mul_symbol())?;
+                        return self.fmt_abs_factor(f, inner, coeff);
+                    }
+                    _ => {}
                 }
 
                 // Standard multiplication
@@ -365,16 +391,43 @@ impl<'a> DisplayExprStyled<'a> {
                 }
             }
             Expr::Mul(l, r) => {
-                if let Expr::Number(n) = self.context.get(*l) {
-                    let zero = num_rational::BigRational::from_integer(0.into());
-                    if n < &zero {
-                        write!(f, "{} * ", -n)?;
-                        return self.fmt_internal(f, *r);
+                let left_neg = direct_negative_factor(self.context, *l);
+                let right_neg = direct_negative_factor(self.context, *r);
+                match (left_neg, right_neg) {
+                    (Some((inner, coeff)), None) => {
+                        self.fmt_abs_factor(f, inner, coeff)?;
+                        write!(f, "{}", mul_symbol())?;
+                        return self.fmt_abs_factor(f, *r, None);
                     }
+                    (None, Some((inner, coeff))) => {
+                        self.fmt_abs_factor(f, *l, None)?;
+                        write!(f, "{}", mul_symbol())?;
+                        return self.fmt_abs_factor(f, inner, coeff);
+                    }
+                    _ => {}
                 }
                 self.fmt_internal(f, id)
             }
             _ => self.fmt_internal(f, id),
+        }
+    }
+
+    fn fmt_abs_factor(
+        &self,
+        f: &mut fmt::Formatter<'_>,
+        id: ExprId,
+        coeff: Option<num_rational::BigRational>,
+    ) -> fmt::Result {
+        if let Some(coeff) = coeff {
+            return write!(f, "{}", coeff);
+        }
+        let prec = precedence(self.context, id);
+        if prec < 2 {
+            write!(f, "(")?;
+            self.fmt_internal(f, id)?;
+            write!(f, ")")
+        } else {
+            self.fmt_internal(f, id)
         }
     }
 

@@ -204,11 +204,10 @@ pub trait LaTeXRenderer {
         match ctx.get(id) {
             Expr::Neg(inner) => {
                 let inner_is_add_sub = matches!(ctx.get(*inner), Expr::Add(_, _) | Expr::Sub(_, _));
-                let latex = self.expr_to_latex(*inner, true);
                 if inner_is_add_sub {
-                    (true, format!("({})", latex))
+                    (true, format!("({})", self.expr_to_latex(*inner, false)))
                 } else {
-                    (true, latex)
+                    (true, self.expr_to_latex(*inner, false))
                 }
             }
             Expr::Number(n) if n.is_negative() => {
@@ -221,6 +220,9 @@ pub trait LaTeXRenderer {
                 (true, positive_str)
             }
             Expr::Mul(ml, mr) => {
+                if let Some(abs_latex) = self.direct_negative_mul_abs_latex(*ml, *mr) {
+                    return (true, abs_latex);
+                }
                 if let Expr::Number(coef) = ctx.get(*ml) {
                     if coef.is_negative() {
                         let positive_coef = -coef;
@@ -248,6 +250,35 @@ pub trait LaTeXRenderer {
                 }
             }
             _ => (false, self.expr_to_latex(id, false)),
+        }
+    }
+
+    fn direct_negative_mul_abs_latex(&self, l: ExprId, r: ExprId) -> Option<String> {
+        let left_neg = self.direct_negative_factor_latex(l);
+        let right_neg = self.direct_negative_factor_latex(r);
+        match (left_neg, right_neg) {
+            (Some(left), None) => Some(format!("{}\\cdot {}", left, self.expr_to_latex_mul(r))),
+            (None, Some(right)) => Some(format!("{}\\cdot {}", self.expr_to_latex_mul(l), right)),
+            _ => None,
+        }
+    }
+
+    fn direct_negative_factor_latex(&self, id: ExprId) -> Option<String> {
+        match self.context().get(id) {
+            Expr::Neg(inner) => Some(self.expr_to_latex_mul(*inner)),
+            Expr::Number(n) if n.is_negative() => {
+                let positive = -n;
+                if positive.is_integer() {
+                    Some(format!("{}", positive.numer()))
+                } else {
+                    Some(format!(
+                        "\\frac{{{}}}{{{}}}",
+                        positive.numer(),
+                        positive.denom()
+                    ))
+                }
+            }
+            _ => None,
         }
     }
 
@@ -770,8 +801,7 @@ impl<'a> PathHighlightedLatexRenderer<'a> {
             Expr::Number(n) => self.format_number(n),
             Expr::Variable(sym_id) => self.context.sym_name(*sym_id).to_string(),
             Expr::Constant(c) => self.format_constant(c),
-            Expr::Add(l, r) => self.format_add_path(*l, *r, current_path),
-            Expr::Sub(l, r) => self.format_sub_path(*l, *r, current_path),
+            Expr::Add(_, _) | Expr::Sub(_, _) => self.format_additive_path(id, current_path),
             Expr::Mul(l, r) => self.format_mul_path(*l, *r, parent_needs_parens, current_path),
             Expr::Div(l, r) => self.format_div_path(*l, *r, current_path),
             Expr::Pow(base, exp) => self.format_pow_path(*base, *exp, current_path),
@@ -792,6 +822,56 @@ impl<'a> PathHighlightedLatexRenderer<'a> {
         let mut p = current.clone();
         p.push(child_idx);
         p
+    }
+
+    fn collect_signed_add_terms_path(
+        &self,
+        id: ExprId,
+        path: &ExprPath,
+        barrier_root: &ExprPath,
+        invert_sign: bool,
+        terms: &mut Vec<(ExprId, ExprPath, bool)>,
+    ) {
+        if path != barrier_root && self.path_highlights.get(path).is_some() {
+            terms.push((id, path.clone(), invert_sign));
+            return;
+        }
+
+        match self.context.get(id) {
+            Expr::Add(l, r) => {
+                self.collect_signed_add_terms_path(
+                    *l,
+                    &self.child_path(path, 0),
+                    barrier_root,
+                    invert_sign,
+                    terms,
+                );
+                self.collect_signed_add_terms_path(
+                    *r,
+                    &self.child_path(path, 1),
+                    barrier_root,
+                    invert_sign,
+                    terms,
+                );
+            }
+            Expr::Sub(l, r) => {
+                self.collect_signed_add_terms_path(
+                    *l,
+                    &self.child_path(path, 0),
+                    barrier_root,
+                    invert_sign,
+                    terms,
+                );
+                self.collect_signed_add_terms_path(
+                    *r,
+                    &self.child_path(path, 1),
+                    barrier_root,
+                    !invert_sign,
+                    terms,
+                );
+            }
+            _ => terms.push((id, path.clone(), invert_sign)),
+        }
     }
 
     fn format_number(&self, n: &num_rational::BigRational) -> String {
@@ -816,25 +896,112 @@ impl<'a> PathHighlightedLatexRenderer<'a> {
         }
     }
 
-    fn format_add_path(&self, l: ExprId, r: ExprId, path: &ExprPath) -> String {
-        // Simplified version - full version would handle negative detection
-        let left = self.render_with_path(l, false, &self.child_path(path, 0));
-        let right = self.render_with_path(r, false, &self.child_path(path, 1));
-        format!("{} + {}", left, right)
+    fn format_additive_path(&self, id: ExprId, path: &ExprPath) -> String {
+        let mut terms = Vec::new();
+        self.collect_signed_add_terms_path(id, path, path, false, &mut terms);
+
+        let mut result = String::new();
+        for (i, (term_id, term_path, inherited_neg)) in terms.iter().enumerate() {
+            let (term_neg, term_str) = self.term_to_latex_with_sign_path(*term_id, term_path);
+            let is_neg = *inherited_neg ^ term_neg;
+            if i == 0 {
+                if is_neg {
+                    result.push('-');
+                    result.push_str(&term_str);
+                } else {
+                    result.push_str(&term_str);
+                }
+            } else if is_neg {
+                result.push_str(" - ");
+                result.push_str(&term_str);
+            } else {
+                result.push_str(" + ");
+                result.push_str(&term_str);
+            }
+        }
+
+        result
     }
 
-    fn format_sub_path(&self, l: ExprId, r: ExprId, path: &ExprPath) -> String {
-        let left = self.render_with_path(l, false, &self.child_path(path, 0));
-        let r_expr = self.context.get(r);
-        let right = if matches!(r_expr, Expr::Add(_, _) | Expr::Sub(_, _)) {
-            format!(
-                "({})",
-                self.render_with_path(r, false, &self.child_path(path, 1))
-            )
-        } else {
-            self.render_with_path(r, true, &self.child_path(path, 1))
-        };
-        format!("{} - {}", left, right)
+    fn term_to_latex_with_sign_path(&self, id: ExprId, path: &ExprPath) -> (bool, String) {
+        match self.context.get(id) {
+            Expr::Neg(inner) => {
+                let inner_is_add_sub =
+                    matches!(self.context.get(*inner), Expr::Add(_, _) | Expr::Sub(_, _));
+                if inner_is_add_sub {
+                    (
+                        true,
+                        format!(
+                            "({})",
+                            self.render_with_path(*inner, false, &self.child_path(path, 0))
+                        ),
+                    )
+                } else {
+                    (
+                        true,
+                        self.render_with_path(*inner, false, &self.child_path(path, 0)),
+                    )
+                }
+            }
+            Expr::Number(n) if n.is_negative() => {
+                let positive = -n;
+                let positive_str = if positive.is_integer() {
+                    format!("{}", positive.numer())
+                } else {
+                    format!("\\frac{{{}}}{{{}}}", positive.numer(), positive.denom())
+                };
+                (true, positive_str)
+            }
+            Expr::Mul(l, r) => {
+                if let Some(abs_latex) = self.direct_negative_mul_abs_latex_path(*l, *r, path) {
+                    return (true, abs_latex);
+                }
+                (false, self.render_with_path(id, false, path))
+            }
+            _ => (false, self.render_with_path(id, false, path)),
+        }
+    }
+
+    fn direct_negative_mul_abs_latex_path(
+        &self,
+        l: ExprId,
+        r: ExprId,
+        path: &ExprPath,
+    ) -> Option<String> {
+        let left_neg = self.direct_negative_factor_latex_path(l, &self.child_path(path, 0));
+        let right_neg = self.direct_negative_factor_latex_path(r, &self.child_path(path, 1));
+        match (left_neg, right_neg) {
+            (Some(left), None) => Some(format!(
+                "{}\\cdot {}",
+                left,
+                self.render_mul_operand(r, &self.child_path(path, 1))
+            )),
+            (None, Some(right)) => Some(format!(
+                "{}\\cdot {}",
+                self.render_mul_operand(l, &self.child_path(path, 0)),
+                right
+            )),
+            _ => None,
+        }
+    }
+
+    fn direct_negative_factor_latex_path(&self, id: ExprId, path: &ExprPath) -> Option<String> {
+        match self.context.get(id) {
+            Expr::Neg(inner) => Some(self.render_mul_operand(*inner, &self.child_path(path, 0))),
+            Expr::Number(n) if n.is_negative() => {
+                let positive = -n;
+                if positive.is_integer() {
+                    Some(format!("{}", positive.numer()))
+                } else {
+                    Some(format!(
+                        "\\frac{{{}}}{{{}}}",
+                        positive.numer(),
+                        positive.denom()
+                    ))
+                }
+            }
+            _ => None,
+        }
     }
 
     fn format_mul_path(

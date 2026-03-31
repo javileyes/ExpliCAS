@@ -3358,6 +3358,14 @@ fn top_level_block_pairings_proves_multivar_plus_quadratic_context() {
 }
 
 #[test]
+fn engine_proves_alternating_cubic_vandermonde_identity() {
+    let lhs = "a^3*(b-c) + b^3*(c-a) + c^3*(a-b)";
+    let rhs = "(a-b)*(a-c)*(b-c)*(a+b+c)";
+    assert!(prove_zero_from_engine_texts(lhs, rhs));
+    assert!(prove_zero_from_engine_texts(rhs, lhs));
+}
+
+#[test]
 fn curated_pair_corpus_proves_contextual_pair_both_directions() {
     let lhs = "(1/(x - 1) + 1/(x + 1)) + ((u+1)^2)";
     let rhs = "(2*x/(x^2 - 1)) + (u^2 + 2*u + 1)";
@@ -15294,7 +15302,7 @@ fn trig_square_cube_substitution_residual_stays_explicit_symbolic_tracker() {
                 id: diff_simp
             }
         ),
-        "(sin(u)^6 - 1) / (-1 * cos(u)^2) - (sin(u)^2 + sin(u)^4 + 1)"
+        "(sin(u)^6 - 1) / (-1 * cos(u)^2) - sin(u)^2 - sin(u)^4 - 1"
     );
 }
 
