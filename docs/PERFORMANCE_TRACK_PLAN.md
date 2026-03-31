@@ -5587,6 +5587,8 @@ Those are valid projects, but not part of this performance track.
   - also do not relabel the current path as “fully durable”: the `sync` split
     shows that stronger persistence semantics would cost milliseconds, not
     microseconds
+  - that decision is now retained explicitly in
+    `/Users/javiergimenezmoya/developer/math/docs/SESSION_PERSISTENCE_DECISION.md`
   - keep the cached default rule profile for `Engine::new()` /
     `Engine::with_context(...)`
   - the next ROI in persisted session cache-hit flows is no longer in restored

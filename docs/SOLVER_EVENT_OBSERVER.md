@@ -295,8 +295,10 @@ Current implementation status:
 - `timeline_solve` already goes through a minimal event roundtrip path
 - that integration is currently guarded by a shape-preserving fallback back to the
   original `DisplaySolveSteps`
-- full renderer parity in `cas_didactic` remains the only unresolved part of
-  Phase 1
+- renderer parity in `cas_didactic` was validated for the retained Phase 1
+  integration
+- the retained next-step decision is now documented in:
+  `/Users/javiergimenezmoya/developer/math/docs/SOLVER_EVENT_PHASE2_DECISION.md`
 
 ## Phase 2 Detailed Plan
 
@@ -426,22 +428,26 @@ Introduce native emission at strategy boundaries using:
 - `StrategyExecutionItem`
 - `StrategyDidacticStep`
 
-## Recommended Go / No-Go Decision
+## Retained Go / No-Go Decision
 
-### Go
+### Retained
 
-I recommend doing:
+Keep:
 
 - Phase 1
-- Phase 2 consumer integration
+- Phase 2 consumer integration through the derived adapter boundary
 
 ### No-Go, for now
 
-I do **not** recommend immediately doing:
+Do **not** currently do:
 
 - full native emission
 - diagnostics/assumptions events
 - replacement of `SolveStep`
+
+The explicit retained decision now lives in:
+
+- `/Users/javiergimenezmoya/developer/math/docs/SOLVER_EVENT_PHASE2_DECISION.md`
 
 ## Summary
 

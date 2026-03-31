@@ -44,22 +44,35 @@ It is about sharpening boundaries where architectural value is still high.
 
 ## Executive Summary
 
+Status update:
+
+- the bounded boundary-cleanup track is complete
+- Phase A should now be read as historical context plus closure rationale, not
+  as an open execution stream
+- the next useful work is narrower:
+  - solver-event Phase 2 design-only decision
+  - session persistence strategy decision
+  - benchmark-gated runtime R&D
+
+For the concrete follow-up list, see:
+
+- `/Users/javiergimenezmoya/developer/math/docs/ARCHITECTURE_FOLLOWUP_BACKLOG.md`
+
 ### High-priority work
 
-1. Clarify the application layer around `cas_solver` vs orchestration naming.
-2. Finish purifying `cas_math` so only deterministic/pure math stays there.
-3. Remove transport-specific naming and responsibilities from internal crates.
-4. Decide whether `cas_session_core` still earns its existence.
-5. Complete the solve observer/event design only if the model proves useful.
+1. Make an explicit product decision on session persistence strategy.
+2. Decide whether solve-event work stops at Phase 1 or opens a native-emission
+   track.
 
 ### Medium-priority work
 
-6. Introduce measured AST-memory improvements.
-7. Introduce zero-cost listener plumbing in hot paths where it matters.
+3. Introduce measured AST/runtime experiments only where benchmarks justify it.
+4. Introduce zero-cost listener plumbing in hot paths only if profiling shows
+   value.
 
 ### Exploratory work
 
-8. Evaluate an E-graph track in isolation, behind a feature flag or prototype.
+5. Evaluate an E-graph track in isolation, behind a feature flag or prototype.
 
 ## Reality Check on the Feedback
 
@@ -93,6 +106,12 @@ Those are valid ideas, but they belong to dedicated tracks with benchmarks and
 success criteria.
 
 ## Phase A: Seal Remaining Domain Leaks
+
+Status:
+- completed for the intended scope
+- see
+  `/Users/javiergimenezmoya/developer/math/docs/ARCHITECTURE_BOUNDARY_CLEANUP_BACKLOG.md`
+  for the retained move list and closure state
 
 ### Goal
 
@@ -305,9 +324,14 @@ Improve allocator pressure and clone behavior with evidence, not ideology.
 
 #### Candidates
 
-- `smol_str`
 - `ustr`
 - a lightweight intern table if needed
+
+Note:
+
+- this is no longer the first candidate to pursue
+- the codebase already uses `SmolStr`, so any future work here should start
+  from measured hotspots, not from a generic "adopt small strings" plan
 
 #### Preconditions
 
@@ -406,17 +430,18 @@ When a phase is performance-oriented, add:
 
 ### Immediate
 
-1. Finish the few remaining high-value purity leaks.
-2. Review remaining transport naming that still causes confusion.
-3. Decide whether `cas_session_core` should stay or merge.
+1. Make an explicit session persistence strategy decision.
+2. Decide whether solve-event work stops at Phase 1 or opens a native-emission
+   design track.
 
 ### Next
 
-4. Implement `SolverEvent` Phase 1 only.
+3. Run benchmark-gated runtime experiments only where a hotspot is already
+   measured.
 
 ### After that
 
-5. Pause and evaluate whether solve events gave real value.
+4. Pause again before opening any new architectural stream.
 
 ### Separate track
 
@@ -455,13 +480,19 @@ The next-level architecture effort is done when:
    - or intentionally stopped after adapter phase
 5. performance experiments are documented with data, not assumptions.
 
+Current retained answer:
+
+- the solve-event track stops at the adapter phase for now
+- see
+  `/Users/javiergimenezmoya/developer/math/docs/SOLVER_EVENT_PHASE2_DECISION.md`
+
 ## Recommendation
 
 Proceed, but in this order:
 
-1. high-value boundary cleanup
-2. solve-event Phase 1
-3. stop-and-evaluate
+1. boundary-cleanup closure
+2. persistence-strategy decision
+3. solve-event stop/go decision
 4. only then performance and E-graph exploration
 
 That gives the project a real next level without turning a successful migration

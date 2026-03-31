@@ -34,7 +34,12 @@ pub fn encode_bincode<T: Serialize>(value: &T) -> Result<Vec<u8>, SnapshotError>
     Ok(bincode::serialize(value)?)
 }
 
-/// Save a prebuilt bincode payload atomically: write temp file then rename.
+/// Save a prebuilt bincode payload with atomic replacement semantics:
+/// write temp file, flush, then rename.
+///
+/// This provides visibility-oriented atomic replace semantics, but it is not a
+/// fully durable crash-consistent save because it does not call `sync_all` on
+/// the temp file or parent directory.
 pub fn save_bincode_bytes_atomic(bytes: &[u8], path: &Path) -> Result<(), SnapshotError> {
     let tmp = tmp_path(path);
     let file = fs::File::create(&tmp)?;
@@ -46,7 +51,12 @@ pub fn save_bincode_bytes_atomic(bytes: &[u8], path: &Path) -> Result<(), Snapsh
     Ok(())
 }
 
-/// Save one bincode payload atomically: write temp file then rename.
+/// Save one bincode payload with atomic replacement semantics:
+/// write temp file, flush, then rename.
+///
+/// This provides visibility-oriented atomic replace semantics, but it is not a
+/// fully durable crash-consistent save because it does not call `sync_all` on
+/// the temp file or parent directory.
 pub fn save_bincode_atomic<T: Serialize>(value: &T, path: &Path) -> Result<(), SnapshotError> {
     let tmp = tmp_path(path);
     let file = fs::File::create(&tmp)?;

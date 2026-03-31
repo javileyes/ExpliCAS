@@ -24,6 +24,12 @@ The codebase is already in a good post-migration state:
 The remaining work is not a broad redesign.
 It is a bounded cleanup of a few misplaced models and presentation seams.
 
+Status update:
+
+- this backlog is now complete for its intended scope
+- follow-up work moved to
+  `/Users/javiergimenezmoya/developer/math/docs/ARCHITECTURE_FOLLOWUP_BACKLOG.md`
+
 ## Rules For This Backlog
 
 1. Do not rename crates in this track.

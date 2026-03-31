@@ -47,6 +47,11 @@ After completing any item:
 
 ## Track 1: High-Value Boundary Cleanup
 
+Status:
+- complete for the intended scope
+- follow-up work moved to
+  `/Users/javiergimenezmoya/developer/math/docs/ARCHITECTURE_FOLLOWUP_BACKLOG.md`
+
 ### P0.1 Review remaining transport-specific naming
 
 Goal:
@@ -1115,7 +1120,13 @@ Done when:
 
 Only after PR 7:
 - [x] decide whether to open `P2`
-- [ ] or shift to memory / `egg` exploration
+- [x] or shift to memory / `egg` exploration
+
+Current decision:
+- do not keep the old cleanup checklist open by inertia
+- use
+  `/Users/javiergimenezmoya/developer/math/docs/ARCHITECTURE_FOLLOWUP_BACKLOG.md`
+  for any new work in this area
 
 ## Explicit Do-Not-Do List
 
