@@ -8,11 +8,8 @@ pub(super) fn render_timeline_page_head(
 ) -> String {
     let page_title_prefix_html = html_escape(page_title_prefix);
     let title_html = html_escape(title);
-    super::super::super::render_template::render_static_template(
-        include_str!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/assets/timeline/page_shell/header/head.html"
-        )),
+    super::super::super::render_template::render_timeline_asset!(
+        "page_shell/header/head.html",
         &[
             ("__PAGE_TITLE_PREFIX__", page_title_prefix_html.as_str()),
             ("__TITLE__", title_html.as_str()),

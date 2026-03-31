@@ -49,6 +49,7 @@ Status update:
 - the bounded boundary-cleanup track is complete
 - Phase A should now be read as historical context plus closure rationale, not
   as an open execution stream
+- the optional didactic rendering Phase 2 cleanup is complete
 - the next useful work is narrower:
   - solver-event Phase 2 design-only decision
   - session persistence strategy decision

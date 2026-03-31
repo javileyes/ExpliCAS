@@ -79,16 +79,22 @@ Reopen only if:
 ### 3. Didactic Rendering Phase 2
 
 Status:
-- optional
+- done
 
 Why it matters:
 - static payload extraction is done
 - if further work happens here, it should be about renderer structure, not
   moving more strings around
 
-Valid next steps:
-- formalize tiny template helpers/macros if duplication becomes painful
-- or stop here and keep the current `include_str!` adapters
+Retained result:
+- added tiny template helpers/macros in `timeline/render_template.rs`
+- cleaned the repetitive adapter layer in `page_shell`, `solve_render`,
+  `solve_timeline_render`, `simplify_step_html`, `simplify_substeps`, and
+  `simplify_summary`
+- kept the current static-asset plus typed-Rust-adapter model
+
+Decision / execution note:
+- `/Users/javiergimenezmoya/developer/math/docs/DIDACTIC_RENDERING_PHASE2_PLAN.md`
 
 Do not do:
 - broad frontend redesign inside Rust without a concrete UX goal
@@ -117,4 +123,5 @@ Stop architecture work in this stream when:
 
 - the persistence strategy has an explicit decision
 - the solver-event question has an explicit stop/go decision
+- didactic rendering Phase 2 has either been completed or explicitly declined
 - any remaining ideas require speculative redesign rather than bounded payoff

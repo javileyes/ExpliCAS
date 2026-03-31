@@ -10,11 +10,8 @@ pub(super) fn render_step_frame(
     domain_html: &str,
 ) -> String {
     let step_number_text = step_number.to_string();
-    super::super::render_template::render_static_template(
-        include_str!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/assets/timeline/simplify_render/step_frame.html"
-        )),
+    super::super::render_template::render_timeline_asset!(
+        "simplify_render/step_frame.html",
         &[
             ("__STEP_NUMBER__", step_number_text.as_str()),
             ("__STEP_TITLE__", step_title),

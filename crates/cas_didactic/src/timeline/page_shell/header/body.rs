@@ -9,11 +9,8 @@ pub(super) fn render_timeline_page_body_intro(
 ) -> String {
     let heading_html = html_escape(heading);
     let original_label_html = html_escape(original_label);
-    super::super::super::render_template::render_static_template(
-        include_str!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/assets/timeline/page_shell/header/body_intro.html"
-        )),
+    super::super::super::render_template::render_timeline_asset!(
+        "page_shell/header/body_intro.html",
         &[
             ("__THEME_TOGGLE_SCRIPT__", theme_toggle_script),
             ("__HEADING__", heading_html.as_str()),

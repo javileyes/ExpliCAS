@@ -24,11 +24,8 @@ pub(super) fn render_timeline_enriched_substeps_html(
         content_html.push_str(&item::render_enriched_substep(sub));
     }
 
-    super::super::render_template::render_static_template(
-        include_str!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/assets/timeline/simplify_render/substeps_details.html"
-        )),
+    super::super::render_template::render_timeline_asset!(
+        "simplify_render/substeps_details.html",
         &[
             ("__OPEN_ATTR__", ""),
             ("__SUMMARY__", summary),

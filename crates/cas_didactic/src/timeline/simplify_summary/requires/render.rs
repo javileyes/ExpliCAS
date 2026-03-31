@@ -3,11 +3,8 @@ pub(super) fn render_global_requires_html(requires_messages: &[String]) -> Strin
         return String::new();
     }
 
-    super::super::super::render_template::render_static_template(
-        include_str!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/assets/timeline/simplify_render/global_requires.html"
-        )),
+    super::super::super::render_template::render_timeline_asset!(
+        "simplify_render/global_requires.html",
         &[("__REQUIRES_MESSAGES__", &requires_messages.join(", "))],
     )
 }
