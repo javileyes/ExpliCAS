@@ -37,7 +37,7 @@ fn test_latex_to_plain_text_converts_frac_and_text() {
     let input = r"\text{Paso}: \frac{1}{x+1} \cdot y";
     let output = latex_to_plain_text(input);
     assert!(output.contains("Paso"));
-    assert!(output.contains("(1)/(x+1)"));
+    assert!(output.contains("1/(x+1)"));
     assert!(output.contains("·"));
 }
 
@@ -60,9 +60,7 @@ fn test_cli_substep_render_prefers_explicit_latex_when_available() {
     let mut state = super::super::display_policy::CliSubstepsRenderState::default();
     let lines =
         super::super::display_policy::render_cli_enriched_substeps_lines(&enriched, &mut state);
-    assert!(lines
-        .iter()
-        .any(|line| line.contains("(1)/(x) → (x+1)/(x)")));
+    assert!(lines.iter().any(|line| line.contains("1/x → (x+1)/x")));
     assert!(!lines.iter().any(|line| line.contains("bad pseudo latex")));
 }
 
@@ -84,5 +82,33 @@ fn test_latex_to_plain_text_parenthesizes_power_base_when_needed() {
     assert!(
         output.contains("sqrt((x + 1)^2)"),
         "expected grouped square base, got: {output}"
+    );
+}
+
+#[test]
+fn test_latex_to_plain_text_humanizes_even_negative_literal_square() {
+    let input = r"x - ((-1))^2";
+    let output = latex_to_plain_text(input);
+    assert!(
+        output.contains("x - 1^2"),
+        "expected humanized even literal square, got: {output}"
+    );
+    assert!(
+        !output.contains("(-1)^2") && !output.contains("((-1))^2"),
+        "unexpected raw negative literal square, got: {output}"
+    );
+}
+
+#[test]
+fn test_latex_to_plain_text_avoids_extra_parens_for_function_power_base() {
+    let input = r"{\sin(x)}^{2} + {\cos(x)}^{2}";
+    let output = latex_to_plain_text(input);
+    assert!(
+        output.contains("sin(x)^2 + cos(x)^2"),
+        "expected humanized function powers without extra parens, got: {output}"
+    );
+    assert!(
+        !output.contains("(sin(x))^2") && !output.contains("(cos(x))^2"),
+        "unexpected extra parens around function power bases, got: {output}"
     );
 }

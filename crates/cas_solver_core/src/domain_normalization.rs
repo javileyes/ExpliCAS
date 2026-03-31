@@ -1,7 +1,7 @@
 //! Condition normalization, deduplication, and dominance rules.
 
 use crate::domain_condition::ImplicitCondition;
-use cas_ast::{Context, ExprId};
+use cas_ast::{Context, Expr, ExprId};
 use cas_math::expr_domain::{
     exprs_equivalent, exprs_equivalent_up_to_sign, is_abs_of, is_power_of_base,
     is_product_dominated_by_positives,
@@ -9,6 +9,8 @@ use cas_math::expr_domain::{
 use cas_math::expr_normalization::{
     extract_even_positive_power_base, normalize_condition_expr as normalize_condition_expr_math,
 };
+use cas_math::factor::factor;
+use num_traits::Signed;
 
 /// Normalize an expression for display in conditions.
 pub fn normalize_condition_expr(ctx: &mut Context, expr: ExprId) -> ExprId {
@@ -62,18 +64,85 @@ pub fn normalize_and_dedupe_conditions(
     let mut result: Vec<ImplicitCondition> = Vec::new();
 
     for cond in conditions {
-        let normalized = normalize_condition(ctx, cond);
-        let is_duplicate = result
-            .iter()
-            .any(|existing| conditions_equivalent(ctx, existing, &normalized));
+        for normalized in expand_condition_for_display(ctx, cond) {
+            let is_duplicate = result
+                .iter()
+                .any(|existing| conditions_equivalent(ctx, existing, &normalized));
 
-        if !is_duplicate {
-            result.push(normalized);
+            if !is_duplicate {
+                result.push(normalized);
+            }
         }
     }
 
     apply_dominance_rules(ctx, &mut result);
     result
+}
+
+fn expand_condition_for_display(
+    ctx: &mut Context,
+    cond: &ImplicitCondition,
+) -> Vec<ImplicitCondition> {
+    match cond {
+        ImplicitCondition::NonZero(expr) => expand_nonzero_condition_for_display(ctx, *expr),
+        _ => vec![normalize_condition(ctx, cond)],
+    }
+}
+
+fn expand_nonzero_condition_for_display(ctx: &mut Context, expr: ExprId) -> Vec<ImplicitCondition> {
+    let normalized_expr = normalize_condition_expr(ctx, expr);
+
+    if let Some(base) = extract_even_positive_power_base(ctx, normalized_expr) {
+        return vec![ImplicitCondition::NonZero(normalize_condition_expr(
+            ctx, base,
+        ))];
+    }
+
+    let factored = factor(ctx, normalized_expr);
+    let mut atomic_factors = Vec::new();
+    collect_nonzero_atomic_factors(ctx, factored, &mut atomic_factors);
+
+    if atomic_factors.len() <= 1 {
+        return vec![ImplicitCondition::NonZero(normalized_expr)];
+    }
+
+    let mut expanded = Vec::new();
+    for factor_expr in atomic_factors {
+        let normalized_factor = normalize_condition_expr(ctx, factor_expr);
+        let cond = ImplicitCondition::NonZero(normalized_factor);
+        if !expanded
+            .iter()
+            .any(|existing| conditions_equivalent(ctx, existing, &cond))
+        {
+            expanded.push(cond);
+        }
+    }
+
+    if expanded.is_empty() {
+        vec![ImplicitCondition::NonZero(normalized_expr)]
+    } else {
+        expanded
+    }
+}
+
+fn collect_nonzero_atomic_factors(ctx: &Context, expr: ExprId, factors: &mut Vec<ExprId>) {
+    match ctx.get(expr) {
+        Expr::Mul(l, r) => {
+            collect_nonzero_atomic_factors(ctx, *l, factors);
+            collect_nonzero_atomic_factors(ctx, *r, factors);
+        }
+        Expr::Pow(base, exp) => {
+            if let Expr::Number(n) = ctx.get(*exp) {
+                if n.is_integer() && n.is_positive() {
+                    factors.push(*base);
+                    return;
+                }
+            }
+            factors.push(expr);
+        }
+        Expr::Number(_) => {}
+        _ => factors.push(expr),
+    }
 }
 
 fn apply_dominance_rules(ctx: &Context, conditions: &mut Vec<ImplicitCondition>) {

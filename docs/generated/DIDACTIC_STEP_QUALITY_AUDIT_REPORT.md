@@ -35,33 +35,28 @@ Command: `cargo test -p cas_didactic --test didactic_step_quality_audit didactic
 ```text
 Steps:
 1. Multiplicar por el conjugado
-   Before: 1 / (sqrt(x) - 1) - (sqrt(x) + 1) / (x - 1)
+   Before: 1/(sqrt(x) - 1) - (sqrt(x) + 1)/(x - 1)
    [Simplificación de fracción compleja]
       → Cambiar el signo para formar el conjugado
         sqrt(x) - 1 → sqrt(x) + 1
       → Multiplicar numerador y denominador por ese conjugado
-        (1)/(sqrt(x) - 1) → ((1)  ·  (sqrt(x) + 1))/((sqrt(x) - 1)  ·  (sqrt(x) + 1))
+        1/(sqrt(x) - 1) → (sqrt(x) + 1)/((sqrt(x) - 1)  ·  (sqrt(x) + 1))
       → En el denominador aparece una diferencia de cuadrados
-        ((1)  ·  (sqrt(x) + 1))/((sqrt(x) - 1)  ·  (sqrt(x) + 1)) → (sqrt(x) + 1)/(x - 1^2)
-   Cambio local: 1 / (sqrt(x) - 1) -> (sqrt(x) + 1) / (x - (-1)^(2))
-   After: (sqrt(x) + 1) / (x - (-1)^(2)) - (sqrt(x) + 1) / (x - 1)
+        (sqrt(x) + 1)/((sqrt(x) - 1)  ·  (sqrt(x) + 1)) → (sqrt(x) + 1)/(x - 1^2)
+   After: (sqrt(x) + 1)/(x - 1^2) - (sqrt(x) + 1)/(x - 1)
 2. Calcular potencia numérica
-   Before: (sqrt(x) + 1) / (x - (-1)^(2)) - (sqrt(x) + 1) / (x - 1)
-      → Calcular (-1)^2 = 1
-        ((-1))^2 → 1
-   Cambio local: (-1)^(2) -> 1
-   After: (sqrt(x) + 1) / (x - 1) - (sqrt(x) + 1) / (x - 1)
+   Before: (sqrt(x) + 1)/(x - 1^2) - (sqrt(x) + 1)/(x - 1)
+   After: (sqrt(x) + 1)/(x - 1) - (sqrt(x) + 1)/(x - 1)
 3. Restar dos expresiones iguales
-   Before: (sqrt(x) + 1) / (x - 1) - (sqrt(x) + 1) / (x - 1)
-   Cambio local: (sqrt(x) + 1) / (x - 1) - (sqrt(x) + 1) / (x - 1) -> 0
+   Before: (sqrt(x) + 1)/(x - 1) - (sqrt(x) + 1)/(x - 1)
    After: 0
 ```
 
 ### Wire / Web Steps
 
 1. `Racionalizar el denominador`
-   - before: `(1)/(sqrt(x) - 1) - (sqrt(x) + 1)/(x - 1)`
-   - after: `(sqrt(x) + 1)/(x - ((-1))^2) - (sqrt(x) + 1)/(x - 1)`
+   - before: `1/(sqrt(x) - 1) - (sqrt(x) + 1)/(x - 1)`
+   - after: `(sqrt(x) + 1)/(x - 1^2) - (sqrt(x) + 1)/(x - 1)`
    - before_latex: `{\color{red}{\frac{1}{\sqrt{x} - 1}}} - \frac{1 + \sqrt{x}}{x - 1}`
    - after_latex: `{\color{green}{\frac{\sqrt{x} + 1}{x - {(-1)}^{2}}}} - \frac{1 + \sqrt{x}}{x - 1}`
    - substeps:
@@ -70,9 +65,9 @@ Steps:
         - after_latex: `\sqrt{x} + 1`
      2. `Multiplicar numerador y denominador por ese conjugado`
         - before_latex: `\frac{1}{\sqrt{x} - 1}`
-        - after_latex: `\frac{(1) \cdot (\sqrt{x} + 1)}{(\sqrt{x} - 1) \cdot (\sqrt{x} + 1)}`
+        - after_latex: `\frac{(\sqrt{x} + 1)}{(\sqrt{x} - 1) \cdot (\sqrt{x} + 1)}`
      3. `En el denominador aparece una diferencia de cuadrados`
-        - before_latex: `\frac{(1) \cdot (\sqrt{x} + 1)}{(\sqrt{x} - 1) \cdot (\sqrt{x} + 1)}`
+        - before_latex: `\frac{(\sqrt{x} + 1)}{(\sqrt{x} - 1) \cdot (\sqrt{x} + 1)}`
         - after_latex: `\frac{\sqrt{x} + 1}{x - 1^{2}}`
 2. `Restar dos expresiones iguales`
    - before: `(sqrt(x) + 1)/(x - 1) - (sqrt(x) + 1)/(x - 1)`
@@ -95,26 +90,24 @@ Steps:
 ```text
 Steps:
 1. Sumar fracciones
-   Before: 1 / (1 / x + 1 / y)
+   Before: 1/(1/x + 1/y)
    [Simplificación de fracción compleja]
       → Juntar todo en una sola fracción
-        (1)/(x) + (1)/(y) → (x + y)/(x ·  y)
-   Cambio local: 1 / x + 1 / y -> (x + y) / (x * y)
-   After: 1 / ((x + y) / (x * y))
+        1/x + 1/y → (x + y)/(x ·  y)
+   After: 1/((x + y)/(x ·  y))
 2. Simplificar fracción anidada
-   Before: 1 / ((x + y) / (x * y))
+   Before: 1/((x + y)/(x ·  y))
    [Simplificación de fracción compleja]
       → Dividir entre una fracción equivale a invertirla
-        (1)/((x + y)/(x ·  y)) → (x ·  y)/(x + y)
-   Cambio local: 1 / ((x + y) / (x * y)) -> x * y / (x + y)
-   After: x * y / (x + y)
+        1/((x + y)/(x ·  y)) → (x ·  y)/(x + y)
+   After: (x ·  y)/(x + y)
 ```
 
 ### Wire / Web Steps
 
 1. `Sumar fracciones`
-   - before: `(1)/((1)/(x) + (1)/(y))`
-   - after: `(1)/((x + y)/(x ·  y))`
+   - before: `1/(1/x + 1/y)`
+   - after: `1/((x + y)/(x ·  y))`
    - before_latex: `\frac{1}{{\color{red}{\frac{1}{x} + \frac{1}{y}}}}`
    - after_latex: `\frac{1}{{\color{green}{\frac{x + y}{x\cdot y}}}}`
    - substeps:
@@ -122,7 +115,7 @@ Steps:
         - before_latex: `\frac{1}{x} + \frac{1}{y}`
         - after_latex: `\frac{x + y}{x\cdot y}`
 2. `Simplificar fracción anidada`
-   - before: `(1)/((x + y)/(x ·  y))`
+   - before: `1/((x + y)/(x ·  y))`
    - after: `(x ·  y)/(x + y)`
    - before_latex: `{\color{red}{\frac{1}{\frac{x + y}{x\cdot y}}}}`
    - after_latex: `{\color{green}{\frac{x\cdot y}{x + y}}}`
@@ -145,26 +138,24 @@ Steps:
 ```text
 Steps:
 1. Sumar fracciones
-   Before: 1 / x / (1 / y + 1 / z)
+   Before: (1/x)/(1/y + 1/z)
    [Simplificación de fracción compleja]
       → Juntar todo en una sola fracción
-        (1)/(y) + (1)/(z) → (y + z)/(y ·  z)
-   Cambio local: 1 / y + 1 / z -> (y + z) / (y * z)
-   After: 1 / x / ((y + z) / (y * z))
+        1/y + 1/z → (y + z)/(y ·  z)
+   After: (1/x)/((y + z)/(y ·  z))
 2. Simplificar fracción anidada
-   Before: 1 / x / ((y + z) / (y * z))
+   Before: (1/x)/((y + z)/(y ·  z))
    [Simplificación de fracción compleja]
       → Dividir entre una fracción equivale a invertirla
-        ((1)/(x))/((y + z)/(y ·  z)) → (y ·  z)/((y + z) ·  x)
-   Cambio local: 1 / x / ((y + z) / (y * z)) -> y * z / ((y + z) * x)
-   After: y * z / ((y + z) * x)
+        (1/x)/((y + z)/(y ·  z)) → (y ·  z)/((y + z) ·  x)
+   After: (y ·  z)/((y + z) ·  x)
 ```
 
 ### Wire / Web Steps
 
 1. `Sumar fracciones`
-   - before: `((1)/(x))/((1)/(y) + (1)/(z))`
-   - after: `((1)/(x))/((y + z)/(y ·  z))`
+   - before: `(1/x)/(1/y + 1/z)`
+   - after: `(1/x)/((y + z)/(y ·  z))`
    - before_latex: `\frac{\frac{1}{x}}{{\color{red}{\frac{1}{y} + \frac{1}{z}}}}`
    - after_latex: `\frac{\frac{1}{x}}{{\color{green}{\frac{y + z}{y\cdot z}}}}`
    - substeps:
@@ -172,7 +163,7 @@ Steps:
         - before_latex: `\frac{1}{y} + \frac{1}{z}`
         - after_latex: `\frac{y + z}{y\cdot z}`
 2. `Simplificar fracción anidada`
-   - before: `((1)/(x))/((y + z)/(y ·  z))`
+   - before: `(1/x)/((y + z)/(y ·  z))`
    - after: `(y ·  z)/((y + z) ·  x)`
    - before_latex: `{\color{red}{\frac{\frac{1}{x}}{\frac{y + z}{y\cdot z}}}}`
    - after_latex: `{\color{green}{\frac{y\cdot z}{(y + z)\cdot x}}}`
@@ -195,15 +186,13 @@ Steps:
 ```text
 Steps:
 1. Quitar el 0
-   Before: 2 * x + 3 * x + 0
-   Cambio local: 2 * x + 0 -> 2 * x
-   After: 2 * x + 3 * x
+   Before: 2 ·  x + 3 ·  x + 0
+   After: 2 ·  x + 3 ·  x
 2. Agrupar términos semejantes
-   Before: 2 * x + 3 * x
+   Before: 2 ·  x + 3 ·  x
       → Agrupar términos semejantes y sumar coeficientes
         2 ·  x + 3 ·  x → 5 ·  x
-   Cambio local: 2 * x + 3 * x -> 5 * x
-   After: 5 * x
+   After: 5 ·  x
 ```
 
 ### Wire / Web Steps
@@ -232,26 +221,24 @@ Steps:
 ```text
 Steps:
 1. Llevar a denominador común
-   Before: a / d + b / d + 1
+   Before: a/d + b/d + 1
    [Simplificación de fracción compleja]
       → Poner ambos términos sobre el mismo denominador
-        (a)/(d) + 1 → (a + d)/(d)
-   Cambio local: a / d + 1 -> (a + d) / d
-   After: b / d + (a + d) / d
+        a/d + 1 → (a + d)/d
+   After: b/d + (a + d)/d
 2. Sumar fracciones
-   Before: b / d + (a + d) / d
+   Before: b/d + (a + d)/d
    [Simplificación de fracción compleja]
       → Juntar todo en una sola fracción
-        (b)/(d) + (a + d)/(d) → (a + b + d)/(d)
-   Cambio local: b / d + (a + d) / d -> (a + b + d) / d
-   After: (a + b + d) / d
+        b/d + (a + d)/d → (a + b + d)/d
+   After: (a + b + d)/d
 ```
 
 ### Wire / Web Steps
 
 1. `Llevar a denominador común`
-   - before: `(a)/(d) + (b)/(d) + 1`
-   - after: `(b)/(d) + (a + d)/(d)`
+   - before: `a/d + b/d + 1`
+   - after: `b/d + (a + d)/d`
    - before_latex: `{\color{red}{1 + \frac{a}{d}}} + \frac{b}{d}`
    - after_latex: `{\color{green}{\frac{a + d}{d}}} + \frac{b}{d}`
    - substeps:
@@ -259,8 +246,8 @@ Steps:
         - before_latex: `\frac{a}{d} + 1`
         - after_latex: `\frac{a + d}{d}`
 2. `Sumar fracciones`
-   - before: `(b)/(d) + (a + d)/(d)`
-   - after: `(a + b + d)/(d)`
+   - before: `b/d + (a + d)/d`
+   - after: `(a + b + d)/d`
    - before_latex: `{\color{red}{\frac{a + d}{d} + \frac{b}{d}}}`
    - after_latex: `{\color{green}{\frac{a + b + d}{d}}}`
    - substeps:
@@ -282,18 +269,17 @@ Steps:
 ```text
 Steps:
 1. Cancelar factor común
-   Before: 2 * x / (4 * x)
+   Before: (2 ·  x)/(4 ·  x)
       → Como x aparece arriba y abajo, se cancela
-        (2 ·  x)/(4 ·  x) → (2)/(4)
-   Cambio local: 2 * x / (4 * x) -> 2 / 4
-   After: 2 / 4
+        (2 ·  x)/(4 ·  x) → 2/4
+   After: 2/4
 ```
 
 ### Wire / Web Steps
 
 1. `Cancelar un factor común`
    - before: `(2 ·  x)/(4 ·  x)`
-   - after: `(2)/(4)`
+   - after: `2/4`
    - before_latex: `{\color{red}{\frac{2\cdot x}{4\cdot x}}}`
    - after_latex: `{\color{green}{\frac{2}{4}}}`
    - substeps:
@@ -315,13 +301,12 @@ Steps:
 ```text
 Steps:
 1. Cancelar factor común
-   Before: (x + 1) * (x - 1) / (x - 1)
+   Before: ((x + 1) ·  (x - 1))/(x - 1)
    [Factorización de polinomios]
       → Reescribir el numerador como diferencia de cuadrados
         x^2 - 1 → (x + 1) ·  (x - 1)
       → Ahora se cancela el factor x - 1
         ((x + 1) ·  (x - 1))/(x - 1) → x + 1
-   Cambio local: (x + 1) * (x - 1) / (x - 1) -> x + 1
    After: x + 1
 ```
 
@@ -354,17 +339,16 @@ Steps:
 ```text
 Steps:
 1. Aplicar la identidad pitagórica
-   Before: sin(x)^(2) + cos(x)^(2)
+   Before: sin(x)^2 + cos(x)^2
       → Sin²(u) y cos²(u) del mismo ángulo suman 1
-        (sin(x))^2 + (cos(x))^2 → 1
-   Cambio local: sin(x)^(2) + cos(x)^(2) -> 1
+        sin(x)^2 + cos(x)^2 → 1
    After: 1
 ```
 
 ### Wire / Web Steps
 
 1. `Aplicar la identidad pitagórica`
-   - before: `(sin(x))^2 + (cos(x))^2`
+   - before: `sin(x)^2 + cos(x)^2`
    - after: `1`
    - before_latex: `{\color{red}{{\sin(x)}^{2} + {\cos(x)}^{2}}}`
    - after_latex: `{\color{green}{1}}`
@@ -387,24 +371,24 @@ Steps:
 ```text
 Steps:
 1. Aplicar identidad de arctangentes
-   Before: arctan(1/3) + arctan(3) - 1/2 * pi
+   Before: arctan(1/3) + arctan(3) - 1/2 ·  pi
       → Juntar la pareja que encaja con la identidad
-        arctan((1)/(3)) + arctan(3) - (1)/(2) ·  pi → arctan((1)/(3)) + arctan(3)
+        arctan(1/3) + arctan(3) - 1/2 ·  pi → arctan(1/3) + arctan(3)
       → Esa pareja vale pi/2
-        arctan((1)/(3)) + arctan(3) → (pi)/(2)
-   Cambio local: arctan(1/3) + arctan(3) -> pi / 2
-   After: pi / 2 - 1/2 * pi
+        arctan(1/3) + arctan(3) → pi/2
+   After: pi/2 - 1/2 ·  pi
 2. Cancelar una identidad exacta
-   Before: pi / 2 - 1/2 * pi
-   Cambio local: pi / 2 - 1/2 * pi -> 0
+   Before: pi/2 - 1/2 ·  pi
+      → Las dos partes se compensan exactamente
+        pi/2 - 1/2 ·  pi → 0
    After: 0
 ```
 
 ### Wire / Web Steps
 
 1. `Aplicar identidad de arctangentes`
-   - before: `arctan((1)/(3)) + arctan(3) - (1)/(2) ·  pi`
-   - after: `(pi)/(2) - (1)/(2) ·  pi`
+   - before: `arctan(1/3) + arctan(3) - 1/2 ·  pi`
+   - after: `pi/2 - 1/2 ·  pi`
    - before_latex: `{\color{red}{\text{arctan}(3) + \text{arctan}(\frac{1}{3}) - \frac{1}{2}\cdot \pi}}`
    - after_latex: `{\color{green}{\frac{\pi}{2} - \frac{1}{2}\cdot \pi}}`
    - substeps:
@@ -429,23 +413,20 @@ Steps:
 ```text
 Steps:
 1. Expandir el binomio
-   Before: (a + b)^(2) - a^(2) - 2 * a * b
+   Before: ((a + b))^2 - a^2 - (2 ·  a ·  b)
       → Aplicar la fórmula (A + B)^2 = A^2 + 2AB + B^2
         ((a + b))^2 → b^2 + 2 ·  a ·  b + a^2
-   Cambio local: (a + b)^(2) -> b^(2) + 2 * a * b + a^(2)
-   After: b^(2) + 2 * a * b + a^(2) - a^(2) - 2 * a * b
+   After: b^2 + 2 ·  a ·  b + a^2 - a^2 - (2 ·  a ·  b)
 2. Cancelar términos opuestos
-   Before: a^(2) + b^(2) + 2 * a * b - a^(2) - 2 * a * b
+   Before: a^2 + b^2 + 2 ·  a ·  b - a^2 - (2 ·  a ·  b)
       → Estos dos términos se anulan entre sí
         a^2 - a^2 → 0
-   Cambio local: a^(2) - a^(2) -> 0
-   After: b^(2) + 2 * a * b - 2 * a * b
+   After: b^2 + 2 ·  a ·  b - (2 ·  a ·  b)
 3. Cancelar términos opuestos
-   Before: b^(2) + 2 * a * b - 2 * a * b
+   Before: b^2 + 2 ·  a ·  b - 2 ·  a ·  b
       → Estos dos términos se anulan entre sí
         2 ·  a ·  b - 2 ·  a ·  b → 0
-   Cambio local: 2 * a * b - 2 * a * b -> 0
-   After: b^(2)
+   After: b^2
 ```
 
 ### Wire / Web Steps
@@ -492,12 +473,11 @@ Steps:
 ```text
 Steps:
 1. Reconocer un cuadrado perfecto bajo la raíz
-   Before: sqrt(x^(2) + 2 * x + 1)
+   Before: sqrt(x^2 + 2 ·  x + 1)
       → Reescribir el radicando como un cuadrado perfecto
         x^2 + 2 ·  x + 1 → (x + 1)^2
       → La raíz de un cuadrado da un valor absoluto
         sqrt((x + 1)^2) → |x + 1|
-   Cambio local: sqrt(x^(2) + 2 * x + 1) -> |x + 1|
    After: |x + 1|
 ```
 
@@ -530,26 +510,25 @@ Steps:
 ```text
 Steps:
 1. Reescribir potencia de una raíz
-   Before: (sqrt(x)^(3) - 1) / (sqrt(x) - 1)
-   Cambio local: sqrt(x)^(3) -> sqrt(x^3)
-   After: (sqrt(x^3) - 1) / (sqrt(x) - 1)
+   Before: (sqrt(x)^3 - 1)/(sqrt(x) - 1)
+      → Pasar la potencia al interior de la raíz
+        sqrt(x)^3 → sqrt(x^3)
+   After: (sqrt(x^3) - 1)/(sqrt(x) - 1)
 2. Reconocer un cociente notable
-   Before: (sqrt(x^3) - 1) / (sqrt(x) - 1)
+   Before: (sqrt(x^3) - 1)/(sqrt(x) - 1)
       → Llamar t = sqrt(x) para reconocer la forma
         sqrt(x) → t
       → Ese cociente notable se convierte en t^2 + t + 1
         (t^3 - 1)/(t - 1) → t^2 + t + 1
       → Volver a poner t = sqrt(x)
         t^2 + t + 1 → sqrt(x) + sqrt(x)^2 + 1
-   Cambio local: (sqrt(x^3) - 1) / (sqrt(x) - 1) -> sqrt(x) + sqrt(x)^(2) + 1
-   After: sqrt(x) + sqrt(x)^(2) + 1
+   After: sqrt(x) + sqrt(x)^2 + 1
 3. Deshacer una raíz con su potencia
-   Before: sqrt(x) + sqrt(x)^(2) + 1
+   Before: sqrt(x) + sqrt(x)^2 + 1
       → El cuadrado deshace la raíz
         sqrt(x)^2 → x
       → Reemplazar ese bloque en la expresión
         sqrt(x) + sqrt(x)^2 + 1 → sqrt(x) + x + 1
-   Cambio local: sqrt(x)^(2) -> x
    After: sqrt(x) + x + 1
    ℹ️ Requires: x > 0
 ```

@@ -266,8 +266,15 @@ fn standalone_trig_square_cube_quotient_reaches_cli_eval_path() {
         required
             .iter()
             .filter_map(|item| item.as_str())
-            .any(|item| item == "sin(u)^2 - 1 ≠ 0"),
-        "expected denominator condition in required_display"
+            .any(|item| item == "sin(u) - 1 ≠ 0"),
+        "expected atomic factor guard in required_display"
+    );
+    assert!(
+        required
+            .iter()
+            .filter_map(|item| item.as_str())
+            .any(|item| item == "sin(u) + 1 ≠ 0"),
+        "expected complementary atomic factor guard in required_display"
     );
 }
 
@@ -318,8 +325,15 @@ fn trig_square_cube_substitution_difference_reaches_cli_eval_path() {
         required
             .iter()
             .filter_map(|item| item.as_str())
-            .any(|item| item == "sin(u)^2 - 1 ≠ 0"),
-        "expected denominator condition in required_display"
+            .any(|item| item == "sin(u) - 1 ≠ 0"),
+        "expected atomic factor guard in required_display"
+    );
+    assert!(
+        required
+            .iter()
+            .filter_map(|item| item.as_str())
+            .any(|item| item == "sin(u) + 1 ≠ 0"),
+        "expected complementary atomic factor guard in required_display"
     );
 }
 
@@ -342,7 +356,7 @@ fn root_ctx_exact_quotient_survives_runtime_before_conjugate_rationalization() {
         .iter()
         .find(|step| step["rule"] == "Racionalizar el denominador")
         .expect("exact quotient step");
-    assert_eq!(exact_step["after"], "(1)/(sqrt(u)) + 1");
+    assert_eq!(exact_step["after"], "1/sqrt(u) + 1");
 
     let required = wire["required_display"]
         .as_array()

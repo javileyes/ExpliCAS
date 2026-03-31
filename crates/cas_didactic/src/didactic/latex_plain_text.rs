@@ -49,8 +49,72 @@ pub fn latex_to_plain_text(s: &str) -> String {
     result = result.replace("\\right", "");
     result = result.replace('{', "");
     result = result.replace('}', "");
+    result = humanize_even_literal_squares(&result);
 
     result.replace("\\", "")
+}
+
+fn humanize_even_literal_squares(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    let chars: Vec<(usize, char)> = input.char_indices().collect();
+    let mut index = 0usize;
+
+    while index < chars.len() {
+        let byte_index = chars[index].0;
+        if let Some((replacement, consumed)) = parse_even_literal_square(&input[byte_index..]) {
+            out.push_str(&replacement);
+            let target = byte_index + consumed;
+            while index < chars.len() && chars[index].0 < target {
+                index += 1;
+            }
+            continue;
+        }
+
+        out.push(chars[index].1);
+        index += 1;
+    }
+
+    out
+}
+
+fn parse_even_literal_square(input: &str) -> Option<(String, usize)> {
+    let bytes = input.as_bytes();
+    let mut index = 0usize;
+    let mut open_parens = 0usize;
+
+    while index < bytes.len() && bytes[index] == b'(' && open_parens < 2 {
+        open_parens += 1;
+        index += 1;
+    }
+    if !(1..=2).contains(&open_parens) || *bytes.get(index)? != b'-' {
+        return None;
+    }
+    index += 1;
+
+    let digits_start = index;
+    while index < bytes.len() && bytes[index].is_ascii_digit() {
+        index += 1;
+    }
+    if index == digits_start {
+        return None;
+    }
+
+    for _ in 0..open_parens {
+        if *bytes.get(index)? != b')' {
+            return None;
+        }
+        index += 1;
+    }
+
+    if bytes.get(index..index + 2) != Some(b"^2".as_slice()) {
+        return None;
+    }
+    index += 2;
+
+    Some((
+        format!("{}^2", &input[digits_start..index - (open_parens + 2)]),
+        index,
+    ))
 }
 
 fn replace_next_parenthesized_power_base(value: &str) -> Option<String> {
@@ -118,7 +182,7 @@ fn replace_next_fractional_exponent(value: &str) -> Option<String> {
 
 fn needs_parenthesized_power_base(base: &str) -> bool {
     base.chars()
-        .any(|ch| matches!(ch, ' ' | '+' | '-' | '·' | '/' | '\\'))
+        .any(|ch| matches!(ch, ' ' | '+' | '-' | '·' | '/'))
 }
 
 fn find_balanced_braces(s: &str) -> Option<(String, usize)> {

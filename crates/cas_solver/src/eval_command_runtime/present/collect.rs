@@ -21,7 +21,7 @@ pub(super) struct CollectedEvalArtifacts {
 }
 
 pub(super) fn collect_eval_artifacts<F>(
-    ctx: &cas_ast::Context,
+    ctx: &mut cas_ast::Context,
     steps_mode: &str,
     prepared: &PreparedEvalRun,
     total_us: u64,

@@ -159,3 +159,31 @@ fn cli_domain_default_is_generic() {
         "Default (generic) should simplify x/x to 1"
     );
 }
+
+#[test]
+fn cli_domain_generic_factor_cancellation_renders_atomic_requires_without_composite_duplicate() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "(x^5 + x^4 - 2*x^2 - 2*x) / (x^3 - x)",
+        "--format",
+        "json",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["ok"], true);
+    assert_eq!(wire["result"], "(x^3 - 2) / (x - 1)");
+
+    let required = wire["required_display"]
+        .as_array()
+        .expect("required_display array");
+    let required: Vec<_> = required.iter().filter_map(|item| item.as_str()).collect();
+
+    assert!(
+        !required.contains(&"x^3 - x ≠ 0"),
+        "composite denominator guard should be expanded for display: {:?}",
+        required
+    );
+    assert!(required.contains(&"x ≠ 0"));
+    assert!(required.contains(&"x - 1 ≠ 0"));
+    assert!(required.contains(&"x + 1 ≠ 0"));
+}

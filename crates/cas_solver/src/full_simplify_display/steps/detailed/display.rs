@@ -99,6 +99,13 @@ fn normalize_visible_equivalence(input: &str) -> String {
     collapse_negated_redundant_parens(strip_redundant_outer_parens(input))
 }
 
+fn should_suppress_local_change_line(step: &crate::Step) -> bool {
+    matches!(
+        step.rule_name.as_str(),
+        "Identity Property of Addition" | "Identity Property of Multiplication"
+    )
+}
+
 pub(super) fn push_detailed_display_lines(
     lines: &mut Vec<String>,
     ctx: &mut Context,
@@ -136,7 +143,9 @@ pub(super) fn push_detailed_display_lines(
         &step.rule_name,
         style_prefs,
     ));
-    if normalize_visible_equivalence(&before_disp) != normalize_visible_equivalence(&after_disp) {
+    if !should_suppress_local_change_line(step)
+        && normalize_visible_equivalence(&before_disp) != normalize_visible_equivalence(&after_disp)
+    {
         lines.push(format!(
             "   Cambio local: {} -> {}",
             before_disp, after_disp

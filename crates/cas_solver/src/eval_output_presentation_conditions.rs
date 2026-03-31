@@ -1,6 +1,7 @@
 use cas_api_models::{RequiredConditionWire, WarningWire};
 use cas_ast::Context;
 use cas_formatter::DisplayExpr;
+use cas_solver_core::domain_normalization::normalize_and_dedupe_conditions;
 
 pub(crate) fn collect_output_warnings(
     domain_warnings: &[crate::DomainWarning],
@@ -16,9 +17,9 @@ pub(crate) fn collect_output_warnings(
 
 pub(crate) fn collect_output_required_conditions(
     required_conditions: &[crate::ImplicitCondition],
-    ctx: &Context,
+    ctx: &mut Context,
 ) -> Vec<RequiredConditionWire> {
-    required_conditions
+    normalize_and_dedupe_conditions(ctx, required_conditions)
         .iter()
         .map(|cond| {
             let (kind, expr_id) = match cond {
@@ -42,9 +43,9 @@ pub(crate) fn collect_output_required_conditions(
 
 pub(crate) fn collect_output_required_display(
     required_conditions: &[crate::ImplicitCondition],
-    ctx: &Context,
+    ctx: &mut Context,
 ) -> Vec<String> {
-    required_conditions
+    normalize_and_dedupe_conditions(ctx, required_conditions)
         .iter()
         .map(|cond| cond.display(ctx))
         .collect()

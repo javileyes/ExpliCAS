@@ -156,3 +156,56 @@ fn test_render_normalized_complete() {
         rendered
     );
 }
+
+#[test]
+fn test_nonzero_polynomial_factorizes_to_atomic_guards() {
+    let mut ctx = Context::new();
+    let x = ctx.var("x");
+    let three = ctx.num(3);
+    let x3 = ctx.add(Expr::Pow(x, three));
+    let cubic_minus_x = ctx.add(Expr::Sub(x3, x));
+
+    let normalized =
+        normalize_and_dedupe_conditions(&mut ctx, &[ImplicitCondition::NonZero(cubic_minus_x)]);
+
+    let rendered: Vec<_> = normalized.iter().map(|cond| cond.display(&ctx)).collect();
+    println!("Rendered atomic guards: {:?}", rendered);
+
+    assert_eq!(rendered.len(), 3);
+    assert!(rendered.iter().any(|item| item == "x ≠ 0"));
+    assert!(rendered.iter().any(|item| item == "x - 1 ≠ 0"));
+    assert!(rendered.iter().any(|item| item == "x + 1 ≠ 0"));
+}
+
+#[test]
+fn test_nonzero_factorization_dedupes_explicit_subfactor() {
+    let mut ctx = Context::new();
+    let x = ctx.var("x");
+    let three = ctx.num(3);
+    let one = ctx.num(1);
+    let x3 = ctx.add(Expr::Pow(x, three));
+    let cubic_minus_x = ctx.add(Expr::Sub(x3, x));
+    let x_minus_1 = ctx.add(Expr::Sub(x, one));
+
+    let normalized = normalize_and_dedupe_conditions(
+        &mut ctx,
+        &[
+            ImplicitCondition::NonZero(x_minus_1),
+            ImplicitCondition::NonZero(cubic_minus_x),
+        ],
+    );
+
+    let rendered: Vec<_> = normalized.iter().map(|cond| cond.display(&ctx)).collect();
+    println!("Rendered deduped guards: {:?}", rendered);
+
+    assert_eq!(rendered.len(), 3);
+    assert_eq!(
+        rendered
+            .iter()
+            .filter(|item| item.as_str() == "x - 1 ≠ 0")
+            .count(),
+        1
+    );
+    assert!(rendered.iter().any(|item| item == "x ≠ 0"));
+    assert!(rendered.iter().any(|item| item == "x + 1 ≠ 0"));
+}

@@ -1,7 +1,6 @@
 use super::local_rule_expr_ids;
 use crate::runtime::Step;
 use cas_ast::Context;
-use cas_formatter::DisplayExprStyled;
 
 fn strip_redundant_outer_parens(input: &str) -> &str {
     let mut current = input.trim();
@@ -100,38 +99,35 @@ fn normalize_visible_equivalence(input: &str) -> String {
     collapse_negated_redundant_parens(strip_redundant_outer_parens(input))
 }
 
+fn render_visible_expr(ctx: &Context, expr: cas_ast::ExprId) -> String {
+    crate::didactic::latex_to_plain_text(
+        &cas_formatter::LaTeXExpr {
+            context: ctx,
+            id: expr,
+        }
+        .to_latex(),
+    )
+}
+
 pub(crate) fn render_step_visible_change(
     ctx: &mut Context,
     step: &Step,
-    style_prefs: &cas_formatter::root_style::StylePreferences,
+    _style_prefs: &cas_formatter::root_style::StylePreferences,
 ) -> bool {
-    let before_disp = cas_formatter::clean_display_string(&format!(
-        "{}",
-        DisplayExprStyled::new(ctx, step.before, style_prefs)
-    ));
-    let after_disp = cas_formatter::clean_display_string(&format!(
-        "{}",
-        DisplayExprStyled::new(ctx, step.after, style_prefs)
-    ));
+    let before_disp = cas_formatter::clean_display_string(&render_visible_expr(ctx, step.before));
+    let after_disp = cas_formatter::clean_display_string(&render_visible_expr(ctx, step.after));
     normalize_visible_equivalence(&before_disp) != normalize_visible_equivalence(&after_disp)
 }
 
 pub(crate) fn render_rule_visible_change(
     ctx: &mut Context,
     step: &Step,
-    style_prefs: &cas_formatter::root_style::StylePreferences,
+    _style_prefs: &cas_formatter::root_style::StylePreferences,
 ) -> bool {
     let (rule_before_id, rule_after_id) = local_rule_expr_ids(step);
-    let before_disp = cas_formatter::clean_display_string(&format!(
-        "{}",
-        DisplayExprStyled::new(ctx, rule_before_id, style_prefs)
-    ));
-    let after_disp = cas_formatter::clean_display_string(&cas_formatter::render_with_rule_scope(
-        ctx,
-        rule_after_id,
-        &step.rule_name,
-        style_prefs,
-    ));
+    let before_disp =
+        cas_formatter::clean_display_string(&render_visible_expr(ctx, rule_before_id));
+    let after_disp = cas_formatter::clean_display_string(&render_visible_expr(ctx, rule_after_id));
 
     normalize_visible_equivalence(&before_disp) != normalize_visible_equivalence(&after_disp)
 }

@@ -7,6 +7,18 @@ fn humanize_even_literal_square(input: &str) -> String {
         .replace("(-1)^2", "1^2")
 }
 
+fn multiply_factor_text(left: &str, right: &str) -> String {
+    match (left.trim(), right.trim()) {
+        ("1", other) => format!("({other})"),
+        (other, "1") => format!("({other})"),
+        (lhs, rhs) => format!("({lhs}) · ({rhs})"),
+    }
+}
+
+fn fraction_text(numerator: &str, denominator: &str) -> String {
+    format!("({numerator})/({denominator})")
+}
+
 pub(super) fn build_binomial_conjugate_substep(
     denominator_latex: &str,
     conjugate: &str,
@@ -25,16 +37,21 @@ pub(super) fn build_binomial_multiply_both_sides_substep(
     denominator_latex: &str,
     conjugate: &str,
 ) -> SubStep {
+    let before_fraction = fraction_text(numerator_latex, denominator_latex);
+    let after_numerator = multiply_factor_text(numerator_latex, conjugate);
+    let after_denominator = multiply_factor_text(denominator_latex, conjugate);
     SubStep::new(
         "Multiplicar numerador y denominador por ese conjugado",
-        format!("({numerator_latex})/({denominator_latex})"),
-        format!(
-            "(({numerator_latex}) · ({conjugate}))/(({denominator_latex}) · ({conjugate}))"
-        ),
+        before_fraction,
+        fraction_text(&after_numerator, &after_denominator),
     )
-    .with_before_latex(format!("\\frac{{{numerator_latex}}}{{{denominator_latex}}}"))
+    .with_before_latex(format!(
+        "\\frac{{{numerator_latex}}}{{{denominator_latex}}}"
+    ))
     .with_after_latex(format!(
-        "\\frac{{({numerator_latex}) \\cdot ({conjugate})}}{{({denominator_latex}) \\cdot ({conjugate})}}"
+        "\\frac{{{}}}{{{}}}",
+        after_numerator.replace('·', "\\cdot"),
+        after_denominator.replace('·', "\\cdot")
     ))
 }
 
@@ -46,15 +63,17 @@ pub(super) fn build_binomial_product_substep(
     after_den_latex: &str,
 ) -> SubStep {
     let after_den_latex = humanize_even_literal_square(after_den_latex);
+    let before_numerator = multiply_factor_text(numerator_latex, conjugate);
+    let before_denominator = multiply_factor_text(denominator_latex, conjugate);
     SubStep::new(
         "En el denominador aparece una diferencia de cuadrados",
-        format!(
-            "(({numerator_latex}) · ({conjugate}))/(({denominator_latex}) · ({conjugate}))"
-        ),
+        fraction_text(&before_numerator, &before_denominator),
         format!("({after_num_latex})/({after_den_latex})"),
     )
     .with_before_latex(format!(
-        "\\frac{{({numerator_latex}) \\cdot ({conjugate})}}{{({denominator_latex}) \\cdot ({conjugate})}}"
+        "\\frac{{{}}}{{{}}}",
+        before_numerator.replace('·', "\\cdot"),
+        before_denominator.replace('·', "\\cdot")
     ))
     .with_after_latex(format!("\\frac{{{after_num_latex}}}{{{after_den_latex}}}"))
 }

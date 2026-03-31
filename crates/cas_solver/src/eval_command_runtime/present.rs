@@ -17,7 +17,7 @@ where
     F: Fn(&[crate::Step], &[EngineEvent], &cas_ast::Context, &str) -> Vec<StepWire>,
 {
     let collected = collect::collect_eval_artifacts(
-        &engine.simplifier.context,
+        &mut engine.simplifier.context,
         config.steps_mode.as_str(),
         &prepared,
         total_us,

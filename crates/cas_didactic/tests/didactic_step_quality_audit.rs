@@ -387,8 +387,9 @@ fn didactic_step_quality_priority_cases_make_cli_narrative_less_magic() {
         rationalize_cli
     );
     assert!(
-        rationalize_cli.contains("Calcular (-1)^2 = 1"),
-        "rationalize_linear_root CLI narrative should explain the literal power evaluation, got:\n{}",
+        !rationalize_cli.contains("Calcular 1^2 = 1")
+            && !rationalize_cli.contains("Calcular (-1)^2 = 1"),
+        "rationalize_linear_root CLI narrative should avoid trivial literal-power micro-substeps, got:\n{}",
         rationalize_cli
     );
     assert!(
@@ -407,6 +408,11 @@ fn didactic_step_quality_priority_cases_make_cli_narrative_less_magic() {
             && !rationalize_cli.contains("Cambio local: (sqrt(x) + 1) -> sqrt(x) + 1")
             && !rationalize_cli.contains("Rule: (sqrt(x) + 1) -> sqrt(x) + 1"),
         "rationalize_linear_root CLI narrative should not show a fake local change, got:\n{}",
+        rationalize_cli
+    );
+    assert!(
+        !rationalize_cli.contains("Cambio local: 1 / (sqrt(x) - 1) ->"),
+        "rationalize_linear_root CLI narrative should avoid a technical local-change line when the conjugate substeps already explain the fraction move, got:\n{}",
         rationalize_cli
     );
     assert!(
@@ -457,6 +463,11 @@ fn didactic_step_quality_priority_cases_make_cli_narrative_less_magic() {
         cube_cli
     );
     assert!(
+        cube_cli.contains("Pasar la potencia al interior de la raíz"),
+        "cube_quotient_radical CLI narrative should explain the first rewrite in human terms, got:\n{}",
+        cube_cli
+    );
+    assert!(
         !cube_cli.contains("\n   Rule: "),
         "cube_quotient_radical CLI narrative should avoid raw Rule lines when human substeps already explain the move, got:\n{}",
         cube_cli
@@ -472,6 +483,12 @@ fn didactic_step_quality_priority_cases_make_cli_narrative_less_magic() {
             && !cube_cli.contains("\n2. Reconocer un cociente notable  [")
             && !cube_cli.contains("\n3. Deshacer una raíz con su potencia  ["),
         "cube_quotient_radical CLI narrative should avoid bracketed rule labels in the step header, got:\n{}",
+        cube_cli
+    );
+    assert!(
+        !cube_cli.contains("Cambio local: sqrt(x)^(3) ->")
+            && !cube_cli.contains("Cambio local: sqrt(x)^(2) -> x"),
+        "cube_quotient_radical CLI narrative should avoid technical local-change lines when the human substeps already explain both rewrites, got:\n{}",
         cube_cli
     );
     assert!(
@@ -539,6 +556,46 @@ fn didactic_step_quality_priority_cases_make_cli_narrative_less_magic() {
         "nested_fraction_one_over_sum CLI narrative should explain the inversion directly, got:\n{}",
         nested_fraction_cli
     );
+    assert!(
+        !nested_fraction_cli.contains("Cambio local: 1 / x + 1 / y ->")
+            && !nested_fraction_cli.contains("Cambio local: 1 / ((x + y) / (x * y)) ->"),
+        "nested_fraction_one_over_sum CLI narrative should avoid technical local-change lines once the fraction substeps already explain the move, got:\n{}",
+        nested_fraction_cli
+    );
+
+    let same_denominator_case = cases
+        .iter()
+        .find(|case| case.id == "same_denominator_fraction_focus")
+        .expect("missing same_denominator_fraction_focus audit case");
+    let same_denominator_cli = simplify_case(same_denominator_case).cli_lines.join("\n");
+    assert!(
+        !same_denominator_cli.contains("Cambio local: a / d + 1 ->")
+            && !same_denominator_cli.contains("Cambio local: b / d + (a + d) / d ->"),
+        "same_denominator_fraction_focus should avoid technical local-change lines once the fraction substeps already explain the move, got:\n{}",
+        same_denominator_cli
+    );
+
+    let cancel_factor_case = cases
+        .iter()
+        .find(|case| case.id == "cancel_factors_fraction")
+        .expect("missing cancel_factors_fraction audit case");
+    let cancel_factor_cli = simplify_case(cancel_factor_case).cli_lines.join("\n");
+    assert!(
+        !cancel_factor_cli.contains("Cambio local: 2 * x / (4 * x) ->"),
+        "cancel_factors_fraction should avoid a technical local-change line when the cancellation substep already explains the move, got:\n{}",
+        cancel_factor_cli
+    );
+
+    let difference_quotient_case = cases
+        .iter()
+        .find(|case| case.id == "difference_of_squares_quotient")
+        .expect("missing difference_of_squares_quotient audit case");
+    let difference_quotient_cli = simplify_case(difference_quotient_case).cli_lines.join("\n");
+    assert!(
+        !difference_quotient_cli.contains("Cambio local: (x + 1) * (x - 1) / (x - 1) ->"),
+        "difference_of_squares_quotient should avoid a technical local-change line when the factorization and cancellation substeps already explain the move, got:\n{}",
+        difference_quotient_cli
+    );
 
     let combine_case = cases
         .iter()
@@ -558,6 +615,11 @@ fn didactic_step_quality_priority_cases_make_cli_narrative_less_magic() {
     assert!(
         !combine_cli.contains("\n2. Combine like terms"),
         "combine_like_terms_basic CLI narrative should avoid English fallback headers when a humanized title exists, got:\n{}",
+        combine_cli
+    );
+    assert!(
+        !combine_cli.contains("Sumar 0 no cambia el valor"),
+        "combine_like_terms_basic CLI narrative should avoid a trivial +0 micro-substep once the step title already says 'Quitar el 0', got:\n{}",
         combine_cli
     );
 
@@ -586,6 +648,21 @@ fn didactic_step_quality_priority_cases_make_cli_narrative_less_magic() {
         "inverse_trig_identity CLI narrative should absorb preparatory rename/reordering steps into the main identity step, got:\n{}",
         inverse_trig_cli
     );
+    assert!(
+        inverse_trig_cli.contains("Las dos partes se compensan exactamente"),
+        "inverse_trig_identity CLI narrative should explain why the final opaque-substitution identity cancels to zero, got:\n{}",
+        inverse_trig_cli
+    );
+    assert!(
+        !inverse_trig_cli.contains("Cambio local: pi / 2 - 1/2 * pi -> 0"),
+        "inverse_trig_identity CLI narrative should avoid a dry local-change line once the exact-cancellation substep explains it, got:\n{}",
+        inverse_trig_cli
+    );
+    assert!(
+        !inverse_trig_cli.contains("Cambio local: arctan(1/3) + arctan(3) ->"),
+        "inverse_trig_identity CLI narrative should avoid a dry local-change line when the identity substeps already explain the move, got:\n{}",
+        inverse_trig_cli
+    );
 
     let perfect_square_case = cases
         .iter()
@@ -596,6 +673,11 @@ fn didactic_step_quality_priority_cases_make_cli_narrative_less_magic() {
     assert!(
         perfect_square_cli.contains("Reconocer un cuadrado perfecto bajo la raíz"),
         "perfect_square_root CLI narrative should use a human header, got:\n{}",
+        perfect_square_cli
+    );
+    assert!(
+        !perfect_square_cli.contains("Cambio local: sqrt(x^(2) + 2 * x + 1) ->"),
+        "perfect_square_root CLI narrative should avoid a dry local-change line when the square-pattern substeps already explain the move, got:\n{}",
         perfect_square_cli
     );
     assert!(
@@ -625,6 +707,24 @@ fn didactic_step_quality_priority_cases_make_cli_narrative_less_magic() {
         !polynomial_cli.contains("Quitar paréntesis tras el signo menos"),
         "polynomial_expansion_cancel CLI narrative should avoid surfacing a standalone sign-cleanup step when the cancellation remains understandable without it, got:\n{}",
         polynomial_cli
+    );
+    assert!(
+        !polynomial_cli.contains("Cambio local: (a + b)^(2) ->")
+            && !polynomial_cli.contains("Cambio local: a^(2) - a^(2) ->")
+            && !polynomial_cli.contains("Cambio local: 2 * a * b - 2 * a * b ->"),
+        "polynomial_expansion_cancel CLI narrative should avoid dry local-change lines when the expansion and cancellation substeps already explain the move, got:\n{}",
+        polynomial_cli
+    );
+
+    let pythagorean_case = cases
+        .iter()
+        .find(|case| case.id == "pythagorean_identity")
+        .expect("missing pythagorean_identity audit case");
+    let pythagorean_cli = simplify_case(pythagorean_case).cli_lines.join("\n");
+    assert!(
+        !pythagorean_cli.contains("Cambio local: sin(x)^(2) + cos(x)^(2) ->"),
+        "pythagorean_identity CLI narrative should avoid a dry local-change line when the identity substep already explains the move, got:\n{}",
+        pythagorean_cli
     );
 }
 

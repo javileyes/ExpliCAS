@@ -98,6 +98,40 @@ fn normalize_visible_equivalence(input: &str) -> String {
     collapse_negated_redundant_parens(strip_redundant_outer_parens(input))
 }
 
+fn should_suppress_local_change_line(step: &Step) -> bool {
+    if step.rule_name.as_str() == "Polynomial Identity"
+        && step
+            .description
+            .to_ascii_lowercase()
+            .contains("opaque substitution")
+    {
+        return true;
+    }
+
+    matches!(
+        step.rule_name.as_str(),
+        "Rationalize Linear Sqrt Denominator"
+            | "Identity Property of Addition"
+            | "Identity Property of Multiplication"
+            | "Common Denominator"
+            | "Combine Same Denominator Fractions"
+            | "Add Fractions"
+            | "Simplify Complex Fraction"
+            | "Pre-order Common Factor Cancel"
+            | "Pre-order Difference of Squares Cancel"
+            | "Subtraction Self-Cancel"
+            | "Combine Like Terms"
+            | "Pythagorean Chain Identity"
+            | "Inverse Tan Relations"
+            | "Auto Expand Power Sum"
+            | "Sqrt Perfect Square"
+            | "Simplify Square Root"
+            | "Evaluate Numeric Power"
+            | "Cancel Reciprocal Exponents"
+            | "Canonicalize Nested Power"
+    )
+}
+
 pub(super) fn render_rule_with_scope_line(
     ctx: &mut Context,
     step: &Step,
@@ -116,6 +150,10 @@ pub(super) fn render_rule_with_scope_line(
     ));
 
     if normalize_visible_equivalence(&before_disp) == normalize_visible_equivalence(&after_disp) {
+        return None;
+    }
+
+    if should_suppress_local_change_line(step) {
         return None;
     }
 

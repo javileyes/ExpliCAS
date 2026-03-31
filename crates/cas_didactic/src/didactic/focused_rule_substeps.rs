@@ -8,6 +8,8 @@ pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<
         "Pre-order Difference of Squares Cancel" => {
             generate_difference_of_squares_cancel_substeps(ctx, step)
         }
+        "Canonicalize Nested Power" => generate_canonicalize_nested_power_substeps(ctx, step),
+        "Identity Property of Addition" => generate_identity_addition_substeps(ctx, step),
         "Identity Property of Multiplication" => {
             generate_identity_multiplication_substeps(ctx, step)
         }
@@ -19,11 +21,38 @@ pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<
         "Inverse Tan Relations" => generate_inverse_tan_relation_substeps(ctx, step),
         "Subtraction Self-Cancel" => generate_subtraction_self_cancel_substeps(ctx, step),
         "Cancel Reciprocal Exponents" => generate_cancel_reciprocal_exponents_substeps(ctx, step),
+        "Polynomial Identity" => generate_polynomial_identity_exact_cancel_substeps(ctx, step),
         "Sqrt Perfect Square" | "Simplify Square Root" => {
             generate_sqrt_perfect_square_substeps(ctx, step)
         }
         _ => Vec::new(),
     }
+}
+
+fn generate_canonicalize_nested_power_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    let mut before = step.before_local().unwrap_or(step.before);
+    let mut after = step.after_local().unwrap_or(step.after);
+
+    let uses_local_pow = matches!(ctx.get(before), Expr::Pow(base, _)
+        if matches!(ctx.get(*base), Expr::Function(fn_id, args)
+            if ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) && args.len() == 1));
+
+    if !uses_local_pow {
+        before = step.before;
+        after = step.after;
+    }
+
+    if before == after {
+        return Vec::new();
+    }
+
+    vec![SubStep::new(
+        "Pasar la potencia al interior de la raíz",
+        display_expr(ctx, before),
+        display_expr(ctx, after),
+    )
+    .with_before_latex(latex_expr(ctx, before))
+    .with_after_latex(latex_expr(ctx, after))]
 }
 
 fn generate_common_factor_cancel_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
@@ -47,6 +76,21 @@ fn generate_common_factor_cancel_substeps(ctx: &Context, step: &Step) -> Vec<Sub
     )
     .with_before_latex(before_latex)
     .with_after_latex(latex_expr(ctx, after))]
+}
+
+fn generate_identity_addition_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+    let Expr::Add(left, right) = ctx.get(before) else {
+        return Vec::new();
+    };
+    if !is_zero(ctx, *left) && !is_zero(ctx, *right) {
+        return Vec::new();
+    }
+    let _ = after;
+    // The step title "Quitar el 0" plus Before/After already explains this move.
+    // Emitting a substep here only repeats the obvious.
+    Vec::new()
 }
 
 fn generate_difference_of_squares_cancel_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
@@ -167,6 +211,57 @@ fn generate_subtraction_self_cancel_substeps(ctx: &Context, step: &Step) -> Vec<
     Vec::new()
 }
 
+fn generate_polynomial_identity_exact_cancel_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    if step
+        .description
+        .to_ascii_lowercase()
+        .contains("opaque substitution")
+        && is_zero(ctx, step.after_local().unwrap_or(step.after))
+    {
+        let before = step.before_local().unwrap_or(step.before);
+        let after = step.after_local().unwrap_or(step.after);
+        return vec![SubStep::new(
+            "Las dos partes se compensan exactamente",
+            display_expr(ctx, before),
+            display_expr(ctx, after),
+        )
+        .with_before_latex(latex_expr(ctx, before))
+        .with_after_latex(latex_expr(ctx, after))];
+    }
+
+    if let Some(proof) = step.poly_proof() {
+        if !proof.opaque_substitutions.is_empty()
+            && is_zero(ctx, step.after_local().unwrap_or(step.after))
+        {
+            let before = step.before_local().unwrap_or(step.before);
+            let after = step.after_local().unwrap_or(step.after);
+            return vec![SubStep::new(
+                "Las dos partes se compensan exactamente",
+                display_expr(ctx, before),
+                display_expr(ctx, after),
+            )
+            .with_before_latex(latex_expr(ctx, before))
+            .with_after_latex(latex_expr(ctx, after))];
+        }
+        return Vec::new();
+    }
+
+    let before = step.before_local().unwrap_or(step.before);
+    let Some((left, right)) =
+        difference_like_terms(ctx, before).or_else(|| difference_like_terms(ctx, step.before))
+    else {
+        return Vec::new();
+    };
+
+    vec![SubStep::new(
+        "Las dos partes representan la misma cantidad",
+        display_expr(ctx, left),
+        display_expr(ctx, right),
+    )
+    .with_before_latex(latex_expr(ctx, left))
+    .with_after_latex(latex_expr(ctx, right))]
+}
+
 fn generate_cancel_reciprocal_exponents_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
     let local_before = step.before_local().unwrap_or(step.before);
     let local_after = step.after_local().unwrap_or(step.after);
@@ -236,24 +331,26 @@ fn generate_identity_multiplication_substeps(ctx: &Context, step: &Step) -> Vec<
     if !is_one(ctx, *left) && !is_one(ctx, *right) {
         return Vec::new();
     }
-
-    vec![SubStep::new(
-        "Quitar el factor 1 que no cambia el valor",
-        display_expr(ctx, before),
-        display_expr(ctx, after),
-    )
-    .with_before_latex(latex_expr(ctx, before))
-    .with_after_latex(latex_expr(ctx, after))]
+    let _ = after;
+    // The step title "Quitar el factor 1" is already self-explanatory.
+    Vec::new()
 }
 
 fn generate_evaluate_numeric_power_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
     let before = step.before_local().unwrap_or(step.before);
     let after = step.after_local().unwrap_or(step.after);
-    let Expr::Pow(_, _) = ctx.get(before) else {
+    let Expr::Pow(base, _) = ctx.get(before) else {
         return Vec::new();
     };
-
     let before_human = normalize_human_power_expr(&human_expr(ctx, before));
+    if is_zero(ctx, *base)
+        || is_one(ctx, *base)
+        || is_negative_one(ctx, *base)
+        || matches!(before_human.split_once('^'), Some(("0" | "1" | "(-1)", _)))
+    {
+        // Evaluating 0^n, 1^n or (-1)^n is too trivial to deserve its own didactic micro-step.
+        return Vec::new();
+    }
     let after_human = human_expr(ctx, after);
 
     vec![SubStep::new(
@@ -632,6 +729,14 @@ fn is_one(ctx: &Context, expr: ExprId) -> bool {
     matches!(ctx.get(expr), Expr::Number(value) if value.numer() == &1.into() && value.denom() == &1.into())
 }
 
+fn is_zero(ctx: &Context, expr: ExprId) -> bool {
+    matches!(ctx.get(expr), Expr::Number(value) if value.numer() == &0.into() && value.denom() == &1.into())
+}
+
+fn is_negative_one(ctx: &Context, expr: ExprId) -> bool {
+    matches!(ctx.get(expr), Expr::Number(value) if value.numer() == &(-1).into() && value.denom() == &1.into())
+}
+
 fn is_integer_literal(ctx: &Context, expr: ExprId, expected: i64) -> bool {
     matches!(
         ctx.get(expr),
@@ -662,6 +767,17 @@ fn abs_argument(ctx: &Context, expr: ExprId) -> Option<ExprId> {
         {
             Some(args[0])
         }
+        _ => None,
+    }
+}
+
+fn difference_like_terms(ctx: &Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
+    match ctx.get(expr) {
+        Expr::Sub(left, right) => Some((*left, *right)),
+        Expr::Add(left, right) => match ctx.get(*right) {
+            Expr::Neg(inner) => Some((*left, *inner)),
+            _ => None,
+        },
         _ => None,
     }
 }
