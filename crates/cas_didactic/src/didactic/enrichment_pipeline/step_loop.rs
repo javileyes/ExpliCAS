@@ -71,6 +71,19 @@ fn prune_redundant_substeps(ctx: &Context, step: &Step, sub_steps: &mut Vec<SubS
 
         !(same_display || same_latex)
     });
+
+    if sub_steps.len() == 1 {
+        let sub_step = &sub_steps[0];
+        let same_display = cas_formatter::clean_display_string(&sub_step.before_expr)
+            == step_before_display
+            && cas_formatter::clean_display_string(&sub_step.after_expr) == step_after_display;
+        let same_latex = sub_step.before_latex.as_deref() == Some(step_before_latex.as_str())
+            && sub_step.after_latex.as_deref() == Some(step_after_latex.as_str());
+
+        if same_display || same_latex {
+            sub_steps.clear();
+        }
+    }
 }
 
 fn focused_step_sides(step: &Step) -> (ExprId, ExprId) {

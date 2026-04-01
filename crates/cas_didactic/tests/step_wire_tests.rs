@@ -331,7 +331,7 @@ fn step_wire_perfect_square_root_uses_human_visible_rule_title() {
 }
 
 #[test]
-fn step_wire_common_factor_cancel_names_the_factor_and_the_result() {
+fn step_wire_common_factor_cancel_stays_direct_when_the_only_substep_matches_the_parent_step() {
     let (engine, output) = eval_output_for("(2*x)/(4*x)");
     let steps =
         cas_didactic::collect_step_payloads(&output.steps, &engine.simplifier.context, "on");
@@ -342,32 +342,29 @@ fn step_wire_common_factor_cancel_names_the_factor_and_the_result() {
         .expect("expected common factor cancel step");
 
     assert!(
-        !step.substeps.is_empty(),
-        "expected a direct didactic explanation, got: {:?}",
+        step.substeps.is_empty(),
+        "single substep identical to the parent step should be pruned, got: {:?}",
         step.substeps
             .iter()
             .map(|substep| &substep.title)
             .collect::<Vec<_>>()
     );
+}
+
+#[test]
+fn step_wire_log_cancellation_stays_direct_without_single_redundant_substep() {
+    let (engine, output) = eval_output_for("ln(x^3) + ln(y^2) - ln(x^3 * y^2)");
+    let steps =
+        cas_didactic::collect_step_payloads(&output.steps, &engine.simplifier.context, "on");
+
+    let step = steps
+        .iter()
+        .find(|step| step.rule == "Agrupar términos semejantes" && step.after == "0")
+        .expect("expected final log cancellation step");
+
     assert!(
-        step.substeps
-            .iter()
-            .any(|substep| substep.title.contains("x aparece arriba y abajo")
-                || substep.title.contains("x") && substep.title.contains("se cancela")),
-        "expected a direct substep that names the canceled factor, got: {:?}",
-        step.substeps
-            .iter()
-            .map(|substep| &substep.title)
-            .collect::<Vec<_>>()
-    );
-    assert!(
-        step.substeps.iter().any(|substep| {
-            substep
-                .after_latex
-                .as_deref()
-                .is_some_and(|after| after.contains("\\frac{2}{4}") || after.contains("2 / 4"))
-        }),
-        "expected the direct substep to end in the remaining fraction, got: {:?}",
+        step.substeps.is_empty(),
+        "single substep identical to the log-cancellation parent step should be pruned, got: {:?}",
         step.substeps
             .iter()
             .map(|substep| &substep.title)

@@ -277,12 +277,8 @@ fn didactic_step_quality_priority_cases_emit_wire_substeps() {
     let cases = load_audit_cases();
     let priority_ids = [
         "combine_like_terms_basic",
-        "same_denominator_fraction_focus",
-        "cancel_factors_fraction",
         "difference_of_squares_quotient",
-        "pythagorean_identity",
         "inverse_trig_identity",
-        "polynomial_expansion_cancel",
         "perfect_square_root",
     ];
 
@@ -314,7 +310,6 @@ fn didactic_step_quality_priority_cases_use_multiphase_human_narratives() {
                 "En el denominador aparece una diferencia de cuadrados",
             ],
         ),
-        ("cancel_factors_fraction", &["se cancela"]),
         (
             "difference_of_squares_quotient",
             &["diferencia de cuadrados", "Ahora se cancela el factor"],
@@ -471,11 +466,6 @@ fn didactic_step_quality_priority_cases_make_cli_narrative_less_magic() {
         cube_cli
     );
     assert!(
-        cube_cli.contains("Pasar la potencia al interior de la raíz"),
-        "cube_quotient_radical CLI narrative should explain the first rewrite in human terms, got:\n{}",
-        cube_cli
-    );
-    assert!(
         !cube_cli.contains("\n   Rule: "),
         "cube_quotient_radical CLI narrative should avoid raw Rule lines when human substeps already explain the move, got:\n{}",
         cube_cli
@@ -496,7 +486,7 @@ fn didactic_step_quality_priority_cases_make_cli_narrative_less_magic() {
     assert!(
         !cube_cli.contains("Cambio local: sqrt(x)^(3) ->")
             && !cube_cli.contains("Cambio local: sqrt(x)^(2) -> x"),
-        "cube_quotient_radical CLI narrative should avoid technical local-change lines when the human substeps already explain both rewrites, got:\n{}",
+        "cube_quotient_radical CLI narrative should avoid technical local-change lines even when the first rewrite stays as a direct human step, got:\n{}",
         cube_cli
     );
     assert!(
@@ -672,6 +662,32 @@ fn didactic_step_quality_priority_cases_make_cli_narrative_less_magic() {
         combine_cli
     );
 
+    let log_cancel_case = cases
+        .iter()
+        .find(|case| case.id == "log_product_cancellation")
+        .expect("missing log_product_cancellation audit case");
+    let log_cancel_artifact = simplify_case(log_cancel_case);
+    let log_cancel_cli = log_cancel_artifact.cli_lines.join("\n");
+    assert!(
+        !log_cancel_cli.contains("Estos dos términos se anulan entre sí"),
+        "log_product_cancellation CLI narrative should avoid a single micro-substep that duplicates the parent cancellation step, got:\n{}",
+        log_cancel_cli
+    );
+    let final_log_cancel_step = log_cancel_artifact
+        .wire_steps
+        .iter()
+        .find(|step| step.rule == "Agrupar términos semejantes" && step.after == "0")
+        .expect("missing final log cancellation step");
+    assert!(
+        final_log_cancel_step.substeps.is_empty(),
+        "log_product_cancellation wire narrative should prune a single substep when it matches the parent step exactly, got {:?}",
+        final_log_cancel_step
+            .substeps
+            .iter()
+            .map(|substep| &substep.title)
+            .collect::<Vec<_>>()
+    );
+
     let inverse_trig_case = cases
         .iter()
         .find(|case| case.id == "inverse_trig_identity")
@@ -698,11 +714,6 @@ fn didactic_step_quality_priority_cases_make_cli_narrative_less_magic() {
         inverse_trig_cli
     );
     assert!(
-        inverse_trig_cli.contains("Las dos partes se compensan exactamente"),
-        "inverse_trig_identity CLI narrative should explain why the final opaque-substitution identity cancels to zero, got:\n{}",
-        inverse_trig_cli
-    );
-    assert!(
         !inverse_trig_cli.contains("Cambio local: pi / 2 - 1/2 * pi -> 0"),
         "inverse_trig_identity CLI narrative should avoid a dry local-change line once the exact-cancellation substep explains it, got:\n{}",
         inverse_trig_cli
@@ -710,6 +721,11 @@ fn didactic_step_quality_priority_cases_make_cli_narrative_less_magic() {
     assert!(
         !inverse_trig_cli.contains("Cambio local: arctan(1/3) + arctan(3) ->"),
         "inverse_trig_identity CLI narrative should avoid a dry local-change line when the identity substeps already explain the move, got:\n{}",
+        inverse_trig_cli
+    );
+    assert!(
+        !inverse_trig_cli.contains("Las dos partes se compensan exactamente"),
+        "inverse_trig_identity final exact-cancellation step should stay direct once a single redundant substep is pruned, got:\n{}",
         inverse_trig_cli
     );
 

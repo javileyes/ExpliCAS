@@ -3,6 +3,7 @@ rationalize_linear_root,rationalization,1 / (sqrt(x) - 1) - (sqrt(x) + 1) / (x -
 nested_fraction_one_over_sum,nested_fraction,1/(1/x + 1/y),narrate_common_denominator_without_magic
 nested_fraction_fraction_over_sum,nested_fraction,(1/x)/(1/y + 1/z),explain_inner_fraction_then_outer_division
 combine_like_terms_basic,combine,2*x + 3*x + 0,avoid_noop_and_show_collection
+log_product_cancellation,logs,ln(x^3) + ln(y^2) - ln(x^3 * y^2),avoid_single_redundant_cancellation_substep
 same_denominator_fraction_focus,fractions,1 + a/d + b/d,focus_only_on_fraction_part
 cancel_factors_fraction,cancellation,(2*x)/(4*x),show_factorization_and_cancellation
 difference_of_squares_quotient,quotient,(x^2 - 1)/(x - 1),factor_then_cancel_exactly
