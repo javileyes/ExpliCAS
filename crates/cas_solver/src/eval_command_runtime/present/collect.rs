@@ -22,6 +22,7 @@ pub(super) struct CollectedEvalArtifacts {
 
 pub(super) fn collect_eval_artifacts<F>(
     ctx: &mut cas_ast::Context,
+    raw_input: &str,
     steps_mode: &str,
     prepared: &PreparedEvalRun,
     total_us: u64,
@@ -30,7 +31,11 @@ pub(super) fn collect_eval_artifacts<F>(
 where
     F: Fn(&[crate::Step], &[EngineEvent], &cas_ast::Context, &str) -> Vec<StepWire>,
 {
-    let input_latex = Some(format_output_input_latex(ctx, prepared.parsed_input));
+    let input_latex = Some(format_output_input_latex(
+        ctx,
+        raw_input,
+        prepared.parsed_input,
+    ));
     let steps_raw = prepared.output_view.steps.as_slice();
     let solve_steps_raw = prepared.output_view.solve_steps.as_slice();
     let steps = collect_steps(steps_raw, prepared.events.as_slice(), ctx, steps_mode);

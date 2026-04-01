@@ -18,6 +18,7 @@ where
 {
     let collected = collect::collect_eval_artifacts(
         &mut engine.simplifier.context,
+        config.expr,
         config.steps_mode.as_str(),
         &prepared,
         total_us,

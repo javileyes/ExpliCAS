@@ -15,6 +15,16 @@ pub fn preprocess_repl_function_syntax(line: &str) -> String {
         return format!("solve {}", content);
     }
 
+    if line.starts_with("limit(") && line.ends_with(')') {
+        let content = &line["limit(".len()..line.len() - 1];
+        return format!("limit {}", content);
+    }
+
+    if line.starts_with("lim(") && line.ends_with(')') {
+        let content = &line["lim(".len()..line.len() - 1];
+        return format!("limit {}", content);
+    }
+
     line.to_string()
 }
 

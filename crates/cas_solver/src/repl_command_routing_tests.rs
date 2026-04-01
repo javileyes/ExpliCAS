@@ -20,6 +20,18 @@ mod tests {
     }
 
     #[test]
+    fn preprocess_repl_function_syntax_maps_limit_form() {
+        assert_eq!(
+            preprocess_repl_function_syntax("limit((x^2+1)/x, x, inf)"),
+            "limit (x^2+1)/x, x, inf"
+        );
+        assert_eq!(
+            preprocess_repl_function_syntax("lim((x^2+1)/x, x, -inf)"),
+            "limit (x^2+1)/x, x, -inf"
+        );
+    }
+
+    #[test]
     fn preprocess_repl_function_syntax_trims_and_preserves_other_inputs() {
         assert_eq!(
             preprocess_repl_function_syntax("  x + x  "),
@@ -116,6 +128,10 @@ mod tests {
         assert_eq!(
             parse_repl_command_input("limit"),
             ReplCommandInput::Limit("limit")
+        );
+        assert_eq!(
+            parse_repl_command_input("limit((x^2+1)/x, x, inf)"),
+            ReplCommandInput::Limit("limit((x^2+1)/x, x, inf)")
         );
     }
 

@@ -37,7 +37,7 @@ pub(crate) fn try_parse_algebra_command(line: &str) -> Option<ReplCommandInput<'
         return Some(ReplCommandInput::Rationalize(line));
     }
 
-    if line == "limit" || line.starts_with("limit ") {
+    if line == "limit" || line.starts_with("limit ") || line.starts_with("limit(") {
         return Some(ReplCommandInput::Limit(line));
     }
 
