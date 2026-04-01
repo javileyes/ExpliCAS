@@ -242,3 +242,23 @@ fn test_polynomial_identity_zero_rule_non_identity() {
     // Should NOT return a rewrite (not an identity to 0)
     assert!(rewrite.is_none(), "Non-identity should not trigger rule");
 }
+
+#[test]
+fn test_polynomial_product_normalize_rule_geometric_difference() {
+    let mut ctx = Context::new();
+    let rule = PolynomialProductNormalizeRule;
+    let expr = cas_parser::parse("(x - 1)*(x^5 + x^4 + x^3 + x^2 + x + 1)", &mut ctx).unwrap();
+    let rewrite = rule
+        .apply(
+            &mut ctx,
+            expr,
+            &crate::parent_context::ParentContext::root(),
+        )
+        .expect("rewrite");
+    let expected = cas_parser::parse("x^6 - 1", &mut ctx).unwrap();
+    assert!(cas_math::poly_compare::poly_eq(
+        &ctx,
+        rewrite.new_expr,
+        expected
+    ));
+}

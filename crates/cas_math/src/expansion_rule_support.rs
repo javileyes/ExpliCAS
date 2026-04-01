@@ -6,6 +6,7 @@ use crate::multinomial_expand::{
 };
 use crate::multipoly::PolyBudget;
 use crate::poly_convert::try_multipoly_from_expr_with_var_limit;
+use crate::polynomial::Polynomial;
 use crate::{
     auto_expand_budget_support::{
         count_add_terms_for_pow_base, count_distinct_variables_in_expr,
@@ -16,7 +17,7 @@ use crate::{
     expr_destructure::{as_add, as_pow},
 };
 use cas_ast::{Context, Expr, ExprId};
-use num_traits::{Signed, ToPrimitive};
+use num_traits::{Signed, ToPrimitive, Zero};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SmallMultinomialPolicy {
@@ -401,6 +402,126 @@ impl Default for HeuristicPolyNormalizePolicy {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PolynomialProductNormalizePolicy {
+    pub max_nodes: usize,
+    pub max_factors: usize,
+    pub max_degree: usize,
+    pub max_output_terms: usize,
+    pub min_estimated_product_terms: usize,
+    pub min_nontrivial_factors: usize,
+    pub min_cancelled_terms: usize,
+    pub min_node_reduction: usize,
+}
+
+impl Default for PolynomialProductNormalizePolicy {
+    fn default() -> Self {
+        Self {
+            max_nodes: 100,
+            max_factors: 4,
+            max_degree: 12,
+            max_output_terms: 12,
+            min_estimated_product_terms: 6,
+            min_nontrivial_factors: 2,
+            min_cancelled_terms: 2,
+            min_node_reduction: 1,
+        }
+    }
+}
+
+fn estimate_mul_factor_terms(ctx: &Context, expr: ExprId) -> Option<usize> {
+    match ctx.get(expr) {
+        Expr::Add(_, _) | Expr::Sub(_, _) => Some(count_additive_terms(ctx, expr)),
+        Expr::Pow(base, exp) => {
+            let base_terms = count_additive_terms(ctx, *base);
+            if base_terms < 2 {
+                return Some(1);
+            }
+            let Expr::Number(n) = ctx.get(*exp) else {
+                return Some(1);
+            };
+            if !n.is_integer() || n.is_negative() {
+                return Some(1);
+            }
+            let exp_u32 = n.to_integer().to_u32()?;
+            if exp_u32 < 2 {
+                return Some(1);
+            }
+            multinomial_term_count(exp_u32, base_terms, usize::MAX)
+        }
+        _ => Some(1),
+    }
+}
+
+/// Normalize small univariate polynomial products by multiplying coefficients
+/// directly instead of materializing a large distributive expansion tree.
+pub fn try_normalize_small_polynomial_product_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+    policy: PolynomialProductNormalizePolicy,
+) -> Option<ExprId> {
+    if !matches!(ctx.get(expr), Expr::Mul(_, _)) {
+        return None;
+    }
+
+    if cas_ast::count_nodes(ctx, expr) > policy.max_nodes {
+        return None;
+    }
+
+    let factors = crate::expr_nary::mul_leaves(ctx, expr);
+    if factors.len() < 2 || factors.len() > policy.max_factors {
+        return None;
+    }
+
+    let mut nontrivial_factors = 0usize;
+    let mut estimated_product_terms = 1usize;
+    for factor in &factors {
+        let estimate = estimate_mul_factor_terms(ctx, *factor)?;
+        if estimate > 1 {
+            nontrivial_factors += 1;
+        }
+        estimated_product_terms = estimated_product_terms.saturating_mul(estimate.max(1));
+    }
+
+    if nontrivial_factors < policy.min_nontrivial_factors
+        || estimated_product_terms < policy.min_estimated_product_terms
+    {
+        return None;
+    }
+
+    let vars = cas_ast::collect_variables(ctx, expr);
+    if vars.len() != 1 {
+        return None;
+    }
+    let var = vars.iter().next()?;
+
+    let poly = Polynomial::from_expr(ctx, expr, var).ok()?;
+    if poly.is_zero() || poly.degree() > policy.max_degree {
+        return None;
+    }
+
+    let output_terms = poly.coeffs.iter().filter(|c| !c.is_zero()).count();
+    if output_terms == 0 || output_terms > policy.max_output_terms {
+        return None;
+    }
+    if estimated_product_terms < output_terms + policy.min_cancelled_terms {
+        return None;
+    }
+
+    let rewritten = poly.to_expr(ctx);
+    if rewritten == expr {
+        return None;
+    }
+
+    let old_nodes = cas_ast::count_nodes(ctx, expr);
+    let new_nodes = cas_ast::count_nodes(ctx, rewritten);
+    if new_nodes + policy.min_node_reduction > old_nodes {
+        return None;
+    }
+
+    Some(rewritten)
+}
+
 /// Normalize Add/Sub polynomial expressions heuristically by converting to
 /// bounded MultiPoly and rebuilding a flattened expression.
 pub fn try_heuristic_poly_normalize_add_expr(
@@ -450,9 +571,10 @@ mod tests {
         contains_small_polynomial_pow_sum_candidate, is_auto_sub_cancel_zero,
         try_auto_expand_pow_sum_expr, try_expand_binomial_pow_expr,
         try_expand_small_multinomial_expr, try_expand_small_pow_sum_expr,
-        try_heuristic_poly_normalize_add_expr, AutoExpandPowSumPlan, AutoExpandPowSumPolicy,
-        AutoSubCancelPolicy, BinomialExpansionPlan, HeuristicPolyNormalizePolicy,
-        SmallMultinomialPolicy, SmallPowExpandPolicy,
+        try_heuristic_poly_normalize_add_expr, try_normalize_small_polynomial_product_expr,
+        AutoExpandPowSumPlan, AutoExpandPowSumPolicy, AutoSubCancelPolicy, BinomialExpansionPlan,
+        HeuristicPolyNormalizePolicy, PolynomialProductNormalizePolicy, SmallMultinomialPolicy,
+        SmallPowExpandPolicy,
     };
     use cas_ast::Context;
     use cas_parser::parse;
@@ -580,5 +702,31 @@ mod tests {
         );
         assert!(rewritten.is_some());
         assert_ne!(rewritten.expect("rewritten"), expr);
+    }
+
+    #[test]
+    fn polynomial_product_normalize_rewrites_geometric_difference() {
+        let mut ctx = Context::new();
+        let expr = parse("(x - 1)*(x^5 + x^4 + x^3 + x^2 + x + 1)", &mut ctx).expect("parse");
+        let rewritten = try_normalize_small_polynomial_product_expr(
+            &mut ctx,
+            expr,
+            PolynomialProductNormalizePolicy::default(),
+        )
+        .expect("rewrite");
+        let expected = parse("x^6 - 1", &mut ctx).expect("expected");
+        assert!(crate::poly_compare::poly_eq(&ctx, rewritten, expected));
+    }
+
+    #[test]
+    fn polynomial_product_normalize_rejects_small_binomial_product() {
+        let mut ctx = Context::new();
+        let expr = parse("(x - 1)*(x + 1)", &mut ctx).expect("parse");
+        let rewritten = try_normalize_small_polynomial_product_expr(
+            &mut ctx,
+            expr,
+            PolynomialProductNormalizePolicy::default(),
+        );
+        assert!(rewritten.is_none());
     }
 }

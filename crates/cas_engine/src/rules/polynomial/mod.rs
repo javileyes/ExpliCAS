@@ -15,6 +15,7 @@ pub use expansion::{
 };
 pub use expansion_normalize::{
     ExpandSmallBinomialPowRule, HeuristicPolyNormalizeAddRule, PolynomialIdentityZeroRule,
+    PolynomialProductNormalizeRule,
 };
 pub use factoring::{ExtractCommonMulFactorRule, HeuristicExtractCommonFactorAddRule};
 
@@ -214,6 +215,7 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(DistributeRule));
     simplifier.add_rule(Box::new(AnnihilationRule));
     simplifier.add_rule(Box::new(CombineLikeTermsRule));
+    simplifier.add_rule(Box::new(PolynomialProductNormalizeRule));
     simplifier.add_rule(Box::new(BinomialExpansionRule));
     simplifier.add_rule(Box::new(SmallMultinomialExpansionRule));
     // V2.15.8: ExpandSmallBinomialPowRule - controlled by autoexpand_binomials flag

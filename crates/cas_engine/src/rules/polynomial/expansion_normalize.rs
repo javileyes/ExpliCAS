@@ -11,7 +11,8 @@ use crate::rule::Rewrite;
 use cas_ast::{Context, Expr, ExprId};
 use cas_math::expansion_rule_support::{
     try_expand_small_pow_sum_expr, try_heuristic_poly_normalize_add_expr,
-    HeuristicPolyNormalizePolicy, SmallPowExpandPolicy,
+    try_normalize_small_polynomial_product_expr, HeuristicPolyNormalizePolicy,
+    PolynomialProductNormalizePolicy, SmallPowExpandPolicy,
 };
 
 // =============================================================================
@@ -123,6 +124,51 @@ impl crate::rule::Rule for HeuristicPolyNormalizeAddRule {
             Rewrite::new(new_expr)
                 .desc("Expand and combine polynomial terms (heuristic)")
                 .local(expr, new_expr),
+        )
+    }
+}
+
+/// Normalize small univariate polynomial products through coefficient
+/// multiplication, avoiding explicit distributive blow-ups.
+pub struct PolynomialProductNormalizeRule;
+
+impl crate::rule::Rule for PolynomialProductNormalizeRule {
+    fn name(&self) -> &str {
+        "Polynomial Product Normalize"
+    }
+
+    fn priority(&self) -> i32 {
+        92
+    }
+
+    fn allowed_phases(&self) -> PhaseMask {
+        PhaseMask::TRANSFORM
+    }
+
+    fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
+        Some(crate::target_kind::TargetKindSet::MUL)
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut Context,
+        expr: ExprId,
+        parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<Rewrite> {
+        if parent_ctx.is_solve_context() {
+            return None;
+        }
+
+        let rewritten = try_normalize_small_polynomial_product_expr(
+            ctx,
+            expr,
+            PolynomialProductNormalizePolicy::default(),
+        )?;
+
+        Some(
+            Rewrite::new(rewritten)
+                .desc("Expand and combine polynomial product")
+                .local(expr, rewritten),
         )
     }
 }

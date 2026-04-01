@@ -3398,6 +3398,14 @@ fn engine_proves_cos_diff_over_sin_diff_tan_identity() {
 }
 
 #[test]
+fn engine_proves_small_geometric_product_difference_identity() {
+    let lhs = "(x - 1)*(x^5 + x^4 + x^3 + x^2 + x + 1)";
+    let rhs = "x^6 - 1";
+    assert!(prove_zero_from_engine_texts(lhs, rhs));
+    assert!(prove_zero_from_engine_texts(rhs, lhs));
+}
+
+#[test]
 fn curated_pair_corpus_proves_contextual_pair_both_directions() {
     let lhs = "(1/(x - 1) + 1/(x + 1)) + ((u+1)^2)";
     let rhs = "(2*x/(x^2 - 1)) + (u^2 + 2*u + 1)";
