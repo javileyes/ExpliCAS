@@ -1,6 +1,7 @@
 use std::time::Instant;
 
 use cas_api_models::EvalStepsMode;
+use cas_formatter::ParseStyleSignals;
 use cas_solver_core::engine_event_collector::EngineEventCollector;
 
 use super::{EvalCommandRunConfig, PreparedEvalRun};
@@ -108,6 +109,7 @@ where
     );
 
     let parse_start = Instant::now();
+    let style_signals = ParseStyleSignals::from_input_string(config.expr);
     let req = crate::eval_input::build_prepared_eval_request_for_input(
         config.expr,
         &mut engine.simplifier.context,
@@ -126,6 +128,7 @@ where
         return Ok(PreparedEvalRun {
             parsed_input,
             derive_target,
+            style_signals,
             parse_us,
             simplify_us: simplify_start.elapsed().as_micros() as u64,
             output_view,
@@ -154,6 +157,7 @@ where
     Ok(PreparedEvalRun {
         parsed_input,
         derive_target,
+        style_signals,
         parse_us,
         simplify_us,
         output_view,

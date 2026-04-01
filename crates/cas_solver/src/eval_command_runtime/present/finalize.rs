@@ -16,6 +16,7 @@ pub(super) fn finalize_eval_collected(
         max_chars: config.max_chars,
         input: config.expr,
         input_latex: collected.input_latex,
+        style_signals: prepared.style_signals,
         stored_id: prepared.output_view.stored_id,
         steps_mode: config.steps_mode.as_str(),
         steps: collected.steps,

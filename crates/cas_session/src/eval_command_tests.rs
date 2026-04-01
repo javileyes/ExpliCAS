@@ -336,6 +336,76 @@ mod tests {
     }
 
     #[test]
+    fn evaluate_eval_command_pretty_preserves_fractional_power_input_style_in_latex() {
+        let json = crate::eval::evaluate_eval_command_pretty_with_session(
+            None,
+            standard_eval_config("x^(1/2)*x^(2/3)"),
+            |_steps, _events, _context, _steps_mode| Vec::new(),
+        );
+
+        let payload: serde_json::Value = serde_json::from_str(&json).expect("json");
+        assert_eq!(payload["ok"], true);
+        let input_latex = payload["input_latex"].as_str().expect("input_latex string");
+        assert!(
+            input_latex.contains("{x}^{\\frac{1}{2}}"),
+            "expected input_latex to preserve x^(1/2), got: {input_latex}"
+        );
+        assert!(
+            input_latex.contains("{x}^{\\frac{2}{3}}"),
+            "expected input_latex to preserve x^(2/3), got: {input_latex}"
+        );
+        assert!(
+            !input_latex.contains("\\sqrt"),
+            "expected input_latex to avoid radical notation for exponential-style input, got: {input_latex}"
+        );
+
+        let result_latex = payload["result_latex"]
+            .as_str()
+            .expect("result_latex string");
+        assert!(
+            result_latex.contains("{x}^{\\frac{7}{6}}"),
+            "expected result_latex to preserve exponential-style result, got: {result_latex}"
+        );
+        assert!(
+            !result_latex.contains("\\sqrt"),
+            "expected result_latex to avoid radical notation for exponential-style input, got: {result_latex}"
+        );
+    }
+
+    #[test]
+    fn evaluate_eval_command_pretty_prefers_radical_result_style_for_mixed_root_input() {
+        let json = crate::eval::evaluate_eval_command_pretty_with_session(
+            None,
+            standard_eval_config("sqrt(x)*x^(2/3)"),
+            |_steps, _events, _context, _steps_mode| Vec::new(),
+        );
+
+        let payload: serde_json::Value = serde_json::from_str(&json).expect("json");
+        assert_eq!(payload["ok"], true);
+        let input_latex = payload["input_latex"].as_str().expect("input_latex string");
+        assert!(
+            input_latex.contains("\\sqrt{x}"),
+            "expected input_latex to preserve sqrt notation, got: {input_latex}"
+        );
+        assert!(
+            input_latex.contains("{x}^{\\frac{2}{3}}"),
+            "expected input_latex to preserve fractional-power notation, got: {input_latex}"
+        );
+
+        let result_latex = payload["result_latex"]
+            .as_str()
+            .expect("result_latex string");
+        assert!(
+            result_latex.contains("\\sqrt"),
+            "expected mixed root input to prefer radical result style, got: {result_latex}"
+        );
+        assert!(
+            !result_latex.contains("{x}^{\\frac{7}{6}}"),
+            "expected mixed root input not to preserve exponential result style, got: {result_latex}"
+        );
+    }
+
+    #[test]
     fn evaluate_eval_command_pretty_with_session_accepts_solve_system_special_command() {
         let mut config = standard_eval_config("solve_system(x+y=3; x-y=1; x; y)");
         config.auto_store = true;

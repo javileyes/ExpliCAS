@@ -1,6 +1,15 @@
 use cas_api_models::{parse_eval_special_command, EvalLimitApproach, EvalSpecialCommand};
 use cas_ast::{Context, ExprId};
-use cas_formatter::{latex_escape, LaTeXExpr};
+use cas_formatter::{latex_escape, ParseStyleSignals};
+
+fn style_latex_for_input(ctx: &Context, id: ExprId, signals: &ParseStyleSignals) -> String {
+    crate::eval_output_latex_style::render_expr_latex_for_eval(
+        ctx,
+        id,
+        signals,
+        crate::eval_output_latex_style::EvalLatexRenderIntent::Input,
+    )
+}
 
 fn split_solve_system_parts(input: &str) -> Vec<&str> {
     let mut parts = Vec::new();
@@ -49,16 +58,9 @@ fn format_solve_system_input_latex(input: &str) -> String {
         let cas_parser::Statement::Equation(eq) = statement else {
             return fallback_solve_system_input_latex(input);
         };
-        let lhs = LaTeXExpr {
-            context: &temp_ctx,
-            id: eq.lhs,
-        }
-        .to_latex();
-        let rhs = LaTeXExpr {
-            context: &temp_ctx,
-            id: eq.rhs,
-        }
-        .to_latex();
+        let eq_signals = ParseStyleSignals::from_input_string(eq_str);
+        let lhs = style_latex_for_input(&temp_ctx, eq.lhs, &eq_signals);
+        let rhs = style_latex_for_input(&temp_ctx, eq.rhs, &eq_signals);
         rendered_parts.push(format!("{lhs} = {rhs}"));
     }
 
@@ -74,15 +76,12 @@ pub(crate) fn format_output_input_latex(
     raw_input: &str,
     parsed: ExprId,
     derive_target: Option<ExprId>,
+    signals: &ParseStyleSignals,
 ) -> String {
     if let Some(command) = parse_eval_special_command(raw_input) {
         match command {
             EvalSpecialCommand::Limit { var, approach, .. } => {
-                let expr_latex = LaTeXExpr {
-                    context: ctx,
-                    id: parsed,
-                }
-                .to_latex();
+                let expr_latex = style_latex_for_input(ctx, parsed, signals);
                 let approach_latex = match approach {
                     EvalLimitApproach::PosInfinity => "\\infty",
                     EvalLimitApproach::NegInfinity => "-\\infty",
@@ -91,16 +90,8 @@ pub(crate) fn format_output_input_latex(
             }
             EvalSpecialCommand::Derive { .. } => {
                 if let Some(target) = derive_target {
-                    let parsed_latex = LaTeXExpr {
-                        context: ctx,
-                        id: parsed,
-                    }
-                    .to_latex();
-                    let target_latex = LaTeXExpr {
-                        context: ctx,
-                        id: target,
-                    }
-                    .to_latex();
+                    let parsed_latex = style_latex_for_input(ctx, parsed, signals);
+                    let target_latex = style_latex_for_input(ctx, target, signals);
                     return format!(
                         "\\operatorname{{derive}}\\left({parsed_latex}, {target_latex}\\right)"
                     );
@@ -114,22 +105,10 @@ pub(crate) fn format_output_input_latex(
     }
 
     if let Some((lhs, rhs)) = cas_ast::eq::unwrap_eq(ctx, parsed) {
-        let lhs_latex = LaTeXExpr {
-            context: ctx,
-            id: lhs,
-        }
-        .to_latex();
-        let rhs_latex = LaTeXExpr {
-            context: ctx,
-            id: rhs,
-        }
-        .to_latex();
+        let lhs_latex = style_latex_for_input(ctx, lhs, signals);
+        let rhs_latex = style_latex_for_input(ctx, rhs, signals);
         format!("{lhs_latex} = {rhs_latex}")
     } else {
-        LaTeXExpr {
-            context: ctx,
-            id: parsed,
-        }
-        .to_latex()
+        style_latex_for_input(ctx, parsed, signals)
     }
 }

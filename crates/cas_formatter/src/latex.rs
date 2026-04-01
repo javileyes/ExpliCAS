@@ -39,6 +39,41 @@ impl<'a> LaTeXExpr<'a> {
 }
 
 // ============================================================================
+// LaTeXExprStyled - LaTeX rendering with global style preferences
+// ============================================================================
+
+/// LaTeX expression renderer that respects global style preferences.
+///
+/// This is the LaTeX sibling of `DisplayExprStyled`: it lets callers preserve
+/// user notation such as `x^(1/2)` instead of forcing `\sqrt{x}`.
+pub struct LaTeXExprStyled<'a> {
+    pub context: &'a Context,
+    pub id: ExprId,
+    pub style_prefs: &'a crate::root_style::StylePreferences,
+}
+
+impl<'a> LaTeXRenderer for LaTeXExprStyled<'a> {
+    fn context(&self) -> &Context {
+        self.context
+    }
+
+    fn root_id(&self) -> ExprId {
+        self.id
+    }
+
+    fn get_style_prefs(&self) -> Option<&crate::root_style::StylePreferences> {
+        Some(self.style_prefs)
+    }
+}
+
+impl<'a> LaTeXExprStyled<'a> {
+    /// Generate LaTeX string with style preferences applied.
+    pub fn to_latex(&self) -> String {
+        LaTeXRenderer::to_latex(self)
+    }
+}
+
+// ============================================================================
 // LaTeXExprWithHints - LaTeX rendering with display hints
 // ============================================================================
 
@@ -162,6 +197,24 @@ mod tests {
             hints: &hints,
         };
         assert_eq!(latex_with_hints.to_latex(), "\\sqrt{x}");
+    }
+
+    #[test]
+    fn test_latex_styled_preserves_fractional_power_style() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let half = ctx.rational(1, 2);
+        let sqrt_expr = ctx.add(Expr::Pow(x, half));
+
+        let style = crate::root_style::StylePreferences::with_root_style(
+            crate::root_style::RootStyle::Exponential,
+        );
+        let latex = LaTeXExprStyled {
+            context: &ctx,
+            id: sqrt_expr,
+            style_prefs: &style,
+        };
+        assert_eq!(latex.to_latex(), "{x}^{\\frac{1}{2}}");
     }
 
     #[test]

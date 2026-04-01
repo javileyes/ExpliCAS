@@ -14,6 +14,7 @@ pub(super) type EvalCommandOutput = EvalOutputWire;
 struct PreparedEvalRun {
     parsed_input: cas_ast::ExprId,
     derive_target: Option<cas_ast::ExprId>,
+    style_signals: cas_formatter::ParseStyleSignals,
     parse_us: u64,
     simplify_us: u64,
     output_view: crate::EvalOutputView,

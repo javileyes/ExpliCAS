@@ -236,6 +236,15 @@ fn evaluate_eval_command_render_plan_on_repl_core_returns_plan() {
 }
 
 #[test]
+fn evaluate_eval_command_render_plan_on_repl_core_accepts_mixed_root_and_fractional_power() {
+    let mut core = crate::repl_core::ReplCore::new();
+    let plan = evaluate_eval_command_render_plan_on_repl_core(&mut core, "sqrt(x)*x^(2/3)", false)
+        .expect("mixed root/fractional-power input should parse in repl");
+    let result = plan.result_message.expect("result");
+    assert!(result.text.contains("x"));
+}
+
+#[test]
 fn evaluate_expand_command_render_plan_on_repl_core_returns_plan() {
     let mut core = crate::repl_core::ReplCore::new();
     let plan = evaluate_expand_command_render_plan_on_repl_core(&mut core, "expand (x+1)^2", false)

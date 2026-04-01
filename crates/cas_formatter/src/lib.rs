@@ -37,7 +37,7 @@ pub use display_transforms::{
     DisplayTransform, DisplayTransformRegistry, ScopeTag, ScopedRenderer,
 };
 pub use escape::{html_escape, latex_escape};
-pub use latex::{LaTeXExpr, LaTeXExprWithHints};
+pub use latex::{LaTeXExpr, LaTeXExprStyled, LaTeXExprWithHints};
 pub use latex_clean::clean_latex_identities;
 pub use latex_core::PathHighlightedLatexRenderer;
 pub use latex_highlight::{

@@ -1,8 +1,10 @@
 use cas_api_models::{RequiredConditionWire, SolveStepWire, StepWire, TimingsWire, WarningWire};
+use cas_formatter::ParseStyleSignals;
 
 pub(crate) struct EvalOutputFinalizeShared<'a> {
     pub(crate) input: &'a str,
     pub(crate) input_latex: Option<String>,
+    pub(crate) style_signals: ParseStyleSignals,
     pub(crate) stored_id: Option<u64>,
     pub(crate) steps_mode: &'a str,
     pub(crate) steps: Vec<StepWire>,

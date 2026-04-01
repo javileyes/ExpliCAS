@@ -45,16 +45,13 @@ where
         &cache_hits.into_iter().collect::<Vec<_>>(),
     );
 
-    let result = crate::solve_nxn_linear_system(
-        &engine.simplifier.context,
-        &resolved_exprs,
-        &vars.iter().map(String::as_str).collect::<Vec<_>>(),
-    )
-    .map_err(|error| {
-        crate::linear_system_command_format::format_linear_system_command_error_message(
-            &crate::linear_system_command_eval::LinearSystemCommandEvalError::Solve(error),
-        )
-    })?;
+    let result =
+        super::solve::solve_linear_system_parts(&engine.simplifier.context, &resolved_exprs, &vars)
+            .map_err(|error| {
+                crate::linear_system_command_format::format_linear_system_command_error_message(
+                    &crate::linear_system_command_eval::LinearSystemCommandEvalError::Solve(error),
+                )
+            })?;
 
     let command_output =
         crate::linear_system_command_eval::LinearSystemCommandEvalOutput { vars, result };

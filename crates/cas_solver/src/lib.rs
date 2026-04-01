@@ -86,6 +86,7 @@ mod eval_output_finalize_expr;
 mod eval_output_finalize_input;
 mod eval_output_finalize_nonexpr;
 mod eval_output_finalize_wire;
+mod eval_output_latex_style;
 mod eval_output_presentation;
 mod eval_output_presentation_conditions;
 mod eval_output_presentation_input;
