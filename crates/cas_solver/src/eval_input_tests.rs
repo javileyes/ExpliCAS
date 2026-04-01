@@ -86,3 +86,27 @@ fn build_prepared_eval_request_parses_limit_as_non_solve_action() {
         _ => panic!("expected eval variant"),
     }
 }
+
+#[test]
+fn build_prepared_eval_request_parses_derive_as_special_command() {
+    let mut ctx = cas_ast::Context::new();
+    let prepared = crate::eval_input::build_prepared_eval_request_for_input(
+        "derive x + x, 2*x",
+        &mut ctx,
+        true,
+    )
+    .expect("request");
+
+    match prepared {
+        crate::eval_input::PreparedEvalRequest::Derive {
+            parsed,
+            target,
+            auto_store,
+            ..
+        } => {
+            assert!(auto_store);
+            assert_ne!(parsed, target);
+        }
+        _ => panic!("expected derive variant"),
+    }
+}

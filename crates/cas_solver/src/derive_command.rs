@@ -100,6 +100,162 @@ where
     ))
 }
 
+fn build_cache_hit_step(
+    ctx: &cas_ast::Context,
+    description: String,
+    before: ExprId,
+    after: ExprId,
+) -> crate::Step {
+    let mut step = crate::Step::new(
+        &description,
+        "Use cached result",
+        before,
+        after,
+        Vec::new(),
+        Some(ctx),
+    );
+    step.importance = crate::ImportanceLevel::Medium;
+    step.category = crate::StepCategory::Substitute;
+    step
+}
+
+pub(crate) fn evaluate_derive_request_with_session<S>(
+    engine: &mut crate::Engine,
+    session: &mut S,
+    raw_input: String,
+    parsed_expr: ExprId,
+    parsed_target: ExprId,
+    auto_store: bool,
+) -> Result<crate::EvalOutputView, String>
+where
+    S: crate::SolverEvalSession,
+{
+    let prepared = cas_session_core::eval::resolve_and_prepare_dispatch(
+        session,
+        &mut engine.simplifier.context,
+        cas_session_core::eval::ResolvePrepareConfig {
+            parsed: parsed_expr,
+            raw_input,
+            auto_store,
+            equiv_other: Some(parsed_target),
+            cache_step_max_shown: 6,
+        },
+        build_cache_hit_step,
+    )
+    .map_err(|e| e.to_string())?;
+
+    let cas_session_core::eval::PreparedEvalDispatch {
+        stored_id,
+        resolved,
+        inherited_diagnostics,
+        resolved_equiv_other,
+        cache_hit_step,
+    } = prepared;
+
+    let target_expr =
+        resolved_equiv_other.ok_or_else(|| "Internal error: missing derive target".to_string())?;
+
+    if let Some(name) = cas_session_core::eval::first_unknown_function_name(
+        session,
+        &engine.simplifier.context,
+        resolved,
+    ) {
+        return Err(format!("Error: {}", crate::CasError::UnknownFunction(name)));
+    }
+    if let Some(name) = cas_session_core::eval::first_unknown_function_name(
+        session,
+        &engine.simplifier.context,
+        target_expr,
+    ) {
+        return Err(format!("Error: {}", crate::CasError::UnknownFunction(name)));
+    }
+
+    let simplify_options = session.options().to_simplify_options();
+    let derive = evaluate_derive_resolved_input(
+        &mut engine.simplifier,
+        resolved,
+        target_expr,
+        !matches!(session.options().steps_mode, crate::StepsMode::Off),
+        simplify_options,
+    );
+
+    let derived_expr = match &derive.status {
+        DeriveStatus::Derived { .. } | DeriveStatus::AlreadyAtTarget => derive.derived_expr,
+        DeriveStatus::EquivalentButUnsupported { .. } => {
+            return Err(
+                "Equivalent, but the second expression is not a supported simplification target yet."
+                    .to_string(),
+            );
+        }
+        DeriveStatus::NotEquivalent { equivalence } => {
+            let detail = match equivalence {
+                crate::EquivalenceResult::False => {
+                    "Derive unavailable: the two expressions are not equivalent."
+                }
+                crate::EquivalenceResult::Unknown => {
+                    "Derive unavailable: cannot prove the two expressions are equivalent."
+                }
+                crate::EquivalenceResult::True
+                | crate::EquivalenceResult::ConditionalTrue { .. } => "Derive unavailable.",
+            };
+            return Err(detail.to_string());
+        }
+    };
+
+    let mut steps = derive.steps;
+    if let Some(cache_hit_step) = cache_hit_step {
+        steps.insert(0, cache_hit_step);
+    }
+
+    let mut diagnostics = inherited_diagnostics;
+    let value_domain = session.options().shared.semantics.value_domain;
+    let domain_mode = session.options().shared.semantics.domain_mode;
+    diagnostics.extend_required(
+        crate::infer_implicit_domain(&engine.simplifier.context, resolved, value_domain)
+            .conditions()
+            .iter()
+            .cloned(),
+        crate::RequireOrigin::InputImplicit,
+    );
+    diagnostics.extend_required(
+        crate::infer_implicit_domain(&engine.simplifier.context, derived_expr, value_domain)
+            .conditions()
+            .iter()
+            .cloned(),
+        crate::RequireOrigin::OutputImplicit,
+    );
+    diagnostics.dedup_and_sort(&engine.simplifier.context);
+
+    let required_conditions = diagnostics.required_conditions();
+
+    cas_session_core::eval::apply_post_dispatch_store_updates(
+        session.store_mut(),
+        stored_id,
+        diagnostics.clone(),
+        Some(cas_session_core::eval::SimplifiedUpdate {
+            domain: domain_mode,
+            expr: derived_expr,
+            requires: diagnostics.requires.clone(),
+            steps: None,
+        }),
+    );
+
+    Ok(crate::EvalOutputView {
+        stored_id,
+        parsed: parsed_expr,
+        resolved,
+        result: crate::EvalResult::Expr(derived_expr),
+        steps: crate::display_eval_steps::build_display_eval_steps(steps),
+        solve_steps: Vec::new(),
+        output_scopes: Vec::new(),
+        diagnostics,
+        required_conditions,
+        domain_warnings: Vec::new(),
+        blocked_hints: Vec::new(),
+        solver_assumptions: Vec::new(),
+    })
+}
+
 fn evaluate_derive_input_with_resolver<F>(
     simplifier: &mut crate::Simplifier,
     input: &str,
@@ -122,55 +278,70 @@ where
             .map_err(DeriveEvalError::Resolve)?;
         let target_expr = resolve_expr(&mut temp_simplifier.context, parsed_target)
             .map_err(DeriveEvalError::Resolve)?;
-
-        if strong_target_match(&mut temp_simplifier.context, resolved_expr, target_expr) {
-            return Ok(DeriveEvalOutput {
-                resolved_expr,
-                target_expr,
-                derived_expr: target_expr,
-                steps: Vec::new(),
-                status: DeriveStatus::AlreadyAtTarget,
-            });
-        }
-
-        if let Some((derived_expr, steps, strategy)) = try_supported_derive_strategies(
+        Ok(evaluate_derive_resolved_input(
             &mut temp_simplifier,
             resolved_expr,
             target_expr,
             collect_steps,
-            &simplify_options,
-        ) {
-            return Ok(DeriveEvalOutput {
-                resolved_expr,
-                target_expr,
-                derived_expr,
-                steps,
-                status: DeriveStatus::Derived { strategy },
-            });
-        }
-
-        let equivalence = temp_simplifier.are_equivalent_extended(resolved_expr, target_expr);
-        let status = match equivalence {
-            crate::EquivalenceResult::True | crate::EquivalenceResult::ConditionalTrue { .. } => {
-                DeriveStatus::EquivalentButUnsupported { equivalence }
-            }
-            crate::EquivalenceResult::False | crate::EquivalenceResult::Unknown => {
-                DeriveStatus::NotEquivalent { equivalence }
-            }
-        };
-
-        Ok(DeriveEvalOutput {
-            resolved_expr,
-            target_expr,
-            derived_expr: resolved_expr,
-            steps: Vec::new(),
-            status,
-        })
+            simplify_options.clone(),
+        ))
     })();
 
     std::mem::swap(&mut simplifier.context, &mut temp_simplifier.context);
     std::mem::swap(&mut simplifier.profiler, &mut temp_simplifier.profiler);
     result
+}
+
+fn evaluate_derive_resolved_input(
+    simplifier: &mut crate::Simplifier,
+    resolved_expr: ExprId,
+    target_expr: ExprId,
+    collect_steps: bool,
+    simplify_options: crate::SimplifyOptions,
+) -> DeriveEvalOutput {
+    if strong_target_match(&mut simplifier.context, resolved_expr, target_expr) {
+        return DeriveEvalOutput {
+            resolved_expr,
+            target_expr,
+            derived_expr: target_expr,
+            steps: Vec::new(),
+            status: DeriveStatus::AlreadyAtTarget,
+        };
+    }
+
+    if let Some((derived_expr, steps, strategy)) = try_supported_derive_strategies(
+        simplifier,
+        resolved_expr,
+        target_expr,
+        collect_steps,
+        &simplify_options,
+    ) {
+        return DeriveEvalOutput {
+            resolved_expr,
+            target_expr,
+            derived_expr,
+            steps,
+            status: DeriveStatus::Derived { strategy },
+        };
+    }
+
+    let equivalence = simplifier.are_equivalent_extended(resolved_expr, target_expr);
+    let status = match equivalence {
+        crate::EquivalenceResult::True | crate::EquivalenceResult::ConditionalTrue { .. } => {
+            DeriveStatus::EquivalentButUnsupported { equivalence }
+        }
+        crate::EquivalenceResult::False | crate::EquivalenceResult::Unknown => {
+            DeriveStatus::NotEquivalent { equivalence }
+        }
+    };
+
+    DeriveEvalOutput {
+        resolved_expr,
+        target_expr,
+        derived_expr: resolved_expr,
+        steps: Vec::new(),
+        status,
+    }
 }
 
 fn try_supported_derive_strategies(

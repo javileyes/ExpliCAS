@@ -21,6 +21,16 @@ pub(super) fn build_special_command_request(
                 auto_store,
             })
         }
+        EvalSpecialCommand::Derive { input } => {
+            let (parsed, target) = crate::parse_expr_pair(ctx, &input)
+                .map_err(|e| crate::format_expr_pair_parse_error_message(&e, "derive"))?;
+            Ok(PreparedEvalRequest::Derive {
+                raw_input: raw_input.to_string(),
+                parsed,
+                target,
+                auto_store,
+            })
+        }
         EvalSpecialCommand::Limit {
             expr,
             var,

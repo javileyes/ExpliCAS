@@ -13,34 +13,20 @@ pub fn evaluate_eval_text_simplify_with_session<S>(
 where
     S: crate::SolverEvalSession,
 {
-    let parsed = cas_parser::parse(expr, &mut engine.simplifier.context)
-        .map_err(|e| format!("Parse error: {}", e))?;
-    if let Some(hit) = session
-        .try_direct_cached_eval(&mut engine.simplifier.context, parsed, auto_store)
-        .map_err(|e| format!("Error: {}", e))?
-    {
-        if let Some(name) = cas_session_core::eval::first_unknown_function_name(
-            session,
-            &engine.simplifier.context,
-            hit.resolved,
-        ) {
-            return Err(format!("Error: {}", crate::CasError::UnknownFunction(name)));
-        }
-        return Ok(format_eval_result_text(
-            &engine.simplifier.context,
-            &crate::EvalResult::Expr(hit.resolved),
-        ));
-    }
-    let req = crate::EvalRequest {
-        raw_input: expr.to_string(),
-        parsed,
-        action: crate::EvalAction::Simplify,
+    let req = crate::eval_input::build_prepared_eval_request_for_input(
+        expr,
+        &mut engine.simplifier.context,
         auto_store,
-    };
-    let output = engine
-        .eval(session, req)
-        .map_err(|e| format!("Error: {}", e))?;
-    let output_view = crate::eval_output_view(&output);
+    )?;
+    let output_view =
+        crate::eval_request_runtime::evaluate_prepared_request_with_session(engine, session, req)
+            .map_err(|e| {
+            if e.starts_with("Error:") || e.starts_with("Parse error:") || e.starts_with("Usage:") {
+                e
+            } else {
+                format!("Error: {e}")
+            }
+        })?;
     Ok(format_eval_result_text(
         &engine.simplifier.context,
         &output_view.result,

@@ -454,6 +454,9 @@ pub enum EvalSpecialCommand {
         equation: String,
         var: String,
     },
+    Derive {
+        input: String,
+    },
     Limit {
         expr: String,
         var: String,
@@ -463,10 +466,16 @@ pub enum EvalSpecialCommand {
 
 /// Parse special eval command forms:
 /// - `solve(equation, var)`
+/// - `derive <expr1>, <expr2>`
 /// - `limit(expr, var, approach)` or `lim(expr, var, approach)`
 pub fn parse_eval_special_command(input: &str) -> Option<EvalSpecialCommand> {
     if let Some((equation, var)) = parse_solve_command(input) {
         return Some(EvalSpecialCommand::Solve { equation, var });
+    }
+    if let Some(derive_input) = parse_derive_command(input) {
+        return Some(EvalSpecialCommand::Derive {
+            input: derive_input,
+        });
     }
     if let Some((expr, var, approach)) = parse_limit_command(input) {
         return Some(EvalSpecialCommand::Limit {
@@ -511,6 +520,18 @@ fn parse_solve_command(input: &str) -> Option<(String, String)> {
     }
 
     Some((equation_part.to_string(), variable_part.to_string()))
+}
+
+fn parse_derive_command(input: &str) -> Option<String> {
+    let trimmed = input.trim();
+    let lower = trimmed.to_lowercase();
+    if lower == "derive" {
+        return Some(String::new());
+    }
+    if !lower.starts_with("derive ") {
+        return None;
+    }
+    Some(trimmed[6..].trim().to_string())
 }
 
 fn parse_limit_command(input: &str) -> Option<(String, String, EvalLimitApproach)> {
@@ -1889,13 +1910,21 @@ mod tests {
     }
 
     #[test]
-    fn parse_eval_special_command_parses_solve_and_limit() {
+    fn parse_eval_special_command_parses_solve_derive_and_limit() {
         let solve = parse_eval_special_command("solve((x+1)=0, x)").expect("solve");
         assert_eq!(
             solve,
             super::EvalSpecialCommand::Solve {
                 equation: "(x+1)=0".to_string(),
                 var: "x".to_string()
+            }
+        );
+
+        let derive = parse_eval_special_command("derive x + x, 2*x").expect("derive");
+        assert_eq!(
+            derive,
+            super::EvalSpecialCommand::Derive {
+                input: "x + x, 2*x".to_string(),
             }
         );
 

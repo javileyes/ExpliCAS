@@ -32,6 +32,14 @@ where
             &var,
             auto_store,
         ),
+        PreparedEvalRequest::Derive {
+            raw_input,
+            parsed,
+            target,
+            auto_store,
+        } => crate::derive_command::evaluate_derive_request_with_session(
+            engine, session, raw_input, parsed, target, auto_store,
+        ),
         PreparedEvalRequest::Eval {
             raw_input,
             parsed,

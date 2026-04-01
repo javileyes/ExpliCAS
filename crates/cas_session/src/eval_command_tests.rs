@@ -127,6 +127,23 @@ mod tests {
     }
 
     #[test]
+    fn evaluate_eval_text_simplify_with_session_accepts_derive_special_command() {
+        let mut engine = cas_solver::runtime::Engine::new();
+        let mut session = SessionState::new();
+
+        let out = evaluate_eval_text_simplify_with_session(
+            &mut engine,
+            &mut session,
+            "derive x + x, 2*x",
+            false,
+        )
+        .expect("derive succeeds");
+
+        assert!(out.contains("2"));
+        assert!(out.contains("x"));
+    }
+
+    #[test]
     fn evaluate_eval_command_pretty_with_session_accepts_lazy_function_assignment() {
         let json = crate::eval::evaluate_eval_command_pretty_with_session(
             None,
@@ -154,5 +171,37 @@ mod tests {
         let payload: serde_json::Value = serde_json::from_str(&json).expect("json");
         assert_eq!(payload["ok"], true);
         assert_eq!(payload["result"], "x + 1");
+    }
+
+    #[test]
+    fn evaluate_eval_command_pretty_with_session_accepts_derive_special_command() {
+        let json = crate::eval::evaluate_eval_command_pretty_with_session(
+            None,
+            crate::eval::EvalCommandConfig {
+                expr: "derive x + x, 2*x",
+                auto_store: false,
+                max_chars: 2000,
+                steps_mode: cas_api_models::EvalStepsMode::Off,
+                budget_preset: cas_api_models::EvalBudgetPreset::Standard,
+                strict: false,
+                domain: cas_api_models::EvalDomainMode::Generic,
+                context_mode: cas_api_models::EvalContextMode::Auto,
+                branch_mode: cas_api_models::EvalBranchMode::Strict,
+                expand_policy: cas_api_models::EvalExpandPolicy::Off,
+                complex_mode: cas_api_models::EvalComplexMode::Auto,
+                const_fold: cas_api_models::EvalConstFoldMode::Off,
+                value_domain: cas_api_models::EvalValueDomain::Real,
+                complex_branch: cas_api_models::EvalBranchMode::Principal,
+                inv_trig: cas_api_models::EvalInvTrigPolicy::Strict,
+                assume_scope: cas_api_models::EvalAssumeScope::Real,
+            },
+            |_steps, _events, _context, _steps_mode| Vec::new(),
+        );
+
+        let payload: serde_json::Value = serde_json::from_str(&json).expect("json");
+        assert_eq!(payload["ok"], true);
+        let result = payload["result"].as_str().expect("result string");
+        assert!(result.contains('2'));
+        assert!(result.contains('x'));
     }
 }
