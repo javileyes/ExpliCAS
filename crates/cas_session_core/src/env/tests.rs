@@ -143,3 +143,34 @@ fn test_env_operations() {
     assert!(!env.contains("a"));
     assert!(env.is_empty());
 }
+
+#[test]
+fn test_substitute_user_defined_function_call() {
+    let mut ctx = Context::new();
+    let mut env = Environment::new();
+
+    let body = parse("x + 1", &mut ctx).unwrap();
+    env.set_function("f".to_string(), vec!["x".to_string()], body);
+
+    let expr = parse("f(2)", &mut ctx).unwrap();
+    let result = substitute(&mut ctx, &env, expr);
+    assert!(cas_ast::traversal::collect_variables(&ctx, result).is_empty());
+    assert!(contains_integer(&ctx, result, 1));
+    assert!(contains_integer(&ctx, result, 2));
+}
+
+#[test]
+fn test_shadow_prevents_function_expansion_on_same_name() {
+    let mut ctx = Context::new();
+    let mut env = Environment::new();
+
+    let body = parse("x + 1", &mut ctx).unwrap();
+    env.set_function("f".to_string(), vec!["x".to_string()], body);
+
+    let expr = parse("f(2)", &mut ctx).unwrap();
+    let result = substitute_with_shadow(&mut ctx, &env, expr, &["f"]);
+    match ctx.get(result) {
+        Expr::Function(_, args) => assert_eq!(args.len(), 1),
+        other => panic!("expected function call, got {:?}", other),
+    }
+}

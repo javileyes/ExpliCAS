@@ -2,8 +2,9 @@ use crate::assignment_parse_types::{LetAssignmentParseError, ParsedLetAssignment
 
 /// Usage message for `let` assignment command.
 pub fn let_assignment_usage_message() -> &'static str {
-    "Usage: let <name> = <expr>   (eager - evaluates)\n\
-                        let <name> := <expr>  (lazy - stores formula)\n\
+    "Usage: let <target> = <expr>   (eager - evaluates)\n\
+                        let <target> := <expr>  (lazy - stores formula)\n\
+                 Targets: a, f(x), g(x,y)\n\
                  Example: let a = expand((1+x)^3)"
 }
 

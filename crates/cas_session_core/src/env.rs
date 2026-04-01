@@ -96,6 +96,14 @@ pub fn is_reserved(name: &str) -> bool {
 #[derive(Default, Debug, Clone)]
 pub struct Environment {
     bindings: HashMap<String, ExprId>,
+    functions: HashMap<String, FunctionBinding>,
+}
+
+/// User-defined function binding stored in the session environment.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FunctionBinding {
+    pub params: Vec<String>,
+    pub expr: ExprId,
 }
 
 impl Environment {
@@ -119,9 +127,26 @@ impl Environment {
         self.bindings.remove(name).is_some()
     }
 
+    /// Set a function binding (overwrites existing).
+    pub fn set_function(&mut self, name: String, params: Vec<String>, expr: ExprId) {
+        self.functions
+            .insert(name, FunctionBinding { params, expr });
+    }
+
+    /// Get a function binding by name.
+    pub fn get_function(&self, name: &str) -> Option<&FunctionBinding> {
+        self.functions.get(name)
+    }
+
+    /// Remove a function binding, returns true if it existed.
+    pub fn unset_function(&mut self, name: &str) -> bool {
+        self.functions.remove(name).is_some()
+    }
+
     /// Clear all bindings
     pub fn clear_all(&mut self) {
         self.bindings.clear();
+        self.functions.clear();
     }
 
     /// List all bindings, sorted by name for deterministic output
@@ -130,6 +155,17 @@ impl Environment {
             .bindings
             .iter()
             .map(|(k, v)| (k.as_str(), *v))
+            .collect();
+        items.sort_by_key(|(name, _)| *name);
+        items
+    }
+
+    /// List all function bindings, sorted by name for deterministic output.
+    pub fn list_functions(&self) -> Vec<(&str, &FunctionBinding)> {
+        let mut items: Vec<_> = self
+            .functions
+            .iter()
+            .map(|(k, v)| (k.as_str(), v))
             .collect();
         items.sort_by_key(|(name, _)| *name);
         items
@@ -147,7 +183,7 @@ impl Environment {
 
     /// Check if environment is empty
     pub fn is_empty(&self) -> bool {
-        self.bindings.is_empty()
+        self.bindings.is_empty() && self.functions.is_empty()
     }
 }
 
@@ -173,6 +209,97 @@ pub fn substitute_with_shadow(
 ) -> ExprId {
     let shadow_set: HashSet<&str> = shadow.iter().copied().collect();
     substitute_impl(ctx, env, expr, &shadow_set, &mut HashSet::new(), 0)
+}
+
+fn substitute_named_var(
+    ctx: &mut Context,
+    expr: ExprId,
+    name: &str,
+    replacement: ExprId,
+) -> ExprId {
+    match ctx.get(expr).clone() {
+        Expr::Variable(sym_id) if ctx.sym_name(sym_id) == name => replacement,
+        Expr::Neg(inner) => {
+            let new_inner = substitute_named_var(ctx, inner, name, replacement);
+            if new_inner == inner {
+                expr
+            } else {
+                ctx.add(Expr::Neg(new_inner))
+            }
+        }
+        Expr::Add(a, b) => rewrite_binary_named_var(ctx, expr, a, b, name, replacement, Expr::Add),
+        Expr::Sub(a, b) => rewrite_binary_named_var(ctx, expr, a, b, name, replacement, Expr::Sub),
+        Expr::Mul(a, b) => rewrite_binary_named_var(ctx, expr, a, b, name, replacement, Expr::Mul),
+        Expr::Div(a, b) => rewrite_binary_named_var(ctx, expr, a, b, name, replacement, Expr::Div),
+        Expr::Pow(a, b) => rewrite_binary_named_var(ctx, expr, a, b, name, replacement, Expr::Pow),
+        Expr::Function(fn_id, args) => {
+            let mut changed = false;
+            let new_args: Vec<_> = args
+                .iter()
+                .map(|&arg| {
+                    let new_arg = substitute_named_var(ctx, arg, name, replacement);
+                    if new_arg != arg {
+                        changed = true;
+                    }
+                    new_arg
+                })
+                .collect();
+            if changed {
+                ctx.add(Expr::Function(fn_id, new_args))
+            } else {
+                expr
+            }
+        }
+        Expr::Matrix { rows, cols, data } => {
+            let mut changed = false;
+            let new_data: Vec<_> = data
+                .iter()
+                .map(|&elem| {
+                    let new_elem = substitute_named_var(ctx, elem, name, replacement);
+                    if new_elem != elem {
+                        changed = true;
+                    }
+                    new_elem
+                })
+                .collect();
+            if changed {
+                ctx.add(Expr::Matrix {
+                    rows,
+                    cols,
+                    data: new_data,
+                })
+            } else {
+                expr
+            }
+        }
+        Expr::Hold(inner) => {
+            let new_inner = substitute_named_var(ctx, inner, name, replacement);
+            if new_inner == inner {
+                expr
+            } else {
+                ctx.add(Expr::Hold(new_inner))
+            }
+        }
+        Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) | Expr::SessionRef(_) => expr,
+    }
+}
+
+fn rewrite_binary_named_var(
+    ctx: &mut Context,
+    original: ExprId,
+    a: ExprId,
+    b: ExprId,
+    name: &str,
+    replacement: ExprId,
+    build: fn(ExprId, ExprId) -> Expr,
+) -> ExprId {
+    let new_a = substitute_named_var(ctx, a, name, replacement);
+    let new_b = substitute_named_var(ctx, b, name, replacement);
+    if new_a == a && new_b == b {
+        original
+    } else {
+        ctx.add(build(new_a, new_b))
+    }
 }
 
 /// Internal recursive implementation with cycle detection
@@ -280,6 +407,7 @@ fn substitute_impl(
 
         Expr::Function(name, args) => {
             let mut changed = false;
+            let fn_name = ctx.sym_name(name).to_string();
             let new_args: Vec<ExprId> = args
                 .iter()
                 .map(|&arg| {
@@ -290,6 +418,39 @@ fn substitute_impl(
                     new_arg
                 })
                 .collect();
+
+            if shadow.contains(fn_name.as_str()) {
+                return if changed {
+                    ctx.add(Expr::Function(name, new_args))
+                } else {
+                    expr
+                };
+            }
+
+            if let Some(function) = env.get_function(&fn_name) {
+                if function.params.len() == new_args.len() {
+                    let visit_key = format!("fn:{}/{}", fn_name, new_args.len());
+                    if visiting.contains(&visit_key) {
+                        return if changed {
+                            ctx.add(Expr::Function(name, new_args))
+                        } else {
+                            expr
+                        };
+                    }
+
+                    visiting.insert(visit_key.clone());
+
+                    let mut body = function.expr;
+                    for (param, arg) in function.params.iter().zip(new_args.iter().copied()) {
+                        body = substitute_named_var(ctx, body, param, arg);
+                    }
+
+                    let resolved = substitute_impl(ctx, env, body, shadow, visiting, depth + 1);
+                    visiting.remove(&visit_key);
+                    return resolved;
+                }
+            }
+
             if changed {
                 ctx.add(Expr::Function(name, new_args))
             } else {

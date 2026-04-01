@@ -35,11 +35,10 @@ impl SessionState {
         }
     }
 
-    /// Create a state from an existing session store (for snapshot restoration).
-    pub(crate) fn from_store(store: SessionStore) -> Self {
+    pub(crate) fn from_store_and_env(store: SessionStore, env: Environment) -> Self {
         Self {
             store: SessionEvalStore::from_store(store),
-            env: Environment::new(),
+            env,
             options: EvalOptions::default(),
             dirty: false,
         }

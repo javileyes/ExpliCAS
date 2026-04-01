@@ -8,17 +8,19 @@ use super::session_store_snapshot_into_store;
 
 impl SessionSnapshot {
     pub const MAGIC: [u8; 8] = *b"EXPLICAS";
-    pub const VERSION: u32 = 1;
+    pub const VERSION: u32 = 2;
 
     pub fn new(
         context: &cas_ast::Context,
         session: &crate::SessionStore,
+        env: &crate::env::Environment,
         cache_key: SimplifyCacheKey,
     ) -> Self {
         Self {
             header: super::SessionSnapshotHeader::new(Self::MAGIC, Self::VERSION, cache_key),
             context: super::ContextSnapshot::from_context(context),
             session: super::session_store_snapshot_from_store(session),
+            environment: super::EnvironmentSnapshot::from_env(env),
         }
     }
 
@@ -37,12 +39,18 @@ impl SessionSnapshot {
         cas_session_core::snapshot_io::save_bincode_atomic(self, path)
     }
 
-    /// Extract Context and SessionStore from snapshot.
     #[cfg(test)]
-    pub fn into_parts(self) -> (cas_ast::Context, crate::SessionStore) {
+    pub fn into_parts_with_env(
+        self,
+    ) -> (
+        cas_ast::Context,
+        crate::SessionStore,
+        crate::env::Environment,
+    ) {
         (
             self.context.into_context(),
             session_store_snapshot_into_store(self.session),
+            self.environment.into_env(),
         )
     }
 }

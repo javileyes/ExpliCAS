@@ -34,6 +34,12 @@ impl EvalSession for SessionState {
             .map_err(cas_session_core::eval::map_resolve_error_to_anyhow)
     }
 
+    fn is_known_function(&self, name: &str, arity: usize) -> bool {
+        self.env
+            .get_function(name)
+            .is_some_and(|binding| binding.params.len() == arity)
+    }
+
     fn try_direct_cached_eval(
         &mut self,
         ctx: &mut cas_ast::Context,

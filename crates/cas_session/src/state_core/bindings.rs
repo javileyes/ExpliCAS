@@ -81,13 +81,41 @@ impl AssignmentApplyContext for SessionState {
         SessionState::set_binding(self, name, expr);
     }
 
-    fn assignment_resolve_state_refs(
+    fn assignment_unset_function(&mut self, name: &str) -> bool {
+        let changed = self.env.unset_function(name);
+        if changed {
+            self.dirty = true;
+        }
+        changed
+    }
+
+    fn assignment_set_function(&mut self, name: String, params: Vec<String>, expr: ExprId) {
+        let same = self
+            .env
+            .get_function(&name)
+            .is_some_and(|binding| binding.params == params && binding.expr == expr);
+        if !same {
+            self.dirty = true;
+            self.env.set_function(name, params, expr);
+        }
+    }
+
+    fn assignment_resolve_session_refs(
         &self,
         ctx: &mut cas_ast::Context,
         expr: ExprId,
     ) -> Result<ExprId, String> {
-        self.resolve_state_refs(ctx, expr)
+        crate::resolve_refs::resolve_session_refs(ctx, expr, &self.store)
             .map_err(|error| error.to_string())
+    }
+
+    fn assignment_substitute_bindings_with_shadow(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: ExprId,
+        shadow: &[&str],
+    ) -> ExprId {
+        crate::env::substitute_with_shadow(ctx, &self.env, expr, shadow)
     }
 
     fn assignment_is_reserved_name(&self, name: &str) -> bool {

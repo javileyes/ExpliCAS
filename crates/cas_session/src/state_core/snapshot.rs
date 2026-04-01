@@ -26,9 +26,13 @@ impl SessionState {
 
         let context = load_bincode_from_reader::<_, ContextSnapshot>(&mut reader)?.into_context();
         let session = load_bincode_from_reader::<_, SessionStoreSnapshot>(&mut reader)?;
+        let env = load_bincode_from_reader::<_, crate::environment_snapshot::EnvironmentSnapshot>(
+            &mut reader,
+        )?
+        .into_env();
         Ok(Some((
             context,
-            Self::from_store(session_store_snapshot_into_store(session)),
+            Self::from_store_and_env(session_store_snapshot_into_store(session), env),
         )))
     }
 }

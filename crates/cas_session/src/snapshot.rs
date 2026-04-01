@@ -13,6 +13,7 @@ mod io;
 use serde::{Deserialize, Serialize};
 
 use crate::cache::SimplifyCacheKey;
+use crate::environment_snapshot::EnvironmentSnapshot;
 pub use cas_session_core::context_snapshot::ContextSnapshot;
 pub use cas_session_core::snapshot_error::SnapshotError;
 use cas_session_core::snapshot_header::SnapshotHeader;
@@ -32,4 +33,5 @@ pub struct SessionSnapshot {
     pub header: SessionSnapshotHeader,
     pub context: ContextSnapshot,
     pub session: SessionStoreSnapshot,
+    pub environment: EnvironmentSnapshot,
 }

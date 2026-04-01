@@ -3,6 +3,9 @@
 use std::path::Path;
 
 use cas_solver::runtime::Engine;
+use cas_solver::session_api::bindings::{
+    evaluate_let_assignment_command_message_with_simplifier, parse_let_assignment_input,
+};
 use cas_solver::session_api::eval::evaluate_eval_text_simplify_with_session;
 
 #[path = "eval_command/pretty.rs"]
@@ -24,6 +27,13 @@ fn should_use_read_only_persisted_session(expr: &str, auto_store: bool) -> bool 
     !auto_store && expr.contains('#')
 }
 
+fn is_lazy_assignment(expr: &str) -> bool {
+    expr.contains(":=")
+        && parse_let_assignment_input(expr)
+            .map(|parsed| parsed.lazy)
+            .unwrap_or(false)
+}
+
 /// Evaluate plain-text `eval` command with optional persisted session.
 ///
 /// Returns:
@@ -36,6 +46,31 @@ pub fn evaluate_eval_text_command_with_session(
     expr: &str,
     auto_store: bool,
 ) -> (Result<String, String>, Option<String>, Option<String>) {
+    if is_lazy_assignment(expr) {
+        if session_path.is_none() {
+            let mut engine = Engine::new();
+            let mut state = crate::state_core::SessionState::new();
+            let result = evaluate_let_assignment_command_message_with_simplifier(
+                &mut state,
+                &mut engine.simplifier,
+                expr,
+            );
+            return (result, None, None);
+        }
+
+        return crate::session_io::run_with_domain_session(
+            session_path,
+            domain,
+            |engine, state| {
+                evaluate_let_assignment_command_message_with_simplifier(
+                    state,
+                    &mut engine.simplifier,
+                    expr,
+                )
+            },
+        );
+    }
+
     if session_path.is_none() || can_skip_persisted_session_state(expr, auto_store) {
         let mut engine = Engine::new();
         let mut state = crate::state_core::SessionState::new();

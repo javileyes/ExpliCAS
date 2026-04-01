@@ -19,6 +19,13 @@ where
         .try_direct_cached_eval(&mut engine.simplifier.context, parsed, auto_store)
         .map_err(|e| format!("Error: {}", e))?
     {
+        if let Some(name) = cas_session_core::eval::first_unknown_function_name(
+            session,
+            &engine.simplifier.context,
+            hit.resolved,
+        ) {
+            return Err(format!("Error: {}", crate::CasError::UnknownFunction(name)));
+        }
         return Ok(format_eval_result_text(
             &engine.simplifier.context,
             &crate::EvalResult::Expr(hit.resolved),

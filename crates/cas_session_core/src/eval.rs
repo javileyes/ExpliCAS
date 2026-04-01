@@ -44,6 +44,11 @@ pub trait EvalSession {
         expr: ExprId,
     ) -> anyhow::Result<(ExprId, Self::Diagnostics, Vec<u64>)>;
 
+    /// Return whether a non-builtin function name/arity is provided by the session.
+    fn is_known_function(&self, _name: &str, _arity: usize) -> bool {
+        false
+    }
+
     /// Optional fast path for direct cached eval of a root `#N` reference.
     ///
     /// Default sessions return `None` and fall back to the regular
@@ -55,6 +60,110 @@ pub trait EvalSession {
         _auto_store: bool,
     ) -> anyhow::Result<Option<DirectCachedEval<Self::Diagnostics>>> {
         Ok(None)
+    }
+}
+
+/// Engine-supported function names that are valid even though they are not
+/// represented inside `BuiltinFn`.
+pub fn is_known_eval_engine_function(name: &str, arity: usize) -> bool {
+    if cas_ast::BuiltinFn::from_name(name).is_some() {
+        return true;
+    }
+
+    match name {
+        // Meta helper calls handled by the simplify engine.
+        "simplify" | "factor" | "expand" => arity == 1,
+        // Number-theory calls dispatched by engine/math support.
+        "fact" | "factorial" | "prime_factors" | "factors" => arity == 1,
+        "lcm" | "mod" | "choose" | "nCr" | "perm" | "nPr" => arity == 2,
+        "gcd" => arity >= 2,
+        // Matrix functions handled by the matrix rules.
+        "det" | "determinant" | "transpose" | "T" | "trace" | "tr" => arity == 1,
+        // Matrix composition / symbolic helpers used by engine rewrites.
+        "matmul" => arity == 2,
+        "poly_gcd" | "pgcd" => arity >= 2,
+        // Numeric evaluator helper that is intentionally exposed as a function call.
+        "round" => arity == 1,
+        _ => false,
+    }
+}
+
+/// Return the first unresolved non-builtin function seen in an expression tree.
+pub fn first_unknown_function_name<S: EvalSession>(
+    session: &S,
+    ctx: &Context,
+    root: ExprId,
+) -> Option<String> {
+    let mut stack = vec![root];
+    while let Some(id) = stack.pop() {
+        match ctx.get(id) {
+            cas_ast::Expr::Function(fn_id, args) => {
+                if ctx.builtin_of(*fn_id).is_none() {
+                    let name = ctx.sym_name(*fn_id);
+                    if !is_known_eval_engine_function(name, args.len())
+                        && !session.is_known_function(name, args.len())
+                    {
+                        return Some(name.to_string());
+                    }
+                }
+                stack.extend(args.iter().copied());
+            }
+            cas_ast::Expr::Add(a, b)
+            | cas_ast::Expr::Sub(a, b)
+            | cas_ast::Expr::Mul(a, b)
+            | cas_ast::Expr::Div(a, b)
+            | cas_ast::Expr::Pow(a, b) => {
+                stack.push(*a);
+                stack.push(*b);
+            }
+            cas_ast::Expr::Neg(inner) | cas_ast::Expr::Hold(inner) => stack.push(*inner),
+            cas_ast::Expr::Matrix { data, .. } => stack.extend(data.iter().copied()),
+            cas_ast::Expr::Number(_)
+            | cas_ast::Expr::Constant(_)
+            | cas_ast::Expr::Variable(_)
+            | cas_ast::Expr::SessionRef(_) => {}
+        }
+    }
+    None
+}
+
+#[cfg(test)]
+mod unknown_function_tests {
+    use super::{first_unknown_function_name, is_known_eval_engine_function, StatelessEvalSession};
+    use cas_ast::Context;
+    use cas_parser::parse;
+
+    type TestSession = StatelessEvalSession<(), (), (), (), ()>;
+
+    #[test]
+    fn known_engine_function_names_cover_nonbuiltin_dispatchables() {
+        assert!(is_known_eval_engine_function("factor", 1));
+        assert!(is_known_eval_engine_function("fact", 1));
+        assert!(is_known_eval_engine_function("gcd", 2));
+        assert!(is_known_eval_engine_function("transpose", 1));
+        assert!(is_known_eval_engine_function("matmul", 2));
+        assert!(!is_known_eval_engine_function("foo", 1));
+    }
+
+    #[test]
+    fn unknown_function_scan_allows_supported_nonbuiltin_calls() {
+        let mut ctx = Context::new();
+        let session = TestSession::new(());
+
+        let fact_expr = parse("(n + 1)! / n!", &mut ctx).expect("parse factorial");
+        assert_eq!(first_unknown_function_name(&session, &ctx, fact_expr), None);
+
+        let factor_expr = parse("factor(x^2 - 1)", &mut ctx).expect("parse factor");
+        assert_eq!(
+            first_unknown_function_name(&session, &ctx, factor_expr),
+            None
+        );
+
+        let unknown_expr = parse("foo(x)", &mut ctx).expect("parse unknown");
+        assert_eq!(
+            first_unknown_function_name(&session, &ctx, unknown_expr),
+            Some("foo".to_string())
+        );
     }
 }
 

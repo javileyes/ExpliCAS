@@ -43,6 +43,38 @@ mod tests {
     }
 
     #[test]
+    fn apply_assignment_stores_function_definition_and_evaluates_calls() {
+        let mut state = SessionState::new();
+        let mut simplifier = cas_solver::runtime::Simplifier::with_default_rules();
+        let id = apply_assignment(&mut state, &mut simplifier, "f(x)", "x + 1", true).expect("ok");
+        let rendered = format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: &simplifier.context,
+                id
+            }
+        );
+        assert_eq!(rendered, "x + 1");
+
+        let call = cas_parser::parse("f(2)", &mut simplifier.context).expect("call parses");
+        let resolved = state
+            .resolve_state_refs(&mut simplifier.context, call)
+            .expect("call resolves");
+        let resolved_rendered = format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: &simplifier.context,
+                id: resolved
+            }
+        );
+        assert!(
+            matches!(resolved_rendered.replace(' ', "").as_str(), "2+1" | "1+2"),
+            "unexpected rendered function body: {}",
+            resolved_rendered
+        );
+    }
+
+    #[test]
     fn parse_let_assignment_input_supports_lazy_and_eager() {
         let lazy = parse_let_assignment_input("a := x + 1").expect("lazy");
         assert_eq!(
@@ -76,7 +108,7 @@ mod tests {
         let msg = format_let_assignment_parse_error_message(
             &LetAssignmentParseError::MissingAssignmentOperator,
         );
-        assert!(msg.contains("Usage: let <name> = <expr>"));
+        assert!(msg.contains("Usage: let <target> = <expr>"));
     }
 
     #[test]

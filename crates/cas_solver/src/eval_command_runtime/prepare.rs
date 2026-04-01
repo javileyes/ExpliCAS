@@ -35,6 +35,14 @@ where
         return Ok(None);
     };
 
+    if let Some(name) = cas_session_core::eval::first_unknown_function_name(
+        session,
+        &engine.simplifier.context,
+        hit.resolved,
+    ) {
+        return Err(format!("Error: {}", crate::CasError::UnknownFunction(name)));
+    }
+
     let mut diagnostics = crate::Diagnostics::new();
     let input_domain = crate::infer_implicit_domain(
         &engine.simplifier.context,

@@ -14,7 +14,7 @@ pub enum CasError {
     VariableNotFound(String),
     #[error("Cannot isolate '{0}': {1}")]
     IsolationError(String, String),
-    #[error("Unknown function '{0}'")]
+    #[error("función [{0}] no definida")]
     UnknownFunction(String),
     #[error("Solver error: {0}")]
     SolverError(String),

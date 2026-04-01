@@ -65,8 +65,9 @@ pub fn general_help_text() -> String {
     s.push_str("  quit / exit             Exit the REPL\n\n");
 
     s.push_str("Session Environment:\n");
-    s.push_str("  let <name> = <expr>     Assign a variable\n");
-    s.push_str("  <name> := <expr>        Alternative assignment syntax\n");
+    s.push_str("  let <target> = <expr>   Assign a variable or function\n");
+    s.push_str("  <target> := <expr>      Alternative assignment syntax\n");
+    s.push_str("                         Examples: a := x^2, f(x) := x + 1\n");
     s.push_str("  vars                    List all defined variables\n");
     s.push_str("  clear [name]            Clear one or all variables\n");
     s.push_str("  reset                   Clear all session state (keeps cache)\n");

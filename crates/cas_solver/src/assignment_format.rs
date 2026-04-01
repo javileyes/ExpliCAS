@@ -12,9 +12,9 @@ pub fn format_let_assignment_parse_error_message(error: &LetAssignmentParseError
 /// Format assignment execution errors as user-facing messages.
 pub fn format_assignment_error_message(error: &AssignmentError) -> String {
     match error {
-        AssignmentError::EmptyName => "Error: Variable name cannot be empty".to_string(),
+        AssignmentError::EmptyName => "Error: Assignment target cannot be empty".to_string(),
         AssignmentError::InvalidNameStart => {
-            "Error: Variable name must start with a letter or underscore".to_string()
+            "Error: Assignment target must start with a letter or underscore".to_string()
         }
         AssignmentError::ReservedName(name) => {
             format!(

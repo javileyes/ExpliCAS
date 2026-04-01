@@ -48,6 +48,18 @@ mod tests {
     }
 
     #[test]
+    fn parses_function_assignment_before_eval() {
+        assert_eq!(
+            parse_repl_command_input("f(x) := x + 1"),
+            ReplCommandInput::Assignment {
+                name: "f(x)",
+                expr: "x + 1",
+                lazy: true,
+            }
+        );
+    }
+
+    #[test]
     fn parses_solve_system_before_solve() {
         assert_eq!(
             parse_repl_command_input("solve_system(x+y=1; x; y)"),

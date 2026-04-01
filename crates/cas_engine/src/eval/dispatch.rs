@@ -135,6 +135,27 @@ impl Engine {
             cache_hit_step,
         } = prepared;
 
+        if let Some(name) = cas_session_core::eval::first_unknown_function_name(
+            session,
+            &self.simplifier.context,
+            resolved,
+        ) {
+            return Err(anyhow::Error::new(crate::error::CasError::UnknownFunction(
+                name,
+            )));
+        }
+        if let Some(other) = resolved_equiv_other {
+            if let Some(name) = cas_session_core::eval::first_unknown_function_name(
+                session,
+                &self.simplifier.context,
+                other,
+            ) {
+                return Err(anyhow::Error::new(crate::error::CasError::UnknownFunction(
+                    name,
+                )));
+            }
+        }
+
         if matches!(&req.action, EvalAction::Simplify)
             && matches!(options.steps_mode, crate::options::StepsMode::Off)
             && is_direct_session_ref_input(&self.simplifier.context, req.parsed)

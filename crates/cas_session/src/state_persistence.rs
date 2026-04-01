@@ -4,7 +4,7 @@ use crate::{cache::SimplifyCacheKey, snapshot::SessionSnapshot, state_core::Sess
 impl SessionState {
     /// Build a serializable snapshot from the current state.
     fn snapshot(&self, context: &cas_ast::Context, cache_key: SimplifyCacheKey) -> SessionSnapshot {
-        SessionSnapshot::new(context, &self.store, cache_key)
+        SessionSnapshot::new(context, &self.store, &self.env, cache_key)
     }
 
     /// Persist the current state atomically to disk.

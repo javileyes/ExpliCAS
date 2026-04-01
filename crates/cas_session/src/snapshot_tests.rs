@@ -2,7 +2,7 @@ use std::fs::File;
 use std::io::{BufWriter, Write};
 
 use crate::snapshot::SessionSnapshot;
-use crate::{cache::SimplifyCacheKey, state_core::SessionState, SessionStore};
+use crate::{cache::SimplifyCacheKey, env::Environment, state_core::SessionState, SessionStore};
 use cas_session_core::snapshot_header::SnapshotHeader;
 use tempfile::tempdir;
 
@@ -30,7 +30,8 @@ fn test_session_snapshot_save_load() {
     };
 
     // Save
-    let snapshot = SessionSnapshot::new(&ctx, &store, key.clone());
+    let env = Environment::new();
+    let snapshot = SessionSnapshot::new(&ctx, &store, &env, key.clone());
     snapshot.save_atomic(&path).expect("save");
 
     // Load
@@ -38,9 +39,10 @@ fn test_session_snapshot_save_load() {
     assert!(loaded.is_compatible(&key));
 
     // Verify
-    let (restored_ctx, restored_store) = loaded.into_parts();
+    let (restored_ctx, restored_store, restored_env) = loaded.into_parts_with_env();
     assert_eq!(ctx.nodes.len(), restored_ctx.nodes.len());
     assert_eq!(store.len(), restored_store.len());
+    assert!(restored_env.is_empty());
 }
 
 #[test]
@@ -211,4 +213,28 @@ fn test_save_snapshot_overwrite_after_mutation_preserves_both_entries() {
         "overwrite-after-mutation snapshot should avoid pathological context growth; got {} nodes",
         loaded_ctx.nodes.len()
     );
+}
+
+#[test]
+fn test_session_snapshot_save_load_preserves_function_bindings() {
+    let dir = tempdir().expect("tempdir");
+    let path = dir.path().join("test-functions.session");
+
+    let mut ctx = cas_ast::Context::new();
+    let x = ctx.var("x");
+    let one = ctx.num(1);
+    let body = ctx.add(cas_ast::Expr::Add(x, one));
+
+    let store = SessionStore::new();
+    let mut env = Environment::new();
+    env.set_function("f".to_string(), vec!["x".to_string()], body);
+
+    let key = SimplifyCacheKey::from_domain_flag("generic");
+    let snapshot = SessionSnapshot::new(&ctx, &store, &env, key.clone());
+    snapshot.save_atomic(&path).expect("save");
+
+    let loaded = SessionSnapshot::load(&path).expect("load");
+    let (_restored_ctx, _restored_store, restored_env) = loaded.into_parts_with_env();
+    let binding = restored_env.get_function("f").expect("restored function");
+    assert_eq!(binding.params, vec!["x".to_string()]);
 }

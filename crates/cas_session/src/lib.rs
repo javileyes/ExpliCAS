@@ -16,6 +16,7 @@ mod config;
 mod config_command_apply_tests;
 #[cfg(test)]
 mod config_tests;
+mod environment_snapshot;
 pub mod eval;
 #[cfg(test)]
 mod eval_command_session_tests;

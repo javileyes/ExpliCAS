@@ -212,6 +212,21 @@ fn evaluate_budget_let_assignment_and_health_on_repl_core_run() {
 }
 
 #[test]
+fn evaluate_function_assignment_and_eval_on_repl_core_run() {
+    let mut core = crate::repl_core::ReplCore::new();
+
+    let assign_msg =
+        evaluate_assignment_command_message_on_repl_core(&mut core, "f(x)", "x+1", true)
+            .expect("function assign");
+    assert!(assign_msg.contains("f(x) :="));
+
+    let plan =
+        evaluate_eval_command_render_plan_on_repl_core(&mut core, "f(2)", false).expect("eval");
+    let result = plan.result_message.expect("result");
+    assert!(result.text.contains('3'));
+}
+
+#[test]
 fn evaluate_eval_command_render_plan_on_repl_core_returns_plan() {
     let mut core = crate::repl_core::ReplCore::new();
     let plan =

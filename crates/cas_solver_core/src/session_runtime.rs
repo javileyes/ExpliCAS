@@ -4,11 +4,29 @@ use cas_ast::{Context, ExprId};
 pub trait AssignmentApplyContext {
     fn assignment_unset_binding(&mut self, name: &str) -> bool;
     fn assignment_set_binding(&mut self, name: String, expr: ExprId);
-    fn assignment_resolve_state_refs(
+    fn assignment_unset_function(&mut self, _name: &str) -> bool {
+        false
+    }
+    fn assignment_set_function(&mut self, _name: String, _params: Vec<String>, _expr: ExprId) {}
+    fn assignment_resolve_session_refs(
         &self,
         ctx: &mut Context,
         expr: ExprId,
     ) -> Result<ExprId, String>;
+    fn assignment_substitute_bindings_with_shadow(
+        &self,
+        ctx: &mut Context,
+        expr: ExprId,
+        shadow: &[&str],
+    ) -> ExprId;
+    fn assignment_resolve_state_refs(
+        &self,
+        ctx: &mut Context,
+        expr: ExprId,
+    ) -> Result<ExprId, String> {
+        let resolved = self.assignment_resolve_session_refs(ctx, expr)?;
+        Ok(self.assignment_substitute_bindings_with_shadow(ctx, resolved, &[]))
+    }
     fn assignment_is_reserved_name(&self, name: &str) -> bool;
 }
 

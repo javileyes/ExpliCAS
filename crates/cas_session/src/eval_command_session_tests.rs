@@ -305,4 +305,60 @@ mod tests {
             output.required_display
         );
     }
+
+    #[test]
+    fn persisted_function_assignment_is_visible_to_followup_eval() {
+        let dir = tempdir().expect("tempdir");
+        let path = dir.path().join("session.bin");
+
+        let assigned = crate::eval::evaluate_eval_command_with_session(
+            Some(&path),
+            EvalCommandConfig {
+                expr: "f(x) := x + 1",
+                auto_store: true,
+                max_chars: 2000,
+                steps_mode: EvalStepsMode::Off,
+                budget_preset: EvalBudgetPreset::Standard,
+                strict: false,
+                domain: EvalDomainMode::Generic,
+                context_mode: EvalContextMode::Auto,
+                branch_mode: EvalBranchMode::Strict,
+                expand_policy: EvalExpandPolicy::Off,
+                complex_mode: EvalComplexMode::Auto,
+                const_fold: EvalConstFoldMode::Off,
+                value_domain: EvalValueDomain::Real,
+                complex_branch: cas_api_models::EvalBranchMode::Principal,
+                inv_trig: EvalInvTrigPolicy::Strict,
+                assume_scope: EvalAssumeScope::Real,
+            },
+            |_steps, _events, _context, _steps_mode| Vec::new(),
+        );
+        let assignment = assigned.0.expect("assignment eval should succeed");
+        assert_eq!(assignment.result, "x + 1");
+
+        let applied = crate::eval::evaluate_eval_command_with_session(
+            Some(&path),
+            EvalCommandConfig {
+                expr: "f(5)",
+                auto_store: true,
+                max_chars: 2000,
+                steps_mode: EvalStepsMode::Off,
+                budget_preset: EvalBudgetPreset::Standard,
+                strict: false,
+                domain: EvalDomainMode::Generic,
+                context_mode: EvalContextMode::Auto,
+                branch_mode: EvalBranchMode::Strict,
+                expand_policy: EvalExpandPolicy::Off,
+                complex_mode: EvalComplexMode::Auto,
+                const_fold: EvalConstFoldMode::Off,
+                value_domain: EvalValueDomain::Real,
+                complex_branch: cas_api_models::EvalBranchMode::Principal,
+                inv_trig: EvalInvTrigPolicy::Strict,
+                assume_scope: EvalAssumeScope::Real,
+            },
+            |_steps, _events, _context, _steps_mode| Vec::new(),
+        );
+        let output = applied.0.expect("followup eval should succeed");
+        assert_eq!(output.result, "6");
+    }
 }
