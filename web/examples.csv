@@ -1,6 +1,9 @@
 expression,description
 "solve(a*x^2+b*x+c=0,x)","Fórmula cuadrática general"
 "1 / (sqrt(x) - 1) - (sqrt(x) + 1) / (x - 1)","Simplificación con raíces"
+"(x - 1)*(x^5 + x^4 + x^3 + x^2 + x + 1)","Producto polinómico con cancelación telescópica"
+"(n+1)!/n!","Cociente de factoriales consecutivos"
+"ln(x^3) + ln(y^2) - ln(x^3 * y^2)","Contracción de logaritmos"
 "1 + 1/(1 + 1/(1 + 1/x)) - (3*x + 2)/(2*x + 1)","Fracción continua"
 "expand((x+y)^3)","Expansión polinómica grande"
 "(sqrt(5 + 2*sqrt(6))) + (1/(u*(u+2))) - ((sqrt(2) + sqrt(3)) + (1/(2*u) - 1/(2*(u+2))))","Radicales anidados"
