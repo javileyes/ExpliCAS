@@ -293,9 +293,12 @@ fn check_and_mark_inverse_trig_pattern(ctx: &Context, expr_id: ExprId, marks: &m
     }
 }
 
-/// Detect (sin(A)+sin(B))/(cos(C)+cos(D)) patterns where {A,B} == {C,D}.
-/// Mark all sin/cos function nodes for protection so TripleAngleRule won't expand them.
-/// This allows SinCosSumQuotientRule to fire and apply sum-to-product identities.
+/// Detect protected trig quotient patterns with matching arguments:
+/// - `(sin(A)±sin(B))/(cos(C)+cos(D))`
+/// - `(cos(A)-cos(B))/(sin(C)-sin(D))`
+///
+/// Mark all involved sin/cos function nodes for protection so TripleAngleRule
+/// won't expand them. This allows the quotient contraction rules to fire first.
 fn check_and_mark_sum_quotient_pattern(ctx: &Context, expr_id: ExprId, marks: &mut PatternMarks) {
     // Only check Div nodes
     let Expr::Div(num_id, den_id) = ctx.get(expr_id) else {
@@ -337,6 +340,19 @@ fn check_and_mark_sum_quotient_pattern(ctx: &Context, expr_id: ExprId, marks: &m
         None
     }
 
+    fn extract_trig_diff_nodes(
+        ctx: &Context,
+        expr: ExprId,
+        fn_name: &str,
+    ) -> Option<(ExprId, ExprId, ExprId, ExprId)> {
+        if let Expr::Sub(l, r) = ctx.get(expr) {
+            let (func_id1, arg1) = extract_trig_func_and_arg(ctx, *l, fn_name)?;
+            let (func_id2, arg2) = extract_trig_func_and_arg(ctx, *r, fn_name)?;
+            return Some((func_id1, arg1, func_id2, arg2));
+        }
+        None
+    }
+
     // Try to extract sin(A) + sin(B) from numerator
     let Some((sin_func1, sin_a, sin_func2, sin_b)) = extract_trig_sum_nodes(ctx, num_id, "sin")
     else {
@@ -362,6 +378,29 @@ fn check_and_mark_sum_quotient_pattern(ctx: &Context, expr_id: ExprId, marks: &m
         marks.mark_sum_quotient(sin_func2);
         marks.mark_sum_quotient(cos_func1);
         marks.mark_sum_quotient(cos_func2);
+        return;
+    }
+
+    // Also protect (cos(A)-cos(B))/(sin(C)-sin(D)) when {A,B} == {C,D}
+    let Some((cos_func1, cos_a, cos_func2, cos_b)) = extract_trig_diff_nodes(ctx, num_id, "cos")
+    else {
+        return;
+    };
+    let Some((sin_func1, sin_c, sin_func2, sin_d)) = extract_trig_diff_nodes(ctx, den_id, "sin")
+    else {
+        return;
+    };
+
+    let direct = cas_ast::ordering::compare_expr(ctx, cos_a, sin_c) == std::cmp::Ordering::Equal
+        && cas_ast::ordering::compare_expr(ctx, cos_b, sin_d) == std::cmp::Ordering::Equal;
+    let crossed = cas_ast::ordering::compare_expr(ctx, cos_a, sin_d) == std::cmp::Ordering::Equal
+        && cas_ast::ordering::compare_expr(ctx, cos_b, sin_c) == std::cmp::Ordering::Equal;
+
+    if direct || crossed {
+        marks.mark_sum_quotient(cos_func1);
+        marks.mark_sum_quotient(cos_func2);
+        marks.mark_sum_quotient(sin_func1);
+        marks.mark_sum_quotient(sin_func2);
     }
 }
 

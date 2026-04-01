@@ -735,8 +735,9 @@ pub fn is_trig_sum(ctx: &Context, expr: ExprId, fn_name: &str) -> bool {
     false
 }
 
-/// Check whether an expression matches a trig sum-quotient scaffold:
-/// `(sin(A) ± sin(B)) / (cos(C) + cos(D))`.
+/// Check whether an expression matches a protected trig quotient scaffold:
+/// - `(sin(A) ± sin(B)) / (cos(C) + cos(D))`
+/// - `(cos(A) - cos(B)) / (sin(C) - sin(D))`
 pub fn is_trig_sum_quotient_div_pattern(ctx: &Context, expr: ExprId) -> bool {
     let Expr::Div(num, den) = ctx.get(expr) else {
         return false;
@@ -744,7 +745,15 @@ pub fn is_trig_sum_quotient_div_pattern(ctx: &Context, expr: ExprId) -> bool {
 
     let num_is_sin_sum_or_diff = is_binary_trig_op(ctx, *num, "sin");
     let den_is_cos_sum = is_trig_sum(ctx, *den, "cos");
-    num_is_sin_sum_or_diff && den_is_cos_sum
+    if num_is_sin_sum_or_diff && den_is_cos_sum {
+        return true;
+    }
+
+    let num_is_cos_diff =
+        matches!(ctx.get(*num), Expr::Sub(_, _)) && is_binary_trig_op(ctx, *num, "cos");
+    let den_is_sin_diff =
+        matches!(ctx.get(*den), Expr::Sub(_, _)) && is_binary_trig_op(ctx, *den, "sin");
+    num_is_cos_diff && den_is_sin_diff
 }
 
 /// Check whether any ancestor expression matches a trig sum-quotient scaffold.
@@ -1371,10 +1380,12 @@ mod tests {
     fn trig_sum_quotient_div_pattern_detects_expected_shape() {
         let mut ctx = Context::new();
         let yes = parse("(sin(a)-sin(b))/(cos(a)+cos(b))", &mut ctx).expect("yes");
+        let yes_cos = parse("(cos(a)-cos(b))/(sin(b)-sin(a))", &mut ctx).expect("yes_cos");
         let no_den = parse("(sin(a)-sin(b))/(cos(a)-cos(b))", &mut ctx).expect("no_den");
         let no_num = parse("(sin(a)*sin(b))/(cos(a)+cos(b))", &mut ctx).expect("no_num");
 
         assert!(is_trig_sum_quotient_div_pattern(&ctx, yes));
+        assert!(is_trig_sum_quotient_div_pattern(&ctx, yes_cos));
         assert!(!is_trig_sum_quotient_div_pattern(&ctx, no_den));
         assert!(!is_trig_sum_quotient_div_pattern(&ctx, no_num));
     }

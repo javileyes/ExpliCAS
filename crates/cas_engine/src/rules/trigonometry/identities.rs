@@ -42,7 +42,8 @@ pub use sum_to_product_rules::{register, AngleConsistencyRule, DyadicCosProductT
 
 mod power_products_rules;
 pub use power_products_rules::{
-    SinCosQuarticSumRule, SinCosSumQuotientRule, TrigHiddenCubicIdentityRule,
+    CosDiffSinDiffQuotientRule, SinCosQuarticSumRule, SinCosSumQuotientRule,
+    TrigHiddenCubicIdentityRule,
 };
 
 // --- Phase shift and supplementary angle ---

@@ -6,7 +6,9 @@ use crate::rule::Rewrite;
 use cas_math::trig_power_identity_support::{
     try_rewrite_hidden_cubic_identity_add_expr, try_rewrite_sin_cos_quartic_sum_add_expr,
 };
-use cas_math::trig_sum_product_support::try_plan_sin_cos_sum_quotient_div_expr;
+use cas_math::trig_sum_product_support::{
+    try_plan_cos_diff_sin_diff_quotient_div_expr, try_plan_sin_cos_sum_quotient_div_expr,
+};
 
 // =============================================================================
 // HIDDEN CUBIC TRIG IDENTITY
@@ -83,3 +85,56 @@ define_rule!(
         )
     }
 );
+
+pub struct CosDiffSinDiffQuotientRule;
+
+impl crate::rule::Rule for CosDiffSinDiffQuotientRule {
+    fn name(&self) -> &str {
+        "Cos-Diff / Sin-Diff Quotient"
+    }
+
+    fn priority(&self) -> i32 {
+        205
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: cas_ast::ExprId,
+        _parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<Rewrite> {
+        use crate::ImplicitCondition;
+
+        let plan =
+            try_plan_cos_diff_sin_diff_quotient_div_expr(ctx, expr, crate::collect::collect)?;
+        Some(
+            Rewrite::new(plan.state_after_step1)
+                .desc(plan.desc_step1)
+                .local(plan.num_id, plan.intermediate_num)
+                .chain(
+                    ChainedRewrite::new(plan.state_after_step2)
+                        .desc(plan.desc_step2)
+                        .local(plan.den_id, plan.intermediate_den),
+                )
+                .chain(
+                    ChainedRewrite::new(plan.rewritten)
+                        .desc(plan.desc_step3)
+                        .local(plan.state_after_step2, plan.rewritten),
+                )
+                .requires(ImplicitCondition::NonZero(plan.introduced_nonzero))
+                .requires(ImplicitCondition::NonZero(plan.result_nonzero)),
+        )
+    }
+
+    fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
+        Some(crate::target_kind::TargetKindSet::DIV)
+    }
+
+    fn importance(&self) -> crate::step::ImportanceLevel {
+        crate::step::ImportanceLevel::High
+    }
+
+    fn soundness(&self) -> crate::rule::SoundnessLabel {
+        crate::rule::SoundnessLabel::EquivalenceUnderIntroducedRequires
+    }
+}

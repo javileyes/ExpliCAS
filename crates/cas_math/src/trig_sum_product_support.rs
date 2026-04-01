@@ -259,6 +259,21 @@ pub struct TrigSumQuotientRewritePlan {
     pub desc_step3: &'static str,
 }
 
+pub struct CosDiffSinDiffQuotientRewritePlan {
+    pub num_id: ExprId,
+    pub den_id: ExprId,
+    pub intermediate_num: ExprId,
+    pub intermediate_den: ExprId,
+    pub state_after_step1: ExprId,
+    pub state_after_step2: ExprId,
+    pub rewritten: ExprId,
+    pub introduced_nonzero: ExprId,
+    pub result_nonzero: ExprId,
+    pub desc_step1: &'static str,
+    pub desc_step2: &'static str,
+    pub desc_step3: &'static str,
+}
+
 /// Detect and rewrite `tan(a-b)` to `(tan(a)-tan(b))/(1+tan(a)*tan(b))`.
 pub fn try_rewrite_tan_difference_expr(
     ctx: &mut Context,
@@ -403,6 +418,88 @@ pub fn try_plan_sin_cos_sum_quotient_div_expr(
         desc_step1: "sin(A)+sin(B) = 2·sin((A+B)/2)·cos((A-B)/2)",
         desc_step2: "cos(A)+cos(B) = 2·cos((A+B)/2)·cos((A-B)/2)",
         desc_step3: "Cancel common factors 2 and cos(half_diff)",
+    })
+}
+
+/// Plan the quotient contraction:
+/// - `(cos(A)-cos(B))/(sin(B)-sin(A)) -> tan((A+B)/2)`
+/// - `(cos(A)-cos(B))/(sin(A)-sin(B)) -> -tan((A+B)/2)`
+///
+/// This keeps the rewrite narrow and lets the engine attach the nonzero
+/// requirements introduced by canceling the shared sine factor.
+pub fn try_plan_cos_diff_sin_diff_quotient_div_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+    simplify_expr: fn(&mut Context, ExprId) -> ExprId,
+) -> Option<CosDiffSinDiffQuotientRewritePlan> {
+    let (num_id, den_id) = if let Expr::Div(n, d) = ctx.get(expr) {
+        (*n, *d)
+    } else {
+        return None;
+    };
+
+    let (cos_a, cos_b) = extract_trig_two_term_diff(ctx, num_id, "cos")?;
+    let (sin_l, sin_r) = extract_trig_two_term_diff(ctx, den_id, "sin")?;
+
+    let direct = cas_ast::ordering::compare_expr(ctx, cos_a, sin_l) == Ordering::Equal
+        && cas_ast::ordering::compare_expr(ctx, cos_b, sin_r) == Ordering::Equal;
+    let reversed = cas_ast::ordering::compare_expr(ctx, cos_a, sin_r) == Ordering::Equal
+        && cas_ast::ordering::compare_expr(ctx, cos_b, sin_l) == Ordering::Equal;
+
+    if !direct && !reversed {
+        return None;
+    }
+
+    let avg = build_avg_with_simplifier(ctx, cos_a, cos_b, simplify_expr);
+    let half_gap = build_half_diff_with_simplifier(ctx, sin_l, sin_r, false, simplify_expr);
+    let sin_avg = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![avg]);
+    let cos_avg = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![avg]);
+    let common_factor = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![half_gap]);
+    let two = ctx.num(2);
+
+    let num_product = smart_mul(ctx, sin_avg, common_factor);
+    let base_num = smart_mul(ctx, two, num_product);
+    let intermediate_num = if reversed {
+        base_num
+    } else {
+        ctx.add(Expr::Neg(base_num))
+    };
+    let den_product = smart_mul(ctx, cos_avg, common_factor);
+    let intermediate_den = smart_mul(ctx, two, den_product);
+    let state_after_step1 = ctx.add(Expr::Div(intermediate_num, den_id));
+    let state_after_step2 = ctx.add(Expr::Div(intermediate_num, intermediate_den));
+    let tan_avg = ctx.call_builtin(cas_ast::BuiltinFn::Tan, vec![avg]);
+    let rewritten = if reversed {
+        tan_avg
+    } else {
+        ctx.add(Expr::Neg(tan_avg))
+    };
+
+    let (desc_step1, desc_step2) = if reversed {
+        (
+            "cos(A)−cos(B) = 2·sin((A+B)/2)·sin((B−A)/2)",
+            "sin(B)−sin(A) = 2·cos((A+B)/2)·sin((B−A)/2)",
+        )
+    } else {
+        (
+            "cos(A)−cos(B) = -2·sin((A+B)/2)·sin((A−B)/2)",
+            "sin(A)−sin(B) = 2·cos((A+B)/2)·sin((A−B)/2)",
+        )
+    };
+
+    Some(CosDiffSinDiffQuotientRewritePlan {
+        num_id,
+        den_id,
+        intermediate_num,
+        intermediate_den,
+        state_after_step1,
+        state_after_step2,
+        rewritten,
+        introduced_nonzero: common_factor,
+        result_nonzero: cos_avg,
+        desc_step1,
+        desc_step2,
+        desc_step3: "Cancel common factors 2 and sin(half_gap)",
     })
 }
 
@@ -915,6 +1012,51 @@ mod tests {
         let mut ctx = Context::new();
         let expr = parse("(sin(a)+sin(b))/(cos(a)+cos(c))", &mut ctx).expect("expr");
         assert!(try_plan_sin_cos_sum_quotient_div_expr(&mut ctx, expr, passthrough).is_none());
+    }
+
+    #[test]
+    fn plans_cos_diff_sin_diff_quotient_to_tan_avg() {
+        fn passthrough(_: &mut Context, id: ExprId) -> ExprId {
+            id
+        }
+
+        let mut ctx = Context::new();
+        let expr = parse("(cos(x)-cos(3*x))/(sin(3*x)-sin(x))", &mut ctx).expect("expr");
+        let plan = try_plan_cos_diff_sin_diff_quotient_div_expr(&mut ctx, expr, passthrough)
+            .expect("plan");
+        let expected = parse("tan((x + 3*x)/2)", &mut ctx).expect("expected");
+        let introduced = parse("sin((3*x - x)/2)", &mut ctx).expect("introduced");
+        let result_nonzero = parse("cos((x + 3*x)/2)", &mut ctx).expect("result_nonzero");
+
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, plan.rewritten, expected),
+            Ordering::Equal
+        );
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, plan.introduced_nonzero, introduced),
+            Ordering::Equal
+        );
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, plan.result_nonzero, result_nonzero),
+            Ordering::Equal
+        );
+        assert_eq!(
+            plan.desc_step1,
+            "cos(A)−cos(B) = 2·sin((A+B)/2)·sin((B−A)/2)"
+        );
+    }
+
+    #[test]
+    fn does_not_plan_cos_diff_sin_diff_quotient_for_mismatched_args() {
+        fn passthrough(_: &mut Context, id: ExprId) -> ExprId {
+            id
+        }
+
+        let mut ctx = Context::new();
+        let expr = parse("(cos(a)-cos(b))/(sin(c)-sin(a))", &mut ctx).expect("expr");
+        assert!(
+            try_plan_cos_diff_sin_diff_quotient_div_expr(&mut ctx, expr, passthrough).is_none()
+        );
     }
 
     #[test]

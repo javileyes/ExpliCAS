@@ -3390,6 +3390,14 @@ fn engine_proves_consecutive_factorial_ratio_identity() {
 }
 
 #[test]
+fn engine_proves_cos_diff_over_sin_diff_tan_identity() {
+    let lhs = "(cos(x) - cos(3*x)) / (sin(3*x) - sin(x))";
+    let rhs = "tan(2*x)";
+    assert!(prove_zero_from_engine_texts(lhs, rhs));
+    assert!(prove_zero_from_engine_texts(rhs, lhs));
+}
+
+#[test]
 fn curated_pair_corpus_proves_contextual_pair_both_directions() {
     let lhs = "(1/(x - 1) + 1/(x + 1)) + ((u+1)^2)";
     let rhs = "(2*x/(x^2 - 1)) + (u^2 + 2*u + 1)";

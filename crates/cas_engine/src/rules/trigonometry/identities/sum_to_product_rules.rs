@@ -24,15 +24,15 @@ fn format_angle_consistency_desc(kind: TrigMultiAngleRewriteKind) -> &'static st
 use super::contraction_rules::SquareDoubleAngleContractionRule;
 use super::{
     AngleIdentityRule, AngleSumFractionToTanRule, Cos2xAdditiveContractionRule,
-    CosTripleIdentityZeroRule, CotHalfAngleDifferenceRule, CscCotPythagoreanRule,
-    DoubleAngleContractionRule, DoubleAngleRule, HalfAngleTangentRule, HyperbolicTanhPythRule,
-    PythagoreanIdentityRule, QuintupleAngleRule, RecursiveTrigExpansionRule, SecTanPythagoreanRule,
-    Sin4xIdentityZeroRule, SinCosIntegerPiRule, SinCosQuarticSumRule, SinCosSumQuotientRule,
-    SinSupplementaryAngleRule, TanDifferenceIdentityZeroRule, TanDifferenceRule,
-    TanDoubleAngleContractionRule, TanToSinCosRule, TanTripleProductRule,
-    TrigHiddenCubicIdentityRule, TrigOddEvenParityRule, TrigQuotientRule, TrigSumToProductRule,
-    TripleAngleRule, WeierstrassContractionRule, WeierstrassCosIdentityZeroRule,
-    WeierstrassSinIdentityZeroRule,
+    CosDiffSinDiffQuotientRule, CosTripleIdentityZeroRule, CotHalfAngleDifferenceRule,
+    CscCotPythagoreanRule, DoubleAngleContractionRule, DoubleAngleRule, HalfAngleTangentRule,
+    HyperbolicTanhPythRule, PythagoreanIdentityRule, QuintupleAngleRule,
+    RecursiveTrigExpansionRule, SecTanPythagoreanRule, Sin4xIdentityZeroRule, SinCosIntegerPiRule,
+    SinCosQuarticSumRule, SinCosSumQuotientRule, SinSupplementaryAngleRule,
+    TanDifferenceIdentityZeroRule, TanDifferenceRule, TanDoubleAngleContractionRule,
+    TanToSinCosRule, TanTripleProductRule, TrigHiddenCubicIdentityRule, TrigOddEvenParityRule,
+    TrigQuotientRule, TrigSumToProductRule, TripleAngleRule, WeierstrassContractionRule,
+    WeierstrassCosIdentityZeroRule, WeierstrassSinIdentityZeroRule,
 };
 // Import migration Phase 1-3 rules
 use super::SinSumTripleIdentityZeroRule;
@@ -187,6 +187,7 @@ pub fn register(simplifier: &mut crate::Simplifier) {
                                                               // and may benefit from tighter cos(2t) normal forms for cross-product trig expressions.
     simplifier.add_rule(Box::new(Cos2xAdditiveContractionRule));
     simplifier.add_rule(Box::new(SinCosSumQuotientRule));
+    simplifier.add_rule(Box::new(CosDiffSinDiffQuotientRule));
     // Standalone Sum-to-Product: sin(A)+sin(B), cos(A)+cos(B) etc. when args are k*π
     simplifier.add_rule(Box::new(TrigSumToProductRule));
     simplifier.add_rule(Box::new(TripleAngleRule)); // Shortcut: sin(3x), cos(3x), tan(3x)

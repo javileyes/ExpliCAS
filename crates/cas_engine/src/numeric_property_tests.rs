@@ -43,6 +43,15 @@ fn sum_quotient_safe(x: f64, a_coeff: i64, b_coeff: i64) -> bool {
     den.abs() > 0.1 && cos_safe(x) // Also need cos(x) safe for tan(...)
 }
 
+/// Check if the cos-diff / sin-diff quotient and tan((a+b)x/2) are both safe.
+fn cos_diff_sin_diff_safe(x: f64, a_coeff: i64, b_coeff: i64) -> bool {
+    let a = a_coeff as f64 * x;
+    let b = b_coeff as f64 * x;
+    let den = b.sin() - a.sin();
+    let avg = ((a_coeff + b_coeff) as f64 * x) / 2.0;
+    den.abs() > 0.1 && avg.cos().abs() > 0.1
+}
+
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(256))]
 
@@ -94,6 +103,21 @@ proptest! {
         prop_assert!(
             approx_eq(input_val, expected_val, EPS * 10.0), // Slightly larger tolerance for larger values
             "Diff quotient identity failed at x={}: got {}, expected {}",
+            x, input_val, expected_val
+        );
+    }
+
+    /// Test: (cos(x) - cos(3x)) / (sin(3x) - sin(x)) ≈ tan(2x)
+    #[test]
+    fn numeric_cos_diff_sin_diff_quotient(x in -2.0f64..2.0) {
+        prop_assume!(cos_diff_sin_diff_safe(x, 1, 3));
+
+        let input_val = (x.cos() - (3.0 * x).cos()) / ((3.0 * x).sin() - x.sin());
+        let expected_val = (2.0 * x).tan();
+
+        prop_assert!(
+            approx_eq(input_val, expected_val, EPS),
+            "Cos diff / sin diff identity failed at x={}: got {}, expected {}",
             x, input_val, expected_val
         );
     }
