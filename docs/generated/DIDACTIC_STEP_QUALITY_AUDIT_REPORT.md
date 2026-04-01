@@ -20,6 +20,7 @@ Command: `cargo test -p cas_didactic --test didactic_step_quality_audit didactic
 | `polynomial_expansion_cancel` | `polynomial` | 6 | 3 | none |
 | `perfect_square_root` | `radicals` | 2 | 2 | none |
 | `cube_quotient_radical` | `quotient` | 4 | 5 | none |
+| `geometric_product_cancellation` | `polynomial` | 1 | 3 | none |
 
 ## rationalize_linear_root (rationalization)
 
@@ -94,20 +95,20 @@ Steps:
    [Simplificación de fracción compleja]
       → Juntar todo en una sola fracción
         1/x + 1/y → (x + y)/(x ·  y)
-   After: 1/((x + y)/(x ·  y))
+   After: 1/((x + y)/(x · y))
 2. Simplificar fracción anidada
-   Before: 1/((x + y)/(x ·  y))
+   Before: 1/((x + y)/(x · y))
    [Simplificación de fracción compleja]
       → Dividir entre una fracción equivale a invertirla
         1/((x + y)/(x ·  y)) → (x ·  y)/(x + y)
-   After: (x ·  y)/(x + y)
+   After: (x · y)/(x + y)
 ```
 
 ### Wire / Web Steps
 
 1. `Sumar fracciones`
    - before: `1/(1/x + 1/y)`
-   - after: `1/((x + y)/(x ·  y))`
+   - after: `1/((x + y)/(x · y))`
    - before_latex: `\frac{1}{{\color{red}{\frac{1}{x} + \frac{1}{y}}}}`
    - after_latex: `\frac{1}{{\color{green}{\frac{x + y}{x\cdot y}}}}`
    - substeps:
@@ -115,8 +116,8 @@ Steps:
         - before_latex: `\frac{1}{x} + \frac{1}{y}`
         - after_latex: `\frac{x + y}{x\cdot y}`
 2. `Simplificar fracción anidada`
-   - before: `1/((x + y)/(x ·  y))`
-   - after: `(x ·  y)/(x + y)`
+   - before: `1/((x + y)/(x · y))`
+   - after: `(x · y)/(x + y)`
    - before_latex: `{\color{red}{\frac{1}{\frac{x + y}{x\cdot y}}}}`
    - after_latex: `{\color{green}{\frac{x\cdot y}{x + y}}}`
    - substeps:
@@ -142,20 +143,20 @@ Steps:
    [Simplificación de fracción compleja]
       → Juntar todo en una sola fracción
         1/y + 1/z → (y + z)/(y ·  z)
-   After: (1/x)/((y + z)/(y ·  z))
+   After: (1/x)/((y + z)/(y · z))
 2. Simplificar fracción anidada
-   Before: (1/x)/((y + z)/(y ·  z))
+   Before: (1/x)/((y + z)/(y · z))
    [Simplificación de fracción compleja]
       → Dividir entre una fracción equivale a invertirla
         (1/x)/((y + z)/(y ·  z)) → (y ·  z)/((y + z) ·  x)
-   After: (y ·  z)/((y + z) ·  x)
+   After: (y · z)/((y + z) · x)
 ```
 
 ### Wire / Web Steps
 
 1. `Sumar fracciones`
    - before: `(1/x)/(1/y + 1/z)`
-   - after: `(1/x)/((y + z)/(y ·  z))`
+   - after: `(1/x)/((y + z)/(y · z))`
    - before_latex: `\frac{\frac{1}{x}}{{\color{red}{\frac{1}{y} + \frac{1}{z}}}}`
    - after_latex: `\frac{\frac{1}{x}}{{\color{green}{\frac{y + z}{y\cdot z}}}}`
    - substeps:
@@ -163,8 +164,8 @@ Steps:
         - before_latex: `\frac{1}{y} + \frac{1}{z}`
         - after_latex: `\frac{y + z}{y\cdot z}`
 2. `Simplificar fracción anidada`
-   - before: `(1/x)/((y + z)/(y ·  z))`
-   - after: `(y ·  z)/((y + z) ·  x)`
+   - before: `(1/x)/((y + z)/(y · z))`
+   - after: `(y · z)/((y + z) · x)`
    - before_latex: `{\color{red}{\frac{\frac{1}{x}}{\frac{y + z}{y\cdot z}}}}`
    - after_latex: `{\color{green}{\frac{y\cdot z}{(y + z)\cdot x}}}`
    - substeps:
@@ -186,20 +187,20 @@ Steps:
 ```text
 Steps:
 1. Quitar el 0
-   Before: 2 ·  x + 3 ·  x + 0
-   After: 2 ·  x + 3 ·  x
+   Before: 2 · x + 3 · x + 0
+   After: 2 · x + 3 · x
 2. Agrupar términos semejantes
-   Before: 2 ·  x + 3 ·  x
+   Before: 2 · x + 3 · x
       → Agrupar términos semejantes y sumar coeficientes
         2 ·  x + 3 ·  x → 5 ·  x
-   After: 5 ·  x
+   After: 5 · x
 ```
 
 ### Wire / Web Steps
 
 1. `Agrupar términos semejantes`
-   - before: `2 ·  x + 3 ·  x`
-   - after: `5 ·  x`
+   - before: `2 · x + 3 · x`
+   - after: `5 · x`
    - before_latex: `{\color{red}{2\cdot x + 3\cdot x}}`
    - after_latex: `{\color{green}{5\cdot x}}`
    - substeps:
@@ -269,7 +270,7 @@ Steps:
 ```text
 Steps:
 1. Cancelar factor común
-   Before: (2 ·  x)/(4 ·  x)
+   Before: (2 · x)/(4 · x)
       → Como x aparece arriba y abajo, se cancela
         (2 ·  x)/(4 ·  x) → 2/4
    After: 2/4
@@ -278,7 +279,7 @@ Steps:
 ### Wire / Web Steps
 
 1. `Cancelar un factor común`
-   - before: `(2 ·  x)/(4 ·  x)`
+   - before: `(2 · x)/(4 · x)`
    - after: `2/4`
    - before_latex: `{\color{red}{\frac{2\cdot x}{4\cdot x}}}`
    - after_latex: `{\color{green}{\frac{2}{4}}}`
@@ -301,7 +302,7 @@ Steps:
 ```text
 Steps:
 1. Cancelar factor común
-   Before: ((x + 1) ·  (x - 1))/(x - 1)
+   Before: ((x + 1) · (x - 1))/(x - 1)
    [Factorización de polinomios]
       → Reescribir el numerador como diferencia de cuadrados
         x^2 - 1 → (x + 1) ·  (x - 1)
@@ -313,7 +314,7 @@ Steps:
 ### Wire / Web Steps
 
 1. `Factorizar una diferencia de cuadrados y cancelar`
-   - before: `((x + 1) ·  (x - 1))/(x - 1)`
+   - before: `((x + 1) · (x - 1))/(x - 1)`
    - after: `x + 1`
    - before_latex: `{\color{red}{\frac{(1 + x)\cdot (x - 1)}{x - 1}}}`
    - after_latex: `{\color{green}{1 + x}}`
@@ -371,14 +372,14 @@ Steps:
 ```text
 Steps:
 1. Aplicar identidad de arctangentes
-   Before: arctan(1/3) + arctan(3) - 1/2 ·  pi
+   Before: arctan(1/3) + arctan(3) - 1/2 · pi
       → Juntar la pareja que encaja con la identidad
         arctan(1/3) + arctan(3) - 1/2 ·  pi → arctan(1/3) + arctan(3)
       → Esa pareja vale pi/2
         arctan(1/3) + arctan(3) → pi/2
-   After: pi/2 - 1/2 ·  pi
+   After: pi/2 - 1/2 · pi
 2. Cancelar una identidad exacta
-   Before: pi/2 - 1/2 ·  pi
+   Before: pi/2 - 1/2 · pi
       → Las dos partes se compensan exactamente
         pi/2 - 1/2 ·  pi → 0
    After: 0
@@ -387,8 +388,8 @@ Steps:
 ### Wire / Web Steps
 
 1. `Aplicar identidad de arctangentes`
-   - before: `arctan(1/3) + arctan(3) - 1/2 ·  pi`
-   - after: `pi/2 - 1/2 ·  pi`
+   - before: `arctan(1/3) + arctan(3) - 1/2 · pi`
+   - after: `pi/2 - 1/2 · pi`
    - before_latex: `{\color{red}{\text{arctan}(3) + \text{arctan}(\frac{1}{3}) - \frac{1}{2}\cdot \pi}}`
    - after_latex: `{\color{green}{\frac{\pi}{2} - \frac{1}{2}\cdot \pi}}`
    - substeps:
@@ -413,17 +414,17 @@ Steps:
 ```text
 Steps:
 1. Expandir el binomio
-   Before: ((a + b))^2 - a^2 - (2 ·  a ·  b)
+   Before: ((a + b))^2 - a^2 - 2 · a · b
       → Aplicar la fórmula (A + B)^2 = A^2 + 2AB + B^2
         ((a + b))^2 → b^2 + 2 ·  a ·  b + a^2
-   After: b^2 + 2 ·  a ·  b + a^2 - a^2 - (2 ·  a ·  b)
+   After: b^2 + 2 · a · b + a^2 - a^2 - 2 · a · b
 2. Cancelar términos opuestos
-   Before: a^2 + b^2 + 2 ·  a ·  b - a^2 - (2 ·  a ·  b)
+   Before: a^2 + b^2 + 2 · a · b - a^2 - 2 · a · b
       → Estos dos términos se anulan entre sí
         a^2 - a^2 → 0
-   After: b^2 + 2 ·  a ·  b - (2 ·  a ·  b)
+   After: b^2 + 2 · a · b - 2 · a · b
 3. Cancelar términos opuestos
-   Before: b^2 + 2 ·  a ·  b - 2 ·  a ·  b
+   Before: b^2 + 2 · a · b - 2 · a · b
       → Estos dos términos se anulan entre sí
         2 ·  a ·  b - 2 ·  a ·  b → 0
    After: b^2
@@ -432,25 +433,25 @@ Steps:
 ### Wire / Web Steps
 
 1. `Expandir binomio`
-   - before: `((a + b))^2 - a^2 - (2 ·  a ·  b)`
-   - after: `b^2 + 2 ·  a ·  b + a^2 - a^2 - (2 ·  a ·  b)`
-   - before_latex: `{\color{red}{{(a + b)}^{2}}} - {a}^{2} - (2\cdot a\cdot b)`
-   - after_latex: `{\color{green}{{b}^{2} + 2\cdot a\cdot b + {a}^{2}}} - {a}^{2} - (2\cdot a\cdot b)`
+   - before: `((a + b))^2 - a^2 - 2 · a · b`
+   - after: `b^2 + 2 · a · b + a^2 - a^2 - 2 · a · b`
+   - before_latex: `{\color{red}{{(a + b)}^{2}}} - {a}^{2} - 2\cdot a\cdot b`
+   - after_latex: `{\color{green}{{b}^{2} + 2\cdot a\cdot b + {a}^{2}}} - {a}^{2} - 2\cdot a\cdot b`
    - substeps:
      1. `Aplicar la fórmula (A + B)^2 = A^2 + 2AB + B^2`
         - before_latex: `{(a + b)}^{2}`
         - after_latex: `{b}^{2} + 2\cdot a\cdot b + {a}^{2}`
 2. `Agrupar términos semejantes`
-   - before: `a^2 + b^2 + 2 ·  a ·  b - a^2 - (2 ·  a ·  b)`
-   - after: `b^2 + 2 ·  a ·  b - (2 ·  a ·  b)`
-   - before_latex: `{\color{red}{{b}^{2} + 2\cdot a\cdot b + {a}^{2} - {a}^{2}}} - (2\cdot a\cdot b)`
-   - after_latex: `{\color{green}{{b}^{2} + 2\cdot a\cdot b}} - (2\cdot a\cdot b)`
+   - before: `a^2 + b^2 + 2 · a · b - a^2 - 2 · a · b`
+   - after: `b^2 + 2 · a · b - 2 · a · b`
+   - before_latex: `{\color{red}{{b}^{2} + 2\cdot a\cdot b + {a}^{2} - {a}^{2}}} - 2\cdot a\cdot b`
+   - after_latex: `{\color{green}{{b}^{2} + 2\cdot a\cdot b}} - 2\cdot a\cdot b`
    - substeps:
      1. `Estos dos términos se anulan entre sí`
         - before_latex: `{a}^{2} - {a}^{2}`
         - after_latex: `0`
 3. `Agrupar términos semejantes`
-   - before: `b^2 + 2 ·  a ·  b - 2 ·  a ·  b`
+   - before: `b^2 + 2 · a · b - 2 · a · b`
    - after: `b^2`
    - before_latex: `{\color{red}{{b}^{2} + 2\cdot a\cdot b - 2\cdot a\cdot b}}`
    - after_latex: `{\color{green}{{b}^{2}}}`
@@ -473,7 +474,7 @@ Steps:
 ```text
 Steps:
 1. Reconocer un cuadrado perfecto bajo la raíz
-   Before: sqrt(x^2 + 2 ·  x + 1)
+   Before: sqrt(x^2 + 2 · x + 1)
       → Reescribir el radicando como un cuadrado perfecto
         x^2 + 2 ·  x + 1 → (x + 1)^2
       → La raíz de un cuadrado da un valor absoluto
@@ -484,7 +485,7 @@ Steps:
 ### Wire / Web Steps
 
 1. `Reconocer un cuadrado perfecto bajo la raíz`
-   - before: `sqrt(x^2 + 2 ·  x + 1)`
+   - before: `sqrt(x^2 + 2 · x + 1)`
    - after: `|x + 1|`
    - before_latex: `{\color{red}{\sqrt{1 + {x}^{2} + 2\cdot x}}}`
    - after_latex: `{\color{green}{|1 + x|}}`
@@ -562,3 +563,45 @@ Steps:
      2. `Reemplazar ese bloque en la expresión`
         - before_latex: `\sqrt{x} + {\sqrt{x}}^{2} + 1`
         - after_latex: `\sqrt{x} + x + 1`
+
+## geometric_product_cancellation (polynomial)
+
+- Input: `(x - 1)*(x^5 + x^4 + x^3 + x^2 + x + 1)`
+- Focus: `show_small_full_expansion_then_group_and_cancel`
+- Final result: `x^6 - 1`
+- Step count: `1`
+- Wire substep count: `3`
+- Flags: none
+
+### CLI Step By Step
+
+```text
+Steps:
+1. Expandir y reagrupar un producto polinómico
+   Before: (x - 1) · (x^5 + x^4 + x^3 + x^2 + x + 1)
+      → Distribuir cada término del producto
+        (x - 1) ·  (x^5 + x^4 + x^3 + x^2 + x + 1) → x^6 + x^5 + x^4 + x^3 + x^2 + x - x^5 - x^4 - x^3 - x^2 - x - 1
+      → Agrupar los términos del mismo grado
+        x^6 + x^5 + x^4 + x^3 + x^2 + x - x^5 - x^4 - x^3 - x^2 - x - 1 → x^6 + (x^5 - x^5) + (x^4 - x^4) + (x^3 - x^3) + (x^2 - x^2) + (x - x) - 1
+      → Los términos intermedios se cancelan por parejas
+        x^6 + (x^5 - x^5) + (x^4 - x^4) + (x^3 - x^3) + (x^2 - x^2) + (x - x) - 1 → x^6 - 1
+   After: x^6 - 1
+```
+
+### Wire / Web Steps
+
+1. `Expandir y reagrupar un producto polinómico`
+   - before: `(x - 1) · (x^5 + x^4 + x^3 + x^2 + x + 1)`
+   - after: `x^6 - 1`
+   - before_latex: `{\color{red}{(x - 1)\cdot (1 + x + {x}^{2} + {x}^{3} + {x}^{4} + {x}^{5})}}`
+   - after_latex: `{\color{green}{{x}^{6} - 1}}`
+   - substeps:
+     1. `Distribuir cada término del producto`
+        - before_latex: `(x - 1)\cdot ({x}^{5} + {x}^{4} + {x}^{3} + {x}^{2} + x + 1)`
+        - after_latex: `{x}^{6} + {x}^{5} + {x}^{4} + {x}^{3} + {x}^{2} + x - {x}^{5} - {x}^{4} - {x}^{3} - {x}^{2} - x - 1`
+     2. `Agrupar los términos del mismo grado`
+        - before_latex: `{x}^{6} + {x}^{5} + {x}^{4} + {x}^{3} + {x}^{2} + x - {x}^{5} - {x}^{4} - {x}^{3} - {x}^{2} - x - 1`
+        - after_latex: `{x}^{6} + \left({x}^{5} - {x}^{5}\right) + \left({x}^{4} - {x}^{4}\right) + \left({x}^{3} - {x}^{3}\right) + \left({x}^{2} - {x}^{2}\right) + \left(x - x\right) - 1`
+     3. `Los términos intermedios se cancelan por parejas`
+        - before_latex: `{x}^{6} + \left({x}^{5} - {x}^{5}\right) + \left({x}^{4} - {x}^{4}\right) + \left({x}^{3} - {x}^{3}\right) + \left({x}^{2} - {x}^{2}\right) + \left(x - x\right) - 1`
+        - after_latex: `{x}^{6} - 1`

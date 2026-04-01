@@ -1,6 +1,10 @@
 use super::SubStep;
 use crate::runtime::Step;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
+use cas_math::polynomial::Polynomial;
+use num_rational::BigRational;
+use num_traits::{Signed, Zero};
+use std::collections::BTreeMap;
 
 pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
     match step.rule_name.as_str() {
@@ -22,11 +26,410 @@ pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<
         "Subtraction Self-Cancel" => generate_subtraction_self_cancel_substeps(ctx, step),
         "Cancel Reciprocal Exponents" => generate_cancel_reciprocal_exponents_substeps(ctx, step),
         "Polynomial Identity" => generate_polynomial_identity_exact_cancel_substeps(ctx, step),
+        "Polynomial Product Normalize" => generate_polynomial_product_normalize_substeps(ctx, step),
         "Sqrt Perfect Square" | "Simplify Square Root" => {
             generate_sqrt_perfect_square_substeps(ctx, step)
         }
         _ => Vec::new(),
     }
+}
+
+const MAX_FULL_POLY_PRODUCT_SUBSTEP_TERMS: usize = 14;
+
+#[derive(Debug, Clone)]
+struct PolyContribution {
+    coeff: BigRational,
+    degree: usize,
+}
+
+#[derive(Debug, Clone)]
+struct PolyProductDidacticPlan {
+    expanded_display: String,
+    expanded_latex: String,
+    grouped_display: Option<String>,
+    grouped_latex: Option<String>,
+    expanded_terms: usize,
+    repeated_degree_groups: usize,
+    cancelled_degree_groups: usize,
+}
+
+fn generate_polynomial_product_normalize_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+    let Some(plan) = polynomial_product_didactic_plan(ctx, before) else {
+        return Vec::new();
+    };
+
+    let before_display = display_expr(ctx, before);
+    let before_latex = latex_expr(ctx, before);
+    let after_display = display_expr(ctx, after);
+    let after_latex = latex_expr(ctx, after);
+
+    if plan.expanded_terms > MAX_FULL_POLY_PRODUCT_SUBSTEP_TERMS {
+        let summary = if plan.cancelled_degree_groups > 0 {
+            "Multiplicar y reagrupar por grados para cancelar términos intermedios"
+        } else {
+            "Multiplicar y reagrupar por grados"
+        };
+        return vec![SubStep::new(summary, before_display, after_display)
+            .with_before_latex(before_latex)
+            .with_after_latex(after_latex)];
+    }
+
+    let mut out = vec![SubStep::new(
+        "Distribuir cada término del producto",
+        before_display,
+        plan.expanded_display.clone(),
+    )
+    .with_before_latex(before_latex)
+    .with_after_latex(plan.expanded_latex.clone())];
+
+    match (plan.grouped_display.clone(), plan.grouped_latex.clone()) {
+        (Some(grouped_display), Some(grouped_latex))
+            if grouped_display != plan.expanded_display =>
+        {
+            out.push(
+                SubStep::new(
+                    "Agrupar los términos del mismo grado",
+                    plan.expanded_display.clone(),
+                    grouped_display.clone(),
+                )
+                .with_before_latex(plan.expanded_latex)
+                .with_after_latex(grouped_latex.clone()),
+            );
+
+            let finish_title = if plan.cancelled_degree_groups >= 2 {
+                "Los términos intermedios se cancelan por parejas"
+            } else if plan.cancelled_degree_groups == 1 {
+                "Al combinar esos términos, se cancelan"
+            } else if plan.repeated_degree_groups > 0 {
+                "Sumar los términos del mismo grado"
+            } else {
+                "Reescribir el producto ya agrupado"
+            };
+
+            out.push(
+                SubStep::new(finish_title, grouped_display, after_display)
+                    .with_before_latex(grouped_latex)
+                    .with_after_latex(after_latex),
+            );
+        }
+        _ => {
+            let finish_title = if plan.repeated_degree_groups > 0 {
+                "Sumar los términos del mismo grado"
+            } else {
+                "Reescribir el producto ya agrupado"
+            };
+            out.push(
+                SubStep::new(finish_title, plan.expanded_display, after_display)
+                    .with_before_latex(plan.expanded_latex)
+                    .with_after_latex(after_latex),
+            );
+        }
+    }
+
+    out
+}
+
+fn polynomial_product_didactic_plan(
+    ctx: &Context,
+    before: ExprId,
+) -> Option<PolyProductDidacticPlan> {
+    let Expr::Mul(_, _) = ctx.get(before) else {
+        return None;
+    };
+
+    let vars = cas_ast::collect_variables(ctx, before);
+    if vars.len() != 1 {
+        return None;
+    }
+    let var = vars.iter().next()?.to_string();
+
+    let factors = cas_math::expr_nary::mul_leaves(ctx, before);
+    if factors.len() < 2 {
+        return None;
+    }
+
+    let factor_terms = factors
+        .iter()
+        .map(|factor| factor_polynomial_terms(ctx, *factor, &var))
+        .collect::<Option<Vec<_>>>()?;
+
+    let expanded_terms = expand_polynomial_term_products(&factor_terms);
+    if expanded_terms.len() < 2 {
+        return None;
+    }
+
+    let (expanded_display, expanded_latex) = render_contribution_sum(&var, &expanded_terms);
+    let grouped_by_degree = group_contributions_by_degree(&expanded_terms);
+    let repeated_degree_groups = grouped_by_degree
+        .values()
+        .filter(|group| group.len() > 1)
+        .count();
+    let cancelled_degree_groups = grouped_by_degree
+        .values()
+        .filter(|group| group.len() > 1 && contribution_group_sum(group).is_zero())
+        .count();
+
+    let (grouped_display, grouped_latex) = if repeated_degree_groups > 0 {
+        let (display, latex) = render_grouped_contributions(&var, &grouped_by_degree);
+        (Some(display), Some(latex))
+    } else {
+        (None, None)
+    };
+
+    Some(PolyProductDidacticPlan {
+        expanded_display,
+        expanded_latex,
+        grouped_display,
+        grouped_latex,
+        expanded_terms: expanded_terms.len(),
+        repeated_degree_groups,
+        cancelled_degree_groups,
+    })
+}
+
+fn factor_polynomial_terms(
+    ctx: &Context,
+    factor: ExprId,
+    var: &str,
+) -> Option<Vec<PolyContribution>> {
+    let poly = Polynomial::from_expr(ctx, factor, var).ok()?;
+    let mut terms = Vec::new();
+    for (degree, coeff) in poly.coeffs.iter().enumerate().rev() {
+        if coeff.is_zero() {
+            continue;
+        }
+        terms.push(PolyContribution {
+            coeff: coeff.clone(),
+            degree,
+        });
+    }
+    Some(terms)
+}
+
+fn expand_polynomial_term_products(factors: &[Vec<PolyContribution>]) -> Vec<PolyContribution> {
+    let mut acc = vec![PolyContribution {
+        coeff: BigRational::from_integer(1.into()),
+        degree: 0,
+    }];
+
+    for factor in factors {
+        let mut next = Vec::new();
+        for partial in &acc {
+            for term in factor {
+                next.push(PolyContribution {
+                    coeff: partial.coeff.clone() * term.coeff.clone(),
+                    degree: partial.degree + term.degree,
+                });
+            }
+        }
+        acc = next;
+    }
+
+    acc.retain(|term| !term.coeff.is_zero());
+    acc
+}
+
+fn group_contributions_by_degree(
+    contributions: &[PolyContribution],
+) -> BTreeMap<usize, Vec<PolyContribution>> {
+    let mut out: BTreeMap<usize, Vec<PolyContribution>> = BTreeMap::new();
+    for contribution in contributions {
+        out.entry(contribution.degree)
+            .or_default()
+            .push(contribution.clone());
+    }
+    out
+}
+
+fn contribution_group_sum(group: &[PolyContribution]) -> BigRational {
+    group
+        .iter()
+        .fold(BigRational::from_integer(0.into()), |acc, term| {
+            acc + term.coeff.clone()
+        })
+}
+
+fn render_contribution_sum(var: &str, terms: &[PolyContribution]) -> (String, String) {
+    let mut temp_ctx = Context::new();
+    let expr = build_sum_expr_from_contributions(&mut temp_ctx, var, terms);
+    (
+        cas_formatter::clean_display_string(&format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: &temp_ctx,
+                id: expr,
+            }
+        )),
+        cas_formatter::LaTeXExpr {
+            context: &temp_ctx,
+            id: expr,
+        }
+        .to_latex(),
+    )
+}
+
+fn build_sum_expr_from_contributions(
+    ctx: &mut Context,
+    var: &str,
+    contributions: &[PolyContribution],
+) -> ExprId {
+    if contributions.is_empty() {
+        return ctx.num(0);
+    }
+
+    let mut iter = contributions.iter();
+    let first = iter.next().expect("nonempty");
+    let mut expr = build_signed_monomial_expr(ctx, var, first);
+
+    for term in iter {
+        let rhs = build_unsigned_monomial_expr(ctx, var, &term.coeff.abs(), term.degree);
+        expr = if term.coeff.is_negative() {
+            ctx.add_raw(Expr::Sub(expr, rhs))
+        } else {
+            ctx.add_raw(Expr::Add(expr, rhs))
+        };
+    }
+
+    expr
+}
+
+fn build_signed_monomial_expr(ctx: &mut Context, var: &str, term: &PolyContribution) -> ExprId {
+    let abs = term.coeff.abs();
+    let unsigned = build_unsigned_monomial_expr(ctx, var, &abs, term.degree);
+    if term.coeff.is_negative() {
+        ctx.add_raw(Expr::Neg(unsigned))
+    } else {
+        unsigned
+    }
+}
+
+fn build_unsigned_monomial_expr(
+    ctx: &mut Context,
+    var: &str,
+    coeff: &BigRational,
+    degree: usize,
+) -> ExprId {
+    if degree == 0 {
+        return ctx.add(Expr::Number(coeff.clone()));
+    }
+
+    let var_expr = ctx.var(var);
+    let power_expr = if degree == 1 {
+        var_expr
+    } else {
+        let exp = ctx.num(degree as i64);
+        ctx.add(Expr::Pow(var_expr, exp))
+    };
+
+    if coeff == &BigRational::from_integer(1.into()) {
+        power_expr
+    } else {
+        let coeff_expr = ctx.add(Expr::Number(coeff.clone()));
+        ctx.add(Expr::Mul(coeff_expr, power_expr))
+    }
+}
+
+fn render_grouped_contributions(
+    var: &str,
+    grouped: &BTreeMap<usize, Vec<PolyContribution>>,
+) -> (String, String) {
+    #[derive(Debug)]
+    struct GroupRender {
+        display: String,
+        latex: String,
+        negative: bool,
+    }
+
+    let mut rendered = Vec::new();
+
+    for contributions in grouped.values().rev() {
+        if contributions.is_empty() {
+            continue;
+        }
+
+        if contributions.len() == 1 {
+            let term = &contributions[0];
+            let (display, latex) = render_contribution_sum(
+                var,
+                &[PolyContribution {
+                    coeff: term.coeff.abs(),
+                    degree: term.degree,
+                }],
+            );
+            rendered.push(GroupRender {
+                display,
+                latex,
+                negative: term.coeff.is_negative(),
+            });
+            continue;
+        }
+
+        let mut positives = Vec::new();
+        let mut negatives = Vec::new();
+        for term in contributions {
+            if term.coeff.is_negative() {
+                negatives.push(term.clone());
+            } else {
+                positives.push(term.clone());
+            }
+        }
+
+        let (display, latex, negative) = if positives.is_empty() {
+            let abs_terms = negatives
+                .into_iter()
+                .map(|term| PolyContribution {
+                    coeff: term.coeff.abs(),
+                    degree: term.degree,
+                })
+                .collect::<Vec<_>>();
+            let (display, latex) = render_contribution_sum(var, &abs_terms);
+            (display, latex, true)
+        } else {
+            let mut ordered = positives;
+            ordered.extend(negatives);
+            let (display, latex) = render_contribution_sum(var, &ordered);
+            (display, latex, false)
+        };
+
+        rendered.push(GroupRender {
+            display: format!("({display})"),
+            latex: format!("\\left({latex}\\right)"),
+            negative,
+        });
+    }
+
+    if rendered.is_empty() {
+        return ("0".to_string(), "0".to_string());
+    }
+
+    let mut display = String::new();
+    let mut latex = String::new();
+
+    for (index, group) in rendered.into_iter().enumerate() {
+        if index == 0 {
+            if group.negative {
+                display.push('-');
+                latex.push('-');
+            }
+            display.push_str(&group.display);
+            latex.push_str(&group.latex);
+            continue;
+        }
+
+        if group.negative {
+            display.push_str(" - ");
+            latex.push_str(" - ");
+        } else {
+            display.push_str(" + ");
+            latex.push_str(" + ");
+        }
+        display.push_str(&group.display);
+        latex.push_str(&group.latex);
+    }
+
+    (display, latex)
 }
 
 fn generate_canonicalize_nested_power_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {

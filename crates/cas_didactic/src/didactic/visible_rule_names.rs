@@ -29,6 +29,7 @@ pub(crate) fn visible_rule_name(rule_name: &str) -> &str {
         "Add Fractions" => "Sumar fracciones",
         "Simplify Complex Fraction" => "Simplificar fracción anidada",
         "Auto Expand Power Sum" => "Expandir binomio",
+        "Polynomial Product Normalize" => "Expandir y reagrupar un producto polinómico",
         "Pythagorean Chain Identity" => "Aplicar la identidad pitagórica",
         _ => rule_name,
     }
@@ -76,6 +77,9 @@ pub(crate) fn visible_step_description<'a>(description: &'a str) -> Cow<'a, str>
             Cow::Borrowed("Cancelar una identidad exacta")
         }
         "Auto-expand (a+b)^2" => Cow::Borrowed("Expandir el binomio"),
+        "Expand and combine polynomial product" => {
+            Cow::Borrowed("Expandir y reagrupar un producto polinómico")
+        }
         "Cancel opposite terms" => Cow::Borrowed("Cancelar términos opuestos"),
         "sin²(x) + cos²(x) = 1" => Cow::Borrowed("Aplicar la identidad pitagórica"),
         "sqrt(A^2 ± 2AB + B^2) = |A ± B|" => {

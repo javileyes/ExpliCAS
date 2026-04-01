@@ -124,6 +124,7 @@ fn should_suppress_local_change_line(step: &Step) -> bool {
             | "Pythagorean Chain Identity"
             | "Inverse Tan Relations"
             | "Auto Expand Power Sum"
+            | "Polynomial Product Normalize"
             | "Sqrt Perfect Square"
             | "Simplify Square Root"
             | "Evaluate Numeric Power"

@@ -343,6 +343,14 @@ fn didactic_step_quality_priority_cases_use_multiphase_human_narratives() {
                 "Reemplazar ese bloque en la expresión",
             ],
         ),
+        (
+            "geometric_product_cancellation",
+            &[
+                "Distribuir cada término del producto",
+                "Agrupar los términos del mismo grado",
+                "Los términos intermedios se cancelan por parejas",
+            ],
+        ),
     ];
 
     for &(case_id, expected_titles) in qualitative_targets {
@@ -528,6 +536,37 @@ fn didactic_step_quality_priority_cases_make_cli_narrative_less_magic() {
             .all(|before| !before.contains("x^(1/2)^2")),
         "cube_quotient_radical wire text should avoid fractional-exponent root notation, got {:?}",
         cube_wire_before
+    );
+
+    let geometric_case = cases
+        .iter()
+        .find(|case| case.id == "geometric_product_cancellation")
+        .expect("missing geometric_product_cancellation audit case");
+    let geometric_artifact = simplify_case(geometric_case);
+    let geometric_cli = geometric_artifact.cli_lines.join("\n");
+    assert!(
+        geometric_cli.contains("Expandir y reagrupar un producto polinómico"),
+        "geometric_product_cancellation CLI narrative should use a human step title, got:\n{}",
+        geometric_cli
+    );
+    assert!(
+        geometric_cli.contains("Distribuir cada término del producto")
+            && geometric_cli.contains("Agrupar los términos del mismo grado")
+            && geometric_cli.contains("Los términos intermedios se cancelan por parejas"),
+        "geometric_product_cancellation should expose the full didactic narrative, got:\n{}",
+        geometric_cli
+    );
+    assert!(
+        geometric_cli.contains("x^6 + x^5 + x^4 + x^3 + x^2 + x - x^5 - x^4 - x^3 - x^2 - x - 1")
+            || geometric_cli
+                .contains("x^6 + x^5 + x^4 + x^3 + x^2 + x - 1 - x^5 - x^4 - x^3 - x^2 - x"),
+        "geometric_product_cancellation should show the small full expansion, got:\n{}",
+        geometric_cli
+    );
+    assert!(
+        !geometric_cli.contains("\n   Cambio local: "),
+        "geometric_product_cancellation should avoid a raw local-change line when the substeps already explain the move, got:\n{}",
+        geometric_cli
     );
 
     let nested_fraction_case = cases

@@ -102,7 +102,9 @@ fn normalize_visible_equivalence(input: &str) -> String {
 fn should_suppress_local_change_line(step: &crate::Step) -> bool {
     matches!(
         step.rule_name.as_str(),
-        "Identity Property of Addition" | "Identity Property of Multiplication"
+        "Identity Property of Addition"
+            | "Identity Property of Multiplication"
+            | "Polynomial Product Normalize"
     )
 }
 

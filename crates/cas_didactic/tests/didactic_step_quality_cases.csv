@@ -11,3 +11,4 @@ inverse_trig_identity,inverse_trig,atan(3) + (atan(1/3) - pi/2),show_known_ident
 polynomial_expansion_cancel,polynomial,(a+b)^2 - a^2 - 2*a*b,expansion_and_collection_should_be_readable
 perfect_square_root,radicals,sqrt(x^2 + 2*x + 1),show_square_pattern_and_abs
 cube_quotient_radical,quotient,((sqrt(x))^3 - 1)/(sqrt(x) - 1),show_exact_quotient_reason
+geometric_product_cancellation,polynomial,(x - 1)*(x^5 + x^4 + x^3 + x^2 + x + 1),show_small_full_expansion_then_group_and_cancel

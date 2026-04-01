@@ -208,6 +208,54 @@ fn step_wire_sophie_germain_after_text_and_latex_stay_human() {
 }
 
 #[test]
+fn step_wire_small_polynomial_product_emits_hidden_didactic_expansion_and_cancellation() {
+    let (engine, output) = eval_output_for("(x - 1)*(x^5 + x^4 + x^3 + x^2 + x + 1)");
+    let steps =
+        cas_didactic::collect_step_payloads(&output.steps, &engine.simplifier.context, "on");
+
+    let step = steps
+        .iter()
+        .find(|step| step.rule == "Expandir y reagrupar un producto polinómico")
+        .expect("expected polynomial product normalize step");
+
+    let titles: Vec<&str> = step
+        .substeps
+        .iter()
+        .map(|substep| substep.title.as_str())
+        .collect();
+    assert!(
+        titles.contains(&"Distribuir cada término del producto")
+            && titles.contains(&"Agrupar los términos del mismo grado")
+            && titles.contains(&"Los términos intermedios se cancelan por parejas"),
+        "expected full didactic substep narrative, got {titles:?}"
+    );
+
+    let expansion_substep = step
+        .substeps
+        .iter()
+        .find(|substep| substep.title == "Distribuir cada término del producto")
+        .expect("missing expansion substep");
+    let joined_sides = format!(
+        "{} | {}",
+        expansion_substep
+            .before_latex
+            .as_deref()
+            .unwrap_or_default(),
+        expansion_substep.after_latex.as_deref().unwrap_or_default()
+    );
+    assert!(
+        joined_sides.contains("{x}^{6} + {x}^{5} + {x}^{4} + {x}^{3} + {x}^{2} + x - {x}^{5} - {x}^{4} - {x}^{3} - {x}^{2} - x - 1")
+            || joined_sides
+                .contains("{x}^{6} + {x}^{5} + {x}^{4} + {x}^{3} + {x}^{2} + x - 1 - {x}^{5} - {x}^{4} - {x}^{3} - {x}^{2} - x")
+            || joined_sides
+                .contains("x^6 + x^5 + x^4 + x^3 + x^2 + x - x^5 - x^4 - x^3 - x^2 - x - 1")
+            || joined_sides
+                .contains("x^6 + x^5 + x^4 + x^3 + x^2 + x - 1 - x^5 - x^4 - x^3 - x^2 - x"),
+        "expected a visible full expansion in the hidden web substep, got: {joined_sides}"
+    );
+}
+
+#[test]
 fn step_wire_uses_human_visible_rule_titles() {
     let (engine, output) = eval_output_for("1 / (sqrt(x) - 1) - (sqrt(x) + 1) / (x - 1)");
     let steps =
