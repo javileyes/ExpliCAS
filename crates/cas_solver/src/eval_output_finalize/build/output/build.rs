@@ -11,6 +11,7 @@ pub(super) fn build_eval_output(
     let EvalOutputFinalizeShared {
         input,
         input_latex,
+        stored_id,
         steps_mode,
         steps,
         solve_steps,
@@ -36,6 +37,7 @@ pub(super) fn build_eval_output(
     EvalOutputWire::from_build(EvalOutputWireBuild {
         input,
         input_latex,
+        stored_id,
         result_chars: payload.result_chars,
         result: payload.result,
         result_truncated: payload.result_truncated,

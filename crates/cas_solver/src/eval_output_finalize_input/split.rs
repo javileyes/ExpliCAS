@@ -11,6 +11,7 @@ impl<'a> EvalOutputFinalizeInput<'a> {
             EvalOutputFinalizeShared {
                 input: self.input,
                 input_latex: self.input_latex,
+                stored_id: self.stored_id,
                 steps_mode: self.steps_mode,
                 steps: self.steps,
                 solve_steps: self.solve_steps,

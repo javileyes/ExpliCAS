@@ -44,6 +44,17 @@ pub fn build_success_envelope(
                 ctx,
             ),
         ),
+        EvalResult::Text { plain, .. } => OutputEnvelope::eval_success(
+            build_request_info(expr, opts),
+            ExprDto::from_display(plain.clone()),
+            build_transparency(
+                &output_view.required_conditions,
+                &output_view.solver_assumptions,
+                &output_view.domain_warnings,
+                &output_view.blocked_hints,
+                ctx,
+            ),
+        ),
         EvalResult::SolutionSet(solution_set) => OutputEnvelope::eval_success(
             build_request_info(expr, opts),
             ExprDto::from_display(crate::display_solution_set(ctx, solution_set)),

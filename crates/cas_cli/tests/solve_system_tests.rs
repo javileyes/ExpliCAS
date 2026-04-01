@@ -121,6 +121,15 @@ fn test_solve_system_3x3_infinite_solutions() {
 }
 
 #[test]
+fn test_solve_system_3x3_rank_two_dependent_is_infinite() {
+    // z = 1 and x + y = 0, so the system is dependent, not inconsistent.
+    run_cas("solve_system(x+y+z=1; x+y+2*z=2; x+y+3*z=3; x; y; z)\n")
+        .success()
+        .stdout(predicate::str::contains("infinitely many solutions"))
+        .stdout(predicate::str::contains("dependent"));
+}
+
+#[test]
 fn test_solve_system_3x3_no_solution() {
     // x + y + z = 1
     // x + y + z = 2

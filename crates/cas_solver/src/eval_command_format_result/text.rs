@@ -12,6 +12,7 @@ pub(super) fn format_eval_result_text(
             }
         ),
         crate::EvalResult::Bool(value) => value.to_string(),
+        crate::EvalResult::Text { plain, .. } => plain.clone(),
         _ => "(no result)".to_string(),
     }
 }

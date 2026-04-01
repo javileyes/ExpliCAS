@@ -49,6 +49,7 @@ fn build_assignment_wire_output(
     cas_api_models::EvalWireOutput::from_build(cas_api_models::EvalOutputBuild {
         input,
         input_latex: None,
+        stored_id: None,
         result_chars: result.chars().count(),
         result,
         result_truncated: false,

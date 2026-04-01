@@ -21,6 +21,24 @@ pub(super) fn build_special_command_request(
                 auto_store,
             })
         }
+        EvalSpecialCommand::SolveSystem { input } => {
+            let spec = crate::linear_system_command_parse::parse_linear_system_spec(ctx, &input)
+                .map_err(|error| {
+                    crate::linear_system_command_format::format_linear_system_command_error_message(
+                        &crate::linear_system_command_eval::LinearSystemCommandEvalError::Parse(
+                            error,
+                        ),
+                    )
+                })?;
+            let parsed_anchor = spec.exprs.first().copied().ok_or_else(|| {
+                "Internal error: solve_system parsed without equations".to_string()
+            })?;
+            Ok(PreparedEvalRequest::SolveSystem {
+                parsed_anchor,
+                exprs: spec.exprs,
+                vars: spec.vars,
+            })
+        }
         EvalSpecialCommand::Derive { input } => {
             let (parsed, target) = crate::parse_expr_pair(ctx, &input)
                 .map_err(|e| crate::format_expr_pair_parse_error_message(&e, "derive"))?;

@@ -22,3 +22,4 @@ expression,description
 "sum(k, k, 1, 5)","Sumatorio finito"
 "product((k+1)/k, k, 1, 5)","Producto telescópico finito"
 "limit((x^2 + 3*x)/(2*x^2 - x), x, inf)","Límite en el infinito"
+"solve_system(x+y=3; x-y=1; x; y)","Resolver un sistema lineal 2x2"

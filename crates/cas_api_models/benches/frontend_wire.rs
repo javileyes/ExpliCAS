@@ -67,6 +67,7 @@ fn build_eval_wire(light: bool) -> EvalWireOutput {
             "(2*x + 2*y)/(4*x + 4*y)"
         },
         input_latex: None,
+        stored_id: None,
         result: if light { "x + 1".into() } else { "1/2".into() },
         result_truncated: false,
         result_chars: if light { 5 } else { 3 },

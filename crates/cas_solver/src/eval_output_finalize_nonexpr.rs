@@ -46,3 +46,16 @@ pub(crate) fn finalize_bool_output(
         shared,
     )
 }
+
+pub(crate) fn finalize_text_output(
+    plain: &str,
+    latex: Option<&str>,
+    shared: EvalOutputFinalizeShared<'_>,
+) -> EvalOutputWire {
+    let steps_count = shared.primary_steps_count();
+    build_eval_output(
+        build_nonexpr_result_payload(plain.to_string(), latex.map(str::to_string)),
+        steps_count,
+        shared,
+    )
+}

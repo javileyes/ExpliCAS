@@ -38,6 +38,11 @@ pub enum EvalResult {
     SolutionSet(cas_ast::SolutionSet),
     /// For equivalence checks.
     Bool(bool),
+    /// For special commands whose natural output is textual, not an expression.
+    Text {
+        plain: String,
+        latex: Option<String>,
+    },
     /// For commands with no output.
     None,
 }

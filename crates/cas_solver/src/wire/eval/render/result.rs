@@ -7,6 +7,7 @@ pub(super) fn render_eval_result(ctx: &mut cas_ast::Context, result: &EvalResult
         EvalResult::Set(v) if !v.is_empty() => render_expr(ctx, v[0]),
         EvalResult::SolutionSet(solution_set) => crate::display_solution_set(ctx, solution_set),
         EvalResult::Bool(b) => b.to_string(),
+        EvalResult::Text { plain, .. } => plain.clone(),
         _ => "(no result)".to_string(),
     }
 }

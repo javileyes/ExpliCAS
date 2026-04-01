@@ -114,6 +114,10 @@ where
         config.auto_store,
     )?;
     let parsed_input = req.parsed();
+    let derive_target = match &req {
+        crate::eval_input::PreparedEvalRequest::Derive { target, .. } => Some(*target),
+        _ => None,
+    };
     let parse_us = parse_start.elapsed().as_micros() as u64;
 
     let simplify_start = Instant::now();
@@ -121,6 +125,7 @@ where
     {
         return Ok(PreparedEvalRun {
             parsed_input,
+            derive_target,
             parse_us,
             simplify_us: simplify_start.elapsed().as_micros() as u64,
             output_view,
@@ -148,6 +153,7 @@ where
 
     Ok(PreparedEvalRun {
         parsed_input,
+        derive_target,
         parse_us,
         simplify_us,
         output_view,

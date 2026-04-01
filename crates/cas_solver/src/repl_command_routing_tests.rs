@@ -20,6 +20,14 @@ mod tests {
     }
 
     #[test]
+    fn preprocess_repl_function_syntax_maps_derive_form() {
+        assert_eq!(
+            preprocess_repl_function_syntax("derive(x + x, 2*x)"),
+            "derive x + x, 2*x"
+        );
+    }
+
+    #[test]
     fn preprocess_repl_function_syntax_maps_limit_form() {
         assert_eq!(
             preprocess_repl_function_syntax("limit((x^2+1)/x, x, inf)"),
@@ -92,6 +100,10 @@ mod tests {
         assert_eq!(
             parse_repl_command_input("derive"),
             ReplCommandInput::Derive("derive")
+        );
+        assert_eq!(
+            parse_repl_command_input("derive(x + x, 2*x)"),
+            ReplCommandInput::Derive("derive(x + x, 2*x)")
         );
         assert_eq!(
             parse_repl_command_input("collect"),

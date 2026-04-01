@@ -32,6 +32,18 @@ where
             &var,
             auto_store,
         ),
+        PreparedEvalRequest::SolveSystem {
+            parsed_anchor,
+            exprs,
+            vars,
+            ..
+        } => crate::linear_system_command_eval::evaluate_linear_system_eval_request_with_session(
+            engine,
+            session,
+            parsed_anchor,
+            exprs,
+            vars,
+        ),
         PreparedEvalRequest::Derive {
             raw_input,
             parsed,

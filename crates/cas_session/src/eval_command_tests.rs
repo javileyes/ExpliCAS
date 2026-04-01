@@ -5,6 +5,27 @@ mod tests {
     #[allow(unused_imports)]
     use cas_solver::session_api::{assumptions::*, eval::*, simplifier::*};
 
+    fn standard_eval_config<'a>(expr: &'a str) -> crate::eval::EvalCommandConfig<'a> {
+        crate::eval::EvalCommandConfig {
+            expr,
+            auto_store: false,
+            max_chars: 2000,
+            steps_mode: cas_api_models::EvalStepsMode::Off,
+            budget_preset: cas_api_models::EvalBudgetPreset::Standard,
+            strict: false,
+            domain: cas_api_models::EvalDomainMode::Generic,
+            context_mode: cas_api_models::EvalContextMode::Auto,
+            branch_mode: cas_api_models::EvalBranchMode::Strict,
+            expand_policy: cas_api_models::EvalExpandPolicy::Off,
+            complex_mode: cas_api_models::EvalComplexMode::Auto,
+            const_fold: cas_api_models::EvalConstFoldMode::Off,
+            value_domain: cas_api_models::EvalValueDomain::Real,
+            complex_branch: cas_api_models::EvalBranchMode::Principal,
+            inv_trig: cas_api_models::EvalInvTrigPolicy::Strict,
+            assume_scope: cas_api_models::EvalAssumeScope::Real,
+        }
+    }
+
     #[test]
     fn evaluate_eval_command_output_success() {
         let mut engine = cas_solver::runtime::Engine::new();
@@ -144,6 +165,39 @@ mod tests {
     }
 
     #[test]
+    fn evaluate_eval_text_simplify_with_session_accepts_function_style_derive_special_command() {
+        let mut engine = cas_solver::runtime::Engine::new();
+        let mut session = SessionState::new();
+
+        let out = evaluate_eval_text_simplify_with_session(
+            &mut engine,
+            &mut session,
+            "derive(x + x, 2*x)",
+            false,
+        )
+        .expect("derive succeeds");
+
+        assert!(out.contains("2"));
+        assert!(out.contains("x"));
+    }
+
+    #[test]
+    fn evaluate_eval_text_simplify_with_session_accepts_solve_system_special_command() {
+        let mut engine = cas_solver::runtime::Engine::new();
+        let mut session = SessionState::new();
+
+        let out = evaluate_eval_text_simplify_with_session(
+            &mut engine,
+            &mut session,
+            "solve_system(x+y=3; x-y=1; x; y)",
+            false,
+        )
+        .expect("solve_system succeeds");
+
+        assert_eq!(out, "{ x = 2, y = 1 }");
+    }
+
+    #[test]
     fn evaluate_eval_command_pretty_with_session_accepts_lazy_function_assignment() {
         let json = crate::eval::evaluate_eval_command_pretty_with_session(
             None,
@@ -206,6 +260,48 @@ mod tests {
     }
 
     #[test]
+    fn evaluate_eval_command_pretty_with_session_preserves_derive_operator_in_input_latex() {
+        let json = crate::eval::evaluate_eval_command_pretty_with_session(
+            None,
+            crate::eval::EvalCommandConfig {
+                expr: "derive(x + x, 2*x)",
+                auto_store: false,
+                max_chars: 2000,
+                steps_mode: cas_api_models::EvalStepsMode::Off,
+                budget_preset: cas_api_models::EvalBudgetPreset::Standard,
+                strict: false,
+                domain: cas_api_models::EvalDomainMode::Generic,
+                context_mode: cas_api_models::EvalContextMode::Auto,
+                branch_mode: cas_api_models::EvalBranchMode::Strict,
+                expand_policy: cas_api_models::EvalExpandPolicy::Off,
+                complex_mode: cas_api_models::EvalComplexMode::Auto,
+                const_fold: cas_api_models::EvalConstFoldMode::Off,
+                value_domain: cas_api_models::EvalValueDomain::Real,
+                complex_branch: cas_api_models::EvalBranchMode::Principal,
+                inv_trig: cas_api_models::EvalInvTrigPolicy::Strict,
+                assume_scope: cas_api_models::EvalAssumeScope::Real,
+            },
+            |_steps, _events, _context, _steps_mode| Vec::new(),
+        );
+
+        let payload: serde_json::Value = serde_json::from_str(&json).expect("json");
+        assert_eq!(payload["ok"], true);
+        let input_latex = payload["input_latex"].as_str().expect("input_latex string");
+        assert!(
+            input_latex.contains("\\operatorname{derive}"),
+            "expected input_latex to preserve the derive operator, got: {input_latex}"
+        );
+        assert!(
+            input_latex.contains("{x} + {x}") || input_latex.contains("x + x"),
+            "expected input_latex to include the source expression, got: {input_latex}"
+        );
+        assert!(
+            input_latex.contains("2\\cdot x") || input_latex.contains("2 x"),
+            "expected input_latex to include the target expression, got: {input_latex}"
+        );
+    }
+
+    #[test]
     fn evaluate_eval_command_pretty_with_session_preserves_limit_operator_in_input_latex() {
         let json = crate::eval::evaluate_eval_command_pretty_with_session(
             None,
@@ -236,6 +332,34 @@ mod tests {
         assert!(
             input_latex.contains("\\lim_{x \\to \\infty}"),
             "expected input_latex to preserve the limit operator, got: {input_latex}"
+        );
+    }
+
+    #[test]
+    fn evaluate_eval_command_pretty_with_session_accepts_solve_system_special_command() {
+        let mut config = standard_eval_config("solve_system(x+y=3; x-y=1; x; y)");
+        config.auto_store = true;
+        let json = crate::eval::evaluate_eval_command_pretty_with_session(
+            None,
+            config,
+            |_steps, _events, _context, _steps_mode| Vec::new(),
+        );
+
+        let payload: serde_json::Value = serde_json::from_str(&json).expect("json");
+        assert_eq!(payload["ok"], true);
+        assert_eq!(payload["result"], "{ x = 2, y = 1 }");
+        assert!(payload["stored_id"].is_null());
+        let input_latex = payload["input_latex"].as_str().expect("input_latex string");
+        assert!(
+            input_latex.contains("\\operatorname{solve\\_system}"),
+            "expected input_latex to preserve the solve_system operator, got: {input_latex}"
+        );
+        let result_latex = payload["result_latex"]
+            .as_str()
+            .expect("result_latex string");
+        assert!(
+            result_latex.contains("\\left\\{") && result_latex.contains("x = 2"),
+            "expected result_latex to render the solved system, got: {result_latex}"
         );
     }
 }

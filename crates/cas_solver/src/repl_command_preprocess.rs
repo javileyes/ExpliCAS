@@ -15,6 +15,11 @@ pub fn preprocess_repl_function_syntax(line: &str) -> String {
         return format!("solve {}", content);
     }
 
+    if line.starts_with("derive(") && line.ends_with(')') {
+        let content = &line["derive(".len()..line.len() - 1];
+        return format!("derive {}", content);
+    }
+
     if line.starts_with("limit(") && line.ends_with(')') {
         let content = &line["limit(".len()..line.len() - 1];
         return format!("limit {}", content);

@@ -335,7 +335,7 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
             self.send_json_error(str(e))
     
     def eval_and_store(self, expression, session):
-        """Evaluate via cas_cli using the per-session snapshot, updating cli_ref on success."""
+        """Evaluate via cas_cli using the per-session snapshot, tracking real stored ids."""
         session_file = session.get("session_file")
         lock_path = (session_file + ".lock") if session_file else None
 
@@ -343,9 +343,9 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
             result = self.eval_with_substitution(expression, session)
 
             cli_id = None
-            if result.get("ok", False):
-                session["cli_ref"] = session.get("cli_ref", 0) + 1
-                cli_id = session["cli_ref"]
+            if result.get("ok", False) and result.get("stored_id") is not None:
+                cli_id = int(result["stored_id"])
+                session["cli_ref"] = max(session.get("cli_ref", 0), cli_id)
 
             return result, cli_id
 

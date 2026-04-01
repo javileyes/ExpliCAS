@@ -329,6 +329,8 @@ pub struct EvalWireOutput {
     pub input: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub input_latex: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stored_id: Option<u64>,
     pub result: String,
     pub result_truncated: bool,
     pub result_chars: usize,
@@ -359,6 +361,7 @@ pub struct EvalWireOutput {
 pub struct EvalOutputBuild<'a> {
     pub input: &'a str,
     pub input_latex: Option<String>,
+    pub stored_id: Option<u64>,
     pub result: String,
     pub result_truncated: bool,
     pub result_chars: usize,
@@ -395,6 +398,7 @@ impl EvalWireOutput {
             ok: true,
             input: parts.input.to_string(),
             input_latex: parts.input_latex,
+            stored_id: parts.stored_id,
             result: parts.result,
             result_truncated: parts.result_truncated,
             result_chars: parts.result_chars,
@@ -454,6 +458,9 @@ pub enum EvalSpecialCommand {
         equation: String,
         var: String,
     },
+    SolveSystem {
+        input: String,
+    },
     Derive {
         input: String,
     },
@@ -466,11 +473,17 @@ pub enum EvalSpecialCommand {
 
 /// Parse special eval command forms:
 /// - `solve(equation, var)`
-/// - `derive <expr1>, <expr2>`
+/// - `solve_system(eq1; eq2; ...; var1; var2; ...)`
+/// - `derive <expr1>, <expr2>` or `derive(expr1, expr2)`
 /// - `limit(expr, var, approach)` or `lim(expr, var, approach)`
 pub fn parse_eval_special_command(input: &str) -> Option<EvalSpecialCommand> {
     if let Some((equation, var)) = parse_solve_command(input) {
         return Some(EvalSpecialCommand::Solve { equation, var });
+    }
+    if let Some(system_input) = parse_solve_system_command(input) {
+        return Some(EvalSpecialCommand::SolveSystem {
+            input: system_input,
+        });
     }
     if let Some(derive_input) = parse_derive_command(input) {
         return Some(EvalSpecialCommand::Derive {
@@ -528,10 +541,36 @@ fn parse_derive_command(input: &str) -> Option<String> {
     if lower == "derive" {
         return Some(String::new());
     }
+    if lower.starts_with("derive(") && trimmed.ends_with(')') {
+        return Some(
+            trimmed["derive(".len()..trimmed.len() - 1]
+                .trim()
+                .to_string(),
+        );
+    }
     if !lower.starts_with("derive ") {
         return None;
     }
     Some(trimmed[6..].trim().to_string())
+}
+
+fn parse_solve_system_command(input: &str) -> Option<String> {
+    let trimmed = input.trim();
+    let lower = trimmed.to_lowercase();
+    if lower == "solve_system" {
+        return Some(String::new());
+    }
+    if lower.starts_with("solve_system(") && trimmed.ends_with(')') {
+        return Some(
+            trimmed["solve_system(".len()..trimmed.len() - 1]
+                .trim()
+                .to_string(),
+        );
+    }
+    if !lower.starts_with("solve_system ") {
+        return None;
+    }
+    Some(trimmed["solve_system".len()..].trim().to_string())
 }
 
 fn parse_limit_command(input: &str) -> Option<(String, String, EvalLimitApproach)> {
@@ -1824,6 +1863,7 @@ mod tests {
         let out = EvalWireOutput::from_build(EvalOutputBuild {
             input: "x+x",
             input_latex: None,
+            stored_id: Some(7),
             result: "2*x".to_string(),
             result_truncated: false,
             result_chars: 3,
@@ -1853,6 +1893,7 @@ mod tests {
             wire: None,
         });
         assert_eq!(out.schema_version, 1);
+        assert_eq!(out.stored_id, Some(7));
         assert_eq!(out.budget.mode, "strict");
         assert_eq!(out.options.domain_mode, "generic");
         assert_eq!(out.semantics.value_domain, "real");
@@ -1910,7 +1951,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_eval_special_command_parses_solve_derive_and_limit() {
+    fn parse_eval_special_command_parses_solve_solve_system_derive_and_limit() {
         let solve = parse_eval_special_command("solve((x+1)=0, x)").expect("solve");
         assert_eq!(
             solve,
@@ -1920,9 +1961,26 @@ mod tests {
             }
         );
 
+        let solve_system =
+            parse_eval_special_command("solve_system(x+y=3; x-y=1; x; y)").expect("solve_system");
+        assert_eq!(
+            solve_system,
+            super::EvalSpecialCommand::SolveSystem {
+                input: "x+y=3; x-y=1; x; y".to_string(),
+            }
+        );
+
         let derive = parse_eval_special_command("derive x + x, 2*x").expect("derive");
         assert_eq!(
             derive,
+            super::EvalSpecialCommand::Derive {
+                input: "x + x, 2*x".to_string(),
+            }
+        );
+
+        let derive_fn = parse_eval_special_command("derive(x + x, 2*x)").expect("derive fn");
+        assert_eq!(
+            derive_fn,
             super::EvalSpecialCommand::Derive {
                 input: "x + x, 2*x".to_string(),
             }

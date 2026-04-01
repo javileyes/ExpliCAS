@@ -3,7 +3,9 @@ use cas_ast::ExprId;
 use crate::eval_output_finalize::EvalOutputWire;
 use crate::eval_output_finalize_expr::finalize_expr_like_eval_output;
 use crate::eval_output_finalize_input::{EvalOutputFinalizeContext, EvalOutputFinalizeInput};
-use crate::eval_output_finalize_nonexpr::{finalize_bool_output, finalize_solution_set_output};
+use crate::eval_output_finalize_nonexpr::{
+    finalize_bool_output, finalize_solution_set_output, finalize_text_output,
+};
 
 fn expr_like_result_id(result: &crate::EvalResult) -> Option<ExprId> {
     match result {
@@ -39,6 +41,9 @@ pub(crate) fn finalize_eval_output(
             Ok(finalize_solution_set_output(ctx, solution_set, shared))
         }
         crate::EvalResult::Bool(b) => Ok(finalize_bool_output(*b, shared)),
+        crate::EvalResult::Text { plain, latex } => {
+            Ok(finalize_text_output(plain, latex.as_deref(), shared))
+        }
         _ => Err("No result expression".to_string()),
     }
 }

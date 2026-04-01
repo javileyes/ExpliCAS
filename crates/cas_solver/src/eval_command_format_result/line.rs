@@ -27,6 +27,7 @@ pub(super) fn format_eval_result_line(
         ),
         crate::EvalResult::Set(_sols) => Some(scalar::format_set_result_line()),
         crate::EvalResult::Bool(value) => Some(scalar::format_bool_result_line(*value)),
+        crate::EvalResult::Text { plain, .. } => Some(scalar::format_text_result_line(plain)),
         crate::EvalResult::None => None,
     }
 }

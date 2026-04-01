@@ -7,6 +7,7 @@ pub(crate) struct EvalOutputFinalizeInput<'a> {
     pub(crate) max_chars: usize,
     pub(crate) input: &'a str,
     pub(crate) input_latex: Option<String>,
+    pub(crate) stored_id: Option<u64>,
     pub(crate) steps_mode: &'a str,
     pub(crate) steps: Vec<StepWire>,
     pub(crate) solve_steps: Vec<SolveStepWire>,

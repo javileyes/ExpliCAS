@@ -22,6 +22,11 @@ pub enum PreparedEvalRequest {
         var: String,
         auto_store: bool,
     },
+    SolveSystem {
+        parsed_anchor: cas_ast::ExprId,
+        exprs: Vec<cas_ast::ExprId>,
+        vars: Vec<String>,
+    },
     Derive {
         raw_input: String,
         parsed: cas_ast::ExprId,
@@ -40,6 +45,7 @@ impl PreparedEvalRequest {
     pub fn parsed(&self) -> cas_ast::ExprId {
         match self {
             Self::Solve { parsed, .. } => *parsed,
+            Self::SolveSystem { parsed_anchor, .. } => *parsed_anchor,
             Self::Derive { parsed, .. } => *parsed,
             Self::Eval { parsed, .. } => *parsed,
         }

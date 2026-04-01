@@ -9,7 +9,10 @@ use super::coeffs::build_augmented_matrix;
 use super::{LinSolveResult, LinearSystemError};
 
 #[allow(clippy::needless_range_loop)]
-fn gauss_solve(mut matrix: Vec<Vec<BigRational>>, n: usize) -> LinSolveResult {
+pub(crate) fn classify_augmented_matrix(
+    mut matrix: Vec<Vec<BigRational>>,
+    n: usize,
+) -> LinSolveResult {
     let pivot_cols = eliminate::reduce_to_row_echelon(&mut matrix, n);
 
     if let Some(result) = classify::classify_reduced_system(&matrix, n, &pivot_cols) {
@@ -30,5 +33,5 @@ pub(crate) fn solve_nxn_gauss(
 ) -> Result<LinSolveResult, LinearSystemError> {
     let n = vars.len();
     let matrix = build_augmented_matrix(ctx, exprs, vars)?;
-    Ok(gauss_solve(matrix, n))
+    Ok(classify_augmented_matrix(matrix, n))
 }

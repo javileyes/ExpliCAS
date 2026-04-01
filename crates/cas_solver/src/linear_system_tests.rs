@@ -1,6 +1,9 @@
 #[cfg(test)]
 mod tests {
-    use crate::linear_system::{solve_2x2_linear_system, solve_nxn_linear_system, LinSolveResult};
+    use crate::linear_system::{
+        solve_2x2_linear_system, solve_3x3_linear_system, solve_nxn_linear_system, LinSolveResult,
+        LinearSystemError,
+    };
     use cas_ast::Expr;
     use num_rational::BigRational;
 
@@ -48,5 +51,30 @@ mod tests {
             LinSolveResult::Inconsistent => {}
             _ => panic!("expected inconsistent system"),
         }
+    }
+
+    #[test]
+    fn solve_3x3_linear_system_detects_rank_two_dependency_as_infinite() {
+        let mut ctx = cas_ast::Context::new();
+        let eq1 = match cas_parser::parse_statement("x+y+z=1", &mut ctx).expect("eq1 parse") {
+            cas_parser::Statement::Equation(eq) => eq,
+            _ => panic!("expected equation"),
+        };
+        let eq2 = match cas_parser::parse_statement("x+y+2*z=2", &mut ctx).expect("eq2 parse") {
+            cas_parser::Statement::Equation(eq) => eq,
+            _ => panic!("expected equation"),
+        };
+        let eq3 = match cas_parser::parse_statement("x+y+3*z=3", &mut ctx).expect("eq3 parse") {
+            cas_parser::Statement::Equation(eq) => eq,
+            _ => panic!("expected equation"),
+        };
+
+        let expr1 = ctx.add(Expr::Sub(eq1.lhs, eq1.rhs));
+        let expr2 = ctx.add(Expr::Sub(eq2.lhs, eq2.rhs));
+        let expr3 = ctx.add(Expr::Sub(eq3.lhs, eq3.rhs));
+
+        let err = solve_3x3_linear_system(&ctx, expr1, expr2, expr3, "x", "y", "z")
+            .expect_err("dependent 3x3 should not have a unique solution");
+        assert!(matches!(err, LinearSystemError::InfiniteSolutions));
     }
 }

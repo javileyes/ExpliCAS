@@ -26,3 +26,10 @@ pub(super) fn format_bool_result_line(value: bool) -> EvalResultLine {
         terminal: false,
     }
 }
+
+pub(super) fn format_text_result_line(value: &str) -> EvalResultLine {
+    EvalResultLine {
+        line: format!("Result: {}", value),
+        terminal: false,
+    }
+}

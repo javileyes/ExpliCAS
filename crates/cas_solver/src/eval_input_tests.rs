@@ -110,3 +110,51 @@ fn build_prepared_eval_request_parses_derive_as_special_command() {
         _ => panic!("expected derive variant"),
     }
 }
+
+#[test]
+fn build_prepared_eval_request_parses_function_style_derive_as_special_command() {
+    let mut ctx = cas_ast::Context::new();
+    let prepared = crate::eval_input::build_prepared_eval_request_for_input(
+        "derive(x + x, 2*x)",
+        &mut ctx,
+        true,
+    )
+    .expect("request");
+
+    match prepared {
+        crate::eval_input::PreparedEvalRequest::Derive {
+            parsed,
+            target,
+            auto_store,
+            ..
+        } => {
+            assert!(auto_store);
+            assert_ne!(parsed, target);
+        }
+        _ => panic!("expected derive variant"),
+    }
+}
+
+#[test]
+fn build_prepared_eval_request_parses_solve_system_as_special_command() {
+    let mut ctx = cas_ast::Context::new();
+    let prepared = crate::eval_input::build_prepared_eval_request_for_input(
+        "solve_system(x+y=3; x-y=1; x; y)",
+        &mut ctx,
+        true,
+    )
+    .expect("request");
+
+    match prepared {
+        crate::eval_input::PreparedEvalRequest::SolveSystem {
+            parsed_anchor,
+            exprs,
+            vars,
+        } => {
+            assert_eq!(exprs.len(), 2);
+            assert_eq!(vars, vec!["x".to_string(), "y".to_string()]);
+            assert_eq!(parsed_anchor, exprs[0]);
+        }
+        _ => panic!("expected solve_system variant"),
+    }
+}

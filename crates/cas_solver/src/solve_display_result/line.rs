@@ -23,6 +23,7 @@ pub fn format_solve_result_line(
                 format!("Result: {{ {} }}", sol_strs.join(", "))
             }
         }
+        crate::EvalResult::Text { plain, .. } => format!("Result: {}", plain),
         _ => format!("Result: {:?}", result),
     }
 }

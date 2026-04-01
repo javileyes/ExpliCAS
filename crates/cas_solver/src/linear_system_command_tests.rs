@@ -49,4 +49,15 @@ mod tests {
             "x+y=3; x-y=1; x; y".to_string()
         );
     }
+
+    #[test]
+    fn evaluate_linear_system_command_message_reports_rank_two_dependency_as_infinite() {
+        let mut ctx = cas_ast::Context::new();
+        let shown = evaluate_linear_system_command_message(
+            &mut ctx,
+            "solve_system(x+y+z=1; x+y+2*z=2; x+y+3*z=3; x; y; z)",
+        );
+        assert!(shown.contains("infinitely many solutions"));
+        assert!(shown.contains("dependent"));
+    }
 }

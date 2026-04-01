@@ -1,4 +1,5 @@
 mod eval;
+mod runtime;
 mod solve;
 
 #[derive(Debug)]
@@ -14,3 +15,4 @@ pub(crate) enum LinearSystemCommandEvalError {
 }
 
 pub(crate) use eval::evaluate_linear_system_command_input;
+pub(crate) use runtime::evaluate_linear_system_eval_request_with_session;
