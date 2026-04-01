@@ -1,6 +1,8 @@
 use super::SubStep;
+use crate::didactic::try_as_fraction;
 use crate::runtime::Step;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
+use cas_math::expr_nary::{self, AddView, Sign};
 use cas_math::polynomial::Polynomial;
 use num_rational::BigRational;
 use num_traits::{Signed, Zero};
@@ -8,6 +10,7 @@ use std::collections::BTreeMap;
 
 pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
     match step.rule_name.as_str() {
+        "Combine Like Terms" => generate_combine_like_terms_substeps(ctx, step),
         "Pre-order Common Factor Cancel" => generate_common_factor_cancel_substeps(ctx, step),
         "Pre-order Difference of Squares Cancel" => {
             generate_difference_of_squares_cancel_substeps(ctx, step)
@@ -32,6 +35,152 @@ pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<
         }
         _ => Vec::new(),
     }
+}
+
+fn generate_combine_like_terms_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    if step.description.contains("Cancel opposite terms") {
+        return Vec::new();
+    }
+
+    let before = step.before_local().unwrap_or(step.before);
+    let Some((coeffs, literal_display)) = combine_like_terms_coeff_sum_plan(ctx, before) else {
+        return Vec::new();
+    };
+
+    let (before_display, before_latex) = render_numeric_sum(&coeffs);
+    let total = coeffs
+        .iter()
+        .fold(BigRational::from_integer(0.into()), |acc, coeff| {
+            acc + coeff.clone()
+        });
+    let (after_display, after_latex) = render_numeric_value(&total);
+
+    vec![SubStep::new(
+        format!("Sumar los coeficientes que acompañan a {literal_display}"),
+        before_display,
+        after_display,
+    )
+    .with_before_latex(before_latex)
+    .with_after_latex(after_latex)]
+}
+
+fn combine_like_terms_coeff_sum_plan(
+    ctx: &Context,
+    before: ExprId,
+) -> Option<(Vec<BigRational>, String)> {
+    let terms = AddView::from_expr(ctx, before).terms;
+    if terms.len() < 2 {
+        return None;
+    }
+
+    let mut coeffs = Vec::with_capacity(terms.len());
+    let mut literal_factors_key: Option<Vec<ExprId>> = None;
+
+    for (term, sign) in terms {
+        let (coeff, literal_factors) = extract_signed_coeff_and_literal(ctx, term, sign)?;
+        if literal_factors.is_empty() {
+            return None;
+        }
+        match &literal_factors_key {
+            Some(existing) if *existing != literal_factors => return None,
+            Some(_) => {}
+            None => literal_factors_key = Some(literal_factors),
+        }
+        coeffs.push(coeff);
+    }
+
+    let literal_factors = literal_factors_key?;
+    let literal_display = display_literal_factors(ctx, &literal_factors);
+    Some((coeffs, literal_display))
+}
+
+fn extract_signed_coeff_and_literal(
+    ctx: &Context,
+    term: ExprId,
+    sign: Sign,
+) -> Option<(BigRational, Vec<ExprId>)> {
+    let mut coeff = if sign == Sign::Neg {
+        BigRational::from_integer((-1).into())
+    } else {
+        BigRational::from_integer(1.into())
+    };
+    let mut literal_factors = Vec::new();
+
+    for factor in expr_nary::mul_leaves(ctx, term) {
+        if let Some(numeric) = try_as_fraction(ctx, factor) {
+            coeff *= numeric;
+        } else {
+            literal_factors.push(factor);
+        }
+    }
+
+    Some((coeff, literal_factors))
+}
+
+fn display_literal_factors(ctx: &Context, literal_factors: &[ExprId]) -> String {
+    let mut parts = literal_factors
+        .iter()
+        .map(|factor| display_expr(ctx, *factor))
+        .collect::<Vec<_>>();
+    if parts.len() == 1 {
+        return parts.remove(0);
+    }
+    cas_formatter::clean_display_string(&parts.join(" · "))
+}
+
+fn render_numeric_sum(coeffs: &[BigRational]) -> (String, String) {
+    let mut temp_ctx = Context::new();
+    let expr = build_numeric_sum_expr(&mut temp_ctx, coeffs);
+    render_temp_expr(&temp_ctx, expr)
+}
+
+fn render_numeric_value(value: &BigRational) -> (String, String) {
+    let mut temp_ctx = Context::new();
+    let expr = temp_ctx.add(Expr::Number(value.clone()));
+    render_temp_expr(&temp_ctx, expr)
+}
+
+fn build_numeric_sum_expr(ctx: &mut Context, coeffs: &[BigRational]) -> ExprId {
+    let mut iter = coeffs.iter();
+    let first = iter.next().expect("nonempty coefficient sum");
+    let mut acc = build_signed_number_expr(ctx, first);
+
+    for coeff in iter {
+        let rhs = ctx.add(Expr::Number(coeff.abs()));
+        acc = if coeff.is_negative() {
+            ctx.add(Expr::Sub(acc, rhs))
+        } else {
+            ctx.add(Expr::Add(acc, rhs))
+        };
+    }
+
+    acc
+}
+
+fn build_signed_number_expr(ctx: &mut Context, coeff: &BigRational) -> ExprId {
+    if coeff.is_negative() {
+        let abs_expr = ctx.add(Expr::Number(coeff.abs()));
+        ctx.add(Expr::Neg(abs_expr))
+    } else {
+        ctx.add(Expr::Number(coeff.clone()))
+    }
+}
+
+fn render_temp_expr(ctx: &Context, expr: ExprId) -> (String, String) {
+    (
+        cas_formatter::clean_display_string(&format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: ctx,
+                id: expr
+            }
+        )),
+        cas_formatter::LaTeXExpr {
+            context: ctx,
+            id: expr,
+        }
+        .to_latex(),
+    )
 }
 
 const MAX_FULL_POLY_PRODUCT_SUBSTEP_TERMS: usize = 14;

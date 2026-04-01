@@ -661,6 +661,16 @@ fn didactic_step_quality_priority_cases_make_cli_narrative_less_magic() {
         "combine_like_terms_basic CLI narrative should avoid a trivial +0 micro-substep once the step title already says 'Quitar el 0', got:\n{}",
         combine_cli
     );
+    assert!(
+        !combine_cli.contains("Agrupar términos semejantes y sumar coeficientes"),
+        "combine_like_terms_basic CLI narrative should avoid a redundant micro-substep that just restates the step title, got:\n{}",
+        combine_cli
+    );
+    assert!(
+        combine_cli.contains("Sumar los coeficientes que acompañan a x"),
+        "combine_like_terms_basic CLI narrative should explain the hidden coefficient sum explicitly, got:\n{}",
+        combine_cli
+    );
 
     let inverse_trig_case = cases
         .iter()

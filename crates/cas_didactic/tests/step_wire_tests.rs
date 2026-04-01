@@ -147,6 +147,48 @@ fn step_wire_humanizes_root_notation_in_before_after_text() {
 }
 
 #[test]
+fn step_wire_combine_like_terms_explains_coefficient_sum_without_repeating_step_title() {
+    let (engine, output) = eval_output_for("x + x");
+    let steps =
+        cas_didactic::collect_step_payloads(&output.steps, &engine.simplifier.context, "on");
+
+    let step = steps
+        .iter()
+        .find(|step| step.rule == "Agrupar términos semejantes")
+        .expect("expected combine like terms step");
+
+    assert_eq!(
+        step.substeps.len(),
+        1,
+        "expected a single focused didactic substep, got: {:?}",
+        step.substeps
+            .iter()
+            .map(|substep| &substep.title)
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(
+        step.substeps[0].title,
+        "Sumar los coeficientes que acompañan a x"
+    );
+    assert!(
+        step.substeps[0]
+            .before_latex
+            .as_deref()
+            .is_some_and(|latex| latex == "1 + 1"),
+        "expected the hidden substep to show only the coefficient sum, got: {:?}",
+        step.substeps[0].before_latex
+    );
+    assert!(
+        step.substeps[0]
+            .after_latex
+            .as_deref()
+            .is_some_and(|latex| latex == "2"),
+        "expected the hidden substep to end in the summed coefficient, got: {:?}",
+        step.substeps[0].after_latex
+    );
+}
+
+#[test]
 fn step_wire_path_latex_renders_human_subtractive_products_for_factor_example() {
     let (engine, output) = eval_output_for("factor(a^3*(b - c) + b^3*(c - a) + c^3*(a - b))");
     let steps =
