@@ -17,6 +17,14 @@ mod tests {
     }
 
     #[test]
+    fn parse_collect_invocation_input_reads_expr_and_var() {
+        assert_eq!(
+            crate::parse_collect_invocation_input("collect a*x + b*x + c, x"),
+            Some(("a*x + b*x + c".to_string(), "x".to_string()))
+        );
+    }
+
+    #[test]
     fn parse_expand_log_invocation_input_reads_tail() {
         assert_eq!(
             crate::parse_expand_log_invocation_input("expand_log ln(x*y)"),
@@ -44,6 +52,12 @@ mod tests {
     fn evaluate_expand_wrapped_expression_requires_input() {
         let err = crate::evaluate_expand_wrapped_expression("expand").expect_err("usage");
         assert!(err.contains("Usage: expand"));
+    }
+
+    #[test]
+    fn evaluate_collect_wrapped_expression_requires_input() {
+        let err = crate::evaluate_collect_wrapped_expression("collect").expect_err("usage");
+        assert!(err.contains("Usage: collect"));
     }
 
     #[test]

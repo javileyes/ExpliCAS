@@ -18,6 +18,7 @@ impl CasHelper {
                 "expand".to_string(),
                 "factor".to_string(),
                 "collect".to_string(),
+                "derive".to_string(),
                 "equiv".to_string(),
                 "solve".to_string(),
                 "diff".to_string(),

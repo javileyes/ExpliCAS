@@ -73,6 +73,11 @@ pub fn is_known_eval_engine_function(name: &str, arity: usize) -> bool {
     match name {
         // Meta helper calls handled by the simplify engine.
         "simplify" | "factor" | "expand" => arity == 1,
+        "collect" => arity == 2,
+        // Symbolic calculus calls handled by engine calculus rules.
+        "diff" => arity == 2,
+        "integrate" => arity == 1 || arity == 2,
+        "sum" | "product" => arity == 4,
         // Number-theory calls dispatched by engine/math support.
         "fact" | "factorial" | "prime_factors" | "factors" => arity == 1,
         "lcm" | "mod" | "choose" | "nCr" | "perm" | "nPr" => arity == 2,
@@ -138,6 +143,12 @@ mod unknown_function_tests {
     #[test]
     fn known_engine_function_names_cover_nonbuiltin_dispatchables() {
         assert!(is_known_eval_engine_function("factor", 1));
+        assert!(is_known_eval_engine_function("collect", 2));
+        assert!(is_known_eval_engine_function("diff", 2));
+        assert!(is_known_eval_engine_function("integrate", 1));
+        assert!(is_known_eval_engine_function("integrate", 2));
+        assert!(is_known_eval_engine_function("sum", 4));
+        assert!(is_known_eval_engine_function("product", 4));
         assert!(is_known_eval_engine_function("fact", 1));
         assert!(is_known_eval_engine_function("gcd", 2));
         assert!(is_known_eval_engine_function("transpose", 1));
@@ -156,6 +167,30 @@ mod unknown_function_tests {
         let factor_expr = parse("factor(x^2 - 1)", &mut ctx).expect("parse factor");
         assert_eq!(
             first_unknown_function_name(&session, &ctx, factor_expr),
+            None
+        );
+
+        let collect_expr = parse("collect(a*x + b*x + c, x)", &mut ctx).expect("parse collect");
+        assert_eq!(
+            first_unknown_function_name(&session, &ctx, collect_expr),
+            None
+        );
+
+        let diff_expr = parse("diff(sin(x), x)", &mut ctx).expect("parse diff");
+        assert_eq!(first_unknown_function_name(&session, &ctx, diff_expr), None);
+
+        let integrate_expr = parse("integrate(x^2, x)", &mut ctx).expect("parse integrate");
+        assert_eq!(
+            first_unknown_function_name(&session, &ctx, integrate_expr),
+            None
+        );
+
+        let sum_expr = parse("sum(k, k, 1, 5)", &mut ctx).expect("parse sum");
+        assert_eq!(first_unknown_function_name(&session, &ctx, sum_expr), None);
+
+        let product_expr = parse("product((k+1)/k, k, 1, 5)", &mut ctx).expect("parse product");
+        assert_eq!(
+            first_unknown_function_name(&session, &ctx, product_expr),
             None
         );
 

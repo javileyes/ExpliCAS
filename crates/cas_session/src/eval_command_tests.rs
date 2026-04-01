@@ -109,6 +109,24 @@ mod tests {
     }
 
     #[test]
+    fn evaluate_eval_text_simplify_with_session_accepts_collect_function() {
+        let mut engine = cas_solver::runtime::Engine::new();
+        let mut session = SessionState::new();
+
+        let out = evaluate_eval_text_simplify_with_session(
+            &mut engine,
+            &mut session,
+            "collect(a*x + b*x + c, x)",
+            false,
+        )
+        .expect("collect succeeds");
+
+        assert!(out.contains("a + b"));
+        assert!(out.contains("x"));
+        assert!(out.contains("c"));
+    }
+
+    #[test]
     fn evaluate_eval_command_pretty_with_session_accepts_lazy_function_assignment() {
         let json = crate::eval::evaluate_eval_command_pretty_with_session(
             None,

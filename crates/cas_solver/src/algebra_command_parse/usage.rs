@@ -3,6 +3,9 @@ const TELESCOPE_USAGE_MESSAGE: &str = "Usage: telescope <expression>\n\
 const EXPAND_USAGE_MESSAGE: &str = "Usage: expand <expr>\n\
                  Description: Aggressively expands and distributes polynomials.\n\
                  Example: expand 1/2 * (sqrt(2) - 1) -> sqrt(2)/2 - 1/2";
+const COLLECT_USAGE_MESSAGE: &str = "Usage: collect <expr>, <var>\n\
+                 Description: Group terms by powers of a variable.\n\
+                 Example: collect a*x + b*x + c, x -> (a + b)*x + c";
 const EXPAND_LOG_USAGE_MESSAGE: &str = "Usage: expand_log <expr>\n\
                  Description: Expand logarithms using log properties.\n\
                  Transformations:\n\
@@ -17,6 +20,10 @@ pub(super) fn telescope_usage_message() -> &'static str {
 
 pub(super) fn expand_usage_message() -> &'static str {
     EXPAND_USAGE_MESSAGE
+}
+
+pub(super) fn collect_usage_message() -> &'static str {
+    COLLECT_USAGE_MESSAGE
 }
 
 pub(super) fn expand_log_usage_message() -> &'static str {

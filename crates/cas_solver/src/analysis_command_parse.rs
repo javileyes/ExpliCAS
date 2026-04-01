@@ -5,6 +5,11 @@ pub fn extract_equiv_command_tail(line: &str) -> &str {
     line.strip_prefix("equiv").unwrap_or(line).trim()
 }
 
+/// Extract tail of `derive ...` input.
+pub fn extract_derive_command_tail(line: &str) -> &str {
+    line.strip_prefix("derive").unwrap_or(line).trim()
+}
+
 /// Extract tail of `subst ...` input.
 pub fn extract_substitute_command_tail(line: &str) -> &str {
     line.strip_prefix("subst").unwrap_or(line).trim()

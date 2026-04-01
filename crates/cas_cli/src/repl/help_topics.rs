@@ -139,6 +139,13 @@ Description: Checks if two expressions are mathematically equivalent.
              Returns true if expr1 - expr2 simplifies to 0."
             .to_string(),
 
+        "derive" => "\
+Command: derive <expr1>, <expr2>
+Description: Show the real engine steps when expr1 simplifies exactly into expr2.
+             This is conservative: it only succeeds when expr2 is a supported
+             simplify/collect/factor target already reachable by the engine."
+            .to_string(),
+
         "solve" => "\
 Command: solve <equation>, <var>
 Description: Solves an equation for a variable.

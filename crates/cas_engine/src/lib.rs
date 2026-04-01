@@ -178,6 +178,7 @@ pub use cas_solver_core::solve_safety_policy::ConditionClass;
 pub use cas_solver_core::solve_safety_policy::RequirementDescriptorKind as RequirementDescriptor;
 pub use cas_solver_core::solve_safety_policy::SimplifyPurpose;
 pub use cas_solver_core::solve_safety_policy::SolveSafetyKind as SolveSafety;
+pub use collect_by_var_support::{try_collect_by_var, CollectByVarRewrite};
 pub use const_fold::{fold_constants, ConstFoldMode, ConstFoldResult};
 pub use diagnostics::{Diagnostics, RequireOrigin, RequiredItem};
 pub use domain_oracle::{oracle_allows_with_hint, StandardOracle};

@@ -1,3 +1,4 @@
+mod derive;
 mod display_mode;
 mod full_simplify;
 mod solve;
@@ -18,6 +19,15 @@ pub fn evaluate_solve_command_message_on_runtime<C: ReplSolveRuntimeContext>(
     display_mode: SetDisplayMode,
 ) -> Result<String, String> {
     solve::evaluate_solve_command_message_on_runtime(context, line, display_mode)
+}
+
+/// Evaluate `derive ...` invocation against runtime simplifier/session state.
+pub fn evaluate_derive_command_lines_on_runtime<C: ReplSolveRuntimeContext>(
+    context: &mut C,
+    line: &str,
+    display_mode: SetDisplayMode,
+) -> Result<Vec<String>, String> {
+    derive::evaluate_derive_command_lines_on_runtime(context, line, display_mode)
 }
 
 /// Evaluate `simplify ...` invocation against runtime simplifier/session state.

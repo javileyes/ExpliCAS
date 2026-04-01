@@ -21,6 +21,8 @@ pub enum ReplCommandInput<'a> {
     Show(&'a str),
     Del(&'a str),
     Set(&'a str),
+    Derive(&'a str),
+    Collect(&'a str),
     Equiv(&'a str),
     Subst(&'a str),
     SolveSystem(&'a str),

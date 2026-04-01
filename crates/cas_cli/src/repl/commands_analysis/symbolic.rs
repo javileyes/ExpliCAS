@@ -1,6 +1,19 @@
 use super::*;
 
 impl Repl {
+    pub(crate) fn handle_derive_core(&mut self, line: &str, verbosity: Verbosity) -> ReplReply {
+        let lines =
+            match cas_solver::session_api::analysis::evaluate_derive_command_lines_on_repl_core(
+                &mut self.core,
+                line,
+                Self::set_display_mode_from_verbosity(verbosity),
+            ) {
+                Ok(lines) => lines,
+                Err(error) => return reply_output(error),
+            };
+        reply_output(lines.join("\n"))
+    }
+
     pub(crate) fn handle_equiv_core(&mut self, line: &str) -> ReplReply {
         match cas_solver::session_api::analysis::evaluate_equiv_invocation_message_on_repl_core(
             &mut self.core,

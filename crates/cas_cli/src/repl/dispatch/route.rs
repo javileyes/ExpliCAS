@@ -59,6 +59,12 @@ impl Repl {
                 let result = self.handle_set_command_core(line);
                 self.finalize_core_result(result)
             }
+            cas_solver::session_api::repl::ReplCommandInput::Derive(line) => {
+                self.handle_derive_core(line, self.verbosity)
+            }
+            cas_solver::session_api::repl::ReplCommandInput::Collect(line) => {
+                self.handle_collect_core(line)
+            }
             cas_solver::session_api::repl::ReplCommandInput::Equiv(line) => {
                 self.handle_equiv_core(line)
             }

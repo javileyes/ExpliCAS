@@ -78,6 +78,14 @@ mod tests {
     #[test]
     fn parses_bare_commands_instead_of_falling_back_to_eval() {
         assert_eq!(
+            parse_repl_command_input("derive"),
+            ReplCommandInput::Derive("derive")
+        );
+        assert_eq!(
+            parse_repl_command_input("collect"),
+            ReplCommandInput::Collect("collect")
+        );
+        assert_eq!(
             parse_repl_command_input("equiv"),
             ReplCommandInput::Equiv("equiv")
         );

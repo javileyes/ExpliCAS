@@ -29,6 +29,10 @@ pub(crate) fn try_parse_algebra_command(line: &str) -> Option<ReplCommandInput<'
         return Some(ReplCommandInput::Expand(line));
     }
 
+    if line == "collect" || line.starts_with("collect ") {
+        return Some(ReplCommandInput::Collect(line));
+    }
+
     if line == "rationalize" || line.starts_with("rationalize ") {
         return Some(ReplCommandInput::Rationalize(line));
     }

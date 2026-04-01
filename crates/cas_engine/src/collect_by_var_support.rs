@@ -16,7 +16,7 @@ pub struct CollectByVarRewrite {
 impl CollectByVarRewrite {
     /// Canonical didactic description used by the engine rule wrapper.
     pub fn desc(&self) -> String {
-        format!("collect({}, {})", self.target_expr, self.var_name)
+        format!("Collect terms by {}", self.var_name)
     }
 }
 
@@ -111,6 +111,20 @@ pub fn try_rewrite_collect_by_var_expr(
     })
 }
 
+/// Try collecting an expression by powers of a concrete variable.
+///
+/// This is the public engine-facing helper behind `collect(expr, var)` style
+/// grouping, without requiring callers to manually build the wrapper call.
+pub fn try_collect_by_var(
+    ctx: &mut Context,
+    target_expr: ExprId,
+    var_name: &str,
+) -> Option<CollectByVarRewrite> {
+    let var_expr = ctx.var(var_name);
+    let collect_call = ctx.call("collect", vec![target_expr, var_expr]);
+    try_rewrite_collect_by_var_expr(ctx, collect_call)
+}
+
 /// Returns `(coefficient, degree)` for one term with respect to `var`.
 fn extract_coeff_degree_for_var(ctx: &mut Context, term: ExprId, var: &str) -> (ExprId, i64) {
     let factors = flatten_mul_chain(ctx, term);
@@ -155,7 +169,7 @@ fn extract_coeff_degree_for_var(ctx: &mut Context, term: ExprId, var: &str) -> (
 
 #[cfg(test)]
 mod tests {
-    use super::try_rewrite_collect_by_var_expr;
+    use super::{try_collect_by_var, try_rewrite_collect_by_var_expr};
     use cas_ast::Context;
     use cas_formatter::DisplayExpr;
     use cas_parser::parse;
@@ -192,5 +206,16 @@ mod tests {
         let text = rendered(&ctx, rewrite.rewritten);
         assert!(text.contains("3 + y") || text.contains("y + 3"));
         assert!(text.contains("x^2"));
+    }
+
+    #[test]
+    fn collects_by_var_without_manual_wrapper() {
+        let mut ctx = Context::new();
+        let expr = parse("a*x + b*x + c", &mut ctx).expect("parse");
+        let rewrite = try_collect_by_var(&mut ctx, expr, "x").expect("rewrite");
+        let text = rendered(&ctx, rewrite.rewritten);
+        assert!(text.contains("a + b") || text.contains("b + a"));
+        assert!(text.contains("x"));
+        assert!(text.contains("c"));
     }
 }

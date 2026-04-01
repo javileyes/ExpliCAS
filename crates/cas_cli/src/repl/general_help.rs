@@ -19,6 +19,7 @@ pub fn general_help_text() -> String {
 
     s.push_str("Equation Solving:\n");
     s.push_str("  solve <eq>, <var>       Solve equation for variable\n");
+    s.push_str("  derive <e1>, <e2>       Show steps if e1 simplifies exactly into e2\n");
     s.push_str("  equiv <e1>, <e2>        Check if two expressions are equivalent\n");
     s.push_str("  subst <expr>, <var>=<val> Substitute a variable and simplify\n\n");
 

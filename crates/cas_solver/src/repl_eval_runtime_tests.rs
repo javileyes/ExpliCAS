@@ -1,7 +1,8 @@
 #[cfg(test)]
 mod tests {
     use crate::session_api::eval::{
-        evaluate_eval_command_output, evaluate_eval_command_render_plan_on_repl_core,
+        evaluate_collect_command_render_plan_on_repl_core, evaluate_eval_command_output,
+        evaluate_eval_command_render_plan_on_repl_core,
         evaluate_expand_command_render_plan_on_repl_core, profile_cache_len_on_repl_core,
         ReplEvalRuntimeContext,
     };
@@ -65,6 +66,20 @@ mod tests {
             evaluate_expand_command_render_plan_on_repl_core(&mut runtime, "expand (x+1)^2", false)
                 .expect("plan");
         assert!(plan.result_message.is_some());
+    }
+
+    #[test]
+    fn evaluate_collect_command_render_plan_on_runtime_handles_collect() {
+        let mut runtime = MockReplEvalRuntime::new();
+        let plan = evaluate_collect_command_render_plan_on_repl_core(
+            &mut runtime,
+            "collect a*x + b*x + c, x",
+            false,
+        )
+        .expect("plan");
+        let rendered = plan.result_message.as_ref().expect("result").text.as_str();
+        assert!(rendered.contains("(a + b)"));
+        assert!(rendered.contains("x"));
     }
 
     #[test]

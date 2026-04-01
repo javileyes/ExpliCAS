@@ -1,6 +1,10 @@
 use crate::repl_command_types::ReplCommandInput;
 
 pub(crate) fn try_parse_analysis_command(line: &str) -> Option<ReplCommandInput<'_>> {
+    if line == "derive" || line.starts_with("derive ") {
+        return Some(ReplCommandInput::Derive(line));
+    }
+
     if line == "equiv" || line.starts_with("equiv ") {
         return Some(ReplCommandInput::Equiv(line));
     }

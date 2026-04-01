@@ -59,6 +59,7 @@ mod context_command_format;
 mod context_command_parse;
 #[cfg(test)]
 mod context_command_tests;
+mod derive_command;
 mod display_eval_steps;
 mod domain_facade;
 mod engine_event_display_steps;
@@ -333,16 +334,17 @@ pub mod api;
 
 #[allow(unused_imports)]
 pub(crate) use crate::algebra_command_eval::{
-    evaluate_expand_log_command_lines, evaluate_expand_log_invocation_lines,
-    evaluate_expand_log_invocation_message, evaluate_expand_wrapped_expression,
-    evaluate_telescope_command_lines, evaluate_telescope_invocation_lines,
-    evaluate_telescope_invocation_message,
+    evaluate_collect_wrapped_expression, evaluate_expand_log_command_lines,
+    evaluate_expand_log_invocation_lines, evaluate_expand_log_invocation_message,
+    evaluate_expand_wrapped_expression, evaluate_telescope_command_lines,
+    evaluate_telescope_invocation_lines, evaluate_telescope_invocation_message,
 };
 #[allow(unused_imports)]
 pub(crate) use crate::algebra_command_parse::{
-    expand_log_usage_message, expand_usage_message, parse_expand_invocation_input,
+    collect_usage_message, expand_log_usage_message, expand_usage_message,
+    parse_collect_invocation_input, parse_expand_invocation_input,
     parse_expand_log_invocation_input, parse_telescope_invocation_input, telescope_usage_message,
-    wrap_expand_eval_expression,
+    wrap_collect_eval_expression, wrap_expand_eval_expression,
 };
 #[allow(unused_imports)]
 pub(crate) use crate::analysis_command_explain::{
@@ -358,8 +360,8 @@ pub(crate) use crate::analysis_command_format_errors::{
 pub(crate) use crate::analysis_command_format_explain::format_explain_gcd_eval_lines;
 #[allow(unused_imports)]
 pub(crate) use crate::analysis_command_parse::{
-    extract_equiv_command_tail, extract_explain_command_tail, extract_substitute_command_tail,
-    extract_visualize_command_tail,
+    extract_derive_command_tail, extract_equiv_command_tail, extract_explain_command_tail,
+    extract_substitute_command_tail, extract_visualize_command_tail,
 };
 #[allow(unused_imports)]
 pub(crate) use crate::analysis_command_visualize::{
@@ -405,6 +407,10 @@ pub(crate) use crate::assumption_format::format_assumption_records_summary;
 pub(crate) use crate::blocked_hint_format::{
     filter_blocked_hints_for_eval, format_eval_blocked_hints_lines,
     format_solve_assumption_and_blocked_sections, SolveAssumptionSectionConfig,
+};
+#[allow(unused_imports)]
+pub(crate) use crate::derive_command::{
+    evaluate_derive_command_lines_with_resolver, format_derive_eval_error_message, DeriveEvalError,
 };
 #[allow(unused_imports)]
 pub(crate) use crate::domain_facade::{
@@ -556,8 +562,9 @@ pub(crate) use crate::repl_command_preprocess::{
 pub(crate) use crate::repl_command_types::ReplCommandInput;
 #[allow(unused_imports)]
 pub(crate) use crate::repl_eval_runtime::{
-    evaluate_eval_command_render_plan_on_runtime, evaluate_expand_command_render_plan_on_runtime,
-    profile_cache_len_on_runtime, ReplEvalRuntimeContext,
+    evaluate_collect_command_render_plan_on_runtime, evaluate_eval_command_render_plan_on_runtime,
+    evaluate_expand_command_render_plan_on_runtime, profile_cache_len_on_runtime,
+    ReplEvalRuntimeContext,
 };
 #[allow(unused_imports)]
 pub(crate) use crate::repl_health_runtime::{
@@ -591,8 +598,8 @@ pub(crate) use crate::repl_simplifier_runtime::{
 };
 #[allow(unused_imports)]
 pub(crate) use crate::repl_solve_runtime::{
-    evaluate_full_simplify_command_lines_on_runtime, evaluate_solve_command_message_on_runtime,
-    ReplSolveRuntimeContext,
+    evaluate_derive_command_lines_on_runtime, evaluate_full_simplify_command_lines_on_runtime,
+    evaluate_solve_command_message_on_runtime, ReplSolveRuntimeContext,
 };
 pub(crate) use crate::runtime::*;
 #[allow(unused_imports)]
