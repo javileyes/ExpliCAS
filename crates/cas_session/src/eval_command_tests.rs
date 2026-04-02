@@ -394,6 +394,81 @@ mod tests {
     }
 
     #[test]
+    fn evaluate_eval_command_pretty_with_session_preserves_solve_operator_and_hides_pure_residual_otherwise_in_latex(
+    ) {
+        let json = crate::eval::evaluate_eval_command_pretty_with_session(
+            None,
+            standard_eval_config("solve(Q = Q0 * 2^(-t/T), t)"),
+            |_steps, _events, _context, _steps_mode| Vec::new(),
+        );
+
+        let payload: serde_json::Value = serde_json::from_str(&json).expect("json");
+        assert_eq!(payload["ok"], true);
+
+        let input_latex = payload["input_latex"].as_str().expect("input_latex string");
+        assert!(
+            input_latex.contains("\\operatorname{solve}"),
+            "expected input_latex to preserve the solve operator, got: {input_latex}"
+        );
+        assert!(
+            input_latex.contains("Q ="),
+            "expected input_latex to include the equation, got: {input_latex}"
+        );
+        assert!(
+            input_latex.contains(", t") || input_latex.contains("{t}"),
+            "expected input_latex to include the solve variable, got: {input_latex}"
+        );
+
+        let result_latex = payload["result_latex"]
+            .as_str()
+            .expect("result_latex string");
+        assert!(
+            result_latex.contains(r"\text{if }"),
+            "expected guarded solve output to keep its condition in latex, got: {result_latex}"
+        );
+        assert!(
+            !result_latex.contains(r"\text{otherwise}"),
+            "expected pure residual otherwise branch to be hidden in latex, got: {result_latex}"
+        );
+        assert!(
+            !result_latex.contains(r"\text{Solve: }"),
+            "expected pure residual otherwise branch not to leak into latex, got: {result_latex}"
+        );
+    }
+
+    #[test]
+    fn evaluate_eval_command_pretty_with_session_solve_steps_on_suppresses_generic_eval_steps() {
+        let mut config = standard_eval_config("solve(Q = Q0 * 2^(-t/T), t)");
+        config.steps_mode = cas_api_models::EvalStepsMode::On;
+
+        let json = crate::eval::evaluate_eval_command_pretty_with_session(
+            None,
+            config,
+            |_steps, _events, _context, _steps_mode| Vec::new(),
+        );
+
+        let payload: serde_json::Value = serde_json::from_str(&json).expect("json");
+        assert_eq!(payload["ok"], true);
+
+        let has_primary_steps = payload
+            .get("steps")
+            .and_then(serde_json::Value::as_array)
+            .is_some_and(|steps| !steps.is_empty());
+        assert!(
+            !has_primary_steps,
+            "expected solve(...) JSON to suppress generic eval steps when solve_steps exist, got: {payload}"
+        );
+
+        let solve_steps = payload["solve_steps"]
+            .as_array()
+            .expect("solve_steps array");
+        assert!(
+            !solve_steps.is_empty(),
+            "expected solve(...) JSON to expose solve_steps, got: {payload}"
+        );
+    }
+
+    #[test]
     fn evaluate_eval_command_pretty_preserves_fractional_power_input_style_in_latex() {
         let json = crate::eval::evaluate_eval_command_pretty_with_session(
             None,

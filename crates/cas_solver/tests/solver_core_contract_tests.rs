@@ -631,6 +631,36 @@ fn test_solve_check_session_render_surfaces_non_discrete_note_for_mixed_conditio
     );
 }
 
+#[test]
+fn test_solve_session_render_hides_low_importance_canonicalization_noise_for_decay_example() {
+    let mut simplifier = Simplifier::with_default_rules();
+    let eval_options = EvalOptions::solve();
+    let mut session = StatelessEvalSession::new(eval_options.clone());
+
+    let lines = evaluate_solve_command_lines_with_session(
+        &mut simplifier,
+        &mut session,
+        "solve Q = Q0 * 2^(-t/T), t",
+        &eval_options,
+        SolveDisplayMode::Normal,
+        false,
+    )
+    .expect("solve command should render");
+
+    assert!(
+        !lines
+            .iter()
+            .any(|line| line.to_ascii_lowercase().contains("canonical")),
+        "lines: {:?}",
+        lines
+    );
+    assert!(
+        !lines.iter().any(|line| line.contains("Solve: ")),
+        "lines: {:?}",
+        lines
+    );
+}
+
 fn classify_for_test(
     ctx: &Context,
     base: cas_ast::ExprId,

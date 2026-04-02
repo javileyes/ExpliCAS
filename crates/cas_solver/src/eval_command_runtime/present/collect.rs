@@ -40,7 +40,15 @@ where
     ));
     let steps_raw = prepared.output_view.steps.as_slice();
     let solve_steps_raw = prepared.output_view.solve_steps.as_slice();
-    let steps = collect_steps(steps_raw, prepared.events.as_slice(), ctx, steps_mode);
+    let suppress_primary_steps = matches!(
+        cas_api_models::parse_eval_special_command(raw_input),
+        Some(cas_api_models::EvalSpecialCommand::Solve { .. })
+    ) && !solve_steps_raw.is_empty();
+    let steps = if suppress_primary_steps {
+        Vec::new()
+    } else {
+        collect_steps(steps_raw, prepared.events.as_slice(), ctx, steps_mode)
+    };
     let solve_steps = collect_output_solve_steps(solve_steps_raw, ctx, steps_mode);
     let warnings = collect_output_warnings(&prepared.output_view.domain_warnings);
     let required_conditions_raw = prepared.output_view.required_conditions.as_slice();
@@ -59,7 +67,11 @@ where
         warnings,
         required_conditions,
         required_display,
-        raw_steps_count: steps_raw.len(),
+        raw_steps_count: if suppress_primary_steps {
+            0
+        } else {
+            steps_raw.len()
+        },
         raw_solve_steps_count: solve_steps_raw.len(),
         timings_us,
     }

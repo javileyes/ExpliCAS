@@ -38,6 +38,34 @@ fn fallback_solve_system_input_latex(input: &str) -> String {
     )
 }
 
+fn fallback_solve_input_latex(equation: &str, var: &str) -> String {
+    format!(
+        "\\operatorname{{solve}}\\left(\\texttt{{{}}}, {}\\right)",
+        latex_escape(equation),
+        latex_escape(var)
+    )
+}
+
+fn format_solve_input_latex(equation: &str, var: &str) -> String {
+    let mut temp_ctx = cas_ast::Context::new();
+    let statement = match cas_parser::parse_statement(equation, &mut temp_ctx) {
+        Ok(statement) => statement,
+        Err(_) => return fallback_solve_input_latex(equation, var),
+    };
+    let cas_parser::Statement::Equation(eq) = statement else {
+        return fallback_solve_input_latex(equation, var);
+    };
+
+    let eq_signals = ParseStyleSignals::from_input_string(equation);
+    let lhs = style_latex_for_input(&temp_ctx, eq.lhs, &eq_signals);
+    let rhs = style_latex_for_input(&temp_ctx, eq.rhs, &eq_signals);
+
+    format!(
+        "\\operatorname{{solve}}\\left({lhs} = {rhs}, {}\\right)",
+        latex_escape(var)
+    )
+}
+
 fn format_solve_system_input_latex(input: &str) -> String {
     let parts = split_solve_system_parts(input);
     if parts.len() < 4 || !parts.len().is_multiple_of(2) {
@@ -100,7 +128,9 @@ pub(crate) fn format_output_input_latex(
             EvalSpecialCommand::SolveSystem { input } => {
                 return format_solve_system_input_latex(&input);
             }
-            EvalSpecialCommand::Solve { .. } => {}
+            EvalSpecialCommand::Solve { equation, var } => {
+                return format_solve_input_latex(&equation, &var);
+            }
         }
     }
 
