@@ -1,0 +1,20 @@
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum DeriveTargetForm {
+    Simplified,
+    IntegratePrepared,
+    LogExpanded,
+    LogContracted,
+    TrigExpanded,
+    TrigContracted,
+    Rationalized,
+    FractionExpanded,
+    FractionDecomposed,
+    FractionCombined,
+    FactoredWithDivision { var: String },
+    PowerMerged,
+    OddHalfPowerExpanded,
+    Expanded,
+    Collected { var: String },
+    Factored,
+    Unknown,
+}

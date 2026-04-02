@@ -8,11 +8,12 @@
 //! - `finite / ∞ → 0`
 //! - `∞ + (-∞) → Undefined` (indeterminate)
 //! - `0 · ∞ → Undefined` (indeterminate)
+//! - `undefined` propagates through `*` and `/`
 
 use crate::rule::Rewrite;
-use cas_ast::{Context, ExprId};
+use cas_ast::{Constant, Context, Expr, ExprId};
 use cas_math::infinity_support::{
-    try_rewrite_add_infinity_absorption_expr, try_rewrite_div_by_infinity_expr,
+    mk_undefined, try_rewrite_add_infinity_absorption_expr, try_rewrite_div_by_infinity_expr,
     try_rewrite_inf_div_finite_expr, try_rewrite_mul_finite_infinity_expr,
     try_rewrite_mul_zero_infinity_expr,
 };
@@ -75,6 +76,50 @@ pub fn inf_div_finite(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
     Some(Rewrite::new(plan.rewritten).desc(plan.description))
 }
 
+fn contains_undefined(ctx: &Context, expr: ExprId) -> bool {
+    let mut stack = vec![expr];
+    while let Some(current) = stack.pop() {
+        match ctx.get(current) {
+            Expr::Constant(Constant::Undefined) => return true,
+            Expr::Add(left, right)
+            | Expr::Sub(left, right)
+            | Expr::Mul(left, right)
+            | Expr::Div(left, right)
+            | Expr::Pow(left, right) => {
+                stack.push(*left);
+                stack.push(*right);
+            }
+            Expr::Neg(inner) | Expr::Hold(inner) => stack.push(*inner),
+            Expr::Function(_, args) => stack.extend(args.iter().copied()),
+            Expr::Matrix { data, .. } => stack.extend(data.iter().copied()),
+            Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) | Expr::SessionRef(_) => {}
+        }
+    }
+    false
+}
+
+/// Rule: Any product containing `undefined` is `undefined`.
+pub fn mul_undefined(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
+    let Expr::Mul(_, _) = ctx.get(expr) else {
+        return None;
+    };
+    if !contains_undefined(ctx, expr) {
+        return None;
+    }
+    Some(Rewrite::new(mk_undefined(ctx)).desc("undefined factor makes product undefined"))
+}
+
+/// Rule: Any division containing `undefined` is `undefined`.
+pub fn div_undefined(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
+    let Expr::Div(num, den) = ctx.get(expr) else {
+        return None;
+    };
+    if !contains_undefined(ctx, *num) && !contains_undefined(ctx, *den) {
+        return None;
+    }
+    Some(Rewrite::new(mk_undefined(ctx)).desc("division with undefined is undefined"))
+}
+
 // ============================================================
 // RULE STRUCTS (for pipeline registration)
 // ============================================================
@@ -96,6 +141,13 @@ define_rule!(
 );
 
 define_rule!(
+    MulUndefinedRule,
+    "Undefined Times Anything",
+    Some(crate::target_kind::TargetKindSet::MUL),
+    |ctx, expr| { mul_undefined(ctx, expr) }
+);
+
+define_rule!(
     MulZeroInfinityRule,
     "Zero Times Infinity Indeterminate",
     Some(crate::target_kind::TargetKindSet::MUL),
@@ -110,6 +162,13 @@ define_rule!(
 );
 
 define_rule!(
+    DivUndefinedRule,
+    "Undefined Divided by Anything",
+    Some(crate::target_kind::TargetKindSet::DIV),
+    |ctx, expr| { div_undefined(ctx, expr) }
+);
+
+define_rule!(
     InfDivFiniteRule,
     "Infinity Divided by Finite",
     Some(crate::target_kind::TargetKindSet::DIV),
@@ -121,11 +180,13 @@ define_rule!(
 /// These rules should be registered early in the pipeline (with CORE rules)
 /// to handle infinity operations before other simplifications.
 pub fn register(simplifier: &mut crate::Simplifier) {
+    simplifier.add_rule(Box::new(MulUndefinedRule));
     // Indeterminate forms first (highest priority)
     simplifier.add_rule(Box::new(MulZeroInfinityRule));
     // Then absorption/computation rules
     simplifier.add_rule(Box::new(MulInfinityRule));
     simplifier.add_rule(Box::new(AddInfinityRule));
+    simplifier.add_rule(Box::new(DivUndefinedRule));
     simplifier.add_rule(Box::new(DivByInfinityRule));
     simplifier.add_rule(Box::new(InfDivFiniteRule));
 }

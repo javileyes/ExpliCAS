@@ -15,6 +15,14 @@ pub(super) fn extend_step_specific_substeps(
     step: &Step,
     sub_steps: &mut Vec<SubStep>,
 ) {
+    if step.rule_name == "Canonicalize Negation" {
+        let focused = generate_focused_rule_substeps(ctx, step);
+        if !focused.is_empty() {
+            sub_steps.extend(focused);
+            return;
+        }
+    }
+
     if step.description.starts_with("Simplified fraction by GCD") && !step.is_chained() {
         sub_steps.extend(generate_gcd_factorization_substeps(ctx, step));
     }

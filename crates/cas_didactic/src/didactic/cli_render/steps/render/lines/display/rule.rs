@@ -111,11 +111,17 @@ fn should_suppress_local_change_line(step: &Step) -> bool {
     matches!(
         step.rule_name.as_str(),
         "Rationalize Linear Sqrt Denominator"
+            | "Distribute Division"
+            | "Mixed Fraction Split"
+            | "Mixed Fraction Combine"
+            | "Expand Odd Half Power"
             | "Identity Property of Addition"
             | "Identity Property of Multiplication"
             | "Common Denominator"
             | "Combine Same Denominator Fractions"
+            | "Combine Same Denominator Sub"
             | "Add Fractions"
+            | "Subtract Fractions"
             | "Simplify Complex Fraction"
             | "Pre-order Common Factor Cancel"
             | "Pre-order Difference of Squares Cancel"

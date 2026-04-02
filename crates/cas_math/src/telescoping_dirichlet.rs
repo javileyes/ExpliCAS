@@ -1,13 +1,16 @@
 use crate::expr_nary::{AddView, Sign};
-use crate::expr_predicates::is_half_expr;
+use crate::trig_linear_support::extract_coef_and_base;
 use cas_ast::{Context, Expr, ExprId};
-use num_traits::One;
+use num_rational::BigRational;
+use num_traits::{One, Zero};
+use std::cmp::Ordering;
 
 /// Result of Dirichlet kernel detection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DirichletKernelResult {
     pub n: usize,         // The n in the sum (highest cosine multiple).
     pub base_var: ExprId, // The base variable x.
+    pub base_multiplier: usize,
 }
 
 /// Try to detect Dirichlet kernel identity pattern:
@@ -57,21 +60,36 @@ pub fn try_dirichlet_kernel_identity(ctx: &Context, expr: ExprId) -> Option<Diri
 
     // Check if we have 1, 2, 3, ..., n.
     let n = cosine_multiples.len();
+    let base_var = cosine_multiples[0].1;
+    if cosine_multiples
+        .iter()
+        .any(|(_, base)| cas_ast::ordering::compare_expr(ctx, *base, base_var) != Ordering::Equal)
+    {
+        return None;
+    }
+
+    let base_multiplier = cosine_multiples.iter().map(|(k, _)| *k).reduce(gcd_usize)?;
+    if base_multiplier == 0 {
+        return None;
+    }
+
     for (i, (k, _)) in cosine_multiples.iter().enumerate() {
-        if *k != i + 1 {
+        if *k != (i + 1) * base_multiplier {
             return None;
         }
     }
 
-    let base_var = cosine_multiples[0].1;
-
     // Verify sin ratio matches expected form: sin((n+1/2)*x)/sin(x/2).
     if let Some((num_arg, den_arg)) = sin_ratio {
         if sin_ratio_is_negative
-            && is_half_angle(ctx, den_arg, base_var)
-            && is_half_integer_multiple(ctx, num_arg, base_var, n)
+            && is_half_angle(ctx, den_arg, base_var, base_multiplier)
+            && is_half_integer_multiple(ctx, num_arg, base_var, n, base_multiplier)
         {
-            return Some(DirichletKernelResult { n, base_var });
+            return Some(DirichletKernelResult {
+                n,
+                base_var,
+                base_multiplier,
+            });
         }
     }
 
@@ -122,50 +140,29 @@ fn extract_sin_ratio(ctx: &Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
 }
 
 // nary-lint: allow-binary (structural pattern match for half-angle)
-fn is_half_angle(ctx: &Context, expr: ExprId, base_var: ExprId) -> bool {
-    match ctx.get(expr) {
-        Expr::Div(num, den) => *num == base_var && is_number(ctx, *den, 2),
-        Expr::Mul(l, r) => {
-            // Check for (1/2)*x or x*(1/2).
-            (is_half_expr(ctx, *l) && *r == base_var) || (is_half_expr(ctx, *r) && *l == base_var)
-        }
-        _ => false,
-    }
+fn is_half_angle(ctx: &Context, expr: ExprId, base_var: ExprId, base_multiplier: usize) -> bool {
+    let Some((coef, base)) = extract_rational_multiple_of_var(ctx, expr) else {
+        return false;
+    };
+    cas_ast::ordering::compare_expr(ctx, base, base_var) == Ordering::Equal
+        && coef == BigRational::new((base_multiplier as i64).into(), 2.into())
 }
 
 // nary-lint: allow-binary (structural pattern match for half-integer multiples)
-fn is_half_integer_multiple(ctx: &Context, expr: ExprId, base_var: ExprId, n: usize) -> bool {
+fn is_half_integer_multiple(
+    ctx: &Context,
+    expr: ExprId,
+    base_var: ExprId,
+    n: usize,
+    base_multiplier: usize,
+) -> bool {
     let expected_num = 2 * n + 1; // (n+1/2) = (2n+1)/2
-
-    match ctx.get(expr) {
-        Expr::Div(num, den) => {
-            if !is_number(ctx, *den, 2) {
-                return false;
-            }
-            if let Expr::Mul(l, r) = ctx.get(*num) {
-                (is_number(ctx, *l, expected_num as i32) && *r == base_var)
-                    || (is_number(ctx, *r, expected_num as i32) && *l == base_var)
-            } else {
-                false
-            }
-        }
-        Expr::Mul(l, r) => {
-            // Check for ((2n+1)/2)*x pattern.
-            let half_mult = num_rational::BigRational::new((expected_num as i64).into(), 2.into());
-            if let Expr::Number(val) = ctx.get(*l) {
-                if *val == half_mult && *r == base_var {
-                    return true;
-                }
-            }
-            if let Expr::Number(val) = ctx.get(*r) {
-                if *val == half_mult && *l == base_var {
-                    return true;
-                }
-            }
-            false
-        }
-        _ => false,
-    }
+    let Some((coef, base)) = extract_rational_multiple_of_var(ctx, expr) else {
+        return false;
+    };
+    let expected_coef =
+        BigRational::new(((expected_num * base_multiplier) as i64).into(), 2.into());
+    cas_ast::ordering::compare_expr(ctx, base, base_var) == Ordering::Equal && coef == expected_coef
 }
 
 // nary-lint: allow-binary (structural pattern match for k*x extraction)
@@ -200,5 +197,76 @@ fn is_number(ctx: &Context, expr: ExprId, expected: i32) -> bool {
         *n == num_rational::BigRational::from_integer(expected.into())
     } else {
         false
+    }
+}
+
+fn gcd_usize(a: usize, b: usize) -> usize {
+    let mut a = a;
+    let mut b = b;
+    while b != 0 {
+        let r = a % b;
+        a = b;
+        b = r;
+    }
+    a
+}
+
+fn extract_rational_multiple_of_var(ctx: &Context, expr: ExprId) -> Option<(BigRational, ExprId)> {
+    match ctx.get(expr) {
+        Expr::Variable(_) => Some((BigRational::from_integer(1.into()), expr)),
+        Expr::Mul(_, _) => {
+            let (coef, base) = extract_coef_and_base(ctx, expr);
+            if cas_ast::ordering::compare_expr(ctx, base, expr) == Ordering::Equal {
+                None
+            } else {
+                Some((coef, base))
+            }
+        }
+        Expr::Div(num, den) => {
+            let Expr::Number(den_val) = ctx.get(*den) else {
+                return None;
+            };
+            if den_val.is_zero() {
+                return None;
+            }
+            let (num_coef, base) = extract_rational_multiple_of_var(ctx, *num)?;
+            Some((num_coef / den_val.clone(), base))
+        }
+        Expr::Neg(inner) => {
+            let (coef, base) = extract_rational_multiple_of_var(ctx, *inner)?;
+            Some((-coef, base))
+        }
+        Expr::Number(value) if value.is_integer() => Some((value.clone(), expr)),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::try_dirichlet_kernel_identity;
+    use cas_ast::Context;
+    use cas_parser::parse;
+
+    #[test]
+    fn detects_basic_dirichlet_identity() {
+        let mut ctx = Context::new();
+        let expr =
+            parse("1 + 2*cos(x) + 2*cos(2*x) - sin(5*x/2)/sin(x/2)", &mut ctx).expect("parse");
+        let result = try_dirichlet_kernel_identity(&ctx, expr).expect("detect");
+        assert_eq!(result.n, 2);
+        assert_eq!(result.base_multiplier, 1);
+    }
+
+    #[test]
+    fn detects_scaled_dirichlet_identity() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "1 + 2*cos(3*x) + 2*cos(6*x) - sin(15*x/2)/sin(3*x/2)",
+            &mut ctx,
+        )
+        .expect("parse");
+        let result = try_dirichlet_kernel_identity(&ctx, expr).expect("detect");
+        assert_eq!(result.n, 2);
+        assert_eq!(result.base_multiplier, 3);
     }
 }

@@ -1,0 +1,1286 @@
+use super::strong_target_match;
+use cas_ast::views::as_rational_const;
+use cas_ast::{Context, Expr, ExprId};
+use cas_math::distribution_division_support::try_rewrite_div_distribution_simplifying_expr;
+use cas_math::expr_destructure::{as_add, as_div, as_sub};
+use cas_math::expr_nary::build_balanced_add;
+use cas_math::expr_nary::{self, AddView, Sign};
+use cas_math::fold_add_build_support::try_build_fold_add_fraction_rewrite;
+use cas_math::fold_add_fraction_support::extract_fold_add_operands;
+use cas_math::fraction_add_rewrite_support::{
+    plan_add_fraction_rewrite_with, AddFractionRewriteInput,
+};
+use cas_math::fraction_add_rule_support::try_plan_sub_term_matches_denom_rewrite;
+use cas_math::fraction_combine_policy_support::try_plan_same_denominator_combination_with;
+use cas_math::fraction_pair_support::extract_fraction_pair;
+use cas_math::fraction_sub_rewrite_support::plan_sub_fraction_rewrite_with;
+use cas_math::poly_compare::poly_eq;
+use cas_math::trig_roots_flatten::flatten_add_sub_chain;
+use num_rational::BigRational;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum FractionExpansionKind {
+    Distribution,
+    TelescopingFraction,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct FractionExpansionRewrite {
+    pub(crate) intermediate: ExprId,
+    pub(crate) rewritten: ExprId,
+    pub(crate) kind: FractionExpansionKind,
+    pub(crate) focus_before: Option<ExprId>,
+    pub(crate) focus_after: Option<ExprId>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum FractionCombinationKind {
+    TelescopingFraction,
+    MixedFraction,
+    SameDenominator,
+    AddFractions,
+    SameDenominatorSub,
+    SubtractFractions,
+    SubTermMatchesDenominator,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct FractionCombinationRewrite {
+    pub(crate) rewritten: ExprId,
+    pub(crate) kind: FractionCombinationKind,
+    pub(crate) focus_before: Option<ExprId>,
+    pub(crate) focus_after: Option<ExprId>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ExactFractionCancelKind {
+    PerfectSquareMinus,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ExactFractionCancelRewrite {
+    pub(crate) intermediate: ExprId,
+    pub(crate) rewritten: ExprId,
+    pub(crate) kind: ExactFractionCancelKind,
+}
+
+impl FractionCombinationKind {
+    pub(crate) fn description(self) -> &'static str {
+        match self {
+            Self::TelescopingFraction => {
+                "Recompose the telescoping partial fractions into a single fraction"
+            }
+            Self::MixedFraction => "Combine the whole part with the remaining fraction",
+            Self::SameDenominator => "Combine fractions that already share the same denominator",
+            Self::AddFractions => "Combine two fractions into a single denominator",
+            Self::SameDenominatorSub => {
+                "Combine fractions with the same denominator into one subtraction"
+            }
+            Self::SubtractFractions => "Subtract two fractions into a single denominator",
+            Self::SubTermMatchesDenominator => {
+                "Put the term and the fraction over the same denominator"
+            }
+        }
+    }
+
+    pub(crate) fn rule_name(self) -> &'static str {
+        match self {
+            Self::TelescopingFraction => "Telescoping Fraction Combine",
+            Self::MixedFraction => "Mixed Fraction Combine",
+            Self::SameDenominator => "Combine Same Denominator Fractions",
+            Self::AddFractions => "Add Fractions",
+            Self::SameDenominatorSub => "Combine Same Denominator Sub",
+            Self::SubtractFractions => "Subtract Fractions",
+            Self::SubTermMatchesDenominator => "Combine Same Denominator Sub",
+        }
+    }
+}
+
+impl FractionExpansionKind {
+    pub(crate) fn description(self) -> &'static str {
+        match self {
+            Self::Distribution => "Distribute a sum over the common denominator",
+            Self::TelescopingFraction => "Split into telescoping partial fractions",
+        }
+    }
+
+    pub(crate) fn rule_name(self) -> &'static str {
+        match self {
+            Self::Distribution => "Distribute Division",
+            Self::TelescopingFraction => "Telescoping Fraction Split",
+        }
+    }
+}
+
+impl ExactFractionCancelKind {
+    pub(crate) fn description(self) -> &'static str {
+        match self {
+            Self::PerfectSquareMinus => "Cancel common factor",
+        }
+    }
+
+    pub(crate) fn rule_name(self) -> &'static str {
+        match self {
+            Self::PerfectSquareMinus => "Pre-order Perfect Square Minus Cancel",
+        }
+    }
+}
+
+pub(crate) fn looks_like_fraction_expanded_target(ctx: &mut Context, expr: ExprId) -> bool {
+    let terms = flatten_add_sub_chain(ctx, expr);
+    if terms.len() < 2 {
+        return false;
+    }
+
+    terms
+        .into_iter()
+        .all(|term| is_fraction_like_term(ctx, term))
+}
+
+pub(crate) fn looks_like_telescoping_fraction_target(ctx: &mut Context, expr: ExprId) -> bool {
+    try_plan_telescoping_fraction_combination(ctx, expr).is_some()
+}
+
+pub(crate) fn looks_like_mixed_fraction_target(ctx: &Context, expr: ExprId) -> bool {
+    let Expr::Add(left, right) = ctx.get(expr) else {
+        return false;
+    };
+    extract_fold_add_operands(ctx, *left, *right).is_some()
+}
+
+pub(crate) fn try_build_combined_fraction_from_fold_add(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ExprId> {
+    let Expr::Add(left, right) = ctx.get(expr) else {
+        return None;
+    };
+    let ops = extract_fold_add_operands(ctx, *left, *right)?;
+    try_build_fold_add_fraction_rewrite(ctx, expr, ops.term, ops.numerator, ops.denominator)
+}
+
+pub(crate) fn try_rewrite_fraction_combination_target_aware(
+    ctx: &mut Context,
+    source_expr: ExprId,
+    target_expr: ExprId,
+) -> Option<FractionCombinationRewrite> {
+    if let Some((passthrough_terms, source_focus_terms, target_focus_terms)) =
+        extract_additive_passthrough_terms(ctx, source_expr, target_expr)
+    {
+        let source_focus = build_balanced_add(ctx, &source_focus_terms);
+        let target_focus = build_balanced_add(ctx, &target_focus_terms);
+        if let Some(rewrite) =
+            try_rewrite_fraction_combination_core_target_aware(ctx, source_focus, target_focus)
+        {
+            let mut rebuilt_terms = passthrough_terms;
+            rebuilt_terms.push(rewrite.rewritten);
+            let rebuilt = build_balanced_add(ctx, &rebuilt_terms);
+            if strong_target_match(ctx, rebuilt, target_expr) {
+                return Some(FractionCombinationRewrite {
+                    rewritten: rebuilt,
+                    kind: rewrite.kind,
+                    focus_before: Some(source_focus),
+                    focus_after: Some(rewrite.rewritten),
+                });
+            }
+        }
+    }
+
+    try_rewrite_fraction_combination_core_target_aware(ctx, source_expr, target_expr)
+}
+
+fn try_rewrite_fraction_combination_core_target_aware(
+    ctx: &mut Context,
+    source_expr: ExprId,
+    target_expr: ExprId,
+) -> Option<FractionCombinationRewrite> {
+    let mut candidates = Vec::with_capacity(6);
+    let is_subtraction = as_sub(ctx, source_expr).is_some();
+
+    if let Some(rewritten) = try_plan_telescoping_fraction_combination(ctx, source_expr) {
+        candidates.push(FractionCombinationRewrite {
+            rewritten,
+            kind: FractionCombinationKind::TelescopingFraction,
+            focus_before: None,
+            focus_after: None,
+        });
+    }
+
+    if let Some(rewritten) = try_build_combined_fraction_from_fold_add(ctx, source_expr) {
+        candidates.push(FractionCombinationRewrite {
+            rewritten,
+            kind: FractionCombinationKind::MixedFraction,
+            focus_before: None,
+            focus_after: None,
+        });
+    }
+
+    if is_subtraction {
+        if let Some(rewritten) = try_plan_same_denominator_subtraction(ctx, source_expr) {
+            candidates.push(FractionCombinationRewrite {
+                rewritten,
+                kind: FractionCombinationKind::SameDenominatorSub,
+                focus_before: None,
+                focus_after: None,
+            });
+        }
+
+        if let Some(rewritten) = try_plan_sub_fraction_pair(ctx, source_expr) {
+            candidates.push(FractionCombinationRewrite {
+                rewritten,
+                kind: FractionCombinationKind::SubtractFractions,
+                focus_before: None,
+                focus_after: None,
+            });
+        }
+
+        if let Some(rewritten) = try_plan_sub_term_matches_denominator(ctx, source_expr) {
+            candidates.push(FractionCombinationRewrite {
+                rewritten,
+                kind: FractionCombinationKind::SubTermMatchesDenominator,
+                focus_before: None,
+                focus_after: None,
+            });
+        }
+    }
+
+    if let Some(plan) =
+        try_plan_same_denominator_combination_with(ctx, source_expr, false, false, |_ctx, _den| {
+            false
+        })
+    {
+        candidates.push(FractionCombinationRewrite {
+            rewritten: plan.build.result,
+            kind: FractionCombinationKind::SameDenominator,
+            focus_before: None,
+            focus_after: None,
+        });
+    }
+
+    if let Some(rewritten) = try_plan_add_fraction_pair(ctx, source_expr) {
+        candidates.push(FractionCombinationRewrite {
+            rewritten,
+            kind: FractionCombinationKind::AddFractions,
+            focus_before: None,
+            focus_after: None,
+        });
+    }
+
+    candidates.into_iter().find(|candidate| {
+        target_matches_fraction_combination(ctx, candidate.rewritten, target_expr)
+    })
+}
+
+fn try_plan_telescoping_fraction_combination(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    let (u, u_plus_gap, _gap) = telescoping_fraction_split_base_and_gap(ctx, expr)?;
+    let denominator = ctx.add(Expr::Mul(u, u_plus_gap));
+    let one = ctx.num(1);
+    Some(ctx.add(Expr::Div(one, denominator)))
+}
+
+fn telescoping_fraction_split_base_and_gap(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, ExprId, ExprId)> {
+    let (u, u_plus_gap, gap_expr) = extract_telescoping_split_components(ctx, expr)?;
+    additive_gap_relation_holds(ctx, u, gap_expr, u_plus_gap).then_some((u, u_plus_gap, gap_expr))
+}
+
+fn extract_telescoping_split_components(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, ExprId, ExprId)> {
+    if let Some((numerator, denominator)) = as_div(ctx, expr) {
+        if let Some((u, u_plus_gap)) = extract_telescoping_fraction_core(ctx, numerator) {
+            return Some((u, u_plus_gap, denominator));
+        }
+    }
+
+    let factors = expr_nary::mul_leaves(ctx, expr);
+    for core_index in 0..factors.len() {
+        let Some((u, u_plus_gap)) = extract_telescoping_fraction_core(ctx, factors[core_index])
+        else {
+            continue;
+        };
+        let gap_expr = match extract_gap_expr_without_index(ctx, &factors, core_index) {
+            Some(gap_expr) => gap_expr,
+            None => continue,
+        };
+        return Some((u, u_plus_gap, gap_expr));
+    }
+
+    None
+}
+
+fn extract_telescoping_fraction_core(ctx: &Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
+    let terms = AddView::from_expr(ctx, expr).terms;
+    if terms.len() != 2 {
+        return None;
+    }
+
+    let mut saw_u = None;
+    let mut saw_u_plus_gap = None;
+    for (term, sign) in terms {
+        let (numerator, denominator) = as_div(ctx, term)?;
+        if !is_one(ctx, numerator) {
+            return None;
+        }
+
+        match sign {
+            Sign::Pos => saw_u = Some(denominator),
+            Sign::Neg => saw_u_plus_gap = Some(denominator),
+        }
+    }
+
+    Some((saw_u?, saw_u_plus_gap?))
+}
+
+fn extract_gap_expr_without_index(
+    ctx: &mut Context,
+    factors: &[ExprId],
+    skip_index: usize,
+) -> Option<ExprId> {
+    let retained = factors
+        .iter()
+        .enumerate()
+        .filter_map(|(index, factor)| (index != skip_index).then_some(*factor))
+        .collect::<Vec<_>>();
+    match retained.as_slice() {
+        [] => Some(ctx.num(1)),
+        [single] => extract_unit_reciprocal_denominator(ctx, *single),
+        _ => None,
+    }
+}
+
+fn extract_unit_reciprocal_denominator(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    if let Some((numerator, denominator)) = as_div(ctx, expr) {
+        return is_one(ctx, numerator).then_some(denominator);
+    }
+
+    let value = as_rational_const(ctx, expr, 4)?;
+    if *value.numer() != 1.into() {
+        return None;
+    }
+    Some(ctx.add(Expr::Number(BigRational::from_integer(
+        value.denom().clone(),
+    ))))
+}
+
+fn additive_signature(ctx: &Context, expr: ExprId) -> (Vec<(ExprId, i32)>, BigRational) {
+    let mut terms: Vec<(ExprId, i32)> = Vec::new();
+    let mut constant = BigRational::from_integer(0.into());
+
+    for (term, sign) in AddView::from_expr(ctx, expr).terms {
+        if let Some(value) = as_rational_const(ctx, term, 4) {
+            match sign {
+                Sign::Pos => constant += value,
+                Sign::Neg => constant -= value,
+            }
+        } else {
+            let delta = match sign {
+                Sign::Pos => 1,
+                Sign::Neg => -1,
+            };
+            if let Some((_, count)) = terms.iter_mut().find(|(existing, _)| {
+                cas_ast::ordering::compare_expr(ctx, *existing, term) == std::cmp::Ordering::Equal
+            }) {
+                *count += delta;
+            } else {
+                terms.push((term, delta));
+            }
+        }
+    }
+
+    terms.retain(|(_, count)| *count != 0);
+    terms.sort_by(|(left_expr, _), (right_expr, _)| {
+        cas_ast::ordering::compare_expr(ctx, *left_expr, *right_expr)
+    });
+
+    (terms, constant)
+}
+
+fn additive_gap_relation_holds(ctx: &Context, base: ExprId, gap: ExprId, target: ExprId) -> bool {
+    let (base_terms, base_constant) = additive_signature(ctx, base);
+    let (gap_terms, gap_constant) = additive_signature(ctx, gap);
+    let (target_terms, target_constant) = additive_signature(ctx, target);
+
+    let mut combined_terms = base_terms;
+    for (term, count) in gap_terms {
+        if let Some((_, existing_count)) = combined_terms.iter_mut().find(|(existing, _)| {
+            cas_ast::ordering::compare_expr(ctx, *existing, term) == std::cmp::Ordering::Equal
+        }) {
+            *existing_count += count;
+        } else {
+            combined_terms.push((term, count));
+        }
+    }
+    combined_terms.retain(|(_, count)| *count != 0);
+    combined_terms.sort_by(|(left_expr, _), (right_expr, _)| {
+        cas_ast::ordering::compare_expr(ctx, *left_expr, *right_expr)
+    });
+
+    combined_terms == target_terms && base_constant + gap_constant == target_constant
+}
+
+fn is_one(ctx: &Context, expr: ExprId) -> bool {
+    as_rational_const(ctx, expr, 4)
+        .is_some_and(|value| value == BigRational::from_integer(1.into()))
+}
+
+pub(crate) fn try_rewrite_fraction_expansion(
+    simplifier: &mut crate::Simplifier,
+    expr: ExprId,
+    simplify_options: crate::SimplifyOptions,
+) -> Option<FractionExpansionRewrite> {
+    let rewrite = try_rewrite_div_distribution_simplifying_expr(&mut simplifier.context, expr)
+        .map(|rewrite| rewrite.rewritten)
+        .or_else(|| distribute_fraction_numerator_terms(&mut simplifier.context, expr))?;
+    let rewritten = simplify_fraction_sum_terms_individually(simplifier, rewrite, simplify_options);
+    Some(FractionExpansionRewrite {
+        intermediate: rewrite,
+        rewritten,
+        kind: FractionExpansionKind::Distribution,
+        focus_before: None,
+        focus_after: None,
+    })
+}
+
+pub(crate) fn try_rewrite_fraction_expansion_target_aware(
+    simplifier: &mut crate::Simplifier,
+    expr: ExprId,
+    target_expr: ExprId,
+    simplify_options: crate::SimplifyOptions,
+) -> Option<FractionExpansionRewrite> {
+    if let Some(rewrite) = try_rewrite_telescoping_fraction_expansion_target_aware(
+        &mut simplifier.context,
+        expr,
+        target_expr,
+    ) {
+        return Some(rewrite);
+    }
+
+    if let Some(rewrite) =
+        try_rewrite_fraction_expansion(simplifier, expr, simplify_options.clone())
+    {
+        if strong_target_match(&mut simplifier.context, rewrite.rewritten, target_expr) {
+            return Some(rewrite);
+        }
+    }
+
+    let (passthrough_terms, source_focus_terms, target_focus_terms) =
+        extract_additive_passthrough_terms(&mut simplifier.context, expr, target_expr)?;
+    let source_focus = build_balanced_add(&mut simplifier.context, &source_focus_terms);
+    let target_focus = build_balanced_add(&mut simplifier.context, &target_focus_terms);
+    let focus_rewrite = try_rewrite_fraction_expansion(simplifier, source_focus, simplify_options)?;
+
+    if !strong_target_match(
+        &mut simplifier.context,
+        focus_rewrite.rewritten,
+        target_focus,
+    ) {
+        return None;
+    }
+
+    let mut rebuilt_terms = passthrough_terms.clone();
+    rebuilt_terms.push(focus_rewrite.intermediate);
+    let rebuilt_intermediate = build_balanced_add(&mut simplifier.context, &rebuilt_terms);
+
+    let mut rebuilt_terms = passthrough_terms;
+    rebuilt_terms.push(focus_rewrite.rewritten);
+    let rebuilt = build_balanced_add(&mut simplifier.context, &rebuilt_terms);
+    if !strong_target_match(&mut simplifier.context, rebuilt, target_expr) {
+        return None;
+    }
+
+    Some(FractionExpansionRewrite {
+        intermediate: rebuilt_intermediate,
+        rewritten: rebuilt,
+        kind: focus_rewrite.kind,
+        focus_before: Some(source_focus),
+        focus_after: Some(focus_rewrite.intermediate),
+    })
+}
+
+fn try_rewrite_telescoping_fraction_expansion_target_aware(
+    ctx: &mut Context,
+    expr: ExprId,
+    target_expr: ExprId,
+) -> Option<FractionExpansionRewrite> {
+    let rewritten = try_plan_telescoping_fraction_combination(ctx, target_expr)?;
+    if !strong_target_match(ctx, rewritten, expr) {
+        return None;
+    }
+
+    Some(FractionExpansionRewrite {
+        intermediate: target_expr,
+        rewritten: target_expr,
+        kind: FractionExpansionKind::TelescopingFraction,
+        focus_before: None,
+        focus_after: None,
+    })
+}
+
+pub(crate) fn try_rewrite_exact_fraction_cancel_target_aware(
+    ctx: &mut Context,
+    source_expr: ExprId,
+    target_expr: ExprId,
+) -> Option<ExactFractionCancelRewrite> {
+    let rewrite = try_rewrite_perfect_square_minus_fraction_cancel(ctx, source_expr)?;
+    if !strong_target_match(ctx, rewrite.rewritten, target_expr) {
+        return None;
+    }
+    Some(rewrite)
+}
+
+fn simplify_fraction_sum_terms_individually(
+    simplifier: &mut crate::Simplifier,
+    expr: ExprId,
+    mut simplify_options: crate::SimplifyOptions,
+) -> ExprId {
+    simplify_options.collect_steps = false;
+
+    let terms = flatten_add_sub_chain(&mut simplifier.context, expr);
+    if terms.len() < 2 {
+        return expr;
+    }
+
+    let simplified_terms = terms
+        .into_iter()
+        .map(|term| {
+            let (rewritten, _steps, _stats) =
+                simplifier.simplify_with_stats(term, simplify_options.clone());
+            rewritten
+        })
+        .collect::<Vec<_>>();
+
+    build_balanced_add(&mut simplifier.context, &simplified_terms)
+}
+
+fn try_rewrite_perfect_square_minus_fraction_cancel(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ExactFractionCancelRewrite> {
+    let (numerator, denominator) = as_div(ctx, expr)?;
+    let (a, b) = extract_subtraction_terms(ctx, denominator)?;
+
+    let two = ctx.num(2);
+    let a_sq = ctx.add(Expr::Pow(a, two));
+    let b_sq = square_expr(ctx, b)?;
+    let two_ab = build_scaled_product(ctx, 2, a, b);
+    let neg_two_ab = ctx.add(Expr::Neg(two_ab));
+    let tail = ctx.add(Expr::Add(neg_two_ab, b_sq));
+    let expected = ctx.add(Expr::Add(a_sq, tail));
+
+    if !(numerator == expected || poly_eq(ctx, numerator, expected)) {
+        return None;
+    }
+
+    let a_minus_b = ctx.add(Expr::Sub(a, b));
+    let squared = ctx.add(Expr::Pow(a_minus_b, two));
+    let intermediate = ctx.add(Expr::Div(squared, denominator));
+    Some(ExactFractionCancelRewrite {
+        intermediate,
+        rewritten: a_minus_b,
+        kind: ExactFractionCancelKind::PerfectSquareMinus,
+    })
+}
+
+fn extract_subtraction_terms(ctx: &mut Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
+    if let Some((left, right)) = as_sub(ctx, expr) {
+        return Some((left, right));
+    }
+
+    let (left, right) = as_add(ctx, expr)?;
+    if let Expr::Neg(inner) = ctx.get(right) {
+        return Some((left, *inner));
+    }
+    if let Expr::Neg(inner) = ctx.get(left) {
+        return Some((right, *inner));
+    }
+    None
+}
+
+fn square_expr(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    let two = ctx.num(2);
+    Some(ctx.add(Expr::Pow(expr, two)))
+}
+
+fn build_scaled_product(ctx: &mut Context, factor: i64, left: ExprId, right: ExprId) -> ExprId {
+    let product = ctx.add(Expr::Mul(left, right));
+    if factor == 1 {
+        product
+    } else {
+        let factor_expr = ctx.num(factor);
+        ctx.add(Expr::Mul(factor_expr, product))
+    }
+}
+
+fn is_fraction_like_term(ctx: &Context, expr: ExprId) -> bool {
+    match ctx.get(expr) {
+        Expr::Div(_, _) => true,
+        Expr::Neg(inner) => matches!(ctx.get(*inner), Expr::Div(_, _)),
+        _ => false,
+    }
+}
+
+fn distribute_fraction_numerator_terms(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    let (numer, denom) = as_div(ctx, expr)?;
+    let numerator_terms = AddView::from_expr(ctx, numer);
+    if numerator_terms.terms.len() < 2 {
+        return None;
+    }
+
+    let distributed_terms = numerator_terms
+        .terms
+        .iter()
+        .map(|&(term, sign)| {
+            let div_term = ctx.add(Expr::Div(term, denom));
+            match sign {
+                Sign::Pos => div_term,
+                Sign::Neg => ctx.add(Expr::Neg(div_term)),
+            }
+        })
+        .collect::<Vec<_>>();
+
+    Some(build_balanced_add(ctx, &distributed_terms))
+}
+
+fn try_plan_add_fraction_pair(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    let (left, right) = as_add(ctx, expr)?;
+    let pair = extract_fraction_pair(ctx, left, right);
+    if !pair.is_frac1 || !pair.is_frac2 {
+        return None;
+    }
+
+    let plan = plan_add_fraction_rewrite_with(
+        ctx,
+        AddFractionRewriteInput {
+            expr,
+            l: left,
+            r: right,
+            n1: pair.n1,
+            d1: pair.d1,
+            n2: pair.n2,
+            d2: pair.d2,
+            same_sign: pair.sign1 == pair.sign2,
+            inside_trig: false,
+        },
+        cas_math::expand_ops::expand,
+    )?;
+
+    Some(plan.rewritten)
+}
+
+fn try_plan_same_denominator_subtraction(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    let (left, right) = as_sub(ctx, expr)?;
+    let pair = extract_fraction_pair(ctx, left, right);
+    if !pair.is_frac1 || !pair.is_frac2 {
+        return None;
+    }
+    if !strong_target_match(ctx, pair.d1, pair.d2) {
+        return None;
+    }
+
+    let plan = plan_sub_fraction_rewrite_with(
+        ctx,
+        pair.n1,
+        pair.n2,
+        pair.d1,
+        pair.d2,
+        cas_math::expand_ops::expand,
+    );
+
+    Some(plan.rewritten)
+}
+
+fn try_plan_sub_fraction_pair(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    let (left, right) = as_sub(ctx, expr)?;
+    let pair = extract_fraction_pair(ctx, left, right);
+    if !pair.is_frac1 || !pair.is_frac2 {
+        return None;
+    }
+
+    let plan = plan_sub_fraction_rewrite_with(
+        ctx,
+        pair.n1,
+        pair.n2,
+        pair.d1,
+        pair.d2,
+        cas_math::expand_ops::expand,
+    );
+
+    Some(plan.rewritten)
+}
+
+fn try_plan_sub_term_matches_denominator(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    let plan = try_plan_sub_term_matches_denom_rewrite(ctx, expr, false)?;
+    Some(plan.rewritten)
+}
+
+fn target_matches_fraction_combination(
+    ctx: &mut Context,
+    rewritten: ExprId,
+    target_expr: ExprId,
+) -> bool {
+    strong_target_match(ctx, rewritten, target_expr)
+}
+
+fn extract_additive_passthrough_terms(
+    ctx: &mut Context,
+    source_expr: ExprId,
+    target_expr: ExprId,
+) -> Option<(Vec<ExprId>, Vec<ExprId>, Vec<ExprId>)> {
+    let source_terms = signed_add_terms(ctx, source_expr);
+    let target_terms = signed_add_terms(ctx, target_expr);
+    if source_terms.len() < 2 || target_terms.len() < 2 {
+        return None;
+    }
+
+    let mut target_used = vec![false; target_terms.len()];
+    let mut passthrough_terms = Vec::new();
+    let mut source_focus_terms = Vec::new();
+
+    for source_term in &source_terms {
+        let mut matched_index = None;
+        for (index, target_term) in target_terms.iter().enumerate() {
+            if target_used[index] {
+                continue;
+            }
+            if strong_target_match(ctx, *source_term, *target_term) {
+                matched_index = Some(index);
+                break;
+            }
+        }
+
+        if let Some(index) = matched_index {
+            target_used[index] = true;
+            passthrough_terms.push(*source_term);
+        } else {
+            source_focus_terms.push(*source_term);
+        }
+    }
+
+    let target_focus_terms = target_terms
+        .into_iter()
+        .enumerate()
+        .filter_map(|(index, term)| (!target_used[index]).then_some(term))
+        .collect::<Vec<_>>();
+
+    if passthrough_terms.is_empty()
+        || source_focus_terms.is_empty()
+        || target_focus_terms.is_empty()
+    {
+        return None;
+    }
+
+    Some((passthrough_terms, source_focus_terms, target_focus_terms))
+}
+
+fn signed_add_terms(ctx: &mut Context, expr: ExprId) -> Vec<ExprId> {
+    flatten_add_sub_chain(ctx, expr)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        looks_like_fraction_expanded_target, looks_like_mixed_fraction_target,
+        try_build_combined_fraction_from_fold_add, try_rewrite_fraction_combination_target_aware,
+        try_rewrite_fraction_expansion, try_rewrite_fraction_expansion_target_aware,
+        FractionCombinationKind, FractionExpansionKind,
+    };
+    use crate::runtime::Simplifier;
+    use cas_ast::{Context, ExprId};
+    use cas_formatter::DisplayExpr;
+    use cas_parser::parse;
+
+    fn rendered(ctx: &Context, id: ExprId) -> String {
+        format!("{}", DisplayExpr { context: ctx, id })
+    }
+
+    #[test]
+    fn detects_fraction_expanded_target_shape() {
+        let mut ctx = Context::new();
+        let expr = parse("a/x + b/x", &mut ctx).expect("parse");
+        assert!(looks_like_fraction_expanded_target(&mut ctx, expr));
+    }
+
+    #[test]
+    fn rejects_non_fraction_additive_target_shape() {
+        let mut ctx = Context::new();
+        let expr = parse("a + b/x", &mut ctx).expect("parse");
+        assert!(!looks_like_fraction_expanded_target(&mut ctx, expr));
+    }
+
+    #[test]
+    fn detects_mixed_fraction_target_shape() {
+        let mut ctx = Context::new();
+        let expr = parse("1 + 2/(x-1)", &mut ctx).expect("parse");
+        assert!(looks_like_mixed_fraction_target(&ctx, expr));
+    }
+
+    #[test]
+    fn combines_fold_add_fraction_pattern() {
+        let mut ctx = Context::new();
+        let expr = parse("1 + 2/(x-1)", &mut ctx).expect("parse");
+        let rewritten = try_build_combined_fraction_from_fold_add(&mut ctx, expr).expect("rewrite");
+        let expected = parse("(x+1)/(x-1)", &mut ctx).expect("expected");
+        let checker = cas_math::semantic_equality::SemanticEqualityChecker::new(&ctx);
+        assert!(checker.are_equal(rewritten, expected));
+    }
+
+    #[test]
+    fn rewrites_fraction_expansion_with_termwise_cleanup() {
+        let mut simplifier = Simplifier::with_default_rules();
+        let expr = parse("(x+y)/(x*y)", &mut simplifier.context).expect("parse");
+        let rewrite = try_rewrite_fraction_expansion(
+            &mut simplifier,
+            expr,
+            crate::runtime::SimplifyOptions::default(),
+        )
+        .expect("rewrite");
+
+        let text = rendered(&simplifier.context, rewrite.rewritten);
+        assert!(text.contains("1 / x") || text.contains("1 / y"));
+    }
+
+    #[test]
+    fn combines_same_denominator_fraction_sum_target_aware() {
+        let mut ctx = Context::new();
+        let source = parse("a/x + b/x", &mut ctx).expect("parse");
+        let target = parse("(a+b)/x", &mut ctx).expect("parse");
+        let rewrite = try_rewrite_fraction_combination_target_aware(&mut ctx, source, target)
+            .expect("rewrite");
+
+        assert_eq!(rewrite.kind, FractionCombinationKind::SameDenominator);
+    }
+
+    #[test]
+    fn combines_general_fraction_sum_target_aware() {
+        let mut ctx = Context::new();
+        let source = parse("1/x + 1/y", &mut ctx).expect("parse");
+        let target = parse("(x+y)/(x*y)", &mut ctx).expect("parse");
+        let rewrite = try_rewrite_fraction_combination_target_aware(&mut ctx, source, target)
+            .expect("rewrite");
+
+        assert_eq!(rewrite.kind, FractionCombinationKind::AddFractions);
+    }
+
+    #[test]
+    fn combines_same_denominator_fraction_difference_target_aware() {
+        let mut ctx = Context::new();
+        let source = parse("a/x - b/x", &mut ctx).expect("parse");
+        let target = parse("(a-b)/x", &mut ctx).expect("parse");
+        let rewrite = try_rewrite_fraction_combination_target_aware(&mut ctx, source, target)
+            .expect("rewrite");
+
+        assert_eq!(rewrite.kind, FractionCombinationKind::SameDenominatorSub);
+    }
+
+    #[test]
+    fn combines_general_fraction_difference_target_aware() {
+        let mut ctx = Context::new();
+        let source = parse("1/x - 1/y", &mut ctx).expect("parse");
+        let target = parse("(y-x)/(x*y)", &mut ctx).expect("parse");
+        let rewrite = try_rewrite_fraction_combination_target_aware(&mut ctx, source, target)
+            .expect("rewrite");
+
+        assert_eq!(rewrite.kind, FractionCombinationKind::SubtractFractions);
+    }
+
+    #[test]
+    fn combines_term_and_fraction_subtraction_target_aware() {
+        let mut ctx = Context::new();
+        let source = parse("a - b/a", &mut ctx).expect("parse");
+        let target = parse("(a^2-b)/a", &mut ctx).expect("parse");
+        let rewrite = try_rewrite_fraction_combination_target_aware(&mut ctx, source, target)
+            .expect("rewrite");
+
+        assert_eq!(
+            rewrite.kind,
+            FractionCombinationKind::SubTermMatchesDenominator
+        );
+    }
+
+    #[test]
+    fn combines_consecutive_telescoping_fraction_target_aware() {
+        let mut ctx = Context::new();
+        let source = parse("1/n - 1/(n+1)", &mut ctx).expect("parse");
+        let target = parse("1/(n*(n+1))", &mut ctx).expect("parse");
+        let rewrite = try_rewrite_fraction_combination_target_aware(&mut ctx, source, target)
+            .expect("rewrite");
+
+        assert_eq!(rewrite.kind, FractionCombinationKind::TelescopingFraction);
+    }
+
+    #[test]
+    fn combines_gap_two_telescoping_fraction_target_aware() {
+        let mut ctx = Context::new();
+        let source = parse("1/2*(1/n - 1/(n+2))", &mut ctx).expect("parse");
+        let target = parse("1/(n*(n+2))", &mut ctx).expect("parse");
+        let rewrite = try_rewrite_fraction_combination_target_aware(&mut ctx, source, target)
+            .expect("rewrite");
+
+        assert_eq!(rewrite.kind, FractionCombinationKind::TelescopingFraction);
+    }
+
+    #[test]
+    fn combines_negative_gap_telescoping_fraction_target_aware() {
+        let mut ctx = Context::new();
+        let source = parse("1/(n-1) - 1/n", &mut ctx).expect("parse");
+        let target = parse("1/(n*(n-1))", &mut ctx).expect("parse");
+        let rewrite = try_rewrite_fraction_combination_target_aware(&mut ctx, source, target)
+            .expect("rewrite");
+
+        assert_eq!(rewrite.kind, FractionCombinationKind::TelescopingFraction);
+    }
+
+    #[test]
+    fn combines_affine_gap_two_telescoping_fraction_target_aware() {
+        let mut ctx = Context::new();
+        let source = parse("1/2*(1/(2*n+1) - 1/(2*n+3))", &mut ctx).expect("parse");
+        let target = parse("1/((2*n+1)*(2*n+3))", &mut ctx).expect("parse");
+        let rewrite = try_rewrite_fraction_combination_target_aware(&mut ctx, source, target)
+            .expect("rewrite");
+
+        assert_eq!(rewrite.kind, FractionCombinationKind::TelescopingFraction);
+    }
+
+    #[test]
+    fn combines_affine_shifted_gap_two_telescoping_fraction_target_aware() {
+        let mut ctx = Context::new();
+        let source = parse("1/2*(1/(2*n-1) - 1/(2*n+1))", &mut ctx).expect("parse");
+        let target = parse("1/((2*n-1)*(2*n+1))", &mut ctx).expect("parse");
+        let rewrite = try_rewrite_fraction_combination_target_aware(&mut ctx, source, target)
+            .expect("rewrite");
+
+        assert_eq!(rewrite.kind, FractionCombinationKind::TelescopingFraction);
+    }
+
+    #[test]
+    fn combines_affine_coeff_three_gap_three_telescoping_fraction_target_aware() {
+        let mut ctx = Context::new();
+        let source = parse("1/3*(1/(3*n+2) - 1/(3*n+5))", &mut ctx).expect("parse");
+        let target = parse("1/((3*n+2)*(3*n+5))", &mut ctx).expect("parse");
+        let rewrite = try_rewrite_fraction_combination_target_aware(&mut ctx, source, target)
+            .expect("rewrite");
+
+        assert_eq!(rewrite.kind, FractionCombinationKind::TelescopingFraction);
+    }
+
+    #[test]
+    fn combines_affine_coeff_three_shifted_gap_three_telescoping_fraction_target_aware() {
+        let mut ctx = Context::new();
+        let source = parse("1/3*(1/(3*n-1) - 1/(3*n+2))", &mut ctx).expect("parse");
+        let target = parse("1/((3*n-1)*(3*n+2))", &mut ctx).expect("parse");
+        let rewrite = try_rewrite_fraction_combination_target_aware(&mut ctx, source, target)
+            .expect("rewrite");
+
+        assert_eq!(rewrite.kind, FractionCombinationKind::TelescopingFraction);
+    }
+
+    #[test]
+    fn combines_affine_symbolic_coeff_gap_three_telescoping_fraction_target_aware() {
+        let mut ctx = Context::new();
+        let source = parse("1/3*(1/(a*n+2) - 1/(a*n+5))", &mut ctx).expect("parse");
+        let target = parse("1/((a*n+2)*(a*n+5))", &mut ctx).expect("parse");
+        let rewrite = try_rewrite_fraction_combination_target_aware(&mut ctx, source, target)
+            .expect("rewrite");
+
+        assert_eq!(rewrite.kind, FractionCombinationKind::TelescopingFraction);
+    }
+
+    #[test]
+    fn combines_affine_symbolic_coeff_shifted_gap_three_telescoping_fraction_target_aware() {
+        let mut ctx = Context::new();
+        let source = parse("1/3*(1/(a*n-1) - 1/(a*n+2))", &mut ctx).expect("parse");
+        let target = parse("1/((a*n-1)*(a*n+2))", &mut ctx).expect("parse");
+        let rewrite = try_rewrite_fraction_combination_target_aware(&mut ctx, source, target)
+            .expect("rewrite");
+
+        assert_eq!(rewrite.kind, FractionCombinationKind::TelescopingFraction);
+    }
+
+    #[test]
+    fn combines_symbolic_shift_gap_telescoping_fraction_target_aware() {
+        let mut ctx = Context::new();
+        let source = parse("1/(b-a)*(1/(n+a) - 1/(n+b))", &mut ctx).expect("parse");
+        let target = parse("1/((n+a)*(n+b))", &mut ctx).expect("parse");
+        let rewrite = try_rewrite_fraction_combination_target_aware(&mut ctx, source, target)
+            .expect("rewrite");
+
+        assert_eq!(rewrite.kind, FractionCombinationKind::TelescopingFraction);
+    }
+
+    #[test]
+    fn combines_affine_symbolic_shift_gap_telescoping_fraction_target_aware() {
+        let mut ctx = Context::new();
+        let source = parse("1/(c-b)*(1/(a*n+b) - 1/(a*n+c))", &mut ctx).expect("parse");
+        let target = parse("1/((a*n+b)*(a*n+c))", &mut ctx).expect("parse");
+        let rewrite = try_rewrite_fraction_combination_target_aware(&mut ctx, source, target)
+            .expect("rewrite");
+
+        assert_eq!(rewrite.kind, FractionCombinationKind::TelescopingFraction);
+    }
+
+    #[test]
+    fn combines_same_denominator_fraction_subset_with_passthrough_target_aware() {
+        let mut ctx = Context::new();
+        let source = parse("1 + a/d + b/d + c/d", &mut ctx).expect("parse");
+        let target = parse("1 + (a+b+c)/d", &mut ctx).expect("parse");
+        let rewrite = try_rewrite_fraction_combination_target_aware(&mut ctx, source, target)
+            .expect("rewrite");
+
+        assert_eq!(rewrite.kind, FractionCombinationKind::SameDenominator);
+        assert!(rewrite.focus_before.is_some());
+        assert!(rewrite.focus_after.is_some());
+    }
+
+    #[test]
+    fn expands_fraction_subset_with_passthrough_target_aware() {
+        let mut simplifier = Simplifier::with_default_rules();
+        let source = parse("1 + (a+b+c)/d", &mut simplifier.context).expect("parse");
+        let target = parse("1 + a/d + b/d + c/d", &mut simplifier.context).expect("target");
+        let rewrite = try_rewrite_fraction_expansion_target_aware(
+            &mut simplifier,
+            source,
+            target,
+            crate::runtime::SimplifyOptions::default(),
+        )
+        .expect("rewrite");
+
+        assert!(rewrite.focus_before.is_some());
+        assert!(rewrite.focus_after.is_some());
+        let checker =
+            cas_math::semantic_equality::SemanticEqualityChecker::new(&simplifier.context);
+        assert!(checker.are_equal(rewrite.rewritten, target));
+    }
+
+    #[test]
+    fn expands_negative_gap_telescoping_fraction_target_aware() {
+        let mut simplifier = Simplifier::with_default_rules();
+        let source = parse("1/(n*(n-1))", &mut simplifier.context).expect("parse");
+        let target = parse("1/(n-1) - 1/n", &mut simplifier.context).expect("target");
+        let rewrite = try_rewrite_fraction_expansion_target_aware(
+            &mut simplifier,
+            source,
+            target,
+            crate::runtime::SimplifyOptions::default(),
+        )
+        .expect("rewrite");
+
+        assert_eq!(rewrite.kind, FractionExpansionKind::TelescopingFraction);
+        let checker =
+            cas_math::semantic_equality::SemanticEqualityChecker::new(&simplifier.context);
+        assert!(checker.are_equal(rewrite.rewritten, target));
+    }
+
+    #[test]
+    fn expands_gap_two_telescoping_fraction_target_aware() {
+        let mut simplifier = Simplifier::with_default_rules();
+        let source = parse("1/(n*(n+2))", &mut simplifier.context).expect("parse");
+        let target = parse("1/2*(1/n - 1/(n+2))", &mut simplifier.context).expect("target");
+        let rewrite = try_rewrite_fraction_expansion_target_aware(
+            &mut simplifier,
+            source,
+            target,
+            crate::runtime::SimplifyOptions::default(),
+        )
+        .expect("rewrite");
+
+        assert_eq!(rewrite.kind, FractionExpansionKind::TelescopingFraction);
+        let checker =
+            cas_math::semantic_equality::SemanticEqualityChecker::new(&simplifier.context);
+        assert!(checker.are_equal(rewrite.rewritten, target));
+    }
+
+    #[test]
+    fn expands_gap_three_telescoping_fraction_target_aware() {
+        let mut simplifier = Simplifier::with_default_rules();
+        let source = parse("1/(n*(n+3))", &mut simplifier.context).expect("parse");
+        let target = parse("1/3*(1/n - 1/(n+3))", &mut simplifier.context).expect("target");
+        let rewrite = try_rewrite_fraction_expansion_target_aware(
+            &mut simplifier,
+            source,
+            target,
+            crate::runtime::SimplifyOptions::default(),
+        )
+        .expect("rewrite");
+
+        assert_eq!(rewrite.kind, FractionExpansionKind::TelescopingFraction);
+        let checker =
+            cas_math::semantic_equality::SemanticEqualityChecker::new(&simplifier.context);
+        assert!(checker.are_equal(rewrite.rewritten, target));
+    }
+
+    #[test]
+    fn expands_negative_gap_two_telescoping_fraction_target_aware() {
+        let mut simplifier = Simplifier::with_default_rules();
+        let source = parse("1/(n*(n-2))", &mut simplifier.context).expect("parse");
+        let target = parse("1/2*(1/(n-2) - 1/n)", &mut simplifier.context).expect("target");
+        let rewrite = try_rewrite_fraction_expansion_target_aware(
+            &mut simplifier,
+            source,
+            target,
+            crate::runtime::SimplifyOptions::default(),
+        )
+        .expect("rewrite");
+
+        assert_eq!(rewrite.kind, FractionExpansionKind::TelescopingFraction);
+        let checker =
+            cas_math::semantic_equality::SemanticEqualityChecker::new(&simplifier.context);
+        assert!(checker.are_equal(rewrite.rewritten, target));
+    }
+
+    #[test]
+    fn expands_affine_gap_two_telescoping_fraction_target_aware() {
+        let mut simplifier = Simplifier::with_default_rules();
+        let source = parse("1/((2*n+1)*(2*n+3))", &mut simplifier.context).expect("parse");
+        let target = parse("1/2*(1/(2*n+1) - 1/(2*n+3))", &mut simplifier.context).expect("target");
+        let rewrite = try_rewrite_fraction_expansion_target_aware(
+            &mut simplifier,
+            source,
+            target,
+            crate::runtime::SimplifyOptions::default(),
+        )
+        .expect("rewrite");
+
+        assert_eq!(rewrite.kind, FractionExpansionKind::TelescopingFraction);
+        let checker =
+            cas_math::semantic_equality::SemanticEqualityChecker::new(&simplifier.context);
+        assert!(checker.are_equal(rewrite.rewritten, target));
+    }
+
+    #[test]
+    fn expands_affine_shifted_gap_two_telescoping_fraction_target_aware() {
+        let mut simplifier = Simplifier::with_default_rules();
+        let source = parse("1/((2*n-1)*(2*n+1))", &mut simplifier.context).expect("parse");
+        let target = parse("1/2*(1/(2*n-1) - 1/(2*n+1))", &mut simplifier.context).expect("target");
+        let rewrite = try_rewrite_fraction_expansion_target_aware(
+            &mut simplifier,
+            source,
+            target,
+            crate::runtime::SimplifyOptions::default(),
+        )
+        .expect("rewrite");
+
+        assert_eq!(rewrite.kind, FractionExpansionKind::TelescopingFraction);
+        let checker =
+            cas_math::semantic_equality::SemanticEqualityChecker::new(&simplifier.context);
+        assert!(checker.are_equal(rewrite.rewritten, target));
+    }
+
+    #[test]
+    fn expands_affine_coeff_three_gap_three_telescoping_fraction_target_aware() {
+        let mut simplifier = Simplifier::with_default_rules();
+        let source = parse("1/((3*n+2)*(3*n+5))", &mut simplifier.context).expect("parse");
+        let target = parse("1/3*(1/(3*n+2) - 1/(3*n+5))", &mut simplifier.context).expect("target");
+        let rewrite = try_rewrite_fraction_expansion_target_aware(
+            &mut simplifier,
+            source,
+            target,
+            crate::runtime::SimplifyOptions::default(),
+        )
+        .expect("rewrite");
+
+        assert_eq!(rewrite.kind, FractionExpansionKind::TelescopingFraction);
+        let checker =
+            cas_math::semantic_equality::SemanticEqualityChecker::new(&simplifier.context);
+        assert!(checker.are_equal(rewrite.rewritten, target));
+    }
+
+    #[test]
+    fn expands_affine_coeff_three_shifted_gap_three_telescoping_fraction_target_aware() {
+        let mut simplifier = Simplifier::with_default_rules();
+        let source = parse("1/((3*n-1)*(3*n+2))", &mut simplifier.context).expect("parse");
+        let target = parse("1/3*(1/(3*n-1) - 1/(3*n+2))", &mut simplifier.context).expect("target");
+        let rewrite = try_rewrite_fraction_expansion_target_aware(
+            &mut simplifier,
+            source,
+            target,
+            crate::runtime::SimplifyOptions::default(),
+        )
+        .expect("rewrite");
+
+        assert_eq!(rewrite.kind, FractionExpansionKind::TelescopingFraction);
+        let checker =
+            cas_math::semantic_equality::SemanticEqualityChecker::new(&simplifier.context);
+        assert!(checker.are_equal(rewrite.rewritten, target));
+    }
+
+    #[test]
+    fn expands_affine_symbolic_coeff_gap_three_telescoping_fraction_target_aware() {
+        let mut simplifier = Simplifier::with_default_rules();
+        let source = parse("1/((a*n+2)*(a*n+5))", &mut simplifier.context).expect("parse");
+        let target = parse("1/3*(1/(a*n+2) - 1/(a*n+5))", &mut simplifier.context).expect("target");
+        let rewrite = try_rewrite_fraction_expansion_target_aware(
+            &mut simplifier,
+            source,
+            target,
+            crate::runtime::SimplifyOptions::default(),
+        )
+        .expect("rewrite");
+
+        assert_eq!(rewrite.kind, FractionExpansionKind::TelescopingFraction);
+        let checker =
+            cas_math::semantic_equality::SemanticEqualityChecker::new(&simplifier.context);
+        assert!(checker.are_equal(rewrite.rewritten, target));
+    }
+
+    #[test]
+    fn expands_affine_symbolic_coeff_shifted_gap_three_telescoping_fraction_target_aware() {
+        let mut simplifier = Simplifier::with_default_rules();
+        let source = parse("1/((a*n-1)*(a*n+2))", &mut simplifier.context).expect("parse");
+        let target = parse("1/3*(1/(a*n-1) - 1/(a*n+2))", &mut simplifier.context).expect("target");
+        let rewrite = try_rewrite_fraction_expansion_target_aware(
+            &mut simplifier,
+            source,
+            target,
+            crate::runtime::SimplifyOptions::default(),
+        )
+        .expect("rewrite");
+
+        assert_eq!(rewrite.kind, FractionExpansionKind::TelescopingFraction);
+        let checker =
+            cas_math::semantic_equality::SemanticEqualityChecker::new(&simplifier.context);
+        assert!(checker.are_equal(rewrite.rewritten, target));
+    }
+
+    #[test]
+    fn expands_symbolic_shift_gap_telescoping_fraction_target_aware() {
+        let mut simplifier = Simplifier::with_default_rules();
+        let source = parse("1/((n+a)*(n+b))", &mut simplifier.context).expect("parse");
+        let target = parse("1/(b-a)*(1/(n+a) - 1/(n+b))", &mut simplifier.context).expect("target");
+        let rewrite = try_rewrite_fraction_expansion_target_aware(
+            &mut simplifier,
+            source,
+            target,
+            crate::runtime::SimplifyOptions::default(),
+        )
+        .expect("rewrite");
+
+        assert_eq!(rewrite.kind, FractionExpansionKind::TelescopingFraction);
+        let checker =
+            cas_math::semantic_equality::SemanticEqualityChecker::new(&simplifier.context);
+        assert!(checker.are_equal(rewrite.rewritten, target));
+    }
+
+    #[test]
+    fn expands_affine_symbolic_shift_gap_telescoping_fraction_target_aware() {
+        let mut simplifier = Simplifier::with_default_rules();
+        let source = parse("1/((a*n+b)*(a*n+c))", &mut simplifier.context).expect("parse");
+        let target =
+            parse("1/(c-b)*(1/(a*n+b) - 1/(a*n+c))", &mut simplifier.context).expect("target");
+        let rewrite = try_rewrite_fraction_expansion_target_aware(
+            &mut simplifier,
+            source,
+            target,
+            crate::runtime::SimplifyOptions::default(),
+        )
+        .expect("rewrite");
+
+        assert_eq!(rewrite.kind, FractionExpansionKind::TelescopingFraction);
+        let checker =
+            cas_math::semantic_equality::SemanticEqualityChecker::new(&simplifier.context);
+        assert!(checker.are_equal(rewrite.rewritten, target));
+    }
+}

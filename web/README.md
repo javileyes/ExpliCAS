@@ -5,12 +5,21 @@ Interactive web-based REPL for the ExpliCAS computer algebra system.
 ## Quick Start
 
 ```bash
-# From project root
-cd /path/to/math
+# From the repository root
+# 1) Build the CLI binary used by the web server
+cargo build --release -p cas_cli
+
+# 2) Start the web server
 python3 web/server.py
 ```
 
 Then open http://localhost:8080
+
+If `python` on your system already points to Python 3, this also works:
+
+```bash
+python web/server.py
+```
 
 ## Features
 
@@ -172,8 +181,8 @@ Both `%n` and `#n` syntax work.
 
 ### Requirements
 
-- Python 3.6+
-- Built `cas_cli` binary (`cargo build --release`)
+- Python 3
+- Built `cas_cli` binary at `./target/release/cas_cli`
 
 ### File Structure
 

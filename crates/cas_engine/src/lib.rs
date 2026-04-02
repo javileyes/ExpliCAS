@@ -119,6 +119,8 @@ pub mod error;
 #[cfg(test)]
 mod error_tests;
 
+pub use integration_prep_support::try_rewrite_cos_product_telescoping_expr;
+
 pub use crate::profile_cache::{default_rule_profile, rule_profile_from_simplifier, RuleProfile};
 #[macro_use]
 pub mod macros;

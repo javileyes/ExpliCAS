@@ -113,6 +113,39 @@ fn test_infinity_times_zero_indeterminate() {
     );
 }
 
+#[test]
+fn test_undefined_factor_multiplication_is_undefined() {
+    let mut ctx = Context::new();
+    let expr = parse_expr(&mut ctx, "a * undefined");
+
+    let result = mul_undefined(&mut ctx, expr);
+    assert!(
+        result.is_some(),
+        "Should detect undefined factor in product"
+    );
+
+    let new_expr = result.unwrap().new_expr;
+    assert!(
+        matches!(ctx.get(new_expr), Expr::Constant(Constant::Undefined)),
+        "Result should be Undefined"
+    );
+}
+
+#[test]
+fn test_nested_undefined_in_division_is_undefined() {
+    let mut ctx = Context::new();
+    let expr = parse_expr(&mut ctx, "(a * undefined) / 0");
+
+    let result = div_undefined(&mut ctx, expr);
+    assert!(result.is_some(), "Should detect undefined inside division");
+
+    let new_expr = result.unwrap().new_expr;
+    assert!(
+        matches!(ctx.get(new_expr), Expr::Constant(Constant::Undefined)),
+        "Result should be Undefined"
+    );
+}
+
 /// Test: Addition with negative infinity
 /// 1000 + -infinity → -infinity
 #[test]

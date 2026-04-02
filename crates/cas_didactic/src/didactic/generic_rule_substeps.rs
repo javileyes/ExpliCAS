@@ -3,6 +3,14 @@ use crate::runtime::Step;
 use cas_ast::{Context, ExprId};
 
 pub(crate) fn generate_generic_rule_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    if let Some(descriptions) = generic_substep_descriptions(step) {
+        let (before, after) = focused_expr_ids(step);
+        return descriptions
+            .into_iter()
+            .map(|description| build_focus_substep(ctx, description, before, after))
+            .collect();
+    }
+
     let Some(description) = generic_substep_description(step) else {
         return Vec::new();
     };
@@ -11,20 +19,38 @@ pub(crate) fn generate_generic_rule_substeps(ctx: &Context, step: &Step) -> Vec<
     vec![build_focus_substep(ctx, description, before, after)]
 }
 
+fn generic_substep_descriptions(step: &Step) -> Option<Vec<&'static str>> {
+    match step.rule_name.as_str() {
+        "Combine Same Denominator Fractions" => Some(vec![
+            "Como el denominador ya es el mismo, se mantiene igual",
+            "Basta sumar los numeradores",
+        ]),
+        "Combine Same Denominator Sub" => Some(vec![
+            "Como el denominador ya es el mismo, se mantiene igual",
+            "Basta restar los numeradores",
+        ]),
+        "Subtract Fractions" => Some(vec![
+            "Llevar ambas fracciones al mismo denominador",
+            "Restar los numeradores en una sola fracción",
+        ]),
+        "Add Fractions" => Some(vec![
+            "Llevar ambas fracciones al mismo denominador",
+            "Juntar todo en una sola fracción",
+        ]),
+        _ => None,
+    }
+}
+
 fn generic_substep_description(step: &Step) -> Option<&'static str> {
     match step.rule_name.as_str() {
         "Combine Like Terms" => {
             if step.description.contains("Cancel opposite terms") {
-                Some("Estos dos términos se anulan entre sí")
+                None
             } else {
                 Some("Agrupar términos semejantes y sumar coeficientes")
             }
         }
-        "Combine Same Denominator Fractions" => {
-            Some("Como el denominador ya es el mismo, basta sumar los numeradores")
-        }
         "Common Denominator" => Some("Poner ambos términos sobre el mismo denominador"),
-        "Add Fractions" => Some("Juntar todo en una sola fracción"),
         "Pre-order Common Factor Cancel" => {
             Some("Identificar y cancelar el factor común en numerador y denominador")
         }

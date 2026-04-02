@@ -1,0 +1,181 @@
+id,family,source,target,expected_status,expected_strategy
+combine_like_terms,simplify,x + x,2*x,derived,simplify
+collect_linear,collect,a*x + b*x + c,(a + b)*x + c,derived,collect
+factor_difference_squares,factor,x^2 - 1,(x - 1)*(x + 1),derived,factor
+factor_perfect_square_trinomial,factor,x^2 + 2*x + 1,(x + 1)^2,derived,factor
+factor_perfect_square_trinomial_symbolic,factor,a^2 + 2*a*b + b^2,(a + b)^2,derived,factor
+factor_perfect_square_trinomial_minus,factor,a^2 - 2*a*b + b^2,(a - b)^2,derived,factor
+factor_sophie_germain,factor,x^4 + 4*y^4,(x^2 - 2*x*y + 2*y^2)*(x^2 + 2*x*y + 2*y^2),derived,factor
+factor_alternating_cubic_vandermonde,factor,a^3*(b-c) + b^3*(c-a) + c^3*(a-b),(a-b)*(a-c)*(b-c)*(a+b+c),derived,factor
+factor_difference_cubes,factor,a^3-b^3,(a-b)*(a^2+a*b+b^2),derived,factor
+factor_sum_cubes,factor,a^3+b^3,(a+b)*(a^2-a*b+b^2),derived,factor
+pythagorean_identity,simplify,sin(x)^2 + cos(x)^2,1,derived,simplify
+pythagorean_factor_form_to_cos_sq,simplify,1 - sin(x)^2,cos(x)^2,derived,simplify
+pythagorean_factor_form_to_sin_sq,simplify,1 - cos(x)^2,sin(x)^2,derived,simplify
+pythagorean_factor_form_from_sin_sq,simplify,sin(x)^2,1-cos(x)^2,derived,simplify
+pythagorean_factor_form_from_cos_sq,simplify,cos(x)^2,1-sin(x)^2,derived,simplify
+inverse_tan_identity,simplify,arctan(3)+arctan(1/3),pi/2,derived,simplify
+cancel_fraction_difference_squares,simplify,(a^2-b^2)/(a-b),a+b,derived,simplify
+cancel_fraction_difference_squares_mirror,simplify,(a^2-b^2)/(a+b),a-b,derived,simplify
+cancel_fraction_difference_cubes,simplify,(a^3-b^3)/(a-b),a^2+a*b+b^2,derived,simplify
+cancel_fraction_sum_cubes,simplify,(a^3+b^3)/(a+b),a^2-a*b+b^2,derived,simplify
+cancel_fraction_perfect_square_plus,simplify,(x^2+2*x+1)/(x+1),x+1,derived,simplify
+cancel_fraction_perfect_square_symbolic,simplify,(a^2+2*a*b+b^2)/(a+b),a+b,derived,simplify
+cancel_fraction_perfect_square_minus_numeric,simplify,(x^2-2*x+1)/(x-1),x-1,derived,simplify
+cancel_fraction_perfect_square_minus_symbolic,simplify,(a^2-2*a*b+b^2)/(a-b),a-b,derived,simplify
+perfect_square_root_to_abs,simplify,sqrt(x^2 + 2*x + 1),abs(x+1),derived,simplify
+combine_fraction_part_with_same_denominator,fraction_combine,1 + a/d + b/d,1 + (a+b)/d,derived,combine fraction
+expand_fraction_part_with_same_denominator,fraction_expand,1 + (a+b)/d,1 + a/d + b/d,derived,expand fraction
+combine_three_same_denominator_fractions,fraction_combine,a/d + b/d + c/d,(a+b+c)/d,derived,combine fraction
+combine_fraction_part_with_same_denominator_three_terms,fraction_combine,1 + a/d + b/d + c/d,1 + (a+b+c)/d,derived,combine fraction
+expand_fraction_part_with_same_denominator_three_terms,fraction_expand,1 + (a+b+c)/d,1 + a/d + b/d + c/d,derived,expand fraction
+combine_like_terms_with_zero,simplify,2*x + 3*x + 0,5*x,derived,simplify
+factor_common_factor_sum,factor,a*b + a*c,a*(b+c),derived,factor
+factor_common_factor_difference,factor,a*b - a*c,a*(b-c),derived,factor
+expand_common_factor_sum,expand,a*(b+c),a*b + a*c,derived,expand
+expand_common_factor_difference,expand,a*(b-c),a*b - a*c,derived,expand
+factor_common_factor_sum_three_terms,factor,a*x + b*x + c*x,x*(a+b+c),derived,factor
+factor_common_factor_difference_three_terms,factor,a*x - b*x - c*x,x*(a-b-c),derived,factor
+expand_common_factor_sum_three_terms,expand,x*(a+b+c),a*x + b*x + c*x,derived,expand
+expand_common_factor_difference_three_terms,expand,x*(a-b-c),a*x - b*x - c*x,derived,expand
+cancel_fraction_common_factor_numeric,simplify,(2*x)/(4*x),1/2,derived,simplify
+cancel_fraction_monomial_common_factor,simplify,(6*x^2)/(3*x),2*x,derived,simplify
+expand_binomial,expand,(x + 1)^2,x^2 + 2*x + 1,derived,expand
+expand_symbolic_binomial,expand,(a + b)^2,a^2 + 2*a*b + b^2,derived,expand
+expand_symbolic_binomial_minus,expand,(a - b)^2,a^2 - 2*a*b + b^2,derived,expand
+expand_symbolic_binomial_cube,expand,(a + b)^3,a^3 + 3*a^2*b + 3*a*b^2 + b^3,derived,expand
+expand_symbolic_binomial_cube_minus,expand,(a - b)^3,a^3 - 3*a^2*b + 3*a*b^2 - b^3,derived,expand
+expand_sophie_germain,expand,(x^2 - 2*x*y + 2*y^2)*(x^2 + 2*x*y + 2*y^2),x^4 + 4*y^4,derived,expand
+expand_difference_cubes,expand,(a-b)*(a^2+a*b+b^2),a^3-b^3,derived,expand
+expand_sum_cubes,expand,(a+b)*(a^2-a*b+b^2),a^3+b^3,derived,expand
+expand_then_cancel_to_square,expand,(a+b)^2 - a^2 - 2*a*b,b^2,derived,simplify
+expand_log_product,log_expand,ln(x*y),ln(x) + ln(y),derived,expand_log
+expand_log_product_and_power,log_expand,ln(x^2*y),ln(y) + 2*ln(abs(x)),derived,expand_log
+expand_log_even_power_abs,log_expand,ln(x^2),2*ln(abs(x)),derived,simplify
+expand_log_product_preserve_powers,log_expand,ln(x^3*y^2),ln(x^3) + ln(y^2),derived,expand_log
+expand_log_quotient,log_expand,ln(x/y),ln(x) - ln(y),derived,expand_log
+expand_log_general_base,log_expand,"log(2, x*y)","log(2, x) + log(2, y)",derived,expand_log
+expand_log_general_base_quotient,log_expand,"log(2, x/y)","log(2, x) - log(2, y)",derived,expand_log
+expand_log_general_base_power,log_expand,"log(2, x^3)","3*log(2, x)",derived,simplify
+contract_log_sum,log_contract,ln(x) + ln(y),ln(x*y),derived,contract logs
+contract_log_difference,log_contract,ln(x) - ln(y),ln(x/y),derived,contract logs
+contract_log_sum_with_powers,log_contract,ln(x^3) + ln(y^2),ln(x^3*y^2),derived,contract logs
+contract_log_sum_with_scaled_powers,log_contract,3*ln(x) + 2*ln(abs(y)),ln(x^3*y^2),derived,contract logs
+contract_log_difference_with_scaled_powers,log_contract,3*ln(x) - 2*ln(y),ln(x^3/y^2),derived,contract logs
+contract_log_general_base_difference,log_contract,"log(2, x) - log(2, y)","log(2, x/y)",derived,contract logs
+contract_log_general_base_sum_with_scaled_powers,log_contract,"3*log(2, x) + 2*log(2, y)","log(2, x^3*y^2)",derived,contract logs
+contract_log_general_base_difference_with_scaled_powers,log_contract,"3*log(2, x) - 2*log(2, y)","log(2, x^3/y^2)",derived,contract logs
+contract_log_even_power_abs,log_contract,2*ln(abs(x)),ln(x^2),derived,simplify
+contract_log_general_base_power,log_contract,"3*log(2, x)","log(2, x^3)",derived,simplify
+contract_log_change_of_base_chain,log_contract,"log(b,a)*log(a,c)","log(b,c)",derived,contract logs
+expand_log_change_of_base_chain,log_expand,"log(b,c)","log(b,a)*log(a,c)",derived,simplify
+contract_log_change_of_base_chain_three,log_contract,"log(a,b)*log(b,c)*log(c,d)","log(a,d)",derived,contract logs
+expand_log_change_of_base_chain_three,log_expand,"log(a,d)","log(a,b)*log(b,c)*log(c,d)",derived,simplify
+expand_trig_double_sin,trig_expand,sin(2*x),2*sin(x)*cos(x),derived,expand trig
+expand_trig_product_to_sum_sin_cos,trig_expand,2*sin(x)*cos(y),sin(x+y) + sin(x-y),derived,expand trig
+expand_trig_product_to_sum_cos_sin,trig_expand,2*cos(x)*sin(y),sin(x+y) - sin(x-y),derived,expand trig
+expand_trig_product_to_sum_cos_cos,trig_expand,2*cos(x)*cos(y),cos(x+y) + cos(x-y),derived,expand trig
+expand_trig_product_to_sum_sin_sin,trig_expand,2*sin(x)*sin(y),cos(x-y) - cos(x+y),derived,expand trig
+contract_trig_double_sin,trig_contract,2*sin(x)*cos(x),sin(2*x),derived,contract trig
+expand_trig_after_simplify,trig_expand,sin(x + x),2*sin(x)*cos(x),derived,simplify -> expand trig
+expand_trig_tan_quotient,trig_expand,tan(2*x),(sin(2*x))/(cos(2*x)),derived,expand trig
+contract_trig_tan_quotient,trig_contract,(sin(2*x))/(cos(2*x)),tan(2*x),derived,contract trig
+expand_trig_sec_reciprocal,trig_expand,sec(x),1/cos(x),derived,expand trig
+contract_trig_sec_reciprocal,trig_contract,1/cos(x),sec(x),derived,contract trig
+expand_trig_csc_reciprocal,trig_expand,csc(x),1/sin(x),derived,expand trig
+contract_trig_csc_reciprocal,trig_contract,1/sin(x),csc(x),derived,contract trig
+expand_trig_cot_quotient,trig_expand,cot(x),cos(x)/sin(x),derived,expand trig
+contract_trig_cot_quotient,trig_contract,cos(x)/sin(x),cot(x),derived,contract trig
+expand_trig_double_cos_as_one_minus_sin_sq,trig_expand,cos(2*x),1 - 2*sin(x)^2,derived,expand trig
+expand_trig_double_cos_as_two_cos_sq_minus_one,trig_expand,cos(2*x),2*cos(x)^2 - 1,derived,expand trig
+contract_trig_double_cos_from_one_minus_sin_sq,trig_contract,1 - 2*sin(x)^2,cos(2*x),derived,contract trig
+contract_trig_double_cos_from_two_cos_sq_minus_one,trig_contract,2*cos(x)^2 - 1,cos(2*x),derived,contract trig
+contract_trig_sec_squared,trig_contract,1 + tan(x)^2,sec(x)^2,derived,contract trig
+contract_trig_csc_squared,trig_contract,1 + cot(x)^2,csc(x)^2,derived,contract trig
+expand_trig_sec_squared,trig_expand,sec(x)^2,1 + tan(x)^2,derived,expand trig
+expand_trig_csc_squared,trig_expand,csc(x)^2,1 + cot(x)^2,derived,expand trig
+expand_trig_half_angle_sin_squared,trig_expand,sin(x)^2,(1-cos(2*x))/2,derived,expand trig
+expand_trig_half_angle_cos_squared,trig_expand,cos(x)^2,(1+cos(2*x))/2,derived,expand trig
+contract_trig_half_angle_sin_squared,trig_contract,(1-cos(2*x))/2,sin(x)^2,derived,contract trig
+contract_trig_half_angle_cos_squared,trig_contract,(1+cos(2*x))/2,cos(x)^2,derived,contract trig
+contract_trig_sin_sum_special,trig_expand,sin(3*x)+sin(x),2*sin(2*x)*cos(x),derived,expand trig
+contract_trig_sin_diff_special,trig_contract,sin(3*x)-sin(x),2*cos(2*x)*sin(x),derived,expand trig
+expand_trig_sum_to_product_sin_sum_general,trig_expand,sin(5*x)+sin(x),2*sin(3*x)*cos(2*x),derived,expand trig
+expand_trig_sum_to_product_sin_diff_general,trig_expand,sin(5*x)-sin(x),2*cos(3*x)*sin(2*x),derived,expand trig
+expand_trig_sum_to_product_cos_sum_general,trig_expand,cos(5*x)+cos(x),2*cos(3*x)*cos(2*x),derived,expand trig
+expand_trig_sum_to_product_cos_diff_general,trig_expand,cos(5*x)-cos(x),-2*sin(3*x)*sin(2*x),derived,expand trig
+contract_trig_cos_sum_special,trig_expand,cos(3*x)+cos(x),2*cos(2*x)*cos(x),derived,expand trig
+contract_trig_cos_diff_special,trig_expand,cos(x)-cos(3*x),2*sin(2*x)*sin(x),derived,expand trig
+contract_trig_half_angle_tangent,trig_contract,(1-cos(2*x))/sin(2*x),tan(x),derived,contract trig
+contract_trig_half_angle_tangent_alt,trig_contract,sin(2*x)/(1+cos(2*x)),tan(x),derived,contract trig
+expand_trig_half_angle_tangent,trig_expand,tan(x),(1-cos(2*x))/sin(2*x),derived,expand trig
+expand_trig_half_angle_tangent_alt,trig_expand,tan(x),sin(2*x)/(1+cos(2*x)),derived,expand trig
+rationalize_linear_root,rationalize,1/(sqrt(x)-1),(sqrt(x)+1)/(x-1),derived,rationalize
+rationalize_then_cancel_to_zero,rationalize,1 / (sqrt(x) - 1) - (sqrt(x) + 1) / (x - 1),0,derived,simplify
+radical_notable_quotient,rationalize,(x^(3/2)-1)/(sqrt(x)-1),sqrt(x)+x+1,derived,rationalize
+radical_notable_quotient_sqrt_input,rationalize,((sqrt(x))^3 - 1)/(sqrt(x) - 1),sqrt(x)+x+1,derived,rationalize
+expand_fraction_simple,fraction_expand,(a+b)/x,a/x + b/x,derived,expand fraction
+expand_fraction_same_denominator_three_terms,fraction_expand,(a+b+c)/d,a/d + b/d + c/d,derived,expand fraction
+expand_fraction_with_term_cancellation,fraction_expand,(x+y)/(x*y),1/x + 1/y,derived,expand fraction
+nested_fraction_one_over_sum,nested_fraction,1/(1/x + 1/y),(x*y)/(x+y),derived,simplify
+nested_fraction_fraction_over_sum,nested_fraction,(1/x)/(1/y + 1/z),(y*z)/(x*(y+z)),derived,simplify
+combine_same_denominator_fraction_sum,fraction_combine,a/x + b/x,(a+b)/x,derived,combine fraction
+combine_general_fraction_sum,fraction_combine,1/x + 1/y,(x+y)/(x*y),derived,combine fraction
+combine_same_denominator_fraction_difference,fraction_combine,a/x - b/x,(a-b)/x,derived,combine fraction
+combine_general_fraction_difference,fraction_combine,1/x - 1/y,(y-x)/(x*y),derived,combine fraction
+combine_term_and_fraction_subtraction,fraction_combine,a - b/a,(a^2-b)/a,derived,combine fraction
+split_fraction_into_whole_plus_remainder,fraction_decompose,(x+1)/(x-1),1 + 2/(x-1),derived,split fraction
+split_telescoping_fraction_consecutive,telescoping_fraction,1/(n*(n+1)),1/n - 1/(n+1),derived,expand fraction
+split_telescoping_fraction_gap_two,telescoping_fraction,1/(n*(n+2)),1/2*(1/n - 1/(n+2)),derived,expand fraction
+split_telescoping_fraction_gap_three,telescoping_fraction,1/(n*(n+3)),1/3*(1/n - 1/(n+3)),derived,expand fraction
+combine_telescoping_fraction_consecutive,telescoping_fraction,1/n - 1/(n+1),1/(n*(n+1)),derived,combine fraction
+combine_telescoping_fraction_gap_two,telescoping_fraction,1/2*(1/n - 1/(n+2)),1/(n*(n+2)),derived,combine fraction
+combine_telescoping_fraction_gap_three,telescoping_fraction,1/3*(1/n - 1/(n+3)),1/(n*(n+3)),derived,combine fraction
+split_telescoping_fraction_negative_consecutive,telescoping_fraction,1/(n*(n-1)),1/(n-1) - 1/n,derived,expand fraction
+combine_telescoping_fraction_negative_consecutive,telescoping_fraction,1/(n-1) - 1/n,1/(n*(n-1)),derived,combine fraction
+split_telescoping_fraction_negative_gap_two,telescoping_fraction,1/(n*(n-2)),1/2*(1/(n-2) - 1/n),derived,expand fraction
+combine_telescoping_fraction_negative_gap_two,telescoping_fraction,1/2*(1/(n-2) - 1/n),1/(n*(n-2)),derived,combine fraction
+split_telescoping_fraction_affine_gap_two,telescoping_fraction,1/((2*n+1)*(2*n+3)),1/2*(1/(2*n+1) - 1/(2*n+3)),derived,expand fraction
+combine_telescoping_fraction_affine_gap_two,telescoping_fraction,1/2*(1/(2*n+1) - 1/(2*n+3)),1/((2*n+1)*(2*n+3)),derived,combine fraction
+split_telescoping_fraction_affine_shifted_gap_two,telescoping_fraction,1/((2*n-1)*(2*n+1)),1/2*(1/(2*n-1) - 1/(2*n+1)),derived,expand fraction
+combine_telescoping_fraction_affine_shifted_gap_two,telescoping_fraction,1/2*(1/(2*n-1) - 1/(2*n+1)),1/((2*n-1)*(2*n+1)),derived,combine fraction
+split_telescoping_fraction_affine_coeff_three_gap_three,telescoping_fraction,1/((3*n+2)*(3*n+5)),1/3*(1/(3*n+2) - 1/(3*n+5)),derived,expand fraction
+combine_telescoping_fraction_affine_coeff_three_gap_three,telescoping_fraction,1/3*(1/(3*n+2) - 1/(3*n+5)),1/((3*n+2)*(3*n+5)),derived,combine fraction
+split_telescoping_fraction_affine_coeff_three_shifted_gap_three,telescoping_fraction,1/((3*n-1)*(3*n+2)),1/3*(1/(3*n-1) - 1/(3*n+2)),derived,expand fraction
+combine_telescoping_fraction_affine_coeff_three_shifted_gap_three,telescoping_fraction,1/3*(1/(3*n-1) - 1/(3*n+2)),1/((3*n-1)*(3*n+2)),derived,combine fraction
+split_telescoping_fraction_affine_symbolic_coeff_gap_three,telescoping_fraction,1/((a*n+2)*(a*n+5)),1/3*(1/(a*n+2) - 1/(a*n+5)),derived,expand fraction
+combine_telescoping_fraction_affine_symbolic_coeff_gap_three,telescoping_fraction,1/3*(1/(a*n+2) - 1/(a*n+5)),1/((a*n+2)*(a*n+5)),derived,combine fraction
+split_telescoping_fraction_affine_symbolic_coeff_shifted_gap_three,telescoping_fraction,1/((a*n-1)*(a*n+2)),1/3*(1/(a*n-1) - 1/(a*n+2)),derived,expand fraction
+combine_telescoping_fraction_affine_symbolic_coeff_shifted_gap_three,telescoping_fraction,1/3*(1/(a*n-1) - 1/(a*n+2)),1/((a*n-1)*(a*n+2)),derived,combine fraction
+split_telescoping_fraction_symbolic_shift_gap,telescoping_fraction,1/((n+a)*(n+b)),1/(b-a)*(1/(n+a) - 1/(n+b)),derived,expand fraction
+combine_telescoping_fraction_symbolic_shift_gap,telescoping_fraction,1/(b-a)*(1/(n+a) - 1/(n+b)),1/((n+a)*(n+b)),derived,combine fraction
+split_telescoping_fraction_affine_symbolic_shift_gap,telescoping_fraction,1/((a*n+b)*(a*n+c)),1/(c-b)*(1/(a*n+b) - 1/(a*n+c)),derived,expand fraction
+combine_telescoping_fraction_affine_symbolic_shift_gap,telescoping_fraction,1/(c-b)*(1/(a*n+b) - 1/(a*n+c)),1/((a*n+b)*(a*n+c)),derived,combine fraction
+combine_whole_plus_remainder_into_fraction,fraction_combine,1 + 2/(x-1),(x+1)/(x-1),derived,combine fraction
+small_polynomial_product,polynomial_product,(x - 1)*(x^5 + x^4 + x^3 + x^2 + x + 1),x^6 - 1,derived,expand
+factor_geometric_difference_power_6,factor,x^6 - 1,(x-1)*(x^5 + x^4 + x^3 + x^2 + x + 1),derived,factor
+merge_same_base_fractional_powers,power_merge,x^(1/2)*x^(2/3),x^(7/6),derived,combine powers
+merge_mixed_root_and_power,power_merge,sqrt(x)*x^(2/3),x^(7/6),derived,combine powers
+log_sum_difference_cancels_to_zero,simplify,ln(x^3) + ln(y^2) - ln(x^3*y^2),0,derived,expand_log
+expand_odd_half_power,radical_power,x^(3/2),abs(x)*sqrt(x),derived,expand odd half power
+expand_odd_half_power_after_simplify,radical_power,sqrt(x^3),abs(x)*sqrt(x),derived,expand odd half power
+factor_out_with_division,conditional_factor,a*x + b*x + c,x*(a + b + c/x),derived,factor out with division
+consecutive_factorial_ratio,simplify,(n+1)!/n!,n+1,derived,simplify
+inverse_tan_identity_cancels_to_zero,simplify,atan(3) + (atan(1/3) - pi/2),0,derived,simplify
+contract_trig_cos_diff_sin_diff_quotient,trig_contract,(cos(x)-cos(3*x))/(sin(3*x)-sin(x)),tan(2*x),derived,contract trig
+reciprocal_trig_product_to_one,simplify,tan(x)*cot(x),1,derived,simplify
+sec_tan_pythagorean_to_one,simplify,sec(x)^2 - tan(x)^2,1,derived,simplify
+csc_cot_pythagorean_to_one,simplify,csc(x)^2 - cot(x)^2,1,derived,simplify
+factor_symbolic_binomial_cube,factor,a^3 + 3*a^2*b + 3*a*b^2 + b^3,(a+b)^3,derived,factor
+factor_symbolic_binomial_cube_minus,factor,a^3 - 3*a^2*b + 3*a*b^2 - b^3,(a-b)^3,derived,factor
+integrate_prep_morrie_basic,integrate_prep,cos(x)*cos(2*x)*cos(4*x),sin(8*x)/(8*sin(x)),derived,integrate prep
+integrate_prep_morrie_scaled,integrate_prep,cos(3*x)*cos(6*x),sin(12*x)/(4*sin(3*x)),derived,integrate prep
+integrate_prep_dirichlet_basic,integrate_prep,1 + 2*cos(x) + 2*cos(2*x),sin(5*x/2)/sin(x/2),derived,integrate prep
+integrate_prep_dirichlet_longer,integrate_prep,1 + 2*cos(x) + 2*cos(2*x) + 2*cos(3*x),sin(7*x/2)/sin(x/2),derived,integrate prep
+integrate_prep_dirichlet_scaled,integrate_prep,1 + 2*cos(3*x) + 2*cos(6*x),sin(15*x/2)/sin(3*x/2),derived,integrate prep
+integrate_prep_dirichlet_scaled_longer,integrate_prep,1 + 2*cos(2*x) + 2*cos(4*x) + 2*cos(6*x),sin(7*x)/sin(x),derived,integrate prep
+finite_telescoping_product_basic,finite_telescoping,"product((k+1)/k, k, 1, n)",n+1,derived,simplify
+finite_telescoping_product_shifted,finite_telescoping,"product((k+2)/(k+1), k, 1, n)",(n+2)/2,derived,simplify
+finite_telescoping_sum_basic,finite_telescoping,"sum(1/(k*(k+1)), k, 1, n)",1 - 1/(n+1),derived,simplify
+finite_telescoping_sum_shifted,finite_telescoping,"sum(1/((k+2)*(k+3)), k, 1, n)",1/3 - 1/(n+3),derived,simplify
+non_equivalent_mismatch,negative,x + 1,x + 2,not_equivalent,

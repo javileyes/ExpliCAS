@@ -424,8 +424,8 @@ fn step_wire_inverse_tan_relation_isolates_pair_before_applying_identity() {
         .expect("expected inverse tan relation step");
 
     assert!(
-        step.substeps.len() >= 2,
-        "expected a two-phase didactic narrative, got: {:?}",
+        step.substeps.len() >= 3,
+        "expected a three-phase didactic narrative, got: {:?}",
         step.substeps
             .iter()
             .map(|substep| &substep.title)
@@ -433,9 +433,13 @@ fn step_wire_inverse_tan_relation_isolates_pair_before_applying_identity() {
     );
     assert_eq!(
         step.substeps[0].title,
+        "Usar arctan(u) + arctan(1/u) = pi/2"
+    );
+    assert_eq!(
+        step.substeps[1].title,
         "Juntar la pareja que encaja con la identidad"
     );
-    assert_eq!(step.substeps[1].title, "Esa pareja vale pi/2");
+    assert_eq!(step.substeps[2].title, "Esa pareja vale pi/2");
 }
 
 #[test]

@@ -150,22 +150,117 @@ ExpliCAS is a modular Computer Algebra System (CAS) written in Rust, designed to
 
 ## Getting Started
 
-### Prerequisites
+### What You Need
 
--   Rust, cargo
+To run ExpliCAS locally, including the web application in `web/server.py`, you need:
 
-### Installation
+-   **Git** to clone the repository
+-   **Rust 1.88+** and **Cargo**
+-   **Python 3** to run the web server
+-   A basic **C/C++ build toolchain** for compiling Rust crates
+
+The simplest cross-platform way to install Rust and Cargo is **rustup**.
+
+### Install Dependencies On macOS
 
 ```bash
-# Clone the repository
-git clone <repository-url>
-cd math
+# 1) Install Apple command line build tools
+xcode-select --install
 
-# Build release version (recommended)
+# 2) Install Homebrew if you do not already have it
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+# 3) Install Git and Python 3
+brew install git python
+
+# 4) Install Rust + Cargo via rustup
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+
+# 5) Load Cargo into your shell
+source "$HOME/.cargo/env"
+
+# 6) Verify the tools are available
+git --version
+python3 --version
+rustc --version
+cargo --version
+```
+
+### Install Dependencies On Linux
+
+#### Ubuntu / Debian
+
+```bash
+sudo apt update
+sudo apt install -y build-essential curl git python3
+
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+source "$HOME/.cargo/env"
+
+git --version
+python3 --version
+rustc --version
+cargo --version
+```
+
+#### Fedora
+
+```bash
+sudo dnf install -y gcc gcc-c++ make curl git python3
+
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+source "$HOME/.cargo/env"
+
+git --version
+python3 --version
+rustc --version
+cargo --version
+```
+
+For other Linux distributions, install the equivalents of `git`, `curl`, `python3`, and a native build toolchain, then install Rust with `rustup`.
+
+### Clone And Build ExpliCAS
+
+```bash
+git clone https://github.com/javileyes/ExpliCAS.git
+cd ExpliCAS
+
+# Build the CLI binary used by both the REPL and the web app
 cargo build --release -p cas_cli
+```
 
-# Run the CLI
+### Run The CLI
+
+```bash
 ./target/release/cas_cli
+```
+
+### Run The Web Application
+
+The web server is a small Python HTTP server that shells out to the compiled CLI binary at `./target/release/cas_cli`.
+
+```bash
+# From the repository root
+python3 web/server.py
+```
+
+Then open [http://localhost:8080](http://localhost:8080).
+
+If your system maps `python` to Python 3, this also works:
+
+```bash
+python web/server.py
+```
+
+### Verify The Installation
+
+```bash
+# CLI smoke test
+./target/release/cas_cli eval "x^2 + 2*x + 1"
+
+# Web app
+python3 web/server.py
+# then open http://localhost:8080
 ```
 
 ### CLI Options
@@ -845,13 +940,13 @@ Open in browser to view interactive visualization.
 - **Medium**: Standard algebraic transforms - always shown
 - **High**: Major transformations (Factor, Expand, Integrate) - always highlighted
 
-## Instalación y Uso
+## Desarrollo y Verificación
 
 ### Requisitos
 - Rust 1.88 o superior (MSRV)
 - Cargo (incluido con Rust)
 
-### Compilar y Ejecutar
+### Comandos rápidos
 ```bash
 # CI completo (recomendado)
 make ci

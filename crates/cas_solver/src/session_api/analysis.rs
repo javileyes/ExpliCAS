@@ -26,6 +26,7 @@ pub use crate::equiv_command::{
 pub use crate::equiv_format::{
     format_equivalence_result_lines, format_expr_pair_parse_error_message,
 };
+pub use crate::full_simplify_display::FullSimplifyDisplayMode;
 pub use crate::repl_simplifier_runtime::{
     evaluate_equiv_invocation_message_on_runtime as evaluate_equiv_invocation_message_on_repl_core,
     evaluate_explain_invocation_message_on_runtime as evaluate_explain_invocation_message_on_repl_core,

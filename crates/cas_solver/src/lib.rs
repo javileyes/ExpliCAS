@@ -59,6 +59,7 @@ mod context_command_format;
 mod context_command_parse;
 #[cfg(test)]
 mod context_command_tests;
+mod derive;
 mod derive_command;
 mod display_eval_steps;
 mod domain_facade;
