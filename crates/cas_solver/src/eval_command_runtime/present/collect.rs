@@ -40,16 +40,43 @@ where
     ));
     let steps_raw = prepared.output_view.steps.as_slice();
     let solve_steps_raw = prepared.output_view.solve_steps.as_slice();
-    let suppress_primary_steps = matches!(
+    let solve_special_command = matches!(
         cas_api_models::parse_eval_special_command(raw_input),
         Some(cas_api_models::EvalSpecialCommand::Solve { .. })
-    ) && !solve_steps_raw.is_empty();
-    let steps = if suppress_primary_steps {
+    );
+    let filtered_primary_steps = if solve_special_command && !solve_steps_raw.is_empty() {
+        Some(
+            steps_raw
+                .iter()
+                .filter(|step| should_keep_primary_solve_step(step))
+                .cloned()
+                .collect::<Vec<_>>(),
+        )
+    } else {
+        None
+    };
+    let steps = if solve_special_command && !solve_steps_raw.is_empty() {
         Vec::new()
+    } else if let Some(filtered) = filtered_primary_steps.as_ref() {
+        if filtered.is_empty() {
+            Vec::new()
+        } else {
+            collect_steps(
+                filtered.as_slice(),
+                prepared.events.as_slice(),
+                ctx,
+                steps_mode,
+            )
+        }
     } else {
         collect_steps(steps_raw, prepared.events.as_slice(), ctx, steps_mode)
     };
-    let solve_steps = collect_output_solve_steps(solve_steps_raw, ctx, steps_mode);
+    let solve_steps = collect_output_solve_steps(
+        solve_steps_raw,
+        filtered_primary_steps.as_deref().unwrap_or(&[]),
+        ctx,
+        steps_mode,
+    );
     let warnings = collect_output_warnings(&prepared.output_view.domain_warnings);
     let required_conditions_raw = prepared.output_view.required_conditions.as_slice();
     let required_conditions = collect_output_required_conditions(required_conditions_raw, ctx);
@@ -67,12 +94,113 @@ where
         warnings,
         required_conditions,
         required_display,
-        raw_steps_count: if suppress_primary_steps {
+        raw_steps_count: if solve_special_command && !solve_steps_raw.is_empty() {
             0
+        } else if let Some(filtered) = filtered_primary_steps.as_ref() {
+            filtered.len()
         } else {
             steps_raw.len()
         },
         raw_solve_steps_count: solve_steps_raw.len(),
         timings_us,
+    }
+}
+
+fn should_keep_primary_solve_step(step: &crate::Step) -> bool {
+    let importance = step.get_importance();
+    if importance < crate::ImportanceLevel::Medium {
+        return false;
+    }
+
+    if matches!(
+        step.category,
+        crate::StepCategory::Canonicalize
+            | crate::StepCategory::ConstEval
+            | crate::StepCategory::ConstFold
+    ) {
+        return false;
+    }
+
+    let rule_name = step.rule_name.as_str();
+    if rule_name.starts_with("Canonicalize")
+        || rule_name.starts_with("Evaluate Numeric")
+        || rule_name == "Combine Constants"
+    {
+        return false;
+    }
+
+    let has_didactic_substeps = step
+        .substeps()
+        .iter()
+        .any(|substep| !substep.title.trim().is_empty() || !substep.lines.is_empty());
+
+    has_didactic_substeps || importance >= crate::ImportanceLevel::High
+}
+
+#[cfg(test)]
+mod tests {
+    use super::should_keep_primary_solve_step;
+    use cas_solver_core::step_types::SubStep;
+
+    fn demo_step() -> crate::Step {
+        let mut ctx = cas_ast::Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let x_plus_one = ctx.add(cas_ast::Expr::Add(x, one));
+        crate::Step::new("demo", "DemoRule", x, x_plus_one, Vec::new(), Some(&ctx))
+    }
+
+    #[test]
+    fn rejects_medium_template_like_solve_steps_without_visible_intermediate() {
+        let mut step = demo_step();
+        step.importance = crate::ImportanceLevel::Medium;
+        step.category = crate::StepCategory::Simplify;
+
+        assert!(
+            !should_keep_primary_solve_step(&step),
+            "medium solve-adjacent steps without didactic substeps should stay hidden"
+        );
+    }
+
+    #[test]
+    fn rejects_canonicalization_even_when_marked_medium() {
+        let mut step = demo_step();
+        step.rule_name = "Canonicalize Division".into();
+        step.importance = crate::ImportanceLevel::Medium;
+        step.category = crate::StepCategory::Canonicalize;
+
+        assert!(
+            !should_keep_primary_solve_step(&step),
+            "canonicalization noise must stay hidden in solve traces"
+        );
+    }
+
+    #[test]
+    fn keeps_medium_step_when_didactic_substeps_make_the_intermediate_visible() {
+        let mut step = demo_step();
+        step.importance = crate::ImportanceLevel::Medium;
+        step.category = crate::StepCategory::Simplify;
+        step.meta_mut().substeps.push(SubStep::with_importance(
+            "Mostrar intermedio",
+            vec!["Reescribir el lado izquierdo como producto".to_string()],
+            crate::ImportanceLevel::Medium,
+        ));
+
+        assert!(
+            should_keep_primary_solve_step(&step),
+            "medium steps with real didactic substeps should stay visible in solve traces"
+        );
+    }
+
+    #[test]
+    fn keeps_high_importance_structural_steps_even_without_substeps() {
+        let mut step = demo_step();
+        step.importance = crate::ImportanceLevel::High;
+        step.category = crate::StepCategory::Factor;
+
+        assert!(
+            should_keep_primary_solve_step(&step),
+            "high-importance structural solve prep should remain visible"
+        );
     }
 }

@@ -437,7 +437,7 @@ mod tests {
     }
 
     #[test]
-    fn evaluate_eval_command_pretty_with_session_solve_steps_on_suppresses_generic_eval_steps() {
+    fn evaluate_eval_command_pretty_with_session_solve_steps_on_suppresses_generic_eval_noise() {
         let mut config = standard_eval_config("solve(Q = Q0 * 2^(-t/T), t)");
         config.steps_mode = cas_api_models::EvalStepsMode::On;
 
@@ -456,7 +456,7 @@ mod tests {
             .is_some_and(|steps| !steps.is_empty());
         assert!(
             !has_primary_steps,
-            "expected solve(...) JSON to suppress generic eval steps when solve_steps exist, got: {payload}"
+            "expected solve(...) JSON to suppress generic eval noise when solve_steps already explain the solving path, got: {payload}"
         );
 
         let solve_steps = payload["solve_steps"]
