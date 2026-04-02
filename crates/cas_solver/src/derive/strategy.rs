@@ -4,6 +4,7 @@ use super::{DeriveTargetForm, DeriveTargetProfile};
 pub(crate) enum DeriveStrategy {
     Simplify,
     IntegratePrep,
+    SolvePrep,
     LogExpand,
     LogContract,
     SimplifyThenLogContract,
@@ -33,6 +34,7 @@ impl DeriveStrategy {
         match self {
             Self::Simplify => "simplify",
             Self::IntegratePrep => "integrate prep",
+            Self::SolvePrep => "solve prep",
             Self::LogExpand => "expand_log",
             Self::LogContract => "contract logs",
             Self::SimplifyThenLogContract => "simplify -> contract logs",
@@ -77,6 +79,9 @@ const DEFAULT_STRATEGY_ORDER: &[DeriveStrategy] = &[
 
 const INTEGRATE_PREP_TARGET_ORDER: &[DeriveStrategy] =
     &[DeriveStrategy::IntegratePrep, DeriveStrategy::Simplify];
+
+const SOLVE_PREP_TARGET_ORDER: &[DeriveStrategy] =
+    &[DeriveStrategy::SolvePrep, DeriveStrategy::Simplify];
 
 const LOG_EXPAND_TARGET_ORDER: &[DeriveStrategy] = &[
     DeriveStrategy::LogExpand,
@@ -161,6 +166,7 @@ pub(crate) fn ordered_strategies_for_target(
 ) -> &'static [DeriveStrategy] {
     match &profile.form {
         DeriveTargetForm::IntegratePrepared => INTEGRATE_PREP_TARGET_ORDER,
+        DeriveTargetForm::SolvePrepared => SOLVE_PREP_TARGET_ORDER,
         DeriveTargetForm::LogExpanded => LOG_EXPAND_TARGET_ORDER,
         DeriveTargetForm::LogContracted => LOG_CONTRACT_TARGET_ORDER,
         DeriveTargetForm::TrigExpanded => TRIG_EXPAND_TARGET_ORDER,

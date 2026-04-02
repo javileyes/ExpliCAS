@@ -1,7 +1,9 @@
 //! Shared helpers to parse primitive values from AST expressions.
 
+use cas_ast::ordering::compare_expr;
 use cas_ast::{BuiltinFn, Constant, Context, Expr, ExprId};
 use num_traits::ToPrimitive;
+use smallvec::SmallVec;
 
 /// Extract an integer as `i64` from an expression.
 ///
@@ -29,6 +31,45 @@ pub fn extract_i64_multiplier_and_base(ctx: &Context, expr: ExprId) -> (i64, Exp
         }
     }
     (1, expr)
+}
+
+/// Extract an integer multiplier together with the remaining multiplicative basis factors.
+///
+/// This is shape-independent for commutative products:
+/// - `2*a*x` -> `(2, [a, x])`
+/// - `a*2*x` -> `(2, [a, x])`
+/// - `a*x` -> `(1, [a, x])`
+/// - `x` -> `(1, [x])`
+///
+/// For pure numeric expressions or multiplier overflow, it falls back to `(1, [expr])`.
+pub fn extract_i64_multiplier_and_base_factors(
+    ctx: &Context,
+    expr: ExprId,
+) -> (i64, SmallVec<[ExprId; 8]>) {
+    let mut multiplier = 1i64;
+    let mut base_factors = SmallVec::<[ExprId; 8]>::new();
+
+    for factor in crate::expr_nary::mul_leaves(ctx, expr) {
+        if let Some(k) = extract_i64_integer(ctx, factor) {
+            let Some(next) = multiplier.checked_mul(k) else {
+                let mut fallback = SmallVec::new();
+                fallback.push(expr);
+                return (1, fallback);
+            };
+            multiplier = next;
+        } else {
+            base_factors.push(factor);
+        }
+    }
+
+    if base_factors.is_empty() {
+        let mut fallback = SmallVec::new();
+        fallback.push(expr);
+        return (1, fallback);
+    }
+
+    base_factors.sort_by(|a, b| compare_expr(ctx, *a, *b));
+    (multiplier, base_factors)
 }
 
 /// Extract an integer as an exact `BigInt` from an expression.
@@ -303,6 +344,39 @@ mod tests {
         assert_eq!(b3, half_x);
         assert_eq!(k4, 1);
         assert_eq!(b4, plain);
+    }
+
+    #[test]
+    fn extracts_i64_multiplier_and_base_factors_from_symbolic_scale_chain() {
+        let mut ctx = Context::new();
+        let scaled = parse("2*a*x", &mut ctx).expect("parse 2*a*x");
+        let plain = parse("a*x", &mut ctx).expect("parse a*x");
+        let a = parse("a", &mut ctx).expect("parse a");
+        let x = parse("x", &mut ctx).expect("parse x");
+
+        let (scaled_k, scaled_factors) = extract_i64_multiplier_and_base_factors(&ctx, scaled);
+        let (plain_k, plain_factors) = extract_i64_multiplier_and_base_factors(&ctx, plain);
+
+        assert_eq!(scaled_k, 2);
+        assert_eq!(plain_k, 1);
+        assert_eq!(scaled_factors.len(), 2);
+        assert_eq!(plain_factors.len(), 2);
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, scaled_factors[0], a),
+            std::cmp::Ordering::Equal
+        );
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, scaled_factors[1], x),
+            std::cmp::Ordering::Equal
+        );
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, plain_factors[0], a),
+            std::cmp::Ordering::Equal
+        );
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, plain_factors[1], x),
+            std::cmp::Ordering::Equal
+        );
     }
 
     #[test]

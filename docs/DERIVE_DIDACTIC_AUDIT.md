@@ -35,8 +35,43 @@ Current quality gates:
 - every curated `derived` pair must emit web steps
 - no curated `derived` pair may emit a single substep that duplicates the parent
   step exactly
+- no curated `derived` pair may keep a generic template substep that only says
+  “use the identity” or similar without exposing any visible intermediate math
+- no curated `derived` pair may keep a substep whose only job is to restate or
+  rename the parent step
 - the report must expose per-case CLI lines and web/JSON steps so new
   redundancies can be reviewed before growing more families
+
+## What A Derive Substep Is For
+
+`derive` is especially sensitive to fake didactic detail, because the feature is
+already target-driven. If the trace reaches the requested target but the
+substeps are only decorative, the result reads as magical anyway.
+
+So in `derive`, a substep is justified only when it helps explain a jump that
+the parent step does not already make visible.
+
+A valid `derive` substep should do at least one of these:
+
+- show an intermediate algebraic form hidden inside the parent step
+- expose a local identity application that would otherwise feel abrupt
+- make a substitution or pattern recognition explicit when that is necessary to
+  follow the move
+
+A `derive` substep is noise if it does any of these:
+
+- paraphrases the main rule title
+- describes the maneuver without new math
+- repeats the same `before/after` as the parent step
+- injects a formula-template line without any visible intermediate state
+
+Important rule:
+
+- if a `derive` step is already self-explanatory, prefer `0` substeps
+- a clean direct step is better than a padded step-by-step trace
+
+This audit should keep `derive` honest on that point: the goal is not to make
+the trace look denser, but to make non-obvious transformations less magical.
 
 This audit is intentionally conservative. It is meant to stop obvious regressions
 in teachability, not to freeze the exact wording of every step forever.

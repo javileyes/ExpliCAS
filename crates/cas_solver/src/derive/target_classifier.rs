@@ -11,7 +11,8 @@ use super::{
     try_rewrite_fraction_expansion_target_aware, try_rewrite_integrate_prep_target_aware,
     try_rewrite_log_contraction_target_aware, try_rewrite_log_expansion_target_aware,
     try_rewrite_odd_half_power_target_aware, try_rewrite_power_merge_target_aware,
-    try_rewrite_trig_contraction_target_aware, try_rewrite_trig_expansion, DeriveTargetForm,
+    try_rewrite_solve_prep_target_aware, try_rewrite_trig_contraction_target_aware,
+    try_rewrite_trig_expansion, DeriveTargetForm,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -125,6 +126,13 @@ pub(crate) fn classify_target_profile(
         };
     }
 
+    if detect_solve_prepared_target(ctx, source_expr, target_expr, &shared_vars) {
+        return DeriveTargetProfile {
+            form: DeriveTargetForm::SolvePrepared,
+            shared_vars,
+        };
+    }
+
     if detect_expanded_target(ctx, source_expr, target_expr) {
         return DeriveTargetProfile {
             form: DeriveTargetForm::Expanded,
@@ -199,6 +207,15 @@ fn detect_integrate_prepared_target(
     target_expr: ExprId,
 ) -> bool {
     try_rewrite_integrate_prep_target_aware(ctx, source_expr, target_expr).is_some()
+}
+
+fn detect_solve_prepared_target(
+    ctx: &mut cas_ast::Context,
+    source_expr: ExprId,
+    target_expr: ExprId,
+    shared_vars: &[String],
+) -> bool {
+    try_rewrite_solve_prep_target_aware(ctx, source_expr, target_expr, shared_vars).is_some()
 }
 
 fn detect_log_contracted_target(
@@ -816,6 +833,12 @@ mod tests {
     fn classifies_sophie_germain_factor_target() {
         let profile = classify("x^4 + 4*y^4", "(x^2 - 2*x*y + 2*y^2)*(x^2 + 2*x*y + 2*y^2)");
         assert_eq!(profile.form, DeriveTargetForm::Factored);
+    }
+
+    #[test]
+    fn classifies_complete_square_target_as_solve_prep() {
+        let profile = classify("x^2 + 6*x + 5", "(x+3)^2 - 4");
+        assert_eq!(profile.form, DeriveTargetForm::SolvePrepared);
     }
 
     #[test]

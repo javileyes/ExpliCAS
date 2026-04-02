@@ -1,5 +1,9 @@
 use crate::build::mul2_raw;
+use crate::expr_nary;
+use cas_ast::ordering::compare_expr;
+use cas_ast::views::as_rational_const;
 use cas_ast::{substitute_expr_by_id, Context, Expr, ExprId};
+use num_rational::BigRational;
 use num_traits::One;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -361,27 +365,40 @@ pub fn try_build_telescoping_product_shift1(
         _ => return None,
     };
 
-    let num_offset = extract_linear_offset(ctx, num, var)?;
-    let den_offset = extract_linear_offset(ctx, den, var)?;
-    if num_offset - den_offset != 1 {
+    if let (Some(num_offset), Some(den_offset)) = (
+        extract_linear_offset(ctx, num, var),
+        extract_linear_offset(ctx, den, var),
+    ) {
+        if num_offset - den_offset == 1 {
+            let end_plus_offset = shift_expr(ctx, end, num_offset);
+            let start_plus_offset = shift_expr(ctx, start, den_offset);
+            return Some(ctx.add(Expr::Div(end_plus_offset, start_plus_offset)));
+        }
+    }
+
+    if let Some((base, _coeff)) =
+        detect_affine_consecutive_telescoping_sum_base_and_gap(ctx, den, num, var)
+    {
+        let var_expr = ctx.var(var);
+        let start_base = substitute_expr_by_id(ctx, base, var_expr, start);
+        let one = ctx.num(1);
+        let end_plus_one = ctx.add(Expr::Add(end, one));
+        let end_next_base = substitute_expr_by_id(ctx, base, var_expr, end_plus_one);
+        return Some(ctx.add(Expr::Div(end_next_base, start_base)));
+    }
+
+    let base = extract_unit_shifted_base(ctx, den, var)?;
+    let numerator_expected = shift_expr(ctx, base, 1);
+    if compare_expr(ctx, num, numerator_expected) != std::cmp::Ordering::Equal {
         return None;
     }
 
-    let end_plus_offset = if num_offset == 0 {
-        end
-    } else {
-        let offset = ctx.num(num_offset);
-        ctx.add(Expr::Add(end, offset))
-    };
+    let var_expr = ctx.var(var);
+    let start_base = substitute_expr_by_id(ctx, base, var_expr, start);
+    let end_base = substitute_expr_by_id(ctx, base, var_expr, end);
+    let end_plus_one = shift_expr(ctx, end_base, 1);
 
-    let start_plus_offset = if den_offset == 0 {
-        start
-    } else {
-        let offset = ctx.num(den_offset);
-        ctx.add(Expr::Add(start, offset))
-    };
-
-    Some(ctx.add(Expr::Div(end_plus_offset, start_plus_offset)))
+    Some(ctx.add(Expr::Div(end_plus_one, start_base)))
 }
 
 /// Build product closed form for `1 - 1/var^2`:
@@ -393,28 +410,201 @@ pub fn try_build_factorizable_product_for_one_minus_reciprocal_square(
     start: ExprId,
     end: ExprId,
 ) -> Option<ExprId> {
-    let power = detect_one_minus_reciprocal_power(ctx, factor, var)?;
-    if power != 2 {
-        return None;
-    }
-
-    let start_minus_1 = if let Some(n) = crate::expr_extract::extract_i64_integer(ctx, start) {
-        ctx.num(n - 1)
-    } else {
-        let one = ctx.num(1);
-        ctx.add(Expr::Sub(start, one))
-    };
-
-    let end_plus_1 = if let Some(n) = crate::expr_extract::extract_i64_integer(ctx, end) {
-        ctx.num(n + 1)
-    } else {
-        let one = ctx.num(1);
-        ctx.add(Expr::Add(end, one))
-    };
+    let base = detect_factorized_telescoping_square_base(ctx, factor, var)?;
+    let var_expr = ctx.var(var);
+    let start_base = substitute_expr_by_id(ctx, base, var_expr, start);
+    let end_base = substitute_expr_by_id(ctx, base, var_expr, end);
+    let start_minus_1 = shift_expr(ctx, start_base, -1);
+    let end_plus_1 = shift_expr(ctx, end_base, 1);
 
     let combined_num = mul2_raw(ctx, start_minus_1, end_plus_1);
-    let combined_den = mul2_raw(ctx, start, end);
+    let combined_den = mul2_raw(ctx, start_base, end_base);
     Some(ctx.add(Expr::Div(combined_num, combined_den)))
+}
+
+pub fn detect_factorized_telescoping_square_base(
+    ctx: &Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    detect_one_minus_reciprocal_square_base(ctx, expr, var)
+        .or_else(|| detect_factorized_one_minus_reciprocal_square(ctx, expr, var))
+}
+
+fn detect_one_minus_reciprocal_square_base(
+    ctx: &Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    if let Expr::Sub(left, right) = ctx.get(expr) {
+        if let Expr::Number(n) = ctx.get(*left) {
+            if n.is_one() {
+                return detect_reciprocal_square_base(ctx, *right, var);
+            }
+        }
+    }
+
+    if let Expr::Add(left, right) = ctx.get(expr) {
+        if let Expr::Number(n) = ctx.get(*right) {
+            if n.is_one() {
+                if let Expr::Neg(inner) = ctx.get(*left) {
+                    return detect_reciprocal_square_base(ctx, *inner, var);
+                }
+            }
+        }
+        if let Expr::Number(n) = ctx.get(*left) {
+            if n.is_one() {
+                if let Expr::Neg(inner) = ctx.get(*right) {
+                    return detect_reciprocal_square_base(ctx, *inner, var);
+                }
+            }
+        }
+    }
+
+    None
+}
+
+fn detect_reciprocal_square_base(ctx: &Context, expr: ExprId, var: &str) -> Option<ExprId> {
+    if let Expr::Div(num, den) = ctx.get(expr) {
+        if let Expr::Number(n) = ctx.get(*num) {
+            if n.is_one() {
+                return extract_square_of_unit_shifted_base(ctx, *den, var);
+            }
+        }
+    }
+
+    if let Expr::Pow(base, exp) = ctx.get(expr) {
+        if let Some(power) = negative_integer_exponent(ctx, *exp) {
+            if power == 2 {
+                return extract_unit_shifted_base(ctx, *base, var);
+            }
+        }
+    }
+
+    None
+}
+
+fn detect_factorized_one_minus_reciprocal_square(
+    ctx: &Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let Expr::Div(num, den) = ctx.get(expr) else {
+        return None;
+    };
+    let base = extract_square_of_unit_shifted_base(ctx, *den, var)?;
+    if !is_square_minus_one_of_base(ctx, *num, base) {
+        return None;
+    }
+    Some(base)
+}
+
+pub fn extract_unit_shifted_base(ctx: &Context, expr: ExprId, var: &str) -> Option<ExprId> {
+    match ctx.get(expr) {
+        Expr::Variable(sym_id) if ctx.sym_name(*sym_id) == var => Some(expr),
+        Expr::Add(left, right) => {
+            if is_named_var(ctx, *left, var) && !contains_named_var(ctx, *right, var) {
+                return Some(expr);
+            }
+            if is_named_var(ctx, *right, var) && !contains_named_var(ctx, *left, var) {
+                return Some(expr);
+            }
+            None
+        }
+        Expr::Sub(left, right) => {
+            if is_named_var(ctx, *left, var) && !contains_named_var(ctx, *right, var) {
+                return Some(expr);
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+fn contains_named_var(ctx: &Context, expr: ExprId, var: &str) -> bool {
+    let mut stack = vec![expr];
+    while let Some(current) = stack.pop() {
+        match ctx.get(current) {
+            Expr::Variable(sym_id) if ctx.sym_name(*sym_id) == var => return true,
+            Expr::Add(left, right)
+            | Expr::Sub(left, right)
+            | Expr::Mul(left, right)
+            | Expr::Div(left, right)
+            | Expr::Pow(left, right) => {
+                stack.push(*left);
+                stack.push(*right);
+            }
+            Expr::Neg(inner) | Expr::Hold(inner) => stack.push(*inner),
+            Expr::Function(_, args) => stack.extend(args.iter().copied()),
+            Expr::Matrix { data, .. } => stack.extend(data.iter().copied()),
+            Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) | Expr::SessionRef(_) => {}
+        }
+    }
+    false
+}
+
+fn is_named_var(ctx: &Context, expr: ExprId, var: &str) -> bool {
+    matches!(ctx.get(expr), Expr::Variable(sym_id) if ctx.sym_name(*sym_id) == var)
+}
+
+fn extract_square_of_unit_shifted_base(ctx: &Context, expr: ExprId, var: &str) -> Option<ExprId> {
+    let Expr::Pow(base, exp) = ctx.get(expr) else {
+        return None;
+    };
+    if crate::expr_extract::extract_i64_integer(ctx, *exp) != Some(2) {
+        return None;
+    }
+    extract_unit_shifted_base(ctx, *base, var)
+}
+
+fn negative_integer_exponent(ctx: &Context, expr: ExprId) -> Option<i64> {
+    if let Expr::Neg(inner) = ctx.get(expr) {
+        return crate::expr_extract::extract_i64_integer(ctx, *inner);
+    }
+    crate::expr_extract::extract_i64_integer(ctx, expr)
+        .filter(|power| *power < 0)
+        .map(|power| -power)
+}
+
+fn is_square_minus_one_of_base(ctx: &Context, expr: ExprId, base: ExprId) -> bool {
+    match ctx.get(expr) {
+        Expr::Sub(left, right) => {
+            expr_is_square_of_base(ctx, *left, base) && expr_is_one(ctx, *right)
+        }
+        Expr::Add(left, right) => {
+            (expr_is_square_of_base(ctx, *left, base) && expr_is_negative_one(ctx, *right))
+                || (expr_is_square_of_base(ctx, *right, base) && expr_is_negative_one(ctx, *left))
+        }
+        _ => false,
+    }
+}
+
+fn expr_is_square_of_base(ctx: &Context, expr: ExprId, base: ExprId) -> bool {
+    let Expr::Pow(inner, exp) = ctx.get(expr) else {
+        return false;
+    };
+    crate::expr_extract::extract_i64_integer(ctx, *exp) == Some(2)
+        && compare_expr(ctx, *inner, base) == std::cmp::Ordering::Equal
+}
+
+fn expr_is_one(ctx: &Context, expr: ExprId) -> bool {
+    matches!(ctx.get(expr), Expr::Number(n) if n.is_one())
+}
+
+fn expr_is_negative_one(ctx: &Context, expr: ExprId) -> bool {
+    matches!(ctx.get(expr), Expr::Number(n) if *n == BigRational::from_integer((-1).into()))
+}
+
+fn shift_expr(ctx: &mut Context, base: ExprId, delta: i64) -> ExprId {
+    if delta == 0 {
+        return base;
+    }
+    let shift = ctx.num(delta.abs());
+    if delta > 0 {
+        ctx.add(Expr::Add(base, shift))
+    } else {
+        ctx.add(Expr::Sub(base, shift))
+    }
 }
 
 /// Build telescoping rational sum closed form for `1/((k+b)*(k+c))`.
@@ -445,8 +635,44 @@ pub fn try_build_telescoping_rational_sum(
         _ => return None,
     };
 
-    let offset1 = extract_linear_offset(ctx, factor1, var)?;
-    let offset2 = extract_linear_offset(ctx, factor2, var)?;
+    if let Some(base) = detect_consecutive_telescoping_sum_base(ctx, factor1, factor2, var) {
+        let var_expr = ctx.var(var);
+        let start_base = substitute_expr_by_id(ctx, base, var_expr, start);
+        let end_base = substitute_expr_by_id(ctx, base, var_expr, end);
+        let end_shifted = shift_expr(ctx, end_base, 1);
+
+        let one1 = ctx.num(1);
+        let one2 = ctx.num(1);
+        let first_term = ctx.add(Expr::Div(one1, start_base));
+        let second_term = ctx.add(Expr::Div(one2, end_shifted));
+        return Some(ctx.add(Expr::Sub(first_term, second_term)));
+    }
+
+    if let Some((base, coeff)) =
+        detect_affine_consecutive_telescoping_sum_base_and_gap(ctx, factor1, factor2, var)
+    {
+        let var_expr = ctx.var(var);
+        let one = ctx.num(1);
+        let reciprocal_coeff = ctx.add(Expr::Div(one, coeff));
+        let start_base = substitute_expr_by_id(ctx, base, var_expr, start);
+        let end_plus_one = ctx.add(Expr::Add(end, one));
+        let end_next_base = substitute_expr_by_id(ctx, base, var_expr, end_plus_one);
+
+        let one1 = ctx.num(1);
+        let one2 = ctx.num(1);
+        let first_term = ctx.add(Expr::Div(one1, start_base));
+        let second_term = ctx.add(Expr::Div(one2, end_next_base));
+        let diff = ctx.add(Expr::Sub(first_term, second_term));
+        return Some(ctx.add(Expr::Mul(reciprocal_coeff, diff)));
+    }
+
+    let (offset1, offset2) = match (
+        extract_linear_offset(ctx, factor1, var),
+        extract_linear_offset(ctx, factor2, var),
+    ) {
+        (Some(offset1), Some(offset2)) => (offset1, offset2),
+        _ => return None,
+    };
     let a = offset2 - offset1;
     if a == 0 {
         return None;
@@ -491,6 +717,240 @@ pub fn try_build_telescoping_rational_sum(
     Some(result)
 }
 
+fn detect_consecutive_telescoping_sum_base(
+    ctx: &mut Context,
+    factor1: ExprId,
+    factor2: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    for (base_candidate, other_factor) in [(factor1, factor2), (factor2, factor1)] {
+        let Some(base) = extract_unit_shifted_base(ctx, base_candidate, var) else {
+            continue;
+        };
+        let shifted = shift_expr(ctx, base, 1);
+        if compare_expr(ctx, other_factor, shifted) == std::cmp::Ordering::Equal {
+            return Some(base);
+        }
+    }
+    None
+}
+
+fn detect_affine_consecutive_telescoping_sum_base_and_gap(
+    ctx: &mut Context,
+    factor1: ExprId,
+    factor2: ExprId,
+    var: &str,
+) -> Option<(ExprId, ExprId)> {
+    for (base_candidate, other_factor) in [(factor1, factor2), (factor2, factor1)] {
+        let (coeff, offset) = extract_affine_var_coeff_and_offset(ctx, base_candidate, var)?;
+        let (other_coeff, other_offset) =
+            extract_affine_var_coeff_and_offset(ctx, other_factor, var)?;
+        if compare_expr(ctx, coeff, other_coeff) != std::cmp::Ordering::Equal {
+            continue;
+        }
+        if additive_gap_relation_holds(ctx, offset, coeff, other_offset) {
+            return Some((base_candidate, coeff));
+        }
+    }
+    None
+}
+
+fn additive_gap_relation_holds(ctx: &Context, base: ExprId, gap: ExprId, target: ExprId) -> bool {
+    let (base_terms, base_constant) = additive_signature(ctx, base);
+    let (gap_terms, gap_constant) = additive_signature(ctx, gap);
+    let (target_terms, target_constant) = additive_signature(ctx, target);
+
+    let mut combined_terms = base_terms;
+    for (basis, coeff) in gap_terms {
+        if let Some((_, existing_coeff)) = combined_terms
+            .iter_mut()
+            .find(|(existing_basis, _)| same_basis(ctx, existing_basis, &basis))
+        {
+            *existing_coeff += coeff.clone();
+        } else {
+            combined_terms.push((basis, coeff));
+        }
+    }
+    combined_terms.retain(|(_, coeff)| *coeff != BigRational::from_integer(0.into()));
+    sort_signature_terms(ctx, &mut combined_terms);
+
+    combined_terms == target_terms && base_constant + gap_constant == target_constant
+}
+
+fn additive_signature(
+    ctx: &Context,
+    expr: ExprId,
+) -> (Vec<(Vec<ExprId>, BigRational)>, BigRational) {
+    let mut terms: Vec<(Vec<ExprId>, BigRational)> = Vec::new();
+    let mut constant = BigRational::from_integer(0.into());
+
+    for (term, sign) in expr_nary::AddView::from_expr(ctx, expr).terms {
+        if let Some(value) = as_rational_const(ctx, term, 8) {
+            match sign {
+                expr_nary::Sign::Pos => constant += value,
+                expr_nary::Sign::Neg => constant -= value,
+            }
+            continue;
+        }
+
+        let (basis, coeff) = scaled_term_signature(ctx, term);
+        let signed_coeff = match sign {
+            expr_nary::Sign::Pos => coeff,
+            expr_nary::Sign::Neg => -coeff,
+        };
+        if let Some((_, existing_coeff)) = terms
+            .iter_mut()
+            .find(|(existing_basis, _)| same_basis(ctx, existing_basis, &basis))
+        {
+            *existing_coeff += signed_coeff;
+        } else {
+            terms.push((basis, signed_coeff));
+        }
+    }
+
+    terms.retain(|(_, coeff)| *coeff != BigRational::from_integer(0.into()));
+    sort_signature_terms(ctx, &mut terms);
+
+    (terms, constant)
+}
+
+fn scaled_term_signature(ctx: &Context, expr: ExprId) -> (Vec<ExprId>, BigRational) {
+    let factors = expr_nary::mul_leaves(ctx, expr);
+    let mut numeric_coeff = BigRational::from_integer(1.into());
+    let mut basis = Vec::new();
+
+    for factor in factors {
+        if let Some(value) = as_rational_const(ctx, factor, 8) {
+            numeric_coeff *= value;
+        } else {
+            basis.push(factor);
+        }
+    }
+
+    basis.sort_by(|left, right| compare_expr(ctx, *left, *right));
+    if basis.is_empty() {
+        basis.push(expr);
+    }
+    (basis, numeric_coeff)
+}
+
+fn same_basis(ctx: &Context, left: &[ExprId], right: &[ExprId]) -> bool {
+    left.len() == right.len()
+        && left
+            .iter()
+            .zip(right.iter())
+            .all(|(l, r)| compare_expr(ctx, *l, *r) == std::cmp::Ordering::Equal)
+}
+
+fn sort_signature_terms(ctx: &Context, terms: &mut [(Vec<ExprId>, BigRational)]) {
+    terms.sort_by(|(left_basis, _), (right_basis, _)| compare_basis(ctx, left_basis, right_basis));
+}
+
+fn compare_basis(ctx: &Context, left: &[ExprId], right: &[ExprId]) -> std::cmp::Ordering {
+    for (l, r) in left.iter().zip(right.iter()) {
+        let ord = compare_expr(ctx, *l, *r);
+        if ord != std::cmp::Ordering::Equal {
+            return ord;
+        }
+    }
+    left.len().cmp(&right.len())
+}
+
+fn extract_affine_var_coeff_and_offset(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<(ExprId, ExprId)> {
+    let mut coeff = None;
+    let mut offset_terms = Vec::new();
+
+    for (term, sign) in expr_nary::AddView::from_expr(ctx, expr).terms {
+        if contains_named_var(ctx, term, var) {
+            let (term_coeff, term_offset) =
+                extract_affine_linear_term_coeff_and_offset(ctx, term, var)?;
+            if as_rational_const(ctx, term_offset, 8)
+                .is_none_or(|value| value != BigRational::from_integer(0.into()))
+            {
+                return None;
+            }
+
+            let signed_coeff = match sign {
+                expr_nary::Sign::Pos => term_coeff,
+                expr_nary::Sign::Neg => ctx.add(Expr::Neg(term_coeff)),
+            };
+            if coeff.is_some() {
+                return None;
+            }
+            coeff = Some(signed_coeff);
+        } else {
+            offset_terms.push((term, sign));
+        }
+    }
+
+    Some((coeff?, build_signed_additive_expr(ctx, &offset_terms)))
+}
+
+fn extract_affine_linear_term_coeff_and_offset(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<(ExprId, ExprId)> {
+    if is_named_var(ctx, expr, var) {
+        return Some((ctx.num(1), ctx.num(0)));
+    }
+
+    let factors = expr_nary::mul_leaves(ctx, expr);
+    let mut saw_var = false;
+    let mut coeff_factors = Vec::new();
+
+    for factor in factors {
+        if is_named_var(ctx, factor, var) {
+            if saw_var {
+                return None;
+            }
+            saw_var = true;
+        } else if contains_named_var(ctx, factor, var) {
+            return None;
+        } else {
+            coeff_factors.push(factor);
+        }
+    }
+
+    if !saw_var {
+        return None;
+    }
+
+    let coeff = if coeff_factors.is_empty() {
+        ctx.num(1)
+    } else if coeff_factors.len() == 1 {
+        coeff_factors[0]
+    } else {
+        expr_nary::build_balanced_mul(ctx, &coeff_factors)
+    };
+    Some((coeff, ctx.num(0)))
+}
+
+fn build_signed_additive_expr(ctx: &mut Context, terms: &[(ExprId, expr_nary::Sign)]) -> ExprId {
+    let mut iter = terms.iter();
+    let Some(&(first_term, first_sign)) = iter.next() else {
+        return ctx.num(0);
+    };
+
+    let mut result = match first_sign {
+        expr_nary::Sign::Pos => first_term,
+        expr_nary::Sign::Neg => ctx.add(Expr::Neg(first_term)),
+    };
+
+    for &(term, sign) in iter {
+        result = match sign {
+            expr_nary::Sign::Pos => ctx.add(Expr::Add(result, term)),
+            expr_nary::Sign::Neg => ctx.add(Expr::Sub(result, term)),
+        };
+    }
+
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -502,7 +962,7 @@ mod tests {
         try_plan_finite_product_evaluation, try_plan_finite_sum_evaluation, ProductEvaluationKind,
         SumEvaluationKind,
     };
-    use cas_ast::{Context, Expr};
+    use cas_ast::{substitute_expr_by_id, Context, Expr};
     use num_rational::BigRational;
 
     fn eval_small_int(ctx: &Context, id: cas_ast::ExprId) -> Option<i64> {
@@ -665,6 +1125,57 @@ mod tests {
     }
 
     #[test]
+    fn builds_telescoping_product_shift1_result_with_affine_symbolic_base() {
+        let mut ctx = Context::new();
+        let factor =
+            cas_parser::parse("(a*k+b+a)/(a*k+b)", &mut ctx).expect("parse affine symbolic factor");
+        let one = ctx.num(1);
+        let n = ctx.var("n");
+        let a = ctx.var("a");
+        let b = ctx.var("b");
+
+        let result =
+            try_build_telescoping_product_shift1(&mut ctx, factor, "k", one, n).expect("build");
+        let two = ctx.num(2);
+        let one_num = ctx.num(1);
+        let four = ctx.num(4);
+        let result = substitute_expr_by_id(&mut ctx, result, a, two);
+        let result = substitute_expr_by_id(&mut ctx, result, b, one_num);
+        let result = substitute_expr_by_id(&mut ctx, result, n, four);
+        assert_eq!(
+            eval_small_rat(&ctx, result),
+            Some(BigRational::new(11.into(), 3.into()))
+        );
+    }
+
+    #[test]
+    fn builds_telescoping_product_shift1_result_with_affine_symbolic_arbitrary_shift() {
+        let mut ctx = Context::new();
+        let factor = cas_parser::parse("(a*k+b+c+a)/(a*k+b+c)", &mut ctx)
+            .expect("parse shifted affine symbolic factor");
+        let one = ctx.num(1);
+        let n = ctx.var("n");
+        let a = ctx.var("a");
+        let b = ctx.var("b");
+        let c = ctx.var("c");
+
+        let result =
+            try_build_telescoping_product_shift1(&mut ctx, factor, "k", one, n).expect("build");
+        let two = ctx.num(2);
+        let one_num = ctx.num(1);
+        let three = ctx.num(3);
+        let four = ctx.num(4);
+        let result = substitute_expr_by_id(&mut ctx, result, a, two);
+        let result = substitute_expr_by_id(&mut ctx, result, b, one_num);
+        let result = substitute_expr_by_id(&mut ctx, result, c, three);
+        let result = substitute_expr_by_id(&mut ctx, result, n, four);
+        assert_eq!(
+            eval_small_rat(&ctx, result),
+            Some(BigRational::new(7.into(), 3.into()))
+        );
+    }
+
+    #[test]
     fn builds_factorizable_product_square_result() {
         let mut ctx = Context::new();
         let k = ctx.var("k");
@@ -679,19 +1190,51 @@ mod tests {
             &mut ctx, factor, "k", two, four,
         )
         .expect("build");
-        let Expr::Div(num, den) = ctx.get(result) else {
-            panic!("expected division");
-        };
-        let Expr::Mul(nl, nr) = ctx.get(*num) else {
-            panic!("expected mul numerator");
-        };
-        let Expr::Mul(dl, dr) = ctx.get(*den) else {
-            panic!("expected mul denominator");
-        };
-        assert_eq!(crate::expr_extract::extract_i64_integer(&ctx, *nl), Some(1));
-        assert_eq!(crate::expr_extract::extract_i64_integer(&ctx, *nr), Some(5));
-        assert_eq!(crate::expr_extract::extract_i64_integer(&ctx, *dl), Some(2));
-        assert_eq!(crate::expr_extract::extract_i64_integer(&ctx, *dr), Some(4));
+        assert_eq!(
+            eval_small_rat(&ctx, result),
+            Some(BigRational::new(5.into(), 8.into()))
+        );
+    }
+
+    #[test]
+    fn builds_factorizable_product_square_result_after_fraction_simplification() {
+        let mut ctx = Context::new();
+        let factor = cas_parser::parse("(k^2 - 1)/k^2", &mut ctx).expect("factor");
+        let two = ctx.num(2);
+        let n = ctx.var("n");
+
+        let result = try_build_factorizable_product_for_one_minus_reciprocal_square(
+            &mut ctx, factor, "k", two, n,
+        )
+        .expect("build");
+        let rendered = format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: &ctx,
+                id: result
+            }
+        );
+        assert!(
+            rendered.contains("n + 1") && rendered.contains("2") && rendered.contains("n"),
+            "expected telescoping closed form, got {rendered}"
+        );
+    }
+
+    #[test]
+    fn builds_factorizable_product_square_result_with_shifted_base() {
+        let mut ctx = Context::new();
+        let factor = cas_parser::parse("1 - 1/(k+2)^2", &mut ctx).expect("factor");
+        let one = ctx.num(1);
+        let five = ctx.num(5);
+
+        let result = try_build_factorizable_product_for_one_minus_reciprocal_square(
+            &mut ctx, factor, "k", one, five,
+        )
+        .expect("build");
+        assert_eq!(
+            eval_small_rat(&ctx, result),
+            Some(BigRational::new(16.into(), 21.into()))
+        );
     }
 
     #[test]
@@ -709,6 +1252,82 @@ mod tests {
         assert_eq!(
             eval_small_rat(&ctx, result),
             Some(BigRational::new(4.into(), 5.into()))
+        );
+    }
+
+    #[test]
+    fn builds_telescoping_rational_sum_result_with_symbolic_shift() {
+        let mut ctx = Context::new();
+        let summand = cas_parser::parse("1/((k+a)*(k+a+1))", &mut ctx).expect("summand");
+        let one = ctx.num(1);
+        let n = ctx.var("n");
+
+        let result =
+            try_build_telescoping_rational_sum(&mut ctx, summand, "k", one, n).expect("build");
+        let rendered = format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: &ctx,
+                id: result
+            }
+        );
+        assert!(
+            rendered.contains("a + 1")
+                && (rendered.contains("a + n + 1") || rendered.contains("n + a + 1")),
+            "expected symbolic telescoping closed form, got {rendered}"
+        );
+    }
+
+    #[test]
+    fn builds_telescoping_rational_sum_result_with_affine_symbolic_shift() {
+        let mut ctx = Context::new();
+        let summand = cas_parser::parse("1/((a*k+b)*(a*k+b+a))", &mut ctx).expect("summand");
+        let one = ctx.num(1);
+        let n = ctx.var("n");
+
+        let result =
+            try_build_telescoping_rational_sum(&mut ctx, summand, "k", one, n).expect("build");
+        let rendered = format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: &ctx,
+                id: result
+            }
+        );
+        assert!(
+            (rendered.contains("1 / a") || rendered.contains(")/a"))
+                && (rendered.contains("a + b") || rendered.contains("b + 1 * a"))
+                && (rendered.contains("a·n + a + b")
+                    || rendered.contains("a·n + b + a")
+                    || rendered.contains("a + a·n + b")
+                    || rendered.contains("a * (n + 1) + b")),
+            "expected affine symbolic telescoping closed form, got {rendered}"
+        );
+    }
+
+    #[test]
+    fn builds_telescoping_rational_sum_result_with_affine_symbolic_arbitrary_shift() {
+        let mut ctx = Context::new();
+        let summand = cas_parser::parse("1/((a*k+b+c)*(a*k+b+c+a))", &mut ctx).expect("summand");
+        let one = ctx.num(1);
+        let n = ctx.var("n");
+        let a = ctx.var("a");
+        let b = ctx.var("b");
+        let c = ctx.var("c");
+
+        let result =
+            try_build_telescoping_rational_sum(&mut ctx, summand, "k", one, n).expect("build");
+        let two = ctx.num(2);
+        let one_num = ctx.num(1);
+        let three = ctx.num(3);
+        let four = ctx.num(4);
+        let result = substitute_expr_by_id(&mut ctx, result, a, two);
+        let result = substitute_expr_by_id(&mut ctx, result, b, one_num);
+        let result = substitute_expr_by_id(&mut ctx, result, c, three);
+        let result = substitute_expr_by_id(&mut ctx, result, n, four);
+        assert_eq!(
+            eval_small_rat(&ctx, result),
+            Some(BigRational::new(1.into(), 21.into()))
         );
     }
 
@@ -743,6 +1362,24 @@ mod tests {
             try_plan_finite_product_evaluation(&mut ctx, factorized, 1000).expect("factorized");
         assert!(matches!(
             plan2.kind,
+            ProductEvaluationKind::FactorizedTelescoping
+        ));
+
+        let simplified_factorized =
+            cas_parser::parse("product((k^2 - 1)/k^2, k, 2, n)", &mut ctx).expect("prod");
+        let plan3 = try_plan_finite_product_evaluation(&mut ctx, simplified_factorized, 1000)
+            .expect("simplified factorized");
+        assert!(matches!(
+            plan3.kind,
+            ProductEvaluationKind::FactorizedTelescoping
+        ));
+
+        let shifted_factorized =
+            cas_parser::parse("product(1 - 1/(k+a)^2, k, 1, n)", &mut ctx).expect("prod");
+        let plan4 = try_plan_finite_product_evaluation(&mut ctx, shifted_factorized, 1000)
+            .expect("shifted factorized");
+        assert!(matches!(
+            plan4.kind,
             ProductEvaluationKind::FactorizedTelescoping
         ));
     }

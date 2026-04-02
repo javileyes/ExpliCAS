@@ -14,6 +14,7 @@ pub(crate) fn visible_rule_name(rule_name: &str) -> &str {
         "Finite Summation" => "Evaluar suma finita",
         "Cos Product Telescoping" => "Aplicar telescopado de cosenos",
         "Dirichlet Kernel Identity" => "Aplicar identidad del núcleo de Dirichlet",
+        "Complete the Square" => "Completar el cuadrado",
         "Product-to-Sum Identity" => "Aplicar producto a suma",
         "Sum-to-Product Identity" => "Aplicar suma a producto",
         "Double Angle Expansion" => "Expandir ángulo doble",
@@ -120,11 +121,13 @@ pub(crate) fn visible_step_description<'a>(description: &'a str) -> Cow<'a, str>
         "Rationalize: multiply by conjugate" => Cow::Borrowed("Multiplicar por el conjugado"),
         "Factorization" => Cow::Borrowed("Factorizar"),
         "Log expansion" => Cow::Borrowed("Expandir logaritmos"),
-        "Apply Morrie's law to telescope the cosine product" => {
-            Cow::Borrowed("Aplicar la ley de Morrie al producto de cosenos")
+        "Apply Morrie's law to telescope the cosine product" | "Apply Morrie's law" => {
+            Cow::Borrowed("Aplicar la ley de Morrie")
         }
-        "Apply the Dirichlet kernel identity to rewrite the cosine sum" => {
-            Cow::Borrowed("Aplicar el núcleo de Dirichlet a la suma de cosenos")
+        "Apply the Dirichlet kernel identity to rewrite the cosine sum"
+        | "Apply the Dirichlet kernel identity" => Cow::Borrowed("Aplicar el núcleo de Dirichlet"),
+        "Complete the square to rewrite the quadratic" => {
+            Cow::Borrowed("Completar el cuadrado para reescribir la cuadrática")
         }
         "log(b, x^y) = y * log(b, x)" => Cow::Borrowed("Sacar un exponente fuera del logaritmo"),
         "Distribute a sum over the common denominator" => {

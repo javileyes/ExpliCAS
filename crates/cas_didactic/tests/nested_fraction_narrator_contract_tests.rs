@@ -20,9 +20,9 @@ fn simplify_and_enrich(input: &str) -> (Context, Vec<EnrichedStep>) {
     (engine.simplifier.context.clone(), enriched)
 }
 
-/// Verify that P1 pattern (1/(a + 1/b)) generates at least one human sub-step
+/// Verify that P1 pattern avoids placeholder template sub-steps
 #[test]
-fn nested_fraction_p1_generates_substeps() {
+fn nested_fraction_p1_avoids_template_substeps() {
     let (_, enriched) = simplify_and_enrich("1/(1 + 1/x)");
 
     // Should have at least one step
@@ -36,27 +36,23 @@ fn nested_fraction_p1_generates_substeps() {
     assert!(nested.is_some(), "Should have complex fraction step");
     let step = nested.unwrap();
 
-    // The modern didactic narrative may collapse the old two-phase explanation
-    // into a single direct inversion step if the denominator sum was already
-    // explained by a previous simplification step.
-    assert_eq!(
-        step.sub_steps.len(),
-        1,
-        "P1 pattern should now keep a single direct sub-step: {:?}",
-        step.sub_steps
-    );
     assert!(
-        step.sub_steps[0]
-            .description
-            .contains("Dividir entre una fracción equivale a invertirla"),
-        "P1 pattern should explain inversion directly: {:?}",
+        step.sub_steps.iter().all(|substep| {
+            !substep
+                .description
+                .contains("Dividir entre una fracción equivale a invertirla")
+                && !substep.description.contains("Usar 1 / (p / q) = q / p")
+                && !substep.description.contains("Usar n / (p / q) = n · q / p")
+                && !substep.description.contains("Usar n / (1 / d) = n · d")
+        }),
+        "P1 pattern should avoid placeholder template sub-steps: {:?}",
         step.sub_steps
     );
 }
 
-/// Verify that P3 pattern (A/(B + C/D)) generates sub-steps
+/// Verify that P3 pattern avoids placeholder template sub-steps
 #[test]
-fn nested_fraction_p3_generates_substeps() {
+fn nested_fraction_p3_avoids_template_substeps() {
     let (_, enriched) = simplify_and_enrich("2/(1 + 1/x)");
 
     let nested = enriched
@@ -67,8 +63,17 @@ fn nested_fraction_p3_generates_substeps() {
     let step = nested.unwrap();
 
     assert!(
-        !step.sub_steps.is_empty(),
-        "P3 pattern should have sub-steps"
+        step.sub_steps.iter().all(|substep| {
+            !substep
+                .description
+                .contains("Dividir entre una fracción equivale a invertirla")
+                && !substep.description.contains("Usar 1 / (p / q) = q / p")
+                && !substep.description.contains("Usar n / (p / q) = n · q / p")
+                && !substep.description.contains("Usar n / (1 / d) = n · d")
+                && !substep.after_expr.contains("combinado")
+        }),
+        "P3 pattern should avoid placeholder template sub-steps: {:?}",
+        step.sub_steps
     );
 }
 
@@ -92,9 +97,9 @@ fn multiple_nested_fractions_all_enriched() {
     );
 }
 
-/// Verify sub-steps contain the direct inversion explanation
+/// Verify sub-steps avoid direct inversion templates
 #[test]
-fn substeps_contain_denominator_explanation() {
+fn substeps_avoid_direct_inversion_templates() {
     let (_, enriched) = simplify_and_enrich("1/(1 + 1/x)");
 
     let nested = enriched
@@ -104,19 +109,21 @@ fn substeps_contain_denominator_explanation() {
     assert!(nested.is_some(), "Should find nested fraction step");
     let step = nested.unwrap();
 
-    let has_direct_inversion_explanation = step.sub_steps.iter().any(|s| {
-        s.description
-            .contains("Dividir entre una fracción equivale a invertirla")
-    });
-
     assert!(
-        has_direct_inversion_explanation,
-        "Should have a direct sub-step about inverting the nested fraction. Sub-steps: {:?}",
+        step.sub_steps.iter().all(|substep| {
+            !substep
+                .description
+                .contains("Dividir entre una fracción equivale a invertirla")
+                && !substep.description.contains("Usar 1 / (p / q) = q / p")
+                && !substep.description.contains("Usar n / (p / q) = n · q / p")
+                && !substep.description.contains("Usar n / (1 / d) = n · d")
+        }),
+        "Nested fraction sub-steps should avoid direct inversion templates. Sub-steps: {:?}",
         step.sub_steps
     );
 }
 
-/// Verify intermediate expressions contain real values, not placeholders
+/// Verify intermediate expressions avoid placeholders and stay informative
 #[test]
 fn substep_intermediate_shows_real_values() {
     let (_, enriched) = simplify_and_enrich("1/(1 + 1/x)");
@@ -134,10 +141,12 @@ fn substep_intermediate_shows_real_values() {
                 "Should not have placeholder 'combinado': {}",
                 first_substep.after_expr
             );
-            // Should contain actual variable x
+            // Should either keep concrete values or show a useful abstract formula,
+            // but never collapse into a meaningless placeholder.
             assert!(
-                first_substep.after_expr.contains("x"),
-                "Should contain variable x: {}",
+                first_substep.after_expr.contains("x")
+                    || first_substep.after_expr.contains("\\frac"),
+                "Should contain either concrete variables or a useful abstract formula: {}",
                 first_substep.after_expr
             );
         }

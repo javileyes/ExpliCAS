@@ -236,6 +236,10 @@ Once a strategy succeeds, reuse the engine steps, then apply didactic cleanup:
 - suppress trivial local noise
 - merge preparation steps when pedagogically correct
 - add family-specific substeps only when they add value
+- prefer zero substeps over generic filler when the parent step is already
+  self-explanatory
+- never keep substeps that only restate the maneuver without a visible
+  intermediate form
 
 ## Target Families To Support
 
@@ -458,12 +462,17 @@ Acceptance criteria:
 Goal:
 
 - ensure successful derive paths are not only correct but teachable
+- make `derive` explain magic jumps without padding the trace
 
 Deliverables:
 
 - derive-specific didactic audit
 - rules for pruning trivial steps and redundant single substeps
+- rules for pruning generic template substeps that do not expose an
+  intermediate state
 - family-specific human step titles where needed
+- explicit policy that a self-explanatory step may legitimately have zero
+  substeps
 
 Suggested new audit:
 
@@ -473,6 +482,9 @@ Acceptance criteria:
 
 - no duplicated parent/substep narratives
 - no trivial one-line substeps that restate the parent step
+- no substeps that only describe the maneuver without new visible math
+- no formula-template substeps kept just to make the trace look richer
+- self-explanatory direct steps are allowed to stay direct, with zero substeps
 - derive examples in web and CLI read naturally
 
 ## Phase 8. UX and Surface Parity

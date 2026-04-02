@@ -2,6 +2,7 @@
 pub(crate) enum DeriveTargetForm {
     Simplified,
     IntegratePrepared,
+    SolvePrepared,
     LogExpanded,
     LogContracted,
     TrigExpanded,

@@ -399,7 +399,12 @@ fn additive_signature(ctx: &Context, expr: ExprId) -> (Vec<(ExprId, i32)>, BigRa
     (terms, constant)
 }
 
-fn additive_gap_relation_holds(ctx: &Context, base: ExprId, gap: ExprId, target: ExprId) -> bool {
+fn additive_gap_relation_holds(
+    ctx: &mut Context,
+    base: ExprId,
+    gap: ExprId,
+    target: ExprId,
+) -> bool {
     let (base_terms, base_constant) = additive_signature(ctx, base);
     let (gap_terms, gap_constant) = additive_signature(ctx, gap);
     let (target_terms, target_constant) = additive_signature(ctx, target);
@@ -419,7 +424,14 @@ fn additive_gap_relation_holds(ctx: &Context, base: ExprId, gap: ExprId, target:
         cas_ast::ordering::compare_expr(ctx, *left_expr, *right_expr)
     });
 
-    combined_terms == target_terms && base_constant + gap_constant == target_constant
+    if combined_terms == target_terms
+        && base_constant.clone() + gap_constant.clone() == target_constant
+    {
+        return true;
+    }
+
+    let combined = ctx.add(Expr::Add(base, gap));
+    poly_eq(ctx, combined, target)
 }
 
 fn is_one(ctx: &Context, expr: ExprId) -> bool {
@@ -722,7 +734,20 @@ fn target_matches_fraction_combination(
     rewritten: ExprId,
     target_expr: ExprId,
 ) -> bool {
-    strong_target_match(ctx, rewritten, target_expr)
+    if strong_target_match(ctx, rewritten, target_expr) {
+        return true;
+    }
+
+    let Some((rewritten_num, rewritten_den)) = as_div(ctx, rewritten) else {
+        return false;
+    };
+    let Some((target_num, target_den)) = as_div(ctx, target_expr) else {
+        return false;
+    };
+
+    (strong_target_match(ctx, rewritten_num, target_num) || poly_eq(ctx, rewritten_num, target_num))
+        && (strong_target_match(ctx, rewritten_den, target_den)
+            || poly_eq(ctx, rewritten_den, target_den))
 }
 
 fn extract_additive_passthrough_terms(
@@ -1016,6 +1041,17 @@ mod tests {
         let mut ctx = Context::new();
         let source = parse("1/(c-b)*(1/(a*n+b) - 1/(a*n+c))", &mut ctx).expect("parse");
         let target = parse("1/((a*n+b)*(a*n+c))", &mut ctx).expect("parse");
+        let rewrite = try_rewrite_fraction_combination_target_aware(&mut ctx, source, target)
+            .expect("rewrite");
+
+        assert_eq!(rewrite.kind, FractionCombinationKind::TelescopingFraction);
+    }
+
+    #[test]
+    fn combines_unfactored_difference_squares_telescoping_fraction_target_aware() {
+        let mut ctx = Context::new();
+        let source = parse("1/(2*a)*(1/(x-a) - 1/(x+a))", &mut ctx).expect("parse");
+        let target = parse("1/(x^2-a^2)", &mut ctx).expect("parse");
         let rewrite = try_rewrite_fraction_combination_target_aware(&mut ctx, source, target)
             .expect("rewrite");
 

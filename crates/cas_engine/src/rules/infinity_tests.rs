@@ -1,4 +1,5 @@
 use super::infinity::*;
+use crate::Simplifier;
 use cas_ast::{Constant, Context, Expr, ExprId};
 use cas_math::infinity_support::{classify_finiteness, Finiteness, InfSign};
 use cas_parser::parse;
@@ -114,6 +115,39 @@ fn test_infinity_times_zero_indeterminate() {
 }
 
 #[test]
+fn test_undefined_addition_is_undefined() {
+    let mut ctx = Context::new();
+    let expr = parse_expr(&mut ctx, "undefined + 1");
+
+    let result = add_undefined(&mut ctx, expr);
+    assert!(result.is_some(), "Should detect undefined inside addition");
+
+    let new_expr = result.unwrap().new_expr;
+    assert!(matches!(
+        ctx.get(new_expr),
+        Expr::Constant(Constant::Undefined)
+    ));
+}
+
+#[test]
+fn test_undefined_subtraction_is_undefined() {
+    let mut ctx = Context::new();
+    let expr = parse_expr(&mut ctx, "undefined - 1");
+
+    let result = sub_undefined(&mut ctx, expr);
+    assert!(
+        result.is_some(),
+        "Should detect undefined inside subtraction"
+    );
+
+    let new_expr = result.unwrap().new_expr;
+    assert!(matches!(
+        ctx.get(new_expr),
+        Expr::Constant(Constant::Undefined)
+    ));
+}
+
+#[test]
 fn test_undefined_factor_multiplication_is_undefined() {
     let mut ctx = Context::new();
     let expr = parse_expr(&mut ctx, "a * undefined");
@@ -143,6 +177,57 @@ fn test_nested_undefined_in_division_is_undefined() {
     assert!(
         matches!(ctx.get(new_expr), Expr::Constant(Constant::Undefined)),
         "Result should be Undefined"
+    );
+}
+
+#[test]
+fn test_undefined_power_is_undefined() {
+    let mut ctx = Context::new();
+    let expr = parse_expr(&mut ctx, "undefined^2");
+
+    let result = pow_undefined(&mut ctx, expr);
+    assert!(result.is_some(), "Should detect undefined inside power");
+
+    let new_expr = result.unwrap().new_expr;
+    assert!(
+        matches!(ctx.get(new_expr), Expr::Constant(Constant::Undefined)),
+        "Result should be Undefined"
+    );
+}
+
+#[test]
+fn test_undefined_function_argument_is_undefined() {
+    let mut ctx = Context::new();
+    let expr = parse_expr(&mut ctx, "cos(undefined)");
+
+    let result = function_undefined(&mut ctx, expr);
+    assert!(
+        result.is_some(),
+        "Should detect undefined inside function arguments"
+    );
+
+    let new_expr = result.unwrap().new_expr;
+    assert!(
+        matches!(ctx.get(new_expr), Expr::Constant(Constant::Undefined)),
+        "Result should be Undefined"
+    );
+}
+
+#[test]
+fn test_full_simplifier_propagates_undefined_through_functions() {
+    let mut ctx = Context::new();
+    let expr = parse_expr(&mut ctx, "cos(ln(-1))");
+
+    let mut simplifier = Simplifier::with_default_rules();
+    simplifier.context = ctx;
+    let (result, _) = simplifier.simplify(expr);
+
+    assert!(
+        matches!(
+            simplifier.context.get(result),
+            Expr::Constant(Constant::Undefined)
+        ),
+        "Function-wrapped undefined should simplify all the way to undefined"
     );
 }
 

@@ -6,13 +6,16 @@ use crate::derive::{
     try_rewrite_integrate_prep_target_aware, try_rewrite_log_contraction_target_aware,
     try_rewrite_log_expansion_target_aware, try_rewrite_odd_half_power_target_aware,
     try_rewrite_power_merge_target_aware, try_rewrite_pythagorean_factor_form_target_aware,
-    try_rewrite_trig_contraction_target_aware, try_rewrite_trig_expansion,
-    try_rewrite_trig_identity_to_one_target_aware, DeriveStrategy, DeriveTargetForm,
-    ExpandRewriteKind,
+    try_rewrite_solve_prep_target_aware, try_rewrite_trig_contraction_target_aware,
+    try_rewrite_trig_expansion, try_rewrite_trig_identity_to_one_target_aware, DeriveStrategy,
+    DeriveTargetForm, ExpandRewriteKind,
 };
 
 use cas_ast::{Expr, ExprId};
 use cas_engine::NormalFormGoal;
+use cas_math::summation_support::{
+    try_plan_finite_sum_evaluation, FiniteAggregateCall, SumEvaluationKind,
+};
 use cas_solver_core::engine_event_collector::EngineEventCollector;
 use cas_solver_core::engine_events::EngineEvent;
 
@@ -124,6 +127,11 @@ fn build_strategy_fallback_step(
         DeriveStrategy::IntegratePrep => (
             "Prepare the expression for integration",
             "Cos Product Telescoping",
+            crate::StepCategory::Simplify,
+        ),
+        DeriveStrategy::SolvePrep => (
+            "Complete the square to rewrite the quadratic",
+            "Complete the Square",
             crate::StepCategory::Simplify,
         ),
         DeriveStrategy::Expand => (
@@ -464,6 +472,7 @@ fn try_supported_derive_strategies_inner(
 
     let mut simplify_stage: Option<DeriveStageOutput> = None;
     let mut integrate_prep_stage: Option<DeriveStageOutput> = None;
+    let mut solve_prep_stage: Option<DeriveStageOutput> = None;
     let mut log_expand_stage: Option<DeriveStageOutput> = None;
     let mut log_contract_stage: Option<DeriveStageOutput> = None;
     let mut trig_expand_stage: Option<DeriveStageOutput> = None;
@@ -484,11 +493,14 @@ fn try_supported_derive_strategies_inner(
     let mut simplify_then_expand_stage: Option<DeriveStageOutput> = None;
     let mut simplify_then_collect_stage: Option<Option<DeriveStageOutput>> = None;
     let mut simplify_then_factor_stage: Option<DeriveStageOutput> = None;
+    let prefer_simplify_first = is_finite_aggregate_source(&simplifier.context, resolved_expr);
 
-    if !matches!(
-        profile.form,
-        DeriveTargetForm::FactoredWithDivision { .. } | DeriveTargetForm::FractionExpanded
-    ) && looks_like_explicit_factored_target(&mut simplifier.context, target_expr)
+    if !prefer_simplify_first
+        && !matches!(
+            profile.form,
+            DeriveTargetForm::FactoredWithDivision { .. } | DeriveTargetForm::FractionExpanded
+        )
+        && looks_like_explicit_factored_target(&mut simplifier.context, target_expr)
     {
         let stage = run_factored_stage(
             simplifier,
@@ -504,6 +516,25 @@ fn try_supported_derive_strategies_inner(
             let steps =
                 finalize_steps(resolved_expr, target_expr, vec![stage], &simplifier.context);
             return Some((target_expr, steps, DeriveStrategy::Factor));
+        }
+    }
+
+    if prefer_simplify_first {
+        let stage = simplify_stage.get_or_insert_with(|| {
+            run_simplify_stage(
+                simplifier,
+                resolved_expr,
+                target_expr,
+                collect_steps,
+                simplify_options.clone(),
+            )
+        });
+        if derive_target_match(simplifier, stage.expr, target_expr) {
+            let mut stage = stage.clone();
+            retarget_stage_output(&mut stage, target_expr);
+            let steps =
+                finalize_steps(resolved_expr, target_expr, vec![stage], &simplifier.context);
+            return Some((target_expr, steps, DeriveStrategy::Simplify));
         }
     }
 
@@ -545,6 +576,28 @@ fn try_supported_derive_strategies_inner(
                         &simplifier.context,
                     );
                     return Some((target_expr, steps, DeriveStrategy::IntegratePrep));
+                }
+            }
+            DeriveStrategy::SolvePrep => {
+                let stage = solve_prep_stage.get_or_insert_with(|| {
+                    run_solve_prep_stage(
+                        simplifier,
+                        resolved_expr,
+                        target_expr,
+                        &profile.shared_vars,
+                        collect_steps,
+                    )
+                });
+                if strong_target_match(&mut simplifier.context, stage.expr, target_expr) {
+                    let mut stage = stage.clone();
+                    retarget_stage_output(&mut stage, target_expr);
+                    let steps = finalize_steps(
+                        resolved_expr,
+                        target_expr,
+                        vec![stage],
+                        &simplifier.context,
+                    );
+                    return Some((target_expr, steps, DeriveStrategy::SolvePrep));
                 }
             }
             DeriveStrategy::LogExpand => {
@@ -1579,6 +1632,55 @@ fn run_integrate_prep_stage(
     }
 }
 
+fn run_solve_prep_stage(
+    simplifier: &mut crate::Simplifier,
+    expr: ExprId,
+    target_expr: ExprId,
+    shared_vars: &[String],
+    collect_steps: bool,
+) -> DeriveStageOutput {
+    let Some(rewrite) = try_rewrite_solve_prep_target_aware(
+        &mut simplifier.context,
+        expr,
+        target_expr,
+        shared_vars,
+    ) else {
+        return DeriveStageOutput {
+            expr,
+            steps: Vec::new(),
+        };
+    };
+
+    let steps = if collect_steps {
+        let mut step = crate::Step::with_snapshots(
+            rewrite.kind.description(),
+            rewrite.kind.rule_name(),
+            expr,
+            rewrite.rewritten,
+            Vec::new(),
+            Some(&simplifier.context),
+            expr,
+            rewrite.rewritten,
+        );
+        step.importance = cas_solver_core::step_types::ImportanceLevel::Medium;
+        step.category = cas_solver_core::step_types::StepCategory::Simplify;
+        step.meta_mut().assumption_events.push(
+            cas_solver_core::assumption_model::AssumptionEvent::nonzero(
+                &simplifier.context,
+                rewrite.assume_nonzero_expr,
+            ),
+        );
+        vec![step]
+    } else {
+        Vec::new()
+    };
+
+    DeriveStageOutput {
+        expr: rewrite.rewritten,
+        steps,
+    }
+}
+
 fn run_log_expand_stage(
     simplifier: &mut crate::Simplifier,
     expr: ExprId,
@@ -1709,6 +1811,12 @@ fn run_simplify_stage(
     collect_steps: bool,
     mut simplify_options: crate::SimplifyOptions,
 ) -> DeriveStageOutput {
+    if let Some(stage) =
+        try_run_finite_summation_target_aware_stage(simplifier, expr, target_expr, collect_steps)
+    {
+        return stage;
+    }
+
     if let Some(rewrite) =
         try_rewrite_trig_identity_to_one_target_aware(&mut simplifier.context, expr, target_expr)
     {
@@ -1795,6 +1903,55 @@ fn run_simplify_stage(
 
     simplify_options.collect_steps = collect_steps;
     run_stage(simplifier, expr, collect_steps, simplify_options)
+}
+
+fn try_run_finite_summation_target_aware_stage(
+    simplifier: &mut crate::Simplifier,
+    expr: ExprId,
+    target_expr: ExprId,
+    collect_steps: bool,
+) -> Option<DeriveStageOutput> {
+    let plan = try_plan_finite_sum_evaluation(&mut simplifier.context, expr, 1000)?;
+    let mut temp = crate::Simplifier::with_default_rules();
+    temp.context = simplifier.context.clone();
+    let (simplified, _) = temp.simplify(plan.candidate);
+    simplifier.context = temp.context;
+
+    if !derive_target_match(simplifier, simplified, target_expr) {
+        return None;
+    }
+
+    let steps = if collect_steps {
+        let description = render_sum_evaluation_desc(&plan.kind, &plan.call, |id| {
+            format!(
+                "{}",
+                cas_formatter::DisplayExpr {
+                    context: &simplifier.context,
+                    id
+                }
+            )
+        });
+        let mut step = crate::Step::with_snapshots(
+            &description,
+            "Finite Summation",
+            expr,
+            simplified,
+            Vec::new(),
+            Some(&simplifier.context),
+            expr,
+            simplified,
+        );
+        step.importance = cas_solver_core::step_types::ImportanceLevel::Medium;
+        step.category = cas_solver_core::step_types::StepCategory::Simplify;
+        vec![step]
+    } else {
+        Vec::new()
+    };
+
+    Some(DeriveStageOutput {
+        expr: simplified,
+        steps,
+    })
 }
 
 fn run_collect_stage(
@@ -2110,6 +2267,39 @@ fn looks_like_explicit_factored_target(ctx: &mut cas_ast::Context, target_expr: 
 
             has_additive_factor && non_numeric_factors >= 2
         }
+    }
+}
+
+fn is_finite_aggregate_source(ctx: &cas_ast::Context, expr: ExprId) -> bool {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return false;
+    };
+    args.len() == 4 && matches!(ctx.sym_name(*fn_id), "sum" | "product")
+}
+
+fn render_sum_evaluation_desc<F>(
+    kind: &SumEvaluationKind,
+    call: &FiniteAggregateCall,
+    mut render_expr: F,
+) -> String
+where
+    F: FnMut(ExprId) -> String,
+{
+    match kind {
+        SumEvaluationKind::Telescoping => format!(
+            "Telescoping sum: Σ({}, {}) from {} to {}",
+            render_expr(call.term),
+            call.var_name,
+            render_expr(call.start_expr),
+            render_expr(call.end_expr)
+        ),
+        SumEvaluationKind::FiniteDirect { start, end } => format!(
+            "sum({}, {}, {}, {})",
+            render_expr(call.term),
+            call.var_name,
+            start,
+            end
+        ),
     }
 }
 

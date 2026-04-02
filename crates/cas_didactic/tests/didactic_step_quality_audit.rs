@@ -316,10 +316,7 @@ fn didactic_step_quality_priority_cases_use_multiphase_human_narratives() {
         ),
         (
             "inverse_trig_identity",
-            &[
-                "Juntar la pareja que encaja con la identidad",
-                "Esa pareja vale pi/2",
-            ],
+            &["Juntar la pareja que encaja con la identidad"],
         ),
         (
             "perfect_square_root",
@@ -581,8 +578,11 @@ fn didactic_step_quality_priority_cases_make_cli_narrative_less_magic() {
         nested_fraction_cli
     );
     assert!(
-        nested_fraction_cli.contains("Dividir entre una fracción equivale a invertirla"),
-        "nested_fraction_one_over_sum CLI narrative should explain the inversion directly, got:\n{}",
+        !nested_fraction_cli.contains("Dividir entre una fracción equivale a invertirla")
+            && !nested_fraction_cli.contains("Usar 1 / (p / q) = q / p")
+            && !nested_fraction_cli.contains("Usar n / (p / q) = n · q / p")
+            && !nested_fraction_cli.contains("Usar n / (1 / d) = n · d"),
+        "nested_fraction_one_over_sum CLI narrative should avoid formula-template sub-steps and keep only visible intermediates, got:\n{}",
         nested_fraction_cli
     );
     assert!(

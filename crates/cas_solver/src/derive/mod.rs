@@ -7,6 +7,7 @@ mod match_support;
 mod power_merge;
 mod radicals;
 mod rationalize;
+mod solve_prep;
 mod strategy;
 mod target_classifier;
 mod target_form;
@@ -30,6 +31,7 @@ pub(crate) use match_support::{presentational_target_match, strong_target_match}
 pub(crate) use power_merge::try_rewrite_power_merge_target_aware;
 pub(crate) use radicals::try_rewrite_odd_half_power_target_aware;
 pub(crate) use rationalize::looks_rationalizable_source;
+pub(crate) use solve_prep::try_rewrite_solve_prep_target_aware;
 pub(crate) use strategy::{ordered_strategies_for_target, DeriveStrategy};
 pub(crate) use target_classifier::{classify_target_profile, DeriveTargetProfile};
 pub(crate) use target_form::DeriveTargetForm;

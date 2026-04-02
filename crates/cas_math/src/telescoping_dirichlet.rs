@@ -1,5 +1,6 @@
+use crate::expr_extract::extract_i64_multiplier_and_base_factors;
 use crate::expr_nary::{AddView, Sign};
-use crate::trig_linear_support::extract_coef_and_base;
+use cas_ast::ordering::compare_expr;
 use cas_ast::{Context, Expr, ExprId};
 use num_rational::BigRational;
 use num_traits::{One, Zero};
@@ -15,11 +16,14 @@ pub struct DirichletKernelResult {
 
 /// Try to detect Dirichlet kernel identity pattern:
 /// 1 + 2*cos(x) + 2*cos(2x) + ... + 2*cos(nx) - sin((n+1/2)x)/sin(x/2) = 0
-pub fn try_dirichlet_kernel_identity(ctx: &Context, expr: ExprId) -> Option<DirichletKernelResult> {
+pub fn try_dirichlet_kernel_identity(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<DirichletKernelResult> {
     let view = AddView::from_expr(ctx, expr);
 
     let mut has_one = false;
-    let mut cosine_multiples: Vec<(usize, ExprId)> = Vec::new(); // (k, base_var)
+    let mut cosine_multiples: Vec<(usize, Vec<ExprId>)> = Vec::new(); // (k, base factors)
     let mut sin_ratio: Option<(ExprId, ExprId)> = None; // (numerator arg, denominator arg)
     let mut sin_ratio_is_negative = false;
 
@@ -60,13 +64,17 @@ pub fn try_dirichlet_kernel_identity(ctx: &Context, expr: ExprId) -> Option<Diri
 
     // Check if we have 1, 2, 3, ..., n.
     let n = cosine_multiples.len();
-    let base_var = cosine_multiples[0].1;
+    let base_factors = cosine_multiples[0].1.clone();
+    if base_factors.is_empty() {
+        return None;
+    }
     if cosine_multiples
         .iter()
-        .any(|(_, base)| cas_ast::ordering::compare_expr(ctx, *base, base_var) != Ordering::Equal)
+        .any(|(_, base)| !same_factor_basis(ctx, &base_factors, base))
     {
         return None;
     }
+    let base_var = crate::expr_nary::build_balanced_mul(ctx, &base_factors);
 
     let base_multiplier = cosine_multiples.iter().map(|(k, _)| *k).reduce(gcd_usize)?;
     if base_multiplier == 0 {
@@ -82,8 +90,8 @@ pub fn try_dirichlet_kernel_identity(ctx: &Context, expr: ExprId) -> Option<Diri
     // Verify sin ratio matches expected form: sin((n+1/2)*x)/sin(x/2).
     if let Some((num_arg, den_arg)) = sin_ratio {
         if sin_ratio_is_negative
-            && is_half_angle(ctx, den_arg, base_var, base_multiplier)
-            && is_half_integer_multiple(ctx, num_arg, base_var, n, base_multiplier)
+            && is_half_angle(ctx, den_arg, &base_factors, base_multiplier)
+            && is_half_integer_multiple(ctx, num_arg, &base_factors, n, base_multiplier)
         {
             return Some(DirichletKernelResult {
                 n,
@@ -97,7 +105,7 @@ pub fn try_dirichlet_kernel_identity(ctx: &Context, expr: ExprId) -> Option<Diri
 }
 
 // nary-lint: allow-binary (structural pattern match for 2*cos(k*x))
-fn extract_cosine_multiple(ctx: &Context, expr: ExprId) -> Option<(usize, ExprId)> {
+fn extract_cosine_multiple(ctx: &Context, expr: ExprId) -> Option<(usize, Vec<ExprId>)> {
     // Pattern: 2 * cos(k * x) or cos(...) * 2
     if let Expr::Mul(l, r) = ctx.get(expr) {
         // Check if one side is 2.
@@ -140,11 +148,16 @@ fn extract_sin_ratio(ctx: &Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
 }
 
 // nary-lint: allow-binary (structural pattern match for half-angle)
-fn is_half_angle(ctx: &Context, expr: ExprId, base_var: ExprId, base_multiplier: usize) -> bool {
-    let Some((coef, base)) = extract_rational_multiple_of_var(ctx, expr) else {
+fn is_half_angle(
+    ctx: &Context,
+    expr: ExprId,
+    base_factors: &[ExprId],
+    base_multiplier: usize,
+) -> bool {
+    let Some((coef, basis)) = extract_rational_multiple_of_basis(ctx, expr) else {
         return false;
     };
-    cas_ast::ordering::compare_expr(ctx, base, base_var) == Ordering::Equal
+    same_factor_basis(ctx, &basis, base_factors)
         && coef == BigRational::new((base_multiplier as i64).into(), 2.into())
 }
 
@@ -152,44 +165,26 @@ fn is_half_angle(ctx: &Context, expr: ExprId, base_var: ExprId, base_multiplier:
 fn is_half_integer_multiple(
     ctx: &Context,
     expr: ExprId,
-    base_var: ExprId,
+    base_factors: &[ExprId],
     n: usize,
     base_multiplier: usize,
 ) -> bool {
     let expected_num = 2 * n + 1; // (n+1/2) = (2n+1)/2
-    let Some((coef, base)) = extract_rational_multiple_of_var(ctx, expr) else {
+    let Some((coef, basis)) = extract_rational_multiple_of_basis(ctx, expr) else {
         return false;
     };
     let expected_coef =
         BigRational::new(((expected_num * base_multiplier) as i64).into(), 2.into());
-    cas_ast::ordering::compare_expr(ctx, base, base_var) == Ordering::Equal && coef == expected_coef
+    same_factor_basis(ctx, &basis, base_factors) && coef == expected_coef
 }
 
 // nary-lint: allow-binary (structural pattern match for k*x extraction)
-fn extract_multiple_of_var(ctx: &Context, expr: ExprId) -> Option<(usize, ExprId)> {
-    match ctx.get(expr) {
-        Expr::Mul(l, r) => {
-            // k * x
-            if let Expr::Number(n) = ctx.get(*l) {
-                if let Some(k) = n.to_integer().to_u64_digits().1.first() {
-                    if n.is_integer() && n.numer() > &0.into() {
-                        return Some((*k as usize, *r));
-                    }
-                }
-            }
-            if let Expr::Number(n) = ctx.get(*r) {
-                if let Some(k) = n.to_integer().to_u64_digits().1.first() {
-                    if n.is_integer() && n.numer() > &0.into() {
-                        return Some((*k as usize, *l));
-                    }
-                }
-            }
-            None
-        }
-        // Just x means k=1.
-        Expr::Variable(_) => Some((1, expr)),
-        _ => None,
+fn extract_multiple_of_var(ctx: &Context, expr: ExprId) -> Option<(usize, Vec<ExprId>)> {
+    let (multiple, base_factors) = extract_i64_multiplier_and_base_factors(ctx, expr);
+    if multiple <= 0 || base_factors.is_empty() {
+        return None;
     }
+    Some((multiple as usize, base_factors.into_vec()))
 }
 
 fn is_number(ctx: &Context, expr: ExprId, expected: i32) -> bool {
@@ -211,17 +206,21 @@ fn gcd_usize(a: usize, b: usize) -> usize {
     a
 }
 
-fn extract_rational_multiple_of_var(ctx: &Context, expr: ExprId) -> Option<(BigRational, ExprId)> {
+fn same_factor_basis(ctx: &Context, left: &[ExprId], right: &[ExprId]) -> bool {
+    left.len() == right.len()
+        && left
+            .iter()
+            .zip(right.iter())
+            .all(|(lhs, rhs)| compare_expr(ctx, *lhs, *rhs) == Ordering::Equal)
+}
+
+fn extract_rational_multiple_of_basis(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<(BigRational, Vec<ExprId>)> {
     match ctx.get(expr) {
-        Expr::Variable(_) => Some((BigRational::from_integer(1.into()), expr)),
-        Expr::Mul(_, _) => {
-            let (coef, base) = extract_coef_and_base(ctx, expr);
-            if cas_ast::ordering::compare_expr(ctx, base, expr) == Ordering::Equal {
-                None
-            } else {
-                Some((coef, base))
-            }
-        }
+        Expr::Variable(_) => Some((BigRational::from_integer(1.into()), vec![expr])),
+        Expr::Mul(_, _) => extract_mul_chain_rational_multiple(ctx, expr),
         Expr::Div(num, den) => {
             let Expr::Number(den_val) = ctx.get(*den) else {
                 return None;
@@ -229,30 +228,54 @@ fn extract_rational_multiple_of_var(ctx: &Context, expr: ExprId) -> Option<(BigR
             if den_val.is_zero() {
                 return None;
             }
-            let (num_coef, base) = extract_rational_multiple_of_var(ctx, *num)?;
-            Some((num_coef / den_val.clone(), base))
+            let (num_coef, basis) = extract_rational_multiple_of_basis(ctx, *num)?;
+            Some((num_coef / den_val.clone(), basis))
         }
         Expr::Neg(inner) => {
-            let (coef, base) = extract_rational_multiple_of_var(ctx, *inner)?;
-            Some((-coef, base))
+            let (coef, basis) = extract_rational_multiple_of_basis(ctx, *inner)?;
+            Some((-coef, basis))
         }
-        Expr::Number(value) if value.is_integer() => Some((value.clone(), expr)),
-        _ => None,
+        Expr::Number(_) => None,
+        _ => Some((BigRational::from_integer(1.into()), vec![expr])),
     }
+}
+
+fn extract_mul_chain_rational_multiple(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<(BigRational, Vec<ExprId>)> {
+    let mut coef = BigRational::from_integer(1.into());
+    let mut basis = Vec::new();
+
+    for factor in crate::expr_nary::mul_leaves(ctx, expr) {
+        if let Expr::Number(value) = ctx.get(factor) {
+            coef *= value.clone();
+        } else {
+            basis.push(factor);
+        }
+    }
+
+    if basis.is_empty() {
+        return None;
+    }
+    basis.sort_by(|a, b| compare_expr(ctx, *a, *b));
+    Some((coef, basis))
 }
 
 #[cfg(test)]
 mod tests {
     use super::try_dirichlet_kernel_identity;
+    use cas_ast::ordering::compare_expr;
     use cas_ast::Context;
     use cas_parser::parse;
+    use std::cmp::Ordering;
 
     #[test]
     fn detects_basic_dirichlet_identity() {
         let mut ctx = Context::new();
         let expr =
             parse("1 + 2*cos(x) + 2*cos(2*x) - sin(5*x/2)/sin(x/2)", &mut ctx).expect("parse");
-        let result = try_dirichlet_kernel_identity(&ctx, expr).expect("detect");
+        let result = try_dirichlet_kernel_identity(&mut ctx, expr).expect("detect");
         assert_eq!(result.n, 2);
         assert_eq!(result.base_multiplier, 1);
     }
@@ -265,8 +288,26 @@ mod tests {
             &mut ctx,
         )
         .expect("parse");
-        let result = try_dirichlet_kernel_identity(&ctx, expr).expect("detect");
+        let result = try_dirichlet_kernel_identity(&mut ctx, expr).expect("detect");
         assert_eq!(result.n, 2);
         assert_eq!(result.base_multiplier, 3);
+    }
+
+    #[test]
+    fn detects_symbolic_scale_dirichlet_identity() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "1 + 2*cos(a*x) + 2*cos(2*a*x) - sin(5*a*x/2)/sin(a*x/2)",
+            &mut ctx,
+        )
+        .expect("parse");
+        let result = try_dirichlet_kernel_identity(&mut ctx, expr).expect("detect");
+        assert_eq!(result.n, 2);
+        assert_eq!(result.base_multiplier, 1);
+        let expected = parse("a*x", &mut ctx).expect("parse expected");
+        assert_eq!(
+            compare_expr(&ctx, result.base_var, expected),
+            Ordering::Equal
+        );
     }
 }

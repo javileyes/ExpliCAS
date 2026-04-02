@@ -3,6 +3,7 @@ use super::super::visible_rule_names::visible_rule_name_for_step;
 use super::super::{EnrichedStep, SubStep};
 use crate::runtime::Step;
 use cas_ast::{Context, ExprId};
+use std::collections::HashSet;
 
 pub(super) fn enrich_step_loop(
     ctx: &Context,
@@ -54,7 +55,22 @@ fn prune_redundant_substeps(ctx: &Context, step: &Step, sub_steps: &mut Vec<SubS
     let step_after_latex = render_step_side_latex(ctx, step_after);
 
     sub_steps.retain(|sub_step| {
+        if is_noisy_template_substep(sub_step) {
+            return false;
+        }
+
         let normalized_substep = normalize_human_label(&sub_step.description);
+        let same_display = cas_formatter::clean_display_string(&sub_step.before_expr)
+            == step_before_display
+            && cas_formatter::clean_display_string(&sub_step.after_expr) == step_after_display;
+        let same_latex = sub_step.before_latex.as_deref() == Some(step_before_latex.as_str())
+            && sub_step.after_latex.as_deref() == Some(step_after_latex.as_str());
+
+        if (same_display || same_latex) && !is_contextual_same_snapshot_substep(&normalized_substep)
+        {
+            return false;
+        }
+
         if normalized_rule.is_empty()
             || normalized_substep.is_empty()
             || !(normalized_substep == normalized_rule
@@ -63,14 +79,10 @@ fn prune_redundant_substeps(ctx: &Context, step: &Step, sub_steps: &mut Vec<SubS
             return true;
         }
 
-        let same_display = cas_formatter::clean_display_string(&sub_step.before_expr)
-            == step_before_display
-            && cas_formatter::clean_display_string(&sub_step.after_expr) == step_after_display;
-        let same_latex = sub_step.before_latex.as_deref() == Some(step_before_latex.as_str())
-            && sub_step.after_latex.as_deref() == Some(step_after_latex.as_str());
-
         !(same_display || same_latex)
     });
+
+    prune_duplicate_snapshot_substeps(sub_steps);
 
     if sub_steps.len() == 1 {
         let sub_step = &sub_steps[0];
@@ -86,11 +98,45 @@ fn prune_redundant_substeps(ctx: &Context, step: &Step, sub_steps: &mut Vec<SubS
             || normalized_substep == normalized_rule
             || normalized_substep.starts_with(&format!("{normalized_rule} "))
             || normalized_rule.starts_with(&format!("{normalized_substep} "));
+        let rule_is_self_explanatory_fraction_op = matches!(
+            step.rule_name.as_str(),
+            "Add Fractions"
+                | "Subtract Fractions"
+                | "Combine Same Denominator Fractions"
+                | "Combine Same Denominator Sub"
+        );
         let title_is_tautological_single = normalized_substep.contains("se anulan entre si")
             || normalized_substep.contains("se compensan exactamente")
             || normalized_substep.starts_with("cancelar el factor común ")
             || normalized_substep == "los dos terminos ya son el mismo"
             || normalized_substep == "restar algo consigo mismo da 0";
+        let title_is_template_only_single = matches!(
+            sub_step.description.as_str(),
+            "Usar log_b(c) = log_a(c) · log_b(a)"
+                | "Desplegar un logaritmo en una cadena de cambios de base"
+                | "Dividir entre una fracción equivale a invertirla"
+                | "Usar 1 / (p / q) = q / p"
+                | "Usar n / (p / q) = n · q / p"
+                | "Usar n / (1 / d) = n · d"
+                | "Combinar términos del numerador (denominador común)"
+        );
+
+        if rule_is_self_explanatory_fraction_op && title_is_rule_rephrasing {
+            sub_steps.clear();
+            return;
+        }
+
+        if is_single_formula_template_rule(step.rule_name.as_str())
+            && looks_like_formula_template_substep(&sub_step.description)
+        {
+            sub_steps.clear();
+            return;
+        }
+
+        if title_is_template_only_single {
+            sub_steps.clear();
+            return;
+        }
 
         if (same_display || same_latex)
             && (title_is_rule_rephrasing || title_is_tautological_single)
@@ -98,6 +144,81 @@ fn prune_redundant_substeps(ctx: &Context, step: &Step, sub_steps: &mut Vec<SubS
             sub_steps.clear();
         }
     }
+}
+
+fn is_noisy_template_substep(sub_step: &SubStep) -> bool {
+    matches!(
+        sub_step.description.as_str(),
+        "Dividir entre una fracción equivale a invertirla"
+            | "Usar 1 / (p / q) = q / p"
+            | "Usar n / (p / q) = n · q / p"
+            | "Usar n / (1 / d) = n · d"
+            | "Combinar términos del numerador (denominador común)"
+    ) || matches!(
+        (sub_step.before_expr.as_str(), sub_step.after_expr.as_str()),
+        ("1 / (p / q)", "q / p")
+            | ("n / (p / q)", "n · q / p")
+            | ("n / (1 / d)", "n · d")
+            | (_, "(numerador combinado) / B")
+    )
+}
+
+fn is_contextual_same_snapshot_substep(normalized_substep: &str) -> bool {
+    normalized_substep.starts_with("aquí ") || normalized_substep.starts_with("aqui ")
+}
+
+fn is_single_formula_template_rule(rule_name: &str) -> bool {
+    matches!(
+        rule_name,
+        "Pythagorean Factor Form"
+            | "Expand Secant Squared"
+            | "Expand Cosecant Squared"
+            | "Recognize Secant Squared"
+            | "Recognize Cosecant Squared"
+            | "Reciprocal Trig Identity"
+            | "Reciprocal Product Identity"
+            | "Reciprocal Pythagorean Identity"
+            | "Half-Angle Square Identity"
+            | "Half-Angle Tangent Identity"
+            | "Trig Quotient"
+            | "Canonicalize Roots"
+            | "expand_log"
+            | "Log Contraction"
+            | "Double Angle Expansion"
+            | "Double Angle Contraction"
+            | "Cos 2x Additive Contraction"
+            | "Combine powers with same base (n-ary)"
+    )
+}
+
+fn looks_like_formula_template_substep(description: &str) -> bool {
+    let normalized = normalize_human_label(description);
+    normalized.starts_with("usar ")
+        || normalized.starts_with("encadenar ")
+        || normalized.starts_with("desplegar ")
+        || normalized.starts_with("reconocer ")
+        || normalized.starts_with("recognize ")
+        || description.contains('=')
+}
+
+fn prune_duplicate_snapshot_substeps(sub_steps: &mut Vec<SubStep>) {
+    let mut seen = HashSet::new();
+    sub_steps.retain(|sub_step| {
+        let before_display = cas_formatter::clean_display_string(&sub_step.before_expr);
+        let after_display = cas_formatter::clean_display_string(&sub_step.after_expr);
+        let before_latex = sub_step.before_latex.clone().unwrap_or_default();
+        let after_latex = sub_step.after_latex.clone().unwrap_or_default();
+
+        if before_display.is_empty()
+            && after_display.is_empty()
+            && before_latex.is_empty()
+            && after_latex.is_empty()
+        {
+            return true;
+        }
+
+        seen.insert((before_display, after_display, before_latex, after_latex))
+    });
 }
 
 fn focused_step_sides(step: &Step) -> (ExprId, ExprId) {

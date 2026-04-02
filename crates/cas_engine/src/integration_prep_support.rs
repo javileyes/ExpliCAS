@@ -1,7 +1,9 @@
 //! Support helpers for integration-preparation rewrite rules.
 
+use cas_ast::ordering::compare_expr;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
-use cas_math::expr_extract::extract_i64_multiplier_and_base;
+use cas_math::expr_extract::extract_i64_multiplier_and_base_factors;
+use cas_math::expr_nary::build_balanced_mul;
 use cas_math::trig_roots_flatten::flatten_mul_chain;
 use num_bigint::BigInt;
 use num_rational::BigRational;
@@ -24,12 +26,12 @@ pub fn try_rewrite_cos_product_telescoping_expr(
         return None;
     }
 
-    let mut cos_info: Vec<(i64, ExprId)> = Vec::new();
+    let mut cos_info: Vec<(i64, Vec<ExprId>)> = Vec::new();
     for &factor in &factors {
         if let Expr::Function(fn_id, args) = ctx.get(factor) {
             if ctx.builtin_of(*fn_id) == Some(BuiltinFn::Cos) && args.len() == 1 {
-                let (k, u) = extract_i64_multiplier_and_base(ctx, args[0]);
-                cos_info.push((k, u));
+                let (k, basis) = extract_i64_multiplier_and_base_factors(ctx, args[0]);
+                cos_info.push((k, basis.into_vec()));
             }
         }
     }
@@ -37,10 +39,13 @@ pub fn try_rewrite_cos_product_telescoping_expr(
         return None;
     }
 
-    let base_u = cos_info[0].1;
+    let base_factors = cos_info[0].1.clone();
+    if base_factors.is_empty() {
+        return None;
+    }
     let mut multipliers = Vec::new();
-    for (k, u) in &cos_info {
-        if *u != base_u {
+    for (k, basis) in &cos_info {
+        if !same_factor_basis(ctx, &base_factors, basis) {
             return None;
         }
         multipliers.push(*k);
@@ -62,6 +67,7 @@ pub fn try_rewrite_cos_product_telescoping_expr(
 
     let power_of_2 = 1i64 << n;
     let final_mult = base_mult * power_of_2;
+    let base_u = build_balanced_mul(ctx, &base_factors);
 
     let final_mult_num = ctx.add(Expr::Number(BigRational::from_integer(BigInt::from(
         final_mult,
@@ -98,6 +104,14 @@ pub fn try_rewrite_cos_product_telescoping_expr(
     })
 }
 
+fn same_factor_basis(ctx: &Context, left: &[ExprId], right: &[ExprId]) -> bool {
+    left.len() == right.len()
+        && left
+            .iter()
+            .zip(right.iter())
+            .all(|(lhs, rhs)| compare_expr(ctx, *lhs, *rhs).is_eq())
+}
+
 #[cfg(test)]
 mod tests {
     use super::try_rewrite_cos_product_telescoping_expr;
@@ -126,5 +140,17 @@ mod tests {
         let mut ctx = Context::new();
         let expr = parse("cos(x)*cos(3*x)", &mut ctx).unwrap_or_else(|_| panic!("parse"));
         assert!(try_rewrite_cos_product_telescoping_expr(&mut ctx, expr).is_none());
+    }
+
+    #[test]
+    fn rewrites_symbolic_scale_morrie_telescoping_product() {
+        let mut ctx = Context::new();
+        let expr = parse("cos(a*x)*cos(2*a*x)", &mut ctx).unwrap_or_else(|_| panic!("parse"));
+        let rewrite = try_rewrite_cos_product_telescoping_expr(&mut ctx, expr)
+            .unwrap_or_else(|| panic!("rewrite"));
+        let text = rendered(&ctx, rewrite.rewritten);
+        assert!(text.contains("sin(4 * a * x)"));
+        assert!(text.contains("4"));
+        assert!(text.contains("sin(a * x)"));
     }
 }

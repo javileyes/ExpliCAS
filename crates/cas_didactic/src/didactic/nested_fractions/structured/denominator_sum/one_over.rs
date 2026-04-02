@@ -5,7 +5,7 @@ use cas_ast::{Context, Expr, ExprId};
 pub(super) fn generate_one_over_sum_substeps(
     ctx: &Context,
     before_expr: ExprId,
-    after_expr: ExprId,
+    _after_expr: ExprId,
     hints: &cas_formatter::DisplayContext,
     nested_fraction_latex: fn(&Context, &cas_formatter::DisplayContext, ExprId) -> String,
 ) -> Vec<SubStep> {
@@ -19,13 +19,6 @@ pub(super) fn generate_one_over_sum_substeps(
             description: "Primero simplificar la suma del denominador".to_string(),
             before_expr: den_str.clone(),
             after_expr: intermediate_str.clone(),
-            before_latex: None,
-            after_latex: None,
-        });
-        sub_steps.push(SubStep {
-            description: "Dividir entre una fracción equivale a invertirla".to_string(),
-            before_expr: format!("\\frac{{1}}{{{}}}", intermediate_str),
-            after_expr: nested_fraction_latex(ctx, hints, after_expr),
             before_latex: None,
             after_latex: None,
         });
