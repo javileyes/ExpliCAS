@@ -292,6 +292,21 @@ impl<'a> DisplayExprStyled<'a> {
 
             Expr::Function(fn_id, args) => {
                 let name = self.context.sym_name(*fn_id);
+                // Special case: factorial(x) displays as x!
+                if (name == "fact" || name == "factorial") && args.len() == 1 {
+                    let needs_parens = matches!(
+                        self.context.get(args[0]),
+                        Expr::Add(_, _) | Expr::Sub(_, _) | Expr::Mul(_, _) | Expr::Div(_, _)
+                    );
+                    if needs_parens {
+                        write!(f, "(")?;
+                        self.fmt_internal(f, args[0])?;
+                        return write!(f, ")!");
+                    }
+                    self.fmt_internal(f, args[0])?;
+                    return write!(f, "!");
+                }
+
                 // Special case: abs(x) displays as |x|
                 if name == "abs" && args.len() == 1 {
                     write!(f, "|")?;

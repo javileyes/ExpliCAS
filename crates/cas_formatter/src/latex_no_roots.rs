@@ -76,6 +76,18 @@ impl<'a> LatexNoRoots<'a> {
             Expr::Function(fn_id, args) => {
                 let name = self.context.sym_name(*fn_id);
                 match name {
+                    "fact" | "factorial" if args.len() == 1 => {
+                        let needs_parens = matches!(
+                            self.context.get(args[0]),
+                            Expr::Add(_, _) | Expr::Sub(_, _) | Expr::Mul(_, _) | Expr::Div(_, _)
+                        );
+                        let arg = self.expr_to_latex(args[0], false);
+                        if needs_parens {
+                            format!("({})!", arg)
+                        } else {
+                            format!("{}!", arg)
+                        }
+                    }
                     "sqrt" if args.len() == 1 => {
                         let arg = self.expr_to_latex(args[0], false);
                         format!("\\sqrt{{{}}}", arg)

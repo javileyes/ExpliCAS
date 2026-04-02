@@ -18,8 +18,8 @@ define_rule!(
             Rewrite::new(rewrite.rewritten)
                 .desc("Cancel consecutive factorials")
                 .local(expr, rewrite.rewritten)
-                .requires(crate::ImplicitCondition::NonZero(
-                    rewrite.inherited_nonzero,
+                .requires(crate::ImplicitCondition::NonNegative(
+                    rewrite.factorial_arg_requires_nonnegative,
                 )),
         )
     }
@@ -81,11 +81,11 @@ mod tests {
     use cas_parser::parse;
 
     #[test]
-    fn consecutive_factorial_ratio_rule_simplifies_and_preserves_nonzero_requirement() {
+    fn consecutive_factorial_ratio_rule_simplifies_and_requires_factorial_domain_argument() {
         let mut ctx = Context::new();
         let expr = parse("(n + 1)! / n!", &mut ctx).expect("parse");
         let expected = parse("n + 1", &mut ctx).expect("expected");
-        let expected_den = parse("n!", &mut ctx).expect("den");
+        let expected_arg = parse("n", &mut ctx).expect("arg");
 
         let rewrite = ConsecutiveFactorialRatioRule
             .apply(
@@ -102,8 +102,8 @@ mod tests {
         assert!(rewrite.required_conditions.iter().any(|cond| {
             matches!(
                 cond,
-                crate::ImplicitCondition::NonZero(den)
-                    if compare_expr(&ctx, *den, expected_den) == std::cmp::Ordering::Equal
+                crate::ImplicitCondition::NonNegative(arg)
+                    if compare_expr(&ctx, *arg, expected_arg) == std::cmp::Ordering::Equal
             )
         }));
     }

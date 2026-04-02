@@ -501,6 +501,18 @@ pub trait LaTeXRenderer {
     /// Format function calls
     fn format_function(&self, name: &str, args: &[ExprId]) -> String {
         match name {
+            "fact" | "factorial" if args.len() == 1 => {
+                let needs_parens = matches!(
+                    self.context().get(args[0]),
+                    Expr::Add(_, _) | Expr::Sub(_, _) | Expr::Mul(_, _) | Expr::Div(_, _)
+                );
+                let arg = self.expr_to_latex(args[0], false);
+                if needs_parens {
+                    format!("({})!", arg)
+                } else {
+                    format!("{}!", arg)
+                }
+            }
             "sqrt" if args.len() == 1 => {
                 format!("\\sqrt{{{}}}", self.expr_to_latex(args[0], false))
             }
@@ -1201,6 +1213,18 @@ impl<'a> PathHighlightedLatexRenderer<'a> {
 
     fn format_function_path(&self, name: &str, args: &[ExprId], path: &ExprPath) -> String {
         match name {
+            "fact" | "factorial" if args.len() == 1 => {
+                let needs_parens = matches!(
+                    self.context.get(args[0]),
+                    Expr::Add(_, _) | Expr::Sub(_, _) | Expr::Mul(_, _) | Expr::Div(_, _)
+                );
+                let arg = self.render_with_path(args[0], false, &self.child_path(path, 0));
+                if needs_parens {
+                    format!("({})!", arg)
+                } else {
+                    format!("{}!", arg)
+                }
+            }
             "sqrt" if args.len() == 1 => {
                 format!(
                     "\\sqrt{{{}}}",

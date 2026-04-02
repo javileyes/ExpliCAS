@@ -19,7 +19,7 @@ pub enum NumberTheoryDispatch {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ConsecutiveFactorialRatioRewrite {
     pub rewritten: ExprId,
-    pub inherited_nonzero: ExprId,
+    pub factorial_arg_requires_nonnegative: ExprId,
 }
 
 /// Simple number-theory rewrite produced from a named function call.
@@ -193,7 +193,7 @@ pub fn try_rewrite_consecutive_factorial_ratio_expr(
 
     Some(ConsecutiveFactorialRatioRewrite {
         rewritten: num_arg,
-        inherited_nonzero: den,
+        factorial_arg_requires_nonnegative: den_arg,
     })
 }
 
@@ -705,7 +705,7 @@ mod tests {
         let mut ctx = Context::new();
         let expr = parse("(n + 1)! / n!", &mut ctx).expect("parse");
         let expected = parse("n + 1", &mut ctx).expect("expected");
-        let expected_den = parse("n!", &mut ctx).expect("den");
+        let expected_arg = parse("n", &mut ctx).expect("arg");
 
         let rewrite =
             try_rewrite_consecutive_factorial_ratio_expr(&mut ctx, expr).expect("rewrite");
@@ -715,7 +715,11 @@ mod tests {
             std::cmp::Ordering::Equal
         );
         assert_eq!(
-            compare_expr(&ctx, rewrite.inherited_nonzero, expected_den),
+            compare_expr(
+                &ctx,
+                rewrite.factorial_arg_requires_nonnegative,
+                expected_arg
+            ),
             std::cmp::Ordering::Equal
         );
     }

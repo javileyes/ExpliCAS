@@ -417,7 +417,31 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
                         }
                     );
                 }
-                if name == "abs" && args.len() == 1 {
+                if (name == "fact" || name == "factorial") && args.len() == 1 {
+                    let needs_parens = matches!(
+                        self.context.get(args[0]),
+                        Expr::Add(_, _) | Expr::Sub(_, _) | Expr::Mul(_, _) | Expr::Div(_, _)
+                    );
+                    if needs_parens {
+                        write!(
+                            f,
+                            "({})!",
+                            DisplayExpr {
+                                context: self.context,
+                                id: args[0]
+                            }
+                        )
+                    } else {
+                        write!(
+                            f,
+                            "{}!",
+                            DisplayExpr {
+                                context: self.context,
+                                id: args[0]
+                            }
+                        )
+                    }
+                } else if name == "abs" && args.len() == 1 {
                     write!(
                         f,
                         "|{}|",

@@ -339,4 +339,28 @@ mod tests {
         };
         assert_eq!(latex.to_latex(), "\\sum_{k=1}^{n} k");
     }
+
+    #[test]
+    fn test_path_highlighted_factorial_uses_bang_notation() {
+        let mut ctx = Context::new();
+        let n = ctx.var("n");
+        let one = ctx.num(1);
+        let n_plus_one = ctx.add(Expr::Add(n, one));
+        let fact = ctx.call("fact", vec![n_plus_one]);
+
+        let mut config = PathHighlightConfig::new();
+        config.add(vec![], HighlightColor::Red);
+
+        let latex = crate::PathHighlightedLatexRenderer {
+            context: &ctx,
+            id: fact,
+            path_highlights: &config,
+            hints: None,
+            style_prefs: None,
+        };
+
+        let rendered = latex.to_latex();
+        assert!(rendered.contains("!"));
+        assert!(!rendered.contains("\\text{fact}"));
+    }
 }

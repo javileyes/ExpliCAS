@@ -145,6 +145,16 @@ fn collect_nonzero_atomic_factors(ctx: &Context, expr: ExprId, factors: &mut Vec
     }
 }
 
+fn is_factorial_of_arg(ctx: &Context, expr: ExprId, arg: ExprId) -> bool {
+    matches!(
+        ctx.get(expr),
+        Expr::Function(fn_id, args)
+            if args.len() == 1
+                && matches!(ctx.sym_name(*fn_id), "fact" | "factorial")
+                && exprs_equivalent(ctx, args[0], arg)
+    )
+}
+
 fn apply_dominance_rules(ctx: &Context, conditions: &mut Vec<ImplicitCondition>) {
     let positive_exprs: Vec<ExprId> = conditions
         .iter()
@@ -191,6 +201,12 @@ fn apply_dominance_rules(ctx: &Context, conditions: &mut Vec<ImplicitCondition>)
                         break;
                     }
                 }
+                (ImplicitCondition::NonZero(nz_expr), ImplicitCondition::NonNegative(nn_expr)) => {
+                    if is_factorial_of_arg(ctx, *nz_expr, *nn_expr) {
+                        to_remove.push(i);
+                        break;
+                    }
+                }
                 _ => {}
             }
         }
@@ -218,4 +234,27 @@ pub fn render_conditions_normalized(
 ) -> Vec<String> {
     let normalized = normalize_and_dedupe_conditions(ctx, conditions);
     normalized.iter().map(|c| c.display(ctx)).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cas_parser::parse;
+
+    #[test]
+    fn nonnegative_factorial_argument_dominates_factorial_nonzero_display_condition() {
+        let mut ctx = Context::new();
+        let n = parse("n", &mut ctx).expect("parse n");
+        let fact_n = parse("n!", &mut ctx).expect("parse n!");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::NonNegative(n),
+                ImplicitCondition::NonZero(fact_n),
+            ],
+        );
+
+        assert_eq!(normalized, vec![ImplicitCondition::NonNegative(n)]);
+    }
 }
