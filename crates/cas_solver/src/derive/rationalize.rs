@@ -35,9 +35,23 @@ mod tests {
     use super::looks_rationalizable_source;
 
     #[test]
-    fn detects_root_denominator_as_rationalizable() {
-        let mut ctx = cas_ast::Context::new();
-        let expr = cas_parser::parse("1/(sqrt(x)-1)", &mut ctx).expect("parse");
-        assert!(looks_rationalizable_source(&ctx, expr));
+    fn detects_tabulated_root_denominators_as_rationalizable() {
+        let cases = [
+            "1/(sqrt(x)-1)",
+            "1/(sqrt(x)+1)",
+            "1/(sqrt(x)-2)",
+            "1/(sqrt(x)-a)",
+            "1/(sqrt(y)-a)",
+            "(x^(3/2)-1)/(sqrt(x)-1)",
+        ];
+
+        for text in cases {
+            let mut ctx = cas_ast::Context::new();
+            let expr = cas_parser::parse(text, &mut ctx).expect("parse");
+            assert!(
+                looks_rationalizable_source(&ctx, expr),
+                "expected `{text}` to look rationalizable"
+            );
+        }
     }
 }

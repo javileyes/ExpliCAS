@@ -1,0 +1,304 @@
+use cas_ast::{Context, Expr, ExprId};
+use cas_formatter::DisplayExpr;
+use cas_math::expr_predicates::{is_one_expr, is_zero_expr};
+use cas_math::expr_rewrite::smart_mul;
+use cas_math::trig_roots_flatten::{flatten_add_sub_chain, flatten_mul_chain};
+use std::collections::BTreeMap;
+
+use super::strong_target_match;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct CollectTargetRewrite {
+    pub(crate) focus_label: String,
+    pub(crate) rewritten: ExprId,
+}
+
+pub(crate) fn try_rewrite_collect_monomial_target_aware(
+    ctx: &mut Context,
+    source_expr: ExprId,
+    target_expr: ExprId,
+) -> Option<CollectTargetRewrite> {
+    for target_term in flatten_add_sub_chain(ctx, target_expr) {
+        let (_, focus_expr, _, focus_label) = split_coeff_and_monomial(ctx, target_term);
+        if is_one_expr(ctx, focus_expr) || is_simple_collect_focus(&focus_label) {
+            continue;
+        }
+
+        let rewritten = rewrite_source_by_focus(ctx, source_expr, focus_expr)?;
+        if matches_target_modulo_simplify(ctx, rewritten, target_expr) {
+            return Some(CollectTargetRewrite {
+                focus_label,
+                rewritten,
+            });
+        }
+    }
+    None
+}
+
+fn rewrite_source_by_focus(
+    ctx: &mut Context,
+    source_expr: ExprId,
+    focus_expr: ExprId,
+) -> Option<ExprId> {
+    let focus_signature = monomial_signature(ctx, focus_expr)?;
+    let source_terms = flatten_add_sub_chain(ctx, source_expr);
+    if source_terms.len() < 2 {
+        return None;
+    }
+
+    let mut grouped_coeffs = Vec::new();
+    let mut rebuilt_terms = Vec::new();
+    let mut first_group_index = None;
+
+    for term in source_terms {
+        if let Some(coeff) = divide_term_by_focus(ctx, term, &focus_signature) {
+            if first_group_index.is_none() {
+                first_group_index = Some(rebuilt_terms.len());
+            }
+            grouped_coeffs.push(coeff);
+        } else {
+            rebuilt_terms.push(term);
+        }
+    }
+
+    if grouped_coeffs.len() < 2 {
+        return None;
+    }
+
+    let grouped_coeff = combine_add_chain(ctx, &grouped_coeffs);
+    let grouped_term = if is_zero_expr(ctx, grouped_coeff) {
+        return None;
+    } else if is_one_expr(ctx, grouped_coeff) {
+        focus_expr
+    } else {
+        smart_mul(ctx, grouped_coeff, focus_expr)
+    };
+
+    rebuilt_terms.insert(first_group_index.unwrap_or(0), grouped_term);
+    Some(combine_add_chain(ctx, &rebuilt_terms))
+}
+
+fn combine_add_chain(ctx: &mut Context, terms: &[ExprId]) -> ExprId {
+    match terms {
+        [] => ctx.num(0),
+        [only] => *only,
+        [first, rest @ ..] => {
+            let mut result = *first;
+            for term in rest {
+                result = ctx.add(Expr::Add(result, *term));
+            }
+            result
+        }
+    }
+}
+
+fn split_coeff_and_monomial(ctx: &mut Context, term: ExprId) -> (ExprId, ExprId, String, String) {
+    let factors = flatten_mul_chain(ctx, term);
+    let mut literal_factors = Vec::new();
+    let mut coeff_factors = Vec::new();
+
+    for factor in factors {
+        if is_monomial_factor(ctx, factor) {
+            literal_factors.push((render_expr(ctx, factor), factor));
+        } else {
+            coeff_factors.push(factor);
+        }
+    }
+
+    literal_factors.sort_by(|left, right| left.0.cmp(&right.0));
+
+    let literal = if literal_factors.is_empty() {
+        ctx.num(1)
+    } else {
+        let mut result = literal_factors[0].1;
+        for (_, factor) in literal_factors.iter().skip(1) {
+            result = smart_mul(ctx, result, *factor);
+        }
+        result
+    };
+    let coeff = if coeff_factors.is_empty() {
+        ctx.num(1)
+    } else {
+        let mut result = coeff_factors[0];
+        for factor in coeff_factors.into_iter().skip(1) {
+            result = smart_mul(ctx, result, factor);
+        }
+        result
+    };
+
+    let literal_label = render_expr(ctx, literal);
+    (coeff, literal, literal_label.clone(), literal_label)
+}
+
+fn divide_term_by_focus(
+    ctx: &mut Context,
+    term: ExprId,
+    focus_signature: &BTreeMap<String, i64>,
+) -> Option<ExprId> {
+    let factors = flatten_mul_chain(ctx, term);
+    let mut literal_counts = BTreeMap::new();
+    let mut coeff_factors = Vec::new();
+
+    for factor in factors {
+        if let Some((var_name, degree)) = variable_power(ctx, factor) {
+            *literal_counts.entry(var_name).or_insert(0) += degree;
+        } else {
+            coeff_factors.push(factor);
+        }
+    }
+
+    for (var_name, needed_degree) in focus_signature {
+        let available = literal_counts.get_mut(var_name)?;
+        if *available < *needed_degree {
+            return None;
+        }
+        *available -= *needed_degree;
+    }
+
+    for (var_name, remaining_degree) in literal_counts {
+        if remaining_degree == 0 {
+            continue;
+        }
+        let var_expr = ctx.var(&var_name);
+        let factor = if remaining_degree == 1 {
+            var_expr
+        } else {
+            let degree_expr = ctx.num(remaining_degree);
+            ctx.add(Expr::Pow(var_expr, degree_expr))
+        };
+        coeff_factors.push(factor);
+    }
+
+    Some(combine_mul_chain(ctx, &coeff_factors))
+}
+
+fn combine_mul_chain(ctx: &mut Context, factors: &[ExprId]) -> ExprId {
+    match factors {
+        [] => ctx.num(1),
+        [only] => *only,
+        [first, rest @ ..] => {
+            let mut result = *first;
+            for factor in rest {
+                result = smart_mul(ctx, result, *factor);
+            }
+            result
+        }
+    }
+}
+
+fn monomial_signature(ctx: &mut Context, expr: ExprId) -> Option<BTreeMap<String, i64>> {
+    let factors = flatten_mul_chain(ctx, expr);
+    let mut signature = BTreeMap::new();
+
+    for factor in factors {
+        let (var_name, degree) = variable_power(ctx, factor)?;
+        *signature.entry(var_name).or_insert(0) += degree;
+    }
+
+    (!signature.is_empty()).then_some(signature)
+}
+
+fn is_monomial_factor(ctx: &Context, expr: ExprId) -> bool {
+    variable_power(ctx, expr).is_some()
+}
+
+fn variable_power(ctx: &Context, expr: ExprId) -> Option<(String, i64)> {
+    match ctx.get(expr) {
+        Expr::Variable(sym_id) => Some((ctx.sym_name(*sym_id).to_string(), 1)),
+        Expr::Pow(base, exp) => match (ctx.get(*base), ctx.get(*exp)) {
+            (Expr::Variable(sym_id), Expr::Number(n))
+                if n.is_integer() && n.to_integer() >= 1.into() =>
+            {
+                Some((
+                    ctx.sym_name(*sym_id).to_string(),
+                    n.to_integer().try_into().ok()?,
+                ))
+            }
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn render_expr(ctx: &Context, expr: ExprId) -> String {
+    format!(
+        "{}",
+        DisplayExpr {
+            context: ctx,
+            id: expr
+        }
+    )
+}
+
+fn matches_target_modulo_simplify(ctx: &mut Context, left: ExprId, right: ExprId) -> bool {
+    if strong_target_match(ctx, left, right) {
+        return true;
+    }
+
+    let zero = ctx.num(0);
+    let difference = ctx.add(Expr::Sub(left, right));
+    let simplified = run_default_simplify(ctx, difference);
+    strong_target_match(ctx, simplified, zero)
+}
+
+fn run_default_simplify(ctx: &mut Context, expr: ExprId) -> ExprId {
+    let mut simplifier = crate::Simplifier::with_default_rules();
+    std::mem::swap(&mut simplifier.context, ctx);
+    let (rewritten, _steps, _stats) =
+        simplifier.simplify_with_stats(expr, crate::SimplifyOptions::default());
+    std::mem::swap(&mut simplifier.context, ctx);
+    rewritten
+}
+
+fn is_simple_collect_focus(focus: &str) -> bool {
+    !focus.is_empty()
+        && focus
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+}
+
+#[cfg(test)]
+mod tests {
+    use super::try_rewrite_collect_monomial_target_aware;
+
+    #[test]
+    fn target_aware_collect_matches_tabulated_composite_monomial_targets() {
+        let cases = [
+            ("a*x*y + b*x*y + c", "(a+b)*x*y + c", &["x", "y"][..]),
+            (
+                "a*x^2*y + b*x^2*y + c",
+                "(a+b)*x^2*y + c",
+                &["x^2", "y"][..],
+            ),
+            ("a*y*z + b*y*z + c", "(a+b)*y*z + c", &["y", "z"][..]),
+            (
+                "a*x*y + b*x*y + c*x*z + d*x*z + e",
+                "(a+b)*x*y + (c+d)*x*z + e",
+                &["x", "y"][..],
+            ),
+        ];
+
+        for (source, target, focus_fragments) in cases {
+            let mut ctx = cas_ast::Context::new();
+            let source = cas_parser::parse(source, &mut ctx).expect("parse source");
+            let target = cas_parser::parse(target, &mut ctx).expect("parse target");
+            let rewrite = try_rewrite_collect_monomial_target_aware(&mut ctx, source, target)
+                .expect("expected target-aware collect rewrite");
+            for fragment in focus_fragments {
+                assert!(
+                    rewrite.focus_label.contains(fragment),
+                    "expected focus label `{}` to contain `{fragment}`",
+                    rewrite.focus_label
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn ignores_simple_variable_collect_targets() {
+        let mut ctx = cas_ast::Context::new();
+        let source = cas_parser::parse("a*x + b*x + c", &mut ctx).expect("parse source");
+        let target = cas_parser::parse("(a+b)*x + c", &mut ctx).expect("parse target");
+        assert!(try_rewrite_collect_monomial_target_aware(&mut ctx, source, target).is_none());
+    }
+}

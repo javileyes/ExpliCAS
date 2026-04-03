@@ -1,3 +1,5 @@
+use cas_ast::{Constant, Context, Expr, ExprId};
+use cas_parser::parse;
 use cas_solver::runtime::Simplifier;
 use cas_solver::runtime::SimplifyOptions;
 use cas_solver::session_api::analysis::{
@@ -91,6 +93,178 @@ fn count_top_level_steps(lines: &[String]) -> usize {
                     .all(|ch| ch.is_ascii_digit())
         })
         .count()
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SignatureMode {
+    Conservative,
+    Abstract,
+}
+
+#[derive(Debug, Default)]
+struct SignatureState {
+    variables: BTreeMap<String, usize>,
+    functions: BTreeMap<(String, usize), usize>,
+}
+
+fn pair_shape_signature(case: &DeriveCase, mode: SignatureMode) -> String {
+    let mut ctx = Context::new();
+    let source = parse(&case.source, &mut ctx)
+        .unwrap_or_else(|err| panic!("failed to parse derive source {}: {err}", case.id));
+    let target = parse(&case.target, &mut ctx)
+        .unwrap_or_else(|err| panic!("failed to parse derive target {}: {err}", case.id));
+    let mut state = SignatureState::default();
+    format!(
+        "{} => {}",
+        expr_shape_signature(&ctx, source, &mut state, mode),
+        expr_shape_signature(&ctx, target, &mut state, mode)
+    )
+}
+
+fn expr_shape_signature(
+    ctx: &Context,
+    expr: ExprId,
+    state: &mut SignatureState,
+    mode: SignatureMode,
+) -> String {
+    match ctx.get(expr) {
+        Expr::Number(_) => "N".to_string(),
+        Expr::Constant(constant) => match constant {
+            Constant::Pi => "pi".to_string(),
+            Constant::E => "e".to_string(),
+            Constant::Infinity => "infinity".to_string(),
+            Constant::Undefined => "undefined".to_string(),
+            Constant::I => "i".to_string(),
+            Constant::Phi => "phi".to_string(),
+        },
+        Expr::Variable(id) => {
+            let name = ctx.sym_name(*id).to_string();
+            let next = state.variables.len() + 1;
+            let slot = *state.variables.entry(name).or_insert(next);
+            format!("v{slot}")
+        }
+        Expr::Add(_, _) => {
+            let mut terms = Vec::new();
+            collect_add_terms(ctx, expr, &mut terms);
+            let mut signatures = terms
+                .into_iter()
+                .map(|term| expr_shape_signature(ctx, term, state, mode))
+                .collect::<Vec<_>>();
+            signatures.sort();
+            format!("add({})", signatures.join(","))
+        }
+        Expr::Mul(_, _) => {
+            let mut factors = Vec::new();
+            collect_mul_factors(ctx, expr, &mut factors);
+            let mut signatures = factors
+                .into_iter()
+                .map(|factor| expr_shape_signature(ctx, factor, state, mode))
+                .collect::<Vec<_>>();
+            signatures.sort();
+            format!("mul({})", signatures.join(","))
+        }
+        Expr::Sub(lhs, rhs) => format!(
+            "sub({},{})",
+            expr_shape_signature(ctx, *lhs, state, mode),
+            expr_shape_signature(ctx, *rhs, state, mode)
+        ),
+        Expr::Div(lhs, rhs) => format!(
+            "div({},{})",
+            expr_shape_signature(ctx, *lhs, state, mode),
+            expr_shape_signature(ctx, *rhs, state, mode)
+        ),
+        Expr::Pow(base, exponent) => format!(
+            "pow({},{})",
+            expr_shape_signature(ctx, *base, state, mode),
+            expr_shape_signature(ctx, *exponent, state, mode)
+        ),
+        Expr::Neg(inner) => format!("neg({})", expr_shape_signature(ctx, *inner, state, mode)),
+        Expr::Function(id, args) => {
+            let fn_name = match mode {
+                SignatureMode::Conservative => ctx.sym_name(*id).to_string(),
+                SignatureMode::Abstract => {
+                    let key = (ctx.sym_name(*id).to_string(), args.len());
+                    let next = state.functions.len() + 1;
+                    let slot = *state.functions.entry(key).or_insert(next);
+                    format!("f{slot}/{}", args.len())
+                }
+            };
+            let arg_signatures = args
+                .iter()
+                .map(|arg| expr_shape_signature(ctx, *arg, state, mode))
+                .collect::<Vec<_>>();
+            format!("{fn_name}({})", arg_signatures.join(","))
+        }
+        Expr::Matrix { rows, cols, data } => {
+            let entries = data
+                .iter()
+                .map(|entry| expr_shape_signature(ctx, *entry, state, mode))
+                .collect::<Vec<_>>();
+            format!("matrix[{rows}x{cols}]({})", entries.join(","))
+        }
+        Expr::SessionRef(_) => "session_ref".to_string(),
+        Expr::Hold(inner) => format!("hold({})", expr_shape_signature(ctx, *inner, state, mode)),
+    }
+}
+
+fn collect_add_terms(ctx: &Context, expr: ExprId, out: &mut Vec<ExprId>) {
+    match ctx.get(expr) {
+        Expr::Add(lhs, rhs) => {
+            collect_add_terms(ctx, *lhs, out);
+            collect_add_terms(ctx, *rhs, out);
+        }
+        _ => out.push(expr),
+    }
+}
+
+fn collect_mul_factors(ctx: &Context, expr: ExprId, out: &mut Vec<ExprId>) {
+    match ctx.get(expr) {
+        Expr::Mul(lhs, rhs) => {
+            collect_mul_factors(ctx, *lhs, out);
+            collect_mul_factors(ctx, *rhs, out);
+        }
+        _ => out.push(expr),
+    }
+}
+
+fn shape_budget_violations(
+    cases: &[DeriveCase],
+    mode: SignatureMode,
+    max_cluster_size: usize,
+) -> Vec<String> {
+    let mut clusters: BTreeMap<(String, String, String, String), Vec<String>> = BTreeMap::new();
+
+    for case in cases
+        .iter()
+        .filter(|case| case.expected_status == "derived")
+    {
+        let signature = pair_shape_signature(case, mode);
+        let strategy = case.expected_strategy.clone().unwrap_or_default();
+        clusters
+            .entry((
+                case.family.clone(),
+                case.expected_status.clone(),
+                strategy,
+                signature,
+            ))
+            .or_default()
+            .push(case.id.clone());
+    }
+
+    clusters
+        .into_iter()
+        .filter_map(|((family, _status, strategy, signature), mut ids)| {
+            if ids.len() <= max_cluster_size {
+                return None;
+            }
+            ids.sort();
+            Some(format!(
+                "mode={mode:?} family={family} strategy={strategy} cluster_size={} ids={} signature={signature}",
+                ids.len(),
+                ids.join(",")
+            ))
+        })
+        .collect()
 }
 
 #[test]
@@ -227,5 +401,23 @@ fn derive_pairs_follow_expected_outcomes() {
     eprintln!(
         "derive unsupported-equivalent-by-family: {:?}",
         unsupported_by_family
+    );
+}
+
+#[test]
+fn derive_pairs_shape_clusters_stay_within_budget() {
+    let cases = load_derive_cases();
+    let mut violations = Vec::new();
+    violations.extend(shape_budget_violations(
+        &cases,
+        SignatureMode::Conservative,
+        2,
+    ));
+    violations.extend(shape_budget_violations(&cases, SignatureMode::Abstract, 2));
+
+    assert!(
+        violations.is_empty(),
+        "derive corpus inflation guardrail failed:\n{}",
+        violations.join("\n")
     );
 }

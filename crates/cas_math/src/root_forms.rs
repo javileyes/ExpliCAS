@@ -2467,6 +2467,40 @@ mod tests {
     }
 
     #[test]
+    fn odd_half_power_rewrite_scales_across_multiple_odd_numerators() {
+        let cases = [
+            ("x", "abs(x)*sqrt(x)", 3_i64, 1_i64),
+            ("x", "abs(x)^2*sqrt(x)", 5, 2),
+            ("x", "abs(x)^5*sqrt(x)", 11, 5),
+            ("y", "abs(y)^6*sqrt(y)", 13, 6),
+            ("x", "abs(x)^7*sqrt(x)", 15, 7),
+        ];
+
+        for (base_name, expected, numer, abs_power) in cases {
+            let mut ctx = Context::new();
+            let base = ctx.var(base_name);
+            let exp = ctx.rational(numer, 2);
+            let expr = ctx.add(Expr::Pow(base, exp));
+            let rewrite = try_rewrite_odd_half_power_expr(&mut ctx, expr).expect("rewrite");
+            assert_eq!(
+                rewrite.numerator, numer,
+                "wrong numerator for {base_name}^({numer}/2)"
+            );
+            assert_eq!(
+                rewrite.abs_power, abs_power,
+                "wrong abs power for {base_name}^({numer}/2)"
+            );
+
+            let expected_expr = parse(expected, &mut ctx).expect("expected");
+            assert_eq!(
+                cas_ast::ordering::compare_expr(&ctx, rewrite.rewritten, expected_expr),
+                std::cmp::Ordering::Equal,
+                "unexpected rewrite for {base_name}^({numer}/2)"
+            );
+        }
+    }
+
+    #[test]
     fn denest_sqrt_add_sqrt_rewrite_matches_known_case() {
         let mut ctx = Context::new();
         let expr = parse("sqrt(3 + sqrt(5))", &mut ctx).expect("expr");

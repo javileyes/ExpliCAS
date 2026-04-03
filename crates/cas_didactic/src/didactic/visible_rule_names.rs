@@ -36,7 +36,9 @@ pub(crate) fn visible_rule_name(rule_name: &str) -> &str {
         "Pythagorean Factor Form" => "Aplicar identidad pitagórica",
         "Pythagorean High-Power Factor" => "Aplicar identidad pitagórica y reagrupar",
         "Consecutive Factorial Ratio" => "Cancelar factoriales consecutivos",
-        "Rationalize Linear Sqrt Denominator" => "Racionalizar el denominador",
+        "Rationalize Linear Sqrt Denominator" | "Rationalize Denominator" => {
+            "Racionalizar el denominador"
+        }
         "Distribute Division" => "Repartir el denominador común",
         "Mixed Fraction Split" => "Separar parte entera y resto",
         "Mixed Fraction Combine" => "Unir parte entera y fracción",
@@ -85,6 +87,14 @@ pub(crate) fn visible_rule_name_for_step<'a>(
     rule_name: &'a str,
     description: &str,
 ) -> Cow<'a, str> {
+    if rule_name == "Collect Terms" && description.starts_with("Collect terms by ") {
+        let focus = &description["Collect terms by ".len()..];
+        if is_simple_collect_focus(focus) {
+            return Cow::Borrowed("Agrupar términos por variable");
+        }
+        return Cow::Borrowed("Agrupar términos por factor común");
+    }
+
     if rule_name == "Finite Product"
         && (description.starts_with("Telescoping product:")
             || description.starts_with("Factorized telescoping product:"))
@@ -104,6 +114,13 @@ pub(crate) fn visible_rule_name_for_step<'a>(
         }
         _ => Cow::Borrowed(visible_rule_name(rule_name)),
     }
+}
+
+fn is_simple_collect_focus(focus: &str) -> bool {
+    !focus.is_empty()
+        && focus
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
 }
 
 pub(crate) fn visible_step_description<'a>(description: &'a str) -> Cow<'a, str> {

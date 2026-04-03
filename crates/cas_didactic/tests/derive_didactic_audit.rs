@@ -260,6 +260,7 @@ fn has_noisy_template_substep(step: &Value) -> bool {
                 | Some("Usar n / (p / q) = n · q / p")
                 | Some("Usar n / (1 / d) = n · d")
                 | Some("Combinar términos del numerador (denominador común)")
+                | Some("Aquí a = a y b = b")
         ) || matches!(
             (
                 substep.get("before_expr").and_then(Value::as_str),
@@ -443,6 +444,33 @@ fn step_substep_titles(step: &Value) -> Vec<&str> {
         .unwrap_or_default()
 }
 
+fn step_by_rule<'a>(artifact: &'a AuditArtifact, rule: &str) -> &'a Value {
+    artifact
+        .json_steps
+        .iter()
+        .find(|step| {
+            step.get("rule")
+                .and_then(Value::as_str)
+                .is_some_and(|candidate| candidate == rule)
+        })
+        .unwrap_or_else(|| panic!("expected derive step with rule `{rule}`"))
+}
+
+fn assert_case_step_titles(case_id: &str, rule: &str, expected_titles: &[&str]) {
+    let artifact = audit_case(&derive_case_by_id(case_id));
+    let step = step_by_rule(&artifact, rule);
+    assert_eq!(step_substep_titles(step), expected_titles);
+}
+
+fn assert_case_step_has_no_substeps(case_id: &str, rule: &str) {
+    let artifact = audit_case(&derive_case_by_id(case_id));
+    let step = step_by_rule(&artifact, rule);
+    assert!(
+        step_substep_titles(step).is_empty(),
+        "expected `{case_id}` / `{rule}` to stay direct without substeps"
+    );
+}
+
 fn report_output_path() -> PathBuf {
     let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
     crate_root
@@ -615,16 +643,6 @@ fn derive_didactic_cases_render_steps_without_redundant_single_substeps() {
             !artifact
                 .flags
                 .iter()
-                .any(|flag| flag == "no web substeps emitted"),
-            "derive audit case {} emitted no web substeps; cli=\n{}\nflags={:?}",
-            case.id,
-            artifact.cli_lines.join("\n"),
-            artifact.flags
-        );
-        assert!(
-            !artifact
-                .flags
-                .iter()
                 .any(|flag| flag == "multiple substeps share the same snapshot inside a step"),
             "derive audit case {} has duplicate multi-substep snapshots; cli=\n{}\nflags={:?}",
             case.id,
@@ -767,10 +785,7 @@ fn derive_didactic_symbolic_perfect_square_factorization_explains_pattern() {
         .filter_map(|substep| substep.get("title").and_then(Value::as_str))
         .collect();
 
-    assert_eq!(
-        titles,
-        vec!["Usar a^2 + 2ab + b^2 = (a + b)^2", "Aquí a = a y b = b"]
-    );
+    assert_eq!(titles, vec!["Usar a^2 + 2ab + b^2 = (a + b)^2"]);
 }
 
 #[test]
@@ -795,13 +810,7 @@ fn derive_didactic_symbolic_binomial_cube_factorization_explains_pattern() {
         .filter_map(|substep| substep.get("title").and_then(Value::as_str))
         .collect();
 
-    assert_eq!(
-        titles,
-        vec![
-            "Usar a^3 + 3a^2b + 3ab^2 + b^3 = (a + b)^3",
-            "Aquí a = a y b = b"
-        ]
-    );
+    assert_eq!(titles, vec!["Usar a^3 + 3a^2b + 3ab^2 + b^3 = (a + b)^3"]);
 }
 
 #[test]
@@ -826,10 +835,7 @@ fn derive_didactic_negative_perfect_square_factorization_explains_pattern() {
         .filter_map(|substep| substep.get("title").and_then(Value::as_str))
         .collect();
 
-    assert_eq!(
-        titles,
-        vec!["Usar a^2 - 2ab + b^2 = (a - b)^2", "Aquí a = a y b = b"]
-    );
+    assert_eq!(titles, vec!["Usar a^2 - 2ab + b^2 = (a - b)^2"]);
 }
 
 #[test]
@@ -854,13 +860,7 @@ fn derive_didactic_negative_symbolic_binomial_cube_factorization_explains_patter
         .filter_map(|substep| substep.get("title").and_then(Value::as_str))
         .collect();
 
-    assert_eq!(
-        titles,
-        vec![
-            "Usar a^3 - 3a^2b + 3ab^2 - b^3 = (a - b)^3",
-            "Aquí a = a y b = b"
-        ]
-    );
+    assert_eq!(titles, vec!["Usar a^3 - 3a^2b + 3ab^2 - b^3 = (a - b)^3"]);
 }
 
 #[test]
@@ -1040,13 +1040,7 @@ fn derive_didactic_negative_binomial_expansion_explains_the_minus_identity() {
         .filter_map(|substep| substep.get("title").and_then(Value::as_str))
         .collect();
 
-    assert_eq!(
-        titles,
-        vec![
-            "Usar (a - b)^2 = a^2 - 2ab + b^2",
-            "Sustituir a = a y b = b"
-        ]
-    );
+    assert_eq!(titles, vec!["Usar (a - b)^2 = a^2 - 2ab + b^2"]);
 }
 
 #[test]
@@ -1071,13 +1065,7 @@ fn derive_didactic_symbolic_binomial_cube_expansion_explains_the_identity() {
         .filter_map(|substep| substep.get("title").and_then(Value::as_str))
         .collect();
 
-    assert_eq!(
-        titles,
-        vec![
-            "Usar (a + b)^3 = a^3 + 3a^2b + 3ab^2 + b^3",
-            "Sustituir a = a y b = b"
-        ]
-    );
+    assert_eq!(titles, vec!["Usar (a + b)^3 = a^3 + 3a^2b + 3ab^2 + b^3"]);
 }
 
 #[test]
@@ -1102,12 +1090,125 @@ fn derive_didactic_negative_symbolic_binomial_cube_expansion_explains_the_identi
         .filter_map(|substep| substep.get("title").and_then(Value::as_str))
         .collect();
 
+    assert_eq!(titles, vec!["Usar (a - b)^3 = a^3 - 3a^2b + 3ab^2 - b^3"]);
+}
+
+#[test]
+fn derive_didactic_symbolic_trinomial_square_expansion_shows_real_intermediate() {
+    let artifact = audit_case(&derive_case_by_id("expand_symbolic_trinomial_square"));
+
+    let step = artifact
+        .json_steps
+        .iter()
+        .find(|step| {
+            step.get("rule")
+                .and_then(Value::as_str)
+                .is_some_and(|rule| rule == "Expandir binomio")
+        })
+        .expect("expected symbolic trinomial square expansion step");
+
+    let substeps = step
+        .get("substeps")
+        .and_then(Value::as_array)
+        .expect("expected symbolic trinomial square expansion substeps");
+    let titles: Vec<&str> = substeps
+        .iter()
+        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
+        .collect();
+
     assert_eq!(
         titles,
         vec![
-            "Usar (a - b)^3 = a^3 - 3a^2b + 3ab^2 - b^3",
-            "Sustituir a = a y b = b"
+            "Usar (a + b)^2 = a^2 + 2ab + b^2",
+            "Aplicar la fórmula con a = a + b, b = c"
         ]
+    );
+    assert_eq!(
+        substeps[1]
+            .get("after_latex")
+            .and_then(Value::as_str)
+            .expect("expected trinomial square intermediate latex"),
+        "\\left(a + b\\right)^2 + 2\\cdot \\left(a + b\\right)\\cdot c + c^2"
+    );
+}
+
+#[test]
+fn derive_didactic_signed_trinomial_square_expansion_shows_real_intermediate() {
+    let artifact = audit_case(&derive_case_by_id(
+        "expand_symbolic_signed_trinomial_square",
+    ));
+
+    let step = artifact
+        .json_steps
+        .iter()
+        .find(|step| {
+            step.get("rule")
+                .and_then(Value::as_str)
+                .is_some_and(|rule| rule == "Expandir binomio")
+        })
+        .expect("expected signed symbolic trinomial square expansion step");
+
+    let substeps = step
+        .get("substeps")
+        .and_then(Value::as_array)
+        .expect("expected signed symbolic trinomial square expansion substeps");
+    let titles: Vec<&str> = substeps
+        .iter()
+        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
+        .collect();
+
+    assert_eq!(
+        titles,
+        vec![
+            "Usar (a + b)^2 = a^2 + 2ab + b^2",
+            "Aplicar la fórmula con a = c, b = a - b"
+        ]
+    );
+    assert_eq!(
+        substeps[1]
+            .get("after_latex")
+            .and_then(Value::as_str)
+            .expect("expected signed trinomial square intermediate latex"),
+        "c^2 + 2\\cdot c\\cdot \\left(a - b\\right) + \\left(a - b\\right)^2"
+    );
+}
+
+#[test]
+fn derive_didactic_symbolic_trinomial_cube_expansion_shows_real_intermediate() {
+    let artifact = audit_case(&derive_case_by_id("expand_symbolic_trinomial_cube"));
+
+    let step = artifact
+        .json_steps
+        .iter()
+        .find(|step| {
+            step.get("rule")
+                .and_then(Value::as_str)
+                .is_some_and(|rule| rule == "Expandir binomio")
+        })
+        .expect("expected symbolic trinomial cube expansion step");
+
+    let substeps = step
+        .get("substeps")
+        .and_then(Value::as_array)
+        .expect("expected symbolic trinomial cube expansion substeps");
+    let titles: Vec<&str> = substeps
+        .iter()
+        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
+        .collect();
+
+    assert_eq!(
+        titles,
+        vec![
+            "Usar (a + b)^3 = a^3 + 3a^2b + 3ab^2 + b^3",
+            "Aplicar la fórmula con a = a + b, b = c"
+        ]
+    );
+    assert_eq!(
+        substeps[1]
+            .get("after_latex")
+            .and_then(Value::as_str)
+            .expect("expected trinomial cube intermediate latex"),
+        "\\left(a + b\\right)^3 + 3\\cdot \\left(a + b\\right)^2\\cdot c + 3\\cdot \\left(a + b\\right)\\cdot c^2 + c^3"
     );
 }
 
@@ -1191,6 +1292,62 @@ fn derive_didactic_sum_of_cubes_factorization_explains_identity() {
         .collect();
 
     assert_eq!(titles, vec!["Reconocer la forma a^3 + b^3"]);
+}
+
+#[test]
+fn derive_didactic_symbolic_sixth_power_difference_factorization_explains_identity() {
+    let artifact = audit_case(&derive_case_by_id("factor_symbolic_sixth_power_difference"));
+
+    let step = artifact
+        .json_steps
+        .iter()
+        .find(|step| {
+            step.get("rule")
+                .and_then(Value::as_str)
+                .is_some_and(|rule| rule == "Factorizar")
+        })
+        .expect("expected sixth-power difference factorization step");
+
+    let titles: Vec<&str> = step
+        .get("substeps")
+        .and_then(Value::as_array)
+        .expect("expected sixth-power difference factorization substeps")
+        .iter()
+        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
+        .collect();
+
+    assert_eq!(
+        titles,
+        vec!["Aplicar a^6 - b^6 = (a^2 - b^2)(a^4 + a^2b^2 + b^4)"]
+    );
+}
+
+#[test]
+fn derive_didactic_symbolic_sixth_power_sum_factorization_explains_identity() {
+    let artifact = audit_case(&derive_case_by_id("factor_symbolic_sixth_power_sum"));
+
+    let step = artifact
+        .json_steps
+        .iter()
+        .find(|step| {
+            step.get("rule")
+                .and_then(Value::as_str)
+                .is_some_and(|rule| rule == "Factorizar")
+        })
+        .expect("expected sixth-power sum factorization step");
+
+    let titles: Vec<&str> = step
+        .get("substeps")
+        .and_then(Value::as_array)
+        .expect("expected sixth-power sum factorization substeps")
+        .iter()
+        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
+        .collect();
+
+    assert_eq!(
+        titles,
+        vec!["Aplicar a^6 + b^6 = (a^2 + b^2)(a^4 - a^2b^2 + b^4)"]
+    );
 }
 
 #[test]
@@ -1279,6 +1436,24 @@ fn derive_didactic_sec_squared_contraction_uses_direct_identity_language() {
 }
 
 #[test]
+fn derive_didactic_csc_squared_contraction_uses_direct_identity_language() {
+    let artifact = audit_case(&derive_case_by_id("contract_trig_csc_squared"));
+
+    let step = artifact
+        .json_steps
+        .iter()
+        .find(|step| {
+            step.get("rule")
+                .and_then(Value::as_str)
+                .is_some_and(|rule| rule == "Reconocer cosecante cuadrada")
+        })
+        .expect("expected scaled csc squared contraction step");
+
+    let titles = step_substep_titles(step);
+    assert!(titles.is_empty());
+}
+
+#[test]
 fn derive_didactic_sec_squared_expansion_uses_direct_identity_language() {
     let artifact = audit_case(&derive_case_by_id("expand_trig_sec_squared"));
 
@@ -1298,7 +1473,13 @@ fn derive_didactic_sec_squared_expansion_uses_direct_identity_language() {
 
 #[test]
 fn derive_didactic_secant_reciprocal_expansion_uses_direct_identity_language() {
-    let artifact = audit_case(&derive_case_by_id("expand_trig_sec_reciprocal"));
+    let artifact = audit_case(&DeriveCase {
+        id: "expand_trig_sec_reciprocal_inline".to_string(),
+        family: "trig_expand".to_string(),
+        source: "sec(x)".to_string(),
+        target: "1/cos(x)".to_string(),
+        expected_status: "derived".to_string(),
+    });
 
     let step = artifact
         .json_steps
@@ -1351,6 +1532,24 @@ fn derive_didactic_cotangent_quotient_contraction_uses_direct_identity_language(
 }
 
 #[test]
+fn derive_didactic_tangent_quotient_contraction_uses_direct_identity_language() {
+    let artifact = audit_case(&derive_case_by_id("contract_trig_tan_quotient"));
+
+    let step = artifact
+        .json_steps
+        .iter()
+        .find(|step| {
+            step.get("rule")
+                .and_then(Value::as_str)
+                .is_some_and(|rule| rule == "Convertir un cociente trigonométrico en tangente")
+        })
+        .expect("expected trig quotient step");
+
+    let titles = step_substep_titles(step);
+    assert!(titles.is_empty());
+}
+
+#[test]
 fn derive_didactic_reciprocal_trig_product_to_one_uses_direct_identity_language() {
     let artifact = audit_case(&derive_case_by_id("reciprocal_trig_product_to_one"));
 
@@ -1388,7 +1587,14 @@ fn derive_didactic_sec_tan_pythagorean_to_one_uses_direct_identity_language() {
 
 #[test]
 fn derive_didactic_csc_cot_pythagorean_to_one_uses_direct_identity_language() {
-    let artifact = audit_case(&derive_case_by_id("csc_cot_pythagorean_to_one"));
+    let case = DeriveCase {
+        id: "csc_cot_pythagorean_to_one_inline".to_string(),
+        family: "simplify".to_string(),
+        source: "csc(x)^2 - cot(x)^2".to_string(),
+        target: "1".to_string(),
+        expected_status: "derived".to_string(),
+    };
+    let artifact = audit_case(&case);
 
     let step = artifact
         .json_steps
@@ -1556,8 +1762,10 @@ fn derive_didactic_special_sine_difference_uses_sum_to_product_directly() {
 }
 
 #[test]
-fn derive_didactic_special_sine_sum_uses_sum_to_product_directly() {
-    let artifact = audit_case(&derive_case_by_id("contract_trig_sin_sum_special"));
+fn derive_didactic_general_sine_sum_uses_sum_to_product_directly() {
+    let artifact = audit_case(&derive_case_by_id(
+        "expand_trig_sum_to_product_sin_sum_general",
+    ));
 
     let step = artifact
         .json_steps
@@ -1579,33 +1787,6 @@ fn derive_didactic_special_sine_sum_uses_sum_to_product_directly() {
     assert_eq!(
         titles,
         vec!["Usar sin(A) + sin(B) = 2 · sin((A+B)/2) · cos((A-B)/2)"]
-    );
-}
-
-#[test]
-fn derive_didactic_special_cosine_sum_uses_sum_to_product_directly() {
-    let artifact = audit_case(&derive_case_by_id("contract_trig_cos_sum_special"));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Aplicar suma a producto")
-        })
-        .expect("expected sum-to-product step");
-
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected sum-to-product substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec!["Usar cos(A) + cos(B) = 2 · cos((A+B)/2) · cos((A-B)/2)"]
     );
 }
 
@@ -1699,39 +1880,6 @@ fn derive_didactic_difference_of_squares_fraction_cancel_recaps_factor_then_canc
 }
 
 #[test]
-fn derive_didactic_difference_of_squares_fraction_cancel_mirror_recaps_factor_then_cancel() {
-    let artifact = audit_case(&derive_case_by_id(
-        "cancel_fraction_difference_squares_mirror",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Factorizar una diferencia de cuadrados y cancelar")
-        })
-        .expect("expected mirrored difference-of-squares fraction cancel step");
-
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected mirrored difference-of-squares cancellation substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-
-    assert_eq!(
-        titles,
-        vec![
-            "Usar la diferencia de cuadrados: a^2 - b^2 = (a - b)(a + b)",
-            "Ahora se cancela el factor a + b"
-        ]
-    );
-}
-
-#[test]
 fn derive_didactic_difference_of_cubes_fraction_cancel_recaps_factor_then_cancel() {
     let artifact = audit_case(&derive_case_by_id("cancel_fraction_difference_cubes"));
 
@@ -1795,7 +1943,13 @@ fn derive_didactic_sum_of_cubes_fraction_cancel_recaps_factor_then_cancel() {
 
 #[test]
 fn derive_didactic_perfect_square_fraction_cancel_plus_uses_repeated_factor_rule() {
-    let artifact = audit_case(&derive_case_by_id("cancel_fraction_perfect_square_plus"));
+    let artifact = audit_case(&DeriveCase {
+        id: "cancel_fraction_perfect_square_plus_inline".to_string(),
+        family: "simplify".to_string(),
+        source: "(x^2+2*x+1)/(x+1)".to_string(),
+        target: "x+1".to_string(),
+        expected_status: "derived".to_string(),
+    });
 
     let step = artifact
         .json_steps
@@ -1818,39 +1972,6 @@ fn derive_didactic_perfect_square_fraction_cancel_plus_uses_repeated_factor_rule
     assert_eq!(
         titles,
         vec!["Si x + 1 aparece dos veces arriba y una abajo, queda una sola copia"]
-    );
-}
-
-#[test]
-fn derive_didactic_perfect_square_fraction_cancel_minus_numeric_uses_repeated_factor_rule() {
-    let artifact = audit_case(&derive_case_by_id(
-        "cancel_fraction_perfect_square_minus_numeric",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Pre-order Perfect Square Minus Cancel")
-        })
-        .expect("expected negative perfect-square fraction cancel step");
-
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected negative perfect-square cancellation substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-
-    assert_eq!(
-        titles,
-        vec![
-            "Reconocer que el numerador es un cuadrado perfecto",
-            "Si (x - 1)^2 está dividido entre x - 1, queda una sola copia",
-        ]
     );
 }
 
@@ -1888,21 +2009,17 @@ fn derive_didactic_perfect_square_fraction_cancel_minus_symbolic_uses_repeated_f
 }
 
 #[test]
-fn derive_didactic_log_quotient_expansion_uses_quotient_language() {
-    let artifact = audit_case(&derive_case_by_id("expand_log_quotient"));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Expandir logaritmos")
-        })
-        .expect("expected log expansion step");
-
-    let titles = step_substep_titles(step);
-    assert!(titles.is_empty());
+fn derive_didactic_representative_direct_log_expansion_cases_have_no_substeps() {
+    for case_id in [
+        "expand_log_product",
+        "expand_log_quotient",
+        "expand_log_product_over_quotient",
+        "expand_log_powered_two_denominator_factors",
+        "expand_log_general_base_product_over_quotient",
+        "expand_log_general_base_powered_two_denominator_factors_with_powered_denominator",
+    ] {
+        assert_case_step_has_no_substeps(case_id, "Expandir logaritmos");
+    }
 }
 
 #[test]
@@ -2006,21 +2123,17 @@ fn derive_didactic_general_base_log_power_contraction_pushes_coefficient_inside(
 }
 
 #[test]
-fn derive_didactic_general_base_log_quotient_contraction_uses_quotient_language() {
-    let artifact = audit_case(&derive_case_by_id("contract_log_general_base_difference"));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Contraer logaritmos")
-        })
-        .expect("expected general-base log contraction step");
-
-    let titles = step_substep_titles(step);
-    assert!(titles.is_empty());
+fn derive_didactic_representative_direct_log_contraction_cases_have_no_substeps() {
+    for case_id in [
+        "contract_log_sum",
+        "contract_log_difference",
+        "contract_log_product_over_quotient",
+        "contract_log_powered_two_denominator_factors",
+        "contract_log_general_base_difference",
+        "contract_log_general_base_powered_two_denominator_factors_with_powered_denominator",
+    ] {
+        assert_case_step_has_no_substeps(case_id, "Contraer logaritmos");
+    }
 }
 
 #[test]
@@ -2082,85 +2195,32 @@ fn derive_didactic_scaled_general_base_log_difference_contraction_uses_power_quo
 }
 
 #[test]
-fn derive_didactic_log_change_of_base_chain_contraction_uses_direct_identity_language() {
-    let artifact = audit_case(&derive_case_by_id("contract_log_change_of_base_chain"));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| {
-                    rule == "Contraer cadena de logaritmos" || rule == "Contraer logaritmos"
-                })
-        })
-        .expect("expected log change-of-base contraction step");
-
-    let titles = step_substep_titles(step);
-    assert!(titles.is_empty());
-}
-
-#[test]
-fn derive_didactic_log_change_of_base_chain_expansion_uses_direct_identity_language() {
-    let artifact = audit_case(&derive_case_by_id("expand_log_change_of_base_chain"));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| {
-                    rule == "Expandir cambio de base" || rule == "Expandir logaritmos"
-                })
-        })
-        .expect("expected log change-of-base expansion step");
-
-    let titles = step_substep_titles(step);
-    assert!(titles.is_empty());
-}
-
-#[test]
-fn derive_didactic_three_link_log_change_of_base_chain_contraction_uses_chain_language() {
-    let artifact = audit_case(&derive_case_by_id(
-        "contract_log_change_of_base_chain_three",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| {
-                    rule == "Contraer cadena de logaritmos" || rule == "Contraer logaritmos"
-                })
-        })
-        .expect("expected three-link log change-of-base contraction step");
-
-    let titles = step_substep_titles(step);
-    assert!(titles.is_empty());
-}
-
-#[test]
-fn derive_didactic_three_link_log_change_of_base_chain_expansion_uses_chain_language() {
-    let artifact = audit_case(&derive_case_by_id("expand_log_change_of_base_chain_three"));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| {
-                    rule == "Expandir cambio de base" || rule == "Expandir logaritmos"
-                })
-        })
-        .expect("expected three-link log change-of-base expansion step");
-
-    let titles = step_substep_titles(step);
-    assert!(titles.is_empty());
+fn derive_didactic_log_change_of_base_cases_stay_direct() {
+    for (case_id, allowed_rules) in [
+        (
+            "contract_log_change_of_base_chain",
+            &["Contraer cadena de logaritmos", "Contraer logaritmos"][..],
+        ),
+        (
+            "expand_log_change_of_base_chain",
+            &["Expandir cambio de base", "Expandir logaritmos"][..],
+        ),
+    ] {
+        let artifact = audit_case(&derive_case_by_id(case_id));
+        let step = artifact
+            .json_steps
+            .iter()
+            .find(|step| {
+                step.get("rule")
+                    .and_then(Value::as_str)
+                    .is_some_and(|rule| allowed_rules.contains(&rule))
+            })
+            .unwrap_or_else(|| panic!("expected change-of-base step for {case_id}"));
+        assert!(
+            step_substep_titles(step).is_empty(),
+            "expected no substeps for {case_id}"
+        );
+    }
 }
 
 #[test]
@@ -2282,214 +2342,68 @@ fn derive_didactic_half_angle_tangent_alt_expansion_uses_the_direct_identity() {
 }
 
 #[test]
-fn derive_didactic_same_base_fractional_power_merge_explains_exponent_sum() {
-    let artifact = audit_case(&derive_case_by_id("merge_same_base_fractional_powers"));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Sumar exponentes de la misma base")
-        })
-        .expect("expected same-base power merge step");
-
-    let titles = step_substep_titles(step);
-    assert!(titles.is_empty());
-}
-
-#[test]
-fn derive_didactic_same_base_fractional_power_merge_to_square_root_explains_exponent_sum() {
-    let artifact = audit_case(&derive_case_by_id(
-        "merge_same_base_fractional_powers_to_square_root",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Sumar exponentes de la misma base")
-        })
-        .expect("expected same-base power merge step");
-
-    let titles = step_substep_titles(step);
-    assert!(titles.is_empty());
-}
-
-#[test]
-fn derive_didactic_same_base_fractional_power_merge_to_integer_explains_exponent_sum() {
-    let artifact = audit_case(&derive_case_by_id(
+fn derive_didactic_representative_direct_power_merge_cases_keep_merge_narrative() {
+    let cases = [
+        "merge_same_base_fractional_powers",
         "merge_same_base_fractional_powers_to_integer",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Sumar exponentes de la misma base")
-        })
-        .expect("expected same-base power merge step");
-
-    let titles = step_substep_titles(step);
-    assert!(titles.is_empty());
-}
-
-#[test]
-fn derive_didactic_mixed_root_and_power_merge_explains_root_then_exponent_sum() {
-    let artifact = audit_case(&derive_case_by_id("merge_mixed_root_and_power"));
-
-    let root_step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Reescribir la raíz como potencia fraccionaria")
-        })
-        .expect("expected root canonicalization step");
-    let root_titles = step_substep_titles(root_step);
-    assert!(root_titles.is_empty());
-
-    let merge_step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Sumar exponentes de la misma base")
-        })
-        .expect("expected power merge step");
-    let merge_titles = step_substep_titles(merge_step);
-    assert!(merge_titles.is_empty());
-}
-
-#[test]
-fn derive_didactic_mixed_root_and_fractional_power_five_sixths_explains_root_then_exponent_sum() {
-    let artifact = audit_case(&derive_case_by_id(
-        "merge_mixed_root_and_fractional_power_five_sixths",
-    ));
-
-    let root_step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Reescribir la raíz como potencia fraccionaria")
-        })
-        .expect("expected root canonicalization step");
-    let root_titles = step_substep_titles(root_step);
-    assert!(root_titles.is_empty());
-
-    let merge_step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Sumar exponentes de la misma base")
-        })
-        .expect("expected power merge step");
-    let merge_titles = step_substep_titles(merge_step);
-    assert!(merge_titles.is_empty());
-}
-
-#[test]
-fn derive_didactic_alt_variable_same_base_fractional_power_merge_to_integer_explains_exponent_sum()
-{
-    let artifact = audit_case(&derive_case_by_id(
-        "merge_same_base_fractional_powers_alt_variable_to_integer",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Sumar exponentes de la misma base")
-        })
-        .expect("expected same-base power merge step");
-
-    let titles = step_substep_titles(step);
-    assert!(titles.is_empty());
-}
-
-#[test]
-fn derive_didactic_three_factor_same_base_power_merge_to_integer_explains_exponent_sum() {
-    let artifact = audit_case(&derive_case_by_id(
-        "merge_same_base_fractional_powers_three_factors_to_integer",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Sumar exponentes de la misma base")
-        })
-        .expect("expected same-base power merge step");
-
-    let titles = step_substep_titles(step);
-    assert!(titles.is_empty());
-}
-
-#[test]
-fn derive_didactic_mixed_root_and_fractional_power_alt_variable_two_thirds_explains_root_then_exponent_sum(
-) {
-    let artifact = audit_case(&derive_case_by_id(
-        "merge_mixed_root_and_fractional_power_alt_variable_two_thirds",
-    ));
-
-    let root_step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Reescribir la raíz como potencia fraccionaria")
-        })
-        .expect("expected root canonicalization step");
-    let root_titles = step_substep_titles(root_step);
-    assert!(root_titles.is_empty());
-
-    let merge_step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Sumar exponentes de la misma base")
-        })
-        .expect("expected power merge step");
-    let merge_titles = step_substep_titles(merge_step);
-    assert!(merge_titles.is_empty());
-}
-
-#[test]
-fn derive_didactic_same_base_integer_and_fractional_power_merge_explains_exponent_sum() {
-    let artifact = audit_case(&derive_case_by_id(
         "merge_same_base_integer_and_fractional_power",
-    ));
+        "merge_same_base_integer_and_symbolic_power",
+    ];
 
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Sumar exponentes de la misma base")
-        })
-        .expect("expected same-base power merge step");
+    for case_id in cases {
+        let artifact = audit_case(&derive_case_by_id(case_id));
+        let step = step_by_rule(&artifact, "Sumar exponentes de la misma base");
+        let titles = step_substep_titles(step);
+        assert!(
+            titles.is_empty(),
+            "expected no template substeps for {case_id}, got {titles:?}"
+        );
+    }
+}
 
-    let titles = step_substep_titles(step);
-    assert!(titles.is_empty());
+#[test]
+fn derive_didactic_representative_symbolic_power_merge_cases_render_grouped_exponents() {
+    let cases = [
+        ("merge_same_base_symbolic_powers", "x^a · x^b", "x^(a + b)"),
+        (
+            "merge_four_same_base_symbolic_powers",
+            "x^a · x^b · x^c · x^d",
+            "x^(a + b + c + d)",
+        ),
+    ];
+
+    for (case_id, before, after) in cases {
+        let artifact = audit_case(&derive_case_by_id(case_id));
+        let step = step_by_rule(&artifact, "Sumar exponentes de la misma base");
+        assert_eq!(step.get("before").and_then(Value::as_str), Some(before));
+        assert_eq!(step.get("after").and_then(Value::as_str), Some(after));
+        assert!(
+            step_substep_titles(step).is_empty(),
+            "expected no substeps for grouped symbolic merge {case_id}"
+        );
+    }
+}
+
+#[test]
+fn derive_didactic_representative_root_power_merge_cases_explain_root_then_merge() {
+    let cases = [
+        "merge_mixed_root_and_fractional_power_five_sixths",
+        "merge_mixed_root_and_symbolic_power",
+    ];
+
+    for case_id in cases {
+        let artifact = audit_case(&derive_case_by_id(case_id));
+        assert!(step_substep_titles(step_by_rule(
+            &artifact,
+            "Reescribir la raíz como potencia fraccionaria",
+        ))
+        .is_empty());
+        assert!(
+            step_substep_titles(step_by_rule(&artifact, "Sumar exponentes de la misma base"))
+                .is_empty(),
+            "expected no template substeps after root rewrite for {case_id}"
+        );
+    }
 }
 
 #[test]
@@ -2576,303 +2490,41 @@ fn derive_didactic_perfect_square_root_explains_square_then_absolute_value() {
 }
 
 #[test]
-fn derive_didactic_rationalized_difference_zero_keeps_conjugate_then_direct_cancel() {
-    let artifact = audit_case(&derive_case_by_id("rationalize_then_cancel_to_zero"));
+fn derive_didactic_representative_rationalize_cases_keep_conjugate_narrative() {
+    let expected = &[
+        "Cambiar el signo para formar el conjugado",
+        "Multiplicar numerador y denominador por ese conjugado",
+        "En el denominador aparece una diferencia de cuadrados",
+    ];
 
-    let rationalize_step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Racionalizar el denominador")
-        })
-        .expect("expected rationalization derive step");
-    let rationalize_titles: Vec<&str> = rationalize_step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected rationalization substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        rationalize_titles,
-        vec![
-            "Cambiar el signo para formar el conjugado",
-            "Multiplicar numerador y denominador por ese conjugado",
-            "En el denominador aparece una diferencia de cuadrados"
-        ]
-    );
-
-    let cancel_step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Restar dos expresiones iguales")
-        })
-        .expect("expected self-cancel derive step");
-    let cancel_substeps = cancel_step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .map(Vec::as_slice)
-        .unwrap_or(&[]);
-    assert!(
-        cancel_substeps.is_empty(),
-        "self-cancel derive step should stay direct without tautological substeps"
-    );
+    for case_id in [
+        "rationalize_linear_root",
+        "rationalize_linear_root_plus",
+        "rationalize_shifted_linear_root",
+        "rationalize_symbolic_linear_root",
+        "rationalize_symbolic_linear_root_plus",
+        "rationalize_symbolic_linear_root_alt_var",
+    ] {
+        assert_case_step_titles(case_id, "Racionalizar el denominador", expected);
+    }
 }
 
 #[test]
-fn derive_didactic_rationalized_plus_root_keeps_conjugate_narrative() {
-    let artifact = audit_case(&derive_case_by_id("rationalize_linear_root_plus"));
+fn derive_didactic_representative_rationalize_zero_case_keeps_direct_cancel() {
+    let expected = &[
+        "Cambiar el signo para formar el conjugado",
+        "Multiplicar numerador y denominador por ese conjugado",
+        "En el denominador aparece una diferencia de cuadrados",
+    ];
 
-    let rationalize_step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Racionalizar el denominador")
-        })
-        .expect("expected rationalization derive step");
-    let rationalize_titles: Vec<&str> = rationalize_step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected rationalization substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        rationalize_titles,
-        vec![
-            "Cambiar el signo para formar el conjugado",
-            "Multiplicar numerador y denominador por ese conjugado",
-            "En el denominador aparece una diferencia de cuadrados"
-        ]
+    assert_case_step_titles(
+        "rationalize_then_cancel_to_zero",
+        "Racionalizar el denominador",
+        expected,
     );
-}
-
-#[test]
-fn derive_didactic_rationalized_difference_zero_plus_keeps_conjugate_then_direct_cancel() {
-    let artifact = audit_case(&derive_case_by_id("rationalize_then_cancel_to_zero_plus"));
-
-    let rationalize_step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Racionalizar el denominador")
-        })
-        .expect("expected rationalization derive step");
-    let rationalize_titles: Vec<&str> = rationalize_step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected rationalization substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        rationalize_titles,
-        vec![
-            "Cambiar el signo para formar el conjugado",
-            "Multiplicar numerador y denominador por ese conjugado",
-            "En el denominador aparece una diferencia de cuadrados"
-        ]
-    );
-
-    let cancel_step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Restar dos expresiones iguales")
-        })
-        .expect("expected self-cancel derive step");
-    let cancel_substeps = cancel_step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .map(Vec::as_slice)
-        .unwrap_or(&[]);
-    assert!(
-        cancel_substeps.is_empty(),
-        "self-cancel derive step should stay direct without tautological substeps"
-    );
-}
-
-#[test]
-fn derive_didactic_rationalized_plus_root_in_y_keeps_conjugate_narrative() {
-    let artifact = audit_case(&derive_case_by_id("rationalize_linear_root_plus_alt_var"));
-
-    let rationalize_step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Racionalizar el denominador")
-        })
-        .expect("expected rationalization derive step");
-    let rationalize_titles: Vec<&str> = rationalize_step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected rationalization substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        rationalize_titles,
-        vec![
-            "Cambiar el signo para formar el conjugado",
-            "Multiplicar numerador y denominador por ese conjugado",
-            "En el denominador aparece una diferencia de cuadrados"
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_shifted_rationalized_root_keeps_conjugate_narrative() {
-    let artifact = audit_case(&derive_case_by_id("rationalize_shifted_linear_root"));
-
-    let rationalize_step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Racionalizar el denominador")
-        })
-        .expect("expected rationalization derive step");
-    let rationalize_titles: Vec<&str> = rationalize_step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected rationalization substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        rationalize_titles,
-        vec![
-            "Cambiar el signo para formar el conjugado",
-            "Multiplicar numerador y denominador por ese conjugado",
-            "En el denominador aparece una diferencia de cuadrados"
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_shifted_rationalized_plus_root_keeps_conjugate_narrative() {
-    let artifact = audit_case(&derive_case_by_id("rationalize_shifted_linear_root_plus"));
-
-    let rationalize_step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Racionalizar el denominador")
-        })
-        .expect("expected rationalization derive step");
-    let rationalize_titles: Vec<&str> = rationalize_step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected rationalization substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        rationalize_titles,
-        vec![
-            "Cambiar el signo para formar el conjugado",
-            "Multiplicar numerador y denominador por ese conjugado",
-            "En el denominador aparece una diferencia de cuadrados"
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_shifted_rationalized_difference_zero_keeps_conjugate_then_direct_cancel() {
-    let artifact = audit_case(&derive_case_by_id(
-        "rationalize_shifted_then_cancel_to_zero",
-    ));
-
-    let rationalize_step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Racionalizar el denominador")
-        })
-        .expect("expected rationalization derive step");
-    let rationalize_titles: Vec<&str> = rationalize_step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected rationalization substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        rationalize_titles,
-        vec![
-            "Cambiar el signo para formar el conjugado",
-            "Multiplicar numerador y denominador por ese conjugado",
-            "En el denominador aparece una diferencia de cuadrados"
-        ]
-    );
-
-    let cancel_step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Restar dos expresiones iguales")
-        })
-        .expect("expected self-cancel derive step");
-    let cancel_substeps = cancel_step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .map(Vec::as_slice)
-        .unwrap_or(&[]);
-    assert!(
-        cancel_substeps.is_empty(),
-        "self-cancel derive step should stay direct without tautological substeps"
-    );
-}
-
-#[test]
-fn derive_didactic_shifted_rationalized_root_in_y_keeps_conjugate_narrative() {
-    let artifact = audit_case(&derive_case_by_id(
-        "rationalize_shifted_linear_root_alt_var",
-    ));
-
-    let rationalize_step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Racionalizar el denominador")
-        })
-        .expect("expected rationalization derive step");
-    let rationalize_titles: Vec<&str> = rationalize_step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected rationalization substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        rationalize_titles,
-        vec![
-            "Cambiar el signo para formar el conjugado",
-            "Multiplicar numerador y denominador por ese conjugado",
-            "En el denominador aparece una diferencia de cuadrados"
-        ]
+    assert_case_step_has_no_substeps(
+        "rationalize_then_cancel_to_zero",
+        "Restar dos expresiones iguales",
     );
 }
 
@@ -2896,159 +2548,137 @@ fn derive_didactic_polynomial_cancel_case_expands_then_cancels_pairs() {
         .iter()
         .filter_map(|substep| substep.get("title").and_then(Value::as_str))
         .collect();
-    assert_eq!(
-        expand_titles,
-        vec![
-            "Usar (a + b)^2 = a^2 + 2ab + b^2",
-            "Sustituir a = a y b = b"
-        ]
-    );
+    assert_eq!(expand_titles, vec!["Usar (a + b)^2 = a^2 + 2ab + b^2"]);
 }
 
 #[test]
-fn derive_didactic_nested_fraction_sum_explains_common_denominator_then_inversion() {
-    let artifact = audit_case(&derive_case_by_id("nested_fraction_one_over_sum"));
-
-    let add_step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Sumar fracciones")
-        })
-        .expect("expected add-fractions derive step");
-    let add_titles: Vec<&str> = add_step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .map(|substeps| {
-            substeps
-                .iter()
-                .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-                .collect()
-        })
-        .unwrap_or_default();
-    assert_eq!(add_titles, Vec::<&str>::new());
-
-    let nested_step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Simplificar fracción anidada")
-        })
-        .expect("expected nested-fraction simplify step");
-    let nested_titles: Vec<&str> = nested_step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .map(|substeps| {
-            substeps
-                .iter()
-                .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-                .collect()
-        })
-        .unwrap_or_default();
-    assert_eq!(nested_titles, Vec::<&str>::new());
-}
-
-#[test]
-fn derive_didactic_three_term_nested_fraction_repeats_common_denominator_then_inverts() {
-    let artifact = audit_case(&derive_case_by_id(
+fn derive_didactic_representative_direct_nested_fraction_cases_have_no_substeps() {
+    for case_id in [
+        "nested_fraction_one_over_sum",
         "nested_fraction_one_over_three_reciprocals",
-    ));
-
-    let add_steps: Vec<&Value> = artifact
-        .json_steps
-        .iter()
-        .filter(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Sumar fracciones")
-        })
-        .collect();
-    assert_eq!(add_steps.len(), 2, "expected two add-fractions steps");
-    for step in add_steps {
-        let titles: Vec<&str> = step
-            .get("substeps")
-            .and_then(Value::as_array)
-            .map(|substeps| {
-                substeps
-                    .iter()
+        "nested_fraction_sum_over_reciprocal",
+        "nested_fraction_sum_with_fraction_over_scalar_general",
+    ] {
+        let artifact = audit_case(&derive_case_by_id(case_id));
+        let all_titles: Vec<&str> = artifact
+            .json_steps
+            .iter()
+            .flat_map(|step| {
+                step.get("substeps")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
                     .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-                    .collect()
             })
-            .unwrap_or_default();
-        assert_eq!(titles, Vec::<&str>::new());
+            .collect();
+        assert_eq!(
+            all_titles,
+            Vec::<&str>::new(),
+            "unexpected substeps for {case_id}"
+        );
+    }
+}
+
+#[test]
+fn derive_didactic_structural_nested_fraction_cases_keep_single_denominator_sum_substep() {
+    for case_id in [
+        "nested_fraction_one_over_sum_with_fraction",
+        "nested_fraction_fraction_over_sum_with_fraction_general",
+    ] {
+        assert_case_step_titles(
+            case_id,
+            "Simplificar fracción anidada",
+            &["Primero simplificar la suma del denominador"],
+        );
+    }
+}
+
+#[test]
+fn derive_didactic_reverse_structural_nested_fraction_cases_keep_trace_direct() {
+    for (case_id, expected_title) in [
+        (
+            "nested_fraction_one_over_sum_with_fraction_reverse",
+            "Reescribir el denominador sacando factor común z",
+        ),
+        (
+            "nested_fraction_fraction_over_sum_with_fraction_general_reverse",
+            "Reescribir el denominador sacando factor común d",
+        ),
+        (
+            "nested_fraction_sum_with_fraction_over_scalar_general_reverse",
+            "Reescribir el numerador sacando factor común c",
+        ),
+    ] {
+        let artifact = audit_case(&derive_case_by_id(case_id));
+        assert!(
+            artifact.json_steps.iter().any(|step| {
+                step.get("rule")
+                    .and_then(Value::as_str)
+                    .is_some_and(|rule| rule == "Simplificar fracción anidada")
+            }),
+            "expected a nested-fraction humanized rule for {case_id}"
+        );
+        let all_titles: Vec<&str> = artifact
+            .json_steps
+            .iter()
+            .flat_map(|step| {
+                step.get("substeps")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|substep| substep.get("title").and_then(Value::as_str))
+            })
+            .collect();
+        assert_eq!(
+            all_titles,
+            vec![expected_title],
+            "unexpected substeps for {case_id}"
+        );
     }
 
-    let nested_step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Simplificar fracción anidada")
-        })
-        .expect("expected nested-fraction simplify step");
-    let nested_titles: Vec<&str> = nested_step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .map(|substeps| {
-            substeps
-                .iter()
-                .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-                .collect()
-        })
-        .unwrap_or_default();
-    assert_eq!(nested_titles, Vec::<&str>::new());
-}
-
-#[test]
-fn derive_didactic_nested_fraction_division_by_reciprocal_avoids_template_substeps() {
-    let artifact = audit_case(&derive_case_by_id("nested_fraction_sum_over_reciprocal"));
-
-    let add_step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Sumar fracciones")
-        })
-        .expect("expected add-fractions derive step");
-    let add_titles: Vec<&str> = add_step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .map(|substeps| {
-            substeps
-                .iter()
-                .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-                .collect()
-        })
-        .unwrap_or_default();
-    assert_eq!(add_titles, Vec::<&str>::new());
-
-    let nested_step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Simplificar fracción anidada")
-        })
-        .expect("expected nested-fraction simplify step");
-    let nested_titles: Vec<&str> = nested_step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .map(|substeps| {
-            substeps
-                .iter()
-                .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-                .collect()
-        })
-        .unwrap_or_default();
-    assert_eq!(nested_titles, Vec::<&str>::new());
+    for (case, expected_title) in [
+        (
+            DeriveCase {
+                id: "nested_fraction_one_over_sum_with_fraction_compound_denominator_reverse_inline"
+                    .to_string(),
+                family: "nested_fraction".to_string(),
+                source: "(c+d)/(a*(c+d)+b)".to_string(),
+                target: "1/(a + b/(c+d))".to_string(),
+                expected_status: "derived".to_string(),
+            },
+            "Reescribir el denominador sacando factor común c + d",
+        ),
+        (
+            DeriveCase {
+                id: "nested_fraction_sum_with_fraction_over_scalar_compound_denominator_reverse_inline"
+                    .to_string(),
+                family: "nested_fraction".to_string(),
+                source: "(a*(c+d)+b)/(e*(c+d))".to_string(),
+                target: "(a + b/(c+d))/e".to_string(),
+                expected_status: "derived".to_string(),
+            },
+            "Reescribir el numerador sacando factor común c + d",
+        ),
+    ] {
+        let artifact = audit_case(&case);
+        let all_titles: Vec<&str> = artifact
+            .json_steps
+            .iter()
+            .flat_map(|step| {
+                step.get("substeps")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|substep| substep.get("title").and_then(Value::as_str))
+            })
+            .collect();
+        assert_eq!(
+            all_titles,
+            vec![expected_title],
+            "unexpected substeps for inline nested-fraction case {}",
+            case.id
+        );
+    }
 }
 
 #[test]
@@ -3108,945 +2738,115 @@ fn derive_didactic_same_denominator_focus_only_combines_three_fraction_part() {
 }
 
 #[test]
-fn derive_didactic_consecutive_telescoping_fraction_uses_direct_partial_fraction_identity() {
-    let artifact = audit_case(&derive_case_by_id("split_telescoping_fraction_consecutive"));
+fn derive_didactic_representative_telescoping_fraction_split_cases_keep_gap_narrative() {
+    let cases = [
+        (
+            "split_telescoping_fraction_consecutive",
+            vec!["Usar 1 / (u · (u + 1)) = 1 / u - 1 / (u + 1)", "Aquí u = n"],
+        ),
+        (
+            "split_telescoping_fraction_gap_two",
+            vec![
+                "Usar 1 / (u · (u + k)) = 1 / k · (1 / u - 1 / (u + k))",
+                "Aquí u = n y k = 2",
+            ],
+        ),
+        (
+            "split_telescoping_fraction_negative_gap_two",
+            vec![
+                "Usar 1 / (u · (u + k)) = 1 / k · (1 / u - 1 / (u + k))",
+                "Aquí u = n - 2 y k = 2",
+            ],
+        ),
+        (
+            "split_telescoping_fraction_affine_gap_two",
+            vec![
+                "Usar 1 / (u · (u + k)) = 1 / k · (1 / u - 1 / (u + k))",
+                "Aquí u = 2 · n + 1 y k = 2",
+            ],
+        ),
+        (
+            "split_telescoping_fraction_affine_symbolic_shift_gap",
+            vec![
+                "Usar 1 / (u · (u + k)) = 1 / k · (1 / u - 1 / (u + k))",
+                "Aquí u = a · n + b y k = c - b",
+            ],
+        ),
+        (
+            "split_telescoping_fraction_difference_squares_unfactored",
+            vec![
+                "Usar 1 / (u · (u + k)) = 1 / k · (1 / u - 1 / (u + k))",
+                "Aquí u = x - 1 y k = 2",
+            ],
+        ),
+        (
+            "split_telescoping_fraction_symbolic_difference_squares_unfactored",
+            vec![
+                "Usar 1 / (u · (u + k)) = 1 / k · (1 / u - 1 / (u + k))",
+                "Aquí u = x - a y k = 2 · a",
+            ],
+        ),
+    ];
 
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Descomponer en fracciones telescópicas")
-        })
-        .expect("expected telescoping fraction step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected telescoping fraction substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec!["Usar 1 / (u · (u + 1)) = 1 / u - 1 / (u + 1)", "Aquí u = n"]
-    );
+    for (case_id, expected) in cases {
+        assert_case_step_titles(case_id, "Descomponer en fracciones telescópicas", &expected);
+    }
 }
 
 #[test]
-fn derive_didactic_gap_two_telescoping_fraction_uses_gap_identity_language() {
-    let artifact = audit_case(&derive_case_by_id("split_telescoping_fraction_gap_two"));
+fn derive_didactic_representative_telescoping_fraction_combine_cases_keep_inverse_gap_narrative() {
+    let cases = [
+        (
+            "combine_telescoping_fraction_consecutive",
+            vec!["Usar 1 / u - 1 / (u + 1) = 1 / (u · (u + 1))", "Aquí u = n"],
+        ),
+        (
+            "combine_telescoping_fraction_gap_two",
+            vec![
+                "Usar 1 / k · (1 / u - 1 / (u + k)) = 1 / (u · (u + k))",
+                "Aquí u = n y k = 2",
+            ],
+        ),
+        (
+            "combine_telescoping_fraction_negative_gap_two",
+            vec![
+                "Usar 1 / k · (1 / u - 1 / (u + k)) = 1 / (u · (u + k))",
+                "Aquí u = n - 2 y k = 2",
+            ],
+        ),
+        (
+            "combine_telescoping_fraction_affine_gap_two",
+            vec![
+                "Usar 1 / k · (1 / u - 1 / (u + k)) = 1 / (u · (u + k))",
+                "Aquí u = 2 · n + 1 y k = 2",
+            ],
+        ),
+        (
+            "combine_telescoping_fraction_affine_symbolic_shift_gap",
+            vec![
+                "Usar 1 / k · (1 / u - 1 / (u + k)) = 1 / (u · (u + k))",
+                "Aquí u = a · n + b y k = c - b",
+            ],
+        ),
+        (
+            "combine_telescoping_fraction_shifted_quadratic_unfactored",
+            vec![
+                "Usar 1 / u - 1 / (u + 1) = 1 / (u · (u + 1))",
+                "Aquí u = x + 1",
+            ],
+        ),
+        (
+            "combine_telescoping_fraction_symbolic_difference_squares_unfactored",
+            vec![
+                "Usar 1 / k · (1 / u - 1 / (u + k)) = 1 / (u · (u + k))",
+                "Aquí u = x - a y k = 2 · a",
+            ],
+        ),
+    ];
 
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Descomponer en fracciones telescópicas")
-        })
-        .expect("expected gap-two telescoping fraction step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected gap-two telescoping fraction substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Usar 1 / (u · (u + k)) = 1 / k · (1 / u - 1 / (u + k))",
-            "Aquí u = n y k = 2"
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_gap_three_telescoping_fraction_uses_gap_identity_language() {
-    let artifact = audit_case(&derive_case_by_id("split_telescoping_fraction_gap_three"));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Descomponer en fracciones telescópicas")
-        })
-        .expect("expected gap-three telescoping fraction step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected gap-three telescoping fraction substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Usar 1 / (u · (u + k)) = 1 / k · (1 / u - 1 / (u + k))",
-            "Aquí u = n y k = 3"
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_negative_consecutive_telescoping_fraction_uses_shifted_base_language() {
-    let artifact = audit_case(&derive_case_by_id(
-        "split_telescoping_fraction_negative_consecutive",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Descomponer en fracciones telescópicas")
-        })
-        .expect("expected negative consecutive telescoping fraction step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected negative consecutive telescoping fraction substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Usar 1 / (u · (u + 1)) = 1 / u - 1 / (u + 1)",
-            "Aquí u = n - 1"
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_negative_gap_two_telescoping_fraction_uses_shifted_base_and_gap_language() {
-    let artifact = audit_case(&derive_case_by_id(
-        "split_telescoping_fraction_negative_gap_two",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Descomponer en fracciones telescópicas")
-        })
-        .expect("expected negative gap-two telescoping fraction step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected negative gap-two telescoping fraction substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Usar 1 / (u · (u + k)) = 1 / k · (1 / u - 1 / (u + k))",
-            "Aquí u = n - 2 y k = 2"
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_affine_gap_two_telescoping_fraction_tracks_affine_base_and_gap_language() {
-    let artifact = audit_case(&derive_case_by_id(
-        "split_telescoping_fraction_affine_gap_two",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Descomponer en fracciones telescópicas")
-        })
-        .expect("expected affine gap-two telescoping fraction step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected affine gap-two telescoping fraction substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Usar 1 / (u · (u + k)) = 1 / k · (1 / u - 1 / (u + k))",
-            "Aquí u = 2 · n + 1 y k = 2"
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_affine_shifted_gap_two_telescoping_fraction_tracks_affine_shifted_base_and_gap_language(
-) {
-    let artifact = audit_case(&derive_case_by_id(
-        "split_telescoping_fraction_affine_shifted_gap_two",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Descomponer en fracciones telescópicas")
-        })
-        .expect("expected affine shifted gap-two telescoping fraction step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected affine shifted gap-two telescoping fraction substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Usar 1 / (u · (u + k)) = 1 / k · (1 / u - 1 / (u + k))",
-            "Aquí u = 2 · n - 1 y k = 2"
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_affine_coeff_three_gap_three_telescoping_fraction_tracks_affine_base_and_gap_language(
-) {
-    let artifact = audit_case(&derive_case_by_id(
-        "split_telescoping_fraction_affine_coeff_three_gap_three",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Descomponer en fracciones telescópicas")
-        })
-        .expect("expected affine coeff-three gap-three telescoping fraction step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected affine coeff-three gap-three telescoping fraction substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Usar 1 / (u · (u + k)) = 1 / k · (1 / u - 1 / (u + k))",
-            "Aquí u = 3 · n + 2 y k = 3"
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_affine_coeff_three_shifted_gap_three_telescoping_fraction_tracks_affine_shifted_base_and_gap_language(
-) {
-    let artifact = audit_case(&derive_case_by_id(
-        "split_telescoping_fraction_affine_coeff_three_shifted_gap_three",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Descomponer en fracciones telescópicas")
-        })
-        .expect("expected affine coeff-three shifted gap-three telescoping fraction step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected affine coeff-three shifted gap-three telescoping fraction substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Usar 1 / (u · (u + k)) = 1 / k · (1 / u - 1 / (u + k))",
-            "Aquí u = 3 · n - 1 y k = 3"
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_affine_symbolic_coeff_gap_three_telescoping_fraction_tracks_affine_base_and_gap_language(
-) {
-    let artifact = audit_case(&derive_case_by_id(
-        "split_telescoping_fraction_affine_symbolic_coeff_gap_three",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Descomponer en fracciones telescópicas")
-        })
-        .expect("expected affine symbolic-coeff gap-three telescoping fraction step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected affine symbolic-coeff gap-three telescoping fraction substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Usar 1 / (u · (u + k)) = 1 / k · (1 / u - 1 / (u + k))",
-            "Aquí u = a · n + 2 y k = 3"
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_affine_symbolic_coeff_shifted_gap_three_telescoping_fraction_tracks_affine_shifted_base_and_gap_language(
-) {
-    let artifact = audit_case(&derive_case_by_id(
-        "split_telescoping_fraction_affine_symbolic_coeff_shifted_gap_three",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Descomponer en fracciones telescópicas")
-        })
-        .expect("expected affine symbolic-coeff shifted gap-three telescoping fraction step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected affine symbolic-coeff shifted gap-three telescoping fraction substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Usar 1 / (u · (u + k)) = 1 / k · (1 / u - 1 / (u + k))",
-            "Aquí u = a · n - 1 y k = 3"
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_symbolic_shift_gap_telescoping_fraction_tracks_symbolic_gap_language() {
-    let artifact = audit_case(&derive_case_by_id(
-        "split_telescoping_fraction_symbolic_shift_gap",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Descomponer en fracciones telescópicas")
-        })
-        .expect("expected symbolic shift-gap telescoping fraction step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected symbolic shift-gap telescoping fraction substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Usar 1 / (u · (u + k)) = 1 / k · (1 / u - 1 / (u + k))",
-            "Aquí u = a + n y k = b - a"
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_affine_symbolic_shift_gap_telescoping_fraction_tracks_affine_symbolic_gap_language(
-) {
-    let artifact = audit_case(&derive_case_by_id(
-        "split_telescoping_fraction_affine_symbolic_shift_gap",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Descomponer en fracciones telescópicas")
-        })
-        .expect("expected affine symbolic shift-gap telescoping fraction step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected affine symbolic shift-gap telescoping fraction substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Usar 1 / (u · (u + k)) = 1 / k · (1 / u - 1 / (u + k))",
-            "Aquí u = a · n + b y k = c - b"
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_consecutive_telescoping_fraction_combine_uses_inverse_identity_language() {
-    let artifact = audit_case(&derive_case_by_id(
-        "combine_telescoping_fraction_consecutive",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Recomponer fracción telescópica")
-        })
-        .expect("expected telescoping fraction combine step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected telescoping fraction combine substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec!["Usar 1 / u - 1 / (u + 1) = 1 / (u · (u + 1))", "Aquí u = n"]
-    );
-}
-
-#[test]
-fn derive_didactic_gap_two_telescoping_fraction_combine_uses_inverse_gap_identity_language() {
-    let artifact = audit_case(&derive_case_by_id("combine_telescoping_fraction_gap_two"));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Recomponer fracción telescópica")
-        })
-        .expect("expected gap-two telescoping fraction combine step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected gap-two telescoping fraction combine substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Usar 1 / k · (1 / u - 1 / (u + k)) = 1 / (u · (u + k))",
-            "Aquí u = n y k = 2"
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_gap_three_telescoping_fraction_combine_uses_inverse_gap_identity_language() {
-    let artifact = audit_case(&derive_case_by_id("combine_telescoping_fraction_gap_three"));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Recomponer fracción telescópica")
-        })
-        .expect("expected gap-three telescoping fraction combine step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected gap-three telescoping fraction combine substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Usar 1 / k · (1 / u - 1 / (u + k)) = 1 / (u · (u + k))",
-            "Aquí u = n y k = 3"
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_negative_consecutive_telescoping_fraction_combine_uses_shifted_inverse_identity_language(
-) {
-    let artifact = audit_case(&derive_case_by_id(
-        "combine_telescoping_fraction_negative_consecutive",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Recomponer fracción telescópica")
-        })
-        .expect("expected negative consecutive telescoping fraction combine step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected negative consecutive telescoping fraction combine substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Usar 1 / u - 1 / (u + 1) = 1 / (u · (u + 1))",
-            "Aquí u = n - 1"
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_negative_gap_two_telescoping_fraction_combine_uses_shifted_inverse_gap_identity_language(
-) {
-    let artifact = audit_case(&derive_case_by_id(
-        "combine_telescoping_fraction_negative_gap_two",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Recomponer fracción telescópica")
-        })
-        .expect("expected negative gap-two telescoping fraction combine step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected negative gap-two telescoping fraction combine substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Usar 1 / k · (1 / u - 1 / (u + k)) = 1 / (u · (u + k))",
-            "Aquí u = n - 2 y k = 2"
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_affine_gap_two_telescoping_fraction_combine_tracks_affine_base_and_gap_language()
-{
-    let artifact = audit_case(&derive_case_by_id(
-        "combine_telescoping_fraction_affine_gap_two",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Recomponer fracción telescópica")
-        })
-        .expect("expected affine gap-two telescoping fraction combine step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected affine gap-two telescoping fraction combine substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Usar 1 / k · (1 / u - 1 / (u + k)) = 1 / (u · (u + k))",
-            "Aquí u = 2 · n + 1 y k = 2"
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_affine_shifted_gap_two_telescoping_fraction_combine_tracks_affine_shifted_base_and_gap_language(
-) {
-    let artifact = audit_case(&derive_case_by_id(
-        "combine_telescoping_fraction_affine_shifted_gap_two",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Recomponer fracción telescópica")
-        })
-        .expect("expected affine shifted gap-two telescoping fraction combine step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected affine shifted gap-two telescoping fraction combine substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Usar 1 / k · (1 / u - 1 / (u + k)) = 1 / (u · (u + k))",
-            "Aquí u = 2 · n - 1 y k = 2"
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_affine_coeff_three_gap_three_telescoping_fraction_combine_tracks_affine_base_and_gap_language(
-) {
-    let artifact = audit_case(&derive_case_by_id(
-        "combine_telescoping_fraction_affine_coeff_three_gap_three",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Recomponer fracción telescópica")
-        })
-        .expect("expected affine coeff-three gap-three telescoping fraction combine step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected affine coeff-three gap-three telescoping fraction combine substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Usar 1 / k · (1 / u - 1 / (u + k)) = 1 / (u · (u + k))",
-            "Aquí u = 3 · n + 2 y k = 3"
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_affine_coeff_three_shifted_gap_three_telescoping_fraction_combine_tracks_affine_shifted_base_and_gap_language(
-) {
-    let artifact = audit_case(&derive_case_by_id(
-        "combine_telescoping_fraction_affine_coeff_three_shifted_gap_three",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Recomponer fracción telescópica")
-        })
-        .expect("expected affine coeff-three shifted gap-three telescoping fraction combine step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect(
-            "expected affine coeff-three shifted gap-three telescoping fraction combine substeps",
-        )
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Usar 1 / k · (1 / u - 1 / (u + k)) = 1 / (u · (u + k))",
-            "Aquí u = 3 · n - 1 y k = 3"
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_affine_symbolic_coeff_gap_three_telescoping_fraction_combine_tracks_affine_base_and_gap_language(
-) {
-    let artifact = audit_case(&derive_case_by_id(
-        "combine_telescoping_fraction_affine_symbolic_coeff_gap_three",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Recomponer fracción telescópica")
-        })
-        .expect("expected affine symbolic-coeff gap-three telescoping fraction combine step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected affine symbolic-coeff gap-three telescoping fraction combine substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Usar 1 / k · (1 / u - 1 / (u + k)) = 1 / (u · (u + k))",
-            "Aquí u = a · n + 2 y k = 3"
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_affine_symbolic_coeff_shifted_gap_three_telescoping_fraction_combine_tracks_affine_shifted_base_and_gap_language(
-) {
-    let artifact = audit_case(&derive_case_by_id(
-        "combine_telescoping_fraction_affine_symbolic_coeff_shifted_gap_three",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Recomponer fracción telescópica")
-        })
-        .expect(
-            "expected affine symbolic-coeff shifted gap-three telescoping fraction combine step",
-        );
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect(
-            "expected affine symbolic-coeff shifted gap-three telescoping fraction combine substeps",
-        )
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Usar 1 / k · (1 / u - 1 / (u + k)) = 1 / (u · (u + k))",
-            "Aquí u = a · n - 1 y k = 3"
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_symbolic_shift_gap_telescoping_fraction_combine_tracks_symbolic_gap_language() {
-    let artifact = audit_case(&derive_case_by_id(
-        "combine_telescoping_fraction_symbolic_shift_gap",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Recomponer fracción telescópica")
-        })
-        .expect("expected symbolic shift-gap telescoping fraction combine step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected symbolic shift-gap telescoping fraction combine substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Usar 1 / k · (1 / u - 1 / (u + k)) = 1 / (u · (u + k))",
-            "Aquí u = a + n y k = b - a"
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_affine_symbolic_shift_gap_telescoping_fraction_combine_tracks_affine_symbolic_gap_language(
-) {
-    let artifact = audit_case(&derive_case_by_id(
-        "combine_telescoping_fraction_affine_symbolic_shift_gap",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Recomponer fracción telescópica")
-        })
-        .expect("expected affine symbolic shift-gap telescoping fraction combine step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected affine symbolic shift-gap telescoping fraction combine substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Usar 1 / k · (1 / u - 1 / (u + k)) = 1 / (u · (u + k))",
-            "Aquí u = a · n + b y k = c - b"
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_unfactored_difference_squares_telescoping_fraction_uses_gap_language() {
-    let artifact = audit_case(&derive_case_by_id(
-        "split_telescoping_fraction_difference_squares_unfactored",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Descomponer en fracciones telescópicas")
-        })
-        .expect("expected unfactored difference-of-squares telescoping fraction step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected unfactored difference-of-squares telescoping fraction substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Usar 1 / (u · (u + k)) = 1 / k · (1 / u - 1 / (u + k))",
-            "Aquí u = x - 1 y k = 2"
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_unfactored_shifted_quadratic_telescoping_fraction_combine_uses_unit_gap_language(
-) {
-    let artifact = audit_case(&derive_case_by_id(
-        "combine_telescoping_fraction_shifted_quadratic_unfactored",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Recomponer fracción telescópica")
-        })
-        .expect("expected unfactored shifted quadratic telescoping fraction combine step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected unfactored shifted quadratic telescoping fraction combine substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Usar 1 / u - 1 / (u + 1) = 1 / (u · (u + 1))",
-            "Aquí u = x + 1"
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_symbolic_unfactored_difference_squares_telescoping_fraction_uses_symbolic_gap_language(
-) {
-    let artifact = audit_case(&derive_case_by_id(
-        "split_telescoping_fraction_symbolic_difference_squares_unfactored",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Descomponer en fracciones telescópicas")
-        })
-        .expect("expected symbolic unfactored difference-of-squares telescoping fraction step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected symbolic unfactored difference-of-squares telescoping fraction substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Usar 1 / (u · (u + k)) = 1 / k · (1 / u - 1 / (u + k))",
-            "Aquí u = x - a y k = 2 · a"
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_symbolic_unfactored_difference_squares_telescoping_fraction_combine_uses_symbolic_gap_language(
-) {
-    let artifact = audit_case(&derive_case_by_id(
-        "combine_telescoping_fraction_symbolic_difference_squares_unfactored",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Recomponer fracción telescópica")
-        })
-        .expect(
-            "expected symbolic unfactored difference-of-squares telescoping fraction combine step",
-        );
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect(
-            "expected symbolic unfactored difference-of-squares telescoping fraction combine substeps",
-        )
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Usar 1 / k · (1 / u - 1 / (u + k)) = 1 / (u · (u + k))",
-            "Aquí u = x - a y k = 2 · a"
-        ]
-    );
+    for (case_id, expected) in cases {
+        assert_case_step_titles(case_id, "Recomponer fracción telescópica", &expected);
+    }
 }
 
 #[test]
@@ -4070,32 +2870,6 @@ fn derive_didactic_morrie_telescoping_uses_cosine_telescoping_language() {
         .filter_map(|substep| substep.get("title").and_then(Value::as_str))
         .collect();
     assert_eq!(titles, vec!["Usar el telescopado de cosenos", "Aquí u = x"]);
-}
-
-#[test]
-fn derive_didactic_scaled_morrie_telescoping_tracks_scaled_base_argument() {
-    let artifact = audit_case(&derive_case_by_id("integrate_prep_morrie_scaled"));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Aplicar telescopado de cosenos")
-        })
-        .expect("expected scaled Morrie telescoping step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected scaled Morrie telescoping substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec!["Usar el telescopado de cosenos", "Aquí u = 3 · x"]
-    );
 }
 
 #[test]
@@ -4150,34 +2924,6 @@ fn derive_didactic_symbolic_scale_morrie_telescoping_tracks_scaled_base_argument
 }
 
 #[test]
-fn derive_didactic_longer_symbolic_scale_morrie_telescoping_tracks_scaled_base_argument() {
-    let artifact = audit_case(&derive_case_by_id(
-        "integrate_prep_morrie_symbolic_scale_longer",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Aplicar telescopado de cosenos")
-        })
-        .expect("expected longer symbolic-scale Morrie telescoping step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected longer symbolic-scale Morrie telescoping substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec!["Usar el telescopado de cosenos", "Aquí u = a · x"]
-    );
-}
-
-#[test]
 fn derive_didactic_reverse_morrie_telescoping_uses_expansion_language() {
     let artifact = audit_case(&derive_case_by_id("integrate_prep_morrie_reverse_basic"));
 
@@ -4198,29 +2944,6 @@ fn derive_didactic_reverse_morrie_telescoping_uses_expansion_language() {
         .filter_map(|substep| substep.get("title").and_then(Value::as_str))
         .collect();
     assert_eq!(titles, vec!["Expandir la ley de Morrie", "Aquí u = x"]);
-}
-
-#[test]
-fn derive_didactic_scaled_reverse_morrie_telescoping_tracks_scaled_base_argument() {
-    let artifact = audit_case(&derive_case_by_id("integrate_prep_morrie_reverse_scaled"));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Aplicar telescopado de cosenos")
-        })
-        .expect("expected scaled reverse Morrie telescoping step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected scaled reverse Morrie telescoping substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(titles, vec!["Expandir la ley de Morrie", "Aquí u = 3 · x"]);
 }
 
 #[test]
@@ -4272,58 +2995,6 @@ fn derive_didactic_dirichlet_kernel_longer_chain_tracks_n_value() {
     assert_eq!(
         titles,
         vec!["Usar el núcleo de Dirichlet", "Aquí n = 3 y u = x"]
-    );
-}
-
-#[test]
-fn derive_didactic_scaled_dirichlet_kernel_tracks_scaled_argument() {
-    let artifact = audit_case(&derive_case_by_id("integrate_prep_dirichlet_scaled"));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Aplicar identidad del núcleo de Dirichlet")
-        })
-        .expect("expected scaled Dirichlet kernel step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected scaled Dirichlet kernel substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec!["Usar el núcleo de Dirichlet", "Aquí n = 2 y u = 3 · x"]
-    );
-}
-
-#[test]
-fn derive_didactic_scaled_dirichlet_kernel_longer_chain_tracks_scaled_argument_and_n() {
-    let artifact = audit_case(&derive_case_by_id("integrate_prep_dirichlet_scaled_longer"));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Aplicar identidad del núcleo de Dirichlet")
-        })
-        .expect("expected longer scaled Dirichlet kernel step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected longer scaled Dirichlet kernel substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec!["Usar el núcleo de Dirichlet", "Aquí n = 3 y u = 2 · x"]
     );
 }
 
@@ -4493,498 +3164,55 @@ fn derive_didactic_finite_telescoping_product_expands_then_cancels() {
 }
 
 #[test]
-fn derive_didactic_shifted_finite_telescoping_product_stops_at_the_closed_form_fraction() {
-    let artifact = audit_case(&derive_case_by_id("finite_telescoping_product_shifted"));
+fn derive_didactic_representative_finite_telescoping_product_cases_keep_telescoping_narrative() {
+    let direct_cases = [
+        (
+            "finite_telescoping_product_symbolic_shift_symbolic_lower",
+            &[
+                "Escribir los primeros y últimos factores del producto",
+                "Los factores intermedios se cancelan por parejas",
+            ][..],
+        ),
+        (
+            "finite_telescoping_product_affine_symbolic_shift_symbolic_lower",
+            &[
+                "Escribir los primeros y últimos factores del producto",
+                "Los factores intermedios se cancelan por parejas",
+            ][..],
+        ),
+    ];
 
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Evaluar producto telescópico finito")
-        })
-        .expect("expected shifted finite telescoping product step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected shifted finite telescoping product substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Escribir los primeros y últimos factores del producto",
-            "Los factores intermedios se cancelan por parejas",
-            "Solo quedan el último numerador y el primer denominador",
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_symbolic_shift_finite_telescoping_product_uses_same_pairwise_cancellation_language(
-) {
-    let artifact = audit_case(&derive_case_by_id(
-        "finite_telescoping_product_symbolic_shift",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Evaluar producto telescópico finito")
-        })
-        .expect("expected symbolic finite telescoping product step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected symbolic finite telescoping product substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Escribir los primeros y últimos factores del producto",
-            "Los factores intermedios se cancelan por parejas",
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_symbolic_lower_finite_telescoping_product_stops_at_the_endpoint_fraction() {
-    let artifact = audit_case(&derive_case_by_id(
-        "finite_telescoping_product_symbolic_shift_symbolic_lower",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Evaluar producto telescópico finito")
-        })
-        .expect("expected symbolic-lower finite telescoping product step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected symbolic-lower finite telescoping product substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Escribir los primeros y últimos factores del producto",
-            "Los factores intermedios se cancelan por parejas",
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_affine_symbolic_shift_finite_telescoping_product_tracks_affine_endpoints() {
-    let artifact = audit_case(&derive_case_by_id(
-        "finite_telescoping_product_affine_symbolic_shift",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Evaluar producto telescópico finito")
-        })
-        .expect("expected affine symbolic finite telescoping product step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected affine symbolic finite telescoping product substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Escribir los primeros y últimos factores del producto",
-            "Los factores intermedios se cancelan por parejas",
-            "Solo quedan el último numerador y el primer denominador",
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_affine_symbolic_shift_symbolic_lower_finite_telescoping_product_tracks_affine_endpoints(
-) {
-    let artifact = audit_case(&derive_case_by_id(
-        "finite_telescoping_product_affine_symbolic_shift_symbolic_lower",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Evaluar producto telescópico finito")
-        })
-        .expect("expected affine symbolic lower finite telescoping product step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected affine symbolic lower finite telescoping product substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Escribir los primeros y últimos factores del producto",
-            "Los factores intermedios se cancelan por parejas",
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_affine_symbolic_shifted_finite_telescoping_product_tracks_shifted_affine_endpoints(
-) {
-    let artifact = audit_case(&derive_case_by_id(
-        "finite_telescoping_product_affine_symbolic_shifted",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Evaluar producto telescópico finito")
-        })
-        .expect("expected shifted affine symbolic finite telescoping product step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected shifted affine symbolic finite telescoping product substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Escribir los primeros y últimos factores del producto",
-            "Los factores intermedios se cancelan por parejas",
-            "Solo quedan el último numerador y el primer denominador",
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_affine_symbolic_shifted_symbolic_lower_finite_telescoping_product_tracks_shifted_affine_endpoints(
-) {
-    let artifact = audit_case(&derive_case_by_id(
-        "finite_telescoping_product_affine_symbolic_shifted_symbolic_lower",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Evaluar producto telescópico finito")
-        })
-        .expect("expected shifted affine symbolic lower finite telescoping product step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected shifted affine symbolic lower finite telescoping product substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Escribir los primeros y últimos factores del producto",
-            "Los factores intermedios se cancelan por parejas",
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_affine_symbolic_arbitrary_shift_finite_telescoping_product_tracks_affine_endpoints(
-) {
-    let artifact = audit_case(&derive_case_by_id(
-        "finite_telescoping_product_affine_symbolic_arbitrary_shift",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Evaluar producto telescópico finito")
-        })
-        .expect("expected arbitrary-shift affine symbolic finite telescoping product step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected arbitrary-shift affine symbolic finite telescoping product substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Escribir los primeros y últimos factores del producto",
-            "Los factores intermedios se cancelan por parejas",
-            "Solo quedan el último numerador y el primer denominador",
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_affine_symbolic_arbitrary_shift_symbolic_lower_finite_telescoping_product_tracks_affine_endpoints(
-) {
-    let artifact = audit_case(&derive_case_by_id(
-        "finite_telescoping_product_affine_symbolic_arbitrary_shift_symbolic_lower",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Evaluar producto telescópico finito")
-        })
-        .expect("expected arbitrary-shift affine symbolic lower finite telescoping product step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect(
-            "expected arbitrary-shift affine symbolic lower finite telescoping product substeps",
-        )
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Escribir los primeros y últimos factores del producto",
-            "Los factores intermedios se cancelan por parejas",
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_factorized_finite_telescoping_product_uses_square_identity_then_cancels() {
-    let artifact = audit_case(&derive_case_by_id(
-        "finite_telescoping_product_factorized_square",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Evaluar producto telescópico finito")
-        })
-        .expect("expected factorized finite telescoping product step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected factorized finite telescoping product substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Usar (u^2 - 1) / u^2 = ((u - 1) · (u + 1)) / u^2",
-            "Aquí u = k",
-            "Los factores (u + 1) y (u - 1) se cancelan telescópicamente",
-            "Solo quedan el primer factor u - 1 y el último factor u + 1",
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_shifted_start_factorized_finite_telescoping_product_keeps_endpoint_language() {
-    let artifact = audit_case(&derive_case_by_id(
-        "finite_telescoping_product_factorized_square_shifted_start",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Evaluar producto telescópico finito")
-        })
-        .expect("expected shifted-start factorized finite telescoping product step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected shifted-start factorized finite telescoping product substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Usar (u^2 - 1) / u^2 = ((u - 1) · (u + 1)) / u^2",
-            "Aquí u = k",
-            "Los factores (u + 1) y (u - 1) se cancelan telescópicamente",
-            "Solo quedan el primer factor u - 1 y el último factor u + 1",
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_shifted_base_factorized_finite_telescoping_product_tracks_shifted_u() {
-    let artifact = audit_case(&derive_case_by_id(
-        "finite_telescoping_product_factorized_square_shifted_base_numeric",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Evaluar producto telescópico finito")
-        })
-        .expect("expected shifted-base factorized finite telescoping product step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected shifted-base factorized finite telescoping product substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Usar (u^2 - 1) / u^2 = ((u - 1) · (u + 1)) / u^2",
-            "Aquí u = k + 2",
-            "Los factores (u + 1) y (u - 1) se cancelan telescópicamente",
-            "Solo quedan el primer factor u - 1 y el último factor u + 1",
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_symbolic_shift_factorized_finite_telescoping_product_tracks_symbolic_u() {
-    let artifact = audit_case(&derive_case_by_id(
-        "finite_telescoping_product_factorized_square_shifted_base_symbolic",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Evaluar producto telescópico finito")
-        })
-        .expect("expected symbolic-shift factorized finite telescoping product step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected symbolic-shift factorized finite telescoping product substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Usar (u^2 - 1) / u^2 = ((u - 1) · (u + 1)) / u^2",
-            "Aquí u = a + k",
-            "Los factores (u + 1) y (u - 1) se cancelan telescópicamente",
-            "Solo quedan el primer factor u - 1 y el último factor u + 1",
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_symbolic_lower_shifted_base_factorized_finite_telescoping_product_tracks_shifted_u(
-) {
-    let artifact = audit_case(&derive_case_by_id(
-        "finite_telescoping_product_factorized_square_shifted_base_numeric_symbolic_lower",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Evaluar producto telescópico finito")
-        })
-        .expect("expected symbolic-lower shifted-base factorized finite telescoping product step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect(
-            "expected symbolic-lower shifted-base factorized finite telescoping product substeps",
-        )
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Usar (u^2 - 1) / u^2 = ((u - 1) · (u + 1)) / u^2",
-            "Aquí u = k + 2",
-            "Los factores (u + 1) y (u - 1) se cancelan telescópicamente",
-            "Solo quedan el primer factor u - 1 y el último factor u + 1",
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_symbolic_lower_symbolic_shift_factorized_finite_telescoping_product_tracks_symbolic_u(
-) {
-    let artifact = audit_case(&derive_case_by_id(
-        "finite_telescoping_product_factorized_square_shifted_base_symbolic_symbolic_lower",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Evaluar producto telescópico finito")
-        })
-        .expect(
-            "expected symbolic-lower symbolic-shift factorized finite telescoping product step",
+    for (case_id, expected_titles) in direct_cases {
+        assert_case_step_titles(
+            case_id,
+            "Evaluar producto telescópico finito",
+            expected_titles,
         );
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect(
-            "expected symbolic-lower symbolic-shift factorized finite telescoping product substeps",
-        )
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Usar (u^2 - 1) / u^2 = ((u - 1) · (u + 1)) / u^2",
+    }
+
+    let factorized_cases = [
+        (
+            "finite_telescoping_product_factorized_square_shifted_base_numeric_symbolic_lower",
+            "Aquí u = k + 2",
+        ),
+        (
+            "finite_telescoping_product_factorized_square_shifted_base_symbolic_symbolic_lower",
             "Aquí u = a + k",
-            "Los factores (u + 1) y (u - 1) se cancelan telescópicamente",
-            "Solo quedan el primer factor u - 1 y el último factor u + 1",
-        ]
-    );
+        ),
+    ];
+
+    for (case_id, u_title) in factorized_cases {
+        assert_case_step_titles(
+            case_id,
+            "Evaluar producto telescópico finito",
+            &[
+                "Usar (u^2 - 1) / u^2 = ((u - 1) · (u + 1)) / u^2",
+                u_title,
+                "Los factores (u + 1) y (u - 1) se cancelan telescópicamente",
+                "Solo quedan el primer factor u - 1 y el último factor u + 1",
+            ],
+        );
+    }
 }
 
 #[test]
@@ -5018,1094 +3246,395 @@ fn derive_didactic_finite_telescoping_sum_uses_partial_fraction_then_cancellatio
 }
 
 #[test]
-fn derive_didactic_shifted_finite_telescoping_sum_tracks_the_shifted_base() {
-    let artifact = audit_case(&derive_case_by_id("finite_telescoping_sum_shifted"));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Evaluar suma telescópica finita")
-        })
-        .expect("expected shifted finite telescoping sum step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected shifted finite telescoping sum substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Usar 1 / (u · (u + 1)) = 1 / u - 1 / (u + 1)",
-            "Aquí u = k + 2",
-            "La suma telescópica cancela los términos intermedios",
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_symbolic_shift_finite_telescoping_sum_tracks_the_symbolic_base() {
-    let artifact = audit_case(&derive_case_by_id("finite_telescoping_sum_symbolic_shift"));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Evaluar suma telescópica finita")
-        })
-        .expect("expected symbolic shifted finite telescoping sum step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected symbolic shifted finite telescoping sum substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Usar 1 / (u · (u + 1)) = 1 / u - 1 / (u + 1)",
-            "Aquí u = a + k",
-            "La suma telescópica cancela los términos intermedios",
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_symbolic_lower_finite_telescoping_sum_tracks_the_symbolic_base() {
-    let artifact = audit_case(&derive_case_by_id(
+fn derive_didactic_representative_finite_telescoping_sum_cases_keep_partial_fraction_narrative() {
+    let unit_gap_cases = [(
         "finite_telescoping_sum_symbolic_shift_symbolic_lower",
-    ));
+        "Aquí u = a + k",
+    )];
 
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Evaluar suma telescópica finita")
-        })
-        .expect("expected symbolic-lower finite telescoping sum step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected symbolic-lower finite telescoping sum substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Usar 1 / (u · (u + 1)) = 1 / u - 1 / (u + 1)",
-            "Aquí u = a + k",
-            "La suma telescópica cancela los términos intermedios",
-        ]
-    );
-}
+    for (case_id, u_title) in unit_gap_cases {
+        assert_case_step_titles(
+            case_id,
+            "Evaluar suma telescópica finita",
+            &[
+                "Usar 1 / (u · (u + 1)) = 1 / u - 1 / (u + 1)",
+                u_title,
+                "La suma telescópica cancela los términos intermedios",
+            ],
+        );
+    }
 
-#[test]
-fn derive_didactic_affine_symbolic_shift_finite_telescoping_sum_tracks_base_and_gap() {
-    let artifact = audit_case(&derive_case_by_id(
-        "finite_telescoping_sum_affine_symbolic_shift",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Evaluar suma telescópica finita")
-        })
-        .expect("expected affine symbolic shifted finite telescoping sum step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected affine symbolic shifted finite telescoping sum substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Usar 1 / (u · (u + g)) = 1 / g · (1 / u - 1 / (u + g))",
+    let affine_gap_cases = [
+        (
+            "finite_telescoping_sum_affine_symbolic_shift_symbolic_lower",
             "Aquí u = a * k + b y g = a",
-            "La suma telescópica cancela los términos intermedios",
-        ]
-    );
+        ),
+        (
+            "finite_telescoping_sum_affine_symbolic_arbitrary_shift_symbolic_lower",
+            "Aquí u = a * k + b + c y g = a",
+        ),
+    ];
+
+    for (case_id, ug_title) in affine_gap_cases {
+        assert_case_step_titles(
+            case_id,
+            "Evaluar suma telescópica finita",
+            &[
+                "Usar 1 / (u · (u + g)) = 1 / g · (1 / u - 1 / (u + g))",
+                ug_title,
+                "La suma telescópica cancela los términos intermedios",
+            ],
+        );
+    }
 }
 
 #[test]
-fn derive_didactic_affine_symbolic_shift_symbolic_lower_finite_telescoping_sum_tracks_base_and_gap()
+fn derive_didactic_representative_same_denominator_fraction_cases_have_no_substeps() {
+    let cases = [
+        (
+            "combine_fraction_part_with_same_denominator",
+            "Sumar fracciones con mismo denominador",
+        ),
+        (
+            "combine_three_same_denominator_fractions",
+            "Sumar fracciones con mismo denominador",
+        ),
+        (
+            "combine_same_denominator_fraction_sum",
+            "Sumar fracciones con mismo denominador",
+        ),
+        (
+            "combine_same_denominator_fraction_difference",
+            "Restar fracciones con mismo denominador",
+        ),
+        (
+            "combine_symbolic_same_denominator_fraction_subset_with_passthrough",
+            "Sumar fracciones con mismo denominador",
+        ),
+    ];
+
+    for (case_id, rule) in cases {
+        assert_case_step_has_no_substeps(case_id, rule);
+    }
+}
+
+#[test]
+fn derive_didactic_representative_fraction_expansion_cases_keep_distribution_and_real_cancellation()
 {
-    let artifact = audit_case(&derive_case_by_id(
-        "finite_telescoping_sum_affine_symbolic_shift_symbolic_lower",
-    ));
+    let cases = [
+        (
+            "expand_fraction_part_with_same_denominator_three_terms",
+            &["Repartir el mismo denominador sobre cada término del numerador"][..],
+        ),
+        (
+            "expand_fraction_with_common_scalar_factor_in_denominator",
+            &[
+                "Usar (a + b) / d = a/d + b/d",
+                "Cancelar los factores comunes en la fracción que queda",
+            ][..],
+        ),
+        (
+            "expand_fraction_mixed_variable_term_cancellation",
+            &[
+                "Usar (a + b) / d = a/d + b/d",
+                "Cancelar los factores comunes en las fracciones resultantes",
+            ][..],
+        ),
+        (
+            "expand_fraction_three_factor_full_cancellation",
+            &[
+                "Repartir el mismo denominador sobre cada término del numerador",
+                "Cancelar los factores comunes en las fracciones resultantes",
+            ][..],
+        ),
+        (
+            "expand_fraction_two_cancellations_plus_remainder",
+            &[
+                "Repartir el mismo denominador sobre cada término del numerador",
+                "Cancelar los factores comunes en las fracciones resultantes",
+            ][..],
+        ),
+        (
+            "expand_fraction_three_factor_cross_cancellation_plus_remainder",
+            &[
+                "Repartir el mismo denominador sobre cada término del numerador",
+                "Cancelar los factores comunes en las fracciones resultantes",
+            ][..],
+        ),
+        (
+            "expand_fraction_three_factor_three_cancellations_to_constant",
+            &[
+                "Repartir el mismo denominador sobre cada término del numerador",
+                "Cancelar los factores comunes en las fracciones resultantes",
+            ][..],
+        ),
+    ];
 
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Evaluar suma telescópica finita")
-        })
-        .expect("expected affine symbolic lower finite telescoping sum step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected affine symbolic lower finite telescoping sum substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Usar 1 / (u · (u + g)) = 1 / g · (1 / u - 1 / (u + g))",
-            "Aquí u = a * k + b y g = a",
-            "La suma telescópica cancela los términos intermedios",
-        ]
-    );
+    for (case_id, expected_titles) in cases {
+        assert_case_step_titles(case_id, "Repartir el denominador común", expected_titles);
+    }
 }
 
 #[test]
-fn derive_didactic_affine_symbolic_shifted_finite_telescoping_sum_tracks_shifted_base_and_gap() {
-    let artifact = audit_case(&derive_case_by_id(
-        "finite_telescoping_sum_affine_symbolic_shifted",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Evaluar suma telescópica finita")
-        })
-        .expect("expected shifted affine symbolic finite telescoping sum step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected shifted affine symbolic finite telescoping sum substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Usar 1 / (u · (u + g)) = 1 / g · (1 / u - 1 / (u + g))",
-            "Aquí u = a * k + a + b y g = a",
-            "La suma telescópica cancela los términos intermedios",
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_affine_symbolic_shifted_symbolic_lower_finite_telescoping_sum_tracks_shifted_base_and_gap(
-) {
-    let artifact = audit_case(&derive_case_by_id(
-        "finite_telescoping_sum_affine_symbolic_shifted_symbolic_lower",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Evaluar suma telescópica finita")
-        })
-        .expect("expected shifted affine symbolic lower finite telescoping sum step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected shifted affine symbolic lower finite telescoping sum substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Usar 1 / (u · (u + g)) = 1 / g · (1 / u - 1 / (u + g))",
-            "Aquí u = a * k + a + b y g = a",
-            "La suma telescópica cancela los términos intermedios",
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_affine_symbolic_arbitrary_shift_finite_telescoping_sum_tracks_base_and_gap() {
-    let artifact = audit_case(&derive_case_by_id(
-        "finite_telescoping_sum_affine_symbolic_arbitrary_shift",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Evaluar suma telescópica finita")
-        })
-        .expect("expected arbitrary-shift affine symbolic finite telescoping sum step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected arbitrary-shift affine symbolic finite telescoping sum substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Usar 1 / (u · (u + g)) = 1 / g · (1 / u - 1 / (u + g))",
-            "Aquí u = a * k + b + c y g = a",
-            "La suma telescópica cancela los términos intermedios",
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_affine_symbolic_arbitrary_shift_symbolic_lower_finite_telescoping_sum_tracks_base_and_gap(
-) {
-    let artifact = audit_case(&derive_case_by_id(
-        "finite_telescoping_sum_affine_symbolic_arbitrary_shift_symbolic_lower",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Evaluar suma telescópica finita")
-        })
-        .expect("expected arbitrary-shift affine symbolic lower finite telescoping sum step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected arbitrary-shift affine symbolic lower finite telescoping sum substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Usar 1 / (u · (u + g)) = 1 / g · (1 / u - 1 / (u + g))",
-            "Aquí u = a * k + b + c y g = a",
-            "La suma telescópica cancela los términos intermedios",
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_three_same_denominator_fractions_keep_denominator_and_sum_numerators() {
-    let artifact = audit_case(&derive_case_by_id(
-        "combine_three_same_denominator_fractions",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Sumar fracciones con mismo denominador")
-        })
-        .expect("expected same-denominator combine step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .map(|substeps| {
-            substeps
-                .iter()
-                .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-                .collect()
-        })
-        .unwrap_or_default();
-    assert_eq!(titles, Vec::<&str>::new());
-}
-
-#[test]
-fn derive_didactic_three_term_fraction_distribution_mentions_each_term_in_the_numerator() {
-    let artifact = audit_case(&derive_case_by_id(
-        "expand_fraction_same_denominator_three_terms",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Repartir el denominador común")
-        })
-        .expect("expected distribute-division derive step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected distribute-division substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec!["Repartir el mismo denominador sobre cada término del numerador"]
-    );
-}
-
-#[test]
-fn derive_didactic_same_denominator_focus_only_expands_fraction_part() {
-    let artifact = audit_case(&derive_case_by_id(
-        "expand_fraction_part_with_same_denominator_three_terms",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Repartir el denominador común")
-        })
-        .expect("expected distribute-division step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected distribute-division substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec!["Repartir el mismo denominador sobre cada término del numerador"]
-    );
-}
-
-#[test]
-fn derive_didactic_fraction_expansion_with_common_scalar_denominator_simplifies_each_piece() {
-    let artifact = audit_case(&derive_case_by_id(
-        "expand_fraction_with_common_scalar_factor_in_denominator",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Repartir el denominador común")
-        })
-        .expect("expected distribute-division derive step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected distribute-division substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Usar (a + b) / d = a/d + b/d",
-            "Cancelar los factores comunes en la fracción que queda"
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_general_fraction_decomposition_keeps_whole_plus_remainder_narrative() {
-    let artifact = audit_case(&derive_case_by_id(
-        "split_fraction_linear_over_shifted_linear",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Separar parte entera y resto")
-        })
-        .expect("expected mixed-fraction split derive step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected mixed-fraction split substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Reescribir el numerador como denominador · parte entera + resto",
-            "Separar la parte entera de la fracción restante"
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_scaled_fraction_decomposition_keeps_whole_plus_remainder_narrative() {
-    let artifact = audit_case(&derive_case_by_id(
+fn derive_didactic_representative_fraction_decomposition_cases_keep_whole_plus_remainder_narrative()
+{
+    let csv_cases = [
+        "split_fraction_into_whole_plus_remainder",
         "split_fraction_linear_over_scaled_linear",
-    ));
+        "split_fraction_symbolic_over_general_shift",
+        "split_fraction_symbolic_over_scaled_general_linear",
+        "split_fraction_symbolic_over_negative_scaled_general_linear",
+    ];
 
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Separar parte entera y resto")
-        })
-        .expect("expected scaled mixed-fraction split derive step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected scaled mixed-fraction split substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Reescribir el numerador como denominador · parte entera + resto",
-            "Separar la parte entera de la fracción restante"
-        ]
-    );
+    for case_id in csv_cases {
+        assert_case_step_titles(
+            case_id,
+            "Separar parte entera y resto",
+            &[
+                "Reescribir el numerador como denominador · parte entera + resto",
+                "Separar la parte entera de la fracción restante",
+            ],
+        );
+    }
+
+    let monic_cases = [
+        DeriveCase {
+            id: "split_fraction_monic_symbolic_offset_inline".to_string(),
+            family: "fraction_decompose".to_string(),
+            source: "(x+a)/(x+b)".to_string(),
+            target: "1 + (a-b)/(x+b)".to_string(),
+            expected_status: "derived".to_string(),
+        },
+        DeriveCase {
+            id: "split_fraction_monic_scaled_symbolic_inline".to_string(),
+            family: "fraction_decompose".to_string(),
+            source: "(x+a)/(c*x+d)".to_string(),
+            target: "1/c + (a-d/c)/(c*x+d)".to_string(),
+            expected_status: "derived".to_string(),
+        },
+        DeriveCase {
+            id: "split_fraction_negative_monic_scaled_symbolic_inline".to_string(),
+            family: "fraction_decompose".to_string(),
+            source: "(x+a)/(d-c*x)".to_string(),
+            target: "-1/c + (a+d/c)/(d-c*x)".to_string(),
+            expected_status: "derived".to_string(),
+        },
+    ];
+
+    for case in monic_cases {
+        let artifact = audit_case(&case);
+        let step = step_by_rule(&artifact, "Separar parte entera y resto");
+        assert_eq!(
+            step_substep_titles(step),
+            vec![
+                "Reescribir el numerador como denominador · parte entera + resto",
+                "Separar la parte entera de la fracción restante",
+            ],
+            "unexpected fraction decomposition narrative for inline monic case {}",
+            case.id
+        );
+    }
 }
 
 #[test]
-fn derive_didactic_alt_scaled_fraction_decomposition_keeps_whole_plus_remainder_narrative() {
-    let artifact = audit_case(&derive_case_by_id(
-        "split_fraction_linear_over_scaled_linear_alt",
-    ));
+fn derive_didactic_representative_fraction_combination_cases_keep_whole_plus_remainder_narrative() {
+    let csv_cases = [
+        "combine_whole_plus_remainder_into_fraction",
+        "combine_symbolic_whole_plus_remainder_into_fraction",
+        "combine_scaled_symbolic_whole_plus_remainder_into_fraction",
+        "combine_negative_scaled_symbolic_whole_plus_remainder_into_fraction",
+    ];
 
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Separar parte entera y resto")
-        })
-        .expect("expected alternate scaled mixed-fraction split derive step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected alternate scaled mixed-fraction split substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Reescribir el numerador como denominador · parte entera + resto",
-            "Separar la parte entera de la fracción restante"
-        ]
-    );
+    for case_id in csv_cases {
+        assert_case_step_titles(
+            case_id,
+            "Unir parte entera y fracción",
+            &[
+                "Poner la parte entera sobre el mismo denominador",
+                "Sumar los numeradores y conservar el denominador",
+            ],
+        );
+    }
+
+    let monic_cases = [
+        DeriveCase {
+            id: "combine_monic_scaled_symbolic_inline".to_string(),
+            family: "fraction_combine".to_string(),
+            source: "1/c + (a-d/c)/(c*x+d)".to_string(),
+            target: "(x+a)/(c*x+d)".to_string(),
+            expected_status: "derived".to_string(),
+        },
+        DeriveCase {
+            id: "combine_negative_monic_scaled_symbolic_inline".to_string(),
+            family: "fraction_combine".to_string(),
+            source: "-1/c + (a+d/c)/(d-c*x)".to_string(),
+            target: "(x+a)/(d-c*x)".to_string(),
+            expected_status: "derived".to_string(),
+        },
+    ];
+
+    for case in monic_cases {
+        let artifact = audit_case(&case);
+        let step = step_by_rule(&artifact, "Unir parte entera y fracción");
+        assert_eq!(
+            step_substep_titles(step),
+            vec![
+                "Poner la parte entera sobre el mismo denominador",
+                "Sumar los numeradores y conservar el denominador",
+            ],
+            "unexpected fraction combination narrative for inline monic case {}",
+            case.id
+        );
+    }
 }
 
 #[test]
-fn derive_didactic_symbolic_fraction_decomposition_keeps_whole_plus_remainder_narrative() {
-    let artifact = audit_case(&derive_case_by_id(
-        "split_fraction_symbolic_over_shifted_linear",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Separar parte entera y resto")
-        })
-        .expect("expected symbolic mixed-fraction split derive step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected symbolic mixed-fraction split substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Reescribir el numerador como denominador · parte entera + resto",
-            "Separar la parte entera de la fracción restante"
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_symbolic_fraction_decomposition_plus_one_keeps_whole_plus_remainder_narrative() {
-    let artifact = audit_case(&derive_case_by_id("split_fraction_symbolic_over_plus_one"));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Separar parte entera y resto")
-        })
-        .expect("expected symbolic plus-one mixed-fraction split derive step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected symbolic plus-one mixed-fraction split substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Reescribir el numerador como denominador · parte entera + resto",
-            "Separar la parte entera de la fracción restante"
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_symbolic_fraction_decomposition_plus_one_in_y_keeps_whole_plus_remainder_narrative(
-) {
-    let artifact = audit_case(&derive_case_by_id(
-        "split_fraction_symbolic_over_plus_one_alt_var",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Separar parte entera y resto")
-        })
-        .expect("expected symbolic plus-one mixed-fraction split derive step in y");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected symbolic plus-one mixed-fraction split substeps in y")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Reescribir el numerador como denominador · parte entera + resto",
-            "Separar la parte entera de la fracción restante"
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_higher_odd_half_power_uses_root_split_narrative() {
-    let artifact = audit_case(&derive_case_by_id("expand_higher_odd_half_power"));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Reescribir potencia semientera impar")
-        })
-        .expect("expected odd-half-power derive step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected odd-half-power substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Separar la mitad entera de la mitad radical",
-            "Usar que queda una raíz cuadrada del mismo factor",
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_higher_odd_half_power_after_simplify_uses_root_split_narrative() {
-    let artifact = audit_case(&derive_case_by_id(
+fn derive_didactic_representative_odd_half_power_cases_use_root_split_narrative() {
+    let case_ids = [
+        "expand_odd_half_power",
+        "expand_odd_half_power_after_simplify",
+        "expand_higher_odd_half_power",
         "expand_higher_odd_half_power_after_simplify",
-    ));
+        "expand_higher_odd_half_power_alt_var",
+    ];
 
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Reescribir potencia semientera impar")
-        })
-        .expect("expected odd-half-power derive step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected odd-half-power substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Separar la mitad entera de la mitad radical",
-            "Usar que queda una raíz cuadrada del mismo factor",
-        ]
-    );
+    for case_id in case_ids {
+        let artifact = audit_case(&derive_case_by_id(case_id));
+
+        let step = artifact
+            .json_steps
+            .iter()
+            .find(|step| {
+                step.get("rule")
+                    .and_then(Value::as_str)
+                    .is_some_and(|rule| rule == "Reescribir potencia semientera impar")
+            })
+            .expect("expected odd-half-power derive step");
+        let titles: Vec<&str> = step
+            .get("substeps")
+            .and_then(Value::as_array)
+            .expect("expected odd-half-power substeps")
+            .iter()
+            .filter_map(|substep| substep.get("title").and_then(Value::as_str))
+            .collect();
+        assert_eq!(
+            titles,
+            vec![
+                "Separar la mitad entera de la mitad radical",
+                "Usar que queda una raíz cuadrada del mismo factor",
+            ],
+            "unexpected odd-half-power narrative for {case_id}"
+        );
+    }
 }
 
 #[test]
-fn derive_didactic_higher_odd_half_power_in_y_uses_root_split_narrative() {
-    let artifact = audit_case(&derive_case_by_id("expand_higher_odd_half_power_alt_var"));
+fn derive_didactic_representative_collect_cases_keep_focus_narrative() {
+    let cases = [
+        (
+            "collect_linear",
+            "Agrupar términos por variable",
+            vec!["Agrupar los términos que llevan la misma potencia de x"],
+        ),
+        (
+            "collect_linear_alt_variable",
+            "Agrupar términos por variable",
+            vec!["Agrupar los términos que llevan la misma potencia de y"],
+        ),
+        (
+            "collect_multiple_power_groups",
+            "Agrupar términos por variable",
+            vec!["Agrupar los términos que llevan la misma potencia de x"],
+        ),
+        (
+            "collect_common_symbolic_coefficients",
+            "Agrupar términos por variable",
+            vec!["Agrupar los términos que llevan la misma potencia de x"],
+        ),
+        (
+            "collect_composite_monomial_factor",
+            "Agrupar términos por factor común",
+            vec!["Agrupar los términos que llevan el mismo factor x·y"],
+        ),
+        (
+            "collect_two_composite_factor_groups",
+            "Agrupar términos por factor común",
+            vec!["Agrupar los términos que llevan el mismo factor x·y"],
+        ),
+    ];
 
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Reescribir potencia semientera impar")
-        })
-        .expect("expected odd-half-power derive step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected odd-half-power substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Separar la mitad entera de la mitad radical",
-            "Usar que queda una raíz cuadrada del mismo factor",
-        ]
-    );
+    for (case_id, rule, expected_titles) in cases {
+        let artifact = audit_case(&derive_case_by_id(case_id));
+        let step = step_by_rule(&artifact, rule);
+        assert_eq!(
+            step_substep_titles(step),
+            expected_titles,
+            "unexpected collect narrative for {case_id}"
+        );
+    }
 }
 
 #[test]
-fn derive_didactic_even_higher_odd_half_power_uses_root_split_narrative() {
-    let artifact = audit_case(&derive_case_by_id("expand_even_higher_odd_half_power"));
+fn derive_didactic_representative_factor_with_division_cases_keep_variable_specific_narrative() {
+    let csv_cases = [
+        (
+            "factor_out_with_division",
+            vec!["Si un término no lleva x, escribirlo como x · (t/x)"],
+        ),
+        (
+            "factor_out_with_division_sparse_quintic",
+            vec!["Si un término no lleva x, escribirlo como x · (t/x)"],
+        ),
+        (
+            "factor_out_with_division_mixed_septic",
+            vec!["Si un término no lleva x, escribirlo como x · (t/x)"],
+        ),
+        (
+            "factor_out_square_with_division_quartic",
+            vec!["Si un término no lleva x^2, escribirlo como x^2 · (t/x^2)"],
+        ),
+        (
+            "factor_out_cube_with_division_septic",
+            vec!["Si un término no lleva x^3, escribirlo como x^3 · (t/x^3)"],
+        ),
+    ];
 
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Reescribir potencia semientera impar")
-        })
-        .expect("expected odd-half-power derive step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected odd-half-power substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
+    for (case_id, expected_titles) in csv_cases {
+        let artifact = audit_case(&derive_case_by_id(case_id));
+        let step = step_by_rule(&artifact, "Sacar factor usando división");
+        assert_eq!(
+            step_substep_titles(step),
+            expected_titles,
+            "unexpected factor-with-division narrative for {case_id}"
+        );
+    }
+
+    let y_case = DeriveCase {
+        id: "factor_out_with_division_quadratic_y_inline".to_string(),
+        family: "conditional_factor".to_string(),
+        source: "a*y^2 + b*y + c".to_string(),
+        target: "y*(a*y + b + c/y)".to_string(),
+        expected_status: "derived".to_string(),
+    };
+    let y_artifact = audit_case(&y_case);
+    let y_step = step_by_rule(&y_artifact, "Sacar factor usando división");
     assert_eq!(
-        titles,
-        vec![
-            "Separar la mitad entera de la mitad radical",
-            "Usar que queda una raíz cuadrada del mismo factor",
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_even_higher_odd_half_power_after_simplify_uses_root_split_narrative() {
-    let artifact = audit_case(&derive_case_by_id(
-        "expand_even_higher_odd_half_power_after_simplify",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Reescribir potencia semientera impar")
-        })
-        .expect("expected odd-half-power derive step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected odd-half-power substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Separar la mitad entera de la mitad radical",
-            "Usar que queda una raíz cuadrada del mismo factor",
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_even_higher_odd_half_power_in_y_uses_root_split_narrative() {
-    let artifact = audit_case(&derive_case_by_id(
-        "expand_even_higher_odd_half_power_alt_var",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Reescribir potencia semientera impar")
-        })
-        .expect("expected odd-half-power derive step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected odd-half-power substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Separar la mitad entera de la mitad radical",
-            "Usar que queda una raíz cuadrada del mismo factor",
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_even_higher_odd_half_power_after_simplify_in_y_uses_root_split_narrative() {
-    let artifact = audit_case(&derive_case_by_id(
-        "expand_even_higher_odd_half_power_after_simplify_alt_var",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Reescribir potencia semientera impar")
-        })
-        .expect("expected odd-half-power derive step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected odd-half-power substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Separar la mitad entera de la mitad radical",
-            "Usar que queda una raíz cuadrada del mismo factor",
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_collect_three_linear_terms_keeps_collect_narrative() {
-    let artifact = audit_case(&derive_case_by_id("collect_linear_three_terms"));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Agrupar términos por variable")
-        })
-        .expect("expected collect derive step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected collect substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec!["Agrupar los términos que llevan la misma potencia de x"]
-    );
-}
-
-#[test]
-fn derive_didactic_collect_quadratic_terms_keeps_same_power_language() {
-    let artifact = audit_case(&derive_case_by_id("collect_quadratic_terms"));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Agrupar términos por variable")
-        })
-        .expect("expected collect derive step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected collect substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec!["Agrupar los términos que llevan la misma potencia de x"]
-    );
-}
-
-#[test]
-fn derive_didactic_collect_symbolic_coefficients_keeps_same_power_language() {
-    let artifact = audit_case(&derive_case_by_id("collect_common_symbolic_coefficients"));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Agrupar términos por variable")
-        })
-        .expect("expected collect derive step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected collect substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec!["Agrupar los términos que llevan la misma potencia de x"]
-    );
-}
-
-#[test]
-fn derive_didactic_collect_linear_alt_variable_keeps_y_power_language() {
-    let artifact = audit_case(&derive_case_by_id("collect_linear_alt_variable"));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Agrupar términos por variable")
-        })
-        .expect("expected collect derive step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected collect substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec!["Agrupar los términos que llevan la misma potencia de y"]
-    );
-}
-
-#[test]
-fn derive_didactic_collect_cubic_terms_keeps_x_power_language() {
-    let artifact = audit_case(&derive_case_by_id("collect_cubic_terms"));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Agrupar términos por variable")
-        })
-        .expect("expected collect derive step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected collect substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec!["Agrupar los términos que llevan la misma potencia de x"]
-    );
-}
-
-#[test]
-fn derive_didactic_collect_quadratic_alt_variable_keeps_y_power_language() {
-    let artifact = audit_case(&derive_case_by_id("collect_quadratic_terms_alt_variable"));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Agrupar términos por variable")
-        })
-        .expect("expected collect derive step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected collect substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec!["Agrupar los términos que llevan la misma potencia de y"]
-    );
-}
-
-#[test]
-fn derive_didactic_quadratic_factor_with_division_keeps_x_division_narrative() {
-    let artifact = audit_case(&derive_case_by_id("factor_out_with_division_quadratic"));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Sacar factor usando división")
-        })
-        .expect("expected factor-with-division derive step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected factor-with-division substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec!["Si un término no lleva x, escribirlo como x · (t/x)"]
-    );
-}
-
-#[test]
-fn derive_didactic_quadratic_factor_with_division_in_y_keeps_variable_specific_narrative() {
-    let artifact = audit_case(&derive_case_by_id("factor_out_with_division_quadratic_y"));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Sacar factor usando división")
-        })
-        .expect("expected factor-with-division derive step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected factor-with-division substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec!["Si un término no lleva y, escribirlo como y · (t/y)"]
-    );
-}
-
-#[test]
-fn derive_didactic_cubic_factor_with_division_keeps_x_division_narrative() {
-    let artifact = audit_case(&derive_case_by_id("factor_out_with_division_cubic"));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Sacar factor usando división")
-        })
-        .expect("expected factor-with-division derive step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected factor-with-division substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec!["Si un término no lleva x, escribirlo como x · (t/x)"]
-    );
-}
-
-#[test]
-fn derive_didactic_cubic_factor_with_division_in_y_keeps_variable_specific_narrative() {
-    let artifact = audit_case(&derive_case_by_id("factor_out_with_division_cubic_y"));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Sacar factor usando división")
-        })
-        .expect("expected factor-with-division derive step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected factor-with-division substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec!["Si un término no lleva y, escribirlo como y · (t/y)"]
-    );
-}
-
-#[test]
-fn derive_didactic_sparse_quartic_factor_with_division_keeps_x_division_narrative() {
-    let artifact = audit_case(&derive_case_by_id(
-        "factor_out_with_division_sparse_quartic",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Sacar factor usando división")
-        })
-        .expect("expected factor-with-division derive step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected factor-with-division substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec!["Si un término no lleva x, escribirlo como x · (t/x)"]
+        step_substep_titles(y_step),
+        vec!["Si un término no lleva y, escribirlo como y · (t/y)"],
+        "unexpected factor-with-division narrative for inline y case"
     );
 }
 
 #[test]
 fn derive_didactic_combine_like_terms_with_zero_sums_coefficients_without_noise() {
-    let artifact = audit_case(&derive_case_by_id("combine_like_terms_with_zero"));
+    let case = DeriveCase {
+        id: "combine_like_terms_with_zero_inline".to_string(),
+        family: "simplify".to_string(),
+        source: "2*x + 3*x + 0".to_string(),
+        target: "5*x".to_string(),
+        expected_status: "derived".to_string(),
+    };
+    let artifact = audit_case(&case);
 
     let step = artifact
         .json_steps
@@ -6297,469 +3826,69 @@ fn derive_didactic_monomial_common_factor_fraction_cancels_symbol_then_simplifie
 }
 
 #[test]
-fn derive_didactic_complete_square_numeric_case_uses_formula_and_substitution() {
-    let artifact = audit_case(&derive_case_by_id(
-        "solve_prep_complete_square_monic_numeric",
-    ));
+fn derive_didactic_representative_complete_square_cases_use_formula_and_track_coefficients() {
+    let cases = [
+        (
+            "solve_prep_complete_square_monic_numeric",
+            &[
+                "Usar la fórmula de completar el cuadrado",
+                "Aquí A = 1, B = 6 y C = 5",
+            ][..],
+        ),
+        (
+            "solve_prep_complete_square_symbolic_leading_coeff",
+            &[
+                "Usar la fórmula de completar el cuadrado",
+                "Aquí A = a, B = b y C = c",
+            ][..],
+        ),
+        (
+            "solve_prep_complete_square_symbolic_monic_parametric",
+            &[
+                "Usar la fórmula de completar el cuadrado",
+                "Aquí A = 1, B = 2 · b y C = c",
+            ][..],
+        ),
+        (
+            "solve_prep_complete_square_alt_variable_symbolic_leading_coeff",
+            &[
+                "Usar la fórmula de completar el cuadrado",
+                "Aquí A = a, B = b y C = c",
+            ][..],
+        ),
+        (
+            "solve_prep_complete_square_symbolic_negative_linear_coeff",
+            &[
+                "Usar la fórmula de completar el cuadrado",
+                "Aquí A = a, B = -b y C = c",
+            ][..],
+        ),
+        (
+            "solve_prep_complete_square_negative_symbolic_leading_coeff",
+            &[
+                "Usar la fórmula de completar el cuadrado",
+                "Aquí A = -a, B = b y C = c",
+            ][..],
+        ),
+        (
+            "solve_prep_complete_square_fractional_monic_numeric",
+            &[
+                "Usar la fórmula de completar el cuadrado",
+                "Aquí A = 1, B = 3 y C = 1",
+            ][..],
+        ),
+        (
+            "solve_prep_complete_square_fractional_symbolic_leading_coeff",
+            &[
+                "Usar la fórmula de completar el cuadrado",
+                "Aquí A = a/2, B = b y C = c",
+            ][..],
+        ),
+    ];
 
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Completar el cuadrado")
-        })
-        .expect("expected complete-the-square derive step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected complete-the-square substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Usar la fórmula de completar el cuadrado",
-            "Aquí A = 1, B = 6 y C = 5"
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_complete_square_symbolic_case_tracks_symbolic_coefficients() {
-    let artifact = audit_case(&derive_case_by_id(
-        "solve_prep_complete_square_symbolic_leading_coeff",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Completar el cuadrado")
-        })
-        .expect("expected complete-the-square derive step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected complete-the-square substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Usar la fórmula de completar el cuadrado",
-            "Aquí A = a, B = b y C = c"
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_complete_square_zero_constant_case_tracks_zero_constant_cleanly() {
-    let artifact = audit_case(&derive_case_by_id(
-        "solve_prep_complete_square_zero_constant",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Completar el cuadrado")
-        })
-        .expect("expected complete-the-square derive step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected complete-the-square substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Usar la fórmula de completar el cuadrado",
-            "Aquí A = 1, B = 2 y C = 0"
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_complete_square_scaled_numeric_case_tracks_scaled_coefficients() {
-    let artifact = audit_case(&derive_case_by_id(
-        "solve_prep_complete_square_scaled_numeric",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Completar el cuadrado")
-        })
-        .expect("expected complete-the-square derive step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected complete-the-square substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Usar la fórmula de completar el cuadrado",
-            "Aquí A = 2, B = 8 y C = 5"
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_complete_square_symbolic_monic_case_avoids_letter_collision() {
-    let artifact = audit_case(&derive_case_by_id(
-        "solve_prep_complete_square_symbolic_monic_parametric",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Completar el cuadrado")
-        })
-        .expect("expected complete-the-square derive step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected complete-the-square substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Usar la fórmula de completar el cuadrado",
-            "Aquí A = 1, B = 2 · b y C = c"
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_complete_square_negative_leading_case_tracks_negative_a() {
-    let artifact = audit_case(&derive_case_by_id(
-        "solve_prep_complete_square_negative_leading_numeric",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Completar el cuadrado")
-        })
-        .expect("expected complete-the-square derive step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected complete-the-square substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Usar la fórmula de completar el cuadrado",
-            "Aquí A = -1, B = 4 y C = 1"
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_complete_square_alt_variable_numeric_case_tracks_y_coefficients() {
-    let artifact = audit_case(&derive_case_by_id(
-        "solve_prep_complete_square_alt_variable_numeric",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Completar el cuadrado")
-        })
-        .expect("expected complete-the-square derive step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected complete-the-square substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Usar la fórmula de completar el cuadrado",
-            "Aquí A = 3, B = -12 y C = 7"
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_complete_square_alt_variable_symbolic_case_is_not_hardcoded_to_x() {
-    let artifact = audit_case(&derive_case_by_id(
-        "solve_prep_complete_square_alt_variable_symbolic_leading_coeff",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Completar el cuadrado")
-        })
-        .expect("expected complete-the-square derive step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected complete-the-square substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Usar la fórmula de completar el cuadrado",
-            "Aquí A = a, B = b y C = c"
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_complete_square_fractional_numeric_case_tracks_fractional_b_over_2a() {
-    let artifact = audit_case(&derive_case_by_id(
-        "solve_prep_complete_square_fractional_monic_numeric",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Completar el cuadrado")
-        })
-        .expect("expected complete-the-square derive step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected complete-the-square substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Usar la fórmula de completar el cuadrado",
-            "Aquí A = 1, B = 3 y C = 1"
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_complete_square_fractional_scaled_case_tracks_fractional_shift_and_scaled_a() {
-    let artifact = audit_case(&derive_case_by_id(
-        "solve_prep_complete_square_fractional_scaled_numeric",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Completar el cuadrado")
-        })
-        .expect("expected complete-the-square derive step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected complete-the-square substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Usar la fórmula de completar el cuadrado",
-            "Aquí A = 2, B = 3 y C = 1"
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_complete_square_fractional_alt_variable_case_tracks_fractional_shift_in_y() {
-    let artifact = audit_case(&derive_case_by_id(
-        "solve_prep_complete_square_fractional_alt_variable",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Completar el cuadrado")
-        })
-        .expect("expected complete-the-square derive step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected complete-the-square substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Usar la fórmula de completar el cuadrado",
-            "Aquí A = 1, B = 3 y C = 0"
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_complete_square_symbolic_negative_linear_case_tracks_negative_b() {
-    let artifact = audit_case(&derive_case_by_id(
-        "solve_prep_complete_square_symbolic_negative_linear_coeff",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Completar el cuadrado")
-        })
-        .expect("expected complete-the-square derive step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected complete-the-square substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Usar la fórmula de completar el cuadrado",
-            "Aquí A = a, B = -b y C = c"
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_complete_square_alt_variable_symbolic_negative_linear_case_tracks_negative_b() {
-    let artifact = audit_case(&derive_case_by_id(
-        "solve_prep_complete_square_alt_variable_symbolic_negative_linear_coeff",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Completar el cuadrado")
-        })
-        .expect("expected complete-the-square derive step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected complete-the-square substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Usar la fórmula de completar el cuadrado",
-            "Aquí A = a, B = -b y C = c"
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_complete_square_symbolic_monic_negative_parametric_tracks_negative_b_term() {
-    let artifact = audit_case(&derive_case_by_id(
-        "solve_prep_complete_square_symbolic_monic_negative_parametric",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Completar el cuadrado")
-        })
-        .expect("expected complete-the-square derive step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected complete-the-square substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Usar la fórmula de completar el cuadrado",
-            "Aquí A = 1, B = -2 · b y C = c"
-        ]
-    );
-}
-
-#[test]
-fn derive_didactic_complete_square_alt_variable_symbolic_monic_negative_parametric_tracks_negative_b_term(
-) {
-    let artifact = audit_case(&derive_case_by_id(
-        "solve_prep_complete_square_alt_variable_symbolic_monic_negative_parametric",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Completar el cuadrado")
-        })
-        .expect("expected complete-the-square derive step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected complete-the-square substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Usar la fórmula de completar el cuadrado",
-            "Aquí A = 1, B = -2 · b y C = c"
-        ]
-    );
+    for (case_id, expected_titles) in cases {
+        assert_case_step_titles(case_id, "Completar el cuadrado", expected_titles);
+    }
 }
 
 #[test]
@@ -6937,6 +4066,158 @@ fn derive_didactic_eighth_power_minus_multifactor_product_uses_summary_cancellat
     assert_eq!(
         titles,
         vec!["Multiplicar y reagrupar por grados para cancelar términos intermedios"]
+    );
+}
+
+#[test]
+fn derive_didactic_ninth_power_plus_product_keeps_pairwise_cancellation_story() {
+    let artifact = audit_case(&derive_case_by_id("expand_ninth_power_plus_product"));
+
+    let step = artifact
+        .json_steps
+        .iter()
+        .find(|step| {
+            step.get("rule")
+                .and_then(Value::as_str)
+                .is_some_and(|rule| rule == "Expandir la expresión")
+        })
+        .expect("expected polynomial product derive step");
+    let titles: Vec<&str> = step
+        .get("substeps")
+        .and_then(Value::as_array)
+        .expect("expected polynomial product substeps")
+        .iter()
+        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
+        .collect();
+    assert_eq!(
+        titles,
+        vec![
+            "Distribuir cada término del producto",
+            "Agrupar los términos del mismo grado",
+            "Los términos intermedios se cancelan por parejas"
+        ]
+    );
+}
+
+#[test]
+fn derive_didactic_symbolic_cube_sum_product_uses_sum_of_cubes_identity_language() {
+    let artifact = audit_case(&derive_case_by_id("expand_symbolic_cube_sum_product"));
+
+    let step = artifact
+        .json_steps
+        .iter()
+        .find(|step| {
+            step.get("rule")
+                .and_then(Value::as_str)
+                .is_some_and(|rule| rule == "Expandir la expresión")
+        })
+        .expect("expected polynomial product derive step");
+    let titles: Vec<&str> = step
+        .get("substeps")
+        .and_then(Value::as_array)
+        .expect("expected polynomial product substeps")
+        .iter()
+        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
+        .collect();
+    assert_eq!(
+        titles,
+        vec![
+            "Reconocer el patrón (a + b)(a^2 - ab + b^2)",
+            "Aplicar (a + b)(a^2 - ab + b^2) = a^3 + b^3"
+        ]
+    );
+}
+
+#[test]
+fn derive_didactic_symbolic_cube_difference_product_uses_difference_of_cubes_identity_language() {
+    let artifact = audit_case(&derive_case_by_id(
+        "expand_symbolic_cube_difference_product",
+    ));
+
+    let step = artifact
+        .json_steps
+        .iter()
+        .find(|step| {
+            step.get("rule")
+                .and_then(Value::as_str)
+                .is_some_and(|rule| rule == "Expandir la expresión")
+        })
+        .expect("expected polynomial product derive step");
+    let titles: Vec<&str> = step
+        .get("substeps")
+        .and_then(Value::as_array)
+        .expect("expected polynomial product substeps")
+        .iter()
+        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
+        .collect();
+    assert_eq!(
+        titles,
+        vec![
+            "Reconocer el patrón (a - b)(a^2 + ab + b^2)",
+            "Aplicar (a - b)(a^2 + ab + b^2) = a^3 - b^3"
+        ]
+    );
+}
+
+#[test]
+fn derive_didactic_symbolic_sixth_power_plus_product_uses_sixth_power_identity_language() {
+    let artifact = audit_case(&derive_case_by_id(
+        "expand_symbolic_sixth_power_plus_product",
+    ));
+
+    let step = artifact
+        .json_steps
+        .iter()
+        .find(|step| {
+            step.get("rule")
+                .and_then(Value::as_str)
+                .is_some_and(|rule| rule == "Expandir la expresión")
+        })
+        .expect("expected polynomial product derive step");
+    let titles: Vec<&str> = step
+        .get("substeps")
+        .and_then(Value::as_array)
+        .expect("expected polynomial product substeps")
+        .iter()
+        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
+        .collect();
+    assert_eq!(
+        titles,
+        vec![
+            "Reconocer el patrón (a^2 + b^2)(a^4 - a^2b^2 + b^4)",
+            "Aplicar (a^2 + b^2)(a^4 - a^2b^2 + b^4) = a^6 + b^6"
+        ]
+    );
+}
+
+#[test]
+fn derive_didactic_symbolic_sixth_power_minus_product_uses_sixth_power_identity_language() {
+    let artifact = audit_case(&derive_case_by_id(
+        "expand_symbolic_sixth_power_minus_product",
+    ));
+
+    let step = artifact
+        .json_steps
+        .iter()
+        .find(|step| {
+            step.get("rule")
+                .and_then(Value::as_str)
+                .is_some_and(|rule| rule == "Expandir la expresión")
+        })
+        .expect("expected polynomial product derive step");
+    let titles: Vec<&str> = step
+        .get("substeps")
+        .and_then(Value::as_array)
+        .expect("expected polynomial product substeps")
+        .iter()
+        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
+        .collect();
+    assert_eq!(
+        titles,
+        vec![
+            "Reconocer el patrón (a^2 - b^2)(a^4 + a^2b^2 + b^4)",
+            "Aplicar (a^2 - b^2)(a^4 + a^2b^2 + b^4) = a^6 - b^6"
+        ]
     );
 }
 

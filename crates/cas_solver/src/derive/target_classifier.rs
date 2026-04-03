@@ -7,12 +7,12 @@ use super::{
     detect_factor_out_with_division_target, looks_like_fraction_expanded_target,
     looks_like_mixed_fraction_target, looks_like_telescoping_fraction_target,
     looks_rationalizable_source, strong_target_match, try_build_combined_fraction_from_fold_add,
-    try_rewrite_expanded_target_aware, try_rewrite_fraction_combination_target_aware,
-    try_rewrite_fraction_expansion_target_aware, try_rewrite_integrate_prep_target_aware,
-    try_rewrite_log_contraction_target_aware, try_rewrite_log_expansion_target_aware,
-    try_rewrite_odd_half_power_target_aware, try_rewrite_power_merge_target_aware,
-    try_rewrite_solve_prep_target_aware, try_rewrite_trig_contraction_target_aware,
-    try_rewrite_trig_expansion, DeriveTargetForm,
+    try_rewrite_collect_monomial_target_aware, try_rewrite_expanded_target_aware,
+    try_rewrite_fraction_combination_target_aware, try_rewrite_fraction_expansion_target_aware,
+    try_rewrite_integrate_prep_target_aware, try_rewrite_log_contraction_target_aware,
+    try_rewrite_log_expansion_target_aware, try_rewrite_odd_half_power_target_aware,
+    try_rewrite_power_merge_target_aware, try_rewrite_solve_prep_target_aware,
+    try_rewrite_trig_contraction_target_aware, try_rewrite_trig_expansion, DeriveTargetForm,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -27,6 +27,13 @@ pub(crate) fn classify_target_profile(
     target_expr: ExprId,
 ) -> DeriveTargetProfile {
     let shared_vars = collect_candidate_variables(ctx, source_expr, target_expr);
+
+    if let Some(var_name) = detect_factor_with_division_target(ctx, target_expr, &shared_vars) {
+        return DeriveTargetProfile {
+            form: DeriveTargetForm::FactoredWithDivision { var: var_name },
+            shared_vars,
+        };
+    }
 
     if let Some(var_name) = detect_collect_target(ctx, source_expr, target_expr, &shared_vars) {
         return DeriveTargetProfile {
@@ -98,13 +105,6 @@ pub(crate) fn classify_target_profile(
         };
     }
 
-    if let Some(var_name) = detect_factor_with_division_target(ctx, target_expr, &shared_vars) {
-        return DeriveTargetProfile {
-            form: DeriveTargetForm::FactoredWithDivision { var: var_name },
-            shared_vars,
-        };
-    }
-
     if detect_power_merged_target(ctx, source_expr, target_expr) {
         return DeriveTargetProfile {
             form: DeriveTargetForm::PowerMerged,
@@ -166,6 +166,11 @@ fn detect_collect_target(
         if strong_target_match(ctx, rewrite.rewritten, target_expr) {
             return Some(var_name.clone());
         }
+    }
+
+    if let Some(rewrite) = try_rewrite_collect_monomial_target_aware(ctx, source_expr, target_expr)
+    {
+        return Some(rewrite.focus_label);
     }
     None
 }
@@ -343,6 +348,10 @@ fn detect_fraction_decomposed_target(
     source_expr: ExprId,
     target_expr: ExprId,
 ) -> bool {
+    if !matches!(ctx.get(source_expr), cas_ast::Expr::Div(_, _)) {
+        return false;
+    }
+
     if !looks_like_mixed_fraction_target(ctx, target_expr) {
         return false;
     }
@@ -352,6 +361,7 @@ fn detect_fraction_decomposed_target(
     };
 
     strong_target_match(ctx, recombined, source_expr)
+        || simplified_difference_matches_zero(ctx, recombined, source_expr)
 }
 
 fn detect_fraction_combined_target(
@@ -807,14 +817,38 @@ mod tests {
     }
 
     #[test]
-    fn classifies_collect_target() {
-        let profile = classify("a*x + b*x + c", "(a + b)*x + c");
-        assert_eq!(
-            profile.form,
-            DeriveTargetForm::Collected {
-                var: "x".to_string()
+    fn classifies_tabulated_collect_targets() {
+        let cases = [
+            ("a*x + b*x + c", "(a + b)*x + c", &["x"][..]),
+            ("a*y + b*y + c", "(a + b)*y + c", &["y"][..]),
+            (
+                "a*x^2 + b*x + c*x^2 + d*x + e*x^2 + f",
+                "(a + c + e)*x^2 + (b + d)*x + f",
+                &["x"][..],
+            ),
+            ("x*y + x*z + w", "x*(y + z) + w", &["x"][..]),
+            ("a*x*y + b*x*y + c", "(a + b)*x*y + c", &["x", "y"][..]),
+            (
+                "a*x*y + b*x*y + c*x*z + d*x*z + e",
+                "(a + b)*x*y + (c + d)*x*z + e",
+                &["x", "y"][..],
+            ),
+        ];
+
+        for (source, target, var_fragments) in cases {
+            let profile = classify(source, target);
+            match profile.form {
+                DeriveTargetForm::Collected { var } => {
+                    for fragment in var_fragments {
+                        assert!(
+                            var.contains(fragment),
+                            "expected collected focus `{var}` to contain `{fragment}`"
+                        );
+                    }
+                }
+                other => panic!("expected collect target, got {other:?}"),
             }
-        );
+        }
     }
 
     #[test]
@@ -836,9 +870,27 @@ mod tests {
     }
 
     #[test]
-    fn classifies_complete_square_target_as_solve_prep() {
-        let profile = classify("x^2 + 6*x + 5", "(x+3)^2 - 4");
-        assert_eq!(profile.form, DeriveTargetForm::SolvePrepared);
+    fn classifies_tabulated_solve_prep_targets() {
+        let cases = [
+            ("x^2 + 6*x + 5", "(x+3)^2 - 4"),
+            ("a*x^2 + b*x + c", "a*(x + b/(2*a))^2 + c - b^2/(4*a)"),
+            ("x^2 + 2*b*x + c", "(x+b)^2 + c - b^2"),
+            ("a*y^2 + b*y + c", "a*(y + b/(2*a))^2 + c - b^2/(4*a)"),
+            ("a*x^2 - b*x + c", "a*(x - b/(2*a))^2 + c - b^2/(4*a)"),
+            ("-a*x^2 + b*x + c", "-a*(x - b/(2*a))^2 + c + b^2/(4*a)"),
+            ("x^2 + 3*x + 1", "(x+3/2)^2 - 5/4"),
+            ("(a/2)*x^2 + b*x + c", "(a/2)*(x + b/a)^2 + c - b^2/(2*a)"),
+            ("(a/2)*y^2 - b*y + c", "(a/2)*(y - b/a)^2 + c - b^2/(2*a)"),
+        ];
+
+        for (source, target) in cases {
+            let profile = classify(source, target);
+            assert_eq!(
+                profile.form,
+                DeriveTargetForm::SolvePrepared,
+                "expected solve-prep classification for `{source}` -> `{target}`"
+            );
+        }
     }
 
     #[test]
@@ -848,129 +900,229 @@ mod tests {
     }
 
     #[test]
-    fn classifies_log_expanded_target() {
-        let profile = classify("ln(x^2*y)", "ln(y) + 2*ln(abs(x))");
-        assert_eq!(profile.form, DeriveTargetForm::LogExpanded);
+    fn classifies_tabulated_log_expanded_targets() {
+        let cases = [
+            ("ln(x*y)", "ln(x) + ln(y)"),
+            ("ln(x/y)", "ln(x) - ln(y)"),
+            ("ln((x*y)/z)", "ln(x) + ln(y) - ln(z)"),
+            ("ln((x^2*y)/(z*t))", "2*ln(abs(x)) + ln(y) - ln(z) - ln(t)"),
+            ("log(b, (x*y)/z)", "log(b, x) + log(b, y) - log(b, z)"),
+            (
+                "log(b, (x^2*y^3)/(z^2*t))",
+                "2*log(b, x) + 3*log(b, y) - 2*log(b, z) - log(b, t)",
+            ),
+            ("ln(x^3*y^2)", "ln(x^3) + ln(y^2)"),
+        ];
+
+        for (source, target) in cases {
+            let profile = classify(source, target);
+            assert_eq!(
+                profile.form,
+                DeriveTargetForm::LogExpanded,
+                "expected log-expanded classification for `{source}` -> `{target}`",
+            );
+        }
     }
 
     #[test]
-    fn classifies_log_contracted_target() {
-        let profile = classify("ln(x) + ln(y)", "ln(x*y)");
-        assert_eq!(profile.form, DeriveTargetForm::LogContracted);
+    fn classifies_tabulated_log_contracted_targets() {
+        let cases = [
+            ("ln(x) + ln(y)", "ln(x*y)"),
+            ("ln(x) - ln(y)", "ln(x/y)"),
+            ("ln(x) + ln(y) - ln(z)", "ln((x*y)/z)"),
+            ("2*ln(abs(x)) + ln(y) - ln(z) - ln(t)", "ln((x^2*y)/(z*t))"),
+            ("3*ln(x) + 2*ln(abs(y))", "ln(x^3*y^2)"),
+            ("3*ln(x) - 2*ln(y)", "ln(x^3/y^2)"),
+            ("log(2, x) - log(2, y)", "log(2, x/y)"),
+            (
+                "2*log(b, x) + 3*log(b, y) - 2*log(b, z) - log(b, t)",
+                "log(b, (x^2*y^3)/(z^2*t))",
+            ),
+        ];
+
+        for (source, target) in cases {
+            let profile = classify(source, target);
+            assert_eq!(
+                profile.form,
+                DeriveTargetForm::LogContracted,
+                "expected log-contracted classification for `{source}` -> `{target}`",
+            );
+        }
     }
 
     #[test]
-    fn classifies_log_contracted_target_with_powers() {
-        let profile = classify("ln(x^3) + ln(y^2)", "ln(x^3*y^2)");
-        assert_eq!(profile.form, DeriveTargetForm::LogContracted);
+    fn classifies_tabulated_trig_expanded_targets() {
+        let cases = [
+            ("sin(2*x)", "2*sin(x)*cos(x)"),
+            ("sec(x)", "1/cos(x)"),
+            ("tan(x)", "(1-cos(2*x))/sin(2*x)"),
+            ("sin(2*a*x)", "2*sin(a*x)*cos(a*x)"),
+        ];
+
+        for (source, target) in cases {
+            let profile = classify(source, target);
+            assert_eq!(
+                profile.form,
+                DeriveTargetForm::TrigExpanded,
+                "expected trig-expanded classification for `{source}` -> `{target}`",
+            );
+        }
     }
 
     #[test]
-    fn classifies_trig_expanded_target() {
-        let profile = classify("sin(2*x)", "2*sin(x)*cos(x)");
-        assert_eq!(profile.form, DeriveTargetForm::TrigExpanded);
+    fn classifies_tabulated_trig_contracted_targets() {
+        let cases = [
+            ("(sin(2*x))/(cos(2*x))", "tan(2*x)"),
+            ("1/cos(x)", "sec(x)"),
+            ("1 + tan(x)^2", "sec(x)^2"),
+            ("2*sin(a*x)*cos(a*x)", "sin(2*a*x)"),
+            ("cos(a*x)/sin(a*x)", "cot(a*x)"),
+            ("(1-cos(2*a*x))/sin(2*a*x)", "tan(a*x)"),
+        ];
+
+        for (source, target) in cases {
+            let profile = classify(source, target);
+            assert_eq!(
+                profile.form,
+                DeriveTargetForm::TrigContracted,
+                "expected trig-contracted classification for `{source}` -> `{target}`",
+            );
+        }
     }
 
     #[test]
-    fn classifies_trig_contracted_target() {
-        let profile = classify("(sin(2*x))/(cos(2*x))", "tan(2*x)");
-        assert_eq!(profile.form, DeriveTargetForm::TrigContracted);
+    fn classifies_tabulated_rationalized_targets() {
+        let cases = [
+            ("1/(sqrt(x)-1)", "(sqrt(x)+1)/(x-1)"),
+            ("1/(sqrt(x)-2)", "(sqrt(x)+2)/(x-4)"),
+            ("1/(sqrt(x)-a)", "(sqrt(x)+a)/(x-a^2)"),
+            ("1/(sqrt(y)-a)", "(sqrt(y)+a)/(y-a^2)"),
+        ];
+
+        for (source, target) in cases {
+            let profile = classify(source, target);
+            assert_eq!(
+                profile.form,
+                DeriveTargetForm::Rationalized,
+                "expected rationalized classification for `{source}` -> `{target}`"
+            );
+        }
     }
 
     #[test]
-    fn classifies_rationalized_target() {
-        let profile = classify("1/(sqrt(x)-1)", "(sqrt(x)+1)/(x-1)");
-        assert_eq!(profile.form, DeriveTargetForm::Rationalized);
+    fn classifies_tabulated_fraction_expanded_targets() {
+        let cases = [
+            ("(x+y)/(x*y)", "1/x + 1/y"),
+            ("1/(n*(n+2))", "1/2*(1/n - 1/(n+2))"),
+            ("1/(n*(n-2))", "1/2*(1/(n-2) - 1/n)"),
+            ("1/((2*n+1)*(2*n+3))", "1/2*(1/(2*n+1) - 1/(2*n+3))"),
+            ("1/((a*n+b)*(a*n+c))", "1/(c-b)*(1/(a*n+b) - 1/(a*n+c))"),
+            ("1/(x^2-a^2)", "1/(2*a)*(1/(x-a) - 1/(x+a))"),
+        ];
+
+        for (source, target) in cases {
+            let profile = classify(source, target);
+            assert_eq!(
+                profile.form,
+                DeriveTargetForm::FractionExpanded,
+                "expected fraction expansion classification for `{source}` -> `{target}`",
+            );
+        }
     }
 
     #[test]
-    fn classifies_fraction_expanded_target() {
-        let profile = classify("(x+y)/(x*y)", "1/x + 1/y");
-        assert_eq!(profile.form, DeriveTargetForm::FractionExpanded);
+    fn classifies_tabulated_fraction_decomposed_targets() {
+        let cases = [
+            ("(x+1)/(x-1)", "1 + 2/(x-1)"),
+            ("(a*x+b)/(x+c)", "a + (b-a*c)/(x+c)"),
+            ("(x+a)/(x+b)", "1 + (a-b)/(x+b)"),
+            ("(a*x+b)/(c*x+d)", "a/c + (b-a*d/c)/(c*x+d)"),
+            ("(x+a)/(c*x+d)", "1/c + (a-d/c)/(c*x+d)"),
+            ("(a*x+b)/(d-c*x)", "-a/c + (b+a*d/c)/(d-c*x)"),
+            ("(x+a)/(d-c*x)", "-1/c + (a+d/c)/(d-c*x)"),
+        ];
+
+        for (source, target) in cases {
+            let profile = classify(source, target);
+            assert_eq!(
+                profile.form,
+                DeriveTargetForm::FractionDecomposed,
+                "expected fraction decomposition classification for `{source}` -> `{target}`",
+            );
+        }
     }
 
     #[test]
-    fn classifies_scaled_telescoping_fraction_expanded_target() {
-        let profile = classify("1/(n*(n+2))", "1/2*(1/n - 1/(n+2))");
-        assert_eq!(profile.form, DeriveTargetForm::FractionExpanded);
+    fn classifies_tabulated_fraction_combined_targets() {
+        let cases = [
+            ("1 + 2/(x-1)", "(x+1)/(x-1)"),
+            ("a/c + (b-a*d/c)/(c*x+d)", "(a*x+b)/(c*x+d)"),
+            ("1/c + (a-d/c)/(c*x+d)", "(x+a)/(c*x+d)"),
+            ("-a/c + (b+a*d/c)/(d-c*x)", "(a*x+b)/(d-c*x)"),
+            ("-1/c + (a+d/c)/(d-c*x)", "(x+a)/(d-c*x)"),
+        ];
+
+        for (source, target) in cases {
+            let profile = classify(source, target);
+            assert_eq!(
+                profile.form,
+                DeriveTargetForm::FractionCombined,
+                "expected fraction combination classification for `{source}` -> `{target}`",
+            );
+        }
     }
 
     #[test]
-    fn classifies_shifted_scaled_telescoping_fraction_expanded_target() {
-        let profile = classify("1/(n*(n-2))", "1/2*(1/(n-2) - 1/n)");
-        assert_eq!(profile.form, DeriveTargetForm::FractionExpanded);
+    fn classifies_tabulated_odd_half_power_targets() {
+        let direct_cases = [
+            ("x^(3/2)", "abs(x)*sqrt(x)"),
+            ("x^(5/2)", "abs(x)^2*sqrt(x)"),
+            ("x^(11/2)", "abs(x)^5*sqrt(x)"),
+            ("y^(13/2)", "abs(y)^6*sqrt(y)"),
+        ];
+        for (source, target) in direct_cases {
+            let profile = classify(source, target);
+            assert_eq!(
+                profile.form,
+                DeriveTargetForm::OddHalfPowerExpanded,
+                "expected odd-half-power target for {source} -> {target}"
+            );
+        }
+
+        let simplify_cases = [
+            ("sqrt(x^3)", "abs(x)*sqrt(x)"),
+            ("sqrt(x^5)", "abs(x)^2*sqrt(x)"),
+            ("sqrt(y^9)", "abs(y)^4*sqrt(y)"),
+        ];
+        for (source, target) in simplify_cases {
+            let profile = classify(source, target);
+            assert_eq!(
+                profile.form,
+                DeriveTargetForm::OddHalfPowerExpanded,
+                "expected odd-half-power target after simplify for {source} -> {target}"
+            );
+        }
     }
 
     #[test]
-    fn classifies_affine_telescoping_fraction_expanded_target() {
-        let profile = classify("1/((2*n+1)*(2*n+3))", "1/2*(1/(2*n+1) - 1/(2*n+3))");
-        assert_eq!(profile.form, DeriveTargetForm::FractionExpanded);
-    }
+    fn classifies_tabulated_power_merged_targets() {
+        let cases = [
+            ("x^(3/4)*x^(1/4)", "x"),
+            ("x*x^(1/3)", "x^(4/3)"),
+            ("x^a*x^b", "x^(a+b)"),
+            ("x*x^a", "x^(a+1)"),
+            ("sqrt(x)*x^a", "x^(a+1/2)"),
+            ("x^a*x^b*x^c*x^d", "x^(a+b+c+d)"),
+        ];
 
-    #[test]
-    fn classifies_affine_shifted_telescoping_fraction_expanded_target() {
-        let profile = classify("1/((2*n-1)*(2*n+1))", "1/2*(1/(2*n-1) - 1/(2*n+1))");
-        assert_eq!(profile.form, DeriveTargetForm::FractionExpanded);
-    }
-
-    #[test]
-    fn classifies_affine_coeff_three_telescoping_fraction_expanded_target() {
-        let profile = classify("1/((3*n+2)*(3*n+5))", "1/3*(1/(3*n+2) - 1/(3*n+5))");
-        assert_eq!(profile.form, DeriveTargetForm::FractionExpanded);
-    }
-
-    #[test]
-    fn classifies_affine_coeff_three_shifted_telescoping_fraction_expanded_target() {
-        let profile = classify("1/((3*n-1)*(3*n+2))", "1/3*(1/(3*n-1) - 1/(3*n+2))");
-        assert_eq!(profile.form, DeriveTargetForm::FractionExpanded);
-    }
-
-    #[test]
-    fn classifies_affine_symbolic_coeff_telescoping_fraction_expanded_target() {
-        let profile = classify("1/((a*n+2)*(a*n+5))", "1/3*(1/(a*n+2) - 1/(a*n+5))");
-        assert_eq!(profile.form, DeriveTargetForm::FractionExpanded);
-    }
-
-    #[test]
-    fn classifies_affine_symbolic_coeff_shifted_telescoping_fraction_expanded_target() {
-        let profile = classify("1/((a*n-1)*(a*n+2))", "1/3*(1/(a*n-1) - 1/(a*n+2))");
-        assert_eq!(profile.form, DeriveTargetForm::FractionExpanded);
-    }
-
-    #[test]
-    fn classifies_symbolic_shift_gap_telescoping_fraction_expanded_target() {
-        let profile = classify("1/((n+a)*(n+b))", "1/(b-a)*(1/(n+a) - 1/(n+b))");
-        assert_eq!(profile.form, DeriveTargetForm::FractionExpanded);
-    }
-
-    #[test]
-    fn classifies_affine_symbolic_shift_gap_telescoping_fraction_expanded_target() {
-        let profile = classify("1/((a*n+b)*(a*n+c))", "1/(c-b)*(1/(a*n+b) - 1/(a*n+c))");
-        assert_eq!(profile.form, DeriveTargetForm::FractionExpanded);
-    }
-
-    #[test]
-    fn classifies_fraction_decomposed_target() {
-        let profile = classify("(x+1)/(x-1)", "1 + 2/(x-1)");
-        assert_eq!(profile.form, DeriveTargetForm::FractionDecomposed);
-    }
-
-    #[test]
-    fn classifies_fraction_combined_target() {
-        let profile = classify("1 + 2/(x-1)", "(x+1)/(x-1)");
-        assert_eq!(profile.form, DeriveTargetForm::FractionCombined);
-    }
-
-    #[test]
-    fn classifies_odd_half_power_target() {
-        let profile = classify("x^(3/2)", "abs(x)*sqrt(x)");
-        assert_eq!(profile.form, DeriveTargetForm::OddHalfPowerExpanded);
-    }
-
-    #[test]
-    fn classifies_odd_half_power_target_after_simplify() {
-        let profile = classify("sqrt(x^3)", "abs(x)*sqrt(x)");
-        assert_eq!(profile.form, DeriveTargetForm::OddHalfPowerExpanded);
+        for (source, target) in cases {
+            let profile = classify(source, target);
+            assert_eq!(
+                profile.form,
+                DeriveTargetForm::PowerMerged,
+                "expected power-merged target for {source} -> {target}"
+            );
+        }
     }
 
     #[test]
@@ -992,13 +1144,36 @@ mod tests {
     }
 
     #[test]
-    fn classify_unknown_for_equivalent_but_unsupported_target() {
-        let profile = classify("a*x + b*x + c", "x*(a + b + c/x)");
-        assert_eq!(
-            profile.form,
-            DeriveTargetForm::FactoredWithDivision {
-                var: "x".to_string()
-            }
-        );
+    fn classifies_tabulated_factored_with_division_targets() {
+        let cases = [
+            ("a*x + b*x + c", "x*(a + b + c/x)", "x"),
+            ("a*y^2 + b*y + c", "y*(a*y + b + c/y)", "y"),
+            (
+                "a*x^5 + b*x^3 + c*x + d",
+                "x*(a*x^4 + b*x^2 + c + d/x)",
+                "x",
+            ),
+            (
+                "a*x^4 + b*x^3 + c*x^2 + d",
+                "x^2*(a*x^2 + b*x + c + d/x^2)",
+                "x",
+            ),
+            (
+                "a*x^7 + b*x^5 + c*x^3 + d",
+                "x^3*(a*x^4 + b*x^2 + c + d/x^3)",
+                "x",
+            ),
+        ];
+
+        for (source, target, var) in cases {
+            let profile = classify(source, target);
+            assert_eq!(
+                profile.form,
+                DeriveTargetForm::FactoredWithDivision {
+                    var: var.to_string()
+                },
+                "expected factor-with-division target for {source} -> {target}"
+            );
+        }
     }
 }

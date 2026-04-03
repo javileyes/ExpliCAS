@@ -7,6 +7,7 @@ use num_rational::BigRational;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DeriveTrigRewriteKind {
     TanToSinCos,
+    RecognizeSinOverCosAsTan,
     ExpandSecToRecipCos,
     ExpandCscToRecipSin,
     ExpandCotToCosSin,
@@ -57,6 +58,7 @@ impl DeriveTrigRewriteKind {
     pub(crate) fn description(self) -> &'static str {
         match self {
             Self::TanToSinCos => "Expand tangent to sine over cosine",
+            Self::RecognizeSinOverCosAsTan => "Recognize sin(u) / cos(u) as tan(u)",
             Self::ExpandSecToRecipCos => "Expand sec(u) as 1 / cos(u)",
             Self::ExpandCscToRecipSin => "Expand csc(u) as 1 / sin(u)",
             Self::ExpandCotToCosSin => "Expand cot(u) as cos(u) / sin(u)",
@@ -99,6 +101,7 @@ impl DeriveTrigRewriteKind {
     pub(crate) fn rule_name(self) -> &'static str {
         match self {
             Self::TanToSinCos => "Trig Expansion",
+            Self::RecognizeSinOverCosAsTan => "Trig Quotient",
             Self::ExpandSecToRecipCos
             | Self::ExpandCscToRecipSin
             | Self::ExpandCotToCosSin
@@ -769,6 +772,9 @@ fn try_rewrite_reciprocal_trig_contraction_target_aware(
 
     let kind = match rewrite.kind {
         Some(
+            cas_math::trig_canonicalization_support::TrigCanonicalRewriteKind::SinOverCosToTan,
+        ) => DeriveTrigRewriteKind::RecognizeSinOverCosAsTan,
+        Some(
             cas_math::trig_canonicalization_support::TrigCanonicalRewriteKind::OneOverCosToSec,
         ) => DeriveTrigRewriteKind::RecognizeRecipCosAsSec,
         Some(
@@ -1090,6 +1096,68 @@ mod tests {
     }
 
     #[test]
+    fn contracts_tabulated_scaled_trig_targets_aware() {
+        let cases = [
+            (
+                "2*sin(a*x)*cos(a*x)",
+                "sin(2*a*x)",
+                DeriveTrigRewriteKind::DoubleAngleSin,
+            ),
+            (
+                "sin(2*a*x)/cos(2*a*x)",
+                "tan(2*a*x)",
+                DeriveTrigRewriteKind::RecognizeSinOverCosAsTan,
+            ),
+            (
+                "1/cos(a*x)",
+                "sec(a*x)",
+                DeriveTrigRewriteKind::RecognizeRecipCosAsSec,
+            ),
+            (
+                "1/sin(a*x)",
+                "csc(a*x)",
+                DeriveTrigRewriteKind::RecognizeRecipSinAsCsc,
+            ),
+            (
+                "cos(a*x)/sin(a*x)",
+                "cot(a*x)",
+                DeriveTrigRewriteKind::RecognizeCosOverSinAsCot,
+            ),
+            (
+                "1 + tan(a*x)^2",
+                "sec(a*x)^2",
+                DeriveTrigRewriteKind::RecognizeSecSquared,
+            ),
+            (
+                "1 + cot(a*x)^2",
+                "csc(a*x)^2",
+                DeriveTrigRewriteKind::RecognizeCscSquared,
+            ),
+        ];
+
+        for (source_text, target_text, expected_kind) in cases {
+            let mut ctx = Context::new();
+            let source = parse(source_text, &mut ctx).expect("source");
+            let target = parse(target_text, &mut ctx).expect("target");
+            let rewrite = try_rewrite_trig_contraction_target_aware(&mut ctx, source, target)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "expected scaled trig contraction for `{source_text}` -> `{target_text}`"
+                    )
+                });
+
+            assert_eq!(
+                rewrite.kind, expected_kind,
+                "unexpected rewrite kind for `{source_text}` -> `{target_text}`"
+            );
+            assert!(
+                strong_target_match(&mut ctx, rewrite.rewritten, target),
+                "expected strong target match for `{source_text}` -> `{target_text}`"
+            );
+        }
+    }
+
+    #[test]
     fn rewrites_sec_reciprocal_expansion_target_aware() {
         let mut ctx = Context::new();
         let source = parse("sec(x)", &mut ctx).expect("source");
@@ -1098,6 +1166,51 @@ mod tests {
 
         assert_eq!(rewrite.kind, DeriveTrigRewriteKind::ExpandSecToRecipCos);
         assert!(strong_target_match(&mut ctx, rewrite.rewritten, target));
+    }
+
+    #[test]
+    fn expands_tabulated_scaled_trig_targets_aware() {
+        let cases = [
+            (
+                "tan(2*a*x)",
+                "sin(2*a*x)/cos(2*a*x)",
+                DeriveTrigRewriteKind::TanToSinCos,
+            ),
+            (
+                "sec(a*x)",
+                "1/cos(a*x)",
+                DeriveTrigRewriteKind::ExpandSecToRecipCos,
+            ),
+            (
+                "csc(a*x)",
+                "1/sin(a*x)",
+                DeriveTrigRewriteKind::ExpandCscToRecipSin,
+            ),
+            (
+                "cot(a*x)",
+                "cos(a*x)/sin(a*x)",
+                DeriveTrigRewriteKind::ExpandCotToCosSin,
+            ),
+        ];
+
+        for (source_text, target_text, expected_kind) in cases {
+            let mut ctx = Context::new();
+            let source = parse(source_text, &mut ctx).expect("source");
+            let target = parse(target_text, &mut ctx).expect("target");
+            let rewrite =
+                try_rewrite_trig_expansion(&mut ctx, source, target).unwrap_or_else(|| {
+                    panic!("expected scaled trig expansion for `{source_text}` -> `{target_text}`")
+                });
+
+            assert_eq!(
+                rewrite.kind, expected_kind,
+                "unexpected rewrite kind for `{source_text}` -> `{target_text}`"
+            );
+            assert!(
+                strong_target_match(&mut ctx, rewrite.rewritten, target),
+                "expected strong target match for `{source_text}` -> `{target_text}`"
+            );
+        }
     }
 
     #[test]
@@ -1120,6 +1233,21 @@ mod tests {
             try_rewrite_trig_contraction_target_aware(&mut ctx, source, target).expect("rewrite");
 
         assert_eq!(rewrite.kind, DeriveTrigRewriteKind::RecognizeRecipCosAsSec);
+        assert!(strong_target_match(&mut ctx, rewrite.rewritten, target));
+    }
+
+    #[test]
+    fn recognizes_sine_over_cosine_as_tan_target_aware() {
+        let mut ctx = Context::new();
+        let source = parse("sin(x)/cos(x)", &mut ctx).expect("source");
+        let target = parse("tan(x)", &mut ctx).expect("target");
+        let rewrite =
+            try_rewrite_trig_contraction_target_aware(&mut ctx, source, target).expect("rewrite");
+
+        assert_eq!(
+            rewrite.kind,
+            DeriveTrigRewriteKind::RecognizeSinOverCosAsTan
+        );
         assert!(strong_target_match(&mut ctx, rewrite.rewritten, target));
     }
 
@@ -1277,27 +1405,36 @@ mod tests {
     }
 
     #[test]
-    fn rewrites_pythagorean_factor_form_target_aware_to_complementary_square() {
-        let mut ctx = Context::new();
-        let source = parse("1 - sin(x)^2", &mut ctx).expect("source");
-        let target = parse("cos(x)^2", &mut ctx).expect("target");
-        let rewrite = try_rewrite_pythagorean_factor_form_target_aware(&mut ctx, source, target)
-            .expect("rewrite");
+    fn rewrites_tabulated_pythagorean_factor_form_targets_aware() {
+        let cases = [
+            ("1 - sin(x)^2", "cos(x)^2", "1 - sin²(x) = cos²(x)"),
+            ("1 - cos(x)^2", "sin(x)^2", "1 - cos²(x) = sin²(x)"),
+            ("sin(x)^2", "1 - cos(x)^2", "1 - cos²(x) = sin²(x)"),
+            ("cos(x)^2", "1 - sin(x)^2", "1 - sin²(x) = cos²(x)"),
+        ];
 
-        assert_eq!(rewrite.description, "1 - sin²(x) = cos²(x)");
-        assert!(strong_target_match(&mut ctx, rewrite.rewritten, target));
-    }
+        for (source_text, target_text, expected_description) in cases {
+            let mut ctx = Context::new();
+            let source = parse(source_text, &mut ctx).expect("source");
+            let target = parse(target_text, &mut ctx).expect("target");
+            let rewrite = try_rewrite_pythagorean_factor_form_target_aware(
+                &mut ctx, source, target,
+            )
+            .unwrap_or_else(|| {
+                panic!(
+                    "expected pythagorean factor-form rewrite for `{source_text}` -> `{target_text}`"
+                )
+            });
 
-    #[test]
-    fn rewrites_pythagorean_factor_form_target_aware_from_square_to_complement() {
-        let mut ctx = Context::new();
-        let source = parse("sin(x)^2", &mut ctx).expect("source");
-        let target = parse("1 - cos(x)^2", &mut ctx).expect("target");
-        let rewrite = try_rewrite_pythagorean_factor_form_target_aware(&mut ctx, source, target)
-            .expect("rewrite");
-
-        assert_eq!(rewrite.description, "1 - cos²(x) = sin²(x)");
-        assert!(strong_target_match(&mut ctx, rewrite.rewritten, target));
+            assert_eq!(
+                rewrite.description, expected_description,
+                "unexpected description for `{source_text}` -> `{target_text}`"
+            );
+            assert!(
+                strong_target_match(&mut ctx, rewrite.rewritten, target),
+                "expected strong target match for `{source_text}` -> `{target_text}`"
+            );
+        }
     }
 
     #[test]

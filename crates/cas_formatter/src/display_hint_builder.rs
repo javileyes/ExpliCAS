@@ -74,12 +74,14 @@ pub fn build_display_context_with_result(
     // If user wrote x^(1/4), show as x^(1/4). If user wrote sqrt(x), show as √.
     // Only sqrt() usage triggers root notation.
 
-    // Fourth: capture hints from Canonicalize Roots steps
+    // Fourth: Canonicalize Roots is a didactic exception.
+    // The original expression may prefer root notation, but the after-side of
+    // this step must stay in power form so the intermediate is actually visible.
     for step in steps {
-        if step.rule_name() == "Canonicalize Roots" {
-            if let Some(index) = extract_root_index(ctx, step.before()) {
-                display_ctx.insert(step.after(), DisplayHint::AsRoot { index });
-            }
+        if step.rule_name() == "Canonicalize Roots"
+            && extract_root_index(ctx, step.before()).is_some()
+        {
+            display_ctx.insert(step.after(), DisplayHint::PreferPower);
         }
     }
 
@@ -351,11 +353,8 @@ mod tests {
 
         let display_ctx = build_display_context(&ctx, sqrt_x, &[step]);
 
-        // Should have 2 hints: one from scanning sqrt_x, one from step
+        // Step-specific canonicalize-roots display should keep the after-side as a power.
         assert!(!display_ctx.is_empty());
-        assert_eq!(
-            display_ctx.get(x_half),
-            Some(&DisplayHint::AsRoot { index: 2 })
-        );
+        assert_eq!(display_ctx.get(x_half), Some(&DisplayHint::PreferPower));
     }
 }

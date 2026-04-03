@@ -1,6 +1,7 @@
 use super::super::focused_rule_substeps::generate_focused_rule_substeps;
 use super::super::gcd_factorization::generate_gcd_factorization_substeps;
 use super::super::generic_rule_substeps::generate_generic_rule_substeps;
+use super::super::nested_fraction_analysis::classify_nested_fraction;
 use super::super::nested_fractions::generate_nested_fraction_substeps;
 use super::super::polynomial_identity::generate_polynomial_identity_substeps;
 use super::super::rationalization::generate_rationalization_substeps;
@@ -27,7 +28,7 @@ pub(super) fn extend_step_specific_substeps(
         sub_steps.extend(generate_gcd_factorization_substeps(ctx, step));
     }
 
-    if is_nested_fraction_step(step) {
+    if is_nested_fraction_step(ctx, step) {
         sub_steps.extend(generate_nested_fraction_substeps(ctx, step));
     }
 
@@ -56,8 +57,15 @@ pub(super) fn extend_step_specific_substeps(
     }
 }
 
-fn is_nested_fraction_step(step: &Step) -> bool {
+fn is_nested_fraction_step(ctx: &Context, step: &Step) -> bool {
+    let before = step.before;
+    let after = step.after;
+    let global_after = step.global_after.unwrap_or(step.after);
+
     step.rule_name.to_lowercase().contains("complex fraction")
         || step.rule_name.to_lowercase().contains("nested fraction")
         || step.description.to_lowercase().contains("nested fraction")
+        || classify_nested_fraction(ctx, before).is_some()
+        || classify_nested_fraction(ctx, after).is_some()
+        || classify_nested_fraction(ctx, global_after).is_some()
 }

@@ -1,3 +1,4 @@
+use super::nested_fraction_analysis::NestedFractionPattern;
 use super::SubStep;
 use crate::didactic::try_as_fraction;
 use crate::runtime::Step;
@@ -28,9 +29,20 @@ enum BinomialSquareKind {
 }
 
 pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    let sixth_power_substeps = generate_sum_difference_sixth_powers_substeps(ctx, step);
+    if !sixth_power_substeps.is_empty() {
+        return sixth_power_substeps;
+    }
+
     let cube_expansion_substeps = generate_sum_difference_cubes_expansion_substeps(ctx, step);
     if !cube_expansion_substeps.is_empty() {
         return cube_expansion_substeps;
+    }
+
+    let sixth_power_expansion_substeps =
+        generate_sum_difference_sixth_powers_expansion_substeps(ctx, step);
+    if !sixth_power_expansion_substeps.is_empty() {
+        return sixth_power_expansion_substeps;
     }
 
     match step.rule_name.as_str() {
@@ -45,7 +57,7 @@ pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<
         "Expand Odd Half Power" => generate_odd_half_power_substeps(),
         "Expand" => generate_expand_substeps(ctx, step),
         "Collect Terms" => generate_collect_terms_substeps(step),
-        "Factor Out With Division" => generate_factor_out_with_division_substeps(step),
+        "Factor Out With Division" => generate_factor_out_with_division_substeps(ctx, step),
         "Factorization" => generate_factorization_substeps(ctx, step),
         "Binomial Expansion" | "Auto Expand Power Sum" => {
             generate_binomial_expansion_substeps(ctx, step)
@@ -82,6 +94,11 @@ pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<
         "Trig Expansion" => generate_trig_expansion_substeps(step),
         "Trig Quotient" => generate_trig_quotient_substeps(step),
         "Cos-Diff / Sin-Diff Quotient" => generate_cos_diff_sin_diff_quotient_substeps(ctx, step),
+        "Distributive Property"
+        | "Distributive Property (Simple)"
+        | "Pull Constant From Fraction" => {
+            generate_reverse_nested_fraction_rule_substeps(ctx, step)
+        }
         "Pythagorean Factor Form" => generate_pythagorean_factor_form_substeps(step),
         "Pythagorean High-Power Factor" => {
             generate_pythagorean_high_power_factor_substeps(ctx, step)
@@ -149,35 +166,127 @@ fn generate_combine_like_terms_substeps(ctx: &Context, step: &Step) -> Vec<SubSt
 }
 
 fn generate_collect_terms_substeps(step: &Step) -> Vec<SubStep> {
-    let Some(var_name) = step.description.strip_prefix("Collect terms by ") else {
+    let Some(focus) = step.description.strip_prefix("Collect terms by ") else {
         return Vec::new();
     };
+    let display_focus = human_collect_focus(focus);
+
+    if is_simple_collect_focus(focus) {
+        return vec![formula_substep(
+            format!("Agrupar los términos que llevan la misma potencia de {display_focus}"),
+            &format!("a \\cdot {focus}^n + b \\cdot {focus}^n"),
+            &format!("(a + b) \\cdot {focus}^n"),
+            &format!("a\\cdot {focus}^n + b\\cdot {focus}^n"),
+            &format!("\\left(a + b\\right)\\cdot {focus}^n"),
+        )];
+    }
 
     vec![formula_substep(
-        format!("Agrupar los términos que llevan la misma potencia de {var_name}"),
-        &format!("a \\cdot {var_name}^n + b \\cdot {var_name}^n"),
-        &format!("(a + b) \\cdot {var_name}^n"),
-        &format!("a\\cdot {var_name}^n + b\\cdot {var_name}^n"),
-        &format!("\\left(a + b\\right)\\cdot {var_name}^n"),
+        format!("Agrupar los términos que llevan el mismo factor {display_focus}"),
+        "a \\cdot m + b \\cdot m",
+        "(a + b) \\cdot m",
+        "a\\cdot m + b\\cdot m",
+        "\\left(a + b\\right)\\cdot m",
     )]
 }
 
-fn generate_factor_out_with_division_substeps(step: &Step) -> Vec<SubStep> {
-    let Some(var_name) = step
-        .description
-        .strip_prefix("Factor out ")
-        .and_then(|tail| tail.strip_suffix(" from the whole expression"))
-    else {
+fn is_simple_collect_focus(focus: &str) -> bool {
+    !focus.is_empty()
+        && focus
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+}
+
+fn human_collect_focus(focus: &str) -> String {
+    focus.replace(" * ", "·").replace('*', "·")
+}
+
+fn generate_factor_out_with_division_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    let factor_expr = detect_factor_out_with_division_substep_factor(
+        ctx,
+        step.after_local().unwrap_or(step.after),
+    );
+    let Some(factor_display) = factor_expr.map(|expr| human_expr(ctx, expr)).or_else(|| {
+        step.description
+            .strip_prefix("Factor out ")
+            .and_then(|tail| tail.strip_suffix(" from the whole expression"))
+            .map(str::to_string)
+    }) else {
         return Vec::new();
     };
+    let factor_latex = factor_expr
+        .map(|expr| latex_expr(ctx, expr))
+        .unwrap_or_else(|| factor_display.clone());
 
     vec![formula_substep(
-        format!("Si un término no lleva {var_name}, escribirlo como {var_name} · (t/{var_name})"),
+        format!(
+            "Si un término no lleva {factor_display}, escribirlo como {factor_display} · (t/{factor_display})"
+        ),
         "t",
-        &format!("{var_name} · (t/{var_name})"),
+        &format!("{factor_display} · (t/{factor_display})"),
         "t",
-        &format!("{var_name}\\cdot \\frac{{t}}{{{var_name}}}"),
+        &format!("{factor_latex}\\cdot \\frac{{t}}{{{factor_latex}}}"),
     )]
+}
+
+fn detect_factor_out_with_division_substep_factor(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    if !ctx.is_mul_commutative(expr) {
+        return None;
+    }
+
+    let factors = collect_mul_chain_factors_readonly(ctx, expr);
+    for (idx, factor) in factors.iter().copied().enumerate() {
+        let mut remaining = factors.clone();
+        remaining.remove(idx);
+        if remaining
+            .into_iter()
+            .any(|inner_expr| contains_division_by_exact_factor(ctx, inner_expr, factor))
+        {
+            return Some(factor);
+        }
+    }
+
+    None
+}
+
+fn collect_mul_chain_factors_readonly(ctx: &Context, expr: ExprId) -> Vec<ExprId> {
+    let mut out = Vec::new();
+    collect_mul_chain_factors_readonly_into(ctx, expr, &mut out);
+    out
+}
+
+fn collect_mul_chain_factors_readonly_into(ctx: &Context, expr: ExprId, out: &mut Vec<ExprId>) {
+    match ctx.get(expr) {
+        Expr::Mul(left, right) => {
+            collect_mul_chain_factors_readonly_into(ctx, *left, out);
+            collect_mul_chain_factors_readonly_into(ctx, *right, out);
+        }
+        _ => out.push(expr),
+    }
+}
+
+fn contains_division_by_exact_factor(ctx: &Context, expr: ExprId, factor: ExprId) -> bool {
+    match ctx.get(expr) {
+        Expr::Div(_, den) => compare_expr(ctx, *den, factor) == std::cmp::Ordering::Equal,
+        Expr::Add(left, right) | Expr::Sub(left, right) | Expr::Mul(left, right) => {
+            contains_division_by_exact_factor(ctx, *left, factor)
+                || contains_division_by_exact_factor(ctx, *right, factor)
+        }
+        Expr::Pow(base, exp) => {
+            contains_division_by_exact_factor(ctx, *base, factor)
+                || contains_division_by_exact_factor(ctx, *exp, factor)
+        }
+        Expr::Neg(inner) | Expr::Hold(inner) => {
+            contains_division_by_exact_factor(ctx, *inner, factor)
+        }
+        Expr::Function(_, args) => args
+            .iter()
+            .any(|arg| contains_division_by_exact_factor(ctx, *arg, factor)),
+        Expr::Matrix { data, .. } => data
+            .iter()
+            .any(|item| contains_division_by_exact_factor(ctx, *item, factor)),
+        Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) | Expr::SessionRef(_) => false,
+    }
 }
 
 fn generate_complete_square_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
@@ -632,26 +741,32 @@ fn generate_factorization_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
                 ),
             };
 
+            let identity_substep = formula_substep(
+                title,
+                match kind {
+                    BinomialSquareKind::Sum => "a^3 + 3 · a^2 · b + 3 · a · b^2 + b^3",
+                    BinomialSquareKind::Difference => "a^3 - 3 · a^2 · b + 3 · a · b^2 - b^3",
+                },
+                match kind {
+                    BinomialSquareKind::Sum => "(a + b)^3",
+                    BinomialSquareKind::Difference => "(a - b)^3",
+                },
+                match kind {
+                    BinomialSquareKind::Sum => "a^3 + 3a^2b + 3ab^2 + b^3",
+                    BinomialSquareKind::Difference => "a^3 - 3a^2b + 3ab^2 - b^3",
+                },
+                match kind {
+                    BinomialSquareKind::Sum => "\\left(a + b\\right)^3",
+                    BinomialSquareKind::Difference => "\\left(a - b\\right)^3",
+                },
+            );
+
+            if has_trivial_binomial_placeholder_mapping(ctx, left, right) {
+                return vec![identity_substep];
+            }
+
             return vec![
-                formula_substep(
-                    title,
-                    match kind {
-                        BinomialSquareKind::Sum => "a^3 + 3 · a^2 · b + 3 · a · b^2 + b^3",
-                        BinomialSquareKind::Difference => "a^3 - 3 · a^2 · b + 3 · a · b^2 - b^3",
-                    },
-                    match kind {
-                        BinomialSquareKind::Sum => "(a + b)^3",
-                        BinomialSquareKind::Difference => "(a - b)^3",
-                    },
-                    match kind {
-                        BinomialSquareKind::Sum => "a^3 + 3a^2b + 3ab^2 + b^3",
-                        BinomialSquareKind::Difference => "a^3 - 3a^2b + 3ab^2 - b^3",
-                    },
-                    match kind {
-                        BinomialSquareKind::Sum => "\\left(a + b\\right)^3",
-                        BinomialSquareKind::Difference => "\\left(a - b\\right)^3",
-                    },
-                ),
+                identity_substep,
                 formula_substep(
                     format!("Aquí a = {left_display} y b = {right_display}"),
                     &before_display,
@@ -690,23 +805,29 @@ fn generate_factorization_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
             ),
         };
 
+        let identity_substep = formula_substep(
+            title,
+            "a^2 + 2 · a · b + b^2",
+            match kind {
+                BinomialSquareKind::Sum => "(a + b)^2",
+                BinomialSquareKind::Difference => "(a - b)^2",
+            },
+            match kind {
+                BinomialSquareKind::Sum => "a^2 + 2ab + b^2",
+                BinomialSquareKind::Difference => "a^2 - 2ab + b^2",
+            },
+            match kind {
+                BinomialSquareKind::Sum => "\\left(a + b\\right)^2",
+                BinomialSquareKind::Difference => "\\left(a - b\\right)^2",
+            },
+        );
+
+        if has_trivial_binomial_placeholder_mapping(ctx, left, right) {
+            return vec![identity_substep];
+        }
+
         return vec![
-            formula_substep(
-                title,
-                "a^2 + 2 · a · b + b^2",
-                match kind {
-                    BinomialSquareKind::Sum => "(a + b)^2",
-                    BinomialSquareKind::Difference => "(a - b)^2",
-                },
-                match kind {
-                    BinomialSquareKind::Sum => "a^2 + 2ab + b^2",
-                    BinomialSquareKind::Difference => "a^2 - 2ab + b^2",
-                },
-                match kind {
-                    BinomialSquareKind::Sum => "\\left(a + b\\right)^2",
-                    BinomialSquareKind::Difference => "\\left(a - b\\right)^2",
-                },
-            ),
+            identity_substep,
             formula_substep(
                 format!("Aquí a = {left_display} y b = {right_display}"),
                 &before_display,
@@ -920,6 +1041,35 @@ fn matches_var_name(ctx: &Context, expr: ExprId, expected: &str) -> bool {
     matches!(ctx.get(expr), Expr::Variable(sym_id) if ctx.sym_name(*sym_id) == expected)
 }
 
+fn has_trivial_binomial_placeholder_mapping(ctx: &Context, left: ExprId, right: ExprId) -> bool {
+    matches_var_name(ctx, left, "a") && matches_var_name(ctx, right, "b")
+}
+
+fn needs_grouped_substitution_expr(expr: &Expr) -> bool {
+    !matches!(
+        expr,
+        Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) | Expr::Function(_, _)
+    )
+}
+
+fn grouped_substitution_display(ctx: &Context, expr: ExprId) -> String {
+    let display = human_expr(ctx, expr);
+    if needs_grouped_substitution_expr(ctx.get(expr)) {
+        format!("({display})")
+    } else {
+        display
+    }
+}
+
+fn grouped_substitution_latex(ctx: &Context, expr: ExprId) -> String {
+    let latex = latex_expr(ctx, expr);
+    if needs_grouped_substitution_expr(ctx.get(expr)) {
+        format!("\\left({latex}\\right)")
+    } else {
+        latex
+    }
+}
+
 fn generate_binomial_expansion_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
     let before = step.before_local().unwrap_or(step.before);
     let Some((left, right, kind, power)) = binomial_power_terms(ctx, before) else {
@@ -930,6 +1080,10 @@ fn generate_binomial_expansion_substeps(ctx: &Context, step: &Step) -> Vec<SubSt
     let right_display = human_expr(ctx, right);
     let left_latex = latex_expr(ctx, left);
     let right_latex = latex_expr(ctx, right);
+    let left_grouped_display = grouped_substitution_display(ctx, left);
+    let right_grouped_display = grouped_substitution_display(ctx, right);
+    let left_grouped_latex = grouped_substitution_latex(ctx, left);
+    let right_grouped_latex = grouped_substitution_latex(ctx, right);
     let (
         identity_title,
         rhs_display,
@@ -968,58 +1122,63 @@ fn generate_binomial_expansion_substeps(ctx: &Context, step: &Step) -> Vec<SubSt
         _ => return Vec::new(),
     };
     let substituted_after_display = match (kind, power) {
-        (BinomialSquareKind::Sum, 2) => {
-            format!("{left_display}^2 + 2 · {left_display} · {right_display} + {right_display}^2")
-        }
-        (BinomialSquareKind::Difference, 2) => {
-            format!("{left_display}^2 - 2 · {left_display} · {right_display} + {right_display}^2")
-        }
+        (BinomialSquareKind::Sum, 2) => format!(
+            "{left_grouped_display}^2 + 2 · {left_grouped_display} · {right_grouped_display} + {right_grouped_display}^2"
+        ),
+        (BinomialSquareKind::Difference, 2) => format!(
+            "{left_grouped_display}^2 - 2 · {left_grouped_display} · {right_grouped_display} + {right_grouped_display}^2"
+        ),
         (BinomialSquareKind::Sum, 3) => format!(
-            "{left_display}^3 + 3 · {left_display}^2 · {right_display} + 3 · {left_display} · {right_display}^2 + {right_display}^3"
+            "{left_grouped_display}^3 + 3 · {left_grouped_display}^2 · {right_grouped_display} + 3 · {left_grouped_display} · {right_grouped_display}^2 + {right_grouped_display}^3"
         ),
         (BinomialSquareKind::Difference, 3) => format!(
-            "{left_display}^3 - 3 · {left_display}^2 · {right_display} + 3 · {left_display} · {right_display}^2 - {right_display}^3"
+            "{left_grouped_display}^3 - 3 · {left_grouped_display}^2 · {right_grouped_display} + 3 · {left_grouped_display} · {right_grouped_display}^2 - {right_grouped_display}^3"
         ),
         _ => return Vec::new(),
     };
     let substituted_after_latex = match (kind, power) {
-        (BinomialSquareKind::Sum, 2) => {
-            format!("{left_latex}^2 + 2\\cdot {left_latex}\\cdot {right_latex} + {right_latex}^2")
-        }
-        (BinomialSquareKind::Difference, 2) => {
-            format!("{left_latex}^2 - 2\\cdot {left_latex}\\cdot {right_latex} + {right_latex}^2")
-        }
+        (BinomialSquareKind::Sum, 2) => format!(
+            "{left_grouped_latex}^2 + 2\\cdot {left_grouped_latex}\\cdot {right_grouped_latex} + {right_grouped_latex}^2"
+        ),
+        (BinomialSquareKind::Difference, 2) => format!(
+            "{left_grouped_latex}^2 - 2\\cdot {left_grouped_latex}\\cdot {right_grouped_latex} + {right_grouped_latex}^2"
+        ),
         (BinomialSquareKind::Sum, 3) => format!(
-            "{left_latex}^3 + 3\\cdot {left_latex}^2\\cdot {right_latex} + 3\\cdot {left_latex}\\cdot {right_latex}^2 + {right_latex}^3"
+            "{left_grouped_latex}^3 + 3\\cdot {left_grouped_latex}^2\\cdot {right_grouped_latex} + 3\\cdot {left_grouped_latex}\\cdot {right_grouped_latex}^2 + {right_grouped_latex}^3"
         ),
         (BinomialSquareKind::Difference, 3) => format!(
-            "{left_latex}^3 - 3\\cdot {left_latex}^2\\cdot {right_latex} + 3\\cdot {left_latex}\\cdot {right_latex}^2 - {right_latex}^3"
+            "{left_grouped_latex}^3 - 3\\cdot {left_grouped_latex}^2\\cdot {right_grouped_latex} + 3\\cdot {left_grouped_latex}\\cdot {right_grouped_latex}^2 - {right_grouped_latex}^3"
         ),
         _ => return Vec::new(),
     };
+    let identity_substep = formula_substep(
+        identity_title,
+        match (kind, power) {
+            (BinomialSquareKind::Sum, 2) => "(a + b)^2",
+            (BinomialSquareKind::Difference, 2) => "(a - b)^2",
+            (BinomialSquareKind::Sum, 3) => "(a + b)^3",
+            (BinomialSquareKind::Difference, 3) => "(a - b)^3",
+            _ => return Vec::new(),
+        },
+        &rhs_display,
+        match (kind, power) {
+            (BinomialSquareKind::Sum, 2) => "\\left(a + b\\right)^2",
+            (BinomialSquareKind::Difference, 2) => "\\left(a - b\\right)^2",
+            (BinomialSquareKind::Sum, 3) => "\\left(a + b\\right)^3",
+            (BinomialSquareKind::Difference, 3) => "\\left(a - b\\right)^3",
+            _ => return Vec::new(),
+        },
+        &rhs_latex,
+    );
+
+    if matches_var_name(ctx, left, "a") && matches_var_name(ctx, right, "b") {
+        return vec![identity_substep];
+    }
 
     vec![
+        identity_substep,
         formula_substep(
-            identity_title,
-            match (kind, power) {
-                (BinomialSquareKind::Sum, 2) => "(a + b)^2",
-                (BinomialSquareKind::Difference, 2) => "(a - b)^2",
-                (BinomialSquareKind::Sum, 3) => "(a + b)^3",
-                (BinomialSquareKind::Difference, 3) => "(a - b)^3",
-                _ => return Vec::new(),
-            },
-            &rhs_display,
-            match (kind, power) {
-                (BinomialSquareKind::Sum, 2) => "\\left(a + b\\right)^2",
-                (BinomialSquareKind::Difference, 2) => "\\left(a - b\\right)^2",
-                (BinomialSquareKind::Sum, 3) => "\\left(a + b\\right)^3",
-                (BinomialSquareKind::Difference, 3) => "\\left(a - b\\right)^3",
-                _ => return Vec::new(),
-            },
-            &rhs_latex,
-        ),
-        formula_substep(
-            format!("Sustituir a = {left_display} y b = {right_display}"),
+            format!("Aplicar la fórmula con a = {left_display}, b = {right_display}"),
             &substituted_before_display,
             &substituted_after_display,
             &substituted_before_latex,
@@ -1056,6 +1215,10 @@ fn generate_simplify_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
     let before = step.before_local().unwrap_or(step.before);
     let after = step.after_local().unwrap_or(step.after);
 
+    if let Some(substeps) = generate_reverse_nested_fraction_substeps(ctx, before, after) {
+        return substeps;
+    }
+
     if let Some(substeps) = generate_log_change_of_base_chain_substeps(ctx, before, after) {
         return substeps;
     }
@@ -1067,6 +1230,129 @@ fn generate_simplify_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
     generate_log_power_contraction_substep(ctx, before, after)
         .into_iter()
         .collect()
+}
+
+fn generate_reverse_nested_fraction_substeps(
+    ctx: &Context,
+    before: ExprId,
+    after: ExprId,
+) -> Option<Vec<SubStep>> {
+    let pattern = reverse_nested_fraction_pattern(ctx, after)?;
+
+    match pattern {
+        NestedFractionPattern::OneOverSumWithFraction
+        | NestedFractionPattern::FractionOverSumWithFraction => {
+            let Expr::Div(_, before_den) = ctx.get(before) else {
+                return None;
+            };
+            let Expr::Div(_, after_den) = ctx.get(after) else {
+                return None;
+            };
+            let (_, common_den) = split_add_with_single_fraction(ctx, *after_den)?;
+            let common_den_display = human_expr(ctx, common_den);
+            let common_den_grouped_display = grouped_substitution_display(ctx, common_den);
+            let common_den_grouped_latex = grouped_substitution_latex(ctx, common_den);
+            let after_den_display = human_expr(ctx, *after_den);
+            let after_den_latex = latex_expr(ctx, *after_den);
+
+            return Some(vec![SubStep::new(
+                format!("Reescribir el denominador sacando factor común {common_den_display}"),
+                human_expr(ctx, *before_den),
+                format!("{common_den_grouped_display} · ({after_den_display})"),
+            )
+            .with_before_latex(latex_expr(ctx, *before_den))
+            .with_after_latex(format!(
+                "{common_den_grouped_latex}\\cdot \\left({after_den_latex}\\right)"
+            ))]);
+        }
+        NestedFractionPattern::SumWithFractionOverScalar => {
+            let Expr::Div(before_num, _) = ctx.get(before) else {
+                return None;
+            };
+            let Expr::Div(after_num, _) = ctx.get(after) else {
+                return None;
+            };
+            let (_, common_den) = split_add_with_single_fraction(ctx, *after_num)?;
+            let common_den_display = human_expr(ctx, common_den);
+            let common_den_grouped_display = grouped_substitution_display(ctx, common_den);
+            let common_den_grouped_latex = grouped_substitution_latex(ctx, common_den);
+            let after_num_display = human_expr(ctx, *after_num);
+            let after_num_latex = latex_expr(ctx, *after_num);
+
+            return Some(vec![SubStep::new(
+                format!("Reescribir el numerador sacando factor común {common_den_display}"),
+                human_expr(ctx, *before_num),
+                format!("{common_den_grouped_display} · ({after_num_display})"),
+            )
+            .with_before_latex(latex_expr(ctx, *before_num))
+            .with_after_latex(format!(
+                "{common_den_grouped_latex}\\cdot \\left({after_num_latex}\\right)"
+            ))]);
+        }
+        NestedFractionPattern::OneOverSumWithUnitFraction | NestedFractionPattern::General => {}
+    }
+
+    None
+}
+
+fn generate_reverse_nested_fraction_rule_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    let before = step.global_before.unwrap_or(step.before);
+    let after = step.global_after.unwrap_or(step.after);
+
+    generate_reverse_nested_fraction_substeps(ctx, before, after)
+        .or_else(|| {
+            let before = step.before_local().unwrap_or(step.before);
+            let after = step.after_local().unwrap_or(step.after);
+            generate_reverse_nested_fraction_substeps(ctx, before, after)
+        })
+        .unwrap_or_default()
+}
+
+fn reverse_nested_fraction_pattern(ctx: &Context, after: ExprId) -> Option<NestedFractionPattern> {
+    let pattern = super::nested_fraction_analysis::classify_nested_fraction(ctx, after)?;
+    match pattern {
+        NestedFractionPattern::OneOverSumWithFraction
+        | NestedFractionPattern::FractionOverSumWithFraction
+        | NestedFractionPattern::SumWithFractionOverScalar => {}
+        _ => return None,
+    }
+
+    let Expr::Div(num, den) = ctx.get(after) else {
+        return None;
+    };
+
+    match pattern {
+        NestedFractionPattern::OneOverSumWithFraction
+        | NestedFractionPattern::FractionOverSumWithFraction => {
+            let denominator = *den;
+            let _ = split_add_with_single_fraction(ctx, denominator)?;
+        }
+        NestedFractionPattern::SumWithFractionOverScalar => {
+            let numerator = *num;
+            let _ = split_add_with_single_fraction(ctx, numerator)?;
+        }
+        NestedFractionPattern::OneOverSumWithUnitFraction | NestedFractionPattern::General => {
+            return None
+        }
+    }
+
+    Some(pattern)
+}
+
+fn split_add_with_single_fraction(ctx: &Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
+    let Expr::Add(left, right) = ctx.get(expr) else {
+        return None;
+    };
+
+    match (ctx.get(*left), ctx.get(*right)) {
+        (Expr::Div(_, left_den), _) if !matches!(ctx.get(*right), Expr::Div(_, _)) => {
+            Some((*left, *left_den))
+        }
+        (_, Expr::Div(_, right_den)) if !matches!(ctx.get(*left), Expr::Div(_, _)) => {
+            Some((*right, *right_den))
+        }
+        _ => None,
+    }
 }
 
 fn generate_telescoping_fraction_combine_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
@@ -3965,6 +4251,16 @@ fn matches_square_of(ctx: &Context, expr: ExprId, base: ExprId) -> bool {
     )
 }
 
+fn matches_fourth_power_of(ctx: &Context, expr: ExprId, base: ExprId) -> bool {
+    matches!(
+        ctx.get(expr),
+        Expr::Pow(pow_base, exp)
+            if is_small_positive_integer(ctx, *exp, 4)
+                && cas_ast::ordering::compare_expr(ctx, *pow_base, base)
+                    == std::cmp::Ordering::Equal
+    )
+}
+
 fn matches_unscaled_product(ctx: &Context, expr: ExprId, left: ExprId, right: ExprId) -> bool {
     if is_one(ctx, left) && is_one(ctx, right) {
         return is_one(ctx, expr);
@@ -3993,6 +4289,29 @@ fn matches_unscaled_product(ctx: &Context, expr: ExprId, left: ExprId, right: Ex
         if !saw_right
             && cas_ast::ordering::compare_expr(ctx, factor, right) == std::cmp::Ordering::Equal
         {
+            saw_right = true;
+            continue;
+        }
+        return false;
+    }
+
+    saw_left && saw_right
+}
+
+fn matches_product_of_squares(ctx: &Context, expr: ExprId, left: ExprId, right: ExprId) -> bool {
+    let factors = expr_nary::mul_leaves(ctx, expr);
+    if factors.len() != 2 {
+        return false;
+    }
+
+    let mut saw_left = false;
+    let mut saw_right = false;
+    for factor in factors {
+        if !saw_left && matches_square_of(ctx, factor, left) {
+            saw_left = true;
+            continue;
+        }
+        if !saw_right && matches_square_of(ctx, factor, right) {
             saw_right = true;
             continue;
         }
@@ -5299,6 +5618,33 @@ fn generate_sum_difference_cubes_substeps(ctx: &Context, step: &Step) -> Vec<Sub
     ]
 }
 
+fn generate_sum_difference_sixth_powers_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+    let Some(plan) = sixth_power_factorized_identity_plan(ctx, after, before) else {
+        return Vec::new();
+    };
+
+    let identity_latex =
+        sixth_power_identity_latex(ctx, plan.left_base, plan.right_base, plan.kind);
+    let factorized_display =
+        sixth_power_factorized_identity_display(ctx, plan.left_base, plan.right_base, plan.kind);
+    let factorized_latex =
+        sixth_power_factorized_identity_latex(ctx, plan.left_base, plan.right_base, plan.kind);
+    let factor_description = match plan.kind {
+        SixthPowerIdentityKind::Sum => "Aplicar a^6 + b^6 = (a^2 + b^2)(a^4 - a^2b^2 + b^4)",
+        SixthPowerIdentityKind::Difference => "Aplicar a^6 - b^6 = (a^2 - b^2)(a^4 + a^2b^2 + b^4)",
+    };
+
+    vec![SubStep::new(
+        factor_description,
+        display_expr(ctx, before),
+        factorized_display,
+    )
+    .with_before_latex(identity_latex)
+    .with_after_latex(factorized_latex)]
+}
+
 fn generate_sum_difference_cubes_expansion_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
     let before = step.before;
     let after = step.after;
@@ -5335,6 +5681,47 @@ fn generate_sum_difference_cubes_expansion_substeps(ctx: &Context, step: &Step) 
         )
         .with_before_latex(factorized_latex)
         .with_after_latex(identity_latex),
+    ]
+}
+
+fn generate_sum_difference_sixth_powers_expansion_substeps(
+    ctx: &Context,
+    step: &Step,
+) -> Vec<SubStep> {
+    let before = step.before;
+    let after = step.after;
+    let Some(plan) = sixth_power_factorized_identity_plan(ctx, before, after) else {
+        return Vec::new();
+    };
+
+    let factorized_display =
+        sixth_power_factorized_identity_display(ctx, plan.left_base, plan.right_base, plan.kind);
+    let factorized_latex =
+        sixth_power_factorized_identity_latex(ctx, plan.left_base, plan.right_base, plan.kind);
+    let identity_display =
+        sixth_power_identity_display(ctx, plan.left_base, plan.right_base, plan.kind);
+    let identity_latex =
+        sixth_power_identity_latex(ctx, plan.left_base, plan.right_base, plan.kind);
+    let recognize_description = match plan.kind {
+        SixthPowerIdentityKind::Sum => "Reconocer el patrón (a^2 + b^2)(a^4 - a^2b^2 + b^4)",
+        SixthPowerIdentityKind::Difference => "Reconocer el patrón (a^2 - b^2)(a^4 + a^2b^2 + b^4)",
+    };
+    let expand_description = match plan.kind {
+        SixthPowerIdentityKind::Sum => "Aplicar (a^2 + b^2)(a^4 - a^2b^2 + b^4) = a^6 + b^6",
+        SixthPowerIdentityKind::Difference => "Aplicar (a^2 - b^2)(a^4 + a^2b^2 + b^4) = a^6 - b^6",
+    };
+
+    vec![
+        SubStep::new(
+            recognize_description,
+            display_expr(ctx, before),
+            factorized_display.clone(),
+        )
+        .with_before_latex(latex_expr(ctx, before))
+        .with_after_latex(factorized_latex.clone()),
+        SubStep::new(expand_description, factorized_display, identity_display)
+            .with_before_latex(factorized_latex)
+            .with_after_latex(identity_latex),
     ]
 }
 
@@ -5716,6 +6103,18 @@ struct CubeIdentityPlan {
     kind: CubeIdentityKind,
 }
 
+#[derive(Clone, Copy)]
+enum SixthPowerIdentityKind {
+    Sum,
+    Difference,
+}
+
+struct SixthPowerIdentityPlan {
+    left_base: ExprId,
+    right_base: ExprId,
+    kind: SixthPowerIdentityKind,
+}
+
 struct ReciprocalExponentPlan;
 
 fn cube_identity_terms(ctx: &Context, expr: ExprId) -> Option<(ExprId, ExprId, CubeIdentityKind)> {
@@ -5801,6 +6200,54 @@ fn cube_factorized_identity_plan(
     None
 }
 
+fn sixth_power_identity_terms(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<(ExprId, ExprId, SixthPowerIdentityKind)> {
+    match ctx.get(expr) {
+        Expr::Sub(left, right) => Some((*left, *right, SixthPowerIdentityKind::Difference)),
+        Expr::Add(left, right) => match ctx.get(*right) {
+            Expr::Neg(inner) => Some((*left, *inner, SixthPowerIdentityKind::Difference)),
+            _ => Some((*left, *right, SixthPowerIdentityKind::Sum)),
+        },
+        _ => None,
+    }
+}
+
+fn sixth_power_factorized_identity_plan(
+    ctx: &Context,
+    before: ExprId,
+    after: ExprId,
+) -> Option<SixthPowerIdentityPlan> {
+    let (left_term, right_term, kind) = sixth_power_identity_terms(ctx, after)?;
+    let left_base = sixth_power_base_from_term(ctx, left_term)?;
+    let right_base = sixth_power_base_from_term(ctx, right_term)?;
+    if is_one(ctx, left_base) || is_one(ctx, right_base) {
+        return None;
+    }
+
+    let Expr::Mul(first_factor, second_factor) = ctx.get(before) else {
+        return None;
+    };
+
+    for (binomial_factor, quartic_factor) in [
+        (*first_factor, *second_factor),
+        (*second_factor, *first_factor),
+    ] {
+        if sixth_power_binomial_factor_matches(ctx, binomial_factor, left_base, right_base, kind)
+            && sixth_power_quartic_factor_matches(ctx, quartic_factor, left_base, right_base, kind)
+        {
+            return Some(SixthPowerIdentityPlan {
+                left_base,
+                right_base,
+                kind,
+            });
+        }
+    }
+
+    None
+}
+
 fn reciprocal_exponent_plan(ctx: &Context, before: ExprId) -> Option<ReciprocalExponentPlan> {
     let Expr::Pow(base, exponent) = ctx.get(before) else {
         return None;
@@ -5828,6 +6275,13 @@ fn cube_base_from_term(ctx: &Context, expr: ExprId) -> Option<ExprId> {
     match ctx.get(expr) {
         Expr::Pow(base, exponent) if is_integer_literal(ctx, *exponent, 3) => Some(*base),
         _ if is_one(ctx, expr) => Some(expr),
+        _ => None,
+    }
+}
+
+fn sixth_power_base_from_term(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    match ctx.get(expr) {
+        Expr::Pow(base, exponent) if is_integer_literal(ctx, *exponent, 6) => Some(*base),
         _ => None,
     }
 }
@@ -5885,6 +6339,61 @@ fn quadratic_factor_matches(
     });
 
     has_left_square && has_right_square && has_mixed
+}
+
+fn sixth_power_binomial_factor_matches(
+    ctx: &Context,
+    expr: ExprId,
+    left_base: ExprId,
+    right_base: ExprId,
+    kind: SixthPowerIdentityKind,
+) -> bool {
+    let terms = AddView::from_expr(ctx, expr).terms;
+    if terms.len() != 2 {
+        return false;
+    }
+
+    let has_left_square = terms
+        .iter()
+        .any(|(term, sign)| *sign == Sign::Pos && matches_square_of(ctx, *term, left_base));
+    let right_sign = match kind {
+        SixthPowerIdentityKind::Sum => Sign::Pos,
+        SixthPowerIdentityKind::Difference => Sign::Neg,
+    };
+    let has_right_square = terms
+        .iter()
+        .any(|(term, sign)| *sign == right_sign && matches_square_of(ctx, *term, right_base));
+
+    has_left_square && has_right_square
+}
+
+fn sixth_power_quartic_factor_matches(
+    ctx: &Context,
+    expr: ExprId,
+    left_base: ExprId,
+    right_base: ExprId,
+    kind: SixthPowerIdentityKind,
+) -> bool {
+    let terms = AddView::from_expr(ctx, expr).terms;
+    if terms.len() != 3 {
+        return false;
+    }
+
+    let has_left_fourth = terms
+        .iter()
+        .any(|(term, sign)| *sign == Sign::Pos && matches_fourth_power_of(ctx, *term, left_base));
+    let has_right_fourth = terms
+        .iter()
+        .any(|(term, sign)| *sign == Sign::Pos && matches_fourth_power_of(ctx, *term, right_base));
+    let mixed_sign = match kind {
+        SixthPowerIdentityKind::Sum => Sign::Neg,
+        SixthPowerIdentityKind::Difference => Sign::Pos,
+    };
+    let has_mixed = terms.iter().any(|(term, sign)| {
+        *sign == mixed_sign && matches_product_of_squares(ctx, *term, left_base, right_base)
+    });
+
+    has_left_fourth && has_right_fourth && has_mixed
 }
 
 fn cube_identity_display(
@@ -6019,6 +6528,140 @@ fn cube_factorized_identity_latex(
     )
 }
 
+fn sixth_power_identity_display(
+    ctx: &Context,
+    left_base: ExprId,
+    right_base: ExprId,
+    kind: SixthPowerIdentityKind,
+) -> String {
+    let op = match kind {
+        SixthPowerIdentityKind::Sum => " + ",
+        SixthPowerIdentityKind::Difference => " - ",
+    };
+    format!(
+        "{}{}{}",
+        sixth_power_display(ctx, left_base),
+        op,
+        sixth_power_display(ctx, right_base)
+    )
+}
+
+fn sixth_power_identity_latex(
+    ctx: &Context,
+    left_base: ExprId,
+    right_base: ExprId,
+    kind: SixthPowerIdentityKind,
+) -> String {
+    let op = match kind {
+        SixthPowerIdentityKind::Sum => " + ",
+        SixthPowerIdentityKind::Difference => " - ",
+    };
+    format!(
+        "{}{}{}",
+        sixth_power_latex(ctx, left_base),
+        op,
+        sixth_power_latex(ctx, right_base)
+    )
+}
+
+fn sixth_power_binomial_factor_display(
+    ctx: &Context,
+    left_base: ExprId,
+    right_base: ExprId,
+    kind: SixthPowerIdentityKind,
+) -> String {
+    let left = squared_display(ctx, left_base);
+    let right = squared_display(ctx, right_base);
+    match kind {
+        SixthPowerIdentityKind::Sum => format!("({left} + {right})"),
+        SixthPowerIdentityKind::Difference => format!("({left} - {right})"),
+    }
+}
+
+fn sixth_power_binomial_factor_latex(
+    ctx: &Context,
+    left_base: ExprId,
+    right_base: ExprId,
+    kind: SixthPowerIdentityKind,
+) -> String {
+    let left = squared_latex(ctx, left_base);
+    let right = squared_latex(ctx, right_base);
+    match kind {
+        SixthPowerIdentityKind::Sum => format!("\\left({left} + {right}\\right)"),
+        SixthPowerIdentityKind::Difference => format!("\\left({left} - {right}\\right)"),
+    }
+}
+
+fn sixth_power_quartic_factor_display(
+    ctx: &Context,
+    left_base: ExprId,
+    right_base: ExprId,
+    kind: SixthPowerIdentityKind,
+) -> String {
+    let left_fourth = fourth_power_display(ctx, left_base);
+    let right_fourth = fourth_power_display(ctx, right_base);
+    let mixed = format!(
+        "{}·{}",
+        squared_display(ctx, left_base),
+        squared_display(ctx, right_base)
+    );
+    match kind {
+        SixthPowerIdentityKind::Sum => format!("({left_fourth} - {mixed} + {right_fourth})"),
+        SixthPowerIdentityKind::Difference => {
+            format!("({left_fourth} + {mixed} + {right_fourth})")
+        }
+    }
+}
+
+fn sixth_power_quartic_factor_latex(
+    ctx: &Context,
+    left_base: ExprId,
+    right_base: ExprId,
+    kind: SixthPowerIdentityKind,
+) -> String {
+    let left_fourth = fourth_power_latex(ctx, left_base);
+    let right_fourth = fourth_power_latex(ctx, right_base);
+    let mixed = format!(
+        "{}\\cdot {}",
+        squared_latex(ctx, left_base),
+        squared_latex(ctx, right_base)
+    );
+    match kind {
+        SixthPowerIdentityKind::Sum => {
+            format!("\\left({left_fourth} - {mixed} + {right_fourth}\\right)")
+        }
+        SixthPowerIdentityKind::Difference => {
+            format!("\\left({left_fourth} + {mixed} + {right_fourth}\\right)")
+        }
+    }
+}
+
+fn sixth_power_factorized_identity_display(
+    ctx: &Context,
+    left_base: ExprId,
+    right_base: ExprId,
+    kind: SixthPowerIdentityKind,
+) -> String {
+    format!(
+        "{}·{}",
+        sixth_power_binomial_factor_display(ctx, left_base, right_base, kind),
+        sixth_power_quartic_factor_display(ctx, left_base, right_base, kind)
+    )
+}
+
+fn sixth_power_factorized_identity_latex(
+    ctx: &Context,
+    left_base: ExprId,
+    right_base: ExprId,
+    kind: SixthPowerIdentityKind,
+) -> String {
+    format!(
+        "{}\\cdot {}",
+        sixth_power_binomial_factor_latex(ctx, left_base, right_base, kind),
+        sixth_power_quartic_factor_latex(ctx, left_base, right_base, kind)
+    )
+}
+
 fn cubed_display(ctx: &Context, expr: ExprId) -> String {
     let display = display_expr(ctx, expr);
     if is_simple_power_base(ctx, expr) {
@@ -6031,6 +6674,20 @@ fn cubed_display(ctx: &Context, expr: ExprId) -> String {
 fn cubed_latex(ctx: &Context, expr: ExprId) -> String {
     let latex = latex_expr(ctx, expr);
     format!("{{{latex}}}^{{3}}")
+}
+
+fn sixth_power_display(ctx: &Context, expr: ExprId) -> String {
+    let display = display_expr(ctx, expr);
+    if is_simple_power_base(ctx, expr) {
+        format!("{display}^6")
+    } else {
+        format!("({display})^6")
+    }
+}
+
+fn sixth_power_latex(ctx: &Context, expr: ExprId) -> String {
+    let latex = latex_expr(ctx, expr);
+    format!("{{{latex}}}^{{6}}")
 }
 
 fn difference_square_terms(
@@ -6075,6 +6732,20 @@ fn squared_display(ctx: &Context, expr: ExprId) -> String {
 fn squared_latex(ctx: &Context, expr: ExprId) -> String {
     let latex = latex_expr(ctx, expr);
     format!("{{{latex}}}^{{2}}")
+}
+
+fn fourth_power_display(ctx: &Context, expr: ExprId) -> String {
+    let display = display_expr(ctx, expr);
+    if is_simple_power_base(ctx, expr) {
+        format!("{display}^4")
+    } else {
+        format!("({display})^4")
+    }
+}
+
+fn fourth_power_latex(ctx: &Context, expr: ExprId) -> String {
+    let latex = latex_expr(ctx, expr);
+    format!("{{{latex}}}^{{4}}")
 }
 
 fn is_simple_power_base(ctx: &Context, expr: ExprId) -> bool {

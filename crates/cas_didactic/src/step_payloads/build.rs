@@ -85,6 +85,12 @@ fn inferred_step_rule(
         return Some("Contraer cadena de logaritmos".to_string());
     }
 
+    if first_title.starts_with("Reescribir el denominador sacando factor común ")
+        || first_title.starts_with("Reescribir el numerador sacando factor común ")
+    {
+        return Some("Simplificar fracción anidada".to_string());
+    }
+
     let second_title = substeps.get(1)?.title.as_str();
 
     if step.rule_name == "Canonicalize Negation"

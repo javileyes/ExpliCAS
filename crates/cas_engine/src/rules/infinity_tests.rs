@@ -166,6 +166,21 @@ fn test_undefined_factor_multiplication_is_undefined() {
 }
 
 #[test]
+fn test_negated_undefined_is_undefined() {
+    let mut ctx = Context::new();
+    let expr = parse_expr(&mut ctx, "-undefined");
+
+    let result = neg_undefined(&mut ctx, expr);
+    assert!(result.is_some(), "Should detect undefined inside negation");
+
+    let new_expr = result.unwrap().new_expr;
+    assert!(
+        matches!(ctx.get(new_expr), Expr::Constant(Constant::Undefined)),
+        "Result should be Undefined"
+    );
+}
+
+#[test]
 fn test_nested_undefined_in_division_is_undefined() {
     let mut ctx = Context::new();
     let expr = parse_expr(&mut ctx, "(a * undefined) / 0");
@@ -228,6 +243,24 @@ fn test_full_simplifier_propagates_undefined_through_functions() {
             Expr::Constant(Constant::Undefined)
         ),
         "Function-wrapped undefined should simplify all the way to undefined"
+    );
+}
+
+#[test]
+fn test_full_simplifier_propagates_undefined_through_negation() {
+    let mut ctx = Context::new();
+    let expr = parse_expr(&mut ctx, "-ln(-1)");
+
+    let mut simplifier = Simplifier::with_default_rules();
+    simplifier.context = ctx;
+    let (result, _) = simplifier.simplify(expr);
+
+    assert!(
+        matches!(
+            simplifier.context.get(result),
+            Expr::Constant(Constant::Undefined)
+        ),
+        "Negated undefined should simplify all the way to undefined"
     );
 }
 

@@ -112,3 +112,31 @@ fn test_latex_to_plain_text_avoids_extra_parens_for_function_power_base() {
         "unexpected extra parens around function power bases, got: {output}"
     );
 }
+
+#[test]
+fn test_latex_to_plain_text_parenthesizes_grouped_symbolic_exponents() {
+    let input = r"{x}^{a + b} + {y}^{a + b + c}";
+    let output = latex_to_plain_text(input);
+    assert!(
+        output.contains("x^(a + b)"),
+        "expected grouped symbolic exponent for x, got: {output}"
+    );
+    assert!(
+        output.contains("y^(a + b + c)"),
+        "expected grouped symbolic exponent for y, got: {output}"
+    );
+}
+
+#[test]
+fn test_latex_to_plain_text_leaves_atomic_exponents_without_extra_parens() {
+    let input = r"{x}^{2} + {y}^{a}";
+    let output = latex_to_plain_text(input);
+    assert!(
+        output.contains("x^2 + y^a"),
+        "expected atomic exponents without extra parens, got: {output}"
+    );
+    assert!(
+        !output.contains("x^(2)") && !output.contains("y^(a)"),
+        "unexpected redundant exponent parentheses, got: {output}"
+    );
+}

@@ -288,6 +288,7 @@ Deliverables:
 - add derive family labels
 - add derive-specific stats output
 - add unsupported-equivalent diagnostics by family
+- add an anti-inflation guardrail for the derive corpus so near-isomorphic cases do not silently accumulate
 
 Suggested test file:
 
@@ -313,6 +314,8 @@ Acceptance criteria:
 - derive corpus exists
 - each case is labeled by family
 - test output reports reachability and unsupported-equivalent counts
+- corpus cases are representative by branch, not inflated by x/y, numeric, or scaled near-duplicates
+- generality belongs in tabulated rule/classifier tests, not in repeating the same branch in the CSV
 
 ## Phase 1. Extract Target Classification
 

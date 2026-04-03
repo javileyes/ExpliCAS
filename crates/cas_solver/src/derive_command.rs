@@ -1,14 +1,15 @@
 use crate::derive::{
-    classify_target_profile, extract_factored_inner_target, ordered_strategies_for_target,
+    classify_target_profile, extract_factored_division_target, ordered_strategies_for_target,
     presentational_target_match, strong_target_match, try_build_combined_fraction_from_fold_add,
-    try_rewrite_exact_fraction_cancel_target_aware, try_rewrite_expanded_target_aware,
-    try_rewrite_fraction_combination_target_aware, try_rewrite_fraction_expansion_target_aware,
-    try_rewrite_integrate_prep_target_aware, try_rewrite_log_contraction_target_aware,
-    try_rewrite_log_expansion_target_aware, try_rewrite_odd_half_power_target_aware,
-    try_rewrite_power_merge_target_aware, try_rewrite_pythagorean_factor_form_target_aware,
-    try_rewrite_solve_prep_target_aware, try_rewrite_trig_contraction_target_aware,
-    try_rewrite_trig_expansion, try_rewrite_trig_identity_to_one_target_aware, DeriveStrategy,
-    DeriveTargetForm, ExpandRewriteKind,
+    try_rewrite_collect_monomial_target_aware, try_rewrite_exact_fraction_cancel_target_aware,
+    try_rewrite_expanded_target_aware, try_rewrite_fraction_combination_target_aware,
+    try_rewrite_fraction_expansion_target_aware, try_rewrite_integrate_prep_target_aware,
+    try_rewrite_log_contraction_target_aware, try_rewrite_log_expansion_target_aware,
+    try_rewrite_odd_half_power_target_aware, try_rewrite_power_merge_target_aware,
+    try_rewrite_pythagorean_factor_form_target_aware, try_rewrite_solve_prep_target_aware,
+    try_rewrite_trig_contraction_target_aware, try_rewrite_trig_expansion,
+    try_rewrite_trig_identity_to_one_target_aware, DeriveStrategy, DeriveTargetForm,
+    ExpandRewriteKind,
 };
 
 use cas_ast::{Expr, ExprId};
@@ -793,7 +794,7 @@ fn try_supported_derive_strategies_inner(
                         collect_steps,
                     )
                 });
-                if strong_target_match(&mut simplifier.context, stage.expr, target_expr) {
+                if derive_target_match(simplifier, stage.expr, target_expr) {
                     let mut stage = stage.clone();
                     retarget_stage_output(&mut stage, target_expr);
                     let steps = finalize_steps(
@@ -1318,6 +1319,13 @@ fn run_fraction_decompose_stage(
     target_expr: ExprId,
     collect_steps: bool,
 ) -> DeriveStageOutput {
+    if !matches!(simplifier.context.get(source_expr), Expr::Div(_, _)) {
+        return DeriveStageOutput {
+            expr: source_expr,
+            steps: Vec::new(),
+        };
+    }
+
     let Some(recombined) =
         try_build_combined_fraction_from_fold_add(&mut simplifier.context, target_expr)
     else {
@@ -1327,7 +1335,7 @@ fn run_fraction_decompose_stage(
         };
     };
 
-    if !strong_target_match(&mut simplifier.context, recombined, source_expr) {
+    if !derive_target_match(simplifier, recombined, source_expr) {
         return DeriveStageOutput {
             expr: source_expr,
             steps: Vec::new(),
@@ -1463,14 +1471,15 @@ fn run_factor_with_division_stage(
     collect_steps: bool,
 ) -> Option<DeriveStageOutput> {
     for var_name in candidate_variables {
-        let Some(inner_target) =
-            extract_factored_inner_target(&mut simplifier.context, target_expr, var_name)
+        let Some((factored_expr, inner_target)) =
+            extract_factored_division_target(&mut simplifier.context, target_expr, var_name)
         else {
             continue;
         };
 
-        let var_expr = simplifier.context.var(var_name);
-        let quotient_expr = simplifier.context.add(cas_ast::Expr::Div(expr, var_expr));
+        let quotient_expr = simplifier
+            .context
+            .add(cas_ast::Expr::Div(expr, factored_expr));
 
         let Some((_inner_expr, _inner_steps, _strategy)) = try_supported_derive_strategies_inner(
             simplifier,
@@ -1484,8 +1493,9 @@ fn run_factor_with_division_stage(
         };
 
         let steps = if collect_steps {
+            let factor_display = cas_formatter::render_expr(&simplifier.context, factored_expr);
             let mut step = crate::Step::with_snapshots(
-                &format!("Factor out {var_name} from the whole expression"),
+                &format!("Factor out {factor_display} from the whole expression"),
                 "Factor Out With Division",
                 expr,
                 target_expr,
@@ -1990,6 +2000,29 @@ fn run_collect_stage(
         });
     }
 
+    if let Some(rewrite) =
+        try_rewrite_collect_monomial_target_aware(&mut simplifier.context, expr, target_expr)
+    {
+        let description = format!("Collect terms by {}", rewrite.focus_label);
+        let mut step = crate::Step::with_snapshots(
+            &description,
+            "Collect Terms",
+            expr,
+            rewrite.rewritten,
+            Vec::new(),
+            Some(&simplifier.context),
+            expr,
+            rewrite.rewritten,
+        );
+        step.importance = cas_solver_core::step_types::ImportanceLevel::Medium;
+        step.category = cas_solver_core::step_types::StepCategory::Simplify;
+
+        return Some(DeriveStageOutput {
+            expr: rewrite.rewritten,
+            steps: vec![step],
+        });
+    }
+
     None
 }
 
@@ -2084,11 +2117,30 @@ fn finalize_steps(
         }
     };
 
+    truncate_steps_after_first_target_match(&mut steps, final_expr, ctx);
+
     if let Some(last_step) = steps.last_mut() {
         last_step.global_after = Some(final_expr);
     }
 
     steps
+}
+
+fn truncate_steps_after_first_target_match(
+    steps: &mut Vec<crate::Step>,
+    final_expr: ExprId,
+    ctx: &cas_ast::Context,
+) {
+    let mut temp_ctx = ctx.clone();
+    let cutoff = steps.iter().position(|step| {
+        let local_after = step.after_local().unwrap_or(step.after);
+        strong_target_match(&mut temp_ctx, local_after, final_expr)
+            || strong_target_match(&mut temp_ctx, step.after, final_expr)
+    });
+
+    if let Some(index) = cutoff {
+        steps.truncate(index + 1);
+    }
 }
 
 fn retarget_stage_output(stage: &mut DeriveStageOutput, target_expr: ExprId) {

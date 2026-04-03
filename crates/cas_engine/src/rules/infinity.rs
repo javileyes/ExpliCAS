@@ -8,7 +8,7 @@
 //! - `finite / ∞ → 0`
 //! - `∞ + (-∞) → Undefined` (indeterminate)
 //! - `0 · ∞ → Undefined` (indeterminate)
-//! - `undefined` propagates through `+`, `-`, `*`, `/`, and `^`
+//! - `undefined` propagates through `+`, `-`, unary `-`, `*`, `/`, and `^`
 
 use crate::rule::Rewrite;
 use cas_ast::{Constant, Context, Expr, ExprId};
@@ -131,6 +131,17 @@ pub fn mul_undefined(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
     Some(Rewrite::new(mk_undefined(ctx)).desc("undefined factor makes product undefined"))
 }
 
+/// Rule: Negating `undefined` keeps it `undefined`.
+pub fn neg_undefined(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
+    let Expr::Neg(inner) = ctx.get(expr) else {
+        return None;
+    };
+    if !contains_undefined(ctx, *inner) {
+        return None;
+    }
+    Some(Rewrite::new(mk_undefined(ctx)).desc("negation of undefined is undefined"))
+}
+
 /// Rule: Any division containing `undefined` is `undefined`.
 pub fn div_undefined(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
     let Expr::Div(num, den) = ctx.get(expr) else {
@@ -206,6 +217,13 @@ define_rule!(
 );
 
 define_rule!(
+    NegUndefinedRule,
+    "Negation of Undefined",
+    Some(crate::target_kind::TargetKindSet::NEG),
+    |ctx, expr| { neg_undefined(ctx, expr) }
+);
+
+define_rule!(
     MulZeroInfinityRule,
     "Zero Times Infinity Indeterminate",
     Some(crate::target_kind::TargetKindSet::MUL),
@@ -254,6 +272,7 @@ define_rule!(
 pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(AddUndefinedRule));
     simplifier.add_rule(Box::new(SubUndefinedRule));
+    simplifier.add_rule(Box::new(NegUndefinedRule));
     simplifier.add_rule(Box::new(MulUndefinedRule));
     // Indeterminate forms first (highest priority)
     simplifier.add_rule(Box::new(MulZeroInfinityRule));

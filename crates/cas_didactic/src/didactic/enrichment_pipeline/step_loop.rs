@@ -164,7 +164,10 @@ fn is_noisy_template_substep(sub_step: &SubStep) -> bool {
 }
 
 fn is_contextual_same_snapshot_substep(normalized_substep: &str) -> bool {
-    normalized_substep.starts_with("aquí ") || normalized_substep.starts_with("aqui ")
+    normalized_substep.starts_with("aquí ")
+        || normalized_substep.starts_with("aqui ")
+        || normalized_substep.starts_with("reescribir el denominador sacando factor común ")
+        || normalized_substep.starts_with("reescribir el numerador sacando factor común ")
 }
 
 fn is_single_formula_template_rule(rule_name: &str) -> bool {

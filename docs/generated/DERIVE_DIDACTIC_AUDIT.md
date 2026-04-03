@@ -6,111 +6,96 @@ Command: `cargo test -p cas_didactic --test derive_didactic_audit derive_didacti
 
 ## Summary
 
-- Derived cases audited: `286`
-- Mean top-level step count: `1.09`
-- Total web substeps: `433`
+- Derived cases audited: `226`
+- Mean top-level step count: `1.07`
+- Total web substeps: `304`
 
 | id | family | web steps | web substeps | flags |
 | --- | --- | ---: | ---: | --- |
 | `combine_like_terms` | `simplify` | 1 | 1 | none |
 | `collect_linear` | `collect` | 1 | 1 | none |
-| `collect_linear_three_terms` | `collect` | 1 | 1 | none |
-| `collect_quadratic_terms` | `collect` | 1 | 1 | none |
 | `collect_common_symbolic_coefficients` | `collect` | 1 | 1 | none |
 | `collect_linear_alt_variable` | `collect` | 1 | 1 | none |
-| `collect_cubic_terms` | `collect` | 1 | 1 | none |
-| `collect_quadratic_terms_alt_variable` | `collect` | 1 | 1 | none |
+| `collect_multiple_power_groups` | `collect` | 1 | 1 | none |
+| `collect_composite_monomial_factor` | `collect` | 1 | 1 | none |
+| `collect_two_composite_factor_groups` | `collect` | 1 | 1 | none |
 | `factor_out_with_division_quadratic` | `conditional_factor` | 1 | 1 | none |
-| `factor_out_with_division_quadratic_y` | `conditional_factor` | 1 | 1 | none |
-| `factor_out_with_division_cubic` | `conditional_factor` | 1 | 1 | none |
-| `factor_out_with_division_cubic_y` | `conditional_factor` | 1 | 1 | none |
-| `factor_out_with_division_sparse_quartic` | `conditional_factor` | 1 | 1 | none |
+| `factor_out_with_division_sparse_quintic` | `conditional_factor` | 1 | 1 | none |
+| `factor_out_with_division_mixed_septic` | `conditional_factor` | 1 | 1 | none |
+| `factor_out_square_with_division_quartic` | `conditional_factor` | 1 | 1 | none |
+| `factor_out_cube_with_division_septic` | `conditional_factor` | 1 | 1 | none |
 | `factor_difference_squares` | `factor` | 1 | 2 | none |
 | `factor_perfect_square_trinomial` | `factor` | 1 | 2 | none |
-| `factor_perfect_square_trinomial_symbolic` | `factor` | 1 | 2 | none |
-| `factor_perfect_square_trinomial_minus` | `factor` | 1 | 2 | none |
+| `factor_perfect_square_trinomial_symbolic` | `factor` | 1 | 1 | none |
+| `factor_perfect_square_trinomial_minus` | `factor` | 1 | 1 | none |
 | `factor_sophie_germain` | `factor` | 1 | 2 | none |
 | `factor_alternating_cubic_vandermonde` | `factor` | 1 | 2 | none |
 | `factor_difference_cubes` | `factor` | 1 | 1 | none |
 | `factor_sum_cubes` | `factor` | 1 | 1 | none |
+| `factor_symbolic_sixth_power_difference` | `factor` | 1 | 1 | none |
+| `factor_symbolic_sixth_power_sum` | `factor` | 1 | 1 | none |
 | `pythagorean_identity` | `simplify` | 1 | 2 | none |
 | `pythagorean_factor_form_to_cos_sq` | `simplify` | 1 | 0 | none |
-| `pythagorean_factor_form_to_sin_sq` | `simplify` | 1 | 0 | none |
 | `pythagorean_factor_form_from_sin_sq` | `simplify` | 1 | 0 | none |
-| `pythagorean_factor_form_from_cos_sq` | `simplify` | 1 | 0 | none |
 | `inverse_tan_identity` | `simplify` | 1 | 1 | none |
 | `cancel_fraction_difference_squares` | `simplify` | 1 | 2 | none |
-| `cancel_fraction_difference_squares_mirror` | `simplify` | 1 | 2 | none |
 | `cancel_fraction_difference_cubes` | `simplify` | 1 | 2 | none |
 | `cancel_fraction_sum_cubes` | `simplify` | 1 | 2 | none |
-| `cancel_fraction_perfect_square_plus` | `simplify` | 1 | 1 | none |
-| `cancel_fraction_perfect_square_symbolic` | `simplify` | 1 | 1 | none |
-| `cancel_fraction_perfect_square_minus_numeric` | `simplify` | 1 | 2 | none |
 | `cancel_fraction_perfect_square_minus_symbolic` | `simplify` | 1 | 2 | none |
 | `perfect_square_root_to_abs` | `simplify` | 1 | 2 | none |
 | `solve_prep_complete_square_monic_numeric` | `solve_prep` | 1 | 2 | none |
-| `solve_prep_complete_square_negative_linear` | `solve_prep` | 1 | 2 | none |
 | `solve_prep_complete_square_symbolic_leading_coeff` | `solve_prep` | 1 | 2 | none |
-| `solve_prep_complete_square_zero_constant` | `solve_prep` | 1 | 2 | none |
-| `solve_prep_complete_square_scaled_numeric` | `solve_prep` | 1 | 2 | none |
 | `solve_prep_complete_square_symbolic_monic_parametric` | `solve_prep` | 1 | 2 | none |
-| `solve_prep_complete_square_negative_leading_numeric` | `solve_prep` | 1 | 2 | none |
-| `solve_prep_complete_square_alt_variable_numeric` | `solve_prep` | 1 | 2 | none |
 | `solve_prep_complete_square_alt_variable_symbolic_leading_coeff` | `solve_prep` | 1 | 2 | none |
 | `solve_prep_complete_square_fractional_monic_numeric` | `solve_prep` | 1 | 2 | none |
-| `solve_prep_complete_square_fractional_scaled_numeric` | `solve_prep` | 1 | 2 | none |
-| `solve_prep_complete_square_fractional_alt_variable` | `solve_prep` | 1 | 2 | none |
 | `solve_prep_complete_square_symbolic_negative_linear_coeff` | `solve_prep` | 1 | 2 | none |
-| `solve_prep_complete_square_alt_variable_symbolic_negative_linear_coeff` | `solve_prep` | 1 | 2 | none |
-| `solve_prep_complete_square_symbolic_monic_negative_parametric` | `solve_prep` | 1 | 2 | none |
-| `solve_prep_complete_square_alt_variable_symbolic_monic_negative_parametric` | `solve_prep` | 1 | 2 | none |
+| `solve_prep_complete_square_negative_symbolic_leading_coeff` | `solve_prep` | 1 | 2 | none |
+| `solve_prep_complete_square_fractional_symbolic_leading_coeff` | `solve_prep` | 1 | 2 | none |
 | `combine_fraction_part_with_same_denominator` | `fraction_combine` | 1 | 0 | none |
-| `expand_fraction_part_with_same_denominator` | `fraction_expand` | 1 | 1 | none |
 | `combine_three_same_denominator_fractions` | `fraction_combine` | 1 | 0 | none |
 | `combine_fraction_part_with_same_denominator_three_terms` | `fraction_combine` | 1 | 0 | none |
 | `expand_fraction_part_with_same_denominator_three_terms` | `fraction_expand` | 1 | 1 | none |
-| `combine_like_terms_with_zero` | `simplify` | 1 | 1 | none |
 | `factor_common_factor_sum` | `factor` | 1 | 2 | none |
-| `factor_common_factor_difference` | `factor` | 1 | 2 | none |
 | `expand_common_factor_sum` | `expand` | 1 | 2 | none |
 | `expand_common_factor_difference` | `expand` | 1 | 2 | none |
 | `factor_common_factor_sum_three_terms` | `factor` | 1 | 2 | none |
-| `factor_common_factor_difference_three_terms` | `factor` | 1 | 2 | none |
 | `expand_common_factor_sum_three_terms` | `expand` | 1 | 2 | none |
 | `expand_common_factor_difference_three_terms` | `expand` | 1 | 2 | none |
 | `cancel_fraction_common_factor_numeric` | `simplify` | 1 | 2 | none |
 | `cancel_fraction_monomial_common_factor` | `simplify` | 1 | 2 | none |
 | `expand_binomial` | `expand` | 1 | 2 | none |
-| `expand_symbolic_binomial` | `expand` | 1 | 2 | none |
-| `expand_symbolic_binomial_minus` | `expand` | 1 | 2 | none |
-| `expand_symbolic_binomial_cube` | `expand` | 1 | 2 | none |
-| `expand_symbolic_binomial_cube_minus` | `expand` | 1 | 2 | none |
+| `expand_symbolic_binomial` | `expand` | 1 | 1 | none |
+| `expand_symbolic_binomial_minus` | `expand` | 1 | 1 | none |
+| `expand_symbolic_binomial_cube` | `expand` | 1 | 1 | none |
+| `expand_symbolic_binomial_cube_minus` | `expand` | 1 | 1 | none |
+| `expand_symbolic_trinomial_square` | `expand` | 1 | 2 | none |
+| `expand_symbolic_signed_trinomial_square` | `expand` | 1 | 2 | none |
+| `expand_symbolic_trinomial_cube` | `expand` | 1 | 2 | none |
 | `expand_sophie_germain` | `expand` | 1 | 2 | none |
 | `expand_difference_cubes` | `expand` | 1 | 2 | none |
 | `expand_sum_cubes` | `expand` | 1 | 2 | none |
-| `expand_then_cancel_to_square` | `expand` | 3 | 2 | none |
+| `expand_then_cancel_to_square` | `expand` | 1 | 1 | none |
 | `expand_log_product` | `log_expand` | 1 | 0 | none |
-| `expand_log_product_and_power` | `log_expand` | 1 | 0 | none |
 | `expand_log_even_power_abs` | `log_expand` | 1 | 1 | none |
-| `expand_log_product_preserve_powers` | `log_expand` | 1 | 0 | none |
 | `expand_log_quotient` | `log_expand` | 1 | 0 | none |
-| `expand_log_general_base` | `log_expand` | 1 | 0 | none |
-| `expand_log_general_base_quotient` | `log_expand` | 1 | 0 | none |
+| `expand_log_product_over_quotient` | `log_expand` | 1 | 0 | none |
+| `expand_log_powered_two_denominator_factors` | `log_expand` | 1 | 0 | none |
+| `expand_log_general_base_product_over_quotient` | `log_expand` | 1 | 0 | none |
+| `expand_log_general_base_powered_two_denominator_factors_with_powered_denominator` | `log_expand` | 1 | 0 | none |
 | `expand_log_general_base_power` | `log_expand` | 1 | 1 | none |
 | `contract_log_sum` | `log_contract` | 1 | 0 | none |
 | `contract_log_difference` | `log_contract` | 1 | 0 | none |
-| `contract_log_sum_with_powers` | `log_contract` | 1 | 0 | none |
+| `contract_log_product_over_quotient` | `log_contract` | 1 | 0 | none |
+| `contract_log_powered_two_denominator_factors` | `log_contract` | 1 | 0 | none |
 | `contract_log_sum_with_scaled_powers` | `log_contract` | 1 | 1 | none |
 | `contract_log_difference_with_scaled_powers` | `log_contract` | 1 | 1 | none |
 | `contract_log_general_base_difference` | `log_contract` | 1 | 0 | none |
-| `contract_log_general_base_sum_with_scaled_powers` | `log_contract` | 1 | 1 | none |
 | `contract_log_general_base_difference_with_scaled_powers` | `log_contract` | 1 | 1 | none |
+| `contract_log_general_base_powered_two_denominator_factors_with_powered_denominator` | `log_contract` | 1 | 0 | none |
 | `contract_log_even_power_abs` | `log_contract` | 1 | 1 | none |
 | `contract_log_general_base_power` | `log_contract` | 1 | 1 | none |
 | `contract_log_change_of_base_chain` | `log_contract` | 1 | 0 | none |
 | `expand_log_change_of_base_chain` | `log_expand` | 1 | 0 | none |
-| `contract_log_change_of_base_chain_three` | `log_contract` | 1 | 0 | none |
-| `expand_log_change_of_base_chain_three` | `log_expand` | 1 | 0 | none |
 | `expand_trig_double_sin` | `trig_expand` | 1 | 0 | none |
 | `expand_trig_product_to_sum_sin_cos` | `trig_expand` | 1 | 1 | none |
 | `expand_trig_product_to_sum_cos_sin` | `trig_expand` | 1 | 1 | none |
@@ -118,13 +103,9 @@ Command: `cargo test -p cas_didactic --test derive_didactic_audit derive_didacti
 | `expand_trig_product_to_sum_sin_sin` | `trig_expand` | 1 | 1 | none |
 | `contract_trig_double_sin` | `trig_contract` | 1 | 0 | none |
 | `expand_trig_after_simplify` | `trig_expand` | 2 | 1 | none |
-| `expand_trig_tan_quotient` | `trig_expand` | 1 | 1 | none |
 | `contract_trig_tan_quotient` | `trig_contract` | 1 | 0 | none |
-| `expand_trig_sec_reciprocal` | `trig_expand` | 1 | 0 | none |
 | `contract_trig_sec_reciprocal` | `trig_contract` | 1 | 0 | none |
-| `expand_trig_csc_reciprocal` | `trig_expand` | 1 | 0 | none |
 | `contract_trig_csc_reciprocal` | `trig_contract` | 1 | 0 | none |
-| `expand_trig_cot_quotient` | `trig_expand` | 1 | 0 | none |
 | `contract_trig_cot_quotient` | `trig_contract` | 1 | 0 | none |
 | `expand_trig_double_cos_as_one_minus_sin_sq` | `trig_expand` | 1 | 0 | none |
 | `expand_trig_double_cos_as_two_cos_sq_minus_one` | `trig_expand` | 1 | 0 | none |
@@ -138,14 +119,11 @@ Command: `cargo test -p cas_didactic --test derive_didactic_audit derive_didacti
 | `expand_trig_half_angle_cos_squared` | `trig_expand` | 1 | 0 | none |
 | `contract_trig_half_angle_sin_squared` | `trig_contract` | 1 | 0 | none |
 | `contract_trig_half_angle_cos_squared` | `trig_contract` | 1 | 0 | none |
-| `contract_trig_sin_sum_special` | `trig_expand` | 1 | 1 | none |
 | `contract_trig_sin_diff_special` | `trig_contract` | 1 | 1 | none |
 | `expand_trig_sum_to_product_sin_sum_general` | `trig_expand` | 1 | 1 | none |
 | `expand_trig_sum_to_product_sin_diff_general` | `trig_expand` | 1 | 1 | none |
 | `expand_trig_sum_to_product_cos_sum_general` | `trig_expand` | 1 | 1 | none |
 | `expand_trig_sum_to_product_cos_diff_general` | `trig_expand` | 1 | 1 | none |
-| `contract_trig_cos_sum_special` | `trig_expand` | 1 | 1 | none |
-| `contract_trig_cos_diff_special` | `trig_expand` | 1 | 1 | none |
 | `contract_trig_half_angle_tangent` | `trig_contract` | 1 | 0 | none |
 | `contract_trig_half_angle_tangent_alt` | `trig_contract` | 1 | 0 | none |
 | `expand_trig_half_angle_tangent` | `trig_expand` | 1 | 0 | none |
@@ -153,151 +131,113 @@ Command: `cargo test -p cas_didactic --test derive_didactic_audit derive_didacti
 | `rationalize_linear_root` | `rationalize` | 1 | 3 | none |
 | `rationalize_linear_root_plus` | `rationalize` | 1 | 3 | none |
 | `rationalize_then_cancel_to_zero` | `rationalize` | 2 | 3 | none |
-| `rationalize_then_cancel_to_zero_plus` | `rationalize` | 2 | 3 | none |
-| `rationalize_linear_root_plus_alt_var` | `rationalize` | 1 | 3 | none |
 | `rationalize_shifted_linear_root` | `rationalize` | 1 | 3 | none |
-| `rationalize_shifted_linear_root_plus` | `rationalize` | 1 | 3 | none |
-| `rationalize_shifted_then_cancel_to_zero` | `rationalize` | 2 | 3 | none |
-| `rationalize_shifted_linear_root_alt_var` | `rationalize` | 1 | 3 | none |
 | `radical_notable_quotient` | `rationalize` | 2 | 5 | none |
-| `radical_notable_quotient_sqrt_input` | `rationalize` | 2 | 5 | none |
 | `expand_fraction_simple` | `fraction_expand` | 1 | 1 | none |
-| `expand_fraction_same_denominator_three_terms` | `fraction_expand` | 1 | 1 | none |
 | `expand_fraction_with_term_cancellation` | `fraction_expand` | 1 | 2 | none |
 | `expand_fraction_with_common_scalar_factor_in_denominator` | `fraction_expand` | 1 | 2 | none |
 | `expand_fraction_exact_division_term_plus_remainder` | `fraction_expand` | 1 | 2 | none |
+| `expand_fraction_mixed_variable_term_cancellation` | `fraction_expand` | 1 | 2 | none |
+| `expand_fraction_three_factor_full_cancellation` | `fraction_expand` | 1 | 2 | none |
+| `expand_fraction_two_cancellations_plus_remainder` | `fraction_expand` | 1 | 2 | none |
+| `expand_fraction_three_factor_cross_cancellation_plus_remainder` | `fraction_expand` | 1 | 2 | none |
+| `expand_fraction_three_factor_three_cancellations_to_constant` | `fraction_expand` | 1 | 2 | none |
 | `nested_fraction_one_over_sum` | `nested_fraction` | 2 | 0 | none |
-| `nested_fraction_fraction_over_sum` | `nested_fraction` | 2 | 0 | none |
 | `nested_fraction_one_over_three_reciprocals` | `nested_fraction` | 3 | 0 | none |
-| `nested_fraction_one_over_compound_plus_reciprocal` | `nested_fraction` | 2 | 0 | none |
 | `nested_fraction_sum_over_reciprocal` | `nested_fraction` | 2 | 0 | none |
+| `nested_fraction_one_over_sum_with_fraction` | `nested_fraction` | 1 | 1 | none |
+| `nested_fraction_fraction_over_sum_with_fraction_general` | `nested_fraction` | 1 | 1 | none |
+| `nested_fraction_sum_with_fraction_over_scalar_general` | `nested_fraction` | 1 | 0 | none |
+| `nested_fraction_one_over_sum_with_fraction_reverse` | `nested_fraction` | 1 | 1 | none |
+| `nested_fraction_fraction_over_sum_with_fraction_general_reverse` | `nested_fraction` | 1 | 1 | none |
+| `nested_fraction_sum_with_fraction_over_scalar_general_reverse` | `nested_fraction` | 1 | 1 | none |
 | `combine_same_denominator_fraction_sum` | `fraction_combine` | 1 | 0 | none |
 | `combine_general_fraction_sum` | `fraction_combine` | 1 | 0 | none |
 | `combine_same_denominator_fraction_difference` | `fraction_combine` | 1 | 0 | none |
 | `combine_general_fraction_difference` | `fraction_combine` | 1 | 0 | none |
 | `combine_term_and_fraction_subtraction` | `fraction_combine` | 1 | 0 | none |
+| `combine_symbolic_same_denominator_fraction_subset_with_passthrough` | `fraction_combine` | 1 | 0 | none |
 | `split_fraction_into_whole_plus_remainder` | `fraction_decompose` | 1 | 2 | none |
-| `split_fraction_linear_over_shifted_linear` | `fraction_decompose` | 1 | 2 | none |
 | `split_fraction_linear_over_scaled_linear` | `fraction_decompose` | 1 | 2 | none |
-| `split_fraction_linear_over_scaled_linear_alt` | `fraction_decompose` | 1 | 2 | none |
-| `split_fraction_symbolic_over_shifted_linear` | `fraction_decompose` | 1 | 2 | none |
-| `split_fraction_symbolic_over_plus_one` | `fraction_decompose` | 1 | 2 | none |
-| `split_fraction_symbolic_over_plus_one_alt_var` | `fraction_decompose` | 1 | 2 | none |
+| `split_fraction_symbolic_over_general_shift` | `fraction_decompose` | 1 | 2 | none |
+| `split_fraction_symbolic_over_scaled_general_linear` | `fraction_decompose` | 1 | 2 | none |
+| `split_fraction_symbolic_over_negative_scaled_general_linear` | `fraction_decompose` | 1 | 2 | none |
 | `split_telescoping_fraction_consecutive` | `telescoping_fraction` | 1 | 2 | none |
 | `split_telescoping_fraction_gap_two` | `telescoping_fraction` | 1 | 2 | none |
-| `split_telescoping_fraction_gap_three` | `telescoping_fraction` | 1 | 2 | none |
 | `combine_telescoping_fraction_consecutive` | `telescoping_fraction` | 1 | 2 | none |
 | `combine_telescoping_fraction_gap_two` | `telescoping_fraction` | 1 | 2 | none |
-| `combine_telescoping_fraction_gap_three` | `telescoping_fraction` | 1 | 2 | none |
-| `split_telescoping_fraction_negative_consecutive` | `telescoping_fraction` | 1 | 2 | none |
-| `combine_telescoping_fraction_negative_consecutive` | `telescoping_fraction` | 1 | 2 | none |
 | `split_telescoping_fraction_negative_gap_two` | `telescoping_fraction` | 1 | 2 | none |
 | `combine_telescoping_fraction_negative_gap_two` | `telescoping_fraction` | 1 | 2 | none |
 | `split_telescoping_fraction_affine_gap_two` | `telescoping_fraction` | 1 | 2 | none |
 | `combine_telescoping_fraction_affine_gap_two` | `telescoping_fraction` | 1 | 2 | none |
-| `split_telescoping_fraction_affine_shifted_gap_two` | `telescoping_fraction` | 1 | 2 | none |
-| `combine_telescoping_fraction_affine_shifted_gap_two` | `telescoping_fraction` | 1 | 2 | none |
-| `split_telescoping_fraction_affine_coeff_three_gap_three` | `telescoping_fraction` | 1 | 2 | none |
-| `combine_telescoping_fraction_affine_coeff_three_gap_three` | `telescoping_fraction` | 1 | 2 | none |
-| `split_telescoping_fraction_affine_coeff_three_shifted_gap_three` | `telescoping_fraction` | 1 | 2 | none |
-| `combine_telescoping_fraction_affine_coeff_three_shifted_gap_three` | `telescoping_fraction` | 1 | 2 | none |
-| `split_telescoping_fraction_affine_symbolic_coeff_gap_three` | `telescoping_fraction` | 1 | 2 | none |
-| `combine_telescoping_fraction_affine_symbolic_coeff_gap_three` | `telescoping_fraction` | 1 | 2 | none |
-| `split_telescoping_fraction_affine_symbolic_coeff_shifted_gap_three` | `telescoping_fraction` | 1 | 2 | none |
-| `combine_telescoping_fraction_affine_symbolic_coeff_shifted_gap_three` | `telescoping_fraction` | 1 | 2 | none |
-| `split_telescoping_fraction_symbolic_shift_gap` | `telescoping_fraction` | 1 | 2 | none |
-| `combine_telescoping_fraction_symbolic_shift_gap` | `telescoping_fraction` | 1 | 2 | none |
 | `split_telescoping_fraction_affine_symbolic_shift_gap` | `telescoping_fraction` | 1 | 2 | none |
 | `combine_telescoping_fraction_affine_symbolic_shift_gap` | `telescoping_fraction` | 1 | 2 | none |
 | `split_telescoping_fraction_difference_squares_unfactored` | `telescoping_fraction` | 1 | 2 | none |
 | `combine_telescoping_fraction_difference_squares_unfactored` | `telescoping_fraction` | 1 | 2 | none |
-| `split_telescoping_fraction_shifted_quadratic_unfactored` | `telescoping_fraction` | 1 | 2 | none |
 | `combine_telescoping_fraction_shifted_quadratic_unfactored` | `telescoping_fraction` | 1 | 2 | none |
 | `split_telescoping_fraction_symbolic_difference_squares_unfactored` | `telescoping_fraction` | 1 | 2 | none |
 | `combine_telescoping_fraction_symbolic_difference_squares_unfactored` | `telescoping_fraction` | 1 | 2 | none |
 | `combine_whole_plus_remainder_into_fraction` | `fraction_combine` | 1 | 2 | none |
-| `small_polynomial_product` | `polynomial_product` | 1 | 3 | none |
+| `combine_symbolic_whole_plus_remainder_into_fraction` | `fraction_combine` | 1 | 2 | none |
+| `combine_scaled_symbolic_whole_plus_remainder_into_fraction` | `fraction_combine` | 1 | 2 | none |
+| `combine_negative_scaled_symbolic_whole_plus_remainder_into_fraction` | `fraction_combine` | 1 | 2 | none |
 | `expand_cube_sum_product` | `polynomial_product` | 1 | 2 | none |
 | `expand_cube_difference_product` | `polynomial_product` | 1 | 2 | none |
 | `expand_difference_of_squares_quadratic_product` | `polynomial_product` | 1 | 3 | none |
 | `expand_sixth_power_plus_product` | `polynomial_product` | 1 | 3 | none |
 | `expand_sixth_power_minus_product` | `polynomial_product` | 1 | 3 | none |
 | `expand_eighth_power_minus_multifactor_product` | `polynomial_product` | 1 | 1 | none |
+| `expand_ninth_power_plus_product` | `polynomial_product` | 1 | 3 | none |
+| `expand_symbolic_cube_sum_product` | `polynomial_product` | 1 | 2 | none |
+| `expand_symbolic_cube_difference_product` | `polynomial_product` | 1 | 2 | none |
+| `expand_symbolic_sixth_power_plus_product` | `polynomial_product` | 1 | 2 | none |
+| `expand_symbolic_sixth_power_minus_product` | `polynomial_product` | 1 | 2 | none |
 | `factor_geometric_difference_power_6` | `factor` | 1 | 2 | none |
 | `merge_same_base_fractional_powers` | `power_merge` | 1 | 0 | none |
-| `merge_same_base_fractional_powers_to_square_root` | `power_merge` | 1 | 0 | none |
 | `merge_same_base_fractional_powers_to_integer` | `power_merge` | 1 | 0 | none |
-| `merge_mixed_root_and_power` | `power_merge` | 2 | 0 | none |
 | `merge_mixed_root_and_fractional_power_five_sixths` | `power_merge` | 2 | 0 | none |
-| `merge_same_base_fractional_powers_alt_variable_to_integer` | `power_merge` | 1 | 0 | none |
-| `merge_same_base_fractional_powers_three_factors_to_integer` | `power_merge` | 1 | 0 | none |
-| `merge_mixed_root_and_fractional_power_alt_variable_two_thirds` | `power_merge` | 2 | 0 | none |
 | `merge_same_base_integer_and_fractional_power` | `power_merge` | 1 | 0 | none |
+| `merge_same_base_symbolic_powers` | `power_merge` | 1 | 0 | none |
+| `merge_same_base_integer_and_symbolic_power` | `power_merge` | 1 | 0 | none |
+| `merge_mixed_root_and_symbolic_power` | `power_merge` | 2 | 0 | none |
+| `merge_four_same_base_symbolic_powers` | `power_merge` | 1 | 0 | none |
 | `log_sum_difference_cancels_to_zero` | `simplify` | 1 | 0 | none |
 | `expand_odd_half_power` | `radical_power` | 1 | 2 | none |
 | `expand_odd_half_power_after_simplify` | `radical_power` | 1 | 2 | none |
 | `expand_higher_odd_half_power` | `radical_power` | 1 | 2 | none |
 | `expand_higher_odd_half_power_after_simplify` | `radical_power` | 1 | 2 | none |
 | `expand_higher_odd_half_power_alt_var` | `radical_power` | 1 | 2 | none |
-| `expand_even_higher_odd_half_power` | `radical_power` | 1 | 2 | none |
-| `expand_even_higher_odd_half_power_after_simplify` | `radical_power` | 1 | 2 | none |
-| `expand_even_higher_odd_half_power_alt_var` | `radical_power` | 1 | 2 | none |
-| `expand_even_higher_odd_half_power_after_simplify_alt_var` | `radical_power` | 1 | 2 | none |
 | `factor_out_with_division` | `conditional_factor` | 1 | 1 | none |
 | `consecutive_factorial_ratio` | `simplify` | 1 | 2 | none |
-| `inverse_tan_identity_cancels_to_zero` | `simplify` | 1 | 2 | none |
 | `contract_trig_cos_diff_sin_diff_quotient` | `trig_contract` | 3 | 4 | none |
 | `reciprocal_trig_product_to_one` | `simplify` | 1 | 0 | none |
 | `sec_tan_pythagorean_to_one` | `simplify` | 1 | 0 | none |
-| `csc_cot_pythagorean_to_one` | `simplify` | 1 | 0 | none |
-| `factor_symbolic_binomial_cube` | `factor` | 1 | 2 | none |
-| `factor_symbolic_binomial_cube_minus` | `factor` | 1 | 2 | none |
+| `factor_symbolic_binomial_cube` | `factor` | 1 | 1 | none |
+| `factor_symbolic_binomial_cube_minus` | `factor` | 1 | 1 | none |
 | `integrate_prep_morrie_basic` | `integrate_prep` | 1 | 2 | none |
-| `integrate_prep_morrie_scaled` | `integrate_prep` | 1 | 2 | none |
 | `integrate_prep_morrie_symbolic_argument` | `integrate_prep` | 1 | 1 | none |
 | `integrate_prep_morrie_symbolic_scale` | `integrate_prep` | 1 | 2 | none |
-| `integrate_prep_morrie_symbolic_scale_longer` | `integrate_prep` | 1 | 2 | none |
 | `integrate_prep_morrie_reverse_basic` | `integrate_prep` | 1 | 2 | none |
-| `integrate_prep_morrie_reverse_scaled` | `integrate_prep` | 1 | 2 | none |
-| `integrate_prep_morrie_reverse_symbolic_argument` | `integrate_prep` | 1 | 1 | none |
 | `integrate_prep_morrie_reverse_symbolic_scale_longer` | `integrate_prep` | 1 | 2 | none |
 | `integrate_prep_dirichlet_basic` | `integrate_prep` | 1 | 2 | none |
 | `integrate_prep_dirichlet_longer` | `integrate_prep` | 1 | 2 | none |
-| `integrate_prep_dirichlet_scaled` | `integrate_prep` | 1 | 2 | none |
-| `integrate_prep_dirichlet_scaled_longer` | `integrate_prep` | 1 | 2 | none |
 | `integrate_prep_dirichlet_symbolic_argument` | `integrate_prep` | 1 | 2 | none |
 | `integrate_prep_dirichlet_symbolic_scale` | `integrate_prep` | 1 | 2 | none |
 | `integrate_prep_dirichlet_symbolic_scale_longer` | `integrate_prep` | 1 | 2 | none |
 | `integrate_prep_dirichlet_reverse_basic` | `integrate_prep` | 1 | 2 | none |
-| `integrate_prep_dirichlet_reverse_longer` | `integrate_prep` | 1 | 2 | none |
-| `integrate_prep_dirichlet_reverse_symbolic_scale` | `integrate_prep` | 1 | 2 | none |
 | `integrate_prep_dirichlet_reverse_symbolic_scale_longer` | `integrate_prep` | 1 | 2 | none |
 | `finite_telescoping_product_basic` | `finite_telescoping` | 1 | 3 | none |
-| `finite_telescoping_product_shifted` | `finite_telescoping` | 1 | 3 | none |
-| `finite_telescoping_product_symbolic_shift` | `finite_telescoping` | 1 | 2 | none |
 | `finite_telescoping_product_symbolic_shift_symbolic_lower` | `finite_telescoping` | 1 | 2 | none |
-| `finite_telescoping_product_affine_symbolic_shift` | `finite_telescoping` | 1 | 3 | none |
 | `finite_telescoping_product_affine_symbolic_shift_symbolic_lower` | `finite_telescoping` | 1 | 2 | none |
-| `finite_telescoping_product_affine_symbolic_shifted` | `finite_telescoping` | 1 | 3 | none |
-| `finite_telescoping_product_affine_symbolic_shifted_symbolic_lower` | `finite_telescoping` | 1 | 2 | none |
-| `finite_telescoping_product_affine_symbolic_arbitrary_shift` | `finite_telescoping` | 1 | 3 | none |
-| `finite_telescoping_product_affine_symbolic_arbitrary_shift_symbolic_lower` | `finite_telescoping` | 1 | 2 | none |
-| `finite_telescoping_product_factorized_square` | `finite_telescoping` | 2 | 4 | none |
-| `finite_telescoping_product_factorized_square_shifted_start` | `finite_telescoping` | 2 | 4 | none |
-| `finite_telescoping_product_factorized_square_shifted_base_numeric` | `finite_telescoping` | 2 | 4 | none |
-| `finite_telescoping_product_factorized_square_shifted_base_symbolic` | `finite_telescoping` | 2 | 4 | none |
 | `finite_telescoping_product_factorized_square_shifted_base_numeric_symbolic_lower` | `finite_telescoping` | 2 | 4 | none |
 | `finite_telescoping_product_factorized_square_shifted_base_symbolic_symbolic_lower` | `finite_telescoping` | 2 | 4 | none |
 | `finite_telescoping_sum_basic` | `finite_telescoping` | 1 | 3 | none |
-| `finite_telescoping_sum_shifted` | `finite_telescoping` | 1 | 3 | none |
-| `finite_telescoping_sum_symbolic_shift` | `finite_telescoping` | 1 | 3 | none |
 | `finite_telescoping_sum_symbolic_shift_symbolic_lower` | `finite_telescoping` | 1 | 3 | none |
-| `finite_telescoping_sum_affine_symbolic_shift` | `finite_telescoping` | 1 | 3 | none |
 | `finite_telescoping_sum_affine_symbolic_shift_symbolic_lower` | `finite_telescoping` | 1 | 3 | none |
-| `finite_telescoping_sum_affine_symbolic_shifted` | `finite_telescoping` | 1 | 3 | none |
-| `finite_telescoping_sum_affine_symbolic_shifted_symbolic_lower` | `finite_telescoping` | 1 | 3 | none |
-| `finite_telescoping_sum_affine_symbolic_arbitrary_shift` | `finite_telescoping` | 1 | 3 | none |
 | `finite_telescoping_sum_affine_symbolic_arbitrary_shift_symbolic_lower` | `finite_telescoping` | 1 | 3 | none |
+| `rationalize_symbolic_linear_root` | `rationalize` | 2 | 5 | none |
+| `rationalize_symbolic_linear_root_plus` | `rationalize` | 1 | 3 | none |
+| `rationalize_symbolic_linear_root_alt_var` | `rationalize` | 2 | 5 | none |
 
 ## combine_like_terms (simplify)
 
@@ -358,68 +298,6 @@ Result: x * (a + b) + c
 1. `Agrupar términos por variable`
    - before: `a · x + b · x + c`
    - after: `x · (a + b) + c`
-   - substeps:
-     1. `Agrupar los términos que llevan la misma potencia de x`
-
-## collect_linear_three_terms (collect)
-
-- Source: `a*x + b*x + c*x + d`
-- Target: `(a + b + c)*x + d`
-- Result: `x * (a + b + c) + d`
-- Web step count: `1`
-- Web substep count: `1`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: a * x + b * x + c * x + d
-Target: x * (a + b + c) + d
-Strategy: collect
-Steps (Aggressive Mode):
-1. Collect terms by x  [Collect Terms]
-   Before: a * x + b * x + c * x + d
-   Cambio local: a * x + b * x + c * x + d -> x * (a + b + c) + d
-   After: x * (a + b + c) + d
-Result: x * (a + b + c) + d
-```
-
-### Web / JSON Steps
-
-1. `Agrupar términos por variable`
-   - before: `a · x + b · x + c · x + d`
-   - after: `x · (a + b + c) + d`
-   - substeps:
-     1. `Agrupar los términos que llevan la misma potencia de x`
-
-## collect_quadratic_terms (collect)
-
-- Source: `a*x^2 + b*x + c*x^2 + d`
-- Target: `(a + c)*x^2 + b*x + d`
-- Result: `x^2 * (a + c) + b * x + d`
-- Web step count: `1`
-- Web substep count: `1`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: a * x^2 + c * x^2 + b * x + d
-Target: x^2 * (a + c) + b * x + d
-Strategy: collect
-Steps (Aggressive Mode):
-1. Collect terms by x  [Collect Terms]
-   Before: a * x^(2) + c * x^(2) + b * x + d
-   Cambio local: a * x^(2) + c * x^(2) + b * x + d -> x^(2) * (a + c) + b * x + d
-   After: x^2 * (a + c) + b * x + d
-Result: x^(2) * (a + c) + b * x + d
-```
-
-### Web / JSON Steps
-
-1. `Agrupar términos por variable`
-   - before: `a · x^2 + c · x^2 + b · x + d`
-   - after: `x^2 · (a + c) + b · x + d`
    - substeps:
      1. `Agrupar los términos que llevan la misma potencia de x`
 
@@ -485,11 +363,11 @@ Result: y * (a + b) + c
    - substeps:
      1. `Agrupar los términos que llevan la misma potencia de y`
 
-## collect_cubic_terms (collect)
+## collect_multiple_power_groups (collect)
 
-- Source: `a*x^3 + b*x^2 + c*x^3 + d*x`
-- Target: `(a + c)*x^3 + b*x^2 + d*x`
-- Result: `x^3 * (a + c) + b * x^2 + d * x`
+- Source: `a*x^2 + b*x + c*x^2 + d*x + e*x^2 + f`
+- Target: `(a + c + e)*x^2 + (b + d)*x + f`
+- Result: `x * (b + d) + x^2 * (a + c + e) + f`
 - Web step count: `1`
 - Web substep count: `1`
 - Flags: none
@@ -497,30 +375,30 @@ Result: y * (a + b) + c
 ### CLI
 
 ```text
-Parsed: a * x^3 + c * x^3 + b * x^2 + d * x
-Target: x^3 * (a + c) + b * x^2 + d * x
+Parsed: a * x^2 + c * x^2 + e * x^2 + b * x + d * x + f
+Target: x * (b + d) + x^2 * (a + c + e) + f
 Strategy: collect
 Steps (Aggressive Mode):
 1. Collect terms by x  [Collect Terms]
-   Before: a * x^(3) + c * x^(3) + b * x^(2) + d * x
-   Cambio local: a * x^(3) + c * x^(3) + b * x^(2) + d * x -> x^(3) * (a + c) + b * x^(2) + d * x
-   After: x^3 * (a + c) + b * x^2 + d * x
-Result: x^(3) * (a + c) + b * x^(2) + d * x
+   Before: a * x^(2) + c * x^(2) + e * x^(2) + b * x + d * x + f
+   Cambio local: a * x^(2) + c * x^(2) + e * x^(2) + b * x + d * x + f -> x * (b + d) + x^(2) * (a + c + e) + f
+   After: x * (b + d) + x^2 * (a + c + e) + f
+Result: x * (b + d) + x^(2) * (a + c + e) + f
 ```
 
 ### Web / JSON Steps
 
 1. `Agrupar términos por variable`
-   - before: `a · x^3 + c · x^3 + b · x^2 + d · x`
-   - after: `x^3 · (a + c) + b · x^2 + d · x`
+   - before: `a · x^2 + c · x^2 + e · x^2 + b · x + d · x + f`
+   - after: `x · (b + d) + x^2 · (a + c + e) + f`
    - substeps:
      1. `Agrupar los términos que llevan la misma potencia de x`
 
-## collect_quadratic_terms_alt_variable (collect)
+## collect_composite_monomial_factor (collect)
 
-- Source: `a*y^2 + b*y + c*y^2 + d`
-- Target: `(a + c)*y^2 + b*y + d`
-- Result: `y^2 * (a + c) + b * y + d`
+- Source: `a*x*y + b*x*y + c`
+- Target: `(a + b)*x*y + c`
+- Result: `x * y * (a + b) + c`
 - Web step count: `1`
 - Web substep count: `1`
 - Flags: none
@@ -528,24 +406,55 @@ Result: x^(3) * (a + c) + b * x^(2) + d * x
 ### CLI
 
 ```text
-Parsed: a * y^2 + c * y^2 + b * y + d
-Target: y^2 * (a + c) + b * y + d
+Parsed: a * x * y + b * x * y + c
+Target: x * y * (a + b) + c
 Strategy: collect
 Steps (Aggressive Mode):
-1. Collect terms by y  [Collect Terms]
-   Before: a * y^(2) + c * y^(2) + b * y + d
-   Cambio local: a * y^(2) + c * y^(2) + b * y + d -> y^(2) * (a + c) + b * y + d
-   After: y^2 * (a + c) + b * y + d
-Result: y^(2) * (a + c) + b * y + d
+1. Collect terms by x * y  [Collect Terms]
+   Before: a * x * y + b * x * y + c
+   Cambio local: a * x * y + b * x * y + c -> x * y * (a + b) + c
+   After: x * y * (a + b) + c
+Result: x * y * (a + b) + c
 ```
 
 ### Web / JSON Steps
 
-1. `Agrupar términos por variable`
-   - before: `a · y^2 + c · y^2 + b · y + d`
-   - after: `y^2 · (a + c) + b · y + d`
+1. `Agrupar términos por factor común`
+   - before: `a · x · y + b · x · y + c`
+   - after: `x · y · (a + b) + c`
    - substeps:
-     1. `Agrupar los términos que llevan la misma potencia de y`
+     1. `Agrupar los términos que llevan el mismo factor x·y`
+
+## collect_two_composite_factor_groups (collect)
+
+- Source: `a*x*y + b*x*y + c*x*z + d*x*z + e`
+- Target: `(a + b)*x*y + (c + d)*x*z + e`
+- Result: `x * y * (a + b) + x * z * (c + d) + e`
+- Web step count: `1`
+- Web substep count: `1`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: a * x * y + b * x * y + c * x * z + d * x * z + e
+Target: x * y * (a + b) + x * z * (c + d) + e
+Strategy: collect
+Steps (Aggressive Mode):
+1. Collect terms by x * y  [Collect Terms]
+   Before: a * x * y + b * x * y + c * x * z + d * x * z + e
+   Cambio local: a * x * y + b * x * y + c * x * z + d * x * z + e -> x * y * (a + b) + x * z * (c + d) + e
+   After: x * y * (a + b) + x * z * (c + d) + e
+Result: x * y * (a + b) + x * z * (c + d) + e
+```
+
+### Web / JSON Steps
+
+1. `Agrupar términos por factor común`
+   - before: `a · x · y + b · x · y + c · x · z + d · x · z + e`
+   - after: `x · y · (a + b) + x · z · (c + d) + e`
+   - substeps:
+     1. `Agrupar los términos que llevan el mismo factor x·y`
 
 ## factor_out_with_division_quadratic (conditional_factor)
 
@@ -580,11 +489,11 @@ Result: x * (c / x + a * x + b)
    - substeps:
      1. `Si un término no lleva x, escribirlo como x · (t/x)`
 
-## factor_out_with_division_quadratic_y (conditional_factor)
+## factor_out_with_division_sparse_quintic (conditional_factor)
 
-- Source: `a*y^2 + b*y + c`
-- Target: `y*(a*y + b + c/y)`
-- Result: `y * (c / y + a * y + b)`
+- Source: `a*x^5 + b*x^3 + c*x + d`
+- Target: `x*(a*x^4 + b*x^2 + c + d/x)`
+- Result: `x * (d / x + a * x^4 + b * x^2 + c)`
 - Web step count: `1`
 - Web substep count: `1`
 - Flags: none
@@ -592,48 +501,15 @@ Result: x * (c / x + a * x + b)
 ### CLI
 
 ```text
-Parsed: a * y^2 + b * y + c
-Target: y * (c / y + a * y + b)
-Strategy: factor out with division
-Steps (Aggressive Mode):
-1. Factor out y from the whole expression  [Factor Out With Division]
-   Before: a * y^(2) + b * y + c
-   Cambio local: a * y^(2) + b * y + c -> y * (c / y + a * y + b)
-   After: y * (c / y + a * y + b)
-Result: y * (c / y + a * y + b)
-ℹ️ Requires:
-  • y ≠ 0
-```
-
-### Web / JSON Steps
-
-1. `Sacar factor usando división`
-   - before: `a · y^2 + b · y + c`
-   - after: `y · (c/y + a · y + b)`
-   - substeps:
-     1. `Si un término no lleva y, escribirlo como y · (t/y)`
-
-## factor_out_with_division_cubic (conditional_factor)
-
-- Source: `a*x^3 + b*x^2 + c*x + d`
-- Target: `x*(a*x^2 + b*x + c + d/x)`
-- Result: `x * (d / x + a * x^2 + b * x + c)`
-- Web step count: `1`
-- Web substep count: `1`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: a * x^3 + b * x^2 + c * x + d
-Target: x * (d / x + a * x^2 + b * x + c)
+Parsed: a * x^5 + b * x^3 + c * x + d
+Target: x * (d / x + a * x^4 + b * x^2 + c)
 Strategy: factor out with division
 Steps (Aggressive Mode):
 1. Factor out x from the whole expression  [Factor Out With Division]
-   Before: a * x^(3) + b * x^(2) + c * x + d
-   Cambio local: a * x^(3) + b * x^(2) + c * x + d -> x * (d / x + a * x^(2) + b * x + c)
-   After: x * (d / x + a * x^2 + b * x + c)
-Result: x * (d / x + a * x^(2) + b * x + c)
+   Before: a * x^(5) + b * x^(3) + c * x + d
+   Cambio local: a * x^(5) + b * x^(3) + c * x + d -> x * (d / x + a * x^(4) + b * x^(2) + c)
+   After: x * (d / x + a * x^4 + b * x^2 + c)
+Result: x * (d / x + a * x^(4) + b * x^(2) + c)
 ℹ️ Requires:
   • x ≠ 0
 ```
@@ -641,16 +517,16 @@ Result: x * (d / x + a * x^(2) + b * x + c)
 ### Web / JSON Steps
 
 1. `Sacar factor usando división`
-   - before: `a · x^3 + b · x^2 + c · x + d`
-   - after: `x · (d/x + a · x^2 + b · x + c)`
+   - before: `a · x^5 + b · x^3 + c · x + d`
+   - after: `x · (d/x + a · x^4 + b · x^2 + c)`
    - substeps:
      1. `Si un término no lleva x, escribirlo como x · (t/x)`
 
-## factor_out_with_division_cubic_y (conditional_factor)
+## factor_out_with_division_mixed_septic (conditional_factor)
 
-- Source: `a*y^3 + b*y^2 + c*y + d`
-- Target: `y*(a*y^2 + b*y + c + d/y)`
-- Result: `y * (d / y + a * y^2 + b * y + c)`
+- Source: `a*x^7 + b*x^5 + c*x^2 + d`
+- Target: `x*(a*x^6 + b*x^4 + c*x + d/x)`
+- Result: `x * (d / x + a * x^6 + b * x^4 + c * x)`
 - Web step count: `1`
 - Web substep count: `1`
 - Flags: none
@@ -658,48 +534,15 @@ Result: x * (d / x + a * x^(2) + b * x + c)
 ### CLI
 
 ```text
-Parsed: a * y^3 + b * y^2 + c * y + d
-Target: y * (d / y + a * y^2 + b * y + c)
-Strategy: factor out with division
-Steps (Aggressive Mode):
-1. Factor out y from the whole expression  [Factor Out With Division]
-   Before: a * y^(3) + b * y^(2) + c * y + d
-   Cambio local: a * y^(3) + b * y^(2) + c * y + d -> y * (d / y + a * y^(2) + b * y + c)
-   After: y * (d / y + a * y^2 + b * y + c)
-Result: y * (d / y + a * y^(2) + b * y + c)
-ℹ️ Requires:
-  • y ≠ 0
-```
-
-### Web / JSON Steps
-
-1. `Sacar factor usando división`
-   - before: `a · y^3 + b · y^2 + c · y + d`
-   - after: `y · (d/y + a · y^2 + b · y + c)`
-   - substeps:
-     1. `Si un término no lleva y, escribirlo como y · (t/y)`
-
-## factor_out_with_division_sparse_quartic (conditional_factor)
-
-- Source: `a*x^4 + b*x^2 + c`
-- Target: `x*(a*x^3 + b*x + c/x)`
-- Result: `x * (c / x + a * x^3 + b * x)`
-- Web step count: `1`
-- Web substep count: `1`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: a * x^4 + b * x^2 + c
-Target: x * (c / x + a * x^3 + b * x)
+Parsed: a * x^7 + b * x^5 + c * x^2 + d
+Target: x * (d / x + a * x^6 + b * x^4 + c * x)
 Strategy: factor out with division
 Steps (Aggressive Mode):
 1. Factor out x from the whole expression  [Factor Out With Division]
-   Before: a * x^(4) + b * x^(2) + c
-   Cambio local: a * x^(4) + b * x^(2) + c -> x * (c / x + a * x^(3) + b * x)
-   After: x * (c / x + a * x^3 + b * x)
-Result: x * (c / x + a * x^(3) + b * x)
+   Before: a * x^(7) + b * x^(5) + c * x^(2) + d
+   Cambio local: a * x^(7) + b * x^(5) + c * x^(2) + d -> x * (d / x + a * x^(6) + b * x^(4) + c * x)
+   After: x * (d / x + a * x^6 + b * x^4 + c * x)
+Result: x * (d / x + a * x^(6) + b * x^(4) + c * x)
 ℹ️ Requires:
   • x ≠ 0
 ```
@@ -707,10 +550,77 @@ Result: x * (c / x + a * x^(3) + b * x)
 ### Web / JSON Steps
 
 1. `Sacar factor usando división`
-   - before: `a · x^4 + b · x^2 + c`
-   - after: `x · (c/x + a · x^3 + b · x)`
+   - before: `a · x^7 + b · x^5 + c · x^2 + d`
+   - after: `x · (d/x + a · x^6 + b · x^4 + c · x)`
    - substeps:
      1. `Si un término no lleva x, escribirlo como x · (t/x)`
+
+## factor_out_square_with_division_quartic (conditional_factor)
+
+- Source: `a*x^4 + b*x^3 + c*x^2 + d`
+- Target: `x^2*(a*x^2 + b*x + c + d/x^2)`
+- Result: `x^2 * (d / x^2 + a * x^2 + b * x + c)`
+- Web step count: `1`
+- Web substep count: `1`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: a * x^4 + b * x^3 + c * x^2 + d
+Target: x^2 * (d / x^2 + a * x^2 + b * x + c)
+Strategy: factor out with division
+Steps (Aggressive Mode):
+1. Factor out x^2 from the whole expression  [Factor Out With Division]
+   Before: a * x^(4) + b * x^(3) + c * x^(2) + d
+   Cambio local: a * x^(4) + b * x^(3) + c * x^(2) + d -> x^(2) * (d / x^(2) + a * x^(2) + b * x + c)
+   After: x^2 * (d / x^2 + a * x^2 + b * x + c)
+Result: x^(2) * (d / x^(2) + a * x^(2) + b * x + c)
+ℹ️ Requires:
+  • x ≠ 0
+```
+
+### Web / JSON Steps
+
+1. `Sacar factor usando división`
+   - before: `a · x^4 + b · x^3 + c · x^2 + d`
+   - after: `x^2 · (d/x^2 + a · x^2 + b · x + c)`
+   - substeps:
+     1. `Si un término no lleva x^2, escribirlo como x^2 · (t/x^2)`
+
+## factor_out_cube_with_division_septic (conditional_factor)
+
+- Source: `a*x^7 + b*x^5 + c*x^3 + d`
+- Target: `x^3*(a*x^4 + b*x^2 + c + d/x^3)`
+- Result: `x^3 * (d / x^3 + a * x^4 + b * x^2 + c)`
+- Web step count: `1`
+- Web substep count: `1`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: a * x^7 + b * x^5 + c * x^3 + d
+Target: x^3 * (d / x^3 + a * x^4 + b * x^2 + c)
+Strategy: factor out with division
+Steps (Aggressive Mode):
+1. Factor out x^3 from the whole expression  [Factor Out With Division]
+   Before: a * x^(7) + b * x^(5) + c * x^(3) + d
+   Cambio local: a * x^(7) + b * x^(5) + c * x^(3) + d -> x^(3) * (d / x^(3) + a * x^(4) + b * x^(2) + c)
+   After: x^3 * (d / x^3 + a * x^4 + b * x^2 + c)
+Result: x^(3) * (d / x^(3) + a * x^(4) + b * x^(2) + c)
+ℹ️ Requires:
+  • x^3 ≠ 0
+  • x ≠ 0
+```
+
+### Web / JSON Steps
+
+1. `Sacar factor usando división`
+   - before: `a · x^7 + b · x^5 + c · x^3 + d`
+   - after: `x^3 · (d/x^3 + a · x^4 + b · x^2 + c)`
+   - substeps:
+     1. `Si un término no lleva x^3, escribirlo como x^3 · (t/x^3)`
 
 ## factor_difference_squares (factor)
 
@@ -782,7 +692,7 @@ Result: (x + 1)^(2)
 - Target: `(a + b)^2`
 - Result: `(a + b)^2`
 - Web step count: `1`
-- Web substep count: `2`
+- Web substep count: `1`
 - Flags: none
 
 ### CLI
@@ -806,7 +716,6 @@ Result: (a + b)^(2)
    - after: `((a + b))^2`
    - substeps:
      1. `Usar a^2 + 2ab + b^2 = (a + b)^2`
-     2. `Aquí a = a y b = b`
 
 ## factor_perfect_square_trinomial_minus (factor)
 
@@ -814,7 +723,7 @@ Result: (a + b)^(2)
 - Target: `(a - b)^2`
 - Result: `(a - b)^2`
 - Web step count: `1`
-- Web substep count: `2`
+- Web substep count: `1`
 - Flags: none
 
 ### CLI
@@ -838,7 +747,6 @@ Result: (a - b)^(2)
    - after: `((a - b))^2`
    - substeps:
      1. `Usar a^2 - 2ab + b^2 = (a - b)^2`
-     2. `Aquí a = a y b = b`
 
 ## factor_sophie_germain (factor)
 
@@ -966,6 +874,68 @@ Result: (a + b) * (a^(2) + b^(2) - a * b)
    - substeps:
      1. `Reconocer la forma a^3 + b^3`
 
+## factor_symbolic_sixth_power_difference (factor)
+
+- Source: `x^6-a^6`
+- Target: `(x^2-a^2)*(x^4+a^2*x^2+a^4)`
+- Result: `(a^4 + x^4 + a^2 * x^2) * (x^2 - a^2)`
+- Web step count: `1`
+- Web substep count: `1`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: x^6 - a^6
+Target: (a^4 + x^4 + a^2 * x^2) * (x^2 - a^2)
+Strategy: factor
+Steps (Aggressive Mode):
+1. Factorization  [Factorization]
+   Before: x^(6) - a^(6)
+   Cambio local: x^(6) - a^(6) -> (a^(4) + x^(4) + a^(2) * x^(2)) * (x^(2) - a^(2))
+   After: (a^4 + x^4 + a^2 * x^2) * (x^2 - a^2)
+Result: (a^(4) + x^(4) + a^(2) * x^(2)) * (x^(2) - a^(2))
+```
+
+### Web / JSON Steps
+
+1. `Factorizar`
+   - before: `x^6 - a^6`
+   - after: `(a^4 + x^4 + a^2 · x^2) · (x^2 - a^2)`
+   - substeps:
+     1. `Aplicar a^6 - b^6 = (a^2 - b^2)(a^4 + a^2b^2 + b^4)`
+
+## factor_symbolic_sixth_power_sum (factor)
+
+- Source: `x^6+a^6`
+- Target: `(x^2+a^2)*(x^4-a^2*x^2+a^4)`
+- Result: `(a^2 + x^2) * (a^4 + x^4 - a^2 * x^2)`
+- Web step count: `1`
+- Web substep count: `1`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: a^6 + x^6
+Target: (a^2 + x^2) * (a^4 + x^4 - a^2 * x^2)
+Strategy: factor
+Steps (Aggressive Mode):
+1. Factorization  [Factorization]
+   Before: a^(6) + x^(6)
+   Cambio local: a^(6) + x^(6) -> (a^(2) + x^(2)) * (a^(4) + x^(4) - a^(2) * x^(2))
+   After: (a^2 + x^2) * (a^4 + x^4 - a^2 * x^2)
+Result: (a^(2) + x^(2)) * (a^(4) + x^(4) - a^(2) * x^(2))
+```
+
+### Web / JSON Steps
+
+1. `Factorizar`
+   - before: `a^6 + x^6`
+   - after: `(a^2 + x^2) · (x^4 - a^2 · x^2 + a^4)`
+   - substeps:
+     1. `Aplicar a^6 + b^6 = (a^2 + b^2)(a^4 - a^2b^2 + b^4)`
+
 ## pythagorean_identity (simplify)
 
 - Source: `sin(x)^2 + cos(x)^2`
@@ -1028,36 +998,6 @@ Result: cos(x)^(2)
    - after: `cos(x)^2`
    - substeps: none
 
-## pythagorean_factor_form_to_sin_sq (simplify)
-
-- Source: `1 - cos(x)^2`
-- Target: `sin(x)^2`
-- Result: `sin(x)^2`
-- Web step count: `1`
-- Web substep count: `0`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: 1 - cos(x)^2
-Target: sin(x)^2
-Strategy: simplify
-Steps (Aggressive Mode):
-1. 1 - cos²(x) = sin²(x)  [Pythagorean Factor Form]
-   Before: 1 - cos(x)^(2)
-   Cambio local: 1 - cos(x)^(2) -> sin(x)^(2)
-   After: sin(x)^2
-Result: sin(x)^(2)
-```
-
-### Web / JSON Steps
-
-1. `Aplicar identidad pitagórica`
-   - before: `1 - cos(x)^2`
-   - after: `sin(x)^2`
-   - substeps: none
-
 ## pythagorean_factor_form_from_sin_sq (simplify)
 
 - Source: `sin(x)^2`
@@ -1086,36 +1026,6 @@ Result: 1 - cos(x)^(2)
 1. `Aplicar identidad pitagórica`
    - before: `sin(x)^2`
    - after: `1 - cos(x)^2`
-   - substeps: none
-
-## pythagorean_factor_form_from_cos_sq (simplify)
-
-- Source: `cos(x)^2`
-- Target: `1-sin(x)^2`
-- Result: `1 - sin(x)^2`
-- Web step count: `1`
-- Web substep count: `0`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: cos(x)^2
-Target: 1 - sin(x)^2
-Strategy: simplify
-Steps (Aggressive Mode):
-1. 1 - sin²(x) = cos²(x)  [Pythagorean Factor Form]
-   Before: cos(x)^(2)
-   Cambio local: cos(x)^(2) -> 1 - sin(x)^(2)
-   After: 1 - sin(x)^2
-Result: 1 - sin(x)^(2)
-```
-
-### Web / JSON Steps
-
-1. `Aplicar identidad pitagórica`
-   - before: `cos(x)^2`
-   - after: `1 - sin(x)^2`
    - substeps: none
 
 ## inverse_tan_identity (simplify)
@@ -1181,38 +1091,6 @@ Result: a + b
      1. `Usar la diferencia de cuadrados: a^2 - b^2 = (a - b)(a + b)`
      2. `Ahora se cancela el factor a - b`
 
-## cancel_fraction_difference_squares_mirror (simplify)
-
-- Source: `(a^2-b^2)/(a+b)`
-- Target: `a-b`
-- Result: `a - b`
-- Web step count: `1`
-- Web substep count: `2`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: (a^2 - b^2) / (a + b)
-Target: a - b
-Strategy: simplify
-Steps (Aggressive Mode):
-1. Cancel common factor  [Pre-order Difference of Squares Cancel]
-   Before: (a + b) * (a - b) / (a + b)
-   Cambio local: (a + b) * (a - b) / (a + b) -> a - b
-   After: a - b
-Result: a - b
-```
-
-### Web / JSON Steps
-
-1. `Factorizar una diferencia de cuadrados y cancelar`
-   - before: `((a + b) · (a - b))/(a + b)`
-   - after: `a - b`
-   - substeps:
-     1. `Usar la diferencia de cuadrados: a^2 - b^2 = (a - b)(a + b)`
-     2. `Ahora se cancela el factor a + b`
-
 ## cancel_fraction_difference_cubes (simplify)
 
 - Source: `(a^3-b^3)/(a-b)`
@@ -1276,100 +1154,6 @@ Result: a^(2) + b^(2) - a * b
    - substeps:
      1. `Factorizar el numerador como suma o diferencia de cubos`
      2. `Ahora se cancela el factor (a + b)`
-
-## cancel_fraction_perfect_square_plus (simplify)
-
-- Source: `(x^2+2*x+1)/(x+1)`
-- Target: `x+1`
-- Result: `x + 1`
-- Web step count: `1`
-- Web substep count: `1`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: (x^2 + 2 * x + 1) / (x + 1)
-Target: x + 1
-Strategy: simplify
-Steps (Aggressive Mode):
-1. Cancel common factor  [Simplify Nested Fraction]
-   Before: (x + 1) * (x + 1) / (x + 1)
-   Cambio local: (x + 1) * (x + 1) / (x + 1) -> x + 1
-   After: x + 1
-Result: x + 1
-```
-
-### Web / JSON Steps
-
-1. `Cancelar factores en una fracción`
-   - before: `((x + 1) · (x + 1))/(x + 1)`
-   - after: `x + 1`
-   - substeps:
-     1. `Si x + 1 aparece dos veces arriba y una abajo, queda una sola copia`
-
-## cancel_fraction_perfect_square_symbolic (simplify)
-
-- Source: `(a^2+2*a*b+b^2)/(a+b)`
-- Target: `a+b`
-- Result: `a + b`
-- Web step count: `1`
-- Web substep count: `1`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: (a^2 + b^2 + 2 * a * b) / (a + b)
-Target: a + b
-Strategy: simplify
-Steps (Aggressive Mode):
-1. Cancel common factor  [Simplify Nested Fraction]
-   Before: (a + b) * (a + b) / (a + b)
-   Cambio local: (a + b) * (a + b) / (a + b) -> a + b
-   After: a + b
-Result: a + b
-```
-
-### Web / JSON Steps
-
-1. `Cancelar factores en una fracción`
-   - before: `((a + b) · (a + b))/(a + b)`
-   - after: `a + b`
-   - substeps:
-     1. `Si a + b aparece dos veces arriba y una abajo, queda una sola copia`
-
-## cancel_fraction_perfect_square_minus_numeric (simplify)
-
-- Source: `(x^2-2*x+1)/(x-1)`
-- Target: `x-1`
-- Result: `x - 1`
-- Web step count: `1`
-- Web substep count: `2`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: (x^2 - 2 * x + 1) / (x - 1)
-Target: x - 1
-Strategy: simplify
-Steps (Aggressive Mode):
-1. Cancel common factor  [Pre-order Perfect Square Minus Cancel]
-   Before: (x^(2) - 2 * x + 1) / (x - 1)
-   Cambio local: (x^(2) - 2 * x + 1) / (x - 1) -> x - 1
-   After: x - 1
-Result: x - 1
-```
-
-### Web / JSON Steps
-
-1. `Pre-order Perfect Square Minus Cancel`
-   - before: `(x^2 - 2 · x + 1)/(x - 1)`
-   - after: `x - 1`
-   - substeps:
-     1. `Reconocer que el numerador es un cuadrado perfecto`
-     2. `Si (x - 1)^2 está dividido entre x - 1, queda una sola copia`
 
 ## cancel_fraction_perfect_square_minus_symbolic (simplify)
 
@@ -1467,38 +1251,6 @@ Result: (x + 3)^(2) - 4
      1. `Usar la fórmula de completar el cuadrado`
      2. `Aquí A = 1, B = 6 y C = 5`
 
-## solve_prep_complete_square_negative_linear (solve_prep)
-
-- Source: `x^2 - 4*x + 1`
-- Target: `(x-2)^2 - 3`
-- Result: `(x - 2)^2 - 3`
-- Web step count: `1`
-- Web substep count: `2`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: x^2 - 4 * x + 1
-Target: (x - 2)^2 - 3
-Strategy: solve prep
-Steps (Aggressive Mode):
-1. Complete the square to rewrite the quadratic  [Complete the Square]
-   Before: x^(2) - 4 * x + 1
-   Cambio local: x^(2) - 4 * x + 1 -> (x - 2)^(2) - 3
-   After: (x - 2)^2 - 3
-Result: (x - 2)^(2) - 3
-```
-
-### Web / JSON Steps
-
-1. `Completar el cuadrado`
-   - before: `x^2 - 4 · x + 1`
-   - after: `((x - 2))^2 - 3`
-   - substeps:
-     1. `Usar la fórmula de completar el cuadrado`
-     2. `Aquí A = 1, B = -4 y C = 1`
-
 ## solve_prep_complete_square_symbolic_leading_coeff (solve_prep)
 
 - Source: `a*x^2 + b*x + c`
@@ -1521,8 +1273,7 @@ Steps (Aggressive Mode):
    After: a * (b / (2 * a) + x)^2 + c - b^2 / (4 * a)
 Result: a * (b / (2 * a) + x)^(2) + c - b^(2) / (4 * a)
 ℹ️ Requires:
-  • 2 * a ≠ 0
-  • 4 * a ≠ 0
+  • a ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -1533,70 +1284,6 @@ Result: a * (b / (2 * a) + x)^(2) + c - b^(2) / (4 * a)
    - substeps:
      1. `Usar la fórmula de completar el cuadrado`
      2. `Aquí A = a, B = b y C = c`
-
-## solve_prep_complete_square_zero_constant (solve_prep)
-
-- Source: `x^2 + 2*x`
-- Target: `(x+1)^2 - 1`
-- Result: `(x + 1)^2 - 1`
-- Web step count: `1`
-- Web substep count: `2`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: x^2 + 2 * x
-Target: (x + 1)^2 - 1
-Strategy: solve prep
-Steps (Aggressive Mode):
-1. Complete the square to rewrite the quadratic  [Complete the Square]
-   Before: x^(2) + 2 * x
-   Cambio local: x^(2) + 2 * x -> (x + 1)^(2) - 1
-   After: (x + 1)^2 - 1
-Result: (x + 1)^(2) - 1
-```
-
-### Web / JSON Steps
-
-1. `Completar el cuadrado`
-   - before: `x^2 + 2 · x`
-   - after: `((x + 1))^2 - 1`
-   - substeps:
-     1. `Usar la fórmula de completar el cuadrado`
-     2. `Aquí A = 1, B = 2 y C = 0`
-
-## solve_prep_complete_square_scaled_numeric (solve_prep)
-
-- Source: `2*x^2 + 8*x + 5`
-- Target: `2*(x+2)^2 - 3`
-- Result: `2 * (x + 2)^2 - 3`
-- Web step count: `1`
-- Web substep count: `2`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: 2 * x^2 + 8 * x + 5
-Target: 2 * (x + 2)^2 - 3
-Strategy: solve prep
-Steps (Aggressive Mode):
-1. Complete the square to rewrite the quadratic  [Complete the Square]
-   Before: 2 * x^(2) + 8 * x + 5
-   Cambio local: 2 * x^(2) + 8 * x + 5 -> 2 * (x + 2)^(2) - 3
-   After: 2 * (x + 2)^2 - 3
-Result: 2 * (x + 2)^(2) - 3
-```
-
-### Web / JSON Steps
-
-1. `Completar el cuadrado`
-   - before: `2 · x^2 + 8 · x + 5`
-   - after: `2 · ((x + 2))^2 - 3`
-   - substeps:
-     1. `Usar la fórmula de completar el cuadrado`
-     2. `Aquí A = 2, B = 8 y C = 5`
 
 ## solve_prep_complete_square_symbolic_monic_parametric (solve_prep)
 
@@ -1630,70 +1317,6 @@ Result: (b + x)^(2) + c - b^(2)
      1. `Usar la fórmula de completar el cuadrado`
      2. `Aquí A = 1, B = 2 · b y C = c`
 
-## solve_prep_complete_square_negative_leading_numeric (solve_prep)
-
-- Source: `-x^2 + 4*x + 1`
-- Target: `-(x-2)^2 + 5`
-- Result: `5 - (x - 2)^2`
-- Web step count: `1`
-- Web substep count: `2`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: 4 * x + 1 - x^2
-Target: 5 - (x - 2)^2
-Strategy: solve prep
-Steps (Aggressive Mode):
-1. Complete the square to rewrite the quadratic  [Complete the Square]
-   Before: 4 * x + 1 - x^(2)
-   Cambio local: 4 * x + 1 - x^(2) -> 5 - (x - 2)^(2)
-   After: 5 - (x - 2)^2
-Result: 5 - (x - 2)^(2)
-```
-
-### Web / JSON Steps
-
-1. `Completar el cuadrado`
-   - before: `4 · x + 1 - x^2`
-   - after: `5 - ((x - 2))^2`
-   - substeps:
-     1. `Usar la fórmula de completar el cuadrado`
-     2. `Aquí A = -1, B = 4 y C = 1`
-
-## solve_prep_complete_square_alt_variable_numeric (solve_prep)
-
-- Source: `3*y^2 - 12*y + 7`
-- Target: `3*(y-2)^2 - 5`
-- Result: `3 * (y - 2)^2 - 5`
-- Web step count: `1`
-- Web substep count: `2`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: 3 * y^2 - 12 * y + 7
-Target: 3 * (y - 2)^2 - 5
-Strategy: solve prep
-Steps (Aggressive Mode):
-1. Complete the square to rewrite the quadratic  [Complete the Square]
-   Before: 3 * y^(2) - 12 * y + 7
-   Cambio local: 3 * y^(2) - 12 * y + 7 -> 3 * (y - 2)^(2) - 5
-   After: 3 * (y - 2)^2 - 5
-Result: 3 * (y - 2)^(2) - 5
-```
-
-### Web / JSON Steps
-
-1. `Completar el cuadrado`
-   - before: `3 · y^2 - 12 · y + 7`
-   - after: `3 · ((y - 2))^2 - 5`
-   - substeps:
-     1. `Usar la fórmula de completar el cuadrado`
-     2. `Aquí A = 3, B = -12 y C = 7`
-
 ## solve_prep_complete_square_alt_variable_symbolic_leading_coeff (solve_prep)
 
 - Source: `a*y^2 + b*y + c`
@@ -1716,8 +1339,7 @@ Steps (Aggressive Mode):
    After: a * (b / (2 * a) + y)^2 + c - b^2 / (4 * a)
 Result: a * (b / (2 * a) + y)^(2) + c - b^(2) / (4 * a)
 ℹ️ Requires:
-  • 2 * a ≠ 0
-  • 4 * a ≠ 0
+  • a ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -1764,76 +1386,6 @@ Result: (3 / 2 + x)^(2) - 5 / 4
      1. `Usar la fórmula de completar el cuadrado`
      2. `Aquí A = 1, B = 3 y C = 1`
 
-## solve_prep_complete_square_fractional_scaled_numeric (solve_prep)
-
-- Source: `2*x^2 + 3*x + 1`
-- Target: `2*(x+3/4)^2 - 1/8`
-- Result: `2 * (3 / 4 + x)^2 - 1 / 8`
-- Web step count: `1`
-- Web substep count: `2`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: 2 * x^2 + 3 * x + 1
-Target: 2 * (3 / 4 + x)^2 - 1 / 8
-Strategy: solve prep
-Steps (Aggressive Mode):
-1. Complete the square to rewrite the quadratic  [Complete the Square]
-   Before: 2 * x^(2) + 3 * x + 1
-   Cambio local: 2 * x^(2) + 3 * x + 1 -> 2 * (3 / 4 + x)^(2) - 1 / 8
-   After: 2 * (3 / 4 + x)^2 - 1 / 8
-Result: 2 * (3 / 4 + x)^(2) - 1 / 8
-ℹ️ Requires:
-  • 4 ≠ 0
-  • 8 ≠ 0
-```
-
-### Web / JSON Steps
-
-1. `Completar el cuadrado`
-   - before: `2 · x^2 + 3 · x + 1`
-   - after: `2 · ((3/4 + x))^2 - 1/8`
-   - substeps:
-     1. `Usar la fórmula de completar el cuadrado`
-     2. `Aquí A = 2, B = 3 y C = 1`
-
-## solve_prep_complete_square_fractional_alt_variable (solve_prep)
-
-- Source: `y^2 + 3*y`
-- Target: `(y+3/2)^2 - 9/4`
-- Result: `(3 / 2 + y)^2 - 9 / 4`
-- Web step count: `1`
-- Web substep count: `2`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: y^2 + 3 * y
-Target: (3 / 2 + y)^2 - 9 / 4
-Strategy: solve prep
-Steps (Aggressive Mode):
-1. Complete the square to rewrite the quadratic  [Complete the Square]
-   Before: y^(2) + 3 * y
-   Cambio local: y^(2) + 3 * y -> (3 / 2 + y)^(2) - 9 / 4
-   After: (3 / 2 + y)^2 - 9 / 4
-Result: (3 / 2 + y)^(2) - 9 / 4
-ℹ️ Requires:
-  • 2 ≠ 0
-  • 4 ≠ 0
-```
-
-### Web / JSON Steps
-
-1. `Completar el cuadrado`
-   - before: `y^2 + 3 · y`
-   - after: `((3/2 + y))^2 - 9/4`
-   - substeps:
-     1. `Usar la fórmula de completar el cuadrado`
-     2. `Aquí A = 1, B = 3 y C = 0`
-
 ## solve_prep_complete_square_symbolic_negative_linear_coeff (solve_prep)
 
 - Source: `a*x^2 - b*x + c`
@@ -1856,8 +1408,7 @@ Steps (Aggressive Mode):
    After: a * (x - b / (2 * a))^2 + c - b^2 / (4 * a)
 Result: a * (x - b / (2 * a))^(2) + c - b^(2) / (4 * a)
 ℹ️ Requires:
-  • 4 * a ≠ 0
-  • 2 * a ≠ 0
+  • a ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -1869,11 +1420,11 @@ Result: a * (x - b / (2 * a))^(2) + c - b^(2) / (4 * a)
      1. `Usar la fórmula de completar el cuadrado`
      2. `Aquí A = a, B = -b y C = c`
 
-## solve_prep_complete_square_alt_variable_symbolic_negative_linear_coeff (solve_prep)
+## solve_prep_complete_square_negative_symbolic_leading_coeff (solve_prep)
 
-- Source: `a*y^2 - b*y + c`
-- Target: `a*(y - b/(2*a))^2 + c - b^2/(4*a)`
-- Result: `a * (y - b / (2 * a))^2 + c - b^2 / (4 * a)`
+- Source: `-a*x^2 + b*x + c`
+- Target: `-a*(x - b/(2*a))^2 + c + b^2/(4*a)`
+- Result: `b^2 / (4 * a) + c - a * (x - b / (2 * a))^2`
 - Web step count: `1`
 - Web substep count: `2`
 - Flags: none
@@ -1881,34 +1432,33 @@ Result: a * (x - b / (2 * a))^(2) + c - b^(2) / (4 * a)
 ### CLI
 
 ```text
-Parsed: a * y^2 - b * y + c
-Target: a * (y - b / (2 * a))^2 + c - b^2 / (4 * a)
+Parsed: b * x + c - a * x^2
+Target: b^2 / (4 * a) + c - a * (x - b / (2 * a))^2
 Strategy: solve prep
 Steps (Aggressive Mode):
 1. Complete the square to rewrite the quadratic  [Complete the Square]
-   Before: a * y^(2) - b * y + c
-   Cambio local: a * y^(2) - b * y + c -> a * (y - b / (2 * a))^(2) + c - b^(2) / (4 * a)
-   After: a * (y - b / (2 * a))^2 + c - b^2 / (4 * a)
-Result: a * (y - b / (2 * a))^(2) + c - b^(2) / (4 * a)
+   Before: b * x + c - a * x^(2)
+   Cambio local: b * x + c - a * x^(2) -> b^(2) / (4 * a) + c - a * (x - b / (2 * a))^(2)
+   After: b^2 / (4 * a) + c - a * (x - b / (2 * a))^2
+Result: b^(2) / (4 * a) + c - a * (x - b / (2 * a))^(2)
 ℹ️ Requires:
-  • 2 * a ≠ 0
-  • 4 * a ≠ 0
+  • a ≠ 0
 ```
 
 ### Web / JSON Steps
 
 1. `Completar el cuadrado`
-   - before: `a · y^2 - b · y + c`
-   - after: `a · ((y - b/(2 · a)))^2 + c - b^2/(4 · a)`
+   - before: `b · x + c - a · x^2`
+   - after: `b^2/(4 · a) + c - a · ((x - b/(2 · a)))^2`
    - substeps:
      1. `Usar la fórmula de completar el cuadrado`
-     2. `Aquí A = a, B = -b y C = c`
+     2. `Aquí A = -a, B = b y C = c`
 
-## solve_prep_complete_square_symbolic_monic_negative_parametric (solve_prep)
+## solve_prep_complete_square_fractional_symbolic_leading_coeff (solve_prep)
 
-- Source: `x^2 - 2*b*x + c`
-- Target: `(x-b)^2 + c - b^2`
-- Result: `(x - b)^2 + c - b^2`
+- Source: `(a/2)*x^2 + b*x + c`
+- Target: `(a/2)*(x + b/a)^2 + c - b^2/(2*a)`
+- Result: `(a * (b / a + x)^2)/2 + c - b^2 / (2 * a)`
 - Web step count: `1`
 - Web substep count: `2`
 - Flags: none
@@ -1916,57 +1466,28 @@ Result: a * (y - b / (2 * a))^(2) + c - b^(2) / (4 * a)
 ### CLI
 
 ```text
-Parsed: x^2 - 2 * b * x + c
-Target: (x - b)^2 + c - b^2
+Parsed: (a * x^2)/2 + b * x + c
+Target: (a * (b / a + x)^2)/2 + c - b^2 / (2 * a)
 Strategy: solve prep
 Steps (Aggressive Mode):
 1. Complete the square to rewrite the quadratic  [Complete the Square]
-   Before: x^(2) - 2 * b * x + c
-   Cambio local: x^(2) - 2 * b * x + c -> (x - b)^(2) + c - b^(2)
-   After: (x - b)^2 + c - b^2
-Result: (x - b)^(2) + c - b^(2)
+   Before: x^(2) * a / 2 + b * x + c
+   Cambio local: x^(2) * a / 2 + b * x + c -> (b / a + x)^(2) * a / 2 + c - b^(2) / (2 * a)
+   After: (a * (b / a + x)^2)/2 + c - b^2 / (2 * a)
+Result: (b / a + x)^(2) * a / 2 + c - b^(2) / (2 * a)
+ℹ️ Requires:
+  • a ≠ 0
+  • 2 ≠ 0
 ```
 
 ### Web / JSON Steps
 
 1. `Completar el cuadrado`
-   - before: `x^2 - 2 · b · x + c`
-   - after: `((x - b))^2 + c - b^2`
+   - before: `x^2 · a/2 + b · x + c`
+   - after: `((b/a + x))^2 · a/2 + c - b^2/(2 · a)`
    - substeps:
      1. `Usar la fórmula de completar el cuadrado`
-     2. `Aquí A = 1, B = -2 · b y C = c`
-
-## solve_prep_complete_square_alt_variable_symbolic_monic_negative_parametric (solve_prep)
-
-- Source: `y^2 - 2*b*y + c`
-- Target: `(y-b)^2 + c - b^2`
-- Result: `(y - b)^2 + c - b^2`
-- Web step count: `1`
-- Web substep count: `2`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: y^2 - 2 * b * y + c
-Target: (y - b)^2 + c - b^2
-Strategy: solve prep
-Steps (Aggressive Mode):
-1. Complete the square to rewrite the quadratic  [Complete the Square]
-   Before: y^(2) - 2 * b * y + c
-   Cambio local: y^(2) - 2 * b * y + c -> (y - b)^(2) + c - b^(2)
-   After: (y - b)^2 + c - b^2
-Result: (y - b)^(2) + c - b^(2)
-```
-
-### Web / JSON Steps
-
-1. `Completar el cuadrado`
-   - before: `y^2 - 2 · b · y + c`
-   - after: `((y - b))^2 + c - b^2`
-   - substeps:
-     1. `Usar la fórmula de completar el cuadrado`
-     2. `Aquí A = 1, B = -2 · b y C = c`
+     2. `Aquí A = a/2, B = b y C = c`
 
 ## combine_fraction_part_with_same_denominator (fraction_combine)
 
@@ -1999,38 +1520,6 @@ Result: (a + b) / d + 1
    - before: `a/d + b/d + 1`
    - after: `(a + b)/d + 1`
    - substeps: none
-
-## expand_fraction_part_with_same_denominator (fraction_expand)
-
-- Source: `1 + (a+b)/d`
-- Target: `1 + a/d + b/d`
-- Result: `a / d + b / d + 1`
-- Web step count: `1`
-- Web substep count: `1`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: (a + b) / d + 1
-Target: a / d + b / d + 1
-Strategy: expand fraction
-Steps (Aggressive Mode):
-1. Distribute a sum over the common denominator  [Distribute Division]
-   Before: (a + b) / d + 1
-   After: a / d + b / d + 1
-Result: a / d + b / d + 1
-ℹ️ Requires:
-  • d ≠ 0
-```
-
-### Web / JSON Steps
-
-1. `Repartir el denominador común`
-   - before: `(a + b)/d + 1`
-   - after: `a/d + b/d + 1`
-   - substeps:
-     1. `Usar (a + b) / d = a/d + b/d`
 
 ## combine_three_same_denominator_fractions (fraction_combine)
 
@@ -2128,37 +1617,6 @@ Result: a / d + b / d + c / d + 1
    - substeps:
      1. `Repartir el mismo denominador sobre cada término del numerador`
 
-## combine_like_terms_with_zero (simplify)
-
-- Source: `2*x + 3*x + 0`
-- Target: `5*x`
-- Result: `5 * x`
-- Web step count: `1`
-- Web substep count: `1`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: 2 * x + 3 * x + 0
-Target: 5 * x
-Strategy: simplify
-Steps (Aggressive Mode):
-1. Combine like terms  [Combine Like Terms]
-   Before: 2 * x + 3 * x
-   Cambio local: 2 * x + 3 * x -> 5 * x
-   After: 5 * x
-Result: 5 * x
-```
-
-### Web / JSON Steps
-
-1. `Agrupar términos semejantes`
-   - before: `2 · x + 3 · x`
-   - after: `5 · x`
-   - substeps:
-     1. `Sumar los coeficientes que acompañan a x`
-
 ## factor_common_factor_sum (factor)
 
 - Source: `a*b + a*c`
@@ -2187,38 +1645,6 @@ Result: a * (b + c)
 1. `Factorizar`
    - before: `a · b + a · c`
    - after: `a · (b + c)`
-   - substeps:
-     1. `Usar el factor común`
-     2. `Aquí el factor común es a`
-
-## factor_common_factor_difference (factor)
-
-- Source: `a*b - a*c`
-- Target: `a*(b-c)`
-- Result: `a * (b - c)`
-- Web step count: `1`
-- Web substep count: `2`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: a * b - a * c
-Target: a * (b - c)
-Strategy: factor
-Steps (Aggressive Mode):
-1. Factorization  [Factorization]
-   Before: a * b - a * c
-   Cambio local: a * b - a * c -> a * (b - c)
-   After: a * (b - c)
-Result: a * (b - c)
-```
-
-### Web / JSON Steps
-
-1. `Factorizar`
-   - before: `a · b - a · c`
-   - after: `a · (b - c)`
    - substeps:
      1. `Usar el factor común`
      2. `Aquí el factor común es a`
@@ -2315,38 +1741,6 @@ Result: x * (a + b + c)
 1. `Factorizar`
    - before: `a · x + b · x + c · x`
    - after: `x · (a + b + c)`
-   - substeps:
-     1. `Usar el factor común`
-     2. `Aquí el factor común es x`
-
-## factor_common_factor_difference_three_terms (factor)
-
-- Source: `a*x - b*x - c*x`
-- Target: `x*(a-b-c)`
-- Result: `x * (a - b - c)`
-- Web step count: `1`
-- Web substep count: `2`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: a * x - b * x - c * x
-Target: x * (a - b - c)
-Strategy: factor
-Steps (Aggressive Mode):
-1. Factorization  [Factorization]
-   Before: a * x - b * x - c * x
-   Cambio local: a * x - b * x - c * x -> x * (a - b - c)
-   After: x * (a - b - c)
-Result: x * (a - b - c)
-```
-
-### Web / JSON Steps
-
-1. `Factorizar`
-   - before: `a · x - b · x - c · x`
-   - after: `x · (a - b - c)`
    - substeps:
      1. `Usar el factor común`
      2. `Aquí el factor común es x`
@@ -2509,7 +1903,7 @@ Result: x^(2) + 2 * x + 1
    - after: `x^2 + 2 · x + 1`
    - substeps:
      1. `Usar (a + b)^2 = a^2 + 2ab + b^2`
-     2. `Sustituir a = 1 y b = x`
+     2. `Aplicar la fórmula con a = 1, b = x`
 
 ## expand_symbolic_binomial (expand)
 
@@ -2517,7 +1911,7 @@ Result: x^(2) + 2 * x + 1
 - Target: `a^2 + 2*a*b + b^2`
 - Result: `a^2 + b^2 + 2 * a * b`
 - Web step count: `1`
-- Web substep count: `2`
+- Web substep count: `1`
 - Flags: none
 
 ### CLI
@@ -2541,7 +1935,6 @@ Result: a^(2) + b^(2) + 2 * a * b
    - after: `a^2 + b^2 + 2 · a · b`
    - substeps:
      1. `Usar (a + b)^2 = a^2 + 2ab + b^2`
-     2. `Sustituir a = a y b = b`
 
 ## expand_symbolic_binomial_minus (expand)
 
@@ -2549,7 +1942,7 @@ Result: a^(2) + b^(2) + 2 * a * b
 - Target: `a^2 - 2*a*b + b^2`
 - Result: `a^2 + b^2 - 2 * a * b`
 - Web step count: `1`
-- Web substep count: `2`
+- Web substep count: `1`
 - Flags: none
 
 ### CLI
@@ -2573,7 +1966,6 @@ Result: a^(2) + b^(2) - 2 * a * b
    - after: `a^2 - 2 · a · b + b^2`
    - substeps:
      1. `Usar (a - b)^2 = a^2 - 2ab + b^2`
-     2. `Sustituir a = a y b = b`
 
 ## expand_symbolic_binomial_cube (expand)
 
@@ -2581,7 +1973,7 @@ Result: a^(2) + b^(2) - 2 * a * b
 - Target: `a^3 + 3*a^2*b + 3*a*b^2 + b^3`
 - Result: `a^3 + b^3 + 3 * a * b^2 + 3 * b * a^2`
 - Web step count: `1`
-- Web substep count: `2`
+- Web substep count: `1`
 - Flags: none
 
 ### CLI
@@ -2605,7 +1997,6 @@ Result: a^(3) + b^(3) + 3 * a * b^(2) + 3 * b * a^(2)
    - after: `a^3 + b^3 + 3 · a · b^2 + 3 · b · a^2`
    - substeps:
      1. `Usar (a + b)^3 = a^3 + 3a^2b + 3ab^2 + b^3`
-     2. `Sustituir a = a y b = b`
 
 ## expand_symbolic_binomial_cube_minus (expand)
 
@@ -2613,7 +2004,7 @@ Result: a^(3) + b^(3) + 3 * a * b^(2) + 3 * b * a^(2)
 - Target: `a^3 - 3*a^2*b + 3*a*b^2 - b^3`
 - Result: `a^3 + 3 * a * b^2 - 3 * b * a^2 - b^3`
 - Web step count: `1`
-- Web substep count: `2`
+- Web substep count: `1`
 - Flags: none
 
 ### CLI
@@ -2637,7 +2028,102 @@ Result: a^(3) + 3 * a * b^(2) - 3 * b * a^(2) - b^(3)
    - after: `a^3 - 3 · b · a^2 + 3 · a · b^2 - b^3`
    - substeps:
      1. `Usar (a - b)^3 = a^3 - 3a^2b + 3ab^2 - b^3`
-     2. `Sustituir a = a y b = b`
+
+## expand_symbolic_trinomial_square (expand)
+
+- Source: `(a + b + c)^2`
+- Target: `a^2 + b^2 + c^2 + 2*a*b + 2*a*c + 2*b*c`
+- Result: `a^2 + b^2 + c^2 + 2 * a * b + 2 * a * c + 2 * b * c`
+- Web step count: `1`
+- Web substep count: `2`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: (a + b + c)^2
+Target: a^2 + b^2 + c^2 + 2 * a * b + 2 * a * c + 2 * b * c
+Strategy: expand
+Steps (Aggressive Mode):
+1. Expand the binomial power  [Binomial Expansion]
+   Before: (a + b + c)^(2)
+   Cambio local: (a + b + c)^(2) -> a^(2) + b^(2) + c^(2) + 2 * a * b + 2 * a * c + 2 * b * c
+   After: a^2 + b^2 + c^2 + 2 * a * b + 2 * a * c + 2 * b * c
+Result: a^(2) + b^(2) + c^(2) + 2 * a * b + 2 * a * c + 2 * b * c
+```
+
+### Web / JSON Steps
+
+1. `Expandir binomio`
+   - before: `((a + b + c))^2`
+   - after: `a^2 + b^2 + c^2 + 2 · a · b + 2 · a · c + 2 · b · c`
+   - substeps:
+     1. `Usar (a + b)^2 = a^2 + 2ab + b^2`
+     2. `Aplicar la fórmula con a = a + b, b = c`
+
+## expand_symbolic_signed_trinomial_square (expand)
+
+- Source: `(a - b + c)^2`
+- Target: `a^2 + b^2 + c^2 - 2*a*b + 2*a*c - 2*b*c`
+- Result: `a^2 + b^2 + c^2 - 2 * a * b + 2 * a * c - 2 * b * c`
+- Web step count: `1`
+- Web substep count: `2`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: (a - b + c)^2
+Target: a^2 + b^2 + c^2 - 2 * a * b + 2 * a * c - 2 * b * c
+Strategy: expand
+Steps (Aggressive Mode):
+1. Expand the binomial power  [Binomial Expansion]
+   Before: (a - b + c)^(2)
+   Cambio local: (a - b + c)^(2) -> a^(2) + b^(2) + c^(2) - 2 * a * b + 2 * a * c - 2 * b * c
+   After: a^2 + b^2 + c^2 - 2 * a * b + 2 * a * c - 2 * b * c
+Result: a^(2) + b^(2) + c^(2) - 2 * a * b + 2 * a * c - 2 * b * c
+```
+
+### Web / JSON Steps
+
+1. `Expandir binomio`
+   - before: `((a - b + c))^2`
+   - after: `a^2 + b^2 + c^2 - 2 · a · b + 2 · a · c - 2 · b · c`
+   - substeps:
+     1. `Usar (a + b)^2 = a^2 + 2ab + b^2`
+     2. `Aplicar la fórmula con a = c, b = a - b`
+
+## expand_symbolic_trinomial_cube (expand)
+
+- Source: `(a + b + c)^3`
+- Target: `a^3 + b^3 + c^3 + 3*a^2*b + 3*a^2*c + 3*a*b^2 + 6*a*b*c + 3*a*c^2 + 3*b^2*c + 3*b*c^2`
+- Result: `a^3 + b^3 + c^3 + 3 * a * b^2 + 3 * a * c^2 + 3 * b * a^2 + 3 * b * c^2 + 3 * c * a^2 + 3 * c * b^2 + 6 * a * b * c`
+- Web step count: `1`
+- Web substep count: `2`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: (a + b + c)^3
+Target: a^3 + b^3 + c^3 + 3 * a * b^2 + 3 * a * c^2 + 3 * b * a^2 + 3 * b * c^2 + 3 * c * a^2 + 3 * c * b^2 + 6 * a * b * c
+Strategy: expand
+Steps (Aggressive Mode):
+1. Expand the binomial power  [Binomial Expansion]
+   Before: (a + b + c)^(3)
+   Cambio local: (a + b + c)^(3) -> a^(3) + b^(3) + c^(3) + 3 * a * b^(2) + 3 * a * c^(2) + 3 * b * a^(2) + 3 * b * c^(2) + 3 * c * a^(2) + 3 * c * b^(2) + 6 * a * b * c
+   After: a^3 + b^3 + c^3 + 3 * a * b^2 + 3 * a * c^2 + 3 * b * a^2 + 3 * b * c^2 + 3 * c * a^2 + 3 * c * b^2 + 6 * a * b * c
+Result: a^(3) + b^(3) + c^(3) + 3 * a * b^(2) + 3 * a * c^(2) + 3 * b * a^(2) + 3 * b * c^(2) + 3 * c * a^(2) + 3 * c * b^(2) + 6 * a * b * c
+```
+
+### Web / JSON Steps
+
+1. `Expandir binomio`
+   - before: `((a + b + c))^3`
+   - after: `a^3 + b^3 + c^3 + 3 · a · b^2 + 3 · a · c^2 + 3 · b · a^2 + 3 · b · c^2 + 3 · c · a^2 + 3 · c · b^2 + 6 · a · b · c`
+   - substeps:
+     1. `Usar (a + b)^3 = a^3 + 3a^2b + 3ab^2 + b^3`
+     2. `Aplicar la fórmula con a = a + b, b = c`
 
 ## expand_sophie_germain (expand)
 
@@ -2740,8 +2226,8 @@ Result: a^(3) + b^(3)
 - Source: `(a+b)^2 - a^2 - 2*a*b`
 - Target: `b^2`
 - Result: `b^2`
-- Web step count: `3`
-- Web substep count: `2`
+- Web step count: `1`
+- Web substep count: `1`
 - Flags: none
 
 ### CLI
@@ -2754,14 +2240,6 @@ Steps (Aggressive Mode):
 1. Auto-expand (a+b)^2  [Auto Expand Power Sum]
    Before: (a + b)^(2) - a^(2) - 2 * a * b
    Cambio local: (a + b)^(2) -> b^(2) + 2 * a * b + a^(2)
-   After: b^(2) + 2 * a * b + a^(2) - a^(2) - 2 * a * b
-2. Cancel opposite terms  [Combine Like Terms]
-   Before: a^(2) + b^(2) + 2 * a * b - a^(2) - 2 * a * b
-   Cambio local: a^(2) - a^(2) -> 0
-   After: b^(2) + 2 * a * b - 2 * a * b
-3. Cancel opposite terms  [Combine Like Terms]
-   Before: b^(2) + 2 * a * b - 2 * a * b
-   Cambio local: 2 * a * b - 2 * a * b -> 0
    After: b^2
 Result: b^(2)
 ```
@@ -2773,15 +2251,6 @@ Result: b^(2)
    - after: `b^2 + 2 · a · b + a^2 - a^2 - 2 · a · b`
    - substeps:
      1. `Usar (a + b)^2 = a^2 + 2ab + b^2`
-     2. `Sustituir a = a y b = b`
-2. `Agrupar términos semejantes`
-   - before: `a^2 + b^2 + 2 · a · b - a^2 - 2 · a · b`
-   - after: `b^2 + 2 · a · b - 2 · a · b`
-   - substeps: none
-3. `Agrupar términos semejantes`
-   - before: `b^2 + 2 · a · b - 2 · a · b`
-   - after: `b^2`
-   - substeps: none
 
 ## expand_log_product (log_expand)
 
@@ -2814,39 +2283,6 @@ Result: ln(x) + ln(y)
 1. `Expandir logaritmos`
    - before: `ln(x · y)`
    - after: `ln(x) + ln(y)`
-   - substeps: none
-
-## expand_log_product_and_power (log_expand)
-
-- Source: `ln(x^2*y)`
-- Target: `ln(y) + 2*ln(abs(x))`
-- Result: `ln(y) + 2 * ln(|x|)`
-- Web step count: `1`
-- Web substep count: `0`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: ln(y * x^2)
-Target: ln(y) + 2 * ln(|x|)
-Strategy: expand_log
-Steps (Aggressive Mode):
-1. Expand a logarithm into a sum of logarithms  [expand_log]
-   Before: ln(y * x^(2))
-   Cambio local: ln(y * x^(2)) -> ln(y) + 2 * ln(|x|)
-   After: ln(y) + 2 * ln(|x|)
-Result: ln(y) + 2 * ln(|x|)
-ℹ️ Requires:
-  • y > 0
-  • |x| > 0
-```
-
-### Web / JSON Steps
-
-1. `Expandir logaritmos`
-   - before: `ln(y · x^2)`
-   - after: `ln(y) + 2 · ln(|x|)`
    - substeps: none
 
 ## expand_log_even_power_abs (log_expand)
@@ -2882,39 +2318,6 @@ Result: 2 * ln(|x|)
    - substeps:
      1. `Sacar un exponente par fuera del logaritmo`
 
-## expand_log_product_preserve_powers (log_expand)
-
-- Source: `ln(x^3*y^2)`
-- Target: `ln(x^3) + ln(y^2)`
-- Result: `ln(x^3) + ln(y^2)`
-- Web step count: `1`
-- Web substep count: `0`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: ln(x^3 * y^2)
-Target: ln(x^3) + ln(y^2)
-Strategy: expand_log
-Steps (Aggressive Mode):
-1. Expand a logarithm into a sum of logarithms  [expand_log]
-   Before: ln(x^(3) * y^(2))
-   Cambio local: ln(x^(3) * y^(2)) -> ln(x^(3)) + ln(y^(2))
-   After: ln(x^3) + ln(y^2)
-Result: ln(x^(3)) + ln(y^(2))
-ℹ️ Requires:
-  • y ≠ 0
-  • x^3 > 0
-```
-
-### Web / JSON Steps
-
-1. `Expandir logaritmos`
-   - before: `ln(x^3 · y^2)`
-   - after: `ln(x^3) + ln(y^2)`
-   - substeps: none
-
 ## expand_log_quotient (log_expand)
 
 - Source: `ln(x/y)`
@@ -2937,8 +2340,8 @@ Steps (Aggressive Mode):
    After: ln(x) - ln(y)
 Result: ln(x) - ln(y)
 ℹ️ Requires:
-  • y > 0
   • x > 0
+  • y > 0
 ```
 
 ### Web / JSON Steps
@@ -2948,11 +2351,11 @@ Result: ln(x) - ln(y)
    - after: `ln(x) - ln(y)`
    - substeps: none
 
-## expand_log_general_base (log_expand)
+## expand_log_product_over_quotient (log_expand)
 
-- Source: `log(2, x*y)`
-- Target: `log(2, x) + log(2, y)`
-- Result: `log(2, x) + log(2, y)`
+- Source: `ln((x*y)/z)`
+- Target: `ln(x) + ln(y) - ln(z)`
+- Result: `ln(x) + ln(y) - ln(z)`
 - Web step count: `1`
 - Web substep count: `0`
 - Flags: none
@@ -2960,29 +2363,33 @@ Result: ln(x) - ln(y)
 ### CLI
 
 ```text
-Parsed: log(2, x * y)
-Target: log(2, x) + log(2, y)
+Parsed: ln(x * y / z)
+Target: ln(x) + ln(y) - ln(z)
 Strategy: expand_log
 Steps (Aggressive Mode):
 1. Expand a logarithm into a sum of logarithms  [expand_log]
-   Before: log(2, x * y)
-   Cambio local: log(2, x * y) -> log(2, x) + log(2, y)
-   After: log(2, x) + log(2, y)
-Result: log(2, x) + log(2, y)
+   Before: ln(x * y / z)
+   Cambio local: ln(x * y / z) -> ln(x) + ln(y) - ln(z)
+   After: ln(x) + ln(y) - ln(z)
+Result: ln(x) + ln(y) - ln(z)
+ℹ️ Requires:
+  • y > 0
+  • x > 0
+  • z > 0
 ```
 
 ### Web / JSON Steps
 
 1. `Expandir logaritmos`
-   - before: `log_2(x · y)`
-   - after: `log_2(x) + log_2(y)`
+   - before: `ln((x · y)/z)`
+   - after: `ln(x) + ln(y) - ln(z)`
    - substeps: none
 
-## expand_log_general_base_quotient (log_expand)
+## expand_log_powered_two_denominator_factors (log_expand)
 
-- Source: `log(2, x/y)`
-- Target: `log(2, x) - log(2, y)`
-- Result: `log(2, x) - log(2, y)`
+- Source: `ln((x^2*y)/(z*t))`
+- Target: `2*ln(abs(x)) + ln(y) - ln(z) - ln(t)`
+- Result: `ln(y) + 2 * ln(|x|) - ln(z) - ln(t)`
 - Web step count: `1`
 - Web substep count: `0`
 - Flags: none
@@ -2990,22 +2397,87 @@ Result: log(2, x) + log(2, y)
 ### CLI
 
 ```text
-Parsed: log(2, x / y)
-Target: log(2, x) - log(2, y)
+Parsed: ln(y * x^2 / (t * z))
+Target: ln(y) + 2 * ln(|x|) - ln(z) - ln(t)
 Strategy: expand_log
 Steps (Aggressive Mode):
 1. Expand a logarithm into a sum of logarithms  [expand_log]
-   Before: log(2, x / y)
-   Cambio local: log(2, x / y) -> log(2, x) - log(2, y)
-   After: log(2, x) - log(2, y)
-Result: log(2, x) - log(2, y)
+   Before: ln(y * x^(2) / (t * z))
+   Cambio local: ln(y * x^(2) / (t * z)) -> ln(y) + 2 * ln(|x|) - ln(z) - ln(t)
+   After: ln(y) + 2 * ln(|x|) - ln(z) - ln(t)
+Result: ln(y) + 2 * ln(|x|) - ln(z) - ln(t)
+ℹ️ Requires:
+  • z > 0
+  • y > 0
+  • |x| > 0
+  • t > 0
 ```
 
 ### Web / JSON Steps
 
 1. `Expandir logaritmos`
-   - before: `log_2(x/y)`
-   - after: `log_2(x) - log_2(y)`
+   - before: `ln((y · x^2)/(t · z))`
+   - after: `ln(y) + 2 · ln(|x|) - ln(z) - ln(t)`
+   - substeps: none
+
+## expand_log_general_base_product_over_quotient (log_expand)
+
+- Source: `log(b, (x*y)/z)`
+- Target: `log(b, x) + log(b, y) - log(b, z)`
+- Result: `log(b, x) + log(b, y) - log(b, z)`
+- Web step count: `1`
+- Web substep count: `0`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: log(b, x * y / z)
+Target: log(b, x) + log(b, y) - log(b, z)
+Strategy: expand_log
+Steps (Aggressive Mode):
+1. Expand a logarithm into a sum of logarithms  [expand_log]
+   Before: log(b, x * y / z)
+   Cambio local: log(b, x * y / z) -> log(b, x) + log(b, y) - log(b, z)
+   After: log(b, x) + log(b, y) - log(b, z)
+Result: log(b, x) + log(b, y) - log(b, z)
+```
+
+### Web / JSON Steps
+
+1. `Expandir logaritmos`
+   - before: `log_b((x · y)/z)`
+   - after: `log_b(x) + log_b(y) - log_b(z)`
+   - substeps: none
+
+## expand_log_general_base_powered_two_denominator_factors_with_powered_denominator (log_expand)
+
+- Source: `log(b, (x^2*y^3)/(z^2*t))`
+- Target: `2*log(b, x) + 3*log(b, y) - 2*log(b, z) - log(b, t)`
+- Result: `2 * log(b, x) + 3 * log(b, y) - 2 * log(b, z) - log(b, t)`
+- Web step count: `1`
+- Web substep count: `0`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: log(b, x^2 * y^3 / (t * z^2))
+Target: 2 * log(b, x) + 3 * log(b, y) - 2 * log(b, z) - log(b, t)
+Strategy: expand_log
+Steps (Aggressive Mode):
+1. Expand a logarithm into a sum of logarithms  [expand_log]
+   Before: log(b, x^(2) * y^(3) / (t * z^(2)))
+   Cambio local: log(b, x^(2) * y^(3) / (t * z^(2))) -> 2 * log(b, x) + 3 * log(b, y) - 2 * log(b, z) - log(b, t)
+   After: 2 * log(b, x) + 3 * log(b, y) - 2 * log(b, z) - log(b, t)
+Result: 2 * log(b, x) + 3 * log(b, y) - 2 * log(b, z) - log(b, t)
+```
+
+### Web / JSON Steps
+
+1. `Expandir logaritmos`
+   - before: `log_b((x^2 · y^3)/(t · z^2))`
+   - after: `2 · log_b(x) + 3 · log_b(y) - 2 · log_b(z) - log_b(t)`
    - substeps: none
 
 ## expand_log_general_base_power (log_expand)
@@ -3105,11 +2577,11 @@ Result: ln(x / y)
    - after: `ln(x/y)`
    - substeps: none
 
-## contract_log_sum_with_powers (log_contract)
+## contract_log_product_over_quotient (log_contract)
 
-- Source: `ln(x^3) + ln(y^2)`
-- Target: `ln(x^3*y^2)`
-- Result: `ln(x^3 * y^2)`
+- Source: `ln(x) + ln(y) - ln(z)`
+- Target: `ln((x*y)/z)`
+- Result: `ln(x * y / z)`
 - Web step count: `1`
 - Web substep count: `0`
 - Flags: none
@@ -3117,24 +2589,59 @@ Result: ln(x / y)
 ### CLI
 
 ```text
-Parsed: ln(x^3) + ln(y^2)
-Target: ln(x^3 * y^2)
+Parsed: ln(x) + ln(y) - ln(z)
+Target: ln(x * y / z)
 Strategy: contract logs
 Steps (Aggressive Mode):
 1. Combine logarithms into a single logarithm  [Log Contraction]
-   Before: ln(x^(3)) + ln(y^(2))
-   Cambio local: ln(x^(3)) + ln(y^(2)) -> ln(x^(3) * y^(2))
-   After: ln(x^3 * y^2)
-Result: ln(x^(3) * y^(2))
+   Before: ln(x) + ln(y) - ln(z)
+   Cambio local: ln(x) + ln(y) - ln(z) -> ln(x * y / z)
+   After: ln(x * y / z)
+Result: ln(x * y / z)
 ℹ️ Requires:
-  • x^3 * y^2 > 0
+  • z ≠ 0
+  • x * y / z > 0
 ```
 
 ### Web / JSON Steps
 
 1. `Contraer logaritmos`
-   - before: `ln(x^3) + ln(y^2)`
-   - after: `ln(x^3 · y^2)`
+   - before: `ln(x) + ln(y) - ln(z)`
+   - after: `ln((x · y)/z)`
+   - substeps: none
+
+## contract_log_powered_two_denominator_factors (log_contract)
+
+- Source: `2*ln(abs(x)) + ln(y) - ln(z) - ln(t)`
+- Target: `ln((x^2*y)/(z*t))`
+- Result: `ln(y * x^2 / (t * z))`
+- Web step count: `1`
+- Web substep count: `0`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: ln(y) + 2 * ln(|x|) - ln(z) - ln(t)
+Target: ln(y * x^2 / (t * z))
+Strategy: contract logs
+Steps (Aggressive Mode):
+1. Combine logarithms into a single logarithm  [Log Contraction]
+   Before: ln(y) + 2 * ln(|x|) - ln(z) - ln(t)
+   Cambio local: ln(y) + 2 * ln(|x|) - ln(z) - ln(t) -> ln(y * x^(2) / (t * z))
+   After: ln(y * x^2 / (t * z))
+Result: ln(y * x^(2) / (t * z))
+ℹ️ Requires:
+  • t ≠ 0
+  • z ≠ 0
+  • y * x^2 / (t * z) > 0
+```
+
+### Web / JSON Steps
+
+1. `Contraer logaritmos`
+   - before: `ln(y) + 2 · ln(|x|) - ln(z) - ln(t)`
+   - after: `ln((y · x^2)/(t · z))`
    - substeps: none
 
 ## contract_log_sum_with_scaled_powers (log_contract)
@@ -3192,8 +2699,8 @@ Steps (Aggressive Mode):
    After: ln(x^3 / y^2)
 Result: ln(x^(3) / y^(2))
 ℹ️ Requires:
-  • x^3 / y^2 > 0
   • y ≠ 0
+  • x^3 / y^2 > 0
 ```
 
 ### Web / JSON Steps
@@ -3236,37 +2743,6 @@ Result: log(2, x / y)
    - after: `log_2(x/y)`
    - substeps: none
 
-## contract_log_general_base_sum_with_scaled_powers (log_contract)
-
-- Source: `3*log(2, x) + 2*log(2, y)`
-- Target: `log(2, x^3*y^2)`
-- Result: `log(2, x^3 * y^2)`
-- Web step count: `1`
-- Web substep count: `1`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: 2 * log(2, y) + 3 * log(2, x)
-Target: log(2, x^3 * y^2)
-Strategy: contract logs
-Steps (Aggressive Mode):
-1. Combine logarithms into a single logarithm  [Log Contraction]
-   Before: 2 * log(2, y) + 3 * log(2, x)
-   Cambio local: 2 * log(2, y) + 3 * log(2, x) -> log(2, x^(3) * y^(2))
-   After: log(2, x^3 * y^2)
-Result: log(2, x^(3) * y^(2))
-```
-
-### Web / JSON Steps
-
-1. `Contraer logaritmos`
-   - before: `2 · log_2(y) + 3 · log_2(x)`
-   - after: `log_2(x^3 · y^2)`
-   - substeps:
-     1. `Meter los coeficientes dentro de los logaritmos como exponentes`
-
 ## contract_log_general_base_difference_with_scaled_powers (log_contract)
 
 - Source: `3*log(2, x) - 2*log(2, y)`
@@ -3299,6 +2775,39 @@ Result: log(2, x^(3) / y^(2))
    - after: `log_2(x^3/y^2)`
    - substeps:
      1. `Meter los coeficientes dentro de los logaritmos y reunir la resta en un cociente`
+
+## contract_log_general_base_powered_two_denominator_factors_with_powered_denominator (log_contract)
+
+- Source: `2*log(b, x) + 3*log(b, y) - 2*log(b, z) - log(b, t)`
+- Target: `log(b, (x^2*y^3)/(z^2*t))`
+- Result: `log(b, x^2 * y^3 / (t * z^2))`
+- Web step count: `1`
+- Web substep count: `0`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: 2 * log(b, x) + 3 * log(b, y) - 2 * log(b, z) - log(b, t)
+Target: log(b, x^2 * y^3 / (t * z^2))
+Strategy: contract logs
+Steps (Aggressive Mode):
+1. Combine logarithms into a single logarithm  [Log Contraction]
+   Before: 2 * log(b, x) + 3 * log(b, y) - 2 * log(b, z) - log(b, t)
+   Cambio local: 2 * log(b, x) + 3 * log(b, y) - 2 * log(b, z) - log(b, t) -> log(b, x^(2) * y^(3) / (t * z^(2)))
+   After: log(b, x^2 * y^3 / (t * z^2))
+Result: log(b, x^(2) * y^(3) / (t * z^(2)))
+ℹ️ Requires:
+  • t ≠ 0
+  • z ≠ 0
+```
+
+### Web / JSON Steps
+
+1. `Contraer logaritmos`
+   - before: `2 · log_b(x) + 3 · log_b(y) - 2 · log_b(z) - log_b(t)`
+   - after: `log_b((x^2 · y^3)/(t · z^2))`
+   - substeps: none
 
 ## contract_log_even_power_abs (log_contract)
 
@@ -3422,66 +2931,6 @@ Result: log(a, c) * log(b, a)
 1. `Expandir cambio de base`
    - before: `log_b(c)`
    - after: `log_a(c) · log_b(a)`
-   - substeps: none
-
-## contract_log_change_of_base_chain_three (log_contract)
-
-- Source: `log(a,b)*log(b,c)*log(c,d)`
-- Target: `log(a,d)`
-- Result: `log(a, d)`
-- Web step count: `1`
-- Web substep count: `0`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: log(a, b) * log(b, c) * log(c, d)
-Target: log(a, d)
-Strategy: contract logs
-Steps (Aggressive Mode):
-1. Combine logarithms into a single logarithm  [Log Contraction]
-   Before: log(a, b) * log(b, c) * log(c, d)
-   Cambio local: log(a, b) * log(b, c) * log(c, d) -> log(a, d)
-   After: log(a, d)
-Result: log(a, d)
-```
-
-### Web / JSON Steps
-
-1. `Contraer logaritmos`
-   - before: `log_a(b) · log_b(c) · log_c(d)`
-   - after: `log_a(d)`
-   - substeps: none
-
-## expand_log_change_of_base_chain_three (log_expand)
-
-- Source: `log(a,d)`
-- Target: `log(a,b)*log(b,c)*log(c,d)`
-- Result: `log(a, b) * log(b, c) * log(c, d)`
-- Web step count: `1`
-- Web substep count: `0`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: log(a, d)
-Target: log(a, b) * log(b, c) * log(c, d)
-Strategy: simplify
-Steps (Aggressive Mode):
-1. Simplify the expression  [Simplify]
-   Before: log(a, d)
-   Cambio local: log(a, d) -> log(a, b) * log(b, c) * log(c, d)
-   After: log(a, b) * log(b, c) * log(c, d)
-Result: log(a, b) * log(b, c) * log(c, d)
-```
-
-### Web / JSON Steps
-
-1. `Expandir cambio de base`
-   - before: `log_a(d)`
-   - after: `log_a(b) · log_b(c) · log_c(d)`
    - substeps: none
 
 ## expand_trig_double_sin (trig_expand)
@@ -3707,39 +3156,6 @@ Result: 2 * sin(x) * cos(x)
    - after: `2 · sin(x) · cos(x)`
    - substeps: none
 
-## expand_trig_tan_quotient (trig_expand)
-
-- Source: `tan(2*x)`
-- Target: `(sin(2*x))/(cos(2*x))`
-- Result: `sin(2 * x) / cos(2 * x)`
-- Web step count: `1`
-- Web substep count: `1`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: tan(2 * x)
-Target: sin(2 * x) / cos(2 * x)
-Strategy: expand trig
-Steps (Aggressive Mode):
-1. Expand tangent to sine over cosine  [Trig Expansion]
-   Before: tan(2 * x)
-   Cambio local: tan(2 * x) -> sin(2 * x) / cos(2 * x)
-   After: sin(2 * x) / cos(2 * x)
-Result: sin(2 * x) / cos(2 * x)
-ℹ️ Requires:
-  • cos(2 * x) ≠ 0
-```
-
-### Web / JSON Steps
-
-1. `Expandir una identidad trigonométrica`
-   - before: `tan(2 · x)`
-   - after: `sin(2 · x)/cos(2 · x)`
-   - substeps:
-     1. `Usar tan(u) = sin(u) / cos(u)`
-
 ## contract_trig_tan_quotient (trig_contract)
 
 - Source: `(sin(2*x))/(cos(2*x))`
@@ -3756,7 +3172,7 @@ Parsed: sin(2 * x) / cos(2 * x)
 Target: tan(2 * x)
 Strategy: contract trig
 Steps (Aggressive Mode):
-1. sin(x)/cos(x) → tan(x)  [Trig Quotient]
+1. Recognize sin(u) / cos(u) as tan(u)  [Trig Quotient]
    Before: sin(2 * x) / cos(2 * x)
    Cambio local: sin(2 * x) / cos(2 * x) -> tan(2 * x)
    After: tan(2 * x)
@@ -3768,38 +3184,6 @@ Result: tan(2 * x)
 1. `Convertir un cociente trigonométrico en tangente`
    - before: `sin(2 · x)/cos(2 · x)`
    - after: `tan(2 · x)`
-   - substeps: none
-
-## expand_trig_sec_reciprocal (trig_expand)
-
-- Source: `sec(x)`
-- Target: `1/cos(x)`
-- Result: `1 / cos(x)`
-- Web step count: `1`
-- Web substep count: `0`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: sec(x)
-Target: 1 / cos(x)
-Strategy: expand trig
-Steps (Aggressive Mode):
-1. Expand sec(u) as 1 / cos(u)  [Reciprocal Trig Identity]
-   Before: sec(x)
-   Cambio local: sec(x) -> 1 / cos(x)
-   After: 1 / cos(x)
-Result: 1 / cos(x)
-ℹ️ Requires:
-  • cos(x) ≠ 0
-```
-
-### Web / JSON Steps
-
-1. `Aplicar identidad trigonométrica recíproca`
-   - before: `sec(x)`
-   - after: `1/cos(x)`
    - substeps: none
 
 ## contract_trig_sec_reciprocal (trig_contract)
@@ -3832,38 +3216,6 @@ Result: sec(x)
    - after: `sec(x)`
    - substeps: none
 
-## expand_trig_csc_reciprocal (trig_expand)
-
-- Source: `csc(x)`
-- Target: `1/sin(x)`
-- Result: `1 / sin(x)`
-- Web step count: `1`
-- Web substep count: `0`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: csc(x)
-Target: 1 / sin(x)
-Strategy: expand trig
-Steps (Aggressive Mode):
-1. Expand csc(u) as 1 / sin(u)  [Reciprocal Trig Identity]
-   Before: csc(x)
-   Cambio local: csc(x) -> 1 / sin(x)
-   After: 1 / sin(x)
-Result: 1 / sin(x)
-ℹ️ Requires:
-  • sin(x) ≠ 0
-```
-
-### Web / JSON Steps
-
-1. `Aplicar identidad trigonométrica recíproca`
-   - before: `csc(x)`
-   - after: `1/sin(x)`
-   - substeps: none
-
 ## contract_trig_csc_reciprocal (trig_contract)
 
 - Source: `1/sin(x)`
@@ -3892,38 +3244,6 @@ Result: csc(x)
 1. `Aplicar identidad trigonométrica recíproca`
    - before: `1/sin(x)`
    - after: `csc(x)`
-   - substeps: none
-
-## expand_trig_cot_quotient (trig_expand)
-
-- Source: `cot(x)`
-- Target: `cos(x)/sin(x)`
-- Result: `cos(x) / sin(x)`
-- Web step count: `1`
-- Web substep count: `0`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: cot(x)
-Target: cos(x) / sin(x)
-Strategy: expand trig
-Steps (Aggressive Mode):
-1. Expand cot(u) as cos(u) / sin(u)  [Reciprocal Trig Identity]
-   Before: cot(x)
-   Cambio local: cot(x) -> cos(x) / sin(x)
-   After: cos(x) / sin(x)
-Result: cos(x) / sin(x)
-ℹ️ Requires:
-  • sin(x) ≠ 0
-```
-
-### Web / JSON Steps
-
-1. `Aplicar identidad trigonométrica recíproca`
-   - before: `cot(x)`
-   - after: `cos(x)/sin(x)`
    - substeps: none
 
 ## contract_trig_cot_quotient (trig_contract)
@@ -4320,37 +3640,6 @@ Result: cos(x)^(2)
    - after: `cos(x)^2`
    - substeps: none
 
-## contract_trig_sin_sum_special (trig_expand)
-
-- Source: `sin(3*x)+sin(x)`
-- Target: `2*sin(2*x)*cos(x)`
-- Result: `2 * sin(2 * x) * cos(x)`
-- Web step count: `1`
-- Web substep count: `1`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: sin(x) + sin(3 * x)
-Target: 2 * sin(2 * x) * cos(x)
-Strategy: expand trig
-Steps (Aggressive Mode):
-1. Expand sine sum to product  [Sum-to-Product Identity]
-   Before: sin(x) + sin(3 * x)
-   Cambio local: sin(x) + sin(3 * x) -> 2 * sin(2 * x) * cos(x)
-   After: 2 * sin(2 * x) * cos(x)
-Result: 2 * sin(2 * x) * cos(x)
-```
-
-### Web / JSON Steps
-
-1. `Aplicar suma a producto`
-   - before: `sin(x) + sin(3 · x)`
-   - after: `2 · sin(2 · x) · cos(x)`
-   - substeps:
-     1. `Usar sin(A) + sin(B) = 2 · sin((A+B)/2) · cos((A-B)/2)`
-
 ## contract_trig_sin_diff_special (trig_contract)
 
 - Source: `sin(3*x)-sin(x)`
@@ -4503,68 +3792,6 @@ Result: -2 * sin(2 * x) * sin(3 * x)
 1. `Aplicar suma a producto`
    - before: `cos(5 · x) - cos(x)`
    - after: `-2 · sin(2 · x) · sin(3 · x)`
-   - substeps:
-     1. `Usar cos(A) - cos(B) = -2 · sin((A+B)/2) · sin((A-B)/2)`
-
-## contract_trig_cos_sum_special (trig_expand)
-
-- Source: `cos(3*x)+cos(x)`
-- Target: `2*cos(2*x)*cos(x)`
-- Result: `2 * cos(x) * cos(2 * x)`
-- Web step count: `1`
-- Web substep count: `1`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: cos(x) + cos(3 * x)
-Target: 2 * cos(x) * cos(2 * x)
-Strategy: expand trig
-Steps (Aggressive Mode):
-1. Expand cosine sum to product  [Sum-to-Product Identity]
-   Before: cos(x) + cos(3 * x)
-   Cambio local: cos(x) + cos(3 * x) -> 2 * cos(x) * cos(2 * x)
-   After: 2 * cos(x) * cos(2 * x)
-Result: 2 * cos(x) * cos(2 * x)
-```
-
-### Web / JSON Steps
-
-1. `Aplicar suma a producto`
-   - before: `cos(x) + cos(3 · x)`
-   - after: `2 · cos(x) · cos(2 · x)`
-   - substeps:
-     1. `Usar cos(A) + cos(B) = 2 · cos((A+B)/2) · cos((A-B)/2)`
-
-## contract_trig_cos_diff_special (trig_expand)
-
-- Source: `cos(x)-cos(3*x)`
-- Target: `2*sin(2*x)*sin(x)`
-- Result: `2 * sin(x) * sin(2 * x)`
-- Web step count: `1`
-- Web substep count: `1`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: cos(x) - cos(3 * x)
-Target: 2 * sin(x) * sin(2 * x)
-Strategy: expand trig
-Steps (Aggressive Mode):
-1. Expand cosine difference to product  [Sum-to-Product Identity]
-   Before: cos(x) - cos(3 * x)
-   Cambio local: cos(x) - cos(3 * x) -> 2 * sin(x) * sin(2 * x)
-   After: 2 * sin(x) * sin(2 * x)
-Result: 2 * sin(x) * sin(2 * x)
-```
-
-### Web / JSON Steps
-
-1. `Aplicar suma a producto`
-   - before: `cos(x) - cos(3 · x)`
-   - after: `2 · sin(x) · sin(2 · x)`
    - substeps:
      1. `Usar cos(A) - cos(B) = -2 · sin((A+B)/2) · sin((A-B)/2)`
 
@@ -4748,8 +3975,8 @@ Steps (Aggressive Mode):
    After: (sqrt(x) - 1) / (x - 1)
 Result: (sqrt(x) - 1) / (x - 1)
 ℹ️ Requires:
-  • x - 1 ≠ 0
   • x ≥ 0
+  • x - 1 ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -4802,81 +4029,6 @@ Result: 0
    - after: `0`
    - substeps: none
 
-## rationalize_then_cancel_to_zero_plus (rationalize)
-
-- Source: `1 / (sqrt(x) + 1) - (sqrt(x) - 1) / (x - 1)`
-- Target: `0`
-- Result: `0`
-- Web step count: `2`
-- Web substep count: `3`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: 1 / (sqrt(x) + 1) - (sqrt(x) - 1) / (x - 1)
-Target: 0
-Strategy: simplify
-Steps (Aggressive Mode):
-1. Rationalize: multiply by conjugate  [Rationalize Linear Sqrt Denominator]
-   Before: 1 / (sqrt(x) + 1) - (sqrt(x) - 1) / (x - 1)
-   After: (sqrt(x) - 1) / (x - 1^(2)) - (sqrt(x) - 1) / (x - 1)
-2. a - a = 0  [Subtraction Self-Cancel]
-   Before: (sqrt(x) - 1) / (x - 1) - (sqrt(x) - 1) / (x - 1)
-   Cambio local: (sqrt(x) - 1) / (x - 1) - (sqrt(x) - 1) / (x - 1) -> 0
-   After: 0
-Result: 0
-```
-
-### Web / JSON Steps
-
-1. `Racionalizar el denominador`
-   - before: `1/(sqrt(x) + 1) - (sqrt(x) - 1)/(x - 1)`
-   - after: `(sqrt(x) - 1)/(x - 1) - (sqrt(x) - 1)/(x - 1)`
-   - substeps:
-     1. `Cambiar el signo para formar el conjugado`
-     2. `Multiplicar numerador y denominador por ese conjugado`
-     3. `En el denominador aparece una diferencia de cuadrados`
-2. `Restar dos expresiones iguales`
-   - before: `(sqrt(x) - 1)/(x - 1) - (sqrt(x) - 1)/(x - 1)`
-   - after: `0`
-   - substeps: none
-
-## rationalize_linear_root_plus_alt_var (rationalize)
-
-- Source: `1/(sqrt(y)+1)`
-- Target: `(sqrt(y)-1)/(y-1)`
-- Result: `(sqrt(y) - 1) / (y - 1)`
-- Web step count: `1`
-- Web substep count: `3`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: 1 / (sqrt(y) + 1)
-Target: (sqrt(y) - 1) / (y - 1)
-Strategy: simplify
-Steps (Aggressive Mode):
-1. Rationalize: multiply by conjugate  [Rationalize Linear Sqrt Denominator]
-   Before: 1 / (sqrt(y) + 1)
-   After: (sqrt(y) - 1) / (y - 1)
-Result: (sqrt(y) - 1) / (y - 1)
-ℹ️ Requires:
-  • y - 1 ≠ 0
-  • y ≥ 0
-```
-
-### Web / JSON Steps
-
-1. `Racionalizar el denominador`
-   - before: `1/(sqrt(y) + 1)`
-   - after: `(sqrt(y) - 1)/(y - 1)`
-   - substeps:
-     1. `Cambiar el signo para formar el conjugado`
-     2. `Multiplicar numerador y denominador por ese conjugado`
-     3. `En el denominador aparece una diferencia de cuadrados`
-
 ## rationalize_shifted_linear_root (rationalize)
 
 - Source: `1/(sqrt(x)-2)`
@@ -4912,116 +4064,6 @@ Result: (sqrt(x) + 2) / (x - 4)
      2. `Multiplicar numerador y denominador por ese conjugado`
      3. `En el denominador aparece una diferencia de cuadrados`
 
-## rationalize_shifted_linear_root_plus (rationalize)
-
-- Source: `1/(sqrt(x)+2)`
-- Target: `(sqrt(x)-2)/(x-4)`
-- Result: `(sqrt(x) - 2) / (x - 4)`
-- Web step count: `1`
-- Web substep count: `3`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: 1 / (sqrt(x) + 2)
-Target: (sqrt(x) - 2) / (x - 4)
-Strategy: simplify
-Steps (Aggressive Mode):
-1. Rationalize: multiply by conjugate  [Rationalize Linear Sqrt Denominator]
-   Before: 1 / (sqrt(x) + 2)
-   After: (sqrt(x) - 2) / (x - 4)
-Result: (sqrt(x) - 2) / (x - 4)
-ℹ️ Requires:
-  • x - 4 ≠ 0
-  • x ≥ 0
-```
-
-### Web / JSON Steps
-
-1. `Racionalizar el denominador`
-   - before: `1/(sqrt(x) + 2)`
-   - after: `(sqrt(x) - 2)/(x - 2^2)`
-   - substeps:
-     1. `Cambiar el signo para formar el conjugado`
-     2. `Multiplicar numerador y denominador por ese conjugado`
-     3. `En el denominador aparece una diferencia de cuadrados`
-
-## rationalize_shifted_then_cancel_to_zero (rationalize)
-
-- Source: `1 / (sqrt(x) - 2) - (sqrt(x) + 2) / (x - 4)`
-- Target: `0`
-- Result: `0`
-- Web step count: `2`
-- Web substep count: `3`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: 1 / (sqrt(x) - 2) - (sqrt(x) + 2) / (x - 4)
-Target: 0
-Strategy: simplify
-Steps (Aggressive Mode):
-1. Rationalize: multiply by conjugate  [Rationalize Linear Sqrt Denominator]
-   Before: 1 / (sqrt(x) - 2) - (sqrt(x) + 2) / (x - 4)
-   After: (sqrt(x) + 2) / (x + 2^(2)) - (sqrt(x) + 2) / (x - 4)
-2. a - a = 0  [Subtraction Self-Cancel]
-   Before: (sqrt(x) + 2) / (x - 4) - (sqrt(x) + 2) / (x - 4)
-   Cambio local: (sqrt(x) + 2) / (x - 4) - (sqrt(x) + 2) / (x - 4) -> 0
-   After: 0
-Result: 0
-```
-
-### Web / JSON Steps
-
-1. `Racionalizar el denominador`
-   - before: `1/(sqrt(x) - 2) - (sqrt(x) + 2)/(x - 4)`
-   - after: `(sqrt(x) + 2)/(x - 2^2) - (sqrt(x) + 2)/(x - 4)`
-   - substeps:
-     1. `Cambiar el signo para formar el conjugado`
-     2. `Multiplicar numerador y denominador por ese conjugado`
-     3. `En el denominador aparece una diferencia de cuadrados`
-2. `Restar dos expresiones iguales`
-   - before: `(sqrt(x) + 2)/(x - 4) - (sqrt(x) + 2)/(x - 4)`
-   - after: `0`
-   - substeps: none
-
-## rationalize_shifted_linear_root_alt_var (rationalize)
-
-- Source: `1/(sqrt(y)-2)`
-- Target: `(sqrt(y)+2)/(y-4)`
-- Result: `(sqrt(y) + 2) / (y - 4)`
-- Web step count: `1`
-- Web substep count: `3`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: 1 / (sqrt(y) - 2)
-Target: (sqrt(y) + 2) / (y - 4)
-Strategy: rationalize
-Steps (Aggressive Mode):
-1. Rationalize: multiply by conjugate  [Rationalize Linear Sqrt Denominator]
-   Before: 1 / (sqrt(y) - 2)
-   After: (sqrt(y) + 2) / (y - 4)
-Result: (sqrt(y) + 2) / (y - 4)
-ℹ️ Requires:
-  • y - 4 ≠ 0
-  • y ≥ 0
-```
-
-### Web / JSON Steps
-
-1. `Racionalizar el denominador`
-   - before: `1/(sqrt(y) - 2)`
-   - after: `(sqrt(y) + 2)/(y - 2^2)`
-   - substeps:
-     1. `Cambiar el signo para formar el conjugado`
-     2. `Multiplicar numerador y denominador por ese conjugado`
-     3. `En el denominador aparece una diferencia de cuadrados`
-
 ## radical_notable_quotient (rationalize)
 
 - Source: `(x^(3/2)-1)/(sqrt(x)-1)`
@@ -5035,51 +4077,6 @@ Result: (sqrt(y) + 2) / (y - 4)
 
 ```text
 Parsed: (x^(3 / 2) - 1) / (sqrt(x) - 1)
-Target: sqrt(x) + x + 1
-Strategy: rationalize
-Steps (Aggressive Mode):
-1. Polynomial division with opaque substitution  [Rationalize Linear Sqrt Denominator]
-   Before: (sqrt(x^3) - 1) / (sqrt(x) - 1)
-   After: sqrt(x) + sqrt(x)^(2) + 1
-2. (u^y)^(1/y) = u  [Cancel Reciprocal Exponents]
-   Before: sqrt(x) + sqrt(x)^(2) + 1
-   Cambio local: sqrt(x)^(2) -> x
-   After: sqrt(x) + x + 1
-   ℹ️ Requires: x > 0
-Result: sqrt(x) + x + 1
-ℹ️ Requires:
-  • x ≥ 0
-```
-
-### Web / JSON Steps
-
-1. `Reconocer un cociente notable`
-   - before: `(sqrt(x^3) - 1)/(sqrt(x) - 1)`
-   - after: `sqrt(x) + sqrt(x)^2 + 1`
-   - substeps:
-     1. `Llamar t = sqrt(x) para reconocer la forma`
-     2. `Ese cociente notable se convierte en t^2 + t + 1`
-     3. `Volver a poner t = sqrt(x)`
-2. `Deshacer raíz y potencia`
-   - before: `sqrt(x) + sqrt(x)^2 + 1`
-   - after: `sqrt(x) + x + 1`
-   - substeps:
-     1. `El cuadrado deshace la raíz`
-     2. `Reemplazar ese bloque en la expresión`
-
-## radical_notable_quotient_sqrt_input (rationalize)
-
-- Source: `((sqrt(x))^3 - 1)/(sqrt(x) - 1)`
-- Target: `sqrt(x)+x+1`
-- Result: `sqrt(x) + x + 1`
-- Web step count: `2`
-- Web substep count: `5`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: (sqrt(x)^3 - 1) / (sqrt(x) - 1)
 Target: sqrt(x) + x + 1
 Strategy: rationalize
 Steps (Aggressive Mode):
@@ -5143,38 +4140,6 @@ Result: a / x + b / x
    - after: `a/x + b/x`
    - substeps:
      1. `Usar (a + b) / d = a/d + b/d`
-
-## expand_fraction_same_denominator_three_terms (fraction_expand)
-
-- Source: `(a+b+c)/d`
-- Target: `a/d + b/d + c/d`
-- Result: `a / d + b / d + c / d`
-- Web step count: `1`
-- Web substep count: `1`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: (a + b + c) / d
-Target: a / d + b / d + c / d
-Strategy: expand fraction
-Steps (Aggressive Mode):
-1. Distribute a sum over the common denominator  [Distribute Division]
-   Before: (a + b + c) / d
-   After: a / d + b / d + c / d
-Result: a / d + b / d + c / d
-ℹ️ Requires:
-  • d ≠ 0
-```
-
-### Web / JSON Steps
-
-1. `Repartir el denominador común`
-   - before: `(a + b + c)/d`
-   - after: `a/d + b/d + c/d`
-   - substeps:
-     1. `Repartir el mismo denominador sobre cada término del numerador`
 
 ## expand_fraction_with_term_cancellation (fraction_expand)
 
@@ -5277,6 +4242,179 @@ Result: b / d + a
      1. `Usar (a + b) / d = a/d + b/d`
      2. `Cancelar los factores comunes en la fracción que queda`
 
+## expand_fraction_mixed_variable_term_cancellation (fraction_expand)
+
+- Source: `(a*x+b*y)/(x*y)`
+- Target: `a/y + b/x`
+- Result: `a / y + b / x`
+- Web step count: `1`
+- Web substep count: `2`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: (a * x + b * y) / (x * y)
+Target: a / y + b / x
+Strategy: expand fraction
+Steps (Aggressive Mode):
+1. Distribute a sum over the common denominator  [Distribute Division]
+   Before: (a * x + b * y) / (x * y)
+   After: a / y + b / x
+Result: a / y + b / x
+ℹ️ Requires:
+  • y ≠ 0
+  • x ≠ 0
+```
+
+### Web / JSON Steps
+
+1. `Repartir el denominador común`
+   - before: `(a · x + b · y)/(x · y)`
+   - after: `a/y + b/x`
+   - substeps:
+     1. `Usar (a + b) / d = a/d + b/d`
+     2. `Cancelar los factores comunes en las fracciones resultantes`
+
+## expand_fraction_three_factor_full_cancellation (fraction_expand)
+
+- Source: `(a*x+b*y+c*z)/(x*y*z)`
+- Target: `a/(y*z) + b/(x*z) + c/(x*y)`
+- Result: `a / (y * z) + b / (x * z) + c / (x * y)`
+- Web step count: `1`
+- Web substep count: `2`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: (a * x + b * y + c * z) / (x * y * z)
+Target: a / (y * z) + b / (x * z) + c / (x * y)
+Strategy: expand fraction
+Steps (Aggressive Mode):
+1. Distribute a sum over the common denominator  [Distribute Division]
+   Before: (a * x + b * y + c * z) / (x * y * z)
+   After: a / (y * z) + b / (x * z) + c / (x * y)
+Result: a / (y * z) + b / (x * z) + c / (x * y)
+ℹ️ Requires:
+  • x ≠ 0
+  • y ≠ 0
+  • z ≠ 0
+```
+
+### Web / JSON Steps
+
+1. `Repartir el denominador común`
+   - before: `(a · x + b · y + c · z)/(x · y · z)`
+   - after: `a/(y · z) + b/(x · z) + c/(x · y)`
+   - substeps:
+     1. `Repartir el mismo denominador sobre cada término del numerador`
+     2. `Cancelar los factores comunes en las fracciones resultantes`
+
+## expand_fraction_two_cancellations_plus_remainder (fraction_expand)
+
+- Source: `(a*x+b*y+c)/(x*y)`
+- Target: `a/y + b/x + c/(x*y)`
+- Result: `a / y + b / x + c / (x * y)`
+- Web step count: `1`
+- Web substep count: `2`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: (a * x + b * y + c) / (x * y)
+Target: a / y + b / x + c / (x * y)
+Strategy: expand fraction
+Steps (Aggressive Mode):
+1. Distribute a sum over the common denominator  [Distribute Division]
+   Before: (a * x + b * y + c) / (x * y)
+   After: a / y + b / x + c / (x * y)
+Result: a / y + b / x + c / (x * y)
+ℹ️ Requires:
+  • y ≠ 0
+  • x ≠ 0
+```
+
+### Web / JSON Steps
+
+1. `Repartir el denominador común`
+   - before: `(a · x + b · y + c)/(x · y)`
+   - after: `a/y + b/x + c/(x · y)`
+   - substeps:
+     1. `Repartir el mismo denominador sobre cada término del numerador`
+     2. `Cancelar los factores comunes en las fracciones resultantes`
+
+## expand_fraction_three_factor_cross_cancellation_plus_remainder (fraction_expand)
+
+- Source: `(a*x*y+b*y*z+c*x*z+d)/(x*y*z)`
+- Target: `a/z + b/x + c/y + d/(x*y*z)`
+- Result: `a / z + b / x + c / y + d / (x * y * z)`
+- Web step count: `1`
+- Web substep count: `2`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: (a * x * y + b * y * z + c * x * z + d) / (x * y * z)
+Target: a / z + b / x + c / y + d / (x * y * z)
+Strategy: expand fraction
+Steps (Aggressive Mode):
+1. Distribute a sum over the common denominator  [Distribute Division]
+   Before: (a * x * y + b * y * z + c * x * z + d) / (x * y * z)
+   After: a / z + b / x + c / y + d / (x * y * z)
+Result: a / z + b / x + c / y + d / (x * y * z)
+ℹ️ Requires:
+  • x ≠ 0
+  • y ≠ 0
+  • z ≠ 0
+```
+
+### Web / JSON Steps
+
+1. `Repartir el denominador común`
+   - before: `(a · x · y + b · y · z + c · x · z + d)/(x · y · z)`
+   - after: `a/z + b/x + c/y + d/(x · y · z)`
+   - substeps:
+     1. `Repartir el mismo denominador sobre cada término del numerador`
+     2. `Cancelar los factores comunes en las fracciones resultantes`
+
+## expand_fraction_three_factor_three_cancellations_to_constant (fraction_expand)
+
+- Source: `(a*x*y+b*x*z+c*y*z+d*x*y*z)/(x*y*z)`
+- Target: `a/z + b/y + c/x + d`
+- Result: `a / z + b / y + c / x + d`
+- Web step count: `1`
+- Web substep count: `2`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: (d * x * y * z + a * x * y + b * x * z + c * y * z) / (x * y * z)
+Target: a / z + b / y + c / x + d
+Strategy: expand fraction
+Steps (Aggressive Mode):
+1. Distribute a sum over the common denominator  [Distribute Division]
+   Before: (d * x * y * z + a * x * y + b * x * z + c * y * z) / (x * y * z)
+   After: a / z + b / y + c / x + d
+Result: a / z + b / y + c / x + d
+ℹ️ Requires:
+  • y ≠ 0
+  • z ≠ 0
+  • x ≠ 0
+```
+
+### Web / JSON Steps
+
+1. `Repartir el denominador común`
+   - before: `(d · x · y · z + a · x · y + b · x · z + c · y · z)/(x · y · z)`
+   - after: `a/z + b/y + c/x + d`
+   - substeps:
+     1. `Repartir el mismo denominador sobre cada término del numerador`
+     2. `Cancelar los factores comunes en las fracciones resultantes`
+
 ## nested_fraction_one_over_sum (nested_fraction)
 
 - Source: `1/(1/x + 1/y)`
@@ -5315,46 +4453,6 @@ Result: x * y / (x + y)
 2. `Simplificar fracción anidada`
    - before: `1/((x + y)/(x · y))`
    - after: `(x · y)/(x + y)`
-   - substeps: none
-
-## nested_fraction_fraction_over_sum (nested_fraction)
-
-- Source: `(1/x)/(1/y + 1/z)`
-- Target: `(y*z)/(x*(y+z))`
-- Result: `y * z / (x * (y + z))`
-- Web step count: `2`
-- Web substep count: `0`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: 1 / x / (1 / y + 1 / z)
-Target: y * z / (x * (y + z))
-Strategy: simplify
-Steps (Aggressive Mode):
-1. Add fractions: a/b + c/d -> (ad+bc)/bd  [Add Fractions]
-   Before: 1 / x / (1 / y + 1 / z)
-   Cambio local: 1 / y + 1 / z -> (y + z) / (y * z)
-   After: 1 / x / ((y + z) / (y * z))
-2. Simplify nested fraction  [Simplify Complex Fraction]
-   Before: 1 / x / ((y + z) / (y * z))
-   Cambio local: 1 / x / ((y + z) / (y * z)) -> y * z / ((y + z) * x)
-   After: y * z / (x * (y + z))
-Result: y * z / (x * (y + z))
-ℹ️ Requires:
-  • x * y + x * z ≠ 0
-```
-
-### Web / JSON Steps
-
-1. `Sumar fracciones`
-   - before: `(1/x)/(1/y + 1/z)`
-   - after: `(1/x)/((y + z)/(y · z))`
-   - substeps: none
-2. `Simplificar fracción anidada`
-   - before: `(1/x)/((y + z)/(y · z))`
-   - after: `(y · z)/(x · (y + z))`
    - substeps: none
 
 ## nested_fraction_one_over_three_reciprocals (nested_fraction)
@@ -5405,46 +4503,6 @@ Result: a * b * c / (a * b + a * c + b * c)
    - after: `(a · b · c)/(a · b + a · c + b · c)`
    - substeps: none
 
-## nested_fraction_one_over_compound_plus_reciprocal (nested_fraction)
-
-- Source: `1/(1/(x+y) + 1/z)`
-- Target: `z*(x+y)/(x+y+z)`
-- Result: `z * (x + y) / (x + y + z)`
-- Web step count: `2`
-- Web substep count: `0`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: 1 / (1 / z + 1 / (x + y))
-Target: z * (x + y) / (x + y + z)
-Strategy: simplify
-Steps (Aggressive Mode):
-1. Add fractions: a/b + c/d -> (ad+bc)/bd  [Add Fractions]
-   Before: 1 / (1 / z + 1 / (x + y))
-   Cambio local: 1 / z + 1 / (x + y) -> (x + y + z) / (z * (x + y))
-   After: 1 / ((x + y + z) / (z * (x + y)))
-2. Simplify nested fraction  [Simplify Complex Fraction]
-   Before: 1 / ((x + y + z) / (z * (x + y)))
-   Cambio local: 1 / ((x + y + z) / (x * z + y * z)) -> z * (x + y) / (x + y + z)
-   After: z * (x + y) / (x + y + z)
-Result: z * (x + y) / (x + y + z)
-ℹ️ Requires:
-  • x + y + z ≠ 0
-```
-
-### Web / JSON Steps
-
-1. `Sumar fracciones`
-   - before: `1/(1/z + 1/(x + y))`
-   - after: `1/((x + y + z)/(z · (x + y)))`
-   - substeps: none
-2. `Simplificar fracción anidada`
-   - before: `1/((x + y + z)/(z · (x + y)))`
-   - after: `(z · (x + y))/(x + y + z)`
-   - substeps: none
-
 ## nested_fraction_sum_over_reciprocal (nested_fraction)
 
 - Source: `(1/x + 1/y)/(1/z)`
@@ -5485,6 +4543,207 @@ Result: z * (x + y) / (x * y)
    - before: `((x + y)/(x · y))/(1/z)`
    - after: `(z · (x + y))/(x · y)`
    - substeps: none
+
+## nested_fraction_one_over_sum_with_fraction (nested_fraction)
+
+- Source: `1/(x + y/z)`
+- Target: `z/(x*z+y)`
+- Result: `z / (x * z + y)`
+- Web step count: `1`
+- Web substep count: `1`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: 1 / (y / z + x)
+Target: z / (x * z + y)
+Strategy: simplify
+Steps (Aggressive Mode):
+1. Simplify nested fraction  [Simplify Complex Fraction]
+   Before: 1 / (y / z + x)
+   Cambio local: 1 / (y / z + x) -> z / (x * z + y)
+   After: z / (x * z + y)
+Result: z / (x * z + y)
+ℹ️ Requires:
+  • x * z + y ≠ 0
+```
+
+### Web / JSON Steps
+
+1. `Simplificar fracción anidada`
+   - before: `1/(y/z + x)`
+   - after: `z/(x · z + y)`
+   - substeps:
+     1. `Primero simplificar la suma del denominador`
+
+## nested_fraction_fraction_over_sum_with_fraction_general (nested_fraction)
+
+- Source: `a/(b + c/d)`
+- Target: `a*d/(b*d+c)`
+- Result: `a * d / (b * d + c)`
+- Web step count: `1`
+- Web substep count: `1`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: a / (c / d + b)
+Target: a * d / (b * d + c)
+Strategy: simplify
+Steps (Aggressive Mode):
+1. Simplify nested fraction  [Simplify Complex Fraction]
+   Before: a / (c / d + b)
+   Cambio local: a / (c / d + b) -> a * d / (b * d + c)
+   After: a * d / (b * d + c)
+Result: a * d / (b * d + c)
+ℹ️ Requires:
+  • b * d + c ≠ 0
+```
+
+### Web / JSON Steps
+
+1. `Simplificar fracción anidada`
+   - before: `a/(c/d + b)`
+   - after: `(a · d)/(b · d + c)`
+   - substeps:
+     1. `Primero simplificar la suma del denominador`
+
+## nested_fraction_sum_with_fraction_over_scalar_general (nested_fraction)
+
+- Source: `(a + b/c)/d`
+- Target: `(a*c+b)/(c*d)`
+- Result: `(a * c + b) / (c * d)`
+- Web step count: `1`
+- Web substep count: `0`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: (b / c + a) / d
+Target: (a * c + b) / (c * d)
+Strategy: simplify
+Steps (Aggressive Mode):
+1. Simplify nested fraction  [Simplify Complex Fraction]
+   Before: (b / c + a) / d
+   Cambio local: (b / c + a) / d -> (a * c + b) / (d * c)
+   After: (a * c + b) / (c * d)
+Result: (a * c + b) / (c * d)
+ℹ️ Requires:
+  • c ≠ 0
+  • d ≠ 0
+```
+
+### Web / JSON Steps
+
+1. `Simplificar fracción anidada`
+   - before: `(b/c + a)/d`
+   - after: `(a · c + b)/(c · d)`
+   - substeps: none
+
+## nested_fraction_one_over_sum_with_fraction_reverse (nested_fraction)
+
+- Source: `z/(x*z+y)`
+- Target: `1/(x + y/z)`
+- Result: `1 / (y / z + x)`
+- Web step count: `1`
+- Web substep count: `1`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: z / (x * z + y)
+Target: 1 / (y / z + x)
+Strategy: simplify
+Steps (Aggressive Mode):
+1. Simplify the expression  [Simplify]
+   Before: z / (x * z + y)
+   Cambio local: z / (x * z + y) -> 1 / (y / z + x)
+   After: 1 / (y / z + x)
+Result: 1 / (y / z + x)
+ℹ️ Requires:
+  • z ≠ 0
+  • y / z + x ≠ 0
+```
+
+### Web / JSON Steps
+
+1. `Simplificar fracción anidada`
+   - before: `z/(x · z + y)`
+   - after: `1/(y/z + x)`
+   - substeps:
+     1. `Reescribir el denominador sacando factor común z`
+
+## nested_fraction_fraction_over_sum_with_fraction_general_reverse (nested_fraction)
+
+- Source: `a*d/(b*d+c)`
+- Target: `a/(b + c/d)`
+- Result: `a / (c / d + b)`
+- Web step count: `1`
+- Web substep count: `1`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: a * d / (b * d + c)
+Target: a / (c / d + b)
+Strategy: simplify
+Steps (Aggressive Mode):
+1. Simplify the expression  [Simplify]
+   Before: a * d / (b * d + c)
+   Cambio local: a * d / (b * d + c) -> a / (c / d + b)
+   After: a / (c / d + b)
+Result: a / (c / d + b)
+ℹ️ Requires:
+  • c / d + b ≠ 0
+  • d ≠ 0
+```
+
+### Web / JSON Steps
+
+1. `Simplificar fracción anidada`
+   - before: `(a · d)/(b · d + c)`
+   - after: `a/(c/d + b)`
+   - substeps:
+     1. `Reescribir el denominador sacando factor común d`
+
+## nested_fraction_sum_with_fraction_over_scalar_general_reverse (nested_fraction)
+
+- Source: `(a*c+b)/(c*d)`
+- Target: `(a + b/c)/d`
+- Result: `(b / c + a) / d`
+- Web step count: `1`
+- Web substep count: `1`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: (a * c + b) / (c * d)
+Target: (b / c + a) / d
+Strategy: simplify
+Steps (Aggressive Mode):
+1. Simplify the expression  [Simplify]
+   Before: (a * c + b) / (c * d)
+   Cambio local: (a * c + b) / (c * d) -> (b / c + a) / d
+   After: (b / c + a) / d
+Result: (b / c + a) / d
+ℹ️ Requires:
+  • c ≠ 0
+  • d ≠ 0
+```
+
+### Web / JSON Steps
+
+1. `Simplificar fracción anidada`
+   - before: `(a · c + b)/(c · d)`
+   - after: `(b/c + a)/d`
+   - substeps:
+     1. `Reescribir el numerador sacando factor común c`
 
 ## combine_same_denominator_fraction_sum (fraction_combine)
 
@@ -5648,6 +4907,38 @@ Result: (a^(2) - b) / a
    - after: `(a^2 - b)/a`
    - substeps: none
 
+## combine_symbolic_same_denominator_fraction_subset_with_passthrough (fraction_combine)
+
+- Source: `a/(x+y) + b/(x+y) + c`
+- Target: `(a+b)/(x+y) + c`
+- Result: `(a + b) / (x + y) + c`
+- Web step count: `1`
+- Web substep count: `0`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: a / (x + y) + b / (x + y) + c
+Target: (a + b) / (x + y) + c
+Strategy: combine fraction
+Steps (Aggressive Mode):
+1. Combine fractions that already share the same denominator  [Combine Same Denominator Fractions]
+   Before: a / (x + y) + b / (x + y) + c
+   Cambio local: a / (x + y) + b / (x + y) -> (a + b) / (x + y)
+   After: (a + b) / (x + y) + c
+Result: (a + b) / (x + y) + c
+ℹ️ Requires:
+  • x + y ≠ 0
+```
+
+### Web / JSON Steps
+
+1. `Sumar fracciones con mismo denominador`
+   - before: `a/(x + y) + b/(x + y) + c`
+   - after: `(a + b)/(x + y) + c`
+   - substeps: none
+
 ## split_fraction_into_whole_plus_remainder (fraction_decompose)
 
 - Source: `(x+1)/(x-1)`
@@ -5677,39 +4968,6 @@ Result: 2 / (x - 1) + 1
 1. `Separar parte entera y resto`
    - before: `(x + 1)/(x - 1)`
    - after: `2/(x - 1) + 1`
-   - substeps:
-     1. `Reescribir el numerador como denominador · parte entera + resto`
-     2. `Separar la parte entera de la fracción restante`
-
-## split_fraction_linear_over_shifted_linear (fraction_decompose)
-
-- Source: `(3*x+1)/(x-1)`
-- Target: `3 + 4/(x-1)`
-- Result: `4 / (x - 1) + 3`
-- Web step count: `1`
-- Web substep count: `2`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: (3 * x + 1) / (x - 1)
-Target: 4 / (x - 1) + 3
-Strategy: split fraction
-Steps (Aggressive Mode):
-1. Split a fraction into a whole part plus remainder  [Mixed Fraction Split]
-   Before: (3 * x + 1) / (x - 1)
-   After: 4 / (x - 1) + 3
-Result: 4 / (x - 1) + 3
-ℹ️ Requires:
-  • x - 1 ≠ 0
-```
-
-### Web / JSON Steps
-
-1. `Separar parte entera y resto`
-   - before: `(3 · x + 1)/(x - 1)`
-   - after: `4/(x - 1) + 3`
    - substeps:
      1. `Reescribir el numerador como denominador · parte entera + resto`
      2. `Separar la parte entera de la fracción restante`
@@ -5747,11 +5005,11 @@ Result: 5 / (2 * x + 1) + 2
      1. `Reescribir el numerador como denominador · parte entera + resto`
      2. `Separar la parte entera de la fracción restante`
 
-## split_fraction_linear_over_scaled_linear_alt (fraction_decompose)
+## split_fraction_symbolic_over_general_shift (fraction_decompose)
 
-- Source: `(6*x+5)/(3*x+1)`
-- Target: `2 + 3/(3*x+1)`
-- Result: `3 / (3 * x + 1) + 2`
+- Source: `(a*x+b)/(x+c)`
+- Target: `a + (b-a*c)/(x+c)`
+- Result: `(b - a * c) / (c + x) + a`
 - Web step count: `1`
 - Web substep count: `2`
 - Flags: none
@@ -5759,32 +5017,32 @@ Result: 5 / (2 * x + 1) + 2
 ### CLI
 
 ```text
-Parsed: (6 * x + 5) / (3 * x + 1)
-Target: 3 / (3 * x + 1) + 2
+Parsed: (a * x + b) / (c + x)
+Target: (b - a * c) / (c + x) + a
 Strategy: split fraction
 Steps (Aggressive Mode):
 1. Split a fraction into a whole part plus remainder  [Mixed Fraction Split]
-   Before: (6 * x + 5) / (3 * x + 1)
-   After: 3 / (3 * x + 1) + 2
-Result: 3 / (3 * x + 1) + 2
+   Before: (a * x + b) / (c + x)
+   After: (b - a * c) / (c + x) + a
+Result: (b - a * c) / (c + x) + a
 ℹ️ Requires:
-  • 3 * x + 1 ≠ 0
+  • c + x ≠ 0
 ```
 
 ### Web / JSON Steps
 
 1. `Separar parte entera y resto`
-   - before: `(6 · x + 5)/(3 · x + 1)`
-   - after: `3/(3 · x + 1) + 2`
+   - before: `(a · x + b)/(c + x)`
+   - after: `(b - a · c)/(c + x) + a`
    - substeps:
      1. `Reescribir el numerador como denominador · parte entera + resto`
      2. `Separar la parte entera de la fracción restante`
 
-## split_fraction_symbolic_over_shifted_linear (fraction_decompose)
+## split_fraction_symbolic_over_scaled_general_linear (fraction_decompose)
 
-- Source: `(a*x+b)/(x-1)`
-- Target: `a + (a+b)/(x-1)`
-- Result: `(a + b) / (x - 1) + a`
+- Source: `(a*x+b)/(c*x+d)`
+- Target: `a/c + (b-a*d/c)/(c*x+d)`
+- Result: `a / c + (b - a * d / c) / (c * x + d)`
 - Web step count: `1`
 - Web substep count: `2`
 - Flags: none
@@ -5792,32 +5050,33 @@ Result: 3 / (3 * x + 1) + 2
 ### CLI
 
 ```text
-Parsed: (a * x + b) / (x - 1)
-Target: (a + b) / (x - 1) + a
+Parsed: (a * x + b) / (c * x + d)
+Target: a / c + (b - a * d / c) / (c * x + d)
 Strategy: split fraction
 Steps (Aggressive Mode):
 1. Split a fraction into a whole part plus remainder  [Mixed Fraction Split]
-   Before: (a * x + b) / (x - 1)
-   After: (a + b) / (x - 1) + a
-Result: (a + b) / (x - 1) + a
+   Before: (a * x + b) / (c * x + d)
+   After: a / c + (b - a * d / c) / (c * x + d)
+Result: a / c + (b - a * d / c) / (c * x + d)
 ℹ️ Requires:
-  • x - 1 ≠ 0
+  • c ≠ 0
+  • c * x + d ≠ 0
 ```
 
 ### Web / JSON Steps
 
 1. `Separar parte entera y resto`
-   - before: `(a · x + b)/(x - 1)`
-   - after: `(a + b)/(x - 1) + a`
+   - before: `(a · x + b)/(c · x + d)`
+   - after: `a/c + (b - a · d/c)/(c · x + d)`
    - substeps:
      1. `Reescribir el numerador como denominador · parte entera + resto`
      2. `Separar la parte entera de la fracción restante`
 
-## split_fraction_symbolic_over_plus_one (fraction_decompose)
+## split_fraction_symbolic_over_negative_scaled_general_linear (fraction_decompose)
 
-- Source: `(a*x+b)/(x+1)`
-- Target: `a + (b-a)/(x+1)`
-- Result: `(b - a) / (x + 1) + a`
+- Source: `(a*x+b)/(d-c*x)`
+- Target: `-a/c + (b+a*d/c)/(d-c*x)`
+- Result: `-a / c + (a * d / c + b) / (d - c * x)`
 - Web step count: `1`
 - Web substep count: `2`
 - Flags: none
@@ -5825,56 +5084,24 @@ Result: (a + b) / (x - 1) + a
 ### CLI
 
 ```text
-Parsed: (a * x + b) / (x + 1)
-Target: (b - a) / (x + 1) + a
+Parsed: (a * x + b) / (d - c * x)
+Target: -a / c + (a * d / c + b) / (d - c * x)
 Strategy: split fraction
 Steps (Aggressive Mode):
 1. Split a fraction into a whole part plus remainder  [Mixed Fraction Split]
-   Before: (a * x + b) / (x + 1)
-   After: (b - a) / (x + 1) + a
-Result: (b - a) / (x + 1) + a
+   Before: (a * x + b) / (d - c * x)
+   After: -a / c + (a * d / c + b) / (d - c * x)
+Result: -a / c + (a * d / c + b) / (d - c * x)
 ℹ️ Requires:
-  • x + 1 ≠ 0
+  • c * x - d ≠ 0
+  • c ≠ 0
 ```
 
 ### Web / JSON Steps
 
 1. `Separar parte entera y resto`
-   - before: `(a · x + b)/(x + 1)`
-   - after: `(b - a)/(x + 1) + a`
-   - substeps:
-     1. `Reescribir el numerador como denominador · parte entera + resto`
-     2. `Separar la parte entera de la fracción restante`
-
-## split_fraction_symbolic_over_plus_one_alt_var (fraction_decompose)
-
-- Source: `(a*y+b)/(y+1)`
-- Target: `a + (b-a)/(y+1)`
-- Result: `(b - a) / (y + 1) + a`
-- Web step count: `1`
-- Web substep count: `2`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: (a * y + b) / (y + 1)
-Target: (b - a) / (y + 1) + a
-Strategy: split fraction
-Steps (Aggressive Mode):
-1. Split a fraction into a whole part plus remainder  [Mixed Fraction Split]
-   Before: (a * y + b) / (y + 1)
-   After: (b - a) / (y + 1) + a
-Result: (b - a) / (y + 1) + a
-ℹ️ Requires:
-  • y + 1 ≠ 0
-```
-
-### Web / JSON Steps
-
-1. `Separar parte entera y resto`
-   - before: `(a · y + b)/(y + 1)`
-   - after: `(b - a)/(y + 1) + a`
+   - before: `(a · x + b)/(d - c · x)`
+   - after: `-a/c + ((a · d)/c + b)/(d - c · x)`
    - substeps:
      1. `Reescribir el numerador como denominador · parte entera + resto`
      2. `Separar la parte entera de la fracción restante`
@@ -5901,8 +5128,8 @@ Steps (Aggressive Mode):
    After: 1 / n - 1 / (n + 1)
 Result: 1 / n - 1 / (n + 1)
 ℹ️ Requires:
-  • n + 1 ≠ 0
   • n ≠ 0
+  • n + 1 ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -5949,42 +5176,6 @@ Result: 1 / 2 * (1 / n - 1 / (n + 2))
    - substeps:
      1. `Usar 1 / (u · (u + k)) = 1 / k · (1 / u - 1 / (u + k))`
      2. `Aquí u = n y k = 2`
-
-## split_telescoping_fraction_gap_three (telescoping_fraction)
-
-- Source: `1/(n*(n+3))`
-- Target: `1/3*(1/n - 1/(n+3))`
-- Result: `((1 / n - 1 / (n + 3)) * 1)/3`
-- Web step count: `1`
-- Web substep count: `2`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: 1 / (n * (n + 3))
-Target: ((1 / n - 1 / (n + 3)))/3
-Strategy: expand fraction
-Steps (Aggressive Mode):
-1. Split into telescoping partial fractions  [Telescoping Fraction Split]
-   Before: 1 / (n * (n + 3))
-   Cambio local: 1 / (n * (n + 3)) -> 1 / 3 * (1 / n - 1 / (n + 3))
-   After: ((1 / n - 1 / (n + 3)))/3
-Result: 1 / 3 * (1 / n - 1 / (n + 3))
-ℹ️ Requires:
-  • n + 3 ≠ 0
-  • 3 ≠ 0
-  • n ≠ 0
-```
-
-### Web / JSON Steps
-
-1. `Descomponer en fracciones telescópicas`
-   - before: `1/(n · (n + 3))`
-   - after: `1/3 · (1/n - 1/(n + 3))`
-   - substeps:
-     1. `Usar 1 / (u · (u + k)) = 1 / k · (1 / u - 1 / (u + k))`
-     2. `Aquí u = n y k = 3`
 
 ## combine_telescoping_fraction_consecutive (telescoping_fraction)
 
@@ -6056,111 +5247,6 @@ Result: 1 / (n * (n + 2))
      1. `Usar 1 / k · (1 / u - 1 / (u + k)) = 1 / (u · (u + k))`
      2. `Aquí u = n y k = 2`
 
-## combine_telescoping_fraction_gap_three (telescoping_fraction)
-
-- Source: `1/3*(1/n - 1/(n+3))`
-- Target: `1/(n*(n+3))`
-- Result: `1 / (n * (n + 3))`
-- Web step count: `1`
-- Web substep count: `2`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: ((1 / n - 1 / (n + 3)) * 1)/3
-Target: 1 / (n * (n + 3))
-Strategy: combine fraction
-Steps (Aggressive Mode):
-1. Recompose the telescoping partial fractions into a single fraction  [Telescoping Fraction Combine]
-   Before: 1 / 3 * (1 / n - 1 / (n + 3))
-   Cambio local: 1 / 3 * (1 / n - 1 / (n + 3)) -> 1 / (n * (n + 3))
-   After: 1 / (n * (n + 3))
-Result: 1 / (n * (n + 3))
-ℹ️ Requires:
-  • n ≠ 0
-  • n + 3 ≠ 0
-```
-
-### Web / JSON Steps
-
-1. `Recomponer fracción telescópica`
-   - before: `1/3 · (1/n - 1/(n + 3))`
-   - after: `1/(n · (n + 3))`
-   - substeps:
-     1. `Usar 1 / k · (1 / u - 1 / (u + k)) = 1 / (u · (u + k))`
-     2. `Aquí u = n y k = 3`
-
-## split_telescoping_fraction_negative_consecutive (telescoping_fraction)
-
-- Source: `1/(n*(n-1))`
-- Target: `1/(n-1) - 1/n`
-- Result: `1 / (n - 1) - 1 / n`
-- Web step count: `1`
-- Web substep count: `2`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: 1 / (n * (n - 1))
-Target: 1 / (n - 1) - 1 / n
-Strategy: expand fraction
-Steps (Aggressive Mode):
-1. Split into telescoping partial fractions  [Telescoping Fraction Split]
-   Before: 1 / (n * (n - 1))
-   Cambio local: 1 / (n * (n - 1)) -> 1 / (n - 1) - 1 / n
-   After: 1 / (n - 1) - 1 / n
-Result: 1 / (n - 1) - 1 / n
-ℹ️ Requires:
-  • n ≠ 0
-  • n - 1 ≠ 0
-```
-
-### Web / JSON Steps
-
-1. `Descomponer en fracciones telescópicas`
-   - before: `1/(n · (n - 1))`
-   - after: `1/(n - 1) - 1/n`
-   - substeps:
-     1. `Usar 1 / (u · (u + 1)) = 1 / u - 1 / (u + 1)`
-     2. `Aquí u = n - 1`
-
-## combine_telescoping_fraction_negative_consecutive (telescoping_fraction)
-
-- Source: `1/(n-1) - 1/n`
-- Target: `1/(n*(n-1))`
-- Result: `1 / (n * (n - 1))`
-- Web step count: `1`
-- Web substep count: `2`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: 1 / (n - 1) - 1 / n
-Target: 1 / (n * (n - 1))
-Strategy: combine fraction
-Steps (Aggressive Mode):
-1. Recompose the telescoping partial fractions into a single fraction  [Telescoping Fraction Combine]
-   Before: 1 / (n - 1) - 1 / n
-   Cambio local: 1 / (n - 1) - 1 / n -> 1 / (n * (n - 1))
-   After: 1 / (n * (n - 1))
-Result: 1 / (n * (n - 1))
-ℹ️ Requires:
-  • n ≠ 0
-  • n - 1 ≠ 0
-```
-
-### Web / JSON Steps
-
-1. `Recomponer fracción telescópica`
-   - before: `1/(n - 1) - 1/n`
-   - after: `1/(n · (n - 1))`
-   - substeps:
-     1. `Usar 1 / u - 1 / (u + 1) = 1 / (u · (u + 1))`
-     2. `Aquí u = n - 1`
-
 ## split_telescoping_fraction_negative_gap_two (telescoping_fraction)
 
 - Source: `1/(n*(n-2))`
@@ -6183,8 +5269,8 @@ Steps (Aggressive Mode):
    After: ((1 / (n - 2) - 1 / n))/2
 Result: 1 / 2 * (1 / (n - 2) - 1 / n)
 ℹ️ Requires:
-  • n ≠ 0
   • n - 2 ≠ 0
+  • n ≠ 0
   • 2 ≠ 0
 ```
 
@@ -6254,9 +5340,9 @@ Steps (Aggressive Mode):
    After: ((1 / (2 * n + 1) - 1 / (2 * n + 3)))/2
 Result: 1 / 2 * (1 / (2 * n + 1) - 1 / (2 * n + 3))
 ℹ️ Requires:
-  • 2 * n + 1 ≠ 0
   • 2 * n + 3 ≠ 0
   • 2 ≠ 0
+  • 2 * n + 1 ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -6303,429 +5389,6 @@ Result: 1 / ((2 * n + 1) * (2 * n + 3))
      1. `Usar 1 / k · (1 / u - 1 / (u + k)) = 1 / (u · (u + k))`
      2. `Aquí u = 2 · n + 1 y k = 2`
 
-## split_telescoping_fraction_affine_shifted_gap_two (telescoping_fraction)
-
-- Source: `1/((2*n-1)*(2*n+1))`
-- Target: `1/2*(1/(2*n-1) - 1/(2*n+1))`
-- Result: `((1 / (2 * n - 1) - 1 / (2 * n + 1)) * 1)/2`
-- Web step count: `1`
-- Web substep count: `2`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: 1 / ((2 * n + 1) * (2 * n - 1))
-Target: ((1 / (2 * n - 1) - 1 / (2 * n + 1)))/2
-Strategy: expand fraction
-Steps (Aggressive Mode):
-1. Split into telescoping partial fractions  [Telescoping Fraction Split]
-   Before: 1 / ((2 * n + 1) * (2 * n - 1))
-   Cambio local: 1 / ((2 * n + 1) * (2 * n - 1)) -> 1 / 2 * (1 / (2 * n - 1) - 1 / (2 * n + 1))
-   After: ((1 / (2 * n - 1) - 1 / (2 * n + 1)))/2
-Result: 1 / 2 * (1 / (2 * n - 1) - 1 / (2 * n + 1))
-ℹ️ Requires:
-  • 2 * n - 1 ≠ 0
-  • 2 ≠ 0
-  • 2 * n + 1 ≠ 0
-```
-
-### Web / JSON Steps
-
-1. `Descomponer en fracciones telescópicas`
-   - before: `1/((2 · n + 1) · (2 · n - 1))`
-   - after: `1/2 · (1/(2 · n - 1) - 1/(2 · n + 1))`
-   - substeps:
-     1. `Usar 1 / (u · (u + k)) = 1 / k · (1 / u - 1 / (u + k))`
-     2. `Aquí u = 2 · n - 1 y k = 2`
-
-## combine_telescoping_fraction_affine_shifted_gap_two (telescoping_fraction)
-
-- Source: `1/2*(1/(2*n-1) - 1/(2*n+1))`
-- Target: `1/((2*n-1)*(2*n+1))`
-- Result: `1 / ((2 * n + 1) * (2 * n - 1))`
-- Web step count: `1`
-- Web substep count: `2`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: ((1 / (2 * n - 1) - 1 / (2 * n + 1)) * 1)/2
-Target: 1 / ((2 * n + 1) * (2 * n - 1))
-Strategy: combine fraction
-Steps (Aggressive Mode):
-1. Recompose the telescoping partial fractions into a single fraction  [Telescoping Fraction Combine]
-   Before: 1 / 2 * (1 / (2 * n - 1) - 1 / (2 * n + 1))
-   Cambio local: 1 / 2 * (1 / (2 * n - 1) - 1 / (2 * n + 1)) -> 1 / ((2 * n + 1) * (2 * n - 1))
-   After: 1 / ((2 * n + 1) * (2 * n - 1))
-Result: 1 / ((2 * n + 1) * (2 * n - 1))
-ℹ️ Requires:
-  • 2 * n - 1 ≠ 0
-  • 2 * n + 1 ≠ 0
-```
-
-### Web / JSON Steps
-
-1. `Recomponer fracción telescópica`
-   - before: `1/2 · (1/(2 · n - 1) - 1/(2 · n + 1))`
-   - after: `1/((2 · n + 1) · (2 · n - 1))`
-   - substeps:
-     1. `Usar 1 / k · (1 / u - 1 / (u + k)) = 1 / (u · (u + k))`
-     2. `Aquí u = 2 · n - 1 y k = 2`
-
-## split_telescoping_fraction_affine_coeff_three_gap_three (telescoping_fraction)
-
-- Source: `1/((3*n+2)*(3*n+5))`
-- Target: `1/3*(1/(3*n+2) - 1/(3*n+5))`
-- Result: `((1 / (3 * n + 2) - 1 / (3 * n + 5)) * 1)/3`
-- Web step count: `1`
-- Web substep count: `2`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: 1 / ((3 * n + 2) * (3 * n + 5))
-Target: ((1 / (3 * n + 2) - 1 / (3 * n + 5)))/3
-Strategy: expand fraction
-Steps (Aggressive Mode):
-1. Split into telescoping partial fractions  [Telescoping Fraction Split]
-   Before: 1 / ((3 * n + 2) * (3 * n + 5))
-   Cambio local: 1 / ((3 * n + 2) * (3 * n + 5)) -> 1 / 3 * (1 / (3 * n + 2) - 1 / (3 * n + 5))
-   After: ((1 / (3 * n + 2) - 1 / (3 * n + 5)))/3
-Result: 1 / 3 * (1 / (3 * n + 2) - 1 / (3 * n + 5))
-ℹ️ Requires:
-  • 3 * n + 2 ≠ 0
-  • 3 ≠ 0
-  • 3 * n + 5 ≠ 0
-```
-
-### Web / JSON Steps
-
-1. `Descomponer en fracciones telescópicas`
-   - before: `1/((3 · n + 2) · (3 · n + 5))`
-   - after: `1/3 · (1/(3 · n + 2) - 1/(3 · n + 5))`
-   - substeps:
-     1. `Usar 1 / (u · (u + k)) = 1 / k · (1 / u - 1 / (u + k))`
-     2. `Aquí u = 3 · n + 2 y k = 3`
-
-## combine_telescoping_fraction_affine_coeff_three_gap_three (telescoping_fraction)
-
-- Source: `1/3*(1/(3*n+2) - 1/(3*n+5))`
-- Target: `1/((3*n+2)*(3*n+5))`
-- Result: `1 / ((3 * n + 2) * (3 * n + 5))`
-- Web step count: `1`
-- Web substep count: `2`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: ((1 / (3 * n + 2) - 1 / (3 * n + 5)) * 1)/3
-Target: 1 / ((3 * n + 2) * (3 * n + 5))
-Strategy: combine fraction
-Steps (Aggressive Mode):
-1. Recompose the telescoping partial fractions into a single fraction  [Telescoping Fraction Combine]
-   Before: 1 / 3 * (1 / (3 * n + 2) - 1 / (3 * n + 5))
-   Cambio local: 1 / 3 * (1 / (3 * n + 2) - 1 / (3 * n + 5)) -> 1 / ((3 * n + 2) * (3 * n + 5))
-   After: 1 / ((3 * n + 2) * (3 * n + 5))
-Result: 1 / ((3 * n + 2) * (3 * n + 5))
-ℹ️ Requires:
-  • 3 * n + 2 ≠ 0
-  • 3 * n + 5 ≠ 0
-```
-
-### Web / JSON Steps
-
-1. `Recomponer fracción telescópica`
-   - before: `1/3 · (1/(3 · n + 2) - 1/(3 · n + 5))`
-   - after: `1/((3 · n + 2) · (3 · n + 5))`
-   - substeps:
-     1. `Usar 1 / k · (1 / u - 1 / (u + k)) = 1 / (u · (u + k))`
-     2. `Aquí u = 3 · n + 2 y k = 3`
-
-## split_telescoping_fraction_affine_coeff_three_shifted_gap_three (telescoping_fraction)
-
-- Source: `1/((3*n-1)*(3*n+2))`
-- Target: `1/3*(1/(3*n-1) - 1/(3*n+2))`
-- Result: `((1 / (3 * n - 1) - 1 / (3 * n + 2)) * 1)/3`
-- Web step count: `1`
-- Web substep count: `2`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: 1 / ((3 * n + 2) * (3 * n - 1))
-Target: ((1 / (3 * n - 1) - 1 / (3 * n + 2)))/3
-Strategy: expand fraction
-Steps (Aggressive Mode):
-1. Split into telescoping partial fractions  [Telescoping Fraction Split]
-   Before: 1 / ((3 * n + 2) * (3 * n - 1))
-   Cambio local: 1 / ((3 * n + 2) * (3 * n - 1)) -> 1 / 3 * (1 / (3 * n - 1) - 1 / (3 * n + 2))
-   After: ((1 / (3 * n - 1) - 1 / (3 * n + 2)))/3
-Result: 1 / 3 * (1 / (3 * n - 1) - 1 / (3 * n + 2))
-ℹ️ Requires:
-  • 3 * n - 1 ≠ 0
-  • 3 ≠ 0
-  • 3 * n + 2 ≠ 0
-```
-
-### Web / JSON Steps
-
-1. `Descomponer en fracciones telescópicas`
-   - before: `1/((3 · n + 2) · (3 · n - 1))`
-   - after: `1/3 · (1/(3 · n - 1) - 1/(3 · n + 2))`
-   - substeps:
-     1. `Usar 1 / (u · (u + k)) = 1 / k · (1 / u - 1 / (u + k))`
-     2. `Aquí u = 3 · n - 1 y k = 3`
-
-## combine_telescoping_fraction_affine_coeff_three_shifted_gap_three (telescoping_fraction)
-
-- Source: `1/3*(1/(3*n-1) - 1/(3*n+2))`
-- Target: `1/((3*n-1)*(3*n+2))`
-- Result: `1 / ((3 * n + 2) * (3 * n - 1))`
-- Web step count: `1`
-- Web substep count: `2`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: ((1 / (3 * n - 1) - 1 / (3 * n + 2)) * 1)/3
-Target: 1 / ((3 * n + 2) * (3 * n - 1))
-Strategy: combine fraction
-Steps (Aggressive Mode):
-1. Recompose the telescoping partial fractions into a single fraction  [Telescoping Fraction Combine]
-   Before: 1 / 3 * (1 / (3 * n - 1) - 1 / (3 * n + 2))
-   Cambio local: 1 / 3 * (1 / (3 * n - 1) - 1 / (3 * n + 2)) -> 1 / ((3 * n + 2) * (3 * n - 1))
-   After: 1 / ((3 * n + 2) * (3 * n - 1))
-Result: 1 / ((3 * n + 2) * (3 * n - 1))
-ℹ️ Requires:
-  • 3 * n - 1 ≠ 0
-  • 3 * n + 2 ≠ 0
-```
-
-### Web / JSON Steps
-
-1. `Recomponer fracción telescópica`
-   - before: `1/3 · (1/(3 · n - 1) - 1/(3 · n + 2))`
-   - after: `1/((3 · n + 2) · (3 · n - 1))`
-   - substeps:
-     1. `Usar 1 / k · (1 / u - 1 / (u + k)) = 1 / (u · (u + k))`
-     2. `Aquí u = 3 · n - 1 y k = 3`
-
-## split_telescoping_fraction_affine_symbolic_coeff_gap_three (telescoping_fraction)
-
-- Source: `1/((a*n+2)*(a*n+5))`
-- Target: `1/3*(1/(a*n+2) - 1/(a*n+5))`
-- Result: `((1 / (a * n + 2) - 1 / (a * n + 5)) * 1)/3`
-- Web step count: `1`
-- Web substep count: `2`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: 1 / ((a * n + 2) * (a * n + 5))
-Target: ((1 / (a * n + 2) - 1 / (a * n + 5)))/3
-Strategy: expand fraction
-Steps (Aggressive Mode):
-1. Split into telescoping partial fractions  [Telescoping Fraction Split]
-   Before: 1 / ((a * n + 2) * (a * n + 5))
-   Cambio local: 1 / ((a * n + 2) * (a * n + 5)) -> 1 / 3 * (1 / (a * n + 2) - 1 / (a * n + 5))
-   After: ((1 / (a * n + 2) - 1 / (a * n + 5)))/3
-Result: 1 / 3 * (1 / (a * n + 2) - 1 / (a * n + 5))
-ℹ️ Requires:
-  • 3 ≠ 0
-  • a * n + 2 ≠ 0
-  • a * n + 5 ≠ 0
-```
-
-### Web / JSON Steps
-
-1. `Descomponer en fracciones telescópicas`
-   - before: `1/((a · n + 2) · (a · n + 5))`
-   - after: `1/3 · (1/(a · n + 2) - 1/(a · n + 5))`
-   - substeps:
-     1. `Usar 1 / (u · (u + k)) = 1 / k · (1 / u - 1 / (u + k))`
-     2. `Aquí u = a · n + 2 y k = 3`
-
-## combine_telescoping_fraction_affine_symbolic_coeff_gap_three (telescoping_fraction)
-
-- Source: `1/3*(1/(a*n+2) - 1/(a*n+5))`
-- Target: `1/((a*n+2)*(a*n+5))`
-- Result: `1 / ((a * n + 2) * (a * n + 5))`
-- Web step count: `1`
-- Web substep count: `2`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: ((1 / (a * n + 2) - 1 / (a * n + 5)) * 1)/3
-Target: 1 / ((a * n + 2) * (a * n + 5))
-Strategy: combine fraction
-Steps (Aggressive Mode):
-1. Recompose the telescoping partial fractions into a single fraction  [Telescoping Fraction Combine]
-   Before: 1 / 3 * (1 / (a * n + 2) - 1 / (a * n + 5))
-   Cambio local: 1 / 3 * (1 / (a * n + 2) - 1 / (a * n + 5)) -> 1 / ((a * n + 2) * (a * n + 5))
-   After: 1 / ((a * n + 2) * (a * n + 5))
-Result: 1 / ((a * n + 2) * (a * n + 5))
-ℹ️ Requires:
-  • a^2 * n^2 + 7 * a * n + 10 ≠ 0
-```
-
-### Web / JSON Steps
-
-1. `Recomponer fracción telescópica`
-   - before: `1/3 · (1/(a · n + 2) - 1/(a · n + 5))`
-   - after: `1/((a · n + 2) · (a · n + 5))`
-   - substeps:
-     1. `Usar 1 / k · (1 / u - 1 / (u + k)) = 1 / (u · (u + k))`
-     2. `Aquí u = a · n + 2 y k = 3`
-
-## split_telescoping_fraction_affine_symbolic_coeff_shifted_gap_three (telescoping_fraction)
-
-- Source: `1/((a*n-1)*(a*n+2))`
-- Target: `1/3*(1/(a*n-1) - 1/(a*n+2))`
-- Result: `((1 / (a * n - 1) - 1 / (a * n + 2)) * 1)/3`
-- Web step count: `1`
-- Web substep count: `2`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: 1 / ((a * n + 2) * (a * n - 1))
-Target: ((1 / (a * n - 1) - 1 / (a * n + 2)))/3
-Strategy: expand fraction
-Steps (Aggressive Mode):
-1. Split into telescoping partial fractions  [Telescoping Fraction Split]
-   Before: 1 / ((a * n + 2) * (a * n - 1))
-   Cambio local: 1 / ((a * n + 2) * (a * n - 1)) -> 1 / 3 * (1 / (a * n - 1) - 1 / (a * n + 2))
-   After: ((1 / (a * n - 1) - 1 / (a * n + 2)))/3
-Result: 1 / 3 * (1 / (a * n - 1) - 1 / (a * n + 2))
-ℹ️ Requires:
-  • a * n + 2 ≠ 0
-  • a * n - 1 ≠ 0
-  • 3 ≠ 0
-```
-
-### Web / JSON Steps
-
-1. `Descomponer en fracciones telescópicas`
-   - before: `1/((a · n + 2) · (a · n - 1))`
-   - after: `1/3 · (1/(a · n - 1) - 1/(a · n + 2))`
-   - substeps:
-     1. `Usar 1 / (u · (u + k)) = 1 / k · (1 / u - 1 / (u + k))`
-     2. `Aquí u = a · n - 1 y k = 3`
-
-## combine_telescoping_fraction_affine_symbolic_coeff_shifted_gap_three (telescoping_fraction)
-
-- Source: `1/3*(1/(a*n-1) - 1/(a*n+2))`
-- Target: `1/((a*n-1)*(a*n+2))`
-- Result: `1 / ((a * n + 2) * (a * n - 1))`
-- Web step count: `1`
-- Web substep count: `2`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: ((1 / (a * n - 1) - 1 / (a * n + 2)) * 1)/3
-Target: 1 / ((a * n + 2) * (a * n - 1))
-Strategy: combine fraction
-Steps (Aggressive Mode):
-1. Recompose the telescoping partial fractions into a single fraction  [Telescoping Fraction Combine]
-   Before: 1 / 3 * (1 / (a * n - 1) - 1 / (a * n + 2))
-   Cambio local: 1 / 3 * (1 / (a * n - 1) - 1 / (a * n + 2)) -> 1 / ((a * n + 2) * (a * n - 1))
-   After: 1 / ((a * n + 2) * (a * n - 1))
-Result: 1 / ((a * n + 2) * (a * n - 1))
-ℹ️ Requires:
-  • a^2 * n^2 + a * n - 2 ≠ 0
-```
-
-### Web / JSON Steps
-
-1. `Recomponer fracción telescópica`
-   - before: `1/3 · (1/(a · n - 1) - 1/(a · n + 2))`
-   - after: `1/((a · n + 2) · (a · n - 1))`
-   - substeps:
-     1. `Usar 1 / k · (1 / u - 1 / (u + k)) = 1 / (u · (u + k))`
-     2. `Aquí u = a · n - 1 y k = 3`
-
-## split_telescoping_fraction_symbolic_shift_gap (telescoping_fraction)
-
-- Source: `1/((n+a)*(n+b))`
-- Target: `1/(b-a)*(1/(n+a) - 1/(n+b))`
-- Result: `((1 / (a + n) - 1 / (b + n)) * 1)/((b - a))`
-- Web step count: `1`
-- Web substep count: `2`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: 1 / ((a + n) * (b + n))
-Target: ((1 / (a + n) - 1 / (b + n)))/((b - a))
-Strategy: expand fraction
-Steps (Aggressive Mode):
-1. Split into telescoping partial fractions  [Telescoping Fraction Split]
-   Before: 1 / ((a + n) * (b + n))
-   Cambio local: 1 / ((a + n) * (b + n)) -> 1 / (b - a) * (1 / (a + n) - 1 / (b + n))
-   After: ((1 / (a + n) - 1 / (b + n)))/((b - a))
-Result: 1 / (b - a) * (1 / (a + n) - 1 / (b + n))
-ℹ️ Requires:
-  • a + n ≠ 0
-  • a - b ≠ 0
-  • b + n ≠ 0
-```
-
-### Web / JSON Steps
-
-1. `Descomponer en fracciones telescópicas`
-   - before: `1/((a + n) · (b + n))`
-   - after: `1/(b - a) · (1/(a + n) - 1/(b + n))`
-   - substeps:
-     1. `Usar 1 / (u · (u + k)) = 1 / k · (1 / u - 1 / (u + k))`
-     2. `Aquí u = a + n y k = b - a`
-
-## combine_telescoping_fraction_symbolic_shift_gap (telescoping_fraction)
-
-- Source: `1/(b-a)*(1/(n+a) - 1/(n+b))`
-- Target: `1/((n+a)*(n+b))`
-- Result: `1 / ((a + n) * (b + n))`
-- Web step count: `1`
-- Web substep count: `2`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: ((1 / (a + n) - 1 / (b + n)) * 1)/((b - a))
-Target: 1 / ((a + n) * (b + n))
-Strategy: combine fraction
-Steps (Aggressive Mode):
-1. Recompose the telescoping partial fractions into a single fraction  [Telescoping Fraction Combine]
-   Before: 1 / (b - a) * (1 / (a + n) - 1 / (b + n))
-   Cambio local: 1 / (b - a) * (1 / (a + n) - 1 / (b + n)) -> 1 / ((a + n) * (b + n))
-   After: 1 / ((a + n) * (b + n))
-Result: 1 / ((a + n) * (b + n))
-ℹ️ Requires:
-  • n^2 + a * b + a * n + b * n ≠ 0
-```
-
-### Web / JSON Steps
-
-1. `Recomponer fracción telescópica`
-   - before: `1/(b - a) · (1/(a + n) - 1/(b + n))`
-   - after: `1/((a + n) · (b + n))`
-   - substeps:
-     1. `Usar 1 / k · (1 / u - 1 / (u + k)) = 1 / (u · (u + k))`
-     2. `Aquí u = a + n y k = b - a`
-
 ## split_telescoping_fraction_affine_symbolic_shift_gap (telescoping_fraction)
 
 - Source: `1/((a*n+b)*(a*n+c))`
@@ -6748,9 +5411,9 @@ Steps (Aggressive Mode):
    After: ((1 / (a * n + b) - 1 / (a * n + c)))/((c - b))
 Result: 1 / (c - b) * (1 / (a * n + b) - 1 / (a * n + c))
 ℹ️ Requires:
+  • a * n + c ≠ 0
   • a * n + b ≠ 0
   • b - c ≠ 0
-  • a * n + c ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -6818,9 +5481,9 @@ Steps (Aggressive Mode):
    After: ((1 / (x - 1) - 1 / (x + 1)))/2
 Result: 1 / 2 * (1 / (x - 1) - 1 / (x + 1))
 ℹ️ Requires:
-  • 2 ≠ 0
-  • x + 1 ≠ 0
   • x - 1 ≠ 0
+  • x + 1 ≠ 0
+  • 2 ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -6866,41 +5529,6 @@ Result: 1 / (x^(2) - 1)
    - substeps:
      1. `Usar 1 / k · (1 / u - 1 / (u + k)) = 1 / (u · (u + k))`
      2. `Aquí u = x - 1 y k = 2`
-
-## split_telescoping_fraction_shifted_quadratic_unfactored (telescoping_fraction)
-
-- Source: `1/(x^2+3*x+2)`
-- Target: `1/(x+1) - 1/(x+2)`
-- Result: `1 / (x + 1) - 1 / (x + 2)`
-- Web step count: `1`
-- Web substep count: `2`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: 1 / (x^2 + 3 * x + 2)
-Target: 1 / (x + 1) - 1 / (x + 2)
-Strategy: expand fraction
-Steps (Aggressive Mode):
-1. Split into telescoping partial fractions  [Telescoping Fraction Split]
-   Before: 1 / (x^(2) + 3 * x + 2)
-   Cambio local: 1 / (x^(2) + 3 * x + 2) -> 1 / (x + 1) - 1 / (x + 2)
-   After: 1 / (x + 1) - 1 / (x + 2)
-Result: 1 / (x + 1) - 1 / (x + 2)
-ℹ️ Requires:
-  • x + 1 ≠ 0
-  • x + 2 ≠ 0
-```
-
-### Web / JSON Steps
-
-1. `Descomponer en fracciones telescópicas`
-   - before: `1/(x^2 + 3 · x + 2)`
-   - after: `1/(x + 1) - 1/(x + 2)`
-   - substeps:
-     1. `Usar 1 / (u · (u + 1)) = 1 / u - 1 / (u + 1)`
-     2. `Aquí u = x + 1`
 
 ## combine_telescoping_fraction_shifted_quadratic_unfactored (telescoping_fraction)
 
@@ -6959,7 +5587,7 @@ Steps (Aggressive Mode):
    After: ((1 / (x - a) - 1 / (a + x)))/(2 * a)
 Result: 1 / (2 * a) * (1 / (x - a) - 1 / (a + x))
 ℹ️ Requires:
-  • 2 * a ≠ 0
+  • a ≠ 0
   • a + x ≠ 0
   • a - x ≠ 0
 ```
@@ -7041,38 +5669,104 @@ Result: (x + 1) / (x - 1)
      1. `Poner la parte entera sobre el mismo denominador`
      2. `Sumar los numeradores y conservar el denominador`
 
-## small_polynomial_product (polynomial_product)
+## combine_symbolic_whole_plus_remainder_into_fraction (fraction_combine)
 
-- Source: `(x - 1)*(x^5 + x^4 + x^3 + x^2 + x + 1)`
-- Target: `x^6 - 1`
-- Result: `x^6 - 1`
+- Source: `a + (b-a*c)/(x+c)`
+- Target: `(a*x+b)/(x+c)`
+- Result: `(a * x + b) / (c + x)`
 - Web step count: `1`
-- Web substep count: `3`
+- Web substep count: `2`
 - Flags: none
 
 ### CLI
 
 ```text
-Parsed: (x^5 + x^4 + x^3 + x^2 + x + 1) * (x - 1)
-Target: x^6 - 1
-Strategy: expand
+Parsed: (b - a * c) / (c + x) + a
+Target: (a * x + b) / (c + x)
+Strategy: combine fraction
 Steps (Aggressive Mode):
-1. Expand the expression distributively  [Expand]
-   Before: (x^(5) + x^(4) + x^(3) + x^(2) + x + 1) * (x - 1)
-   Cambio local: (x^(5) + x^(4) + x^(3) + x^(2) + x + 1) * (x - 1) -> x^(6) - 1
-   After: x^6 - 1
-Result: x^(6) - 1
+1. Combine the whole part with the remaining fraction  [Mixed Fraction Combine]
+   Before: (b - a * c) / (c + x) + a
+   After: (a * x + b) / (c + x)
+Result: (a * x + b) / (c + x)
+ℹ️ Requires:
+  • c + x ≠ 0
 ```
 
 ### Web / JSON Steps
 
-1. `Expandir la expresión`
-   - before: `(x^5 + x^4 + x^3 + x^2 + x + 1) · (x - 1)`
-   - after: `x^6 - 1`
+1. `Unir parte entera y fracción`
+   - before: `(b - a · c)/(c + x) + a`
+   - after: `(a · x + b)/(c + x)`
    - substeps:
-     1. `Distribuir cada término del producto`
-     2. `Agrupar los términos del mismo grado`
-     3. `Los términos intermedios se cancelan por parejas`
+     1. `Poner la parte entera sobre el mismo denominador`
+     2. `Sumar los numeradores y conservar el denominador`
+
+## combine_scaled_symbolic_whole_plus_remainder_into_fraction (fraction_combine)
+
+- Source: `a/c + (b-a*d/c)/(c*x+d)`
+- Target: `(a*x+b)/(c*x+d)`
+- Result: `(a * x + b) / (c * x + d)`
+- Web step count: `1`
+- Web substep count: `2`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: a / c + (b - a * d / c) / (c * x + d)
+Target: (a * x + b) / (c * x + d)
+Strategy: combine fraction
+Steps (Aggressive Mode):
+1. Combine the whole part with the remaining fraction  [Mixed Fraction Combine]
+   Before: a / c + (b - a * d / c) / (c * x + d)
+   After: (a * x + b) / (c * x + d)
+Result: (a * x + b) / (c * x + d)
+ℹ️ Requires:
+  • c * x + d ≠ 0
+```
+
+### Web / JSON Steps
+
+1. `Unir parte entera y fracción`
+   - before: `a/c + (b - a · d/c)/(c · x + d)`
+   - after: `(a · x + b)/(c · x + d)`
+   - substeps:
+     1. `Poner la parte entera sobre el mismo denominador`
+     2. `Sumar los numeradores y conservar el denominador`
+
+## combine_negative_scaled_symbolic_whole_plus_remainder_into_fraction (fraction_combine)
+
+- Source: `-a/c + (b+a*d/c)/(d-c*x)`
+- Target: `(a*x+b)/(d-c*x)`
+- Result: `(a * x + b) / (d - c * x)`
+- Web step count: `1`
+- Web substep count: `2`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: -a / c + (a * d / c + b) / (d - c * x)
+Target: (a * x + b) / (d - c * x)
+Strategy: combine fraction
+Steps (Aggressive Mode):
+1. Combine the whole part with the remaining fraction  [Mixed Fraction Combine]
+   Before: -a / c + (a * d / c + b) / (d - c * x)
+   After: (a * x + b) / (d - c * x)
+Result: (a * x + b) / (d - c * x)
+ℹ️ Requires:
+  • c * x - d ≠ 0
+```
+
+### Web / JSON Steps
+
+1. `Unir parte entera y fracción`
+   - before: `-a/c + ((a · d)/c + b)/(d - c · x)`
+   - after: `(a · x + b)/(d - c · x)`
+   - substeps:
+     1. `Poner la parte entera sobre el mismo denominador`
+     2. `Sumar los numeradores y conservar el denominador`
 
 ## expand_cube_sum_product (polynomial_product)
 
@@ -7268,6 +5962,167 @@ Result: x^(8) - 1
    - substeps:
      1. `Multiplicar y reagrupar por grados para cancelar términos intermedios`
 
+## expand_ninth_power_plus_product (polynomial_product)
+
+- Source: `(x^3+1)*(x^6-x^3+1)`
+- Target: `x^9+1`
+- Result: `x^9 + 1`
+- Web step count: `1`
+- Web substep count: `3`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: (x^3 + 1) * (x^6 - x^3 + 1)
+Target: x^9 + 1
+Strategy: expand
+Steps (Aggressive Mode):
+1. Expand the expression distributively  [Expand]
+   Before: (x^(3) + 1) * (x^(6) - x^(3) + 1)
+   Cambio local: (x^(3) + 1) * (x^(6) - x^(3) + 1) -> x^(9) + 1
+   After: x^9 + 1
+Result: x^(9) + 1
+```
+
+### Web / JSON Steps
+
+1. `Expandir la expresión`
+   - before: `(x^3 + 1) · (x^6 - x^3 + 1)`
+   - after: `x^9 + 1`
+   - substeps:
+     1. `Distribuir cada término del producto`
+     2. `Agrupar los términos del mismo grado`
+     3. `Los términos intermedios se cancelan por parejas`
+
+## expand_symbolic_cube_sum_product (polynomial_product)
+
+- Source: `(x+a)*(x^2-a*x+a^2)`
+- Target: `x^3+a^3`
+- Result: `a^3 + x^3`
+- Web step count: `1`
+- Web substep count: `2`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: (a + x) * (a^2 + x^2 - a * x)
+Target: a^3 + x^3
+Strategy: expand
+Steps (Aggressive Mode):
+1. Expand the expression distributively  [Expand]
+   Before: (a + x) * (a^(2) + x^(2) - a * x)
+   Cambio local: (a + x) * (a^(2) + x^(2) - a * x) -> a^(3) + x^(3)
+   After: a^3 + x^3
+Result: a^(3) + x^(3)
+```
+
+### Web / JSON Steps
+
+1. `Expandir la expresión`
+   - before: `(a + x) · (x^2 - a · x + a^2)`
+   - after: `a^3 + x^3`
+   - substeps:
+     1. `Reconocer el patrón (a + b)(a^2 - ab + b^2)`
+     2. `Aplicar (a + b)(a^2 - ab + b^2) = a^3 + b^3`
+
+## expand_symbolic_cube_difference_product (polynomial_product)
+
+- Source: `(x-a)*(x^2+a*x+a^2)`
+- Target: `x^3-a^3`
+- Result: `x^3 - a^3`
+- Web step count: `1`
+- Web substep count: `2`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: (a^2 + x^2 + a * x) * (x - a)
+Target: x^3 - a^3
+Strategy: expand
+Steps (Aggressive Mode):
+1. Expand the expression distributively  [Expand]
+   Before: (a^(2) + x^(2) + a * x) * (x - a)
+   Cambio local: (a^(2) + x^(2) + a * x) * (x - a) -> x^(3) - a^(3)
+   After: x^3 - a^3
+Result: x^(3) - a^(3)
+```
+
+### Web / JSON Steps
+
+1. `Expandir la expresión`
+   - before: `(a^2 + x^2 + a · x) · (x - a)`
+   - after: `x^3 - a^3`
+   - substeps:
+     1. `Reconocer el patrón (a - b)(a^2 + ab + b^2)`
+     2. `Aplicar (a - b)(a^2 + ab + b^2) = a^3 - b^3`
+
+## expand_symbolic_sixth_power_plus_product (polynomial_product)
+
+- Source: `(x^2+a^2)*(x^4-a^2*x^2+a^4)`
+- Target: `x^6+a^6`
+- Result: `a^6 + x^6`
+- Web step count: `1`
+- Web substep count: `2`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: (a^2 + x^2) * (a^4 + x^4 - a^2 * x^2)
+Target: a^6 + x^6
+Strategy: expand
+Steps (Aggressive Mode):
+1. Expand the expression distributively  [Expand]
+   Before: (a^(2) + x^(2)) * (a^(4) + x^(4) - a^(2) * x^(2))
+   Cambio local: (a^(2) + x^(2)) * (a^(4) + x^(4) - a^(2) * x^(2)) -> a^(6) + x^(6)
+   After: a^6 + x^6
+Result: a^(6) + x^(6)
+```
+
+### Web / JSON Steps
+
+1. `Expandir la expresión`
+   - before: `(a^2 + x^2) · (x^4 - a^2 · x^2 + a^4)`
+   - after: `a^6 + x^6`
+   - substeps:
+     1. `Reconocer el patrón (a^2 + b^2)(a^4 - a^2b^2 + b^4)`
+     2. `Aplicar (a^2 + b^2)(a^4 - a^2b^2 + b^4) = a^6 + b^6`
+
+## expand_symbolic_sixth_power_minus_product (polynomial_product)
+
+- Source: `(x^2-a^2)*(x^4+a^2*x^2+a^4)`
+- Target: `x^6-a^6`
+- Result: `x^6 - a^6`
+- Web step count: `1`
+- Web substep count: `2`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: (a^4 + x^4 + a^2 * x^2) * (x^2 - a^2)
+Target: x^6 - a^6
+Strategy: expand
+Steps (Aggressive Mode):
+1. Expand the expression distributively  [Expand]
+   Before: (a^(4) + x^(4) + a^(2) * x^(2)) * (x^(2) - a^(2))
+   Cambio local: (a^(4) + x^(4) + a^(2) * x^(2)) * (x^(2) - a^(2)) -> x^(6) - a^(6)
+   After: x^6 - a^6
+Result: x^(6) - a^(6)
+```
+
+### Web / JSON Steps
+
+1. `Expandir la expresión`
+   - before: `(a^4 + x^4 + a^2 · x^2) · (x^2 - a^2)`
+   - after: `x^6 - a^6`
+   - substeps:
+     1. `Reconocer el patrón (a^2 - b^2)(a^4 + a^2b^2 + b^4)`
+     2. `Aplicar (a^2 - b^2)(a^4 + a^2b^2 + b^4) = a^6 - b^6`
+
 ## factor_geometric_difference_power_6 (factor)
 
 - Source: `x^6 - 1`
@@ -7332,38 +6187,6 @@ Result: x^(7 / 6)
    - after: `sqrt[6]x^7`
    - substeps: none
 
-## merge_same_base_fractional_powers_to_square_root (power_merge)
-
-- Source: `x^(1/3)*x^(1/6)`
-- Target: `x^(1/2)`
-- Result: `x^(1 / 2)`
-- Web step count: `1`
-- Web substep count: `0`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: x^(1 / 3) * x^(1 / 6)
-Target: x^(1 / 2)
-Strategy: combine powers
-Steps (Aggressive Mode):
-1. Combine powers with same base (n-ary)  [Combine powers with same base (n-ary)]
-   Before: x^(1 / 3) * x^(1 / 6)
-   Cambio local: x^(1 / 3) * x^(1 / 6) -> x^(1 / 2)
-   After: x^(1 / 2)
-Result: x^(1 / 2)
-ℹ️ Requires:
-  • 2 ≠ 0
-```
-
-### Web / JSON Steps
-
-1. `Sumar exponentes de la misma base`
-   - before: `sqrt[3]x · sqrt[6]x`
-   - after: `sqrt(x)`
-   - substeps: none
-
 ## merge_same_base_fractional_powers_to_integer (power_merge)
 
 - Source: `x^(3/4)*x^(1/4)`
@@ -7392,46 +6215,6 @@ Result: x
 1. `Sumar exponentes de la misma base`
    - before: `sqrt[4]x · sqrt[4]x^3`
    - after: `x`
-   - substeps: none
-
-## merge_mixed_root_and_power (power_merge)
-
-- Source: `sqrt(x)*x^(2/3)`
-- Target: `x^(7/6)`
-- Result: `x^(7 / 6)`
-- Web step count: `2`
-- Web substep count: `0`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: sqrt(x) * x^(2 / 3)
-Target: x^(7 / 6)
-Strategy: combine powers
-Steps (Aggressive Mode):
-1. sqrt(x) = x^(1/2)  [Canonicalize Roots]
-   Before: sqrt(x) * x^(2 / 3)
-   Cambio local: sqrt(x) * x^(2 / 3) -> x^(1/2) * x^(2 / 3)
-   After: x^(1/2) * x^(2 / 3)
-2. Combine powers with same base (n-ary)  [Combine powers with same base (n-ary)]
-   Before: x^(1/2) * x^(2 / 3)
-   Cambio local: x^(1/2) * x^(2 / 3) -> x^(7 / 6)
-   After: x^(7 / 6)
-Result: x^(7 / 6)
-ℹ️ Requires:
-  • 6 ≠ 0
-```
-
-### Web / JSON Steps
-
-1. `Reescribir la raíz como potencia fraccionaria`
-   - before: `sqrt(x) · sqrt[3]x^2`
-   - after: `sqrt(x) · sqrt[3]x^2`
-   - substeps: none
-2. `Sumar exponentes de la misma base`
-   - before: `sqrt(x) · sqrt[3]x^2`
-   - after: `sqrt[6]x^7`
    - substeps: none
 
 ## merge_mixed_root_and_fractional_power_five_sixths (power_merge)
@@ -7474,106 +6257,6 @@ Result: x^(5 / 6)
    - after: `sqrt[6]x^5`
    - substeps: none
 
-## merge_same_base_fractional_powers_alt_variable_to_integer (power_merge)
-
-- Source: `y^(1/3)*y^(2/3)`
-- Target: `y`
-- Result: `y`
-- Web step count: `1`
-- Web substep count: `0`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: y^(1 / 3) * y^(2 / 3)
-Target: y
-Strategy: combine powers
-Steps (Aggressive Mode):
-1. Combine powers with same base (n-ary)  [Combine powers with same base (n-ary)]
-   Before: y^(1 / 3) * y^(2 / 3)
-   Cambio local: y^(1 / 3) * y^(2 / 3) -> y
-   After: y
-Result: y
-```
-
-### Web / JSON Steps
-
-1. `Sumar exponentes de la misma base`
-   - before: `sqrt[3]y · sqrt[3]y^2`
-   - after: `y`
-   - substeps: none
-
-## merge_same_base_fractional_powers_three_factors_to_integer (power_merge)
-
-- Source: `x^(1/2)*x^(1/4)*x^(1/4)`
-- Target: `x`
-- Result: `x`
-- Web step count: `1`
-- Web substep count: `0`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: x^(1 / 2) * x^(1 / 4) * x^(1 / 4)
-Target: x
-Strategy: combine powers
-Steps (Aggressive Mode):
-1. Combine powers with same base (n-ary)  [Combine powers with same base (n-ary)]
-   Before: x^(1 / 2) * x^(1 / 4) * x^(1 / 4)
-   Cambio local: x^(1 / 2) * x^(1 / 4) * x^(1 / 4) -> x
-   After: x
-Result: x
-```
-
-### Web / JSON Steps
-
-1. `Sumar exponentes de la misma base`
-   - before: `sqrt(x) · sqrt[4]x · sqrt[4]x`
-   - after: `x`
-   - substeps: none
-
-## merge_mixed_root_and_fractional_power_alt_variable_two_thirds (power_merge)
-
-- Source: `sqrt(y)*y^(1/6)`
-- Target: `y^(2/3)`
-- Result: `y^(2 / 3)`
-- Web step count: `2`
-- Web substep count: `0`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: sqrt(y) * y^(1 / 6)
-Target: y^(2 / 3)
-Strategy: combine powers
-Steps (Aggressive Mode):
-1. sqrt(x) = x^(1/2)  [Canonicalize Roots]
-   Before: sqrt(y) * y^(1 / 6)
-   Cambio local: sqrt(y) * y^(1 / 6) -> y^(1/2) * y^(1 / 6)
-   After: y^(1/2) * y^(1 / 6)
-2. Combine powers with same base (n-ary)  [Combine powers with same base (n-ary)]
-   Before: y^(1/2) * y^(1 / 6)
-   Cambio local: y^(1/2) * y^(1 / 6) -> y^(2 / 3)
-   After: y^(2 / 3)
-Result: y^(2 / 3)
-ℹ️ Requires:
-  • 3 ≠ 0
-```
-
-### Web / JSON Steps
-
-1. `Reescribir la raíz como potencia fraccionaria`
-   - before: `sqrt(y) · sqrt[6]y`
-   - after: `sqrt(y) · sqrt[6]y`
-   - substeps: none
-2. `Sumar exponentes de la misma base`
-   - before: `sqrt(y) · sqrt[6]y`
-   - after: `sqrt[3]y^2`
-   - substeps: none
-
 ## merge_same_base_integer_and_fractional_power (power_merge)
 
 - Source: `x*x^(1/3)`
@@ -7604,6 +6287,135 @@ Result: x^(4 / 3)
 1. `Sumar exponentes de la misma base`
    - before: `x · sqrt[3]x`
    - after: `sqrt[3]x^4`
+   - substeps: none
+
+## merge_same_base_symbolic_powers (power_merge)
+
+- Source: `x^a*x^b`
+- Target: `x^(a+b)`
+- Result: `x^(a + b)`
+- Web step count: `1`
+- Web substep count: `0`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: x^a * x^b
+Target: x^(a + b)
+Strategy: combine powers
+Steps (Aggressive Mode):
+1. Combine powers with same base (n-ary)  [Combine powers with same base (n-ary)]
+   Before: x^(a) * x^(b)
+   Cambio local: x^(a) * x^(b) -> x^(a + b)
+   After: x^(a + b)
+Result: x^(a + b)
+```
+
+### Web / JSON Steps
+
+1. `Sumar exponentes de la misma base`
+   - before: `x^a · x^b`
+   - after: `x^(a + b)`
+   - substeps: none
+
+## merge_same_base_integer_and_symbolic_power (power_merge)
+
+- Source: `x*x^a`
+- Target: `x^(a+1)`
+- Result: `x^(a + 1)`
+- Web step count: `1`
+- Web substep count: `0`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: x * x^a
+Target: x^(a + 1)
+Strategy: combine powers
+Steps (Aggressive Mode):
+1. Combine powers with same base (n-ary)  [Combine powers with same base (n-ary)]
+   Before: x * x^(a)
+   Cambio local: x * x^(a) -> x^(a + 1)
+   After: x^(a + 1)
+Result: x^(a + 1)
+```
+
+### Web / JSON Steps
+
+1. `Sumar exponentes de la misma base`
+   - before: `x · x^a`
+   - after: `x^(a + 1)`
+   - substeps: none
+
+## merge_mixed_root_and_symbolic_power (power_merge)
+
+- Source: `sqrt(x)*x^a`
+- Target: `x^(a+1/2)`
+- Result: `x^(1 / 2 + a)`
+- Web step count: `2`
+- Web substep count: `0`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: sqrt(x) * x^a
+Target: x^(1 / 2 + a)
+Strategy: combine powers
+Steps (Aggressive Mode):
+1. sqrt(x) = x^(1/2)  [Canonicalize Roots]
+   Before: sqrt(x) * x^(a)
+   After: sqrt(x) * x^(a)
+2. Combine powers with same base (n-ary)  [Combine powers with same base (n-ary)]
+   Before: sqrt(x) * x^(a)
+   Cambio local: sqrt(x) * x^(a) -> x^(1 / 2 + a)
+   After: x^(1 / 2 + a)
+Result: x^(1 / 2 + a)
+ℹ️ Requires:
+  • 2 ≠ 0
+```
+
+### Web / JSON Steps
+
+1. `Reescribir la raíz como potencia fraccionaria`
+   - before: `sqrt(x) · x^a`
+   - after: `sqrt(x) · x^a`
+   - substeps: none
+2. `Sumar exponentes de la misma base`
+   - before: `sqrt(x) · x^a`
+   - after: `x^(1/2 + a)`
+   - substeps: none
+
+## merge_four_same_base_symbolic_powers (power_merge)
+
+- Source: `x^a*x^b*x^c*x^d`
+- Target: `x^(a+b+c+d)`
+- Result: `x^(a + b + c + d)`
+- Web step count: `1`
+- Web substep count: `0`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: x^a * x^b * x^c * x^d
+Target: x^(a + b + c + d)
+Strategy: combine powers
+Steps (Aggressive Mode):
+1. Combine powers with same base (n-ary)  [Combine powers with same base (n-ary)]
+   Before: x^(a) * x^(b) * x^(c) * x^(d)
+   Cambio local: x^(a) * x^(b) * x^(c) * x^(d) -> x^(a + b + c + d)
+   After: x^(a + b + c + d)
+Result: x^(a + b + c + d)
+```
+
+### Web / JSON Steps
+
+1. `Sumar exponentes de la misma base`
+   - before: `x^a · x^b · x^c · x^d`
+   - after: `x^(a + b + c + d)`
    - substeps: none
 
 ## log_sum_difference_cancels_to_zero (simplify)
@@ -7803,138 +6615,6 @@ Result: sqrt(y) * |y|^(3)
      1. `Separar la mitad entera de la mitad radical`
      2. `Usar que queda una raíz cuadrada del mismo factor`
 
-## expand_even_higher_odd_half_power (radical_power)
-
-- Source: `x^(7/2)`
-- Target: `abs(x)^3*sqrt(x)`
-- Result: `sqrt(x) * |x|^3`
-- Web step count: `1`
-- Web substep count: `2`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: x^(7 / 2)
-Target: sqrt(x) * |x|^3
-Strategy: expand odd half power
-Steps (Aggressive Mode):
-1. Rewrite an odd half-integer power using a square root  [Expand Odd Half Power]
-   Before: x^(7 / 2)
-   After: sqrt(x) * |x|^3
-Result: sqrt(x) * |x|^(3)
-ℹ️ Requires:
-  • x ≥ 0
-```
-
-### Web / JSON Steps
-
-1. `Reescribir potencia semientera impar`
-   - before: `sqrt(x^7)`
-   - after: `sqrt(x) · |x|^3`
-   - substeps:
-     1. `Separar la mitad entera de la mitad radical`
-     2. `Usar que queda una raíz cuadrada del mismo factor`
-
-## expand_even_higher_odd_half_power_after_simplify (radical_power)
-
-- Source: `sqrt(x^7)`
-- Target: `abs(x)^3*sqrt(x)`
-- Result: `sqrt(x) * |x|^3`
-- Web step count: `1`
-- Web substep count: `2`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: sqrt(x^7)
-Target: sqrt(x) * |x|^3
-Strategy: expand odd half power
-Steps (Aggressive Mode):
-1. Rewrite an odd half-integer power using a square root  [Expand Odd Half Power]
-   Before: sqrt(x^(7))
-   After: sqrt(x) * |x|^3
-Result: sqrt(x) * |x|^(3)
-ℹ️ Requires:
-  • x ≥ 0
-```
-
-### Web / JSON Steps
-
-1. `Reescribir potencia semientera impar`
-   - before: `sqrt(x^7)`
-   - after: `sqrt(x) · |x|^3`
-   - substeps:
-     1. `Separar la mitad entera de la mitad radical`
-     2. `Usar que queda una raíz cuadrada del mismo factor`
-
-## expand_even_higher_odd_half_power_alt_var (radical_power)
-
-- Source: `y^(9/2)`
-- Target: `abs(y)^4*sqrt(y)`
-- Result: `sqrt(y) * |y|^4`
-- Web step count: `1`
-- Web substep count: `2`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: y^(9 / 2)
-Target: sqrt(y) * |y|^4
-Strategy: expand odd half power
-Steps (Aggressive Mode):
-1. Rewrite an odd half-integer power using a square root  [Expand Odd Half Power]
-   Before: y^(9 / 2)
-   After: sqrt(y) * |y|^4
-Result: sqrt(y) * |y|^(4)
-ℹ️ Requires:
-  • y ≥ 0
-```
-
-### Web / JSON Steps
-
-1. `Reescribir potencia semientera impar`
-   - before: `sqrt(y^9)`
-   - after: `sqrt(y) · |y|^4`
-   - substeps:
-     1. `Separar la mitad entera de la mitad radical`
-     2. `Usar que queda una raíz cuadrada del mismo factor`
-
-## expand_even_higher_odd_half_power_after_simplify_alt_var (radical_power)
-
-- Source: `sqrt(y^9)`
-- Target: `abs(y)^4*sqrt(y)`
-- Result: `sqrt(y) * |y|^4`
-- Web step count: `1`
-- Web substep count: `2`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: sqrt(y^9)
-Target: sqrt(y) * |y|^4
-Strategy: expand odd half power
-Steps (Aggressive Mode):
-1. Rewrite an odd half-integer power using a square root  [Expand Odd Half Power]
-   Before: sqrt(y^(9))
-   After: sqrt(y) * |y|^4
-Result: sqrt(y) * |y|^(4)
-ℹ️ Requires:
-  • y ≥ 0
-```
-
-### Web / JSON Steps
-
-1. `Reescribir potencia semientera impar`
-   - before: `sqrt(y^9)`
-   - after: `sqrt(y) · |y|^4`
-   - substeps:
-     1. `Separar la mitad entera de la mitad radical`
-     2. `Usar que queda una raíz cuadrada del mismo factor`
-
 ## factor_out_with_division (conditional_factor)
 
 - Source: `a*x + b*x + c`
@@ -7980,13 +6660,13 @@ Result: x * (c / x + a + b)
 ### CLI
 
 ```text
-Parsed: fact(n + 1) / fact(n)
+Parsed: (n + 1)! / n!
 Target: n + 1
 Strategy: simplify
 Steps (Aggressive Mode):
 1. Cancel consecutive factorials  [Consecutive Factorial Ratio]
-   Before: fact(n + 1) / fact(n)
-   Cambio local: fact(n + 1) / fact(n) -> n + 1
+   Before: (n + 1)! / n!
+   Cambio local: (n + 1)! / n! -> n + 1
    After: n + 1
 Result: n + 1
 ```
@@ -7994,43 +6674,11 @@ Result: n + 1
 ### Web / JSON Steps
 
 1. `Cancelar factoriales consecutivos`
-   - before: `fact(n + 1)/fact(n)`
+   - before: `(n + 1)!/n!`
    - after: `n + 1`
    - substeps:
      1. `Escribir el factorial superior como el siguiente número por el factorial anterior`
      2. `Cancelar el factorial común`
-
-## inverse_tan_identity_cancels_to_zero (simplify)
-
-- Source: `atan(3) + (atan(1/3) - pi/2)`
-- Target: `0`
-- Result: `0`
-- Web step count: `1`
-- Web substep count: `2`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: atan(3) + atan(1 / 3) - pi / 2
-Target: 0
-Strategy: simplify
-Steps (Aggressive Mode):
-1. arctan(x) + arctan(1/x) = π/2  [Inverse Tan Relations]
-   Before: arctan(1/3) + arctan(3) - 1/2 * pi
-   Cambio local: arctan(1/3) + arctan(3) -> pi / 2
-   After: 0
-Result: 0
-```
-
-### Web / JSON Steps
-
-1. `Aplicar identidad de arctangentes`
-   - before: `arctan(1/3) + arctan(3) - 1/2 · pi`
-   - after: `pi/2 - 1/2 · pi`
-   - substeps:
-     1. `Usar arctan(u) + arctan(1/u) = pi/2`
-     2. `Juntar la pareja que encaja con la identidad`
 
 ## contract_trig_cos_diff_sin_diff_quotient (trig_contract)
 
@@ -8142,43 +6790,13 @@ Result: 1
    - after: `1`
    - substeps: none
 
-## csc_cot_pythagorean_to_one (simplify)
-
-- Source: `csc(x)^2 - cot(x)^2`
-- Target: `1`
-- Result: `1`
-- Web step count: `1`
-- Web substep count: `0`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: csc(x)^2 - cot(x)^2
-Target: 1
-Strategy: simplify
-Steps (Aggressive Mode):
-1. Recognize csc²(u) - cot²(u) = 1  [Reciprocal Pythagorean Identity]
-   Before: csc(x)^(2) - cot(x)^(2)
-   Cambio local: csc(x)^(2) - cot(x)^(2) -> 1
-   After: 1
-Result: 1
-```
-
-### Web / JSON Steps
-
-1. `Aplicar identidad pitagórica recíproca`
-   - before: `csc(x)^2 - cot(x)^2`
-   - after: `1`
-   - substeps: none
-
 ## factor_symbolic_binomial_cube (factor)
 
 - Source: `a^3 + 3*a^2*b + 3*a*b^2 + b^3`
 - Target: `(a+b)^3`
 - Result: `(a + b)^3`
 - Web step count: `1`
-- Web substep count: `2`
+- Web substep count: `1`
 - Flags: none
 
 ### CLI
@@ -8202,7 +6820,6 @@ Result: (a + b)^(3)
    - after: `((a + b))^3`
    - substeps:
      1. `Usar a^3 + 3a^2b + 3ab^2 + b^3 = (a + b)^3`
-     2. `Aquí a = a y b = b`
 
 ## factor_symbolic_binomial_cube_minus (factor)
 
@@ -8210,7 +6827,7 @@ Result: (a + b)^(3)
 - Target: `(a-b)^3`
 - Result: `(a - b)^3`
 - Web step count: `1`
-- Web substep count: `2`
+- Web substep count: `1`
 - Flags: none
 
 ### CLI
@@ -8234,7 +6851,6 @@ Result: (a - b)^(3)
    - after: `((a - b))^3`
    - substeps:
      1. `Usar a^3 - 3a^2b + 3ab^2 - b^3 = (a - b)^3`
-     2. `Aquí a = a y b = b`
 
 ## integrate_prep_morrie_basic (integrate_prep)
 
@@ -8258,7 +6874,7 @@ Steps (Aggressive Mode):
    After: sin(8 * x) / (8 * sin(x))
 Result: sin(8 * x) / (8 * sin(x))
 ℹ️ Requires:
-  • 8 * sin(x) ≠ 0
+  • sin(x) ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -8269,40 +6885,6 @@ Result: sin(8 * x) / (8 * sin(x))
    - substeps:
      1. `Usar el telescopado de cosenos`
      2. `Aquí u = x`
-
-## integrate_prep_morrie_scaled (integrate_prep)
-
-- Source: `cos(3*x)*cos(6*x)`
-- Target: `sin(12*x)/(4*sin(3*x))`
-- Result: `sin(12 * x) / (4 * sin(3 * x))`
-- Web step count: `1`
-- Web substep count: `2`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: cos(3 * x) * cos(6 * x)
-Target: sin(12 * x) / (4 * sin(3 * x))
-Strategy: integrate prep
-Steps (Aggressive Mode):
-1. Apply Morrie's law  [Cos Product Telescoping]
-   Before: cos(3 * x) * cos(6 * x)
-   Cambio local: cos(3 * x) * cos(6 * x) -> sin(12 * x) / (4 * sin(3 * x))
-   After: sin(12 * x) / (4 * sin(3 * x))
-Result: sin(12 * x) / (4 * sin(3 * x))
-ℹ️ Requires:
-  • 4 * sin(3 * x) ≠ 0
-```
-
-### Web / JSON Steps
-
-1. `Aplicar telescopado de cosenos`
-   - before: `cos(3 · x) · cos(6 · x)`
-   - after: `sin(12 · x)/(4 · sin(3 · x))`
-   - substeps:
-     1. `Usar el telescopado de cosenos`
-     2. `Aquí u = 3 · x`
 
 ## integrate_prep_morrie_symbolic_argument (integrate_prep)
 
@@ -8326,7 +6908,7 @@ Steps (Aggressive Mode):
    After: sin(16 * u) / (16 * sin(u))
 Result: sin(16 * u) / (16 * sin(u))
 ℹ️ Requires:
-  • 16 * sin(u) ≠ 0
+  • sin(u) ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -8359,7 +6941,7 @@ Steps (Aggressive Mode):
    After: sin(4 * a * x) / (4 * sin(a * x))
 Result: sin(4 * a * x) / (4 * sin(a * x))
 ℹ️ Requires:
-  • 4 * sin(a * x) ≠ 0
+  • sin(a * x) ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -8367,40 +6949,6 @@ Result: sin(4 * a * x) / (4 * sin(a * x))
 1. `Aplicar telescopado de cosenos`
    - before: `cos(a · x) · cos(2 · a · x)`
    - after: `sin(4 · a · x)/(4 · sin(a · x))`
-   - substeps:
-     1. `Usar el telescopado de cosenos`
-     2. `Aquí u = a · x`
-
-## integrate_prep_morrie_symbolic_scale_longer (integrate_prep)
-
-- Source: `cos(a*x)*cos(2*a*x)*cos(4*a*x)`
-- Target: `sin(8*a*x)/(8*sin(a*x))`
-- Result: `sin(8 * a * x) / (8 * sin(a * x))`
-- Web step count: `1`
-- Web substep count: `2`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: cos(a * x) * cos(2 * a * x) * cos(4 * a * x)
-Target: sin(8 * a * x) / (8 * sin(a * x))
-Strategy: integrate prep
-Steps (Aggressive Mode):
-1. Apply Morrie's law  [Cos Product Telescoping]
-   Before: cos(a * x) * cos(2 * a * x) * cos(4 * a * x)
-   Cambio local: cos(a * x) * cos(2 * a * x) * cos(4 * a * x) -> sin(8 * a * x) / (8 * sin(a * x))
-   After: sin(8 * a * x) / (8 * sin(a * x))
-Result: sin(8 * a * x) / (8 * sin(a * x))
-ℹ️ Requires:
-  • 8 * sin(a * x) ≠ 0
-```
-
-### Web / JSON Steps
-
-1. `Aplicar telescopado de cosenos`
-   - before: `cos(a · x) · cos(2 · a · x) · cos(4 · a · x)`
-   - after: `sin(8 · a · x)/(8 · sin(a · x))`
    - substeps:
      1. `Usar el telescopado de cosenos`
      2. `Aquí u = a · x`
@@ -8436,69 +6984,6 @@ Result: cos(x) * cos(2 * x) * cos(4 * x)
    - substeps:
      1. `Expandir la ley de Morrie`
      2. `Aquí u = x`
-
-## integrate_prep_morrie_reverse_scaled (integrate_prep)
-
-- Source: `sin(12*x)/(4*sin(3*x))`
-- Target: `cos(3*x)*cos(6*x)`
-- Result: `cos(3 * x) * cos(6 * x)`
-- Web step count: `1`
-- Web substep count: `2`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: sin(12 * x) / (4 * sin(3 * x))
-Target: cos(3 * x) * cos(6 * x)
-Strategy: integrate prep
-Steps (Aggressive Mode):
-1. Apply Morrie's law  [Cos Product Telescoping]
-   Before: sin(12 * x) / (4 * sin(3 * x))
-   Cambio local: sin(12 * x) / (4 * sin(3 * x)) -> cos(3 * x) * cos(6 * x)
-   After: cos(3 * x) * cos(6 * x)
-Result: cos(3 * x) * cos(6 * x)
-```
-
-### Web / JSON Steps
-
-1. `Aplicar telescopado de cosenos`
-   - before: `sin(12 · x)/(4 · sin(3 · x))`
-   - after: `cos(3 · x) · cos(6 · x)`
-   - substeps:
-     1. `Expandir la ley de Morrie`
-     2. `Aquí u = 3 · x`
-
-## integrate_prep_morrie_reverse_symbolic_argument (integrate_prep)
-
-- Source: `sin(16*u)/(16*sin(u))`
-- Target: `cos(u)*cos(2*u)*cos(4*u)*cos(8*u)`
-- Result: `cos(u) * cos(2 * u) * cos(4 * u) * cos(8 * u)`
-- Web step count: `1`
-- Web substep count: `1`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: sin(16 * u) / (16 * sin(u))
-Target: cos(u) * cos(2 * u) * cos(4 * u) * cos(8 * u)
-Strategy: integrate prep
-Steps (Aggressive Mode):
-1. Apply Morrie's law  [Cos Product Telescoping]
-   Before: sin(16 * u) / (16 * sin(u))
-   Cambio local: sin(16 * u) / (16 * sin(u)) -> cos(u) * cos(2 * u) * cos(4 * u) * cos(8 * u)
-   After: cos(u) * cos(2 * u) * cos(4 * u) * cos(8 * u)
-Result: cos(u) * cos(2 * u) * cos(4 * u) * cos(8 * u)
-```
-
-### Web / JSON Steps
-
-1. `Aplicar telescopado de cosenos`
-   - before: `sin(16 · u)/(16 · sin(u))`
-   - after: `cos(u) · cos(2 · u) · cos(4 · u) · cos(8 · u)`
-   - substeps:
-     1. `Expandir la ley de Morrie`
 
 ## integrate_prep_morrie_reverse_symbolic_scale_longer (integrate_prep)
 
@@ -8589,8 +7074,8 @@ Steps (Aggressive Mode):
    After: sin(7 * x / 2) / sin(x / 2)
 Result: sin(7 * x / 2) / sin(x / 2)
 ℹ️ Requires:
-  • 2 ≠ 0
   • sin(x / 2) ≠ 0
+  • 2 ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -8601,75 +7086,6 @@ Result: sin(7 * x / 2) / sin(x / 2)
    - substeps:
      1. `Usar el núcleo de Dirichlet`
      2. `Aquí n = 3 y u = x`
-
-## integrate_prep_dirichlet_scaled (integrate_prep)
-
-- Source: `1 + 2*cos(3*x) + 2*cos(6*x)`
-- Target: `sin(15*x/2)/sin(3*x/2)`
-- Result: `sin(15 * x / 2) / sin(3 * x / 2)`
-- Web step count: `1`
-- Web substep count: `2`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: 2 * cos(3 * x) + 2 * cos(6 * x) + 1
-Target: sin(15 * x / 2) / sin(3 * x / 2)
-Strategy: integrate prep
-Steps (Aggressive Mode):
-1. Apply the Dirichlet kernel identity  [Dirichlet Kernel Identity]
-   Before: 2 * cos(3 * x) + 2 * cos(6 * x) + 1
-   Cambio local: 2 * cos(3 * x) + 2 * cos(6 * x) + 1 -> sin(15 * x / 2) / sin(3 * x / 2)
-   After: sin(15 * x / 2) / sin(3 * x / 2)
-Result: sin(15 * x / 2) / sin(3 * x / 2)
-ℹ️ Requires:
-  • 2 ≠ 0
-  • sin(3 * x / 2) ≠ 0
-```
-
-### Web / JSON Steps
-
-1. `Aplicar identidad del núcleo de Dirichlet`
-   - before: `2 · cos(3 · x) + 2 · cos(6 · x) + 1`
-   - after: `sin((15 · x)/2)/sin((3 · x)/2)`
-   - substeps:
-     1. `Usar el núcleo de Dirichlet`
-     2. `Aquí n = 2 y u = 3 · x`
-
-## integrate_prep_dirichlet_scaled_longer (integrate_prep)
-
-- Source: `1 + 2*cos(2*x) + 2*cos(4*x) + 2*cos(6*x)`
-- Target: `sin(7*x)/sin(x)`
-- Result: `sin(7 * x) / sin(x)`
-- Web step count: `1`
-- Web substep count: `2`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: 2 * cos(2 * x) + 2 * cos(4 * x) + 2 * cos(6 * x) + 1
-Target: sin(7 * x) / sin(x)
-Strategy: integrate prep
-Steps (Aggressive Mode):
-1. Apply the Dirichlet kernel identity  [Dirichlet Kernel Identity]
-   Before: 2 * cos(2 * x) + 2 * cos(4 * x) + 2 * cos(6 * x) + 1
-   Cambio local: 2 * cos(2 * x) + 2 * cos(4 * x) + 2 * cos(6 * x) + 1 -> sin(7 * x) / sin(x)
-   After: sin(7 * x) / sin(x)
-Result: sin(7 * x) / sin(x)
-ℹ️ Requires:
-  • sin(x) ≠ 0
-```
-
-### Web / JSON Steps
-
-1. `Aplicar identidad del núcleo de Dirichlet`
-   - before: `2 · cos(2 · x) + 2 · cos(4 · x) + 2 · cos(6 · x) + 1`
-   - after: `sin(7 · x)/sin(x)`
-   - substeps:
-     1. `Usar el núcleo de Dirichlet`
-     2. `Aquí n = 3 y u = 2 · x`
 
 ## integrate_prep_dirichlet_symbolic_argument (integrate_prep)
 
@@ -8693,8 +7109,8 @@ Steps (Aggressive Mode):
    After: sin(9 * u / 2) / sin(u / 2)
 Result: sin(9 * u / 2) / sin(u / 2)
 ℹ️ Requires:
-  • 2 ≠ 0
   • sin(u / 2) ≠ 0
+  • 2 ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -8728,8 +7144,8 @@ Steps (Aggressive Mode):
    After: sin(5 * a * x / 2) / sin(a * x / 2)
 Result: sin(5 * a * x / 2) / sin(a * x / 2)
 ℹ️ Requires:
-  • 2 ≠ 0
   • sin(a * x / 2) ≠ 0
+  • 2 ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -8808,70 +7224,6 @@ Result: 2 * cos(x) + 2 * cos(2 * x) + 1
      1. `Expandir el núcleo de Dirichlet`
      2. `Aquí n = 2 y u = x`
 
-## integrate_prep_dirichlet_reverse_longer (integrate_prep)
-
-- Source: `sin(7*x/2)/sin(x/2)`
-- Target: `1 + 2*cos(x) + 2*cos(2*x) + 2*cos(3*x)`
-- Result: `2 * cos(x) + 2 * cos(2 * x) + 2 * cos(3 * x) + 1`
-- Web step count: `1`
-- Web substep count: `2`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: sin(7 * x / 2) / sin(x / 2)
-Target: 2 * cos(x) + 2 * cos(2 * x) + 2 * cos(3 * x) + 1
-Strategy: integrate prep
-Steps (Aggressive Mode):
-1. Apply the Dirichlet kernel identity  [Dirichlet Kernel Identity]
-   Before: sin(7 * x / 2) / sin(x / 2)
-   Cambio local: sin(7 * x / 2) / sin(x / 2) -> 2 * cos(x) + 2 * cos(2 * x) + 2 * cos(3 * x) + 1
-   After: 2 * cos(x) + 2 * cos(2 * x) + 2 * cos(3 * x) + 1
-Result: 2 * cos(x) + 2 * cos(2 * x) + 2 * cos(3 * x) + 1
-```
-
-### Web / JSON Steps
-
-1. `Aplicar identidad del núcleo de Dirichlet`
-   - before: `sin((7 · x)/2)/sin(x/2)`
-   - after: `2 · cos(x) + 2 · cos(2 · x) + 2 · cos(3 · x) + 1`
-   - substeps:
-     1. `Expandir el núcleo de Dirichlet`
-     2. `Aquí n = 3 y u = x`
-
-## integrate_prep_dirichlet_reverse_symbolic_scale (integrate_prep)
-
-- Source: `sin(5*a*x/2)/sin(a*x/2)`
-- Target: `1 + 2*cos(a*x) + 2*cos(2*a*x)`
-- Result: `2 * cos(a * x) + 2 * cos(2 * a * x) + 1`
-- Web step count: `1`
-- Web substep count: `2`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: sin(5 * a * x / 2) / sin(a * x / 2)
-Target: 2 * cos(a * x) + 2 * cos(2 * a * x) + 1
-Strategy: integrate prep
-Steps (Aggressive Mode):
-1. Apply the Dirichlet kernel identity  [Dirichlet Kernel Identity]
-   Before: sin(5 * a * x / 2) / sin(a * x / 2)
-   Cambio local: sin(5 * a * x / 2) / sin(a * x / 2) -> 2 * cos(a * x) + 2 * cos(2 * a * x) + 1
-   After: 2 * cos(a * x) + 2 * cos(2 * a * x) + 1
-Result: 2 * cos(a * x) + 2 * cos(2 * a * x) + 1
-```
-
-### Web / JSON Steps
-
-1. `Aplicar identidad del núcleo de Dirichlet`
-   - before: `sin((5 · a · x)/2)/sin((a · x)/2)`
-   - after: `2 · cos(a · x) + 2 · cos(2 · a · x) + 1`
-   - substeps:
-     1. `Expandir el núcleo de Dirichlet`
-     2. `Aquí n = 2 y u = a · x`
-
 ## integrate_prep_dirichlet_reverse_symbolic_scale_longer (integrate_prep)
 
 - Source: `sin(7*a*x/2)/sin(a*x/2)`
@@ -8937,75 +7289,6 @@ Result: n + 1
      2. `Los factores intermedios se cancelan por parejas`
      3. `Solo quedan el último numerador y el primer denominador`
 
-## finite_telescoping_product_shifted (finite_telescoping)
-
-- Source: `product((k+2)/(k+1), k, 1, n)`
-- Target: `(n+2)/2`
-- Result: `(n + 2) / 2`
-- Web step count: `1`
-- Web substep count: `3`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: product((k + 2) / (k + 1), k, 1, n)
-Target: (n + 2) / 2
-Strategy: simplify
-Steps (Aggressive Mode):
-1. Telescoping product: Π((k + 2) / (k + 1), k) from 1 to n  [Finite Product]
-   Before: product((k + 2) / (k + 1), k, 1, n)
-   Cambio local: product((k + 2) / (k + 1), k, 1, n) -> (n + 2) / 2
-   After: (n + 2) / 2
-Result: (n + 2) / 2
-ℹ️ Requires:
-  • 2 ≠ 0
-```
-
-### Web / JSON Steps
-
-1. `Evaluar producto telescópico finito`
-   - before: `prod_k=1^n (k + 2)/(k + 1)`
-   - after: `(n + 2)/2`
-   - substeps:
-     1. `Escribir los primeros y últimos factores del producto`
-     2. `Los factores intermedios se cancelan por parejas`
-     3. `Solo quedan el último numerador y el primer denominador`
-
-## finite_telescoping_product_symbolic_shift (finite_telescoping)
-
-- Source: `product((k+a+1)/(k+a), k, 1, n)`
-- Target: `(n+a+1)/(a+1)`
-- Result: `(a + n + 1) / (a + 1)`
-- Web step count: `1`
-- Web substep count: `2`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: product((a + k + 1) / (a + k), k, 1, n)
-Target: (a + n + 1) / (a + 1)
-Strategy: simplify
-Steps (Aggressive Mode):
-1. Telescoping product: Π((a + k + 1) / (a + k), k) from 1 to n  [Finite Product]
-   Before: product((a + k + 1) / (a + k), k, 1, n)
-   Cambio local: product((a + k + 1) / (a + k), k, 1, n) -> (a + n + 1) / (a + 1)
-   After: (a + n + 1) / (a + 1)
-Result: (a + n + 1) / (a + 1)
-ℹ️ Requires:
-  • a + 1 ≠ 0
-```
-
-### Web / JSON Steps
-
-1. `Evaluar producto telescópico finito`
-   - before: `prod_k=1^n (a + k + 1)/(a + k)`
-   - after: `(a + n + 1)/(a + 1)`
-   - substeps:
-     1. `Escribir los primeros y últimos factores del producto`
-     2. `Los factores intermedios se cancelan por parejas`
-
 ## finite_telescoping_product_symbolic_shift_symbolic_lower (finite_telescoping)
 
 - Source: `product((k+a+1)/(k+a), k, m, n)`
@@ -9040,41 +7323,6 @@ Result: (a + n + 1) / (a + m)
      1. `Escribir los primeros y últimos factores del producto`
      2. `Los factores intermedios se cancelan por parejas`
 
-## finite_telescoping_product_affine_symbolic_shift (finite_telescoping)
-
-- Source: `product((a*k+b+a)/(a*k+b), k, 1, n)`
-- Target: `(a*n+a+b)/(a+b)`
-- Result: `(a * n + a + b) / (a + b)`
-- Web step count: `1`
-- Web substep count: `3`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: product((a * k + a + b) / (a * k + b), k, 1, n)
-Target: (a * n + a + b) / (a + b)
-Strategy: simplify
-Steps (Aggressive Mode):
-1. Telescoping product: Π((a * k + a + b) / (a * k + b), k) from 1 to n  [Finite Product]
-   Before: product((a * k + a + b) / (a * k + b), k, 1, n)
-   Cambio local: product((a * k + a + b) / (a * k + b), k, 1, n) -> (a * n + a + b) / (a + b)
-   After: (a * n + a + b) / (a + b)
-Result: (a * n + a + b) / (a + b)
-ℹ️ Requires:
-  • a + b ≠ 0
-```
-
-### Web / JSON Steps
-
-1. `Evaluar producto telescópico finito`
-   - before: `prod_k=1^n (a · k + a + b)/(a · k + b)`
-   - after: `(a · n + a + b)/(a + b)`
-   - substeps:
-     1. `Escribir los primeros y últimos factores del producto`
-     2. `Los factores intermedios se cancelan por parejas`
-     3. `Solo quedan el último numerador y el primer denominador`
-
 ## finite_telescoping_product_affine_symbolic_shift_symbolic_lower (finite_telescoping)
 
 - Source: `product((a*k+b+a)/(a*k+b), k, m, n)`
@@ -9108,320 +7356,6 @@ Result: (a * n + a + b) / (a * m + b)
    - substeps:
      1. `Escribir los primeros y últimos factores del producto`
      2. `Los factores intermedios se cancelan por parejas`
-
-## finite_telescoping_product_affine_symbolic_shifted (finite_telescoping)
-
-- Source: `product((a*k+b+2*a)/(a*k+b+a), k, 1, n)`
-- Target: `(a*n+b+2*a)/(2*a+b)`
-- Result: `(a * n + b + 2 * a) / (b + 2 * a)`
-- Web step count: `1`
-- Web substep count: `3`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: product((a * k + b + 2 * a) / (a * k + a + b), k, 1, n)
-Target: (a * n + b + 2 * a) / (b + 2 * a)
-Strategy: simplify
-Steps (Aggressive Mode):
-1. Telescoping product: Π((a * k + b + 2 * a) / (a * k + a + b), k) from 1 to n  [Finite Product]
-   Before: product((a * k + b + 2 * a) / (a * k + a + b), k, 1, n)
-   Cambio local: product((a * k + b + 2 * a) / (a * k + a + b), k, 1, n) -> (a * n + b + 2 * a) / (b + 2 * a)
-   After: (a * n + b + 2 * a) / (b + 2 * a)
-Result: (a * n + b + 2 * a) / (b + 2 * a)
-ℹ️ Requires:
-  • b + 2 * a ≠ 0
-```
-
-### Web / JSON Steps
-
-1. `Evaluar producto telescópico finito`
-   - before: `prod_k=1^n (a · k + b + 2 · a)/(a · k + a + b)`
-   - after: `(a · n + b + 2 · a)/(b + 2 · a)`
-   - substeps:
-     1. `Escribir los primeros y últimos factores del producto`
-     2. `Los factores intermedios se cancelan por parejas`
-     3. `Solo quedan el último numerador y el primer denominador`
-
-## finite_telescoping_product_affine_symbolic_shifted_symbolic_lower (finite_telescoping)
-
-- Source: `product((a*k+b+2*a)/(a*k+b+a), k, m, n)`
-- Target: `(a*n+b+2*a)/(a*m+a+b)`
-- Result: `(a * n + b + 2 * a) / (a * m + a + b)`
-- Web step count: `1`
-- Web substep count: `2`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: product((a * k + b + 2 * a) / (a * k + a + b), k, m, n)
-Target: (a * n + b + 2 * a) / (a * m + a + b)
-Strategy: simplify
-Steps (Aggressive Mode):
-1. Telescoping product: Π((a * k + b + 2 * a) / (a * k + a + b), k) from m to n  [Finite Product]
-   Before: product((a * k + b + 2 * a) / (a * k + a + b), k, m, n)
-   Cambio local: product((a * k + b + 2 * a) / (a * k + a + b), k, m, n) -> (a * n + b + 2 * a) / (a * m + a + b)
-   After: (a * n + b + 2 * a) / (a * m + a + b)
-Result: (a * n + b + 2 * a) / (a * m + a + b)
-ℹ️ Requires:
-  • a * m + a + b ≠ 0
-```
-
-### Web / JSON Steps
-
-1. `Evaluar producto telescópico finito`
-   - before: `prod_k=m^n (a · k + b + 2 · a)/(a · k + a + b)`
-   - after: `(a · n + b + 2 · a)/(a · m + a + b)`
-   - substeps:
-     1. `Escribir los primeros y últimos factores del producto`
-     2. `Los factores intermedios se cancelan por parejas`
-
-## finite_telescoping_product_affine_symbolic_arbitrary_shift (finite_telescoping)
-
-- Source: `product((a*k+b+c+a)/(a*k+b+c), k, 1, n)`
-- Target: `(a*n+a+b+c)/(a+b+c)`
-- Result: `(a * n + a + b + c) / (a + b + c)`
-- Web step count: `1`
-- Web substep count: `3`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: product((a * k + a + b + c) / (a * k + b + c), k, 1, n)
-Target: (a * n + a + b + c) / (a + b + c)
-Strategy: simplify
-Steps (Aggressive Mode):
-1. Telescoping product: Π((a * k + a + b + c) / (a * k + b + c), k) from 1 to n  [Finite Product]
-   Before: product((a * k + a + b + c) / (a * k + b + c), k, 1, n)
-   Cambio local: product((a * k + a + b + c) / (a * k + b + c), k, 1, n) -> (a * n + a + b + c) / (a + b + c)
-   After: (a * n + a + b + c) / (a + b + c)
-Result: (a * n + a + b + c) / (a + b + c)
-ℹ️ Requires:
-  • a + b + c ≠ 0
-```
-
-### Web / JSON Steps
-
-1. `Evaluar producto telescópico finito`
-   - before: `prod_k=1^n (a · k + a + b + c)/(a · k + b + c)`
-   - after: `(a · n + a + b + c)/(a + b + c)`
-   - substeps:
-     1. `Escribir los primeros y últimos factores del producto`
-     2. `Los factores intermedios se cancelan por parejas`
-     3. `Solo quedan el último numerador y el primer denominador`
-
-## finite_telescoping_product_affine_symbolic_arbitrary_shift_symbolic_lower (finite_telescoping)
-
-- Source: `product((a*k+b+c+a)/(a*k+b+c), k, m, n)`
-- Target: `(a*n+a+b+c)/(a*m+b+c)`
-- Result: `(a * n + a + b + c) / (a * m + b + c)`
-- Web step count: `1`
-- Web substep count: `2`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: product((a * k + a + b + c) / (a * k + b + c), k, m, n)
-Target: (a * n + a + b + c) / (a * m + b + c)
-Strategy: simplify
-Steps (Aggressive Mode):
-1. Telescoping product: Π((a * k + a + b + c) / (a * k + b + c), k) from m to n  [Finite Product]
-   Before: product((a * k + a + b + c) / (a * k + b + c), k, m, n)
-   Cambio local: product((a * k + a + b + c) / (a * k + b + c), k, m, n) -> (a * n + a + b + c) / (a * m + b + c)
-   After: (a * n + a + b + c) / (a * m + b + c)
-Result: (a * n + a + b + c) / (a * m + b + c)
-ℹ️ Requires:
-  • a * m + b + c ≠ 0
-```
-
-### Web / JSON Steps
-
-1. `Evaluar producto telescópico finito`
-   - before: `prod_k=m^n (a · k + a + b + c)/(a · k + b + c)`
-   - after: `(a · n + a + b + c)/(a · m + b + c)`
-   - substeps:
-     1. `Escribir los primeros y últimos factores del producto`
-     2. `Los factores intermedios se cancelan por parejas`
-
-## finite_telescoping_product_factorized_square (finite_telescoping)
-
-- Source: `product(1 - 1/k^2, k, 2, n)`
-- Target: `(n+1)/(2*n)`
-- Result: `(n + 1) / (2 * n)`
-- Web step count: `2`
-- Web substep count: `4`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: product(1 - 1 / k^2, k, 2, n)
-Target: (n + 1) / (2 * n)
-Strategy: simplify
-Steps (Aggressive Mode):
-1. Add fractions: a/b + c/d -> (ad+bc)/bd  [Add Fractions]
-   Before: product(1 - 1 / k^(2), k, 2, n)
-   Cambio local: 1 - 1 / k^(2) -> (k^(2) - 1) / (k^(2))
-   After: product((k^(2) - 1) / (k^(2)), k, 2, n)
-2. Factorized telescoping product: Π((k^2 - 1) / k^2, k) from 2 to n  [Finite Product]
-   Before: product((k^(2) - 1) / (k^(2)), k, 2, n)
-   Cambio local: product((k^(2) - 1) / k^(2), k, 2, n) -> (n + 1) / (2 * n)
-   After: (n + 1) / (2 * n)
-Result: (n + 1) / (2 * n)
-ℹ️ Requires:
-  • 2 * n ≠ 0
-```
-
-### Web / JSON Steps
-
-1. `Sumar fracciones`
-   - before: `prod_k=2^n 1 - 1/k^2`
-   - after: `prod_k=2^n (k^2 - 1)/k^2`
-   - substeps: none
-2. `Evaluar producto telescópico finito`
-   - before: `prod_k=2^n (k^2 - 1)/k^2`
-   - after: `(n + 1)/(2 · n)`
-   - substeps:
-     1. `Usar (u^2 - 1) / u^2 = ((u - 1) · (u + 1)) / u^2`
-     2. `Aquí u = k`
-     3. `Los factores (u + 1) y (u - 1) se cancelan telescópicamente`
-     4. `Solo quedan el primer factor u - 1 y el último factor u + 1`
-
-## finite_telescoping_product_factorized_square_shifted_start (finite_telescoping)
-
-- Source: `product(1 - 1/k^2, k, 3, n)`
-- Target: `2*(n+1)/(3*n)`
-- Result: `2 * (n + 1) / (3 * n)`
-- Web step count: `2`
-- Web substep count: `4`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: product(1 - 1 / k^2, k, 3, n)
-Target: 2 * (n + 1) / (3 * n)
-Strategy: simplify
-Steps (Aggressive Mode):
-1. Add fractions: a/b + c/d -> (ad+bc)/bd  [Add Fractions]
-   Before: product(1 - 1 / k^(2), k, 3, n)
-   Cambio local: 1 - 1 / k^(2) -> (k^(2) - 1) / (k^(2))
-   After: product((k^(2) - 1) / (k^(2)), k, 3, n)
-2. Factorized telescoping product: Π((k^2 - 1) / k^2, k) from 3 to n  [Finite Product]
-   Before: product((k^(2) - 1) / (k^(2)), k, 3, n)
-   Cambio local: product((k^(2) - 1) / k^(2), k, 3, n) -> 2 * (n + 1) / (3 * n)
-   After: 2 * (n + 1) / (3 * n)
-Result: 2 * (n + 1) / (3 * n)
-ℹ️ Requires:
-  • 3 * n ≠ 0
-```
-
-### Web / JSON Steps
-
-1. `Sumar fracciones`
-   - before: `prod_k=3^n 1 - 1/k^2`
-   - after: `prod_k=3^n (k^2 - 1)/k^2`
-   - substeps: none
-2. `Evaluar producto telescópico finito`
-   - before: `prod_k=3^n (k^2 - 1)/k^2`
-   - after: `(2 · (n + 1))/(3 · n)`
-   - substeps:
-     1. `Usar (u^2 - 1) / u^2 = ((u - 1) · (u + 1)) / u^2`
-     2. `Aquí u = k`
-     3. `Los factores (u + 1) y (u - 1) se cancelan telescópicamente`
-     4. `Solo quedan el primer factor u - 1 y el último factor u + 1`
-
-## finite_telescoping_product_factorized_square_shifted_base_numeric (finite_telescoping)
-
-- Source: `product(1 - 1/(k+2)^2, k, 1, n)`
-- Target: `2*(n+3)/(3*(n+2))`
-- Result: `2 * (n + 3) / (3 * (n + 2))`
-- Web step count: `2`
-- Web substep count: `4`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: product(1 - 1 / (k + 2)^2, k, 1, n)
-Target: 2 * (n + 3) / (3 * (n + 2))
-Strategy: simplify
-Steps (Aggressive Mode):
-1. Add fractions: a/b + c/d -> (ad+bc)/bd  [Add Fractions]
-   Before: product(1 - 1 / (k + 2)^(2), k, 1, n)
-   Cambio local: 1 - 1 / (k + 2)^(2) -> ((k + 2)^(2) - 1) / ((k + 2)^(2))
-   After: product(((k + 2)^(2) - 1) / ((k + 2)^(2)), k, 1, n)
-2. Factorized telescoping product: Π(((k + 2)^2 - 1) / (k + 2)^2, k) from 1 to n  [Finite Product]
-   Before: product(((k + 2)^(2) - 1) / ((k + 2)^(2)), k, 1, n)
-   Cambio local: product(((k + 2)^(2) - 1) / (k + 2)^(2), k, 1, n) -> 2 * (n + 3) / (3 * (n + 2))
-   After: 2 * (n + 3) / (3 * (n + 2))
-Result: 2 * (n + 3) / (3 * (n + 2))
-ℹ️ Requires:
-  • 3 * n + 6 ≠ 0
-```
-
-### Web / JSON Steps
-
-1. `Sumar fracciones`
-   - before: `prod_k=1^n 1 - 1/((k + 2))^2`
-   - after: `prod_k=1^n (((k + 2))^2 - 1)/((k + 2))^2`
-   - substeps: none
-2. `Evaluar producto telescópico finito`
-   - before: `prod_k=1^n (((k + 2))^2 - 1)/((k + 2))^2`
-   - after: `(2 · (n + 3))/(3 · (n + 2))`
-   - substeps:
-     1. `Usar (u^2 - 1) / u^2 = ((u - 1) · (u + 1)) / u^2`
-     2. `Aquí u = k + 2`
-     3. `Los factores (u + 1) y (u - 1) se cancelan telescópicamente`
-     4. `Solo quedan el primer factor u - 1 y el último factor u + 1`
-
-## finite_telescoping_product_factorized_square_shifted_base_symbolic (finite_telescoping)
-
-- Source: `product(1 - 1/(k+a)^2, k, 1, n)`
-- Target: `a*(n+a+1)/((a+1)*(n+a))`
-- Result: `a * (a + n + 1) / ((a + 1) * (a + n))`
-- Web step count: `2`
-- Web substep count: `4`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: product(1 - 1 / (a + k)^2, k, 1, n)
-Target: a * (a + n + 1) / ((a + 1) * (a + n))
-Strategy: simplify
-Steps (Aggressive Mode):
-1. Add fractions: a/b + c/d -> (ad+bc)/bd  [Add Fractions]
-   Before: product(1 - 1 / (a + k)^(2), k, 1, n)
-   Cambio local: 1 - 1 / (a + k)^(2) -> ((a + k)^(2) - 1) / ((a + k)^(2))
-   After: product(((a + k)^(2) - 1) / ((a + k)^(2)), k, 1, n)
-2. Factorized telescoping product: Π(((a + k)^2 - 1) / (a + k)^2, k) from 1 to n  [Finite Product]
-   Before: product(((a + k)^(2) - 1) / ((a + k)^(2)), k, 1, n)
-   Cambio local: product(((a + k)^(2) - 1) / (a + k)^(2), k, 1, n) -> a * (a + n + 1) / ((a + 1) * (a + n))
-   After: a * (a + n + 1) / ((a + 1) * (a + n))
-Result: a * (a + n + 1) / ((a + 1) * (a + n))
-ℹ️ Requires:
-  • a^2 + a * n + a + n ≠ 0
-```
-
-### Web / JSON Steps
-
-1. `Sumar fracciones`
-   - before: `prod_k=1^n 1 - 1/((a + k))^2`
-   - after: `prod_k=1^n (((a + k))^2 - 1)/((a + k))^2`
-   - substeps: none
-2. `Evaluar producto telescópico finito`
-   - before: `prod_k=1^n (((a + k))^2 - 1)/((a + k))^2`
-   - after: `(a · (a + n + 1))/((a + 1) · (a + n))`
-   - substeps:
-     1. `Usar (u^2 - 1) / u^2 = ((u - 1) · (u + 1)) / u^2`
-     2. `Aquí u = a + k`
-     3. `Los factores (u + 1) y (u - 1) se cancelan telescópicamente`
-     4. `Solo quedan el primer factor u - 1 y el último factor u + 1`
 
 ## finite_telescoping_product_factorized_square_shifted_base_numeric_symbolic_lower (finite_telescoping)
 
@@ -9546,78 +7480,6 @@ Result: 1 - 1 / (n + 1)
      2. `Aquí u = k`
      3. `La suma telescópica cancela los términos intermedios`
 
-## finite_telescoping_sum_shifted (finite_telescoping)
-
-- Source: `sum(1/((k+2)*(k+3)), k, 1, n)`
-- Target: `1/3 - 1/(n+3)`
-- Result: `1 / 3 - 1 / (n + 3)`
-- Web step count: `1`
-- Web substep count: `3`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: sum(1 / ((k + 2) * (k + 3)), k, 1, n)
-Target: 1 / 3 - 1 / (n + 3)
-Strategy: simplify
-Steps (Aggressive Mode):
-1. Telescoping sum: Σ(1 / ((k + 2) * (k + 3)), k) from 1 to n  [Finite Summation]
-   Before: sum(1 / ((k + 2) * (k + 3)), k, 1, n)
-   Cambio local: sum(1 / ((k + 2) * (k + 3)), k, 1, n) -> 1 / 3 - 1 / (n + 3)
-   After: 1 / 3 - 1 / (n + 3)
-Result: 1 / 3 - 1 / (n + 3)
-ℹ️ Requires:
-  • n + 3 ≠ 0
-  • 3 ≠ 0
-```
-
-### Web / JSON Steps
-
-1. `Evaluar suma telescópica finita`
-   - before: `sum_k=1^n 1/((k + 2) · (k + 3))`
-   - after: `1/3 - 1/(n + 3)`
-   - substeps:
-     1. `Usar 1 / (u · (u + 1)) = 1 / u - 1 / (u + 1)`
-     2. `Aquí u = k + 2`
-     3. `La suma telescópica cancela los términos intermedios`
-
-## finite_telescoping_sum_symbolic_shift (finite_telescoping)
-
-- Source: `sum(1/((k+a)*(k+a+1)), k, 1, n)`
-- Target: `1/(a+1) - 1/(n+a+1)`
-- Result: `1 / (a + 1) - 1 / (a + n + 1)`
-- Web step count: `1`
-- Web substep count: `3`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: sum(1 / ((a + k) * (a + k + 1)), k, 1, n)
-Target: 1 / (a + 1) - 1 / (a + n + 1)
-Strategy: simplify
-Steps (Aggressive Mode):
-1. Telescoping sum: Σ(1 / ((a + k) * (a + k + 1)), k) from 1 to n  [Finite Summation]
-   Before: sum(1 / ((a + k) * (a + k + 1)), k, 1, n)
-   Cambio local: sum(1 / ((a + k) * (a + k + 1)), k, 1, n) -> 1 / (a + 1) - 1 / (a + n + 1)
-   After: 1 / (a + 1) - 1 / (a + n + 1)
-Result: 1 / (a + 1) - 1 / (a + n + 1)
-ℹ️ Requires:
-  • a + n + 1 ≠ 0
-  • a + 1 ≠ 0
-```
-
-### Web / JSON Steps
-
-1. `Evaluar suma telescópica finita`
-   - before: `sum_k=1^n 1/((a + k) · (a + k + 1))`
-   - after: `1/(a + 1) - 1/(a + n + 1)`
-   - substeps:
-     1. `Usar 1 / (u · (u + 1)) = 1 / u - 1 / (u + 1)`
-     2. `Aquí u = a + k`
-     3. `La suma telescópica cancela los términos intermedios`
-
 ## finite_telescoping_sum_symbolic_shift_symbolic_lower (finite_telescoping)
 
 - Source: `sum(1/((k+a)*(k+a+1)), k, m, n)`
@@ -9654,43 +7516,6 @@ Result: 1 / (a + m) - 1 / (a + n + 1)
      2. `Aquí u = a + k`
      3. `La suma telescópica cancela los términos intermedios`
 
-## finite_telescoping_sum_affine_symbolic_shift (finite_telescoping)
-
-- Source: `sum(1/((a*k+b)*(a*k+b+a)), k, 1, n)`
-- Target: `1/a*(1/(a+b) - 1/(a*n+b+a))`
-- Result: `((1 / (a + b) - 1 / (a * n + a + b)) * 1)/a`
-- Web step count: `1`
-- Web substep count: `3`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: sum(1 / ((a * k + b) * (a * k + a + b)), k, 1, n)
-Target: ((1 / (a + b) - 1 / (a * n + a + b)))/a
-Strategy: simplify
-Steps (Aggressive Mode):
-1. Telescoping sum: Σ(1 / ((a * k + b) * (a * k + a + b)), k) from 1 to n  [Finite Summation]
-   Before: sum(1 / ((a * k + b) * (a * k + a + b)), k, 1, n)
-   Cambio local: sum(1 / ((a * k + b) * (a * k + a + b)), k, 1, n) -> 1 / a * (1 / (a + b) - 1 / (a * n + a + b))
-   After: ((1 / (a + b) - 1 / (a * n + a + b)))/a
-Result: 1 / a * (1 / (a + b) - 1 / (a * n + a + b))
-ℹ️ Requires:
-  • a * n + a + b ≠ 0
-  • a + b ≠ 0
-  • a ≠ 0
-```
-
-### Web / JSON Steps
-
-1. `Evaluar suma telescópica finita`
-   - before: `sum_k=1^n 1/((a · k + b) · (a · k + a + b))`
-   - after: `1/a · (1/(a + b) - 1/(a · n + a + b))`
-   - substeps:
-     1. `Usar 1 / (u · (u + g)) = 1 / g · (1 / u - 1 / (u + g))`
-     2. `Aquí u = a * k + b y g = a`
-     3. `La suma telescópica cancela los términos intermedios`
-
 ## finite_telescoping_sum_affine_symbolic_shift_symbolic_lower (finite_telescoping)
 
 - Source: `sum(1/((a*k+b)*(a*k+b+a)), k, m, n)`
@@ -9713,8 +7538,8 @@ Steps (Aggressive Mode):
    After: ((1 / (a * m + b) - 1 / (a * n + a + b)))/a
 Result: 1 / a * (1 / (a * m + b) - 1 / (a * n + a + b))
 ℹ️ Requires:
-  • a * n + a + b ≠ 0
   • a ≠ 0
+  • a * n + a + b ≠ 0
   • a * m + b ≠ 0
 ```
 
@@ -9726,117 +7551,6 @@ Result: 1 / a * (1 / (a * m + b) - 1 / (a * n + a + b))
    - substeps:
      1. `Usar 1 / (u · (u + g)) = 1 / g · (1 / u - 1 / (u + g))`
      2. `Aquí u = a * k + b y g = a`
-     3. `La suma telescópica cancela los términos intermedios`
-
-## finite_telescoping_sum_affine_symbolic_shifted (finite_telescoping)
-
-- Source: `sum(1/((a*k+b+a)*(a*k+b+2*a)), k, 1, n)`
-- Target: `1/a*(1/(2*a+b) - 1/(a*n+2*a+b))`
-- Result: `((1 / (b + 2 * a) - 1 / (a * n + b + 2 * a)) * 1)/a`
-- Web step count: `1`
-- Web substep count: `3`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: sum(1 / ((a * k + a + b) * (a * k + b + 2 * a)), k, 1, n)
-Target: ((1 / (b + 2 * a) - 1 / (a * n + b + 2 * a)))/a
-Strategy: simplify
-Steps (Aggressive Mode):
-1. Telescoping sum: Σ(1 / ((a * k + a + b) * (a * k + b + 2 * a)), k) from 1 to n  [Finite Summation]
-   Before: sum(1 / ((a * k + a + b) * (a * k + b + 2 * a)), k, 1, n)
-   Cambio local: sum(1 / ((a * k + a + b) * (a * k + b + 2 * a)), k, 1, n) -> 1 / a * (1 / (b + 2 * a) - 1 / (a * n + b + 2 * a))
-   After: ((1 / (b + 2 * a) - 1 / (a * n + b + 2 * a)))/a
-Result: 1 / a * (1 / (b + 2 * a) - 1 / (a * n + b + 2 * a))
-ℹ️ Requires:
-  • b + 2 * a ≠ 0
-  • a ≠ 0
-  • a * n + b + 2 * a ≠ 0
-```
-
-### Web / JSON Steps
-
-1. `Evaluar suma telescópica finita`
-   - before: `sum_k=1^n 1/((a · k + a + b) · (a · k + b + 2 · a))`
-   - after: `1/a · (1/(b + 2 · a) - 1/(a · n + b + 2 · a))`
-   - substeps:
-     1. `Usar 1 / (u · (u + g)) = 1 / g · (1 / u - 1 / (u + g))`
-     2. `Aquí u = a * k + a + b y g = a`
-     3. `La suma telescópica cancela los términos intermedios`
-
-## finite_telescoping_sum_affine_symbolic_shifted_symbolic_lower (finite_telescoping)
-
-- Source: `sum(1/((a*k+b+a)*(a*k+b+2*a)), k, m, n)`
-- Target: `1/a*(1/(a*m+a+b) - 1/(a*n+2*a+b))`
-- Result: `((1 / (a * m + a + b) - 1 / (a * n + b + 2 * a)) * 1)/a`
-- Web step count: `1`
-- Web substep count: `3`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: sum(1 / ((a * k + a + b) * (a * k + b + 2 * a)), k, m, n)
-Target: ((1 / (a * m + a + b) - 1 / (a * n + b + 2 * a)))/a
-Strategy: simplify
-Steps (Aggressive Mode):
-1. Telescoping sum: Σ(1 / ((a * k + a + b) * (a * k + b + 2 * a)), k) from m to n  [Finite Summation]
-   Before: sum(1 / ((a * k + a + b) * (a * k + b + 2 * a)), k, m, n)
-   Cambio local: sum(1 / ((a * k + a + b) * (a * k + b + 2 * a)), k, m, n) -> 1 / a * (1 / (a * m + a + b) - 1 / (a * n + b + 2 * a))
-   After: ((1 / (a * m + a + b) - 1 / (a * n + b + 2 * a)))/a
-Result: 1 / a * (1 / (a * m + a + b) - 1 / (a * n + b + 2 * a))
-ℹ️ Requires:
-  • a * m + a + b ≠ 0
-  • a ≠ 0
-  • a * n + b + 2 * a ≠ 0
-```
-
-### Web / JSON Steps
-
-1. `Evaluar suma telescópica finita`
-   - before: `sum_k=m^n 1/((a · k + a + b) · (a · k + b + 2 · a))`
-   - after: `1/a · (1/(a · m + a + b) - 1/(a · n + b + 2 · a))`
-   - substeps:
-     1. `Usar 1 / (u · (u + g)) = 1 / g · (1 / u - 1 / (u + g))`
-     2. `Aquí u = a * k + a + b y g = a`
-     3. `La suma telescópica cancela los términos intermedios`
-
-## finite_telescoping_sum_affine_symbolic_arbitrary_shift (finite_telescoping)
-
-- Source: `sum(1/((a*k+b+c)*(a*k+b+c+a)), k, 1, n)`
-- Target: `1/a*(1/(a+b+c) - 1/(a*n+a+b+c))`
-- Result: `((1 / (a + b + c) - 1 / (a * n + a + b + c)) * 1)/a`
-- Web step count: `1`
-- Web substep count: `3`
-- Flags: none
-
-### CLI
-
-```text
-Parsed: sum(1 / ((a * k + a + b + c) * (a * k + b + c)), k, 1, n)
-Target: ((1 / (a + b + c) - 1 / (a * n + a + b + c)))/a
-Strategy: simplify
-Steps (Aggressive Mode):
-1. Telescoping sum: Σ(1 / ((a * k + a + b + c) * (a * k + b + c)), k) from 1 to n  [Finite Summation]
-   Before: sum(1 / ((a * k + a + b + c) * (a * k + b + c)), k, 1, n)
-   Cambio local: sum(1 / ((a * k + a + b + c) * (a * k + b + c)), k, 1, n) -> 1 / a * (1 / (a + b + c) - 1 / (a * n + a + b + c))
-   After: ((1 / (a + b + c) - 1 / (a * n + a + b + c)))/a
-Result: 1 / a * (1 / (a + b + c) - 1 / (a * n + a + b + c))
-ℹ️ Requires:
-  • a + b + c ≠ 0
-  • a ≠ 0
-  • a * n + a + b + c ≠ 0
-```
-
-### Web / JSON Steps
-
-1. `Evaluar suma telescópica finita`
-   - before: `sum_k=1^n 1/((a · k + a + b + c) · (a · k + b + c))`
-   - after: `1/a · (1/(a + b + c) - 1/(a · n + a + b + c))`
-   - substeps:
-     1. `Usar 1 / (u · (u + g)) = 1 / g · (1 / u - 1 / (u + g))`
-     2. `Aquí u = a * k + b + c y g = a`
      3. `La suma telescópica cancela los términos intermedios`
 
 ## finite_telescoping_sum_affine_symbolic_arbitrary_shift_symbolic_lower (finite_telescoping)
@@ -9861,8 +7575,8 @@ Steps (Aggressive Mode):
    After: ((1 / (a * m + b + c) - 1 / (a * n + a + b + c)))/a
 Result: 1 / a * (1 / (a * m + b + c) - 1 / (a * n + a + b + c))
 ℹ️ Requires:
-  • a * n + a + b + c ≠ 0
   • a * m + b + c ≠ 0
+  • a * n + a + b + c ≠ 0
   • a ≠ 0
 ```
 
@@ -9875,3 +7589,132 @@ Result: 1 / a * (1 / (a * m + b + c) - 1 / (a * n + a + b + c))
      1. `Usar 1 / (u · (u + g)) = 1 / g · (1 / u - 1 / (u + g))`
      2. `Aquí u = a * k + b + c y g = a`
      3. `La suma telescópica cancela los términos intermedios`
+
+## rationalize_symbolic_linear_root (rationalize)
+
+- Source: `1/(sqrt(x)-a)`
+- Target: `(sqrt(x)+a)/(x-a^2)`
+- Result: `(sqrt(x) + a) / (x - a^2)`
+- Web step count: `2`
+- Web substep count: `5`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: 1 / (sqrt(x) - a)
+Target: (sqrt(x) + a) / (x - a^2)
+Strategy: rationalize
+Steps (Aggressive Mode):
+1. Rationalize denominator (diff squares)  [Rationalize Denominator]
+   Before: 1 / (sqrt(x) - a)
+   Cambio local: 1 / (sqrt(x) - a) -> (sqrt(x) + a) / (sqrt(x)^(2) + a^(2))
+   After: (sqrt(x) + a) / (sqrt(x)^(2) + a^(2))
+2. (u^y)^(1/y) = u  [Cancel Reciprocal Exponents]
+   Before: (sqrt(x) + a) / (sqrt(x)^(2) + a^(2))
+   Cambio local: sqrt(x)^(2) -> x
+   After: (sqrt(x) + a) / (x - a^2)
+   ℹ️ Requires: x > 0
+Result: (sqrt(x) + a) / (x - a^(2))
+ℹ️ Requires:
+  • x ≥ 0
+  • a^2 - x ≠ 0
+```
+
+### Web / JSON Steps
+
+1. `Racionalizar el denominador`
+   - before: `1/(sqrt(x) - a)`
+   - after: `(sqrt(x) + a)/(sqrt(x)^2 - ((-a))^2)`
+   - substeps:
+     1. `Cambiar el signo para formar el conjugado`
+     2. `Multiplicar numerador y denominador por ese conjugado`
+     3. `En el denominador aparece una diferencia de cuadrados`
+2. `Deshacer raíz y potencia`
+   - before: `(sqrt(x) + a)/(sqrt(x)^2 - ((-a))^2)`
+   - after: `(sqrt(x) + a)/(x - a^2)`
+   - substeps:
+     1. `El cuadrado deshace la raíz`
+     2. `Reemplazar ese bloque en la expresión`
+
+## rationalize_symbolic_linear_root_plus (rationalize)
+
+- Source: `1/(sqrt(x)+a)`
+- Target: `(sqrt(x)-a)/(x-a^2)`
+- Result: `(sqrt(x) - a) / (x - a^2)`
+- Web step count: `1`
+- Web substep count: `3`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: 1 / (sqrt(x) + a)
+Target: (sqrt(x) - a) / (x - a^2)
+Strategy: simplify
+Steps (Aggressive Mode):
+1. Rationalize: multiply by conjugate  [Rationalize Linear Sqrt Denominator]
+   Before: 1 / (sqrt(x) + a)
+   After: (sqrt(x) - a) / (x - a^2)
+Result: (sqrt(x) - a) / (x - a^(2))
+ℹ️ Requires:
+  • a^2 - x ≠ 0
+  • x ≥ 0
+```
+
+### Web / JSON Steps
+
+1. `Racionalizar el denominador`
+   - before: `1/(sqrt(x) + a)`
+   - after: `(sqrt(x) - a)/(x - a^2)`
+   - substeps:
+     1. `Cambiar el signo para formar el conjugado`
+     2. `Multiplicar numerador y denominador por ese conjugado`
+     3. `En el denominador aparece una diferencia de cuadrados`
+
+## rationalize_symbolic_linear_root_alt_var (rationalize)
+
+- Source: `1/(sqrt(y)-a)`
+- Target: `(sqrt(y)+a)/(y-a^2)`
+- Result: `(sqrt(y) + a) / (y - a^2)`
+- Web step count: `2`
+- Web substep count: `5`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: 1 / (sqrt(y) - a)
+Target: (sqrt(y) + a) / (y - a^2)
+Strategy: rationalize
+Steps (Aggressive Mode):
+1. Rationalize denominator (diff squares)  [Rationalize Denominator]
+   Before: 1 / (sqrt(y) - a)
+   Cambio local: 1 / (sqrt(y) - a) -> (sqrt(y) + a) / (sqrt(y)^(2) + a^(2))
+   After: (sqrt(y) + a) / (sqrt(y)^(2) + a^(2))
+2. (u^y)^(1/y) = u  [Cancel Reciprocal Exponents]
+   Before: (sqrt(y) + a) / (sqrt(y)^(2) + a^(2))
+   Cambio local: sqrt(y)^(2) -> y
+   After: (sqrt(y) + a) / (y - a^2)
+   ℹ️ Requires: y > 0
+Result: (sqrt(y) + a) / (y - a^(2))
+ℹ️ Requires:
+  • a^2 - y ≠ 0
+  • y ≥ 0
+```
+
+### Web / JSON Steps
+
+1. `Racionalizar el denominador`
+   - before: `1/(sqrt(y) - a)`
+   - after: `(sqrt(y) + a)/(sqrt(y)^2 - ((-a))^2)`
+   - substeps:
+     1. `Cambiar el signo para formar el conjugado`
+     2. `Multiplicar numerador y denominador por ese conjugado`
+     3. `En el denominador aparece una diferencia de cuadrados`
+2. `Deshacer raíz y potencia`
+   - before: `(sqrt(y) + a)/(sqrt(y)^2 - ((-a))^2)`
+   - after: `(sqrt(y) + a)/(y - a^2)`
+   - substeps:
+     1. `El cuadrado deshace la raíz`
+     2. `Reemplazar ese bloque en la expresión`

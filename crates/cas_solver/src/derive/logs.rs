@@ -240,51 +240,65 @@ mod tests {
     use cas_parser::parse;
 
     #[test]
-    fn contracts_log_sum_with_power_arguments() {
-        let mut ctx = Context::new();
-        let expr = parse("ln(x^3) + ln(y^2)", &mut ctx).expect("expr");
-        let rewritten = try_rewrite_log_contraction_target_aware(&mut ctx, expr).expect("rewrite");
-        let expected = parse("ln(x^3*y^2)", &mut ctx).expect("expected");
-        let checker = SemanticEqualityChecker::new(&ctx);
+    fn contracts_tabulated_log_targets_aware() {
+        let cases = [
+            ("ln(x) + ln(y)", "ln(x*y)"),
+            ("ln(x) - ln(y)", "ln(x/y)"),
+            ("ln(x) + ln(y) - ln(z)", "ln((x*y)/z)"),
+            ("2*ln(abs(x)) + ln(y) - ln(z) - ln(t)", "ln((x^2*y)/(z*t))"),
+            ("3*ln(x) + 2*ln(abs(y))", "ln(x^3*y^2)"),
+            ("3*ln(x) - 2*ln(y)", "ln(x^3/y^2)"),
+            ("log(2, x) - log(2, y)", "log(2, x/y)"),
+            (
+                "2*log(b, x) + 3*log(b, y) - 2*log(b, z) - log(b, t)",
+                "log(b, (x^2*y^3)/(z^2*t))",
+            ),
+            ("3*log(2, x) - 2*log(2, y)", "log(2, x^3/y^2)"),
+        ];
 
-        assert!(checker.are_equal(rewritten, expected));
+        for (expr_text, expected_text) in cases {
+            let mut ctx = Context::new();
+            let expr = parse(expr_text, &mut ctx).expect("expr");
+            let rewritten =
+                try_rewrite_log_contraction_target_aware(&mut ctx, expr).expect("rewrite");
+            let expected = parse(expected_text, &mut ctx).expect("expected");
+            let checker = SemanticEqualityChecker::new(&ctx);
+
+            assert!(
+                checker.are_equal(rewritten, expected),
+                "expected `{expr_text}` to contract to `{expected_text}`"
+            );
+        }
     }
 
     #[test]
-    fn contracts_scaled_logs_back_into_powered_argument() {
-        let mut ctx = Context::new();
-        let expr = parse("3*ln(x) + 2*ln(abs(y))", &mut ctx).expect("expr");
-        let rewritten = try_rewrite_log_contraction_target_aware(&mut ctx, expr).expect("rewrite");
-        let expected = parse("ln(x^3*y^2)", &mut ctx).expect("expected");
-        let checker = SemanticEqualityChecker::new(&ctx);
+    fn expands_tabulated_log_targets_aware() {
+        let cases = [
+            ("ln(x*y)", "ln(x) + ln(y)"),
+            ("ln(x/y)", "ln(x) - ln(y)"),
+            ("ln((x*y)/z)", "ln(x) + ln(y) - ln(z)"),
+            ("ln((x^2*y)/(z*t))", "2*ln(abs(x)) + ln(y) - ln(z) - ln(t)"),
+            ("log(b, (x*y)/z)", "log(b, x) + log(b, y) - log(b, z)"),
+            (
+                "log(b, (x^2*y^3)/(z^2*t))",
+                "2*log(b, x) + 3*log(b, y) - 2*log(b, z) - log(b, t)",
+            ),
+            ("ln(x^3*y^2)", "ln(x^3) + ln(y^2)"),
+        ];
 
-        assert!(checker.are_equal(rewritten, expected));
+        for (source, target) in cases {
+            let mut ctx = Context::new();
+            let source = parse(source, &mut ctx).expect("source");
+            let target = parse(target, &mut ctx).expect("target");
+            let rewritten =
+                try_rewrite_log_expansion_target_aware(&mut ctx, source, target).expect("rewrite");
+
+            assert_eq!(rewritten, target);
+        }
     }
 
     #[test]
-    fn contracts_general_base_logs() {
-        let mut ctx = Context::new();
-        let expr = parse("log(2, x^3) + log(2, y^2)", &mut ctx).expect("expr");
-        let rewritten = try_rewrite_log_contraction_target_aware(&mut ctx, expr).expect("rewrite");
-        let expected = parse("log(2, x^3*y^2)", &mut ctx).expect("expected");
-        let checker = SemanticEqualityChecker::new(&ctx);
-
-        assert!(checker.are_equal(rewritten, expected));
-    }
-
-    #[test]
-    fn expands_logs_to_power_preserving_target_when_target_contracts_back() {
-        let mut ctx = Context::new();
-        let source = parse("ln(x^3*y^2)", &mut ctx).expect("source");
-        let target = parse("ln(x^3) + ln(y^2)", &mut ctx).expect("target");
-        let rewritten =
-            try_rewrite_log_expansion_target_aware(&mut ctx, source, target).expect("rewrite");
-
-        assert_eq!(rewritten, target);
-    }
-
-    #[test]
-    fn rejects_power_preserving_target_that_does_not_contract_to_source() {
+    fn rejects_log_expansion_target_that_does_not_contract_back() {
         let mut ctx = Context::new();
         let source = parse("ln(x^3*y^2)", &mut ctx).expect("source");
         let target = parse("ln(x^3) + ln(y)", &mut ctx).expect("target");

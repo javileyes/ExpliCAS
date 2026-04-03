@@ -1,3 +1,4 @@
+mod collect;
 mod expand;
 mod factor_division;
 mod fractions;
@@ -13,9 +14,10 @@ mod target_classifier;
 mod target_form;
 mod trig;
 
+pub(crate) use collect::try_rewrite_collect_monomial_target_aware;
 pub(crate) use expand::{try_rewrite_expanded_target_aware, ExpandRewriteKind};
 pub(crate) use factor_division::{
-    detect_factor_out_with_division_target, extract_factored_inner_target,
+    detect_factor_out_with_division_target, extract_factored_division_target,
 };
 pub(crate) use fractions::{
     looks_like_fraction_expanded_target, looks_like_mixed_fraction_target,

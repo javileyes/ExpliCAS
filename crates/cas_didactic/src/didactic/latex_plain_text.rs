@@ -35,10 +35,10 @@ pub fn latex_to_plain_text(s: &str) -> String {
         result = next_result;
     }
 
-    let mut fractional_exponent_iterations = 0;
-    while result.contains("^{") && fractional_exponent_iterations < 10 {
-        fractional_exponent_iterations += 1;
-        let Some(next_result) = replace_next_fractional_exponent(&result) else {
+    let mut grouped_exponent_iterations = 0;
+    while result.contains("^{") && grouped_exponent_iterations < 10 {
+        grouped_exponent_iterations += 1;
+        let Some(next_result) = replace_next_grouped_exponent(&result) else {
             break;
         };
         result = next_result;
@@ -163,25 +163,39 @@ fn replace_next_parenthesized_power_base(value: &str) -> Option<String> {
     None
 }
 
-fn replace_next_fractional_exponent(value: &str) -> Option<String> {
-    let start = value.find("^{")?;
-    let exponent_rest = &value[start + 1..];
-    let (exponent, exponent_end) = find_balanced_braces(exponent_rest)?;
-    if !exponent.contains('/') {
-        return None;
+fn replace_next_grouped_exponent(value: &str) -> Option<String> {
+    let mut search_start = 0usize;
+
+    while let Some(relative_start) = value[search_start..].find("^{") {
+        let start = search_start + relative_start;
+        let exponent_rest = &value[start + 1..];
+        let (exponent, exponent_end) = find_balanced_braces(exponent_rest)?;
+        let exponent_close = start + 1 + exponent_end;
+
+        if needs_parenthesized_exponent(&exponent) {
+            let replacement = format!("^({exponent})");
+            return Some(format!(
+                "{}{}{}",
+                &value[..start],
+                replacement,
+                &value[exponent_close + 1..]
+            ));
+        }
+
+        search_start = exponent_close + 1;
     }
-    let exponent_close = start + 1 + exponent_end;
-    let replacement = format!("^({exponent})");
-    Some(format!(
-        "{}{}{}",
-        &value[..start],
-        replacement,
-        &value[exponent_close + 1..]
-    ))
+
+    None
 }
 
 fn needs_parenthesized_power_base(base: &str) -> bool {
     base.chars()
+        .any(|ch| matches!(ch, ' ' | '+' | '-' | '·' | '/'))
+}
+
+fn needs_parenthesized_exponent(exponent: &str) -> bool {
+    exponent
+        .chars()
         .any(|ch| matches!(ch, ' ' | '+' | '-' | '·' | '/'))
 }
 

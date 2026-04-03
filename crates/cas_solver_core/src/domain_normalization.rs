@@ -6,10 +6,12 @@ use cas_math::expr_domain::{
     exprs_equivalent, exprs_equivalent_up_to_sign, is_abs_of, is_power_of_base,
     is_product_dominated_by_positives,
 };
+use cas_math::expr_nary::build_balanced_mul;
 use cas_math::expr_normalization::{
     extract_even_positive_power_base, normalize_condition_expr as normalize_condition_expr_math,
 };
 use cas_math::factor::factor;
+use cas_math::numeric_eval::as_rational_const;
 use num_traits::Signed;
 
 /// Normalize an expression for display in conditions.
@@ -30,13 +32,46 @@ pub fn normalize_condition(ctx: &mut Context, cond: &ImplicitCondition) -> Impli
     let normalized_expr = match cond {
         ImplicitCondition::NonNegative(e) => normalize_condition_expr(ctx, *e),
         ImplicitCondition::Positive(e) => normalize_condition_expr(ctx, *e),
-        ImplicitCondition::NonZero(e) => normalize_condition_expr(ctx, *e),
+        ImplicitCondition::NonZero(e) => {
+            let stripped = strip_nonzero_scalar_factors_for_display(ctx, *e);
+            normalize_condition_expr(ctx, stripped)
+        }
     };
 
     match cond {
         ImplicitCondition::NonNegative(_) => ImplicitCondition::NonNegative(normalized_expr),
         ImplicitCondition::Positive(_) => ImplicitCondition::Positive(normalized_expr),
         ImplicitCondition::NonZero(_) => ImplicitCondition::NonZero(normalized_expr),
+    }
+}
+
+fn strip_nonzero_scalar_factors_for_display(ctx: &mut Context, expr: ExprId) -> ExprId {
+    match ctx.get(expr).clone() {
+        Expr::Neg(inner) => strip_nonzero_scalar_factors_for_display(ctx, inner),
+        Expr::Mul(_, _) => {
+            let mut symbolic_factors = Vec::new();
+            for factor in cas_math::expr_nary::mul_leaves(ctx, expr) {
+                if as_rational_const(ctx, factor).is_none() {
+                    symbolic_factors.push(strip_nonzero_scalar_factors_for_display(ctx, factor));
+                }
+            }
+
+            if symbolic_factors.is_empty() {
+                expr
+            } else {
+                build_balanced_mul(ctx, &symbolic_factors)
+            }
+        }
+        Expr::Div(num, den) => {
+            let numerator_is_numeric = as_rational_const(ctx, num).is_some();
+            let denominator_is_numeric = as_rational_const(ctx, den).is_some();
+            match (numerator_is_numeric, denominator_is_numeric) {
+                (true, false) => strip_nonzero_scalar_factors_for_display(ctx, den),
+                (false, true) => strip_nonzero_scalar_factors_for_display(ctx, num),
+                _ => expr,
+            }
+        }
+        _ => expr,
     }
 }
 
@@ -90,7 +125,8 @@ fn expand_condition_for_display(
 }
 
 fn expand_nonzero_condition_for_display(ctx: &mut Context, expr: ExprId) -> Vec<ImplicitCondition> {
-    let normalized_expr = normalize_condition_expr(ctx, expr);
+    let stripped_expr = strip_nonzero_scalar_factors_for_display(ctx, expr);
+    let normalized_expr = normalize_condition_expr(ctx, stripped_expr);
 
     if let Some(base) = extract_even_positive_power_base(ctx, normalized_expr) {
         return vec![ImplicitCondition::NonZero(normalize_condition_expr(
@@ -256,5 +292,39 @@ mod tests {
         );
 
         assert_eq!(normalized, vec![ImplicitCondition::NonNegative(n)]);
+    }
+
+    #[test]
+    fn nonzero_constant_multiple_normalizes_to_base_condition() {
+        let mut ctx = Context::new();
+        let scaled = parse("2*a", &mut ctx).expect("parse scaled");
+        let base = parse("a", &mut ctx).expect("parse base");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::NonZero(scaled),
+                ImplicitCondition::NonZero(base),
+            ],
+        );
+
+        assert_eq!(normalized, vec![ImplicitCondition::NonZero(base)]);
+    }
+
+    #[test]
+    fn nonzero_fractional_multiple_normalizes_to_base_condition() {
+        let mut ctx = Context::new();
+        let scaled = parse("a/2", &mut ctx).expect("parse scaled");
+        let base = parse("a", &mut ctx).expect("parse base");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::NonZero(scaled),
+                ImplicitCondition::NonZero(base),
+            ],
+        );
+
+        assert_eq!(normalized, vec![ImplicitCondition::NonZero(base)]);
     }
 }

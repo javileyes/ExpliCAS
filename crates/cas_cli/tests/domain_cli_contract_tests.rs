@@ -84,7 +84,7 @@ fn cli_domain_strict_partial_cancel_contract() {
         1,
         "Strict should preserve one domain condition"
     );
-    assert_eq!(required[0], "2·x ≠ 0");
+    assert_eq!(required[0], "x ≠ 0");
 }
 
 #[test]
