@@ -1,14 +1,14 @@
+use super::sqrt::get_sqrt_inner;
 use cas_ast::{Context, Expr, ExprId};
 use num_bigint::BigInt;
 use num_rational::BigRational;
 
 pub(super) fn analyze_surd(ctx: &Context, expr: ExprId) -> Option<(BigRational, ExprId)> {
+    if let Some(inner) = get_sqrt_inner(ctx, expr) {
+        return Some((BigRational::from_integer(BigInt::from(1)), inner));
+    }
+
     match ctx.get(expr) {
-        Expr::Function(fn_id, args)
-            if ctx.is_builtin(*fn_id, cas_ast::BuiltinFn::Sqrt) && args.len() == 1 =>
-        {
-            Some((BigRational::from_integer(BigInt::from(1)), args[0]))
-        }
         Expr::Mul(left, right) => analyze_scaled_surd(ctx, *left, *right),
         _ => None,
     }
@@ -20,16 +20,8 @@ fn analyze_scaled_surd(
     right: ExprId,
 ) -> Option<(BigRational, ExprId)> {
     match (ctx.get(left), ctx.get(right)) {
-        (Expr::Number(coeff), Expr::Function(fn_id, args))
-            if ctx.is_builtin(*fn_id, cas_ast::BuiltinFn::Sqrt) && args.len() == 1 =>
-        {
-            Some((coeff.clone(), args[0]))
-        }
-        (Expr::Function(fn_id, args), Expr::Number(coeff))
-            if ctx.is_builtin(*fn_id, cas_ast::BuiltinFn::Sqrt) && args.len() == 1 =>
-        {
-            Some((coeff.clone(), args[0]))
-        }
+        (Expr::Number(coeff), _) => get_sqrt_inner(ctx, right).map(|inner| (coeff.clone(), inner)),
+        (_, Expr::Number(coeff)) => get_sqrt_inner(ctx, left).map(|inner| (coeff.clone(), inner)),
         _ => None,
     }
 }

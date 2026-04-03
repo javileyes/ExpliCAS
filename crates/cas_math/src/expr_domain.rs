@@ -92,6 +92,17 @@ pub fn is_power_of_base(ctx: &Context, expr: ExprId, base: ExprId) -> bool {
     false
 }
 
+/// Check if `expr` is a power whose base is equivalent to `base`.
+///
+/// This is used for positive-domain implication:
+/// if `base > 0`, then `base^exp > 0` for any real exponent `exp`.
+pub fn is_positive_power_of_base(ctx: &Context, expr: ExprId, base: ExprId) -> bool {
+    matches!(
+        ctx.get(expr),
+        Expr::Pow(pow_base, _) if exprs_equivalent(ctx, *pow_base, base)
+    )
+}
+
 /// Check if `source` is `k*target` where `k > 0`.
 pub fn is_positive_multiple_of(ctx: &Context, source: ExprId, target: ExprId) -> bool {
     use num_traits::Zero;
@@ -227,6 +238,17 @@ mod tests {
         let zero_exp = parse("x^0", &mut ctx).expect("parse");
         assert!(is_power_of_base(&ctx, frac_pow, base));
         assert!(!is_power_of_base(&ctx, zero_exp, base));
+    }
+
+    #[test]
+    fn positive_power_of_base_detects_symbolic_exponent() {
+        let mut ctx = Context::new();
+        let base = parse("x", &mut ctx).expect("parse");
+        let symbolic_pow = parse("x^n", &mut ctx).expect("parse");
+        let other = parse("y", &mut ctx).expect("parse");
+
+        assert!(is_positive_power_of_base(&ctx, symbolic_pow, base));
+        assert!(!is_positive_power_of_base(&ctx, symbolic_pow, other));
     }
 
     #[test]

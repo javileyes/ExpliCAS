@@ -209,3 +209,23 @@ fn test_nonzero_factorization_dedupes_explicit_subfactor() {
     assert!(rendered.iter().any(|item| item == "x ≠ 0"));
     assert!(rendered.iter().any(|item| item == "x + 1 ≠ 0"));
 }
+
+#[test]
+fn test_positive_base_dominates_symbolic_power_condition() {
+    let mut ctx = Context::new();
+    let x = ctx.var("x");
+    let x_pow_n = cas_parser::parse("x^n", &mut ctx).expect("parse x^n");
+
+    let normalized = normalize_and_dedupe_conditions(
+        &mut ctx,
+        &[
+            ImplicitCondition::Positive(x_pow_n),
+            ImplicitCondition::Positive(x),
+        ],
+    );
+
+    let rendered: Vec<_> = normalized.iter().map(|cond| cond.display(&ctx)).collect();
+    println!("Rendered positive guards: {:?}", rendered);
+
+    assert_eq!(rendered, vec!["x > 0"]);
+}

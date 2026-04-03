@@ -3,7 +3,7 @@
 use crate::domain_condition::ImplicitCondition;
 use cas_ast::{Context, Expr, ExprId};
 use cas_math::expr_domain::{
-    exprs_equivalent, exprs_equivalent_up_to_sign, is_abs_of, is_power_of_base,
+    exprs_equivalent, exprs_equivalent_up_to_sign, is_abs_of, is_positive_power_of_base,
     is_product_dominated_by_positives,
 };
 use cas_math::expr_nary::build_balanced_mul;
@@ -220,9 +220,12 @@ fn apply_dominance_rules(ctx: &Context, conditions: &mut Vec<ImplicitCondition>)
                         break;
                     }
                 }
-                (ImplicitCondition::Positive(abs_expr), ImplicitCondition::Positive(pos_expr)) => {
-                    if is_abs_of(ctx, *abs_expr, *pos_expr)
-                        || is_power_of_base(ctx, *abs_expr, *pos_expr)
+                (
+                    ImplicitCondition::Positive(derived_expr),
+                    ImplicitCondition::Positive(pos_expr),
+                ) => {
+                    if is_abs_of(ctx, *derived_expr, *pos_expr)
+                        || is_positive_power_of_base(ctx, *derived_expr, *pos_expr)
                     {
                         to_remove.push(i);
                         break;

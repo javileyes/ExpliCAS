@@ -611,3 +611,36 @@ fn step_wire_cube_quotient_recaps_factor_then_exact_cancellation() {
             .collect::<Vec<_>>()
     );
 }
+
+#[test]
+fn step_wire_root_denesting_keeps_didactic_substeps() {
+    let expr =
+        "(sqrt(5 + 2*sqrt(6))) + (1/(u*(u+2))) - ((sqrt(2) + sqrt(3)) + (1/(2*u) - 1/(2*(u+2))))";
+    let (engine, output) = eval_output_for(expr);
+    let steps =
+        cas_didactic::collect_step_payloads(&output.steps, &engine.simplifier.context, "on");
+
+    let step = steps
+        .iter()
+        .find(|step| step.rule == "Root Denesting")
+        .expect("expected root denesting step");
+
+    assert!(
+        step.substeps.len() >= 2,
+        "expected didactic root-denesting substeps, got: {:?}",
+        step.substeps
+            .iter()
+            .map(|substep| &substep.title)
+            .collect::<Vec<_>>()
+    );
+    assert!(
+        step.substeps
+            .iter()
+            .any(|substep| substep.title.contains("Identificar la forma")),
+        "expected root denesting narrative to identify the sqrt(a ± c·sqrt(d)) pattern, got: {:?}",
+        step.substeps
+            .iter()
+            .map(|substep| &substep.title)
+            .collect::<Vec<_>>()
+    );
+}

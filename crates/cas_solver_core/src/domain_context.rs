@@ -4,7 +4,7 @@ use crate::domain_condition::ImplicitCondition;
 use crate::domain_normalization::conditions_equivalent;
 use cas_ast::Context;
 use cas_math::expr_domain::{
-    exprs_equivalent, is_odd_power_of, is_positive_multiple_of, is_power_of_base,
+    exprs_equivalent, is_odd_power_of, is_positive_multiple_of, is_positive_power_of_base,
 };
 
 /// Context for domain condition tracking during step processing.
@@ -53,7 +53,7 @@ impl DomainContext {
                     if is_odd_power_of(ctx, *source, *target) {
                         return true;
                     }
-                    if is_power_of_base(ctx, *target, *source) {
+                    if is_positive_power_of_base(ctx, *target, *source) {
                         return true;
                     }
                 }
