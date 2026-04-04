@@ -2,6 +2,7 @@
 mod tests {
     use crate::eval::{EvalDisplayMessageKind, EvalMetadataLines, EvalResultLine};
     use crate::SessionState;
+    use cas_formatter::{DisplayExpr, LaTeXExpr};
     #[allow(unused_imports)]
     use cas_solver::session_api::{assumptions::*, eval::*, simplifier::*};
 
@@ -348,7 +349,38 @@ mod tests {
         let json = crate::eval::evaluate_eval_command_pretty_with_session(
             None,
             config,
-            |_steps, _events, _context, _steps_mode| Vec::new(),
+            |steps, _events, context, _steps_mode| {
+                steps
+                    .iter()
+                    .enumerate()
+                    .map(|(index, step)| cas_api_models::StepWire {
+                        index: index + 1,
+                        rule: step.rule_name.to_string(),
+                        rule_latex: String::new(),
+                        before: DisplayExpr {
+                            context,
+                            id: step.before,
+                        }
+                        .to_string(),
+                        after: DisplayExpr {
+                            context,
+                            id: step.after,
+                        }
+                        .to_string(),
+                        before_latex: LaTeXExpr {
+                            context,
+                            id: step.before,
+                        }
+                        .to_latex(),
+                        after_latex: LaTeXExpr {
+                            context,
+                            id: step.after,
+                        }
+                        .to_latex(),
+                        substeps: Vec::new(),
+                    })
+                    .collect()
+            },
         );
 
         let payload: serde_json::Value = serde_json::from_str(&json).expect("json");

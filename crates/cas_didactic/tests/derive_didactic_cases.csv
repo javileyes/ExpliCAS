@@ -1,0 +1,19 @@
+id,family,source,target,expected_status,expected_strategy
+cancel_fraction_common_factor_numeric,simplify,(2*x)/(4*x),1/2,derived,cancel fraction
+contract_log_even_power_abs,log_contract,2*ln(abs(x)),ln(x^2),derived,contract logs
+contract_log_general_base_power,log_contract,"3*log(2, x)","log(2, x^3)",derived,contract logs
+contract_log_sum_with_scaled_powers,log_contract,"3*ln(x) + 2*ln(abs(y))",ln(x^3*y^2),derived,contract logs
+contract_trig_half_angle_tangent_alt,trig_contract,sin(2*x)/(1+cos(2*x)),tan(x),derived,contract trig
+expand_cube_difference_product,polynomial_product,(x-1)*(x^2+x+1),x^3-1,derived,expand
+expand_cube_sum_product,polynomial_product,(x+1)*(x^2-x+1),x^3+1,derived,expand
+expand_sixth_power_minus_product,polynomial_product,(x^2-1)*(x^4+x^2+1),x^6-1,derived,expand
+expand_sixth_power_plus_product,polynomial_product,(x^2+1)*(x^4-x^2+1),x^6+1,derived,expand
+expand_symbolic_binomial_cube_minus,expand,(a - b)^3,a^3 - 3*a^2*b + 3*a*b^2 - b^3,derived,expand
+expand_symbolic_binomial_minus,expand,(a - b)^2,a^2 - 2*a*b + b^2,derived,expand
+expand_trig_half_angle_tangent_alt,trig_expand,tan(x),sin(2*x)/(1+cos(2*x)),derived,expand trig
+factor_common_factor_sum_three_terms,factor,a*x + b*x + c*x,x*(a+b+c),derived,factor
+factor_perfect_square_trinomial,factor,x^2 + 2*x + 1,(x + 1)^2,derived,factor
+factor_perfect_square_trinomial_minus,factor,a^2 - 2*a*b + b^2,(a - b)^2,derived,factor
+factor_symbolic_binomial_cube_minus,factor,a^3 - 3*a^2*b + 3*a*b^2 - b^3,(a-b)^3,derived,factor
+integrate_prep_dirichlet_longer,integrate_prep,1 + 2*cos(x) + 2*cos(2*x) + 2*cos(3*x),sin(7*x/2)/sin(x/2),derived,integrate prep
+integrate_prep_morrie_symbolic_scale,integrate_prep,cos(a*x)*cos(2*a*x),sin(4*a*x)/(4*sin(a*x)),derived,integrate prep

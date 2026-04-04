@@ -3,6 +3,7 @@ use cas_api_models::{wire::build_eval_wire_reply, WarningWire};
 pub(crate) fn build_eval_output_wire_value(
     warnings: &[WarningWire],
     required_display: &[String],
+    strategy: Option<&str>,
     result: &str,
     result_latex: Option<&str>,
     steps_count: usize,
@@ -11,6 +12,7 @@ pub(crate) fn build_eval_output_wire_value(
     serde_json::to_value(build_eval_wire_reply(
         warnings,
         required_display,
+        strategy,
         result,
         result_latex,
         steps_count,

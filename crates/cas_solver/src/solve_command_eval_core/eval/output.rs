@@ -66,6 +66,7 @@ where
         parsed: execution.parsed_expr,
         resolved: execution.resolved,
         result: crate::EvalResult::SolutionSet(execution.solution_set),
+        strategy: None,
         steps: crate::DisplayEvalSteps::default(),
         solve_steps: execution.display_steps.into_inner(),
         output_scopes: execution.solve_diagnostics.output_scopes.clone(),

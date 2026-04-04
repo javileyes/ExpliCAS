@@ -68,6 +68,7 @@ where
         parsed: parsed_anchor,
         resolved: resolved_exprs.first().copied().unwrap_or(parsed_anchor),
         result: crate::EvalResult::Text { plain, latex },
+        strategy: None,
         steps: crate::DisplayEvalSteps::default(),
         solve_steps: Vec::new(),
         output_scopes: Vec::new(),

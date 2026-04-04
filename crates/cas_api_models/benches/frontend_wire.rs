@@ -72,6 +72,7 @@ fn build_eval_wire(light: bool) -> EvalWireOutput {
         result_truncated: false,
         result_chars: if light { 5 } else { 3 },
         result_latex: None,
+        strategy: None,
         steps_mode: if light { "off" } else { "on" },
         steps_count: steps.len(),
         steps,

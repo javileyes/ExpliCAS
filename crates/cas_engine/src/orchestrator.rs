@@ -1106,6 +1106,7 @@ impl Orchestrator {
                 context_mode: self.options.shared.context_mode,
                 autoexpand_binomials: self.options.shared.autoexpand_binomials,
                 heuristic_poly: self.options.shared.heuristic_poly,
+                suppress_depth_overflow_warnings: self.options.suppress_depth_overflow_warnings,
             };
             let (next, steps, pass_stats) =
                 simplifier.apply_rules_loop_with_config(current, &self.pattern_marks, &config);

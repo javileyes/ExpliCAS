@@ -24,7 +24,12 @@ pub(crate) type ActionResult = (
 );
 
 use crate::Simplifier;
-use cas_ast::ExprId;
+use cas_ast::{Context, ExprId};
+use cas_math::prove_nonzero::prove_nonzero_depth_with;
+use cas_math::prove_sign::{prove_nonnegative_depth_with, prove_positive_depth_with};
+use cas_math::tri_proof::TriProof;
+
+const WARNING_SIGN_PROOF_DEPTH: usize = 12;
 
 /// The central Engine struct that wraps the core Simplifier and potentially other components.
 ///
@@ -153,7 +158,48 @@ pub type DomainWarning = cas_solver_core::domain_warning::DomainWarning;
 /// Collects structured assumption_events from each step.
 /// Note: Only events that are NOT RequiresIntroduced become DomainWarnings (⚠️).
 /// RequiresIntroduced events are displayed in steps with ℹ️ icon instead.
-pub(crate) fn collect_domain_warnings(steps: &[crate::Step]) -> Vec<DomainWarning> {
+fn warning_event_is_intrinsically_true_in_reals(
+    ctx: &Context,
+    event: &crate::AssumptionEvent,
+) -> bool {
+    let Some(expr) = event.expr_id else {
+        return false;
+    };
+
+    match event.key {
+        crate::AssumptionKey::Positive { .. } => prove_positive_depth_with(
+            ctx,
+            expr,
+            WARNING_SIGN_PROOF_DEPTH,
+            true,
+            |_ctx, _expr, _depth| TriProof::Unknown,
+        )
+        .is_proven(),
+        crate::AssumptionKey::NonNegative { .. } => prove_nonnegative_depth_with(
+            ctx,
+            expr,
+            WARNING_SIGN_PROOF_DEPTH,
+            true,
+            |_ctx, _expr, _depth| TriProof::Unknown,
+        )
+        .is_proven(),
+        crate::AssumptionKey::NonZero { .. } => prove_nonzero_depth_with(
+            ctx,
+            expr,
+            WARNING_SIGN_PROOF_DEPTH,
+            |_ctx, _expr| TriProof::Unknown,
+            |_ctx, _expr| None,
+        )
+        .is_proven(),
+        _ => false,
+    }
+}
+
+pub(crate) fn collect_domain_warnings(
+    ctx: &Context,
+    real_only: bool,
+    steps: &[crate::Step],
+) -> Vec<DomainWarning> {
     cas_session_core::eval::collect_warnings_with(
         steps,
         |step| step.assumption_events().to_vec(),
@@ -162,7 +208,7 @@ pub(crate) fn collect_domain_warnings(steps: &[crate::Step]) -> Vec<DomainWarnin
                 event.kind,
                 crate::AssumptionKind::RequiresIntroduced
                     | crate::AssumptionKind::DerivedFromRequires
-            )
+            ) || (real_only && warning_event_is_intrinsically_true_in_reals(ctx, event))
         },
         |event| event.message.clone(),
         |step| step.rule_name.clone(),

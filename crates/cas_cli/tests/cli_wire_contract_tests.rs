@@ -554,13 +554,17 @@ fn test_envelope_wire_assume_log_exp_surfaces_warning_and_guard() {
     let assumed = transparency["assumptions_used"].as_array().unwrap();
 
     assert_eq!(wire["result"]["value"]["display"], "x");
-    assert_eq!(required.len(), 1);
-    assert_eq!(required[0]["kind"], "NonZero");
-    assert_eq!(required[0]["expr_canonical"], "b - 1");
-    assert_eq!(assumed.len(), 1);
-    assert_eq!(assumed[0]["kind"], "domain_warning");
-    assert_eq!(assumed[0]["rule"], "Log-Exp Inverse");
-    assert_eq!(assumed[0]["display"], "b > 0");
+    assert_eq!(required.len(), 3);
+    assert!(required
+        .iter()
+        .any(|item| item["kind"] == "NonZero" && item["expr_canonical"] == "b - 1"));
+    assert!(required
+        .iter()
+        .any(|item| item["kind"] == "Positive" && item["expr_canonical"] == "b"));
+    assert!(required
+        .iter()
+        .any(|item| item["kind"] == "Positive" && item["expr_canonical"] == "b^x"));
+    assert!(assumed.is_empty());
 }
 
 /// Validates strict envelope preserves blocked educational hints
@@ -637,12 +641,17 @@ fn test_envelope_wire_generic_vs_assume_log_exp_split() {
     let assumed = assume_wire["transparency"]["assumptions_used"]
         .as_array()
         .unwrap();
-    assert_eq!(required.len(), 1);
-    assert_eq!(required[0]["kind"], "NonZero");
-    assert_eq!(required[0]["expr_canonical"], "b - 1");
-    assert_eq!(assumed.len(), 1);
-    assert_eq!(assumed[0]["rule"], "Log-Exp Inverse");
-    assert_eq!(assumed[0]["display"], "b > 0");
+    assert_eq!(required.len(), 3);
+    assert!(required
+        .iter()
+        .any(|item| item["kind"] == "NonZero" && item["expr_canonical"] == "b - 1"));
+    assert!(required
+        .iter()
+        .any(|item| item["kind"] == "Positive" && item["expr_canonical"] == "b"));
+    assert!(required
+        .iter()
+        .any(|item| item["kind"] == "Positive" && item["expr_canonical"] == "b^x"));
+    assert!(assumed.is_empty());
 }
 
 /// Validates intrinsic-domain split for exp(ln(x)) in envelope format

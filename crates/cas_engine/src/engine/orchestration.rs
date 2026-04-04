@@ -27,6 +27,7 @@ pub struct LoopConfig {
     pub context_mode: crate::options::ContextMode,
     pub autoexpand_binomials: crate::options::AutoExpandBinomials,
     pub heuristic_poly: crate::options::HeuristicPoly,
+    pub suppress_depth_overflow_warnings: bool,
 }
 
 impl Default for LoopConfig {
@@ -44,6 +45,7 @@ impl Default for LoopConfig {
             context_mode: crate::options::ContextMode::default(),
             autoexpand_binomials: crate::options::AutoExpandBinomials::Off,
             heuristic_poly: crate::options::HeuristicPoly::On,
+            suppress_depth_overflow_warnings: false,
         }
     }
 }
@@ -113,6 +115,7 @@ impl Simplifier {
             blocked_rules: std::collections::HashSet::new(),
             current_depth: 0,
             depth_overflow_warned: false,
+            suppress_depth_overflow_warnings: false,
             ancestor_stack: smallvec::SmallVec::new(),
             // Budget tracking (unified)
             rewrite_count: 0,
@@ -245,6 +248,7 @@ impl Simplifier {
         let context_mode = config.context_mode;
         let autoexpand_binomials = config.autoexpand_binomials;
         let heuristic_poly = config.heuristic_poly;
+        let suppress_depth_overflow_warnings = config.suppress_depth_overflow_warnings;
         let steps_mode = self.steps_mode;
         let shared_marks = std::rc::Rc::new(pattern_marks.clone());
 
@@ -345,6 +349,7 @@ impl Simplifier {
             blocked_rules: std::collections::HashSet::new(),
             current_depth: 0,
             depth_overflow_warned: false,
+            suppress_depth_overflow_warnings,
             ancestor_stack: smallvec::SmallVec::new(),
             // Budget tracking (unified)
             rewrite_count: 0,

@@ -125,6 +125,7 @@ mod tests {
             parsed: expr,
             resolved: expr,
             result,
+            strategy: None,
             steps: crate::DisplayEvalSteps::default(),
             solve_steps: vec![],
             output_scopes: vec![],

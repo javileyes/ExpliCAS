@@ -6,7 +6,7 @@
 //! 1. New flags are reflected in the wire semantics block
 //! 2. Defaults are correct (real/strict/principal)
 
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::process::Command;
 
 /// Run the CLI binary directly (not via `cargo run`) for stable test execution.
@@ -291,17 +291,7 @@ fn same_root_family_power_quotient_reaches_cli_eval_path_exactly() {
     let wire = parse_wire(&output);
 
     assert_eq!(wire["result"], "x^2 + 1");
-
-    let required = wire["required_display"]
-        .as_array()
-        .expect("required_display");
-    assert!(
-        required
-            .iter()
-            .filter_map(|item| item.as_str())
-            .any(|item| item == "sqrt(x^2 + 1)^3 ≠ 0"),
-        "expected original denominator condition in required_display"
-    );
+    assert_eq!(wire["required_display"], json!([]));
 }
 
 #[test]
@@ -361,12 +351,3423 @@ fn root_ctx_exact_quotient_survives_runtime_before_conjugate_rationalization() {
     let required = wire["required_display"]
         .as_array()
         .expect("required display");
-    assert!(
+    assert_eq!(
         required
             .iter()
             .filter_map(|item| item.as_str())
-            .any(|item| item == "u^(1/2) + u ≠ 0"),
-        "runtime should preserve the original transformed denominator guard"
+            .collect::<Vec<_>>(),
+        vec!["u > 0"],
+        "runtime should compress reciprocal-sqrt guards to a single positivity guard"
+    );
+}
+
+#[test]
+fn abs_sqrt_denominator_collapses_to_positive_base_guard() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "1/abs(sqrt(u))",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "u^(-1/2)");
+
+    let required = wire["required_display"]
+        .as_array()
+        .expect("required display");
+    assert_eq!(
+        required
+            .iter()
+            .filter_map(|item| item.as_str())
+            .collect::<Vec<_>>(),
+        vec!["u > 0"],
+        "abs(sqrt(u)) denominator should compress to a single positivity guard"
+    );
+}
+
+#[test]
+fn derive_log_abs_sqrt_collapses_to_positive_base_guard() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive ln(abs(sqrt(u))), (1/2)*ln(u)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "(1·ln(u))/2");
+
+    let required = wire["required_display"]
+        .as_array()
+        .expect("required display");
+    assert_eq!(
+        required
+            .iter()
+            .filter_map(|item| item.as_str())
+            .collect::<Vec<_>>(),
+        vec!["u > 0"],
+        "ln(abs(sqrt(u))) should not keep a redundant sqrt(u) != 0 guard"
+    );
+}
+
+#[test]
+fn eval_log_abs_sqrt_of_intrinsically_positive_argument_emits_no_warning() {
+    let (output, _code) = run_cli(&["eval", "ln(abs(sqrt(x^2+1)))", "--format", "json"]);
+    let wire = parse_wire(&output);
+
+    let warnings = wire["warnings"].as_array().expect("warnings array");
+    assert!(
+        warnings.is_empty(),
+        "intrinsically positive log argument should not emit a warning"
+    );
+
+    let required = wire["required_display"]
+        .as_array()
+        .expect("required display");
+    assert!(
+        required.is_empty(),
+        "intrinsically positive log argument should not surface display guards"
+    );
+}
+
+#[test]
+fn eval_general_base_log_abs_sqrt_of_intrinsically_positive_argument_keeps_only_base_requires() {
+    let (output, _code) = run_cli(&["eval", "log(b, abs(sqrt(x^2+1)))", "--format", "json"]);
+    let wire = parse_wire(&output);
+
+    let warnings = wire["warnings"].as_array().expect("warnings array");
+    assert!(
+        warnings.is_empty(),
+        "intrinsically positive general-base log argument should not emit a warning"
+    );
+
+    let required = wire["required_display"]
+        .as_array()
+        .expect("required display");
+    assert_eq!(
+        required
+            .iter()
+            .filter_map(|item| item.as_str())
+            .collect::<Vec<_>>(),
+        vec!["b - 1 ≠ 0", "b > 0"]
+    );
+}
+
+#[test]
+fn eval_general_base_log_sqrt_keeps_nontrivial_positive_argument_warning() {
+    let (output, _code) = run_cli(&["eval", "log(b, sqrt(u))", "--format", "json"]);
+    let wire = parse_wire(&output);
+
+    let warnings = wire["warnings"].as_array().expect("warnings array");
+    assert_eq!(warnings.len(), 1);
+    assert_eq!(warnings[0]["rule"], "Evaluate Logarithms");
+    assert_eq!(warnings[0]["assumption"], "u > 0");
+
+    let required = wire["required_display"]
+        .as_array()
+        .expect("required display");
+    assert_eq!(
+        required
+            .iter()
+            .filter_map(|item| item.as_str())
+            .collect::<Vec<_>>(),
+        vec!["b - 1 ≠ 0", "b > 0", "u > 0"]
+    );
+}
+
+#[test]
+fn derive_root_nesting_keeps_wire_steps_when_steps_count_is_positive() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive sqrt(2)+sqrt(3), sqrt(5+2*sqrt(6))",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "sqrt(2·sqrt(6) + 5)");
+    assert_eq!(wire["steps_count"], 2);
+
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert!(
+        !steps.is_empty(),
+        "expected wire steps for derive root nesting when steps_count is positive"
+    );
+}
+
+#[test]
+fn derive_json_exposes_strategy_metadata() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive sin(2*x)/cos(x+x), tan(2*x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "contract trig");
+
+    let messages = wire["wire"]["messages"].as_array().expect("wire messages");
+    assert!(
+        messages
+            .iter()
+            .any(|message| message["text"] == "Strategy: contract trig"),
+        "expected nested wire envelope to include derive strategy metadata"
+    );
+    assert!(
+        messages
+            .iter()
+            .any(|message| message["text"] == "1 step(s) via contract trig"),
+        "expected nested wire envelope to describe derive steps using the active strategy"
+    );
+}
+
+#[test]
+fn derive_double_angle_after_arg_simplify_uses_direct_expand_trig_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive sin(x+x), 2*sin(x)*cos(x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "expand trig");
+    assert_eq!(wire["steps_count"], 1);
+
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Expandir ángulo doble");
+}
+
+#[test]
+fn derive_mixed_root_and_symbolic_power_uses_single_combine_powers_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive sqrt(x)*x^a, x^(a+1/2)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "combine powers");
+    assert_eq!(wire["steps_count"], 1);
+
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Sumar exponentes de la misma base");
+}
+
+#[test]
+fn derive_cos_diff_over_sin_diff_quotient_uses_direct_contract_trig_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive (cos(x)-cos(3*x))/(sin(3*x)-sin(x)), tan(2*x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "contract trig");
+    assert_eq!(wire["steps_count"], 1);
+
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Convertir un cociente trigonométrico en tangente"
+    );
+}
+
+#[test]
+fn derive_hyperbolic_double_angle_avoids_generic_canonicalize_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive 2*sinh(x)*cosh(x), sinh(2*x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite hyperbolics");
+
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_ne!(
+        steps[0]["rule"],
+        "Canonicalize Multiplication",
+        "hyperbolic double-angle contraction should not fall back to a generic canonicalization step"
+    );
+}
+
+#[test]
+fn derive_sophie_germain_expansion_uses_single_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive (x^2 - 2*x*y + 2*y^2)*(x^2 + 2*x*y + 2*y^2), x^4 + 4*y^4",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "expand");
+    assert_eq!(wire["steps_count"], 1);
+
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Expandir la expresión");
+}
+
+#[test]
+fn derive_hyperbolic_half_angle_backward_avoids_generic_canonicalize_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive (cosh(x)-1)/2, sinh(x/2)^2",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Half-Angle Squares");
+}
+
+#[test]
+fn derive_negative_hyperbolic_cosh_half_angle_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive -(cosh(x)+1)/2, -cosh(x/2)^2",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite hyperbolics");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Half-Angle Squares");
+}
+
+#[test]
+fn derive_negative_hyperbolic_sinh_half_angle_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive -(cosh(x)-1)/2, -sinh(x/2)^2",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite hyperbolics");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Half-Angle Squares");
+}
+
+#[test]
+fn derive_negative_hyperbolic_cosh_half_angle_expansion_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive -cosh(x/2)^2, -(cosh(x)+1)/2",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite hyperbolics");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Half-Angle Squares");
+}
+
+#[test]
+fn derive_negative_hyperbolic_sinh_half_angle_expansion_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive -sinh(x/2)^2, -(cosh(x)-1)/2",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite hyperbolics");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Half-Angle Squares");
+}
+
+#[test]
+fn derive_hyperbolic_cosh_double_angle_variant_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive cosh(2*x), 2*cosh(x)^2-1",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["ok"], true);
+    assert_eq!(wire["strategy"], "rewrite hyperbolics");
+
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Double-Angle Identity");
+}
+
+#[test]
+fn derive_hyperbolic_expansion_from_exp_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive exp(x), sinh(x)+cosh(x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Exponential Identity");
+}
+
+#[test]
+fn derive_hyperbolic_expansion_from_negative_exp_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive exp(-x), cosh(x)-sinh(x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Exponential Reciprocal Identity");
+}
+
+#[test]
+fn derive_hyperbolic_expansion_from_negated_negative_exp_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive -exp(-x), sinh(x)-cosh(x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Exponential Reciprocal Identity");
+}
+
+#[test]
+fn derive_hyperbolic_tanh_pythagorean_backward_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive 1/cosh(x)^2, 1-tanh(x)^2",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Pythagorean Identity");
+}
+
+#[test]
+fn derive_negative_hyperbolic_tanh_pythagorean_forward_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive tanh(x)^2-1, -1/cosh(x)^2",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite hyperbolics");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Pythagorean Identity");
+}
+
+#[test]
+fn derive_negative_hyperbolic_tanh_pythagorean_backward_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive -1/cosh(x)^2, tanh(x)^2-1",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite hyperbolics");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Pythagorean Identity");
+}
+
+#[test]
+fn derive_hyperbolic_sinh_definition_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive sinh(x), (e^x-e^(-x))/2",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Exponential Identity");
+}
+
+#[test]
+fn derive_negative_hyperbolic_cosh_definition_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive -(e^x+e^(-x))/2, -cosh(x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite hyperbolics");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Exponential Identity");
+}
+
+#[test]
+fn derive_negative_hyperbolic_cosh_definition_expansion_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive -cosh(x), -(e^x+e^(-x))/2",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite hyperbolics");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Exponential Identity");
+}
+
+#[test]
+fn derive_hyperbolic_tanh_definition_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive tanh(x), (e^x-e^(-x))/(e^x+e^(-x))",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Exponential Identity");
+}
+
+#[test]
+fn derive_negative_hyperbolic_tanh_quotient_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive -sinh(x)/cosh(x), -tanh(x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite hyperbolics");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Quotient Identity");
+}
+
+#[test]
+fn derive_negative_hyperbolic_tanh_expansion_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive -tanh(x), -sinh(x)/cosh(x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite hyperbolics");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Quotient Identity");
+}
+
+#[test]
+fn derive_negative_hyperbolic_sinh_double_angle_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive -2*sinh(x)*cosh(x), -sinh(2*x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite hyperbolics");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Double-Angle Identity");
+}
+
+#[test]
+fn derive_negative_hyperbolic_sinh_double_angle_expansion_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive -sinh(2*x), -2*sinh(x)*cosh(x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite hyperbolics");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Double-Angle Identity");
+}
+
+#[test]
+fn derive_product_to_sum_expansion_does_not_emit_depth_overflow_warning_to_stderr() {
+    let bin_path = env!("CARGO_BIN_EXE_cas_cli");
+    let output = Command::new(bin_path)
+        .args([
+            "eval",
+            "derive 2*sin(2*x)*cos(x), sin(3*x)+sin(x)",
+            "--format",
+            "json",
+            "--steps",
+            "on",
+        ])
+        .output()
+        .expect("Failed to execute binary");
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    let wire = parse_wire(&stdout);
+
+    assert_eq!(wire["strategy"], "expand trig");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Aplicar producto a suma");
+    assert!(
+        !stderr.contains("depth_overflow"),
+        "expected direct product-to-sum expansion to stay quiet on stderr, got: {stderr}"
+    );
+}
+
+#[test]
+fn derive_cosine_product_to_sum_expansion_uses_single_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive 2*cos(2*x)*cos(x), cos(3*x)+cos(x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "expand trig");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Aplicar producto a suma");
+}
+
+#[test]
+fn derive_sine_difference_product_to_sum_expansion_uses_single_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive 2*sin(2*x)*sin(x), cos(x)-cos(3*x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "expand trig");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Aplicar producto a suma");
+}
+
+#[test]
+fn derive_planner_steps_count_matches_visible_steps_for_trig_polynomial_target() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive 2*sin(2*x)*sin(x), 4*cos(x)-4*cos(x)^3",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "planner");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(wire["steps_count"].as_u64(), Some(steps.len() as u64));
+}
+
+#[test]
+fn derive_hyperbolic_cosh_double_angle_expansion_to_sinh_mixed_polynomial_uses_single_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive 2*cosh(2*x)*sinh(x), 4*cosh(x)^2*sinh(x)-2*sinh(x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite hyperbolics");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Double-Angle Identity");
+}
+
+#[test]
+fn derive_hyperbolic_cosh_double_angle_expansion_to_cosh_mixed_polynomial_uses_single_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive 2*cosh(2*x)*cosh(x), 2*cosh(x)+4*sinh(x)^2*cosh(x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite hyperbolics");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Double-Angle Identity");
+}
+
+#[test]
+fn derive_hyperbolic_cosh_double_angle_contraction_from_sinh_mixed_polynomial_uses_single_named_step(
+) {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive 4*cosh(x)^2*sinh(x)-2*sinh(x), 2*cosh(2*x)*sinh(x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite hyperbolics");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Double-Angle Identity");
+}
+
+#[test]
+fn derive_hyperbolic_cosh_double_angle_contraction_from_cosh_mixed_polynomial_uses_single_named_step(
+) {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive 2*cosh(x)+4*sinh(x)^2*cosh(x), 2*cosh(2*x)*cosh(x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite hyperbolics");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Double-Angle Identity");
+}
+
+#[test]
+fn derive_hyperbolic_product_to_sum_expansion_uses_single_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive 2*sinh(2*x)*cosh(x), sinh(3*x)+sinh(x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "expand");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Product-to-Sum Identity");
+}
+
+#[test]
+fn derive_hyperbolic_sum_to_product_contraction_uses_single_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive sinh(3*x)-sinh(x), 2*cosh(2*x)*sinh(x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "expand");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Product-to-Sum Identity");
+}
+
+#[test]
+fn derive_binomial_expansion_with_cancellation_uses_expand_strategy() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive (a+b)^2 - a^2 - 2*a*b, b^2",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "expand");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert!(!steps.is_empty());
+    assert_eq!(steps[0]["rule"], "Expandir binomio");
+}
+
+#[test]
+fn derive_hyperbolic_product_to_sum_with_passthrough_uses_planner_chain() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive 2*sinh(2*x)*sinh(x)+a, 4*cosh(x)^3-4*cosh(x)+a",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "planner");
+    assert_eq!(wire["steps_count"], 2);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 2);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Product-to-Sum Identity");
+    assert_eq!(steps[1]["rule"], "Hyperbolic Triple-Angle Identity");
+}
+
+#[test]
+fn derive_mixed_trig_double_angle_product_uses_named_step_without_depth_warning() {
+    let bin_path = env!("CARGO_BIN_EXE_cas_cli");
+    let output = Command::new(bin_path)
+        .args([
+            "eval",
+            "derive 4*sin(x)^2*cos(x), 2*sin(2*x)*sin(x)",
+            "--format",
+            "json",
+            "--steps",
+            "on",
+        ])
+        .output()
+        .expect("Failed to execute binary");
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    let wire = parse_wire(&stdout);
+
+    assert_eq!(wire["strategy"], "contract trig");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Expandir ángulo doble");
+    assert!(
+        !stderr.contains("depth_overflow"),
+        "expected target-aware double-angle path to stay quiet on stderr, got: {stderr}"
+    );
+}
+
+#[test]
+fn derive_mixed_hyperbolic_double_angle_product_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive 4*sinh(x)^2*cosh(x), 2*sinh(2*x)*sinh(x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite hyperbolics");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Double-Angle Identity");
+}
+
+#[test]
+fn derive_trig_product_to_sum_mixed_cos_square_polynomial_uses_planner() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive 2*cos(2*x)*sin(x), 4*cos(x)^2*sin(x)-2*sin(x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "planner");
+    assert_eq!(wire["steps_count"], 2);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 2);
+    assert_eq!(steps[0]["rule"], "Aplicar producto a suma");
+    assert_eq!(steps[1]["rule"], "Triple Angle Expansion");
+}
+
+#[test]
+fn derive_mixed_trig_double_angle_expansion_to_sin_square_polynomial_uses_single_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive 2*sin(2*x)*sin(x), 4*sin(x)^2*cos(x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "expand trig");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Expandir ángulo doble");
+}
+
+#[test]
+fn derive_mixed_trig_double_angle_expansion_to_cos_square_polynomial_uses_single_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive 2*sin(2*x)*cos(x), 4*cos(x)^2*sin(x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "expand trig");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Expandir ángulo doble");
+}
+
+#[test]
+fn derive_negative_hyperbolic_tanh_double_angle_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive -2*tanh(x)/(1+tanh(x)^2), -tanh(2*x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite hyperbolics");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Double-Angle Identity");
+}
+
+#[test]
+fn derive_negative_hyperbolic_tanh_double_angle_expansion_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive -tanh(2*x), -2*tanh(x)/(1+tanh(x)^2)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite hyperbolics");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Double-Angle Identity");
+}
+
+#[test]
+fn derive_negative_hyperbolic_sinh_triple_angle_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive -(3*sinh(x)+4*sinh(x)^3), -sinh(3*x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite hyperbolics");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Triple-Angle Identity");
+}
+
+#[test]
+fn derive_negative_hyperbolic_sinh_triple_angle_expansion_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive -sinh(3*x), -(3*sinh(x)+4*sinh(x)^3)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite hyperbolics");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Triple-Angle Identity");
+}
+
+#[test]
+fn derive_negative_hyperbolic_cosh_triple_angle_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive -(4*cosh(x)^3-3*cosh(x)), -cosh(3*x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite hyperbolics");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Triple-Angle Identity");
+}
+
+#[test]
+fn derive_negative_hyperbolic_cosh_triple_angle_expansion_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive -cosh(3*x), -(4*cosh(x)^3-3*cosh(x))",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite hyperbolics");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Triple-Angle Identity");
+}
+
+#[test]
+fn derive_hyperbolic_shifted_pythagorean_forward_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive cosh(x)^2-1, sinh(x)^2",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Pythagorean Identity");
+}
+
+#[test]
+fn derive_hyperbolic_shifted_pythagorean_add_backward_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive cosh(x)^2, 1+sinh(x)^2",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Pythagorean Identity");
+}
+
+#[test]
+fn derive_hyperbolic_shifted_double_angle_minus_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive cosh(2*x)-1, 2*sinh(x)^2",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Double-Angle Identity");
+}
+
+#[test]
+fn derive_hyperbolic_negative_shifted_double_angle_minus_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive 1-cosh(2*x), -2*sinh(x)^2",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite hyperbolics");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Double-Angle Identity");
+}
+
+#[test]
+fn derive_hyperbolic_negative_shifted_double_angle_minus_backward_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive -2*sinh(x)^2, 1-cosh(2*x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite hyperbolics");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Double-Angle Identity");
+}
+
+#[test]
+fn derive_hyperbolic_negative_shifted_double_angle_plus_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive -1-cosh(2*x), -2*cosh(x)^2",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite hyperbolics");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Double-Angle Identity");
+}
+
+#[test]
+fn derive_hyperbolic_negative_shifted_double_angle_plus_backward_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive -2*cosh(x)^2, -1-cosh(2*x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite hyperbolics");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Double-Angle Identity");
+}
+
+#[test]
+fn derive_hyperbolic_negative_double_angle_cosh_sq_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive 1-2*cosh(x)^2, -cosh(2*x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite hyperbolics");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Double-Angle Identity");
+}
+
+#[test]
+fn derive_hyperbolic_negative_double_angle_cosh_sq_backward_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive -cosh(2*x), 1-2*cosh(x)^2",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite hyperbolics");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Double-Angle Identity");
+}
+
+#[test]
+fn derive_hyperbolic_shifted_double_angle_plus_backward_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive 2*cosh(x)^2, cosh(2*x)+1",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Double-Angle Identity");
+}
+
+#[test]
+fn derive_hyperbolic_double_angle_two_cosh_sq_minus_one_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive 2*cosh(x)^2-1, cosh(2*x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Double-Angle Identity");
+}
+
+#[test]
+fn derive_hyperbolic_double_angle_two_sinh_sq_plus_one_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive 2*sinh(x)^2+1, cosh(2*x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Double-Angle Identity");
+}
+
+#[test]
+fn derive_negative_sine_squared_uses_single_pythagorean_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive -sin(x)^2, cos(x)^2-1",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Aplicar identidad pitagórica");
+}
+
+#[test]
+fn derive_negative_cos_squared_uses_single_pythagorean_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive -cos(x)^2, sin(x)^2-1",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Aplicar identidad pitagórica");
+}
+
+#[test]
+fn derive_negative_tan_quotient_uses_single_trig_quotient_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive -sin(x)/cos(x), -tan(x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "contract trig");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Convertir un cociente trigonométrico en tangente"
+    );
+}
+
+#[test]
+fn derive_negative_tan_expansion_uses_single_trig_expansion_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive -tan(x), -sin(x)/cos(x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "expand trig");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Expandir una identidad trigonométrica");
+}
+
+#[test]
+fn derive_combine_like_terms_uses_named_strategy() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive x + x, 2*x",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "combine like terms");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Agrupar términos semejantes");
+}
+
+#[test]
+fn derive_nested_fraction_one_over_sum_uses_named_strategy() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive 1/(1/a + 1/b), (a*b)/(a+b)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "nested fraction");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Cancelar factores en una fracción");
+}
+
+#[test]
+fn root_nesting_drops_intrinsically_nonnegative_radicand_require() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "sqrt(x^2 + 2*sqrt(x^2 + 1) + 2)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "(x^2 + 1)^(1/2) + 1");
+    assert_eq!(wire["required_display"], json!([]));
+}
+
+#[test]
+fn derive_nested_fraction_one_over_sum_drops_redundant_reciprocal_sum_guard() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive 1/(1/a + 1/b), (a*b)/(a+b)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    let required = wire["required_display"]
+        .as_array()
+        .expect("required_display");
+    let required: Vec<&str> = required.iter().filter_map(|item| item.as_str()).collect();
+
+    assert!(
+        !required.contains(&"1 / a + 1 / b ≠ 0"),
+        "expected reciprocal-sum guard to be dominated by atomic guards: {required:?}"
+    );
+    assert!(required.contains(&"a + b ≠ 0"));
+    assert!(required.contains(&"a ≠ 0"));
+    assert!(required.contains(&"b ≠ 0"));
+}
+
+#[test]
+fn derive_nested_fraction_structural_uses_named_strategy() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive a/(b + c/d), a*d/(b*d+c)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "nested fraction");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Cancelar factores en una fracción");
+}
+
+#[test]
+fn derive_consecutive_factorial_ratio_uses_named_factorial_rewrite_and_keeps_guard() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive (n+1)!/n!, n+1",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite factorials");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Cancelar factoriales consecutivos");
+
+    let required = wire["required_display"]
+        .as_array()
+        .expect("required_display");
+    assert!(
+        required.iter().any(|item| item == "n! ≠ 0"),
+        "expected factorial nonzero guard in required_display: {required:?}"
+    );
+}
+
+#[test]
+fn derive_inverse_tan_reciprocal_identity_uses_named_inverse_trig_rewrite_and_keeps_guard() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive arctan(a)+arctan(1/a), pi/2",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite inverse trigs");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Aplicar identidad de arctangentes");
+
+    let required = wire["required_display"]
+        .as_array()
+        .expect("required_display");
+    assert!(
+        required.iter().any(|item| item == "a ≠ 0"),
+        "expected inverse-tan nonzero guard in required_display: {required:?}"
+    );
+}
+
+#[test]
+fn derive_difference_of_squares_fraction_uses_named_fraction_cancel_and_keeps_guard() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive (a^2-b^2)/(a-b), a+b",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "cancel fraction");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Factorizar una diferencia de cuadrados y cancelar"
+    );
+
+    let required = wire["required_display"]
+        .as_array()
+        .expect("required_display");
+    assert!(
+        required.iter().any(|item| item == "a - b ≠ 0"),
+        "expected denominator nonzero guard in required_display: {required:?}"
+    );
+}
+
+#[test]
+fn derive_difference_of_cubes_fraction_uses_named_fraction_cancel_and_keeps_guard() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive (a^3-b^3)/(a-b), a^2+a*b+b^2",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "cancel fraction");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Factorizar cubos y cancelar");
+
+    let required = wire["required_display"]
+        .as_array()
+        .expect("required_display");
+    assert!(
+        required.iter().any(|item| item == "a - b ≠ 0"),
+        "expected denominator nonzero guard in required_display: {required:?}"
+    );
+}
+
+#[test]
+fn derive_common_factor_fraction_uses_named_fraction_cancel_and_keeps_guards() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive (a*x^2)/(b*x), (a*x)/b",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "cancel fraction");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Cancelar un factor común");
+
+    let required = wire["required_display"]
+        .as_array()
+        .expect("required_display");
+    assert!(
+        required.iter().any(|item| item == "x ≠ 0"),
+        "expected cancelled-factor guard in required_display: {required:?}"
+    );
+}
+
+#[test]
+fn derive_perfect_square_root_to_abs_uses_named_radical_rewrite_and_keeps_guard() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive sqrt(a^2 + 2*a*b + b^2), abs(a+b)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite radicals");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Reconocer un cuadrado perfecto bajo la raíz"
+    );
+
+    let required = wire["required_display"]
+        .as_array()
+        .expect("required_display");
+    assert!(
+        required.is_empty(),
+        "expected no required_display guards: {required:?}"
+    );
+}
+
+#[test]
+fn derive_pythagorean_identity_uses_named_trig_rewrite() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive sin(x)^2 + cos(x)^2, 1",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite trigs");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Aplicar la identidad pitagórica");
+}
+
+#[test]
+fn derive_negative_sec_reciprocal_uses_single_reciprocal_trig_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive -1/cos(x), -sec(x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "contract trig");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Aplicar identidad trigonométrica recíproca"
+    );
+}
+
+#[test]
+fn derive_shifted_sec_squared_uses_single_reciprocal_pythagorean_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive sec(x)^2-1, tan(x)^2",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Aplicar identidad pitagórica recíproca");
+}
+
+#[test]
+fn derive_shifted_cot_squared_uses_single_reciprocal_pythagorean_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive cot(x)^2, csc(x)^2-1",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Aplicar identidad pitagórica recíproca");
+}
+
+#[test]
+fn derive_one_minus_sec_squared_uses_single_reciprocal_pythagorean_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive 1-sec(x)^2, -tan(x)^2",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Aplicar identidad pitagórica recíproca");
+}
+
+#[test]
+fn derive_negative_cot_squared_uses_single_reciprocal_pythagorean_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive -cot(x)^2, 1-csc(x)^2",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Aplicar identidad pitagórica recíproca");
+}
+
+#[test]
+fn derive_shifted_double_angle_plus_uses_single_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive cos(2*x)+1, 2*cos(x)^2",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Expandir ángulo doble");
+}
+
+#[test]
+fn derive_shifted_double_angle_minus_backward_uses_single_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive 2*sin(x)^2, 1-cos(2*x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Expandir ángulo doble");
+}
+
+#[test]
+fn derive_shifted_double_angle_negative_forward_uses_single_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive cos(2*x)-1, -2*sin(x)^2",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Expandir ángulo doble");
+}
+
+#[test]
+fn derive_shifted_double_angle_negative_backward_uses_single_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive -2*sin(x)^2, cos(2*x)-1",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Expandir ángulo doble");
+}
+
+#[test]
+fn derive_negative_cosine_double_angle_contraction_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive sin(x)^2-cos(x)^2, -cos(2*x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "contract trig");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Expandir ángulo doble");
+}
+
+#[test]
+fn derive_negative_cosine_double_angle_expansion_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive -cos(2*x), sin(x)^2-cos(x)^2",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "expand trig");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Expandir ángulo doble");
+}
+
+#[test]
+fn derive_negative_sine_double_angle_contraction_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive -2*sin(x)*cos(x), -sin(2*x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "contract trig");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Expandir ángulo doble");
+}
+
+#[test]
+fn derive_negative_sine_double_angle_expansion_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive -sin(2*x), -2*sin(x)*cos(x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "expand trig");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Expandir ángulo doble");
+}
+
+#[test]
+fn derive_negative_half_angle_square_contraction_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive -(1-cos(2*x))/2, -sin(x)^2",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "contract trig");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Aplicar identidad de ángulo mitad");
+}
+
+#[test]
+fn derive_negative_half_angle_square_expansion_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive -cos(x)^2, -(1+cos(2*x))/2",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "expand trig");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Aplicar identidad de ángulo mitad");
+}
+
+#[test]
+fn derive_negative_half_angle_tangent_contraction_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive -(1-cos(2*x))/sin(2*x), -tan(x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "contract trig");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Aplicar identidad de tangente de ángulo mitad"
+    );
+}
+
+#[test]
+fn derive_negative_half_angle_tangent_expansion_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive -tan(x), -(1-cos(2*x))/sin(2*x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "expand trig");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Aplicar identidad de tangente de ángulo mitad"
+    );
+}
+
+#[test]
+fn derive_negative_trig_sine_triple_angle_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive -(3*sin(x)-4*sin(x)^3), -sin(3*x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "contract trig");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Triple Angle Expansion");
+}
+
+#[test]
+fn derive_negative_trig_sine_triple_angle_expansion_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive -sin(3*x), -(3*sin(x)-4*sin(x)^3)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "expand trig");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Triple Angle Expansion");
+}
+
+#[test]
+fn derive_negative_trig_cosine_triple_angle_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive -(4*cos(x)^3-3*cos(x)), -cos(3*x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "contract trig");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Triple Angle Expansion");
+}
+
+#[test]
+fn derive_negative_trig_cosine_triple_angle_expansion_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive -cos(3*x), -(4*cos(x)^3-3*cos(x))",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "expand trig");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Triple Angle Expansion");
+}
+
+#[test]
+fn derive_trig_tangent_triple_angle_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive (3*tan(x)-tan(x)^3)/(1-3*tan(x)^2), tan(3*x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "contract trig");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Triple Angle Expansion");
+}
+
+#[test]
+fn derive_trig_tangent_triple_angle_expansion_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive tan(3*x), (3*tan(x)-tan(x)^3)/(1-3*tan(x)^2)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "expand trig");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Triple Angle Expansion");
+}
+
+#[test]
+fn derive_negative_trig_tangent_triple_angle_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive -(3*tan(x)-tan(x)^3)/(1-3*tan(x)^2), -tan(3*x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "contract trig");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Triple Angle Expansion");
+}
+
+#[test]
+fn derive_negative_trig_tangent_triple_angle_expansion_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive -tan(3*x), -(3*tan(x)-tan(x)^3)/(1-3*tan(x)^2)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "expand trig");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Triple Angle Expansion");
+}
+
+#[test]
+fn derive_trig_quintuple_sine_expansion_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive sin(5*x), 5*sin(x)-20*sin(x)^3+16*sin(x)^5",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "expand trig");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Quintuple Angle Identity");
+}
+
+#[test]
+fn derive_negative_trig_quintuple_sine_expansion_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive -sin(5*x), -(5*sin(x)-20*sin(x)^3+16*sin(x)^5)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "expand trig");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Quintuple Angle Identity");
+}
+
+#[test]
+fn derive_trig_quintuple_cosine_expansion_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive cos(5*x), 16*cos(x)^5-20*cos(x)^3+5*cos(x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "expand trig");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Quintuple Angle Identity");
+}
+
+#[test]
+fn derive_negative_trig_quintuple_cosine_expansion_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive -cos(5*x), -(16*cos(x)^5-20*cos(x)^3+5*cos(x))",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "expand trig");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Quintuple Angle Identity");
+}
+
+#[test]
+fn derive_trig_quintuple_sine_contraction_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive 5*sin(x)-20*sin(x)^3+16*sin(x)^5, sin(5*x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "contract trig");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Quintuple Angle Identity");
+}
+
+#[test]
+fn derive_negative_trig_quintuple_sine_contraction_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive -(5*sin(x)-20*sin(x)^3+16*sin(x)^5), -sin(5*x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "contract trig");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Quintuple Angle Identity");
+}
+
+#[test]
+fn derive_trig_quintuple_cosine_contraction_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive 16*cos(x)^5-20*cos(x)^3+5*cos(x), cos(5*x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "contract trig");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Quintuple Angle Identity");
+}
+
+#[test]
+fn derive_negative_trig_quintuple_cosine_contraction_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive -(16*cos(x)^5-20*cos(x)^3+5*cos(x)), -cos(5*x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "contract trig");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Quintuple Angle Identity");
+}
+
+#[test]
+fn derive_trig_angle_sum_sine_expansion_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive sin(x+y), sin(x)*cos(y)+cos(x)*sin(y)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "expand trig");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Angle Sum/Diff Identity");
+}
+
+#[test]
+fn derive_trig_angle_sum_sine_contraction_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive sin(x)*cos(y)+cos(x)*sin(y), sin(x+y)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "contract trig");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Angle Sum/Diff Identity");
+}
+
+#[test]
+fn derive_trig_recursive_six_x_sine_expansion_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive sin(6*x), sin(5*x)*cos(x)+cos(5*x)*sin(x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "expand trig");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Angle Sum/Diff Identity");
+}
+
+#[test]
+fn derive_trig_recursive_six_x_sine_contraction_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive sin(5*x)*cos(x)+cos(5*x)*sin(x), sin(6*x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "contract trig");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Angle Sum/Diff Identity");
+}
+
+#[test]
+fn derive_trig_angle_diff_sine_contraction_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive sin(x)*cos(y)-cos(x)*sin(y), sin(x-y)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "contract trig");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Angle Sum/Diff Identity");
+}
+
+#[test]
+fn derive_negative_trig_angle_diff_sine_contraction_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive -(sin(x)*cos(y)-cos(x)*sin(y)), -sin(x-y)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "contract trig");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Angle Sum/Diff Identity");
+}
+
+#[test]
+fn derive_trig_angle_diff_cosine_expansion_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive cos(x-y), cos(x)*cos(y)+sin(x)*sin(y)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "expand trig");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Angle Sum/Diff Identity");
+}
+
+#[test]
+fn derive_trig_recursive_six_x_cosine_contraction_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive cos(5*x)*cos(x)-sin(5*x)*sin(x), cos(6*x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "contract trig");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Angle Sum/Diff Identity");
+}
+
+#[test]
+fn derive_negative_trig_recursive_six_x_cosine_contraction_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive -(cos(5*x)*cos(x)-sin(5*x)*sin(x)), -cos(6*x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "contract trig");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Angle Sum/Diff Identity");
+}
+
+#[test]
+fn derive_hyperbolic_angle_sum_contraction_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive sinh(x)*cosh(y)+cosh(x)*sinh(y), sinh(x+y)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite hyperbolics");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Angle Sum/Difference Identity");
+}
+
+#[test]
+fn derive_hyperbolic_angle_diff_contraction_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive cosh(x)*cosh(y)-sinh(x)*sinh(y), cosh(x-y)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite hyperbolics");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Angle Sum/Difference Identity");
+}
+
+#[test]
+fn derive_negative_hyperbolic_angle_diff_contraction_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive -(cosh(x)*cosh(y)-sinh(x)*sinh(y)), -cosh(x-y)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite hyperbolics");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Angle Sum/Difference Identity");
+}
+
+#[test]
+fn derive_recursive_hyperbolic_sinh_expansion_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive sinh(6*x), sinh(5*x)*cosh(x)+cosh(5*x)*sinh(x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "expand");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Angle Sum/Difference Identity");
+}
+
+#[test]
+fn derive_recursive_hyperbolic_cosh_expansion_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive cosh(6*x), cosh(5*x)*cosh(x)+sinh(5*x)*sinh(x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "expand");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Angle Sum/Difference Identity");
+}
+
+#[test]
+fn derive_hyperbolic_tanh_angle_sum_expansion_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive tanh(x+y), (tanh(x)+tanh(y))/(1+tanh(x)*tanh(y))",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite hyperbolics");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Angle Sum/Difference Identity");
+}
+
+#[test]
+fn derive_hyperbolic_tanh_angle_sum_contraction_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive (tanh(x)+tanh(y))/(1+tanh(x)*tanh(y)), tanh(x+y)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite hyperbolics");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Angle Sum/Difference Identity");
+}
+
+#[test]
+fn derive_hyperbolic_tanh_triple_angle_expansion_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive tanh(3*x), (3*tanh(x)+tanh(x)^3)/(1+3*tanh(x)^2)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite hyperbolics");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Triple-Angle Identity");
+}
+
+#[test]
+fn derive_hyperbolic_tanh_triple_angle_contraction_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive (3*tanh(x)+tanh(x)^3)/(1+3*tanh(x)^2), tanh(3*x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite hyperbolics");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Triple-Angle Identity");
+}
+
+#[test]
+fn derive_exponential_sum_expansion_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive exp(x+y), exp(x)*exp(y)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite exponentials");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Exponential Sum/Difference Identity");
+}
+
+#[test]
+fn derive_exponential_sum_expansion_with_passthrough_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive exp(x+y)+a, exp(x)*exp(y)+a",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite exponentials");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Exponential Sum/Difference Identity");
+}
+
+#[test]
+fn derive_exponential_difference_expansion_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive exp(x-y), exp(x)/exp(y)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite exponentials");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Exponential Sum/Difference Identity");
+}
+
+#[test]
+fn derive_exponential_product_contraction_with_passthrough_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive exp(x)*exp(y)+a, exp(x+y)+a",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite exponentials");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Exponential Sum/Difference Identity");
+}
+
+#[test]
+fn derive_exponential_product_contraction_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive exp(x)*exp(y), exp(x+y)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite exponentials");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Exponential Sum/Difference Identity");
+}
+
+#[test]
+fn derive_exponential_product_quotient_contraction_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive exp(x)*exp(y)/exp(z), exp(x+y-z)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite exponentials");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Exponential Sum/Difference Identity");
+}
+
+#[test]
+fn derive_exponential_quotient_with_power_contraction_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive exp(x)/exp(y)^2, exp(x-2*y)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite exponentials");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Exponential Sum/Difference Identity");
+}
+
+#[test]
+fn derive_exponential_power_quotient_contraction_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive exp(x)^2/exp(y)^3, exp(2*x-3*y)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite exponentials");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Exponential Sum/Difference Identity");
+}
+
+#[test]
+fn derive_exponential_reciprocal_contraction_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive 1/exp(x), exp(-x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite exponentials");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Exponential Reciprocal Identity");
+}
+
+#[test]
+fn derive_exponential_reciprocal_expansion_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive exp(-x), 1/exp(x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite exponentials");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Exponential Reciprocal Identity");
+}
+
+#[test]
+fn derive_negative_exponential_reciprocal_contraction_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive -1/exp(x), -exp(-x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite exponentials");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Exponential Reciprocal Identity");
+}
+
+#[test]
+fn derive_exponential_power_contraction_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive exp(x)^3, exp(3*x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite exponentials");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Exponential Power Identity");
+}
+
+#[test]
+fn derive_exponential_reciprocal_power_contraction_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive 1/exp(x)^2, exp(-2*x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite exponentials");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Exponential Reciprocal Identity");
+}
+
+#[test]
+fn derive_exponential_scaled_argument_to_scaled_cosh_uses_direct_identity() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive exp(2*x)+exp(-2*x), 2*cosh(2*x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite hyperbolics");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Exponential Identity");
+}
+
+#[test]
+fn derive_exponential_to_scaled_cosh_uses_direct_identity() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive exp(x)+exp(-x), 2*cosh(x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite hyperbolics");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Exponential Identity");
+}
+
+#[test]
+fn derive_scaled_cosh_to_exponential_sum_uses_direct_identity() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive 2*cosh(2*x), exp(2*x)+exp(-2*x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "planner");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert!(!steps.is_empty());
+    assert_eq!(steps[0]["rule"], "Hyperbolic Exponential Identity");
+}
+
+#[test]
+fn derive_scaled_sinh_to_exponential_difference_uses_direct_identity() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive 2*sinh(x), exp(x)-exp(-x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite hyperbolics");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Exponential Identity");
+}
+
+#[test]
+fn derive_scaled_exponential_ratio_to_tanh_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive (e^(2*x)-e^(-2*x))/(e^(2*x)+e^(-2*x)), tanh(2*x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite hyperbolics");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Exponential Identity");
+}
+
+#[test]
+fn derive_tanh_exponential_definition_drops_redundant_nonzero_requires() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive tanh(x), (e^x - e^(-x))/(e^x + e^(-x))",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite hyperbolics");
+    assert_eq!(wire["required_display"], json!([]));
+}
+
+#[test]
+fn derive_tanh_reciprocal_exponential_definition_uses_single_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive tanh(x), (exp(x)-1/exp(x))/(exp(x)+1/exp(x))",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite hyperbolics");
+    assert_eq!(wire["steps_count"], 1);
+    assert_eq!(wire["required_display"], json!([]));
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Exponential Identity");
+}
+
+#[test]
+fn derive_negative_tanh_reciprocal_exponential_definition_uses_single_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive -tanh(x), (1/exp(x)-exp(x))/(exp(x)+1/exp(x))",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite hyperbolics");
+    assert_eq!(wire["steps_count"], 1);
+    assert_eq!(wire["required_display"], json!([]));
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Exponential Identity");
+}
+
+#[test]
+fn derive_scaled_cosh_reciprocal_exponential_definition_uses_single_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive 2*cosh(x), exp(x)+1/exp(x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite hyperbolics");
+    assert_eq!(wire["steps_count"], 1);
+    assert_eq!(wire["required_display"], json!([]));
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Exponential Identity");
+}
+
+#[test]
+fn derive_scaled_sinh_reciprocal_exponential_definition_uses_single_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive 2*sinh(x), exp(x)-1/exp(x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite hyperbolics");
+    assert_eq!(wire["steps_count"], 1);
+    assert_eq!(wire["required_display"], json!([]));
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Exponential Identity");
+}
+
+#[test]
+fn derive_half_cosh_reciprocal_exponential_recognition_uses_single_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive (exp(x)+1/exp(x))/2, cosh(x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite hyperbolics");
+    assert_eq!(wire["steps_count"], 1);
+    assert_eq!(wire["required_display"], json!([]));
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Exponential Identity");
+}
+
+#[test]
+fn derive_half_sinh_reciprocal_exponential_recognition_uses_single_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive (exp(x)-1/exp(x))/2, sinh(x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite hyperbolics");
+    assert_eq!(wire["steps_count"], 1);
+    assert_eq!(wire["required_display"], json!([]));
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Exponential Identity");
+}
+
+#[test]
+fn derive_negative_scaled_cosh_reciprocal_exponential_definition_uses_single_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive -2*cosh(x), -(exp(x)+1/exp(x))",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite hyperbolics");
+    assert_eq!(wire["steps_count"], 1);
+    assert_eq!(wire["required_display"], json!([]));
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Exponential Identity");
+}
+
+#[test]
+fn derive_negative_scaled_sinh_reciprocal_exponential_definition_uses_single_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive -2*sinh(x), 1/exp(x)-exp(x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite hyperbolics");
+    assert_eq!(wire["steps_count"], 1);
+    assert_eq!(wire["required_display"], json!([]));
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Exponential Identity");
+}
+
+#[test]
+fn derive_negative_half_cosh_reciprocal_exponential_definition_uses_single_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive -cosh(x), -(exp(x)+1/exp(x))/2",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite hyperbolics");
+    assert_eq!(wire["steps_count"], 1);
+    assert_eq!(wire["required_display"], json!([]));
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Exponential Identity");
+}
+
+#[test]
+fn derive_negative_half_sinh_reciprocal_exponential_definition_uses_single_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive -sinh(x), -(exp(x)-1/exp(x))/2",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite hyperbolics");
+    assert_eq!(wire["steps_count"], 1);
+    assert_eq!(wire["required_display"], json!([]));
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Exponential Identity");
+}
+
+#[test]
+fn derive_log_higher_even_power_expansion_uses_single_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive ln(x^4), 4*ln(abs(x))",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "expand_log");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Sacar un exponente fuera del logaritmo");
+}
+
+#[test]
+fn derive_log_general_base_power_expansion_uses_single_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive log(b, x^3), 3*log(b, x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "expand_log");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Sacar un exponente fuera del logaritmo");
+}
+
+#[test]
+fn derive_log_expansion_to_zero_keeps_single_step_but_closes_on_final_result() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive ln(x^3) + ln(y^2) - ln(x^3*y^2), 0",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "expand_log");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Expandir logaritmos");
+    assert_eq!(steps[0]["after"], "0");
+}
+
+#[test]
+fn derive_rationalize_then_cancel_to_zero_uses_rationalize_strategy() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive 1 / (sqrt(x) - 1) - (sqrt(x) + 1) / (x - 1), 0",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rationalize");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 2);
+    assert_eq!(steps[0]["rule"], "Racionalizar el denominador");
+    assert_eq!(steps[1]["rule"], "Restar dos expresiones iguales");
+}
+
+#[test]
+fn derive_radical_notable_quotient_uses_single_rationalize_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive (x^(3/2)-1)/(sqrt(x)-1), sqrt(x)+x+1",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rationalize");
+    assert_eq!(wire["steps_count"], 1);
+
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Reconocer un cociente notable");
+}
+
+#[test]
+fn derive_log_higher_even_power_drops_redundant_nonzero_requires() {
+    let (output, _code) = run_cli(&["eval", "derive ln(x^4), 4*ln(abs(x))", "--format", "json"]);
+    let wire = parse_wire(&output);
+
+    let required = wire["required_display"]
+        .as_array()
+        .expect("required_display");
+    assert_eq!(required.len(), 1);
+    assert_eq!(required[0], "x ≠ 0");
+}
+
+#[test]
+fn eval_abs_denominator_displays_inner_nonzero_guard() {
+    let (output, _code) = run_cli(&["eval", "1/abs(x)", "--format", "json"]);
+    let wire = parse_wire(&output);
+
+    let required = wire["required_display"]
+        .as_array()
+        .expect("required_display");
+    assert_eq!(required.len(), 1);
+    assert_eq!(required[0], "x ≠ 0");
+}
+
+#[test]
+fn eval_abs_product_denominator_expands_to_atomic_nonzero_guards() {
+    let (output, _code) = run_cli(&["eval", "1/abs(x*y)", "--format", "json"]);
+    let wire = parse_wire(&output);
+
+    let required = wire["required_display"]
+        .as_array()
+        .expect("required_display");
+    assert_eq!(
+        required
+            .iter()
+            .filter_map(|item| item.as_str())
+            .collect::<Vec<_>>(),
+        vec!["x ≠ 0", "y ≠ 0"]
+    );
+}
+
+#[test]
+fn eval_abs_factored_product_denominator_expands_to_atomic_nonzero_guards() {
+    let (output, _code) = run_cli(&["eval", "1/abs((x-1)*(x+1))", "--format", "json"]);
+    let wire = parse_wire(&output);
+
+    let required = wire["required_display"]
+        .as_array()
+        .expect("required_display");
+    assert_eq!(
+        required
+            .iter()
+            .filter_map(|item| item.as_str())
+            .collect::<Vec<_>>(),
+        vec!["x - 1 ≠ 0", "x + 1 ≠ 0"]
+    );
+}
+
+#[test]
+fn eval_log_abs_factored_product_expands_to_atomic_nonzero_guards() {
+    let (output, _code) = run_cli(&["eval", "ln(abs((x-1)*(x+1)))", "--format", "json"]);
+    let wire = parse_wire(&output);
+
+    let required = wire["required_display"]
+        .as_array()
+        .expect("required_display");
+    assert_eq!(
+        required
+            .iter()
+            .filter_map(|item| item.as_str())
+            .collect::<Vec<_>>(),
+        vec!["x - 1 ≠ 0", "x + 1 ≠ 0"]
+    );
+}
+
+#[test]
+fn eval_abs_quotient_expands_to_atomic_numerator_and_denominator_guards() {
+    let (output, _code) = run_cli(&["eval", "1/abs(x/(x+1))", "--format", "json"]);
+    let wire = parse_wire(&output);
+
+    let required = wire["required_display"]
+        .as_array()
+        .expect("required_display");
+    let required: Vec<_> = required.iter().filter_map(|item| item.as_str()).collect();
+    assert_eq!(required.len(), 2);
+    assert!(required.contains(&"x ≠ 0"));
+    assert!(required.contains(&"x + 1 ≠ 0"));
+}
+
+#[test]
+fn eval_log_abs_quotient_expands_to_atomic_numerator_and_denominator_guards() {
+    let (output, _code) = run_cli(&["eval", "ln(abs((x-1)/(x+1)))", "--format", "json"]);
+    let wire = parse_wire(&output);
+
+    let required = wire["required_display"]
+        .as_array()
+        .expect("required_display");
+    assert_eq!(
+        required
+            .iter()
+            .filter_map(|item| item.as_str())
+            .collect::<Vec<_>>(),
+        vec!["x - 1 ≠ 0", "x + 1 ≠ 0"]
+    );
+}
+
+#[test]
+fn derive_log_multifactor_expansion_drops_redundant_composite_positive_require() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive ln((x^2*y)/(z*t)), 2*ln(abs(x)) + ln(y) - ln(z) - ln(t)",
+        "--format",
+        "json",
+    ]);
+    let wire = parse_wire(&output);
+
+    let required = wire["required_display"]
+        .as_array()
+        .expect("required_display");
+    assert_eq!(required.len(), 4);
+    assert!(required.iter().all(|item| item != "y·x^2 / (t·z) > 0"));
+}
+
+#[test]
+fn eval_general_base_log_surfaces_positive_base_and_argument_requires() {
+    let (output, _code) = run_cli(&["eval", "log(b, x)", "--format", "json"]);
+    let wire = parse_wire(&output);
+
+    let required = wire["required_display"]
+        .as_array()
+        .expect("required_display");
+    assert_eq!(required.len(), 3);
+    assert!(required.iter().any(|item| item == "b - 1 ≠ 0"));
+    assert!(required.iter().any(|item| item == "b > 0"));
+    assert!(required.iter().any(|item| item == "x > 0"));
+}
+
+#[test]
+fn derive_general_base_log_expansion_surfaces_positive_factor_requires() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive log(b, (x^2*y^3)/(z^2*t)), 2*log(b, x) + 3*log(b, y) - 2*log(b, z) - log(b, t)",
+        "--format",
+        "json",
+    ]);
+    let wire = parse_wire(&output);
+
+    let required = wire["required_display"]
+        .as_array()
+        .expect("required_display");
+    assert_eq!(required.len(), 6);
+    assert!(required.iter().any(|item| item == "b - 1 ≠ 0"));
+    assert!(required.iter().any(|item| item == "b > 0"));
+    assert!(required.iter().any(|item| item == "x > 0"));
+    assert!(required.iter().any(|item| item == "y > 0"));
+    assert!(required.iter().any(|item| item == "z > 0"));
+    assert!(required.iter().any(|item| item == "t > 0"));
+}
+
+#[test]
+fn derive_exponential_power_expansion_uses_named_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive exp(3*x), exp(x)^3",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite exponentials");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Exponential Power Identity");
+}
+
+#[test]
+fn exponential_quotient_drops_redundant_nonzero_requires() {
+    let (output, _code) = run_cli(&["eval", "exp(x)/exp(y)", "--format", "json"]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "e^(x - y)");
+    assert_eq!(
+        wire["required_display"].as_array().map(Vec::len),
+        Some(0),
+        "exp quotient should not require e^y ≠ 0"
+    );
+}
+
+#[test]
+fn derive_exponential_sum_difference_drops_redundant_nonzero_requires() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive exp(x+y-z), exp(x)*exp(y)/exp(z)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "e^x·e^y / e^z");
+    assert_eq!(
+        wire["required_display"].as_array().map(Vec::len),
+        Some(0),
+        "derive exponential expansion should not require e^z ≠ 0"
     );
 }
 

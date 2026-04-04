@@ -196,7 +196,7 @@ fn step_wire_path_latex_renders_human_subtractive_products_for_factor_example() 
 
     let first_distribute = steps
         .iter()
-        .find(|step| step.rule == "Distributive Property")
+        .find(|step| step.rule == "Expandir la expresión")
         .expect("expected distributive step");
     let factor_step = steps
         .iter()

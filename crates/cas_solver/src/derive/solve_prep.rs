@@ -232,8 +232,13 @@ fn positive_part_of_negative_expr(ctx: &mut Context, expr: ExprId) -> Option<Exp
 fn run_default_simplify(ctx: &mut Context, expr: ExprId) -> ExprId {
     let mut simplifier = crate::Simplifier::with_default_rules();
     std::mem::swap(&mut simplifier.context, ctx);
-    let (rewritten, _steps, _stats) =
-        simplifier.simplify_with_stats(expr, crate::SimplifyOptions::default());
+    let (rewritten, _steps, _stats) = simplifier.simplify_with_stats(
+        expr,
+        crate::SimplifyOptions {
+            suppress_depth_overflow_warnings: true,
+            ..crate::SimplifyOptions::default()
+        },
+    );
     std::mem::swap(&mut simplifier.context, ctx);
     rewritten
 }

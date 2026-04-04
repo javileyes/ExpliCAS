@@ -1,6 +1,9 @@
 use super::strong_target_match;
 use cas_ast::views::as_rational_const;
 use cas_ast::{Context, Expr, ExprId};
+use cas_math::difference_of_squares_support::{
+    try_plan_difference_of_squares_division_expr, DifferenceOfSquaresDivisionPolicy,
+};
 use cas_math::distribution_division_support::try_rewrite_div_distribution_simplifying_expr;
 use cas_math::expr_destructure::{as_add, as_div, as_sub};
 use cas_math::expr_nary::build_balanced_add;
@@ -13,8 +16,12 @@ use cas_math::fraction_add_rewrite_support::{
 };
 use cas_math::fraction_add_rule_support::try_plan_sub_term_matches_denom_rewrite;
 use cas_math::fraction_combine_policy_support::try_plan_same_denominator_combination_with;
+use cas_math::fraction_factors::{
+    try_rewrite_cancel_common_factors_expr_with, CancelCommonFactorsGate,
+};
 use cas_math::fraction_pair_support::extract_fraction_pair;
 use cas_math::fraction_sub_rewrite_support::plan_sub_fraction_rewrite_with;
+use cas_math::nested_fraction_support::try_rewrite_simplify_nested_fraction_expr;
 use cas_math::poly_compare::poly_eq;
 use cas_math::symbolic_integration_support::get_linear_coeffs;
 use cas_math::trig_roots_flatten::flatten_add_sub_chain;
@@ -56,14 +63,19 @@ pub(crate) struct FractionCombinationRewrite {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ExactFractionCancelKind {
+    CommonFactor,
+    DifferenceOfSquares,
+    PerfectSquarePlus,
     PerfectSquareMinus,
+    SumDiffCubes,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ExactFractionCancelRewrite {
     pub(crate) intermediate: ExprId,
     pub(crate) rewritten: ExprId,
     pub(crate) kind: ExactFractionCancelKind,
+    pub(crate) required_conditions: Vec<crate::ImplicitCondition>,
 }
 
 impl FractionCombinationKind {
@@ -117,13 +129,38 @@ impl FractionExpansionKind {
 impl ExactFractionCancelKind {
     pub(crate) fn description(self) -> &'static str {
         match self {
+            Self::CommonFactor => "Cancel common factor",
+            Self::DifferenceOfSquares => "Cancel common factor",
+            Self::PerfectSquarePlus => "Cancel common factor",
             Self::PerfectSquareMinus => "Cancel common factor",
+            Self::SumDiffCubes => {
+                "Factor numerator as a sum or difference of cubes and cancel the common factor"
+            }
         }
     }
 
     pub(crate) fn rule_name(self) -> &'static str {
         match self {
+            Self::CommonFactor => "Pre-order Common Factor Cancel",
+            Self::DifferenceOfSquares => "Pre-order Difference of Squares Cancel",
+            Self::PerfectSquarePlus => "Simplify Nested Fraction",
             Self::PerfectSquareMinus => "Pre-order Perfect Square Minus Cancel",
+            Self::SumDiffCubes => "Cancel Sum/Difference of Cubes Fraction",
+        }
+    }
+
+    pub(crate) fn local_snapshots(
+        self,
+        source_expr: ExprId,
+        intermediate: ExprId,
+        rewritten: ExprId,
+    ) -> (ExprId, ExprId) {
+        match self {
+            Self::CommonFactor => (source_expr, rewritten),
+            Self::DifferenceOfSquares => (intermediate, rewritten),
+            Self::PerfectSquarePlus => (source_expr, rewritten),
+            Self::PerfectSquareMinus => (source_expr, intermediate),
+            Self::SumDiffCubes => (source_expr, rewritten),
         }
     }
 }
@@ -146,6 +183,15 @@ pub(crate) fn looks_like_telescoping_fraction_target(ctx: &mut Context, expr: Ex
 pub(crate) fn looks_like_mixed_fraction_target(ctx: &Context, expr: ExprId) -> bool {
     let mut temp_ctx = ctx.clone();
     try_build_combined_fraction_from_fold_add(&mut temp_ctx, expr).is_some()
+}
+
+pub(crate) fn try_rewrite_nested_fraction_target_aware(
+    ctx: &mut Context,
+    source_expr: ExprId,
+    target_expr: ExprId,
+) -> Option<ExprId> {
+    let rewrite = try_rewrite_simplify_nested_fraction_expr(ctx, source_expr)?;
+    strong_target_match(ctx, rewrite.rewritten, target_expr).then_some(rewrite.rewritten)
 }
 
 pub(crate) fn try_build_combined_fraction_from_fold_add(
@@ -610,11 +656,18 @@ pub(crate) fn try_rewrite_exact_fraction_cancel_target_aware(
     source_expr: ExprId,
     target_expr: ExprId,
 ) -> Option<ExactFractionCancelRewrite> {
-    let rewrite = try_rewrite_perfect_square_minus_fraction_cancel(ctx, source_expr)?;
-    if !strong_target_match(ctx, rewrite.rewritten, target_expr) {
-        return None;
-    }
-    Some(rewrite)
+    let rewrites = [
+        try_rewrite_common_factor_fraction_cancel(ctx, source_expr),
+        try_rewrite_difference_of_squares_fraction_cancel(ctx, source_expr),
+        try_rewrite_perfect_square_plus_fraction_cancel(ctx, source_expr),
+        try_rewrite_perfect_square_minus_fraction_cancel(ctx, source_expr),
+        try_rewrite_sum_diff_cubes_fraction_cancel(ctx, source_expr),
+    ];
+
+    rewrites
+        .into_iter()
+        .flatten()
+        .find(|rewrite| strong_target_match(ctx, rewrite.rewritten, target_expr))
 }
 
 fn simplify_fraction_sum_terms_individually(
@@ -667,6 +720,102 @@ fn try_rewrite_perfect_square_minus_fraction_cancel(
         intermediate,
         rewritten: a_minus_b,
         kind: ExactFractionCancelKind::PerfectSquareMinus,
+        required_conditions: vec![crate::ImplicitCondition::NonZero(denominator)],
+    })
+}
+
+fn try_rewrite_perfect_square_plus_fraction_cancel(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ExactFractionCancelRewrite> {
+    let (numerator, denominator) = as_div(ctx, expr)?;
+    let (a, b) = extract_addition_terms(ctx, denominator)?;
+
+    let a_sq = square_expr(ctx, a)?;
+    let b_sq = square_expr(ctx, b)?;
+    let two_ab = build_scaled_product(ctx, 2, a, b);
+    let tail = ctx.add(Expr::Add(two_ab, b_sq));
+    let expected = ctx.add(Expr::Add(a_sq, tail));
+
+    if !(numerator == expected || poly_eq(ctx, numerator, expected)) {
+        return None;
+    }
+
+    let rewritten = ctx.add(Expr::Add(a, b));
+    Some(ExactFractionCancelRewrite {
+        intermediate: expr,
+        rewritten,
+        kind: ExactFractionCancelKind::PerfectSquarePlus,
+        required_conditions: vec![crate::ImplicitCondition::NonZero(denominator)],
+    })
+}
+
+fn try_rewrite_common_factor_fraction_cancel(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ExactFractionCancelRewrite> {
+    let rewrite = try_rewrite_cancel_common_factors_expr_with(
+        ctx,
+        expr,
+        |_ctx, _nonzero_base, emit_assumption| CancelCommonFactorsGate {
+            allow: true,
+            assumed: emit_assumption,
+        },
+    )?;
+
+    Some(ExactFractionCancelRewrite {
+        intermediate: expr,
+        rewritten: rewrite.rewritten,
+        kind: ExactFractionCancelKind::CommonFactor,
+        required_conditions: rewrite
+            .assumed_nonzero_targets
+            .into_iter()
+            .map(crate::ImplicitCondition::NonZero)
+            .collect(),
+    })
+}
+
+fn try_rewrite_difference_of_squares_fraction_cancel(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ExactFractionCancelRewrite> {
+    let (numerator, denominator) = as_div(ctx, expr)?;
+    let plan = try_plan_difference_of_squares_division_expr(
+        ctx,
+        numerator,
+        denominator,
+        DifferenceOfSquaresDivisionPolicy::default(),
+    )?;
+
+    Some(ExactFractionCancelRewrite {
+        intermediate: plan.intermediate,
+        rewritten: plan.final_result,
+        kind: ExactFractionCancelKind::DifferenceOfSquares,
+        required_conditions: vec![crate::ImplicitCondition::NonZero(denominator)],
+    })
+}
+
+fn try_rewrite_sum_diff_cubes_fraction_cancel(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ExactFractionCancelRewrite> {
+    let (numerator, denominator) = as_div(ctx, expr)?;
+    let mut steps = Vec::new();
+    let rewritten = cas_engine::rules::algebra::try_sum_diff_of_cubes_preorder(
+        ctx,
+        expr,
+        numerator,
+        denominator,
+        false,
+        &mut steps,
+        &[],
+    )?;
+
+    Some(ExactFractionCancelRewrite {
+        intermediate: expr,
+        rewritten,
+        kind: ExactFractionCancelKind::SumDiffCubes,
+        required_conditions: vec![crate::ImplicitCondition::NonZero(denominator)],
     })
 }
 
@@ -683,6 +832,14 @@ fn extract_subtraction_terms(ctx: &mut Context, expr: ExprId) -> Option<(ExprId,
         return Some((right, *inner));
     }
     None
+}
+
+fn extract_addition_terms(ctx: &mut Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
+    let (left, right) = as_add(ctx, expr)?;
+    if matches!(ctx.get(left), Expr::Neg(_)) || matches!(ctx.get(right), Expr::Neg(_)) {
+        return None;
+    }
+    Some((left, right))
 }
 
 fn square_expr(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
@@ -828,8 +985,13 @@ fn simplified_difference_matches_zero(ctx: &mut Context, left: ExprId, right: Ex
     let difference = ctx.add(Expr::Sub(left, right));
     let mut temp = crate::Simplifier::with_default_rules();
     std::mem::swap(&mut temp.context, ctx);
-    let (simplified, _steps, _stats) =
-        temp.simplify_with_stats(difference, crate::SimplifyOptions::default());
+    let (simplified, _steps, _stats) = temp.simplify_with_stats(
+        difference,
+        crate::SimplifyOptions {
+            suppress_depth_overflow_warnings: true,
+            ..crate::SimplifyOptions::default()
+        },
+    );
     std::mem::swap(&mut temp.context, ctx);
 
     let zero = ctx.num(0);
@@ -894,10 +1056,10 @@ fn signed_add_terms(ctx: &mut Context, expr: ExprId) -> Vec<ExprId> {
 #[cfg(test)]
 mod tests {
     use super::{
-        looks_like_fraction_expanded_target, looks_like_mixed_fraction_target,
+        looks_like_fraction_expanded_target, looks_like_mixed_fraction_target, strong_target_match,
         try_build_combined_fraction_from_fold_add, try_rewrite_fraction_combination_target_aware,
         try_rewrite_fraction_expansion, try_rewrite_fraction_expansion_target_aware,
-        FractionCombinationKind, FractionExpansionKind,
+        try_rewrite_nested_fraction_target_aware, FractionCombinationKind, FractionExpansionKind,
     };
     use crate::runtime::Simplifier;
     use cas_ast::{Context, ExprId};
@@ -920,6 +1082,28 @@ mod tests {
         let mut ctx = Context::new();
         let expr = parse("a + b/x", &mut ctx).expect("parse");
         assert!(!looks_like_fraction_expanded_target(&mut ctx, expr));
+    }
+
+    #[test]
+    fn rewrites_nested_fraction_targets_aware() {
+        let cases = [
+            ("1/(1/a + 1/b)", "(a*b)/(a+b)"),
+            ("a/(b + c/d)", "a*d/(b*d+c)"),
+            ("(a + b/c)/d", "(a*c+b)/(c*d)"),
+        ];
+
+        for (source_text, target_text) in cases {
+            let mut ctx = Context::new();
+            let source = parse(source_text, &mut ctx).expect("source");
+            let target = parse(target_text, &mut ctx).expect("target");
+            let rewritten = try_rewrite_nested_fraction_target_aware(&mut ctx, source, target)
+                .expect("nested fraction rewrite");
+
+            assert!(
+                strong_target_match(&mut ctx, rewritten, target),
+                "expected nested fraction rewrite for `{source_text}` -> `{target_text}`",
+            );
+        }
     }
 
     #[test]

@@ -20,6 +20,91 @@ struct ScaledLogTerm {
     coeff: BigRational,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DeriveLogSimplifyRewriteKind {
+    EvenPower,
+    Power,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct DeriveLogSimplifyRewrite {
+    pub(crate) rewritten: ExprId,
+    pub(crate) kind: DeriveLogSimplifyRewriteKind,
+}
+
+impl DeriveLogSimplifyRewriteKind {
+    pub(crate) fn description(self) -> &'static str {
+        match self {
+            Self::EvenPower => "Recognize an even power inside the logarithm",
+            Self::Power => "log(b, x^y) = y * log(b, x)",
+        }
+    }
+
+    pub(crate) fn rule_name(self) -> &'static str {
+        match self {
+            Self::EvenPower => "Factor Perfect Square in Logarithm",
+            Self::Power => "Evaluate Logarithms",
+        }
+    }
+}
+
+pub(crate) fn try_rewrite_log_simplify_target_aware(
+    ctx: &mut Context,
+    expr: ExprId,
+    target_expr: ExprId,
+) -> Option<DeriveLogSimplifyRewrite> {
+    if let Some(plan) =
+        cas_math::logarithm_inverse_support::try_plan_log_even_power_abs_expr(ctx, expr)
+    {
+        if super::strong_target_match(ctx, plan.with_abs_rewrite, target_expr) {
+            return Some(DeriveLogSimplifyRewrite {
+                rewritten: target_expr,
+                kind: DeriveLogSimplifyRewriteKind::EvenPower,
+            });
+        }
+    }
+
+    if try_rewrite_log_power_target_aware(ctx, expr, target_expr).is_some() {
+        return Some(DeriveLogSimplifyRewrite {
+            rewritten: target_expr,
+            kind: DeriveLogSimplifyRewriteKind::Power,
+        });
+    }
+
+    None
+}
+
+fn try_rewrite_log_power_target_aware(
+    ctx: &mut Context,
+    expr: ExprId,
+    target_expr: ExprId,
+) -> Option<ExprId> {
+    let source = extract_plain_log_term(ctx, expr, BigRational::one())?;
+    let target = extract_scaled_log_term(ctx, target_expr, Sign::Pos)?;
+    if !same_log_family(ctx, source.family, target.family) {
+        return None;
+    }
+
+    if !target.coeff.is_integer() || target.coeff <= BigRational::one() {
+        return None;
+    }
+
+    let Expr::Pow(base, exp) = ctx.get(source.arg) else {
+        return None;
+    };
+    let base = *base;
+    let exp = *exp;
+    let Expr::Number(source_coeff) = ctx.get(exp) else {
+        return None;
+    };
+
+    if compare_expr(ctx, base, target.arg) != Ordering::Equal || source_coeff != &target.coeff {
+        return None;
+    }
+
+    Some(target_expr)
+}
+
 pub(crate) fn try_rewrite_log_contraction_target_aware(
     ctx: &mut Context,
     expr: ExprId,
@@ -234,7 +319,10 @@ fn multiply_existing_power_exponent(
 
 #[cfg(test)]
 mod tests {
-    use super::{try_rewrite_log_contraction_target_aware, try_rewrite_log_expansion_target_aware};
+    use super::{
+        try_rewrite_log_contraction_target_aware, try_rewrite_log_expansion_target_aware,
+        try_rewrite_log_simplify_target_aware, DeriveLogSimplifyRewriteKind,
+    };
     use cas_ast::Context;
     use cas_math::semantic_equality::SemanticEqualityChecker;
     use cas_parser::parse;
@@ -304,5 +392,31 @@ mod tests {
         let target = parse("ln(x^3) + ln(y)", &mut ctx).expect("target");
 
         assert!(try_rewrite_log_expansion_target_aware(&mut ctx, source, target).is_none());
+    }
+
+    #[test]
+    fn rewrites_even_log_power_to_abs_target_aware() {
+        let mut ctx = Context::new();
+        let source = parse("ln(x^4)", &mut ctx).expect("source");
+        let target = parse("4*ln(abs(x))", &mut ctx).expect("target");
+
+        let rewrite =
+            try_rewrite_log_simplify_target_aware(&mut ctx, source, target).expect("rewrite");
+
+        assert_eq!(rewrite.rewritten, target);
+        assert_eq!(rewrite.kind, DeriveLogSimplifyRewriteKind::EvenPower);
+    }
+
+    #[test]
+    fn rewrites_log_power_to_scaled_log_target_aware() {
+        let mut ctx = Context::new();
+        let source = parse("log(b, x^3)", &mut ctx).expect("source");
+        let target = parse("3*log(b, x)", &mut ctx).expect("target");
+
+        let rewrite =
+            try_rewrite_log_simplify_target_aware(&mut ctx, source, target).expect("rewrite");
+
+        assert_eq!(rewrite.rewritten, target);
+        assert_eq!(rewrite.kind, DeriveLogSimplifyRewriteKind::Power);
     }
 }

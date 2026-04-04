@@ -1,24 +1,37 @@
 use crate::derive::{
-    classify_target_profile, extract_factored_division_target, ordered_strategies_for_target,
-    presentational_target_match, strong_target_match, try_build_combined_fraction_from_fold_add,
-    try_rewrite_collect_monomial_target_aware, try_rewrite_exact_fraction_cancel_target_aware,
-    try_rewrite_expanded_target_aware, try_rewrite_fraction_combination_target_aware,
-    try_rewrite_fraction_expansion_target_aware, try_rewrite_integrate_prep_target_aware,
-    try_rewrite_log_contraction_target_aware, try_rewrite_log_expansion_target_aware,
-    try_rewrite_odd_half_power_target_aware, try_rewrite_power_merge_target_aware,
-    try_rewrite_pythagorean_factor_form_target_aware, try_rewrite_solve_prep_target_aware,
+    classify_target_profile, extract_factored_division_target,
+    generate_hyperbolic_additive_term_bridge_rewrites, generate_hyperbolic_bridge_rewrites,
+    generate_trig_additive_term_bridge_rewrites, generate_trig_bridge_rewrites,
+    looks_like_factored_target, ordered_strategies_for_target, presentational_target_match,
+    run_combine_like_terms_rewrite, should_try_hyperbolic_planner_before_simplify,
+    should_try_trig_planner_before_simplify, strong_target_match,
+    try_build_combined_fraction_from_fold_add, try_rewrite_collect_monomial_target_aware,
+    try_rewrite_exact_fraction_cancel_target_aware, try_rewrite_expanded_target_aware,
+    try_rewrite_exponential_sum_diff_target_aware, try_rewrite_fraction_combination_target_aware,
+    try_rewrite_fraction_expansion_target_aware, try_rewrite_hyperbolic_simplify_target_aware,
+    try_rewrite_integrate_prep_target_aware, try_rewrite_log_contraction_target_aware,
+    try_rewrite_log_expansion_target_aware, try_rewrite_log_simplify_target_aware,
+    try_rewrite_nested_fraction_target_aware, try_rewrite_odd_half_power_target_aware,
+    try_rewrite_power_merge_target_aware, try_rewrite_pythagorean_factor_form_target_aware,
+    try_rewrite_radical_target_aware, try_rewrite_rationalized_target_aware,
+    try_rewrite_shifted_double_angle_target_aware,
+    try_rewrite_shifted_reciprocal_pythagorean_target_aware, try_rewrite_solve_prep_target_aware,
     try_rewrite_trig_contraction_target_aware, try_rewrite_trig_expansion,
     try_rewrite_trig_identity_to_one_target_aware, DeriveStrategy, DeriveTargetForm,
-    ExpandRewriteKind,
+    ExpandRewriteKind, RationalizeRewriteKind,
 };
 
 use cas_ast::{Expr, ExprId};
 use cas_engine::NormalFormGoal;
+use cas_math::inverse_trig_composition_support::try_plan_inverse_atan_reciprocal_add_expr;
+use cas_math::number_theory_support::try_rewrite_consecutive_factorial_ratio_expr;
 use cas_math::summation_support::{
-    try_plan_finite_sum_evaluation, FiniteAggregateCall, SumEvaluationKind,
+    try_plan_finite_product_evaluation, try_plan_finite_sum_evaluation, FiniteAggregateCall,
+    ProductEvaluationKind, SumEvaluationKind,
 };
 use cas_solver_core::engine_event_collector::EngineEventCollector;
 use cas_solver_core::engine_events::EngineEvent;
+use std::collections::BTreeSet;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DeriveEvalError {
@@ -120,6 +133,11 @@ fn build_strategy_fallback_step(
     after: ExprId,
 ) -> crate::Step {
     let (description, rule_name, category) = match strategy {
+        DeriveStrategy::Planner => (
+            "Find a multi-step derivation path",
+            "Planner",
+            crate::StepCategory::Simplify,
+        ),
         DeriveStrategy::Simplify | DeriveStrategy::SimplifyThenExpand => (
             "Simplify the expression",
             "Simplify",
@@ -133,6 +151,56 @@ fn build_strategy_fallback_step(
         DeriveStrategy::SolvePrep => (
             "Complete the square to rewrite the quadratic",
             "Complete the Square",
+            crate::StepCategory::Simplify,
+        ),
+        DeriveStrategy::FiniteAggregate => (
+            "Evaluate a finite sum or product",
+            "Finite Aggregate",
+            crate::StepCategory::Simplify,
+        ),
+        DeriveStrategy::CombineLikeTerms => (
+            "Combine like terms directly",
+            "Combine Like Terms",
+            crate::StepCategory::Simplify,
+        ),
+        DeriveStrategy::FactorialRewrite => (
+            "Cancel consecutive factorials",
+            "Consecutive Factorial Ratio",
+            crate::StepCategory::Simplify,
+        ),
+        DeriveStrategy::InverseTrigRewrite => (
+            "Rewrite a direct inverse-trigonometric identity",
+            "Inverse Tan Relations",
+            crate::StepCategory::Simplify,
+        ),
+        DeriveStrategy::FractionCancel => (
+            "Cancel a structured fraction directly",
+            "Fraction Cancel",
+            crate::StepCategory::Simplify,
+        ),
+        DeriveStrategy::NestedFraction => (
+            "Simplify a nested fraction directly",
+            "Simplify Nested Fraction",
+            crate::StepCategory::Simplify,
+        ),
+        DeriveStrategy::RadicalRewrite => (
+            "Rewrite a direct radical identity",
+            "Sqrt Perfect Square",
+            crate::StepCategory::Simplify,
+        ),
+        DeriveStrategy::ExponentialRewrite => (
+            "Rewrite an exponential sum or product using exp identities",
+            "Exponential Sum/Difference Identity",
+            crate::StepCategory::Simplify,
+        ),
+        DeriveStrategy::HyperbolicRewrite => (
+            "Rewrite a hyperbolic identity directly",
+            "Hyperbolic Identity",
+            crate::StepCategory::Simplify,
+        ),
+        DeriveStrategy::TrigRewrite => (
+            "Rewrite a trigonometric identity directly",
+            "Trig Identity",
             crate::StepCategory::Simplify,
         ),
         DeriveStrategy::Expand => (
@@ -165,7 +233,7 @@ fn build_strategy_fallback_step(
             "Trig Expansion",
             crate::StepCategory::Expand,
         ),
-        DeriveStrategy::TrigContract => (
+        DeriveStrategy::TrigContract | DeriveStrategy::SimplifyThenTrigContract => (
             "Contract a trigonometric expression",
             "Trig Contraction",
             crate::StepCategory::Simplify,
@@ -296,13 +364,17 @@ where
                     "Derive unavailable: the two expressions are not equivalent."
                 }
                 crate::EquivalenceResult::Unknown => {
-                    "Derive unavailable: cannot prove the two expressions are equivalent."
+                    "Derive unavailable: cannot prove that the two expressions are equivalent, so it cannot provide step-by-step derivation."
                 }
                 crate::EquivalenceResult::True
                 | crate::EquivalenceResult::ConditionalTrue { .. } => "Derive unavailable.",
             };
             return Err(detail.to_string());
         }
+    };
+    let strategy = match &derive.status {
+        DeriveStatus::Derived { strategy } => Some(strategy.label().to_string()),
+        _ => None,
     };
 
     let mut steps = derive.steps;
@@ -348,6 +420,7 @@ where
         parsed: parsed_expr,
         resolved,
         result: crate::EvalResult::Expr(derived_expr),
+        strategy,
         steps: crate::display_eval_steps::build_display_eval_steps(steps),
         solve_steps: Vec::new(),
         output_scopes: Vec::new(),
@@ -400,8 +473,10 @@ fn evaluate_derive_resolved_input(
     resolved_expr: ExprId,
     target_expr: ExprId,
     collect_steps: bool,
-    simplify_options: crate::SimplifyOptions,
+    mut simplify_options: crate::SimplifyOptions,
 ) -> DeriveEvalOutput {
+    simplify_options.suppress_depth_overflow_warnings = true;
+
     if presentational_target_match(&mut simplifier.context, resolved_expr, target_expr) {
         return DeriveEvalOutput {
             resolved_expr,
@@ -418,6 +493,7 @@ fn evaluate_derive_resolved_input(
         target_expr,
         collect_steps,
         &simplify_options,
+        true,
         true,
     ) {
         let steps = if collect_steps
@@ -468,12 +544,25 @@ fn try_supported_derive_strategies_inner(
     collect_steps: bool,
     simplify_options: &crate::SimplifyOptions,
     allow_factor_with_division: bool,
+    allow_planner: bool,
 ) -> Option<(ExprId, Vec<crate::Step>, DeriveStrategy)> {
+    let planner_context_snapshot = allow_planner.then(|| simplifier.context.clone());
     let profile = classify_target_profile(&mut simplifier.context, resolved_expr, target_expr);
 
     let mut simplify_stage: Option<DeriveStageOutput> = None;
     let mut integrate_prep_stage: Option<DeriveStageOutput> = None;
     let mut solve_prep_stage: Option<DeriveStageOutput> = None;
+    let mut finite_aggregate_stage: Option<DeriveStageOutput> = None;
+    let mut combine_like_terms_stage: Option<DeriveStageOutput> = None;
+    let mut factorial_rewrite_stage: Option<DeriveStageOutput> = None;
+    let mut inverse_trig_rewrite_stage: Option<DeriveStageOutput> = None;
+    let mut fraction_cancel_stage: Option<DeriveStageOutput> = None;
+    let mut nested_fraction_stage: Option<DeriveStageOutput> = None;
+    let mut radical_rewrite_stage: Option<DeriveStageOutput> = None;
+    let mut exponential_rewrite_stage: Option<DeriveStageOutput> = None;
+    let mut hyperbolic_rewrite_stage: Option<DeriveStageOutput> = None;
+    let mut trig_rewrite_stage: Option<DeriveStageOutput> = None;
+    let mut rationalize_stage: Option<DeriveStageOutput> = None;
     let mut log_expand_stage: Option<DeriveStageOutput> = None;
     let mut log_contract_stage: Option<DeriveStageOutput> = None;
     let mut trig_expand_stage: Option<DeriveStageOutput> = None;
@@ -489,19 +578,33 @@ fn try_supported_derive_strategies_inner(
     let mut simplify_then_log_expand_stage: Option<DeriveStageOutput> = None;
     let mut simplify_then_log_contract_stage: Option<DeriveStageOutput> = None;
     let mut simplify_then_trig_expand_stage: Option<DeriveStageOutput> = None;
+    let mut simplify_then_trig_contract_stage: Option<DeriveStageOutput> = None;
     let mut simplify_then_factor_with_division_stage: Option<Option<DeriveStageOutput>> = None;
     let mut simplify_then_odd_half_power_stage: Option<DeriveStageOutput> = None;
     let mut simplify_then_expand_stage: Option<DeriveStageOutput> = None;
     let mut simplify_then_collect_stage: Option<Option<DeriveStageOutput>> = None;
     let mut simplify_then_factor_stage: Option<DeriveStageOutput> = None;
-    let prefer_simplify_first = is_finite_aggregate_source(&simplifier.context, resolved_expr);
+    let prefer_simplify_first = is_finite_aggregate_source(&simplifier.context, resolved_expr)
+        && !matches!(profile.form, DeriveTargetForm::FiniteAggregateEvaluated);
+    let allow_planner_preference = allow_planner
+        && (should_try_trig_planner_before_simplify(
+            &mut simplifier.context,
+            resolved_expr,
+            target_expr,
+        ) || should_try_hyperbolic_planner_before_simplify(
+            &mut simplifier.context,
+            resolved_expr,
+            target_expr,
+        ));
 
     if !prefer_simplify_first
         && !matches!(
             profile.form,
-            DeriveTargetForm::FactoredWithDivision { .. } | DeriveTargetForm::FractionExpanded
+            DeriveTargetForm::FactoredWithDivision { .. }
+                | DeriveTargetForm::FractionExpanded
+                | DeriveTargetForm::FiniteAggregateEvaluated
         )
-        && looks_like_explicit_factored_target(&mut simplifier.context, target_expr)
+        && looks_like_factored_target(&mut simplifier.context, target_expr)
     {
         let stage = run_factored_stage(
             simplifier,
@@ -520,6 +623,21 @@ fn try_supported_derive_strategies_inner(
         }
     }
 
+    if allow_planner_preference {
+        if let Some(snapshot) = planner_context_snapshot.as_ref() {
+            simplifier.context = snapshot.clone();
+        }
+        if let Some(planner_result) = try_bounded_multistage_derive(
+            simplifier,
+            resolved_expr,
+            target_expr,
+            collect_steps,
+            simplify_options,
+        ) {
+            return Some(planner_result);
+        }
+    }
+
     if prefer_simplify_first {
         let stage = simplify_stage.get_or_insert_with(|| {
             run_simplify_stage(
@@ -535,12 +653,28 @@ fn try_supported_derive_strategies_inner(
             retarget_stage_output(&mut stage, target_expr);
             let steps =
                 finalize_steps(resolved_expr, target_expr, vec![stage], &simplifier.context);
+            if let Some(planner_result) = maybe_prefer_planner_over_direct_result(
+                simplifier,
+                PlannerPreferenceInput {
+                    planner_context_snapshot: planner_context_snapshot.as_ref(),
+                    resolved_expr,
+                    target_expr,
+                    collect_steps,
+                    simplify_options,
+                    direct_steps: &steps,
+                    direct_strategy: DeriveStrategy::Simplify,
+                    allow_planner_preference,
+                },
+            ) {
+                return Some(planner_result);
+            }
             return Some((target_expr, steps, DeriveStrategy::Simplify));
         }
     }
 
     for strategy in ordered_strategies_for_target(&profile) {
         match strategy {
+            DeriveStrategy::Planner => continue,
             DeriveStrategy::Simplify => {
                 let stage = simplify_stage.get_or_insert_with(|| {
                     run_simplify_stage(
@@ -560,6 +694,21 @@ fn try_supported_derive_strategies_inner(
                         vec![stage],
                         &simplifier.context,
                     );
+                    if let Some(planner_result) = maybe_prefer_planner_over_direct_result(
+                        simplifier,
+                        PlannerPreferenceInput {
+                            planner_context_snapshot: planner_context_snapshot.as_ref(),
+                            resolved_expr,
+                            target_expr,
+                            collect_steps,
+                            simplify_options,
+                            direct_steps: &steps,
+                            direct_strategy: DeriveStrategy::Simplify,
+                            allow_planner_preference,
+                        },
+                    ) {
+                        return Some(planner_result);
+                    }
                     return Some((target_expr, steps, DeriveStrategy::Simplify));
                 }
             }
@@ -599,6 +748,196 @@ fn try_supported_derive_strategies_inner(
                         &simplifier.context,
                     );
                     return Some((target_expr, steps, DeriveStrategy::SolvePrep));
+                }
+            }
+            DeriveStrategy::FiniteAggregate => {
+                let stage = finite_aggregate_stage.get_or_insert_with(|| {
+                    run_finite_aggregate_stage(
+                        simplifier,
+                        resolved_expr,
+                        target_expr,
+                        collect_steps,
+                    )
+                });
+                if derive_target_match(simplifier, stage.expr, target_expr) {
+                    let mut stage = stage.clone();
+                    retarget_stage_output(&mut stage, target_expr);
+                    let steps = finalize_steps(
+                        resolved_expr,
+                        target_expr,
+                        vec![stage],
+                        &simplifier.context,
+                    );
+                    return Some((target_expr, steps, DeriveStrategy::FiniteAggregate));
+                }
+            }
+            DeriveStrategy::CombineLikeTerms => {
+                let stage = combine_like_terms_stage.get_or_insert_with(|| {
+                    run_combine_like_terms_stage(
+                        simplifier,
+                        resolved_expr,
+                        target_expr,
+                        collect_steps,
+                    )
+                });
+                if derive_target_match(simplifier, stage.expr, target_expr) {
+                    let mut stage = stage.clone();
+                    retarget_stage_output(&mut stage, target_expr);
+                    let steps = finalize_steps(
+                        resolved_expr,
+                        target_expr,
+                        vec![stage],
+                        &simplifier.context,
+                    );
+                    return Some((target_expr, steps, DeriveStrategy::CombineLikeTerms));
+                }
+            }
+            DeriveStrategy::FactorialRewrite => {
+                let stage = factorial_rewrite_stage.get_or_insert_with(|| {
+                    run_factorial_rewrite_stage(
+                        simplifier,
+                        resolved_expr,
+                        target_expr,
+                        collect_steps,
+                    )
+                });
+                if derive_target_match(simplifier, stage.expr, target_expr) {
+                    let mut stage = stage.clone();
+                    retarget_stage_output(&mut stage, target_expr);
+                    let steps = finalize_steps(
+                        resolved_expr,
+                        target_expr,
+                        vec![stage],
+                        &simplifier.context,
+                    );
+                    return Some((target_expr, steps, DeriveStrategy::FactorialRewrite));
+                }
+            }
+            DeriveStrategy::InverseTrigRewrite => {
+                let stage = inverse_trig_rewrite_stage.get_or_insert_with(|| {
+                    run_inverse_trig_rewrite_stage(
+                        simplifier,
+                        resolved_expr,
+                        target_expr,
+                        collect_steps,
+                    )
+                });
+                if derive_target_match(simplifier, stage.expr, target_expr) {
+                    let mut stage = stage.clone();
+                    retarget_stage_output(&mut stage, target_expr);
+                    let steps = finalize_steps(
+                        resolved_expr,
+                        target_expr,
+                        vec![stage],
+                        &simplifier.context,
+                    );
+                    return Some((target_expr, steps, DeriveStrategy::InverseTrigRewrite));
+                }
+            }
+            DeriveStrategy::FractionCancel => {
+                let stage = fraction_cancel_stage.get_or_insert_with(|| {
+                    run_fraction_cancel_stage(simplifier, resolved_expr, target_expr, collect_steps)
+                });
+                if derive_target_match(simplifier, stage.expr, target_expr) {
+                    let mut stage = stage.clone();
+                    retarget_stage_output(&mut stage, target_expr);
+                    let steps = finalize_steps(
+                        resolved_expr,
+                        target_expr,
+                        vec![stage],
+                        &simplifier.context,
+                    );
+                    return Some((target_expr, steps, DeriveStrategy::FractionCancel));
+                }
+            }
+            DeriveStrategy::NestedFraction => {
+                let stage = nested_fraction_stage.get_or_insert_with(|| {
+                    run_nested_fraction_stage(simplifier, resolved_expr, target_expr, collect_steps)
+                });
+                if derive_target_match(simplifier, stage.expr, target_expr) {
+                    let mut stage = stage.clone();
+                    retarget_stage_output(&mut stage, target_expr);
+                    let steps = finalize_steps(
+                        resolved_expr,
+                        target_expr,
+                        vec![stage],
+                        &simplifier.context,
+                    );
+                    return Some((target_expr, steps, DeriveStrategy::NestedFraction));
+                }
+            }
+            DeriveStrategy::RadicalRewrite => {
+                let stage = radical_rewrite_stage.get_or_insert_with(|| {
+                    run_radical_rewrite_stage(simplifier, resolved_expr, target_expr, collect_steps)
+                });
+                if derive_target_match(simplifier, stage.expr, target_expr) {
+                    let mut stage = stage.clone();
+                    retarget_stage_output(&mut stage, target_expr);
+                    let steps = finalize_steps(
+                        resolved_expr,
+                        target_expr,
+                        vec![stage],
+                        &simplifier.context,
+                    );
+                    return Some((target_expr, steps, DeriveStrategy::RadicalRewrite));
+                }
+            }
+            DeriveStrategy::ExponentialRewrite => {
+                let stage = exponential_rewrite_stage.get_or_insert_with(|| {
+                    run_exponential_sum_diff_stage(
+                        simplifier,
+                        resolved_expr,
+                        target_expr,
+                        collect_steps,
+                    )
+                });
+                if derive_target_match(simplifier, stage.expr, target_expr) {
+                    let mut stage = stage.clone();
+                    retarget_stage_output(&mut stage, target_expr);
+                    let steps = finalize_steps(
+                        resolved_expr,
+                        target_expr,
+                        vec![stage],
+                        &simplifier.context,
+                    );
+                    return Some((target_expr, steps, DeriveStrategy::ExponentialRewrite));
+                }
+            }
+            DeriveStrategy::HyperbolicRewrite => {
+                let stage = hyperbolic_rewrite_stage.get_or_insert_with(|| {
+                    run_hyperbolic_rewrite_stage(
+                        simplifier,
+                        resolved_expr,
+                        target_expr,
+                        collect_steps,
+                    )
+                });
+                if derive_target_match(simplifier, stage.expr, target_expr) {
+                    let mut stage = stage.clone();
+                    retarget_stage_output(&mut stage, target_expr);
+                    let steps = finalize_steps(
+                        resolved_expr,
+                        target_expr,
+                        vec![stage],
+                        &simplifier.context,
+                    );
+                    return Some((target_expr, steps, DeriveStrategy::HyperbolicRewrite));
+                }
+            }
+            DeriveStrategy::TrigRewrite => {
+                let stage = trig_rewrite_stage.get_or_insert_with(|| {
+                    run_trig_rewrite_stage(simplifier, resolved_expr, target_expr, collect_steps)
+                });
+                if derive_target_match(simplifier, stage.expr, target_expr) {
+                    let mut stage = stage.clone();
+                    retarget_stage_output(&mut stage, target_expr);
+                    let steps = finalize_steps(
+                        resolved_expr,
+                        target_expr,
+                        vec![stage],
+                        &simplifier.context,
+                    );
+                    return Some((target_expr, steps, DeriveStrategy::TrigRewrite));
                 }
             }
             DeriveStrategy::LogExpand => {
@@ -698,8 +1037,9 @@ fn try_supported_derive_strategies_inner(
                     );
                     return Some((target_expr, steps, DeriveStrategy::TrigContract));
                 }
-
-                let stage = simplify_stage.get_or_insert_with(|| {
+            }
+            DeriveStrategy::SimplifyThenTrigContract => {
+                let first_stage = simplify_stage.get_or_insert_with(|| {
                     run_simplify_stage(
                         simplifier,
                         resolved_expr,
@@ -708,7 +1048,31 @@ fn try_supported_derive_strategies_inner(
                         simplify_options.clone(),
                     )
                 });
+                let stage = simplify_then_trig_contract_stage.get_or_insert_with(|| {
+                    run_trig_contract_stage(
+                        simplifier,
+                        first_stage.expr,
+                        target_expr,
+                        collect_steps,
+                    )
+                });
                 if strong_target_match(&mut simplifier.context, stage.expr, target_expr) {
+                    let mut stage = stage.clone();
+                    retarget_stage_output(&mut stage, target_expr);
+                    let steps = finalize_steps(
+                        resolved_expr,
+                        target_expr,
+                        vec![first_stage.clone(), stage],
+                        &simplifier.context,
+                    );
+                    return Some((target_expr, steps, DeriveStrategy::SimplifyThenTrigContract));
+                }
+            }
+            DeriveStrategy::Rationalize => {
+                let stage = rationalize_stage.get_or_insert_with(|| {
+                    run_rationalize_stage(simplifier, resolved_expr, target_expr, collect_steps)
+                });
+                if derive_target_match(simplifier, stage.expr, target_expr) {
                     let mut stage = stage.clone();
                     retarget_stage_output(&mut stage, target_expr);
                     let steps = finalize_steps(
@@ -717,10 +1081,9 @@ fn try_supported_derive_strategies_inner(
                         vec![stage],
                         &simplifier.context,
                     );
-                    return Some((target_expr, steps, DeriveStrategy::TrigContract));
+                    return Some((target_expr, steps, DeriveStrategy::Rationalize));
                 }
-            }
-            DeriveStrategy::Rationalize => {
+
                 let stage = simplify_stage.get_or_insert_with(|| {
                     run_simplify_stage(
                         simplifier,
@@ -883,7 +1246,14 @@ fn try_supported_derive_strategies_inner(
                 }
             }
             DeriveStrategy::Expand => {
-                if !matches!(profile.form, DeriveTargetForm::Expanded) {
+                if !matches!(profile.form, DeriveTargetForm::Expanded)
+                    && try_rewrite_expanded_target_aware(
+                        &mut simplifier.context,
+                        resolved_expr,
+                        target_expr,
+                    )
+                    .is_none()
+                {
                     continue;
                 }
                 let stage = expand_stage.get_or_insert_with(|| {
@@ -1136,7 +1506,402 @@ fn try_supported_derive_strategies_inner(
         }
     }
 
+    let stage = expand_stage.get_or_insert_with(|| {
+        run_expand_stage(simplifier, resolved_expr, target_expr, collect_steps)
+    });
+    if derive_target_match(simplifier, stage.expr, target_expr) {
+        let mut stage = stage.clone();
+        retarget_stage_output(&mut stage, target_expr);
+        let steps = finalize_steps(resolved_expr, target_expr, vec![stage], &simplifier.context);
+        return Some((target_expr, steps, DeriveStrategy::Expand));
+    }
+
+    if allow_planner {
+        if let Some(snapshot) = planner_context_snapshot {
+            simplifier.context = snapshot;
+        }
+        return try_bounded_multistage_derive(
+            simplifier,
+            resolved_expr,
+            target_expr,
+            collect_steps,
+            simplify_options,
+        );
+    }
+
     None
+}
+
+struct PlannerPreferenceInput<'a> {
+    planner_context_snapshot: Option<&'a cas_ast::Context>,
+    resolved_expr: ExprId,
+    target_expr: ExprId,
+    collect_steps: bool,
+    simplify_options: &'a crate::SimplifyOptions,
+    direct_steps: &'a [crate::Step],
+    direct_strategy: DeriveStrategy,
+    allow_planner_preference: bool,
+}
+
+fn maybe_prefer_planner_over_direct_result(
+    simplifier: &mut crate::Simplifier,
+    input: PlannerPreferenceInput<'_>,
+) -> Option<(ExprId, Vec<crate::Step>, DeriveStrategy)> {
+    if input.direct_strategy != DeriveStrategy::Simplify || !input.allow_planner_preference {
+        return None;
+    }
+
+    let planner_context_snapshot = input.planner_context_snapshot?.clone();
+    let direct_context_snapshot = simplifier.context.clone();
+
+    simplifier.context = planner_context_snapshot;
+
+    let planner_result = try_bounded_multistage_derive(
+        simplifier,
+        input.resolved_expr,
+        input.target_expr,
+        input.collect_steps,
+        input.simplify_options,
+    );
+
+    let should_prefer_planner =
+        planner_result
+            .as_ref()
+            .is_some_and(|(_expr, planner_steps, strategy)| {
+                *strategy == DeriveStrategy::Planner
+                    && !planner_steps.is_empty()
+                    && (input.direct_steps.is_empty()
+                        || planner_steps.len() < input.direct_steps.len())
+            });
+
+    if should_prefer_planner {
+        return planner_result;
+    }
+
+    simplifier.context = direct_context_snapshot;
+    None
+}
+
+fn try_bounded_multistage_derive(
+    simplifier: &mut crate::Simplifier,
+    resolved_expr: ExprId,
+    target_expr: ExprId,
+    collect_steps: bool,
+    simplify_options: &crate::SimplifyOptions,
+) -> Option<(ExprId, Vec<crate::Step>, DeriveStrategy)> {
+    const MAX_BRIDGE_DEPTH: usize = 3;
+
+    let mut visited = BTreeSet::new();
+    visited.insert(derive_expr_signature(&simplifier.context, resolved_expr));
+
+    let stages = try_bounded_multistage_derive_inner(
+        simplifier,
+        resolved_expr,
+        target_expr,
+        collect_steps,
+        simplify_options,
+        MAX_BRIDGE_DEPTH,
+        &mut visited,
+    )?;
+
+    let steps = finalize_planner_steps(resolved_expr, target_expr, stages, &simplifier.context);
+    Some((target_expr, steps, DeriveStrategy::Planner))
+}
+
+fn try_bounded_multistage_derive_inner(
+    simplifier: &mut crate::Simplifier,
+    current_expr: ExprId,
+    target_expr: ExprId,
+    collect_steps: bool,
+    simplify_options: &crate::SimplifyOptions,
+    depth_left: usize,
+    visited: &mut BTreeSet<String>,
+) -> Option<Vec<DeriveStageOutput>> {
+    if depth_left == 0 {
+        return None;
+    }
+
+    let mut semantic_fallback = None;
+    let mut exploratory_stages = Vec::new();
+
+    for mut stage in generate_planner_candidate_stages(
+        simplifier,
+        current_expr,
+        target_expr,
+        collect_steps,
+        simplify_options,
+    ) {
+        if presentational_target_match(&mut simplifier.context, stage.expr, current_expr) {
+            continue;
+        }
+
+        if presentational_target_match(&mut simplifier.context, stage.expr, target_expr) {
+            retarget_stage_output(&mut stage, target_expr);
+            return Some(vec![stage]);
+        }
+
+        if strong_target_match(&mut simplifier.context, stage.expr, target_expr) {
+            let mut fallback_stage = stage.clone();
+            retarget_stage_output(&mut fallback_stage, target_expr);
+            semantic_fallback.get_or_insert_with(|| vec![fallback_stage]);
+            continue;
+        }
+
+        exploratory_stages.push(stage);
+    }
+
+    for mut stage in exploratory_stages {
+        let signature = derive_expr_signature(&simplifier.context, stage.expr);
+        if !visited.insert(signature) {
+            continue;
+        }
+
+        if let Some(mut tail) = try_bounded_multistage_derive_inner(
+            simplifier,
+            stage.expr,
+            target_expr,
+            collect_steps,
+            simplify_options,
+            depth_left - 1,
+            visited,
+        ) {
+            let mut stages = vec![stage];
+            stages.append(&mut tail);
+            return Some(stages);
+        }
+
+        if let Some((_derived_expr, direct_steps, _strategy)) =
+            try_supported_derive_strategies_inner(
+                simplifier,
+                stage.expr,
+                target_expr,
+                collect_steps,
+                simplify_options,
+                true,
+                true,
+            )
+        {
+            let mut stages = vec![stage];
+            stages.push(DeriveStageOutput {
+                expr: target_expr,
+                steps: direct_steps,
+            });
+            return Some(stages);
+        }
+
+        if derive_semantic_match(simplifier, stage.expr, target_expr) {
+            retarget_stage_output(&mut stage, target_expr);
+            return Some(vec![stage]);
+        }
+    }
+
+    semantic_fallback
+}
+
+fn generate_planner_candidate_stages(
+    simplifier: &mut crate::Simplifier,
+    expr: ExprId,
+    target_expr: ExprId,
+    collect_steps: bool,
+    simplify_options: &crate::SimplifyOptions,
+) -> Vec<DeriveStageOutput> {
+    let mut stages = Vec::new();
+
+    stages.extend(
+        generate_hyperbolic_bridge_rewrites(&mut simplifier.context, expr)
+            .into_iter()
+            .map(|rewrite| {
+                let steps = if collect_steps {
+                    vec![build_hyperbolic_bridge_step(
+                        &simplifier.context,
+                        expr,
+                        rewrite.rewritten,
+                        rewrite.kind.description(),
+                        rewrite.kind.rule_name(),
+                    )]
+                } else {
+                    Vec::new()
+                };
+
+                DeriveStageOutput {
+                    expr: rewrite.rewritten,
+                    steps,
+                }
+            }),
+    );
+
+    for rewrite in generate_hyperbolic_additive_term_bridge_rewrites(&mut simplifier.context, expr)
+    {
+        if !derive_target_match(simplifier, rewrite.rewritten, target_expr) {
+            continue;
+        }
+
+        let steps = if collect_steps {
+            vec![build_hyperbolic_bridge_step(
+                &simplifier.context,
+                expr,
+                rewrite.rewritten,
+                rewrite.kind.description(),
+                rewrite.kind.rule_name(),
+            )]
+        } else {
+            Vec::new()
+        };
+
+        stages.push(DeriveStageOutput {
+            expr: rewrite.rewritten,
+            steps,
+        });
+    }
+
+    stages.extend(
+        generate_trig_bridge_rewrites(&mut simplifier.context, expr)
+            .into_iter()
+            .map(|rewrite| {
+                let steps = if collect_steps {
+                    vec![build_trig_bridge_step(
+                        &simplifier.context,
+                        expr,
+                        rewrite.rewritten,
+                        rewrite.kind.description(),
+                        rewrite.kind.rule_name(),
+                    )]
+                } else {
+                    Vec::new()
+                };
+
+                DeriveStageOutput {
+                    expr: rewrite.rewritten,
+                    steps,
+                }
+            }),
+    );
+
+    for rewrite in generate_trig_additive_term_bridge_rewrites(&mut simplifier.context, expr) {
+        if !derive_target_match(simplifier, rewrite.rewritten, target_expr) {
+            continue;
+        }
+
+        let steps = if collect_steps {
+            vec![build_trig_bridge_step(
+                &simplifier.context,
+                expr,
+                rewrite.rewritten,
+                rewrite.kind.description(),
+                rewrite.kind.rule_name(),
+            )]
+        } else {
+            Vec::new()
+        };
+
+        stages.push(DeriveStageOutput {
+            expr: rewrite.rewritten,
+            steps,
+        });
+    }
+
+    if let Some(rewrite) = try_rewrite_trig_expansion(&mut simplifier.context, expr, target_expr) {
+        let steps = if collect_steps {
+            vec![build_trig_bridge_step(
+                &simplifier.context,
+                expr,
+                rewrite.rewritten,
+                rewrite.kind.description(),
+                rewrite.kind.rule_name(),
+            )]
+        } else {
+            Vec::new()
+        };
+
+        stages.push(DeriveStageOutput {
+            expr: rewrite.rewritten,
+            steps,
+        });
+    }
+
+    if let Some(rewrite) =
+        try_rewrite_trig_contraction_target_aware(&mut simplifier.context, expr, target_expr)
+    {
+        let steps = if collect_steps {
+            vec![build_trig_bridge_step(
+                &simplifier.context,
+                expr,
+                rewrite.rewritten,
+                rewrite.kind.description(),
+                rewrite.kind.rule_name(),
+            )]
+        } else {
+            Vec::new()
+        };
+
+        stages.push(DeriveStageOutput {
+            expr: rewrite.rewritten,
+            steps,
+        });
+    }
+
+    if !should_try_trig_planner_before_simplify(&mut simplifier.context, expr, target_expr) {
+        let simplify_stage = run_simplify_stage(
+            simplifier,
+            expr,
+            target_expr,
+            collect_steps,
+            simplify_options.clone(),
+        );
+        if !presentational_target_match(&mut simplifier.context, simplify_stage.expr, expr) {
+            stages.push(simplify_stage);
+        }
+    }
+
+    stages
+}
+
+fn build_hyperbolic_bridge_step(
+    ctx: &cas_ast::Context,
+    before: ExprId,
+    after: ExprId,
+    description: &str,
+    rule_name: &str,
+) -> crate::Step {
+    let mut step = crate::Step::with_snapshots(
+        description,
+        rule_name,
+        before,
+        after,
+        Vec::new(),
+        Some(ctx),
+        before,
+        after,
+    );
+    step.importance = cas_solver_core::step_types::ImportanceLevel::Medium;
+    step.category = cas_solver_core::step_types::StepCategory::Simplify;
+    step
+}
+
+fn build_trig_bridge_step(
+    ctx: &cas_ast::Context,
+    before: ExprId,
+    after: ExprId,
+    description: &str,
+    rule_name: &str,
+) -> crate::Step {
+    let mut step = crate::Step::with_snapshots(
+        description,
+        rule_name,
+        before,
+        after,
+        Vec::new(),
+        Some(ctx),
+        before,
+        after,
+    );
+    step.importance = cas_solver_core::step_types::ImportanceLevel::Medium;
+    step.category = cas_solver_core::step_types::StepCategory::Simplify;
+    step
+}
+
+fn derive_expr_signature(ctx: &cas_ast::Context, expr: ExprId) -> String {
+    cas_formatter::clean_display_string(&cas_formatter::render_expr(ctx, expr))
 }
 
 fn run_expand_stage(
@@ -1148,6 +1913,21 @@ fn run_expand_stage(
     if let Some(rewrite) =
         try_rewrite_expanded_target_aware(&mut simplifier.context, expr, target_expr)
     {
+        if !matches!(
+            rewrite.kind,
+            ExpandRewriteKind::SophieGermainProduct
+                | ExpandRewriteKind::HyperbolicAngleSumDiff
+                | ExpandRewriteKind::HyperbolicProductSum
+        ) {
+            let (expanded_expr, steps) = simplifier.expand(expr);
+            if derive_target_match(simplifier, expanded_expr, target_expr) {
+                return DeriveStageOutput {
+                    expr: expanded_expr,
+                    steps: if collect_steps { steps } else { Vec::new() },
+                };
+            }
+        }
+
         let steps = if collect_steps {
             vec![build_expand_step(
                 &simplifier.context,
@@ -1176,6 +1956,18 @@ fn build_expand_step(
 ) -> crate::Step {
     let (description, rule_name) = match kind {
         ExpandRewriteKind::BinomialPower => ("Expand the binomial power", "Binomial Expansion"),
+        ExpandRewriteKind::SophieGermainProduct => (
+            "Expand the Sophie Germain identity",
+            "Sophie Germain Identity",
+        ),
+        ExpandRewriteKind::HyperbolicAngleSumDiff => (
+            "Expand a hyperbolic angle sum/difference identity",
+            "Hyperbolic Angle Sum/Difference Identity",
+        ),
+        ExpandRewriteKind::HyperbolicProductSum => (
+            "Apply a hyperbolic product-to-sum or sum-to-product identity",
+            "Hyperbolic Product-to-Sum Identity",
+        ),
         ExpandRewriteKind::General => ("Expand the expression distributively", "Expand"),
     };
 
@@ -1245,6 +2037,97 @@ fn run_fraction_expand_stage(
     }
 }
 
+fn run_rationalize_stage(
+    simplifier: &mut crate::Simplifier,
+    expr: ExprId,
+    target_expr: ExprId,
+    collect_steps: bool,
+) -> DeriveStageOutput {
+    let Some(rewrite) =
+        try_rewrite_rationalized_target_aware(&mut simplifier.context, expr, target_expr)
+    else {
+        return DeriveStageOutput {
+            expr,
+            steps: Vec::new(),
+        };
+    };
+
+    let steps = if collect_steps {
+        match rewrite.kind {
+            RationalizeRewriteKind::RadicalNotableQuotient => {
+                let mut step = crate::Step::with_snapshots(
+                    rewrite.kind.description(),
+                    rewrite.kind.rule_name(),
+                    expr,
+                    rewrite.rewritten,
+                    Vec::new(),
+                    Some(&simplifier.context),
+                    expr,
+                    rewrite.rewritten,
+                );
+                step.importance = cas_solver_core::step_types::ImportanceLevel::Medium;
+                step.category = cas_solver_core::step_types::StepCategory::Simplify;
+                step.meta_mut().before_local = Some(expr);
+                step.meta_mut().after_local = Some(rewrite.intermediate);
+                step.meta_mut().substeps = vec![
+                    cas_solver_core::step_types::SubStep::new(
+                        "Llamar t = sqrt(x) para reconocer la forma",
+                        Vec::new(),
+                    ),
+                    cas_solver_core::step_types::SubStep::new(
+                        "Ese cociente notable se convierte en t^2 + t + 1",
+                        Vec::new(),
+                    ),
+                    cas_solver_core::step_types::SubStep::new(
+                        "Volver a poner t = sqrt(x)",
+                        Vec::new(),
+                    ),
+                    cas_solver_core::step_types::SubStep::new(
+                        "Deshacer sqrt(x)^2 como x dentro del resultado",
+                        Vec::new(),
+                    ),
+                ];
+                vec![step]
+            }
+            RationalizeRewriteKind::CancelToZeroAfterRationalize => {
+                let mut rationalize_step = crate::Step::with_snapshots(
+                    rewrite.kind.description(),
+                    rewrite.kind.rule_name(),
+                    expr,
+                    rewrite.intermediate,
+                    Vec::new(),
+                    Some(&simplifier.context),
+                    expr,
+                    rewrite.intermediate,
+                );
+                rationalize_step.importance = cas_solver_core::step_types::ImportanceLevel::Medium;
+                rationalize_step.category = cas_solver_core::step_types::StepCategory::Simplify;
+
+                let mut cancel_step = crate::Step::with_snapshots(
+                    "Subtract two identical expressions",
+                    "Subtraction Self-Cancel",
+                    rewrite.intermediate,
+                    rewrite.rewritten,
+                    Vec::new(),
+                    Some(&simplifier.context),
+                    rewrite.intermediate,
+                    rewrite.rewritten,
+                );
+                cancel_step.importance = cas_solver_core::step_types::ImportanceLevel::Medium;
+                cancel_step.category = cas_solver_core::step_types::StepCategory::Simplify;
+                vec![rationalize_step, cancel_step]
+            }
+        }
+    } else {
+        Vec::new()
+    };
+
+    DeriveStageOutput {
+        expr: rewrite.rewritten,
+        steps,
+    }
+}
+
 fn run_power_merge_stage(
     simplifier: &mut crate::Simplifier,
     expr: ExprId,
@@ -1262,49 +2145,19 @@ fn run_power_merge_stage(
 
     let mut steps = Vec::new();
     if collect_steps {
-        if let Some(canonicalized) = rewrite.canonicalized {
-            let mut root_step = crate::Step::with_snapshots(
-                "sqrt(x) = x^(1/2)",
-                "Canonicalize Roots",
-                expr,
-                canonicalized,
-                Vec::new(),
-                Some(&simplifier.context),
-                expr,
-                canonicalized,
-            );
-            root_step.importance = cas_solver_core::step_types::ImportanceLevel::Medium;
-            root_step.category = cas_solver_core::step_types::StepCategory::Simplify;
-            steps.push(root_step);
-
-            let mut merge_step = crate::Step::with_snapshots(
-                "Combine powers with same base (n-ary)",
-                "Combine powers with same base (n-ary)",
-                canonicalized,
-                rewrite.rewritten,
-                Vec::new(),
-                Some(&simplifier.context),
-                canonicalized,
-                rewrite.rewritten,
-            );
-            merge_step.importance = cas_solver_core::step_types::ImportanceLevel::Medium;
-            merge_step.category = cas_solver_core::step_types::StepCategory::Simplify;
-            steps.push(merge_step);
-        } else {
-            let mut merge_step = crate::Step::with_snapshots(
-                "Combine powers with same base (n-ary)",
-                "Combine powers with same base (n-ary)",
-                expr,
-                rewrite.rewritten,
-                Vec::new(),
-                Some(&simplifier.context),
-                expr,
-                rewrite.rewritten,
-            );
-            merge_step.importance = cas_solver_core::step_types::ImportanceLevel::Medium;
-            merge_step.category = cas_solver_core::step_types::StepCategory::Simplify;
-            steps.push(merge_step);
-        }
+        let mut merge_step = crate::Step::with_snapshots(
+            "Combine powers with same base (n-ary)",
+            "Combine powers with same base (n-ary)",
+            expr,
+            rewrite.rewritten,
+            Vec::new(),
+            Some(&simplifier.context),
+            expr,
+            rewrite.rewritten,
+        );
+        merge_step.importance = cas_solver_core::step_types::ImportanceLevel::Medium;
+        merge_step.category = cas_solver_core::step_types::StepCategory::Simplify;
+        steps.push(merge_step);
     }
 
     DeriveStageOutput {
@@ -1425,6 +2278,7 @@ fn run_odd_half_power_stage(
             expr,
             crate::SimplifyOptions {
                 collect_steps: false,
+                suppress_depth_overflow_warnings: true,
                 ..crate::SimplifyOptions::default()
             },
         );
@@ -1487,6 +2341,7 @@ fn run_factor_with_division_stage(
             inner_target,
             false,
             &crate::SimplifyOptions::default(),
+            false,
             false,
         ) else {
             continue;
@@ -1698,6 +2553,33 @@ fn run_log_expand_stage(
     collect_steps: bool,
     mut simplify_options: crate::SimplifyOptions,
 ) -> DeriveStageOutput {
+    if let Some(rewrite) =
+        try_rewrite_log_simplify_target_aware(&mut simplifier.context, expr, target_expr)
+    {
+        let steps = if collect_steps {
+            let mut step = crate::Step::with_snapshots(
+                rewrite.kind.description(),
+                rewrite.kind.rule_name(),
+                expr,
+                rewrite.rewritten,
+                Vec::new(),
+                Some(&simplifier.context),
+                expr,
+                rewrite.rewritten,
+            );
+            step.importance = cas_solver_core::step_types::ImportanceLevel::Medium;
+            step.category = cas_solver_core::step_types::StepCategory::Expand;
+            vec![step]
+        } else {
+            Vec::new()
+        };
+
+        return DeriveStageOutput {
+            expr: rewrite.rewritten,
+            steps,
+        };
+    }
+
     if let Some(rewritten) =
         try_rewrite_log_expansion_target_aware(&mut simplifier.context, expr, target_expr)
     {
@@ -1758,15 +2640,18 @@ fn run_log_expand_stage(
             "Log expansion",
             "expand_log",
             expr,
-            plan.rewritten,
+            cleanup.expr,
             Vec::new(),
             Some(&simplifier.context),
             expr,
-            plan.rewritten,
+            cleanup.expr,
         );
         step.importance = cas_solver_core::step_types::ImportanceLevel::Medium;
         step.category = cas_solver_core::step_types::StepCategory::Expand;
         step.meta_mut().assumption_events.extend(assumed_positive);
+        if cleanup.expr != plan.rewritten {
+            step.meta_mut().after_local = Some(plan.rewritten);
+        }
         steps.push(step);
     }
     steps.append(&mut cleanup.steps);
@@ -1774,6 +2659,435 @@ fn run_log_expand_stage(
     DeriveStageOutput {
         expr: cleanup.expr,
         steps,
+    }
+}
+
+fn run_exponential_sum_diff_stage(
+    simplifier: &mut crate::Simplifier,
+    expr: ExprId,
+    target_expr: ExprId,
+    collect_steps: bool,
+) -> DeriveStageOutput {
+    let Some(rewrite) =
+        try_rewrite_exponential_sum_diff_target_aware(&mut simplifier.context, expr, target_expr)
+    else {
+        return DeriveStageOutput {
+            expr,
+            steps: Vec::new(),
+        };
+    };
+
+    let steps = if collect_steps {
+        let mut step = crate::Step::with_snapshots(
+            rewrite.kind.description(),
+            rewrite.kind.rule_name(),
+            expr,
+            rewrite.rewritten,
+            Vec::new(),
+            Some(&simplifier.context),
+            expr,
+            rewrite.rewritten,
+        );
+        step.importance = cas_solver_core::step_types::ImportanceLevel::Medium;
+        step.category = cas_solver_core::step_types::StepCategory::Simplify;
+        vec![step]
+    } else {
+        Vec::new()
+    };
+
+    DeriveStageOutput {
+        expr: rewrite.rewritten,
+        steps,
+    }
+}
+
+fn run_hyperbolic_rewrite_stage(
+    simplifier: &mut crate::Simplifier,
+    expr: ExprId,
+    target_expr: ExprId,
+    collect_steps: bool,
+) -> DeriveStageOutput {
+    let Some(rewrite) =
+        try_rewrite_hyperbolic_simplify_target_aware(&mut simplifier.context, expr, target_expr)
+    else {
+        return DeriveStageOutput {
+            expr,
+            steps: Vec::new(),
+        };
+    };
+
+    let steps = if collect_steps {
+        let mut step = crate::Step::with_snapshots(
+            rewrite.kind.description(),
+            rewrite.kind.rule_name(),
+            expr,
+            rewrite.rewritten,
+            Vec::new(),
+            Some(&simplifier.context),
+            expr,
+            rewrite.rewritten,
+        );
+        step.importance = cas_solver_core::step_types::ImportanceLevel::Medium;
+        step.category = cas_solver_core::step_types::StepCategory::Simplify;
+        vec![step]
+    } else {
+        Vec::new()
+    };
+
+    DeriveStageOutput {
+        expr: rewrite.rewritten,
+        steps,
+    }
+}
+
+fn run_factorial_rewrite_stage(
+    simplifier: &mut crate::Simplifier,
+    expr: ExprId,
+    target_expr: ExprId,
+    collect_steps: bool,
+) -> DeriveStageOutput {
+    let Some(rewrite) = try_rewrite_consecutive_factorial_ratio_expr(&mut simplifier.context, expr)
+    else {
+        return DeriveStageOutput {
+            expr,
+            steps: Vec::new(),
+        };
+    };
+
+    if !strong_target_match(&mut simplifier.context, rewrite.rewritten, target_expr) {
+        return DeriveStageOutput {
+            expr,
+            steps: Vec::new(),
+        };
+    }
+
+    let steps = if collect_steps {
+        let mut step = crate::Step::with_snapshots(
+            "Cancel consecutive factorials",
+            "Consecutive Factorial Ratio",
+            expr,
+            rewrite.rewritten,
+            Vec::new(),
+            Some(&simplifier.context),
+            expr,
+            rewrite.rewritten,
+        );
+        step.importance = cas_solver_core::step_types::ImportanceLevel::Medium;
+        step.category = cas_solver_core::step_types::StepCategory::Simplify;
+        vec![step]
+    } else {
+        Vec::new()
+    };
+
+    DeriveStageOutput {
+        expr: rewrite.rewritten,
+        steps,
+    }
+}
+
+fn run_combine_like_terms_stage(
+    simplifier: &mut crate::Simplifier,
+    expr: ExprId,
+    target_expr: ExprId,
+    collect_steps: bool,
+) -> DeriveStageOutput {
+    let Some((rewritten, steps)) =
+        run_combine_like_terms_rewrite(&mut simplifier.context, expr, target_expr, collect_steps)
+    else {
+        return DeriveStageOutput {
+            expr,
+            steps: Vec::new(),
+        };
+    };
+
+    if !strong_target_match(&mut simplifier.context, rewritten, target_expr) {
+        return DeriveStageOutput {
+            expr,
+            steps: Vec::new(),
+        };
+    }
+
+    DeriveStageOutput {
+        expr: rewritten,
+        steps,
+    }
+}
+
+fn run_inverse_trig_rewrite_stage(
+    simplifier: &mut crate::Simplifier,
+    expr: ExprId,
+    target_expr: ExprId,
+    collect_steps: bool,
+) -> DeriveStageOutput {
+    let Some(plan) =
+        try_plan_inverse_atan_reciprocal_add_expr(&mut simplifier.context, expr, false)
+    else {
+        return DeriveStageOutput {
+            expr,
+            steps: Vec::new(),
+        };
+    };
+
+    let rewritten = if strong_target_match(&mut simplifier.context, plan.final_result, target_expr)
+    {
+        plan.final_result
+    } else {
+        let (simplified, _, _) = simplifier.simplify_with_stats(
+            plan.final_result,
+            crate::SimplifyOptions {
+                suppress_depth_overflow_warnings: true,
+                ..crate::SimplifyOptions::default()
+            },
+        );
+        if !strong_target_match(&mut simplifier.context, simplified, target_expr) {
+            return DeriveStageOutput {
+                expr,
+                steps: Vec::new(),
+            };
+        }
+        simplified
+    };
+
+    let steps = if collect_steps {
+        let mut step = crate::Step::with_snapshots(
+            &plan.desc,
+            "Inverse Tan Relations",
+            expr,
+            rewritten,
+            Vec::new(),
+            Some(&simplifier.context),
+            plan.local_before,
+            plan.local_after,
+        );
+        step.importance = cas_solver_core::step_types::ImportanceLevel::Medium;
+        step.category = cas_solver_core::step_types::StepCategory::Simplify;
+        vec![step]
+    } else {
+        Vec::new()
+    };
+
+    DeriveStageOutput {
+        expr: rewritten,
+        steps,
+    }
+}
+
+fn run_fraction_cancel_stage(
+    simplifier: &mut crate::Simplifier,
+    expr: ExprId,
+    target_expr: ExprId,
+    collect_steps: bool,
+) -> DeriveStageOutput {
+    let Some(rewrite) =
+        try_rewrite_exact_fraction_cancel_target_aware(&mut simplifier.context, expr, target_expr)
+    else {
+        return DeriveStageOutput {
+            expr,
+            steps: Vec::new(),
+        };
+    };
+
+    let steps = if collect_steps {
+        let (before_local, after_local) =
+            rewrite
+                .kind
+                .local_snapshots(expr, rewrite.intermediate, rewrite.rewritten);
+
+        let mut step = crate::Step::with_snapshots(
+            rewrite.kind.description(),
+            rewrite.kind.rule_name(),
+            expr,
+            rewrite.rewritten,
+            Vec::new(),
+            Some(&simplifier.context),
+            before_local,
+            after_local,
+        );
+        step.importance = cas_solver_core::step_types::ImportanceLevel::Medium;
+        step.category = cas_solver_core::step_types::StepCategory::Simplify;
+        step.meta_mut().required_conditions = rewrite.required_conditions.clone();
+        vec![step]
+    } else {
+        Vec::new()
+    };
+
+    DeriveStageOutput {
+        expr: rewrite.rewritten,
+        steps,
+    }
+}
+
+fn run_nested_fraction_stage(
+    simplifier: &mut crate::Simplifier,
+    expr: ExprId,
+    target_expr: ExprId,
+    collect_steps: bool,
+) -> DeriveStageOutput {
+    let Some(rewritten) =
+        try_rewrite_nested_fraction_target_aware(&mut simplifier.context, expr, target_expr)
+    else {
+        return DeriveStageOutput {
+            expr,
+            steps: Vec::new(),
+        };
+    };
+
+    let steps = if collect_steps {
+        let mut step = crate::Step::with_snapshots(
+            "Simplify nested fraction",
+            "Simplify Nested Fraction",
+            expr,
+            rewritten,
+            Vec::new(),
+            Some(&simplifier.context),
+            expr,
+            rewritten,
+        );
+        step.importance = cas_solver_core::step_types::ImportanceLevel::Medium;
+        step.category = cas_solver_core::step_types::StepCategory::Simplify;
+        vec![step]
+    } else {
+        Vec::new()
+    };
+
+    DeriveStageOutput {
+        expr: rewritten,
+        steps,
+    }
+}
+
+fn run_radical_rewrite_stage(
+    simplifier: &mut crate::Simplifier,
+    expr: ExprId,
+    target_expr: ExprId,
+    collect_steps: bool,
+) -> DeriveStageOutput {
+    let Some(rewrite) =
+        try_rewrite_radical_target_aware(&mut simplifier.context, expr, target_expr)
+    else {
+        return DeriveStageOutput {
+            expr,
+            steps: Vec::new(),
+        };
+    };
+
+    let steps = if collect_steps {
+        let mut step = crate::Step::with_snapshots(
+            rewrite.kind.description(),
+            rewrite.kind.rule_name(),
+            expr,
+            rewrite.rewritten,
+            Vec::new(),
+            Some(&simplifier.context),
+            expr,
+            rewrite.rewritten,
+        );
+        step.importance = cas_solver_core::step_types::ImportanceLevel::Medium;
+        step.category = cas_solver_core::step_types::StepCategory::Simplify;
+        step.meta_mut().required_conditions = rewrite.required_conditions.clone();
+        vec![step]
+    } else {
+        Vec::new()
+    };
+
+    DeriveStageOutput {
+        expr: rewrite.rewritten,
+        steps,
+    }
+}
+
+fn run_trig_rewrite_stage(
+    simplifier: &mut crate::Simplifier,
+    expr: ExprId,
+    target_expr: ExprId,
+    collect_steps: bool,
+) -> DeriveStageOutput {
+    if let Some(rewrite) =
+        try_rewrite_trig_identity_to_one_target_aware(&mut simplifier.context, expr, target_expr)
+    {
+        let steps = if collect_steps {
+            let mut step = crate::Step::with_snapshots(
+                rewrite.kind.description(),
+                rewrite.kind.rule_name(),
+                expr,
+                rewrite.rewritten,
+                Vec::new(),
+                Some(&simplifier.context),
+                expr,
+                rewrite.rewritten,
+            );
+            step.importance = cas_solver_core::step_types::ImportanceLevel::Medium;
+            step.category = cas_solver_core::step_types::StepCategory::Simplify;
+            vec![step]
+        } else {
+            Vec::new()
+        };
+
+        return DeriveStageOutput {
+            expr: rewrite.rewritten,
+            steps,
+        };
+    }
+
+    if let Some(rewrite) = try_rewrite_shifted_reciprocal_pythagorean_target_aware(
+        &mut simplifier.context,
+        expr,
+        target_expr,
+    ) {
+        let steps = if collect_steps {
+            let mut step = crate::Step::with_snapshots(
+                rewrite.kind.description(),
+                rewrite.kind.rule_name(),
+                expr,
+                rewrite.rewritten,
+                Vec::new(),
+                Some(&simplifier.context),
+                expr,
+                rewrite.rewritten,
+            );
+            step.importance = cas_solver_core::step_types::ImportanceLevel::Medium;
+            step.category = cas_solver_core::step_types::StepCategory::Simplify;
+            vec![step]
+        } else {
+            Vec::new()
+        };
+
+        return DeriveStageOutput {
+            expr: rewrite.rewritten,
+            steps,
+        };
+    }
+
+    if let Some(rewrite) =
+        try_rewrite_pythagorean_factor_form_target_aware(&mut simplifier.context, expr, target_expr)
+    {
+        let steps = if collect_steps {
+            let mut step = crate::Step::with_snapshots(
+                &rewrite.description,
+                "Pythagorean Factor Form",
+                expr,
+                rewrite.rewritten,
+                Vec::new(),
+                Some(&simplifier.context),
+                expr,
+                rewrite.rewritten,
+            );
+            step.importance = cas_solver_core::step_types::ImportanceLevel::Medium;
+            step.category = cas_solver_core::step_types::StepCategory::Simplify;
+            vec![step]
+        } else {
+            Vec::new()
+        };
+
+        return DeriveStageOutput {
+            expr: rewrite.rewritten,
+            steps,
+        };
+    }
+
+    DeriveStageOutput {
+        expr,
+        steps: Vec::new(),
     }
 }
 
@@ -1822,13 +3136,69 @@ fn run_simplify_stage(
     mut simplify_options: crate::SimplifyOptions,
 ) -> DeriveStageOutput {
     if let Some(stage) =
-        try_run_finite_summation_target_aware_stage(simplifier, expr, target_expr, collect_steps)
+        try_run_finite_aggregate_target_aware_stage(simplifier, expr, target_expr, collect_steps)
     {
         return stage;
     }
 
     if let Some(rewrite) =
         try_rewrite_trig_identity_to_one_target_aware(&mut simplifier.context, expr, target_expr)
+    {
+        let steps = if collect_steps {
+            let mut step = crate::Step::with_snapshots(
+                rewrite.kind.description(),
+                rewrite.kind.rule_name(),
+                expr,
+                rewrite.rewritten,
+                Vec::new(),
+                Some(&simplifier.context),
+                expr,
+                rewrite.rewritten,
+            );
+            step.importance = cas_solver_core::step_types::ImportanceLevel::Medium;
+            step.category = cas_solver_core::step_types::StepCategory::Simplify;
+            vec![step]
+        } else {
+            Vec::new()
+        };
+
+        return DeriveStageOutput {
+            expr: rewrite.rewritten,
+            steps,
+        };
+    }
+
+    if let Some(rewrite) = try_rewrite_shifted_reciprocal_pythagorean_target_aware(
+        &mut simplifier.context,
+        expr,
+        target_expr,
+    ) {
+        let steps = if collect_steps {
+            let mut step = crate::Step::with_snapshots(
+                rewrite.kind.description(),
+                rewrite.kind.rule_name(),
+                expr,
+                rewrite.rewritten,
+                Vec::new(),
+                Some(&simplifier.context),
+                expr,
+                rewrite.rewritten,
+            );
+            step.importance = cas_solver_core::step_types::ImportanceLevel::Medium;
+            step.category = cas_solver_core::step_types::StepCategory::Simplify;
+            vec![step]
+        } else {
+            Vec::new()
+        };
+
+        return DeriveStageOutput {
+            expr: rewrite.rewritten,
+            steps,
+        };
+    }
+
+    if let Some(rewrite) =
+        try_rewrite_shifted_double_angle_target_aware(&mut simplifier.context, expr, target_expr)
     {
         let steps = if collect_steps {
             let mut step = crate::Step::with_snapshots(
@@ -1882,7 +3252,7 @@ fn run_simplify_stage(
     }
 
     if let Some(rewrite) =
-        try_rewrite_exact_fraction_cancel_target_aware(&mut simplifier.context, expr, target_expr)
+        try_rewrite_log_simplify_target_aware(&mut simplifier.context, expr, target_expr)
     {
         let steps = if collect_steps {
             let mut step = crate::Step::with_snapshots(
@@ -1897,9 +3267,6 @@ fn run_simplify_stage(
             );
             step.importance = cas_solver_core::step_types::ImportanceLevel::Medium;
             step.category = cas_solver_core::step_types::StepCategory::Simplify;
-            if rewrite.intermediate != rewrite.rewritten {
-                step.meta_mut().after_local = Some(rewrite.intermediate);
-            }
             vec![step]
         } else {
             Vec::new()
@@ -1911,11 +3278,55 @@ fn run_simplify_stage(
         };
     }
 
+    if let Some(rewrite) =
+        try_rewrite_exponential_sum_diff_target_aware(&mut simplifier.context, expr, target_expr)
+    {
+        let steps = if collect_steps {
+            let mut step = crate::Step::with_snapshots(
+                rewrite.kind.description(),
+                rewrite.kind.rule_name(),
+                expr,
+                rewrite.rewritten,
+                Vec::new(),
+                Some(&simplifier.context),
+                expr,
+                rewrite.rewritten,
+            );
+            step.importance = cas_solver_core::step_types::ImportanceLevel::Medium;
+            step.category = cas_solver_core::step_types::StepCategory::Simplify;
+            vec![step]
+        } else {
+            Vec::new()
+        };
+
+        return DeriveStageOutput {
+            expr: rewrite.rewritten,
+            steps,
+        };
+    }
+
+    let fraction_cancel_stage =
+        run_fraction_cancel_stage(simplifier, expr, target_expr, collect_steps);
+    if fraction_cancel_stage.expr != expr {
+        return fraction_cancel_stage;
+    }
+
     simplify_options.collect_steps = collect_steps;
     run_stage(simplifier, expr, collect_steps, simplify_options)
 }
 
-fn try_run_finite_summation_target_aware_stage(
+fn try_run_finite_aggregate_target_aware_stage(
+    simplifier: &mut crate::Simplifier,
+    expr: ExprId,
+    target_expr: ExprId,
+    collect_steps: bool,
+) -> Option<DeriveStageOutput> {
+    try_run_finite_sum_target_aware_stage(simplifier, expr, target_expr, collect_steps).or_else(
+        || try_run_finite_product_target_aware_stage(simplifier, expr, target_expr, collect_steps),
+    )
+}
+
+fn try_run_finite_sum_target_aware_stage(
     simplifier: &mut crate::Simplifier,
     expr: ExprId,
     target_expr: ExprId,
@@ -1924,7 +3335,13 @@ fn try_run_finite_summation_target_aware_stage(
     let plan = try_plan_finite_sum_evaluation(&mut simplifier.context, expr, 1000)?;
     let mut temp = crate::Simplifier::with_default_rules();
     temp.context = simplifier.context.clone();
-    let (simplified, _) = temp.simplify(plan.candidate);
+    let (simplified, _steps, _stats) = temp.simplify_with_stats(
+        plan.candidate,
+        crate::SimplifyOptions {
+            suppress_depth_overflow_warnings: true,
+            ..crate::SimplifyOptions::default()
+        },
+    );
     simplifier.context = temp.context;
 
     if !derive_target_match(simplifier, simplified, target_expr) {
@@ -1962,6 +3379,74 @@ fn try_run_finite_summation_target_aware_stage(
         expr: simplified,
         steps,
     })
+}
+
+fn try_run_finite_product_target_aware_stage(
+    simplifier: &mut crate::Simplifier,
+    expr: ExprId,
+    target_expr: ExprId,
+    collect_steps: bool,
+) -> Option<DeriveStageOutput> {
+    let plan = try_plan_finite_product_evaluation(&mut simplifier.context, expr, 1000)?;
+    let mut temp = crate::Simplifier::with_default_rules();
+    temp.context = simplifier.context.clone();
+    let (simplified, _steps, _stats) = temp.simplify_with_stats(
+        plan.candidate,
+        crate::SimplifyOptions {
+            suppress_depth_overflow_warnings: true,
+            ..crate::SimplifyOptions::default()
+        },
+    );
+    simplifier.context = temp.context;
+
+    if !derive_target_match(simplifier, simplified, target_expr) {
+        return None;
+    }
+
+    let steps = if collect_steps {
+        let description = render_product_evaluation_desc(&plan.kind, &plan.call, |id| {
+            format!(
+                "{}",
+                cas_formatter::DisplayExpr {
+                    context: &simplifier.context,
+                    id
+                }
+            )
+        });
+        let mut step = crate::Step::with_snapshots(
+            &description,
+            "Finite Product",
+            expr,
+            simplified,
+            Vec::new(),
+            Some(&simplifier.context),
+            expr,
+            simplified,
+        );
+        step.importance = cas_solver_core::step_types::ImportanceLevel::Medium;
+        step.category = cas_solver_core::step_types::StepCategory::Simplify;
+        vec![step]
+    } else {
+        Vec::new()
+    };
+
+    Some(DeriveStageOutput {
+        expr: simplified,
+        steps,
+    })
+}
+
+fn run_finite_aggregate_stage(
+    simplifier: &mut crate::Simplifier,
+    expr: ExprId,
+    target_expr: ExprId,
+    collect_steps: bool,
+) -> DeriveStageOutput {
+    try_run_finite_aggregate_target_aware_stage(simplifier, expr, target_expr, collect_steps)
+        .unwrap_or(DeriveStageOutput {
+            expr,
+            steps: Vec::new(),
+        })
 }
 
 fn run_collect_stage(
@@ -2094,8 +3579,59 @@ fn finalize_steps(
     stages: Vec<DeriveStageOutput>,
     ctx: &cas_ast::Context,
 ) -> Vec<crate::Step> {
+    let stage_count = stages.len();
+    let cleaned = clean_derive_stage_steps(stages);
+
+    let mut steps = if stage_count > 1 {
+        cleaned
+    } else {
+        match cas_solver_core::step_optimization_runtime::optimize_steps_semantic(
+            cleaned.clone(),
+            ctx,
+            original_expr,
+            final_expr,
+        ) {
+            cas_solver_core::step_optimization_runtime::StepOptimizationResult::Steps(steps) => {
+                steps
+            }
+            cas_solver_core::step_optimization_runtime::StepOptimizationResult::NoSimplificationNeeded => {
+                cleaned
+            }
+        }
+    };
+
+    if stage_count > 1 {
+        truncate_steps_after_first_presentational_target_match(&mut steps, final_expr, ctx);
+    } else {
+        truncate_steps_after_first_target_match(&mut steps, final_expr, ctx);
+    }
+
+    if let Some(last_step) = steps.last_mut() {
+        last_step.global_after = Some(final_expr);
+    }
+
+    steps
+}
+
+fn finalize_planner_steps(
+    _original_expr: ExprId,
+    final_expr: ExprId,
+    stages: Vec<DeriveStageOutput>,
+    ctx: &cas_ast::Context,
+) -> Vec<crate::Step> {
+    let mut steps = clean_derive_stage_steps(stages);
+    truncate_steps_after_first_presentational_target_match(&mut steps, final_expr, ctx);
+
+    if let Some(last_step) = steps.last_mut() {
+        last_step.global_after = Some(final_expr);
+    }
+
+    steps
+}
+
+fn clean_derive_stage_steps(stages: Vec<DeriveStageOutput>) -> Vec<crate::Step> {
     let raw_steps: Vec<_> = stages.into_iter().flat_map(|stage| stage.steps).collect();
-    let cleaned = cas_solver_core::eval_step_pipeline::clean_eval_steps(
+    cas_solver_core::eval_step_pipeline::clean_eval_steps(
         raw_steps,
         |s: &crate::Step| s.before,
         |s: &crate::Step| s.after,
@@ -2103,27 +3639,7 @@ fn finalize_steps(
         |s: &crate::Step| s.after_local(),
         |s: &crate::Step| s.global_after,
         |s: &mut crate::Step, gb| s.global_before = Some(gb),
-    );
-
-    let mut steps = match cas_solver_core::step_optimization_runtime::optimize_steps_semantic(
-        cleaned.clone(),
-        ctx,
-        original_expr,
-        final_expr,
-    ) {
-        cas_solver_core::step_optimization_runtime::StepOptimizationResult::Steps(steps) => steps,
-        cas_solver_core::step_optimization_runtime::StepOptimizationResult::NoSimplificationNeeded => {
-            cleaned
-        }
-    };
-
-    truncate_steps_after_first_target_match(&mut steps, final_expr, ctx);
-
-    if let Some(last_step) = steps.last_mut() {
-        last_step.global_after = Some(final_expr);
-    }
-
-    steps
+    )
 }
 
 fn truncate_steps_after_first_target_match(
@@ -2136,6 +3652,23 @@ fn truncate_steps_after_first_target_match(
         let local_after = step.after_local().unwrap_or(step.after);
         strong_target_match(&mut temp_ctx, local_after, final_expr)
             || strong_target_match(&mut temp_ctx, step.after, final_expr)
+    });
+
+    if let Some(index) = cutoff {
+        steps.truncate(index + 1);
+    }
+}
+
+fn truncate_steps_after_first_presentational_target_match(
+    steps: &mut Vec<crate::Step>,
+    final_expr: ExprId,
+    ctx: &cas_ast::Context,
+) {
+    let mut temp_ctx = ctx.clone();
+    let cutoff = steps.iter().position(|step| {
+        let local_after = step.after_local().unwrap_or(step.after);
+        presentational_target_match(&mut temp_ctx, local_after, final_expr)
+            || presentational_target_match(&mut temp_ctx, step.after, final_expr)
     });
 
     if let Some(index) = cutoff {
@@ -2229,7 +3762,7 @@ fn format_derive_eval_lines(
                     "Derive unavailable: the two expressions are not equivalent."
                 }
                 crate::EquivalenceResult::Unknown => {
-                    "Derive unavailable: cannot prove the two expressions are equivalent."
+                    "Derive unavailable: cannot prove that the two expressions are equivalent, so it cannot provide step-by-step derivation."
                 }
                 crate::EquivalenceResult::True
                 | crate::EquivalenceResult::ConditionalTrue { .. } => "Derive unavailable.",
@@ -2261,8 +3794,11 @@ fn derive_target_match(
     let difference = simplifier.context.add(Expr::Sub(actual_expr, target_expr));
     let mut temp = crate::Simplifier::with_default_rules();
     std::mem::swap(&mut temp.context, &mut simplifier.context);
-    let (simplified, _steps, _stats) =
-        temp.simplify_with_stats(difference, crate::SimplifyOptions::default());
+    let simplify_options = crate::SimplifyOptions {
+        suppress_depth_overflow_warnings: true,
+        ..crate::SimplifyOptions::default()
+    };
+    let (simplified, _steps, _stats) = temp.simplify_with_stats(difference, simplify_options);
     std::mem::swap(&mut temp.context, &mut simplifier.context);
 
     let zero = simplifier.context.num(0);
@@ -2278,48 +3814,6 @@ fn derive_semantic_match(
         simplifier.are_equivalent_extended(actual_expr, target_expr),
         crate::EquivalenceResult::True | crate::EquivalenceResult::ConditionalTrue { .. }
     )
-}
-
-fn looks_like_explicit_factored_target(ctx: &mut cas_ast::Context, target_expr: ExprId) -> bool {
-    match ctx.get(target_expr) {
-        Expr::Pow(base, exp) => {
-            matches!(ctx.get(*base), Expr::Add(_, _) | Expr::Sub(_, _))
-                && matches!(ctx.get(*exp), Expr::Number(n) if n.is_integer() && n.to_integer() >= 2.into())
-        }
-        _ => {
-            if !ctx.is_mul_commutative(target_expr) {
-                return false;
-            }
-
-            let factors = cas_math::trig_roots_flatten::flatten_mul_chain(ctx, target_expr);
-            if factors.len() < 2 {
-                return false;
-            }
-
-            let mut non_numeric_factors = 0usize;
-            let mut has_additive_factor = false;
-
-            for factor in factors {
-                match ctx.get(factor) {
-                    Expr::Number(_) | Expr::Constant(_) => {}
-                    Expr::Add(_, _) | Expr::Sub(_, _) => {
-                        non_numeric_factors += 1;
-                        has_additive_factor = true;
-                    }
-                    Expr::Pow(base, exp)
-                        if matches!(ctx.get(*base), Expr::Add(_, _) | Expr::Sub(_, _))
-                            && matches!(ctx.get(*exp), Expr::Number(n) if n.is_integer() && n.to_integer() >= 2.into()) =>
-                    {
-                        non_numeric_factors += 1;
-                        has_additive_factor = true;
-                    }
-                    _ => non_numeric_factors += 1,
-                }
-            }
-
-            has_additive_factor && non_numeric_factors >= 2
-        }
-    }
 }
 
 fn is_finite_aggregate_source(ctx: &cas_ast::Context, expr: ExprId) -> bool {
@@ -2355,6 +3849,39 @@ where
     }
 }
 
+fn render_product_evaluation_desc<F>(
+    kind: &ProductEvaluationKind,
+    call: &FiniteAggregateCall,
+    mut render_expr: F,
+) -> String
+where
+    F: FnMut(ExprId) -> String,
+{
+    match kind {
+        ProductEvaluationKind::Telescoping => format!(
+            "Telescoping product: Π({}, {}) from {} to {}",
+            render_expr(call.term),
+            call.var_name,
+            render_expr(call.start_expr),
+            render_expr(call.end_expr)
+        ),
+        ProductEvaluationKind::FactorizedTelescoping => format!(
+            "Factorized telescoping product: Π({}, {}) from {} to {}",
+            render_expr(call.term),
+            call.var_name,
+            render_expr(call.start_expr),
+            render_expr(call.end_expr)
+        ),
+        ProductEvaluationKind::FiniteDirect { start, end } => format!(
+            "product({}, {}, {}, {})",
+            render_expr(call.term),
+            call.var_name,
+            start,
+            end
+        ),
+    }
+}
+
 fn append_equivalence_summary(lines: &mut Vec<String>, equivalence: &crate::EquivalenceResult) {
     let formatted = crate::format_equivalence_result_lines(equivalence);
     if let Some(first) = formatted.first() {
@@ -2380,4 +3907,823 @@ fn append_derive_requires_lines(
     }
     lines.push("ℹ️ Requires:".to_string());
     lines.extend(rendered.into_iter().map(|line| format!("  • {line}")));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        derive_semantic_match, generate_planner_candidate_stages, try_bounded_multistage_derive,
+        try_supported_derive_strategies_inner, DeriveStrategy,
+    };
+
+    #[test]
+    fn planner_candidate_generation_includes_hyperbolic_bridge_stage() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse(
+            "sinh(2*x)*cosh(x)+cosh(2*x)*sinh(x)",
+            &mut simplifier.context,
+        )
+        .expect("parse source");
+        let target = cas_parser::parse("sinh(3*x)", &mut simplifier.context).expect("parse target");
+
+        let stages = generate_planner_candidate_stages(
+            &mut simplifier,
+            source,
+            target,
+            false,
+            &crate::SimplifyOptions::default(),
+        );
+
+        assert!(stages.iter().any(|stage| derive_semantic_match(
+            &mut simplifier,
+            stage.expr,
+            target
+        )));
+    }
+
+    #[test]
+    fn planner_candidate_generation_includes_trig_bridge_stage() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("sin(2*x)*cos(x)+cos(2*x)*sin(x)", &mut simplifier.context)
+            .expect("parse source");
+        let target = cas_parser::parse("sin(3*x)", &mut simplifier.context).expect("parse target");
+
+        let stages = generate_planner_candidate_stages(
+            &mut simplifier,
+            source,
+            target,
+            false,
+            &crate::SimplifyOptions::default(),
+        );
+
+        assert!(stages.iter().any(|stage| derive_semantic_match(
+            &mut simplifier,
+            stage.expr,
+            target
+        )));
+    }
+
+    #[test]
+    fn run_expand_stage_rewrites_hyperbolic_sinh_difference_target_aware() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("sinh(x-y)", &mut simplifier.context).expect("parse source");
+        let target = cas_parser::parse("sinh(x)*cosh(y)-sinh(y)*cosh(x)", &mut simplifier.context)
+            .expect("parse target");
+
+        let stage = super::run_expand_stage(&mut simplifier, source, target, true);
+        assert_eq!(stage.expr, target);
+        assert!(!stage.steps.is_empty());
+    }
+
+    #[test]
+    fn run_expand_stage_rewrites_sophie_germain_product_target_aware() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse(
+            "(x^2 - 2*x*y + 2*y^2)*(x^2 + 2*x*y + 2*y^2)",
+            &mut simplifier.context,
+        )
+        .expect("parse source");
+        let target =
+            cas_parser::parse("x^4 + 4*y^4", &mut simplifier.context).expect("parse target");
+
+        let stage = super::run_expand_stage(&mut simplifier, source, target, true);
+        assert_eq!(stage.expr, target);
+        assert_eq!(stage.steps.len(), 1);
+        assert_eq!(stage.steps[0].rule_name, "Sophie Germain Identity");
+    }
+
+    #[test]
+    fn direct_derive_prefers_expand_for_hyperbolic_sinh_difference_without_planner() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("sinh(x-y)", &mut simplifier.context).expect("parse source");
+        let target = cas_parser::parse("sinh(x)*cosh(y)-sinh(y)*cosh(x)", &mut simplifier.context)
+            .expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            false,
+        )
+        .expect("direct derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::Expand);
+        assert!(!derived.1.is_empty());
+    }
+
+    #[test]
+    fn bounded_multistage_derive_reaches_hyperbolic_sum_to_split_exponential_products() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse(
+            "sinh(2*x)*cosh(x)+cosh(2*x)*sinh(x)",
+            &mut simplifier.context,
+        )
+        .expect("parse source");
+        let target = cas_parser::parse("(e^x*e^(2*x)-e^(-x)*e^(-2*x))/2", &mut simplifier.context)
+            .expect("parse target");
+
+        let derived = try_bounded_multistage_derive(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+        )
+        .expect("planner should derive target");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::Planner);
+        assert!(!derived.1.is_empty());
+    }
+
+    #[test]
+    fn bounded_multistage_derive_reaches_trig_sum_to_triple_angle_polynomial() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("sin(2*x)*cos(x)+cos(2*x)*sin(x)", &mut simplifier.context)
+            .expect("parse source");
+        let target = cas_parser::parse("3*sin(x)-4*sin(x)^3", &mut simplifier.context)
+            .expect("parse target");
+
+        let derived = try_bounded_multistage_derive(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+        )
+        .expect("planner should derive trig target");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::Planner);
+        assert!(!derived.1.is_empty());
+    }
+
+    #[test]
+    fn prefers_direct_product_to_sum_expansion_over_planner() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source =
+            cas_parser::parse("2*sin(2*x)*cos(x)", &mut simplifier.context).expect("parse source");
+        let target =
+            cas_parser::parse("sin(3*x)+sin(x)", &mut simplifier.context).expect("parse target");
+
+        let planner = try_bounded_multistage_derive(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+        )
+        .expect("planner should derive product-to-sum target");
+
+        assert_eq!(planner.2, DeriveStrategy::Planner);
+        assert_eq!(planner.0, target);
+        assert!(!planner.1.is_empty());
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.2, DeriveStrategy::TrigExpand);
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Product-to-Sum Identity");
+    }
+
+    #[test]
+    fn prefers_direct_cosine_product_to_sum_expansion_over_planner() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source =
+            cas_parser::parse("2*cos(2*x)*cos(x)", &mut simplifier.context).expect("parse source");
+        let target =
+            cas_parser::parse("cos(3*x)+cos(x)", &mut simplifier.context).expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.2, DeriveStrategy::TrigExpand);
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Product-to-Sum Identity");
+    }
+
+    #[test]
+    fn prefers_direct_sine_product_to_sum_difference_expansion_over_planner() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source =
+            cas_parser::parse("2*sin(2*x)*sin(x)", &mut simplifier.context).expect("parse source");
+        let target =
+            cas_parser::parse("cos(x)-cos(3*x)", &mut simplifier.context).expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.2, DeriveStrategy::TrigExpand);
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Product-to-Sum Identity");
+    }
+
+    #[test]
+    fn planner_uses_targeted_additive_triple_angle_bridge_to_avoid_noisy_tail() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source =
+            cas_parser::parse("2*sin(2*x)*sin(x)", &mut simplifier.context).expect("parse source");
+        let target = cas_parser::parse("cos(x)-4*cos(x)^3+3*cos(x)", &mut simplifier.context)
+            .expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.2, DeriveStrategy::Planner);
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.1.len(), 2);
+        assert_eq!(derived.1[0].rule_name, "Product-to-Sum Identity");
+        assert_eq!(derived.1[1].rule_name, "Triple Angle Expansion");
+    }
+
+    #[test]
+    fn planner_uses_combined_additive_triple_angle_bridge_for_cosine_sum_polynomial() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source =
+            cas_parser::parse("2*cos(2*x)*cos(x)", &mut simplifier.context).expect("parse source");
+        let target = cas_parser::parse("4*cos(x)^3-2*cos(x)", &mut simplifier.context)
+            .expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.2, DeriveStrategy::Planner);
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.1.len(), 2);
+        assert_eq!(derived.1[0].rule_name, "Product-to-Sum Identity");
+        assert_eq!(derived.1[1].rule_name, "Triple Angle Expansion");
+    }
+
+    #[test]
+    fn planner_uses_combined_additive_triple_angle_bridge_for_cosine_difference_polynomial() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source =
+            cas_parser::parse("2*sin(2*x)*sin(x)", &mut simplifier.context).expect("parse source");
+        let target = cas_parser::parse("4*cos(x)-4*cos(x)^3", &mut simplifier.context)
+            .expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.2, DeriveStrategy::Planner);
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.1.len(), 2);
+        assert_eq!(derived.1[0].rule_name, "Product-to-Sum Identity");
+        assert_eq!(derived.1[1].rule_name, "Triple Angle Expansion");
+    }
+
+    #[test]
+    fn planner_uses_combined_additive_triple_angle_bridge_for_sine_difference_mixed_polynomial() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source =
+            cas_parser::parse("2*cos(2*x)*sin(x)", &mut simplifier.context).expect("parse source");
+        let target = cas_parser::parse("4*cos(x)^2*sin(x)-2*sin(x)", &mut simplifier.context)
+            .expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.2, DeriveStrategy::Planner);
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.1.len(), 2);
+        assert_eq!(derived.1[0].rule_name, "Product-to-Sum Identity");
+        assert_eq!(derived.1[1].rule_name, "Triple Angle Expansion");
+    }
+
+    #[test]
+    fn prefers_direct_mixed_cosine_difference_double_angle_expansion_over_planner() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source =
+            cas_parser::parse("2*sin(2*x)*sin(x)", &mut simplifier.context).expect("parse source");
+        let target =
+            cas_parser::parse("4*sin(x)^2*cos(x)", &mut simplifier.context).expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.2, DeriveStrategy::TrigExpand);
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Double Angle Expansion");
+    }
+
+    #[test]
+    fn bounded_multistage_derive_reaches_split_exponential_products_from_hyperbolic_bridge_node() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source =
+            cas_parser::parse("sinh(x+2*x)", &mut simplifier.context).expect("parse source");
+        let target = cas_parser::parse("(e^x*e^(2*x)-e^(-x)*e^(-2*x))/2", &mut simplifier.context)
+            .expect("parse target");
+
+        let derived = try_bounded_multistage_derive(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+        )
+        .expect("planner should derive target from bridge node");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::Planner);
+        assert!(!derived.1.is_empty());
+    }
+
+    #[test]
+    fn planner_reaches_hyperbolic_product_to_sum_triple_angle_polynomial() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("2*sinh(2*x)*cosh(x)", &mut simplifier.context)
+            .expect("parse source");
+        let target = cas_parser::parse("4*sinh(x)+4*sinh(x)^3", &mut simplifier.context)
+            .expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.2, DeriveStrategy::Planner);
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.1.len(), 2);
+        assert_eq!(derived.1[0].rule_name, "Hyperbolic Product-to-Sum Identity");
+        assert_eq!(derived.1[1].rule_name, "Hyperbolic Triple-Angle Identity");
+    }
+
+    #[test]
+    fn prefers_direct_hyperbolic_product_to_sum_expansion_over_planner() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("2*sinh(2*x)*cosh(x)", &mut simplifier.context)
+            .expect("parse source");
+        let target =
+            cas_parser::parse("sinh(3*x)+sinh(x)", &mut simplifier.context).expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.2, DeriveStrategy::Expand);
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Hyperbolic Product-to-Sum Identity");
+    }
+
+    #[test]
+    fn prefers_direct_hyperbolic_sum_to_product_contraction_over_planner() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source =
+            cas_parser::parse("sinh(3*x)-sinh(x)", &mut simplifier.context).expect("parse source");
+        let target = cas_parser::parse("2*cosh(2*x)*sinh(x)", &mut simplifier.context)
+            .expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.2, DeriveStrategy::Expand);
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Hyperbolic Product-to-Sum Identity");
+    }
+
+    #[test]
+    fn planner_reaches_hyperbolic_cosh_product_to_sum_triple_angle_polynomial() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("2*sinh(2*x)*sinh(x)", &mut simplifier.context)
+            .expect("parse source");
+        let target = cas_parser::parse("4*cosh(x)^3-4*cosh(x)", &mut simplifier.context)
+            .expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.2, DeriveStrategy::Planner);
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.1.len(), 2);
+        assert_eq!(derived.1[0].rule_name, "Hyperbolic Product-to-Sum Identity");
+        assert_eq!(derived.1[1].rule_name, "Hyperbolic Triple-Angle Identity");
+    }
+
+    #[test]
+    fn planner_reaches_hyperbolic_product_to_sum_triple_angle_polynomial_with_passthrough_term() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("2*sinh(2*x)*sinh(x)+a", &mut simplifier.context)
+            .expect("parse source");
+        let target = cas_parser::parse("4*cosh(x)^3-4*cosh(x)+a", &mut simplifier.context)
+            .expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.2, DeriveStrategy::Planner);
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.1.len(), 2);
+        assert_eq!(derived.1[0].rule_name, "Hyperbolic Product-to-Sum Identity");
+        assert_eq!(derived.1[1].rule_name, "Hyperbolic Triple-Angle Identity");
+    }
+
+    #[test]
+    fn prefers_direct_hyperbolic_cosh_double_angle_expansion_to_sinh_cubic_polynomial() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("2*cosh(2*x)*sinh(x)", &mut simplifier.context)
+            .expect("parse source");
+        let target = cas_parser::parse("2*sinh(x)+4*sinh(x)^3", &mut simplifier.context)
+            .expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.2, DeriveStrategy::HyperbolicRewrite);
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Hyperbolic Double-Angle Identity");
+    }
+
+    #[test]
+    fn prefers_direct_hyperbolic_cosh_double_angle_expansion_to_sinh_mixed_polynomial() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("2*cosh(2*x)*sinh(x)", &mut simplifier.context)
+            .expect("parse source");
+        let target = cas_parser::parse("4*cosh(x)^2*sinh(x)-2*sinh(x)", &mut simplifier.context)
+            .expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.2, DeriveStrategy::HyperbolicRewrite);
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Hyperbolic Double-Angle Identity");
+    }
+
+    #[test]
+    fn prefers_direct_hyperbolic_cosh_double_angle_contraction_from_sinh_mixed_polynomial() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("4*cosh(x)^2*sinh(x)-2*sinh(x)", &mut simplifier.context)
+            .expect("parse source");
+        let target = cas_parser::parse("2*cosh(2*x)*sinh(x)", &mut simplifier.context)
+            .expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.2, DeriveStrategy::HyperbolicRewrite);
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Hyperbolic Double-Angle Identity");
+    }
+
+    #[test]
+    fn prefers_direct_hyperbolic_cosh_double_angle_contraction_from_cosh_mixed_polynomial() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("2*cosh(x)+4*sinh(x)^2*cosh(x)", &mut simplifier.context)
+            .expect("parse source");
+        let target = cas_parser::parse("2*cosh(2*x)*cosh(x)", &mut simplifier.context)
+            .expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.2, DeriveStrategy::HyperbolicRewrite);
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Hyperbolic Double-Angle Identity");
+    }
+
+    #[test]
+    fn prefers_direct_hyperbolic_cosh_double_angle_expansion_to_cosh_mixed_polynomial() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("2*cosh(2*x)*cosh(x)", &mut simplifier.context)
+            .expect("parse source");
+        let target = cas_parser::parse("2*cosh(x)+4*sinh(x)^2*cosh(x)", &mut simplifier.context)
+            .expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.2, DeriveStrategy::HyperbolicRewrite);
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Hyperbolic Double-Angle Identity");
+    }
+
+    #[test]
+    fn prefers_direct_scaled_cosh_from_exponential_sum() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source =
+            cas_parser::parse("exp(2*x)+exp(-2*x)", &mut simplifier.context).expect("parse source");
+        let target =
+            cas_parser::parse("2*cosh(2*x)", &mut simplifier.context).expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.2, DeriveStrategy::HyperbolicRewrite);
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Hyperbolic Exponential Identity");
+    }
+
+    #[test]
+    fn prefers_direct_scaled_cosh_from_exponential_reciprocal_pair() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source =
+            cas_parser::parse("exp(x)+1/exp(x)", &mut simplifier.context).expect("parse source");
+        let target = cas_parser::parse("2*cosh(x)", &mut simplifier.context).expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.2, DeriveStrategy::HyperbolicRewrite);
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Hyperbolic Exponential Identity");
+    }
+
+    #[test]
+    fn prefers_direct_scaled_cosh_to_exponential_sum() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source =
+            cas_parser::parse("2*cosh(2*x)", &mut simplifier.context).expect("parse source");
+        let target =
+            cas_parser::parse("exp(2*x)+exp(-2*x)", &mut simplifier.context).expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.2, DeriveStrategy::Planner);
+        assert_eq!(derived.1.len(), 2);
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.1[0].rule_name, "Hyperbolic Exponential Identity");
+    }
+
+    #[test]
+    fn prefers_direct_scaled_sinh_to_exponential_difference() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("2*sinh(x)", &mut simplifier.context).expect("parse source");
+        let target =
+            cas_parser::parse("exp(x)-exp(-x)", &mut simplifier.context).expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.2, DeriveStrategy::HyperbolicRewrite);
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Hyperbolic Exponential Identity");
+    }
+
+    #[test]
+    fn prefers_direct_presentational_hyperbolic_reciprocal_ratio_bridge_over_semantic_match() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("tanh(x)", &mut simplifier.context).expect("parse source");
+        let target = cas_parser::parse(
+            "(exp(x)-1/exp(x))/(exp(x)+1/exp(x))",
+            &mut simplifier.context,
+        )
+        .expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.2, DeriveStrategy::HyperbolicRewrite);
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Hyperbolic Exponential Identity");
+    }
+
+    #[test]
+    fn prefers_direct_scaled_cosh_reciprocal_exponential_bridge() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("2*cosh(x)", &mut simplifier.context).expect("parse source");
+        let target =
+            cas_parser::parse("exp(x)+1/exp(x)", &mut simplifier.context).expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.2, DeriveStrategy::HyperbolicRewrite);
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Hyperbolic Exponential Identity");
+    }
+
+    #[test]
+    fn prefers_direct_half_cosh_reciprocal_exponential_recognition_bridge() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("(exp(x)+1/exp(x))/2", &mut simplifier.context)
+            .expect("parse source");
+        let target = cas_parser::parse("cosh(x)", &mut simplifier.context).expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.2, DeriveStrategy::HyperbolicRewrite);
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Hyperbolic Exponential Identity");
+    }
 }

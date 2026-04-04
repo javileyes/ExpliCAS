@@ -119,6 +119,7 @@ fn prune_redundant_substeps(ctx: &Context, step: &Step, sub_steps: &mut Vec<SubS
                 | "Usar n / (p / q) = n · q / p"
                 | "Usar n / (1 / d) = n · d"
                 | "Combinar términos del numerador (denominador común)"
+                | "Aquí a = a y b = b"
         );
 
         if rule_is_self_explanatory_fraction_op && title_is_rule_rephrasing {
@@ -154,6 +155,7 @@ fn is_noisy_template_substep(sub_step: &SubStep) -> bool {
             | "Usar n / (p / q) = n · q / p"
             | "Usar n / (1 / d) = n · d"
             | "Combinar términos del numerador (denominador común)"
+            | "Aquí a = a y b = b"
     ) || matches!(
         (sub_step.before_expr.as_str(), sub_step.after_expr.as_str()),
         ("1 / (p / q)", "q / p")

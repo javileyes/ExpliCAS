@@ -8,9 +8,17 @@ impl Engine {
     ///
     /// Actualmente usa el mismo simplificador principal; se mantiene separado
     /// para que el dispatch quede desacoplado del detalle de implementación.
-    pub(super) fn eval_expand(&mut self, resolved: ExprId) -> Result<ActionResult, anyhow::Error> {
+    pub(super) fn eval_expand(
+        &mut self,
+        options: &crate::options::EvalOptions,
+        resolved: ExprId,
+    ) -> Result<ActionResult, anyhow::Error> {
         let (res, steps) = self.simplifier.simplify(resolved);
-        let warnings = collect_domain_warnings(&steps);
+        let warnings = collect_domain_warnings(
+            &self.simplifier.context,
+            options.shared.semantics.value_domain == crate::semantics::ValueDomain::RealOnly,
+            &steps,
+        );
         Ok((
             EvalResult::Expr(res),
             warnings,
@@ -120,9 +128,30 @@ impl Engine {
                     &mut step.meta_mut().assumption_events,
                 );
             }
+
+            if effective_opts.shared.semantics.domain_mode == crate::DomainMode::Assume {
+                for step in &mut steps {
+                    if step.rule_name == "Log-Exp Inverse" {
+                        for event in &mut step.meta_mut().assumption_events {
+                            if matches!(event.kind, crate::AssumptionKind::DerivedFromRequires)
+                                && matches!(event.key, crate::AssumptionKey::Positive { .. })
+                            {
+                                // `log(b, b^x) -> x` in Assume mode should still surface the
+                                // user-visible positivity assumption on the symbolic base, even
+                                // when that positivity is already implicit in the source log.
+                                event.kind = crate::AssumptionKind::HeuristicAssumption;
+                            }
+                        }
+                    }
+                }
+            }
         }
 
-        let mut warnings = collect_domain_warnings(&steps);
+        let mut warnings = collect_domain_warnings(
+            &self.simplifier.context,
+            effective_opts.shared.semantics.value_domain == crate::semantics::ValueDomain::RealOnly,
+            &steps,
+        );
 
         if effective_opts.shared.semantics.value_domain == crate::semantics::ValueDomain::RealOnly
             && cas_math::numeric_eval::contains_i(&self.simplifier.context, resolved)

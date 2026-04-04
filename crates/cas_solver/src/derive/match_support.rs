@@ -14,6 +14,10 @@ pub(crate) fn presentational_target_match(
         return true;
     }
 
+    if trig_additive_multiplicative_shape_mismatch(ctx, actual, target) {
+        return false;
+    }
+
     if normalized_structural_match(ctx, actual, target) {
         return true;
     }
@@ -34,6 +38,57 @@ pub(crate) fn presentational_target_match(
         return true;
     }
 
+    false
+}
+
+fn trig_additive_multiplicative_shape_mismatch(
+    ctx: &cas_ast::Context,
+    actual: ExprId,
+    target: ExprId,
+) -> bool {
+    let actual_is_additive = matches!(ctx.get(actual), Expr::Add(_, _) | Expr::Sub(_, _));
+    let target_is_additive = matches!(ctx.get(target), Expr::Add(_, _) | Expr::Sub(_, _));
+    let actual_is_multiplicative = matches!(ctx.get(actual), Expr::Mul(_, _) | Expr::Div(_, _));
+    let target_is_multiplicative = matches!(ctx.get(target), Expr::Mul(_, _) | Expr::Div(_, _));
+
+    ((actual_is_additive && target_is_multiplicative)
+        || (actual_is_multiplicative && target_is_additive))
+        && (contains_circular_trig_fn(ctx, actual) || contains_circular_trig_fn(ctx, target))
+}
+
+fn contains_circular_trig_fn(ctx: &cas_ast::Context, expr: ExprId) -> bool {
+    let mut stack = vec![expr];
+    while let Some(current) = stack.pop() {
+        match ctx.get(current) {
+            Expr::Function(fn_id, args) => {
+                if matches!(
+                    ctx.builtin_of(*fn_id),
+                    Some(
+                        BuiltinFn::Sin
+                            | BuiltinFn::Cos
+                            | BuiltinFn::Tan
+                            | BuiltinFn::Sec
+                            | BuiltinFn::Csc
+                            | BuiltinFn::Cot
+                    )
+                ) {
+                    return true;
+                }
+                stack.extend(args.iter().copied());
+            }
+            Expr::Add(left, right)
+            | Expr::Sub(left, right)
+            | Expr::Mul(left, right)
+            | Expr::Div(left, right)
+            | Expr::Pow(left, right) => {
+                stack.push(*left);
+                stack.push(*right);
+            }
+            Expr::Neg(inner) | Expr::Hold(inner) => stack.push(*inner),
+            Expr::Matrix { data, .. } => stack.extend(data.iter().copied()),
+            Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) | Expr::SessionRef(_) => {}
+        }
+    }
     false
 }
 
@@ -157,6 +212,13 @@ fn factors_match(ctx: &mut cas_ast::Context, actual: ExprId, target: ExprId) -> 
         return true;
     }
 
+    if matches!(ctx.get(actual), Expr::Mul(_, _))
+        && matches!(ctx.get(target), Expr::Mul(_, _))
+        && commutative_mul_multiset_match(ctx, actual, target)
+    {
+        return true;
+    }
+
     if normalized_structural_match(ctx, actual, target) {
         return true;
     }
@@ -237,6 +299,11 @@ fn project_root_like_calls_to_powers(ctx: &mut cas_ast::Context, expr: ExprId) -
                 .iter()
                 .map(|arg| project_root_like_calls_to_powers(ctx, *arg))
                 .collect::<Vec<_>>();
+
+            if ctx.is_builtin(name, BuiltinFn::Exp) && rewritten_args.len() == 1 {
+                let e = ctx.add(Expr::Constant(cas_ast::Constant::E));
+                return ctx.add(Expr::Pow(e, rewritten_args[0]));
+            }
 
             if (ctx.is_builtin(name, BuiltinFn::Sqrt) || ctx.is_builtin(name, BuiltinFn::Root))
                 && rewritten_args.len() == 1
@@ -364,6 +431,35 @@ mod tests {
         let mut ctx = cas_ast::Context::new();
         let actual = cas_parser::parse("-(2*sin(2*x)*sin(3*x))", &mut ctx).expect("actual");
         let target = cas_parser::parse("-2*sin(3*x)*sin(2*x)", &mut ctx).expect("target");
+        assert!(strong_target_match(&mut ctx, actual, target));
+        assert!(strong_target_match(&mut ctx, target, actual));
+    }
+
+    #[test]
+    fn matches_exp_call_targets_against_power_notation() {
+        let mut ctx = cas_ast::Context::new();
+        let actual = cas_parser::parse("exp(x)-exp(-x)", &mut ctx).expect("actual");
+        let target = cas_parser::parse("e^x-e^(-x)", &mut ctx).expect("target");
+        assert!(strong_target_match(&mut ctx, actual, target));
+        assert!(strong_target_match(&mut ctx, target, actual));
+    }
+
+    #[test]
+    fn matches_hyperbolic_additive_products_with_reordered_factors() {
+        let mut ctx = cas_ast::Context::new();
+        let actual =
+            cas_parser::parse("sinh(x)*cosh(y) + sinh(y)*cosh(x)", &mut ctx).expect("actual");
+        let target =
+            cas_parser::parse("sinh(x)*cosh(y) + cosh(x)*sinh(y)", &mut ctx).expect("target");
+        assert!(strong_target_match(&mut ctx, actual, target));
+        assert!(strong_target_match(&mut ctx, target, actual));
+    }
+
+    #[test]
+    fn matches_hyperbolic_additive_terms_with_reordered_internal_product_factors() {
+        let mut ctx = cas_ast::Context::new();
+        let actual = cas_parser::parse("4*cosh(x)^2*sinh(x)-2*sinh(x)", &mut ctx).expect("actual");
+        let target = cas_parser::parse("4*sinh(x)*cosh(x)^2-2*sinh(x)", &mut ctx).expect("target");
         assert!(strong_target_match(&mut ctx, actual, target));
         assert!(strong_target_match(&mut ctx, target, actual));
     }

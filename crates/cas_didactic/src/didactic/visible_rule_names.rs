@@ -6,7 +6,9 @@ pub(crate) fn visible_rule_name(rule_name: &str) -> &str {
         "Factor Out With Division" => "Sacar factor usando división",
         "Factorization" => "Factorizar",
         "Binomial Expansion" => "Expandir binomio",
+        "Small Multinomial Expansion" => "Expandir binomio",
         "Expand" => "Expandir la expresión",
+        "Distributive Property" => "Expandir la expresión",
         "expand_log" => "Expandir logaritmos",
         "Factor Perfect Square in Logarithm" => "Sacar un exponente fuera del logaritmo",
         "Log Contraction" => "Contraer logaritmos",
@@ -36,7 +38,7 @@ pub(crate) fn visible_rule_name(rule_name: &str) -> &str {
         "Pythagorean Factor Form" => "Aplicar identidad pitagórica",
         "Pythagorean High-Power Factor" => "Aplicar identidad pitagórica y reagrupar",
         "Consecutive Factorial Ratio" => "Cancelar factoriales consecutivos",
-        "Rationalize Linear Sqrt Denominator" | "Rationalize Denominator" => {
+        "Rationalize" | "Rationalize Linear Sqrt Denominator" | "Rationalize Denominator" => {
             "Racionalizar el denominador"
         }
         "Distribute Division" => "Repartir el denominador común",
@@ -57,6 +59,7 @@ pub(crate) fn visible_rule_name(rule_name: &str) -> &str {
         "Canonicalize Negation" => "Quitar paréntesis tras el signo menos",
         "Canonicalize" => "Reordenar la expresión",
         "Polynomial Identity" => "Cancelar una identidad exacta",
+        "Polynomial division with opaque substitution" => "Reconocer un cociente notable",
         "Pre-order Common Factor Cancel" => "Cancelar un factor común",
         "Pre-order Difference of Squares Cancel" => {
             "Factorizar una diferencia de cuadrados y cancelar"
@@ -78,6 +81,10 @@ pub(crate) fn visible_rule_name(rule_name: &str) -> &str {
         "Simplify Complex Fraction" => "Simplificar fracción anidada",
         "Auto Expand Power Sum" => "Expandir binomio",
         "Polynomial Product Normalize" => "Expandir y reagrupar un producto polinómico",
+        "Difference of Squares" => "Expandir la expresión",
+        "Difference of Squares (Product to Difference)" => "Expandir la expresión",
+        "Sophie Germain Identity" => "Expandir la expresión",
+        "Sum/Difference of Cubes Contraction" => "Expandir la expresión",
         "Pythagorean Chain Identity" => "Aplicar la identidad pitagórica",
         _ => rule_name,
     }

@@ -6,7 +6,7 @@
 
 use crate::build::mul2_raw;
 use crate::combinatorics::binomial_coeff;
-use cas_ast::{Context, Expr, ExprId};
+use cas_ast::{symbol::SymbolId, BuiltinFn, Context, Expr, ExprId};
 use num_integer::Integer;
 use num_traits::{Signed, ToPrimitive};
 
@@ -112,6 +112,9 @@ pub fn expand(ctx: &mut Context, expr: ExprId) -> ExprId {
                 return expand(ctx, args[0]);
             }
             let new_args: Vec<ExprId> = args.iter().map(|a| expand(ctx, *a)).collect();
+            if let Some(rewritten) = expand_hyperbolic_sum_or_difference(ctx, fn_id, &new_args) {
+                return expand(ctx, rewritten);
+            }
             ctx.add(Expr::Function(fn_id, new_args))
         }
         Expr::Number(_)
@@ -221,6 +224,49 @@ pub fn expand_pow(ctx: &mut Context, base: ExprId, exp: ExprId) -> ExprId {
     ctx.add(Expr::Pow(base, exp))
 }
 
+fn expand_hyperbolic_sum_or_difference(
+    ctx: &mut Context,
+    fn_id: SymbolId,
+    args: &[ExprId],
+) -> Option<ExprId> {
+    if args.len() != 1 {
+        return None;
+    }
+
+    let (left, right, is_sum) = match ctx.get(args[0]).clone() {
+        Expr::Add(left, right) => (left, right, true),
+        Expr::Sub(left, right) => (left, right, false),
+        _ => return None,
+    };
+
+    let left_sinh = ctx.call_builtin(BuiltinFn::Sinh, vec![left]);
+    let left_cosh = ctx.call_builtin(BuiltinFn::Cosh, vec![left]);
+    let right_sinh = ctx.call_builtin(BuiltinFn::Sinh, vec![right]);
+    let right_cosh = ctx.call_builtin(BuiltinFn::Cosh, vec![right]);
+
+    if ctx.is_builtin(fn_id, BuiltinFn::Sinh) {
+        let lhs = mul2_raw(ctx, left_sinh, right_cosh);
+        let rhs = mul2_raw(ctx, left_cosh, right_sinh);
+        return Some(if is_sum {
+            ctx.add(Expr::Add(lhs, rhs))
+        } else {
+            ctx.add(Expr::Sub(lhs, rhs))
+        });
+    }
+
+    if ctx.is_builtin(fn_id, BuiltinFn::Cosh) {
+        let lhs = mul2_raw(ctx, left_cosh, right_cosh);
+        let rhs = mul2_raw(ctx, left_sinh, right_sinh);
+        return Some(if is_sum {
+            ctx.add(Expr::Add(lhs, rhs))
+        } else {
+            ctx.add(Expr::Sub(lhs, rhs))
+        });
+    }
+
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::{expand, expand_div, expand_mul, expand_pow};
@@ -280,5 +326,21 @@ mod tests {
             assert_ne!(ctx.sym_name(*fn_id), "expand");
         }
         assert_ne!(out, expr, "expand(...) call should be rewritten");
+    }
+
+    #[test]
+    fn expand_rewrites_hyperbolic_sinh_sum() {
+        let mut ctx = Context::new();
+        let expr = parse("sinh(x+y)", &mut ctx).expect("parse expr");
+        let out = expand(&mut ctx, expr);
+        assert_eq!(render(&ctx, out), "sinh(x) * cosh(y) + cosh(x) * sinh(y)");
+    }
+
+    #[test]
+    fn expand_rewrites_hyperbolic_cosh_difference() {
+        let mut ctx = Context::new();
+        let expr = parse("cosh(x-y)", &mut ctx).expect("parse expr");
+        let out = expand(&mut ctx, expr);
+        assert_eq!(render(&ctx, out), "cosh(x) * cosh(y) - sinh(x) * sinh(y)");
     }
 }

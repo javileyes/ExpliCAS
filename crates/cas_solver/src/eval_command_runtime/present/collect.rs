@@ -15,8 +15,6 @@ pub(super) struct CollectedEvalArtifacts {
     pub(super) warnings: Vec<WarningWire>,
     pub(super) required_conditions: Vec<RequiredConditionWire>,
     pub(super) required_display: Vec<String>,
-    pub(super) raw_steps_count: usize,
-    pub(super) raw_solve_steps_count: usize,
     pub(super) timings_us: TimingsWire,
 }
 
@@ -94,14 +92,6 @@ where
         warnings,
         required_conditions,
         required_display,
-        raw_steps_count: if solve_special_command && !solve_steps_raw.is_empty() {
-            0
-        } else if let Some(filtered) = filtered_primary_steps.as_ref() {
-            filtered.len()
-        } else {
-            steps_raw.len()
-        },
-        raw_solve_steps_count: solve_steps_raw.len(),
         timings_us,
     }
 }

@@ -336,6 +336,8 @@ pub struct EvalWireOutput {
     pub result_chars: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub result_latex: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub strategy: Option<String>,
     pub steps_mode: String,
     pub steps_count: usize,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -366,6 +368,7 @@ pub struct EvalOutputBuild<'a> {
     pub result_truncated: bool,
     pub result_chars: usize,
     pub result_latex: Option<String>,
+    pub strategy: Option<String>,
     pub steps_mode: &'a str,
     pub steps_count: usize,
     pub steps: Vec<StepWire>,
@@ -403,6 +406,7 @@ impl EvalWireOutput {
             result_truncated: parts.result_truncated,
             result_chars: parts.result_chars,
             result_latex: parts.result_latex,
+            strategy: parts.strategy,
             steps_mode: parts.steps_mode.to_string(),
             steps_count: parts.steps_count,
             steps: parts.steps,
@@ -1868,6 +1872,7 @@ mod tests {
             result_truncated: false,
             result_chars: 3,
             result_latex: None,
+            strategy: Some("expand".to_string()),
             steps_mode: "off",
             steps_count: 0,
             steps: vec![],
@@ -1893,6 +1898,7 @@ mod tests {
             wire: None,
         });
         assert_eq!(out.schema_version, 1);
+        assert_eq!(out.strategy.as_deref(), Some("expand"));
         assert_eq!(out.stored_id, Some(7));
         assert_eq!(out.budget.mode, "strict");
         assert_eq!(out.options.domain_mode, "generic");

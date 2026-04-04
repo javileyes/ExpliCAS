@@ -6,6 +6,7 @@
 //! - inferred condition set container (`ImplicitDomain`)
 
 use cas_ast::{Context, ExprId};
+use cas_math::expr_extract::extract_abs_argument_view;
 use std::collections::HashSet;
 
 /// An implicit condition inferred from expression structure.
@@ -32,18 +33,30 @@ impl ImplicitCondition {
                     id: *e
                 }
             ),
-            Self::Positive(e) => format!(
-                "{} > 0",
-                DisplayExpr {
-                    context: ctx,
-                    id: *e
+            Self::Positive(e) => {
+                if let Some(arg) = extract_abs_argument_view(ctx, *e) {
+                    format!(
+                        "{} ≠ 0",
+                        DisplayExpr {
+                            context: ctx,
+                            id: arg
+                        }
+                    )
+                } else {
+                    format!(
+                        "{} > 0",
+                        DisplayExpr {
+                            context: ctx,
+                            id: *e
+                        }
+                    )
                 }
-            ),
+            }
             Self::NonZero(e) => format!(
                 "{} ≠ 0",
                 DisplayExpr {
                     context: ctx,
-                    id: *e
+                    id: extract_abs_argument_view(ctx, *e).unwrap_or(*e)
                 }
             ),
         }
@@ -54,6 +67,19 @@ impl ImplicitCondition {
         let expr = match self {
             Self::NonNegative(e) | Self::Positive(e) | Self::NonZero(e) => *e,
         };
+
+        if matches!(self, Self::NonZero(_))
+            && cas_math::prove_nonzero::prove_nonzero_depth_with(
+                ctx,
+                expr,
+                crate::predicate_proofs::DEFAULT_PROOF_DEPTH,
+                |_ctx, _expr| cas_math::tri_proof::TriProof::Unknown,
+                |_ctx, _expr| None,
+            )
+            .is_proven()
+        {
+            return true;
+        }
 
         // Fully numeric expressions are trivial in this context.
         if !cas_math::expr_predicates::contains_variable(ctx, expr) {
@@ -237,5 +263,36 @@ impl TryFrom<&cas_ast::ConditionPredicate> for ImplicitCondition {
             cas_ast::ConditionPredicate::NonZero(e) => Ok(ImplicitCondition::NonZero(*e)),
             _ => Err(()),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ImplicitCondition;
+    use cas_ast::Context;
+    use cas_parser::parse;
+
+    #[test]
+    fn nonzero_exponential_condition_is_trivial() {
+        let mut ctx = Context::new();
+        let exp_x = parse("exp(x)", &mut ctx).expect("parse exp(x)");
+
+        assert!(ImplicitCondition::NonZero(exp_x).is_trivial(&ctx));
+    }
+
+    #[test]
+    fn positive_abs_displays_as_nonzero_inner_expression() {
+        let mut ctx = Context::new();
+        let abs_x = parse("abs(x)", &mut ctx).expect("parse abs(x)");
+
+        assert_eq!(ImplicitCondition::Positive(abs_x).display(&ctx), "x ≠ 0");
+    }
+
+    #[test]
+    fn nonzero_abs_displays_as_nonzero_inner_expression() {
+        let mut ctx = Context::new();
+        let abs_x = parse("abs(x)", &mut ctx).expect("parse abs(x)");
+
+        assert_eq!(ImplicitCondition::NonZero(abs_x).display(&ctx), "x ≠ 0");
     }
 }

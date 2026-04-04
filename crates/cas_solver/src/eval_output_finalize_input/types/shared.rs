@@ -6,14 +6,13 @@ pub(crate) struct EvalOutputFinalizeShared<'a> {
     pub(crate) input_latex: Option<String>,
     pub(crate) style_signals: ParseStyleSignals,
     pub(crate) stored_id: Option<u64>,
+    pub(crate) strategy: Option<String>,
     pub(crate) steps_mode: &'a str,
     pub(crate) steps: Vec<StepWire>,
     pub(crate) solve_steps: Vec<SolveStepWire>,
     pub(crate) warnings: Vec<WarningWire>,
     pub(crate) required_conditions: Vec<RequiredConditionWire>,
     pub(crate) required_display: Vec<String>,
-    pub(crate) raw_steps_count: usize,
-    pub(crate) raw_solve_steps_count: usize,
     pub(crate) budget_preset: &'a str,
     pub(crate) strict: bool,
     pub(crate) domain: &'a str,
@@ -31,10 +30,10 @@ pub(crate) struct EvalOutputFinalizeShared<'a> {
 
 impl EvalOutputFinalizeShared<'_> {
     pub(crate) fn primary_steps_count(&self) -> usize {
-        self.raw_steps_count
+        self.steps.len()
     }
 
     pub(crate) fn combined_steps_count(&self) -> usize {
-        self.raw_steps_count + self.raw_solve_steps_count
+        self.steps.len() + self.solve_steps.len()
     }
 }

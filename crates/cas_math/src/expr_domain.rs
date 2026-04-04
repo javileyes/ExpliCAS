@@ -1,7 +1,7 @@
 //! Domain-oriented expression equivalence and implication helpers.
 
 use crate::expr_extract::extract_abs_argument_view;
-use cas_ast::{Context, Expr, ExprId};
+use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 
 /// Check if two expressions are equivalent using polynomial comparison.
 pub fn exprs_equivalent(ctx: &Context, e1: ExprId, e2: ExprId) -> bool {
@@ -142,35 +142,47 @@ pub fn is_product_dominated_by_positives(
     prod_expr: ExprId,
     known_positives: &[ExprId],
 ) -> bool {
-    let bases = extract_product_bases(ctx, prod_expr);
-
-    if bases.len() < 2 {
+    if positive_component_count(ctx, prod_expr) < 2 {
         return false;
     }
 
-    for base in &bases {
-        let covered = known_positives
-            .iter()
-            .any(|pos| exprs_equivalent(ctx, *base, *pos));
-        if !covered {
-            return false;
+    is_positive_expr_dominated_by_positives(ctx, prod_expr, known_positives)
+}
+
+fn positive_component_count(ctx: &Context, expr: ExprId) -> usize {
+    match ctx.get(expr) {
+        Expr::Mul(l, r) | Expr::Div(l, r) => {
+            positive_component_count(ctx, *l) + positive_component_count(ctx, *r)
         }
+        Expr::Pow(_, exp) => match ctx.get(*exp) {
+            Expr::Number(n) if n.is_integer() && n.to_integer() > 0.into() => 1,
+            _ => 1,
+        },
+        Expr::Function(fn_id, args)
+            if ctx.is_builtin(*fn_id, BuiltinFn::Abs) && args.len() == 1 =>
+        {
+            positive_component_count(ctx, args[0])
+        }
+        _ => 1,
+    }
+}
+
+fn is_positive_expr_dominated_by_positives(
+    ctx: &Context,
+    expr: ExprId,
+    known_positives: &[ExprId],
+) -> bool {
+    if known_positives
+        .iter()
+        .any(|pos| exprs_equivalent(ctx, expr, *pos))
+    {
+        return true;
     }
 
-    true
-}
-
-fn extract_product_bases(ctx: &Context, expr: ExprId) -> Vec<ExprId> {
-    let mut bases = Vec::new();
-    collect_product_bases(ctx, expr, &mut bases);
-    bases
-}
-
-fn collect_product_bases(ctx: &Context, expr: ExprId, bases: &mut Vec<ExprId>) {
     match ctx.get(expr) {
-        Expr::Mul(l, r) => {
-            collect_product_bases(ctx, *l, bases);
-            collect_product_bases(ctx, *r, bases);
+        Expr::Mul(l, r) | Expr::Div(l, r) => {
+            is_positive_expr_dominated_by_positives(ctx, *l, known_positives)
+                && is_positive_expr_dominated_by_positives(ctx, *r, known_positives)
         }
         Expr::Pow(base, exp) => {
             if let Expr::Number(n) = ctx.get(*exp) {
@@ -178,19 +190,33 @@ fn collect_product_bases(ctx: &Context, expr: ExprId, bases: &mut Vec<ExprId>) {
                     let exp_int = n.to_integer();
                     let zero: num_bigint::BigInt = 0.into();
                     if exp_int > zero {
-                        bases.push(*base);
-                        return;
+                        let two: num_bigint::BigInt = 2.into();
+                        if (&exp_int % &two) == 0.into() {
+                            return known_positives.iter().any(|pos| {
+                                exprs_equivalent(ctx, *base, *pos) || is_abs_of(ctx, *pos, *base)
+                            }) || is_positive_expr_dominated_by_positives(
+                                ctx,
+                                *base,
+                                known_positives,
+                            );
+                        }
+
+                        return is_positive_expr_dominated_by_positives(
+                            ctx,
+                            *base,
+                            known_positives,
+                        );
                     }
                 }
             }
-            bases.push(expr);
+            false
         }
-        Expr::Variable(_) | Expr::Number(_) | Expr::Constant(_) => {
-            bases.push(expr);
+        Expr::Function(fn_id, args)
+            if ctx.is_builtin(*fn_id, BuiltinFn::Abs) && args.len() == 1 =>
+        {
+            is_positive_expr_dominated_by_positives(ctx, args[0], known_positives)
         }
-        _ => {
-            bases.push(expr);
-        }
+        _ => false,
     }
 }
 
@@ -279,5 +305,21 @@ mod tests {
         let b = parse("b", &mut ctx).expect("parse");
         assert!(is_product_dominated_by_positives(&ctx, product, &[a, b]));
         assert!(!is_product_dominated_by_positives(&ctx, product, &[a]));
+    }
+
+    #[test]
+    fn quotient_dominance_accepts_even_power_covered_by_abs() {
+        let mut ctx = Context::new();
+        let quotient = parse("y*x^2/(t*z)", &mut ctx).expect("parse");
+        let y = parse("y", &mut ctx).expect("parse");
+        let t = parse("t", &mut ctx).expect("parse");
+        let z = parse("z", &mut ctx).expect("parse");
+        let abs_x = parse("abs(x)", &mut ctx).expect("parse");
+
+        assert!(is_product_dominated_by_positives(
+            &ctx,
+            quotient,
+            &[y, t, z, abs_x]
+        ));
     }
 }

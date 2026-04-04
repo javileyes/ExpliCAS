@@ -4,7 +4,7 @@
 //! - positivity prover callback (for `base > 0` checks),
 //! - optional ground fallback callback for variable-free subtrees.
 
-use crate::expr_extract::extract_unary_log_argument_view;
+use crate::expr_extract::{extract_exp_argument, extract_unary_log_argument_view};
 use crate::expr_predicates::contains_variable;
 use crate::pi_helpers::extract_rational_pi_multiple;
 use crate::tri_proof::TriProof;
@@ -54,6 +54,7 @@ where
     }
 
     match ctx.get(expr) {
+        _ if extract_exp_argument(ctx, expr).is_some() => TriProof::Proven,
         Expr::Number(n) => {
             if n.is_zero() {
                 TriProof::Disproven
@@ -188,6 +189,18 @@ where
             }
         }
         Expr::Add(_, _) | Expr::Sub(_, _) => {
+            if prove_positive_via_sign_kernel(
+                ctx,
+                expr,
+                depth - 1,
+                prove_positive,
+                try_ground_nonzero,
+            )
+            .is_proven()
+            {
+                return TriProof::Proven;
+            }
+
             if !contains_variable(ctx, expr) {
                 if let Some(proof) = try_ground_nonzero(ctx, expr) {
                     return proof;
@@ -205,6 +218,38 @@ where
         }
         _ => TriProof::Unknown,
     }
+}
+
+fn prove_positive_via_sign_kernel<FProvePositive, FGroundFallback>(
+    ctx: &Context,
+    expr: ExprId,
+    depth: usize,
+    prove_positive: &mut FProvePositive,
+    try_ground_nonzero: &mut FGroundFallback,
+) -> TriProof
+where
+    FProvePositive: FnMut(&Context, ExprId) -> TriProof,
+    FGroundFallback: FnMut(&Context, ExprId) -> Option<TriProof>,
+{
+    if depth == 0 {
+        return TriProof::Unknown;
+    }
+
+    crate::prove_sign::prove_positive_depth_with(
+        ctx,
+        expr,
+        depth,
+        true,
+        |inner_ctx, inner_expr, inner_depth| {
+            prove_nonzero_depth_inner(
+                inner_ctx,
+                inner_expr,
+                inner_depth,
+                prove_positive,
+                try_ground_nonzero,
+            )
+        },
+    )
 }
 
 #[cfg(test)]
@@ -282,5 +327,52 @@ mod tests {
             |_ctx, _expr| None,
         );
         assert_eq!(proof, TriProof::Proven);
+    }
+
+    #[test]
+    fn proves_exponential_forms_nonzero() {
+        let mut ctx = cas_ast::Context::new();
+        let exp_builtin = parse("exp(x-y)", &mut ctx).expect("parse");
+        let exp_power = parse("e^z", &mut ctx).expect("parse");
+
+        let prove_positive = |_ctx: &cas_ast::Context, _expr| TriProof::Unknown;
+        let ground = |_ctx: &cas_ast::Context, _expr| None;
+
+        assert_eq!(
+            prove_nonzero_depth_with(&ctx, exp_builtin, 20, prove_positive, ground),
+            TriProof::Proven
+        );
+        assert_eq!(
+            prove_nonzero_depth_with(&ctx, exp_power, 20, prove_positive, ground),
+            TriProof::Proven
+        );
+    }
+
+    #[test]
+    fn proves_positive_sum_of_exponentials_nonzero() {
+        let mut ctx = cas_ast::Context::new();
+        let expr = parse("e^x + e^(-x)", &mut ctx).expect("parse");
+
+        let prove_positive = |_ctx: &cas_ast::Context, _expr| TriProof::Unknown;
+        let ground = |_ctx: &cas_ast::Context, _expr| None;
+
+        assert_eq!(
+            prove_nonzero_depth_with(&ctx, expr, 20, prove_positive, ground),
+            TriProof::Proven
+        );
+    }
+
+    #[test]
+    fn proves_positive_sum_of_exponential_and_reciprocal_nonzero() {
+        let mut ctx = cas_ast::Context::new();
+        let expr = parse("e^(2*x) + 1/e^(2*x)", &mut ctx).expect("parse");
+
+        let prove_positive = |_ctx: &cas_ast::Context, _expr| TriProof::Unknown;
+        let ground = |_ctx: &cas_ast::Context, _expr| None;
+
+        assert_eq!(
+            prove_nonzero_depth_with(&ctx, expr, 20, prove_positive, ground),
+            TriProof::Proven
+        );
     }
 }

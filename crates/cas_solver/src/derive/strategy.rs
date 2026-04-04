@@ -2,14 +2,26 @@ use super::{DeriveTargetForm, DeriveTargetProfile};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DeriveStrategy {
+    Planner,
     Simplify,
     IntegratePrep,
     SolvePrep,
+    FiniteAggregate,
+    CombineLikeTerms,
+    FactorialRewrite,
+    InverseTrigRewrite,
+    FractionCancel,
+    NestedFraction,
+    RadicalRewrite,
+    ExponentialRewrite,
+    HyperbolicRewrite,
+    TrigRewrite,
     LogExpand,
     LogContract,
     SimplifyThenLogContract,
     TrigExpand,
     TrigContract,
+    SimplifyThenTrigContract,
     Rationalize,
     FractionExpand,
     FractionDecompose,
@@ -32,14 +44,26 @@ pub(crate) enum DeriveStrategy {
 impl DeriveStrategy {
     pub(crate) fn label(self) -> &'static str {
         match self {
+            Self::Planner => "planner",
             Self::Simplify => "simplify",
             Self::IntegratePrep => "integrate prep",
             Self::SolvePrep => "solve prep",
+            Self::FiniteAggregate => "finite sums/products",
+            Self::CombineLikeTerms => "combine like terms",
+            Self::FactorialRewrite => "rewrite factorials",
+            Self::InverseTrigRewrite => "rewrite inverse trigs",
+            Self::FractionCancel => "cancel fraction",
+            Self::NestedFraction => "nested fraction",
+            Self::RadicalRewrite => "rewrite radicals",
+            Self::ExponentialRewrite => "rewrite exponentials",
+            Self::HyperbolicRewrite => "rewrite hyperbolics",
+            Self::TrigRewrite => "rewrite trigs",
             Self::LogExpand => "expand_log",
             Self::LogContract => "contract logs",
             Self::SimplifyThenLogContract => "simplify -> contract logs",
             Self::TrigExpand => "expand trig",
             Self::TrigContract => "contract trig",
+            Self::SimplifyThenTrigContract => "simplify -> contract trig",
             Self::Rationalize => "rationalize",
             Self::FractionExpand => "expand fraction",
             Self::FractionDecompose => "split fraction",
@@ -83,6 +107,36 @@ const INTEGRATE_PREP_TARGET_ORDER: &[DeriveStrategy] =
 const SOLVE_PREP_TARGET_ORDER: &[DeriveStrategy] =
     &[DeriveStrategy::SolvePrep, DeriveStrategy::Simplify];
 
+const FINITE_AGGREGATE_TARGET_ORDER: &[DeriveStrategy] =
+    &[DeriveStrategy::FiniteAggregate, DeriveStrategy::Simplify];
+
+const COMBINE_LIKE_TERMS_TARGET_ORDER: &[DeriveStrategy] =
+    &[DeriveStrategy::CombineLikeTerms, DeriveStrategy::Simplify];
+
+const FACTORIAL_REWRITE_TARGET_ORDER: &[DeriveStrategy] =
+    &[DeriveStrategy::FactorialRewrite, DeriveStrategy::Simplify];
+
+const INVERSE_TRIG_REWRITE_TARGET_ORDER: &[DeriveStrategy] =
+    &[DeriveStrategy::InverseTrigRewrite, DeriveStrategy::Simplify];
+
+const FRACTION_CANCEL_TARGET_ORDER: &[DeriveStrategy] =
+    &[DeriveStrategy::FractionCancel, DeriveStrategy::Simplify];
+
+const NESTED_FRACTION_TARGET_ORDER: &[DeriveStrategy] =
+    &[DeriveStrategy::NestedFraction, DeriveStrategy::Simplify];
+
+const RADICAL_REWRITE_TARGET_ORDER: &[DeriveStrategy] =
+    &[DeriveStrategy::RadicalRewrite, DeriveStrategy::Simplify];
+
+const EXPONENTIAL_REWRITE_TARGET_ORDER: &[DeriveStrategy] =
+    &[DeriveStrategy::ExponentialRewrite, DeriveStrategy::Simplify];
+
+const HYPERBOLIC_REWRITE_TARGET_ORDER: &[DeriveStrategy] =
+    &[DeriveStrategy::HyperbolicRewrite, DeriveStrategy::Simplify];
+
+const TRIG_REWRITE_TARGET_ORDER: &[DeriveStrategy] =
+    &[DeriveStrategy::TrigRewrite, DeriveStrategy::Simplify];
+
 const LOG_EXPAND_TARGET_ORDER: &[DeriveStrategy] = &[
     DeriveStrategy::LogExpand,
     DeriveStrategy::SimplifyThenLogExpand,
@@ -99,8 +153,11 @@ const TRIG_EXPAND_TARGET_ORDER: &[DeriveStrategy] = &[
     DeriveStrategy::SimplifyThenExpand,
 ];
 
-const TRIG_CONTRACT_TARGET_ORDER: &[DeriveStrategy] =
-    &[DeriveStrategy::TrigContract, DeriveStrategy::Simplify];
+const TRIG_CONTRACT_TARGET_ORDER: &[DeriveStrategy] = &[
+    DeriveStrategy::TrigContract,
+    DeriveStrategy::SimplifyThenTrigContract,
+    DeriveStrategy::Simplify,
+];
 
 const LOG_CONTRACT_TARGET_ORDER: &[DeriveStrategy] = &[
     DeriveStrategy::LogContract,
@@ -167,6 +224,16 @@ pub(crate) fn ordered_strategies_for_target(
     match &profile.form {
         DeriveTargetForm::IntegratePrepared => INTEGRATE_PREP_TARGET_ORDER,
         DeriveTargetForm::SolvePrepared => SOLVE_PREP_TARGET_ORDER,
+        DeriveTargetForm::FiniteAggregateEvaluated => FINITE_AGGREGATE_TARGET_ORDER,
+        DeriveTargetForm::LikeTermsCombined => COMBINE_LIKE_TERMS_TARGET_ORDER,
+        DeriveTargetForm::FactorialRewritten => FACTORIAL_REWRITE_TARGET_ORDER,
+        DeriveTargetForm::InverseTrigRewritten => INVERSE_TRIG_REWRITE_TARGET_ORDER,
+        DeriveTargetForm::FractionCancelled => FRACTION_CANCEL_TARGET_ORDER,
+        DeriveTargetForm::NestedFractionSimplified => NESTED_FRACTION_TARGET_ORDER,
+        DeriveTargetForm::RadicalRewritten => RADICAL_REWRITE_TARGET_ORDER,
+        DeriveTargetForm::ExponentialRewritten => EXPONENTIAL_REWRITE_TARGET_ORDER,
+        DeriveTargetForm::HyperbolicRewritten => HYPERBOLIC_REWRITE_TARGET_ORDER,
+        DeriveTargetForm::TrigRewritten => TRIG_REWRITE_TARGET_ORDER,
         DeriveTargetForm::LogExpanded => LOG_EXPAND_TARGET_ORDER,
         DeriveTargetForm::LogContracted => LOG_CONTRACT_TARGET_ORDER,
         DeriveTargetForm::TrigExpanded => TRIG_EXPAND_TARGET_ORDER,

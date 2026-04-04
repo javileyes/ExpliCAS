@@ -71,6 +71,8 @@ pub(super) struct LocalSimplificationTransformer<'a> {
     pub(super) current_depth: usize,
     /// Flag to track if we already warned about depth overflow (to avoid spamming)
     pub(super) depth_overflow_warned: bool,
+    /// Suppress best-effort depth overflow warnings for internal/proof-only simplify calls.
+    pub(super) suppress_depth_overflow_warnings: bool,
     /// The current root expression being simplified, used to compute global_after for steps
     pub(super) root_expr: ExprId,
     /// Optional event listener for rule-application events.
@@ -182,38 +184,40 @@ impl<'a> LocalSimplificationTransformer<'a> {
             if !self.depth_overflow_warned {
                 self.depth_overflow_warned = true;
 
-                // Log the expression to file for later investigation
-                let display = cas_formatter::DisplayExpr {
-                    context: self.context,
-                    id: self.root_expr,
-                };
-                let expr_str = display.to_string();
-                let log_entry = format!(
-                    "[{:?}] Depth overflow at phase {:?}, depth {}: {}\n",
-                    std::time::SystemTime::now(),
-                    self.current_phase,
-                    self.current_depth,
-                    expr_str
-                );
+                if !self.suppress_depth_overflow_warnings {
+                    // Log the expression to file for later investigation
+                    let display = cas_formatter::DisplayExpr {
+                        context: self.context,
+                        id: self.root_expr,
+                    };
+                    let expr_str = display.to_string();
+                    let log_entry = format!(
+                        "[{:?}] Depth overflow at phase {:?}, depth {}: {}\n",
+                        std::time::SystemTime::now(),
+                        self.current_phase,
+                        self.current_depth,
+                        expr_str
+                    );
 
-                // Append to log file (ignore errors - this is best-effort)
-                use std::io::Write;
-                if let Ok(mut file) = std::fs::OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(DEPTH_OVERFLOW_LOG_PATH)
-                {
-                    let _ = file.write_all(log_entry.as_bytes());
+                    // Append to log file (ignore errors - this is best-effort)
+                    use std::io::Write;
+                    if let Ok(mut file) = std::fs::OpenOptions::new()
+                        .create(true)
+                        .append(true)
+                        .open(DEPTH_OVERFLOW_LOG_PATH)
+                    {
+                        let _ = file.write_all(log_entry.as_bytes());
+                    }
+
+                    // Emit warning via tracing
+                    tracing::warn!(
+                        target: "simplify",
+                        depth = self.current_depth,
+                        phase = ?self.current_phase,
+                        expr = %expr_str,
+                        "depth_overflow - returning expression unsimplified"
+                    );
                 }
-
-                // Emit warning via tracing
-                tracing::warn!(
-                    target: "simplify",
-                    depth = self.current_depth,
-                    phase = ?self.current_phase,
-                    expr = %expr_str,
-                    "depth_overflow - returning expression unsimplified"
-                );
             }
 
             // Return expression as-is without further simplification

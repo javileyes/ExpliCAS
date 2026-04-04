@@ -55,6 +55,8 @@ pub struct SimplifyOptions {
     pub goal: crate::normal_form_goal::NormalFormGoal,
     /// Purpose of simplification: Eval (default), SolvePrepass, or SolveTactic.
     pub simplify_purpose: crate::solve_safety_policy::SimplifyPurpose,
+    /// Suppress best-effort depth overflow warnings for internal/proof-only simplifications.
+    pub suppress_depth_overflow_warnings: bool,
 }
 
 impl Default for SimplifyOptions {
@@ -68,6 +70,7 @@ impl Default for SimplifyOptions {
             shared: SharedSemanticConfig::default(),
             goal: crate::normal_form_goal::NormalFormGoal::default(),
             simplify_purpose: crate::solve_safety_policy::SimplifyPurpose::default(),
+            suppress_depth_overflow_warnings: false,
         }
     }
 }

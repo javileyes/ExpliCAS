@@ -1,6 +1,9 @@
 //! Witness search helpers for structural domain constraints.
 
-use crate::expr_extract::{extract_sqrt_argument_view, extract_unary_log_argument_view};
+use crate::expr_extract::{
+    extract_log_base_argument_view, extract_sqrt_argument_view, extract_unary_log_argument_view,
+    log10_base_sentinel,
+};
 use crate::expr_predicates::is_even_root_exponent;
 use cas_ast::{Context, Expr, ExprId};
 
@@ -88,6 +91,26 @@ fn node_matches_witness(
             stack.push(arg);
             false
         }
+        Expr::Function(_, _) if extract_log_base_argument_view(ctx, expr).is_some() => {
+            let Some((base_opt, arg)) = extract_log_base_argument_view(ctx, expr) else {
+                return false;
+            };
+            if kind == WitnessKind::Log && exprs_equal(ctx, arg, target) {
+                return true;
+            }
+            stack.push(arg);
+
+            if let Some(base) = base_opt {
+                if base != log10_base_sentinel() {
+                    if kind == WitnessKind::Log && exprs_equal(ctx, base, target) {
+                        return true;
+                    }
+                    stack.push(base);
+                }
+            }
+
+            false
+        }
         Expr::Pow(base, exp) => {
             if kind == WitnessKind::Sqrt {
                 if let Expr::Number(n) = ctx.get(*exp) {
@@ -148,6 +171,17 @@ mod tests {
         let expr = parse("x + y", &mut ctx).expect("parse");
         let x = parse("x", &mut ctx).expect("parse x");
         assert!(!witness_survives(&ctx, x, expr, WitnessKind::Sqrt));
+    }
+
+    #[test]
+    fn witness_survives_for_general_log_base_and_argument() {
+        let mut ctx = Context::new();
+        let expr = parse("log(b, x) + y", &mut ctx).expect("parse");
+        let b = parse("b", &mut ctx).expect("parse b");
+        let x = parse("x", &mut ctx).expect("parse x");
+
+        assert!(witness_survives(&ctx, b, expr, WitnessKind::Log));
+        assert!(witness_survives(&ctx, x, expr, WitnessKind::Log));
     }
 
     #[test]

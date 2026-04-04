@@ -67,11 +67,12 @@ where
     diagnostics.dedup_and_sort(&engine.simplifier.context);
 
     let required_conditions = diagnostics.required_conditions();
-    Ok(Some(crate::EvalOutputView {
+    let mut output_view = crate::EvalOutputView {
         stored_id: None,
         parsed: *parsed,
         resolved: hit.resolved,
         result: crate::EvalResult::Expr(hit.resolved),
+        strategy: None,
         steps: crate::DisplayEvalSteps::default(),
         solve_steps: Vec::new(),
         output_scopes: Vec::new(),
@@ -80,7 +81,12 @@ where
         domain_warnings: Vec::new(),
         blocked_hints: Vec::new(),
         solver_assumptions: Vec::new(),
-    }))
+    };
+    crate::eval_request_runtime::augment_output_view_required_conditions(
+        &mut engine.simplifier.context,
+        &mut output_view,
+    );
+    Ok(Some(output_view))
 }
 
 pub(super) fn prepare_eval_run<S>(

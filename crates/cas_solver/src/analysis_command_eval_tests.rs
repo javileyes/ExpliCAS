@@ -130,7 +130,7 @@ mod tests {
         let mut simplifier = crate::Simplifier::with_default_rules();
         let lines = evaluate_derive_command_lines_with_resolver(
             &mut simplifier,
-            "derive x^2 - 1, (x - 1)*(x + 1)",
+            "derive a^2 - b^2, (a - b)*(a + b)",
             crate::FullSimplifyDisplayMode::Normal,
             crate::SimplifyOptions::default(),
             |_ctx, expr| Ok(expr),
@@ -139,10 +139,30 @@ mod tests {
 
         assert!(lines
             .iter()
-            .any(|line| line.starts_with("Target:") && line.contains("x")));
+            .any(|line| line.starts_with("Target:") && line.contains("a")));
+        assert!(lines.iter().any(|line| {
+            line.starts_with("Result:") && line.contains("(a + b)") && line.contains("(a - b)")
+        }));
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_reaches_sign_distributed_factored_target() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let lines = evaluate_derive_command_lines_with_resolver(
+            &mut simplifier,
+            "derive x^2 - y^2, -(y-x)*(x+y)",
+            crate::FullSimplifyDisplayMode::Normal,
+            crate::SimplifyOptions::default(),
+            |_ctx, expr| Ok(expr),
+        )
+        .expect("derive should evaluate");
+
         assert!(lines
             .iter()
-            .any(|line| line.starts_with("Result:") && line.contains("(x")));
+            .any(|line| line.starts_with("Strategy:") && line.contains("factor")));
+        assert!(lines.iter().any(|line| {
+            line.starts_with("Result:") && line.contains("-(y - x)") && line.contains("(x + y)")
+        }));
     }
 
     #[test]
@@ -387,6 +407,12 @@ mod tests {
             "expected expand strategy, got: {lines:?}"
         );
         assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("Sophie Germain Identity")),
+            "expected Sophie Germain identity step in derive output, got: {lines:?}"
+        );
+        assert!(
             lines.iter().any(|line| {
                 line.starts_with("Result:") && line.contains("x^(4)") && line.contains("4 * y^(4)")
             }),
@@ -565,7 +591,7 @@ mod tests {
 
     #[test]
     fn evaluate_derive_command_lines_reaches_tabulated_collect_targets() {
-        let cases = [
+        let collect_cases = [
             (
                 "derive a*x + b*x + c, (a + b)*x + c",
                 &["a+b", "x", "+c"][..],
@@ -592,11 +618,15 @@ mod tests {
             ),
         ];
 
-        for (input, fragments) in cases {
+        for (input, fragments) in collect_cases {
             let lines = derive_lines(input);
             assert_derive_strategy(&lines, "collect");
             assert_result_contains_all(&lines, fragments);
         }
+
+        let lines = derive_lines("derive x^2 + 2*x + 1, x*(x + 2) + 1");
+        assert_derive_strategy(&lines, "combine like terms");
+        assert_result_contains_all(&lines, &["x", "x+2", "+1"]);
     }
 
     #[test]
@@ -637,6 +667,26 @@ mod tests {
         assert!(lines
             .iter()
             .any(|line| line.starts_with("Result:") && line.contains("2")));
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_prefers_expand_for_binomial_expansion_with_cancellation() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let lines = evaluate_derive_command_lines_with_resolver(
+            &mut simplifier,
+            "derive (a+b)^2 - a^2 - 2*a*b, b^2",
+            crate::FullSimplifyDisplayMode::Normal,
+            crate::SimplifyOptions::default(),
+            |_ctx, expr| Ok(expr),
+        )
+        .expect("derive should evaluate");
+
+        assert!(lines
+            .iter()
+            .any(|line| line.starts_with("Strategy:") && line.contains("expand")));
+        assert!(lines
+            .iter()
+            .any(|line| line.starts_with("Result:") && line.contains("b^(2)")));
     }
 
     #[test]
@@ -818,8 +868,8 @@ mod tests {
                 "expand_log",
                 &["2 * log(b, x)", "3 * log(b, y)", "2 * log(b, z)", "log(b, t)"][..],
             ),
-            ("derive ln(x^2), 2*ln(abs(x))", "simplify", &["2", "ln("][..]),
-            ("derive log(2, x^3), 3*log(2, x)", "simplify", &["3", "log("][..]),
+            ("derive ln(x^2), 2*ln(abs(x))", "expand_log", &["2", "ln("][..]),
+            ("derive log(b, x^3), 3*log(b, x)", "expand_log", &["3", "log("][..]),
             (
                 "derive log(b,c), log(b,a)*log(a,c)",
                 "simplify",
@@ -1015,6 +1065,31 @@ mod tests {
     }
 
     #[test]
+    fn evaluate_derive_command_lines_contracts_trig_quotient_after_arg_simplify_directly() {
+        let lines = derive_lines("derive sin(2*x)/cos(x+x), tan(2*x)");
+
+        assert_derive_strategy(&lines, "contract trig");
+        assert_result_contains_all(&lines, &["tan(2*x)"]);
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_expands_double_angle_after_arg_simplify_directly() {
+        let lines = derive_lines("derive sin(x+x), 2*sin(x)*cos(x)");
+
+        assert_derive_strategy(&lines, "expand trig");
+        assert_result_contains_all(&lines, &["2 * sin(x) * cos(x)"]);
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_contracts_cos_diff_over_sin_diff_directly() {
+        let lines = derive_lines("derive (cos(x)-cos(3*x))/(sin(3*x)-sin(x)), tan(2*x)");
+
+        assert_derive_strategy(&lines, "contract trig");
+        assert_result_contains_all(&lines, &["tan(2*x)"]);
+        assert!(lines.iter().any(|line| line.contains("Trig Quotient")));
+    }
+
+    #[test]
     fn evaluate_derive_command_lines_expands_secant_to_reciprocal_directly() {
         let mut simplifier = crate::Simplifier::with_default_rules();
         let lines = evaluate_derive_command_lines_with_resolver(
@@ -1097,7 +1172,7 @@ mod tests {
 
         assert!(lines
             .iter()
-            .any(|line| line.starts_with("Strategy:") && line.contains("simplify")));
+            .any(|line| { line.starts_with("Strategy:") && line.contains("rewrite trigs") }));
         assert!(lines
             .iter()
             .any(|line| line.contains("Reciprocal Product Identity")));
@@ -1126,7 +1201,7 @@ mod tests {
 
             assert!(lines
                 .iter()
-                .any(|line| line.starts_with("Strategy:") && line.contains("simplify")));
+                .any(|line| { line.starts_with("Strategy:") && line.contains("rewrite trigs") }));
             assert!(lines
                 .iter()
                 .any(|line| line.contains("Reciprocal Pythagorean Identity")));
@@ -1408,7 +1483,7 @@ mod tests {
     fn evaluate_derive_command_lines_reaches_representative_rationalized_zero_target() {
         let lines = derive_lines("derive 1 / (sqrt(x) - 1) - (sqrt(x) + 1) / (x - 1), 0");
 
-        assert_derive_strategy(&lines, "simplify");
+        assert_derive_strategy(&lines, "rationalize");
         assert!(lines.iter().any(|line| {
             line.contains("Rationalize Linear Sqrt Denominator")
                 || line.contains("Subtraction Self-Cancel")
@@ -1417,11 +1492,35 @@ mod tests {
     }
 
     #[test]
+    fn evaluate_derive_command_lines_reaches_radical_notable_quotient_directly() {
+        let lines = derive_lines("derive (x^(3/2)-1)/(sqrt(x)-1), sqrt(x)+x+1");
+
+        assert_derive_strategy(&lines, "rationalize");
+        assert!(
+            lines
+                .iter()
+                .filter(|line| line.trim_start().starts_with("1. "))
+                .count()
+                == 1
+                && !lines
+                    .iter()
+                    .any(|line| line.trim_start().starts_with("2. ")),
+            "expected one visible rationalize step, got: {lines:?}"
+        );
+        assert!(lines.iter().any(|line| {
+            line.contains("Rationalize Linear Sqrt Denominator")
+                || line.contains("Polynomial division with opaque substitution")
+                || line.contains("Reconocer un cociente notable")
+        }));
+        assert_result_contains_all(&lines, &["sqrt(x)", "x+1"]);
+    }
+
+    #[test]
     fn evaluate_derive_command_lines_reaches_perfect_square_root_target() {
         let mut simplifier = crate::Simplifier::with_default_rules();
         let lines = evaluate_derive_command_lines_with_resolver(
             &mut simplifier,
-            "derive sqrt(x^2 + 2*x + 1), abs(x+1)",
+            "derive sqrt(a^2 + 2*a*b + b^2), abs(a+b)",
             crate::FullSimplifyDisplayMode::Normal,
             crate::SimplifyOptions::default(),
             |_ctx, expr| Ok(expr),
@@ -1430,20 +1529,20 @@ mod tests {
 
         assert!(lines
             .iter()
-            .any(|line| line.starts_with("Strategy:") && line.contains("simplify")));
+            .any(|line| { line.starts_with("Strategy:") && line.contains("rewrite radicals") }));
         assert!(lines
             .iter()
             .any(|line| line.contains("Sqrt Perfect Square")));
         assert!(lines
             .iter()
-            .any(|line| line.starts_with("Result:") && line.contains("|x + 1|")));
+            .any(|line| line.starts_with("Result:") && line.contains("|a + b|")));
     }
 
     #[test]
     fn evaluate_derive_command_lines_reaches_tabulated_fraction_expanded_targets() {
         let cases = [
             ("derive (a+b)/x, a/x + b/x", &["a / x", "b / x"][..]),
-            ("derive (x+y)/(x*y), 1/x + 1/y", &["1 / x", "1 / y"][..]),
+            ("derive (a*y+b*x)/(x*y), a/x + b/y", &["a / x", "b / y"][..]),
             (
                 "derive (a*x+b)/(c*x), a/c + b/(c*x)",
                 &["a / c", "b / (c * x)"][..],
@@ -1480,7 +1579,7 @@ mod tests {
         let mut simplifier = crate::Simplifier::with_default_rules();
         let lines = evaluate_derive_command_lines_with_resolver(
             &mut simplifier,
-            "derive 1 + a/d + b/d, 1 + (a+b)/d",
+            "derive c + a/d + b/d, c + (a+b)/d",
             crate::FullSimplifyDisplayMode::Normal,
             crate::SimplifyOptions::default(),
             |_ctx, expr| Ok(expr),
@@ -1497,7 +1596,34 @@ mod tests {
                     .contains("Combine fractions that already share the same denominator"))
         );
         assert!(lines.iter().any(|line| {
-            line.starts_with("Result:") && line.contains("/ d") && line.contains("a + b")
+            line.starts_with("Result:")
+                && line.contains("/ d")
+                && line.contains("a + b")
+                && line.contains("c")
+        }));
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_expands_three_same_denominator_fractions_with_passthrough() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let lines = evaluate_derive_command_lines_with_resolver(
+            &mut simplifier,
+            "derive 1 + (a+b+c)/d, 1 + a/d + b/d + c/d",
+            crate::FullSimplifyDisplayMode::Normal,
+            crate::SimplifyOptions::default(),
+            |_ctx, expr| Ok(expr),
+        )
+        .expect("derive should evaluate");
+
+        assert!(lines
+            .iter()
+            .any(|line| line.starts_with("Strategy:") && line.contains("expand fraction")));
+        assert!(lines.iter().any(|line| {
+            line.starts_with("Result:")
+                && line.contains("1")
+                && line.contains("a / d")
+                && line.contains("b / d")
+                && line.contains("c / d")
         }));
     }
 
@@ -1515,7 +1641,7 @@ mod tests {
 
         assert!(lines
             .iter()
-            .any(|line| line.starts_with("Strategy:") && line.contains("simplify")));
+            .any(|line| line.starts_with("Strategy:") && line.contains("combine like terms")));
         assert!(lines.iter().any(|line| line.contains("Combine Like Terms")));
         assert!(lines
             .iter()
@@ -1536,10 +1662,10 @@ mod tests {
 
         assert!(lines
             .iter()
-            .any(|line| line.starts_with("Strategy:") && line.contains("simplify")));
+            .any(|line| line.starts_with("Strategy:") && line.contains("cancel fraction")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Simplify Nested Fraction")));
+            .any(|line| line.contains("Cancel common factor")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:") && (line.contains("1 / 2") || line.contains("1/2"))
         }));
@@ -1550,7 +1676,7 @@ mod tests {
         let mut simplifier = crate::Simplifier::with_default_rules();
         let lines = evaluate_derive_command_lines_with_resolver(
             &mut simplifier,
-            "derive (6*x^2)/(3*x), 2*x",
+            "derive (a*x^2)/(b*x), (a*x)/b",
             crate::FullSimplifyDisplayMode::Normal,
             crate::SimplifyOptions::default(),
             |_ctx, expr| Ok(expr),
@@ -1559,14 +1685,15 @@ mod tests {
 
         assert!(lines
             .iter()
-            .any(|line| line.starts_with("Strategy:") && line.contains("simplify")));
+            .any(|line| line.starts_with("Strategy:") && line.contains("cancel fraction")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Simplify Nested Fraction")));
+            .any(|line| line.contains("Cancel common factor")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
-                && line.contains('2')
-                && (line.contains('x') || line.contains("x"))
+                && line.contains("a")
+                && line.contains("x")
+                && line.contains("/ b")
         }));
     }
 
@@ -1574,8 +1701,8 @@ mod tests {
     fn evaluate_derive_command_lines_reaches_tabulated_additive_nested_fraction_targets() {
         let cases: &[(&str, &[&str])] = &[
             (
-                "derive 1/(1/x + 1/y), (x*y)/(x+y)",
-                &["(x + y)", "x", "y", "/"],
+                "derive 1/(1/a + 1/b), (a*b)/(a+b)",
+                &["(a + b)", "a", "b", "/"],
             ),
             (
                 "derive 1/(1/a + 1/b + 1/c), (a*b*c)/(a*b + a*c + b*c)",
@@ -1586,8 +1713,8 @@ mod tests {
                 &["z * (x + y) /", "x + y + z"],
             ),
             (
-                "derive (1/x + 1/y)/(1/z), z*(x+y)/(x*y)",
-                &["z * (x + y) /", "x * y"],
+                "derive (1/a + 1/b)/(1/t), t*(a+b)/(a*b)",
+                &["t * (a + b) /", "a * b"],
             ),
             (
                 "derive 1/(1/x + 1/(y+z)), x*(y+z)/(x+y+z)",
@@ -1616,10 +1743,47 @@ mod tests {
 
             assert!(lines
                 .iter()
-                .any(|line| line.starts_with("Strategy:") && line.contains("simplify")));
+                .any(|line| { line.starts_with("Strategy:") && line.contains("nested fraction") }));
             assert!(lines.iter().any(|line| {
-                line.contains("Add Fractions") || line.contains("Simplify Complex Fraction")
+                line.contains("Add Fractions")
+                    || line.contains("Simplify Complex Fraction")
+                    || line.contains("Simplify Nested Fraction")
             }));
+
+            let result_line = lines
+                .iter()
+                .find(|line| line.starts_with("Result:"))
+                .expect("expected result line");
+            for fragment in *expected_result_fragments {
+                assert!(
+                    result_line.contains(fragment),
+                    "expected result `{result_line}` to contain fragment `{fragment}` for `{command}`"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_reaches_tabulated_reverse_nested_fraction_targets() {
+        let cases: &[(&str, &[&str])] = &[
+            ("derive a*d/(b*d+c), a/(b + c/d)", &["a /", "c / d + b"]),
+            ("derive (a*c+b)/(c*d), (a + b/c)/d", &["b / c + a", "/ d"]),
+        ];
+
+        for (command, expected_result_fragments) in cases {
+            let mut simplifier = crate::Simplifier::with_default_rules();
+            let lines = evaluate_derive_command_lines_with_resolver(
+                &mut simplifier,
+                command,
+                crate::FullSimplifyDisplayMode::Normal,
+                crate::SimplifyOptions::default(),
+                |_ctx, expr| Ok(expr),
+            )
+            .expect("derive should evaluate");
+
+            assert!(lines
+                .iter()
+                .any(|line| line.starts_with("Strategy:") && line.contains("simplify")));
 
             let result_line = lines
                 .iter()
@@ -1667,7 +1831,7 @@ mod tests {
 
             assert!(lines
                 .iter()
-                .any(|line| line.starts_with("Strategy:") && line.contains("simplify")));
+                .any(|line| line.starts_with("Strategy:") && line.contains("nested fraction")));
 
             let result_line = lines
                 .iter()
@@ -3296,7 +3460,7 @@ mod tests {
 
         assert!(lines
             .iter()
-            .any(|line| line.starts_with("Strategy:") && line.contains("simplify")));
+            .any(|line| line.starts_with("Strategy:") && line.contains("finite sums/products")));
         assert!(lines.iter().any(|line| line.contains("Finite Product")));
         assert!(lines
             .iter()
@@ -3317,7 +3481,7 @@ mod tests {
 
         assert!(lines
             .iter()
-            .any(|line| line.starts_with("Strategy:") && line.contains("simplify")));
+            .any(|line| line.starts_with("Strategy:") && line.contains("finite sums/products")));
         assert!(lines.iter().any(|line| line.contains("Finite Product")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:") && line.contains("n + 2") && line.contains("/ 2")
@@ -3338,7 +3502,7 @@ mod tests {
 
         assert!(lines
             .iter()
-            .any(|line| line.starts_with("Strategy:") && line.contains("simplify")));
+            .any(|line| line.starts_with("Strategy:") && line.contains("finite sums/products")));
         assert!(lines.iter().any(|line| line.contains("Finite Product")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
@@ -3361,7 +3525,7 @@ mod tests {
 
         assert!(lines
             .iter()
-            .any(|line| line.starts_with("Strategy:") && line.contains("simplify")));
+            .any(|line| line.starts_with("Strategy:") && line.contains("finite sums/products")));
         assert!(lines.iter().any(|line| line.contains("Finite Product")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
@@ -3385,7 +3549,7 @@ mod tests {
 
         assert!(lines
             .iter()
-            .any(|line| line.starts_with("Strategy:") && line.contains("simplify")));
+            .any(|line| line.starts_with("Strategy:") && line.contains("finite sums/products")));
         assert!(lines.iter().any(|line| line.contains("Finite Product")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
@@ -3411,7 +3575,7 @@ mod tests {
 
         assert!(lines
             .iter()
-            .any(|line| line.starts_with("Strategy:") && line.contains("simplify")));
+            .any(|line| line.starts_with("Strategy:") && line.contains("finite sums/products")));
         assert!(lines.iter().any(|line| line.contains("Finite Product")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
@@ -3435,7 +3599,7 @@ mod tests {
 
         assert!(lines
             .iter()
-            .any(|line| line.starts_with("Strategy:") && line.contains("simplify")));
+            .any(|line| line.starts_with("Strategy:") && line.contains("finite sums/products")));
         assert!(lines.iter().any(|line| line.contains("Finite Product")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
@@ -3462,7 +3626,7 @@ mod tests {
 
         assert!(lines
             .iter()
-            .any(|line| line.starts_with("Strategy:") && line.contains("simplify")));
+            .any(|line| line.starts_with("Strategy:") && line.contains("finite sums/products")));
         assert!(lines.iter().any(|line| line.contains("Finite Product")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
@@ -3492,7 +3656,7 @@ mod tests {
 
         assert!(lines
             .iter()
-            .any(|line| line.starts_with("Strategy:") && line.contains("simplify")));
+            .any(|line| line.starts_with("Strategy:") && line.contains("finite sums/products")));
         assert!(lines.iter().any(|line| line.contains("Finite Product")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
@@ -3519,7 +3683,7 @@ mod tests {
 
         assert!(lines
             .iter()
-            .any(|line| line.starts_with("Strategy:") && line.contains("simplify")));
+            .any(|line| line.starts_with("Strategy:") && line.contains("finite sums/products")));
         assert!(lines.iter().any(|line| line.contains("Finite Product")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
@@ -3542,7 +3706,7 @@ mod tests {
 
         assert!(lines
             .iter()
-            .any(|line| line.starts_with("Strategy:") && line.contains("simplify")));
+            .any(|line| line.starts_with("Strategy:") && line.contains("finite sums/products")));
         assert!(lines.iter().any(|line| line.contains("Finite Product")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
@@ -3567,7 +3731,7 @@ mod tests {
 
         assert!(lines
             .iter()
-            .any(|line| line.starts_with("Strategy:") && line.contains("simplify")));
+            .any(|line| line.starts_with("Strategy:") && line.contains("finite sums/products")));
         assert!(lines.iter().any(|line| line.contains("Finite Product")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
@@ -3593,7 +3757,7 @@ mod tests {
 
         assert!(lines
             .iter()
-            .any(|line| line.starts_with("Strategy:") && line.contains("simplify")));
+            .any(|line| line.starts_with("Strategy:") && line.contains("finite sums/products")));
         assert!(lines.iter().any(|line| line.contains("Finite Product")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
@@ -3619,7 +3783,7 @@ mod tests {
 
         assert!(lines
             .iter()
-            .any(|line| line.starts_with("Strategy:") && line.contains("simplify")));
+            .any(|line| line.starts_with("Strategy:") && line.contains("finite sums/products")));
         assert!(lines.iter().any(|line| line.contains("Finite Product")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
@@ -3645,7 +3809,7 @@ mod tests {
 
         assert!(lines
             .iter()
-            .any(|line| line.starts_with("Strategy:") && line.contains("simplify")));
+            .any(|line| line.starts_with("Strategy:") && line.contains("finite sums/products")));
         assert!(lines.iter().any(|line| line.contains("Finite Product")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
@@ -3671,7 +3835,7 @@ mod tests {
 
         assert!(lines
             .iter()
-            .any(|line| line.starts_with("Strategy:") && line.contains("simplify")));
+            .any(|line| line.starts_with("Strategy:") && line.contains("finite sums/products")));
         assert!(lines.iter().any(|line| line.contains("Finite Product")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
@@ -3696,7 +3860,7 @@ mod tests {
 
         assert!(lines
             .iter()
-            .any(|line| line.starts_with("Strategy:") && line.contains("simplify")));
+            .any(|line| line.starts_with("Strategy:") && line.contains("finite sums/products")));
         assert!(lines.iter().any(|line| line.contains("Finite Summation")));
         assert!(lines
             .iter()
@@ -3717,7 +3881,7 @@ mod tests {
 
         assert!(lines
             .iter()
-            .any(|line| line.starts_with("Strategy:") && line.contains("simplify")));
+            .any(|line| line.starts_with("Strategy:") && line.contains("finite sums/products")));
         assert!(lines.iter().any(|line| line.contains("Finite Summation")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:") && line.contains("1 / 3") && line.contains("n + 3")
@@ -3738,7 +3902,7 @@ mod tests {
 
         assert!(lines
             .iter()
-            .any(|line| line.starts_with("Strategy:") && line.contains("simplify")));
+            .any(|line| line.starts_with("Strategy:") && line.contains("finite sums/products")));
         assert!(lines.iter().any(|line| line.contains("Finite Summation")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
@@ -3761,7 +3925,7 @@ mod tests {
 
         assert!(lines
             .iter()
-            .any(|line| line.starts_with("Strategy:") && line.contains("simplify")));
+            .any(|line| line.starts_with("Strategy:") && line.contains("finite sums/products")));
         assert!(lines.iter().any(|line| line.contains("Finite Summation")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
@@ -3784,7 +3948,7 @@ mod tests {
 
         assert!(lines
             .iter()
-            .any(|line| line.starts_with("Strategy:") && line.contains("simplify")));
+            .any(|line| line.starts_with("Strategy:") && line.contains("finite sums/products")));
         assert!(lines.iter().any(|line| line.contains("Finite Summation")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
@@ -3814,7 +3978,7 @@ mod tests {
 
         assert!(lines
             .iter()
-            .any(|line| line.starts_with("Strategy:") && line.contains("simplify")));
+            .any(|line| line.starts_with("Strategy:") && line.contains("finite sums/products")));
         assert!(lines.iter().any(|line| line.contains("Finite Summation")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
@@ -3842,7 +4006,7 @@ mod tests {
 
         assert!(lines
             .iter()
-            .any(|line| line.starts_with("Strategy:") && line.contains("simplify")));
+            .any(|line| line.starts_with("Strategy:") && line.contains("finite sums/products")));
         assert!(lines.iter().any(|line| line.contains("Finite Summation")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
@@ -3873,7 +4037,7 @@ mod tests {
 
         assert!(lines
             .iter()
-            .any(|line| line.starts_with("Strategy:") && line.contains("simplify")));
+            .any(|line| line.starts_with("Strategy:") && line.contains("finite sums/products")));
         assert!(lines.iter().any(|line| line.contains("Finite Summation")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
@@ -3904,7 +4068,7 @@ mod tests {
 
         assert!(lines
             .iter()
-            .any(|line| line.starts_with("Strategy:") && line.contains("simplify")));
+            .any(|line| line.starts_with("Strategy:") && line.contains("finite sums/products")));
         assert!(lines.iter().any(|line| line.contains("Finite Summation")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
@@ -3935,7 +4099,7 @@ mod tests {
 
         assert!(lines
             .iter()
-            .any(|line| line.starts_with("Strategy:") && line.contains("simplify")));
+            .any(|line| line.starts_with("Strategy:") && line.contains("finite sums/products")));
         assert!(lines.iter().any(|line| line.contains("Finite Summation")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
@@ -4156,7 +4320,7 @@ mod tests {
         let mut simplifier = crate::Simplifier::with_default_rules();
         let lines = evaluate_derive_command_lines_with_resolver(
             &mut simplifier,
-            "derive 1/x + 1/y, (x+y)/(x*y)",
+            "derive a/x + b/y, (a*y+b*x)/(x*y)",
             crate::FullSimplifyDisplayMode::Normal,
             crate::SimplifyOptions::default(),
             |_ctx, expr| Ok(expr),
@@ -4171,9 +4335,9 @@ mod tests {
             .any(|line| line.contains("Combine two fractions into a single denominator")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
-                && (line.contains("(x + y) / (x * y)")
-                    || line.contains("(y + x) / (x * y)")
-                    || line.contains("(x + y) / (y * x)"))
+                && (line.contains("(a * y + b * x) / (x * y)")
+                    || line.contains("(b * x + a * y) / (x * y)")
+                    || line.contains("(a * y + b * x) / (y * x)"))
         }));
     }
 
@@ -4256,7 +4420,7 @@ mod tests {
         let mut simplifier = crate::Simplifier::with_default_rules();
         let lines = evaluate_derive_command_lines_with_resolver(
             &mut simplifier,
-            "derive 1/x - 1/y, (y-x)/(x*y)",
+            "derive a/x - b/y, (a*y-b*x)/(x*y)",
             crate::FullSimplifyDisplayMode::Normal,
             crate::SimplifyOptions::default(),
             |_ctx, expr| Ok(expr),
@@ -4271,9 +4435,9 @@ mod tests {
             .any(|line| line.contains("Subtract two fractions into a single denominator")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
-                && (line.contains("(y - x) / (x * y)")
-                    || line.contains("(-x + y) / (x * y)")
-                    || line.contains("(y - x) / (y * x)"))
+                && (line.contains("(a * y - b * x) / (x * y)")
+                    || line.contains("(-b * x + a * y) / (x * y)")
+                    || line.contains("(a * y - b * x) / (y * x)"))
         }));
     }
 
@@ -4521,7 +4685,7 @@ mod tests {
 
         assert!(lines
             .iter()
-            .any(|line| line.starts_with("Strategy:") && line.contains("simplify")));
+            .any(|line| line.starts_with("Strategy:") && line.contains("cancel fraction")));
         assert!(lines
             .iter()
             .any(|line| line.starts_with("Result:") && line.contains("a - b")));
@@ -4537,7 +4701,7 @@ mod tests {
 
         for (input, fragments) in cases {
             let lines = derive_lines(input);
-            assert_derive_strategy(&lines, "simplify");
+            assert_derive_strategy(&lines, "cancel fraction");
             assert!(
                 lines
                     .iter()
@@ -4562,7 +4726,7 @@ mod tests {
 
         assert!(lines
             .iter()
-            .any(|line| line.starts_with("Strategy:") && line.contains("simplify")));
+            .any(|line| line.starts_with("Strategy:") && line.contains("cancel fraction")));
         assert!(lines
             .iter()
             .any(|line| line.contains("Cancel Sum/Difference of Cubes Fraction")));
@@ -4588,7 +4752,7 @@ mod tests {
 
         assert!(lines
             .iter()
-            .any(|line| line.starts_with("Strategy:") && line.contains("simplify")));
+            .any(|line| line.starts_with("Strategy:") && line.contains("cancel fraction")));
         assert!(lines
             .iter()
             .any(|line| line.contains("Cancel Sum/Difference of Cubes Fraction")));
@@ -4696,7 +4860,7 @@ mod tests {
 
         assert!(lines
             .iter()
-            .any(|line| line.starts_with("Strategy:") && line.contains("simplify")));
+            .any(|line| line.starts_with("Strategy:") && line.contains("rewrite trigs")));
         assert!(lines
             .iter()
             .any(|line| line.contains("Pythagorean Chain Identity")));
@@ -4716,7 +4880,7 @@ mod tests {
 
         for (input, fragments) in cases {
             let lines = derive_lines(input);
-            assert_derive_strategy(&lines, "simplify");
+            assert_derive_strategy(&lines, "rewrite trigs");
             assert!(
                 lines
                     .iter()
@@ -4834,7 +4998,7 @@ mod tests {
     #[test]
     fn evaluate_derive_command_lines_reaches_tabulated_inverse_tan_identity_targets() {
         let cases = [
-            ("derive arctan(3) + arctan(1/3), pi/2", &["pi", "/ 2"][..]),
+            ("derive arctan(a) + arctan(1/a), pi/2", &["pi", "/ 2"][..]),
             ("derive atan(3) + (atan(1/3) - pi/2), 0", &["0"][..]),
         ];
 
@@ -4849,9 +5013,9 @@ mod tests {
             )
             .expect("derive should evaluate");
 
-            assert!(lines
-                .iter()
-                .any(|line| line.starts_with("Strategy:") && line.contains("simplify")));
+            assert!(lines.iter().any(|line| {
+                line.starts_with("Strategy:") && line.contains("rewrite inverse trigs")
+            }));
             assert!(lines
                 .iter()
                 .any(|line| line.contains("Inverse Tan Relations")));
@@ -4866,6 +5030,29 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_prefers_direct_consecutive_factorial_ratio_rewrite() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let lines = evaluate_derive_command_lines_with_resolver(
+            &mut simplifier,
+            "derive (n+1)!/n!, n+1",
+            crate::FullSimplifyDisplayMode::Normal,
+            crate::SimplifyOptions::default(),
+            |_ctx, expr| Ok(expr),
+        )
+        .expect("derive should evaluate");
+
+        assert!(lines
+            .iter()
+            .any(|line| { line.starts_with("Strategy:") && line.contains("rewrite factorials") }));
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("Consecutive Factorial Ratio")));
+        assert!(lines
+            .iter()
+            .any(|line| line.starts_with("Result:") && line.contains("n + 1")));
     }
 
     #[test]
@@ -4888,7 +5075,7 @@ mod tests {
 
             assert!(lines
                 .iter()
-                .any(|line| line.starts_with("Strategy:") && line.contains("simplify")));
+                .any(|line| line.starts_with("Strategy:") && line.contains("combine like terms")));
             let result_line = lines
                 .iter()
                 .find(|line| line.starts_with("Result:"))
@@ -5234,13 +5421,25 @@ mod tests {
             let lines = derive_lines(input);
             assert_derive_strategy(&lines, "combine powers");
             assert!(lines.iter().any(|line| {
-                line.contains("Reescribir la raíz como potencia fraccionaria")
-                    || line.contains("sqrt(x) = x^(1/2)")
-            }));
-            assert!(lines.iter().any(|line| {
                 line.contains("Sumar exponentes de la misma base")
                     || line.contains("Combine powers with same base (n-ary)")
             }));
+            assert!(
+                lines
+                    .iter()
+                    .filter(|line| line.trim_start().starts_with("1. "))
+                    .count()
+                    == 1
+                    && !lines.iter().any(|line| line.trim_start().starts_with("2. ")),
+                "expected root+power merge to collapse into one visible combine-powers step in {lines:?}"
+            );
+            assert!(
+                !lines.iter().any(|line| {
+                    line.contains("Reescribir la raíz como potencia fraccionaria")
+                        || line.contains("sqrt(x) = x^(1/2)")
+                }),
+                "expected root canonicalization to stay internal to the combine-powers step in {lines:?}"
+            );
             assert!(!lines.iter().any(|line| line.contains("Product of Powers")));
             assert_result_contains_all(&lines, result_fragments);
         }
@@ -5461,6 +5660,792 @@ mod tests {
     }
 
     #[test]
+    fn evaluate_derive_command_lines_planner_bridges_hyperbolic_sum_to_exponential_definition() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let lines = evaluate_derive_command_lines_with_resolver(
+            &mut simplifier,
+            "derive sinh(2*x)*cosh(x)+cosh(2*x)*sinh(x), (e^(3*x)-e^(-3*x))/2",
+            crate::FullSimplifyDisplayMode::Normal,
+            crate::SimplifyOptions::default(),
+            |_ctx, expr| Ok(expr),
+        )
+        .expect("derive should evaluate");
+
+        assert!(lines
+            .iter()
+            .any(|line| line.starts_with("Strategy:") && line.contains("planner")));
+        assert!(
+            lines
+                .iter()
+                .filter(|line| {
+                    let trimmed = line.trim_start();
+                    let Some(prefix) = trimmed.split_whitespace().next() else {
+                        return false;
+                    };
+                    prefix.ends_with('.')
+                        && prefix[..prefix.len().saturating_sub(1)]
+                            .chars()
+                            .all(|ch| ch.is_ascii_digit())
+                })
+                .count()
+                >= 2,
+            "expected planner path to expose at least two visible steps; lines={lines:?}"
+        );
+        assert!(lines.iter().any(|line| {
+            line.starts_with("Result:")
+                && line.contains("e^(3")
+                && line.contains("e^(-3")
+                && line.contains("/ 2")
+        }));
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_prefers_expand_for_hyperbolic_sinh_difference() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let lines = evaluate_derive_command_lines_with_resolver(
+            &mut simplifier,
+            "derive sinh(x-y), sinh(x)*cosh(y)-sinh(y)*cosh(x)",
+            crate::FullSimplifyDisplayMode::Normal,
+            crate::SimplifyOptions::default(),
+            |_ctx, expr| Ok(expr),
+        )
+        .expect("derive should evaluate");
+
+        assert!(lines
+            .iter()
+            .any(|line| line.starts_with("Strategy:") && line.contains("expand")));
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("Hyperbolic Angle Sum/Difference Identity")));
+        assert!(lines.iter().any(|line| {
+            line.starts_with("Result:")
+                && line.contains("sinh(x)")
+                && line.contains("cosh(y)")
+                && line.contains("-")
+        }));
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_planner_chains_hyperbolic_sum_to_split_exponential_products() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let lines = evaluate_derive_command_lines_with_resolver(
+            &mut simplifier,
+            "derive sinh(2*x)*cosh(x)+cosh(2*x)*sinh(x), (e^x*e^(2*x)-e^(-x)*e^(-2*x))/2",
+            crate::FullSimplifyDisplayMode::Normal,
+            crate::SimplifyOptions::default(),
+            |_ctx, expr| Ok(expr),
+        )
+        .expect("derive should evaluate");
+
+        assert!(lines
+            .iter()
+            .any(|line| line.starts_with("Strategy:") && line.contains("planner")));
+        assert!(
+            lines
+                .iter()
+                .filter(|line| {
+                    let trimmed = line.trim_start();
+                    let Some(prefix) = trimmed.split_whitespace().next() else {
+                        return false;
+                    };
+                    prefix.ends_with('.')
+                        && prefix[..prefix.len().saturating_sub(1)]
+                            .chars()
+                            .all(|ch| ch.is_ascii_digit())
+                })
+                .count()
+                >= 2,
+            "expected planner path to expose at least two visible steps; lines={lines:?}"
+        );
+        assert!(lines.iter().any(|line| line.contains("e^")));
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_prefers_direct_scaled_cosh_from_scaled_argument_exponentials()
+    {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let lines = evaluate_derive_command_lines_with_resolver(
+            &mut simplifier,
+            "derive exp(2*x)+exp(-2*x), 2*cosh(2*x)",
+            crate::FullSimplifyDisplayMode::Normal,
+            crate::SimplifyOptions::default(),
+            |_ctx, expr| Ok(expr),
+        )
+        .expect("derive should evaluate");
+
+        assert!(lines
+            .iter()
+            .any(|line| { line.starts_with("Strategy:") && line.contains("rewrite hyperbolics") }));
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("Hyperbolic Exponential Identity")));
+        assert!(lines.iter().any(|line| {
+            line.starts_with("Result:") && line.contains("2") && line.contains("cosh(2")
+        }));
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_prefers_direct_scaled_cosh_to_exponential_sum() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let lines = evaluate_derive_command_lines_with_resolver(
+            &mut simplifier,
+            "derive 2*cosh(2*x), exp(2*x)+exp(-2*x)",
+            crate::FullSimplifyDisplayMode::Normal,
+            crate::SimplifyOptions::default(),
+            |_ctx, expr| Ok(expr),
+        )
+        .expect("derive should evaluate");
+
+        assert!(lines
+            .iter()
+            .any(|line| line.starts_with("Strategy:") && line.contains("planner")));
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("Hyperbolic Exponential Identity")));
+        assert!(lines.iter().any(|line| {
+            line.starts_with("Result:") && line.contains("e^(-2") && line.contains("e^(2")
+        }));
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_uses_named_exponential_sum_difference_with_passthrough() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let lines = evaluate_derive_command_lines_with_resolver(
+            &mut simplifier,
+            "derive exp(x+y)+a, exp(x)*exp(y)+a",
+            crate::FullSimplifyDisplayMode::Normal,
+            crate::SimplifyOptions::default(),
+            |_ctx, expr| Ok(expr),
+        )
+        .expect("derive should evaluate");
+
+        assert!(lines
+            .iter()
+            .any(|line| line.starts_with("Strategy:") && line.contains("rewrite exponentials")));
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("Exponential Sum/Difference Identity")));
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_uses_named_exponential_contraction_with_passthrough() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let lines = evaluate_derive_command_lines_with_resolver(
+            &mut simplifier,
+            "derive exp(x)*exp(y)+a, exp(x+y)+a",
+            crate::FullSimplifyDisplayMode::Normal,
+            crate::SimplifyOptions::default(),
+            |_ctx, expr| Ok(expr),
+        )
+        .expect("derive should evaluate");
+
+        assert!(lines
+            .iter()
+            .any(|line| line.starts_with("Strategy:") && line.contains("rewrite exponentials")));
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("Exponential Sum/Difference Identity")));
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_planner_chains_trig_sum_to_triple_angle_polynomial() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let lines = evaluate_derive_command_lines_with_resolver(
+            &mut simplifier,
+            "derive sin(2*x)*cos(x)+cos(2*x)*sin(x), 3*sin(x)-4*sin(x)^3",
+            crate::FullSimplifyDisplayMode::Normal,
+            crate::SimplifyOptions::default(),
+            |_ctx, expr| Ok(expr),
+        )
+        .expect("derive should evaluate");
+
+        assert!(lines
+            .iter()
+            .any(|line| line.starts_with("Strategy:") && line.contains("planner")));
+        assert!(
+            lines
+                .iter()
+                .filter(|line| {
+                    let trimmed = line.trim_start();
+                    let Some(prefix) = trimmed.split_whitespace().next() else {
+                        return false;
+                    };
+                    prefix.ends_with('.')
+                        && prefix[..prefix.len().saturating_sub(1)]
+                            .chars()
+                            .all(|ch| ch.is_ascii_digit())
+                })
+                .count()
+                >= 1,
+            "expected planner path to expose at least one visible step; lines={lines:?}"
+        );
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("Angle Sum/Diff Identity")));
+        assert!(lines.iter().any(|line| {
+            line.starts_with("Result:")
+                && line.contains("3")
+                && line.contains("sin(")
+                && line.contains("- 4")
+        }));
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_prefers_direct_product_to_sum_identity() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let lines = evaluate_derive_command_lines_with_resolver(
+            &mut simplifier,
+            "derive 2*sin(2*x)*cos(x), sin(3*x)+sin(x)",
+            crate::FullSimplifyDisplayMode::Normal,
+            crate::SimplifyOptions::default(),
+            |_ctx, expr| Ok(expr),
+        )
+        .expect("derive should evaluate");
+
+        assert!(lines
+            .iter()
+            .any(|line| line.starts_with("Strategy:") && line.contains("expand trig")));
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("Product-to-Sum Identity")));
+        assert!(!lines
+            .iter()
+            .any(|line| line.contains("Linear Angle Simplification")));
+        assert!(lines.iter().any(|line| {
+            line.starts_with("Result:") && line.contains("sin(3") && line.contains("sin(x)")
+        }));
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_prefers_direct_cosine_product_to_sum_identity() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let lines = evaluate_derive_command_lines_with_resolver(
+            &mut simplifier,
+            "derive 2*cos(2*x)*cos(x), cos(3*x)+cos(x)",
+            crate::FullSimplifyDisplayMode::Normal,
+            crate::SimplifyOptions::default(),
+            |_ctx, expr| Ok(expr),
+        )
+        .expect("derive should evaluate");
+
+        assert!(lines
+            .iter()
+            .any(|line| line.starts_with("Strategy:") && line.contains("expand trig")));
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("Product-to-Sum Identity")));
+        assert!(!lines
+            .iter()
+            .any(|line| line.contains("Linear Angle Simplification")));
+        assert!(lines.iter().any(|line| {
+            line.starts_with("Result:") && line.contains("cos(3") && line.contains("cos(x)")
+        }));
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_prefers_direct_sine_product_to_sum_difference_identity() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let lines = evaluate_derive_command_lines_with_resolver(
+            &mut simplifier,
+            "derive 2*sin(2*x)*sin(x), cos(x)-cos(3*x)",
+            crate::FullSimplifyDisplayMode::Normal,
+            crate::SimplifyOptions::default(),
+            |_ctx, expr| Ok(expr),
+        )
+        .expect("derive should evaluate");
+
+        assert!(lines
+            .iter()
+            .any(|line| line.starts_with("Strategy:") && line.contains("expand trig")));
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("Product-to-Sum Identity")));
+        assert!(!lines
+            .iter()
+            .any(|line| line.contains("Linear Angle Simplification")));
+        assert!(lines.iter().any(|line| {
+            line.starts_with("Result:") && line.contains("cos(3") && line.contains("cos(x)")
+        }));
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_planner_uses_targeted_additive_triple_angle_bridge() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let lines = evaluate_derive_command_lines_with_resolver(
+            &mut simplifier,
+            "derive 2*sin(2*x)*sin(x), cos(x)-4*cos(x)^3+3*cos(x)",
+            crate::FullSimplifyDisplayMode::Normal,
+            crate::SimplifyOptions::default(),
+            |_ctx, expr| Ok(expr),
+        )
+        .expect("derive should evaluate");
+
+        assert!(lines
+            .iter()
+            .any(|line| line.starts_with("Strategy:") && line.contains("planner")));
+        assert_eq!(
+            lines
+                .iter()
+                .filter(|line| {
+                    let trimmed = line.trim_start();
+                    let Some(prefix) = trimmed.split_whitespace().next() else {
+                        return false;
+                    };
+                    prefix.ends_with('.')
+                        && prefix[..prefix.len().saturating_sub(1)]
+                            .chars()
+                            .all(|ch| ch.is_ascii_digit())
+                })
+                .count(),
+            2,
+            "expected planner path to expose exactly two visible steps; lines={lines:?}"
+        );
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("Product-to-Sum Identity")));
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("Triple Angle Expansion")));
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_planner_uses_combined_additive_triple_angle_bridge_for_cosine_sum(
+    ) {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let lines = evaluate_derive_command_lines_with_resolver(
+            &mut simplifier,
+            "derive 2*cos(2*x)*cos(x), 4*cos(x)^3-2*cos(x)",
+            crate::FullSimplifyDisplayMode::Normal,
+            crate::SimplifyOptions::default(),
+            |_ctx, expr| Ok(expr),
+        )
+        .expect("derive should evaluate");
+
+        assert!(lines
+            .iter()
+            .any(|line| line.starts_with("Strategy:") && line.contains("planner")));
+        assert_eq!(
+            lines
+                .iter()
+                .filter(|line| {
+                    let trimmed = line.trim_start();
+                    let Some(prefix) = trimmed.split_whitespace().next() else {
+                        return false;
+                    };
+                    prefix.ends_with('.')
+                        && prefix[..prefix.len().saturating_sub(1)]
+                            .chars()
+                            .all(|ch| ch.is_ascii_digit())
+                })
+                .count(),
+            2,
+            "expected planner path to expose exactly two visible steps; lines={lines:?}"
+        );
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("Product-to-Sum Identity")));
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("Triple Angle Expansion")));
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_planner_uses_combined_additive_triple_angle_bridge_for_cosine_difference(
+    ) {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let lines = evaluate_derive_command_lines_with_resolver(
+            &mut simplifier,
+            "derive 2*sin(2*x)*sin(x), 4*cos(x)-4*cos(x)^3",
+            crate::FullSimplifyDisplayMode::Normal,
+            crate::SimplifyOptions::default(),
+            |_ctx, expr| Ok(expr),
+        )
+        .expect("derive should evaluate");
+
+        assert!(lines
+            .iter()
+            .any(|line| line.starts_with("Strategy:") && line.contains("planner")));
+        assert_eq!(
+            lines
+                .iter()
+                .filter(|line| {
+                    let trimmed = line.trim_start();
+                    let Some(prefix) = trimmed.split_whitespace().next() else {
+                        return false;
+                    };
+                    prefix.ends_with('.')
+                        && prefix[..prefix.len().saturating_sub(1)]
+                            .chars()
+                            .all(|ch| ch.is_ascii_digit())
+                })
+                .count(),
+            2,
+            "expected planner path to expose exactly two visible steps; lines={lines:?}"
+        );
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("Product-to-Sum Identity")));
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("Triple Angle Expansion")));
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_planner_uses_combined_additive_triple_angle_bridge_for_sine_difference_mixed_polynomial(
+    ) {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let lines = evaluate_derive_command_lines_with_resolver(
+            &mut simplifier,
+            "derive 2*cos(2*x)*sin(x), 4*cos(x)^2*sin(x)-2*sin(x)",
+            crate::FullSimplifyDisplayMode::Normal,
+            crate::SimplifyOptions::default(),
+            |_ctx, expr| Ok(expr),
+        )
+        .expect("derive should evaluate");
+
+        assert!(lines
+            .iter()
+            .any(|line| line.starts_with("Strategy:") && line.contains("planner")));
+        assert_eq!(
+            lines
+                .iter()
+                .filter(|line| {
+                    let trimmed = line.trim_start();
+                    let Some(prefix) = trimmed.split_whitespace().next() else {
+                        return false;
+                    };
+                    prefix.ends_with('.')
+                        && prefix[..prefix.len().saturating_sub(1)]
+                            .chars()
+                            .all(|ch| ch.is_ascii_digit())
+                })
+                .count(),
+            2,
+            "expected planner path to expose exactly two visible steps; lines={lines:?}"
+        );
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("Product-to-Sum Identity")));
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("Triple Angle Expansion")));
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_prefers_direct_mixed_cosine_difference_double_angle_expansion()
+    {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let lines = evaluate_derive_command_lines_with_resolver(
+            &mut simplifier,
+            "derive 2*sin(2*x)*sin(x), 4*sin(x)^2*cos(x)",
+            crate::FullSimplifyDisplayMode::Normal,
+            crate::SimplifyOptions::default(),
+            |_ctx, expr| Ok(expr),
+        )
+        .expect("derive should evaluate");
+
+        assert!(lines
+            .iter()
+            .any(|line| line.starts_with("Strategy:") && line.contains("expand trig")));
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("Double Angle Expansion")));
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_planner_reaches_hyperbolic_product_to_sum_triple_angle_polynomial(
+    ) {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let lines = evaluate_derive_command_lines_with_resolver(
+            &mut simplifier,
+            "derive 2*sinh(2*x)*cosh(x), 4*sinh(x)+4*sinh(x)^3",
+            crate::FullSimplifyDisplayMode::Normal,
+            crate::SimplifyOptions::default(),
+            |_ctx, expr| Ok(expr),
+        )
+        .expect("derive should evaluate");
+
+        assert!(lines
+            .iter()
+            .any(|line| line.starts_with("Strategy:") && line.contains("planner")));
+        assert_eq!(
+            lines
+                .iter()
+                .filter(|line| {
+                    let trimmed = line.trim_start();
+                    let Some(prefix) = trimmed.split_whitespace().next() else {
+                        return false;
+                    };
+                    prefix.ends_with('.')
+                        && prefix[..prefix.len().saturating_sub(1)]
+                            .chars()
+                            .all(|ch| ch.is_ascii_digit())
+                })
+                .count(),
+            2,
+            "expected planner path to expose exactly two visible steps; lines={lines:?}"
+        );
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("Hyperbolic Product-to-Sum Identity")));
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("Hyperbolic Triple-Angle Identity")));
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_prefers_direct_hyperbolic_product_to_sum_expansion_over_planner(
+    ) {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let lines = evaluate_derive_command_lines_with_resolver(
+            &mut simplifier,
+            "derive 2*sinh(2*x)*cosh(x), sinh(3*x)+sinh(x)",
+            crate::FullSimplifyDisplayMode::Normal,
+            crate::SimplifyOptions::default(),
+            |_ctx, expr| Ok(expr),
+        )
+        .expect("derive should evaluate");
+
+        assert!(lines
+            .iter()
+            .any(|line| line.starts_with("Strategy:") && line.contains("expand")));
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("Hyperbolic Product-to-Sum Identity")));
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_prefers_direct_hyperbolic_sum_to_product_contraction_over_planner(
+    ) {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let lines = evaluate_derive_command_lines_with_resolver(
+            &mut simplifier,
+            "derive sinh(3*x)-sinh(x), 2*cosh(2*x)*sinh(x)",
+            crate::FullSimplifyDisplayMode::Normal,
+            crate::SimplifyOptions::default(),
+            |_ctx, expr| Ok(expr),
+        )
+        .expect("derive should evaluate");
+
+        assert!(lines
+            .iter()
+            .any(|line| line.starts_with("Strategy:") && line.contains("expand")));
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("Hyperbolic Product-to-Sum Identity")));
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_planner_reaches_hyperbolic_cosh_product_to_sum_triple_angle_polynomial(
+    ) {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let lines = evaluate_derive_command_lines_with_resolver(
+            &mut simplifier,
+            "derive 2*sinh(2*x)*sinh(x), 4*cosh(x)^3-4*cosh(x)",
+            crate::FullSimplifyDisplayMode::Normal,
+            crate::SimplifyOptions::default(),
+            |_ctx, expr| Ok(expr),
+        )
+        .expect("derive should evaluate");
+
+        assert!(lines
+            .iter()
+            .any(|line| line.starts_with("Strategy:") && line.contains("planner")));
+        assert_eq!(
+            lines
+                .iter()
+                .filter(|line| {
+                    let trimmed = line.trim_start();
+                    let Some(prefix) = trimmed.split_whitespace().next() else {
+                        return false;
+                    };
+                    prefix.ends_with('.')
+                        && prefix[..prefix.len().saturating_sub(1)]
+                            .chars()
+                            .all(|ch| ch.is_ascii_digit())
+                })
+                .count(),
+            2,
+            "expected planner path to expose exactly two visible steps; lines={lines:?}"
+        );
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("Hyperbolic Product-to-Sum Identity")));
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("Hyperbolic Triple-Angle Identity")));
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_planner_reaches_hyperbolic_product_to_sum_triple_angle_polynomial_with_passthrough_term(
+    ) {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let lines = evaluate_derive_command_lines_with_resolver(
+            &mut simplifier,
+            "derive 2*sinh(2*x)*sinh(x)+a, 4*cosh(x)^3-4*cosh(x)+a",
+            crate::FullSimplifyDisplayMode::Normal,
+            crate::SimplifyOptions::default(),
+            |_ctx, expr| Ok(expr),
+        )
+        .expect("derive should evaluate");
+
+        assert!(lines
+            .iter()
+            .any(|line| line.starts_with("Strategy:") && line.contains("planner")));
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("Hyperbolic Product-to-Sum Identity")));
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("Hyperbolic Triple-Angle Identity")));
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_prefers_direct_hyperbolic_cosh_double_angle_expansion_to_sinh_cubic_polynomial(
+    ) {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let lines = evaluate_derive_command_lines_with_resolver(
+            &mut simplifier,
+            "derive 2*cosh(2*x)*sinh(x), 2*sinh(x)+4*sinh(x)^3",
+            crate::FullSimplifyDisplayMode::Normal,
+            crate::SimplifyOptions::default(),
+            |_ctx, expr| Ok(expr),
+        )
+        .expect("derive should evaluate");
+
+        assert!(lines
+            .iter()
+            .any(|line| { line.starts_with("Strategy:") && line.contains("rewrite hyperbolics") }));
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("Hyperbolic Double-Angle Identity")));
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_prefers_direct_hyperbolic_cosh_double_angle_expansion_to_sinh_mixed_polynomial(
+    ) {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let lines = evaluate_derive_command_lines_with_resolver(
+            &mut simplifier,
+            "derive 2*cosh(2*x)*sinh(x), 4*cosh(x)^2*sinh(x)-2*sinh(x)",
+            crate::FullSimplifyDisplayMode::Normal,
+            crate::SimplifyOptions::default(),
+            |_ctx, expr| Ok(expr),
+        )
+        .expect("derive should evaluate");
+
+        assert!(lines
+            .iter()
+            .any(|line| { line.starts_with("Strategy:") && line.contains("rewrite hyperbolics") }));
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("Hyperbolic Double-Angle Identity")));
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_prefers_direct_hyperbolic_cosh_double_angle_contraction_from_sinh_mixed_polynomial(
+    ) {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let lines = evaluate_derive_command_lines_with_resolver(
+            &mut simplifier,
+            "derive 4*cosh(x)^2*sinh(x)-2*sinh(x), 2*cosh(2*x)*sinh(x)",
+            crate::FullSimplifyDisplayMode::Normal,
+            crate::SimplifyOptions::default(),
+            |_ctx, expr| Ok(expr),
+        )
+        .expect("derive should evaluate");
+
+        assert!(lines
+            .iter()
+            .any(|line| { line.starts_with("Strategy:") && line.contains("rewrite hyperbolics") }));
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("Hyperbolic Double-Angle Identity")));
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_prefers_direct_hyperbolic_cosh_double_angle_contraction_from_cosh_mixed_polynomial(
+    ) {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let lines = evaluate_derive_command_lines_with_resolver(
+            &mut simplifier,
+            "derive 2*cosh(x)+4*sinh(x)^2*cosh(x), 2*cosh(2*x)*cosh(x)",
+            crate::FullSimplifyDisplayMode::Normal,
+            crate::SimplifyOptions::default(),
+            |_ctx, expr| Ok(expr),
+        )
+        .expect("derive should evaluate");
+
+        assert!(lines
+            .iter()
+            .any(|line| { line.starts_with("Strategy:") && line.contains("rewrite hyperbolics") }));
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("Hyperbolic Double-Angle Identity")));
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_prefers_direct_hyperbolic_cosh_double_angle_expansion_to_cosh_mixed_polynomial(
+    ) {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let lines = evaluate_derive_command_lines_with_resolver(
+            &mut simplifier,
+            "derive 2*cosh(2*x)*cosh(x), 2*cosh(x)+4*sinh(x)^2*cosh(x)",
+            crate::FullSimplifyDisplayMode::Normal,
+            crate::SimplifyOptions::default(),
+            |_ctx, expr| Ok(expr),
+        )
+        .expect("derive should evaluate");
+
+        assert!(lines
+            .iter()
+            .any(|line| { line.starts_with("Strategy:") && line.contains("rewrite hyperbolics") }));
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("Hyperbolic Double-Angle Identity")));
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_uses_named_double_angle_for_mixed_trig_product() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let lines = evaluate_derive_command_lines_with_resolver(
+            &mut simplifier,
+            "derive 4*sin(x)^2*cos(x), 2*sin(2*x)*sin(x)",
+            crate::FullSimplifyDisplayMode::Normal,
+            crate::SimplifyOptions::default(),
+            |_ctx, expr| Ok(expr),
+        )
+        .expect("derive should evaluate");
+
+        assert!(lines
+            .iter()
+            .any(|line| line.starts_with("Strategy:") && line.contains("contract trig")));
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("Double Angle Expansion")));
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_uses_named_double_angle_for_forward_mixed_trig_product() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let lines = evaluate_derive_command_lines_with_resolver(
+            &mut simplifier,
+            "derive 2*sin(2*x)*sin(x), 4*sin(x)^2*cos(x)",
+            crate::FullSimplifyDisplayMode::Normal,
+            crate::SimplifyOptions::default(),
+            |_ctx, expr| Ok(expr),
+        )
+        .expect("derive should evaluate");
+
+        assert!(lines
+            .iter()
+            .any(|line| line.starts_with("Strategy:") && line.contains("expand trig")));
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("Double Angle Expansion")));
+    }
+
+    #[test]
     fn evaluate_derive_command_lines_reports_non_equivalent_target() {
         let mut simplifier = crate::Simplifier::with_default_rules();
         let lines = evaluate_derive_command_lines_with_resolver(
@@ -5475,6 +6460,25 @@ mod tests {
         assert!(lines.iter().any(
             |line| line.contains("Derive unavailable: the two expressions are not equivalent.")
         ));
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_reports_unknown_equivalence_as_missing_derivation() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let lines = evaluate_derive_command_lines_with_resolver(
+            &mut simplifier,
+            "derive cos(x)-cos(y), -2*sin((x+y)/2)*sin((x-y)/2)",
+            crate::FullSimplifyDisplayMode::Normal,
+            crate::SimplifyOptions::default(),
+            |_ctx, expr| Ok(expr),
+        )
+        .expect("derive should evaluate");
+
+        assert!(lines.iter().any(|line| {
+            line.contains(
+                "Derive unavailable: cannot prove that the two expressions are equivalent, so it cannot provide step-by-step derivation."
+            )
+        }));
     }
 
     #[test]

@@ -1,16 +1,82 @@
+use cas_ast::ordering::compare_expr;
 use cas_ast::{Context, Expr, ExprId};
 use cas_formatter::DisplayExpr;
+use cas_math::expr_predicates::contains_named_var;
 use cas_math::expr_predicates::{is_one_expr, is_zero_expr};
 use cas_math::expr_rewrite::smart_mul;
 use cas_math::trig_roots_flatten::{flatten_add_sub_chain, flatten_mul_chain};
+use std::cmp::Ordering;
 use std::collections::BTreeMap;
 
 use super::strong_target_match;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct CombineLikeTermsRewrite {
+    pub(crate) rewritten: ExprId,
+    pub(crate) local_before: ExprId,
+    pub(crate) local_after: ExprId,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct CollectTargetRewrite {
     pub(crate) focus_label: String,
     pub(crate) rewritten: ExprId,
+}
+
+pub(crate) fn try_rewrite_combine_like_terms_target_aware(
+    ctx: &mut Context,
+    source_expr: ExprId,
+    target_expr: ExprId,
+) -> Option<CombineLikeTermsRewrite> {
+    if !matches!(ctx.get(source_expr), Expr::Add(_, _) | Expr::Sub(_, _)) {
+        return None;
+    }
+
+    for target_term in flatten_add_sub_chain(ctx, target_expr) {
+        let (_, focus_expr, _, _) = split_coeff_and_monomial(ctx, target_term);
+        if is_one_expr(ctx, focus_expr) {
+            continue;
+        }
+
+        let rewritten = rewrite_source_by_focus_simplifying_coeff(ctx, source_expr, focus_expr)?;
+        if strong_target_match(ctx, rewritten, target_expr) {
+            return Some(CombineLikeTermsRewrite {
+                rewritten,
+                local_before: source_expr,
+                local_after: rewritten,
+            });
+        }
+    }
+
+    None
+}
+
+pub(crate) fn run_combine_like_terms_rewrite(
+    ctx: &mut Context,
+    expr: ExprId,
+    target_expr: ExprId,
+    collect_steps: bool,
+) -> Option<(ExprId, Vec<crate::Step>)> {
+    let rewrite = try_rewrite_combine_like_terms_target_aware(ctx, expr, target_expr)?;
+    let steps = if collect_steps {
+        let mut step = crate::Step::with_snapshots(
+            "Combine like terms",
+            "Combine Like Terms",
+            expr,
+            rewrite.rewritten,
+            Vec::new(),
+            Some(ctx),
+            rewrite.local_before,
+            rewrite.local_after,
+        );
+        step.importance = crate::ImportanceLevel::Medium;
+        step.category = crate::StepCategory::Simplify;
+        vec![step]
+    } else {
+        Vec::new()
+    };
+
+    Some((rewrite.rewritten, steps))
 }
 
 pub(crate) fn try_rewrite_collect_monomial_target_aware(
@@ -19,8 +85,10 @@ pub(crate) fn try_rewrite_collect_monomial_target_aware(
     target_expr: ExprId,
 ) -> Option<CollectTargetRewrite> {
     for target_term in flatten_add_sub_chain(ctx, target_expr) {
-        let (_, focus_expr, _, focus_label) = split_coeff_and_monomial(ctx, target_term);
-        if is_one_expr(ctx, focus_expr) || is_simple_collect_focus(&focus_label) {
+        let (coeff_expr, focus_expr, _, focus_label) = split_coeff_and_monomial(ctx, target_term);
+        if is_one_expr(ctx, focus_expr)
+            || should_skip_simple_collect_focus(ctx, coeff_expr, &focus_label)
+        {
             continue;
         }
 
@@ -76,6 +144,52 @@ fn rewrite_source_by_focus(
 
     rebuilt_terms.insert(first_group_index.unwrap_or(0), grouped_term);
     Some(combine_add_chain(ctx, &rebuilt_terms))
+}
+
+fn rewrite_source_by_focus_simplifying_coeff(
+    ctx: &mut Context,
+    source_expr: ExprId,
+    focus_expr: ExprId,
+) -> Option<ExprId> {
+    let focus_signature = monomial_signature(ctx, focus_expr)?;
+    let source_terms = flatten_add_sub_chain(ctx, source_expr);
+    if source_terms.len() < 2 {
+        return None;
+    }
+
+    let mut grouped_coeffs = Vec::new();
+    let mut rebuilt_terms = Vec::new();
+    let mut first_group_index = None;
+
+    for term in source_terms {
+        if let Some(coeff) = divide_term_by_focus(ctx, term, &focus_signature) {
+            if first_group_index.is_none() {
+                first_group_index = Some(rebuilt_terms.len());
+            }
+            grouped_coeffs.push(coeff);
+        } else {
+            rebuilt_terms.push(term);
+        }
+    }
+
+    if grouped_coeffs.len() < 2 {
+        return None;
+    }
+
+    let grouped_coeff_sum = combine_add_chain(ctx, &grouped_coeffs);
+    let grouped_coeff = run_default_simplify(ctx, grouped_coeff_sum);
+    if !is_zero_expr(ctx, grouped_coeff) {
+        let grouped_term = if is_one_expr(ctx, grouped_coeff) {
+            focus_expr
+        } else {
+            smart_mul(ctx, grouped_coeff, focus_expr)
+        };
+        rebuilt_terms.insert(first_group_index.unwrap_or(0), grouped_term);
+    }
+
+    let rebuilt_sum = combine_add_chain(ctx, &rebuilt_terms);
+    let rebuilt = run_default_simplify(ctx, rebuilt_sum);
+    (compare_expr(ctx, rebuilt, source_expr) != Ordering::Equal).then_some(rebuilt)
 }
 
 fn combine_add_chain(ctx: &mut Context, terms: &[ExprId]) -> ExprId {
@@ -244,8 +358,13 @@ fn matches_target_modulo_simplify(ctx: &mut Context, left: ExprId, right: ExprId
 fn run_default_simplify(ctx: &mut Context, expr: ExprId) -> ExprId {
     let mut simplifier = crate::Simplifier::with_default_rules();
     std::mem::swap(&mut simplifier.context, ctx);
-    let (rewritten, _steps, _stats) =
-        simplifier.simplify_with_stats(expr, crate::SimplifyOptions::default());
+    let (rewritten, _steps, _stats) = simplifier.simplify_with_stats(
+        expr,
+        crate::SimplifyOptions {
+            suppress_depth_overflow_warnings: true,
+            ..crate::SimplifyOptions::default()
+        },
+    );
     std::mem::swap(&mut simplifier.context, ctx);
     rewritten
 }
@@ -257,9 +376,34 @@ fn is_simple_collect_focus(focus: &str) -> bool {
             .all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
 }
 
+fn should_skip_simple_collect_focus(ctx: &Context, coeff_expr: ExprId, focus: &str) -> bool {
+    is_simple_collect_focus(focus) && !contains_named_var(ctx, coeff_expr, focus)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::try_rewrite_collect_monomial_target_aware;
+    use super::{
+        render_expr, run_combine_like_terms_rewrite, try_rewrite_collect_monomial_target_aware,
+        try_rewrite_combine_like_terms_target_aware,
+    };
+
+    #[test]
+    fn target_aware_combine_like_terms_matches_tabulated_targets() {
+        let mut ctx = cas_ast::Context::new();
+        let source = cas_parser::parse("2*x + 3*x + 0", &mut ctx).expect("parse source");
+        let target = cas_parser::parse("5*x", &mut ctx).expect("parse target");
+
+        let rewrite = try_rewrite_combine_like_terms_target_aware(&mut ctx, source, target)
+            .expect("combine-like-terms rewrite");
+        assert_eq!(render_expr(&ctx, rewrite.rewritten), "5 * x");
+
+        let (_rewritten, steps) =
+            run_combine_like_terms_rewrite(&mut ctx, source, target, true).expect("stage rewrite");
+        assert!(!steps.is_empty());
+        assert!(steps
+            .iter()
+            .all(|step| step.rule_name == "Combine Like Terms"));
+    }
 
     #[test]
     fn target_aware_collect_matches_tabulated_composite_monomial_targets() {
@@ -300,5 +444,16 @@ mod tests {
         let source = cas_parser::parse("a*x + b*x + c", &mut ctx).expect("parse source");
         let target = cas_parser::parse("(a+b)*x + c", &mut ctx).expect("parse target");
         assert!(try_rewrite_collect_monomial_target_aware(&mut ctx, source, target).is_none());
+    }
+
+    #[test]
+    fn allows_simple_focus_when_target_coefficient_depends_on_same_variable() {
+        let mut ctx = cas_ast::Context::new();
+        let source = cas_parser::parse("x^2 + 2*x + 1", &mut ctx).expect("parse source");
+        let target = cas_parser::parse("x*(x + 2) + 1", &mut ctx).expect("parse target");
+        let rewrite = try_rewrite_collect_monomial_target_aware(&mut ctx, source, target)
+            .expect("expected target-aware collect rewrite");
+
+        assert_eq!(rewrite.focus_label, "x");
     }
 }

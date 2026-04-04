@@ -16,7 +16,7 @@ impl Engine {
     ) -> Result<ActionResult, anyhow::Error> {
         match action {
             EvalAction::Simplify => self.eval_simplify(options, resolved),
-            EvalAction::Expand => self.eval_expand(resolved),
+            EvalAction::Expand => self.eval_expand(options, resolved),
             EvalAction::Solve { var } => self.eval_solve(options, resolved, &var),
             EvalAction::Equiv { .. } => {
                 let resolved_other = resolved_equiv_other

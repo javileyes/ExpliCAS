@@ -10,7 +10,8 @@ use crate::domain_proof::Proof;
 use crate::domain_witness::{witness_survives_in_context, WitnessKind};
 use cas_ast::{Context, Expr, ExprId};
 use cas_math::expr_extract::{
-    extract_abs_argument_view, extract_sqrt_argument_view, extract_unary_log_argument_view,
+    extract_abs_argument_view, extract_log_base_argument_view, extract_sqrt_argument_view,
+    extract_unary_log_argument_view, log10_base_sentinel,
 };
 use cas_math::expr_predicates::{
     contains_variable, has_positivity_structure, is_even_root_exponent,
@@ -366,6 +367,20 @@ fn infer_recursive(ctx: &Context, root: ExprId, domain: &mut ImplicitDomain) {
                 domain.add_positive(arg);
                 stack.push(arg);
             }
+            Expr::Function(_, _) if extract_log_base_argument_view(ctx, expr).is_some() => {
+                let Some((base_opt, arg)) = extract_log_base_argument_view(ctx, expr) else {
+                    continue;
+                };
+                domain.add_positive(arg);
+                stack.push(arg);
+
+                if let Some(base) = base_opt {
+                    if base != log10_base_sentinel() && !matches!(ctx.get(base), Expr::Number(_)) {
+                        domain.add_positive(base);
+                        stack.push(base);
+                    }
+                }
+            }
             Expr::Pow(base, exp) => {
                 if let Expr::Number(n) = ctx.get(*exp) {
                     if is_even_root_exponent(n) && !matches!(ctx.get(*base), Expr::Number(_)) {
@@ -503,5 +518,18 @@ mod tests {
 
         assert!(domain.contains_nonzero(x_squared));
         assert!(domain.contains_nonzero(x));
+    }
+
+    #[test]
+    fn infer_general_log_adds_positive_base_and_argument() {
+        let mut ctx = Context::new();
+        let b = ctx.var("b");
+        let x = ctx.var("x");
+        let expr = ctx.call_builtin(cas_ast::BuiltinFn::Log, vec![b, x]);
+
+        let domain = infer_implicit_domain(&ctx, expr, true);
+
+        assert!(domain.contains_positive(b));
+        assert!(domain.contains_positive(x));
     }
 }

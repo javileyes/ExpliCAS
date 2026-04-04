@@ -54,6 +54,7 @@ fn build_assignment_wire_output(
         result,
         result_truncated: false,
         result_latex,
+        strategy: None,
         steps_mode: config.steps_mode.as_str(),
         steps_count: 0,
         steps: Vec::new(),

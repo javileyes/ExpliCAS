@@ -10,6 +10,7 @@ pub(super) fn build_eval_output_wire(
     build_eval_output_wire_value(
         &shared.warnings,
         &shared.required_display,
+        shared.strategy.as_deref(),
         &payload.result,
         payload.result_latex.as_deref(),
         steps_count,

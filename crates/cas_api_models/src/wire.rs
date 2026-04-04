@@ -162,11 +162,13 @@ impl WireMsg {
 /// Message order:
 /// 1. warnings
 /// 2. required conditions
-/// 3. result
-/// 4. steps summary (optional)
+/// 3. strategy (optional)
+/// 4. result
+/// 5. steps summary (optional)
 pub fn build_eval_wire_reply(
     warnings: &[WarningWire],
     required_display: &[String],
+    strategy: Option<&str>,
     result: &str,
     result_latex: Option<&str>,
     steps_count: usize,
@@ -188,6 +190,13 @@ pub fn build_eval_wire_reply(
         }
     }
 
+    if let Some(strategy) = strategy {
+        messages.push(WireMsg::new(
+            WireKind::Info,
+            format!("Strategy: {strategy}"),
+        ));
+    }
+
     let result_text = if let Some(latex) = result_latex {
         format!("Result: {} [LaTeX: {}]", result, latex)
     } else {
@@ -196,10 +205,12 @@ pub fn build_eval_wire_reply(
     messages.push(WireMsg::new(WireKind::Output, result_text));
 
     if steps_mode == "on" && steps_count > 0 {
-        messages.push(WireMsg::new(
-            WireKind::Steps,
-            format!("{} simplification step(s)", steps_count),
-        ));
+        let steps_text = if let Some(strategy) = strategy {
+            format!("{steps_count} step(s) via {strategy}")
+        } else {
+            format!("{steps_count} simplification step(s)")
+        };
+        messages.push(WireMsg::new(WireKind::Steps, steps_text));
     }
 
     WireReply::new(messages)
@@ -240,22 +251,41 @@ mod tests {
             assumption: "a != 0".to_string(),
         }];
         let required = vec!["x > 0".to_string()];
-        let reply = build_eval_wire_reply(&warnings, &required, "42", Some("42"), 3, "on");
+        let reply = build_eval_wire_reply(
+            &warnings,
+            &required,
+            Some("expand"),
+            "42",
+            Some("42"),
+            3,
+            "on",
+        );
 
         assert_eq!(reply.schema_version, SCHEMA_VERSION);
-        assert_eq!(reply.messages.len(), 5);
+        assert_eq!(reply.messages.len(), 6);
         assert_eq!(reply.messages[0].kind, WireKind::Warn);
         assert_eq!(reply.messages[1].kind, WireKind::Info);
         assert_eq!(reply.messages[2].kind, WireKind::Info);
-        assert_eq!(reply.messages[3].kind, WireKind::Output);
-        assert_eq!(reply.messages[4].kind, WireKind::Steps);
+        assert_eq!(reply.messages[3].kind, WireKind::Info);
+        assert_eq!(reply.messages[3].text, "Strategy: expand");
+        assert_eq!(reply.messages[4].kind, WireKind::Output);
+        assert_eq!(reply.messages[5].kind, WireKind::Steps);
+        assert_eq!(reply.messages[5].text, "3 step(s) via expand");
     }
 
     #[test]
     fn build_eval_wire_reply_omits_steps_when_disabled() {
-        let reply = build_eval_wire_reply(&[], &[], "ok", None, 10, "off");
+        let reply = build_eval_wire_reply(&[], &[], None, "ok", None, 10, "off");
         assert_eq!(reply.messages.len(), 1);
         assert_eq!(reply.messages[0].kind, WireKind::Output);
         assert_eq!(reply.messages[0].text, "Result: ok");
+    }
+
+    #[test]
+    fn build_eval_wire_reply_falls_back_to_simplification_steps_without_strategy() {
+        let reply = build_eval_wire_reply(&[], &[], None, "ok", None, 2, "on");
+        assert_eq!(reply.messages.len(), 2);
+        assert_eq!(reply.messages[1].kind, WireKind::Steps);
+        assert_eq!(reply.messages[1].text, "2 simplification step(s)");
     }
 }
