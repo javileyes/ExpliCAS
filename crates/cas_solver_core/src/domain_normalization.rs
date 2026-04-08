@@ -675,6 +675,14 @@ fn apply_dominance_rules(ctx: &mut Context, conditions: &mut Vec<ImplicitConditi
 
                 if is_product_dominated_by_positives(ctx, *prod_expr, &other_positive_exprs) {
                     to_remove.push(i);
+                    continue;
+                }
+
+                let factored = factor(ctx, *prod_expr);
+                if factored != *prod_expr
+                    && is_product_dominated_by_positives(ctx, factored, &other_positive_exprs)
+                {
+                    to_remove.push(i);
                 }
             }
         }
@@ -799,6 +807,31 @@ mod tests {
                 ImplicitCondition::NonZero(x),
             ]
         );
+    }
+
+    #[test]
+    fn factored_positive_factors_dominate_unfactored_difference_of_squares_condition() {
+        let mut ctx = Context::new();
+        let x_plus_y = parse("x + y", &mut ctx).expect("parse x + y");
+        let x_minus_y = parse("x - y", &mut ctx).expect("parse x - y");
+        let composite = parse("x^2 - y^2", &mut ctx).expect("parse composite");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::Positive(x_plus_y),
+                ImplicitCondition::Positive(x_minus_y),
+                ImplicitCondition::Positive(composite),
+            ],
+        );
+
+        assert_eq!(normalized.len(), 2);
+        assert!(normalized.iter().any(|cond| {
+            conditions_equivalent(&ctx, cond, &ImplicitCondition::Positive(x_plus_y))
+        }));
+        assert!(normalized.iter().any(|cond| {
+            conditions_equivalent(&ctx, cond, &ImplicitCondition::Positive(x_minus_y))
+        }));
     }
 
     #[test]

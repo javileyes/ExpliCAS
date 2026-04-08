@@ -5140,6 +5140,12 @@ fn derive_factored_log_difference_squares_uses_two_named_steps() {
     assert_eq!(steps.len(), 2);
     assert_eq!(steps[0]["rule"], "Factorizar");
     assert_eq!(steps[1]["rule"], "Expandir logaritmos");
+    let required = wire["required_display"]
+        .as_array()
+        .expect("required_display array");
+    assert_eq!(required.len(), 2);
+    assert!(required.iter().any(|item| item == "x + y > 0"));
+    assert!(required.iter().any(|item| item == "x - y > 0"));
 }
 
 #[test]
@@ -5624,6 +5630,52 @@ fn derive_consecutive_telescoping_fraction_combine_omits_trivial_substitution_su
         steps[0].get("substeps").is_none(),
         "literal telescoping combine should not emit the tautological 'Aquí u = u' substep"
     );
+}
+
+#[test]
+fn derive_fraction_difference_to_single_fraction_shows_common_denominator_substeps() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive 1/(x - 1) - 1/(x + 1), 2/(x^2 - 1)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "combine fraction");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Restar fracciones");
+    let substeps = steps[0]["substeps"].as_array().expect("substeps array");
+    assert_eq!(substeps.len(), 2);
+    assert_eq!(substeps[0]["title"], "Llevar a denominador común");
+    assert_eq!(
+        substeps[1]["title"],
+        "Simplificar el numerador y el denominador"
+    );
+}
+
+#[test]
+fn derive_tan_plus_cot_keeps_single_common_denominator_substep() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive tan(x) + cot(x), sec(x)*csc(x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "simplify");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 4);
+    assert_eq!(steps[2]["rule"], "Sumar fracciones");
+    let substeps = steps[2]["substeps"].as_array().expect("substeps array");
+    assert_eq!(substeps.len(), 1);
+    assert_eq!(substeps[0]["title"], "Llevar a denominador común");
 }
 
 #[test]

@@ -1,10 +1,10 @@
 derive_command,step_by_step_result
-"derive 1/(x - 1) - 1/(x + 1), 2/(x^2 - 1)",bueno
-"derive tan(x) + cot(x), sec(x)*csc(x)",bueno
+"derive 1/(x - 1) - 1/(x + 1), 2/(x^2 - 1)","perfecto: ahora enseña primero llevar a denominador común y luego simplificar numerador y denominador hasta 2/(x^2-1), con una traza fiel y sin ruido."
+"derive tan(x) + cot(x), sec(x)*csc(x)","perfecto: la cadena queda explícita y limpia, con tan -> sin/cos, cot -> cos/sin, una suma de fracciones con substep de denominador común y cierre por identidad pitagórica."
 "derive sin(x)^2, (1 - cos(2*x))/2",perfecto
 "derive cosh(x) + sinh(x), e^x",perfecto
 "derive 1/(sqrt(a) + sqrt(b)), (sqrt(a) - sqrt(b))/(a - b)",perfecto
-"derive log(x^2 - y^2), log(x - y) + log(x + y)",bueno
+"derive log(x^2 - y^2), log(x - y) + log(x + y)","perfecto: ya enseña factorizar y luego expandir logaritmos en 2 steps nominales, y además muestra solo los guards atómicos x + y > 0 y x - y > 0."
 "derive (x^4 - 1)/(x - 1), x^3 + x^2 + x + 1","bueno: ahora el step visible parte de la fracción original y llega al objetivo correcto sin ruido algebraico; sigue comprimiendo la factorización implícita del numerador dentro del mismo step."
 "derive 1/(1 + sin(x)) + 1/(1 - sin(x)), 2*sec(x)^2","bueno: sigue comprimiendo la limpieza intermedia del numerador y del denominador, pero los steps visibles ya son fieles; el segundo paso enseña correctamente 2/(1 - sin(x)^2) antes de aplicar la identidad pitagórica."
 "derive (sin(x) + cos(x))^2, 1 + sin(2*x)",perfecto
@@ -66,9 +66,9 @@ derive_command,step_by_step_result
 "derive sqrt((a+b)^2), abs(a+b)","bueno: el resultado es correcto y el step es corto, pero la regla visible y su LaTeX intermedio no explican de forma limpia la simplificación estándar sqrt((a+b)^2) = abs(a+b)."
 "derive sqrt(x^5), x^2*sqrt(x)","perfecto: ahora entra por expand odd half power, con regla visible Extraer potencia par de la raíz y dos substeps concretos que enseñan x^5 = x^4·x y la salida de x^2 usando x ≥ 0."
 "derive sqrt(x^7)+a, x^3*sqrt(x)+a","perfecto: ya no cae en simplify; sale por expand odd half power con el step padre sobre toda la suma y dos substeps específicos que enseñan x^7 = x^6·x y la extracción de x^3 bajo la condición x ≥ 0."
-"derive x^6 - 1, (x-1)*(x^5+x^4+x^3+x^2+x+1)","bueno: llega al target exacto en un solo step fiel, pero la regla genérica Factorizar no explica que se usa diferencia de potencias."
+"derive x^6 - 1, (x-1)*(x^5+x^4+x^3+x^2+x+1)","perfecto: la factorización ya viene acompañada por la identidad a^n - 1 y el substep de sustitución a = x, n = 6."
 "derive (x-1)*(x^5+x^4+x^3+x^2+x+1), x^6 - 1",perfecto
-"derive x^4 + 4*y^4, (x^2-2*x*y+2*y^2)*(x^2+2*x*y+2*y^2)","bueno: el target se alcanza limpio, pero la regla genérica Factorizar oculta que se está aplicando la factorización de Sophie Germain."
+"derive x^4 + 4*y^4, (x^2-2*x*y+2*y^2)*(x^2+2*x*y+2*y^2)","perfecto: la factorización de Sophie Germain ya aparece con su identidad explícita y el substep de sustitución a = x, b = y."
 "derive (x^2-2*x*y+2*y^2)*(x^2+2*x*y+2*y^2), x^4 + 4*y^4","bueno: correcto y fiel al target, aunque la regla visible sigue siendo demasiado genérica para una identidad tan específica."
 "derive x^2 + 2*x + 1 + z, (x+1)^2 + z",perfecto
 "derive x*y + x*z + w, x*(y+z) + w",perfecto

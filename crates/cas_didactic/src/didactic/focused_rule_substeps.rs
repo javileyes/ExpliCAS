@@ -49,6 +49,8 @@ pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<
     match step.rule_name.as_str() {
         "Combine Like Terms" => generate_combine_like_terms_substeps(ctx, step),
         "Distribute Division" => generate_fraction_expansion_substeps(ctx, step),
+        "Add Fractions" => generate_add_subtract_fractions_substeps(ctx, step),
+        "Subtract Fractions" => generate_add_subtract_fractions_substeps(ctx, step),
         "Mixed Fraction Split" => generate_mixed_fraction_split_substeps(),
         "Mixed Fraction Combine" => generate_mixed_fraction_combine_substeps(),
         "Telescoping Fraction Combine" => generate_telescoping_fraction_combine_substeps(ctx, step),
@@ -428,6 +430,88 @@ fn generate_fraction_expansion_substeps(ctx: &Context, step: &Step) -> Vec<SubSt
     }
 
     out
+}
+
+fn generate_add_subtract_fractions_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+    let unit_numerators = both_fraction_numerators_are_one(ctx, before);
+
+    let mut work = ctx.clone();
+    let Some(intermediate) = build_two_fraction_common_denominator_intermediate(&mut work, before)
+    else {
+        return Vec::new();
+    };
+
+    let intermediate_display = display_expr(&work, intermediate);
+    let after_display = display_expr(ctx, after);
+    let intermediate_latex = latex_expr(&work, intermediate);
+    let after_latex = latex_expr(ctx, after);
+
+    let mut out = vec![SubStep::new(
+        "Llevar a denominador común",
+        display_expr(ctx, before),
+        intermediate_display.clone(),
+    )
+    .with_before_latex(latex_expr(ctx, before))
+    .with_after_latex(intermediate_latex.clone())];
+
+    if unit_numerators
+        && (intermediate_display != after_display || intermediate_latex != after_latex)
+    {
+        out.push(
+            SubStep::new(
+                "Simplificar el numerador y el denominador",
+                intermediate_display,
+                after_display,
+            )
+            .with_before_latex(intermediate_latex)
+            .with_after_latex(after_latex),
+        );
+    }
+
+    out
+}
+
+fn both_fraction_numerators_are_one(ctx: &Context, expr: ExprId) -> bool {
+    let (left, right) = match ctx.get(expr) {
+        Expr::Add(left, right) | Expr::Sub(left, right) => (*left, *right),
+        _ => return false,
+    };
+
+    let Some((left_num, _)) = as_div(ctx, left) else {
+        return false;
+    };
+    let Some((right_num, _)) = as_div(ctx, right) else {
+        return false;
+    };
+
+    is_one(ctx, left_num) && is_one(ctx, right_num)
+}
+
+fn build_two_fraction_common_denominator_intermediate(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ExprId> {
+    let (left, right, is_subtraction) = match ctx.get(expr) {
+        Expr::Add(left, right) => (*left, *right, false),
+        Expr::Sub(left, right) => (*left, *right, true),
+        _ => return None,
+    };
+
+    let (left_num, left_den) = as_div(ctx, left)?;
+    let (right_num, right_den) = as_div(ctx, right)?;
+
+    let common_den = ctx.add(Expr::Mul(left_den, right_den));
+    let lifted_left = ctx.add(Expr::Mul(left_num, right_den));
+    let lifted_right = ctx.add(Expr::Mul(right_num, left_den));
+    let numerator = if is_subtraction {
+        ctx.add(Expr::Sub(lifted_left, lifted_right))
+    } else {
+        ctx.add(Expr::Add(lifted_left, lifted_right))
+    };
+
+    Some(ctx.add(Expr::Div(numerator, common_den)))
 }
 
 fn fraction_expansion_cleanup_title(ctx: &Context, intermediate: ExprId) -> String {

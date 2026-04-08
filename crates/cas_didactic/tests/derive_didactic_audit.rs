@@ -367,9 +367,37 @@ fn has_redundant_fraction_rule_substeps(step: &Value) -> bool {
         return false;
     }
 
-    step.get("substeps")
-        .and_then(Value::as_array)
-        .is_some_and(|substeps| !substeps.is_empty())
+    let Some(substeps) = step.get("substeps").and_then(Value::as_array) else {
+        return false;
+    };
+    if substeps.is_empty() {
+        return false;
+    }
+
+    let titles: Vec<&str> = substeps
+        .iter()
+        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
+        .collect();
+
+    !matches!(
+        (rule, titles.as_slice()),
+        ("Sumar fracciones", ["Llevar a denominador común"])
+            | (
+                "Sumar fracciones",
+                [
+                    "Llevar a denominador común",
+                    "Simplificar el numerador y el denominador"
+                ]
+            )
+            | ("Restar fracciones", ["Llevar a denominador común"])
+            | (
+                "Restar fracciones",
+                [
+                    "Llevar a denominador común",
+                    "Simplificar el numerador y el denominador"
+                ]
+            )
+    )
 }
 
 fn is_self_explanatory_identity_rule(rule: &str) -> bool {
@@ -2738,7 +2766,10 @@ fn derive_didactic_representative_telescoping_fraction_combine_cases_keep_invers
         ),
         (
             "combine_telescoping_fraction_shifted_quadratic_unfactored",
-            vec![],
+            vec![
+                "Llevar a denominador común",
+                "Simplificar el numerador y el denominador",
+            ],
         ),
         (
             "combine_telescoping_fraction_symbolic_difference_squares_unfactored",
