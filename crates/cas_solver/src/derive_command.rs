@@ -11,12 +11,13 @@ use crate::derive::{
     try_rewrite_exact_fraction_cancel_target_aware, try_rewrite_expanded_target_aware,
     try_rewrite_exponential_sum_diff_target_aware, try_rewrite_fraction_combination_target_aware,
     try_rewrite_fraction_expansion_target_aware, try_rewrite_hyperbolic_simplify_target_aware,
-    try_rewrite_integrate_prep_target_aware, try_rewrite_log_contraction_target_aware,
-    try_rewrite_log_contraction_to_target_aware, try_rewrite_log_expansion_target_aware,
-    try_rewrite_log_simplify_target_aware, try_rewrite_nested_fraction_target_aware,
-    try_rewrite_odd_half_power_to_target_aware, try_rewrite_power_merge_target_aware,
-    try_rewrite_pythagorean_factor_form_target_aware, try_rewrite_radical_target_aware,
-    try_rewrite_rationalized_target_aware, try_rewrite_shifted_double_angle_target_aware,
+    try_rewrite_integrate_prep_target_aware, try_rewrite_log_argument_factorization_target_aware,
+    try_rewrite_log_contraction_target_aware, try_rewrite_log_contraction_to_target_aware,
+    try_rewrite_log_expansion_target_aware, try_rewrite_log_simplify_target_aware,
+    try_rewrite_nested_fraction_target_aware, try_rewrite_odd_half_power_to_target_aware,
+    try_rewrite_power_merge_target_aware, try_rewrite_pythagorean_factor_form_target_aware,
+    try_rewrite_radical_target_aware, try_rewrite_rationalized_target_aware,
+    try_rewrite_shifted_double_angle_target_aware,
     try_rewrite_shifted_reciprocal_pythagorean_target_aware, try_rewrite_solve_prep_target_aware,
     try_rewrite_trig_contraction_target_aware, try_rewrite_trig_expansion,
     try_rewrite_trig_identity_to_one_target_aware, DeriveHyperbolicRewriteKind, DeriveStrategy,
@@ -947,6 +948,29 @@ fn try_supported_derive_strategies_inner(
                 }
             }
             DeriveStrategy::LogExpand => {
+                if let Some(first_stage) =
+                    run_log_expand_prep_stage(simplifier, resolved_expr, target_expr, collect_steps)
+                {
+                    let stage = run_log_expand_stage(
+                        simplifier,
+                        first_stage.expr,
+                        target_expr,
+                        collect_steps,
+                        simplify_options.clone(),
+                    );
+                    if derive_target_match(simplifier, stage.expr, target_expr) {
+                        let mut stage = stage;
+                        retarget_stage_output(&mut stage, target_expr);
+                        let steps = finalize_steps(
+                            resolved_expr,
+                            target_expr,
+                            vec![first_stage, stage],
+                            &simplifier.context,
+                        );
+                        return Some((target_expr, steps, DeriveStrategy::LogExpand));
+                    }
+                }
+
                 let stage = log_expand_stage.get_or_insert_with(|| {
                     run_log_expand_stage(
                         simplifier,
@@ -1300,6 +1324,29 @@ fn try_supported_derive_strategies_inner(
                 }
             }
             DeriveStrategy::SimplifyThenLogExpand => {
+                if let Some(first_stage) =
+                    run_log_expand_prep_stage(simplifier, resolved_expr, target_expr, collect_steps)
+                {
+                    let stage = run_log_expand_stage(
+                        simplifier,
+                        first_stage.expr,
+                        target_expr,
+                        collect_steps,
+                        simplify_options.clone(),
+                    );
+                    if strong_target_match(&mut simplifier.context, stage.expr, target_expr) {
+                        let mut stage = stage;
+                        retarget_stage_output(&mut stage, target_expr);
+                        let steps = finalize_steps(
+                            resolved_expr,
+                            target_expr,
+                            vec![first_stage, stage],
+                            &simplifier.context,
+                        );
+                        return Some((target_expr, steps, DeriveStrategy::SimplifyThenLogExpand));
+                    }
+                }
+
                 let first_stage = simplify_stage.get_or_insert_with(|| {
                     run_simplify_stage(
                         simplifier,
@@ -3020,6 +3067,43 @@ fn run_log_expand_stage(
         expr: cleanup.expr,
         steps,
     }
+}
+
+fn run_log_expand_prep_stage(
+    simplifier: &mut crate::Simplifier,
+    expr: ExprId,
+    target_expr: ExprId,
+    collect_steps: bool,
+) -> Option<DeriveStageOutput> {
+    let (rewritten, focus_before, focus_after) =
+        try_rewrite_log_argument_factorization_target_aware(
+            &mut simplifier.context,
+            expr,
+            target_expr,
+        )?;
+
+    let steps = if collect_steps {
+        let mut step = crate::Step::with_snapshots(
+            "Factor the logarithm argument",
+            "Factorization",
+            expr,
+            rewritten,
+            Vec::new(),
+            Some(&simplifier.context),
+            focus_before,
+            focus_after,
+        );
+        step.importance = cas_solver_core::step_types::ImportanceLevel::Medium;
+        step.category = cas_solver_core::step_types::StepCategory::Factor;
+        vec![step]
+    } else {
+        Vec::new()
+    };
+
+    Some(DeriveStageOutput {
+        expr: rewritten,
+        steps,
+    })
 }
 
 fn run_exponential_sum_diff_stage(
@@ -5820,6 +5904,32 @@ mod tests {
         assert_eq!(derived.2, DeriveStrategy::LogExpand);
         assert_eq!(derived.1.len(), 1);
         assert_eq!(derived.1[0].rule_name, "expand_log");
+    }
+
+    #[test]
+    fn direct_derive_factors_log_argument_before_expanding_without_generic_simplify() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source =
+            cas_parser::parse("log(x^2-y^2)", &mut simplifier.context).expect("parse source");
+        let target =
+            cas_parser::parse("log(x-y)+log(x+y)", &mut simplifier.context).expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::LogExpand);
+        assert_eq!(derived.1.len(), 2);
+        assert_eq!(derived.1[0].rule_name, "Factorization");
+        assert_eq!(derived.1[1].rule_name, "expand_log");
     }
 
     #[test]

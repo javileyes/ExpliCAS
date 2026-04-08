@@ -140,3 +140,43 @@ fn test_latex_to_plain_text_leaves_atomic_exponents_without_extra_parens() {
         "unexpected redundant exponent parentheses, got: {output}"
     );
 }
+
+#[test]
+fn test_latex_to_plain_text_parenthesizes_extra_braced_fraction_denominator_power() {
+    let input = r"\frac{2}{{1 - {\sin(x)}^{2}}}";
+    let output = latex_to_plain_text(input);
+    assert!(
+        output.contains("2/(1 - sin(x)^2)"),
+        "expected protected denominator square, got: {output}"
+    );
+}
+
+#[test]
+fn test_latex_to_plain_text_strips_color_wrapped_fraction_denominator_power() {
+    let input = r"\frac{2}{{\color{red}{1 - {\sin(x)}^{2}}}}";
+    let output = latex_to_plain_text(input);
+    assert!(
+        output.contains("2/(1 - sin(x)^2)"),
+        "expected protected denominator square after stripping color wrapper, got: {output}"
+    );
+    assert!(
+        !output.contains("colorred"),
+        "unexpected leaked color command in: {output}"
+    );
+}
+
+#[test]
+fn test_latex_to_plain_text_preserves_squared_sine_from_formatter_fraction() {
+    let mut ctx = cas_ast::Context::new();
+    let expr = cas_parser::parse("2/(1 - sin(x)^2)", &mut ctx).expect("parse");
+    let latex = cas_formatter::LaTeXExpr {
+        context: &ctx,
+        id: expr,
+    }
+    .to_latex();
+    let output = latex_to_plain_text(&latex);
+    assert!(
+        output.contains("2/(1 - sin(x)^2)"),
+        "expected protected denominator square, latex={latex}, output={output}"
+    );
+}

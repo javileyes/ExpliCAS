@@ -39,15 +39,28 @@ impl<'a> LocalSimplificationTransformer<'a> {
         after: ExprId,
     ) {
         if self.collect_steps_enabled() {
-            let step = crate::step::Step::new(
+            let global_before = self.root_expr;
+            let global_after = self.reconstruct_at_path(after);
+
+            let step = crate::step::Step::with_snapshots(
                 name,
                 description,
                 before,
                 after,
                 self.current_path.clone(),
                 Some(self.context),
+                global_before,
+                global_after,
             );
             self.steps.push(step);
+            self.emit_rule_applied_event(
+                description,
+                before,
+                after,
+                Some(global_before),
+                Some(global_after),
+                false,
+            );
         }
     }
 

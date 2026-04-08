@@ -19,13 +19,14 @@ use super::{
     try_rewrite_exact_fraction_cancel_target_aware, try_rewrite_expanded_target_aware,
     try_rewrite_exponential_sum_diff_target_aware, try_rewrite_fraction_combination_target_aware,
     try_rewrite_fraction_expansion_target_aware, try_rewrite_hyperbolic_simplify_target_aware,
-    try_rewrite_integrate_prep_target_aware, try_rewrite_log_contraction_to_target_aware,
-    try_rewrite_log_expansion_target_aware, try_rewrite_nested_fraction_target_aware,
-    try_rewrite_odd_half_power_target_aware, try_rewrite_odd_half_power_to_target_aware,
-    try_rewrite_power_merge_target_aware, try_rewrite_pythagorean_factor_form_target_aware,
-    try_rewrite_radical_target_aware, try_rewrite_shifted_reciprocal_pythagorean_target_aware,
-    try_rewrite_solve_prep_target_aware, try_rewrite_trig_contraction_target_aware,
-    try_rewrite_trig_expansion, try_rewrite_trig_identity_to_one_target_aware, DeriveTargetForm,
+    try_rewrite_integrate_prep_target_aware, try_rewrite_log_argument_factorization_target_aware,
+    try_rewrite_log_contraction_to_target_aware, try_rewrite_log_expansion_target_aware,
+    try_rewrite_nested_fraction_target_aware, try_rewrite_odd_half_power_target_aware,
+    try_rewrite_odd_half_power_to_target_aware, try_rewrite_power_merge_target_aware,
+    try_rewrite_pythagorean_factor_form_target_aware, try_rewrite_radical_target_aware,
+    try_rewrite_shifted_reciprocal_pythagorean_target_aware, try_rewrite_solve_prep_target_aware,
+    try_rewrite_trig_contraction_target_aware, try_rewrite_trig_expansion,
+    try_rewrite_trig_identity_to_one_target_aware, DeriveTargetForm,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -293,6 +294,11 @@ fn detect_log_expanded_target(
     source_expr: ExprId,
     target_expr: ExprId,
 ) -> bool {
+    if try_rewrite_log_argument_factorization_target_aware(ctx, source_expr, target_expr).is_some()
+    {
+        return true;
+    }
+
     if !looks_log_expandable_source(ctx, source_expr) {
         return false;
     }

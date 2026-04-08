@@ -4,7 +4,7 @@ mod text;
 
 /// Convert LaTeX-like notation into plain-text form for CLI display.
 pub fn latex_to_plain_text(s: &str) -> String {
-    let mut result = s.to_string();
+    let mut result = strip_color_wrappers(s);
 
     result = text::strip_text_wrappers(result);
 
@@ -52,6 +52,65 @@ pub fn latex_to_plain_text(s: &str) -> String {
     result = humanize_even_literal_squares(&result);
 
     result.replace("\\", "")
+}
+
+fn strip_color_wrappers(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    let chars: Vec<(usize, char)> = input.char_indices().collect();
+    let mut index = 0usize;
+
+    while index < chars.len() {
+        let byte_index = chars[index].0;
+        if let Some((content, consumed)) = parse_color_wrapper(&input[byte_index..]) {
+            out.push_str(&strip_color_wrappers(&content));
+            let target = byte_index + consumed;
+            while index < chars.len() && chars[index].0 < target {
+                index += 1;
+            }
+            continue;
+        }
+
+        out.push(chars[index].1);
+        index += 1;
+    }
+
+    out
+}
+
+fn parse_color_wrapper(input: &str) -> Option<(String, usize)> {
+    const RED_PREFIX: &str = "{\\color{red}{";
+    const GREEN_PREFIX: &str = "{\\color{green}{";
+
+    let prefix = if input.starts_with(RED_PREFIX) {
+        RED_PREFIX
+    } else if input.starts_with(GREEN_PREFIX) {
+        GREEN_PREFIX
+    } else {
+        return None;
+    };
+
+    let remainder = &input[prefix.len()..];
+    let mut depth = 1usize;
+
+    for (offset, ch) in remainder.char_indices() {
+        match ch {
+            '{' => depth += 1,
+            '}' => {
+                depth = depth.checked_sub(1)?;
+                if depth == 0 {
+                    let content = remainder[..offset].to_string();
+                    let outer_close = remainder[offset + 1..].chars().next()?;
+                    if outer_close != '}' {
+                        return None;
+                    }
+                    return Some((content, prefix.len() + offset + 2));
+                }
+            }
+            _ => {}
+        }
+    }
+
+    None
 }
 
 fn humanize_even_literal_squares(input: &str) -> String {

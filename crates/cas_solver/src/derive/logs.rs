@@ -2,6 +2,7 @@ use cas_ast::ordering::compare_expr;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use cas_math::expr_nary::{add_terms_signed, Sign};
 use cas_math::expr_rewrite::smart_mul;
+use cas_math::factor::factor;
 use num_rational::BigRational;
 use num_traits::{One, Signed, Zero};
 use std::cmp::Ordering;
@@ -201,6 +202,23 @@ pub(crate) fn try_rewrite_log_expansion_target_aware(
     }
 
     try_rewrite_log_expansion_additive_target_aware(ctx, source_expr, target_expr)
+}
+
+pub(crate) fn try_rewrite_log_argument_factorization_target_aware(
+    ctx: &mut Context,
+    source_expr: ExprId,
+    target_expr: ExprId,
+) -> Option<(ExprId, ExprId, ExprId)> {
+    let source = extract_plain_log_term(ctx, source_expr, BigRational::one())?;
+    let factored_arg = factor(ctx, source.arg);
+    if compare_expr(ctx, factored_arg, source.arg) == Ordering::Equal {
+        return None;
+    }
+
+    let rewritten = make_log_expr(ctx, source.family, factored_arg);
+    try_rewrite_log_expansion_target_aware(ctx, rewritten, target_expr)?;
+
+    Some((rewritten, source.arg, factored_arg))
 }
 
 fn try_rewrite_log_contraction_additive_target_aware(

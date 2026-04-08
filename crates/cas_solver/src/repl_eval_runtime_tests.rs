@@ -87,4 +87,41 @@ mod tests {
         let runtime = MockReplEvalRuntime::new();
         assert_eq!(profile_cache_len_on_repl_core(&runtime), 0);
     }
+
+    #[test]
+    fn preordered_steps_keep_global_snapshots_for_fraction_sum_pythagorean_chain() {
+        let mut runtime = MockReplEvalRuntime::new();
+        let output = runtime
+            .evaluate_eval_command_output("1/(1 + sin(x)) + 1/(1 - sin(x))", false)
+            .expect("eval output");
+
+        let steps = output.steps.as_slice();
+        let ctx = &runtime.engine.simplifier.context;
+        let diff_squares = steps
+            .iter()
+            .find(|step| step.rule_name == "Difference of Squares")
+            .expect("difference of squares step");
+        let pythagorean = steps
+            .iter()
+            .find(|step| step.rule_name == "Pythagorean Factor Form")
+            .expect("pythagorean step");
+
+        let diff_after = cas_formatter::clean_display_string(&format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: ctx,
+                id: diff_squares.global_after.expect("global after")
+            }
+        ));
+        let pyth_before = cas_formatter::clean_display_string(&format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: ctx,
+                id: pythagorean.global_before.expect("global before")
+            }
+        ));
+
+        assert_eq!(diff_after, "2 / (1 - sin(x)^2)");
+        assert_eq!(pyth_before, "2 / (1 - sin(x)^2)");
+    }
 }

@@ -2736,6 +2736,58 @@ fn derive_negative_cos_squared_uses_single_pythagorean_step() {
 }
 
 #[test]
+fn eval_fraction_sum_to_sec_squared_keeps_faithful_pythagorean_intermediate() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "1/(1 + sin(x)) + 1/(1 - sin(x))",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 2);
+    assert_eq!(steps[1]["rule"], "Aplicar identidad pitagórica");
+    assert_eq!(steps[1]["before"], "2/(1 - sin(x)^2)");
+    assert!(
+        steps[1]["before_latex"]
+            .as_str()
+            .expect("before latex")
+            .contains("^{2}"),
+        "expected squared sine to survive in before_latex: {:?}",
+        steps[1]["before_latex"]
+    );
+}
+
+#[test]
+fn derive_fraction_sum_to_sec_squared_keeps_faithful_pythagorean_intermediate() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive 1/(1 + sin(x)) + 1/(1 - sin(x)), 2*sec(x)^2",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 2);
+    assert_eq!(steps[1]["rule"], "Aplicar identidad pitagórica");
+    assert_eq!(steps[1]["before"], "2/(1 - sin(x)^2)");
+    assert!(
+        steps[1]["before_latex"]
+            .as_str()
+            .expect("before latex")
+            .contains("^{2}"),
+        "expected squared sine to survive in before_latex: {:?}",
+        steps[1]["before_latex"]
+    );
+}
+
+#[test]
 fn derive_negative_tan_quotient_uses_single_trig_quotient_step() {
     let (output, _code) = run_cli(&[
         "eval",
@@ -4887,6 +4939,26 @@ fn derive_grouped_general_base_log_product_expansion_with_passthrough_uses_direc
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
     assert_eq!(steps[0]["rule"], "Expandir logaritmos");
+}
+
+#[test]
+fn derive_factored_log_difference_squares_uses_two_named_steps() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive log(x^2-y^2), log(x-y)+log(x+y)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "expand_log");
+    assert_eq!(wire["steps_count"], 2);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 2);
+    assert_eq!(steps[0]["rule"], "Factorizar");
+    assert_eq!(steps[1]["rule"], "Expandir logaritmos");
 }
 
 #[test]
