@@ -3020,6 +3020,7 @@ fn derive_difference_of_squares_fraction_uses_named_fraction_cancel_and_keeps_gu
         steps[0]["rule"],
         "Factorizar una diferencia de cuadrados y cancelar"
     );
+    assert_eq!(steps[0]["before"], "(a^2 - b^2)/(a - b)");
 
     let required = wire["required_display"]
         .as_array()
@@ -3050,6 +3051,7 @@ fn derive_difference_of_squares_fraction_with_passthrough_uses_named_fraction_ca
         steps[0]["rule"],
         "Factorizar una diferencia de cuadrados y cancelar"
     );
+    assert_eq!(steps[0]["before"], "(a^2 - b^2)/(a - b) + c");
 
     let required = wire["required_display"]
         .as_array()
@@ -4942,6 +4944,26 @@ fn derive_grouped_general_base_log_product_expansion_with_passthrough_uses_direc
 }
 
 #[test]
+fn derive_factored_log_difference_squares_with_passthrough_uses_two_named_steps() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive log(x^2-y^2)+a, log(x-y)+log(x+y)+a",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "expand_log");
+    assert_eq!(wire["steps_count"], 2);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 2);
+    assert_eq!(steps[0]["rule"], "Factorizar");
+    assert_eq!(steps[1]["rule"], "Expandir logaritmos");
+}
+
+#[test]
 fn derive_factored_log_difference_squares_uses_two_named_steps() {
     let (output, _code) = run_cli(&[
         "eval",
@@ -4959,6 +4981,63 @@ fn derive_factored_log_difference_squares_uses_two_named_steps() {
     assert_eq!(steps.len(), 2);
     assert_eq!(steps[0]["rule"], "Factorizar");
     assert_eq!(steps[1]["rule"], "Expandir logaritmos");
+}
+
+#[test]
+fn derive_difference_of_cubes_fraction_keeps_requested_target_text_in_final_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive (x^3-1)/(x-1), x^2+x+1",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(wire["strategy"], "cancel fraction");
+    assert_eq!(steps[0]["rule"], "Factorizar cubos y cancelar");
+    assert_eq!(steps[0]["after"], "x^2 + x + 1");
+}
+
+#[test]
+fn derive_geometric_difference_fraction_uses_direct_cancel_fraction() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive (x^4-1)/(x-1), x^3+x^2+x+1",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "cancel fraction");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["before"], "(x^4 - 1)/(x - 1)");
+    assert_eq!(steps[0]["after"], "x^3 + x^2 + x + 1");
+}
+
+#[test]
+fn derive_geometric_difference_even_quotient_uses_direct_cancel_fraction() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive (x^4-1)/(x^2-1), x^2+1",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "cancel fraction");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["before"], "(x^4 - 1)/(x^2 - 1)");
+    assert_eq!(steps[0]["after"], "x^2 + 1");
 }
 
 #[test]

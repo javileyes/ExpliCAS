@@ -3345,11 +3345,13 @@ fn run_fraction_cancel_stage(
             rewrite.rewritten,
             Vec::new(),
             Some(&simplifier.context),
-            before_local,
-            after_local,
+            expr,
+            rewrite.rewritten,
         );
         step.importance = cas_solver_core::step_types::ImportanceLevel::Medium;
         step.category = cas_solver_core::step_types::StepCategory::Simplify;
+        step.meta_mut().before_local = Some(before_local);
+        step.meta_mut().after_local = Some(after_local);
         step.meta_mut().required_conditions = rewrite.required_conditions.clone();
         vec![step]
     } else {
@@ -4062,6 +4064,7 @@ fn finalize_steps(
     if let Some(last_step) = steps.last_mut() {
         last_step.global_after = Some(final_expr);
     }
+    retarget_last_step_to_final_expr_when_equivalent(&mut steps, final_expr, ctx);
 
     steps
 }
@@ -4081,8 +4084,33 @@ fn finalize_planner_steps(
     if let Some(last_step) = steps.last_mut() {
         last_step.global_after = Some(final_expr);
     }
+    retarget_last_step_to_final_expr_when_equivalent(&mut steps, final_expr, ctx);
 
     steps
+}
+
+fn retarget_last_step_to_final_expr_when_equivalent(
+    steps: &mut [crate::Step],
+    final_expr: ExprId,
+    ctx: &cas_ast::Context,
+) {
+    let Some(last_step) = steps.last_mut() else {
+        return;
+    };
+
+    let after_candidate = last_step.after_local().unwrap_or(last_step.after);
+    let mut temp_ctx = ctx.clone();
+    let semantically_equal = cas_math::semantic_equality::SemanticEqualityChecker::new(&temp_ctx)
+        .are_equal(after_candidate, final_expr);
+    if !(strong_target_match(&mut temp_ctx, after_candidate, final_expr)
+        || presentational_target_match(&mut temp_ctx, after_candidate, final_expr)
+        || semantically_equal)
+    {
+        return;
+    }
+
+    last_step.after = final_expr;
+    last_step.meta_mut().after_local = Some(final_expr);
 }
 
 fn clean_derive_stage_steps(stages: Vec<DeriveStageOutput>) -> Vec<crate::Step> {

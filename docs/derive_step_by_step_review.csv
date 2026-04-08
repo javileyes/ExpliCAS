@@ -5,40 +5,40 @@ derive_command,step_by_step_result
 "derive cosh(x) + sinh(x), e^x",perfecto
 "derive 1/(sqrt(a) + sqrt(b)), (sqrt(a) - sqrt(b))/(a - b)",perfecto
 "derive log(x^2 - y^2), log(x - y) + log(x + y)",bueno
-"derive (x^4 - 1)/(x - 1), x^3 + x^2 + x + 1","malo: el único step visible ya parte de la forma factorizada ((x^3 + x^2 + x + 1)(x - 1))/(x - 1), así que el wire oculta la factorización de x^4 - 1 y no refleja fielmente el recorrido desde el origen."
+"derive (x^4 - 1)/(x - 1), x^3 + x^2 + x + 1","bueno: ahora el step visible parte de la fracción original y llega al objetivo correcto sin ruido algebraico; sigue comprimiendo la factorización implícita del numerador dentro del mismo step."
 "derive 1/(1 + sin(x)) + 1/(1 - sin(x)), 2*sec(x)^2","bueno: sigue comprimiendo la limpieza intermedia del numerador y del denominador, pero los steps visibles ya son fieles; el segundo paso enseña correctamente 2/(1 - sin(x)^2) antes de aplicar la identidad pitagórica."
 "derive (sin(x) + cos(x))^2, 1 + sin(2*x)",perfecto
-"derive 2*cos(2*x)*sin(x), 4*cos(x)^2*sin(x)-2*sin(x)",no evaluado
-"derive 2*cos(2*x)*cos(x), 4*cos(x)^3-2*cos(x)",no evaluado
-"derive 2*sin(2*x)*sin(x), 4*cos(x)-4*cos(x)^3",no evaluado
-"derive 2*sin(2*x)*sin(x)+a, 4*cos(x)-4*cos(x)^3+a",no evaluado
-"derive 2*cos(2*x)*sin(x)+a, 4*cos(x)^2*sin(x)-2*sin(x)+a",no evaluado
-"derive sin(x)+sin(y), 2*sin((x+y)/2)*cos((x-y)/2)",no evaluado
-"derive cos(x)+cos(y), 2*cos((x+y)/2)*cos((x-y)/2)",no evaluado
-"derive cos(x)-cos(y), -2*sin((x+y)/2)*sin((x-y)/2)",no evaluado
-"derive sin(x)+cos(x)+sin(y)+cos(y), sqrt(2)*sin(x+pi/4)+sqrt(2)*sin(y+pi/4)",no evaluado
-"derive 3*sin(x)+4*cos(x)+a, 5*sin(x+arctan(4/3))+a",no evaluado
-"derive 5*sin(x+arctan(4/3))+a, 3*sin(x)+4*cos(x)+a",no evaluado
-"derive 2*sinh(2*x)*sinh(x), 4*cosh(x)^3-4*cosh(x)",no evaluado
-"derive 2*sinh(2*x)*sinh(x)+a, 4*cosh(x)^3-4*cosh(x)+a",no evaluado
-"derive 2*sinh(2*x)*cosh(x), 4*sinh(x)+4*sinh(x)^3",no evaluado
-"derive sinh(x)+sinh(y), 2*sinh((x+y)/2)*cosh((x-y)/2)",no evaluado
-"derive sinh(x+y), sinh(x)*cosh(y)+cosh(x)*sinh(y)",no evaluado
-"derive (a^2-b^2)/(a-b), a+b",no evaluado
-"derive (a^2-b^2)/(a-b)+c, a+b+c",no evaluado
-"derive (a^3-b^3)/(a-b), a^2+a*b+b^2",no evaluado
-"derive (a^3-b^3)/(a-b)+c, a^2+a*b+b^2+c",no evaluado
-"derive (x^3-1)/(x-1), x^2+x+1",no evaluado
-"derive (x^4-1)/(x^2-1), x^2+1",no evaluado
-"derive (x^2-1)/(x-1), x+1",no evaluado
-"derive sqrt(a^2 + 2*a*b + b^2), abs(a+b)",no evaluado
-"derive sqrt(a^2 + 2*a*b + b^2)+c, abs(a+b)+c",no evaluado
-"derive sqrt(x^3)+a, abs(x)*sqrt(x)+a",no evaluado
-"derive log((x*y)^2), log(x^2)+log(y^2)",no evaluado
-"derive log(x^2-y^2)+a, log(x-y)+log(x+y)+a",no evaluado
-"derive ln(x^2)+ln(y^2), ln((x*y)^2)",no evaluado
-"derive 2*ln(abs(x*y)), 2*ln(abs(x))+2*ln(abs(y))",no evaluado
-"derive 2*log(b,x)+2*log(b,y), log(b,(x*y)^2)",no evaluado
-"derive tan(x)*cot(x)+a, 1+a",no evaluado
-"derive sec(x)^2 - tan(x)^2 + a, 1+a",no evaluado
-"derive cosh(x)^2-sinh(x)^2+a, 1+a",no evaluado
+"derive 2*cos(2*x)*sin(x), 4*cos(x)^2*sin(x)-2*sin(x)",perfecto
+"derive 2*cos(2*x)*cos(x), 4*cos(x)^3-2*cos(x)",perfecto
+"derive 2*sin(2*x)*sin(x), 4*cos(x)-4*cos(x)^3",perfecto
+"derive 2*sin(2*x)*sin(x)+a, 4*cos(x)-4*cos(x)^3+a",perfecto
+"derive 2*cos(2*x)*sin(x)+a, 4*cos(x)^2*sin(x)-2*sin(x)+a","bueno: la cadena didáctica correcta está en 2 steps, pero el intermedio visible queda ordenado como sin(3x) + a - sin(x), menos natural que sin(3x) - sin(x) + a."
+"derive sin(x)+sin(y), 2*sin((x+y)/2)*cos((x-y)/2)",perfecto
+"derive cos(x)+cos(y), 2*cos((x+y)/2)*cos((x-y)/2)",perfecto
+"derive cos(x)-cos(y), -2*sin((x+y)/2)*sin((x-y)/2)",perfecto
+"derive sin(x)+cos(x)+sin(y)+cos(y), sqrt(2)*sin(x+pi/4)+sqrt(2)*sin(y+pi/4)","bueno: los 2 steps de desfase son correctos y no hay ciclos, aunque el primer intermedio reordena términos y pierde algo de fluidez visual."
+"derive 3*sin(x)+4*cos(x)+a, 5*sin(x+arctan(4/3))+a",perfecto
+"derive 5*sin(x+arctan(4/3))+a, 3*sin(x)+4*cos(x)+a",perfecto
+"derive 2*sinh(2*x)*sinh(x), 4*cosh(x)^3-4*cosh(x)",perfecto
+"derive 2*sinh(2*x)*sinh(x)+a, 4*cosh(x)^3-4*cosh(x)+a",perfecto
+"derive 2*sinh(2*x)*cosh(x), 4*sinh(x)+4*sinh(x)^3",perfecto
+"derive sinh(x)+sinh(y), 2*sinh((x+y)/2)*cosh((x-y)/2)",perfecto
+"derive sinh(x+y), sinh(x)*cosh(y)+cosh(x)*sinh(y)",perfecto
+"derive (a^2-b^2)/(a-b), a+b","bueno: el step ya parte de la fracción original y llega limpio al objetivo; comprime factorización y cancelación en un solo salto, pero la traza es fiel."
+"derive (a^2-b^2)/(a-b)+c, a+b+c","bueno: mismo comportamiento que el caso base; el passthrough ya no ensucia el before visible y la transición completa se entiende bien."
+"derive (a^3-b^3)/(a-b), a^2+a*b+b^2","bueno: parte de la forma original y llega al objetivo correcto en un solo step nominal; comprime factorizar y cancelar, pero el salto sigue siendo fácil de seguir."
+"derive (a^3-b^3)/(a-b)+c, a^2+a*b+b^2+c","bueno: la narrativa es la misma que en el caso base y el término passthrough no introduce ruido."
+"derive (x^3-1)/(x-1), x^2+x+1","perfecto: ahora sale por cancel fraction con before/after fieles y además añade substeps explícitos para factorizar como diferencia de cubos y cancelar el factor común."
+"derive (x^4-1)/(x^2-1), x^2+1","bueno: el step visible ya parte de la fracción original y llega limpio a x^2 + 1; la factorización queda comprimida, pero el recorrido ya no arranca desde una forma intermedia opaca."
+"derive (x^2-1)/(x-1), x+1","bueno: el salto es directo, limpio y fiel al origen; sigue comprimiendo la factorización de x^2-1 dentro del único step."
+"derive sqrt(a^2 + 2*a*b + b^2), abs(a+b)",perfecto
+"derive sqrt(a^2 + 2*a*b + b^2)+c, abs(a+b)+c",perfecto
+"derive sqrt(x^3)+a, abs(x)*sqrt(x)+a",perfecto
+"derive log((x*y)^2), log(x^2)+log(y^2)",perfecto
+"derive log(x^2-y^2)+a, log(x-y)+log(x+y)+a","bueno: ya enseña la cadena correcta en 2 steps nominales, factorizar y luego expandir logaritmos; los campos before/after muestran el foco local del log y no toda la suma con +a, pero la narrativa es buena."
+"derive ln(x^2)+ln(y^2), ln((x*y)^2)",perfecto
+"derive 2*ln(abs(x*y)), 2*ln(abs(x))+2*ln(abs(y))",perfecto
+"derive 2*log(b,x)+2*log(b,y), log(b,(x*y)^2)",perfecto
+"derive tan(x)*cot(x)+a, 1+a",perfecto
+"derive sec(x)^2 - tan(x)^2 + a, 1+a",perfecto
+"derive cosh(x)^2-sinh(x)^2+a, 1+a",perfecto

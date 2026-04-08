@@ -159,7 +159,7 @@ impl ExactFractionCancelKind {
     ) -> (ExprId, ExprId) {
         match self {
             Self::CommonFactor => (source_expr, rewritten),
-            Self::DifferenceOfSquares => (intermediate, rewritten),
+            Self::DifferenceOfSquares => (source_expr, rewritten),
             Self::PerfectSquarePlus => (source_expr, rewritten),
             Self::PerfectSquareMinus => (source_expr, intermediate),
             Self::SumDiffCubes => (source_expr, rewritten),
@@ -704,12 +704,52 @@ fn try_rewrite_exact_fraction_cancel_core_target_aware(
         try_rewrite_perfect_square_plus_fraction_cancel(ctx, source_expr),
         try_rewrite_perfect_square_minus_fraction_cancel(ctx, source_expr),
         try_rewrite_sum_diff_cubes_fraction_cancel(ctx, source_expr),
+        try_rewrite_fraction_cancel_via_target_product(ctx, source_expr, target_expr),
     ];
 
     rewrites
         .into_iter()
         .flatten()
-        .find(|rewrite| strong_target_match(ctx, rewrite.rewritten, target_expr))
+        .find(|rewrite| fraction_cancel_target_match(ctx, rewrite.rewritten, target_expr))
+}
+
+fn fraction_cancel_target_match(
+    ctx: &mut Context,
+    actual_expr: ExprId,
+    target_expr: ExprId,
+) -> bool {
+    if strong_target_match(ctx, actual_expr, target_expr) {
+        return true;
+    }
+
+    poly_eq(ctx, actual_expr, target_expr)
+        || cas_math::semantic_equality::SemanticEqualityChecker::new(ctx)
+            .are_equal(actual_expr, target_expr)
+}
+
+fn try_rewrite_fraction_cancel_via_target_product(
+    ctx: &mut Context,
+    expr: ExprId,
+    target_expr: ExprId,
+) -> Option<ExactFractionCancelRewrite> {
+    let (numerator, denominator) = as_div(ctx, expr)?;
+    let factored_numerator = ctx.add(Expr::Mul(target_expr, denominator));
+
+    if !(strong_target_match(ctx, factored_numerator, numerator)
+        || poly_eq(ctx, factored_numerator, numerator))
+    {
+        return None;
+    }
+
+    let intermediate = ctx.add(Expr::Div(factored_numerator, denominator));
+    Some(ExactFractionCancelRewrite {
+        intermediate,
+        rewritten: target_expr,
+        kind: ExactFractionCancelKind::CommonFactor,
+        required_conditions: vec![crate::ImplicitCondition::NonZero(denominator)],
+        focus_before: None,
+        focus_after: None,
+    })
 }
 
 fn simplify_fraction_sum_terms_individually(

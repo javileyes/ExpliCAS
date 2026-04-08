@@ -209,6 +209,20 @@ pub(crate) fn try_rewrite_log_argument_factorization_target_aware(
     source_expr: ExprId,
     target_expr: ExprId,
 ) -> Option<(ExprId, ExprId, ExprId)> {
+    if let Some(rewrite) =
+        try_rewrite_log_argument_factorization_core_target_aware(ctx, source_expr, target_expr)
+    {
+        return Some(rewrite);
+    }
+
+    try_rewrite_log_argument_factorization_additive_target_aware(ctx, source_expr, target_expr)
+}
+
+fn try_rewrite_log_argument_factorization_core_target_aware(
+    ctx: &mut Context,
+    source_expr: ExprId,
+    target_expr: ExprId,
+) -> Option<(ExprId, ExprId, ExprId)> {
     let source = extract_plain_log_term(ctx, source_expr, BigRational::one())?;
     let factored_arg = factor(ctx, source.arg);
     if compare_expr(ctx, factored_arg, source.arg) == Ordering::Equal {
@@ -219,6 +233,68 @@ pub(crate) fn try_rewrite_log_argument_factorization_target_aware(
     try_rewrite_log_expansion_target_aware(ctx, rewritten, target_expr)?;
 
     Some((rewritten, source.arg, factored_arg))
+}
+
+fn try_rewrite_log_argument_factorization_additive_target_aware(
+    ctx: &mut Context,
+    source_expr: ExprId,
+    target_expr: ExprId,
+) -> Option<(ExprId, ExprId, ExprId)> {
+    let source_terms = signed_additive_terms(ctx, source_expr);
+    let target_terms = signed_additive_terms(ctx, target_expr);
+
+    if source_terms.len() < 2 || target_terms.len() <= source_terms.len() {
+        return None;
+    }
+
+    let target_limit = 1usize.checked_shl(target_terms.len() as u32)?;
+    for (source_index, source_focus) in source_terms.iter().copied().enumerate() {
+        for mask in 1..target_limit {
+            let selected = mask.count_ones() as usize;
+            if selected < 2 || selected == target_terms.len() {
+                continue;
+            }
+
+            let target_focus = build_additive_expr_from_signed_terms(
+                ctx,
+                target_terms
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, term)| ((mask & (1usize << index)) != 0).then_some(*term)),
+            );
+
+            let Some((rewritten_focus, focus_before, focus_after)) =
+                try_rewrite_log_argument_factorization_core_target_aware(
+                    ctx,
+                    source_focus,
+                    target_focus,
+                )
+            else {
+                continue;
+            };
+
+            let source_passthrough =
+                collect_passthrough_terms_excluding_index(&source_terms, source_index);
+            let target_passthrough = collect_passthrough_terms(&target_terms, mask);
+            if !additive_term_multiset_matches(ctx, &source_passthrough, &target_passthrough) {
+                continue;
+            }
+
+            let rebuilt = build_additive_expr_from_signed_terms(
+                ctx,
+                source_terms.iter().enumerate().map(|(index, term)| {
+                    if index == source_index {
+                        rewritten_focus
+                    } else {
+                        *term
+                    }
+                }),
+            );
+            return Some((rebuilt, focus_before, focus_after));
+        }
+    }
+
+    None
 }
 
 fn try_rewrite_log_contraction_additive_target_aware(
@@ -693,6 +769,7 @@ fn multiply_existing_power_exponent(
 #[cfg(test)]
 mod tests {
     use super::{
+        try_rewrite_log_argument_factorization_target_aware,
         try_rewrite_log_contraction_additive_target_aware,
         try_rewrite_log_contraction_target_aware, try_rewrite_log_contraction_to_target_aware,
         try_rewrite_log_expansion_additive_target_aware, try_rewrite_log_expansion_target_aware,
@@ -879,5 +956,25 @@ mod tests {
 
         assert_eq!(rewrite.rewritten, target);
         assert_eq!(rewrite.kind, DeriveLogSimplifyRewriteKind::Power);
+    }
+
+    #[test]
+    fn factors_log_argument_difference_of_squares_with_passthrough_target_aware() {
+        let mut ctx = Context::new();
+        let source = parse("log(x^2-y^2)+a", &mut ctx).expect("source");
+        let target = parse("log(x-y)+log(x+y)+a", &mut ctx).expect("target");
+
+        let (rewritten, focus_before, focus_after) =
+            try_rewrite_log_argument_factorization_target_aware(&mut ctx, source, target)
+                .expect("rewrite");
+
+        let expected_rewritten = parse("log((x-y)*(x+y))+a", &mut ctx).expect("expected");
+        let expected_before = parse("x^2-y^2", &mut ctx).expect("expected");
+        let expected_after = parse("(x-y)*(x+y)", &mut ctx).expect("expected");
+        let checker = SemanticEqualityChecker::new(&ctx);
+
+        assert!(checker.are_equal(rewritten, expected_rewritten));
+        assert_eq!(focus_before, expected_before);
+        assert!(checker.are_equal(focus_after, expected_after));
     }
 }
