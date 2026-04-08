@@ -3,22 +3,25 @@ use std::collections::BTreeSet;
 use cas_ast::ExprId;
 use cas_engine::NormalFormGoal;
 use cas_math::inverse_trig_composition_support::try_plan_inverse_atan_reciprocal_add_expr;
-use cas_math::number_theory_support::try_rewrite_consecutive_factorial_ratio_expr;
 use cas_math::summation_support::{
     try_plan_finite_product_evaluation, try_plan_finite_sum_evaluation,
 };
 
 use super::{
-    detect_factor_out_with_division_target, looks_like_fraction_expanded_target,
-    looks_like_mixed_fraction_target, looks_like_telescoping_fraction_target,
-    looks_rationalizable_source, should_try_trig_planner_before_simplify, strong_target_match,
+    contains_phase_shift_term, detect_factor_out_with_division_target,
+    generate_trig_additive_term_bridge_rewrites, generate_trig_bridge_rewrites,
+    looks_like_fraction_expanded_target, looks_like_mixed_fraction_target,
+    looks_like_telescoping_fraction_target, looks_rationalizable_source, phase_shift_target_match,
+    should_try_trig_planner_before_simplify, strong_target_match,
     try_build_combined_fraction_from_fold_add, try_rewrite_collect_monomial_target_aware,
-    try_rewrite_combine_like_terms_target_aware, try_rewrite_exact_fraction_cancel_target_aware,
-    try_rewrite_expanded_target_aware, try_rewrite_exponential_sum_diff_target_aware,
-    try_rewrite_fraction_combination_target_aware, try_rewrite_fraction_expansion_target_aware,
-    try_rewrite_hyperbolic_simplify_target_aware, try_rewrite_integrate_prep_target_aware,
-    try_rewrite_log_contraction_target_aware, try_rewrite_log_expansion_target_aware,
-    try_rewrite_nested_fraction_target_aware, try_rewrite_odd_half_power_target_aware,
+    try_rewrite_combine_like_terms_target_aware,
+    try_rewrite_consecutive_factorial_ratio_target_aware,
+    try_rewrite_exact_fraction_cancel_target_aware, try_rewrite_expanded_target_aware,
+    try_rewrite_exponential_sum_diff_target_aware, try_rewrite_fraction_combination_target_aware,
+    try_rewrite_fraction_expansion_target_aware, try_rewrite_hyperbolic_simplify_target_aware,
+    try_rewrite_integrate_prep_target_aware, try_rewrite_log_contraction_to_target_aware,
+    try_rewrite_log_expansion_target_aware, try_rewrite_nested_fraction_target_aware,
+    try_rewrite_odd_half_power_target_aware, try_rewrite_odd_half_power_to_target_aware,
     try_rewrite_power_merge_target_aware, try_rewrite_pythagorean_factor_form_target_aware,
     try_rewrite_radical_target_aware, try_rewrite_shifted_reciprocal_pythagorean_target_aware,
     try_rewrite_solve_prep_target_aware, try_rewrite_trig_contraction_target_aware,
@@ -134,6 +137,13 @@ pub(crate) fn classify_target_profile(
     if detect_exponential_rewritten_target(ctx, source_expr, target_expr) {
         return DeriveTargetProfile {
             form: DeriveTargetForm::ExponentialRewritten,
+            shared_vars,
+        };
+    }
+
+    if detect_hyperbolic_product_sum_expanded_target(ctx, source_expr, target_expr) {
+        return DeriveTargetProfile {
+            form: DeriveTargetForm::Expanded,
             shared_vars,
         };
     }
@@ -321,10 +331,8 @@ fn detect_log_contracted_target(
         return false;
     }
 
-    if let Some(rewritten) = try_rewrite_log_contraction_target_aware(ctx, source_expr) {
-        if strong_target_match(ctx, rewritten, target_expr) {
-            return true;
-        }
+    if try_rewrite_log_contraction_to_target_aware(ctx, source_expr, target_expr).is_some() {
+        return true;
     }
 
     let simplified = run_default_simplify(ctx, source_expr);
@@ -333,10 +341,8 @@ fn detect_log_contracted_target(
             return true;
         }
 
-        if let Some(rewritten) = try_rewrite_log_contraction_target_aware(ctx, simplified) {
-            if strong_target_match(ctx, rewritten, target_expr) {
-                return true;
-            }
+        if try_rewrite_log_contraction_to_target_aware(ctx, simplified, target_expr).is_some() {
+            return true;
         }
     }
 
@@ -348,6 +354,21 @@ fn detect_trig_expanded_target(
     source_expr: ExprId,
     target_expr: ExprId,
 ) -> bool {
+    if try_rewrite_trig_contraction_target_aware(ctx, source_expr, target_expr).is_some() {
+        return false;
+    }
+
+    if contains_phase_shift_term(ctx, target_expr)
+        && generate_trig_additive_term_bridge_rewrites(ctx, source_expr)
+            .into_iter()
+            .any(|rewrite| {
+                rewrite.kind.rule_name() == "Phase Shift Identity"
+                    && phase_shift_target_match(ctx, rewrite.rewritten, target_expr)
+            })
+    {
+        return false;
+    }
+
     if let Some(expanded) = run_trig_expand_towards_target(ctx, source_expr, target_expr) {
         if strong_target_match(ctx, expanded, target_expr) {
             return true;
@@ -375,6 +396,26 @@ fn detect_trig_contracted_target(
     target_expr: ExprId,
 ) -> bool {
     if try_rewrite_trig_contraction_target_aware(ctx, source_expr, target_expr).is_some() {
+        return true;
+    }
+
+    if generate_trig_bridge_rewrites(ctx, source_expr)
+        .into_iter()
+        .any(|rewrite| {
+            rewrite.kind.rule_name() == "Phase Shift Identity"
+                && phase_shift_target_match(ctx, rewrite.rewritten, target_expr)
+        })
+    {
+        return true;
+    }
+
+    if generate_trig_additive_term_bridge_rewrites(ctx, source_expr)
+        .into_iter()
+        .any(|rewrite| {
+            rewrite.kind.rule_name() == "Phase Shift Identity"
+                && phase_shift_target_match(ctx, rewrite.rewritten, target_expr)
+        })
+    {
         return true;
     }
 
@@ -481,6 +522,10 @@ fn detect_odd_half_power_target(
     source_expr: ExprId,
     target_expr: ExprId,
 ) -> bool {
+    if try_rewrite_odd_half_power_to_target_aware(ctx, source_expr, target_expr).is_some() {
+        return true;
+    }
+
     if let Some(rewritten) = try_rewrite_odd_half_power_target_aware(ctx, source_expr) {
         if strong_target_match(ctx, rewritten, target_expr) {
             return true;
@@ -576,6 +621,22 @@ fn detect_hyperbolic_rewritten_target(
     try_rewrite_hyperbolic_simplify_target_aware(ctx, source_expr, target_expr).is_some()
 }
 
+fn detect_hyperbolic_product_sum_expanded_target(
+    ctx: &mut cas_ast::Context,
+    source_expr: ExprId,
+    target_expr: ExprId,
+) -> bool {
+    if try_rewrite_hyperbolic_simplify_target_aware(ctx, source_expr, target_expr).is_some() {
+        return false;
+    }
+
+    let Some(rewrite) = try_rewrite_expanded_target_aware(ctx, source_expr, target_expr) else {
+        return false;
+    };
+
+    matches!(rewrite.kind, super::ExpandRewriteKind::HyperbolicProductSum)
+}
+
 fn detect_trig_rewritten_target(
     ctx: &mut cas_ast::Context,
     source_expr: ExprId,
@@ -600,8 +661,7 @@ fn detect_factorial_rewritten_target(
     source_expr: ExprId,
     target_expr: ExprId,
 ) -> bool {
-    try_rewrite_consecutive_factorial_ratio_expr(ctx, source_expr)
-        .is_some_and(|rewrite| strong_target_match(ctx, rewrite.rewritten, target_expr))
+    try_rewrite_consecutive_factorial_ratio_target_aware(ctx, source_expr, target_expr).is_some()
 }
 
 fn detect_combined_like_terms_target(
@@ -711,7 +771,37 @@ fn run_trig_expand_towards_target(
     source_expr: ExprId,
     target_expr: ExprId,
 ) -> Option<ExprId> {
-    try_rewrite_trig_expansion(ctx, source_expr, target_expr).map(|rewrite| rewrite.rewritten)
+    if let Some(rewrite) = try_rewrite_trig_expansion(ctx, source_expr, target_expr) {
+        return Some(rewrite.rewritten);
+    }
+
+    for bridge in generate_trig_bridge_rewrites(ctx, source_expr) {
+        if strong_target_match(ctx, bridge.rewritten, target_expr) {
+            return Some(bridge.rewritten);
+        }
+
+        let Some(rewrite) = try_rewrite_trig_expansion(ctx, bridge.rewritten, target_expr) else {
+            continue;
+        };
+        if strong_target_match(ctx, rewrite.rewritten, target_expr) {
+            return Some(rewrite.rewritten);
+        }
+    }
+
+    for bridge in generate_trig_additive_term_bridge_rewrites(ctx, source_expr) {
+        if strong_target_match(ctx, bridge.rewritten, target_expr) {
+            return Some(bridge.rewritten);
+        }
+
+        let Some(rewrite) = try_rewrite_trig_expansion(ctx, bridge.rewritten, target_expr) else {
+            continue;
+        };
+        if strong_target_match(ctx, rewrite.rewritten, target_expr) {
+            return Some(rewrite.rewritten);
+        }
+    }
+
+    None
 }
 
 fn run_trig_expand_default(ctx: &mut cas_ast::Context, source_expr: ExprId) -> Option<ExprId> {
@@ -1232,6 +1322,28 @@ mod tests {
     }
 
     #[test]
+    fn classifies_exact_hyperbolic_sum_to_product_targets_as_expanded() {
+        for (source, target) in [
+            ("sinh(x)+sinh(y)", "2*sinh((x+y)/2)*cosh((x-y)/2)"),
+            ("cosh(x)+cosh(y)", "2*cosh((x+y)/2)*cosh((x-y)/2)"),
+            ("cosh(x)-cosh(y)", "2*sinh((x+y)/2)*sinh((x-y)/2)"),
+        ] {
+            let profile = classify(source, target);
+            assert_eq!(
+                profile.form,
+                DeriveTargetForm::Expanded,
+                "expected exact hyperbolic product/sum target to classify as expanded for `{source}` -> `{target}`"
+            );
+        }
+    }
+
+    #[test]
+    fn classifies_hyperbolic_product_to_sum_passthrough_target_as_expanded() {
+        let profile = classify("2*sinh(2*x)*sinh(x)+a", "4*cosh(x)^3-4*cosh(x)+a");
+        assert_eq!(profile.form, DeriveTargetForm::Expanded);
+    }
+
+    #[test]
     fn classifies_hyperbolic_exponential_identity_targets() {
         for (source, target) in [
             ("exp(x)+exp(-x)", "2*cosh(x)"),
@@ -1282,7 +1394,10 @@ mod tests {
             ("2*ln(abs(x)) + ln(y) - ln(z) - ln(t)", "ln((x^2*y)/(z*t))"),
             ("3*ln(x) + 2*ln(abs(y))", "ln(x^3*y^2)"),
             ("3*ln(x) - 2*ln(y)", "ln(x^3/y^2)"),
+            ("ln(x^2)+ln(y^2)", "ln((x*y)^2)"),
+            ("2*ln(abs(x))+2*ln(abs(y))", "2*ln(abs(x*y))"),
             ("log(2, x) - log(2, y)", "log(2, x/y)"),
+            ("2*log(b, x)+2*log(b, y)", "log(b, (x*y)^2)"),
             (
                 "2*log(b, x) + 3*log(b, y) - 2*log(b, z) - log(b, t)",
                 "log(b, (x^2*y^3)/(z^2*t))",
@@ -1345,8 +1460,10 @@ mod tests {
 
     #[test]
     fn classifies_tabulated_factorial_rewritten_targets() {
-        let profile = classify("(n+1)!/n!", "n+1");
-        assert_eq!(profile.form, DeriveTargetForm::FactorialRewritten);
+        for (source, target) in [("(n+1)!/n!", "n+1"), ("(n+1)!/n!+a", "n+1+a")] {
+            let profile = classify(source, target);
+            assert_eq!(profile.form, DeriveTargetForm::FactorialRewritten);
+        }
     }
 
     #[test]
@@ -1357,8 +1474,14 @@ mod tests {
 
     #[test]
     fn classifies_tabulated_fraction_cancelled_targets() {
-        let profile = classify("(a^3-b^3)/(a-b)", "a^2+a*b+b^2");
-        assert_eq!(profile.form, DeriveTargetForm::FractionCancelled);
+        for (source, target) in [
+            ("(a^3-b^3)/(a-b)", "a^2+a*b+b^2"),
+            ("(a^2-b^2)/(a-b)+c", "a+b+c"),
+            ("(a^3-b^3)/(a-b)+c", "a^2+a*b+b^2+c"),
+        ] {
+            let profile = classify(source, target);
+            assert_eq!(profile.form, DeriveTargetForm::FractionCancelled);
+        }
     }
 
     #[test]
@@ -1374,12 +1497,32 @@ mod tests {
     }
 
     #[test]
+    fn classifies_tabulated_radical_rewritten_targets_with_passthrough() {
+        let profile = classify("sqrt(a^2 + 2*a*b + b^2)+c", "abs(a+b)+c");
+        assert_eq!(profile.form, DeriveTargetForm::RadicalRewritten);
+    }
+
+    #[test]
     fn classifies_tabulated_trig_expanded_targets() {
         let cases = [
             ("sin(2*x)", "2*sin(x)*cos(x)"),
             ("sec(x)", "1/cos(x)"),
             ("tan(x)", "(1-cos(2*x))/sin(2*x)"),
             ("sin(2*a*x)", "2*sin(a*x)*cos(a*x)"),
+            ("sin(x)^4", "(3-4*cos(2*x)+cos(4*x))/8"),
+            ("cos(x)^4", "(3+4*cos(2*x)+cos(4*x))/8"),
+            ("sin(x)^2*cos(x)^2", "(1-cos(4*x))/8"),
+            ("sin(x)+sin(y)", "2*sin((x+y)/2)*cos((x-y)/2)"),
+            ("cos(x)+cos(y)", "2*cos((x+y)/2)*cos((x-y)/2)"),
+            ("cos(x)-cos(y)", "-2*sin((x+y)/2)*sin((x-y)/2)"),
+            ("2*sin(2*x)*sin(x)", "4*cos(x)-4*cos(x)^3"),
+            ("2*cos(2*x)*cos(x)", "4*cos(x)^3-2*cos(x)"),
+            ("2*cos(2*x)*sin(x)", "4*cos(x)^2*sin(x)-2*sin(x)"),
+            ("2*sin(2*x)*sin(x)+a", "4*cos(x)-4*cos(x)^3+a"),
+            ("2*cos(2*x)*sin(x)+a", "4*cos(x)^2*sin(x)-2*sin(x)+a"),
+            ("sqrt(2)*sin(x+pi/4)+a", "sin(x)+cos(x)+a"),
+            ("4*sin(x+pi/3)", "2*sin(x)+2*sqrt(3)*cos(x)"),
+            ("2*sin(x+pi/6)", "sqrt(3)*sin(x)+cos(x)"),
         ];
 
         for (source, target) in cases {
@@ -1397,6 +1540,7 @@ mod tests {
         let cases = [
             ("1 - sin(x)^2", "cos(x)^2"),
             ("tan(x)*cot(x)", "1"),
+            ("tan(x)*cot(x)+a", "1+a"),
             ("sec(x)^2 - 1", "tan(x)^2"),
         ];
 
@@ -1419,6 +1563,14 @@ mod tests {
             ("2*sin(a*x)*cos(a*x)", "sin(2*a*x)"),
             ("cos(a*x)/sin(a*x)", "cot(a*x)"),
             ("(1-cos(2*a*x))/sin(2*a*x)", "tan(a*x)"),
+            ("sin(x)+cos(x)", "sqrt(2)*sin(x+pi/4)"),
+            ("sin(x)+cos(x)+a", "sqrt(2)*sin(x+pi/4)+a"),
+            ("2*sin(x)+2*sqrt(3)*cos(x)", "4*sin(x+pi/3)"),
+            ("sqrt(3)*sin(x)+cos(x)", "2*sin(x+pi/6)"),
+            ("sqrt(2)*sin(x+pi/4)", "sqrt(2)*cos(x-pi/4)"),
+            ("sqrt(2)*sin(x+pi/4)+a", "sqrt(2)*cos(x-pi/4)+a"),
+            ("5*sin(x+arctan(4/3))", "5*cos(x-arctan(3/4))"),
+            ("5*sin(x+arctan(4/3))+a", "5*cos(x-arctan(3/4))+a"),
         ];
 
         for (source, target) in cases {
@@ -1533,6 +1685,7 @@ mod tests {
 
         let simplify_cases = [
             ("sqrt(x^3)", "abs(x)*sqrt(x)"),
+            ("sqrt(x^3)+a", "abs(x)*sqrt(x)+a"),
             ("sqrt(x^5)", "abs(x)^2*sqrt(x)"),
             ("sqrt(y^9)", "abs(y)^4*sqrt(y)"),
         ];

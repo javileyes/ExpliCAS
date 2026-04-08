@@ -49,6 +49,12 @@ pub(crate) fn try_rewrite_expanded_target_aware(
         });
     }
 
+    if let Some(rewrite) =
+        try_rewrite_hyperbolic_additive_product_sum_target_aware(ctx, source_expr, target_expr)
+    {
+        return Some(rewrite);
+    }
+
     let rewritten = run_engine_expand_target_aware(ctx, source_expr, target_expr)?;
 
     Some(ExpandRewrite {
@@ -93,6 +99,35 @@ fn run_engine_expand_target_aware(
     }
 
     Some(rewritten)
+}
+
+fn try_rewrite_hyperbolic_additive_product_sum_target_aware(
+    ctx: &mut Context,
+    source_expr: ExprId,
+    target_expr: ExprId,
+) -> Option<ExpandRewrite> {
+    for rewrite in super::generate_hyperbolic_additive_term_bridge_rewrites(ctx, source_expr) {
+        if !matches!(
+            rewrite.kind,
+            super::hyperbolic::DeriveHyperbolicRewriteKind::ProductToSumSinhCosh
+                | super::hyperbolic::DeriveHyperbolicRewriteKind::ProductToSumCoshCosh
+                | super::hyperbolic::DeriveHyperbolicRewriteKind::ProductToSumSinhSinh
+                | super::hyperbolic::DeriveHyperbolicRewriteKind::SumToProductSinhCosh
+                | super::hyperbolic::DeriveHyperbolicRewriteKind::SumToProductCoshCosh
+                | super::hyperbolic::DeriveHyperbolicRewriteKind::SumToProductSinhSinh
+        ) {
+            continue;
+        }
+
+        if matches_expanded_target(ctx, rewrite.rewritten, target_expr) {
+            return Some(ExpandRewrite {
+                rewritten: target_expr,
+                kind: ExpandRewriteKind::HyperbolicProductSum,
+            });
+        }
+    }
+
+    None
 }
 
 fn matches_expanded_target(ctx: &mut Context, actual: ExprId, target: ExprId) -> bool {
@@ -339,6 +374,16 @@ mod tests {
         let target = cas_parser::parse("2*cosh(2*x)*sinh(x)", &mut ctx).expect("target");
         let rewrite = try_rewrite_expanded_target_aware(&mut ctx, source, target).expect("rewrite");
         assert_eq!(rewrite.kind, ExpandRewriteKind::HyperbolicProductSum);
+    }
+
+    #[test]
+    fn expands_hyperbolic_product_to_sum_with_passthrough_target_aware() {
+        let mut ctx = cas_ast::Context::new();
+        let source = cas_parser::parse("2*sinh(2*x)*sinh(x)+a", &mut ctx).expect("source");
+        let target = cas_parser::parse("4*cosh(x)^3-4*cosh(x)+a", &mut ctx).expect("target");
+        let rewrite = try_rewrite_expanded_target_aware(&mut ctx, source, target).expect("rewrite");
+        assert_eq!(rewrite.kind, ExpandRewriteKind::HyperbolicProductSum);
+        assert_eq!(rewrite.rewritten, target);
     }
 
     #[test]

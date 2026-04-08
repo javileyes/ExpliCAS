@@ -3,8 +3,8 @@
 use crate::domain_condition::ImplicitCondition;
 use cas_ast::{Context, Expr, ExprId};
 use cas_math::expr_domain::{
-    exprs_equivalent, exprs_equivalent_up_to_sign, is_abs_of, is_positive_power_of_base,
-    is_product_dominated_by_positives,
+    exprs_equivalent, exprs_equivalent_up_to_sign, is_abs_of, is_odd_power_of,
+    is_positive_power_of_base, is_product_dominated_by_positives,
 };
 use cas_math::expr_extract::{extract_abs_argument_view, extract_sqrt_argument_view};
 use cas_math::expr_nary::build_balanced_mul;
@@ -593,7 +593,18 @@ fn apply_dominance_rules(ctx: &mut Context, conditions: &mut Vec<ImplicitConditi
                     ImplicitCondition::NonNegative(nn_expr),
                     ImplicitCondition::Positive(pos_expr),
                 ) => {
-                    if exprs_equivalent(ctx, *nn_expr, *pos_expr) {
+                    if exprs_equivalent(ctx, *nn_expr, *pos_expr)
+                        || is_odd_power_of(ctx, *nn_expr, *pos_expr)
+                    {
+                        to_remove.push(i);
+                        break;
+                    }
+                }
+                (
+                    ImplicitCondition::NonNegative(derived_expr),
+                    ImplicitCondition::NonNegative(base_expr),
+                ) => {
+                    if is_odd_power_of(ctx, *derived_expr, *base_expr) {
                         to_remove.push(i);
                         break;
                     }
@@ -1000,5 +1011,22 @@ mod tests {
         assert!(normalized.iter().any(|cond| {
             conditions_equivalent(&ctx, cond, &ImplicitCondition::NonZero(x_plus_1))
         }));
+    }
+
+    #[test]
+    fn nonnegative_odd_power_is_dominated_by_nonnegative_base() {
+        let mut ctx = Context::new();
+        let x_cubed = parse("x^3", &mut ctx).expect("parse x^3");
+        let x = parse("x", &mut ctx).expect("parse x");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::NonNegative(x_cubed),
+                ImplicitCondition::NonNegative(x),
+            ],
+        );
+
+        assert_eq!(normalized, vec![ImplicitCondition::NonNegative(x)]);
     }
 }

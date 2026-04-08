@@ -2,29 +2,30 @@ use crate::derive::{
     classify_target_profile, extract_factored_division_target,
     generate_hyperbolic_additive_term_bridge_rewrites, generate_hyperbolic_bridge_rewrites,
     generate_trig_additive_term_bridge_rewrites, generate_trig_bridge_rewrites,
-    looks_like_factored_target, ordered_strategies_for_target, presentational_target_match,
-    run_combine_like_terms_rewrite, should_try_hyperbolic_planner_before_simplify,
-    should_try_trig_planner_before_simplify, strong_target_match,
-    try_build_combined_fraction_from_fold_add, try_rewrite_collect_monomial_target_aware,
+    looks_like_factored_target, ordered_strategies_for_target, phase_shift_target_match,
+    presentational_target_match, run_combine_like_terms_rewrite,
+    should_try_hyperbolic_planner_before_simplify, should_try_trig_planner_before_simplify,
+    strong_target_match, try_build_combined_fraction_from_fold_add,
+    try_rewrite_collect_monomial_target_aware,
+    try_rewrite_consecutive_factorial_ratio_target_aware,
     try_rewrite_exact_fraction_cancel_target_aware, try_rewrite_expanded_target_aware,
     try_rewrite_exponential_sum_diff_target_aware, try_rewrite_fraction_combination_target_aware,
     try_rewrite_fraction_expansion_target_aware, try_rewrite_hyperbolic_simplify_target_aware,
     try_rewrite_integrate_prep_target_aware, try_rewrite_log_contraction_target_aware,
-    try_rewrite_log_expansion_target_aware, try_rewrite_log_simplify_target_aware,
-    try_rewrite_nested_fraction_target_aware, try_rewrite_odd_half_power_target_aware,
-    try_rewrite_power_merge_target_aware, try_rewrite_pythagorean_factor_form_target_aware,
-    try_rewrite_radical_target_aware, try_rewrite_rationalized_target_aware,
-    try_rewrite_shifted_double_angle_target_aware,
+    try_rewrite_log_contraction_to_target_aware, try_rewrite_log_expansion_target_aware,
+    try_rewrite_log_simplify_target_aware, try_rewrite_nested_fraction_target_aware,
+    try_rewrite_odd_half_power_to_target_aware, try_rewrite_power_merge_target_aware,
+    try_rewrite_pythagorean_factor_form_target_aware, try_rewrite_radical_target_aware,
+    try_rewrite_rationalized_target_aware, try_rewrite_shifted_double_angle_target_aware,
     try_rewrite_shifted_reciprocal_pythagorean_target_aware, try_rewrite_solve_prep_target_aware,
     try_rewrite_trig_contraction_target_aware, try_rewrite_trig_expansion,
-    try_rewrite_trig_identity_to_one_target_aware, DeriveStrategy, DeriveTargetForm,
-    ExpandRewriteKind, RationalizeRewriteKind,
+    try_rewrite_trig_identity_to_one_target_aware, DeriveHyperbolicRewriteKind, DeriveStrategy,
+    DeriveTargetForm, ExpandRewriteKind, RationalizeRewriteKind,
 };
 
 use cas_ast::{Expr, ExprId};
 use cas_engine::NormalFormGoal;
 use cas_math::inverse_trig_composition_support::try_plan_inverse_atan_reciprocal_add_expr;
-use cas_math::number_theory_support::try_rewrite_consecutive_factorial_ratio_expr;
 use cas_math::summation_support::{
     try_plan_finite_product_evaluation, try_plan_finite_sum_evaluation, FiniteAggregateCall,
     ProductEvaluationKind, SumEvaluationKind,
@@ -477,64 +478,69 @@ fn evaluate_derive_resolved_input(
 ) -> DeriveEvalOutput {
     simplify_options.suppress_depth_overflow_warnings = true;
 
-    if presentational_target_match(&mut simplifier.context, resolved_expr, target_expr) {
-        return DeriveEvalOutput {
-            resolved_expr,
-            target_expr,
-            derived_expr: target_expr,
-            steps: Vec::new(),
-            status: DeriveStatus::AlreadyAtTarget,
-        };
-    }
-
-    if let Some((derived_expr, steps, strategy)) = try_supported_derive_strategies_inner(
-        simplifier,
-        resolved_expr,
-        target_expr,
-        collect_steps,
-        &simplify_options,
-        true,
-        true,
-    ) {
-        let steps = if collect_steps
-            && steps.is_empty()
-            && !presentational_target_match(&mut simplifier.context, resolved_expr, derived_expr)
-        {
-            vec![build_strategy_fallback_step(
-                &simplifier.context,
-                strategy,
+    cas_engine::with_suppressed_depth_overflow_warnings(|| {
+        if presentational_target_match(&mut simplifier.context, resolved_expr, target_expr) {
+            return DeriveEvalOutput {
                 resolved_expr,
-                derived_expr,
-            )]
-        } else {
-            steps
-        };
-        return DeriveEvalOutput {
+                target_expr,
+                derived_expr: target_expr,
+                steps: Vec::new(),
+                status: DeriveStatus::AlreadyAtTarget,
+            };
+        }
+
+        if let Some((derived_expr, steps, strategy)) = try_supported_derive_strategies_inner(
+            simplifier,
             resolved_expr,
             target_expr,
-            derived_expr,
-            steps,
-            status: DeriveStatus::Derived { strategy },
+            collect_steps,
+            &simplify_options,
+            true,
+            true,
+        ) {
+            let steps = if collect_steps
+                && steps.is_empty()
+                && !presentational_target_match(
+                    &mut simplifier.context,
+                    resolved_expr,
+                    derived_expr,
+                ) {
+                vec![build_strategy_fallback_step(
+                    &simplifier.context,
+                    strategy,
+                    resolved_expr,
+                    derived_expr,
+                )]
+            } else {
+                steps
+            };
+            return DeriveEvalOutput {
+                resolved_expr,
+                target_expr,
+                derived_expr,
+                steps,
+                status: DeriveStatus::Derived { strategy },
+            };
+        }
+
+        let equivalence = simplifier.are_equivalent_extended(resolved_expr, target_expr);
+        let status = match equivalence {
+            crate::EquivalenceResult::True | crate::EquivalenceResult::ConditionalTrue { .. } => {
+                DeriveStatus::EquivalentButUnsupported { equivalence }
+            }
+            crate::EquivalenceResult::False | crate::EquivalenceResult::Unknown => {
+                DeriveStatus::NotEquivalent { equivalence }
+            }
         };
-    }
 
-    let equivalence = simplifier.are_equivalent_extended(resolved_expr, target_expr);
-    let status = match equivalence {
-        crate::EquivalenceResult::True | crate::EquivalenceResult::ConditionalTrue { .. } => {
-            DeriveStatus::EquivalentButUnsupported { equivalence }
+        DeriveEvalOutput {
+            resolved_expr,
+            target_expr,
+            derived_expr: resolved_expr,
+            steps: Vec::new(),
+            status,
         }
-        crate::EquivalenceResult::False | crate::EquivalenceResult::Unknown => {
-            DeriveStatus::NotEquivalent { equivalence }
-        }
-    };
-
-    DeriveEvalOutput {
-        resolved_expr,
-        target_expr,
-        derived_expr: resolved_expr,
-        steps: Vec::new(),
-        status,
-    }
+    })
 }
 
 fn try_supported_derive_strategies_inner(
@@ -964,7 +970,7 @@ fn try_supported_derive_strategies_inner(
             }
             DeriveStrategy::LogContract => {
                 let stage = log_contract_stage.get_or_insert_with(|| {
-                    run_log_contract_stage(simplifier, resolved_expr, collect_steps)
+                    run_log_contract_stage(simplifier, resolved_expr, target_expr, collect_steps)
                 });
                 if derive_target_match(simplifier, stage.expr, target_expr)
                     || derive_semantic_match(simplifier, stage.expr, target_expr)
@@ -991,7 +997,7 @@ fn try_supported_derive_strategies_inner(
                     )
                 });
                 let stage = simplify_then_log_contract_stage.get_or_insert_with(|| {
-                    run_log_contract_stage(simplifier, first_stage.expr, collect_steps)
+                    run_log_contract_stage(simplifier, first_stage.expr, target_expr, collect_steps)
                 });
                 if derive_target_match(simplifier, stage.expr, target_expr)
                     || derive_semantic_match(simplifier, stage.expr, target_expr)
@@ -1026,7 +1032,7 @@ fn try_supported_derive_strategies_inner(
             DeriveStrategy::TrigContract => {
                 let direct_stage =
                     run_trig_contract_stage(simplifier, resolved_expr, target_expr, collect_steps);
-                if strong_target_match(&mut simplifier.context, direct_stage.expr, target_expr) {
+                if derive_target_match(simplifier, direct_stage.expr, target_expr) {
                     let mut stage = direct_stage;
                     retarget_stage_output(&mut stage, target_expr);
                     let steps = finalize_steps(
@@ -1056,7 +1062,7 @@ fn try_supported_derive_strategies_inner(
                         collect_steps,
                     )
                 });
-                if strong_target_match(&mut simplifier.context, stage.expr, target_expr) {
+                if derive_target_match(simplifier, stage.expr, target_expr) {
                     let mut stage = stage.clone();
                     retarget_stage_output(&mut stage, target_expr);
                     let steps = finalize_steps(
@@ -1211,7 +1217,7 @@ fn try_supported_derive_strategies_inner(
             }
             DeriveStrategy::OddHalfPowerExpand => {
                 let stage = odd_half_power_stage.get_or_insert_with(|| {
-                    run_odd_half_power_stage(simplifier, resolved_expr, collect_steps)
+                    run_odd_half_power_stage(simplifier, resolved_expr, target_expr, collect_steps)
                 });
                 if strong_target_match(&mut simplifier.context, stage.expr, target_expr) {
                     let mut stage = stage.clone();
@@ -1360,7 +1366,12 @@ fn try_supported_derive_strategies_inner(
                     )
                 });
                 let stage = simplify_then_odd_half_power_stage.get_or_insert_with(|| {
-                    run_odd_half_power_stage(simplifier, first_stage.expr, collect_steps)
+                    run_odd_half_power_stage(
+                        simplifier,
+                        first_stage.expr,
+                        target_expr,
+                        collect_steps,
+                    )
                 });
                 if strong_target_match(&mut simplifier.context, stage.expr, target_expr) {
                     let mut stage = stage.clone();
@@ -1640,7 +1651,7 @@ fn try_bounded_multistage_derive_inner(
             return Some(vec![stage]);
         }
 
-        if strong_target_match(&mut simplifier.context, stage.expr, target_expr) {
+        if derive_target_match(simplifier, stage.expr, target_expr) {
             let mut fallback_stage = stage.clone();
             retarget_stage_output(&mut fallback_stage, target_expr);
             semantic_fallback.get_or_insert_with(|| vec![fallback_stage]);
@@ -1648,6 +1659,13 @@ fn try_bounded_multistage_derive_inner(
         }
 
         exploratory_stages.push(stage);
+    }
+
+    if semantic_fallback
+        .as_ref()
+        .is_some_and(|stages| stages.len() == 1 && stages[0].steps.len() <= 1)
+    {
+        return semantic_fallback;
     }
 
     for mut stage in exploratory_stages {
@@ -1732,10 +1750,6 @@ fn generate_planner_candidate_stages(
 
     for rewrite in generate_hyperbolic_additive_term_bridge_rewrites(&mut simplifier.context, expr)
     {
-        if !derive_target_match(simplifier, rewrite.rewritten, target_expr) {
-            continue;
-        }
-
         let steps = if collect_steps {
             vec![build_hyperbolic_bridge_step(
                 &simplifier.context,
@@ -1778,10 +1792,6 @@ fn generate_planner_candidate_stages(
     );
 
     for rewrite in generate_trig_additive_term_bridge_rewrites(&mut simplifier.context, expr) {
-        if !derive_target_match(simplifier, rewrite.rewritten, target_expr) {
-            continue;
-        }
-
         let steps = if collect_steps {
             vec![build_trig_bridge_step(
                 &simplifier.context,
@@ -1838,6 +1848,11 @@ fn generate_planner_candidate_stages(
             expr: rewrite.rewritten,
             steps,
         });
+    }
+
+    let log_contract_stage = run_log_contract_stage(simplifier, expr, target_expr, collect_steps);
+    if !presentational_target_match(&mut simplifier.context, log_contract_stage.expr, expr) {
+        stages.push(log_contract_stage);
     }
 
     if !should_try_trig_planner_before_simplify(&mut simplifier.context, expr, target_expr) {
@@ -1900,6 +1915,28 @@ fn build_trig_bridge_step(
     step
 }
 
+fn build_trig_expand_step(
+    ctx: &cas_ast::Context,
+    before: ExprId,
+    after: ExprId,
+    description: &str,
+    rule_name: &str,
+) -> crate::Step {
+    let mut step = crate::Step::with_snapshots(
+        description,
+        rule_name,
+        before,
+        after,
+        Vec::new(),
+        Some(ctx),
+        before,
+        after,
+    );
+    step.importance = cas_solver_core::step_types::ImportanceLevel::Medium;
+    step.category = cas_solver_core::step_types::StepCategory::Expand;
+    step
+}
+
 fn derive_expr_signature(ctx: &cas_ast::Context, expr: ExprId) -> String {
     cas_formatter::clean_display_string(&cas_formatter::render_expr(ctx, expr))
 }
@@ -1910,6 +1947,15 @@ fn run_expand_stage(
     target_expr: ExprId,
     collect_steps: bool,
 ) -> DeriveStageOutput {
+    if let Some(stage) = try_run_hyperbolic_product_sum_then_triple_angle_expand_chain(
+        simplifier,
+        expr,
+        target_expr,
+        collect_steps,
+    ) {
+        return stage;
+    }
+
     if let Some(rewrite) =
         try_rewrite_expanded_target_aware(&mut simplifier.context, expr, target_expr)
     {
@@ -1946,6 +1992,77 @@ fn run_expand_stage(
 
     let (expr, steps) = simplifier.expand(expr);
     DeriveStageOutput { expr, steps }
+}
+
+fn try_run_hyperbolic_product_sum_then_triple_angle_expand_chain(
+    simplifier: &mut crate::Simplifier,
+    expr: ExprId,
+    target_expr: ExprId,
+    collect_steps: bool,
+) -> Option<DeriveStageOutput> {
+    let mut first_stage_candidates =
+        generate_hyperbolic_bridge_rewrites(&mut simplifier.context, expr);
+    first_stage_candidates.extend(generate_hyperbolic_additive_term_bridge_rewrites(
+        &mut simplifier.context,
+        expr,
+    ));
+
+    for bridge in first_stage_candidates {
+        if !matches!(
+            bridge.kind,
+            DeriveHyperbolicRewriteKind::ProductToSumSinhCosh
+                | DeriveHyperbolicRewriteKind::ProductToSumCoshCosh
+                | DeriveHyperbolicRewriteKind::ProductToSumSinhSinh
+                | DeriveHyperbolicRewriteKind::SumToProductSinhCosh
+                | DeriveHyperbolicRewriteKind::SumToProductCoshCosh
+                | DeriveHyperbolicRewriteKind::SumToProductSinhSinh
+        ) {
+            continue;
+        }
+
+        for rewrite in
+            generate_hyperbolic_bridge_rewrites(&mut simplifier.context, bridge.rewritten)
+        {
+            if !matches!(
+                rewrite.kind,
+                DeriveHyperbolicRewriteKind::ExpandCombinedSinhTripleAngle
+                    | DeriveHyperbolicRewriteKind::ExpandCombinedCoshTripleAngle
+            ) {
+                continue;
+            }
+
+            if !strong_target_match(&mut simplifier.context, rewrite.rewritten, target_expr) {
+                continue;
+            }
+
+            let steps = if collect_steps {
+                vec![
+                    build_expand_step(
+                        &simplifier.context,
+                        expr,
+                        bridge.rewritten,
+                        ExpandRewriteKind::HyperbolicProductSum,
+                    ),
+                    build_hyperbolic_bridge_step(
+                        &simplifier.context,
+                        bridge.rewritten,
+                        rewrite.rewritten,
+                        rewrite.kind.description(),
+                        rewrite.kind.rule_name(),
+                    ),
+                ]
+            } else {
+                Vec::new()
+            };
+
+            return Some(DeriveStageOutput {
+                expr: rewrite.rewritten,
+                steps,
+            });
+        }
+    }
+
+    None
 }
 
 fn build_expand_step(
@@ -2267,10 +2384,11 @@ fn run_fraction_combine_stage(
 fn run_odd_half_power_stage(
     simplifier: &mut crate::Simplifier,
     expr: ExprId,
+    target_expr: ExprId,
     collect_steps: bool,
 ) -> DeriveStageOutput {
     let rewritten_source = if let Some(rewritten) =
-        try_rewrite_odd_half_power_target_aware(&mut simplifier.context, expr)
+        try_rewrite_odd_half_power_to_target_aware(&mut simplifier.context, expr, target_expr)
     {
         rewritten
     } else {
@@ -2282,9 +2400,11 @@ fn run_odd_half_power_stage(
                 ..crate::SimplifyOptions::default()
             },
         );
-        let Some(rewritten) =
-            try_rewrite_odd_half_power_target_aware(&mut simplifier.context, silently_simplified)
-        else {
+        let Some(rewritten) = try_rewrite_odd_half_power_to_target_aware(
+            &mut simplifier.context,
+            silently_simplified,
+            target_expr,
+        ) else {
             return DeriveStageOutput {
                 expr,
                 steps: Vec::new(),
@@ -2381,35 +2501,137 @@ fn run_trig_expand_stage(
     target_expr: ExprId,
     collect_steps: bool,
 ) -> DeriveStageOutput {
-    let Some(rewrite) = try_rewrite_trig_expansion(&mut simplifier.context, expr, target_expr)
-    else {
-        return DeriveStageOutput {
-            expr,
-            steps: Vec::new(),
+    if let Some(rewrite) = try_rewrite_trig_expansion(&mut simplifier.context, expr, target_expr) {
+        let steps = if collect_steps {
+            vec![build_trig_expand_step(
+                &simplifier.context,
+                expr,
+                rewrite.rewritten,
+                rewrite.kind.description(),
+                rewrite.kind.rule_name(),
+            )]
+        } else {
+            Vec::new()
         };
-    };
 
-    let steps = if collect_steps {
-        let mut step = crate::Step::with_snapshots(
-            rewrite.kind.description(),
-            rewrite.kind.rule_name(),
-            expr,
-            rewrite.rewritten,
-            Vec::new(),
-            Some(&simplifier.context),
-            expr,
-            rewrite.rewritten,
-        );
-        step.importance = cas_solver_core::step_types::ImportanceLevel::Medium;
-        step.category = cas_solver_core::step_types::StepCategory::Expand;
-        vec![step]
-    } else {
-        Vec::new()
-    };
+        return DeriveStageOutput {
+            expr: rewrite.rewritten,
+            steps,
+        };
+    }
+
+    for bridge in generate_trig_additive_term_bridge_rewrites(&mut simplifier.context, expr) {
+        if !strong_target_match(&mut simplifier.context, bridge.rewritten, target_expr) {
+            continue;
+        }
+
+        let steps = if collect_steps {
+            vec![build_trig_bridge_step(
+                &simplifier.context,
+                expr,
+                target_expr,
+                bridge.kind.description(),
+                bridge.kind.rule_name(),
+            )]
+        } else {
+            Vec::new()
+        };
+
+        return DeriveStageOutput {
+            expr: target_expr,
+            steps,
+        };
+    }
+
+    if let Some(stage) = try_run_two_step_additive_phase_shift_chain(
+        simplifier,
+        expr,
+        target_expr,
+        collect_steps,
+        strong_target_match,
+    ) {
+        return stage;
+    }
+
+    for bridge in generate_trig_bridge_rewrites(&mut simplifier.context, expr) {
+        let Some(rewrite) =
+            try_rewrite_trig_expansion(&mut simplifier.context, bridge.rewritten, target_expr)
+        else {
+            continue;
+        };
+
+        if !strong_target_match(&mut simplifier.context, rewrite.rewritten, target_expr) {
+            continue;
+        }
+
+        let steps = if collect_steps {
+            vec![
+                build_trig_bridge_step(
+                    &simplifier.context,
+                    expr,
+                    bridge.rewritten,
+                    bridge.kind.description(),
+                    bridge.kind.rule_name(),
+                ),
+                build_trig_expand_step(
+                    &simplifier.context,
+                    bridge.rewritten,
+                    rewrite.rewritten,
+                    rewrite.kind.description(),
+                    rewrite.kind.rule_name(),
+                ),
+            ]
+        } else {
+            Vec::new()
+        };
+
+        return DeriveStageOutput {
+            expr: rewrite.rewritten,
+            steps,
+        };
+    }
+
+    for bridge in generate_trig_additive_term_bridge_rewrites(&mut simplifier.context, expr) {
+        let Some(rewrite) =
+            try_rewrite_trig_expansion(&mut simplifier.context, bridge.rewritten, target_expr)
+        else {
+            continue;
+        };
+
+        if !strong_target_match(&mut simplifier.context, rewrite.rewritten, target_expr) {
+            continue;
+        }
+
+        let steps = if collect_steps {
+            vec![
+                build_trig_bridge_step(
+                    &simplifier.context,
+                    expr,
+                    bridge.rewritten,
+                    bridge.kind.description(),
+                    bridge.kind.rule_name(),
+                ),
+                build_trig_expand_step(
+                    &simplifier.context,
+                    bridge.rewritten,
+                    rewrite.rewritten,
+                    rewrite.kind.description(),
+                    rewrite.kind.rule_name(),
+                ),
+            ]
+        } else {
+            Vec::new()
+        };
+
+        return DeriveStageOutput {
+            expr: rewrite.rewritten,
+            steps,
+        };
+    }
 
     DeriveStageOutput {
-        expr: rewrite.rewritten,
-        steps,
+        expr,
+        steps: Vec::new(),
     }
 }
 
@@ -2419,37 +2641,175 @@ fn run_trig_contract_stage(
     target_expr: ExprId,
     collect_steps: bool,
 ) -> DeriveStageOutput {
-    let Some(rewrite) =
+    if let Some(rewrite) =
         try_rewrite_trig_contraction_target_aware(&mut simplifier.context, expr, target_expr)
-    else {
+    {
+        let rewritten_expr = if rewrite.kind.rule_name() == "Phase Shift Identity"
+            && phase_shift_bridge_target_match(
+                &mut simplifier.context,
+                rewrite.rewritten,
+                target_expr,
+            ) {
+            target_expr
+        } else {
+            rewrite.rewritten
+        };
+        let steps = if collect_steps {
+            let mut step = crate::Step::with_snapshots(
+                rewrite.kind.description(),
+                rewrite.kind.rule_name(),
+                expr,
+                rewritten_expr,
+                Vec::new(),
+                Some(&simplifier.context),
+                expr,
+                rewritten_expr,
+            );
+            step.importance = cas_solver_core::step_types::ImportanceLevel::Medium;
+            step.category = cas_solver_core::step_types::StepCategory::Simplify;
+            vec![step]
+        } else {
+            Vec::new()
+        };
+
         return DeriveStageOutput {
-            expr,
-            steps: Vec::new(),
+            expr: rewritten_expr,
+            steps,
         };
     };
 
-    let steps = if collect_steps {
-        let mut step = crate::Step::with_snapshots(
-            rewrite.kind.description(),
-            rewrite.kind.rule_name(),
-            expr,
-            rewrite.rewritten,
-            Vec::new(),
-            Some(&simplifier.context),
-            expr,
-            rewrite.rewritten,
-        );
-        step.importance = cas_solver_core::step_types::ImportanceLevel::Medium;
-        step.category = cas_solver_core::step_types::StepCategory::Simplify;
-        vec![step]
-    } else {
-        Vec::new()
-    };
+    for bridge in generate_trig_bridge_rewrites(&mut simplifier.context, expr) {
+        if bridge.kind.rule_name() != "Phase Shift Identity"
+            || !phase_shift_bridge_target_match(
+                &mut simplifier.context,
+                bridge.rewritten,
+                target_expr,
+            )
+        {
+            continue;
+        }
+
+        let steps = if collect_steps {
+            vec![build_trig_bridge_step(
+                &simplifier.context,
+                expr,
+                target_expr,
+                bridge.kind.description(),
+                bridge.kind.rule_name(),
+            )]
+        } else {
+            Vec::new()
+        };
+
+        return DeriveStageOutput {
+            expr: target_expr,
+            steps,
+        };
+    }
+
+    for bridge in generate_trig_additive_term_bridge_rewrites(&mut simplifier.context, expr) {
+        if bridge.kind.rule_name() != "Phase Shift Identity"
+            || !phase_shift_bridge_target_match(
+                &mut simplifier.context,
+                bridge.rewritten,
+                target_expr,
+            )
+        {
+            continue;
+        }
+
+        let steps = if collect_steps {
+            vec![build_trig_bridge_step(
+                &simplifier.context,
+                expr,
+                bridge.rewritten,
+                bridge.kind.description(),
+                bridge.kind.rule_name(),
+            )]
+        } else {
+            Vec::new()
+        };
+
+        return DeriveStageOutput {
+            expr: bridge.rewritten,
+            steps,
+        };
+    }
+
+    if let Some(stage) = try_run_two_step_additive_phase_shift_chain(
+        simplifier,
+        expr,
+        target_expr,
+        collect_steps,
+        phase_shift_bridge_target_match,
+    ) {
+        return stage;
+    }
 
     DeriveStageOutput {
-        expr: rewrite.rewritten,
-        steps,
+        expr,
+        steps: Vec::new(),
     }
+}
+
+fn phase_shift_bridge_target_match(
+    ctx: &mut cas_ast::Context,
+    actual_expr: ExprId,
+    target_expr: ExprId,
+) -> bool {
+    phase_shift_target_match(ctx, actual_expr, target_expr)
+}
+
+fn try_run_two_step_additive_phase_shift_chain(
+    simplifier: &mut crate::Simplifier,
+    expr: ExprId,
+    target_expr: ExprId,
+    collect_steps: bool,
+    target_match: fn(&mut cas_ast::Context, ExprId, ExprId) -> bool,
+) -> Option<DeriveStageOutput> {
+    for first in generate_trig_additive_term_bridge_rewrites(&mut simplifier.context, expr) {
+        if first.kind.rule_name() != "Phase Shift Identity" {
+            continue;
+        }
+
+        for second in
+            generate_trig_additive_term_bridge_rewrites(&mut simplifier.context, first.rewritten)
+        {
+            if second.kind.rule_name() != "Phase Shift Identity"
+                || !target_match(&mut simplifier.context, second.rewritten, target_expr)
+            {
+                continue;
+            }
+
+            let steps = if collect_steps {
+                vec![
+                    build_trig_bridge_step(
+                        &simplifier.context,
+                        expr,
+                        first.rewritten,
+                        first.kind.description(),
+                        first.kind.rule_name(),
+                    ),
+                    build_trig_bridge_step(
+                        &simplifier.context,
+                        first.rewritten,
+                        target_expr,
+                        second.kind.description(),
+                        second.kind.rule_name(),
+                    ),
+                ]
+            } else {
+                Vec::new()
+            };
+
+            return Some(DeriveStageOutput {
+                expr: target_expr,
+                steps,
+            });
+        }
+    }
+
+    None
 }
 
 fn run_integrate_prep_stage(
@@ -2746,20 +3106,16 @@ fn run_factorial_rewrite_stage(
     target_expr: ExprId,
     collect_steps: bool,
 ) -> DeriveStageOutput {
-    let Some(rewrite) = try_rewrite_consecutive_factorial_ratio_expr(&mut simplifier.context, expr)
-    else {
+    let Some(rewrite) = try_rewrite_consecutive_factorial_ratio_target_aware(
+        &mut simplifier.context,
+        expr,
+        target_expr,
+    ) else {
         return DeriveStageOutput {
             expr,
             steps: Vec::new(),
         };
     };
-
-    if !strong_target_match(&mut simplifier.context, rewrite.rewritten, target_expr) {
-        return DeriveStageOutput {
-            expr,
-            steps: Vec::new(),
-        };
-    }
 
     let steps = if collect_steps {
         let mut step = crate::Step::with_snapshots(
@@ -2888,10 +3244,15 @@ fn run_fraction_cancel_stage(
     };
 
     let steps = if collect_steps {
-        let (before_local, after_local) =
+        let (before_local, after_local) = if let (Some(before_local), Some(after_local)) =
+            (rewrite.focus_before, rewrite.focus_after)
+        {
+            (before_local, after_local)
+        } else {
             rewrite
                 .kind
-                .local_snapshots(expr, rewrite.intermediate, rewrite.rewritten);
+                .local_snapshots(expr, rewrite.intermediate, rewrite.rewritten)
+        };
 
         let mut step = crate::Step::with_snapshots(
             rewrite.kind.description(),
@@ -3094,9 +3455,12 @@ fn run_trig_rewrite_stage(
 fn run_log_contract_stage(
     simplifier: &mut crate::Simplifier,
     expr: ExprId,
+    target_expr: ExprId,
     collect_steps: bool,
 ) -> DeriveStageOutput {
-    let Some(rewritten) = try_rewrite_log_contraction_target_aware(&mut simplifier.context, expr)
+    let Some(rewritten) =
+        try_rewrite_log_contraction_to_target_aware(&mut simplifier.context, expr, target_expr)
+            .or_else(|| try_rewrite_log_contraction_target_aware(&mut simplifier.context, expr))
     else {
         return DeriveStageOutput {
             expr,
@@ -3580,7 +3944,10 @@ fn finalize_steps(
     ctx: &cas_ast::Context,
 ) -> Vec<crate::Step> {
     let stage_count = stages.len();
-    let cleaned = clean_derive_stage_steps(stages);
+    let cleaned = prune_semantically_noop_derive_steps(
+        prune_adjacent_inverse_derive_steps(clean_derive_stage_steps(stages), ctx),
+        ctx,
+    );
 
     let mut steps = if stage_count > 1 {
         cleaned
@@ -3599,6 +3966,8 @@ fn finalize_steps(
             }
         }
     };
+    steps = prune_adjacent_inverse_derive_steps(steps, ctx);
+    steps = prune_semantically_noop_derive_steps(steps, ctx);
 
     if stage_count > 1 {
         truncate_steps_after_first_presentational_target_match(&mut steps, final_expr, ctx);
@@ -3619,7 +3988,10 @@ fn finalize_planner_steps(
     stages: Vec<DeriveStageOutput>,
     ctx: &cas_ast::Context,
 ) -> Vec<crate::Step> {
-    let mut steps = clean_derive_stage_steps(stages);
+    let mut steps = prune_semantically_noop_derive_steps(
+        prune_adjacent_inverse_derive_steps(clean_derive_stage_steps(stages), ctx),
+        ctx,
+    );
     truncate_steps_after_first_presentational_target_match(&mut steps, final_expr, ctx);
 
     if let Some(last_step) = steps.last_mut() {
@@ -3631,14 +4003,146 @@ fn finalize_planner_steps(
 
 fn clean_derive_stage_steps(stages: Vec<DeriveStageOutput>) -> Vec<crate::Step> {
     let raw_steps: Vec<_> = stages.into_iter().flat_map(|stage| stage.steps).collect();
+    repair_derive_step_chain(raw_steps)
+}
+
+fn repair_derive_step_chain(steps: Vec<crate::Step>) -> Vec<crate::Step> {
     cas_solver_core::eval_step_pipeline::clean_eval_steps(
-        raw_steps,
+        steps,
         |s: &crate::Step| s.before,
         |s: &crate::Step| s.after,
         |s: &crate::Step| s.before_local(),
         |s: &crate::Step| s.after_local(),
         |s: &crate::Step| s.global_after,
         |s: &mut crate::Step, gb| s.global_before = Some(gb),
+    )
+}
+
+fn prune_adjacent_inverse_derive_steps(
+    steps: Vec<crate::Step>,
+    ctx: &cas_ast::Context,
+) -> Vec<crate::Step> {
+    let mut pruned = Vec::with_capacity(steps.len());
+
+    for step in steps {
+        let cancels_previous = pruned
+            .last()
+            .is_some_and(|previous| should_cancel_adjacent_inverse_pair(previous, &step, ctx));
+        if cancels_previous {
+            pruned.pop();
+        } else {
+            pruned.push(step);
+        }
+    }
+
+    repair_derive_step_chain(pruned)
+}
+
+fn prune_semantically_noop_derive_steps(
+    steps: Vec<crate::Step>,
+    ctx: &cas_ast::Context,
+) -> Vec<crate::Step> {
+    let mut pruned = Vec::with_capacity(steps.len());
+    for step in steps {
+        if !should_drop_semantically_noop_step(&step, ctx) {
+            pruned.push(step);
+        }
+    }
+    repair_derive_step_chain(pruned)
+}
+
+fn should_drop_semantically_noop_step(step: &crate::Step, ctx: &cas_ast::Context) -> bool {
+    if cas_solver_core::step_rules::is_always_keep_step_rule_name(step.rule_name.as_str()) {
+        return false;
+    }
+
+    if !step.assumption_events().is_empty()
+        || !step.required_conditions().is_empty()
+        || step.poly_proof().is_some()
+        || !step.substeps().is_empty()
+    {
+        return false;
+    }
+
+    if !same_display_expr(ctx, step.before, step.after) {
+        return false;
+    }
+
+    if let (Some(local_before), Some(local_after)) = (step.before_local(), step.after_local()) {
+        if !same_display_expr(ctx, local_before, local_after) {
+            return false;
+        }
+    }
+
+    true
+}
+
+fn same_display_expr(ctx: &cas_ast::Context, left: ExprId, right: ExprId) -> bool {
+    cas_formatter::clean_display_string(&cas_formatter::render_expr(ctx, left))
+        == cas_formatter::clean_display_string(&cas_formatter::render_expr(ctx, right))
+}
+
+fn should_cancel_adjacent_inverse_pair(
+    previous: &crate::Step,
+    next: &crate::Step,
+    ctx: &cas_ast::Context,
+) -> bool {
+    let mut temp_ctx = ctx.clone();
+    if !strong_target_match(&mut temp_ctx, previous.before, next.after)
+        || !strong_target_match(&mut temp_ctx, previous.after, next.before)
+    {
+        return false;
+    }
+
+    if previous.path() != next.path() {
+        return false;
+    }
+
+    let allow_medium_oscillation = is_low_signal_trig_oscillation_rule(&previous.rule_name)
+        && is_low_signal_trig_oscillation_rule(&next.rule_name);
+    if !allow_medium_oscillation
+        && (previous.get_importance() >= cas_solver_core::step_types::ImportanceLevel::Medium
+            || next.get_importance() >= cas_solver_core::step_types::ImportanceLevel::Medium)
+    {
+        return false;
+    }
+
+    if cas_solver_core::step_rules::is_always_keep_step_rule_name(previous.rule_name.as_str())
+        || cas_solver_core::step_rules::is_always_keep_step_rule_name(next.rule_name.as_str())
+    {
+        return false;
+    }
+
+    if !previous.assumption_events().is_empty()
+        || !next.assumption_events().is_empty()
+        || !previous.required_conditions().is_empty()
+        || !next.required_conditions().is_empty()
+        || previous.poly_proof().is_some()
+        || next.poly_proof().is_some()
+        || !previous.substeps().is_empty()
+        || !next.substeps().is_empty()
+    {
+        return false;
+    }
+
+    match (
+        previous.global_before,
+        previous.global_after,
+        next.global_before,
+        next.global_after,
+    ) {
+        (Some(prev_before), Some(prev_after), Some(next_before), Some(next_after)) => {
+            strong_target_match(&mut temp_ctx, prev_after, next_before)
+                && strong_target_match(&mut temp_ctx, prev_before, next_after)
+        }
+        _ => true,
+    }
+}
+
+fn is_low_signal_trig_oscillation_rule(rule_name: &str) -> bool {
+    matches!(
+        rule_name,
+        "Double Angle Identity" | "Angle Consistency (Half-Angle)"
     )
 }
 
@@ -3652,6 +4156,9 @@ fn truncate_steps_after_first_target_match(
         let local_after = step.after_local().unwrap_or(step.after);
         strong_target_match(&mut temp_ctx, local_after, final_expr)
             || strong_target_match(&mut temp_ctx, step.after, final_expr)
+            || step.global_after.is_some_and(|global_after| {
+                strong_target_match(&mut temp_ctx, global_after, final_expr)
+            })
     });
 
     if let Some(index) = cutoff {
@@ -3669,6 +4176,9 @@ fn truncate_steps_after_first_presentational_target_match(
         let local_after = step.after_local().unwrap_or(step.after);
         presentational_target_match(&mut temp_ctx, local_after, final_expr)
             || presentational_target_match(&mut temp_ctx, step.after, final_expr)
+            || step.global_after.is_some_and(|global_after| {
+                presentational_target_match(&mut temp_ctx, global_after, final_expr)
+            })
     });
 
     if let Some(index) = cutoff {
@@ -3964,6 +4474,53 @@ mod tests {
     }
 
     #[test]
+    fn planner_candidate_generation_includes_trig_additive_phase_shift_bridge_stage() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("sin(x)+cos(x)+sin(y)+cos(y)", &mut simplifier.context)
+            .expect("parse source");
+        let intermediate =
+            cas_parser::parse("sqrt(2)*sin(x+pi/4)+sin(y)+cos(y)", &mut simplifier.context)
+                .expect("parse intermediate");
+
+        let stages = generate_planner_candidate_stages(
+            &mut simplifier,
+            source,
+            intermediate,
+            false,
+            &crate::SimplifyOptions::default(),
+        );
+
+        assert!(stages.iter().any(|stage| derive_semantic_match(
+            &mut simplifier,
+            stage.expr,
+            intermediate
+        )));
+    }
+
+    #[test]
+    fn planner_prefers_single_bridge_stage_over_semantic_cleanup_tail() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source =
+            cas_parser::parse("sinh(x)+sinh(y)", &mut simplifier.context).expect("parse source");
+        let target = cas_parser::parse("2*sinh((x+y)/2)*cosh((x-y)/2)", &mut simplifier.context)
+            .expect("parse target");
+
+        let derived = try_bounded_multistage_derive(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+        )
+        .expect("planner should derive hyperbolic sum-to-product target");
+
+        assert_eq!(derived.2, DeriveStrategy::Planner);
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Hyperbolic Product-to-Sum Identity");
+    }
+
+    #[test]
     fn run_expand_stage_rewrites_hyperbolic_sinh_difference_target_aware() {
         let mut simplifier = crate::Simplifier::with_default_rules();
         let source = cas_parser::parse("sinh(x-y)", &mut simplifier.context).expect("parse source");
@@ -3993,6 +4550,78 @@ mod tests {
     }
 
     #[test]
+    fn truncate_steps_after_first_target_match_uses_global_after_snapshot() {
+        let mut ctx = cas_ast::Context::new();
+        let source = cas_parser::parse("(sin(x)+cos(x))^2", &mut ctx).expect("parse source");
+        let local_before = cas_parser::parse("2*sin(x)*cos(x)+1", &mut ctx).expect("parse local");
+        let local_after = cas_parser::parse("sin(2*x)", &mut ctx).expect("parse local after");
+        let target = cas_parser::parse("1+sin(2*x)", &mut ctx).expect("parse target");
+        let extra = cas_parser::parse("2*sin(x)*cos(x)", &mut ctx).expect("parse extra");
+
+        let mut steps = vec![
+            crate::Step::with_snapshots(
+                "contract double angle",
+                "Double Angle Identity",
+                local_before,
+                local_after,
+                Vec::new(),
+                Some(&ctx),
+                source,
+                target,
+            ),
+            crate::Step::with_snapshots(
+                "backtrack",
+                "Double Angle Identity",
+                local_after,
+                extra,
+                Vec::new(),
+                Some(&ctx),
+                target,
+                extra,
+            ),
+        ];
+
+        super::truncate_steps_after_first_target_match(&mut steps, target, &ctx);
+        assert_eq!(steps.len(), 1);
+        assert_eq!(steps[0].global_after, Some(target));
+    }
+
+    #[test]
+    fn prune_semantically_noop_derive_steps_drops_pure_canonicalize_tail() {
+        let mut ctx = cas_ast::Context::new();
+        let source = cas_parser::parse("sinh(x)+sinh(y)", &mut ctx).expect("parse source");
+        let target =
+            cas_parser::parse("2*sinh((x+y)/2)*cosh((x-y)/2)", &mut ctx).expect("parse target");
+
+        let steps = vec![
+            crate::Step::with_snapshots(
+                "Hyperbolic sum-to-product",
+                "Hyperbolic Product-to-Sum Identity",
+                source,
+                target,
+                Vec::new(),
+                Some(&ctx),
+                source,
+                target,
+            ),
+            crate::Step::with_snapshots(
+                "canonicalize",
+                "Canonicalize Multiplication",
+                target,
+                target,
+                Vec::new(),
+                Some(&ctx),
+                target,
+                target,
+            ),
+        ];
+
+        let pruned = super::prune_semantically_noop_derive_steps(steps, &ctx);
+        assert_eq!(pruned.len(), 1);
+        assert_eq!(pruned[0].rule_name, "Hyperbolic Product-to-Sum Identity");
+    }
+
+    #[test]
     fn direct_derive_prefers_expand_for_hyperbolic_sinh_difference_without_planner() {
         let mut simplifier = crate::Simplifier::with_default_rules();
         let source = cas_parser::parse("sinh(x-y)", &mut simplifier.context).expect("parse source");
@@ -4013,6 +4642,33 @@ mod tests {
         assert_eq!(derived.0, target);
         assert_eq!(derived.2, DeriveStrategy::Expand);
         assert!(!derived.1.is_empty());
+    }
+
+    #[test]
+    fn direct_derive_prefers_expand_for_hyperbolic_sinh_sum_without_planner() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("sinh(x+y)", &mut simplifier.context).expect("parse source");
+        let target = cas_parser::parse("sinh(x)*cosh(y)+sinh(y)*cosh(x)", &mut simplifier.context)
+            .expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            false,
+        )
+        .expect("direct derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::Expand);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(
+            derived.1[0].rule_name,
+            "Hyperbolic Angle Sum/Difference Identity"
+        );
     }
 
     #[test]
@@ -4060,6 +4716,1110 @@ mod tests {
         assert_eq!(derived.0, target);
         assert_eq!(derived.2, DeriveStrategy::Planner);
         assert!(!derived.1.is_empty());
+    }
+
+    #[test]
+    fn direct_derive_contracts_phase_shift_sum_without_planner() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source =
+            cas_parser::parse("sin(x)+cos(x)", &mut simplifier.context).expect("parse source");
+        let target = cas_parser::parse("sqrt(2)*sin(x+pi/4)", &mut simplifier.context)
+            .expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::TrigContract);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Phase Shift Identity");
+    }
+
+    #[test]
+    fn direct_derive_expands_phase_shift_sum_without_planner() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("sqrt(2)*sin(x+pi/4)", &mut simplifier.context)
+            .expect("parse source");
+        let target =
+            cas_parser::parse("sin(x)+cos(x)", &mut simplifier.context).expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::TrigExpand);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Phase Shift Identity");
+    }
+
+    #[test]
+    fn direct_derive_contracts_scaled_phase_shift_sum_without_planner() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source =
+            cas_parser::parse("2*sin(x)+2*cos(x)", &mut simplifier.context).expect("parse source");
+        let target = cas_parser::parse("2*sqrt(2)*sin(x+pi/4)", &mut simplifier.context)
+            .expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::TrigContract);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Phase Shift Identity");
+    }
+
+    #[test]
+    fn direct_derive_expands_scaled_phase_shift_sum_without_planner() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("2*sqrt(2)*sin(x+pi/4)", &mut simplifier.context)
+            .expect("parse source");
+        let target =
+            cas_parser::parse("2*sin(x)+2*cos(x)", &mut simplifier.context).expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::TrigExpand);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Phase Shift Identity");
+    }
+
+    #[test]
+    fn direct_derive_contracts_exact_third_phase_shift_sum_without_planner() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("2*sin(x)+2*sqrt(3)*cos(x)", &mut simplifier.context)
+            .expect("parse source");
+        let target =
+            cas_parser::parse("4*sin(x+pi/3)", &mut simplifier.context).expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::TrigContract);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Phase Shift Identity");
+    }
+
+    #[test]
+    fn direct_derive_expands_exact_third_phase_shift_sum_without_planner() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source =
+            cas_parser::parse("4*sin(x+pi/3)", &mut simplifier.context).expect("parse source");
+        let target = cas_parser::parse("2*sin(x)+2*sqrt(3)*cos(x)", &mut simplifier.context)
+            .expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::TrigExpand);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Phase Shift Identity");
+    }
+
+    #[test]
+    fn direct_derive_contracts_exact_sixth_phase_shift_sum_without_planner() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("sqrt(3)*sin(x)+cos(x)", &mut simplifier.context)
+            .expect("parse source");
+        let target =
+            cas_parser::parse("2*sin(x+pi/6)", &mut simplifier.context).expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::TrigContract);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Phase Shift Identity");
+    }
+
+    #[test]
+    fn direct_derive_expands_exact_sixth_phase_shift_sum_without_planner() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source =
+            cas_parser::parse("2*sin(x+pi/6)", &mut simplifier.context).expect("parse source");
+        let target = cas_parser::parse("sqrt(3)*sin(x)+cos(x)", &mut simplifier.context)
+            .expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::TrigExpand);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Phase Shift Identity");
+    }
+
+    #[test]
+    fn direct_derive_contracts_general_phase_shift_sum_without_planner() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source =
+            cas_parser::parse("3*sin(x)+4*cos(x)", &mut simplifier.context).expect("parse source");
+        let target = cas_parser::parse("5*sin(x+arctan(4/3))", &mut simplifier.context)
+            .expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::TrigContract);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Phase Shift Identity");
+    }
+
+    #[test]
+    fn direct_derive_expands_general_phase_shift_sum_without_planner() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("5*sin(x+arctan(4/3))", &mut simplifier.context)
+            .expect("parse source");
+        let target =
+            cas_parser::parse("3*sin(x)+4*cos(x)", &mut simplifier.context).expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::TrigExpand);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Phase Shift Identity");
+    }
+
+    #[test]
+    fn direct_derive_contracts_general_phase_shift_sum_with_passthrough_without_planner() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("3*sin(x)+4*cos(x)+a", &mut simplifier.context)
+            .expect("parse source");
+        let target = cas_parser::parse("5*sin(x+arctan(4/3))+a", &mut simplifier.context)
+            .expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::TrigContract);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Phase Shift Identity");
+    }
+
+    #[test]
+    fn direct_derive_contracts_phase_shift_shifted_sine_to_shifted_cosine_without_planner() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("sqrt(2)*sin(x+pi/4)", &mut simplifier.context)
+            .expect("parse source");
+        let target = cas_parser::parse("sqrt(2)*cos(x-pi/4)", &mut simplifier.context)
+            .expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::TrigContract);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Phase Shift Identity");
+    }
+
+    #[test]
+    fn direct_derive_contracts_phase_shift_shifted_terms_with_passthrough_without_planner() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("sqrt(2)*sin(x+pi/4)+a", &mut simplifier.context)
+            .expect("parse source");
+        let target = cas_parser::parse("sqrt(2)*cos(x-pi/4)+a", &mut simplifier.context)
+            .expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::TrigContract);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Phase Shift Identity");
+    }
+
+    #[test]
+    fn direct_derive_contracts_general_phase_shift_shifted_sine_to_shifted_cosine_without_planner()
+    {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("5*sin(x+arctan(4/3))", &mut simplifier.context)
+            .expect("parse source");
+        let target = cas_parser::parse("5*cos(x-arctan(3/4))", &mut simplifier.context)
+            .expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::TrigContract);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Phase Shift Identity");
+    }
+
+    #[test]
+    fn direct_derive_contracts_general_phase_shift_shifted_terms_with_passthrough_without_planner()
+    {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("5*sin(x+arctan(4/3))+a", &mut simplifier.context)
+            .expect("parse source");
+        let target = cas_parser::parse("5*cos(x-arctan(3/4))+a", &mut simplifier.context)
+            .expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::TrigContract);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Phase Shift Identity");
+    }
+
+    #[test]
+    fn direct_derive_rewrites_perfect_square_root_with_passthrough_without_simplify() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("sqrt(a^2 + 2*a*b + b^2)+c", &mut simplifier.context)
+            .expect("parse source");
+        let target =
+            cas_parser::parse("abs(a+b)+c", &mut simplifier.context).expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::RadicalRewrite);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Sqrt Perfect Square");
+    }
+
+    #[test]
+    fn direct_derive_rewrites_hyperbolic_double_angle_with_passthrough_without_expand() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("2*sinh(x)*cosh(x)+a", &mut simplifier.context)
+            .expect("parse source");
+        let target =
+            cas_parser::parse("sinh(2*x)+a", &mut simplifier.context).expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::HyperbolicRewrite);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Hyperbolic Double-Angle Identity");
+    }
+
+    #[test]
+    fn direct_derive_rewrites_hyperbolic_pythagorean_with_passthrough_without_simplify() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("cosh(x)^2-sinh(x)^2+a", &mut simplifier.context)
+            .expect("parse source");
+        let target = cas_parser::parse("1+a", &mut simplifier.context).expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::HyperbolicRewrite);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Hyperbolic Pythagorean Identity");
+    }
+
+    #[test]
+    fn direct_derive_rewrites_consecutive_factorial_ratio_with_passthrough_without_simplify() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source =
+            cas_parser::parse("(n+1)!/n!+a", &mut simplifier.context).expect("parse source");
+        let target = cas_parser::parse("n+1+a", &mut simplifier.context).expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::FactorialRewrite);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Consecutive Factorial Ratio");
+    }
+
+    #[test]
+    fn direct_derive_cancels_difference_of_squares_fraction_with_passthrough_without_simplify() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source =
+            cas_parser::parse("(a^2-b^2)/(a-b)+c", &mut simplifier.context).expect("parse source");
+        let target = cas_parser::parse("a+b+c", &mut simplifier.context).expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::FractionCancel);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(
+            derived.1[0].rule_name,
+            "Pre-order Difference of Squares Cancel"
+        );
+    }
+
+    #[test]
+    fn direct_derive_cancels_difference_of_cubes_fraction_with_passthrough_without_simplify() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source =
+            cas_parser::parse("(a^3-b^3)/(a-b)+c", &mut simplifier.context).expect("parse source");
+        let target =
+            cas_parser::parse("a^2+a*b+b^2+c", &mut simplifier.context).expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::FractionCancel);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(
+            derived.1[0].rule_name,
+            "Cancel Sum/Difference of Cubes Fraction"
+        );
+    }
+
+    #[test]
+    fn direct_derive_rewrites_odd_half_power_with_passthrough_without_simplify() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source =
+            cas_parser::parse("sqrt(x^3)+a", &mut simplifier.context).expect("parse source");
+        let target =
+            cas_parser::parse("abs(x)*sqrt(x)+a", &mut simplifier.context).expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::OddHalfPowerExpand);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Expand Odd Half Power");
+    }
+
+    #[test]
+    fn direct_derive_rewrites_reciprocal_trig_product_with_passthrough_without_simplify() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source =
+            cas_parser::parse("tan(x)*cot(x)+a", &mut simplifier.context).expect("parse source");
+        let target = cas_parser::parse("1+a", &mut simplifier.context).expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::TrigRewrite);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Reciprocal Product Identity");
+    }
+
+    #[test]
+    fn trig_contract_stage_matches_general_phase_shift_shifted_terms_with_passthrough() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("5*sin(x+arctan(4/3))+a", &mut simplifier.context)
+            .expect("parse source");
+        let target = cas_parser::parse("5*cos(x-arctan(3/4))+a", &mut simplifier.context)
+            .expect("parse target");
+
+        let stage = super::run_trig_contract_stage(&mut simplifier, source, target, true);
+
+        assert!(super::derive_target_match(
+            &mut simplifier,
+            stage.expr,
+            target
+        ));
+        assert_eq!(stage.steps.len(), 1);
+        assert_eq!(stage.steps[0].rule_name, "Phase Shift Identity");
+    }
+
+    #[test]
+    fn direct_derive_expands_general_phase_shift_sum_with_passthrough_without_planner() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("5*sin(x+arctan(4/3))+a", &mut simplifier.context)
+            .expect("parse source");
+        let target = cas_parser::parse("3*sin(x)+4*cos(x)+a", &mut simplifier.context)
+            .expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::TrigExpand);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Phase Shift Identity");
+    }
+
+    #[test]
+    fn direct_derive_contracts_phase_shift_sum_with_passthrough_without_planner() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source =
+            cas_parser::parse("sin(x)+cos(x)+a", &mut simplifier.context).expect("parse source");
+        let target = cas_parser::parse("sqrt(2)*sin(x+pi/4)+a", &mut simplifier.context)
+            .expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::TrigContract);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Phase Shift Identity");
+    }
+
+    #[test]
+    fn direct_derive_expands_scaled_phase_shift_sum_with_passthrough_without_planner() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("2*sqrt(2)*sin(x+pi/4)+a", &mut simplifier.context)
+            .expect("parse source");
+        let target = cas_parser::parse("2*sin(x)+2*cos(x)+a", &mut simplifier.context)
+            .expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::TrigExpand);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Phase Shift Identity");
+    }
+
+    #[test]
+    fn direct_derive_reaches_repeated_phase_shift_pair_without_planner() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("sin(x)+cos(x)+sin(y)+cos(y)", &mut simplifier.context)
+            .expect("parse source");
+        let target = cas_parser::parse(
+            "sqrt(2)*sin(x+pi/4)+sqrt(2)*sin(y+pi/4)",
+            &mut simplifier.context,
+        )
+        .expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::TrigExpand);
+        assert_eq!(derived.1.len(), 2);
+        assert!(derived
+            .1
+            .iter()
+            .all(|step| step.rule_name == "Phase Shift Identity"));
+    }
+
+    #[test]
+    fn direct_derive_expands_repeated_phase_shift_pair_without_planner() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse(
+            "sqrt(2)*sin(x+pi/4)+sqrt(2)*sin(y+pi/4)",
+            &mut simplifier.context,
+        )
+        .expect("parse source");
+        let target = cas_parser::parse("sin(x)+cos(x)+sin(y)+cos(y)", &mut simplifier.context)
+            .expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::TrigExpand);
+        assert_eq!(derived.1.len(), 2);
+        assert!(derived
+            .1
+            .iter()
+            .all(|step| step.rule_name == "Phase Shift Identity"));
+    }
+
+    #[test]
+    fn bounded_multistage_derive_reaches_log_contracted_grouped_power_target() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source =
+            cas_parser::parse("ln(x^2)+ln(y^2)", &mut simplifier.context).expect("parse source");
+        let target =
+            cas_parser::parse("ln((x*y)^2)", &mut simplifier.context).expect("parse target");
+
+        let derived = try_bounded_multistage_derive(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+        )
+        .expect("planner should derive grouped log-power target");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::Planner);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Log Contraction");
+    }
+
+    #[test]
+    fn direct_derive_contracts_grouped_log_power_without_planner() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source =
+            cas_parser::parse("ln(x^2)+ln(y^2)", &mut simplifier.context).expect("parse source");
+        let target =
+            cas_parser::parse("ln((x*y)^2)", &mut simplifier.context).expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::LogContract);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Log Contraction");
+    }
+
+    #[test]
+    fn bounded_multistage_derive_reaches_abs_log_product_target() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("2*ln(abs(x))+2*ln(abs(y))", &mut simplifier.context)
+            .expect("parse source");
+        let target =
+            cas_parser::parse("2*ln(abs(x*y))", &mut simplifier.context).expect("parse target");
+
+        let derived = try_bounded_multistage_derive(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+        )
+        .expect("planner should derive abs log product target");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::Planner);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Log Contraction");
+    }
+
+    #[test]
+    fn direct_derive_contracts_abs_log_product_without_planner() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("2*ln(abs(x))+2*ln(abs(y))", &mut simplifier.context)
+            .expect("parse source");
+        let target =
+            cas_parser::parse("2*ln(abs(x*y))", &mut simplifier.context).expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::LogContract);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Log Contraction");
+    }
+
+    #[test]
+    fn bounded_multistage_derive_reaches_general_base_log_grouped_power_target() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("2*log(b,x)+2*log(b,y)", &mut simplifier.context)
+            .expect("parse source");
+        let target =
+            cas_parser::parse("log(b,(x*y)^2)", &mut simplifier.context).expect("parse target");
+
+        let derived = try_bounded_multistage_derive(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+        )
+        .expect("planner should derive grouped general-base log target");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::Planner);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Log Contraction");
+    }
+
+    #[test]
+    fn direct_derive_contracts_grouped_general_base_log_power_without_planner() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("2*log(b,x)+2*log(b,y)", &mut simplifier.context)
+            .expect("parse source");
+        let target =
+            cas_parser::parse("log(b,(x*y)^2)", &mut simplifier.context).expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::LogContract);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Log Contraction");
+    }
+
+    #[test]
+    fn direct_derive_contracts_grouped_log_power_with_passthrough_without_planner() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source =
+            cas_parser::parse("ln(x^2)+ln(y^2)+a", &mut simplifier.context).expect("parse source");
+        let target =
+            cas_parser::parse("ln((x*y)^2)+a", &mut simplifier.context).expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::LogContract);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Log Contraction");
+    }
+
+    #[test]
+    fn direct_derive_contracts_abs_log_product_with_passthrough_without_planner() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("2*ln(abs(x))+2*ln(abs(y))+a", &mut simplifier.context)
+            .expect("parse source");
+        let target =
+            cas_parser::parse("2*ln(abs(x*y))+a", &mut simplifier.context).expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::LogContract);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Log Contraction");
+    }
+
+    #[test]
+    fn direct_derive_contracts_grouped_general_base_log_power_with_passthrough_without_planner() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("2*log(b,x)+2*log(b,y)+a", &mut simplifier.context)
+            .expect("parse source");
+        let target =
+            cas_parser::parse("log(b,(x*y)^2)+a", &mut simplifier.context).expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::LogContract);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Log Contraction");
+    }
+
+    #[test]
+    fn direct_derive_expands_grouped_log_power_without_planner() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source =
+            cas_parser::parse("ln((x*y)^2)", &mut simplifier.context).expect("parse source");
+        let target =
+            cas_parser::parse("ln(x^2)+ln(y^2)", &mut simplifier.context).expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::LogExpand);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "expand_log");
+    }
+
+    #[test]
+    fn direct_derive_expands_grouped_abs_log_product_without_planner() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source =
+            cas_parser::parse("2*ln(abs(x*y))", &mut simplifier.context).expect("parse source");
+        let target = cas_parser::parse("2*ln(abs(x))+2*ln(abs(y))", &mut simplifier.context)
+            .expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::LogExpand);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "expand_log");
+    }
+
+    #[test]
+    fn direct_derive_expands_grouped_general_base_log_power_without_planner() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source =
+            cas_parser::parse("log(b,(x*y)^2)", &mut simplifier.context).expect("parse source");
+        let target = cas_parser::parse("2*log(b,x)+2*log(b,y)", &mut simplifier.context)
+            .expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::LogExpand);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "expand_log");
+    }
+
+    #[test]
+    fn direct_derive_expands_grouped_log_power_with_passthrough_without_planner() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source =
+            cas_parser::parse("ln((x*y)^2)+a", &mut simplifier.context).expect("parse source");
+        let target =
+            cas_parser::parse("ln(x^2)+ln(y^2)+a", &mut simplifier.context).expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::LogExpand);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "expand_log");
+    }
+
+    #[test]
+    fn direct_derive_expands_grouped_abs_log_product_with_passthrough_without_planner() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source =
+            cas_parser::parse("2*ln(abs(x*y))+a", &mut simplifier.context).expect("parse source");
+        let target = cas_parser::parse("2*ln(abs(x))+2*ln(abs(y))+a", &mut simplifier.context)
+            .expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::LogExpand);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "expand_log");
+    }
+
+    #[test]
+    fn direct_derive_expands_grouped_general_base_log_power_with_passthrough_without_planner() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source =
+            cas_parser::parse("log(b,(x*y)^2)+a", &mut simplifier.context).expect("parse source");
+        let target = cas_parser::parse("2*log(b,x)+2*log(b,y)+a", &mut simplifier.context)
+            .expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::LogExpand);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "expand_log");
     }
 
     #[test]
@@ -4151,7 +5911,7 @@ mod tests {
     }
 
     #[test]
-    fn planner_uses_targeted_additive_triple_angle_bridge_to_avoid_noisy_tail() {
+    fn prefers_trig_expand_targeted_additive_triple_angle_chain_over_planner() {
         let mut simplifier = crate::Simplifier::with_default_rules();
         let source =
             cas_parser::parse("2*sin(2*x)*sin(x)", &mut simplifier.context).expect("parse source");
@@ -4169,7 +5929,7 @@ mod tests {
         )
         .expect("derive should succeed");
 
-        assert_eq!(derived.2, DeriveStrategy::Planner);
+        assert_eq!(derived.2, DeriveStrategy::TrigExpand);
         assert_eq!(derived.0, target);
         assert_eq!(derived.1.len(), 2);
         assert_eq!(derived.1[0].rule_name, "Product-to-Sum Identity");
@@ -4177,7 +5937,7 @@ mod tests {
     }
 
     #[test]
-    fn planner_uses_combined_additive_triple_angle_bridge_for_cosine_sum_polynomial() {
+    fn prefers_trig_expand_combined_additive_triple_angle_chain_for_cosine_sum_polynomial() {
         let mut simplifier = crate::Simplifier::with_default_rules();
         let source =
             cas_parser::parse("2*cos(2*x)*cos(x)", &mut simplifier.context).expect("parse source");
@@ -4195,7 +5955,7 @@ mod tests {
         )
         .expect("derive should succeed");
 
-        assert_eq!(derived.2, DeriveStrategy::Planner);
+        assert_eq!(derived.2, DeriveStrategy::TrigExpand);
         assert_eq!(derived.0, target);
         assert_eq!(derived.1.len(), 2);
         assert_eq!(derived.1[0].rule_name, "Product-to-Sum Identity");
@@ -4203,7 +5963,7 @@ mod tests {
     }
 
     #[test]
-    fn planner_uses_combined_additive_triple_angle_bridge_for_cosine_difference_polynomial() {
+    fn prefers_trig_expand_combined_additive_triple_angle_chain_for_cosine_difference_polynomial() {
         let mut simplifier = crate::Simplifier::with_default_rules();
         let source =
             cas_parser::parse("2*sin(2*x)*sin(x)", &mut simplifier.context).expect("parse source");
@@ -4221,7 +5981,7 @@ mod tests {
         )
         .expect("derive should succeed");
 
-        assert_eq!(derived.2, DeriveStrategy::Planner);
+        assert_eq!(derived.2, DeriveStrategy::TrigExpand);
         assert_eq!(derived.0, target);
         assert_eq!(derived.1.len(), 2);
         assert_eq!(derived.1[0].rule_name, "Product-to-Sum Identity");
@@ -4229,7 +5989,8 @@ mod tests {
     }
 
     #[test]
-    fn planner_uses_combined_additive_triple_angle_bridge_for_sine_difference_mixed_polynomial() {
+    fn prefers_trig_expand_combined_additive_triple_angle_chain_for_sine_difference_mixed_polynomial(
+    ) {
         let mut simplifier = crate::Simplifier::with_default_rules();
         let source =
             cas_parser::parse("2*cos(2*x)*sin(x)", &mut simplifier.context).expect("parse source");
@@ -4247,7 +6008,59 @@ mod tests {
         )
         .expect("derive should succeed");
 
-        assert_eq!(derived.2, DeriveStrategy::Planner);
+        assert_eq!(derived.2, DeriveStrategy::TrigExpand);
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.1.len(), 2);
+        assert_eq!(derived.1[0].rule_name, "Product-to-Sum Identity");
+        assert_eq!(derived.1[1].rule_name, "Triple Angle Expansion");
+    }
+
+    #[test]
+    fn prefers_trig_expand_product_to_sum_triple_angle_chain_with_passthrough_term() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("2*sin(2*x)*sin(x)+a", &mut simplifier.context)
+            .expect("parse source");
+        let target = cas_parser::parse("4*cos(x)-4*cos(x)^3+a", &mut simplifier.context)
+            .expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.2, DeriveStrategy::TrigExpand);
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.1.len(), 2);
+        assert_eq!(derived.1[0].rule_name, "Product-to-Sum Identity");
+        assert_eq!(derived.1[1].rule_name, "Triple Angle Expansion");
+    }
+
+    #[test]
+    fn prefers_trig_expand_mixed_product_to_sum_triple_angle_chain_with_passthrough_term() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("2*cos(2*x)*sin(x)+a", &mut simplifier.context)
+            .expect("parse source");
+        let target = cas_parser::parse("4*cos(x)^2*sin(x)-2*sin(x)+a", &mut simplifier.context)
+            .expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.2, DeriveStrategy::TrigExpand);
         assert_eq!(derived.0, target);
         assert_eq!(derived.1.len(), 2);
         assert_eq!(derived.1[0].rule_name, "Product-to-Sum Identity");
@@ -4302,7 +6115,7 @@ mod tests {
     }
 
     #[test]
-    fn planner_reaches_hyperbolic_product_to_sum_triple_angle_polynomial() {
+    fn prefers_expand_for_hyperbolic_product_to_sum_triple_angle_polynomial() {
         let mut simplifier = crate::Simplifier::with_default_rules();
         let source = cas_parser::parse("2*sinh(2*x)*cosh(x)", &mut simplifier.context)
             .expect("parse source");
@@ -4320,7 +6133,7 @@ mod tests {
         )
         .expect("derive should succeed");
 
-        assert_eq!(derived.2, DeriveStrategy::Planner);
+        assert_eq!(derived.2, DeriveStrategy::Expand);
         assert_eq!(derived.0, target);
         assert_eq!(derived.1.len(), 2);
         assert_eq!(derived.1[0].rule_name, "Hyperbolic Product-to-Sum Identity");
@@ -4378,7 +6191,32 @@ mod tests {
     }
 
     #[test]
-    fn planner_reaches_hyperbolic_cosh_product_to_sum_triple_angle_polynomial() {
+    fn prefers_direct_exact_hyperbolic_sum_to_product_xy_over_planner() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source =
+            cas_parser::parse("sinh(x)+sinh(y)", &mut simplifier.context).expect("parse source");
+        let target = cas_parser::parse("2*sinh((x+y)/2)*cosh((x-y)/2)", &mut simplifier.context)
+            .expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.2, DeriveStrategy::Expand);
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Hyperbolic Product-to-Sum Identity");
+    }
+
+    #[test]
+    fn prefers_expand_for_hyperbolic_cosh_product_to_sum_triple_angle_polynomial() {
         let mut simplifier = crate::Simplifier::with_default_rules();
         let source = cas_parser::parse("2*sinh(2*x)*sinh(x)", &mut simplifier.context)
             .expect("parse source");
@@ -4396,7 +6234,7 @@ mod tests {
         )
         .expect("derive should succeed");
 
-        assert_eq!(derived.2, DeriveStrategy::Planner);
+        assert_eq!(derived.2, DeriveStrategy::Expand);
         assert_eq!(derived.0, target);
         assert_eq!(derived.1.len(), 2);
         assert_eq!(derived.1[0].rule_name, "Hyperbolic Product-to-Sum Identity");
@@ -4404,7 +6242,7 @@ mod tests {
     }
 
     #[test]
-    fn planner_reaches_hyperbolic_product_to_sum_triple_angle_polynomial_with_passthrough_term() {
+    fn prefers_expand_for_hyperbolic_product_to_sum_polynomial_with_passthrough_term() {
         let mut simplifier = crate::Simplifier::with_default_rules();
         let source = cas_parser::parse("2*sinh(2*x)*sinh(x)+a", &mut simplifier.context)
             .expect("parse source");
@@ -4422,7 +6260,7 @@ mod tests {
         )
         .expect("derive should succeed");
 
-        assert_eq!(derived.2, DeriveStrategy::Planner);
+        assert_eq!(derived.2, DeriveStrategy::Expand);
         assert_eq!(derived.0, target);
         assert_eq!(derived.1.len(), 2);
         assert_eq!(derived.1[0].rule_name, "Hyperbolic Product-to-Sum Identity");
@@ -4622,8 +6460,8 @@ mod tests {
         )
         .expect("derive should succeed");
 
-        assert_eq!(derived.2, DeriveStrategy::Planner);
-        assert_eq!(derived.1.len(), 2);
+        assert_eq!(derived.2, DeriveStrategy::HyperbolicRewrite);
+        assert_eq!(derived.1.len(), 1);
         assert_eq!(derived.0, target);
         assert_eq!(derived.1[0].rule_name, "Hyperbolic Exponential Identity");
     }

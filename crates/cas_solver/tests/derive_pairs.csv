@@ -18,10 +18,12 @@ pythagorean_identity,simplify,sin(x)^2 + cos(x)^2,1,derived,rewrite trigs
 pythagorean_factor_form_to_cos_sq,simplify,1 - sin(x)^2,cos(x)^2,derived,rewrite trigs
 pythagorean_factor_form_from_sin_sq,simplify,sin(x)^2,1-cos(x)^2,derived,rewrite trigs
 hyperbolic_pythagorean_identity,simplify,cosh(x)^2 - sinh(x)^2,1,derived,rewrite hyperbolics
+hyperbolic_pythagorean_identity_with_passthrough,simplify,cosh(x)^2-sinh(x)^2+a,1+a,derived,rewrite hyperbolics
 hyperbolic_pythagorean_shifted_forward,simplify,cosh(x)^2 - 1,sinh(x)^2,derived,rewrite hyperbolics
 hyperbolic_tanh_pythagorean_forward,simplify,1 - tanh(x)^2,1/cosh(x)^2,derived,rewrite hyperbolics
 hyperbolic_half_angle_cosh_forward,simplify,cosh(x/2)^2,(cosh(x)+1)/2,derived,rewrite hyperbolics
 hyperbolic_contract_sinh_double_angle,simplify,2*sinh(x)*cosh(x),sinh(2*x),derived,rewrite hyperbolics
+hyperbolic_contract_sinh_double_angle_with_passthrough,simplify,2*sinh(x)*cosh(x)+a,sinh(2*x)+a,derived,rewrite hyperbolics
 hyperbolic_contract_tanh_double_angle,simplify,2*tanh(x)/(1+tanh(x)^2),tanh(2*x),derived,rewrite hyperbolics
 hyperbolic_expand_cosh_double_angle_sum,simplify,cosh(2*x),cosh(x)^2 + sinh(x)^2,derived,rewrite hyperbolics
 hyperbolic_expand_cosh_double_angle_cosh_sq,simplify,cosh(2*x),2*cosh(x)^2 - 1,derived,rewrite hyperbolics
@@ -33,10 +35,13 @@ hyperbolic_expand_sinh_to_exp_definition,simplify,sinh(x),(e^x - e^(-x))/2,deriv
 hyperbolic_expand_tanh_to_exp_definition,simplify,tanh(x),(e^x - e^(-x))/(e^x + e^(-x)),derived,rewrite hyperbolics
 inverse_tan_identity,simplify,arctan(a)+arctan(1/a),pi/2,derived,rewrite inverse trigs
 cancel_fraction_difference_squares,simplify,(a^2-b^2)/(a-b),a+b,derived,cancel fraction
+cancel_fraction_difference_squares_with_passthrough,simplify,(a^2-b^2)/(a-b)+c,a+b+c,derived,cancel fraction
 cancel_fraction_difference_cubes,simplify,(a^3-b^3)/(a-b),a^2+a*b+b^2,derived,cancel fraction
+cancel_fraction_difference_cubes_with_passthrough,simplify,(a^3-b^3)/(a-b)+c,a^2+a*b+b^2+c,derived,cancel fraction
 cancel_fraction_sum_cubes,simplify,(a^3+b^3)/(a+b),a^2-a*b+b^2,derived,cancel fraction
 cancel_fraction_perfect_square_minus_symbolic,simplify,(a^2-2*a*b+b^2)/(a-b),a-b,derived,cancel fraction
 perfect_square_root_to_abs,simplify,sqrt(a^2 + 2*a*b + b^2),abs(a+b),derived,rewrite radicals
+perfect_square_root_to_abs_with_passthrough,simplify,sqrt(a^2 + 2*a*b + b^2)+c,abs(a+b)+c,derived,rewrite radicals
 solve_prep_complete_square_symbolic_leading_coeff,solve_prep,a*x^2 + b*x + c,a*(x + b/(2*a))^2 + c - b^2/(4*a),derived,solve prep
 solve_prep_complete_square_symbolic_monic_parametric,solve_prep,x^2 + 2*b*x + c,(x+b)^2 + c - b^2,derived,solve prep
 solve_prep_complete_square_symbolic_negative_linear_coeff,solve_prep,a*x^2 - b*x + c,a*(x - b/(2*a))^2 + c - b^2/(4*a),derived,solve prep
@@ -65,16 +70,44 @@ expand_log_quotient,log_expand,ln(x/y),ln(x) - ln(y),derived,expand_log
 expand_log_powered_two_denominator_factors,log_expand,ln((x^2*y)/(z*t)),2*ln(abs(x)) + ln(y) - ln(z) - ln(t),derived,expand_log
 expand_log_general_base_powered_two_denominator_factors_with_powered_denominator,log_expand,"log(b, (x^2*y^3)/(z^2*t))","2*log(b, x) + 3*log(b, y) - 2*log(b, z) - log(b, t)",derived,expand_log
 expand_log_general_base_power,log_expand,"log(b, x^3)","3*log(b, x)",derived,expand_log
+expand_log_grouped_power,log_expand,"ln((x*y)^2)","ln(x^2)+ln(y^2)",derived,expand_log
+expand_log_grouped_abs_product,log_expand,"2*ln(abs(x*y))","2*ln(abs(x))+2*ln(abs(y))",derived,expand_log
+expand_log_grouped_general_base_power,log_expand,"log(b,(x*y)^2)","2*log(b,x)+2*log(b,y)",derived,expand_log
+expand_log_grouped_power_with_passthrough,log_expand,"ln((x*y)^2)+a","ln(x^2)+ln(y^2)+a",derived,expand_log
+expand_log_grouped_abs_product_with_passthrough,log_expand,"2*ln(abs(x*y))+a","2*ln(abs(x))+2*ln(abs(y))+a",derived,expand_log
+expand_log_grouped_general_base_power_with_passthrough,log_expand,"log(b,(x*y)^2)+a","2*log(b,x)+2*log(b,y)+a",derived,expand_log
 contract_log_sum,log_contract,ln(x) + ln(y),ln(x*y),derived,contract logs
 contract_log_difference,log_contract,ln(x) - ln(y),ln(x/y),derived,contract logs
 contract_log_powered_two_denominator_factors,log_contract,2*ln(abs(x)) + ln(y) - ln(z) - ln(t),ln((x^2*y)/(z*t)),derived,contract logs
 contract_log_general_base_powered_two_denominator_factors_with_powered_denominator,log_contract,"2*log(b, x) + 3*log(b, y) - 2*log(b, z) - log(b, t)","log(b, (x^2*y^3)/(z^2*t))",derived,contract logs
 contract_log_change_of_base_chain,log_contract,"log(b,a)*log(a,c)","log(b,c)",derived,contract logs
+contract_log_grouped_power,log_contract,"ln(x^2)+ln(y^2)","ln((x*y)^2)",derived,contract logs
+contract_even_abs_logs_to_scaled_abs_product,log_contract,"2*ln(abs(x))+2*ln(abs(y))","2*ln(abs(x*y))",derived,contract logs
+contract_general_base_logs_to_grouped_power,log_contract,"2*log(b,x)+2*log(b,y)","log(b,(x*y)^2)",derived,contract logs
+contract_log_grouped_power_with_passthrough,log_contract,"ln(x^2)+ln(y^2)+a","ln((x*y)^2)+a",derived,contract logs
+contract_even_abs_logs_to_scaled_abs_product_with_passthrough,log_contract,"2*ln(abs(x))+2*ln(abs(y))+a","2*ln(abs(x*y))+a",derived,contract logs
+contract_general_base_logs_to_grouped_power_with_passthrough,log_contract,"2*log(b,x)+2*log(b,y)+a","log(b,(x*y)^2)+a",derived,contract logs
 expand_trig_double_sin,trig_expand,sin(2*x),2*sin(x)*cos(x),derived,expand trig
 expand_trig_product_to_sum_sin_cos,trig_expand,2*sin(x)*cos(y),sin(x+y) + sin(x-y),derived,expand trig
 expand_trig_product_to_sum_cos_sin,trig_expand,2*cos(x)*sin(y),sin(x+y) - sin(x-y),derived,expand trig
 expand_trig_product_to_sum_cos_cos,trig_expand,2*cos(x)*cos(y),cos(x+y) + cos(x-y),derived,expand trig
 expand_trig_product_to_sum_sin_sin,trig_expand,2*sin(x)*sin(y),cos(x-y) - cos(x+y),derived,expand trig
+contract_trig_phase_shift_sum_to_shifted_sine,trig_contract,sin(x)+cos(x),sqrt(2)*sin(x+pi/4),derived,contract trig
+contract_trig_phase_shift_difference_to_shifted_sine,trig_contract,sin(x)-cos(x),sqrt(2)*sin(x-pi/4),derived,contract trig
+expand_trig_phase_shift_shifted_sine_to_sum,trig_expand,sqrt(2)*sin(x+pi/4),sin(x)+cos(x),derived,expand trig
+expand_trig_phase_shift_shifted_cosine_to_sum,trig_expand,sqrt(2)*cos(x-pi/4),sin(x)+cos(x),derived,expand trig
+contract_trig_phase_shift_scaled_sum_to_shifted_sine,trig_contract,2*sin(x)+2*cos(x),2*sqrt(2)*sin(x+pi/4),derived,contract trig
+expand_trig_phase_shift_scaled_shifted_sine_to_sum,trig_expand,2*sqrt(2)*sin(x+pi/4),2*sin(x)+2*cos(x),derived,expand trig
+contract_trig_phase_shift_exact_third_scaled_sum_to_shifted_sine,trig_contract,2*sin(x)+2*sqrt(3)*cos(x),4*sin(x+pi/3),derived,contract trig
+expand_trig_phase_shift_exact_third_scaled_shifted_sine_to_sum,trig_expand,4*sin(x+pi/3),2*sin(x)+2*sqrt(3)*cos(x),derived,expand trig
+contract_trig_phase_shift_exact_sixth_sum_to_shifted_sine,trig_contract,sqrt(3)*sin(x)+cos(x),2*sin(x+pi/6),derived,contract trig
+expand_trig_phase_shift_exact_sixth_shifted_sine_to_sum,trig_expand,2*sin(x+pi/6),sqrt(3)*sin(x)+cos(x),derived,expand trig
+contract_trig_phase_shift_general_sum_to_shifted_sine,trig_contract,3*sin(x)+4*cos(x),5*sin(x+arctan(4/3)),derived,contract trig
+expand_trig_phase_shift_general_shifted_sine_to_sum,trig_expand,5*sin(x+arctan(4/3)),3*sin(x)+4*cos(x),derived,expand trig
+contract_trig_phase_shift_sum_to_shifted_sine_with_passthrough,trig_contract,sin(x)+cos(x)+a,sqrt(2)*sin(x+pi/4)+a,derived,contract trig
+expand_trig_phase_shift_scaled_shifted_sine_to_sum_with_passthrough,trig_expand,2*sqrt(2)*sin(x+pi/4)+a,2*sin(x)+2*cos(x)+a,derived,expand trig
+contract_trig_phase_shift_general_sum_to_shifted_sine_with_passthrough,trig_contract,3*sin(x)+4*cos(x)+a,5*sin(x+arctan(4/3))+a,derived,contract trig
+expand_trig_phase_shift_general_shifted_sine_to_sum_with_passthrough,trig_expand,5*sin(x+arctan(4/3))+a,3*sin(x)+4*cos(x)+a,derived,expand trig
 contract_trig_double_sin,trig_contract,2*sin(x)*cos(x),sin(2*x),derived,contract trig
 expand_trig_after_simplify,trig_expand,sin(x + x),2*sin(x)*cos(x),derived,expand trig
 contract_trig_tan_quotient,trig_contract,(sin(2*x))/(cos(2*x)),tan(2*x),derived,contract trig
@@ -103,6 +136,31 @@ expand_trig_sum_to_product_sin_sum_general,trig_expand,sin(5*x)+sin(x),2*sin(3*x
 expand_trig_sum_to_product_sin_diff_general,trig_expand,sin(5*x)-sin(x),2*cos(3*x)*sin(2*x),derived,expand trig
 expand_trig_sum_to_product_cos_sum_general,trig_expand,cos(5*x)+cos(x),2*cos(3*x)*cos(2*x),derived,expand trig
 expand_trig_sum_to_product_cos_diff_general,trig_expand,cos(5*x)-cos(x),-2*sin(3*x)*sin(2*x),derived,expand trig
+expand_trig_sum_to_product_sin_sum_xy,trig_expand,sin(x)+sin(y),2*sin((x+y)/2)*cos((x-y)/2),derived,expand trig
+expand_trig_sum_to_product_cos_sum_xy,trig_expand,cos(x)+cos(y),2*cos((x+y)/2)*cos((x-y)/2),derived,expand trig
+expand_trig_sum_to_product_cos_diff_xy,trig_expand,cos(x)-cos(y),-2*sin((x+y)/2)*sin((x-y)/2),derived,expand trig
+expand_trig_sin_cos_square_sum,trig_expand,(sin(x)+cos(x))^2,1+sin(2*x),derived,expand trig
+expand_trig_sin_cos_square_diff,trig_expand,(sin(x)-cos(x))^2,1-sin(2*x),derived,expand trig
+expand_trig_sine_sixth_power_reduction,trig_expand,sin(x)^6,(10-15*cos(2*x)+6*cos(4*x)-cos(6*x))/32,derived,expand trig
+expand_trig_cosine_sixth_power_reduction,trig_expand,cos(x)^6,(10+15*cos(2*x)+6*cos(4*x)+cos(6*x))/32,derived,expand trig
+expand_trig_sine_eighth_power_reduction,trig_expand,sin(x)^8,(35-56*cos(2*x)+28*cos(4*x)-8*cos(6*x)+cos(8*x))/128,derived,expand trig
+expand_trig_cosine_eighth_power_reduction,trig_expand,cos(x)^8,(35+56*cos(2*x)+28*cos(4*x)+8*cos(6*x)+cos(8*x))/128,derived,expand trig
+expand_trig_sine_tenth_power_reduction,trig_expand,sin(x)^10,(126-210*cos(2*x)+120*cos(4*x)-45*cos(6*x)+10*cos(8*x)-cos(10*x))/512,derived,expand trig
+expand_trig_cosine_tenth_power_reduction,trig_expand,cos(x)^10,(126+210*cos(2*x)+120*cos(4*x)+45*cos(6*x)+10*cos(8*x)+cos(10*x))/512,derived,expand trig
+expand_trig_sine_twelfth_power_reduction,trig_expand,sin(x)^12,(462-792*cos(2*x)+495*cos(4*x)-220*cos(6*x)+66*cos(8*x)-12*cos(10*x)+cos(12*x))/2048,derived,expand trig
+expand_trig_cosine_twelfth_power_reduction,trig_expand,cos(x)^12,(462+792*cos(2*x)+495*cos(4*x)+220*cos(6*x)+66*cos(8*x)+12*cos(10*x)+cos(12*x))/2048,derived,expand trig
+expand_trig_sine_fourteenth_power_reduction,trig_expand,sin(x)^14,(1716-3003*cos(2*x)+2002*cos(4*x)-1001*cos(6*x)+364*cos(8*x)-91*cos(10*x)+14*cos(12*x)-cos(14*x))/8192,derived,expand trig
+expand_trig_cosine_fourteenth_power_reduction,trig_expand,cos(x)^14,(1716+3003*cos(2*x)+2002*cos(4*x)+1001*cos(6*x)+364*cos(8*x)+91*cos(10*x)+14*cos(12*x)+cos(14*x))/8192,derived,expand trig
+expand_trig_sine_sixteenth_power_reduction,trig_expand,sin(x)^16,(6435-11440*cos(2*x)+8008*cos(4*x)-4368*cos(6*x)+1820*cos(8*x)-560*cos(10*x)+120*cos(12*x)-16*cos(14*x)+cos(16*x))/32768,derived,expand trig
+expand_trig_cosine_sixteenth_power_reduction,trig_expand,cos(x)^16,(6435+11440*cos(2*x)+8008*cos(4*x)+4368*cos(6*x)+1820*cos(8*x)+560*cos(10*x)+120*cos(12*x)+16*cos(14*x)+cos(16*x))/32768,derived,expand trig
+expand_trig_sine_eighteenth_power_reduction,trig_expand,sin(x)^18,(24310-43758*cos(2*x)+31824*cos(4*x)-18564*cos(6*x)+8568*cos(8*x)-3060*cos(10*x)+816*cos(12*x)-153*cos(14*x)+18*cos(16*x)-cos(18*x))/131072,derived,expand trig
+expand_trig_cosine_eighteenth_power_reduction,trig_expand,cos(x)^18,(24310+43758*cos(2*x)+31824*cos(4*x)+18564*cos(6*x)+8568*cos(8*x)+3060*cos(10*x)+816*cos(12*x)+153*cos(14*x)+18*cos(16*x)+cos(18*x))/131072,derived,expand trig
+expand_trig_sine_twentieth_power_reduction,trig_expand,sin(x)^20,(92378-167960*cos(2*x)+125970*cos(4*x)-77520*cos(6*x)+38760*cos(8*x)-15504*cos(10*x)+4845*cos(12*x)-1140*cos(14*x)+190*cos(16*x)-20*cos(18*x)+cos(20*x))/524288,derived,expand trig
+expand_trig_cosine_twentieth_power_reduction,trig_expand,cos(x)^20,(92378+167960*cos(2*x)+125970*cos(4*x)+77520*cos(6*x)+38760*cos(8*x)+15504*cos(10*x)+4845*cos(12*x)+1140*cos(14*x)+190*cos(16*x)+20*cos(18*x)+cos(20*x))/524288,derived,expand trig
+expand_trig_sine_twenty_second_power_reduction,trig_expand,sin(x)^22,(352716-646646*cos(2*x)+497420*cos(4*x)-319770*cos(6*x)+170544*cos(8*x)-74613*cos(10*x)+26334*cos(12*x)-7315*cos(14*x)+1540*cos(16*x)-231*cos(18*x)+22*cos(20*x)-cos(22*x))/2097152,derived,expand trig
+expand_trig_cosine_twenty_second_power_reduction,trig_expand,cos(x)^22,(352716+646646*cos(2*x)+497420*cos(4*x)+319770*cos(6*x)+170544*cos(8*x)+74613*cos(10*x)+26334*cos(12*x)+7315*cos(14*x)+1540*cos(16*x)+231*cos(18*x)+22*cos(20*x)+cos(22*x))/2097152,derived,expand trig
+expand_trig_sine_twenty_fourth_power_reduction,trig_expand,sin(x)^24,(1352078-2496144*cos(2*x)+1961256*cos(4*x)-1307504*cos(6*x)+735471*cos(8*x)-346104*cos(10*x)+134596*cos(12*x)-42504*cos(14*x)+10626*cos(16*x)-2024*cos(18*x)+276*cos(20*x)-24*cos(22*x)+cos(24*x))/8388608,derived,expand trig
+expand_trig_cosine_twenty_fourth_power_reduction,trig_expand,cos(x)^24,(1352078+2496144*cos(2*x)+1961256*cos(4*x)+1307504*cos(6*x)+735471*cos(8*x)+346104*cos(10*x)+134596*cos(12*x)+42504*cos(14*x)+10626*cos(16*x)+2024*cos(18*x)+276*cos(20*x)+24*cos(22*x)+cos(24*x))/8388608,derived,expand trig
 contract_trig_half_angle_tangent,trig_contract,(1-cos(2*x))/sin(2*x),tan(x),derived,contract trig
 expand_trig_half_angle_tangent,trig_expand,tan(x),(1-cos(2*x))/sin(2*x),derived,expand trig
 contract_trig_triple_angle_sine,trig_contract,3*sin(x)-4*sin(x)^3,sin(3*x),derived,contract trig
@@ -170,9 +228,12 @@ merge_mixed_root_and_symbolic_power,power_merge,sqrt(x)*x^a,x^(a+1/2),derived,co
 log_sum_difference_cancels_to_zero,simplify,ln(x^3) + ln(y^2) - ln(x^3*y^2),0,derived,expand_log
 expand_odd_half_power,radical_power,x^(3/2),abs(x)*sqrt(x),derived,expand odd half power
 expand_odd_half_power_after_simplify,radical_power,sqrt(x^3),abs(x)*sqrt(x),derived,expand odd half power
+expand_odd_half_power_after_simplify_with_passthrough,radical_power,sqrt(x^3)+a,abs(x)*sqrt(x)+a,derived,expand odd half power
 consecutive_factorial_ratio,simplify,(n+1)!/n!,n+1,derived,rewrite factorials
+consecutive_factorial_ratio_with_passthrough,simplify,(n+1)!/n!+a,n+1+a,derived,rewrite factorials
 contract_trig_cos_diff_sin_diff_quotient,trig_contract,(cos(x)-cos(3*x))/(sin(3*x)-sin(x)),tan(2*x),derived,contract trig
 reciprocal_trig_product_to_one,simplify,tan(x)*cot(x),1,derived,rewrite trigs
+reciprocal_trig_product_to_one_with_passthrough,simplify,tan(x)*cot(x)+a,1+a,derived,rewrite trigs
 sec_tan_pythagorean_to_one,simplify,sec(x)^2 - tan(x)^2,1,derived,rewrite trigs
 factor_symbolic_binomial_cube,factor,a^3 + 3*a^2*b + 3*a*b^2 + b^3,(a+b)^3,derived,factor
 integrate_prep_morrie_basic,integrate_prep,cos(x)*cos(2*x)*cos(4*x),sin(8*x)/(8*sin(x)),derived,integrate prep
@@ -188,6 +249,12 @@ contract_hyperbolic_sinh_sum,simplify,sinh(x)*cosh(y)+cosh(x)*sinh(y),sinh(x+y),
 contract_hyperbolic_cosh_sum,simplify,cosh(x)*cosh(y)+sinh(x)*sinh(y),cosh(x+y),derived,rewrite hyperbolics
 contract_hyperbolic_sinh_difference,simplify,sinh(x)*cosh(y)-cosh(x)*sinh(y),sinh(x-y),derived,rewrite hyperbolics
 contract_hyperbolic_cosh_difference,simplify,cosh(x)*cosh(y)-sinh(x)*sinh(y),cosh(x-y),derived,rewrite hyperbolics
+expand_hyperbolic_sinh_sum_to_product_exact,expand,"sinh(x)+sinh(y)","2*sinh((x+y)/2)*cosh((x-y)/2)",derived,expand
+expand_hyperbolic_cosh_sum_to_product_exact,expand,"cosh(x)+cosh(y)","2*cosh((x+y)/2)*cosh((x-y)/2)",derived,expand
+expand_hyperbolic_cosh_difference_to_product_exact,expand,"cosh(x)-cosh(y)","2*sinh((x+y)/2)*sinh((x-y)/2)",derived,expand
+expand_hyperbolic_product_to_sum_to_sinh_cubic_polynomial,expand,"2*sinh(2*x)*cosh(x)","4*sinh(x)+4*sinh(x)^3",derived,expand
+expand_hyperbolic_product_to_sum_to_cosh_cubic_polynomial,expand,"2*sinh(2*x)*sinh(x)","4*cosh(x)^3-4*cosh(x)",derived,expand
+expand_hyperbolic_product_to_sum_to_cosh_cubic_polynomial_with_passthrough,expand,"2*sinh(2*x)*sinh(x)+a","4*cosh(x)^3-4*cosh(x)+a",derived,expand
 expand_recursive_hyperbolic_sinh_sum,expand,sinh(6*x),sinh(5*x)*cosh(x)+cosh(5*x)*sinh(x),derived,expand
 expand_recursive_hyperbolic_cosh_sum,expand,cosh(6*x),cosh(5*x)*cosh(x)+sinh(5*x)*sinh(x),derived,expand
 expand_hyperbolic_tanh_sum,simplify,tanh(x+y),(tanh(x)+tanh(y))/(1+tanh(x)*tanh(y)),derived,rewrite hyperbolics
@@ -196,4 +263,18 @@ contract_exponential_sum,simplify,exp(x)*exp(y),exp(x+y),derived,rewrite exponen
 contract_exponential_difference,simplify,exp(x)/exp(y),exp(x-y),derived,rewrite exponentials
 contract_exponential_reciprocal,simplify,1/exp(x),exp(-x),derived,rewrite exponentials
 contract_exponential_power,simplify,exp(x)^3,exp(3*x),derived,rewrite exponentials
+expand_trig_sine_fourth_power_reduction,simplify,sin(x)^4,(3-4*cos(2*x)+cos(4*x))/8,derived,expand trig
+expand_trig_cosine_fourth_power_reduction,simplify,cos(x)^4,(3+4*cos(2*x)+cos(4*x))/8,derived,expand trig
+expand_trig_sine_cosine_square_product_reduction,simplify,sin(x)^2*cos(x)^2,(1-cos(4*x))/8,derived,expand trig
+expand_trig_product_to_sum_to_cosine_difference_polynomial,expand,"2*sin(2*x)*sin(x)","4*cos(x)-4*cos(x)^3",derived,expand trig
+expand_trig_product_to_sum_to_cosine_sum_polynomial,expand,"2*cos(2*x)*cos(x)","4*cos(x)^3-2*cos(x)",derived,expand trig
+expand_trig_product_to_sum_to_sine_difference_mixed_polynomial,expand,"2*cos(2*x)*sin(x)","4*cos(x)^2*sin(x)-2*sin(x)",derived,expand trig
+expand_trig_product_to_sum_to_cosine_difference_polynomial_with_passthrough,expand,"2*sin(2*x)*sin(x)+a","4*cos(x)-4*cos(x)^3+a",derived,expand trig
+expand_trig_product_to_sum_to_sine_difference_mixed_polynomial_with_passthrough,expand,"2*cos(2*x)*sin(x)+a","4*cos(x)^2*sin(x)-2*sin(x)+a",derived,expand trig
+expand_trig_phase_shift_pair_sum_to_shifted_sine_pair,trig_expand,"sin(x)+cos(x)+sin(y)+cos(y)","sqrt(2)*sin(x+pi/4)+sqrt(2)*sin(y+pi/4)",derived,expand trig
+expand_trig_phase_shift_shifted_sine_pair_to_sum_pair,trig_expand,"sqrt(2)*sin(x+pi/4)+sqrt(2)*sin(y+pi/4)","sin(x)+cos(x)+sin(y)+cos(y)",derived,expand trig
+contract_trig_phase_shift_shifted_sine_to_shifted_cosine,trig_contract,"sqrt(2)*sin(x+pi/4)","sqrt(2)*cos(x-pi/4)",derived,contract trig
+contract_trig_phase_shift_shifted_terms_with_passthrough,trig_contract,"sqrt(2)*sin(x+pi/4)+a","sqrt(2)*cos(x-pi/4)+a",derived,contract trig
+contract_trig_phase_shift_general_shifted_sine_to_shifted_cosine,trig_contract,"5*sin(x+arctan(4/3))","5*cos(x-arctan(3/4))",derived,contract trig
+contract_trig_phase_shift_general_shifted_terms_with_passthrough,trig_contract,"5*sin(x+arctan(4/3))+a","5*cos(x-arctan(3/4))+a",derived,contract trig
 non_equivalent_mismatch,negative,x + 1,x + 2,not_equivalent,

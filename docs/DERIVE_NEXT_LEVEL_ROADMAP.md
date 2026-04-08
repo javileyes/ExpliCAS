@@ -482,23 +482,181 @@ Representative successful chains:
 
 | Gap | Representative example | Assessment |
 |---|---|---|
-| Trig sum-to-product | `derive cos(x)-cos(y), -2*sin((x+y)/2)*sin((x-y)/2)` | Real coverage gap; currently fails |
-| Trig sum-to-product | `derive sin(x)+sin(y), 2*sin((x+y)/2)*cos((x-y)/2)` | Real coverage gap; currently fails |
-| Trig sum-to-product | `derive cos(x)+cos(y), 2*cos((x+y)/2)*cos((x-y)/2)` | Real coverage gap; currently fails |
 | Inverse trig with branch-sensitive composition | `derive arctan(a)+arctan(b), arctan((a+b)/(1-a*b))` | Not just a missing rewrite; needs branch/domain modeling |
 
-Important contrast:
+Recent change:
 
-- the hyperbolic analogue `derive sinh(x)+sinh(y), 2*sinh((x+y)/2)*cosh((x-y)/2)` does work
-- this suggests a concrete missing trig family, not a generic planner failure
+- the trig sum-to-product family for arbitrary arguments is now covered directly in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_solver/src/derive/trig.rs`
+- examples like `derive cos(x)-cos(y), -2*sin((x+y)/2)*sin((x-y)/2)` now resolve in
+  one `expand trig` step
+- common trig reduction-of-powers targets now resolve directly in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_solver/src/derive/trig.rs`
+- examples like `derive sin(x)^4, (3-4*cos(2*x)+cos(4*x))/8`,
+  `derive cos(x)^4, (3+4*cos(2*x)+cos(4*x))/8`, and
+  `derive sin(x)^2*cos(x)^2, (1-cos(4*x))/8` now resolve in one
+  `expand trig` step with `Power Reduction Identity`
+- trig binomial-square identities now resolve directly in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_solver/src/derive/trig.rs`
+- examples like `derive (sin(x)+cos(x))^2, 1+sin(2*x)` and
+  `derive (sin(x)-cos(x))^2, 1-sin(2*x)` now resolve in one
+  `expand trig` step with `Trig Square Identity`
+- sixth-power trig reductions now resolve directly in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_solver/src/derive/trig.rs`
+- examples like `derive sin(x)^6, (10-15*cos(2*x)+6*cos(4*x)-cos(6*x))/32` and
+  `derive cos(x)^6, (10+15*cos(2*x)+6*cos(4*x)+cos(6*x))/32` now resolve in one
+  `expand trig` step with `Power Reduction Identity`
+- eighth-power trig reductions now resolve directly in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_solver/src/derive/trig.rs`
+- examples like `derive sin(x)^8, (35-56*cos(2*x)+28*cos(4*x)-8*cos(6*x)+cos(8*x))/128` and
+  `derive cos(x)^8, (35+56*cos(2*x)+28*cos(4*x)+8*cos(6*x)+cos(8*x))/128` now resolve in one
+  `expand trig` step with `Power Reduction Identity`
+- tenth-power trig reductions now resolve directly in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_solver/src/derive/trig.rs`
+- examples like `derive sin(x)^10, (126-210*cos(2*x)+120*cos(4*x)-45*cos(6*x)+10*cos(8*x)-cos(10*x))/512` and
+  `derive cos(x)^10, (126+210*cos(2*x)+120*cos(4*x)+45*cos(6*x)+10*cos(8*x)+cos(10*x))/512` now resolve in one
+  `expand trig` step with `Power Reduction Identity`
+- higher even-power trig reductions now resolve directly in
+  `/Users/javiergimenezmoya/developer/math/crates/cas_solver/src/derive/trig.rs`
+- representative examples like
+  `derive sin(x)^24, (1352078-2496144*cos(2*x)+1961256*cos(4*x)-1307504*cos(6*x)+735471*cos(8*x)-346104*cos(10*x)+134596*cos(12*x)-42504*cos(14*x)+10626*cos(16*x)-2024*cos(18*x)+276*cos(20*x)-24*cos(22*x)+cos(24*x))/8388608` and
+  `derive cos(x)^24, (1352078+2496144*cos(2*x)+1961256*cos(4*x)+1307504*cos(6*x)+735471*cos(8*x)+346104*cos(10*x)+134596*cos(12*x)+42504*cos(14*x)+10626*cos(16*x)+2024*cos(18*x)+276*cos(20*x)+24*cos(22*x)+cos(24*x))/8388608` now resolve in one
+  `expand trig` step with `Power Reduction Identity`
+- direct hyperbolic angle-sum/difference expansions now stay on the `expand`
+  path instead of being hijacked by the exponential bridge matcher
+- examples like `derive sinh(x+y), sinh(x)*cosh(y)+cosh(x)*sinh(y)` now resolve
+  in one `expand` step with `Hyperbolic Angle Sum/Difference Identity`
+- trig `product-to-sum -> triple-angle` chains now stay inside `expand trig`
+  instead of falling back to `planner`
+- examples like `derive 2*sin(2*x)*sin(x), 4*cos(x)-4*cos(x)^3`,
+  `derive 2*cos(2*x)*cos(x), 4*cos(x)^3-2*cos(x)`, and
+  `derive 2*cos(2*x)*sin(x), 4*cos(x)^2*sin(x)-2*sin(x)` now resolve in two
+  `expand trig` steps: `Product-to-Sum Identity` + `Triple Angle Expansion`
+- the same `bridge -> expand trig` chain now also works with additive
+  passthrough terms
+- examples like `derive 2*sin(2*x)*sin(x)+a, 4*cos(x)-4*cos(x)^3+a` and
+  `derive 2*cos(2*x)*sin(x)+a, 4*cos(x)^2*sin(x)-2*sin(x)+a` now resolve in
+  two `expand trig` steps instead of falling back to noisy `simplify`
+- the same cleanup now applies to exact hyperbolic `product-to-sum` inside
+  additive passthrough terms
+- hyperbolic `product-to-sum -> triple-angle` chains now stay inside `expand`
+  instead of collapsing into a one-step semantic jump
+- examples like `derive 2*sinh(2*x)*cosh(x), 4*sinh(x)+4*sinh(x)^3`,
+  `derive 2*sinh(2*x)*sinh(x), 4*cosh(x)^3-4*cosh(x)`, and
+  `derive 2*sinh(2*x)*sinh(x)+a, 4*cosh(x)^3-4*cosh(x)+a` now resolve in two
+  `expand` steps: `Hyperbolic Product-to-Sum Identity` +
+  `Hyperbolic Triple-Angle Identity`
+- the bounded planner now explores `contract logs` as a trusted transition,
+  which closes a real mixed-family gap for grouped-power log targets
+- examples like `derive ln(x^2)+ln(y^2), ln((x*y)^2)`,
+  `derive 2*ln(abs(x))+2*ln(abs(y)), 2*ln(abs(x*y))`, and
+  `derive 2*log(b,x)+2*log(b,y), log(b,(x*y)^2)` now resolve via `planner`
+  with a single visible step `Contraer logaritmos`
+- equal-weight sine/cosine phase-shift identities now resolve directly
+  instead of falling back to `unsupported` or noisy expansion/planner paths
+- examples like `derive sin(x)+cos(x), sqrt(2)*sin(x+pi/4)`,
+  `derive sin(x)-cos(x), sqrt(2)*sin(x-pi/4)`,
+  `derive sqrt(2)*sin(x+pi/4), sin(x)+cos(x)`, and
+  `derive sqrt(2)*cos(x-pi/4), sin(x)+cos(x)` now resolve in one
+  `contract trig` or `expand trig` step with `Phase Shift Identity`
+- the same phase-shift family now also handles a shared multiplicative factor
+- examples like `derive 2*sin(x)+2*cos(x), 2*sqrt(2)*sin(x+pi/4)` and
+  `derive 2*sqrt(2)*sin(x+pi/4), 2*sin(x)+2*cos(x)` now resolve in one
+  direct trig step instead of falling back to `unsupported` or a 5-step
+  expansion
+- the same phase-shift family now also works through additive passthrough terms
+- examples like `derive sin(x)+cos(x)+a, sqrt(2)*sin(x+pi/4)+a` and
+  `derive 2*sqrt(2)*sin(x+pi/4)+a, 2*sin(x)+2*cos(x)+a` now resolve in one
+  direct trig step instead of falling back to `unsupported`
+- the bounded planner now explores additive local trig bridges as reusable
+  intermediate transitions instead of only when they already hit the final
+  target
+- examples like `derive sin(x)+cos(x)+sin(y)+cos(y),
+  sqrt(2)*sin(x+pi/4)+sqrt(2)*sin(y+pi/4)` now resolve directly via
+  `expand trig` in two `Phase Shift Identity` steps, and the reverse
+  `derive sqrt(2)*sin(x+pi/4)+sqrt(2)*sin(y+pi/4),
+  sin(x)+cos(x)+sin(y)+cos(y)` is handled directly by `expand trig` with the
+  same two nominal steps
+- exact unequal-weight phase-shift identities at special angles are now direct
+- examples like `derive 2*sin(x)+2*sqrt(3)*cos(x), 4*sin(x+pi/3)`,
+  `derive 4*sin(x+pi/3), 2*sin(x)+2*sqrt(3)*cos(x)`,
+  `derive sqrt(3)*sin(x)+cos(x), 2*sin(x+pi/6)`, and
+  `derive 2*sin(x+pi/6), sqrt(3)*sin(x)+cos(x)` now resolve in one direct
+  `contract trig` / `expand trig` step with `Phase Shift Identity`
+- the fully general exact unequal-weight phase shift is now direct too
+- examples like `derive 3*sin(x)+4*cos(x), 5*sin(x+arctan(4/3))` and
+  `derive 5*sin(x+arctan(4/3)), 3*sin(x)+4*cos(x)` now resolve in one direct
+  `contract trig` / `expand trig` step with `Phase Shift Identity`
+- the same exact phase shift with additive passthrough is now direct too
+- examples like `derive 3*sin(x)+4*cos(x)+a, 5*sin(x+arctan(4/3))+a` and
+  `derive 5*sin(x+arctan(4/3))+a, 3*sin(x)+4*cos(x)+a` now resolve in one
+  direct `contract trig` / `expand trig` step with `Phase Shift Identity`
+- the symbolic unequal-weight phase shift now resolves directly too, including
+  simple passthrough and repeated-pair planner cases
+- direct normalization between equivalent exact shifted trig terms is now
+  direct too
+- examples like `derive sqrt(2)*sin(x+pi/4), sqrt(2)*cos(x-pi/4)` and
+  `derive sqrt(2)*sin(x+pi/4)+a, sqrt(2)*cos(x-pi/4)+a` now resolve in one
+  direct `contract trig` step with `Phase Shift Identity`
+- the same direct normalization now also covers the general unequal-weight
+  shifted-term case, including additive passthrough
+- examples like `derive 5*sin(x+arctan(4/3)), 5*cos(x-arctan(3/4))` and
+  `derive 5*sin(x+arctan(4/3))+a, 5*cos(x-arctan(3/4))+a` now resolve directly
+  in one `contract trig` step instead of falling back to `planner`
+- the next ROI after this exact subfamily is no longer more linear phase shift;
+  the best remaining candidates are fresh unsupported-equivalent families
+  outside phase shift, or cosmetic tail cleanup in direct routes that still
+  teach more steps than necessary
+- grouped `contract logs` targets that were previously planner-only are now
+  direct too
+- examples like `derive ln(x^2)+ln(y^2), ln((x*y)^2)`,
+  `derive 2*ln(abs(x))+2*ln(abs(y)), 2*ln(abs(x*y))`, and
+  `derive 2*log(b,x)+2*log(b,y), log(b,(x*y)^2)` now resolve with
+  `strategy: "contract logs"` in one direct `Contraer logaritmos` step
+- the grouped `expand_log` reverse direction now resolves directly too instead
+  of failing equivalence proof
+- examples like `derive ln((x*y)^2), ln(x^2)+ln(y^2)`,
+  `derive 2*ln(abs(x*y)), 2*ln(abs(x))+2*ln(abs(y))`, and
+  `derive log(b,(x*y)^2), 2*log(b,x)+2*log(b,y)` now resolve with
+  `strategy: "expand_log"` in one direct `Expandir logaritmos` step
+- the same grouped log family now also works through additive passthrough terms
+- examples like `derive ln((x*y)^2)+a, ln(x^2)+ln(y^2)+a`,
+  `derive 2*ln(abs(x))+2*ln(abs(y))+a, 2*ln(abs(x*y))+a`, and
+  `derive 2*log(b,x)+2*log(b,y)+a, log(b,(x*y)^2)+a` now resolve directly in
+  one `expand_log` / `contract logs` step instead of failing equivalence proof
+- the perfect-square radical rewrite now also works through additive
+  passthrough terms
+- examples like `derive sqrt(a^2 + 2*a*b + b^2)+c, abs(a+b)+c` now resolve
+  directly with `strategy: "rewrite radicals"` instead of falling back to
+  generic `simplify`
+- trig identities that collapse to `1` now also work through additive
+  passthrough terms
+- examples like `derive tan(x)*cot(x)+a, 1+a` now resolve directly with
+  `strategy: "rewrite trigs"` in one step instead of falling back to generic
+  `simplify`
+- the consecutive factorial ratio rewrite now also works through additive
+  passthrough terms
+- examples like `derive (n+1)!/n!+a, n+1+a` now resolve directly with
+  `strategy: "rewrite factorials"` in one step instead of falling back to
+  generic `simplify`
+- `expand odd half power` now also works through additive passthrough terms
+- examples like `derive sqrt(x^3)+a, abs(x)*sqrt(x)+a` now resolve directly
+  with `strategy: "expand odd half power"` instead of falling back to generic
+  `simplify`
+- the same odd-half-power family now drops redundant display guards like
+  `x^3 ≥ 0` when `x ≥ 0` is already present, so the wire teaches the minimal
+  domain requirement for this route
+- exact `cancel fraction` rewrites now also work through additive passthrough
+  terms instead of falling back to generic `simplify`
+- examples like `derive (a^2-b^2)/(a-b)+c, a+b+c` and
+  `derive (a^3-b^3)/(a-b)+c, a^2+a*b+b^2+c` now resolve directly with
+  `strategy: "cancel fraction"` in one named step
 
 ### Families That Reach The Target But Teach Poorly
 
 | Problem type | Representative example | Why it is bad |
 |---|---|---|
-| Oscillation / loopiness | `derive (sin(x)+cos(x))^2, 1+sin(2*x)` | Reaches the target, but emits a 17-step trace with repeated double-angle expand/contract churn |
-| Opaque `simplify` jump | `derive sin(x)^4, (3-4*cos(2*x)+cos(4*x))/8` | Correct result, but only a generic `Simplify` step instead of a reduction-of-powers derivation |
-| Cosmetic no-op step | `derive sinh(x)+sinh(y), 2*sinh((x+y)/2)*cosh((x-y)/2)` | Path includes a redundant `Canonicalize Multiplication` step after the meaningful rewrite |
+| Very high even-power reduction still bounded | exponents whose coefficients or denominators exceed current small-integer emission limits | A generic fallback now covers higher even powers beyond degree 22, but extremely large exponents may later want BigInt-backed coefficient emission |
 
 These are not correctness failures. They are didactic-quality failures, and
 they matter because `derive` is explicitly an educational feature.
@@ -507,23 +665,14 @@ they matter because `derive` is explicitly an educational feature.
 
 Recommended development order from highest ROI to lowest:
 
-1. Add the missing trig sum-to-product family in
-   [/Users/javiergimenezmoya/developer/math/crates/cas_solver/src/derive/trig.rs](/Users/javiergimenezmoya/developer/math/crates/cas_solver/src/derive/trig.rs).
-   Reason:
-   elementary identities, clear parity with existing hyperbolic support, high
-   user value, low conceptual risk.
-2. Add loop / oscillation suppression in
-   [/Users/javiergimenezmoya/developer/math/crates/cas_solver/src/derive_command.rs](/Users/javiergimenezmoya/developer/math/crates/cas_solver/src/derive_command.rs).
-   Reason:
-   current planner quality is good on many cases, but traces can still become
-   pedagogically unacceptable.
-3. Promote reduction-of-powers identities out of generic `simplify`.
+1. Continue cleaning remaining cosmetic tails after meaningful rewrites.
    Candidate family:
-   `sin^4`, `cos^4`, `sin^2*cos^2`, and nearby half-angle chains.
-4. Treat branch-sensitive inverse-trig composition as a separate workstream.
+   other canonicalization/no-op steps outside the already cleaned direct trig
+   and hyperbolic exact/passthrough families.
+2. Treat branch-sensitive inverse-trig composition as a separate workstream.
    Reason:
-   this is a deeper semantic/domain task and should not block the simpler trig
-   family gap.
+   this is a deeper semantic/domain task and should not block the remaining
+   planner and didactic gaps.
 
 ### Operational Rule
 

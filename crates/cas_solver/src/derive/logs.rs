@@ -169,17 +169,126 @@ pub(crate) fn try_rewrite_log_contraction_target_aware(
     Some(rewritten)
 }
 
+pub(crate) fn try_rewrite_log_contraction_to_target_aware(
+    ctx: &mut Context,
+    source_expr: ExprId,
+    target_expr: ExprId,
+) -> Option<ExprId> {
+    if let Some(rewritten) = try_rewrite_log_contraction_target_aware(ctx, source_expr) {
+        if super::strong_target_match(ctx, rewritten, target_expr) {
+            return Some(target_expr);
+        }
+
+        if log_contracted_forms_match(ctx, rewritten, target_expr) {
+            return Some(target_expr);
+        }
+    }
+
+    try_rewrite_log_contraction_additive_target_aware(ctx, source_expr, target_expr)
+}
+
 pub(crate) fn try_rewrite_log_expansion_target_aware(
     ctx: &mut Context,
     source_expr: ExprId,
     target_expr: ExprId,
 ) -> Option<ExprId> {
-    let contracted = try_rewrite_log_contraction_target_aware(ctx, target_expr)?;
-    if super::strong_target_match(ctx, contracted, source_expr) {
-        Some(target_expr)
-    } else {
-        None
+    if let Some(contracted) = try_rewrite_log_contraction_target_aware(ctx, target_expr) {
+        if super::strong_target_match(ctx, contracted, source_expr)
+            || log_contracted_forms_match(ctx, source_expr, contracted)
+        {
+            return Some(target_expr);
+        }
     }
+
+    try_rewrite_log_expansion_additive_target_aware(ctx, source_expr, target_expr)
+}
+
+fn try_rewrite_log_contraction_additive_target_aware(
+    ctx: &mut Context,
+    source_expr: ExprId,
+    target_expr: ExprId,
+) -> Option<ExprId> {
+    let source_terms = signed_additive_terms(ctx, source_expr);
+    let target_terms = signed_additive_terms(ctx, target_expr);
+
+    if source_terms.len() < 3 || target_terms.len() >= source_terms.len() {
+        return None;
+    }
+
+    let source_limit = 1usize.checked_shl(source_terms.len() as u32)?;
+    for mask in 1..source_limit {
+        let selected = mask.count_ones() as usize;
+        if selected < 2 || selected == source_terms.len() {
+            continue;
+        }
+
+        let source_focus = build_additive_expr_from_signed_terms(
+            ctx,
+            source_terms
+                .iter()
+                .enumerate()
+                .filter_map(|(index, term)| ((mask & (1usize << index)) != 0).then_some(*term)),
+        );
+
+        for (target_index, target_focus) in target_terms.iter().copied().enumerate() {
+            if !matches_contracting_additive_log_focus(ctx, source_focus, target_focus) {
+                continue;
+            }
+
+            let source_passthrough = collect_passthrough_terms(&source_terms, mask);
+            let target_passthrough =
+                collect_passthrough_terms_excluding_index(&target_terms, target_index);
+            if additive_term_multiset_matches(ctx, &source_passthrough, &target_passthrough) {
+                return Some(target_expr);
+            }
+        }
+    }
+
+    None
+}
+
+fn try_rewrite_log_expansion_additive_target_aware(
+    ctx: &mut Context,
+    source_expr: ExprId,
+    target_expr: ExprId,
+) -> Option<ExprId> {
+    let source_terms = signed_additive_terms(ctx, source_expr);
+    let target_terms = signed_additive_terms(ctx, target_expr);
+
+    if source_terms.len() < 2 || target_terms.len() <= source_terms.len() {
+        return None;
+    }
+
+    let target_limit = 1usize.checked_shl(target_terms.len() as u32)?;
+    for (source_index, source_focus) in source_terms.iter().copied().enumerate() {
+        for mask in 1..target_limit {
+            let selected = mask.count_ones() as usize;
+            if selected < 2 || selected == target_terms.len() {
+                continue;
+            }
+
+            let target_focus = build_additive_expr_from_signed_terms(
+                ctx,
+                target_terms
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, term)| ((mask & (1usize << index)) != 0).then_some(*term)),
+            );
+
+            if try_rewrite_log_expansion_target_aware(ctx, source_focus, target_focus).is_none() {
+                continue;
+            }
+
+            let source_passthrough =
+                collect_passthrough_terms_excluding_index(&source_terms, source_index);
+            let target_passthrough = collect_passthrough_terms(&target_terms, mask);
+            if additive_term_multiset_matches(ctx, &source_passthrough, &target_passthrough) {
+                return Some(target_expr);
+            }
+        }
+    }
+
+    None
 }
 
 fn extract_scaled_log_term(ctx: &Context, expr: ExprId, sign: Sign) -> Option<ScaledLogTerm> {
@@ -239,6 +348,252 @@ fn same_log_family(ctx: &Context, lhs: LogFamily, rhs: LogFamily) -> bool {
             compare_expr(ctx, lhs, rhs) == Ordering::Equal
         }
         _ => false,
+    }
+}
+
+fn log_contracted_forms_match(ctx: &mut Context, actual: ExprId, target: ExprId) -> bool {
+    let Some(actual) = extract_scaled_log_term(ctx, actual, Sign::Pos) else {
+        return false;
+    };
+    let Some(target) = extract_scaled_log_term(ctx, target, Sign::Pos) else {
+        return false;
+    };
+
+    if !same_log_family(ctx, actual.family, target.family) {
+        return false;
+    }
+
+    if actual.coeff.is_negative() != target.coeff.is_negative() {
+        return false;
+    }
+
+    let Some(actual_arg) = fold_log_coefficient_into_argument(ctx, actual.arg, &actual.coeff.abs())
+    else {
+        return false;
+    };
+    let Some(target_arg) = fold_log_coefficient_into_argument(ctx, target.arg, &target.coeff.abs())
+    else {
+        return false;
+    };
+
+    log_argument_match(ctx, actual_arg, target_arg)
+}
+
+fn fold_log_coefficient_into_argument(
+    ctx: &mut Context,
+    arg: ExprId,
+    coeff: &BigRational,
+) -> Option<ExprId> {
+    if coeff.is_zero() {
+        return None;
+    }
+    if coeff.is_one() {
+        return Some(arg);
+    }
+    if !coeff.is_integer() || coeff.is_negative() {
+        return None;
+    }
+    Some(build_powered_log_factor(ctx, arg, coeff))
+}
+
+fn log_argument_match(ctx: &mut Context, lhs: ExprId, rhs: ExprId) -> bool {
+    if super::strong_target_match(ctx, lhs, rhs) {
+        return true;
+    }
+
+    let lhs = normalize_log_argument_for_contraction_match(ctx, lhs);
+    let rhs = normalize_log_argument_for_contraction_match(ctx, rhs);
+    compare_expr(ctx, lhs, rhs) == Ordering::Equal
+}
+
+fn normalize_log_argument_for_contraction_match(ctx: &mut Context, expr: ExprId) -> ExprId {
+    let mut factors = Vec::new();
+    collect_log_argument_factors(ctx, expr, 1, &mut factors);
+    build_log_argument_from_factors(ctx, factors)
+}
+
+fn signed_additive_terms(ctx: &mut Context, expr: ExprId) -> Vec<ExprId> {
+    add_terms_signed(ctx, expr)
+        .into_iter()
+        .map(|(term, sign)| apply_sign_to_term(ctx, term, sign))
+        .collect()
+}
+
+fn collect_passthrough_terms(terms: &[ExprId], included_mask: usize) -> Vec<ExprId> {
+    terms
+        .iter()
+        .enumerate()
+        .filter_map(|(index, term)| ((included_mask & (1usize << index)) == 0).then_some(*term))
+        .collect()
+}
+
+fn collect_passthrough_terms_excluding_index(
+    terms: &[ExprId],
+    excluded_index: usize,
+) -> Vec<ExprId> {
+    terms
+        .iter()
+        .enumerate()
+        .filter_map(|(index, term)| (index != excluded_index).then_some(*term))
+        .collect()
+}
+
+fn additive_term_multiset_matches(
+    ctx: &mut Context,
+    lhs_terms: &[ExprId],
+    rhs_terms: &[ExprId],
+) -> bool {
+    if lhs_terms.len() != rhs_terms.len() {
+        return false;
+    }
+
+    let mut lhs = lhs_terms.to_vec();
+    let mut rhs = rhs_terms.to_vec();
+    lhs.sort_by(|left, right| compare_expr(ctx, *left, *right));
+    rhs.sort_by(|left, right| compare_expr(ctx, *left, *right));
+
+    lhs.iter()
+        .zip(rhs.iter())
+        .all(|(left, right)| compare_expr(ctx, *left, *right) == Ordering::Equal)
+}
+
+fn build_additive_expr_from_signed_terms(
+    ctx: &mut Context,
+    terms: impl IntoIterator<Item = ExprId>,
+) -> ExprId {
+    let mut iter = terms.into_iter();
+    let Some(first) = iter.next() else {
+        return ctx.num(0);
+    };
+
+    iter.fold(first, |acc, term| ctx.add(Expr::Add(acc, term)))
+}
+
+fn apply_sign_to_term(ctx: &mut Context, term: ExprId, sign: Sign) -> ExprId {
+    match sign {
+        Sign::Pos => term,
+        Sign::Neg => ctx.add(Expr::Neg(term)),
+    }
+}
+
+fn matches_contracting_additive_log_focus(
+    ctx: &mut Context,
+    source_focus: ExprId,
+    target_focus: ExprId,
+) -> bool {
+    try_rewrite_log_contraction_target_aware(ctx, source_focus).is_some_and(|rewritten| {
+        super::strong_target_match(ctx, rewritten, target_focus)
+            || log_contracted_forms_match(ctx, rewritten, target_focus)
+    })
+}
+
+fn collect_log_argument_factors(
+    ctx: &mut Context,
+    expr: ExprId,
+    mult: i64,
+    out: &mut Vec<(ExprId, i64)>,
+) {
+    if mult == 0 {
+        return;
+    }
+
+    match ctx.get(expr).clone() {
+        Expr::Mul(left, right) => {
+            collect_log_argument_factors(ctx, left, mult, out);
+            collect_log_argument_factors(ctx, right, mult, out);
+        }
+        Expr::Div(num, den) => {
+            collect_log_argument_factors(ctx, num, mult, out);
+            collect_log_argument_factors(ctx, den, -mult, out);
+        }
+        Expr::Pow(base, exp) => {
+            let Some(k) = integer_i64(ctx, exp) else {
+                let normalized = cas_math::canonical_forms::normalize_core(ctx, expr);
+                out.push((normalized, mult));
+                return;
+            };
+            let total = mult.saturating_mul(k);
+            if total == 0 {
+                return;
+            }
+
+            if let Expr::Function(fn_id, args) = ctx.get(base) {
+                if ctx.is_builtin(*fn_id, BuiltinFn::Abs) && args.len() == 1 && total % 2 == 0 {
+                    collect_log_argument_factors(ctx, args[0], total, out);
+                    return;
+                }
+            }
+
+            collect_log_argument_factors(ctx, base, total, out);
+        }
+        _ => {
+            let normalized = cas_math::canonical_forms::normalize_core(ctx, expr);
+            out.push((normalized, mult));
+        }
+    }
+}
+
+fn build_log_argument_from_factors(ctx: &mut Context, mut factors: Vec<(ExprId, i64)>) -> ExprId {
+    if factors.is_empty() {
+        return ctx.num(1);
+    }
+
+    factors.sort_by(|(lhs, _), (rhs, _)| compare_expr(ctx, *lhs, *rhs));
+
+    let mut merged: Vec<(ExprId, i64)> = Vec::with_capacity(factors.len());
+    for (base, exp) in factors {
+        if exp == 0 {
+            continue;
+        }
+        if let Some((last_base, last_exp)) = merged.last_mut() {
+            if compare_expr(ctx, *last_base, base) == Ordering::Equal {
+                *last_exp += exp;
+                continue;
+            }
+        }
+        merged.push((base, exp));
+    }
+
+    let mut numerator = Vec::new();
+    let mut denominator = Vec::new();
+    for (base, exp) in merged {
+        if exp > 0 {
+            numerator.push(build_integer_power_factor(ctx, base, exp));
+        } else if exp < 0 {
+            denominator.push(build_integer_power_factor(ctx, base, -exp));
+        }
+    }
+
+    match (numerator.is_empty(), denominator.is_empty()) {
+        (true, true) => ctx.num(1),
+        (false, true) => build_product(ctx, &numerator),
+        (true, false) => {
+            let one = ctx.num(1);
+            let den = build_product(ctx, &denominator);
+            ctx.add(Expr::Div(one, den))
+        }
+        (false, false) => {
+            let num = build_product(ctx, &numerator);
+            let den = build_product(ctx, &denominator);
+            ctx.add(Expr::Div(num, den))
+        }
+    }
+}
+
+fn build_integer_power_factor(ctx: &mut Context, base: ExprId, exp: i64) -> ExprId {
+    if exp == 1 {
+        return base;
+    }
+
+    let exponent = ctx.add(Expr::Number(BigRational::from_integer(exp.into())));
+    ctx.add(Expr::Pow(base, exponent))
+}
+
+fn integer_i64(ctx: &Context, expr: ExprId) -> Option<i64> {
+    match ctx.get(expr) {
+        Expr::Number(n) if n.is_integer() => n.to_integer().try_into().ok(),
+        Expr::Neg(inner) => integer_i64(ctx, *inner).map(|v| -v),
+        _ => None,
     }
 }
 
@@ -320,7 +675,9 @@ fn multiply_existing_power_exponent(
 #[cfg(test)]
 mod tests {
     use super::{
-        try_rewrite_log_contraction_target_aware, try_rewrite_log_expansion_target_aware,
+        try_rewrite_log_contraction_additive_target_aware,
+        try_rewrite_log_contraction_target_aware, try_rewrite_log_contraction_to_target_aware,
+        try_rewrite_log_expansion_additive_target_aware, try_rewrite_log_expansion_target_aware,
         try_rewrite_log_simplify_target_aware, DeriveLogSimplifyRewriteKind,
     };
     use cas_ast::Context;
@@ -372,6 +729,9 @@ mod tests {
                 "2*log(b, x) + 3*log(b, y) - 2*log(b, z) - log(b, t)",
             ),
             ("ln(x^3*y^2)", "ln(x^3) + ln(y^2)"),
+            ("ln((x*y)^2)", "ln(x^2)+ln(y^2)"),
+            ("2*ln(abs(x*y))", "2*ln(abs(x))+2*ln(abs(y))"),
+            ("log(b,(x*y)^2)", "2*log(b,x)+2*log(b,y)"),
         ];
 
         for (source, target) in cases {
@@ -383,6 +743,89 @@ mod tests {
 
             assert_eq!(rewritten, target);
         }
+    }
+
+    #[test]
+    fn contracts_grouped_log_targets_aware() {
+        let cases = [
+            ("ln(x^2)+ln(y^2)", "ln((x*y)^2)"),
+            ("2*ln(abs(x))+2*ln(abs(y))", "2*ln(abs(x*y))"),
+            ("2*log(b, x)+2*log(b, y)", "log(b, (x*y)^2)"),
+        ];
+
+        for (source_text, target_text) in cases {
+            let mut ctx = Context::new();
+            let source = parse(source_text, &mut ctx).expect("source");
+            let target = parse(target_text, &mut ctx).expect("target");
+            let rewritten = try_rewrite_log_contraction_to_target_aware(&mut ctx, source, target)
+                .expect("rewrite");
+
+            assert_eq!(rewritten, target);
+        }
+    }
+
+    #[test]
+    fn contracts_grouped_log_targets_with_passthrough_aware() {
+        let cases = [
+            ("ln(x^2)+ln(y^2)+a", "ln((x*y)^2)+a"),
+            ("2*ln(abs(x))+2*ln(abs(y))+a", "2*ln(abs(x*y))+a"),
+            ("2*log(b, x)+2*log(b, y)+a", "log(b, (x*y)^2)+a"),
+        ];
+
+        for (source_text, target_text) in cases {
+            let mut ctx = Context::new();
+            let source = parse(source_text, &mut ctx).expect("source");
+            let target = parse(target_text, &mut ctx).expect("target");
+            let rewritten =
+                try_rewrite_log_contraction_additive_target_aware(&mut ctx, source, target)
+                    .expect("rewrite");
+
+            assert_eq!(rewritten, target);
+        }
+    }
+
+    #[test]
+    fn contracts_grouped_log_targets_with_passthrough_via_public_target_aware_api() {
+        let mut ctx = Context::new();
+        let source = parse("ln(x^2)+ln(y^2)+a", &mut ctx).expect("source");
+        let target = parse("ln((x*y)^2)+a", &mut ctx).expect("target");
+
+        let rewritten =
+            try_rewrite_log_contraction_to_target_aware(&mut ctx, source, target).expect("rewrite");
+
+        assert_eq!(rewritten, target);
+    }
+
+    #[test]
+    fn expands_grouped_log_targets_with_passthrough_aware() {
+        let cases = [
+            ("ln((x*y)^2)+a", "ln(x^2)+ln(y^2)+a"),
+            ("2*ln(abs(x*y))+a", "2*ln(abs(x))+2*ln(abs(y))+a"),
+            ("log(b,(x*y)^2)+a", "2*log(b,x)+2*log(b,y)+a"),
+        ];
+
+        for (source_text, target_text) in cases {
+            let mut ctx = Context::new();
+            let source = parse(source_text, &mut ctx).expect("source");
+            let target = parse(target_text, &mut ctx).expect("target");
+            let rewritten =
+                try_rewrite_log_expansion_additive_target_aware(&mut ctx, source, target)
+                    .expect("rewrite");
+
+            assert_eq!(rewritten, target);
+        }
+    }
+
+    #[test]
+    fn expands_grouped_log_targets_with_passthrough_via_public_target_aware_api() {
+        let mut ctx = Context::new();
+        let source = parse("ln((x*y)^2)+a", &mut ctx).expect("source");
+        let target = parse("ln(x^2)+ln(y^2)+a", &mut ctx).expect("target");
+
+        let rewritten =
+            try_rewrite_log_expansion_target_aware(&mut ctx, source, target).expect("rewrite");
+
+        assert_eq!(rewritten, target);
     }
 
     #[test]

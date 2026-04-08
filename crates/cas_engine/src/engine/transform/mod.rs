@@ -184,7 +184,9 @@ impl<'a> LocalSimplificationTransformer<'a> {
             if !self.depth_overflow_warned {
                 self.depth_overflow_warned = true;
 
-                if !self.suppress_depth_overflow_warnings {
+                if !self.suppress_depth_overflow_warnings
+                    && !crate::are_depth_overflow_warnings_suppressed()
+                {
                     // Log the expression to file for later investigation
                     let display = cas_formatter::DisplayExpr {
                         context: self.context,

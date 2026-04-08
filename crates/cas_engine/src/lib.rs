@@ -2,6 +2,33 @@
 // See too_many_arguments allows in: inverse_trig.rs, step.rs
 // See arc_with_non_send_sync allows in: profile_cache.rs
 
+thread_local! {
+    static DEPTH_OVERFLOW_WARNING_SUPPRESSION_DEPTH: std::cell::Cell<usize> =
+        const { std::cell::Cell::new(0) };
+}
+
+pub(crate) fn are_depth_overflow_warnings_suppressed() -> bool {
+    DEPTH_OVERFLOW_WARNING_SUPPRESSION_DEPTH.with(|depth| depth.get() > 0)
+}
+
+pub fn with_suppressed_depth_overflow_warnings<R>(f: impl FnOnce() -> R) -> R {
+    struct DepthOverflowWarningGuard;
+
+    impl Drop for DepthOverflowWarningGuard {
+        fn drop(&mut self) {
+            DEPTH_OVERFLOW_WARNING_SUPPRESSION_DEPTH.with(|depth| {
+                depth.set(depth.get().saturating_sub(1));
+            });
+        }
+    }
+
+    DEPTH_OVERFLOW_WARNING_SUPPRESSION_DEPTH.with(|depth| {
+        depth.set(depth.get() + 1);
+    });
+    let _guard = DepthOverflowWarningGuard;
+    f()
+}
+
 #[cfg(test)]
 mod assumptions_tests;
 pub(crate) mod best_so_far;

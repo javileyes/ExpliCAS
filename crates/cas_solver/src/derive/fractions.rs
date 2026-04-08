@@ -76,6 +76,8 @@ pub(crate) struct ExactFractionCancelRewrite {
     pub(crate) rewritten: ExprId,
     pub(crate) kind: ExactFractionCancelKind,
     pub(crate) required_conditions: Vec<crate::ImplicitCondition>,
+    pub(crate) focus_before: Option<ExprId>,
+    pub(crate) focus_after: Option<ExprId>,
 }
 
 impl FractionCombinationKind {
@@ -656,6 +658,46 @@ pub(crate) fn try_rewrite_exact_fraction_cancel_target_aware(
     source_expr: ExprId,
     target_expr: ExprId,
 ) -> Option<ExactFractionCancelRewrite> {
+    if let Some((passthrough_terms, source_focus_terms, target_focus_terms)) =
+        extract_additive_passthrough_terms(ctx, source_expr, target_expr)
+    {
+        let source_focus = build_balanced_add(ctx, &source_focus_terms);
+        let target_focus = build_balanced_add(ctx, &target_focus_terms);
+
+        if let Some(rewrite) =
+            try_rewrite_exact_fraction_cancel_core_target_aware(ctx, source_focus, target_focus)
+        {
+            let mut rebuilt_terms = passthrough_terms;
+            rebuilt_terms.push(rewrite.rewritten);
+            let rebuilt = build_balanced_add(ctx, &rebuilt_terms);
+
+            if strong_target_match(ctx, rebuilt, target_expr) {
+                let (focus_before, focus_after) = rewrite.kind.local_snapshots(
+                    source_focus,
+                    rewrite.intermediate,
+                    rewrite.rewritten,
+                );
+
+                return Some(ExactFractionCancelRewrite {
+                    intermediate: rewrite.intermediate,
+                    rewritten: rebuilt,
+                    kind: rewrite.kind,
+                    required_conditions: rewrite.required_conditions,
+                    focus_before: Some(focus_before),
+                    focus_after: Some(focus_after),
+                });
+            }
+        }
+    }
+
+    try_rewrite_exact_fraction_cancel_core_target_aware(ctx, source_expr, target_expr)
+}
+
+fn try_rewrite_exact_fraction_cancel_core_target_aware(
+    ctx: &mut Context,
+    source_expr: ExprId,
+    target_expr: ExprId,
+) -> Option<ExactFractionCancelRewrite> {
     let rewrites = [
         try_rewrite_common_factor_fraction_cancel(ctx, source_expr),
         try_rewrite_difference_of_squares_fraction_cancel(ctx, source_expr),
@@ -721,6 +763,8 @@ fn try_rewrite_perfect_square_minus_fraction_cancel(
         rewritten: a_minus_b,
         kind: ExactFractionCancelKind::PerfectSquareMinus,
         required_conditions: vec![crate::ImplicitCondition::NonZero(denominator)],
+        focus_before: None,
+        focus_after: None,
     })
 }
 
@@ -747,6 +791,8 @@ fn try_rewrite_perfect_square_plus_fraction_cancel(
         rewritten,
         kind: ExactFractionCancelKind::PerfectSquarePlus,
         required_conditions: vec![crate::ImplicitCondition::NonZero(denominator)],
+        focus_before: None,
+        focus_after: None,
     })
 }
 
@@ -772,6 +818,8 @@ fn try_rewrite_common_factor_fraction_cancel(
             .into_iter()
             .map(crate::ImplicitCondition::NonZero)
             .collect(),
+        focus_before: None,
+        focus_after: None,
     })
 }
 
@@ -792,6 +840,8 @@ fn try_rewrite_difference_of_squares_fraction_cancel(
         rewritten: plan.final_result,
         kind: ExactFractionCancelKind::DifferenceOfSquares,
         required_conditions: vec![crate::ImplicitCondition::NonZero(denominator)],
+        focus_before: None,
+        focus_after: None,
     })
 }
 
@@ -816,6 +866,8 @@ fn try_rewrite_sum_diff_cubes_fraction_cancel(
         rewritten,
         kind: ExactFractionCancelKind::SumDiffCubes,
         required_conditions: vec![crate::ImplicitCondition::NonZero(denominator)],
+        focus_before: None,
+        focus_after: None,
     })
 }
 
@@ -1057,9 +1109,10 @@ fn signed_add_terms(ctx: &mut Context, expr: ExprId) -> Vec<ExprId> {
 mod tests {
     use super::{
         looks_like_fraction_expanded_target, looks_like_mixed_fraction_target, strong_target_match,
-        try_build_combined_fraction_from_fold_add, try_rewrite_fraction_combination_target_aware,
-        try_rewrite_fraction_expansion, try_rewrite_fraction_expansion_target_aware,
-        try_rewrite_nested_fraction_target_aware, FractionCombinationKind, FractionExpansionKind,
+        try_build_combined_fraction_from_fold_add, try_rewrite_exact_fraction_cancel_target_aware,
+        try_rewrite_fraction_combination_target_aware, try_rewrite_fraction_expansion,
+        try_rewrite_fraction_expansion_target_aware, try_rewrite_nested_fraction_target_aware,
+        ExactFractionCancelKind, FractionCombinationKind, FractionExpansionKind,
     };
     use crate::runtime::Simplifier;
     use cas_ast::{Context, ExprId};
@@ -1280,6 +1333,34 @@ mod tests {
         let checker =
             cas_math::semantic_equality::SemanticEqualityChecker::new(&simplifier.context);
         assert!(checker.are_equal(rewrite.rewritten, target));
+    }
+
+    #[test]
+    fn cancels_difference_of_squares_fraction_with_passthrough_target_aware() {
+        let mut ctx = Context::new();
+        let source = parse("(a^2-b^2)/(a-b)+c", &mut ctx).expect("parse source");
+        let target = parse("a+b+c", &mut ctx).expect("parse target");
+        let rewrite = try_rewrite_exact_fraction_cancel_target_aware(&mut ctx, source, target)
+            .expect("rewrite");
+
+        assert_eq!(rewrite.kind, ExactFractionCancelKind::DifferenceOfSquares);
+        assert!(rewrite.focus_before.is_some());
+        assert!(rewrite.focus_after.is_some());
+        assert!(strong_target_match(&mut ctx, rewrite.rewritten, target));
+    }
+
+    #[test]
+    fn cancels_difference_of_cubes_fraction_with_passthrough_target_aware() {
+        let mut ctx = Context::new();
+        let source = parse("(a^3-b^3)/(a-b)+c", &mut ctx).expect("parse source");
+        let target = parse("a^2+a*b+b^2+c", &mut ctx).expect("parse target");
+        let rewrite = try_rewrite_exact_fraction_cancel_target_aware(&mut ctx, source, target)
+            .expect("rewrite");
+
+        assert_eq!(rewrite.kind, ExactFractionCancelKind::SumDiffCubes);
+        assert!(rewrite.focus_before.is_some());
+        assert!(rewrite.focus_after.is_some());
+        assert!(strong_target_match(&mut ctx, rewrite.rewritten, target));
     }
 
     #[test]

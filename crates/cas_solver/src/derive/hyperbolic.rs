@@ -1,4 +1,4 @@
-use super::{presentational_target_match, strong_target_match};
+use super::strong_target_match;
 use cas_ast::ordering::compare_expr;
 use cas_ast::{BuiltinFn, Expr, ExprId};
 use cas_math::expr_destructure::as_div;
@@ -134,7 +134,8 @@ pub(crate) fn generate_hyperbolic_bridge_rewrites(
         push_unique_hyperbolic_bridge_rewrite(&mut rewrites, rewritten, kind);
     }
 
-    if let Some((rewritten, kind)) = rewrite_hyperbolic_product_to_sum_bridge_expr(ctx, expr, false)
+    for (rewritten, kind) in
+        rewrite_hyperbolic_product_to_sum_bridge_expr_variants(ctx, expr, false)
     {
         push_unique_hyperbolic_bridge_rewrite(&mut rewrites, rewritten, kind);
     }
@@ -145,8 +146,8 @@ pub(crate) fn generate_hyperbolic_bridge_rewrites(
     }
 
     if let Some(positive_expr) = strip_unit_negation(ctx, expr) {
-        if let Some((rewritten, kind)) =
-            rewrite_hyperbolic_product_to_sum_bridge_expr(ctx, positive_expr, true)
+        for (rewritten, kind) in
+            rewrite_hyperbolic_product_to_sum_bridge_expr_variants(ctx, positive_expr, true)
         {
             push_unique_hyperbolic_bridge_rewrite(&mut rewrites, rewritten, kind);
         }
@@ -997,22 +998,36 @@ impl DeriveHyperbolicRewriteKind {
     }
 }
 
-fn rewrite_hyperbolic_product_to_sum_bridge_expr(
+fn rewrite_hyperbolic_product_to_sum_bridge_expr_variants(
     ctx: &mut cas_ast::Context,
     expr: ExprId,
     negate_output: bool,
-) -> Option<(ExprId, DeriveHyperbolicRewriteKind)> {
-    let finalize =
-        |ctx: &mut cas_ast::Context, candidate: ExprId, kind: DeriveHyperbolicRewriteKind| {
-            let rewritten = if negate_output {
-                ctx.add(Expr::Neg(candidate))
-            } else {
-                candidate
-            };
-            Some((rewritten, kind))
-        };
+) -> Vec<(ExprId, DeriveHyperbolicRewriteKind)> {
+    let Some((kind, candidate)) = rewrite_hyperbolic_product_to_sum_bridge_expr_raw(ctx, expr)
+    else {
+        return Vec::new();
+    };
 
-    let (kind, candidate) = match extract_scaled_hyperbolic_two_factor_product(ctx, expr, 2)? {
+    let rewritten = if negate_output {
+        ctx.add(Expr::Neg(candidate))
+    } else {
+        candidate
+    };
+    let simplified = run_default_simplify(ctx, rewritten);
+
+    let mut variants = vec![(rewritten, kind)];
+    if simplified != rewritten {
+        variants.push((simplified, kind));
+    }
+
+    variants
+}
+
+fn rewrite_hyperbolic_product_to_sum_bridge_expr_raw(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+) -> Option<(DeriveHyperbolicRewriteKind, ExprId)> {
+    match extract_scaled_hyperbolic_two_factor_product(ctx, expr, 2)? {
         ScaledHyperbolicProductPattern::SinhCosh(left, right) => {
             let sum_expr = ctx.add(Expr::Add(left, right));
             let diff_expr = ctx.add(Expr::Sub(left, right));
@@ -1020,10 +1035,10 @@ fn rewrite_hyperbolic_product_to_sum_bridge_expr(
             let diff = run_default_simplify(ctx, diff_expr);
             let sum_term = build_canonical_hyperbolic_call(ctx, BuiltinFn::Sinh, sum);
             let diff_term = build_canonical_hyperbolic_call(ctx, BuiltinFn::Sinh, diff);
-            (
+            Some((
                 DeriveHyperbolicRewriteKind::ProductToSumSinhCosh,
                 ctx.add(Expr::Add(sum_term, diff_term)),
-            )
+            ))
         }
         ScaledHyperbolicProductPattern::CoshCosh(left, right) => {
             let sum_expr = ctx.add(Expr::Add(left, right));
@@ -1032,10 +1047,10 @@ fn rewrite_hyperbolic_product_to_sum_bridge_expr(
             let diff = run_default_simplify(ctx, diff_expr);
             let sum_term = build_canonical_hyperbolic_call(ctx, BuiltinFn::Cosh, sum);
             let diff_term = build_canonical_hyperbolic_call(ctx, BuiltinFn::Cosh, diff);
-            (
+            Some((
                 DeriveHyperbolicRewriteKind::ProductToSumCoshCosh,
                 ctx.add(Expr::Add(sum_term, diff_term)),
-            )
+            ))
         }
         ScaledHyperbolicProductPattern::SinhSinh(left, right) => {
             let sum_expr = ctx.add(Expr::Add(left, right));
@@ -1044,14 +1059,12 @@ fn rewrite_hyperbolic_product_to_sum_bridge_expr(
             let diff = run_default_simplify(ctx, diff_expr);
             let sum_term = build_canonical_hyperbolic_call(ctx, BuiltinFn::Cosh, sum);
             let diff_term = build_canonical_hyperbolic_call(ctx, BuiltinFn::Cosh, diff);
-            (
+            Some((
                 DeriveHyperbolicRewriteKind::ProductToSumSinhSinh,
                 ctx.add(Expr::Sub(sum_term, diff_term)),
-            )
+            ))
         }
-    };
-
-    finalize(ctx, candidate, kind)
+    }
 }
 
 fn rewrite_hyperbolic_sum_to_product_bridge_expr(
@@ -1138,10 +1151,24 @@ fn rewrite_hyperbolic_sum_to_product_bridge_expr(
         candidate
     };
 
-    Some((rewritten, kind))
+    Some((run_default_simplify(ctx, rewritten), kind))
 }
 
 pub(crate) fn try_rewrite_hyperbolic_simplify_target_aware(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+    target_expr: ExprId,
+) -> Option<DeriveHyperbolicRewrite> {
+    if let Some(rewrite) =
+        try_rewrite_hyperbolic_simplify_direct_target_aware(ctx, expr, target_expr)
+    {
+        return Some(rewrite);
+    }
+
+    try_rewrite_hyperbolic_simplify_additive_passthrough_target_aware(ctx, expr, target_expr)
+}
+
+fn try_rewrite_hyperbolic_simplify_direct_target_aware(
     ctx: &mut cas_ast::Context,
     expr: ExprId,
     target_expr: ExprId,
@@ -1590,16 +1617,138 @@ pub(crate) fn try_rewrite_hyperbolic_simplify_target_aware(
     None
 }
 
+fn try_rewrite_hyperbolic_simplify_additive_passthrough_target_aware(
+    ctx: &mut cas_ast::Context,
+    source_expr: ExprId,
+    target_expr: ExprId,
+) -> Option<DeriveHyperbolicRewrite> {
+    let source_terms = signed_additive_terms(ctx, source_expr);
+    let target_terms = signed_additive_terms(ctx, target_expr);
+    if source_terms.len() <= 1 && target_terms.len() <= 1 {
+        return None;
+    }
+
+    for (source_index, source_focus) in source_terms.iter().copied().enumerate() {
+        for (target_index, target_focus) in target_terms.iter().copied().enumerate() {
+            let Some(rewrite) = try_rewrite_hyperbolic_simplify_direct_target_aware(
+                ctx,
+                source_focus,
+                target_focus,
+            ) else {
+                continue;
+            };
+
+            let source_passthrough =
+                collect_passthrough_terms_excluding_index(&source_terms, source_index);
+            let target_passthrough =
+                collect_passthrough_terms_excluding_index(&target_terms, target_index);
+            if additive_term_multiset_matches(ctx, &source_passthrough, &target_passthrough) {
+                return Some(DeriveHyperbolicRewrite {
+                    rewritten: target_expr,
+                    kind: rewrite.kind,
+                });
+            }
+        }
+    }
+
+    if let Some(source_limit) = 1usize.checked_shl(source_terms.len() as u32) {
+        for mask in 1..source_limit {
+            let selected = mask.count_ones() as usize;
+            if selected < 2 {
+                continue;
+            }
+
+            let source_focus = build_additive_expr_from_signed_terms(
+                ctx,
+                source_terms
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, term)| ((mask & (1usize << index)) != 0).then_some(*term)),
+            );
+
+            for (target_index, target_focus) in target_terms.iter().copied().enumerate() {
+                let Some(rewrite) = try_rewrite_hyperbolic_simplify_direct_target_aware(
+                    ctx,
+                    source_focus,
+                    target_focus,
+                ) else {
+                    continue;
+                };
+
+                let source_passthrough = collect_passthrough_terms(&source_terms, mask);
+                let target_passthrough =
+                    collect_passthrough_terms_excluding_index(&target_terms, target_index);
+                if additive_term_multiset_matches(ctx, &source_passthrough, &target_passthrough) {
+                    return Some(DeriveHyperbolicRewrite {
+                        rewritten: target_expr,
+                        kind: rewrite.kind,
+                    });
+                }
+            }
+        }
+    }
+
+    if let Some(target_limit) = 1usize.checked_shl(target_terms.len() as u32) {
+        for (source_index, source_focus) in source_terms.iter().copied().enumerate() {
+            for mask in 1..target_limit {
+                let selected = mask.count_ones() as usize;
+                if selected < 2 {
+                    continue;
+                }
+
+                let target_focus = build_additive_expr_from_signed_terms(
+                    ctx,
+                    target_terms.iter().enumerate().filter_map(|(index, term)| {
+                        ((mask & (1usize << index)) != 0).then_some(*term)
+                    }),
+                );
+
+                let Some(rewrite) = try_rewrite_hyperbolic_simplify_direct_target_aware(
+                    ctx,
+                    source_focus,
+                    target_focus,
+                ) else {
+                    continue;
+                };
+
+                let source_passthrough =
+                    collect_passthrough_terms_excluding_index(&source_terms, source_index);
+                let target_passthrough = collect_passthrough_terms(&target_terms, mask);
+                if additive_term_multiset_matches(ctx, &source_passthrough, &target_passthrough) {
+                    return Some(DeriveHyperbolicRewrite {
+                        rewritten: target_expr,
+                        kind: rewrite.kind,
+                    });
+                }
+            }
+        }
+    }
+
+    None
+}
+
 fn try_rewrite_hyperbolic_exponential_bridge_target_aware(
     ctx: &mut cas_ast::Context,
     expr: ExprId,
     target_expr: ExprId,
 ) -> Option<DeriveHyperbolicRewrite> {
+    let target_has_exp = contains_exponential_like(ctx, target_expr);
     generate_hyperbolic_bridge_rewrites(ctx, expr)
         .into_iter()
-        .find(|rewrite| {
-            rewrite.kind.is_exponential_bridge()
-                && strong_target_match(ctx, rewrite.rewritten, target_expr)
+        .find_map(|rewrite| {
+            if !rewrite.kind.is_exponential_bridge() {
+                return None;
+            }
+
+            if strong_target_match(ctx, rewrite.rewritten, target_expr) {
+                return Some(rewrite);
+            }
+
+            (target_has_exp && matches_target_modulo_simplify(ctx, rewrite.rewritten, target_expr))
+                .then_some(DeriveHyperbolicRewrite {
+                    rewritten: target_expr,
+                    kind: rewrite.kind,
+                })
         })
 }
 
@@ -1658,6 +1807,85 @@ fn try_rewrite_mixed_cosh_double_angle_product_target_aware(
     }
 
     None
+}
+
+fn signed_additive_terms(ctx: &mut cas_ast::Context, expr: ExprId) -> Vec<ExprId> {
+    add_terms_signed(ctx, expr)
+        .into_iter()
+        .map(|(term, sign)| apply_sign_to_term(ctx, term, sign))
+        .collect()
+}
+
+fn collect_passthrough_terms_excluding_index(
+    terms: &[ExprId],
+    excluded_index: usize,
+) -> Vec<ExprId> {
+    terms
+        .iter()
+        .enumerate()
+        .filter_map(|(index, term)| (index != excluded_index).then_some(*term))
+        .collect()
+}
+
+fn collect_passthrough_terms(terms: &[ExprId], included_mask: usize) -> Vec<ExprId> {
+    terms
+        .iter()
+        .enumerate()
+        .filter_map(|(index, term)| ((included_mask & (1usize << index)) == 0).then_some(*term))
+        .collect()
+}
+
+fn additive_term_multiset_matches(
+    ctx: &mut cas_ast::Context,
+    lhs_terms: &[ExprId],
+    rhs_terms: &[ExprId],
+) -> bool {
+    if lhs_terms.len() != rhs_terms.len() {
+        return false;
+    }
+
+    let mut lhs = lhs_terms.to_vec();
+    let mut rhs = rhs_terms.to_vec();
+    lhs.sort_by(|left, right| compare_expr(ctx, *left, *right));
+    rhs.sort_by(|left, right| compare_expr(ctx, *left, *right));
+
+    lhs.iter()
+        .zip(rhs.iter())
+        .all(|(left, right)| compare_expr(ctx, *left, *right) == Ordering::Equal)
+}
+
+fn build_additive_expr_from_signed_terms(
+    ctx: &mut cas_ast::Context,
+    terms: impl IntoIterator<Item = ExprId>,
+) -> ExprId {
+    let terms: Vec<_> = terms.into_iter().collect();
+    if terms.is_empty() {
+        return ctx.num(0);
+    }
+
+    if terms.len() == 2 {
+        let left = terms[0];
+        let right = terms[1];
+        match (
+            strip_unit_negation(ctx, left),
+            strip_unit_negation(ctx, right),
+        ) {
+            (Some(left_positive), None) => return ctx.add(Expr::Sub(right, left_positive)),
+            (None, Some(right_positive)) => return ctx.add(Expr::Sub(left, right_positive)),
+            _ => {}
+        }
+    }
+
+    let mut iter = terms.into_iter();
+    let first = iter.next().expect("checked non-empty terms");
+
+    iter.fold(first, |acc, term| {
+        if let Some(positive_term) = strip_unit_negation(ctx, term) {
+            ctx.add(Expr::Sub(acc, positive_term))
+        } else {
+            ctx.add(Expr::Add(acc, term))
+        }
+    })
 }
 
 fn match_mixed_cosh_double_angle_target(
@@ -1852,7 +2080,7 @@ fn try_rewrite_hyperbolic_product_sum_target_aware(
             continue;
         }
 
-        if presentational_target_match(ctx, rewrite.rewritten, target_expr) {
+        if matches_target_modulo_simplify(ctx, rewrite.rewritten, target_expr) {
             return Some(rewrite.kind);
         }
     }
@@ -4235,6 +4463,33 @@ mod tests {
     }
 
     #[test]
+    fn target_aware_hyperbolic_rewrite_contracts_sinh_double_angle_with_passthrough() {
+        let mut ctx = cas_ast::Context::new();
+        let source = cas_parser::parse("2*sinh(x)*cosh(x)+a", &mut ctx).expect("parse source");
+        let target = cas_parser::parse("sinh(2*x)+a", &mut ctx).expect("parse target");
+        let rewrite = try_rewrite_hyperbolic_simplify_target_aware(&mut ctx, source, target)
+            .expect("expected hyperbolic target-aware rewrite");
+
+        assert_eq!(
+            rewrite.kind,
+            DeriveHyperbolicRewriteKind::ContractSinhDoubleAngle
+        );
+        assert_eq!(rewrite.rewritten, target);
+    }
+
+    #[test]
+    fn target_aware_hyperbolic_rewrite_contracts_pythagorean_identity_with_passthrough() {
+        let mut ctx = cas_ast::Context::new();
+        let source = cas_parser::parse("cosh(x)^2-sinh(x)^2+a", &mut ctx).expect("parse source");
+        let target = cas_parser::parse("1+a", &mut ctx).expect("parse target");
+        let rewrite = try_rewrite_hyperbolic_simplify_target_aware(&mut ctx, source, target)
+            .expect("expected hyperbolic target-aware rewrite");
+
+        assert_eq!(rewrite.kind, DeriveHyperbolicRewriteKind::PythagoreanOne);
+        assert_eq!(rewrite.rewritten, target);
+    }
+
+    #[test]
     fn target_aware_hyperbolic_rewrite_contracts_mixed_sinh_double_angle_product() {
         let mut ctx = cas_ast::Context::new();
         let source = cas_parser::parse("4*sinh(x)^2*cosh(x)", &mut ctx).expect("parse source");
@@ -4357,6 +4612,16 @@ mod tests {
             DeriveHyperbolicRewriteKind::ContractSinhAngleSumDiff
         );
         assert_eq!(rewrite.rewritten, target);
+    }
+
+    #[test]
+    fn target_aware_hyperbolic_rewrite_does_not_claim_sinh_angle_sum_expansion() {
+        let mut ctx = cas_ast::Context::new();
+        let source = cas_parser::parse("sinh(x+y)", &mut ctx).expect("parse source");
+        let target =
+            cas_parser::parse("sinh(x)*cosh(y)+cosh(x)*sinh(y)", &mut ctx).expect("parse target");
+
+        assert!(try_rewrite_hyperbolic_simplify_target_aware(&mut ctx, source, target).is_none());
     }
 
     #[test]
@@ -4918,6 +5183,21 @@ mod tests {
         assert_eq!(
             rewrite.kind,
             DeriveHyperbolicRewriteKind::ContractHyperbolicCoshHalfAngleSquare
+        );
+        assert_eq!(rewrite.rewritten, target);
+    }
+
+    #[test]
+    fn target_aware_hyperbolic_rewrite_expands_scaled_cosh_to_exponential_sum_target() {
+        let mut ctx = cas_ast::Context::new();
+        let source = cas_parser::parse("2*cosh(2*x)", &mut ctx).expect("parse source");
+        let target = cas_parser::parse("exp(2*x)+exp(-2*x)", &mut ctx).expect("parse target");
+        let rewrite = try_rewrite_hyperbolic_simplify_target_aware(&mut ctx, source, target)
+            .expect("expected hyperbolic target-aware rewrite");
+
+        assert_eq!(
+            rewrite.kind,
+            DeriveHyperbolicRewriteKind::ExpandDoubleCoshToExpSum
         );
         assert_eq!(rewrite.rewritten, target);
     }
