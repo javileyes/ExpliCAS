@@ -5506,6 +5506,53 @@ mod tests {
     }
 
     #[test]
+    fn evaluate_derive_command_lines_reaches_higher_odd_half_power_nonnegative_target() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let lines = evaluate_derive_command_lines_with_resolver(
+            &mut simplifier,
+            "derive sqrt(x^5), x^2*sqrt(x)",
+            crate::FullSimplifyDisplayMode::Normal,
+            crate::SimplifyOptions::default(),
+            |_ctx, expr| Ok(expr),
+        )
+        .expect("derive should evaluate");
+
+        assert!(lines.iter().any(|line| {
+            line.starts_with("Strategy:") && line.contains("expand odd half power")
+        }));
+        assert!(lines.iter().any(|line| {
+            line.starts_with("Result:")
+                && (line.contains("sqrt") || line.contains("√"))
+                && line.contains('x')
+                && !line.contains("|x|")
+                && !line.contains("abs")
+        }));
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_reaches_higher_odd_half_power_nonnegative_target_with_passthrough(
+    ) {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let lines = evaluate_derive_command_lines_with_resolver(
+            &mut simplifier,
+            "derive sqrt(x^7)+a, x^3*sqrt(x)+a",
+            crate::FullSimplifyDisplayMode::Normal,
+            crate::SimplifyOptions::default(),
+            |_ctx, expr| Ok(expr),
+        )
+        .expect("derive should evaluate");
+
+        assert!(lines.iter().any(|line| {
+            line.starts_with("Strategy:") && line.contains("expand odd half power")
+        }));
+        assert!(lines.iter().any(|line| {
+            line.starts_with("Result:")
+                && (line.contains("sqrt") || line.contains("√"))
+                && line.contains('a')
+        }));
+    }
+
+    #[test]
     fn evaluate_derive_command_lines_reaches_higher_odd_half_power_target_in_y() {
         let mut simplifier = crate::Simplifier::with_default_rules();
         let lines = evaluate_derive_command_lines_with_resolver(

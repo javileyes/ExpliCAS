@@ -20,6 +20,7 @@ use cas_solver_core::quadratic_coeffs::{
 };
 use num_rational::BigRational;
 use num_traits::{One, Signed, Zero};
+use std::cmp::Ordering;
 use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -54,7 +55,7 @@ pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<
         "Telescoping Fraction Split" => generate_telescoping_fraction_split_substeps(ctx, step),
         "Canonicalize Roots" => generate_canonicalize_roots_substeps(),
         "Combine powers with same base (n-ary)" => generate_same_base_power_merge_substeps(),
-        "Expand Odd Half Power" => generate_odd_half_power_substeps(),
+        "Expand Odd Half Power" => generate_odd_half_power_substeps(ctx, step),
         "Expand" => generate_expand_substeps(ctx, step),
         "Collect Terms" => generate_collect_terms_substeps(step),
         "Factor Out With Division" => generate_factor_out_with_division_substeps(ctx, step),
@@ -63,7 +64,7 @@ pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<
             generate_binomial_expansion_substeps(ctx, step)
         }
         "expand_log" => generate_expand_log_substeps(ctx, step),
-        "Simplify" => generate_simplify_substeps(ctx, step),
+        "Simplify" | "Canonicalize" => generate_simplify_substeps(ctx, step),
         "Evaluate Logarithms" => generate_evaluate_logarithms_substeps(step),
         "Factor Perfect Square in Logarithm" => {
             generate_factor_perfect_square_log_substeps(ctx, step)
@@ -516,7 +517,11 @@ fn generate_same_base_power_merge_substeps() -> Vec<SubStep> {
     )]
 }
 
-fn generate_odd_half_power_substeps() -> Vec<SubStep> {
+fn generate_odd_half_power_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    if let Some(substeps) = generate_odd_half_power_simplify_substeps(ctx, step) {
+        return substeps;
+    }
+
     vec![
         formula_substep(
             "Separar la mitad entera de la mitad radical",
@@ -1235,6 +1240,10 @@ fn generate_simplify_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
     let before = step.before_local().unwrap_or(step.before);
     let after = step.after_local().unwrap_or(step.after);
 
+    if let Some(substeps) = generate_odd_half_power_simplify_substeps(ctx, step) {
+        return substeps;
+    }
+
     if let Some(substeps) = generate_reverse_nested_fraction_substeps(ctx, before, after) {
         return substeps;
     }
@@ -1250,6 +1259,276 @@ fn generate_simplify_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
     generate_log_power_contraction_substep(ctx, before, after)
         .into_iter()
         .collect()
+}
+
+#[derive(Debug, Clone, Copy)]
+struct OddHalfPowerSimplifyPlan {
+    base: ExprId,
+    outside_power: i64,
+}
+
+fn generate_odd_half_power_simplify_substeps(ctx: &Context, step: &Step) -> Option<Vec<SubStep>> {
+    let local_before = step.before_local().unwrap_or(step.before);
+    let local_after = step.after_local().unwrap_or(step.after);
+    if let Some(plan) = odd_half_power_simplify_plan(ctx, local_before, local_after) {
+        return Some(build_odd_half_power_simplify_substeps(
+            ctx,
+            local_before,
+            local_after,
+            plan,
+            odd_half_power_replacement_pair(step, local_before, local_after),
+        ));
+    }
+
+    let (focus_before, focus_after, plan) =
+        find_additive_odd_half_power_simplify_focus(ctx, step.before, step.after)?;
+    Some(build_odd_half_power_simplify_substeps(
+        ctx,
+        focus_before,
+        focus_after,
+        plan,
+        Some((step.before, step.after)),
+    ))
+}
+
+fn build_odd_half_power_simplify_substeps(
+    ctx: &Context,
+    focus_before: ExprId,
+    focus_after: ExprId,
+    plan: OddHalfPowerSimplifyPlan,
+    replacement_pair: Option<(ExprId, ExprId)>,
+) -> Vec<SubStep> {
+    let radicand = sqrt_radicand(ctx, focus_before).expect("odd-half-power focus should be a root");
+    let (outside_power_display, _outside_power_latex) =
+        power_display_and_latex(ctx, plan.base, plan.outside_power);
+    let (even_power_display, even_power_latex) =
+        power_display_and_latex(ctx, plan.base, 2 * plan.outside_power);
+    let base_grouped_display = grouped_substitution_display(ctx, plan.base);
+    let base_grouped_latex = grouped_substitution_latex(ctx, plan.base);
+    let factorized_radicand_display = format!("{even_power_display} · {base_grouped_display}");
+    let factorized_radicand_latex = format!("{even_power_latex}\\cdot {base_grouped_latex}");
+    let factorized_root_display = format!("sqrt({factorized_radicand_display})");
+    let factorized_root_latex = format!("\\sqrt{{{factorized_radicand_latex}}}");
+
+    let mut out = vec![
+        SubStep::new(
+            "Separar el radicando en una potencia par y un factor",
+            human_expr(ctx, radicand),
+            factorized_radicand_display.clone(),
+        )
+        .with_before_latex(latex_expr(ctx, radicand))
+        .with_after_latex(factorized_radicand_latex.clone()),
+        SubStep::new(
+            format!(
+                "Como {} ≥ 0, sacar {} fuera de la raíz",
+                human_expr(ctx, plan.base),
+                outside_power_display
+            ),
+            factorized_root_display,
+            human_expr(ctx, focus_after),
+        )
+        .with_before_latex(factorized_root_latex)
+        .with_after_latex(latex_expr(ctx, focus_after)),
+    ];
+
+    if let Some((replacement_before, replacement_after)) = replacement_pair {
+        out.push(
+            SubStep::new(
+                "Reemplazar ese bloque en la expresión",
+                human_expr(ctx, replacement_before),
+                human_expr(ctx, replacement_after),
+            )
+            .with_before_latex(latex_expr(ctx, replacement_before))
+            .with_after_latex(latex_expr(ctx, replacement_after)),
+        );
+    }
+
+    out
+}
+
+fn odd_half_power_replacement_pair(
+    step: &Step,
+    local_before: ExprId,
+    local_after: ExprId,
+) -> Option<(ExprId, ExprId)> {
+    if let (Some(global_before), Some(global_after)) = (step.global_before, step.global_after) {
+        if global_before != local_before || global_after != local_after {
+            return Some((global_before, global_after));
+        }
+    }
+
+    ((step.before != local_before) || (step.after != local_after))
+        .then_some((step.before, step.after))
+}
+
+fn odd_half_power_simplify_plan(
+    ctx: &Context,
+    before: ExprId,
+    after: ExprId,
+) -> Option<OddHalfPowerSimplifyPlan> {
+    let radicand = sqrt_radicand(ctx, before)?;
+    let Expr::Pow(base, exponent) = ctx.get(radicand) else {
+        return None;
+    };
+    let numerator = small_positive_integer_value(ctx, *exponent)?;
+    if numerator < 3 || numerator % 2 == 0 {
+        return None;
+    }
+
+    let outside_power = (numerator - 1) / 2;
+    matches_odd_half_power_simplified_after(ctx, after, *base, outside_power).then_some(
+        OddHalfPowerSimplifyPlan {
+            base: *base,
+            outside_power,
+        },
+    )
+}
+
+fn matches_odd_half_power_simplified_after(
+    ctx: &Context,
+    expr: ExprId,
+    base: ExprId,
+    outside_power: i64,
+) -> bool {
+    let factors = expr_nary::mul_leaves(ctx, expr);
+    if factors.len() != 2 {
+        return false;
+    }
+
+    let mut saw_sqrt = false;
+    let mut saw_outer = false;
+    for factor in factors {
+        if !saw_sqrt
+            && sqrt_radicand(ctx, factor)
+                .is_some_and(|radicand| compare_expr(ctx, radicand, base) == Ordering::Equal)
+        {
+            saw_sqrt = true;
+            continue;
+        }
+
+        if !saw_outer && matches_odd_half_power_outer_factor(ctx, factor, base, outside_power) {
+            saw_outer = true;
+            continue;
+        }
+
+        return false;
+    }
+
+    saw_sqrt && saw_outer
+}
+
+fn matches_odd_half_power_outer_factor(
+    ctx: &Context,
+    factor: ExprId,
+    base: ExprId,
+    outside_power: i64,
+) -> bool {
+    if outside_power == 1 && compare_expr(ctx, factor, base) == Ordering::Equal {
+        return true;
+    }
+
+    if outside_power == 1
+        && abs_argument(ctx, factor)
+            .is_some_and(|inner| compare_expr(ctx, inner, base) == Ordering::Equal)
+    {
+        return true;
+    }
+
+    match ctx.get(factor) {
+        Expr::Pow(pow_base, exponent)
+            if small_positive_integer_value(ctx, *exponent) == Some(outside_power) =>
+        {
+            compare_expr(ctx, *pow_base, base) == Ordering::Equal
+                || abs_argument(ctx, *pow_base)
+                    .is_some_and(|inner| compare_expr(ctx, inner, base) == Ordering::Equal)
+        }
+        _ => false,
+    }
+}
+
+fn power_display_and_latex(ctx: &Context, base: ExprId, exponent: i64) -> (String, String) {
+    if exponent == 1 {
+        return (human_expr(ctx, base), latex_expr(ctx, base));
+    }
+
+    let mut temp_ctx = ctx.clone();
+    let exponent_expr = temp_ctx.num(exponent);
+    let power_expr = temp_ctx.add_raw(Expr::Pow(base, exponent_expr));
+    (
+        human_expr(&temp_ctx, power_expr),
+        latex_expr(&temp_ctx, power_expr),
+    )
+}
+
+fn find_additive_odd_half_power_simplify_focus(
+    ctx: &Context,
+    before: ExprId,
+    after: ExprId,
+) -> Option<(ExprId, ExprId, OddHalfPowerSimplifyPlan)> {
+    let before_terms = expr_nary::add_terms_signed(ctx, before);
+    let after_terms = expr_nary::add_terms_signed(ctx, after);
+    if before_terms.len() < 2 || after_terms.len() != before_terms.len() {
+        return None;
+    }
+
+    for (before_index, (before_focus, _before_sign)) in before_terms.iter().copied().enumerate() {
+        for (after_index, (after_focus, _after_sign)) in after_terms.iter().copied().enumerate() {
+            let Some(plan) = odd_half_power_simplify_plan(ctx, before_focus, after_focus) else {
+                continue;
+            };
+
+            let before_passthrough =
+                collect_signed_passthrough_terms_excluding_index(&before_terms, before_index);
+            let after_passthrough =
+                collect_signed_passthrough_terms_excluding_index(&after_terms, after_index);
+            if signed_additive_term_multiset_matches(ctx, &before_passthrough, &after_passthrough) {
+                return Some((before_focus, after_focus, plan));
+            }
+        }
+    }
+
+    None
+}
+
+fn collect_signed_passthrough_terms_excluding_index(
+    terms: &[(ExprId, Sign)],
+    excluded_index: usize,
+) -> Vec<(ExprId, Sign)> {
+    terms
+        .iter()
+        .enumerate()
+        .filter_map(|(index, term)| (index != excluded_index).then_some(*term))
+        .collect()
+}
+
+fn signed_additive_term_multiset_matches(
+    ctx: &Context,
+    lhs_terms: &[(ExprId, Sign)],
+    rhs_terms: &[(ExprId, Sign)],
+) -> bool {
+    if lhs_terms.len() != rhs_terms.len() {
+        return false;
+    }
+
+    let mut lhs = lhs_terms.to_vec();
+    let mut rhs = rhs_terms.to_vec();
+    lhs.sort_by(|(left_expr, left_sign), (right_expr, right_sign)| {
+        compare_expr(ctx, *left_expr, *right_expr)
+            .then_with(|| sign_sort_key(*left_sign).cmp(&sign_sort_key(*right_sign)))
+    });
+    rhs.sort_by(|(left_expr, left_sign), (right_expr, right_sign)| {
+        compare_expr(ctx, *left_expr, *right_expr)
+            .then_with(|| sign_sort_key(*left_sign).cmp(&sign_sort_key(*right_sign)))
+    });
+
+    lhs == rhs
+}
+
+fn sign_sort_key(sign: Sign) -> u8 {
+    match sign {
+        Sign::Pos => 0,
+        Sign::Neg => 1,
+    }
 }
 
 fn generate_reverse_nested_fraction_substeps(

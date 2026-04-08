@@ -1,7 +1,7 @@
 use super::strong_target_match;
 use cas_ast::ordering::compare_expr;
-use cas_ast::{Context, Expr, ExprId};
-use cas_math::expr_nary::{add_terms_signed, Sign};
+use cas_ast::{BuiltinFn, Context, Expr, ExprId};
+use cas_math::expr_nary::{add_terms_signed, mul_leaves, Sign};
 use std::cmp::Ordering;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -105,8 +105,106 @@ fn odd_half_power_target_match(ctx: &mut Context, rewritten: ExprId, target_expr
         return true;
     }
 
+    if odd_half_power_domain_equivalent_target_match(ctx, rewritten, target_expr) {
+        return true;
+    }
+
     let simplified = run_default_simplify(ctx, rewritten);
-    simplified != rewritten && strong_target_match(ctx, simplified, target_expr)
+    simplified != rewritten
+        && (strong_target_match(ctx, simplified, target_expr)
+            || odd_half_power_domain_equivalent_target_match(ctx, simplified, target_expr))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct OddHalfPowerProductForm {
+    base: ExprId,
+    outside_power: i64,
+}
+
+fn odd_half_power_domain_equivalent_target_match(
+    ctx: &mut Context,
+    rewritten: ExprId,
+    target_expr: ExprId,
+) -> bool {
+    let Some(rewritten_form) = extract_odd_half_power_product_form(ctx, rewritten) else {
+        return false;
+    };
+    let Some(target_form) = extract_odd_half_power_product_form(ctx, target_expr) else {
+        return false;
+    };
+
+    rewritten_form.outside_power == target_form.outside_power
+        && compare_expr(ctx, rewritten_form.base, target_form.base) == Ordering::Equal
+}
+
+fn extract_odd_half_power_product_form(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<OddHalfPowerProductForm> {
+    let factors = mul_leaves(ctx, expr);
+    if factors.len() != 2 {
+        return None;
+    }
+
+    for (sqrt_index, sqrt_factor) in factors.iter().copied().enumerate() {
+        let Some(base) = extract_sqrt_argument(ctx, sqrt_factor) else {
+            continue;
+        };
+        let outer_factor = factors[1 - sqrt_index];
+        let Some((outer_base, outside_power)) =
+            extract_odd_half_power_outer_factor(ctx, outer_factor)
+        else {
+            continue;
+        };
+        if compare_expr(ctx, outer_base, base) == Ordering::Equal {
+            return Some(OddHalfPowerProductForm {
+                base,
+                outside_power,
+            });
+        }
+    }
+
+    None
+}
+
+fn extract_odd_half_power_outer_factor(ctx: &Context, expr: ExprId) -> Option<(ExprId, i64)> {
+    if let Some(inner) = abs_argument(ctx, expr) {
+        return Some((inner, 1));
+    }
+
+    match ctx.get(expr) {
+        Expr::Pow(base, exponent) => {
+            let power = small_positive_integer_value(ctx, *exponent)?;
+            if let Some(inner) = abs_argument(ctx, *base) {
+                Some((inner, power))
+            } else {
+                Some((*base, power))
+            }
+        }
+        _ => Some((expr, 1)),
+    }
+}
+
+fn abs_argument(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    match ctx.get(expr) {
+        Expr::Function(fn_id, args)
+            if ctx.is_builtin(*fn_id, BuiltinFn::Abs) && args.len() == 1 =>
+        {
+            Some(args[0])
+        }
+        _ => None,
+    }
+}
+
+fn small_positive_integer_value(ctx: &Context, expr: ExprId) -> Option<i64> {
+    match ctx.get(expr) {
+        Expr::Number(n)
+            if n.is_integer() && *n > num_rational::BigRational::from_integer(0.into()) =>
+        {
+            n.to_integer().try_into().ok()
+        }
+        _ => None,
+    }
 }
 
 fn try_rewrite_odd_half_power_with_optional_simplify(
@@ -289,6 +387,26 @@ mod tests {
         let mut ctx = Context::new();
         let expr = parse("sqrt(x^3)+a", &mut ctx).expect("expr");
         let target = parse("abs(x)*sqrt(x)+a", &mut ctx).expect("target");
+        let rewrite =
+            try_rewrite_odd_half_power_to_target_aware(&mut ctx, expr, target).expect("rewrite");
+        assert_eq!(rewrite, target);
+    }
+
+    #[test]
+    fn rewrites_higher_odd_half_power_to_nonnegative_target_aware() {
+        let mut ctx = Context::new();
+        let expr = parse("sqrt(x^5)", &mut ctx).expect("expr");
+        let target = parse("x^2*sqrt(x)", &mut ctx).expect("target");
+        let rewrite =
+            try_rewrite_odd_half_power_to_target_aware(&mut ctx, expr, target).expect("rewrite");
+        assert_eq!(rewrite, target);
+    }
+
+    #[test]
+    fn rewrites_higher_odd_half_power_with_additive_passthrough_to_nonnegative_target_aware() {
+        let mut ctx = Context::new();
+        let expr = parse("sqrt(x^7)+a", &mut ctx).expect("expr");
+        let target = parse("x^3*sqrt(x)+a", &mut ctx).expect("target");
         let rewrite =
             try_rewrite_odd_half_power_to_target_aware(&mut ctx, expr, target).expect("rewrite");
         assert_eq!(rewrite, target);

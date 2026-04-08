@@ -60,12 +60,12 @@ derive_command,step_by_step_result
 "derive (a+b+c)/x, a/x + b/x + c/x",perfecto
 "derive a + b/x, (a*x+b)/x","bueno: la narrativa de recomponer la fracción es correcta y los substeps son didácticos, pero el before visible aparece canonizado como b/x + a en vez de conservar el orden original a + b/x."
 "derive (a*x+b)/x, a + b/x","bueno: el reparto del denominador y la cancelación están bien explicados, pero el resultado visible queda ordenado como b/x + a en vez de a + b/x."
-"derive 1/(1/x + 1/y), (x*y)/(x+y)","regular: la idea matemática es correcta, pero el único substep muestra un intermedio poco natural, ((1/y)·x + 1)/x, en vez de una suma con denominador común más legible."
+"derive 1/(1/x + 1/y), (x*y)/(x+y)","bueno: el substep ya enseña una suma con denominador común, (y + x)/(x·y), y evita el intermedio raro ((1/y)·x + 1)/x; todavía podría ser más natural si ordenara el numerador como x + y."
 "derive (1/x + 1/y)/(1/x - 1/y), (x+y)/(y-x)",no evaluado
 "derive (n+1)!/(n-1)!, n*(n+1)",no evaluado
 "derive sqrt((a+b)^2), abs(a+b)","bueno: el resultado es correcto y el step es corto, pero la regla visible y su LaTeX intermedio no explican de forma limpia la simplificación estándar sqrt((a+b)^2) = abs(a+b)."
-"derive sqrt(x^5), x^2*sqrt(x)","malo: llega al resultado correcto, pero lo hace con un Simplify genérico y la regla visible Reordenar la expresión oculta completamente la idea matemática de extraer x^4 de la raíz."
-"derive sqrt(x^7)+a, x^3*sqrt(x)+a","malo: llega al resultado correcto con simplify y mantiene x ≥ 0, pero la traza visible sigue siendo un único paso genérico Reordenar la expresión; no enseña la extracción de x^6 fuera de la raíz ni el papel del término +a."
+"derive sqrt(x^5), x^2*sqrt(x)","perfecto: ahora entra por expand odd half power, con regla visible Extraer potencia par de la raíz y dos substeps concretos que enseñan x^5 = x^4·x y la salida de x^2 usando x ≥ 0."
+"derive sqrt(x^7)+a, x^3*sqrt(x)+a","perfecto: ya no cae en simplify; sale por expand odd half power con el step padre sobre toda la suma y dos substeps específicos que enseñan x^7 = x^6·x y la extracción de x^3 bajo la condición x ≥ 0."
 "derive x^6 - 1, (x-1)*(x^5+x^4+x^3+x^2+x+1)",no evaluado
 "derive (x-1)*(x^5+x^4+x^3+x^2+x+1), x^6 - 1",no evaluado
 "derive x^4 + 4*y^4, (x^2-2*x*y+2*y^2)*(x^2+2*x*y+2*y^2)",no evaluado

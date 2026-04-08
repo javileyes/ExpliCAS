@@ -5386,6 +5386,31 @@ mod tests {
     }
 
     #[test]
+    fn direct_derive_rewrites_higher_odd_half_power_with_passthrough_without_simplify() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source =
+            cas_parser::parse("sqrt(x^7)+a", &mut simplifier.context).expect("parse source");
+        let target =
+            cas_parser::parse("x^3*sqrt(x)+a", &mut simplifier.context).expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::OddHalfPowerExpand);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Expand Odd Half Power");
+    }
+
+    #[test]
     fn direct_derive_rewrites_reciprocal_trig_product_with_passthrough_without_simplify() {
         let mut simplifier = crate::Simplifier::with_default_rules();
         let source =

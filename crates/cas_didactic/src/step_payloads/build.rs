@@ -91,6 +91,14 @@ fn inferred_step_rule(
         return Some("Simplificar fracción anidada".to_string());
     }
 
+    if matches!(
+        step.rule_name.as_str(),
+        "Simplify" | "Canonicalize" | "Expand Odd Half Power"
+    ) && first_title == "Separar el radicando en una potencia par y un factor"
+    {
+        return Some("Extraer potencia par de la raíz".to_string());
+    }
+
     let second_title = substeps.get(1)?.title.as_str();
 
     if step.rule_name == "Canonicalize Negation"

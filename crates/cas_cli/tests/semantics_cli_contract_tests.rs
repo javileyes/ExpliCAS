@@ -2863,6 +2863,41 @@ fn derive_nested_fraction_one_over_sum_uses_named_strategy() {
 }
 
 #[test]
+fn derive_nested_fraction_one_over_sum_uses_common_denominator_substep() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive 1/(1/x + 1/y), (x*y)/(x+y)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "nested fraction");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    let substeps = steps[0]["substeps"].as_array().expect("substeps array");
+    assert_eq!(substeps.len(), 1);
+    assert_eq!(
+        substeps[0]["title"],
+        "Primero simplificar la suma del denominador"
+    );
+    let after = substeps[0]["after_latex"].as_str().expect("after_latex");
+    assert!(
+        after.contains("x\\cdot y")
+            || after.contains("y\\cdot x")
+            || after.contains("x \\cdot y")
+            || after.contains("y \\cdot x"),
+        "expected common denominator product in substep, got: {after}"
+    );
+    assert!(
+        !after.contains("\\frac{1}{y} \\cdot x") && !after.contains("\\frac{1}{x} \\cdot y"),
+        "expected to avoid partially simplified reciprocal product in substep, got: {after}"
+    );
+}
+
+#[test]
 fn root_nesting_drops_intrinsically_nonnegative_radicand_require() {
     let (output, _code) = run_cli(&[
         "eval",
@@ -3211,7 +3246,68 @@ fn derive_odd_half_power_with_passthrough_uses_named_expand_odd_half_power_step(
     assert_eq!(wire["strategy"], "expand odd half power");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Reescribir potencia semientera impar");
+    assert_eq!(steps[0]["rule"], "Extraer potencia par de la raíz");
+    let substeps = steps[0]["substeps"].as_array().expect("substeps array");
+    assert_eq!(substeps.len(), 2);
+    assert_eq!(wire["required_display"], json!(["x ≥ 0"]));
+}
+
+#[test]
+fn derive_sqrt_odd_power_extracts_even_power_from_root_with_didactic_substeps() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive sqrt(x^5), x^2*sqrt(x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "expand odd half power");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Extraer potencia par de la raíz");
+    let substeps = steps[0]["substeps"].as_array().expect("substeps array");
+    assert_eq!(substeps.len(), 2);
+    assert_eq!(
+        substeps[0]["title"],
+        "Separar el radicando en una potencia par y un factor"
+    );
+    let second_title = substeps[1]["title"].as_str().expect("second title");
+    assert!(
+        second_title.contains("Como x ≥ 0"),
+        "unexpected second title: {second_title}"
+    );
+}
+
+#[test]
+fn derive_higher_odd_half_power_with_passthrough_uses_named_expand_odd_half_power_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive sqrt(x^7)+a, x^3*sqrt(x)+a",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "expand odd half power");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Extraer potencia par de la raíz");
+    let substeps = steps[0]["substeps"].as_array().expect("substeps array");
+    assert_eq!(substeps.len(), 2);
+    assert_eq!(
+        substeps[0]["title"],
+        "Separar el radicando en una potencia par y un factor"
+    );
+    let second_title = substeps[1]["title"].as_str().expect("second title");
+    assert!(
+        second_title.contains("Como x ≥ 0"),
+        "unexpected second title: {second_title}"
+    );
     assert_eq!(wire["required_display"], json!(["x ≥ 0"]));
 }
 

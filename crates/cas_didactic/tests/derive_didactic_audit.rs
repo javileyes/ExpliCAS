@@ -3393,9 +3393,19 @@ fn derive_didactic_representative_odd_half_power_cases_use_root_split_narrative(
             .find(|step| {
                 step.get("rule")
                     .and_then(Value::as_str)
-                    .is_some_and(|rule| rule == "Reescribir potencia semientera impar")
+                    .is_some_and(|rule| {
+                        matches!(
+                            rule,
+                            "Reescribir potencia semientera impar"
+                                | "Extraer potencia par de la raíz"
+                        )
+                    })
             })
             .expect("expected odd-half-power derive step");
+        let rule = step
+            .get("rule")
+            .and_then(Value::as_str)
+            .expect("expected odd-half-power rule");
         let titles: Vec<&str> = step
             .get("substeps")
             .and_then(Value::as_array)
@@ -3403,14 +3413,30 @@ fn derive_didactic_representative_odd_half_power_cases_use_root_split_narrative(
             .iter()
             .filter_map(|substep| substep.get("title").and_then(Value::as_str))
             .collect();
-        assert_eq!(
-            titles,
-            vec![
-                "Separar la mitad entera de la mitad radical",
-                "Usar que queda una raíz cuadrada del mismo factor",
-            ],
-            "unexpected odd-half-power narrative for {case_id}"
-        );
+        match rule {
+            "Reescribir potencia semientera impar" => assert_eq!(
+                titles,
+                vec![
+                    "Separar la mitad entera de la mitad radical",
+                    "Usar que queda una raíz cuadrada del mismo factor",
+                ],
+                "unexpected odd-half-power narrative for {case_id}"
+            ),
+            "Extraer potencia par de la raíz" => {
+                assert_eq!(
+                    titles.first().copied(),
+                    Some("Separar el radicando en una potencia par y un factor"),
+                    "unexpected odd-half-power narrative for {case_id}"
+                );
+                assert!(
+                    titles
+                        .get(1)
+                        .is_some_and(|title| title.starts_with("Como ") && title.contains("≥ 0")),
+                    "unexpected odd-half-power narrative for {case_id}: {titles:?}"
+                );
+            }
+            _ => panic!("unexpected odd-half-power rule for {case_id}: {rule}"),
+        }
     }
 }
 
