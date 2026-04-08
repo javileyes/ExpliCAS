@@ -1045,6 +1045,26 @@ fn has_trivial_binomial_placeholder_mapping(ctx: &Context, left: ExprId, right: 
     matches_var_name(ctx, left, "a") && matches_var_name(ctx, right, "b")
 }
 
+fn telescoping_fraction_substitution_title(
+    u_display: &str,
+    gap_display: Option<&str>,
+) -> Option<String> {
+    let u_nontrivial = u_display != "u";
+
+    match gap_display {
+        None => u_nontrivial.then(|| format!("Aquí u = {u_display}")),
+        Some(gap_display) => {
+            let gap_nontrivial = gap_display != "k";
+            match (u_nontrivial, gap_nontrivial) {
+                (false, false) => None,
+                (true, false) => Some(format!("Aquí u = {u_display}")),
+                (false, true) => Some(format!("Aquí k = {gap_display}")),
+                (true, true) => Some(format!("Aquí u = {u_display} y k = {gap_display}")),
+            }
+        }
+    }
+}
+
 fn needs_grouped_substitution_expr(expr: &Expr) -> bool {
     !matches!(
         expr,
@@ -1365,40 +1385,42 @@ fn generate_telescoping_fraction_combine_substeps(ctx: &Context, step: &Step) ->
     let u_display = human_expr(ctx, u);
 
     if gap_is_one {
-        return vec![
-            formula_substep(
-                "Usar 1 / u - 1 / (u + 1) = 1 / (u · (u + 1))",
-                "1 / u - 1 / (u + 1)",
-                "1 / (u · (u + 1))",
-                "\\frac{1}{u} - \\frac{1}{u + 1}",
-                "\\frac{1}{u\\cdot (u + 1)}",
-            ),
-            formula_substep(
-                format!("Aquí u = {u_display}"),
+        let mut out = vec![formula_substep(
+            "Usar 1 / u - 1 / (u + 1) = 1 / (u · (u + 1))",
+            "1 / u - 1 / (u + 1)",
+            "1 / (u · (u + 1))",
+            "\\frac{1}{u} - \\frac{1}{u + 1}",
+            "\\frac{1}{u\\cdot (u + 1)}",
+        )];
+        if let Some(title) = telescoping_fraction_substitution_title(&u_display, None) {
+            out.push(formula_substep(
+                title,
                 &human_expr(ctx, before),
                 &human_expr(ctx, after),
                 &latex_expr(ctx, before),
                 &latex_expr(ctx, after),
-            ),
-        ];
+            ));
+        }
+        return out;
     }
 
-    vec![
-        formula_substep(
-            "Usar 1 / k · (1 / u - 1 / (u + k)) = 1 / (u · (u + k))",
-            "1 / k · (1 / u - 1 / (u + k))",
-            "1 / (u · (u + k))",
-            "\\frac{1}{k}\\cdot (\\frac{1}{u} - \\frac{1}{u + k})",
-            "\\frac{1}{u\\cdot (u + k)}",
-        ),
-        formula_substep(
-            format!("Aquí u = {u_display} y k = {gap_display}"),
+    let mut out = vec![formula_substep(
+        "Usar 1 / k · (1 / u - 1 / (u + k)) = 1 / (u · (u + k))",
+        "1 / k · (1 / u - 1 / (u + k))",
+        "1 / (u · (u + k))",
+        "\\frac{1}{k}\\cdot (\\frac{1}{u} - \\frac{1}{u + k})",
+        "\\frac{1}{u\\cdot (u + k)}",
+    )];
+    if let Some(title) = telescoping_fraction_substitution_title(&u_display, Some(&gap_display)) {
+        out.push(formula_substep(
+            title,
             &human_expr(ctx, before),
             &human_expr(ctx, after),
             &latex_expr(ctx, before),
             &latex_expr(ctx, after),
-        ),
-    ]
+        ));
+    }
+    out
 }
 
 fn generate_telescoping_fraction_split_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
@@ -1416,40 +1438,42 @@ fn generate_consecutive_telescoping_fraction_substeps(
     let u_display = human_expr(ctx, u);
 
     if gap_is_one {
-        return Some(vec![
-            formula_substep(
-                "Usar 1 / (u · (u + 1)) = 1 / u - 1 / (u + 1)",
-                "1 / (u · (u + 1))",
-                "1 / u - 1 / (u + 1)",
-                "\\frac{1}{u\\cdot (u + 1)}",
-                "\\frac{1}{u} - \\frac{1}{u + 1}",
-            ),
-            formula_substep(
-                format!("Aquí u = {u_display}"),
+        let mut out = vec![formula_substep(
+            "Usar 1 / (u · (u + 1)) = 1 / u - 1 / (u + 1)",
+            "1 / (u · (u + 1))",
+            "1 / u - 1 / (u + 1)",
+            "\\frac{1}{u\\cdot (u + 1)}",
+            "\\frac{1}{u} - \\frac{1}{u + 1}",
+        )];
+        if let Some(title) = telescoping_fraction_substitution_title(&u_display, None) {
+            out.push(formula_substep(
+                title,
                 &human_expr(ctx, before),
                 &human_expr(ctx, after),
                 &latex_expr(ctx, before),
                 &latex_expr(ctx, after),
-            ),
-        ]);
+            ));
+        }
+        return Some(out);
     }
 
-    Some(vec![
-        formula_substep(
-            "Usar 1 / (u · (u + k)) = 1 / k · (1 / u - 1 / (u + k))",
-            "1 / (u · (u + k))",
-            "1 / k · (1 / u - 1 / (u + k))",
-            "\\frac{1}{u\\cdot (u + k)}",
-            "\\frac{1}{k}\\cdot (\\frac{1}{u} - \\frac{1}{u + k})",
-        ),
-        formula_substep(
-            format!("Aquí u = {u_display} y k = {gap_display}"),
+    let mut out = vec![formula_substep(
+        "Usar 1 / (u · (u + k)) = 1 / k · (1 / u - 1 / (u + k))",
+        "1 / (u · (u + k))",
+        "1 / k · (1 / u - 1 / (u + k))",
+        "\\frac{1}{u\\cdot (u + k)}",
+        "\\frac{1}{k}\\cdot (\\frac{1}{u} - \\frac{1}{u + k})",
+    )];
+    if let Some(title) = telescoping_fraction_substitution_title(&u_display, Some(&gap_display)) {
+        out.push(formula_substep(
+            title,
             &human_expr(ctx, before),
             &human_expr(ctx, after),
             &latex_expr(ctx, before),
             &latex_expr(ctx, after),
-        ),
-    ])
+        ));
+    }
+    Some(out)
 }
 
 fn generate_finite_product_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {

@@ -224,15 +224,54 @@ fn try_rewrite_log_argument_factorization_core_target_aware(
     target_expr: ExprId,
 ) -> Option<(ExprId, ExprId, ExprId)> {
     let source = extract_plain_log_term(ctx, source_expr, BigRational::one())?;
-    let factored_arg = factor(ctx, source.arg);
-    if compare_expr(ctx, factored_arg, source.arg) == Ordering::Equal {
-        return None;
+    for (factored_arg, focus_before, focus_after) in
+        candidate_factored_log_arguments(ctx, source.arg)
+    {
+        let rewritten = make_log_expr(ctx, source.family, factored_arg);
+        if try_rewrite_log_expansion_target_aware(ctx, rewritten, target_expr).is_some() {
+            return Some((rewritten, focus_before, focus_after));
+        }
     }
 
-    let rewritten = make_log_expr(ctx, source.family, factored_arg);
-    try_rewrite_log_expansion_target_aware(ctx, rewritten, target_expr)?;
+    None
+}
 
-    Some((rewritten, source.arg, factored_arg))
+fn candidate_factored_log_arguments(
+    ctx: &mut Context,
+    source_arg: ExprId,
+) -> Vec<(ExprId, ExprId, ExprId)> {
+    let mut candidates = Vec::new();
+
+    let factored_arg = factor(ctx, source_arg);
+    if compare_expr(ctx, factored_arg, source_arg) != Ordering::Equal {
+        candidates.push((factored_arg, source_arg, factored_arg));
+    }
+
+    if let Expr::Div(num, den) = ctx.get(source_arg).clone() {
+        let factored_num = factor(ctx, num);
+        let factored_den = factor(ctx, den);
+
+        if compare_expr(ctx, factored_num, num) != Ordering::Equal {
+            let rewritten = ctx.add(Expr::Div(factored_num, den));
+            candidates.push((rewritten, num, factored_num));
+        }
+
+        if compare_expr(ctx, factored_den, den) != Ordering::Equal {
+            let rewritten = ctx.add(Expr::Div(num, factored_den));
+            candidates.push((rewritten, den, factored_den));
+        }
+
+        if compare_expr(ctx, factored_num, num) != Ordering::Equal
+            || compare_expr(ctx, factored_den, den) != Ordering::Equal
+        {
+            let rewritten = ctx.add(Expr::Div(factored_num, factored_den));
+            if compare_expr(ctx, rewritten, source_arg) != Ordering::Equal {
+                candidates.push((rewritten, source_arg, rewritten));
+            }
+        }
+    }
+
+    candidates
 }
 
 fn try_rewrite_log_argument_factorization_additive_target_aware(
@@ -969,6 +1008,26 @@ mod tests {
                 .expect("rewrite");
 
         let expected_rewritten = parse("log((x-y)*(x+y))+a", &mut ctx).expect("expected");
+        let expected_before = parse("x^2-y^2", &mut ctx).expect("expected");
+        let expected_after = parse("(x-y)*(x+y)", &mut ctx).expect("expected");
+        let checker = SemanticEqualityChecker::new(&ctx);
+
+        assert!(checker.are_equal(rewritten, expected_rewritten));
+        assert_eq!(focus_before, expected_before);
+        assert!(checker.are_equal(focus_after, expected_after));
+    }
+
+    #[test]
+    fn factors_log_quotient_argument_difference_of_squares_target_aware() {
+        let mut ctx = Context::new();
+        let source = parse("log((x^2-y^2)/(u*v))", &mut ctx).expect("source");
+        let target = parse("log(x-y)+log(x+y)-log(u)-log(v)", &mut ctx).expect("target");
+
+        let (rewritten, focus_before, focus_after) =
+            try_rewrite_log_argument_factorization_target_aware(&mut ctx, source, target)
+                .expect("rewrite");
+
+        let expected_rewritten = parse("log(((x-y)*(x+y))/(u*v))", &mut ctx).expect("expected");
         let expected_before = parse("x^2-y^2", &mut ctx).expect("expected");
         let expected_after = parse("(x-y)*(x+y)", &mut ctx).expect("expected");
         let checker = SemanticEqualityChecker::new(&ctx);

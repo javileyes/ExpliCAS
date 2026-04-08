@@ -4984,6 +4984,26 @@ fn derive_factored_log_difference_squares_uses_two_named_steps() {
 }
 
 #[test]
+fn derive_factored_log_quotient_difference_squares_uses_two_named_steps() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive log((x^2-y^2)/(u*v)), log(x-y)+log(x+y)-log(u)-log(v)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "expand_log");
+    assert_eq!(wire["steps_count"], 2);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 2);
+    assert_eq!(steps[0]["rule"], "Factorizar");
+    assert_eq!(steps[1]["rule"], "Expandir logaritmos");
+}
+
+#[test]
 fn derive_difference_of_cubes_fraction_keeps_requested_target_text_in_final_step() {
     let (output, _code) = run_cli(&[
         "eval",
@@ -5400,6 +5420,50 @@ fn derive_exponential_sum_difference_drops_redundant_nonzero_requires() {
         wire["required_display"].as_array().map(Vec::len),
         Some(0),
         "derive exponential expansion should not require e^z ≠ 0"
+    );
+}
+
+#[test]
+fn derive_consecutive_telescoping_fraction_split_omits_trivial_substitution_substep() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive 1/(u*(u+1)), 1/u - 1/(u+1)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "expand fraction");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Descomponer en fracciones telescópicas");
+    assert!(
+        steps[0].get("substeps").is_none(),
+        "literal telescoping split should not emit the tautological 'Aquí u = u' substep"
+    );
+}
+
+#[test]
+fn derive_consecutive_telescoping_fraction_combine_omits_trivial_substitution_substep() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive 1/u - 1/(u+1), 1/(u*(u+1))",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "combine fraction");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Recomponer fracción telescópica");
+    assert!(
+        steps[0].get("substeps").is_none(),
+        "literal telescoping combine should not emit the tautological 'Aquí u = u' substep"
     );
 }
 

@@ -65,7 +65,7 @@ pub(crate) fn try_rewrite_odd_half_power_to_target_aware(
     target_expr: ExprId,
 ) -> Option<ExprId> {
     if let Some(rewritten) = try_rewrite_odd_half_power_with_optional_simplify(ctx, source_expr) {
-        if strong_target_match(ctx, rewritten, target_expr) {
+        if odd_half_power_target_match(ctx, rewritten, target_expr) {
             return Some(target_expr);
         }
     }
@@ -83,7 +83,7 @@ pub(crate) fn try_rewrite_odd_half_power_to_target_aware(
         };
 
         for (target_index, target_focus) in target_terms.iter().copied().enumerate() {
-            if !strong_target_match(ctx, rewritten, target_focus) {
+            if !odd_half_power_target_match(ctx, rewritten, target_focus) {
                 continue;
             }
 
@@ -98,6 +98,15 @@ pub(crate) fn try_rewrite_odd_half_power_to_target_aware(
     }
 
     None
+}
+
+fn odd_half_power_target_match(ctx: &mut Context, rewritten: ExprId, target_expr: ExprId) -> bool {
+    if strong_target_match(ctx, rewritten, target_expr) {
+        return true;
+    }
+
+    let simplified = run_default_simplify(ctx, rewritten);
+    simplified != rewritten && strong_target_match(ctx, simplified, target_expr)
 }
 
 fn try_rewrite_odd_half_power_with_optional_simplify(

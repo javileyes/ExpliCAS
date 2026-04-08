@@ -42,3 +42,38 @@ derive_command,step_by_step_result
 "derive tan(x)*cot(x)+a, 1+a",perfecto
 "derive sec(x)^2 - tan(x)^2 + a, 1+a",perfecto
 "derive cosh(x)^2-sinh(x)^2+a, 1+a",perfecto
+"derive sin(x+y), sin(x)*cos(y)+cos(x)*sin(y)",no evaluado
+"derive cos(x+y), cos(x)*cos(y)-sin(x)*sin(y)",no evaluado
+"derive 2*cos(x)*cos(y), cos(x+y)+cos(x-y)",no evaluado
+"derive 2*sin(x)*cos(y), sin(x+y)+sin(x-y)",no evaluado
+"derive 2*sin(x)*sin(y), cos(x-y)-cos(x+y)",no evaluado
+"derive sin(x)^4, (3-4*cos(2*x)+cos(4*x))/8",no evaluado
+"derive cos(x)^6, (10+15*cos(2*x)+6*cos(4*x)+cos(6*x))/32",no evaluado
+"derive tanh(x+y), (tanh(x)+tanh(y))/(1+tanh(x)*tanh(y))",no evaluado
+"derive 2*cosh(2*x), exp(2*x)+exp(-2*x)",perfecto
+"derive exp(x)+exp(-x), 2*cosh(x)",no evaluado
+"derive exp(x)-exp(-x), 2*sinh(x)",no evaluado
+"derive log((x^2-y^2)/(u*v)), log(x-y)+log(x+y)-log(u)-log(v)","bueno: ahora enseña la cadena correcta en 2 steps, factorizar el numerador y luego expandir logaritmos; el segundo step sigue mostrando el foco local factorizado y no todo el argumento del logaritmo."
+"derive ln((x*y)^2/z^2), 2*ln(abs(x))+2*ln(abs(y))-2*ln(abs(z))",no evaluado
+"derive 1/(u*(u+1)), 1/u - 1/(u+1)",perfecto
+"derive 1/u - 1/(u+1), 1/(u*(u+1))",perfecto
+"derive (a+b+c)/x, a/x + b/x + c/x",perfecto
+"derive a + b/x, (a*x+b)/x","bueno: la narrativa de recomponer la fracción es correcta y los substeps son didácticos, pero el before visible aparece canonizado como b/x + a en vez de conservar el orden original a + b/x."
+"derive (a*x+b)/x, a + b/x","bueno: el reparto del denominador y la cancelación están bien explicados, pero el resultado visible queda ordenado como b/x + a en vez de a + b/x."
+"derive 1/(1/x + 1/y), (x*y)/(x+y)","regular: la idea matemática es correcta, pero el único substep muestra un intermedio poco natural, ((1/y)·x + 1)/x, en vez de una suma con denominador común más legible."
+"derive (1/x + 1/y)/(1/x - 1/y), (x+y)/(y-x)",no evaluado
+"derive (n+1)!/(n-1)!, n*(n+1)",no evaluado
+"derive sqrt((a+b)^2), abs(a+b)","bueno: el resultado es correcto y el step es corto, pero la regla visible y su LaTeX intermedio no explican de forma limpia la simplificación estándar sqrt((a+b)^2) = abs(a+b)."
+"derive sqrt(x^5), x^2*sqrt(x)","malo: llega al resultado correcto, pero lo hace con un Simplify genérico y la regla visible Reordenar la expresión oculta completamente la idea matemática de extraer x^4 de la raíz."
+"derive sqrt(x^7)+a, x^3*sqrt(x)+a","malo: llega al resultado correcto con simplify y mantiene x ≥ 0, pero la traza visible sigue siendo un único paso genérico Reordenar la expresión; no enseña la extracción de x^6 fuera de la raíz ni el papel del término +a."
+"derive x^6 - 1, (x-1)*(x^5+x^4+x^3+x^2+x+1)",no evaluado
+"derive (x-1)*(x^5+x^4+x^3+x^2+x+1), x^6 - 1",no evaluado
+"derive x^4 + 4*y^4, (x^2-2*x*y+2*y^2)*(x^2+2*x*y+2*y^2)",no evaluado
+"derive (x^2-2*x*y+2*y^2)*(x^2+2*x*y+2*y^2), x^4 + 4*y^4",no evaluado
+"derive x^2 + 2*x + 1 + z, (x+1)^2 + z",no evaluado
+"derive x*y + x*z + w, x*(y+z) + w",no evaluado
+"derive x*(y+z) + w, x*y + x*z + w",no evaluado
+"derive (x^2 + 2*x + 1)/(x+1), x+1",no evaluado
+"derive (a^2+2*a*b+b^2)/(a+b), a+b",no evaluado
+"derive ((1/sqrt(u))^2 + 2*(1/sqrt(u)) + 1)/((1/sqrt(u)) + 1), 1 + 1/sqrt(u)",no evaluado
+"derive log((x*y)^2)+a, log(x^2)+log(y^2)+a",no evaluado

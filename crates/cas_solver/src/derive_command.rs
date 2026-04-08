@@ -5961,6 +5961,32 @@ mod tests {
     }
 
     #[test]
+    fn direct_derive_factors_log_quotient_argument_before_expanding_without_generic_simplify() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("log((x^2-y^2)/(u*v))", &mut simplifier.context)
+            .expect("parse source");
+        let target = cas_parser::parse("log(x-y)+log(x+y)-log(u)-log(v)", &mut simplifier.context)
+            .expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::LogExpand);
+        assert_eq!(derived.1.len(), 2);
+        assert_eq!(derived.1[0].rule_name, "Factorization");
+        assert_eq!(derived.1[1].rule_name, "expand_log");
+    }
+
+    #[test]
     fn prefers_direct_product_to_sum_expansion_over_planner() {
         let mut simplifier = crate::Simplifier::with_default_rules();
         let source =

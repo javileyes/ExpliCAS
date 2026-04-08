@@ -916,6 +916,22 @@ mod tests {
     }
 
     #[test]
+    fn evaluate_derive_command_lines_factors_log_quotient_argument_before_expanding() {
+        let lines = derive_lines("derive log((x^2-y^2)/(u*v)), log(x-y)+log(x+y)-log(u)-log(v)");
+
+        assert_derive_strategy(&lines, "expand_log");
+        assert!(
+            lines.iter().any(|line| line.contains("Factorization")),
+            "expected factorization step in derive output, got: {lines:?}"
+        );
+        assert!(
+            lines.iter().any(|line| line.contains("expand_log")),
+            "expected expand_log step in derive output, got: {lines:?}"
+        );
+        assert_result_contains_all(&lines, &["log(x - y)", "log(x + y)", "log(u)", "log(v)"]);
+    }
+
+    #[test]
     fn evaluate_derive_command_lines_reaches_tabulated_log_contracted_targets() {
         let cases = [
             ("derive ln(x) + ln(y), ln(x*y)", "contract logs", &["ln("][..]),
