@@ -1392,17 +1392,14 @@ fn derive_didactic_pythagorean_identity_uses_human_step_title() {
     let titles: Vec<&str> = step
         .get("substeps")
         .and_then(Value::as_array)
-        .expect("expected pythagorean identity substeps")
-        .iter()
+        .into_iter()
+        .flatten()
         .filter_map(|substep| substep.get("title").and_then(Value::as_str))
         .collect();
 
-    assert_eq!(
-        titles,
-        vec![
-            "Usar sin²(u) + cos²(u) = 1",
-            "Aquí seno y coseno tienen el mismo ángulo"
-        ]
+    assert!(
+        titles.is_empty(),
+        "expected no tautological substeps, got: {titles:?}"
     );
 }
 

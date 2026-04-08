@@ -3,111 +3,122 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CAS Steps: \sqrt{5 + 2\cdot \sqrt{6}} + \frac{1}{u\cdot (2 + u)} - (\sqrt{2} + \sqrt{3} + \frac{1}{2\cdot u} - \frac{1}{2\cdot (2 + u)})</title>
+    <title>CAS Steps: 1 + \frac{1}{1 + \frac{1}{1 + \frac{1}{x}}} - \frac{2 + 3\cdot x}{1 + 2\cdot x}</title>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
-    <style>
-        * {
+    <style>        * {
             box-sizing: border-box;
         }
         /* Theme variables */
         :root {
             --bg-gradient-start: #1a1a2e;
             --bg-gradient-end: #16213e;
-            --container-bg: rgba(30, 40, 60, 0.95);
-            --container-shadow: rgba(0, 0, 0, 0.3);
             --title-color: #64b5f6;
             --subtitle-color: #90caf9;
+            --timeline-line-start: #64b5f6;
+            --timeline-line-end: #4caf50;
+            --step-border: #64b5f6;
+            --step-dot-bg: #64b5f6;
+            --step-number-color: #64b5f6;
+            --content-h3-color: #90caf9;
+            --math-border: #64b5f6;
+            --math-before-border: #ff9800;
+            --math-after-border: #4caf50;
+            --rule-color: #90caf9;
+            --rule-name-color: #bb86fc;
+            --footer-color: #90caf9;
+            --substeps-summary-color: #ffb74d;
+            --substeps-summary-hover: #ffa726;
+            --warning-color: #ffd54f;
+        }
+        :root {
+            --container-bg: rgba(30, 40, 60, 0.95);
+            --container-shadow: rgba(0, 0, 0, 0.3);
             --original-bg-start: #1565c0;
             --original-bg-end: #0d47a1;
             --original-shadow: rgba(21, 101, 192, 0.4);
-            --timeline-line-start: #64b5f6;
-            --timeline-line-end: #4caf50;
             --step-bg: rgba(40, 50, 70, 0.8);
-            --step-border: #64b5f6;
             --step-hover-shadow: rgba(100, 181, 246, 0.3);
-            --step-dot-bg: #64b5f6;
             --step-dot-border: #1a1a2e;
-            --step-number-color: #64b5f6;
+            --equation-bg: rgba(30, 40, 55, 0.9);
             --content-bg: rgba(30, 40, 55, 0.9);
             --content-border: rgba(100, 181, 246, 0.2);
-            --content-h3-color: #90caf9;
             --math-bg: rgba(30, 40, 55, 0.8);
-            --math-border: #64b5f6;
-            --math-before-border: #ff9800;
             --math-before-bg: rgba(255, 152, 0, 0.1);
-            --math-after-border: #4caf50;
             --math-after-bg: rgba(76, 175, 80, 0.1);
-            --math-strong-color: #b0bec5;
             --rule-bg: rgba(100, 181, 246, 0.1);
-            --rule-color: #90caf9;
             --rule-border: rgba(100, 181, 246, 0.4);
-            --rule-name-color: #bb86fc;
             --local-change-bg: rgba(30, 40, 55, 0.8);
-            --final-bg-start: #2e7d32;
-            --final-bg-end: #1b5e20;
-            --final-shadow: rgba(76, 175, 80, 0.3);
-            --footer-color: #90caf9;
             --substeps-bg: rgba(255, 152, 0, 0.1);
             --substeps-border: rgba(255, 152, 0, 0.3);
-            --substeps-summary-color: #ffb74d;
-            --substeps-summary-hover: #ffa726;
             --substeps-content-bg: rgba(30, 40, 55, 0.9);
             --substep-border: rgba(255, 152, 0, 0.2);
-            --substep-desc-color: #b0bec5;
             --substep-math-bg: rgba(30, 40, 55, 0.8);
             --warning-bg: rgba(255, 193, 7, 0.15);
             --warning-border: rgba(255, 193, 7, 0.4);
-            --warning-color: #ffd54f;
+        }
+        :root {
+            --description-color: #b0bec5;
+            --math-strong-color: #b0bec5;
+            --final-bg-start: #2e7d32;
+            --final-bg-end: #1b5e20;
+            --final-shadow: rgba(76, 175, 80, 0.3);
+            --substep-desc-color: #b0bec5;
             --text-color: #e0e0e0;
         }
         :root.light {
             --bg-gradient-start: #667eea;
             --bg-gradient-end: #764ba2;
-            --container-bg: white;
-            --container-shadow: rgba(0, 0, 0, 0.2);
             --title-color: #333;
             --subtitle-color: #666;
+            --timeline-line-start: #667eea;
+            --timeline-line-end: #764ba2;
+            --step-border: #667eea;
+            --step-dot-bg: #667eea;
+            --step-number-color: #667eea;
+            --content-h3-color: #667eea;
+            --math-border: #667eea;
+            --math-before-border: #ff9800;
+            --math-after-border: #4caf50;
+            --rule-color: #667eea;
+            --rule-name-color: #764ba2;
+            --footer-color: white;
+            --substeps-summary-color: #ef6c00;
+            --substeps-summary-hover: #e65100;
+            --warning-color: #856404;
+        }
+        :root.light {
+            --container-bg: white;
+            --container-shadow: rgba(0, 0, 0, 0.2);
             --original-bg-start: #f0f4ff;
             --original-bg-end: #f0f4ff;
             --original-shadow: rgba(102, 126, 234, 0.2);
-            --timeline-line-start: #667eea;
-            --timeline-line-end: #764ba2;
             --step-bg: white;
-            --step-border: #667eea;
             --step-hover-shadow: rgba(102, 126, 234, 0.3);
-            --step-dot-bg: #667eea;
             --step-dot-border: white;
-            --step-number-color: #667eea;
+            --equation-bg: #fafafa;
             --content-bg: #fafafa;
             --content-border: #e0e0e0;
-            --content-h3-color: #667eea;
             --math-bg: #fafafa;
-            --math-border: #667eea;
-            --math-before-border: #ff9800;
             --math-before-bg: #fff8f0;
-            --math-after-border: #4caf50;
             --math-after-bg: #f0fff4;
-            --math-strong-color: #666;
             --rule-bg: #f9f5ff;
-            --rule-color: #667eea;
             --rule-border: #667eea;
-            --rule-name-color: #764ba2;
             --local-change-bg: white;
-            --final-bg-start: #4caf50;
-            --final-bg-end: #45a049;
-            --final-shadow: rgba(76, 175, 80, 0.3);
-            --footer-color: white;
             --substeps-bg: #fff8e1;
             --substeps-border: #ffcc80;
-            --substeps-summary-color: #ef6c00;
-            --substeps-summary-hover: #e65100;
             --substeps-content-bg: white;
             --substep-border: #ffe0b2;
-            --substep-desc-color: #795548;
             --substep-math-bg: #fafafa;
             --warning-bg: #fff3cd;
             --warning-border: #ffc107;
-            --warning-color: #856404;
+        }
+        :root.light {
+            --description-color: #666;
+            --math-strong-color: #666;
+            --final-bg-start: #4caf50;
+            --final-bg-end: #45a049;
+            --final-shadow: rgba(76, 175, 80, 0.3);
+            --substep-desc-color: #795548;
             --text-color: #333;
         }
         body {
@@ -127,7 +138,35 @@
             box-shadow: 0 8px 32px var(--container-shadow);
             transition: background 0.3s ease;
         }
-        /* Theme toggle switch */
+        h1 {
+            color: var(--title-color);
+            text-align: center;
+            margin-bottom: 10px;
+            font-size: 1.8em;
+            transition: color 0.3s ease;
+        }
+        .subtitle {
+            text-align: center;
+            color: var(--subtitle-color);
+            margin-bottom: 25px;
+            transition: color 0.3s ease;
+        }
+        .original {
+            background: linear-gradient(135deg, var(--original-bg-start), var(--original-bg-end));
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+            text-align: center;
+            box-shadow: 0 4px 15px var(--original-shadow);
+            transition: background 0.3s ease;
+        }
+        footer {
+            text-align: center;
+            margin-top: 30px;
+            color: var(--footer-color);
+            font-size: 0.9em;
+            transition: color 0.3s ease;
+        }
         .theme-toggle {
             position: fixed;
             top: 20px;
@@ -182,28 +221,6 @@
         input:checked + .toggle-slider:before {
             transform: translateX(24px);
         }
-        h1 {
-            color: var(--title-color);
-            text-align: center;
-            margin-bottom: 10px;
-            font-size: 1.8em;
-            transition: color 0.3s ease;
-        }
-        .subtitle {
-            text-align: center;
-            color: var(--subtitle-color);
-            margin-bottom: 25px;
-            transition: color 0.3s ease;
-        }
-        .original {
-            background: linear-gradient(135deg, var(--original-bg-start), var(--original-bg-end));
-            padding: 20px;
-            border-radius: 10px;
-            margin-bottom: 30px;
-            text-align: center;
-            box-shadow: 0 4px 15px var(--original-shadow);
-            transition: background 0.3s ease;
-        }
         .timeline {
             position: relative;
             padding-left: 30px;
@@ -249,6 +266,98 @@
             font-size: 0.9em;
             margin-bottom: 5px;
             transition: color 0.3s ease;
+        }
+        .step-description {
+            font-size: 1.1em;
+            font-weight: 500;
+            margin-bottom: 12px;
+        }
+        .rule-name {
+            color: var(--rule-name-color);
+            font-size: 0.9em;
+            font-style: italic;
+        }
+        .warning-box {
+            margin-top: 12px;
+            padding: 12px;
+            background: var(--warning-bg);
+            border: 1px solid var(--warning-border);
+            border-radius: 8px;
+            color: var(--warning-color);
+        }
+        .math-block {
+            background: var(--math-bg);
+            border-radius: 8px;
+            padding: 12px;
+            margin: 10px 0;
+            overflow-x: auto;
+            border: 1px solid var(--math-border);
+        }
+        .math-before {
+            border-left: 4px solid var(--math-before-border);
+            background: var(--math-before-bg);
+        }
+        .math-after {
+            border-left: 4px solid var(--math-after-border);
+            background: var(--math-after-bg);
+        }
+        .local-change {
+            background: var(--local-change-bg);
+            border: 1px dashed var(--content-border);
+        }
+        .rule-box {
+            margin-top: 12px;
+            padding: 10px 12px;
+            background: var(--rule-bg);
+            color: var(--rule-color);
+            border-left: 4px solid var(--rule-border);
+            border-radius: 8px;
+            font-size: 0.95em;
+        }
+        .substeps details {
+            margin-top: 12px;
+            background: var(--substeps-bg);
+            border: 1px solid var(--substeps-border);
+            border-radius: 8px;
+            padding: 8px 10px;
+        }
+        .substeps summary {
+            cursor: pointer;
+            color: var(--substeps-summary-color);
+            font-weight: 600;
+        }
+        .substeps summary:hover {
+            color: var(--substeps-summary-hover);
+        }
+        .substeps .content {
+            margin-top: 10px;
+            padding-top: 8px;
+            border-top: 1px solid var(--substep-border);
+        }
+        .substep {
+            margin-bottom: 10px;
+            padding-left: 8px;
+            border-left: 3px solid var(--substep-border);
+        }
+        .substep-desc {
+            color: var(--substep-desc-color);
+            margin-bottom: 6px;
+        }
+        .substep-math {
+            background: var(--substep-math-bg);
+            padding: 8px;
+            border-radius: 6px;
+        }
+        .final-result {
+            background: linear-gradient(135deg, var(--final-bg-start), var(--final-bg-end));
+            padding: 20px;
+            text-align: center;
+            color: white;
+            border-radius: 10px;
+            margin-top: 30px;
+            font-size: 1.2em;
+            box-shadow: 0 4px 12px var(--final-shadow);
+            transition: background 0.3s ease;
         }
         .step-content {
             background: var(--content-bg);
@@ -320,47 +429,6 @@
             margin-bottom: 5px;
             transition: color 0.3s ease;
         }
-        .final-result {
-            text-align: center;
-            padding: 20px;
-            background: linear-gradient(135deg, var(--final-bg-start), var(--final-bg-end));
-            color: white;
-            border-radius: 10px;
-            margin-top: 30px;
-            font-size: 1.2em;
-            box-shadow: 0 4px 12px var(--final-shadow);
-            transition: background 0.3s ease;
-        }
-        .poly-badge {
-            background: rgba(255,255,255,0.25);
-            padding: 4px 12px;
-            border-radius: 12px;
-            font-size: 0.75em;
-            margin-left: 10px;
-            font-weight: normal;
-        }
-        .poly-output {
-            text-align: left;
-            background: rgba(0,0,0,0.2);
-            padding: 15px;
-            border-radius: 8px;
-            margin-top: 15px;
-            font-family: 'Courier New', monospace;
-            font-size: 0.65em;
-            max-height: 400px;
-            overflow: auto;
-            white-space: pre-wrap;
-            word-break: break-all;
-            line-height: 1.4;
-        }
-        footer {
-            text-align: center;
-            margin-top: 30px;
-            color: var(--footer-color);
-            font-size: 0.9em;
-            transition: color 0.3s ease;
-        }
-        /* Expandable details for didactic sub-steps */
         .substeps-details {
             margin: 10px 0;
             padding: 10px 15px;
@@ -434,6 +502,28 @@
         .domain-requires::before {
             content: 'ℹ️ ';
         }
+        .poly-badge {
+            background: rgba(255,255,255,0.25);
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.75em;
+            margin-left: 10px;
+            font-weight: normal;
+        }
+        .poly-output {
+            text-align: left;
+            background: rgba(0,0,0,0.2);
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.65em;
+            max-height: 400px;
+            overflow: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+            line-height: 1.4;
+        }
         .global-requires {
             margin-top: 15px;
             padding: 12px 16px;
@@ -446,8 +536,10 @@
         .global-requires strong {
             color: #64b5f6;
         }
+
     </style>
 </head>
+
 <body>
     <div class="theme-toggle">
         <span>🌙</span>
@@ -462,217 +554,121 @@
             document.documentElement.classList.toggle('light');
             localStorage.setItem('theme', document.documentElement.classList.contains('light') ? 'light' : 'dark');
         }
-        // Load saved theme preference
         if (localStorage.getItem('theme') === 'light') {
             document.documentElement.classList.add('light');
             document.getElementById('themeToggle').checked = true;
         }
     </script>
+
     <div class="container">
         <h1>CAS Simplification Steps</h1>
         <p class="subtitle">Step-by-step visualization</p>
         <div class="original">
             \(\textbf{Original Expression:}\)
-            \[\sqrt{5 + 2\cdot \sqrt{6}} + \frac{1}{u\cdot (2 + u)} - (\sqrt{2} + \sqrt{3} + \frac{1}{2\cdot u} - \frac{1}{2\cdot (2 + u)})\]
+            \[1 + \frac{1}{1 + \frac{1}{1 + \frac{1}{x}}} - \frac{2 + 3\cdot x}{1 + 2\cdot x}\]
         </div>
+
         <div class="timeline">
             <div class="step">
                 <div class="step-number">1</div>
                 <div class="step-content">
-                    <h3>Root Denesting</h3>
-                    <div class="math-expr before">
+                    <h3>Sumar fracciones</h3>
+                                        <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[{\color{red}{\sqrt{5 + 2\cdot \sqrt{6}}}} + \frac{1}{u\cdot (2 + u)} - (\sqrt{2} + \sqrt{3} + \frac{1}{2\cdot u} - \frac{1}{2\cdot (2 + u)})\]
+                        \[1 + \frac{1}{1 + \frac{1}{{\color{red}{1 + \frac{1}{x}}}}} - \frac{2 + 3\cdot x}{1 + 2\cdot x}\]
                     </div>
-                    <details class="substeps-details">
-                            <summary>Pasos intermedios</summary>
-                            <div class="substeps-content"><div class="substep">
-                                    <span class="substep-desc">Reconocer patrón √(a + c·√d)</span><div class="substep-math">\[\sqrt{2\cdot \sqrt{6} + 5} \rightarrow a = 5, c = 2, d = 6\]</div></div><div class="substep">
-                                    <span class="substep-desc">Calcular Δ = a² − c²·d</span><div class="substep-math">\[5^2 - 2^2 \cdot 6 \rightarrow 25 - 24 = 1\]</div></div><div class="substep">
-                                    <span class="substep-desc">Δ es cuadrado perfecto → aplicar sqrt((a+z)/2) ± sqrt((a−z)/2)</span><div class="substep-math">\[\Delta = 1 = 1^2 \Rightarrow z = 1 \rightarrow \sqrt{\frac{5+1}{2}} + \sqrt{\frac{5-1}{2}} = \sqrt{3} + \sqrt{2}\]</div></div></div></details>
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{Denest square root}\)</div>
+                        <div class="rule-name">\(\text{Add fractions: a/b + c/d -> (ad+bc)/bd}\)</div>
                         <div class="local-change">
-                            \[{\color{red}{\sqrt{2\cdot \sqrt{6} + 5}}} \rightarrow {\color{green}{\sqrt{\frac{1 + 5}{2}} + \sqrt{\frac{5 - 1}{2}}}}\]
+                            \[{\color{red}{\frac{1}{x} + 1}} \rightarrow {\color{green}{\frac{x + 1}{x}}}\]
                         </div>
                     </div>
-                    
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[{\color{green}{\sqrt{\frac{1 + 5}{2}} + \sqrt{\frac{5 - 1}{2}}}} + \frac{1}{u\cdot (2 + u)} - (\sqrt{2} + \sqrt{3} + \frac{1}{2\cdot u} - \frac{1}{2\cdot (2 + u)})\]
+                        \[1 + \frac{1}{1 + \frac{1}{{\color{green}{\frac{1 + x}{x}}}}} - \frac{2 + 3\cdot x}{1 + 2\cdot x}\]
                     </div>
                 </div>
             </div>
             <div class="step">
                 <div class="step-number">2</div>
                 <div class="step-content">
-                    <h3>Distributive Property</h3>
-                    <div class="math-expr before">
+                    <h3>Simplificar fracción anidada</h3>
+                                        <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[\sqrt{3} + \sqrt{2} + \frac{1}{u\cdot (2 + u)} - (\sqrt{2} + \sqrt{3} + \frac{1}{2\cdot u} - \frac{1}{{\color{red}{2\cdot (2 + u)}}})\]
+                        \[1 + \frac{1}{1 + {\color{red}{\frac{1}{\frac{1 + x}{x}}}}} - \frac{2 + 3\cdot x}{1 + 2\cdot x}\]
                     </div>
-                    
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{Distribute}\)</div>
+                        <div class="rule-name">\(\text{Simplify nested fraction}\)</div>
                         <div class="local-change">
-                            \[{\color{red}{2\cdot (u + 2)}} \rightarrow {\color{green}{2\cdot u + 2\cdot 2}}\]
+                            \[{\color{red}{\frac{1}{\frac{x + 1}{x}}}} \rightarrow {\color{green}{\frac{x}{x + 1}}}\]
                         </div>
                     </div>
-                    
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[\sqrt{3} + \sqrt{2} + \frac{1}{u\cdot (2 + u)} - (\sqrt{2} + \sqrt{3} + \frac{1}{2\cdot u} - \frac{1}{{\color{green}{2\cdot 2 + 2\cdot u}}})\]
+                        \[1 + \frac{1}{1 + {\color{green}{\frac{x}{1 + x}}}} - \frac{2 + 3\cdot x}{1 + 2\cdot x}\]
                     </div>
                 </div>
             </div>
             <div class="step">
                 <div class="step-number">3</div>
                 <div class="step-content">
-                    <h3>Add Fractions</h3>
-                    <div class="math-expr before">
+                    <h3>Simplificar fracción anidada</h3>
+                                        <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[\sqrt{3} + \sqrt{2} + \frac{1}{u\cdot (2 + u)} - (\sqrt{2} + \sqrt{3} + {\color{red}{\frac{1}{2\cdot u} - \frac{1}{4 + 2\cdot u}}})\]
+                        \[1 + {\color{red}{\frac{1}{1 + \frac{x}{1 + x}}}} - \frac{2 + 3\cdot x}{1 + 2\cdot x}\]
                     </div>
-                    
+<details class="substeps-details">
+                            <summary>Simplificación de fracción compleja</summary>
+                            <div class="substeps-content"><div class="substep">
+                                    <span class="substep-desc">Primero simplificar la suma del denominador</span><div class="substep-math">\[\frac{x}{x + 1} + 1 \rightarrow \frac{x + 1 + x}{x + 1}\]</div>
+</div>
+</div></details>
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{Add fractions: a/b + c/d -> (ad+bc)/bd}\)</div>
+                        <div class="rule-name">\(\text{Simplify nested fraction}\)</div>
                         <div class="local-change">
-                            \[{\color{red}{\frac{1}{2\cdot u} - \frac{1}{2\cdot u + 4}}} \rightarrow {\color{green}{\frac{2\cdot u + 4 - (2\cdot u)}{2\cdot u\cdot (2\cdot u + 4)}}}\]
+                            \[{\color{red}{\frac{1}{\frac{x}{x + 1} + 1}}} \rightarrow {\color{green}{\frac{x + 1}{x + x + 1}}}\]
                         </div>
                     </div>
-                    
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[\sqrt{3} + \sqrt{2} + \frac{1}{u\cdot (2 + u)} - (\sqrt{2} + \sqrt{3} + {\color{green}{\frac{4 + 2\cdot u - (2\cdot u)}{2\cdot u\cdot (4 + 2\cdot u)}}})\]
+                        \[1 + {\color{green}{\frac{1 + x}{1 + x + x}}} - \frac{2 + 3\cdot x}{1 + 2\cdot x}\]
                     </div>
                 </div>
             </div>
             <div class="step">
                 <div class="step-number">4</div>
                 <div class="step-content">
-                    <h3>Combine Like Terms</h3>
-                    <div class="math-expr before">
+                    <h3>Llevar a denominador común</h3>
+                                        <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[\sqrt{3} + \sqrt{2} + \frac{1}{u\cdot (2 + u)} - (\sqrt{2} + \sqrt{3} + \frac{4 + {\color{red}{2\cdot u}} - {\color{red}{2\cdot u}}}{2\cdot u\cdot (4 + 2\cdot u)})\]
+                        \[{\color{red}{1 + \frac{1 + x}{1 + x + x}}} - \frac{2 + 3\cdot x}{1 + 2\cdot x}\]
                     </div>
-                    
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{Cancel opposite terms}\)</div>
+                        <div class="rule-name">\(\text{Common denominator: k + p/q → (k·q + p)/q}\)</div>
                         <div class="local-change">
-                            \[{\color{red}{2\cdot u - 2\cdot u}} \rightarrow {\color{green}{0}}\]
+                            \[{\color{red}{\frac{x + 1}{2\cdot x + 1} + 1}} \rightarrow {\color{green}{\frac{2\cdot x + 1 + x + 1}{2\cdot x + 1}}}\]
                         </div>
                     </div>
-                    
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[\sqrt{2} + \sqrt{3} + \frac{1}{u\cdot (u + 2)} - (\sqrt{2} + \sqrt{3} + \frac{4}{2\cdot u\cdot (2\cdot u + 4)})\]
+                        \[{\color{green}{\frac{1 + x + 1 + 2\cdot x}{1 + 2\cdot x}}} - \frac{2 + 3\cdot x}{1 + 2\cdot x}\]
                     </div>
                 </div>
             </div>
             <div class="step">
                 <div class="step-number">5</div>
                 <div class="step-content">
-                    <h3>Simplify Nested Fraction</h3>
-                    <div class="math-expr before">
+                    <h3>Restar dos expresiones iguales</h3>
+                                        <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[\sqrt{3} + \sqrt{2} + \frac{1}{u\cdot (2 + u)} - (\sqrt{2} + \sqrt{3} + {\color{red}{\frac{4}{2\cdot u\cdot (4 + 2\cdot u)}}})\]
+                        \[{\color{red}{\frac{1 + x + 1 + 2\cdot x}{1 + 2\cdot x} - \frac{2 + 3\cdot x}{1 + 2\cdot x}}}\]
                     </div>
-                    
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{Factor by GCD: 4}\)</div>
+                        <div class="rule-name">\(\text{a - a = 0}\)</div>
                         <div class="local-change">
-                            \[{\color{red}{\frac{4}{2\cdot u\cdot (2\cdot u + 4)}}} \rightarrow {\color{green}{\frac{4}{({u}^{2} + 2\cdot u)\cdot 4}}}\]
+                            \[{\color{red}{\frac{3\cdot x + 2}{2\cdot x + 1} - \frac{3\cdot x + 2}{2\cdot x + 1}}} \rightarrow {\color{green}{0}}\]
                         </div>
                     </div>
-                    
-                    <div class="math-expr after">
-                        \(\textbf{After:}\)
-                        \[\sqrt{3} + \sqrt{2} + \frac{1}{u\cdot (2 + u)} - (\sqrt{2} + \sqrt{3} + {\color{green}{\frac{4}{({u}^{2} + 2\cdot u)\cdot 4}}})\]
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">6</div>
-                <div class="step-content">
-                    <h3>Simplify Nested Fraction</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Before:}\)
-                        \[\sqrt{3} + \sqrt{2} + \frac{1}{u\cdot (2 + u)} - (\sqrt{2} + \sqrt{3} + {\color{red}{\frac{4}{({u}^{2} + 2\cdot u)\cdot 4}}})\]
-                    </div>
-                    
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{Cancel common factor}\)</div>
-                        <div class="local-change">
-                            \[{\color{red}{\frac{4}{({u}^{2} + 2\cdot u)\cdot 4}}} \rightarrow {\color{green}{\frac{1}{{u}^{2} + 2\cdot u}}}\]
-                        </div>
-                    </div>
-                    
-                    <div class="math-expr after">
-                        \(\textbf{After:}\)
-                        \[\sqrt{3} + \sqrt{2} + \frac{1}{u\cdot (2 + u)} - (\sqrt{2} + \sqrt{3} + {\color{green}{\frac{1}{{u}^{2} + 2\cdot u}}})\]
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">7</div>
-                <div class="step-content">
-                    <h3>Combine Like Terms</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Before:}\)
-                        \[{\color{red}{\sqrt{2}}} + {\color{red}{\sqrt{3}}} + \frac{1}{u\cdot (2 + u)} - \frac{1}{{u}^{2} + 2\cdot u} - {\color{red}{{\color{red}{\sqrt{2}}}}} - {\color{red}{{\color{red}{\sqrt{3}}}}}\]
-                    </div>
-                    
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{Cancel opposite terms}\)</div>
-                        <div class="local-change">
-                            \[{\color{red}{\sqrt{2} + \sqrt{3} - \sqrt{2} - \sqrt{3}}} \rightarrow {\color{green}{0}}\]
-                        </div>
-                    </div>
-                    
-                    <div class="math-expr after">
-                        \(\textbf{After:}\)
-                        \[\frac{1}{u\cdot (u + 2)} - \frac{1}{{u}^{2} + 2\cdot u}\]
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">8</div>
-                <div class="step-content">
-                    <h3>Add Fractions</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Before:}\)
-                        \[{\color{red}{\frac{1}{u\cdot (2 + u)} - \frac{1}{{u}^{2} + 2\cdot u}}}\]
-                    </div>
-                    
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{Add fractions: a/b + c/d -> (ad+bc)/bd}\)</div>
-                        <div class="local-change">
-                            \[{\color{red}{\frac{1}{u\cdot (u + 2)} - \frac{1}{{u}^{2} + 2\cdot u}}} \rightarrow {\color{green}{\frac{{u}^{2} + 2\cdot u - (u\cdot (u + 2))}{u\cdot (u + 2)\cdot ({u}^{2} + 2\cdot u)}}}\]
-                        </div>
-                    </div>
-                    
-                    <div class="math-expr after">
-                        \(\textbf{After:}\)
-                        \[{\color{green}{\frac{{u}^{2} + 2\cdot u - (u\cdot (2 + u))}{u\cdot (2 + u)\cdot ({u}^{2} + 2\cdot u)}}}\]
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">9</div>
-                <div class="step-content">
-                    <h3>Simplify Nested Fraction</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Before:}\)
-                        \[\frac{{\color{red}{{u}^{2}}} + {\color{red}{2\cdot u}} - {\color{red}{{\color{red}{(u\cdot (2 + u))}}}}}{u\cdot (2 + u)\cdot ({u}^{2} + 2\cdot u)}\]
-                    </div>
-                    
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{Numerator simplifies to 0}\)</div>
-                        <div class="local-change">
-                            \[{\color{red}{{u}^{2} + 2\cdot u - (u\cdot (u + 2))}} \rightarrow {\color{green}{0}}\]
-                        </div>
-                    </div>
-                    
                     <div class="math-expr after">
                         \(\textbf{After:}\)
                         \[{\color{green}{0}}\]
@@ -683,9 +679,6 @@
         <div class="final-result">
             \(\textbf{Final Result:}\)
             \[0\]
-        </div>
-        <div class="global-requires">
-            <strong>ℹ️ Requires:</strong> 2·u + 4 ≠ 0, u^2 + 2·u ≠ 0, 2·u ≠ 0, 2·sqrt(6) + 5 ≥ 0
         </div>
     </div>
     <footer>

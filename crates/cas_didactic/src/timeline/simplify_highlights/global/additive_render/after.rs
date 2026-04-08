@@ -2,6 +2,7 @@ mod fallback;
 mod with_path;
 
 use cas_ast::Context;
+use cas_formatter::path::{diff_find_path_to_expr, diff_find_paths_by_structure};
 use cas_formatter::{DisplayContext, HighlightColor, StylePreferences};
 
 pub(super) fn render_after_additive_focus(
@@ -19,8 +20,12 @@ pub(super) fn render_after_additive_focus(
         &StylePreferences,
     ) -> String,
 ) -> String {
-    if let Some(after_path) =
-        cas_formatter::path::diff_find_path_to_expr(context, global_after_expr, focus_after)
+    if let Some(after_path) = diff_find_path_to_expr(context, global_after_expr, focus_after)
+        .or_else(|| {
+            diff_find_paths_by_structure(context, global_after_expr, focus_after)
+                .into_iter()
+                .next()
+        })
     {
         return with_path::render_after_additive_focus_with_path(
             context,

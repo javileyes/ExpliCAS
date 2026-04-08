@@ -3,12 +3,13 @@ mod before;
 
 use super::super::renderers::{render_with_paths, render_with_single_path};
 use crate::runtime::Step;
-use cas_ast::{Context, ExprPath};
+use cas_ast::{Context, ExprId, ExprPath};
 use cas_formatter::{DisplayContext, StylePreferences};
 
 pub(super) fn render_before_additive_focus(
     context: &Context,
     global_before_expr: cas_ast::ExprId,
+    focus_before: ExprId,
     found_paths: &[ExprPath],
     step: &Step,
     display_hints: &DisplayContext,
@@ -17,6 +18,7 @@ pub(super) fn render_before_additive_focus(
     before::render_before_additive_focus(
         context,
         global_before_expr,
+        focus_before,
         found_paths,
         step,
         display_hints,

@@ -1,4 +1,3 @@
-mod path;
 mod rule;
 
 use crate::runtime::Step;
@@ -11,9 +10,13 @@ pub(super) struct RenderedStepWireLatex {
 }
 
 pub(super) fn render_step_wire_latex(context: &Context, step: &Step) -> RenderedStepWireLatex {
+    let (before_latex, after_latex) =
+        crate::timeline::simplify_highlights::render_step_wire_global_before_after_latex(
+            context, step,
+        );
     RenderedStepWireLatex {
-        before_latex: path::render_step_before_latex(context, step),
-        after_latex: path::render_step_after_latex(context, step),
+        before_latex,
+        after_latex,
         rule_latex: rule::render_step_rule_latex(context, step),
     }
 }

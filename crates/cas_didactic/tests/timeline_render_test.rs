@@ -129,3 +129,47 @@ fn test_timeline_renders_cache_hit_step() {
         &html[..html.len().min(500)]
     );
 }
+
+#[test]
+fn test_timeline_keeps_before_after_highlights_for_complex_nested_fraction_pipeline() {
+    let mut simplifier = Simplifier::with_default_rules();
+    simplifier.set_collect_steps(true);
+
+    let input = "1 + 1/(1 + 1/(1 + 1/x)) - (3*x + 2)/(2*x + 1)";
+    let expr = cas_parser::parse(input, &mut simplifier.context).expect("parse");
+    let (result, raw_steps) = simplifier.simplify(expr);
+    let display_steps = to_display_steps(raw_steps);
+
+    let mut timeline = TimelineHtml::new_with_result(
+        &mut simplifier.context,
+        display_steps.as_slice(),
+        expr,
+        Some(result),
+        VerbosityLevel::Normal,
+    );
+    let html = timeline.to_html();
+
+    let red_in_before_sections = html
+        .split("<div class=\"math-expr before\">")
+        .skip(1)
+        .filter_map(|section| section.split("</div>").next())
+        .filter(|section| section.contains("\\color{red}"))
+        .count();
+    let green_in_after_sections = html
+        .split("<div class=\"math-expr after\">")
+        .skip(1)
+        .filter_map(|section| section.split("</div>").next())
+        .filter(|section| section.contains("\\color{green}"))
+        .count();
+
+    assert!(
+        red_in_before_sections > 0,
+        "expected red highlights inside timeline Before sections, got HTML snippet: {}",
+        &html[..html.len().min(1500)]
+    );
+    assert!(
+        green_in_after_sections > 0,
+        "expected green highlights inside timeline After sections, got HTML snippet: {}",
+        &html[..html.len().min(1500)]
+    );
+}

@@ -3,13 +3,14 @@ mod fallback;
 mod with_paths;
 
 use crate::runtime::Step;
-use cas_ast::{Context, ExprPath};
+use cas_ast::{Context, ExprId, ExprPath};
 use cas_formatter::{DisplayContext, HighlightColor, PathHighlightConfig, StylePreferences};
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn render_before_additive_focus(
     context: &Context,
     global_before_expr: cas_ast::ExprId,
+    focus_before: ExprId,
     found_paths: &[ExprPath],
     step: &Step,
     display_hints: &DisplayContext,
@@ -45,6 +46,7 @@ pub(super) fn render_before_additive_focus(
     fallback::render_before_additive_focus_fallback(
         context,
         global_before_expr,
+        focus_before,
         step,
         display_hints,
         style_prefs,

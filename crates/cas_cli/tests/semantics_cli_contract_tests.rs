@@ -2898,6 +2898,39 @@ fn derive_nested_fraction_one_over_sum_uses_common_denominator_substep() {
 }
 
 #[test]
+fn eval_complex_nested_fraction_pipeline_keeps_before_after_highlights_in_wire_latex() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "1 + 1/(1 + 1/(1 + 1/x)) - (3*x + 2)/(2*x + 1)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 5);
+
+    for (idx, step) in steps.iter().enumerate() {
+        let before_latex = step["before_latex"].as_str().expect("before_latex");
+        let after_latex = step["after_latex"].as_str().expect("after_latex");
+        assert!(
+            before_latex.contains("\\color{red}"),
+            "expected red highlight in before_latex for step {}: {}",
+            idx + 1,
+            before_latex
+        );
+        assert!(
+            after_latex.contains("\\color{green}"),
+            "expected green highlight in after_latex for step {}: {}",
+            idx + 1,
+            after_latex
+        );
+    }
+}
+
+#[test]
 fn root_nesting_drops_intrinsically_nonnegative_radicand_require() {
     let (output, _code) = run_cli(&[
         "eval",
@@ -5673,9 +5706,15 @@ fn derive_tan_plus_cot_keeps_single_common_denominator_substep() {
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 4);
     assert_eq!(steps[2]["rule"], "Sumar fracciones");
-    let substeps = steps[2]["substeps"].as_array().expect("substeps array");
-    assert_eq!(substeps.len(), 1);
-    assert_eq!(substeps[0]["title"], "Llevar a denominador común");
+    let fraction_substeps = steps[2]["substeps"].as_array().expect("substeps array");
+    assert_eq!(fraction_substeps.len(), 1);
+    assert_eq!(fraction_substeps[0]["title"], "Llevar a denominador común");
+
+    assert_eq!(steps[3]["rule"], "Aplicar la identidad pitagórica");
+    let pythagorean_substeps = steps[3]["substeps"].as_array().expect("substeps array");
+    assert_eq!(pythagorean_substeps.len(), 2);
+    assert_eq!(pythagorean_substeps[0]["title"], "Usar 1 / cos(u) = sec(u)");
+    assert_eq!(pythagorean_substeps[1]["title"], "Usar 1 / sin(u) = csc(u)");
 }
 
 #[test]

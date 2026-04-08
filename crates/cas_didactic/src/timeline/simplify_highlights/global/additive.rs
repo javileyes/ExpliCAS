@@ -27,6 +27,7 @@ pub(super) fn render_additive_focus_transition(
     let before = render_before_additive_focus(
         context,
         snapshots.global_before_expr,
+        focus_before,
         &found_paths,
         step,
         display_hints,

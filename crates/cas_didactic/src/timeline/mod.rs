@@ -19,7 +19,7 @@ mod render;
 mod render_api;
 mod render_template;
 mod simplify;
-mod simplify_highlights;
+pub(crate) mod simplify_highlights;
 mod simplify_init;
 mod simplify_page;
 mod simplify_render;

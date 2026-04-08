@@ -26,7 +26,6 @@ fn generic_substep_description(step: &Step) -> Option<&'static str> {
         "Pre-order Difference of Squares Cancel" => {
             Some("Aparece el mismo factor arriba y abajo, así que se cancela")
         }
-        "Pythagorean Chain Identity" => Some("Sin²(u) y cos²(u) del mismo ángulo suman 1"),
         "Sqrt Perfect Square" => Some("Reconocer un cuadrado perfecto dentro de la raíz"),
         "Auto Expand Power Sum" => Some("Aplicar la fórmula (A + B)^2 = A^2 + 2AB + B^2"),
         "Inverse Tan Relations" => Some("Estas dos arctangentes suman pi/2"),

@@ -3979,28 +3979,32 @@ fn generate_pythagorean_factor_form_substeps(step: &Step) -> Vec<SubStep> {
 }
 
 fn generate_pythagorean_chain_identity_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
-    let before = step.before_local().unwrap_or(step.before);
     let after = step.after_local().unwrap_or(step.after);
     if !is_one(ctx, after) {
         return Vec::new();
     }
 
-    vec![
-        formula_substep(
-            "Usar sin²(u) + cos²(u) = 1",
-            "sin(u)^2 + cos(u)^2",
-            "1",
-            "\\sin^2(u) + \\cos^2(u)",
-            "1",
-        ),
-        SubStep::new(
-            "Aquí seno y coseno tienen el mismo ángulo",
-            display_expr(ctx, before),
-            display_expr(ctx, after),
-        )
-        .with_before_latex(latex_expr(ctx, before))
-        .with_after_latex(latex_expr(ctx, after)),
-    ]
+    let after_display = display_expr(ctx, step.global_after.unwrap_or(step.after));
+    if after_display.contains("sec(") && after_display.contains("csc(") {
+        return vec![
+            formula_substep(
+                "Usar 1 / cos(u) = sec(u)",
+                "1 / cos(u)",
+                "sec(u)",
+                "\\frac{1}{\\cos(u)}",
+                "\\sec(u)",
+            ),
+            formula_substep(
+                "Usar 1 / sin(u) = csc(u)",
+                "1 / sin(u)",
+                "csc(u)",
+                "\\frac{1}{\\sin(u)}",
+                "\\csc(u)",
+            ),
+        ];
+    }
+
+    Vec::new()
 }
 
 fn generate_trig_expansion_substeps(step: &Step) -> Vec<SubStep> {
