@@ -607,7 +607,8 @@ fn try_supported_derive_strategies_inner(
     if !prefer_simplify_first
         && !matches!(
             profile.form,
-            DeriveTargetForm::FactoredWithDivision { .. }
+            DeriveTargetForm::FactorialRewritten
+                | DeriveTargetForm::FactoredWithDivision { .. }
                 | DeriveTargetForm::FractionExpanded
                 | DeriveTargetForm::FiniteAggregateEvaluated
         )

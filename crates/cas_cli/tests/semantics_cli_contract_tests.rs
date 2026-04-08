@@ -2958,6 +2958,35 @@ fn derive_nested_fraction_structural_uses_named_strategy() {
 }
 
 #[test]
+fn derive_nested_fraction_reciprocal_sum_difference_shows_common_denominator_substeps() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive (1/x + 1/y)/(1/x - 1/y), (x+y)/(y-x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "nested fraction");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Cancelar factores en una fracción");
+
+    let substeps = steps[0]["substeps"].as_array().expect("substeps array");
+    assert_eq!(substeps.len(), 2);
+    assert_eq!(
+        substeps[0]["title"],
+        "Llevar el numerador y el denominador a común denominador"
+    );
+    assert_eq!(
+        substeps[1]["title"],
+        "Cancelar el denominador común de numerador y denominador"
+    );
+}
+
+#[test]
 fn derive_consecutive_factorial_ratio_uses_named_factorial_rewrite_and_keeps_guard() {
     let (output, _code) = run_cli(&[
         "eval",
@@ -3006,6 +3035,40 @@ fn derive_consecutive_factorial_ratio_with_passthrough_uses_named_factorial_rewr
         .expect("required_display");
     assert!(
         required.iter().any(|item| item == "n! ≠ 0"),
+        "expected factorial nonzero guard in required_display: {required:?}"
+    );
+}
+
+#[test]
+fn derive_gap_two_factorial_ratio_uses_named_factorial_rewrite_with_didactic_substeps() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive (n+1)!/(n-1)!, n*(n+1)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "rewrite factorials");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Cancelar factoriales consecutivos");
+
+    let substeps = steps[0]["substeps"].as_array().expect("substeps array");
+    assert_eq!(substeps.len(), 2);
+    assert_eq!(
+        substeps[0]["title"],
+        "Expandir el factorial superior hasta llegar al factorial inferior"
+    );
+    assert_eq!(substeps[1]["title"], "Cancelar el factorial común");
+
+    let required = wire["required_display"]
+        .as_array()
+        .expect("required_display");
+    assert!(
+        required.iter().any(|item| item == "(n - 1)! ≠ 0"),
         "expected factorial nonzero guard in required_display: {required:?}"
     );
 }

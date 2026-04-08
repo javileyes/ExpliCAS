@@ -109,9 +109,9 @@ mod tests {
     }
 
     #[test]
-    fn consecutive_factorial_ratio_rule_rejects_nonconsecutive_ratio() {
+    fn consecutive_factorial_ratio_rule_rejects_unrelated_ratio() {
         let mut ctx = Context::new();
-        let expr = parse("(n + 2)! / n!", &mut ctx).expect("parse");
+        let expr = parse("(n + 2)! / m!", &mut ctx).expect("parse");
         assert!(ConsecutiveFactorialRatioRule
             .apply(
                 &mut ctx,

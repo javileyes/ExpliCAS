@@ -103,4 +103,16 @@ mod tests {
 
         assert_eq!(rewrite.rewritten, target);
     }
+
+    #[test]
+    fn rewrites_gap_two_factorial_ratio_target_aware() {
+        let mut ctx = Context::new();
+        let source = parse("(n+1)!/(n-1)!", &mut ctx).expect("source");
+        let target = parse("n*(n+1)", &mut ctx).expect("target");
+        let rewrite =
+            try_rewrite_consecutive_factorial_ratio_target_aware(&mut ctx, source, target)
+                .expect("rewrite");
+
+        assert_eq!(rewrite.rewritten, target);
+    }
 }

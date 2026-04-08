@@ -5323,6 +5323,29 @@ mod tests {
     }
 
     #[test]
+    fn evaluate_derive_command_lines_prefers_direct_gap_two_factorial_ratio_rewrite() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let lines = evaluate_derive_command_lines_with_resolver(
+            &mut simplifier,
+            "derive (n+1)!/(n-1)!, n*(n+1)",
+            crate::FullSimplifyDisplayMode::Normal,
+            crate::SimplifyOptions::default(),
+            |_ctx, expr| Ok(expr),
+        )
+        .expect("derive should evaluate");
+
+        assert!(lines
+            .iter()
+            .any(|line| { line.starts_with("Strategy:") && line.contains("rewrite factorials") }));
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("Consecutive Factorial Ratio")));
+        assert!(lines
+            .iter()
+            .any(|line| line.starts_with("Result:") && line.contains("n * (n + 1)")));
+    }
+
+    #[test]
     fn evaluate_derive_command_lines_reaches_tabulated_like_term_simplification_targets() {
         let cases = [
             ("derive x + x, 2*x", &["2 * x"][..]),

@@ -1,3 +1,4 @@
+use crate::expr_nary::build_balanced_mul;
 use crate::poly_gcd_mode::GcdMode;
 use cas_ast::ordering::compare_expr;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
@@ -177,6 +178,35 @@ fn extract_factorial_call_arg(ctx: &Context, expr: ExprId) -> Option<ExprId> {
     }
 }
 
+fn extract_additive_base_and_integer_offset(ctx: &Context, expr: ExprId) -> Option<(ExprId, i64)> {
+    match ctx.get(expr) {
+        Expr::Add(left, right) => {
+            if let Some(offset) = get_integer_exponent(ctx, *left) {
+                return Some((*right, offset));
+            }
+            if let Some(offset) = get_integer_exponent(ctx, *right) {
+                return Some((*left, offset));
+            }
+            None
+        }
+        Expr::Sub(left, right) => get_integer_exponent(ctx, *right).map(|offset| (*left, -offset)),
+        _ => Some((expr, 0)),
+    }
+}
+
+fn rebuild_base_with_integer_offset(ctx: &mut Context, base: ExprId, offset: i64) -> ExprId {
+    if offset == 0 {
+        return base;
+    }
+
+    let amount = ctx.num(offset.checked_abs().expect("factorial offset fits in i64"));
+    if offset > 0 {
+        ctx.add(Expr::Add(base, amount))
+    } else {
+        ctx.add(Expr::Sub(base, amount))
+    }
+}
+
 pub fn try_rewrite_consecutive_factorial_ratio_expr(
     ctx: &mut Context,
     expr: ExprId,
@@ -185,14 +215,35 @@ pub fn try_rewrite_consecutive_factorial_ratio_expr(
     let num_arg = extract_factorial_call_arg(ctx, num)?;
     let den_arg = extract_factorial_call_arg(ctx, den)?;
 
-    let one = ctx.num(1);
-    let den_plus_one = ctx.add(Expr::Add(den_arg, one));
-    if compare_expr(ctx, num_arg, den_plus_one) != std::cmp::Ordering::Equal {
+    let (num_base, num_offset) = extract_additive_base_and_integer_offset(ctx, num_arg)?;
+    let (den_base, den_offset) = extract_additive_base_and_integer_offset(ctx, den_arg)?;
+    if compare_expr(ctx, num_base, den_base) != std::cmp::Ordering::Equal {
         return None;
     }
 
+    let gap = num_offset - den_offset;
+    if gap <= 0 {
+        return None;
+    }
+
+    let rewritten = if gap == 1 {
+        num_arg
+    } else {
+        let mut factors = Vec::with_capacity(gap as usize);
+        for shift in 1..=gap {
+            let factor_offset = den_offset + shift;
+            let factor = if factor_offset == num_offset {
+                num_arg
+            } else {
+                rebuild_base_with_integer_offset(ctx, den_base, factor_offset)
+            };
+            factors.push(factor);
+        }
+        build_balanced_mul(ctx, &factors)
+    };
+
     Some(ConsecutiveFactorialRatioRewrite {
-        rewritten: num_arg,
+        rewritten,
         factorial_arg_requires_nonnegative: den_arg,
     })
 }
@@ -740,9 +791,33 @@ mod tests {
     }
 
     #[test]
-    fn does_not_rewrite_nonconsecutive_factorial_ratio() {
+    fn rewrites_factorial_ratio_with_gap_two() {
         let mut ctx = Context::new();
-        let expr = parse("(n + 2)! / n!", &mut ctx).expect("parse");
+        let expr = parse("(n + 1)! / (n - 1)!", &mut ctx).expect("parse");
+        let expected = parse("n * (n + 1)", &mut ctx).expect("expected");
+        let expected_arg = parse("n - 1", &mut ctx).expect("arg");
+
+        let rewrite =
+            try_rewrite_consecutive_factorial_ratio_expr(&mut ctx, expr).expect("rewrite");
+
+        assert_eq!(
+            compare_expr(&ctx, rewrite.rewritten, expected),
+            std::cmp::Ordering::Equal
+        );
+        assert_eq!(
+            compare_expr(
+                &ctx,
+                rewrite.factorial_arg_requires_nonnegative,
+                expected_arg
+            ),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn does_not_rewrite_unrelated_factorial_ratio() {
+        let mut ctx = Context::new();
+        let expr = parse("(n + 1)! / m!", &mut ctx).expect("parse");
         assert!(try_rewrite_consecutive_factorial_ratio_expr(&mut ctx, expr).is_none());
     }
 }

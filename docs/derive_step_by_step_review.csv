@@ -42,38 +42,38 @@ derive_command,step_by_step_result
 "derive tan(x)*cot(x)+a, 1+a",perfecto
 "derive sec(x)^2 - tan(x)^2 + a, 1+a",perfecto
 "derive cosh(x)^2-sinh(x)^2+a, 1+a",perfecto
-"derive sin(x+y), sin(x)*cos(y)+cos(x)*sin(y)",no evaluado
-"derive cos(x+y), cos(x)*cos(y)-sin(x)*sin(y)",no evaluado
-"derive 2*cos(x)*cos(y), cos(x+y)+cos(x-y)",no evaluado
-"derive 2*sin(x)*cos(y), sin(x+y)+sin(x-y)",no evaluado
-"derive 2*sin(x)*sin(y), cos(x-y)-cos(x+y)",no evaluado
-"derive sin(x)^4, (3-4*cos(2*x)+cos(4*x))/8",no evaluado
-"derive cos(x)^6, (10+15*cos(2*x)+6*cos(4*x)+cos(6*x))/32",no evaluado
-"derive tanh(x+y), (tanh(x)+tanh(y))/(1+tanh(x)*tanh(y))",no evaluado
+"derive sin(x+y), sin(x)*cos(y)+cos(x)*sin(y)",perfecto
+"derive cos(x+y), cos(x)*cos(y)-sin(x)*sin(y)",perfecto
+"derive 2*cos(x)*cos(y), cos(x+y)+cos(x-y)",perfecto
+"derive 2*sin(x)*cos(y), sin(x+y)+sin(x-y)",perfecto
+"derive 2*sin(x)*sin(y), cos(x-y)-cos(x+y)",perfecto
+"derive sin(x)^4, (3-4*cos(2*x)+cos(4*x))/8",perfecto
+"derive cos(x)^6, (10+15*cos(2*x)+6*cos(4*x)+cos(6*x))/32",perfecto
+"derive tanh(x+y), (tanh(x)+tanh(y))/(1+tanh(x)*tanh(y))",perfecto
 "derive 2*cosh(2*x), exp(2*x)+exp(-2*x)",perfecto
-"derive exp(x)+exp(-x), 2*cosh(x)",no evaluado
-"derive exp(x)-exp(-x), 2*sinh(x)",no evaluado
+"derive exp(x)+exp(-x), 2*cosh(x)",perfecto
+"derive exp(x)-exp(-x), 2*sinh(x)",perfecto
 "derive log((x^2-y^2)/(u*v)), log(x-y)+log(x+y)-log(u)-log(v)","bueno: ahora enseña la cadena correcta en 2 steps, factorizar el numerador y luego expandir logaritmos; el segundo step sigue mostrando el foco local factorizado y no todo el argumento del logaritmo."
-"derive ln((x*y)^2/z^2), 2*ln(abs(x))+2*ln(abs(y))-2*ln(abs(z))",no evaluado
+"derive ln((x*y)^2/z^2), 2*ln(abs(x))+2*ln(abs(y))-2*ln(abs(z))","bueno: el salto es correcto y limpio, pero en un único step comprime potencia, producto y cociente del argumento del logaritmo; además mantiene un guard compuesto redundante."
 "derive 1/(u*(u+1)), 1/u - 1/(u+1)",perfecto
 "derive 1/u - 1/(u+1), 1/(u*(u+1))",perfecto
 "derive (a+b+c)/x, a/x + b/x + c/x",perfecto
 "derive a + b/x, (a*x+b)/x","bueno: la narrativa de recomponer la fracción es correcta y los substeps son didácticos, pero el before visible aparece canonizado como b/x + a en vez de conservar el orden original a + b/x."
 "derive (a*x+b)/x, a + b/x","bueno: el reparto del denominador y la cancelación están bien explicados, pero el resultado visible queda ordenado como b/x + a en vez de a + b/x."
 "derive 1/(1/x + 1/y), (x*y)/(x+y)","bueno: el substep ya enseña una suma con denominador común, (y + x)/(x·y), y evita el intermedio raro ((1/y)·x + 1)/x; todavía podría ser más natural si ordenara el numerador como x + y."
-"derive (1/x + 1/y)/(1/x - 1/y), (x+y)/(y-x)",no evaluado
-"derive (n+1)!/(n-1)!, n*(n+1)",no evaluado
+"derive (1/x + 1/y)/(1/x - 1/y), (x+y)/(y-x)","perfecto: ahora enseña primero llevar numerador y denominador a común denominador y luego cancelar el denominador compartido; la maniobra principal queda explícita y sin ciclos."
+"derive (n+1)!/(n-1)!, n*(n+1)","bueno: ahora entra por rewrite factorials y muestra expandir el factorial superior hasta el inferior y luego cancelar; el intermedio visible todavía ordena el producto de forma algo menos natural que una expansión manual."
 "derive sqrt((a+b)^2), abs(a+b)","bueno: el resultado es correcto y el step es corto, pero la regla visible y su LaTeX intermedio no explican de forma limpia la simplificación estándar sqrt((a+b)^2) = abs(a+b)."
 "derive sqrt(x^5), x^2*sqrt(x)","perfecto: ahora entra por expand odd half power, con regla visible Extraer potencia par de la raíz y dos substeps concretos que enseñan x^5 = x^4·x y la salida de x^2 usando x ≥ 0."
 "derive sqrt(x^7)+a, x^3*sqrt(x)+a","perfecto: ya no cae en simplify; sale por expand odd half power con el step padre sobre toda la suma y dos substeps específicos que enseñan x^7 = x^6·x y la extracción de x^3 bajo la condición x ≥ 0."
-"derive x^6 - 1, (x-1)*(x^5+x^4+x^3+x^2+x+1)",no evaluado
-"derive (x-1)*(x^5+x^4+x^3+x^2+x+1), x^6 - 1",no evaluado
-"derive x^4 + 4*y^4, (x^2-2*x*y+2*y^2)*(x^2+2*x*y+2*y^2)",no evaluado
-"derive (x^2-2*x*y+2*y^2)*(x^2+2*x*y+2*y^2), x^4 + 4*y^4",no evaluado
-"derive x^2 + 2*x + 1 + z, (x+1)^2 + z",no evaluado
-"derive x*y + x*z + w, x*(y+z) + w",no evaluado
-"derive x*(y+z) + w, x*y + x*z + w",no evaluado
-"derive (x^2 + 2*x + 1)/(x+1), x+1",no evaluado
-"derive (a^2+2*a*b+b^2)/(a+b), a+b",no evaluado
-"derive ((1/sqrt(u))^2 + 2*(1/sqrt(u)) + 1)/((1/sqrt(u)) + 1), 1 + 1/sqrt(u)",no evaluado
-"derive log((x*y)^2)+a, log(x^2)+log(y^2)+a",no evaluado
+"derive x^6 - 1, (x-1)*(x^5+x^4+x^3+x^2+x+1)","bueno: llega al target exacto en un solo step fiel, pero la regla genérica Factorizar no explica que se usa diferencia de potencias."
+"derive (x-1)*(x^5+x^4+x^3+x^2+x+1), x^6 - 1",perfecto
+"derive x^4 + 4*y^4, (x^2-2*x*y+2*y^2)*(x^2+2*x*y+2*y^2)","bueno: el target se alcanza limpio, pero la regla genérica Factorizar oculta que se está aplicando la factorización de Sophie Germain."
+"derive (x^2-2*x*y+2*y^2)*(x^2+2*x*y+2*y^2), x^4 + 4*y^4","bueno: correcto y fiel al target, aunque la regla visible sigue siendo demasiado genérica para una identidad tan específica."
+"derive x^2 + 2*x + 1 + z, (x+1)^2 + z",perfecto
+"derive x*y + x*z + w, x*(y+z) + w",perfecto
+"derive x*(y+z) + w, x*y + x*z + w",perfecto
+"derive (x^2 + 2*x + 1)/(x+1), x+1","bueno: el step es fiel y limpio, pero comprime la factorización implícita de (x+1)^2 antes de cancelar."
+"derive (a^2+2*a*b+b^2)/(a+b), a+b","bueno: mismo patrón que el caso anterior; la factorización de (a+b)^2 queda implícita dentro del único step."
+"derive ((1/sqrt(u))^2 + 2*(1/sqrt(u)) + 1)/((1/sqrt(u)) + 1), 1 + 1/sqrt(u)","bueno: el resultado es limpio y la regla es razonable, pero en un solo step comprime la división algebraica tras el cambio t = 1/sqrt(u)."
+"derive log((x*y)^2)+a, log(x^2)+log(y^2)+a","bueno: correcto y limpio con passthrough, pero en un único step comprime la expansión del producto y de la potencia del argumento del logaritmo."

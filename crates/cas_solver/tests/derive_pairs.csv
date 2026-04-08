@@ -231,6 +231,7 @@ expand_odd_half_power_after_simplify,radical_power,sqrt(x^3),abs(x)*sqrt(x),deri
 expand_odd_half_power_after_simplify_with_passthrough,radical_power,sqrt(x^3)+a,abs(x)*sqrt(x)+a,derived,expand odd half power
 consecutive_factorial_ratio,simplify,(n+1)!/n!,n+1,derived,rewrite factorials
 consecutive_factorial_ratio_with_passthrough,simplify,(n+1)!/n!+a,n+1+a,derived,rewrite factorials
+consecutive_factorial_ratio_gap_two,simplify,(n+1)!/(n-1)!,n*(n+1),derived,rewrite factorials
 contract_trig_cos_diff_sin_diff_quotient,trig_contract,(cos(x)-cos(3*x))/(sin(3*x)-sin(x)),tan(2*x),derived,contract trig
 reciprocal_trig_product_to_one,simplify,tan(x)*cot(x),1,derived,rewrite trigs
 reciprocal_trig_product_to_one_with_passthrough,simplify,tan(x)*cot(x)+a,1+a,derived,rewrite trigs

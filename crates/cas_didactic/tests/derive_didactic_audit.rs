@@ -815,6 +815,37 @@ fn derive_didactic_factorial_ratio_explains_expand_then_cancel() {
 }
 
 #[test]
+fn derive_didactic_gap_two_factorial_ratio_explains_expand_then_cancel() {
+    let artifact = audit_case(&derive_case_by_id("consecutive_factorial_ratio_gap_two"));
+
+    let step = artifact
+        .json_steps
+        .iter()
+        .find(|step| {
+            step.get("rule")
+                .and_then(Value::as_str)
+                .is_some_and(|rule| rule == "Cancelar factoriales consecutivos")
+        })
+        .expect("expected factorial ratio derive step");
+
+    let titles: Vec<&str> = step
+        .get("substeps")
+        .and_then(Value::as_array)
+        .expect("expected factorial derive substeps")
+        .iter()
+        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
+        .collect();
+
+    assert_eq!(
+        titles,
+        vec![
+            "Expandir el factorial superior hasta llegar al factorial inferior",
+            "Cancelar el factorial común"
+        ]
+    );
+}
+
+#[test]
 fn derive_didactic_perfect_square_factorization_explains_pattern() {
     let artifact = audit_case(&derive_case_by_id("factor_perfect_square_trinomial"));
 

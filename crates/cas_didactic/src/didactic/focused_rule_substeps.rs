@@ -105,7 +105,7 @@ pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<
             generate_pythagorean_high_power_factor_substeps(ctx, step)
         }
         "Pythagorean Chain Identity" => generate_pythagorean_chain_identity_substeps(ctx, step),
-        "Consecutive Factorial Ratio" => generate_consecutive_factorial_ratio_substeps(),
+        "Consecutive Factorial Ratio" => generate_consecutive_factorial_ratio_substeps(ctx, step),
         "Simplify Nested Fraction" => generate_simplify_nested_fraction_substeps(ctx, step),
         "Pre-order Perfect Square Minus Cancel" => {
             generate_perfect_square_fraction_cancel_substeps(ctx, step)
@@ -4076,23 +4076,145 @@ fn generate_cos_diff_sin_diff_quotient_substeps(ctx: &Context, step: &Step) -> V
     Vec::new()
 }
 
-fn generate_consecutive_factorial_ratio_substeps() -> Vec<SubStep> {
+fn generate_consecutive_factorial_ratio_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+    let Some((expanded, gap)) = build_consecutive_factorial_ratio_expansion(ctx, before) else {
+        return vec![
+            formula_substep(
+                "Escribir el factorial superior como el siguiente número por el factorial anterior",
+                "(k + 1)! / k!",
+                "((k + 1) · k!) / k!",
+                "\\frac{(k+1)!}{k!}",
+                "\\frac{(k+1)\\cdot k!}{k!}",
+            ),
+            formula_substep(
+                "Cancelar el factorial común",
+                "((k + 1) · k!) / k!",
+                "k + 1",
+                "\\frac{(k+1)\\cdot k!}{k!}",
+                "k + 1",
+            ),
+        ];
+    };
+
+    let mut work = ctx.clone();
+    let expanded_in_work = rebuild_consecutive_factorial_ratio_expansion(&mut work, before)
+        .map(|(expr, _)| expr)
+        .unwrap_or(expanded);
+    let (before_display, before_latex) = render_temp_expr(&work, before);
+    let (expanded_display, expanded_latex) = render_temp_expr(&work, expanded_in_work);
+    let (after_display, after_latex) = render_temp_expr(&work, after);
+
+    let first_title = if gap == 1 {
+        "Escribir el factorial superior como el siguiente número por el factorial anterior"
+            .to_string()
+    } else {
+        "Expandir el factorial superior hasta llegar al factorial inferior".to_string()
+    };
+
     vec![
-        formula_substep(
-            "Escribir el factorial superior como el siguiente número por el factorial anterior",
-            "(k + 1)! / k!",
-            "((k + 1) · k!) / k!",
-            "\\frac{(k+1)!}{k!}",
-            "\\frac{(k+1)\\cdot k!}{k!}",
-        ),
-        formula_substep(
+        SubStep::new(first_title, before_display, expanded_display)
+            .with_before_latex(before_latex)
+            .with_after_latex(expanded_latex),
+        SubStep::new(
             "Cancelar el factorial común",
-            "((k + 1) · k!) / k!",
-            "k + 1",
-            "\\frac{(k+1)\\cdot k!}{k!}",
-            "k + 1",
-        ),
+            human_expr(&work, expanded_in_work),
+            after_display,
+        )
+        .with_before_latex(latex_expr(&work, expanded_in_work))
+        .with_after_latex(after_latex),
     ]
+}
+
+fn extract_factorial_call_arg_local(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    match ctx.get(expr) {
+        Expr::Function(fn_id, args)
+            if args.len() == 1 && matches!(ctx.sym_name(*fn_id), "fact" | "factorial") =>
+        {
+            Some(args[0])
+        }
+        _ => None,
+    }
+}
+
+fn small_integer(ctx: &Context, expr: ExprId) -> Option<i64> {
+    match ctx.get(expr) {
+        Expr::Number(n) if n.is_integer() => n.to_integer().try_into().ok(),
+        Expr::Neg(inner) => small_integer(ctx, *inner).map(|value| -value),
+        _ => None,
+    }
+}
+
+fn extract_additive_base_and_offset_local(ctx: &Context, expr: ExprId) -> Option<(ExprId, i64)> {
+    match ctx.get(expr) {
+        Expr::Add(left, right) => {
+            if let Some(offset) = small_integer(ctx, *left) {
+                return Some((*right, offset));
+            }
+            if let Some(offset) = small_integer(ctx, *right) {
+                return Some((*left, offset));
+            }
+            None
+        }
+        Expr::Sub(left, right) => small_integer(ctx, *right).map(|offset| (*left, -offset)),
+        _ => Some((expr, 0)),
+    }
+}
+
+fn rebuild_expr_with_offset_local(ctx: &mut Context, base: ExprId, offset: i64) -> ExprId {
+    if offset == 0 {
+        return base;
+    }
+
+    let amount = ctx.num(offset.checked_abs().expect("factorial offset fits in i64"));
+    if offset > 0 {
+        ctx.add(Expr::Add(base, amount))
+    } else {
+        ctx.add(Expr::Sub(base, amount))
+    }
+}
+
+fn rebuild_consecutive_factorial_ratio_expansion(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, i64)> {
+    let (num, den) = as_div(ctx, expr)?;
+    let num_arg = extract_factorial_call_arg_local(ctx, num)?;
+    let den_arg = extract_factorial_call_arg_local(ctx, den)?;
+    let (num_base, num_offset) = extract_additive_base_and_offset_local(ctx, num_arg)?;
+    let (den_base, den_offset) = extract_additive_base_and_offset_local(ctx, den_arg)?;
+    if compare_expr(ctx, num_base, den_base) != Ordering::Equal {
+        return None;
+    }
+
+    let gap = num_offset - den_offset;
+    if gap <= 0 {
+        return None;
+    }
+
+    let mut descending_factors = Vec::with_capacity(gap as usize);
+    for shift in (1..=gap).rev() {
+        let factor_offset = den_offset + shift;
+        let factor = if factor_offset == num_offset {
+            num_arg
+        } else {
+            rebuild_expr_with_offset_local(ctx, den_base, factor_offset)
+        };
+        descending_factors.push(factor);
+    }
+
+    let leading = build_balanced_mul(ctx, &descending_factors);
+    let expanded_num = ctx.add(Expr::Mul(leading, den));
+    Some((ctx.add(Expr::Div(expanded_num, den)), gap))
+}
+
+fn build_consecutive_factorial_ratio_expansion(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<(ExprId, i64)> {
+    let mut work = ctx.clone();
+    rebuild_consecutive_factorial_ratio_expansion(&mut work, expr)
 }
 
 fn combine_like_terms_coeff_sum_plan(
@@ -5468,6 +5590,30 @@ fn generate_simplify_nested_fraction_substeps(ctx: &Context, step: &Step) -> Vec
         return Vec::new();
     };
 
+    {
+        let mut work = ctx.clone();
+        if let Some(intermediate) =
+            build_sum_difference_reciprocal_complex_fraction_intermediate(&mut work, before)
+        {
+            return vec![
+                SubStep::new(
+                    "Llevar el numerador y el denominador a común denominador",
+                    display_expr(ctx, before),
+                    display_expr(&work, intermediate),
+                )
+                .with_before_latex(latex_expr(ctx, before))
+                .with_after_latex(latex_expr(&work, intermediate)),
+                SubStep::new(
+                    "Cancelar el denominador común de numerador y denominador",
+                    display_expr(&work, intermediate),
+                    display_expr(ctx, after),
+                )
+                .with_before_latex(latex_expr(&work, intermediate))
+                .with_after_latex(latex_expr(ctx, after)),
+            ];
+        }
+    }
+
     vec![SubStep::new(
         "Cancelar los factores comunes del numerador y del denominador",
         display_expr(ctx, before),
@@ -5475,6 +5621,46 @@ fn generate_simplify_nested_fraction_substeps(ctx: &Context, step: &Step) -> Vec
     )
     .with_before_latex(latex_expr(ctx, before))
     .with_after_latex(latex_expr(ctx, after))]
+}
+
+fn unit_fraction_denominator(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    match ctx.get(expr) {
+        Expr::Div(num, den) if is_one(ctx, *num) => Some(*den),
+        _ => None,
+    }
+}
+
+fn build_reciprocal_pair_with_common_denominator(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ExprId> {
+    match ctx.get(expr) {
+        Expr::Add(left, right) => {
+            let left_den = unit_fraction_denominator(ctx, *left)?;
+            let right_den = unit_fraction_denominator(ctx, *right)?;
+            let common_den = build_balanced_mul(ctx, &[left_den, right_den]);
+            let numerator = ctx.add(Expr::Add(right_den, left_den));
+            Some(ctx.add(Expr::Div(numerator, common_den)))
+        }
+        Expr::Sub(left, right) => {
+            let left_den = unit_fraction_denominator(ctx, *left)?;
+            let right_den = unit_fraction_denominator(ctx, *right)?;
+            let common_den = build_balanced_mul(ctx, &[left_den, right_den]);
+            let numerator = ctx.add(Expr::Sub(right_den, left_den));
+            Some(ctx.add(Expr::Div(numerator, common_den)))
+        }
+        _ => None,
+    }
+}
+
+fn build_sum_difference_reciprocal_complex_fraction_intermediate(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ExprId> {
+    let (numerator, denominator) = as_div(ctx, expr)?;
+    let numerator = build_reciprocal_pair_with_common_denominator(ctx, numerator)?;
+    let denominator = build_reciprocal_pair_with_common_denominator(ctx, denominator)?;
+    Some(ctx.add(Expr::Div(numerator, denominator)))
 }
 
 fn generate_perfect_square_fraction_cancel_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
