@@ -3041,6 +3041,27 @@ fn eval_log_cancellation_exponential_step_keeps_full_additive_before_highlight()
 }
 
 #[test]
+fn eval_log_contraction_step_keeps_full_before_scope_highlight() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "log(x-y)+log(x+y)-log(u)-log(v)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    let steps = wire["steps"].as_array().expect("steps array");
+    let step = &steps[1];
+    let before_latex = step["before_latex"].as_str().expect("before_latex");
+    assert!(
+        before_latex.contains("{\\color{red}{\\log({x}^{2} - {y}^{2}) - \\log(u)}}"),
+        "expected step 2 before_latex to highlight the full log-contraction scope, got: {before_latex}"
+    );
+}
+
+#[test]
 fn eval_equiv_input_uses_latex_relation_in_wire() {
     let (output, _code) = run_cli(&[
         "eval",

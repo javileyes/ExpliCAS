@@ -37,6 +37,19 @@ pub(super) fn render_before_additive_focus(
         &StylePreferences,
     ) -> String,
 ) -> String {
+    if let Some(scope_path) =
+        find_additive_scope_path_by_display(context, global_before_expr, focus_before)
+    {
+        return render_with_single_path(
+            context,
+            global_before_expr,
+            scope_path,
+            HighlightColor::Red,
+            display_hints,
+            style_prefs,
+        );
+    }
+
     let scope_path =
         diff_find_path_to_expr(context, global_before_expr, focus_before).or_else(|| {
             diff_find_paths_by_structure(context, global_before_expr, focus_before)
@@ -117,6 +130,92 @@ fn count_color_markers(latex: &str, color: HighlightColor) -> usize {
     latex
         .match_indices(&format!("\\color{{{}}}", color.to_latex()))
         .count()
+}
+
+fn find_additive_scope_path_by_display(
+    context: &Context,
+    root: ExprId,
+    target: ExprId,
+) -> Option<ExprPath> {
+    if !matches!(context.get(target), Expr::Add(_, _) | Expr::Sub(_, _)) {
+        return None;
+    }
+
+    let target_display = render_display_key(context, target);
+    let mut path = Vec::new();
+    find_additive_scope_path_by_display_rec(context, root, &target_display, &mut path)
+}
+
+fn find_additive_scope_path_by_display_rec(
+    context: &Context,
+    current: ExprId,
+    target_display: &str,
+    path: &mut ExprPath,
+) -> Option<ExprPath> {
+    if matches!(context.get(current), Expr::Add(_, _) | Expr::Sub(_, _))
+        && render_display_key(context, current) == target_display
+    {
+        return Some(path.clone());
+    }
+
+    match context.get(current) {
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
+            path.push(0);
+            if let Some(found) =
+                find_additive_scope_path_by_display_rec(context, *l, target_display, path)
+            {
+                return Some(found);
+            }
+            path.pop();
+
+            path.push(1);
+            if let Some(found) =
+                find_additive_scope_path_by_display_rec(context, *r, target_display, path)
+            {
+                return Some(found);
+            }
+            path.pop();
+            None
+        }
+        Expr::Neg(inner) | Expr::Hold(inner) => {
+            path.push(0);
+            let found =
+                find_additive_scope_path_by_display_rec(context, *inner, target_display, path);
+            path.pop();
+            found
+        }
+        Expr::Function(_, args) => {
+            for (i, arg) in args.iter().enumerate() {
+                path.push(i as u8);
+                if let Some(found) =
+                    find_additive_scope_path_by_display_rec(context, *arg, target_display, path)
+                {
+                    return Some(found);
+                }
+                path.pop();
+            }
+            None
+        }
+        Expr::Matrix { data, .. } => {
+            for (i, elem) in data.iter().enumerate() {
+                path.push(i as u8);
+                if let Some(found) =
+                    find_additive_scope_path_by_display_rec(context, *elem, target_display, path)
+                {
+                    return Some(found);
+                }
+                path.pop();
+            }
+            None
+        }
+        Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => None,
+    }
+}
+
+fn render_display_key(context: &Context, expr: ExprId) -> String {
+    cas_formatter::clean_display_string(&crate::didactic::latex_to_plain_text(
+        &cas_formatter::LaTeXExpr { context, id: expr }.to_latex(),
+    ))
 }
 
 fn normalize_additive_term_paths(
