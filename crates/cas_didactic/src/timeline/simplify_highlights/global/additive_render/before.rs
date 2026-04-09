@@ -5,7 +5,7 @@ mod with_paths;
 use crate::runtime::Step;
 use cas_ast::{Context, Expr, ExprId, ExprPath};
 use cas_formatter::path::{
-    diff_find_path_to_expr, diff_find_paths_by_structure, navigate_to_subexpr,
+    diff_find_path_to_expr, diff_find_paths_by_structure, extract_add_terms, navigate_to_subexpr,
 };
 use cas_formatter::{
     DisplayContext, HighlightColor, HighlightConfig, LaTeXExprHighlightedWithHints,
@@ -37,26 +37,23 @@ pub(super) fn render_before_additive_focus(
         &StylePreferences,
     ) -> String,
 ) -> String {
-    if let Some(scope_path) =
-        find_additive_scope_path_by_display(context, global_before_expr, focus_before)
-    {
-        return render_with_single_path(
+    if diff_find_path_to_expr(context, global_before_expr, focus_before).is_some() {
+        return render_before_additive_focus_with_expr_id(
             context,
             global_before_expr,
-            scope_path,
-            HighlightColor::Red,
+            focus_before,
             display_hints,
             style_prefs,
         );
     }
 
-    let scope_path =
-        diff_find_path_to_expr(context, global_before_expr, focus_before).or_else(|| {
-            diff_find_paths_by_structure(context, global_before_expr, focus_before)
-                .into_iter()
-                .next()
-        });
-    if let Some(scope_path) = scope_path {
+    let display_scope_path =
+        find_additive_scope_path_by_display(context, global_before_expr, focus_before);
+    let structural_scope_path =
+        diff_find_paths_by_structure(context, global_before_expr, focus_before)
+            .into_iter()
+            .next();
+    if let Some(scope_path) = display_scope_path.or(structural_scope_path) {
         return render_with_single_path(
             context,
             global_before_expr,
@@ -70,6 +67,24 @@ pub(super) fn render_before_additive_focus(
     if !found_paths.is_empty() {
         let normalized_paths =
             normalize_additive_term_paths(context, global_before_expr, found_paths);
+        let expected_term_count = extract_add_terms(context, focus_before).len();
+        if normalized_paths.len() > expected_term_count {
+            if let Some(scope_path) = find_best_additive_scope_path(
+                context,
+                global_before_expr,
+                &normalized_paths,
+                expected_term_count,
+            ) {
+                return render_with_single_path(
+                    context,
+                    global_before_expr,
+                    scope_path,
+                    HighlightColor::Red,
+                    display_hints,
+                    style_prefs,
+                );
+            }
+        }
         let path_rendered = with_paths::render_before_additive_focus_with_paths(
             context,
             global_before_expr,
@@ -102,6 +117,25 @@ pub(super) fn render_before_additive_focus(
         HighlightColor::Red,
         render_with_single_path,
     )
+}
+
+fn render_before_additive_focus_with_expr_id(
+    context: &Context,
+    global_before_expr: ExprId,
+    focus_before: ExprId,
+    display_hints: &DisplayContext,
+    style_prefs: &StylePreferences,
+) -> String {
+    let mut config = HighlightConfig::new();
+    config.add(focus_before, HighlightColor::Red);
+    LaTeXExprHighlightedWithHints {
+        context,
+        id: global_before_expr,
+        highlights: &config,
+        hints: display_hints,
+        style_prefs: Some(style_prefs),
+    }
+    .to_latex()
 }
 
 fn render_before_additive_focus_with_expr_ids(
@@ -264,4 +298,48 @@ fn promote_to_additive_term_boundary(context: &Context, root: ExprId, path: &Exp
     }
 
     path.clone()
+}
+
+fn find_best_additive_scope_path(
+    context: &Context,
+    root: ExprId,
+    paths: &[ExprPath],
+    min_hits: usize,
+) -> Option<ExprPath> {
+    if paths.is_empty() {
+        return None;
+    }
+
+    let mut best: Option<(ExprPath, usize)> = None;
+
+    for path in paths {
+        for depth in 1..=path.len() {
+            let candidate = path[..depth].to_vec();
+            let expr = navigate_to_subexpr(context, root, &candidate);
+            if !matches!(context.get(expr), Expr::Add(_, _) | Expr::Sub(_, _)) {
+                continue;
+            }
+
+            let hits = paths
+                .iter()
+                .filter(|other| {
+                    other.len() >= candidate.len() && other[..candidate.len()] == candidate[..]
+                })
+                .count();
+            if hits < min_hits {
+                continue;
+            }
+
+            let should_replace = best.as_ref().is_none_or(|(best_path, best_hits)| {
+                candidate.len() > best_path.len()
+                    || (candidate.len() == best_path.len() && hits > *best_hits)
+            });
+
+            if should_replace {
+                best = Some((candidate, hits));
+            }
+        }
+    }
+
+    best.map(|(path, _)| path)
 }

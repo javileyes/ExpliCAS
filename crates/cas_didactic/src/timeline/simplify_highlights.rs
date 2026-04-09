@@ -4,8 +4,9 @@ mod renderers;
 mod snapshots;
 
 use crate::runtime::Step;
-use cas_ast::{Context, ExprId};
+use cas_ast::{Context, Expr, ExprId};
 use cas_formatter::{DisplayContext, StylePreferences};
+use num_traits::Zero;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct TimelineStepSnapshots {
@@ -44,11 +45,32 @@ pub(crate) fn render_step_wire_global_before_after_latex(
     context: &Context,
     step: &Step,
 ) -> (String, String) {
-    let snapshots = TimelineStepSnapshots {
-        global_before_expr: step.global_before.unwrap_or(step.before),
-        global_after_expr: step.global_after.unwrap_or(step.after),
-    };
+    let snapshots = step_wire_presentation_snapshots(context, step);
     let display_hints = DisplayContext::default();
     let style_prefs = StylePreferences::default();
     global::render_global_transition_latex(context, step, snapshots, &display_hints, &style_prefs)
+}
+
+pub(crate) fn step_wire_presentation_snapshots(
+    context: &Context,
+    step: &Step,
+) -> TimelineStepSnapshots {
+    let global_before_expr = step.global_before.unwrap_or(step.before);
+    let global_after_expr = step.global_after.unwrap_or(step.after);
+
+    if is_zero_expr(context, global_after_expr) && step.before != global_before_expr {
+        return TimelineStepSnapshots {
+            global_before_expr: step.before_local().unwrap_or(step.before),
+            global_after_expr,
+        };
+    }
+
+    TimelineStepSnapshots {
+        global_before_expr,
+        global_after_expr,
+    }
+}
+
+fn is_zero_expr(context: &Context, expr: ExprId) -> bool {
+    matches!(context.get(expr), Expr::Number(n) if n.is_zero())
 }

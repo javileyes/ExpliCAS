@@ -7,12 +7,12 @@ pub(super) struct RenderedStepWireExprs {
 }
 
 pub(super) fn render_step_wire_exprs(context: &Context, step: &Step) -> RenderedStepWireExprs {
-    let before_expr = step.global_before.unwrap_or(step.before);
-    let after_expr = step.global_after.unwrap_or(step.after);
+    let snapshots =
+        crate::timeline::simplify_highlights::step_wire_presentation_snapshots(context, step);
 
     RenderedStepWireExprs {
-        before: render_human_expr(context, before_expr),
-        after: render_human_expr(context, after_expr),
+        before: render_human_expr(context, snapshots.global_before_expr),
+        after: render_human_expr(context, snapshots.global_after_expr),
     }
 }
 

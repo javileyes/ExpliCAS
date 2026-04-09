@@ -2928,6 +2928,39 @@ fn eval_complex_nested_fraction_pipeline_keeps_before_after_highlights_in_wire_l
             after_latex
         );
     }
+
+    let step4_before = steps[3]["before_latex"]
+        .as_str()
+        .expect("step4 before_latex");
+    assert!(
+        step4_before.contains("{\\color{red}{1 + \\frac{")
+            || (step4_before.contains("{\\color{red}{\\frac{")
+                && (step4_before.contains("+ 1}} -") || step4_before.contains(" + 1}} -"))),
+        "expected step 4 before_latex to highlight the full additive scope, got: {step4_before}"
+    );
+    assert!(
+        !step4_before.contains("{\\color{red}{1}} + \\frac{{\\color{red}{1}}"),
+        "expected step 4 before_latex to avoid fragmented leaf highlights, got: {step4_before}"
+    );
+
+    let step5_before = steps[4]["before_latex"]
+        .as_str()
+        .expect("step5 before_latex");
+    assert_eq!(
+        step5_before.match_indices("\\color{red}").count(),
+        1,
+        "expected step 5 before_latex to use one full-scope red highlight, got: {step5_before}"
+    );
+    assert!(
+        step5_before.contains("{\\color{red}{\\frac{") && step5_before.contains(" - \\frac{"),
+        "expected step 5 before_latex to highlight the whole cancellation pair, got: {step5_before}"
+    );
+
+    let step5_before_display = steps[4]["before"].as_str().expect("step5 before");
+    assert!(
+        !step5_before_display.contains("1 + x + 1 + 2 · x"),
+        "expected step 5 before display to use the canonical local form instead of the unsummed numerator, got: {step5_before_display}"
+    );
 }
 
 #[test]

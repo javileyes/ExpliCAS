@@ -155,14 +155,13 @@ pub trait LaTeXRenderer {
 
     /// Format addition - flatten chain, sort by degree, render with proper signs
     fn format_add(&self, l: ExprId, r: ExprId) -> String {
-        let ctx = self.context();
-
         // Flatten the Add chain into individual terms
         let mut terms = Vec::new();
-        Self::collect_add_terms_static(ctx, l, &mut terms);
-        Self::collect_add_terms_static(ctx, r, &mut terms);
+        self.collect_add_terms(l, &mut terms);
+        self.collect_add_terms(r, &mut terms);
 
         // Sort by polynomial degree (descending) then sign (positive first)
+        let ctx = self.context();
         terms.sort_by(|a, b| crate::display::cmp_term_for_display(ctx, *a, *b));
 
         // Render terms with proper sign handling
@@ -185,6 +184,22 @@ pub trait LaTeXRenderer {
         }
 
         result
+    }
+
+    /// Collect all additive terms by flattening nested Add
+    fn collect_add_terms(&self, id: ExprId, terms: &mut Vec<ExprId>) {
+        if self.get_highlight(id).is_some() {
+            terms.push(id);
+            return;
+        }
+
+        match self.context().get(id) {
+            Expr::Add(l, r) => {
+                self.collect_add_terms(*l, terms);
+                self.collect_add_terms(*r, terms);
+            }
+            _ => terms.push(id),
+        }
     }
 
     /// Collect all additive terms by flattening nested Add
