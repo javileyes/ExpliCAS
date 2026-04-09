@@ -34,6 +34,104 @@ CAS_CLI = "./target/release/cas_cli"
 SESSION_SNAPSHOT_DIR = os.path.join(tempfile.gettempdir(), "explicas_cli_sessions")
 os.makedirs(SESSION_SNAPSHOT_DIR, exist_ok=True)
 
+def _split_top_level_pair(input_str: str):
+    """Split `expr1, expr2` on the last top-level comma."""
+    depth = 0
+    split_pos = None
+    for i, ch in enumerate(input_str):
+        if ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            depth = max(depth - 1, 0)
+        elif ch == "," and depth == 0:
+            split_pos = i
+
+    if split_pos is None:
+        return None
+
+    left = input_str[:split_pos].strip()
+    right = input_str[split_pos + 1 :].strip()
+    if not left or not right:
+        return None
+    return left, right
+
+def _parse_special_pair_command(input_str: str, command: str):
+    trimmed = input_str.strip()
+    lower = trimmed.lower()
+    if lower == command:
+        return None
+
+    fn_prefix = f"{command}("
+    spaced_prefix = f"{command} "
+    if lower.startswith(fn_prefix) and trimmed.endswith(")"):
+        content = trimmed[len(command) + 1 : -1].strip()
+    elif lower.startswith(spaced_prefix):
+        content = trimmed[len(command) :].strip()
+    else:
+        return None
+
+    return _split_top_level_pair(content)
+
+def _parse_equiv_pair(input_str: str):
+    return _parse_special_pair_command(input_str, "equiv")
+
+def _build_derive_command_from_equiv(input_str: str):
+    pair = _parse_equiv_pair(input_str)
+    if pair is None:
+        return None
+    lhs, rhs = pair
+    return f"derive {lhs}, {rhs}"
+
+def _equiv_result_is_true(result: dict) -> bool:
+    return result.get("ok", False) and str(result.get("result", "")).lower() == "true"
+
+def _merge_equiv_with_derive_steps(equiv_result: dict, derive_result: dict | None):
+    merged = dict(equiv_result)
+    merged["steps"] = []
+    merged["steps_count"] = 0
+    merged["steps_mode"] = "off"
+    merged.pop("strategy", None)
+
+    if derive_result and derive_result.get("ok", False):
+        derive_steps = derive_result.get("steps") or []
+        if derive_steps:
+            merged["steps"] = derive_steps
+            merged["steps_count"] = derive_result.get("steps_count", len(derive_steps))
+            merged["steps_mode"] = derive_result.get("steps_mode", "on")
+            if derive_result.get("strategy"):
+                merged["strategy"] = derive_result["strategy"]
+
+            wire = dict(merged.get("wire") or {})
+            messages = [
+                msg
+                for msg in wire.get("messages", [])
+                if msg.get("kind") not in {"steps"}
+                and not (
+                    msg.get("kind") == "info"
+                    and str(msg.get("text", "")).startswith("Strategy:")
+                )
+            ]
+            if derive_result.get("strategy"):
+                messages.append(
+                    {
+                        "kind": "info",
+                        "text": f"Strategy: {derive_result['strategy']}",
+                    }
+                )
+            messages.append(
+                {
+                    "kind": "steps",
+                    "text": derive_result.get("wire", {})
+                    .get("messages", [{}])[-1]
+                    .get("text", f"{merged['steps_count']} step(s)"),
+                }
+            )
+            if wire:
+                wire["messages"] = messages
+                merged["wire"] = wire
+
+    return merged
+
 def _session_snapshot_path(session_id: str) -> str:
     """Stable, filesystem-safe path for a given browser session."""
     h = hashlib.sha256(session_id.encode("utf-8")).hexdigest()[:16]
@@ -404,9 +502,25 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
                 # Legacy fallback: substitute display value
                 expr = re.sub(pattern, f"({var_value})", expr)
 
+        derive_expr = _build_derive_command_from_equiv(expr)
+        if derive_expr is not None:
+            equiv_result = self.call_cas_cli(
+                expr,
+                session.get("session_file"),
+                steps_on=False,
+            )
+            if _equiv_result_is_true(equiv_result):
+                derive_result = self.call_cas_cli(
+                    derive_expr,
+                    session.get("session_file"),
+                    steps_on=True,
+                )
+                return _merge_equiv_with_derive_steps(equiv_result, derive_result)
+            return _merge_equiv_with_derive_steps(equiv_result, None)
+
         return self.call_cas_cli(expr, session.get("session_file"))
 
-    def call_cas_cli(self, expression, session_file=None):
+    def call_cas_cli(self, expression, session_file=None, steps_on=True):
         """Call cas_cli eval-json and return parsed result"""
         result = None  # Initialize to handle exception cases
         try:
@@ -419,7 +533,16 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
             timeout = 120 if expr_len > 10000 else 60
 
             # Build CLI command (session snapshot enables fast #N references across calls)
-            cmd = [CAS_CLI, "eval", "--format", "json", "--max-chars", "500000", "--steps", "on"]
+            cmd = [
+                CAS_CLI,
+                "eval",
+                "--format",
+                "json",
+                "--max-chars",
+                "500000",
+                "--steps",
+                "on" if steps_on else "off",
+            ]
             if session_file:
                 cmd += ["--session", session_file]
 

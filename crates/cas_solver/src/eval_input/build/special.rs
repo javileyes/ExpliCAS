@@ -49,6 +49,16 @@ pub(super) fn build_special_command_request(
                 auto_store,
             })
         }
+        EvalSpecialCommand::Equiv { input } => {
+            let (parsed, other) = crate::parse_expr_pair(ctx, &input)
+                .map_err(|e| crate::format_expr_pair_parse_error_message(&e, "equiv"))?;
+            Ok(PreparedEvalRequest::Eval {
+                raw_input: raw_input.to_string(),
+                parsed,
+                action: EvalNonSolveAction::Equiv { other },
+                auto_store,
+            })
+        }
         EvalSpecialCommand::Limit {
             expr,
             var,

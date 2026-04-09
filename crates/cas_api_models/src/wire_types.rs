@@ -468,6 +468,9 @@ pub enum EvalSpecialCommand {
     Derive {
         input: String,
     },
+    Equiv {
+        input: String,
+    },
     Limit {
         expr: String,
         var: String,
@@ -479,6 +482,7 @@ pub enum EvalSpecialCommand {
 /// - `solve(equation, var)`
 /// - `solve_system(eq1; eq2; ...; var1; var2; ...)`
 /// - `derive <expr1>, <expr2>` or `derive(expr1, expr2)`
+/// - `equiv <expr1>, <expr2>` or `equiv(expr1, expr2)`
 /// - `limit(expr, var, approach)` or `lim(expr, var, approach)`
 pub fn parse_eval_special_command(input: &str) -> Option<EvalSpecialCommand> {
     if let Some((equation, var)) = parse_solve_command(input) {
@@ -493,6 +497,9 @@ pub fn parse_eval_special_command(input: &str) -> Option<EvalSpecialCommand> {
         return Some(EvalSpecialCommand::Derive {
             input: derive_input,
         });
+    }
+    if let Some(equiv_input) = parse_equiv_command(input) {
+        return Some(EvalSpecialCommand::Equiv { input: equiv_input });
     }
     if let Some((expr, var, approach)) = parse_limit_command(input) {
         return Some(EvalSpecialCommand::Limit {
@@ -556,6 +563,25 @@ fn parse_derive_command(input: &str) -> Option<String> {
         return None;
     }
     Some(trimmed[6..].trim().to_string())
+}
+
+fn parse_equiv_command(input: &str) -> Option<String> {
+    let trimmed = input.trim();
+    let lower = trimmed.to_lowercase();
+    if lower == "equiv" {
+        return Some(String::new());
+    }
+    if lower.starts_with("equiv(") && trimmed.ends_with(')') {
+        return Some(
+            trimmed["equiv(".len()..trimmed.len() - 1]
+                .trim()
+                .to_string(),
+        );
+    }
+    if !lower.starts_with("equiv ") {
+        return None;
+    }
+    Some(trimmed[5..].trim().to_string())
 }
 
 fn parse_solve_system_command(input: &str) -> Option<String> {
@@ -1957,7 +1983,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_eval_special_command_parses_solve_solve_system_derive_and_limit() {
+    fn parse_eval_special_command_parses_solve_solve_system_derive_equiv_and_limit() {
         let solve = parse_eval_special_command("solve((x+1)=0, x)").expect("solve");
         assert_eq!(
             solve,
@@ -1989,6 +2015,22 @@ mod tests {
             derive_fn,
             super::EvalSpecialCommand::Derive {
                 input: "x + x, 2*x".to_string(),
+            }
+        );
+
+        let equiv = parse_eval_special_command("equiv x + 1, 1 + x").expect("equiv");
+        assert_eq!(
+            equiv,
+            super::EvalSpecialCommand::Equiv {
+                input: "x + 1, 1 + x".to_string(),
+            }
+        );
+
+        let equiv_fn = parse_eval_special_command("equiv(x + 1, 1 + x)").expect("equiv fn");
+        assert_eq!(
+            equiv_fn,
+            super::EvalSpecialCommand::Equiv {
+                input: "x + 1, 1 + x".to_string(),
             }
         );
 

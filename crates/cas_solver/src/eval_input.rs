@@ -7,6 +7,9 @@ pub use build::build_prepared_eval_request_for_input;
 #[derive(Debug, Clone)]
 pub enum EvalNonSolveAction {
     Simplify,
+    Equiv {
+        other: cas_ast::ExprId,
+    },
     Limit {
         var: String,
         approach: cas_math::limit_types::Approach,

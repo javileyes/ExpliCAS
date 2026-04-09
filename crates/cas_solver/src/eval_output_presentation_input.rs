@@ -104,6 +104,7 @@ pub(crate) fn format_output_input_latex(
     raw_input: &str,
     parsed: ExprId,
     derive_target: Option<ExprId>,
+    equiv_target: Option<ExprId>,
     signals: &ParseStyleSignals,
 ) -> String {
     if let Some(command) = parse_eval_special_command(raw_input) {
@@ -123,6 +124,13 @@ pub(crate) fn format_output_input_latex(
                     return format!(
                         "\\operatorname{{derive}}\\left({parsed_latex}, {target_latex}\\right)"
                     );
+                }
+            }
+            EvalSpecialCommand::Equiv { .. } => {
+                if let Some(target) = equiv_target {
+                    let parsed_latex = style_latex_for_input(ctx, parsed, signals);
+                    let target_latex = style_latex_for_input(ctx, target, signals);
+                    return format!("{parsed_latex} \\leftrightarrow {target_latex}");
                 }
             }
             EvalSpecialCommand::SolveSystem { input } => {

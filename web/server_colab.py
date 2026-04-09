@@ -48,6 +48,74 @@ def env_str(*names, default=None):
 
 CAS_TIMEOUT = env_int("CAS_TIMEOUT", default=60)  # seconds
 
+def _split_top_level_pair(input_str: str):
+    depth = 0
+    split_pos = None
+    for i, ch in enumerate(input_str):
+        if ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            depth = max(depth - 1, 0)
+        elif ch == "," and depth == 0:
+            split_pos = i
+
+    if split_pos is None:
+        return None
+
+    left = input_str[:split_pos].strip()
+    right = input_str[split_pos + 1 :].strip()
+    if not left or not right:
+        return None
+    return left, right
+
+def _parse_special_pair_command(input_str: str, command: str):
+    trimmed = input_str.strip()
+    lower = trimmed.lower()
+    if lower == command:
+        return None
+
+    fn_prefix = f"{command}("
+    spaced_prefix = f"{command} "
+    if lower.startswith(fn_prefix) and trimmed.endswith(")"):
+        content = trimmed[len(command) + 1 : -1].strip()
+    elif lower.startswith(spaced_prefix):
+        content = trimmed[len(command) :].strip()
+    else:
+        return None
+
+    return _split_top_level_pair(content)
+
+def _parse_equiv_pair(input_str: str):
+    return _parse_special_pair_command(input_str, "equiv")
+
+def _build_derive_command_from_equiv(input_str: str):
+    pair = _parse_equiv_pair(input_str)
+    if pair is None:
+        return None
+    lhs, rhs = pair
+    return f"derive {lhs}, {rhs}"
+
+def _equiv_result_is_true(result: dict) -> bool:
+    return result.get("ok", False) and str(result.get("result", "")).lower() == "true"
+
+def _merge_equiv_with_derive_steps(equiv_result: dict, derive_result):
+    merged = dict(equiv_result)
+    merged["steps"] = []
+    merged["steps_count"] = 0
+    merged["steps_mode"] = "off"
+    merged.pop("strategy", None)
+
+    if derive_result and derive_result.get("ok", False):
+        derive_steps = derive_result.get("steps") or []
+        if derive_steps:
+            merged["steps"] = derive_steps
+            merged["steps_count"] = derive_result.get("steps_count", len(derive_steps))
+            merged["steps_mode"] = derive_result.get("steps_mode", "on")
+            if derive_result.get("strategy"):
+                merged["strategy"] = derive_result["strategy"]
+
+    return merged
+
 # Session state - persists for lifetime of server
 session_variables = {}  # name -> result string
 session_results = []    # list of all results for #n references
@@ -151,9 +219,17 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
             pattern = r"\b" + re.escape(var_name) + r"\b"
             expr = re.sub(pattern, f"({var_value})", expr)
 
+        derive_expr = _build_derive_command_from_equiv(expr)
+        if derive_expr is not None:
+            equiv_result = self.call_cas_cli(expr, steps_on=False)
+            if _equiv_result_is_true(equiv_result):
+                derive_result = self.call_cas_cli(derive_expr, steps_on=True)
+                return _merge_equiv_with_derive_steps(equiv_result, derive_result)
+            return _merge_equiv_with_derive_steps(equiv_result, None)
+
         return self.call_cas_cli(expr)
 
-    def call_cas_cli(self, expression: str):
+    def call_cas_cli(self, expression: str, steps_on=True):
         try:
             # Use absolute path if available
             cas_cli = self.server.cas_cli_path
@@ -162,7 +238,7 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
                 "eval",
                 "--format", "json",
                 "--max-chars", "500000",
-                "--steps", "on",
+                "--steps", "on" if steps_on else "off",
             ]
 
             result = subprocess.run(

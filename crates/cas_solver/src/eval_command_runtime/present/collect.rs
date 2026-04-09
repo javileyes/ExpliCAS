@@ -34,6 +34,7 @@ where
         raw_input,
         prepared.parsed_input,
         prepared.derive_target,
+        prepared.equiv_target,
         &prepared.style_signals,
     ));
     let steps_raw = prepared.output_view.steps.as_slice();

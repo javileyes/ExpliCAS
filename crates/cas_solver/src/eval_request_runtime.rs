@@ -7,6 +7,7 @@ use std::collections::HashSet;
 fn map_non_solve_action(action: EvalNonSolveAction) -> crate::EvalAction {
     match action {
         EvalNonSolveAction::Simplify => crate::EvalAction::Simplify,
+        EvalNonSolveAction::Equiv { other } => crate::EvalAction::Equiv { other },
         EvalNonSolveAction::Limit { var, approach } => crate::EvalAction::Limit { var, approach },
     }
 }

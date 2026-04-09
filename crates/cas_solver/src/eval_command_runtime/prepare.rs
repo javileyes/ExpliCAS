@@ -126,6 +126,13 @@ where
         crate::eval_input::PreparedEvalRequest::Derive { target, .. } => Some(*target),
         _ => None,
     };
+    let equiv_target = match &req {
+        crate::eval_input::PreparedEvalRequest::Eval {
+            action: crate::eval_input::EvalNonSolveAction::Equiv { other },
+            ..
+        } => Some(*other),
+        _ => None,
+    };
     let parse_us = parse_start.elapsed().as_micros() as u64;
 
     let simplify_start = Instant::now();
@@ -134,6 +141,7 @@ where
         return Ok(PreparedEvalRun {
             parsed_input,
             derive_target,
+            equiv_target,
             style_signals,
             parse_us,
             simplify_us: simplify_start.elapsed().as_micros() as u64,
@@ -163,6 +171,7 @@ where
     Ok(PreparedEvalRun {
         parsed_input,
         derive_target,
+        equiv_target,
         style_signals,
         parse_us,
         simplify_us,

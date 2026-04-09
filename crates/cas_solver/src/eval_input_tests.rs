@@ -136,6 +136,54 @@ fn build_prepared_eval_request_parses_function_style_derive_as_special_command()
 }
 
 #[test]
+fn build_prepared_eval_request_parses_equiv_as_special_command() {
+    let mut ctx = cas_ast::Context::new();
+    let prepared = crate::eval_input::build_prepared_eval_request_for_input(
+        "equiv x + 1, 1 + x",
+        &mut ctx,
+        true,
+    )
+    .expect("request");
+
+    match prepared {
+        crate::eval_input::PreparedEvalRequest::Eval {
+            action: crate::eval_input::EvalNonSolveAction::Equiv { other },
+            auto_store,
+            parsed,
+            ..
+        } => {
+            assert!(auto_store);
+            assert_eq!(parsed, other);
+        }
+        _ => panic!("expected equiv eval variant"),
+    }
+}
+
+#[test]
+fn build_prepared_eval_request_parses_function_style_equiv_as_special_command() {
+    let mut ctx = cas_ast::Context::new();
+    let prepared = crate::eval_input::build_prepared_eval_request_for_input(
+        "equiv(x + 1, 1 + x)",
+        &mut ctx,
+        true,
+    )
+    .expect("request");
+
+    match prepared {
+        crate::eval_input::PreparedEvalRequest::Eval {
+            action: crate::eval_input::EvalNonSolveAction::Equiv { other },
+            auto_store,
+            parsed,
+            ..
+        } => {
+            assert!(auto_store);
+            assert_eq!(parsed, other);
+        }
+        _ => panic!("expected equiv eval variant"),
+    }
+}
+
+#[test]
 fn build_prepared_eval_request_parses_solve_system_as_special_command() {
     let mut ctx = cas_ast::Context::new();
     let prepared = crate::eval_input::build_prepared_eval_request_for_input(

@@ -2990,6 +2990,28 @@ fn eval_symbolic_differentiation_step_keeps_derivative_latex_in_before_wire() {
 }
 
 #[test]
+fn eval_equiv_input_uses_latex_relation_in_wire() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "equiv(sin(x+y), sin(x)*cos(y) + cos(x)*sin(y))",
+        "--format",
+        "json",
+    ]);
+    let wire = parse_wire(&output);
+
+    let input_latex = wire["input_latex"].as_str().expect("input_latex");
+    assert!(
+        input_latex.contains("\\leftrightarrow"),
+        "expected input_latex to show an equivalence relation, got: {input_latex}"
+    );
+    assert!(
+        !input_latex.contains("\\operatorname{equiv}") && !input_latex.contains("\\text{equiv}"),
+        "expected input_latex to avoid function-style equiv(), got: {input_latex}"
+    );
+    assert_eq!(wire["result"], "true");
+}
+
+#[test]
 fn root_nesting_drops_intrinsically_nonnegative_radicand_require() {
     let (output, _code) = run_cli(&[
         "eval",

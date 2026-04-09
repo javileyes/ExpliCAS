@@ -5,6 +5,7 @@ expression,description
 "(n+1)!/n!","Cociente de factoriales consecutivos"
 "ln(x^3) + ln(y^2) - ln(x^3 * y^2)","Contracción de logaritmos"
 "derive (x - 1)*(x^5 + x^4 + x^3 + x^2 + x + 1), x^6 - 1","Mostrar los pasos que llevan una expresión a otra equivalente"
+"equiv(sin(x+y), sin(x)*cos(y) + cos(x)*sin(y))","Comprobar si dos expresiones son equivalentes"
 "collect(a*x + b*x + c, x)","Agrupar términos por variable"
 "1 + 1/(1 + 1/(1 + 1/x)) - (3*x + 2)/(2*x + 1)","Fracción continua"
 "expand((x+y)^3)","Expansión polinómica grande"
