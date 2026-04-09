@@ -5287,6 +5287,18 @@ fn derive_factored_log_difference_squares_uses_two_named_steps() {
     assert_eq!(steps.len(), 2);
     assert_eq!(steps[0]["rule"], "Factorizar");
     assert_eq!(steps[1]["rule"], "Expandir logaritmos");
+    assert_eq!(steps[0]["before"], "log(x^2 - y^2)");
+    assert_eq!(steps[0]["after"], "log((x - y) · (x + y))");
+    let before_latex = steps[0]["before_latex"].as_str().expect("before_latex");
+    let after_latex = steps[0]["after_latex"].as_str().expect("after_latex");
+    assert!(
+        before_latex.contains("\\log(") && before_latex.contains("{x}^{2} - {y}^{2}"),
+        "expected full logarithm in first step before_latex, got: {before_latex}"
+    );
+    assert!(
+        after_latex.contains("\\log(") && after_latex.contains("(x - y)\\cdot (x + y)"),
+        "expected full logarithm in first step after_latex, got: {after_latex}"
+    );
     let required = wire["required_display"]
         .as_array()
         .expect("required_display array");

@@ -33,6 +33,7 @@ use cas_math::summation_support::{
 };
 use cas_solver_core::engine_event_collector::EngineEventCollector;
 use cas_solver_core::engine_events::EngineEvent;
+use cas_solver_core::path_rewrite::reconstruct_global_expr;
 use std::collections::BTreeSet;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -4062,6 +4063,7 @@ fn finalize_steps(
         truncate_steps_after_first_target_match(&mut steps, final_expr, ctx);
     }
 
+    populate_derive_global_snapshots(&mut steps, original_expr, ctx);
     if let Some(last_step) = steps.last_mut() {
         last_step.global_after = Some(final_expr);
     }
@@ -4071,7 +4073,7 @@ fn finalize_steps(
 }
 
 fn finalize_planner_steps(
-    _original_expr: ExprId,
+    original_expr: ExprId,
     final_expr: ExprId,
     stages: Vec<DeriveStageOutput>,
     ctx: &cas_ast::Context,
@@ -4082,12 +4084,30 @@ fn finalize_planner_steps(
     );
     truncate_steps_after_first_presentational_target_match(&mut steps, final_expr, ctx);
 
+    populate_derive_global_snapshots(&mut steps, original_expr, ctx);
     if let Some(last_step) = steps.last_mut() {
         last_step.global_after = Some(final_expr);
     }
     retarget_last_step_to_final_expr_when_equivalent(&mut steps, final_expr, ctx);
 
     steps
+}
+
+fn populate_derive_global_snapshots(
+    steps: &mut [crate::Step],
+    original_expr: ExprId,
+    ctx: &cas_ast::Context,
+) {
+    let mut temp_ctx = ctx.clone();
+    let mut current_root = original_expr;
+
+    for step in steps {
+        step.global_before = Some(current_root);
+        let reconstructed_after =
+            reconstruct_global_expr(&mut temp_ctx, current_root, step.path(), step.after);
+        step.global_after = Some(reconstructed_after);
+        current_root = reconstructed_after;
+    }
 }
 
 fn retarget_last_step_to_final_expr_when_equivalent(

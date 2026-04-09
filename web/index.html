@@ -529,6 +529,8 @@
             font-size: 1.2em;
             text-align: center;
             padding: 8px 0;
+            overflow-x: auto;
+            overflow-y: hidden;
         }
 
         .step-before,
@@ -538,6 +540,7 @@
             border-radius: 6px;
             font-size: 1.1em;
             overflow-x: auto;
+            overflow-y: hidden;
         }
 
         .step-before {
@@ -570,6 +573,20 @@
 
         .step-math {
             font-size: 1.2em;
+            display: block;
+            width: max-content;
+            min-width: 100%;
+        }
+
+        .rule-change .step-math {
+            min-width: max-content;
+            margin: 0 auto;
+        }
+
+        .step-before mjx-container,
+        .step-after mjx-container,
+        .rule-change mjx-container {
+            min-width: max-content !important;
         }
 
         .step-arrow {
