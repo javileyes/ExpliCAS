@@ -373,6 +373,33 @@ fn step_wire_log_cancellation_stays_direct_without_single_redundant_substep() {
 }
 
 #[test]
+fn step_wire_log_exponent_rules_stay_direct_when_substeps_only_repeat_the_rule() {
+    let (engine, output) = eval_output_for("ln(x^3) + ln(y^2) - ln(x^3 * y^2)");
+    let steps =
+        cas_didactic::collect_step_payloads(&output.steps, &engine.simplifier.context, "on");
+
+    let redundant_titles: Vec<_> = steps
+        .iter()
+        .filter(|step| step.rule == "Sacar un exponente fuera del logaritmo")
+        .map(|step| {
+            (
+                step.before.clone(),
+                step.substeps
+                    .iter()
+                    .map(|substep| substep.title.clone())
+                    .collect::<Vec<_>>(),
+            )
+        })
+        .collect();
+
+    assert!(
+        redundant_titles.iter().all(|(_, titles)| titles.is_empty()),
+        "log exponent steps should stay direct without formula-template substeps, got: {:?}",
+        redundant_titles
+    );
+}
+
+#[test]
 fn step_wire_difference_of_squares_cancel_recaps_factorization() {
     let (engine, output) = eval_output_for("(x^2 - 1)/(x - 1)");
     let steps =

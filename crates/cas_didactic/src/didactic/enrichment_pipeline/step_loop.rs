@@ -127,8 +127,13 @@ fn prune_redundant_substeps(ctx: &Context, step: &Step, sub_steps: &mut Vec<SubS
             return;
         }
 
-        if is_single_formula_template_rule(step.rule_name.as_str())
-            && looks_like_formula_template_substep(&sub_step.description)
+        if (is_single_formula_template_rule(step.rule_name.as_str())
+            || is_single_formula_template_visible_rule(visible_rule.as_ref()))
+            && (looks_like_formula_template_substep(&sub_step.description)
+                || is_log_exponent_template_substep(
+                    visible_rule.as_ref(),
+                    sub_step.description.as_str(),
+                ))
         {
             sub_steps.clear();
             return;
@@ -176,6 +181,9 @@ fn is_single_formula_template_rule(rule_name: &str) -> bool {
     matches!(
         rule_name,
         "Pythagorean Factor Form"
+            | "Evaluate Logarithms"
+            | "Factor Perfect Square in Logarithm"
+            | "Split Log Exponents"
             | "Expand Secant Squared"
             | "Expand Cosecant Squared"
             | "Recognize Secant Squared"
@@ -196,6 +204,13 @@ fn is_single_formula_template_rule(rule_name: &str) -> bool {
     )
 }
 
+fn is_single_formula_template_visible_rule(visible_rule: &str) -> bool {
+    matches!(
+        normalize_human_label(visible_rule).as_str(),
+        "sacar un exponente fuera del logaritmo" | "expandir logaritmos" | "contraer logaritmos"
+    )
+}
+
 fn looks_like_formula_template_substep(description: &str) -> bool {
     let normalized = normalize_human_label(description);
     normalized.starts_with("usar ")
@@ -204,6 +219,18 @@ fn looks_like_formula_template_substep(description: &str) -> bool {
         || normalized.starts_with("reconocer ")
         || normalized.starts_with("recognize ")
         || description.contains('=')
+}
+
+fn is_log_exponent_template_substep(visible_rule: &str, description: &str) -> bool {
+    let normalized_rule = normalize_human_label(visible_rule);
+    if normalized_rule != "sacar un exponente fuera del logaritmo" {
+        return false;
+    }
+
+    matches!(
+        normalize_human_label(description).as_str(),
+        "sacar el exponente fuera del logaritmo" | "sacar un exponente par fuera del logaritmo"
+    )
 }
 
 fn prune_duplicate_snapshot_substeps(sub_steps: &mut Vec<SubStep>) {

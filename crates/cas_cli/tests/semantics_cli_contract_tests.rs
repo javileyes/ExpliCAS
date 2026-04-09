@@ -2931,6 +2931,65 @@ fn eval_complex_nested_fraction_pipeline_keeps_before_after_highlights_in_wire_l
 }
 
 #[test]
+fn eval_symbolic_integration_step_keeps_integral_latex_in_before_wire() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "integrate(x^2, x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+
+    let step = &steps[0];
+    let rule_latex = step["rule_latex"].as_str().expect("rule_latex");
+    let before_latex = step["before_latex"].as_str().expect("before_latex");
+
+    assert!(
+        rule_latex.contains("\\int"),
+        "expected rule_latex to show an integral, got: {rule_latex}"
+    );
+    assert!(
+        before_latex.contains("\\int"),
+        "expected before_latex to show an integral, got: {before_latex}"
+    );
+    assert!(
+        !before_latex.contains("\\text{integrate}"),
+        "expected before_latex to avoid function-style integrate(), got: {before_latex}"
+    );
+}
+
+#[test]
+fn eval_symbolic_differentiation_step_keeps_derivative_latex_in_before_wire() {
+    let (output, _code) = run_cli(&["eval", "diff(x^2, x)", "--format", "json", "--steps", "on"]);
+    let wire = parse_wire(&output);
+
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+
+    let step = &steps[0];
+    let rule_latex = step["rule_latex"].as_str().expect("rule_latex");
+    let before_latex = step["before_latex"].as_str().expect("before_latex");
+
+    assert!(
+        rule_latex.contains("\\frac{d}{dx}"),
+        "expected rule_latex to show a derivative, got: {rule_latex}"
+    );
+    assert!(
+        before_latex.contains("\\frac{d}{dx}"),
+        "expected before_latex to show a derivative, got: {before_latex}"
+    );
+    assert!(
+        !before_latex.contains("\\text{diff}"),
+        "expected before_latex to avoid function-style diff(), got: {before_latex}"
+    );
+}
+
+#[test]
 fn root_nesting_drops_intrinsically_nonnegative_radicand_require() {
     let (output, _code) = run_cli(&[
         "eval",
@@ -5019,6 +5078,39 @@ fn derive_log_expansion_to_zero_keeps_single_step_but_closes_on_final_result() {
     assert_eq!(steps.len(), 1);
     assert_eq!(steps[0]["rule"], "Expandir logaritmos");
     assert_eq!(steps[0]["after"], "0");
+}
+
+#[test]
+fn eval_log_cancellation_drops_redundant_exponent_log_substeps() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "ln(x^3) + ln(y^2) - ln(x^3 * y^2)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    let steps = wire["steps"].as_array().expect("steps array");
+    let exponent_steps: Vec<_> = steps
+        .iter()
+        .filter(|step| step["rule"] == "Sacar un exponente fuera del logaritmo")
+        .collect();
+
+    assert!(
+        !exponent_steps.is_empty(),
+        "expected exponent-extraction log steps in trace"
+    );
+
+    for step in exponent_steps {
+        let substeps = step["substeps"].as_array().cloned().unwrap_or_default();
+        assert!(
+            substeps.is_empty(),
+            "self-explanatory log exponent step should not keep redundant substeps: {:?}",
+            substeps
+        );
+    }
 }
 
 #[test]

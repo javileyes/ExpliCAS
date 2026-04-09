@@ -1987,7 +1987,7 @@ fn derive_didactic_representative_direct_log_expansion_cases_have_no_substeps() 
 }
 
 #[test]
-fn derive_didactic_even_power_log_expansion_uses_absolute_value_language() {
+fn derive_didactic_even_power_log_expansion_stays_direct_without_redundant_substep() {
     let artifact = audit_case(&derive_case_by_id("expand_log_even_power_abs"));
 
     let step = artifact
@@ -2003,16 +2003,22 @@ fn derive_didactic_even_power_log_expansion_uses_absolute_value_language() {
     let titles: Vec<&str> = step
         .get("substeps")
         .and_then(Value::as_array)
-        .expect("expected even-power log expansion substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
+        .map(|substeps| {
+            substeps
+                .iter()
+                .filter_map(|substep| substep.get("title").and_then(Value::as_str))
+                .collect()
+        })
+        .unwrap_or_default();
 
-    assert_eq!(titles, vec!["Sacar un exponente par fuera del logaritmo"]);
+    assert!(
+        titles.is_empty(),
+        "even-power log expansion step should stay direct, got substeps: {titles:?}"
+    );
 }
 
 #[test]
-fn derive_didactic_general_base_log_power_expansion_pulls_exponent_out() {
+fn derive_didactic_general_base_log_power_expansion_stays_direct_without_redundant_substep() {
     let artifact = audit_case(&derive_case_by_id("expand_log_general_base_power"));
 
     let step = artifact
@@ -2028,12 +2034,18 @@ fn derive_didactic_general_base_log_power_expansion_pulls_exponent_out() {
     let titles: Vec<&str> = step
         .get("substeps")
         .and_then(Value::as_array)
-        .expect("expected general-base log power expansion substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
+        .map(|substeps| {
+            substeps
+                .iter()
+                .filter_map(|substep| substep.get("title").and_then(Value::as_str))
+                .collect()
+        })
+        .unwrap_or_default();
 
-    assert_eq!(titles, vec!["Sacar el exponente fuera del logaritmo"]);
+    assert!(
+        titles.is_empty(),
+        "general-base log power expansion step should stay direct, got substeps: {titles:?}"
+    );
 }
 
 #[test]

@@ -1261,6 +1261,16 @@ impl<'a> PathHighlightedLatexRenderer<'a> {
                 "|{}|",
                 self.render_with_path(args[0], false, &self.child_path(path, 0))
             ),
+            "diff" if args.len() >= 2 => {
+                let expr = self.render_with_path(args[0], false, &self.child_path(path, 0));
+                let var = self.render_with_path(args[1], false, &self.child_path(path, 1));
+                format!("\\frac{{d}}{{d{}}}({})", var, expr)
+            }
+            "integrate" if args.len() >= 2 => {
+                let expr = self.render_with_path(args[0], false, &self.child_path(path, 0));
+                let var = self.render_with_path(args[1], false, &self.child_path(path, 1));
+                format!("\\int {} \\, d{}", expr, var)
+            }
             // __eq__ is an internal equation representation - display as "lhs = rhs"
             _ if crate::eq::is_eq_name(name) && args.len() == 2 => {
                 let lhs = self.render_with_path(args[0], false, &self.child_path(path, 0));
