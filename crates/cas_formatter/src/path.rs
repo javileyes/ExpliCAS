@@ -14,6 +14,10 @@ pub fn extract_add_terms(ctx: &Context, expr: ExprId) -> Vec<ExprId> {
                 collect_terms(ctx, *l, terms);
                 collect_terms(ctx, *r, terms);
             }
+            Expr::Sub(l, r) => {
+                collect_terms(ctx, *l, terms);
+                collect_terms(ctx, *r, terms);
+            }
             Expr::Neg(inner) => {
                 // Unwrap Neg to find the underlying term (which may exist in original tree)
                 // Add both: the Neg itself (if it exists) and the inner term

@@ -32,6 +32,7 @@ pub(super) fn render_after_additive_focus(
     context: &Context,
     global_after_expr: cas_ast::ExprId,
     focus_after: cas_ast::ExprId,
+    found_paths: &[ExprPath],
     display_hints: &DisplayContext,
     style_prefs: &StylePreferences,
 ) -> String {
@@ -39,6 +40,7 @@ pub(super) fn render_after_additive_focus(
         context,
         global_after_expr,
         focus_after,
+        found_paths,
         display_hints,
         style_prefs,
         render_with_single_path,

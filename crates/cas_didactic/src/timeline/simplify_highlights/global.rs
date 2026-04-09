@@ -8,7 +8,7 @@ mod scope;
 use self::scope::render_local_scope_transition;
 use super::TimelineStepSnapshots;
 use crate::runtime::Step;
-use cas_ast::Context;
+use cas_ast::{Context, Expr, ExprId};
 use cas_formatter::{DisplayContext, StylePreferences};
 
 pub(super) fn render_global_transition_latex(
@@ -18,7 +18,9 @@ pub(super) fn render_global_transition_latex(
     display_hints: &DisplayContext,
     style_prefs: &StylePreferences,
 ) -> (String, String) {
-    if let Some(before_local) = step.before_local().filter(|&bl| bl != step.before) {
+    let local_scope = preferred_local_scope(context, step);
+
+    if let Some(before_local) = local_scope {
         return render_local_scope_transition(
             context,
             step,
@@ -36,4 +38,19 @@ pub(super) fn render_global_transition_latex(
         display_hints,
         style_prefs,
     )
+}
+
+fn preferred_local_scope(context: &Context, step: &Step) -> Option<ExprId> {
+    let focus_before = step.before_local().unwrap_or(step.before);
+    if step
+        .before_local()
+        .is_some_and(|before_local| before_local != step.before)
+    {
+        return Some(focus_before);
+    }
+
+    match context.get(focus_before) {
+        Expr::Function(_, _) | Expr::Add(_, _) | Expr::Sub(_, _) => Some(focus_before),
+        _ => None,
+    }
 }

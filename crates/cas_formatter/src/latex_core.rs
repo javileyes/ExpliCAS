@@ -221,7 +221,12 @@ pub trait LaTeXRenderer {
             }
             Expr::Mul(ml, mr) => {
                 if let Some(abs_latex) = self.direct_negative_mul_abs_latex(*ml, *mr) {
-                    return (true, abs_latex);
+                    let highlighted = if let Some(color) = self.get_highlight(id) {
+                        format!("{{\\color{{{}}}{{{}}}}}", color.to_latex(), abs_latex)
+                    } else {
+                        abs_latex
+                    };
+                    return (true, highlighted);
                 }
                 if let Expr::Number(coef) = ctx.get(*ml) {
                     if coef.is_negative() {
@@ -966,7 +971,12 @@ impl<'a> PathHighlightedLatexRenderer<'a> {
             }
             Expr::Mul(l, r) => {
                 if let Some(abs_latex) = self.direct_negative_mul_abs_latex_path(*l, *r, path) {
-                    return (true, abs_latex);
+                    let highlighted = if let Some(color) = self.path_highlights.get(path) {
+                        format!("{{\\color{{{}}}{{{}}}}}", color.to_latex(), abs_latex)
+                    } else {
+                        abs_latex
+                    };
+                    return (true, highlighted);
                 }
                 (false, self.render_with_path(id, false, path))
             }

@@ -2990,6 +2990,57 @@ fn eval_symbolic_differentiation_step_keeps_derivative_latex_in_before_wire() {
 }
 
 #[test]
+fn eval_log_cancellation_exponential_step_keeps_full_additive_before_highlight() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "e^(ln(x^3) + ln(y^2) - ln(x^3 * y^2) + 1)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    let steps = wire["steps"].as_array().expect("steps array");
+    let expand_log_step = &steps[2];
+    let expand_log_before_latex = expand_log_step["before_latex"]
+        .as_str()
+        .expect("expand log before_latex");
+    assert!(
+        expand_log_before_latex.contains("{\\color{red}{\\ln({x}^{3}\\cdot {y}^{2})}}"),
+        "expected step 3 before_latex to highlight the full ln(...) wrapper, got: {expand_log_before_latex}"
+    );
+
+    let step = &steps[6];
+    let before_latex = step["before_latex"].as_str().expect("before_latex");
+    let red_count = before_latex.match_indices("\\color{red}").count();
+
+    assert_eq!(
+        red_count, 2,
+        "expected both cancelling logarithmic terms to be highlighted in step 7 before_latex, got: {before_latex}"
+    );
+    assert!(
+        before_latex.contains("{\\color{red}{2\\cdot \\ln(|y|)}} - {\\color{red}{2\\cdot \\ln(|y|)}}"),
+        "expected full cancellation pair to be highlighted in step 7 before_latex, got: {before_latex}"
+    );
+    assert!(
+        !before_latex.contains("{\\color{red}{1 +"),
+        "expected additive passthrough term to stay outside the highlight in step 7 before_latex, got: {before_latex}"
+    );
+
+    let previous_step = &steps[5];
+    let previous_after_latex = previous_step["after_latex"].as_str().expect("after_latex");
+    assert!(
+        previous_after_latex.contains("\\color{green}"),
+        "expected step 6 after_latex to preserve a green highlight for the surviving additive scope, got: {previous_after_latex}"
+    );
+    assert!(
+        previous_after_latex.contains("2\\cdot \\ln(|y|)") && previous_after_latex.contains("- 2\\cdot \\ln(|y|)"),
+        "expected step 6 after_latex to show the surviving logarithmic terms, got: {previous_after_latex}"
+    );
+}
+
+#[test]
 fn eval_equiv_input_uses_latex_relation_in_wire() {
     let (output, _code) = run_cli(&[
         "eval",

@@ -6,7 +6,7 @@ pub(super) fn resolve_focus_path(
     before_expr: ExprId,
     before_local: ExprId,
 ) -> ExprPath {
-    if matches!(context.get(before_local), Expr::Add(_, _)) {
+    if matches!(context.get(before_local), Expr::Add(_, _) | Expr::Sub(_, _)) {
         Vec::new()
     } else {
         diff_find_path_to_expr(context, before_expr, before_local)

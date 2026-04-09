@@ -37,6 +37,7 @@ pub(super) fn render_additive_focus_transition(
         context,
         snapshots.global_after_expr,
         focus_after,
+        &found_paths,
         display_hints,
         style_prefs,
     );

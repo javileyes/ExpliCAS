@@ -26,6 +26,11 @@ pub(super) fn collect_additive_focus_paths_with_scope(
         let mut full_prefix = step_path_prefix.clone();
         full_prefix.extend(path_to_local.clone());
         (local_scope, full_prefix)
+    } else if focus_terms.len() > 1 {
+        // Some engine steps point to the first changed term instead of the full additive
+        // cancellation scope. In that case, search the whole global snapshot so repeated
+        // terms like a - a can still be highlighted as one local cancellation.
+        (global_before_expr, Vec::new())
     } else {
         (subexpr_at_path, step_path_prefix.clone())
     };
