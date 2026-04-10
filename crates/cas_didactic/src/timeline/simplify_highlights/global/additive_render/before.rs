@@ -11,6 +11,7 @@ use cas_formatter::{
     DisplayContext, HighlightColor, HighlightConfig, LaTeXExprHighlightedWithHints,
     PathHighlightConfig, StylePreferences,
 };
+use cas_math::expr_nary::{add_terms_signed, Sign};
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn render_before_additive_focus(
@@ -53,7 +54,12 @@ pub(super) fn render_before_additive_focus(
         diff_find_paths_by_structure(context, global_before_expr, focus_before)
             .into_iter()
             .next();
-    if let Some(scope_path) = display_scope_path.or(structural_scope_path) {
+    let signed_term_scope_path =
+        find_additive_scope_path_by_signed_terms(context, global_before_expr, focus_before);
+    if let Some(scope_path) = display_scope_path
+        .or(structural_scope_path)
+        .or(signed_term_scope_path)
+    {
         return render_with_single_path(
             context,
             global_before_expr,
@@ -68,22 +74,40 @@ pub(super) fn render_before_additive_focus(
         let normalized_paths =
             normalize_additive_term_paths(context, global_before_expr, found_paths);
         let expected_term_count = extract_add_terms(context, focus_before).len();
-        if normalized_paths.len() > expected_term_count {
-            if let Some(scope_path) = find_best_additive_scope_path(
+        let strict_scope_path = if normalized_paths.len() >= expected_term_count {
+            find_best_additive_scope_path(
                 context,
                 global_before_expr,
                 &normalized_paths,
                 expected_term_count,
-            ) {
-                return render_with_single_path(
+            )
+        } else {
+            None
+        };
+        let relaxed_min_hits = add_terms_signed(context, focus_before)
+            .len()
+            .saturating_sub(1)
+            .max(2);
+        let relaxed_scope_path =
+            if strict_scope_path.is_none() && normalized_paths.len() >= relaxed_min_hits {
+                find_best_additive_scope_path(
                     context,
                     global_before_expr,
-                    scope_path,
-                    HighlightColor::Red,
-                    display_hints,
-                    style_prefs,
-                );
-            }
+                    &normalized_paths,
+                    relaxed_min_hits,
+                )
+            } else {
+                None
+            };
+        if let Some(scope_path) = strict_scope_path.or(relaxed_scope_path) {
+            return render_with_single_path(
+                context,
+                global_before_expr,
+                scope_path,
+                HighlightColor::Red,
+                display_hints,
+                style_prefs,
+            );
         }
         let path_rendered = with_paths::render_before_additive_focus_with_paths(
             context,
@@ -94,7 +118,7 @@ pub(super) fn render_before_additive_focus(
             config::build_before_additive_focus_config,
             render_with_paths,
         );
-        if count_color_markers(&path_rendered, HighlightColor::Red) >= normalized_paths.len() {
+        if count_color_markers(&path_rendered, HighlightColor::Red) > 0 {
             return path_rendered;
         }
 
@@ -250,6 +274,114 @@ fn render_display_key(context: &Context, expr: ExprId) -> String {
     cas_formatter::clean_display_string(&crate::didactic::latex_to_plain_text(
         &cas_formatter::LaTeXExpr { context, id: expr }.to_latex(),
     ))
+}
+
+fn find_additive_scope_path_by_signed_terms(
+    context: &Context,
+    root: ExprId,
+    target: ExprId,
+) -> Option<ExprPath> {
+    if !matches!(context.get(target), Expr::Add(_, _) | Expr::Sub(_, _)) {
+        return None;
+    }
+
+    let target_signature = additive_signature(context, target);
+    let mut path = Vec::new();
+    find_additive_scope_path_by_signed_terms_rec(context, root, &target_signature, &mut path)
+}
+
+fn find_additive_scope_path_by_signed_terms_rec(
+    context: &Context,
+    current: ExprId,
+    target_signature: &[String],
+    path: &mut ExprPath,
+) -> Option<ExprPath> {
+    match context.get(current) {
+        Expr::Add(_, _) | Expr::Sub(_, _) => {
+            if additive_signature(context, current) == target_signature {
+                return Some(path.clone());
+            }
+        }
+        _ => {}
+    }
+
+    match context.get(current) {
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
+            path.push(0);
+            if let Some(found) =
+                find_additive_scope_path_by_signed_terms_rec(context, *l, target_signature, path)
+            {
+                return Some(found);
+            }
+            path.pop();
+
+            path.push(1);
+            if let Some(found) =
+                find_additive_scope_path_by_signed_terms_rec(context, *r, target_signature, path)
+            {
+                return Some(found);
+            }
+            path.pop();
+            None
+        }
+        Expr::Neg(inner) | Expr::Hold(inner) => {
+            path.push(0);
+            let found = find_additive_scope_path_by_signed_terms_rec(
+                context,
+                *inner,
+                target_signature,
+                path,
+            );
+            path.pop();
+            found
+        }
+        Expr::Function(_, args) => {
+            for (i, arg) in args.iter().enumerate() {
+                path.push(i as u8);
+                if let Some(found) = find_additive_scope_path_by_signed_terms_rec(
+                    context,
+                    *arg,
+                    target_signature,
+                    path,
+                ) {
+                    return Some(found);
+                }
+                path.pop();
+            }
+            None
+        }
+        Expr::Matrix { data, .. } => {
+            for (i, elem) in data.iter().enumerate() {
+                path.push(i as u8);
+                if let Some(found) = find_additive_scope_path_by_signed_terms_rec(
+                    context,
+                    *elem,
+                    target_signature,
+                    path,
+                ) {
+                    return Some(found);
+                }
+                path.pop();
+            }
+            None
+        }
+        Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => None,
+    }
+}
+
+fn additive_signature(context: &Context, expr: ExprId) -> Vec<String> {
+    let mut signature: Vec<String> = add_terms_signed(context, expr)
+        .into_iter()
+        .map(|(term, sign)| {
+            let sign_prefix = match sign {
+                Sign::Pos => "+",
+                Sign::Neg => "-",
+            };
+            format!("{sign_prefix}:{}", render_display_key(context, term))
+        })
+        .collect();
+    signature.sort();
+    signature
 }
 
 fn normalize_additive_term_paths(

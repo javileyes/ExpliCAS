@@ -359,16 +359,24 @@ fn step_wire_log_cancellation_stays_direct_without_single_redundant_substep() {
 
     let step = steps
         .iter()
-        .find(|step| step.rule == "Agrupar términos semejantes" && step.after == "0")
+        .find(|step| {
+            step.rule == "Expandir logaritmos y cancelar términos iguales" && step.after == "0"
+        })
         .expect("expected final log cancellation step");
-
-    assert!(
-        step.substeps.is_empty(),
-        "single substep identical to the log-cancellation parent step should be pruned, got: {:?}",
-        step.substeps
-            .iter()
-            .map(|substep| &substep.title)
-            .collect::<Vec<_>>()
+    let titles = step
+        .substeps
+        .iter()
+        .map(|substep| substep.title.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        titles,
+        vec![
+            "Expandir el logaritmo del producto o del cociente",
+            "Sacar exponentes fuera del logaritmo cuando sea necesario",
+            "Cancelar términos iguales",
+        ],
+        "expected the new explicit three-phase log cancellation story, got {:?}",
+        titles
     );
 }
 

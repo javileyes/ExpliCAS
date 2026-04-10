@@ -2492,12 +2492,18 @@ fn derive_didactic_representative_direct_nested_fraction_cases_have_no_substeps(
     assert_case_step_titles(
         "nested_fraction_one_over_sum",
         "Cancelar factores en una fracción",
-        &["Primero simplificar la suma del denominador"],
+        &[
+            "Llevar a denominador común dentro del denominador",
+            "Invertir la fracción del denominador",
+        ],
     );
     assert_case_step_titles(
         "nested_fraction_one_over_three_reciprocals",
         "Cancelar factores en una fracción",
-        &["Primero simplificar la suma del denominador"],
+        &[
+            "Llevar a denominador común dentro del denominador",
+            "Invertir la fracción del denominador",
+        ],
     );
 
     for case_id in [
@@ -2526,16 +2532,22 @@ fn derive_didactic_representative_direct_nested_fraction_cases_have_no_substeps(
 
 #[test]
 fn derive_didactic_structural_nested_fraction_cases_keep_single_denominator_sum_substep() {
-    for case_id in [
+    assert_case_step_titles(
         "nested_fraction_one_over_sum_with_fraction",
+        "Cancelar factores en una fracción",
+        &[
+            "Llevar a denominador común dentro del denominador",
+            "Invertir la fracción del denominador",
+        ],
+    );
+    assert_case_step_titles(
         "nested_fraction_fraction_over_sum_with_fraction_general",
-    ] {
-        assert_case_step_titles(
-            case_id,
-            "Cancelar factores en una fracción",
-            &["Primero simplificar la suma del denominador"],
-        );
-    }
+        "Cancelar factores en una fracción",
+        &[
+            "Llevar a denominador común dentro del denominador",
+            "Dividir entre una fracción es multiplicar por su inversa",
+        ],
+    );
 }
 
 #[test]

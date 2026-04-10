@@ -5,7 +5,7 @@ use cas_ast::{Context, Expr, ExprId};
 pub(super) fn generate_one_over_sum_substeps(
     ctx: &Context,
     before_expr: ExprId,
-    _after_expr: ExprId,
+    after_expr: ExprId,
     hints: &cas_formatter::DisplayContext,
     nested_fraction_latex: fn(&Context, &cas_formatter::DisplayContext, ExprId) -> String,
 ) -> Vec<SubStep> {
@@ -15,14 +15,43 @@ pub(super) fn generate_one_over_sum_substeps(
         let den_str = nested_fraction_latex(ctx, hints, *den);
         let intermediate_str = extract_combined_fraction_str(ctx, *den);
 
-        sub_steps.push(SubStep {
-            description: "Primero simplificar la suma del denominador".to_string(),
-            before_expr: den_str.clone(),
-            after_expr: intermediate_str.clone(),
-            before_latex: None,
-            after_latex: None,
-        });
+        sub_steps.push(
+            SubStep::new(
+                "Llevar a denominador común dentro del denominador",
+                display_expr(ctx, *den),
+                intermediate_str.clone(),
+            )
+            .with_before_latex(den_str.clone())
+            .with_after_latex(intermediate_str.clone()),
+        );
+
+        if let Some(full_intermediate) = build_one_over_intermediate_expr(ctx, *den) {
+            sub_steps.push(
+                SubStep::new(
+                    "Invertir la fracción del denominador",
+                    full_intermediate.clone(),
+                    display_expr(ctx, after_expr),
+                )
+                .with_before_latex(full_intermediate)
+                .with_after_latex(nested_fraction_latex(ctx, hints, after_expr)),
+            );
+        }
     }
 
     sub_steps
+}
+
+fn build_one_over_intermediate_expr(ctx: &Context, denominator: ExprId) -> Option<String> {
+    let intermediate_den = extract_combined_fraction_str(ctx, denominator);
+    Some(format!("\\frac{{1}}{{{intermediate_den}}}"))
+}
+
+fn display_expr(ctx: &Context, expr: ExprId) -> String {
+    format!(
+        "{}",
+        cas_formatter::DisplayExpr {
+            context: ctx,
+            id: expr,
+        }
+    )
 }

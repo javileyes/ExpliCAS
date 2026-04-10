@@ -676,16 +676,24 @@ fn didactic_step_quality_priority_cases_make_cli_narrative_less_magic() {
     let final_log_cancel_step = log_cancel_artifact
         .wire_steps
         .iter()
-        .find(|step| step.rule == "Agrupar términos semejantes" && step.after == "0")
+        .find(|step| {
+            step.rule == "Expandir logaritmos y cancelar términos iguales" && step.after == "0"
+        })
         .expect("missing final log cancellation step");
-    assert!(
-        final_log_cancel_step.substeps.is_empty(),
-        "log_product_cancellation wire narrative should prune a single substep when it matches the parent step exactly, got {:?}",
-        final_log_cancel_step
-            .substeps
-            .iter()
-            .map(|substep| &substep.title)
-            .collect::<Vec<_>>()
+    let final_titles = final_log_cancel_step
+        .substeps
+        .iter()
+        .map(|substep| substep.title.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        final_titles,
+        vec![
+            "Expandir el logaritmo del producto o del cociente",
+            "Sacar exponentes fuera del logaritmo cuando sea necesario",
+            "Cancelar términos iguales",
+        ],
+        "log_product_cancellation wire narrative should keep the new explicit three-phase log cancellation story, got {:?}",
+        final_titles
     );
 
     let inverse_trig_case = cases

@@ -10,9 +10,9 @@ use cas_math::arithmetic_rule_support::{
     try_rewrite_normalize_mul_neg_expr, try_rewrite_simplify_numeric_exponents_expr,
 };
 use cas_math::arithmetic_zero_support::{match_div_zero_numerator_pattern, match_mul_zero_pattern};
-use cas_math::expr_destructure::{as_div, as_mul};
+use cas_math::expr_destructure::{as_div, as_mul, as_pow};
 use cas_math::expr_extract::extract_i64_integer;
-use cas_math::expr_nary::{build_balanced_mul, AddView, Sign};
+use cas_math::expr_nary::{build_balanced_add, build_balanced_mul, AddView, Sign};
 use cas_math::expr_predicates::is_minus_one_expr;
 use cas_math::expr_rewrite::smart_mul;
 use cas_math::logarithm_inverse_support::{make_log_expr, try_extract_log_parts};
@@ -579,6 +579,14 @@ struct LogAbsMulDivCancellationMatch {
     components: [(cas_ast::ExprId, Sign); 2],
 }
 
+#[derive(Debug, Clone)]
+struct LogPowerProductCancellationMatch {
+    raw_focus_after: cas_ast::ExprId,
+    focus_after: cas_ast::ExprId,
+    components: Vec<(cas_ast::ExprId, Sign)>,
+    needs_power_split: bool,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct HyperbolicPythagoreanFactorCancellationMatch {
     local_before: cas_ast::ExprId,
@@ -743,6 +751,162 @@ fn try_match_log_abs_mul_div_cancellation_side(
     }
 
     None
+}
+
+fn normalize_log_argument_for_cancellation(
+    ctx: &mut cas_ast::Context,
+    arg: cas_ast::ExprId,
+) -> Option<(cas_ast::ExprId, cas_ast::ExprId, bool)> {
+    if let Some((pow_base, pow_exp)) = as_pow(ctx, arg) {
+        let power = small_positive_integer_value(ctx, pow_exp)?;
+        let normalized_arg = if power % 2 == 0 {
+            ctx.call_builtin(BuiltinFn::Abs, vec![pow_base])
+        } else {
+            pow_base
+        };
+        let one = ctx.num(1);
+        return Some((
+            normalized_arg,
+            pow_exp,
+            compare_expr(ctx, pow_exp, one) != Ordering::Equal,
+        ));
+    }
+
+    let one = ctx.num(1);
+    Some((arg, one, false))
+}
+
+fn extract_scaled_log_term_for_cancellation(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<(cas_ast::ExprId, cas_ast::ExprId, cas_ast::ExprId, bool)> {
+    let mut log_factor = None;
+    let mut scale_factors = Vec::new();
+    for factor in flatten_mul_chain(ctx, expr) {
+        if try_extract_log_parts(ctx, factor).is_some() {
+            if log_factor.is_some() {
+                return None;
+            }
+            log_factor = Some(factor);
+        } else {
+            scale_factors.push(factor);
+        }
+    }
+
+    let log_factor = log_factor?;
+    let (log_base, log_arg) = try_extract_log_parts(ctx, log_factor)?;
+    let (normalized_arg, power_scale, changed_by_power) =
+        normalize_log_argument_for_cancellation(ctx, log_arg)?;
+
+    let scale = match scale_factors.len() {
+        0 => ctx.num(1),
+        1 => scale_factors[0],
+        _ => build_balanced_mul(ctx, &scale_factors),
+    };
+    let one = ctx.num(1);
+    let total_scale = if compare_expr(ctx, power_scale, one) == Ordering::Equal {
+        scale
+    } else if compare_expr(ctx, scale, one) == Ordering::Equal {
+        power_scale
+    } else {
+        smart_mul(ctx, scale, power_scale)
+    };
+
+    Some((total_scale, log_base, normalized_arg, changed_by_power))
+}
+
+fn normalize_log_term_expr_for_cancellation(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<cas_ast::ExprId> {
+    let (scale, log_base, arg, _) = extract_scaled_log_term_for_cancellation(ctx, expr)?;
+    let log_expr = make_log_expr(ctx, log_base, arg);
+    Some(build_scaled_expr(ctx, scale, log_expr))
+}
+
+fn build_signed_add_expr(
+    ctx: &mut cas_ast::Context,
+    terms: &[(cas_ast::ExprId, Sign)],
+) -> cas_ast::ExprId {
+    let signed_terms: Vec<_> = terms
+        .iter()
+        .map(|(term, sign)| match sign {
+            Sign::Pos => *term,
+            Sign::Neg => ctx.add(Expr::Neg(*term)),
+        })
+        .collect();
+
+    match signed_terms.len() {
+        0 => ctx.num(0),
+        1 => signed_terms[0],
+        _ => build_balanced_add(ctx, &signed_terms),
+    }
+}
+
+fn try_match_log_product_power_cancellation_side(
+    ctx: &mut cas_ast::Context,
+    focus_expr: cas_ast::ExprId,
+) -> Option<LogPowerProductCancellationMatch> {
+    let factors = flatten_mul_chain(ctx, focus_expr);
+    let mut log_factor = None;
+    let mut scale_factors = Vec::new();
+    for factor in factors {
+        if try_extract_log_parts(ctx, factor).is_some() {
+            if log_factor.is_some() {
+                return None;
+            }
+            log_factor = Some(factor);
+        } else {
+            scale_factors.push(factor);
+        }
+    }
+
+    let log_factor = log_factor?;
+    let (log_base, log_arg) = try_extract_log_parts(ctx, log_factor)?;
+    if abs_argument(ctx, log_arg).is_some() {
+        return None;
+    }
+
+    let scale = match scale_factors.len() {
+        0 => ctx.num(1),
+        1 => scale_factors[0],
+        _ => build_balanced_mul(ctx, &scale_factors),
+    };
+
+    let raw_factor_terms: Vec<(cas_ast::ExprId, Sign)> = if as_mul(ctx, log_arg).is_some() {
+        let mut terms = Vec::new();
+        for factor in flatten_mul_chain(ctx, log_arg) {
+            let log_factor = make_log_expr(ctx, log_base, factor);
+            terms.push((build_scaled_expr(ctx, scale, log_factor), Sign::Pos));
+        }
+        terms
+    } else if let Some((num, den)) = as_div(ctx, log_arg) {
+        let log_num = make_log_expr(ctx, log_base, num);
+        let log_den = make_log_expr(ctx, log_base, den);
+        vec![
+            (build_scaled_expr(ctx, scale, log_num), Sign::Pos),
+            (build_scaled_expr(ctx, scale, log_den), Sign::Neg),
+        ]
+    } else {
+        return None;
+    };
+
+    let mut normalized_terms = Vec::with_capacity(raw_factor_terms.len());
+    let mut needs_power_split = false;
+    for (raw_component, sign) in &raw_factor_terms {
+        let normalized_component = normalize_log_term_expr_for_cancellation(ctx, *raw_component)?;
+        if compare_expr(ctx, normalized_component, *raw_component) != Ordering::Equal {
+            needs_power_split = true;
+        }
+        normalized_terms.push((normalized_component, *sign));
+    }
+
+    Some(LogPowerProductCancellationMatch {
+        raw_focus_after: build_signed_add_expr(ctx, &raw_factor_terms),
+        focus_after: build_signed_add_expr(ctx, &normalized_terms),
+        components: normalized_terms,
+        needs_power_split,
+    })
 }
 
 fn rebuild_subtractive_expr(
@@ -2819,6 +2983,123 @@ define_rule!(
 );
 
 define_rule!(
+    ExpandLogProductPowerToEnableCancellationRule,
+    "Expand Log Product Power",
+    Some(crate::target_kind::TargetKindSet::ADD_SUB),
+    crate::phase::PhaseMask::CORE | crate::phase::PhaseMask::POST,
+    priority: 511,
+    |ctx, expr| {
+        let view = AddView::from_expr(ctx, expr);
+        if view.terms.len() < 3 {
+            return None;
+        }
+
+        for (focus_index, (raw_focus_expr, raw_focus_sign)) in view.terms.iter().copied().enumerate() {
+            let (focus_expr, focus_sign) =
+                normalize_signed_add_term(ctx, raw_focus_expr, raw_focus_sign);
+            let Some(matched) = try_match_log_product_power_cancellation_side(ctx, focus_expr) else {
+                continue;
+            };
+
+            let mut used_indices = Vec::new();
+            let mut all_components_found = true;
+            for (component_expr, component_sign) in &matched.components {
+                let expected_sign = if focus_sign == Sign::Pos {
+                    component_sign.negate()
+                } else {
+                    *component_sign
+                };
+
+                let mut found_index = None;
+                for (term_index, (term_expr, term_sign)) in view.terms.iter().copied().enumerate() {
+                    if term_index == focus_index || used_indices.contains(&term_index) {
+                        continue;
+                    }
+                    let (normalized_term_expr, normalized_term_sign) =
+                        normalize_signed_add_term(ctx, term_expr, term_sign);
+                    if normalized_term_sign != expected_sign {
+                        continue;
+                    }
+                    let comparable_term_expr =
+                        normalize_log_term_expr_for_cancellation(ctx, normalized_term_expr)
+                            .unwrap_or(normalized_term_expr);
+                    if compare_expr(ctx, comparable_term_expr, *component_expr) == Ordering::Equal {
+                        found_index = Some(term_index);
+                        break;
+                    }
+                }
+
+                if let Some(term_index) = found_index {
+                    used_indices.push(term_index);
+                } else {
+                    all_components_found = false;
+                    break;
+                }
+            }
+
+            if !all_components_found || used_indices.len() + 1 != view.terms.len() {
+                continue;
+            }
+
+            let zero = ctx.num(0);
+            let focus_before_display = format!(
+                "{}",
+                cas_formatter::DisplayExpr {
+                    context: ctx,
+                    id: raw_focus_expr
+                }
+            );
+            let raw_focus_after_display = format!(
+                "{}",
+                cas_formatter::DisplayExpr {
+                    context: ctx,
+                    id: matched.raw_focus_after
+                }
+            );
+            let focus_after_display = format!(
+                "{}",
+                cas_formatter::DisplayExpr {
+                    context: ctx,
+                    id: matched.focus_after
+                }
+            );
+
+            let mut rewrite = Rewrite::with_local(
+                zero,
+                "Log expansion followed by exact cancellation",
+                expr,
+                zero,
+            )
+            .substep(
+                "Expandir el logaritmo del producto o del cociente",
+                vec![format!(
+                    "Reescribir {focus_before_display} como {raw_focus_after_display}."
+                )],
+            );
+
+            if matched.needs_power_split {
+                rewrite = rewrite.substep(
+                    "Sacar exponentes fuera del logaritmo cuando sea necesario",
+                    vec![format!(
+                        "Reescribir {raw_focus_after_display} como {focus_after_display}."
+                    )],
+                );
+            }
+
+            return Some(rewrite.substep(
+                "Cancelar términos iguales",
+                vec![
+                    "Tras la expansión, los términos opuestos se anulan y el resultado es 0."
+                        .to_string(),
+                ],
+            ));
+        }
+
+        None
+    }
+);
+
+define_rule!(
     ExpandLogAbsMulDivToEnableCancellationRule,
     "Expand Log Abs Mul/Div",
     Some(crate::target_kind::TargetKindSet::ADD_SUB),
@@ -3064,8 +3345,8 @@ mod tests {
         extract_scaled_double_sine_product_for_cancellation,
         ExpandHyperbolicAngleSumDiffToEnableCancellationRule,
         ExpandHyperbolicPythagoreanFactorToEnableCancellationRule,
-        ExpandLogAbsMulDivToEnableCancellationRule, ExpandOddHalfPowerToEnableCancellationRule,
-        ExpandTrigPhaseShiftToEnableCancellationRule,
+        ExpandLogAbsMulDivToEnableCancellationRule, ExpandLogProductPowerToEnableCancellationRule,
+        ExpandOddHalfPowerToEnableCancellationRule, ExpandTrigPhaseShiftToEnableCancellationRule,
         ExpandTrigSineProductTripleAngleToEnableCancellationRule,
         ExpandTrigSquareIdentityToEnableCancellationRule,
         ExpandTrigSumToProductToEnableCancellationRule, SubSelfToZeroRule,
@@ -3219,6 +3500,31 @@ mod tests {
             "0"
         );
         assert_eq!(rewrite.substeps.len(), 2);
+    }
+
+    #[test]
+    fn expand_log_product_power_to_enable_cancellation_rule_matches_mixed_power_product() {
+        let mut ctx = Context::new();
+        let expr = parse("ln(x^3) + ln(y^2) - ln(x^3 * y^2)", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rule = ExpandLogProductPowerToEnableCancellationRule;
+        let rewrite = rule
+            .apply(&mut ctx, expr, &parent_ctx)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "0"
+        );
+        assert_eq!(rewrite.substeps.len(), 3);
     }
 
     #[test]
@@ -3577,6 +3883,7 @@ pub fn register(simplifier: &mut crate::Simplifier) {
         ExpandHyperbolicAngleSumDiffToEnableCancellationRule,
     ));
     simplifier.add_rule(Box::new(ExpandOddHalfPowerToEnableCancellationRule));
+    simplifier.add_rule(Box::new(ExpandLogProductPowerToEnableCancellationRule));
     simplifier.add_rule(Box::new(ExpandLogAbsMulDivToEnableCancellationRule));
     simplifier.add_rule(Box::new(SubSelfToZeroRule)); // priority 500: before expansion
     simplifier.add_rule(Box::new(SubtractExpandedSumDiffCubesQuotientRule));

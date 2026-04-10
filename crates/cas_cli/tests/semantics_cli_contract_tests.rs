@@ -2878,10 +2878,10 @@ fn derive_nested_fraction_one_over_sum_uses_common_denominator_substep() {
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
     let substeps = steps[0]["substeps"].as_array().expect("substeps array");
-    assert_eq!(substeps.len(), 1);
+    assert_eq!(substeps.len(), 2);
     assert_eq!(
         substeps[0]["title"],
-        "Primero simplificar la suma del denominador"
+        "Llevar a denominador común dentro del denominador"
     );
     let after = substeps[0]["after_latex"].as_str().expect("after_latex");
     assert!(
@@ -2895,6 +2895,7 @@ fn derive_nested_fraction_one_over_sum_uses_common_denominator_substep() {
         !after.contains("\\frac{1}{y} \\cdot x") && !after.contains("\\frac{1}{x} \\cdot y"),
         "expected to avoid partially simplified reciprocal product in substep, got: {after}"
     );
+    assert_eq!(substeps[1]["title"], "Invertir la fracción del denominador");
 }
 
 #[test]
@@ -3035,42 +3036,31 @@ fn eval_log_cancellation_exponential_step_keeps_full_additive_before_highlight()
     let wire = parse_wire(&output);
 
     let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 3);
     let expand_log_step = &steps[2];
-    let expand_log_before_latex = expand_log_step["before_latex"]
-        .as_str()
-        .expect("expand log before_latex");
-    assert!(
-        expand_log_before_latex.contains("{\\color{red}{\\ln({x}^{3}\\cdot {y}^{2})}}"),
-        "expected step 3 before_latex to highlight the full ln(...) wrapper, got: {expand_log_before_latex}"
-    );
-
-    let step = &steps[6];
-    let before_latex = step["before_latex"].as_str().expect("before_latex");
-    let red_count = before_latex.match_indices("\\color{red}").count();
-
     assert_eq!(
-        red_count, 2,
-        "expected both cancelling logarithmic terms to be highlighted in step 7 before_latex, got: {before_latex}"
+        expand_log_step["rule"],
+        "Expandir logaritmos y cancelar términos iguales"
     );
+    let before_latex = expand_log_step["before_latex"]
+        .as_str()
+        .expect("before_latex");
     assert!(
-        before_latex.contains("{\\color{red}{2\\cdot \\ln(|y|)}} - {\\color{red}{2\\cdot \\ln(|y|)}}"),
-        "expected full cancellation pair to be highlighted in step 7 before_latex, got: {before_latex}"
+        before_latex.contains("\\color{red}")
+            && before_latex.contains("3\\cdot \\ln(x)")
+            && before_latex.contains("2\\cdot \\ln(|y|)")
+            && before_latex.contains("\\ln({x}^{3}\\cdot {y}^{2})"),
+        "expected final log-cancellation step to highlight the full additive scope including ln(...), got: {before_latex}"
     );
     assert!(
         !before_latex.contains("{\\color{red}{1 +"),
-        "expected additive passthrough term to stay outside the highlight in step 7 before_latex, got: {before_latex}"
+        "expected additive passthrough term to stay outside the highlight, got: {before_latex}"
     );
 
-    let previous_step = &steps[5];
-    let previous_after_latex = previous_step["after_latex"].as_str().expect("after_latex");
-    assert!(
-        previous_after_latex.contains("\\color{green}"),
-        "expected step 6 after_latex to preserve a green highlight for the surviving additive scope, got: {previous_after_latex}"
-    );
-    assert!(
-        previous_after_latex.contains("2\\cdot \\ln(|y|)") && previous_after_latex.contains("- 2\\cdot \\ln(|y|)"),
-        "expected step 6 after_latex to show the surviving logarithmic terms, got: {previous_after_latex}"
-    );
+    let after_latex = expand_log_step["after_latex"]
+        .as_str()
+        .expect("after_latex");
+    assert_eq!(after_latex, "{e}^{1 + {\\color{green}{0}}}");
 }
 
 #[test]
@@ -3203,6 +3193,31 @@ fn derive_nested_fraction_reciprocal_sum_difference_shows_common_denominator_sub
         substeps[1]["title"],
         "Cancelar el denominador común de numerador y denominador"
     );
+}
+
+#[test]
+fn eval_complex_nested_fraction_pipeline_shows_denominator_common_denominator_then_inversion() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "1 + 1/(1 + 1/(1 + 1/x)) - (3*x + 2)/(2*x + 1)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 5);
+    assert_eq!(steps[2]["rule"], "Simplificar fracción anidada");
+    let substeps = steps[2]["substeps"].as_array().expect("substeps array");
+    assert_eq!(substeps.len(), 2);
+    assert_eq!(
+        substeps[0]["title"],
+        "Llevar a denominador común dentro del denominador"
+    );
+    assert_eq!(substeps[1]["title"], "Invertir la fracción del denominador");
 }
 
 #[test]
@@ -3775,6 +3790,64 @@ fn eval_trig_binomial_square_difference_to_zero_uses_named_identity_step() {
 }
 
 #[test]
+fn eval_half_angle_square_difference_to_zero_uses_human_rule_and_formula_substep() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "sin(x)^2 - (1 - cos(2*x))/2",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 4);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps[0]["rule"], "Expandir coseno de ángulo doble");
+    let substeps = steps[0]["substeps"].as_array().expect("substeps array");
+    assert_eq!(substeps.len(), 1);
+    assert_eq!(substeps[0]["title"], "Usar cos(2u) = 2 · cos(u)^2 - 1");
+}
+
+#[test]
+fn eval_fraction_difference_to_zero_shows_common_denominator_substeps() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "1/(x - 1) - 1/(x + 1) - 2/(x^2 - 1)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 3);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps[0]["rule"], "Sumar fracciones");
+    let substeps = steps[0]["substeps"].as_array().expect("substeps array");
+    assert_eq!(substeps.len(), 2);
+    assert_eq!(substeps[0]["title"], "Llevar a denominador común");
+    assert_eq!(
+        substeps[1]["title"],
+        "Simplificar el numerador y el denominador"
+    );
+    assert_eq!(steps[1]["rule"], "Agrupar términos semejantes");
+    let before_latex = steps[1]["before_latex"]
+        .as_str()
+        .expect("step 2 before_latex");
+    assert!(
+        before_latex.contains("\\frac{{\\color{red}{1 + x - (x - 1)}}}{(x - 1)\\cdot (1 + x)}"),
+        "step 2 should highlight the full numerator scope, got: {before_latex}"
+    );
+    assert!(
+        !before_latex.contains("{\\color{red}{{x}^{2}}}"),
+        "step 2 should not leak the highlight into the unrelated second denominator, got: {before_latex}"
+    );
+}
+
+#[test]
 fn eval_trig_sine_product_cubic_cosine_difference_to_zero_uses_combined_bridge_step() {
     let (output, _code) = run_cli(&[
         "eval",
@@ -3935,6 +4008,127 @@ fn eval_hyperbolic_cubic_residual_difference_to_zero_uses_pythagorean_bridge_aft
     assert_eq!(substeps[0]["title"], "Sacar factor común");
     assert_eq!(substeps[1]["title"], "Usar sinh(u)^2 + 1 = cosh(u)^2");
     assert_eq!(substeps[2]["title"], "Cancelar términos iguales");
+}
+
+#[test]
+fn eval_polynomial_identity_common_factor_zero_uses_factor_common_substeps() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "x*y + x*z - x*(y+z)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    let substeps = steps[0]["substeps"].as_array().expect("substeps array");
+    assert_eq!(substeps.len(), 2);
+    assert_eq!(substeps[0]["title"], "Usar el factor común");
+    assert_eq!(substeps[1]["title"], "Aquí el factor común es x");
+}
+
+#[test]
+fn eval_polynomial_identity_binomial_square_zero_uses_square_formula_substeps() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "x^2 + 2*x + 1 - (x+1)^2",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    let substeps = steps[0]["substeps"].as_array().expect("substeps array");
+    assert_eq!(substeps.len(), 2);
+    assert_eq!(substeps[0]["title"], "Usar a^2 + 2ab + b^2 = (a + b)^2");
+    assert_eq!(substeps[1]["title"], "Aquí a = x y b = 1");
+}
+
+#[test]
+fn eval_polynomial_identity_geometric_difference_zero_uses_factorization_substeps() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "x^6 - 1 - (x-1)*(x^5+x^4+x^3+x^2+x+1)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    let substeps = steps[0]["substeps"].as_array().expect("substeps array");
+    assert_eq!(substeps.len(), 2);
+    assert_eq!(
+        substeps[0]["title"],
+        "Usar a^n - 1 = (a - 1) · (a^(n-1) + a^(n-2) + ... + a + 1)"
+    );
+    assert_eq!(substeps[1]["title"], "Aquí a = x y n = 6");
+}
+
+#[test]
+fn eval_polynomial_identity_sophie_germain_zero_uses_named_substeps() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "x^4 + 4*y^4 - (x^2-2*x*y+2*y^2)*(x^2+2*x*y+2*y^2)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    let substeps = steps[0]["substeps"].as_array().expect("substeps array");
+    assert_eq!(substeps.len(), 2);
+    assert_eq!(
+        substeps[0]["title"],
+        "Usar a^4 + 4b^4 = (a^2 - 2ab + 2b^2) · (a^2 + 2ab + 2b^2)"
+    );
+    assert_eq!(substeps[1]["title"], "Aquí a = x y b = y");
+}
+
+#[test]
+fn eval_cubes_quotient_zero_uses_factor_then_cancel_substeps() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "(a^3-b^3)/(a-b) - (a^2 + a*b + b^2)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Subtract Expanded Sum/Difference of Cubes Quotient"
+    );
+    let substeps = steps[0]["substeps"].as_array().expect("substeps array");
+    assert_eq!(substeps.len(), 2);
+    assert_eq!(
+        substeps[0]["title"],
+        "Usar a^3 - b^3 = (a - b)(a^2 + ab + b^2)"
+    );
+    assert_eq!(
+        substeps[1]["title"],
+        "Cancelar el factor común del numerador y el denominador"
+    );
 }
 
 #[test]
@@ -5582,6 +5776,42 @@ fn eval_log_cancellation_drops_redundant_exponent_log_substeps() {
             substeps
         );
     }
+}
+
+#[test]
+fn eval_log_power_product_difference_to_zero_uses_combined_log_cancellation_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "ln(x^3) + ln(y^2) - ln(x^3 * y^2)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 3);
+
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 3);
+    assert_eq!(steps[0]["rule"], "Sacar un exponente fuera del logaritmo");
+    assert_eq!(steps[1]["rule"], "Sacar un exponente fuera del logaritmo");
+    assert_eq!(
+        steps[2]["rule"],
+        "Expandir logaritmos y cancelar términos iguales"
+    );
+    let substeps = steps[2]["substeps"].as_array().expect("substeps array");
+    assert_eq!(substeps.len(), 3);
+    assert_eq!(
+        substeps[0]["title"],
+        "Expandir el logaritmo del producto o del cociente"
+    );
+    assert_eq!(
+        substeps[1]["title"],
+        "Sacar exponentes fuera del logaritmo cuando sea necesario"
+    );
+    assert_eq!(substeps[2]["title"], "Cancelar términos iguales");
 }
 
 #[test]

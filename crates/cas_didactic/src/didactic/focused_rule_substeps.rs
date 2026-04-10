@@ -86,7 +86,9 @@ pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<
         }
         "Double Angle Expansion" => generate_double_angle_expansion_substeps(ctx, step),
         "Double Angle Contraction" => generate_double_angle_contraction_substeps(step),
-        "Half-Angle Square Identity" => generate_half_angle_square_identity_substeps(step),
+        "Half-Angle Square Identity" | "Angle Consistency (Half-Angle)" => {
+            generate_half_angle_square_identity_substeps(ctx, step)
+        }
         "Expand Secant Squared" | "Expand Cosecant Squared" => {
             generate_sec_csc_squared_expansion_substeps(step)
         }
@@ -138,6 +140,9 @@ pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<
         "Subtraction Self-Cancel" => generate_subtraction_self_cancel_substeps(ctx, step),
         "Cancel Reciprocal Exponents" => generate_cancel_reciprocal_exponents_substeps(ctx, step),
         "Polynomial Identity" => generate_polynomial_identity_exact_cancel_substeps(ctx, step),
+        "Subtract Expanded Sum/Difference of Cubes Quotient" => {
+            generate_subtract_expanded_cubes_quotient_substeps(ctx, step)
+        }
         "Polynomial Product Normalize" => generate_polynomial_product_normalize_substeps(ctx, step),
         "Sqrt Perfect Square" | "Simplify Square Root" => {
             generate_sqrt_perfect_square_substeps(ctx, step)
@@ -479,9 +484,8 @@ fn generate_add_subtract_fractions_substeps(ctx: &Context, step: &Step) -> Vec<S
 }
 
 fn both_fraction_numerators_are_one(ctx: &Context, expr: ExprId) -> bool {
-    let (left, right) = match ctx.get(expr) {
-        Expr::Add(left, right) | Expr::Sub(left, right) => (*left, *right),
-        _ => return false,
+    let Some((left, right, _is_subtraction)) = extract_fraction_add_sub_operands(ctx, expr) else {
+        return false;
     };
 
     let Some((left_num, _)) = as_div(ctx, left) else {
@@ -498,11 +502,7 @@ fn build_two_fraction_common_denominator_intermediate(
     ctx: &mut Context,
     expr: ExprId,
 ) -> Option<ExprId> {
-    let (left, right, is_subtraction) = match ctx.get(expr) {
-        Expr::Add(left, right) => (*left, *right, false),
-        Expr::Sub(left, right) => (*left, *right, true),
-        _ => return None,
-    };
+    let (left, right, is_subtraction) = extract_fraction_add_sub_operands(ctx, expr)?;
 
     let (left_num, left_den) = as_div(ctx, left)?;
     let (right_num, right_den) = as_div(ctx, right)?;
@@ -517,6 +517,20 @@ fn build_two_fraction_common_denominator_intermediate(
     };
 
     Some(ctx.add(Expr::Div(numerator, common_den)))
+}
+
+fn extract_fraction_add_sub_operands(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<(ExprId, ExprId, bool)> {
+    match ctx.get(expr) {
+        Expr::Add(left, right) => match ctx.get(*right) {
+            Expr::Neg(inner) => Some((*left, *inner, true)),
+            _ => Some((*left, *right, false)),
+        },
+        Expr::Sub(left, right) => Some((*left, *right, true)),
+        _ => None,
+    }
 }
 
 fn fraction_expansion_cleanup_title(ctx: &Context, intermediate: ExprId) -> String {
@@ -3685,7 +3699,31 @@ fn generate_double_angle_contraction_substeps(step: &Step) -> Vec<SubStep> {
     Vec::new()
 }
 
-fn generate_half_angle_square_identity_substeps(step: &Step) -> Vec<SubStep> {
+fn generate_half_angle_square_identity_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    if step.rule_name == "Angle Consistency (Half-Angle)"
+        || step.description.contains("Half-Angle Expansion")
+    {
+        let after = human_expr(ctx, step.after_local().unwrap_or(step.after)).replace(' ', "");
+        if after.contains("2·cos(") || after.contains("2*cos(") {
+            return vec![formula_substep(
+                "Usar cos(2u) = 2 · cos(u)^2 - 1",
+                "cos(2u)",
+                "2 · cos(u)^2 - 1",
+                "\\cos(2u)",
+                "2\\cdot \\cos^2(u) - 1",
+            )];
+        }
+        if after.contains("1-2·sin(") || after.contains("1-2*sin(") {
+            return vec![formula_substep(
+                "Usar cos(2u) = 1 - 2 · sin(u)^2",
+                "cos(2u)",
+                "1 - 2 · sin(u)^2",
+                "\\cos(2u)",
+                "1 - 2\\cdot \\sin^2(u)",
+            )];
+        }
+    }
+
     if step.description.contains("Expand sin²") {
         return vec![formula_substep(
             "Usar sin²(u) = (1 - cos(2u)) / 2",
@@ -5741,6 +5779,30 @@ fn generate_simplify_nested_fraction_substeps(ctx: &Context, step: &Step) -> Vec
 
     {
         let mut work = ctx.clone();
+        if let Some((den_before, den_after, full_intermediate)) =
+            build_one_over_fraction_plus_minus_one_intermediates(&mut work, before)
+        {
+            return vec![
+                SubStep::new(
+                    "Llevar a denominador común dentro del denominador",
+                    display_expr(&work, den_before),
+                    display_expr(&work, den_after),
+                )
+                .with_before_latex(latex_expr(&work, den_before))
+                .with_after_latex(latex_expr(&work, den_after)),
+                SubStep::new(
+                    "Invertir la fracción del denominador",
+                    display_expr(&work, full_intermediate),
+                    display_expr(ctx, after),
+                )
+                .with_before_latex(latex_expr(&work, full_intermediate))
+                .with_after_latex(latex_expr(ctx, after)),
+            ];
+        }
+    }
+
+    {
+        let mut work = ctx.clone();
         if let Some(intermediate) =
             build_sum_difference_reciprocal_complex_fraction_intermediate(&mut work, before)
         {
@@ -5810,6 +5872,54 @@ fn build_sum_difference_reciprocal_complex_fraction_intermediate(
     let numerator = build_reciprocal_pair_with_common_denominator(ctx, numerator)?;
     let denominator = build_reciprocal_pair_with_common_denominator(ctx, denominator)?;
     Some(ctx.add(Expr::Div(numerator, denominator)))
+}
+
+fn build_one_over_fraction_plus_minus_one_intermediates(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, ExprId, ExprId)> {
+    let (numerator, denominator) = as_div(ctx, expr)?;
+    if !is_one(ctx, numerator) {
+        return None;
+    }
+
+    let (_fraction_num, fraction_den, den_after) = match ctx.get(denominator).clone() {
+        Expr::Add(left, right) => {
+            if is_one(ctx, left) {
+                let (frac_num, frac_den) = as_div(ctx, right)?;
+                let combined_num = ctx.add(Expr::Add(frac_den, frac_num));
+                let den_after = ctx.add(Expr::Div(combined_num, frac_den));
+                (frac_num, frac_den, den_after)
+            } else if is_one(ctx, right) {
+                let (frac_num, frac_den) = as_div(ctx, left)?;
+                let combined_num = ctx.add(Expr::Add(frac_num, frac_den));
+                let den_after = ctx.add(Expr::Div(combined_num, frac_den));
+                (frac_num, frac_den, den_after)
+            } else {
+                return None;
+            }
+        }
+        Expr::Sub(left, right) => {
+            if is_one(ctx, left) {
+                let (frac_num, frac_den) = as_div(ctx, right)?;
+                let combined_num = ctx.add(Expr::Sub(frac_den, frac_num));
+                let den_after = ctx.add(Expr::Div(combined_num, frac_den));
+                (frac_num, frac_den, den_after)
+            } else if is_one(ctx, right) {
+                let (frac_num, frac_den) = as_div(ctx, left)?;
+                let combined_num = ctx.add(Expr::Sub(frac_num, frac_den));
+                let den_after = ctx.add(Expr::Div(combined_num, frac_den));
+                (frac_num, frac_den, den_after)
+            } else {
+                return None;
+            }
+        }
+        _ => return None,
+    };
+
+    let full_intermediate = ctx.add(Expr::Div(numerator, den_after));
+    let _ = fraction_den;
+    Some((denominator, den_after, full_intermediate))
 }
 
 fn generate_perfect_square_fraction_cancel_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
@@ -6108,6 +6218,11 @@ fn generate_polynomial_identity_exact_cancel_substeps(ctx: &Context, step: &Step
         return Vec::new();
     };
 
+    let identity_substeps = generate_identity_equivalence_substeps(ctx, left, right);
+    if !identity_substeps.is_empty() {
+        return identity_substeps;
+    }
+
     vec![SubStep::new(
         "Las dos partes representan la misma cantidad",
         display_expr(ctx, left),
@@ -6115,6 +6230,233 @@ fn generate_polynomial_identity_exact_cancel_substeps(ctx: &Context, step: &Step
     )
     .with_before_latex(latex_expr(ctx, left))
     .with_after_latex(latex_expr(ctx, right))]
+}
+
+fn generate_identity_equivalence_substeps(
+    ctx: &Context,
+    left: ExprId,
+    right: ExprId,
+) -> Vec<SubStep> {
+    if let Some((base, power)) = geometric_difference_factor_plan(ctx, left, right) {
+        let base_display = human_expr(ctx, base);
+        let base_latex = latex_expr(ctx, base);
+
+        return vec![
+            formula_substep(
+                "Usar a^n - 1 = (a - 1) · (a^(n-1) + a^(n-2) + ... + a + 1)",
+                "a^n - 1",
+                "(a - 1) · (a^(n-1) + a^(n-2) + ... + a + 1)",
+                "a^n - 1",
+                "\\left(a - 1\\right)\\left(a^{n-1} + a^{n-2} + \\cdots + a + 1\\right)",
+            ),
+            formula_substep(
+                format!("Aquí a = {base_display} y n = {power}"),
+                &format!("{base_display}^{power} - 1"),
+                &human_expr(ctx, right),
+                &format!("{base_latex}^{{{power}}} - 1"),
+                &latex_expr(ctx, right),
+            ),
+        ];
+    }
+
+    if let Some((factor, kind)) = common_factor_factorization_plan(ctx, left, right) {
+        let factor_display = human_expr(ctx, factor);
+        let (formula_before, formula_after, formula_before_latex, formula_after_latex) = match kind
+        {
+            Sign::Pos => (
+                "a · b + a · c",
+                "a · (b + c)",
+                "a\\cdot b + a\\cdot c",
+                "a\\cdot \\left(b + c\\right)",
+            ),
+            Sign::Neg => (
+                "a · b - a · c",
+                "a · (b - c)",
+                "a\\cdot b - a\\cdot c",
+                "a\\cdot \\left(b - c\\right)",
+            ),
+        };
+
+        return vec![
+            formula_substep(
+                "Usar el factor común",
+                formula_before,
+                formula_after,
+                formula_before_latex,
+                formula_after_latex,
+            ),
+            formula_substep(
+                format!("Aquí el factor común es {factor_display}"),
+                &human_expr(ctx, left),
+                &human_expr(ctx, right),
+                &latex_expr(ctx, left),
+                &latex_expr(ctx, right),
+            ),
+        ];
+    }
+
+    if let Some((left_base, right_base, kind)) = binomial_square_terms(ctx, right) {
+        let (left_base, right_base) = prefer_non_constant_term_first(ctx, left_base, right_base);
+        let left_display = human_expr(ctx, left_base);
+        let right_display = human_expr(ctx, right_base);
+        let left_latex = latex_expr(ctx, left_base);
+        let right_latex = latex_expr(ctx, right_base);
+        let (title, before_display, before_latex) = match kind {
+            BinomialSquareKind::Sum => (
+                "Usar a^2 + 2ab + b^2 = (a + b)^2",
+                format!(
+                    "{left_display}^2 + 2 · {left_display} · {right_display} + {right_display}^2"
+                ),
+                format!(
+                    "{left_latex}^2 + 2\\cdot {left_latex}\\cdot {right_latex} + {right_latex}^2"
+                ),
+            ),
+            BinomialSquareKind::Difference => (
+                "Usar a^2 - 2ab + b^2 = (a - b)^2",
+                format!(
+                    "{left_display}^2 - 2 · {left_display} · {right_display} + {right_display}^2"
+                ),
+                format!(
+                    "{left_latex}^2 - 2\\cdot {left_latex}\\cdot {right_latex} + {right_latex}^2"
+                ),
+            ),
+        };
+
+        let identity_substep = formula_substep(
+            title,
+            match kind {
+                BinomialSquareKind::Sum => "a^2 + 2 · a · b + b^2",
+                BinomialSquareKind::Difference => "a^2 - 2 · a · b + b^2",
+            },
+            match kind {
+                BinomialSquareKind::Sum => "(a + b)^2",
+                BinomialSquareKind::Difference => "(a - b)^2",
+            },
+            match kind {
+                BinomialSquareKind::Sum => "a^2 + 2ab + b^2",
+                BinomialSquareKind::Difference => "a^2 - 2ab + b^2",
+            },
+            match kind {
+                BinomialSquareKind::Sum => "\\left(a + b\\right)^2",
+                BinomialSquareKind::Difference => "\\left(a - b\\right)^2",
+            },
+        );
+
+        if has_trivial_binomial_placeholder_mapping(ctx, left_base, right_base) {
+            return vec![identity_substep];
+        }
+
+        return vec![
+            identity_substep,
+            formula_substep(
+                format!("Aquí a = {left_display} y b = {right_display}"),
+                &before_display,
+                &human_expr(ctx, right),
+                &before_latex,
+                &latex_expr(ctx, right),
+            ),
+        ];
+    }
+
+    if let Some((a, b)) = sophie_germain_terms(ctx, left) {
+        let a_display = human_expr(ctx, a);
+        let b_display = human_expr(ctx, b);
+        let a_latex = latex_expr(ctx, a);
+        let b_latex = latex_expr(ctx, b);
+
+        return vec![
+            formula_substep(
+                "Usar a^4 + 4b^4 = (a^2 - 2ab + 2b^2) · (a^2 + 2ab + 2b^2)",
+                "a^4 + 4 · b^4",
+                "(a^2 - 2 · a · b + 2 · b^2) · (a^2 + 2 · a · b + 2 · b^2)",
+                "a^4 + 4b^4",
+                "\\left(a^2 - 2ab + 2b^2\\right)\\left(a^2 + 2ab + 2b^2\\right)",
+            ),
+            formula_substep(
+                format!("Aquí a = {a_display} y b = {b_display}"),
+                &format!("{a_display}^4 + 4 · {b_display}^4"),
+                &human_expr(ctx, right),
+                &format!("{a_latex}^4 + 4\\cdot {b_latex}^4"),
+                &latex_expr(ctx, right),
+            ),
+        ];
+    }
+
+    Vec::new()
+}
+
+fn generate_subtract_expanded_cubes_quotient_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    let before = step.before_local().unwrap_or(step.before);
+    let Some((left, right)) = difference_like_terms(ctx, before) else {
+        return Vec::new();
+    };
+    let Some((numerator, denominator)) = as_div(ctx, left) else {
+        return Vec::new();
+    };
+    let Some(plan) = cube_identity_plan_for_fraction_cancel(ctx, numerator, denominator) else {
+        return Vec::new();
+    };
+    let base_left = plan.left_base;
+    let base_right = plan.right_base;
+    let kind = plan.kind;
+
+    let left_display = human_expr(ctx, base_left);
+    let right_display = human_expr(ctx, base_right);
+    let left_latex = latex_expr(ctx, base_left);
+    let right_latex = latex_expr(ctx, base_right);
+    let identity_title = match kind {
+        CubeIdentityKind::Sum => "Usar a^3 + b^3 = (a + b)(a^2 - ab + b^2)",
+        CubeIdentityKind::Difference => "Usar a^3 - b^3 = (a - b)(a^2 + ab + b^2)",
+    };
+    let numerator_display = match kind {
+        CubeIdentityKind::Sum => format!("{left_display}^3 + {right_display}^3"),
+        CubeIdentityKind::Difference => format!("{left_display}^3 - {right_display}^3"),
+    };
+    let numerator_latex = match kind {
+        CubeIdentityKind::Sum => format!("{left_latex}^3 + {right_latex}^3"),
+        CubeIdentityKind::Difference => format!("{left_latex}^3 - {right_latex}^3"),
+    };
+    let factored_display = human_expr(ctx, numerator);
+    let factored_latex = latex_expr(ctx, numerator);
+
+    vec![
+        formula_substep(
+            identity_title,
+            match kind {
+                CubeIdentityKind::Sum => "a^3 + b^3",
+                CubeIdentityKind::Difference => "a^3 - b^3",
+            },
+            match kind {
+                CubeIdentityKind::Sum => "(a + b) · (a^2 - a · b + b^2)",
+                CubeIdentityKind::Difference => "(a - b) · (a^2 + a · b + b^2)",
+            },
+            match kind {
+                CubeIdentityKind::Sum => "a^3 + b^3",
+                CubeIdentityKind::Difference => "a^3 - b^3",
+            },
+            match kind {
+                CubeIdentityKind::Sum => "\\left(a + b\\right)\\left(a^2 - ab + b^2\\right)",
+                CubeIdentityKind::Difference => "\\left(a - b\\right)\\left(a^2 + ab + b^2\\right)",
+            },
+        ),
+        formula_substep(
+            format!("Aquí a = {left_display} y b = {right_display}"),
+            &numerator_display,
+            &factored_display,
+            &numerator_latex,
+            &factored_latex,
+        ),
+        formula_substep(
+            "Cancelar el factor común del numerador y el denominador",
+            &format!("{factored_display} / {}", human_expr(ctx, denominator)),
+            &human_expr(ctx, right),
+            &format!(
+                "\\frac{{{factored_latex}}}{{{}}}",
+                latex_expr(ctx, denominator)
+            ),
+            &latex_expr(ctx, right),
+        ),
+    ]
 }
 
 fn generate_cancel_reciprocal_exponents_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
