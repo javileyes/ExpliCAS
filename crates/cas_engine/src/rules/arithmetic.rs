@@ -12,7 +12,13 @@ use cas_math::arithmetic_rule_support::{
 use cas_math::arithmetic_zero_support::{match_div_zero_numerator_pattern, match_mul_zero_pattern};
 use cas_math::expr_destructure::{as_div, as_mul};
 use cas_math::expr_nary::{AddView, Sign};
+use cas_math::expr_rewrite::smart_mul;
 use cas_math::logarithm_inverse_support::{make_log_expr, try_extract_log_parts};
+use cas_math::trig_sum_product_support::{
+    build_avg_with_simplifier, build_half_diff_with_simplifier, extract_trig_two_term_diff,
+    extract_trig_two_term_sum, normalize_for_even_fn, try_rewrite_sum_to_product_contraction_expr,
+    TrigSumToProductContractionRewriteKind,
+};
 use std::cmp::Ordering;
 
 fn canonicalize_nested_integer_powers(
@@ -94,6 +100,129 @@ fn collect_add_terms(
             collect_add_terms(ctx, *rhs, out);
         }
         _ => out.push(expr),
+    }
+}
+
+fn expr_contains_any_builtin(
+    ctx: &cas_ast::Context,
+    root: cas_ast::ExprId,
+    builtins: &[BuiltinFn],
+) -> bool {
+    let mut stack = vec![root];
+    while let Some(expr) = stack.pop() {
+        match ctx.get(expr) {
+            Expr::Function(fn_id, args) => {
+                if builtins
+                    .iter()
+                    .any(|builtin| ctx.is_builtin(*fn_id, *builtin))
+                {
+                    return true;
+                }
+                stack.extend(args.iter().copied());
+            }
+            Expr::Add(lhs, rhs)
+            | Expr::Sub(lhs, rhs)
+            | Expr::Mul(lhs, rhs)
+            | Expr::Div(lhs, rhs)
+            | Expr::Pow(lhs, rhs) => {
+                stack.push(*lhs);
+                stack.push(*rhs);
+            }
+            Expr::Neg(inner) | Expr::Hold(inner) => stack.push(*inner),
+            Expr::Matrix { data, .. } => stack.extend(data.iter().copied()),
+            Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) | Expr::SessionRef(_) => {}
+        }
+    }
+    false
+}
+
+fn maybe_trig_sum_to_product_zero_candidate(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> bool {
+    expr_contains_any_builtin(ctx, expr, &[BuiltinFn::Sin, BuiltinFn::Cos])
+}
+
+fn maybe_hyperbolic_angle_sum_diff_zero_candidate(
+    ctx: &cas_ast::Context,
+    root: cas_ast::ExprId,
+) -> bool {
+    let mut stack = vec![root];
+    while let Some(expr) = stack.pop() {
+        match ctx.get(expr) {
+            Expr::Function(fn_id, args)
+                if (ctx.is_builtin(*fn_id, BuiltinFn::Sinh)
+                    || ctx.is_builtin(*fn_id, BuiltinFn::Cosh))
+                    && args.len() == 1 =>
+            {
+                if matches!(ctx.get(args[0]), Expr::Add(_, _) | Expr::Sub(_, _)) {
+                    return true;
+                }
+                stack.push(args[0]);
+            }
+            Expr::Function(_, args) => stack.extend(args.iter().copied()),
+            Expr::Add(lhs, rhs)
+            | Expr::Sub(lhs, rhs)
+            | Expr::Mul(lhs, rhs)
+            | Expr::Div(lhs, rhs)
+            | Expr::Pow(lhs, rhs) => {
+                stack.push(*lhs);
+                stack.push(*rhs);
+            }
+            Expr::Neg(inner) | Expr::Hold(inner) => stack.push(*inner),
+            Expr::Matrix { data, .. } => stack.extend(data.iter().copied()),
+            Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) | Expr::SessionRef(_) => {}
+        }
+    }
+    false
+}
+
+fn expr_contains_sqrt_or_half_power(ctx: &cas_ast::Context, root: cas_ast::ExprId) -> bool {
+    let mut stack = vec![root];
+    let half = num_rational::BigRational::new(1.into(), 2.into());
+
+    while let Some(expr) = stack.pop() {
+        match ctx.get(expr) {
+            Expr::Function(fn_id, args)
+                if ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) && args.len() == 1 =>
+            {
+                return true;
+            }
+            Expr::Function(_, args) => stack.extend(args.iter().copied()),
+            Expr::Pow(base, exp) => {
+                if matches!(ctx.get(*exp), Expr::Number(n) if *n == half) {
+                    return true;
+                }
+                stack.push(*base);
+                stack.push(*exp);
+            }
+            Expr::Add(lhs, rhs)
+            | Expr::Sub(lhs, rhs)
+            | Expr::Mul(lhs, rhs)
+            | Expr::Div(lhs, rhs) => {
+                stack.push(*lhs);
+                stack.push(*rhs);
+            }
+            Expr::Neg(inner) | Expr::Hold(inner) => stack.push(*inner),
+            Expr::Matrix { data, .. } => stack.extend(data.iter().copied()),
+            Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) | Expr::SessionRef(_) => {}
+        }
+    }
+
+    false
+}
+
+fn maybe_odd_half_power_zero_candidate(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> bool {
+    match ctx.get(expr) {
+        Expr::Sub(lhs, rhs) => {
+            expr_contains_sqrt_or_half_power(ctx, *lhs)
+                || expr_contains_sqrt_or_half_power(ctx, *rhs)
+        }
+        Expr::Add(lhs, rhs) => match ctx.get(*rhs) {
+            Expr::Neg(inner) => {
+                expr_contains_sqrt_or_half_power(ctx, *lhs)
+                    || expr_contains_sqrt_or_half_power(ctx, *inner)
+            }
+            _ => false,
+        },
+        _ => false,
     }
 }
 
@@ -474,6 +603,422 @@ fn rebuild_subtractive_expr(
     }
 }
 
+fn exprs_match_for_cancellation(
+    ctx: &mut cas_ast::Context,
+    lhs: cas_ast::ExprId,
+    rhs: cas_ast::ExprId,
+) -> bool {
+    if compare_expr(ctx, lhs, rhs) == Ordering::Equal
+        || cas_math::expr_domain::exprs_equivalent(ctx, lhs, rhs)
+        || exprs_equal_up_to_add_term_order(ctx, lhs, rhs)
+    {
+        return true;
+    }
+
+    let lhs_normalized = cas_math::canonical_forms::normalize_core(ctx, lhs);
+    let rhs_normalized = cas_math::canonical_forms::normalize_core(ctx, rhs);
+    compare_expr(ctx, lhs_normalized, rhs_normalized) == Ordering::Equal
+        || cas_math::expr_domain::exprs_equivalent(ctx, lhs_normalized, rhs_normalized)
+        || exprs_equal_up_to_add_term_order(ctx, lhs_normalized, rhs_normalized)
+}
+
+fn exprs_match_after_default_simplify(
+    ctx: &mut cas_ast::Context,
+    lhs: cas_ast::ExprId,
+    rhs: cas_ast::ExprId,
+) -> bool {
+    if exprs_match_for_cancellation(ctx, lhs, rhs) {
+        return true;
+    }
+
+    let lhs_simplified = run_default_simplify(ctx, lhs);
+    let rhs_simplified = run_default_simplify(ctx, rhs);
+    exprs_match_for_cancellation(ctx, lhs_simplified, rhs_simplified)
+}
+
+fn expr_matches_negation_for_cancellation(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+    target: cas_ast::ExprId,
+) -> bool {
+    let neg_target = ctx.add(Expr::Neg(target));
+    exprs_match_for_cancellation(ctx, expr, neg_target)
+}
+
+fn expr_matches_negation_after_default_simplify(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+    target: cas_ast::ExprId,
+) -> bool {
+    let neg_target = ctx.add(Expr::Neg(target));
+    exprs_match_after_default_simplify(ctx, expr, neg_target)
+}
+
+fn signed_term_expr(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+    sign: Sign,
+) -> cas_ast::ExprId {
+    match sign {
+        Sign::Pos => expr,
+        Sign::Neg => ctx.add(Expr::Neg(expr)),
+    }
+}
+
+fn build_signed_sum_expr(
+    ctx: &mut cas_ast::Context,
+    terms: &[(cas_ast::ExprId, Sign)],
+) -> cas_ast::ExprId {
+    let Some((first_expr, first_sign)) = terms.first().copied() else {
+        return ctx.num(0);
+    };
+    let mut acc = signed_term_expr(ctx, first_expr, first_sign);
+    for (expr, sign) in terms.iter().copied().skip(1) {
+        let term = signed_term_expr(ctx, expr, sign);
+        acc = ctx.add(Expr::Add(acc, term));
+    }
+    acc
+}
+
+fn try_rewrite_trig_sum_to_product_for_cancellation(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<(cas_ast::ExprId, &'static str)> {
+    if let Some(rewrite) = try_rewrite_sum_to_product_contraction_expr(ctx, expr) {
+        let description = match rewrite.kind {
+            TrigSumToProductContractionRewriteKind::SinSum => "Expand sine sum to product",
+            TrigSumToProductContractionRewriteKind::SinDiff => "Expand sine difference to product",
+            TrigSumToProductContractionRewriteKind::CosSum => "Expand cosine sum to product",
+            TrigSumToProductContractionRewriteKind::CosDiff => {
+                "Expand cosine difference to product"
+            }
+        };
+        return Some((rewrite.rewritten, description));
+    }
+
+    let two = ctx.num(2);
+
+    if let Some((arg_a, arg_b)) = extract_trig_two_term_sum(ctx, expr, "sin") {
+        let avg_arg = build_avg_with_simplifier(ctx, arg_a, arg_b, crate::collect::collect);
+        let half_diff_arg =
+            build_half_diff_with_simplifier(ctx, arg_a, arg_b, false, crate::collect::collect);
+        let sin_avg = ctx.call_builtin(BuiltinFn::Sin, vec![avg_arg]);
+        let cos_half_diff = ctx.call_builtin(BuiltinFn::Cos, vec![half_diff_arg]);
+        let product = smart_mul(ctx, sin_avg, cos_half_diff);
+        return Some((smart_mul(ctx, two, product), "Expand sine sum to product"));
+    }
+
+    if let Some((arg_a, arg_b)) = extract_trig_two_term_diff(ctx, expr, "sin") {
+        let avg_arg = build_avg_with_simplifier(ctx, arg_a, arg_b, crate::collect::collect);
+        let half_diff_arg =
+            build_half_diff_with_simplifier(ctx, arg_a, arg_b, false, crate::collect::collect);
+        let cos_avg = ctx.call_builtin(BuiltinFn::Cos, vec![avg_arg]);
+        let sin_half_diff = ctx.call_builtin(BuiltinFn::Sin, vec![half_diff_arg]);
+        let product = smart_mul(ctx, cos_avg, sin_half_diff);
+        return Some((
+            smart_mul(ctx, two, product),
+            "Expand sine difference to product",
+        ));
+    }
+
+    if let Some((arg_a, arg_b)) = extract_trig_two_term_sum(ctx, expr, "cos") {
+        let avg_arg = build_avg_with_simplifier(ctx, arg_a, arg_b, crate::collect::collect);
+        let half_diff_arg =
+            build_half_diff_with_simplifier(ctx, arg_a, arg_b, false, crate::collect::collect);
+        let half_diff_arg = normalize_for_even_fn(ctx, half_diff_arg);
+        let cos_avg = ctx.call_builtin(BuiltinFn::Cos, vec![avg_arg]);
+        let cos_half_diff = ctx.call_builtin(BuiltinFn::Cos, vec![half_diff_arg]);
+        let product = smart_mul(ctx, cos_avg, cos_half_diff);
+        return Some((smart_mul(ctx, two, product), "Expand cosine sum to product"));
+    }
+
+    if let Some((arg_a, arg_b)) = extract_trig_two_term_diff(ctx, expr, "cos") {
+        let avg_arg = build_avg_with_simplifier(ctx, arg_a, arg_b, crate::collect::collect);
+        let half_diff_arg =
+            build_half_diff_with_simplifier(ctx, arg_a, arg_b, false, crate::collect::collect);
+        let sin_avg = ctx.call_builtin(BuiltinFn::Sin, vec![avg_arg]);
+        let sin_half_diff = ctx.call_builtin(BuiltinFn::Sin, vec![half_diff_arg]);
+        let product = smart_mul(ctx, sin_avg, sin_half_diff);
+        let two_product = smart_mul(ctx, two, product);
+        return Some((
+            ctx.add(Expr::Neg(two_product)),
+            "Expand cosine difference to product",
+        ));
+    }
+
+    None
+}
+
+fn try_rewrite_hyperbolic_angle_sum_diff_for_cancellation(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<cas_ast::ExprId> {
+    let rewritten = cas_math::expand_ops::expand(ctx, expr);
+    (rewritten != expr).then_some(rewritten)
+}
+
+fn try_build_exact_trig_sum_to_product_zero_scope_rewrite(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<Rewrite> {
+    let view = AddView::from_expr(ctx, expr);
+    if view.terms.len() != 3 {
+        return None;
+    }
+
+    for first_index in 0..view.terms.len() {
+        for second_index in (first_index + 1)..view.terms.len() {
+            let focus_terms = [view.terms[first_index], view.terms[second_index]];
+            let focus_expr = build_signed_sum_expr(ctx, &focus_terms);
+            let Some((rewritten, description)) =
+                try_rewrite_trig_sum_to_product_for_cancellation(ctx, focus_expr)
+            else {
+                continue;
+            };
+
+            let Some(remaining_index) =
+                (0..view.terms.len()).find(|index| *index != first_index && *index != second_index)
+            else {
+                continue;
+            };
+            let remaining_expr = signed_term_expr(
+                ctx,
+                view.terms[remaining_index].0,
+                view.terms[remaining_index].1,
+            );
+
+            if expr_matches_negation_after_default_simplify(ctx, rewritten, remaining_expr) {
+                return Some(
+                    Rewrite::with_local(ctx.num(0), description, focus_expr, rewritten).substep(
+                        "Cancelar términos iguales",
+                        vec![
+                            "Tras aplicar la identidad, el término restante es el opuesto y toda la expresión se anula."
+                                .to_string(),
+                        ],
+                    ),
+                );
+            }
+        }
+    }
+
+    None
+}
+
+fn try_build_exact_hyperbolic_angle_sum_diff_zero_scope_rewrite(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<Rewrite> {
+    let view = AddView::from_expr(ctx, expr);
+    if view.terms.len() != 3 {
+        return None;
+    }
+
+    for focus_index in 0..view.terms.len() {
+        let (focus_expr, focus_sign) = view.terms[focus_index];
+        if focus_sign != Sign::Pos {
+            continue;
+        }
+
+        let Some(rewritten) =
+            try_rewrite_hyperbolic_angle_sum_diff_for_cancellation(ctx, focus_expr)
+        else {
+            continue;
+        };
+
+        let remaining_terms: Vec<_> = view
+            .terms
+            .iter()
+            .copied()
+            .enumerate()
+            .filter_map(|(index, term)| (index != focus_index).then_some(term))
+            .collect();
+        let remaining_expr = build_signed_sum_expr(ctx, &remaining_terms);
+
+        let neg_rewritten = ctx.add(Expr::Neg(rewritten));
+        if expr_matches_negation_for_cancellation(ctx, rewritten, remaining_expr)
+            || exprs_match_after_default_simplify(ctx, neg_rewritten, remaining_expr)
+        {
+            return Some(
+                Rewrite::with_local(
+                    ctx.num(0),
+                    "Expand hyperbolic angle sum/difference",
+                    focus_expr,
+                    rewritten,
+                )
+                .substep(
+                    "Cancelar términos iguales",
+                    vec![
+                        "Tras aplicar la identidad, el resto de la expresión es exactamente el opuesto y el resultado es 0."
+                            .to_string(),
+                    ],
+                ),
+            );
+        }
+    }
+
+    None
+}
+
+define_rule!(
+    ExpandTrigSumToProductToEnableCancellationRule,
+    "Sum-to-Product Identity Cancellation Bridge",
+    Some(crate::target_kind::TargetKindSet::ADD.union(crate::target_kind::TargetKindSet::SUB)),
+    crate::phase::PhaseMask::POST,
+    priority: 510,
+    |ctx, expr| {
+        if !maybe_trig_sum_to_product_zero_candidate(ctx, expr) {
+            return None;
+        }
+
+        if let Some(rewrite) = try_build_exact_trig_sum_to_product_zero_scope_rewrite(ctx, expr) {
+            return Some(rewrite);
+        }
+
+        match ctx.get(expr).clone() {
+            Expr::Sub(lhs, rhs) => {
+                if let Some((rewritten, description)) =
+                    try_rewrite_trig_sum_to_product_for_cancellation(ctx, lhs)
+                {
+                    if exprs_match_after_default_simplify(ctx, rewritten, rhs) {
+                        return Some(Rewrite::with_local(
+                            ctx.add(Expr::Sub(rhs, rhs)),
+                            description,
+                            lhs,
+                            rhs,
+                        ));
+                    }
+                }
+
+                if let Some((rewritten, description)) =
+                    try_rewrite_trig_sum_to_product_for_cancellation(ctx, rhs)
+                {
+                    if exprs_match_after_default_simplify(ctx, rewritten, lhs) {
+                        return Some(Rewrite::with_local(
+                            ctx.add(Expr::Sub(lhs, lhs)),
+                            description,
+                            rhs,
+                            lhs,
+                        ));
+                    }
+                }
+
+                None
+            }
+            Expr::Add(lhs, rhs) => {
+                if let Some((rewritten, description)) =
+                    try_rewrite_trig_sum_to_product_for_cancellation(ctx, lhs)
+                {
+                    if expr_matches_negation_after_default_simplify(ctx, rewritten, rhs) {
+                        return Some(Rewrite::with_local(
+                            ctx.add(Expr::Add(rewritten, rhs)),
+                            description,
+                            lhs,
+                            rewritten,
+                        ));
+                    }
+                }
+
+                if let Some((rewritten, description)) =
+                    try_rewrite_trig_sum_to_product_for_cancellation(ctx, rhs)
+                {
+                    if expr_matches_negation_after_default_simplify(ctx, rewritten, lhs) {
+                        return Some(Rewrite::with_local(
+                            ctx.add(Expr::Add(lhs, rewritten)),
+                            description,
+                            rhs,
+                            rewritten,
+                        ));
+                    }
+                }
+
+                None
+            }
+            _ => None,
+        }
+    }
+);
+
+define_rule!(
+    ExpandHyperbolicAngleSumDiffToEnableCancellationRule,
+    "Hyperbolic Angle Sum/Difference Identity",
+    Some(crate::target_kind::TargetKindSet::ADD.union(crate::target_kind::TargetKindSet::SUB)),
+    crate::phase::PhaseMask::POST,
+    priority: 510,
+    |ctx, expr| {
+        if !maybe_hyperbolic_angle_sum_diff_zero_candidate(ctx, expr) {
+            return None;
+        }
+
+        if let Some(rewrite) =
+            try_build_exact_hyperbolic_angle_sum_diff_zero_scope_rewrite(ctx, expr)
+        {
+            return Some(rewrite);
+        }
+
+        match ctx.get(expr).clone() {
+            Expr::Sub(lhs, rhs) => {
+                if let Some(rewritten) =
+                    try_rewrite_hyperbolic_angle_sum_diff_for_cancellation(ctx, lhs)
+                {
+                    if exprs_match_after_default_simplify(ctx, rewritten, rhs) {
+                        return Some(Rewrite::with_local(
+                            ctx.add(Expr::Sub(rhs, rhs)),
+                            "Expand hyperbolic angle sum/difference",
+                            lhs,
+                            rhs,
+                        ));
+                    }
+                }
+
+                if let Some(rewritten) =
+                    try_rewrite_hyperbolic_angle_sum_diff_for_cancellation(ctx, rhs)
+                {
+                    if exprs_match_after_default_simplify(ctx, rewritten, lhs) {
+                        return Some(Rewrite::with_local(
+                            ctx.add(Expr::Sub(lhs, lhs)),
+                            "Expand hyperbolic angle sum/difference",
+                            rhs,
+                            lhs,
+                        ));
+                    }
+                }
+
+                None
+            }
+            Expr::Add(lhs, rhs) => {
+                if let Some(rewritten) =
+                    try_rewrite_hyperbolic_angle_sum_diff_for_cancellation(ctx, lhs)
+                {
+                    if expr_matches_negation_for_cancellation(ctx, rewritten, rhs) {
+                        return Some(Rewrite::with_local(
+                            ctx.add(Expr::Add(rewritten, rhs)),
+                            "Expand hyperbolic angle sum/difference",
+                            lhs,
+                            rewritten,
+                        ));
+                    }
+                }
+
+                if let Some(rewritten) =
+                    try_rewrite_hyperbolic_angle_sum_diff_for_cancellation(ctx, rhs)
+                {
+                    if expr_matches_negation_for_cancellation(ctx, rewritten, lhs) {
+                        return Some(Rewrite::with_local(
+                            ctx.add(Expr::Add(lhs, rewritten)),
+                            "Expand hyperbolic angle sum/difference",
+                            rhs,
+                            rewritten,
+                        ));
+                    }
+                }
+
+                None
+            }
+            _ => None,
+        }
+    }
+);
+
 define_rule!(
     AddZeroRule,
     "Identity Property of Addition",
@@ -614,8 +1159,14 @@ define_rule!(
 define_rule!(
     ExpandOddHalfPowerToEnableCancellationRule,
     "Expand Odd Half Power",
+    Some(crate::target_kind::TargetKindSet::ADD.union(crate::target_kind::TargetKindSet::SUB)),
+    crate::phase::PhaseMask::POST,
     priority: 510,
     |ctx, expr| {
+        if !maybe_odd_half_power_zero_candidate(ctx, expr) {
+            return None;
+        }
+
         let (lhs, rhs, was_add_with_neg) = match ctx.get(expr) {
             Expr::Sub(lhs, rhs) => (*lhs, *rhs, false),
             Expr::Add(lhs, rhs) => match ctx.get(*rhs) {
@@ -904,8 +1455,10 @@ define_rule!(AddInverseRule, "Add Inverse", |ctx, expr, parent_ctx| {
 mod tests {
     use super::{
         canonicalize_nested_integer_powers, exprs_equal_up_to_add_term_order,
+        ExpandHyperbolicAngleSumDiffToEnableCancellationRule,
         ExpandLogAbsMulDivToEnableCancellationRule, ExpandOddHalfPowerToEnableCancellationRule,
-        SubSelfToZeroRule, SubtractExpandedSumDiffCubesQuotientRule,
+        ExpandTrigSumToProductToEnableCancellationRule, SubSelfToZeroRule,
+        SubtractExpandedSumDiffCubesQuotientRule,
     };
     use crate::parent_context::ParentContext;
     use crate::rule::Rule;
@@ -1058,6 +1611,84 @@ mod tests {
     }
 
     #[test]
+    fn expand_trig_sum_to_product_to_enable_cancellation_rule_matches_symbolic_sine_sum() {
+        let mut ctx = Context::new();
+        let expr = parse("sin(x) + sin(y) - 2*sin((x+y)/2)*cos((x-y)/2)", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rule = ExpandTrigSumToProductToEnableCancellationRule;
+        let rewrite = rule
+            .apply(&mut ctx, expr, &parent_ctx)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "0"
+        );
+        assert_eq!(rewrite.description, "Expand sine sum to product");
+    }
+
+    #[test]
+    fn expand_trig_sum_to_product_to_enable_cancellation_rule_matches_symbolic_cosine_difference() {
+        let mut ctx = Context::new();
+        let expr = parse("cos(x) - cos(y) + 2*sin((x+y)/2)*sin((x-y)/2)", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rule = ExpandTrigSumToProductToEnableCancellationRule;
+        let rewrite = rule
+            .apply(&mut ctx, expr, &parent_ctx)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "0"
+        );
+        assert_eq!(rewrite.description, "Expand cosine difference to product");
+    }
+
+    #[test]
+    fn expand_hyperbolic_angle_sum_diff_to_enable_cancellation_rule_matches_sinh_sum() {
+        let mut ctx = Context::new();
+        let expr = parse("sinh(x+y) - (sinh(x)*cosh(y) + cosh(x)*sinh(y))", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rule = ExpandHyperbolicAngleSumDiffToEnableCancellationRule;
+        let rewrite = rule
+            .apply(&mut ctx, expr, &parent_ctx)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "0"
+        );
+        assert_eq!(
+            rewrite.description,
+            "Expand hyperbolic angle sum/difference"
+        );
+    }
+
+    #[test]
     fn subtract_expanded_sum_diff_cubes_quotient_rule_matches_trig_square_cube_residual() {
         let mut ctx = Context::new();
         let expr = parse(
@@ -1155,6 +1786,10 @@ define_rule!(
 
 pub fn register(simplifier: &mut crate::Simplifier) {
     // High-priority short-circuit rules first
+    simplifier.add_rule(Box::new(ExpandTrigSumToProductToEnableCancellationRule));
+    simplifier.add_rule(Box::new(
+        ExpandHyperbolicAngleSumDiffToEnableCancellationRule,
+    ));
     simplifier.add_rule(Box::new(ExpandOddHalfPowerToEnableCancellationRule));
     simplifier.add_rule(Box::new(ExpandLogAbsMulDivToEnableCancellationRule));
     simplifier.add_rule(Box::new(SubSelfToZeroRule)); // priority 500: before expansion

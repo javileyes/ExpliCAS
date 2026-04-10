@@ -20,6 +20,7 @@ pub(crate) fn visible_rule_name(rule_name: &str) -> &str {
         "Complete the Square" => "Completar el cuadrado",
         "Product-to-Sum Identity" => "Aplicar producto a suma",
         "Sum-to-Product Identity" => "Aplicar suma a producto",
+        "Sum-to-Product Identity Cancellation Bridge" => "Aplicar suma a producto",
         "Phase Shift Identity" => "Aplicar identidad de desfase",
         "Double Angle Expansion" => "Expandir ángulo doble",
         "Double Angle Contraction" => "Contraer ángulo doble",

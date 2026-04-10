@@ -3642,6 +3642,97 @@ fn eval_higher_odd_half_power_difference_to_zero_uses_extract_then_self_cancel_s
 }
 
 #[test]
+fn eval_symbolic_sine_sum_to_product_difference_to_zero_uses_two_didactic_steps() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "sin(x) + sin(y) - 2*sin((x+y)/2)*cos((x-y)/2)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Aplicar suma a producto");
+    let substeps = steps[0]["substeps"].as_array().expect("substeps array");
+    assert_eq!(substeps.len(), 2);
+    let titles: Vec<_> = substeps
+        .iter()
+        .map(|substep| substep["title"].as_str().expect("substep title"))
+        .collect();
+    assert!(titles
+        .iter()
+        .any(|title| title.contains("Cancelar términos iguales")));
+    assert!(titles
+        .iter()
+        .any(|title| title.contains("Usar sin(A) + sin(B)")));
+}
+
+#[test]
+fn eval_symbolic_cosine_difference_sum_to_product_difference_to_zero_uses_two_steps() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "cos(x) - cos(y) + 2*sin((x+y)/2)*sin((x-y)/2)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Aplicar suma a producto");
+    let substeps = steps[0]["substeps"].as_array().expect("substeps array");
+    assert_eq!(substeps.len(), 2);
+    let titles: Vec<_> = substeps
+        .iter()
+        .map(|substep| substep["title"].as_str().expect("substep title"))
+        .collect();
+    assert!(titles
+        .iter()
+        .any(|title| title.contains("Cancelar términos iguales")));
+    assert!(titles
+        .iter()
+        .any(|title| title.contains("Usar cos(A) - cos(B)")));
+}
+
+#[test]
+fn eval_hyperbolic_angle_sum_difference_to_zero_uses_expand_then_self_cancel() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "sinh(x+y) - (sinh(x)*cosh(y) + cosh(x)*sinh(y))",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Angle Sum/Difference Identity");
+    let substeps = steps[0]["substeps"].as_array().expect("substeps array");
+    assert_eq!(substeps.len(), 2);
+    let titles: Vec<_> = substeps
+        .iter()
+        .map(|substep| substep["title"].as_str().expect("substep title"))
+        .collect();
+    assert!(titles
+        .iter()
+        .any(|title| title.contains("Cancelar términos iguales")));
+    assert!(titles.iter().any(|title| title.contains("Usar sinh(A+B)")));
+}
+
+#[test]
 fn derive_hyperbolic_double_angle_with_passthrough_uses_named_step() {
     let (output, _code) = run_cli(&[
         "eval",

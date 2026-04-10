@@ -78,7 +78,12 @@ pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<
         "Dirichlet Kernel Identity" => generate_dirichlet_kernel_substeps(ctx, step),
         "Complete the Square" => generate_complete_square_substeps(ctx, step),
         "Product-to-Sum Identity" => generate_product_to_sum_substeps(step),
-        "Sum-to-Product Identity" => generate_sum_to_product_substeps(ctx, step),
+        "Sum-to-Product Identity" | "Sum-to-Product Identity Cancellation Bridge" => {
+            generate_sum_to_product_substeps(ctx, step)
+        }
+        "Hyperbolic Angle Sum/Difference Identity" => {
+            generate_hyperbolic_angle_sum_diff_substeps(ctx, step)
+        }
         "Double Angle Expansion" => generate_double_angle_expansion_substeps(ctx, step),
         "Double Angle Contraction" => generate_double_angle_contraction_substeps(step),
         "Half-Angle Square Identity" => generate_half_angle_square_identity_substeps(step),
@@ -3448,7 +3453,7 @@ fn generate_double_angle_expansion_substeps(ctx: &Context, step: &Step) -> Vec<S
 }
 
 fn generate_sum_to_product_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
-    let local_before = step.before;
+    let local_before = step.before_local().unwrap_or(step.before);
 
     let inferred_kind = match ctx.get(local_before) {
         Expr::Add(left, right) => match (
@@ -3501,6 +3506,62 @@ fn generate_sum_to_product_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> 
             "-2 · sin((A+B)/2) · sin((A-B)/2)",
             "\\cos(A) - \\cos(B)",
             "-2\\cdot \\sin\\left(\\frac{A+B}{2}\\right)\\cdot \\sin\\left(\\frac{A-B}{2}\\right)",
+        ),
+        _ => return Vec::new(),
+    };
+
+    vec![formula_substep(
+        title,
+        before,
+        after,
+        before_latex,
+        after_latex,
+    )]
+}
+
+fn generate_hyperbolic_angle_sum_diff_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    let local_before = step.before_local().unwrap_or(step.before);
+    let Expr::Function(fn_id, args) = ctx.get(local_before) else {
+        return Vec::new();
+    };
+    if args.len() != 1 {
+        return Vec::new();
+    }
+    let (left, right, is_sum) = match ctx.get(args[0]) {
+        Expr::Add(left, right) => (*left, *right, true),
+        Expr::Sub(left, right) => (*left, *right, false),
+        _ => return Vec::new(),
+    };
+    let _ = (left, right);
+
+    let (title, before, after, before_latex, after_latex) = match (ctx.builtin_of(*fn_id), is_sum) {
+        (Some(BuiltinFn::Sinh), true) => (
+            "Usar sinh(A+B) = sinh(A) · cosh(B) + cosh(A) · sinh(B)",
+            "sinh(A+B)",
+            "sinh(A) · cosh(B) + cosh(A) · sinh(B)",
+            "\\sinh(A+B)",
+            "\\sinh(A)\\cdot \\cosh(B) + \\cosh(A)\\cdot \\sinh(B)",
+        ),
+        (Some(BuiltinFn::Sinh), false) => (
+            "Usar sinh(A-B) = sinh(A) · cosh(B) - cosh(A) · sinh(B)",
+            "sinh(A-B)",
+            "sinh(A) · cosh(B) - cosh(A) · sinh(B)",
+            "\\sinh(A-B)",
+            "\\sinh(A)\\cdot \\cosh(B) - \\cosh(A)\\cdot \\sinh(B)",
+        ),
+        (Some(BuiltinFn::Cosh), true) => (
+            "Usar cosh(A+B) = cosh(A) · cosh(B) + sinh(A) · sinh(B)",
+            "cosh(A+B)",
+            "cosh(A) · cosh(B) + sinh(A) · sinh(B)",
+            "\\cosh(A+B)",
+            "\\cosh(A)\\cdot \\cosh(B) + \\sinh(A)\\cdot \\sinh(B)",
+        ),
+        (Some(BuiltinFn::Cosh), false) => (
+            "Usar cosh(A-B) = cosh(A) · cosh(B) - sinh(A) · sinh(B)",
+            "cosh(A-B)",
+            "cosh(A) · cosh(B) - sinh(A) · sinh(B)",
+            "\\cosh(A-B)",
+            "\\cosh(A)\\cdot \\cosh(B) - \\sinh(A)\\cdot \\sinh(B)",
         ),
         _ => return Vec::new(),
     };
