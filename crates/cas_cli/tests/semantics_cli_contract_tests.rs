@@ -3674,17 +3674,44 @@ fn eval_symbolic_sine_sum_to_product_difference_to_zero_uses_two_didactic_steps(
     assert_eq!(steps.len(), 1);
     assert_eq!(steps[0]["rule"], "Aplicar suma a producto");
     let substeps = steps[0]["substeps"].as_array().expect("substeps array");
-    assert_eq!(substeps.len(), 2);
-    let titles: Vec<_> = substeps
-        .iter()
-        .map(|substep| substep["title"].as_str().expect("substep title"))
-        .collect();
-    assert!(titles
-        .iter()
-        .any(|title| title.contains("Cancelar términos iguales")));
-    assert!(titles
-        .iter()
-        .any(|title| title.contains("Usar sin(A) + sin(B)")));
+    assert_eq!(substeps.len(), 1);
+    assert_eq!(substeps[0]["title"], "Cancelar términos iguales");
+}
+
+#[test]
+fn eval_symbolic_sine_sum_to_product_with_passthrough_one_collapses_to_one() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "sin(x) + sin(y) + 1 - 2*sin((x+y)/2)*cos((x-y)/2)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "1");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps[0]["rule"], "Aplicar suma a producto");
+}
+
+#[test]
+fn eval_symbolic_sine_sum_to_product_negated_orientation_still_reaches_zero() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "2*sin((x+y)/2)*cos((x-y)/2) - sin(x) - sin(y)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Aplicar suma a producto");
 }
 
 #[test]
@@ -3705,17 +3732,8 @@ fn eval_symbolic_cosine_difference_sum_to_product_difference_to_zero_uses_two_st
     assert_eq!(steps.len(), 1);
     assert_eq!(steps[0]["rule"], "Aplicar suma a producto");
     let substeps = steps[0]["substeps"].as_array().expect("substeps array");
-    assert_eq!(substeps.len(), 2);
-    let titles: Vec<_> = substeps
-        .iter()
-        .map(|substep| substep["title"].as_str().expect("substep title"))
-        .collect();
-    assert!(titles
-        .iter()
-        .any(|title| title.contains("Cancelar términos iguales")));
-    assert!(titles
-        .iter()
-        .any(|title| title.contains("Usar cos(A) - cos(B)")));
+    assert_eq!(substeps.len(), 1);
+    assert_eq!(substeps[0]["title"], "Cancelar términos iguales");
 }
 
 #[test]
@@ -3747,6 +3765,24 @@ fn eval_general_phase_shift_difference_to_zero_uses_named_phase_shift_step() {
     assert!(titles
         .iter()
         .any(|title| title.contains("Cancelar términos iguales")));
+}
+
+#[test]
+fn eval_general_phase_shift_with_passthrough_one_collapses_to_one() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "3*sin(x) + 4*cos(x) + 1 - 5*sin(x + arctan(4/3))",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "1");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps[0]["rule"], "Aplicar identidad de desfase");
 }
 
 #[test]
@@ -3904,15 +3940,44 @@ fn eval_hyperbolic_angle_sum_difference_to_zero_uses_expand_then_self_cancel() {
     assert_eq!(steps.len(), 1);
     assert_eq!(steps[0]["rule"], "Hyperbolic Angle Sum/Difference Identity");
     let substeps = steps[0]["substeps"].as_array().expect("substeps array");
-    assert_eq!(substeps.len(), 2);
-    let titles: Vec<_> = substeps
-        .iter()
-        .map(|substep| substep["title"].as_str().expect("substep title"))
-        .collect();
-    assert!(titles
-        .iter()
-        .any(|title| title.contains("Cancelar términos iguales")));
-    assert!(titles.iter().any(|title| title.contains("Usar sinh(A+B)")));
+    assert_eq!(substeps.len(), 1);
+    assert_eq!(substeps[0]["title"], "Cancelar términos iguales");
+}
+
+#[test]
+fn eval_hyperbolic_angle_sum_difference_with_passthrough_one_collapses_to_one() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "sinh(x+y) + 1 - (sinh(x)*cosh(y) + cosh(x)*sinh(y))",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "1");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps[0]["rule"], "Hyperbolic Angle Sum/Difference Identity");
+}
+
+#[test]
+fn eval_hyperbolic_angle_sum_difference_negated_orientation_still_reaches_zero() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "sinh(x)*cosh(y) + sinh(y)*cosh(x) - sinh(x+y)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Angle Sum/Difference Identity");
 }
 
 #[test]

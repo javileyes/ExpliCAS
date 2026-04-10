@@ -1,5 +1,6 @@
 use crate::define_rule;
-use crate::rule::Rewrite;
+use crate::parent_context::ParentContext;
+use crate::rule::{Rewrite, Rule};
 use cas_ast::ordering::compare_expr;
 use cas_ast::{BuiltinFn, Expr};
 use cas_math::arithmetic_cancel_support::{
@@ -3236,6 +3237,218 @@ define_rule!(
     }
 );
 
+fn maybe_exact_zero_additive_candidate(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> bool {
+    let term_count = AddView::from_expr(ctx, expr).terms.len();
+    if !(3..=6).contains(&term_count) {
+        return false;
+    }
+
+    maybe_trig_sum_to_product_zero_candidate(ctx, expr)
+        || maybe_trig_square_zero_candidate(ctx, expr)
+        || maybe_trig_phase_shift_zero_candidate(ctx, expr)
+        || maybe_hyperbolic_angle_sum_diff_zero_candidate(ctx, expr)
+        || maybe_hyperbolic_pythagorean_factor_zero_candidate(ctx, expr)
+        || expr_contains_any_builtin(ctx, expr, &[BuiltinFn::Ln, BuiltinFn::Log, BuiltinFn::Abs])
+}
+
+fn try_build_exact_zero_identity_rewrite_direct(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<Rewrite> {
+    let parent_ctx = ParentContext::root().with_domain_mode(crate::DomainMode::Generic);
+    let zero = ctx.num(0);
+
+    let try_rule = |ctx: &mut cas_ast::Context, rewrite: Option<Rewrite>| -> Option<Rewrite> {
+        let rewrite = rewrite?;
+        exprs_match_after_default_simplify(ctx, rewrite.final_expr(), zero).then_some(rewrite)
+    };
+
+    if maybe_trig_sum_to_product_zero_candidate(ctx, expr) {
+        let candidate =
+            ExpandTrigSumToProductToEnableCancellationRule.apply(ctx, expr, &parent_ctx);
+        if let Some(rewrite) = try_rule(ctx, candidate) {
+            return Some(rewrite);
+        }
+    }
+
+    if maybe_trig_square_zero_candidate(ctx, expr) {
+        let square_candidate =
+            ExpandTrigSquareIdentityToEnableCancellationRule.apply(ctx, expr, &parent_ctx);
+        if let Some(rewrite) = try_rule(ctx, square_candidate) {
+            return Some(rewrite);
+        }
+        let triple_angle_candidate =
+            ExpandTrigSineProductTripleAngleToEnableCancellationRule.apply(ctx, expr, &parent_ctx);
+        if let Some(rewrite) = try_rule(ctx, triple_angle_candidate) {
+            return Some(rewrite);
+        }
+    }
+
+    if maybe_trig_phase_shift_zero_candidate(ctx, expr) {
+        let candidate = ExpandTrigPhaseShiftToEnableCancellationRule.apply(ctx, expr, &parent_ctx);
+        if let Some(rewrite) = try_rule(ctx, candidate) {
+            return Some(rewrite);
+        }
+    }
+
+    if maybe_hyperbolic_angle_sum_diff_zero_candidate(ctx, expr) {
+        let candidate =
+            ExpandHyperbolicAngleSumDiffToEnableCancellationRule.apply(ctx, expr, &parent_ctx);
+        if let Some(rewrite) = try_rule(ctx, candidate) {
+            return Some(rewrite);
+        }
+    }
+
+    if maybe_hyperbolic_pythagorean_factor_zero_candidate(ctx, expr) {
+        let candidate =
+            ExpandHyperbolicPythagoreanFactorToEnableCancellationRule.apply(ctx, expr, &parent_ctx);
+        if let Some(rewrite) = try_rule(ctx, candidate) {
+            return Some(rewrite);
+        }
+    }
+
+    let log_power_candidate =
+        ExpandLogProductPowerToEnableCancellationRule.apply(ctx, expr, &parent_ctx);
+    if let Some(rewrite) = try_rule(ctx, log_power_candidate) {
+        return Some(rewrite);
+    }
+
+    let log_abs_candidate =
+        ExpandLogAbsMulDivToEnableCancellationRule.apply(ctx, expr, &parent_ctx);
+    try_rule(ctx, log_abs_candidate)
+}
+
+fn try_build_exact_zero_identity_rewrite(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<Rewrite> {
+    if let Some(rewrite) = try_build_exact_zero_identity_rewrite_direct(ctx, expr) {
+        return Some(rewrite);
+    }
+
+    let view = AddView::from_expr(ctx, expr);
+    if !(2..=4).contains(&view.terms.len()) {
+        return None;
+    }
+
+    let flipped_terms: Vec<_> = view
+        .terms
+        .iter()
+        .map(|(term_expr, term_sign)| (*term_expr, term_sign.negate()))
+        .collect();
+    let flipped_expr = build_signed_sum_expr(ctx, &flipped_terms);
+    let child_rewrite = try_build_exact_zero_identity_rewrite_direct(ctx, flipped_expr)?;
+
+    let mut rewrite = Rewrite::with_local(
+        ctx.num(0),
+        child_rewrite.description.clone(),
+        expr,
+        ctx.num(0),
+    )
+    .requires_all(child_rewrite.required_conditions.clone())
+    .assume_all(child_rewrite.assumption_events.clone());
+
+    if let Some(poly_proof) = child_rewrite.poly_proof.clone() {
+        rewrite = rewrite.poly_proof(poly_proof);
+    }
+
+    rewrite.substeps = child_rewrite.substeps.clone();
+    Some(rewrite)
+}
+
+fn build_exact_zero_subset_passthrough_rewrite(
+    ctx: &mut cas_ast::Context,
+    subset_expr: cas_ast::ExprId,
+    passthrough_terms: &[(cas_ast::ExprId, Sign)],
+    child_rewrite: Rewrite,
+) -> Rewrite {
+    let mut rewrite = Rewrite::with_local(
+        build_signed_sum_expr(ctx, passthrough_terms),
+        child_rewrite.description.clone(),
+        subset_expr,
+        ctx.num(0),
+    )
+    .requires_all(child_rewrite.required_conditions.clone())
+    .assume_all(child_rewrite.assumption_events.clone());
+
+    if let Some(poly_proof) = child_rewrite.poly_proof.clone() {
+        rewrite = rewrite.poly_proof(poly_proof);
+    }
+
+    rewrite.substeps = child_rewrite.substeps.clone();
+    rewrite
+}
+
+fn try_build_exact_zero_three_term_subset_passthrough_rewrite(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<Rewrite> {
+    let view = AddView::from_expr(ctx, expr);
+    if view.terms.len() < 4 {
+        return None;
+    }
+
+    for first_index in 0..view.terms.len().saturating_sub(2) {
+        for second_index in (first_index + 1)..view.terms.len().saturating_sub(1) {
+            for third_index in (second_index + 1)..view.terms.len() {
+                let subset_terms = [
+                    view.terms[first_index],
+                    view.terms[second_index],
+                    view.terms[third_index],
+                ];
+                let subset_expr = build_signed_sum_expr(ctx, &subset_terms);
+                let Some(child_rewrite) = try_build_exact_zero_identity_rewrite(ctx, subset_expr)
+                else {
+                    continue;
+                };
+
+                let passthrough_terms: Vec<_> = view
+                    .terms
+                    .iter()
+                    .copied()
+                    .enumerate()
+                    .filter_map(|(index, term)| {
+                        (index != first_index && index != second_index && index != third_index)
+                            .then_some(term)
+                    })
+                    .collect();
+
+                if passthrough_terms.is_empty() {
+                    continue;
+                }
+
+                return Some(build_exact_zero_subset_passthrough_rewrite(
+                    ctx,
+                    subset_expr,
+                    &passthrough_terms,
+                    child_rewrite,
+                ));
+            }
+        }
+    }
+
+    None
+}
+
+define_rule!(
+    CollapseExactZeroThreeTermSubsetRule,
+    "Collapse Exact Zero Additive Subexpression",
+    Some(crate::target_kind::TargetKindSet::ADD.union(crate::target_kind::TargetKindSet::SUB)),
+    crate::phase::PhaseMask::CORE | crate::phase::PhaseMask::POST,
+    priority: 509,
+    |ctx, expr| {
+        if !maybe_exact_zero_additive_candidate(ctx, expr) {
+            return None;
+        }
+
+        if let Some(rewrite) = try_build_exact_zero_identity_rewrite(ctx, expr) {
+            return Some(rewrite);
+        }
+
+        try_build_exact_zero_three_term_subset_passthrough_rewrite(ctx, expr)
+    }
+);
+
 define_rule!(
     SubSelfToZeroRule,
     "Subtraction Self-Cancel",
@@ -3342,7 +3555,7 @@ define_rule!(AddInverseRule, "Add Inverse", |ctx, expr, parent_ctx| {
 mod tests {
     use super::{
         canonicalize_nested_integer_powers, exprs_equal_up_to_add_term_order,
-        extract_scaled_double_sine_product_for_cancellation,
+        extract_scaled_double_sine_product_for_cancellation, CollapseExactZeroThreeTermSubsetRule,
         ExpandHyperbolicAngleSumDiffToEnableCancellationRule,
         ExpandHyperbolicPythagoreanFactorToEnableCancellationRule,
         ExpandLogAbsMulDivToEnableCancellationRule, ExpandLogProductPowerToEnableCancellationRule,
@@ -3578,6 +3791,35 @@ mod tests {
     }
 
     #[test]
+    fn collapse_exact_zero_three_term_subset_rule_matches_sine_sum_with_passthrough_one() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "sin(x) + sin(y) + 1 - 2*sin((x+y)/2)*cos((x-y)/2)",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rule = CollapseExactZeroThreeTermSubsetRule;
+        let rewrite = rule
+            .apply(&mut ctx, expr, &parent_ctx)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "1"
+        );
+        assert_eq!(rewrite.description, "Expand sine sum to product");
+        assert!(!rewrite.substeps.is_empty());
+    }
+
+    #[test]
     fn expand_trig_phase_shift_to_enable_cancellation_rule_matches_general_shifted_sine() {
         let mut ctx = Context::new();
         let expr = parse("3*sin(x) + 4*cos(x) - 5*sin(x + arctan(4/3))", &mut ctx)
@@ -3601,6 +3843,32 @@ mod tests {
         );
         assert_eq!(rewrite.description, "Phase Shift Identity");
         assert_eq!(rewrite.substeps.len(), 2);
+    }
+
+    #[test]
+    fn collapse_exact_zero_three_term_subset_rule_matches_phase_shift_with_passthrough_one() {
+        let mut ctx = Context::new();
+        let expr = parse("3*sin(x) + 4*cos(x) + 1 - 5*sin(x + arctan(4/3))", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rule = CollapseExactZeroThreeTermSubsetRule;
+        let rewrite = rule
+            .apply(&mut ctx, expr, &parent_ctx)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "1"
+        );
+        assert_eq!(rewrite.description, "Phase Shift Identity");
+        assert!(!rewrite.substeps.is_empty());
     }
 
     #[test]
@@ -3716,6 +3984,38 @@ mod tests {
             rewrite.description,
             "Expand hyperbolic angle sum/difference"
         );
+    }
+
+    #[test]
+    fn collapse_exact_zero_three_term_subset_rule_matches_hyperbolic_sum_with_passthrough_one() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "sinh(x+y) + 1 - (sinh(x)*cosh(y) + cosh(x)*sinh(y))",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rule = CollapseExactZeroThreeTermSubsetRule;
+        let rewrite = rule
+            .apply(&mut ctx, expr, &parent_ctx)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "1"
+        );
+        assert_eq!(
+            rewrite.description,
+            "Expand hyperbolic angle sum/difference"
+        );
+        assert!(!rewrite.substeps.is_empty());
     }
 
     #[test]
@@ -3885,6 +4185,7 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(ExpandOddHalfPowerToEnableCancellationRule));
     simplifier.add_rule(Box::new(ExpandLogProductPowerToEnableCancellationRule));
     simplifier.add_rule(Box::new(ExpandLogAbsMulDivToEnableCancellationRule));
+    simplifier.add_rule(Box::new(CollapseExactZeroThreeTermSubsetRule));
     simplifier.add_rule(Box::new(SubSelfToZeroRule)); // priority 500: before expansion
     simplifier.add_rule(Box::new(SubtractExpandedSumDiffCubesQuotientRule));
 

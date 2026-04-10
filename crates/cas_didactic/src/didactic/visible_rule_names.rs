@@ -142,6 +142,27 @@ pub(crate) fn visible_rule_name_for_step<'a>(
         {
             Cow::Borrowed("Expandir logaritmos y cancelar términos iguales")
         }
+        "Collapse Exact Zero Additive Subexpression"
+            if description == "Expand sine sum to product"
+                || description == "Expand sine difference to product"
+                || description == "Expand cosine sum to product"
+                || description == "Expand cosine difference to product" =>
+        {
+            Cow::Borrowed("Aplicar suma a producto")
+        }
+        "Collapse Exact Zero Additive Subexpression" if description == "Phase Shift Identity" => {
+            Cow::Borrowed("Aplicar identidad de desfase")
+        }
+        "Collapse Exact Zero Additive Subexpression"
+            if description == "Expand hyperbolic angle sum/difference" =>
+        {
+            Cow::Borrowed("Hyperbolic Angle Sum/Difference Identity")
+        }
+        "Collapse Exact Zero Additive Subexpression"
+            if description == "Log expansion followed by exact cancellation" =>
+        {
+            Cow::Borrowed("Expandir logaritmos y cancelar términos iguales")
+        }
         "Evaluate Logarithms" if description == "log(b, x^y) = y * log(b, x)" => {
             Cow::Borrowed("Sacar un exponente fuera del logaritmo")
         }
