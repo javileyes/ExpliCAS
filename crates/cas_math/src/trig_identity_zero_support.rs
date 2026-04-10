@@ -595,6 +595,119 @@ fn match_cos_triple_identity_pair(ctx: &Context, lhs: ExprId, rhs: ExprId) -> bo
     left_matches && right_matches
 }
 
+fn extract_scaled_double_sine_product_identity(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<(num_rational::BigRational, Vec<ExprId>, ExprId)> {
+    let (coeff, factors) = extract_numeric_scale_factors(ctx, expr);
+    let mut sine_args = Vec::new();
+    let mut residual_factors = Vec::new();
+
+    for factor in factors {
+        if let Some(arg) = extract_trig_arg(ctx, factor, BuiltinFn::Sin.name()) {
+            sine_args.push(arg);
+        } else {
+            residual_factors.push(factor);
+        }
+    }
+
+    if sine_args.len() != 2 {
+        return None;
+    }
+
+    let base_arg = if expr_is_n_times_of(ctx, sine_args[0], sine_args[1], 2) {
+        sine_args[1]
+    } else if expr_is_n_times_of(ctx, sine_args[1], sine_args[0], 2) {
+        sine_args[0]
+    } else {
+        return None;
+    };
+
+    Some((
+        coeff / num_rational::BigRational::from_integer(2.into()),
+        residual_factors,
+        base_arg,
+    ))
+}
+
+fn split_cos_factor_with_power(
+    ctx: &Context,
+    factors: Vec<ExprId>,
+    power: i64,
+) -> Option<(ExprId, Vec<ExprId>)> {
+    let mut residual = Vec::new();
+    let mut arg = None;
+
+    for factor in factors {
+        if power == 1 {
+            if let Some(current_arg) = extract_trig_arg(ctx, factor, BuiltinFn::Cos.name()) {
+                if arg.replace(current_arg).is_some() {
+                    return None;
+                }
+                continue;
+            }
+        } else if let Some((base, exp)) = as_pow(ctx, factor) {
+            let Expr::Number(n) = ctx.get(exp) else {
+                residual.push(factor);
+                continue;
+            };
+            if *n == num_rational::BigRational::from_integer(power.into()) {
+                if let Some(current_arg) = extract_trig_arg(ctx, base, BuiltinFn::Cos.name()) {
+                    if arg.replace(current_arg).is_some() {
+                        return None;
+                    }
+                    continue;
+                }
+            }
+        }
+
+        residual.push(factor);
+    }
+
+    Some((arg?, residual))
+}
+
+fn extract_scaled_cubic_cosine_residual_identity(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<(num_rational::BigRational, Vec<ExprId>, ExprId)> {
+    let (left, right) = extract_sub_like(ctx, expr)?;
+    let (left_coeff, left_factors) = extract_numeric_scale_factors(ctx, left);
+    let (right_coeff, right_factors) = extract_numeric_scale_factors(ctx, right);
+    let (left_arg, left_residual) = split_cos_factor_with_power(ctx, left_factors, 1)?;
+    let (right_arg, right_residual) = split_cos_factor_with_power(ctx, right_factors, 3)?;
+
+    if compare_expr(ctx, left_arg, right_arg) != std::cmp::Ordering::Equal
+        || !factor_multisets_match(ctx, &left_residual, &right_residual)
+    {
+        return None;
+    }
+
+    if left_coeff != right_coeff {
+        return None;
+    }
+
+    let scale_coeff = left_coeff / num_rational::BigRational::from_integer(4.into());
+    Some((scale_coeff, left_residual, left_arg))
+}
+
+fn match_sin_product_cubic_cosine_identity_pair(ctx: &Context, lhs: ExprId, rhs: ExprId) -> bool {
+    let Some((lhs_coeff, lhs_factors, lhs_arg)) =
+        extract_scaled_double_sine_product_identity(ctx, lhs)
+    else {
+        return false;
+    };
+    let Some((rhs_coeff, rhs_factors, rhs_arg)) =
+        extract_scaled_cubic_cosine_residual_identity(ctx, rhs)
+    else {
+        return false;
+    };
+
+    lhs_coeff == rhs_coeff
+        && compare_expr(ctx, lhs_arg, rhs_arg) == std::cmp::Ordering::Equal
+        && factor_multisets_match(ctx, &lhs_factors, &rhs_factors)
+}
+
 pub fn match_cos_triple_identity_zero_expr(ctx: &Context, expr: ExprId) -> bool {
     let Some((left, right)) = extract_sub_like(ctx, expr) else {
         return false;
@@ -613,6 +726,14 @@ pub fn try_rewrite_cos_triple_identity_zero_expr(
     Some(IdentityZeroRewrite {
         kind: IdentityZeroRewriteKind::CosTriple,
     })
+}
+
+pub fn match_sin_product_cubic_cosine_identity_zero_expr(ctx: &Context, expr: ExprId) -> bool {
+    let Some((left, right)) = extract_sub_like(ctx, expr) else {
+        return false;
+    };
+    match_sin_product_cubic_cosine_identity_pair(ctx, left, right)
+        || match_sin_product_cubic_cosine_identity_pair(ctx, right, left)
 }
 
 #[cfg(test)]
@@ -787,5 +908,23 @@ mod tests {
         )
         .expect("expr");
         assert!(match_cos_triple_identity_zero_expr(&ctx, expr));
+    }
+
+    #[test]
+    fn matches_sin_product_cubic_cosine_identity_zero_variants() {
+        let mut ctx = Context::new();
+        let expr1 = parse("2*sin(2*t)*sin(t) - (4*cos(t) - 4*cos(t)^3)", &mut ctx).expect("expr1");
+        let expr2 = parse("(4*cos(t) - 4*cos(t)^3) - 2*sin(2*t)*sin(t)", &mut ctx).expect("expr2");
+        let wrong = parse("2*sin(2*t)*sin(u) - (4*cos(t) - 4*cos(t)^3)", &mut ctx).expect("wrong");
+
+        assert!(match_sin_product_cubic_cosine_identity_zero_expr(
+            &ctx, expr1
+        ));
+        assert!(match_sin_product_cubic_cosine_identity_zero_expr(
+            &ctx, expr2
+        ));
+        assert!(!match_sin_product_cubic_cosine_identity_zero_expr(
+            &ctx, wrong
+        ));
     }
 }

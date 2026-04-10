@@ -3704,6 +3704,116 @@ fn eval_symbolic_cosine_difference_sum_to_product_difference_to_zero_uses_two_st
 }
 
 #[test]
+fn eval_general_phase_shift_difference_to_zero_uses_named_phase_shift_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "3*sin(x) + 4*cos(x) - 5*sin(x + arctan(4/3))",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Aplicar identidad de desfase");
+    let substeps = steps[0]["substeps"].as_array().expect("substeps array");
+    assert_eq!(substeps.len(), 2);
+    let titles: Vec<_> = substeps
+        .iter()
+        .map(|substep| substep["title"].as_str().expect("substep title"))
+        .collect();
+    assert!(titles
+        .iter()
+        .any(|title| title.contains("Reescribir la combinación lineal")));
+    assert!(titles
+        .iter()
+        .any(|title| title.contains("Cancelar términos iguales")));
+}
+
+#[test]
+fn eval_trig_binomial_square_difference_to_zero_uses_named_identity_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "(sin(x) + cos(x))^2 - (1 + sin(2*x))",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Aplicar identidad del cuadrado trigonométrico"
+    );
+    let substeps = steps[0]["substeps"].as_array().expect("substeps array");
+    assert_eq!(substeps.len(), 4);
+    let titles: Vec<_> = substeps
+        .iter()
+        .map(|substep| substep["title"].as_str().expect("substep title"))
+        .collect();
+    assert!(titles
+        .iter()
+        .any(|title| title.contains("Expandir el binomio")));
+    assert!(titles
+        .iter()
+        .any(|title| title.contains("Usar sin(u)^2 + cos(u)^2 = 1")));
+    assert!(titles
+        .iter()
+        .any(|title| title.contains("Usar 2 · sin(u) · cos(u) = sin(2u)")));
+    assert!(titles
+        .iter()
+        .any(|title| title.contains("Cancelar términos iguales")));
+}
+
+#[test]
+fn eval_trig_sine_product_cubic_cosine_difference_to_zero_uses_combined_bridge_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "2*sin(2*x)*sin(x) - (4*cos(x) - 4*cos(x)^3)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["warnings"], json!([]));
+    assert_eq!(wire["steps_count"], 2);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 2);
+    assert_eq!(steps[0]["rule"], "Aplicar identidad pitagórica y reagrupar");
+    assert_eq!(steps[1]["rule"], "Aplicar producto a suma y ángulo triple");
+    let substeps = steps[1]["substeps"].as_array().expect("substeps array");
+    assert_eq!(substeps.len(), 4);
+    let titles: Vec<_> = substeps
+        .iter()
+        .map(|substep| substep["title"].as_str().expect("substep title"))
+        .collect();
+    assert!(titles
+        .iter()
+        .any(|title| { title.contains("Convertir producto de senos en diferencia de cosenos") }));
+    assert!(titles
+        .iter()
+        .any(|title| title.contains("Usar cos(3u) = 4·cos(u)^3 - 3·cos(u)")));
+    assert!(titles
+        .iter()
+        .any(|title| title.contains("Usar 1 - cos(u)^2 = sin(u)^2")));
+    assert!(titles
+        .iter()
+        .any(|title| title.contains("Cancelar términos iguales")));
+}
+
+#[test]
 fn eval_hyperbolic_angle_sum_difference_to_zero_uses_expand_then_self_cancel() {
     let (output, _code) = run_cli(&[
         "eval",

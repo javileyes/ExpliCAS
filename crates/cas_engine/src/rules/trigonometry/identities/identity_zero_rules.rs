@@ -10,6 +10,7 @@
 //! - CosTripleIdentityZeroRule: cos(3t) - (4*cos(t)^3 - 3*cos(t)) → 0
 
 use crate::rule::Rewrite;
+use crate::rules::arithmetic::ExpandTrigSineProductTripleAngleToEnableCancellationRule;
 use cas_ast::ExprId;
 use cas_math::trig_identity_zero_support::{
     try_rewrite_cos_triple_identity_zero_expr, try_rewrite_sin4x_identity_zero_expr,
@@ -222,6 +223,35 @@ impl crate::rule::Rule for CosTripleIdentityZeroRule {
     ) -> Option<Rewrite> {
         let rewrite = try_rewrite_cos_triple_identity_zero_expr(ctx, expr)?;
         Some(Rewrite::new(ctx.num(0)).desc(format_identity_zero_desc(rewrite.kind)))
+    }
+
+    fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
+        Some(crate::target_kind::TargetKindSet::ADD_SUB)
+    }
+
+    fn priority(&self) -> i32 {
+        200
+    }
+
+    fn importance(&self) -> crate::step::ImportanceLevel {
+        crate::step::ImportanceLevel::High
+    }
+}
+
+pub struct TrigSineProductTripleAngleIdentityZeroRule;
+
+impl crate::rule::Rule for TrigSineProductTripleAngleIdentityZeroRule {
+    fn name(&self) -> &str {
+        "Trig Sine Product Triple-Angle Identity Zero"
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: ExprId,
+        parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<Rewrite> {
+        ExpandTrigSineProductTripleAngleToEnableCancellationRule.apply(ctx, expr, parent_ctx)
     }
 
     fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {

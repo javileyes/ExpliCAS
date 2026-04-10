@@ -4,6 +4,7 @@ use crate::define_rule;
 use crate::rule::Rewrite;
 use crate::rules::trigonometry::{evaluation, pythagorean, pythagorean_secondary};
 use cas_ast::ExprId;
+use cas_math::trig_identity_zero_support::match_sin_product_cubic_cosine_identity_zero_expr;
 use cas_math::trig_multi_angle_support::{
     try_plan_dyadic_cos_product_with_policy, try_rewrite_angle_consistency_expr,
     TrigMultiAngleRewriteKind,
@@ -31,8 +32,9 @@ use super::{
     SinCosQuarticSumRule, SinCosSumQuotientRule, SinSupplementaryAngleRule,
     TanDifferenceIdentityZeroRule, TanDifferenceRule, TanDoubleAngleContractionRule,
     TanToSinCosRule, TanTripleProductRule, TrigHiddenCubicIdentityRule, TrigOddEvenParityRule,
-    TrigQuotientRule, TrigSumToProductRule, TripleAngleRule, WeierstrassContractionRule,
-    WeierstrassCosIdentityZeroRule, WeierstrassSinIdentityZeroRule,
+    TrigQuotientRule, TrigSineProductTripleAngleIdentityZeroRule, TrigSumToProductRule,
+    TripleAngleRule, WeierstrassContractionRule, WeierstrassCosIdentityZeroRule,
+    WeierstrassSinIdentityZeroRule,
 };
 // Import migration Phase 1-3 rules
 use super::SinSumTripleIdentityZeroRule;
@@ -137,6 +139,7 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(TanDifferenceIdentityZeroRule));
     simplifier.add_rule(Box::new(SinSumTripleIdentityZeroRule));
     simplifier.add_rule(Box::new(CosTripleIdentityZeroRule));
+    simplifier.add_rule(Box::new(TrigSineProductTripleAngleIdentityZeroRule));
 
     // PRE-ORDER: Evaluate sin(n·π) = 0 and cos(n·π) = (-1)^n BEFORE any expansion
     // This prevents unnecessary triple/double angle expansions on integer multiples of π
@@ -272,7 +275,14 @@ pub fn register(simplifier: &mut crate::Simplifier) {
 define_rule!(
     AngleConsistencyRule,
     "Angle Consistency (Half-Angle)",
-    |ctx, expr| {
+    |ctx, expr, parent_ctx| {
+        if match_sin_product_cubic_cosine_identity_zero_expr(ctx, expr)
+            || parent_ctx.has_ancestor_matching(ctx, |ctx, ancestor| {
+                match_sin_product_cubic_cosine_identity_zero_expr(ctx, ancestor)
+            })
+        {
+            return None;
+        }
         let rewrite = try_rewrite_angle_consistency_expr(ctx, expr)?;
         Some(Rewrite::new(rewrite.rewritten).desc(format_angle_consistency_desc(rewrite.kind)))
     }

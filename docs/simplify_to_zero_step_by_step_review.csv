@@ -7,12 +7,12 @@ expression,step_by_step_result
 "log(x^2 - y^2) - log(x - y) - log(x + y)","bueno: ahora la traza mantiene el contexto completo de logaritmos; sigue siendo una ruta algo indirecta porque primero contrae, luego cancela dentro del log y después vuelve a contraer hasta 0."
 "sin(x)^2 - (1 - cos(2*x))/2","bueno: llega a 0 con pasos coherentes, aunque la regla visible de ángulo medio es algo genérica y explica poco el patrón."
 "cosh(x) + sinh(x) - e^x","perfecto: ahora colapsa directamente a e^x y cierra en una resta de expresiones iguales, sin el no-op Convert exp to Power."
-"(sin(x) + cos(x))^2 - (1 + sin(2*x))","malo: hay oscilación clara, steps repetidos y warnings de depth overflow; la narrativa se vuelve confusa y demasiado larga."
+"(sin(x) + cos(x))^2 - (1 + sin(2*x))","perfecto: ahora reconoce directamente la identidad del cuadrado trigonométrico, evita la oscilación y cierra en un único step con substeps claros de binomio, pitagórica y ángulo doble."
 "2*cos(2*x)*sin(x) - (4*cos(x)^2*sin(x) - 2*sin(x))","bueno: cadena corta y correcta hasta una resta de iguales; podría comprimir mejor la expansión distributiva intermedia."
-"2*sin(2*x)*sin(x) - (4*cos(x) - 4*cos(x)^3)","malo: oscila entre expandir y contraer el ángulo doble antes de cerrar; hay pasos redundantes y warning de depth overflow."
+"2*sin(2*x)*sin(x) - (4*cos(x) - 4*cos(x)^3)","perfecto: ya no oscila ni emite warning; ahora cierra en 2 steps didácticos, primero reescribe el lado cúbico y luego explica producto a suma, ángulo triple, pitagórica y cancelación."
 "sin(x) + sin(y) - 2*sin((x+y)/2)*cos((x-y)/2)",perfecto
 "cos(x) - cos(y) + 2*sin((x+y)/2)*sin((x-y)/2)",perfecto
-"3*sin(x) + 4*cos(x) - 5*sin(x + arctan(4/3))","malo: no simplifica a 0; solo reordena o quita paréntesis en una identidad de phase shift."
+"3*sin(x) + 4*cos(x) - 5*sin(x + arctan(4/3))","perfecto: ahora simplifica a 0 en un único step de identidad de desfase, con substeps de reescritura de la combinación lineal y cancelación exacta."
 "2*sinh(2*x)*sinh(x) - (4*cosh(x)^3 - 4*cosh(x))","regular: hoy se queda en la forma factorizada cosh(x)·(4·sinh(x)^2 + 4) - 4·cosh(x)^3; la narrativa parcial es razonable, pero ya no cierra a 0."
 "sinh(x+y) - (sinh(x)*cosh(y) + cosh(x)*sinh(y))",perfecto
 "(a^3-b^3)/(a-b) - (a^2 + a*b + b^2)","regular: correcto semánticamente, pero demasiado opaco; cancela toda la identidad de cubos en un solo salto sin explicar factorización y cancelación."

@@ -19,6 +19,7 @@ pub(crate) fn visible_rule_name(rule_name: &str) -> &str {
         "Dirichlet Kernel Identity" => "Aplicar identidad del núcleo de Dirichlet",
         "Complete the Square" => "Completar el cuadrado",
         "Product-to-Sum Identity" => "Aplicar producto a suma",
+        "Product-to-Sum and Triple-Angle Identity" => "Aplicar producto a suma y ángulo triple",
         "Sum-to-Product Identity" => "Aplicar suma a producto",
         "Sum-to-Product Identity Cancellation Bridge" => "Aplicar suma a producto",
         "Phase Shift Identity" => "Aplicar identidad de desfase",
