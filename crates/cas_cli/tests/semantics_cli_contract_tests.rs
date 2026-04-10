@@ -3905,7 +3905,7 @@ fn eval_exp_difference_minus_double_sinh_to_zero_uses_direct_hyperbolic_recognit
 }
 
 #[test]
-fn eval_hyperbolic_cubic_residual_currently_stops_at_factored_cosh_residual() {
+fn eval_hyperbolic_cubic_residual_difference_to_zero_uses_pythagorean_bridge_after_double_angle() {
     let (output, _code) = run_cli(&[
         "eval",
         "2*sinh(2*x)*sinh(x) - (4*cosh(x)^3 - 4*cosh(x))",
@@ -3916,16 +3916,25 @@ fn eval_hyperbolic_cubic_residual_currently_stops_at_factored_cosh_residual() {
     ]);
     let wire = parse_wire(&output);
 
-    assert_eq!(wire["result"], "cosh(x)·(4·sinh(x)^2 + 4) - 4·cosh(x)^3");
+    assert_eq!(wire["result"], "0");
     assert_eq!(wire["steps_count"], 2);
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 2);
     assert_eq!(steps[0]["rule"], "sinh(2x) = 2·sinh(x)·cosh(x)");
-    assert_eq!(steps[1]["rule"], "Extract Common Multiplicative Factor");
     assert_eq!(
-        steps[1]["after"],
-        "cosh(x) · (4 · sinh(x)^2 + 4) - 4 · cosh(x)^3"
+        steps[1]["rule"],
+        "Aplicar la identidad pitagórica hiperbólica"
     );
+    assert_eq!(
+        steps[1]["before"],
+        "4 · cosh(x) · sinh(x)^2 - (4 · cosh(x)^3 - 4 · cosh(x))"
+    );
+    assert_eq!(steps[1]["after"], "0");
+    let substeps = steps[1]["substeps"].as_array().expect("substeps array");
+    assert_eq!(substeps.len(), 3);
+    assert_eq!(substeps[0]["title"], "Sacar factor común");
+    assert_eq!(substeps[1]["title"], "Usar sinh(u)^2 + 1 = cosh(u)^2");
+    assert_eq!(substeps[2]["title"], "Cancelar términos iguales");
 }
 
 #[test]

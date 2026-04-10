@@ -20,6 +20,9 @@ pub(crate) fn visible_rule_name(rule_name: &str) -> &str {
         "Complete the Square" => "Completar el cuadrado",
         "Product-to-Sum Identity" => "Aplicar producto a suma",
         "Product-to-Sum and Triple-Angle Identity" => "Aplicar producto a suma y ángulo triple",
+        "Hyperbolic Product-to-Sum and Triple-Angle Identity" => {
+            "Aplicar producto a suma y ángulo triple hiperbólico"
+        }
         "Sum-to-Product Identity" => "Aplicar suma a producto",
         "Sum-to-Product Identity Cancellation Bridge" => "Aplicar suma a producto",
         "Phase Shift Identity" => "Aplicar identidad de desfase",
@@ -44,6 +47,9 @@ pub(crate) fn visible_rule_name(rule_name: &str) -> &str {
         "Pythagorean Factor Form" => "Aplicar identidad pitagórica",
         "Pythagorean High-Power Factor" => "Aplicar identidad pitagórica y reagrupar",
         "Hyperbolic Pythagorean Identity Cancellation Bridge" => {
+            "Aplicar la identidad pitagórica hiperbólica"
+        }
+        "Hyperbolic Pythagorean Identity Cancellation Bridge Residual" => {
             "Aplicar la identidad pitagórica hiperbólica"
         }
         "Consecutive Factorial Ratio" => "Cancelar factoriales consecutivos",
