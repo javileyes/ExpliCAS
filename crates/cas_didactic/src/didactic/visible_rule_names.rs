@@ -42,6 +42,9 @@ pub(crate) fn visible_rule_name(rule_name: &str) -> &str {
         "Cos-Diff / Sin-Diff Quotient" => "Convertir un cociente trigonométrico en tangente",
         "Pythagorean Factor Form" => "Aplicar identidad pitagórica",
         "Pythagorean High-Power Factor" => "Aplicar identidad pitagórica y reagrupar",
+        "Hyperbolic Pythagorean Identity Cancellation Bridge" => {
+            "Aplicar la identidad pitagórica hiperbólica"
+        }
         "Consecutive Factorial Ratio" => "Cancelar factoriales consecutivos",
         "Rationalize" | "Rationalize Linear Sqrt Denominator" | "Rationalize Denominator" => {
             "Racionalizar el denominador"

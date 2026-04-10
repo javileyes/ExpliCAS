@@ -13,7 +13,7 @@ expression,step_by_step_result
 "sin(x) + sin(y) - 2*sin((x+y)/2)*cos((x-y)/2)",perfecto
 "cos(x) - cos(y) + 2*sin((x+y)/2)*sin((x-y)/2)",perfecto
 "3*sin(x) + 4*cos(x) - 5*sin(x + arctan(4/3))","malo: no simplifica a 0; solo reordena o quita paréntesis en una identidad de phase shift."
-"2*sinh(2*x)*sinh(x) - (4*cosh(x)^3 - 4*cosh(x))","malo: se queda en una forma no nula y no cierra la identidad hiperbólica."
+"2*sinh(2*x)*sinh(x) - (4*cosh(x)^3 - 4*cosh(x))","perfecto"
 "sinh(x+y) - (sinh(x)*cosh(y) + cosh(x)*sinh(y))",perfecto
 "(a^3-b^3)/(a-b) - (a^2 + a*b + b^2)","regular: correcto semánticamente, pero demasiado opaco; cancela toda la identidad de cubos en un solo salto sin explicar factorización y cancelación."
 "sqrt(a^2 + 2*a*b + b^2) - abs(a+b)","perfecto: reconoce el cuadrado perfecto, usa valor absoluto y cierra con una resta de iguales."

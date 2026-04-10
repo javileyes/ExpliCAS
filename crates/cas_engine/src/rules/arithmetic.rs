@@ -11,6 +11,7 @@ use cas_math::arithmetic_rule_support::{
 };
 use cas_math::arithmetic_zero_support::{match_div_zero_numerator_pattern, match_mul_zero_pattern};
 use cas_math::expr_destructure::{as_div, as_mul};
+use cas_math::expr_extract::{extract_i64_integer, extract_i64_multiplier_and_base_factors};
 use cas_math::expr_nary::{AddView, Sign};
 use cas_math::expr_rewrite::smart_mul;
 use cas_math::logarithm_inverse_support::{make_log_expr, try_extract_log_parts};
@@ -172,6 +173,69 @@ fn maybe_hyperbolic_angle_sum_diff_zero_candidate(
         }
     }
     false
+}
+
+fn extract_signed_multiplier_and_single_factor(
+    ctx: &cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<(i64, cas_ast::ExprId)> {
+    let (multiplier_sign, positive_expr) = match ctx.get(expr) {
+        Expr::Neg(inner) => (-1, *inner),
+        _ => (1, expr),
+    };
+
+    let (multiplier, factors) = extract_i64_multiplier_and_base_factors(ctx, positive_expr);
+    (factors.len() == 1).then_some((multiplier_sign * multiplier, factors[0]))
+}
+
+fn extract_signed_cosh_power(
+    ctx: &cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<(i64, cas_ast::ExprId, i64)> {
+    let (multiplier, factor) = extract_signed_multiplier_and_single_factor(ctx, expr)?;
+    match ctx.get(factor) {
+        Expr::Function(fn_id, args)
+            if ctx.is_builtin(*fn_id, BuiltinFn::Cosh) && args.len() == 1 =>
+        {
+            Some((multiplier, args[0], 1))
+        }
+        Expr::Pow(base, exponent) => {
+            let Expr::Function(fn_id, args) = ctx.get(*base) else {
+                return None;
+            };
+            if !ctx.is_builtin(*fn_id, BuiltinFn::Cosh) || args.len() != 1 {
+                return None;
+            }
+            let power = extract_i64_integer(ctx, *exponent)?;
+            Some((multiplier, args[0], power))
+        }
+        _ => None,
+    }
+}
+
+fn maybe_hyperbolic_pythagorean_factor_zero_candidate(
+    ctx: &cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> bool {
+    let view = AddView::from_expr(ctx, expr);
+    let mut seen_linear = Vec::new();
+    let mut seen_cubic = Vec::new();
+
+    for (term_expr, _sign) in view.terms {
+        if let Some((_, arg, power)) = extract_signed_cosh_power(ctx, term_expr) {
+            match power {
+                1 => seen_linear.push(arg),
+                3 => seen_cubic.push(arg),
+                _ => {}
+            }
+        }
+    }
+
+    seen_linear.iter().any(|linear_arg| {
+        seen_cubic
+            .iter()
+            .any(|cubic_arg| compare_expr(ctx, *linear_arg, *cubic_arg) == Ordering::Equal)
+    })
 }
 
 fn expr_contains_sqrt_or_half_power(ctx: &cas_ast::Context, root: cas_ast::ExprId) -> bool {
@@ -437,6 +501,12 @@ struct OddHalfPowerCancellationMatch {
 struct LogAbsMulDivCancellationMatch {
     focus_after: cas_ast::ExprId,
     components: [(cas_ast::ExprId, Sign); 2],
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct HyperbolicPythagoreanFactorCancellationMatch {
+    factorized: cas_ast::ExprId,
+    rewritten: cas_ast::ExprId,
 }
 
 fn try_match_odd_half_power_cancellation_side(
@@ -757,6 +827,53 @@ fn try_rewrite_hyperbolic_angle_sum_diff_for_cancellation(
     (rewritten != expr).then_some(rewritten)
 }
 
+fn try_rewrite_hyperbolic_pythagorean_factor_for_cancellation(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<HyperbolicPythagoreanFactorCancellationMatch> {
+    let (lhs, rhs) = match ctx.get(expr).clone() {
+        Expr::Sub(lhs, rhs) => (lhs, rhs),
+        Expr::Add(lhs, rhs) => match ctx.get(rhs).clone() {
+            Expr::Neg(inner) => (lhs, inner),
+            _ => match ctx.get(lhs).clone() {
+                Expr::Neg(inner) => (rhs, inner),
+                _ => return None,
+            },
+        },
+        _ => return None,
+    };
+
+    let (lhs_multiplier, lhs_arg, lhs_power) = extract_signed_cosh_power(ctx, lhs)?;
+    let (rhs_multiplier, rhs_arg, rhs_power) = extract_signed_cosh_power(ctx, rhs)?;
+    if compare_expr(ctx, lhs_arg, rhs_arg) != Ordering::Equal || lhs_multiplier != rhs_multiplier {
+        return None;
+    }
+
+    let scale = match (lhs_power, rhs_power) {
+        (3, 1) => lhs_multiplier,
+        (1, 3) => -lhs_multiplier,
+        _ => return None,
+    };
+
+    let cosh_arg = ctx.call_builtin(BuiltinFn::Cosh, vec![lhs_arg]);
+    let sinh_arg = ctx.call_builtin(BuiltinFn::Sinh, vec![lhs_arg]);
+    let two = ctx.num(2);
+    let one = ctx.num(1);
+    let scale_expr = ctx.num(scale);
+    let cosh_sq = ctx.add(Expr::Pow(cosh_arg, two));
+    let sinh_sq = ctx.add(Expr::Pow(sinh_arg, two));
+    let factorized_inner = ctx.add(Expr::Sub(cosh_sq, one));
+    let factorized_product = smart_mul(ctx, cosh_arg, factorized_inner);
+    let rewritten_product = smart_mul(ctx, cosh_arg, sinh_sq);
+    let factorized = build_scaled_expr(ctx, scale_expr, factorized_product);
+    let rewritten = build_scaled_expr(ctx, scale_expr, rewritten_product);
+
+    Some(HyperbolicPythagoreanFactorCancellationMatch {
+        factorized,
+        rewritten,
+    })
+}
+
 fn try_build_exact_trig_sum_to_product_zero_scope_rewrite(
     ctx: &mut cas_ast::Context,
     expr: cas_ast::ExprId,
@@ -859,6 +976,101 @@ fn try_build_exact_hyperbolic_angle_sum_diff_zero_scope_rewrite(
     None
 }
 
+fn try_build_exact_hyperbolic_pythagorean_factor_zero_scope_rewrite(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<Rewrite> {
+    let view = AddView::from_expr(ctx, expr);
+    if view.terms.len() < 2 {
+        return None;
+    }
+
+    for first_index in 0..view.terms.len() {
+        for second_index in (first_index + 1)..view.terms.len() {
+            let focus_terms = [view.terms[first_index], view.terms[second_index]];
+            let focus_expr = build_signed_sum_expr(ctx, &focus_terms);
+            let Some(rewrite_match) =
+                try_rewrite_hyperbolic_pythagorean_factor_for_cancellation(ctx, focus_expr)
+            else {
+                continue;
+            };
+
+            let remaining_terms: Vec<_> = view
+                .terms
+                .iter()
+                .copied()
+                .enumerate()
+                .filter_map(|(index, term)| {
+                    (index != first_index && index != second_index).then_some(term)
+                })
+                .collect();
+            if remaining_terms.is_empty() {
+                continue;
+            }
+
+            let remaining_expr = build_signed_sum_expr(ctx, &remaining_terms);
+            if !expr_matches_negation_after_default_simplify(
+                ctx,
+                rewrite_match.rewritten,
+                remaining_expr,
+            ) {
+                continue;
+            }
+
+            return Some(build_hyperbolic_pythagorean_factor_zero_rewrite(
+                ctx,
+                focus_expr,
+                rewrite_match,
+            ));
+        }
+    }
+
+    None
+}
+
+fn build_hyperbolic_pythagorean_factor_zero_rewrite(
+    ctx: &mut cas_ast::Context,
+    _focus_expr: cas_ast::ExprId,
+    rewrite_match: HyperbolicPythagoreanFactorCancellationMatch,
+) -> Rewrite {
+    let factorized_display = format!(
+        "{}",
+        cas_formatter::DisplayExpr {
+            context: ctx,
+            id: rewrite_match.factorized
+        }
+    );
+    let focus_after_display = format!(
+        "{}",
+        cas_formatter::DisplayExpr {
+            context: ctx,
+            id: rewrite_match.rewritten
+        }
+    );
+
+    Rewrite::with_local(
+        ctx.num(0),
+        "Factor out cosh and apply hyperbolic Pythagorean identity",
+        rewrite_match.factorized,
+        rewrite_match.rewritten,
+    )
+    .substep(
+        "Sacar factor común",
+        vec![format!("Sacar factor común para obtener {factorized_display}.")],
+    )
+    .substep(
+        "Usar cosh(u)^2 - 1 = sinh(u)^2",
+        vec![format!("Así se obtiene {focus_after_display}.")],
+    )
+    .substep(
+        "Cancelar términos iguales",
+        vec![
+            "Tras la reescritura, el término restante es exactamente el opuesto y toda la expresión se anula."
+                .to_string(),
+        ],
+    )
+}
+
 define_rule!(
     ExpandTrigSumToProductToEnableCancellationRule,
     "Sum-to-Product Identity Cancellation Bridge",
@@ -927,6 +1139,85 @@ define_rule!(
                             description,
                             rhs,
                             rewritten,
+                        ));
+                    }
+                }
+
+                None
+            }
+            _ => None,
+        }
+    }
+);
+
+define_rule!(
+    ExpandHyperbolicPythagoreanFactorToEnableCancellationRule,
+    "Hyperbolic Pythagorean Identity Cancellation Bridge",
+    Some(crate::target_kind::TargetKindSet::ADD.union(crate::target_kind::TargetKindSet::SUB)),
+    crate::phase::PhaseMask::CORE | crate::phase::PhaseMask::POST,
+    priority: 510,
+    |ctx, expr| {
+        if !maybe_hyperbolic_pythagorean_factor_zero_candidate(ctx, expr) {
+            return None;
+        }
+
+        if let Some(rewrite) =
+            try_build_exact_hyperbolic_pythagorean_factor_zero_scope_rewrite(ctx, expr)
+        {
+            return Some(rewrite);
+        }
+
+        match ctx.get(expr).clone() {
+            Expr::Sub(lhs, rhs) => {
+                if let Some(rewrite_match) =
+                    try_rewrite_hyperbolic_pythagorean_factor_for_cancellation(ctx, lhs)
+                {
+                    if exprs_match_after_default_simplify(ctx, rewrite_match.rewritten, rhs) {
+                        return Some(build_hyperbolic_pythagorean_factor_zero_rewrite(
+                            ctx,
+                            lhs,
+                            rewrite_match,
+                        ));
+                    }
+                }
+
+                if let Some(rewrite_match) =
+                    try_rewrite_hyperbolic_pythagorean_factor_for_cancellation(ctx, rhs)
+                {
+                    if exprs_match_after_default_simplify(ctx, rewrite_match.rewritten, lhs) {
+                        return Some(build_hyperbolic_pythagorean_factor_zero_rewrite(
+                            ctx,
+                            rhs,
+                            rewrite_match,
+                        ));
+                    }
+                }
+
+                None
+            }
+            Expr::Add(lhs, rhs) => {
+                if let Some(rewrite_match) =
+                    try_rewrite_hyperbolic_pythagorean_factor_for_cancellation(ctx, lhs)
+                {
+                    if expr_matches_negation_after_default_simplify(ctx, rewrite_match.rewritten, rhs)
+                    {
+                        return Some(build_hyperbolic_pythagorean_factor_zero_rewrite(
+                            ctx,
+                            lhs,
+                            rewrite_match,
+                        ));
+                    }
+                }
+
+                if let Some(rewrite_match) =
+                    try_rewrite_hyperbolic_pythagorean_factor_for_cancellation(ctx, rhs)
+                {
+                    if expr_matches_negation_after_default_simplify(ctx, rewrite_match.rewritten, lhs)
+                    {
+                        return Some(build_hyperbolic_pythagorean_factor_zero_rewrite(
+                            ctx,
+                            rhs,
+                            rewrite_match,
                         ));
                     }
                 }
@@ -1456,6 +1747,7 @@ mod tests {
     use super::{
         canonicalize_nested_integer_powers, exprs_equal_up_to_add_term_order,
         ExpandHyperbolicAngleSumDiffToEnableCancellationRule,
+        ExpandHyperbolicPythagoreanFactorToEnableCancellationRule,
         ExpandLogAbsMulDivToEnableCancellationRule, ExpandOddHalfPowerToEnableCancellationRule,
         ExpandTrigSumToProductToEnableCancellationRule, SubSelfToZeroRule,
         SubtractExpandedSumDiffCubesQuotientRule,
@@ -1689,6 +1981,31 @@ mod tests {
     }
 
     #[test]
+    fn expand_hyperbolic_pythagorean_factor_to_enable_cancellation_rule_matches_cubic_residual() {
+        let mut ctx = Context::new();
+        let expr = parse("4*cosh(x)*sinh(x)^2 + 4*cosh(x) - 4*cosh(x)^3", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rule = ExpandHyperbolicPythagoreanFactorToEnableCancellationRule;
+        let rewrite = rule
+            .apply(&mut ctx, expr, &parent_ctx)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "0"
+        );
+        assert_eq!(rewrite.substeps.len(), 3);
+    }
+
+    #[test]
     fn subtract_expanded_sum_diff_cubes_quotient_rule_matches_trig_square_cube_residual() {
         let mut ctx = Context::new();
         let expr = parse(
@@ -1787,6 +2104,9 @@ define_rule!(
 pub fn register(simplifier: &mut crate::Simplifier) {
     // High-priority short-circuit rules first
     simplifier.add_rule(Box::new(ExpandTrigSumToProductToEnableCancellationRule));
+    simplifier.add_rule(Box::new(
+        ExpandHyperbolicPythagoreanFactorToEnableCancellationRule,
+    ));
     simplifier.add_rule(Box::new(
         ExpandHyperbolicAngleSumDiffToEnableCancellationRule,
     ));

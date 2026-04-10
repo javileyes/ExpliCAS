@@ -3733,6 +3733,44 @@ fn eval_hyperbolic_angle_sum_difference_to_zero_uses_expand_then_self_cancel() {
 }
 
 #[test]
+fn eval_hyperbolic_cubic_residual_difference_to_zero_uses_pythagorean_bridge() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "2*sinh(2*x)*sinh(x) - (4*cosh(x)^3 - 4*cosh(x))",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 2);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 2);
+    assert_eq!(steps[0]["rule"], "sinh(2x) = 2·sinh(x)·cosh(x)");
+    assert_eq!(
+        steps[1]["rule"],
+        "Aplicar la identidad pitagórica hiperbólica"
+    );
+    let substeps = steps[1]["substeps"].as_array().expect("substeps array");
+    assert_eq!(substeps.len(), 3);
+    let titles: Vec<_> = substeps
+        .iter()
+        .map(|substep| substep["title"].as_str().expect("substep title"))
+        .collect();
+    assert!(titles
+        .iter()
+        .any(|title| title.contains("Sacar factor común")));
+    assert!(titles
+        .iter()
+        .any(|title| title.contains("cosh(u)^2 - 1 = sinh(u)^2")));
+    assert!(titles
+        .iter()
+        .any(|title| title.contains("Cancelar términos iguales")));
+}
+
+#[test]
 fn derive_hyperbolic_double_angle_with_passthrough_uses_named_step() {
     let (output, _code) = run_cli(&[
         "eval",
