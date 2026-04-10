@@ -1,7 +1,7 @@
 use crate::expr_predicates::{is_one_expr, is_two_expr};
 use crate::trig_roots_flatten::{extract_double_angle_arg_relaxed, extract_triple_angle_arg};
 use cas_ast::ordering::compare_expr;
-use cas_ast::{BuiltinFn, Context, Expr, ExprId};
+use cas_ast::{BuiltinFn, Constant, Context, Expr, ExprId};
 use std::cmp::Ordering;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -37,6 +37,11 @@ pub enum SinhCoshToExpRewriteKind {
 pub struct SinhCoshToExpRewrite {
     pub rewritten: ExprId,
     pub kind: SinhCoshToExpRewriteKind,
+}
+
+fn e_pow(ctx: &mut Context, arg: ExprId) -> ExprId {
+    let e = ctx.add(Expr::Constant(Constant::E));
+    ctx.add(Expr::Pow(e, arg))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -147,7 +152,7 @@ pub fn try_rewrite_sinh_cosh_to_exp(
             if (is_sinh_plus_cosh || is_cosh_plus_sinh)
                 && compare_expr(ctx, l_args[0], r_args[0]) == Ordering::Equal
             {
-                let exp_x = ctx.call_builtin(BuiltinFn::Exp, vec![l_args[0]]);
+                let exp_x = e_pow(ctx, l_args[0]);
                 return Some(SinhCoshToExpRewrite {
                     rewritten: exp_x,
                     kind: SinhCoshToExpRewriteKind::Sum,
@@ -177,7 +182,7 @@ pub fn try_rewrite_sinh_cosh_to_exp(
             }
 
             let neg_arg = ctx.add(Expr::Neg(l_args[0]));
-            let exp_neg_x = ctx.call_builtin(BuiltinFn::Exp, vec![neg_arg]);
+            let exp_neg_x = e_pow(ctx, neg_arg);
             if is_cosh_minus_sinh {
                 Some(SinhCoshToExpRewrite {
                     rewritten: exp_neg_x,
@@ -649,6 +654,9 @@ pub enum RecognizeHyperbolicFromExpRewriteKind {
     CoshHalf,
     SinhHalf,
     NegSinhHalf,
+    CoshDirect,
+    SinhDirect,
+    NegSinhDirect,
     TanhRatio,
     NegTanhRatio,
 }
@@ -659,10 +667,51 @@ pub struct RecognizeHyperbolicFromExpRewrite {
     pub kind: RecognizeHyperbolicFromExpRewriteKind,
 }
 
+fn build_recognize_hyperbolic_from_exp_rewrite(
+    ctx: &mut Context,
+    arg: ExprId,
+    is_cosh: bool,
+    positive_first: bool,
+    direct: bool,
+) -> RecognizeHyperbolicFromExpRewrite {
+    let base = if is_cosh {
+        ctx.call_builtin(BuiltinFn::Cosh, vec![arg])
+    } else {
+        ctx.call_builtin(BuiltinFn::Sinh, vec![arg])
+    };
+    let two = ctx.num(2);
+    let neg_two = ctx.num(-2);
+
+    let (rewritten, kind) = match (is_cosh, direct, positive_first) {
+        (true, false, _) => (base, RecognizeHyperbolicFromExpRewriteKind::CoshHalf),
+        (true, true, _) => (
+            ctx.add(Expr::Mul(two, base)),
+            RecognizeHyperbolicFromExpRewriteKind::CoshDirect,
+        ),
+        (false, false, true) => (base, RecognizeHyperbolicFromExpRewriteKind::SinhHalf),
+        (false, false, false) => (
+            ctx.add(Expr::Neg(base)),
+            RecognizeHyperbolicFromExpRewriteKind::NegSinhHalf,
+        ),
+        (false, true, true) => (
+            ctx.add(Expr::Mul(two, base)),
+            RecognizeHyperbolicFromExpRewriteKind::SinhDirect,
+        ),
+        (false, true, false) => (
+            ctx.add(Expr::Mul(neg_two, base)),
+            RecognizeHyperbolicFromExpRewriteKind::NegSinhDirect,
+        ),
+    };
+
+    RecognizeHyperbolicFromExpRewrite { rewritten, kind }
+}
+
 /// Detect and rewrite exponential definitions of hyperbolic functions:
 /// - `(e^x + e^(-x))/2` or `(1/2)*(...)` -> `cosh(x)`
 /// - `(e^x - e^(-x))/2` or `(1/2)*(...)` -> `sinh(x)`
 /// - `(e^(-x) - e^x)/2` or `(1/2)*(...)` -> `-sinh(x)`
+/// - `e^x + e^(-x)` (or `e^x + 1/e^x`) -> `2*cosh(x)`
+/// - `e^x - e^(-x)` (or `e^x - 1/e^x`) -> `2*sinh(x)`
 /// - `(e^x - e^(-x))/(e^x + e^(-x))` -> `tanh(x)` (or negated variant)
 pub fn try_rewrite_recognize_hyperbolic_from_exp(
     ctx: &mut Context,
@@ -674,25 +723,13 @@ pub fn try_rewrite_recognize_hyperbolic_from_exp(
             if let Some((arg, is_cosh, positive_first)) =
                 crate::hyperbolic_exp_support::extract_exp_pair(ctx, *num)
             {
-                if is_cosh {
-                    let cosh = ctx.call_builtin(BuiltinFn::Cosh, vec![arg]);
-                    return Some(RecognizeHyperbolicFromExpRewrite {
-                        rewritten: cosh,
-                        kind: RecognizeHyperbolicFromExpRewriteKind::CoshHalf,
-                    });
-                } else if positive_first {
-                    let sinh = ctx.call_builtin(BuiltinFn::Sinh, vec![arg]);
-                    return Some(RecognizeHyperbolicFromExpRewrite {
-                        rewritten: sinh,
-                        kind: RecognizeHyperbolicFromExpRewriteKind::SinhHalf,
-                    });
-                } else {
-                    let sinh = ctx.call_builtin(BuiltinFn::Sinh, vec![arg]);
-                    return Some(RecognizeHyperbolicFromExpRewrite {
-                        rewritten: ctx.add(Expr::Neg(sinh)),
-                        kind: RecognizeHyperbolicFromExpRewriteKind::NegSinhHalf,
-                    });
-                }
+                return Some(build_recognize_hyperbolic_from_exp_rewrite(
+                    ctx,
+                    arg,
+                    is_cosh,
+                    positive_first,
+                    false,
+                ));
             }
         }
     }
@@ -710,30 +747,31 @@ pub fn try_rewrite_recognize_hyperbolic_from_exp(
             if let Some((arg, is_cosh, positive_first)) =
                 crate::hyperbolic_exp_support::extract_exp_pair(ctx, sum_id)
             {
-                if is_cosh {
-                    let cosh = ctx.call_builtin(BuiltinFn::Cosh, vec![arg]);
-                    return Some(RecognizeHyperbolicFromExpRewrite {
-                        rewritten: cosh,
-                        kind: RecognizeHyperbolicFromExpRewriteKind::CoshHalf,
-                    });
-                } else if positive_first {
-                    let sinh = ctx.call_builtin(BuiltinFn::Sinh, vec![arg]);
-                    return Some(RecognizeHyperbolicFromExpRewrite {
-                        rewritten: sinh,
-                        kind: RecognizeHyperbolicFromExpRewriteKind::SinhHalf,
-                    });
-                } else {
-                    let sinh = ctx.call_builtin(BuiltinFn::Sinh, vec![arg]);
-                    return Some(RecognizeHyperbolicFromExpRewrite {
-                        rewritten: ctx.add(Expr::Neg(sinh)),
-                        kind: RecognizeHyperbolicFromExpRewriteKind::NegSinhHalf,
-                    });
-                }
+                return Some(build_recognize_hyperbolic_from_exp_rewrite(
+                    ctx,
+                    arg,
+                    is_cosh,
+                    positive_first,
+                    false,
+                ));
             }
         }
     }
 
-    // Pattern 3: (e^x - e^(-x)) / (e^x + e^(-x)) -> tanh(x) (or -tanh(x)).
+    // Pattern 3: e^x +/- e^(-x) -> 2*cosh(x) / +/-2*sinh(x).
+    if let Some((arg, is_cosh, positive_first)) =
+        crate::hyperbolic_exp_support::extract_exp_pair(ctx, expr)
+    {
+        return Some(build_recognize_hyperbolic_from_exp_rewrite(
+            ctx,
+            arg,
+            is_cosh,
+            positive_first,
+            true,
+        ));
+    }
+
+    // Pattern 4: (e^x - e^(-x)) / (e^x + e^(-x)) -> tanh(x) (or -tanh(x)).
     if let Expr::Div(num, den) = ctx.get(expr) {
         if let Some((num_arg, false, num_positive_first)) =
             crate::hyperbolic_exp_support::extract_exp_pair(ctx, *num)
@@ -1232,6 +1270,40 @@ mod tests {
         assert_eq!(
             rewrite.kind,
             RecognizeHyperbolicFromExpRewriteKind::CoshHalf
+        );
+    }
+
+    #[test]
+    fn recognize_from_exp_rewrites_direct_sum_with_reciprocal() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let e = ctx.add(Expr::Constant(cas_ast::Constant::E));
+        let exp_x = ctx.add(Expr::Pow(e, x));
+        let one = ctx.num(1);
+        let reciprocal = ctx.add(Expr::Div(one, exp_x));
+        let expr = ctx.add(Expr::Add(exp_x, reciprocal));
+
+        let rewrite = try_rewrite_recognize_hyperbolic_from_exp(&mut ctx, expr).expect("rewrite");
+        assert_eq!(
+            rewrite.kind,
+            RecognizeHyperbolicFromExpRewriteKind::CoshDirect
+        );
+    }
+
+    #[test]
+    fn recognize_from_exp_rewrites_direct_difference_with_reciprocal() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let e = ctx.add(Expr::Constant(cas_ast::Constant::E));
+        let exp_x = ctx.add(Expr::Pow(e, x));
+        let one = ctx.num(1);
+        let reciprocal = ctx.add(Expr::Div(one, exp_x));
+        let expr = ctx.add(Expr::Sub(exp_x, reciprocal));
+
+        let rewrite = try_rewrite_recognize_hyperbolic_from_exp(&mut ctx, expr).expect("rewrite");
+        assert_eq!(
+            rewrite.kind,
+            RecognizeHyperbolicFromExpRewriteKind::SinhDirect
         );
     }
 

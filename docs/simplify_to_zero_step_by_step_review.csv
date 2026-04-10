@@ -6,14 +6,14 @@ expression,step_by_step_result
 "1/(sqrt(a) + sqrt(b)) - (sqrt(a) - sqrt(b))/(a - b)","perfecto: racionaliza, explica conjugado y diferencia de cuadrados, y cierra limpiamente en una resta de iguales."
 "log(x^2 - y^2) - log(x - y) - log(x + y)","bueno: ahora la traza mantiene el contexto completo de logaritmos; sigue siendo una ruta algo indirecta porque primero contrae, luego cancela dentro del log y después vuelve a contraer hasta 0."
 "sin(x)^2 - (1 - cos(2*x))/2","bueno: llega a 0 con pasos coherentes, aunque la regla visible de ángulo medio es algo genérica y explica poco el patrón."
-"cosh(x) + sinh(x) - e^x","regular: la idea es correcta, pero incluye un step no-op Convert exp to Power entre e^x - e^x y 0."
+"cosh(x) + sinh(x) - e^x","perfecto: ahora colapsa directamente a e^x y cierra en una resta de expresiones iguales, sin el no-op Convert exp to Power."
 "(sin(x) + cos(x))^2 - (1 + sin(2*x))","malo: hay oscilación clara, steps repetidos y warnings de depth overflow; la narrativa se vuelve confusa y demasiado larga."
 "2*cos(2*x)*sin(x) - (4*cos(x)^2*sin(x) - 2*sin(x))","bueno: cadena corta y correcta hasta una resta de iguales; podría comprimir mejor la expansión distributiva intermedia."
 "2*sin(2*x)*sin(x) - (4*cos(x) - 4*cos(x)^3)","malo: oscila entre expandir y contraer el ángulo doble antes de cerrar; hay pasos redundantes y warning de depth overflow."
 "sin(x) + sin(y) - 2*sin((x+y)/2)*cos((x-y)/2)",perfecto
 "cos(x) - cos(y) + 2*sin((x+y)/2)*sin((x-y)/2)",perfecto
 "3*sin(x) + 4*cos(x) - 5*sin(x + arctan(4/3))","malo: no simplifica a 0; solo reordena o quita paréntesis en una identidad de phase shift."
-"2*sinh(2*x)*sinh(x) - (4*cosh(x)^3 - 4*cosh(x))","perfecto"
+"2*sinh(2*x)*sinh(x) - (4*cosh(x)^3 - 4*cosh(x))","regular: hoy se queda en la forma factorizada cosh(x)·(4·sinh(x)^2 + 4) - 4·cosh(x)^3; la narrativa parcial es razonable, pero ya no cierra a 0."
 "sinh(x+y) - (sinh(x)*cosh(y) + cosh(x)*sinh(y))",perfecto
 "(a^3-b^3)/(a-b) - (a^2 + a*b + b^2)","regular: correcto semánticamente, pero demasiado opaco; cancela toda la identidad de cubos en un solo salto sin explicar factorización y cancelación."
 "sqrt(a^2 + 2*a*b + b^2) - abs(a+b)","perfecto: reconoce el cuadrado perfecto, usa valor absoluto y cierra con una resta de iguales."
@@ -25,8 +25,8 @@ expression,step_by_step_result
 "2*cos(x)*cos(y) - cos(x+y) - cos(x-y)","bueno: demuestra la identidad, pero con una ruta algo larga y algebraicamente pesada."
 "2*sin(x)*cos(y) - sin(x+y) - sin(x-y)","bueno: llega a 0 sin ciclos y el cierre por identidad exacta es legible, aunque la ruta previa es algo verbosa."
 "2*sin(x)*sin(y) - cos(x-y) + cos(x+y)","bueno: correcto y sin loops, pero la parte central de paridad y factor común es más larga de lo ideal."
-"exp(x) + exp(-x) - 2*cosh(x)","regular: llega a 0, pero por una ruta poco didáctica basada en fracciones de exponenciales en lugar de reconocer cosh de forma directa."
-"exp(x) - exp(-x) - 2*sinh(x)","regular: mismo problema que el anterior; correcto, pero didácticamente rebuscado."
+"exp(x) + exp(-x) - 2*cosh(x)","perfecto: ahora reconoce directamente 2*cosh(x) desde la suma exponencial y cierra en una resta de expresiones iguales."
+"exp(x) - exp(-x) - 2*sinh(x)","perfecto: ahora reconoce directamente 2*sinh(x) desde la diferencia exponencial y cierra en una resta de expresiones iguales."
 "1/(u*(u+1)) - 1/u + 1/(u+1)","bueno: secuencia razonable de suma y cancelación telescópica; el step 2 comprime bastante la manipulación clave."
 "(1/x + 1/y)/(1/x - 1/y) - (x+y)/(y-x)","bueno: la fracción anidada se explica aceptablemente y cierra bien; aún podría narrar mejor el denominador común."
 "(n+1)!/(n-1)! - n*(n+1)","perfecto: expande el factorial, cancela el común y cierra limpio."

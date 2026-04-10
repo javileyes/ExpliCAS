@@ -123,13 +123,13 @@ fn format_sinh_cosh_to_exp_desc(
 ) -> &'static str {
     match kind {
         cas_math::hyperbolic_identity_support::SinhCoshToExpRewriteKind::Sum => {
-            "sinh(x) + cosh(x) = exp(x)"
+            "sinh(x) + cosh(x) = e^x"
         }
         cas_math::hyperbolic_identity_support::SinhCoshToExpRewriteKind::CoshMinusSinh => {
-            "cosh(x) - sinh(x) = exp(-x)"
+            "cosh(x) - sinh(x) = e^(-x)"
         }
         cas_math::hyperbolic_identity_support::SinhCoshToExpRewriteKind::SinhMinusCosh => {
-            "sinh(x) - cosh(x) = -exp(-x)"
+            "sinh(x) - cosh(x) = -e^(-x)"
         }
     }
 }
@@ -172,6 +172,15 @@ fn format_recognize_hyperbolic_from_exp_desc(
         }
         cas_math::hyperbolic_identity_support::RecognizeHyperbolicFromExpRewriteKind::NegSinhHalf => {
             "(e^(-x) - e^x)/2 = -sinh(x)"
+        }
+        cas_math::hyperbolic_identity_support::RecognizeHyperbolicFromExpRewriteKind::CoshDirect => {
+            "e^x + e^(-x) = 2cosh(x)"
+        }
+        cas_math::hyperbolic_identity_support::RecognizeHyperbolicFromExpRewriteKind::SinhDirect => {
+            "e^x - e^(-x) = 2sinh(x)"
+        }
+        cas_math::hyperbolic_identity_support::RecognizeHyperbolicFromExpRewriteKind::NegSinhDirect => {
+            "e^(-x) - e^x = -2sinh(x)"
         }
         cas_math::hyperbolic_identity_support::RecognizeHyperbolicFromExpRewriteKind::TanhRatio => {
             "(e^x - e^(-x))/(e^x + e^(-x)) = tanh(x)"

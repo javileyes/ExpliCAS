@@ -11,8 +11,8 @@ use cas_math::arithmetic_rule_support::{
 };
 use cas_math::arithmetic_zero_support::{match_div_zero_numerator_pattern, match_mul_zero_pattern};
 use cas_math::expr_destructure::{as_div, as_mul};
-use cas_math::expr_extract::{extract_i64_integer, extract_i64_multiplier_and_base_factors};
-use cas_math::expr_nary::{AddView, Sign};
+use cas_math::expr_extract::extract_i64_integer;
+use cas_math::expr_nary::{build_balanced_mul, AddView, Sign};
 use cas_math::expr_rewrite::smart_mul;
 use cas_math::logarithm_inverse_support::{make_log_expr, try_extract_log_parts};
 use cas_math::trig_sum_product_support::{
@@ -175,41 +175,112 @@ fn maybe_hyperbolic_angle_sum_diff_zero_candidate(
     false
 }
 
-fn extract_signed_multiplier_and_single_factor(
+fn extract_cosh_power_shape(
     ctx: &cas_ast::Context,
     expr: cas_ast::ExprId,
-) -> Option<(i64, cas_ast::ExprId)> {
-    let (multiplier_sign, positive_expr) = match ctx.get(expr) {
+) -> Option<(cas_ast::ExprId, i64)> {
+    let positive_expr = match ctx.get(expr) {
+        Expr::Neg(inner) => (-1, *inner),
+        _ => (1, expr),
+    }
+    .1;
+
+    let mut cosh_arg = None;
+    let mut cosh_power = None;
+
+    for factor in cas_math::expr_nary::mul_leaves(ctx, positive_expr) {
+        match ctx.get(factor) {
+            Expr::Function(fn_id, args)
+                if ctx.is_builtin(*fn_id, BuiltinFn::Cosh) && args.len() == 1 =>
+            {
+                if cosh_arg.is_some() {
+                    return None;
+                }
+                cosh_arg = Some(args[0]);
+                cosh_power = Some(1);
+            }
+            Expr::Pow(base, exponent) => {
+                let Expr::Function(fn_id, args) = ctx.get(*base) else {
+                    continue;
+                };
+                if !ctx.is_builtin(*fn_id, BuiltinFn::Cosh) || args.len() != 1 {
+                    continue;
+                }
+                if cosh_arg.is_some() {
+                    return None;
+                }
+                cosh_arg = Some(args[0]);
+                cosh_power = Some(extract_i64_integer(ctx, *exponent)?);
+            }
+            _ => {}
+        }
+    }
+
+    Some((cosh_arg?, cosh_power?))
+}
+
+fn extract_signed_cosh_power(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<(i64, cas_ast::ExprId, cas_ast::ExprId, i64)> {
+    let (sign, positive_expr) = match ctx.get(expr) {
         Expr::Neg(inner) => (-1, *inner),
         _ => (1, expr),
     };
 
-    let (multiplier, factors) = extract_i64_multiplier_and_base_factors(ctx, positive_expr);
-    (factors.len() == 1).then_some((multiplier_sign * multiplier, factors[0]))
+    let mut coefficient_factors = smallvec::SmallVec::<[cas_ast::ExprId; 8]>::new();
+    let mut cosh_arg = None;
+    let mut cosh_power = None;
+
+    for factor in cas_math::expr_nary::mul_leaves(ctx, positive_expr) {
+        match ctx.get(factor) {
+            Expr::Function(fn_id, args)
+                if ctx.is_builtin(*fn_id, BuiltinFn::Cosh) && args.len() == 1 =>
+            {
+                if cosh_arg.is_some() {
+                    return None;
+                }
+                cosh_arg = Some(args[0]);
+                cosh_power = Some(1);
+            }
+            Expr::Pow(base, exponent) => {
+                let Expr::Function(fn_id, args) = ctx.get(*base) else {
+                    coefficient_factors.push(factor);
+                    continue;
+                };
+                if !ctx.is_builtin(*fn_id, BuiltinFn::Cosh) || args.len() != 1 {
+                    coefficient_factors.push(factor);
+                    continue;
+                }
+                if cosh_arg.is_some() {
+                    return None;
+                }
+                cosh_arg = Some(args[0]);
+                cosh_power = Some(extract_i64_integer(ctx, *exponent)?);
+            }
+            _ => coefficient_factors.push(factor),
+        }
+    }
+
+    let coefficient = if coefficient_factors.is_empty() {
+        ctx.num(1)
+    } else {
+        let coefficient_vec = coefficient_factors.into_vec();
+        build_balanced_mul(ctx, &coefficient_vec)
+    };
+
+    Some((sign, coefficient, cosh_arg?, cosh_power?))
 }
 
-fn extract_signed_cosh_power(
-    ctx: &cas_ast::Context,
+fn apply_sign_to_expr(
+    ctx: &mut cas_ast::Context,
+    sign: i64,
     expr: cas_ast::ExprId,
-) -> Option<(i64, cas_ast::ExprId, i64)> {
-    let (multiplier, factor) = extract_signed_multiplier_and_single_factor(ctx, expr)?;
-    match ctx.get(factor) {
-        Expr::Function(fn_id, args)
-            if ctx.is_builtin(*fn_id, BuiltinFn::Cosh) && args.len() == 1 =>
-        {
-            Some((multiplier, args[0], 1))
-        }
-        Expr::Pow(base, exponent) => {
-            let Expr::Function(fn_id, args) = ctx.get(*base) else {
-                return None;
-            };
-            if !ctx.is_builtin(*fn_id, BuiltinFn::Cosh) || args.len() != 1 {
-                return None;
-            }
-            let power = extract_i64_integer(ctx, *exponent)?;
-            Some((multiplier, args[0], power))
-        }
-        _ => None,
+) -> cas_ast::ExprId {
+    if sign < 0 {
+        ctx.add(Expr::Neg(expr))
+    } else {
+        expr
     }
 }
 
@@ -222,7 +293,7 @@ fn maybe_hyperbolic_pythagorean_factor_zero_candidate(
     let mut seen_cubic = Vec::new();
 
     for (term_expr, _sign) in view.terms {
-        if let Some((_, arg, power)) = extract_signed_cosh_power(ctx, term_expr) {
+        if let Some((arg, power)) = extract_cosh_power_shape(ctx, term_expr) {
             match power {
                 1 => seen_linear.push(arg),
                 3 => seen_cubic.push(arg),
@@ -505,8 +576,18 @@ struct LogAbsMulDivCancellationMatch {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct HyperbolicPythagoreanFactorCancellationMatch {
-    factorized: cas_ast::ExprId,
-    rewritten: cas_ast::ExprId,
+    local_before: cas_ast::ExprId,
+    local_after: cas_ast::ExprId,
+    mode: HyperbolicPythagoreanFactorCancellationMode,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum HyperbolicPythagoreanFactorCancellationMode {
+    FactorThenRewrite {
+        factorized: cas_ast::ExprId,
+        rewritten: cas_ast::ExprId,
+    },
+    AlreadyFactored,
 }
 
 fn try_match_odd_half_power_cancellation_side(
@@ -843,34 +924,198 @@ fn try_rewrite_hyperbolic_pythagorean_factor_for_cancellation(
         _ => return None,
     };
 
-    let (lhs_multiplier, lhs_arg, lhs_power) = extract_signed_cosh_power(ctx, lhs)?;
-    let (rhs_multiplier, rhs_arg, rhs_power) = extract_signed_cosh_power(ctx, rhs)?;
-    if compare_expr(ctx, lhs_arg, rhs_arg) != Ordering::Equal || lhs_multiplier != rhs_multiplier {
+    if let (
+        Some((lhs_sign, lhs_coeff, lhs_arg, lhs_power)),
+        Some((rhs_sign, rhs_coeff, rhs_arg, rhs_power)),
+    ) = (
+        extract_signed_cosh_power(ctx, lhs),
+        extract_signed_cosh_power(ctx, rhs),
+    ) {
+        if compare_expr(ctx, lhs_arg, rhs_arg) == Ordering::Equal
+            && lhs_sign == rhs_sign
+            && exprs_match_for_cancellation(ctx, lhs_coeff, rhs_coeff)
+        {
+            let coeff_with_sign = apply_sign_to_expr(ctx, lhs_sign, lhs_coeff);
+            let oriented_coeff = match (lhs_power, rhs_power) {
+                (3, 1) => coeff_with_sign,
+                (1, 3) => ctx.add(Expr::Neg(coeff_with_sign)),
+                _ => return None,
+            };
+
+            let cosh_arg = ctx.call_builtin(BuiltinFn::Cosh, vec![lhs_arg]);
+            let sinh_arg = ctx.call_builtin(BuiltinFn::Sinh, vec![lhs_arg]);
+            let two = ctx.num(2);
+            let one = ctx.num(1);
+            let cosh_sq = ctx.add(Expr::Pow(cosh_arg, two));
+            let sinh_sq = ctx.add(Expr::Pow(sinh_arg, two));
+            let factorized_inner = ctx.add(Expr::Sub(cosh_sq, one));
+            let factorized_product = smart_mul(ctx, cosh_arg, factorized_inner);
+            let rewritten_product = smart_mul(ctx, cosh_arg, sinh_sq);
+            let factorized = smart_mul(ctx, oriented_coeff, factorized_product);
+            let rewritten = smart_mul(ctx, oriented_coeff, rewritten_product);
+
+            return Some(HyperbolicPythagoreanFactorCancellationMatch {
+                local_before: factorized,
+                local_after: rewritten,
+                mode: HyperbolicPythagoreanFactorCancellationMode::FactorThenRewrite {
+                    factorized,
+                    rewritten,
+                },
+            });
+        }
+    }
+
+    try_rewrite_factored_hyperbolic_pythagorean_for_cancellation(ctx, lhs, rhs)
+        .or_else(|| try_rewrite_factored_hyperbolic_pythagorean_for_cancellation(ctx, rhs, lhs))
+}
+
+fn extract_sinh_sq_multiplier(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+    arg: cas_ast::ExprId,
+) -> Option<cas_ast::ExprId> {
+    let mut coefficient_factors = smallvec::SmallVec::<[cas_ast::ExprId; 8]>::new();
+    let mut seen_sinh_sq = false;
+
+    for factor in cas_math::expr_nary::mul_leaves(ctx, expr) {
+        match ctx.get(factor) {
+            Expr::Pow(base, exponent) => {
+                let Expr::Function(fn_id, args) = ctx.get(*base) else {
+                    coefficient_factors.push(factor);
+                    continue;
+                };
+                if !ctx.is_builtin(*fn_id, BuiltinFn::Sinh)
+                    || args.len() != 1
+                    || compare_expr(ctx, args[0], arg) != Ordering::Equal
+                    || extract_i64_integer(ctx, *exponent)? != 2
+                {
+                    coefficient_factors.push(factor);
+                    continue;
+                }
+                if seen_sinh_sq {
+                    return None;
+                }
+                seen_sinh_sq = true;
+            }
+            _ => coefficient_factors.push(factor),
+        }
+    }
+
+    if !seen_sinh_sq {
         return None;
     }
 
-    let scale = match (lhs_power, rhs_power) {
-        (3, 1) => lhs_multiplier,
-        (1, 3) => -lhs_multiplier,
-        _ => return None,
+    Some(if coefficient_factors.is_empty() {
+        ctx.num(1)
+    } else {
+        build_balanced_mul(ctx, &coefficient_factors.into_vec())
+    })
+}
+
+fn match_sinh_sq_plus_one_multiple(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+    arg: cas_ast::ExprId,
+) -> Option<cas_ast::ExprId> {
+    for candidate in [expr, cas_math::canonical_forms::normalize_core(ctx, expr)] {
+        let view = AddView::from_expr(ctx, candidate);
+        if view.terms.len() != 2 || view.terms.iter().any(|(_, sign)| *sign != Sign::Pos) {
+            continue;
+        }
+
+        for squared_index in 0..2 {
+            let const_index = 1 - squared_index;
+            let squared_term = view.terms[squared_index].0;
+            let const_term = view.terms[const_index].0;
+            let Some(coeff) = extract_sinh_sq_multiplier(ctx, squared_term, arg) else {
+                continue;
+            };
+            if exprs_match_for_cancellation(ctx, coeff, const_term) {
+                return Some(coeff);
+            }
+        }
+    }
+
+    None
+}
+
+fn extract_factored_hyperbolic_linear_term(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<(i64, cas_ast::ExprId, cas_ast::ExprId, cas_ast::ExprId)> {
+    let (sign, positive_expr) = match ctx.get(expr) {
+        Expr::Neg(inner) => (-1, *inner),
+        _ => (1, expr),
     };
 
-    let cosh_arg = ctx.call_builtin(BuiltinFn::Cosh, vec![lhs_arg]);
-    let sinh_arg = ctx.call_builtin(BuiltinFn::Sinh, vec![lhs_arg]);
-    let two = ctx.num(2);
-    let one = ctx.num(1);
-    let scale_expr = ctx.num(scale);
-    let cosh_sq = ctx.add(Expr::Pow(cosh_arg, two));
-    let sinh_sq = ctx.add(Expr::Pow(sinh_arg, two));
-    let factorized_inner = ctx.add(Expr::Sub(cosh_sq, one));
-    let factorized_product = smart_mul(ctx, cosh_arg, factorized_inner);
-    let rewritten_product = smart_mul(ctx, cosh_arg, sinh_sq);
-    let factorized = build_scaled_expr(ctx, scale_expr, factorized_product);
-    let rewritten = build_scaled_expr(ctx, scale_expr, rewritten_product);
+    let mut outer_coeff_factors = smallvec::SmallVec::<[cas_ast::ExprId; 8]>::new();
+    let mut cosh_arg = None;
+    let mut additive_factor = None;
+
+    for factor in cas_math::expr_nary::mul_leaves(ctx, positive_expr) {
+        match ctx.get(factor) {
+            Expr::Function(fn_id, args)
+                if ctx.is_builtin(*fn_id, BuiltinFn::Cosh) && args.len() == 1 =>
+            {
+                if cosh_arg.is_some() {
+                    return None;
+                }
+                cosh_arg = Some(args[0]);
+            }
+            Expr::Add(_, _) | Expr::Sub(_, _) => {
+                if additive_factor.is_some() {
+                    return None;
+                }
+                additive_factor = Some(factor);
+            }
+            _ => outer_coeff_factors.push(factor),
+        }
+    }
+
+    let arg = cosh_arg?;
+    let additive = additive_factor?;
+    let inner_coeff = match_sinh_sq_plus_one_multiple(ctx, additive, arg)?;
+    let outer_coeff = if outer_coeff_factors.is_empty() {
+        ctx.num(1)
+    } else {
+        build_balanced_mul(ctx, &outer_coeff_factors.into_vec())
+    };
+
+    Some((
+        sign,
+        smart_mul(ctx, outer_coeff, inner_coeff),
+        arg,
+        positive_expr,
+    ))
+}
+
+fn try_rewrite_factored_hyperbolic_pythagorean_for_cancellation(
+    ctx: &mut cas_ast::Context,
+    linear_expr: cas_ast::ExprId,
+    cubic_expr: cas_ast::ExprId,
+) -> Option<HyperbolicPythagoreanFactorCancellationMatch> {
+    let (linear_sign, linear_coeff, linear_arg, linear_before_positive) =
+        extract_factored_hyperbolic_linear_term(ctx, linear_expr)?;
+    let (cubic_sign, cubic_coeff, cubic_arg, cubic_power) =
+        extract_signed_cosh_power(ctx, cubic_expr)?;
+
+    if cubic_power != 3
+        || linear_sign != cubic_sign
+        || compare_expr(ctx, linear_arg, cubic_arg) != Ordering::Equal
+        || !exprs_match_for_cancellation(ctx, linear_coeff, cubic_coeff)
+    {
+        return None;
+    }
+
+    let cosh_arg = ctx.call_builtin(BuiltinFn::Cosh, vec![linear_arg]);
+    let three = ctx.num(3);
+    let cosh_cubed = ctx.add(Expr::Pow(cosh_arg, three));
+    let rewritten_positive = smart_mul(ctx, cubic_coeff, cosh_cubed);
 
     Some(HyperbolicPythagoreanFactorCancellationMatch {
-        factorized,
-        rewritten,
+        local_before: apply_sign_to_expr(ctx, linear_sign, linear_before_positive),
+        local_after: apply_sign_to_expr(ctx, cubic_sign, rewritten_positive),
+        mode: HyperbolicPythagoreanFactorCancellationMode::AlreadyFactored,
     })
 }
 
@@ -1011,7 +1256,7 @@ fn try_build_exact_hyperbolic_pythagorean_factor_zero_scope_rewrite(
             let remaining_expr = build_signed_sum_expr(ctx, &remaining_terms);
             if !expr_matches_negation_after_default_simplify(
                 ctx,
-                rewrite_match.rewritten,
+                rewrite_match.local_after,
                 remaining_expr,
             ) {
                 continue;
@@ -1019,7 +1264,6 @@ fn try_build_exact_hyperbolic_pythagorean_factor_zero_scope_rewrite(
 
             return Some(build_hyperbolic_pythagorean_factor_zero_rewrite(
                 ctx,
-                focus_expr,
                 rewrite_match,
             ));
         }
@@ -1030,45 +1274,129 @@ fn try_build_exact_hyperbolic_pythagorean_factor_zero_scope_rewrite(
 
 fn build_hyperbolic_pythagorean_factor_zero_rewrite(
     ctx: &mut cas_ast::Context,
-    _focus_expr: cas_ast::ExprId,
     rewrite_match: HyperbolicPythagoreanFactorCancellationMatch,
 ) -> Rewrite {
-    let factorized_display = format!(
-        "{}",
-        cas_formatter::DisplayExpr {
-            context: ctx,
-            id: rewrite_match.factorized
-        }
-    );
     let focus_after_display = format!(
         "{}",
         cas_formatter::DisplayExpr {
             context: ctx,
-            id: rewrite_match.rewritten
+            id: rewrite_match.local_after
         }
     );
 
-    Rewrite::with_local(
+    let rewrite = Rewrite::with_local(
         ctx.num(0),
         "Factor out cosh and apply hyperbolic Pythagorean identity",
-        rewrite_match.factorized,
-        rewrite_match.rewritten,
-    )
-    .substep(
-        "Sacar factor común",
-        vec![format!("Sacar factor común para obtener {factorized_display}.")],
-    )
-    .substep(
-        "Usar cosh(u)^2 - 1 = sinh(u)^2",
-        vec![format!("Así se obtiene {focus_after_display}.")],
-    )
-    .substep(
-        "Cancelar términos iguales",
-        vec![
-            "Tras la reescritura, el término restante es exactamente el opuesto y toda la expresión se anula."
-                .to_string(),
-        ],
-    )
+        rewrite_match.local_before,
+        rewrite_match.local_after,
+    );
+
+    match rewrite_match.mode {
+        HyperbolicPythagoreanFactorCancellationMode::FactorThenRewrite {
+            factorized,
+            rewritten: _,
+        } => {
+            let factorized_display = format!(
+                "{}",
+                cas_formatter::DisplayExpr {
+                    context: ctx,
+                    id: factorized
+                }
+            );
+            rewrite
+                .substep(
+                    "Sacar factor común",
+                    vec![format!("Sacar factor común para obtener {factorized_display}.")],
+                )
+                .substep(
+                    "Usar cosh(u)^2 - 1 = sinh(u)^2",
+                    vec![format!("Así se obtiene {focus_after_display}.")],
+                )
+                .substep(
+                    "Cancelar términos iguales",
+                    vec![
+                        "Tras la reescritura, el término restante es exactamente el opuesto y toda la expresión se anula."
+                            .to_string(),
+                    ],
+                )
+        }
+        HyperbolicPythagoreanFactorCancellationMode::AlreadyFactored => rewrite
+            .substep(
+                "Usar sinh(u)^2 + 1 = cosh(u)^2",
+                vec![format!("Así se obtiene {focus_after_display}.")],
+            )
+            .substep(
+                "Cancelar términos iguales",
+                vec![
+                    "Tras la reescritura, el término restante es exactamente el opuesto y toda la expresión se anula."
+                        .to_string(),
+                ],
+            ),
+    }
+}
+
+fn build_hyperbolic_pythagorean_factor_root_zero_rewrite(
+    ctx: &mut cas_ast::Context,
+    whole_expr: cas_ast::ExprId,
+    rewrite_match: HyperbolicPythagoreanFactorCancellationMatch,
+) -> Rewrite {
+    let focus_after_display = format!(
+        "{}",
+        cas_formatter::DisplayExpr {
+            context: ctx,
+            id: rewrite_match.local_after
+        }
+    );
+
+    let rewrite = Rewrite::with_local(
+        ctx.num(0),
+        "Factor out cosh and apply hyperbolic Pythagorean identity",
+        whole_expr,
+        ctx.num(0),
+    );
+
+    match rewrite_match.mode {
+        HyperbolicPythagoreanFactorCancellationMode::FactorThenRewrite {
+            factorized,
+            rewritten: _,
+        } => {
+            let factorized_display = format!(
+                "{}",
+                cas_formatter::DisplayExpr {
+                    context: ctx,
+                    id: factorized
+                }
+            );
+            rewrite
+                .substep(
+                    "Sacar factor común",
+                    vec![format!("Sacar factor común para obtener {factorized_display}.")],
+                )
+                .substep(
+                    "Usar cosh(u)^2 - 1 = sinh(u)^2",
+                    vec![format!("Así se obtiene {focus_after_display}.")],
+                )
+                .substep(
+                    "Cancelar términos iguales",
+                    vec![
+                        "Tras la reescritura, el término restante es exactamente el opuesto y toda la expresión se anula."
+                            .to_string(),
+                    ],
+                )
+        }
+        HyperbolicPythagoreanFactorCancellationMode::AlreadyFactored => rewrite
+            .substep(
+                "Usar sinh(u)^2 + 1 = cosh(u)^2",
+                vec![format!("Así se obtiene {focus_after_display}.")],
+            )
+            .substep(
+                "Cancelar términos iguales",
+                vec![
+                    "Tras la reescritura, el término restante es exactamente el opuesto y toda la expresión se anula."
+                        .to_string(),
+                ],
+            ),
+    }
 }
 
 define_rule!(
@@ -1154,9 +1482,11 @@ define_rule!(
     ExpandHyperbolicPythagoreanFactorToEnableCancellationRule,
     "Hyperbolic Pythagorean Identity Cancellation Bridge",
     Some(crate::target_kind::TargetKindSet::ADD.union(crate::target_kind::TargetKindSet::SUB)),
-    crate::phase::PhaseMask::CORE | crate::phase::PhaseMask::POST,
+    crate::phase::PhaseMask::CORE
+        | crate::phase::PhaseMask::TRANSFORM
+        | crate::phase::PhaseMask::POST,
     priority: 510,
-    |ctx, expr| {
+    |ctx, expr, parent_ctx| {
         if !maybe_hyperbolic_pythagorean_factor_zero_candidate(ctx, expr) {
             return None;
         }
@@ -1167,65 +1497,19 @@ define_rule!(
             return Some(rewrite);
         }
 
-        match ctx.get(expr).clone() {
-            Expr::Sub(lhs, rhs) => {
-                if let Some(rewrite_match) =
-                    try_rewrite_hyperbolic_pythagorean_factor_for_cancellation(ctx, lhs)
-                {
-                    if exprs_match_after_default_simplify(ctx, rewrite_match.rewritten, rhs) {
-                        return Some(build_hyperbolic_pythagorean_factor_zero_rewrite(
-                            ctx,
-                            lhs,
-                            rewrite_match,
-                        ));
-                    }
-                }
-
-                if let Some(rewrite_match) =
-                    try_rewrite_hyperbolic_pythagorean_factor_for_cancellation(ctx, rhs)
-                {
-                    if exprs_match_after_default_simplify(ctx, rewrite_match.rewritten, lhs) {
-                        return Some(build_hyperbolic_pythagorean_factor_zero_rewrite(
-                            ctx,
-                            rhs,
-                            rewrite_match,
-                        ));
-                    }
-                }
-
-                None
+        if parent_ctx.depth() == 0 {
+            if let Some(rewrite_match) =
+                try_rewrite_hyperbolic_pythagorean_factor_for_cancellation(ctx, expr)
+            {
+                return Some(build_hyperbolic_pythagorean_factor_root_zero_rewrite(
+                    ctx,
+                    expr,
+                    rewrite_match,
+                ));
             }
-            Expr::Add(lhs, rhs) => {
-                if let Some(rewrite_match) =
-                    try_rewrite_hyperbolic_pythagorean_factor_for_cancellation(ctx, lhs)
-                {
-                    if expr_matches_negation_after_default_simplify(ctx, rewrite_match.rewritten, rhs)
-                    {
-                        return Some(build_hyperbolic_pythagorean_factor_zero_rewrite(
-                            ctx,
-                            lhs,
-                            rewrite_match,
-                        ));
-                    }
-                }
-
-                if let Some(rewrite_match) =
-                    try_rewrite_hyperbolic_pythagorean_factor_for_cancellation(ctx, rhs)
-                {
-                    if expr_matches_negation_after_default_simplify(ctx, rewrite_match.rewritten, lhs)
-                    {
-                        return Some(build_hyperbolic_pythagorean_factor_zero_rewrite(
-                            ctx,
-                            rhs,
-                            rewrite_match,
-                        ));
-                    }
-                }
-
-                None
-            }
-            _ => None,
         }
+
+        None
     }
 );
 
@@ -1985,6 +2269,35 @@ mod tests {
         let mut ctx = Context::new();
         let expr = parse("4*cosh(x)*sinh(x)^2 + 4*cosh(x) - 4*cosh(x)^3", &mut ctx)
             .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rule = ExpandHyperbolicPythagoreanFactorToEnableCancellationRule;
+        let rewrite = rule
+            .apply(&mut ctx, expr, &parent_ctx)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "0"
+        );
+        assert_eq!(rewrite.substeps.len(), 3);
+    }
+
+    #[test]
+    fn expand_hyperbolic_pythagorean_factor_to_enable_cancellation_rule_matches_symbolic_coefficient(
+    ) {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "4*a*cosh(x)*sinh(x)^2 + 4*a*cosh(x) - 4*a*cosh(x)^3",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("parse: {err}"));
 
         let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
         let rule = ExpandHyperbolicPythagoreanFactorToEnableCancellationRule;

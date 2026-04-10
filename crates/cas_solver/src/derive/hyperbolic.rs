@@ -32,6 +32,7 @@ pub(crate) enum DeriveHyperbolicRewriteKind {
     RecognizeNegSinhFromExp,
     RecognizeDoubleCoshFromExp,
     RecognizeDoubleSinhFromExp,
+    RecognizeNegDoubleSinhFromExp,
     RecognizeTanhFromExp,
     RecognizeNegTanhFromExp,
     ExpandCoshToExpHalfSum,
@@ -39,6 +40,7 @@ pub(crate) enum DeriveHyperbolicRewriteKind {
     ExpandNegSinhToExpHalfNegDiff,
     ExpandDoubleCoshToExpSum,
     ExpandDoubleSinhToExpDiff,
+    ExpandNegDoubleSinhToExpNegDiff,
     ExpandTanhToExpRatio,
     ExpandNegTanhToExpNegRatio,
     ExpandHyperbolicCoshHalfAngleSquare,
@@ -758,6 +760,7 @@ impl DeriveHyperbolicRewriteKind {
                 | Self::RecognizeNegSinhFromExp
                 | Self::RecognizeDoubleCoshFromExp
                 | Self::RecognizeDoubleSinhFromExp
+                | Self::RecognizeNegDoubleSinhFromExp
                 | Self::RecognizeTanhFromExp
                 | Self::RecognizeNegTanhFromExp
                 | Self::ExpandCoshToExpHalfSum
@@ -765,6 +768,7 @@ impl DeriveHyperbolicRewriteKind {
                 | Self::ExpandNegSinhToExpHalfNegDiff
                 | Self::ExpandDoubleCoshToExpSum
                 | Self::ExpandDoubleSinhToExpDiff
+                | Self::ExpandNegDoubleSinhToExpNegDiff
                 | Self::ExpandTanhToExpRatio
                 | Self::ExpandNegTanhToExpNegRatio
         )
@@ -797,6 +801,9 @@ impl DeriveHyperbolicRewriteKind {
             Self::RecognizeNegSinhFromExp => "Recognize (exp(-u) - exp(u)) / 2 as -sinh(u)",
             Self::RecognizeDoubleCoshFromExp => "Recognize exp(u) + exp(-u) as 2·cosh(u)",
             Self::RecognizeDoubleSinhFromExp => "Recognize exp(u) - exp(-u) as 2·sinh(u)",
+            Self::RecognizeNegDoubleSinhFromExp => {
+                "Recognize exp(-u) - exp(u) as -2·sinh(u)"
+            }
             Self::RecognizeTanhFromExp => {
                 "Recognize (exp(u) - exp(-u)) / (exp(u) + exp(-u)) as tanh(u)"
             }
@@ -808,6 +815,9 @@ impl DeriveHyperbolicRewriteKind {
             Self::ExpandNegSinhToExpHalfNegDiff => "Expand -sinh(u) as (exp(-u) - exp(u)) / 2",
             Self::ExpandDoubleCoshToExpSum => "Expand 2·cosh(u) as exp(u) + exp(-u)",
             Self::ExpandDoubleSinhToExpDiff => "Expand 2·sinh(u) as exp(u) - exp(-u)",
+            Self::ExpandNegDoubleSinhToExpNegDiff => {
+                "Expand -2·sinh(u) as exp(-u) - exp(u)"
+            }
             Self::ExpandTanhToExpRatio => {
                 "Expand tanh(u) as (exp(u) - exp(-u)) / (exp(u) + exp(-u))"
             }
@@ -942,6 +952,7 @@ impl DeriveHyperbolicRewriteKind {
             | Self::RecognizeNegSinhFromExp
             | Self::RecognizeDoubleCoshFromExp
             | Self::RecognizeDoubleSinhFromExp
+            | Self::RecognizeNegDoubleSinhFromExp
             | Self::RecognizeTanhFromExp
             | Self::RecognizeNegTanhFromExp
             | Self::ExpandCoshToExpHalfSum
@@ -949,6 +960,7 @@ impl DeriveHyperbolicRewriteKind {
             | Self::ExpandNegSinhToExpHalfNegDiff
             | Self::ExpandDoubleCoshToExpSum
             | Self::ExpandDoubleSinhToExpDiff
+            | Self::ExpandNegDoubleSinhToExpNegDiff
             | Self::ExpandTanhToExpRatio
             | Self::ExpandNegTanhToExpNegRatio => "Hyperbolic Exponential Identity",
             Self::ExpandHyperbolicCoshHalfAngleSquare
@@ -1407,6 +1419,15 @@ fn try_rewrite_hyperbolic_simplify_direct_target_aware(
                     cas_math::hyperbolic_identity_support::RecognizeHyperbolicFromExpRewriteKind::NegSinhHalf => {
                         DeriveHyperbolicRewriteKind::RecognizeNegSinhFromExp
                     }
+                    cas_math::hyperbolic_identity_support::RecognizeHyperbolicFromExpRewriteKind::CoshDirect => {
+                        DeriveHyperbolicRewriteKind::RecognizeDoubleCoshFromExp
+                    }
+                    cas_math::hyperbolic_identity_support::RecognizeHyperbolicFromExpRewriteKind::SinhDirect => {
+                        DeriveHyperbolicRewriteKind::RecognizeDoubleSinhFromExp
+                    }
+                    cas_math::hyperbolic_identity_support::RecognizeHyperbolicFromExpRewriteKind::NegSinhDirect => {
+                        DeriveHyperbolicRewriteKind::RecognizeNegDoubleSinhFromExp
+                    }
                     cas_math::hyperbolic_identity_support::RecognizeHyperbolicFromExpRewriteKind::TanhRatio => {
                         DeriveHyperbolicRewriteKind::RecognizeTanhFromExp
                     }
@@ -1445,6 +1466,15 @@ fn try_rewrite_hyperbolic_simplify_direct_target_aware(
                     }
                     cas_math::hyperbolic_identity_support::RecognizeHyperbolicFromExpRewriteKind::NegSinhHalf => {
                         DeriveHyperbolicRewriteKind::ExpandNegSinhToExpHalfNegDiff
+                    }
+                    cas_math::hyperbolic_identity_support::RecognizeHyperbolicFromExpRewriteKind::CoshDirect => {
+                        DeriveHyperbolicRewriteKind::ExpandDoubleCoshToExpSum
+                    }
+                    cas_math::hyperbolic_identity_support::RecognizeHyperbolicFromExpRewriteKind::SinhDirect => {
+                        DeriveHyperbolicRewriteKind::ExpandDoubleSinhToExpDiff
+                    }
+                    cas_math::hyperbolic_identity_support::RecognizeHyperbolicFromExpRewriteKind::NegSinhDirect => {
+                        DeriveHyperbolicRewriteKind::ExpandNegDoubleSinhToExpNegDiff
                     }
                     cas_math::hyperbolic_identity_support::RecognizeHyperbolicFromExpRewriteKind::TanhRatio => {
                         DeriveHyperbolicRewriteKind::ExpandTanhToExpRatio

@@ -68,6 +68,62 @@ fn test_recognize_sinh_from_exp() {
 }
 
 #[test]
+fn test_recognize_direct_cosh_from_exp_sum_with_reciprocal() {
+    let mut ctx = Context::new();
+    let x = ctx.var("x");
+    let e = ctx.add(Expr::Constant(cas_ast::Constant::E));
+    let exp_x = ctx.add(Expr::Pow(e, x));
+    let one = ctx.num(1);
+    let reciprocal = ctx.add(Expr::Div(one, exp_x));
+    let expr = ctx.add(Expr::Add(exp_x, reciprocal));
+
+    let rule = RecognizeHyperbolicFromExpRule;
+    let rewrite = rule.apply(
+        &mut ctx,
+        expr,
+        &crate::parent_context::ParentContext::root(),
+    );
+
+    assert!(rewrite.is_some(), "Should recognize 2*cosh(x)");
+    let result = format!(
+        "{}",
+        DisplayExpr {
+            context: &ctx,
+            id: rewrite.unwrap().new_expr
+        }
+    );
+    assert_eq!(result, "2 * cosh(x)");
+}
+
+#[test]
+fn test_recognize_direct_sinh_from_exp_difference_with_reciprocal() {
+    let mut ctx = Context::new();
+    let x = ctx.var("x");
+    let e = ctx.add(Expr::Constant(cas_ast::Constant::E));
+    let exp_x = ctx.add(Expr::Pow(e, x));
+    let one = ctx.num(1);
+    let reciprocal = ctx.add(Expr::Div(one, exp_x));
+    let expr = ctx.add(Expr::Sub(exp_x, reciprocal));
+
+    let rule = RecognizeHyperbolicFromExpRule;
+    let rewrite = rule.apply(
+        &mut ctx,
+        expr,
+        &crate::parent_context::ParentContext::root(),
+    );
+
+    assert!(rewrite.is_some(), "Should recognize 2*sinh(x)");
+    let result = format!(
+        "{}",
+        DisplayExpr {
+            context: &ctx,
+            id: rewrite.unwrap().new_expr
+        }
+    );
+    assert_eq!(result, "2 * sinh(x)");
+}
+
+#[test]
 fn test_recognize_neg_sinh_from_exp() {
     // (e^(-x) - e^x)/2 -> -sinh(x)
     let mut ctx = Context::new();

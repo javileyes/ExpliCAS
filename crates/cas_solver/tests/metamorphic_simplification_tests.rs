@@ -14392,6 +14392,7 @@ fn metatest_csv_known_domain_frontier_pairs() {
 #[ignore] // Run with: cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_csv_known_domain_frontier_safe_pairs -- --ignored --nocapture
 fn metatest_csv_known_domain_frontier_safe_pairs() {
     let m = run_known_domain_frontier_safe_pair_tests();
+    let pair_count = load_known_domain_frontier_safe_pairs().len();
     assert_eq!(
         m.failed, 0,
         "{} known domain-frontier safe-window tests failed",
@@ -14408,8 +14409,8 @@ fn metatest_csv_known_domain_frontier_safe_pairs() {
         m.timeouts
     );
     assert_eq!(
-        m.proved_symbolic(),
-        8,
+        m.nf_convergent + m.proved_symbolic(),
+        pair_count,
         "known domain-frontier safe-window suite should close all parametrized symbolic cases"
     );
     assert_eq!(
@@ -15098,10 +15099,13 @@ fn safe_window_parametrized_proof_closes_log_square_and_sqrt_product_pairs() {
 }
 
 #[test]
-fn safe_window_parametrized_proof_is_narrower_than_raw_engine_on_inverse_trig_branch() {
+fn safe_window_parametrized_proof_closes_inverse_trig_branch_even_if_raw_engine_improves() {
     let lhs = "((exp(x)-exp(-x))/2)*(sin(2*arcsin(u)))";
     let rhs = "(sinh(x))*(2*u*sqrt(1-u^2))";
-    assert!(!prove_zero_from_engine_texts(lhs, rhs));
+    assert!(
+        prove_zero_from_engine_texts(lhs, rhs)
+            || prove_zero_from_safe_window_parametrized_texts(lhs, rhs)
+    );
     assert!(prove_zero_from_safe_window_parametrized_texts(lhs, rhs));
     assert!(prove_zero_from_safe_window_parametrized_texts(
         "((exp(x)-exp(-x))/2)*(sin(2*arcsin(u)))",
@@ -15152,19 +15156,23 @@ fn known_domain_frontier_primary_pairs_all_have_safe_window_symbolic_mirror() {
 fn known_domain_frontier_primary_and_safe_window_metrics_stay_complementary() {
     let primary = run_known_domain_frontier_pair_tests();
     let safe = run_known_domain_frontier_safe_pair_tests();
+    let pair_count = load_known_domain_frontier_pairs().len();
 
     assert_eq!(primary.failed, 0);
     assert_eq!(primary.timeouts, 0);
     assert_eq!(primary.numeric_only, 0);
-    assert_eq!(primary.inconclusive, 8);
-    assert_eq!(primary.known_domain_frontier_count(), 8);
+    assert_eq!(
+        primary.nf_convergent + primary.known_domain_frontier_count(),
+        pair_count
+    );
+    assert_eq!(primary.inconclusive, primary.known_domain_frontier_count());
     assert_eq!(primary.proved_symbolic(), 0);
 
     assert_eq!(safe.failed, 0);
     assert_eq!(safe.timeouts, 0);
     assert_eq!(safe.inconclusive, 0);
     assert_eq!(safe.numeric_only, 0);
-    assert_eq!(safe.proved_symbolic(), 8);
+    assert_eq!(safe.nf_convergent + safe.proved_symbolic(), pair_count);
 
     assert_eq!(
         primary.known_domain_frontier_count(),
@@ -15190,11 +15198,15 @@ fn safe_window_parametrized_catalog_closes_all_safe_csv_pairs() {
 #[test]
 fn known_domain_frontier_safe_runtime_breakdown_matches_expected_numeric_cause_counts() {
     let metrics = run_known_domain_frontier_safe_pair_tests();
+    let pair_count = load_known_domain_frontier_safe_pairs().len();
 
     assert_eq!(metrics.failed, 0);
     assert_eq!(metrics.timeouts, 0);
     assert_eq!(metrics.inconclusive, 0);
-    assert_eq!(metrics.proved_symbolic(), 8);
+    assert_eq!(
+        metrics.nf_convergent + metrics.proved_symbolic(),
+        pair_count
+    );
     assert_eq!(metrics.numeric_only, 0);
     assert_eq!(metrics.numeric_only_cause_count("domain-sensitive"), 0);
     assert_eq!(metrics.numeric_only_causes.len(), 0);

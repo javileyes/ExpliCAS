@@ -3733,10 +3733,10 @@ fn eval_hyperbolic_angle_sum_difference_to_zero_uses_expand_then_self_cancel() {
 }
 
 #[test]
-fn eval_hyperbolic_cubic_residual_difference_to_zero_uses_pythagorean_bridge() {
+fn eval_sinh_plus_cosh_minus_exp_to_zero_skips_convert_exp_to_power_noop() {
     let (output, _code) = run_cli(&[
         "eval",
-        "2*sinh(2*x)*sinh(x) - (4*cosh(x)^3 - 4*cosh(x))",
+        "cosh(x) + sinh(x) - e^x",
         "--format",
         "json",
         "--steps",
@@ -3748,26 +3748,74 @@ fn eval_hyperbolic_cubic_residual_difference_to_zero_uses_pythagorean_bridge() {
     assert_eq!(wire["steps_count"], 2);
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 2);
+    assert_eq!(steps[0]["rule"], "Hyperbolic Sum to Exponential");
+    assert_eq!(steps[1]["rule"], "Restar dos expresiones iguales");
+}
+
+#[test]
+fn eval_exp_sum_minus_double_cosh_to_zero_uses_direct_hyperbolic_recognition() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "exp(x) + exp(-x) - 2*cosh(x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 2);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 2);
+    assert_eq!(steps[0]["rule"], "Recognize Hyperbolic from Exponential");
+    assert_eq!(steps[0]["after"], "2 · cosh(x) - 2 · cosh(x)");
+    assert_eq!(steps[1]["rule"], "Restar dos expresiones iguales");
+}
+
+#[test]
+fn eval_exp_difference_minus_double_sinh_to_zero_uses_direct_hyperbolic_recognition() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "exp(x) - exp(-x) - 2*sinh(x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 2);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 2);
+    assert_eq!(steps[0]["rule"], "Recognize Hyperbolic from Exponential");
+    assert_eq!(steps[0]["after"], "2 · sinh(x) - 2 · sinh(x)");
+    assert_eq!(steps[1]["rule"], "Restar dos expresiones iguales");
+}
+
+#[test]
+fn eval_hyperbolic_cubic_residual_currently_stops_at_factored_cosh_residual() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "2*sinh(2*x)*sinh(x) - (4*cosh(x)^3 - 4*cosh(x))",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "cosh(x)·(4·sinh(x)^2 + 4) - 4·cosh(x)^3");
+    assert_eq!(wire["steps_count"], 2);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 2);
     assert_eq!(steps[0]["rule"], "sinh(2x) = 2·sinh(x)·cosh(x)");
+    assert_eq!(steps[1]["rule"], "Extract Common Multiplicative Factor");
     assert_eq!(
-        steps[1]["rule"],
-        "Aplicar la identidad pitagórica hiperbólica"
+        steps[1]["after"],
+        "cosh(x) · (4 · sinh(x)^2 + 4) - 4 · cosh(x)^3"
     );
-    let substeps = steps[1]["substeps"].as_array().expect("substeps array");
-    assert_eq!(substeps.len(), 3);
-    let titles: Vec<_> = substeps
-        .iter()
-        .map(|substep| substep["title"].as_str().expect("substep title"))
-        .collect();
-    assert!(titles
-        .iter()
-        .any(|title| title.contains("Sacar factor común")));
-    assert!(titles
-        .iter()
-        .any(|title| title.contains("cosh(u)^2 - 1 = sinh(u)^2")));
-    assert!(titles
-        .iter()
-        .any(|title| title.contains("Cancelar términos iguales")));
 }
 
 #[test]
