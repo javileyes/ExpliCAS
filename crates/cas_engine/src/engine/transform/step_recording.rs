@@ -82,6 +82,43 @@ impl<'a> LocalSimplificationTransformer<'a> {
         new_root
     }
 
+    /// Promote freshly recorded local preorder steps into coherent global snapshots.
+    ///
+    /// Some preorder helpers append steps directly to `self.steps` because they
+    /// need to emit multi-step narratives before normal recursive descent.
+    /// Those helpers only know the local subtree, so we reconstruct their
+    /// `global_before/global_after` here using the transformer's current path
+    /// and root expression.
+    #[inline(never)]
+    pub(super) fn rebuild_recent_preorder_steps_at_current_path(&mut self, start_index: usize) {
+        if !self.collect_steps_enabled() || start_index >= self.steps.len() {
+            return;
+        }
+
+        let path = crate::pathsteps_to_expr_path(&self.current_path);
+        let mut current_global = self.root_expr;
+
+        for step in self.steps.iter_mut().skip(start_index) {
+            let global_before = current_global;
+            let global_after = if path.is_empty() {
+                step.after
+            } else {
+                cas_math::expr_path_rewrite::rewrite_at_expr_path_raw(
+                    self.context,
+                    current_global,
+                    &path,
+                    step.after,
+                )
+            };
+
+            step.global_before = Some(global_before);
+            step.global_after = Some(global_after);
+            current_global = global_after;
+        }
+
+        self.root_expr = current_global;
+    }
+
     /// Record a rewrite as one or more Steps (main + chained), handling `steps_mode` gating.
     ///
     /// Returns the `final_result` ExprId (last of chained, or main `new_expr`).

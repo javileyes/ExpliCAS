@@ -10,6 +10,7 @@ pub(crate) fn visible_rule_name(rule_name: &str) -> &str {
         "Expand" => "Expandir la expresión",
         "Distributive Property" => "Expandir la expresión",
         "expand_log" => "Expandir logaritmos",
+        "Expand Log Abs Mul/Div" => "Expandir logaritmos",
         "Factor Perfect Square in Logarithm" => "Sacar un exponente fuera del logaritmo",
         "Log Contraction" => "Contraer logaritmos",
         "Finite Product" => "Evaluar producto finito",
@@ -116,6 +117,11 @@ pub(crate) fn visible_rule_name_for_step<'a>(
     }
 
     match rule_name {
+        "Expand Log Abs Mul/Div"
+            if description == "Log expansion followed by exact cancellation" =>
+        {
+            Cow::Borrowed("Expandir logaritmos y cancelar términos iguales")
+        }
         "Evaluate Logarithms" if description == "log(b, x^y) = y * log(b, x)" => {
             Cow::Borrowed("Sacar un exponente fuera del logaritmo")
         }

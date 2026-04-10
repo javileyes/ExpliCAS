@@ -299,12 +299,12 @@ fn detect_log_expanded_target(
         return true;
     }
 
-    if !looks_log_expandable_source(ctx, source_expr) {
-        return false;
-    }
-
     if try_rewrite_log_expansion_target_aware(ctx, source_expr, target_expr).is_some() {
         return true;
+    }
+
+    if !looks_log_expandable_source(ctx, source_expr) {
+        return false;
     }
 
     let expanded = run_log_expanded_nf(ctx, source_expr);

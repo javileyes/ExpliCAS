@@ -1,6 +1,7 @@
 use crate::define_rule;
 use crate::rule::Rewrite;
-use cas_ast::Expr;
+use cas_ast::ordering::compare_expr;
+use cas_ast::{BuiltinFn, Expr};
 use cas_math::arithmetic_cancel_support::{
     try_rewrite_add_inverse_zero_expr, try_rewrite_sub_self_zero_expr,
 };
@@ -9,6 +10,10 @@ use cas_math::arithmetic_rule_support::{
     try_rewrite_normalize_mul_neg_expr, try_rewrite_simplify_numeric_exponents_expr,
 };
 use cas_math::arithmetic_zero_support::{match_div_zero_numerator_pattern, match_mul_zero_pattern};
+use cas_math::expr_destructure::{as_div, as_mul};
+use cas_math::expr_nary::{AddView, Sign};
+use cas_math::logarithm_inverse_support::{make_log_expr, try_extract_log_parts};
+use std::cmp::Ordering;
 
 fn canonicalize_nested_integer_powers(
     ctx: &mut cas_ast::Context,
@@ -133,6 +138,340 @@ fn exprs_equal_up_to_add_term_order(
     lhs_terms.sort();
     rhs_terms.sort();
     lhs_terms == rhs_terms
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct OddHalfPowerProductForm {
+    base: cas_ast::ExprId,
+    outside_power: i64,
+}
+
+fn try_rewrite_odd_half_power_target_aware(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<cas_ast::ExprId> {
+    if let Some(rewrite) = cas_math::root_forms::try_rewrite_odd_half_power_expr(ctx, expr) {
+        return Some(rewrite.rewritten);
+    }
+
+    let normalized = cas_math::canonical_forms::normalize_core(ctx, expr);
+    if normalized == expr {
+        return None;
+    }
+
+    cas_math::root_forms::try_rewrite_odd_half_power_expr(ctx, normalized)
+        .map(|rewrite| rewrite.rewritten)
+}
+
+fn run_default_simplify(ctx: &mut cas_ast::Context, expr: cas_ast::ExprId) -> cas_ast::ExprId {
+    let mut simplifier = crate::Simplifier::with_default_rules();
+    std::mem::swap(&mut simplifier.context, ctx);
+    let (rewritten, _steps, _stats) = simplifier.simplify_with_stats(
+        expr,
+        crate::SimplifyOptions {
+            suppress_depth_overflow_warnings: true,
+            ..crate::SimplifyOptions::default()
+        },
+    );
+    std::mem::swap(&mut simplifier.context, ctx);
+    rewritten
+}
+
+fn try_rewrite_odd_half_power_with_optional_simplify(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<cas_ast::ExprId> {
+    if let Some(rewritten) = try_rewrite_odd_half_power_target_aware(ctx, expr) {
+        return Some(rewritten);
+    }
+
+    let simplified = run_default_simplify(ctx, expr);
+    if simplified == expr {
+        return None;
+    }
+
+    try_rewrite_odd_half_power_target_aware(ctx, simplified)
+}
+
+fn extract_sqrt_argument(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> Option<cas_ast::ExprId> {
+    match ctx.get(expr) {
+        Expr::Pow(base, exp) => {
+            let half = num_rational::BigRational::new(1.into(), 2.into());
+            match ctx.get(*exp) {
+                Expr::Number(n) if *n == half => Some(*base),
+                _ => None,
+            }
+        }
+        Expr::Function(fn_id, args)
+            if ctx.is_builtin(*fn_id, cas_ast::BuiltinFn::Sqrt) && args.len() == 1 =>
+        {
+            Some(args[0])
+        }
+        _ => None,
+    }
+}
+
+fn abs_argument(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> Option<cas_ast::ExprId> {
+    match ctx.get(expr) {
+        Expr::Function(fn_id, args)
+            if ctx.is_builtin(*fn_id, cas_ast::BuiltinFn::Abs) && args.len() == 1 =>
+        {
+            Some(args[0])
+        }
+        _ => None,
+    }
+}
+
+fn small_positive_integer_value(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> Option<i64> {
+    match ctx.get(expr) {
+        Expr::Number(n)
+            if n.is_integer() && *n > num_rational::BigRational::from_integer(0.into()) =>
+        {
+            n.to_integer().try_into().ok()
+        }
+        _ => None,
+    }
+}
+
+fn extract_odd_half_power_outer_factor(
+    ctx: &cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<(cas_ast::ExprId, i64)> {
+    if let Some(inner) = abs_argument(ctx, expr) {
+        return Some((inner, 1));
+    }
+
+    match ctx.get(expr) {
+        Expr::Pow(base, exponent) => {
+            let power = small_positive_integer_value(ctx, *exponent)?;
+            if let Some(inner) = abs_argument(ctx, *base) {
+                Some((inner, power))
+            } else {
+                Some((*base, power))
+            }
+        }
+        _ => Some((expr, 1)),
+    }
+}
+
+fn extract_odd_half_power_product_form(
+    ctx: &cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<OddHalfPowerProductForm> {
+    let factors = cas_math::expr_nary::mul_leaves(ctx, expr);
+    if factors.len() != 2 {
+        return None;
+    }
+
+    for (sqrt_index, sqrt_factor) in factors.iter().copied().enumerate() {
+        let Some(base) = extract_sqrt_argument(ctx, sqrt_factor) else {
+            continue;
+        };
+        let outer_factor = factors[1 - sqrt_index];
+        let Some((outer_base, outside_power)) =
+            extract_odd_half_power_outer_factor(ctx, outer_factor)
+        else {
+            continue;
+        };
+        if compare_expr(ctx, outer_base, base) == Ordering::Equal {
+            return Some(OddHalfPowerProductForm {
+                base,
+                outside_power,
+            });
+        }
+    }
+
+    None
+}
+
+fn odd_half_power_domain_equivalent_target_match(
+    ctx: &cas_ast::Context,
+    rewritten: cas_ast::ExprId,
+    target_expr: cas_ast::ExprId,
+) -> Option<cas_ast::ExprId> {
+    let rewritten_form = extract_odd_half_power_product_form(ctx, rewritten)?;
+    let target_form = extract_odd_half_power_product_form(ctx, target_expr)?;
+    (rewritten_form.outside_power == target_form.outside_power
+        && compare_expr(ctx, rewritten_form.base, target_form.base) == Ordering::Equal)
+        .then_some(rewritten_form.base)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct OddHalfPowerCancellationMatch {
+    focus_before: cas_ast::ExprId,
+    focus_after: cas_ast::ExprId,
+    rewritten_expr: cas_ast::ExprId,
+    base: Option<cas_ast::ExprId>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct LogAbsMulDivCancellationMatch {
+    focus_after: cas_ast::ExprId,
+    components: [(cas_ast::ExprId, Sign); 2],
+}
+
+fn try_match_odd_half_power_cancellation_side(
+    ctx: &mut cas_ast::Context,
+    focus_expr: cas_ast::ExprId,
+    target_expr: cas_ast::ExprId,
+) -> Option<OddHalfPowerCancellationMatch> {
+    let rewritten = try_rewrite_odd_half_power_with_optional_simplify(ctx, focus_expr)?;
+    if compare_expr(ctx, rewritten, target_expr) == Ordering::Equal {
+        return Some(OddHalfPowerCancellationMatch {
+            focus_before: focus_expr,
+            focus_after: target_expr,
+            rewritten_expr: target_expr,
+            base: None,
+        });
+    }
+
+    let base = odd_half_power_domain_equivalent_target_match(ctx, rewritten, target_expr)?;
+    Some(OddHalfPowerCancellationMatch {
+        focus_before: focus_expr,
+        focus_after: target_expr,
+        rewritten_expr: target_expr,
+        base: Some(base),
+    })
+}
+
+fn build_scaled_expr(
+    ctx: &mut cas_ast::Context,
+    scale: cas_ast::ExprId,
+    expr: cas_ast::ExprId,
+) -> cas_ast::ExprId {
+    let one = ctx.num(1);
+    if compare_expr(ctx, scale, one) == Ordering::Equal {
+        expr
+    } else {
+        ctx.add(Expr::Mul(scale, expr))
+    }
+}
+
+fn strip_term_negation(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<cas_ast::ExprId> {
+    match ctx.get(expr).clone() {
+        Expr::Neg(inner) => Some(inner),
+        Expr::Number(n) if n < num_rational::BigRational::from_integer(0.into()) => {
+            Some(ctx.add(Expr::Number(-n)))
+        }
+        _ => None,
+    }
+}
+
+fn normalize_signed_add_term(
+    ctx: &mut cas_ast::Context,
+    term_expr: cas_ast::ExprId,
+    term_sign: Sign,
+) -> (cas_ast::ExprId, Sign) {
+    if let Some(positive_expr) = strip_term_negation(ctx, term_expr) {
+        return (positive_expr, term_sign.negate());
+    }
+
+    match ctx.get(term_expr).clone() {
+        Expr::Mul(lhs, rhs) => {
+            if let Some(positive_lhs) = strip_term_negation(ctx, lhs) {
+                return (
+                    build_scaled_expr(ctx, positive_lhs, rhs),
+                    term_sign.negate(),
+                );
+            }
+            if let Some(positive_rhs) = strip_term_negation(ctx, rhs) {
+                return (
+                    build_scaled_expr(ctx, positive_rhs, lhs),
+                    term_sign.negate(),
+                );
+            }
+            (term_expr, term_sign)
+        }
+        _ => (term_expr, term_sign),
+    }
+}
+
+fn extract_scaled_log_abs_mul_div(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<(cas_ast::ExprId, cas_ast::ExprId, cas_ast::ExprId)> {
+    let extract_direct = |ctx: &mut cas_ast::Context,
+                          expr: cas_ast::ExprId|
+     -> Option<(cas_ast::ExprId, cas_ast::ExprId)> {
+        let (base, arg) = try_extract_log_parts(ctx, expr)?;
+        let inner = abs_argument(ctx, arg)?;
+        Some((base, inner))
+    };
+
+    if let Some((base, inner)) = extract_direct(ctx, expr) {
+        let one = ctx.num(1);
+        return Some((one, base, inner));
+    }
+
+    match ctx.get(expr).clone() {
+        Expr::Mul(lhs, rhs) => {
+            if let Some((base, inner)) = extract_direct(ctx, lhs) {
+                Some((rhs, base, inner))
+            } else if let Some((base, inner)) = extract_direct(ctx, rhs) {
+                Some((lhs, base, inner))
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
+fn try_match_log_abs_mul_div_cancellation_side(
+    ctx: &mut cas_ast::Context,
+    focus_expr: cas_ast::ExprId,
+) -> Option<LogAbsMulDivCancellationMatch> {
+    let (scale, log_base, inner) = extract_scaled_log_abs_mul_div(ctx, focus_expr)?;
+    if let Some((lhs, rhs)) = as_mul(ctx, inner) {
+        let lhs_abs = ctx.call_builtin(BuiltinFn::Abs, vec![lhs]);
+        let rhs_abs = ctx.call_builtin(BuiltinFn::Abs, vec![rhs]);
+        let lhs_log = make_log_expr(ctx, log_base, lhs_abs);
+        let rhs_log = make_log_expr(ctx, log_base, rhs_abs);
+        let expanded = ctx.add(Expr::Add(lhs_log, rhs_log));
+        let focus_after = build_scaled_expr(ctx, scale, expanded);
+        return Some(LogAbsMulDivCancellationMatch {
+            focus_after,
+            components: [
+                (build_scaled_expr(ctx, scale, lhs_log), Sign::Pos),
+                (build_scaled_expr(ctx, scale, rhs_log), Sign::Pos),
+            ],
+        });
+    }
+
+    if let Some((num, den)) = as_div(ctx, inner) {
+        let num_abs = ctx.call_builtin(BuiltinFn::Abs, vec![num]);
+        let den_abs = ctx.call_builtin(BuiltinFn::Abs, vec![den]);
+        let num_log = make_log_expr(ctx, log_base, num_abs);
+        let den_log = make_log_expr(ctx, log_base, den_abs);
+        let expanded = ctx.add(Expr::Sub(num_log, den_log));
+        let focus_after = build_scaled_expr(ctx, scale, expanded);
+        return Some(LogAbsMulDivCancellationMatch {
+            focus_after,
+            components: [
+                (build_scaled_expr(ctx, scale, num_log), Sign::Pos),
+                (build_scaled_expr(ctx, scale, den_log), Sign::Neg),
+            ],
+        });
+    }
+
+    None
+}
+
+fn rebuild_subtractive_expr(
+    ctx: &mut cas_ast::Context,
+    lhs: cas_ast::ExprId,
+    rhs: cas_ast::ExprId,
+    was_add_with_neg: bool,
+) -> cas_ast::ExprId {
+    if was_add_with_neg {
+        let neg_rhs = ctx.add(Expr::Neg(rhs));
+        ctx.add(Expr::Add(lhs, neg_rhs))
+    } else {
+        ctx.add(Expr::Sub(lhs, rhs))
+    }
 }
 
 define_rule!(
@@ -273,6 +612,193 @@ define_rule!(
 // Uses compare_expr for structural equality (handles tan(3x) == tan(3·x)).
 // =============================================================================
 define_rule!(
+    ExpandOddHalfPowerToEnableCancellationRule,
+    "Expand Odd Half Power",
+    priority: 510,
+    |ctx, expr| {
+        let (lhs, rhs, was_add_with_neg) = match ctx.get(expr) {
+            Expr::Sub(lhs, rhs) => (*lhs, *rhs, false),
+            Expr::Add(lhs, rhs) => match ctx.get(*rhs) {
+                Expr::Neg(inner) => (*lhs, *inner, true),
+                _ => return None,
+            },
+            _ => return None,
+        };
+
+        let candidate = if let Some(matched) =
+            try_match_odd_half_power_cancellation_side(ctx, lhs, rhs)
+        {
+            let new_expr = rebuild_subtractive_expr(ctx, matched.rewritten_expr, rhs, was_add_with_neg);
+            let mut rewrite = Rewrite::with_local(
+                new_expr,
+                "Rewrite an odd half-integer power using a square root",
+                matched.focus_before,
+                matched.focus_after,
+            );
+            if let Some(base) = matched.base {
+                rewrite = rewrite.requires(crate::ImplicitCondition::NonNegative(base));
+            }
+            Some(rewrite)
+        } else if let Some(matched) =
+            try_match_odd_half_power_cancellation_side(ctx, rhs, lhs)
+        {
+            let new_expr = rebuild_subtractive_expr(ctx, lhs, matched.rewritten_expr, was_add_with_neg);
+            let mut rewrite = Rewrite::with_local(
+                new_expr,
+                "Rewrite an odd half-integer power using a square root",
+                matched.focus_before,
+                matched.focus_after,
+            );
+            if let Some(base) = matched.base {
+                rewrite = rewrite.requires(crate::ImplicitCondition::NonNegative(base));
+            }
+            Some(rewrite)
+        } else {
+            None
+        }?;
+
+        Some(candidate)
+    }
+);
+
+define_rule!(
+    ExpandLogAbsMulDivToEnableCancellationRule,
+    "Expand Log Abs Mul/Div",
+    Some(crate::target_kind::TargetKindSet::ADD_SUB),
+    crate::phase::PhaseMask::CORE | crate::phase::PhaseMask::POST,
+    priority: 510,
+    |ctx, expr| {
+        let view = AddView::from_expr(ctx, expr);
+        if view.terms.len() < 3 {
+            return None;
+        }
+
+        for (focus_index, (raw_focus_expr, raw_focus_sign)) in view.terms.iter().copied().enumerate() {
+            let (focus_expr, focus_sign) =
+                normalize_signed_add_term(ctx, raw_focus_expr, raw_focus_sign);
+            let Some(matched) = try_match_log_abs_mul_div_cancellation_side(ctx, focus_expr) else {
+                continue;
+            };
+
+            let mut used_indices = Vec::new();
+            let mut all_components_found = true;
+            for (component_expr, component_sign) in matched.components {
+                let expected_sign = if focus_sign == Sign::Pos {
+                    component_sign.negate()
+                } else {
+                    component_sign
+                };
+
+                let mut found_index = None;
+                for (term_index, (term_expr, term_sign)) in view.terms.iter().copied().enumerate() {
+                    if term_index == focus_index || used_indices.contains(&term_index) {
+                        continue;
+                    }
+                    let (normalized_term_expr, normalized_term_sign) =
+                        normalize_signed_add_term(ctx, term_expr, term_sign);
+                    if normalized_term_sign != expected_sign {
+                        continue;
+                    }
+                    if compare_expr(ctx, normalized_term_expr, component_expr) == Ordering::Equal {
+                        found_index = Some(term_index);
+                        break;
+                    }
+                }
+
+                if let Some(term_index) = found_index {
+                    used_indices.push(term_index);
+                } else {
+                    all_components_found = false;
+                    break;
+                }
+            }
+
+            if !all_components_found {
+                continue;
+            }
+
+            let exact_identity_scope = used_indices.len() + 1 == view.terms.len();
+
+            if exact_identity_scope {
+                let zero = ctx.num(0);
+                let focus_before_display = format!(
+                    "{}",
+                    cas_formatter::DisplayExpr {
+                        context: ctx,
+                        id: raw_focus_expr
+                    }
+                );
+                let focus_after_display = format!(
+                    "{}",
+                    cas_formatter::DisplayExpr {
+                        context: ctx,
+                        id: matched.focus_after
+                    }
+                );
+
+                return Some(
+                    Rewrite::with_local(
+                        zero,
+                        "Log expansion followed by exact cancellation",
+                        expr,
+                        zero,
+                    )
+                    .substep(
+                        "Expandir el logaritmo del producto o del cociente",
+                        vec![format!(
+                            "Reescribir {focus_before_display} como {focus_after_display}."
+                        )],
+                    )
+                    .substep(
+                        "Cancelar términos iguales",
+                        vec![
+                            "Tras la expansión, los términos opuestos se anulan y el resultado es 0."
+                                .to_string(),
+                        ],
+                    ),
+                );
+            }
+
+            let mut rebuilt_terms = smallvec::SmallVec::<[(cas_ast::ExprId, Sign); 8]>::new();
+            for (term_index, (term_expr, term_sign)) in view.terms.iter().copied().enumerate() {
+                if term_index == focus_index {
+                    for (component_expr, component_sign) in matched.components {
+                        let global_sign = if focus_sign == Sign::Pos {
+                            component_sign
+                        } else {
+                            component_sign.negate()
+                        };
+                        rebuilt_terms.push((component_expr, global_sign));
+                    }
+                    continue;
+                }
+                rebuilt_terms.push((term_expr, term_sign));
+            }
+
+            let new_expr = AddView {
+                root: expr,
+                terms: rebuilt_terms,
+            }
+            .rebuild(ctx);
+            let focus_after_local = if focus_sign == Sign::Pos {
+                matched.focus_after
+            } else {
+                ctx.add(Expr::Neg(matched.focus_after))
+            };
+
+            return Some(Rewrite::with_local(
+                new_expr,
+                "Log expansion",
+                raw_focus_expr,
+                focus_after_local,
+            ));
+        }
+
+        None
+    }
+);
+
+define_rule!(
     SubSelfToZeroRule,
     "Subtraction Self-Cancel",
     priority: 500, // High priority: before any expansion rules
@@ -377,8 +903,9 @@ define_rule!(AddInverseRule, "Add Inverse", |ctx, expr, parent_ctx| {
 #[cfg(test)]
 mod tests {
     use super::{
-        canonicalize_nested_integer_powers, exprs_equal_up_to_add_term_order, SubSelfToZeroRule,
-        SubtractExpandedSumDiffCubesQuotientRule,
+        canonicalize_nested_integer_powers, exprs_equal_up_to_add_term_order,
+        ExpandLogAbsMulDivToEnableCancellationRule, ExpandOddHalfPowerToEnableCancellationRule,
+        SubSelfToZeroRule, SubtractExpandedSumDiffCubesQuotientRule,
     };
     use crate::parent_context::ParentContext;
     use crate::rule::Rule;
@@ -412,6 +939,122 @@ mod tests {
             ),
             "0"
         );
+    }
+
+    #[test]
+    fn expand_odd_half_power_to_enable_cancellation_rule_matches_nonnegative_target() {
+        let mut ctx = Context::new();
+        let expr =
+            parse("sqrt(x^5) - x^2*sqrt(x)", &mut ctx).unwrap_or_else(|err| panic!("parse: {err}"));
+        let expected = parse("x^2*sqrt(x) - x^2*sqrt(x)", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse expected: {err}"));
+
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rule = ExpandOddHalfPowerToEnableCancellationRule;
+        let rewrite = rule
+            .apply(&mut ctx, expr, &parent_ctx)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: expected
+                }
+            )
+        );
+        assert_eq!(rewrite.required_conditions.len(), 1);
+    }
+
+    #[test]
+    fn expand_odd_half_power_to_enable_cancellation_rule_matches_reversed_side() {
+        let mut ctx = Context::new();
+        let expr =
+            parse("x^3*sqrt(x) - sqrt(x^7)", &mut ctx).unwrap_or_else(|err| panic!("parse: {err}"));
+        let expected = parse("x^3*sqrt(x) - x^3*sqrt(x)", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse expected: {err}"));
+
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rule = ExpandOddHalfPowerToEnableCancellationRule;
+        let rewrite = rule
+            .apply(&mut ctx, expr, &parent_ctx)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: expected
+                }
+            )
+        );
+        assert_eq!(rewrite.required_conditions.len(), 1);
+    }
+
+    #[test]
+    fn expand_log_abs_mul_div_to_enable_cancellation_rule_matches_scaled_ln_product() {
+        let mut ctx = Context::new();
+        let expr = parse("2*ln(abs(x*y)) - 2*ln(abs(x)) - 2*ln(abs(y))", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rule = ExpandLogAbsMulDivToEnableCancellationRule;
+        let rewrite = rule
+            .apply(&mut ctx, expr, &parent_ctx)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "0"
+        );
+        assert_eq!(rewrite.substeps.len(), 2);
+    }
+
+    #[test]
+    fn expand_log_abs_mul_div_to_enable_cancellation_rule_matches_scaled_log_product() {
+        let mut ctx = Context::new();
+        let expr = parse("2*log(abs(x*y)) - 2*log(abs(x)) - 2*log(abs(y))", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rule = ExpandLogAbsMulDivToEnableCancellationRule;
+        let rewrite = rule
+            .apply(&mut ctx, expr, &parent_ctx)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "0"
+        );
+        assert_eq!(rewrite.substeps.len(), 2);
     }
 
     #[test]
@@ -512,6 +1155,8 @@ define_rule!(
 
 pub fn register(simplifier: &mut crate::Simplifier) {
     // High-priority short-circuit rules first
+    simplifier.add_rule(Box::new(ExpandOddHalfPowerToEnableCancellationRule));
+    simplifier.add_rule(Box::new(ExpandLogAbsMulDivToEnableCancellationRule));
     simplifier.add_rule(Box::new(SubSelfToZeroRule)); // priority 500: before expansion
     simplifier.add_rule(Box::new(SubtractExpandedSumDiffCubesQuotientRule));
 

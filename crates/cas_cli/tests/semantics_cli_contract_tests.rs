@@ -3594,6 +3594,54 @@ fn derive_higher_odd_half_power_with_passthrough_uses_named_expand_odd_half_powe
 }
 
 #[test]
+fn eval_odd_half_power_difference_to_zero_uses_extract_then_self_cancel_steps() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "sqrt(x^5) - x^2*sqrt(x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 2);
+    assert_eq!(wire["required_display"], json!(["x ≥ 0"]));
+
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 2);
+    assert_eq!(steps[0]["rule"], "Extraer potencia par de la raíz");
+    assert_eq!(steps[1]["rule"], "Restar dos expresiones iguales");
+    let substeps = steps[0]["substeps"].as_array().expect("substeps array");
+    assert_eq!(substeps.len(), 3);
+}
+
+#[test]
+fn eval_higher_odd_half_power_difference_to_zero_uses_extract_then_self_cancel_steps() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "sqrt(x^7) - x^3*sqrt(x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 2);
+    assert_eq!(wire["required_display"], json!(["x ≥ 0"]));
+
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 2);
+    assert_eq!(steps[0]["rule"], "Extraer potencia par de la raíz");
+    assert_eq!(steps[1]["rule"], "Restar dos expresiones iguales");
+    let substeps = steps[0]["substeps"].as_array().expect("substeps array");
+    assert_eq!(substeps.len(), 3);
+}
+
+#[test]
 fn derive_hyperbolic_double_angle_with_passthrough_uses_named_step() {
     let (output, _code) = run_cli(&[
         "eval",
@@ -5238,6 +5286,101 @@ fn eval_log_cancellation_drops_redundant_exponent_log_substeps() {
             substeps
         );
     }
+}
+
+#[test]
+fn eval_scaled_abs_log_product_difference_to_zero_uses_single_didactic_log_cancellation_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "2*ln(abs(x*y)) - 2*ln(abs(x)) - 2*ln(abs(y))",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 1);
+    assert_eq!(wire["required_display"], json!(["x ≠ 0", "y ≠ 0"]));
+
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Expandir logaritmos y cancelar términos iguales"
+    );
+    assert_eq!(steps[0]["after"], "0");
+    let substeps = steps[0]["substeps"].as_array().expect("substeps array");
+    assert_eq!(substeps.len(), 2);
+    assert_eq!(
+        substeps[0]["title"],
+        "Expandir el logaritmo del producto o del cociente"
+    );
+    assert_eq!(substeps[1]["title"], "Cancelar términos iguales");
+}
+
+#[test]
+fn eval_even_log_product_difference_to_zero_finishes_with_didactic_log_cancellation_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "log((x*y)^2) - log(x^2) - log(y^2)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 5);
+
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 5);
+    assert_eq!(steps[0]["rule"], "Power of a Product");
+    assert_eq!(
+        steps[4]["rule"],
+        "Expandir logaritmos y cancelar términos iguales"
+    );
+    assert_eq!(steps[4]["after"], "0");
+    let substeps = steps[4]["substeps"].as_array().expect("substeps array");
+    assert_eq!(substeps.len(), 2);
+}
+
+#[test]
+fn eval_factored_log_difference_to_zero_keeps_global_log_context_through_preorder_cancel() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "log(x^2 - y^2) - log(x-y) - log(x+y)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 5);
+
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 5);
+    assert_eq!(
+        steps[1]["rule"],
+        "Factorizar una diferencia de cuadrados y cancelar"
+    );
+    assert_eq!(steps[1]["before"], "log((x^2 - y^2)/(x - y)) - log(x + y)");
+    assert_eq!(steps[1]["after"], "log(x + y) - log(x + y)");
+    let before_latex = steps[1]["before_latex"].as_str().expect("before_latex");
+    let after_latex = steps[1]["after_latex"].as_str().expect("after_latex");
+    assert!(
+        before_latex.contains("\\log(")
+            && before_latex.contains("\\frac{{x}^{2} - {y}^{2}}{x - y}"),
+        "expected full logarithmic before context, got: {before_latex}"
+    );
+    assert!(
+        after_latex.contains("\\log(") && after_latex.contains("{\\color{green}{x + y}}"),
+        "expected full logarithmic after context, got: {after_latex}"
+    );
 }
 
 #[test]

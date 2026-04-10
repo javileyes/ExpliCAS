@@ -636,6 +636,10 @@ fn budget_exempt_scoping_guards() {
 // Hardening: Performance sanity (n=10 completes under time budget)
 // =============================================================================
 
+#[cfg_attr(
+    debug_assertions,
+    ignore = "Debug builds are not performance-representative for n=10 inverse-trig recurrence expansion"
+)]
 #[test]
 fn perf_n10_completes_under_budget() {
     // Ensure that the heaviest cases (n=10) don't create accidental O(n²) blowups.
@@ -794,6 +798,10 @@ fn negative_tan_acos_n4_is_negated() {
 
 // Performance sanity: tan at n=10 must complete within budget
 
+#[cfg_attr(
+    debug_assertions,
+    ignore = "Debug builds are not performance-representative for n=10 inverse-trig recurrence expansion"
+)]
 #[test]
 fn perf_tan_n10_completes() {
     let budget_secs = perf_guard_budget_secs();

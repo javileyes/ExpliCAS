@@ -1,7 +1,9 @@
 use crate::best_so_far::{BestSoFar, BestSoFarBudget};
 use crate::expand::eager_eval_expand_calls;
 use crate::phase::{SimplifyOptions, SimplifyPhase};
+use crate::rule::Rule;
 use crate::{Simplifier, Step};
+use cas_ast::ordering::compare_expr;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use cas_math::arithmetic_rule_support::try_rewrite_combine_constants_expr;
 use cas_math::build::mul2_raw;
@@ -23,6 +25,7 @@ use cas_math::trig_power_identity_support::try_rewrite_pythagorean_chain_add_exp
 use cas_solver_core::rationalize_policy::AutoRationalizeLevel;
 use num_rational::BigRational;
 use num_traits::Zero;
+use std::cmp::Ordering;
 use std::collections::HashSet;
 
 fn to_math_auto_expand_budget(
@@ -342,6 +345,150 @@ fn try_standard_sub_self_cancel_shortcut(
     collect_steps: bool,
 ) -> Option<(ExprId, Vec<Step>)> {
     let parent_ctx = build_root_shortcut_parent_ctx(options, ctx, expr);
+    let odd_half_power_rule = crate::rules::arithmetic::ExpandOddHalfPowerToEnableCancellationRule;
+    if let Some(rewrite) = crate::rule::Rule::apply(&odd_half_power_rule, ctx, expr, &parent_ctx) {
+        let cancel_rule = crate::rules::arithmetic::SubSelfToZeroRule;
+        let cancel_rewrite =
+            crate::rule::Rule::apply(&cancel_rule, ctx, rewrite.new_expr, &parent_ctx)?;
+
+        let result = cancel_rewrite.new_expr;
+        let mut shortcut_steps = Vec::new();
+        if collect_steps {
+            let mut first_step = Step::with_snapshots(
+                &rewrite.description,
+                "Expand Odd Half Power",
+                expr,
+                rewrite.new_expr,
+                smallvec::SmallVec::<[crate::step::PathStep; 8]>::new(),
+                Some(ctx),
+                expr,
+                rewrite.new_expr,
+            );
+            first_step.importance = crate::step::ImportanceLevel::High;
+            {
+                let meta = first_step.meta_mut();
+                meta.before_local = rewrite.before_local;
+                meta.after_local = rewrite.after_local;
+                meta.assumption_events = rewrite.assumption_events.clone();
+                meta.required_conditions = rewrite.required_conditions.clone();
+                meta.poly_proof = rewrite.poly_proof.clone();
+                meta.substeps = rewrite.substeps.clone();
+            }
+            shortcut_steps.push(first_step);
+
+            let mut second_step = Step::with_snapshots(
+                &cancel_rewrite.description,
+                "Subtraction Self-Cancel",
+                rewrite.new_expr,
+                result,
+                smallvec::SmallVec::<[crate::step::PathStep; 8]>::new(),
+                Some(ctx),
+                rewrite.new_expr,
+                result,
+            );
+            second_step.importance = crate::step::ImportanceLevel::High;
+            {
+                let meta = second_step.meta_mut();
+                meta.before_local = cancel_rewrite.before_local;
+                meta.after_local = cancel_rewrite.after_local;
+                meta.assumption_events = cancel_rewrite.assumption_events.clone();
+                meta.required_conditions = cancel_rewrite.required_conditions.clone();
+                meta.poly_proof = cancel_rewrite.poly_proof.clone();
+                meta.substeps = cancel_rewrite.substeps.clone();
+            }
+            shortcut_steps.push(second_step);
+        }
+
+        return Some((result, shortcut_steps));
+    }
+
+    let log_abs_rule = crate::rules::arithmetic::ExpandLogAbsMulDivToEnableCancellationRule;
+    if let Some(rewrite) = crate::rule::Rule::apply(&log_abs_rule, ctx, expr, &parent_ctx) {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        std::mem::swap(&mut simplifier.context, ctx);
+        let (result, inner_steps, _stats) = simplifier.simplify_with_stats(
+            rewrite.new_expr,
+            crate::SimplifyOptions {
+                suppress_depth_overflow_warnings: true,
+                ..crate::SimplifyOptions::default()
+            },
+        );
+        std::mem::swap(&mut simplifier.context, ctx);
+
+        let zero = ctx.num(0);
+        if compare_expr(ctx, result, zero) == Ordering::Equal && !inner_steps.is_empty() {
+            let mut shortcut_steps = Vec::new();
+            if collect_steps {
+                let mut first_step = Step::with_snapshots(
+                    &rewrite.description,
+                    "Expand Log Abs Mul/Div",
+                    expr,
+                    rewrite.new_expr,
+                    smallvec::SmallVec::<[crate::step::PathStep; 8]>::new(),
+                    Some(ctx),
+                    expr,
+                    rewrite.new_expr,
+                );
+                first_step.importance = crate::step::ImportanceLevel::High;
+                {
+                    let meta = first_step.meta_mut();
+                    meta.before_local = rewrite.before_local;
+                    meta.after_local = rewrite.after_local;
+                    meta.assumption_events = rewrite.assumption_events.clone();
+                    meta.required_conditions = rewrite.required_conditions.clone();
+                    meta.poly_proof = rewrite.poly_proof.clone();
+                    meta.substeps = rewrite.substeps.clone();
+                }
+                shortcut_steps.push(first_step);
+                shortcut_steps.extend(inner_steps);
+            }
+
+            return Some((result, shortcut_steps));
+        }
+
+        if compare_expr(ctx, result, zero) == Ordering::Equal {
+            let mut shortcut_steps = Vec::new();
+            if collect_steps {
+                let mut first_step = Step::with_snapshots(
+                    &rewrite.description,
+                    "Expand Log Abs Mul/Div",
+                    expr,
+                    rewrite.new_expr,
+                    smallvec::SmallVec::<[crate::step::PathStep; 8]>::new(),
+                    Some(ctx),
+                    expr,
+                    rewrite.new_expr,
+                );
+                first_step.importance = crate::step::ImportanceLevel::High;
+                {
+                    let meta = first_step.meta_mut();
+                    meta.before_local = rewrite.before_local;
+                    meta.after_local = rewrite.after_local;
+                    meta.assumption_events = rewrite.assumption_events.clone();
+                    meta.required_conditions = rewrite.required_conditions.clone();
+                    meta.poly_proof = rewrite.poly_proof.clone();
+                    meta.substeps = rewrite.substeps.clone();
+                }
+                shortcut_steps.push(first_step);
+
+                let mut second_step = Step::with_snapshots(
+                    "Exact identity cancellation",
+                    "Polynomial Identity",
+                    rewrite.new_expr,
+                    result,
+                    smallvec::SmallVec::<[crate::step::PathStep; 8]>::new(),
+                    Some(ctx),
+                    rewrite.new_expr,
+                    result,
+                );
+                second_step.importance = crate::step::ImportanceLevel::High;
+                shortcut_steps.push(second_step);
+            }
+
+            return Some((result, shortcut_steps));
+        }
+    }
+
     let rule = crate::rules::arithmetic::SubSelfToZeroRule;
     let rewrite = crate::rule::Rule::apply(&rule, ctx, expr, &parent_ctx)?;
     Some(finish_standard_root_shortcut(
@@ -2015,6 +2162,45 @@ impl Orchestrator {
                 ));
             }
             current = final_collected;
+        }
+
+        let late_log_zero = simplifier.context.num(0);
+        let late_log_parent_ctx =
+            build_root_shortcut_parent_ctx(&self.options, &simplifier.context, current);
+        let late_log_rule = crate::rules::arithmetic::ExpandLogAbsMulDivToEnableCancellationRule;
+        if let Some(rewrite) = crate::rule::Rule::apply(
+            &late_log_rule,
+            &mut simplifier.context,
+            current,
+            &late_log_parent_ctx,
+        ) {
+            if compare_expr(&simplifier.context, rewrite.new_expr, late_log_zero) == Ordering::Equal
+            {
+                if collect_steps {
+                    let mut step = Step::with_snapshots(
+                        &rewrite.description,
+                        late_log_rule.name(),
+                        current,
+                        rewrite.new_expr,
+                        smallvec::SmallVec::<[crate::step::PathStep; 8]>::new(),
+                        Some(&simplifier.context),
+                        current,
+                        rewrite.new_expr,
+                    );
+                    step.importance = late_log_rule.importance();
+                    {
+                        let meta = step.meta_mut();
+                        meta.before_local = rewrite.before_local;
+                        meta.after_local = rewrite.after_local;
+                        meta.assumption_events = rewrite.assumption_events.clone();
+                        meta.required_conditions = rewrite.required_conditions.clone();
+                        meta.poly_proof = rewrite.poly_proof.clone();
+                        meta.substeps = rewrite.substeps.clone();
+                    }
+                    all_steps.push(step);
+                }
+                current = rewrite.new_expr;
+            }
         }
 
         // Filter and optimize steps

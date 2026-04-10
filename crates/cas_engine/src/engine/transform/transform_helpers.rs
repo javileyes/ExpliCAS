@@ -547,6 +547,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
             && self.event_listener.is_none()
             && !self.initial_parent_ctx.domain_mode().is_strict()
         {
+            let step_start = self.steps.len();
             if let Some(early_result) =
                 crate::rules::algebra::try_exact_common_factor_mul_fraction_preorder(
                     self.context,
@@ -558,6 +559,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                     &self.current_path,
                 )
             {
+                self.rebuild_recent_preorder_steps_at_current_path(step_start);
                 if !self.collect_steps_enabled()
                     && self.current_phase == crate::SimplifyPhase::Core
                     && self.initial_parent_ctx.is_solve_context()
@@ -568,6 +570,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
             }
         }
         if allow_difference_of_squares_preorder {
+            let step_start = self.steps.len();
             if let Some(early_result) = crate::rules::algebra::try_difference_of_squares_preorder(
                 self.context,
                 id,
@@ -578,6 +581,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                 &mut self.steps,
                 &self.current_path,
             ) {
+                self.rebuild_recent_preorder_steps_at_current_path(step_start);
                 if !self.collect_steps_enabled()
                     && self.event_listener.is_none()
                     && self.current_phase == crate::SimplifyPhase::Core
@@ -607,6 +611,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                 }
             }
 
+            let step_start = self.steps.len();
             if let Some(early_result) = crate::rules::algebra::try_perfect_square_minus_preorder(
                 self.context,
                 id,
@@ -616,6 +621,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                 &mut self.steps,
                 &self.current_path,
             ) {
+                self.rebuild_recent_preorder_steps_at_current_path(step_start);
                 if !self.collect_steps_enabled()
                     && self.current_phase == crate::SimplifyPhase::Core
                     && self.initial_parent_ctx.is_solve_context()
