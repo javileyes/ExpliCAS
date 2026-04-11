@@ -199,7 +199,7 @@ fn step_wire_phase_shift_substeps_are_structured_without_narrative_lines() {
         .find(|step| step.rule == "Aplicar identidad de desfase")
         .expect("expected phase shift step");
 
-    assert_eq!(step.substeps.len(), 2);
+    assert_eq!(step.substeps.len(), 1);
     assert!(step.substeps.iter().all(|substep| substep.lines.is_empty()));
     assert!(
         step.substeps
@@ -215,6 +215,18 @@ fn step_wire_phase_shift_substeps_are_structured_without_narrative_lines() {
             ))
             .collect::<Vec<_>>()
     );
+    assert_eq!(step.substeps[0].title, "Cancelar términos iguales");
+    assert!(
+        step.substeps[0]
+            .before_latex
+            .as_deref()
+            .is_some_and(
+                |latex| latex.contains("5\\cdot \\sin") && latex.contains("- 5\\cdot \\sin")
+            ),
+        "phase-shift substep should show the concrete cancellation, got: {:?}",
+        step.substeps[0].before_latex
+    );
+    assert_eq!(step.substeps[0].after_latex.as_deref(), Some("0"));
 }
 
 #[test]
@@ -518,8 +530,8 @@ fn step_wire_inverse_tan_relation_isolates_pair_before_applying_identity() {
         .expect("expected inverse tan relation step");
 
     assert!(
-        step.substeps.len() >= 2,
-        "expected a two-phase didactic narrative, got: {:?}",
+        step.substeps.len() == 1,
+        "expected a single preparatory substep, got: {:?}",
         step.substeps
             .iter()
             .map(|substep| &substep.title)
@@ -527,11 +539,44 @@ fn step_wire_inverse_tan_relation_isolates_pair_before_applying_identity() {
     );
     assert_eq!(
         step.substeps[0].title,
-        "Usar arctan(u) + arctan(1/u) = pi/2"
+        "Juntar la pareja que encaja con la identidad"
     );
     assert_eq!(
-        step.substeps[1].title,
-        "Juntar la pareja que encaja con la identidad"
+        step.substeps[0].before_latex.as_deref(),
+        Some("\\arctan(\\frac{1}{3}) + \\arctan(3) - \\frac{1}{2}\\cdot \\pi")
+    );
+    assert_eq!(
+        step.substeps[0].after_latex.as_deref(),
+        Some("\\arctan(\\frac{1}{3}) + \\arctan(3)")
+    );
+}
+
+#[test]
+fn step_wire_cancel_reciprocal_exponents_uses_concrete_square_root_block() {
+    let (engine, output) = eval_output_for("(sqrt(x^3) - 1)/(sqrt(x) - 1)");
+    let steps =
+        cas_didactic::collect_step_payloads(&output.steps, &engine.simplifier.context, "on");
+
+    let step = steps
+        .iter()
+        .find(|step| step.rule == "Deshacer raíz y potencia")
+        .expect("expected reciprocal exponent cancellation step");
+
+    assert!(
+        !step.substeps.is_empty(),
+        "expected didactic substeps for reciprocal exponent cancellation"
+    );
+    assert_eq!(
+        step.substeps[0].title,
+        "Reemplazar ese bloque en la expresión"
+    );
+    assert_eq!(
+        step.substeps[0].before_latex.as_deref(),
+        Some("\\sqrt{x} + {\\sqrt{x}}^{2} + 1")
+    );
+    assert_eq!(
+        step.substeps[0].after_latex.as_deref(),
+        Some("\\sqrt{x} + x + 1")
     );
 }
 

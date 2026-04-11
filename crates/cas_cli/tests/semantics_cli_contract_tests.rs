@@ -2823,6 +2823,24 @@ fn derive_negative_tan_expansion_uses_single_trig_expansion_step() {
 }
 
 #[test]
+fn eval_reciprocal_cosine_avoids_ping_pong_and_keeps_single_step() {
+    let (output, _code) = run_cli(&["eval", "1/cos(x)", "--format", "json", "--steps", "on"]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "sec(x)");
+    assert_eq!(wire["steps_count"], 1);
+
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Convertir un cociente trigonométrico en tangente"
+    );
+    assert_eq!(steps[0]["before"], "1/cos(x)");
+    assert_eq!(steps[0]["after"], "sec(x)");
+}
+
+#[test]
 fn derive_combine_like_terms_uses_named_strategy() {
     let (output, _code) = run_cli(&[
         "eval",
@@ -3868,30 +3886,15 @@ fn eval_general_phase_shift_difference_to_zero_uses_named_phase_shift_step() {
     assert_eq!(steps.len(), 1);
     assert_eq!(steps[0]["rule"], "Aplicar identidad de desfase");
     let substeps = steps[0]["substeps"].as_array().expect("substeps array");
-    assert_eq!(substeps.len(), 2);
-    let titles: Vec<_> = substeps
-        .iter()
-        .map(|substep| substep["title"].as_str().expect("substep title"))
-        .collect();
-    assert!(titles
-        .iter()
-        .any(|title| title.contains("Usar a·sin(u) + b·cos(u) = R·sin(u + φ)")));
-    assert!(titles
-        .iter()
-        .any(|title| title.contains("Cancelar términos iguales")));
+    assert_eq!(substeps.len(), 1);
+    assert_eq!(substeps[0]["title"], "Cancelar términos iguales");
     assert!(substeps
         .iter()
         .all(|substep| substep.get("lines").is_none()));
     assert!(substeps[0]["before_latex"]
         .as_str()
-        .is_some_and(|latex| latex.contains("a\\cdot \\sin(u) + b\\cdot \\cos(u)")));
-    assert!(substeps[0]["after_latex"]
-        .as_str()
-        .is_some_and(|latex| latex.contains("R\\cdot \\sin\\left(u + \\varphi\\right)")));
-    assert!(substeps[1]["before_latex"]
-        .as_str()
         .is_some_and(|latex| latex.contains("5\\cdot \\sin")));
-    assert_eq!(substeps[1]["after_latex"], "0");
+    assert_eq!(substeps[0]["after_latex"], "0");
 }
 
 #[test]
@@ -3995,9 +3998,10 @@ fn eval_half_angle_square_difference_to_zero_uses_human_rule_and_formula_substep
     assert_eq!(wire["steps_count"], 4);
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps[0]["rule"], "Expandir coseno de ángulo doble");
-    let substeps = steps[0]["substeps"].as_array().expect("substeps array");
-    assert_eq!(substeps.len(), 1);
-    assert_eq!(substeps[0]["title"], "Usar cos(2u) = 2 · cos(u)^2 - 1");
+    assert!(
+        steps[0].get("substeps").is_none(),
+        "double-angle expansion is already explicit enough as a parent step"
+    );
 }
 
 #[test]
@@ -6793,6 +6797,16 @@ fn derive_tan_plus_cot_keeps_single_common_denominator_substep() {
     assert_eq!(pythagorean_substeps.len(), 2);
     assert_eq!(pythagorean_substeps[0]["title"], "Usar 1 / cos(u) = sec(u)");
     assert_eq!(pythagorean_substeps[1]["title"], "Usar 1 / sin(u) = csc(u)");
+    assert_eq!(
+        pythagorean_substeps[0]["before_latex"],
+        "\\frac{1}{\\cos(x)}"
+    );
+    assert_eq!(pythagorean_substeps[0]["after_latex"], "\\sec(x)");
+    assert_eq!(
+        pythagorean_substeps[1]["before_latex"],
+        "\\frac{1}{\\sin(x)}"
+    );
+    assert_eq!(pythagorean_substeps[1]["after_latex"], "\\csc(x)");
 }
 
 #[test]

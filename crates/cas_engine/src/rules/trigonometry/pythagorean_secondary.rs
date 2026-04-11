@@ -31,6 +31,10 @@ fn format_trig_canonical_identity_desc(kind: TrigCanonicalIdentityKind) -> &'sta
 define_rule!(
     SecToRecipCosRule,
     "Secant to Reciprocal Cosine",
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
+    crate::phase::PhaseMask::CORE
+        | crate::phase::PhaseMask::TRANSFORM
+        | crate::phase::PhaseMask::RATIONALIZE,
     |ctx, expr| {
         let rewrite = try_rewrite_sec_to_recip_cos_function_expr(ctx, expr)?;
         Some(
@@ -46,6 +50,10 @@ define_rule!(
 define_rule!(
     CscToRecipSinRule,
     "Cosecant to Reciprocal Sine",
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
+    crate::phase::PhaseMask::CORE
+        | crate::phase::PhaseMask::TRANSFORM
+        | crate::phase::PhaseMask::RATIONALIZE,
     |ctx, expr| {
         let rewrite = try_rewrite_csc_to_recip_sin_function_expr(ctx, expr)?;
         Some(
@@ -62,6 +70,10 @@ define_rule!(
 define_rule!(
     CotToCosSinRule,
     "Cotangent to Cosine over Sine",
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
+    crate::phase::PhaseMask::CORE
+        | crate::phase::PhaseMask::TRANSFORM
+        | crate::phase::PhaseMask::RATIONALIZE,
     |ctx, expr| {
         let rewrite = try_rewrite_cot_to_cos_sin_function_expr(ctx, expr)?;
         Some(

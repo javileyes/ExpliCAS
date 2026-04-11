@@ -1685,12 +1685,16 @@ fn derive_didactic_inverse_tan_identity_uses_exact_angle_language() {
     let titles: Vec<&str> = step
         .get("substeps")
         .and_then(Value::as_array)
-        .expect("expected inverse tangent identity substeps")
-        .iter()
+        .into_iter()
+        .flatten()
         .filter_map(|substep| substep.get("title").and_then(Value::as_str))
         .collect();
 
-    assert_eq!(titles, vec!["Usar arctan(u) + arctan(1/u) = pi/2"]);
+    assert!(
+        titles.is_empty(),
+        "expected a direct inverse tangent identity step, got {:?}",
+        titles
+    );
 }
 
 #[test]
@@ -3113,57 +3117,29 @@ fn derive_didactic_representative_same_denominator_fraction_cases_have_no_subste
 #[test]
 fn derive_didactic_representative_fraction_expansion_cases_keep_distribution_and_real_cancellation()
 {
-    let cases = [
-        (
-            "expand_fraction_part_with_same_denominator_three_terms",
-            &["Repartir el mismo denominador sobre cada término del numerador"][..],
-        ),
-        (
-            "expand_fraction_with_common_scalar_factor_in_denominator",
-            &[
-                "Usar (a + b) / d = a/d + b/d",
-                "Cancelar los factores comunes en la fracción que queda",
-            ][..],
-        ),
-        (
-            "expand_fraction_mixed_variable_term_cancellation",
-            &[
-                "Usar (a + b) / d = a/d + b/d",
-                "Cancelar los factores comunes en las fracciones resultantes",
-            ][..],
-        ),
-        (
-            "expand_fraction_three_factor_full_cancellation",
-            &[
-                "Repartir el mismo denominador sobre cada término del numerador",
-                "Cancelar los factores comunes en las fracciones resultantes",
-            ][..],
-        ),
-        (
-            "expand_fraction_two_cancellations_plus_remainder",
-            &[
-                "Repartir el mismo denominador sobre cada término del numerador",
-                "Cancelar los factores comunes en las fracciones resultantes",
-            ][..],
-        ),
-        (
-            "expand_fraction_three_factor_cross_cancellation_plus_remainder",
-            &[
-                "Repartir el mismo denominador sobre cada término del numerador",
-                "Cancelar los factores comunes en las fracciones resultantes",
-            ][..],
-        ),
-        (
-            "expand_fraction_three_factor_three_cancellations_to_constant",
-            &[
-                "Repartir el mismo denominador sobre cada término del numerador",
-                "Cancelar los factores comunes en las fracciones resultantes",
-            ][..],
-        ),
-    ];
+    assert_case_step_has_no_substeps(
+        "expand_fraction_part_with_same_denominator_three_terms",
+        "Repartir el denominador común",
+    );
+    assert_case_step_titles(
+        "expand_fraction_with_common_scalar_factor_in_denominator",
+        "Repartir el denominador común",
+        &["Cancelar los factores comunes en la fracción que queda"],
+    );
 
-    for (case_id, expected_titles) in cases {
-        assert_case_step_titles(case_id, "Repartir el denominador común", expected_titles);
+    let plural_cases = [
+        "expand_fraction_mixed_variable_term_cancellation",
+        "expand_fraction_three_factor_full_cancellation",
+        "expand_fraction_two_cancellations_plus_remainder",
+        "expand_fraction_three_factor_cross_cancellation_plus_remainder",
+        "expand_fraction_three_factor_three_cancellations_to_constant",
+    ];
+    for case_id in plural_cases {
+        assert_case_step_titles(
+            case_id,
+            "Repartir el denominador común",
+            &["Cancelar los factores comunes en las fracciones resultantes"],
+        );
     }
 }
 
@@ -3179,14 +3155,7 @@ fn derive_didactic_representative_fraction_decomposition_cases_keep_whole_plus_r
     ];
 
     for case_id in csv_cases {
-        assert_case_step_titles(
-            case_id,
-            "Separar parte entera y resto",
-            &[
-                "Reescribir el numerador como denominador · parte entera + resto",
-                "Separar la parte entera de la fracción restante",
-            ],
-        );
+        assert_case_step_has_no_substeps(case_id, "Separar parte entera y resto");
     }
 
     let monic_cases = [
@@ -3218,10 +3187,7 @@ fn derive_didactic_representative_fraction_decomposition_cases_keep_whole_plus_r
         let step = step_by_rule(&artifact, "Separar parte entera y resto");
         assert_eq!(
             step_substep_titles(step),
-            vec![
-                "Reescribir el numerador como denominador · parte entera + resto",
-                "Separar la parte entera de la fracción restante",
-            ],
+            Vec::<&str>::new(),
             "unexpected fraction decomposition narrative for inline monic case {}",
             case.id
         );
@@ -3238,14 +3204,7 @@ fn derive_didactic_representative_fraction_combination_cases_keep_whole_plus_rem
     ];
 
     for case_id in csv_cases {
-        assert_case_step_titles(
-            case_id,
-            "Unir parte entera y fracción",
-            &[
-                "Poner la parte entera sobre el mismo denominador",
-                "Sumar los numeradores y conservar el denominador",
-            ],
-        );
+        assert_case_step_has_no_substeps(case_id, "Unir parte entera y fracción");
     }
 
     let monic_cases = [
@@ -3270,10 +3229,7 @@ fn derive_didactic_representative_fraction_combination_cases_keep_whole_plus_rem
         let step = step_by_rule(&artifact, "Unir parte entera y fracción");
         assert_eq!(
             step_substep_titles(step),
-            vec![
-                "Poner la parte entera sobre el mismo denominador",
-                "Sumar los numeradores y conservar el denominador",
-            ],
+            Vec::<&str>::new(),
             "unexpected fraction combination narrative for inline monic case {}",
             case.id
         );
@@ -3349,82 +3305,46 @@ fn derive_didactic_representative_odd_half_power_cases_use_root_split_narrative(
 #[test]
 fn derive_didactic_representative_collect_cases_keep_focus_narrative() {
     let cases = [
-        (
-            "collect_linear",
-            "Agrupar términos por variable",
-            vec!["Agrupar los términos que llevan la misma potencia de x"],
-        ),
+        ("collect_linear", "Agrupar términos por variable"),
         (
             "collect_linear_alt_variable",
             "Agrupar términos por variable",
-            vec!["Agrupar los términos que llevan la misma potencia de y"],
         ),
         (
             "collect_multiple_power_groups",
             "Agrupar términos por variable",
-            vec!["Agrupar los términos que llevan la misma potencia de x"],
         ),
         (
             "collect_common_symbolic_coefficients",
             "Agrupar términos por variable",
-            vec!["Agrupar los términos que llevan la misma potencia de x"],
         ),
         (
             "collect_composite_monomial_factor",
             "Agrupar términos por factor común",
-            vec!["Agrupar los términos que llevan el mismo factor x·y"],
         ),
         (
             "collect_two_composite_factor_groups",
             "Agrupar términos por factor común",
-            vec!["Agrupar los términos que llevan el mismo factor x·y"],
         ),
     ];
 
-    for (case_id, rule, expected_titles) in cases {
-        let artifact = audit_case(&derive_case_by_id(case_id));
-        let step = step_by_rule(&artifact, rule);
-        assert_eq!(
-            step_substep_titles(step),
-            expected_titles,
-            "unexpected collect narrative for {case_id}"
-        );
+    for (case_id, rule) in cases {
+        assert_case_step_has_no_substeps(case_id, rule);
     }
 }
 
 #[test]
 fn derive_didactic_representative_factor_with_division_cases_keep_variable_specific_narrative() {
     let csv_cases = [
-        (
-            "factor_out_with_division",
-            vec!["Si un término no lleva x, escribirlo como x · (t/x)"],
-        ),
-        (
-            "factor_out_with_division_sparse_quintic",
-            vec!["Si un término no lleva x, escribirlo como x · (t/x)"],
-        ),
-        (
-            "factor_out_with_division_mixed_septic",
-            vec!["Si un término no lleva x, escribirlo como x · (t/x)"],
-        ),
-        (
-            "factor_out_square_with_division_quartic",
-            vec!["Si un término no lleva x^2, escribirlo como x^2 · (t/x^2)"],
-        ),
-        (
-            "factor_out_cube_with_division_septic",
-            vec!["Si un término no lleva x^3, escribirlo como x^3 · (t/x^3)"],
-        ),
+        "factor_out_with_division",
+        "factor_out_with_division_sparse_quintic",
+        "factor_out_with_division_mixed_septic",
+        "factor_out_square_with_division_quartic",
+        "factor_out_cube_with_division_septic",
     ];
 
-    for (case_id, expected_titles) in csv_cases {
-        let artifact = audit_case(&derive_case_by_id(case_id));
-        let step = step_by_rule(&artifact, "Sacar factor usando división");
-        assert_eq!(
-            step_substep_titles(step),
-            expected_titles,
-            "unexpected factor-with-division narrative for {case_id}"
-        );
+    for case_id in csv_cases {
+        assert_case_step_has_no_substeps(case_id, "Sacar factor usando división");
     }
 
     let y_case = DeriveCase {
@@ -3438,7 +3358,7 @@ fn derive_didactic_representative_factor_with_division_cases_keep_variable_speci
     let y_step = step_by_rule(&y_artifact, "Sacar factor usando división");
     assert_eq!(
         step_substep_titles(y_step),
-        vec!["Si un término no lleva y, escribirlo como y · (t/y)"],
+        Vec::<&str>::new(),
         "unexpected factor-with-division narrative for inline y case"
     );
 }

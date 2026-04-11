@@ -64,15 +64,17 @@ pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<
         "Distribute Division" => generate_fraction_expansion_substeps(ctx, step),
         "Add Fractions" => generate_add_subtract_fractions_substeps(ctx, step),
         "Subtract Fractions" => generate_add_subtract_fractions_substeps(ctx, step),
-        "Mixed Fraction Split" => generate_mixed_fraction_split_substeps(),
-        "Mixed Fraction Combine" => generate_mixed_fraction_combine_substeps(),
+        "Mixed Fraction Split" => generate_mixed_fraction_split_substeps(ctx, step),
+        "Mixed Fraction Combine" => generate_mixed_fraction_combine_substeps(ctx, step),
         "Telescoping Fraction Combine" => generate_telescoping_fraction_combine_substeps(ctx, step),
         "Telescoping Fraction Split" => generate_telescoping_fraction_split_substeps(ctx, step),
-        "Canonicalize Roots" => generate_canonicalize_roots_substeps(),
-        "Combine powers with same base (n-ary)" => generate_same_base_power_merge_substeps(),
+        "Canonicalize Roots" => generate_canonicalize_roots_substeps(ctx, step),
+        "Combine powers with same base (n-ary)" => {
+            generate_same_base_power_merge_substeps(ctx, step)
+        }
         "Expand Odd Half Power" => generate_odd_half_power_substeps(ctx, step),
         "Expand" => generate_expand_substeps(ctx, step),
-        "Collect Terms" => generate_collect_terms_substeps(step),
+        "Collect Terms" => generate_collect_terms_substeps(ctx, step),
         "Factor Out With Division" => generate_factor_out_with_division_substeps(ctx, step),
         "Factorization" => generate_factorization_substeps(ctx, step),
         "Binomial Expansion" | "Auto Expand Power Sum" => {
@@ -98,31 +100,31 @@ pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<
             generate_hyperbolic_angle_sum_diff_substeps(ctx, step)
         }
         "Double Angle Expansion" => generate_double_angle_expansion_substeps(ctx, step),
-        "Double Angle Contraction" => generate_double_angle_contraction_substeps(step),
+        "Double Angle Contraction" => generate_double_angle_contraction_substeps(ctx, step),
         "Half-Angle Square Identity" | "Angle Consistency (Half-Angle)" => {
             generate_half_angle_square_identity_substeps(ctx, step)
         }
         "Expand Secant Squared" | "Expand Cosecant Squared" => {
-            generate_sec_csc_squared_expansion_substeps(step)
+            generate_sec_csc_squared_expansion_substeps(ctx, step)
         }
         "Recognize Secant Squared" | "Recognize Cosecant Squared" => {
-            generate_sec_csc_squared_contraction_substeps(step)
+            generate_sec_csc_squared_contraction_substeps(ctx, step)
         }
-        "Reciprocal Product Identity" => generate_reciprocal_product_identity_substeps(),
-        "Reciprocal Pythagorean Identity" => generate_reciprocal_pythagorean_substeps(step),
+        "Reciprocal Product Identity" => generate_reciprocal_product_identity_substeps(ctx, step),
+        "Reciprocal Pythagorean Identity" => generate_reciprocal_pythagorean_substeps(ctx, step),
         "Cos 2x Additive Contraction" => generate_cos_2x_additive_contraction_substeps(ctx, step),
         "Triple Angle Identity" => generate_triple_angle_identity_substeps(ctx, step),
         "Half-Angle Tangent Identity" => generate_half_angle_tangent_substeps(ctx, step),
-        "Reciprocal Trig Identity" => generate_reciprocal_trig_identity_substeps(step),
-        "Trig Expansion" => generate_trig_expansion_substeps(step),
-        "Trig Quotient" => generate_trig_quotient_substeps(step),
+        "Reciprocal Trig Identity" => generate_reciprocal_trig_identity_substeps(ctx, step),
+        "Trig Expansion" => generate_trig_expansion_substeps(ctx, step),
+        "Trig Quotient" => generate_trig_quotient_substeps(ctx, step),
         "Cos-Diff / Sin-Diff Quotient" => generate_cos_diff_sin_diff_quotient_substeps(ctx, step),
         "Distributive Property"
         | "Distributive Property (Simple)"
         | "Pull Constant From Fraction" => {
             generate_reverse_nested_fraction_rule_substeps(ctx, step)
         }
-        "Pythagorean Factor Form" => generate_pythagorean_factor_form_substeps(step),
+        "Pythagorean Factor Form" => generate_pythagorean_factor_form_substeps(ctx, step),
         "Pythagorean High-Power Factor" => {
             generate_pythagorean_high_power_factor_substeps(ctx, step)
         }
@@ -177,34 +179,26 @@ fn generate_phase_shift_identity_substeps(ctx: &Context, step: &Step) -> Vec<Sub
 
     let local_before = step.before_local().unwrap_or(step.before);
     let local_after = step.after_local().unwrap_or(step.after);
-    let mut substeps = if matches!(ctx.get(local_before), Expr::Add(_, _) | Expr::Sub(_, _))
+    let first_title = if matches!(ctx.get(local_before), Expr::Add(_, _) | Expr::Sub(_, _))
         && !matches!(ctx.get(local_after), Expr::Add(_, _) | Expr::Sub(_, _))
     {
-        vec![formula_substep(
-            "Usar a·sin(u) + b·cos(u) = R·sin(u + φ)",
-            "a·sin(u) + b·cos(u)",
-            "R·sin(u + φ)",
-            "a\\cdot \\sin(u) + b\\cdot \\cos(u)",
-            "R\\cdot \\sin\\left(u + \\varphi\\right)",
-        )]
+        "Usar a·sin(u) + b·cos(u) = R·sin(u + φ)"
     } else if !matches!(ctx.get(local_before), Expr::Add(_, _) | Expr::Sub(_, _))
         && matches!(ctx.get(local_after), Expr::Add(_, _) | Expr::Sub(_, _))
     {
-        vec![formula_substep(
-            "Expandir R·sin(u + φ)",
-            "R·sin(u + φ)",
-            "R·sin(u)·cos(φ) + R·cos(u)·sin(φ)",
-            "R\\cdot \\sin\\left(u + \\varphi\\right)",
-            "R\\cdot \\sin(u)\\cdot \\cos\\left(\\varphi\\right) + R\\cdot \\cos(u)\\cdot \\sin\\left(\\varphi\\right)",
+        "Expandir R·sin(u + φ)"
+    } else {
+        "Usar una identidad de desfase"
+    };
+    let mut substeps = if local_before != local_after {
+        vec![concrete_expr_substep(
+            ctx,
+            first_title,
+            local_before,
+            local_after,
         )]
     } else {
-        vec![formula_substep(
-            "Usar una identidad de desfase",
-            "a·sin(u) + b·cos(u)",
-            "R·sin(u + φ)",
-            "a\\cdot \\sin(u) + b\\cdot \\cos(u)",
-            "R\\cdot \\sin\\left(u + \\varphi\\right)",
-        )]
+        Vec::new()
     };
 
     let Some(global_before) = step.global_before else {
@@ -260,28 +254,31 @@ fn generate_combine_like_terms_substeps(ctx: &Context, step: &Step) -> Vec<SubSt
     .with_after_latex(after_latex)]
 }
 
-fn generate_collect_terms_substeps(step: &Step) -> Vec<SubStep> {
+fn generate_collect_terms_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
     let Some(focus) = step.description.strip_prefix("Collect terms by ") else {
         return Vec::new();
     };
     let display_focus = human_collect_focus(focus);
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+    if before == after {
+        return Vec::new();
+    }
 
     if is_simple_collect_focus(focus) {
-        return vec![formula_substep(
+        return vec![concrete_expr_substep(
+            ctx,
             format!("Agrupar los términos que llevan la misma potencia de {display_focus}"),
-            &format!("a \\cdot {focus}^n + b \\cdot {focus}^n"),
-            &format!("(a + b) \\cdot {focus}^n"),
-            &format!("a\\cdot {focus}^n + b\\cdot {focus}^n"),
-            &format!("\\left(a + b\\right)\\cdot {focus}^n"),
+            before,
+            after,
         )];
     }
 
-    vec![formula_substep(
+    vec![concrete_expr_substep(
+        ctx,
         format!("Agrupar los términos que llevan el mismo factor {display_focus}"),
-        "a \\cdot m + b \\cdot m",
-        "(a + b) \\cdot m",
-        "a\\cdot m + b\\cdot m",
-        "\\left(a + b\\right)\\cdot m",
+        before,
+        after,
     )]
 }
 
@@ -297,6 +294,12 @@ fn human_collect_focus(focus: &str) -> String {
 }
 
 fn generate_factor_out_with_division_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+    if before == after {
+        return Vec::new();
+    }
+
     let factor_expr = detect_factor_out_with_division_substep_factor(
         ctx,
         step.after_local().unwrap_or(step.after),
@@ -309,18 +312,11 @@ fn generate_factor_out_with_division_substeps(ctx: &Context, step: &Step) -> Vec
     }) else {
         return Vec::new();
     };
-    let factor_latex = factor_expr
-        .map(|expr| latex_expr(ctx, expr))
-        .unwrap_or_else(|| factor_display.clone());
-
-    vec![formula_substep(
-        format!(
-            "Si un término no lleva {factor_display}, escribirlo como {factor_display} · (t/{factor_display})"
-        ),
-        "t",
-        &format!("{factor_display} · (t/{factor_display})"),
-        "t",
-        &format!("{factor_latex}\\cdot \\frac{{t}}{{{factor_latex}}}"),
+    vec![concrete_expr_substep(
+        ctx,
+        format!("Reescribir los términos que no llevan {factor_display} usando el factor común"),
+        before,
+        after,
     )]
 }
 
@@ -453,38 +449,22 @@ fn expr_is_zero_in_context(ctx: &mut Context, expr: ExprId) -> bool {
 
 fn generate_fraction_expansion_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
     let before = step.before_local().unwrap_or(step.before);
-    let _after = step.after_local().unwrap_or(step.after);
-    let first = match ctx.get(before) {
-        Expr::Div(numerator, _denominator) => {
-            let numerator_terms = AddView::from_expr(ctx, *numerator);
-            if numerator_terms.terms.len() >= 3 {
-                formula_substep(
-                    "Repartir el mismo denominador sobre cada término del numerador",
-                    "(a + b + c) / d",
-                    "a/d + b/d + c/d",
-                    "\\frac{a+b+c}{d}",
-                    "\\frac{a}{d} + \\frac{b}{d} + \\frac{c}{d}",
-                )
-            } else {
-                formula_substep(
-                    "Usar (a + b) / d = a/d + b/d",
-                    "(a + b) / d",
-                    "a/d + b/d",
-                    "\\frac{a+b}{d}",
-                    "\\frac{a}{d} + \\frac{b}{d}",
-                )
+    let local_after = step.after_local().unwrap_or(step.after);
+    let mut out = Vec::new();
+    if before != local_after {
+        let first_title = match ctx.get(before) {
+            Expr::Div(numerator, _denominator) => {
+                let numerator_terms = AddView::from_expr(ctx, *numerator);
+                if numerator_terms.terms.len() >= 3 {
+                    "Repartir el mismo denominador sobre cada término del numerador"
+                } else {
+                    "Repartir el denominador entre los términos del numerador"
+                }
             }
-        }
-        _ => formula_substep(
-            "Usar (a + b) / d = a/d + b/d",
-            "(a + b) / d",
-            "a/d + b/d",
-            "\\frac{a+b}{d}",
-            "\\frac{a}{d} + \\frac{b}{d}",
-        ),
-    };
-
-    let mut out = vec![first];
+            _ => "Repartir el denominador entre los términos del numerador",
+        };
+        out.push(concrete_expr_substep(ctx, first_title, before, local_after));
+    }
 
     if step.before_local().is_none() {
         if let Some(intermediate) = step.after_local() {
@@ -625,61 +605,63 @@ fn fraction_term_has_common_factor(ctx: &Context, expr: ExprId) -> bool {
     }
 }
 
-fn generate_mixed_fraction_split_substeps() -> Vec<SubStep> {
-    vec![
-        formula_substep(
-            "Reescribir el numerador como denominador · parte entera + resto",
-            "(d · q + r) / d",
-            "q + r/d",
-            "\\frac{d\\cdot q + r}{d}",
-            "q + \\frac{r}{d}",
-        ),
-        formula_substep(
-            "Separar la parte entera de la fracción restante",
-            "(d · q) / d + r/d",
-            "q + r/d",
-            "\\frac{d\\cdot q}{d} + \\frac{r}{d}",
-            "q + \\frac{r}{d}",
-        ),
-    ]
-}
+fn generate_mixed_fraction_split_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+    if before == after {
+        return Vec::new();
+    }
 
-fn generate_mixed_fraction_combine_substeps() -> Vec<SubStep> {
-    vec![
-        formula_substep(
-            "Poner la parte entera sobre el mismo denominador",
-            "q + r/d",
-            "(d · q)/d + r/d",
-            "q + \\frac{r}{d}",
-            "\\frac{d\\cdot q}{d} + \\frac{r}{d}",
-        ),
-        formula_substep(
-            "Sumar los numeradores y conservar el denominador",
-            "(d · q)/d + r/d",
-            "(d · q + r) / d",
-            "\\frac{d\\cdot q}{d} + \\frac{r}{d}",
-            "\\frac{d\\cdot q + r}{d}",
-        ),
-    ]
-}
-
-fn generate_canonicalize_roots_substeps() -> Vec<SubStep> {
-    vec![formula_substep(
-        "Usar sqrt(u) = u^(1/2)",
-        "sqrt(u)",
-        "u^(1/2)",
-        "\\sqrt{u}",
-        "u^{\\frac{1}{2}}",
+    vec![concrete_expr_substep(
+        ctx,
+        "Separar la parte entera y la fracción restante",
+        before,
+        after,
     )]
 }
 
-fn generate_same_base_power_merge_substeps() -> Vec<SubStep> {
-    vec![formula_substep(
-        "Usar x^a · x^b = x^(a+b)",
-        "x^a · x^b",
-        "x^(a+b)",
-        "x^a\\cdot x^b",
-        "x^{a+b}",
+fn generate_mixed_fraction_combine_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+    if before == after {
+        return Vec::new();
+    }
+
+    vec![concrete_expr_substep(
+        ctx,
+        "Poner la parte entera sobre el mismo denominador y combinar",
+        before,
+        after,
+    )]
+}
+
+fn generate_canonicalize_roots_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+    if before == after {
+        return Vec::new();
+    }
+
+    vec![concrete_expr_substep(
+        ctx,
+        "Reescribir la raíz como potencia con exponente 1/2",
+        before,
+        after,
+    )]
+}
+
+fn generate_same_base_power_merge_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+    if before == after {
+        return Vec::new();
+    }
+
+    vec![concrete_expr_substep(
+        ctx,
+        "Sumar los exponentes de la misma base",
+        before,
+        after,
     )]
 }
 
@@ -3706,17 +3688,18 @@ fn generate_product_to_sum_substeps(step: &Step) -> Vec<SubStep> {
     Vec::new()
 }
 
-fn generate_double_angle_contraction_substeps(step: &Step) -> Vec<SubStep> {
+fn generate_double_angle_contraction_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
     if step.rule_name == "Double Angle Contraction"
         || step.description.contains("double-angle")
         || step.description.contains("Double Angle")
     {
-        return vec![formula_substep(
+        return vec![concrete_expr_substep(
+            ctx,
             "Reconocer el patrón 2 · sin(u) · cos(u) = sin(2u)",
-            "2 · sin(u) · cos(u)",
-            "sin(2u)",
-            "2\\cdot \\sin(u)\\cdot \\cos(u)",
-            "\\sin(2u)",
+            before,
+            after,
         )];
     }
     Vec::new()
@@ -3728,62 +3711,56 @@ fn generate_half_angle_square_identity_substeps(ctx: &Context, step: &Step) -> V
     {
         let after = human_expr(ctx, step.after_local().unwrap_or(step.after)).replace(' ', "");
         if after.contains("2·cos(") || after.contains("2*cos(") {
-            return vec![formula_substep(
+            return vec![concrete_expr_substep(
+                ctx,
                 "Usar cos(2u) = 2 · cos(u)^2 - 1",
-                "cos(2u)",
-                "2 · cos(u)^2 - 1",
-                "\\cos(2u)",
-                "2\\cdot \\cos^2(u) - 1",
+                step.before_local().unwrap_or(step.before),
+                step.after_local().unwrap_or(step.after),
             )];
         }
         if after.contains("1-2·sin(") || after.contains("1-2*sin(") {
-            return vec![formula_substep(
+            return vec![concrete_expr_substep(
+                ctx,
                 "Usar cos(2u) = 1 - 2 · sin(u)^2",
-                "cos(2u)",
-                "1 - 2 · sin(u)^2",
-                "\\cos(2u)",
-                "1 - 2\\cdot \\sin^2(u)",
+                step.before_local().unwrap_or(step.before),
+                step.after_local().unwrap_or(step.after),
             )];
         }
     }
 
     if step.description.contains("Expand sin²") {
-        return vec![formula_substep(
+        return vec![concrete_expr_substep(
+            ctx,
             "Usar sin²(u) = (1 - cos(2u)) / 2",
-            "sin(u)^2",
-            "(1 - cos(2u)) / 2",
-            "\\sin^2(u)",
-            "\\frac{1 - \\cos(2u)}{2}",
+            step.before_local().unwrap_or(step.before),
+            step.after_local().unwrap_or(step.after),
         )];
     }
 
     if step.description.contains("Expand cos²") {
-        return vec![formula_substep(
+        return vec![concrete_expr_substep(
+            ctx,
             "Usar cos²(u) = (1 + cos(2u)) / 2",
-            "cos(u)^2",
-            "(1 + cos(2u)) / 2",
-            "\\cos^2(u)",
-            "\\frac{1 + \\cos(2u)}{2}",
+            step.before_local().unwrap_or(step.before),
+            step.after_local().unwrap_or(step.after),
         )];
     }
 
     if step.description.contains("Recognize (1 - cos(2u))/2") {
-        return vec![formula_substep(
+        return vec![concrete_expr_substep(
+            ctx,
             "Usar (1 - cos(2u)) / 2 = sin²(u)",
-            "(1 - cos(2u)) / 2",
-            "sin(u)^2",
-            "\\frac{1 - \\cos(2u)}{2}",
-            "\\sin^2(u)",
+            step.before_local().unwrap_or(step.before),
+            step.after_local().unwrap_or(step.after),
         )];
     }
 
     if step.description.contains("Recognize (1 + cos(2u))/2") {
-        return vec![formula_substep(
+        return vec![concrete_expr_substep(
+            ctx,
             "Usar (1 + cos(2u)) / 2 = cos²(u)",
-            "(1 + cos(2u)) / 2",
-            "cos(u)^2",
-            "\\frac{1 + \\cos(2u)}{2}",
-            "\\cos^2(u)",
+            step.before_local().unwrap_or(step.before),
+            step.after_local().unwrap_or(step.after),
         )];
     }
 
@@ -3792,6 +3769,7 @@ fn generate_half_angle_square_identity_substeps(ctx: &Context, step: &Step) -> V
 
 fn generate_triple_angle_identity_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
     let local_before = step.before_local().unwrap_or(step.before);
+    let local_after = step.after_local().unwrap_or(step.after);
     let Expr::Function(fn_id, args) = ctx.get(local_before) else {
         return Vec::new();
     };
@@ -3800,22 +3778,20 @@ fn generate_triple_angle_identity_substeps(ctx: &Context, step: &Step) -> Vec<Su
     }
 
     if ctx.is_builtin(*fn_id, BuiltinFn::Sin) {
-        return vec![formula_substep(
+        return vec![concrete_expr_substep(
+            ctx,
             "Usar sin(3u) = 3 · sin(u) - 4 · sin(u)^3",
-            "sin(3u)",
-            "3 · sin(u) - 4 · sin(u)^3",
-            "\\sin(3u)",
-            "3\\cdot \\sin(u) - 4\\cdot \\sin^3(u)",
+            local_before,
+            local_after,
         )];
     }
 
     if ctx.is_builtin(*fn_id, BuiltinFn::Cos) {
-        return vec![formula_substep(
+        return vec![concrete_expr_substep(
+            ctx,
             "Usar cos(3u) = 4 · cos(u)^3 - 3 · cos(u)",
-            "cos(3u)",
-            "4 · cos(u)^3 - 3 · cos(u)",
-            "\\cos(3u)",
-            "4\\cdot \\cos^3(u) - 3\\cdot \\cos(u)",
+            local_before,
+            local_after,
         )];
     }
 
@@ -3831,26 +3807,23 @@ fn generate_half_angle_tangent_substeps(ctx: &Context, step: &Step) -> Vec<SubSt
         let variant = half_angle_tangent_variant(ctx, before)
             .or_else(|| half_angle_tangent_variant(ctx, after));
         return match variant {
-            Some(HalfAngleTangentVariant::OneMinusCosOverSin) => vec![formula_substep(
+            Some(HalfAngleTangentVariant::OneMinusCosOverSin) => vec![concrete_expr_substep(
+                ctx,
                 "Usar (1 - cos(2u)) / sin(2u) = tan(u)",
-                "(1 - cos(2u)) / sin(2u)",
-                "tan(u)",
-                "\\frac{1 - \\cos(2u)}{\\sin(2u)}",
-                "\\tan(u)",
+                before,
+                after,
             )],
-            Some(HalfAngleTangentVariant::SinOverOnePlusCos) => vec![formula_substep(
+            Some(HalfAngleTangentVariant::SinOverOnePlusCos) => vec![concrete_expr_substep(
+                ctx,
                 "Usar sin(2u) / (1 + cos(2u)) = tan(u)",
-                "sin(2u) / (1 + cos(2u))",
-                "tan(u)",
-                "\\frac{\\sin(2u)}{1 + \\cos(2u)}",
-                "\\tan(u)",
+                before,
+                after,
             )],
-            None => vec![formula_substep(
+            None => vec![concrete_expr_substep(
+                ctx,
                 "Usar tan(u) = (1 - cos(2u)) / sin(2u)",
-                "tan(u)",
-                "(1 - cos(2u)) / sin(2u)",
-                "\\tan(u)",
-                "\\frac{1 - \\cos(2u)}{\\sin(2u)}",
+                before,
+                after,
             )],
         };
     }
@@ -4015,86 +3988,85 @@ fn generate_pythagorean_high_power_factor_substeps(ctx: &Context, step: &Step) -
 
 fn generate_cos_2x_additive_contraction_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
     let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
     let before_display = human_expr(ctx, before);
 
     if before_display.contains("sin(") {
-        return vec![formula_substep(
+        return vec![concrete_expr_substep(
+            ctx,
             "Reconocer el patrón 1 - 2 · sin(u)^2 = cos(2u)",
-            "1 - 2 · sin(u)^2",
-            "cos(2u)",
-            "1 - 2\\cdot \\sin^2(u)",
-            "\\cos(2u)",
+            before,
+            after,
         )];
     }
 
     if before_display.contains("cos(") {
-        return vec![formula_substep(
+        return vec![concrete_expr_substep(
+            ctx,
             "Reconocer el patrón 2 · cos(u)^2 - 1 = cos(2u)",
-            "2 · cos(u)^2 - 1",
-            "cos(2u)",
-            "2\\cdot \\cos^2(u) - 1",
-            "\\cos(2u)",
+            before,
+            after,
         )];
     }
 
     Vec::new()
 }
 
-fn generate_sec_csc_squared_expansion_substeps(step: &Step) -> Vec<SubStep> {
+fn generate_sec_csc_squared_expansion_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
     match step.description.as_str() {
-        "Expand sec²(u) as 1 + tan(u)^2" => vec![formula_substep(
+        "Expand sec²(u) as 1 + tan(u)^2" => vec![concrete_expr_substep(
+            ctx,
             "Usar sec²(u) = 1 + tan²(u)",
-            "sec(u)^2",
-            "1 + tan(u)^2",
-            "\\sec^2(u)",
-            "1 + \\tan^2(u)",
+            before,
+            after,
         )],
-        "Expand csc²(u) as 1 + cot(u)^2" => vec![formula_substep(
+        "Expand csc²(u) as 1 + cot(u)^2" => vec![concrete_expr_substep(
+            ctx,
             "Usar csc²(u) = 1 + cot²(u)",
-            "csc(u)^2",
-            "1 + cot(u)^2",
-            "\\csc^2(u)",
-            "1 + \\cot^2(u)",
+            before,
+            after,
         )],
         _ => Vec::new(),
     }
 }
 
-fn generate_sec_csc_squared_contraction_substeps(step: &Step) -> Vec<SubStep> {
+fn generate_sec_csc_squared_contraction_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
     match step.description.as_str() {
-        "Recognize 1 + tan²(u) as sec²(u)" => vec![formula_substep(
+        "Recognize 1 + tan²(u) as sec²(u)" => vec![concrete_expr_substep(
+            ctx,
             "Usar 1 + tan²(u) = sec²(u)",
-            "1 + tan(u)^2",
-            "sec(u)^2",
-            "1 + \\tan^2(u)",
-            "\\sec^2(u)",
+            before,
+            after,
         )],
-        "Recognize 1 + cot²(u) as csc²(u)" => vec![formula_substep(
+        "Recognize 1 + cot²(u) as csc²(u)" => vec![concrete_expr_substep(
+            ctx,
             "Usar 1 + cot²(u) = csc²(u)",
-            "1 + cot(u)^2",
-            "csc(u)^2",
-            "1 + \\cot^2(u)",
-            "\\csc^2(u)",
+            before,
+            after,
         )],
         _ => Vec::new(),
     }
 }
 
-fn generate_pythagorean_factor_form_substeps(step: &Step) -> Vec<SubStep> {
+fn generate_pythagorean_factor_form_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
     match step.description.as_str() {
-        desc if desc.starts_with("1 - sin²") => vec![formula_substep(
+        desc if desc.starts_with("1 - sin²") => vec![concrete_expr_substep(
+            ctx,
             "Usar 1 - sin²(u) = cos²(u)",
-            "1 - sin(u)^2",
-            "cos(u)^2",
-            "1 - \\sin^2(u)",
-            "\\cos^2(u)",
+            before,
+            after,
         )],
-        desc if desc.starts_with("1 - cos²") => vec![formula_substep(
+        desc if desc.starts_with("1 - cos²") => vec![concrete_expr_substep(
+            ctx,
             "Usar 1 - cos²(u) = sin²(u)",
-            "1 - cos(u)^2",
-            "sin(u)^2",
-            "1 - \\cos^2(u)",
-            "\\sin^2(u)",
+            before,
+            after,
         )],
         _ => Vec::new(),
     }
@@ -4106,128 +4078,159 @@ fn generate_pythagorean_chain_identity_substeps(ctx: &Context, step: &Step) -> V
         return Vec::new();
     }
 
-    let after_display = display_expr(ctx, step.global_after.unwrap_or(step.after));
+    let global_after = step.global_after.unwrap_or(step.after);
+    let after_display = display_expr(ctx, global_after);
     if after_display.contains("sec(") && after_display.contains("csc(") {
-        return vec![
-            formula_substep(
-                "Usar 1 / cos(u) = sec(u)",
-                "1 / cos(u)",
-                "sec(u)",
-                "\\frac{1}{\\cos(u)}",
-                "\\sec(u)",
-            ),
-            formula_substep(
-                "Usar 1 / sin(u) = csc(u)",
-                "1 / sin(u)",
-                "csc(u)",
-                "\\frac{1}{\\sin(u)}",
-                "\\csc(u)",
-            ),
-        ];
+        let mut work = ctx.clone();
+        let mut out = Vec::new();
+        for factor in collect_mul_chain_factors_readonly(&work, global_after) {
+            let Some((title, reciprocal_before)) =
+                reciprocal_rewrite_substep_for_factor(&mut work, factor)
+            else {
+                continue;
+            };
+            out.push(
+                SubStep::new(
+                    title,
+                    display_expr(&work, reciprocal_before),
+                    display_expr(&work, factor),
+                )
+                .with_before_latex(latex_expr(&work, reciprocal_before))
+                .with_after_latex(latex_expr(&work, factor)),
+            );
+        }
+        if !out.is_empty() {
+            return out;
+        }
     }
 
     Vec::new()
 }
 
-fn generate_trig_expansion_substeps(step: &Step) -> Vec<SubStep> {
+fn reciprocal_rewrite_substep_for_factor(
+    ctx: &mut Context,
+    factor: ExprId,
+) -> Option<(String, ExprId)> {
+    let (builtin, arg) = match ctx.get(factor) {
+        Expr::Function(fn_id, args) if args.len() == 1 => (ctx.builtin_of(*fn_id), args[0]),
+        _ => return None,
+    };
+
+    if matches!(builtin, Some(BuiltinFn::Sec)) {
+        let cos_expr = ctx.call_builtin(BuiltinFn::Cos, vec![arg]);
+        let one = ctx.num(1);
+        let before = ctx.add(Expr::Div(one, cos_expr));
+        return Some(("Usar 1 / cos(u) = sec(u)".to_string(), before));
+    }
+
+    if matches!(builtin, Some(BuiltinFn::Csc)) {
+        let sin_expr = ctx.call_builtin(BuiltinFn::Sin, vec![arg]);
+        let one = ctx.num(1);
+        let before = ctx.add(Expr::Div(one, sin_expr));
+        return Some(("Usar 1 / sin(u) = csc(u)".to_string(), before));
+    }
+
+    None
+}
+
+fn generate_trig_expansion_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
     if step.description.contains("tangent to sine over cosine") {
-        return vec![formula_substep(
+        return vec![concrete_expr_substep(
+            ctx,
             "Usar tan(u) = sin(u) / cos(u)",
-            "tan(u)",
-            "sin(u) / cos(u)",
-            "\\tan(u)",
-            "\\frac{\\sin(u)}{\\cos(u)}",
+            before,
+            after,
         )];
     }
     Vec::new()
 }
 
-fn generate_reciprocal_trig_identity_substeps(step: &Step) -> Vec<SubStep> {
+fn generate_reciprocal_trig_identity_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
     match step.description.as_str() {
-        "Expand sec(u) as 1 / cos(u)" => vec![formula_substep(
+        "Expand sec(u) as 1 / cos(u)" => vec![concrete_expr_substep(
+            ctx,
             "Usar sec(u) = 1 / cos(u)",
-            "sec(u)",
-            "1 / cos(u)",
-            "\\sec(u)",
-            "\\frac{1}{\\cos(u)}",
+            before,
+            after,
         )],
-        "Expand csc(u) as 1 / sin(u)" => vec![formula_substep(
+        "Expand csc(u) as 1 / sin(u)" => vec![concrete_expr_substep(
+            ctx,
             "Usar csc(u) = 1 / sin(u)",
-            "csc(u)",
-            "1 / sin(u)",
-            "\\csc(u)",
-            "\\frac{1}{\\sin(u)}",
+            before,
+            after,
         )],
-        "Expand cot(u) as cos(u) / sin(u)" => vec![formula_substep(
+        "Expand cot(u) as cos(u) / sin(u)" => vec![concrete_expr_substep(
+            ctx,
             "Usar cot(u) = cos(u) / sin(u)",
-            "cot(u)",
-            "cos(u) / sin(u)",
-            "\\cot(u)",
-            "\\frac{\\cos(u)}{\\sin(u)}",
+            before,
+            after,
         )],
-        "Recognize 1 / cos(u) as sec(u)" => vec![formula_substep(
+        "Recognize 1 / cos(u) as sec(u)" => vec![concrete_expr_substep(
+            ctx,
             "Usar 1 / cos(u) = sec(u)",
-            "1 / cos(u)",
-            "sec(u)",
-            "\\frac{1}{\\cos(u)}",
-            "\\sec(u)",
+            before,
+            after,
         )],
-        "Recognize 1 / sin(u) as csc(u)" => vec![formula_substep(
+        "Recognize 1 / sin(u) as csc(u)" => vec![concrete_expr_substep(
+            ctx,
             "Usar 1 / sin(u) = csc(u)",
-            "1 / sin(u)",
-            "csc(u)",
-            "\\frac{1}{\\sin(u)}",
-            "\\csc(u)",
+            before,
+            after,
         )],
-        "Recognize cos(u) / sin(u) as cot(u)" => vec![formula_substep(
+        "Recognize cos(u) / sin(u) as cot(u)" => vec![concrete_expr_substep(
+            ctx,
             "Usar cos(u) / sin(u) = cot(u)",
-            "cos(u) / sin(u)",
-            "cot(u)",
-            "\\frac{\\cos(u)}{\\sin(u)}",
-            "\\cot(u)",
+            before,
+            after,
         )],
         _ => Vec::new(),
     }
 }
 
-fn generate_reciprocal_product_identity_substeps() -> Vec<SubStep> {
-    vec![formula_substep(
+fn generate_reciprocal_product_identity_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+    vec![concrete_expr_substep(
+        ctx,
         "Usar tan(u) · cot(u) = 1",
-        "tan(u) · cot(u)",
-        "1",
-        "\\tan(u)\\cdot \\cot(u)",
-        "1",
+        before,
+        after,
     )]
 }
 
-fn generate_reciprocal_pythagorean_substeps(step: &Step) -> Vec<SubStep> {
+fn generate_reciprocal_pythagorean_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
     match step.description.as_str() {
-        "Recognize sec²(u) - tan²(u) = 1" => vec![formula_substep(
+        "Recognize sec²(u) - tan²(u) = 1" => vec![concrete_expr_substep(
+            ctx,
             "Usar sec²(u) - tan²(u) = 1",
-            "sec(u)^2 - tan(u)^2",
-            "1",
-            "\\sec^2(u) - \\tan^2(u)",
-            "1",
+            before,
+            after,
         )],
-        "Recognize csc²(u) - cot²(u) = 1" => vec![formula_substep(
+        "Recognize csc²(u) - cot²(u) = 1" => vec![concrete_expr_substep(
+            ctx,
             "Usar csc²(u) - cot²(u) = 1",
-            "csc(u)^2 - cot(u)^2",
-            "1",
-            "\\csc^2(u) - \\cot^2(u)",
-            "1",
+            before,
+            after,
         )],
         _ => Vec::new(),
     }
 }
 
-fn generate_trig_quotient_substeps(step: &Step) -> Vec<SubStep> {
+fn generate_trig_quotient_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
     if step.description.contains("tan") || step.rule_name == "Trig Quotient" {
-        return vec![formula_substep(
+        return vec![concrete_expr_substep(
+            ctx,
             "Reconocer el patrón sin(u) / cos(u) = tan(u)",
-            "sin(u) / cos(u)",
-            "tan(u)",
-            "\\frac{\\sin(u)}{\\cos(u)}",
-            "\\tan(u)",
+            before,
+            after,
         )];
     }
     Vec::new()
@@ -4611,6 +4614,21 @@ fn formula_substep(
     SubStep::new(description, before_expr, after_expr)
         .with_before_latex(before_latex)
         .with_after_latex(after_latex)
+}
+
+fn concrete_expr_substep(
+    ctx: &Context,
+    description: impl Into<String>,
+    before: ExprId,
+    after: ExprId,
+) -> SubStep {
+    SubStep::new(
+        description,
+        display_expr(ctx, before),
+        display_expr(ctx, after),
+    )
+    .with_before_latex(latex_expr(ctx, before))
+    .with_after_latex(latex_expr(ctx, after))
 }
 
 fn difference_of_squares_bases(ctx: &Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
@@ -6126,14 +6144,6 @@ fn generate_inverse_tan_relation_substeps(ctx: &Context, step: &Step) -> Vec<Sub
     let pair_before = step.before_local().unwrap_or(step.before);
     let pair_after = step.after_local().unwrap_or(step.after);
 
-    out.push(formula_substep(
-        "Usar arctan(u) + arctan(1/u) = pi/2",
-        "arctan(u) + arctan(1/u)",
-        "pi/2",
-        "\\arctan(u) + \\arctan\\left(\\frac{1}{u}\\right)",
-        "\\frac{\\pi}{2}",
-    ));
-
     if step.before != pair_before {
         out.push(
             SubStep::new(
@@ -6146,7 +6156,7 @@ fn generate_inverse_tan_relation_substeps(ctx: &Context, step: &Step) -> Vec<Sub
         );
     }
 
-    if step.before != pair_before || step.after != pair_after {
+    if pair_before != pair_after {
         out.push(
             SubStep::new(
                 "Esa pareja vale pi/2",
@@ -6377,12 +6387,11 @@ fn generate_cancel_reciprocal_exponents_substeps(ctx: &Context, step: &Step) -> 
         return Vec::new();
     };
 
-    let mut out = vec![formula_substep(
+    let mut out = vec![concrete_expr_substep(
+        ctx,
         "El cuadrado deshace la raíz",
-        "(sqrt(u))^2",
-        "u",
-        "\\left(\\sqrt{u}\\right)^2",
-        "u",
+        local_before,
+        local_after,
     )];
 
     if let (Some(global_before), Some(global_after)) = (step.global_before, step.global_after) {

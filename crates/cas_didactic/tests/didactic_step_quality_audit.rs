@@ -345,7 +345,6 @@ fn didactic_step_quality_priority_cases_use_multiphase_human_narratives() {
                 "Llamar t = sqrt(x) para reconocer la forma",
                 "Ese cociente notable se convierte en t^2 + t + 1",
                 "Volver a poner t = sqrt(x)",
-                "El cuadrado deshace la raíz",
                 "Reemplazar ese bloque en la expresión",
             ],
         ),
@@ -472,8 +471,8 @@ fn didactic_step_quality_priority_cases_make_cli_narrative_less_magic() {
     let cube_artifact = simplify_case(cube_case);
     let cube_cli = cube_artifact.cli_lines.join("\n");
     assert!(
-        cube_cli.contains("El cuadrado deshace la raíz"),
-        "cube_quotient_radical CLI narrative should explain why the square cancels the root, got:\n{}",
+        cube_cli.contains("Reemplazar ese bloque en la expresión"),
+        "cube_quotient_radical CLI narrative should keep the final rewrite explicit in the substep, got:\n{}",
         cube_cli
     );
     assert!(

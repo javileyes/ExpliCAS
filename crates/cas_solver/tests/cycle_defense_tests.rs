@@ -92,3 +92,29 @@ fn test_cycle_detection_phase_reset() {
     // Just verify we get a valid result (the Pythagorean identity may or may not simplify to 1)
     assert!(!result_str.is_empty(), "Should return a valid expression");
 }
+
+#[test]
+fn test_reciprocal_cosine_ping_pong_cycle_is_not_emitted() {
+    let mut simplifier = Simplifier::with_default_rules();
+
+    let expr =
+        cas_parser::parse("1/cos(x)", &mut simplifier.context).expect("parsing should succeed");
+
+    let (result, steps) = simplifier.simplify(expr);
+
+    let result_str = format!(
+        "{}",
+        cas_formatter::DisplayExpr {
+            context: &simplifier.context,
+            id: result
+        }
+    );
+
+    assert_eq!(result_str, "sec(x)");
+    assert_eq!(
+        steps.len(),
+        1,
+        "cycle trace should be trimmed to one productive step"
+    );
+    assert_eq!(steps[0].rule_name, "Trig Quotient");
+}
