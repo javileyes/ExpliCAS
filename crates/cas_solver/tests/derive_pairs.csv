@@ -272,8 +272,8 @@ expand_trig_product_to_sum_to_cosine_sum_polynomial,expand,"2*cos(2*x)*cos(x)","
 expand_trig_product_to_sum_to_sine_difference_mixed_polynomial,expand,"2*cos(2*x)*sin(x)","4*cos(x)^2*sin(x)-2*sin(x)",derived,expand trig
 expand_trig_product_to_sum_to_cosine_difference_polynomial_with_passthrough,expand,"2*sin(2*x)*sin(x)+a","4*cos(x)-4*cos(x)^3+a",derived,expand trig
 expand_trig_product_to_sum_to_sine_difference_mixed_polynomial_with_passthrough,expand,"2*cos(2*x)*sin(x)+a","4*cos(x)^2*sin(x)-2*sin(x)+a",derived,expand trig
-expand_trig_phase_shift_pair_sum_to_shifted_sine_pair,trig_expand,"sin(x)+cos(x)+sin(y)+cos(y)","sqrt(2)*sin(x+pi/4)+sqrt(2)*sin(y+pi/4)",derived,expand trig
-expand_trig_phase_shift_shifted_sine_pair_to_sum_pair,trig_expand,"sqrt(2)*sin(x+pi/4)+sqrt(2)*sin(y+pi/4)","sin(x)+cos(x)+sin(y)+cos(y)",derived,expand trig
+expand_trig_phase_shift_pair_sum_to_shifted_sine_pair,trig_expand,"sin(x)+cos(x)+sin(y)+cos(y)","sqrt(2)*sin(x+pi/4)+sqrt(2)*sin(y+pi/4)",derived,simplify
+expand_trig_phase_shift_shifted_sine_pair_to_sum_pair,trig_expand,"sqrt(2)*sin(x+pi/4)+sqrt(2)*sin(y+pi/4)","sin(x)+cos(x)+sin(y)+cos(y)",derived,simplify
 contract_trig_phase_shift_shifted_sine_to_shifted_cosine,trig_contract,"sqrt(2)*sin(x+pi/4)","sqrt(2)*cos(x-pi/4)",derived,contract trig
 contract_trig_phase_shift_shifted_terms_with_passthrough,trig_contract,"sqrt(2)*sin(x+pi/4)+a","sqrt(2)*cos(x-pi/4)+a",derived,contract trig
 contract_trig_phase_shift_general_shifted_sine_to_shifted_cosine,trig_contract,"5*sin(x+arctan(4/3))","5*cos(x-arctan(3/4))",derived,contract trig

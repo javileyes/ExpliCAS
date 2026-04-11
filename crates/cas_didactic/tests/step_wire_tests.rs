@@ -189,6 +189,35 @@ fn step_wire_combine_like_terms_explains_coefficient_sum_without_repeating_step_
 }
 
 #[test]
+fn step_wire_phase_shift_substeps_are_structured_without_narrative_lines() {
+    let (engine, output) = eval_output_for("3*sin(x) + 4*cos(x) - 5*sin(x + arctan(4/3))");
+    let steps =
+        cas_didactic::collect_step_payloads(&output.steps, &engine.simplifier.context, "on");
+
+    let step = steps
+        .iter()
+        .find(|step| step.rule == "Aplicar identidad de desfase")
+        .expect("expected phase shift step");
+
+    assert_eq!(step.substeps.len(), 2);
+    assert!(step.substeps.iter().all(|substep| substep.lines.is_empty()));
+    assert!(
+        step.substeps
+            .iter()
+            .all(|substep| substep.before_latex.is_some() && substep.after_latex.is_some()),
+        "phase-shift substeps should always expose before/after expressions, got: {:?}",
+        step.substeps
+            .iter()
+            .map(|substep| (
+                substep.title.as_str(),
+                substep.before_latex.as_deref(),
+                substep.after_latex.as_deref()
+            ))
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
 fn step_wire_path_latex_renders_human_subtractive_products_for_factor_example() {
     let (engine, output) = eval_output_for("factor(a^3*(b - c) + b^3*(c - a) + c^3*(a - b))");
     let steps =
@@ -331,7 +360,8 @@ fn step_wire_perfect_square_root_uses_human_visible_rule_title() {
 }
 
 #[test]
-fn step_wire_common_factor_cancel_stays_direct_when_the_only_substep_matches_the_parent_step() {
+fn step_wire_common_factor_cancel_stays_direct_when_the_only_specific_substep_would_duplicate_the_parent_step(
+) {
     let (engine, output) = eval_output_for("(2*x)/(4*x)");
     let steps =
         cas_didactic::collect_step_payloads(&output.steps, &engine.simplifier.context, "on");
@@ -343,16 +373,16 @@ fn step_wire_common_factor_cancel_stays_direct_when_the_only_substep_matches_the
 
     assert!(
         step.substeps.is_empty(),
-        "single substep identical to the parent step should be pruned, got: {:?}",
+        "when the only possible substep would duplicate the parent step, it should stay direct, got {:?}",
         step.substeps
             .iter()
-            .map(|substep| &substep.title)
+            .map(|substep| substep.title.as_str())
             .collect::<Vec<_>>()
     );
 }
 
 #[test]
-fn step_wire_log_cancellation_stays_direct_without_single_redundant_substep() {
+fn step_wire_log_cancellation_uses_concrete_substep_expressions() {
     let (engine, output) = eval_output_for("ln(x^3) + ln(y^2) - ln(x^3 * y^2)");
     let steps =
         cas_didactic::collect_step_payloads(&output.steps, &engine.simplifier.context, "on");
@@ -378,6 +408,34 @@ fn step_wire_log_cancellation_stays_direct_without_single_redundant_substep() {
         "expected the new explicit three-phase log cancellation story, got {:?}",
         titles
     );
+    assert_eq!(
+        step.substeps[0].before_latex.as_deref(),
+        Some("\\ln({x}^{3}\\cdot {y}^{2})")
+    );
+    assert_eq!(
+        step.substeps[0].after_latex.as_deref(),
+        Some("\\ln({x}^{3}) + \\ln({y}^{2})")
+    );
+    assert_eq!(
+        step.substeps[1].before_latex.as_deref(),
+        Some("\\ln({x}^{3}) + \\ln({y}^{2}) - \\ln({x}^{3}) - \\ln({y}^{2})")
+    );
+    let extracted_latex = step.substeps[1]
+        .after_latex
+        .as_deref()
+        .expect("concrete extracted latex");
+    assert!(
+        extracted_latex.contains("3\\cdot \\ln(x)")
+            && extracted_latex.contains("2\\cdot \\ln(|y|)")
+            && extracted_latex.matches("3\\cdot \\ln(x)").count() == 2
+            && extracted_latex.matches("2\\cdot \\ln(|y|)").count() == 2,
+        "expected concrete extracted terms regardless of canonical order, got {extracted_latex}"
+    );
+    assert_eq!(
+        step.substeps[2].before_latex.as_deref(),
+        Some(extracted_latex)
+    );
+    assert_eq!(step.substeps[2].after_latex.as_deref(), Some("0"));
 }
 
 #[test]

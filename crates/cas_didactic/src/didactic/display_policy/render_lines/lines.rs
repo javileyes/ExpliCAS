@@ -9,7 +9,7 @@ pub(super) fn render_cli_enriched_substeps_lines(
         lines.push(format!("   {}", header));
     }
     for sub in &enriched_step.sub_steps {
-        lines.push(format!("      → {}", sub.description));
+        lines.push(format!("      [{}]", sub.description));
         let before = sub
             .before_latex
             .as_deref()
@@ -19,11 +19,9 @@ pub(super) fn render_cli_enriched_substeps_lines(
             .as_deref()
             .unwrap_or(sub.after_expr.as_str());
         if !before.is_empty() {
-            lines.push(format!(
-                "        {} → {}",
-                latex_to_plain_text(before),
-                latex_to_plain_text(after)
-            ));
+            lines.push(format!("        {}", latex_to_plain_text(before)));
+            lines.push("        ->".to_string());
+            lines.push(format!("        {}", latex_to_plain_text(after)));
         }
     }
 

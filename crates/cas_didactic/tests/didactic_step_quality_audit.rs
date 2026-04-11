@@ -77,15 +77,16 @@ fn simplify_case(case: &AuditCase) -> AuditArtifact {
         .iter()
         .map(|step| step.substeps.len())
         .sum::<usize>();
+    let allows_direct_single_step = allows_direct_single_step_without_substeps(&wire_steps);
     let mut flags = Vec::new();
 
     if display_steps.is_empty() {
         flags.push("no steps emitted".to_string());
     }
-    if wire_substep_count == 0 {
+    if wire_substep_count == 0 && !allows_direct_single_step {
         flags.push("no wire substeps emitted".to_string());
     }
-    if display_steps.len() == 1 && wire_substep_count == 0 {
+    if display_steps.len() == 1 && wire_substep_count == 0 && !allows_direct_single_step {
         flags.push("single step with no didactic substeps".to_string());
     }
     if wire_steps
@@ -104,6 +105,19 @@ fn simplify_case(case: &AuditCase) -> AuditArtifact {
         wire_steps,
         flags,
     }
+}
+
+fn allows_direct_single_step_without_substeps(wire_steps: &[StepWire]) -> bool {
+    if wire_steps.len() != 1 || !wire_steps[0].substeps.is_empty() {
+        return false;
+    }
+
+    matches!(
+        wire_steps[0].rule.as_str(),
+        "Aplicar la identidad pitagórica"
+            | "Aplicar la identidad pitagórica hiperbólica"
+            | "Cancelar un factor común"
+    )
 }
 
 fn report_output_path() -> PathBuf {

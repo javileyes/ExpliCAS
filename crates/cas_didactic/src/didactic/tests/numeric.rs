@@ -60,7 +60,9 @@ fn test_cli_substep_render_prefers_explicit_latex_when_available() {
     let mut state = super::super::display_policy::CliSubstepsRenderState::default();
     let lines =
         super::super::display_policy::render_cli_enriched_substeps_lines(&enriched, &mut state);
-    assert!(lines.iter().any(|line| line.contains("1/x → (x+1)/x")));
+    assert!(lines.iter().any(|line| line.contains("1/x")));
+    assert!(lines.iter().any(|line| line.trim() == "->"));
+    assert!(lines.iter().any(|line| line.contains("(x+1)/x")));
     assert!(!lines.iter().any(|line| line.contains("bad pseudo latex")));
 }
 

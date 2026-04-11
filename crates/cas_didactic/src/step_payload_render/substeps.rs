@@ -2,19 +2,10 @@ use crate::runtime::Step;
 use cas_api_models::SubStepWire;
 
 pub(super) fn collect_step_payload_substeps(
-    step: &Step,
+    _step: &Step,
     enriched: &crate::didactic::EnrichedStep,
 ) -> Vec<SubStepWire> {
-    let mut substeps: Vec<SubStepWire> = step
-        .substeps()
-        .iter()
-        .map(|substep| SubStepWire {
-            title: substep.title.clone(),
-            lines: substep.lines.clone(),
-            before_latex: None,
-            after_latex: None,
-        })
-        .collect();
+    let mut substeps: Vec<SubStepWire> = Vec::new();
 
     for substep in &enriched.sub_steps {
         substeps.push(SubStepWire {

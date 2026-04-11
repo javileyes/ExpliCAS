@@ -1,7 +1,7 @@
 //! Pattern helpers for arithmetic self-cancellation rewrites.
 
 use crate::semantic_equality::SemanticEqualityChecker;
-use cas_ast::{Context, Expr, ExprId};
+use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 
 fn extract_abs_sub_like_pair(ctx: &Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
     let Expr::Function(fn_id, args) = ctx.get(expr) else {
@@ -33,6 +33,37 @@ pub struct ArithmeticCancelRewrite {
     pub inner: ExprId,
 }
 
+fn is_angle_identity_arg_shape(ctx: &Context, expr: ExprId) -> bool {
+    matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Sub(_, _))
+}
+
+fn builtin_trig_angle_identity_shape(ctx: &Context, expr: ExprId) -> Option<BuiltinFn> {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return None;
+    };
+    if args.len() != 1 {
+        return None;
+    }
+
+    let builtin = ctx.builtin_of(*fn_id)?;
+    match builtin {
+        BuiltinFn::Sin | BuiltinFn::Cos | BuiltinFn::Tan => {
+            is_angle_identity_arg_shape(ctx, args[0]).then_some(builtin)
+        }
+        _ => None,
+    }
+}
+
+fn should_skip_semantic_self_cancel_check(ctx: &Context, lhs: ExprId, rhs: ExprId) -> bool {
+    matches!(
+        (
+            builtin_trig_angle_identity_shape(ctx, lhs),
+            builtin_trig_angle_identity_shape(ctx, rhs),
+        ),
+        (Some(lhs_builtin), Some(rhs_builtin)) if lhs_builtin == rhs_builtin
+    )
+}
+
 /// Match `a - a` using semantic equality.
 ///
 /// Returns the representative inner term when both sides are semantically equal.
@@ -43,6 +74,10 @@ pub fn match_sub_self_semantic_expr(ctx: &Context, expr: ExprId) -> Option<ExprI
 
     if match_abs_sub_mirror_expr(ctx, *lhs, *rhs) {
         return Some(*lhs);
+    }
+
+    if should_skip_semantic_self_cancel_check(ctx, *lhs, *rhs) {
+        return None;
     }
 
     let checker = SemanticEqualityChecker::new(ctx);
@@ -69,7 +104,12 @@ pub fn match_add_inverse_expr(ctx: &Context, expr: ExprId) -> Option<ExprId> {
         if match_abs_sub_mirror_expr(ctx, *neg_inner, *l) {
             return Some(*l);
         }
-        if *neg_inner == *l || checker.are_equal(*neg_inner, *l) {
+        if *neg_inner == *l {
+            return Some(*l);
+        }
+        if !should_skip_semantic_self_cancel_check(ctx, *neg_inner, *l)
+            && checker.are_equal(*neg_inner, *l)
+        {
             return Some(*l);
         }
     }
@@ -77,7 +117,12 @@ pub fn match_add_inverse_expr(ctx: &Context, expr: ExprId) -> Option<ExprId> {
         if match_abs_sub_mirror_expr(ctx, *neg_inner, *r) {
             return Some(*r);
         }
-        if *neg_inner == *r || checker.are_equal(*neg_inner, *r) {
+        if *neg_inner == *r {
+            return Some(*r);
+        }
+        if !should_skip_semantic_self_cancel_check(ctx, *neg_inner, *r)
+            && checker.are_equal(*neg_inner, *r)
+        {
             return Some(*r);
         }
     }

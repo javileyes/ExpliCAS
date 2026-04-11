@@ -29,6 +29,9 @@ enum BinomialSquareKind {
     Difference,
 }
 
+type SignedTerms = Vec<(ExprId, Sign)>;
+type ConcreteLogExpansion = (ExprId, ExprId, SignedTerms);
+
 pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
     let sixth_power_substeps = generate_sum_difference_sixth_powers_substeps(ctx, step);
     if !sixth_power_substeps.is_empty() {
@@ -44,6 +47,16 @@ pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<
         generate_sum_difference_sixth_powers_expansion_substeps(ctx, step);
     if !sixth_power_expansion_substeps.is_empty() {
         return sixth_power_expansion_substeps;
+    }
+
+    let phase_shift_substeps = generate_phase_shift_identity_substeps(ctx, step);
+    if !phase_shift_substeps.is_empty() {
+        return phase_shift_substeps;
+    }
+
+    let log_cancellation_substeps = generate_log_cancellation_substeps(ctx, step);
+    if !log_cancellation_substeps.is_empty() {
+        return log_cancellation_substeps;
     }
 
     match step.rule_name.as_str() {
@@ -149,6 +162,75 @@ pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<
         }
         _ => Vec::new(),
     }
+}
+
+fn generate_phase_shift_identity_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    let is_phase_shift = super::visible_rule_names::visible_rule_name_for_step(
+        step.rule_name.as_str(),
+        step.description.as_str(),
+    )
+    .as_ref()
+        == "Aplicar identidad de desfase";
+    if !is_phase_shift {
+        return Vec::new();
+    }
+
+    let local_before = step.before_local().unwrap_or(step.before);
+    let local_after = step.after_local().unwrap_or(step.after);
+    let mut substeps = if matches!(ctx.get(local_before), Expr::Add(_, _) | Expr::Sub(_, _))
+        && !matches!(ctx.get(local_after), Expr::Add(_, _) | Expr::Sub(_, _))
+    {
+        vec![formula_substep(
+            "Usar a·sin(u) + b·cos(u) = R·sin(u + φ)",
+            "a·sin(u) + b·cos(u)",
+            "R·sin(u + φ)",
+            "a\\cdot \\sin(u) + b\\cdot \\cos(u)",
+            "R\\cdot \\sin\\left(u + \\varphi\\right)",
+        )]
+    } else if !matches!(ctx.get(local_before), Expr::Add(_, _) | Expr::Sub(_, _))
+        && matches!(ctx.get(local_after), Expr::Add(_, _) | Expr::Sub(_, _))
+    {
+        vec![formula_substep(
+            "Expandir R·sin(u + φ)",
+            "R·sin(u + φ)",
+            "R·sin(u)·cos(φ) + R·cos(u)·sin(φ)",
+            "R\\cdot \\sin\\left(u + \\varphi\\right)",
+            "R\\cdot \\sin(u)\\cdot \\cos\\left(\\varphi\\right) + R\\cdot \\cos(u)\\cdot \\sin\\left(\\varphi\\right)",
+        )]
+    } else {
+        vec![formula_substep(
+            "Usar una identidad de desfase",
+            "a·sin(u) + b·cos(u)",
+            "R·sin(u + φ)",
+            "a\\cdot \\sin(u) + b\\cdot \\cos(u)",
+            "R\\cdot \\sin\\left(u + \\varphi\\right)",
+        )]
+    };
+
+    let Some(global_before) = step.global_before else {
+        return substeps;
+    };
+    let Some(global_after) = step.global_after else {
+        return substeps;
+    };
+
+    let mut work = ctx.clone();
+    let intermediate = substitute_expr_by_id(&mut work, global_before, local_before, local_after);
+    if intermediate == global_after {
+        return substeps;
+    }
+
+    let (intermediate_plain, intermediate_latex) = render_temp_expr(&work, intermediate);
+    let (global_after_plain, global_after_latex) = render_temp_expr(&work, global_after);
+    substeps.push(formula_substep(
+        "Cancelar términos iguales",
+        &intermediate_plain,
+        &global_after_plain,
+        &intermediate_latex,
+        &global_after_latex,
+    ));
+
+    substeps
 }
 
 fn generate_combine_like_terms_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
@@ -304,40 +386,21 @@ fn contains_division_by_exact_factor(ctx: &Context, expr: ExprId, factor: ExprId
 
 fn generate_complete_square_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
     let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
     let Some((var_name, leading_coeff, linear_coeff, constant_term)) =
         complete_square_substep_plan(ctx, before)
     else {
         return Vec::new();
     };
 
-    let formula_before = format!("A·{var_name}^2 + B·{var_name} + C");
-    let formula_after = format!("A·({var_name} + B/(2A))^2 + C - B^2/(4A)");
-    let formula_before_latex = format!("A\\cdot {var_name}^2 + B\\cdot {var_name} + C");
-    let formula_after_latex = format!(
-        "A\\cdot \\left({var_name} + \\frac{{B}}{{2A}}\\right)^2 + C - \\frac{{B^2}}{{4A}}"
-    );
-
-    vec![
-        formula_substep(
-            "Usar la fórmula de completar el cuadrado",
-            &formula_before,
-            &formula_after,
-            &formula_before_latex,
-            &formula_after_latex,
-        ),
-        formula_substep(
-            format!(
-                "Aquí A = {}, B = {} y C = {}",
-                human_expr(ctx, leading_coeff),
-                human_expr(ctx, linear_coeff),
-                human_expr(ctx, constant_term),
-            ),
-            &human_expr(ctx, before),
-            &human_expr(ctx, step.after_local().unwrap_or(step.after)),
-            &latex_expr(ctx, before),
-            &latex_expr(ctx, step.after_local().unwrap_or(step.after)),
-        ),
-    ]
+    let _ = (&var_name, leading_coeff, linear_coeff, constant_term);
+    vec![formula_substep(
+        "Usar la fórmula de completar el cuadrado",
+        &human_expr(ctx, before),
+        &human_expr(ctx, after),
+        &latex_expr(ctx, before),
+        &latex_expr(ctx, after),
+    )]
 }
 
 fn complete_square_substep_plan(
@@ -668,60 +731,28 @@ fn generate_expand_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
     if let Some((factor, kind)) = common_factor_factorization_plan(ctx, after, before) {
         let factor_display = human_expr(ctx, factor);
         let factor_latex = latex_expr(ctx, factor);
-        let (formula_before, formula_after, formula_before_latex, formula_after_latex) = match kind
-        {
-            Sign::Pos => (
-                "a · (b + c)",
-                "a · b + a · c",
-                "a\\cdot \\left(b + c\\right)",
-                "a\\cdot b + a\\cdot c",
-            ),
-            Sign::Neg => (
-                "a · (b - c)",
-                "a · b - a · c",
-                "a\\cdot \\left(b - c\\right)",
-                "a\\cdot b - a\\cdot c",
-            ),
-        };
-
-        return vec![
-            formula_substep(
-                "Usar la distributiva",
-                formula_before,
-                formula_after,
-                formula_before_latex,
-                formula_after_latex,
-            ),
-            formula_substep(
-                format!("Aquí se distribuye {factor_display} sobre cada término del paréntesis"),
-                &format!("{factor_display} · (...)"),
-                &human_expr(ctx, after),
-                &format!("{factor_latex}\\cdot \\left(\\cdots\\right)"),
-                &latex_expr(ctx, after),
-            ),
-        ];
+        let _ = (factor_display, factor_latex, kind);
+        return vec![formula_substep(
+            "Usar la distributiva",
+            &human_expr(ctx, before),
+            &human_expr(ctx, after),
+            &latex_expr(ctx, before),
+            &latex_expr(ctx, after),
+        )];
     }
 
     if let Some((a, b)) = sophie_germain_expansion_plan(ctx, before, after) {
         let a_display = human_expr(ctx, a);
         let b_display = human_expr(ctx, b);
 
-        return vec![
-            formula_substep(
-                "Usar (a^2 - 2ab + 2b^2) · (a^2 + 2ab + 2b^2) = a^4 + 4b^4",
-                "(a^2 - 2 · a · b + 2 · b^2) · (a^2 + 2 · a · b + 2 · b^2)",
-                "a^4 + 4 · b^4",
-                "\\left(a^2 - 2ab + 2b^2\\right)\\left(a^2 + 2ab + 2b^2\\right)",
-                "a^4 + 4b^4",
-            ),
-            SubStep::new(
-                format!("Aquí a = {a_display} y b = {b_display}"),
-                human_expr(ctx, before),
-                human_expr(ctx, after),
-            )
-            .with_before_latex(latex_expr(ctx, before))
-            .with_after_latex(latex_expr(ctx, after)),
-        ];
+        let _ = (a_display, b_display);
+        return vec![formula_substep(
+            "Usar (a^2 - 2ab + 2b^2) · (a^2 + 2ab + 2b^2) = a^4 + 4b^4",
+            &human_expr(ctx, before),
+            &human_expr(ctx, after),
+            &latex_expr(ctx, before),
+            &latex_expr(ctx, after),
+        )];
     }
 
     Vec::new()
@@ -739,58 +770,26 @@ fn generate_factorization_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
         let base_display = human_expr(ctx, base);
         let base_latex = latex_expr(ctx, base);
 
-        return vec![
-            formula_substep(
-                "Usar a^n - 1 = (a - 1) · (a^(n-1) + a^(n-2) + ... + a + 1)",
-                "a^n - 1",
-                "(a - 1) · (a^(n-1) + a^(n-2) + ... + a + 1)",
-                "a^n - 1",
-                "\\left(a - 1\\right)\\left(a^{n-1} + a^{n-2} + \\cdots + a + 1\\right)",
-            ),
-            formula_substep(
-                format!("Aquí a = {base_display} y n = {power}"),
-                &format!("{base_display}^{power} - 1"),
-                &human_expr(ctx, after),
-                &format!("{base_latex}^{{{power}}} - 1"),
-                &latex_expr(ctx, after),
-            ),
-        ];
+        let _ = (base_display, base_latex, power);
+        return vec![formula_substep(
+            "Usar a^n - 1 = (a - 1) · (a^(n-1) + a^(n-2) + ... + a + 1)",
+            &human_expr(ctx, before),
+            &human_expr(ctx, after),
+            &latex_expr(ctx, before),
+            &latex_expr(ctx, after),
+        )];
     }
 
     if let Some((factor, kind)) = common_factor_factorization_plan(ctx, before, after) {
         let factor_display = human_expr(ctx, factor);
-        let (formula_before, formula_after, formula_before_latex, formula_after_latex) = match kind
-        {
-            Sign::Pos => (
-                "a · b + a · c",
-                "a · (b + c)",
-                "a\\cdot b + a\\cdot c",
-                "a\\cdot \\left(b + c\\right)",
-            ),
-            Sign::Neg => (
-                "a · b - a · c",
-                "a · (b - c)",
-                "a\\cdot b - a\\cdot c",
-                "a\\cdot \\left(b - c\\right)",
-            ),
-        };
-
-        return vec![
-            formula_substep(
-                "Usar el factor común",
-                formula_before,
-                formula_after,
-                formula_before_latex,
-                formula_after_latex,
-            ),
-            formula_substep(
-                format!("Aquí el factor común es {factor_display}"),
-                &human_expr(ctx, before),
-                &human_expr(ctx, after),
-                &latex_expr(ctx, before),
-                &latex_expr(ctx, after),
-            ),
-        ];
+        let _ = (factor_display, kind);
+        return vec![formula_substep(
+            "Usar el factor común",
+            &human_expr(ctx, before),
+            &human_expr(ctx, after),
+            &latex_expr(ctx, before),
+            &latex_expr(ctx, after),
+        )];
     }
 
     if let Some((left, right)) = difference_of_squares_bases(ctx, before) {
@@ -799,22 +798,14 @@ fn generate_factorization_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
         let left_latex = latex_expr(ctx, left);
         let right_latex = latex_expr(ctx, right);
 
-        return vec![
-            formula_substep(
-                "Usar a^2 - b^2 = (a - b) · (a + b)",
-                "a^2 - b^2",
-                "(a - b) · (a + b)",
-                "a^2 - b^2",
-                "\\left(a - b\\right)\\left(a + b\\right)",
-            ),
-            formula_substep(
-                format!("Aquí a = {left_display} y b = {right_display}"),
-                &format!("{left_display}^2 - {right_display}^2"),
-                &human_expr(ctx, after),
-                &format!("{left_latex}^2 - {right_latex}^2"),
-                &latex_expr(ctx, after),
-            ),
-        ];
+        let _ = (left_display, right_display, left_latex, right_latex);
+        return vec![formula_substep(
+            "Usar a^2 - b^2 = (a - b) · (a + b)",
+            &human_expr(ctx, before),
+            &human_expr(ctx, after),
+            &latex_expr(ctx, before),
+            &latex_expr(ctx, after),
+        )];
     }
 
     if cube_identity_plan(ctx, before, after).is_some() {
@@ -849,40 +840,14 @@ fn generate_factorization_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
                 ),
             };
 
-            let identity_substep = formula_substep(
+            let _ = (left_display, right_display, left_latex, right_latex);
+            return vec![formula_substep(
                 title,
-                match kind {
-                    BinomialSquareKind::Sum => "a^3 + 3 · a^2 · b + 3 · a · b^2 + b^3",
-                    BinomialSquareKind::Difference => "a^3 - 3 · a^2 · b + 3 · a · b^2 - b^3",
-                },
-                match kind {
-                    BinomialSquareKind::Sum => "(a + b)^3",
-                    BinomialSquareKind::Difference => "(a - b)^3",
-                },
-                match kind {
-                    BinomialSquareKind::Sum => "a^3 + 3a^2b + 3ab^2 + b^3",
-                    BinomialSquareKind::Difference => "a^3 - 3a^2b + 3ab^2 - b^3",
-                },
-                match kind {
-                    BinomialSquareKind::Sum => "\\left(a + b\\right)^3",
-                    BinomialSquareKind::Difference => "\\left(a - b\\right)^3",
-                },
-            );
-
-            if has_trivial_binomial_placeholder_mapping(ctx, left, right) {
-                return vec![identity_substep];
-            }
-
-            return vec![
-                identity_substep,
-                formula_substep(
-                    format!("Aquí a = {left_display} y b = {right_display}"),
-                    &before_display,
-                    &human_expr(ctx, after),
-                    &before_latex,
-                    &latex_expr(ctx, after),
-                ),
-            ];
+                &before_display,
+                &human_expr(ctx, after),
+                &before_latex,
+                &latex_expr(ctx, after),
+            )];
         }
     }
 
@@ -913,37 +878,14 @@ fn generate_factorization_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
             ),
         };
 
-        let identity_substep = formula_substep(
+        let _ = (left_display, right_display, left_latex, right_latex);
+        return vec![formula_substep(
             title,
-            "a^2 + 2 · a · b + b^2",
-            match kind {
-                BinomialSquareKind::Sum => "(a + b)^2",
-                BinomialSquareKind::Difference => "(a - b)^2",
-            },
-            match kind {
-                BinomialSquareKind::Sum => "a^2 + 2ab + b^2",
-                BinomialSquareKind::Difference => "a^2 - 2ab + b^2",
-            },
-            match kind {
-                BinomialSquareKind::Sum => "\\left(a + b\\right)^2",
-                BinomialSquareKind::Difference => "\\left(a - b\\right)^2",
-            },
-        );
-
-        if has_trivial_binomial_placeholder_mapping(ctx, left, right) {
-            return vec![identity_substep];
-        }
-
-        return vec![
-            identity_substep,
-            formula_substep(
-                format!("Aquí a = {left_display} y b = {right_display}"),
-                &before_display,
-                &human_expr(ctx, after),
-                &before_latex,
-                &latex_expr(ctx, after),
-            ),
-        ];
+            &before_display,
+            &human_expr(ctx, after),
+            &before_latex,
+            &latex_expr(ctx, after),
+        )];
     }
 
     if let Some((a, b)) = sophie_germain_terms(ctx, before) {
@@ -952,22 +894,14 @@ fn generate_factorization_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
         let a_latex = latex_expr(ctx, a);
         let b_latex = latex_expr(ctx, b);
 
-        return vec![
-            formula_substep(
-                "Usar a^4 + 4b^4 = (a^2 - 2ab + 2b^2) · (a^2 + 2ab + 2b^2)",
-                "a^4 + 4 · b^4",
-                "(a^2 - 2 · a · b + 2 · b^2) · (a^2 + 2 · a · b + 2 · b^2)",
-                "a^4 + 4b^4",
-                "\\left(a^2 - 2ab + 2b^2\\right)\\left(a^2 + 2ab + 2b^2\\right)",
-            ),
-            formula_substep(
-                format!("Aquí a = {a_display} y b = {b_display}"),
-                &format!("{a_display}^4 + 4 · {b_display}^4"),
-                &human_expr(ctx, after),
-                &format!("{a_latex}^4 + 4\\cdot {b_latex}^4"),
-                &latex_expr(ctx, after),
-            ),
-        ];
+        let _ = (a_display, b_display, a_latex, b_latex);
+        return vec![formula_substep(
+            "Usar a^4 + 4b^4 = (a^2 - 2ab + 2b^2) · (a^2 + 2ab + 2b^2)",
+            &human_expr(ctx, before),
+            &human_expr(ctx, after),
+            &latex_expr(ctx, before),
+            &latex_expr(ctx, after),
+        )];
     }
 
     if let Some((a, b, c)) = alternating_cubic_vandermonde_plan(ctx, before, after) {
@@ -1149,30 +1083,6 @@ fn matches_var_name(ctx: &Context, expr: ExprId, expected: &str) -> bool {
     matches!(ctx.get(expr), Expr::Variable(sym_id) if ctx.sym_name(*sym_id) == expected)
 }
 
-fn has_trivial_binomial_placeholder_mapping(ctx: &Context, left: ExprId, right: ExprId) -> bool {
-    matches_var_name(ctx, left, "a") && matches_var_name(ctx, right, "b")
-}
-
-fn telescoping_fraction_substitution_title(
-    u_display: &str,
-    gap_display: Option<&str>,
-) -> Option<String> {
-    let u_nontrivial = u_display != "u";
-
-    match gap_display {
-        None => u_nontrivial.then(|| format!("Aquí u = {u_display}")),
-        Some(gap_display) => {
-            let gap_nontrivial = gap_display != "k";
-            match (u_nontrivial, gap_nontrivial) {
-                (false, false) => None,
-                (true, false) => Some(format!("Aquí u = {u_display}")),
-                (false, true) => Some(format!("Aquí k = {gap_display}")),
-                (true, true) => Some(format!("Aquí u = {u_display} y k = {gap_display}")),
-            }
-        }
-    }
-}
-
 fn needs_grouped_substitution_expr(expr: &Expr) -> bool {
     !matches!(
         expr,
@@ -1337,6 +1247,291 @@ fn generate_expand_log_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
         &before_latex,
         &after_latex,
     )]
+}
+
+fn generate_log_cancellation_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    let visible_rule = super::visible_rule_names::visible_rule_name_for_step(
+        step.rule_name.as_str(),
+        step.description.as_str(),
+    );
+    if visible_rule.as_ref() != "Expandir logaritmos y cancelar términos iguales" {
+        return Vec::new();
+    }
+
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+    if !is_zero(ctx, after) {
+        return Vec::new();
+    }
+
+    let mut work = ctx.clone();
+    let Some((expansion_focus_before, expansion_focus_after, expanded_expr)) =
+        build_log_cancellation_expansion_plan(&mut work, before)
+    else {
+        return Vec::new();
+    };
+
+    let mut substeps = vec![SubStep::new(
+        "Expandir el logaritmo del producto o del cociente",
+        human_expr(&work, expansion_focus_before),
+        human_expr(&work, expansion_focus_after),
+    )
+    .with_before_latex(latex_expr(&work, expansion_focus_before))
+    .with_after_latex(latex_expr(&work, expansion_focus_after))];
+
+    let cancel_before = if let Some((extract_before, extract_after, extracted_expr)) =
+        build_log_cancellation_exponent_plan(&mut work, expanded_expr)
+    {
+        substeps.push(
+            SubStep::new(
+                "Sacar exponentes fuera del logaritmo cuando sea necesario",
+                human_expr(&work, extract_before),
+                human_expr(&work, extract_after),
+            )
+            .with_before_latex(latex_expr(&work, extract_before))
+            .with_after_latex(latex_expr(&work, extract_after)),
+        );
+        extracted_expr
+    } else {
+        expanded_expr
+    };
+
+    substeps.push(
+        SubStep::new(
+            "Cancelar términos iguales",
+            human_expr(&work, cancel_before),
+            human_expr(&work, after),
+        )
+        .with_before_latex(latex_expr(&work, cancel_before))
+        .with_after_latex(latex_expr(&work, after)),
+    );
+    substeps
+}
+
+fn build_log_cancellation_expansion_plan(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, ExprId, ExprId)> {
+    let mut rebuilt_terms = Vec::new();
+    let mut focus_before = None;
+    let mut focus_after = None;
+    let terms = AddView::from_expr(ctx, expr).terms.to_vec();
+
+    for (term, sign) in terms {
+        if focus_before.is_none() {
+            if let Some((term_before, term_after, expanded_terms)) =
+                expand_log_term_into_signed_terms(ctx, term)
+            {
+                focus_before = Some(term_before);
+                focus_after = Some(term_after);
+                for (expanded_term, inner_sign) in expanded_terms {
+                    rebuilt_terms.push((
+                        expanded_term,
+                        if sign == Sign::Pos {
+                            inner_sign
+                        } else {
+                            inner_sign.negate()
+                        },
+                    ));
+                }
+                continue;
+            }
+        }
+
+        rebuilt_terms.push((term, sign));
+    }
+
+    Some((
+        focus_before?,
+        focus_after?,
+        build_add_from_signed_terms(ctx, &rebuilt_terms),
+    ))
+}
+
+fn build_log_cancellation_exponent_plan(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, ExprId, ExprId)> {
+    let mut focus_before_terms = Vec::new();
+    let mut focus_after_terms = Vec::new();
+    let mut rebuilt_terms = Vec::new();
+    let terms = AddView::from_expr(ctx, expr).terms.to_vec();
+
+    for (term, sign) in terms {
+        if let Some(rewritten) = rewrite_log_power_term_concretely(ctx, term) {
+            focus_before_terms.push((term, sign));
+            focus_after_terms.push((rewritten, sign));
+            rebuilt_terms.push((rewritten, sign));
+        } else {
+            rebuilt_terms.push((term, sign));
+        }
+    }
+
+    if focus_before_terms.is_empty() {
+        return None;
+    }
+
+    Some((
+        build_add_from_signed_terms(ctx, &focus_before_terms),
+        build_add_from_signed_terms(ctx, &focus_after_terms),
+        build_add_from_signed_terms(ctx, &rebuilt_terms),
+    ))
+}
+
+fn expand_log_term_into_signed_terms(
+    ctx: &mut Context,
+    term: ExprId,
+) -> Option<ConcreteLogExpansion> {
+    let (coeff, log_expr) = scaled_log_term(ctx, term).unwrap_or_else(|| (1.into(), term));
+    let family = extract_log_didactic_family(ctx, log_expr)?;
+    let arg = match ctx.get(log_expr) {
+        Expr::Function(fn_id, args) if ctx.is_builtin(*fn_id, BuiltinFn::Ln) && args.len() == 1 => {
+            args[0]
+        }
+        Expr::Function(fn_id, args) if ctx.is_builtin(*fn_id, BuiltinFn::Log) => {
+            match args.as_slice() {
+                [arg] => *arg,
+                [_base, arg] => *arg,
+                _ => return None,
+            }
+        }
+        _ => return None,
+    };
+    let (inner_arg, wrap_abs) = abs_argument(ctx, arg)
+        .map(|inner| (inner, true))
+        .unwrap_or((arg, false));
+
+    let signed_args = match ctx.get(inner_arg) {
+        Expr::Mul(_, _) => expr_nary::mul_factors(ctx, inner_arg)
+            .into_iter()
+            .map(|factor| (factor, Sign::Pos))
+            .collect::<Vec<_>>(),
+        Expr::Div(numerator, denominator) => {
+            let mut out = expr_nary::mul_factors(ctx, *numerator)
+                .into_iter()
+                .map(|factor| (factor, Sign::Pos))
+                .collect::<Vec<_>>();
+            out.extend(
+                expr_nary::mul_factors(ctx, *denominator)
+                    .into_iter()
+                    .map(|factor| (factor, Sign::Neg)),
+            );
+            out
+        }
+        _ => return None,
+    };
+
+    let expanded_terms = signed_args
+        .into_iter()
+        .map(|(factor, sign)| {
+            let term_arg = if wrap_abs {
+                ctx.add(Expr::Function(ctx.builtin_id(BuiltinFn::Abs), vec![factor]))
+            } else {
+                factor
+            };
+            let log_term = build_log_call_for_family(ctx, family, term_arg);
+            (scale_expr_by_positive_bigint(ctx, &coeff, log_term), sign)
+        })
+        .collect::<Vec<_>>();
+    let expanded_expr = build_add_from_signed_terms(ctx, &expanded_terms);
+    Some((term, expanded_expr, expanded_terms))
+}
+
+fn rewrite_log_power_term_concretely(ctx: &mut Context, term: ExprId) -> Option<ExprId> {
+    let (coeff, log_expr) = scaled_log_term(ctx, term).unwrap_or_else(|| (1.into(), term));
+    let (family, base, exponent) = log_power_extraction_family(ctx, log_expr)?;
+    let power = positive_integer_literal_value(ctx, exponent)?;
+    let target_log = if matches!(family, LogDidacticFamily::Ln) && (&power % 2) == 0.into() {
+        let abs_base = ctx.add(Expr::Function(ctx.builtin_id(BuiltinFn::Abs), vec![base]));
+        build_log_call_for_family(ctx, family, abs_base)
+    } else {
+        build_log_call_for_family(ctx, family, base)
+    };
+
+    Some(scale_expr_by_positive_bigint(
+        ctx,
+        &(coeff * power),
+        target_log,
+    ))
+}
+
+fn build_log_call_for_family(ctx: &mut Context, family: LogDidacticFamily, arg: ExprId) -> ExprId {
+    match family {
+        LogDidacticFamily::Ln => ctx.add(Expr::Function(ctx.builtin_id(BuiltinFn::Ln), vec![arg])),
+        LogDidacticFamily::Log10 => {
+            ctx.add(Expr::Function(ctx.builtin_id(BuiltinFn::Log), vec![arg]))
+        }
+        LogDidacticFamily::LogBase(base) => ctx.add(Expr::Function(
+            ctx.builtin_id(BuiltinFn::Log),
+            vec![base, arg],
+        )),
+    }
+}
+
+fn scale_expr_by_positive_bigint(
+    ctx: &mut Context,
+    coeff: &num_bigint::BigInt,
+    expr: ExprId,
+) -> ExprId {
+    if coeff == &1.into() {
+        expr
+    } else {
+        let coeff_expr = ctx.add(Expr::Number(BigRational::from_integer(coeff.clone())));
+        ctx.add(Expr::Mul(coeff_expr, expr))
+    }
+}
+
+fn build_add_from_signed_terms(ctx: &mut Context, terms: &[(ExprId, Sign)]) -> ExprId {
+    let Some((first_term, first_sign)) = terms.first().copied() else {
+        return ctx.num(0);
+    };
+
+    let mut acc = if first_sign == Sign::Pos {
+        first_term
+    } else {
+        ctx.add(Expr::Neg(first_term))
+    };
+
+    for (term, sign) in terms.iter().copied().skip(1) {
+        acc = if sign == Sign::Pos {
+            ctx.add(Expr::Add(acc, term))
+        } else {
+            ctx.add(Expr::Sub(acc, term))
+        };
+    }
+
+    acc
+}
+
+fn log_power_extraction_family(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<(LogDidacticFamily, ExprId, ExprId)> {
+    let (family, arg) = match ctx.get(expr) {
+        Expr::Function(fn_id, args) if ctx.is_builtin(*fn_id, BuiltinFn::Ln) && args.len() == 1 => {
+            (LogDidacticFamily::Ln, args[0])
+        }
+        Expr::Function(fn_id, args) if ctx.is_builtin(*fn_id, BuiltinFn::Log) => {
+            match args.as_slice() {
+                [arg] => (LogDidacticFamily::Log10, *arg),
+                [base, arg] => (LogDidacticFamily::LogBase(*base), *arg),
+                _ => return None,
+            }
+        }
+        _ => return None,
+    };
+
+    let Expr::Pow(base, exponent) = ctx.get(arg) else {
+        return None;
+    };
+    let Expr::Number(value) = ctx.get(*exponent) else {
+        return None;
+    };
+    if !value.is_integer() || value <= &BigRational::zero() {
+        return None;
+    }
+
+    Some((family, *base, *exponent))
 }
 
 fn generate_simplify_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
@@ -1764,45 +1959,26 @@ fn generate_telescoping_fraction_combine_substeps(ctx: &Context, step: &Step) ->
     else {
         return Vec::new();
     };
-    let u_display = human_expr(ctx, u);
+    let _ = u;
 
     if gap_is_one {
-        let mut out = vec![formula_substep(
+        return vec![formula_substep(
             "Usar 1 / u - 1 / (u + 1) = 1 / (u · (u + 1))",
-            "1 / u - 1 / (u + 1)",
-            "1 / (u · (u + 1))",
-            "\\frac{1}{u} - \\frac{1}{u + 1}",
-            "\\frac{1}{u\\cdot (u + 1)}",
-        )];
-        if let Some(title) = telescoping_fraction_substitution_title(&u_display, None) {
-            out.push(formula_substep(
-                title,
-                &human_expr(ctx, before),
-                &human_expr(ctx, after),
-                &latex_expr(ctx, before),
-                &latex_expr(ctx, after),
-            ));
-        }
-        return out;
-    }
-
-    let mut out = vec![formula_substep(
-        "Usar 1 / k · (1 / u - 1 / (u + k)) = 1 / (u · (u + k))",
-        "1 / k · (1 / u - 1 / (u + k))",
-        "1 / (u · (u + k))",
-        "\\frac{1}{k}\\cdot (\\frac{1}{u} - \\frac{1}{u + k})",
-        "\\frac{1}{u\\cdot (u + k)}",
-    )];
-    if let Some(title) = telescoping_fraction_substitution_title(&u_display, Some(&gap_display)) {
-        out.push(formula_substep(
-            title,
             &human_expr(ctx, before),
             &human_expr(ctx, after),
             &latex_expr(ctx, before),
             &latex_expr(ctx, after),
-        ));
+        )];
     }
-    out
+
+    let _ = gap_display;
+    vec![formula_substep(
+        "Usar 1 / k · (1 / u - 1 / (u + k)) = 1 / (u · (u + k))",
+        &human_expr(ctx, before),
+        &human_expr(ctx, after),
+        &latex_expr(ctx, before),
+        &latex_expr(ctx, after),
+    )]
 }
 
 fn generate_telescoping_fraction_split_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
@@ -1817,45 +1993,26 @@ fn generate_consecutive_telescoping_fraction_substeps(
     after: ExprId,
 ) -> Option<Vec<SubStep>> {
     let (u, gap_display, gap_is_one) = telescoping_fraction_base_and_gap(ctx, before, after)?;
-    let u_display = human_expr(ctx, u);
+    let _ = u;
 
     if gap_is_one {
-        let mut out = vec![formula_substep(
+        return Some(vec![formula_substep(
             "Usar 1 / (u · (u + 1)) = 1 / u - 1 / (u + 1)",
-            "1 / (u · (u + 1))",
-            "1 / u - 1 / (u + 1)",
-            "\\frac{1}{u\\cdot (u + 1)}",
-            "\\frac{1}{u} - \\frac{1}{u + 1}",
-        )];
-        if let Some(title) = telescoping_fraction_substitution_title(&u_display, None) {
-            out.push(formula_substep(
-                title,
-                &human_expr(ctx, before),
-                &human_expr(ctx, after),
-                &latex_expr(ctx, before),
-                &latex_expr(ctx, after),
-            ));
-        }
-        return Some(out);
-    }
-
-    let mut out = vec![formula_substep(
-        "Usar 1 / (u · (u + k)) = 1 / k · (1 / u - 1 / (u + k))",
-        "1 / (u · (u + k))",
-        "1 / k · (1 / u - 1 / (u + k))",
-        "\\frac{1}{u\\cdot (u + k)}",
-        "\\frac{1}{k}\\cdot (\\frac{1}{u} - \\frac{1}{u + k})",
-    )];
-    if let Some(title) = telescoping_fraction_substitution_title(&u_display, Some(&gap_display)) {
-        out.push(formula_substep(
-            title,
             &human_expr(ctx, before),
             &human_expr(ctx, after),
             &latex_expr(ctx, before),
             &latex_expr(ctx, after),
-        ));
+        )]);
     }
-    Some(out)
+
+    let _ = gap_display;
+    Some(vec![formula_substep(
+        "Usar 1 / (u · (u + k)) = 1 / k · (1 / u - 1 / (u + k))",
+        &human_expr(ctx, before),
+        &human_expr(ctx, after),
+        &latex_expr(ctx, before),
+        &latex_expr(ctx, after),
+    )])
 }
 
 fn generate_finite_product_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
@@ -2063,16 +2220,6 @@ fn generate_factorized_finite_product_substeps(ctx: &Context, step: &Step) -> Ve
         return Vec::new();
     };
 
-    let (u_plain, _) = render_temp_expr(ctx, u_expr);
-    let generic_factorized_plain = render_fraction_plain(
-        &render_square_difference_plain("u"),
-        &render_power2_plain("u"),
-    );
-    let generic_factorized_latex = render_fraction_latex(
-        &render_square_difference_latex("u"),
-        &render_power2_latex("u"),
-    );
-
     let mut temp_ctx = ctx.clone();
     let start_base = substitute_expr_by_id(&mut temp_ctx, u_expr, call.var_expr, call.start_expr);
     let end_base = substitute_expr_by_id(&mut temp_ctx, u_expr, call.var_expr, call.end_expr);
@@ -2127,17 +2274,10 @@ fn generate_factorized_finite_product_substeps(ctx: &Context, step: &Step) -> Ve
     let mut out = vec![
         formula_substep(
             "Usar (u^2 - 1) / u^2 = ((u - 1) · (u + 1)) / u^2",
-            "(u^2 - 1) / u^2",
-            &generic_factorized_plain,
-            "\\frac{u^{2} - 1}{u^{2}}",
-            &generic_factorized_latex,
-        ),
-        formula_substep(
-            format!("Aquí u = {u_plain}"),
             &human_expr(ctx, before),
             &factorized_series_plain,
-            &latex_expr(ctx, before),
             &factorized_series_latex,
+            &latex_expr(ctx, before),
         ),
         formula_substep(
             "Los factores (u + 1) y (u - 1) se cancelan telescópicamente",
@@ -2190,7 +2330,6 @@ fn generate_finite_summation_substeps(ctx: &Context, step: &Step) -> Vec<SubStep
         if (offset1 - offset2).abs() == 1 {
             let low_offset = offset1.min(offset2);
             let high_offset = offset1.max(offset2);
-            let (u_plain, _) = shifted_expr_strings(ctx, call.var_expr, low_offset);
             let (term1_plain, term1_latex) = shifted_expr_strings(ctx, call.var_expr, low_offset);
             let (term2_plain, term2_latex) = shifted_expr_strings(ctx, call.var_expr, high_offset);
             let (first_plain, first_latex) = shifted_expr_strings(ctx, call.start_expr, low_offset);
@@ -2234,13 +2373,6 @@ fn generate_finite_summation_substeps(ctx: &Context, step: &Step) -> Vec<SubStep
             return vec![
                 formula_substep(
                     "Usar 1 / (u · (u + 1)) = 1 / u - 1 / (u + 1)",
-                    "1 / (u · (u + 1))",
-                    "1 / u - 1 / (u + 1)",
-                    "\\frac{1}{u\\cdot (u + 1)}",
-                    "\\frac{1}{u} - \\frac{1}{u + 1}",
-                ),
-                formula_substep(
-                    format!("Aquí u = {u_plain}"),
                     &human_expr(ctx, call.term),
                     &decomposed_plain,
                     &latex_expr(ctx, call.term),
@@ -2320,13 +2452,6 @@ fn generate_finite_summation_substeps(ctx: &Context, step: &Step) -> Vec<SubStep
         return vec![
             formula_substep(
                 "Usar 1 / (u · (u + g)) = 1 / g · (1 / u - 1 / (u + g))",
-                "1 / (u · (u + g))",
-                "1 / g · (1 / u - 1 / (u + g))",
-                "\\frac{1}{u\\cdot (u + g)}",
-                "\\frac{1}{g}\\cdot \\left(\\frac{1}{u} - \\frac{1}{u + g}\\right)",
-            ),
-            formula_substep(
-                format!("Aquí u = {u_plain} y g = {gap_plain}"),
                 &human_expr(ctx, call.term),
                 &decomposed_plain,
                 &latex_expr(ctx, call.term),
@@ -2352,7 +2477,6 @@ fn generate_finite_summation_substeps(ctx: &Context, step: &Step) -> Vec<SubStep
     let start_base = substitute_expr_by_id(&mut temp_ctx, base, call.var_expr, call.start_expr);
     let end_base = substitute_expr_by_id(&mut temp_ctx, base, call.var_expr, call.end_expr);
 
-    let (u_plain, _) = render_temp_expr(ctx, base);
     let (term1_plain, term1_latex) = render_temp_expr(&temp_ctx, start_base);
     let (term2_plain, term2_latex) = shifted_expr_strings(&temp_ctx, start_base, 1);
     let (first_plain, first_latex) = render_temp_expr(&temp_ctx, start_base);
@@ -2393,17 +2517,10 @@ fn generate_finite_summation_substeps(ctx: &Context, step: &Step) -> Vec<SubStep
     vec![
         formula_substep(
             "Usar 1 / (u · (u + 1)) = 1 / u - 1 / (u + 1)",
-            "1 / (u · (u + 1))",
-            "1 / u - 1 / (u + 1)",
-            "\\frac{1}{u\\cdot (u + 1)}",
-            "\\frac{1}{u} - \\frac{1}{u + 1}",
-        ),
-        formula_substep(
-            format!("Aquí u = {u_plain}"),
             &human_expr(ctx, call.term),
             &decomposed_plain,
-            &latex_expr(ctx, call.term),
             &decomposed_latex,
+            &latex_expr(ctx, call.term),
         ),
         formula_substep(
             "La suma telescópica cancela los términos intermedios",
@@ -2580,47 +2697,29 @@ fn generate_cos_product_telescoping_substeps(ctx: &Context, step: &Step) -> Vec<
         )
     };
     let tautological_u = u_plain == "u" && u_latex == "u";
-    let (
-        title,
-        formula_before_plain,
-        formula_after_plain,
-        formula_before_latex,
-        formula_after_latex,
-    ) = if expands_morrie {
-        (
-            "Expandir la ley de Morrie",
-            quotient_plain.as_str(),
-            product_plain.as_str(),
-            quotient_latex.as_str(),
-            product_latex.as_str(),
-        )
+    let title = if expands_morrie {
+        ("Expandir la ley de Morrie",)
     } else {
-        (
-            "Usar el telescopado de cosenos",
-            product_plain.as_str(),
-            quotient_plain.as_str(),
-            product_latex.as_str(),
-            quotient_latex.as_str(),
-        )
-    };
-
-    let mut substeps = vec![formula_substep(
-        title,
-        formula_before_plain,
-        formula_after_plain,
-        formula_before_latex,
-        formula_after_latex,
-    )];
-    if !tautological_u {
-        substeps.push(formula_substep(
-            format!("Aquí u = {u_plain}"),
-            "u",
-            &u_plain,
-            "u",
-            &u_latex,
-        ));
+        ("Usar el telescopado de cosenos",)
     }
-    substeps
+    .0;
+
+    let _ = (
+        product_plain,
+        quotient_plain,
+        product_latex,
+        quotient_latex,
+        u_plain,
+        u_latex,
+        tautological_u,
+    );
+    vec![formula_substep(
+        title,
+        &human_expr(ctx, before),
+        &human_expr(ctx, after),
+        &latex_expr(ctx, before),
+        &latex_expr(ctx, after),
+    )]
 }
 
 fn generate_dirichlet_kernel_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
@@ -2652,55 +2751,21 @@ fn generate_dirichlet_kernel_substeps(ctx: &Context, step: &Step) -> Vec<SubStep
     };
     let tautological_u = u_plain == "u" && u_latex == "u";
     let n_plain = n.to_string();
-    let (
-        title,
-        formula_before_plain,
-        formula_after_plain,
-        formula_before_latex,
-        formula_after_latex,
-    ) = if expands_kernel {
-        (
-            "Expandir el núcleo de Dirichlet",
-            "sin((n + 1/2)·u) / sin(u/2)",
-            "1 + 2·cos(u) + ... + 2·cos(n·u)",
-            "\\frac{\\sin\\left((n + \\frac{1}{2})u\\right)}{\\sin\\left(\\frac{u}{2}\\right)}",
-            "1 + 2\\cos(u) + \\cdots + 2\\cos(nu)",
-        )
+    let title = if expands_kernel {
+        ("Expandir el núcleo de Dirichlet",)
     } else {
-        (
-            "Usar el núcleo de Dirichlet",
-            "1 + 2·cos(u) + ... + 2·cos(n·u)",
-            "sin((n + 1/2)·u) / sin(u/2)",
-            "1 + 2\\cos(u) + \\cdots + 2\\cos(nu)",
-            "\\frac{\\sin\\left((n + \\frac{1}{2})u\\right)}{\\sin\\left(\\frac{u}{2}\\right)}",
-        )
-    };
-
-    let mut substeps = vec![formula_substep(
-        title,
-        formula_before_plain,
-        formula_after_plain,
-        formula_before_latex,
-        formula_after_latex,
-    )];
-    if tautological_u {
-        substeps.push(formula_substep(
-            format!("Aquí n = {n_plain}"),
-            "n",
-            &n_plain,
-            "n",
-            &n_plain,
-        ));
-    } else {
-        substeps.push(formula_substep(
-            format!("Aquí n = {n_plain} y u = {u_plain}"),
-            "n, u",
-            &format!("{n_plain}, {u_plain}"),
-            "n, u",
-            &format!("{n_plain}, {u_latex}"),
-        ));
+        ("Usar el núcleo de Dirichlet",)
     }
-    substeps
+    .0;
+
+    let _ = (n_plain, u_plain, u_latex, tautological_u);
+    vec![formula_substep(
+        title,
+        &human_expr(ctx, before),
+        &human_expr(ctx, after),
+        &latex_expr(ctx, before),
+        &latex_expr(ctx, after),
+    )]
 }
 
 fn dirichlet_kernel_base_and_n(
@@ -3637,50 +3702,8 @@ fn infer_sum_to_product_kind_from_description(description: &str) -> Option<&'sta
 }
 
 fn generate_product_to_sum_substeps(step: &Step) -> Vec<SubStep> {
-    let (title, before, after, before_latex, after_latex) =
-        if step.description.contains("2·sin(A)·cos(B)") {
-            (
-                "Usar 2 · sin(A) · cos(B) = sin(A+B) + sin(A-B)",
-                "2 · sin(A) · cos(B)",
-                "sin(A+B) + sin(A-B)",
-                "2\\cdot \\sin(A)\\cdot \\cos(B)",
-                "\\sin(A+B) + \\sin(A-B)",
-            )
-        } else if step.description.contains("2·cos(A)·sin(B)") {
-            (
-                "Usar 2 · cos(A) · sin(B) = sin(A+B) - sin(A-B)",
-                "2 · cos(A) · sin(B)",
-                "sin(A+B) - sin(A-B)",
-                "2\\cdot \\cos(A)\\cdot \\sin(B)",
-                "\\sin(A+B) - \\sin(A-B)",
-            )
-        } else if step.description.contains("2·cos(A)·cos(B)") {
-            (
-                "Usar 2 · cos(A) · cos(B) = cos(A+B) + cos(A-B)",
-                "2 · cos(A) · cos(B)",
-                "cos(A+B) + cos(A-B)",
-                "2\\cdot \\cos(A)\\cdot \\cos(B)",
-                "\\cos(A+B) + \\cos(A-B)",
-            )
-        } else if step.description.contains("2·sin(A)·sin(B)") {
-            (
-                "Usar 2 · sin(A) · sin(B) = cos(A-B) - cos(A+B)",
-                "2 · sin(A) · sin(B)",
-                "cos(A-B) - cos(A+B)",
-                "2\\cdot \\sin(A)\\cdot \\sin(B)",
-                "\\cos(A-B) - \\cos(A+B)",
-            )
-        } else {
-            return Vec::new();
-        };
-
-    vec![formula_substep(
-        title,
-        before,
-        after,
-        before_latex,
-        after_latex,
-    )]
+    let _ = step;
+    Vec::new()
 }
 
 fn generate_double_angle_contraction_substeps(step: &Step) -> Vec<SubStep> {
@@ -5720,14 +5743,15 @@ fn generate_common_factor_cancel_substeps(ctx: &Context, step: &Step) -> Vec<Sub
     let Some((intermediate_display, intermediate_latex)) =
         quotient_after_cancel_once(ctx, *numerator, *denominator, common_factor)
     else {
-        return vec![SubStep::new(
-            format!("Como {} aparece arriba y abajo, se cancela", factor_display),
-            before_display,
-            final_display,
-        )
-        .with_before_latex(before_latex)
-        .with_after_latex(final_latex)];
+        return Vec::new();
     };
+
+    if cas_formatter::clean_display_string(&intermediate_display)
+        == cas_formatter::clean_display_string(&final_display)
+        && intermediate_latex == final_latex
+    {
+        return Vec::new();
+    }
 
     let mut out = vec![SubStep::new(
         format!("Cancelar el factor común {}", factor_display),
@@ -6053,20 +6077,27 @@ fn generate_difference_of_squares_cancel_substeps(ctx: &Context, step: &Step) ->
     else {
         return Vec::new();
     };
-    let Some((_left_term, _right_term)) =
-        difference_square_terms(ctx, other_factor, canceled_factor)
+    let Some((left_term, right_term)) = difference_square_terms(ctx, other_factor, canceled_factor)
     else {
         return Vec::new();
     };
 
     vec![
-        formula_substep(
+        SubStep::new(
             "Usar la diferencia de cuadrados: a^2 - b^2 = (a - b)(a + b)",
-            "a^2 - b^2",
-            "(a - b)(a + b)",
-            "a^2 - b^2",
-            "\\left(a - b\\right)\\left(a + b\\right)",
-        ),
+            format!(
+                "{} - {}",
+                squared_display(ctx, left_term),
+                squared_display(ctx, right_term)
+            ),
+            display_expr(ctx, *numerator),
+        )
+        .with_before_latex(format!(
+            "{} - {}",
+            squared_latex(ctx, left_term),
+            squared_latex(ctx, right_term)
+        ))
+        .with_after_latex(latex_expr(ctx, *numerator)),
         SubStep::new(
             format!(
                 "Ahora se cancela el factor {}",
@@ -6237,149 +6268,48 @@ fn generate_identity_equivalence_substeps(
     left: ExprId,
     right: ExprId,
 ) -> Vec<SubStep> {
-    if let Some((base, power)) = geometric_difference_factor_plan(ctx, left, right) {
-        let base_display = human_expr(ctx, base);
-        let base_latex = latex_expr(ctx, base);
-
-        return vec![
-            formula_substep(
-                "Usar a^n - 1 = (a - 1) · (a^(n-1) + a^(n-2) + ... + a + 1)",
-                "a^n - 1",
-                "(a - 1) · (a^(n-1) + a^(n-2) + ... + a + 1)",
-                "a^n - 1",
-                "\\left(a - 1\\right)\\left(a^{n-1} + a^{n-2} + \\cdots + a + 1\\right)",
-            ),
-            formula_substep(
-                format!("Aquí a = {base_display} y n = {power}"),
-                &format!("{base_display}^{power} - 1"),
-                &human_expr(ctx, right),
-                &format!("{base_latex}^{{{power}}} - 1"),
-                &latex_expr(ctx, right),
-            ),
-        ];
+    if geometric_difference_factor_plan(ctx, left, right).is_some() {
+        return vec![SubStep::new(
+            "Usar a^n - 1 = (a - 1) · (a^(n-1) + a^(n-2) + ... + a + 1)",
+            human_expr(ctx, left),
+            human_expr(ctx, right),
+        )
+        .with_before_latex(latex_expr(ctx, left))
+        .with_after_latex(latex_expr(ctx, right))];
     }
 
-    if let Some((factor, kind)) = common_factor_factorization_plan(ctx, left, right) {
-        let factor_display = human_expr(ctx, factor);
-        let (formula_before, formula_after, formula_before_latex, formula_after_latex) = match kind
-        {
-            Sign::Pos => (
-                "a · b + a · c",
-                "a · (b + c)",
-                "a\\cdot b + a\\cdot c",
-                "a\\cdot \\left(b + c\\right)",
-            ),
-            Sign::Neg => (
-                "a · b - a · c",
-                "a · (b - c)",
-                "a\\cdot b - a\\cdot c",
-                "a\\cdot \\left(b - c\\right)",
-            ),
-        };
-
-        return vec![
-            formula_substep(
-                "Usar el factor común",
-                formula_before,
-                formula_after,
-                formula_before_latex,
-                formula_after_latex,
-            ),
-            formula_substep(
-                format!("Aquí el factor común es {factor_display}"),
-                &human_expr(ctx, left),
-                &human_expr(ctx, right),
-                &latex_expr(ctx, left),
-                &latex_expr(ctx, right),
-            ),
-        ];
+    if common_factor_factorization_plan(ctx, left, right).is_some() {
+        return vec![SubStep::new(
+            "Usar el factor común",
+            human_expr(ctx, left),
+            human_expr(ctx, right),
+        )
+        .with_before_latex(latex_expr(ctx, left))
+        .with_after_latex(latex_expr(ctx, right))];
     }
 
     if let Some((left_base, right_base, kind)) = binomial_square_terms(ctx, right) {
-        let (left_base, right_base) = prefer_non_constant_term_first(ctx, left_base, right_base);
-        let left_display = human_expr(ctx, left_base);
-        let right_display = human_expr(ctx, right_base);
-        let left_latex = latex_expr(ctx, left_base);
-        let right_latex = latex_expr(ctx, right_base);
-        let (title, before_display, before_latex) = match kind {
-            BinomialSquareKind::Sum => (
-                "Usar a^2 + 2ab + b^2 = (a + b)^2",
-                format!(
-                    "{left_display}^2 + 2 · {left_display} · {right_display} + {right_display}^2"
-                ),
-                format!(
-                    "{left_latex}^2 + 2\\cdot {left_latex}\\cdot {right_latex} + {right_latex}^2"
-                ),
-            ),
-            BinomialSquareKind::Difference => (
-                "Usar a^2 - 2ab + b^2 = (a - b)^2",
-                format!(
-                    "{left_display}^2 - 2 · {left_display} · {right_display} + {right_display}^2"
-                ),
-                format!(
-                    "{left_latex}^2 - 2\\cdot {left_latex}\\cdot {right_latex} + {right_latex}^2"
-                ),
-            ),
-        };
-
-        let identity_substep = formula_substep(
-            title,
+        let _ = prefer_non_constant_term_first(ctx, left_base, right_base);
+        return vec![SubStep::new(
             match kind {
-                BinomialSquareKind::Sum => "a^2 + 2 · a · b + b^2",
-                BinomialSquareKind::Difference => "a^2 - 2 · a · b + b^2",
+                BinomialSquareKind::Sum => "Usar a^2 + 2ab + b^2 = (a + b)^2",
+                BinomialSquareKind::Difference => "Usar a^2 - 2ab + b^2 = (a - b)^2",
             },
-            match kind {
-                BinomialSquareKind::Sum => "(a + b)^2",
-                BinomialSquareKind::Difference => "(a - b)^2",
-            },
-            match kind {
-                BinomialSquareKind::Sum => "a^2 + 2ab + b^2",
-                BinomialSquareKind::Difference => "a^2 - 2ab + b^2",
-            },
-            match kind {
-                BinomialSquareKind::Sum => "\\left(a + b\\right)^2",
-                BinomialSquareKind::Difference => "\\left(a - b\\right)^2",
-            },
-        );
-
-        if has_trivial_binomial_placeholder_mapping(ctx, left_base, right_base) {
-            return vec![identity_substep];
-        }
-
-        return vec![
-            identity_substep,
-            formula_substep(
-                format!("Aquí a = {left_display} y b = {right_display}"),
-                &before_display,
-                &human_expr(ctx, right),
-                &before_latex,
-                &latex_expr(ctx, right),
-            ),
-        ];
+            human_expr(ctx, left),
+            human_expr(ctx, right),
+        )
+        .with_before_latex(latex_expr(ctx, left))
+        .with_after_latex(latex_expr(ctx, right))];
     }
 
-    if let Some((a, b)) = sophie_germain_terms(ctx, left) {
-        let a_display = human_expr(ctx, a);
-        let b_display = human_expr(ctx, b);
-        let a_latex = latex_expr(ctx, a);
-        let b_latex = latex_expr(ctx, b);
-
-        return vec![
-            formula_substep(
-                "Usar a^4 + 4b^4 = (a^2 - 2ab + 2b^2) · (a^2 + 2ab + 2b^2)",
-                "a^4 + 4 · b^4",
-                "(a^2 - 2 · a · b + 2 · b^2) · (a^2 + 2 · a · b + 2 · b^2)",
-                "a^4 + 4b^4",
-                "\\left(a^2 - 2ab + 2b^2\\right)\\left(a^2 + 2ab + 2b^2\\right)",
-            ),
-            formula_substep(
-                format!("Aquí a = {a_display} y b = {b_display}"),
-                &format!("{a_display}^4 + 4 · {b_display}^4"),
-                &human_expr(ctx, right),
-                &format!("{a_latex}^4 + 4\\cdot {b_latex}^4"),
-                &latex_expr(ctx, right),
-            ),
-        ];
+    if sophie_germain_terms(ctx, left).is_some() {
+        return vec![SubStep::new(
+            "Usar a^4 + 4b^4 = (a^2 - 2ab + 2b^2) · (a^2 + 2ab + 2b^2)",
+            human_expr(ctx, left),
+            human_expr(ctx, right),
+        )
+        .with_before_latex(latex_expr(ctx, left))
+        .with_after_latex(latex_expr(ctx, right))];
     }
 
     Vec::new()
@@ -6422,25 +6352,6 @@ fn generate_subtract_expanded_cubes_quotient_substeps(ctx: &Context, step: &Step
     vec![
         formula_substep(
             identity_title,
-            match kind {
-                CubeIdentityKind::Sum => "a^3 + b^3",
-                CubeIdentityKind::Difference => "a^3 - b^3",
-            },
-            match kind {
-                CubeIdentityKind::Sum => "(a + b) · (a^2 - a · b + b^2)",
-                CubeIdentityKind::Difference => "(a - b) · (a^2 + a · b + b^2)",
-            },
-            match kind {
-                CubeIdentityKind::Sum => "a^3 + b^3",
-                CubeIdentityKind::Difference => "a^3 - b^3",
-            },
-            match kind {
-                CubeIdentityKind::Sum => "\\left(a + b\\right)\\left(a^2 - ab + b^2\\right)",
-                CubeIdentityKind::Difference => "\\left(a - b\\right)\\left(a^2 + ab + b^2\\right)",
-            },
-        ),
-        formula_substep(
-            format!("Aquí a = {left_display} y b = {right_display}"),
             &numerator_display,
             &factored_display,
             &numerator_latex,
@@ -6720,29 +6631,47 @@ fn generate_sum_difference_cubes_cancel_substeps(ctx: &Context, step: &Step) -> 
             cube_linear_factor_display(ctx, plan.left_base, plan.right_base, plan.kind);
         let matching_factor_latex =
             cube_linear_factor_latex(ctx, plan.left_base, plan.right_base, plan.kind);
+        let numerator_display = match plan.kind {
+            CubeIdentityKind::Sum => {
+                format!(
+                    "{}^3 + {}^3",
+                    human_expr(ctx, plan.left_base),
+                    human_expr(ctx, plan.right_base)
+                )
+            }
+            CubeIdentityKind::Difference => {
+                format!(
+                    "{}^3 - {}^3",
+                    human_expr(ctx, plan.left_base),
+                    human_expr(ctx, plan.right_base)
+                )
+            }
+        };
+        let numerator_latex = match plan.kind {
+            CubeIdentityKind::Sum => {
+                format!(
+                    "{}^3 + {}^3",
+                    latex_expr(ctx, plan.left_base),
+                    latex_expr(ctx, plan.right_base)
+                )
+            }
+            CubeIdentityKind::Difference => {
+                format!(
+                    "{}^3 - {}^3",
+                    latex_expr(ctx, plan.left_base),
+                    latex_expr(ctx, plan.right_base)
+                )
+            }
+        };
 
         return vec![
-            formula_substep(
+            SubStep::new(
                 "Factorizar el numerador como suma o diferencia de cubos",
-                match plan.kind {
-                    CubeIdentityKind::Sum => "a^3 + b^3",
-                    CubeIdentityKind::Difference => "a^3 - b^3",
-                },
-                match plan.kind {
-                    CubeIdentityKind::Sum => "(a + b)(a^2 - ab + b^2)",
-                    CubeIdentityKind::Difference => "(a - b)(a^2 + ab + b^2)",
-                },
-                match plan.kind {
-                    CubeIdentityKind::Sum => "a^3 + b^3",
-                    CubeIdentityKind::Difference => "a^3 - b^3",
-                },
-                match plan.kind {
-                    CubeIdentityKind::Sum => "\\left(a + b\\right)\\left(a^2 - ab + b^2\\right)",
-                    CubeIdentityKind::Difference => {
-                        "\\left(a - b\\right)\\left(a^2 + ab + b^2\\right)"
-                    }
-                },
-            ),
+                numerator_display,
+                factorized_numerator.clone(),
+            )
+            .with_before_latex(numerator_latex)
+            .with_after_latex(factorized_numerator_latex.clone()),
             SubStep::new(
                 format!("Ahora se cancela el factor {matching_factor}"),
                 format!("({}) / ({})", factorized_numerator, matching_factor),

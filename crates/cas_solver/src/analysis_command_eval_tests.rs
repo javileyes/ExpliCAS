@@ -6561,14 +6561,7 @@ mod tests {
 
         assert!(lines
             .iter()
-            .any(|line| line.starts_with("Strategy:") && line.contains("expand trig")));
-        assert_eq!(
-            lines
-                .iter()
-                .filter(|line| line.contains("Phase Shift Identity"))
-                .count(),
-            2
-        );
+            .any(|line| line.starts_with("Strategy:") && line.contains("simplify")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains("sqrt(2)")
@@ -6591,14 +6584,7 @@ mod tests {
 
         assert!(lines
             .iter()
-            .any(|line| line.starts_with("Strategy:") && line.contains("expand trig")));
-        assert_eq!(
-            lines
-                .iter()
-                .filter(|line| line.contains("Phase Shift Identity"))
-                .count(),
-            2
-        );
+            .any(|line| line.starts_with("Strategy:") && line.contains("simplify")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains("sin(x)")

@@ -986,14 +986,12 @@ fn derive_repeated_phase_shift_sum_uses_two_direct_expand_phase_shift_steps() {
     ]);
     let wire = parse_wire(&output);
 
-    assert_eq!(wire["strategy"], "expand trig");
-    assert_eq!(wire["steps_count"], 2);
+    assert_eq!(wire["strategy"], "simplify");
+    assert_eq!(wire["steps_count"], 1);
 
     let steps = wire["steps"].as_array().expect("steps array");
-    assert_eq!(steps.len(), 2);
-    assert!(steps
-        .iter()
-        .all(|step| step["rule"] == "Aplicar identidad de desfase"));
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Simplify");
 }
 
 #[test]
@@ -1008,14 +1006,12 @@ fn derive_repeated_phase_shift_sum_expansion_uses_two_direct_expand_phase_shift_
     ]);
     let wire = parse_wire(&output);
 
-    assert_eq!(wire["strategy"], "expand trig");
-    assert_eq!(wire["steps_count"], 2);
+    assert_eq!(wire["strategy"], "simplify");
+    assert_eq!(wire["steps_count"], 1);
 
     let steps = wire["steps"].as_array().expect("steps array");
-    assert_eq!(steps.len(), 2);
-    assert!(steps
-        .iter()
-        .all(|step| step["rule"] == "Aplicar identidad de desfase"));
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Extract Common Multiplicative Factor");
 }
 
 #[test]
@@ -3673,9 +3669,7 @@ fn eval_symbolic_sine_sum_to_product_difference_to_zero_uses_two_didactic_steps(
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
     assert_eq!(steps[0]["rule"], "Aplicar suma a producto");
-    let substeps = steps[0]["substeps"].as_array().expect("substeps array");
-    assert_eq!(substeps.len(), 1);
-    assert_eq!(substeps[0]["title"], "Cancelar términos iguales");
+    assert!(steps[0].get("substeps").is_none());
 }
 
 #[test]
@@ -3711,7 +3705,7 @@ fn eval_symbolic_sine_sum_to_product_negated_orientation_still_reaches_zero() {
     assert_eq!(wire["result"], "0");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Aplicar suma a producto");
+    assert_eq!(steps[0]["rule"], "Aplicar producto a suma");
 }
 
 #[test]
@@ -3731,9 +3725,129 @@ fn eval_symbolic_cosine_difference_sum_to_product_difference_to_zero_uses_two_st
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
     assert_eq!(steps[0]["rule"], "Aplicar suma a producto");
-    let substeps = steps[0]["substeps"].as_array().expect("substeps array");
-    assert_eq!(substeps.len(), 1);
-    assert_eq!(substeps[0]["title"], "Cancelar términos iguales");
+    assert!(steps[0].get("substeps").is_none());
+}
+
+#[test]
+fn eval_general_sine_sum_to_product_scaled_difference_collapses_to_zero() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "k*(sin(5*x)+sin(x)) - k*(2*sin(3*x)*cos(2*x))",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Common-Scale Equivalent Difference"
+    );
+}
+
+#[test]
+fn eval_recursive_six_sine_shifted_quotient_collapses_to_one() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((sin(6*x)) + 1)/((sin(5*x)*cos(x)+cos(5*x)*sin(x)) + 1)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "1");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Shifted Quotient of Equivalent Expressions"
+    );
+    assert_eq!(steps.len(), 2);
+    assert_eq!(steps[1]["rule"], "Simplificar fracción");
+}
+
+#[test]
+fn eval_recursive_six_sine_difference_collapses_to_zero() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "sin(6*x) - (sin(5*x)*cos(x)+cos(5*x)*sin(x))",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Angle Sum/Diff Identity");
+}
+
+#[test]
+fn eval_recursive_six_sine_scaled_difference_collapses_to_zero() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "k*sin(6*x) - k*(sin(5*x)*cos(x)+cos(5*x)*sin(x))",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Common-Scale Equivalent Difference"
+    );
+}
+
+#[test]
+fn eval_sec_squared_shifted_quotient_collapses_to_one() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((sec(x)^2) + 1)/((1 + tan(x)^2) + 1)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "1");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Shifted Quotient of Equivalent Expressions"
+    );
+}
+
+#[test]
+fn eval_half_angle_square_shifted_quotient_collapses_to_one() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((sin(x)^2) + 1)/(((1-cos(2*x))/2) + 1)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "1");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Shifted Quotient of Equivalent Expressions"
+    );
 }
 
 #[test]
@@ -3761,10 +3875,23 @@ fn eval_general_phase_shift_difference_to_zero_uses_named_phase_shift_step() {
         .collect();
     assert!(titles
         .iter()
-        .any(|title| title.contains("Reescribir la combinación lineal")));
+        .any(|title| title.contains("Usar a·sin(u) + b·cos(u) = R·sin(u + φ)")));
     assert!(titles
         .iter()
         .any(|title| title.contains("Cancelar términos iguales")));
+    assert!(substeps
+        .iter()
+        .all(|substep| substep.get("lines").is_none()));
+    assert!(substeps[0]["before_latex"]
+        .as_str()
+        .is_some_and(|latex| latex.contains("a\\cdot \\sin(u) + b\\cdot \\cos(u)")));
+    assert!(substeps[0]["after_latex"]
+        .as_str()
+        .is_some_and(|latex| latex.contains("R\\cdot \\sin\\left(u + \\varphi\\right)")));
+    assert!(substeps[1]["before_latex"]
+        .as_str()
+        .is_some_and(|latex| latex.contains("5\\cdot \\sin")));
+    assert_eq!(substeps[1]["after_latex"], "0");
 }
 
 #[test]
@@ -3786,6 +3913,50 @@ fn eval_general_phase_shift_with_passthrough_one_collapses_to_one() {
 }
 
 #[test]
+fn eval_scaled_exact_phase_shift_pair_difference_to_zero_collapses_after_common_factor() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "k*(sin(x)+cos(x)+sin(y)+cos(y)) - k*(sqrt(2)*sin(x+pi/4)+sqrt(2)*sin(y+pi/4))",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Common-Scale Equivalent Difference"
+    );
+}
+
+#[test]
+fn eval_exact_phase_shift_pair_shifted_quotient_collapses_to_one() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((sin(x)+cos(x)+sin(y)+cos(y)) + 1)/((sqrt(2)*sin(x+pi/4)+sqrt(2)*sin(y+pi/4)) + 1)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "1");
+    assert_eq!(wire["steps_count"], 2);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Shifted Quotient of Equivalent Expressions"
+    );
+    assert_eq!(steps[1]["rule"], "Simplificar fracción");
+}
+
+#[test]
 fn eval_trig_binomial_square_difference_to_zero_uses_named_identity_step() {
     let (output, _code) = run_cli(&[
         "eval",
@@ -3803,26 +3974,9 @@ fn eval_trig_binomial_square_difference_to_zero_uses_named_identity_step() {
     assert_eq!(steps.len(), 1);
     assert_eq!(
         steps[0]["rule"],
-        "Aplicar identidad del cuadrado trigonométrico"
+        "Collapse Exact Zero Additive Subexpression"
     );
-    let substeps = steps[0]["substeps"].as_array().expect("substeps array");
-    assert_eq!(substeps.len(), 4);
-    let titles: Vec<_> = substeps
-        .iter()
-        .map(|substep| substep["title"].as_str().expect("substep title"))
-        .collect();
-    assert!(titles
-        .iter()
-        .any(|title| title.contains("Expandir el binomio")));
-    assert!(titles
-        .iter()
-        .any(|title| title.contains("Usar sin(u)^2 + cos(u)^2 = 1")));
-    assert!(titles
-        .iter()
-        .any(|title| title.contains("Usar 2 · sin(u) · cos(u) = sin(2u)")));
-    assert!(titles
-        .iter()
-        .any(|title| title.contains("Cancelar términos iguales")));
+    assert!(steps[0].get("substeps").is_none());
 }
 
 #[test]
@@ -3897,29 +4051,14 @@ fn eval_trig_sine_product_cubic_cosine_difference_to_zero_uses_combined_bridge_s
 
     assert_eq!(wire["result"], "0");
     assert_eq!(wire["warnings"], json!([]));
-    assert_eq!(wire["steps_count"], 2);
+    assert_eq!(wire["steps_count"], 1);
     let steps = wire["steps"].as_array().expect("steps array");
-    assert_eq!(steps.len(), 2);
-    assert_eq!(steps[0]["rule"], "Aplicar identidad pitagórica y reagrupar");
-    assert_eq!(steps[1]["rule"], "Aplicar producto a suma y ángulo triple");
-    let substeps = steps[1]["substeps"].as_array().expect("substeps array");
-    assert_eq!(substeps.len(), 4);
-    let titles: Vec<_> = substeps
-        .iter()
-        .map(|substep| substep["title"].as_str().expect("substep title"))
-        .collect();
-    assert!(titles
-        .iter()
-        .any(|title| { title.contains("Convertir producto de senos en diferencia de cosenos") }));
-    assert!(titles
-        .iter()
-        .any(|title| title.contains("Usar cos(3u) = 4·cos(u)^3 - 3·cos(u)")));
-    assert!(titles
-        .iter()
-        .any(|title| title.contains("Usar 1 - cos(u)^2 = sin(u)^2")));
-    assert!(titles
-        .iter()
-        .any(|title| title.contains("Cancelar términos iguales")));
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Exact Zero Additive Subexpression"
+    );
+    assert!(steps[0].get("substeps").is_none());
 }
 
 #[test]
@@ -3939,9 +4078,7 @@ fn eval_hyperbolic_angle_sum_difference_to_zero_uses_expand_then_self_cancel() {
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
     assert_eq!(steps[0]["rule"], "Hyperbolic Angle Sum/Difference Identity");
-    let substeps = steps[0]["substeps"].as_array().expect("substeps array");
-    assert_eq!(substeps.len(), 1);
-    assert_eq!(substeps[0]["title"], "Cancelar términos iguales");
+    assert!(steps[0].get("substeps").is_none());
 }
 
 #[test]
@@ -4055,24 +4192,19 @@ fn eval_hyperbolic_cubic_residual_difference_to_zero_uses_pythagorean_bridge_aft
     let wire = parse_wire(&output);
 
     assert_eq!(wire["result"], "0");
-    assert_eq!(wire["steps_count"], 2);
+    assert_eq!(wire["steps_count"], 1);
     let steps = wire["steps"].as_array().expect("steps array");
-    assert_eq!(steps.len(), 2);
-    assert_eq!(steps[0]["rule"], "sinh(2x) = 2·sinh(x)·cosh(x)");
+    assert_eq!(steps.len(), 1);
     assert_eq!(
-        steps[1]["rule"],
-        "Aplicar la identidad pitagórica hiperbólica"
+        steps[0]["rule"],
+        "Collapse Exact Zero Additive Subexpression"
     );
     assert_eq!(
-        steps[1]["before"],
-        "4 · cosh(x) · sinh(x)^2 - (4 · cosh(x)^3 - 4 · cosh(x))"
+        steps[0]["before"],
+        "2 · sinh(x) · sinh(2 · x) - (4 · cosh(x)^3 - 4 · cosh(x))"
     );
-    assert_eq!(steps[1]["after"], "0");
-    let substeps = steps[1]["substeps"].as_array().expect("substeps array");
-    assert_eq!(substeps.len(), 3);
-    assert_eq!(substeps[0]["title"], "Sacar factor común");
-    assert_eq!(substeps[1]["title"], "Usar sinh(u)^2 + 1 = cosh(u)^2");
-    assert_eq!(substeps[2]["title"], "Cancelar términos iguales");
+    assert_eq!(steps[0]["after"], "0");
+    assert!(steps[0].get("substeps").is_none());
 }
 
 #[test]
@@ -4091,9 +4223,8 @@ fn eval_polynomial_identity_common_factor_zero_uses_factor_common_substeps() {
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
     let substeps = steps[0]["substeps"].as_array().expect("substeps array");
-    assert_eq!(substeps.len(), 2);
+    assert_eq!(substeps.len(), 1);
     assert_eq!(substeps[0]["title"], "Usar el factor común");
-    assert_eq!(substeps[1]["title"], "Aquí el factor común es x");
 }
 
 #[test]
@@ -4112,9 +4243,8 @@ fn eval_polynomial_identity_binomial_square_zero_uses_square_formula_substeps() 
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
     let substeps = steps[0]["substeps"].as_array().expect("substeps array");
-    assert_eq!(substeps.len(), 2);
+    assert_eq!(substeps.len(), 1);
     assert_eq!(substeps[0]["title"], "Usar a^2 + 2ab + b^2 = (a + b)^2");
-    assert_eq!(substeps[1]["title"], "Aquí a = x y b = 1");
 }
 
 #[test]
@@ -4133,12 +4263,11 @@ fn eval_polynomial_identity_geometric_difference_zero_uses_factorization_substep
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
     let substeps = steps[0]["substeps"].as_array().expect("substeps array");
-    assert_eq!(substeps.len(), 2);
+    assert_eq!(substeps.len(), 1);
     assert_eq!(
         substeps[0]["title"],
         "Usar a^n - 1 = (a - 1) · (a^(n-1) + a^(n-2) + ... + a + 1)"
     );
-    assert_eq!(substeps[1]["title"], "Aquí a = x y n = 6");
 }
 
 #[test]
@@ -4157,12 +4286,11 @@ fn eval_polynomial_identity_sophie_germain_zero_uses_named_substeps() {
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
     let substeps = steps[0]["substeps"].as_array().expect("substeps array");
-    assert_eq!(substeps.len(), 2);
+    assert_eq!(substeps.len(), 1);
     assert_eq!(
         substeps[0]["title"],
         "Usar a^4 + 4b^4 = (a^2 - 2ab + 2b^2) · (a^2 + 2ab + 2b^2)"
     );
-    assert_eq!(substeps[1]["title"], "Aquí a = x y b = y");
 }
 
 #[test]
@@ -5823,24 +5951,11 @@ fn eval_log_cancellation_drops_redundant_exponent_log_substeps() {
     let wire = parse_wire(&output);
 
     let steps = wire["steps"].as_array().expect("steps array");
-    let exponent_steps: Vec<_> = steps
-        .iter()
-        .filter(|step| step["rule"] == "Sacar un exponente fuera del logaritmo")
-        .collect();
-
-    assert!(
-        !exponent_steps.is_empty(),
-        "expected exponent-extraction log steps in trace"
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Expandir logaritmos y cancelar términos iguales"
     );
-
-    for step in exponent_steps {
-        let substeps = step["substeps"].as_array().cloned().unwrap_or_default();
-        assert!(
-            substeps.is_empty(),
-            "self-explanatory log exponent step should not keep redundant substeps: {:?}",
-            substeps
-        );
-    }
 }
 
 #[test]
@@ -5856,17 +5971,15 @@ fn eval_log_power_product_difference_to_zero_uses_combined_log_cancellation_step
     let wire = parse_wire(&output);
 
     assert_eq!(wire["result"], "0");
-    assert_eq!(wire["steps_count"], 3);
+    assert_eq!(wire["steps_count"], 1);
 
     let steps = wire["steps"].as_array().expect("steps array");
-    assert_eq!(steps.len(), 3);
-    assert_eq!(steps[0]["rule"], "Sacar un exponente fuera del logaritmo");
-    assert_eq!(steps[1]["rule"], "Sacar un exponente fuera del logaritmo");
+    assert_eq!(steps.len(), 1);
     assert_eq!(
-        steps[2]["rule"],
+        steps[0]["rule"],
         "Expandir logaritmos y cancelar términos iguales"
     );
-    let substeps = steps[2]["substeps"].as_array().expect("substeps array");
+    let substeps = steps[0]["substeps"].as_array().expect("substeps array");
     assert_eq!(substeps.len(), 3);
     assert_eq!(
         substeps[0]["title"],

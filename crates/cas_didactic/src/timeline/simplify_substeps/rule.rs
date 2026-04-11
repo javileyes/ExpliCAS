@@ -1,39 +1,7 @@
 use crate::runtime::Step;
-use cas_formatter::html_escape;
 
-pub(super) fn render_timeline_rule_substeps_html(step: &Step) -> String {
-    if step.substeps().is_empty() {
-        return String::new();
-    }
-
-    let mut content_html = String::new();
-    for substep in step.substeps() {
-        let mut lines_html = String::new();
-        for line in &substep.lines {
-            let line_html = html_escape(line);
-            super::super::render_template::push_timeline_asset!(
-                &mut lines_html,
-                "simplify_render/rule_substep_line.html",
-                &[("__LINE__", line_html.as_str())]
-            );
-        }
-        let title_html = html_escape(&substep.title);
-        super::super::render_template::push_timeline_asset!(
-            &mut content_html,
-            "simplify_render/rule_substep_item.html",
-            &[
-                ("__TITLE__", title_html.as_str()),
-                ("__LINES__", lines_html.as_str()),
-            ]
-        );
-    }
-
-    super::super::render_template::render_timeline_asset!(
-        "simplify_render/substeps_details.html",
-        &[
-            ("__OPEN_ATTR__", " open"),
-            ("__SUMMARY__", "Pasos didácticos"),
-            ("__CONTENT__", content_html.as_str()),
-        ],
-    )
+pub(super) fn render_timeline_rule_substeps_html(_step: &Step) -> String {
+    // Legacy engine substeps are free-form narrative lines.
+    // Timeline rendering now standardizes on structured enriched substeps only.
+    String::new()
 }

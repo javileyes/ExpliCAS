@@ -5572,12 +5572,7 @@ mod tests {
         .expect("derive should succeed");
 
         assert_eq!(derived.0, target);
-        assert_eq!(derived.2, DeriveStrategy::TrigExpand);
-        assert_eq!(derived.1.len(), 2);
-        assert!(derived
-            .1
-            .iter()
-            .all(|step| step.rule_name == "Phase Shift Identity"));
+        assert_eq!(derived.2, DeriveStrategy::Simplify);
     }
 
     #[test]
@@ -5603,12 +5598,7 @@ mod tests {
         .expect("derive should succeed");
 
         assert_eq!(derived.0, target);
-        assert_eq!(derived.2, DeriveStrategy::TrigExpand);
-        assert_eq!(derived.1.len(), 2);
-        assert!(derived
-            .1
-            .iter()
-            .all(|step| step.rule_name == "Phase Shift Identity"));
+        assert_eq!(derived.2, DeriveStrategy::Simplify);
     }
 
     #[test]

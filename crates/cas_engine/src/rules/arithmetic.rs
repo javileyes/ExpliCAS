@@ -17,10 +17,20 @@ use cas_math::expr_nary::{build_balanced_add, build_balanced_mul, AddView, Sign}
 use cas_math::expr_predicates::is_minus_one_expr;
 use cas_math::expr_rewrite::smart_mul;
 use cas_math::logarithm_inverse_support::{make_log_expr, try_extract_log_parts};
+use cas_math::trig_core_identity_support::try_rewrite_angle_sum_diff_identity_expr;
+use cas_math::trig_half_angle_support::try_rewrite_trig_half_angle_squares_expr;
+use cas_math::trig_multi_angle_support::{
+    try_rewrite_double_angle_function_expr, try_rewrite_quintuple_angle_expr,
+    try_rewrite_recursive_trig_expansion_expr, try_rewrite_triple_angle_expr,
+};
+use cas_math::trig_power_identity_support::{
+    try_rewrite_recognize_csc_squared_add_expr, try_rewrite_recognize_sec_squared_add_expr,
+};
 use cas_math::trig_roots_flatten::flatten_mul_chain;
 use cas_math::trig_sum_product_support::{
     build_avg_with_simplifier, build_half_diff_with_simplifier, extract_trig_two_term_diff,
-    extract_trig_two_term_sum, normalize_for_even_fn, try_rewrite_sum_to_product_contraction_expr,
+    extract_trig_two_term_sum, normalize_for_even_fn, try_rewrite_product_to_sum_expr,
+    try_rewrite_sum_to_product_contraction_expr, TrigProductToSumRewriteKind,
     TrigSumToProductContractionRewriteKind,
 };
 use num_rational::BigRational;
@@ -144,7 +154,9 @@ fn expr_contains_any_builtin(
 }
 
 fn maybe_trig_sum_to_product_zero_candidate(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> bool {
-    expr_contains_any_builtin(ctx, expr, &[BuiltinFn::Sin, BuiltinFn::Cos])
+    let term_count = AddView::from_expr(ctx, expr).terms.len();
+    (3..=6).contains(&term_count)
+        && expr_contains_any_builtin(ctx, expr, &[BuiltinFn::Sin, BuiltinFn::Cos])
 }
 
 fn maybe_hyperbolic_angle_sum_diff_zero_candidate(
@@ -1001,6 +1013,68 @@ fn build_signed_sum_expr(
     acc
 }
 
+fn normalize_additive_scope_expr(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> cas_ast::ExprId {
+    let terms = AddView::from_expr(ctx, expr).terms;
+    build_signed_sum_expr(ctx, &terms)
+}
+
+fn additive_scopes_match_after_default_simplify(
+    ctx: &mut cas_ast::Context,
+    lhs: cas_ast::ExprId,
+    rhs: cas_ast::ExprId,
+) -> bool {
+    let lhs_normalized = normalize_additive_scope_expr(ctx, lhs);
+    let rhs_normalized = normalize_additive_scope_expr(ctx, rhs);
+    let lhs_terms = AddView::from_expr(ctx, lhs_normalized).terms;
+    let rhs_terms = AddView::from_expr(ctx, rhs_normalized).terms;
+    if lhs_terms.len() != rhs_terms.len() {
+        return false;
+    }
+
+    let lhs_signed_terms: Vec<_> = lhs_terms
+        .into_iter()
+        .map(|(term_expr, sign)| signed_term_expr(ctx, term_expr, sign))
+        .collect();
+    let rhs_signed_terms: Vec<_> = rhs_terms
+        .into_iter()
+        .map(|(term_expr, sign)| signed_term_expr(ctx, term_expr, sign))
+        .collect();
+
+    let mut used_rhs = vec![false; rhs_signed_terms.len()];
+    for lhs_term in lhs_signed_terms {
+        let Some(match_index) =
+            rhs_signed_terms
+                .iter()
+                .enumerate()
+                .find_map(|(index, rhs_term)| {
+                    (!used_rhs[index]
+                        && exprs_match_after_default_simplify(ctx, lhs_term, *rhs_term))
+                    .then_some(index)
+                })
+        else {
+            return false;
+        };
+        used_rhs[match_index] = true;
+    }
+
+    true
+}
+
+fn negate_additive_scope_expr(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> cas_ast::ExprId {
+    let terms = AddView::from_expr(ctx, expr).terms;
+    let negated_terms: Vec<_> = terms
+        .into_iter()
+        .map(|(term_expr, sign)| (term_expr, sign.negate()))
+        .collect();
+    build_signed_sum_expr(ctx, &negated_terms)
+}
+
 fn try_rewrite_trig_sum_to_product_for_cancellation(
     ctx: &mut cas_ast::Context,
     expr: cas_ast::ExprId,
@@ -1070,6 +1144,76 @@ fn try_rewrite_trig_sum_to_product_for_cancellation(
     None
 }
 
+fn try_rewrite_exact_trig_equivalence_for_cancellation(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<(cas_ast::ExprId, &'static str)> {
+    if let Some((rewritten, description)) =
+        try_rewrite_trig_sum_to_product_for_cancellation(ctx, expr)
+    {
+        return Some((rewritten, description));
+    }
+
+    if let Some(rewrite) = try_rewrite_product_to_sum_expr(ctx, expr) {
+        let description = match rewrite.kind {
+            TrigProductToSumRewriteKind::SinCos
+            | TrigProductToSumRewriteKind::CosSin
+            | TrigProductToSumRewriteKind::CosCos
+            | TrigProductToSumRewriteKind::SinSin => "Product-to-Sum Identity",
+        };
+        return Some((rewrite.rewritten, description));
+    }
+
+    if let Some(rewrite) = try_rewrite_angle_sum_diff_identity_expr(ctx, expr) {
+        return Some((rewrite.rewritten, "Angle Sum/Diff Identity"));
+    }
+
+    if let Some(rewrite) = try_rewrite_recursive_trig_expansion_expr(ctx, expr) {
+        let description = if rewrite.desc.starts_with("sin(") || rewrite.desc.starts_with("cos(") {
+            "Angle Sum/Diff Identity"
+        } else {
+            "Recursive Trig Expansion"
+        };
+        return Some((rewrite.rewritten, description));
+    }
+
+    if let Some(rewrite) = try_rewrite_double_angle_function_expr(ctx, expr) {
+        return Some((rewrite.rewritten, "Double Angle Expansion"));
+    }
+
+    if let Some(rewrite) = try_rewrite_triple_angle_expr(ctx, expr) {
+        return Some((rewrite.rewritten, "Triple Angle Identity"));
+    }
+
+    if let Some(rewrite) = try_rewrite_quintuple_angle_expr(ctx, expr) {
+        return Some((rewrite.rewritten, "Quintuple Angle Identity"));
+    }
+
+    if let Some(rewrite) = try_rewrite_trig_half_angle_squares_expr(ctx, expr) {
+        let description = match rewrite.kind {
+            cas_math::trig_half_angle_support::HalfAngleSquareRewriteKind::TrigSin
+            | cas_math::trig_half_angle_support::HalfAngleSquareRewriteKind::TrigCos => {
+                "Half-Angle Square Identity"
+            }
+            cas_math::trig_half_angle_support::HalfAngleSquareRewriteKind::HyperbolicCosh
+            | cas_math::trig_half_angle_support::HalfAngleSquareRewriteKind::HyperbolicSinh => {
+                return None;
+            }
+        };
+        return Some((rewrite.rewritten, description));
+    }
+
+    if let Some(rewrite) = try_rewrite_recognize_sec_squared_add_expr(ctx, expr) {
+        return Some((rewrite.rewritten, "Recognize Secant Squared"));
+    }
+
+    if let Some(rewrite) = try_rewrite_recognize_csc_squared_add_expr(ctx, expr) {
+        return Some((rewrite.rewritten, "Recognize Cosecant Squared"));
+    }
+
+    None
+}
+
 fn try_rewrite_hyperbolic_angle_sum_diff_for_cancellation(
     ctx: &mut cas_ast::Context,
     expr: cas_ast::ExprId,
@@ -1092,6 +1236,13 @@ struct TrigPhaseShiftCancellationMatch {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PhaseShiftKindForCancellation {
+    Quarter,
+    Sixth,
+    Third,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct GeneralPhaseShiftTermData {
     coeff: cas_ast::ExprId,
     trig_fn: BuiltinFn,
@@ -1103,7 +1254,8 @@ struct GeneralPhaseShiftTermData {
 
 fn maybe_trig_phase_shift_zero_candidate(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> bool {
     expr_contains_any_builtin(ctx, expr, &[BuiltinFn::Sin, BuiltinFn::Cos])
-        && expr_contains_any_builtin(ctx, expr, &[BuiltinFn::Atan, BuiltinFn::Arctan])
+        && (expr_contains_any_builtin(ctx, expr, &[BuiltinFn::Atan, BuiltinFn::Arctan])
+            || expr_contains_pi_constant(ctx, expr))
 }
 
 fn strip_unit_negation_for_phase_shift(
@@ -1247,6 +1399,317 @@ fn extract_general_phase_shift_argument_for_cancellation(
         }
         _ => None,
     }
+}
+
+fn expr_contains_pi_constant(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> bool {
+    match ctx.get(expr) {
+        Expr::Constant(c) => matches!(c, cas_ast::Constant::Pi),
+        Expr::Add(lhs, rhs)
+        | Expr::Sub(lhs, rhs)
+        | Expr::Mul(lhs, rhs)
+        | Expr::Div(lhs, rhs)
+        | Expr::Pow(lhs, rhs) => {
+            expr_contains_pi_constant(ctx, *lhs) || expr_contains_pi_constant(ctx, *rhs)
+        }
+        Expr::Neg(inner) => expr_contains_pi_constant(ctx, *inner),
+        Expr::Function(_, args) => args.iter().any(|arg| expr_contains_pi_constant(ctx, *arg)),
+        _ => false,
+    }
+}
+
+fn build_pi_over_for_cancellation(ctx: &mut cas_ast::Context, denominator: i64) -> cas_ast::ExprId {
+    let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
+    let denom = ctx.num(denominator);
+    ctx.add(Expr::Div(pi, denom))
+}
+
+fn is_sqrt_two_for_cancellation(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> bool {
+    match ctx.get(expr) {
+        Expr::Function(fn_id, args)
+            if args.len() == 1 && ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) =>
+        {
+            extract_i64_integer(ctx, args[0]) == Some(2)
+        }
+        _ => false,
+    }
+}
+
+fn split_out_small_integer_factor_for_cancellation(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+    value: i64,
+) -> Option<cas_ast::ExprId> {
+    let factors = flatten_mul_chain(ctx, expr);
+    if let Some(index) = factors
+        .iter()
+        .position(|factor| extract_i64_integer(ctx, *factor) == Some(value))
+    {
+        return Some(
+            factors
+                .into_iter()
+                .enumerate()
+                .filter_map(|(i, factor)| (i != index).then_some(factor))
+                .fold(ctx.num(1), |acc, factor| smart_mul(ctx, acc, factor)),
+        );
+    }
+
+    for (index, factor) in factors.iter().copied().enumerate() {
+        let Expr::Number(n) = ctx.get(factor) else {
+            continue;
+        };
+        let divisor = BigRational::from_integer(value.into());
+        let quotient = n / &divisor;
+        if !quotient.is_integer() {
+            continue;
+        }
+
+        let quotient_id = ctx.add(Expr::Number(quotient));
+        let rebuilt = factors
+            .iter()
+            .copied()
+            .enumerate()
+            .map(|(i, existing)| if i == index { quotient_id } else { existing })
+            .fold(ctx.num(1), |acc, factor| smart_mul(ctx, acc, factor));
+        return Some(rebuilt);
+    }
+
+    None
+}
+
+fn extract_supported_phase_shift_argument_for_cancellation(
+    ctx: &mut cas_ast::Context,
+    trig_fn: BuiltinFn,
+    expr: cas_ast::ExprId,
+) -> Option<(cas_ast::ExprId, PhaseShiftKindForCancellation, bool)> {
+    for denominator in [4_i64, 3_i64, 6_i64] {
+        let shift = build_pi_over_for_cancellation(ctx, denominator);
+        let matched = match ctx.get(expr).clone() {
+            Expr::Add(left, right) => {
+                if compare_expr(ctx, left, shift) == Ordering::Equal {
+                    Some((right, false))
+                } else if compare_expr(ctx, right, shift) == Ordering::Equal {
+                    Some((left, false))
+                } else {
+                    None
+                }
+            }
+            Expr::Sub(left, right) => {
+                (compare_expr(ctx, right, shift) == Ordering::Equal).then_some((left, true))
+            }
+            _ => None,
+        };
+
+        let Some((base_arg, subtract_shift)) = matched else {
+            continue;
+        };
+
+        let kind = match (trig_fn, denominator) {
+            (BuiltinFn::Sin, 4) | (BuiltinFn::Cos, 4) => PhaseShiftKindForCancellation::Quarter,
+            (BuiltinFn::Sin, 3) | (BuiltinFn::Cos, 6) => PhaseShiftKindForCancellation::Third,
+            (BuiltinFn::Sin, 6) | (BuiltinFn::Cos, 3) => PhaseShiftKindForCancellation::Sixth,
+            _ => continue,
+        };
+
+        return Some((base_arg, kind, subtract_shift));
+    }
+
+    None
+}
+
+fn extract_phase_shift_linear_combination_for_cancellation(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<(
+    cas_ast::ExprId,
+    cas_ast::ExprId,
+    PhaseShiftKindForCancellation,
+    i8,
+    i8,
+)> {
+    let (sin_arg, sin_coeff, cos_coeff, sin_sign, cos_sign) =
+        extract_weighted_phase_shift_linear_combination_for_cancellation(ctx, expr)?;
+
+    let three = ctx.num(3);
+    let sqrt_three = ctx.call_builtin(BuiltinFn::Sqrt, vec![three]);
+    let (coeff, kind) = if compare_expr(ctx, sin_coeff, cos_coeff) == Ordering::Equal {
+        (sin_coeff, PhaseShiftKindForCancellation::Quarter)
+    } else {
+        let sin_times_sqrt_three = smart_mul(ctx, sin_coeff, sqrt_three);
+        let cos_times_sqrt_three = smart_mul(ctx, cos_coeff, sqrt_three);
+        if exprs_match_after_default_simplify(ctx, sin_times_sqrt_three, cos_coeff) {
+            (sin_coeff, PhaseShiftKindForCancellation::Third)
+        } else if exprs_match_after_default_simplify(ctx, cos_times_sqrt_three, sin_coeff) {
+            (cos_coeff, PhaseShiftKindForCancellation::Sixth)
+        } else {
+            return None;
+        }
+    };
+
+    Some((sin_arg, coeff, kind, sin_sign, cos_sign))
+}
+
+fn build_phase_shift_linear_combination_for_cancellation(
+    ctx: &mut cas_ast::Context,
+    coeff: cas_ast::ExprId,
+    arg: cas_ast::ExprId,
+    kind: PhaseShiftKindForCancellation,
+    sin_sign: i8,
+    cos_sign: i8,
+) -> cas_ast::ExprId {
+    let three = ctx.num(3);
+    let sqrt_three = ctx.call_builtin(BuiltinFn::Sqrt, vec![three]);
+    let (sin_coeff, cos_coeff) = match kind {
+        PhaseShiftKindForCancellation::Quarter => (coeff, coeff),
+        PhaseShiftKindForCancellation::Third => (coeff, smart_mul(ctx, coeff, sqrt_three)),
+        PhaseShiftKindForCancellation::Sixth => (smart_mul(ctx, coeff, sqrt_three), coeff),
+    };
+
+    build_weighted_phase_shift_linear_combination_for_cancellation(
+        ctx, arg, sin_coeff, cos_coeff, sin_sign, cos_sign,
+    )
+}
+
+fn build_scaled_shifted_phase_term_for_cancellation(
+    ctx: &mut cas_ast::Context,
+    coeff: cas_ast::ExprId,
+    arg: cas_ast::ExprId,
+    trig_fn: BuiltinFn,
+    denominator: i64,
+    subtract_shift: bool,
+    negate: bool,
+) -> cas_ast::ExprId {
+    let shift = build_pi_over_for_cancellation(ctx, denominator);
+    let shifted_arg = if subtract_shift {
+        ctx.add(Expr::Sub(arg, shift))
+    } else {
+        ctx.add(Expr::Add(arg, shift))
+    };
+    let trig_call = ctx.call_builtin(trig_fn, vec![shifted_arg]);
+    let scaled = smart_mul(ctx, coeff, trig_call);
+    if negate {
+        ctx.add(Expr::Neg(scaled))
+    } else {
+        scaled
+    }
+}
+
+fn generate_phase_shift_term_candidates_for_cancellation(
+    ctx: &mut cas_ast::Context,
+    coeff: cas_ast::ExprId,
+    arg: cas_ast::ExprId,
+    kind: PhaseShiftKindForCancellation,
+) -> Vec<cas_ast::ExprId> {
+    let amplitude = match kind {
+        PhaseShiftKindForCancellation::Quarter => {
+            let two = ctx.num(2);
+            ctx.call_builtin(BuiltinFn::Sqrt, vec![two])
+        }
+        PhaseShiftKindForCancellation::Sixth | PhaseShiftKindForCancellation::Third => ctx.num(2),
+    };
+    let scaled_coeff = smart_mul(ctx, coeff, amplitude);
+    let specs: &[(BuiltinFn, i64)] = match kind {
+        PhaseShiftKindForCancellation::Quarter => &[(BuiltinFn::Sin, 4), (BuiltinFn::Cos, 4)],
+        PhaseShiftKindForCancellation::Third => &[(BuiltinFn::Sin, 3), (BuiltinFn::Cos, 6)],
+        PhaseShiftKindForCancellation::Sixth => &[(BuiltinFn::Sin, 6), (BuiltinFn::Cos, 3)],
+    };
+
+    let mut candidates = Vec::new();
+    for (trig_fn, denominator) in specs {
+        for (subtract_shift, negate) in [(false, false), (true, false), (false, true), (true, true)]
+        {
+            let candidate = build_scaled_shifted_phase_term_for_cancellation(
+                ctx,
+                scaled_coeff,
+                arg,
+                *trig_fn,
+                *denominator,
+                subtract_shift,
+                negate,
+            );
+            if candidates
+                .iter()
+                .all(|existing| compare_expr(ctx, *existing, candidate) != Ordering::Equal)
+            {
+                candidates.push(candidate);
+            }
+        }
+    }
+
+    candidates
+}
+
+fn extract_exact_phase_shift_term_data_for_cancellation(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<(
+    cas_ast::ExprId,
+    cas_ast::ExprId,
+    PhaseShiftKindForCancellation,
+    i8,
+    i8,
+)> {
+    let (global_sign, positive_expr) =
+        if let Some(inner) = strip_unit_negation_for_phase_shift(ctx, expr) {
+            (-1_i8, inner)
+        } else {
+            (1_i8, expr)
+        };
+
+    let factors = flatten_mul_chain(ctx, positive_expr);
+    if factors.len() < 2 {
+        return None;
+    }
+
+    let mut trig_factor = None;
+    let mut has_sqrt_two = false;
+    let mut coeff_factors = Vec::new();
+
+    for factor in factors {
+        if trig_factor.is_none() {
+            if let Some((trig_fn, arg)) =
+                extract_sin_or_cos_linear_term_for_phase_shift(ctx, factor)
+            {
+                trig_factor = Some((trig_fn, arg));
+                continue;
+            }
+        }
+
+        if !has_sqrt_two && is_sqrt_two_for_cancellation(ctx, factor) {
+            has_sqrt_two = true;
+            continue;
+        }
+
+        coeff_factors.push(factor);
+    }
+
+    let (trig_fn, raw_arg) = trig_factor?;
+    let (base_arg, kind, subtract_shift) =
+        extract_supported_phase_shift_argument_for_cancellation(ctx, trig_fn, raw_arg)?;
+    let coeff_expr = coeff_factors
+        .into_iter()
+        .fold(ctx.num(1), |acc, factor| smart_mul(ctx, acc, factor));
+
+    let coeff = match kind {
+        PhaseShiftKindForCancellation::Quarter => {
+            if !has_sqrt_two {
+                return None;
+            }
+            coeff_expr
+        }
+        PhaseShiftKindForCancellation::Sixth | PhaseShiftKindForCancellation::Third => {
+            split_out_small_integer_factor_for_cancellation(ctx, coeff_expr, 2)?
+        }
+    };
+
+    let (sin_sign, cos_sign) = match (trig_fn, subtract_shift) {
+        (BuiltinFn::Sin, false) => (global_sign, global_sign),
+        (BuiltinFn::Sin, true) => (global_sign, -global_sign),
+        (BuiltinFn::Cos, false) => (-global_sign, global_sign),
+        (BuiltinFn::Cos, true) => (global_sign, global_sign),
+        _ => return None,
+    };
+
+    Some((base_arg, coeff, kind, sin_sign, cos_sign))
 }
 
 fn extract_weighted_phase_shift_linear_combination_for_cancellation(
@@ -1512,6 +1975,28 @@ fn try_find_trig_phase_shift_cancellation_match(
         }
     };
 
+    if let Some((arg, coeff, kind, _sin_sign, _cos_sign)) =
+        extract_phase_shift_linear_combination_for_cancellation(ctx, focus_expr)
+    {
+        for candidate in
+            generate_phase_shift_term_candidates_for_cancellation(ctx, coeff, arg, kind)
+        {
+            let matches = if target_is_negated {
+                expr_matches_negation_after_default_simplify(ctx, candidate, target_expr)
+            } else {
+                exprs_match_after_default_simplify(ctx, candidate, target_expr)
+            };
+            if matches {
+                return Some(TrigPhaseShiftCancellationMatch {
+                    local_before: focus_expr,
+                    local_after: candidate,
+                    mode: TrigPhaseShiftCancellationMode::LinearToShifted,
+                });
+            }
+        }
+        return None;
+    }
+
     if let Some((arg, sin_coeff, cos_coeff, sin_sign, cos_sign)) =
         extract_weighted_phase_shift_linear_combination_for_cancellation(ctx, focus_expr)
     {
@@ -1536,6 +2021,27 @@ fn try_find_trig_phase_shift_cancellation_match(
                 mode: TrigPhaseShiftCancellationMode::LinearToShifted,
             });
         }
+    }
+
+    if let Some((arg, coeff, kind, sin_sign, cos_sign)) =
+        extract_exact_phase_shift_term_data_for_cancellation(ctx, focus_expr)
+    {
+        let expanded = build_phase_shift_linear_combination_for_cancellation(
+            ctx, coeff, arg, kind, sin_sign, cos_sign,
+        );
+        let matches = if target_is_negated {
+            expr_matches_negation_after_default_simplify(ctx, expanded, target_expr)
+        } else {
+            exprs_match_after_default_simplify(ctx, expanded, target_expr)
+        };
+        if matches {
+            return Some(TrigPhaseShiftCancellationMatch {
+                local_before: focus_expr,
+                local_after: expanded,
+                mode: TrigPhaseShiftCancellationMode::ShiftedToLinear,
+            });
+        }
+        return None;
     }
 
     if let Some(data) = extract_general_phase_shift_term_data_for_cancellation(ctx, focus_expr) {
@@ -2254,6 +2760,113 @@ fn try_build_exact_trig_sum_to_product_zero_scope_rewrite(
                         ],
                     ),
                 );
+            }
+        }
+    }
+
+    None
+}
+
+fn try_build_exact_trig_equivalence_zero_scope_rewrite(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<Rewrite> {
+    let view = AddView::from_expr(ctx, expr);
+    if view.terms.len() < 2 {
+        return None;
+    }
+
+    for subset_len in 1..=2 {
+        for first_index in 0..view.terms.len() {
+            let second_index_options: Vec<Option<usize>> = if subset_len == 1 {
+                vec![None]
+            } else {
+                ((first_index + 1)..view.terms.len()).map(Some).collect()
+            };
+
+            for second_index in second_index_options {
+                let focus_terms: Vec<_> = view
+                    .terms
+                    .iter()
+                    .copied()
+                    .enumerate()
+                    .filter_map(|(index, term)| {
+                        (index == first_index || second_index == Some(index)).then_some(term)
+                    })
+                    .collect();
+                if focus_terms.len() != subset_len {
+                    continue;
+                }
+                let focus_expr = build_signed_sum_expr(ctx, &focus_terms);
+
+                let remaining_terms: Vec<_> = view
+                    .terms
+                    .iter()
+                    .copied()
+                    .enumerate()
+                    .filter_map(|(index, term)| {
+                        (index != first_index && second_index != Some(index)).then_some(term)
+                    })
+                    .collect();
+                if remaining_terms.is_empty() {
+                    continue;
+                }
+                let remaining_expr = build_signed_sum_expr(ctx, &remaining_terms);
+
+                let focus_variants = [
+                    (focus_expr, 1_i64),
+                    (ctx.add(Expr::Neg(focus_expr)), -1_i64),
+                ];
+
+                for (candidate_focus, focus_sign) in focus_variants {
+                    let Some((rewritten, description)) =
+                        try_rewrite_exact_trig_equivalence_for_cancellation(ctx, candidate_focus)
+                    else {
+                        continue;
+                    };
+
+                    let adjusted_rewritten = apply_sign_to_expr(ctx, focus_sign, rewritten);
+                    let neg_adjusted_rewritten = ctx.add(Expr::Neg(adjusted_rewritten));
+                    let distributed_neg_adjusted_rewritten =
+                        negate_additive_scope_expr(ctx, adjusted_rewritten);
+                    if expr_matches_negation_for_cancellation(
+                        ctx,
+                        adjusted_rewritten,
+                        remaining_expr,
+                    ) || expr_matches_negation_after_default_simplify(
+                        ctx,
+                        adjusted_rewritten,
+                        remaining_expr,
+                    ) || exprs_match_after_default_simplify(
+                        ctx,
+                        neg_adjusted_rewritten,
+                        remaining_expr,
+                    ) || exprs_match_after_default_simplify(
+                        ctx,
+                        distributed_neg_adjusted_rewritten,
+                        remaining_expr,
+                    ) || additive_scopes_match_after_default_simplify(
+                        ctx,
+                        distributed_neg_adjusted_rewritten,
+                        remaining_expr,
+                    ) {
+                        return Some(
+                            Rewrite::with_local(
+                                ctx.num(0),
+                                description,
+                                focus_expr,
+                                adjusted_rewritten,
+                            )
+                            .substep(
+                                "Cancelar términos iguales",
+                                vec![
+                                    "Tras aplicar la identidad trigonométrica, el resto de la expresión es el opuesto y toda la expresión se anula."
+                                        .to_string(),
+                                ],
+                            ),
+                        );
+                    }
+                }
             }
         }
     }
@@ -3246,9 +3859,76 @@ fn maybe_exact_zero_additive_candidate(ctx: &cas_ast::Context, expr: cas_ast::Ex
     maybe_trig_sum_to_product_zero_candidate(ctx, expr)
         || maybe_trig_square_zero_candidate(ctx, expr)
         || maybe_trig_phase_shift_zero_candidate(ctx, expr)
+        || expr_contains_any_builtin(
+            ctx,
+            expr,
+            &[
+                BuiltinFn::Sin,
+                BuiltinFn::Cos,
+                BuiltinFn::Tan,
+                BuiltinFn::Cot,
+                BuiltinFn::Sec,
+                BuiltinFn::Csc,
+            ],
+        )
         || maybe_hyperbolic_angle_sum_diff_zero_candidate(ctx, expr)
         || maybe_hyperbolic_pythagorean_factor_zero_candidate(ctx, expr)
         || expr_contains_any_builtin(ctx, expr, &[BuiltinFn::Ln, BuiltinFn::Log, BuiltinFn::Abs])
+}
+
+fn maybe_exact_zero_common_scaled_difference_candidate(
+    ctx: &cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> bool {
+    let term_count = AddView::from_expr(ctx, expr).terms.len();
+    if !(2..=4).contains(&term_count) {
+        return false;
+    }
+
+    expr_contains_any_builtin(
+        ctx,
+        expr,
+        &[
+            BuiltinFn::Sin,
+            BuiltinFn::Cos,
+            BuiltinFn::Tan,
+            BuiltinFn::Cot,
+            BuiltinFn::Sec,
+            BuiltinFn::Csc,
+            BuiltinFn::Sinh,
+            BuiltinFn::Cosh,
+            BuiltinFn::Tanh,
+            BuiltinFn::Ln,
+            BuiltinFn::Log,
+            BuiltinFn::Abs,
+        ],
+    )
+}
+
+fn is_plain_trig_angle_identity_term(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> bool {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return false;
+    };
+    if args.len() != 1 {
+        return false;
+    }
+
+    matches!(
+        ctx.builtin_of(*fn_id),
+        Some(BuiltinFn::Sin | BuiltinFn::Cos | BuiltinFn::Tan)
+    ) && matches!(ctx.get(args[0]), Expr::Add(_, _) | Expr::Sub(_, _))
+}
+
+fn is_risky_plain_trig_angle_pair_for_common_scale(
+    ctx: &cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> bool {
+    let view = AddView::from_expr(ctx, expr);
+    view.terms.len() == 2
+        && view
+            .terms
+            .iter()
+            .all(|(term_expr, _)| is_plain_trig_angle_identity_term(ctx, *term_expr))
 }
 
 fn try_build_exact_zero_identity_rewrite_direct(
@@ -3286,6 +3966,24 @@ fn try_build_exact_zero_identity_rewrite_direct(
 
     if maybe_trig_phase_shift_zero_candidate(ctx, expr) {
         let candidate = ExpandTrigPhaseShiftToEnableCancellationRule.apply(ctx, expr, &parent_ctx);
+        if let Some(rewrite) = try_rule(ctx, candidate) {
+            return Some(rewrite);
+        }
+    }
+
+    if expr_contains_any_builtin(
+        ctx,
+        expr,
+        &[
+            BuiltinFn::Sin,
+            BuiltinFn::Cos,
+            BuiltinFn::Tan,
+            BuiltinFn::Cot,
+            BuiltinFn::Sec,
+            BuiltinFn::Csc,
+        ],
+    ) {
+        let candidate = try_build_exact_trig_equivalence_zero_scope_rewrite(ctx, expr);
         if let Some(rewrite) = try_rule(ctx, candidate) {
             return Some(rewrite);
         }
@@ -3356,6 +4054,264 @@ fn try_build_exact_zero_identity_rewrite(
     Some(rewrite)
 }
 
+fn build_mul_expr_from_factors(
+    ctx: &mut cas_ast::Context,
+    factors: &[cas_ast::ExprId],
+) -> cas_ast::ExprId {
+    match factors {
+        [] => ctx.num(1),
+        [single] => *single,
+        _ => build_balanced_mul(ctx, factors),
+    }
+}
+
+fn extract_common_multiplicative_residual_sum(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<(cas_ast::ExprId, cas_ast::ExprId)> {
+    let view = AddView::from_expr(ctx, expr);
+    if view.terms.len() < 2 {
+        return None;
+    }
+
+    let normalized_terms: Vec<_> = view
+        .terms
+        .iter()
+        .copied()
+        .map(|(term_expr, term_sign)| normalize_signed_add_term(ctx, term_expr, term_sign))
+        .collect();
+
+    let first_factors = flatten_mul_chain(ctx, normalized_terms.first()?.0);
+    if first_factors.is_empty() {
+        return None;
+    }
+
+    let mut used_by_term: Vec<Vec<bool>> = normalized_terms
+        .iter()
+        .map(|(term_expr, _)| vec![false; flatten_mul_chain(ctx, *term_expr).len()])
+        .collect();
+    let factor_lists: Vec<Vec<_>> = normalized_terms
+        .iter()
+        .map(|(term_expr, _)| flatten_mul_chain(ctx, *term_expr))
+        .collect();
+
+    let mut common = Vec::new();
+    for first_factor in first_factors {
+        let mut matched_indexes = Vec::new();
+        let mut all_match = true;
+
+        for (term_index, factors) in factor_lists.iter().enumerate().skip(1) {
+            let Some(factor_index) =
+                factors
+                    .iter()
+                    .enumerate()
+                    .find_map(|(factor_index, factor)| {
+                        (!used_by_term[term_index][factor_index]
+                            && compare_expr(ctx, *factor, first_factor) == Ordering::Equal)
+                            .then_some(factor_index)
+                    })
+            else {
+                all_match = false;
+                break;
+            };
+            matched_indexes.push((term_index, factor_index));
+        }
+
+        if !all_match {
+            continue;
+        }
+
+        common.push(first_factor);
+        for (term_index, factor_index) in matched_indexes {
+            used_by_term[term_index][factor_index] = true;
+        }
+
+        if let Some(first_index) =
+            factor_lists[0]
+                .iter()
+                .enumerate()
+                .find_map(|(factor_index, factor)| {
+                    (!used_by_term[0][factor_index]
+                        && compare_expr(ctx, *factor, first_factor) == Ordering::Equal)
+                        .then_some(factor_index)
+                })
+        {
+            used_by_term[0][first_index] = true;
+        }
+    }
+
+    if common.is_empty() {
+        return None;
+    }
+
+    let residual_terms: Vec<_> = normalized_terms
+        .iter()
+        .enumerate()
+        .map(|(term_index, (_term_expr, term_sign))| {
+            let residual_factors: Vec<_> = factor_lists[term_index]
+                .iter()
+                .copied()
+                .enumerate()
+                .filter_map(|(factor_index, factor)| {
+                    (!used_by_term[term_index][factor_index]).then_some(factor)
+                })
+                .collect();
+            (
+                build_mul_expr_from_factors(ctx, &residual_factors),
+                *term_sign,
+            )
+        })
+        .collect();
+
+    let common_factor = build_mul_expr_from_factors(ctx, &common);
+    let residual_expr = build_signed_sum_expr(ctx, &residual_terms);
+    Some((common_factor, residual_expr))
+}
+
+fn build_common_scale_exact_zero_rewrite(
+    ctx: &mut cas_ast::Context,
+    whole_expr: cas_ast::ExprId,
+    common_factor: cas_ast::ExprId,
+    residual_expr: cas_ast::ExprId,
+    child_rewrite: Rewrite,
+) -> Rewrite {
+    let factorized_difference = smart_mul(ctx, common_factor, residual_expr);
+    let factorized_display = format!(
+        "{}",
+        cas_formatter::DisplayExpr {
+            context: ctx,
+            id: factorized_difference
+        }
+    );
+
+    let mut rewrite = Rewrite::with_local(
+        ctx.num(0),
+        child_rewrite.description.clone(),
+        whole_expr,
+        ctx.num(0),
+    )
+    .requires_all(child_rewrite.required_conditions.clone())
+    .assume_all(child_rewrite.assumption_events.clone());
+
+    if let Some(poly_proof) = child_rewrite.poly_proof.clone() {
+        rewrite = rewrite.poly_proof(poly_proof);
+    }
+
+    rewrite = rewrite.substep(
+        "Sacar factor común",
+        vec![format!("Se obtiene {factorized_display}.")],
+    );
+    rewrite.substeps.extend(child_rewrite.substeps.clone());
+    rewrite
+}
+
+fn try_build_exact_zero_common_scaled_difference_rewrite(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<Rewrite> {
+    let (common_factor, residual_expr) = extract_common_multiplicative_residual_sum(ctx, expr)?;
+    let normalized_residual = normalize_additive_scope_expr(ctx, residual_expr);
+    let child_rewrite = try_build_exact_zero_identity_rewrite(ctx, residual_expr)
+        .or_else(|| try_build_exact_zero_identity_rewrite(ctx, normalized_residual))?;
+    Some(build_common_scale_exact_zero_rewrite(
+        ctx,
+        expr,
+        common_factor,
+        residual_expr,
+        child_rewrite,
+    ))
+}
+
+fn strip_positive_one_passthrough(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<cas_ast::ExprId> {
+    let view = AddView::from_expr(ctx, expr);
+    let mut stripped = false;
+    let mut residual_terms = Vec::new();
+
+    for (term_expr, term_sign) in view.terms {
+        let is_positive_one = term_sign == Sign::Pos
+            && matches!(
+                ctx.get(term_expr),
+                Expr::Number(n) if *n == num_rational::BigRational::from_integer(1.into())
+            );
+
+        if is_positive_one && !stripped {
+            stripped = true;
+            continue;
+        }
+        residual_terms.push((term_expr, term_sign));
+    }
+
+    if !stripped || residual_terms.is_empty() {
+        return None;
+    }
+
+    Some(build_signed_sum_expr(ctx, &residual_terms))
+}
+
+fn build_shifted_quotient_exact_one_rewrite(
+    ctx: &mut cas_ast::Context,
+    numerator: cas_ast::ExprId,
+    denominator: cas_ast::ExprId,
+    child_rewrite: Rewrite,
+) -> Rewrite {
+    let mut rewrite = Rewrite::with_local(
+        ctx.add(Expr::Div(denominator, denominator)),
+        child_rewrite.description.clone(),
+        numerator,
+        denominator,
+    )
+    .requires_all(child_rewrite.required_conditions.clone())
+    .assume_all(child_rewrite.assumption_events.clone());
+
+    if let Some(poly_proof) = child_rewrite.poly_proof.clone() {
+        rewrite = rewrite.poly_proof(poly_proof);
+    }
+
+    rewrite.substeps = child_rewrite.substeps.clone();
+    rewrite
+}
+
+fn try_build_shifted_quotient_exact_one_rewrite(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<Rewrite> {
+    let Expr::Div(numerator, denominator) = ctx.get(expr) else {
+        return None;
+    };
+    let numerator = *numerator;
+    let denominator = *denominator;
+
+    let numerator_core = strip_positive_one_passthrough(ctx, numerator)?;
+    let denominator_core = strip_positive_one_passthrough(ctx, denominator)?;
+    let residual_difference = ctx.add(Expr::Sub(numerator_core, denominator_core));
+    let child_rewrite =
+        if let Some(rewrite) = try_build_exact_zero_identity_rewrite(ctx, residual_difference) {
+            rewrite
+        } else {
+            let zero = ctx.num(0);
+            let simplified_difference = run_default_simplify(ctx, residual_difference);
+            if compare_expr(ctx, simplified_difference, zero) != Ordering::Equal {
+                return None;
+            }
+            Rewrite::with_local(
+                ctx.num(0),
+                "Equivalent Residual Cancellation",
+                numerator_core,
+                denominator_core,
+            )
+        };
+
+    Some(build_shifted_quotient_exact_one_rewrite(
+        ctx,
+        numerator,
+        denominator,
+        child_rewrite,
+    ))
+}
+
 fn build_exact_zero_subset_passthrough_rewrite(
     ctx: &mut cas_ast::Context,
     subset_expr: cas_ast::ExprId,
@@ -3377,6 +4333,69 @@ fn build_exact_zero_subset_passthrough_rewrite(
 
     rewrite.substeps = child_rewrite.substeps.clone();
     rewrite
+}
+
+fn try_build_structural_cancel_subset_passthrough_rewrite(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<Rewrite> {
+    let view = AddView::from_expr(ctx, expr);
+    if view.terms.len() < 3 {
+        return None;
+    }
+
+    let normalized_terms: Vec<_> = view
+        .terms
+        .iter()
+        .copied()
+        .map(|(term_expr, term_sign)| normalize_signed_add_term(ctx, term_expr, term_sign))
+        .collect();
+
+    for first_index in 0..normalized_terms.len().saturating_sub(1) {
+        for second_index in (first_index + 1)..normalized_terms.len() {
+            let (first_expr, first_sign) = normalized_terms[first_index];
+            let (second_expr, second_sign) = normalized_terms[second_index];
+            if first_sign == second_sign
+                || compare_expr(ctx, first_expr, second_expr) != Ordering::Equal
+            {
+                continue;
+            }
+
+            let passthrough_terms: Vec<_> = normalized_terms
+                .iter()
+                .copied()
+                .enumerate()
+                .filter_map(|(index, term)| {
+                    (index != first_index && index != second_index).then_some(term)
+                })
+                .collect();
+            if passthrough_terms.is_empty() {
+                continue;
+            }
+
+            let subset_terms = [
+                normalized_terms[first_index],
+                normalized_terms[second_index],
+            ];
+            return Some(
+                Rewrite::with_local(
+                    build_signed_sum_expr(ctx, &passthrough_terms),
+                    "Cancelar términos iguales",
+                    build_signed_sum_expr(ctx, &subset_terms),
+                    ctx.num(0),
+                )
+                .substep(
+                    "Cancelar términos iguales",
+                    vec![
+                        "Dos términos opuestos se anulan y solo queda el resto de la suma."
+                            .to_string(),
+                    ],
+                ),
+            );
+        }
+    }
+
+    None
 }
 
 fn try_build_exact_zero_three_term_subset_passthrough_rewrite(
@@ -3441,11 +4460,52 @@ define_rule!(
             return None;
         }
 
+        if let Some(rewrite) = try_build_structural_cancel_subset_passthrough_rewrite(ctx, expr) {
+            return Some(rewrite);
+        }
+
         if let Some(rewrite) = try_build_exact_zero_identity_rewrite(ctx, expr) {
             return Some(rewrite);
         }
 
         try_build_exact_zero_three_term_subset_passthrough_rewrite(ctx, expr)
+    }
+);
+
+define_rule!(
+    CollapseExactZeroCommonScaledDifferenceRule,
+    "Collapse Common-Scale Equivalent Difference",
+    Some(crate::target_kind::TargetKindSet::ADD.union(crate::target_kind::TargetKindSet::SUB)),
+    crate::phase::PhaseMask::CORE | crate::phase::PhaseMask::POST,
+    priority: 509,
+    |ctx, expr, parent_ctx| {
+        if !maybe_exact_zero_common_scaled_difference_candidate(ctx, expr) {
+            return None;
+        }
+        if is_risky_plain_trig_angle_pair_for_common_scale(ctx, expr) {
+            return None;
+        }
+        let allow = cas_solver_core::undefined_risk_policy_support::allow_cancellation_with_undefined_risk_mode_flags(
+            matches!(parent_ctx.domain_mode(), crate::DomainMode::Assume),
+            matches!(parent_ctx.domain_mode(), crate::DomainMode::Strict),
+            crate::collect::has_undefined_risk(ctx, expr),
+        );
+        if !allow {
+            return None;
+        }
+
+        try_build_exact_zero_common_scaled_difference_rewrite(ctx, expr)
+    }
+);
+
+define_rule!(
+    CollapseExactOneShiftedQuotientRule,
+    "Collapse Shifted Quotient of Equivalent Expressions",
+    Some(crate::target_kind::TargetKindSet::DIV),
+    crate::phase::PhaseMask::CORE | crate::phase::PhaseMask::POST,
+    priority: 509,
+    |ctx, expr| {
+        try_build_shifted_quotient_exact_one_rewrite(ctx, expr)
     }
 );
 
@@ -3555,7 +4615,8 @@ define_rule!(AddInverseRule, "Add Inverse", |ctx, expr, parent_ctx| {
 mod tests {
     use super::{
         canonicalize_nested_integer_powers, exprs_equal_up_to_add_term_order,
-        extract_scaled_double_sine_product_for_cancellation, CollapseExactZeroThreeTermSubsetRule,
+        extract_scaled_double_sine_product_for_cancellation, CollapseExactOneShiftedQuotientRule,
+        CollapseExactZeroCommonScaledDifferenceRule, CollapseExactZeroThreeTermSubsetRule,
         ExpandHyperbolicAngleSumDiffToEnableCancellationRule,
         ExpandHyperbolicPythagoreanFactorToEnableCancellationRule,
         ExpandLogAbsMulDivToEnableCancellationRule, ExpandLogProductPowerToEnableCancellationRule,
@@ -3788,6 +4849,153 @@ mod tests {
             "0"
         );
         assert_eq!(rewrite.description, "Expand cosine difference to product");
+    }
+
+    #[test]
+    fn collapse_exact_zero_additive_subexpression_matches_general_sine_sum_to_product() {
+        let mut ctx = Context::new();
+        let expr = parse("sin(5*x) + sin(x) - 2*sin(3*x)*cos(2*x)", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rule = CollapseExactZeroThreeTermSubsetRule;
+        let rewrite = rule
+            .apply(&mut ctx, expr, &parent_ctx)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "0"
+        );
+        assert_eq!(rewrite.description, "Expand sine sum to product");
+    }
+
+    #[test]
+    fn collapse_exact_zero_additive_subexpression_matches_recursive_six_sine() {
+        let mut ctx = Context::new();
+        let expr = parse("sin(6*x) - (sin(5*x)*cos(x)+cos(5*x)*sin(x))", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rule = CollapseExactZeroThreeTermSubsetRule;
+        let rewrite = rule
+            .apply(&mut ctx, expr, &parent_ctx)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "0"
+        );
+        assert_eq!(rewrite.description, "Angle Sum/Diff Identity");
+    }
+
+    #[test]
+    fn collapse_exact_one_shifted_quotient_rule_matches_sec_squared_identity() {
+        let mut ctx = Context::new();
+        let expr = parse("((sec(x)^2) + 1)/((1 + tan(x)^2) + 1)", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rule = CollapseExactOneShiftedQuotientRule;
+        let rewrite = rule
+            .apply(&mut ctx, expr, &parent_ctx)
+            .unwrap_or_else(|| panic!("rewrite"));
+        let one = ctx.num(1);
+
+        assert!(super::exprs_match_after_default_simplify(
+            &mut ctx,
+            rewrite.new_expr,
+            one
+        ));
+    }
+
+    #[test]
+    fn collapse_exact_one_shifted_quotient_rule_matches_half_angle_square_identity() {
+        let mut ctx = Context::new();
+        let expr = parse("((sin(x)^2) + 1)/(((1-cos(2*x))/2) + 1)", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rule = CollapseExactOneShiftedQuotientRule;
+        let rewrite = rule
+            .apply(&mut ctx, expr, &parent_ctx)
+            .unwrap_or_else(|| panic!("rewrite"));
+        let one = ctx.num(1);
+
+        assert!(super::exprs_match_after_default_simplify(
+            &mut ctx,
+            rewrite.new_expr,
+            one
+        ));
+    }
+
+    #[test]
+    fn collapse_exact_zero_common_scaled_difference_rule_matches_phase_shift_pair_sum() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "k*(sin(x)+cos(x)+sin(y)+cos(y)) - k*(sqrt(2)*sin(x+pi/4)+sqrt(2)*sin(y+pi/4))",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rule = CollapseExactZeroCommonScaledDifferenceRule;
+        let rewrite = rule
+            .apply(&mut ctx, expr, &parent_ctx)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "0"
+        );
+        assert_eq!(rewrite.description, "Phase Shift Identity");
+        assert!(!rewrite.substeps.is_empty());
+    }
+
+    #[test]
+    fn collapse_exact_one_shifted_quotient_rule_matches_phase_shift_pair_sum() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "((sin(x)+cos(x)+sin(y)+cos(y)) + 1)/((sqrt(2)*sin(x+pi/4)+sqrt(2)*sin(y+pi/4)) + 1)",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rule = CollapseExactOneShiftedQuotientRule;
+        let rewrite = rule
+            .apply(&mut ctx, expr, &parent_ctx)
+            .unwrap_or_else(|| panic!("rewrite"));
+        let expected = parse(
+            "(sqrt(2)*sin(x+pi/4)+sqrt(2)*sin(y+pi/4)+1)/(sqrt(2)*sin(x+pi/4)+sqrt(2)*sin(y+pi/4)+1)",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("parse expected: {err}"));
+
+        assert!(super::exprs_match_after_default_simplify(
+            &mut ctx,
+            rewrite.new_expr,
+            expected
+        ));
+        assert_eq!(rewrite.description, "Phase Shift Identity");
     }
 
     #[test]
@@ -4186,6 +5394,8 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(ExpandLogProductPowerToEnableCancellationRule));
     simplifier.add_rule(Box::new(ExpandLogAbsMulDivToEnableCancellationRule));
     simplifier.add_rule(Box::new(CollapseExactZeroThreeTermSubsetRule));
+    simplifier.add_rule(Box::new(CollapseExactZeroCommonScaledDifferenceRule));
+    simplifier.add_rule(Box::new(CollapseExactOneShiftedQuotientRule));
     simplifier.add_rule(Box::new(SubSelfToZeroRule)); // priority 500: before expansion
     simplifier.add_rule(Box::new(SubtractExpandedSumDiffCubesQuotientRule));
 

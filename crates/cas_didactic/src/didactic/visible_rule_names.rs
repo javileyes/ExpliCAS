@@ -150,6 +150,31 @@ pub(crate) fn visible_rule_name_for_step<'a>(
         {
             Cow::Borrowed("Aplicar suma a producto")
         }
+        "Collapse Exact Zero Additive Subexpression"
+            if description == "Product-to-Sum Identity" =>
+        {
+            Cow::Borrowed("Aplicar producto a suma")
+        }
+        "Collapse Exact Zero Additive Subexpression"
+            if description == "Angle Sum/Diff Identity" =>
+        {
+            Cow::Borrowed("Angle Sum/Diff Identity")
+        }
+        "Collapse Exact Zero Additive Subexpression"
+            if description == "Half-Angle Square Identity" =>
+        {
+            Cow::Borrowed("Aplicar identidad de ángulo mitad")
+        }
+        "Collapse Exact Zero Additive Subexpression"
+            if description == "Recognize Secant Squared" =>
+        {
+            Cow::Borrowed("Reconocer secante cuadrada")
+        }
+        "Collapse Exact Zero Additive Subexpression"
+            if description == "Recognize Cosecant Squared" =>
+        {
+            Cow::Borrowed("Reconocer cosecante cuadrada")
+        }
         "Collapse Exact Zero Additive Subexpression" if description == "Phase Shift Identity" => {
             Cow::Borrowed("Aplicar identidad de desfase")
         }

@@ -242,6 +242,111 @@ fn finish_standard_root_shortcut(
     (result, shortcut_steps)
 }
 
+fn build_root_shortcut_step_from_rewrite(
+    ctx: &Context,
+    before: ExprId,
+    rewrite: &crate::rule::Rewrite,
+    rule_name: &'static str,
+) -> Step {
+    let mut step = Step::with_snapshots(
+        &rewrite.description,
+        rule_name,
+        before,
+        rewrite.new_expr,
+        smallvec::SmallVec::<[crate::step::PathStep; 8]>::new(),
+        Some(ctx),
+        before,
+        rewrite.new_expr,
+    );
+    step.importance = crate::step::ImportanceLevel::High;
+    {
+        let meta = step.meta_mut();
+        meta.before_local = rewrite.before_local;
+        meta.after_local = rewrite.after_local;
+        meta.assumption_events = rewrite.assumption_events.clone();
+        meta.required_conditions = rewrite.required_conditions.clone();
+        meta.poly_proof = rewrite.poly_proof.clone();
+        meta.substeps = rewrite.substeps.clone();
+    }
+    step
+}
+
+fn build_root_shortcut_compact_step(
+    before: ExprId,
+    after: ExprId,
+    description: &'static str,
+    rule_name: &'static str,
+) -> Step {
+    let mut step = Step::new_compact(description, rule_name, before, after);
+    step.global_before = Some(before);
+    step.global_after = Some(after);
+    step.importance = crate::step::ImportanceLevel::High;
+    step
+}
+
+fn finish_root_shortcut_with_rewrite_meta(
+    ctx: &Context,
+    before: ExprId,
+    rewrite: crate::rule::Rewrite,
+    rule_name: &'static str,
+    collect_steps: bool,
+) -> (ExprId, Vec<Step>) {
+    let result = rewrite.new_expr;
+    let mut shortcut_steps = Vec::new();
+    if collect_steps {
+        shortcut_steps.push(build_root_shortcut_step_from_rewrite(
+            ctx, before, &rewrite, rule_name,
+        ));
+    }
+    (result, shortcut_steps)
+}
+
+fn build_signed_sum_expr_root(ctx: &mut Context, terms: &[(ExprId, Sign)]) -> ExprId {
+    let Some((first_expr, first_sign)) = terms.first().copied() else {
+        return ctx.num(0);
+    };
+    let mut acc = if first_sign == Sign::Neg {
+        ctx.add(Expr::Neg(first_expr))
+    } else {
+        first_expr
+    };
+    for (expr, sign) in terms.iter().copied().skip(1) {
+        let term = if sign == Sign::Neg {
+            ctx.add(Expr::Neg(expr))
+        } else {
+            expr
+        };
+        acc = ctx.add(Expr::Add(acc, term));
+    }
+    acc
+}
+
+fn strip_positive_one_passthrough_root(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    let view = AddView::from_expr(ctx, expr);
+    let mut stripped = false;
+    let mut residual_terms = Vec::new();
+
+    for (term_expr, term_sign) in view.terms {
+        let is_positive_one = term_sign == Sign::Pos
+            && matches!(
+                ctx.get(term_expr),
+                Expr::Number(n) if *n == num_rational::BigRational::from_integer(1.into())
+            );
+
+        if is_positive_one && !stripped {
+            stripped = true;
+            continue;
+        }
+        residual_terms.push((term_expr, term_sign));
+    }
+
+    if !stripped || residual_terms.is_empty() {
+        return None;
+    }
+
+    Some(build_signed_sum_expr_root(ctx, &residual_terms))
+}
+
 fn format_standard_simplify_square_root_shortcut_desc(
     kind: SimplifySquareRootRewriteKind,
 ) -> &'static str {
@@ -498,6 +603,142 @@ fn try_standard_sub_self_cancel_shortcut(
         "Subtraction Self-Cancel",
         collect_steps,
     ))
+}
+
+fn try_standard_exact_zero_equivalence_shortcut(
+    options: &crate::phase::SimplifyOptions,
+    ctx: &mut Context,
+    expr: ExprId,
+    collect_steps: bool,
+) -> Option<(ExprId, Vec<Step>)> {
+    let parent_ctx = build_root_shortcut_parent_ctx(options, ctx, expr);
+
+    let direct_rule = crate::rules::arithmetic::CollapseExactZeroThreeTermSubsetRule;
+    if let Some(rewrite) = crate::rule::Rule::apply(&direct_rule, ctx, expr, &parent_ctx) {
+        let zero = ctx.num(0);
+        if compare_expr(ctx, rewrite.new_expr, zero) == Ordering::Equal {
+            return Some(finish_root_shortcut_with_rewrite_meta(
+                ctx,
+                expr,
+                rewrite,
+                "Collapse Exact Zero Additive Subexpression",
+                collect_steps,
+            ));
+        }
+    }
+
+    let common_scale_rule = crate::rules::arithmetic::CollapseExactZeroCommonScaledDifferenceRule;
+    if let Some(rewrite) = crate::rule::Rule::apply(&common_scale_rule, ctx, expr, &parent_ctx) {
+        let zero = ctx.num(0);
+        if compare_expr(ctx, rewrite.new_expr, zero) == Ordering::Equal {
+            return Some(finish_root_shortcut_with_rewrite_meta(
+                ctx,
+                expr,
+                rewrite,
+                "Collapse Common-Scale Equivalent Difference",
+                collect_steps,
+            ));
+        }
+    }
+
+    None
+}
+
+fn try_standard_shifted_quotient_exact_one_shortcut(
+    options: &crate::phase::SimplifyOptions,
+    ctx: &mut Context,
+    expr: ExprId,
+    collect_steps: bool,
+) -> Option<(ExprId, Vec<Step>)> {
+    let parent_ctx = build_root_shortcut_parent_ctx(options, ctx, expr);
+    let rule = crate::rules::arithmetic::CollapseExactOneShiftedQuotientRule;
+    let rewrite = if let Some(rewrite) = crate::rule::Rule::apply(&rule, ctx, expr, &parent_ctx) {
+        rewrite
+    } else {
+        let Expr::Div(numerator, denominator) = ctx.get(expr) else {
+            return None;
+        };
+        let numerator = *numerator;
+        let denominator = *denominator;
+        let numerator_core = strip_positive_one_passthrough_root(ctx, numerator)?;
+        let denominator_core = strip_positive_one_passthrough_root(ctx, denominator)?;
+        let residual_difference = ctx.add(Expr::Sub(numerator_core, denominator_core));
+
+        let mut residual_simplifier = crate::Simplifier::with_default_rules();
+        std::mem::swap(&mut residual_simplifier.context, ctx);
+        let mut residual_orchestrator = Orchestrator::new();
+        residual_orchestrator.options = SimplifyOptions {
+            collect_steps: false,
+            suppress_depth_overflow_warnings: true,
+            ..options.clone()
+        };
+        let (residual_result, _residual_steps, _stats) =
+            residual_orchestrator.simplify_pipeline(residual_difference, &mut residual_simplifier);
+        std::mem::swap(&mut residual_simplifier.context, ctx);
+
+        let zero = ctx.num(0);
+        if compare_expr(ctx, residual_result, zero) != Ordering::Equal {
+            return None;
+        }
+
+        crate::rule::Rewrite::with_local(
+            ctx.add(Expr::Div(denominator, denominator)),
+            "Equivalent Residual Cancellation",
+            numerator,
+            denominator,
+        )
+    };
+
+    if let Expr::Div(numerator, denominator) = ctx.get(rewrite.new_expr) {
+        if compare_expr(ctx, *numerator, *denominator) == Ordering::Equal {
+            let one = ctx.num(1);
+            let mut shortcut_steps = Vec::new();
+            if collect_steps {
+                shortcut_steps.push(build_root_shortcut_step_from_rewrite(
+                    ctx,
+                    expr,
+                    &rewrite,
+                    "Collapse Shifted Quotient of Equivalent Expressions",
+                ));
+                shortcut_steps.push(build_root_shortcut_compact_step(
+                    rewrite.new_expr,
+                    one,
+                    "Cancelar numerador y denominador iguales",
+                    "Simplificar fracción",
+                ));
+            }
+            return Some((one, shortcut_steps));
+        }
+    }
+
+    let mut simplifier = crate::Simplifier::with_default_rules();
+    std::mem::swap(&mut simplifier.context, ctx);
+    let (result, inner_steps, _stats) = simplifier.simplify_with_stats(
+        rewrite.new_expr,
+        crate::SimplifyOptions {
+            suppress_depth_overflow_warnings: true,
+            ..crate::SimplifyOptions::default()
+        },
+    );
+    std::mem::swap(&mut simplifier.context, ctx);
+
+    let one = ctx.num(1);
+    if compare_expr(ctx, result, one) != Ordering::Equal {
+        return None;
+    }
+
+    let mut shortcut_steps = Vec::new();
+    if collect_steps {
+        shortcut_steps.push(build_root_shortcut_step_from_rewrite(
+            ctx,
+            expr,
+            &rewrite,
+            "Collapse Shifted Quotient of Equivalent Expressions",
+        ));
+        shortcut_steps.extend(inner_steps);
+    }
+
+    Some((result, shortcut_steps))
 }
 
 fn try_standard_subtract_expanded_sum_diff_cubes_quotient_shortcut(
@@ -1394,6 +1635,48 @@ impl Orchestrator {
             && is_real_domain_complex_noop_root(&simplifier.context, expr)
         {
             return (expr, Vec::new(), crate::phase::PipelineStats::default());
+        }
+
+        if matches!(
+            self.options.shared.context_mode,
+            crate::options::ContextMode::Standard | crate::options::ContextMode::Auto
+        ) {
+            let add_root = matches!(simplifier.context.get(expr), Expr::Add(_, _));
+            let sub_root = matches!(simplifier.context.get(expr), Expr::Sub(_, _));
+            let div_root = matches!(simplifier.context.get(expr), Expr::Div(_, _));
+
+            // These exact-equivalence shortcuts emit proper didactic steps, so keep
+            // them available even when the caller requested step collection.
+            if add_root || sub_root {
+                if let Some((result, shortcut_steps)) = try_standard_exact_zero_equivalence_shortcut(
+                    &self.options,
+                    &mut simplifier.context,
+                    expr,
+                    collect_steps,
+                ) {
+                    return (
+                        result,
+                        shortcut_steps,
+                        crate::phase::PipelineStats::default(),
+                    );
+                }
+            }
+            if div_root {
+                if let Some((result, shortcut_steps)) =
+                    try_standard_shifted_quotient_exact_one_shortcut(
+                        &self.options,
+                        &mut simplifier.context,
+                        expr,
+                        collect_steps,
+                    )
+                {
+                    return (
+                        result,
+                        shortcut_steps,
+                        crate::phase::PipelineStats::default(),
+                    );
+                }
+            }
         }
 
         if self.options.shared.context_mode == crate::options::ContextMode::Standard

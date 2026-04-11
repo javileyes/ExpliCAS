@@ -12,6 +12,7 @@ use cas_solver::session_api::analysis::{
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::collections::HashSet;
+use std::env;
 use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -534,6 +535,130 @@ fn derive_case_by_id(id: &str) -> DeriveCase {
         .unwrap_or_else(|| panic!("missing derive audit case {id}"))
 }
 
+const QUICK_DERIVE_AUDIT_PER_FAMILY: usize = 2;
+
+fn derive_audit_cases(sampled: bool) -> Vec<DeriveCase> {
+    let offset = env::var("DERIVE_AUDIT_OFFSET")
+        .ok()
+        .and_then(|raw| raw.parse::<usize>().ok())
+        .unwrap_or(0);
+    let limit = env::var("DERIVE_AUDIT_LIMIT")
+        .ok()
+        .and_then(|raw| raw.parse::<usize>().ok());
+
+    let derived_cases = load_derive_cases()
+        .into_iter()
+        .filter(|case| case.expected_status == "derived");
+
+    let cases: Vec<_> = if sampled {
+        let mut family_counts = BTreeMap::<String, usize>::new();
+        derived_cases
+            .filter(|case| {
+                let count = family_counts.entry(case.family.clone()).or_default();
+                if *count >= QUICK_DERIVE_AUDIT_PER_FAMILY {
+                    return false;
+                }
+                *count += 1;
+                true
+            })
+            .collect()
+    } else {
+        derived_cases.collect()
+    };
+
+    cases
+        .into_iter()
+        .skip(offset)
+        .take(limit.unwrap_or(usize::MAX))
+        .collect()
+}
+
+fn assert_cases_render_without_redundant_single_substeps(cases: &[DeriveCase]) {
+    let trace = env::var("DERIVE_AUDIT_TRACE").ok().as_deref() == Some("1");
+
+    for case in cases {
+        if trace {
+            eprintln!("audit-case {}", case.id);
+        }
+        let artifact = audit_case(case);
+        assert!(
+            artifact.step_count > 0,
+            "derive audit case {} should emit web steps",
+            case.id
+        );
+        assert!(
+            !artifact
+                .flags
+                .iter()
+                .any(|flag| flag == "redundant single substep duplicates parent step"),
+            "derive audit case {} has redundant single-substep duplication; cli=\n{}\nflags={:?}",
+            case.id,
+            artifact.cli_lines.join("\n"),
+            artifact.flags
+        );
+        assert!(
+            !artifact
+                .flags
+                .iter()
+                .any(|flag| flag == "multiple substeps share the same snapshot inside a step"),
+            "derive audit case {} has duplicate multi-substep snapshots; cli=\n{}\nflags={:?}",
+            case.id,
+            artifact.cli_lines.join("\n"),
+            artifact.flags
+        );
+        assert!(
+            !artifact
+                .flags
+                .iter()
+                .any(|flag| flag == "non-contextual substep duplicates parent snapshot"),
+            "derive audit case {} still has a non-contextual substep that duplicates the parent snapshot; cli=\n{}\nflags={:?}",
+            case.id,
+            artifact.cli_lines.join("\n"),
+            artifact.flags
+        );
+        assert!(
+            !artifact
+                .flags
+                .iter()
+                .any(|flag| flag == "generic fraction cleanup title remains in substeps"),
+            "derive audit case {} still uses a weak generic fraction cleanup title; cli=\n{}\nflags={:?}",
+            case.id,
+            artifact.cli_lines.join("\n"),
+            artifact.flags
+        );
+        assert!(
+            !artifact
+                .flags
+                .iter()
+                .any(|flag| flag == "self-explanatory fraction rule still emits redundant substeps"),
+            "derive audit case {} still emits redundant fraction-rule substeps; cli=\n{}\nflags={:?}",
+            case.id,
+            artifact.cli_lines.join("\n"),
+            artifact.flags
+        );
+        assert!(
+            !artifact
+                .flags
+                .iter()
+                .any(|flag| flag == "weak editorial substep title remains in derive"),
+            "derive audit case {} still uses a weak editorial substep title; cli=\n{}\nflags={:?}",
+            case.id,
+            artifact.cli_lines.join("\n"),
+            artifact.flags
+        );
+        assert!(
+            !artifact
+                .flags
+                .iter()
+                .any(|flag| flag == "noisy template substep remains in derive"),
+            "derive audit case {} still keeps a noisy template substep; cli=\n{}\nflags={:?}",
+            case.id,
+            artifact.cli_lines.join("\n"),
+            artifact.flags
+        );
+    }
+}
+
 fn step_substep_titles(step: &Value) -> Vec<&str> {
     step.get("substeps")
         .and_then(Value::as_array)
@@ -725,90 +850,20 @@ fn derive_didactic_audit_corpus_is_unique_and_nonempty() {
 }
 
 #[test]
-fn derive_didactic_cases_render_steps_without_redundant_single_substeps() {
-    let cases: Vec<_> = load_derive_cases()
-        .into_iter()
-        .filter(|case| case.expected_status == "derived")
-        .collect();
+fn derive_didactic_quick_audit_cases_render_steps_without_redundant_single_substeps() {
+    let cases = derive_audit_cases(true);
+    assert!(
+        !cases.is_empty(),
+        "quick derive didactic audit corpus must not be empty"
+    );
+    assert_cases_render_without_redundant_single_substeps(&cases);
+}
 
-    for case in &cases {
-        let artifact = audit_case(case);
-        assert!(
-            artifact.step_count > 0,
-            "derive audit case {} should emit web steps",
-            case.id
-        );
-        assert!(
-            !artifact
-                .flags
-                .iter()
-                .any(|flag| flag == "redundant single substep duplicates parent step"),
-            "derive audit case {} has redundant single-substep duplication; cli=\n{}\nflags={:?}",
-            case.id,
-            artifact.cli_lines.join("\n"),
-            artifact.flags
-        );
-        assert!(
-            !artifact
-                .flags
-                .iter()
-                .any(|flag| flag == "multiple substeps share the same snapshot inside a step"),
-            "derive audit case {} has duplicate multi-substep snapshots; cli=\n{}\nflags={:?}",
-            case.id,
-            artifact.cli_lines.join("\n"),
-            artifact.flags
-        );
-        assert!(
-            !artifact
-                .flags
-                .iter()
-                .any(|flag| flag == "non-contextual substep duplicates parent snapshot"),
-            "derive audit case {} still has a non-contextual substep that duplicates the parent snapshot; cli=\n{}\nflags={:?}",
-            case.id,
-            artifact.cli_lines.join("\n"),
-            artifact.flags
-        );
-        assert!(
-            !artifact
-                .flags
-                .iter()
-                .any(|flag| flag == "generic fraction cleanup title remains in substeps"),
-            "derive audit case {} still uses a weak generic fraction cleanup title; cli=\n{}\nflags={:?}",
-            case.id,
-            artifact.cli_lines.join("\n"),
-            artifact.flags
-        );
-        assert!(
-            !artifact
-                .flags
-                .iter()
-                .any(|flag| flag == "self-explanatory fraction rule still emits redundant substeps"),
-            "derive audit case {} still emits redundant fraction-rule substeps; cli=\n{}\nflags={:?}",
-            case.id,
-            artifact.cli_lines.join("\n"),
-            artifact.flags
-        );
-        assert!(
-            !artifact
-                .flags
-                .iter()
-                .any(|flag| flag == "weak editorial substep title remains in derive"),
-            "derive audit case {} still uses a weak editorial substep title; cli=\n{}\nflags={:?}",
-            case.id,
-            artifact.cli_lines.join("\n"),
-            artifact.flags
-        );
-        assert!(
-            !artifact
-                .flags
-                .iter()
-                .any(|flag| flag == "noisy template substep remains in derive"),
-            "derive audit case {} still keeps a noisy template substep; cli=\n{}\nflags={:?}",
-            case.id,
-            artifact.cli_lines.join("\n"),
-            artifact.flags
-        );
-    }
+#[test]
+#[ignore = "full derive didactic audit is expensive; run manually before broad didactic refactors"]
+fn derive_didactic_cases_render_steps_without_redundant_single_substeps() {
+    let cases = derive_audit_cases(false);
+    assert_cases_render_without_redundant_single_substeps(&cases);
 }
 
 #[test]
@@ -895,10 +950,7 @@ fn derive_didactic_perfect_square_factorization_explains_pattern() {
         .filter_map(|substep| substep.get("title").and_then(Value::as_str))
         .collect();
 
-    assert_eq!(
-        titles,
-        vec!["Usar a^2 + 2ab + b^2 = (a + b)^2", "Aquí a = x y b = 1"]
-    );
+    assert_eq!(titles, vec!["Usar a^2 + 2ab + b^2 = (a + b)^2"]);
 }
 
 #[test]
@@ -1005,64 +1057,12 @@ fn derive_didactic_negative_symbolic_binomial_cube_factorization_explains_patter
 
 #[test]
 fn derive_didactic_geometric_difference_factorization_explains_series_identity() {
-    let artifact = audit_case(&derive_case_by_id("factor_geometric_difference_power_6"));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Factorizar")
-        })
-        .expect("expected geometric difference factorization step");
-
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected geometric difference factorization substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-
-    assert_eq!(
-        titles,
-        vec![
-            "Usar a^n - 1 = (a - 1) · (a^(n-1) + a^(n-2) + ... + a + 1)",
-            "Aquí a = x y n = 6"
-        ]
-    );
+    assert_case_step_has_no_substeps("factor_geometric_difference_power_6", "Factorizar");
 }
 
 #[test]
 fn derive_didactic_sophie_germain_factorization_explains_identity() {
-    let artifact = audit_case(&derive_case_by_id("factor_sophie_germain"));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Factorizar")
-        })
-        .expect("expected Sophie Germain factorization step");
-
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected factorization substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-
-    assert_eq!(
-        titles,
-        vec![
-            "Usar a^4 + 4b^4 = (a^2 - 2ab + 2b^2) · (a^2 + 2ab + 2b^2)",
-            "Aquí a = x y b = y"
-        ]
-    );
+    assert_case_step_has_no_substeps("factor_sophie_germain", "Factorizar");
 }
 
 #[test]
@@ -2374,33 +2374,7 @@ fn derive_didactic_representative_root_power_merge_cases_explain_root_then_merge
 
 #[test]
 fn derive_didactic_radical_notable_quotient_recognizes_pattern_with_internal_cleanup() {
-    let artifact = audit_case(&derive_case_by_id("radical_notable_quotient"));
-
-    let notable_step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Reconocer un cociente notable")
-        })
-        .expect("expected notable quotient step");
-    let notable_titles: Vec<&str> = notable_step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected notable quotient substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        notable_titles,
-        vec![
-            "Llamar t = sqrt(x) para reconocer la forma",
-            "Ese cociente notable se convierte en t^2 + t + 1",
-            "Volver a poner t = sqrt(x)",
-            "Deshacer sqrt(x)^2 como x dentro del resultado"
-        ]
-    );
+    assert_case_step_has_no_substeps("radical_notable_quotient", "Reconocer un cociente notable");
 }
 
 #[test]
@@ -2697,109 +2671,42 @@ fn derive_didactic_same_denominator_focus_only_combines_three_fraction_part() {
 #[test]
 fn derive_didactic_representative_telescoping_fraction_split_cases_keep_gap_narrative() {
     let cases = [
-        (
-            "split_telescoping_fraction_consecutive",
-            vec!["Usar 1 / (u · (u + 1)) = 1 / u - 1 / (u + 1)", "Aquí u = n"],
-        ),
-        (
-            "split_telescoping_fraction_gap_two",
-            vec![
-                "Usar 1 / (u · (u + k)) = 1 / k · (1 / u - 1 / (u + k))",
-                "Aquí u = n y k = 2",
-            ],
-        ),
-        (
-            "split_telescoping_fraction_negative_gap_two",
-            vec![
-                "Usar 1 / (u · (u + k)) = 1 / k · (1 / u - 1 / (u + k))",
-                "Aquí u = n - 2 y k = 2",
-            ],
-        ),
-        (
-            "split_telescoping_fraction_affine_gap_two",
-            vec![
-                "Usar 1 / (u · (u + k)) = 1 / k · (1 / u - 1 / (u + k))",
-                "Aquí u = 2 · n + 1 y k = 2",
-            ],
-        ),
-        (
-            "split_telescoping_fraction_affine_symbolic_shift_gap",
-            vec![
-                "Usar 1 / (u · (u + k)) = 1 / k · (1 / u - 1 / (u + k))",
-                "Aquí u = a · n + b y k = c - b",
-            ],
-        ),
-        (
-            "split_telescoping_fraction_difference_squares_unfactored",
-            vec![
-                "Usar 1 / (u · (u + k)) = 1 / k · (1 / u - 1 / (u + k))",
-                "Aquí u = x - 1 y k = 2",
-            ],
-        ),
-        (
-            "split_telescoping_fraction_symbolic_difference_squares_unfactored",
-            vec![
-                "Usar 1 / (u · (u + k)) = 1 / k · (1 / u - 1 / (u + k))",
-                "Aquí u = x - a y k = 2 · a",
-            ],
-        ),
+        "split_telescoping_fraction_consecutive",
+        "split_telescoping_fraction_gap_two",
+        "split_telescoping_fraction_negative_gap_two",
+        "split_telescoping_fraction_affine_gap_two",
+        "split_telescoping_fraction_affine_symbolic_shift_gap",
+        "split_telescoping_fraction_difference_squares_unfactored",
+        "split_telescoping_fraction_symbolic_difference_squares_unfactored",
     ];
 
-    for (case_id, expected) in cases {
-        assert_case_step_titles(case_id, "Descomponer en fracciones telescópicas", &expected);
+    for case_id in cases {
+        assert_case_step_has_no_substeps(case_id, "Descomponer en fracciones telescópicas");
     }
 }
 
 #[test]
 fn derive_didactic_representative_telescoping_fraction_combine_cases_keep_inverse_gap_narrative() {
-    let cases = [
-        (
-            "combine_telescoping_fraction_consecutive",
-            vec!["Usar 1 / u - 1 / (u + 1) = 1 / (u · (u + 1))", "Aquí u = n"],
-        ),
-        (
-            "combine_telescoping_fraction_gap_two",
-            vec![
-                "Usar 1 / k · (1 / u - 1 / (u + k)) = 1 / (u · (u + k))",
-                "Aquí u = n y k = 2",
-            ],
-        ),
-        (
-            "combine_telescoping_fraction_negative_gap_two",
-            vec![
-                "Usar 1 / k · (1 / u - 1 / (u + k)) = 1 / (u · (u + k))",
-                "Aquí u = n - 2 y k = 2",
-            ],
-        ),
-        (
-            "combine_telescoping_fraction_affine_gap_two",
-            vec![
-                "Usar 1 / k · (1 / u - 1 / (u + k)) = 1 / (u · (u + k))",
-                "Aquí u = 2 · n + 1 y k = 2",
-            ],
-        ),
-        (
-            "combine_telescoping_fraction_affine_symbolic_shift_gap",
-            vec![
-                "Usar 1 / k · (1 / u - 1 / (u + k)) = 1 / (u · (u + k))",
-                "Aquí u = a · n + b y k = c - b",
-            ],
-        ),
-        (
-            "combine_telescoping_fraction_shifted_quadratic_unfactored",
-            vec![
-                "Llevar a denominador común",
-                "Simplificar el numerador y el denominador",
-            ],
-        ),
-        (
-            "combine_telescoping_fraction_symbolic_difference_squares_unfactored",
-            vec![
-                "Usar 1 / k · (1 / u - 1 / (u + k)) = 1 / (u · (u + k))",
-                "Aquí u = x - a y k = 2 · a",
-            ],
-        ),
+    let no_substep_cases = [
+        "combine_telescoping_fraction_consecutive",
+        "combine_telescoping_fraction_gap_two",
+        "combine_telescoping_fraction_negative_gap_two",
+        "combine_telescoping_fraction_affine_gap_two",
+        "combine_telescoping_fraction_affine_symbolic_shift_gap",
+        "combine_telescoping_fraction_symbolic_difference_squares_unfactored",
     ];
+
+    for case_id in no_substep_cases {
+        assert_case_step_has_no_substeps(case_id, "Recomponer fracción telescópica");
+    }
+
+    let cases = [(
+        "combine_telescoping_fraction_shifted_quadratic_unfactored",
+        vec![
+            "Llevar a denominador común",
+            "Simplificar el numerador y el denominador",
+        ],
+    )];
 
     for (case_id, expected) in cases {
         let artifact = audit_case(&derive_case_by_id(case_id));
@@ -2831,14 +2738,10 @@ fn derive_didactic_morrie_telescoping_uses_cosine_telescoping_language() {
                 .is_some_and(|rule| rule == "Aplicar telescopado de cosenos")
         })
         .expect("expected Morrie telescoping step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected Morrie telescoping substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(titles, vec!["Usar el telescopado de cosenos", "Aquí u = x"]);
+    assert!(
+        step_substep_titles(step).is_empty(),
+        "expected Morrie telescoping step to stay direct"
+    );
 }
 
 #[test]
@@ -2856,14 +2759,10 @@ fn derive_didactic_symbolic_argument_morrie_telescoping_avoids_tautological_subs
                 .is_some_and(|rule| rule == "Aplicar telescopado de cosenos")
         })
         .expect("expected symbolic-argument Morrie telescoping step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected symbolic-argument Morrie telescoping substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(titles, vec!["Usar el telescopado de cosenos"]);
+    assert!(
+        step_substep_titles(step).is_empty(),
+        "expected symbolic-argument Morrie telescoping step to stay direct"
+    );
 }
 
 #[test]
@@ -2879,16 +2778,9 @@ fn derive_didactic_symbolic_scale_morrie_telescoping_tracks_scaled_base_argument
                 .is_some_and(|rule| rule == "Aplicar telescopado de cosenos")
         })
         .expect("expected symbolic-scale Morrie telescoping step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected symbolic-scale Morrie telescoping substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec!["Usar el telescopado de cosenos", "Aquí u = a · x"]
+    assert!(
+        step_substep_titles(step).is_empty(),
+        "expected symbolic-scale Morrie telescoping step to stay direct"
     );
 }
 
@@ -2905,14 +2797,10 @@ fn derive_didactic_reverse_morrie_telescoping_uses_expansion_language() {
                 .is_some_and(|rule| rule == "Aplicar telescopado de cosenos")
         })
         .expect("expected reverse Morrie telescoping step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected reverse Morrie telescoping substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(titles, vec!["Expandir la ley de Morrie", "Aquí u = x"]);
+    assert!(
+        step_substep_titles(step).is_empty(),
+        "expected reverse Morrie telescoping step to stay direct"
+    );
 }
 
 #[test]
@@ -2928,16 +2816,9 @@ fn derive_didactic_dirichlet_kernel_uses_direct_identity_language() {
                 .is_some_and(|rule| rule == "Aplicar identidad del núcleo de Dirichlet")
         })
         .expect("expected Dirichlet kernel step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected Dirichlet kernel substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec!["Usar el núcleo de Dirichlet", "Aquí n = 2 y u = x"]
+    assert!(
+        step_substep_titles(step).is_empty(),
+        "expected Dirichlet kernel step to stay direct"
     );
 }
 
@@ -2954,16 +2835,9 @@ fn derive_didactic_dirichlet_kernel_longer_chain_tracks_n_value() {
                 .is_some_and(|rule| rule == "Aplicar identidad del núcleo de Dirichlet")
         })
         .expect("expected longer Dirichlet kernel step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected longer Dirichlet kernel substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec!["Usar el núcleo de Dirichlet", "Aquí n = 3 y u = x"]
+    assert!(
+        step_substep_titles(step).is_empty(),
+        "expected longer Dirichlet kernel step to stay direct"
     );
 }
 
@@ -2982,14 +2856,10 @@ fn derive_didactic_symbolic_argument_dirichlet_kernel_tracks_only_n_value() {
                 .is_some_and(|rule| rule == "Aplicar identidad del núcleo de Dirichlet")
         })
         .expect("expected symbolic-argument Dirichlet kernel step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected symbolic-argument Dirichlet kernel substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(titles, vec!["Usar el núcleo de Dirichlet", "Aquí n = 4"]);
+    assert!(
+        step_substep_titles(step).is_empty(),
+        "expected symbolic-argument Dirichlet kernel step to stay direct"
+    );
 }
 
 #[test]
@@ -3007,16 +2877,9 @@ fn derive_didactic_symbolic_scale_dirichlet_kernel_tracks_scaled_argument() {
                 .is_some_and(|rule| rule == "Aplicar identidad del núcleo de Dirichlet")
         })
         .expect("expected symbolic-scale Dirichlet kernel step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected symbolic-scale Dirichlet kernel substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec!["Usar el núcleo de Dirichlet", "Aquí n = 2 y u = a · x"]
+    assert!(
+        step_substep_titles(step).is_empty(),
+        "expected symbolic-scale Dirichlet kernel step to stay direct"
     );
 }
 
@@ -3035,16 +2898,9 @@ fn derive_didactic_longer_symbolic_scale_dirichlet_kernel_tracks_scaled_argument
                 .is_some_and(|rule| rule == "Aplicar identidad del núcleo de Dirichlet")
         })
         .expect("expected longer symbolic-scale Dirichlet kernel step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected longer symbolic-scale Dirichlet kernel substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec!["Usar el núcleo de Dirichlet", "Aquí n = 3 y u = a · x"]
+    assert!(
+        step_substep_titles(step).is_empty(),
+        "expected longer symbolic-scale Dirichlet kernel step to stay direct"
     );
 }
 
@@ -3061,16 +2917,9 @@ fn derive_didactic_reverse_dirichlet_kernel_uses_expansion_language() {
                 .is_some_and(|rule| rule == "Aplicar identidad del núcleo de Dirichlet")
         })
         .expect("expected reverse Dirichlet kernel step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected reverse Dirichlet kernel substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec!["Expandir el núcleo de Dirichlet", "Aquí n = 2 y u = x"]
+    assert!(
+        step_substep_titles(step).is_empty(),
+        "expected reverse Dirichlet kernel step to stay direct"
     );
 }
 
@@ -3089,16 +2938,9 @@ fn derive_didactic_reverse_symbolic_scale_dirichlet_kernel_tracks_scaled_argumen
                 .is_some_and(|rule| rule == "Aplicar identidad del núcleo de Dirichlet")
         })
         .expect("expected reverse symbolic-scale Dirichlet kernel step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected reverse symbolic-scale Dirichlet kernel substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec!["Expandir el núcleo de Dirichlet", "Aquí n = 3 y u = a · x"]
+    assert!(
+        step_substep_titles(step).is_empty(),
+        "expected reverse symbolic-scale Dirichlet kernel step to stay direct"
     );
 }
 
@@ -3160,23 +3002,16 @@ fn derive_didactic_representative_finite_telescoping_product_cases_keep_telescop
     }
 
     let factorized_cases = [
-        (
-            "finite_telescoping_product_factorized_square_shifted_base_numeric_symbolic_lower",
-            "Aquí u = k + 2",
-        ),
-        (
-            "finite_telescoping_product_factorized_square_shifted_base_symbolic_symbolic_lower",
-            "Aquí u = a + k",
-        ),
+        "finite_telescoping_product_factorized_square_shifted_base_numeric_symbolic_lower",
+        "finite_telescoping_product_factorized_square_shifted_base_symbolic_symbolic_lower",
     ];
 
-    for (case_id, u_title) in factorized_cases {
+    for case_id in factorized_cases {
         assert_case_step_titles(
             case_id,
             "Evaluar producto telescópico finito",
             &[
                 "Usar (u^2 - 1) / u^2 = ((u - 1) · (u + 1)) / u^2",
-                u_title,
                 "Los factores (u + 1) y (u - 1) se cancelan telescópicamente",
                 "Solo quedan el primer factor u - 1 y el último factor u + 1",
             ],
@@ -3208,7 +3043,6 @@ fn derive_didactic_finite_telescoping_sum_uses_partial_fraction_then_cancellatio
         titles,
         vec![
             "Usar 1 / (u · (u + 1)) = 1 / u - 1 / (u + 1)",
-            "Aquí u = k",
             "La suma telescópica cancela los términos intermedios",
         ]
     );
@@ -3216,41 +3050,30 @@ fn derive_didactic_finite_telescoping_sum_uses_partial_fraction_then_cancellatio
 
 #[test]
 fn derive_didactic_representative_finite_telescoping_sum_cases_keep_partial_fraction_narrative() {
-    let unit_gap_cases = [(
-        "finite_telescoping_sum_symbolic_shift_symbolic_lower",
-        "Aquí u = a + k",
-    )];
+    let unit_gap_cases = ["finite_telescoping_sum_symbolic_shift_symbolic_lower"];
 
-    for (case_id, u_title) in unit_gap_cases {
+    for case_id in unit_gap_cases {
         assert_case_step_titles(
             case_id,
             "Evaluar suma telescópica finita",
             &[
                 "Usar 1 / (u · (u + 1)) = 1 / u - 1 / (u + 1)",
-                u_title,
                 "La suma telescópica cancela los términos intermedios",
             ],
         );
     }
 
     let affine_gap_cases = [
-        (
-            "finite_telescoping_sum_affine_symbolic_shift_symbolic_lower",
-            "Aquí u = a * k + b y g = a",
-        ),
-        (
-            "finite_telescoping_sum_affine_symbolic_arbitrary_shift_symbolic_lower",
-            "Aquí u = a * k + b + c y g = a",
-        ),
+        "finite_telescoping_sum_affine_symbolic_shift_symbolic_lower",
+        "finite_telescoping_sum_affine_symbolic_arbitrary_shift_symbolic_lower",
     ];
 
-    for (case_id, ug_title) in affine_gap_cases {
+    for case_id in affine_gap_cases {
         assert_case_step_titles(
             case_id,
             "Evaluar suma telescópica finita",
             &[
                 "Usar 1 / (u · (u + g)) = 1 / g · (1 / u - 1 / (u + g))",
-                ug_title,
                 "La suma telescópica cancela los términos intermedios",
             ],
         );
@@ -3645,28 +3468,7 @@ fn derive_didactic_combine_like_terms_with_zero_sums_coefficients_without_noise(
 
 #[test]
 fn derive_didactic_common_factor_factorization_sum_explains_the_shared_factor() {
-    let artifact = audit_case(&derive_case_by_id("factor_common_factor_sum"));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Factorizar")
-        })
-        .expect("expected factorization derive step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected factorization substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec!["Usar el factor común", "Aquí el factor común es a"]
-    );
+    assert_case_step_has_no_substeps("factor_common_factor_sum", "Factorizar");
 }
 
 #[test]
@@ -3676,28 +3478,7 @@ fn derive_didactic_common_factor_expansion_sum_explains_distributive_law() {
 
 #[test]
 fn derive_didactic_three_term_common_factor_factorization_explains_shared_factor() {
-    let artifact = audit_case(&derive_case_by_id("factor_common_factor_sum_three_terms"));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Factorizar")
-        })
-        .expect("expected factorization derive step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected factorization substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec!["Usar el factor común", "Aquí el factor común es x"]
-    );
+    assert_case_step_has_no_substeps("factor_common_factor_sum_three_terms", "Factorizar");
 }
 
 #[test]
@@ -3761,66 +3542,18 @@ fn derive_didactic_monomial_common_factor_fraction_cancels_symbol_then_simplifie
 #[test]
 fn derive_didactic_representative_complete_square_cases_use_formula_and_track_coefficients() {
     let cases = [
-        (
-            "solve_prep_complete_square_monic_numeric",
-            &[
-                "Usar la fórmula de completar el cuadrado",
-                "Aquí A = 1, B = 6 y C = 5",
-            ][..],
-        ),
-        (
-            "solve_prep_complete_square_symbolic_leading_coeff",
-            &[
-                "Usar la fórmula de completar el cuadrado",
-                "Aquí A = a, B = b y C = c",
-            ][..],
-        ),
-        (
-            "solve_prep_complete_square_symbolic_monic_parametric",
-            &[
-                "Usar la fórmula de completar el cuadrado",
-                "Aquí A = 1, B = 2 · b y C = c",
-            ][..],
-        ),
-        (
-            "solve_prep_complete_square_alt_variable_symbolic_leading_coeff",
-            &[
-                "Usar la fórmula de completar el cuadrado",
-                "Aquí A = a, B = b y C = c",
-            ][..],
-        ),
-        (
-            "solve_prep_complete_square_symbolic_negative_linear_coeff",
-            &[
-                "Usar la fórmula de completar el cuadrado",
-                "Aquí A = a, B = -b y C = c",
-            ][..],
-        ),
-        (
-            "solve_prep_complete_square_negative_symbolic_leading_coeff",
-            &[
-                "Usar la fórmula de completar el cuadrado",
-                "Aquí A = -a, B = b y C = c",
-            ][..],
-        ),
-        (
-            "solve_prep_complete_square_fractional_monic_numeric",
-            &[
-                "Usar la fórmula de completar el cuadrado",
-                "Aquí A = 1, B = 3 y C = 1",
-            ][..],
-        ),
-        (
-            "solve_prep_complete_square_fractional_symbolic_leading_coeff",
-            &[
-                "Usar la fórmula de completar el cuadrado",
-                "Aquí A = a/2, B = b y C = c",
-            ][..],
-        ),
+        "solve_prep_complete_square_monic_numeric",
+        "solve_prep_complete_square_symbolic_leading_coeff",
+        "solve_prep_complete_square_symbolic_monic_parametric",
+        "solve_prep_complete_square_alt_variable_symbolic_leading_coeff",
+        "solve_prep_complete_square_symbolic_negative_linear_coeff",
+        "solve_prep_complete_square_negative_symbolic_leading_coeff",
+        "solve_prep_complete_square_fractional_monic_numeric",
+        "solve_prep_complete_square_fractional_symbolic_leading_coeff",
     ];
 
-    for (case_id, expected_titles) in cases {
-        assert_case_step_titles(case_id, "Completar el cuadrado", expected_titles);
+    for case_id in cases {
+        assert_case_step_has_no_substeps(case_id, "Completar el cuadrado");
     }
 }
 

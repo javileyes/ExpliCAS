@@ -11,6 +11,7 @@ pub(super) fn render_static_template(
         })
 }
 
+#[allow(dead_code)]
 pub(super) fn push_rendered_static_template(
     out: &mut String,
     template: &str,
@@ -46,6 +47,7 @@ macro_rules! render_timeline_asset {
 
 pub(super) use render_timeline_asset;
 
+#[allow(unused_macros)]
 macro_rules! push_timeline_asset {
     ($out:expr, $relative:literal, $replacements:expr $(,)?) => {
         $crate::timeline::render_template::push_rendered_static_template(
@@ -60,6 +62,7 @@ macro_rules! push_timeline_asset {
     };
 }
 
+#[allow(unused_imports)]
 pub(super) use push_timeline_asset;
 
 #[cfg(test)]
