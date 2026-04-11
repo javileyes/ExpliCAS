@@ -7,38 +7,17 @@ pub(super) fn generate_exact_cube_quotient_substeps(
     after: ExprId,
     hints: &cas_formatter::DisplayContext,
 ) -> Vec<SubStep> {
-    let Some(base) = extract_exact_quotient_base(ctx, before, after) else {
+    let Some(_base) = extract_exact_quotient_base(ctx, before, after) else {
         return Vec::new();
     };
 
-    let base_latex = rationalization_latex(ctx, hints, base);
-    let base_display = human_expr_from_latex(&base_latex);
-    let after_display = human_expr_from_latex(&rationalization_latex(ctx, hints, after));
-    let after_latex = rationalization_latex(ctx, hints, after);
-
-    vec![
-        SubStep::new(
-            format!("Llamar t = {} para reconocer la forma", base_display),
-            base_display.clone(),
-            "t".to_string(),
-        )
-        .with_before_latex(base_latex.clone())
-        .with_after_latex("t"),
-        SubStep::new(
-            "Ese cociente notable se convierte en t^2 + t + 1",
-            "(t^3 - 1)/(t - 1)",
-            "t^2 + t + 1",
-        )
-        .with_before_latex("\\frac{t^{3} - 1}{t - 1}")
-        .with_after_latex("t^{2} + t + 1"),
-        SubStep::new(
-            format!("Volver a poner t = {}", base_display),
-            "t^2 + t + 1",
-            after_display,
-        )
-        .with_before_latex("t^{2} + t + 1")
-        .with_after_latex(after_latex),
-    ]
+    vec![SubStep::new(
+        "Usar (u^3 - 1) / (u - 1) = u^2 + u + 1",
+        human_expr_from_latex(&rationalization_latex(ctx, hints, before)),
+        human_expr_from_latex(&rationalization_latex(ctx, hints, after)),
+    )
+    .with_before_latex(rationalization_latex(ctx, hints, before))
+    .with_after_latex(rationalization_latex(ctx, hints, after))]
 }
 
 fn extract_exact_quotient_base(ctx: &Context, before: ExprId, after: ExprId) -> Option<ExprId> {

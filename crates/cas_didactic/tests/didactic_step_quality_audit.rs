@@ -340,15 +340,6 @@ fn didactic_step_quality_priority_cases_use_multiphase_human_narratives() {
             ],
         ),
         (
-            "cube_quotient_radical",
-            &[
-                "Llamar t = sqrt(x) para reconocer la forma",
-                "Ese cociente notable se convierte en t^2 + t + 1",
-                "Volver a poner t = sqrt(x)",
-                "Reemplazar ese bloque en la expresión",
-            ],
-        ),
-        (
             "geometric_product_cancellation",
             &[
                 "Distribuir cada término del producto",

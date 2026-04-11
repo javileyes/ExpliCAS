@@ -666,26 +666,18 @@ fn generate_same_base_power_merge_substeps(ctx: &Context, step: &Step) -> Vec<Su
 }
 
 fn generate_odd_half_power_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+
+    if let Some(plan) = odd_half_power_simplify_plan(ctx, before, after) {
+        return build_odd_half_power_simplify_substeps(ctx, after, plan, None);
+    }
+
     if let Some(substeps) = generate_odd_half_power_simplify_substeps(ctx, step) {
         return substeps;
     }
 
-    vec![
-        formula_substep(
-            "Separar la mitad entera de la mitad radical",
-            "u^((2k+1)/2)",
-            "|u|^k · sqrt(u)",
-            "u^{\\frac{2k+1}{2}}",
-            "|u|^k\\cdot \\sqrt{u}",
-        ),
-        formula_substep(
-            "Usar que queda una raíz cuadrada del mismo factor",
-            "u^(k + 1/2)",
-            "|u|^k · sqrt(u)",
-            "u^{k + \\frac{1}{2}}",
-            "|u|^k\\cdot \\sqrt{u}",
-        ),
-    ]
+    Vec::new()
 }
 
 fn generate_expand_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
@@ -886,27 +878,8 @@ fn generate_factorization_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
         )];
     }
 
-    if let Some((a, b, c)) = alternating_cubic_vandermonde_plan(ctx, before, after) {
-        let partial_display = format!("({a} - {b}) · ({a} - {c}) · ({b} - {c}) · L({a},{b},{c})");
-        let partial_latex =
-            format!("\\left({a} - {b}\\right)\\left({a} - {c}\\right)\\left({b} - {c}\\right)L({a},{b},{c})");
-
-        return vec![
-            formula_substep(
-                "Si dos variables coinciden, la expresión vale 0",
-                "F(a,b,c)",
-                "(a - b) · (a - c) · (b - c) · L(a,b,c)",
-                "F(a,b,c)",
-                "\\left(a - b\\right)\\left(a - c\\right)\\left(b - c\\right)L(a,b,c)",
-            ),
-            formula_substep(
-                "El factor restante es lineal y simétrico",
-                &partial_display,
-                &human_expr(ctx, after),
-                &partial_latex,
-                &latex_expr(ctx, after),
-            ),
-        ];
+    if alternating_cubic_vandermonde_plan(ctx, before, after).is_some() {
+        return Vec::new();
     }
 
     Vec::new()
@@ -1093,7 +1066,11 @@ fn grouped_substitution_latex(ctx: &Context, expr: ExprId) -> String {
 fn generate_binomial_expansion_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
     let before = step.before_local().unwrap_or(step.before);
     let after = step.after_local().unwrap_or(step.after);
-    let Some((left, right, kind, power)) = binomial_power_terms(ctx, before) else {
+    let Some((left, right, kind, power, local_focus_before, local_focus_after)) =
+        binomial_power_terms(ctx, before)
+            .map(|(left, right, kind, power)| (left, right, kind, power, before, after))
+            .or_else(|| find_binomial_expansion_focus_substep_sides(ctx, step.before, step.after))
+    else {
         return Vec::new();
     };
 
@@ -1106,7 +1083,38 @@ fn generate_binomial_expansion_substeps(ctx: &Context, step: &Step) -> Vec<SubSt
         _ => return Vec::new(),
     };
 
-    vec![concrete_expr_substep(ctx, identity_title, before, after)]
+    vec![concrete_expr_substep(
+        ctx,
+        identity_title,
+        local_focus_before,
+        local_focus_after,
+    )]
+}
+
+fn find_binomial_expansion_focus_substep_sides(
+    ctx: &Context,
+    before: ExprId,
+    after: ExprId,
+) -> Option<(ExprId, ExprId, BinomialSquareKind, i64, ExprId, ExprId)> {
+    let mut candidates = Vec::new();
+    collect_subexpr_ids(ctx, before, &mut candidates);
+
+    for candidate in candidates {
+        let Some((left, right, kind, power)) = binomial_power_terms(ctx, candidate) else {
+            continue;
+        };
+
+        let mut work = ctx.clone();
+        let expanded = build_binomial_expansion_expr(&mut work, left, right, kind, power)?;
+        let intermediate = substitute_expr_by_id(&mut work, before, candidate, expanded);
+        if compare_expr(&work, intermediate, after) == Ordering::Equal
+            || same_presentational_expr(&work, intermediate, &work, after)
+        {
+            return Some((left, right, kind, power, candidate, expanded));
+        }
+    }
+
+    None
 }
 
 fn generate_expand_log_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
@@ -1451,6 +1459,7 @@ fn generate_simplify_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
 #[derive(Debug, Clone, Copy)]
 struct OddHalfPowerSimplifyPlan {
     base: ExprId,
+    radicand_power: i64,
     outside_power: i64,
 }
 
@@ -1460,18 +1469,16 @@ fn generate_odd_half_power_simplify_substeps(ctx: &Context, step: &Step) -> Opti
     if let Some(plan) = odd_half_power_simplify_plan(ctx, local_before, local_after) {
         return Some(build_odd_half_power_simplify_substeps(
             ctx,
-            local_before,
             local_after,
             plan,
             odd_half_power_replacement_pair(step, local_before, local_after),
         ));
     }
 
-    let (focus_before, focus_after, plan) =
+    let (_focus_before, focus_after, plan) =
         find_additive_odd_half_power_simplify_focus(ctx, step.before, step.after)?;
     Some(build_odd_half_power_simplify_substeps(
         ctx,
-        focus_before,
         focus_after,
         plan,
         Some((step.before, step.after)),
@@ -1480,12 +1487,12 @@ fn generate_odd_half_power_simplify_substeps(ctx: &Context, step: &Step) -> Opti
 
 fn build_odd_half_power_simplify_substeps(
     ctx: &Context,
-    focus_before: ExprId,
     focus_after: ExprId,
     plan: OddHalfPowerSimplifyPlan,
     replacement_pair: Option<(ExprId, ExprId)>,
 ) -> Vec<SubStep> {
-    let radicand = sqrt_radicand(ctx, focus_before).expect("odd-half-power focus should be a root");
+    let (radicand_display, radicand_latex) =
+        power_display_and_latex(ctx, plan.base, plan.radicand_power);
     let (outside_power_display, _outside_power_latex) =
         power_display_and_latex(ctx, plan.base, plan.outside_power);
     let (even_power_display, even_power_latex) =
@@ -1500,10 +1507,10 @@ fn build_odd_half_power_simplify_substeps(
     let mut out = vec![
         SubStep::new(
             "Separar el radicando en una potencia par y un factor",
-            human_expr(ctx, radicand),
+            radicand_display,
             factorized_radicand_display.clone(),
         )
-        .with_before_latex(latex_expr(ctx, radicand))
+        .with_before_latex(radicand_latex)
         .with_after_latex(factorized_radicand_latex.clone()),
         SubStep::new(
             format!(
@@ -1553,22 +1560,37 @@ fn odd_half_power_simplify_plan(
     before: ExprId,
     after: ExprId,
 ) -> Option<OddHalfPowerSimplifyPlan> {
-    let radicand = sqrt_radicand(ctx, before)?;
-    let Expr::Pow(base, exponent) = ctx.get(radicand) else {
-        return None;
-    };
-    let numerator = small_positive_integer_value(ctx, *exponent)?;
-    if numerator < 3 || numerator % 2 == 0 {
-        return None;
-    }
-
+    let (base, numerator) = odd_half_power_components(ctx, before)?;
     let outside_power = (numerator - 1) / 2;
-    matches_odd_half_power_simplified_after(ctx, after, *base, outside_power).then_some(
+    matches_odd_half_power_simplified_after(ctx, after, base, outside_power).then_some(
         OddHalfPowerSimplifyPlan {
-            base: *base,
+            base,
+            radicand_power: numerator,
             outside_power,
         },
     )
+}
+
+fn odd_half_power_components(ctx: &Context, before: ExprId) -> Option<(ExprId, i64)> {
+    if let Some(radicand) = sqrt_radicand(ctx, before) {
+        let Expr::Pow(base, exponent) = ctx.get(radicand) else {
+            return None;
+        };
+        let numerator = small_positive_integer_value(ctx, *exponent)?;
+        if numerator >= 3 && numerator % 2 == 1 {
+            return Some((*base, numerator));
+        }
+    }
+
+    let Expr::Pow(base, exponent) = ctx.get(before) else {
+        return None;
+    };
+    let exponent = as_rational_const(ctx, *exponent, 8)?;
+    if *exponent.denom() != 2.into() {
+        return None;
+    }
+    let numerator = exponent.numer().to_string().parse::<i64>().ok()?;
+    (numerator >= 3 && numerator % 2 == 1).then_some((*base, numerator))
 }
 
 fn matches_odd_half_power_simplified_after(
@@ -3081,22 +3103,20 @@ fn generate_log_power_contraction_substep(
     after: ExprId,
 ) -> Option<SubStep> {
     if matches_even_abs_ln_power_contraction(ctx, before, after) {
-        return Some(formula_substep(
+        return Some(concrete_expr_substep(
+            ctx,
             "Usar n · ln(|u|) = ln(u^n) cuando n es par",
-            "n · ln(|u|)",
-            "ln(u^n)",
-            "n\\cdot \\ln(|u|)",
-            "\\ln(u^n)",
+            before,
+            after,
         ));
     }
 
     if matches_general_log_power_contraction(ctx, before, after) {
-        return Some(formula_substep(
+        return Some(concrete_expr_substep(
+            ctx,
             "Usar n · log_b(u) = log_b(u^n)",
-            "n · log_b(u)",
-            "log_b(u^n)",
-            "n\\cdot \\log_b(u)",
-            "\\log_b(u^n)",
+            before,
+            after,
         ));
     }
 
@@ -4166,23 +4186,30 @@ fn generate_cos_diff_sin_diff_quotient_substeps(ctx: &Context, step: &Step) -> V
     let local_before = step.before_local().unwrap_or(step.before);
     let local_after = step.after_local().unwrap_or(step.after);
 
-    if is_tan_call(ctx, local_after) || is_tan_call(ctx, step.after) {
-        return vec![
-            formula_substep(
-                "Cancelar el factor común del numerador y del denominador",
-                "(k · sin(u)) / (k · cos(u))",
-                "sin(u) / cos(u)",
-                "\\frac{k\\cdot \\sin(u)}{k\\cdot \\cos(u)}",
-                "\\frac{\\sin(u)}{\\cos(u)}",
-            ),
-            formula_substep(
-                "Reconocer el patrón sin(u) / cos(u) = tan(u)",
-                "sin(u) / cos(u)",
-                "tan(u)",
-                "\\frac{\\sin(u)}{\\cos(u)}",
-                "\\tan(u)",
-            ),
-        ];
+    if let Some(tan_arg) = tan_call_arg(ctx, local_after).or_else(|| tan_call_arg(ctx, step.after))
+    {
+        if let Some((_, _)) = as_div(ctx, local_before).or_else(|| as_div(ctx, step.before)) {
+            let mut work = ctx.clone();
+            let sin_arg = work.call_builtin(BuiltinFn::Sin, vec![tan_arg]);
+            let cos_arg = work.call_builtin(BuiltinFn::Cos, vec![tan_arg]);
+            let simplified_quotient = work.add_raw(Expr::Div(sin_arg, cos_arg));
+            let tan_expr = work.call_builtin(BuiltinFn::Tan, vec![tan_arg]);
+            return vec![
+                mixed_ctx_substep(
+                    "Cancelar el factor común del numerador y del denominador",
+                    ctx,
+                    local_before,
+                    &work,
+                    simplified_quotient,
+                ),
+                temp_ctx_substep(
+                    "Reconocer el patrón sin(u) / cos(u) = tan(u)",
+                    &work,
+                    simplified_quotient,
+                    tan_expr,
+                ),
+            ];
+        }
     }
 
     let before_div = as_div(ctx, local_before).or_else(|| as_div(ctx, step.before));
@@ -4193,22 +4220,20 @@ fn generate_cos_diff_sin_diff_quotient_substeps(ctx: &Context, step: &Step) -> V
     };
 
     if before_den == after_den && before_num != after_num {
-        return vec![formula_substep(
+        return vec![concrete_expr_substep(
+            ctx,
             "Usar cos(A) - cos(B) = 2 · sin((A+B)/2) · sin((B-A)/2)",
-            "cos(A) - cos(B)",
-            "2 · sin((A+B)/2) · sin((B-A)/2)",
-            "\\cos(A) - \\cos(B)",
-            "2\\cdot \\sin\\!\\left(\\frac{A+B}{2}\\right)\\cdot \\sin\\!\\left(\\frac{B-A}{2}\\right)",
+            before_num,
+            after_num,
         )];
     }
 
     if before_num == after_num && before_den != after_den {
-        return vec![formula_substep(
+        return vec![concrete_expr_substep(
+            ctx,
             "Usar sin(B) - sin(A) = 2 · cos((A+B)/2) · sin((B-A)/2)",
-            "sin(B) - sin(A)",
-            "2 · cos((A+B)/2) · sin((B-A)/2)",
-            "\\sin(B) - \\sin(A)",
-            "2\\cdot \\cos\\!\\left(\\frac{A+B}{2}\\right)\\cdot \\sin\\!\\left(\\frac{B-A}{2}\\right)",
+            before_den,
+            after_den,
         )];
     }
 
@@ -4617,6 +4642,126 @@ fn binomial_power_terms(
         Expr::Sub(left, right) => Some((*left, *right, BinomialSquareKind::Difference, power)),
         _ => None,
     }
+}
+
+fn collect_subexpr_ids(ctx: &Context, expr: ExprId, out: &mut Vec<ExprId>) {
+    out.push(expr);
+    match ctx.get(expr) {
+        Expr::Add(left, right)
+        | Expr::Sub(left, right)
+        | Expr::Mul(left, right)
+        | Expr::Div(left, right)
+        | Expr::Pow(left, right) => {
+            collect_subexpr_ids(ctx, *left, out);
+            collect_subexpr_ids(ctx, *right, out);
+        }
+        Expr::Neg(inner) | Expr::Hold(inner) => collect_subexpr_ids(ctx, *inner, out),
+        Expr::Function(_, args) => {
+            for arg in args {
+                collect_subexpr_ids(ctx, *arg, out);
+            }
+        }
+        Expr::Matrix { data, .. } => {
+            for item in data {
+                collect_subexpr_ids(ctx, *item, out);
+            }
+        }
+        Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
+    }
+}
+
+fn build_binomial_expansion_expr(
+    ctx: &mut Context,
+    left: ExprId,
+    right: ExprId,
+    kind: BinomialSquareKind,
+    power: i64,
+) -> Option<ExprId> {
+    let add_signed = |ctx: &mut Context, terms: &[(ExprId, Sign)]| {
+        let mut iter = terms.iter();
+        let Some((first_term, first_sign)) = iter.next() else {
+            return ctx.num(0);
+        };
+        let mut acc = if *first_sign == Sign::Pos {
+            *first_term
+        } else {
+            ctx.add(Expr::Neg(*first_term))
+        };
+        for (term, sign) in iter {
+            acc = if *sign == Sign::Pos {
+                ctx.add(Expr::Add(acc, *term))
+            } else {
+                ctx.add(Expr::Sub(acc, *term))
+            };
+        }
+        acc
+    };
+    let pow = |ctx: &mut Context, base: ExprId, exp: i64| {
+        let exponent = ctx.num(exp);
+        ctx.add(Expr::Pow(base, exponent))
+    };
+    let mul = |ctx: &mut Context, factors: &[ExprId]| build_balanced_mul(ctx, factors);
+
+    let two = ctx.num(2);
+    let three = ctx.num(3);
+    let left_sq = pow(ctx, left, 2);
+    let right_sq = pow(ctx, right, 2);
+
+    Some(match (kind, power) {
+        (BinomialSquareKind::Sum, 2) => {
+            let cross = mul(ctx, &[two, left, right]);
+            add_signed(
+                ctx,
+                &[
+                    (left_sq, Sign::Pos),
+                    (cross, Sign::Pos),
+                    (right_sq, Sign::Pos),
+                ],
+            )
+        }
+        (BinomialSquareKind::Difference, 2) => {
+            let cross = mul(ctx, &[two, left, right]);
+            add_signed(
+                ctx,
+                &[
+                    (left_sq, Sign::Pos),
+                    (cross, Sign::Neg),
+                    (right_sq, Sign::Pos),
+                ],
+            )
+        }
+        (BinomialSquareKind::Sum, 3) => {
+            let left_cu = pow(ctx, left, 3);
+            let right_cu = pow(ctx, right, 3);
+            let left_sq_right = mul(ctx, &[three, left_sq, right]);
+            let left_right_sq = mul(ctx, &[three, left, right_sq]);
+            add_signed(
+                ctx,
+                &[
+                    (left_cu, Sign::Pos),
+                    (left_sq_right, Sign::Pos),
+                    (left_right_sq, Sign::Pos),
+                    (right_cu, Sign::Pos),
+                ],
+            )
+        }
+        (BinomialSquareKind::Difference, 3) => {
+            let left_cu = pow(ctx, left, 3);
+            let right_cu = pow(ctx, right, 3);
+            let left_sq_right = mul(ctx, &[three, left_sq, right]);
+            let left_right_sq = mul(ctx, &[three, left, right_sq]);
+            add_signed(
+                ctx,
+                &[
+                    (left_cu, Sign::Pos),
+                    (left_sq_right, Sign::Neg),
+                    (left_right_sq, Sign::Pos),
+                    (right_cu, Sign::Neg),
+                ],
+            )
+        }
+        _ => return None,
+    })
 }
 
 fn geometric_difference_factor_plan(
@@ -5232,8 +5377,15 @@ fn small_positive_integer_value(ctx: &Context, expr: ExprId) -> Option<i64> {
     n.to_integer().try_into().ok()
 }
 
-fn is_tan_call(ctx: &Context, expr: ExprId) -> bool {
-    matches!(ctx.get(expr), Expr::Function(fn_id, args) if args.len() == 1 && ctx.is_builtin(*fn_id, BuiltinFn::Tan))
+fn tan_call_arg(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    match ctx.get(expr) {
+        Expr::Function(fn_id, args)
+            if args.len() == 1 && ctx.is_builtin(*fn_id, BuiltinFn::Tan) =>
+        {
+            Some(args[0])
+        }
+        _ => None,
+    }
 }
 
 const MAX_FULL_POLY_PRODUCT_SUBSTEP_TERMS: usize = 14;
@@ -5921,29 +6073,11 @@ fn generate_perfect_square_fraction_cancel_substeps_for_pair(
     let denominator_squared_display = squared_display(ctx, *denominator);
 
     if is_repeated_factor_product(ctx, *numerator, *denominator) {
-        return vec![formula_substep(
-            format!(
-                "Si {} aparece dos veces arriba y una abajo, queda una sola copia",
-                denominator_display
-            ),
-            "(u · u) / u",
-            "u",
-            "\\frac{u\\cdot u}{u}",
-            "u",
-        )];
+        return Vec::new();
     }
 
     if is_square_of_expr(ctx, *numerator, *denominator) {
-        return vec![formula_substep(
-            format!(
-                "Si {} está dividido entre {}, queda una sola copia",
-                denominator_squared_display, denominator_display
-            ),
-            "u^2 / u",
-            "u",
-            "\\frac{u^2}{u}",
-            "u",
-        )];
+        return Vec::new();
     }
 
     if let Some(square_latex) = perfect_square_form_latex(ctx, *numerator, *denominator) {
@@ -5955,15 +6089,13 @@ fn generate_perfect_square_fraction_cancel_substeps_for_pair(
             )
             .with_before_latex(latex_expr(ctx, *numerator))
             .with_after_latex(square_latex),
-            formula_substep(
+            build_square_over_denominator_cancel_substep(
+                ctx,
                 format!(
                     "Si {} está dividido entre {}, queda una sola copia",
                     denominator_squared_display, denominator_display
                 ),
-                "u^2 / u",
-                "u",
-                "\\frac{u^2}{u}",
-                "u",
+                *denominator,
             ),
         ];
     }
@@ -5980,19 +6112,29 @@ fn generate_perfect_square_fraction_cancel_substeps_for_pair(
             )
             .with_before_latex(latex_expr(ctx, *numerator))
             .with_after_latex(latex_expr(&temp_ctx, squared)),
-            formula_substep(
+            build_square_over_denominator_cancel_substep(
+                ctx,
                 format!(
                     "Si {} está dividido entre {}, queda una sola copia",
                     denominator_squared_display, denominator_display
                 ),
-                "u^2 / u",
-                "u",
-                "\\frac{u^2}{u}",
-                "u",
+                *denominator,
             ),
         ];
     }
     Vec::new()
+}
+
+fn build_square_over_denominator_cancel_substep(
+    ctx: &Context,
+    title: impl Into<String>,
+    denominator: ExprId,
+) -> SubStep {
+    let mut work = ctx.clone();
+    let two = work.num(2);
+    let squared = work.add_raw(Expr::Pow(denominator, two));
+    let fraction = work.add_raw(Expr::Div(squared, denominator));
+    temp_ctx_substep(title, &work, fraction, denominator)
 }
 
 fn generate_identity_addition_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {

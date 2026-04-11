@@ -451,6 +451,42 @@ fn step_wire_log_cancellation_uses_concrete_substep_expressions() {
 }
 
 #[test]
+fn step_wire_cos_diff_sin_diff_quotient_uses_concrete_substep_expressions() {
+    let (engine, output) = eval_output_for("(cos(a)-cos(b))/(sin(b)-sin(a))");
+    let steps =
+        cas_didactic::collect_step_payloads(&output.steps, &engine.simplifier.context, "on");
+
+    assert_eq!(
+        steps.len(),
+        3,
+        "expected the three-step quotient contraction"
+    );
+    assert!(
+        steps[0].substeps.is_empty() && steps[1].substeps.is_empty(),
+        "the first two steps should stay direct because the parent step already shows the concrete rewrite"
+    );
+
+    assert_eq!(
+        steps[2].substeps[0].before_latex.as_deref(),
+        Some(
+            "\\frac{2\\cdot \\sin(\\frac{a + b}{2})\\cdot \\sin(\\frac{b - a}{2})}{2\\cdot \\cos(\\frac{a + b}{2})\\cdot \\sin(\\frac{b - a}{2})}"
+        )
+    );
+    assert_eq!(
+        steps[2].substeps[0].after_latex.as_deref(),
+        Some("\\frac{\\sin(\\frac{a + b}{2})}{\\cos(\\frac{a + b}{2})}")
+    );
+    assert_eq!(
+        steps[2].substeps[1].before_latex.as_deref(),
+        Some("\\frac{\\sin(\\frac{a + b}{2})}{\\cos(\\frac{a + b}{2})}")
+    );
+    assert_eq!(
+        steps[2].substeps[1].after_latex.as_deref(),
+        Some("\\tan(\\frac{a + b}{2})")
+    );
+}
+
+#[test]
 fn step_wire_log_exponent_rules_stay_direct_when_substeps_only_repeat_the_rule() {
     let (engine, output) = eval_output_for("ln(x^3) + ln(y^2) - ln(x^3 * y^2)");
     let steps =

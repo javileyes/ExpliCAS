@@ -1180,20 +1180,11 @@ fn derive_didactic_alternating_cubic_vandermonde_factorization_explains_zero_fac
         })
         .expect("expected alternating cubic Vandermonde factorization step");
 
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected alternating cubic Vandermonde factorization substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-
-    assert_eq!(
-        titles,
-        vec![
-            "Si dos variables coinciden, la expresión vale 0",
-            "El factor restante es lineal y simétrico"
-        ]
+    assert!(
+        step.get("substeps")
+            .and_then(Value::as_array)
+            .is_none_or(|substeps| substeps.is_empty()),
+        "alternating cubic Vandermonde should stay direct when the only intermediate is synthetic"
     );
 }
 
@@ -1783,6 +1774,19 @@ fn derive_didactic_perfect_square_fraction_cancel_plus_uses_repeated_factor_rule
             "Si (x + 1)^2 está dividido entre x + 1, queda una sola copia"
         ]
     );
+
+    let substeps = step
+        .get("substeps")
+        .and_then(Value::as_array)
+        .expect("expected perfect-square cancellation substeps");
+    assert_eq!(
+        substeps[1].get("before_latex").and_then(Value::as_str),
+        Some("\\frac{{(x + 1)}^{2}}{x + 1}")
+    );
+    assert_eq!(
+        substeps[1].get("after_latex").and_then(Value::as_str),
+        Some("x + 1")
+    );
 }
 
 #[test]
@@ -1815,6 +1819,19 @@ fn derive_didactic_perfect_square_fraction_cancel_minus_symbolic_uses_repeated_f
             "Reconocer que el numerador es un cuadrado perfecto",
             "Si (a - b)^2 está dividido entre a - b, queda una sola copia",
         ]
+    );
+
+    let substeps = step
+        .get("substeps")
+        .and_then(Value::as_array)
+        .expect("expected symbolic negative perfect-square cancellation substeps");
+    assert_eq!(
+        substeps[1].get("before_latex").and_then(Value::as_str),
+        Some("\\frac{{(a - b)}^{2}}{a - b}")
+    );
+    assert_eq!(
+        substeps[1].get("after_latex").and_then(Value::as_str),
+        Some("a - b")
     );
 }
 
@@ -1895,53 +1912,13 @@ fn derive_didactic_general_base_log_power_expansion_stays_direct_without_redunda
 }
 
 #[test]
-fn derive_didactic_even_power_log_contraction_pushes_coefficient_inside() {
-    let artifact = audit_case(&derive_case_by_id("contract_log_even_power_abs"));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Meter el coeficiente dentro del logaritmo")
-        })
-        .expect("expected even-power log contraction step");
-
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected even-power log contraction substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-
-    assert_eq!(titles, vec!["Usar n · ln(|u|) = ln(u^n) cuando n es par"]);
+fn derive_didactic_even_power_log_contraction_stays_direct_without_substeps() {
+    assert_case_step_has_no_substeps("contract_log_even_power_abs", "Simplify");
 }
 
 #[test]
-fn derive_didactic_general_base_log_power_contraction_pushes_coefficient_inside() {
-    let artifact = audit_case(&derive_case_by_id("contract_log_general_base_power"));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Meter el coeficiente dentro del logaritmo")
-        })
-        .expect("expected general-base log power contraction step");
-
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected general-base log power contraction substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-
-    assert_eq!(titles, vec!["Usar n · log_b(u) = log_b(u^n)"]);
+fn derive_didactic_general_base_log_power_contraction_stays_direct_without_substeps() {
+    assert_case_step_has_no_substeps("contract_log_general_base_power", "Simplify");
 }
 
 #[test]
@@ -3069,14 +3046,19 @@ fn derive_didactic_representative_odd_half_power_cases_use_root_split_narrative(
             .filter_map(|substep| substep.get("title").and_then(Value::as_str))
             .collect();
         match rule {
-            "Reescribir potencia semientera impar" => assert_eq!(
-                titles,
-                vec![
-                    "Separar la mitad entera de la mitad radical",
-                    "Usar que queda una raíz cuadrada del mismo factor",
-                ],
-                "unexpected odd-half-power narrative for {case_id}"
-            ),
+            "Reescribir potencia semientera impar" => {
+                assert_eq!(
+                    titles.first().copied(),
+                    Some("Separar el radicando en una potencia par y un factor"),
+                    "unexpected odd-half-power narrative for {case_id}"
+                );
+                assert!(
+                    titles
+                        .get(1)
+                        .is_some_and(|title| title.starts_with("Como ") && title.contains("≥ 0")),
+                    "unexpected odd-half-power narrative for {case_id}: {titles:?}"
+                );
+            }
             "Extraer potencia par de la raíz" => {
                 assert_eq!(
                     titles.first().copied(),
@@ -3092,6 +3074,29 @@ fn derive_didactic_representative_odd_half_power_cases_use_root_split_narrative(
             }
             _ => panic!("unexpected odd-half-power rule for {case_id}: {rule}"),
         }
+
+        let substeps = step
+            .get("substeps")
+            .and_then(Value::as_array)
+            .expect("expected odd-half-power substeps");
+        assert!(
+            substeps.iter().all(|substep| {
+                let before = substep
+                    .get("before_latex")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                let after = substep
+                    .get("after_latex")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                !before.contains("u")
+                    && !before.contains("k")
+                    && !after.contains("u")
+                    && !after.contains("k")
+            }),
+            "odd-half-power substeps should use concrete math, got: {:?}",
+            substeps
+        );
     }
 }
 

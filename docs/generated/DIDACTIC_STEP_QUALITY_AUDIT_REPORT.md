@@ -17,10 +17,10 @@ Command: `cargo test -p cas_didactic --test didactic_step_quality_audit didactic
 | `cancel_factors_fraction` | `cancellation` | 1 | 0 | none |
 | `difference_of_squares_quotient` | `quotient` | 1 | 2 | none |
 | `pythagorean_identity` | `trig` | 1 | 0 | none |
-| `inverse_trig_identity` | `inverse_trig` | 5 | 2 | none |
-| `polynomial_expansion_cancel` | `polynomial` | 6 | 1 | none |
+| `inverse_trig_identity` | `inverse_trig` | 5 | 1 | none |
+| `polynomial_expansion_cancel` | `polynomial` | 6 | 0 | no wire substeps emitted |
 | `perfect_square_root` | `radicals` | 2 | 2 | none |
-| `cube_quotient_radical` | `quotient` | 4 | 5 | none |
+| `cube_quotient_radical` | `quotient` | 4 | 1 | none |
 | `geometric_product_cancellation` | `polynomial` | 1 | 3 | none |
 
 ## rationalize_linear_root (rationalization)
@@ -404,7 +404,7 @@ Steps:
 - Focus: `show_known_identity_clearly`
 - Final result: `0`
 - Step count: `5`
-- Wire substep count: `2`
+- Wire substep count: `1`
 - Flags: none
 
 ### CLI Step By Step
@@ -413,10 +413,6 @@ Steps:
 Steps:
 1. Aplicar identidad de arctangentes
    Before: arctan(1/3) + arctan(3) - 1/2 · pi
-      [Usar arctan(u) + arctan(1/u) = pi/2]
-        arctan(u) + arctan(1/u)
-        ->
-        pi/2
       [Juntar la pareja que encaja con la identidad]
         arctan(1/3) + arctan(3) - 1/2 ·  pi
         ->
@@ -435,10 +431,7 @@ Steps:
    - before_latex: `{\color{red}{\text{arctan}(3)}} + {\color{red}{\text{arctan}(\frac{1}{3})}} - \frac{1}{2}\cdot \pi`
    - after_latex: `{\color{green}{\frac{\pi}{2}}} - \frac{1}{2}\cdot \pi`
    - substeps:
-     1. `Usar arctan(u) + arctan(1/u) = pi/2`
-        - before_latex: `\arctan(u) + \arctan\left(\frac{1}{u}\right)`
-        - after_latex: `\frac{\pi}{2}`
-     2. `Juntar la pareja que encaja con la identidad`
+     1. `Juntar la pareja que encaja con la identidad`
         - before_latex: `\arctan(\frac{1}{3}) + \arctan(3) - \frac{1}{2}\cdot \pi`
         - after_latex: `\arctan(\frac{1}{3}) + \arctan(3)`
 
@@ -448,8 +441,8 @@ Steps:
 - Focus: `expansion_and_collection_should_be_readable`
 - Final result: `b^2`
 - Step count: `6`
-- Wire substep count: `1`
-- Flags: none
+- Wire substep count: `0`
+- Flags: no wire substeps emitted
 
 ### CLI Step By Step
 
@@ -457,10 +450,6 @@ Steps:
 Steps:
 1. Expandir el binomio
    Before: ((a + b))^2 - a^2 - 2 · a · b
-      [Usar (a + b)^2 = a^2 + 2ab + b^2]
-        (a + b)^2
-        ->
-        a^2 + 2ab + b^2
    After: b^2 + 2 · a · b + a^2 - a^2 - 2 · a · b
 2. Cancelar términos opuestos
    Before: a^2 + b^2 + 2 · a · b - a^2 - 2 · a · b
@@ -477,10 +466,7 @@ Steps:
    - after: `b^2 + 2 · a · b + a^2 - a^2 - 2 · a · b`
    - before_latex: `{\color{red}{{(a + b)}^{2}}} - {a}^{2} - 2\cdot a\cdot b`
    - after_latex: `{\color{green}{{b}^{2} + 2\cdot a\cdot b + {a}^{2}}} - {a}^{2} - 2\cdot a\cdot b`
-   - substeps:
-     1. `Usar (a + b)^2 = a^2 + 2ab + b^2`
-        - before_latex: `\left(a + b\right)^2`
-        - after_latex: `a^2 + 2ab + b^2`
+   - substeps: none
 2. `Agrupar términos semejantes`
    - before: `a^2 + b^2 + 2 · a · b - a^2 - 2 · a · b`
    - after: `b^2 + 2 · a · b - 2 · a · b`
@@ -541,7 +527,7 @@ Steps:
 - Focus: `show_exact_quotient_reason`
 - Final result: `x^(1/2) + x + 1`
 - Step count: `4`
-- Wire substep count: `5`
+- Wire substep count: `1`
 - Flags: none
 
 ### CLI Step By Step
@@ -553,25 +539,9 @@ Steps:
    After: (sqrt(x^3) - 1)/(sqrt(x) - 1)
 2. Reconocer un cociente notable
    Before: (sqrt(x^3) - 1)/(sqrt(x) - 1)
-      [Llamar t = sqrt(x) para reconocer la forma]
-        sqrt(x)
-        ->
-        t
-      [Ese cociente notable se convierte en t^2 + t + 1]
-        (t^3 - 1)/(t - 1)
-        ->
-        t^2 + t + 1
-      [Volver a poner t = sqrt(x)]
-        t^2 + t + 1
-        ->
-        sqrt(x) + sqrt(x)^2 + 1
    After: sqrt(x) + sqrt(x)^2 + 1
 3. Deshacer una raíz con su potencia
    Before: sqrt(x) + sqrt(x)^2 + 1
-      [El cuadrado deshace la raíz]
-        (sqrt(u))^2
-        ->
-        u
       [Reemplazar ese bloque en la expresión]
         sqrt(x) + sqrt(x)^2 + 1
         ->
@@ -587,26 +557,14 @@ Steps:
    - after: `sqrt(x) + sqrt(x)^2 + 1`
    - before_latex: `{\color{red}{\frac{\sqrt{{x}^{3}} - 1}{\sqrt{x} - 1}}}`
    - after_latex: `{\color{green}{1 + \sqrt{x} + {\sqrt{x}}^{2}}}`
-   - substeps:
-     1. `Llamar t = sqrt(x) para reconocer la forma`
-        - before_latex: `\sqrt{x}`
-        - after_latex: `t`
-     2. `Ese cociente notable se convierte en t^2 + t + 1`
-        - before_latex: `\frac{t^{3} - 1}{t - 1}`
-        - after_latex: `t^{2} + t + 1`
-     3. `Volver a poner t = sqrt(x)`
-        - before_latex: `t^{2} + t + 1`
-        - after_latex: `\sqrt{x} + {\sqrt{x}}^{2} + 1`
+   - substeps: none
 2. `Deshacer raíz y potencia`
    - before: `sqrt(x) + sqrt(x)^2 + 1`
    - after: `sqrt(x) + x + 1`
    - before_latex: `1 + \sqrt{x} + {\color{red}{{\sqrt{x}}^{2}}}`
    - after_latex: `1 + \sqrt{x} + {\color{green}{x}}`
    - substeps:
-     1. `El cuadrado deshace la raíz`
-        - before_latex: `\left(\sqrt{u}\right)^2`
-        - after_latex: `u`
-     2. `Reemplazar ese bloque en la expresión`
+     1. `Reemplazar ese bloque en la expresión`
         - before_latex: `\sqrt{x} + {\sqrt{x}}^{2} + 1`
         - after_latex: `\sqrt{x} + x + 1`
 

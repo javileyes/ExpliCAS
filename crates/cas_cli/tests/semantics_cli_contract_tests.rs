@@ -3560,6 +3560,17 @@ fn derive_odd_half_power_with_passthrough_uses_named_expand_odd_half_power_step(
     assert_eq!(steps[0]["rule"], "Extraer potencia par de la raíz");
     let substeps = steps[0]["substeps"].as_array().expect("substeps array");
     assert_eq!(substeps.len(), 2);
+    assert_eq!(
+        substeps[0]["title"],
+        "Separar el radicando en una potencia par y un factor"
+    );
+    let second_title = substeps[1]["title"].as_str().expect("second title");
+    assert!(
+        second_title.contains("Como x ≥ 0"),
+        "unexpected second title: {second_title}"
+    );
+    assert_eq!(substeps[0]["before_latex"], json!("{x}^{3}"));
+    assert_eq!(substeps[0]["after_latex"], json!("{x}^{2}\\cdot x"));
     assert_eq!(wire["required_display"], json!(["x ≥ 0"]));
 }
 
@@ -3590,6 +3601,13 @@ fn derive_sqrt_odd_power_extracts_even_power_from_root_with_didactic_substeps() 
         second_title.contains("Como x ≥ 0"),
         "unexpected second title: {second_title}"
     );
+    assert_eq!(substeps[0]["before_latex"], json!("{x}^{5}"));
+    assert_eq!(substeps[0]["after_latex"], json!("{x}^{4}\\cdot x"));
+    assert_eq!(
+        substeps[1]["before_latex"],
+        json!("\\sqrt{{x}^{4}\\cdot x}")
+    );
+    assert_eq!(substeps[1]["after_latex"], json!("\\sqrt{x}\\cdot {x}^{2}"));
 }
 
 #[test]
@@ -3623,6 +3641,37 @@ fn derive_higher_odd_half_power_with_passthrough_uses_named_expand_odd_half_powe
 }
 
 #[test]
+fn derive_raw_odd_half_power_uses_concrete_root_split_substeps() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive x^(3/2), abs(x)*sqrt(x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "expand odd half power");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Extraer potencia par de la raíz");
+    let substeps = steps[0]["substeps"].as_array().expect("substeps array");
+    assert_eq!(substeps.len(), 2);
+    assert_eq!(
+        substeps[0]["title"],
+        "Separar el radicando en una potencia par y un factor"
+    );
+    assert_eq!(substeps[0]["before_latex"], json!("{x}^{3}"));
+    assert_eq!(substeps[0]["after_latex"], json!("{x}^{2}\\cdot x"));
+    let second_title = substeps[1]["title"].as_str().expect("second title");
+    assert!(
+        second_title.contains("Como x ≥ 0"),
+        "unexpected second title: {second_title}"
+    );
+}
+
+#[test]
 fn eval_odd_half_power_difference_to_zero_uses_extract_then_self_cancel_steps() {
     let (output, _code) = run_cli(&[
         "eval",
@@ -3643,7 +3692,7 @@ fn eval_odd_half_power_difference_to_zero_uses_extract_then_self_cancel_steps() 
     assert_eq!(steps[0]["rule"], "Extraer potencia par de la raíz");
     assert_eq!(steps[1]["rule"], "Restar dos expresiones iguales");
     let substeps = steps[0]["substeps"].as_array().expect("substeps array");
-    assert_eq!(substeps.len(), 3);
+    assert_eq!(substeps.len(), 2);
 }
 
 #[test]
@@ -3667,7 +3716,7 @@ fn eval_higher_odd_half_power_difference_to_zero_uses_extract_then_self_cancel_s
     assert_eq!(steps[0]["rule"], "Extraer potencia par de la raíz");
     assert_eq!(steps[1]["rule"], "Restar dos expresiones iguales");
     let substeps = steps[0]["substeps"].as_array().expect("substeps array");
-    assert_eq!(substeps.len(), 3);
+    assert_eq!(substeps.len(), 2);
 }
 
 #[test]
@@ -6745,6 +6794,121 @@ fn derive_consecutive_telescoping_fraction_combine_omits_trivial_substitution_su
         steps[0].get("substeps").is_none(),
         "literal telescoping combine should not emit the tautological 'Aquí u = u' substep"
     );
+}
+
+#[test]
+fn derive_finite_telescoping_sum_uses_concrete_partial_fraction_substeps() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive sum(1/(k*(k+1)), k, 1, n), 1 - 1/(n+1)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "finite sums/products");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Evaluar suma telescópica finita");
+    let substeps = steps[0]["substeps"].as_array().expect("substeps array");
+    assert_eq!(substeps.len(), 2);
+    assert_eq!(
+        substeps[0]["title"],
+        "Usar 1 / (u · (u + 1)) = 1 / u - 1 / (u + 1)"
+    );
+    assert_eq!(
+        substeps[0]["before_latex"],
+        json!("\\frac{1}{k\\cdot (k + 1)}")
+    );
+    assert_eq!(
+        substeps[0]["after_latex"],
+        json!("\\frac{1}{k} - \\frac{1}{k + 1}")
+    );
+    assert_eq!(
+        substeps[1]["title"],
+        "La suma telescópica cancela los términos intermedios"
+    );
+    assert_eq!(substeps[1]["after_latex"], json!("1 - \\frac{1}{n + 1}"));
+}
+
+#[test]
+fn derive_affine_finite_telescoping_sum_uses_concrete_partial_fraction_substeps() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive sum(1/((a*k+b)*(a*k+b+a)), k, m, n), 1/a*(1/(a*m+b) - 1/(a*n+a+b))",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "finite sums/products");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Evaluar suma telescópica finita");
+    let substeps = steps[0]["substeps"].as_array().expect("substeps array");
+    assert_eq!(substeps.len(), 2);
+    assert_eq!(
+        substeps[0]["title"],
+        "Usar 1 / (u · (u + g)) = 1 / g · (1 / u - 1 / (u + g))"
+    );
+    assert_eq!(
+        substeps[0]["before_latex"],
+        json!("\\frac{1}{(a\\cdot k + b)\\cdot (a\\cdot k + a + b)}")
+    );
+    assert_eq!(
+        substeps[0]["after_latex"],
+        json!("\\frac{1}{a}\\cdot \\left(\\frac{1}{a\\cdot k + b} - \\frac{1}{a\\cdot k + a + b}\\right)")
+    );
+    assert_eq!(
+        substeps[1]["title"],
+        "La suma telescópica cancela los términos intermedios"
+    );
+    assert_eq!(
+        substeps[1]["after_latex"],
+        json!("\\frac{1}{a}\\cdot (\\frac{1}{a\\cdot m + b} - \\frac{1}{a\\cdot n + a + b})")
+    );
+}
+
+#[test]
+fn derive_finite_telescoping_product_uses_concrete_endpoint_substeps() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "derive product((k+1)/k, k, 1, n), n+1",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["strategy"], "finite sums/products");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Evaluar producto telescópico finito");
+    let substeps = steps[0]["substeps"].as_array().expect("substeps array");
+    assert_eq!(substeps.len(), 3);
+    assert_eq!(
+        substeps[0]["title"],
+        "Escribir los primeros y últimos factores del producto"
+    );
+    assert_eq!(
+        substeps[0]["before_latex"],
+        json!("\\prod_{k=1}^{n} \\frac{k + 1}{k}")
+    );
+    assert_eq!(
+        substeps[1]["title"],
+        "Los factores intermedios se cancelan por parejas"
+    );
+    assert_eq!(substeps[1]["after_latex"], json!("\\frac{n + 1}{1}"));
+    assert_eq!(
+        substeps[2]["title"],
+        "Solo quedan el último numerador y el primer denominador"
+    );
+    assert_eq!(substeps[2]["after_latex"], json!("n + 1"));
 }
 
 #[test]
