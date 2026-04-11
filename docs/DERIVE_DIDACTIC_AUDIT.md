@@ -3,6 +3,10 @@
 This audit tracks the educational quality of `derive`, independently from the
 generic simplification audit.
 
+Normalization reference:
+
+- [DIDACTIC_SUBSTEP_NORMALIZATION.md](/Users/javiergimenezmoya/developer/math/docs/DIDACTIC_SUBSTEP_NORMALIZATION.md)
+
 It exists for a different reason than correctness tests:
 
 - `derive` is target-driven
@@ -39,6 +43,8 @@ Current quality gates:
   “use the identity” or similar without exposing any visible intermediate math
 - no curated `derived` pair may keep a substep whose only job is to restate or
   rename the parent step
+- no curated `derived` pair may keep generic placeholder math in a substep body
+  when the concrete local rewrite is known
 - the report must expose per-case CLI lines and web/JSON steps so new
   redundancies can be reviewed before growing more families
 
@@ -58,12 +64,29 @@ A valid `derive` substep should do at least one of these:
 - make a substitution or pattern recognition explicit when that is necessary to
   follow the move
 
+And when it exists, it should still follow the normalized public shape:
+
+```text
+[title]
+[specific expression]
+->
+[specific expression]
+```
+
+So in `derive` too:
+
+- the title may be generic
+- the math must be specific
+- prose belongs in the title, not inside the math lines
+
 A `derive` substep is noise if it does any of these:
 
 - paraphrases the main rule title
 - describes the maneuver without new math
 - repeats the same `before/after` as the parent step
 - injects a formula-template line without any visible intermediate state
+- uses placeholder math like `a`, `b`, `u`, `n` when the step already knows
+  the concrete rewritten block
 
 Important rule:
 

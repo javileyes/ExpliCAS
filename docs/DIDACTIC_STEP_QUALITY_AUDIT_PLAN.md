@@ -11,6 +11,10 @@ This track is intentionally different from metamorphic testing:
 - this audit asks whether the simplification trace is understandable for a
   human reader
 
+Normalization reference:
+
+- [DIDACTIC_SUBSTEP_NORMALIZATION.md](/Users/javiergimenezmoya/developer/math/docs/DIDACTIC_SUBSTEP_NORMALIZATION.md)
+
 ## Substep Policy
 
 Didactic substeps exist for one reason:
@@ -40,6 +44,45 @@ Important consequence:
 - if a parent step is already self-explanatory, the correct number of substeps
   is often `0`
 - adding a generic substep is worse than emitting no substeps at all
+
+## Normalized Shape Contract
+
+For this audit, a valid user-facing substep must always be representable as:
+
+```text
+[title]
+[specific expression]
+->
+[specific expression]
+```
+
+Interpretation:
+
+- the title may be generic and explanatory
+- the math lines must be specific to the current step
+- prose must not be mixed into the expression lines
+
+So these are audit failures in spirit even when the engine math is correct:
+
+- template math such as `a·b -> ...` when the concrete local expression is known
+- narrative-only substeps
+- substeps with missing math sides
+- substeps that merely duplicate the parent step
+
+And these are acceptable outcomes:
+
+- one or more concrete substeps that expose a hidden local rewrite
+- `0` substeps when the parent step is already self-explanatory
+
+## Authoring Guidance For New Families
+
+When a new didactic substep family is added, authors should follow this order:
+
+1. reuse the concrete local `before -> after` if the step already exposes it
+2. if needed, synthesize a concrete intermediate expression
+3. if neither is possible without template math or duplication, emit no substep
+
+This audit should reinforce that behavior instead of rewarding trace length.
 
 ## Scope
 
@@ -86,6 +129,8 @@ When reviewing the generated report, look for:
 - substeps that only describe the maneuver without exposing an intermediate
   state
 - formula-template substeps that add wording but no visible math
+- substeps whose math lines are generic when the local concrete expression is
+  already known
 - missing local focus when only a subpart changed
 - web payloads whose `before_latex` / `after_latex` are awkward or misleading
 - cases with good math but poor narrative ordering
@@ -98,6 +143,7 @@ The generated report surfaces lightweight flags to guide review:
 - `no wire substeps emitted`
 - `single step with no didactic substeps`
 - `wire substeps with missing math sides`
+- `wire substeps with generic template math`
 
 These are review hints only, not hard failures of mathematical correctness.
 
@@ -106,6 +152,8 @@ In particular:
 - `single step with no didactic substeps` is only a problem when the step still
   feels magical
 - it is not a problem when the step is already direct and self-explanatory
+- `wire substeps with generic template math` is a problem even when a substep
+  exists, because it signals fake detail instead of teachable math
 
 ## Execution
 

@@ -1134,89 +1134,17 @@ fn derive_didactic_sum_of_cubes_expansion_explains_identity() {
 
 #[test]
 fn derive_didactic_negative_binomial_expansion_explains_the_minus_identity() {
-    let artifact = audit_case(&derive_case_by_id("expand_symbolic_binomial_minus"));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Expandir binomio")
-        })
-        .expect("expected negative binomial expansion step");
-
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected negative binomial expansion substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-
-    assert_eq!(
-        titles,
-        vec![
-            "Usar (a + b)^2 = a^2 + 2ab + b^2",
-            "Aplicar la fórmula con a = a, b = -b"
-        ]
-    );
+    assert_case_step_has_no_substeps("expand_symbolic_binomial_minus", "Expandir binomio");
 }
 
 #[test]
 fn derive_didactic_symbolic_binomial_cube_expansion_explains_the_identity() {
-    let artifact = audit_case(&derive_case_by_id("expand_symbolic_binomial_cube"));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Expandir binomio")
-        })
-        .expect("expected symbolic cubic expansion step");
-
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected symbolic cubic expansion substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-
-    assert_eq!(titles, vec!["Usar (a + b)^3 = a^3 + 3a^2b + 3ab^2 + b^3"]);
+    assert_case_step_has_no_substeps("expand_symbolic_binomial_cube", "Expandir binomio");
 }
 
 #[test]
 fn derive_didactic_negative_symbolic_binomial_cube_expansion_explains_the_identity() {
-    let artifact = audit_case(&derive_case_by_id("expand_symbolic_binomial_cube_minus"));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Expandir binomio")
-        })
-        .expect("expected negative symbolic cubic expansion step");
-
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected negative symbolic cubic expansion substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-
-    assert_eq!(
-        titles,
-        vec![
-            "Usar (a + b)^3 = a^3 + 3a^2b + 3ab^2 + b^3",
-            "Aplicar la fórmula con a = a, b = -b"
-        ]
-    );
+    assert_case_step_has_no_substeps("expand_symbolic_binomial_cube_minus", "Expandir binomio");
 }
 
 #[test]
@@ -1723,116 +1651,30 @@ fn derive_didactic_trig_quotient_explains_identities_then_tangent() {
 
 #[test]
 fn derive_didactic_special_sine_difference_uses_sum_to_product_directly() {
-    let artifact = audit_case(&derive_case_by_id("contract_trig_sin_diff_special"));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Aplicar suma a producto")
-        })
-        .expect("expected sum-to-product step");
-
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected sum-to-product substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-
-    assert_eq!(
-        titles,
-        vec!["Usar sin(A) - sin(B) = 2 · cos((A+B)/2) · sin((A-B)/2)"]
-    );
+    assert_case_step_has_no_substeps("contract_trig_sin_diff_special", "Aplicar suma a producto");
 }
 
 #[test]
 fn derive_didactic_general_sine_sum_uses_sum_to_product_directly() {
-    let artifact = audit_case(&derive_case_by_id(
+    assert_case_step_has_no_substeps(
         "expand_trig_sum_to_product_sin_sum_general",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Aplicar suma a producto")
-        })
-        .expect("expected sum-to-product step");
-
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected sum-to-product substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec!["Usar sin(A) + sin(B) = 2 · sin((A+B)/2) · cos((A-B)/2)"]
+        "Aplicar suma a producto",
     );
 }
 
 #[test]
 fn derive_didactic_general_cosine_sum_uses_sum_to_product_directly() {
-    let artifact = audit_case(&derive_case_by_id(
+    assert_case_step_has_no_substeps(
         "expand_trig_sum_to_product_cos_sum_general",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Aplicar suma a producto")
-        })
-        .expect("expected sum-to-product step");
-
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected sum-to-product substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec!["Usar cos(A) + cos(B) = 2 · cos((A+B)/2) · cos((A-B)/2)"]
+        "Aplicar suma a producto",
     );
 }
 
 #[test]
 fn derive_didactic_general_cosine_difference_uses_sum_to_product_directly() {
-    let artifact = audit_case(&derive_case_by_id(
+    assert_case_step_has_no_substeps(
         "expand_trig_sum_to_product_cos_diff_general",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Aplicar suma a producto")
-        })
-        .expect("expected sum-to-product step");
-
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected sum-to-product substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec!["Usar cos(A) - cos(B) = -2 · sin((A+B)/2) · sin((A-B)/2)"]
+        "Aplicar suma a producto",
     );
 }
 
@@ -2117,60 +1959,15 @@ fn derive_didactic_representative_direct_log_contraction_cases_have_no_substeps(
 }
 
 #[test]
-fn derive_didactic_scaled_log_sum_contraction_uses_power_product_language() {
-    let artifact = audit_case(&derive_case_by_id("contract_log_sum_with_scaled_powers"));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Contraer logaritmos")
-        })
-        .expect("expected scaled log contraction step");
-
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected scaled log contraction substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-
-    assert_eq!(
-        titles,
-        vec!["Meter los coeficientes dentro de los logaritmos como exponentes"]
-    );
+fn derive_didactic_scaled_log_sum_contraction_stays_direct_without_substeps() {
+    assert_case_step_has_no_substeps("contract_log_sum_with_scaled_powers", "Contraer logaritmos");
 }
 
 #[test]
-fn derive_didactic_scaled_general_base_log_difference_contraction_uses_power_quotient_language() {
-    let artifact = audit_case(&derive_case_by_id(
+fn derive_didactic_scaled_general_base_log_difference_contraction_stays_direct_without_substeps() {
+    assert_case_step_has_no_substeps(
         "contract_log_general_base_difference_with_scaled_powers",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Contraer logaritmos")
-        })
-        .expect("expected scaled general-base log contraction step");
-
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected scaled general-base log contraction substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-
-    assert_eq!(
-        titles,
-        vec!["Meter los coeficientes dentro de los logaritmos y reunir la resta en un cociente"]
+        "Contraer logaritmos",
     );
 }
 
@@ -2455,14 +2252,10 @@ fn derive_didactic_polynomial_cancel_case_expands_then_cancels_pairs() {
                 .is_some_and(|rule| rule == "Expandir binomio")
         })
         .expect("expected binomial expansion step");
-    let expand_titles: Vec<&str> = expand_step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected binomial expansion substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(expand_titles, vec!["Usar (a + b)^2 = a^2 + 2ab + b^2"]);
+    assert!(
+        step_substep_titles(expand_step).is_empty(),
+        "binomial expansion step should stay direct when any substep would duplicate the parent step"
+    );
 }
 
 #[test]

@@ -82,7 +82,7 @@ pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<
         }
         "expand_log" => generate_expand_log_substeps(ctx, step),
         "Simplify" | "Canonicalize" => generate_simplify_substeps(ctx, step),
-        "Evaluate Logarithms" => generate_evaluate_logarithms_substeps(step),
+        "Evaluate Logarithms" => generate_evaluate_logarithms_substeps(ctx, step),
         "Factor Perfect Square in Logarithm" => {
             generate_factor_perfect_square_log_substeps(ctx, step)
         }
@@ -1092,123 +1092,26 @@ fn grouped_substitution_latex(ctx: &Context, expr: ExprId) -> String {
 
 fn generate_binomial_expansion_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
     let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
     let Some((left, right, kind, power)) = binomial_power_terms(ctx, before) else {
         return Vec::new();
     };
 
-    let left_display = human_expr(ctx, left);
-    let right_display = human_expr(ctx, right);
-    let left_latex = latex_expr(ctx, left);
-    let right_latex = latex_expr(ctx, right);
-    let left_grouped_display = grouped_substitution_display(ctx, left);
-    let right_grouped_display = grouped_substitution_display(ctx, right);
-    let left_grouped_latex = grouped_substitution_latex(ctx, left);
-    let right_grouped_latex = grouped_substitution_latex(ctx, right);
-    let (
-        identity_title,
-        rhs_display,
-        rhs_latex,
-        substituted_before_display,
-        substituted_before_latex,
-    ) = match (kind, power) {
-        (BinomialSquareKind::Sum, 2) => (
-            "Usar (a + b)^2 = a^2 + 2ab + b^2",
-            "a^2 + 2 · a · b + b^2".to_string(),
-            "a^2 + 2ab + b^2".to_string(),
-            format!("({left_display} + {right_display})^2"),
-            format!("\\left({left_latex} + {right_latex}\\right)^2"),
-        ),
-        (BinomialSquareKind::Difference, 2) => (
-            "Usar (a - b)^2 = a^2 - 2ab + b^2",
-            "a^2 - 2 · a · b + b^2".to_string(),
-            "a^2 - 2ab + b^2".to_string(),
-            format!("({left_display} - {right_display})^2"),
-            format!("\\left({left_latex} - {right_latex}\\right)^2"),
-        ),
-        (BinomialSquareKind::Sum, 3) => (
-            "Usar (a + b)^3 = a^3 + 3a^2b + 3ab^2 + b^3",
-            "a^3 + 3 · a^2 · b + 3 · a · b^2 + b^3".to_string(),
-            "a^3 + 3a^2b + 3ab^2 + b^3".to_string(),
-            format!("({left_display} + {right_display})^3"),
-            format!("\\left({left_latex} + {right_latex}\\right)^3"),
-        ),
-        (BinomialSquareKind::Difference, 3) => (
-            "Usar (a - b)^3 = a^3 - 3a^2b + 3ab^2 - b^3",
-            "a^3 - 3 · a^2 · b + 3 · a · b^2 - b^3".to_string(),
-            "a^3 - 3a^2b + 3ab^2 - b^3".to_string(),
-            format!("({left_display} - {right_display})^3"),
-            format!("\\left({left_latex} - {right_latex}\\right)^3"),
-        ),
+    let _ = (left, right);
+    let identity_title = match (kind, power) {
+        (BinomialSquareKind::Sum, 2) => "Usar (a + b)^2 = a^2 + 2ab + b^2",
+        (BinomialSquareKind::Difference, 2) => "Usar (a - b)^2 = a^2 - 2ab + b^2",
+        (BinomialSquareKind::Sum, 3) => "Usar (a + b)^3 = a^3 + 3a^2b + 3ab^2 + b^3",
+        (BinomialSquareKind::Difference, 3) => "Usar (a - b)^3 = a^3 - 3a^2b + 3ab^2 - b^3",
         _ => return Vec::new(),
     };
-    let substituted_after_display = match (kind, power) {
-        (BinomialSquareKind::Sum, 2) => format!(
-            "{left_grouped_display}^2 + 2 · {left_grouped_display} · {right_grouped_display} + {right_grouped_display}^2"
-        ),
-        (BinomialSquareKind::Difference, 2) => format!(
-            "{left_grouped_display}^2 - 2 · {left_grouped_display} · {right_grouped_display} + {right_grouped_display}^2"
-        ),
-        (BinomialSquareKind::Sum, 3) => format!(
-            "{left_grouped_display}^3 + 3 · {left_grouped_display}^2 · {right_grouped_display} + 3 · {left_grouped_display} · {right_grouped_display}^2 + {right_grouped_display}^3"
-        ),
-        (BinomialSquareKind::Difference, 3) => format!(
-            "{left_grouped_display}^3 - 3 · {left_grouped_display}^2 · {right_grouped_display} + 3 · {left_grouped_display} · {right_grouped_display}^2 - {right_grouped_display}^3"
-        ),
-        _ => return Vec::new(),
-    };
-    let substituted_after_latex = match (kind, power) {
-        (BinomialSquareKind::Sum, 2) => format!(
-            "{left_grouped_latex}^2 + 2\\cdot {left_grouped_latex}\\cdot {right_grouped_latex} + {right_grouped_latex}^2"
-        ),
-        (BinomialSquareKind::Difference, 2) => format!(
-            "{left_grouped_latex}^2 - 2\\cdot {left_grouped_latex}\\cdot {right_grouped_latex} + {right_grouped_latex}^2"
-        ),
-        (BinomialSquareKind::Sum, 3) => format!(
-            "{left_grouped_latex}^3 + 3\\cdot {left_grouped_latex}^2\\cdot {right_grouped_latex} + 3\\cdot {left_grouped_latex}\\cdot {right_grouped_latex}^2 + {right_grouped_latex}^3"
-        ),
-        (BinomialSquareKind::Difference, 3) => format!(
-            "{left_grouped_latex}^3 - 3\\cdot {left_grouped_latex}^2\\cdot {right_grouped_latex} + 3\\cdot {left_grouped_latex}\\cdot {right_grouped_latex}^2 - {right_grouped_latex}^3"
-        ),
-        _ => return Vec::new(),
-    };
-    let identity_substep = formula_substep(
-        identity_title,
-        match (kind, power) {
-            (BinomialSquareKind::Sum, 2) => "(a + b)^2",
-            (BinomialSquareKind::Difference, 2) => "(a - b)^2",
-            (BinomialSquareKind::Sum, 3) => "(a + b)^3",
-            (BinomialSquareKind::Difference, 3) => "(a - b)^3",
-            _ => return Vec::new(),
-        },
-        &rhs_display,
-        match (kind, power) {
-            (BinomialSquareKind::Sum, 2) => "\\left(a + b\\right)^2",
-            (BinomialSquareKind::Difference, 2) => "\\left(a - b\\right)^2",
-            (BinomialSquareKind::Sum, 3) => "\\left(a + b\\right)^3",
-            (BinomialSquareKind::Difference, 3) => "\\left(a - b\\right)^3",
-            _ => return Vec::new(),
-        },
-        &rhs_latex,
-    );
 
-    if matches_var_name(ctx, left, "a") && matches_var_name(ctx, right, "b") {
-        return vec![identity_substep];
-    }
-
-    vec![
-        identity_substep,
-        formula_substep(
-            format!("Aplicar la fórmula con a = {left_display}, b = {right_display}"),
-            &substituted_before_display,
-            &substituted_after_display,
-            &substituted_before_latex,
-            &substituted_after_latex,
-        ),
-    ]
+    vec![concrete_expr_substep(ctx, identity_title, before, after)]
 }
 
 fn generate_expand_log_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
     let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
     let (title, before_display, after_display, before_latex, after_latex) =
         if let Some(snippet) = log_formula_snippet(ctx, before, true) {
             snippet
@@ -1221,6 +1124,10 @@ fn generate_expand_log_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
                 "\\ln(u) + \\ln(v)".to_string(),
             )
         };
+
+    if before != after {
+        return vec![concrete_expr_substep(ctx, title, before, after)];
+    }
 
     vec![formula_substep(
         title,
@@ -3407,26 +3314,26 @@ fn matches_general_log_power_contraction(ctx: &Context, before: ExprId, after: E
             == std::cmp::Ordering::Equal
 }
 
-fn generate_evaluate_logarithms_substeps(step: &Step) -> Vec<SubStep> {
+fn generate_evaluate_logarithms_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
     match step.description.as_str() {
-        "log(b, x^y) = y * log(b, x)" => vec![formula_substep(
+        "log(b, x^y) = y * log(b, x)" => vec![concrete_expr_substep(
+            ctx,
             "Sacar el exponente fuera del logaritmo",
-            "log(b, u^n)",
-            "n · log(b, u)",
-            "\\log_b(u^n)",
-            "n\\cdot \\log_b(u)",
+            before,
+            after,
         )],
         _ => Vec::new(),
     }
 }
 
-fn generate_factor_perfect_square_log_substeps(_ctx: &Context, _step: &Step) -> Vec<SubStep> {
-    vec![formula_substep(
+fn generate_factor_perfect_square_log_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    vec![concrete_expr_substep(
+        ctx,
         "Sacar un exponente par fuera del logaritmo",
-        "ln(u^2)",
-        "2 · ln(|u|)",
-        "\\ln(u^2)",
-        "2\\cdot \\ln(|u|)",
+        step.before_local().unwrap_or(step.before),
+        step.after_local().unwrap_or(step.after),
     )]
 }
 
@@ -3444,6 +3351,10 @@ fn generate_log_contraction_substeps(ctx: &Context, step: &Step) -> Vec<SubStep>
         return Vec::new();
     };
 
+    if before != after {
+        return vec![concrete_expr_substep(ctx, title, before, after)];
+    }
+
     vec![formula_substep(
         title,
         &before_display,
@@ -3459,58 +3370,22 @@ fn generate_double_angle_expansion_substeps(ctx: &Context, step: &Step) -> Vec<S
     let before_display = human_expr(ctx, before_expr);
     let after_display = human_expr(ctx, after_expr);
 
-    if before_display.contains("1 - 2")
+    let title = if before_display.contains("1 - 2")
         && before_display.contains("sin(")
         && after_display.contains("cos(2")
     {
-        return vec![formula_substep(
-            "Reconocer el patrón 1 - 2 · sin(u)^2 = cos(2u)",
-            "1 - 2 · sin(u)^2",
-            "cos(2u)",
-            "1 - 2\\cdot \\sin^2(u)",
-            "\\cos(2u)",
-        )];
-    }
-
-    let (before, after, before_latex, after_latex) = if step.description.contains("1 - 2·sin") {
-        (
-            "cos(2u)",
-            "1 - 2 · sin(u)^2",
-            "\\cos(2u)",
-            "1 - 2\\cdot \\sin^2(u)",
-        )
-    } else if step.description.contains("2·cos") {
-        (
-            "cos(2u)",
-            "2 · cos(u)^2 - 1",
-            "\\cos(2u)",
-            "2\\cdot \\cos^2(u) - 1",
-        )
-    } else if step.description.contains("sine") {
-        (
-            "sin(2u)",
-            "2 · sin(u) · cos(u)",
-            "\\sin(2u)",
-            "2\\sin(u)\\cos(u)",
-        )
-    } else if step.description.contains("cosine") {
-        (
-            "cos(2u)",
-            "cos(u)^2 - sin(u)^2",
-            "\\cos(2u)",
-            "\\cos^2(u) - \\sin^2(u)",
-        )
+        "Reconocer el patrón 1 - 2 · sin(u)^2 = cos(2u)"
+    } else if step.description.contains("1 - 2·sin")
+        || step.description.contains("2·cos")
+        || step.description.contains("sine")
+        || step.description.contains("cosine")
+    {
+        "Usar la identidad de ángulo doble"
     } else {
         return Vec::new();
     };
 
-    vec![formula_substep(
-        "Usar la identidad de ángulo doble",
-        before,
-        after,
-        before_latex,
-        after_latex,
-    )]
+    vec![concrete_expr_substep(ctx, title, before_expr, after_expr)]
 }
 
 fn generate_sum_to_product_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
@@ -3539,44 +3414,19 @@ fn generate_sum_to_product_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> 
     let kind = inferred_kind
         .or_else(|| infer_sum_to_product_kind_from_display(ctx, local_before))
         .or_else(|| infer_sum_to_product_kind_from_description(step.description.as_str()));
-    let (title, before, after, before_latex, after_latex) = match kind {
-        Some("sine sum") => (
-            "Usar sin(A) + sin(B) = 2 · sin((A+B)/2) · cos((A-B)/2)",
-            "sin(A) + sin(B)",
-            "2 · sin((A+B)/2) · cos((A-B)/2)",
-            "\\sin(A) + \\sin(B)",
-            "2\\cdot \\sin\\left(\\frac{A+B}{2}\\right)\\cdot \\cos\\left(\\frac{A-B}{2}\\right)",
-        ),
-        Some("sine difference") => (
-            "Usar sin(A) - sin(B) = 2 · cos((A+B)/2) · sin((A-B)/2)",
-            "sin(A) - sin(B)",
-            "2 · cos((A+B)/2) · sin((A-B)/2)",
-            "\\sin(A) - \\sin(B)",
-            "2\\cdot \\cos\\left(\\frac{A+B}{2}\\right)\\cdot \\sin\\left(\\frac{A-B}{2}\\right)",
-        ),
-        Some("cosine sum") => (
-            "Usar cos(A) + cos(B) = 2 · cos((A+B)/2) · cos((A-B)/2)",
-            "cos(A) + cos(B)",
-            "2 · cos((A+B)/2) · cos((A-B)/2)",
-            "\\cos(A) + \\cos(B)",
-            "2\\cdot \\cos\\left(\\frac{A+B}{2}\\right)\\cdot \\cos\\left(\\frac{A-B}{2}\\right)",
-        ),
-        Some("cosine difference") => (
-            "Usar cos(A) - cos(B) = -2 · sin((A+B)/2) · sin((A-B)/2)",
-            "cos(A) - cos(B)",
-            "-2 · sin((A+B)/2) · sin((A-B)/2)",
-            "\\cos(A) - \\cos(B)",
-            "-2\\cdot \\sin\\left(\\frac{A+B}{2}\\right)\\cdot \\sin\\left(\\frac{A-B}{2}\\right)",
-        ),
+    let title = match kind {
+        Some("sine sum") => "Usar sin(A) + sin(B) = 2 · sin((A+B)/2) · cos((A-B)/2)",
+        Some("sine difference") => "Usar sin(A) - sin(B) = 2 · cos((A+B)/2) · sin((A-B)/2)",
+        Some("cosine sum") => "Usar cos(A) + cos(B) = 2 · cos((A+B)/2) · cos((A-B)/2)",
+        Some("cosine difference") => "Usar cos(A) - cos(B) = -2 · sin((A+B)/2) · sin((A-B)/2)",
         _ => return Vec::new(),
     };
 
-    vec![formula_substep(
+    vec![concrete_expr_substep(
+        ctx,
         title,
-        before,
-        after,
-        before_latex,
-        after_latex,
+        local_before,
+        step.after_local().unwrap_or(step.after),
     )]
 }
 
@@ -3595,44 +3445,19 @@ fn generate_hyperbolic_angle_sum_diff_substeps(ctx: &Context, step: &Step) -> Ve
     };
     let _ = (left, right);
 
-    let (title, before, after, before_latex, after_latex) = match (ctx.builtin_of(*fn_id), is_sum) {
-        (Some(BuiltinFn::Sinh), true) => (
-            "Usar sinh(A+B) = sinh(A) · cosh(B) + cosh(A) · sinh(B)",
-            "sinh(A+B)",
-            "sinh(A) · cosh(B) + cosh(A) · sinh(B)",
-            "\\sinh(A+B)",
-            "\\sinh(A)\\cdot \\cosh(B) + \\cosh(A)\\cdot \\sinh(B)",
-        ),
-        (Some(BuiltinFn::Sinh), false) => (
-            "Usar sinh(A-B) = sinh(A) · cosh(B) - cosh(A) · sinh(B)",
-            "sinh(A-B)",
-            "sinh(A) · cosh(B) - cosh(A) · sinh(B)",
-            "\\sinh(A-B)",
-            "\\sinh(A)\\cdot \\cosh(B) - \\cosh(A)\\cdot \\sinh(B)",
-        ),
-        (Some(BuiltinFn::Cosh), true) => (
-            "Usar cosh(A+B) = cosh(A) · cosh(B) + sinh(A) · sinh(B)",
-            "cosh(A+B)",
-            "cosh(A) · cosh(B) + sinh(A) · sinh(B)",
-            "\\cosh(A+B)",
-            "\\cosh(A)\\cdot \\cosh(B) + \\sinh(A)\\cdot \\sinh(B)",
-        ),
-        (Some(BuiltinFn::Cosh), false) => (
-            "Usar cosh(A-B) = cosh(A) · cosh(B) - sinh(A) · sinh(B)",
-            "cosh(A-B)",
-            "cosh(A) · cosh(B) - sinh(A) · sinh(B)",
-            "\\cosh(A-B)",
-            "\\cosh(A)\\cdot \\cosh(B) - \\sinh(A)\\cdot \\sinh(B)",
-        ),
+    let title = match (ctx.builtin_of(*fn_id), is_sum) {
+        (Some(BuiltinFn::Sinh), true) => "Usar sinh(A+B) = sinh(A) · cosh(B) + cosh(A) · sinh(B)",
+        (Some(BuiltinFn::Sinh), false) => "Usar sinh(A-B) = sinh(A) · cosh(B) - cosh(A) · sinh(B)",
+        (Some(BuiltinFn::Cosh), true) => "Usar cosh(A+B) = cosh(A) · cosh(B) + sinh(A) · sinh(B)",
+        (Some(BuiltinFn::Cosh), false) => "Usar cosh(A-B) = cosh(A) · cosh(B) - sinh(A) · sinh(B)",
         _ => return Vec::new(),
     };
 
-    vec![formula_substep(
+    vec![concrete_expr_substep(
+        ctx,
         title,
-        before,
-        after,
-        before_latex,
-        after_latex,
+        local_before,
+        step.after_local().unwrap_or(step.after),
     )]
 }
 
@@ -3906,84 +3731,185 @@ fn generate_pythagorean_high_power_factor_substeps(ctx: &Context, step: &Step) -
     let before = human_expr(ctx, local_before);
 
     if before.contains("sin(") {
-        return vec![
-            formula_substep(
-                "Sacar factor común 4 · sin(u)",
-                "4 · sin(u) - 4 · sin(u)^3",
-                "4 · sin(u) · (1 - sin(u)^2)",
-                "4\\cdot \\sin(u) - 4\\cdot \\sin^3(u)",
-                "4\\cdot \\sin(u)\\cdot \\left(1 - \\sin^2(u)\\right)",
-            ),
-            formula_substep(
-                "Usar 1 - sin(u)^2 = cos(u)^2",
-                "4 · sin(u) · (1 - sin(u)^2)",
-                "4 · sin(u) · cos(u)^2",
-                "4\\cdot \\sin(u)\\cdot \\left(1 - \\sin^2(u)\\right)",
-                "4\\cdot \\sin(u)\\cdot \\cos^2(u)",
-            ),
-            formula_substep(
-                "Usar 2 · sin(u) · cos(u) = sin(2u)",
-                "4 · sin(u) · cos(u)^2",
-                "2 · sin(2u) · cos(u)",
-                "4\\cdot \\sin(u)\\cdot \\cos^2(u)",
-                "2\\cdot \\sin(2u)\\cdot \\cos(u)",
-            ),
-        ];
+        if let Some(substeps) = build_pythagorean_high_power_sine_substeps(ctx, local_before) {
+            return substeps;
+        }
     }
 
     if before.starts_with("4 · cos(") && before.contains("^3") {
-        return vec![
-            formula_substep(
-                "Sacar factor común 4 · cos(u)",
-                "4 · cos(u) - 4 · cos(u)^3",
-                "4 · cos(u) · (1 - cos(u)^2)",
-                "4\\cdot \\cos(u) - 4\\cdot \\cos^3(u)",
-                "4\\cdot \\cos(u)\\cdot \\left(1 - \\cos^2(u)\\right)",
-            ),
-            formula_substep(
-                "Usar 1 - cos(u)^2 = sin(u)^2",
-                "4 · cos(u) · (1 - cos(u)^2)",
-                "4 · cos(u) · sin(u)^2",
-                "4\\cdot \\cos(u)\\cdot \\left(1 - \\cos^2(u)\\right)",
-                "4\\cdot \\cos(u)\\cdot \\sin^2(u)",
-            ),
-            formula_substep(
-                "Usar 2 · sin(u) · cos(u) = sin(2u)",
-                "4 · cos(u) · sin(u)^2",
-                "2 · sin(2u) · sin(u)",
-                "4\\cdot \\cos(u)\\cdot \\sin^2(u)",
-                "2\\cdot \\sin(2u)\\cdot \\sin(u)",
-            ),
-        ];
+        if let Some(substeps) = build_pythagorean_high_power_cos_substeps(ctx, local_before, false)
+        {
+            return substeps;
+        }
     }
 
     if before.contains("cos(") && before.contains("^3") {
-        return vec![
-            formula_substep(
-                "Sacar factor común -4 · cos(u)",
-                "4 · cos(u)^3 - 4 · cos(u)",
-                "-4 · cos(u) · (1 - cos(u)^2)",
-                "4\\cdot \\cos^3(u) - 4\\cdot \\cos(u)",
-                "-4\\cdot \\cos(u)\\cdot \\left(1 - \\cos^2(u)\\right)",
-            ),
-            formula_substep(
-                "Usar 1 - cos(u)^2 = sin(u)^2",
-                "-4 · cos(u) · (1 - cos(u)^2)",
-                "-4 · cos(u) · sin(u)^2",
-                "-4\\cdot \\cos(u)\\cdot \\left(1 - \\cos^2(u)\\right)",
-                "-4\\cdot \\cos(u)\\cdot \\sin^2(u)",
-            ),
-            formula_substep(
-                "Usar 2 · sin(u) · cos(u) = sin(2u)",
-                "-4 · cos(u) · sin(u)^2",
-                "-2 · sin(2u) · sin(u)",
-                "-4\\cdot \\cos(u)\\cdot \\sin^2(u)",
-                "-2\\cdot \\sin(2u)\\cdot \\sin(u)",
-            ),
-        ];
+        if let Some(substeps) = build_pythagorean_high_power_cos_substeps(ctx, local_before, true) {
+            return substeps;
+        }
     }
 
     Vec::new()
+}
+
+fn build_pythagorean_high_power_sine_substeps(
+    ctx: &Context,
+    local_before: ExprId,
+) -> Option<Vec<SubStep>> {
+    let mut work = ctx.clone();
+    let arg = first_trig_argument_with_builtin(&work, local_before, BuiltinFn::Sin)?;
+    let one = work.num(1);
+    let two = work.num(2);
+    let three = work.num(3);
+    let four = work.num(4);
+    let sin_u = work.call_builtin(BuiltinFn::Sin, vec![arg]);
+    let cos_u = work.call_builtin(BuiltinFn::Cos, vec![arg]);
+    let sin_sq = work.add(Expr::Pow(sin_u, two));
+    let cos_sq = work.add(Expr::Pow(cos_u, two));
+    let sin_cubed = work.add(Expr::Pow(sin_u, three));
+    let four_sin = work.add(Expr::Mul(four, sin_u));
+    let _four_sin_cubed = work.add(Expr::Mul(four, sin_cubed));
+    let one_minus_sin_sq = work.add(Expr::Sub(one, sin_sq));
+    let factorized = work.add(Expr::Mul(four_sin, one_minus_sin_sq));
+    let four_sin_again = work.add(Expr::Mul(four, sin_u));
+    let pythagorean = work.add(Expr::Mul(four_sin_again, cos_sq));
+    let double_arg = work.add(Expr::Mul(two, arg));
+    let sin_2u = work.call_builtin(BuiltinFn::Sin, vec![double_arg]);
+    let two_sin_2u = work.add(Expr::Mul(two, sin_2u));
+    let final_expr = work.add(Expr::Mul(two_sin_2u, cos_u));
+
+    Some(vec![
+        mixed_ctx_substep(
+            "Sacar factor común 4 · sin(u)",
+            ctx,
+            local_before,
+            &work,
+            factorized,
+        ),
+        temp_ctx_substep(
+            "Usar 1 - sin(u)^2 = cos(u)^2",
+            &work,
+            factorized,
+            pythagorean,
+        ),
+        temp_ctx_substep(
+            "Usar 2 · sin(u) · cos(u) = sin(2u)",
+            &work,
+            pythagorean,
+            final_expr,
+        ),
+    ])
+}
+
+fn build_pythagorean_high_power_cos_substeps(
+    ctx: &Context,
+    local_before: ExprId,
+    negated: bool,
+) -> Option<Vec<SubStep>> {
+    let mut work = ctx.clone();
+    let arg = first_trig_argument_with_builtin(&work, local_before, BuiltinFn::Cos)?;
+    let one = work.num(1);
+    let two = work.num(2);
+    let four = work.num(4);
+    let neg_four = work.num(-4);
+    let cos_u = work.call_builtin(BuiltinFn::Cos, vec![arg]);
+    let sin_u = work.call_builtin(BuiltinFn::Sin, vec![arg]);
+    let cos_sq = work.add(Expr::Pow(cos_u, two));
+    let sin_sq = work.add(Expr::Pow(sin_u, two));
+    let lead_coeff = if negated { neg_four } else { four };
+    let lead_cos = work.add(Expr::Mul(lead_coeff, cos_u));
+    let one_minus_cos_sq = work.add(Expr::Sub(one, cos_sq));
+    let factorized = work.add(Expr::Mul(lead_cos, one_minus_cos_sq));
+    let lead_cos_again = work.add(Expr::Mul(lead_coeff, cos_u));
+    let pythagorean = work.add(Expr::Mul(lead_cos_again, sin_sq));
+    let double_arg = work.add(Expr::Mul(two, arg));
+    let sin_2u = work.call_builtin(BuiltinFn::Sin, vec![double_arg]);
+    let final_coeff = if negated { work.num(-2) } else { two };
+    let final_prefix = work.add(Expr::Mul(final_coeff, sin_2u));
+    let final_expr = work.add(Expr::Mul(final_prefix, sin_u));
+
+    Some(vec![
+        mixed_ctx_substep(
+            if negated {
+                "Sacar factor común -4 · cos(u)"
+            } else {
+                "Sacar factor común 4 · cos(u)"
+            },
+            ctx,
+            local_before,
+            &work,
+            factorized,
+        ),
+        temp_ctx_substep(
+            "Usar 1 - cos(u)^2 = sin(u)^2",
+            &work,
+            factorized,
+            pythagorean,
+        ),
+        temp_ctx_substep(
+            "Usar 2 · sin(u) · cos(u) = sin(2u)",
+            &work,
+            pythagorean,
+            final_expr,
+        ),
+    ])
+}
+
+fn first_trig_argument_with_builtin(
+    ctx: &Context,
+    expr: ExprId,
+    builtin: BuiltinFn,
+) -> Option<ExprId> {
+    match ctx.get(expr) {
+        Expr::Function(fn_id, args) if args.len() == 1 && ctx.is_builtin(*fn_id, builtin) => {
+            Some(args[0])
+        }
+        Expr::Add(left, right) | Expr::Sub(left, right) | Expr::Mul(left, right) => {
+            first_trig_argument_with_builtin(ctx, *left, builtin)
+                .or_else(|| first_trig_argument_with_builtin(ctx, *right, builtin))
+        }
+        Expr::Div(left, right) | Expr::Pow(left, right) => {
+            first_trig_argument_with_builtin(ctx, *left, builtin)
+                .or_else(|| first_trig_argument_with_builtin(ctx, *right, builtin))
+        }
+        Expr::Neg(inner) | Expr::Hold(inner) => {
+            first_trig_argument_with_builtin(ctx, *inner, builtin)
+        }
+        Expr::Function(_, args) => args
+            .iter()
+            .find_map(|arg| first_trig_argument_with_builtin(ctx, *arg, builtin)),
+        Expr::Matrix { data, .. } => data
+            .iter()
+            .find_map(|item| first_trig_argument_with_builtin(ctx, *item, builtin)),
+        Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) | Expr::SessionRef(_) => None,
+    }
+}
+
+fn temp_ctx_substep(
+    title: impl Into<String>,
+    ctx: &Context,
+    before: ExprId,
+    after: ExprId,
+) -> SubStep {
+    SubStep::new(title, human_expr(ctx, before), human_expr(ctx, after))
+        .with_before_latex(latex_expr(ctx, before))
+        .with_after_latex(latex_expr(ctx, after))
+}
+
+fn mixed_ctx_substep(
+    title: impl Into<String>,
+    before_ctx: &Context,
+    before: ExprId,
+    after_ctx: &Context,
+    after: ExprId,
+) -> SubStep {
+    SubStep::new(
+        title,
+        human_expr(before_ctx, before),
+        human_expr(after_ctx, after),
+    )
+    .with_before_latex(latex_expr(before_ctx, before))
+    .with_after_latex(latex_expr(after_ctx, after))
 }
 
 fn generate_cos_2x_additive_contraction_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {

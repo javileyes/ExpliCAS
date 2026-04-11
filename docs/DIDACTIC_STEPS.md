@@ -2,12 +2,16 @@
 
 ExpliCAS uses two complementary systems for presenting multi-step mathematical transformations to users.
 
+The normalization contract for user-facing didactic substeps lives in:
+
+- [DIDACTIC_SUBSTEP_NORMALIZATION.md](/Users/javiergimenezmoya/developer/math/docs/DIDACTIC_SUBSTEP_NORMALIZATION.md)
+
 ## Overview
 
 | System | Layer | Output | Purpose |
 |--------|-------|--------|---------|
 | **ChainedRewrite** | Engine (`rule.rs`) | Real `Step` objects with `ExprId` | Multi-step algebraic decomposition |
-| **SubSteps** | Display (`didactic.rs`) | `SubStep` with LaTeX strings | Educational annotation within a Step |
+| **SubSteps** | Display (`cas_didactic`) | Structured `SubStep` with specific `before/after` math | Educational annotation within a Step |
 
 ---
 
@@ -88,11 +92,12 @@ ChainedRewrite produces **separate visible Steps** in the timeline:
 ### Data Structure
 
 ```rust
-// didactic.rs
 pub struct SubStep {
-    pub description: String,    // "Denominador binomial con radical"
-    pub before_latex: String,   // LaTeX string (display only)
-    pub after_latex: String,    // LaTeX string (display only)
+    pub description: String,
+    pub before_expr: String,
+    pub after_expr: String,
+    pub before_latex: Option<String>,
+    pub after_latex: Option<String>,
 }
 
 pub struct EnrichedStep {
@@ -132,18 +137,43 @@ pub fn enrich_steps(ctx: &Context, original_expr: ExprId, steps: Vec<Step>) -> V
 
 ### Output
 
-SubSteps appear as **indented annotations** within a single Step:
+SubSteps appear as **indented annotations** within a single Step.
+
+Their supported public shape is always:
+
+```text
+[title]
+[specific expression]
+->
+[specific expression]
+```
+
+So user-facing substeps are structured and mathematical, not free-form
+narrative lines.
+
+Example:
 
 ```
 1. Rationalize denominator  [Rationalize Denominator]
    Before: 1 / (√x - 1)
-      → Denominador binomial con radical
-        1/(√x - 1) → Conjugado: √x + 1
-      → (a+b)(a-b) = a² - b²
-        ...
+      → Multiplicar por el conjugado
+        1/(√x - 1)
+        ->
+        (√x + 1)/((√x - 1)(√x + 1))
+      → Usar diferencia de cuadrados
+        (√x - 1)(√x + 1)
+        ->
+        x - 1
    Rule: 1 / (√x - 1) -> (1 + √x) / (x - 1)
    After: (1 + √x) / (x - 1)
 ```
+
+Important normalization rule:
+
+- the title may name a general maneuver
+- the math body must still be specific to the current step
+- if the only possible substep would duplicate the parent step, emit no substep
+- generic template math is worse than no substep
 
 ---
 
@@ -177,9 +207,22 @@ if step.description.starts_with("Simplified fraction by GCD") && !step.is_chaine
 | Scenario | Use | Rationale |
 |----------|-----|-----------|
 | Multi-step algebraic decomposition (Factor → Cancel) | **ChainedRewrite** | Each step needs real `ExprId`, visible in timeline |
-| Explaining a technique (find conjugate) | **SubSteps** | Educational annotation, no state change |
+| Explaining a hidden local rewrite (find conjugate, expand local log, cancel local pair) | **SubSteps** | Educational annotation, no state change |
 | Step needs its own `Requires`/`Assumes` | **ChainedRewrite** | SubSteps can't carry conditions |
-| Micro-explanation within a rule | **SubSteps** | Doesn't warrant separate timeline row |
+| Micro-explanation within a rule | **SubSteps** | Only if it adds concrete math not already visible in the parent step |
+
+## Authoring Rule Of Thumb
+
+When adding a new substep family:
+
+1. Prefer concrete local math from the actual step.
+2. Use a generic title only as a header, never as a substitute for concrete math.
+3. If the parent step is already self-explanatory, emit `0` substeps.
+4. Never emit narrative-only or template-only math lines.
+
+For the detailed contract and examples, see:
+
+- [DIDACTIC_SUBSTEP_NORMALIZATION.md](/Users/javiergimenezmoya/developer/math/docs/DIDACTIC_SUBSTEP_NORMALIZATION.md)
 
 ---
 
