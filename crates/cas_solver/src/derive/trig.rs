@@ -1519,7 +1519,7 @@ fn try_rewrite_additive_triple_angle_expansion_target_aware(
                 DeriveTrigRewriteKind::TripleAngleSin
                     | DeriveTrigRewriteKind::TripleAngleCos
                     | DeriveTrigRewriteKind::TripleAngleTan
-            ) && strong_target_match(ctx, rewrite.rewritten, target_expr)
+            ) && presentational_target_match(ctx, rewrite.rewritten, target_expr)
         })
 }
 

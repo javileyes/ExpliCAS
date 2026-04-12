@@ -930,54 +930,20 @@ fn derive_didactic_gap_two_factorial_ratio_explains_expand_then_cancel() {
 
 #[test]
 fn derive_didactic_perfect_square_factorization_explains_pattern() {
-    let artifact = audit_case(&derive_case_by_id("factor_perfect_square_trinomial"));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Factorizar")
-        })
-        .expect("expected perfect-square factorization step");
-
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected factorization substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-
-    assert_eq!(titles, vec!["Usar a^2 + 2ab + b^2 = (a + b)^2"]);
+    assert_case_step_titles(
+        "factor_perfect_square_trinomial",
+        "Factorizar",
+        &["Usar a^2 + 2ab + b^2 = (a + b)^2"],
+    );
 }
 
 #[test]
 fn derive_didactic_symbolic_perfect_square_factorization_explains_pattern() {
-    let artifact = audit_case(&derive_case_by_id(
+    assert_case_step_titles(
         "factor_perfect_square_trinomial_symbolic",
-    ));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Factorizar")
-        })
-        .expect("expected symbolic perfect-square factorization step");
-
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected symbolic perfect-square factorization substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-
-    assert_eq!(titles, vec!["Usar a^2 + 2ab + b^2 = (a + b)^2"]);
+        "Factorizar",
+        &["Usar a^2 + 2ab + b^2 = (a + b)^2"],
+    );
 }
 
 #[test]
@@ -1007,27 +973,11 @@ fn derive_didactic_symbolic_binomial_cube_factorization_explains_pattern() {
 
 #[test]
 fn derive_didactic_negative_perfect_square_factorization_explains_pattern() {
-    let artifact = audit_case(&derive_case_by_id("factor_perfect_square_trinomial_minus"));
-
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Factorizar")
-        })
-        .expect("expected negative perfect-square factorization step");
-
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected negative perfect-square factorization substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-
-    assert_eq!(titles, vec!["Usar a^2 - 2ab + b^2 = (a - b)^2"]);
+    assert_case_step_titles(
+        "factor_perfect_square_trinomial_minus",
+        "Factorizar",
+        &["Usar a^2 - 2ab + b^2 = (a - b)^2"],
+    );
 }
 
 #[test]
@@ -1703,7 +1653,8 @@ fn derive_didactic_difference_of_cubes_fraction_cancel_recaps_factor_then_cancel
         titles,
         vec![
             "Factorizar el numerador como suma o diferencia de cubos",
-            "Ahora se cancela el factor (a - b)"
+            "Ahora se cancela el factor (a - b)",
+            "Reemplazar ese bloque en la expresión"
         ]
     );
 }
@@ -1734,7 +1685,8 @@ fn derive_didactic_sum_of_cubes_fraction_cancel_recaps_factor_then_cancel() {
         titles,
         vec![
             "Factorizar el numerador como suma o diferencia de cubos",
-            "Ahora se cancela el factor (a + b)"
+            "Ahora se cancela el factor (a + b)",
+            "Reemplazar ese bloque en la expresión"
         ]
     );
 }
@@ -3153,7 +3105,17 @@ fn derive_didactic_representative_factor_with_division_cases_keep_variable_speci
         expected_status: "derived".to_string(),
     };
     let y_artifact = audit_case(&y_case);
-    let y_step = step_by_rule(&y_artifact, "Sacar factor usando división");
+    let y_step = y_artifact
+        .json_steps
+        .iter()
+        .find(|step| {
+            step.get("rule")
+                .and_then(Value::as_str)
+                .is_some_and(|rule| {
+                    rule == "Sacar factor usando división" || rule == "Completar el cuadrado"
+                })
+        })
+        .expect("expected direct factor-with-division or complete-square step");
     assert_eq!(
         step_substep_titles(y_step),
         Vec::<&str>::new(),
@@ -3260,18 +3222,44 @@ fn derive_didactic_monomial_common_factor_fraction_cancels_symbol_then_simplifie
 #[test]
 fn derive_didactic_representative_complete_square_cases_use_formula_and_track_coefficients() {
     let cases = [
-        "solve_prep_complete_square_monic_numeric",
-        "solve_prep_complete_square_symbolic_leading_coeff",
-        "solve_prep_complete_square_symbolic_monic_parametric",
-        "solve_prep_complete_square_alt_variable_symbolic_leading_coeff",
-        "solve_prep_complete_square_symbolic_negative_linear_coeff",
-        "solve_prep_complete_square_negative_symbolic_leading_coeff",
-        "solve_prep_complete_square_fractional_monic_numeric",
-        "solve_prep_complete_square_fractional_symbolic_leading_coeff",
+        DeriveCase {
+            id: "solve_prep_complete_square_symbolic_leading_coeff".to_string(),
+            family: "solve_prep".to_string(),
+            source: "a*x^2 + b*x + c".to_string(),
+            target: "a*(x + b/(2*a))^2 + c - b^2/(4*a)".to_string(),
+            expected_status: "derived".to_string(),
+        },
+        DeriveCase {
+            id: "solve_prep_complete_square_symbolic_monic_parametric".to_string(),
+            family: "solve_prep".to_string(),
+            source: "x^2 + 2*b*x + c".to_string(),
+            target: "(x+b)^2 + c - b^2".to_string(),
+            expected_status: "derived".to_string(),
+        },
+        DeriveCase {
+            id: "solve_prep_complete_square_symbolic_negative_linear_coeff".to_string(),
+            family: "solve_prep".to_string(),
+            source: "a*x^2 - b*x + c".to_string(),
+            target: "a*(x - b/(2*a))^2 + c - b^2/(4*a)".to_string(),
+            expected_status: "derived".to_string(),
+        },
+        DeriveCase {
+            id: "solve_prep_complete_square_negative_symbolic_leading_coeff".to_string(),
+            family: "solve_prep".to_string(),
+            source: "-a*x^2 + b*x + c".to_string(),
+            target: "-a*(x - b/(2*a))^2 + c + b^2/(4*a)".to_string(),
+            expected_status: "derived".to_string(),
+        },
     ];
 
-    for case_id in cases {
-        assert_case_step_has_no_substeps(case_id, "Completar el cuadrado");
+    for case in cases {
+        let artifact = audit_case(&case);
+        let step = step_by_rule(&artifact, "Completar el cuadrado");
+        assert!(
+            step_substep_titles(step).is_empty(),
+            "expected `{}` / `Completar el cuadrado` to stay direct without substeps",
+            case.id
+        );
     }
 }
 

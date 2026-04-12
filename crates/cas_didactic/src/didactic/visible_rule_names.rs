@@ -166,6 +166,11 @@ pub(crate) fn visible_rule_name_for_step<'a>(
             Cow::Borrowed("Aplicar identidad de ángulo mitad")
         }
         "Collapse Exact Zero Additive Subexpression"
+            if description == "Power Reduction Identity" =>
+        {
+            Cow::Borrowed("Aplicar reducción de potencias")
+        }
+        "Collapse Exact Zero Additive Subexpression"
             if description == "Recognize Secant Squared" =>
         {
             Cow::Borrowed("Reconocer secante cuadrada")
@@ -182,6 +187,9 @@ pub(crate) fn visible_rule_name_for_step<'a>(
             if description == "Expand hyperbolic angle sum/difference" =>
         {
             Cow::Borrowed("Hyperbolic Angle Sum/Difference Identity")
+        }
+        "Collapse Exact Zero Additive Subexpression" if description == "Complete the Square" => {
+            Cow::Borrowed("Completar el cuadrado")
         }
         "Collapse Exact Zero Additive Subexpression"
             if description == "Log expansion followed by exact cancellation" =>

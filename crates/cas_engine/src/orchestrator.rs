@@ -7,7 +7,9 @@ use cas_ast::ordering::compare_expr;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use cas_math::arithmetic_rule_support::try_rewrite_combine_constants_expr;
 use cas_math::build::mul2_raw;
-use cas_math::expr_nary::{AddView, MulView, Sign};
+use cas_math::expr_extract::extract_i64_integer;
+use cas_math::expr_nary::{build_balanced_mul, AddView, MulView, Sign};
+use cas_math::expr_rewrite::smart_mul;
 use cas_math::fraction_power_cancel_support::try_rewrite_cancel_same_base_powers_div_expr;
 use cas_math::infinity_support::{is_negative_literal, is_positive_literal};
 use cas_math::logarithm_inverse_support::{
@@ -20,11 +22,19 @@ use cas_math::root_forms::{
     try_rewrite_canonical_root_expr, try_rewrite_extract_perfect_power_from_radicand_expr,
     try_rewrite_simplify_square_root_expr, SimplifySquareRootRewriteKind,
 };
+use cas_math::trig_core_identity_support::try_rewrite_pythagorean_identity_add_expr;
+use cas_math::trig_identity_zero_support::try_rewrite_sin_sum_triple_identity_zero_expr;
 use cas_math::trig_linear_support::extract_coef_and_base;
-use cas_math::trig_power_identity_support::try_rewrite_pythagorean_chain_add_expr;
+use cas_math::trig_power_identity_support::{
+    extract_coeff_trig_pow2, try_rewrite_pythagorean_chain_add_expr,
+    try_rewrite_pythagorean_generic_coefficient_add_expr,
+    try_rewrite_reciprocal_product_pythagorean_zero_add_expr,
+    try_rewrite_trig_fourth_power_difference_add_expr,
+};
+use cas_math::trig_roots_flatten::flatten_mul_chain;
 use cas_solver_core::rationalize_policy::AutoRationalizeLevel;
 use num_rational::BigRational;
-use num_traits::Zero;
+use num_traits::{One, Signed, Zero};
 use std::cmp::Ordering;
 use std::collections::HashSet;
 
@@ -165,6 +175,30 @@ fn is_symbolic_atom_plus_nonzero_literal_root(ctx: &Context, expr: ExprId) -> bo
             && is_symbolic_atom(ctx, *right))
 }
 
+fn is_same_denominator_difference_root(ctx: &mut Context, expr: ExprId) -> bool {
+    let view = AddView::from_expr(ctx, expr);
+    if view.terms.len() != 2 {
+        return false;
+    }
+
+    let mut denominator = None;
+    for (term_expr, _) in view.terms {
+        let Expr::Div(_, den) = ctx.get(term_expr) else {
+            return false;
+        };
+
+        if let Some(existing_den) = denominator {
+            if compare_expr(ctx, *den, existing_den) != Ordering::Equal {
+                return false;
+            }
+        } else {
+            denominator = Some(*den);
+        }
+    }
+
+    denominator.is_some()
+}
+
 fn try_hidden_solve_root_exp_ln_shortcut(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
     let rewrite = try_rewrite_exponential_log_inverse_expr(ctx, expr)?;
     if is_symbolic_atom(ctx, rewrite.rewritten) {
@@ -230,14 +264,31 @@ fn finish_standard_root_shortcut(
     rule_name: &'static str,
     collect_steps: bool,
 ) -> (ExprId, Vec<Step>) {
-    let result = rewrite.new_expr;
+    let result = rewrite.final_expr();
     let mut shortcut_steps = Vec::new();
     if collect_steps {
-        let mut step = Step::new_compact(&rewrite.description, rule_name, before, result);
+        let mut step = Step::new_compact(&rewrite.description, rule_name, before, rewrite.new_expr);
         step.global_before = Some(before);
-        step.global_after = Some(result);
+        step.global_after = Some(rewrite.new_expr);
         step.importance = crate::step::ImportanceLevel::High;
         shortcut_steps.push(step);
+
+        let mut current = rewrite.new_expr;
+        for chained in rewrite.chained {
+            let mut chain_step = Step::new_compact(
+                chained.description.as_ref(),
+                rule_name,
+                current,
+                chained.after,
+            );
+            chain_step.global_before = Some(current);
+            chain_step.global_after = Some(chained.after);
+            chain_step.importance = chained
+                .importance
+                .unwrap_or(crate::step::ImportanceLevel::High);
+            shortcut_steps.push(chain_step);
+            current = chained.after;
+        }
     }
     (result, shortcut_steps)
 }
@@ -291,12 +342,40 @@ fn finish_root_shortcut_with_rewrite_meta(
     rule_name: &'static str,
     collect_steps: bool,
 ) -> (ExprId, Vec<Step>) {
-    let result = rewrite.new_expr;
+    let result = rewrite.final_expr();
     let mut shortcut_steps = Vec::new();
     if collect_steps {
         shortcut_steps.push(build_root_shortcut_step_from_rewrite(
             ctx, before, &rewrite, rule_name,
         ));
+
+        let mut current = rewrite.new_expr;
+        for chained in &rewrite.chained {
+            let mut chain_step = Step::with_snapshots(
+                chained.description.as_ref(),
+                rule_name,
+                current,
+                chained.after,
+                smallvec::SmallVec::<[crate::step::PathStep; 8]>::new(),
+                Some(ctx),
+                current,
+                chained.after,
+            );
+            chain_step.importance = chained
+                .importance
+                .unwrap_or(crate::step::ImportanceLevel::High);
+            {
+                let meta = chain_step.meta_mut();
+                meta.before_local = chained.before_local;
+                meta.after_local = chained.after_local;
+                meta.assumption_events = chained.assumption_events.clone();
+                meta.required_conditions = chained.required_conditions.clone();
+                meta.poly_proof = chained.poly_proof.clone();
+                meta.is_chained = true;
+            }
+            shortcut_steps.push(chain_step);
+            current = chained.after;
+        }
     }
     (result, shortcut_steps)
 }
@@ -345,6 +424,130 @@ fn strip_positive_one_passthrough_root(ctx: &mut Context, expr: ExprId) -> Optio
     }
 
     Some(build_signed_sum_expr_root(ctx, &residual_terms))
+}
+
+fn build_mul_expr_from_factors_root(ctx: &mut Context, factors: &[ExprId]) -> ExprId {
+    match factors {
+        [] => ctx.num(1),
+        [single] => *single,
+        _ => build_balanced_mul(ctx, factors),
+    }
+}
+
+fn extract_common_multiplicative_residual_sum_root(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, ExprId)> {
+    let view = AddView::from_expr(ctx, expr);
+    if view.terms.len() != 2 {
+        return None;
+    }
+
+    let factor_lists: Vec<Vec<_>> = view
+        .terms
+        .iter()
+        .map(|(term_expr, _)| flatten_mul_chain(ctx, *term_expr))
+        .collect();
+    if factor_lists.iter().any(Vec::is_empty) {
+        return None;
+    }
+
+    let mut used_by_term = factor_lists
+        .iter()
+        .map(|factors| vec![false; factors.len()])
+        .collect::<Vec<_>>();
+    let mut common = Vec::new();
+
+    for (first_index, first_factor) in factor_lists[0].iter().copied().enumerate() {
+        let Some(second_index) =
+            factor_lists[1]
+                .iter()
+                .enumerate()
+                .find_map(|(candidate_index, factor)| {
+                    (!used_by_term[1][candidate_index]
+                        && compare_expr(ctx, *factor, first_factor) == Ordering::Equal)
+                        .then_some(candidate_index)
+                })
+        else {
+            continue;
+        };
+
+        common.push(first_factor);
+        used_by_term[0][first_index] = true;
+        used_by_term[1][second_index] = true;
+    }
+
+    if common.is_empty() {
+        return None;
+    }
+
+    let residual_terms: Vec<_> = view
+        .terms
+        .iter()
+        .copied()
+        .enumerate()
+        .map(|(term_index, (_term_expr, term_sign))| {
+            let residual_factors = factor_lists[term_index]
+                .iter()
+                .copied()
+                .enumerate()
+                .filter_map(|(factor_index, factor)| {
+                    (!used_by_term[term_index][factor_index]).then_some(factor)
+                })
+                .collect::<Vec<_>>();
+            (
+                build_mul_expr_from_factors_root(ctx, &residual_factors),
+                term_sign,
+            )
+        })
+        .collect();
+
+    let common_factor = build_mul_expr_from_factors_root(ctx, &common);
+    let residual_expr = build_signed_sum_expr_root(ctx, &residual_terms);
+    let one = ctx.num(1);
+    if compare_expr(ctx, common_factor, one) == Ordering::Equal
+        || compare_expr(ctx, residual_expr, expr) == Ordering::Equal
+    {
+        return None;
+    }
+    Some((common_factor, residual_expr))
+}
+
+fn try_standard_common_scale_exact_zero_shortcut_fallback(
+    options: &crate::phase::SimplifyOptions,
+    ctx: &mut Context,
+    expr: ExprId,
+    collect_steps: bool,
+) -> Option<(ExprId, Vec<Step>)> {
+    let (_common_factor, residual_expr) =
+        extract_common_multiplicative_residual_sum_root(ctx, expr)?;
+
+    let mut residual_simplifier = crate::Simplifier::with_default_rules();
+    std::mem::swap(&mut residual_simplifier.context, ctx);
+    let mut residual_orchestrator = Orchestrator::new();
+    residual_orchestrator.options = SimplifyOptions {
+        collect_steps: false,
+        suppress_depth_overflow_warnings: true,
+        ..options.clone()
+    };
+    let (residual_result, _residual_steps, _stats) =
+        residual_orchestrator.simplify_pipeline(residual_expr, &mut residual_simplifier);
+    std::mem::swap(&mut residual_simplifier.context, ctx);
+
+    let zero = ctx.num(0);
+    if compare_expr(ctx, residual_result, zero) != Ordering::Equal {
+        return None;
+    }
+
+    let rewrite =
+        crate::rule::Rewrite::with_local(zero, "Equivalent Residual Cancellation", expr, zero);
+    Some(finish_root_shortcut_with_rewrite_meta(
+        ctx,
+        expr,
+        rewrite,
+        "Collapse Common-Scale Equivalent Difference",
+        collect_steps,
+    ))
 }
 
 fn format_standard_simplify_square_root_shortcut_desc(
@@ -441,6 +644,71 @@ fn try_standard_abs_shortcut(
     }
 
     None
+}
+
+fn try_standard_assumed_dyadic_cos_product_shortcut(
+    options: &crate::phase::SimplifyOptions,
+    ctx: &mut Context,
+    expr: ExprId,
+    collect_steps: bool,
+) -> Option<(ExprId, Vec<Step>)> {
+    let Expr::Mul(_, _) = ctx.get(expr) else {
+        return None;
+    };
+
+    let plan = cas_math::trig_multi_angle_support::try_plan_dyadic_cos_product_with_policy(
+        ctx,
+        expr,
+        matches!(
+            options.shared.semantics.domain_mode,
+            crate::DomainMode::Assume
+        ),
+        matches!(
+            options.shared.semantics.domain_mode,
+            crate::DomainMode::Strict
+        ),
+    )?;
+    if !matches!(
+        plan.policy,
+        cas_math::trig_dyadic_policy_support::DyadicSinNonzeroPolicyDecision::Apply {
+            assume_sin_nonzero: true
+        }
+    ) {
+        return None;
+    }
+
+    let parent_ctx = build_root_shortcut_parent_ctx(options, ctx, expr);
+    let rule = crate::rules::trigonometry::DyadicCosProductToSinRule;
+    let rewrite = crate::rule::Rule::apply(&rule, ctx, expr, &parent_ctx)?;
+    Some(finish_root_shortcut_with_rewrite_meta(
+        ctx,
+        expr,
+        rewrite,
+        "Dyadic Cos Product",
+        collect_steps,
+    ))
+}
+
+fn try_standard_sum_diff_cubes_fraction_shortcut(
+    options: &crate::phase::SimplifyOptions,
+    ctx: &mut Context,
+    expr: ExprId,
+    collect_steps: bool,
+) -> Option<(ExprId, Vec<Step>)> {
+    let Expr::Div(_, _) = ctx.get(expr) else {
+        return None;
+    };
+
+    let parent_ctx = build_root_shortcut_parent_ctx(options, ctx, expr);
+    let rule = crate::rules::algebra::CancelSumDiffCubesFractionRule;
+    let rewrite = crate::rule::Rule::apply(&rule, ctx, expr, &parent_ctx)?;
+    Some(finish_root_shortcut_with_rewrite_meta(
+        ctx,
+        expr,
+        rewrite,
+        "Cancel Sum/Difference of Cubes Fraction",
+        collect_steps,
+    ))
 }
 
 fn try_standard_sub_self_cancel_shortcut(
@@ -612,11 +880,39 @@ fn try_standard_exact_zero_equivalence_shortcut(
     collect_steps: bool,
 ) -> Option<(ExprId, Vec<Step>)> {
     let parent_ctx = build_root_shortcut_parent_ctx(options, ctx, expr);
+    let common_scale_rule = crate::rules::arithmetic::CollapseExactZeroCommonScaledDifferenceRule;
+
+    if is_same_denominator_difference_root(ctx, expr) {
+        if let Some(rewrite) = crate::rule::Rule::apply(&common_scale_rule, ctx, expr, &parent_ctx)
+        {
+            let zero = ctx.num(0);
+            if compare_expr(ctx, rewrite.final_expr(), zero) == Ordering::Equal {
+                return Some(finish_root_shortcut_with_rewrite_meta(
+                    ctx,
+                    expr,
+                    rewrite,
+                    "Collapse Common-Scale Equivalent Difference",
+                    collect_steps,
+                ));
+            }
+        }
+    }
+
+    if let Some((result, shortcut_steps)) =
+        try_standard_subtract_expanded_sum_diff_cubes_quotient_shortcut(
+            options,
+            ctx,
+            expr,
+            collect_steps,
+        )
+    {
+        return Some((result, shortcut_steps));
+    }
 
     let direct_rule = crate::rules::arithmetic::CollapseExactZeroThreeTermSubsetRule;
     if let Some(rewrite) = crate::rule::Rule::apply(&direct_rule, ctx, expr, &parent_ctx) {
         let zero = ctx.num(0);
-        if compare_expr(ctx, rewrite.new_expr, zero) == Ordering::Equal {
+        if compare_expr(ctx, rewrite.final_expr(), zero) == Ordering::Equal {
             return Some(finish_root_shortcut_with_rewrite_meta(
                 ctx,
                 expr,
@@ -627,10 +923,9 @@ fn try_standard_exact_zero_equivalence_shortcut(
         }
     }
 
-    let common_scale_rule = crate::rules::arithmetic::CollapseExactZeroCommonScaledDifferenceRule;
     if let Some(rewrite) = crate::rule::Rule::apply(&common_scale_rule, ctx, expr, &parent_ctx) {
         let zero = ctx.num(0);
-        if compare_expr(ctx, rewrite.new_expr, zero) == Ordering::Equal {
+        if compare_expr(ctx, rewrite.final_expr(), zero) == Ordering::Equal {
             return Some(finish_root_shortcut_with_rewrite_meta(
                 ctx,
                 expr,
@@ -641,7 +936,487 @@ fn try_standard_exact_zero_equivalence_shortcut(
         }
     }
 
+    if let Some(result) =
+        try_standard_common_scale_exact_zero_shortcut_fallback(options, ctx, expr, collect_steps)
+    {
+        return Some(result);
+    }
+
     None
+}
+
+fn try_standard_pythagorean_additive_shortcut(
+    ctx: &mut Context,
+    expr: ExprId,
+    collect_steps: bool,
+) -> Option<(ExprId, Vec<Step>)> {
+    let mut current = AddView::from_expr(ctx, expr).rebuild(ctx);
+    let mut shortcut_steps = Vec::new();
+    let mut changed = false;
+
+    loop {
+        let normalized = AddView::from_expr(ctx, current).rebuild(ctx);
+        if let Some(rewritten) =
+            try_rewrite_structural_numeric_pythagorean_add_pair(ctx, normalized)
+        {
+            let before = current;
+            current = rewritten;
+            changed = true;
+            if collect_steps {
+                let mut step = Step::new_compact(
+                    "Pythagorean Identity",
+                    "Pythagorean Identity",
+                    before,
+                    current,
+                );
+                step.importance = crate::step::ImportanceLevel::High;
+                shortcut_steps.push(step);
+            }
+            continue;
+        }
+        if let Some(rewrite) = try_rewrite_pythagorean_identity_add_expr(ctx, normalized) {
+            let before = current;
+            current = rewrite.rewritten;
+            changed = true;
+            if collect_steps {
+                let mut step = Step::new_compact(
+                    "Pythagorean Identity",
+                    "Pythagorean Identity",
+                    before,
+                    current,
+                );
+                step.importance = crate::step::ImportanceLevel::High;
+                shortcut_steps.push(step);
+            }
+            continue;
+        }
+
+        let Some(rewrite) = try_rewrite_combine_constants_expr(ctx, current) else {
+            break;
+        };
+        if compare_expr(ctx, current, rewrite.rewritten) == Ordering::Equal {
+            break;
+        }
+
+        let before = current;
+        current = rewrite.rewritten;
+        changed = true;
+        if collect_steps {
+            let mut step =
+                Step::new_compact(&rewrite.description, "Combine Constants", before, current);
+            step.importance = crate::step::ImportanceLevel::High;
+            shortcut_steps.push(step);
+        }
+    }
+
+    if !changed {
+        return None;
+    }
+
+    if collect_steps {
+        if let Some(first) = shortcut_steps.first_mut() {
+            first.global_before = Some(expr);
+        }
+        if let Some(last) = shortcut_steps.last_mut() {
+            last.global_after = Some(current);
+        }
+    }
+
+    Some((current, shortcut_steps))
+}
+
+fn try_standard_reciprocal_product_pythagorean_zero_shortcut(
+    ctx: &mut Context,
+    expr: ExprId,
+    collect_steps: bool,
+) -> Option<(ExprId, Vec<Step>)> {
+    let plan = try_rewrite_reciprocal_product_pythagorean_zero_add_expr(ctx, expr)?;
+    Some(finish_standard_root_shortcut(
+        ctx,
+        expr,
+        crate::rule::Rewrite::new(plan.rewritten).desc(plan.desc),
+        "Pythagorean Identity",
+        collect_steps,
+    ))
+}
+
+fn try_standard_sin_sum_triple_identity_zero_shortcut(
+    ctx: &mut Context,
+    expr: ExprId,
+    collect_steps: bool,
+) -> Option<(ExprId, Vec<Step>)> {
+    try_rewrite_sin_sum_triple_identity_zero_expr(ctx, expr)?;
+    let zero = ctx.num(0);
+    Some(finish_standard_root_shortcut(
+        ctx,
+        expr,
+        crate::rule::Rewrite::new(zero).desc("sin(t) + sin(3t) = 2·sin(2t)·cos(t)"),
+        "Sin Sum Triple Identity Zero",
+        collect_steps,
+    ))
+}
+
+fn extract_standard_trig_binomial_square_data(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<(ExprId, bool)> {
+    let Expr::Pow(base, exponent) = ctx.get(expr) else {
+        return None;
+    };
+    if extract_i64_integer(ctx, *exponent)? != 2 {
+        return None;
+    }
+
+    let (left, right, is_sum) = match ctx.get(*base) {
+        Expr::Add(left, right) => (*left, *right, true),
+        Expr::Sub(left, right) => (*left, *right, false),
+        _ => return None,
+    };
+
+    let extract_trig_arg = |term: ExprId| -> Option<(bool, ExprId)> {
+        let Expr::Function(fn_id, args) = ctx.get(term) else {
+            return None;
+        };
+        let [arg] = args.as_slice() else {
+            return None;
+        };
+        if ctx.is_builtin(*fn_id, BuiltinFn::Sin) {
+            return Some((true, *arg));
+        }
+        if ctx.is_builtin(*fn_id, BuiltinFn::Cos) {
+            return Some((false, *arg));
+        }
+        None
+    };
+
+    let (lhs_kind, lhs_arg) = extract_trig_arg(left)?;
+    let (rhs_kind, rhs_arg) = extract_trig_arg(right)?;
+    if lhs_kind == rhs_kind || compare_expr(ctx, lhs_arg, rhs_arg) != Ordering::Equal {
+        return None;
+    }
+
+    Some((lhs_arg, is_sum))
+}
+
+fn build_standard_trig_square_double_angle_term(ctx: &mut Context, arg: ExprId) -> ExprId {
+    let two = ctx.num(2);
+    let doubled_arg = smart_mul(ctx, two, arg);
+    ctx.call_builtin(BuiltinFn::Sin, vec![doubled_arg])
+}
+
+fn try_rewrite_standard_trig_binomial_square_double_angle_pair(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<crate::rule::Rewrite> {
+    let view = AddView::from_expr(ctx, expr);
+    if view.terms.len() < 2 {
+        return None;
+    }
+
+    for square_idx in 0..view.terms.len() {
+        let (square_term, square_sign) = view.terms[square_idx];
+        let Some((arg, is_sum)) = extract_standard_trig_binomial_square_data(ctx, square_term)
+        else {
+            continue;
+        };
+        let double_angle = build_standard_trig_square_double_angle_term(ctx, arg);
+        let required_sign = match (square_sign, is_sum) {
+            (Sign::Pos, true) => Sign::Neg,
+            (Sign::Pos, false) => Sign::Pos,
+            (Sign::Neg, true) => Sign::Pos,
+            (Sign::Neg, false) => Sign::Neg,
+        };
+
+        for angle_idx in 0..view.terms.len() {
+            if angle_idx == square_idx {
+                continue;
+            }
+            let (angle_term, angle_sign) = view.terms[angle_idx];
+            if angle_sign != required_sign
+                || compare_expr(ctx, angle_term, double_angle) != Ordering::Equal
+            {
+                continue;
+            }
+
+            let mut new_terms = smallvec::SmallVec::<[(ExprId, Sign); 8]>::new();
+            for (idx, term) in view.terms.iter().copied().enumerate() {
+                if idx != square_idx && idx != angle_idx {
+                    new_terms.push(term);
+                }
+            }
+            if new_terms.iter().any(
+                |(term, _sign)| matches!(ctx.get(*term), Expr::Number(value) if value.is_one()),
+            ) {
+                continue;
+            }
+            new_terms.push((ctx.num(1), square_sign));
+            let rewritten = AddView {
+                root: expr,
+                terms: new_terms,
+            }
+            .rebuild(ctx);
+            let desc = if is_sum {
+                "(sin(u)+cos(u))^2 = 1 + sin(2u)"
+            } else {
+                "(sin(u)-cos(u))^2 = 1 - sin(2u)"
+            };
+            return Some(crate::rule::Rewrite::new(rewritten).desc(desc));
+        }
+    }
+
+    None
+}
+
+fn try_standard_trig_binomial_square_double_angle_shortcut(
+    options: &crate::phase::SimplifyOptions,
+    ctx: &mut Context,
+    expr: ExprId,
+    collect_steps: bool,
+) -> Option<(ExprId, Vec<Step>)> {
+    let rewrite = try_rewrite_standard_trig_binomial_square_double_angle_pair(ctx, expr)?;
+    let mut simplifier = crate::Simplifier::with_default_rules();
+    std::mem::swap(&mut simplifier.context, ctx);
+    let (result, inner_steps, _stats) = simplifier.simplify_with_stats(
+        rewrite.new_expr,
+        crate::SimplifyOptions {
+            suppress_depth_overflow_warnings: true,
+            ..options.clone()
+        },
+    );
+    std::mem::swap(&mut simplifier.context, ctx);
+
+    if compare_expr(ctx, result, rewrite.new_expr) == Ordering::Equal {
+        return Some(finish_standard_root_shortcut(
+            ctx,
+            expr,
+            rewrite,
+            "Trig Square Identity",
+            collect_steps,
+        ));
+    }
+
+    let mut shortcut_steps = Vec::new();
+    if collect_steps {
+        shortcut_steps.push(build_root_shortcut_step_from_rewrite(
+            ctx,
+            expr,
+            &rewrite,
+            "Trig Square Identity",
+        ));
+        shortcut_steps.extend(inner_steps);
+    }
+    Some((result, shortcut_steps))
+}
+
+fn try_standard_trig_fourth_power_difference_shortcut(
+    ctx: &mut Context,
+    expr: ExprId,
+    collect_steps: bool,
+) -> Option<(ExprId, Vec<Step>)> {
+    let normalized = AddView::from_expr(ctx, expr).rebuild(ctx);
+    let rewrite = try_rewrite_trig_fourth_power_difference_add_expr(ctx, normalized)?;
+    let mut current = rewrite.rewritten;
+    let mut shortcut_steps = Vec::new();
+
+    if collect_steps {
+        shortcut_steps.push(build_root_shortcut_compact_step(
+            expr,
+            current,
+            "sin⁴(x) - cos⁴(x) = sin²(x) - cos²(x)",
+            "Trig Fourth Power Difference",
+        ));
+    }
+
+    if let Some(rewrite) = try_rewrite_pythagorean_generic_coefficient_add_expr(ctx, current) {
+        let before = current;
+        current = rewrite.rewritten;
+        if collect_steps {
+            shortcut_steps.push(build_root_shortcut_compact_step(
+                before,
+                current,
+                "A·sin²(x) + A·cos²(x) = A",
+                "Pythagorean with Generic Coefficient",
+            ));
+        }
+    }
+
+    if let Some((result, mut extra_steps)) =
+        try_standard_pythagorean_additive_shortcut(ctx, current, collect_steps)
+    {
+        current = result;
+        if collect_steps {
+            shortcut_steps.append(&mut extra_steps);
+        }
+    }
+
+    if collect_steps {
+        if let Some(first) = shortcut_steps.first_mut() {
+            first.global_before = Some(expr);
+        }
+        if let Some(last) = shortcut_steps.last_mut() {
+            last.global_after = Some(current);
+        }
+    }
+
+    Some((current, shortcut_steps))
+}
+
+fn extract_signed_numeric_trig_pow2(
+    ctx: &Context,
+    term: ExprId,
+    outer_sign: Sign,
+) -> Option<(BigRational, &'static str, ExprId, Sign)> {
+    let (mut coeff, name, arg) = extract_coeff_trig_pow2(ctx, term)?;
+    let mut effective_sign = outer_sign;
+    if coeff.is_negative() {
+        coeff = -coeff;
+        effective_sign = effective_sign.negate();
+    }
+    Some((coeff, name, arg, effective_sign))
+}
+
+fn try_rewrite_structural_numeric_pythagorean_add_pair(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ExprId> {
+    let view = AddView::from_expr(ctx, expr);
+    if view.terms.len() < 2 {
+        return None;
+    }
+
+    for i in 0..view.terms.len() {
+        for j in (i + 1)..view.terms.len() {
+            let (lhs_term, lhs_sign) = view.terms[i];
+            let (rhs_term, rhs_sign) = view.terms[j];
+            let Some((lhs_coeff, lhs_name, lhs_arg, lhs_effective_sign)) =
+                extract_signed_numeric_trig_pow2(ctx, lhs_term, lhs_sign)
+            else {
+                continue;
+            };
+            let Some((rhs_coeff, rhs_name, rhs_arg, rhs_effective_sign)) =
+                extract_signed_numeric_trig_pow2(ctx, rhs_term, rhs_sign)
+            else {
+                continue;
+            };
+            if lhs_name == rhs_name
+                || lhs_coeff != rhs_coeff
+                || lhs_effective_sign != rhs_effective_sign
+                || compare_expr(ctx, lhs_arg, rhs_arg) != Ordering::Equal
+            {
+                continue;
+            }
+
+            let mut remaining_terms = smallvec::SmallVec::<[(ExprId, Sign); 8]>::new();
+            for (idx, term) in view.terms.iter().copied().enumerate() {
+                if idx != i && idx != j {
+                    remaining_terms.push(term);
+                }
+            }
+            remaining_terms.push((ctx.add(Expr::Number(lhs_coeff)), lhs_effective_sign));
+            return Some(
+                AddView {
+                    root: expr,
+                    terms: remaining_terms,
+                }
+                .rebuild(ctx),
+            );
+        }
+    }
+
+    None
+}
+
+fn is_mixed_sign_trig_square_difference_root(ctx: &Context, expr: ExprId) -> bool {
+    let view = AddView::from_expr(ctx, expr);
+    if view.terms.len() != 2 {
+        return false;
+    }
+
+    let (lhs_term, lhs_sign) = view.terms[0];
+    let (rhs_term, rhs_sign) = view.terms[1];
+    let Some((lhs_coeff, lhs_name, lhs_arg, lhs_effective_sign)) =
+        extract_signed_numeric_trig_pow2(ctx, lhs_term, lhs_sign)
+    else {
+        return false;
+    };
+    let Some((rhs_coeff, rhs_name, rhs_arg, rhs_effective_sign)) =
+        extract_signed_numeric_trig_pow2(ctx, rhs_term, rhs_sign)
+    else {
+        return false;
+    };
+
+    lhs_name != rhs_name
+        && lhs_effective_sign != rhs_effective_sign
+        && lhs_coeff == rhs_coeff
+        && compare_expr(ctx, lhs_arg, rhs_arg) == Ordering::Equal
+}
+
+fn has_negative_numeric_pythagorean_pair(ctx: &Context, expr: ExprId) -> bool {
+    let view = AddView::from_expr(ctx, expr);
+    if view.terms.len() < 2 {
+        return false;
+    }
+
+    for i in 0..view.terms.len() {
+        for j in (i + 1)..view.terms.len() {
+            let (lhs_term, lhs_sign) = view.terms[i];
+            let (rhs_term, rhs_sign) = view.terms[j];
+            let Some((lhs_coeff, lhs_name, lhs_arg, lhs_effective_sign)) =
+                extract_signed_numeric_trig_pow2(ctx, lhs_term, lhs_sign)
+            else {
+                continue;
+            };
+            let Some((rhs_coeff, rhs_name, rhs_arg, rhs_effective_sign)) =
+                extract_signed_numeric_trig_pow2(ctx, rhs_term, rhs_sign)
+            else {
+                continue;
+            };
+            if lhs_name != rhs_name
+                && lhs_coeff == rhs_coeff
+                && lhs_effective_sign == Sign::Neg
+                && rhs_effective_sign == Sign::Neg
+                && compare_expr(ctx, lhs_arg, rhs_arg) == Ordering::Equal
+            {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
+fn has_numeric_pythagorean_complement_pair(ctx: &Context, expr: ExprId) -> bool {
+    let view = AddView::from_expr(ctx, expr);
+    if view.terms.len() != 2 {
+        return false;
+    }
+
+    let mut constant_is_positive = None;
+    let mut trig_sign = None;
+    let mut trig_coeff = None;
+
+    for (term, sign) in view.terms.iter().copied() {
+        match ctx.get(term) {
+            Expr::Number(n) if n.is_one() => {
+                constant_is_positive = Some(sign == Sign::Pos);
+            }
+            _ => {
+                let Some((coeff, _name, _arg, effective_sign)) =
+                    extract_signed_numeric_trig_pow2(ctx, term, sign)
+                else {
+                    return false;
+                };
+                trig_coeff = Some(coeff);
+                trig_sign = Some(effective_sign);
+            }
+        }
+    }
+
+    matches!(trig_coeff, Some(coeff) if coeff.is_one())
+        && matches!(
+            (constant_is_positive, trig_sign),
+            (Some(true), Some(Sign::Neg)) | (Some(false), Some(Sign::Pos))
+        )
 }
 
 fn try_standard_shifted_quotient_exact_one_shortcut(
@@ -1644,10 +2419,147 @@ impl Orchestrator {
             let add_root = matches!(simplifier.context.get(expr), Expr::Add(_, _));
             let sub_root = matches!(simplifier.context.get(expr), Expr::Sub(_, _));
             let div_root = matches!(simplifier.context.get(expr), Expr::Div(_, _));
+            let mul_root = matches!(simplifier.context.get(expr), Expr::Mul(_, _));
 
             // These exact-equivalence shortcuts emit proper didactic steps, so keep
             // them available even when the caller requested step collection.
+            if mul_root {
+                if let Some((result, shortcut_steps)) =
+                    try_standard_assumed_dyadic_cos_product_shortcut(
+                        &self.options,
+                        &mut simplifier.context,
+                        expr,
+                        collect_steps,
+                    )
+                {
+                    return (
+                        result,
+                        shortcut_steps,
+                        crate::phase::PipelineStats::default(),
+                    );
+                }
+            }
             if add_root || sub_root {
+                if let Some(rewrite) = try_rewrite_pythagorean_generic_coefficient_add_expr(
+                    &mut simplifier.context,
+                    expr,
+                ) {
+                    let mut current = rewrite.rewritten;
+                    let mut shortcut_steps = Vec::new();
+                    if collect_steps {
+                        let mut step = Step::new_compact(
+                            &rewrite.desc,
+                            "Pythagorean with Generic Coefficient",
+                            expr,
+                            current,
+                        );
+                        step.global_before = Some(expr);
+                        step.global_after = Some(current);
+                        step.importance = crate::step::ImportanceLevel::High;
+                        shortcut_steps.push(step);
+                    }
+                    if let Some((result, mut extra_steps)) =
+                        try_standard_pythagorean_additive_shortcut(
+                            &mut simplifier.context,
+                            current,
+                            collect_steps,
+                        )
+                    {
+                        current = result;
+                        shortcut_steps.append(&mut extra_steps);
+                    }
+                    return (
+                        current,
+                        shortcut_steps,
+                        crate::phase::PipelineStats::default(),
+                    );
+                }
+                if is_mixed_sign_trig_square_difference_root(&simplifier.context, expr) {
+                    return (expr, Vec::new(), crate::phase::PipelineStats::default());
+                }
+                if has_negative_numeric_pythagorean_pair(&simplifier.context, expr) {
+                    if let Some((result, shortcut_steps)) =
+                        try_standard_pythagorean_additive_shortcut(
+                            &mut simplifier.context,
+                            expr,
+                            collect_steps,
+                        )
+                    {
+                        return (
+                            result,
+                            shortcut_steps,
+                            crate::phase::PipelineStats::default(),
+                        );
+                    }
+                }
+                if has_numeric_pythagorean_complement_pair(&simplifier.context, expr) {
+                    if let Some((result, shortcut_steps)) =
+                        try_standard_pythagorean_additive_shortcut(
+                            &mut simplifier.context,
+                            expr,
+                            collect_steps,
+                        )
+                    {
+                        return (
+                            result,
+                            shortcut_steps,
+                            crate::phase::PipelineStats::default(),
+                        );
+                    }
+                }
+                if let Some((result, shortcut_steps)) =
+                    try_standard_reciprocal_product_pythagorean_zero_shortcut(
+                        &mut simplifier.context,
+                        expr,
+                        collect_steps,
+                    )
+                {
+                    return (
+                        result,
+                        shortcut_steps,
+                        crate::phase::PipelineStats::default(),
+                    );
+                }
+                if let Some((result, shortcut_steps)) =
+                    try_standard_trig_binomial_square_double_angle_shortcut(
+                        &self.options,
+                        &mut simplifier.context,
+                        expr,
+                        collect_steps,
+                    )
+                {
+                    return (
+                        result,
+                        shortcut_steps,
+                        crate::phase::PipelineStats::default(),
+                    );
+                }
+                if let Some((result, shortcut_steps)) =
+                    try_standard_sin_sum_triple_identity_zero_shortcut(
+                        &mut simplifier.context,
+                        expr,
+                        collect_steps,
+                    )
+                {
+                    return (
+                        result,
+                        shortcut_steps,
+                        crate::phase::PipelineStats::default(),
+                    );
+                }
+                if let Some((result, shortcut_steps)) =
+                    try_standard_trig_fourth_power_difference_shortcut(
+                        &mut simplifier.context,
+                        expr,
+                        collect_steps,
+                    )
+                {
+                    return (
+                        result,
+                        shortcut_steps,
+                        crate::phase::PipelineStats::default(),
+                    );
+                }
                 if let Some((result, shortcut_steps)) = try_standard_exact_zero_equivalence_shortcut(
                     &self.options,
                     &mut simplifier.context,
@@ -1662,6 +2574,20 @@ impl Orchestrator {
                 }
             }
             if div_root {
+                if let Some((result, shortcut_steps)) =
+                    try_standard_sum_diff_cubes_fraction_shortcut(
+                        &self.options,
+                        &mut simplifier.context,
+                        expr,
+                        collect_steps,
+                    )
+                {
+                    return (
+                        result,
+                        shortcut_steps,
+                        crate::phase::PipelineStats::default(),
+                    );
+                }
                 if let Some((result, shortcut_steps)) =
                     try_standard_shifted_quotient_exact_one_shortcut(
                         &self.options,
@@ -1686,6 +2612,36 @@ impl Orchestrator {
             let add_root = matches!(simplifier.context.get(expr), Expr::Add(_, _));
             let sub_root = matches!(simplifier.context.get(expr), Expr::Sub(_, _));
             let pow_root = matches!(simplifier.context.get(expr), Expr::Pow(_, _));
+            if let Some(rewrite) =
+                try_rewrite_pythagorean_generic_coefficient_add_expr(&mut simplifier.context, expr)
+            {
+                let mut current = rewrite.rewritten;
+                if collect_steps {
+                    let mut step = Step::new_compact(
+                        &rewrite.desc,
+                        "Pythagorean with Generic Coefficient",
+                        expr,
+                        current,
+                    );
+                    step.global_before = Some(expr);
+                    step.global_after = Some(current);
+                    step.importance = crate::step::ImportanceLevel::High;
+                    shortcut_steps.push(step);
+                }
+                if let Some((result, mut extra_steps)) = try_standard_pythagorean_additive_shortcut(
+                    &mut simplifier.context,
+                    current,
+                    collect_steps,
+                ) {
+                    current = result;
+                    shortcut_steps.append(&mut extra_steps);
+                }
+                return (
+                    current,
+                    shortcut_steps,
+                    crate::phase::PipelineStats::default(),
+                );
+            }
             if add_root || sub_root {
                 if let Some((result, shortcut_steps)) =
                     try_standard_subtract_expanded_sum_diff_cubes_quotient_shortcut(
@@ -1725,6 +2681,59 @@ impl Orchestrator {
                     expr,
                     collect_steps,
                 ) {
+                    return (
+                        result,
+                        shortcut_steps,
+                        crate::phase::PipelineStats::default(),
+                    );
+                }
+                if let Some((result, shortcut_steps)) =
+                    try_standard_reciprocal_product_pythagorean_zero_shortcut(
+                        &mut simplifier.context,
+                        expr,
+                        collect_steps,
+                    )
+                {
+                    return (
+                        result,
+                        shortcut_steps,
+                        crate::phase::PipelineStats::default(),
+                    );
+                }
+                if let Some((result, shortcut_steps)) =
+                    try_standard_trig_binomial_square_double_angle_shortcut(
+                        &self.options,
+                        &mut simplifier.context,
+                        expr,
+                        collect_steps,
+                    )
+                {
+                    return (
+                        result,
+                        shortcut_steps,
+                        crate::phase::PipelineStats::default(),
+                    );
+                }
+                if let Some((result, shortcut_steps)) =
+                    try_standard_sin_sum_triple_identity_zero_shortcut(
+                        &mut simplifier.context,
+                        expr,
+                        collect_steps,
+                    )
+                {
+                    return (
+                        result,
+                        shortcut_steps,
+                        crate::phase::PipelineStats::default(),
+                    );
+                }
+                if let Some((result, shortcut_steps)) =
+                    try_standard_trig_fourth_power_difference_shortcut(
+                        &mut simplifier.context,
+                        expr,
+                        collect_steps,
+                    )
+                {
                     return (
                         result,
                         shortcut_steps,
@@ -2572,5 +3581,74 @@ impl Orchestrator {
         } else {
             (current, optimized_steps, pipeline_stats)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cas_formatter::DisplayExpr;
+    use cas_parser::parse;
+
+    fn render(ctx: &Context, id: ExprId) -> String {
+        format!("{}", DisplayExpr { context: ctx, id })
+    }
+
+    #[test]
+    fn standard_pythagorean_additive_shortcut_handles_negated_numeric_pair() {
+        let mut ctx = Context::new();
+        let expr = parse("-3*sin(x)^2 - 3*cos(x)^2", &mut ctx)
+            .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let (rewritten, _) = try_standard_pythagorean_additive_shortcut(&mut ctx, expr, false)
+            .unwrap_or_else(|| panic!("shortcut should match negated numeric pythagorean pair"));
+        assert_eq!(render(&ctx, rewritten), "-3");
+    }
+
+    #[test]
+    fn mixed_sign_trig_square_difference_root_guard_matches_two_term_difference() {
+        let mut ctx = Context::new();
+        let expr = parse("-sin(x)^2 + cos(x)^2", &mut ctx)
+            .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        assert!(is_mixed_sign_trig_square_difference_root(&ctx, expr));
+    }
+
+    #[test]
+    fn standard_trig_fourth_power_difference_shortcut_finishes_hidden_zero_identity() {
+        let mut ctx = Context::new();
+        let expr = parse("sin(x)^4 - cos(x)^4 - (sin(x)^2 - cos(x)^2)", &mut ctx)
+            .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let (rewritten, _) =
+            try_standard_trig_fourth_power_difference_shortcut(&mut ctx, expr, false)
+                .unwrap_or_else(|| panic!("shortcut should match hidden quartic identity"));
+        assert_eq!(render(&ctx, rewritten), "0");
+    }
+
+    #[test]
+    fn standard_sin_sum_triple_identity_zero_shortcut_handles_nested_scaled_argument() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "sin(2*u) + sin(3*(2*u)) - 2*sin(2*(2*u))*cos(2*u)",
+            &mut ctx,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let (rewritten, _) =
+            try_standard_sin_sum_triple_identity_zero_shortcut(&mut ctx, expr, false)
+                .unwrap_or_else(|| panic!("shortcut should match nested scaled triple identity"));
+        assert_eq!(render(&ctx, rewritten), "0");
+    }
+
+    #[test]
+    fn standard_trig_binomial_square_double_angle_shortcut_reduces_to_one() {
+        let mut ctx = Context::new();
+        let expr = parse("(sin(x) + cos(x))^2 - sin(2*x)", &mut ctx)
+            .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let (rewritten, _) = try_standard_trig_binomial_square_double_angle_shortcut(
+            &crate::SimplifyOptions::default(),
+            &mut ctx,
+            expr,
+            false,
+        )
+        .unwrap_or_else(|| panic!("shortcut should reduce trig square plus double-angle pair"));
+        assert_eq!(render(&ctx, rewritten), "1");
     }
 }

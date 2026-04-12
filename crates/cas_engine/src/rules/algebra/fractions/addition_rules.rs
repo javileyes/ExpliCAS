@@ -6,6 +6,7 @@
 
 use crate::define_rule;
 use crate::rule::Rewrite;
+use cas_ast::ordering::compare_expr;
 use cas_ast::Expr;
 use cas_math::expr_classify::is_trig_function;
 use cas_math::fraction_add_rewrite_support::{
@@ -90,6 +91,13 @@ define_rule!(
         // Match Add(l, r) where one is a fraction and the other is not
         let (l, r) = cas_math::expr_destructure::as_add(ctx, expr)?;
 
+        // Avoid destroying a larger exact complete-the-square cancellation scope.
+        if parent_ctx.has_ancestor_matching(ctx, |c, node_id| {
+            crate::rules::arithmetic::maybe_solve_prep_exact_additive_candidate(c, node_id)
+        }) {
+            return None;
+        }
+
         // Guard: Skip if inside trig function argument
         let inside_trig = parent_ctx.has_ancestor_matching(ctx, |c, node_id| {
             matches!(c.get(node_id), Expr::Function(fn_id, _) if is_trig_function(c, *fn_id))
@@ -151,6 +159,12 @@ define_rule!(
     |ctx, expr, parent_ctx| {
         // Use zero-clone destructuring
         let (l, r) = cas_math::expr_destructure::as_add(ctx, expr)?;
+
+        if parent_ctx.has_ancestor_matching(ctx, |c, node_id| {
+            crate::rules::arithmetic::maybe_solve_prep_exact_additive_candidate(c, node_id)
+        }) {
+            return None;
+        }
 
         let parts = extract_fraction_pair(ctx, l, r);
         let (n1, d1, is_frac1) = (parts.n1, parts.d1, parts.is_frac1);
@@ -236,6 +250,12 @@ define_rule!(
         let inside_trig = parent_ctx.has_ancestor_matching(ctx, |c, node_id| {
             matches!(c.get(node_id), Expr::Function(fn_id, _) if is_trig_function(c, *fn_id))
         });
+        if is_frac1 && is_frac2 && compare_expr(ctx, d1, d2) == std::cmp::Ordering::Equal {
+            let residual = ctx.add(Expr::Sub(n1, n2));
+            if crate::rules::arithmetic::maybe_solve_prep_exact_additive_candidate(ctx, residual) {
+                return None;
+            }
+        }
         if should_block_sub_fraction_pair(
             ctx,
             SubFractionPairGuardInput {
@@ -257,3 +277,25 @@ define_rule!(
         Some(Rewrite::new(plan.rewritten).desc(format_sub_fraction_desc(plan.kind)))
     }
 );
+
+#[cfg(test)]
+mod tests {
+    use super::SubFractionsRule;
+    use crate::parent_context::ParentContext;
+    use crate::rule::Rule;
+    use cas_ast::Context;
+    use cas_parser::parse;
+
+    #[test]
+    fn sub_fractions_rule_skips_same_denominator_complete_square_difference() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "((a*x^2 + b*x + c)/q) - ((a*(x + b/(2*a))^2 + c - b^2/(4*a))/q)",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let rewrite = SubFractionsRule.apply(&mut ctx, expr, &ParentContext::root());
+        assert!(rewrite.is_none());
+    }
+}

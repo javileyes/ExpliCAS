@@ -83,10 +83,14 @@ fn test_auto_expand_step_visible_in_sub_context() {
         .iter()
         .filter(|s| s.rule_name == "Polynomial Identity")
         .collect();
+    let exact_zero_steps: Vec<_> = steps
+        .iter()
+        .filter(|s| s.rule_name == "Collapse Exact Zero Additive Subexpression")
+        .collect();
 
     // There should be at least one visible cancellation route.
     assert!(
-        !expand_steps.is_empty() || !poly_identity_steps.is_empty(),
+        !expand_steps.is_empty() || !poly_identity_steps.is_empty() || !exact_zero_steps.is_empty(),
         "Expected at least one visible cancellation step in Sub context. \
          Available steps: {:?}",
         steps.iter().map(|s| &s.rule_name).collect::<Vec<_>>()

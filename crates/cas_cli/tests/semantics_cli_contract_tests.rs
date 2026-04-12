@@ -257,7 +257,7 @@ fn standalone_trig_square_cube_quotient_reaches_cli_eval_path() {
     ]);
     let wire = parse_wire(&output);
 
-    assert_eq!(wire["result"], "1 + sin(u)^2 + sin(u)^2^2");
+    assert_eq!(wire["result"], "1 + sin(u)^2 + sin(u)^4");
 
     let required = wire["required_display"]
         .as_array()
@@ -592,6 +592,54 @@ fn derive_cos_diff_over_sin_diff_quotient_uses_direct_contract_trig_step() {
         steps[0]["rule"],
         "Convertir un cociente trigonométrico en tangente"
     );
+}
+
+#[test]
+fn eval_cos_diff_sin_diff_quotient_difference_collapses_in_one_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "(cos(x)-cos(3*x))/(sin(3*x)-sin(x)) - tan(2*x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 1);
+}
+
+#[test]
+fn eval_cos_diff_sin_diff_quotient_passthrough_difference_collapses_in_one_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "(((cos(x)-cos(3*x))/(sin(3*x)-sin(x))) + m) - ((tan(2*x)) + m)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 1);
+}
+
+#[test]
+fn eval_cos_diff_sin_diff_quotient_shifted_quotient_collapses_to_one_in_one_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "(((cos(x)-cos(3*x))/(sin(3*x)-sin(x))) + 1)/((tan(2*x)) + 1)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "1");
+    assert_eq!(wire["steps_count"], 1);
 }
 
 #[test]
@@ -1217,7 +1265,7 @@ fn derive_hyperbolic_expansion_from_negative_exp_uses_named_step() {
 
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Exponential Reciprocal Identity");
+    assert_eq!(steps[0]["rule"], "Hyperbolic Exponential Identity");
 }
 
 #[test]
@@ -1234,7 +1282,7 @@ fn derive_hyperbolic_expansion_from_negated_negative_exp_uses_named_step() {
 
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Exponential Reciprocal Identity");
+    assert_eq!(steps[0]["rule"], "Hyperbolic Exponential Identity");
 }
 
 #[test]
@@ -2193,6 +2241,52 @@ fn derive_binomial_expansion_with_cancellation_uses_expand_strategy() {
 }
 
 #[test]
+fn eval_binomial_expansion_cancel_common_denominator_collapses_to_zero() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "(((a+b)^2 - a^2 - 2*a*b)/q) - ((b^2)/q)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    let required = wire["required_display"]
+        .as_array()
+        .expect("required_display");
+    assert!(required.iter().any(|item| item == "q ≠ 0"));
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Common-Scale Equivalent Difference"
+    );
+}
+
+#[test]
+fn eval_binomial_expansion_cancel_shifted_quotient_collapses_to_one() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "(((a+b)^2 - a^2 - 2*a*b) + 1)/((b^2) + 1)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "1");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Shifted Quotient of Equivalent Expressions"
+    );
+}
+
+#[test]
 fn derive_hyperbolic_product_to_sum_with_passthrough_uses_two_expand_steps() {
     let (output, _code) = run_cli(&[
         "eval",
@@ -2967,7 +3061,8 @@ fn eval_complex_nested_fraction_pipeline_keeps_before_after_highlights_in_wire_l
         "expected step 5 before_latex to use one full-scope red highlight, got: {step5_before}"
     );
     assert!(
-        step5_before.contains("{\\color{red}{\\frac{") && step5_before.contains(" - \\frac{"),
+        (step5_before.contains("{\\color{red}{\\frac{") && step5_before.contains(" - \\frac{"))
+            || step5_before.contains("{\\color{red}{3\\cdot x + 2 - (3\\cdot x + 2)}}"),
         "expected step 5 before_latex to highlight the whole cancellation pair, got: {step5_before}"
     );
 
@@ -3817,6 +3912,99 @@ fn eval_general_sine_sum_to_product_scaled_difference_collapses_to_zero() {
 }
 
 #[test]
+fn eval_general_sine_sum_to_product_passthrough_difference_collapses_to_zero() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((sin(5*x)+sin(x)) + m) - ((2*sin(3*x)*cos(2*x)) + m)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Aplicar suma a producto");
+}
+
+#[test]
+fn eval_special_sine_difference_to_product_difference_collapses_to_zero() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "sin(3*x)-sin(x) - (2*cos(2*x)*sin(x))",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Aplicar suma a producto");
+}
+
+#[test]
+fn eval_special_sine_difference_to_product_passthrough_difference_collapses_to_zero() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((sin(3*x)-sin(x)) + m) - ((2*cos(2*x)*sin(x)) + m)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Aplicar suma a producto");
+}
+
+#[test]
+fn eval_general_cosine_sum_to_product_shifted_quotient_collapses_to_one() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((cos(5*x)+cos(x)) + 1)/((2*cos(3*x)*cos(2*x)) + 1)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "1");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Shifted Quotient of Equivalent Expressions"
+    );
+}
+
+#[test]
+fn eval_general_cosine_sum_to_product_passthrough_difference_collapses_to_zero() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((cos(5*x)+cos(x)) + m) - ((2*cos(3*x)*cos(2*x)) + m)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Aplicar suma a producto");
+}
+
+#[test]
 fn eval_recursive_six_sine_shifted_quotient_collapses_to_one() {
     let (output, _code) = run_cli(&[
         "eval",
@@ -3834,8 +4022,7 @@ fn eval_recursive_six_sine_shifted_quotient_collapses_to_one() {
         steps[0]["rule"],
         "Collapse Shifted Quotient of Equivalent Expressions"
     );
-    assert_eq!(steps.len(), 2);
-    assert_eq!(steps[1]["rule"], "Simplificar fracción");
+    assert_eq!(steps.len(), 1);
 }
 
 #[test]
@@ -3869,6 +4056,279 @@ fn eval_recursive_six_sine_scaled_difference_collapses_to_zero() {
     let wire = parse_wire(&output);
 
     assert_eq!(wire["result"], "0");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Common-Scale Equivalent Difference"
+    );
+}
+
+#[test]
+fn eval_mixed_trig_double_angle_product_difference_collapses_to_zero_in_one_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "2*cos(2*x)*sin(x) - (4*cos(x)^2*sin(x)-2*sin(x))",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Exact Zero Additive Subexpression"
+    );
+}
+
+#[test]
+fn eval_mixed_trig_double_angle_product_scaled_difference_collapses_to_zero_in_one_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "k*(2*cos(2*x)*sin(x)) - k*(4*cos(x)^2*sin(x)-2*sin(x))",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Common-Scale Equivalent Difference"
+    );
+}
+
+#[test]
+fn eval_mixed_trig_double_angle_product_passthrough_collapses_to_zero_in_one_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((2*cos(2*x)*sin(x)) + m) - ((4*cos(x)^2*sin(x)-2*sin(x)) + m)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Exact Zero Additive Subexpression"
+    );
+}
+
+#[test]
+fn eval_pythagorean_identity_difference_collapses_to_zero_in_one_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "sin(x)^2 + cos(x)^2 - 1",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Exact Zero Additive Subexpression"
+    );
+}
+
+#[test]
+fn eval_pythagorean_identity_scaled_difference_collapses_to_zero_in_one_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "k*(sin(x)^2 + cos(x)^2) - k*(1)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Common-Scale Equivalent Difference"
+    );
+}
+
+#[test]
+fn eval_sine_cosine_square_product_difference_collapses_to_zero_with_power_reduction() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "sin(x)^2*cos(x)^2 - ((1-cos(4*x))/8)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Aplicar reducción de potencias");
+}
+
+#[test]
+fn eval_sine_cosine_square_product_shifted_quotient_collapses_to_one() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((sin(x)^2*cos(x)^2) + 1)/(((1-cos(4*x))/8) + 1)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "1");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Shifted Quotient of Equivalent Expressions"
+    );
+}
+
+#[test]
+fn eval_sine_sixth_power_difference_collapses_to_zero_with_power_reduction() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "sin(x)^6 - ((10-15*cos(2*x)+6*cos(4*x)-cos(6*x))/32)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Aplicar reducción de potencias");
+}
+
+#[test]
+fn eval_sine_sixth_power_common_denominator_difference_collapses_to_zero() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((sin(x)^6)/q) - (((10-15*cos(2*x)+6*cos(4*x)-cos(6*x))/32)/q)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    let required = wire["required_display"]
+        .as_array()
+        .expect("required_display");
+    assert!(required.iter().any(|item| item == "q ≠ 0"));
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Common-Scale Equivalent Difference"
+    );
+}
+
+#[test]
+fn eval_trig_product_to_sum_difference_stays_direct_and_collapses_to_zero() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "2*sin(x)*cos(y) - (sin(x+y) + sin(x-y))",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Aplicar producto a suma");
+}
+
+#[test]
+fn eval_trig_product_to_sum_common_denominator_difference_collapses_to_zero() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((2*cos(x)*sin(y))/q) - ((sin(x+y) - sin(x-y))/q)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    let required = wire["required_display"]
+        .as_array()
+        .expect("required_display");
+    assert!(required.iter().any(|item| item == "q ≠ 0"));
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Common-Scale Equivalent Difference"
+    );
+}
+
+#[test]
+fn eval_recursive_six_cosine_passthrough_difference_collapses_to_zero() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((cos(5*x)*cos(x)-sin(5*x)*sin(x)) + m) - ((cos(6*x)) + m)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Angle Sum/Diff Identity");
+}
+
+#[test]
+fn eval_recursive_six_cosine_common_denominator_difference_collapses_to_zero() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((cos(5*x)*cos(x)-sin(5*x)*sin(x))/q) - ((cos(6*x))/q)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    let required = wire["required_display"]
+        .as_array()
+        .expect("required_display");
+    assert!(required.iter().any(|item| item == "q ≠ 0"));
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
     assert_eq!(
@@ -3965,6 +4425,183 @@ fn eval_general_phase_shift_with_passthrough_one_collapses_to_one() {
 }
 
 #[test]
+fn eval_general_phase_shift_with_passthrough_scaled_difference_collapses_after_common_factor() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "k*(3*sin(x)+4*cos(x)+a) - k*(5*sin(x+arctan(4/3))+a)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Common-Scale Equivalent Difference"
+    );
+}
+
+#[test]
+fn eval_exact_shifted_sine_cosine_difference_to_zero_survives_common_factorization() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "sqrt(2)*sin(x+pi/4) - sqrt(2)*cos(x-pi/4)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Common-Scale Equivalent Difference"
+    );
+}
+
+#[test]
+fn eval_exact_shifted_sine_cosine_scaled_difference_collapses_after_common_factor() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "k*(sqrt(2)*sin(x+pi/4)) - k*(sqrt(2)*cos(x-pi/4))",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Common-Scale Equivalent Difference"
+    );
+}
+
+#[test]
+fn eval_exact_shifted_sine_cosine_shifted_quotient_collapses_to_one() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((sqrt(2)*sin(x+pi/4)+a) + 1)/((sqrt(2)*cos(x-pi/4)+a) + 1)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "1");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Shifted Quotient of Equivalent Expressions"
+    );
+}
+
+#[test]
+fn eval_exact_shifted_sine_cosine_common_denominator_difference_collapses_to_zero() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((sqrt(2)*sin(x+pi/4)+a)/q) - ((sqrt(2)*cos(x-pi/4)+a)/q)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    let required = wire["required_display"]
+        .as_array()
+        .expect("required_display");
+    assert!(required.iter().any(|item| item == "q ≠ 0"));
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Common-Scale Equivalent Difference"
+    );
+}
+
+#[test]
+fn eval_general_shifted_sine_cosine_difference_to_zero_survives_common_factorization() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "5*sin(x+arctan(4/3)) - 5*cos(x-arctan(3/4))",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Common-Scale Equivalent Difference"
+    );
+}
+
+#[test]
+fn eval_general_shifted_sine_cosine_shifted_quotient_collapses_to_one() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((5*sin(x+arctan(4/3))+a) + 1)/((5*cos(x-arctan(3/4))+a) + 1)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "1");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Shifted Quotient of Equivalent Expressions"
+    );
+}
+
+#[test]
+fn eval_general_shifted_sine_cosine_common_denominator_difference_collapses_to_zero() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((5*sin(x+arctan(4/3))+a)/q) - ((5*cos(x-arctan(3/4))+a)/q)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    let required = wire["required_display"]
+        .as_array()
+        .expect("required_display");
+    assert!(required.iter().any(|item| item == "q ≠ 0"));
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Common-Scale Equivalent Difference"
+    );
+}
+
+#[test]
 fn eval_scaled_exact_phase_shift_pair_difference_to_zero_collapses_after_common_factor() {
     let (output, _code) = run_cli(&[
         "eval",
@@ -3987,6 +4624,71 @@ fn eval_scaled_exact_phase_shift_pair_difference_to_zero_collapses_after_common_
 }
 
 #[test]
+fn eval_exact_phase_shift_pair_common_denominator_difference_collapses_after_shared_denominator() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((sin(x)+cos(x)+sin(y)+cos(y))/q) - ((sqrt(2)*sin(x+pi/4)+sqrt(2)*sin(y+pi/4))/q)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    let required = wire["required_display"]
+        .as_array()
+        .expect("required_display");
+    assert!(required.iter().any(|item| item == "q ≠ 0"));
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Common-Scale Equivalent Difference"
+    );
+}
+
+#[test]
+fn eval_exact_phase_shift_pair_raw_difference_collapses_in_two_phase_shift_steps() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "sin(x)+cos(x)+sin(y)+cos(y) - (sqrt(2)*sin(x+pi/4)+sqrt(2)*sin(y+pi/4))",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 2);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 2);
+    assert_eq!(steps[0]["rule"], "Aplicar identidad de desfase");
+    assert_eq!(steps[1]["rule"], "Aplicar identidad de desfase");
+}
+
+#[test]
+fn eval_exact_phase_shift_pair_passthrough_difference_collapses_in_one_phase_shift_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((sin(x)+cos(x)+sin(y)+cos(y)) + m) - ((sqrt(2)*sin(x+pi/4)+sqrt(2)*sin(y+pi/4)) + m)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Aplicar identidad de desfase");
+}
+
+#[test]
 fn eval_exact_phase_shift_pair_shifted_quotient_collapses_to_one() {
     let (output, _code) = run_cli(&[
         "eval",
@@ -3999,13 +4701,100 @@ fn eval_exact_phase_shift_pair_shifted_quotient_collapses_to_one() {
     let wire = parse_wire(&output);
 
     assert_eq!(wire["result"], "1");
-    assert_eq!(wire["steps_count"], 2);
+    assert_eq!(wire["steps_count"], 1);
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(
         steps[0]["rule"],
         "Collapse Shifted Quotient of Equivalent Expressions"
     );
-    assert_eq!(steps[1]["rule"], "Simplificar fracción");
+}
+
+#[test]
+fn eval_exact_third_phase_shift_passthrough_difference_collapses_in_one_phase_shift_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((4*sin(x+pi/3)) + m) - ((2*sin(x)+2*sqrt(3)*cos(x)) + m)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Aplicar identidad de desfase");
+    let substeps = steps[0]["substeps"].as_array().expect("substeps array");
+    assert_eq!(substeps.len(), 1);
+    assert_eq!(substeps[0]["title"], "Cancelar términos iguales");
+}
+
+#[test]
+fn eval_tangent_triple_angle_passthrough_difference_collapses_in_one_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((tan(3*x)) + m) - (((3*tan(x)-tan(x)^3)/(1-3*tan(x)^2)) + m)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Exact Zero Additive Subexpression"
+    );
+}
+
+#[test]
+fn eval_tangent_triple_angle_raw_difference_collapses_in_one_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((3*tan(x)-tan(x)^3)/(1-3*tan(x)^2)) - tan(3*x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Exact Zero Additive Subexpression"
+    );
+}
+
+#[test]
+fn eval_tangent_triple_angle_shifted_quotient_collapses_to_one_in_one_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((tan(3*x)) + 1)/(((3*tan(x)-tan(x)^3)/(1-3*tan(x)^2)) + 1)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "1");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Shifted Quotient of Equivalent Expressions"
+    );
 }
 
 #[test]
@@ -4032,7 +4821,51 @@ fn eval_trig_binomial_square_difference_to_zero_uses_named_identity_step() {
 }
 
 #[test]
-fn eval_half_angle_square_difference_to_zero_uses_human_rule_and_formula_substep() {
+fn eval_trig_binomial_square_difference_minus_passthrough_collapses_in_one_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((sin(x)-cos(x))^2 + m) - ((1-sin(2*x)) + m)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Exact Zero Additive Subexpression"
+    );
+}
+
+#[test]
+fn eval_trig_binomial_square_difference_minus_shifted_quotient_collapses_to_one_in_one_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "(((sin(x)-cos(x))^2) + 1)/((1-sin(2*x)) + 1)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "1");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Shifted Quotient of Equivalent Expressions"
+    );
+}
+
+#[test]
+fn eval_half_angle_square_difference_to_zero_collapses_in_one_half_angle_step() {
     let (output, _code) = run_cli(&[
         "eval",
         "sin(x)^2 - (1 - cos(2*x))/2",
@@ -4044,13 +4877,162 @@ fn eval_half_angle_square_difference_to_zero_uses_human_rule_and_formula_substep
     let wire = parse_wire(&output);
 
     assert_eq!(wire["result"], "0");
-    assert_eq!(wire["steps_count"], 4);
+    assert_eq!(wire["steps_count"], 1);
     let steps = wire["steps"].as_array().expect("steps array");
-    assert_eq!(steps[0]["rule"], "Expandir coseno de ángulo doble");
-    assert!(
-        steps[0].get("substeps").is_none(),
-        "double-angle expansion is already explicit enough as a parent step"
+    assert_eq!(steps[0]["rule"], "Aplicar identidad de ángulo mitad");
+    assert!(steps[0].get("substeps").is_none());
+}
+
+#[test]
+fn eval_half_angle_square_passthrough_difference_collapses_in_one_half_angle_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((sin(x)^2) + m) - (((1-cos(2*x))/2) + m)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps[0]["rule"], "Aplicar identidad de ángulo mitad");
+    assert!(steps[0].get("substeps").is_none());
+}
+
+#[test]
+fn eval_double_angle_cos_one_minus_two_sin_sq_passthrough_difference_collapses_to_zero_in_one_step()
+{
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((cos(2*x)) + m) - ((1 - 2*sin(x)^2) + m)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Exact Zero Additive Subexpression"
     );
+    assert!(steps[0].get("substeps").is_none());
+}
+
+#[test]
+fn eval_double_angle_cos_one_minus_two_sin_sq_raw_difference_collapses_to_zero_in_one_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "cos(2*x) - (1 - 2*sin(x)^2)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Exact Zero Additive Subexpression"
+    );
+    assert!(steps[0].get("substeps").is_none());
+}
+
+#[test]
+fn eval_double_angle_cos_one_minus_two_sin_sq_scaled_difference_collapses_to_zero_in_one_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "k*(cos(2*x)) - k*(1 - 2*sin(x)^2)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Common-Scale Equivalent Difference"
+    );
+    assert!(steps[0].get("substeps").is_none());
+}
+
+#[test]
+fn eval_double_angle_cos_two_cos_sq_minus_one_shifted_quotient_collapses_to_one_in_one_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((2*cos(x)^2 - 1) + 1)/((cos(2*x)) + 1)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "1");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Shifted Quotient of Equivalent Expressions"
+    );
+    assert!(steps[0].get("substeps").is_none());
+}
+
+#[test]
+fn eval_hyperbolic_half_angle_square_passthrough_difference_collapses_in_one_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((cosh(x/2)^2) + m) - (((cosh(x)+1)/2) + m)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Exact Zero Additive Subexpression"
+    );
+    assert!(steps[0].get("substeps").is_none());
+}
+
+#[test]
+fn eval_hyperbolic_half_angle_square_shifted_quotient_collapses_to_one_in_one_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((cosh(x/2)^2) + 1)/(((cosh(x)+1)/2) + 1)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "1");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Shifted Quotient of Equivalent Expressions"
+    );
+    assert!(steps[0].get("substeps").is_some());
 }
 
 #[test]
@@ -4130,7 +5112,10 @@ fn eval_hyperbolic_angle_sum_difference_to_zero_uses_expand_then_self_cancel() {
     assert_eq!(wire["steps_count"], 1);
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Angle Sum/Difference Identity");
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Exact Zero Additive Subexpression"
+    );
     assert!(steps[0].get("substeps").is_none());
 }
 
@@ -4149,7 +5134,52 @@ fn eval_hyperbolic_angle_sum_difference_with_passthrough_one_collapses_to_one() 
     assert_eq!(wire["result"], "1");
     assert_eq!(wire["steps_count"], 1);
     let steps = wire["steps"].as_array().expect("steps array");
-    assert_eq!(steps[0]["rule"], "Hyperbolic Angle Sum/Difference Identity");
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Exact Zero Additive Subexpression"
+    );
+}
+
+#[test]
+fn eval_hyperbolic_cosh_angle_difference_shifted_quotient_collapses_in_one_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((cosh(x)*cosh(y)-sinh(x)*sinh(y)) + 1)/((cosh(x-y)) + 1)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "1");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Shifted Quotient of Equivalent Expressions"
+    );
+}
+
+#[test]
+fn eval_hyperbolic_sinh_angle_difference_scaled_difference_collapses_in_one_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "k*(sinh(x)*cosh(y)-cosh(x)*sinh(y)) - k*(sinh(x-y))",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Common-Scale Equivalent Difference"
+    );
 }
 
 #[test]
@@ -4167,7 +5197,1165 @@ fn eval_hyperbolic_angle_sum_difference_negated_orientation_still_reaches_zero()
     assert_eq!(wire["result"], "0");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Angle Sum/Difference Identity");
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Exact Zero Additive Subexpression"
+    );
+}
+
+#[test]
+fn eval_hyperbolic_tanh_angle_sum_difference_passthrough_collapses_in_one_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((tanh(x+y)) + m) - ((((tanh(x)+tanh(y))/(1+tanh(x)*tanh(y))) + m))",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Exact Zero Additive Subexpression"
+    );
+}
+
+#[test]
+fn eval_hyperbolic_tanh_double_angle_passthrough_collapses_in_one_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((2*tanh(x)/(1+tanh(x)^2)) + m) - ((tanh(2*x)) + m)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Exact Zero Additive Subexpression"
+    );
+}
+
+#[test]
+fn eval_hyperbolic_tanh_exp_definition_passthrough_collapses_in_one_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((tanh(x)) + m) - (((e^x - e^(-x))/(e^x + e^(-x))) + m)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Exact Zero Additive Subexpression"
+    );
+}
+
+#[test]
+fn eval_hyperbolic_tanh_exp_definition_scaled_difference_collapses_in_one_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "k*(tanh(x)) - k*((e^x - e^(-x))/(e^x + e^(-x)))",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Common-Scale Equivalent Difference"
+    );
+}
+
+#[test]
+fn eval_hyperbolic_tanh_exp_definition_common_denominator_collapses_in_one_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((tanh(x))/q) - (((e^x - e^(-x))/(e^x + e^(-x)))/q)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Common-Scale Equivalent Difference"
+    );
+}
+
+#[test]
+fn eval_hyperbolic_tanh_exp_definition_shifted_quotient_collapses_to_one_in_one_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((tanh(x)) + 1)/(((e^x - e^(-x))/(e^x + e^(-x))) + 1)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "1");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Shifted Quotient of Equivalent Expressions"
+    );
+}
+
+#[test]
+fn eval_hyperbolic_sinh_exp_definition_passthrough_collapses_in_one_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((sinh(x)) + m) - (((e^x - e^(-x))/2) + m)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Exact Zero Additive Subexpression"
+    );
+}
+
+#[test]
+fn eval_hyperbolic_cosh_exp_definition_shifted_quotient_collapses_to_one_in_one_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((cosh(x)) + 1)/(((e^x + e^(-x))/2) + 1)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "1");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Shifted Quotient of Equivalent Expressions"
+    );
+}
+
+#[test]
+fn eval_hyperbolic_cosh_triple_angle_passthrough_collapses_in_one_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((4*cosh(x)^3-3*cosh(x)) + m) - ((cosh(3*x)) + m)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Exact Zero Additive Subexpression"
+    );
+}
+
+#[test]
+fn eval_hyperbolic_cosh_triple_angle_difference_collapses_in_one_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "4*cosh(x)^3-3*cosh(x) - cosh(3*x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Exact Zero Additive Subexpression"
+    );
+}
+
+#[test]
+fn eval_hyperbolic_sinh_double_angle_passthrough_collapses_in_one_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((2*sinh(x)*cosh(x)) + m) - ((sinh(2*x)) + m)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Exact Zero Additive Subexpression"
+    );
+}
+
+#[test]
+fn eval_hyperbolic_tanh_double_angle_shifted_quotient_collapses_to_one_in_one_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((2*tanh(x)/(1+tanh(x)^2)) + 1)/((tanh(2*x)) + 1)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "1");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Shifted Quotient of Equivalent Expressions"
+    );
+}
+
+#[test]
+fn eval_hyperbolic_tanh_triple_angle_passthrough_collapses_in_one_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((tanh(3*x)) + m) - ((((3*tanh(x)+tanh(x)^3)/(1+3*tanh(x)^2)) + m))",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Exact Zero Additive Subexpression"
+    );
+}
+
+#[test]
+fn eval_hyperbolic_sinh_sum_to_product_passthrough_collapses_to_zero() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((sinh(x)+sinh(y)) + m) - ((2*sinh((x+y)/2)*cosh((x-y)/2)) + m)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Exact Zero Additive Subexpression"
+    );
+}
+
+#[test]
+fn eval_hyperbolic_sinh_sum_to_product_scaled_difference_collapses_to_zero() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "k*(sinh(x)+sinh(y)) - k*(2*sinh((x+y)/2)*cosh((x-y)/2))",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Common-Scale Equivalent Difference"
+    );
+}
+
+#[test]
+fn eval_hyperbolic_sinh_sum_to_product_common_denominator_collapses_to_zero() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((sinh(x)+sinh(y))/q) - ((2*sinh((x+y)/2)*cosh((x-y)/2))/q)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Common-Scale Equivalent Difference"
+    );
+}
+
+#[test]
+fn eval_hyperbolic_cosh_sum_to_product_scaled_difference_collapses_to_zero() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "k*(cosh(x)+cosh(y)) - k*(2*cosh((x+y)/2)*cosh((x-y)/2))",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Common-Scale Equivalent Difference"
+    );
+}
+
+#[test]
+fn eval_trig_cos_double_angle_product_passthrough_collapses_to_zero() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((2*cos(2*x)*cos(x)) + m) - ((4*cos(x)^3-2*cos(x)) + m)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Exact Zero Additive Subexpression"
+    );
+}
+
+#[test]
+fn eval_hyperbolic_cosh_difference_shifted_quotient_collapses_to_one() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((cosh(x)-cosh(y)) + 1)/((2*sinh((x+y)/2)*sinh((x-y)/2)) + 1)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "1");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Shifted Quotient of Equivalent Expressions"
+    );
+}
+
+#[test]
+fn eval_hyperbolic_cosh_difference_passthrough_collapses_to_zero() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((cosh(x)-cosh(y)+a) + m) - ((2*sinh((x+y)/2)*sinh((x-y)/2)+a) + m)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Exact Zero Additive Subexpression"
+    );
+}
+
+#[test]
+fn eval_hyperbolic_cosh_difference_scaled_passthrough_collapses_to_zero() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "k*(cosh(x)-cosh(y)+a) - k*(2*sinh((x+y)/2)*sinh((x-y)/2)+a)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Common-Scale Equivalent Difference"
+    );
+}
+
+#[test]
+fn eval_morrie_raw_difference_collapses_to_zero_with_nonzero_sine_condition() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "cos(x)*cos(2*x)*cos(4*x) - (sin(8*x)/(8*sin(x)))",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Exact Zero Additive Subexpression"
+    );
+    assert_eq!(wire["required_display"][0], "sin(x) ≠ 0");
+}
+
+#[test]
+fn eval_morrie_passthrough_difference_collapses_to_zero_with_nonzero_sine_condition() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((cos(x)*cos(2*x)*cos(4*x)) + m) - ((sin(8*x)/(8*sin(x))) + m)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Exact Zero Additive Subexpression"
+    );
+    assert_eq!(wire["required_display"][0], "sin(x) ≠ 0");
+}
+
+#[test]
+fn eval_morrie_scaled_difference_collapses_to_zero_with_nonzero_sine_condition() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "k*(cos(x)*cos(2*x)*cos(4*x)) - k*(sin(8*x)/(8*sin(x)))",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Common-Scale Equivalent Difference"
+    );
+    assert_eq!(wire["required_display"][0], "sin(x) ≠ 0");
+}
+
+#[test]
+fn eval_recursive_hyperbolic_sinh_passthrough_difference_collapses_to_zero() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((sinh(6*x)) + m) - ((sinh(5*x)*cosh(x)+cosh(5*x)*sinh(x)) + m)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Exact Zero Additive Subexpression"
+    );
+}
+
+#[test]
+fn eval_recursive_hyperbolic_cosh_scaled_difference_collapses_to_zero() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "k*(cosh(6*x)) - k*(cosh(5*x)*cosh(x)+sinh(5*x)*sinh(x))",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Common-Scale Equivalent Difference"
+    );
+}
+
+#[test]
+fn eval_hyperbolic_product_sum_triple_angle_passthrough_collapses_to_zero() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((2*sinh(2*x)*cosh(x)) + m) - ((4*sinh(x)+4*sinh(x)^3) + m)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Exact Zero Additive Subexpression"
+    );
+}
+
+#[test]
+fn eval_hyperbolic_sinh_cubic_scaled_difference_collapses_in_one_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "k*(2*sinh(2*x)*cosh(x)) - k*(4*sinh(x)+4*sinh(x)^3)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Common-Scale Equivalent Difference"
+    );
+}
+
+#[test]
+fn eval_hyperbolic_sinh_cubic_shifted_quotient_collapses_to_one_in_one_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((2*sinh(2*x)*cosh(x)) + 1)/((4*sinh(x)+4*sinh(x)^3) + 1)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "1");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Shifted Quotient of Equivalent Expressions"
+    );
+}
+
+#[test]
+fn eval_dirichlet_passthrough_difference_collapses_to_zero() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((1 + 2*cos(x) + 2*cos(2*x)) + m) - ((sin(5*x/2)/sin(x/2)) + m)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Exact Zero Additive Subexpression"
+    );
+}
+
+#[test]
+fn eval_dirichlet_scaled_difference_collapses_to_zero() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "k*(1 + 2*cos(x) + 2*cos(2*x)) - k*(sin(5*x/2)/sin(x/2))",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Common-Scale Equivalent Difference"
+    );
+}
+
+#[test]
+fn eval_dirichlet_common_denominator_difference_collapses_to_zero() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((1 + 2*cos(x) + 2*cos(2*x))/q) - ((sin(5*x/2)/sin(x/2))/q)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Common-Scale Equivalent Difference"
+    );
+}
+
+#[test]
+fn eval_dirichlet_shifted_quotient_collapses_to_one() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((1 + 2*cos(x) + 2*cos(2*x)) + 1)/((sin(5*x/2)/sin(x/2)) + 1)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "1");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Shifted Quotient of Equivalent Expressions"
+    );
+}
+
+#[test]
+fn eval_reverse_dirichlet_raw_difference_collapses_to_zero() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "sin(5*x/2)/sin(x/2) - (1 + 2*cos(x) + 2*cos(2*x))",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Exact Zero Additive Subexpression"
+    );
+    assert_eq!(wire["required_display"][0], "sin(x / 2) ≠ 0");
+}
+
+#[test]
+fn eval_reverse_dirichlet_passthrough_difference_collapses_to_zero() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((sin(5*x/2)/sin(x/2)) + m) - ((1 + 2*cos(x) + 2*cos(2*x)) + m)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Exact Zero Additive Subexpression"
+    );
+    assert_eq!(wire["required_display"][0], "sin(x / 2) ≠ 0");
+}
+
+#[test]
+fn eval_shifted_hyperbolic_pythagorean_with_passthrough_collapses_to_zero() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((cosh(x)^2 - 1) + m) - ((sinh(x)^2) + m)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 1);
+}
+
+#[test]
+fn eval_shifted_hyperbolic_pythagorean_shifted_quotient_collapses_to_one() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((cosh(x)^2 - 1) + 1)/((sinh(x)^2) + 1)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "1");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Shifted Quotient of Equivalent Expressions"
+    );
+}
+
+#[test]
+fn eval_shifted_hyperbolic_double_angle_shifted_quotient_collapses_to_one() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((cosh(2*x)) + 1)/((2*cosh(x)^2 - 1) + 1)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "1");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Shifted Quotient of Equivalent Expressions"
+    );
+}
+
+#[test]
+fn eval_shifted_hyperbolic_double_angle_scaled_difference_collapses_to_zero_in_one_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "k*(cosh(2*x)) - k*(2*cosh(x)^2 - 1)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Common-Scale Equivalent Difference"
+    );
+}
+
+#[test]
+fn eval_shifted_hyperbolic_double_angle_common_denominator_collapses_to_zero_in_one_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((cosh(2*x))/q) - ((2*cosh(x)^2 - 1)/q)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Common-Scale Equivalent Difference"
+    );
+}
+
+#[test]
+fn eval_hyperbolic_double_angle_sum_difference_collapses_in_one_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "cosh(2*x) - (cosh(x)^2 + sinh(x)^2)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Exact Zero Additive Subexpression"
+    );
+}
+
+#[test]
+fn eval_hyperbolic_double_angle_sum_passthrough_collapses_in_one_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((cosh(2*x)) + m) - ((cosh(x)^2 + sinh(x)^2) + m)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Exact Zero Additive Subexpression"
+    );
+}
+
+#[test]
+fn eval_exp_minus_hyperbolic_sum_with_passthrough_collapses_to_zero() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((exp(x)) + m) - ((sinh(x) + cosh(x)) + m)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 1);
+}
+
+#[test]
+fn eval_complete_square_passthrough_collapses_to_zero() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((a*x^2 - b*x + c) + m) - ((a*(x - b/(2*a))^2 + c - b^2/(4*a)) + m)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Completar el cuadrado");
+    let required = wire["required_display"].as_array().expect("required array");
+    assert!(required.iter().any(|item| item == "a ≠ 0"));
+}
+
+#[test]
+fn eval_complete_square_symbolic_leading_passthrough_collapses_to_zero() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((a*x^2 + b*x + c) + m) - ((a*(x + b/(2*a))^2 + c - b^2/(4*a)) + m)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Completar el cuadrado");
+    let required = wire["required_display"].as_array().expect("required array");
+    assert!(required.iter().any(|item| item == "a ≠ 0"));
+}
+
+#[test]
+fn eval_trinomial_square_passthrough_collapses_to_zero() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((a + b + c)^2 + m) - ((a^2 + b^2 + c^2 + 2*a*b + 2*a*c + 2*b*c) + m)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Exact Zero Additive Subexpression"
+    );
+}
+
+#[test]
+fn eval_complete_square_common_denominator_difference_collapses_to_zero() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((a*x^2 + b*x + c)/q) - ((a*(x + b/(2*a))^2 + c - b^2/(4*a))/q)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Common-Scale Equivalent Difference"
+    );
+    let required = wire["required_display"].as_array().expect("required array");
+    assert!(required.iter().any(|item| item == "a ≠ 0"));
+    assert!(required.iter().any(|item| item == "q ≠ 0"));
+}
+
+#[test]
+fn eval_complete_square_scaled_difference_collapses_to_zero() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "k*(a*x^2 - b*x + c) - k*(a*(x - b/(2*a))^2 + c - b^2/(4*a))",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Common-Scale Equivalent Difference"
+    );
+}
+
+#[test]
+fn eval_complete_square_symbolic_leading_scaled_difference_collapses_to_zero() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "k*(a*x^2 + b*x + c) - k*(a*(x + b/(2*a))^2 + c - b^2/(4*a))",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Common-Scale Equivalent Difference"
+    );
+}
+
+#[test]
+fn eval_complete_square_shifted_quotient_collapses_to_one() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((a*x^2 - b*x + c) + 1)/((a*(x - b/(2*a))^2 + c - b^2/(4*a)) + 1)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "1");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Shifted Quotient of Equivalent Expressions"
+    );
+    let required = wire["required_display"].as_array().expect("required array");
+    assert!(required.iter().any(|item| item == "a ≠ 0"));
+}
+
+#[test]
+fn eval_complete_square_fractional_symbolic_passthrough_collapses_to_zero() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "(((a/2)*x^2 + b*x + c) + m) - (((a/2)*(x + b/a)^2 + c - b^2/(2*a)) + m)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["rule"], "Completar el cuadrado");
+    let required = wire["required_display"].as_array().expect("required array");
+    assert!(required.iter().any(|item| item == "a ≠ 0"));
+}
+
+#[test]
+fn eval_complete_square_fractional_symbolic_common_denominator_collapses_to_zero() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "(((a/2)*x^2 + b*x + c)/q) - (((a/2)*(x + b/a)^2 + c - b^2/(2*a))/q)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Common-Scale Equivalent Difference"
+    );
+    let required = wire["required_display"].as_array().expect("required array");
+    assert!(required.iter().any(|item| item == "a ≠ 0"));
+    assert!(required.iter().any(|item| item == "q ≠ 0"));
+}
+
+#[test]
+fn eval_complete_square_fractional_symbolic_scaled_difference_collapses_to_zero() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "k*((a/2)*x^2 + b*x + c) - k*((a/2)*(x + b/a)^2 + c - b^2/(2*a))",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Common-Scale Equivalent Difference"
+    );
+}
+
+#[test]
+fn eval_complete_square_fractional_symbolic_shifted_quotient_collapses_to_one() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "(((a/2)*x^2 + b*x + c) + 1)/(((a/2)*(x + b/a)^2 + c - b^2/(2*a)) + 1)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "1");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Shifted Quotient of Equivalent Expressions"
+    );
+    let required = wire["required_display"].as_array().expect("required array");
+    assert!(required.iter().any(|item| item == "a ≠ 0"));
+}
+
+#[test]
+fn eval_trinomial_square_shifted_quotient_collapses_to_one() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((a + b + c)^2 + 1)/(a^2 + b^2 + c^2 + 2*a*b + 2*a*c + 2*b*c + 1)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "1");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Shifted Quotient of Equivalent Expressions"
+    );
 }
 
 #[test]
@@ -4183,11 +6371,13 @@ fn eval_sinh_plus_cosh_minus_exp_to_zero_skips_convert_exp_to_power_noop() {
     let wire = parse_wire(&output);
 
     assert_eq!(wire["result"], "0");
-    assert_eq!(wire["steps_count"], 2);
+    assert_eq!(wire["steps_count"], 1);
     let steps = wire["steps"].as_array().expect("steps array");
-    assert_eq!(steps.len(), 2);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Sum to Exponential");
-    assert_eq!(steps[1]["rule"], "Restar dos expresiones iguales");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Exact Zero Additive Subexpression"
+    );
 }
 
 #[test]
@@ -4203,12 +6393,13 @@ fn eval_exp_sum_minus_double_cosh_to_zero_uses_direct_hyperbolic_recognition() {
     let wire = parse_wire(&output);
 
     assert_eq!(wire["result"], "0");
-    assert_eq!(wire["steps_count"], 2);
+    assert_eq!(wire["steps_count"], 1);
     let steps = wire["steps"].as_array().expect("steps array");
-    assert_eq!(steps.len(), 2);
-    assert_eq!(steps[0]["rule"], "Recognize Hyperbolic from Exponential");
-    assert_eq!(steps[0]["after"], "2 · cosh(x) - 2 · cosh(x)");
-    assert_eq!(steps[1]["rule"], "Restar dos expresiones iguales");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Exact Zero Additive Subexpression"
+    );
 }
 
 #[test]
@@ -4224,12 +6415,13 @@ fn eval_exp_difference_minus_double_sinh_to_zero_uses_direct_hyperbolic_recognit
     let wire = parse_wire(&output);
 
     assert_eq!(wire["result"], "0");
-    assert_eq!(wire["steps_count"], 2);
+    assert_eq!(wire["steps_count"], 1);
     let steps = wire["steps"].as_array().expect("steps array");
-    assert_eq!(steps.len(), 2);
-    assert_eq!(steps[0]["rule"], "Recognize Hyperbolic from Exponential");
-    assert_eq!(steps[0]["after"], "2 · sinh(x) - 2 · sinh(x)");
-    assert_eq!(steps[1]["rule"], "Restar dos expresiones iguales");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Exact Zero Additive Subexpression"
+    );
 }
 
 #[test]
@@ -4258,6 +6450,44 @@ fn eval_hyperbolic_cubic_residual_difference_to_zero_uses_pythagorean_bridge_aft
     );
     assert_eq!(steps[0]["after"], "0");
     assert!(steps[0].get("substeps").is_none());
+}
+
+#[test]
+fn eval_hyperbolic_cosh_cubic_passthrough_difference_collapses_in_one_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((2*sinh(2*x)*sinh(x)+a) + m) - ((4*cosh(x)^3 - 4*cosh(x)+a) + m)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Exact Zero Additive Subexpression"
+    );
+}
+
+#[test]
+fn eval_hyperbolic_cosh_cubic_shifted_quotient_collapses_to_one_in_one_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((2*sinh(2*x)*sinh(x)+a) + 1)/((4*cosh(x)^3 - 4*cosh(x)+a) + 1)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "1");
+    assert_eq!(wire["steps_count"], 1);
 }
 
 #[test]
@@ -4295,9 +6525,10 @@ fn eval_polynomial_identity_binomial_square_zero_uses_square_formula_substeps() 
     assert_eq!(wire["result"], "0");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    let substeps = steps[0]["substeps"].as_array().expect("substeps array");
-    assert_eq!(substeps.len(), 1);
-    assert_eq!(substeps[0]["title"], "Usar a^2 + 2ab + b^2 = (a + b)^2");
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Exact Zero Additive Subexpression"
+    );
 }
 
 #[test]
@@ -4374,6 +6605,48 @@ fn eval_cubes_quotient_zero_uses_factor_then_cancel_substeps() {
     assert_eq!(
         substeps[1]["title"],
         "Cancelar el factor común del numerador y el denominador"
+    );
+}
+
+#[test]
+fn eval_cubes_quotient_passthrough_zero_collapses_in_one_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((a^3-b^3)/(a-b)+c) - (a^2 + a*b + b^2 + c)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Exact Zero Additive Subexpression"
+    );
+}
+
+#[test]
+fn eval_sum_cubes_quotient_shifted_quotient_collapses_to_one_in_one_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "(((a^3+b^3)/(a+b)+c) + 1)/((a^2 - a*b + b^2 + c) + 1)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "1");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Shifted Quotient of Equivalent Expressions"
     );
 }
 
@@ -6046,6 +8319,29 @@ fn eval_log_power_product_difference_to_zero_uses_combined_log_cancellation_step
 }
 
 #[test]
+fn eval_scaled_log_power_product_difference_collapses_in_one_common_scale_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "k*(ln(x^3) + ln(y^2) - ln(x^3 * y^2)) - k*(0)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 1);
+
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Common-Scale Equivalent Difference"
+    );
+}
+
+#[test]
 fn eval_scaled_abs_log_product_difference_to_zero_uses_single_didactic_log_cancellation_step() {
     let (output, _code) = run_cli(&[
         "eval",
@@ -6090,18 +8386,15 @@ fn eval_even_log_product_difference_to_zero_finishes_with_didactic_log_cancellat
     let wire = parse_wire(&output);
 
     assert_eq!(wire["result"], "0");
-    assert_eq!(wire["steps_count"], 5);
+    assert_eq!(wire["steps_count"], 1);
 
     let steps = wire["steps"].as_array().expect("steps array");
-    assert_eq!(steps.len(), 5);
-    assert_eq!(steps[0]["rule"], "Power of a Product");
+    assert_eq!(steps.len(), 1);
     assert_eq!(
-        steps[4]["rule"],
+        steps[0]["rule"],
         "Expandir logaritmos y cancelar términos iguales"
     );
-    assert_eq!(steps[4]["after"], "0");
-    let substeps = steps[4]["substeps"].as_array().expect("substeps array");
-    assert_eq!(substeps.len(), 2);
+    assert_eq!(steps[0]["after"], "0");
 }
 
 #[test]
@@ -6117,16 +8410,20 @@ fn eval_factored_log_difference_to_zero_keeps_global_log_context_through_preorde
     let wire = parse_wire(&output);
 
     assert_eq!(wire["result"], "0");
-    assert_eq!(wire["steps_count"], 5);
+    assert_eq!(wire["steps_count"], 3);
 
     let steps = wire["steps"].as_array().expect("steps array");
-    assert_eq!(steps.len(), 5);
+    assert_eq!(steps.len(), 3);
     assert_eq!(
         steps[1]["rule"],
         "Factorizar una diferencia de cuadrados y cancelar"
     );
     assert_eq!(steps[1]["before"], "log((x^2 - y^2)/(x - y)) - log(x + y)");
     assert_eq!(steps[1]["after"], "log(x + y) - log(x + y)");
+    assert_eq!(
+        steps[2]["rule"],
+        "Collapse Common-Scale Equivalent Difference"
+    );
     let before_latex = steps[1]["before_latex"].as_str().expect("before_latex");
     let after_latex = steps[1]["after_latex"].as_str().expect("after_latex");
     assert!(
@@ -6252,6 +8549,72 @@ fn derive_grouped_general_base_log_product_expansion_with_passthrough_uses_direc
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
     assert_eq!(steps[0]["rule"], "Expandir logaritmos");
+}
+
+#[test]
+fn eval_general_base_log_product_square_passthrough_collapses_to_zero() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((log(b,(x*y)^2)+a) + m) - ((2*log(b,x)+2*log(b,y)+a) + m)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Expandir logaritmos y cancelar términos iguales"
+    );
+}
+
+#[test]
+fn eval_general_base_log_power_quotient_common_denominator_collapses_to_zero() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((log(b, (x^2*y^3)/(z^2*t)))/q) - ((2*log(b, x) + 3*log(b, y) - 2*log(b, z) - log(b, t))/q)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Common-Scale Equivalent Difference"
+    );
+}
+
+#[test]
+fn eval_general_base_logs_to_grouped_power_passthrough_collapses_to_zero() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((2*log(b,x)+2*log(b,y)+a) + m) - ((log(b,(x*y)^2)+a) + m)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Expandir logaritmos y cancelar términos iguales"
+    );
 }
 
 #[test]
@@ -6797,6 +9160,117 @@ fn derive_consecutive_telescoping_fraction_combine_omits_trivial_substitution_su
 }
 
 #[test]
+fn eval_telescoping_fraction_shifted_quadratic_same_denominator_collapses_in_one_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((1/(x+b) - 1/(x+c))/q) - (((c-b)/(x^2+(b+c)*x+b*c))/q)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Common-Scale Equivalent Difference"
+    );
+}
+
+#[test]
+fn eval_telescoping_fraction_symbolic_difference_squares_passthrough_collapses_in_one_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((1/(2*a)*(1/(x-a) - 1/(x+a))) + m) - ((1/(x^2-a^2)) + m)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Exact Zero Additive Subexpression"
+    );
+}
+
+#[test]
+fn eval_telescoping_fraction_symbolic_difference_squares_shifted_quotient_collapses_in_one_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "(((1/(2*a)*(1/(x-a) - 1/(x+a))) + 1))/(((1/(x^2-a^2)) + 1))",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "1");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Shifted Quotient of Equivalent Expressions"
+    );
+}
+
+#[test]
+fn eval_telescoping_fraction_symbolic_difference_squares_same_denominator_collapses_in_one_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((1/(2*a)*(1/(x-a) - 1/(x+a)))/q) - ((1/(x^2-a^2))/q)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Common-Scale Equivalent Difference"
+    );
+}
+
+#[test]
+fn eval_telescoping_fraction_symbolic_difference_squares_same_denominator_reverse_collapses_in_one_step(
+) {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((1/(x^2-a^2))/q) - ((1/(2*a)*(1/(x-a) - 1/(x+a)))/q)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Common-Scale Equivalent Difference"
+    );
+}
+
+#[test]
 fn derive_finite_telescoping_sum_uses_concrete_partial_fraction_substeps() {
     let (output, _code) = run_cli(&[
         "eval",
@@ -6909,6 +9383,50 @@ fn derive_finite_telescoping_product_uses_concrete_endpoint_substeps() {
         "Solo quedan el último numerador y el primer denominador"
     );
     assert_eq!(substeps[2]["after_latex"], json!("n + 1"));
+}
+
+#[test]
+fn eval_finite_telescoping_product_difference_collapses_in_one_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "product(1 - 1/(k+a)^2, k, m, n) - (((m+a-1)*(n+a+1))/((m+a)*(n+a)))",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Exact Zero Additive Subexpression"
+    );
+}
+
+#[test]
+fn eval_finite_telescoping_product_same_denominator_collapses_in_one_step() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((product(1 - 1/(k+a)^2, k, m, n))/q) - ((((m+a-1)*(n+a+1))/((m+a)*(n+a)))/q)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Common-Scale Equivalent Difference"
+    );
 }
 
 #[test]

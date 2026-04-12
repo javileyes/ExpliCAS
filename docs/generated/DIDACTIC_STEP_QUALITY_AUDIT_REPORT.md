@@ -20,7 +20,7 @@ Command: `cargo test -p cas_didactic --test didactic_step_quality_audit didactic
 | `inverse_trig_identity` | `inverse_trig` | 5 | 1 | none |
 | `polynomial_expansion_cancel` | `polynomial` | 6 | 0 | no wire substeps emitted |
 | `perfect_square_root` | `radicals` | 2 | 2 | none |
-| `cube_quotient_radical` | `quotient` | 4 | 1 | none |
+| `cube_quotient_radical` | `quotient` | 1 | 2 | none |
 | `geometric_product_cancellation` | `polynomial` | 1 | 3 | none |
 
 ## rationalize_linear_root (rationalization)
@@ -55,8 +55,9 @@ Steps:
 2. Calcular potencia numérica
    Before: (sqrt(x) + 1)/(x - 1^2) - (sqrt(x) + 1)/(x - 1)
    After: (sqrt(x) + 1)/(x - 1) - (sqrt(x) + 1)/(x - 1)
-3. Restar dos expresiones iguales
+3. Equivalent Residual Cancellation
    Before: (sqrt(x) + 1)/(x - 1) - (sqrt(x) + 1)/(x - 1)
+   Cambio local: sqrt(x) + 1 - (sqrt(x) + 1) -> 0
    After: 0
 ```
 
@@ -77,10 +78,10 @@ Steps:
      3. `En el denominador aparece una diferencia de cuadrados`
         - before_latex: `\frac{(\sqrt{x} + 1)}{(\sqrt{x} - 1) \cdot (\sqrt{x} + 1)}`
         - after_latex: `\frac{\sqrt{x} + 1}{x - 1^{2}}`
-2. `Restar dos expresiones iguales`
-   - before: `(sqrt(x) + 1)/(x - 1) - (sqrt(x) + 1)/(x - 1)`
+2. `Collapse Common-Scale Equivalent Difference`
+   - before: `sqrt(x) + 1 - (sqrt(x) + 1)`
    - after: `0`
-   - before_latex: `{\color{red}{\frac{\sqrt{x} + 1}{x - 1} - \frac{\sqrt{x} + 1}{x - 1}}}`
+   - before_latex: `{\color{red}{\sqrt{x} + 1 - (\sqrt{x} + 1)}}`
    - after_latex: `{\color{green}{0}}`
    - substeps: none
 
@@ -525,48 +526,43 @@ Steps:
 
 - Input: `((sqrt(x))^3 - 1)/(sqrt(x) - 1)`
 - Focus: `show_exact_quotient_reason`
-- Final result: `x^(1/2) + x + 1`
-- Step count: `4`
-- Wire substep count: `1`
+- Final result: `sqrt(x) + 1 + sqrt(x)^2`
+- Step count: `1`
+- Wire substep count: `2`
 - Flags: none
 
 ### CLI Step By Step
 
 ```text
 Steps:
-1. Reescribir potencia de una raíz
+1. Factor: a³ - b³ = (a-b)(a² + ab + b²)
    Before: (sqrt(x)^3 - 1)/(sqrt(x) - 1)
-   After: (sqrt(x^3) - 1)/(sqrt(x) - 1)
-2. Reconocer un cociente notable
-   Before: (sqrt(x^3) - 1)/(sqrt(x) - 1)
-   After: sqrt(x) + sqrt(x)^2 + 1
-3. Deshacer una raíz con su potencia
-   Before: sqrt(x) + sqrt(x)^2 + 1
-      [Reemplazar ese bloque en la expresión]
-        sqrt(x) + sqrt(x)^2 + 1
+   [Factorización de polinomios]
+      [Factorizar el numerador como suma o diferencia de cubos]
+        sqrt(x)^3 - 1^3
         ->
-        sqrt(x) + x + 1
-   After: sqrt(x) + x + 1
-   ℹ️ Requires: x > 0
+        (sqrt(x) - 1) ·  (sqrt(x)^2 + sqrt(x) ·  1 + 1^2)
+      [Ahora se cancela el factor (sqrt(x) - 1)]
+        ((sqrt(x) - 1) ·  (sqrt(x)^2 + sqrt(x) ·  1 + 1^2))/(sqrt(x) - 1)
+        ->
+        sqrt(x) + 1 + sqrt(x)^2
+   After: sqrt(x) + 1 + sqrt(x)^2
 ```
 
 ### Wire / Web Steps
 
-1. `Reconocer un cociente notable`
-   - before: `(sqrt(x^3) - 1)/(sqrt(x) - 1)`
-   - after: `sqrt(x) + sqrt(x)^2 + 1`
-   - before_latex: `{\color{red}{\frac{\sqrt{{x}^{3}} - 1}{\sqrt{x} - 1}}}`
-   - after_latex: `{\color{green}{1 + \sqrt{x} + {\sqrt{x}}^{2}}}`
-   - substeps: none
-2. `Deshacer raíz y potencia`
-   - before: `sqrt(x) + sqrt(x)^2 + 1`
-   - after: `sqrt(x) + x + 1`
-   - before_latex: `1 + \sqrt{x} + {\color{red}{{\sqrt{x}}^{2}}}`
-   - after_latex: `1 + \sqrt{x} + {\color{green}{x}}`
+1. `Factorizar cubos y cancelar`
+   - before: `(sqrt(x)^3 - 1)/(sqrt(x) - 1)`
+   - after: `sqrt(x) + 1 + sqrt(x)^2`
+   - before_latex: `{\color{red}{\frac{{\sqrt{x}}^{3} - 1}{\sqrt{x} - 1}}}`
+   - after_latex: `{\color{green}{\sqrt{x} + 1 + {\sqrt{x}}^{2}}}`
    - substeps:
-     1. `Reemplazar ese bloque en la expresión`
-        - before_latex: `\sqrt{x} + {\sqrt{x}}^{2} + 1`
-        - after_latex: `\sqrt{x} + x + 1`
+     1. `Factorizar el numerador como suma o diferencia de cubos`
+        - before_latex: `\sqrt{x}^3 - 1^3`
+        - after_latex: `\left(\sqrt{x} - 1\right)\cdot \left({\sqrt{x}}^{2} + \sqrt{x}\cdot 1 + {1}^{2}\right)`
+     2. `Ahora se cancela el factor (sqrt(x) - 1)`
+        - before_latex: `\frac{\left(\sqrt{x} - 1\right)\cdot \left({\sqrt{x}}^{2} + \sqrt{x}\cdot 1 + {1}^{2}\right)}{\left(\sqrt{x} - 1\right)}`
+        - after_latex: `\sqrt{x} + 1 + {\sqrt{x}}^{2}`
 
 ## geometric_product_cancellation (polynomial)
 

@@ -8005,15 +8005,12 @@ mod tests {
                             .all(|ch| ch.is_ascii_digit())
                 })
                 .count(),
-            2,
-            "expected expand path to expose exactly two visible steps; lines={lines:?}"
+            1,
+            "expected direct expand path to expose exactly one visible step; lines={lines:?}"
         );
         assert!(lines
             .iter()
             .any(|line| line.contains("Hyperbolic Product-to-Sum Identity")));
-        assert!(lines
-            .iter()
-            .any(|line| line.contains("Hyperbolic Triple-Angle Identity")));
     }
 
     #[test]

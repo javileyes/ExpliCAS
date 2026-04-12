@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use cas_ast::ExprId;
+use cas_ast::{BuiltinFn, Expr, ExprId};
 use cas_engine::NormalFormGoal;
 use cas_math::inverse_trig_composition_support::try_plan_inverse_atan_reciprocal_add_expr;
 use cas_math::summation_support::{
@@ -11,15 +11,18 @@ use super::{
     contains_phase_shift_term, detect_factor_out_with_division_target,
     generate_trig_additive_term_bridge_rewrites, generate_trig_bridge_rewrites,
     looks_like_fraction_expanded_target, looks_like_mixed_fraction_target,
-    looks_like_telescoping_fraction_target, looks_rationalizable_source, phase_shift_target_match,
+    looks_like_telescoping_fraction_target, looks_rationalizable_source,
+    matches_exact_hyperbolic_sum_to_product_target, phase_shift_target_match,
     should_try_trig_planner_before_simplify, strong_target_match,
     try_build_combined_fraction_from_fold_add, try_rewrite_collect_monomial_target_aware,
     try_rewrite_combine_like_terms_target_aware,
     try_rewrite_consecutive_factorial_ratio_target_aware,
     try_rewrite_exact_fraction_cancel_target_aware, try_rewrite_expanded_target_aware,
     try_rewrite_exponential_sum_diff_target_aware, try_rewrite_fraction_combination_target_aware,
-    try_rewrite_fraction_expansion_target_aware, try_rewrite_hyperbolic_simplify_target_aware,
-    try_rewrite_integrate_prep_target_aware, try_rewrite_log_argument_factorization_target_aware,
+    try_rewrite_fraction_expansion_target_aware,
+    try_rewrite_hyperbolic_exponential_bridge_target_aware,
+    try_rewrite_hyperbolic_simplify_target_aware, try_rewrite_integrate_prep_target_aware,
+    try_rewrite_log_argument_factorization_target_aware,
     try_rewrite_log_contraction_to_target_aware, try_rewrite_log_expansion_target_aware,
     try_rewrite_nested_fraction_target_aware, try_rewrite_odd_half_power_target_aware,
     try_rewrite_odd_half_power_to_target_aware, try_rewrite_power_merge_target_aware,
@@ -177,13 +180,6 @@ pub(crate) fn classify_target_profile(
         };
     }
 
-    if detect_rationalized_target(ctx, source_expr, target_expr) {
-        return DeriveTargetProfile {
-            form: DeriveTargetForm::Rationalized,
-            shared_vars,
-        };
-    }
-
     if detect_fraction_expanded_target(ctx, source_expr, target_expr) {
         return DeriveTargetProfile {
             form: DeriveTargetForm::FractionExpanded,
@@ -229,6 +225,13 @@ pub(crate) fn classify_target_profile(
     if detect_solve_prepared_target(ctx, source_expr, target_expr, &shared_vars) {
         return DeriveTargetProfile {
             form: DeriveTargetForm::SolvePrepared,
+            shared_vars,
+        };
+    }
+
+    if detect_rationalized_target(ctx, source_expr, target_expr) {
+        return DeriveTargetProfile {
+            form: DeriveTargetForm::Rationalized,
             shared_vars,
         };
     }
@@ -457,6 +460,13 @@ fn detect_expanded_target(
         return false;
     }
 
+    if looks_like_hyperbolic_target_family(ctx, source_expr, target_expr)
+        && contains_exponential_like(ctx, target_expr)
+        && !contains_hyperbolic_fn(ctx, target_expr)
+    {
+        return false;
+    }
+
     let Some(rewrite) = try_rewrite_expanded_target_aware(ctx, source_expr, target_expr) else {
         return false;
     };
@@ -624,6 +634,19 @@ fn detect_hyperbolic_rewritten_target(
     source_expr: ExprId,
     target_expr: ExprId,
 ) -> bool {
+    if !looks_like_hyperbolic_target_family(ctx, source_expr, target_expr) {
+        return false;
+    }
+
+    if contains_exponential_like(ctx, target_expr) && !contains_hyperbolic_fn(ctx, target_expr) {
+        return try_rewrite_hyperbolic_exponential_bridge_target_aware(
+            ctx,
+            source_expr,
+            target_expr,
+        )
+        .is_some();
+    }
+
     try_rewrite_hyperbolic_simplify_target_aware(ctx, source_expr, target_expr).is_some()
 }
 
@@ -632,6 +655,18 @@ fn detect_hyperbolic_product_sum_expanded_target(
     source_expr: ExprId,
     target_expr: ExprId,
 ) -> bool {
+    if !looks_like_hyperbolic_target_family(ctx, source_expr, target_expr) {
+        return false;
+    }
+
+    if contains_exponential_like(ctx, target_expr) && !contains_hyperbolic_fn(ctx, target_expr) {
+        return false;
+    }
+
+    if matches_exact_hyperbolic_product_sum_expanded_target(ctx, source_expr, target_expr) {
+        return true;
+    }
+
     if try_rewrite_hyperbolic_simplify_target_aware(ctx, source_expr, target_expr).is_some() {
         return false;
     }
@@ -641,6 +676,81 @@ fn detect_hyperbolic_product_sum_expanded_target(
     };
 
     matches!(rewrite.kind, super::ExpandRewriteKind::HyperbolicProductSum)
+}
+
+fn matches_exact_hyperbolic_product_sum_expanded_target(
+    ctx: &mut cas_ast::Context,
+    source_expr: ExprId,
+    target_expr: ExprId,
+) -> bool {
+    matches_exact_hyperbolic_sum_to_product_target(ctx, source_expr, target_expr)
+}
+
+fn looks_like_hyperbolic_target_family(
+    ctx: &mut cas_ast::Context,
+    source_expr: ExprId,
+    target_expr: ExprId,
+) -> bool {
+    contains_hyperbolic_fn(ctx, source_expr)
+        || contains_hyperbolic_fn(ctx, target_expr)
+        || contains_exponential_like(ctx, source_expr)
+        || contains_exponential_like(ctx, target_expr)
+}
+
+fn contains_hyperbolic_fn(ctx: &cas_ast::Context, expr: ExprId) -> bool {
+    let mut stack = vec![expr];
+    while let Some(current) = stack.pop() {
+        match ctx.get(current) {
+            Expr::Function(fn_id, args) => {
+                if matches!(
+                    ctx.builtin_of(*fn_id),
+                    Some(BuiltinFn::Sinh | BuiltinFn::Cosh | BuiltinFn::Tanh)
+                ) {
+                    return true;
+                }
+                stack.extend(args.iter().copied());
+            }
+            Expr::Add(left, right)
+            | Expr::Sub(left, right)
+            | Expr::Mul(left, right)
+            | Expr::Div(left, right)
+            | Expr::Pow(left, right) => {
+                stack.push(*left);
+                stack.push(*right);
+            }
+            Expr::Neg(inner) | Expr::Hold(inner) => stack.push(*inner),
+            Expr::Matrix { data, .. } => stack.extend(data.iter().copied()),
+            Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) | Expr::SessionRef(_) => {}
+        }
+    }
+
+    false
+}
+
+fn contains_exponential_like(ctx: &mut cas_ast::Context, expr: ExprId) -> bool {
+    let mut stack = vec![expr];
+    while let Some(current) = stack.pop() {
+        if cas_math::expr_extract::extract_exp_argument(ctx, current).is_some() {
+            return true;
+        }
+
+        match ctx.get(current) {
+            Expr::Function(_, args) => stack.extend(args.iter().copied()),
+            Expr::Add(left, right)
+            | Expr::Sub(left, right)
+            | Expr::Mul(left, right)
+            | Expr::Div(left, right)
+            | Expr::Pow(left, right) => {
+                stack.push(*left);
+                stack.push(*right);
+            }
+            Expr::Neg(inner) | Expr::Hold(inner) => stack.push(*inner),
+            Expr::Matrix { data, .. } => stack.extend(data.iter().copied()),
+            Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) | Expr::SessionRef(_) => {}
+        }
+    }
+
+    false
 }
 
 fn detect_trig_rewritten_target(

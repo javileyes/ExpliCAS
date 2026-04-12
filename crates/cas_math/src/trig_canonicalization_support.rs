@@ -54,13 +54,15 @@ pub enum TrigCanonicalIdentityKind {
     SecTanMinusOneIdentityZero,
     CscCotMinusOneIdentityZero,
     ReciprocalProductIdentity,
+    MixedFractionSinTanIdentity,
     MixedFractionToSinCos,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TrigCanonicalIdentityRewrite {
     pub rewritten: ExprId,
     pub kind: TrigCanonicalIdentityKind,
+    pub required_nonzero: SmallVec<[ExprId; 2]>,
 }
 
 /// Check if expression is a composition like `tan(arctan(x))`.
@@ -387,6 +389,50 @@ pub fn check_reciprocal_pair(
     }
 }
 
+fn builtin_call_arg(ctx: &Context, expr: ExprId, builtin: BuiltinFn) -> Option<ExprId> {
+    match ctx.get(expr) {
+        Expr::Function(fn_id, args)
+            if args.len() == 1 && ctx.builtin_of(*fn_id).is_some_and(|b| b == builtin) =>
+        {
+            Some(args[0])
+        }
+        _ => None,
+    }
+}
+
+fn extract_add_pair_shared_arg(
+    ctx: &Context,
+    expr: ExprId,
+    lhs_builtin: BuiltinFn,
+    rhs_builtin: BuiltinFn,
+) -> Option<ExprId> {
+    let Expr::Add(l, r) = ctx.get(expr) else {
+        return None;
+    };
+
+    let left = *l;
+    let right = *r;
+    if let (Some(lhs_arg), Some(rhs_arg)) = (
+        builtin_call_arg(ctx, left, lhs_builtin),
+        builtin_call_arg(ctx, right, rhs_builtin),
+    ) {
+        if lhs_arg == rhs_arg {
+            return Some(lhs_arg);
+        }
+    }
+
+    if let (Some(lhs_arg), Some(rhs_arg)) = (
+        builtin_call_arg(ctx, left, rhs_builtin),
+        builtin_call_arg(ctx, right, lhs_builtin),
+    ) {
+        if lhs_arg == rhs_arg {
+            return Some(lhs_arg);
+        }
+    }
+
+    None
+}
+
 pub fn try_rewrite_trig_function_name_canonicalization_expr(
     ctx: &mut Context,
     expr: ExprId,
@@ -455,6 +501,7 @@ pub fn try_rewrite_sec_to_recip_cos_function_expr(
     Some(TrigCanonicalIdentityRewrite {
         rewritten: ctx.add(Expr::Div(one, cos_arg)),
         kind: TrigCanonicalIdentityKind::SecToRecipCos,
+        required_nonzero: SmallVec::new(),
     })
 }
 
@@ -476,6 +523,7 @@ pub fn try_rewrite_csc_to_recip_sin_function_expr(
     Some(TrigCanonicalIdentityRewrite {
         rewritten: ctx.add(Expr::Div(one, sin_arg)),
         kind: TrigCanonicalIdentityKind::CscToRecipSin,
+        required_nonzero: SmallVec::new(),
     })
 }
 
@@ -497,6 +545,7 @@ pub fn try_rewrite_cot_to_cos_sin_function_expr(
     Some(TrigCanonicalIdentityRewrite {
         rewritten: ctx.add(Expr::Div(cos_arg, sin_arg)),
         kind: TrigCanonicalIdentityKind::CotToCosSin,
+        required_nonzero: SmallVec::new(),
     })
 }
 
@@ -595,6 +644,133 @@ pub fn try_rewrite_trig_quotient_div_expr(
     None
 }
 
+pub fn try_rewrite_mixed_fraction_sin_tan_identity_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<TrigCanonicalIdentityRewrite> {
+    let Expr::Div(num, den) = ctx.get(expr) else {
+        return None;
+    };
+
+    let arg = extract_add_pair_shared_arg(ctx, *num, BuiltinFn::Sin, BuiltinFn::Tan)?;
+    let den_arg = extract_add_pair_shared_arg(ctx, *den, BuiltinFn::Cot, BuiltinFn::Csc)?;
+    if arg != den_arg {
+        return None;
+    }
+
+    let sin_arg = ctx.call_builtin(BuiltinFn::Sin, vec![arg]);
+    let tan_arg = ctx.call_builtin(BuiltinFn::Tan, vec![arg]);
+    let cos_arg = ctx.call_builtin(BuiltinFn::Cos, vec![arg]);
+    Some(TrigCanonicalIdentityRewrite {
+        rewritten: mul2_raw(ctx, sin_arg, tan_arg),
+        kind: TrigCanonicalIdentityKind::MixedFractionSinTanIdentity,
+        required_nonzero: smallvec::smallvec![sin_arg, cos_arg],
+    })
+}
+
+fn match_cos_sq_term(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    is_function_squared(ctx, expr, "cos")
+}
+
+fn match_sin_sq_term(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    is_function_squared(ctx, expr, "sin")
+}
+
+fn match_cos_times_sin_sq_term(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    let Expr::Mul(lhs, rhs) = ctx.get(expr) else {
+        return None;
+    };
+    if let (Some(cos_arg), Some(sin_arg)) = (
+        builtin_call_arg(ctx, *lhs, BuiltinFn::Cos),
+        match_sin_sq_term(ctx, *rhs),
+    ) {
+        if cos_arg == sin_arg {
+            return Some(cos_arg);
+        }
+    }
+    if let (Some(cos_arg), Some(sin_arg)) = (
+        builtin_call_arg(ctx, *rhs, BuiltinFn::Cos),
+        match_sin_sq_term(ctx, *lhs),
+    ) {
+        if cos_arg == sin_arg {
+            return Some(cos_arg);
+        }
+    }
+    None
+}
+
+fn match_sin_sq_plus_cos_sin_sq(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    let Expr::Add(lhs, rhs) = ctx.get(expr) else {
+        return None;
+    };
+    if let (Some(sin_arg), Some(cos_arg)) = (
+        match_sin_sq_term(ctx, *lhs),
+        match_cos_times_sin_sq_term(ctx, *rhs),
+    ) {
+        if sin_arg == cos_arg {
+            return Some(sin_arg);
+        }
+    }
+    if let (Some(sin_arg), Some(cos_arg)) = (
+        match_sin_sq_term(ctx, *rhs),
+        match_cos_times_sin_sq_term(ctx, *lhs),
+    ) {
+        if sin_arg == cos_arg {
+            return Some(sin_arg);
+        }
+    }
+    None
+}
+
+fn match_cos_plus_cos_sq(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    let Expr::Add(lhs, rhs) = ctx.get(expr) else {
+        return None;
+    };
+    if let (Some(cos_arg), Some(cos_sq_arg)) = (
+        builtin_call_arg(ctx, *lhs, BuiltinFn::Cos),
+        match_cos_sq_term(ctx, *rhs),
+    ) {
+        if cos_arg == cos_sq_arg {
+            return Some(cos_arg);
+        }
+    }
+    if let (Some(cos_arg), Some(cos_sq_arg)) = (
+        builtin_call_arg(ctx, *rhs, BuiltinFn::Cos),
+        match_cos_sq_term(ctx, *lhs),
+    ) {
+        if cos_arg == cos_sq_arg {
+            return Some(cos_arg);
+        }
+    }
+    None
+}
+
+pub fn try_rewrite_combined_mixed_fraction_sin_tan_identity_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<TrigCanonicalIdentityRewrite> {
+    let Expr::Div(num, den) = ctx.get(expr) else {
+        return None;
+    };
+    let num = *num;
+    let den = *den;
+    let arg = match_sin_sq_plus_cos_sin_sq(ctx, num)?;
+    let den_arg = match_cos_plus_cos_sq(ctx, den)?;
+    if arg != den_arg {
+        return None;
+    }
+
+    let sin_arg = ctx.call_builtin(BuiltinFn::Sin, vec![arg]);
+    let cos_arg = ctx.call_builtin(BuiltinFn::Cos, vec![arg]);
+    let two = ctx.num(2);
+    let sin_sq = ctx.add(Expr::Pow(sin_arg, two));
+    Some(TrigCanonicalIdentityRewrite {
+        rewritten: ctx.add(Expr::Div(sin_sq, cos_arg)),
+        kind: TrigCanonicalIdentityKind::MixedFractionSinTanIdentity,
+        required_nonzero: smallvec::smallvec![den],
+    })
+}
+
 pub fn try_rewrite_sec_tan_pythagorean_expr(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
     let (l, r) = crate::expr_sub_like::extract_sub_like_pair(ctx, expr)?;
 
@@ -621,6 +797,7 @@ pub fn try_rewrite_sec_tan_pythagorean_identity_expr(
     Some(TrigCanonicalIdentityRewrite {
         rewritten,
         kind: TrigCanonicalIdentityKind::SecTanPythagorean,
+        required_nonzero: SmallVec::new(),
     })
 }
 
@@ -650,6 +827,7 @@ pub fn try_rewrite_csc_cot_pythagorean_identity_expr(
     Some(TrigCanonicalIdentityRewrite {
         rewritten,
         kind: TrigCanonicalIdentityKind::CscCotPythagorean,
+        required_nonzero: SmallVec::new(),
     })
 }
 
@@ -679,6 +857,7 @@ pub fn try_rewrite_tan_to_sec_pythagorean_identity_expr(
     Some(TrigCanonicalIdentityRewrite {
         rewritten,
         kind: TrigCanonicalIdentityKind::TanToSecPythagorean,
+        required_nonzero: SmallVec::new(),
     })
 }
 
@@ -708,6 +887,7 @@ pub fn try_rewrite_cot_to_csc_pythagorean_identity_expr(
     Some(TrigCanonicalIdentityRewrite {
         rewritten,
         kind: TrigCanonicalIdentityKind::CotToCscPythagorean,
+        required_nonzero: SmallVec::new(),
     })
 }
 
@@ -748,6 +928,7 @@ pub fn try_rewrite_sec_tan_minus_one_identity_zero_expr(
     Some(TrigCanonicalIdentityRewrite {
         rewritten,
         kind: TrigCanonicalIdentityKind::SecTanMinusOneIdentityZero,
+        required_nonzero: SmallVec::new(),
     })
 }
 
@@ -788,6 +969,7 @@ pub fn try_rewrite_csc_cot_minus_one_identity_zero_expr(
     Some(TrigCanonicalIdentityRewrite {
         rewritten,
         kind: TrigCanonicalIdentityKind::CscCotMinusOneIdentityZero,
+        required_nonzero: SmallVec::new(),
     })
 }
 
@@ -811,6 +993,7 @@ pub fn try_rewrite_reciprocal_product_identity_expr(
     Some(TrigCanonicalIdentityRewrite {
         rewritten,
         kind: TrigCanonicalIdentityKind::ReciprocalProductIdentity,
+        required_nonzero: SmallVec::new(),
     })
 }
 
@@ -837,10 +1020,17 @@ pub fn try_rewrite_mixed_fraction_to_sincos_plan_expr(
     ctx: &mut Context,
     expr: ExprId,
 ) -> Option<TrigCanonicalIdentityRewrite> {
+    if let Some(rewrite) = try_rewrite_mixed_fraction_sin_tan_identity_expr(ctx, expr) {
+        return Some(rewrite);
+    }
+    if let Some(rewrite) = try_rewrite_combined_mixed_fraction_sin_tan_identity_expr(ctx, expr) {
+        return Some(rewrite);
+    }
     let rewritten = try_rewrite_mixed_fraction_to_sincos_expr(ctx, expr)?;
     Some(TrigCanonicalIdentityRewrite {
         rewritten,
         kind: TrigCanonicalIdentityKind::MixedFractionToSinCos,
+        required_nonzero: SmallVec::new(),
     })
 }
 
@@ -1006,6 +1196,37 @@ mod tests {
         assert!(!contains_named_call(&ctx, rewritten, "tan"));
         assert!(contains_named_call(&ctx, rewritten, "sin"));
         assert!(contains_named_call(&ctx, rewritten, "cos"));
+    }
+
+    #[test]
+    fn rewrites_special_mixed_fraction_to_sin_times_tan() {
+        let mut ctx = Context::new();
+        let expr = parse("(sin(x)+tan(x))/(cot(x)+csc(x))", &mut ctx).expect("parse");
+        let rewrite =
+            try_rewrite_mixed_fraction_sin_tan_identity_expr(&mut ctx, expr).expect("rewrite");
+        let display = cas_formatter::DisplayExpr {
+            context: &ctx,
+            id: rewrite.rewritten,
+        }
+        .to_string();
+        assert_eq!(display, "sin(x) * tan(x)");
+        assert_eq!(rewrite.required_nonzero.len(), 2);
+    }
+
+    #[test]
+    fn rewrites_combined_mixed_fraction_to_sin_squared_over_cos() {
+        let mut ctx = Context::new();
+        let expr =
+            parse("(sin(x)^2 + cos(x)*sin(x)^2)/(cos(x) + cos(x)^2)", &mut ctx).expect("parse");
+        let rewrite = try_rewrite_combined_mixed_fraction_sin_tan_identity_expr(&mut ctx, expr)
+            .expect("rewrite");
+        let display = cas_formatter::DisplayExpr {
+            context: &ctx,
+            id: rewrite.rewritten,
+        }
+        .to_string();
+        assert_eq!(display, "sin(x)^2 / cos(x)");
+        assert_eq!(rewrite.required_nonzero.len(), 1);
     }
 
     #[test]

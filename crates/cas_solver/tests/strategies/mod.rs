@@ -155,6 +155,74 @@ pub fn arb_recursive_expr_with_profile(
     })
 }
 
+/// Simplifier-safe generator for generic algebraic property tests.
+/// This stays deliberately shallow so CI only exercises smoke-level shapes here.
+#[allow(dead_code)]
+pub fn arb_simplify_expr() -> impl Strategy<Value = RecursiveExpr> {
+    let leaf = prop_oneof![
+        (-10i64..10).prop_map(RecursiveExpr::Number),
+        "[a-z]".prop_map(RecursiveExpr::Variable),
+        Just(RecursiveExpr::Constant(Constant::Pi)),
+        Just(RecursiveExpr::Constant(Constant::E)),
+    ];
+
+    prop_oneof![
+        leaf.clone(),
+        (leaf.clone(), leaf.clone())
+            .prop_map(|(l, r)| RecursiveExpr::Add(Box::new(l), Box::new(r))),
+        (leaf.clone(), leaf.clone())
+            .prop_map(|(l, r)| RecursiveExpr::Sub(Box::new(l), Box::new(r))),
+        (leaf.clone(), leaf.clone())
+            .prop_map(|(l, r)| RecursiveExpr::Mul(Box::new(l), Box::new(r))),
+        (
+            leaf.clone(),
+            prop_oneof![(-5i64..0), (1i64..6)].prop_map(RecursiveExpr::Number)
+        )
+            .prop_map(|(l, r)| RecursiveExpr::Div(Box::new(l), Box::new(r))),
+        (leaf.clone(), (0i64..4).prop_map(RecursiveExpr::Number))
+            .prop_map(|(l, r)| RecursiveExpr::Pow(Box::new(l), Box::new(r))),
+        leaf.clone().prop_map(|e| RecursiveExpr::Neg(Box::new(e))),
+        leaf.clone()
+            .prop_map(|e| RecursiveExpr::Function("sin".to_string(), vec![e])),
+        leaf.prop_map(|e| RecursiveExpr::Function("cos".to_string(), vec![e])),
+    ]
+}
+
+/// Numeric-only generator for rational reduction properties.
+#[allow(dead_code)]
+pub fn arb_numeric_expr() -> impl Strategy<Value = RecursiveExpr> {
+    let leaf = (-10i64..10).prop_map(RecursiveExpr::Number);
+
+    prop_oneof![
+        leaf.clone(),
+        (leaf.clone(), leaf.clone())
+            .prop_map(|(l, r)| RecursiveExpr::Add(Box::new(l), Box::new(r))),
+        (leaf.clone(), leaf.clone())
+            .prop_map(|(l, r)| RecursiveExpr::Sub(Box::new(l), Box::new(r))),
+        (leaf.clone(), leaf.clone())
+            .prop_map(|(l, r)| RecursiveExpr::Mul(Box::new(l), Box::new(r))),
+        (
+            leaf.clone(),
+            prop_oneof![(-5i64..0), (1i64..6)].prop_map(RecursiveExpr::Number)
+        )
+            .prop_map(|(l, r)| RecursiveExpr::Div(Box::new(l), Box::new(r))),
+        (leaf.clone(), (0i64..4).prop_map(RecursiveExpr::Number))
+            .prop_map(|(l, r)| RecursiveExpr::Pow(Box::new(l), Box::new(r))),
+        leaf.prop_map(|e| RecursiveExpr::Neg(Box::new(e))),
+    ]
+}
+
+/// Atomic generator for metamorphic normalize-core/simplify smoke checks.
+#[allow(dead_code)]
+pub fn arb_atomic_expr() -> impl Strategy<Value = RecursiveExpr> {
+    prop_oneof![
+        (-10i64..10).prop_map(RecursiveExpr::Number),
+        "[a-z]".prop_map(RecursiveExpr::Variable),
+        Just(RecursiveExpr::Constant(Constant::Pi)),
+        Just(RecursiveExpr::Constant(Constant::E)),
+    ]
+}
+
 pub fn to_context(re: RecursiveExpr) -> (Context, ExprId) {
     let mut ctx = Context::new();
     let id = add_recursive(&mut ctx, re);

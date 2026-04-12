@@ -125,7 +125,7 @@ fn test_dyadic_cos_product_assume_symbolic_allowed() {
 
     let mut simplifier = Simplifier::with_profile(&opts);
     simplifier.context = ctx;
-    let (result, _steps) = simplifier.simplify(expr);
+    let (result, _steps) = simplifier.simplify_with_options(expr, opts.to_simplify_options());
 
     let result_str = format!(
         "{}",

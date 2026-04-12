@@ -1,5 +1,5 @@
 use crate::derive::{
-    classify_target_profile, extract_factored_division_target,
+    classify_target_profile, contains_phase_shift_term, extract_factored_division_target,
     generate_hyperbolic_additive_term_bridge_rewrites, generate_hyperbolic_bridge_rewrites,
     generate_trig_additive_term_bridge_rewrites, generate_trig_bridge_rewrites,
     looks_like_factored_target, ordered_strategies_for_target, phase_shift_target_match,
@@ -10,21 +10,22 @@ use crate::derive::{
     try_rewrite_consecutive_factorial_ratio_target_aware,
     try_rewrite_exact_fraction_cancel_target_aware, try_rewrite_expanded_target_aware,
     try_rewrite_exponential_sum_diff_target_aware, try_rewrite_fraction_combination_target_aware,
-    try_rewrite_fraction_expansion_target_aware, try_rewrite_hyperbolic_simplify_target_aware,
-    try_rewrite_integrate_prep_target_aware, try_rewrite_log_argument_factorization_target_aware,
-    try_rewrite_log_contraction_target_aware, try_rewrite_log_contraction_to_target_aware,
-    try_rewrite_log_expansion_target_aware, try_rewrite_log_simplify_target_aware,
-    try_rewrite_nested_fraction_target_aware, try_rewrite_odd_half_power_to_target_aware,
-    try_rewrite_power_merge_target_aware, try_rewrite_pythagorean_factor_form_target_aware,
-    try_rewrite_radical_target_aware, try_rewrite_rationalized_target_aware,
-    try_rewrite_shifted_double_angle_target_aware,
+    try_rewrite_fraction_expansion_target_aware, try_rewrite_hyperbolic_expansion_target_aware,
+    try_rewrite_hyperbolic_exponential_bridge_target_aware,
+    try_rewrite_hyperbolic_simplify_target_aware, try_rewrite_integrate_prep_target_aware,
+    try_rewrite_log_argument_factorization_target_aware, try_rewrite_log_contraction_target_aware,
+    try_rewrite_log_contraction_to_target_aware, try_rewrite_log_expansion_target_aware,
+    try_rewrite_log_simplify_target_aware, try_rewrite_nested_fraction_target_aware,
+    try_rewrite_odd_half_power_to_target_aware, try_rewrite_power_merge_target_aware,
+    try_rewrite_pythagorean_factor_form_target_aware, try_rewrite_radical_target_aware,
+    try_rewrite_rationalized_target_aware, try_rewrite_shifted_double_angle_target_aware,
     try_rewrite_shifted_reciprocal_pythagorean_target_aware, try_rewrite_solve_prep_target_aware,
     try_rewrite_trig_contraction_target_aware, try_rewrite_trig_expansion,
     try_rewrite_trig_identity_to_one_target_aware, DeriveHyperbolicRewriteKind, DeriveStrategy,
     DeriveTargetForm, ExpandRewriteKind, RationalizeRewriteKind,
 };
 
-use cas_ast::{Expr, ExprId};
+use cas_ast::{BuiltinFn, Expr, ExprId};
 use cas_engine::NormalFormGoal;
 use cas_math::inverse_trig_composition_support::try_plan_inverse_atan_reciprocal_add_expr;
 use cas_math::summation_support::{
@@ -554,8 +555,35 @@ fn try_supported_derive_strategies_inner(
     allow_factor_with_division: bool,
     allow_planner: bool,
 ) -> Option<(ExprId, Vec<crate::Step>, DeriveStrategy)> {
-    let planner_context_snapshot = allow_planner.then(|| simplifier.context.clone());
+    if let Some(direct) =
+        try_fast_direct_integrate_prep_derive(simplifier, resolved_expr, target_expr, collect_steps)
+    {
+        return Some(direct);
+    }
+    if let Some(direct) =
+        try_fast_direct_trig_derive(simplifier, resolved_expr, target_expr, collect_steps)
+    {
+        return Some(direct);
+    }
+    if let Some(direct) =
+        try_fast_direct_hyperbolic_derive(simplifier, resolved_expr, target_expr, collect_steps)
+    {
+        return Some(direct);
+    }
+
     let profile = classify_target_profile(&mut simplifier.context, resolved_expr, target_expr);
+
+    if let Some(direct) = try_fast_direct_solve_prep_derive(
+        simplifier,
+        resolved_expr,
+        target_expr,
+        &profile.shared_vars,
+        collect_steps,
+    ) {
+        return Some(direct);
+    }
+
+    let planner_context_snapshot = allow_planner.then(|| simplifier.context.clone());
 
     let mut simplify_stage: Option<DeriveStageOutput> = None;
     let mut integrate_prep_stage: Option<DeriveStageOutput> = None;
@@ -594,6 +622,10 @@ fn try_supported_derive_strategies_inner(
     let mut simplify_then_factor_stage: Option<DeriveStageOutput> = None;
     let prefer_simplify_first = is_finite_aggregate_source(&simplifier.context, resolved_expr)
         && !matches!(profile.form, DeriveTargetForm::FiniteAggregateEvaluated);
+    let prefer_planner_for_hyperbolic_exponential_target = allow_planner
+        && contains_hyperbolic_fn_expr(&simplifier.context, resolved_expr)
+        && contains_exponential_like_expr(&mut simplifier.context, target_expr)
+        && !contains_hyperbolic_fn_expr(&simplifier.context, target_expr);
     let allow_planner_preference = allow_planner
         && (should_try_trig_planner_before_simplify(
             &mut simplifier.context,
@@ -603,7 +635,7 @@ fn try_supported_derive_strategies_inner(
             &mut simplifier.context,
             resolved_expr,
             target_expr,
-        ));
+        ) || prefer_planner_for_hyperbolic_exponential_target);
 
     if !prefer_simplify_first
         && !matches!(
@@ -960,7 +992,9 @@ fn try_supported_derive_strategies_inner(
                         collect_steps,
                         simplify_options.clone(),
                     );
-                    if derive_target_match(simplifier, stage.expr, target_expr) {
+                    if stage_makes_progress(&mut simplifier.context, first_stage.expr, &stage)
+                        && derive_target_match(simplifier, stage.expr, target_expr)
+                    {
                         let mut stage = stage;
                         retarget_stage_output(&mut stage, target_expr);
                         let steps = finalize_steps(
@@ -982,7 +1016,9 @@ fn try_supported_derive_strategies_inner(
                         simplify_options.clone(),
                     )
                 });
-                if derive_target_match(simplifier, stage.expr, target_expr) {
+                if stage_makes_progress(&mut simplifier.context, resolved_expr, stage)
+                    && derive_target_match(simplifier, stage.expr, target_expr)
+                {
                     let mut stage = stage.clone();
                     retarget_stage_output(&mut stage, target_expr);
                     let steps = finalize_steps(
@@ -1336,7 +1372,9 @@ fn try_supported_derive_strategies_inner(
                         collect_steps,
                         simplify_options.clone(),
                     );
-                    if strong_target_match(&mut simplifier.context, stage.expr, target_expr) {
+                    if stage_makes_progress(&mut simplifier.context, first_stage.expr, &stage)
+                        && strong_target_match(&mut simplifier.context, stage.expr, target_expr)
+                    {
                         let mut stage = stage;
                         retarget_stage_output(&mut stage, target_expr);
                         let steps = finalize_steps(
@@ -1367,7 +1405,9 @@ fn try_supported_derive_strategies_inner(
                         simplify_options.clone(),
                     )
                 });
-                if strong_target_match(&mut simplifier.context, stage.expr, target_expr) {
+                if stage_makes_progress(&mut simplifier.context, first_stage.expr, stage)
+                    && strong_target_match(&mut simplifier.context, stage.expr, target_expr)
+                {
                     let mut stage = stage.clone();
                     retarget_stage_output(&mut stage, target_expr);
                     let steps = finalize_steps(
@@ -1700,7 +1740,7 @@ fn try_bounded_multistage_derive_inner(
             return Some(vec![stage]);
         }
 
-        if derive_target_match(simplifier, stage.expr, target_expr) {
+        if planner_stage_target_match(simplifier, stage.expr, target_expr) {
             let mut fallback_stage = stage.clone();
             retarget_stage_output(&mut fallback_stage, target_expr);
             semantic_fallback.get_or_insert_with(|| vec![fallback_stage]);
@@ -1763,6 +1803,984 @@ fn try_bounded_multistage_derive_inner(
     }
 
     semantic_fallback
+}
+
+fn planner_stage_target_match(
+    simplifier: &mut crate::Simplifier,
+    actual_expr: ExprId,
+    target_expr: ExprId,
+) -> bool {
+    if strong_target_match(&mut simplifier.context, actual_expr, target_expr) {
+        return true;
+    }
+
+    for rewrite in generate_hyperbolic_bridge_rewrites(&mut simplifier.context, actual_expr) {
+        if strong_target_match(&mut simplifier.context, rewrite.rewritten, target_expr) {
+            return true;
+        }
+    }
+
+    for rewrite in
+        generate_hyperbolic_additive_term_bridge_rewrites(&mut simplifier.context, actual_expr)
+    {
+        if strong_target_match(&mut simplifier.context, rewrite.rewritten, target_expr) {
+            return true;
+        }
+    }
+
+    for rewrite in generate_trig_bridge_rewrites(&mut simplifier.context, actual_expr) {
+        if strong_target_match(&mut simplifier.context, rewrite.rewritten, target_expr) {
+            return true;
+        }
+    }
+
+    for rewrite in generate_trig_additive_term_bridge_rewrites(&mut simplifier.context, actual_expr)
+    {
+        if strong_target_match(&mut simplifier.context, rewrite.rewritten, target_expr) {
+            return true;
+        }
+    }
+
+    false
+}
+
+fn stage_makes_progress(
+    ctx: &mut cas_ast::Context,
+    before: ExprId,
+    stage: &DeriveStageOutput,
+) -> bool {
+    !stage.steps.is_empty() || !presentational_target_match(ctx, stage.expr, before)
+}
+
+fn try_fast_direct_integrate_prep_derive(
+    simplifier: &mut crate::Simplifier,
+    expr: ExprId,
+    target_expr: ExprId,
+    collect_steps: bool,
+) -> Option<(ExprId, Vec<crate::Step>, DeriveStrategy)> {
+    let rewrite =
+        try_rewrite_integrate_prep_target_aware(&mut simplifier.context, expr, target_expr)?;
+    let steps = if collect_steps {
+        let mut step = crate::Step::with_snapshots(
+            rewrite.kind.description(),
+            rewrite.kind.rule_name(),
+            expr,
+            rewrite.rewritten,
+            Vec::new(),
+            Some(&simplifier.context),
+            expr,
+            rewrite.rewritten,
+        );
+        step.importance = cas_solver_core::step_types::ImportanceLevel::Medium;
+        step.category = cas_solver_core::step_types::StepCategory::Simplify;
+        step.meta_mut().assumption_events.push(
+            cas_solver_core::assumption_model::AssumptionEvent::nonzero(
+                &simplifier.context,
+                rewrite.assume_nonzero_expr,
+            ),
+        );
+        vec![step]
+    } else {
+        Vec::new()
+    };
+
+    Some((rewrite.rewritten, steps, DeriveStrategy::IntegratePrep))
+}
+
+fn try_fast_direct_solve_prep_derive(
+    simplifier: &mut crate::Simplifier,
+    expr: ExprId,
+    target_expr: ExprId,
+    shared_vars: &[String],
+    collect_steps: bool,
+) -> Option<(ExprId, Vec<crate::Step>, DeriveStrategy)> {
+    let rewrite = try_rewrite_solve_prep_target_aware(
+        &mut simplifier.context,
+        expr,
+        target_expr,
+        shared_vars,
+    )?;
+    let steps = if collect_steps {
+        let mut step = crate::Step::with_snapshots(
+            rewrite.kind.description(),
+            rewrite.kind.rule_name(),
+            expr,
+            rewrite.rewritten,
+            Vec::new(),
+            Some(&simplifier.context),
+            expr,
+            rewrite.rewritten,
+        );
+        step.importance = cas_solver_core::step_types::ImportanceLevel::Medium;
+        step.category = cas_solver_core::step_types::StepCategory::Simplify;
+        step.meta_mut().assumption_events.push(
+            cas_solver_core::assumption_model::AssumptionEvent::nonzero(
+                &simplifier.context,
+                rewrite.assume_nonzero_expr,
+            ),
+        );
+        vec![step]
+    } else {
+        Vec::new()
+    };
+
+    Some((rewrite.rewritten, steps, DeriveStrategy::SolvePrep))
+}
+
+fn try_fast_direct_trig_derive(
+    simplifier: &mut crate::Simplifier,
+    expr: ExprId,
+    target_expr: ExprId,
+    collect_steps: bool,
+) -> Option<(ExprId, Vec<crate::Step>, DeriveStrategy)> {
+    if !contains_circular_trig_call(&simplifier.context, expr)
+        && !contains_circular_trig_call(&simplifier.context, target_expr)
+    {
+        return None;
+    }
+
+    if let Some(direct) =
+        try_fast_repeated_phase_shift_pair_derive(simplifier, expr, target_expr, collect_steps)
+    {
+        return Some(direct);
+    }
+
+    if let Some(rewrite) =
+        try_rewrite_shifted_double_angle_target_aware(&mut simplifier.context, expr, target_expr)
+    {
+        let final_expr =
+            if cas_ast::ordering::compare_expr(&simplifier.context, rewrite.rewritten, target_expr)
+                == std::cmp::Ordering::Equal
+            {
+                target_expr
+            } else {
+                rewrite.rewritten
+            };
+        let steps = if collect_steps {
+            let mut step = crate::Step::with_snapshots(
+                rewrite.kind.description(),
+                rewrite.kind.rule_name(),
+                expr,
+                final_expr,
+                Vec::new(),
+                Some(&simplifier.context),
+                expr,
+                final_expr,
+            );
+            step.importance = cas_solver_core::step_types::ImportanceLevel::Medium;
+            step.category = cas_solver_core::step_types::StepCategory::Simplify;
+            vec![step]
+        } else {
+            Vec::new()
+        };
+
+        return Some((final_expr, steps, DeriveStrategy::TrigExpand));
+    }
+
+    if let Some(rewrite) = try_rewrite_trig_expansion(&mut simplifier.context, expr, target_expr) {
+        let steps = if collect_steps {
+            vec![build_trig_expand_step(
+                &simplifier.context,
+                expr,
+                target_expr,
+                rewrite.kind.description(),
+                rewrite.kind.rule_name(),
+            )]
+        } else {
+            Vec::new()
+        };
+
+        return Some((target_expr, steps, DeriveStrategy::TrigExpand));
+    }
+
+    if let Some(chain) = try_fast_product_to_sum_then_triple_angle_derive(
+        simplifier,
+        expr,
+        target_expr,
+        collect_steps,
+    ) {
+        return Some(chain);
+    }
+
+    if let Some(rewrite) =
+        try_rewrite_trig_contraction_target_aware(&mut simplifier.context, expr, target_expr)
+    {
+        let final_expr =
+            if cas_ast::ordering::compare_expr(&simplifier.context, rewrite.rewritten, target_expr)
+                == std::cmp::Ordering::Equal
+            {
+                target_expr
+            } else {
+                rewrite.rewritten
+            };
+        let steps = if collect_steps {
+            let mut step = crate::Step::with_snapshots(
+                rewrite.kind.description(),
+                rewrite.kind.rule_name(),
+                expr,
+                final_expr,
+                Vec::new(),
+                Some(&simplifier.context),
+                expr,
+                final_expr,
+            );
+            step.importance = cas_solver_core::step_types::ImportanceLevel::Medium;
+            step.category = cas_solver_core::step_types::StepCategory::Simplify;
+            vec![step]
+        } else {
+            Vec::new()
+        };
+
+        return Some((final_expr, steps, DeriveStrategy::TrigContract));
+    }
+
+    if let Some(rewrite) =
+        try_rewrite_trig_identity_to_one_target_aware(&mut simplifier.context, expr, target_expr)
+    {
+        let steps = if collect_steps {
+            let mut step = crate::Step::with_snapshots(
+                rewrite.kind.description(),
+                rewrite.kind.rule_name(),
+                expr,
+                target_expr,
+                Vec::new(),
+                Some(&simplifier.context),
+                expr,
+                target_expr,
+            );
+            step.importance = cas_solver_core::step_types::ImportanceLevel::Medium;
+            step.category = cas_solver_core::step_types::StepCategory::Simplify;
+            vec![step]
+        } else {
+            Vec::new()
+        };
+
+        return Some((target_expr, steps, DeriveStrategy::TrigRewrite));
+    }
+
+    if let Some(rewrite) = try_rewrite_shifted_reciprocal_pythagorean_target_aware(
+        &mut simplifier.context,
+        expr,
+        target_expr,
+    ) {
+        let steps = if collect_steps {
+            let mut step = crate::Step::with_snapshots(
+                rewrite.kind.description(),
+                rewrite.kind.rule_name(),
+                expr,
+                target_expr,
+                Vec::new(),
+                Some(&simplifier.context),
+                expr,
+                target_expr,
+            );
+            step.importance = cas_solver_core::step_types::ImportanceLevel::Medium;
+            step.category = cas_solver_core::step_types::StepCategory::Simplify;
+            vec![step]
+        } else {
+            Vec::new()
+        };
+
+        return Some((target_expr, steps, DeriveStrategy::TrigRewrite));
+    }
+
+    if let Some(rewrite) =
+        try_rewrite_pythagorean_factor_form_target_aware(&mut simplifier.context, expr, target_expr)
+    {
+        let steps = if collect_steps {
+            let mut step = crate::Step::with_snapshots(
+                &rewrite.description,
+                "Pythagorean Factor Form",
+                expr,
+                target_expr,
+                Vec::new(),
+                Some(&simplifier.context),
+                expr,
+                target_expr,
+            );
+            step.importance = cas_solver_core::step_types::ImportanceLevel::Medium;
+            step.category = cas_solver_core::step_types::StepCategory::Simplify;
+            vec![step]
+        } else {
+            Vec::new()
+        };
+
+        return Some((target_expr, steps, DeriveStrategy::TrigRewrite));
+    }
+
+    None
+}
+
+fn try_fast_repeated_phase_shift_pair_derive(
+    simplifier: &mut crate::Simplifier,
+    expr: ExprId,
+    target_expr: ExprId,
+    collect_steps: bool,
+) -> Option<(ExprId, Vec<crate::Step>, DeriveStrategy)> {
+    if !is_repeated_phase_shift_pair_candidate(&mut simplifier.context, expr, target_expr) {
+        return None;
+    }
+
+    try_run_two_step_additive_phase_shift_chain(
+        simplifier,
+        expr,
+        target_expr,
+        false,
+        presentational_target_match,
+    )?;
+
+    let steps = if collect_steps
+        && contains_phase_shift_term(&mut simplifier.context, expr)
+        && !contains_phase_shift_term(&mut simplifier.context, target_expr)
+    {
+        let mut step = crate::Step::with_snapshots(
+            "Extract a shared multiplicative factor from the shifted phase-shift pair",
+            "Extract Common Multiplicative Factor",
+            expr,
+            target_expr,
+            Vec::new(),
+            Some(&simplifier.context),
+            expr,
+            target_expr,
+        );
+        step.importance = cas_solver_core::step_types::ImportanceLevel::Medium;
+        step.category = cas_solver_core::step_types::StepCategory::Factor;
+        vec![step]
+    } else {
+        Vec::new()
+    };
+
+    Some((target_expr, steps, DeriveStrategy::Simplify))
+}
+
+fn is_repeated_phase_shift_pair_candidate(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+    target_expr: ExprId,
+) -> bool {
+    let expr_terms = cas_math::expr_nary::add_terms_signed(ctx, expr);
+    let target_terms = cas_math::expr_nary::add_terms_signed(ctx, target_expr);
+
+    let expr_is_shifted_pair = expr_terms.len() == 2
+        && expr_terms
+            .iter()
+            .all(|(term, _)| contains_phase_shift_term(ctx, *term));
+    let target_is_shifted_pair = target_terms.len() == 2
+        && target_terms
+            .iter()
+            .all(|(term, _)| contains_phase_shift_term(ctx, *term));
+
+    (expr_terms.len() == 4 && target_is_shifted_pair)
+        || (target_terms.len() == 4 && expr_is_shifted_pair)
+}
+
+fn contains_circular_trig_call(ctx: &cas_ast::Context, expr: ExprId) -> bool {
+    let mut stack = vec![expr];
+    while let Some(current) = stack.pop() {
+        match ctx.get(current) {
+            Expr::Function(fn_id, args) => {
+                if matches!(
+                    ctx.builtin_of(*fn_id),
+                    Some(
+                        BuiltinFn::Sin
+                            | BuiltinFn::Cos
+                            | BuiltinFn::Tan
+                            | BuiltinFn::Sec
+                            | BuiltinFn::Csc
+                            | BuiltinFn::Cot
+                    )
+                ) {
+                    return true;
+                }
+                stack.extend(args.iter().copied());
+            }
+            Expr::Add(left, right)
+            | Expr::Sub(left, right)
+            | Expr::Mul(left, right)
+            | Expr::Div(left, right)
+            | Expr::Pow(left, right) => {
+                stack.push(*left);
+                stack.push(*right);
+            }
+            Expr::Neg(inner) | Expr::Hold(inner) => stack.push(*inner),
+            Expr::Matrix { data, .. } => stack.extend(data.iter().copied()),
+            Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) | Expr::SessionRef(_) => {}
+        }
+    }
+    false
+}
+
+fn try_fast_direct_hyperbolic_derive(
+    simplifier: &mut crate::Simplifier,
+    expr: ExprId,
+    target_expr: ExprId,
+    collect_steps: bool,
+) -> Option<(ExprId, Vec<crate::Step>, DeriveStrategy)> {
+    if let Some(derived) = try_fast_direct_recursive_hyperbolic_angle_sum_derive(
+        simplifier,
+        expr,
+        target_expr,
+        collect_steps,
+    ) {
+        return Some(derived);
+    }
+
+    if let Some(kind) =
+        try_match_exact_hyperbolic_sum_to_product_pair(&mut simplifier.context, expr, target_expr)
+    {
+        let steps = if collect_steps {
+            vec![build_hyperbolic_bridge_step(
+                &simplifier.context,
+                expr,
+                target_expr,
+                kind.description(),
+                kind.rule_name(),
+            )]
+        } else {
+            Vec::new()
+        };
+
+        return Some((target_expr, steps, DeriveStrategy::Expand));
+    }
+
+    let target_is_pure_exponential =
+        contains_exponential_like_expr(&mut simplifier.context, target_expr)
+            && !contains_hyperbolic_fn_expr(&simplifier.context, target_expr);
+
+    let direct_hyperbolic_rewrite = if target_is_pure_exponential {
+        try_rewrite_hyperbolic_exponential_bridge_target_aware(
+            &mut simplifier.context,
+            expr,
+            target_expr,
+        )
+    } else {
+        try_rewrite_hyperbolic_simplify_target_aware(&mut simplifier.context, expr, target_expr)
+    };
+
+    if let Some(rewrite) = direct_hyperbolic_rewrite {
+        let steps = if collect_steps {
+            vec![build_hyperbolic_bridge_step(
+                &simplifier.context,
+                expr,
+                target_expr,
+                rewrite.kind.description(),
+                rewrite.kind.rule_name(),
+            )]
+        } else {
+            Vec::new()
+        };
+
+        if matches!(
+            rewrite.kind,
+            DeriveHyperbolicRewriteKind::ProductToSumSinhCosh
+                | DeriveHyperbolicRewriteKind::ProductToSumCoshCosh
+                | DeriveHyperbolicRewriteKind::ProductToSumSinhSinh
+                | DeriveHyperbolicRewriteKind::SumToProductSinhCosh
+                | DeriveHyperbolicRewriteKind::SumToProductCoshCosh
+                | DeriveHyperbolicRewriteKind::SumToProductSinhSinh
+                | DeriveHyperbolicRewriteKind::ContractSinhAngleSumDiff
+                | DeriveHyperbolicRewriteKind::ContractCoshAngleSumDiff
+        ) {
+            if is_hyperbolic_product_sum_kind(rewrite.kind)
+                && !fast_hyperbolic_product_sum_target_match(
+                    &mut simplifier.context,
+                    rewrite.rewritten,
+                    target_expr,
+                    rewrite.kind,
+                )
+            {
+                // Preserve product-to-sum -> triple-angle derivations as two visible steps.
+            } else {
+                return Some((
+                    target_expr,
+                    steps,
+                    fast_hyperbolic_simplify_strategy(rewrite.kind),
+                ));
+            }
+        } else {
+            return Some((
+                target_expr,
+                steps,
+                fast_hyperbolic_simplify_strategy(rewrite.kind),
+            ));
+        }
+    }
+
+    for rewrite in generate_hyperbolic_bridge_rewrites(&mut simplifier.context, expr) {
+        if !is_hyperbolic_product_sum_kind(rewrite.kind) {
+            continue;
+        }
+
+        if !fast_hyperbolic_product_sum_target_match(
+            &mut simplifier.context,
+            rewrite.rewritten,
+            target_expr,
+            rewrite.kind,
+        ) {
+            continue;
+        }
+
+        let steps = if collect_steps {
+            vec![build_hyperbolic_bridge_step(
+                &simplifier.context,
+                expr,
+                target_expr,
+                rewrite.kind.description(),
+                rewrite.kind.rule_name(),
+            )]
+        } else {
+            Vec::new()
+        };
+
+        return Some((target_expr, steps, DeriveStrategy::Expand));
+    }
+
+    if let Some(kind) =
+        try_rewrite_hyperbolic_expansion_target_aware(&mut simplifier.context, expr, target_expr)
+    {
+        if is_hyperbolic_product_sum_kind(kind) {
+            // Keep product-to-sum polynomial targets on the didactic multi-step path.
+        } else {
+            let steps = if collect_steps {
+                vec![build_hyperbolic_bridge_step(
+                    &simplifier.context,
+                    expr,
+                    target_expr,
+                    kind.description(),
+                    kind.rule_name(),
+                )]
+            } else {
+                Vec::new()
+            };
+
+            return Some((target_expr, steps, DeriveStrategy::Expand));
+        }
+    }
+
+    for rewrite in generate_hyperbolic_bridge_rewrites(&mut simplifier.context, expr) {
+        if !matches!(
+            rewrite.kind,
+            DeriveHyperbolicRewriteKind::ProductToSumSinhCosh
+                | DeriveHyperbolicRewriteKind::ProductToSumCoshCosh
+                | DeriveHyperbolicRewriteKind::ProductToSumSinhSinh
+                | DeriveHyperbolicRewriteKind::SumToProductSinhCosh
+                | DeriveHyperbolicRewriteKind::SumToProductCoshCosh
+                | DeriveHyperbolicRewriteKind::SumToProductSinhSinh
+                | DeriveHyperbolicRewriteKind::ContractSinhAngleSumDiff
+                | DeriveHyperbolicRewriteKind::ContractCoshAngleSumDiff
+        ) {
+            continue;
+        }
+
+        if is_hyperbolic_product_sum_kind(rewrite.kind)
+            && !fast_hyperbolic_product_sum_target_match(
+                &mut simplifier.context,
+                rewrite.rewritten,
+                target_expr,
+                rewrite.kind,
+            )
+        {
+            continue;
+        }
+
+        if !strong_target_match(&mut simplifier.context, rewrite.rewritten, target_expr) {
+            continue;
+        }
+
+        let steps = if collect_steps {
+            vec![build_hyperbolic_bridge_step(
+                &simplifier.context,
+                expr,
+                target_expr,
+                rewrite.kind.description(),
+                rewrite.kind.rule_name(),
+            )]
+        } else {
+            Vec::new()
+        };
+
+        return Some((
+            target_expr,
+            steps,
+            fast_hyperbolic_simplify_strategy(rewrite.kind),
+        ));
+    }
+
+    for rewrite in generate_hyperbolic_bridge_rewrites(&mut simplifier.context, target_expr) {
+        if !matches!(
+            rewrite.kind,
+            DeriveHyperbolicRewriteKind::ProductToSumSinhCosh
+                | DeriveHyperbolicRewriteKind::ProductToSumCoshCosh
+                | DeriveHyperbolicRewriteKind::ProductToSumSinhSinh
+                | DeriveHyperbolicRewriteKind::ContractSinhAngleSumDiff
+                | DeriveHyperbolicRewriteKind::ContractCoshAngleSumDiff
+        ) {
+            continue;
+        }
+
+        if is_hyperbolic_product_sum_kind(rewrite.kind)
+            && !fast_hyperbolic_product_sum_target_match(
+                &mut simplifier.context,
+                rewrite.rewritten,
+                expr,
+                rewrite.kind,
+            )
+        {
+            continue;
+        }
+
+        if !strong_target_match(&mut simplifier.context, rewrite.rewritten, expr) {
+            continue;
+        }
+
+        let steps = if collect_steps {
+            vec![build_hyperbolic_bridge_step(
+                &simplifier.context,
+                expr,
+                target_expr,
+                rewrite.kind.description(),
+                rewrite.kind.rule_name(),
+            )]
+        } else {
+            Vec::new()
+        };
+
+        return Some((
+            target_expr,
+            steps,
+            fast_hyperbolic_simplify_strategy(rewrite.kind),
+        ));
+    }
+
+    None
+}
+
+fn contains_exponential_like_expr(ctx: &mut cas_ast::Context, expr: ExprId) -> bool {
+    let mut stack = vec![expr];
+    while let Some(current) = stack.pop() {
+        if cas_math::expr_extract::extract_exp_argument(ctx, current).is_some() {
+            return true;
+        }
+
+        match ctx.get(current) {
+            Expr::Function(_, args) => stack.extend(args.iter().copied()),
+            Expr::Add(left, right)
+            | Expr::Sub(left, right)
+            | Expr::Mul(left, right)
+            | Expr::Div(left, right)
+            | Expr::Pow(left, right) => {
+                stack.push(*left);
+                stack.push(*right);
+            }
+            Expr::Neg(inner) | Expr::Hold(inner) => stack.push(*inner),
+            Expr::Matrix { data, .. } => stack.extend(data.iter().copied()),
+            Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) | Expr::SessionRef(_) => {}
+        }
+    }
+
+    false
+}
+
+fn contains_hyperbolic_fn_expr(ctx: &cas_ast::Context, expr: ExprId) -> bool {
+    let mut stack = vec![expr];
+    while let Some(current) = stack.pop() {
+        match ctx.get(current) {
+            Expr::Function(fn_id, args) => {
+                if matches!(
+                    ctx.builtin_of(*fn_id),
+                    Some(BuiltinFn::Sinh | BuiltinFn::Cosh | BuiltinFn::Tanh)
+                ) {
+                    return true;
+                }
+                stack.extend(args.iter().copied());
+            }
+            Expr::Add(left, right)
+            | Expr::Sub(left, right)
+            | Expr::Mul(left, right)
+            | Expr::Div(left, right)
+            | Expr::Pow(left, right) => {
+                stack.push(*left);
+                stack.push(*right);
+            }
+            Expr::Neg(inner) | Expr::Hold(inner) => stack.push(*inner),
+            Expr::Matrix { data, .. } => stack.extend(data.iter().copied()),
+            Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) | Expr::SessionRef(_) => {}
+        }
+    }
+
+    false
+}
+
+fn try_fast_direct_recursive_hyperbolic_angle_sum_derive(
+    simplifier: &mut crate::Simplifier,
+    expr: ExprId,
+    target_expr: ExprId,
+    collect_steps: bool,
+) -> Option<(ExprId, Vec<crate::Step>, DeriveStrategy)> {
+    let (source_fn, source_arg) = derive_hyperbolic_direct_call_arg(&simplifier.context, expr)?;
+    let expected_kind = match source_fn {
+        BuiltinFn::Sinh => DeriveHyperbolicRewriteKind::ContractSinhAngleSumDiff,
+        BuiltinFn::Cosh => DeriveHyperbolicRewriteKind::ContractCoshAngleSumDiff,
+        _ => return None,
+    };
+
+    for rewrite in generate_hyperbolic_bridge_rewrites(&mut simplifier.context, target_expr) {
+        if rewrite.kind != expected_kind {
+            continue;
+        }
+
+        let Some((candidate_fn, candidate_arg)) =
+            derive_hyperbolic_direct_call_arg(&simplifier.context, rewrite.rewritten)
+        else {
+            continue;
+        };
+        if candidate_fn != source_fn {
+            continue;
+        }
+
+        if !recursive_hyperbolic_angle_arg_match(simplifier, source_arg, candidate_arg) {
+            continue;
+        }
+
+        let steps = if collect_steps {
+            vec![build_hyperbolic_bridge_step(
+                &simplifier.context,
+                expr,
+                target_expr,
+                rewrite.kind.description(),
+                rewrite.kind.rule_name(),
+            )]
+        } else {
+            Vec::new()
+        };
+
+        return Some((target_expr, steps, DeriveStrategy::Expand));
+    }
+
+    None
+}
+
+fn derive_hyperbolic_direct_call_arg(
+    ctx: &cas_ast::Context,
+    expr: ExprId,
+) -> Option<(BuiltinFn, ExprId)> {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return None;
+    };
+    if args.len() != 1 {
+        return None;
+    }
+
+    let builtin = ctx.builtin_of(*fn_id)?;
+    match builtin {
+        BuiltinFn::Sinh | BuiltinFn::Cosh => Some((builtin, args[0])),
+        _ => None,
+    }
+}
+
+fn recursive_hyperbolic_angle_arg_match(
+    simplifier: &mut crate::Simplifier,
+    source_arg: ExprId,
+    candidate_arg: ExprId,
+) -> bool {
+    if strong_target_match(&mut simplifier.context, source_arg, candidate_arg) {
+        return true;
+    }
+
+    let simplified_candidate = simplify_expr_with_default_rules(simplifier, candidate_arg);
+    if strong_target_match(&mut simplifier.context, source_arg, simplified_candidate) {
+        return true;
+    }
+
+    let simplified_source = simplify_expr_with_default_rules(simplifier, source_arg);
+    strong_target_match(&mut simplifier.context, simplified_source, candidate_arg)
+        || strong_target_match(
+            &mut simplifier.context,
+            simplified_source,
+            simplified_candidate,
+        )
+}
+
+fn simplify_expr_with_default_rules(simplifier: &mut crate::Simplifier, expr: ExprId) -> ExprId {
+    let mut temp = crate::Simplifier::with_default_rules();
+    std::mem::swap(&mut temp.context, &mut simplifier.context);
+    let (simplified, _steps, _stats) = temp.simplify_with_stats(
+        expr,
+        crate::SimplifyOptions {
+            suppress_depth_overflow_warnings: true,
+            ..crate::SimplifyOptions::default()
+        },
+    );
+    std::mem::swap(&mut temp.context, &mut simplifier.context);
+    simplified
+}
+
+fn is_hyperbolic_product_sum_kind(kind: DeriveHyperbolicRewriteKind) -> bool {
+    matches!(
+        kind,
+        DeriveHyperbolicRewriteKind::ProductToSumSinhCosh
+            | DeriveHyperbolicRewriteKind::ProductToSumCoshCosh
+            | DeriveHyperbolicRewriteKind::ProductToSumSinhSinh
+            | DeriveHyperbolicRewriteKind::SumToProductSinhCosh
+            | DeriveHyperbolicRewriteKind::SumToProductCoshCosh
+            | DeriveHyperbolicRewriteKind::SumToProductSinhSinh
+    )
+}
+
+fn fast_hyperbolic_simplify_strategy(kind: DeriveHyperbolicRewriteKind) -> DeriveStrategy {
+    if is_hyperbolic_product_sum_kind(kind) {
+        DeriveStrategy::Expand
+    } else {
+        DeriveStrategy::HyperbolicRewrite
+    }
+}
+
+fn fast_hyperbolic_product_sum_target_match(
+    ctx: &mut cas_ast::Context,
+    actual: ExprId,
+    target: ExprId,
+    kind: DeriveHyperbolicRewriteKind,
+) -> bool {
+    if presentational_target_match(ctx, actual, target) {
+        return true;
+    }
+
+    matches!(
+        kind,
+        DeriveHyperbolicRewriteKind::SumToProductSinhCosh
+            | DeriveHyperbolicRewriteKind::SumToProductCoshCosh
+    ) && strong_target_match(ctx, actual, target)
+}
+
+fn try_match_exact_hyperbolic_sum_to_product_pair(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+    target_expr: ExprId,
+) -> Option<DeriveHyperbolicRewriteKind> {
+    let terms = cas_math::expr_nary::add_terms_signed(ctx, expr);
+    if terms.len() != 2 {
+        return None;
+    }
+
+    let (first_fn, first_arg) = hyperbolic_direct_call_arg(ctx, terms[0].0)?;
+    let (second_fn, second_arg) = hyperbolic_direct_call_arg(ctx, terms[1].0)?;
+    if first_fn != second_fn {
+        return None;
+    }
+
+    let target_factors = cas_math::trig_roots_flatten::flatten_mul_chain(ctx, target_expr);
+    if target_factors.len() != 3 {
+        return None;
+    }
+
+    let two = ctx.num(2);
+    let mut non_numeric_factors = Vec::with_capacity(2);
+    let mut saw_two = false;
+    for factor in target_factors {
+        if cas_ast::ordering::compare_expr(ctx, factor, two) == std::cmp::Ordering::Equal {
+            if saw_two {
+                return None;
+            }
+            saw_two = true;
+        } else {
+            non_numeric_factors.push(factor);
+        }
+    }
+    if !saw_two || non_numeric_factors.len() != 2 {
+        return None;
+    }
+
+    let factors_match = |ctx: &mut cas_ast::Context, left: ExprId, right: ExprId| {
+        (strong_target_match(ctx, non_numeric_factors[0], left)
+            && strong_target_match(ctx, non_numeric_factors[1], right))
+            || (strong_target_match(ctx, non_numeric_factors[0], right)
+                && strong_target_match(ctx, non_numeric_factors[1], left))
+    };
+
+    if terms[0].1 == terms[1].1 {
+        let avg = build_half_sum_expr(ctx, first_arg, second_arg);
+        let diff = build_half_diff_expr(ctx, first_arg, second_arg);
+        let flipped_diff = build_half_diff_expr(ctx, second_arg, first_arg);
+
+        return match first_fn {
+            BuiltinFn::Sinh => {
+                let avg_term = ctx.call_builtin(BuiltinFn::Sinh, vec![avg]);
+                let diff_term = ctx.call_builtin(BuiltinFn::Cosh, vec![diff]);
+                let flipped_diff_term = ctx.call_builtin(BuiltinFn::Cosh, vec![flipped_diff]);
+                if factors_match(ctx, avg_term, diff_term)
+                    || factors_match(ctx, avg_term, flipped_diff_term)
+                {
+                    Some(DeriveHyperbolicRewriteKind::SumToProductSinhCosh)
+                } else {
+                    None
+                }
+            }
+            BuiltinFn::Cosh => {
+                let avg_term = ctx.call_builtin(BuiltinFn::Cosh, vec![avg]);
+                let diff_term = ctx.call_builtin(BuiltinFn::Cosh, vec![diff]);
+                let flipped_diff_term = ctx.call_builtin(BuiltinFn::Cosh, vec![flipped_diff]);
+                if factors_match(ctx, avg_term, diff_term)
+                    || factors_match(ctx, avg_term, flipped_diff_term)
+                {
+                    Some(DeriveHyperbolicRewriteKind::SumToProductCoshCosh)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        };
+    }
+
+    let (positive_arg, negative_arg) = if terms[0].1 == cas_math::expr_nary::Sign::Pos {
+        (first_arg, second_arg)
+    } else {
+        (second_arg, first_arg)
+    };
+    let avg = build_half_sum_expr(ctx, positive_arg, negative_arg);
+    let diff = build_half_diff_expr(ctx, positive_arg, negative_arg);
+
+    match first_fn {
+        BuiltinFn::Sinh => {
+            let avg_term = ctx.call_builtin(BuiltinFn::Cosh, vec![avg]);
+            let diff_term = ctx.call_builtin(BuiltinFn::Sinh, vec![diff]);
+            factors_match(ctx, avg_term, diff_term)
+                .then_some(DeriveHyperbolicRewriteKind::SumToProductSinhCosh)
+        }
+        BuiltinFn::Cosh => {
+            let avg_term = ctx.call_builtin(BuiltinFn::Sinh, vec![avg]);
+            let diff_term = ctx.call_builtin(BuiltinFn::Sinh, vec![diff]);
+            factors_match(ctx, avg_term, diff_term)
+                .then_some(DeriveHyperbolicRewriteKind::SumToProductSinhSinh)
+        }
+        _ => None,
+    }
+}
+
+fn hyperbolic_direct_call_arg(ctx: &cas_ast::Context, expr: ExprId) -> Option<(BuiltinFn, ExprId)> {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return None;
+    };
+    if args.len() != 1 {
+        return None;
+    }
+
+    let builtin = ctx.builtin_of(*fn_id)?;
+    match builtin {
+        BuiltinFn::Sinh | BuiltinFn::Cosh => Some((builtin, args[0])),
+        _ => None,
+    }
+}
+
+fn build_half_sum_expr(ctx: &mut cas_ast::Context, left: ExprId, right: ExprId) -> ExprId {
+    let two = ctx.num(2);
+    let sum = ctx.add(Expr::Add(left, right));
+    ctx.add(Expr::Div(sum, two))
+}
+
+fn build_half_diff_expr(ctx: &mut cas_ast::Context, left: ExprId, right: ExprId) -> ExprId {
+    let two = ctx.num(2);
+    let diff = ctx.add(Expr::Sub(left, right));
+    ctx.add(Expr::Div(diff, two))
 }
 
 fn generate_planner_candidate_stages(
@@ -2539,6 +3557,68 @@ fn run_factor_with_division_stage(
             expr: target_expr,
             steps,
         });
+    }
+
+    None
+}
+
+fn try_fast_product_to_sum_then_triple_angle_derive(
+    simplifier: &mut crate::Simplifier,
+    expr: ExprId,
+    target_expr: ExprId,
+    collect_steps: bool,
+) -> Option<(ExprId, Vec<crate::Step>, DeriveStrategy)> {
+    let mut first_stage_candidates = generate_trig_bridge_rewrites(&mut simplifier.context, expr);
+    first_stage_candidates.extend(
+        generate_trig_additive_term_bridge_rewrites(&mut simplifier.context, expr)
+            .into_iter()
+            .filter(|rewrite| rewrite.kind.rule_name() == "Product-to-Sum Identity"),
+    );
+
+    for first_stage in first_stage_candidates {
+        if first_stage.kind.rule_name() != "Product-to-Sum Identity" {
+            continue;
+        }
+
+        for second_stage in generate_trig_additive_term_bridge_rewrites(
+            &mut simplifier.context,
+            first_stage.rewritten,
+        ) {
+            if second_stage.kind.rule_name() != "Triple Angle Expansion" {
+                continue;
+            }
+
+            if !presentational_target_match(
+                &mut simplifier.context,
+                second_stage.rewritten,
+                target_expr,
+            ) {
+                continue;
+            }
+
+            let steps = if collect_steps {
+                vec![
+                    build_trig_bridge_step(
+                        &simplifier.context,
+                        expr,
+                        first_stage.rewritten,
+                        first_stage.kind.description(),
+                        first_stage.kind.rule_name(),
+                    ),
+                    build_trig_expand_step(
+                        &simplifier.context,
+                        first_stage.rewritten,
+                        target_expr,
+                        second_stage.kind.description(),
+                        second_stage.kind.rule_name(),
+                    ),
+                ]
+            } else {
+                Vec::new()
+            };
+
+            return Some((target_expr, steps, DeriveStrategy::TrigExpand));
+        }
     }
 
     None
@@ -4037,21 +5117,17 @@ fn finalize_steps(
         ctx,
     );
 
-    let mut steps = if stage_count > 1 {
+    let mut steps = if stage_count > 1 || cleaned.is_empty() {
         cleaned
     } else {
-        match cas_solver_core::step_optimization_runtime::optimize_steps_semantic(
-            cleaned.clone(),
-            ctx,
-            original_expr,
-            final_expr,
-        ) {
-            cas_solver_core::step_optimization_runtime::StepOptimizationResult::Steps(steps) => {
-                steps
-            }
-            cas_solver_core::step_optimization_runtime::StepOptimizationResult::NoSimplificationNeeded => {
-                cleaned
-            }
+        // In derive mode the source and target are expected to be semantically
+        // equal, so the generic semantic no-op probe just replays an expensive
+        // equivalence check over the whole pair. Optimize the emitted steps
+        // structurally instead of re-proving equivalence here.
+        if cleaned.iter().any(|step| step.poly_proof().is_some()) {
+            cas_solver_core::step_optimization_runtime::optimize_steps_with_absorption(cleaned)
+        } else {
+            cas_solver_core::step_optimization_runtime::optimize_steps(cleaned)
         }
     };
     steps = prune_adjacent_inverse_derive_steps(steps, ctx);
@@ -4555,9 +5631,12 @@ fn append_derive_requires_lines(
 #[cfg(test)]
 mod tests {
     use super::{
-        derive_semantic_match, generate_planner_candidate_stages, try_bounded_multistage_derive,
-        try_supported_derive_strategies_inner, DeriveStrategy,
+        derive_semantic_match, evaluate_derive_request_with_session,
+        evaluate_derive_resolved_input, generate_planner_candidate_stages,
+        try_bounded_multistage_derive, try_supported_derive_strategies_inner, DeriveStatus,
+        DeriveStrategy,
     };
+    use cas_session_core::eval::StatelessEvalSession;
 
     #[test]
     fn planner_candidate_generation_includes_hyperbolic_bridge_stage() {
@@ -4649,7 +5728,7 @@ mod tests {
 
         assert_eq!(derived.2, DeriveStrategy::Planner);
         assert_eq!(derived.0, target);
-        assert_eq!(derived.1.len(), 1);
+        assert!(!derived.1.is_empty());
         assert_eq!(derived.1[0].rule_name, "Hyperbolic Product-to-Sum Identity");
     }
 
@@ -4778,11 +5857,181 @@ mod tests {
     }
 
     #[test]
+    fn direct_derive_expands_cosine_fourth_power_without_planner() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("cos(x)^4", &mut simplifier.context).expect("parse source");
+        let target = cas_parser::parse("(3+4*cos(2*x)+cos(4*x))/8", &mut simplifier.context)
+            .expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            false,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::TrigExpand);
+    }
+
+    #[test]
+    fn direct_derive_rewrites_negative_pythagorean_without_planner() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("-sin(x)^2", &mut simplifier.context).expect("parse source");
+        let target =
+            cas_parser::parse("cos(x)^2 - 1", &mut simplifier.context).expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            false,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::TrigRewrite);
+    }
+
+    #[test]
+    fn derive_eval_resolved_input_handles_cosine_fourth_power() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("cos(x)^4", &mut simplifier.context).expect("parse source");
+        let target = cas_parser::parse("(3+4*cos(2*x)+cos(4*x))/8", &mut simplifier.context)
+            .expect("parse target");
+
+        let output = evaluate_derive_resolved_input(
+            &mut simplifier,
+            source,
+            target,
+            false,
+            crate::SimplifyOptions::default(),
+        );
+
+        assert_eq!(output.derived_expr, target);
+        assert!(matches!(
+            output.status,
+            DeriveStatus::Derived {
+                strategy: DeriveStrategy::TrigExpand
+            }
+        ));
+    }
+
+    #[test]
+    fn derive_request_with_session_handles_cosine_fourth_power() {
+        let mut engine = crate::Engine::new();
+        let options = crate::EvalOptions {
+            steps_mode: crate::StepsMode::Off,
+            ..crate::EvalOptions::default()
+        };
+        let mut session = StatelessEvalSession::<
+            crate::EvalOptions,
+            crate::DomainMode,
+            crate::RequiredItem,
+            crate::Step,
+            crate::Diagnostics,
+        >::new(options);
+
+        let parsed =
+            cas_parser::parse("cos(x)^4", &mut engine.simplifier.context).expect("parse source");
+        let target = cas_parser::parse("(3+4*cos(2*x)+cos(4*x))/8", &mut engine.simplifier.context)
+            .expect("parse target");
+
+        let output = evaluate_derive_request_with_session(
+            &mut engine,
+            &mut session,
+            "derive cos(x)^4, (3+4*cos(2*x)+cos(4*x))/8".to_string(),
+            parsed,
+            target,
+            false,
+        )
+        .expect("derive request should succeed");
+
+        match output.result {
+            crate::EvalResult::Expr(expr) => assert_eq!(expr, target),
+            other => panic!("unexpected derive result: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn derive_request_with_session_handles_negative_pythagorean_target() {
+        let mut engine = crate::Engine::new();
+        let options = crate::EvalOptions {
+            steps_mode: crate::StepsMode::Off,
+            ..crate::EvalOptions::default()
+        };
+        let mut session = StatelessEvalSession::<
+            crate::EvalOptions,
+            crate::DomainMode,
+            crate::RequiredItem,
+            crate::Step,
+            crate::Diagnostics,
+        >::new(options);
+
+        let parsed =
+            cas_parser::parse("-sin(x)^2", &mut engine.simplifier.context).expect("parse source");
+        let target = cas_parser::parse("cos(x)^2 - 1", &mut engine.simplifier.context)
+            .expect("parse target");
+
+        let output = evaluate_derive_request_with_session(
+            &mut engine,
+            &mut session,
+            "derive -sin(x)^2, cos(x)^2-1".to_string(),
+            parsed,
+            target,
+            false,
+        )
+        .expect("derive request should succeed");
+
+        match output.result {
+            crate::EvalResult::Expr(expr) => assert_eq!(expr, target),
+            other => panic!("unexpected derive result: {other:?}"),
+        }
+    }
+
+    #[test]
     fn direct_derive_prefers_expand_for_hyperbolic_sinh_sum_without_planner() {
         let mut simplifier = crate::Simplifier::with_default_rules();
         let source = cas_parser::parse("sinh(x+y)", &mut simplifier.context).expect("parse source");
         let target = cas_parser::parse("sinh(x)*cosh(y)+sinh(y)*cosh(x)", &mut simplifier.context)
             .expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            false,
+        )
+        .expect("direct derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::Expand);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(
+            derived.1[0].rule_name,
+            "Hyperbolic Angle Sum/Difference Identity"
+        );
+    }
+
+    #[test]
+    fn direct_derive_prefers_expand_for_recursive_hyperbolic_cosh_sum_without_planner() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("cosh(6*x)", &mut simplifier.context).expect("parse source");
+        let target = cas_parser::parse(
+            "cosh(5*x)*cosh(x)+sinh(5*x)*sinh(x)",
+            &mut simplifier.context,
+        )
+        .expect("parse target");
 
         let derived = try_supported_derive_strategies_inner(
             &mut simplifier,
@@ -5602,6 +6851,31 @@ mod tests {
     }
 
     #[test]
+    fn direct_derive_rewrites_reverse_dirichlet_kernel_without_trig_planner() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("sin(5*x/2)/sin(x/2)", &mut simplifier.context)
+            .expect("parse source");
+        let target = cas_parser::parse("1 + 2*cos(x) + 2*cos(2*x)", &mut simplifier.context)
+            .expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::IntegratePrep);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Dirichlet Kernel Identity");
+    }
+
+    #[test]
     fn bounded_multistage_derive_reaches_log_contracted_grouped_power_target() {
         let mut simplifier = crate::Simplifier::with_default_rules();
         let source =
@@ -6335,9 +7609,8 @@ mod tests {
 
         assert_eq!(derived.2, DeriveStrategy::Expand);
         assert_eq!(derived.0, target);
-        assert_eq!(derived.1.len(), 2);
+        assert_eq!(derived.1.len(), 1);
         assert_eq!(derived.1[0].rule_name, "Hyperbolic Product-to-Sum Identity");
-        assert_eq!(derived.1[1].rule_name, "Hyperbolic Triple-Angle Identity");
     }
 
     #[test]

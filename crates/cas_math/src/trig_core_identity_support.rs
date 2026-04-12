@@ -1,5 +1,5 @@
 use crate::expr_destructure::{as_add, as_div, as_mul, as_neg, as_sub};
-use crate::expr_nary::{add_leaves, mul_leaves};
+use crate::expr_nary::{mul_leaves, AddView, Sign};
 use crate::expr_predicates::contains_variable;
 use crate::expr_relations::extract_negated_inner;
 use crate::expr_rewrite::smart_mul;
@@ -673,11 +673,31 @@ pub fn try_rewrite_pythagorean_identity_add_expr(
     ctx: &mut Context,
     expr: ExprId,
 ) -> Option<PythagoreanIdentityRewrite> {
-    if !matches!(ctx.get(expr), Expr::Add(_, _)) {
+    if !matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Sub(_, _)) {
         return None;
     }
 
-    let terms = add_leaves(ctx, expr);
+    fn extract_signed_unit_constant(ctx: &Context, expr: ExprId) -> Option<bool> {
+        let one = num_rational::BigRational::from_integer(1.into());
+        match ctx.get(expr) {
+            Expr::Number(n) if *n == one => Some(true),
+            Expr::Number(n) if *n == -one.clone() => Some(false),
+            Expr::Neg(inner) => match ctx.get(*inner) {
+                Expr::Number(n) if *n == one => Some(false),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    let terms: Vec<ExprId> = AddView::from_expr(ctx, expr)
+        .terms
+        .into_iter()
+        .map(|(term, sign)| match sign {
+            Sign::Pos => term,
+            Sign::Neg => ctx.add(Expr::Neg(term)),
+        })
+        .collect();
 
     let mut trig_terms = Vec::new();
     for (i, &term) in terms.iter().enumerate() {
@@ -742,6 +762,70 @@ pub fn try_rewrite_pythagorean_identity_add_expr(
             };
             return Some(PythagoreanIdentityRewrite { rewritten, kind });
         }
+    }
+
+    for trig_term in &trig_terms {
+        let is_unit_coeff = matches!(ctx.get(trig_term.coeff), Expr::Number(n) if n.is_one());
+        if !is_unit_coeff {
+            continue;
+        }
+
+        let Some(constant_index) = terms.iter().enumerate().find_map(|(index, term)| {
+            (index != trig_term.term_index)
+                .then(|| {
+                    extract_signed_unit_constant(ctx, *term).map(|is_positive| (index, is_positive))
+                })
+                .flatten()
+        }) else {
+            continue;
+        };
+
+        let (constant_index, constant_is_positive) = constant_index;
+        let replacement_builtin = match trig_term.func_name.as_str() {
+            "sin" => cas_ast::BuiltinFn::Cos,
+            "cos" => cas_ast::BuiltinFn::Sin,
+            _ => continue,
+        };
+
+        let needs_positive_replacement = constant_is_positive && trig_term.is_negated;
+        let needs_negative_replacement = !constant_is_positive && !trig_term.is_negated;
+        if !needs_positive_replacement && !needs_negative_replacement {
+            continue;
+        }
+
+        let replacement_call = ctx.call_builtin(replacement_builtin, vec![trig_term.arg]);
+        let two = ctx.num(2);
+        let replacement_sq = ctx.add(Expr::Pow(replacement_call, two));
+        let replacement = if needs_negative_replacement {
+            ctx.add(Expr::Neg(replacement_sq))
+        } else {
+            replacement_sq
+        };
+
+        let mut new_terms = Vec::new();
+        for (index, &term) in terms.iter().enumerate() {
+            if index != trig_term.term_index && index != constant_index {
+                new_terms.push(term);
+            }
+        }
+        new_terms.push(replacement);
+
+        let rewritten = if new_terms.len() == 1 {
+            new_terms[0]
+        } else {
+            let mut acc = new_terms[0];
+            for &term in new_terms.iter().skip(1) {
+                acc = ctx.add(Expr::Add(acc, term));
+            }
+            acc
+        };
+
+        let kind = if needs_negative_replacement {
+            PythagoreanIdentityRewriteKind::Negated
+        } else {
+            PythagoreanIdentityRewriteKind::Standard
+        };
+        return Some(PythagoreanIdentityRewrite { rewritten, kind });
     }
 
     None
@@ -1024,6 +1108,24 @@ mod tests {
         let expr = parse("-sin(x)^2 + -cos(x)^2", &mut ctx).expect("parse");
         let rewrite = try_rewrite_pythagorean_identity_add_expr(&mut ctx, expr).expect("rewrite");
         assert_eq!(render(&ctx, rewrite.rewritten), "-1");
+        assert_eq!(rewrite.kind, PythagoreanIdentityRewriteKind::Negated);
+    }
+
+    #[test]
+    fn rewrites_pythagorean_identity_complement_cos_squared() {
+        let mut ctx = Context::new();
+        let expr = parse("1 - cos(x)^2", &mut ctx).expect("parse");
+        let rewrite = try_rewrite_pythagorean_identity_add_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(render(&ctx, rewrite.rewritten), "sin(x)^2");
+        assert_eq!(rewrite.kind, PythagoreanIdentityRewriteKind::Standard);
+    }
+
+    #[test]
+    fn rewrites_pythagorean_identity_complement_cos_squared_negated() {
+        let mut ctx = Context::new();
+        let expr = parse("cos(x)^2 - 1", &mut ctx).expect("parse");
+        let rewrite = try_rewrite_pythagorean_identity_add_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(render(&ctx, rewrite.rewritten), "-(sin(x)^2)");
         assert_eq!(rewrite.kind, PythagoreanIdentityRewriteKind::Negated);
     }
 

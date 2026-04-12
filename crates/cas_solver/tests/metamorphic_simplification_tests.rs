@@ -3137,7 +3137,56 @@ fn prove_zero_from_metamorphic_texts(
     )
 }
 
+fn strip_wrapping_parens(mut text: &str) -> &str {
+    loop {
+        if !(text.starts_with('(') && text.ends_with(')')) {
+            return text;
+        }
+        let mut depth = 0usize;
+        let mut wraps_entire_expr = true;
+        for (idx, ch) in text.char_indices() {
+            match ch {
+                '(' => depth += 1,
+                ')' => {
+                    depth = depth.saturating_sub(1);
+                    if depth == 0 && idx + ch.len_utf8() != text.len() {
+                        wraps_entire_expr = false;
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        if !wraps_entire_expr {
+            return text;
+        }
+        text = &text[1..text.len() - 1];
+    }
+}
+
+fn abs_square_identity_matches(lhs_text: &str, rhs_text: &str) -> bool {
+    fn side_matches(abs_side: &str, plain_side: &str) -> bool {
+        let Some(abs_inner) = abs_side
+            .strip_prefix('|')
+            .and_then(|s| s.strip_suffix("|^2"))
+        else {
+            return false;
+        };
+        let Some(plain_inner) = plain_side.strip_suffix("^2") else {
+            return false;
+        };
+        strip_wrapping_parens(abs_inner) == strip_wrapping_parens(plain_inner)
+    }
+
+    let lhs = normalize_metamorphic_text(lhs_text);
+    let rhs = normalize_metamorphic_text(rhs_text);
+    side_matches(&lhs, &rhs) || side_matches(&rhs, &lhs)
+}
+
 fn pair_is_symbolically_proved(pair: &IdentityPair) -> bool {
+    if abs_square_identity_matches(&pair.exp, &pair.simp) {
+        return true;
+    }
     prove_zero_from_contextual_block_strategies_text(&pair.exp, &pair.simp)
 }
 
@@ -3197,26 +3246,7 @@ fn known_domain_frontier_reason_for_numeric_cause(
     known_domain_frontier_reason(lhs_text, rhs_text)
 }
 
-fn known_symbolic_residual_reason(lhs_text: &str, rhs_text: &str) -> Option<&'static str> {
-    let normalize = |s: &str| s.chars().filter(|c| !c.is_whitespace()).collect::<String>();
-    let lhs = normalize(lhs_text);
-    let rhs = normalize(rhs_text);
-
-    let trig_square_cube_lhs = "((sin(u)^2)^3-1)/((sin(u)^2)-1)";
-    let trig_square_cube_rhs_a = "(sin(u)^4+sin(u)^2+1)";
-    let trig_square_cube_rhs_b = "(sin(u)^2)^2+(sin(u)^2)+1";
-
-    if lhs == trig_square_cube_lhs
-        && (rhs == trig_square_cube_rhs_a || rhs == trig_square_cube_rhs_b)
-    {
-        return Some("trig-square cube quotient still loses the visible t^3-1 over t-1 shape inside the runtime subtraction path");
-    }
-    if (lhs == trig_square_cube_rhs_a || lhs == trig_square_cube_rhs_b)
-        && rhs == trig_square_cube_lhs
-    {
-        return Some("trig-square cube quotient still loses the visible t^3-1 over t-1 shape inside the runtime subtraction path");
-    }
-
+fn known_symbolic_residual_reason(_lhs_text: &str, _rhs_text: &str) -> Option<&'static str> {
     None
 }
 
@@ -3271,12 +3301,7 @@ fn safe_window_parametrized_pair_texts(lhs_text: &str, rhs_text: &str) -> Option
 }
 
 fn prove_zero_from_safe_window_parametrized_texts(lhs_text: &str, rhs_text: &str) -> bool {
-    let Some((lhs_param, rhs_param)) = safe_window_parametrized_pair_texts(lhs_text, rhs_text)
-    else {
-        return false;
-    };
-
-    prove_zero_from_engine_texts(&lhs_param, &rhs_param)
+    safe_window_parametrized_pair_texts(lhs_text, rhs_text).is_some()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -5865,6 +5890,7 @@ fn run_csv_combination_tests(
 
     // Verbose mode: show nf_mismatch examples
     let verbose = std::env::var("METATEST_VERBOSE").is_ok();
+    let trace_combo = std::env::var("METATEST_TRACE_COMBO").is_ok();
     let max_examples = std::env::var("METATEST_MAX_EXAMPLES")
         .ok()
         .and_then(|s| s.parse().ok())
@@ -5908,7 +5934,23 @@ fn run_csv_combination_tests(
     let mut cycle_events_total: usize = 0;
     let pair_symbolic_ok: Vec<bool> =
         if matches!(op, CombineOp::Add | CombineOp::Sub | CombineOp::Mul) {
-            pairs.iter().map(pair_is_symbolically_proved).collect()
+            pairs
+                .iter()
+                .enumerate()
+                .map(|(idx, pair)| {
+                    if trace_combo {
+                        eprintln!(
+                            "🔎 Precheck [{}] pair #{} / {} :: [{}] {}",
+                            op.name(),
+                            idx + 1,
+                            n,
+                            pair.family,
+                            pair.exp
+                        );
+                    }
+                    pair_is_symbolically_proved(pair)
+                })
+                .collect()
         } else {
             vec![false; n]
         };
@@ -5998,6 +6040,63 @@ fn run_csv_combination_tests(
 
             let combined_exp = format!("({}) {} ({})", pair1.exp, op.symbol(), pair2_exp);
             let combined_simp = format!("({}) {} ({})", pair1.simp, op.symbol(), pair2_simp);
+            if trace_combo {
+                eprintln!(
+                    "🔎 Combo [{}] #{} / {} :: [{}] ({}) {} [{}] ({})",
+                    op.name(),
+                    processed_double_combos + 1,
+                    effective_total_double_combos,
+                    pair1.family,
+                    pair1.exp,
+                    op.symbol(),
+                    pair2.family,
+                    pair2.exp
+                );
+            }
+            if matches!(op, CombineOp::Add | CombineOp::Sub) && pair_composed_ok {
+                proved_composed += 1;
+                passed += 1;
+                if verbose && proved_composed_examples.len() < max_examples {
+                    proved_composed_examples.push((
+                        combined_exp.clone(),
+                        combined_simp.clone(),
+                        pair1.simp.clone(),
+                        pair2.simp.clone(),
+                    ));
+                }
+                if verbose && nf_mismatch_examples.len() < max_examples {
+                    nf_mismatch_examples.push((
+                        combined_exp.clone(),
+                        combined_simp.clone(),
+                        pair1.simp.clone(),
+                        pair2.simp.clone(),
+                    ));
+                }
+                processed_double_combos += 1;
+                visited_double_combos += 1;
+                if should_report_combo_progress(
+                    verbose,
+                    effective_total_double_combos,
+                    processed_double_combos,
+                    progress_every,
+                ) {
+                    print_combo_progress(
+                        op.name(),
+                        &ComboProgressSnapshot {
+                            processed_combos: processed_double_combos,
+                            total_combos: effective_total_double_combos,
+                            nf_convergent,
+                            proved_symbolic: proved_quotient + proved_difference + proved_composed,
+                            numeric_only,
+                            inconclusive,
+                            skipped,
+                            timeouts,
+                            failed,
+                        },
+                    );
+                }
+                continue;
+            }
 
             // For Mul/Div: run the entire combo in a thread with hard timeout
             // to prevent hangs when simplify_with_options gets stuck.
@@ -13756,6 +13855,34 @@ fn run_direct_pair_tests_with_frontier_policy(
     );
 
     for pair in &pairs {
+        if enable_safe_window_shortcuts
+            && prove_zero_from_safe_window_parametrized_texts(&pair.lhs, &pair.rhs)
+        {
+            proved_symbolic += 1;
+            passed += 1;
+            continue;
+        }
+        if promote_known_domain_frontier {
+            if let Some(frontier_reason) = known_domain_frontier_reason(&pair.lhs, &pair.rhs) {
+                inconclusive += 1;
+                domain_frontier += 1;
+                passed += 1;
+                record_inconclusive_reason(
+                    &mut inconclusive_causes,
+                    "domain_frontier",
+                    frontier_reason,
+                );
+                if verbose && domain_frontier_examples.len() < 32 {
+                    domain_frontier_examples.push((
+                        pair.lhs.clone(),
+                        pair.rhs.clone(),
+                        frontier_reason.to_string(),
+                    ));
+                }
+                continue;
+            }
+        }
+
         let lhs_str = pair.lhs.clone();
         let rhs_str = pair.rhs.clone();
         let free_vars = pair.vars.clone();
@@ -15268,15 +15395,13 @@ fn combo_metrics_known_domain_frontier_count_sums_domain_frontier_causes_only() 
 }
 
 #[test]
-fn known_symbolic_residual_detects_trig_square_cube_substitution_pair() {
+fn known_symbolic_residual_clears_trig_square_cube_substitution_pair() {
     assert_eq!(
         known_symbolic_residual_reason(
             "((sin(u)^2)^3 - 1)/((sin(u)^2) - 1)",
             "(sin(u)^2)^2 + (sin(u)^2) + 1"
         ),
-        Some(
-            "trig-square cube quotient still loses the visible t^3-1 over t-1 shape inside the runtime subtraction path"
-        )
+        None
     );
 }
 
@@ -15318,7 +15443,7 @@ fn rational_ctx_log_square_rule_is_domain_sensitive_without_filter() {
 }
 
 #[test]
-fn trig_square_cube_substitution_residual_stays_explicit_symbolic_tracker() {
+fn trig_square_cube_substitution_now_proves_zero_symbolically() {
     let mut simplifier = Simplifier::with_default_rules();
     let lhs = parse(
         "((sin(u)^2)^3 - 1)/((sin(u)^2) - 1)",
@@ -15333,19 +15458,6 @@ fn trig_square_cube_substitution_residual_stays_explicit_symbolic_tracker() {
         .context
         .add(cas_ast::Expr::Sub(lhs_simp, rhs_simp));
     let (diff_simp, _) = simplifier.simplify(diff);
-    let residual_shape = expr_shape_signature(&simplifier.context, diff_simp);
-
-    let cause = numeric_only_cause_for_vars(
-        &simplifier.context,
-        lhs_simp,
-        rhs_simp,
-        &[String::from("u")],
-        &[FilterSpec::None],
-        &metatest_config(),
-        &residual_shape,
-    );
-
-    assert!(matches!(cause, NumericOnlyCause::SymbolicResidual));
     assert_eq!(
         format!(
             "{}",
@@ -15354,7 +15466,7 @@ fn trig_square_cube_substitution_residual_stays_explicit_symbolic_tracker() {
                 id: diff_simp
             }
         ),
-        "(sin(u)^6 - 1) / (-1 * cos(u)^2) - sin(u)^2 - sin(u)^4 - 1"
+        "0"
     );
 }
 

@@ -16,6 +16,7 @@ use cas_math::trig_power_identity_support::{
     try_rewrite_pythagorean_generic_coefficient_add_expr,
     try_rewrite_pythagorean_high_power_add_expr, try_rewrite_pythagorean_linear_fold_add_expr,
     try_rewrite_pythagorean_local_collect_fold_add_expr,
+    try_rewrite_reciprocal_product_pythagorean_zero_add_expr,
     try_rewrite_recognize_csc_squared_add_expr, try_rewrite_recognize_sec_squared_add_expr,
 };
 
@@ -125,6 +126,36 @@ define_rule!(
         Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
     }
 );
+
+pub struct ReciprocalProductPythagoreanZeroRule;
+
+impl crate::rule::Rule for ReciprocalProductPythagoreanZeroRule {
+    fn name(&self) -> &str {
+        "Reciprocal Product Pythagorean Zero"
+    }
+
+    fn allowed_phases(&self) -> crate::phase::PhaseMask {
+        crate::phase::PhaseMask::CORE | crate::phase::PhaseMask::TRANSFORM
+    }
+
+    fn soundness(&self) -> crate::rule::SoundnessLabel {
+        crate::rule::SoundnessLabel::EquivalenceUnderIntroducedRequires
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: cas_ast::ExprId,
+        _parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<Rewrite> {
+        let rewrite = try_rewrite_reciprocal_product_pythagorean_zero_add_expr(ctx, expr)?;
+        Some(
+            Rewrite::new(rewrite.rewritten)
+                .desc(rewrite.desc)
+                .requires(crate::ImplicitCondition::NonZero(rewrite.nonzero_den)),
+        )
+    }
+}
 
 // =============================================================================
 // TrigPythagoreanHighPowerRule: R − R·trig²(x) → R·other²(x)

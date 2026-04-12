@@ -278,7 +278,8 @@ fn non_regression_complex_fraction_simplification_pipeline() {
     assert!(
         rule_names.contains(&"Combine Like Terms")
             || rule_names.contains(&"Subtraction Self-Cancel")
-            || rule_names.contains(&"Polynomial Identity"),
+            || rule_names.contains(&"Polynomial Identity")
+            || rule_names.contains(&"Collapse Common-Scale Equivalent Difference"),
         "Should apply a visible cancellation rule, got: {:?}",
         rule_names
     );

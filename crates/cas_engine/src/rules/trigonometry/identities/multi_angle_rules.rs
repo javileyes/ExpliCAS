@@ -76,6 +76,10 @@ define_rule!(
     RecursiveTrigExpansionRule,
     "Recursive Trig Expansion",
     |ctx, expr, parent_ctx| {
+        if !parent_ctx.is_expand_mode() && !parent_ctx.in_auto_expand_context_for_expr(expr) {
+            return None;
+        }
+
         if should_block_high_order_trig_expansion_expr(
             ctx,
             expr,

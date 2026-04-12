@@ -23,6 +23,9 @@ fn format_trig_canonical_identity_desc(kind: TrigCanonicalIdentityKind) -> &'sta
         TrigCanonicalIdentityKind::SecTanMinusOneIdentityZero => "sec²(x) - tan²(x) - 1 = 0",
         TrigCanonicalIdentityKind::CscCotMinusOneIdentityZero => "csc²(x) - cot²(x) - 1 = 0",
         TrigCanonicalIdentityKind::ReciprocalProductIdentity => "Reciprocal trig product = 1",
+        TrigCanonicalIdentityKind::MixedFractionSinTanIdentity => {
+            "(sin(u)+tan(u))/(cot(u)+csc(u)) = sin(u)·tan(u)"
+        }
         TrigCanonicalIdentityKind::MixedFractionToSinCos => {
             "Convert mixed trig fraction to sin/cos"
         }
@@ -198,7 +201,14 @@ define_rule!(
     |ctx, expr| {
         let rewrite = try_rewrite_mixed_fraction_to_sincos_plan_expr(ctx, expr)?;
         Some(
-            Rewrite::new(rewrite.rewritten).desc(format_trig_canonical_identity_desc(rewrite.kind)),
+            Rewrite::new(rewrite.rewritten)
+                .desc(format_trig_canonical_identity_desc(rewrite.kind))
+                .requires_all(
+                    rewrite
+                        .required_nonzero
+                        .into_iter()
+                        .map(crate::ImplicitCondition::NonZero),
+                ),
         )
     }
 );

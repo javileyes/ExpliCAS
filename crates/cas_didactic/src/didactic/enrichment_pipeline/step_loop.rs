@@ -66,7 +66,8 @@ fn prune_redundant_substeps(ctx: &Context, step: &Step, sub_steps: &mut Vec<SubS
         let same_latex = sub_step.before_latex.as_deref() == Some(step_before_latex.as_str())
             && sub_step.after_latex.as_deref() == Some(step_after_latex.as_str());
 
-        if (same_display || same_latex) && !is_contextual_same_snapshot_substep(&normalized_substep)
+        if (same_display || same_latex)
+            && !is_contextual_same_snapshot_substep(step, &normalized_substep)
         {
             return false;
         }
@@ -170,11 +171,19 @@ fn is_noisy_template_substep(sub_step: &SubStep) -> bool {
     )
 }
 
-fn is_contextual_same_snapshot_substep(normalized_substep: &str) -> bool {
+fn is_contextual_same_snapshot_substep(step: &Step, normalized_substep: &str) -> bool {
     normalized_substep.starts_with("aquí ")
         || normalized_substep.starts_with("aqui ")
         || normalized_substep.starts_with("reescribir el denominador sacando factor común ")
         || normalized_substep.starts_with("reescribir el numerador sacando factor común ")
+        || ((normalized_substep == "reemplazar ese bloque en la expresión"
+            || normalized_substep == "reemplazar ese bloque en la expresion")
+            && matches!(
+                step.rule_name.as_str(),
+                "Cancel Sum/Difference of Cubes Fraction"
+                    | "Pre-order Sum/Difference of Cubes Cancel"
+                    | "Subtract Expanded Sum/Difference of Cubes Quotient"
+            ))
 }
 
 fn is_single_formula_template_rule(rule_name: &str) -> bool {

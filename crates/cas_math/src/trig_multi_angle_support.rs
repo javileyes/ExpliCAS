@@ -8,6 +8,7 @@ use crate::pi_helpers::is_provably_sin_nonzero;
 use crate::trig_dyadic_policy_support::{
     decide_dyadic_sin_nonzero_policy, DyadicSinNonzeroPolicyDecision,
 };
+use crate::trig_linear_support::extract_coef_and_base;
 use crate::trig_roots_flatten::{
     extract_double_angle_arg_relaxed, extract_quintuple_angle_arg, extract_triple_angle_arg_relaxed,
 };
@@ -868,6 +869,52 @@ pub fn verify_dyadic_pi_sequence(ctx: &Context, theta: ExprId, trig_args: &[Expr
     used.iter().all(|&u| u)
 }
 
+fn verify_dyadic_linear_sequence(ctx: &Context, theta: ExprId, trig_args: &[ExprId]) -> bool {
+    let n = trig_args.len() as u32;
+    if n == 0 {
+        return false;
+    }
+
+    let (base_coeff, base_expr) = extract_coef_and_base(ctx, theta);
+
+    let mut coeffs: Vec<BigRational> = Vec::with_capacity(n as usize);
+    for &arg in trig_args {
+        let (coef, base) = extract_coef_and_base(ctx, arg);
+        if compare_expr(ctx, base, base_expr) != Ordering::Equal {
+            return false;
+        }
+        coeffs.push(coef);
+    }
+
+    let mut expected: Vec<BigRational> = Vec::with_capacity(n as usize);
+    for k in 0..n {
+        let multiplier = BigRational::from_integer((1u64 << k).into());
+        expected.push(&base_coeff * &multiplier);
+    }
+
+    let mut used = vec![false; expected.len()];
+    for coeff in &coeffs {
+        let mut found = false;
+        for (i, exp) in expected.iter().enumerate() {
+            if !used[i] && coeff == exp {
+                used[i] = true;
+                found = true;
+                break;
+            }
+        }
+        if !found {
+            return false;
+        }
+    }
+
+    used.iter().all(|&u| u)
+}
+
+fn verify_dyadic_sequence(ctx: &Context, theta: ExprId, trig_args: &[ExprId]) -> bool {
+    verify_dyadic_linear_sequence(ctx, theta, trig_args)
+        || verify_dyadic_pi_sequence(ctx, theta, trig_args)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DyadicCosProductPlan {
     pub rewritten: ExprId,
@@ -929,7 +976,7 @@ pub fn try_plan_dyadic_cos_product_expr(
 
     let mut theta: Option<ExprId> = None;
     for &candidate in &cos_args {
-        if verify_dyadic_pi_sequence(ctx, candidate, &cos_args) {
+        if verify_dyadic_sequence(ctx, candidate, &cos_args) {
             theta = Some(candidate);
             break;
         }
@@ -1474,6 +1521,24 @@ mod tests {
     }
 
     #[test]
+    fn dyadic_linear_sequence_detection_matches_symbolic_patterns() {
+        let mut ctx = Context::new();
+        let theta = parse("a", &mut ctx).expect("theta");
+        let args = vec![
+            parse("2*a", &mut ctx).expect("2a"),
+            parse("4*a", &mut ctx).expect("4a"),
+            parse("a", &mut ctx).expect("a"),
+        ];
+        let wrong = vec![
+            parse("a", &mut ctx).expect("a"),
+            parse("3*a", &mut ctx).expect("3a"),
+        ];
+
+        assert!(verify_dyadic_linear_sequence(&ctx, theta, &args));
+        assert!(!verify_dyadic_linear_sequence(&ctx, theta, &wrong));
+    }
+
+    #[test]
     fn dyadic_cos_product_plan_matches_valid_product() {
         let mut ctx = Context::new();
         let expr = parse("8*cos(pi/9)*cos(2*pi/9)*cos(4*pi/9)", &mut ctx).expect("expr");
@@ -1505,6 +1570,19 @@ mod tests {
     }
 
     #[test]
+    fn dyadic_cos_product_plan_matches_symbolic_product() {
+        let mut ctx = Context::new();
+        let expr = parse("8*cos(a)*cos(2*a)*cos(4*a)", &mut ctx).expect("expr");
+        let plan = try_plan_dyadic_cos_product_expr(&mut ctx, expr).expect("plan");
+        assert_eq!(plan.n, 3);
+        let expected_den = parse("sin(a)", &mut ctx).expect("sin(a)");
+        assert_eq!(
+            compare_expr(&ctx, plan.sin_theta, expected_den),
+            Ordering::Equal
+        );
+    }
+
+    #[test]
     fn dyadic_cos_product_plan_rejects_wrong_coefficient() {
         let mut ctx = Context::new();
         let expr = parse("4*cos(pi/9)*cos(2*pi/9)*cos(4*pi/9)", &mut ctx).expect("expr");
@@ -1518,6 +1596,21 @@ mod tests {
         let plan = try_plan_dyadic_cos_product_with_policy(&mut ctx, expr, false, true)
             .expect("policy plan");
         assert_eq!(plan.policy, DyadicSinNonzeroPolicyDecision::Block);
+        assert_eq!(plan.n, 3);
+    }
+
+    #[test]
+    fn dyadic_cos_product_policy_plan_allows_symbolic_in_assume() {
+        let mut ctx = Context::new();
+        let expr = parse("8*cos(a)*cos(2*a)*cos(4*a)", &mut ctx).expect("expr");
+        let plan = try_plan_dyadic_cos_product_with_policy(&mut ctx, expr, true, false)
+            .expect("policy plan");
+        assert_eq!(
+            plan.policy,
+            DyadicSinNonzeroPolicyDecision::Apply {
+                assume_sin_nonzero: true
+            }
+        );
         assert_eq!(plan.n, 3);
     }
 

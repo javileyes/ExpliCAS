@@ -35,7 +35,9 @@ pub(crate) use fractions::{
 };
 pub(crate) use hyperbolic::{
     generate_hyperbolic_additive_term_bridge_rewrites, generate_hyperbolic_bridge_rewrites,
-    should_try_hyperbolic_planner_before_simplify, try_rewrite_hyperbolic_expansion_target_aware,
+    matches_exact_hyperbolic_sum_to_product_target, should_try_hyperbolic_planner_before_simplify,
+    try_rewrite_hyperbolic_expansion_target_aware,
+    try_rewrite_hyperbolic_exponential_bridge_target_aware,
     try_rewrite_hyperbolic_simplify_target_aware, DeriveHyperbolicRewriteKind,
 };
 pub(crate) use integrate::try_rewrite_integrate_prep_target_aware;

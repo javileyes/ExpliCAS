@@ -575,6 +575,45 @@ fn test_zero_equivalence_suite() {
     }
 }
 
+fn assert_zero_equivalence_expand_case(input: &str) {
+    let mut simplifier = create_full_simplifier();
+    let expr = parse(input, &mut simplifier.context).unwrap();
+    let (simplified, _) = simplifier.expand(expr);
+    let result_str = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: simplified
+        }
+    );
+    assert_eq!(result_str, "0", "Failed on: {}", input);
+}
+
+#[test]
+fn test_zero_equivalence_case_fraction_telescoping() {
+    assert_zero_equivalence_expand_case("1/(x-1) - 2/(x^2-1) - 1/(x+1)");
+}
+
+#[test]
+fn test_zero_equivalence_case_tan_cos_square() {
+    assert_zero_equivalence_expand_case("(tan(x)*cos(x))^2 + cos(x)^2 - 1");
+}
+
+#[test]
+fn test_zero_equivalence_case_sqrt_abs() {
+    assert_zero_equivalence_expand_case("sqrt(x^2 + 2*x + 1) - abs(x + 1)");
+}
+
+#[test]
+fn test_zero_equivalence_case_log_exp() {
+    assert_zero_equivalence_expand_case("2*ln(sqrt(e^x)) - x + ln(1)");
+}
+
+#[test]
+fn test_zero_equivalence_case_binomial_cube() {
+    assert_zero_equivalence_expand_case("(x+2)^3 - (x^3 + 6*x^2 + 12*x + 8)");
+}
+
 // --- Round 2: Advanced Torture Tests ---
 
 #[test]

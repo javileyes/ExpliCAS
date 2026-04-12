@@ -1,6 +1,7 @@
 use crate::expr_destructure::{as_add, as_div, as_mul, as_neg, as_sub};
 use crate::expr_nary::{add_terms_signed, mul_leaves, Sign};
 use crate::pattern_marks::PatternMarks;
+use crate::trig_multi_angle_support::is_multiple_angle;
 use crate::trig_roots_flatten::extract_double_angle_arg;
 use crate::trig_sum_product_support::extract_trig_arg;
 use cas_ast::ordering::compare_expr;
@@ -928,6 +929,12 @@ pub fn try_rewrite_cos2x_additive_contraction_expr(
             if let Some((trig_arg, trig_is_sin, mut coeff)) =
                 extract_coeff_trig_squared(ctx, term_j)
             {
+                // Avoid `1 - 2*sin^2(2x) -> cos(4x)` / `2*cos^2(2x) - 1 -> cos(4x)`.
+                // Those contractions immediately feed the high-order expansion path
+                // again and can recurse catastrophically in larger additive chains.
+                if is_multiple_angle(ctx, trig_arg) {
+                    continue;
+                }
                 if sign_j == Sign::Neg {
                     coeff = -coeff;
                 }
@@ -1145,6 +1152,16 @@ mod tests {
         let expr2 = parse("2*cos(t)^2-1", &mut ctx).expect("expr2");
         let rw2 = try_rewrite_cos2x_additive_contraction_expr(&mut ctx, expr2).expect("rw2");
         assert_eq!(compare_expr(&ctx, rw2.rewritten, expected), Ordering::Equal);
+    }
+
+    #[test]
+    fn skips_cos2x_additive_contraction_for_multiple_angle_args() {
+        let mut ctx = Context::new();
+        let expr1 = parse("1-2*sin(2*t)^2", &mut ctx).expect("expr1");
+        assert!(try_rewrite_cos2x_additive_contraction_expr(&mut ctx, expr1).is_none());
+
+        let expr2 = parse("2*cos(2*t)^2-1", &mut ctx).expect("expr2");
+        assert!(try_rewrite_cos2x_additive_contraction_expr(&mut ctx, expr2).is_none());
     }
 
     #[test]

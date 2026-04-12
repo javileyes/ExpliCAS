@@ -136,6 +136,8 @@ fn should_suppress_local_change_line(step: &Step) -> bool {
             | "Evaluate Numeric Power"
             | "Cancel Reciprocal Exponents"
             | "Canonicalize Nested Power"
+            | "Pre-order Sum/Difference of Cubes Cancel"
+            | "Cancel Sum/Difference of Cubes Fraction"
     )
 }
 

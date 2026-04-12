@@ -1094,6 +1094,18 @@ mod tests {
     }
 
     #[test]
+    fn rewrites_sum_to_product_contraction_for_sine_difference_special() {
+        let mut ctx = Context::new();
+        let expr = parse("sin(3*x)-sin(x)", &mut ctx).expect("expr");
+        let rewrite = try_rewrite_sum_to_product_contraction_expr(&mut ctx, expr).expect("rewrite");
+        let expected = parse("2*cos(2*x)*sin(x)", &mut ctx).expect("expected");
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, rewrite.rewritten, expected),
+            Ordering::Equal
+        );
+    }
+
+    #[test]
     fn does_not_rewrite_sum_to_product_for_mixed_functions() {
         let mut ctx = Context::new();
         let expr = parse("sin(x)+cos(x)", &mut ctx).expect("expr");

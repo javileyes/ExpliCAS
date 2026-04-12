@@ -176,6 +176,7 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     // Pattern-driven cancellation: sin(x) - 2t/(1+t²) → 0, cos(x) - (1-t²)/(1+t²) → 0
     simplifier.add_rule(Box::new(WeierstrassSinIdentityZeroRule));
     simplifier.add_rule(Box::new(WeierstrassCosIdentityZeroRule));
+    simplifier.add_rule(Box::new(pythagorean::ReciprocalProductPythagoreanZeroRule));
     simplifier.add_rule(Box::new(TanToSinCosRule));
     // Dyadic Cos Product: 2^n·∏cos(2^k·θ) → sin(2^n·θ)/sin(θ)
     // Must run BEFORE DoubleAngleRule to recognize the pattern

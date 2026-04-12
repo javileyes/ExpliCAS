@@ -1,4 +1,4 @@
-use crate::expr_nary::{add_leaves, mul_leaves};
+use crate::expr_nary::{add_leaves, mul_leaves, AddView, Sign};
 use crate::numeric_eval::as_rational_const;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use num_rational::BigRational;
@@ -109,6 +109,126 @@ pub fn extract_coeff_tan_or_cot_pow2(
     extract_coeff_trig_pow_n(ctx, term, 2, &TAN_COT_BUILTINS)
 }
 
+fn is_positive_unit_trig_square(
+    ctx: &Context,
+    term: ExprId,
+    sign: Sign,
+    expected_name: &str,
+    expected_arg: ExprId,
+) -> bool {
+    if sign != Sign::Pos {
+        return false;
+    }
+
+    let Some((coef, func_name, arg)) = extract_coeff_trig_pow2(ctx, term) else {
+        return false;
+    };
+
+    coef == BigRational::one()
+        && func_name == expected_name
+        && cas_ast::ordering::compare_expr(ctx, arg, expected_arg) == Ordering::Equal
+}
+
+fn is_negative_unit_constant(ctx: &Context, term: ExprId, sign: Sign) -> bool {
+    let one = BigRational::one();
+    match (ctx.get(term), sign) {
+        (Expr::Number(n), Sign::Neg) if *n == one => true,
+        (Expr::Number(n), Sign::Pos) if *n == -one => true,
+        _ => false,
+    }
+}
+
+fn extract_reciprocal_product_square(
+    ctx: &Context,
+    term: ExprId,
+) -> Option<(&'static str, ExprId)> {
+    let match_named_pair = |lhs_name: &str,
+                            lhs_arg: ExprId,
+                            rhs_name: &str,
+                            rhs_arg: ExprId|
+     -> Option<(&'static str, ExprId)> {
+        if lhs_name == "tan"
+            && rhs_name == "cos"
+            && cas_ast::ordering::compare_expr(ctx, lhs_arg, rhs_arg) == Ordering::Equal
+        {
+            return Some(("cos", lhs_arg));
+        }
+        if lhs_name == "cot"
+            && rhs_name == "sin"
+            && cas_ast::ordering::compare_expr(ctx, lhs_arg, rhs_arg) == Ordering::Equal
+        {
+            return Some(("sin", lhs_arg));
+        }
+        None
+    };
+
+    if let Expr::Pow(base, exp) = ctx.get(term) {
+        if matches!(ctx.get(*exp), Expr::Number(n) if *n == BigRational::from_integer(2.into())) {
+            let factors = mul_leaves(ctx, *base);
+            if factors.len() == 2 {
+                let lhs = factors[0];
+                let rhs = factors[1];
+                if let Expr::Function(lhs_fn, lhs_args) = ctx.get(lhs) {
+                    if let Expr::Function(rhs_fn, rhs_args) = ctx.get(rhs) {
+                        if lhs_args.len() == 1 && rhs_args.len() == 1 {
+                            let lhs_builtin = ctx.builtin_of(*lhs_fn)?;
+                            let rhs_builtin = ctx.builtin_of(*rhs_fn)?;
+                            if let Some(found) = match_named_pair(
+                                lhs_builtin.name(),
+                                lhs_args[0],
+                                rhs_builtin.name(),
+                                rhs_args[0],
+                            ) {
+                                return Some(found);
+                            }
+                            if let Some(found) = match_named_pair(
+                                rhs_builtin.name(),
+                                rhs_args[0],
+                                lhs_builtin.name(),
+                                lhs_args[0],
+                            ) {
+                                return Some(found);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let factors = mul_leaves(ctx, term);
+    if factors.len() != 2 {
+        return None;
+    }
+
+    let lhs = factors[0];
+    let rhs = factors[1];
+    if let Some((coef_lhs, lhs_name, lhs_arg)) = extract_coeff_tan_or_cot_pow2(ctx, lhs) {
+        if coef_lhs == BigRational::one() {
+            if let Some((coef_rhs, rhs_name, rhs_arg)) = extract_coeff_trig_pow2(ctx, rhs) {
+                if coef_rhs == BigRational::one() {
+                    if let Some(found) = match_named_pair(lhs_name, lhs_arg, rhs_name, rhs_arg) {
+                        return Some(found);
+                    }
+                }
+            }
+        }
+    }
+    if let Some((coef_rhs, rhs_name, rhs_arg)) = extract_coeff_tan_or_cot_pow2(ctx, rhs) {
+        if coef_rhs == BigRational::one() {
+            if let Some((coef_lhs, lhs_name, lhs_arg)) = extract_coeff_trig_pow2(ctx, lhs) {
+                if coef_lhs == BigRational::one() {
+                    if let Some(found) = match_named_pair(rhs_name, rhs_arg, lhs_name, lhs_arg) {
+                        return Some(found);
+                    }
+                }
+            }
+        }
+    }
+
+    None
+}
+
 /// Extract all `(is_sin, argument, coefficient_factors)` candidates from a term containing
 /// trigonometric squares.
 ///
@@ -123,10 +243,19 @@ pub fn extract_all_trig_squared_candidates(
     term: ExprId,
 ) -> Vec<(bool, ExprId, Vec<ExprId>)> {
     let mut results = Vec::new();
+    let mut working = term;
+    let mut leading_neg = false;
+
+    if let Expr::Neg(inner) = ctx.get(term) {
+        working = *inner;
+        leading_neg = true;
+    }
+
+    let neg_factor = if leading_neg { Some(ctx.num(-1)) } else { None };
 
     {
         let mut case1_info = None;
-        if let Expr::Pow(base, exp) = ctx.get(term) {
+        if let Expr::Pow(base, exp) = ctx.get(working) {
             let base = *base;
             let exp = *exp;
             if let Expr::Number(n) = ctx.get(exp) {
@@ -148,9 +277,13 @@ pub fn extract_all_trig_squared_candidates(
         }
 
         if let Some((is_sin, arg, base, remainder_opt)) = case1_info {
+            let mut coef_factors = Vec::new();
+            if let Some(neg_one) = neg_factor {
+                coef_factors.push(neg_one);
+            }
             match remainder_opt {
                 None => {
-                    results.push((is_sin, arg, vec![]));
+                    results.push((is_sin, arg, coef_factors));
                 }
                 Some(remainder) => {
                     let one = num_rational::BigRational::from_integer(1.into());
@@ -160,19 +293,20 @@ pub fn extract_all_trig_squared_candidates(
                         let remainder_id = ctx.add(Expr::Number(remainder));
                         ctx.add(Expr::Pow(base, remainder_id))
                     };
-                    results.push((is_sin, arg, vec![leftover]));
+                    coef_factors.push(leftover);
+                    results.push((is_sin, arg, coef_factors));
                 }
             }
             return results;
         }
-        if matches!(ctx.get(term), Expr::Pow(_, _)) {
+        if matches!(ctx.get(working), Expr::Pow(_, _)) {
             return results;
         }
     }
 
-    if let Expr::Mul(_, _) = ctx.get(term) {
+    if let Expr::Mul(_, _) = ctx.get(working) {
         let mut factors = Vec::new();
-        let mut stack = vec![term];
+        let mut stack = vec![working];
         while let Some(curr) = stack.pop() {
             if let Expr::Mul(l, r) = ctx.get(curr) {
                 stack.push(*r);
@@ -236,6 +370,9 @@ pub fn extract_all_trig_squared_candidates(
                 .map(|(_, &g)| g)
                 .collect();
 
+            if let Some(neg_one) = neg_factor {
+                coef_factors.push(neg_one);
+            }
             if let Some(remainder) = info.remainder {
                 let one = num_rational::BigRational::from_integer(1.into());
                 let leftover = if remainder == one {
@@ -1039,6 +1176,13 @@ pub struct TrigPowerRewrite {
     pub desc: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReciprocalProductPythagoreanRewrite {
+    pub rewritten: ExprId,
+    pub nonzero_den: ExprId,
+    pub desc: String,
+}
+
 /// Rewrite `1 + tan²(x)` to `sec²(x)` in additive chains.
 pub fn try_rewrite_recognize_sec_squared_add_expr(
     ctx: &mut Context,
@@ -1163,6 +1307,90 @@ pub fn try_rewrite_recognize_csc_squared_add_expr(
     })
 }
 
+pub fn try_rewrite_reciprocal_product_pythagorean_zero_add_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ReciprocalProductPythagoreanRewrite> {
+    let view = AddView::from_expr(ctx, expr);
+    if view.terms.len() < 3 {
+        return None;
+    }
+
+    for (product_idx, (product_term, product_sign)) in view.terms.iter().copied().enumerate() {
+        if product_sign != Sign::Pos {
+            continue;
+        }
+        let Some((companion_name, arg)) = extract_reciprocal_product_square(ctx, product_term)
+        else {
+            continue;
+        };
+
+        let square_idx = view
+            .terms
+            .iter()
+            .copied()
+            .enumerate()
+            .find_map(|(idx, (term, sign))| {
+                (idx != product_idx
+                    && is_positive_unit_trig_square(ctx, term, sign, companion_name, arg))
+                .then_some(idx)
+            });
+        let Some(square_idx) = square_idx else {
+            continue;
+        };
+
+        let constant_idx =
+            view.terms
+                .iter()
+                .copied()
+                .enumerate()
+                .find_map(|(idx, (term, sign))| {
+                    (idx != product_idx
+                        && idx != square_idx
+                        && is_negative_unit_constant(ctx, term, sign))
+                    .then_some(idx)
+                });
+        let Some(constant_idx) = constant_idx else {
+            continue;
+        };
+
+        let mut remaining = smallvec::SmallVec::<[(ExprId, Sign); 8]>::new();
+        for (idx, (term, sign)) in view.terms.iter().copied().enumerate() {
+            if idx != product_idx && idx != square_idx && idx != constant_idx {
+                remaining.push((term, sign));
+            }
+        }
+
+        let rewritten = if remaining.is_empty() {
+            ctx.num(0)
+        } else {
+            AddView {
+                root: expr,
+                terms: remaining,
+            }
+            .rebuild(ctx)
+        };
+        let desc = if companion_name == "cos" {
+            "(tan(x)·cos(x))² + cos²(x) = 1".to_string()
+        } else {
+            "(cot(x)·sin(x))² + sin²(x) = 1".to_string()
+        };
+        let companion_builtin = if companion_name == "cos" {
+            BuiltinFn::Cos
+        } else {
+            BuiltinFn::Sin
+        };
+        let nonzero_den = ctx.call_builtin(companion_builtin, vec![arg]);
+        return Some(ReciprocalProductPythagoreanRewrite {
+            rewritten,
+            nonzero_den,
+            desc,
+        });
+    }
+
+    None
+}
+
 /// Rewrite chain identity `sin²(t) + cos²(t) -> 1` within additive chains.
 pub fn try_rewrite_pythagorean_chain_add_expr(
     ctx: &mut Context,
@@ -1231,16 +1459,20 @@ pub fn try_rewrite_pythagorean_generic_coefficient_add_expr(
     ctx: &mut Context,
     expr: ExprId,
 ) -> Option<TrigPowerRewrite> {
-    let terms = add_leaves(ctx, expr);
-    if terms.len() < 2 {
+    let view = AddView::from_expr(ctx, expr);
+    if view.len() < 2 {
         return None;
     }
 
     let mut all_sin_candidates: Vec<(usize, ExprId, Vec<ExprId>)> = Vec::new();
     let mut all_cos_candidates: Vec<(usize, ExprId, Vec<ExprId>)> = Vec::new();
 
-    for (i, &term) in terms.iter().enumerate() {
-        let candidates = extract_all_trig_squared_candidates(ctx, term);
+    for (i, (term, sign)) in view.terms.iter().enumerate() {
+        let signed_term = match sign {
+            Sign::Pos => *term,
+            Sign::Neg => ctx.add(Expr::Neg(*term)),
+        };
+        let candidates = extract_all_trig_squared_candidates(ctx, signed_term);
         for (is_sin, arg, mut coef_factors) in candidates {
             coef_factors.sort_by(|a, b| cas_ast::ordering::compare_expr(ctx, *a, *b));
             if is_sin {
@@ -1281,23 +1513,19 @@ pub fn try_rewrite_pythagorean_generic_coefficient_add_expr(
                 coef
             };
 
-            let mut new_terms: Vec<ExprId> = Vec::new();
-            for (j, &t) in terms.iter().enumerate() {
+            let mut new_terms = smallvec::SmallVec::<[(ExprId, Sign); 8]>::new();
+            for (j, &(t, sign)) in view.terms.iter().enumerate() {
                 if j != *sin_idx && j != *cos_idx {
-                    new_terms.push(t);
+                    new_terms.push((t, sign));
                 }
             }
-            new_terms.push(replacement);
+            new_terms.push((replacement, Sign::Pos));
 
-            let rewritten = if new_terms.len() == 1 {
-                new_terms[0]
-            } else {
-                let mut acc = new_terms[0];
-                for &t in new_terms.iter().skip(1) {
-                    acc = ctx.add(Expr::Add(acc, t));
-                }
-                acc
-            };
+            let rewritten = AddView {
+                root: expr,
+                terms: new_terms,
+            }
+            .rebuild(ctx);
 
             return Some(TrigPowerRewrite {
                 rewritten,
@@ -1685,6 +1913,36 @@ mod tests {
     }
 
     #[test]
+    fn extract_all_trig_squared_candidates_preserves_leading_negation() {
+        let mut ctx = Context::new();
+        let term = parse("-sin(x)^4", &mut ctx).expect("term");
+        let x = parse("x", &mut ctx).expect("x");
+        let neg_one = ctx.num(-1);
+        let sin_sq = parse("sin(x)^2", &mut ctx).expect("sin_sq");
+
+        let candidates = extract_all_trig_squared_candidates(&mut ctx, term);
+        assert_eq!(candidates.len(), 1);
+        let (is_sin, arg, residual) = &candidates[0];
+
+        assert!(*is_sin);
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, *arg, x),
+            Ordering::Equal
+        );
+        assert_eq!(residual.len(), 2);
+        assert!(residual
+            .iter()
+            .any(
+                |factor| cas_ast::ordering::compare_expr(&ctx, *factor, neg_one) == Ordering::Equal
+            ));
+        assert!(residual
+            .iter()
+            .any(
+                |factor| cas_ast::ordering::compare_expr(&ctx, *factor, sin_sq) == Ordering::Equal
+            ));
+    }
+
+    #[test]
     fn decompose_term_with_residual_multi_returns_both_trig_choices() {
         let mut ctx = Context::new();
         let term = parse("2*cos(x)^2*sin(u)^2", &mut ctx).expect("term");
@@ -1967,6 +2225,48 @@ mod tests {
     }
 
     #[test]
+    fn rewrites_tan_cos_product_square_plus_cos_square_minus_one() {
+        let mut ctx = Context::new();
+        let expr = parse("(tan(x)*cos(x))^2 + cos(x)^2 - 1", &mut ctx).expect("parse");
+        let rewrite = try_rewrite_reciprocal_product_pythagorean_zero_add_expr(&mut ctx, expr)
+            .expect("rewrite");
+        let out = format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: &ctx,
+                id: rewrite.rewritten
+            }
+        );
+        assert_eq!(out, "0");
+        assert_eq!(
+            format!(
+                "{}",
+                cas_formatter::DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.nonzero_den
+                }
+            ),
+            "cos(x)"
+        );
+    }
+
+    #[test]
+    fn rewrites_tan_sq_cos_sq_plus_cos_square_minus_one() {
+        let mut ctx = Context::new();
+        let expr = parse("tan(x)^2*cos(x)^2 + cos(x)^2 - 1", &mut ctx).expect("parse");
+        let rewrite = try_rewrite_reciprocal_product_pythagorean_zero_add_expr(&mut ctx, expr)
+            .expect("rewrite");
+        let out = format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: &ctx,
+                id: rewrite.rewritten
+            }
+        );
+        assert_eq!(out, "0");
+    }
+
+    #[test]
     fn rewrites_pythagorean_chain_identity() {
         let mut ctx = Context::new();
         let expr = parse("sin(x)^2 + cos(x)^2 + z", &mut ctx).expect("parse");
@@ -1997,6 +2297,24 @@ mod tests {
         );
         assert!(out.contains("a"));
         assert!(out.contains("b"));
+    }
+
+    #[test]
+    fn rewrites_pythagorean_generic_coefficient_identity_for_negated_higher_power() {
+        let mut ctx = Context::new();
+        let expr = parse("-sin(x)^4 - sin(x)^2*cos(x)^2", &mut ctx).expect("parse");
+        let rewrite =
+            try_rewrite_pythagorean_generic_coefficient_add_expr(&mut ctx, expr).expect("rewrite");
+        let out = format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: &ctx,
+                id: rewrite.rewritten
+            }
+        );
+        assert!(out.contains("-"));
+        assert!(out.contains("sin(x)^2"));
+        assert!(!out.contains("cos"));
     }
 
     #[test]

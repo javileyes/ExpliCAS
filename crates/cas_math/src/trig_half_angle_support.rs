@@ -489,21 +489,18 @@ pub fn try_rewrite_trig_half_angle_squares_expr(
     let (full_angle, is_sin) = matched;
     let cos_x = ctx.call_builtin(BuiltinFn::Cos, vec![full_angle]);
     let one = ctx.num(1);
-    let half = ctx.add(Expr::Number(num_rational::BigRational::new(
-        1.into(),
-        2.into(),
-    )));
+    let two = ctx.num(2);
 
     if is_sin {
         let diff = ctx.add(Expr::Sub(one, cos_x));
-        let rewritten = ctx.add(Expr::Mul(half, diff));
+        let rewritten = ctx.add(Expr::Div(diff, two));
         Some(HalfAngleSquareRewrite {
             rewritten,
             kind: HalfAngleSquareRewriteKind::TrigSin,
         })
     } else {
         let sum = ctx.add(Expr::Add(one, cos_x));
-        let rewritten = ctx.add(Expr::Mul(half, sum));
+        let rewritten = ctx.add(Expr::Div(sum, two));
         Some(HalfAngleSquareRewrite {
             rewritten,
             kind: HalfAngleSquareRewriteKind::TrigCos,
@@ -667,7 +664,7 @@ mod tests {
                 id: rewrite.rewritten
             }
         );
-        assert_eq!(rewritten_str, "1/2 * (1 - cos(x))");
+        assert_eq!(rewritten_str, "(1 - cos(x)) / 2");
     }
 
     #[test]
@@ -682,7 +679,7 @@ mod tests {
                 id: rewrite.rewritten
             }
         );
-        assert_eq!(rewritten_str, "1/2 * (cos(x) + 1)");
+        assert_eq!(rewritten_str, "(cos(x) + 1) / 2");
     }
 
     #[test]
@@ -697,10 +694,7 @@ mod tests {
                 id: rewrite.rewritten
             }
         );
-        assert_eq!(
-            rewritten_str,
-            "1/2 * (1 - cos((2 * u + 1) / (u * (u + 1))))"
-        );
+        assert_eq!(rewritten_str, "(1 - cos((2 * u + 1) / (u * (u + 1)))) / 2");
     }
 
     #[test]

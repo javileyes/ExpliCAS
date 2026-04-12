@@ -1084,6 +1084,16 @@ fn rewrite_hyperbolic_sum_to_product_bridge_expr(
     expr: ExprId,
     negate_output: bool,
 ) -> Option<(ExprId, DeriveHyperbolicRewriteKind)> {
+    let (candidate, kind) = build_hyperbolic_sum_to_product_candidate(ctx, expr, negate_output)?;
+
+    Some((run_default_simplify(ctx, candidate), kind))
+}
+
+fn build_hyperbolic_sum_to_product_candidate(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+    negate_output: bool,
+) -> Option<(ExprId, DeriveHyperbolicRewriteKind)> {
     let terms = add_terms_signed(ctx, expr);
     if terms.len() != 2 {
         return None;
@@ -1163,7 +1173,49 @@ fn rewrite_hyperbolic_sum_to_product_bridge_expr(
         candidate
     };
 
-    Some((run_default_simplify(ctx, rewritten), kind))
+    Some((rewritten, kind))
+}
+
+pub(crate) fn matches_exact_hyperbolic_sum_to_product_target(
+    ctx: &mut cas_ast::Context,
+    source_expr: ExprId,
+    target_expr: ExprId,
+) -> bool {
+    let simplified_target = run_default_simplify(ctx, target_expr);
+    let matches_candidate = |ctx: &mut cas_ast::Context, candidate: ExprId| {
+        strong_target_match(ctx, candidate, target_expr)
+            || (simplified_target != target_expr
+                && strong_target_match(ctx, candidate, simplified_target))
+    };
+
+    if let Some((candidate, _)) = build_hyperbolic_sum_to_product_candidate(ctx, source_expr, false)
+    {
+        if matches_candidate(ctx, candidate) {
+            return true;
+        }
+
+        let simplified = run_default_simplify(ctx, candidate);
+        if simplified != candidate && matches_candidate(ctx, simplified) {
+            return true;
+        }
+    }
+
+    if let Some(positive_expr) = strip_unit_negation(ctx, source_expr) {
+        if let Some((candidate, _)) =
+            build_hyperbolic_sum_to_product_candidate(ctx, positive_expr, true)
+        {
+            if matches_candidate(ctx, candidate) {
+                return true;
+            }
+
+            let simplified = run_default_simplify(ctx, candidate);
+            if simplified != candidate && matches_candidate(ctx, simplified) {
+                return true;
+            }
+        }
+    }
+
+    false
 }
 
 pub(crate) fn try_rewrite_hyperbolic_simplify_target_aware(
@@ -1757,7 +1809,7 @@ fn try_rewrite_hyperbolic_simplify_additive_passthrough_target_aware(
     None
 }
 
-fn try_rewrite_hyperbolic_exponential_bridge_target_aware(
+pub(crate) fn try_rewrite_hyperbolic_exponential_bridge_target_aware(
     ctx: &mut cas_ast::Context,
     expr: ExprId,
     target_expr: ExprId,
@@ -3076,20 +3128,35 @@ fn try_rewrite_negated_cosh_double_angle_target_aware(
 
         let two_cosh_sq = ctx.add(Expr::Mul(two, cosh_sq));
         let one_minus_two_cosh_sq = ctx.add(Expr::Sub(one, two_cosh_sq));
-        if matches_target_modulo_simplify(ctx, one_minus_two_cosh_sq, target_expr) {
-            return Some(DeriveHyperbolicRewrite {
-                rewritten: one_minus_two_cosh_sq,
-                kind: DeriveHyperbolicRewriteKind::ExpandNegativeCoshDoubleAngleAsOneMinusTwoCoshSq,
-            });
-        }
-
         let two_sinh_sq = ctx.add(Expr::Mul(two, sinh_sq));
         let negative_one_minus_two_sinh_sq = ctx.add(Expr::Sub(neg_one, two_sinh_sq));
-        if matches_target_modulo_simplify(ctx, negative_one_minus_two_sinh_sq, target_expr) {
-            return Some(DeriveHyperbolicRewrite {
-                rewritten: negative_one_minus_two_sinh_sq,
-                kind: DeriveHyperbolicRewriteKind::ExpandNegativeCoshDoubleAngleAsNegativeOneMinusTwoSinhSq,
-            });
+        let candidates = [
+            (
+                one_minus_two_cosh_sq,
+                DeriveHyperbolicRewriteKind::ExpandNegativeCoshDoubleAngleAsOneMinusTwoCoshSq,
+            ),
+            (
+                negative_one_minus_two_sinh_sq,
+                DeriveHyperbolicRewriteKind::ExpandNegativeCoshDoubleAngleAsNegativeOneMinusTwoSinhSq,
+            ),
+        ];
+
+        for (candidate, kind) in candidates {
+            if strong_target_match(ctx, candidate, target_expr) {
+                return Some(DeriveHyperbolicRewrite {
+                    rewritten: target_expr,
+                    kind,
+                });
+            }
+        }
+
+        for (candidate, kind) in candidates {
+            if matches_target_modulo_simplify(ctx, candidate, target_expr) {
+                return Some(DeriveHyperbolicRewrite {
+                    rewritten: target_expr,
+                    kind,
+                });
+            }
         }
     }
 
@@ -3151,29 +3218,41 @@ fn try_rewrite_cosh_double_angle_target_aware(
     let two = ctx.num(2);
 
     let cosh_sum = ctx.add(Expr::Add(cosh_sq, sinh_sq));
-    if matches_target_modulo_simplify(ctx, cosh_sum, target_expr) {
-        return Some(DeriveHyperbolicRewrite {
-            rewritten: cosh_sum,
-            kind: DeriveHyperbolicRewriteKind::ExpandCoshDoubleAngleAsSum,
-        });
-    }
-
     let two_cosh_sq = ctx.add(Expr::Mul(two, cosh_sq));
     let two_cosh_sq_minus_one = ctx.add(Expr::Sub(two_cosh_sq, one));
-    if matches_target_modulo_simplify(ctx, two_cosh_sq_minus_one, target_expr) {
-        return Some(DeriveHyperbolicRewrite {
-            rewritten: two_cosh_sq_minus_one,
-            kind: DeriveHyperbolicRewriteKind::ExpandCoshDoubleAngleAsTwoCoshSqMinusOne,
-        });
-    }
-
     let two_sinh_sq = ctx.add(Expr::Mul(two, sinh_sq));
     let one_plus_two_sinh_sq = ctx.add(Expr::Add(one, two_sinh_sq));
-    if matches_target_modulo_simplify(ctx, one_plus_two_sinh_sq, target_expr) {
-        return Some(DeriveHyperbolicRewrite {
-            rewritten: one_plus_two_sinh_sq,
-            kind: DeriveHyperbolicRewriteKind::ExpandCoshDoubleAngleAsOnePlusTwoSinhSq,
-        });
+    let candidates = [
+        (
+            two_cosh_sq_minus_one,
+            DeriveHyperbolicRewriteKind::ExpandCoshDoubleAngleAsTwoCoshSqMinusOne,
+        ),
+        (
+            one_plus_two_sinh_sq,
+            DeriveHyperbolicRewriteKind::ExpandCoshDoubleAngleAsOnePlusTwoSinhSq,
+        ),
+        (
+            cosh_sum,
+            DeriveHyperbolicRewriteKind::ExpandCoshDoubleAngleAsSum,
+        ),
+    ];
+
+    for (candidate, kind) in candidates {
+        if strong_target_match(ctx, candidate, target_expr) {
+            return Some(DeriveHyperbolicRewrite {
+                rewritten: target_expr,
+                kind,
+            });
+        }
+    }
+
+    for (candidate, kind) in candidates {
+        if matches_target_modulo_simplify(ctx, candidate, target_expr) {
+            return Some(DeriveHyperbolicRewrite {
+                rewritten: target_expr,
+                kind,
+            });
+        }
     }
 
     None

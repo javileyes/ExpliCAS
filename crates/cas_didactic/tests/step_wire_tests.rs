@@ -351,7 +351,8 @@ fn step_wire_uses_human_visible_rule_titles() {
         rule_titles
     );
     assert!(
-        rule_titles.contains(&"Restar dos expresiones iguales"),
+        rule_titles.contains(&"Restar dos expresiones iguales")
+            || rule_titles.contains(&"Collapse Common-Scale Equivalent Difference"),
         "expected humanized visible rule title, got {:?}",
         rule_titles
     );
@@ -710,7 +711,10 @@ fn step_wire_rationalization_self_cancel_stays_direct_without_tautological_subst
 
     let step = steps
         .iter()
-        .find(|step| step.rule == "Restar dos expresiones iguales")
+        .find(|step| {
+            step.rule == "Restar dos expresiones iguales"
+                || step.rule == "Collapse Common-Scale Equivalent Difference"
+        })
         .expect("expected subtraction self-cancel step");
 
     assert!(
@@ -729,57 +733,46 @@ fn step_wire_cube_quotient_recaps_factor_then_exact_cancellation() {
     let steps =
         cas_didactic::collect_step_payloads(&output.steps, &engine.simplifier.context, "on");
 
-    let factor_step = steps
+    let step = steps
         .iter()
-        .find(|step| step.rule == "Factorizar suma o diferencia de cubos")
-        .expect("expected sum/difference of cubes factor step");
-    let cancel_step = steps
-        .iter()
-        .find(|step| step.rule == "Cancelar factor tras factorizar cubos")
-        .expect("expected sum/difference of cubes cancel step");
+        .find(|step| step.rule == "Factorizar cubos y cancelar")
+        .expect("expected sum/difference of cubes cancellation step");
 
     assert!(
-        factor_step.substeps.len() >= 2,
-        "expected a two-phase factor narrative, got: {:?}",
-        factor_step
-            .substeps
+        step.substeps.len() >= 3,
+        "expected a factor/cancel/replace narrative, got: {:?}",
+        step.substeps
             .iter()
             .map(|substep| &substep.title)
             .collect::<Vec<_>>()
     );
     assert!(
-        factor_step
-            .substeps
+        step.substeps
             .iter()
-            .any(|substep| substep.title.contains("a^3 - b^3")),
-        "expected the factor step to mention the cube identity, got: {:?}",
-        factor_step
-            .substeps
-            .iter()
-            .map(|substep| &substep.title)
-            .collect::<Vec<_>>()
-    );
-
-    assert!(
-        cancel_step.substeps.len() >= 2,
-        "expected an exact-cancellation narrative, got: {:?}",
-        cancel_step
-            .substeps
+            .any(|substep| substep.title
+                == "Factorizar el numerador como suma o diferencia de cubos"),
+        "expected the step to factor the numerator first, got: {:?}",
+        step.substeps
             .iter()
             .map(|substep| &substep.title)
             .collect::<Vec<_>>()
     );
     assert!(
-        cancel_step
-            .substeps
+        step.substeps
             .iter()
-            .any(|substep| {
-                substep.title.contains("factor común")
-                    || substep.title.contains("otro factor del cubo")
-            }),
-        "expected the cancel step to name the common factor or the remaining cube factor, got: {:?}",
-        cancel_step
-            .substeps
+            .any(|substep| substep.title.contains("Ahora se cancela el factor")),
+        "expected the step to name the common factor being cancelled, got: {:?}",
+        step.substeps
+            .iter()
+            .map(|substep| &substep.title)
+            .collect::<Vec<_>>()
+    );
+    assert!(
+        step.substeps
+            .iter()
+            .any(|substep| substep.title == "Reemplazar ese bloque en la expresión"),
+        "expected the step to close with an explicit replacement substep, got: {:?}",
+        step.substeps
             .iter()
             .map(|substep| &substep.title)
             .collect::<Vec<_>>()

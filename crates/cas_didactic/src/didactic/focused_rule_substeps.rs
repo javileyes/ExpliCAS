@@ -59,6 +59,12 @@ pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<
         return log_cancellation_substeps;
     }
 
+    if step.rule_name == "Collapse Exact Zero Additive Subexpression"
+        && step.description == "Complete the Square"
+    {
+        return generate_complete_square_substeps(ctx, step);
+    }
+
     match step.rule_name.as_str() {
         "Combine Like Terms" => generate_combine_like_terms_substeps(ctx, step),
         "Distribute Division" => generate_fraction_expansion_substeps(ctx, step),
@@ -6448,6 +6454,24 @@ fn generate_subtract_expanded_cubes_quotient_substeps(ctx: &Context, step: &Step
     ]
 }
 
+fn direct_replacement_pair(
+    step: &Step,
+    local_before: ExprId,
+    local_after: ExprId,
+) -> Option<(ExprId, ExprId)> {
+    if let (Some(global_before), Some(global_after)) = (step.global_before, step.global_after) {
+        if global_before != local_before || global_after != local_after {
+            return Some((global_before, global_after));
+        }
+    }
+
+    if step.before != local_before || step.after != local_after {
+        return Some((step.before, step.after));
+    }
+
+    (local_before != local_after).then_some((local_before, local_after))
+}
+
 fn generate_cancel_reciprocal_exponents_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
     let local_before = step.before_local().unwrap_or(step.before);
     let local_after = step.after_local().unwrap_or(step.after);
@@ -6741,7 +6765,7 @@ fn generate_sum_difference_cubes_cancel_substeps(ctx: &Context, step: &Step) -> 
             }
         };
 
-        return vec![
+        let mut out = vec![
             SubStep::new(
                 "Factorizar el numerador como suma o diferencia de cubos",
                 numerator_display,
@@ -6760,6 +6784,22 @@ fn generate_sum_difference_cubes_cancel_substeps(ctx: &Context, step: &Step) -> 
             ))
             .with_after_latex(latex_expr(ctx, after)),
         ];
+
+        if let Some((replacement_before, replacement_after)) =
+            direct_replacement_pair(step, before, after)
+        {
+            out.push(
+                SubStep::new(
+                    "Reemplazar ese bloque en la expresión",
+                    display_expr(ctx, replacement_before),
+                    display_expr(ctx, replacement_after),
+                )
+                .with_before_latex(latex_expr(ctx, replacement_before))
+                .with_after_latex(latex_expr(ctx, replacement_after)),
+            );
+        }
+
+        return out;
     }
     let Some((remaining_factor, matching_factor)) =
         split_product_for_cancellation(ctx, *numerator, *denominator)

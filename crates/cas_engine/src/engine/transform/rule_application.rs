@@ -182,13 +182,25 @@ impl<'a> LocalSimplificationTransformer<'a> {
                                     self.context,
                                     final_expr,
                                 );
+                                let before_str = cas_formatter::DisplayExpr {
+                                    context: self.context,
+                                    id: expr_id,
+                                }
+                                .to_string();
+                                let after_str = cas_formatter::DisplayExpr {
+                                    context: self.context,
+                                    id: final_expr,
+                                }
+                                .to_string();
                                 let _ = writeln!(
                                     f,
-                                    "APPLIED depth={} rule={} nodes={}->{}",
+                                    "APPLIED depth={} rule={} nodes={}->{} before={} after={}",
                                     self.current_depth,
                                     rule.name(),
                                     node_count_before,
-                                    node_count_after
+                                    node_count_after,
+                                    before_str,
+                                    after_str
                                 );
                                 let _ = f.flush();
                             }

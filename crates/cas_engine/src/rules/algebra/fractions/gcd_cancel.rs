@@ -266,6 +266,12 @@ define_rule!(
         use crate::Predicate;
         use cas_ast::views::RationalFnView;
 
+        if parent_ctx.has_ancestor_matching(ctx, |c, node_id| {
+            crate::rules::arithmetic::maybe_solve_prep_exact_additive_candidate(c, node_id)
+        }) {
+            return None;
+        }
+
         // Capture domain mode for cancellation decisions
         let domain_mode = parent_ctx.domain_mode();
 
@@ -388,7 +394,12 @@ define_rule!(
 define_rule!(
     NestedFractionRule,
     "Simplify Complex Fraction",
-    |ctx, expr| {
+    |ctx, expr, parent_ctx| {
+        if parent_ctx.has_ancestor_matching(ctx, |c, node_id| {
+            crate::rules::arithmetic::maybe_solve_prep_exact_additive_candidate(c, node_id)
+        }) {
+            return None;
+        }
         let rewrite = try_rewrite_simplify_nested_fraction_expr(ctx, expr)?;
         Some(
             Rewrite::new(rewrite.rewritten)

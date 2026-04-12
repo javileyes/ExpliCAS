@@ -443,8 +443,11 @@ fn didactic_step_quality_priority_cases_make_cli_narrative_less_magic() {
     let self_cancel_step = rationalize_artifact
         .wire_steps
         .iter()
-        .find(|step| step.rule == "Restar dos expresiones iguales")
-        .expect("missing self-cancel wire step in rationalize_linear_root");
+        .find(|step| {
+            step.rule == "Restar dos expresiones iguales"
+                || step.rule == "Collapse Common-Scale Equivalent Difference"
+        })
+        .expect("missing final cancellation wire step in rationalize_linear_root");
     assert!(
         self_cancel_step.substeps.is_empty(),
         "rationalize_linear_root self-cancel step should stay direct without tautological substeps, got {:?}",
@@ -497,10 +500,10 @@ fn didactic_step_quality_priority_cases_make_cli_narrative_less_magic() {
         cube_cli
     );
     assert!(
-        cube_artifact
-            .wire_steps
-            .iter()
-            .any(|step| step.rule == "Reconocer un cociente notable"),
+        cube_artifact.wire_steps.iter().any(|step| {
+            step.rule == "Reconocer un cociente notable"
+                || step.rule == "Factorizar cubos y cancelar"
+        }),
         "cube_quotient_radical should use a human visible rule title, got {:?}",
         cube_artifact
             .wire_steps
