@@ -325,6 +325,46 @@ impl<'a> LocalSimplificationTransformer<'a> {
             }
         }
 
+        if matches!(op, BinaryOp::Sub) {
+            if let Some(rewrite) =
+                crate::rules::arithmetic::try_build_direct_trig_power_reduction_equivalence_rewrite(
+                    self.context,
+                    l,
+                    r,
+                )
+            {
+                self.record_step(
+                    "Power Reduction Identity",
+                    "Power Reduction Identity",
+                    id,
+                    rewrite.new_expr,
+                );
+                return rewrite.new_expr;
+            }
+        }
+
+        // PRE-ORDER: Collapse small exact-zero additive combinations before
+        // simplifying children. This prevents recursive trig power rewrite loops
+        // such as 8*sin(x)^4 - (3 - 4*cos(2*x) + cos(4*x)).
+        if matches!(op, BinaryOp::Add | BinaryOp::Sub) {
+            if let Some(rewrite) =
+                crate::rules::arithmetic::try_build_direct_small_zero_additive_combination_rewrite(
+                    self.context,
+                    id,
+                )
+            {
+                if rewrite.description == "Power Reduction Identity" {
+                    self.record_step(
+                        "Power Reduction Identity",
+                        "Power Reduction Identity",
+                        id,
+                        rewrite.new_expr,
+                    );
+                    return rewrite.new_expr;
+                }
+            }
+        }
+
         let new_l = self.transform_child_at(id, crate::step::PathStep::Left, l);
         let new_r = self.transform_child_at(id, crate::step::PathStep::Right, r);
 
@@ -512,7 +552,13 @@ impl<'a> LocalSimplificationTransformer<'a> {
             };
         if allow_scalar_multiple_preorder {
             if let Some(early_result) =
-                crate::rules::algebra::try_structural_scalar_multiple_preorder(self.context, l, r)
+                crate::rules::algebra::try_structural_scalar_multiple_preorder(
+                    self.context,
+                    l,
+                    r,
+                    self.initial_parent_ctx.domain_mode(),
+                    self.initial_parent_ctx.value_domain(),
+                )
             {
                 return early_result;
             }
@@ -554,6 +600,8 @@ impl<'a> LocalSimplificationTransformer<'a> {
                     id,
                     l,
                     r,
+                    self.initial_parent_ctx.domain_mode(),
+                    self.initial_parent_ctx.value_domain(),
                     self.collect_steps_enabled(),
                     &mut self.steps,
                     &self.current_path,
@@ -576,6 +624,8 @@ impl<'a> LocalSimplificationTransformer<'a> {
                 id,
                 l,
                 r,
+                self.initial_parent_ctx.domain_mode(),
+                self.initial_parent_ctx.value_domain(),
                 self.initial_parent_ctx.value_domain() == crate::semantics::ValueDomain::RealOnly,
                 self.collect_steps_enabled(),
                 &mut self.steps,

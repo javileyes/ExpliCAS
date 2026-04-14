@@ -110,12 +110,49 @@ pub fn try_exact_common_factor_mul_fraction_preorder(
     expr_id: cas_ast::ExprId,
     num: cas_ast::ExprId,
     den: cas_ast::ExprId,
+    domain_mode: crate::DomainMode,
+    value_domain: crate::semantics::ValueDomain,
     collect_steps: bool,
     steps: &mut Vec<crate::step::Step>,
     current_path: &[crate::step::PathStep],
 ) -> Option<cas_ast::ExprId> {
-    let (_common, other_num, other_den) = exact_common_mul_factor(ctx, num, den)?;
+    use crate::{ImplicitCondition, Predicate};
+
+    let (common, other_num, other_den) = exact_common_mul_factor(ctx, num, den)?;
+    let common_decision = crate::oracle_allows_with_hint(
+        ctx,
+        domain_mode,
+        value_domain,
+        &Predicate::NonZero(common),
+        "Pre-order Common Factor Cancel",
+    );
+    if !common_decision.allow {
+        return None;
+    }
+
     let rewritten = ctx.add_raw(cas_ast::Expr::Div(other_num, other_den));
+    let mut final_expr = rewritten;
+    let mut residual_decision = None;
+    let mut residual_nonzero_target = None;
+
+    if let Some(plan) =
+        cas_math::fraction_power_cancel_support::try_rewrite_cancel_identical_fraction_expr(
+            ctx, rewritten,
+        )
+    {
+        let decision = crate::oracle_allows_with_hint(
+            ctx,
+            domain_mode,
+            value_domain,
+            &Predicate::NonZero(plan.nonzero_target),
+            "Cancel Identical Numerator/Denominator",
+        );
+        if decision.allow {
+            final_expr = plan.rewritten;
+            residual_nonzero_target = Some(plan.nonzero_target);
+            residual_decision = Some(decision);
+        }
+    }
 
     if collect_steps {
         let mut cancel_step = crate::step::Step::new(
@@ -131,10 +168,38 @@ pub fn try_exact_common_factor_mul_fraction_preorder(
         cancel_step.global_before = Some(expr_id);
         cancel_step.global_after = Some(rewritten);
         cancel_step.importance = crate::step::ImportanceLevel::High;
+        let common_assumptions = common_decision.assumption_events(ctx, common);
+        if !common_assumptions.is_empty() {
+            let meta = cancel_step.meta_mut();
+            meta.assumption_events = common_assumptions;
+            meta.required_conditions
+                .push(ImplicitCondition::NonZero(common));
+        }
         steps.push(cancel_step);
+
+        if let (Some(decision), Some(target)) = (residual_decision, residual_nonzero_target) {
+            let mut identical_step = crate::step::Step::new(
+                "Cancel: P/P -> 1",
+                "Cancel Identical Numerator/Denominator",
+                rewritten,
+                final_expr,
+                current_path.to_vec(),
+                Some(ctx),
+            );
+            identical_step.before = rewritten;
+            identical_step.after = final_expr;
+            identical_step.global_before = Some(rewritten);
+            identical_step.global_after = Some(final_expr);
+            identical_step.importance = crate::step::ImportanceLevel::High;
+            let meta = identical_step.meta_mut();
+            meta.assumption_events = decision.assumption_events(ctx, target);
+            meta.required_conditions
+                .push(ImplicitCondition::NonZero(target));
+            steps.push(identical_step);
+        }
     }
 
-    Some(rewritten)
+    Some(final_expr)
 }
 
 pub fn register(simplifier: &mut crate::Simplifier) {
@@ -255,11 +320,15 @@ pub fn try_difference_of_squares_preorder(
     expr_id: cas_ast::ExprId,
     num: cas_ast::ExprId,
     den: cas_ast::ExprId,
+    domain_mode: crate::DomainMode,
+    value_domain: crate::semantics::ValueDomain,
     allow_abs_square_equiv: bool,
     collect_steps: bool,
     steps: &mut Vec<crate::step::Step>,
     current_path: &[crate::step::PathStep],
 ) -> Option<cas_ast::ExprId> {
+    use crate::Predicate;
+
     let plan =
         cas_math::difference_of_squares_support::try_plan_difference_of_squares_division_expr(
             ctx,
@@ -270,6 +339,16 @@ pub fn try_difference_of_squares_preorder(
                 ..cas_math::difference_of_squares_support::DifferenceOfSquaresDivisionPolicy::default()
             },
         )?;
+    let decision = crate::oracle_allows_with_hint(
+        ctx,
+        domain_mode,
+        value_domain,
+        &Predicate::NonZero(den),
+        "Pre-order Difference of Squares Cancel",
+    );
+    if !decision.allow {
+        return None;
+    }
     let factored_num = plan.factored_numerator;
     let intermediate_with_orig_den = plan.intermediate_with_orig_den;
     let den_simplified = plan.den_simplified;
@@ -488,11 +567,25 @@ pub fn try_structural_scalar_multiple_preorder(
     ctx: &mut cas_ast::Context,
     num: cas_ast::ExprId,
     den: cas_ast::ExprId,
+    domain_mode: crate::DomainMode,
+    value_domain: crate::semantics::ValueDomain,
 ) -> Option<cas_ast::ExprId> {
+    use crate::Predicate;
+
     let plan =
         cas_math::fraction_gcd_plan_support::try_plan_structural_scalar_multiple_fraction_rewrite(
             ctx, num, den, false,
         )?;
+    let decision = crate::oracle_allows_with_hint(
+        ctx,
+        domain_mode,
+        value_domain,
+        &Predicate::NonZero(plan.gcd_expr),
+        "Simplify Nested Fraction",
+    );
+    if !decision.allow {
+        return None;
+    }
     Some(plan.forms.result_norm)
 }
 
@@ -524,10 +617,14 @@ pub fn try_exact_scalar_multiple_fraction_preorder(
     expr_id: cas_ast::ExprId,
     num: cas_ast::ExprId,
     den: cas_ast::ExprId,
+    domain_mode: crate::DomainMode,
+    value_domain: crate::semantics::ValueDomain,
     collect_steps: bool,
     steps: &mut Vec<crate::step::Step>,
     current_path: &[crate::step::PathStep],
 ) -> Option<cas_ast::ExprId> {
+    use crate::{ImplicitCondition, Predicate};
+
     let plan =
         cas_math::fraction_gcd_plan_support::try_plan_structural_scalar_multiple_fraction_rewrite(
             ctx,
@@ -535,6 +632,16 @@ pub fn try_exact_scalar_multiple_fraction_preorder(
             den,
             collect_steps,
         )?;
+    let decision = crate::oracle_allows_with_hint(
+        ctx,
+        domain_mode,
+        value_domain,
+        &Predicate::NonZero(plan.gcd_expr),
+        "Simplify Nested Fraction",
+    );
+    if !decision.allow {
+        return None;
+    }
     let final_result = collapse_numeric_fraction_result(ctx, plan.forms.result);
 
     if collect_steps {
@@ -587,6 +694,10 @@ pub fn try_exact_scalar_multiple_fraction_preorder(
             cancel_step.global_before = Some(factored_form_norm);
             cancel_step.global_after = Some(final_result);
             cancel_step.importance = crate::step::ImportanceLevel::High;
+            let meta = cancel_step.meta_mut();
+            meta.assumption_events = decision.assumption_events(ctx, plan.gcd_expr);
+            meta.required_conditions
+                .push(ImplicitCondition::NonZero(plan.gcd_expr));
             steps.push(cancel_step);
         } else {
             let mut cancel_step = if current_path.is_empty() {
@@ -609,6 +720,10 @@ pub fn try_exact_scalar_multiple_fraction_preorder(
             cancel_step.global_before = Some(expr_id);
             cancel_step.global_after = Some(final_result);
             cancel_step.importance = crate::step::ImportanceLevel::High;
+            let meta = cancel_step.meta_mut();
+            meta.assumption_events = decision.assumption_events(ctx, plan.gcd_expr);
+            meta.required_conditions
+                .push(ImplicitCondition::NonZero(plan.gcd_expr));
             steps.push(cancel_step);
         }
     }

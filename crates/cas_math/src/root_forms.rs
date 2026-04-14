@@ -543,12 +543,50 @@ pub fn try_rewrite_extract_perfect_power_from_radicand_expr(
     let simplified_root = try_rewrite_simplify_square_root_expr(ctx, new_root)
         .map(|rewrite| rewrite.rewritten)
         .unwrap_or(new_root);
-    let rewritten = ctx.add(Expr::Mul(k_expr, simplified_root));
+    let rewritten = if root_index == 2 {
+        try_extract_square_factors_from_mixed_radicand(ctx, k_expr, new_radicand, exp_id)
+            .unwrap_or_else(|| ctx.add(Expr::Mul(k_expr, simplified_root)))
+    } else {
+        ctx.add(Expr::Mul(k_expr, simplified_root))
+    };
 
     Some(ExtractPerfectPowerFromRadicandRewrite {
         rewritten,
         kind: ExtractPerfectPowerFromRadicandKind::ExtractPerfectSquare,
     })
+}
+
+fn try_extract_square_factors_from_mixed_radicand(
+    ctx: &mut Context,
+    outside_numeric: ExprId,
+    radicand: ExprId,
+    exp_id: ExprId,
+) -> Option<ExprId> {
+    let Expr::Mul(_, _) = ctx.get(radicand) else {
+        return None;
+    };
+
+    let mut outside_factors = vec![outside_numeric];
+    let mut inside_factors = Vec::new();
+    let mut changed = false;
+
+    for factor in crate::expr_nary::mul_factors(ctx, radicand) {
+        if let Some(square_factor) = try_extract_abs_of_square_factorized_base(ctx, factor) {
+            outside_factors.push(square_factor);
+            changed = true;
+        } else {
+            inside_factors.push(factor);
+        }
+    }
+
+    if !changed || inside_factors.is_empty() {
+        return None;
+    }
+
+    let inside = crate::expr_nary::build_balanced_mul(ctx, &inside_factors);
+    let inside_root = ctx.add(Expr::Pow(inside, exp_id));
+    outside_factors.push(inside_root);
+    Some(crate::expr_nary::build_balanced_mul(ctx, &outside_factors))
 }
 
 /// Simplify square roots of perfect-square polynomials.
@@ -679,7 +717,7 @@ pub fn try_rewrite_simplify_square_root_expr(
     let base = first.to_expr(ctx);
     let k = count / 2;
     let rem = count % 2;
-    let abs_base = ctx.call_builtin(BuiltinFn::Abs, vec![base]);
+    let abs_base = wrap_abs_if_needed(ctx, base);
     let term1 = if k == 1 {
         abs_base
     } else {
@@ -701,16 +739,24 @@ pub fn try_rewrite_simplify_square_root_expr(
     })
 }
 
+fn wrap_abs_if_needed(ctx: &mut Context, expr: ExprId) -> ExprId {
+    if crate::abs_support::is_sum_of_nonnegative(ctx, expr) {
+        expr
+    } else {
+        ctx.call_builtin(BuiltinFn::Abs, vec![expr])
+    }
+}
+
 fn try_extract_abs_of_square_factorized_base(ctx: &mut Context, base: ExprId) -> Option<ExprId> {
     if let Some(pattern) = detect_sqrt_square_pattern(ctx, base) {
         let arg = match pattern {
             SqrtSquarePattern::PowSquare { arg } | SqrtSquarePattern::RepeatedMul { arg } => arg,
         };
-        return Some(ctx.call_builtin(BuiltinFn::Abs, vec![arg]));
+        return Some(wrap_abs_if_needed(ctx, arg));
     }
 
     if let Some(root) = extract_square_root_of_term(ctx, base) {
-        return Some(ctx.call_builtin(BuiltinFn::Abs, vec![root]));
+        return Some(wrap_abs_if_needed(ctx, root));
     }
 
     if let Some(rewritten) = try_extract_abs_of_reciprocal_square_base(ctx, base) {
@@ -737,10 +783,10 @@ fn try_extract_abs_of_square_factorized_base(ctx: &mut Context, base: ExprId) ->
                     arg
                 }
             };
-            return Some(ctx.call_builtin(BuiltinFn::Abs, vec![arg]));
+            return Some(wrap_abs_if_needed(ctx, arg));
         }
         if let Some(root) = extract_square_root_of_term(ctx, factored) {
-            return Some(ctx.call_builtin(BuiltinFn::Abs, vec![root]));
+            return Some(wrap_abs_if_needed(ctx, root));
         }
         if let Some(rewritten) = try_extract_abs_of_reciprocal_square_base(ctx, factored) {
             return Some(rewritten);
@@ -2615,6 +2661,19 @@ mod tests {
         let mut ctx = Context::new();
         let expr = parse("(8*x)^(1/2)", &mut ctx).expect("expr");
         let expected = parse("2*(2*x)^(1/2)", &mut ctx).expect("expected");
+        let rewrite =
+            try_rewrite_extract_perfect_power_from_radicand_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, rewrite.rewritten, expected),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn extract_perfect_power_from_radicand_rewrite_sqrt_mixed_square_factor_case() {
+        let mut ctx = Context::new();
+        let expr = parse("(8*x^2)^(1/2)", &mut ctx).expect("expr");
+        let expected = parse("2*abs(x)*2^(1/2)", &mut ctx).expect("expected");
         let rewrite =
             try_rewrite_extract_perfect_power_from_radicand_expr(&mut ctx, expr).expect("rewrite");
         assert_eq!(

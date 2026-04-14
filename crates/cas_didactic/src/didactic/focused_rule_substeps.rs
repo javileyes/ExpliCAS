@@ -165,7 +165,7 @@ pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<
             generate_subtract_expanded_cubes_quotient_substeps(ctx, step)
         }
         "Polynomial Product Normalize" => generate_polynomial_product_normalize_substeps(ctx, step),
-        "Sqrt Perfect Square" | "Simplify Square Root" => {
+        "Sqrt Perfect Square" | "Simplify Square Root" | "Simplify perfect square root" => {
             generate_sqrt_perfect_square_substeps(ctx, step)
         }
         _ => Vec::new(),
@@ -473,7 +473,10 @@ fn generate_fraction_expansion_substeps(ctx: &Context, step: &Step) -> Vec<SubSt
     }
 
     if step.before_local().is_none() {
-        if let Some(intermediate) = step.after_local() {
+        if let Some(intermediate) = step.after_local().or_else(|| {
+            let mut work = ctx.clone();
+            build_fraction_expansion_intermediate(&mut work, before)
+        }) {
             if intermediate != step.after {
                 out.push(
                     SubStep::new(
@@ -489,6 +492,34 @@ fn generate_fraction_expansion_substeps(ctx: &Context, step: &Step) -> Vec<SubSt
     }
 
     out
+}
+
+fn build_fraction_expansion_intermediate(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    let Expr::Div(numerator, denominator) = ctx.get(expr).clone() else {
+        return None;
+    };
+
+    let terms = AddView::from_expr(ctx, numerator).terms;
+    if terms.len() < 2 {
+        return None;
+    }
+
+    let distributed_terms = terms
+        .into_iter()
+        .map(|(term, sign)| (ctx.add(Expr::Div(term, denominator)), sign))
+        .collect::<Vec<_>>();
+
+    Some(build_add_from_signed_terms(ctx, &distributed_terms))
+}
+
+fn is_fraction_expansion_simplify_pair(ctx: &Context, before: ExprId, after: ExprId) -> bool {
+    let mut work = ctx.clone();
+    let Some(intermediate) = build_fraction_expansion_intermediate(&mut work, before) else {
+        return false;
+    };
+    let simplified = simplify_expr_in_context(&mut work, intermediate);
+    compare_expr(&work, simplified, after) == Ordering::Equal
+        || human_expr(&work, simplified) == human_expr(ctx, after)
 }
 
 fn generate_add_subtract_fractions_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
@@ -1440,6 +1471,10 @@ fn log_power_extraction_family(
 fn generate_simplify_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
     let before = step.before_local().unwrap_or(step.before);
     let after = step.after_local().unwrap_or(step.after);
+
+    if is_fraction_expansion_simplify_pair(ctx, before, after) {
+        return generate_fraction_expansion_substeps(ctx, step);
+    }
 
     if let Some(substeps) = generate_odd_half_power_simplify_substeps(ctx, step) {
         return substeps;

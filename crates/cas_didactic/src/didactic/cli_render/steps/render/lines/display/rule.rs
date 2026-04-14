@@ -133,6 +133,7 @@ fn should_suppress_local_change_line(step: &Step) -> bool {
             | "Polynomial Product Normalize"
             | "Sqrt Perfect Square"
             | "Simplify Square Root"
+            | "Simplify perfect square root"
             | "Evaluate Numeric Power"
             | "Cancel Reciprocal Exponents"
             | "Canonicalize Nested Power"

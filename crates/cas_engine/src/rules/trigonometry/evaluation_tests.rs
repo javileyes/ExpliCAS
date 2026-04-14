@@ -2,6 +2,7 @@ use super::evaluation::EvaluateTrigTableRule;
 use crate::parent_context::ParentContext;
 use crate::rule::Rule;
 use cas_ast::{Context, Expr};
+use cas_formatter::DisplayExpr;
 use num_traits::Zero;
 
 #[test]
@@ -40,4 +41,28 @@ fn test_cos_pi() {
     } else {
         panic!("Expected Number(-1)");
     }
+}
+
+#[test]
+fn test_cot_five_pi_over_twelve() {
+    let mut ctx = Context::new();
+    let expr = cas_parser::parse("cot(5*pi/12)", &mut ctx)
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+
+    let rule = EvaluateTrigTableRule;
+    let parent_ctx = ParentContext::root();
+    let result = rule.apply(&mut ctx, expr, &parent_ctx);
+
+    assert!(result.is_some());
+    let rewrite = result.unwrap();
+    assert_eq!(
+        format!(
+            "{}",
+            DisplayExpr {
+                context: &ctx,
+                id: rewrite.new_expr
+            }
+        ),
+        "2 - 3^(1 / 2)"
+    );
 }

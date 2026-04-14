@@ -2,7 +2,7 @@ use super::mappers::{
     map_domain_warnings_to_engine_warnings, map_solver_assumptions_to_api_records,
 };
 use super::stateless_eval::evaluate_prepared_stateless_request;
-use crate::EvalOptions;
+use crate::{EvalOptions, StepsMode};
 use cas_api_models::{EngineWireError, EngineWireResponse};
 
 mod options;
@@ -38,16 +38,24 @@ pub fn eval_str_to_wire(expr: &str, opts_json: &str) -> String {
             Ok(state) => state,
             Err(resp) => return resp,
         };
+    let eval_options = EvalOptions {
+        steps_mode: if opts.steps {
+            StepsMode::On
+        } else {
+            StepsMode::Off
+        },
+        ..EvalOptions::default()
+    };
 
-    let output_view =
-        match evaluate_prepared_stateless_request(&mut engine, EvalOptions::default(), prepared) {
-            Ok(view) => view,
-            Err(e) => {
-                let error = EngineWireError::from_eval_runtime_error(e.to_string());
-                let resp = EngineWireResponse::err(error, budget_info);
-                return resp.to_json_with_pretty(opts.pretty);
-            }
-        };
+    let output_view = match evaluate_prepared_stateless_request(&mut engine, eval_options, prepared)
+    {
+        Ok(view) => view,
+        Err(e) => {
+            let error = EngineWireError::from_eval_runtime_error(e.to_string());
+            let resp = EngineWireResponse::err(error, budget_info);
+            return resp.to_json_with_pretty(opts.pretty);
+        }
+    };
 
     success::build_success_wire(
         &mut engine,

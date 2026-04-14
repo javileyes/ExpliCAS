@@ -1,4 +1,4 @@
-use super::arithmetic::{AddZeroRule, CombineConstantsRule, MulOneRule};
+use super::arithmetic::{AddZeroRule, CombineConstantsRule, MulOneRule, NormalizeMulNegRule};
 use crate::rule::{Rule, SimpleRule};
 use crate::step::ImportanceLevel;
 use cas_ast::{Context, Expr};
@@ -89,6 +89,32 @@ fn test_mul_one_rule_importance() {
         SimpleRule::importance(&rule),
         ImportanceLevel::Low,
         "MulOneRule should have Low importance (hidden in normal mode)"
+    );
+}
+
+#[test]
+fn test_normalize_mul_neg_rule_rewrites_minus_one_product() {
+    let mut ctx = Context::new();
+    let rule = NormalizeMulNegRule;
+    let minus_one = ctx.num(-1);
+    let y = ctx.var("y");
+    let expr = ctx.add(Expr::Mul(minus_one, y));
+    let rewrite = rule
+        .apply(
+            &mut ctx,
+            expr,
+            &crate::parent_context::ParentContext::root(),
+        )
+        .unwrap();
+    assert_eq!(
+        format!(
+            "{}",
+            DisplayExpr {
+                context: &ctx,
+                id: rewrite.new_expr
+            }
+        ),
+        "-y"
     );
 }
 

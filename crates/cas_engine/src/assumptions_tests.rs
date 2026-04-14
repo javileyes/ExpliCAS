@@ -92,7 +92,7 @@ fn test_summary_line() {
     let summary = collector.summary_line();
 
     assert!(summary.is_some());
-    let line = summary.expect("summary line should exist");
+    let line = summary.unwrap_or_else(|| panic!("summary line should exist"));
     assert!(line.contains("nonzero(x)"));
     assert!(line.contains("×2"));
 }

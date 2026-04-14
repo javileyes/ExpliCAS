@@ -1082,6 +1082,19 @@ mod tests {
     }
 
     #[test]
+    fn rewrites_product_to_sum_with_additive_rational_remaining_factor() {
+        let mut ctx = Context::new();
+        let expr = parse("(1/x + 1/(x+1))*(2*sin(x)*cos(2*x))", &mut ctx).expect("expr");
+        let rewrite = try_rewrite_product_to_sum_expr(&mut ctx, expr).expect("rewrite");
+        let expected =
+            parse("(sin(x + 2*x) + sin(x - 2*x))*(1/x + 1/(x+1))", &mut ctx).expect("expected");
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, rewrite.rewritten, expected),
+            Ordering::Equal
+        );
+    }
+
+    #[test]
     fn rewrites_sum_to_product_contraction_for_sine_sum() {
         let mut ctx = Context::new();
         let expr = parse("sin(x)+sin(3*x)", &mut ctx).expect("expr");

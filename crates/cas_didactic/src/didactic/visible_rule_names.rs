@@ -84,7 +84,7 @@ pub(crate) fn visible_rule_name(rule_name: &str) -> &str {
         "Pre-order Sum/Difference of Cubes Cancel" => "Cancelar factor tras factorizar cubos",
         "Cancel Sum/Difference of Cubes Fraction" => "Factorizar cubos y cancelar",
         "Inverse Tan Relations" => "Aplicar identidad de arctangentes",
-        "Sqrt Perfect Square" | "Simplify Square Root" => {
+        "Sqrt Perfect Square" | "Simplify Square Root" | "Simplify perfect square root" => {
             "Reconocer un cuadrado perfecto bajo la raíz"
         }
         "Combine Like Terms" => "Agrupar términos semejantes",
@@ -333,6 +333,9 @@ pub(crate) fn visible_step_description<'a>(description: &'a str) -> Cow<'a, str>
         "Half-Angle Square Identity" => Cow::Borrowed("Aplicar identidad de ángulo mitad"),
         "1 * x = x" => Cow::Borrowed("Quitar el factor 1"),
         "Evaluate literal power" => Cow::Borrowed("Calcular potencia numérica"),
+        "Simplify perfect square root" => {
+            Cow::Borrowed("Reconocer un cuadrado perfecto bajo la raíz")
+        }
         "a - a = 0" => Cow::Borrowed("Restar dos expresiones iguales"),
         "Add fractions: a/b + c/d -> (ad+bc)/bd" => Cow::Borrowed("Sumar fracciones"),
         "Subtract fractions: a/b - c/d -> (ad-bc)/bd" => Cow::Borrowed("Restar fracciones"),

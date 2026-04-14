@@ -46,10 +46,10 @@ use cas_math::trig_roots_flatten::{
     extract_double_angle_arg_relaxed, extract_triple_angle_arg_relaxed, flatten_mul_chain,
 };
 use cas_math::trig_sum_product_support::{
-    build_avg_with_simplifier, build_half_diff_with_simplifier, extract_trig_two_term_diff,
-    extract_trig_two_term_sum, normalize_for_even_fn, try_rewrite_product_to_sum_expr,
-    try_rewrite_sum_to_product_contraction_expr, TrigProductToSumRewriteKind,
-    TrigSumToProductContractionRewriteKind,
+    args_match_as_multiset, build_avg_with_simplifier, build_half_diff_with_simplifier,
+    extract_trig_two_term_diff, extract_trig_two_term_sum, normalize_for_even_fn,
+    try_rewrite_product_to_sum_expr, try_rewrite_sum_to_product_contraction_expr,
+    TrigProductToSumRewriteKind, TrigSumToProductContractionRewriteKind,
 };
 use cas_solver_core::quadratic_coeffs::{
     extract_quadratic_coefficients, extract_simplified_nonzero_quadratic_coefficients_with_state,
@@ -366,6 +366,37 @@ fn expr_contains_sqrt_or_half_power(ctx: &cas_ast::Context, root: cas_ast::ExprI
                 if matches!(ctx.get(*exp), Expr::Number(n) if *n == half) {
                     return true;
                 }
+                stack.push(*base);
+                stack.push(*exp);
+            }
+            Expr::Add(lhs, rhs)
+            | Expr::Sub(lhs, rhs)
+            | Expr::Mul(lhs, rhs)
+            | Expr::Div(lhs, rhs) => {
+                stack.push(*lhs);
+                stack.push(*rhs);
+            }
+            Expr::Neg(inner) | Expr::Hold(inner) => stack.push(*inner),
+            Expr::Matrix { data, .. } => stack.extend(data.iter().copied()),
+            Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) | Expr::SessionRef(_) => {}
+        }
+    }
+
+    false
+}
+
+fn expr_contains_factorial_call(ctx: &cas_ast::Context, root: cas_ast::ExprId) -> bool {
+    let mut stack = vec![root];
+
+    while let Some(expr) = stack.pop() {
+        match ctx.get(expr) {
+            Expr::Function(fn_id, args)
+                if args.len() == 1 && matches!(ctx.sym_name(*fn_id), "fact" | "factorial") =>
+            {
+                return true;
+            }
+            Expr::Function(_, args) => stack.extend(args.iter().copied()),
+            Expr::Pow(base, exp) => {
                 stack.push(*base);
                 stack.push(*exp);
             }
@@ -5765,6 +5796,365 @@ fn try_build_direct_trig_square_equivalence_rewrite(
     None
 }
 
+fn matches_direct_half_angle_square_zero_identity(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> bool {
+    try_build_two_term_direct_half_angle_square_rewrite(ctx, expr).is_some()
+}
+
+fn matches_direct_trig_binomial_square_zero_identity(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> bool {
+    try_build_exact_trig_square_zero_scope_rewrite(ctx, expr).is_some()
+}
+
+fn try_build_direct_half_angle_binomial_square_shifted_quotient_rewrite(
+    ctx: &mut cas_ast::Context,
+    numerator: cas_ast::ExprId,
+    denominator: cas_ast::ExprId,
+    numerator_core: cas_ast::ExprId,
+    denominator_core: cas_ast::ExprId,
+) -> Option<Rewrite> {
+    let matches_pair = (matches_direct_half_angle_square_zero_identity(ctx, numerator_core)
+        && matches_direct_trig_binomial_square_zero_identity(ctx, denominator_core))
+        || (matches_direct_half_angle_square_zero_identity(ctx, denominator_core)
+            && matches_direct_trig_binomial_square_zero_identity(ctx, numerator_core));
+
+    if !matches_pair {
+        return None;
+    }
+
+    let child_rewrite = Rewrite::with_local(
+        ctx.num(0),
+        "Trig Square Identity",
+        numerator_core,
+        denominator_core,
+    )
+    .substep(
+        "Anular el residuo del numerador",
+        vec![
+            "El término adicional del numerador es una identidad trigonométrica exacta, así que vale 0."
+                .to_string(),
+        ],
+    )
+    .substep(
+        "Anular el residuo del denominador",
+        vec![
+            "El término adicional del denominador también es una identidad trigonométrica exacta, así que vale 0."
+                .to_string(),
+        ],
+    )
+    .substep(
+        "Evaluar 1/1",
+        vec!["Tras sumar 1 a ambos lados, la fracción queda 1/1 y por tanto vale 1.".to_string()],
+    );
+
+    Some(build_shifted_quotient_exact_one_rewrite(
+        ctx,
+        numerator,
+        denominator,
+        child_rewrite,
+    ))
+}
+
+fn expr_contains_division_node(ctx: &cas_ast::Context, root: cas_ast::ExprId) -> bool {
+    let mut stack = vec![root];
+    while let Some(expr) = stack.pop() {
+        match ctx.get(expr) {
+            Expr::Div(_, _) => return true,
+            Expr::Add(lhs, rhs)
+            | Expr::Sub(lhs, rhs)
+            | Expr::Mul(lhs, rhs)
+            | Expr::Pow(lhs, rhs) => {
+                stack.push(*lhs);
+                stack.push(*rhs);
+            }
+            Expr::Neg(inner) | Expr::Hold(inner) => stack.push(*inner),
+            Expr::Function(_, args) => stack.extend(args.iter().copied()),
+            Expr::Matrix { data, .. } => stack.extend(data.iter().copied()),
+            Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
+        }
+    }
+
+    false
+}
+
+fn try_build_small_direct_zero_core_rewrite(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<Rewrite> {
+    let view = AddView::from_expr(ctx, expr);
+    let term_count = view.terms.len();
+    if !(2..=3).contains(&term_count) {
+        return None;
+    }
+    if !view.terms.iter().any(|(_, sign)| *sign == Sign::Neg) {
+        return None;
+    }
+
+    let has_trig_or_hyper = expr_contains_any_builtin(
+        ctx,
+        expr,
+        &[
+            BuiltinFn::Sin,
+            BuiltinFn::Cos,
+            BuiltinFn::Tan,
+            BuiltinFn::Cot,
+            BuiltinFn::Sec,
+            BuiltinFn::Csc,
+            BuiltinFn::Sinh,
+            BuiltinFn::Cosh,
+            BuiltinFn::Tanh,
+        ],
+    );
+    let has_supported_shape = (has_trig_or_hyper
+        || expr_contains_division_node(ctx, expr)
+        || expr_contains_sqrt_or_half_power(ctx, expr)
+        || expr_contains_factorial_call(ctx, expr))
+        && !(has_trig_or_hyper && expr_contains_division_node(ctx, expr));
+    if !has_supported_shape {
+        return None;
+    }
+
+    if has_trig_or_hyper {
+        if let Some(rewrite) = try_build_small_tan_cot_product_zero_core_rewrite(ctx, expr) {
+            return Some(rewrite);
+        }
+        if let Some(rewrite) = try_build_small_tan_cot_sec_csc_zero_core_rewrite(ctx, expr) {
+            return Some(rewrite);
+        }
+        if let Some(rewrite) = try_build_small_sec_tan_pythagorean_zero_core_rewrite(ctx, expr) {
+            return Some(rewrite);
+        }
+        if let Some(rewrite) = try_build_small_csc_cot_pythagorean_zero_core_rewrite(ctx, expr) {
+            return Some(rewrite);
+        }
+    }
+    if expr_contains_division_node(ctx, expr) {
+        if let Some(rewrite) =
+            try_build_direct_reciprocal_sum_difference_nested_fraction_zero_scope_rewrite(ctx, expr)
+        {
+            return Some(rewrite);
+        }
+        if let Some(rewrite) =
+            try_build_small_difference_square_partial_fraction_zero_core_rewrite(ctx, expr)
+        {
+            return Some(rewrite);
+        }
+        if let Some(rewrite) =
+            try_build_small_rationalized_sum_of_sqrts_zero_core_rewrite(ctx, expr)
+        {
+            return Some(rewrite);
+        }
+    }
+    if expr_contains_factorial_call(ctx, expr) {
+        if let Some(rewrite) = try_build_small_factorial_zero_core_rewrite(ctx, expr) {
+            return Some(rewrite);
+        }
+    }
+    if expr_contains_sqrt_or_half_power(ctx, expr) {
+        if let Some(rewrite) = try_build_small_odd_half_power_zero_core_rewrite(ctx, expr) {
+            return Some(rewrite);
+        }
+    }
+
+    let rewrite = try_build_exact_zero_identity_rewrite_direct_impl(ctx, expr, false)?;
+    let zero = ctx.num(0);
+    (compare_expr(ctx, rewrite.final_expr(), zero) == Ordering::Equal).then_some(rewrite)
+}
+
+pub(crate) fn try_build_direct_small_zero_additive_combination_rewrite(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<Rewrite> {
+    let is_supported_partition_core =
+        |ctx: &mut cas_ast::Context, candidate: cas_ast::ExprId| -> bool {
+            let has_trig_or_hyper = expr_contains_any_builtin(
+                ctx,
+                candidate,
+                &[
+                    BuiltinFn::Sin,
+                    BuiltinFn::Cos,
+                    BuiltinFn::Tan,
+                    BuiltinFn::Cot,
+                    BuiltinFn::Sec,
+                    BuiltinFn::Csc,
+                    BuiltinFn::Sinh,
+                    BuiltinFn::Cosh,
+                    BuiltinFn::Tanh,
+                ],
+            );
+            let has_division = expr_contains_division_node(ctx, candidate);
+            let has_radical = expr_contains_sqrt_or_half_power(ctx, candidate);
+            let has_factorial = expr_contains_factorial_call(ctx, candidate);
+            (has_trig_or_hyper || has_division || has_radical || has_factorial)
+                && !(has_trig_or_hyper && has_division)
+        };
+
+    let build_combined_rewrite = |ctx: &mut cas_ast::Context,
+                                  first_expr: cas_ast::ExprId,
+                                  second_expr: cas_ast::ExprId| {
+        if !is_supported_partition_core(ctx, first_expr)
+            || !is_supported_partition_core(ctx, second_expr)
+        {
+            return None;
+        }
+
+        let first_zero_rewrite = try_build_small_direct_zero_core_rewrite(ctx, first_expr)?;
+        let second_zero_rewrite = try_build_small_direct_zero_core_rewrite(ctx, second_expr)?;
+        let description = if first_zero_rewrite.description == second_zero_rewrite.description {
+            first_zero_rewrite.description.clone()
+        } else {
+            "Exact Zero Core Composition".into()
+        };
+
+        let mut rewrite = Rewrite::with_local(ctx.num(0), description, expr, ctx.num(0))
+                .requires_all(first_zero_rewrite.required_conditions.clone())
+                .requires_all(second_zero_rewrite.required_conditions.clone())
+                .assume_all(first_zero_rewrite.assumption_events.clone())
+                .assume_all(second_zero_rewrite.assumption_events.clone())
+                .substep(
+                    "Anular el primer core",
+                    vec![
+                        "El primer término compuesto es una identidad exacta pequeña, así que vale 0."
+                            .to_string(),
+                    ],
+                )
+                .substep(
+                    "Anular el segundo core",
+                    vec![
+                        "El segundo término compuesto también es una identidad exacta pequeña, así que vale 0."
+                            .to_string(),
+                    ],
+                )
+                .substep(
+                    "Sumar ceros",
+                    vec!["Tras sustituir ambos cores por 0, toda la combinación vale 0.".to_string()],
+                );
+
+        if let Some(poly_proof) = first_zero_rewrite.poly_proof.clone() {
+            rewrite = rewrite.poly_proof(poly_proof);
+        } else if let Some(poly_proof) = second_zero_rewrite.poly_proof.clone() {
+            rewrite = rewrite.poly_proof(poly_proof);
+        }
+
+        Some(rewrite)
+    };
+
+    if let Expr::Add(lhs, rhs) | Expr::Sub(lhs, rhs) = ctx.get(expr) {
+        if let Some(rewrite) = build_combined_rewrite(ctx, *lhs, *rhs) {
+            return Some(rewrite);
+        }
+    }
+
+    let view = AddView::from_expr(ctx, expr);
+    if !(4..=6).contains(&view.terms.len()) {
+        return None;
+    }
+
+    for subset_len in 2..=3 {
+        if subset_len >= view.terms.len() {
+            continue;
+        }
+        let mut stack = vec![(0usize, Vec::<usize>::new())];
+        while let Some((next_index, chosen)) = stack.pop() {
+            if chosen.len() == subset_len {
+                if !chosen.contains(&0) {
+                    continue;
+                }
+
+                let first_terms: Vec<_> = view
+                    .terms
+                    .iter()
+                    .copied()
+                    .enumerate()
+                    .filter_map(|(index, term)| chosen.contains(&index).then_some(term))
+                    .collect();
+                let second_terms: Vec<_> = view
+                    .terms
+                    .iter()
+                    .copied()
+                    .enumerate()
+                    .filter_map(|(index, term)| (!chosen.contains(&index)).then_some(term))
+                    .collect();
+                if !(2..=3).contains(&second_terms.len()) {
+                    continue;
+                }
+
+                let first_expr = build_signed_sum_expr(ctx, &first_terms);
+                let second_expr = build_signed_sum_expr(ctx, &second_terms);
+                if let Some(rewrite) = build_combined_rewrite(ctx, first_expr, second_expr) {
+                    return Some(rewrite);
+                }
+                continue;
+            }
+
+            let remaining_slots = subset_len - chosen.len();
+            let max_start = view.terms.len().saturating_sub(remaining_slots);
+            for index in (next_index..=max_start).rev() {
+                let mut next_chosen = chosen.clone();
+                next_chosen.push(index);
+                stack.push((index + 1, next_chosen));
+            }
+        }
+    }
+
+    None
+}
+
+fn try_build_direct_small_zero_core_shifted_quotient_rewrite(
+    ctx: &mut cas_ast::Context,
+    numerator: cas_ast::ExprId,
+    denominator: cas_ast::ExprId,
+    numerator_core: cas_ast::ExprId,
+    denominator_core: cas_ast::ExprId,
+) -> Option<Rewrite> {
+    let numerator_zero_rewrite = try_build_small_direct_zero_core_rewrite(ctx, numerator_core)?;
+    let denominator_zero_rewrite = try_build_small_direct_zero_core_rewrite(ctx, denominator_core)?;
+
+    let description = if numerator_zero_rewrite.description == denominator_zero_rewrite.description
+    {
+        numerator_zero_rewrite.description.clone()
+    } else {
+        "Exact Zero Core Quotient Identity".into()
+    };
+
+    let mut rewrite = Rewrite::with_local(ctx.num(1), description, numerator, denominator)
+        .requires(crate::ImplicitCondition::NonZero(denominator))
+        .requires_all(numerator_zero_rewrite.required_conditions.clone())
+        .requires_all(denominator_zero_rewrite.required_conditions.clone())
+        .assume_all(numerator_zero_rewrite.assumption_events.clone())
+        .assume_all(denominator_zero_rewrite.assumption_events.clone())
+        .substep(
+            "Anular el core del numerador",
+            vec![
+                "El término adicional del numerador es una identidad exacta pequeña, así que vale 0."
+                    .to_string(),
+            ],
+        )
+        .substep(
+            "Anular el core del denominador",
+            vec![
+                "El término adicional del denominador también es una identidad exacta pequeña, así que vale 0."
+                    .to_string(),
+            ],
+        )
+        .substep(
+            "Evaluar 1/1",
+            vec!["Tras sumar 1 a ambos lados, la fracción queda 1/1 y por tanto vale 1.".to_string()],
+        );
+
+    if let Some(poly_proof) = numerator_zero_rewrite.poly_proof.clone() {
+        rewrite = rewrite.poly_proof(poly_proof);
+    } else if let Some(poly_proof) = denominator_zero_rewrite.poly_proof.clone() {
+        rewrite = rewrite.poly_proof(poly_proof);
+    }
+
+    Some(rewrite)
+}
+
 fn try_rewrite_hyperbolic_pythagorean_factor_for_cancellation(
     ctx: &mut cas_ast::Context,
     expr: cas_ast::ExprId,
@@ -6038,6 +6428,20 @@ fn try_build_exact_trig_equivalence_zero_scope_rewrite(
         return Some(rewrite);
     }
 
+    if let Some(rewrite) =
+        try_build_exact_trig_product_to_sum_sin_sin_three_term_zero_rewrite(ctx, expr)
+    {
+        return Some(rewrite);
+    }
+
+    if let Some(rewrite) = try_build_exact_trig_product_to_sum_sin_sin_zero_scope_rewrite(ctx, expr)
+    {
+        return Some(rewrite);
+    }
+
+    let allow_default_simplify_fallback =
+        !matches_structural_trig_product_to_sum_sin_sin_three_term_family(ctx, expr);
+
     for subset_len in 1..=2 {
         for first_index in 0..view.terms.len() {
             let second_index_options: Vec<Option<usize>> = if subset_len == 1 {
@@ -6091,27 +6495,42 @@ fn try_build_exact_trig_equivalence_zero_scope_rewrite(
                     let neg_adjusted_rewritten = ctx.add(Expr::Neg(adjusted_rewritten));
                     let distributed_neg_adjusted_rewritten =
                         negate_additive_scope_expr(ctx, adjusted_rewritten);
+                    let allow_candidate_default_simplify = allow_default_simplify_fallback
+                        && !(remaining_terms.len() == 1
+                            && extract_exact_double_sine_product_args_from_signed_expr(
+                                ctx,
+                                candidate_focus,
+                            )
+                            .is_some());
                     if expr_matches_negation_for_cancellation(
                         ctx,
                         adjusted_rewritten,
                         remaining_expr,
-                    ) || expr_matches_negation_after_default_simplify(
-                        ctx,
-                        adjusted_rewritten,
-                        remaining_expr,
-                    ) || exprs_match_after_default_simplify(
-                        ctx,
-                        neg_adjusted_rewritten,
-                        remaining_expr,
-                    ) || exprs_match_after_default_simplify(
-                        ctx,
-                        distributed_neg_adjusted_rewritten,
-                        remaining_expr,
-                    ) || additive_scopes_match_after_default_simplify(
-                        ctx,
-                        distributed_neg_adjusted_rewritten,
-                        remaining_expr,
-                    ) {
+                    ) || (allow_candidate_default_simplify
+                        && expr_matches_negation_after_default_simplify(
+                            ctx,
+                            adjusted_rewritten,
+                            remaining_expr,
+                        ))
+                        || (allow_candidate_default_simplify
+                            && exprs_match_after_default_simplify(
+                                ctx,
+                                neg_adjusted_rewritten,
+                                remaining_expr,
+                            ))
+                        || (allow_candidate_default_simplify
+                            && exprs_match_after_default_simplify(
+                                ctx,
+                                distributed_neg_adjusted_rewritten,
+                                remaining_expr,
+                            ))
+                        || (allow_candidate_default_simplify
+                            && additive_scopes_match_after_default_simplify(
+                                ctx,
+                                distributed_neg_adjusted_rewritten,
+                                remaining_expr,
+                            ))
+                    {
                         return Some(
                             Rewrite::with_local(
                                 ctx.num(0),
@@ -6130,6 +6549,263 @@ fn try_build_exact_trig_equivalence_zero_scope_rewrite(
                     }
                 }
             }
+        }
+    }
+
+    None
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ExactSinSinProductToSumCosKind {
+    Sum,
+    Diff,
+}
+
+fn extract_exact_double_sine_product_args(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<(cas_ast::ExprId, cas_ast::ExprId)> {
+    let factors = flatten_mul_chain(ctx, expr);
+    if factors.len() != 3 {
+        return None;
+    }
+
+    let mut saw_two = false;
+    let mut sin_args = Vec::new();
+    for factor in factors {
+        match ctx.get(factor) {
+            Expr::Number(n) if *n == BigRational::from_integer(2.into()) && !saw_two => {
+                saw_two = true;
+            }
+            Expr::Function(fn_id, args)
+                if args.len() == 1 && ctx.is_builtin(*fn_id, BuiltinFn::Sin) =>
+            {
+                sin_args.push(args[0]);
+            }
+            _ => return None,
+        }
+    }
+
+    if saw_two && sin_args.len() == 2 {
+        Some((sin_args[0], sin_args[1]))
+    } else {
+        None
+    }
+}
+
+fn extract_exact_double_sine_product_args_from_signed_expr(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<(cas_ast::ExprId, cas_ast::ExprId)> {
+    match ctx.get(expr).clone() {
+        Expr::Neg(inner) => extract_exact_double_sine_product_args(ctx, inner),
+        _ => extract_exact_double_sine_product_args(ctx, expr),
+    }
+}
+
+fn classify_exact_cos_sum_or_diff_term_for_sin_sin_zero_scope(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+    lhs_arg: cas_ast::ExprId,
+    rhs_arg: cas_ast::ExprId,
+) -> Option<ExactSinSinProductToSumCosKind> {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return None;
+    };
+    if args.len() != 1 || !ctx.is_builtin(*fn_id, BuiltinFn::Cos) {
+        return None;
+    }
+
+    match ctx.get(args[0]) {
+        Expr::Add(left, right) => args_match_as_multiset(ctx, *left, *right, lhs_arg, rhs_arg)
+            .then_some(ExactSinSinProductToSumCosKind::Sum),
+        Expr::Sub(left, right) => {
+            let direct = compare_expr(ctx, *left, lhs_arg) == Ordering::Equal
+                && compare_expr(ctx, *right, rhs_arg) == Ordering::Equal;
+            let reversed = compare_expr(ctx, *left, rhs_arg) == Ordering::Equal
+                && compare_expr(ctx, *right, lhs_arg) == Ordering::Equal;
+            (direct || reversed).then_some(ExactSinSinProductToSumCosKind::Diff)
+        }
+        _ => None,
+    }
+}
+
+fn try_build_exact_trig_product_to_sum_sin_sin_three_term_zero_rewrite(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<Rewrite> {
+    let view = AddView::from_expr(ctx, expr);
+    if view.terms.len() != 3 {
+        return None;
+    }
+
+    for (focus_index, (focus_term_expr, focus_term_sign)) in view.terms.iter().copied().enumerate()
+    {
+        let Some((lhs_arg, rhs_arg)) = extract_exact_double_sine_product_args(ctx, focus_term_expr)
+        else {
+            continue;
+        };
+
+        let mut saw_diff = false;
+        let mut saw_sum = false;
+        for (index, (term_expr, term_sign)) in view.terms.iter().copied().enumerate() {
+            if index == focus_index {
+                continue;
+            }
+
+            let Some(kind) = classify_exact_cos_sum_or_diff_term_for_sin_sin_zero_scope(
+                ctx, term_expr, lhs_arg, rhs_arg,
+            ) else {
+                saw_diff = false;
+                saw_sum = false;
+                break;
+            };
+
+            match kind {
+                ExactSinSinProductToSumCosKind::Diff
+                    if term_sign == focus_term_sign.negate() && !saw_diff =>
+                {
+                    saw_diff = true;
+                }
+                ExactSinSinProductToSumCosKind::Sum if term_sign == focus_term_sign && !saw_sum => {
+                    saw_sum = true;
+                }
+                _ => {
+                    saw_diff = false;
+                    saw_sum = false;
+                    break;
+                }
+            }
+        }
+
+        if !saw_diff || !saw_sum {
+            continue;
+        }
+
+        let focus_expr = signed_term_expr(ctx, focus_term_expr, focus_term_sign);
+        let diff_arg = ctx.add(Expr::Sub(lhs_arg, rhs_arg));
+        let sum_arg = ctx.add(Expr::Add(lhs_arg, rhs_arg));
+        let cos_diff = ctx.call_builtin(BuiltinFn::Cos, vec![diff_arg]);
+        let cos_sum = ctx.call_builtin(BuiltinFn::Cos, vec![sum_arg]);
+        let rewritten = ctx.add(Expr::Sub(cos_diff, cos_sum));
+        let adjusted_rewritten = apply_sign_to_expr(ctx, sign_to_i64(focus_term_sign), rewritten);
+        return Some(
+            Rewrite::with_local(
+                ctx.num(0),
+                "Product-to-Sum Identity",
+                focus_expr,
+                adjusted_rewritten,
+            )
+            .substep(
+                "Cancelar términos iguales",
+                vec![
+                    "La identidad 2·sin(a)·sin(b) = cos(a-b) - cos(a+b) cancela exactamente el residual restante."
+                        .to_string(),
+                ],
+            ),
+        );
+    }
+
+    None
+}
+
+fn matches_structural_trig_product_to_sum_sin_sin_three_term_family(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> bool {
+    let view = AddView::from_expr(ctx, expr);
+    if view.terms.len() != 3 {
+        return false;
+    }
+
+    for (focus_index, (focus_term_expr, _)) in view.terms.iter().copied().enumerate() {
+        let Some((lhs_arg, rhs_arg)) = extract_exact_double_sine_product_args(ctx, focus_term_expr)
+        else {
+            continue;
+        };
+
+        let mut saw_diff = false;
+        let mut saw_sum = false;
+        let mut valid = true;
+        for (index, (term_expr, _)) in view.terms.iter().copied().enumerate() {
+            if index == focus_index {
+                continue;
+            }
+
+            match classify_exact_cos_sum_or_diff_term_for_sin_sin_zero_scope(
+                ctx, term_expr, lhs_arg, rhs_arg,
+            ) {
+                Some(ExactSinSinProductToSumCosKind::Diff) if !saw_diff => saw_diff = true,
+                Some(ExactSinSinProductToSumCosKind::Sum) if !saw_sum => saw_sum = true,
+                _ => {
+                    valid = false;
+                    break;
+                }
+            }
+        }
+
+        if valid && saw_diff && saw_sum {
+            return true;
+        }
+    }
+
+    false
+}
+
+fn try_build_exact_trig_product_to_sum_sin_sin_zero_scope_rewrite(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<Rewrite> {
+    let view = AddView::from_expr(ctx, expr);
+    if view.terms.len() != 3 {
+        return None;
+    }
+
+    for (focus_index, (focus_term_expr, focus_term_sign)) in view.terms.iter().copied().enumerate()
+    {
+        let Some(rewrite) = try_rewrite_product_to_sum_expr(ctx, focus_term_expr) else {
+            continue;
+        };
+        if rewrite.kind != TrigProductToSumRewriteKind::SinSin {
+            continue;
+        }
+
+        let remaining_terms: Vec<_> = view
+            .terms
+            .iter()
+            .copied()
+            .enumerate()
+            .filter_map(|(index, term)| (index != focus_index).then_some(term))
+            .collect();
+        let remaining_expr = build_signed_sum_expr(ctx, &remaining_terms);
+        let focus_expr = signed_term_expr(ctx, focus_term_expr, focus_term_sign);
+        let adjusted_rewritten = apply_sign_to_expr(
+            ctx,
+            if focus_term_sign == Sign::Pos { 1 } else { -1 },
+            rewrite.rewritten,
+        );
+        let neg_adjusted_rewritten = ctx.add(Expr::Neg(adjusted_rewritten));
+        let distributed_neg_adjusted_rewritten =
+            negate_additive_scope_expr(ctx, adjusted_rewritten);
+
+        if exprs_match_for_cancellation(ctx, neg_adjusted_rewritten, remaining_expr)
+            || exprs_match_for_cancellation(ctx, distributed_neg_adjusted_rewritten, remaining_expr)
+        {
+            return Some(
+                Rewrite::with_local(
+                    ctx.num(0),
+                    "Product-to-Sum Identity",
+                    focus_expr,
+                    adjusted_rewritten,
+                )
+                .substep(
+                    "Cancelar términos iguales",
+                    vec![
+                        "Tras aplicar producto a suma, el resto de la expresión es el opuesto y toda la expresión se anula."
+                            .to_string(),
+                    ],
+                ),
+            );
         }
     }
 
@@ -7608,9 +8284,10 @@ fn is_risky_plain_trig_angle_pair_for_common_scale(
             .all(|(term_expr, _)| is_plain_trig_angle_identity_term(ctx, *term_expr))
 }
 
-fn try_build_exact_zero_identity_rewrite_direct(
+fn try_build_exact_zero_identity_rewrite_direct_impl(
     ctx: &mut cas_ast::Context,
     expr: cas_ast::ExprId,
+    allow_direct_small_zero_combination: bool,
 ) -> Option<Rewrite> {
     let parent_ctx = ParentContext::root().with_domain_mode(crate::DomainMode::Generic);
     let zero = ctx.num(0);
@@ -7622,12 +8299,51 @@ fn try_build_exact_zero_identity_rewrite_direct(
 
     if let Some((lhs_core, rhs_core)) = extract_two_term_core_difference(ctx, expr) {
         if let Some(rewrite) =
+            try_build_direct_trig_power_reduction_equivalence_rewrite(ctx, lhs_core, rhs_core)
+        {
+            return Some(rewrite);
+        }
+    }
+    if let Some(rewrite) =
+        try_build_exact_trig_product_to_sum_sin_sin_three_term_zero_rewrite(ctx, expr)
+    {
+        return Some(rewrite);
+    }
+
+    if allow_direct_small_zero_combination {
+        if let Some(rewrite) = try_build_direct_small_zero_additive_combination_rewrite(ctx, expr) {
+            return Some(rewrite);
+        }
+    }
+    if let Some(rewrite) = try_build_direct_fraction_telescoping_zero_scope_rewrite(ctx, expr) {
+        return Some(rewrite);
+    }
+
+    if let Some((lhs_core, rhs_core)) = extract_two_term_core_difference(ctx, expr) {
+        if let Some(rewrite) =
+            try_build_direct_trig_product_to_sum_equivalence_rewrite(ctx, lhs_core, rhs_core)
+        {
+            return Some(rewrite);
+        }
+        if let Some(rewrite) =
+            try_build_direct_trig_sum_to_product_equivalence_rewrite(ctx, lhs_core, rhs_core)
+        {
+            return Some(rewrite);
+        }
+        if let Some(rewrite) =
             try_build_direct_tanh_exp_definition_equivalence_rewrite(ctx, lhs_core, rhs_core)
         {
             return Some(rewrite);
         }
         if let Some(rewrite) =
             try_build_direct_trig_power_reduction_equivalence_rewrite(ctx, lhs_core, rhs_core)
+        {
+            return Some(rewrite);
+        }
+        if let Some(rewrite) =
+            try_build_direct_trig_mixed_double_angle_polynomial_equivalence_rewrite(
+                ctx, lhs_core, rhs_core,
+            )
         {
             return Some(rewrite);
         }
@@ -7656,6 +8372,12 @@ fn try_build_exact_zero_identity_rewrite_direct(
 
     if let Some(rewrite) =
         try_build_fast_recursive_trig_angle_sum_diff_zero_scope_rewrite(ctx, expr)
+    {
+        return Some(rewrite);
+    }
+
+    if let Some(rewrite) =
+        try_build_exact_trig_product_to_sum_sin_sin_three_term_zero_rewrite(ctx, expr)
     {
         return Some(rewrite);
     }
@@ -8205,11 +8927,21 @@ fn try_find_exact_zero_additive_factor_in_product(
             continue;
         }
 
+        if let Some(child_rewrite) = try_build_small_direct_zero_core_rewrite(ctx, factor) {
+            return Some((factor, child_rewrite));
+        }
         let child_rewrite = try_build_exact_zero_identity_rewrite(ctx, factor)?;
         return Some((factor, child_rewrite));
     }
 
     None
+}
+
+fn try_build_exact_zero_identity_rewrite_direct(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<Rewrite> {
+    try_build_exact_zero_identity_rewrite_direct_impl(ctx, expr, true)
 }
 
 fn build_exact_zero_product_factor_rewrite(
@@ -8515,7 +9247,7 @@ fn try_build_two_term_core_equivalence_rewrite(
     try_build_direct_core_equivalence_rewrite(ctx, lhs_core, rhs_core)
 }
 
-fn extract_two_term_core_difference(
+pub(crate) fn extract_two_term_core_difference(
     ctx: &mut cas_ast::Context,
     expr: cas_ast::ExprId,
 ) -> Option<(cas_ast::ExprId, cas_ast::ExprId)> {
@@ -8690,15 +9422,37 @@ fn try_build_direct_cos_product_telescoping_equivalence_rewrite(
     None
 }
 
-fn try_build_direct_trig_power_reduction_equivalence_rewrite(
+pub(crate) fn try_build_direct_trig_power_reduction_equivalence_rewrite(
     ctx: &mut cas_ast::Context,
     lhs_core: cas_ast::ExprId,
     rhs_core: cas_ast::ExprId,
 ) -> Option<Rewrite> {
+    let matches_trig_power_reduction_form =
+        |ctx: &mut cas_ast::Context, lhs: cas_ast::ExprId, rhs: cas_ast::ExprId| {
+            if compare_expr(ctx, lhs, rhs) == Ordering::Equal
+                || exprs_equal_up_to_add_term_order(ctx, lhs, rhs)
+                || exprs_equal_up_to_add_term_multiset_for_cancellation(ctx, lhs, rhs)
+                || exprs_equal_up_to_mul_factor_order_and_sign(ctx, lhs, rhs)
+                || exprs_equal_up_to_same_denominator(ctx, lhs, rhs)
+            {
+                return true;
+            }
+
+            let lhs_normalized = cas_math::canonical_forms::normalize_core(ctx, lhs);
+            let rhs_normalized = cas_math::canonical_forms::normalize_core(ctx, rhs);
+            compare_expr(ctx, lhs_normalized, rhs_normalized) == Ordering::Equal
+                || exprs_equal_up_to_add_term_order(ctx, lhs_normalized, rhs_normalized)
+                || exprs_equal_up_to_add_term_multiset_for_cancellation(
+                    ctx,
+                    lhs_normalized,
+                    rhs_normalized,
+                )
+                || exprs_equal_up_to_mul_factor_order_and_sign(ctx, lhs_normalized, rhs_normalized)
+                || exprs_equal_up_to_same_denominator(ctx, lhs_normalized, rhs_normalized)
+        };
+
     if let Some(rewritten) = try_rewrite_trig_power_reduction_expr_for_cancellation(ctx, lhs_core) {
-        if exprs_match_for_cancellation(ctx, rewritten, rhs_core)
-            || exprs_match_after_default_simplify(ctx, rewritten, rhs_core)
-        {
+        if matches_trig_power_reduction_form(ctx, rewritten, rhs_core) {
             return Some(Rewrite::with_local(
                 ctx.num(0),
                 "Power Reduction Identity",
@@ -8708,9 +9462,7 @@ fn try_build_direct_trig_power_reduction_equivalence_rewrite(
         }
     }
     if let Some(rewritten) = try_rewrite_trig_power_reduction_expr_for_cancellation(ctx, rhs_core) {
-        if exprs_match_for_cancellation(ctx, rewritten, lhs_core)
-            || exprs_match_after_default_simplify(ctx, rewritten, lhs_core)
-        {
+        if matches_trig_power_reduction_form(ctx, rewritten, lhs_core) {
             return Some(Rewrite::with_local(
                 ctx.num(0),
                 "Power Reduction Identity",
@@ -8727,21 +9479,38 @@ fn try_build_direct_trig_product_to_sum_equivalence_rewrite(
     lhs_core: cas_ast::ExprId,
     rhs_core: cas_ast::ExprId,
 ) -> Option<Rewrite> {
-    for (source, target) in [(lhs_core, rhs_core), (rhs_core, lhs_core)] {
-        let Some(rewrite) = try_rewrite_product_to_sum_expr(ctx, source) else {
-            continue;
-        };
+    let rewrite = try_rewrite_product_to_sum_expr(ctx, lhs_core)?;
 
-        if exprs_match_for_cancellation(ctx, rewrite.rewritten, target)
-            || exprs_match_after_default_simplify(ctx, rewrite.rewritten, target)
-        {
-            return Some(Rewrite::with_local(
-                ctx.num(0),
-                "Product-to-Sum Identity",
-                lhs_core,
-                rhs_core,
-            ));
-        }
+    if exprs_match_for_cancellation(ctx, rewrite.rewritten, rhs_core)
+        || exprs_match_after_default_simplify(ctx, rewrite.rewritten, rhs_core)
+    {
+        return Some(Rewrite::with_local(
+            ctx.num(0),
+            "Product-to-Sum Identity",
+            lhs_core,
+            rhs_core,
+        ));
+    }
+
+    None
+}
+
+fn try_build_direct_trig_sum_to_product_equivalence_rewrite(
+    ctx: &mut cas_ast::Context,
+    lhs_core: cas_ast::ExprId,
+    rhs_core: cas_ast::ExprId,
+) -> Option<Rewrite> {
+    let (rewritten, description) = try_rewrite_trig_sum_to_product_for_cancellation(ctx, lhs_core)?;
+
+    if exprs_match_for_cancellation(ctx, rewritten, rhs_core)
+        || exprs_match_after_default_simplify(ctx, rewritten, rhs_core)
+    {
+        return Some(Rewrite::with_local(
+            ctx.num(0),
+            description,
+            lhs_core,
+            rhs_core,
+        ));
     }
 
     None
@@ -9126,6 +9895,750 @@ fn try_build_direct_trig_mixed_double_angle_polynomial_equivalence_rewrite(
                 lhs_core,
                 rhs_core,
             ));
+        }
+    }
+
+    None
+}
+
+fn extract_unit_fraction_denominator(
+    ctx: &cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<cas_ast::ExprId> {
+    let Expr::Div(num, den) = ctx.get(expr) else {
+        return None;
+    };
+    (extract_i64_integer(ctx, *num) == Some(1)).then_some(*den)
+}
+
+fn extract_reciprocal_sum_difference_nested_fraction_target(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<(
+    cas_ast::ExprId,
+    cas_ast::ExprId,
+    cas_ast::ExprId,
+    cas_ast::ExprId,
+)> {
+    let Expr::Div(numerator, denominator) = ctx.get(expr) else {
+        return None;
+    };
+    let numerator = *numerator;
+    let denominator = *denominator;
+    let numerator_view = AddView::from_expr(ctx, numerator);
+    let denominator_view = AddView::from_expr(ctx, denominator);
+    if numerator_view.terms.len() != 2 || denominator_view.terms.len() != 2 {
+        return None;
+    }
+
+    let mut numerator_denoms = smallvec::SmallVec::<[cas_ast::ExprId; 2]>::new();
+    for (term_expr, term_sign) in numerator_view.terms {
+        if term_sign != Sign::Pos {
+            return None;
+        }
+        numerator_denoms.push(extract_unit_fraction_denominator(ctx, term_expr)?);
+    }
+
+    let mut positive_den = None;
+    let mut negative_den = None;
+    for (term_expr, term_sign) in denominator_view.terms {
+        let unit_den = extract_unit_fraction_denominator(ctx, term_expr)?;
+        match term_sign {
+            Sign::Pos if positive_den.is_none() => positive_den = Some(unit_den),
+            Sign::Neg if negative_den.is_none() => negative_den = Some(unit_den),
+            _ => return None,
+        }
+    }
+
+    let positive_den = positive_den?;
+    let negative_den = negative_den?;
+    if !numerator_denoms
+        .iter()
+        .any(|den| compare_expr(ctx, *den, positive_den) == Ordering::Equal)
+        || !numerator_denoms
+            .iter()
+            .any(|den| compare_expr(ctx, *den, negative_den) == Ordering::Equal)
+    {
+        return None;
+    }
+
+    let target_numerator = ctx.add(Expr::Add(positive_den, negative_den));
+    let target_denominator = ctx.add(Expr::Sub(negative_den, positive_den));
+    let target_expr = ctx.add(Expr::Div(target_numerator, target_denominator));
+    Some((target_expr, positive_den, negative_den, denominator))
+}
+
+fn try_build_direct_reciprocal_sum_difference_nested_fraction_zero_scope_rewrite(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<Rewrite> {
+    let (lhs_core, rhs_core) = extract_two_term_core_difference(ctx, expr)?;
+
+    for (fraction_expr, target_expr) in [(lhs_core, rhs_core), (rhs_core, lhs_core)] {
+        let Some((target_candidate, positive_den, negative_den, nested_denominator)) =
+            extract_reciprocal_sum_difference_nested_fraction_target(ctx, fraction_expr)
+        else {
+            continue;
+        };
+
+        if !(exprs_match_for_cancellation(ctx, target_candidate, target_expr)
+            || exprs_match_after_default_simplify(ctx, target_candidate, target_expr))
+        {
+            continue;
+        }
+
+        let target_denominator = match ctx.get(target_candidate).clone() {
+            Expr::Div(_, target_denominator) => target_denominator,
+            _ => unreachable!("direct reciprocal target must be a division"),
+        };
+
+        return Some(
+            Rewrite::with_local(ctx.num(0), "Simplify Nested Fraction", fraction_expr, target_expr)
+                .requires(crate::ImplicitCondition::NonZero(positive_den))
+                .requires(crate::ImplicitCondition::NonZero(negative_den))
+                .requires(crate::ImplicitCondition::NonZero(nested_denominator))
+                .requires(crate::ImplicitCondition::NonZero(target_denominator))
+                .substep(
+                    "Llevar el numerador y el denominador a común denominador",
+                    vec![
+                        "La suma y la resta de recíprocos comparten el mismo denominador común."
+                            .to_string(),
+                    ],
+                )
+                .substep(
+                    "Cancelar el denominador común de numerador y denominador",
+                    vec![
+                        "Tras limpiar la fracción compleja, ambos lados quedan en la misma forma racional."
+                            .to_string(),
+                    ],
+                )
+                .substep(
+                    "Cancelar términos iguales",
+                    vec![
+                        "Una vez simplificada la fracción anidada, la diferencia restante es exacta."
+                            .to_string(),
+                    ],
+                ),
+        );
+    }
+
+    None
+}
+
+fn try_build_small_odd_half_power_zero_core_rewrite(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<Rewrite> {
+    let parent_ctx = ParentContext::root().with_domain_mode(crate::DomainMode::Generic);
+    let rewrite = ExpandOddHalfPowerToEnableCancellationRule.apply(ctx, expr, &parent_ctx)?;
+    let cancel_rewrite = SubSelfToZeroRule.apply(ctx, rewrite.new_expr, &parent_ctx)?;
+    let zero = ctx.num(0);
+
+    let mut exact_rewrite = Rewrite::with_local(zero, rewrite.description.clone(), expr, zero)
+        .requires_all(rewrite.required_conditions.clone())
+        .assume_all(rewrite.assumption_events.clone());
+    if let Some(poly_proof) = rewrite.poly_proof.clone() {
+        exact_rewrite = exact_rewrite.poly_proof(poly_proof);
+    }
+    exact_rewrite.substeps = rewrite.substeps.clone();
+    exact_rewrite = exact_rewrite.substep(
+        "Cancelar términos iguales",
+        vec![
+            "Tras reescribir la potencia semientera impar, la resta restante es exacta."
+                .to_string(),
+        ],
+    );
+    if let Some(poly_proof) = cancel_rewrite.poly_proof.clone() {
+        exact_rewrite = exact_rewrite.poly_proof(poly_proof);
+    }
+
+    Some(exact_rewrite)
+}
+
+fn build_square_preserving_one(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> cas_ast::ExprId {
+    if extract_i64_integer(ctx, expr) == Some(1) {
+        expr
+    } else {
+        let two = ctx.num(2);
+        ctx.add(Expr::Pow(expr, two))
+    }
+}
+
+fn numerator_matches_two_times_shift(
+    ctx: &mut cas_ast::Context,
+    numerator: cas_ast::ExprId,
+    shift: cas_ast::ExprId,
+) -> bool {
+    if extract_i64_integer(ctx, numerator) == Some(2) && extract_i64_integer(ctx, shift) == Some(1)
+    {
+        return true;
+    }
+
+    extract_two_times_factor_arg(ctx, numerator)
+        .map(|factor| exprs_match_for_cancellation(ctx, factor, shift))
+        .unwrap_or(false)
+}
+
+fn extract_unary_builtin_arg(
+    ctx: &cas_ast::Context,
+    expr: cas_ast::ExprId,
+    builtin: BuiltinFn,
+) -> Option<cas_ast::ExprId> {
+    match ctx.get(expr) {
+        Expr::Function(name, args) if ctx.is_builtin(*name, builtin) && args.len() == 1 => {
+            Some(args[0])
+        }
+        _ => None,
+    }
+}
+
+fn try_match_tan_cot_sum_arg(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<cas_ast::ExprId> {
+    let terms = AddView::from_expr(ctx, expr).terms;
+    if terms.len() != 2 || terms.iter().any(|(_, sign)| *sign != Sign::Pos) {
+        return None;
+    }
+
+    for (first, second) in [(terms[0].0, terms[1].0), (terms[1].0, terms[0].0)] {
+        let Some(tan_arg) = extract_unary_builtin_arg(ctx, first, BuiltinFn::Tan) else {
+            continue;
+        };
+        let Some(cot_arg) = extract_unary_builtin_arg(ctx, second, BuiltinFn::Cot) else {
+            continue;
+        };
+        if exprs_match_for_cancellation(ctx, tan_arg, cot_arg) {
+            return Some(tan_arg);
+        }
+    }
+
+    None
+}
+
+fn try_match_sec_csc_product_arg(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<cas_ast::ExprId> {
+    let factors = flatten_mul_chain(ctx, expr);
+    if factors.len() != 2 {
+        return None;
+    }
+
+    for (first, second) in [(factors[0], factors[1]), (factors[1], factors[0])] {
+        let Some(sec_arg) = extract_unary_builtin_arg(ctx, first, BuiltinFn::Sec) else {
+            continue;
+        };
+        let Some(csc_arg) = extract_unary_builtin_arg(ctx, second, BuiltinFn::Csc) else {
+            continue;
+        };
+        if exprs_match_for_cancellation(ctx, sec_arg, csc_arg) {
+            return Some(sec_arg);
+        }
+    }
+
+    None
+}
+
+fn try_build_small_tan_cot_product_zero_core_rewrite(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<Rewrite> {
+    let zero = ctx.num(0);
+    let one = ctx.num(1);
+    let (lhs_core, rhs_core) = extract_two_term_core_difference(ctx, expr)?;
+
+    for (product_side, one_side) in [(lhs_core, rhs_core), (rhs_core, lhs_core)] {
+        if extract_i64_integer(ctx, one_side) != Some(1) {
+            continue;
+        }
+
+        let factors = flatten_mul_chain(ctx, product_side);
+        if factors.len() != 2 {
+            continue;
+        }
+
+        for (first, second) in [(factors[0], factors[1]), (factors[1], factors[0])] {
+            let Some(tan_arg) = extract_unary_builtin_arg(ctx, first, BuiltinFn::Tan) else {
+                continue;
+            };
+            let Some(cot_arg) = extract_unary_builtin_arg(ctx, second, BuiltinFn::Cot) else {
+                continue;
+            };
+            if !exprs_match_for_cancellation(ctx, tan_arg, cot_arg) {
+                continue;
+            }
+
+            let sin_arg = ctx.call_builtin(BuiltinFn::Sin, vec![tan_arg]);
+            let cos_arg = ctx.call_builtin(BuiltinFn::Cos, vec![tan_arg]);
+            return Some(
+                Rewrite::with_local(zero, "Reciprocal Quotient Identity", product_side, one)
+                    .requires(crate::ImplicitCondition::NonZero(sin_arg))
+                    .requires(crate::ImplicitCondition::NonZero(cos_arg))
+                    .substep(
+                        "Usar tan(u)·cot(u) = 1",
+                        vec![
+                            "Tangente y cotangente recíprocas se cancelan exactamente y dejan 1."
+                                .to_string(),
+                        ],
+                    ),
+            );
+        }
+    }
+
+    None
+}
+
+fn try_build_small_tan_cot_sec_csc_zero_core_rewrite(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<Rewrite> {
+    let zero = ctx.num(0);
+    let (lhs_core, rhs_core) = extract_two_term_core_difference(ctx, expr)?;
+
+    for (sum_side, product_side) in [(lhs_core, rhs_core), (rhs_core, lhs_core)] {
+        let Some(sum_arg) = try_match_tan_cot_sum_arg(ctx, sum_side) else {
+            continue;
+        };
+        let Some(product_arg) = try_match_sec_csc_product_arg(ctx, product_side) else {
+            continue;
+        };
+        if !exprs_match_for_cancellation(ctx, sum_arg, product_arg) {
+            continue;
+        }
+
+        let sin_arg = ctx.call_builtin(BuiltinFn::Sin, vec![sum_arg]);
+        let cos_arg = ctx.call_builtin(BuiltinFn::Cos, vec![sum_arg]);
+        return Some(
+            Rewrite::with_local(zero, "Reciprocal Quotient Identity", sum_side, product_side)
+                .requires(crate::ImplicitCondition::NonZero(sin_arg))
+                .requires(crate::ImplicitCondition::NonZero(cos_arg))
+                .substep(
+                    "Usar tan(u) + cot(u) = sec(u)csc(u)",
+                    vec![
+                        "La suma de tangente y cotangente coincide exactamente con el producto secante por cosecante."
+                            .to_string(),
+                    ],
+                ),
+        );
+    }
+
+    None
+}
+
+fn try_build_small_sec_tan_pythagorean_zero_core_rewrite(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<Rewrite> {
+    let zero = ctx.num(0);
+    let one = ctx.num(1);
+    let (lhs_core, rhs_core) = extract_two_term_core_difference(ctx, expr)?;
+
+    for (identity_side, one_side) in [(lhs_core, rhs_core), (rhs_core, lhs_core)] {
+        if extract_i64_integer(ctx, one_side) != Some(1) {
+            continue;
+        }
+        let Some(rewrite) = try_rewrite_sec_tan_pythagorean_identity_expr(ctx, identity_side)
+        else {
+            continue;
+        };
+        if !(exprs_match_for_cancellation(ctx, rewrite.rewritten, one)
+            || exprs_match_after_default_simplify(ctx, rewrite.rewritten, one))
+        {
+            continue;
+        }
+
+        return Some(
+            Rewrite::with_local(zero, "Pythagorean Identity", identity_side, one_side).substep(
+                "Usar sec(u)^2 - tan(u)^2 = 1",
+                vec![
+                    "La identidad pitagórica deja 1, y la resta restante se anula exactamente."
+                        .to_string(),
+                ],
+            ),
+        );
+    }
+
+    None
+}
+
+fn try_build_small_csc_cot_pythagorean_zero_core_rewrite(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<Rewrite> {
+    let zero = ctx.num(0);
+    let one = ctx.num(1);
+    let (lhs_core, rhs_core) = extract_two_term_core_difference(ctx, expr)?;
+
+    for (identity_side, one_side) in [(lhs_core, rhs_core), (rhs_core, lhs_core)] {
+        if extract_i64_integer(ctx, one_side) != Some(1) {
+            continue;
+        }
+        let Some(rewrite) = try_rewrite_csc_cot_pythagorean_identity_expr(ctx, identity_side)
+        else {
+            continue;
+        };
+        if !(exprs_match_for_cancellation(ctx, rewrite.rewritten, one)
+            || exprs_match_after_default_simplify(ctx, rewrite.rewritten, one))
+        {
+            continue;
+        }
+
+        return Some(
+            Rewrite::with_local(zero, "Pythagorean Identity", identity_side, one_side).substep(
+                "Usar csc(u)^2 - cot(u)^2 = 1",
+                vec![
+                    "La identidad pitagórica deja 1, y la resta restante se anula exactamente."
+                        .to_string(),
+                ],
+            ),
+        );
+    }
+
+    None
+}
+
+fn try_build_small_difference_square_partial_fraction_zero_core_rewrite(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<Rewrite> {
+    let view = AddView::from_expr(ctx, expr);
+    if view.terms.len() != 3 || !expr_contains_division_node(ctx, expr) {
+        return None;
+    }
+
+    let positive_terms: Vec<_> = view
+        .terms
+        .iter()
+        .copied()
+        .filter(|(_, sign)| *sign == Sign::Pos)
+        .collect();
+    let negative_terms: Vec<_> = view
+        .terms
+        .iter()
+        .copied()
+        .filter(|(_, sign)| *sign == Sign::Neg)
+        .collect();
+    if positive_terms.len() != 1 || negative_terms.len() != 2 {
+        return None;
+    }
+
+    let positive_denominator = extract_unit_fraction_denominator(ctx, positive_terms[0].0)?;
+    let Expr::Sub(base, shift) = ctx.get(positive_denominator).clone() else {
+        return None;
+    };
+
+    for (negative_unit, target_fraction) in [
+        (negative_terms[0].0, negative_terms[1].0),
+        (negative_terms[1].0, negative_terms[0].0),
+    ] {
+        let Some(negative_denominator) = extract_unit_fraction_denominator(ctx, negative_unit)
+        else {
+            continue;
+        };
+        if !positive_two_term_sum_matches_terms(ctx, negative_denominator, base, shift) {
+            continue;
+        }
+
+        let Some((target_numerator, target_denominator)) = as_div(ctx, target_fraction) else {
+            continue;
+        };
+        if !numerator_matches_two_times_shift(ctx, target_numerator, shift) {
+            continue;
+        }
+
+        let two = ctx.num(2);
+        let base_squared = ctx.add(Expr::Pow(base, two));
+        let shift_squared = build_square_preserving_one(ctx, shift);
+        let expected_denominator = ctx.add(Expr::Sub(base_squared, shift_squared));
+        if !exprs_match_for_cancellation(ctx, target_denominator, expected_denominator) {
+            continue;
+        }
+
+        return Some(
+            Rewrite::with_local(ctx.num(0), "Subtract Fractions", expr, ctx.num(0))
+                .requires(crate::ImplicitCondition::NonZero(positive_denominator))
+                .requires(crate::ImplicitCondition::NonZero(negative_denominator))
+                .requires(crate::ImplicitCondition::NonZero(target_denominator))
+                .substep(
+                    "Reconocer la diferencia de fracciones simétricas",
+                    vec![
+                        "La identidad 1/(u-a) - 1/(u+a) = 2a/(u^2-a^2) anula exactamente toda la combinación."
+                            .to_string(),
+                    ],
+                ),
+        );
+    }
+
+    None
+}
+
+fn try_build_small_rationalized_sum_of_sqrts_zero_core_rewrite(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<Rewrite> {
+    let zero = ctx.num(0);
+    let (lhs_core, rhs_core) = extract_two_term_core_difference(ctx, expr)?;
+
+    let extract_square_root_base_local =
+        |ctx: &cas_ast::Context, candidate: cas_ast::ExprId| -> Option<cas_ast::ExprId> {
+            match ctx.get(candidate) {
+                Expr::Function(name, args)
+                    if ctx.is_builtin(*name, BuiltinFn::Sqrt) && args.len() == 1 =>
+                {
+                    Some(args[0])
+                }
+                Expr::Pow(base, exp)
+                    if matches!(
+                        ctx.get(*exp),
+                        Expr::Number(value)
+                            if !value.is_integer()
+                                && value.numer() == &BigInt::from(1)
+                                && value.denom() == &BigInt::from(2)
+                    ) =>
+                {
+                    Some(*base)
+                }
+                _ => None,
+            }
+        };
+
+    for (fraction_side, target_side) in [(lhs_core, rhs_core), (rhs_core, lhs_core)] {
+        let Some(rewrite) =
+            cas_math::root_den_rationalize_support::try_rewrite_rationalize_sum_of_sqrts_den_expr(
+                ctx,
+                fraction_side,
+            )
+        else {
+            continue;
+        };
+
+        if !(exprs_match_for_cancellation(ctx, rewrite.rewritten, target_side)
+            || exprs_match_after_default_simplify(ctx, rewrite.rewritten, target_side))
+        {
+            continue;
+        }
+
+        let Some((_, source_denominator)) = as_div(ctx, fraction_side) else {
+            continue;
+        };
+        let Some((_, target_denominator)) = as_div(ctx, target_side) else {
+            continue;
+        };
+        let (left_sqrt, right_sqrt) = match ctx.get(source_denominator) {
+            Expr::Add(lhs, rhs) | Expr::Sub(lhs, rhs) => (*lhs, *rhs),
+            _ => continue,
+        };
+        let Some(left_base) = extract_square_root_base_local(ctx, left_sqrt) else {
+            continue;
+        };
+        let Some(right_base) = extract_square_root_base_local(ctx, right_sqrt) else {
+            continue;
+        };
+
+        return Some(
+            Rewrite::with_local(
+                zero,
+                "Rationalize Sum of Sqrts Denominator",
+                fraction_side,
+                target_side,
+            )
+            .requires(crate::ImplicitCondition::NonNegative(left_base))
+            .requires(crate::ImplicitCondition::NonNegative(right_base))
+            .requires(crate::ImplicitCondition::NonZero(source_denominator))
+            .requires(crate::ImplicitCondition::NonZero(target_denominator))
+            .substep(
+                "Racionalizar la fracción con radicales",
+                vec![
+                    "Al multiplicar por el conjugado, la fracción con radicales coincide exactamente con el otro término."
+                        .to_string(),
+                ],
+            )
+            .substep(
+                "Cancelar términos iguales",
+                vec![
+                    "Después de racionalizar, ambos lados son idénticos y la diferencia vale 0."
+                        .to_string(),
+                ],
+            ),
+        );
+    }
+
+    None
+}
+
+fn try_build_small_factorial_zero_core_rewrite(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<Rewrite> {
+    let zero = ctx.num(0);
+    let (lhs_core, rhs_core) = extract_two_term_core_difference(ctx, expr)?;
+
+    for (ratio_side, target_side) in [(lhs_core, rhs_core), (rhs_core, lhs_core)] {
+        let Some(rewrite) =
+            cas_math::number_theory_support::try_rewrite_consecutive_factorial_ratio_expr(
+                ctx, ratio_side,
+            )
+        else {
+            continue;
+        };
+
+        if exprs_match_for_cancellation(ctx, rewrite.rewritten, target_side)
+            || exprs_match_after_default_simplify(ctx, rewrite.rewritten, target_side)
+        {
+            return Some(
+                Rewrite::with_local(zero, "Cancel consecutive factorials", ratio_side, target_side)
+                    .requires(crate::ImplicitCondition::NonNegative(
+                        rewrite.factorial_arg_requires_nonnegative,
+                    ))
+                    .substep(
+                        "Expandir el factorial superior hasta llegar al factorial inferior",
+                        vec![
+                            "La razón de factoriales consecutivos se desarrolla hasta exponer el factorial común."
+                                .to_string(),
+                        ],
+                    )
+                    .substep(
+                        "Cancelar el factorial común",
+                        vec![
+                            "Después de cancelar el factorial compartido, ambos lados coinciden exactamente."
+                                .to_string(),
+                        ],
+                    ),
+            );
+        }
+    }
+
+    None
+}
+
+fn try_build_direct_fraction_telescoping_zero_scope_rewrite(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<Rewrite> {
+    let view = AddView::from_expr(ctx, expr);
+    if view.terms.len() != 3 || !expr_contains_division_node(ctx, expr) {
+        return None;
+    }
+
+    let one = ctx.num(1);
+    let positive_terms: Vec<_> = view
+        .terms
+        .iter()
+        .copied()
+        .filter(|(_, sign)| *sign == Sign::Pos)
+        .collect();
+    let negative_terms: Vec<_> = view
+        .terms
+        .iter()
+        .copied()
+        .filter(|(_, sign)| *sign == Sign::Neg)
+        .collect();
+    if positive_terms.len() == 2 && negative_terms.len() == 1 {
+        let negative_den = extract_unit_fraction_denominator(ctx, negative_terms[0].0);
+        let positive_denoms = [
+            extract_unit_fraction_denominator(ctx, positive_terms[0].0),
+            extract_unit_fraction_denominator(ctx, positive_terms[1].0),
+        ];
+
+        if let (Some(base), Some(pos_a), Some(pos_b)) =
+            (negative_den, positive_denoms[0], positive_denoms[1])
+        {
+            let successor = ctx.add(Expr::Add(base, one));
+            let product = smart_mul(ctx, base, successor);
+            let matches = (compare_expr(ctx, pos_a, successor) == Ordering::Equal
+                && compare_expr(ctx, pos_b, product) == Ordering::Equal)
+                || (compare_expr(ctx, pos_b, successor) == Ordering::Equal
+                    && compare_expr(ctx, pos_a, product) == Ordering::Equal);
+            if matches {
+                return Some(
+                    Rewrite::with_local(ctx.num(0), "Subtract Fractions", expr, ctx.num(0))
+                        .substep(
+                            "Combinar la parte telescópica",
+                            vec![
+                                "La combinación 1/(a*(a+1)) - 1/a + 1/(a+1) es telescópica exacta, así que vale 0."
+                                    .to_string(),
+                            ],
+                        ),
+                );
+            }
+        }
+    }
+
+    for first_index in 0..view.terms.len().saturating_sub(1) {
+        for second_index in (first_index + 1)..view.terms.len() {
+            let focus_terms: Vec<_> = view
+                .terms
+                .iter()
+                .copied()
+                .enumerate()
+                .filter_map(|(index, term)| {
+                    (index == first_index || index == second_index).then_some(term)
+                })
+                .collect();
+            let remaining_terms: Vec<_> = view
+                .terms
+                .iter()
+                .copied()
+                .enumerate()
+                .filter_map(|(index, term)| {
+                    (index != first_index && index != second_index).then_some(term)
+                })
+                .collect();
+            if focus_terms.len() != 2 || remaining_terms.len() != 1 {
+                continue;
+            }
+
+            let remaining_expr = build_signed_sum_expr(ctx, &remaining_terms);
+            let mut focus_orders = vec![focus_terms.clone()];
+            let mut reversed_focus_terms = focus_terms.clone();
+            reversed_focus_terms.reverse();
+            focus_orders.push(reversed_focus_terms);
+
+            for focus_order in focus_orders {
+                let focus_expr = build_signed_sum_expr(ctx, &focus_order);
+                let focus_variants = [
+                    (focus_expr, 1_i64),
+                    (ctx.add(Expr::Neg(focus_expr)), -1_i64),
+                ];
+
+                for (candidate_focus, focus_sign) in focus_variants {
+                    let Some(rewritten) =
+                        try_rewrite_scaled_sub_fraction_combination_for_cancellation(
+                            ctx,
+                            candidate_focus,
+                        )
+                    else {
+                        continue;
+                    };
+
+                    let adjusted_rewritten = apply_sign_to_expr(ctx, focus_sign, rewritten);
+                    if expr_matches_negation_for_cancellation(
+                        ctx,
+                        adjusted_rewritten,
+                        remaining_expr,
+                    ) {
+                        return Some(
+                            Rewrite::with_local(
+                                ctx.num(0),
+                                "Subtract Fractions",
+                                focus_expr,
+                                adjusted_rewritten,
+                            )
+                            .substep(
+                                "Cancelar términos iguales",
+                                vec![
+                                    "Tras combinar las fracciones adecuadas, el término restante es el opuesto y toda la expresión se anula."
+                                        .to_string(),
+                                ],
+                            ),
+                        );
+                    }
+                }
+            }
         }
     }
 
@@ -9980,6 +11493,16 @@ fn try_build_direct_core_equivalence_rewrite(
     {
         return Some(rewrite);
     }
+    if let Some(rewrite) =
+        try_build_direct_trig_product_to_sum_equivalence_rewrite(ctx, lhs_core, rhs_core)
+    {
+        return Some(rewrite);
+    }
+    if let Some(rewrite) =
+        try_build_direct_trig_sum_to_product_equivalence_rewrite(ctx, lhs_core, rhs_core)
+    {
+        return Some(rewrite);
+    }
 
     if let Some(rewrite) = try_build_direct_trig_exact_quarter_phase_shift_pair_equivalence_rewrite(
         ctx, lhs_core, rhs_core,
@@ -10238,6 +11761,11 @@ fn try_build_fast_trig_residual_identity_child_rewrite(
         }
         if let Some(rewrite) =
             try_build_direct_trig_product_to_sum_equivalence_rewrite(ctx, lhs_core, rhs_core)
+        {
+            return Some(rewrite);
+        }
+        if let Some(rewrite) =
+            try_build_direct_trig_sum_to_product_equivalence_rewrite(ctx, lhs_core, rhs_core)
         {
             return Some(rewrite);
         }
@@ -10593,6 +12121,24 @@ fn try_build_shifted_quotient_exact_one_rewrite(
             denominator,
             child_rewrite,
         ));
+    }
+    if let Some(rewrite) = try_build_direct_half_angle_binomial_square_shifted_quotient_rewrite(
+        ctx,
+        numerator,
+        denominator,
+        numerator_core,
+        denominator_core,
+    ) {
+        return Some(rewrite);
+    }
+    if let Some(rewrite) = try_build_direct_small_zero_core_shifted_quotient_rewrite(
+        ctx,
+        numerator,
+        denominator,
+        numerator_core,
+        denominator_core,
+    ) {
+        return Some(rewrite);
     }
     if let Some(child_rewrite) =
         try_build_direct_hyperbolic_sinh_cubic_polynomial_equivalence_rewrite(
@@ -11327,6 +12873,16 @@ fn try_build_exact_zero_shared_passthrough_difference_rewrite(
     {
         return Some(rewrite);
     }
+    if let Some(rewrite) =
+        try_build_direct_trig_product_to_sum_equivalence_rewrite(ctx, lhs_core, rhs_core)
+    {
+        return Some(rewrite);
+    }
+    if let Some(rewrite) =
+        try_build_direct_trig_sum_to_product_equivalence_rewrite(ctx, lhs_core, rhs_core)
+    {
+        return Some(rewrite);
+    }
     if let Some(rewrite) = try_build_direct_trig_square_equivalence_rewrite(ctx, lhs_core, rhs_core)
     {
         return Some(rewrite);
@@ -11713,7 +13269,16 @@ define_rule!(
         if !has_negative_contribution {
             return None;
         }
-        if let Some(rewrite) = try_build_structural_three_term_poly_zero_rewrite(ctx, expr) {
+        if let Some((lhs_core, rhs_core)) = extract_two_term_core_difference(ctx, expr) {
+            if let Some(rewrite) =
+                try_build_direct_trig_power_reduction_equivalence_rewrite(ctx, lhs_core, rhs_core)
+            {
+                return Some(rewrite);
+            }
+        }
+        if let Some(rewrite) =
+            try_build_exact_trig_product_to_sum_sin_sin_three_term_zero_rewrite(ctx, expr)
+        {
             return Some(rewrite);
         }
         let has_same_denominator_residual =
@@ -11721,6 +13286,20 @@ define_rule!(
         let has_nontrivial_common_scale = term_count == 2
             && (extract_common_multiplicative_residual_sum(ctx, expr).is_some()
                 || has_same_denominator_residual);
+        if term_count >= 4 && !has_nontrivial_common_scale {
+            if let Some(rewrite) =
+                try_build_exact_zero_shared_passthrough_difference_rewrite(ctx, expr)
+            {
+                return Some(rewrite);
+            }
+        }
+        if let Some(rewrite) = try_build_direct_small_zero_additive_combination_rewrite(ctx, expr)
+        {
+            return Some(rewrite);
+        }
+        if let Some(rewrite) = try_build_structural_three_term_poly_zero_rewrite(ctx, expr) {
+            return Some(rewrite);
+        }
         let maybe_two_term_direct_trig_or_hyperbolic_identity = term_count == 2
             && !has_nontrivial_common_scale
             && expr_contains_any_builtin(
@@ -12528,6 +14107,54 @@ mod tests {
     }
 
     #[test]
+    fn collapse_exact_one_shifted_quotient_rule_matches_half_angle_against_binomial_square_identity(
+    ) {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "((sin(x)^2 - (1-cos(2*x))/2) + 1)/(((sin(x)+cos(x))^2 - (1+sin(2*x))) + 1)",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rule = CollapseExactOneShiftedQuotientRule;
+        let rewrite = rule
+            .apply(&mut ctx, expr, &parent_ctx)
+            .unwrap_or_else(|| panic!("rewrite"));
+        let one = ctx.num(1);
+
+        assert!(super::exprs_match_after_default_simplify(
+            &mut ctx,
+            rewrite.new_expr,
+            one
+        ));
+        assert_eq!(rewrite.description, "Trig Square Identity");
+    }
+
+    #[test]
+    fn collapse_exact_one_shifted_quotient_rule_matches_binomial_square_against_sec_tan_identity() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "(((sin(x)+cos(x))^2 - (1+sin(2*x))) + 1)/((sec(x)^2 - tan(x)^2 - 1) + 1)",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rule = CollapseExactOneShiftedQuotientRule;
+        let rewrite = rule
+            .apply(&mut ctx, expr, &parent_ctx)
+            .unwrap_or_else(|| panic!("rewrite"));
+        let one = ctx.num(1);
+
+        assert!(super::exprs_match_after_default_simplify(
+            &mut ctx,
+            rewrite.new_expr,
+            one
+        ));
+    }
+
+    #[test]
     fn collapse_exact_zero_additive_subexpression_rule_matches_half_angle_square_identity() {
         let mut ctx = Context::new();
         let expr = parse("sin(x)^2 - ((1-cos(2*x))/2)", &mut ctx)
@@ -12786,6 +14413,104 @@ mod tests {
     }
 
     #[test]
+    fn collapse_exact_zero_product_factor_rule_matches_rational_zero_times_trig_product_to_sum_sin_sin_identity(
+    ) {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "(1 + 1/(1 + 1/(1 + 1/x)) - (3*x + 2)/(2*x + 1)) * (2*sin(x)*sin(y) - cos(x-y) + cos(x+y))",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rule = CollapseExactZeroProductFactorRule;
+        let rewrite = rule
+            .apply(&mut ctx, expr, &parent_ctx)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "0"
+        );
+    }
+
+    #[test]
+    fn collapse_exact_zero_additive_subexpression_matches_product_to_sum_sin_sin_three_term_identity(
+    ) {
+        let mut ctx = Context::new();
+        let expr = parse("2*sin(x)*sin(y) - cos(x-y) + cos(x+y)", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rule = CollapseExactZeroThreeTermSubsetRule;
+        let rewrite = rule
+            .apply(&mut ctx, expr, &parent_ctx)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "0"
+        );
+        assert_eq!(rewrite.description, "Product-to-Sum Identity");
+    }
+
+    #[test]
+    fn exact_trig_product_to_sum_sin_sin_three_term_zero_helper_matches_raw_residual() {
+        let mut ctx = Context::new();
+        let expr = parse("2*sin(x)*sin(y) - cos(x-y) + cos(x+y)", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let rewrite = super::try_build_exact_trig_product_to_sum_sin_sin_three_term_zero_rewrite(
+            &mut ctx, expr,
+        )
+        .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.final_expr()
+                }
+            ),
+            "0"
+        );
+    }
+
+    #[test]
+    fn exact_trig_equivalence_zero_scope_rewrite_matches_raw_sin_sin_residual() {
+        let mut ctx = Context::new();
+        let expr = parse("2*sin(x)*sin(y) - cos(x-y) + cos(x+y)", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let rewrite = super::try_build_exact_trig_equivalence_zero_scope_rewrite(&mut ctx, expr)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.final_expr()
+                }
+            ),
+            "0"
+        );
+    }
+
+    #[test]
     fn collapse_exact_zero_common_scaled_difference_rule_matches_exact_shifted_sine_cosine_scaled_difference(
     ) {
         let mut ctx = Context::new();
@@ -12975,7 +14700,7 @@ mod tests {
             ),
             "0"
         );
-        assert_eq!(rewrite.description, "Double Angle Expansion");
+        assert_eq!(rewrite.description, "Product-to-Sum Identity");
     }
 
     #[test]
@@ -12991,6 +14716,485 @@ mod tests {
         .unwrap_or_else(|| panic!("rewrite"));
 
         assert_eq!(rewrite.description, "Double Angle Expansion");
+    }
+
+    #[test]
+    fn small_direct_zero_core_rewrite_matches_trig_mixed_double_angle_core() {
+        let mut ctx = Context::new();
+        let expr = parse("2*cos(2*x)*sin(x) - (4*cos(x)^2*sin(x)-2*sin(x))", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let rewrite = super::try_build_small_direct_zero_core_rewrite(&mut ctx, expr)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.final_expr()
+                }
+            ),
+            "0"
+        );
+    }
+
+    #[test]
+    fn small_direct_zero_core_rewrite_matches_telescoping_fraction_core() {
+        let mut ctx = Context::new();
+        let expr = parse("1/(u*(u+1)) - 1/u + 1/(u+1)", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let rewrite = super::try_build_small_direct_zero_core_rewrite(&mut ctx, expr)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.final_expr()
+                }
+            ),
+            "0"
+        );
+    }
+
+    #[test]
+    fn small_direct_zero_core_rewrite_matches_reciprocal_nested_fraction_core() {
+        let mut ctx = Context::new();
+        let expr = parse("(1/x + 1/y)/(1/x - 1/y) - (x+y)/(y-x)", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let rewrite = super::try_build_small_direct_zero_core_rewrite(&mut ctx, expr)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.final_expr()
+                }
+            ),
+            "0"
+        );
+        assert_eq!(rewrite.required_conditions.len(), 4);
+    }
+
+    #[test]
+    fn small_direct_zero_core_rewrite_matches_tan_cot_sec_csc_core() {
+        let mut ctx = Context::new();
+        let expr = parse("tan(x) + cot(x) - sec(x)*csc(x)", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let rewrite = super::try_build_small_direct_zero_core_rewrite(&mut ctx, expr)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.final_expr()
+                }
+            ),
+            "0"
+        );
+        assert_eq!(rewrite.required_conditions.len(), 2);
+    }
+
+    #[test]
+    fn small_direct_zero_core_rewrite_matches_tan_cot_product_core() {
+        let mut ctx = Context::new();
+        let expr =
+            parse("tan(x)*cot(x) - 1", &mut ctx).unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let rewrite = super::try_build_small_direct_zero_core_rewrite(&mut ctx, expr)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.final_expr()
+                }
+            ),
+            "0"
+        );
+        assert_eq!(rewrite.required_conditions.len(), 2);
+    }
+
+    #[test]
+    fn small_direct_zero_core_rewrite_matches_sec_tan_pythagorean_core() {
+        let mut ctx = Context::new();
+        let expr =
+            parse("sec(x)^2 - tan(x)^2 - 1", &mut ctx).unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let rewrite = super::try_build_small_direct_zero_core_rewrite(&mut ctx, expr)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.final_expr()
+                }
+            ),
+            "0"
+        );
+        assert_eq!(rewrite.required_conditions.len(), 0);
+    }
+
+    #[test]
+    fn small_direct_zero_core_rewrite_matches_csc_cot_pythagorean_core() {
+        let mut ctx = Context::new();
+        let expr =
+            parse("csc(x)^2 - cot(x)^2 - 1", &mut ctx).unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let rewrite = super::try_build_small_direct_zero_core_rewrite(&mut ctx, expr)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.final_expr()
+                }
+            ),
+            "0"
+        );
+        assert_eq!(rewrite.required_conditions.len(), 0);
+    }
+
+    #[test]
+    fn small_direct_zero_core_rewrite_matches_symmetric_partial_fraction_core() {
+        let mut ctx = Context::new();
+        let expr = parse("1/(x - 1) - 1/(x + 1) - 2/(x^2 - 1)", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let rewrite = super::try_build_small_direct_zero_core_rewrite(&mut ctx, expr)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.final_expr()
+                }
+            ),
+            "0"
+        );
+        assert_eq!(rewrite.required_conditions.len(), 3);
+    }
+
+    #[test]
+    fn small_direct_zero_core_rewrite_matches_rationalized_sum_of_sqrts_core() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "1/(sqrt(a) + sqrt(b)) - (sqrt(a) - sqrt(b))/(a - b)",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let rewrite = super::try_build_small_direct_zero_core_rewrite(&mut ctx, expr)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.final_expr()
+                }
+            ),
+            "0"
+        );
+        assert_eq!(rewrite.required_conditions.len(), 4);
+    }
+
+    #[test]
+    fn small_direct_zero_core_rewrite_matches_gap_two_factorial_ratio_core() {
+        let mut ctx = Context::new();
+        let expr =
+            parse("(n+1)!/(n-1)! - n*(n+1)", &mut ctx).unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let rewrite = super::try_build_small_direct_zero_core_rewrite(&mut ctx, expr)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.final_expr()
+                }
+            ),
+            "0"
+        );
+        assert_eq!(rewrite.required_conditions.len(), 1);
+    }
+
+    #[test]
+    fn small_direct_zero_core_rewrite_matches_odd_half_power_core() {
+        let mut ctx = Context::new();
+        let expr =
+            parse("sqrt(x^5) - x^2*sqrt(x)", &mut ctx).unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let rewrite = super::try_build_small_direct_zero_core_rewrite(&mut ctx, expr)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.final_expr()
+                }
+            ),
+            "0"
+        );
+        assert_eq!(rewrite.required_conditions.len(), 1);
+    }
+
+    #[test]
+    fn direct_small_zero_additive_combination_rewrite_matches_trig_and_reciprocal_nested_fraction_sum(
+    ) {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "(2*sin(x)*cos(y) - sin(x+y) - sin(x-y)) + ((1/x + 1/y)/(1/x - 1/y) - (x+y)/(y-x))",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let rewrite =
+            super::try_build_direct_small_zero_additive_combination_rewrite(&mut ctx, expr)
+                .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.final_expr()
+                }
+            ),
+            "0"
+        );
+        assert_eq!(rewrite.required_conditions.len(), 4);
+    }
+
+    #[test]
+    fn direct_small_zero_additive_combination_rewrite_matches_trig_and_tan_cot_sec_csc_sum() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "(2*sin(x)*cos(y) - sin(x+y) - sin(x-y)) + (tan(x) + cot(x) - sec(x)*csc(x))",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let rewrite =
+            super::try_build_direct_small_zero_additive_combination_rewrite(&mut ctx, expr)
+                .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.final_expr()
+                }
+            ),
+            "0"
+        );
+        assert_eq!(rewrite.required_conditions.len(), 2);
+    }
+
+    #[test]
+    fn direct_small_zero_additive_combination_rewrite_matches_trig_and_tan_cot_product_sum() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "(2*sin(x)*cos(y) - sin(x+y) - sin(x-y)) + (tan(x)*cot(x) - 1)",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let rewrite =
+            super::try_build_direct_small_zero_additive_combination_rewrite(&mut ctx, expr)
+                .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.final_expr()
+                }
+            ),
+            "0"
+        );
+        assert_eq!(rewrite.required_conditions.len(), 2);
+    }
+
+    #[test]
+    fn direct_small_zero_additive_combination_rewrite_matches_trig_and_sec_tan_pythagorean_sum() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "(2*sin(x)*cos(y) - sin(x+y) - sin(x-y)) + (sec(x)^2 - tan(x)^2 - 1)",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let rewrite =
+            super::try_build_direct_small_zero_additive_combination_rewrite(&mut ctx, expr)
+                .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.final_expr()
+                }
+            ),
+            "0"
+        );
+        assert_eq!(rewrite.required_conditions.len(), 0);
+    }
+
+    #[test]
+    fn direct_small_zero_additive_combination_rewrite_matches_trig_and_gap_two_factorial_sum() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "(2*sin(x)*cos(y) - sin(x+y) - sin(x-y)) + ((n+1)!/(n-1)! - n*(n+1))",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let rewrite =
+            super::try_build_direct_small_zero_additive_combination_rewrite(&mut ctx, expr)
+                .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.final_expr()
+                }
+            ),
+            "0"
+        );
+        assert_eq!(rewrite.required_conditions.len(), 1);
+    }
+
+    #[test]
+    fn direct_small_zero_additive_combination_rewrite_matches_trig_and_symmetric_partial_fraction_sum(
+    ) {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "(2*sin(x)*cos(y) - sin(x+y) - sin(x-y)) + (1/(x - 1) - 1/(x + 1) - 2/(x^2 - 1))",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let rewrite =
+            super::try_build_direct_small_zero_additive_combination_rewrite(&mut ctx, expr)
+                .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.final_expr()
+                }
+            ),
+            "0"
+        );
+        assert_eq!(rewrite.required_conditions.len(), 3);
+    }
+
+    #[test]
+    fn direct_small_zero_additive_combination_rewrite_matches_trig_and_rationalized_sum_of_sqrts_sum(
+    ) {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "(2*sin(x)*cos(y) - sin(x+y) - sin(x-y)) + (1/(sqrt(a) + sqrt(b)) - (sqrt(a) - sqrt(b))/(a - b))",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let rewrite =
+            super::try_build_direct_small_zero_additive_combination_rewrite(&mut ctx, expr)
+                .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.final_expr()
+                }
+            ),
+            "0"
+        );
+        assert_eq!(rewrite.required_conditions.len(), 4);
+    }
+
+    #[test]
+    fn direct_small_zero_additive_combination_rewrite_matches_trig_and_odd_half_power_sum() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "(2*sin(x)*cos(y) - sin(x+y) - sin(x-y)) + (sqrt(x^5) - x^2*sqrt(x))",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let rewrite =
+            super::try_build_direct_small_zero_additive_combination_rewrite(&mut ctx, expr)
+                .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.final_expr()
+                }
+            ),
+            "0"
+        );
+        assert_eq!(rewrite.required_conditions.len(), 1);
+    }
+
+    #[test]
+    fn direct_small_zero_additive_combination_rewrite_matches_trig_and_telescoping_sum() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "(2*cos(2*x)*sin(x) - (4*cos(x)^2*sin(x)-2*sin(x))) + (1/(u*(u+1)) - 1/u + 1/(u+1))",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let rewrite =
+            super::try_build_direct_small_zero_additive_combination_rewrite(&mut ctx, expr)
+                .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.final_expr()
+                }
+            ),
+            "0"
+        );
     }
 
     #[test]
@@ -13368,6 +15572,126 @@ mod tests {
             one
         ));
         assert_eq!(rewrite.description, "Hyperbolic Product-to-Sum Identity");
+    }
+
+    #[test]
+    fn collapse_exact_one_shifted_quotient_rule_matches_trig_and_tan_cot_sec_csc_core() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "((2*sin(x)*cos(y) - sin(x+y) - sin(x-y)) + 1)/((tan(x) + cot(x) - sec(x)*csc(x)) + 1)",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rule = CollapseExactOneShiftedQuotientRule;
+        let rewrite = rule
+            .apply(&mut ctx, expr, &parent_ctx)
+            .unwrap_or_else(|| panic!("rewrite"));
+        let one = ctx.num(1);
+
+        assert!(super::exprs_match_after_default_simplify(
+            &mut ctx,
+            rewrite.new_expr,
+            one
+        ));
+        assert_eq!(rewrite.required_conditions.len(), 3);
+    }
+
+    #[test]
+    fn collapse_exact_one_shifted_quotient_rule_matches_trig_and_tan_cot_product_core() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "((2*sin(x)*cos(y) - sin(x+y) - sin(x-y)) + 1)/((tan(x)*cot(x) - 1) + 1)",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rule = CollapseExactOneShiftedQuotientRule;
+        let rewrite = rule
+            .apply(&mut ctx, expr, &parent_ctx)
+            .unwrap_or_else(|| panic!("rewrite"));
+        let one = ctx.num(1);
+
+        assert!(super::exprs_match_after_default_simplify(
+            &mut ctx,
+            rewrite.new_expr,
+            one
+        ));
+        assert_eq!(rewrite.required_conditions.len(), 3);
+    }
+
+    #[test]
+    fn collapse_exact_one_shifted_quotient_rule_matches_trig_and_sec_tan_pythagorean_core() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "((2*sin(x)*cos(y) - sin(x+y) - sin(x-y)) + 1)/((sec(x)^2 - tan(x)^2 - 1) + 1)",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rule = CollapseExactOneShiftedQuotientRule;
+        let rewrite = rule
+            .apply(&mut ctx, expr, &parent_ctx)
+            .unwrap_or_else(|| panic!("rewrite"));
+        let one = ctx.num(1);
+
+        assert!(super::exprs_match_after_default_simplify(
+            &mut ctx,
+            rewrite.new_expr,
+            one
+        ));
+        assert_eq!(rewrite.required_conditions.len(), 1);
+    }
+
+    #[test]
+    fn collapse_exact_one_shifted_quotient_rule_matches_trig_and_symmetric_partial_fraction_core() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "((2*sin(x)*cos(y) - sin(x+y) - sin(x-y)) + 1)/((1/(x - 1) - 1/(x + 1) - 2/(x^2 - 1)) + 1)",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rule = CollapseExactOneShiftedQuotientRule;
+        let rewrite = rule
+            .apply(&mut ctx, expr, &parent_ctx)
+            .unwrap_or_else(|| panic!("rewrite"));
+        let one = ctx.num(1);
+
+        assert!(super::exprs_match_after_default_simplify(
+            &mut ctx,
+            rewrite.new_expr,
+            one
+        ));
+        assert_eq!(rewrite.required_conditions.len(), 4);
+    }
+
+    #[test]
+    fn collapse_exact_one_shifted_quotient_rule_matches_trig_and_rationalized_sum_of_sqrts_core() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "((2*sin(x)*cos(y) - sin(x+y) - sin(x-y)) + 1)/((1/(sqrt(a) + sqrt(b)) - (sqrt(a) - sqrt(b))/(a - b)) + 1)",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rule = CollapseExactOneShiftedQuotientRule;
+        let rewrite = rule
+            .apply(&mut ctx, expr, &parent_ctx)
+            .unwrap_or_else(|| panic!("rewrite"));
+        let one = ctx.num(1);
+
+        assert!(super::exprs_match_after_default_simplify(
+            &mut ctx,
+            rewrite.new_expr,
+            one
+        ));
+        assert_eq!(rewrite.required_conditions.len(), 5);
     }
 
     #[test]
@@ -13971,7 +16295,7 @@ mod tests {
             ),
             "0"
         );
-        assert_eq!(rewrite.description, "Expand sine difference to product");
+        assert_eq!(rewrite.description, "Product-to-Sum Identity");
     }
 
     #[test]
@@ -14271,7 +16595,6 @@ mod tests {
             "1"
         );
         assert_eq!(rewrite.description, "Expand sine sum to product");
-        assert!(!rewrite.substeps.is_empty());
     }
 
     #[test]

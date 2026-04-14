@@ -1,4 +1,5 @@
 use crate::numeric::gcd_rational;
+use crate::numeric_eval::as_rational_const;
 use cas_ast::ordering::compare_expr;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use num_integer::Integer;
@@ -238,6 +239,15 @@ pub fn try_plan_symbolic_root_cancel_rewrite(
 pub fn try_rewrite_evaluate_abs_expr(ctx: &mut Context, expr: ExprId) -> Option<AbsRewrite> {
     let abs_arg = try_unwrap_abs_arg(ctx, expr)?;
 
+    if let Some(value) = as_rational_const(ctx, abs_arg) {
+        let rewritten_value = value.abs();
+        let rewritten = ctx.add(Expr::Number(rewritten_value));
+        return Some(AbsRewrite {
+            rewritten,
+            desc: "abs(constant) = constant".to_string(),
+        });
+    }
+
     // Case 1: abs(number)
     if let Expr::Number(n) = ctx.get(abs_arg) {
         let n_abs = n.abs();
@@ -409,7 +419,11 @@ pub fn try_rewrite_sqrt_square_expr(ctx: &mut Context, expr: ExprId) -> Option<A
         return None;
     }
 
-    let rewritten = ctx.call_builtin(BuiltinFn::Abs, vec![base]);
+    let rewritten = if is_sum_of_nonnegative(ctx, base) {
+        base
+    } else {
+        ctx.call_builtin(BuiltinFn::Abs, vec![base])
+    };
     Some(AbsFixedRewrite {
         rewritten,
         kind: AbsFixedRewriteKind::SqrtSquare,
@@ -840,7 +854,11 @@ pub fn try_rewrite_abs_numeric_factor_expr(
         return None;
     }
 
-    let abs_core = ctx.call_builtin(BuiltinFn::Abs, vec![core]);
+    let abs_core = if is_sum_of_nonnegative(ctx, core) {
+        core
+    } else {
+        ctx.call_builtin(BuiltinFn::Abs, vec![core])
+    };
     let kind = if factor.is_negative() {
         AbsNumericFactorRewriteKind::Negative
     } else {
@@ -1202,6 +1220,18 @@ mod tests {
     }
 
     #[test]
+    fn rewrites_abs_numeric_factor_with_nonnegative_core_directly() {
+        let mut ctx = Context::new();
+        let parsed = cas_parser::parse("abs((-5)*u^2)", &mut ctx).expect("parse");
+        let rewrite = try_rewrite_abs_numeric_factor_expr(&mut ctx, parsed).expect("rewrite");
+        let expected = cas_parser::parse("5*u^2", &mut ctx).expect("expected");
+        assert_eq!(
+            compare_expr(&ctx, rewrite.rewritten, expected),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
     fn evaluates_abs_number_and_negation() {
         let mut ctx = Context::new();
         let minus_five = ctx.num(-5);
@@ -1218,6 +1248,15 @@ mod tests {
         };
         assert!(ctx.is_builtin(*fn_id, BuiltinFn::Abs));
         assert_eq!(args, &vec![x]);
+
+        let neg_three_quarters =
+            cas_parser::parse("-3/4", &mut ctx).unwrap_or_else(|err| panic!("parse: {err}"));
+        let abs_fraction = ctx.call_builtin(BuiltinFn::Abs, vec![neg_three_quarters]);
+        let rewrite3 = try_rewrite_evaluate_abs_expr(&mut ctx, abs_fraction).expect("rewrite3");
+        assert_eq!(
+            crate::numeric_eval::as_rational_const(&ctx, rewrite3.rewritten),
+            Some(num_rational::BigRational::new(3.into(), 4.into()))
+        );
     }
 
     #[test]
@@ -1313,6 +1352,27 @@ mod tests {
             assert!(ctx.is_builtin(*fn_id, BuiltinFn::Abs));
             assert_eq!(args, &vec![x]);
         }
+    }
+
+    #[test]
+    fn rewrites_sqrt_square_of_nonnegative_base_without_abs() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let two = ctx.num(2);
+        let four = ctx.num(4);
+
+        let numeric_square = ctx.add(Expr::Pow(four, two));
+        let sqrt_numeric_square = ctx.call_builtin(BuiltinFn::Sqrt, vec![numeric_square]);
+        let numeric_rewrite =
+            try_rewrite_sqrt_square_expr(&mut ctx, sqrt_numeric_square).expect("numeric rewrite");
+        assert_eq!(numeric_rewrite.rewritten, four);
+
+        let square_base = ctx.add(Expr::Pow(x, two));
+        let squared_square = ctx.add(Expr::Pow(square_base, two));
+        let sqrt_squared_square = ctx.call_builtin(BuiltinFn::Sqrt, vec![squared_square]);
+        let square_rewrite =
+            try_rewrite_sqrt_square_expr(&mut ctx, sqrt_squared_square).expect("square rewrite");
+        assert_eq!(square_rewrite.rewritten, square_base);
     }
 
     #[test]

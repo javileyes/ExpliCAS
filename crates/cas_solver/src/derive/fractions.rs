@@ -767,9 +767,18 @@ fn simplify_fraction_sum_terms_individually(
     let simplified_terms = terms
         .into_iter()
         .map(|term| {
-            let (rewritten, _steps, _stats) =
-                simplifier.simplify_with_stats(term, simplify_options.clone());
-            rewritten
+            // A first cancellation can expose a second direct factor cancellation,
+            // so settle each distributed term locally before rebuilding the sum.
+            let mut current = term;
+            for _ in 0..3 {
+                let (rewritten, _steps, _stats) =
+                    simplifier.simplify_with_stats(current, simplify_options.clone());
+                if rewritten == current {
+                    break;
+                }
+                current = rewritten;
+            }
+            current
         })
         .collect::<Vec<_>>();
 

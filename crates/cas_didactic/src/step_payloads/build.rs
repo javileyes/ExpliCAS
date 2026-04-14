@@ -78,6 +78,16 @@ fn inferred_step_rule(
         return Some("Expandir cambio de base".to_string());
     }
 
+    if step.rule_name == "Simplify"
+        && matches!(
+            first_title,
+            "Repartir el denominador entre los términos del numerador"
+                | "Repartir el mismo denominador sobre cada término del numerador"
+        )
+    {
+        return Some("Repartir el denominador común".to_string());
+    }
+
     if matches!(
         first_title,
         "Usar log_b(a) · log_a(c) = log_b(c)" | "Encadenar los cambios de base intermedios"

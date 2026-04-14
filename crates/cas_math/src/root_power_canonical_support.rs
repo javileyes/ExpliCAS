@@ -316,7 +316,11 @@ pub fn try_rewrite_root_pow_cancel_expr(
             return None;
         }
         if n.to_integer().is_even() {
-            let rewritten = ctx.call_builtin(BuiltinFn::Abs, vec![inner_base]);
+            let rewritten = if crate::abs_support::is_sum_of_nonnegative(ctx, inner_base) {
+                inner_base
+            } else {
+                ctx.call_builtin(BuiltinFn::Abs, vec![inner_base])
+            };
             return Some(RootPowCancelRewrite {
                 rewritten,
                 inner_base,

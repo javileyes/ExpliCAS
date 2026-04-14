@@ -185,6 +185,8 @@ fn test_exact_common_factor_mul_fraction_preorder() {
         expr,
         num,
         den,
+        crate::DomainMode::Generic,
+        crate::semantics::ValueDomain::RealOnly,
         false,
         &mut Vec::new(),
         &[],
@@ -201,6 +203,23 @@ fn test_exact_common_factor_mul_fraction_preorder() {
     assert!(res.contains("a + b") || res.contains("b + a"));
     assert!(res.contains("c + d") || res.contains("d + c"));
     assert!(!res.contains("x + y"));
+}
+
+#[test]
+fn test_structural_scalar_multiple_preorder_blocks_unknown_gcd_in_strict() {
+    let mut ctx = Context::new();
+    let num = parse("x + y", &mut ctx).unwrap();
+    let den = parse("x + y", &mut ctx).unwrap();
+
+    let rewritten = try_structural_scalar_multiple_preorder(
+        &mut ctx,
+        num,
+        den,
+        crate::DomainMode::Strict,
+        crate::semantics::ValueDomain::RealOnly,
+    );
+
+    assert!(rewritten.is_none());
 }
 
 #[test]

@@ -7,7 +7,7 @@ use super::didactic_factor_support::try_plan_fraction_didactic_cancel;
 use crate::define_rule;
 use crate::rule::{ChainedRewrite, Rewrite};
 use cas_ast::{Context, ExprId};
-use cas_math::fraction_gcd_plan_support::{try_plan_fraction_gcd_rewrite, FractionGcdRoute};
+use cas_math::fraction_gcd_plan_support::try_plan_fraction_gcd_rewrite;
 use cas_math::fraction_mul_div_support::{try_rewrite_simplify_mul_div_expr, MulDivRewriteKind};
 use cas_math::fraction_power_cancel_support::{
     try_rewrite_cancel_identical_fraction_expr, try_rewrite_cancel_power_fraction_expr,
@@ -322,18 +322,13 @@ define_rule!(
 
         // DOMAIN GATE: Check if we can cancel by this GCD
         // In Strict mode, only allow if GCD is provably non-zero
-        let decision = match plan.route {
-            // Structural scalar-multiple plans prove denominator = c*gcd with c != 0,
-            // so the existing implicit condition den != 0 already implies gcd != 0.
-            FractionGcdRoute::StructuralScalarMultiple => crate::CancelDecision::allow(),
-            _ => crate::oracle_allows_with_hint(
-                ctx,
-                domain_mode,
-                parent_ctx.value_domain(),
-                &Predicate::NonZero(plan.gcd_expr),
-                "Simplify Nested Fraction",
-            ),
-        };
+        let decision = crate::oracle_allows_with_hint(
+            ctx,
+            domain_mode,
+            parent_ctx.value_domain(),
+            &Predicate::NonZero(plan.gcd_expr),
+            "Simplify Nested Fraction",
+        );
         if !decision.allow {
             // STRICT PARTIAL CANCEL: Try to cancel only numeric content
             // The numeric_gcd is always provably nonzero (it's a rational ≠ 0)

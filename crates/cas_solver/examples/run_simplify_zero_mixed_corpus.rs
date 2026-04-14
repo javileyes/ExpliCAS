@@ -4,7 +4,10 @@ use std::collections::BTreeMap;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::thread;
 use std::time::Instant;
+
+const RUNNER_STACK_SIZE_BYTES: usize = 256 * 1024 * 1024;
 
 #[derive(Debug, Clone)]
 struct CorpusCase {
@@ -41,10 +44,22 @@ struct RunnerConfig {
     failures_path: PathBuf,
     limit: Option<usize>,
     composition_filter: Option<String>,
+    trace_from: Option<usize>,
 }
 
 fn main() {
     let config = parse_args();
+    let exit_code = thread::Builder::new()
+        .name("run_simplify_zero_mixed_corpus".to_string())
+        .stack_size(RUNNER_STACK_SIZE_BYTES)
+        .spawn(move || run(config))
+        .expect("failed to spawn simplify_zero_mixed runner")
+        .join()
+        .expect("simplify_zero_mixed runner panicked");
+    std::process::exit(exit_code);
+}
+
+fn run(config: RunnerConfig) -> i32 {
     let mut cases = load_cases(&config.csv_path);
     if let Some(filter) = &config.composition_filter {
         cases.retain(|case| &case.composition == filter);
@@ -55,7 +70,7 @@ fn main() {
 
     if cases.is_empty() {
         eprintln!("No corpus cases matched the requested filters.");
-        return;
+        return 0;
     }
 
     let start = Instant::now();
@@ -63,6 +78,12 @@ fn main() {
     let mut by_composition = BTreeMap::<String, CompositionSummary>::new();
 
     for (index, case) in cases.iter().enumerate() {
+        if config
+            .trace_from
+            .is_some_and(|trace_from| index + 1 >= trace_from)
+        {
+            eprintln!("TRACE case {}: {}", index + 1, case.expression);
+        }
         let failure = evaluate_case(case);
         let entry = by_composition.entry(case.composition.clone()).or_default();
         entry.total += 1;
@@ -100,7 +121,9 @@ fn main() {
         );
     }
 
-    if !failures.is_empty() {
+    if failures.is_empty() {
+        0
+    } else {
         println!();
         println!("Sample failures:");
         for failure in failures.iter().take(10) {
@@ -115,7 +138,7 @@ fn main() {
                 println!("    error: {}", failure.error_message);
             }
         }
-        std::process::exit(1);
+        1
     }
 }
 
@@ -133,6 +156,7 @@ fn parse_args() -> RunnerConfig {
     let mut failures_path = default_failures;
     let mut limit = None;
     let mut composition_filter = None;
+    let mut trace_from = None;
 
     let mut args = env::args().skip(1);
     while let Some(arg) = args.next() {
@@ -157,6 +181,14 @@ fn parse_args() -> RunnerConfig {
                 let value = args.next().expect("--composition requires a value");
                 composition_filter = Some(value);
             }
+            "--trace-from" => {
+                let value = args.next().expect("--trace-from requires a number");
+                trace_from = Some(
+                    value
+                        .parse::<usize>()
+                        .unwrap_or_else(|_| panic!("invalid --trace-from value: {value}")),
+                );
+            }
             other => panic!("unknown argument: {other}"),
         }
     }
@@ -166,6 +198,7 @@ fn parse_args() -> RunnerConfig {
         failures_path,
         limit,
         composition_filter,
+        trace_from,
     }
 }
 

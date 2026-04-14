@@ -4,7 +4,10 @@ use std::collections::BTreeMap;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::thread;
 use std::time::Instant;
+
+const RUNNER_STACK_SIZE_BYTES: usize = 256 * 1024 * 1024;
 
 #[derive(Debug, Clone)]
 struct CorpusCase {
@@ -52,6 +55,17 @@ struct RunnerConfig {
 
 fn main() {
     let config = parse_args();
+    let exit_code = thread::Builder::new()
+        .name("run_embedded_equivalence_context_corpus".to_string())
+        .stack_size(RUNNER_STACK_SIZE_BYTES)
+        .spawn(move || run(config))
+        .expect("failed to spawn embedded corpus runner")
+        .join()
+        .expect("embedded corpus runner panicked");
+    std::process::exit(exit_code);
+}
+
+fn run(config: RunnerConfig) -> i32 {
     let mut cases = load_cases(&config.csv_path);
     if let Some(wrapper) = &config.wrapper_filter {
         cases.retain(|case| &case.wrapper == wrapper);
@@ -65,7 +79,7 @@ fn main() {
 
     if cases.is_empty() {
         eprintln!("No corpus cases matched the requested filters.");
-        return;
+        return 0;
     }
 
     let start = Instant::now();
@@ -125,7 +139,9 @@ fn main() {
         );
     }
 
-    if !failures.is_empty() {
+    if failures.is_empty() {
+        0
+    } else {
         println!();
         println!("Sample failures:");
         for failure in failures.iter().take(10) {
@@ -141,7 +157,7 @@ fn main() {
                 println!("    error: {}", failure.error_message);
             }
         }
-        std::process::exit(1);
+        1
     }
 }
 

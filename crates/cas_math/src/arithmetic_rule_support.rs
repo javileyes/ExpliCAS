@@ -1,7 +1,7 @@
 //! Planning helpers for arithmetic rewrite rules.
 
-use crate::build::mul2_raw;
 use crate::expr_destructure::{as_add, as_div, as_mul, as_sub};
+use crate::expr_predicates::is_minus_one_expr;
 use crate::expr_rewrite::smart_mul;
 use cas_ast::{Context, Expr, ExprId};
 use num_rational::BigRational;
@@ -337,36 +337,49 @@ pub fn try_rewrite_normalize_mul_neg_expr(
     let l = *l;
     let r = *r;
 
+    let one = ctx.num(1);
     let l_neg = if let Expr::Neg(inner) = ctx.get(l) {
         Some(*inner)
+    } else if is_minus_one_expr(ctx, l) {
+        Some(one)
     } else {
         None
     };
     let r_neg = if let Expr::Neg(inner) = ctx.get(r) {
         Some(*inner)
+    } else if is_minus_one_expr(ctx, r) {
+        Some(one)
     } else {
         None
     };
 
     match (l_neg, r_neg) {
         (Some(a), Some(b)) => {
-            let new_mul = mul2_raw(ctx, a, b);
+            let new_mul = smart_mul(ctx, a, b);
             Some(ArithmeticRewritePlan {
                 rewritten: new_mul,
                 description: "(-a) * (-b) = a * b".to_string(),
             })
         }
         (Some(a), None) => {
-            let new_mul = mul2_raw(ctx, a, r);
+            let new_mul = smart_mul(ctx, a, r);
             Some(ArithmeticRewritePlan {
-                rewritten: ctx.add(Expr::Neg(new_mul)),
+                rewritten: if new_mul == one {
+                    ctx.num(-1)
+                } else {
+                    ctx.add(Expr::Neg(new_mul))
+                },
                 description: "(-a) * b = -(a * b)".to_string(),
             })
         }
         (None, Some(b)) => {
-            let new_mul = mul2_raw(ctx, l, b);
+            let new_mul = smart_mul(ctx, l, b);
             Some(ArithmeticRewritePlan {
-                rewritten: ctx.add(Expr::Neg(new_mul)),
+                rewritten: if new_mul == one {
+                    ctx.num(-1)
+                } else {
+                    ctx.add(Expr::Neg(new_mul))
+                },
                 description: "a * (-b) = -(a * b)".to_string(),
             })
         }

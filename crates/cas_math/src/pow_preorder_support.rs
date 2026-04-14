@@ -31,7 +31,11 @@ pub fn try_plan_sqrt_square_pow_rewrite(
         SqrtSquarePattern::RepeatedMul { arg } => (arg, SqrtSquarePowRewriteKind::RepeatedMul),
     };
 
-    let rewritten = ctx.call("abs", vec![arg]);
+    let rewritten = if crate::abs_support::is_sum_of_nonnegative(ctx, arg) {
+        arg
+    } else {
+        ctx.call("abs", vec![arg])
+    };
     Some(SqrtSquarePowRewritePlan { rewritten, kind })
 }
 
@@ -61,6 +65,17 @@ mod tests {
         let exp = half;
         let plan = try_plan_sqrt_square_pow_rewrite(&mut ctx, base, exp).expect("plan");
         assert_eq!(cas_formatter::render_expr(&ctx, plan.rewritten), "|x|");
+    }
+
+    #[test]
+    fn plans_nonnegative_half_exponent_without_abs() {
+        let mut ctx = Context::new();
+        let four = ctx.num(4);
+        let two = ctx.num(2);
+        let half = ctx.rational(1, 2);
+        let base = ctx.add(Expr::Pow(four, two));
+        let plan = try_plan_sqrt_square_pow_rewrite(&mut ctx, base, half).expect("plan");
+        assert_eq!(cas_formatter::render_expr(&ctx, plan.rewritten), "4");
     }
 
     #[test]

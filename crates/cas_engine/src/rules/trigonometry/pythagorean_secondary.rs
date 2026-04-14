@@ -10,6 +10,7 @@ use cas_math::trig_canonicalization_support::{
     try_rewrite_cot_to_cos_sin_function_expr, try_rewrite_csc_to_recip_sin_function_expr,
     try_rewrite_sec_to_recip_cos_function_expr, TrigCanonicalIdentityKind,
 };
+use cas_math::trig_eval_table_support::{try_rewrite_trig_eval_table_expr, TrigEvalRewriteKind};
 use cas_math::trig_power_identity_support::{
     try_rewrite_trig_fourth_power_difference_add_expr, try_rewrite_trig_fourth_power_sum_add_expr,
 };
@@ -20,6 +21,17 @@ fn format_trig_canonical_identity_desc(kind: TrigCanonicalIdentityKind) -> &'sta
         TrigCanonicalIdentityKind::CscToRecipSin => "csc(x) = 1/sin(x)",
         TrigCanonicalIdentityKind::CotToCosSin => "cot(x) = cos(x)/sin(x)",
         _ => unreachable!("unexpected trig canonical identity kind in pythagorean_secondary"),
+    }
+}
+
+fn try_exact_reciprocal_trig_value_rewrite(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<Rewrite> {
+    let rewrite = try_rewrite_trig_eval_table_expr(ctx, expr)?;
+    match rewrite.kind {
+        TrigEvalRewriteKind::Table(desc) => Some(Rewrite::new(rewrite.rewritten).desc(desc)),
+        TrigEvalRewriteKind::NegativeParity(_) => None,
     }
 }
 
@@ -36,6 +48,9 @@ define_rule!(
         | crate::phase::PhaseMask::TRANSFORM
         | crate::phase::PhaseMask::RATIONALIZE,
     |ctx, expr| {
+        if let Some(rewrite) = try_exact_reciprocal_trig_value_rewrite(ctx, expr) {
+            return Some(rewrite);
+        }
         let rewrite = try_rewrite_sec_to_recip_cos_function_expr(ctx, expr)?;
         Some(
             Rewrite::new(rewrite.rewritten).desc(format_trig_canonical_identity_desc(rewrite.kind)),
@@ -55,6 +70,9 @@ define_rule!(
         | crate::phase::PhaseMask::TRANSFORM
         | crate::phase::PhaseMask::RATIONALIZE,
     |ctx, expr| {
+        if let Some(rewrite) = try_exact_reciprocal_trig_value_rewrite(ctx, expr) {
+            return Some(rewrite);
+        }
         let rewrite = try_rewrite_csc_to_recip_sin_function_expr(ctx, expr)?;
         Some(
             Rewrite::new(rewrite.rewritten).desc(format_trig_canonical_identity_desc(rewrite.kind)),
@@ -75,6 +93,9 @@ define_rule!(
         | crate::phase::PhaseMask::TRANSFORM
         | crate::phase::PhaseMask::RATIONALIZE,
     |ctx, expr| {
+        if let Some(rewrite) = try_exact_reciprocal_trig_value_rewrite(ctx, expr) {
+            return Some(rewrite);
+        }
         let rewrite = try_rewrite_cot_to_cos_sin_function_expr(ctx, expr)?;
         Some(
             Rewrite::new(rewrite.rewritten).desc(format_trig_canonical_identity_desc(rewrite.kind)),

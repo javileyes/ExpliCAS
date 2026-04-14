@@ -6,9 +6,10 @@
 
 use crate::define_rule;
 use crate::phase::PhaseMask;
-use crate::rule::Rewrite;
+use crate::rule::{ChainedRewrite, Rewrite};
 use cas_math::fraction_factors::try_rewrite_cancel_common_factors_expr_with;
 use cas_math::fraction_factors::CancelCommonFactorsGate;
+use cas_math::fraction_power_cancel_support::try_rewrite_cancel_identical_fraction_expr;
 use cas_math::rationalize_diff_squares_support::try_rewrite_rationalize_product_denominator_expr;
 
 define_rule!(
@@ -29,6 +30,7 @@ define_rule!(
         crate::ConditionClass::Definability
     ),
     |ctx, expr, parent_ctx| {
+        use crate::ImplicitCondition;
         use crate::Predicate;
 
         // Capture domain mode once at start
@@ -61,11 +63,35 @@ define_rule!(
                 .map(|target| crate::AssumptionEvent::nonzero(ctx, target))
                 .collect();
 
-        Some(
-            Rewrite::new(rewrite.rewritten)
-                .desc("Cancel common factors")
-                .local(expr, rewrite.rewritten)
-                .assume_all(assumption_events),
-        )
+        let mut out = Rewrite::new(rewrite.rewritten)
+            .desc("Cancel common factors")
+            .local(expr, rewrite.rewritten)
+            .assume_all(assumption_events);
+
+        // When factor cancellation exposes an identical residual fraction like x/x,
+        // finish the closure here so Assume/Generic recover the symbolic NonZero
+        // target instead of stopping at the partially cancelled form.
+        if let Some(plan) = try_rewrite_cancel_identical_fraction_expr(ctx, rewrite.rewritten) {
+            let decision = crate::oracle_allows_with_hint(
+                ctx,
+                domain_mode,
+                parent_ctx.value_domain(),
+                &Predicate::NonZero(plan.nonzero_target),
+                "Cancel Common Factors",
+            );
+
+            if decision.allow {
+                let mut cancel = ChainedRewrite::new(plan.rewritten)
+                    .desc("Cancel: P/P -> 1")
+                    .local(rewrite.rewritten, plan.rewritten)
+                    .requires(ImplicitCondition::NonZero(plan.nonzero_target));
+                for event in decision.assumption_events(ctx, plan.nonzero_target) {
+                    cancel = cancel.assume(event);
+                }
+                out = out.chain(cancel);
+            }
+        }
+
+        Some(out)
     }
 );

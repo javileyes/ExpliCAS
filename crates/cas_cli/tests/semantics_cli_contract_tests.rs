@@ -4685,7 +4685,10 @@ fn eval_exact_phase_shift_pair_passthrough_difference_collapses_in_one_phase_shi
     assert_eq!(wire["steps_count"], 1);
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Aplicar identidad de desfase");
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Exact Zero Additive Subexpression"
+    );
 }
 
 #[test]
@@ -4725,10 +4728,10 @@ fn eval_exact_third_phase_shift_passthrough_difference_collapses_in_one_phase_sh
     assert_eq!(wire["steps_count"], 1);
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Aplicar identidad de desfase");
-    let substeps = steps[0]["substeps"].as_array().expect("substeps array");
-    assert_eq!(substeps.len(), 1);
-    assert_eq!(substeps[0]["title"], "Cancelar términos iguales");
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Exact Zero Additive Subexpression"
+    );
 }
 
 #[test]
@@ -6120,7 +6123,10 @@ fn eval_complete_square_passthrough_collapses_to_zero() {
     assert_eq!(wire["result"], "0");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Completar el cuadrado");
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Exact Zero Additive Subexpression"
+    );
     let required = wire["required_display"].as_array().expect("required array");
     assert!(required.iter().any(|item| item == "a ≠ 0"));
 }
@@ -6140,7 +6146,10 @@ fn eval_complete_square_symbolic_leading_passthrough_collapses_to_zero() {
     assert_eq!(wire["result"], "0");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Completar el cuadrado");
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Exact Zero Additive Subexpression"
+    );
     let required = wire["required_display"].as_array().expect("required array");
     assert!(required.iter().any(|item| item == "a ≠ 0"));
 }
@@ -6267,7 +6276,10 @@ fn eval_complete_square_fractional_symbolic_passthrough_collapses_to_zero() {
     assert_eq!(wire["result"], "0");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Completar el cuadrado");
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Exact Zero Additive Subexpression"
+    );
     let required = wire["required_display"].as_array().expect("required array");
     assert!(required.iter().any(|item| item == "a ≠ 0"));
 }

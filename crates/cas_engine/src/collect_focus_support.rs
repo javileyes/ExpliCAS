@@ -102,6 +102,6 @@ mod tests {
         let focus = select_collect_didactic_focus(&mut ctx, &[group], &[]);
         assert!(focus.before.is_some());
         assert_eq!(focus.description, "Cancel opposite terms");
-        assert_eq!(focus.after.expect("after"), ctx.num(0));
+        assert_eq!(focus.after.unwrap_or_else(|| panic!("after")), ctx.num(0));
     }
 }

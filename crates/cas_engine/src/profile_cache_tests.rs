@@ -1230,7 +1230,7 @@ mod tests {
     }
 
     #[test]
-    fn test_from_profile_standard_pythagorean_chain_uses_root_fast_path() {
+    fn test_from_profile_standard_pythagorean_identity_uses_root_fast_path() {
         use crate::Simplifier;
 
         let mut cache = ProfileCache::new();
@@ -1261,7 +1261,7 @@ mod tests {
 
         assert_eq!(result_str, "1");
         assert_eq!(steps.len(), 1);
-        assert_eq!(steps[0].rule_name, "Pythagorean Chain Identity");
+        assert_eq!(steps[0].rule_name, "Pythagorean Identity");
         assert_eq!(stats.core.iters_used, 0);
         assert_eq!(stats.transform.iters_used, 0);
         assert_eq!(stats.rationalize.iters_used, 0);
