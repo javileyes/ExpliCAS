@@ -2665,7 +2665,14 @@ fn prove_zero_from_expanded_operands_text(lhs: &str, rhs: &str) -> bool {
 }
 
 fn prove_zero_from_engine_texts(lhs: &str, rhs: &str) -> bool {
+    prove_zero_from_diff_text(lhs, rhs)
+        || prove_zero_via_wire_eval(lhs, rhs)
+        || prove_zero_from_expanded_operands_text(lhs, rhs)
+}
+
+fn prove_zero_from_engine_texts_child_hint(lhs: &str, rhs: &str) -> bool {
     prove_zero_via_wire_eval(lhs, rhs)
+        || prove_equiv_expr_texts_fresh(lhs, rhs)
         || prove_zero_from_diff_text(lhs, rhs)
         || prove_zero_from_expanded_operands_text(lhs, rhs)
 }
@@ -3679,6 +3686,9 @@ fn classify_nf_first_mul_div_combo_in_child_process(
                     let _ = child.kill();
                     let _ = child.wait();
                     let _ = std::fs::remove_file(&outcome_path);
+                    if prove_zero_from_engine_texts_in_child_process(lhs, rhs) {
+                        return NfFirstMulDivChildOutcome::ProvedDifference { cycles: 0 };
+                    }
                     return NfFirstMulDivChildOutcome::Timeout;
                 }
                 std::thread::sleep(std::time::Duration::from_millis(10));
@@ -3687,7 +3697,362 @@ fn classify_nf_first_mul_div_combo_in_child_process(
                 let _ = child.kill();
                 let _ = child.wait();
                 let _ = std::fs::remove_file(&outcome_path);
+                if prove_zero_from_engine_texts_in_child_process(lhs, rhs) {
+                    return NfFirstMulDivChildOutcome::ProvedDifference { cycles: 0 };
+                }
                 return NfFirstMulDivChildOutcome::Timeout;
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SubstitutionComboOutcome {
+    kind: String,
+    residual: String,
+    cause: String,
+    cycles: usize,
+}
+
+fn classify_substitution_combo_locally(
+    lhs_text: &str,
+    rhs_text: &str,
+    free_var: &str,
+    filters: &[FilterSpec],
+    config: &MetatestConfig,
+    proof_flavor: MetamorphicProofFlavor,
+    shortcut_mode: MetatestShortcutMode,
+) -> SubstitutionComboOutcome {
+    let pre_nf_engine_preproof = shortcut_mode.allows_pre_nf_proof_shortcuts()
+        || matches!(shortcut_mode, MetatestShortcutMode::NfFirstPressure);
+    if pre_nf_engine_preproof && prove_zero_from_engine_texts_in_child_process(lhs_text, rhs_text) {
+        return SubstitutionComboOutcome {
+            kind: "proved".to_string(),
+            residual: String::new(),
+            cause: String::new(),
+            cycles: 0,
+        };
+    }
+
+    let mut simplifier = Simplifier::with_default_rules();
+    let exp_parsed = match parse(lhs_text, &mut simplifier.context) {
+        Ok(expr) => expr,
+        Err(_) => {
+            return SubstitutionComboOutcome {
+                kind: "parse_error".to_string(),
+                residual: String::new(),
+                cause: String::new(),
+                cycles: 0,
+            };
+        }
+    };
+    let simp_parsed = match parse(rhs_text, &mut simplifier.context) {
+        Ok(expr) => expr,
+        Err(_) => {
+            return SubstitutionComboOutcome {
+                kind: "parse_error".to_string(),
+                residual: String::new(),
+                cause: String::new(),
+                cycles: 0,
+            };
+        }
+    };
+
+    let opts = cas_solver::runtime::SimplifyOptions::default();
+    let mut cycles = 0usize;
+    let (mut e, _, stats_e) = simplifier.simplify_with_stats(exp_parsed, opts.clone());
+    cycles += stats_e.cycle_events.len();
+    let (mut s, _, stats_s) = simplifier.simplify_with_stats(simp_parsed, opts.clone());
+    cycles += stats_s.cycle_events.len();
+
+    let cfg = cas_solver::runtime::EvalConfig::default();
+    let mut budget = cas_solver::runtime::Budget::preset_cli();
+    if let Ok(result) = cas_solver::api::fold_constants(
+        &mut simplifier.context,
+        e,
+        &cfg,
+        cas_solver::api::ConstFoldMode::Safe,
+        &mut budget,
+    ) {
+        e = result.expr;
+    }
+    if let Ok(result) = cas_solver::api::fold_constants(
+        &mut simplifier.context,
+        s,
+        &cfg,
+        cas_solver::api::ConstFoldMode::Safe,
+        &mut budget,
+    ) {
+        s = result.expr;
+    }
+
+    if cas_solver::runtime::compare_expr(&simplifier.context, e, s) == std::cmp::Ordering::Equal {
+        return SubstitutionComboOutcome {
+            kind: "nf".to_string(),
+            residual: String::new(),
+            cause: String::new(),
+            cycles,
+        };
+    }
+
+    if matches!(shortcut_mode, MetatestShortcutMode::NfFirstPressure)
+        && prove_zero_from_engine_texts_in_child_process(lhs_text, rhs_text)
+    {
+        return SubstitutionComboOutcome {
+            kind: "proved".to_string(),
+            residual: String::new(),
+            cause: String::new(),
+            cycles,
+        };
+    }
+
+    if prove_zero_from_metamorphic_texts_with_flavor(
+        &mut simplifier,
+        lhs_text,
+        rhs_text,
+        e,
+        s,
+        proof_flavor,
+    ) {
+        return SubstitutionComboOutcome {
+            kind: "proved".to_string(),
+            residual: String::new(),
+            cause: String::new(),
+            cycles,
+        };
+    }
+
+    if matches!(proof_flavor, MetamorphicProofFlavor::RawPressure) {
+        if let Some(reason) = known_raw_domain_frontier_reason(lhs_text, rhs_text) {
+            return SubstitutionComboOutcome {
+                kind: "domain_frontier".to_string(),
+                residual: reason.to_string(),
+                cause: String::new(),
+                cycles,
+            };
+        }
+    }
+
+    let free_var_owned = free_var.to_string();
+    match classify_numeric_equiv_for_vars(
+        &simplifier.context,
+        e,
+        s,
+        std::slice::from_ref(&free_var_owned),
+        filters,
+        config,
+    ) {
+        NumericCheckOutcome::Pass => {
+            let d = simplifier.context.add(cas_ast::Expr::Sub(e, s));
+            let (d_simp, _) = simplifier.simplify(d);
+            let residual = cas_formatter::LaTeXExpr {
+                context: &simplifier.context,
+                id: d_simp,
+            }
+            .to_latex();
+            let shape = expr_shape_signature(&simplifier.context, d_simp);
+            let cause = numeric_only_cause_for_vars(
+                &simplifier.context,
+                e,
+                s,
+                std::slice::from_ref(&free_var_owned),
+                filters,
+                config,
+                &shape,
+            )
+            .label()
+            .to_string();
+            if let Some(reason) =
+                known_domain_frontier_reason_for_numeric_cause(&cause, lhs_text, rhs_text)
+            {
+                return SubstitutionComboOutcome {
+                    kind: "domain_frontier".to_string(),
+                    residual: reason.to_string(),
+                    cause: String::new(),
+                    cycles,
+                };
+            }
+            SubstitutionComboOutcome {
+                kind: "numeric".to_string(),
+                residual,
+                cause,
+                cycles,
+            }
+        }
+        NumericCheckOutcome::Inconclusive(reason) => SubstitutionComboOutcome {
+            kind: "inconclusive".to_string(),
+            residual: reason,
+            cause: String::new(),
+            cycles,
+        },
+        NumericCheckOutcome::Failed(_) => SubstitutionComboOutcome {
+            kind: "failed".to_string(),
+            residual: String::new(),
+            cause: String::new(),
+            cycles,
+        },
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn classify_substitution_combo_in_thread(
+    lhs_text: &str,
+    rhs_text: &str,
+    free_var: &str,
+    filters: &[FilterSpec],
+    config: &MetatestConfig,
+    proof_flavor: MetamorphicProofFlavor,
+    shortcut_mode: MetatestShortcutMode,
+    timeout: std::time::Duration,
+) -> Option<SubstitutionComboOutcome> {
+    let lhs = lhs_text.to_string();
+    let rhs = rhs_text.to_string();
+    let free_var = free_var.to_string();
+    let filters = filters.to_vec();
+    let config = config.clone();
+    let (tx, rx) = std::sync::mpsc::channel();
+    let _handle = std::thread::Builder::new()
+        .stack_size(METATEST_WORKER_STACK_SIZE_BYTES)
+        .spawn(move || {
+            let outcome = classify_substitution_combo_locally(
+                &lhs,
+                &rhs,
+                &free_var,
+                &filters,
+                &config,
+                proof_flavor,
+                shortcut_mode,
+            );
+            let _ = tx.send(outcome);
+        })
+        .ok()?;
+
+    rx.recv_timeout(timeout).ok()
+}
+
+fn classify_substitution_combo_in_child_process(
+    lhs_text: &str,
+    rhs_text: &str,
+    free_var: &str,
+    filters: &[FilterSpec],
+    proof_flavor: MetamorphicProofFlavor,
+    shortcut_mode: MetatestShortcutMode,
+    timeout: std::time::Duration,
+) -> Option<SubstitutionComboOutcome> {
+    let Ok(current_exe) = std::env::current_exe() else {
+        return None;
+    };
+
+    let outcome_path = std::env::temp_dir().join(format!(
+        "metatest_substitution_combo_{}_{}.json",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    ));
+
+    let mut child = match std::process::Command::new(current_exe)
+        .arg("metatest_child_substitution_combo_classify")
+        .arg("--ignored")
+        .arg("--exact")
+        .arg("--nocapture")
+        .env(METATEST_CHILD_SUBSTITUTION_LHS_ENV, lhs_text)
+        .env(METATEST_CHILD_SUBSTITUTION_RHS_ENV, rhs_text)
+        .env(METATEST_CHILD_SUBSTITUTION_VAR_ENV, free_var)
+        .env(
+            METATEST_CHILD_SUBSTITUTION_FILTERS_ENV,
+            encode_child_filters(filters),
+        )
+        .env(
+            METATEST_CHILD_SUBSTITUTION_PROOF_ENV,
+            proof_flavor.child_label(),
+        )
+        .env(
+            METATEST_CHILD_SUBSTITUTION_MODE_ENV,
+            shortcut_mode.child_label(),
+        )
+        .env(
+            METATEST_CHILD_SUBSTITUTION_OUTCOME_ENV,
+            outcome_path.to_string_lossy().to_string(),
+        )
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+    {
+        Ok(child) => child,
+        Err(_) => return None,
+    };
+
+    let start = std::time::Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                if !status.success() {
+                    let _ = std::fs::remove_file(&outcome_path);
+                    if prove_zero_from_engine_texts_in_child_process(lhs_text, rhs_text) {
+                        return Some(SubstitutionComboOutcome {
+                            kind: "proved".to_string(),
+                            residual: String::new(),
+                            cause: String::new(),
+                            cycles: 0,
+                        });
+                    }
+                    return None;
+                }
+                let payload = std::fs::read_to_string(&outcome_path)
+                    .ok()
+                    .and_then(|raw| serde_json::from_str::<Value>(&raw).ok())?;
+                let _ = std::fs::remove_file(&outcome_path);
+                return Some(SubstitutionComboOutcome {
+                    kind: payload
+                        .get("kind")
+                        .and_then(Value::as_str)
+                        .unwrap_or("inconclusive")
+                        .to_string(),
+                    residual: payload
+                        .get("residual")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_string(),
+                    cause: payload
+                        .get("cause")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_string(),
+                    cycles: payload.get("cycles").and_then(Value::as_u64).unwrap_or(0) as usize,
+                });
+            }
+            Ok(None) => {
+                if start.elapsed() >= timeout {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    let _ = std::fs::remove_file(&outcome_path);
+                    if prove_zero_from_engine_texts_in_child_process(lhs_text, rhs_text) {
+                        return Some(SubstitutionComboOutcome {
+                            kind: "proved".to_string(),
+                            residual: String::new(),
+                            cause: String::new(),
+                            cycles: 0,
+                        });
+                    }
+                    return None;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            Err(_) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                let _ = std::fs::remove_file(&outcome_path);
+                if prove_zero_from_engine_texts_in_child_process(lhs_text, rhs_text) {
+                    return Some(SubstitutionComboOutcome {
+                        kind: "proved".to_string(),
+                        residual: String::new(),
+                        cause: String::new(),
+                        cycles: 0,
+                    });
+                }
+                return None;
             }
         }
     }
@@ -3711,9 +4076,7 @@ fn metatest_child_raw_pressure_proof() {
         .stack_size(METATEST_DEEP_WORKER_STACK_SIZE_BYTES)
         .spawn(move || {
             assert!(
-                prove_zero_via_wire_eval(&lhs, &rhs)
-                    || prove_zero_from_diff_text(&lhs, &rhs)
-                    || prove_zero_from_expanded_operands_text(&lhs, &rhs),
+                prove_zero_from_engine_texts_child_hint(&lhs, &rhs),
                 "child raw-pressure proof failed"
             );
         })
@@ -3749,10 +4112,7 @@ fn metatest_child_nf_first_add_sub_classify() {
                     rhs_simp = fold_constants_safe(&mut simplifier.context, rhs_simp);
                     if normal_forms_visibly_equal(&simplifier.context, lhs_simp, rhs_simp) {
                         "nf"
-                    } else if prove_zero_via_wire_eval(&lhs, &rhs)
-                        || prove_zero_from_diff_text(&lhs, &rhs)
-                        || prove_zero_from_expanded_operands_text(&lhs, &rhs)
-                    {
+                    } else if prove_zero_from_engine_texts_child_hint(&lhs, &rhs) {
                         "proved"
                     } else {
                         "inconclusive"
@@ -3805,6 +4165,8 @@ fn metatest_child_nf_first_mul_div_classify() {
                     rhs_simp = fold_constants_safe(&mut simplifier.context, rhs_simp);
                     if normal_forms_visibly_equal(&simplifier.context, lhs_simp, rhs_simp) {
                         serde_json::json!({ "kind": "nf", "cycles": cycles })
+                    } else if prove_zero_from_engine_texts_child_hint(&lhs, &rhs) {
+                        serde_json::json!({ "kind": "proved-d", "cycles": cycles })
                     } else {
                         let mut proved_kind: Option<&str> = None;
 
@@ -3817,32 +4179,6 @@ fn metatest_child_nf_first_mul_div_classify() {
                                 let target = num_rational::BigRational::from_integer(1.into());
                                 if matches!(sq.context.get(qr), cas_ast::Expr::Number(n) if *n == target) {
                                     proved_kind = Some("proved-q");
-                                }
-                            }
-                        }
-
-                        if proved_kind.is_none() {
-                            let d_str = format!("({}) - ({})", lhs, rhs);
-                            let mut sd = Simplifier::with_default_rules();
-                            if let Ok(dp) = parse(&d_str, &mut sd.context) {
-                                let (mut dr, _) = sd.simplify(dp);
-                                dr = fold_constants_safe(&mut sd.context, dr);
-                                let zero = num_rational::BigRational::from_integer(0.into());
-                                if matches!(sd.context.get(dr), cas_ast::Expr::Number(n) if *n == zero) {
-                                    proved_kind = Some("proved-d");
-                                }
-                            }
-                        }
-
-                        if proved_kind.is_none() {
-                            let d_str = format!("({}) - ({})", lhs, rhs);
-                            let mut sd = Simplifier::with_default_rules();
-                            if let Ok(dp) = parse(&d_str, &mut sd.context) {
-                                let (mut dr, _) = sd.expand(dp);
-                                dr = fold_constants_safe(&mut sd.context, dr);
-                                let zero = num_rational::BigRational::from_integer(0.into());
-                                if matches!(sd.context.get(dr), cas_ast::Expr::Number(n) if *n == zero) {
-                                    proved_kind = Some("proved-d");
                                 }
                             }
                         }
@@ -3940,6 +4276,60 @@ fn metatest_child_nf_first_mul_div_classify() {
     handle
         .join()
         .expect("nf-first mul/div child worker panicked");
+}
+
+#[test]
+#[ignore]
+fn metatest_child_substitution_combo_classify() {
+    let lhs = std::env::var(METATEST_CHILD_SUBSTITUTION_LHS_ENV)
+        .expect("missing child substitution lhs env");
+    let rhs = std::env::var(METATEST_CHILD_SUBSTITUTION_RHS_ENV)
+        .expect("missing child substitution rhs env");
+    let free_var = std::env::var(METATEST_CHILD_SUBSTITUTION_VAR_ENV)
+        .expect("missing child substitution var env");
+    let filters = decode_child_filters(
+        &std::env::var(METATEST_CHILD_SUBSTITUTION_FILTERS_ENV)
+            .expect("missing child substitution filters env"),
+    );
+    let proof_flavor = MetamorphicProofFlavor::from_child_label(
+        &std::env::var(METATEST_CHILD_SUBSTITUTION_PROOF_ENV)
+            .expect("missing child substitution proof env"),
+    )
+    .expect("invalid child substitution proof flavor");
+    let shortcut_mode = MetatestShortcutMode::from_child_label(
+        &std::env::var(METATEST_CHILD_SUBSTITUTION_MODE_ENV)
+            .expect("missing child substitution mode env"),
+    )
+    .expect("invalid child substitution shortcut mode");
+    let outcome_path = std::env::var(METATEST_CHILD_SUBSTITUTION_OUTCOME_ENV)
+        .expect("missing child substitution outcome env");
+
+    let handle = std::thread::Builder::new()
+        .stack_size(METATEST_DEEP_WORKER_STACK_SIZE_BYTES)
+        .spawn(move || {
+            classify_substitution_combo_locally(
+                &lhs,
+                &rhs,
+                &free_var,
+                &filters,
+                &metatest_config(),
+                proof_flavor,
+                shortcut_mode,
+            )
+        })
+        .expect("spawn substitution child worker");
+    let outcome = handle.join().expect("substitution child worker panicked");
+    let payload = serde_json::json!({
+        "kind": outcome.kind,
+        "residual": outcome.residual,
+        "cause": outcome.cause,
+        "cycles": outcome.cycles,
+    });
+    std::fs::write(
+        outcome_path,
+        serde_json::to_string(&payload).expect("serialize substitution payload"),
+    )
+    .expect("write substitution child outcome");
 }
 
 #[test]
@@ -4091,6 +4481,23 @@ enum MetamorphicProofFlavor {
     RawPressure,
 }
 
+impl MetamorphicProofFlavor {
+    fn child_label(self) -> &'static str {
+        match self {
+            Self::Curated => "curated",
+            Self::RawPressure => "raw-pressure",
+        }
+    }
+
+    fn from_child_label(label: &str) -> Option<Self> {
+        match label {
+            "curated" => Some(Self::Curated),
+            "raw-pressure" => Some(Self::RawPressure),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum MetatestShortcutMode {
     SmokeClosure,
@@ -4120,6 +4527,23 @@ impl MetatestShortcutMode {
             Self::SmokeClosure => "SMOKE",
             Self::StrictPressure => "STRICT",
             Self::NfFirstPressure => "NF-FIRST",
+        }
+    }
+
+    fn child_label(self) -> &'static str {
+        match self {
+            Self::SmokeClosure => "smoke",
+            Self::StrictPressure => "strict",
+            Self::NfFirstPressure => "nf-first",
+        }
+    }
+
+    fn from_child_label(label: &str) -> Option<Self> {
+        match label {
+            "smoke" => Some(Self::SmokeClosure),
+            "strict" => Some(Self::StrictPressure),
+            "nf-first" => Some(Self::NfFirstPressure),
+            _ => None,
         }
     }
 }
@@ -4445,6 +4869,16 @@ fn raw_pressure_proof_can_use_original_engine_texts() {
         rhs_simp,
         MetamorphicProofFlavor::RawPressure
     ));
+}
+
+#[test]
+fn raw_pressure_child_process_can_use_engine_direct_pair_texts_for_special_angle_double_angle_pair()
+{
+    let lhs = "((cot(5*pi/12)) * (sin(2*x)))";
+    let rhs = "(((2 - 3^(1/2))) * (2*sin(x)*cos(x)))";
+
+    assert!(prove_zero_from_engine_texts_in_child_process(lhs, rhs));
+    assert!(prove_zero_from_engine_texts_in_child_process(rhs, lhs));
 }
 
 fn prove_zero_from_residual(
@@ -6512,6 +6946,13 @@ const METATEST_CHILD_NF_MUL_DIV_SIMP_ENV: &str = "METATEST_CHILD_NF_MUL_DIV_SIMP
 const METATEST_CHILD_NF_MUL_DIV_VARS_ENV: &str = "METATEST_CHILD_NF_MUL_DIV_VARS";
 const METATEST_CHILD_NF_MUL_DIV_FILTERS_ENV: &str = "METATEST_CHILD_NF_MUL_DIV_FILTERS";
 const METATEST_CHILD_NF_MUL_DIV_OUTCOME_ENV: &str = "METATEST_CHILD_NF_MUL_DIV_OUTCOME";
+const METATEST_CHILD_SUBSTITUTION_LHS_ENV: &str = "METATEST_CHILD_SUBSTITUTION_LHS";
+const METATEST_CHILD_SUBSTITUTION_RHS_ENV: &str = "METATEST_CHILD_SUBSTITUTION_RHS";
+const METATEST_CHILD_SUBSTITUTION_VAR_ENV: &str = "METATEST_CHILD_SUBSTITUTION_VAR";
+const METATEST_CHILD_SUBSTITUTION_FILTERS_ENV: &str = "METATEST_CHILD_SUBSTITUTION_FILTERS";
+const METATEST_CHILD_SUBSTITUTION_PROOF_ENV: &str = "METATEST_CHILD_SUBSTITUTION_PROOF";
+const METATEST_CHILD_SUBSTITUTION_MODE_ENV: &str = "METATEST_CHILD_SUBSTITUTION_MODE";
+const METATEST_CHILD_SUBSTITUTION_OUTCOME_ENV: &str = "METATEST_CHILD_SUBSTITUTION_OUTCOME";
 
 fn default_combination_timeout(op: CombineOp, debug_build: bool) -> std::time::Duration {
     match op {
@@ -7494,6 +7935,10 @@ fn run_csv_combination_tests_with_shortcut_mode(
                             op.symbol(),
                             pair2.exp,
                         );
+                        if std::env::var("METATEST_TRACE_TIMEOUT_FULL").is_ok() {
+                            eprintln!("        lhs: {}", combined_exp);
+                            eprintln!("        rhs: {}", combined_simp);
+                        }
                     }
                 }
                 processed_double_combos += 1;
@@ -7976,6 +8421,10 @@ fn run_csv_combination_tests_with_shortcut_mode(
                                 op.symbol(),
                                 pair2.exp,
                             );
+                            if std::env::var("METATEST_TRACE_TIMEOUT_FULL").is_ok() {
+                                eprintln!("        lhs: {}", combined_exp);
+                                eprintln!("        rhs: {}", combined_simp);
+                            }
                         }
                     }
                 }
@@ -14640,213 +15089,36 @@ fn run_substitution_tests_with_mode(
                 continue;
             }
 
-            let lhs_clone = lhs_str.clone();
-            let rhs_clone = rhs_str.clone();
-            let config_clone = config.clone();
-            let free_var_clone = free_var.clone();
-            let filters_clone = filters.clone();
-            let proof_flavor_clone = proof_flavor;
-            let pre_nf_engine_preproof = shortcut_mode.allows_pre_nf_proof_shortcuts()
-                || matches!(shortcut_mode, MetatestShortcutMode::NfFirstPressure);
-            let shortcut_mode_clone = shortcut_mode;
+            let outcome = if shortcut_mode.requires_deep_combo_worker() {
+                classify_substitution_combo_in_child_process(
+                    &lhs_str,
+                    &rhs_str,
+                    &free_var,
+                    &filters,
+                    proof_flavor,
+                    shortcut_mode,
+                    combo_timeout,
+                )
+            } else {
+                classify_substitution_combo_in_thread(
+                    &lhs_str,
+                    &rhs_str,
+                    &free_var,
+                    &filters,
+                    &config,
+                    proof_flavor,
+                    shortcut_mode,
+                    combo_timeout,
+                )
+            };
 
-            let (tx, rx) = std::sync::mpsc::channel();
-            let _handle = std::thread::Builder::new()
-                .stack_size(METATEST_WORKER_STACK_SIZE_BYTES)
-                .spawn(move || {
-                    if pre_nf_engine_preproof
-                        && prove_zero_from_engine_texts_in_child_process(&lhs_clone, &rhs_clone)
-                    {
-                        let _ = tx.send(Some((
-                            "proved".to_string(),
-                            String::new(),
-                            String::new(),
-                            0,
-                        )));
-                        return;
-                    }
-
-                    let mut simplifier = Simplifier::with_default_rules();
-                    let exp_parsed = match parse(&lhs_clone, &mut simplifier.context) {
-                        Ok(e) => e,
-                        Err(_) => {
-                            let _ = tx.send(Some((
-                                "parse_error".to_string(),
-                                String::new(),
-                                String::new(),
-                                0,
-                            )));
-                            return;
-                        }
-                    };
-                    let simp_parsed = match parse(&rhs_clone, &mut simplifier.context) {
-                        Ok(e) => e,
-                        Err(_) => {
-                            let _ = tx.send(Some((
-                                "parse_error".to_string(),
-                                String::new(),
-                                String::new(),
-                                0,
-                            )));
-                            return;
-                        }
-                    };
-
-                    let opts = cas_solver::runtime::SimplifyOptions::default();
-                    let mut sub_cycles: usize = 0;
-                    let (mut e, _, stats_e) =
-                        simplifier.simplify_with_stats(exp_parsed, opts.clone());
-                    sub_cycles += stats_e.cycle_events.len();
-                    let (mut s, _, stats_s) =
-                        simplifier.simplify_with_stats(simp_parsed, opts.clone());
-                    sub_cycles += stats_s.cycle_events.len();
-
-                    // Post-process: fold_constants
-                    {
-                        let cfg = cas_solver::runtime::EvalConfig::default();
-                        let mut budget = cas_solver::runtime::Budget::preset_cli();
-                        if let Ok(r) = cas_solver::api::fold_constants(
-                            &mut simplifier.context,
-                            e,
-                            &cfg,
-                            cas_solver::api::ConstFoldMode::Safe,
-                            &mut budget,
-                        ) {
-                            e = r.expr;
-                        }
-                        if let Ok(r) = cas_solver::api::fold_constants(
-                            &mut simplifier.context,
-                            s,
-                            &cfg,
-                            cas_solver::api::ConstFoldMode::Safe,
-                            &mut budget,
-                        ) {
-                            s = r.expr;
-                        }
-                    }
-
-                    // Check 1: NF convergence
-                    let nf_match = cas_solver::runtime::compare_expr(&simplifier.context, e, s)
-                        == std::cmp::Ordering::Equal;
-                    if nf_match {
-                        let _ = tx.send(Some((
-                            "nf".to_string(),
-                            String::new(),
-                            String::new(),
-                            sub_cycles,
-                        )));
-                        return;
-                    }
-
-                    if matches!(shortcut_mode_clone, MetatestShortcutMode::NfFirstPressure)
-                        && prove_zero_from_engine_texts_in_child_process(&lhs_clone, &rhs_clone)
-                    {
-                        let _ = tx.send(Some((
-                            "proved".to_string(),
-                            String::new(),
-                            String::new(),
-                            sub_cycles,
-                        )));
-                        return;
-                    }
-
-                    if prove_zero_from_metamorphic_texts_with_flavor(
-                        &mut simplifier,
-                        &lhs_clone,
-                        &rhs_clone,
-                        e,
-                        s,
-                        proof_flavor_clone,
-                    ) {
-                        let _ = tx.send(Some((
-                            "proved".to_string(),
-                            String::new(),
-                            String::new(),
-                            sub_cycles,
-                        )));
-                        return;
-                    }
-
-                    if matches!(proof_flavor_clone, MetamorphicProofFlavor::RawPressure) {
-                        if let Some(reason) =
-                            known_raw_domain_frontier_reason(&lhs_clone, &rhs_clone)
-                        {
-                            let _ = tx.send(Some((
-                                "domain_frontier".to_string(),
-                                reason.to_string(),
-                                String::new(),
-                                sub_cycles,
-                            )));
-                            return;
-                        }
-                    }
-
-                    // Check 3: Numeric equivalence (1 variable)
-                    match classify_numeric_equiv_for_vars(
-                        &simplifier.context,
-                        e,
-                        s,
-                        std::slice::from_ref(&free_var_clone),
-                        &filters_clone,
-                        &config_clone,
-                    ) {
-                        NumericCheckOutcome::Pass => {
-                            let d = simplifier.context.add(cas_ast::Expr::Sub(e, s));
-                            let (d_simp, _) = simplifier.simplify(d);
-                            let residual = {
-                                cas_formatter::LaTeXExpr {
-                                    context: &simplifier.context,
-                                    id: d_simp,
-                                }
-                                .to_latex()
-                            };
-                            let shape = expr_shape_signature(&simplifier.context, d_simp);
-                            let cause = numeric_only_cause_for_vars(
-                                &simplifier.context,
-                                e,
-                                s,
-                                std::slice::from_ref(&free_var_clone),
-                                &filters_clone,
-                                &config_clone,
-                                &shape,
-                            )
-                            .label()
-                            .to_string();
-                            if let Some(reason) = known_domain_frontier_reason_for_numeric_cause(
-                                &cause, &lhs_clone, &rhs_clone,
-                            ) {
-                                let _ = tx.send(Some((
-                                    "domain_frontier".to_string(),
-                                    reason.to_string(),
-                                    String::new(),
-                                    sub_cycles,
-                                )));
-                                return;
-                            }
-                            let _ =
-                                tx.send(Some(("numeric".to_string(), residual, cause, sub_cycles)));
-                        }
-                        NumericCheckOutcome::Inconclusive(reason) => {
-                            let _ = tx.send(Some((
-                                "inconclusive".to_string(),
-                                reason,
-                                String::new(),
-                                sub_cycles,
-                            )));
-                        }
-                        NumericCheckOutcome::Failed(_) => {
-                            let _ = tx.send(Some((
-                                "failed".to_string(),
-                                String::new(),
-                                String::new(),
-                                sub_cycles,
-                            )));
-                        }
-                    }
-                });
-
-            match rx.recv_timeout(combo_timeout) {
-                Ok(Some((kind, residual, cause, cycles))) => match kind.as_str() {
+            match outcome {
+                Some(SubstitutionComboOutcome {
+                    kind,
+                    residual,
+                    cause,
+                    cycles,
+                }) => match kind.as_str() {
                     "nf" => {
                         nf_convergent += 1;
                         passed += 1;
@@ -14940,13 +15212,7 @@ fn run_substitution_tests_with_mode(
                         cycle_events_total += cycles;
                     }
                 },
-                Ok(None) => {
-                    // Thread returned None — parse error
-                    parse_errors += 1;
-                    passed += 1;
-                }
-                Err(_) => {
-                    // Timeout
+                None => {
                     timeouts += 1;
                     if verbose && timeout_examples.len() < 32 {
                         timeout_examples.push((

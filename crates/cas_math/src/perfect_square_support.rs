@@ -473,19 +473,19 @@ fn check_middle_term_2ab(
     let two_id = ctx.add(Expr::Number(two.clone()));
     let ab = ctx.add(Expr::Mul(a, b));
     let expected_1 = ctx.add(Expr::Mul(two_id, ab));
-    if compare_expr(ctx, term, expected_1) == Ordering::Equal {
+    if compare_flat_mul_terms(ctx, term, expected_1) {
         return true;
     }
 
     let two_a = ctx.add(Expr::Mul(two_id, a));
     let expected_2 = ctx.add(Expr::Mul(two_a, b));
-    if compare_expr(ctx, term, expected_2) == Ordering::Equal {
+    if compare_flat_mul_terms(ctx, term, expected_2) {
         return true;
     }
 
     let two_b = ctx.add(Expr::Mul(two_id, b));
     let expected_3 = ctx.add(Expr::Mul(a, two_b));
-    if compare_expr(ctx, term, expected_3) == Ordering::Equal {
+    if compare_flat_mul_terms(ctx, term, expected_3) {
         return true;
     }
 
@@ -493,16 +493,36 @@ fn check_middle_term_2ab(
         let expected_coeff_val = two * bv;
         let coeff_id = ctx.add(Expr::Number(expected_coeff_val));
         let expected_4 = ctx.add(Expr::Mul(coeff_id, a));
-        if compare_expr(ctx, term, expected_4) == Ordering::Equal {
+        if compare_flat_mul_terms(ctx, term, expected_4) {
             return true;
         }
         let expected_5 = ctx.add(Expr::Mul(a, coeff_id));
-        if compare_expr(ctx, term, expected_5) == Ordering::Equal {
+        if compare_flat_mul_terms(ctx, term, expected_5) {
             return true;
         }
     }
 
     false
+}
+
+fn compare_flat_mul_terms(ctx: &Context, lhs: ExprId, rhs: ExprId) -> bool {
+    let (lhs_coeff, lhs_factors) = split_mul_coeff_and_symbolic_factors(ctx, lhs);
+    let (rhs_coeff, rhs_factors) = split_mul_coeff_and_symbolic_factors(ctx, rhs);
+    lhs_coeff == rhs_coeff && multiset_matches_exprs(ctx, &lhs_factors, &rhs_factors)
+}
+
+fn split_mul_coeff_and_symbolic_factors(ctx: &Context, expr: ExprId) -> (BigRational, Vec<ExprId>) {
+    let mut coeff = BigRational::from_integer(1.into());
+    let mut symbolic = Vec::new();
+
+    for factor in crate::expr_nary::mul_factors(ctx, expr) {
+        match ctx.get(factor) {
+            Expr::Number(n) => coeff *= n.clone(),
+            _ => symbolic.push(factor),
+        }
+    }
+
+    (coeff, symbolic)
 }
 
 #[cfg(test)]
@@ -552,6 +572,21 @@ mod tests {
         let (a, b, is_sub) = try_match_perfect_square_trinomial(&mut ctx, expr).expect("match");
         assert!(!is_sub);
         assert_ne!(a, b);
+    }
+
+    #[test]
+    fn match_perfect_square_trinomial_with_scaled_coefficients() {
+        let mut ctx = Context::new();
+        let expr = cas_parser::parse("9*x^2 - 6*x + 1", &mut ctx).expect("parse");
+        let (a, b, is_sub) = try_match_perfect_square_trinomial(&mut ctx, expr).expect("match");
+        let expected_a = cas_parser::parse("3*x", &mut ctx).expect("parse expected a");
+        let expected_b = cas_parser::parse("1", &mut ctx).expect("parse expected b");
+        let ab_matches = compare_expr(&ctx, a, expected_a) == Ordering::Equal
+            && compare_expr(&ctx, b, expected_b) == Ordering::Equal;
+        let ba_matches = compare_expr(&ctx, a, expected_b) == Ordering::Equal
+            && compare_expr(&ctx, b, expected_a) == Ordering::Equal;
+        assert!(ab_matches || ba_matches);
+        assert!(is_sub);
     }
 
     #[test]

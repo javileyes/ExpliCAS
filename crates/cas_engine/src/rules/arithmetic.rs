@@ -5919,6 +5919,11 @@ fn try_build_small_direct_zero_core_rewrite(
     }
 
     if has_trig_or_hyper {
+        if let Some(rewrite) =
+            try_build_exact_trig_product_to_sum_sin_sin_three_term_zero_rewrite(ctx, expr)
+        {
+            return Some(rewrite);
+        }
         if let Some(rewrite) = try_build_small_tan_cot_product_zero_core_rewrite(ctx, expr) {
             return Some(rewrite);
         }
@@ -9847,7 +9852,7 @@ fn try_rewrite_trig_cos_double_angle_times_sin_polynomial_expr(
     Some(ctx.add(Expr::Sub(four_cos_sq_sin, two_sin)))
 }
 
-fn try_build_direct_trig_cos_double_angle_polynomial_equivalence_rewrite(
+pub(crate) fn try_build_direct_trig_cos_double_angle_polynomial_equivalence_rewrite(
     ctx: &mut cas_ast::Context,
     lhs_core: cas_ast::ExprId,
     rhs_core: cas_ast::ExprId,
@@ -9865,6 +9870,33 @@ fn try_build_direct_trig_cos_double_angle_polynomial_equivalence_rewrite(
             return Some(Rewrite::with_local(
                 ctx.num(0),
                 "Double Angle Expansion",
+                lhs_core,
+                rhs_core,
+            ));
+        }
+    }
+
+    None
+}
+
+pub(crate) fn try_build_direct_trig_sine_product_cubic_equivalence_rewrite(
+    ctx: &mut cas_ast::Context,
+    lhs_core: cas_ast::ExprId,
+    rhs_core: cas_ast::ExprId,
+) -> Option<Rewrite> {
+    for (source, target) in [(lhs_core, rhs_core), (rhs_core, lhs_core)] {
+        let Some((scale, arg)) = extract_scaled_double_sine_product_for_cancellation(ctx, source)
+        else {
+            continue;
+        };
+
+        let rewritten = build_trig_sine_product_cosine_cubic_target(ctx, scale, arg);
+        if exprs_match_for_cancellation(ctx, rewritten, target)
+            || exprs_match_after_default_simplify(ctx, rewritten, target)
+        {
+            return Some(Rewrite::with_local(
+                ctx.num(0),
+                "Product-to-Sum and Triple-Angle Identity",
                 lhs_core,
                 rhs_core,
             ));
@@ -14679,6 +14711,25 @@ mod tests {
     }
 
     #[test]
+    fn direct_trig_sine_product_cubic_equivalence_matcher_matches() {
+        let mut ctx = Context::new();
+        let lhs = parse("2*sin(2*x)*sin(x)", &mut ctx).unwrap_or_else(|err| panic!("parse: {err}"));
+        let rhs =
+            parse("4*cos(x)-4*cos(x)^3", &mut ctx).unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let rewrite =
+            crate::rules::arithmetic::try_build_direct_trig_sine_product_cubic_equivalence_rewrite(
+                &mut ctx, lhs, rhs,
+            )
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            rewrite.description,
+            "Product-to-Sum and Triple-Angle Identity"
+        );
+    }
+
+    #[test]
     fn collapse_exact_zero_additive_subexpression_matches_trig_cos_double_angle_polynomial() {
         let mut ctx = Context::new();
         let expr = parse("2*cos(2*x)*cos(x) - (4*cos(x)^3-2*cos(x))", &mut ctx)
@@ -14722,6 +14773,27 @@ mod tests {
     fn small_direct_zero_core_rewrite_matches_trig_mixed_double_angle_core() {
         let mut ctx = Context::new();
         let expr = parse("2*cos(2*x)*sin(x) - (4*cos(x)^2*sin(x)-2*sin(x))", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let rewrite = super::try_build_small_direct_zero_core_rewrite(&mut ctx, expr)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.final_expr()
+                }
+            ),
+            "0"
+        );
+    }
+
+    #[test]
+    fn small_direct_zero_core_rewrite_matches_trig_product_to_sum_sin_sin_core() {
+        let mut ctx = Context::new();
+        let expr = parse("2*sin(x)*sin(y) - cos(x-y) + cos(x+y)", &mut ctx)
             .unwrap_or_else(|err| panic!("parse: {err}"));
 
         let rewrite = super::try_build_small_direct_zero_core_rewrite(&mut ctx, expr)

@@ -1,7 +1,1 @@
 expression,expected_result,actual_result,ok,composition,source_expr_1,source_expr_2,error_kind,error_message
-(ln(x^3) + ln(y^2) - ln(x^3 * y^2)) + (log((x*y)^2) - log(x^2) - log(y^2)),0,2 * log(|x * y|) - 2 * log(x) - 2 * log(|y|),true,sum,ln(x^3) + ln(y^2) - ln(x^3 * y^2),log((x*y)^2) - log(x^2) - log(y^2),,
-(ln(x^3) + ln(y^2) - ln(x^3 * y^2)) - (log((x*y)^2) - log(x^2) - log(y^2)),0,2 * log(x) + 2 * log(|y|) - 2 * log(|x * y|),true,difference,ln(x^3) + ln(y^2) - ln(x^3 * y^2),log((x*y)^2) - log(x^2) - log(y^2),,
-((ln(x^3) + ln(y^2) - ln(x^3 * y^2)) + 1)/((log((x*y)^2) - log(x^2) - log(y^2)) + 1),1,1 / (2 * log(|x * y|) + 1 - 2 * log(x) - 2 * log(|y|)),true,shifted_quotient,ln(x^3) + ln(y^2) - ln(x^3 * y^2),log((x*y)^2) - log(x^2) - log(y^2),,
-(log((x*y)^2) - log(x^2) - log(y^2)) + (ln(x^3) + ln(y^2) - ln(x^3 * y^2)),0,2 * log(|x * y|) - 2 * log(x) - 2 * log(|y|),true,sum,log((x*y)^2) - log(x^2) - log(y^2),ln(x^3) + ln(y^2) - ln(x^3 * y^2),,
-(log((x*y)^2) - log(x^2) - log(y^2)) - (ln(x^3) + ln(y^2) - ln(x^3 * y^2)),0,2 * log(|x * y|) - 2 * log(x) - 2 * log(|y|),true,difference,log((x*y)^2) - log(x^2) - log(y^2),ln(x^3) + ln(y^2) - ln(x^3 * y^2),,
-((log((x*y)^2) - log(x^2) - log(y^2)) + 1)/((ln(x^3) + ln(y^2) - ln(x^3 * y^2)) + 1),1,2 * log(|x * y|) + 1 - 2 * log(x) - 2 * log(|y|),true,shifted_quotient,log((x*y)^2) - log(x^2) - log(y^2),ln(x^3) + ln(y^2) - ln(x^3 * y^2),,

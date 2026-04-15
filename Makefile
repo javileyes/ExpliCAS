@@ -1,4 +1,4 @@
-.PHONY: ci ci-release ci-msrv ci-quick lint test fmt clippy build-release lint-allowlist lint-budget lint-limits audit-utils lint-string-compares lint-no-panic-prod bench-clean bench-engine-fast bench-engine-fast-save bench-engine-fast-compare bench-engine-fast-save-seq bench-engine-fast-compare-seq bench-engine-solve-batches bench-engine-solve-batches-save bench-engine-solve-batches-compare bench-engine-solve-hotspots-save bench-engine-solve-hotspots-compare bench-engine-solve-profile bench-engine-repl-breakdown bench-engine-repl-individual bench-engine-repl-individual-save bench-engine-repl-individual-compare bench-engine-repl-hotspots bench-engine-repl-hotspots-save bench-engine-repl-hotspots-compare bench-engine-standard-phase-subset bench-engine-root-direct bench-engine-verification bench-engine-verification-save bench-engine-verification-compare bench-parser-frontend bench-parser-frontend-save bench-parser-frontend-compare bench-formatter-frontend bench-formatter-frontend-save bench-formatter-frontend-compare bench-session-frontend bench-session-frontend-save bench-session-frontend-compare bench-session-phase-breakdown bench-session-phase-breakdown-save bench-session-phase-breakdown-compare bench-session-save-breakdown bench-session-save-breakdown-save bench-session-save-breakdown-compare bench-session-snapshot-io bench-session-snapshot-io-save bench-session-snapshot-io-compare bench-session-snapshot-restore bench-session-snapshot-restore-save bench-session-snapshot-restore-compare bench-session-snapshot-build bench-session-snapshot-build-save bench-session-snapshot-build-compare bench-session-snapshot-store-build bench-session-snapshot-store-build-save bench-session-snapshot-store-build-compare bench-session-snapshot-load bench-session-snapshot-load-save bench-session-snapshot-load-compare bench-session-store-lookup bench-session-store-lookup-save bench-session-store-lookup-compare bench-session-resolve-frontend bench-session-resolve-frontend-save bench-session-resolve-frontend-compare bench-wire-frontend bench-wire-frontend-save bench-wire-frontend-compare bench-solver-wire-eval bench-solver-wire-eval-save bench-solver-wire-eval-compare bench-solver-wire-substitute bench-solver-wire-substitute-save bench-solver-wire-substitute-compare bench-solver-limit bench-solver-limit-save bench-solver-limit-compare bench-cli-frontend bench-cli-frontend-save bench-cli-frontend-compare bench-cli-repl-wire bench-cli-repl-wire-save bench-cli-repl-wire-compare bench-didactic-frontend bench-didactic-frontend-save bench-didactic-frontend-compare help
+.PHONY: ci ci-release ci-msrv ci-quick lint test fmt clippy build-release lint-allowlist lint-budget lint-limits audit-utils lint-string-compares lint-no-panic-prod bench-clean bench-engine-fast bench-engine-fast-save bench-engine-fast-compare bench-engine-fast-save-seq bench-engine-fast-compare-seq bench-engine-solve-batches bench-engine-solve-batches-save bench-engine-solve-batches-compare bench-engine-solve-hotspots-save bench-engine-solve-hotspots-compare bench-engine-solve-profile bench-engine-repl-breakdown bench-engine-repl-individual bench-engine-repl-individual-save bench-engine-repl-individual-compare bench-engine-repl-hotspots bench-engine-repl-hotspots-save bench-engine-repl-hotspots-compare bench-engine-standard-phase-subset bench-engine-root-direct bench-engine-verification bench-engine-verification-save bench-engine-verification-compare bench-parser-frontend bench-parser-frontend-save bench-parser-frontend-compare bench-formatter-frontend bench-formatter-frontend-save bench-formatter-frontend-compare bench-session-frontend bench-session-frontend-save bench-session-frontend-compare bench-session-phase-breakdown bench-session-phase-breakdown-save bench-session-phase-breakdown-compare bench-session-save-breakdown bench-session-save-breakdown-save bench-session-save-breakdown-compare bench-session-snapshot-io bench-session-snapshot-io-save bench-session-snapshot-io-compare bench-session-snapshot-restore bench-session-snapshot-restore-save bench-session-snapshot-restore-compare bench-session-snapshot-build bench-session-snapshot-build-save bench-session-snapshot-build-compare bench-session-snapshot-store-build bench-session-snapshot-store-build-save bench-session-snapshot-store-build-compare bench-session-snapshot-load bench-session-snapshot-load-save bench-session-snapshot-load-compare bench-session-store-lookup bench-session-store-lookup-save bench-session-store-lookup-compare bench-session-resolve-frontend bench-session-resolve-frontend-save bench-session-resolve-frontend-compare bench-wire-frontend bench-wire-frontend-save bench-wire-frontend-compare bench-solver-wire-eval bench-solver-wire-eval-save bench-solver-wire-eval-compare bench-solver-wire-substitute bench-solver-wire-substitute-save bench-solver-wire-substitute-compare bench-solver-limit bench-solver-limit-save bench-solver-limit-compare bench-cli-frontend bench-cli-frontend-save bench-cli-frontend-compare bench-cli-repl-wire bench-cli-repl-wire-save bench-cli-repl-wire-compare bench-didactic-frontend bench-didactic-frontend-save bench-didactic-frontend-compare engine-fast engine-scorecard engine-scorecard-pressure engine-scorecard-full help
 
 SOLVE_BATCH_FILTER = solve_modes_cached/(solve_tactic_generic_batch|solve_tactic_assume_batch)
 VERIFY_BENCH_FILTER = solver_verification_inherited_steps
@@ -19,6 +19,10 @@ help:
 	@echo "  make ci-release    -> ci + test --release"
 	@echo "  make ci-msrv       -> ci + MSRV (if rust-version set)"
 	@echo "  make ci-quick      -> fmt + lints + tests + build --release (no clippy)"
+	@echo "  make engine-fast   -> fast engine iteration lane"
+	@echo "  make engine-scorecard -> run guardrail engine-improvement scorecard"
+	@echo "  make engine-scorecard-pressure -> run pressure scorecard"
+	@echo "  make engine-scorecard-full -> run full scorecard"
 	@echo "  make lint          -> fmt + lints + clippy"
 	@echo "  make lint-budget   -> check budget instrumentation in hotspots"
 	@echo "  make lint-limits   -> check presimplify_safe isolation"
@@ -209,6 +213,18 @@ test:
 
 fmt:
 	cargo fmt --all -- --check
+
+engine-fast:
+	python3 ./scripts/engine_improvement_scorecard.py --profile fast
+
+engine-scorecard:
+	python3 ./scripts/engine_improvement_scorecard.py --profile guardrail
+
+engine-scorecard-pressure:
+	python3 ./scripts/engine_improvement_scorecard.py --profile pressure
+
+engine-scorecard-full:
+	python3 ./scripts/engine_improvement_scorecard.py --profile full
 
 bench-clean:
 	rm -rf target/criterion

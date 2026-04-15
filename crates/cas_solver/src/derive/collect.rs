@@ -48,7 +48,7 @@ pub(crate) fn try_rewrite_combine_like_terms_target_aware(
         }
     }
 
-    None
+    try_rewrite_duplicate_addends_target_aware(ctx, source_expr, target_expr)
 }
 
 pub(crate) fn run_combine_like_terms_rewrite(
@@ -204,6 +204,34 @@ fn combine_add_chain(ctx: &mut Context, terms: &[ExprId]) -> ExprId {
             result
         }
     }
+}
+
+fn try_rewrite_duplicate_addends_target_aware(
+    ctx: &mut Context,
+    source_expr: ExprId,
+    target_expr: ExprId,
+) -> Option<CombineLikeTermsRewrite> {
+    let Expr::Add(left, right) = ctx.get(source_expr) else {
+        return None;
+    };
+    let left = *left;
+    let right = *right;
+    if compare_expr(ctx, left, right) != Ordering::Equal {
+        return None;
+    }
+
+    let two = ctx.num(2);
+    let doubled = smart_mul(ctx, two, left);
+    let rewritten = run_default_simplify(ctx, doubled);
+    if !strong_target_match(ctx, rewritten, target_expr) {
+        return None;
+    }
+
+    Some(CombineLikeTermsRewrite {
+        rewritten,
+        local_before: source_expr,
+        local_after: rewritten,
+    })
 }
 
 fn split_coeff_and_monomial(ctx: &mut Context, term: ExprId) -> (ExprId, ExprId, String, String) {
@@ -403,6 +431,17 @@ mod tests {
         assert!(steps
             .iter()
             .all(|step| step.rule_name == "Combine Like Terms"));
+    }
+
+    #[test]
+    fn target_aware_combine_like_terms_matches_duplicate_addends() {
+        let mut ctx = cas_ast::Context::new();
+        let source = cas_parser::parse("x + x", &mut ctx).expect("parse source");
+        let target = cas_parser::parse("2*x", &mut ctx).expect("parse target");
+
+        let rewrite = try_rewrite_combine_like_terms_target_aware(&mut ctx, source, target)
+            .expect("duplicate-addends combine-like-terms rewrite");
+        assert_eq!(render_expr(&ctx, rewrite.rewritten), "2 * x");
     }
 
     #[test]

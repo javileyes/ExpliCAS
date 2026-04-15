@@ -11,19 +11,53 @@ This track exists to answer one question:
 
 It should be treated as a separate workstream from migration.
 
+It is also the place where we enforce the other half of engine quality:
+
+- a mathematically stronger engine is not enough
+- it must stay robust under complex traffic
+- and it must not explode runtime on workloads the old engine handled quickly
+
 ## Current Baseline
 
 Known baseline at the end of the pragmatic migration:
 
 - `make ci`: green
 - `cargo bench`: working
-- simplification metamorphic benchmark:
-  - command:
-    - `cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_unified_benchmark -- --ignored --nocapture`
-  - current result:
-    - `numeric-only = 168`
+- engine-improvement scorecard available:
+  - `make engine-scorecard`
+  - `make engine-scorecard-pressure`
+  - `make engine-scorecard-full`
+
+The current baseline should no longer be described by a single metamorphic
+number. It should be described by the scorecard lanes:
+
+- fast:
+  - rapid iteration sanity lanes
+- guardrail:
+  - embedded equivalence context corpus
+  - derive contract corpus
+  - unified metamorphic benchmark in `strict`
+- pressure:
+  - simplify-zero mixed corpus
+  - unified metamorphic benchmark in `nf-first`
 
 This baseline is the reference point for future optimization work.
+
+## Performance Policy
+
+Performance work must preserve semantic quality, but semantic work must also
+respect performance budgets.
+
+For this project, a valid engine improvement is therefore:
+
+- more complete, or more robust, or more target-aware
+- without reopening stack overflows
+- without reopening timeout growth
+- without making previously cheap benchmark slices materially slower unless the
+  new capability justifies the cost and the regression is documented
+
+That means runtime is not a secondary cosmetic concern. It is one of the engine
+guardrails.
 
 ## Measured Notes
 

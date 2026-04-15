@@ -63,6 +63,10 @@ struct DeriveStageOutput {
     steps: Vec<crate::Step>,
 }
 
+fn derive_stage_applied(stage: &DeriveStageOutput, source_expr: ExprId) -> bool {
+    stage.expr != source_expr || !stage.steps.is_empty()
+}
+
 #[derive(Debug, Clone)]
 struct DeriveEvalOutput {
     resolved_expr: ExprId,
@@ -679,6 +683,19 @@ fn try_supported_derive_strategies_inner(
         }
     }
 
+    if matches!(profile.form, DeriveTargetForm::LikeTermsCombined) {
+        let stage = combine_like_terms_stage.get_or_insert_with(|| {
+            run_combine_like_terms_stage(simplifier, resolved_expr, target_expr, collect_steps)
+        });
+        if derive_target_match(simplifier, stage.expr, target_expr) {
+            let mut stage = stage.clone();
+            retarget_stage_output(&mut stage, target_expr);
+            let steps =
+                finalize_steps(resolved_expr, target_expr, vec![stage], &simplifier.context);
+            return Some((target_expr, steps, DeriveStrategy::CombineLikeTerms));
+        }
+    }
+
     if prefer_simplify_first {
         let stage = simplify_stage.get_or_insert_with(|| {
             run_simplify_stage(
@@ -1140,7 +1157,9 @@ fn try_supported_derive_strategies_inner(
                 let stage = rationalize_stage.get_or_insert_with(|| {
                     run_rationalize_stage(simplifier, resolved_expr, target_expr, collect_steps)
                 });
-                if derive_target_match(simplifier, stage.expr, target_expr) {
+                if derive_stage_applied(stage, resolved_expr)
+                    && derive_target_match(simplifier, stage.expr, target_expr)
+                {
                     let mut stage = stage.clone();
                     retarget_stage_output(&mut stage, target_expr);
                     let steps = finalize_steps(
@@ -1152,25 +1171,27 @@ fn try_supported_derive_strategies_inner(
                     return Some((target_expr, steps, DeriveStrategy::Rationalize));
                 }
 
-                let stage = simplify_stage.get_or_insert_with(|| {
-                    run_simplify_stage(
-                        simplifier,
-                        resolved_expr,
-                        target_expr,
-                        collect_steps,
-                        simplify_options.clone(),
-                    )
-                });
-                if strong_target_match(&mut simplifier.context, stage.expr, target_expr) {
-                    let mut stage = stage.clone();
-                    retarget_stage_output(&mut stage, target_expr);
-                    let steps = finalize_steps(
-                        resolved_expr,
-                        target_expr,
-                        vec![stage],
-                        &simplifier.context,
-                    );
-                    return Some((target_expr, steps, DeriveStrategy::Rationalize));
+                if matches!(profile.form, DeriveTargetForm::Rationalized) {
+                    let stage = simplify_stage.get_or_insert_with(|| {
+                        run_simplify_stage(
+                            simplifier,
+                            resolved_expr,
+                            target_expr,
+                            collect_steps,
+                            simplify_options.clone(),
+                        )
+                    });
+                    if strong_target_match(&mut simplifier.context, stage.expr, target_expr) {
+                        let mut stage = stage.clone();
+                        retarget_stage_output(&mut stage, target_expr);
+                        let steps = finalize_steps(
+                            resolved_expr,
+                            target_expr,
+                            vec![stage],
+                            &simplifier.context,
+                        );
+                        return Some((target_expr, steps, DeriveStrategy::Rationalize));
+                    }
                 }
             }
             DeriveStrategy::FractionExpand => {
@@ -5876,6 +5897,27 @@ mod tests {
 
         assert_eq!(derived.0, target);
         assert_eq!(derived.2, DeriveStrategy::TrigExpand);
+    }
+
+    #[test]
+    fn direct_derive_prefers_combine_like_terms_for_simple_duplicate_sum() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("x + x", &mut simplifier.context).expect("parse source");
+        let target = cas_parser::parse("2*x", &mut simplifier.context).expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::CombineLikeTerms);
     }
 
     #[test]

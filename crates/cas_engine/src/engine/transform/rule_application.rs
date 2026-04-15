@@ -102,7 +102,13 @@ impl<'a> LocalSimplificationTransformer<'a> {
                         if !is_didactic_rule {
                             use cas_math::semantic_equality::SemanticEqualityChecker;
                             let checker = SemanticEqualityChecker::new(self.context);
-                            if checker.are_equal(expr_id, final_expr) {
+                            if checker.are_equal(expr_id, final_expr)
+                                && !cas_math::expr_nf_scoring::nf_score_after_is_better(
+                                    self.context,
+                                    expr_id,
+                                    final_expr,
+                                )
+                            {
                                 debug!(
                                     "{}[DEBUG] Rule '{}' produced semantically equal result, skipping",
                                     self.indent(),

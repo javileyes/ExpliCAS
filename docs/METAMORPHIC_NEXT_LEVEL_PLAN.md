@@ -22,6 +22,24 @@ El foco está en:
 - [/Users/javiergimenezmoya/developer/math/crates/cas_solver/tests/contextual_pairs.csv](/Users/javiergimenezmoya/developer/math/crates/cas_solver/tests/contextual_pairs.csv)
 - [/Users/javiergimenezmoya/developer/math/crates/cas_solver/tests/numeric_only_diagnostic.rs](/Users/javiergimenezmoya/developer/math/crates/cas_solver/tests/numeric_only_diagnostic.rs)
 
+## Base Operativa Actual
+
+La evolución de esta batería ya no debe hacerse “suite por suite” de forma
+manual. La base operativa actual es la scorecard de mejora continua:
+
+- [ENGINE_IMPROVEMENT_AUTOMATION.md](/Users/javiergimenezmoya/developer/math/docs/ENGINE_IMPROVEMENT_AUTOMATION.md)
+- [engine_improvement_scorecard.py](/Users/javiergimenezmoya/developer/math/scripts/engine_improvement_scorecard.py)
+
+Principio práctico:
+
+- `strict` mide regresión estable
+- `nf-first` mide potencia de normalización
+- los corpora embedded miden robustez contextual real
+- `derive` se mide en su propio corpus, no solo por equivalencia genérica
+
+Todo trabajo nuevo de expansión metamórfica debería acabar siendo promovible a
+uno de esos carriles.
+
 ## Estado Actual
 
 La batería metamórfica ya tiene varias fortalezas:

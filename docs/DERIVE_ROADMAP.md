@@ -530,6 +530,19 @@ Use metamorphic tests to ensure new derive-friendly strategies do not degrade th
 - no unexpected rise in `Inconclusive`
 - no timeout growth in the benchmark slices
 
+And do not validate `derive` only through generic simplify/equivalence suites.
+`derive` now belongs inside the engine-improvement scorecard too:
+
+- generic metamorphic suites protect the core engine from derive regressions
+- derive contract corpus measures reachability and path quality directly
+
+Recommended validation split:
+
+- `make engine-scorecard`
+  - merge-friendly guardrail
+- `make engine-scorecard-pressure`
+  - if the derive change alters normalization/orchestration traffic in a broad way
+
 ## 3. Didactic Audits
 
 Curated derive examples should be exported and reviewed for:
@@ -550,6 +563,18 @@ Each new strategy should define:
 - max visible steps
 
 No strategy should introduce a general rewrite search.
+
+This is not just a planner concern.
+
+`derive` quality depends on:
+
+- strategy coverage
+- target classification
+- planner routing
+- engine/orchestrator support for the residual identities that derive relies on
+
+If the underlying engine gets mathematically stronger but much slower on those
+residuals, `derive` still regresses in practice.
 
 ## Suggested Initial Corpus
 

@@ -301,6 +301,12 @@ pub fn factor_sophie_germain(ctx: &mut Context, expr: ExprId) -> Option<ExprId> 
 pub fn factor_perfect_square_trinomial(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
     use crate::expr_nary::{AddView, Sign};
 
+    if let Some((a, b, is_sub)) =
+        crate::perfect_square_support::try_match_perfect_square_trinomial(ctx, expr)
+    {
+        return Some(build_canonical_perfect_square(ctx, a, b, is_sub));
+    }
+
     // Collect all additive terms
     let add_view = AddView::from_expr(ctx, expr);
 
@@ -357,18 +363,24 @@ pub fn factor_perfect_square_trinomial(ctx: &mut Context, expr: ExprId) -> Optio
             };
 
             // Found! Build (a ± b)²
-            let two = ctx.num(2);
-            let sum_or_diff = if is_positive_term {
-                ctx.add(Expr::Add(a, b))
-            } else {
-                ctx.add(Expr::Sub(a, b))
-            };
-
-            return Some(ctx.add(Expr::Pow(sum_or_diff, two)));
+            return Some(build_canonical_perfect_square(ctx, a, b, !is_positive_term));
         }
     }
 
     None
+}
+
+fn build_canonical_perfect_square(ctx: &mut Context, a: ExprId, b: ExprId, is_sub: bool) -> ExprId {
+    let two = ctx.num(2);
+    let binomial = if is_sub {
+        match compare_expr(ctx, a, b) {
+            Ordering::Less => ctx.add(Expr::Sub(b, a)),
+            _ => ctx.add(Expr::Sub(a, b)),
+        }
+    } else {
+        ctx.add(Expr::Add(a, b))
+    };
+    ctx.add(Expr::Pow(binomial, two))
 }
 
 /// Helper: if expr is x^2, return x; otherwise None
@@ -421,25 +433,6 @@ fn is_2ab_term(ctx: &Context, expr: ExprId, a: ExprId, b: ExprId) -> Option<bool
 
         if coef_sign.is_some() && has_a && has_b {
             return coef_sign;
-        }
-    }
-
-    // Case 2: 2 factors - a, b (the "2" coefficient is handled separately by AddView)
-    // This happens when expression is like "2·x·y" where AddView extracts the 2
-    if factors.len() == 2 {
-        let f0 = factors[0];
-        let f1 = factors[1];
-
-        // Check if factors are a and b in any order
-        let match_ab = compare_expr(ctx, f0, a) == std::cmp::Ordering::Equal
-            && compare_expr(ctx, f1, b) == std::cmp::Ordering::Equal;
-        let match_ba = compare_expr(ctx, f0, b) == std::cmp::Ordering::Equal
-            && compare_expr(ctx, f1, a) == std::cmp::Ordering::Equal;
-
-        if match_ab || match_ba {
-            // When we reach here, AddView handles the coefficient - we don't know the sign
-            // So return true (positive) and let caller use sign_k from AddView
-            return Some(true);
         }
     }
 
@@ -532,6 +525,31 @@ mod tests {
         // (x+1)^2
         assert!(str_res.contains("1 + x") || str_res.contains("x + 1")); // Canonical: 1 before x
         assert!(str_res.contains("^ 2") || str_res.contains("^2"));
+    }
+
+    #[test]
+    fn test_factor_poly_perfect_square_with_coefficients() {
+        let mut ctx = Context::new();
+        let expr = parse("9*x^2 - 6*x + 1", &mut ctx).unwrap();
+        let res = factor(&mut ctx, expr);
+        let expected = parse("(3*x - 1)^2", &mut ctx).unwrap();
+        assert!(poly_eq(&ctx, res, expected));
+    }
+
+    #[test]
+    fn test_factor_perfect_square_trinomial_with_coefficients() {
+        let mut ctx = Context::new();
+        let expr = parse("9*x^2 - 6*x + 1", &mut ctx).unwrap();
+        let res = factor_perfect_square_trinomial(&mut ctx, expr).expect("factor");
+        let expected = parse("(3*x - 1)^2", &mut ctx).unwrap();
+        assert!(poly_eq(&ctx, res, expected));
+    }
+
+    #[test]
+    fn test_factor_perfect_square_trinomial_rejects_missing_middle_coefficient() {
+        let mut ctx = Context::new();
+        let expr = parse("a^2 + a*b + b^2", &mut ctx).unwrap();
+        assert!(factor_perfect_square_trinomial(&mut ctx, expr).is_none());
     }
 
     #[test]

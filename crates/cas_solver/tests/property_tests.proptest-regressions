@@ -15,3 +15,4 @@ cc e4e6c96b11fa73da1e1164dbd9602bcb8e3b3cb855a6609f111bef977d03af2c # shrinks to
 cc 1dc87d0015bb7f477ff23e8379177bc41dc93b94ad7db5be43e766b6e12d8a09 # shrinks to re = Sub(Function("ln", [Number(-1)]), Number(1))
 cc d89ba39783d258fa385dd9ea3e0d209261ffd9ed708024e983d602f825000b56 # shrinks to re = Function("cos", [Function("ln", [Number(-1)])])
 cc 47b6597c04ac4436372c0b11906a9087cfa079ed66456e6a565e4d15d42de85e # shrinks to re = Neg(Function("ln", [Number(-1)]))
+cc 85398cedc3886d5288ec6ce3cc88ad97ef8a6a6f20a83653b60972d62881f3f7 # shrinks to re = Function("sin", [Constant(Pi)])

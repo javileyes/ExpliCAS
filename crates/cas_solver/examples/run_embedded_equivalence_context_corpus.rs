@@ -1,13 +1,14 @@
-use cas_solver::wire::eval_str_to_wire;
-use serde_json::Value;
+use cas_api_models::{
+    EvalAssumeScope, EvalBranchMode, EvalBudgetPreset, EvalComplexMode, EvalConstFoldMode,
+    EvalContextMode, EvalDomainMode, EvalExpandPolicy, EvalInvTrigPolicy, EvalStepsMode,
+    EvalValueDomain,
+};
+use cas_session::eval::{evaluate_eval_command_with_session, EvalCommandConfig};
 use std::collections::BTreeMap;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::thread;
 use std::time::Instant;
-
-const RUNNER_STACK_SIZE_BYTES: usize = 256 * 1024 * 1024;
 
 #[derive(Debug, Clone)]
 struct CorpusCase {
@@ -55,14 +56,11 @@ struct RunnerConfig {
 
 fn main() {
     let config = parse_args();
-    let exit_code = thread::Builder::new()
-        .name("run_embedded_equivalence_context_corpus".to_string())
-        .stack_size(RUNNER_STACK_SIZE_BYTES)
-        .spawn(move || run(config))
-        .expect("failed to spawn embedded corpus runner")
-        .join()
-        .expect("embedded corpus runner panicked");
-    std::process::exit(exit_code);
+    // Match the direct wire path used by `cas_cli eval`. The fixed-stack helper
+    // thread has proven less robust than the main-thread path on deep recursive
+    // shifted-quotient cases, even when those cases succeed through the normal
+    // CLI entrypoint.
+    std::process::exit(run(config));
 }
 
 fn run(config: RunnerConfig) -> i32 {
@@ -264,26 +262,43 @@ fn split_csv_line(line: &str) -> Vec<String> {
 }
 
 fn evaluate_case(case: &CorpusCase) -> Option<FailureRecord> {
-    let payload = eval_str_to_wire(&case.expression, "{}");
-    let wire = serde_json::from_str::<Value>(&payload)
-        .unwrap_or_else(|err| panic!("failed to parse wire json for {}: {err}", case.expression));
-
-    let actual_result = wire["result"].as_str().unwrap_or("").to_string();
-    let ok = actual_result == case.expected_result;
-    let error_kind = if wire["ok"] == Value::Bool(false) {
-        "wire_not_ok".to_string()
-    } else if ok {
-        String::new()
-    } else {
-        "result_mismatch".to_string()
+    let config = EvalCommandConfig {
+        expr: &case.expression,
+        auto_store: false,
+        max_chars: usize::MAX,
+        steps_mode: EvalStepsMode::Off,
+        budget_preset: EvalBudgetPreset::Standard,
+        strict: false,
+        domain: EvalDomainMode::Generic,
+        context_mode: EvalContextMode::Auto,
+        branch_mode: EvalBranchMode::Strict,
+        expand_policy: EvalExpandPolicy::Off,
+        complex_mode: EvalComplexMode::Auto,
+        const_fold: EvalConstFoldMode::Off,
+        value_domain: EvalValueDomain::Real,
+        complex_branch: EvalBranchMode::Principal,
+        inv_trig: EvalInvTrigPolicy::Strict,
+        assume_scope: EvalAssumeScope::Real,
     };
-    let error_message = if wire["ok"] == Value::Bool(false) {
-        wire["error"]
-            .as_str()
-            .map(str::to_string)
-            .unwrap_or_default()
-    } else {
-        String::new()
+    let (output, _, _) = evaluate_eval_command_with_session(None, config, |_, _, _, _| Vec::new());
+
+    let (actual_result, ok, error_kind, error_message) = match output {
+        Ok(output) => {
+            let actual_result = output.result;
+            let ok = actual_result == case.expected_result;
+            let error_kind = if ok {
+                String::new()
+            } else {
+                "result_mismatch".to_string()
+            };
+            (actual_result, ok, error_kind, String::new())
+        }
+        Err(error_message) => (
+            String::new(),
+            false,
+            "session_eval_error".to_string(),
+            error_message,
+        ),
     };
 
     (!ok).then(|| FailureRecord {

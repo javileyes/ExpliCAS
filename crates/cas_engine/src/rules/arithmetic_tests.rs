@@ -1,6 +1,7 @@
 use super::arithmetic::{AddZeroRule, CombineConstantsRule, MulOneRule, NormalizeMulNegRule};
 use crate::rule::{Rule, SimpleRule};
 use crate::step::ImportanceLevel;
+use crate::Simplifier;
 use cas_ast::{Context, Expr};
 use cas_formatter::DisplayExpr;
 
@@ -125,5 +126,20 @@ fn test_add_zero_rule_importance() {
         SimpleRule::importance(&rule),
         ImportanceLevel::Low,
         "AddZeroRule should have Low importance (hidden in normal mode)"
+    );
+}
+
+#[test]
+fn test_mul_one_collapses_after_child_rewrite_to_zero() {
+    let mut simplifier = Simplifier::with_default_rules();
+    let expr = cas_parser::parse("1*sin(pi)", &mut simplifier.context).expect("parse");
+    let (rewritten, _) = simplifier.simplify(expr);
+    assert_eq!(
+        DisplayExpr {
+            context: &simplifier.context,
+            id: rewritten,
+        }
+        .to_string(),
+        "0"
     );
 }

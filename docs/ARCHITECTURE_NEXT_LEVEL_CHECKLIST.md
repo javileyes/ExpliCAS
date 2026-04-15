@@ -44,6 +44,9 @@ After completing any item:
 - [ ] `cargo check -p cas_solver_core -p cas_engine -p cas_solver -p cas_session -p cas_cli -p cas_didactic`
 - [ ] `make ci` if the change is broad enough to justify full validation
 - [ ] If behavior changed in simplify/solve: rerun the relevant metamorphic check
+- [ ] During local iteration on simplify/equivalence/derive: run `make engine-fast`
+- [ ] If behavior changed in simplify/equivalence/derive broadly: run `make engine-scorecard`
+- [ ] If the change touches orchestration, normalization routing, or complex composed traffic: also run `make engine-scorecard-pressure`
 
 ## Track 1: High-Value Boundary Cleanup
 

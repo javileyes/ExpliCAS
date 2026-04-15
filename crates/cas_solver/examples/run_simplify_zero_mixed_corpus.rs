@@ -1,13 +1,14 @@
-use cas_solver::wire::eval_str_to_wire;
-use serde_json::Value;
+use cas_api_models::{
+    EvalAssumeScope, EvalBranchMode, EvalBudgetPreset, EvalComplexMode, EvalConstFoldMode,
+    EvalContextMode, EvalDomainMode, EvalExpandPolicy, EvalInvTrigPolicy, EvalStepsMode,
+    EvalValueDomain,
+};
+use cas_session::eval::{evaluate_eval_command_with_session, EvalCommandConfig};
 use std::collections::BTreeMap;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::thread;
 use std::time::Instant;
-
-const RUNNER_STACK_SIZE_BYTES: usize = 256 * 1024 * 1024;
 
 #[derive(Debug, Clone)]
 struct CorpusCase {
@@ -49,14 +50,10 @@ struct RunnerConfig {
 
 fn main() {
     let config = parse_args();
-    let exit_code = thread::Builder::new()
-        .name("run_simplify_zero_mixed_corpus".to_string())
-        .stack_size(RUNNER_STACK_SIZE_BYTES)
-        .spawn(move || run(config))
-        .expect("failed to spawn simplify_zero_mixed runner")
-        .join()
-        .expect("simplify_zero_mixed runner panicked");
-    std::process::exit(exit_code);
+    // Keep pressure corpora on the same canonical eval path as `cas_cli eval`
+    // and the embedded corpus runner. This benchmark is intended to measure
+    // engine robustness, not differences between frontend entrypoints.
+    std::process::exit(run(config));
 }
 
 fn run(config: RunnerConfig) -> i32 {
@@ -248,36 +245,48 @@ fn split_csv_line(line: &str) -> Vec<String> {
 }
 
 fn evaluate_case(case: &CorpusCase) -> Option<FailureRecord> {
-    let payload = eval_str_to_wire(&case.expression, "{}");
-    let wire = serde_json::from_str::<Value>(&payload).unwrap_or_else(|err| {
-        panic!(
-            "failed to parse wire for '{}': {err}\n{payload}",
-            case.expression
-        )
-    });
-    let ok = wire.get("ok").and_then(Value::as_bool).unwrap_or(false);
-    let actual_result = wire
-        .get("result")
-        .and_then(Value::as_str)
-        .unwrap_or("")
-        .to_string();
+    let config = EvalCommandConfig {
+        expr: &case.expression,
+        auto_store: false,
+        max_chars: usize::MAX,
+        steps_mode: EvalStepsMode::Off,
+        budget_preset: EvalBudgetPreset::Standard,
+        strict: false,
+        domain: EvalDomainMode::Generic,
+        context_mode: EvalContextMode::Auto,
+        branch_mode: EvalBranchMode::Strict,
+        expand_policy: EvalExpandPolicy::Off,
+        complex_mode: EvalComplexMode::Auto,
+        const_fold: EvalConstFoldMode::Off,
+        value_domain: EvalValueDomain::Real,
+        complex_branch: EvalBranchMode::Principal,
+        inv_trig: EvalInvTrigPolicy::Strict,
+        assume_scope: EvalAssumeScope::Real,
+    };
+    let (output, _, _) = evaluate_eval_command_with_session(None, config, |_, _, _, _| Vec::new());
 
-    if ok && actual_result == case.expected_result {
+    let (actual_result, ok, error_kind, error_message) = match output {
+        Ok(output) => {
+            let actual_result = output.result;
+            let ok = actual_result == case.expected_result;
+            let error_kind = if ok {
+                String::new()
+            } else {
+                "result_mismatch".to_string()
+            };
+            (actual_result, ok, error_kind, String::new())
+        }
+        Err(error_message) => (
+            String::new(),
+            false,
+            "session_eval_error".to_string(),
+            error_message,
+        ),
+    };
+
+    if ok {
         return None;
     }
-
-    let error_kind = wire
-        .get("error")
-        .and_then(|error| error.get("kind"))
-        .and_then(Value::as_str)
-        .unwrap_or("")
-        .to_string();
-    let error_message = wire
-        .get("error")
-        .and_then(|error| error.get("message"))
-        .and_then(Value::as_str)
-        .unwrap_or("")
-        .to_string();
 
     Some(FailureRecord {
         expression: case.expression.clone(),

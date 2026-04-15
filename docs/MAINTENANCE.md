@@ -562,6 +562,47 @@ Located in `tests/property_tests.rs`. Use `proptest` to generate random expressi
 cargo test
 ```
 
+### Engine Improvement Scorecard
+
+For broad engine work, `cargo test` is not enough. Use the scorecard profiles:
+
+```bash
+make engine-fast
+make engine-scorecard
+make engine-scorecard-pressure
+make engine-scorecard-full
+```
+
+These profiles combine:
+
+- rapid metamorphic sanity lanes
+- embedded equivalence corpora
+- metamorphic simplification benchmarks
+- derive contract metrics
+
+Use them with this intent:
+
+- `engine-fast`
+  - local iteration lane
+  - run together with touched unit tests
+  - cheap enough to use frequently
+- `engine-scorecard`
+  - merge-friendly guardrail
+  - catches semantic regressions, overflows, and timeout growth
+- `engine-scorecard-pressure`
+  - improvement lane
+  - stresses normalization and mixed composed traffic
+- `engine-scorecard-full`
+  - campaign-level validation
+
+Do not treat engine improvement as “rule count goes up”.
+The scorecard is there to ensure improvements in completeness do not reopen:
+
+- stack overflows
+- timeout growth
+- numeric-only fallback growth
+- derive reachability or step-quality regressions
+
 ### Ejecutar el CLI
 
 #### Opción 1: Compilar release y usar el binario directamente
@@ -900,7 +941,24 @@ make ci-release            # + test --release
 make ci-quick              # skip clippy (faster)
 make lint                  # fmt + lints + clippy only
 make test                  # tests only
+make engine-fast           # rapid engine iteration lane
+make engine-scorecard      # guardrail engine-improvement scorecard
+make engine-scorecard-pressure
+make engine-scorecard-full
 ```
+
+### Validation Policy For Engine Changes
+
+When a PR changes simplify / equivalence / derive behavior, the minimum bar is:
+
+1. touched unit tests
+2. `make engine-fast`
+3. `make ci`
+4. the relevant scorecard profile
+
+For narrow localized fixes, `engine-scorecard` is usually enough after `engine-fast`.
+For work that touches orchestration, normalization routing, or deep composed
+traffic, also run `engine-scorecard-pressure`.
 
 ### CI Pipeline (`scripts/ci.sh`)
 

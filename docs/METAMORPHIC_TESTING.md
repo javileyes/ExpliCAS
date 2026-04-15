@@ -11,6 +11,34 @@ El sistema de **Metamorphic Equivalence Testing** es la herramienta principal pa
 3. **Identificar** bugs reales mediante detección de asimetrías numéricas
 4. **Medir** la cobertura de simplificación del engine
 
+Hoy debe entenderse como parte de un sistema más amplio de mejora continua del
+engine, no como una suite aislada.
+
+La mejora del engine se dirige desde cuatro señales a la vez:
+
+- completitud matemática
+- potencia de normalización
+- robustez frente a expresiones complejas
+- presupuesto de tiempo en tráfico que antes era barato
+
+Eso implica que mejorar el engine no es solo “añadir reglas”. También cuenta:
+
+- mejorar el orquestador root/direct
+- mejorar rutas de equivalencia o shortcuts seguros
+- mejorar el planner o clasificador de `derive`
+- evitar que un caso correcto semánticamente reviente por stack o tiempo
+
+La scorecard automatizada que agrupa estas señales vive en:
+
+- [ENGINE_IMPROVEMENT_AUTOMATION.md](/Users/javiergimenezmoya/developer/math/docs/ENGINE_IMPROVEMENT_AUTOMATION.md)
+- [engine_improvement_scorecard.py](/Users/javiergimenezmoya/developer/math/scripts/engine_improvement_scorecard.py)
+
+> Nota operativa:
+> la propiedad canónica de estas suites vive hoy en
+> [metamorphic_simplification_tests.rs](/Users/javiergimenezmoya/developer/math/crates/cas_solver/tests/metamorphic_simplification_tests.rs)
+> y [metamorphic_equation_tests.rs](/Users/javiergimenezmoya/developer/math/crates/cas_solver/tests/metamorphic_equation_tests.rs).
+> Los wrappers bajo `cas_engine/tests` existen por compatibilidad.
+
 ---
 
 ## Arquitectura del Sistema
@@ -587,6 +615,76 @@ Output (seed 12648430, Feb 2026):
 > `metatest_unified_benchmark` es el test recomendado para validar cambios antes de merge.
 > Ejecuta ~12k combos en ~7 min y cubre las 5 dimensiones de testing metamórfico.
 > `metatest_benchmark_all_ops` sigue disponible para ejecuciones más exhaustivas (150 pares/op, ~34k combos).
+
+### Modos Actuales Del Benchmark Unificado
+
+El benchmark unificado ya no tiene un solo carril.
+
+- `fast`
+  - no es el benchmark unificado completo
+  - es la combinación mínima de suites metamórficas rápidas para iterar
+  - debe acompañar a los unit tests del área tocada
+- `strict`
+  - runner principal de regresión
+  - honesto con timeouts
+  - permite medir presión real sin colapsar el proceso
+- `nf-first`
+  - prioriza señal de convergencia por normalización antes de promociones
+    simbólicas tempranas
+  - es el carril correcto para medir potencia de NF
+- `smoke`
+  - útil para cierres rápidos o validación de shortcuts curados
+  - no debe interpretarse como medida pura de normalización
+
+Comandos canónicos:
+
+```bash
+cargo test --release -p cas_solver --test metamorphic_simplification_tests \
+  metatest_unified_benchmark -- --ignored --exact --nocapture
+
+cargo test --release -p cas_solver --test metamorphic_simplification_tests \
+  metatest_unified_benchmark_nf_first -- --ignored --exact --nocapture
+```
+
+### Scorecard Unificada
+
+Para trabajo real de mejora continua, no uses solo un benchmark aislado.
+Usa la scorecard:
+
+```bash
+make engine-fast
+make engine-scorecard
+make engine-scorecard-pressure
+make engine-scorecard-full
+```
+
+La scorecard junta:
+
+- embedded equivalence context corpus
+- simplify-zero mixed corpus
+- benchmark metamórfico `strict`
+- benchmark metamórfico `nf-first`
+- derive contract corpus
+
+Eso evita el error clásico de declarar “mejorado” un engine que:
+
+- pasa más equivalencias
+- pero se vuelve frágil en wrappers reales
+- o revienta por stack
+- o dispara el runtime en slices que antes eran baratos
+
+### Jerarquía Recomendada De Iteración
+
+La estrategia operativa recomendada es:
+
+1. unit tests del área tocada
+2. `make engine-fast`
+3. cada pocas iteraciones: `make engine-scorecard`
+4. cuando tocas rutas profundas: `make engine-scorecard-pressure`
+5. antes de cerrar: `make ci` y, si el bloque es importante, `make engine-scorecard-full`
+
+Sin esta jerarquía, el coste de feedback se dispara y el trabajo de mejora del
+engine se vuelve innecesariamente lento.
 
 #### Modo Verbose
 

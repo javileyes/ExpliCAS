@@ -111,12 +111,18 @@ fn inferred_step_rule(
 
     let second_title = substeps.get(1)?.title.as_str();
 
-    if step.rule_name == "Canonicalize Negation"
+    if matches!(
+        step.rule_name.as_str(),
+        "Canonicalize Negation"
+            | "Rationalize"
+            | "Rationalize Denominator"
+            | "Rationalize Linear Sqrt Denominator"
+    ) && !matches!(context.get(before), Expr::Div(_, _))
         && first_title.starts_with("Reconocer el patrón (a ")
         && second_title.starts_with("Aplicar (a ")
         && second_title.contains("= a^3")
     {
-        return Some("Expandir suma o diferencia de cubos".to_string());
+        return Some("Expandir la expresión".to_string());
     }
 
     if step.rule_name == "Simplify Nested Fraction" {
