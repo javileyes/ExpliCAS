@@ -26,13 +26,20 @@ fn extract_square_root_of_simple_term(ctx: &mut Context, term: ExprId) -> Option
         return None;
     }
 
-    if let Expr::Number(n) = ctx.get(term) {
-        if n.is_integer() && *n > BigRational::zero() {
-            let int_val = n.to_integer();
-            let root = int_val.sqrt();
-            if &root * &root == int_val {
-                return Some(ctx.add(Expr::Number(BigRational::from_integer(root))));
+    let numeric_term = match ctx.get(term) {
+        Expr::Number(n) => Some(n.clone()),
+        Expr::Div(lhs, rhs) => match (ctx.get(*lhs), ctx.get(*rhs)) {
+            (Expr::Number(numer), Expr::Number(denom)) if !denom.is_zero() => {
+                Some(numer.clone() / denom.clone())
             }
+            _ => None,
+        },
+        _ => None,
+    };
+
+    if let Some(n) = numeric_term {
+        if let Some(root) = rational_sqrt(&n) {
+            return Some(ctx.add(Expr::Number(root)));
         }
     }
 
@@ -491,6 +498,11 @@ fn check_middle_term_2ab(
 
     if let Some(bv) = b_val {
         let expected_coeff_val = two * bv;
+        if expected_coeff_val == BigRational::from_integer(1.into())
+            && compare_expr(ctx, term, a) == Ordering::Equal
+        {
+            return true;
+        }
         let coeff_id = ctx.add(Expr::Number(expected_coeff_val));
         let expected_4 = ctx.add(Expr::Mul(coeff_id, a));
         if compare_flat_mul_terms(ctx, term, expected_4) {

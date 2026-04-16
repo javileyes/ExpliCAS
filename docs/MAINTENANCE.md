@@ -603,6 +603,36 @@ The scorecard is there to ensure improvements in completeness do not reopen:
 - numeric-only fallback growth
 - derive reachability or step-quality regressions
 
+Do not treat `NF-convergent` as an absolute target either.
+
+- Raising `NF-convergent` is valuable when it gives the engine a reusable common
+  normal form for a structural family.
+- It is not valuable when it only patches one anecdotal case, slows a slice, or
+  reopens recursion.
+- `proved-symbolic` is an acceptable holding state when semantic equivalence is
+  solved but the shared NF is not yet stable.
+
+Use [ENGINE_IMPROVEMENT_AUTOMATION.md](/Users/javiergimenezmoya/developer/math/docs/ENGINE_IMPROVEMENT_AUTOMATION.md)
+as the strategy document for deciding whether a candidate change should be kept,
+reworked, or rejected.
+
+`make ci` should not be the default inner-loop command for long engine
+campaigns. It is too expensive for every micro-iteration.
+
+Preferred cadence:
+
+- each small iteration:
+  - touched unit tests
+  - relevant metamorphic slice
+  - relevant embedded corpus when applicable
+- every few retained iterations:
+  - `make engine-scorecard` or `make engine-scorecard-pressure`
+- before treating a batch as closed:
+  - `make ci`
+
+That gives fast local feedback without postponing global integration checks too
+far.
+
 ### Ejecutar el CLI
 
 #### Opción 1: Compilar release y usar el binario directamente

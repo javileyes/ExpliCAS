@@ -76,6 +76,98 @@ The embedded corpora matter because they are harder to game than a single benchm
 - [derive_pairs.csv](/Users/javiergimenezmoya/developer/math/crates/cas_solver/tests/derive_pairs.csv)
   measures whether `derive` can actually bridge source to target and how long the path is
 
+## Why The Embedded Context Corpus Must Keep Growing
+
+`embedded_equivalence_context_corpus.csv` is one of the highest-value guardrails
+for mathematical completeness.
+
+It tests something narrower benchmarks often miss:
+
+- not just whether `expr1 ~ expr2`
+- but whether that equivalence survives inside realistic algebraic wrappers
+
+That matters because many real engine failures are contextual:
+
+- the naked identity works
+- the same identity fails when embedded in an additive, multiplicative, or quotient wrapper
+- the engine proves equivalence only through a late fallback instead of using the identity locally
+
+Expanding the embedded context corpus is therefore not optional maintenance.
+It is how we increase contextual mathematical coverage without fooling ourselves
+with isolated examples.
+
+## Embedded Corpus Growth Policy
+
+The embedded context corpus should grow by structural family, not by anecdote.
+
+Good additions are families that introduce at least one of:
+
+- a new mathematical identity family
+- a new wrapper shape
+- a new composition pattern between already-known families
+- a known fragile path that has already regressed in real engine work
+
+Examples of high-value family buckets:
+
+- trig identities
+- inverse trig compositions
+- hyperbolic identities
+- polynomial factorization families
+- radicals and rationalization
+- log/exp expansion and contraction
+- special-angle exact constants
+- telescoping and fraction decomposition
+- sum-of-squares and product identities
+
+Within each family, prefer a curated pattern:
+
+- one root equivalence pair
+- several contextual wrappers
+- one or two composed variants that reflect real engine traffic
+
+Avoid this anti-pattern:
+
+- adding many near-duplicate examples that all exercise the same matcher path
+
+The goal is not raw corpus size.
+The goal is broader contextual mathematical coverage per added case.
+
+## What The Embedded Corpus Should Not Become
+
+The embedded corpus should not be used as:
+
+- a dumping ground for every failing anecdote
+- a replacement for narrow metamorphic pressure slices
+- a benchmark that rewards redundant variants of the same local shape
+
+If a candidate case only duplicates an already-covered family with the same
+wrapper behavior, it should usually stay out.
+
+If a case exposes a new structural interaction, it belongs in.
+
+## Promotion Rule For New Embedded Cases
+
+A family should be promoted into `embedded_equivalence_context_corpus.csv` when:
+
+- the family is mathematically important or repeatedly seen in pressure lanes
+- the engine behavior is stable enough that the case is now a guardrail, not a moving target
+- the family covers a new wrapper or composition axis
+- the case is likely to catch future regressions that unit tests would miss
+
+A family should stay out of `embedded` for now when:
+
+- the engine still has no stable common representation for it
+- the only current value is synthetic benchmark pressure
+- the case is useful for exploration but not yet mature enough to become a guardrail
+
+Those cases belong first in:
+
+- metamorphic slices
+- localized regression tests
+- corpus backlog notes
+
+and only later in `embedded`.
+
 ## What Counts As A Valid Improvement
 
 An engine change is only a real improvement if it moves at least one of these in
@@ -115,6 +207,68 @@ traffic to explode in runtime, it is not a clean win.
 6. Rerun the relevant `pressure` lane when the change touches normalization,
    orchestration, or deep composed traffic.
 7. Promote the new family into an embedded corpus once the behavior is stable.
+
+This loop is intentionally not the same as running full CI every time.
+
+## Validation Cadence: When To Run `make ci`
+
+`make ci` is a closure step, not the default inner-loop step for engine work.
+
+Running it on every small engine iteration is usually too expensive and slows
+down the campaign without improving decision quality.
+
+Use this cadence instead:
+
+### Short loop: every local iteration
+
+Run only the cheapest validations that match the change:
+
+- touched unit tests
+- the relevant metamorphic slice
+- the relevant embedded corpus if the change is broad enough
+
+This is the default iteration loop.
+
+### Medium loop: every few retained iterations
+
+Run a broader validation pass after roughly `3-5` retained iterations, or
+earlier if the change is more structural.
+
+Typical choices:
+
+- `make engine-scorecard`
+- `make engine-scorecard-pressure` when normalization or orchestration changed
+- `make ci` when the campaign has accumulated enough retained changes
+
+### Full closure loop
+
+Run `make ci` when:
+
+- a batch of changes is ready to be considered stable
+- the work touched shared orchestration, core routing, or broad engine behavior
+- you are about to close the campaign, commit, or hand off the result
+
+## Why This Cadence Is Correct
+
+The purpose of the cadence is to preserve fast iteration without losing global
+safety.
+
+- the short loop keeps development fast
+- the medium loop catches campaign-level drift early
+- the full loop ensures the global repository contract still holds
+
+This avoids two bad extremes:
+
+- running `make ci` every turn and barely iterating
+- never running `make ci` and discovering integration breakage too late
+
+## Practical Rule
+
+For engine campaigns:
+
+- do not run `make ci` on every micro-iteration
+- do run it periodically during the campaign
+- always run it before treating the work as truly closed
 
 This matters because not every engine fix deserves promotion into the heaviest benchmark immediately.
 
@@ -156,6 +310,185 @@ The policy should be:
 - stack overflows are immediate blockers in promoted guardrail lanes
 - runtime blowups on previously cheap slices must be treated as regressions, not
   as acceptable collateral
+
+## Why `NF-convergent` Matters
+
+`NF-convergent` is not just a benchmark vanity metric.
+
+When two equivalent expressions converge to the same normal form through the
+main simplify pipeline, the engine gains real capabilities:
+
+- more deterministic output
+- more stable downstream matching
+- fewer expensive `difference -> simplify_to_zero` fallback proofs
+- less reliance on `proved-symbolic` as the primary path
+- better reuse in solver, derive, factoring, and contextual wrappers
+- better odds that equivalent traffic hits the same cache / canonical route
+
+In practice this means the engine is not merely proving equivalence after the
+fact; it is learning to represent equivalent math the same way.
+
+That improves user-facing quality too:
+
+- fewer “same meaning, different shape” surprises
+- fewer branchy orchestrator routes
+- less benchmark traffic that only passes because a late symbolic proof bails it out
+
+## Why `NF-convergent` Is Not The Top-Level Goal
+
+Maximizing `NF-convergent` blindly is a mistake.
+
+`proved-symbolic` is still valuable. It is the engine's safety net when:
+
+- a shared normal form is not yet stable
+- a family is semantically solved but not canonically aligned
+- forcing a common form would introduce brittle special-casing
+
+The wrong optimization pattern is:
+
+- add a broad shortcut
+- move a few cases from `proved-symbolic` to `NF-convergent`
+- silently degrade runtime, reopen recursion, or fragment other families
+
+That is not a real improvement.
+
+The right interpretation is:
+
+- `NF-convergent` is a quality multiplier for reusable structural families
+- `proved-symbolic` is an acceptable holding state when the shared normal form is
+  not mature enough
+- some families should remain symbolic until a stable common representation exists
+
+## Automation Priority Order
+
+The automation should optimize engine value in this order:
+
+1. keep `failed` at `0`
+2. eliminate stack overflows and visible timeouts
+3. preserve or improve runtime on promoted lanes
+4. increase `NF-convergent` on reusable structural families
+5. reduce `proved-symbolic` when that does not harm the first four goals
+6. only then optimize local aesthetics of the output
+
+This is intentionally lexicographic, not additive.
+
+For example:
+
+- a change that removes 1 timeout and loses 2 NF cases can still be a win
+- a change that gains 5 NF cases but reopens one stack overflow is a regression
+- a change that gains NF only for one narrow anecdote but slows a whole slice is
+  a regression
+
+## Intelligent Triage For The Automation Loop
+
+Before writing code, the automation should classify each hotspot into one of
+these buckets:
+
+### 1. Functional gap
+
+Symptoms:
+
+- `failed`
+- `timeout`
+- `stack overflow`
+- `numeric-only` where symbolic should be possible
+
+Preferred actions:
+
+- engine rule
+- orchestrator/root shortcut
+- robustness guard
+- harness hint only if the engine already has the correct semantics and the
+  bottleneck is classification overhead
+
+This bucket has the highest priority.
+
+### 2. Normal-form gap with a stable common representation
+
+Symptoms:
+
+- `proved-symbolic`
+- both sides are already expressible through one reusable canonical shape
+- direct `cas_cli --release` checks show that shared shape is stable
+
+Preferred actions:
+
+- narrow canonicalization
+- anchor-partner shortcut
+- shared target builder for a small structural family
+
+This is where `NF-convergent` work is worth the effort.
+
+### 3. Normal-form gap without a stable common representation
+
+Symptoms:
+
+- `proved-symbolic`
+- every attempted common form decomposes differently on the two sides
+- the “fix” requires ad hoc rewrites or broad shortcuts
+
+Preferred actions:
+
+- keep as `proved-symbolic` for now
+- document the family
+- revisit only when a genuine common representation appears
+
+This bucket should not dominate automation time.
+
+### 4. Harness-only classification gap
+
+Symptoms:
+
+- direct engine or CLI already resolves the family cheaply
+- metamorphic child still spends the budget and times out
+
+Preferred actions:
+
+- cheap child matcher
+- textual anchor matcher
+- narrow metamorphic hint
+
+This is valid work, but it should be clearly labeled as harness improvement, not
+core-engine normalization progress.
+
+## Retention Criteria For A Candidate Change
+
+The automation should keep a candidate only if all of these hold:
+
+- the touched unit regressions pass
+- the relevant scorecard lane improves or at least does not regress materially
+- promoted corpora stay green
+- the change benefits a reusable family, not just a single anecdotal case
+- the resulting path is understandable enough to maintain
+
+The automation should reject a candidate if any of these happen:
+
+- `embedded` or guardrail lanes regress
+- runtime on a previously cheap slice grows sharply
+- a broad shortcut reopens recursion or ping-pong behavior
+- the improvement only changes printed order or one isolated benchmark anecdote
+- the change pushes the system toward benchmark-specific overfitting
+
+## Practical Policy For Engine Campaigns
+
+A good campaign should usually look like this:
+
+1. remove hard blockers first:
+   - failures
+   - stack overflows
+   - timeouts
+2. then attack high-volume `proved-symbolic` clusters that share a reusable
+   normal form
+3. stop when the remaining mismatches are mostly “semantic proof is fine, common
+   NF is not clean yet”
+4. move to the next family instead of forcing brittle canonicalization
+
+That is the key strategic point:
+
+- `NF-convergent` should be maximized where it increases determinism and reuse
+- it should not be maximized at any cost
+- the automation should prefer robust, composable canonical families over local
+  benchmark gaming
 
 ## How To Extend The System
 

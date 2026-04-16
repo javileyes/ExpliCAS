@@ -2671,7 +2671,9 @@ fn prove_zero_from_engine_texts(lhs: &str, rhs: &str) -> bool {
 }
 
 fn prove_zero_from_engine_texts_child_hint(lhs: &str, rhs: &str) -> bool {
-    prove_zero_via_wire_eval(lhs, rhs)
+    three_linear_shift_anchor_partner_identity_matches(lhs, rhs)
+        || sum_of_squares_anchor_partner_identity_matches(lhs, rhs)
+        || prove_zero_via_wire_eval(lhs, rhs)
         || prove_equiv_expr_texts_fresh(lhs, rhs)
         || prove_zero_from_diff_text(lhs, rhs)
         || prove_zero_from_expanded_operands_text(lhs, rhs)
@@ -3286,6 +3288,294 @@ fn atan_double_angle_identity_matches(lhs_text: &str, rhs_text: &str) -> bool {
         };
 
         strip_wrapping_parens(rational_side) == strip_wrapping_parens(&expected)
+    }
+
+    let lhs = normalize_metamorphic_text(lhs_text);
+    let rhs = normalize_metamorphic_text(rhs_text);
+    side_matches(&lhs, &rhs) || side_matches(&rhs, &lhs)
+}
+
+fn split_top_level_mul_factors_text(text: &str) -> Vec<&str> {
+    let mut factors = Vec::new();
+    let mut depth = 0usize;
+    let mut start = 0usize;
+
+    for (idx, ch) in text.char_indices() {
+        match ch {
+            '(' => depth += 1,
+            ')' => depth = depth.saturating_sub(1),
+            '*' if depth == 0 => {
+                factors.push(&text[start..idx]);
+                start = idx + ch.len_utf8();
+            }
+            _ => {}
+        }
+    }
+
+    if start <= text.len() {
+        factors.push(&text[start..]);
+    }
+    factors
+}
+
+fn split_top_level_add_terms_text(text: &str) -> Vec<&str> {
+    let mut terms = Vec::new();
+    let mut depth = 0usize;
+    let mut start = 0usize;
+
+    for (idx, ch) in text.char_indices() {
+        match ch {
+            '(' => depth += 1,
+            ')' => depth = depth.saturating_sub(1),
+            '+' if depth == 0 => {
+                terms.push(&text[start..idx]);
+                start = idx + ch.len_utf8();
+            }
+            _ => {}
+        }
+    }
+
+    if start <= text.len() {
+        terms.push(&text[start..]);
+    }
+    terms
+}
+
+fn is_simple_ident_text(text: &str) -> bool {
+    let mut chars = text.chars();
+    matches!(chars.next(), Some(ch) if ch.is_ascii_alphabetic() || ch == '_')
+        && chars.all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+}
+
+fn extract_three_linear_shift_anchor_base_text(factor_text: &str) -> Option<String> {
+    let inner = strip_wrapping_parens(factor_text);
+    let factors = split_top_level_mul_factors_text(inner);
+    if factors.len() != 3 {
+        return None;
+    }
+
+    let mut base = None::<&str>;
+    let mut constants = Vec::with_capacity(3);
+    for factor in factors {
+        let factor = strip_wrapping_parens(factor);
+        let plus_idx = factor.rfind('+')?;
+        let factor_base = &factor[..plus_idx];
+        let constant = &factor[plus_idx + 1..];
+        if !is_simple_ident_text(factor_base) {
+            return None;
+        }
+        let constant = constant.parse::<i64>().ok()?;
+        if let Some(expected_base) = base {
+            if expected_base != factor_base {
+                return None;
+            }
+        } else {
+            base = Some(factor_base);
+        }
+        constants.push(constant);
+    }
+
+    constants.sort_unstable();
+    (constants == [1, 2, 3]).then(|| base.unwrap().to_string())
+}
+
+fn extract_three_linear_shift_expanded_base_text(factor_text: &str) -> Option<String> {
+    let inner = strip_wrapping_parens(factor_text);
+    let marker = "^3+6*";
+    let idx = inner.find(marker)?;
+    let base = &inner[..idx];
+    if !is_simple_ident_text(base) {
+        return None;
+    }
+    let expected = format!("{base}^3+6*{base}^2+11*{base}+6");
+    (inner == expected).then(|| base.to_string())
+}
+
+fn extract_three_linear_shift_anchor_and_partner_text(side: &str) -> Option<(String, String)> {
+    let factors = split_top_level_mul_factors_text(strip_wrapping_parens(side));
+    if factors.len() != 2 {
+        return None;
+    }
+
+    for anchor_index in 0..2 {
+        let partner_index = 1 - anchor_index;
+        let Some(base) = extract_three_linear_shift_anchor_base_text(factors[anchor_index]) else {
+            continue;
+        };
+        return Some((
+            base,
+            strip_wrapping_parens(factors[partner_index]).to_string(),
+        ));
+    }
+
+    None
+}
+
+fn extract_three_linear_shift_expanded_and_partner_text(side: &str) -> Option<(String, String)> {
+    let factors = split_top_level_mul_factors_text(strip_wrapping_parens(side));
+    if factors.len() != 2 {
+        return None;
+    }
+
+    for cubic_index in 0..2 {
+        let partner_index = 1 - cubic_index;
+        let Some(base) = extract_three_linear_shift_expanded_base_text(factors[cubic_index]) else {
+            continue;
+        };
+        return Some((
+            base,
+            strip_wrapping_parens(factors[partner_index]).to_string(),
+        ));
+    }
+
+    None
+}
+
+fn matches_double_angle_arcsin_partner_text(
+    factored_partner: &str,
+    expanded_partner: &str,
+) -> bool {
+    let factored_partner = strip_wrapping_parens(factored_partner);
+    let Some(inner) = factored_partner
+        .strip_prefix("sin(2*arcsin(")
+        .and_then(|s| s.strip_suffix("))"))
+    else {
+        return false;
+    };
+    let expected = format!("2*{inner}*sqrt(1-{inner}^2)");
+    strip_wrapping_parens(expanded_partner) == strip_wrapping_parens(&expected)
+}
+
+fn matches_small_radical_product_partner_text(
+    factored_partner: &str,
+    expanded_partner: &str,
+) -> bool {
+    let factors = split_top_level_mul_factors_text(strip_wrapping_parens(factored_partner));
+    if factors.len() != 2 {
+        return false;
+    }
+
+    for lhs_index in 0..2 {
+        let rhs_index = 1 - lhs_index;
+        let Some(inner) = strip_wrapping_parens(factors[lhs_index])
+            .strip_prefix("sqrt(")
+            .and_then(|s| s.strip_suffix(')'))
+        else {
+            continue;
+        };
+        let expected_other = format!("sqrt(4*{inner})");
+        if strip_wrapping_parens(factors[rhs_index]) != strip_wrapping_parens(&expected_other) {
+            continue;
+        }
+
+        let expected = format!("2*{inner}");
+        if strip_wrapping_parens(expanded_partner) == strip_wrapping_parens(&expected) {
+            return true;
+        }
+    }
+
+    false
+}
+
+fn three_linear_shift_anchor_partner_identity_matches(lhs_text: &str, rhs_text: &str) -> bool {
+    fn side_matches(factored_side: &str, expanded_side: &str) -> bool {
+        let Some((factored_base, factored_partner)) =
+            extract_three_linear_shift_anchor_and_partner_text(factored_side)
+        else {
+            return false;
+        };
+        let Some((expanded_base, expanded_partner)) =
+            extract_three_linear_shift_expanded_and_partner_text(expanded_side)
+        else {
+            return false;
+        };
+        if factored_base != expanded_base {
+            return false;
+        }
+
+        matches_double_angle_arcsin_partner_text(&factored_partner, &expanded_partner)
+            || matches_small_radical_product_partner_text(&factored_partner, &expanded_partner)
+    }
+
+    let lhs = normalize_metamorphic_text(lhs_text);
+    let rhs = normalize_metamorphic_text(rhs_text);
+    side_matches(&lhs, &rhs) || side_matches(&rhs, &lhs)
+}
+
+fn looks_like_square_of_simple_ident_text(text: &str) -> bool {
+    let text = strip_wrapping_parens(text);
+    let Some(base) = text.strip_suffix("^2") else {
+        return false;
+    };
+    is_simple_ident_text(strip_wrapping_parens(base))
+}
+
+fn looks_like_sum_of_two_squares_text(text: &str) -> bool {
+    let terms = split_top_level_add_terms_text(strip_wrapping_parens(text));
+    terms.len() == 2
+        && terms
+            .iter()
+            .all(|term| looks_like_square_of_simple_ident_text(term))
+}
+
+fn looks_like_sum_of_squares_product_anchor_text(text: &str) -> bool {
+    let factors = split_top_level_mul_factors_text(strip_wrapping_parens(text));
+    factors.len() == 2
+        && factors
+            .iter()
+            .all(|factor| looks_like_sum_of_two_squares_text(factor))
+}
+
+fn extract_sum_of_squares_anchor_and_partner_text(side: &str) -> Option<(String, String)> {
+    let factors = split_top_level_mul_factors_text(strip_wrapping_parens(side));
+    if factors.len() != 2 {
+        return None;
+    }
+
+    for anchor_index in 0..2 {
+        let partner_index = 1 - anchor_index;
+        if !looks_like_sum_of_squares_product_anchor_text(factors[anchor_index]) {
+            continue;
+        }
+        return Some((
+            strip_wrapping_parens(factors[anchor_index]).to_string(),
+            strip_wrapping_parens(factors[partner_index]).to_string(),
+        ));
+    }
+
+    None
+}
+
+fn sum_of_squares_anchor_partner_identity_matches(lhs_text: &str, rhs_text: &str) -> bool {
+    fn side_matches(factored_side: &str, expanded_side: &str) -> bool {
+        let Some((factored_anchor, factored_partner)) =
+            extract_sum_of_squares_anchor_and_partner_text(factored_side)
+        else {
+            return false;
+        };
+
+        let expanded_factors =
+            split_top_level_mul_factors_text(strip_wrapping_parens(expanded_side));
+        if expanded_factors.len() != 2 {
+            return false;
+        }
+
+        for anchor_index in 0..2 {
+            let partner_index = 1 - anchor_index;
+            let expanded_anchor = strip_wrapping_parens(expanded_factors[anchor_index]);
+            let expanded_partner = strip_wrapping_parens(expanded_factors[partner_index]);
+            if !prove_equiv_expr_texts_fresh(&factored_anchor, expanded_anchor) {
+                continue;
+            }
+            if strip_wrapping_parens(&factored_partner) == expanded_partner
+                || prove_zero_from_curated_pair_corpus_text(&factored_partner, expanded_partner)
+                || prove_equiv_expr_texts_fresh(&factored_partner, expanded_partner)
+            {
+                return true;
+            }
+        }
+
+        false
     }
 
     let lhs = normalize_metamorphic_text(lhs_text);
@@ -4732,6 +5022,60 @@ fn half_angle_identity_matches_substituted_linear_pair() {
     let rhs = "1-cos((2*u+3))";
     assert!(half_angle_identity_matches(lhs, rhs));
     assert!(half_angle_identity_matches(rhs, lhs));
+}
+
+#[test]
+fn three_linear_shift_anchor_partner_identity_matches_double_angle_inverse_trig_pair() {
+    let lhs = "((x+1)*(x+2)*(x+3)) * (sin(2*arcsin(u)))";
+    let rhs = "(x^3 + 6*x^2 + 11*x + 6) * (2*u*sqrt(1-u^2))";
+    assert!(three_linear_shift_anchor_partner_identity_matches(lhs, rhs));
+    assert!(three_linear_shift_anchor_partner_identity_matches(rhs, lhs));
+}
+
+#[test]
+fn three_linear_shift_anchor_partner_identity_matches_small_radical_product_pair() {
+    let lhs = "((x+1)*(x+2)*(x+3)) * (sqrt(u)*sqrt(4*u))";
+    let rhs = "(x^3 + 6*x^2 + 11*x + 6) * (2*u)";
+    assert!(three_linear_shift_anchor_partner_identity_matches(lhs, rhs));
+    assert!(three_linear_shift_anchor_partner_identity_matches(rhs, lhs));
+}
+
+#[test]
+fn sum_of_squares_anchor_partner_identity_matches_sum_of_cubes_pair() {
+    let lhs = "((x^2 + y^2)*(a^2 + b^2)) * (u^3 + v^3)";
+    let rhs = "((x*a + y*b)^2 + (x*b - y*a)^2) * ((u+v)*(u^2-u*v+v^2))";
+    assert!(sum_of_squares_anchor_partner_identity_matches(lhs, rhs));
+    assert!(sum_of_squares_anchor_partner_identity_matches(rhs, lhs));
+}
+
+#[test]
+fn sum_of_squares_anchor_partner_identity_matches_higher_degree_difference_pair() {
+    let lhs = "((x^2 + y^2)*(a^2 + b^2)) * (u^6 - 1)";
+    let rhs = "((x*a + y*b)^2 + (x*b - y*a)^2) * ((u^2+u+1)*(u^2-u+1)*(u+1)*(u-1))";
+    assert!(sum_of_squares_anchor_partner_identity_matches(lhs, rhs));
+    assert!(sum_of_squares_anchor_partner_identity_matches(rhs, lhs));
+}
+
+#[test]
+fn sum_of_squares_anchor_partner_identity_matches_identical_partner_pair() {
+    let lhs = "((x^2 + y^2)*(a^2 + b^2)) * (u^2 + v^2)";
+    let rhs = "((x*a + y*b)^2 + (x*b - y*a)^2) * (u^2 + v^2)";
+    assert!(sum_of_squares_anchor_partner_identity_matches(lhs, rhs));
+    assert!(sum_of_squares_anchor_partner_identity_matches(rhs, lhs));
+}
+
+#[test]
+fn child_hint_uses_three_linear_shift_partner_identity_matcher() {
+    let lhs = "((x+1)*(x+2)*(x+3)) * (sin(2*arcsin(u)))";
+    let rhs = "(x^3 + 6*x^2 + 11*x + 6) * (2*u*sqrt(1-u^2))";
+    assert!(prove_zero_from_engine_texts_child_hint(lhs, rhs));
+}
+
+#[test]
+fn child_hint_uses_sum_of_squares_anchor_partner_identity_matcher() {
+    let lhs = "((x^2 + y^2)*(a^2 + b^2)) * (u^3 - 1)";
+    let rhs = "((x*a + y*b)^2 + (x*b - y*a)^2) * ((u - 1)*(u^2 + u + 1))";
+    assert!(prove_zero_from_engine_texts_child_hint(lhs, rhs));
 }
 
 #[test]

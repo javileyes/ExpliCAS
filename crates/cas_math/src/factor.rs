@@ -546,6 +546,15 @@ mod tests {
     }
 
     #[test]
+    fn test_factor_perfect_square_trinomial_with_fractional_coefficients() {
+        let mut ctx = Context::new();
+        let expr = parse("u^2 + u + 1/4", &mut ctx).unwrap();
+        let res = factor_perfect_square_trinomial(&mut ctx, expr).expect("factor");
+        let expected = parse("(u + 1/2)^2", &mut ctx).unwrap();
+        assert!(poly_eq(&ctx, res, expected));
+    }
+
+    #[test]
     fn test_factor_perfect_square_trinomial_rejects_missing_middle_coefficient() {
         let mut ctx = Context::new();
         let expr = parse("a^2 + a*b + b^2", &mut ctx).unwrap();

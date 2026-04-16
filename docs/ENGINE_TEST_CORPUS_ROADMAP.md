@@ -109,6 +109,23 @@ It forces the simplifier to:
 This directly improves real user input, because most interactive expressions are
 not naked textbook identities. They are identities embedded in context.
 
+### Curation Policy
+
+This corpus should be curated, not inflated.
+
+Add new entries when they introduce:
+
+- a new mathematical family
+- a new wrapper behavior
+- a new cross-family composition
+- a regression-prone structural interaction already observed in engine work
+
+Do not add large batches of near-duplicate variants that all exercise the same
+matcher route.
+
+The objective is contextual completeness per case, not corpus size for its own
+sake.
+
 ## Corpus 2: Orientation, Sign, And Canonicalization Robustness
 
 ### Purpose
@@ -380,6 +397,46 @@ This is the most likely corpus to produce another real leap in engine quality,
 because it directly tests whether equivalence is usable locally, not only in a
 top-level naked identity.
 
+## How To Grow `embedded_equivalence_context_corpus.csv`
+
+Use a family-first policy.
+
+For each promoted family:
+
+1. define one root equivalence pair
+2. embed it in a small, fixed wrapper set
+3. add at most one or two composed variants if they exercise a genuinely new path
+
+Recommended wrapper set:
+
+- additive passthrough
+- scaled difference
+- common denominator
+- shifted quotient
+
+Only add more wrappers when the family exposes a new failure mode under them.
+
+## Promotion Checklist For Embedded Cases
+
+Promote a family into `embedded_equivalence_context_corpus.csv` when all of
+these are true:
+
+- it represents a real mathematical family, not a one-off anecdote
+- it covers a wrapper or composition axis not already guarded well
+- the engine behavior is stable enough to serve as a long-lived regression guard
+- the case is likely to catch future contextual regressions
+
+Keep a family in metamorphic pressure lanes instead when:
+
+- the family is still moving too fast
+- the common normal form is not stable yet
+- the case is useful for pressure but not ready to become a guardrail
+
+That separation matters:
+
+- `embedded` is for curated contextual guardrails
+- metamorphic slices are for exploration and pressure
+
 ## Concrete Example Seeds
 
 Good seeds for this next corpus:
@@ -408,6 +465,11 @@ A corpus is worth keeping only if it improves at least one of:
 - convergence stability
 - didactic path quality
 - performance predictability
+
+For `embedded_equivalence_context_corpus.csv`, add one more filter:
+
+- each added family should increase contextual mathematical coverage, not merely
+  duplicate an already-covered local shape
 
 If a corpus only rewards ad hoc string-shape patches, it should be rejected or
 reframed.

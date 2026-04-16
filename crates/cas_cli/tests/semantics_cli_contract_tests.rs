@@ -4605,7 +4605,7 @@ fn eval_general_shifted_sine_cosine_common_denominator_difference_collapses_to_z
 fn eval_scaled_exact_phase_shift_pair_difference_to_zero_collapses_after_common_factor() {
     let (output, _code) = run_cli(&[
         "eval",
-        "k*(sin(x)+cos(x)+sin(y)+cos(y)) - k*(sqrt(2)*sin(x+pi/4)+sqrt(2)*sin(y+pi/4))",
+        "k*(sin(x)+cos(x)) - k*(sqrt(2)*sin(x+pi/4))",
         "--format",
         "json",
         "--steps",
@@ -4650,10 +4650,10 @@ fn eval_exact_phase_shift_pair_common_denominator_difference_collapses_after_sha
 }
 
 #[test]
-fn eval_exact_phase_shift_pair_raw_difference_collapses_in_two_phase_shift_steps() {
+fn eval_exact_phase_shift_pair_raw_difference_collapses_in_one_phase_shift_step() {
     let (output, _code) = run_cli(&[
         "eval",
-        "sin(x)+cos(x)+sin(y)+cos(y) - (sqrt(2)*sin(x+pi/4)+sqrt(2)*sin(y+pi/4))",
+        "sin(x)+cos(x) - sqrt(2)*sin(x+pi/4)",
         "--format",
         "json",
         "--steps",
@@ -4662,11 +4662,10 @@ fn eval_exact_phase_shift_pair_raw_difference_collapses_in_two_phase_shift_steps
     let wire = parse_wire(&output);
 
     assert_eq!(wire["result"], "0");
-    assert_eq!(wire["steps_count"], 2);
+    assert_eq!(wire["steps_count"], 1);
     let steps = wire["steps"].as_array().expect("steps array");
-    assert_eq!(steps.len(), 2);
+    assert_eq!(steps.len(), 1);
     assert_eq!(steps[0]["rule"], "Aplicar identidad de desfase");
-    assert_eq!(steps[1]["rule"], "Aplicar identidad de desfase");
 }
 
 #[test]

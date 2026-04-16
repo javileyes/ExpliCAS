@@ -1,6 +1,6 @@
 use crate::define_rule;
 use crate::parent_context::ParentContext;
-use crate::rule::{ChainedRewrite, Rewrite, Rule};
+use crate::rule::{Rewrite, Rule};
 use cas_ast::ordering::compare_expr;
 use cas_ast::{BuiltinFn, Expr};
 use cas_math::arithmetic_cancel_support::{
@@ -8984,6 +8984,17 @@ fn try_build_exact_zero_common_scaled_difference_rewrite(
     {
         let residual_expr = ctx.add(Expr::Sub(lhs_core, rhs_core));
         if let Some(child_rewrite) =
+            try_build_repeated_trig_phase_shift_pair_zero_rewrite(ctx, residual_expr)
+        {
+            return Some(build_common_scale_exact_zero_rewrite(
+                ctx,
+                expr,
+                common_factor,
+                residual_expr,
+                child_rewrite,
+            ));
+        }
+        if let Some(child_rewrite) =
             try_build_exact_zero_shared_passthrough_difference_rewrite(ctx, residual_expr)
         {
             return Some(build_common_scale_exact_zero_rewrite(
@@ -12323,27 +12334,18 @@ fn build_exact_zero_subset_passthrough_rewrite(
     rewrite
 }
 
-fn try_build_fast_repeated_trig_phase_shift_pair_zero_rewrite(
+pub(crate) fn extract_repeated_trig_phase_shift_pair_zero_chunks(
     ctx: &mut cas_ast::Context,
-    terms: &[(cas_ast::ExprId, Sign)],
-) -> Option<Rewrite> {
-    if terms.len() != 6 {
+    expr: cas_ast::ExprId,
+) -> Option<(cas_ast::ExprId, cas_ast::ExprId)> {
+    let normalized_expr = normalize_additive_scope_expr(ctx, expr);
+    let view = AddView::from_expr(ctx, normalized_expr);
+    if view.terms.len() != 6 {
         return None;
     }
 
-    if let Some(rewrite) =
-        try_build_fast_unit_exact_quarter_shifted_sine_pair_zero_rewrite(ctx, terms)
-    {
-        return Some(rewrite);
-    }
-
-    if let Some(rewrite) =
-        try_build_fast_structural_exact_quarter_phase_shift_pair_zero_rewrite(ctx, terms)
-    {
-        return Some(rewrite);
-    }
-
-    let shifted_terms: Vec<_> = terms
+    let shifted_terms: Vec<_> = view
+        .terms
         .iter()
         .copied()
         .enumerate()
@@ -12359,7 +12361,8 @@ fn try_build_fast_repeated_trig_phase_shift_pair_zero_rewrite(
         return None;
     }
 
-    let linear_terms: Vec<_> = terms
+    let linear_terms: Vec<_> = view
+        .terms
         .iter()
         .copied()
         .map(|(term_expr, term_sign)| {
@@ -12367,9 +12370,8 @@ fn try_build_fast_repeated_trig_phase_shift_pair_zero_rewrite(
         })
         .collect();
 
-    let mut used = vec![false; terms.len()];
-    let zero = ctx.num(0);
-    let mut matched_rewrites = Vec::new();
+    let mut used = vec![false; view.terms.len()];
+    let mut matched_chunks = Vec::new();
 
     for (shifted_index, base_arg, coeff, kind, sin_sign, cos_sign) in shifted_terms {
         if used[shifted_index] {
@@ -12378,7 +12380,7 @@ fn try_build_fast_repeated_trig_phase_shift_pair_zero_rewrite(
 
         let mut sin_index = None;
         let mut cos_index = None;
-        for index in 0..terms.len() {
+        for index in 0..view.terms.len() {
             if used[index] || index == shifted_index {
                 continue;
             }
@@ -12417,28 +12419,59 @@ fn try_build_fast_repeated_trig_phase_shift_pair_zero_rewrite(
             return None;
         }
 
-        let triple_terms = [terms[sin_index], terms[cos_index], terms[shifted_index]];
-        let triple_expr = build_signed_sum_expr(ctx, &triple_terms);
+        let chunk_terms = [
+            view.terms[sin_index],
+            view.terms[cos_index],
+            view.terms[shifted_index],
+        ];
+        let chunk_expr = build_signed_sum_expr(ctx, &chunk_terms);
 
         used[sin_index] = true;
         used[cos_index] = true;
         used[shifted_index] = true;
-        matched_rewrites.push(triple_expr);
+        matched_chunks.push(chunk_expr);
     }
 
-    if matched_rewrites.len() != 2 || used.iter().any(|used_term| !*used_term) {
+    if matched_chunks.len() != 2 || used.iter().any(|used_term| !*used_term) {
         return None;
     }
 
-    let first_expr = matched_rewrites.remove(0);
-    let second_expr = matched_rewrites.remove(0);
+    let first_expr = matched_chunks.remove(0);
+    let second_expr = matched_chunks.remove(0);
+    Some((first_expr, second_expr))
+}
 
-    let rewrite = Rewrite::with_local(second_expr, "Phase Shift Identity", first_expr, zero);
-    let chained = ChainedRewrite::new(zero)
-        .desc("Phase Shift Identity")
-        .local(second_expr, zero);
+fn try_build_fast_repeated_trig_phase_shift_pair_zero_rewrite(
+    ctx: &mut cas_ast::Context,
+    terms: &[(cas_ast::ExprId, Sign)],
+) -> Option<Rewrite> {
+    if terms.len() != 6 {
+        return None;
+    }
 
-    Some(rewrite.chain(chained))
+    if let Some(rewrite) =
+        try_build_fast_unit_exact_quarter_shifted_sine_pair_zero_rewrite(ctx, terms)
+    {
+        return Some(rewrite);
+    }
+
+    if let Some(rewrite) =
+        try_build_fast_structural_exact_quarter_phase_shift_pair_zero_rewrite(ctx, terms)
+    {
+        return Some(rewrite);
+    }
+
+    let zero = ctx.num(0);
+    let full_expr = build_signed_sum_expr(ctx, terms);
+    let (first_expr, second_expr) =
+        extract_repeated_trig_phase_shift_pair_zero_chunks(ctx, full_expr)?;
+
+    let mut rewrite = Rewrite::with_local(zero, "Phase Shift Identity", full_expr, zero);
+    rewrite.substeps = vec![
+        build_phase_shift_zero_substep(ctx, first_expr),
+        build_phase_shift_zero_substep(ctx, second_expr),
+    ];
+    Some(rewrite)
 }
 
 fn try_build_fast_unit_exact_quarter_shifted_sine_pair_zero_rewrite(
@@ -12522,13 +12555,14 @@ fn try_build_fast_unit_exact_quarter_shifted_sine_pair_zero_rewrite(
 
     let first_expr = matched_rewrites.remove(0);
     let second_expr = matched_rewrites.remove(0);
+    let full_expr = build_signed_sum_expr(ctx, terms);
 
-    let rewrite = Rewrite::with_local(second_expr, "Phase Shift Identity", first_expr, zero);
-    let chained = ChainedRewrite::new(zero)
-        .desc("Phase Shift Identity")
-        .local(second_expr, zero);
-
-    Some(rewrite.chain(chained))
+    let mut rewrite = Rewrite::with_local(zero, "Phase Shift Identity", full_expr, zero);
+    rewrite.substeps = vec![
+        build_phase_shift_zero_substep(ctx, first_expr),
+        build_phase_shift_zero_substep(ctx, second_expr),
+    ];
+    Some(rewrite)
 }
 
 fn try_build_fast_structural_exact_quarter_phase_shift_pair_zero_rewrite(
@@ -12627,13 +12661,30 @@ fn try_build_fast_structural_exact_quarter_phase_shift_pair_zero_rewrite(
 
     let first_expr = matched_rewrites.remove(0);
     let second_expr = matched_rewrites.remove(0);
+    let full_expr = build_signed_sum_expr(ctx, terms);
 
-    let rewrite = Rewrite::with_local(second_expr, "Phase Shift Identity", first_expr, zero);
-    let chained = ChainedRewrite::new(zero)
-        .desc("Phase Shift Identity")
-        .local(second_expr, zero);
+    let mut rewrite = Rewrite::with_local(zero, "Phase Shift Identity", full_expr, zero);
+    rewrite.substeps = vec![
+        build_phase_shift_zero_substep(ctx, first_expr),
+        build_phase_shift_zero_substep(ctx, second_expr),
+    ];
+    Some(rewrite)
+}
 
-    Some(rewrite.chain(chained))
+fn build_phase_shift_zero_substep(
+    ctx: &cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> crate::step::SubStep {
+    crate::step::SubStep::new(
+        "Phase Shift Identity",
+        vec![format!(
+            "{} -> 0",
+            cas_formatter::DisplayExpr {
+                context: ctx,
+                id: expr
+            }
+        )],
+    )
 }
 
 fn try_build_repeated_trig_phase_shift_pair_zero_rewrite(
@@ -12697,33 +12748,32 @@ fn try_build_repeated_trig_phase_shift_pair_zero_rewrite(
                 }
 
                 let mut rewrite = Rewrite::with_local(
-                    second_expr,
+                    zero,
                     first_rewrite.description.clone(),
-                    first_rewrite.before_local.unwrap_or(first_expr),
-                    first_rewrite.after_local.unwrap_or(zero),
+                    normalized_expr,
+                    zero,
                 )
                 .requires_all(first_rewrite.required_conditions.clone())
-                .assume_all(first_rewrite.assumption_events.clone());
+                .requires_all(second_rewrite.required_conditions.clone())
+                .assume_all(first_rewrite.assumption_events.clone())
+                .assume_all(second_rewrite.assumption_events.clone());
 
                 if let Some(poly_proof) = first_rewrite.poly_proof.clone() {
                     rewrite = rewrite.poly_proof(poly_proof);
                 }
-                rewrite.substeps = first_rewrite.substeps.clone();
-
-                let mut chained = ChainedRewrite::new(zero)
-                    .desc(second_rewrite.description.clone())
-                    .local(
-                        second_rewrite.before_local.unwrap_or(second_expr),
-                        second_rewrite.after_local.unwrap_or(zero),
-                    );
-                for cond in second_rewrite.required_conditions.clone() {
-                    chained = chained.requires(cond);
+                let mut substeps = if first_rewrite.substeps.is_empty() {
+                    vec![build_phase_shift_zero_substep(ctx, first_expr)]
+                } else {
+                    first_rewrite.substeps.clone()
+                };
+                if second_rewrite.substeps.is_empty() {
+                    substeps.push(build_phase_shift_zero_substep(ctx, second_expr));
+                } else {
+                    substeps.extend(second_rewrite.substeps.clone());
                 }
-                for ev in second_rewrite.assumption_events.clone() {
-                    chained = chained.assume(ev);
-                }
+                rewrite.substeps = substeps;
 
-                return Some(rewrite.chain(chained));
+                return Some(rewrite);
             }
         }
     }
@@ -12895,6 +12945,7 @@ fn try_build_exact_zero_shared_passthrough_difference_rewrite(
     expr: cas_ast::ExprId,
 ) -> Option<Rewrite> {
     let (lhs_core, rhs_core) = extract_shared_additive_passthrough_difference_cores(ctx, expr)?;
+    let residual_expr = ctx.add(Expr::Sub(lhs_core, rhs_core));
     if let Some(rewrite) =
         try_build_direct_sub_fraction_combination_equivalence_rewrite(ctx, lhs_core, rhs_core)
     {
@@ -12924,6 +12975,10 @@ fn try_build_exact_zero_shared_passthrough_difference_rewrite(
     ) {
         return Some(rewrite);
     }
+    if let Some(rewrite) = try_build_repeated_trig_phase_shift_pair_zero_rewrite(ctx, residual_expr)
+    {
+        return Some(rewrite);
+    }
     if let Some(rewrite) = try_build_direct_trig_exact_quarter_phase_shift_pair_equivalence_rewrite(
         ctx, lhs_core, rhs_core,
     ) {
@@ -12934,7 +12989,6 @@ fn try_build_exact_zero_shared_passthrough_difference_rewrite(
     {
         return Some(rewrite);
     }
-    let residual_expr = ctx.add(Expr::Sub(lhs_core, rhs_core));
     if let Some(rewrite) = try_build_repeated_trig_phase_shift_pair_zero_rewrite(ctx, residual_expr)
     {
         return Some(rewrite);

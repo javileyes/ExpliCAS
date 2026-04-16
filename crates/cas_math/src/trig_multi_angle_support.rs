@@ -1,5 +1,6 @@
 use crate::expr_destructure::{as_mul, as_pow};
 use crate::expr_nary::{add_terms_signed, Sign};
+use crate::expr_predicates::is_constant_expr;
 use crate::expr_rewrite::smart_mul;
 use crate::numeric::as_number;
 use crate::pattern_marks::PatternMarks;
@@ -78,6 +79,10 @@ pub fn try_rewrite_triple_angle_expr(
         _ => return None,
     };
 
+    if is_constant_expr(ctx, arg) {
+        return None;
+    }
+
     let inner_var = extract_triple_angle_arg_relaxed(ctx, arg)?;
     if !is_trivial_angle(ctx, inner_var) {
         return None;
@@ -152,6 +157,10 @@ pub fn try_rewrite_double_angle_function_expr(
         Expr::Function(fn_id, args) if args.len() == 1 => (*fn_id, args),
         _ => return None,
     };
+
+    if is_constant_expr(ctx, args[0]) {
+        return None;
+    }
 
     let inner_var = extract_double_angle_arg_relaxed(ctx, args[0])?;
     if is_multiple_angle(ctx, inner_var) {
@@ -252,6 +261,10 @@ pub fn try_rewrite_quintuple_angle_expr(
         Expr::Function(fn_id, args) if args.len() == 1 => (*fn_id, args[0]),
         _ => return None,
     };
+
+    if is_constant_expr(ctx, arg) {
+        return None;
+    }
 
     let inner_var = extract_quintuple_angle_arg(ctx, arg)?;
     match ctx.builtin_of(fn_id) {
@@ -1264,6 +1277,13 @@ mod tests {
     }
 
     #[test]
+    fn triple_angle_rewrite_blocks_constant_argument() {
+        let mut ctx = Context::new();
+        let expr = parse("sin(6)", &mut ctx).expect("expr");
+        assert!(try_rewrite_triple_angle_expr(&mut ctx, expr).is_none());
+    }
+
+    #[test]
     fn double_angle_rewrite_matches_sin_expansion() {
         let mut ctx = Context::new();
         let expr = parse("sin(2*x)", &mut ctx).expect("expr");
@@ -1282,6 +1302,13 @@ mod tests {
     fn double_angle_rewrite_skips_nested_multiple_angle() {
         let mut ctx = Context::new();
         let expr = parse("sin(2*(8*x))", &mut ctx).expect("expr");
+        assert!(try_rewrite_double_angle_function_expr(&mut ctx, expr).is_none());
+    }
+
+    #[test]
+    fn double_angle_rewrite_blocks_constant_argument() {
+        let mut ctx = Context::new();
+        let expr = parse("cos(6)", &mut ctx).expect("expr");
         assert!(try_rewrite_double_angle_function_expr(&mut ctx, expr).is_none());
     }
 
@@ -1336,6 +1363,13 @@ mod tests {
             compare_expr(&ctx, rewrite.rewritten, expected),
             Ordering::Equal
         );
+    }
+
+    #[test]
+    fn quintuple_angle_rewrite_blocks_constant_argument() {
+        let mut ctx = Context::new();
+        let expr = parse("cos(10)", &mut ctx).expect("expr");
+        assert!(try_rewrite_quintuple_angle_expr(&mut ctx, expr).is_none());
     }
 
     #[test]
