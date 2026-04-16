@@ -56,6 +56,22 @@ that was invisible from individual examples:
 - exact-zero identities were recognized in isolation
 - but not when embedded in additive context
 
+One more lesson matters for strategy:
+
+- broad contextual corpora are also runtime guardrails
+- a new matcher can improve one narrow family while slowing down the whole
+  embedded corpus
+- that slowdown is real engine cost, not benchmark noise
+
+So `embedded equivalence` should be read in two dimensions:
+
+- correctness: pass/fail
+- cost: elapsed time under the corpus
+
+That makes corpus strategy and orchestrator strategy tightly connected.
+For the orchestrator-specific side of that work, see
+[ORCHESTRATOR_OBSERVABILITY_STRATEGY.md](/Users/javiergimenezmoya/developer/math/docs/ORCHESTRATOR_OBSERVABILITY_STRATEGY.md).
+
 That is the model to repeat.
 
 ## Corpus 1: Embedded Equivalence In Context
@@ -86,6 +102,7 @@ It forces the simplifier to:
 - remove a zero-equivalent subexpression
 - preserve surrounding structure correctly
 - avoid getting stuck on the wrapper instead of the core identity
+- avoid paying broad no-match overhead for narrow shortcuts
 
 ### Typical Bugs It Reveals
 
@@ -109,6 +126,15 @@ It forces the simplifier to:
 This directly improves real user input, because most interactive expressions are
 not naked textbook identities. They are identities embedded in context.
 
+It also has high ROI as a performance guardrail:
+
+- it is broad enough to catch hot-path matcher regressions
+- it penalizes shortcuts that are too expensive outside their real family
+- it helps distinguish a reusable engine improvement from a local benchmark hack
+
+That is one of the main reasons not to refactor the orchestrator blindly.
+The orchestrator should become more observable before it becomes more abstract.
+
 ### Curation Policy
 
 This corpus should be curated, not inflated.
@@ -125,6 +151,25 @@ matcher route.
 
 The objective is contextual completeness per case, not corpus size for its own
 sake.
+
+### Runtime Policy
+
+`embedded_equivalence_context_corpus.csv` should also be tracked as an elapsed
+time metric.
+
+A meaningful slowdown in this corpus should be treated as a regression unless
+there is a strong, explicit justification such as:
+
+- a new family of mathematically important cases now works
+- a previous timeout/overflow/nontermination path is now closed
+- the engine gained robustness that could not be achieved more cheaply
+
+In other words:
+
+- pass/fail is necessary
+- elapsed time still matters
+- a slower embedded corpus is acceptable only when the functional or robustness
+  gain is clearly worth it
 
 ## Corpus 2: Orientation, Sign, And Canonicalization Robustness
 

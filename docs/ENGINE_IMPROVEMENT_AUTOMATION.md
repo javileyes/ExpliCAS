@@ -76,6 +76,50 @@ The embedded corpora matter because they are harder to game than a single benchm
 - [derive_pairs.csv](/Users/javiergimenezmoya/developer/math/crates/cas_solver/tests/derive_pairs.csv)
   measures whether `derive` can actually bridge source to target and how long the path is
 
+For work centered on
+[orchestrator.rs](/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs),
+follow the dedicated architecture guidance in
+[ORCHESTRATOR_OBSERVABILITY_STRATEGY.md](/Users/javiergimenezmoya/developer/math/docs/ORCHESTRATOR_OBSERVABILITY_STRATEGY.md).
+
+## Embedded Equivalence Runtime Is A Guardrail Metric
+
+The runtime of
+[embedded_equivalence_context_corpus.csv](/Users/javiergimenezmoya/developer/math/docs/embedded_equivalence_context_corpus.csv)
+is not a cosmetic benchmark number.
+
+It is a guardrail metric for engine quality because it exercises broad,
+contextual traffic through the real simplification/orchestration pipeline.
+
+That makes it a good detector of changes that:
+
+- add expensive matchers too high in the pipeline
+- introduce broad no-match overhead
+- improve a narrow `nf-first` slice while taxing common contextual traffic
+- trade local wins for global slowdown
+
+So the automation should treat embedded runtime as a first-class scorecard
+dimension, not just pass/fail.
+
+### Policy
+
+A change that makes embedded runtime materially worse should usually be rejected,
+even when:
+
+- a narrow pressure lane improves
+- a small family gains `NF-convergent`
+
+The exception is when the regression is clearly justified by a larger win in:
+
+- functional correctness
+- mathematical coverage
+- robustness against timeout / overflow / nontermination
+
+Even then, the burden of proof is on the change:
+
+- the new functionality must be real and reusable
+- the runtime regression must be measured explicitly
+- the slowdown should be reduced as much as possible before the change is retained
+
 ## Why The Embedded Context Corpus Must Keep Growing
 
 `embedded_equivalence_context_corpus.csv` is one of the highest-value guardrails
@@ -191,6 +235,23 @@ That means the user intuition is correct:
 If a change makes the engine “smarter” but causes previously fast or stable
 traffic to explode in runtime, it is not a clean win.
 
+That principle applies especially to embedded runtime:
+
+- `embedded` can get slower a little by accident
+- but a large regression should only be accepted if it closes a high-value
+  functional or robustness gap that the previous engine genuinely could not handle
+- and even then, the follow-up task should be to recover the lost runtime
+
+This is especially relevant for orchestrator work:
+
+- broad shortcut changes in the orchestrator can improve a narrow family while
+  taxing the whole engine
+- so orchestrator refactors and new shortcut families should be treated as
+  observability-first work, not just feature work
+- see
+  [ORCHESTRATOR_OBSERVABILITY_STRATEGY.md](/Users/javiergimenezmoya/developer/math/docs/ORCHESTRATOR_OBSERVABILITY_STRATEGY.md)
+  for the recommended workflow
+
 ## Recommended Improvement Loop
 
 1. Add or isolate a failing metamorphic family.
@@ -206,7 +267,9 @@ traffic to explode in runtime, it is not a clean win.
 5. Every few iterations, rerun `guardrail`.
 6. Rerun the relevant `pressure` lane when the change touches normalization,
    orchestration, or deep composed traffic.
-7. Promote the new family into an embedded corpus once the behavior is stable.
+7. If the change touches broad orchestration or hot-path matching, rerun
+   `embedded` and compare elapsed time, not just pass/fail.
+8. Promote the new family into an embedded corpus once the behavior is stable.
 
 This loop is intentionally not the same as running full CI every time.
 
